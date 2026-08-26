@@ -89,7 +89,7 @@ export default function App() {
     <div className="app-shell">
       <nav className="topnav">
         <div className="container topnav-inner">
-          <button className="brand" onClick={() => navigate(me ? '/trips' : '/')} aria-label="YatraFlow home">
+          <button className="brand" onClick={() => navigate('/')} aria-label="YatraFlow home">
             <BrandMark />
             <span>Yatra<b style={{ color: 'var(--teal)' }}>Flow</b></span>
           </button>

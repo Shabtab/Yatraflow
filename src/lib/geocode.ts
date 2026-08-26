@@ -96,3 +96,64 @@ export async function searchPlaces(q: string, opts?: { indiaOnly?: boolean }): P
 }
 
 export { DEBOUNCE_MS }
+
+// ============ Opening hours from OpenStreetMap ============
+// Google Places would charge per lookup and needs a billing account, so hours
+// come from OSM's free Overpass API instead (ODbL — attribution in-app not
+// required for this use, but we credit it in the UI hint anyway).
+// Mirrors tried in order; the public overpass-api.de is often saturated.
+
+const OVERPASS_ENDPOINTS = [
+  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+  'https://overpass-api.de/api/interpreter',
+]
+
+export interface OpeningHours {
+  openTime: string   // "HH:MM"
+  closeTime: string  // "HH:MM"
+}
+
+/** Parse the common cases of OSM opening_hours into a single open/close span. */
+export function parseOpeningHours(oh: string): OpeningHours | null {
+  if (!oh) return null
+  if (/^24\/7$/.test(oh.trim())) return { openTime: '00:00', closeTime: '23:59' }
+  // take the first time range of the first weekday rule: "Mo-Sa 10:00-16:00", "10:00-12:00,15:00-17:00; Fr off"
+  const m = oh.match(/(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/)
+  if (!m) return null
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return { openTime: `${pad(+m[1])}:${m[2]}`, closeTime: `${pad(+m[3])}:${m[4]}` }
+}
+
+/**
+ * Look up opening hours for a place by name near its coordinates.
+ * Returns null when nothing confident was found (caller keeps manual entry).
+ */
+export async function fetchOpeningHours(name: string, lat: number, lng: number): Promise<OpeningHours | null> {
+  const clean = name.replace(/\s*,.*$/, '').trim() // strip ", Kerala" suffixes for matching
+  if (clean.length < 3) return null
+  const query =
+    `[out:json][timeout:20];` +
+    `(nwr(around:4000,${lat},${lng})["opening_hours"]["name"~"${clean.replace(/[\\"]/g, '')}",i];);` +
+    `out center tags 5;`
+  for (const endpoint of OVERPASS_ENDPOINTS) {
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'data=' + encodeURIComponent(query),
+        signal: AbortSignal.timeout(25000),
+      })
+      if (!res.ok) continue
+      const data = await res.json()
+      const el = (data.elements ?? []).find((e: { tags?: Record<string, string> }) =>
+        e.tags?.opening_hours && e.tags.name?.toLowerCase().includes(clean.toLowerCase().slice(0, 8)))
+      const parsed = el ? parseOpeningHours(el.tags!.opening_hours) : null
+      if (parsed || el) return parsed
+      // element matched but unparseable → stop trying further endpoints
+      return null
+    } catch {
+      /* try next mirror */
+    }
+  }
+  return null
+}

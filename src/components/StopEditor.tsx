@@ -5,6 +5,7 @@ import { STOP_CATEGORIES, STOP_STATUSES } from '../data/types'
 import { Modal, Field } from './ui'
 import { LocationInput } from './LocationInput'
 import type { PlaceHit } from './LocationInput'
+import { fetchOpeningHours } from '../lib/geocode'
 
 export interface StopFormValues {
   title: string
@@ -37,13 +38,40 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel 
 }) {
   const [v, setV] = useState<StopFormValues>(normalize(initial))
   const [errs, setErrs] = useState<Record<string, string>>({})
+  /** "idle" | "loading" | "found" | "none" — OSM hours lookup after picking a place */
+  const [hoursState, setHoursState] = useState<'idle' | 'loading' | 'found' | 'none'>('idle')
   // re-init when opening for a different stop
   const [lastKey, setLastKey] = useState(resetKey)
-  if (open && lastKey !== resetKey) { setLastKey(resetKey); setV(normalize(initial)); setErrs({}) }
+  if (open && lastKey !== resetKey) { setLastKey(resetKey); setV(normalize(initial)); setErrs({}); setHoursState('idle') }
+
+  async function onPlacePicked(p: PlaceHit) {
+    set('locationName', p.name + (p.admin1 ? `, ${p.admin1}` : ''))
+    set('lat', p.latitude); set('lng', p.longitude); set('geocoded', true)
+    // auto-feed open/close times from OpenStreetMap when the place has them
+    if (p.kind === 'poi' && !v.openTime) {
+      setHoursState('loading')
+      try {
+        const hours = await fetchOpeningHours(p.name, p.latitude, p.longitude)
+        if (hours && open) {
+          set('openTime', hours.openTime); set('closeTime', hours.closeTime)
+          setHoursState('found')
+        } else {
+          setHoursState('none')
+        }
+      } catch {
+        setHoursState('none')
+      }
+    }
+  }
 
   function set<K extends keyof StopFormValues>(k: K, val: StopFormValues[K]) {
     setV(prev => ({ ...prev, [k]: val }))
   }
+
+  const hoursHint =
+    hoursState === 'loading' ? '⏳ Looking up hours from OpenStreetMap…' :
+    hoursState === 'found' ? '✓ Auto-filled from OpenStreetMap — edit if needed' :
+    undefined
 
   function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -77,7 +105,7 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel 
             <LocationInput
               value={v.locationName}
               onChange={val => { set('locationName', val); if (v.geocoded) set('geocoded', false) }}
-              onPick={(p: PlaceHit) => { set('locationName', p.name + (p.admin1 ? `, ${p.admin1}` : '')); set('lat', p.latitude); set('lng', p.longitude); set('geocoded', true) }}
+              onPick={onPlacePicked}
               placeholder="Search, e.g. Idukki district, Kerala"
             />
           </Field>
@@ -94,7 +122,7 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel 
           <Field label="Visit duration (min)" error={errs.visitMinutes}>
             <input type="number" min={0} step={5} className="input" value={v.visitMinutes} onChange={e => set('visitMinutes', Number(e.target.value))} />
           </Field>
-          <Field label="Opens at">
+          <Field label="Opens at" hint={hoursHint}>
             <input type="time" className="input" value={v.openTime} onChange={e => set('openTime', e.target.value)} />
           </Field>
           <Field label="Closes at" error={errs.closeTime}>
