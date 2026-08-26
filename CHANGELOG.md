@@ -2,6 +2,12 @@
 
 All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions are pre-1.0 MVP milestones.
 
+## [0.11.3] — 2026-08-26
+
+### Fixed
+- **Explore card footer alignment**: the author/copy-trip row sat flush to the card edges. The row is now inset to match `.itin-body`'s side padding, with a full-width divider reaching the card edges.
+- **"Start planning free" did nothing**: the home/nav signup buttons navigate to `/auth?mode=signup`, but the hash router compared the whole segment (including `?mode=signup`) against the route switch, so it never matched `auth` and fell through to the landing page. The router now strips the query string from the first segment; Auth reads the mode from the hash as before.
+
 ## [0.11.2] — 2026-08-26
 
 ### Fixed

@@ -44,7 +44,9 @@ export default function App() {
   }
 
   // route shapes: /, /auth, /trips, /new, /trip/:id, /explore, /pub/:slug, /invite/:tripId, /share/<payload>, /profile
-  const parts = route.split('/').filter(Boolean)
+  // Query strings (e.g. /auth?mode=signup) ride on parts[0]; strip them so the
+  // segment still matches the switch. Pages read their own params from location.hash.
+  const parts = route.split('/').filter(Boolean).map(s => s.split('?')[0])
   let page: React.ReactNode
 
   if (parts[0] === 'share' && parts[1]) {
