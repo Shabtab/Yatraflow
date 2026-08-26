@@ -66,7 +66,7 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
                     {(t.members ?? []).length > 1 && <Chip tone="info">{(t.members ?? []).length} planners</Chip>}
                   </div>
                 </button>
-                <div className="row-between" style={{ marginTop: 12, borderTop: '1px solid var(--line)', paddingTop: 10 }}>
+                <div className="row-between itin-meta">
                   <div className="member-stack">
                     {others.slice(0, 3).map(m => <Avatar key={m.userId} user={userById(m.userId)} />)}
                     {!others.length && <span className="small muted">Just you so far</span>}

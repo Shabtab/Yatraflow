@@ -2,6 +2,11 @@
 
 All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions are pre-1.0 MVP milestones.
 
+## [0.11.4] — 2026-08-26
+
+### Fixed
+- **My Trips card footer alignment**: same edge-flush issue as Explore — the member-avatars/delete row now reuses `.itin-meta` (full-width divider reaching the card edges, content inset to body padding).
+
 ## [0.11.3] — 2026-08-26
 
 ### Fixed
