@@ -17,7 +17,8 @@ import {
 import { computeImpact, type ImpactResult } from '../lib/impact'
 import { Avatar, Chip, Modal, Field, StatTile, HealthRing, EmptyState, toast, useReorder, CopyButton } from '../components/ui'
 import { ImpactPreviewPanel } from '../components/ImpactPreview'
-import { TripMap } from '../components/TripMap'
+// MapLibre is heavy (~1MB) — load it only when the Map tab is actually opened.
+const TripMap = React.lazy(() => import('../components/TripMap').then(m => ({ default: m.TripMap })))
 import { StopEditor, type StopFormValues } from '../components/StopEditor'
 import { AiDrawer } from '../components/AiDrawer'
 import { LocationInput } from '../components/LocationInput'
@@ -153,7 +154,11 @@ export function TripWorkspace({ tripId, onNavigate }: { tripId: string; onNaviga
 
       {tab === 'overview' && <OverviewTab trip={effective} editable={editable} onOpenDecisions={() => setTab('decisions')} health={health} totals={totals} />}
       {tab === 'timeline' && <TimelineTab trip={trip} editable={editable} applyChange={applyChange} />}
-      {tab === 'map' && <MapTab trip={trip} editable={editable} applyChange={applyChange} />}
+      {tab === 'map' && (
+        <React.Suspense fallback={<div className="container loading-block"><div className="spinner" />Loading map…</div>}>
+          <MapTab trip={trip} editable={editable} applyChange={applyChange} />
+        </React.Suspense>
+      )}
       {tab === 'suggestions' && <SuggestionsTab trip={trip} editable={editable} me={me} />}
       {tab === 'budget' && <BudgetTab trip={trip} totals={totals} editable={editable} />}
       {tab === 'decisions' && <DecisionsTab trip={trip} me={me} editable={editable} />}
