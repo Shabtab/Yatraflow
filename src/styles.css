@@ -734,3 +734,27 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
 .loc-kind.place { background: color-mix(in srgb, var(--teal) 14%, transparent); color: var(--teal-deep); }
 [data-theme='dark'] .loc-kind.poi { color: #F5B85C; }
 [data-theme='dark'] .loc-kind.place { color: #4FD1C5; }
+
+/* ---- Nearby POI suggestions (Map tab) ---- */
+.yf-map-pin-idea {
+  background: var(--saffron);
+  border-style: dashed;
+  font-size: 14px;
+}
+.poi-suggest-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+.poi-suggest-card {
+  display: flex; align-items: center; gap: 10px;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 9px 11px; background: var(--bg);
+}
+.poi-thumb {
+  width: 52px; height: 52px; border-radius: 10px; object-fit: cover; flex-shrink: 0;
+  border: 1px solid var(--line);
+}
+.poi-thumb-empty { display: flex; align-items: center; justify-content: center; font-size: 22px; background: var(--card); }
+.poi-info { flex: 1; min-width: 0; }
+.poi-name { font-weight: 700; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.poi-desc { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+@media (max-width: 720px) {
+  .poi-suggest-grid { grid-template-columns: 1fr; }
+}

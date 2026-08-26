@@ -97,6 +97,37 @@ export async function searchPlaces(q: string, opts?: { indiaOnly?: boolean }): P
 
 export { DEBOUNCE_MS }
 
+/**
+ * Nearby POIs around a coordinate via Wikipedia geosearch — used to suggest
+ * potential stops on the Map tab. Free, keyless, CORS-enabled.
+ */
+export async function searchNearbyPois(lat: number, lng: number, radiusM = 10000, count = 10): Promise<PlaceHit[]> {
+  const params = new URLSearchParams({
+    action: 'query',
+    generator: 'geosearch',
+    ggscoord: `${lat}|${lng}`,
+    ggsradius: String(Math.min(radiusM, 10000)),
+    ggslimit: String(count),
+    prop: 'coordinates|pageimages|description',
+    format: 'json',
+    origin: '*',
+  })
+  const res = await fetch(`https://en.wikipedia.org/w/api.php?${params}`)
+  const data = await res.json()
+  const pages: Record<string, WikiPage> = data.query?.pages ?? {}
+  return Object.values(pages)
+    .filter(p => p.coordinates?.[0])
+    .map(p => ({
+      id: `wiki_${p.pageid}`,
+      name: p.title,
+      latitude: p.coordinates![0].lat,
+      longitude: p.coordinates![0].lon,
+      kind: 'poi' as const,
+      description: p.description,
+      thumb: p.thumbnail?.source,
+    }))
+}
+
 // ============ Opening hours from OpenStreetMap ============
 // Google Places would charge per lookup and needs a billing account, so hours
 // come from OSM's free Overpass API instead (ODbL — attribution in-app not

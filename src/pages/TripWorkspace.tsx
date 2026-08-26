@@ -1,6 +1,6 @@
 // ============ Trip workspace ============
 // Tabs: Overview / Timeline / Map / Suggestions / Budget / Decisions / Share
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import type { Trip, ItineraryStop, Expense } from '../data/types'
 import { TRANSPORT_MODES, TRAVEL_STYLES } from '../data/types'
 import {
@@ -21,6 +21,8 @@ import { TripMap } from '../components/TripMap'
 import { StopEditor, type StopFormValues } from '../components/StopEditor'
 import { AiDrawer } from '../components/AiDrawer'
 import { LocationInput } from '../components/LocationInput'
+import { searchNearbyPois } from '../lib/geocode'
+import type { PlaceHit } from '../lib/geocode'
 
 type TabKey = 'overview' | 'timeline' | 'map' | 'suggestions' | 'budget' | 'decisions' | 'share'
 
@@ -147,7 +149,7 @@ export function TripWorkspace({ tripId, onNavigate }: { tripId: string; onNaviga
 
       {tab === 'overview' && <OverviewTab trip={effective} editable={editable} onOpenDecisions={() => setTab('decisions')} health={health} totals={totals} />}
       {tab === 'timeline' && <TimelineTab trip={trip} editable={editable} applyChange={applyChange} />}
-      {tab === 'map' && <MapTab trip={trip} />}
+      {tab === 'map' && <MapTab trip={trip} editable={editable} applyChange={applyChange} />}
       {tab === 'suggestions' && <SuggestionsTab trip={trip} editable={editable} me={me} />}
       {tab === 'budget' && <BudgetTab trip={trip} totals={totals} editable={editable} />}
       {tab === 'decisions' && <DecisionsTab trip={trip} me={me} editable={editable} />}
@@ -512,8 +514,139 @@ function MoveStopModal({ stop, trip, onClose, onMove }: {
 
 // ================= Map tab =================
 
-function MapTab({ trip }: { trip: Trip }) {
-  return <TripMap trip={trip} />
+/** Wikipedia thumbnail URLs are hotlink-friendly but huge; ask for a small one. */
+function smallThumb(url: string): string {
+  return url.replace(/\/(\d+)px-/, '/120px-')
+}
+
+function MapTab({ trip, editable, applyChange }: {
+  trip: Trip
+  editable: boolean
+  applyChange: (mutator: (d: Trip) => void, kind: ImpactResult['kind'], dayIndex: number) => void
+}) {
+  const [pois, setPois] = useState<PlaceHit[]>([])
+  const [loadingPois, setLoadingPois] = useState(false)
+  const [addedIds, setAddedIds] = useState<Set<string>>(new Set())
+  // pending "add from map" — pre-fills the stop editor with the POI's details
+  const [poiDraft, setPoiDraft] = useState<{ hit: PlaceHit; dayIndex: number } | null>(null)
+
+  const existingNames = useMemo(() => {
+    const names = new Set<string>()
+    for (const d of trip.days) for (const s of d.stops) names.add(s.title.toLowerCase())
+    return names
+  }, [trip])
+
+  // anchor the search on the middle of the plotted stops (or first destination)
+  const anchor = useMemo(() => {
+    const pts = trip.days.flatMap(d => d.stops).filter(s => s.status !== 'rejected')
+    if (pts.length > 0) {
+      return {
+        lat: pts.reduce((a, s) => a + s.lat, 0) / pts.length,
+        lng: pts.reduce((a, s) => a + s.lng, 0) / pts.length,
+      }
+    }
+    const dest = trip.destinations[0]
+    return dest
+      ? { lat: trip.days.flatMap(d => d.stops)[0]?.lat ?? 10.5, lng: trip.days.flatMap(d => d.stops)[0]?.lng ?? 76.5 }
+      : null
+  }, [trip])
+
+  useEffect(() => {
+    if (!anchor) return
+    let cancelled = false
+    setLoadingPois(true)
+    searchNearbyPois(anchor.lat, anchor.lng, 10000, 12)
+      .then(hits => { if (!cancelled) setPois(hits.slice(0, 10)) })
+      .catch(() => { /* suggestions are best-effort */ })
+      .finally(() => { if (!cancelled) setLoadingPois(false) })
+    return () => { cancelled = true }
+  }, [anchor]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function addPoiToDay(hit: PlaceHit, dayIndex: number) {
+    applyChange(draft => {
+      const day = draft.days.find(d => d.index === dayIndex)!
+      day.stops.push({
+        id: 'pending_' + Math.random().toString(36).slice(2),
+        title: hit.name,
+        category: 'sightseeing',
+        locationName: hit.description ?? hit.name,
+        lat: hit.latitude,
+        lng: hit.longitude,
+        description: hit.description ?? '',
+        notes: 'Discovered via map suggestions (Wikipedia)',
+        visitMinutes: 60,
+        openTime: '', closeTime: '',
+        entryFeeInrPerPerson: 0,
+        transportCostInrTotal: 0,
+        priority: 'nice-to-have',
+        sourceUrl: '',
+        status: 'suggested',
+        orderInDay: day.stops.length + 1,
+      } as unknown as ItineraryStop)
+    }, 'add', dayIndex)
+    setAddedIds(prev => new Set(prev).add(hit.id as string))
+    toast(`“${hit.name}” added to Day ${dayIndex + 1}`)
+  }
+
+  const dayOptions = trip.days.map(d => ({ index: d.index }))
+
+  return (
+    <div>
+      <TripMap trip={trip} nearbyPois={pois} onAddNearby={editable ? (hit) => setPoiDraft({ hit, dayIndex: trip.days[0]?.index ?? 0 }) : undefined} />
+      <div className="card" style={{ marginTop: 14 }}>
+        <div className="row-between">
+          <h3 style={{ margin: 0 }}>💡 Nearby ideas</h3>
+          <span className="small muted">{loadingPois ? 'searching…' : `${pois.length} found near your route`}</span>
+        </div>
+        <p className="hint-text" style={{ margin: '4px 0 10px' }}>
+          Real points of interest around your route, sourced from Wikipedia. Add one straight to a day.
+        </p>
+        {!loadingPois && pois.length === 0 && (
+          <p className="muted small">No nearby suggestions found — add stops in the Timeline and ideas will appear here.</p>
+        )}
+        <div className="poi-suggest-grid">
+          {pois.map(hit => {
+            const added = addedIds.has(hit.id as string) || existingNames.has(hit.name.toLowerCase())
+            return (
+              <div key={hit.id} className="poi-suggest-card">
+                {hit.thumb
+                  ? <img className="poi-thumb" src={smallThumb(hit.thumb)} alt="" loading="lazy" />
+                  : <div className="poi-thumb poi-thumb-empty">🏞️</div>}
+                <div className="poi-info">
+                  <div className="poi-name">{hit.name}</div>
+                  {hit.description && <div className="poi-desc small muted">{hit.description}</div>}
+                </div>
+                {editable && (
+                  added
+                    ? <span className="chip chip-teal">✓ Added</span>
+                    : <button className="btn btn-primary btn-sm" onClick={() => setPoiDraft({ hit, dayIndex: trip.days[0]?.index ?? 0 })}>+ Add</button>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* pick-a-day modal for adding a suggested POI */}
+      <Modal open={!!poiDraft} onClose={() => setPoiDraft(null)} title={`Add “${poiDraft?.hit.name ?? ''}”`}>
+        {poiDraft && (
+          <div>
+            {poiDraft.hit.description && <p className="small muted" style={{ marginTop: 0 }}>{poiDraft.hit.description}</p>}
+            <Field label="Add to which day?">
+              <select
+                className="select"
+                defaultValue={poiDraft.dayIndex}
+                onChange={e => { addPoiToDay(poiDraft.hit, Number(e.target.value)); setPoiDraft(null) }}
+              >
+                {dayOptions.map(d => <option key={d.index} value={d.index}>Day {d.index + 1}</option>)}
+              </select>
+            </Field>
+            <p className="hint-text">You can fine-tune duration, fees and timings in the Timeline afterwards.</p>
+          </div>
+        )}
+      </Modal>
+    </div>
+  )
 }
 
 // ================= Suggestions tab =================

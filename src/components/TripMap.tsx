@@ -4,6 +4,7 @@
 // connecting each day's stops. Distances/durations still come from the engine.
 import { useMemo, useState, useEffect, useRef } from 'react'
 import type { Trip } from '../data/types'
+import type { PlaceHit } from '../lib/geocode'
 import type { MapRef } from './mapcn/map'
 import {
   Map as MapLibreMap,
@@ -16,7 +17,14 @@ import {
 
 const DAY_COLORS = ['#149A90', '#F59E2D', '#7C5CFC', '#E2557B', '#2D9CDB', '#6BBF59', '#B7791F']
 
-export function TripMap({ trip, onOpenStop }: { trip: Trip; onOpenStop?: (stopId: string) => void }) {
+export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby }: {
+  trip: Trip
+  onOpenStop?: (stopId: string) => void
+  /** potential POIs to show as gold "idea" markers */
+  nearbyPois?: PlaceHit[]
+  /** when set, idea markers get a + button to add the POI straight from the map */
+  onAddNearby?: (hit: PlaceHit) => void
+}) {
   const [dayFilter, setDayFilter] = useState<number | 'all'>('all')
   const [theme, setTheme] = useState<'light' | 'dark'>(
     () => (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'),
@@ -128,12 +136,33 @@ export function TripMap({ trip, onOpenStop }: { trip: Trip; onOpenStop?: (stopId
                 )
               })
             })()}
+            {/* nearby idea markers — gold, dashed, with a quick-add button */}
+            {nearbyPois.map(hit => (
+              <MapMarker key={`nearby_${hit.id}`} longitude={hit.longitude} latitude={hit.latitude}>
+                <MarkerContent>
+                  <span className="yf-map-idea" title={`${hit.name}${onAddNearby ? ' — click to add' : ''}`}>
+                    {onAddNearby ? (
+                      <button
+                        className="yf-map-pin yf-map-pin-idea"
+                        onClick={() => onAddNearby(hit)}
+                        aria-label={`Add ${hit.name} to the trip`}
+                      >
+                        +
+                      </button>
+                    ) : (
+                      <span className="yf-map-pin yf-map-pin-idea" aria-label={hit.name}>💡</span>
+                    )}
+                  </span>
+                </MarkerContent>
+                <MarkerTooltip>💡 {hit.name}</MarkerTooltip>
+              </MapMarker>
+            ))}
           </MapLibreMap>
         )}
 
         <div className="map-legend">
           {dayFilter === 'all' && <>colours = days · </>}
-          numbers follow timeline order · click a pin for details
+          numbers follow timeline order · 💡 gold markers = nearby ideas{onAddNearby ? ' (+ to add)' : ''} · click a pin for details
         </div>
       </div>
       <p className="hint-text" style={{ marginTop: 8 }}>
