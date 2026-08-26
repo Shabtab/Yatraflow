@@ -1,0 +1,205 @@
+# YatraFlow Architecture
+
+A guided tour of how the app works internally — the data model, the estimation engines, the store, and the reasoning behind each choice. Read [the README](../README.md) first for the feature overview.
+
+---
+
+## Table of contents
+
+1. [Big picture](#1-big-picture)
+2. [Data model](#2-data-model)
+3. [The store](#3-the-store)
+4. [The engine (scheduling & budget)](#4-the-engine-scheduling--budget)
+5. [Impact Preview](#5-impact-preview)
+6. [AI companion](#6-ai-companion)
+7. [Location autocomplete](#7-location-autocomplete)
+8. [Maps](#8-maps)
+9. [Routing & pages](#9-routing--pages)
+10. [Theming](#10-theming)
+11. [Swapping things out](#11-swapping-things-out)
+12. [Gotchas & hard-won lessons](#12-gotchas--hard-won-lessons)
+
+---
+
+## 1. Big picture
+
+```
+┌───────────────────────────── Browser ─────────────────────────────┐
+│                                                                    │
+│  Pages (React)          Lib (pure functions)       Store           │
+│  ┌──────────────┐      ┌──────────────────┐     ┌─────────────┐   │
+│  │ TripWorkspace│─────▶│ engine.ts        │◀────│ store.ts    │   │
+│  │ CreateTrip   │      │ impact.ts        │     │ (module-level│  │
+│  │ Explore …    │      │ ai.ts            │     │  DB object)  │  │
+│  └──────────────┘      └──────────────────┘     └──────┬──────┘   │
+│         │                       ▲                      │          │
+│         ▼                       │                      ▼          │
+│  components (map, modals)   geo.ts               localStorage      │
+│                                                  yatraflow_db_v1   │
+└────────────────────────────────────────────────────────────────────┘
+                                │
+                    External: Open-Meteo geocoding (autocomplete only)
+                              MapLibre/CARTO tiles (display only)
+```
+
+Key properties:
+
+- **Zero backend.** Everything runs in the browser; state persists to `localStorage`.
+- **Pure-function core.** `src/lib/` contains no React and no I/O — every estimate is a deterministic function of `(trip data, assumptions)`. That's what makes estimates *transparent* and testable.
+- **Coordinates are plain numbers** (`lat`/`lng` on stops), so any maps provider can consume them later.
+
+## 2. Data model
+
+All entities live in [`src/data/types.ts`](../src/data/types.ts). The important ones:
+
+| Entity | Purpose | Notable fields |
+|---|---|---|
+| `User` | Account + profile | demo-grade `passwordHash`, `UserProfile.languages` ready for i18n |
+| `Trip` | A plan | `startLocation`, ordered `destinations[]`, `transportMode`, `budgetPerPersonInr`, `fixedCommitments[]`, `days[]`, `expenses[]`, optional `members[]` |
+| `ItineraryDay` | One day of the plan | `index` (0-based), ordered `stops[]` |
+| `ItineraryStop` | One visit | `visitMinutes`, `openTime/closeTime`, `entryFeeInrPerPerson`, `transportCostInrTotal`, `priority`, `status`, `orderInDay`, geocoded `lat/lng` |
+| `FixedCommitment` | Untouchable anchor | hotel check-ins / train & flight departures with day + time — the scheduler protects these |
+| `Expense` | Cost line | `perPerson?`, `optional?`, attachable to a stop or day |
+| `StopSuggestion` | Group idea | votes (+1/−1), comments, `open → accepted/declined` lifecycle |
+| `TripDecision` | Structured poll | options carry `costImpactInr`/`timeImpactMin`; `votesByUserId`; resolvable |
+| `PublishedItinerary` | Public share | slug id, `freeDayIndexes` for gated preview, view/copy counters |
+| `ActivityEntry` / `Notification` | Social plumbing | per-trip feed / per-user inbox |
+
+Design notes:
+
+- **Enums are `as const` tuples** (`TRANSPORT_MODES`, `TRAVEL_STYLES`, `STOP_CATEGORIES`…) so UI dropdowns and types stay in sync from one source.
+- Adding an Indian destination, transport mode or language requires **no schema change** — they're data, not structure.
+
+## 3. The store
+
+[`src/store/store.ts`](../src/store/store.ts) is a hand-rolled reactive store:
+
+```ts
+let saveTimer: ReturnType<typeof setTimeout> | null = null  // MUST be declared before load() — see gotchas
+let db: DB = load()
+const listeners = new Set<() => void>()
+```
+
+- **Read:** components call `useDb()` which wraps React's `useSyncExternalStore(subscribe, getSnapshot)` — no context provider needed anywhere.
+- **Write:** exported mutation functions (`createTrip`, `addStop`, `voteSuggestion`, …) mutate a `structuredClone` draft, replace `db`, notify listeners, and debounce-persist to `localStorage` under `yatraflow_db_v1`.
+- **Self-healing:** `load()` validates the parsed JSON shape (`isValidDb`) — if an old or corrupt payload doesn't match, it's discarded and the seed data is reseeded rather than crashing.
+- **Session:** `sessionUserId` inside the same DB object keeps the login across reloads. `loginDemo()` provides one-click demo access.
+- **Roles:** trip membership is owner > editor > commenter > viewer; `canEdit()` gates mutations in the UI.
+
+Seed content ([`src/data/seed.ts`](../src/data/seed.ts)): 4 users (password `demo1234` for all), three fully-modelled trips (Kerala road trip with houseboat commitment, Goa long weekend, Rajasthan heritage circuit), suggestions, decisions, activity, notifications and two published itineraries — so every screen is populated on first run.
+
+## 4. The engine
+
+[`src/lib/engine.ts`](../src/lib/engine.ts) answers "is this plan realistic and affordable?" using **declared assumptions only**:
+
+```ts
+// per transport mode
+car: speed 42 kmph, ₹9/km · motorcycle: 44, ₹4.5 · taxi: 38, ₹16 · bus: 34, ₹2.2
+train: 55, ₹1.6 · flight: 320, ₹6.5 · mixed: 45, ₹8
+// plus universal: +15 min buffer per stop, 60 min meal break,
+// planning day window 08:30–20:00, roads are ~1.25× straight-line distance
+```
+
+Pipeline per day:
+
+1. `originOf(trip, i)` picks where the day starts (previous day's last stop, else trip start).
+2. Consecutive stops are joined by `legBetween()` = haversine × 1.25 road factor ÷ mode speed × 60 min + 10 min city-traffic pad.
+3. `simulateDay()` walks the clock forward: travel + visit duration + buffers, producing arrival/departure times per stop, total distance, total travel minutes and end-of-day time.
+4. `collectWarnings()` flags: arrivals after `closeTime`, days ending past `dayEnd`, fixed-commitment conflicts, excessive backtracking, over-stuffed days.
+5. Budget side: `computeTotals()` aggregates expenses (respecting `perPerson` and `optional` flags); `countHotelNights()` infers accommodation nights from the timeline.
+
+Every UI surface that shows an estimate also shows `getAssumptions()` output — speeds, ₹/km, buffers — so users can judge the numbers instead of trusting them blindly. This is a hard product rule: **no estimate without its assumptions on screen.**
+
+## 5. Impact Preview
+
+[`src/lib/impact.ts`](../src/lib/impact.ts) implements "what happens if…?" — it deep-clones the current trip, applies the hypothetical change (add/remove/reorder/edit/move-day), re-runs the engine on both versions and diffs:
+
+```ts
+interface ImpactResult {
+  kind; dayIndex;
+  timeDeltaMin; distanceDeltaKm; costDeltaInr;
+  arrivalChanges: { stopTitle; from; to }[];
+  newWarnings; clearedWarnings;   // ScheduleWarning diff keyed code+title
+  tooBusy; backtracking;
+  commitmentConflicts; openingHoursIssues;
+}
+```
+
+The UI shows this panel *before* a suggestion is accepted or a risky edit lands — you see "+48 min travel, +₹340, misses the 12:00 houseboat" before committing, not after.
+
+## 6. AI companion
+
+[`src/lib/ai.ts`](../src/lib/ai.ts) is deliberately **not** an LLM call. It's a deterministic rule-based responder that:
+
+- parses intent from a question ("less tiring", "cheaper", "rain", "airport by 5 PM"),
+- computes real answers from engine simulations (busiest day, cheapest removable non-must-do stop, whether the schedule still meets a deadline),
+- returns `{ text, assumptions }` and always cites the assumptions used, prefixed with the disclaimer that estimates are not live data.
+
+This keeps the MVP honest (nothing hallucinated), offline-capable, and free. Swapping in a real LLM later means replacing `answerQuestion()` while feeding it the same engine outputs as grounding.
+
+## 7. Location autocomplete
+
+[`src/components/LocationInput.tsx`](../src/components/LocationInput.tsx) wraps a plain input with:
+
+- **Open-Meteo geocoding** (`geocoding-api.open-meteo.com/v1/search?name=…&countryCode=IN`) — free, no key, results biased to India via the `indiaOnly` prop.
+- **280 ms debounce**, minimum 2 characters, abort-safe loading spinner.
+- **Keyboard support:** ↑/↓ move highlight, Enter selects, Esc closes; mouse hover syncs highlight.
+- **Coordinate capture:** selecting fires `onPick(PlaceHit)` with verified `latitude/longitude`. Callers use this to write real coordinates into stops/suggestions — which is why map routes and distance math improve when users pick from the list. Typing free-text is allowed but marks the field un-geocoded.
+
+Used by: CreateTrip (start location + destination chips), StopEditor (stop location), suggestion form (Area), and Trip Settings (start + destinations).
+
+## 8. Maps
+
+[`src/components/mapcn/map.tsx`](../src/components/mapcn/map.tsx) is the [mapcn](https://github.com/AnmolSaini16/mapcn) registry component vendored verbatim (its single `@/lib/utils` import replaced by a local [`cn()`](./src/components/mapcn/cn.ts)). It renders MapLibre GL with CARTO basemaps that follow light/dark theme automatically.
+
+[`src/components/TripMap.tsx`](../src/components/TripMap.tsx) builds the trip view on top:
+
+- rejected stops filtered out; remaining stops grouped per day
+- one colour-coded `MapRoute` polyline per day (palette of 7 day colours)
+- numbered circular pin buttons open the stop editor on click
+- auto `fitBounds` (padding 70, maxZoom 12) whenever the plotted set changes
+- theme tracked via `MutationObserver` on `document.documentElement.dataset.theme`
+- day filter chips + a legend, and an explicit disclaimer that routes are straight-line approximations
+
+## 9. Routing & pages
+
+No router library. [`App.tsx`](../src/App.tsx) parses `location.hash` into a route string and switches pages:
+
+| Route | Page |
+|---|---|
+| `/` | Landing |
+| `/auth` | Login/signup |
+| `/trips` | My trips |
+| `/create` | Create trip wizard |
+| `/trip/:id` | Trip workspace (tabbed) |
+| `/pub/:slug` | Published itinerary |
+| `/explore` | Public gallery |
+| `/profile` | Profile |
+| `/invite/:id` | Join-trip flow |
+
+Navigation is a plain `onNavigate(route)` callback that sets `location.hash`. Hash routing means zero server config on any static host.
+
+## 10. Theming
+
+Single stylesheet [`src/styles.css`](../src/styles.css). Dark mode flips CSS custom properties via `data-theme="dark"` on `<html>`; a toggle persists the choice and map basemaps follow via the observer described above. Mobile-first breakpoints at 720 px enforce ≥44 px touch targets and 16 px inputs (prevents iOS focus zoom).
+
+## 11. Swapping things out
+
+The architecture isolates its shortcuts behind small interfaces:
+
+| Today | Swap to | Touch points |
+|---|---|---|
+| `localStorage` store | Supabase/Firebase/REST backend | Only `store.ts` internals — mutation signatures can stay identical |
+| Open-Meteo autocomplete | Google Places / Mapbox | `LocationInput.tsx` only |
+| Haversine × 1.25 legs | OSRM/Google Directions real routing | `legBetween()` in `engine.ts` (+ feed real geometry to `MapRoute`) |
+| Demo-grade password hash | Real auth | `store.ts` `login/signup`, drop `passwordHash` |
+| Rule-based AI | LLM with engine grounding | `answerQuestion()` in `ai.ts` |
+| Placeholder payment buttons | Razorpay/etc. | Share tab CTAs + `premiumPriceInr` on `PublishedItinerary` |
+
+## 12. Gotchas & hard-won lessons
+
+- **TDZ ordering in `store.ts`:** module-level initialisers run top-to-bottom — `load()` calls `persist()` which reads `saveTimer`, so `saveTimer` must be declared *above* `let db = load()`. TypeScript strict does not catch all such patterns, and the crash happens before React mounts (so ErrorBoundary can't catch it either). Symptom was a blank white screen.
+- **ErrorBoundary limits:** class-component error boundaries catch render errors, never import-time/module-evaluation crashes.
+- **Debugging import-time crashes headlessly:** `vite`'s `ssrLoadModule('/src/App.tsx')` from a Node script surfaces module-graph errors without a browser.
+- **Vendoring mapcn without Tailwind/shadcn:** extract `files[0].content` from the registry JSON, rewrite `@/lib/utils` imports to a local shim — done once, committed, no Tailwind pipeline needed.
+- **Git Bash on Windows:** `/tmp` resolves outside the project so Node scripts can't resolve modules there — keep scratch files project-relative.
