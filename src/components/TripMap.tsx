@@ -5,6 +5,8 @@
 import { useMemo, useState, useEffect, useRef } from 'react'
 import type { Trip } from '../data/types'
 import type { PlaceHit } from '../lib/geocode'
+import { routePath } from '../lib/routing'
+import { getAssumptions } from '../lib/engine'
 import type { MapRef } from './mapcn/map'
 import {
   Map as MapLibreMap,
@@ -16,6 +18,16 @@ import {
 } from './mapcn/map'
 
 const DAY_COLORS = ['#149A90', '#F59E2D', '#7C5CFC', '#E2557B', '#2D9CDB', '#6BBF59', '#B7791F']
+
+/** Drop consecutive duplicate points (shared endpoints between legs). */
+function dedupeConsecutive(coords: [number, number][]): [number, number][] {
+  const out: [number, number][] = []
+  for (const c of coords) {
+    const last = out[out.length - 1]
+    if (!last || last[0] !== c[0] || last[1] !== c[1]) out.push(c)
+  }
+  return out
+}
 
 export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby }: {
   trip: Trip
@@ -80,6 +92,33 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby }: {
     return DAY_COLORS[i % DAY_COLORS.length]
   }
 
+  // Real road geometry per plotted day from OSRM; falls back to straight
+  // lines when the service is unreachable. Keyed by day index.
+  const [roadGeoms, setRoadGeoms] = useState<Record<number, [number, number][]>>({})
+  const geomKey = useMemo(
+    () => daysToPlot.map(d => `${d.index}:${d.stops.map(s => s.id).join(',')}`).join('|'),
+    [daysToPlot],
+  )
+
+  useEffect(() => {
+    if (daysToPlot.length === 0) { setRoadGeoms({}); return }
+    let cancelled = false
+    ;(async () => {
+      const next: Record<number, [number, number][]> = {}
+      for (const d of daysToPlot) {
+        const pts = d.stops.map(s => ({ lat: s.lat, lng: s.lng }))
+        if (pts.length < 2) continue
+        try {
+          const legs = await routePath(pts, getAssumptions(trip))
+          const coords = legs.flatMap(l => l.geometry)
+          if (!cancelled && coords.length > 1) next[d.index] = dedupeConsecutive(coords)
+        } catch { /* keep straight line */ }
+      }
+      if (!cancelled) setRoadGeoms(next)
+    })()
+    return () => { cancelled = true }
+  }, [geomKey]) // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <div>
       <div className="map-frame" style={{ height: 480 }}>
@@ -103,11 +142,14 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby }: {
             zoom={5}
           >
             <MapControls position="top-right" showFullscreen />
-            {/* connect consecutive stops of each plotted day */}
+            {/* connect consecutive stops of each plotted day — real road shape when OSRM responds */}
             {daysToPlot.map(d => (
               <MapRoute
                 key={d.index}
-                coordinates={d.stops.map(s => [s.lng, s.lat] as [number, number])}
+                coordinates={
+                  roadGeoms[d.index]?.length ? roadGeoms[d.index]
+                  : d.stops.map(s => [s.lng, s.lat] as [number, number])
+                }
                 color={colorForDay(d.index)}
                 width={3.5}
                 opacity={0.85}
@@ -166,7 +208,7 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby }: {
         </div>
       </div>
       <p className="hint-text" style={{ marginTop: 8 }}>
-        ⚠️ Distances/durations are transparent estimates from sample coordinates and fixed assumptions — not live routing or traffic data.
+        ⚠️ Route lines follow real roads (© OSRM/OpenStreetMap) when available; distances/durations in the plan remain transparent estimates from fixed assumptions — no live traffic data.
       </p>
     </div>
   )
