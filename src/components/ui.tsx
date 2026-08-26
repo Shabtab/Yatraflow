@@ -19,9 +19,27 @@ export function Chip({ children, tone, onClick, active }: { children: React.Reac
 
 export function Modal({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: React.ReactNode }) {
   const bodyRef = useRef<HTMLDivElement>(null)
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const titleId = React.useId()
   useEffect(() => {
     if (!open) return
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    const previouslyFocused = document.activeElement as HTMLElement | null
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { onClose(); return }
+      // trap Tab focus inside the dialog so keyboard users can't wander behind it
+      if (e.key === 'Tab' && dialogRef.current) {
+        const focusables = Array.from(
+          dialogRef.current.querySelectorAll<HTMLElement>(
+            'button, [href], input:not([type=hidden]), select, textarea, [tabindex]:not([tabindex="-1"])',
+          ),
+        ).filter(el => !el.hasAttribute('disabled'))
+        if (focusables.length === 0) return
+        const first = focusables[0]
+        const last = focusables[focusables.length - 1]
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus() }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus() }
+      }
+    }
     window.addEventListener('keydown', onKey)
     // lock page scroll while the dialog is up
     const prevOverflow = document.body.style.overflow
@@ -29,20 +47,22 @@ export function Modal({ open, onClose, title, children }: { open: boolean; onClo
     // focus the first sensible control so keyboard users can start typing immediately
     const t = setTimeout(() => {
       const el = bodyRef.current?.querySelector<HTMLElement>('input:not([type=hidden]):not([disabled]), textarea, select')
+        ?? dialogRef.current?.querySelector<HTMLElement>('button')
       el?.focus()
     }, 30)
     return () => {
       window.removeEventListener('keydown', onKey)
       document.body.style.overflow = prevOverflow
       clearTimeout(t)
+      previouslyFocused?.isConnected && previouslyFocused.focus()
     }
   }, [open, onClose])
   if (!open) return null
   return (
     <div className="modal-overlay" onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="modal" role="dialog" aria-modal="true" aria-label={title}>
+      <div ref={dialogRef} className="modal" role="dialog" aria-modal="true" aria-labelledby={titleId}>
         <div className="modal-head">
-          <h2>{title}</h2>
+          <h2 id={titleId}>{title}</h2>
           <button className="icon-btn" onClick={onClose} aria-label="Close">✕</button>
         </div>
         <div ref={bodyRef}>
@@ -50,6 +70,31 @@ export function Modal({ open, onClose, title, children }: { open: boolean; onClo
         </div>
       </div>
     </div>
+  )
+}
+
+/** Styled replacement for window.confirm — destructive actions go through here. */
+export function ConfirmDialog({ open, title, body, confirmLabel = 'Confirm', cancelLabel = 'Cancel', danger, onConfirm, onClose }: {
+  open: boolean
+  title: string
+  body?: string
+  confirmLabel?: string
+  cancelLabel?: string
+  danger?: boolean
+  onConfirm: () => void
+  onClose: () => void
+}) {
+  return (
+    <Modal open={open} onClose={onClose} title={title}>
+      {body && <p className="muted" style={{ marginTop: 0 }}>{body}</p>}
+      <div className="confirm-actions">
+        <button
+          className={`btn btn-sm ${danger ? 'btn-danger' : 'btn-primary'}`}
+          onClick={() => { onConfirm(); onClose() }}
+        >{confirmLabel}</button>
+        <button className="btn btn-outline btn-sm" onClick={onClose}>{cancelLabel}</button>
+      </div>
+    </Modal>
   )
 }
 
@@ -70,23 +115,39 @@ export function Field(props: {
 }
 
 /** Simple toast system. */
-let pushToastFn: ((msg: string, kind?: 'ok' | 'err') => void) | null = null
+let pushToastFn: ((msg: string, kind?: 'ok' | 'err', action?: { label: string; run: () => void }) => void) | null = null
 export function toast(msg: string, kind: 'ok' | 'err' = 'ok') {
   pushToastFn?.(msg, kind)
 }
+/** Toast with an Undo button — for destructive actions that can be reversed. */
+export function undoToast(msg: string, undo: () => void) {
+  pushToastFn?.(msg, 'ok', { label: 'Undo', run: undo })
+}
+let dismissToastFn: ((id: number) => void) | null = null
 export function ToastZone() {
-  const [toasts, setToasts] = useState<{ id: number; msg: string; kind: string }[]>([])
+  const [toasts, setToasts] = useState<{ id: number; msg: string; kind: string; action?: { label: string; run: () => void } }[]>([])
   useEffect(() => {
-    pushToastFn = (msg, kind = 'ok') => {
+    pushToastFn = (msg, kind = 'ok', action) => {
       const id = Date.now() + Math.random()
-      setToasts(t => [...t, { id, msg, kind }])
-      setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 3400)
+      setToasts(t => [...t, { id, msg, kind, action }])
+      setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), action ? 7000 : 3400)
     }
-    return () => { pushToastFn = null }
+    dismissToastFn = (id) => setToasts(t => t.filter(x => x.id !== id))
+    return () => { pushToastFn = null; dismissToastFn = null }
   }, [])
   return (
-    <div className="toast-zone">
-      {toasts.map(t => <div key={t.id} className={`toast ${t.kind}`}>{t.msg}</div>)}
+    <div className="toast-zone" role="status" aria-live="polite">
+      {toasts.map(t => (
+        <div key={t.id} className={`toast ${t.kind}`}>
+          <span>{t.msg}</span>
+          {t.action && (
+            <button
+              className="toast-action"
+              onClick={() => { t.action!.run(); dismissToastFn?.(t.id) }}
+            >{t.action.label}</button>
+          )}
+        </div>
+      ))}
     </div>
   )
 }

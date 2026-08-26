@@ -2,6 +2,17 @@
 
 All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions are pre-1.0 MVP milestones.
 
+## [0.11.0] — 2026-08-26
+
+### Added
+- **Confirm before destructive actions**: deleting a trip and removing a collaborator now open a styled confirmation dialog (`ConfirmDialog` replaces the browser's raw `confirm()`). Timeline stop deletions were already confirmed via the impact-preview Keep/Remove flow.
+- **Undo toasts**: trip deletion, member removal and expense deletion now show a toast with an **Undo** button (~7 s window). Undo restores the exact previous state (trip back at its list position, member with their role, expense at its old line) via new store helpers `restoreTrip`, `restoreMember`, `restoreExpense`.
+
+### Changed
+- **Modal accessibility**: dialogs now trap Tab focus inside, remember `aria-labelledby` on the title, and restore focus to the trigger element on close.
+- **Location autocomplete ARIA**: the combobox input now wires `aria-controls`, `aria-activedescendant` and per-option ids so screen readers announce the highlighted suggestion; options are removed from tab order (`tabindex={-1}`) since arrow keys drive selection.
+- Toasts live in an `aria-live="polite"` region.
+
 ## [0.10.0] — 2026-08-26
 
 ### Added

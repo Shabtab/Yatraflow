@@ -319,6 +319,17 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
 .toast.ok { background: var(--teal-deep); color: #fff; }
 .toast.err { background: var(--danger); color: #fff; }
 [data-theme='dark'] .toast { background: #ECF1F8; color: #0C1420; }
+/* Undo button inside a toast */
+.toast { display: inline-flex; align-items: center; gap: 12px; }
+.toast-action {
+  border: none; background: rgba(255,255,255,.18); color: inherit;
+  font-weight: 750; font-size: 12.5px; padding: 5px 13px; border-radius: 999px;
+  cursor: pointer; text-transform: uppercase; letter-spacing: .04em;
+}
+.toast-action:hover { background: rgba(255,255,255,.32); }
+
+/* ---------- Confirm dialog ---------- */
+.confirm-actions { display: flex; gap: 9px; margin-top: 16px; flex-wrap: wrap; }
 
 /* ---------- Auth ---------- */
 .auth-page { min-height: calc(100vh - var(--nav-h)); display: grid; place-items: center; padding: 34px 16px; }

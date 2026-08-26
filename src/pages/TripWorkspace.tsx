@@ -5,17 +5,17 @@ import type { Trip, ItineraryStop, Expense } from '../data/types'
 import { TRANSPORT_MODES, TRAVEL_STYLES } from '../data/types'
 import {
   useDb, tripById, userById, currentUser, roleOf, canEdit,
-  setStopStatus, addExpense, deleteExpense, addSuggestion,
+  setStopStatus, addExpense, deleteExpense, restoreExpense, addSuggestion,
   voteSuggestion, addCommentToSuggestion,
   acceptSuggestionIntoTimeline, declineSuggestion, addDecision, voteOnDecision, resolveDecision,
-  activityFor, setMemberRole, removeMember, updateTrip, publishItinerary,
+  activityFor, setMemberRole, removeMember, restoreMember, updateTrip, publishItinerary,
 } from '../store/store'
 import {
   computeHealth, computeTotals, simulateDay, originOf, getAssumptions,
   minutesToHM, formatInr, countHotelNights,
 } from '../lib/engine'
 import { computeImpact, type ImpactResult } from '../lib/impact'
-import { Avatar, Chip, Modal, Field, StatTile, HealthRing, EmptyState, toast, useReorder, CopyButton } from '../components/ui'
+import { Avatar, Chip, Modal, ConfirmDialog, Field, StatTile, HealthRing, EmptyState, toast, undoToast, useReorder, CopyButton } from '../components/ui'
 import { ImpactPreviewPanel } from '../components/ImpactPreview'
 // MapLibre is heavy (~1MB) — load it only when the Map tab is actually opened.
 const TripMap = React.lazy(() => import('../components/TripMap').then(m => ({ default: m.TripMap })))
@@ -347,6 +347,8 @@ function TimelineTab({ trip, editable, applyChange }: {
     setEditorState(null)
   }
 
+  // Deletions go through the impact-preview flow, whose Keep / Remove buttons
+  // already act as the confirmation + undo step for this destructive action.
   function handleDelete(stopId: string, dayIndex: number) {
     applyChange(draft => {
       for (const day of draft.days) day.stops = day.stops.filter(s => s.id !== stopId)
@@ -949,7 +951,16 @@ function BudgetTab({ trip, totals, editable }: { trip: Trip; totals: ReturnType<
                     <td>{e.label}{e.perPerson && <span className="chip chip-info" style={{ marginLeft: 6 }}>per person</span>}{e.optional && <span className="chip chip-saffron" style={{ marginLeft: 6 }}>optional</span>}</td>
                     <td><Chip tone="info">{labelCat(e.category)}</Chip></td>
                     <td className="num">{formatInr(e.amountInr * (e.perPerson ? trip.travellers : 1))}</td>
-                    <td>{editable && <button className="icon-btn" aria-label="Delete expense" onClick={() => { deleteExpense(trip.id, e.id); toast('Expense removed') }}>🗑️</button>}</td>
+                    <td>{editable && (
+                      <button className="icon-btn" aria-label="Delete expense" onClick={() => {
+                        const idx = trip.expenses.findIndex(x => x.id === e.id)
+                        deleteExpense(trip.id, e.id)
+                        undoToast(`Removed “${e.label}”`, () => {
+                          restoreExpense(trip.id, e, idx)
+                          toast(`Restored “${e.label}”`)
+                        })
+                      }}>🗑️</button>
+                    )}</td>
                   </tr>
                 ))}
               </tbody>
@@ -1190,6 +1201,16 @@ function ShareTab({ trip, me, editable, onNavigate }: {
   const pub = db.published.find(p => p.tripId === trip.id)
   const pubLink = pub ? `${location.origin}${location.pathname}#/pub/${pub.id}` : ''
   const isOwner = (trip.members ?? []).some(m => m.userId === me.id && m.role === 'owner')
+  const [pendingRemove, setPendingRemove] = useState<NonNullable<Trip['members']>[number] | null>(null)
+
+  function confirmRemoveMember() {
+    if (!pendingRemove) return
+    removeMember(trip.id, pendingRemove.userId)
+    undoToast(`${userById(pendingRemove.userId)?.profile.name ?? 'Member'} removed`, () => {
+      restoreMember(trip.id, pendingRemove)
+      toast('Member restored')
+    })
+  }
 
   return (
     <div className="two-col">
@@ -1272,12 +1293,22 @@ function ShareTab({ trip, me, editable, onNavigate }: {
             {(trip.members ?? []).filter(m => m.role !== 'owner').map(m => (
               <div key={m.userId} className="row-between" style={{ padding: '5px 0' }}>
                 <span className="small">{userById(m.userId)?.profile.name}</span>
-                <button className="btn btn-danger btn-sm" onClick={() => { removeMember(trip.id, m.userId); toast('Member removed') }}>Remove</button>
+                <button className="btn btn-danger btn-sm" onClick={() => setPendingRemove(m)}>Remove</button>
               </div>
             ))}
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={!!pendingRemove}
+        title={`Remove ${userById(pendingRemove?.userId)?.profile.name ?? 'this member'}?`}
+        body="They lose access to this trip immediately. You can undo this from the toast for a few seconds."
+        confirmLabel="Remove member"
+        danger
+        onConfirm={confirmRemoveMember}
+        onClose={() => setPendingRemove(null)}
+      />
     </div>
   )
 }

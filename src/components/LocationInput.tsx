@@ -1,7 +1,7 @@
 // ============ Location autocomplete ============
 // Searches cities AND points of interest (via src/lib/geocode.ts — free, no key).
 // Keyboard navigable: ↑/↓ to move, Enter to pick, Esc to dismiss.
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { searchPlaces } from '../lib/geocode'
 import type { PlaceHit } from '../lib/geocode'
 
@@ -27,6 +27,7 @@ export function LocationInput({ value, onChange, onPick, placeholder, error, aut
   const [highlight, setHighlight] = useState(0)
   const wrapRef = useRef<HTMLDivElement>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const listId = useId()
 
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
@@ -89,19 +90,23 @@ export function LocationInput({ value, onChange, onPick, placeholder, error, aut
         }}
         onFocus={() => { if (hits.length > 0) setOpen(true) }}
         onKeyDown={onKeyDown}
+        role="combobox"
         aria-autocomplete="list"
         aria-expanded={open}
-        role="combobox"
+        aria-controls={listId}
+        aria-activedescendant={open && hits[highlight] ? `${listId}-opt-${highlight}` : undefined}
       />
       {loading && <span className="loc-spinner" aria-label="Searching places" />}
       {open && hits.length > 0 && (
-        <ul className="loc-dropdown" role="listbox">
+        <ul className="loc-dropdown" role="listbox" id={listId}>
           {hits.map((hit, i) => (
-            <li key={hit.id}>
+            <li key={hit.id} role="presentation">
               <button
                 type="button"
                 role="option"
+                id={`${listId}-opt-${i}`}
                 aria-selected={i === highlight}
+                tabIndex={-1}
                 className={`loc-option ${i === highlight ? 'hl' : ''}`}
                 onMouseEnter={() => setHighlight(i)}
                 onClick={() => choose(hit)}

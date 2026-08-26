@@ -1,12 +1,26 @@
 // ============ My trips ============
-import { useDb, currentUser, tripsForUser, userById, deleteTrip } from '../store/store'
+import { useState } from 'react'
+import { useDb, currentUser, tripsForUser, userById, deleteTrip, restoreTrip } from '../store/store'
 import { computeTotals } from '../lib/engine'
-import { Avatar, Chip, EmptyState, toast } from '../components/ui'
+import { Avatar, Chip, EmptyState, toast, undoToast, ConfirmDialog } from '../components/ui'
+import type { Trip } from '../data/types'
 
 export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void }) {
   const db = useDb()
   const me = currentUser(db)
   const trips = tripsForUser(me?.id ?? null).sort((a, b) => b.updatedAt - a.updatedAt)
+  const [pendingDelete, setPendingDelete] = useState<Trip | null>(null)
+
+  function confirmDelete() {
+    if (!pendingDelete) return
+    const doomed = pendingDelete
+    const idx = db.trips.findIndex(t => t.id === doomed.id)
+    deleteTrip(doomed.id)
+    undoToast(`Deleted “${doomed.name}”`, () => {
+      restoreTrip(doomed, idx)
+      toast(`Restored “${doomed.name}”`)
+    })
+  }
 
   return (
     <div className="container" style={{ paddingTop: 26 }}>
@@ -57,18 +71,23 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
                     {others.slice(0, 3).map(m => <Avatar key={m.userId} user={userById(m.userId)} />)}
                     {!others.length && <span className="small muted">Just you so far</span>}
                   </div>
-                  <button className="icon-btn" aria-label={`Delete ${t.name}`} onClick={() => {
-                    if (confirm(`Delete “${t.name}”? This cannot be undone.`)) {
-                      deleteTrip(t.id)
-                      toast('Trip deleted')
-                    }
-                  }}>🗑️</button>
+                  <button className="icon-btn" aria-label={`Delete ${t.name}`} onClick={() => setPendingDelete(t)}>🗑️</button>
                 </div>
               </div>
             )
           })}
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!pendingDelete}
+        title={`Delete “${pendingDelete?.name ?? ''}”?`}
+        body="This removes the trip from your workspace. You'll get a short window to undo from the toast."
+        confirmLabel="Delete trip"
+        danger
+        onConfirm={confirmDelete}
+        onClose={() => setPendingDelete(null)}
+      />
     </div>
   )
 }

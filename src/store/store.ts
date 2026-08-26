@@ -205,6 +205,29 @@ export function deleteTrip(id: ID): void {
   commit()
 }
 
+/** Re-insert a trip at its old position — powers Undo on trip deletion. */
+export function restoreTrip(trip: Trip, index: number): void {
+  if (db.trips.some(t => t.id === trip.id)) return
+  db.trips.splice(Math.min(index, db.trips.length), 0, trip)
+  commit()
+}
+
+/** Put a removed member back — powers Undo on member removal. */
+export function restoreMember(tripId: ID, member: TripMember): void {
+  const t = tripById(tripId)
+  if (!t || t.members?.some(m => m.userId === member.userId)) return
+  t.members = [...(t.members ?? []), member]
+  commit()
+}
+
+/** Re-insert a deleted expense line — powers Undo on expense deletion. */
+export function restoreExpense(tripId: ID, expense: Expense, index: number): void {
+  const t = tripById(tripId)
+  if (!t || t.expenses.some(x => x.id === expense.id)) return
+  t.expenses.splice(Math.min(index, t.expenses.length), 0, expense)
+  commit()
+}
+
 export function updateTrip(id: ID, patch: Partial<Trip>): void {
   const t = tripById(id)
   if (!t) return
@@ -289,6 +312,18 @@ export function deleteStop(tripId: ID, stopId: ID): void {
     day.stops = day.stops.filter(x => x.id !== stopId)
     if (day.stops.length !== before) { renumber(day); touchAndLog(trip, `removed a stop`, `Day ${day.index + 1}`); break }
   }
+  commit()
+}
+
+/** Put a deleted stop back on its day at its old order — powers Undo. */
+export function restoreStop(tripId: ID, stop: ItineraryStop, dayIndex: number): void {
+  const trip = tripById(tripId)
+  if (!trip) return
+  const day = trip.days.find(d => d.index === dayIndex)
+  if (!day || day.stops.some(s => s.id === stop.id)) return
+  day.stops.push(stop)
+  renumber(day)
+  touchAndLog(trip, `restored “${stop.title}”`, `Day ${dayIndex + 1}`)
   commit()
 }
 
