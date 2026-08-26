@@ -118,7 +118,7 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
                     </div>
                   </div>
                 </button>
-                <div className="row-between" style={{ marginTop: 12, borderTop: '1px solid var(--line)', paddingTop: 10 }}>
+                <div className="row-between itin-meta">
                   <span className="creator-line"><Avatar user={creator} />{creator?.profile.name ?? 'Creator'}{creator?.profile.isCreator && <span title="Verified creator">✨</span>}</span>
                   <button className="btn btn-primary btn-sm" onClick={() => copyTrip(p.id)}>Copy This Trip</button>
                 </div>
