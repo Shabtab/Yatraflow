@@ -1,6 +1,6 @@
 // ============ Trip workspace ============
 // Tabs: Overview / Timeline / Map / Suggestions / Budget / Decisions / Share
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import type { Trip, ItineraryStop, Expense } from '../data/types'
 import { TRANSPORT_MODES, TRAVEL_STYLES } from '../data/types'
 import {
@@ -25,6 +25,8 @@ import { searchNearbyPois } from '../lib/geocode'
 import type { PlaceHit } from '../lib/geocode'
 import { fetchDailyWeather, forecastAvailable, wmoInfo } from '../lib/weather'
 import type { DayWeather } from '../lib/weather'
+import { encodeTripSnapshot, decodeTripSnapshot, snapshotUrl, downloadTripJson } from '../lib/snapshot'
+import { duplicateTrip } from '../store/store'
 
 type TabKey = 'overview' | 'timeline' | 'map' | 'suggestions' | 'budget' | 'decisions' | 'share'
 
@@ -1115,6 +1117,61 @@ function DecisionsTab({ trip, me, editable }: { trip: Trip; me: { id: string }; 
   )
 }
 
+// ================= Snapshot (export / import / URL share) =================
+
+function SnapshotCard({ trip, me, onNavigate }: {
+  trip: Trip
+  me: { id: string }
+  onNavigate: (r: string) => void
+}) {
+  const [link, setLink] = useState('')
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  async function makeLink() {
+    const payload = await encodeTripSnapshot(trip)
+    const url = snapshotUrl(trip, payload)
+    setLink(url)
+    navigator.clipboard?.writeText(url).catch(() => {})
+    toast('Snapshot link copied — anyone can open it, no account needed')
+  }
+
+  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    try {
+      const imported = JSON.parse(await file.text()) as Trip
+      if (!imported || !Array.isArray(imported.days)) throw new Error('bad shape')
+      duplicateTrip(imported, me!.id)
+      toast(`Imported “${imported.name}” into your trips`)
+      onNavigate('/trips')
+    } catch {
+      toast('That file is not a valid YatraFlow trip export', 'err')
+    }
+    e.target.value = ''
+  }
+
+  return (
+    <div className="card">
+      <h3>Export & snapshot sharing</h3>
+      <p className="hint-text" style={{ margin: '6px 0 12px' }}>
+        Take the whole plan anywhere — no server stores it. Snapshot links embed the trip in the URL itself.
+      </p>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <button className="btn btn-outline btn-sm" onClick={() => downloadTripJson(trip)}>⬇️ Download JSON</button>
+        <button className="btn btn-outline btn-sm" onClick={() => fileRef.current?.click()}>⬆️ Import JSON</button>
+        <button className="btn btn-teal btn-sm" onClick={makeLink}>🔗 Create snapshot link</button>
+        <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={onFile} />
+      </div>
+      {link && (
+        <div className="share-link-box" style={{ marginTop: 10 }}>
+          <code style={{ wordBreak: 'break-all' }}>{link}</code>
+          <CopyButton text={link} label="Copy" />
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ================= Share tab =================
 
 function ShareTab({ trip, me, editable, onNavigate }: {
@@ -1193,6 +1250,8 @@ function ShareTab({ trip, me, editable, onNavigate }: {
           {!isOwner && <p className="hint-text" style={{ marginTop: 8 }}>Only the trip owner can publish.</p>}
           {pubLink && <div className="share-link-box" style={{ marginTop: 10 }}><code>{pubLink}</code><CopyButton text={pubLink} label="Copy" /></div>}
         </div>
+
+        <SnapshotCard trip={trip} me={me} onNavigate={onNavigate} />
       </div>
 
       <div>

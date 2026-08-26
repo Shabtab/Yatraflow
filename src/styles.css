@@ -775,3 +775,5 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
   border: 1px solid var(--line); border-radius: 999px;
   font-size: 12px; font-weight: 600; background: var(--card);
 }
+.btn-teal { background: var(--teal); color: #fff; }
+.btn-teal:hover { background: var(--teal-deep, #0e7a72); }
