@@ -2,6 +2,11 @@
 
 All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions are pre-1.0 MVP milestones.
 
+## [0.11.2] — 2026-08-26
+
+### Fixed
+- **Map container hardening against height collapse**: added an explicit `min-height` to `.map-frame` and explicit fill rules for the MapLibre canvas/container (`.maplibregl-map` / `.maplibregl-canvas` pinned to `100%` inside the absolute-positioned `.yf-maplibre` wrapper). Guards against a regression where the map could shrink to the height of the control strip above it if the canvas failed to inherit the wrapper height.
+
 ## [0.11.1] — 2026-08-26
 
 ### Fixed
