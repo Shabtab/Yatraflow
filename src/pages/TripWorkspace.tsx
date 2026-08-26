@@ -23,6 +23,8 @@ import { AiDrawer } from '../components/AiDrawer'
 import { LocationInput } from '../components/LocationInput'
 import { searchNearbyPois } from '../lib/geocode'
 import type { PlaceHit } from '../lib/geocode'
+import { fetchDailyWeather, forecastAvailable, wmoInfo } from '../lib/weather'
+import type { DayWeather } from '../lib/weather'
 
 type TabKey = 'overview' | 'timeline' | 'map' | 'suggestions' | 'budget' | 'decisions' | 'share'
 
@@ -246,6 +248,8 @@ function OverviewTab({ trip, editable, onOpenDecisions, health, totals }: {
             </div>
           ))}
         </div>
+
+        <WeatherCard trip={trip} />
       </div>
 
       <div>
@@ -265,6 +269,37 @@ function OverviewTab({ trip, editable, onOpenDecisions, health, totals }: {
       </div>
     </div>
   )
+}
+
+// ================= Timeline =================
+
+/** Compact forecast chip for a single trip day (Timeline day headers). */
+function DayWeatherChip({ trip, dayIndex }: { trip: Trip; dayIndex: number }) {
+  const [w, setW] = useState<DayWeather | null>(null)
+  const date = isoAddDays(trip.startDate, dayIndex)
+  useEffect(() => {
+    if (!forecastAvailable(trip.startDate)) return
+    let cancelled = false
+    fetchDailyWeather(
+      trip.days.flatMap(d => d.stops)[0]?.lat ?? 10.5,
+      trip.days.flatMap(d => d.stops)[0]?.lng ?? 76.5,
+      date, 1,
+    ).then(res => { if (!cancelled) setW(res[date] ?? null) }).catch(() => {})
+    return () => { cancelled = true }
+  }, [date]) // eslint-disable-line react-hooks/exhaustive-deps
+  if (!w) return null
+  const info = wmoInfo(w.code)
+  return (
+    <span className="weather-chip" title={`${info.label} · ${Math.round(w.tempMinC)}–${Math.round(w.tempMaxC)}°C · ${w.rainChancePct}% rain chance`}>
+      {info.icon} {Math.round(w.tempMaxC)}° 💧{w.rainChancePct}%
+    </span>
+  )
+}
+
+function isoAddDays(iso: string, days: number): string {
+  const d = new Date(iso + 'T00:00')
+  d.setDate(d.getDate() + days)
+  return d.toISOString().slice(0, 10)
 }
 
 // ================= Timeline =================
@@ -412,6 +447,7 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
           <div className="small muted">
             {sim.activeStops.length} active stop{sim.activeStops.length !== 1 ? 's' : ''} · ~{minutesToHM(sim.totalTravelMinutes)} travel · ~{Math.round(sim.totalDistanceKm)} km · ends ~{sim.endsAt}
           </div>
+          <DayWeatherChip trip={trip} dayIndex={day.index} />
         </div>
         {editable && <button className="btn btn-outline btn-sm" onClick={onAdd}>+ Add here</button>}
       </div>
@@ -509,6 +545,69 @@ function MoveStopModal({ stop, trip, onClose, onMove }: {
         ))}
       </div>
     </Modal>
+  )
+}
+
+// ================= Weather =================
+
+/** Per-day forecast strip for the Overview tab. Best-effort; hides itself when unavailable. */
+function WeatherCard({ trip }: { trip: Trip }) {
+  const [byDate, setByDate] = useState<Record<string, DayWeather>>({})
+  const [state, setState] = useState<'loading' | 'ready' | 'unavailable'>('loading')
+
+  const anchor = useMemo(() => {
+    const stops = trip.days.flatMap(d => d.stops).filter(s => s.status !== 'rejected')
+    if (stops.length === 0) return null
+    return {
+      lat: stops.reduce((a, s) => a + s.lat, 0) / stops.length,
+      lng: stops.reduce((a, s) => a + s.lng, 0) / stops.length,
+    }
+  }, [trip])
+
+  useEffect(() => {
+    if (!anchor || !forecastAvailable(trip.startDate)) { setState('unavailable'); return }
+    let cancelled = false
+    fetchDailyWeather(anchor.lat, anchor.lng, trip.startDate, trip.days.length || 1)
+      .then(w => { if (!cancelled) { setByDate(w); setState('ready') } })
+      .catch(() => { if (!cancelled) setState('unavailable') })
+    return () => { cancelled = true }
+  }, [anchor, trip.startDate, trip.days.length]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (state === 'loading') {
+    return <div className="card"><h3>🌦️ Weather</h3><hr className="divider" /><p className="muted small">Loading forecast…</p></div>
+  }
+  if (state !== 'ready') return null
+
+  const entries = Object.values(byDate)
+  const wetDays = entries.filter(w => w.rainChancePct >= 60).length
+  return (
+    <div className="card">
+      <div className="row-between">
+        <h3>🌦️ Weather along the route</h3>
+        <span className="small muted">Open-Meteo · forecasts ±15 days</span>
+      </div>
+      <hr className="divider" />
+      <div className="weather-strip">
+        {entries.map(w => {
+          const info = wmoInfo(w.code)
+          const dayNum = Math.round((new Date(w.date + 'T00:00').getTime() - new Date(trip.startDate + 'T00:00').getTime()) / 86400000)
+          const wet = w.rainChancePct >= 60
+          return (
+            <div key={w.date} className={`weather-cell ${wet ? 'wet' : ''}`} title={info.label}>
+              <div className="weather-day">{dayNum >= 0 ? `Day ${dayNum + 1}` : w.date}</div>
+              <div className="weather-icon">{info.icon}</div>
+              <div className="weather-temp">{Math.round(w.tempMinC)}°–{Math.round(w.tempMaxC)}°</div>
+              <div className="small muted">💧{w.rainChancePct}%</div>
+            </div>
+          )
+        })}
+      </div>
+      {wetDays > 0 && (
+        <p className="hint-text" style={{ marginTop: 8 }}>
+          ⚠️ High rain chance on {wetDays} day{wetDays > 1 ? 's' : ''} — consider indoor alternatives for weather-sensitive stops (beaches, viewpoints, treks).
+        </p>
+      )}
+    </div>
   )
 }
 
