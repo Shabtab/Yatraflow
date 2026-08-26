@@ -73,11 +73,13 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby }: {
     [daysToPlot],
   )
 
-  // fit the viewport to the route once points are available
+  // fit the viewport to the route once points are available (after a resize()
+  // so fitBounds computes against the canvas's real, current pixel size)
   useEffect(() => {
     if (!mapRef.current || allPoints.length === 0) return
     const lons = allPoints.map(p => p.lng)
     const lats = allPoints.map(p => p.lat)
+    mapRef.current.resize()
     mapRef.current.fitBounds(
       [
         [Math.min(...lons), Math.min(...lats)],

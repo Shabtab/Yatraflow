@@ -316,12 +316,31 @@ const Map = forwardRef<MapRef, MapProps>(function Map(
       onViewportChangeRef.current?.(getViewport(map));
     };
 
+    // MapLibre captures the canvas size once at construction; if the container
+    // changes size afterwards (lazy mount inside Suspense, layout settling,
+    // window resize) the canvas keeps the stale size and the map renders
+    // cropped/blank. Re-measure on every container resize.
+    const resizeObserver = new ResizeObserver(() => {
+      map.resize();
+    });
+    resizeObserver.observe(containerRef.current);
+
+    const onWindowResize = () => map.resize();
+    window.addEventListener("resize", onWindowResize);
+
+    map.on("load", () => {
+      // One extra pass after load: fonts/images shifting layout above the map
+      // can land between the last observer tick and first render.
+      map.resize();
+    });
     map.on("load", loadHandler);
     map.on("style.load", styleLoadHandler);
     map.on("move", handleMove);
     setMapInstance(map);
 
     return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener("resize", onWindowResize);
       map.off("load", loadHandler);
       map.off("style.load", styleLoadHandler);
       map.off("move", handleMove);

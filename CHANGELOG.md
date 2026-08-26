@@ -2,6 +2,11 @@
 
 All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions are pre-1.0 MVP milestones.
 
+## [0.11.1] — 2026-08-26
+
+### Fixed
+- **Map rendering cropped / mostly blank**: the map view showed only a thin strip of tiles with white void around it. MapLibre captures its canvas size once at construction, but the map is lazily mounted inside a `Suspense` boundary and the layout above it settles after init — so the canvas kept a stale pixel size and never re-measured. The mapcn wrapper now attaches a `ResizeObserver` to the container (plus a window-resize listener and one extra resize pass on map load) calling `map.resize()` on every size change, and the auto-fit effect calls `resize()` before `fitBounds` so the viewport is computed against the canvas's real size.
+
 ## [0.11.0] — 2026-08-26
 
 ### Added
