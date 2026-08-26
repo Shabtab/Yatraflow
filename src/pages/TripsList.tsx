@@ -53,20 +53,22 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
               <div key={t.id} className="card itin-card">
                 <button className="trip-card-hit" onClick={() => onNavigate(`/trip/${t.id}`)} aria-label={`Open ${t.name}`}>
                   <div className="itin-emoji">{t.coverEmoji}</div>
-                  <h3>{t.name}</h3>
-                  <div className="small muted">
-                    {t.startLocation} → {t.destinations[t.destinations.length - 1]} · {t.days.length} days
-                  </div>
-                  <div className="stop-meta" style={{ marginTop: 8 }}>
-                    <span>💰 ~{formatShort(totals.costPerPersonInr)}/person</span>
-                    <span>🕒 {Math.round(totals.totalTravelMinutes / 60)}h travel</span>
-                  </div>
-                  <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                    <Chip tone="teal">{cap(t.travelStyle)}</Chip>
-                    {(t.members ?? []).length > 1 && <Chip tone="info">{(t.members ?? []).length} planners</Chip>}
+                  <div className="itin-body">
+                    <h3>{t.name}</h3>
+                    <div className="small muted">
+                      {t.startLocation} → {t.destinations[t.destinations.length - 1]} · {t.days.length} days
+                    </div>
+                    <div className="stop-meta">
+                      <span>💰 ~{formatShort(totals.costPerPersonInr)}/person</span>
+                      <span>🕒 {Math.round(totals.totalTravelMinutes / 60)}h travel</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <Chip tone="teal">{cap(t.travelStyle)}</Chip>
+                      {(t.members ?? []).length > 1 && <Chip tone="info">{(t.members ?? []).length} planners</Chip>}
+                    </div>
                   </div>
                 </button>
-                <div className="row-between" style={{ marginTop: 12, borderTop: '1px solid var(--line)', paddingTop: 10 }}>
+                <div className="row-between itin-meta">
                   <div className="member-stack">
                     {others.slice(0, 3).map(m => <Avatar key={m.userId} user={userById(m.userId)} />)}
                     {!others.length && <span className="small muted">Just you so far</span>}
