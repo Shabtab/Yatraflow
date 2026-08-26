@@ -3,6 +3,8 @@ import React, { useState } from 'react'
 import type { ItineraryStop, StopCategory, StopStatus, Trip } from '../data/types'
 import { STOP_CATEGORIES, STOP_STATUSES } from '../data/types'
 import { Modal, Field } from './ui'
+import { LocationInput } from './LocationInput'
+import type { PlaceHit } from './LocationInput'
 
 export interface StopFormValues {
   title: string
@@ -20,6 +22,8 @@ export interface StopFormValues {
   notes: string
   sourceUrl: string
   status: StopStatus
+  /** true once the user picked a real geocoded place (lat/lng verified) */
+  geocoded?: boolean
 }
 
 export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel }: {
@@ -69,8 +73,13 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel 
         </div>
 
         <div className="form-row">
-          <Field label="Location / area" error={errs.locationName}>
-            <input className="input" value={v.locationName} onChange={e => set('locationName', e.target.value)} placeholder="e.g. Idukki district, Kerala" />
+          <Field label="Location / area" hint={v.geocoded ? '✓ Pinned to a real place on the map' : 'Start typing and pick a suggestion to pin it on the map'} error={errs.locationName}>
+            <LocationInput
+              value={v.locationName}
+              onChange={val => { set('locationName', val); if (v.geocoded) set('geocoded', false) }}
+              onPick={(p: PlaceHit) => { set('locationName', p.name + (p.admin1 ? `, ${p.admin1}` : '')); set('lat', p.latitude); set('lng', p.longitude); set('geocoded', true) }}
+              placeholder="Search, e.g. Idukki district, Kerala"
+            />
           </Field>
           <Field label="Priority">
             <select className="select" value={v.priority} onChange={e => set('priority', e.target.value as ItineraryStop['priority'])}>
@@ -135,7 +144,7 @@ function normalize(v?: Partial<StopFormValues>): StopFormValues {
     lat: DEFAULT_LATLNG.lat, lng: DEFAULT_LATLNG.lng,
     description: '', visitMinutes: 60, openTime: '', closeTime: '',
     entryFeeInrPerPerson: 0, transportCostInrTotal: 0,
-    priority: 'nice-to-have', notes: '', sourceUrl: '', status: 'suggested',
+    priority: 'nice-to-have', notes: '', sourceUrl: '', status: 'suggested', geocoded: false,
     ...v,
   }
 }

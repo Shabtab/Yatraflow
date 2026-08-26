@@ -18,11 +18,24 @@ export function Chip({ children, tone, onClick, active }: { children: React.Reac
 }
 
 export function Modal({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: React.ReactNode }) {
+  const bodyRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    // lock page scroll while the dialog is up
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    // focus the first sensible control so keyboard users can start typing immediately
+    const t = setTimeout(() => {
+      const el = bodyRef.current?.querySelector<HTMLElement>('input:not([type=hidden]):not([disabled]), textarea, select')
+      el?.focus()
+    }, 30)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      document.body.style.overflow = prevOverflow
+      clearTimeout(t)
+    }
   }, [open, onClose])
   if (!open) return null
   return (
@@ -32,7 +45,9 @@ export function Modal({ open, onClose, title, children }: { open: boolean; onClo
           <h2>{title}</h2>
           <button className="icon-btn" onClick={onClose} aria-label="Close">✕</button>
         </div>
-        {children}
+        <div ref={bodyRef}>
+          {children}
+        </div>
       </div>
     </div>
   )

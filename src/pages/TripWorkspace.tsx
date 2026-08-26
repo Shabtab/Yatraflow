@@ -20,6 +20,7 @@ import { ImpactPreviewPanel } from '../components/ImpactPreview'
 import { TripMap } from '../components/TripMap'
 import { StopEditor, type StopFormValues } from '../components/StopEditor'
 import { AiDrawer } from '../components/AiDrawer'
+import { LocationInput } from '../components/LocationInput'
 
 type TabKey = 'overview' | 'timeline' | 'map' | 'suggestions' | 'budget' | 'decisions' | 'share'
 
@@ -526,6 +527,7 @@ function SuggestionsTab({ trip, editable, me }: {
   const suggestions = db.suggestions.filter(s => s.tripId === trip.id).sort((a, b) => b.createdAt - a.createdAt)
   const memberCount = (trip.members ?? []).length
   const [form, setForm] = useState({ title: '', locationName: '', description: '', visitMinutes: 60, entryFee: 0, transportCost: 200 })
+  const [sugCoords, setSugCoords] = useState<{ lat?: number; lng?: number }>({})
 
   function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -537,7 +539,7 @@ function SuggestionsTab({ trip, editable, me }: {
     addSuggestion(trip.id, {
       dayIndex: 0, proposedBy: me.id, title: form.title.trim(),
       category: 'sightseeing', locationName: form.locationName || 'To be decided',
-      lat: 10.0889, lng: 77.0595, description: form.description,
+      lat: sugCoords.lat ?? 10.0889, lng: sugCoords.lng ?? 77.0595, description: form.description,
       visitMinutes: form.visitMinutes, estimatedEntryFeeInr: form.entryFee,
       estimatedTransportInr: form.transportCost,
     })
@@ -619,7 +621,7 @@ function SuggestionsTab({ trip, editable, me }: {
           <h3>Propose a stop</h3>
           <p className="hint-text" style={{ margin: '6px 0 12px' }}>Others can vote and comment; editors can accept it into the timeline.</p>
           <Field label="Idea"><input className="input" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="e.g. Pothamedu viewpoint" /></Field>
-          <Field label="Area"><input className="input" value={form.locationName} onChange={e => setForm(f => ({ ...f, locationName: e.target.value }))} placeholder="e.g. Munnar" /></Field>
+          <Field label="Area"><LocationInput value={form.locationName} onChange={v => setForm(f => ({ ...f, locationName: v }))} onPick={p => setSugCoords({ lat: p.latitude, lng: p.longitude })} placeholder="Search, e.g. Munnar" /></Field>
           <div className="form-row">
             <Field label="Visit minutes"><input type="number" className="input" min={15} step={5} value={form.visitMinutes} onChange={e => setForm(f => ({ ...f, visitMinutes: Number(e.target.value) }))} /></Field>
             <Field label="Entry fee ₹/person"><input type="number" className="input" min={0} value={form.entryFee} onChange={e => setForm(f => ({ ...f, entryFee: Number(e.target.value) }))} /></Field>
@@ -987,17 +989,65 @@ function ShareTab({ trip, me, editable, onNavigate }: {
 function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boolean }) {
   const [f, setF] = useState({
     name: trip.name, startLocation: trip.startLocation,
-    destinations: trip.destinations.join(', '),
+    destinations: [...trip.destinations],
     travellers: trip.travellers, budget: trip.budgetPerPersonInr,
     transportMode: trip.transportMode, travelStyle: trip.travelStyle,
   })
+  const [destInput, setDestInput] = useState('')
+
+  function addDest(name: string) {
+    const clean = name.trim()
+    if (!clean) return
+    if (f.destinations.some(d => d.toLowerCase() === clean.toLowerCase())) {
+      toast('Already on the route.', 'err'); return
+    }
+    setF(x => ({ ...x, destinations: [...x.destinations, clean] }))
+    setDestInput('')
+  }
+
   return (
     <div>
       <Field label="Trip name"><input className="input" disabled={!editable} value={f.name} onChange={e => setF(x => ({ ...x, name: e.target.value }))} /></Field>
       <div className="form-row">
-        <Field label="Starting location"><input className="input" disabled={!editable} value={f.startLocation} onChange={e => setF(x => ({ ...x, startLocation: e.target.value }))} /></Field>
-        <Field label="Destinations (comma separated)"><input className="input" disabled={!editable} value={f.destinations} onChange={e => setF(x => ({ ...x, destinations: e.target.value }))} /></Field>
+        <Field label="Starting location">
+          <LocationInput
+            value={f.startLocation}
+            onChange={v => setF(x => ({ ...x, startLocation: v }))}
+            placeholder="Search a city…"
+          />
+        </Field>
       </div>
+      <Field label={`Destinations (${f.destinations.length})`} hint="Search to add — arrows reorder the route">
+        <LocationInput
+          value={destInput}
+          onChange={setDestInput}
+          onPick={p => addDest(p.name + (p.admin1 ? `, ${p.admin1}` : ''))}
+          placeholder={f.destinations.length ? 'Add another destination…' : 'Add your first destination…'}
+        />
+        {f.destinations.length > 0 && (
+          <div className="dest-chips">
+            {f.destinations.map((d, i) => (
+              <span key={`${d}-${i}`} className="dest-chip">
+                <span className="dest-order">{i + 1}</span>{d}
+                <button type="button" aria-label={`Move ${d} earlier`} disabled={!editable || i === 0}
+                  onClick={() => setF(x => {
+                    const list = [...x.destinations]; if (i === 0) return x
+                    ;[list[i - 1], list[i]] = [list[i], list[i - 1]]; return { ...x, destinations: list }
+                  })} style={{ opacity: i === 0 ? .25 : undefined }}>↑</button>
+                <button type="button" aria-label={`Move ${d} later`} disabled={!editable || i === f.destinations.length - 1}
+                  onClick={() => setF(x => {
+                    const list = [...x.destinations]; if (i >= list.length - 1) return x
+                    ;[list[i + 1], list[i]] = [list[i], list[i + 1]]; return { ...x, destinations: list }
+                  })} style={{ opacity: i === f.destinations.length - 1 ? .25 : undefined }}>↓</button>
+                {editable && (
+                  <button type="button" aria-label={`Remove ${d}`}
+                    onClick={() => setF(x => ({ ...x, destinations: x.destinations.filter((_, j) => j !== i) }))}>✕</button>
+                )}
+              </span>
+            ))}
+          </div>
+        )}
+      </Field>
       <div className="form-row">
         <Field label="Travellers"><input type="number" min={1} className="input" disabled={!editable} value={f.travellers} onChange={e => setF(x => ({ ...x, travellers: Number(e.target.value) }))} /></Field>
         <Field label="Budget/person (₹)"><input type="number" min={0} className="input" disabled={!editable} value={f.budget} onChange={e => setF(x => ({ ...x, budget: Number(e.target.value) }))} /></Field>
@@ -1018,7 +1068,7 @@ function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boolean })
         <button className="btn btn-primary btn-sm" onClick={() => {
           updateTrip(trip.id, {
             name: f.name, startLocation: f.startLocation,
-            destinations: f.destinations.split(',').map(s => s.trim()).filter(Boolean),
+            destinations: f.destinations.map(s => s.trim()).filter(Boolean),
             travellers: Math.max(1, f.travellers),
             budgetPerPersonInr: Math.max(0, f.budget),
             transportMode: f.transportMode, travelStyle: f.travelStyle,

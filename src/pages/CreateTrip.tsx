@@ -4,6 +4,8 @@ import type { FixedCommitment, TransportMode, TravelStyle } from '../data/types'
 import { TRANSPORT_MODES, TRAVEL_STYLES } from '../data/types'
 import { useDb, currentUser, createTrip } from '../store/store'
 import { Field, Chip, toast } from '../components/ui'
+import { LocationInput } from '../components/LocationInput'
+import type { PlaceHit } from '../components/LocationInput'
 
 interface CommitDraft {
   title: string
@@ -12,21 +14,50 @@ interface CommitDraft {
   time: string
 }
 
+/** A destination picked (or typed) for the route. */
+interface DestDraft {
+  name: string
+  lat?: number
+  lng?: number
+}
+
 export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void }) {
   const db = useDb()
   const me = currentUser(db)
 
   const [f, setF] = useState({
-    name: '', startLocation: '', destinations: '',
+    name: '', startLocation: '',
     startDate: '', endDate: '', travellers: 2,
     transportMode: 'car' as TransportMode,
     budgetPerPersonInr: 15000,
     travelStyle: 'balanced' as TravelStyle,
     coverEmoji: '🧭',
   })
+  const [dests, setDests] = useState<DestDraft[]>([])
+  const [destInput, setDestInput] = useState('')
   const [commitments, setCommitments] = useState<CommitDraft[]>([])
   const [c, setC] = useState<CommitDraft>({ title: '', type: 'hotel-checkin', dayIndex: 0, time: '14:00' })
   const [errs, setErrs] = useState<Record<string, string>>({})
+
+  function addDest(d: DestDraft) {
+    const name = d.name.trim()
+    if (!name) return
+    if (dests.some(x => x.name.toLowerCase() === name.toLowerCase())) {
+      toast('That destination is already on the route.', 'err'); return
+    }
+    setDests(list => [...list, d])
+    setDestInput('')
+  }
+  function removeDest(i: number) { setDests(list => list.filter((_, j) => j !== i)) }
+  function moveDest(i: number, dir: -1 | 1) {
+    setDests(list => {
+      const j = i + dir
+      if (j < 0 || j >= list.length) return list
+      const copy = [...list]
+      ;[copy[i], copy[j]] = [copy[j], copy[i]]
+      return copy
+    })
+  }
 
   const dayCount = f.startDate && f.endDate ? Math.round((new Date(f.endDate).getTime() - new Date(f.startDate).getTime()) / 86400000) + 1 : 0
 
@@ -36,7 +67,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
     const next: Record<string, string> = {}
     if (!f.name.trim()) next.name = 'Name your trip.'
     if (!f.startLocation.trim()) next.startLocation = 'Where does the journey start?'
-    if (!f.destinations.trim()) next.destinations = 'Add at least one destination.'
+    if (dests.length === 0) next.destinations = 'Add at least one destination.'
     if (!f.startDate) next.startDate = 'Pick a start date.'
     if (!f.endDate) next.endDate = 'Pick an end date.'
     else if (f.startDate && new Date(f.endDate) < new Date(f.startDate)) next.endDate = 'End date must be after the start date.'
@@ -48,7 +79,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
     const trip = createTrip(me.id, {
       name: f.name.trim(),
       startLocation: f.startLocation.trim(),
-      destinations: f.destinations.split(',').map(s => s.trim()).filter(Boolean),
+      destinations: dests.map(d => d.name),
       startDate: f.startDate, endDate: f.endDate,
       travellers: f.travellers,
       transportMode: f.transportMode,
@@ -85,12 +116,43 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
             </Field>
             <div className="form-row">
               <Field label="Starting location" error={errs.startLocation}>
-                <input className="input" value={f.startLocation} onChange={e => setF(x => ({ ...x, startLocation: e.target.value }))} placeholder="e.g. Kochi" />
-              </Field>
-              <Field label="Destinations" hint="Comma separated, in order" error={errs.destinations}>
-                <input className="input" value={f.destinations} onChange={e => setF(x => ({ ...x, destinations: e.target.value }))} placeholder="e.g. Munnar, Thekkady, Alleppey" />
+                <LocationInput
+                  value={f.startLocation}
+                  onChange={v => setF(x => ({ ...x, startLocation: v }))}
+                  placeholder="Search a city, e.g. Kochi"
+                />
               </Field>
             </div>
+            <Field label={`Destinations${dests.length ? ` (${dests.length})` : ''}`} hint="Search and add in travel order — drag-free reorder with the arrows" error={errs.destinations}>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ flex: 1 }}>
+                  <LocationInput
+                    value={destInput}
+                    onChange={setDestInput}
+                    onPick={p => addDest({ name: p.name + (p.admin1 ? `, ${p.admin1}` : ''), lat: p.latitude, lng: p.longitude })}
+                    placeholder={dests.length === 0 ? 'Search your first stop, e.g. Munnar' : 'Add another destination…'}
+                  />
+                </div>
+              </div>
+              {dests.length > 0 && (
+                <div className="dest-chips">
+                  {dests.map((d, i) => (
+                    <span key={`${d.name}-${i}`} className="dest-chip">
+                      <span className="dest-order">{i + 1}</span>
+                      {d.name}
+                      <button type="button" aria-label={`Move ${d.name} earlier`} disabled={i === 0}
+                        onClick={() => moveDest(i, -1)} style={{ opacity: i === 0 ? .25 : undefined }}>↑</button>
+                      <button type="button" aria-label={`Move ${d.name} later`} disabled={i === dests.length - 1}
+                        onClick={() => moveDest(i, 1)} style={{ opacity: i === dests.length - 1 ? .25 : undefined }}>↓</button>
+                      <button type="button" aria-label={`Remove ${d.name}`} onClick={() => removeDest(i)}>✕</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              {dests.length === 0 && !errs.destinations && (
+                <p className="hint-text" style={{ marginTop: 8 }}>e.g. Munnar → Thekkady → Alleppey. Add them in the order you'll visit.</p>
+              )}
+            </Field>
             <div className="form-row">
               <Field label="Start date" error={errs.startDate}>
                 <input className="input" type="date" value={f.startDate} onChange={e => setF(x => ({ ...x, startDate: e.target.value }))} />

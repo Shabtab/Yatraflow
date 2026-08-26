@@ -566,3 +566,98 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
 }
 .yf-map-pin:hover { transform: scale(1.18); }
 [data-theme='dark'] .yf-map-pin { border-color: rgba(255,255,255,.85); }
+
+/* ---- Location autocomplete dropdown ---- */
+.loc-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0; right: 0;
+  z-index: 60;
+  margin: 0; padding: 6px;
+  list-style: none;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0,0,0,.18);
+  max-height: 280px;
+  overflow-y: auto;
+}
+.loc-option {
+  display: flex; align-items: baseline; gap: 8px;
+  width: 100%;
+  padding: 9px 10px;
+  border: none; background: none;
+  border-radius: 8px;
+  text-align: left;
+  cursor: pointer;
+  font: inherit; color: inherit;
+}
+.loc-option.hl { background: color-mix(in srgb, var(--accent, #149A90) 14%, transparent); }
+.loc-pin { flex: none; font-size: 13px; }
+.loc-name { font-weight: 600; white-space: nowrap; }
+.loc-region { font-size: 12px; opacity: .65; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.loc-spinner {
+  position: absolute; right: 12px; top: 50%;
+  width: 15px; height: 15px;
+  margin-top: -7.5px;
+  border: 2px solid var(--line);
+  border-top-color: var(--accent, #149A90);
+  border-radius: 50%;
+  animation: locspin .7s linear infinite;
+  pointer-events: none;
+}
+@keyframes locspin { to { transform: rotate(360deg) } }
+
+/* destination chips (CreateTrip) */
+.dest-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.dest-chip {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 6px 8px 6px 11px;
+  background: color-mix(in srgb, var(--accent, #149A90) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent, #149A90) 35%, transparent);
+  border-radius: 999px;
+  font-size: 13px; font-weight: 600;
+}
+.dest-chip button {
+  border: none; background: none; cursor: pointer;
+  font-size: 13px; line-height: 1; padding: 2px;
+  color: inherit; opacity: .65;
+}
+.dest-chip button:hover { opacity: 1; }
+.dest-order {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: var(--accent, #149A90);
+  color: #fff;
+  font-size: 11px; font-weight: 700;
+}
+.loc-empty {
+  position: absolute;
+  top: calc(100% + 6px); left: 0; right: 0;
+  z-index: 60;
+  padding: 10px 12px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0,0,0,.18);
+  font-size: 13px;
+  opacity: .75;
+}
+
+/* ---- Mobile touch targets & polish ---- */
+@media (max-width: 720px) {
+  /* comfortable tap sizes on primary controls */
+  .btn { min-height: 44px; }
+  .input, .select, .textarea { min-height: 44px; font-size: 16px; } /* 16px prevents iOS zoom-on-focus */
+  .vote-btn, .icon-btn { min-width: 40px; min-height: 40px; }
+  .modal { max-height: 92vh; border-radius: 16px 16px 0 0; }
+  .loc-dropdown { max-height: 240px; }
+}
+
+/* smooth focus visibility for keyboard users */
+.input:focus-visible, .select:focus-visible, .textarea:focus-visible,
+.btn:focus-visible, .icon-btn:focus-visible {
+  outline: 2px solid var(--accent, #149A90);
+  outline-offset: 1px;
+}
