@@ -1,17 +1,11 @@
 // ============ Location autocomplete ============
-// Debounced search against Open-Meteo's free geocoding API (no API key).
+// Searches cities AND points of interest (via src/lib/geocode.ts — free, no key).
 // Keyboard navigable: ↑/↓ to move, Enter to pick, Esc to dismiss.
 import { useEffect, useRef, useState } from 'react'
+import { searchPlaces } from '../lib/geocode'
+import type { PlaceHit } from '../lib/geocode'
 
-export interface PlaceHit {
-  id: number
-  name: string
-  latitude: number
-  longitude: number
-  admin1?: string
-  country?: string
-  country_code?: string
-}
+export type { PlaceHit } from '../lib/geocode'
 
 interface Props {
   value: string
@@ -33,8 +27,6 @@ export function LocationInput({ value, onChange, onPick, placeholder, error, aut
   const [highlight, setHighlight] = useState(0)
   const wrapRef = useRef<HTMLDivElement>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // track whether the last edit was typing vs a programmatic pick
-  const skipSearchRef = useRef(false)
 
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
@@ -50,28 +42,24 @@ export function LocationInput({ value, onChange, onPick, placeholder, error, aut
     setLoading(true)
     debounceRef.current = setTimeout(async () => {
       try {
-        const cc = indiaOnly ? '&countryCode=IN' : ''
-        const res = await fetch(
-          `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q.trim())}&count=6&language=en&format=json${cc}`,
-        )
-        const data = await res.json()
-        const results: PlaceHit[] = data.results ?? []
+        const results = await searchPlaces(q, { indiaOnly })
         setHits(results)
         setSearched(true)
         setOpen(true)
         setHighlight(0)
-        setLoading(false)
-      } catch {
-        setHits([])
-        setSearched(true)
+      } finally {
         setLoading(false)
       }
     }, 280)
   }
 
+  function labelFor(hit: PlaceHit): string {
+    if (hit.kind === 'poi') return hit.description ?? 'Point of interest'
+    return [hit.admin1, hit.country].filter(Boolean).join(' · ')
+  }
+
   function choose(hit: PlaceHit) {
-    skipSearchRef.current = true
-    onChange(hit.name + (hit.admin1 ? `, ${hit.admin1}` : ''))
+    onChange(hit.name + (hit.kind === 'place' && hit.admin1 ? `, ${hit.admin1}` : ''))
     onPick?.(hit)
     setOpen(false)
     setHits([])
@@ -97,7 +85,6 @@ export function LocationInput({ value, onChange, onPick, placeholder, error, aut
         placeholder={placeholder}
         onChange={e => {
           onChange(e.target.value)
-          skipSearchRef.current = false
           runSearch(e.target.value)
         }}
         onFocus={() => { if (hits.length > 0) setOpen(true) }}
@@ -119,9 +106,14 @@ export function LocationInput({ value, onChange, onPick, placeholder, error, aut
                 onMouseEnter={() => setHighlight(i)}
                 onClick={() => choose(hit)}
               >
-                <span className="loc-pin">📍</span>
-                <span className="loc-name">{hit.name}</span>
-                <span className="loc-region">{[hit.admin1, hit.country].filter(Boolean).join(' · ')}</span>
+                {hit.thumb
+                  ? <img className="loc-thumb" src={hit.thumb} alt="" loading="lazy" />
+                  : <span className="loc-pin">{hit.kind === 'poi' ? '🏞️' : '📍'}</span>}
+                <span className="loc-texts">
+                  <span className="loc-name">{hit.name}</span>
+                  <span className="loc-region">{labelFor(hit)}</span>
+                </span>
+                <span className={`loc-kind ${hit.kind}`}>{hit.kind === 'poi' ? 'POI' : 'City'}</span>
               </button>
             </li>
           ))}
