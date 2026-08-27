@@ -22,19 +22,21 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
     e.preventDefault()
     setError(null)
     setSaving(true)
-    try {
-      if (mode === 'login') {
-        const r = await login(email, password)
-        if (!r.ok) { setError(r.error ?? 'Login failed'); return }
-      } else {
-        if (!name.trim()) { setError('Tell us your name.'); return }
-        const r = await signup(name, email, password)
-        if (!r.ok) { setError(r.error ?? 'Signup failed'); return }
-      }
-      onNavigate('/trips')
-    } finally {
-      setSaving(false)
+    // Safety net: if the session never materialises (e.g. hydration failure),
+    // re-enable the form so the user isn't stuck on a disabled button.
+    const failSafe = setTimeout(() => setSaving(false), 10000)
+    if (mode === 'login') {
+      const r = await login(email, password)
+      if (!r.ok) { clearTimeout(failSafe); setError(r.error ?? 'Login failed'); setSaving(false); return }
+    } else {
+      if (!name.trim()) { clearTimeout(failSafe); setError('Tell us your name.'); setSaving(false); return }
+      const r = await signup(name, email, password)
+      if (!r.ok) { clearTimeout(failSafe); setError(r.error ?? 'Signup failed'); setSaving(false); return }
     }
+    // Deliberately do NOT navigate here. The store hydrates asynchronously on
+    // the auth event; navigating before `me` is set makes the router fall
+    // through to the landing page. The `me` effect below navigates once the
+    // session is actually visible to the app.
   }
 
   return (
@@ -60,7 +62,7 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
           </Field>
           {error && <div className="err-text" style={{ marginBottom: 10 }}>⚠️ {error}</div>}
           <button type="submit" className="btn btn-primary btn-lg" style={{ width: '100%' }} disabled={saving}>
-            {saving ? 'Please wait…' : mode === 'login' ? 'Log in' : 'Create account'}
+            {saving ? 'Signing in…' : mode === 'login' ? 'Log in' : 'Create account'}
           </button>
         </form>
 

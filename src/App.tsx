@@ -34,6 +34,11 @@ export default function App() {
     return () => window.removeEventListener('hashchange', onHash)
   }, [])
 
+  // Boot the store once: subscribes to Supabase auth changes and hydrates the
+  // session's data into the cache. Without this, `me` stays null forever and
+  // every route falls through to the landing page. Idempotent inside the store.
+  useEffect(() => { init() }, [])
+
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? 'dark' : 'light'
     localStorage.setItem('yatraflow_theme', dark ? 'dark' : 'light')
