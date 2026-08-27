@@ -1,7 +1,13 @@
 node_modules/
 dist/
+.env
+.env.local
+.env.*.local
 *.local
 .DS_Store
 Thumbs.db
 npm-debug.log*
 tsconfig.tsbuildinfo
+
+.vercel
+.env*

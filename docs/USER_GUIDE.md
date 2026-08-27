@@ -8,10 +8,12 @@ Everything you need to plan a trip with your group. ⏱ ~5 minutes to learn.
 
 Open [YatraFlow](https://yatraflow-blond.vercel.app). Either:
 
-- **Create an account** (name + email + password), or
-- Click **Try the demo account** for instant access with sample trips.
+- **Create an account** (name + email + password — 8+ characters), or
+- **Log in** if you already have one. Your session survives reloads and follows you across devices.
 
-> Your data lives only in *this browser*. Don't clear site data if you want to keep your plans, and know that friends on their own devices won't see them — this MVP has no server.
+New accounts get a fully-modelled **Kerala demo trip** on first login — open it to see stops, votes, budgets and warnings in action. You can also pull it in anytime with the **🚀 Load demo trips** button on My Trips.
+
+> Your data lives in Supabase and is protected by row-level security: only you (and people you invite, per their role) can see your trips.
 
 ## 2. Create a trip
 
@@ -77,10 +79,10 @@ They're transparent estimates from declared assumptions (speeds, ₹/km, buffers
 No — booking buttons are placeholders in this MVP. Nothing takes payment.
 
 **Where is my data stored?**
-Your browser's localStorage only. Clearing site data resets the app to demo state.
+In Supabase (hosted Postgres), tied to your account — it follows you across devices. Trip access is enforced server-side by row-level security.
 
 **Why does the map route look like crow-flies lines?**
 Routes are haversine distances × a road factor — good enough for planning realism, not navigation.
 
 **Someone deleted everything?!**
-If the app ever shows corrupted state, use the crash screen's "Reset app data & reload" button — it restores fresh demo data.
+Shared trips are protected by row-level security and soft confirmation dialogs with undo toasts — full-account loss would require losing your Supabase project itself.

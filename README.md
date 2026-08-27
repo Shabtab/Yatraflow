@@ -50,6 +50,12 @@ YatraFlow is a collaborative travel-planning web app built India-first: real mul
 git clone https://github.com/hasnaina955/Yatraflow.git
 cd Yatraflow
 npm install
+
+# Configure Supabase (create a free project at supabase.com, then:)
+cp .env.example .env.local   # fill in VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY
+# Apply the database schema (SQL editor in the Supabase dashboard, or:)
+#   node scripts/apply-schema.mjs   (with PGCONN set to your Postgres URL)
+
 npm run dev        # → http://localhost:5173
 ```
 
@@ -61,20 +67,13 @@ Other scripts:
 | `npm run build` | TypeScript check (`tsc -b`) then production bundle into `dist/` |
 | `npm run preview` | Serve the production build locally |
 
-No environment variables, no API keys, no backend required.
+You'll need a free [Supabase](https://supabase.com) project for accounts and data storage. The map/weather/geocoding services the app calls are all free and keyless — no API keys for those, ever.
 
-## 🔑 Demo accounts
+## 👤 Accounts & demo content
 
-The app seeds itself with realistic Indian demo data (Kerala road trip, Goa long weekend, Rajasthan heritage circuit). Log in with any of these, password `demo1234`:
-
-| Email | Role |
-|---|---|
-| `demo@yatraflow.in` | Demo Traveller (owns the Kerala trip) |
-| `meera@yatraflow.in` | Meera Nair |
-| `arjun@yatraflow.in` | Arjun Mehta |
-| `devika@yatraflow.in` | Devika Rathore |
-
-Or click **Try the demo account** on the login page. All data lives only in *your* browser's localStorage — clearing site data resets everything.
+- **Sign up** with any email + password (min 8 chars) — new accounts get the Kerala demo trip seeded automatically on first login.
+- Already have trips? Use the **🚀 Load demo trips** button on My Trips to pull in the sample itinerary anytime.
+- Your data lives in Supabase and follows your account across devices. Invited collaborators see shared trips per their role (owner / editor / commenter / viewer), enforced by Postgres Row Level Security.
 
 ---
 
@@ -84,9 +83,10 @@ Or click **Try the demo account** on the login page. All data lives only in *you
 |---|---|---|
 | Build | [Vite 5](https://vitejs.dev) | Instant dev server, zero-config prod builds |
 | UI | React 18 + TypeScript (strict) | No router lib, no UI kit — hash routing + hand-rolled components keep the MVP dependency-light |
-| State | `useSyncExternalStore` over a module-level store | Tiny reactive store persisted to `localStorage` (`yatraflow_db_v1`), with shape validation and self-healing reseed |
+| State | `useSyncExternalStore` over a module-level store | Tiny reactive cache hydrated from Supabase; every mutation writes through to Postgres (optimistic UI, fire-and-forget persistence) |
 | Maps | [mapcn](https://github.com/AnmolSaini16/mapcn) (MapLibre GL) vendored into `src/components/mapcn/` | shadcn-style registry component; CARTO basemaps switch light/dark automatically |
-| Geocoding | Open-Meteo geocoding API | Free, keyless, India-biasable — fits the no-backend/no-keys constraint |
+| Backend | [Supabase](https://supabase.com) (Postgres + Auth + RLS) | Free tier covers the MVP; JSONB keeps trip internals denormalized so the TS model maps 1:1 |
+| Geocoding | Open-Meteo geocoding API | Free, keyless, India-biasable |
 | Icons | lucide-react | Used inside the vendored map component |
 
 Routing is hash-based (`#/trip/:id`, `#/pub/:slug`, `#/invite/:id`) so the static build works on any host with no rewrite rules.
@@ -102,7 +102,7 @@ src/
 │   ├── types.ts           # Core domain model — every entity lives here
 │   └── seed.ts            # Demo users/trips/suggestions/decisions/published
 ├── store/
-│   └── store.ts           # localStorage-backed reactive DB + all mutations
+│   └── store.ts           # Supabase-backed reactive cache + all mutations
 ├── lib/
 │   ├── engine.ts          # Scheduling & budget simulation (transparent estimates)
 │   ├── impact.ts          # Current-vs-proposed plan comparison
@@ -111,7 +111,8 @@ src/
 │   ├── weather.ts         # Open-Meteo daily forecast (WMO → icon/label)
 │   ├── routing.ts         # OSRM road geometry for the map (+ haversine fallback)
 │   ├── snapshot.ts        # Compress/encode whole trips into shareable URLs
-│   └── geocode.ts         # Open-Meteo geocoding + OSM Overpass opening hours
+│   ├── geocode.ts         # Open-Meteo geocoding + OSM Overpass opening hours
+│   └── supabase.ts        # Shared Supabase client (reads VITE_ env vars)
 ├── components/
 │   ├── ui.tsx             # Modal, Field, Chip, Avatar, StatTile, HealthRing, toast…
 │   ├── LocationInput.tsx  # Debounced geocoding autocomplete (keyboard-navigable)

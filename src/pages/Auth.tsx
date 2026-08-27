@@ -1,6 +1,6 @@
 // ============ Auth page ============
 import { useEffect, useState } from 'react'
-import { useDb, currentUser, login, signup, loginDemo } from '../store/store'
+import { useDb, currentUser, login, signup } from '../store/store'
 import { Field } from '../components/ui'
 
 export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
@@ -12,22 +12,31 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
 
+  const [saving, setSaving] = useState(false)
+
   useEffect(() => {
     if (me) onNavigate('/trips') // already logged in
   }, [me]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  function submit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
+    setSaving(true)
+    // Safety net: if the session never materialises (e.g. hydration failure),
+    // re-enable the form so the user isn't stuck on a disabled button.
+    const failSafe = setTimeout(() => setSaving(false), 10000)
     if (mode === 'login') {
-      const r = login(email, password)
-      if (!r.ok) { setError(r.error ?? 'Login failed'); return }
+      const r = await login(email, password)
+      if (!r.ok) { clearTimeout(failSafe); setError(r.error ?? 'Login failed'); setSaving(false); return }
     } else {
-      if (!name.trim()) { setError('Tell us your name.'); return }
-      const r = signup(name, email, password)
-      if (!r.ok) { setError(r.error ?? 'Signup failed'); return }
+      if (!name.trim()) { clearTimeout(failSafe); setError('Tell us your name.'); setSaving(false); return }
+      const r = await signup(name, email, password)
+      if (!r.ok) { clearTimeout(failSafe); setError(r.error ?? 'Signup failed'); setSaving(false); return }
     }
-    onNavigate('/trips')
+    // Deliberately do NOT navigate here. The store hydrates asynchronously on
+    // the auth event; navigating before `me` is set makes the router fall
+    // through to the landing page. The `me` effect below navigates once the
+    // session is actually visible to the app.
   }
 
   return (
@@ -52,18 +61,13 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
             <input className="input" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" />
           </Field>
           {error && <div className="err-text" style={{ marginBottom: 10 }}>⚠️ {error}</div>}
-          <button type="submit" className="btn btn-primary btn-lg" style={{ width: '100%' }}>
-            {mode === 'login' ? 'Log in' : 'Create account'}
+          <button type="submit" className="btn btn-primary btn-lg" style={{ width: '100%' }} disabled={saving}>
+            {saving ? 'Signing in…' : mode === 'login' ? 'Log in' : 'Create account'}
           </button>
         </form>
 
-        <div className="divider-wrap"><hr className="divider" /><span className="small muted">or</span><hr className="divider" /></div>
-
-        <button className="btn btn-navy" style={{ width: '100%' }} onClick={() => { loginDemo(); onNavigate('/trips') }}>
-          🚀 Try demo mode — no signup
-        </button>
-        <p className="hint-text" style={{ textAlign: 'center', marginTop: 10 }}>
-          Loads a 4-day Kerala road trip with stops, votes and budgets ready to explore.
+        <p className="hint-text" style={{ textAlign: 'center', marginTop: 14 }}>
+          Demo trips are added to your account automatically on first sign-in.
         </p>
       </div>
     </div>

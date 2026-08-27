@@ -2,6 +2,33 @@
 
 All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions are pre-1.0 MVP milestones.
 
+## [0.12.0] — 2026-08-27
+
+Real accounts and shared persistence: YatraFlow moves from a single-browser localStorage app to a Supabase-backed one — accounts work across devices, and collaboration data finally lives in one place.
+
+### Added
+- **Supabase persistence** — trips, members, suggestions, decisions, activity, notifications and published itineraries now live in Postgres (`supabase/schema.sql`), with the app's JSONB internals mapped 1:1 into table columns. The store hydrates from Supabase on login and writes through on every mutation (optimistic cache + fire-and-forget persistence).
+- **Real authentication** — email/password signup & login via Supabase Auth with persisted sessions across reloads; profile rows are created by a DB trigger (`handle_new_user`).
+- **Row Level Security** on every table — users see only their own/member/public trips; editors can write, owners can delete. Membership checks run through `SECURITY DEFINER` helpers (`is_member`, `is_editor`) to stay recursion-free.
+- **Auto demo seeding** — new accounts get the Kerala demo trip on first login when they have no trips.
+- **"🚀 Load demo trips" button** on My Trips (header + empty state) — any account can pull in the demo trip on demand.
+- `scripts/apply-schema.mjs` — one-off helper to apply `supabase/schema.sql` and dump live policies/triggers (`PG_DUMP=1`).
+- Auth form busy state ("Signing in…") with a 10s failsafe so a failed hydration never leaves a permanently disabled button.
+
+### Changed
+- `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY` are now required env vars (`.env.example` documents them); the anon key is public by design — RLS is the authorization boundary.
+- The login-page "Try demo mode" button was removed; demo content now arrives via first-login seeding or the new Load-demo-trips button.
+- Demo accounts with fixed passwords are gone; sign up with any real email.
+
+### Fixed
+- **Login bounced back to the homepage**: `init()` was imported but never called, so the store never learned about the session and every route fell through to the landing page. Now booted once on app mount.
+- **"Could not save trip"**: Postgres `uuid` columns rejected the app's prefixed string ids (`trip_k7x2p9q`). Top-level ids (trips, suggestions, decisions, activity, notifications) are now real UUIDs (`crypto.randomUUID`); JSONB-internal ids (stops, days, expenses, comments) keep readable prefixed ids.
+- **Silent demo-seeding failure**: same UUID cause — seed inserts failed with only a console trace.
+- **RLS infinite recursion (42P17)**: the `trip_members` read policy queried its own table; every API call 500'd until fixed with the security-definer helper.
+- **Suggestion/decision id divergence**: inserts omitted the id, so Postgres generated a different one than the UI cache — votes and status changes silently stopped working after reload. Client-generated ids are now sent with the insert.
+- Profile saves now surface failures via toast instead of destructuring an unexecuted query.
+- `addExpense` accepts the `optional` flag the expense form sends.
+
 ## [0.11.5] — 2026-08-26
 
 ### Fixed

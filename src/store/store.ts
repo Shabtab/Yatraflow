@@ -1,16 +1,24 @@
-// ============ Application store ============
-// localStorage persistence (a proper DB can slot behind this same interface later).
+// ============ Application store (Supabase-backed) ============
+// The app DB now lives in Supabase (Postgres + Auth). This module keeps the
+// SAME public interface the UI already uses (useDb(), currentUser(), createTrip(),
+// addStop(), …) but backs it with an in-memory cache that is hydrated from
+// Supabase on auth and write-through on every mutation.
+//
+// Mutations update the cache synchronously and notify subscribers (so the UI is
+// instant), then fire-and-forget the Supabase write. A failed write surfaces a
+// toast; the cache is re-hydrated from the server on next load.
 import { useSyncExternalStore } from 'react'
 import type {
   User, Trip, StopSuggestion, TripDecision, ActivityEntry, Notification,
   PublishedItinerary, ID, ItineraryStop, ItineraryDay, TripMember, Expense, FixedCommitment,
 } from '../data/types'
-import { seedData, uid, simpleHash } from '../data/seed'
+import { seedData, uid } from '../data/seed'
+import { supabase, isSupabaseConfigured } from '../lib/supabase'
+import { toast } from '../components/ui'
 
-const STORAGE_KEY = 'yatraflow_db_v1'
-
+// In-memory cache — the synchronous snapshot the UI reads. No localStorage.
 interface DB {
-  users: User[]
+  users: User[]               // profiles mirror (for names/avatars in the UI)
   trips: Trip[]
   suggestions: StopSuggestion[]
   decisions: TripDecision[]
@@ -20,131 +28,269 @@ interface DB {
   sessionUserId: ID | null
 }
 
-function freshDb(): DB {
-  return {
-    users: structuredClone(seedData.users),
-    trips: structuredClone(seedData.trips),
-    suggestions: structuredClone(seedData.suggestions),
-    decisions: structuredClone(seedData.decisions),
-    activity: structuredClone(seedData.activity),
-    notifications: structuredClone(seedData.notifications),
-    published: structuredClone(seedData.published),
-    sessionUserId: null,
-  }
+let cache: DB = {
+  users: [], trips: [], suggestions: [], decisions: [],
+  activity: [], notifications: [], published: [], sessionUserId: null,
 }
 
-// NOTE: saveTimer must be declared before `load()` runs below — persist() touches it.
-let saveTimer: ReturnType<typeof setTimeout> | null = null
-let db: DB = load()
 const listeners = new Set<() => void>()
+let initialized = false
 
-function isValidDb(d: unknown): d is DB {
-  if (!d || typeof d !== 'object') return false
-  const o = d as Record<string, unknown>
-  return (
-    Array.isArray(o.users) && Array.isArray(o.trips) &&
-    Array.isArray(o.suggestions) && Array.isArray(o.decisions) &&
-    Array.isArray(o.activity) && Array.isArray(o.notifications) &&
-    Array.isArray(o.published)
-  )
-}
-
-function load(): DB {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (raw) {
-      const parsed: unknown = JSON.parse(raw)
-      // reject stores saved by older/incompatible versions — reseed instead of crashing
-      if (isValidDb(parsed)) return parsed
-      localStorage.removeItem(STORAGE_KEY)
-    }
-  } catch { /* corrupted store — reseed */ }
-  const d = freshDb()
-  persist(d)
-  return d
-}
-
-function persist(next: DB) {
-  if (saveTimer) clearTimeout(saveTimer)
-  saveTimer = setTimeout(() => {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(db)) } catch { /* quota */ }
-  }, 120)
-}
-
-function commit() {
-  persist(db)
-  listeners.forEach(l => l())
-}
 export function subscribe(fn: () => void): () => void {
   listeners.add(fn)
   return () => listeners.delete(fn)
 }
-export function getSnapshot(): DB { return db }
+export function getSnapshot(): DB { return cache }
 
 export function useDb(): DB {
   return useSyncExternalStore(subscribe, getSnapshot)
 }
 
-// ---------------- Session ----------------
+function commit() {
+  listeners.forEach(l => l())
+}
+
+function patch(next: Partial<DB>) {
+  cache = { ...cache, ...next }
+}
+
+// ---------------- Supabase row <-> domain mapping ----------------
+
+interface TripRow {
+  id: string; owner_id: string; name: string; start_location: string; destinations: string[];
+  start_date: string; end_date: string; travellers: number; transport_mode: string;
+  budget_per_person_inr: number; travel_style: string; fixed_commitments: FixedCommitment[];
+  days: ItineraryDay[]; expenses: Expense[]; cover_emoji: string; visibility: 'private' | 'public';
+  created_at: number; updated_at: number;
+}
+
+function rowToTrip(row: TripRow, members: TripMember[]): Trip {
+  return {
+    id: row.id, name: row.name, startLocation: row.start_location, destinations: row.destinations ?? [],
+    startDate: row.start_date, endDate: row.end_date, travellers: row.travellers,
+    transportMode: row.transport_mode as Trip['transportMode'], budgetPerPersonInr: row.budget_per_person_inr,
+    travelStyle: row.travel_style as Trip['travelStyle'], fixedCommitments: row.fixed_commitments ?? [],
+    days: row.days ?? [], expenses: row.expenses ?? [], coverEmoji: row.cover_emoji, visibility: row.visibility,
+    createdAt: row.created_at, updatedAt: row.updated_at, members,
+  }
+}
+
+function tripToRow(trip: Trip, ownerId: string): Omit<TripRow, 'created_at' | 'updated_at'> {
+  return {
+    id: trip.id, owner_id: ownerId, name: trip.name, start_location: trip.startLocation,
+    destinations: trip.destinations, start_date: trip.startDate, end_date: trip.endDate,
+    travellers: trip.travellers, transport_mode: trip.transportMode, budget_per_person_inr: trip.budgetPerPersonInr,
+    travel_style: trip.travelStyle, fixed_commitments: trip.fixedCommitments, days: trip.days,
+    expenses: trip.expenses, cover_emoji: trip.coverEmoji, visibility: trip.visibility,
+  }
+}
+
+interface ProfileRow {
+  id: string; email: string; name: string; avatar_url?: string; home_city?: string;
+  languages: string[]; travel_styles: string[]; is_creator: boolean; creator_bio?: string;
+  social_links?: { youtube?: string; instagram?: string }; created_at: number;
+}
+
+/** Shape of a trip_members row as stored in Postgres (snake_case). */
+interface MemberRow {
+  trip_id: string; user_id: string; role: TripMember['role']; joined_at: number;
+}
+
+function rowToUser(row: ProfileRow): User {
+  return {
+    id: row.id, email: row.email, createdAt: row.created_at,
+    profile: {
+      name: row.name, avatarUrl: row.avatar_url, homeCity: row.home_city,
+      languages: row.languages ?? ['en'], travelStyles: (row.travel_styles ?? ['balanced']) as User['profile']['travelStyles'],
+      isCreator: row.is_creator, creatorBio: row.creator_bio, socialLinks: row.social_links,
+    },
+  }
+}
+
+// ---------------- Auth ----------------
 
 export function currentUser(db: DB = getSnapshot()): User | null {
   return db.users.find(u => u.id === db.sessionUserId) ?? null
 }
 
-export function login(email: string, password: string): { ok: boolean; error?: string } {
-  const u = db.users.find(x => x.email.toLowerCase() === email.trim().toLowerCase())
-  if (!u) return { ok: false, error: 'No account found with this email.' }
-  if (u.passwordHash !== simpleHash(password)) return { ok: false, error: 'Incorrect password.' }
-  db.sessionUserId = u.id
-  commit()
+/** Email/password sign in via Supabase Auth. */
+export async function login(email: string, password: string): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
+  if (error) return { ok: false, error: error.message }
   return { ok: true }
 }
 
-export function signup(name: string, email: string, password: string): { ok: boolean; error?: string } {
+/** Email/password sign up via Supabase Auth. Profile row is created by the DB trigger. */
+export async function signup(name: string, email: string, password: string): Promise<{ ok: boolean; error?: string }> {
   const cleanEmail = email.trim().toLowerCase()
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) return { ok: false, error: 'Enter a valid email address.' }
   if (password.length < 8) return { ok: false, error: 'Password must be at least 8 characters.' }
-  if (db.users.some(u => u.email.toLowerCase() === cleanEmail)) return { ok: false, error: 'An account with this email already exists.' }
-  const user: User = {
-    id: uid('u'), email: cleanEmail,
-    passwordHash: simpleHash(password),
-    profile: { name: name.trim(), languages: ['en'], travelStyles: ['balanced'], isCreator: false },
-    createdAt: Date.now(),
+  const { data, error } = await supabase.auth.signUp({
+    email: cleanEmail, password,
+    options: { data: { name: name.trim() } },
+  })
+  if (error) return { ok: false, error: error.message }
+  // Supabase may require email confirmation; surface that gently.
+  if (data.session === null) {
+    return { ok: false, error: 'Check your email to confirm your account, then log in.' }
   }
-  db.users.push(user)
-  db.sessionUserId = user.id
-  commit()
   return { ok: true }
 }
 
-export function loginDemo(): void {
-  let demo = db.users.find(u => u.id === 'u_demo')
-  if (!demo) { demo = structuredClone(seedData.users[0]); db.users.push(demo) }
-  db.sessionUserId = demo.id
-  commit()
+export async function logout(): Promise<void> {
+  await supabase.auth.signOut()
+  // onAuthStateChange handler clears the cache.
 }
 
-export function logout(): void {
-  db.sessionUserId = null
-  commit()
+// ---------------- Init / hydration ----------------
+
+/** Call once on app mount. Subscribes to auth and hydrates the cache. */
+export function init(): void {
+  if (initialized) return
+  initialized = true
+
+  const hydrate = async (userId: string | null) => {
+    if (!userId) {
+      patch({ users: [], trips: [], suggestions: [], decisions: [], activity: [], notifications: [], published: [], sessionUserId: null })
+      commit()
+      return
+    }
+    await hydrateFromSupabase(userId)
+  }
+
+  supabase.auth.getSession().then(({ data }) => { void hydrate(data.session?.user?.id ?? null) })
+  supabase.auth.onAuthStateChange((_event, session) => {
+    void hydrate(session?.user?.id ?? null)
+  })
 }
 
-export function updateProfile(patch: Partial<User['profile']>): void {
+async function hydrateFromSupabase(userId: string): Promise<void> {
+  try {
+    const [
+      profRes, tripsRes, memRes, sugRes, decRes, actRes, notRes, pubRes,
+    ] = await Promise.all([
+      supabase.from('profiles').select('*'),
+      supabase.from('trips').select('*'),
+      supabase.from('trip_members').select('*'),
+      supabase.from('suggestions').select('*'),
+      supabase.from('decisions').select('*'),
+      supabase.from('activity').select('*'),
+      supabase.from('notifications').select('*'),
+      supabase.from('published_itineraries').select('*'),
+    ])
+
+    const profiles = (profRes.data ?? []) as ProfileRow[]
+    const trips = (tripsRes.data ?? []) as TripRow[]
+    const members = (memRes.data ?? []) as MemberRow[]
+
+    const users = profiles.map(rowToUser)
+    const tripList = trips.map(row =>
+      rowToTrip(row, members.filter(m => m.trip_id === row.id).map(m => ({ userId: m.user_id, role: m.role, joinedAt: m.joined_at })))
+    )
+
+    patch({
+      users,
+      trips: tripList,
+      suggestions: (sugRes.data ?? []).map(rowToSuggestion),
+      decisions: (decRes.data ?? []).map(rowToDecision),
+      activity: (actRes.data ?? []).map(rowToActivity),
+      notifications: (notRes.data ?? []).map(rowToNotification),
+      published: (pubRes.data ?? []).map(rowToPublished),
+      sessionUserId: userId,
+    })
+    commit()
+
+    // First-time users get the demo trips seeded into their account.
+    if (tripList.length === 0) await seedDemoFor(userId)
+  } catch (e) {
+    console.error('[yatraflow] hydration failed', e)
+    toast('Could not load your data — check your connection.')
+  }
+}
+
+// ---------------- Seeding demo trips ----------------
+
+async function seedDemoFor(userId: string): Promise<void> {
+  const seedTrips = structuredClone(seedData.trips)
+  for (const t of seedTrips) {
+    const owner: TripMember = { userId, role: 'owner', joinedAt: Date.now() }
+    // Regenerate the trip id: seed data carries stable display ids that are
+    // not valid UUIDs, but trips.id is a Postgres uuid column.
+    const trip: Trip = { ...structuredClone(t), id: uuid(), members: [owner] }
+    const { error } = await supabase.from('trips').insert(tripToRow(trip, userId))
+    if (error) { console.error('seed trip failed', error); continue }
+    await supabase.from('trip_members').insert({ trip_id: trip.id, user_id: userId, role: 'owner', joined_at: Date.now() })
+  }
+  // re-hydrate so the freshly seeded trips show up
+  await hydrateFromSupabase(userId)
+}
+
+/** Manually load the demo trips into the current account (My Trips button). */
+export function addDemoTrips(): void {
+  if (!cache.sessionUserId) return
+  toast('Adding demo trips…')
+  void seedDemoFor(cache.sessionUserId).then(() => toast('Demo trips added ✨'))
+}
+
+// ---------------- Row mappers for collaboration tables ----------------
+
+function rowToSuggestion(row: any): StopSuggestion {
+  return {
+    id: row.id, tripId: row.trip_id, dayIndex: row.day_index, proposedBy: row.proposed_by,
+    title: row.title, category: row.category, locationName: row.location_name, lat: row.lat, lng: row.lng,
+    description: row.description, visitMinutes: row.visit_minutes,
+    estimatedEntryFeeInr: row.estimated_entry_fee_inr, estimatedTransportInr: row.estimated_transport_inr,
+    votes: row.votes ?? [], comments: row.comments ?? [], status: row.status, createdAt: row.created_at,
+  }
+}
+function rowToDecision(row: any): TripDecision {
+  return {
+    id: row.id, tripId: row.trip_id, question: row.question, context: row.context,
+    options: row.options ?? [], votesByUserId: row.votes_by_user_id ?? {}, status: row.status,
+    resolvedOptionId: row.resolved_option_id, raisedBy: row.raised_by, createdAt: row.created_at, resolvedAt: row.resolved_at,
+  }
+}
+function rowToActivity(row: any): ActivityEntry {
+  return { id: row.id, tripId: row.trip_id, actorId: row.actor_id, verb: row.verb, target: row.target, at: row.at }
+}
+function rowToNotification(row: any): Notification {
+  return { id: row.id, userId: row.user_id, tripId: row.trip_id, text: row.text, read: row.read, at: row.at }
+}
+function rowToPublished(row: any): PublishedItinerary {
+  return {
+    id: row.id, tripId: row.trip_id, creatorId: row.creator_id, title: row.title, tagline: row.tagline,
+    coverImageUrl: row.cover_image_url, routeSummary: row.route_summary ?? [], durationDays: row.duration_days,
+    estimatedBudgetPerPersonInr: row.estimated_budget_per_person_inr, travelStyle: row.travel_style,
+    bestSeason: row.best_season, travelTips: row.travel_tips ?? [], warningsAndAssumptions: row.warnings_and_assumptions ?? [],
+    freeDayIndexes: row.free_day_indexes ?? [], premiumPriceInr: row.premium_price_inr, subscriberCta: row.subscriber_cta,
+    publishedAt: row.published_at, views: row.views ?? 0, copies: row.copies ?? 0,
+  }
+}
+
+// ---------------- Profile ----------------
+
+export function updateProfile(patchFields: Partial<User['profile']>): void {
   const u = currentUser()
   if (!u) return
-  Object.assign(u.profile, patch)
-  commit()
+  const idx = cache.users.findIndex(x => x.id === u.id)
+  if (idx >= 0) { cache.users[idx] = { ...cache.users[idx], profile: { ...cache.users[idx].profile, ...patchFields } }; commit() }
+  // Fire-and-forget persistence; surface failures without blocking the UI.
+  void supabase.from('profiles').update({
+    name: patchFields.name, home_city: patchFields.homeCity, languages: patchFields.languages,
+    travel_styles: patchFields.travelStyles, is_creator: patchFields.isCreator,
+    creator_bio: patchFields.creatorBio, social_links: patchFields.socialLinks,
+  }).eq('id', u.id).then(({ error }) => { if (error) toast('Could not save profile changes.') })
 }
 
 // ---------------- Trips ----------------
 
 export function tripsForUser(userId: ID | null): Trip[] {
   if (!userId) return []
-  return db.trips.filter(t => t.members?.some?.(m => m.userId === userId))
+  return cache.trips.filter(t => t.members?.some?.(m => m.userId === userId))
 }
 
 export function tripById(id: ID): Trip | undefined {
-  return db.trips.find(t => t.id === id)
+  return cache.trips.find(t => t.id === id)
 }
 
 export interface NewTripInput {
@@ -164,22 +310,32 @@ export function createTrip(ownerId: ID, input: NewTripInput, seedStops?: Itinera
   if (seedStops) days.forEach((d, i) => { if (seedStops[i]) d.stops = seedStops[i] })
 
   const trip: Trip = {
-    id: uid('trip'),
+    id: uuid(),
     ...input,
     fixedCommitments: input.fixedCommitments.map(fc => ({ ...fc, id: uid('fc') })),
     days, expenses: [], coverEmoji: input.coverEmoji ?? '🧭',
     visibility: 'private', createdAt: Date.now(), updatedAt: Date.now(),
     members: [{ userId: ownerId, role: 'owner' as const, joinedAt: Date.now() }],
   } as Trip
-  db.trips.push(trip)
+  cache.trips.push(trip)
   commit()
+  void persistTrip(trip, ownerId)
   return trip
+}
+
+async function persistTrip(trip: Trip, ownerId: ID) {
+  const { error } = await supabase.from('trips').insert(tripToRow(trip, ownerId))
+  if (error) { toast('Could not save trip.'); return }
+  const { error: mErr } = await supabase.from('trip_members').insert(
+    (trip.members ?? []).map(m => ({ trip_id: trip.id, user_id: m.userId, role: m.role, joined_at: m.joinedAt }))
+  )
+  if (mErr) console.error('member insert failed', mErr)
 }
 
 /** Duplicate any trip into the user's workspace (Copy This Trip / demo seeding). */
 export function duplicateTrip(source: Trip, ownerId: ID, makePublic?: boolean): Trip {
   const copy: Trip = structuredClone(source)
-  copy.id = uid('trip')
+  copy.id = uuid()
   copy.name = source.name.includes('(copy)') ? source.name : `${source.name} (copy)`
   copy.visibility = makePublic ? 'public' : 'private'
   copy.createdAt = Date.now(); copy.updatedAt = Date.now()
@@ -187,29 +343,27 @@ export function duplicateTrip(source: Trip, ownerId: ID, makePublic?: boolean): 
   copy.expenses = copy.expenses.map(e => ({ ...e, id: uid('ex') }))
   copy.fixedCommitments = copy.fixedCommitments.map(f => ({ ...f, id: uid('fc') }))
   copy.members = [{ userId: ownerId, role: 'owner' as const, joinedAt: Date.now() }]
-  db.trips.push(copy)
+  cache.trips.push(copy)
   commit()
+  void persistTrip(copy, ownerId)
   return copy
 }
 
-export function ensureDemoTripsFor(userId: ID): void {
-  const hasAny = db.trips.some(t => t.members?.some(m => m.userId === userId))
-  if (hasAny) return
-  // give brand-new accounts a starter trip so the workspace is never empty
-  const kerala = tripById('trip_kerala_demo')
-  if (kerala) duplicateTrip(kerala, userId)
-}
-
 export function deleteTrip(id: ID): void {
-  db.trips = db.trips.filter(t => t.id !== id)
+  const idx = cache.trips.findIndex(t => t.id === id)
+  if (idx < 0) return
+  const removed = cache.trips[idx]
+  cache.trips = cache.trips.filter(t => t.id !== id)
   commit()
+  void supabase.from('trips').delete().eq('id', id).then(({ error }) => { if (error) { cache.trips.splice(idx, 0, removed); commit() } })
 }
 
 /** Re-insert a trip at its old position — powers Undo on trip deletion. */
 export function restoreTrip(trip: Trip, index: number): void {
-  if (db.trips.some(t => t.id === trip.id)) return
-  db.trips.splice(Math.min(index, db.trips.length), 0, trip)
+  if (cache.trips.some(t => t.id === trip.id)) return
+  cache.trips.splice(Math.min(index, cache.trips.length), 0, trip)
   commit()
+  if (trip.members?.[0]) void persistTrip(trip, trip.members[0].userId)
 }
 
 /** Put a removed member back — powers Undo on member removal. */
@@ -218,6 +372,7 @@ export function restoreMember(tripId: ID, member: TripMember): void {
   if (!t || t.members?.some(m => m.userId === member.userId)) return
   t.members = [...(t.members ?? []), member]
   commit()
+  void supabase.from('trip_members').insert({ trip_id: tripId, user_id: member.userId, role: member.role, joined_at: member.joinedAt })
 }
 
 /** Re-insert a deleted expense line — powers Undo on expense deletion. */
@@ -226,24 +381,30 @@ export function restoreExpense(tripId: ID, expense: Expense, index: number): voi
   if (!t || t.expenses.some(x => x.id === expense.id)) return
   t.expenses.splice(Math.min(index, t.expenses.length), 0, expense)
   commit()
+  void persistTripField(tripId, t)
 }
 
-export function updateTrip(id: ID, patch: Partial<Trip>): void {
+export function updateTrip(id: ID, patchFields: Partial<Trip>): void {
   const t = tripById(id)
   if (!t) return
-  Object.assign(t, patch, { updatedAt: Date.now() })
+  Object.assign(t, patchFields, { updatedAt: Date.now() })
   commit()
+  void persistTripField(id, t)
+}
+
+async function persistTripField(id: ID, t: Trip) {
+  const owner = t.members?.find(m => m.role === 'owner')
+  const { error } = await supabase.from('trips').update(tripToRow(t, owner?.userId ?? id)).eq('id', id)
+  if (error) toast('Could not save changes.')
 }
 
 // ---------------- Members & collaboration ----------------
 
-export function membersOf(trip: Trip): TripMember[] {
-  return trip.members ?? []
-}
+export function membersOf(trip: Trip): TripMember[] { return trip.members ?? [] }
 
 export function userById(id: ID | undefined): User | undefined {
   if (!id) return undefined
-  return db.users.find(u => u.id === id)
+  return cache.users.find(u => u.id === id)
 }
 
 export function roleOf(trip: Trip, userId: ID | null): TripMember['role'] | null {
@@ -258,7 +419,7 @@ export function canEdit(role: TripMember['role'] | null): boolean {
 export function setMemberRole(tripId: ID, userId: ID, role: TripMember['role']): void {
   const t = tripById(tripId)
   const m = t?.members?.find(x => x.userId === userId)
-  if (t && m) { m.role = role; commit() }
+  if (t && m) { m.role = role; commit(); void supabase.from('trip_members').update({ role }).eq('trip_id', tripId).eq('user_id', userId) }
 }
 
 export function joinViaInvite(tripId: ID, userId: ID, role: TripMember['role'] = 'editor'): boolean {
@@ -270,6 +431,7 @@ export function joinViaInvite(tripId: ID, userId: ID, role: TripMember['role'] =
     addActivity(tripId, userId, 'joined via invite link', 'Members')
     notifyOwnerOf(tripId, `${userName(userId)} joined “${t.name}” as ${role}.`)
     commit()
+    void supabase.from('trip_members').insert({ trip_id: tripId, user_id: userId, role, joined_at: Date.now() })
   }
   return true
 }
@@ -277,8 +439,10 @@ export function joinViaInvite(tripId: ID, userId: ID, role: TripMember['role'] =
 export function removeMember(tripId: ID, userId: ID): void {
   const t = tripById(tripId)
   if (!t) return
-  t.members = (t.members ?? []).filter(m => m.userId !== userId)
+  const before = t.members ?? []
+  t.members = before.filter(m => m.userId !== userId)
   commit()
+  void supabase.from('trip_members').delete().eq('trip_id', tripId).eq('user_id', userId)
 }
 
 export function userName(id: ID): string {
@@ -297,12 +461,13 @@ export function addStop(tripId: ID, dayIndex: number, stop: Omit<ItineraryStop, 
   return s
 }
 
-export function updateStop(tripId: ID, stopId: ID, patch: Partial<ItineraryStop>): void {
+export function updateStop(tripId: ID, stopId: ID, patchFields: Partial<ItineraryStop>): void {
   for (const day of tripById(tripId)!.days) {
     const s = day.stops.find(x => x.id === stopId)
-    if (s) { Object.assign(s, patch); touchAndLog(tripById(tripId)!, `updated “${patch.title ?? s.title}”`, `Day ${day.index + 1}`); break }
+    if (s) { Object.assign(s, patchFields); touchAndLog(tripById(tripId)!, `updated “${patchFields.title ?? s.title}”`, `Day ${day.index + 1}`); break }
   }
   commit()
+  void persistTripField(tripId, tripById(tripId)!)
 }
 
 export function deleteStop(tripId: ID, stopId: ID): void {
@@ -313,6 +478,7 @@ export function deleteStop(tripId: ID, stopId: ID): void {
     if (day.stops.length !== before) { renumber(day); touchAndLog(trip, `removed a stop`, `Day ${day.index + 1}`); break }
   }
   commit()
+  void persistTripField(tripId, trip!)
 }
 
 /** Put a deleted stop back on its day at its old order — powers Undo. */
@@ -325,6 +491,7 @@ export function restoreStop(tripId: ID, stop: ItineraryStop, dayIndex: number): 
   renumber(day)
   touchAndLog(trip, `restored “${stop.title}”`, `Day ${dayIndex + 1}`)
   commit()
+  void persistTripField(tripId, trip)
 }
 
 export function reorderStop(tripId: ID, dayIndex: number, fromIdx: number, toIdx: number): void {
@@ -336,6 +503,7 @@ export function reorderStop(tripId: ID, dayIndex: number, fromIdx: number, toIdx
   arr.forEach((s, i) => { s.orderInDay = i + 1 })
   day.stops = arr
   touchAndLog(trip, `reordered Day ${dayIndex + 1}`, 'Timeline')
+  void persistTripField(tripId, trip)
 }
 
 export function moveStopBetweenDays(tripId: ID, stopId: ID, toDayIndex: number, position?: number): void {
@@ -351,9 +519,9 @@ export function moveStopBetweenDays(tripId: ID, stopId: ID, toDayIndex: number, 
     target.stops.push(moved)
     renumber(target)
     touchAndLog(trip, `moved “${moved.title}” to Day ${toDayIndex + 1}`, 'Timeline')
-  } else {
-    commit()
   }
+  commit()
+  void persistTripField(tripId, trip)
 }
 
 export function setStopStatus(tripId: ID, status: ItineraryStop['status'], stopId: ID): void {
@@ -362,6 +530,7 @@ export function setStopStatus(tripId: ID, status: ItineraryStop['status'], stopI
     if (s) { s.status = status; touchAndLog(tripById(tripId)!, `marked “${s.title}” as ${status}`, `Day ${day.index + 1}`); break }
   }
   commit()
+  void persistTripField(tripId, tripById(tripId)!)
 }
 
 function renumber(day: ItineraryDay): void {
@@ -370,15 +539,18 @@ function renumber(day: ItineraryDay): void {
 
 function touchAndLog(trip: Trip, verb: string, target?: string): void {
   trip.updatedAt = Date.now()
-  if (db.sessionUserId) addActivity(trip.id, db.sessionUserId, verb, target)
+  if (cache.sessionUserId) addActivity(trip.id, cache.sessionUserId, verb, target)
   commit()
 }
 
 // ---------------- Expenses ----------------
 
 export function addExpense(tripId: ID, e: Omit<Expense, 'id'>): void {
-  tripById(tripId)?.expenses.push({ ...e, id: uid('ex') })
+  const t = tripById(tripId)
+  if (!t) return
+  t.expenses.push({ optional: false, ...e, id: uid('ex') })
   commit()
+  void persistTripField(tripId, t)
 }
 
 export function deleteExpense(tripId: ID, expenseId: ID): void {
@@ -386,29 +558,35 @@ export function deleteExpense(tripId: ID, expenseId: ID): void {
   if (!t) return
   t.expenses = t.expenses.filter(x => x.id !== expenseId)
   commit()
+  void persistTripField(tripId, t)
 }
 
 // ---------------- Suggestions / votes / comments ----------------
 
 export function addSuggestion(tripId: ID, s: Omit<StopSuggestion, 'id' | 'votes' | 'comments' | 'status' | 'createdAt' | 'tripId'>): void {
-  db.suggestions.push({
-    ...s, id: uid('sg'), tripId, votes: [], comments: [], status: 'open', createdAt: Date.now(),
-  })
+  // Client generates the UUID so the cache and the DB row agree on the id
+  // (a server-generated default would diverge after the next hydration).
+  const id = uuid()
+  const row = {
+    id, trip_id: tripId, day_index: s.dayIndex, proposed_by: s.proposedBy, title: s.title, category: s.category,
+    location_name: s.locationName, lat: s.lat, lng: s.lng, description: s.description, visit_minutes: s.visitMinutes,
+    estimated_entry_fee_inr: s.estimatedEntryFeeInr, estimated_transport_inr: s.estimatedTransportInr,
+    votes: [], comments: [], status: 'open',
+  }
+  cache.suggestions.push({ ...s, id, tripId, votes: [], comments: [], status: 'open', createdAt: Date.now() })
   const trip = tripById(tripId)
-  if (trip && db.sessionUserId) {
-    addActivity(tripId, db.sessionUserId, `suggested “${s.title}”`, `Day ${(s.dayIndex ?? 0) + 1}`)
-    // notify other members
+  if (trip && cache.sessionUserId) {
+    addActivity(tripId, cache.sessionUserId, `suggested “${s.title}”`, `Day ${(s.dayIndex ?? 0) + 1}`)
     for (const m of trip.members ?? []) {
-      if (m.userId !== db.sessionUserId) {
-        pushNotification(m.userId, tripId, `${userName(db.sessionUserId)} suggested “${s.title}” for Day ${(s.dayIndex ?? 0) + 1}.`)
-      }
+      if (m.userId !== cache.sessionUserId) pushNotification(m.userId, tripId, `${userName(cache.sessionUserId)} suggested “${s.title}” for Day ${(s.dayIndex ?? 0) + 1}.`)
     }
   }
   commit()
+  void supabase.from('suggestions').insert(row)
 }
 
 export function voteSuggestion(tripId: ID, suggestionId: ID, userId: ID, value: 1 | -1): void {
-  const sg = db.suggestions.find(x => x.id === suggestionId)
+  const sg = cache.suggestions.find(x => x.id === suggestionId)
   if (!sg) return
   const existing = sg.votes.find(v => v.userId === userId)
   if (existing) {
@@ -419,10 +597,11 @@ export function voteSuggestion(tripId: ID, suggestionId: ID, userId: ID, value: 
   }
   addActivity(tripId, userId, value > 0 ? 'upvoted a suggestion' : 'downvoted a suggestion', sg.title)
   commit()
+  void supabase.from('suggestions').update({ votes: sg.votes }).eq('id', suggestionId)
 }
 
 export function addCommentToSuggestion(tripId: ID, suggestionId: ID, authorId: ID, text: string): void {
-  const sg = db.suggestions.find(x => x.id === suggestionId)
+  const sg = cache.suggestions.find(x => x.id === suggestionId)
   if (!sg || !text.trim()) return
   sg.comments.push({ id: uid('cm'), authorId, text: text.trim(), createdAt: Date.now() })
   addActivity(tripId, authorId, 'commented on a suggestion', sg.title)
@@ -430,11 +609,12 @@ export function addCommentToSuggestion(tripId: ID, suggestionId: ID, authorId: I
     if (v !== authorId) pushNotification(v, tripId, `${userName(authorId)} commented on “${sg.title}”.`)
   }
   commit()
+  void supabase.from('suggestions').update({ comments: sg.comments }).eq('id', suggestionId)
 }
 
 /** Accept a suggestion: adds it to the timeline and closes the suggestion. */
 export function acceptSuggestionIntoTimeline(tripId: ID, suggestionId: ID): void {
-  const sg = db.suggestions.find(x => x.id === suggestionId)
+  const sg = cache.suggestions.find(x => x.id === suggestionId)
   const trip = tripById(tripId)
   if (!sg || !trip) return
   addStop(tripId, sg.dayIndex, {
@@ -444,86 +624,105 @@ export function acceptSuggestionIntoTimeline(tripId: ID, suggestionId: ID): void
     priority: 'nice-to-have', status: 'confirmed',
   })
   sg.status = 'accepted'
-  addActivity(tripId, db.sessionUserId!, 'accepted suggestion into timeline', sg.title)
+  addActivity(tripId, cache.sessionUserId!, 'accepted suggestion into timeline', sg.title)
   commit()
+  void supabase.from('suggestions').update({ status: 'accepted' }).eq('id', suggestionId)
 }
 
 export function declineSuggestion(tripId: ID, suggestionId: ID): void {
-  const sg = db.suggestions.find(x => x.id === suggestionId)
-  if (sg) { sg.status = 'declined'; addActivity(tripId, db.sessionUserId!, 'declined a suggestion', sg.title); commit() }
+  const sg = cache.suggestions.find(x => x.id === suggestionId)
+  if (sg) { sg.status = 'declined'; addActivity(tripId, cache.sessionUserId!, 'declined a suggestion', sg.title); commit(); void supabase.from('suggestions').update({ status: 'declined' }).eq('id', suggestionId) }
 }
 
 // ---------------- Decisions ----------------
 
 export function addDecision(tripId: ID, d: Pick<TripDecision, 'question' | 'context' | 'options'>): void {
-  if (!db.sessionUserId) return
-  db.decisions.push({
-    ...d, id: uid('dc'), tripId, votesByUserId: {}, status: 'open', raisedBy: db.sessionUserId, createdAt: Date.now(),
+  if (!cache.sessionUserId) return
+  // Same cache/DB id agreement as addSuggestion.
+  const id = uuid()
+  const row = {
+    id, trip_id: tripId, question: d.question, context: d.context,
     options: d.options.map(o => ({ ...o, id: uid('o') })),
-  })
-  addActivity(tripId, db.sessionUserId, `raised decision “${d.question}”`, 'Decisions')
+    votes_by_user_id: {}, status: 'open', raised_by: cache.sessionUserId,
+  }
+  cache.decisions.push({ ...d, id, tripId, votesByUserId: {}, status: 'open', raisedBy: cache.sessionUserId, createdAt: Date.now(), options: row.options })
+  addActivity(tripId, cache.sessionUserId, `raised decision “${d.question}”`, 'Decisions')
   commit()
+  void supabase.from('decisions').insert(row)
 }
 
 export function voteOnDecision(decisionId: ID, optionId: ID): void {
-  const d = db.decisions.find(x => x.id === decisionId)
-  if (!d || !db.sessionUserId || d.status !== 'open') return
-  d.votesByUserId[db.sessionUserId] = optionId
-  addActivity(d.tripId, db.sessionUserId, 'voted on a decision', d.question)
+  const d = cache.decisions.find(x => x.id === decisionId)
+  if (!d || !cache.sessionUserId || d.status !== 'open') return
+  d.votesByUserId[cache.sessionUserId] = optionId
+  addActivity(d.tripId, cache.sessionUserId, 'voted on a decision', d.question)
   commit()
+  void supabase.from('decisions').update({ votes_by_user_id: d.votesByUserId }).eq('id', decisionId)
 }
 
 export function resolveDecision(decisionId: ID, optionId: ID): void {
-  const d = db.decisions.find(x => x.id === decisionId)
+  const d = cache.decisions.find(x => x.id === decisionId)
   if (!d) return
   d.status = 'resolved'; d.resolvedOptionId = optionId; d.resolvedAt = Date.now()
-  addActivity(d.tripId, db.sessionUserId!, 'resolved a decision', d.question)
+  addActivity(d.tripId, cache.sessionUserId!, 'resolved a decision', d.question)
   commit()
+  void supabase.from('decisions').update({ status: 'resolved', resolved_option_id: optionId, resolved_at: d.resolvedAt }).eq('id', decisionId)
 }
 
 // ---------------- Publishing ----------------
 
 export function publishItinerary(pub: Omit<PublishedItinerary, 'id' | 'publishedAt' | 'views' | 'copies'>): PublishedItinerary {
-  const p: PublishedItinerary = { ...pub, id: uid('pub'), publishedAt: Date.now(), views: 0, copies: 0 }
-  const existingIdx = db.published.findIndex(x => x.tripId === p.tripId)
-  if (existingIdx >= 0) db.published[existingIdx] = p
-  else db.published.push(p)
+  const id = uid('pub')
+  const p: PublishedItinerary = { ...pub, id, publishedAt: Date.now(), views: 0, copies: 0 }
+  const existingIdx = cache.published.findIndex(x => x.tripId === p.tripId)
+  if (existingIdx >= 0) cache.published[existingIdx] = p
+  else cache.published.push(p)
   commit()
+  void supabase.from('published_itineraries').upsert({
+    id: p.id, trip_id: p.tripId, creator_id: p.creatorId, title: p.title, tagline: p.tagline,
+    cover_image_url: p.coverImageUrl, route_summary: p.routeSummary, duration_days: p.durationDays,
+    estimated_budget_per_person_inr: p.estimatedBudgetPerPersonInr, travel_style: p.travelStyle,
+    best_season: p.bestSeason, travel_tips: p.travelTips, warnings_and_assumptions: p.warningsAndAssumptions,
+    free_day_indexes: p.freeDayIndexes, premium_price_inr: p.premiumPriceInr, subscriber_cta: p.subscriberCta,
+  })
   return p
 }
 
 export function unpublishedTripIds(userId: ID): ID[] {
-  const mine = db.trips.filter(t => t.members?.some(m => m.userId === userId && m.role === 'owner'))
-  return mine.filter(t => !db.published.some(p => p.tripId === t.id)).map(t => t.id)
+  const mine = cache.trips.filter(t => t.members?.some(m => m.userId === userId && m.role === 'owner'))
+  return mine.filter(t => !cache.published.some(p => p.tripId === t.id)).map(t => t.id)
 }
 
 export function registerPubView(id: ID): void {
-  const p = db.published.find(x => x.id === id)
-  if (p) { p.views += 1; commit() }
+  const p = cache.published.find(x => x.id === id)
+  if (p) { p.views += 1; commit(); void supabase.from('published_itineraries').update({ views: p.views }).eq('id', id) }
 }
 
 export function registerPubCopy(id: ID): void {
-  const p = db.published.find(x => x.id === id)
-  if (p) { p.copies += 1; commit() }
+  const p = cache.published.find(x => x.id === id)
+  if (p) { p.copies += 1; commit(); void supabase.from('published_itineraries').update({ copies: p.copies }).eq('id', id) }
 }
 
 // ---------------- Feed & notifications ----------------
 
 export function activityFor(tripId: ID): ActivityEntry[] {
-  return db.activity.filter(a => a.tripId === tripId).sort((a, b) => b.at - a.at)
+  return cache.activity.filter(a => a.tripId === tripId).sort((a, b) => b.at - a.at)
 }
 
 export function addActivity(tripId: ID, actorId: ID, verb: string, target?: string): void {
-  db.activity.push({ id: uid('af'), tripId, actorId, verb, target, at: Date.now() })
+  const entry: ActivityEntry = { id: uuid(), tripId, actorId, verb, target, at: Date.now() }
+  cache.activity.push(entry)
+  void supabase.from('activity').insert({ id: entry.id, trip_id: tripId, actor_id: actorId, verb, target, at: entry.at })
 }
 
 export function notificationsFor(userId: ID): Notification[] {
-  return db.notifications.filter(n => n.userId === userId).sort((a, b) => b.at - a.at)
+  return cache.notifications.filter(n => n.userId === userId).sort((a, b) => b.at - a.at)
 }
 
 export function pushNotification(userId: ID, tripId: ID | undefined, text: string): void {
-  db.notifications.unshift({ id: uid('nt'), userId, tripId, text, read: false, at: Date.now() })
-  commit()
+  const n: Notification = { id: uuid(), userId, tripId, text, read: false, at: Date.now() }
+  cache.notifications.unshift(n)
+  void supabase.from('notifications').insert({ id: n.id, user_id: userId, trip_id: tripId, text, read: false, at: n.at })
 }
 
 function notifyOwnerOf(tripId: ID, text: string): void {
@@ -533,12 +732,25 @@ function notifyOwnerOf(tripId: ID, text: string): void {
 }
 
 export function markAllNotificationsRead(userId: ID): void {
-  db.notifications.forEach(n => { if (n.userId === userId) n.read = true })
+  cache.notifications.forEach(n => { if (n.userId === userId) n.read = true })
   commit()
+  void supabase.from('notifications').update({ read: true }).eq('user_id', userId)
 }
 
 // ---------------- utils ----------------
 
+/**
+ * Real UUID for top-level table ids (trips, suggestions, decisions, activity,
+ * notifications). Postgres PK/FK columns are `uuid` — the prefixed ids from
+ * seed.ts's uid() are only valid *inside* JSONB (stops, days, expenses, …).
+ */
+const uuid = (): string =>
+  typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `${Date.now().toString(16).padStart(12, '0')}-${Math.random().toString(16).slice(2, 6)}-4${Math.random().toString(16).slice(2, 5)}-a${Math.random().toString(16).slice(2, 5)}-${Math.random().toString(16).slice(2, 14).padEnd(12, '0')}`
+
 function diffDays(a: string, b: string): number {
   return Math.max(1, Math.round((new Date(b).getTime() - new Date(a).getTime()) / 86400000) + 1)
 }
+
+export const supabaseReady = isSupabaseConfigured
