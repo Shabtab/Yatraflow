@@ -1,6 +1,6 @@
 // ============ My trips ============
 import { useState } from 'react'
-import { useDb, currentUser, tripsForUser, userById, deleteTrip, restoreTrip } from '../store/store'
+import { useDb, currentUser, tripsForUser, userById, deleteTrip, restoreTrip, addDemoTrips } from '../store/store'
 import { computeTotals } from '../lib/engine'
 import { Avatar, Chip, EmptyState, toast, undoToast, ConfirmDialog } from '../components/ui'
 import type { Trip } from '../data/types'
@@ -29,7 +29,10 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
           <h1>My trips</h1>
           <p className="muted small">Everything you're planning or collaborating on.</p>
         </div>
-        <button className="btn btn-primary" onClick={() => onNavigate('/new')}>+ Plan a new trip</button>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button className="btn btn-outline" onClick={addDemoTrips} title="Adds a 4-day Kerala sample trip to your account">🚀 Load demo trips</button>
+          <button className="btn btn-primary" onClick={() => onNavigate('/new')}>+ Plan a new trip</button>
+        </div>
       </div>
 
       {trips.length === 0 ? (
@@ -40,6 +43,7 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
           action={
             <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
               <button className="btn btn-primary" onClick={() => onNavigate('/new')}>Plan your first trip</button>
+              <button className="btn btn-outline" onClick={addDemoTrips}>🚀 Load demo trips</button>
               <button className="btn btn-outline" onClick={() => onNavigate('/explore')}>Browse Explore</button>
             </div>
           }

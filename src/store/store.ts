@@ -225,6 +225,13 @@ async function seedDemoFor(userId: string): Promise<void> {
   await hydrateFromSupabase(userId)
 }
 
+/** Manually load the demo trips into the current account (My Trips button). */
+export function addDemoTrips(): void {
+  if (!cache.sessionUserId) return
+  toast('Adding demo trips…')
+  void seedDemoFor(cache.sessionUserId).then(() => toast('Demo trips added ✨'))
+}
+
 // ---------------- Row mappers for collaboration tables ----------------
 
 function rowToSuggestion(row: any): StopSuggestion {
