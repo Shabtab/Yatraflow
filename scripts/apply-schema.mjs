@@ -22,6 +22,21 @@ try {
       console.log('  USING:', r.qual)
       console.log('  CHECK:', r.with_check)
     }
+    const trig = await client.query(`
+      select t.tgname, c.relname as table_name, n.nspname as schema_name, p.proname as func_name, t.tgenabled
+      from pg_trigger t
+      join pg_class c on c.oid = t.tgrelid
+      join pg_namespace n on n.oid = c.relnamespace
+      join pg_proc p on p.oid = t.tgfoid
+      where not t.tgisinternal
+      order by c.relname, t.tgname
+    `)
+    console.log('\n--- triggers ---')
+    for (const r of trig.rows) console.log(`${r.schema_name}.${r.table_name} :: ${r.tgname} -> ${r.func_name}() [${r.tgenabled}]`)
+    const who = await client.query('select current_user, session_user')
+    console.log('\nconnected as:', who.rows[0])
+    const fn = await client.query("select proname from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and proname in ('handle_new_user','is_member','is_editor')")
+    console.log('functions in public:', fn.rows.map(r => r.proname))
     process.exit(0)
   }
   const sql = `notify pgrst, 'reload schema'`
