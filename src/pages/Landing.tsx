@@ -1,5 +1,4 @@
 // ============ Landing page ============
-import { loginDemo } from '../store/store'
 import { BrandMark } from '../components/ui'
 
 export function LandingPage({ onNavigate }: { onNavigate: (r: string) => void }) {
@@ -96,20 +95,18 @@ export function LandingPage({ onNavigate }: { onNavigate: (r: string) => void })
 }
 
 function DemoButtons({ onNavigate }: { onNavigate: (r: string) => void }) {
-  function go() {
-    loginDemo()
-    onNavigate('/trips')
-  }
   return (
     <div className="cta-buttons">
-      <button className="btn btn-navy btn-lg" onClick={go}>🚀 Enter demo mode</button>
+      <button className="btn btn-navy btn-lg" onClick={() => onNavigate('/auth?mode=signup')}>
+        🚀 Create a free account
+      </button>
       <BrandHint />
     </div>
   )
 }
 
 function BrandHint() {
-  return <span className="small cta-hint">or log in at <code>demo@yatraflow.in / demo1234</code></span>
+  return <span className="small cta-hint">demo trips are added to your account automatically on first sign-in</span>
 }
 
 function Step({ n, title, body }: { n: number; title: string; body: string }) {

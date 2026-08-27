@@ -1,6 +1,6 @@
 // ============ Auth page ============
 import { useEffect, useState } from 'react'
-import { useDb, currentUser, login, signup, loginDemo } from '../store/store'
+import { useDb, currentUser, login, signup } from '../store/store'
 import { Field } from '../components/ui'
 
 export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
@@ -12,22 +12,29 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
 
+  const [saving, setSaving] = useState(false)
+
   useEffect(() => {
     if (me) onNavigate('/trips') // already logged in
   }, [me]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  function submit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
-    if (mode === 'login') {
-      const r = login(email, password)
-      if (!r.ok) { setError(r.error ?? 'Login failed'); return }
-    } else {
-      if (!name.trim()) { setError('Tell us your name.'); return }
-      const r = signup(name, email, password)
-      if (!r.ok) { setError(r.error ?? 'Signup failed'); return }
+    setSaving(true)
+    try {
+      if (mode === 'login') {
+        const r = await login(email, password)
+        if (!r.ok) { setError(r.error ?? 'Login failed'); return }
+      } else {
+        if (!name.trim()) { setError('Tell us your name.'); return }
+        const r = await signup(name, email, password)
+        if (!r.ok) { setError(r.error ?? 'Signup failed'); return }
+      }
+      onNavigate('/trips')
+    } finally {
+      setSaving(false)
     }
-    onNavigate('/trips')
   }
 
   return (
@@ -52,18 +59,13 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
             <input className="input" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" />
           </Field>
           {error && <div className="err-text" style={{ marginBottom: 10 }}>⚠️ {error}</div>}
-          <button type="submit" className="btn btn-primary btn-lg" style={{ width: '100%' }}>
-            {mode === 'login' ? 'Log in' : 'Create account'}
+          <button type="submit" className="btn btn-primary btn-lg" style={{ width: '100%' }} disabled={saving}>
+            {saving ? 'Please wait…' : mode === 'login' ? 'Log in' : 'Create account'}
           </button>
         </form>
 
-        <div className="divider-wrap"><hr className="divider" /><span className="small muted">or</span><hr className="divider" /></div>
-
-        <button className="btn btn-navy" style={{ width: '100%' }} onClick={() => { loginDemo(); onNavigate('/trips') }}>
-          🚀 Try demo mode — no signup
-        </button>
-        <p className="hint-text" style={{ textAlign: 'center', marginTop: 10 }}>
-          Loads a 4-day Kerala road trip with stops, votes and budgets ready to explore.
+        <p className="hint-text" style={{ textAlign: 'center', marginTop: 14 }}>
+          Demo trips are added to your account automatically on first sign-in.
         </p>
       </div>
     </div>

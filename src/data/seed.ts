@@ -1,74 +1,53 @@
 // ============ Seed data ============
-// Realistic Indian demo content so the app is fully explorable in demo mode.
-import type { User, Trip, PublishedItinerary, StopSuggestion, TripDecision, ActivityEntry, Notification } from './types'
+// Realistic Indian demo content. With real Supabase auth, new accounts get the
+// demo trips reseeded into their own Supabase account (see src/lib/seedSupabase.ts).
+// The `User` objects here are only used to pre-fill profile fields for the
+// reseeded demo owner; passwords are handled by Supabase Auth, not stored here.
+import type { Trip, PublishedItinerary, StopSuggestion, TripDecision, ActivityEntry, Notification, UserProfile } from './types'
 
 export const uid = (prefix: string): string =>
   `${prefix}_${Math.random().toString(36).slice(2, 9)}${Date.now().toString(36).slice(-4)}`
 
-// ---------------- Users ----------------
+// ---------------- Profile templates ----------------
+// With real Supabase auth these are only used to pre-fill the profile of the
+// demo-trip owner when a new account is seeded (see src/lib/seedSupabase.ts).
+// Passwords are handled by Supabase Auth and are NOT stored here.
 
-const users: User[] = [
-  {
-    id: 'u_demo',
-    email: 'demo@yatraflow.in',
-    passwordHash: hash('demo1234'),
-    profile: {
-      name: 'Demo Traveller',
-      homeCity: 'Kochi, Kerala',
-      languages: ['en', 'hi', 'ml'],
-      travelStyles: ['balanced', 'food-focused'],
-      isCreator: false,
-    },
-    createdAt: T(30),
+export const demoProfileTemplates: Record<string, UserProfile> = {
+  'demo@yatraflow.in': {
+    name: 'Demo Traveller',
+    homeCity: 'Kochi, Kerala',
+    languages: ['en', 'hi', 'ml'],
+    travelStyles: ['balanced', 'food-focused'],
+    isCreator: false,
   },
-  {
-    id: 'u_meera',
-    email: 'meera@yatraflow.in',
-    passwordHash: hash('demo1234'),
-    profile: {
-      name: 'Meera Nair',
-      homeCity: 'Bengaluru',
-      languages: ['en', 'ml', 'ta'],
-      travelStyles: ['relaxed', 'food-focused'],
-      isCreator: false,
-    },
-    createdAt: T(90),
+  'meera@yatraflow.in': {
+    name: 'Meera Nair',
+    homeCity: 'Bengaluru',
+    languages: ['en', 'ml', 'ta'],
+    travelStyles: ['relaxed', 'food-focused'],
+    isCreator: false,
   },
-  {
-    id: 'u_arjun',
-    email: 'arjun@yatraflow.in',
-    passwordHash: hash('demo1234'),
-    profile: {
-      name: 'Arjun Mehta',
-      homeCity: 'Mumbai',
-      languages: ['en', 'hi', 'mr'],
-      travelStyles: ['adventure', 'budget'],
-      isCreator: false,
-    },
-    createdAt: T(120),
+  'arjun@yatraflow.in': {
+    name: 'Arjun Mehta',
+    homeCity: 'Mumbai',
+    languages: ['en', 'hi', 'mr'],
+    travelStyles: ['adventure', 'budget'],
+    isCreator: false,
   },
-  {
-    id: 'u_devika',
-    email: 'devika@yatraflow.in',
-    passwordHash: hash('demo1234'),
-    profile: {
-      name: 'Devika Rathore',
-      avatarUrl: undefined,
-      homeCity: 'Jaipur',
-      languages: ['en', 'hi'],
-      travelStyles: ['creator', 'luxury', 'spiritual'],
-      isCreator: true,
-      creatorBio: 'Heritage storyteller. I plan slow, deep India itineraries — forts, havelis, food lanes and the people in between.',
-      socialLinks: { youtube: 'youtube.com/@DevikaRoams', instagram: 'instagram.com/devikaroams' },
-    },
-    createdAt: T(400),
+  'devika@yatraflow.in': {
+    name: 'Devika Rathore',
+    avatarUrl: undefined,
+    homeCity: 'Jaipur',
+    languages: ['en', 'hi'],
+    travelStyles: ['creator', 'luxury', 'spiritual'],
+    isCreator: true,
+    creatorBio: 'Heritage storyteller. I plan slow, deep India itineraries — forts, havelis, food lanes and the people in between.',
+    socialLinks: { youtube: 'youtube.com/@DevikaRoams', instagram: 'instagram.com/devikaroams' },
   },
-]
+}
 
 function T(daysAgo: number): number { return Date.now() - daysAgo * 86400000 }
-/** demo-grade hash (NOT secure; a real backend must handle auth) */
-function hash(pw: string): string { return 'yf_' + btoa(unescape(encodeURIComponent(pw + '|yf-salt'))).slice(0, 28) }
-export const simpleHash = hash
 
 // ---------------- Kerala road trip (the flagship demo trip) ----------------
 // Dates are generated relative to "today" so the demo always feels live.
@@ -502,5 +481,5 @@ const publishedItineraries: PublishedItinerary[] = [
 ]
 
 export const seedData = {
-  users, trips, suggestions, decisions, activity: activityFeed, notifications: notificationsSeed, published: publishedItineraries,
+  trips, suggestions, decisions, activity: activityFeed, notifications: notificationsSeed, published: publishedItineraries,
 }

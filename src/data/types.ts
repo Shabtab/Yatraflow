@@ -45,9 +45,8 @@ export interface UserProfile {
 }
 
 export interface User {
-  id: ID
+  id: ID                    // = Supabase auth.users.id (uuid)
   email: string
-  passwordHash: string      // demo-grade hash — real deployments must use a proper auth backend
   profile: UserProfile
   createdAt: number
 }

@@ -2,7 +2,7 @@
 // Hash-based routing so the built app works from any static host or file://.
 import { useEffect, useState } from 'react'
 import type { Trip } from './data/types'
-import { useDb, currentUser, logout, notificationsFor, markAllNotificationsRead, tripById, joinViaInvite, duplicateTrip } from './store/store'
+import { useDb, currentUser, logout, notificationsFor, markAllNotificationsRead, tripById, joinViaInvite, duplicateTrip, init } from './store/store'
 import { Avatar, BrandMark, ToastZone, useClickOutside, toast } from './components/ui'
 import { decodeTripSnapshot } from './lib/snapshot'
 import { LandingPage } from './pages/Landing'
