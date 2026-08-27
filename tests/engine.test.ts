@@ -6,10 +6,11 @@
 import { describe, it, expect } from 'vitest'
 import {
   addMinutesToClock, hmToMinutes, legBetween, simulateDay,
-  computeTotals, computeHealth, collectWarnings, countHotelNights, originOf,
+  computeTotals, computeHealth, collectWarnings, countHotelNights, originOf, firstFixedPoint,
   getAssumptions, formatInr, scoreWarnings,
 } from '../src/lib/engine'
 import { seedData } from '../src/data/seed'
+import type { Trip, ItineraryStop } from '../src/data/types'
 
 const keralaTrip = seedData.trips[0]
 
@@ -110,6 +111,37 @@ describe('totals & health on all seed trips', () => {
     })))
     expect(brutal.score).toBe(5)
     expect(brutal.band).toBe('Unrealistic')
+  })
+})
+
+describe('waypoint anchors (auto start/end stops)', () => {
+  const startCoords = { lat: 9.98, lng: 76.28 }
+
+  it('a zero-dwell waypoint adds distance but no buffer dwell time', () => {
+    const aStop = structuredClone(keralaTrip.days[0].stops[0]) as ItineraryStop
+    const dayStop: ItineraryStop = {
+      ...aStop, title: 'Trip start', auto: true, visitMinutes: 0, category: 'travel',
+    }
+    const ctx = structuredClone(keralaTrip) as Trip
+    const sim = simulateDay({ stops: [dayStop] }, ctx, startCoords, 0)
+    const travelOnly = legBetween(startCoords, dayStop, getAssumptions({ transportMode: 'car' })).durationMinutes
+    expect(sim.totalTravelMinutes).toBeGreaterThanOrEqual(travelOnly)
+    // no dwell/buffer per waypoint — a regular stop would add a +15 buffer
+    expect(sim.totalTravelMinutes).toBeLessThan(travelOnly + 20)
+  })
+
+  describe('origin resolution', () => {
+    it('prefers trip.startLocationCoords (real point A) over the Kochi fallback', () => {
+      const withStart = { ...structuredClone(keralaTrip), startLocationCoords: { lat: 28.61, lng: 77.21 } }
+      expect(firstFixedPoint(withStart)).toEqual({ lat: 28.61, lng: 77.21 })
+    })
+    it('falls back to the first active stop when no geocoded start exists', () => {
+      const noStart = { ...structuredClone(keralaTrip), startLocationCoords: undefined }
+      const pts = firstFixedPoint(noStart)
+      const first = [...keralaTrip.days[0].stops].filter(s => s.status !== 'rejected').sort((a, b) => a.orderInDay - b.orderInDay)[0]
+      expect(pts.lat).toBe(first.lat)
+      expect(pts.lng).toBe(first.lng)
+    })
   })
 })
 

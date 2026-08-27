@@ -24,6 +24,12 @@ export type StopStatus = (typeof STOP_STATUSES)[number]
 
 export type FixedCommitmentType = 'hotel-checkin' | 'train-departure' | 'flight-departure' | 'event' | 'other'
 
+/** A geocoded lat/lng pair — used for trip start/end geography and map anchors. */
+export interface LatLngPoint {
+  lat: number
+  lng: number
+}
+
 export interface FixedCommitment {
   id: ID
   title: string
@@ -89,6 +95,8 @@ export interface ItineraryStop {
   sourceUrl?: string
   status: StopStatus
   orderInDay: number
+  /** true for auto-generated start/destination anchor stops (safe to move/delete) */
+  auto?: boolean
   weatherSensitive?: boolean // e.g. beach, trek viewpoints
 }
 
@@ -103,7 +111,14 @@ export interface Trip {
   id: ID
   name: string
   startLocation: string
+  /** Geocoded point A — captured when the user picks a real place for the start. */
+  startLocationCoords?: LatLngPoint
   destinations: string[]
+  /**
+   * Geocoded points for `destinations`, parallel array (null when a destination
+   * was typed without picking a real place). Last entry anchors the trip's end.
+   */
+  destinationCoords?: (LatLngPoint | null)[]
   startDate: string         // ISO yyyy-mm-dd
   endDate: string
   travellers: number

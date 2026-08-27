@@ -56,6 +56,11 @@ export interface LegEstimate {
   durationMinutes: number
 }
 
+/** Canonical key for a leg between two points (used by the OSRM refinement layer). */
+export function legKey(a: { lat: number; lng: number }, b: { lat: number; lng: number }): string {
+  return `${a.lat.toFixed(5)},${a.lng.toFixed(5)}|${b.lat.toFixed(5)},${b.lng.toFixed(5)}`
+}
+
 /** Distance/duration between two points using demo coordinates (haversine × road factor). */
 export function legBetween(
   a: { lat: number; lng: number },
@@ -90,7 +95,18 @@ export interface DaySchedule {
 }
 
 /** Simulate one day's schedule: arrivals, departures, legs. Rejected stops are skipped. */
-export function simulateDay(day: { stops: ItineraryStop[] }, trip: Pick<Trip, 'transportMode' | 'startLocation'>, startOrigin: { lat: number; lng: number }, dayIndex: number): DaySchedule {
+export function simulateDay(
+  day: { stops: ItineraryStop[] },
+  trip: Pick<Trip, 'transportMode' | 'startLocation'>,
+  startOrigin: { lat: number; lng: number },
+  dayIndex: number,
+  /**
+   * Optional per-leg corrections from real road data (OSRM). Keyed by
+   * `legKey(from, to)`. When present for a leg, its distance/duration replace
+   * the haversine estimate — the engine itself stays deterministic.
+   */
+  legCorrections?: Record<string, LegEstimate>,
+): DaySchedule {
   const A = getAssumptions(trip)
   const active = [...day.stops].filter(s => s.status !== 'rejected').sort((x, y) => x.orderInDay - y.orderInDay)
   let t = hmToMinutes(A.dayStart)
@@ -102,17 +118,16 @@ export function simulateDay(day: { stops: ItineraryStop[] }, trip: Pick<Trip, 't
   let prev = startOrigin
 
   for (const s of active) {
-    if (s.category === 'travel' && s.visitMinutes === 0 && s.transportCostInrTotal === 0) {
-      // pure waypoint — treat as pass-through
-    }
-    const leg = legBetween(prev, s, A)
+    // pure waypoint (auto start/end anchors): counts for distance but adds no dwell/buffer time
+    const isWaypoint = s.auto === true || (s.category === 'travel' && s.visitMinutes === 0 && s.transportCostInrTotal === 0)
+    const leg = (legCorrections && legCorrections[legKey(prev, s)]) ?? legBetween(prev, s, A)
     t += leg.durationMinutes
     arrivalTimes.push(addMinutesToClock(hmToMinutes(A.dayStart), t - hmToMinutes(A.dayStart)))
     travelMin += leg.durationMinutes
     distKm += leg.distanceKm
     legs.push({ fromTitle: prev === startOrigin ? `${trip.startLocation} (start)` : legsLabel(prev), toTitle: s.locationName || s.title, distanceKm: leg.distanceKm, durationMinutes: leg.durationMinutes })
-    departures.push(addMinutesToClock(hmToMinutes(A.dayStart), t - hmToMinutes(A.dayStart) + s.visitMinutes + A.bufferMinutesPerStop))
-    t += s.visitMinutes + A.bufferMinutesPerStop
+    departures.push(addMinutesToClock(hmToMinutes(A.dayStart), t - hmToMinutes(A.dayStart) + s.visitMinutes + (isWaypoint ? 0 : A.bufferMinutesPerStop)))
+    t += s.visitMinutes + (isWaypoint ? 0 : A.bufferMinutesPerStop)
     prev = s
   }
   return { dayIndex, arrivalTimes, departures, legs, totalTravelMinutes: travelMin, totalDistanceKm: distKm, activeStops: active, endsAt: addMinutesToClock(hmToMinutes(A.dayStart), t - hmToMinutes(A.dayStart)) }
@@ -269,6 +284,8 @@ export function originOf(trip: Trip, dayIndex: number): { lat: number; lng: numb
 }
 
 export function firstFixedPoint(trip: Trip): { lat: number; lng: number } {
+  // A geocoded start (point A) is the trip's true origin when known.
+  if (trip.startLocationCoords) return { lat: trip.startLocationCoords.lat, lng: trip.startLocationCoords.lng }
   for (const d of trip.days) {
     const first = [...d.stops].filter(s => s.status !== 'rejected').sort((a, b) => a.orderInDay - b.orderInDay)[0]
     if (first) return { lat: first.lat, lng: first.lng }
@@ -290,12 +307,12 @@ export interface TripTotals {
   byCategory: Record<string, number>
 }
 
-export function computeTotals(trip: Trip): TripTotals {
+export function computeTotals(trip: Trip, legCorrections?: Record<string, LegEstimate>): TripTotals {
   const A = getAssumptions(trip)
   let travelMinutes = 0, distanceKm = 0, stopCount = 0
   let transportKmCost = 0
   trip.days.forEach(day => {
-    const sim = simulateDay(day, trip, originOf(trip, day.index), day.index)
+    const sim = simulateDay(day, trip, originOf(trip, day.index), day.index, legCorrections)
     travelMinutes += sim.totalTravelMinutes
     distanceKm += sim.totalDistanceKm
     sim.activeStops.forEach(() => { stopCount++ })
