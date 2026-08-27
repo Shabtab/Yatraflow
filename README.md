@@ -34,6 +34,13 @@ YatraFlow is a collaborative travel-planning web app built India-first: real mul
 - **Publish itineraries** to the public **Explore** gallery with tagline, best season, travel tips and warnings
 - Readers can **copy any published trip** into their own plans in one click and make it theirs
 - Free-preview days with locked later days (payments are *not* part of this MVP)
+- **Export / import** any trip as a JSON file, or share a self-contained **snapshot link** (`#/share/<payload>`) — the whole itinerary is compressed into the URL so the link works logged-out with zero server storage
+- **Auto-fed opening hours**: picking a POI in the stop editor looks up its real open/close times from OpenStreetMap's free Overpass API and pre-fills them (still fully editable)
+
+### Enrich on the map
+- **Real road routing**: route lines between stops follow actual roads via the free OSRM demo server, with a silent straight-line fallback when it's unreachable — planning never blocks on the network
+- **Weather along the route**: per-day forecasts from Open-Meteo (free, keyless) — icon, min/max °C and rain chance, with wet days flagged and a nudge to reshuffle weather-sensitive stops
+- **Nearby POI ideas**: real points of interest within 10 km of your route from Wikipedia geosearch, with a "+ Add" button that drops them into the timeline through the normal impact-preview flow
 
 ---
 
@@ -100,7 +107,11 @@ src/
 │   ├── engine.ts          # Scheduling & budget simulation (transparent estimates)
 │   ├── impact.ts          # Current-vs-proposed plan comparison
 │   ├── ai.ts              # Deterministic rule-based AI companion
-│   └── geo.ts             # Haversine helpers
+│   ├── geo.ts             # Haversine helpers
+│   ├── weather.ts         # Open-Meteo daily forecast (WMO → icon/label)
+│   ├── routing.ts         # OSRM road geometry for the map (+ haversine fallback)
+│   ├── snapshot.ts        # Compress/encode whole trips into shareable URLs
+│   └── geocode.ts         # Open-Meteo geocoding + OSM Overpass opening hours
 ├── components/
 │   ├── ui.tsx             # Modal, Field, Chip, Avatar, StatTile, HealthRing, toast…
 │   ├── LocationInput.tsx  # Debounced geocoding autocomplete (keyboard-navigable)

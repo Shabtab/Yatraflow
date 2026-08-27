@@ -17,9 +17,9 @@ Log in with `demo@yatraflow.in` / `demo1234` (or the demo button) to get seeded 
 
 1. **Type check passes:**
    ```bash
-   npx tsc --noEmit
+   npm run build   # runs `tsc -b` then `vite build`
    ```
-   The project runs TypeScript *strict* — no `any` leaks, no suppressed errors without a comment explaining why.
+   The project runs TypeScript *strict* — no `any` leaks, no suppressed errors without a comment explaining why. (`npx tsc --noEmit` also works for a check without a build.)
 
 2. **Build passes:** `npm run build` (this also runs the type check).
 
@@ -40,6 +40,7 @@ Log in with `demo@yatraflow.in` / `demo1234` (or the demo button) to get seeded 
 |---|---|
 | An entity/field | `src/data/types.ts` (+ `seed.ts` if demo data should show it) |
 | How estimates/math work | `src/lib/engine.ts` (or `impact.ts` for deltas) |
+| Weather / road routing / snapshot shares / geocoding & opening hours | `src/lib/weather.ts`, `routing.ts`, `snapshot.ts`, `geocode.ts` |
 | A mutation/action | `src/store/store.ts` |
 | A screen | `src/pages/*` |
 | A shared widget | `src/components/ui.tsx` |

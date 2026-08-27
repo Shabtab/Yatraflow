@@ -38,8 +38,12 @@ A guided tour of how the app works internally — the data model, the estimation
 │                                                  yatraflow_db_v1   │
 └────────────────────────────────────────────────────────────────────┘
                                 │
-                    External: Open-Meteo geocoding (autocomplete only)
-                              MapLibre/CARTO tiles (display only)
+        External (all free, keyless, network-failure-safe):
+          Open-Meteo geocoding  — location autocomplete + per-day weather
+          OSRM demo server      — real road geometry on the map (haversine fallback)
+          Wikipedia geosearch   — nearby POI ideas on the Map tab
+          OSM Overpass          — auto-fed opening hours for picked POIs
+          MapLibre / CARTO tiles— basemap display only
 ```
 
 Key properties:
@@ -148,6 +152,8 @@ This keeps the MVP honest (nothing hallucinated), offline-capable, and free. Swa
 
 Used by: CreateTrip (start location + destination chips), StopEditor (stop location), suggestion form (Area), and Trip Settings (start + destinations).
 
+The same geocoder powers a second capability in [`src/lib/geocode.ts`](../src/lib/geocode.ts): **auto-fed opening hours**. When a POI name is picked in the stop editor, `fetchOpeningHours()` runs an Overpass around-search (overpass-api.de mirror with a mail.ru fallback) and matches the result client-side by name (server-side name regex times out on public mirrors), then `parseOpeningHours()` tolerantly reads `"Mo-Sa 10:00-16:00"`, `"24/7"` and split-day formats into the editor's Opens-at / Closes-at fields. Manual entry still works for places OSM doesn't cover, and the fields remain editable after auto-fill.
+
 ## 8. Maps
 
 [`src/components/mapcn/map.tsx`](../src/components/mapcn/map.tsx) is the [mapcn](https://github.com/AnmolSaini16/mapcn) registry component vendored verbatim (its single `@/lib/utils` import replaced by a local [`cn()`](./src/components/mapcn/cn.ts)). It renders MapLibre GL with CARTO basemaps that follow light/dark theme automatically.
@@ -159,7 +165,13 @@ Used by: CreateTrip (start location + destination chips), StopEditor (stop locat
 - numbered circular pin buttons open the stop editor on click
 - auto `fitBounds` (padding 70, maxZoom 12) whenever the plotted set changes
 - theme tracked via `MutationObserver` on `document.documentElement.dataset.theme`
-- day filter chips + a legend, and an explicit disclaimer that routes are straight-line approximations
+- day filter chips + a legend
+
+### Road geometry & nearby ideas
+
+By default route lines follow **real roads**: [`src/lib/routing.ts`](../src/lib/routing.ts) requests geometry from the free OSRM demo server (`roadLegBetween`, `routePath`), simplifying and de-duplicating per day and calling the server sequentially to respect the demo rate limit. When OSRM is unreachable it silently falls back to straight-line segments — but schedule numbers in the engine stay on the haversine assumptions regardless, so estimates remain deterministic and offline-safe. The map legend credits OSRM/OSM and restates that plan timings are fixed-assumption estimates.
+
+The Map tab also surfaces **nearby POI ideas**: gold 💡 markers for real Wikipedia-geosearch points of interest within 10 km of your route, with a "Nearby ideas" panel and a **+ Add** button (pick-a-day modal) that creates the stop through the normal impact-preview flow; already-added ideas show a ✓ badge.
 
 ## 9. Routing & pages
 
@@ -191,7 +203,11 @@ The architecture isolates its shortcuts behind small interfaces:
 |---|---|---|
 | `localStorage` store | Supabase/Firebase/REST backend | Only `store.ts` internals — mutation signatures can stay identical |
 | Open-Meteo autocomplete | Google Places / Mapbox | `LocationInput.tsx` only |
-| Haversine × 1.25 legs | OSRM/Google Directions real routing | `legBetween()` in `engine.ts` (+ feed real geometry to `MapRoute`) |
+| Haversine × 1.25 legs | OSRM/Google Directions real routing | Engine stays haversine by design (deterministic, offline-safe); map road shape already comes from `src/lib/routing.ts` (OSRM + `routePath`), whose geometry can later feed `MapRoute` |
+| OSRM map geometry | Google Directions / Mapbox Directions | `src/lib/routing.ts` only (callers like `TripMap.tsx` are unaffected) |
+| Open-Meteo weather | Any forecast provider | `src/lib/weather.ts` (`fetchDailyWeather`) |
+| Wikipedia geosearch POIs | Google Places nearby | `TripMap.tsx` Nearby-ideas panel + `src/lib/geocode.ts` |
+| OSM Overpass opening hours | Google Places details | `src/lib/geocode.ts` (`fetchOpeningHours`) |
 | Demo-grade password hash | Real auth | `store.ts` `login/signup`, drop `passwordHash` |
 | Rule-based AI | LLM with engine grounding | `answerQuestion()` in `ai.ts` |
 | Placeholder payment buttons | Razorpay/etc. | Share tab CTAs + `premiumPriceInr` on `PublishedItinerary` |
