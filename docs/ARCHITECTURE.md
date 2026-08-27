@@ -29,15 +29,21 @@ A guided tour of how the app works internally — the data model, the estimation
 │  Pages (React)          Lib (pure functions)       Store           │
 │  ┌──────────────┐      ┌──────────────────┐     ┌─────────────┐   │
 │  │ TripWorkspace│─────▶│ engine.ts        │◀────│ store.ts    │   │
-│  │ CreateTrip   │      │ impact.ts        │     │ (module-level│  │
-│  │ Explore …    │      │ ai.ts            │     │  DB object)  │  │
+│  │ CreateTrip   │      │ impact.ts        │     │ (reactive   │   │
+│  │ Explore …    │      │ ai.ts            │     │  cache)     │   │
 │  └──────────────┘      └──────────────────┘     └──────┬──────┘   │
 │         │                       ▲                      │          │
 │         ▼                       │                      ▼          │
-│  components (map, modals)   geo.ts               localStorage      │
-│                                                  yatraflow_db_v1   │
+│  components (map, modals)   geo.ts          Supabase JS client    │
 └────────────────────────────────────────────────────────────────────┘
-                                │
+                │                                   │
+                │                                   ▼
+                │                        Supabase (Postgres + Auth):
+                │                          profiles, trips, trip_members,
+                │                          suggestions, decisions, activity,
+                │                          notifications, published_itineraries
+                │                          — Row Level Security everywhere
+                │
         External (all free, keyless, network-failure-safe):
           Open-Meteo geocoding  — location autocomplete + per-day weather
           OSRM demo server      — real road geometry on the map (haversine fallback)
@@ -48,8 +54,8 @@ A guided tour of how the app works internally — the data model, the estimation
 
 Key properties:
 
-- **Zero backend.** Everything runs in the browser; state persists to `localStorage`.
-- **Pure-function core.** `src/lib/` contains no React and no I/O — every estimate is a deterministic function of `(trip data, assumptions)`. That's what makes estimates *transparent* and testable.
+- **Supabase-backed, cache-first.** The store hydrates an in-memory cache from Postgres on login; every mutation updates the cache synchronously (instant UI) and fires the Supabase write in the background. Authorization is enforced by Row Level Security, not UI checks.
+- **Pure-function core.** `src/lib/` (except `supabase.ts`) contains no React and no I/O — every estimate is a deterministic function of `(trip data, assumptions)`. That's what makes estimates *transparent* and testable.
 - **Coordinates are plain numbers** (`lat`/`lng` on stops), so any maps provider can consume them later.
 
 ## 2. Data model
@@ -58,7 +64,7 @@ All entities live in [`src/data/types.ts`](../src/data/types.ts). The important 
 
 | Entity | Purpose | Notable fields |
 |---|---|---|
-| `User` | Account + profile | demo-grade `passwordHash`, `UserProfile.languages` ready for i18n |
+| `User` | Account + profile | id comes from Supabase Auth; `UserProfile.languages` ready for i18n |
 | `Trip` | A plan | `startLocation`, ordered `destinations[]`, `transportMode`, `budgetPerPersonInr`, `fixedCommitments[]`, `days[]`, `expenses[]`, optional `members[]` |
 | `ItineraryDay` | One day of the plan | `index` (0-based), ordered `stops[]` |
 | `ItineraryStop` | One visit | `visitMinutes`, `openTime/closeTime`, `entryFeeInrPerPerson`, `transportCostInrTotal`, `priority`, `status`, `orderInDay`, geocoded `lat/lng` |
@@ -76,21 +82,23 @@ Design notes:
 
 ## 3. The store
 
-[`src/store/store.ts`](../src/store/store.ts) is a hand-rolled reactive store:
+[`src/store/store.ts`](../src/store/store.ts) is a hand-rolled reactive store backed by Supabase:
 
 ```ts
-let saveTimer: ReturnType<typeof setTimeout> | null = null  // MUST be declared before load() — see gotchas
-let db: DB = load()
+let cache: DB = { users: [], trips: [], suggestions: [], … , sessionUserId: null }
 const listeners = new Set<() => void>()
+let initialized = false
 ```
 
 - **Read:** components call `useDb()` which wraps React's `useSyncExternalStore(subscribe, getSnapshot)` — no context provider needed anywhere.
-- **Write:** exported mutation functions (`createTrip`, `addStop`, `voteSuggestion`, …) mutate a `structuredClone` draft, replace `db`, notify listeners, and debounce-persist to `localStorage` under `yatraflow_db_v1`.
-- **Self-healing:** `load()` validates the parsed JSON shape (`isValidDb`) — if an old or corrupt payload doesn't match, it's discarded and the seed data is reseeded rather than crashing.
-- **Session:** `sessionUserId` inside the same DB object keeps the login across reloads. `loginDemo()` provides one-click demo access.
-- **Roles:** trip membership is owner > editor > commenter > viewer; `canEdit()` gates mutations in the UI.
+- **Init:** `App` calls `init()` once on mount. It subscribes to `supabase.auth.onAuthStateChange` and hydrates the cache for the signed-in user (profiles, trips + members, suggestions, decisions, activity, notifications, published itineraries — all in one `Promise.all`). Forgetting to call `init()` means `me` is never set and every route falls through to the landing page — a real bug that shipped once.
+- **Write:** exported mutation functions (`createTrip`, `addStop`, `voteSuggestion`, …) update the cache synchronously and notify listeners (instant UI), then fire-and-forget the Supabase write. Trip internals (days/stops/expenses/fixed commitments) persist as JSONB on the trip row via `persistTripField`; failed writes surface a toast and the cache self-corrects on the next hydration.
+- **Ids:** top-level table ids (trips, suggestions, decisions, activity, notifications) are real UUIDs (`crypto.randomUUID`) because Postgres PK/FK columns are `uuid`. Ids inside JSONB blobs (stops, days, expenses, comments) keep readable prefixed ids from `seed.ts`'s `uid()`. Client-generated ids are sent with inserts so the cache and DB rows always agree.
+- **Session:** Supabase Auth persists the session (`persistSession` + `autoRefreshToken`); the store derives `sessionUserId` from the auth event and re-hydrates on every sign-in/sign-out.
+- **Seeding:** a new account with zero trips gets the Kerala demo trip on first login (`seedDemoFor`); My Trips also exposes a manual "🚀 Load demo trips" button (`addDemoTrips`).
+- **Roles:** trip membership is owner > editor > commenter > viewer; `canEdit()` gates mutations in the UI, and Postgres RLS enforces the same boundary server-side.
 
-Seed content ([`src/data/seed.ts`](../src/data/seed.ts)): 4 users (password `demo1234` for all), three fully-modelled trips (Kerala road trip with houseboat commitment, Goa long weekend, Rajasthan heritage circuit), suggestions, decisions, activity, notifications and two published itineraries — so every screen is populated on first run.
+Seed content ([`src/data/seed.ts`](../src/data/seed.ts)): realistic Indian demo trips (Kerala road trip with houseboat commitment, Goa long weekend, Rajasthan heritage circuit) — used to seed new accounts and power the manual demo button.
 
 ## 4. The engine
 
@@ -201,14 +209,14 @@ The architecture isolates its shortcuts behind small interfaces:
 
 | Today | Swap to | Touch points |
 |---|---|---|
-| `localStorage` store | Supabase/Firebase/REST backend | Only `store.ts` internals — mutation signatures can stay identical |
+| Supabase | Firebase / self-hosted REST | Only `store.ts` internals + `lib/supabase.ts` — mutation signatures can stay identical |
 | Open-Meteo autocomplete | Google Places / Mapbox | `LocationInput.tsx` only |
 | Haversine × 1.25 legs | OSRM/Google Directions real routing | Engine stays haversine by design (deterministic, offline-safe); map road shape already comes from `src/lib/routing.ts` (OSRM + `routePath`), whose geometry can later feed `MapRoute` |
 | OSRM map geometry | Google Directions / Mapbox Directions | `src/lib/routing.ts` only (callers like `TripMap.tsx` are unaffected) |
 | Open-Meteo weather | Any forecast provider | `src/lib/weather.ts` (`fetchDailyWeather`) |
 | Wikipedia geosearch POIs | Google Places nearby | `TripMap.tsx` Nearby-ideas panel + `src/lib/geocode.ts` |
 | OSM Overpass opening hours | Google Places details | `src/lib/geocode.ts` (`fetchOpeningHours`) |
-| Demo-grade password hash | Real auth | `store.ts` `login/signup`, drop `passwordHash` |
+| Supabase email/password auth | OAuth (Google, phone OTP) | `store.ts` `login/signup` + Auth page UI — RLS and data model unchanged |
 | Rule-based AI | LLM with engine grounding | `answerQuestion()` in `ai.ts` |
 | Placeholder payment buttons | Razorpay/etc. | Share tab CTAs + `premiumPriceInr` on `PublishedItinerary` |
 

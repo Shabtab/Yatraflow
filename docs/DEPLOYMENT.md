@@ -1,17 +1,28 @@
 # Deployment & Operations
 
-YatraFlow is a static SPA — no server, no database, no environment variables.
+YatraFlow is a static SPA backed by [Supabase](https://supabase.com) for accounts and data storage.
+
+## Supabase setup (one-time)
+
+1. Create a free project at [supabase.com](https://supabase.com).
+2. Apply the schema: paste `supabase/schema.sql` into the Supabase SQL editor (or set `PGCONN` and run `node scripts/apply-schema.mjs`). It creates the tables, indexes, RLS policies, the `handle_new_user` trigger and the `is_member`/`is_editor` security-definer helpers.
+3. Copy your project URL and **anon** key (Settings → API) — these are public by design; never expose the service_role key in a `VITE_` variable.
 
 ## Vercel (current setup)
 
 The app lives at **https://yatraflow-blond.vercel.app**, connected to `hasnaina955/Yatraflow`:
 
 - Every push to `main` auto-deploys production (~1 min).
-- Every PR gets its own preview deployment.
-- Settings (auto-detected Vite preset):
+- Every push to another branch (e.g. `test`) gets its own preview deployment, and `yatraflow-git-<branch>-….vercel.app` always serves the branch's latest build.
+- Environment variables (Project → Settings → Environment Variables) — required for **Preview** and **Production**:
+  - `VITE_SUPABASE_URL`
+  - `VITE_SUPABASE_ANON_KEY`
+- Build settings (auto-detected Vite preset):
   - Build command: `npm run build`
   - Output directory: `dist`
   - Install command: `npm ci`
+
+Preview deployments are protected by Vercel SSO by default — log in with your Vercel account to view them.
 
 ## Any other static host
 
@@ -19,21 +30,24 @@ The app lives at **https://yatraflow-blond.vercel.app**, connected to `hasnaina9
 npm run build      # produces dist/
 ```
 
-Upload `dist/` to Netlify / Cloudflare Pages / S3 / GitHub Pages. Because routing is **hash-based** (`#/trip/abc`), no rewrite rules or 404 fallbacks are needed — the server only ever serves `index.html`.
+Upload `dist/` to Netlify / Cloudflare Pages / S3 / GitHub Pages and set the two `VITE_` env vars at build time. Because routing is **hash-based** (`#/trip/abc`), no rewrite rules or 404 fallbacks are needed — the server only ever serves `index.html`.
 
 For GitHub Pages specifically, the Vite config already uses relative asset paths (`base: './'`), so a project-pages URL subpath works without changes.
 
 ## Runtime data notes
 
-- All user data is per-browser `localStorage` under key `yatraflow_db_v1`. There is no server state, so there's nothing to migrate on deploy.
-- The store validates loaded data shape (`isValidDb`) and reseeds demo content if the payload is missing or incompatible — schema changes that rename fields will silently reset users rather than crash. Bump the key (`yatraflow_db_v2` + code) when you *want* a hard reset instead.
+- All user data lives in Supabase Postgres; access is gated by Row Level Security. There is no client-side persistence beyond the auth session — the in-memory store re-hydrates on every login.
+- **Email confirmation** is a Supabase Auth setting (Authentication → Sign In / Providers). With it on, signups send a confirmation email (free tier: ~2/hour); the app detects the unconfirmed state and asks the user to check their inbox.
+- RLS gotcha: policies that query `trip_members` must go through the `security definer` helpers (`is_member`/`is_editor`) — a direct subquery inside a policy causes infinite recursion (Postgres `42P17`) and every request 500s.
+- Top-level table ids are UUIDs; the client generates them (`crypto.randomUUID`). JSONB-internal ids (stops/days/expenses) may be any string.
 - Map tiles load from CARTO CDNs; geocoding calls go to `geocoding-api.open-meteo.com`. Both are public/free with no keys; behind a strict CSP you'd need to allow those origins plus the unpkg worker script used by maplibre-gl.
 
 ## Release checklist
 
 1. `npx tsc --noEmit` — clean
 2. `npm run build` — succeeds
-3. Smoke-test locally: login → create trip → add stop → map renders → publish → copy from Explore
-4. Update `CHANGELOG.md`
-5. Commit, push to `main`, watch the Vercel deployment finish
-6. Verify the live URL serves the new build (hard-refresh; check bundle hash changed)
+3. Smoke-test locally: login → demo trips load → create trip (persists after reload) → add stop → map renders → publish → copy from Explore
+4. Check `vercel env ls` — `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` present for Production
+5. Update `CHANGELOG.md`
+6. Commit, merge to `main`, push, watch the Vercel deployment finish
+7. Verify the live URL serves the new build (hard-refresh; check bundle hash changed)
