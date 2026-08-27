@@ -214,7 +214,9 @@ async function seedDemoFor(userId: string): Promise<void> {
   const seedTrips = structuredClone(seedData.trips)
   for (const t of seedTrips) {
     const owner: TripMember = { userId, role: 'owner', joinedAt: Date.now() }
-    const trip: Trip = { ...structuredClone(t), members: [owner] }
+    // Regenerate the trip id: seed data carries stable display ids that are
+    // not valid UUIDs, but trips.id is a Postgres uuid column.
+    const trip: Trip = { ...structuredClone(t), id: uuid(), members: [owner] }
     const { error } = await supabase.from('trips').insert(tripToRow(trip, userId))
     if (error) { console.error('seed trip failed', error); continue }
     await supabase.from('trip_members').insert({ trip_id: trip.id, user_id: userId, role: 'owner', joined_at: Date.now() })
@@ -301,7 +303,7 @@ export function createTrip(ownerId: ID, input: NewTripInput, seedStops?: Itinera
   if (seedStops) days.forEach((d, i) => { if (seedStops[i]) d.stops = seedStops[i] })
 
   const trip: Trip = {
-    id: uid('trip'),
+    id: uuid(),
     ...input,
     fixedCommitments: input.fixedCommitments.map(fc => ({ ...fc, id: uid('fc') })),
     days, expenses: [], coverEmoji: input.coverEmoji ?? '🧭',
@@ -326,7 +328,7 @@ async function persistTrip(trip: Trip, ownerId: ID) {
 /** Duplicate any trip into the user's workspace (Copy This Trip / demo seeding). */
 export function duplicateTrip(source: Trip, ownerId: ID, makePublic?: boolean): Trip {
   const copy: Trip = structuredClone(source)
-  copy.id = uid('trip')
+  copy.id = uuid()
   copy.name = source.name.includes('(copy)') ? source.name : `${source.name} (copy)`
   copy.visibility = makePublic ? 'public' : 'private'
   copy.createdAt = Date.now(); copy.updatedAt = Date.now()
@@ -338,13 +340,6 @@ export function duplicateTrip(source: Trip, ownerId: ID, makePublic?: boolean): 
   commit()
   void persistTrip(copy, ownerId)
   return copy
-}
-
-export function ensureDemoTripsFor(userId: ID): void {
-  const hasAny = cache.trips.some(t => t.members?.some(m => m.userId === userId))
-  if (hasAny) return
-  const kerala = tripById('trip_kerala_demo')
-  if (kerala) duplicateTrip(kerala, userId)
 }
 
 export function deleteTrip(id: ID): void {
@@ -562,13 +557,16 @@ export function deleteExpense(tripId: ID, expenseId: ID): void {
 // ---------------- Suggestions / votes / comments ----------------
 
 export function addSuggestion(tripId: ID, s: Omit<StopSuggestion, 'id' | 'votes' | 'comments' | 'status' | 'createdAt' | 'tripId'>): void {
+  // Client generates the UUID so the cache and the DB row agree on the id
+  // (a server-generated default would diverge after the next hydration).
+  const id = uuid()
   const row = {
-    trip_id: tripId, day_index: s.dayIndex, proposed_by: s.proposedBy, title: s.title, category: s.category,
+    id, trip_id: tripId, day_index: s.dayIndex, proposed_by: s.proposedBy, title: s.title, category: s.category,
     location_name: s.locationName, lat: s.lat, lng: s.lng, description: s.description, visit_minutes: s.visitMinutes,
     estimated_entry_fee_inr: s.estimatedEntryFeeInr, estimated_transport_inr: s.estimatedTransportInr,
     votes: [], comments: [], status: 'open',
   }
-  cache.suggestions.push({ ...s, id: uid('sg'), tripId, votes: [], comments: [], status: 'open', createdAt: Date.now() })
+  cache.suggestions.push({ ...s, id, tripId, votes: [], comments: [], status: 'open', createdAt: Date.now() })
   const trip = tripById(tripId)
   if (trip && cache.sessionUserId) {
     addActivity(tripId, cache.sessionUserId, `suggested “${s.title}”`, `Day ${(s.dayIndex ?? 0) + 1}`)
@@ -633,12 +631,14 @@ export function declineSuggestion(tripId: ID, suggestionId: ID): void {
 
 export function addDecision(tripId: ID, d: Pick<TripDecision, 'question' | 'context' | 'options'>): void {
   if (!cache.sessionUserId) return
+  // Same cache/DB id agreement as addSuggestion.
+  const id = uuid()
   const row = {
-    trip_id: tripId, question: d.question, context: d.context,
+    id, trip_id: tripId, question: d.question, context: d.context,
     options: d.options.map(o => ({ ...o, id: uid('o') })),
     votes_by_user_id: {}, status: 'open', raised_by: cache.sessionUserId,
   }
-  cache.decisions.push({ ...d, id: uid('dc'), tripId, votesByUserId: {}, status: 'open', raisedBy: cache.sessionUserId, createdAt: Date.now(), options: row.options })
+  cache.decisions.push({ ...d, id, tripId, votesByUserId: {}, status: 'open', raisedBy: cache.sessionUserId, createdAt: Date.now(), options: row.options })
   addActivity(tripId, cache.sessionUserId, `raised decision “${d.question}”`, 'Decisions')
   commit()
   void supabase.from('decisions').insert(row)
@@ -703,7 +703,7 @@ export function activityFor(tripId: ID): ActivityEntry[] {
 }
 
 export function addActivity(tripId: ID, actorId: ID, verb: string, target?: string): void {
-  const entry: ActivityEntry = { id: uid('af'), tripId, actorId, verb, target, at: Date.now() }
+  const entry: ActivityEntry = { id: uuid(), tripId, actorId, verb, target, at: Date.now() }
   cache.activity.push(entry)
   void supabase.from('activity').insert({ id: entry.id, trip_id: tripId, actor_id: actorId, verb, target, at: entry.at })
 }
@@ -713,7 +713,7 @@ export function notificationsFor(userId: ID): Notification[] {
 }
 
 export function pushNotification(userId: ID, tripId: ID | undefined, text: string): void {
-  const n: Notification = { id: uid('nt'), userId, tripId, text, read: false, at: Date.now() }
+  const n: Notification = { id: uuid(), userId, tripId, text, read: false, at: Date.now() }
   cache.notifications.unshift(n)
   void supabase.from('notifications').insert({ id: n.id, user_id: userId, trip_id: tripId, text, read: false, at: n.at })
 }
@@ -731,6 +731,16 @@ export function markAllNotificationsRead(userId: ID): void {
 }
 
 // ---------------- utils ----------------
+
+/**
+ * Real UUID for top-level table ids (trips, suggestions, decisions, activity,
+ * notifications). Postgres PK/FK columns are `uuid` — the prefixed ids from
+ * seed.ts's uid() are only valid *inside* JSONB (stops, days, expenses, …).
+ */
+const uuid = (): string =>
+  typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `${Date.now().toString(16).padStart(12, '0')}-${Math.random().toString(16).slice(2, 6)}-4${Math.random().toString(16).slice(2, 5)}-a${Math.random().toString(16).slice(2, 5)}-${Math.random().toString(16).slice(2, 14).padEnd(12, '0')}`
 
 function diffDays(a: string, b: string): number {
   return Math.max(1, Math.round((new Date(b).getTime() - new Date(a).getTime()) / 86400000) + 1)
