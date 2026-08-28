@@ -2,6 +2,11 @@
 
 All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions are pre-1.0 MVP milestones.
 
+## [Unreleased]
+
+### Added
+- **Fuel economy for self-drive trips** — car and motorcycle trips can state a fuel economy (km per litre) at creation and in trip settings. When set, every leg is priced as `distance ÷ economy × ₹105/L` (indicative petrol price, surfaced wherever the estimate is shown) instead of the blended ₹/km table, so the transport budget reflects the actual vehicle. Persisted in `trips.fuel_economy_km_per_l` — `supabase/schema.sql` includes the column for fresh installs plus an idempotent `alter table … add column if not exists` for existing ones; the store probes for the column and degrades gracefully (session-only economy, default rates) on databases that haven't migrated yet.
+
 ## [0.15.1] — 2026-08-28
 
 ### Added

@@ -46,6 +46,8 @@ export interface LegContext {
   /** engine day start ("08:30") used as the default departure */
   dayStart: string
   transportMode: Trip['transportMode']
+  /** trip's stated fuel economy — sharpens the per-leg fuel estimate */
+  fuelEconomyKmL?: number
 }
 
 export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel, legContext }: {
@@ -78,7 +80,7 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel,
     if (legContext) {
       setLegState('loading')
       try {
-        const leg = await roadLegBetween(legContext.fromPoint, { lat: p.latitude, lng: p.longitude }, getAssumptions({ transportMode: legContext.transportMode }))
+        const leg = await roadLegBetween(legContext.fromPoint, { lat: p.latitude, lng: p.longitude }, getAssumptions({ transportMode: legContext.transportMode, fuelEconomyKmL: legContext.fuelEconomyKmL }))
         const perKm = getAssumptions({ transportMode: legContext.transportMode }).inrPerKm ?? 8
         setV(prev => {
           const depart = prev.departTime || legContext.dayStart
@@ -228,7 +230,9 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel,
               </Field>
             </div>
             {v.legDistanceKm > 0 && (
-              <div className="small muted">≈ {formatInr(v.legDistanceKm * (getAssumptions({ transportMode: legContext.transportMode }).inrPerKm ?? 8))} fuel/fare at {legContext.transportMode} rates</div>
+              <div className="small muted">
+                ≈ {formatInr(v.legDistanceKm * (getAssumptions({ transportMode: legContext.transportMode, fuelEconomyKmL: legContext.fuelEconomyKmL }).inrPerKm ?? 8))} fuel/fare at {legContext.transportMode} rates{legContext.fuelEconomyKmL ? ` · ${legContext.fuelEconomyKmL} km/L` : ''}
+              </div>
             )}
           </div>
         )}

@@ -13,7 +13,7 @@ import {
 import {
   computeHealth, computeTotals, simulateDay, originOf, getAssumptions, legKey,
   minutesToHM, hmToMinutes, formatInr, countHotelNights, predecessorOf, nextAfter,
-  collectWarnings,
+  collectWarnings, FUEL_PRICE_INR_PER_L, isFuelEconomyMode, parseFuelEconomyKmL,
 } from '../lib/engine'
 import type { LegEstimate, ScheduleWarning } from '../lib/engine'
 import { routePath } from '../lib/routing'
@@ -1163,6 +1163,7 @@ function BudgetTab({ trip, totals, editable }: { trip: Trip; totals: ReturnType<
   const pctUsed = Math.min(150, Math.round((totals.totalCostInr / Math.max(1, budgetTotal)) * 100))
   const cats = Object.entries(totals.byCategory).sort((a, b) => b[1] - a[1])
   const maxCatVal = cats.length ? cats[0][1] : 1
+  const A = getAssumptions(trip)
 
   return (
     <div className="two-col">
@@ -1170,7 +1171,7 @@ function BudgetTab({ trip, totals, editable }: { trip: Trip; totals: ReturnType<
         <div className="card">
           <h3>Where the money goes</h3>
           <p className="hint-text" style={{ margin: '4px 0 14px' }}>
-            All figures are estimates in INR. Transport is derived from demo-route distance × ₹{getAssumptions(trip).inrPerKm}/km for {trip.transportMode}.
+            All figures are estimates in INR. Transport is derived from route distance × ₹{A.inrPerKm}/km for {trip.transportMode}{A.kmPerLiter ? <> — your {A.kmPerLiter} km/L × ₹{A.fuelPricePerL}/L</> : ''}.
           </p>
           <div className="budget-bars">
             {cats.map(([c, v]) => (
@@ -1583,6 +1584,7 @@ function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boolean })
     destinations: [...trip.destinations],
     travellers: trip.travellers, budget: trip.budgetPerPersonInr,
     transportMode: trip.transportMode, travelStyle: trip.travelStyle,
+    fuelEconomy: trip.fuelEconomyKmL?.toString() ?? '',
   })
   const [startCoords, setStartCoords] = useState<LatLngPoint | null>(trip.startLocationCoords ?? null)
   const [destCoords, setDestCoords] = useState<(LatLngPoint | null)[]>(trip.destinationCoords ?? [])
@@ -1666,6 +1668,12 @@ function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boolean })
           </select>
         </Field>
       </div>
+      {isFuelEconomyMode(f.transportMode) && (
+        <Field label="Fuel economy (km per litre)" hint={`Optional — transport cost becomes route distance ÷ economy × ₹${FUEL_PRICE_INR_PER_L}/L (indicative petrol price) instead of the default ₹/km rate.`}>
+          <input type="number" min={2} max={80} step={0.1} className="input" disabled={!editable} value={f.fuelEconomy}
+            onChange={e => setF(x => ({ ...x, fuelEconomy: e.target.value }))} placeholder="e.g. 18" />
+        </Field>
+      )}
       {editable && (
         <button className="btn btn-primary btn-sm" onClick={() => {
           updateTrip(trip.id, {
@@ -1676,6 +1684,7 @@ function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boolean })
             travellers: Math.max(1, f.travellers),
             budgetPerPersonInr: Math.max(0, f.budget),
             transportMode: f.transportMode, travelStyle: f.travelStyle,
+            fuelEconomyKmL: isFuelEconomyMode(f.transportMode) ? parseFuelEconomyKmL(f.fuelEconomy) : undefined,
           })
           toast('Trip settings updated')
         }}>Save settings</button>
@@ -1814,5 +1823,6 @@ function legContextFor(state: { mode: 'add'; dayIndex: number } | { mode: 'edit'
     nextName: nxt?.name,
     dayStart: getAssumptions(trip).dayStart,
     transportMode: trip.transportMode,
+    fuelEconomyKmL: trip.fuelEconomyKmL,
   }
 }

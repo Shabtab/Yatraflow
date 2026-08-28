@@ -11,6 +11,10 @@ export interface EngineAssumptions {
   dayStart: string
   dayEnd: string
   inrPerKm?: number
+  /** user-stated fuel economy (km/L) — present only when it drives inrPerKm */
+  kmPerLiter?: number
+  /** indicative fuel price behind the economy-derived inrPerKm */
+  fuelPricePerL?: number
 }
 
 const MODE_SPEED: Record<string, number> = {
@@ -20,10 +24,35 @@ const MODE_COST_PER_KM: Record<string, number> = {
   car: 9, motorcycle: 4.5, taxi: 16, bus: 2.2, train: 1.6, flight: 6.5, mixed: 8,
 }
 
+/**
+ * Indicative all-India petrol price (₹/litre) used when a trip states its fuel
+ * economy. Deliberately surfaced (Budget tab, field hints, StopEditor) — never
+ * presented as live data, per the transparency promise.
+ */
+export const FUEL_PRICE_INR_PER_L = 105
+
+/** Modes where the vehicle's own fuel economy meaningfully sets the ₹/km rate. */
+const FUEL_ECONOMY_MODES = new Set<string>(['car', 'motorcycle'])
+
+/** True when the trip mode benefits from a user-stated fuel economy. */
+export function isFuelEconomyMode(mode: string): boolean {
+  return FUEL_ECONOMY_MODES.has(mode)
+}
+
+/**
+ * Parse a fuel-economy form input into a sane km/L number, or undefined when
+ * blank/implausible (cars do ~12–25 km/L, bikes ~25–45; anything outside
+ * 2–80 is a typo, not a vehicle).
+ */
+export function parseFuelEconomyKmL(raw: string | number | undefined | null): number | undefined {
+  const n = typeof raw === 'number' ? raw : Number(String(raw ?? '').trim())
+  return Number.isFinite(n) && n >= 2 && n <= 80 ? n : undefined
+}
+
 /** Default planning assumptions shown to users wherever we estimate. */
-export function getAssumptions(trip: Pick<Trip, 'transportMode'>): EngineAssumptions {
+export function getAssumptions(trip: Pick<Trip, 'transportMode' | 'fuelEconomyKmL'>): EngineAssumptions {
   const mode = trip.transportMode
-  return {
+  const base: EngineAssumptions = {
     mode,
     avgSpeedKmph: MODE_SPEED[mode] ?? 40,
     bufferMinutesPerStop: 15,
@@ -32,6 +61,18 @@ export function getAssumptions(trip: Pick<Trip, 'transportMode'>): EngineAssumpt
     dayEnd: '20:00',
     inrPerKm: MODE_COST_PER_KM[mode],
   }
+  // A stated fuel economy beats the blended ₹/km table for self-drive modes:
+  // litres burned = distance ÷ economy, so ₹/km = price-per-litre ÷ economy.
+  const economy = trip.fuelEconomyKmL
+  if (economy && economy > 0 && FUEL_ECONOMY_MODES.has(mode)) {
+    return {
+      ...base,
+      kmPerLiter: economy,
+      fuelPricePerL: FUEL_PRICE_INR_PER_L,
+      inrPerKm: Math.round((FUEL_PRICE_INR_PER_L / economy) * 100) / 100,
+    }
+  }
+  return base
 }
 
 export function minutesToHM(mins: number): string {
@@ -201,7 +242,7 @@ export interface StopLegEstimate extends LegEstimate {
 export function estimateLeg(
   from: { lat: number; lng: number },
   to: { lat: number; lng: number },
-  trip: Pick<Trip, 'transportMode'>,
+  trip: Pick<Trip, 'transportMode' | 'fuelEconomyKmL'>,
 ): StopLegEstimate {
   const A = getAssumptions(trip)
   const est = legBetween(from, to, A)

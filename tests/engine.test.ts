@@ -8,6 +8,7 @@ import {
   addMinutesToClock, hmToMinutes, legBetween, simulateDay,
   computeTotals, computeHealth, collectWarnings, countHotelNights, originOf, firstFixedPoint,
   getAssumptions, formatInr, scoreWarnings, predecessorOf, nextAfter, estimateLeg,
+  FUEL_PRICE_INR_PER_L, parseFuelEconomyKmL,
 } from '../src/lib/engine'
 import { seedData } from '../src/data/seed'
 import type { Trip, ItineraryStop } from '../src/data/types'
@@ -39,6 +40,59 @@ describe('assumptions', () => {
     expect(car.dayStart).toBe('08:30')
     // unknown modes fall back gracefully instead of NaN-poisoning the plan
     expect(getAssumptions({ transportMode: 'hoverboard' as never }).avgSpeedKmph).toBe(40)
+  })
+  it('derives ₹/km from stated fuel economy for self-drive modes', () => {
+    const car = getAssumptions({ transportMode: 'car', fuelEconomyKmL: 15 })
+    expect(car.kmPerLiter).toBe(15)
+    expect(car.fuelPricePerL).toBe(FUEL_PRICE_INR_PER_L)
+    expect(car.inrPerKm).toBeCloseTo(FUEL_PRICE_INR_PER_L / 15, 6)
+    const bike = getAssumptions({ transportMode: 'motorcycle', fuelEconomyKmL: 35 })
+    expect(bike.kmPerLiter).toBe(35)
+    expect(bike.inrPerKm).toBeCloseTo(FUEL_PRICE_INR_PER_L / 35, 6)
+  })
+  it('ignores fuel economy for modes without a fuel tank', () => {
+    const train = getAssumptions({ transportMode: 'train', fuelEconomyKmL: 15 })
+    expect(train.kmPerLiter).toBeUndefined()
+    expect(train.inrPerKm).toBe(1.6)
+  })
+  it('falls back to the mode table when economy is missing or nonsensical', () => {
+    expect(getAssumptions({ transportMode: 'car' }).inrPerKm).toBe(9)
+    expect(getAssumptions({ transportMode: 'car', fuelEconomyKmL: 0 }).inrPerKm).toBe(9)
+    expect(getAssumptions({ transportMode: 'car', fuelEconomyKmL: -5 }).inrPerKm).toBe(9)
+  })
+})
+
+describe('fuel-economy-aware costs', () => {
+  it('estimateLeg prices legs from the stated economy', () => {
+    const a = { lat: 22.5726, lng: 88.3639 }, b = { lat: 21.6627, lng: 87.7833 }
+    const leg = estimateLeg(a, b, { transportMode: 'car', fuelEconomyKmL: 20 })
+    expect(leg.costInr).toBeCloseTo(leg.distanceKm * (FUEL_PRICE_INR_PER_L / 20), 4)
+  })
+  it('computeTotals transport category follows the stated economy', () => {
+    const eco = { ...structuredClone(keralaTrip), fuelEconomyKmL: 30 }
+    const t = computeTotals(eco)
+    const A = getAssumptions(eco)
+    let legsCost = 0
+    eco.days.forEach(d => {
+      const sim = simulateDay(d, eco, originOf(eco, d.index), d.index)
+      sim.legs.forEach(l => { legsCost += l.distanceKm * (A.inrPerKm ?? 0) })
+    })
+    // byCategory['transport'] = distance-derived legs + explicit transport expenses
+    const explicit = eco.expenses
+      .filter(e => e.category === 'transport')
+      .reduce((s, e) => s + (e.perPerson ? e.amountInr * eco.travellers : e.amountInr), 0)
+    expect(t.byCategory['transport']).toBeCloseTo(legsCost + explicit, 4)
+    // 30 km/L → ₹3.5/km, well under the blended ₹9/km default (same expenses both sides)
+    const full = computeTotals(structuredClone(keralaTrip))
+    expect(t.byCategory['transport'] ?? 0).toBeLessThan(full.byCategory['transport'] ?? 0)
+  })
+  it('parseFuelEconomyKmL accepts only sane km/L values', () => {
+    expect(parseFuelEconomyKmL('18')).toBe(18)
+    expect(parseFuelEconomyKmL('25.5')).toBe(25.5)
+    expect(parseFuelEconomyKmL('')).toBeUndefined()
+    expect(parseFuelEconomyKmL('0')).toBeUndefined()
+    expect(parseFuelEconomyKmL('200')).toBeUndefined()
+    expect(parseFuelEconomyKmL('abc')).toBeUndefined()
   })
 })
 

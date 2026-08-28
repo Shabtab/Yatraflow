@@ -3,6 +3,7 @@ import { useState } from 'react'
 import type { FixedCommitment, LatLngPoint, TransportMode, TravelStyle } from '../data/types'
 import { TRANSPORT_MODES, TRAVEL_STYLES } from '../data/types'
 import { useDb, currentUser, createTrip } from '../store/store'
+import { FUEL_PRICE_INR_PER_L, isFuelEconomyMode, parseFuelEconomyKmL } from '../lib/engine'
 import { Field, Chip, toast } from '../components/ui'
 import { LocationInput } from '../components/LocationInput'
 import type { PlaceHit } from '../components/LocationInput'
@@ -29,6 +30,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
     name: '', startLocation: '',
     startDate: '', endDate: '', travellers: 2,
     transportMode: 'car' as TransportMode,
+    fuelEconomy: '',
     budgetPerPersonInr: 15000,
     travelStyle: 'balanced' as TravelStyle,
     coverEmoji: '🧭',
@@ -86,6 +88,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
       startDate: f.startDate, endDate: f.endDate,
       travellers: f.travellers,
       transportMode: f.transportMode,
+      fuelEconomyKmL: isFuelEconomyMode(f.transportMode) ? parseFuelEconomyKmL(f.fuelEconomy) : undefined,
       budgetPerPersonInr: f.budgetPerPersonInr,
       travelStyle: f.travelStyle,
       fixedCommitments: commitments.filter(x => x.title.trim()),
@@ -186,6 +189,12 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
                 {TRANSPORT_MODES.map(m => <option key={m} value={m}>{cap(m)}</option>)}
               </select>
             </Field>
+            {isFuelEconomyMode(f.transportMode) && (
+              <Field label="Fuel economy (km per litre)" hint={`Optional — makes fuel costs accurate: route distance ÷ economy × ₹${FUEL_PRICE_INR_PER_L}/L (indicative petrol price). Cars typically do 12–25 km/L, bikes 25–45.`}>
+                <input className="input" type="number" min={2} max={80} step={0.1} value={f.fuelEconomy}
+                  onChange={e => setF(x => ({ ...x, fuelEconomy: e.target.value }))} placeholder="e.g. 18" />
+              </Field>
+            )}
             <Field label="Travel style">
               <select className="select" value={f.travelStyle} onChange={e => setF(x => ({ ...x, travelStyle: e.target.value as TravelStyle }))}>
                 {TRAVEL_STYLES.map(s => <option key={s} value={s}>{cap(s)}</option>)}

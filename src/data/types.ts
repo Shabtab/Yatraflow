@@ -128,6 +128,12 @@ export interface Trip {
   endDate: string
   travellers: number
   transportMode: TransportMode
+  /**
+   * Optional user-stated fuel economy (km per litre) for self-drive modes.
+   * When set on a car/motorcycle trip the engine derives fuel ₹/km from it
+   * (distance ÷ economy × indicative ₹/L) instead of the blended mode table.
+   */
+  fuelEconomyKmL?: number
   budgetPerPersonInr: number
   travelStyle: TravelStyle
   fixedCommitments: FixedCommitment[]
