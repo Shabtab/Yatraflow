@@ -9,6 +9,7 @@ import {
   computeTotals, computeHealth, collectWarnings, countHotelNights, originOf, firstFixedPoint,
   getAssumptions, formatInr, scoreWarnings, predecessorOf, nextAfter, estimateLeg,
   FUEL_PRICE_INR_PER_L, parseFuelEconomyKmL, isImplausibleFuelEconomy, parseFuelPricePerL,
+  isRoundTrip, lastActiveStopPoint,
 } from '../src/lib/engine'
 import { seedData } from '../src/data/seed'
 import type { Trip, ItineraryStop } from '../src/data/types'
@@ -77,6 +78,9 @@ describe('fuel-economy-aware costs', () => {
       const sim = simulateDay(d, eco, originOf(eco, d.index), d.index)
       sim.legs.forEach(l => { legsCost += l.distanceKm * (A.inrPerKm ?? 0) })
     })
+    // round trip default: the drive back to the start is priced like any leg
+    const turnaround = lastActiveStopPoint(eco)
+    if (turnaround) legsCost += legBetween(turnaround, firstFixedPoint(eco), A).distanceKm * (A.inrPerKm ?? 0)
     // byCategory['transport'] = distance-derived legs + explicit transport expenses
     const explicit = eco.expenses
       .filter(e => e.category === 'transport')
@@ -119,6 +123,22 @@ describe('fuel-economy-aware costs', () => {
     expect(parseFuelPricePerL('10')).toBeUndefined()    // implausible in any state
     expect(parseFuelPricePerL('300')).toBeUndefined()   // implausible in any state
     expect(parseFuelPricePerL('abc')).toBeUndefined()
+  })
+  it('isRoundTrip defaults on for self-drive modes and off otherwise', () => {
+    expect(isRoundTrip({ transportMode: 'car' })).toBe(true)
+    expect(isRoundTrip({ transportMode: 'motorcycle' })).toBe(true)
+    expect(isRoundTrip({ transportMode: 'car', roundTrip: false })).toBe(false)
+    expect(isRoundTrip({ transportMode: 'train' })).toBe(false)
+  })
+  it('round trips price the drive back to the start', () => {
+    const tRound = computeTotals(structuredClone(keralaTrip))
+    const tOneway = computeTotals({ ...structuredClone(keralaTrip), roundTrip: false })
+    const extraKm = tRound.totalDistanceKm - tOneway.totalDistanceKm
+    expect(extraKm).toBeGreaterThan(0)
+    // the extra distance is priced exactly at the mode rate (₹9/km for car)
+    expect(tRound.byCategory['transport']! - tOneway.byCategory['transport']!).toBeCloseTo(extraKm * 9, 0)
+    // and the return drive also adds travel time
+    expect(tRound.totalTravelMinutes).toBeGreaterThan(tOneway.totalTravelMinutes)
   })
 })
 

@@ -32,6 +32,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
     transportMode: 'car' as TransportMode,
     fuelEconomy: '',
     fuelPrice: '',
+    roundTrip: true,
     budgetPerPersonInr: 15000,
     travelStyle: 'balanced' as TravelStyle,
     coverEmoji: '🧭',
@@ -91,6 +92,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
       transportMode: f.transportMode,
       fuelEconomyKmL: isFuelEconomyMode(f.transportMode) ? parseFuelEconomyKmL(f.fuelEconomy) : undefined,
       fuelPricePerL: isFuelEconomyMode(f.transportMode) ? parseFuelPricePerL(f.fuelPrice) : undefined,
+      roundTrip: isFuelEconomyMode(f.transportMode) ? f.roundTrip : undefined,
       budgetPerPersonInr: f.budgetPerPersonInr,
       travelStyle: f.travelStyle,
       fixedCommitments: commitments.filter(x => x.title.trim()),
@@ -192,6 +194,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
               </select>
             </Field>
             {isFuelEconomyMode(f.transportMode) && (
+              <>
               <div className="form-row">
                 <Field label="Fuel economy (km per litre)" hint="Optional — makes fuel costs accurate: route distance ÷ economy × price per litre. Cars typically do 12–25 km/L, bikes 25–45.">
                   <input className="input" type="number" min={2} max={80} step={0.1} value={f.fuelEconomy}
@@ -207,6 +210,12 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
                     onChange={e => setF(x => ({ ...x, fuelPrice: e.target.value }))} placeholder="e.g. 105.5" />
                 </Field>
               </div>
+              <div className="chip-row" style={{ margin: '4px 0 12px' }}>
+                <Chip active={f.roundTrip} onClick={() => setF(x => ({ ...x, roundTrip: !x.roundTrip }))}>
+                  Round trip — return to start
+                </Chip>
+              </div>
+              </>
             )}
             <Field label="Travel style">
               <select className="select" value={f.travelStyle} onChange={e => setF(x => ({ ...x, travelStyle: e.target.value as TravelStyle }))}>

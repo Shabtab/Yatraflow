@@ -61,6 +61,15 @@ export function isImplausibleFuelEconomy(mode: string, economy: number | undefin
 }
 
 /**
+ * True when the route should also price the drive back to its start. Defaults
+ * to on for self-drive modes (the overwhelmingly common case) — one-way drives
+ * opt out explicitly via trip.roundTrip === false.
+ */
+export function isRoundTrip(trip: Pick<Trip, 'transportMode' | 'roundTrip'>): boolean {
+  return FUEL_ECONOMY_MODES.has(trip.transportMode) && trip.roundTrip !== false
+}
+
+/**
  * Parse a fuel-price form input (₹/L) into a sane number, or undefined when
  * blank/implausible. A generous 50–250 band covers petrol, diesel and CNG
  * across Indian states without accepting typos.
@@ -431,6 +440,18 @@ export function firstFixedPoint(trip: Trip): { lat: number; lng: number } {
   return { lat: 9.9312, lng: 76.2673 } // Kochi fallback
 }
 
+/** Last active stop across the trip's days — the turnaround point of the route. */
+export function lastActiveStopPoint(trip: Trip): { lat: number; lng: number } | null {
+  for (let d = trip.days.length - 1; d >= 0; d--) {
+    const stops = trip.days[d]?.stops.filter(s => s.status !== 'rejected') ?? []
+    if (stops.length) {
+      const last = [...stops].sort((a, b) => a.orderInDay - b.orderInDay)[stops.length - 1]
+      return { lat: last.lat, lng: last.lng }
+    }
+  }
+  return null
+}
+
 // ---------------- Totals ----------------
 
 export interface TripTotals {
@@ -457,6 +478,20 @@ export function computeTotals(trip: Trip, legCorrections?: Record<string, LegEst
     // per-leg fuel/fare cost derived from distance
     sim.legs.forEach(l => { transportKmCost += l.distanceKm * (A.inrPerKm ?? 8) })
   })
+
+  // Round trip: the drive back to the start burns fuel too, so it belongs in
+  // the budget. Priced with the same assumptions and refined by the OSRM
+  // correction for that leg when the UI has fetched one.
+  if (isRoundTrip(trip)) {
+    const turnaround = lastActiveStopPoint(trip)
+    if (turnaround) {
+      const home = firstFixedPoint(trip)
+      const ret = legCorrections?.[legKey(turnaround, home)] ?? legBetween(turnaround, home, A)
+      distanceKm += ret.distanceKm
+      travelMinutes += ret.durationMinutes
+      transportKmCost += ret.distanceKm * (A.inrPerKm ?? 8)
+    }
+  }
 
   let sum = 0, essential = 0, optional = 0
   const byCategory: Record<string, number> = {}

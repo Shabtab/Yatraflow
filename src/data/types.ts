@@ -140,6 +140,12 @@ export interface Trip {
    * unset — pump prices vary ~₹94–110/L across states, so this beats averages.
    */
   fuelPricePerL?: number
+  /**
+   * True when the self-drive route returns to its starting point (the common
+   * case). Adds the final-destination → start leg to distance, travel time and
+   * fuel cost. Defaults to true for car/motorcycle; one-way drives set false.
+   */
+  roundTrip?: boolean
   budgetPerPersonInr: number
   travelStyle: TravelStyle
   fixedCommitments: FixedCommitment[]
