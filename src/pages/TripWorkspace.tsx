@@ -753,10 +753,10 @@ function nextWaypointStop(a: { name: string; point: { lat: number; lng: number }
 /** One-click nearby-POI stop for an empty day. */
 function poiQuickStop(h: PlaceHit): Omit<ItineraryStop, 'id' | 'orderInDay'> {
   return {
-    title: h.name, category: 'sightseeing', locationName: h.description ?? h.name,
+    title: h.name, category: (h.category as ItineraryStop['category']) ?? 'sightseeing', locationName: h.description ?? h.name,
     lat: h.latitude, lng: h.longitude,
     description: h.description ?? '', notes: 'Nearby idea',
-    visitMinutes: 60, openTime: '', closeTime: '',
+    visitMinutes: h.category === 'food' ? 45 : h.category === 'hotel' ? 0 : 60, openTime: '', closeTime: '',
     entryFeeInrPerPerson: 0, transportCostInrTotal: 0,
     priority: 'nice-to-have', sourceUrl: '', status: 'suggested',
   }
@@ -886,8 +886,9 @@ function MapTab({ trip, editable, applyChange }: {
   const [pois, setPois] = useState<PlaceHit[]>([])
   const [loadingPois, setLoadingPois] = useState(false)
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set())
-  // pending "add from map" — pre-fills the stop editor with the POI's details
-  const [poiDraft, setPoiDraft] = useState<{ hit: PlaceHit; dayIndex: number } | null>(null)
+  // pending "add from map / nearby" — pick a day, then confirm
+  const [poiDraft, setPoiDraft] = useState<{ hit: PlaceHit } | null>(null)
+  const [pickDay, setPickDay] = useState<number>(0)
 
   const existingNames = useMemo(() => {
     const names = new Set<string>()
@@ -927,13 +928,13 @@ function MapTab({ trip, editable, applyChange }: {
       day.stops.push({
         id: 'pending_' + Math.random().toString(36).slice(2),
         title: hit.name,
-        category: 'sightseeing',
+        category: (hit.category as ItineraryStop['category']) ?? 'sightseeing',
         locationName: hit.description ?? hit.name,
         lat: hit.latitude,
         lng: hit.longitude,
         description: hit.description ?? '',
-        notes: 'Discovered via map suggestions (Wikipedia)',
-        visitMinutes: 60,
+        notes: 'Added from nearby suggestions',
+        visitMinutes: hit.category === 'food' ? 45 : hit.category === 'hotel' ? 0 : 60,
         openTime: '', closeTime: '',
         entryFeeInrPerPerson: 0,
         transportCostInrTotal: 0,
@@ -947,18 +948,23 @@ function MapTab({ trip, editable, applyChange }: {
     toast(`“${hit.name}” added to Day ${dayIndex + 1}`)
   }
 
+  function openAddModal(hit: PlaceHit) {
+    setPickDay(trip.days[0]?.index ?? 0)
+    setPoiDraft({ hit })
+  }
+
   const dayOptions = trip.days.map(d => ({ index: d.index }))
 
   return (
     <div>
-      <TripMap trip={trip} nearbyPois={pois} onAddNearby={editable ? (hit) => setPoiDraft({ hit, dayIndex: trip.days[0]?.index ?? 0 }) : undefined} />
+      <TripMap trip={trip} nearbyPois={pois} onAddNearby={editable ? (hit) => openAddModal(hit) : undefined} />
       <div className="card" style={{ marginTop: 14 }}>
         <div className="row-between">
           <h3 style={{ margin: 0 }}>💡 Nearby ideas</h3>
           <span className="small muted">{loadingPois ? 'searching…' : `${pois.length} found near your route`}</span>
         </div>
         <p className="hint-text" style={{ margin: '4px 0 10px' }}>
-          Real points of interest around your route, sourced from Wikipedia. Add one straight to a day.
+          Stoppage points around your route — attractions, restaurants, hotels, fuel pumps and more (Mappls, with keyless fallback). Add one straight to a day.
         </p>
         {!loadingPois && pois.length === 0 && (
           <p className="muted small">No nearby suggestions found — add stops in the Timeline and ideas will appear here.</p>
@@ -974,11 +980,12 @@ function MapTab({ trip, editable, applyChange }: {
                 <div className="poi-info">
                   <div className="poi-name">{hit.name}</div>
                   {hit.description && <div className="poi-desc small muted">{hit.description}</div>}
+                  {hit.category && <div className="poi-cat small">{labelCatText(String(hit.category))}</div>}
                 </div>
                 {editable && (
                   added
                     ? <span className="chip chip-teal">✓ Added</span>
-                    : <button className="btn btn-primary btn-sm" onClick={() => setPoiDraft({ hit, dayIndex: trip.days[0]?.index ?? 0 })}>+ Add</button>
+                    : <button className="btn btn-primary btn-sm" onClick={() => openAddModal(hit)}>+ Add</button>
                 )}
               </div>
             )
@@ -986,7 +993,7 @@ function MapTab({ trip, editable, applyChange }: {
         </div>
       </div>
 
-      {/* pick-a-day modal for adding a suggested POI */}
+      {/* pick-a-day modal for adding a suggested POI — explicit confirm */}
       <Modal open={!!poiDraft} onClose={() => setPoiDraft(null)} title={`Add “${poiDraft?.hit.name ?? ''}”`}>
         {poiDraft && (
           <div>
@@ -994,13 +1001,19 @@ function MapTab({ trip, editable, applyChange }: {
             <Field label="Add to which day?">
               <select
                 className="select"
-                defaultValue={poiDraft.dayIndex}
-                onChange={e => { addPoiToDay(poiDraft.hit, Number(e.target.value)); setPoiDraft(null) }}
+                value={pickDay}
+                onChange={e => setPickDay(Number(e.target.value))}
               >
                 {dayOptions.map(d => <option key={d.index} value={d.index}>Day {d.index + 1}</option>)}
               </select>
             </Field>
             <p className="hint-text">You can fine-tune duration, fees and timings in the Timeline afterwards.</p>
+            <div style={{ display: 'flex', gap: 9, justifyContent: 'flex-end', marginTop: 8 }}>
+              <button className="btn btn-outline" onClick={() => setPoiDraft(null)}>Cancel</button>
+              <button className="btn btn-primary" onClick={() => { addPoiToDay(poiDraft.hit, pickDay); setPoiDraft(null) }}>
+                Add to timeline
+              </button>
+            </div>
           </div>
         )}
       </Modal>
