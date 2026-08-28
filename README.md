@@ -17,7 +17,7 @@ YatraFlow is a collaborative travel-planning web app built India-first: real mul
 - **Leg-aware stop insertion** — picking a place auto-detects your current location and next destination, fills real road distance/travel time/fuel cost, and computes arrival from a departure time you can adjust
 - **Location autocomplete** on every location input — [Mappls](https://about.mappls.com/api/) (MapmyIndia) suggestions when `VITE_MAPPLS_KEY` is configured, with keyless fallbacks to the free [Open-Meteo geocoding API](https://open-meteo.com/en/docs/geocoding-api) + Wikipedia. Mappls calls are proxied same-origin (Vercel rewrite in production, Vite dev proxy locally) because their APIs send no CORS headers. Picking a suggestion pins the stop to real coordinates so maps and distance estimates stay accurate.
 - **Context-aware opening hours** — the stop editor only shows open/close times where they make sense (POIs, temples, food, hotels…), never for a whole city/town.
-- **Stoppage-point suggestions** — the Map tab's nearby ideas and empty-day suggestions cover attractions, restaurants, hotels, fuel pumps and ATMs (Mappls Nearby), each added as its matching stop type.
+- **Stoppage-point suggestions** — the Map tab's nearby ideas and empty-day suggestions cover attractions, restaurants, hotels, fuel pumps and ATMs from live OpenStreetMap, Wikipedia and Mappls data — every pin at a **verified coordinate** (never a guessed same-name match in the wrong state), anchored on stops spread along your route, each added as its matching stop type.
 - **Interactive map** (MapLibre via [mapcn](https://github.com/AnmolSaini16/mapcn)) — numbered stop pins per day, colour-coded route lines, auto-fit bounds, day filter chips, light/dark basemaps
 
 ### Estimate (transparently)
@@ -43,7 +43,7 @@ YatraFlow is a collaborative travel-planning web app built India-first: real mul
 ### Enrich on the map
 - **Real road routing**: route lines between stops follow actual roads via the free OSRM demo server, with a silent straight-line fallback when it's unreachable — planning never blocks on the network
 - **Weather along the route**: per-day forecasts from Open-Meteo (free, keyless) — icon, min/max °C and rain chance, with wet days flagged and a nudge to reshuffle weather-sensitive stops
-- **Nearby POI ideas**: real points of interest within 10 km of your route from Wikipedia geosearch, with a "+ Add" button that drops them into the timeline through the normal impact-preview flow
+- **Nearby POI ideas**: real points of interest within 10 km of your route from OpenStreetMap (Overpass), Wikipedia geosearch and Mappls — verified coordinates only, with a "+ Add" button that drops them into the timeline through the normal impact-preview flow
 
 ---
 

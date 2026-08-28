@@ -1,3 +1,5 @@
+import { haversineKm } from './geo'
+
 // ============ Place search ============
 // Sources merged into one result list:
 //  - Mappls autosuggest (when VITE_MAPPLS_KEY is set) → India's best place/POI
@@ -185,60 +187,265 @@ const NEARBY_CATEGORIES = [
   { kw: 'atm', label: 'ATM', cat: 'shopping' },
 ]
 
+// ============ Nearby stoppage points ============
+// Verified coordinates only. Mappls' free-tier Nearby API lists great Indian
+// POIs but returns NO coordinates — pins used to be guessed by a global name
+// search, which often landed on a same-named place in a different state (the
+// "odd suggestions" bug). The engines below all pin real, nearby positions:
+//  1. OpenStreetMap via Overpass — restaurants, hotels, fuel, ATMs, attractions
+//  2. Wikipedia geosearch — attractions, junk-filtered
+//  3. Mappls Nearby — India-rich listings, kept only when a same-named place
+//     is confirmed near the anchor (Photon geocoder, proximity-biased)
+
+/** Distance in meters between a hit and the nearest route anchor. */
+function distToNearest(h: PlaceHit, anchors: { lat: number; lng: number }[]): number {
+  return Math.min(...anchors.map(a => haversineKm(h.latitude, h.longitude, a.lat, a.lng) * 1000))
+}
+
+interface OverpassElement {
+  type: 'node' | 'way' | 'relation'
+  id: number
+  lat?: number
+  lon?: number
+  center?: { lat: number; lon: number }
+  tags?: Record<string, string>
+}
+
+function classifyOsmTags(tags: Record<string, string>): { cat: string; label: string } {
+  const a = tags.amenity
+  const t = tags.tourism
+  if (a === 'fuel') return { cat: 'transport-hub', label: 'Petrol pump' }
+  if (a === 'atm') return { cat: 'shopping', label: 'ATM' }
+  if (a === 'restaurant' || a === 'fast_food' || a === 'food_court') return { cat: 'food', label: 'Restaurant' }
+  if (a === 'cafe' || a === 'ice_cream') return { cat: 'food', label: 'Cafe' }
+  if (t === 'museum') return { cat: 'museum', label: 'Museum' }
+  if (t === 'hotel' || t === 'guest_house' || t === 'hostel' || t === 'resort' || t === 'motel') return { cat: 'hotel', label: 'Hotel' }
+  if (t) return { cat: 'sightseeing', label: 'Attraction' }
+  if (tags.historic) return { cat: 'sightseeing', label: 'Historic site' }
+  return { cat: 'sightseeing', label: 'Place' }
+}
+
+const OVERPASS_NEARBY_SELECTORS = [
+  'amenity~"^(restaurant|cafe|fast_food|food_court|ice_cream)$"',
+  'tourism~"^(hotel|guest_house|hostel|resort|motel)$"',
+  'amenity=fuel',
+  'amenity=atm',
+  'tourism~"^(attraction|viewpoint|zoo|theme_park|aquarium|museum)$"',
+  'historic~"^(monument|fort|castle|memorial|archaeological_site)$"',
+]
+
+async function fetchOverpass(query: string): Promise<OverpassElement[]> {
+  for (const endpoint of OVERPASS_ENDPOINTS) {
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'data=' + encodeURIComponent(query),
+        signal: AbortSignal.timeout(20000),
+      })
+      if (!res.ok) continue
+      const data = (await res.json()) as { elements?: OverpassElement[] }
+      return data.elements ?? []
+    } catch { /* try next mirror */ }
+  }
+  return []
+}
+
+async function searchNearbyOverpass(anchors: { lat: number; lng: number }[], radiusM: number, count: number): Promise<PlaceHit[]> {
+  const radius = Math.min(Math.max(radiusM, 2000), 20000)
+  const stmts = OVERPASS_NEARBY_SELECTORS.flatMap(sel =>
+    anchors.map(a => `nwr(around:${radius},${a.lat},${a.lng})[${sel}];`)
+  ).join('')
+  const elements = await fetchOverpass(`[out:json][timeout:20];(${stmts});out center tags ${Math.max(60, count * 6)};`)
+  const byName = new Map<string, PlaceHit>() // of same-named POIs keep only the nearest
+  for (const el of elements) {
+    const tags = el.tags ?? {}
+    const name = tags.name?.trim()
+    if (!name) continue // unnamed POIs are useless as suggestions
+    const lat = el.lat ?? el.center?.lat
+    const lng = el.lon ?? el.center?.lon
+    if (lat == null || lng == null || !Number.isFinite(lat) || !Number.isFinite(lng)) continue
+    const cls = classifyOsmTags(tags)
+    const hit: PlaceHit = {
+      id: `osm_${el.type}_${el.id}`,
+      name,
+      latitude: lat,
+      longitude: lng,
+      kind: 'poi',
+      description: cls.label,
+      category: cls.cat,
+    }
+    const prev = byName.get(hit.name.toLowerCase())
+    if (!prev || distToNearest(hit, anchors) < distToNearest(prev, anchors)) {
+      byName.set(hit.name.toLowerCase(), hit)
+    }
+  }
+  return [...byName.values()]
+}
+
+// Wikipedia geosearch covers attractions well, but returns ANY geo-located
+// article — villages, railway stations, districts. Drop the obvious non-places.
+const WIKI_JUNK =
+  /village|\btown\b|\bcity\b|municipality|settlement|hamlet|suburb|census|railway|station|district|tehsil|taluk|taluka|mandal|highway|\broad\b|bridge|canal|airport|constituency/
+
+async function searchNearbyWikipedia(anchors: { lat: number; lng: number }[], radiusM: number, count: number): Promise<PlaceHit[]> {
+  const per = Math.max(3, Math.ceil((count * 2) / anchors.length))
+  const lists = await Promise.all(anchors.map(a => searchNearbyPoisWikipedia(a.lat, a.lng, radiusM, per)))
+  return lists
+    .flat()
+    .filter(h => !WIKI_JUNK.test(h.description ?? ''))
+    .map(h => ({ ...h, category: 'sightseeing' }))
+}
+// Mappls Nearby listings join only when a same-named place is CONFIRMED near
+// the anchor via the proximity-biased Photon geocoder (OSM data). An
+// unresolved hit is dropped — a guessed pin in the wrong city is worse than
+// no suggestion.
+
+const PHOTON_URL = 'https://photon.komoot.io/api'
+const GENERIC_NAME_TOKENS = new Set([
+  'hotel', 'hotels', 'restaurant', 'restaurants', 'cafe', 'the', 'and', 'atm', 'atms',
+  'bank', 'food', 'tourist', 'home', 'stay', 'house', 'lodge', 'resort', 'dhaba',
+  'bakery', 'store', 'shop', 'petrol', 'fuel', 'pump', 'station', 'sri', 'new',
+  'star', 'park', 'museum', 'temple', 'church', 'masjid', 'mosque', 'indian',
+  'kerala', 'taste', 'point', 'villa', 'inn', 'view',
+])
+
+function normWords(s: string): string[] {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').split(' ').filter(Boolean)
+}
+
+/** do the two names share a distinctive (non-generic) token, e.g. "queens"? */
+function sameDistinctiveName(a: string, b: string): boolean {
+  const wb = new Set(normWords(b))
+  return normWords(a).some(w => w.length >= 4 && !GENERIC_NAME_TOKENS.has(w) && wb.has(w))
+}
+async function resolveMapplsHitNear(hit: PlaceHit, anchor: { lat: number; lng: number }, maxM: number): Promise<PlaceHit | null> {
+  if (!hit.eLoc || !hit.name) return null
+  try {
+    const segs = (hit.description ?? '').split(',').map(s => s.trim()).filter(Boolean)
+    const town = segs.length >= 3 ? segs[segs.length - 3] : '' // "…, Munnar, Kerala, 685565"
+    const res = await fetch(
+      `${PHOTON_URL}?q=${encodeURIComponent(town ? `${hit.name}, ${town}` : hit.name)}&lat=${anchor.lat}&lon=${anchor.lng}&limit=5`,
+      { signal: AbortSignal.timeout(5000) },
+    )
+    if (!res.ok) return null
+    const data = (await res.json()) as {
+      features?: { geometry: { coordinates: [number, number] }; properties: { name?: string } }[]
+    }
+    for (const f of data.features ?? []) {
+      const [lng, lat] = f.geometry.coordinates
+      if (!Number.isFinite(lat) || !Number.isFinite(lng) || !f.properties.name) continue
+      if (!sameDistinctiveName(hit.name, f.properties.name)) continue
+      if (haversineKm(lat, lng, anchor.lat, anchor.lng) * 1000 > maxM) continue
+      return { ...hit, latitude: lat, longitude: lng }
+    }
+  } catch { /* unresolved → dropped */ }
+  return null
+}
+
+async function searchNearbyMappls(anchor: { lat: number; lng: number }, radiusM: number, count: number): Promise<PlaceHit[]> {
+  if (!mapplsEnabled()) return []
+  const results = await Promise.all(
+    NEARBY_CATEGORIES.map(async (c) => {
+      try {
+        const r = await fetch(
+          `${MAPPLS_SEARCH}/nearby/json?keywords=${encodeURIComponent(c.kw)}` +
+          `&refLocation=${anchor.lat},${anchor.lng}&distance=${Math.min(radiusM, 10000)}&access_token=${MAPPLS_KEY}`,
+          { signal: AbortSignal.timeout(6000) },
+        )
+        if (!r.ok) return [] as PlaceHit[]
+        const d = await r.json()
+        return ((d.suggestedLocations ?? []) as Record<string, string>[])
+          .filter(l => l.eLoc && l.placeName)
+          .slice(0, 4) // bound the per-category verification lookups
+          .map(l => ({
+            id: `mappls_${l.eLoc}`,
+            name: l.placeName,
+            latitude: 0, longitude: 0,
+            admin1: (l.placeAddress ?? '').split(',').map(s => s.trim()).filter(Boolean).pop(),
+            kind: 'poi' as const,
+            description: l.placeAddress || undefined,
+            eLoc: l.eLoc,
+            category: c.cat,
+          }))
+      } catch {
+        return [] as PlaceHit[]
+      }
+    }),
+  )
+  const seen = new Set<string>()
+  const candidates: PlaceHit[] = []
+  for (const h of results.flat()) {
+    const key = String(h.id)
+    if (seen.has(key)) continue
+    seen.add(key)
+    candidates.push(h)
+  }
+  const resolved = await Promise.all(
+    candidates.slice(0, Math.min(12, count + 2)).map(h =>
+      resolveMapplsHitNear(h, anchor, Math.round(radiusM * 1.25) + 2000),
+    ),
+  )
+  return resolved.filter((h): h is PlaceHit => h !== null)
+}
 /**
- * Nearby stoppage points around a coordinate — Mappls Nearby (attractions,
- * restaurants, hotels, fuel pumps, ATMs…) when a key is configured, resolving
- * each result's coordinates via Nominatim; falls back to Wikipedia geosearch
- * otherwise.
+ * Nearby stoppage points around a route anchor — verified coordinates only.
+ * Categories are interleaved so one dominant type (e.g. hotels) can't crowd
+ * out the rest; within a category results are nearest-first.
  */
 export async function searchNearbyPois(lat: number, lng: number, radiusM = 10000, count = 10): Promise<PlaceHit[]> {
-  if (mapplsEnabled()) {
-    try {
-      // query each category in parallel, tag each with its stop category, merge + dedup
-      const results = await Promise.all(
-        NEARBY_CATEGORIES.map(async (c) => {
-          try {
-            const r = await fetch(
-              `${MAPPLS_SEARCH}/nearby/json?keywords=${encodeURIComponent(c.kw)}` +
-              `&refLocation=${lat},${lng}&distance=${Math.min(radiusM, 10000)}&access_token=${MAPPLS_KEY}`,
-              { signal: AbortSignal.timeout(6000) },
-            )
-            if (!r.ok) return [] as PlaceHit[]
-            const d = await r.json()
-            const arr = (d.suggestedLocations ?? []) as Record<string, string>[]
-            return arr
-              .filter(l => l.eLoc && l.placeName)
-              .map(l => ({
-                id: `mappls_${l.eLoc}`,
-                name: l.placeName,
-                latitude: 0, longitude: 0,
-                admin1: (l.placeAddress ?? '').split(',').map(s => s.trim()).filter(Boolean).pop(),
-                kind: 'poi' as const,
-                description: l.placeAddress || undefined,
-                eLoc: l.eLoc,
-                category: c.cat,
-              }))
-          } catch {
-            return [] as PlaceHit[]
-          }
-        }),
-      )
-      const seen = new Set<string>()
-      const merged = results.flat()
-      const deduped: PlaceHit[] = []
-      for (const h of merged) {
-        const key = String(h.id)
-        if (seen.has(key)) continue
-        seen.add(key)
-        deduped.push(h)
-      }
-      const resolved = await Promise.all(deduped.slice(0, count).map(h => resolveHitCoords(h)))
-      const good = resolved.filter(h => h.latitude !== 0 || h.longitude !== 0)
-      if (good.length) return good
-    } catch { /* fall through to Wikipedia */ }
-  }
-  return searchNearbyPoisWikipedia(lat, lng, radiusM, count)
+  return searchNearbyPoisMulti([{ lat, lng }], radiusM, count)
 }
+
+export async function searchNearbyPoisMulti(
+  anchors: { lat: number; lng: number }[],
+  radiusM = 10000,
+  count = 10,
+): Promise<PlaceHit[]> {
+  const capped = anchors.filter(a => Number.isFinite(a.lat) && Number.isFinite(a.lng)).slice(0, 3)
+  if (capped.length === 0) return []
+  const [osm, wiki, mappls] = await Promise.all([
+    searchNearbyOverpass(capped, radiusM, count).catch(() => [] as PlaceHit[]),
+    searchNearbyWikipedia(capped, radiusM, Math.min(count, 6)).catch(() => [] as PlaceHit[]),
+    searchNearbyMappls(capped[0], radiusM, count).catch(() => [] as PlaceHit[]),
+  ])
+  // merge in trust order (OSM verified → Wikipedia → Mappls), dedupe by name
+  const seen = new Set<string>()
+  const merged: PlaceHit[] = []
+  for (const h of [...osm, ...wiki, ...mappls]) {
+    const key = normWords(h.name).join(' ')
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    merged.push(h)
+  }
+  merged.sort((a, b) => distToNearest(a, capped) - distToNearest(b, capped))
+  // round-robin the categories so the list stays varied
+  const byCat = new Map<string, PlaceHit[]>()
+  for (const h of merged) {
+    const k = h.category ?? 'sightseeing'
+    if (!byCat.has(k)) byCat.set(k, [])
+    byCat.get(k)!.push(h)
+  }
+  const queues = [...byCat.values()]
+  const out: PlaceHit[] = []
+  let progressed = true
+  while (out.length < count && progressed) {
+    progressed = false
+    for (const q of queues) {
+      const h = q.shift()
+      if (h) {
+        out.push(h)
+        progressed = true
+      }
+      if (out.length >= count) break
+    }
+  }
+  return out
+}
+
+
+
+
 
 async function searchNearbyPoisWikipedia(lat: number, lng: number, radiusM = 10000, count = 10): Promise<PlaceHit[]> {
   const params = new URLSearchParams({

@@ -2,6 +2,16 @@
 
 All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions are pre-1.0 MVP milestones.
 
+## [0.15.3] — 2026-08-29
+
+### Fixed
+- **"Odd" nearby suggestions landed in the wrong towns** — Mappls' free-tier Nearby API lists great Indian POIs but returns **no coordinates**, so pins were guessed by a global name search that often matched a same-named place in a different state. Nearby ideas are now built only from **verified coordinates**:
+  - **OpenStreetMap via Overpass** — restaurants, cafés, hotels, fuel pumps, ATMs, attractions and historic sites with their true positions (mirror failover included)
+  - **Wikipedia geosearch** — attractions, junk-filtered (villages, stations, districts, roads…)
+  - **Mappls Nearby** — India-rich listings kept **only** when a same-named place is confirmed near your route via the proximity-biased Photon geocoder; an unresolved hit is dropped rather than pinned in the wrong city
+
+  Searches also anchor on stops **spread along the route** (first + last + max-dispersion) instead of the bare centroid — which for a long route usually landed in the middle of nowhere. Results are merged in trust order (OSM → Wikipedia → Mappls), deduped by name, sorted by distance and round-robined across categories so the list stays varied.
+
 ## [0.15.2] — 2026-08-28
 
 ### Fixed

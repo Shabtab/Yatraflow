@@ -25,7 +25,8 @@ const TripMap = React.lazy(() => import('../components/TripMap').then(m => ({ de
 import { StopEditor, type StopFormValues } from '../components/StopEditor'
 import { AiDrawer } from '../components/AiDrawer'
 import { LocationInput } from '../components/LocationInput'
-import { searchNearbyPois } from '../lib/geocode'
+import { searchNearbyPois, searchNearbyPoisMulti } from '../lib/geocode'
+import { haversineKm } from '../lib/geo'
 import type { PlaceHit } from '../lib/geocode'
 import { fetchDailyWeather, forecastAvailable, wmoInfo } from '../lib/weather'
 import type { DayWeather } from '../lib/weather'
@@ -878,6 +879,30 @@ function smallThumb(url: string): string {
   return url.replace(/\/(\d+)px-/, '/120px-')
 }
 
+/**
+ * Pick up to `maxN` stops spread along the route (first + last, then
+ * max-min dispersion) so "nearby ideas" are searched around real stops —
+ * the bare centroid of a long route usually lands in the middle of nowhere.
+ */
+function spreadRouteAnchors(stops: { lat: number; lng: number }[], maxN: number): { lat: number; lng: number }[] {
+  const pts = stops.filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lng))
+  if (pts.length === 0) return []
+  if (pts.length <= maxN) return pts.map(p => ({ lat: p.lat, lng: p.lng }))
+  const sel = [pts[0], pts[pts.length - 1]]
+  while (sel.length < maxN) {
+    let best: { lat: number; lng: number } | null = null
+    let bestD = -1
+    for (const p of pts) {
+      if (sel.includes(p)) continue
+      const d = Math.min(...sel.map(s => haversineKm(s.lat, s.lng, p.lat, p.lng)))
+      if (d > bestD) { bestD = d; best = p }
+    }
+    if (!best || bestD <= 0) break
+    sel.push(best)
+  }
+  return sel.map(p => ({ lat: p.lat, lng: p.lng }))
+}
+
 function MapTab({ trip, editable, applyChange }: {
   trip: Trip
   editable: boolean
@@ -896,31 +921,25 @@ function MapTab({ trip, editable, applyChange }: {
     return names
   }, [trip])
 
-  // anchor the search on the middle of the plotted stops (or first destination)
-  const anchor = useMemo(() => {
+  // anchor the search on stops spread along the route (or the first real destination point)
+  const anchors = useMemo(() => {
     const pts = trip.days.flatMap(d => d.stops).filter(s => s.status !== 'rejected')
-    if (pts.length > 0) {
-      return {
-        lat: pts.reduce((a, s) => a + s.lat, 0) / pts.length,
-        lng: pts.reduce((a, s) => a + s.lng, 0) / pts.length,
-      }
-    }
-    const dest = trip.destinations[0]
-    return dest
-      ? { lat: trip.days.flatMap(d => d.stops)[0]?.lat ?? 10.5, lng: trip.days.flatMap(d => d.stops)[0]?.lng ?? 76.5 }
-      : null
+    const stopAnchors = spreadRouteAnchors(pts, 3)
+    if (stopAnchors.length > 0) return stopAnchors
+    const destCoord = (trip.destinationCoords ?? []).find((c): c is LatLngPoint => !!c)
+    return destCoord ? [{ lat: destCoord.lat, lng: destCoord.lng }] : []
   }, [trip])
 
   useEffect(() => {
-    if (!anchor) return
+    if (anchors.length === 0) return
     let cancelled = false
     setLoadingPois(true)
-    searchNearbyPois(anchor.lat, anchor.lng, 10000, 12)
+    searchNearbyPoisMulti(anchors, 10000, 12)
       .then(hits => { if (!cancelled) setPois(hits.slice(0, 10)) })
       .catch(() => { /* suggestions are best-effort */ })
       .finally(() => { if (!cancelled) setLoadingPois(false) })
     return () => { cancelled = true }
-  }, [anchor]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [anchors]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function addPoiToDay(hit: PlaceHit, dayIndex: number) {
     applyChange(draft => {
@@ -964,7 +983,7 @@ function MapTab({ trip, editable, applyChange }: {
           <span className="small muted">{loadingPois ? 'searching…' : `${pois.length} found near your route`}</span>
         </div>
         <p className="hint-text" style={{ margin: '4px 0 10px' }}>
-          Stoppage points around your route — attractions, restaurants, hotels, fuel pumps and more (Mappls, with keyless fallback). Add one straight to a day.
+          Stoppage points around your route — attractions, restaurants, hotels, fuel pumps and more (live data from OpenStreetMap, Wikipedia & Mappls). Add one straight to a day.
         </p>
         {!loadingPois && pois.length === 0 && (
           <p className="muted small">No nearby suggestions found — add stops in the Timeline and ideas will appear here.</p>
