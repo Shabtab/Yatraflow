@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/mappls/:path*",
+      "destination": "https://search.mappls.com/:path*"
+    }
+  ]
+}

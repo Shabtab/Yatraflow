@@ -25,6 +25,12 @@ export interface PlaceHit {
 
 const MAPPLS_KEY = ((import.meta.env.VITE_MAPPLS_KEY as string | undefined) ?? '').trim()
 export const mapplsEnabled = (): boolean => MAPPLS_KEY.length > 0
+/**
+ * Mappls has no CORS headers, so the browser can't read its responses directly.
+ * We proxy through our own origin: Vite dev proxy in dev, a Vercel external
+ * rewrite (`vercel.json`) in production. Both strip the `/mappls` prefix.
+ */
+const MAPPLS_SEARCH = '/mappls/search/places'
 
 const DEBOUNCE_MS = 280
 
@@ -88,7 +94,7 @@ async function searchWikipediaPois(q: string, count: number): Promise<PlaceHit[]
  */
 async function searchMappls(q: string, count: number): Promise<PlaceHit[]> {
   const res = await fetch(
-    `https://search.mappls.com/search/places/autosuggest/json?query=${encodeURIComponent(q)}&access_token=${MAPPLS_KEY}`,
+    `${MAPPLS_SEARCH}/autosuggest/json?query=${encodeURIComponent(q)}&access_token=${MAPPLS_KEY}`,
     { signal: AbortSignal.timeout(6000) },
   )
   if (!res.ok) return []
@@ -193,7 +199,7 @@ export async function searchNearbyPois(lat: number, lng: number, radiusM = 10000
         NEARBY_CATEGORIES.map(async (c) => {
           try {
             const r = await fetch(
-              `https://search.mappls.com/search/places/nearby/json?keywords=${encodeURIComponent(c.kw)}` +
+              `${MAPPLS_SEARCH}/nearby/json?keywords=${encodeURIComponent(c.kw)}` +
               `&refLocation=${lat},${lng}&distance=${Math.min(radiusM, 10000)}&access_token=${MAPPLS_KEY}`,
               { signal: AbortSignal.timeout(6000) },
             )
