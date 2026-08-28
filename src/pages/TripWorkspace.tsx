@@ -376,6 +376,28 @@ function TimelineTab({ trip, editable, applyChange, legCorrections }: {
     }, 'reorder', dayIndex)
   }
 
+  /** Cross-day drag: lift a stop out of its day and insert it at `position` of `toDayIndex`. */
+  function handleMoveStopInto(stopId: string, fromDayIndex: number, toDayIndex: number, position: number) {
+    applyChange(draft => {
+      let moved: ItineraryStop | undefined
+      for (const d of draft.days) {
+        const idx = d.stops.findIndex(s => s.id === stopId)
+        if (idx >= 0) {
+          [moved] = d.stops.splice(idx, 1)
+          d.stops.forEach((s, j) => { s.orderInDay = j + 1 })
+          break
+        }
+      }
+      const target = draft.days.find(d => d.index === toDayIndex)
+      if (moved && target) {
+        const pos = Math.max(0, Math.min(position, target.stops.length))
+        moved.orderInDay = pos + 1
+        target.stops.splice(pos, 0, moved)
+        target.stops.forEach((s, j) => { s.orderInDay = j + 1 })
+      }
+    }, 'move-day', toDayIndex)
+  }
+
   function handleStatus(stop: ItineraryStop, status: ItineraryStop['status']) {
     // Status flips are lightweight group signals — applied directly.
     setStopStatus(trip.id, status, stop.id)
@@ -387,7 +409,7 @@ function TimelineTab({ trip, editable, applyChange, legCorrections }: {
       <div className="row-between" style={{ marginBottom: 16 }}>
         <div>
           <h2>Day-by-day timeline</h2>
-          <p className="muted small">Drag stops to reorder on desktop, or use the ↑ ↓ buttons. Every change shows its impact before saving.</p>
+          <p className="muted small">Drag stops to reorder within a day — or drop them onto another day to move them there. Every change shows its impact before saving.</p>
         </div>
         {editable && (
           <button className="btn btn-primary btn-sm" onClick={() => setEditorState({ mode: 'add', dayIndex: 0 })}>+ Add stop</button>
@@ -401,6 +423,7 @@ function TimelineTab({ trip, editable, applyChange, legCorrections }: {
           onDelete={handleDelete}
           onMoveWithinDay={handleMoveWithinDay}
           onMoveBetweenDays={setMoveModalStop}
+          onMoveStopIn={handleMoveStopInto}
           onStatus={handleStatus}
         />
       ))}
@@ -441,7 +464,7 @@ function TimelineTab({ trip, editable, applyChange, legCorrections }: {
   )
 }
 
-function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithinDay, onMoveBetweenDays, onStatus, legCorrections }: {
+function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithinDay, onMoveBetweenDays, onMoveStopIn, onStatus, legCorrections }: {
   day: Trip['days'][number]
   trip: Trip
   editable: boolean
@@ -451,12 +474,28 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
   onDelete: (stopId: string, dayIndex: number) => void
   onMoveWithinDay: (from: number, to: number, dayIndex: number) => void
   onMoveBetweenDays: (stop: ItineraryStop) => void
+  /** cross-day drag landed on this day: insert the stop at `position` */
+  onMoveStopIn: (stopId: string, fromDayIndex: number, toDayIndex: number, position: number) => void
   onStatus: (stop: ItineraryStop, status: ItineraryStop['status']) => void
 }) {
   const sim = simulateDay(day, trip, originOf(trip, day.index), day.index, legCorrections)
   const A = getAssumptions(trip)
   const ordered = [...day.stops].sort((a, b) => a.orderInDay - b.orderInDay)
-  const { dndHandlers, dragging, over, moveUp, moveDown } = useReorder(ordered, (f, t) => onMoveWithinDay(f, t, day.index))
+  const { dndHandlers, dayDropHandlers, dragging, over, foreignOver, moveUp, moveDown } = useReorder(
+    ordered,
+    (f, t) => onMoveWithinDay(f, t, day.index),
+    {
+      dragPayload: (s) => JSON.stringify({ stopId: s.id, fromDay: day.index }),
+      onForeignDrop: (payload, toIdx) => {
+        try {
+          const p = JSON.parse(payload) as { stopId?: string; fromDay?: number }
+          if (p.stopId && typeof p.fromDay === 'number' && p.fromDay !== day.index) {
+            onMoveStopIn(p.stopId, p.fromDay, day.index, toIdx)
+          }
+        } catch { /* malformed payload — ignore */ }
+      },
+    },
+  )
   const commitmentsToday = trip.fixedCommitments.filter(fc => fc.dayIndex === day.index)
 
   return (
@@ -484,17 +523,25 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
       ))}
 
       {ordered.length === 0 && (
-        <EmptyState icon="🌤️" title="Nothing planned yet" body="Add your first stop for this day."
+        <EmptyState icon="🌤️" title="Nothing planned yet" body="Add your first stop for this day — or drag one here from another day."
           action={editable ? <button className="btn btn-primary btn-sm" onClick={onAdd}>+ Add stop</button> : undefined} />
       )}
 
-      <div>
+      <div className="tl">
         {ordered.map((s, i) => (
           <React.Fragment key={s.id}>
             <div
-              className={`stop-card status-${s.status} ${dragging === i ? 'dragging' : ''} ${over === i && dragging !== null && dragging !== i ? 'drag-over' : ''}`}
+              className="tl-row"
               {...(editable ? dndHandlers(i) : {})}
             >
+              <div className="tl-gutter" aria-hidden="true">
+                <span className="tl-time tl-arr">{sim.arrivalTimes[i] ?? '--:--'}</span>
+                <span className="tl-line" />
+                <span className="tl-time tl-dep">{sim.departures[i] ?? '--:--'}</span>
+              </div>
+              <div
+                className={`stop-card status-${s.status} ${dragging === i ? 'dragging' : ''} ${over === i && dragging !== null && dragging !== i ? 'drag-over' : ''} ${foreignOver === i && dragging === null ? 'foreign-over' : ''}`}
+              >
               <div className={`stop-num cat-${s.category}`}>{i + 1}</div>
               <div className="stop-main">
                 <div className="stop-toprow">
@@ -514,7 +561,6 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
                   {s.departTime && s.arrivalTime && (
                     <span>🕰 dep {s.departTime} · arr {s.arrivalTime}{s.legDistanceKm ? ` · ${s.legDistanceKm.toFixed(0)} km` : ''}</span>
                   )}
-                  {sim.arrivalTimes[i] && <span>→ arrives ~{sim.arrivalTimes[i]}</span>}
                 </div>
                 {s.description && <div className="stop-desc">{s.description}</div>}
                 {s.notes && <div className="stop-desc muted">📝 {s.notes}</div>}
@@ -534,19 +580,28 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
                   <button className="icon-btn" onClick={() => onDelete(s.id, day.index)} aria-label={`Delete ${s.title}`}>🗑️</button>
                 </div>
               )}
+              </div>
             </div>
 
-            {i > 0 && (() => {
-              const leg = sim.legs[i - 1]
+            {i < ordered.length - 1 && (() => {
+              const leg = sim.legs[i]
               if (!leg) return null
               return (
-                <div className="travel-leg">
-                  🚗 ~{leg.distanceKm.toFixed(0)} km · ~{Math.round(leg.durationMinutes)} min from {leg.fromTitle} · est ₹{Math.round(leg.distanceKm * (A.inrPerKm ?? 8))} ({A.mode})
+                <div className="tl-legrow" {...(editable ? dayDropHandlers(i + 1) : {})}>
+                  <div className="tl-gutter tl-gutter-leg"><span className="tl-line tl-line-leg" /></div>
+                  <div className={`travel-leg ${foreignOver === i + 1 && dragging === null ? 'foreign-over' : ''}`}>
+                    🚗 ~{leg.distanceKm.toFixed(0)} km · ~{Math.round(leg.durationMinutes)} min from {leg.fromTitle} · est ₹{Math.round(leg.distanceKm * (A.inrPerKm ?? 8))} ({A.mode})
+                  </div>
                 </div>
               )
             })()}
           </React.Fragment>
         ))}
+        {ordered.length > 0 && (
+          <div className="tl-end" {...(editable ? dayDropHandlers(ordered.length) : {})}>
+            {foreignOver === ordered.length && dragging === null && <div className="tl-drop-line">Drop to add here</div>}
+          </div>
+        )}
       </div>
     </div>
   )

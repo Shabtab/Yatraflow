@@ -223,31 +223,90 @@ export function CopyButton({ text, label = 'Copy link', onCopied }: { text: stri
   )
 }
 
-/** Accessible move up/down controls + HTML5 drag-and-drop wrapper for stop cards. */
+/**
+ * Accessible move up/down controls + HTML5 drag-and-drop wrapper for stop cards.
+ * Supports same-list reordering plus foreign (cross-list) drags: cards carry a
+ * `application/x-yf-stop` payload via `dragPayload`, and `onForeignDrop` is
+ * called when such a drag is released on a card (insert at its index) or a
+ * `dayDropHandlers` zone (insert at that index). `dayDropHandlers` also serve
+ * as gap drop targets for foreign drags.
+ */
 export function useReorder<T extends { id: string }>(
   items: T[],
   onMove: (fromIdx: number, toIdx: number) => void,
+  options?: {
+    /** serialised payload attached to every drag (identifies the item across lists) */
+    dragPayload?: (item: T) => string
+    /** called with the payload and the insertion index when a foreign drag lands */
+    onForeignDrop?: (payload: string, toIdx: number) => void
+  },
 ) {
   const [dragIdx, setDragIdx] = useState<number | null>(null)
   const [overIdx, setOverIdx] = useState<number | null>(null)
+  /** insertion index a foreign drag is hovering (cards + gap zones) */
+  const [foreignOver, setForeignOver] = useState<number | null>(null)
+
+  // During dragover, dataTransfer values are unreadable — only its `types` list.
+  // A drag started in this same list is tracked by dragIdx instead.
+  const isForeign = (e: React.DragEvent) =>
+    dragIdx === null && !!options?.onForeignDrop && e.dataTransfer.types.includes('application/x-yf-stop')
 
   const dndHandlers = (idx: number) => ({
     draggable: true,
-    onDragStart: () => setDragIdx(idx),
-    onDragOver: (e: React.DragEvent) => { e.preventDefault(); if (overIdx !== idx) setOverIdx(idx) },
-    onDragLeave: () => setOverIdx(i => (i === idx ? null : i)),
+    onDragStart: (e: React.DragEvent) => {
+      setDragIdx(idx)
+      const payload = options?.dragPayload?.(items[idx])
+      if (payload) {
+        e.dataTransfer.setData('application/x-yf-stop', payload)
+        e.dataTransfer.effectAllowed = 'move'
+      }
+      e.dataTransfer.setData('text/plain', items[idx].id) // Firefox needs some data to drag
+    },
+    onDragOver: (e: React.DragEvent) => {
+      e.preventDefault()
+      if (isForeign(e)) { if (foreignOver !== idx) setForeignOver(idx); return }
+      if (overIdx !== idx) setOverIdx(idx)
+    },
+    onDragLeave: () => {
+      setOverIdx(i => (i === idx ? null : i))
+      setForeignOver(i => (i === idx ? null : i))
+    },
     onDrop: (e: React.DragEvent) => {
       e.preventDefault()
-      if (dragIdx !== null && dragIdx !== idx) onMove(dragIdx, idx)
-      setDragIdx(null); setOverIdx(null)
+      e.stopPropagation() // never let the day-level zone double-handle it
+      if (isForeign(e)) {
+        const p = e.dataTransfer.getData('application/x-yf-stop')
+        if (p) options?.onForeignDrop?.(p, idx)
+      } else if (dragIdx !== null && dragIdx !== idx) onMove(dragIdx, idx)
+      setDragIdx(null); setOverIdx(null); setForeignOver(null)
     },
-    onDragEnd: () => { setDragIdx(null); setOverIdx(null) },
+    onDragEnd: () => { setDragIdx(null); setOverIdx(null); setForeignOver(null) },
+  })
+
+  /** Drop zone for gap/empty areas of the list — foreign drags only. */
+  const dayDropHandlers = (idx: number) => ({
+    onDragOver: (e: React.DragEvent) => {
+      if (!isForeign(e)) return
+      e.preventDefault()
+      if (foreignOver !== idx) setForeignOver(idx)
+    },
+    onDragLeave: () => setForeignOver(i => (i === idx ? null : i)),
+    onDrop: (e: React.DragEvent) => {
+      if (!isForeign(e)) return
+      e.preventDefault()
+      e.stopPropagation()
+      const p = e.dataTransfer.getData('application/x-yf-stop')
+      if (p) options?.onForeignDrop?.(p, idx)
+      setForeignOver(null)
+    },
   })
 
   return {
     dndHandlers,
+    dayDropHandlers,
     dragging: dragIdx,
     over: overIdx,
+    foreignOver,
     moveUp: (idx: number) => { if (idx > 0) onMove(idx, idx - 1) },
     moveDown: (idx: number) => { if (idx < items.length - 1) onMove(idx, idx + 1) },
   }

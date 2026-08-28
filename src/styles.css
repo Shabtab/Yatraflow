@@ -251,10 +251,49 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
 .move-btn:disabled { opacity: .3; cursor: default; }
 .travel-leg {
   display: flex; align-items: center; gap: 9px;
-  margin: 3px 0 3px 14px; padding: 2px 0 2px 0;
+  margin: 3px 0 3px 0; padding: 2px 0 2px 0;
   color: var(--text-3); font-size: 12px; font-weight: 600;
 }
-.travel-leg::before { content: ''; width: 2px; height: 22px; background: repeating-linear-gradient(var(--line) 0 4px, transparent 4px 8px); border-radius: 2px; }
+.travel-leg::before { content: none; }
+.travel-leg.foreign-over {
+  color: var(--warn); background: var(--warn-soft);
+  border-radius: var(--radius-sm); padding: 4px 8px;
+}
+
+/* ---------- Timeline time rail ---------- */
+.tl-row { display: grid; grid-template-columns: 74px 1fr; gap: 12px; margin-bottom: 8px; align-items: stretch; }
+.tl-row .stop-card { margin-bottom: 0; height: 100%; }
+.tl-gutter {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 14px 0 10px; min-width: 0;
+}
+.tl-time {
+  font-size: 11.5px; font-weight: 700; color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: 8px; padding: 2px 6px; white-space: nowrap;
+  box-shadow: var(--shadow-sm);
+}
+.tl-time.tl-dep { color: var(--teal-deep); background: var(--teal-soft); border-color: transparent; }
+.tl-line { flex: 1; width: 2px; min-height: 12px; border-radius: 2px; background: repeating-linear-gradient(var(--line) 0 4px, transparent 4px 8px); }
+.tl-legrow { display: grid; grid-template-columns: 74px 1fr; gap: 12px; align-items: center; margin-bottom: 8px; }
+.tl-gutter-leg { padding: 0; min-height: 26px; }
+.tl-line-leg { flex: none; width: 2px; height: 100%; min-height: 26px; }
+.tl-end { min-height: 12px; margin-bottom: 4px; display: grid; grid-template-columns: 74px 1fr; gap: 12px; }
+.tl-drop-line {
+  grid-column: 2; color: var(--warn); background: var(--warn-soft);
+  border: 1.5px dashed var(--saffron); border-radius: var(--radius-sm);
+  font-size: 12px; font-weight: 700; text-align: center; padding: 5px 0;
+}
+.stop-card.foreign-over {
+  border: 1.5px dashed var(--saffron);
+  box-shadow: 0 0 0 3px var(--saffron-soft);
+}
+@media (max-width: 640px) {
+  .tl-row, .tl-legrow, .tl-end { grid-template-columns: 52px 1fr; gap: 8px; }
+  .tl-time { font-size: 10px; padding: 1px 4px; }
+  .tl-time.tl-dep { display: none; }
+}
 
 /* ---------- Impact preview ---------- */
 .impact-panel {
