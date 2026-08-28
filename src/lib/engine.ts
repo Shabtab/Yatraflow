@@ -49,6 +49,15 @@ export function parseFuelEconomyKmL(raw: string | number | undefined | null): nu
   return Number.isFinite(n) && n >= 2 && n <= 80 ? n : undefined
 }
 
+/** Soft plausibility bands (hard acceptance stays 2–80) — used to nudge, never to block. */
+const PLAUSIBLE_KM_PER_L: Record<string, [number, number]> = { car: [8, 35], motorcycle: [12, 75] }
+
+/** True when a stated economy is outside the typical band for the mode — a nudge, not a veto. */
+export function isImplausibleFuelEconomy(mode: string, economy: number | undefined): boolean {
+  const band = PLAUSIBLE_KM_PER_L[mode]
+  return !!band && !!economy && economy > 0 && (economy < band[0] || economy > band[1])
+}
+
 /** Default planning assumptions shown to users wherever we estimate. */
 export function getAssumptions(trip: Pick<Trip, 'transportMode' | 'fuelEconomyKmL'>): EngineAssumptions {
   const mode = trip.transportMode

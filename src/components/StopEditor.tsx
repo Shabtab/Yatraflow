@@ -70,6 +70,20 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel,
   const [lastKey, setLastKey] = useState(resetKey)
   if (open && lastKey !== resetKey) { setLastKey(resetKey); setV(normalize(initial)); setErrs({}); setHoursState('idle'); setLegState('idle') }
 
+  /** assumptions for the travel-leg preview (null when no leg context) */
+  const legAssumptions = legContext
+    ? getAssumptions({ transportMode: legContext.transportMode, fuelEconomyKmL: legContext.fuelEconomyKmL })
+    : null
+  /** one-line fuel/fare preview under the leg fields — litres-first when an economy is stated */
+  const legPreview = (() => {
+    if (!legAssumptions || v.legDistanceKm <= 0) return null
+    if (legAssumptions.kmPerLiter) {
+      const litres = v.legDistanceKm / legAssumptions.kmPerLiter
+      return `≈ ${litres.toFixed(1)} L ≈ ${formatInr(litres * (legAssumptions.fuelPricePerL ?? 0))} fuel for this leg · ${legAssumptions.kmPerLiter} km/L × ₹${legAssumptions.fuelPricePerL}/L`
+    }
+    return `≈ ${formatInr(v.legDistanceKm * (legAssumptions.inrPerKm ?? 8))} fuel/fare at ${legAssumptions.mode} rates`
+  })()
+
   async function onPlacePicked(p: PlaceHit) {
     set('locationName', p.name + (p.admin1 ? `, ${p.admin1}` : ''))
     set('lat', p.latitude); set('lng', p.longitude); set('geocoded', true)
@@ -229,10 +243,8 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel,
                 <input type="time" className="input" value={v.arrivalTime} onChange={e => set('arrivalTime', e.target.value)} />
               </Field>
             </div>
-            {v.legDistanceKm > 0 && (
-              <div className="small muted">
-                ≈ {formatInr(v.legDistanceKm * (getAssumptions({ transportMode: legContext.transportMode, fuelEconomyKmL: legContext.fuelEconomyKmL }).inrPerKm ?? 8))} fuel/fare at {legContext.transportMode} rates{legContext.fuelEconomyKmL ? ` · ${legContext.fuelEconomyKmL} km/L` : ''}
-              </div>
+            {legPreview && (
+              <div className="small muted">{legPreview}</div>
             )}
           </div>
         )}

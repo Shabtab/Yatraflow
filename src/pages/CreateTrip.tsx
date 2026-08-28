@@ -3,7 +3,7 @@ import { useState } from 'react'
 import type { FixedCommitment, LatLngPoint, TransportMode, TravelStyle } from '../data/types'
 import { TRANSPORT_MODES, TRAVEL_STYLES } from '../data/types'
 import { useDb, currentUser, createTrip } from '../store/store'
-import { FUEL_PRICE_INR_PER_L, isFuelEconomyMode, parseFuelEconomyKmL } from '../lib/engine'
+import { FUEL_PRICE_INR_PER_L, isFuelEconomyMode, parseFuelEconomyKmL, isImplausibleFuelEconomy } from '../lib/engine'
 import { Field, Chip, toast } from '../components/ui'
 import { LocationInput } from '../components/LocationInput'
 import type { PlaceHit } from '../components/LocationInput'
@@ -193,6 +193,11 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
               <Field label="Fuel economy (km per litre)" hint={`Optional — makes fuel costs accurate: route distance ÷ economy × ₹${FUEL_PRICE_INR_PER_L}/L (indicative petrol price). Cars typically do 12–25 km/L, bikes 25–45.`}>
                 <input className="input" type="number" min={2} max={80} step={0.1} value={f.fuelEconomy}
                   onChange={e => setF(x => ({ ...x, fuelEconomy: e.target.value }))} placeholder="e.g. 18" />
+                {isImplausibleFuelEconomy(f.transportMode, parseFuelEconomyKmL(f.fuelEconomy)) && (
+                  <p className="hint-text" style={{ marginTop: 5, color: '#b45309' }}>
+                    ⚠️ Unusual for a {f.transportMode} — most do far better. Double-check the value (km per litre).
+                  </p>
+                )}
               </Field>
             )}
             <Field label="Travel style">

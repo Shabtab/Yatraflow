@@ -13,7 +13,7 @@ import {
 import {
   computeHealth, computeTotals, simulateDay, originOf, getAssumptions, legKey,
   minutesToHM, hmToMinutes, formatInr, countHotelNights, predecessorOf, nextAfter,
-  collectWarnings, FUEL_PRICE_INR_PER_L, isFuelEconomyMode, parseFuelEconomyKmL,
+  collectWarnings, FUEL_PRICE_INR_PER_L, isFuelEconomyMode, parseFuelEconomyKmL, isImplausibleFuelEconomy,
 } from '../lib/engine'
 import type { LegEstimate, ScheduleWarning } from '../lib/engine'
 import { routePath } from '../lib/routing'
@@ -1171,7 +1171,9 @@ function BudgetTab({ trip, totals, editable }: { trip: Trip; totals: ReturnType<
         <div className="card">
           <h3>Where the money goes</h3>
           <p className="hint-text" style={{ margin: '4px 0 14px' }}>
-            All figures are estimates in INR. Transport is derived from route distance × ₹{A.inrPerKm}/km for {trip.transportMode}{A.kmPerLiter ? <> — your {A.kmPerLiter} km/L × ₹{A.fuelPricePerL}/L</> : ''}.
+            {A.kmPerLiter
+              ? <>All figures are estimates in INR. Transport is fuel-based: route distance ≈{Math.round(totals.totalDistanceKm)} km ÷ {A.kmPerLiter} km/L ≈ <b>{Math.round(totals.totalDistanceKm / A.kmPerLiter)} L</b> of fuel × ₹{A.fuelPricePerL}/L (indicative petrol price — actual consumption varies).</>
+              : <>All figures are estimates in INR. Transport is derived from route distance × ₹{A.inrPerKm}/km for {trip.transportMode}.</>}
           </p>
           <div className="budget-bars">
             {cats.map(([c, v]) => (
@@ -1672,6 +1674,11 @@ function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boolean })
         <Field label="Fuel economy (km per litre)" hint={`Optional — transport cost becomes route distance ÷ economy × ₹${FUEL_PRICE_INR_PER_L}/L (indicative petrol price) instead of the default ₹/km rate.`}>
           <input type="number" min={2} max={80} step={0.1} className="input" disabled={!editable} value={f.fuelEconomy}
             onChange={e => setF(x => ({ ...x, fuelEconomy: e.target.value }))} placeholder="e.g. 18" />
+          {isImplausibleFuelEconomy(f.transportMode, parseFuelEconomyKmL(f.fuelEconomy)) && (
+            <p className="hint-text" style={{ marginTop: 5, color: '#b45309' }}>
+              ⚠️ Unusual for a {f.transportMode} — most do far better. Double-check the value (km per litre).
+            </p>
+          )}
         </Field>
       )}
       {editable && (

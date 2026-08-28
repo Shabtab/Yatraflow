@@ -8,7 +8,7 @@ import {
   addMinutesToClock, hmToMinutes, legBetween, simulateDay,
   computeTotals, computeHealth, collectWarnings, countHotelNights, originOf, firstFixedPoint,
   getAssumptions, formatInr, scoreWarnings, predecessorOf, nextAfter, estimateLeg,
-  FUEL_PRICE_INR_PER_L, parseFuelEconomyKmL,
+  FUEL_PRICE_INR_PER_L, parseFuelEconomyKmL, isImplausibleFuelEconomy,
 } from '../src/lib/engine'
 import { seedData } from '../src/data/seed'
 import type { Trip, ItineraryStop } from '../src/data/types'
@@ -93,6 +93,14 @@ describe('fuel-economy-aware costs', () => {
     expect(parseFuelEconomyKmL('0')).toBeUndefined()
     expect(parseFuelEconomyKmL('200')).toBeUndefined()
     expect(parseFuelEconomyKmL('abc')).toBeUndefined()
+  })
+  it('isImplausibleFuelEconomy flags out-of-band values without blocking', () => {
+    expect(isImplausibleFuelEconomy('motorcycle', 5)).toBe(true)
+    expect(isImplausibleFuelEconomy('car', 5)).toBe(true)
+    expect(isImplausibleFuelEconomy('car', 18)).toBe(false)
+    expect(isImplausibleFuelEconomy('motorcycle', 40)).toBe(false)
+    expect(isImplausibleFuelEconomy('train', 5)).toBe(false)   // mode without an economy field
+    expect(isImplausibleFuelEconomy('car', undefined)).toBe(false)
   })
 })
 
