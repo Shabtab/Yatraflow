@@ -2,6 +2,23 @@
 
 All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions are pre-1.0 MVP milestones.
 
+## [0.14.0] — 2026-08-28
+
+The timeline becomes a real itinerary view: a time rail, cross-day drag-and-drop, and day headers that earn their space.
+
+### Added
+- **Time rail** — each day renders on a vertical schedule rail: arrival → departure pills per stop (from the schedule engine), dashed connectors for travel legs. The day's shape is scannable at a glance.
+- **Cross-day drag-and-drop** — drag a stop onto another day and drop it on a card (insert before it), a travel-leg gap (insert between stops), or a day's end zone ("Drop to add here"). Moves flow through the impact preview and stay undoable. ▲▼ buttons and the ↔️ modal remain as fallbacks.
+- **Day progress bar** — per-day bar showing how much of the realistic window (08:30–20:00) the plan consumes; green/saffron/red by that day's warning severity.
+- **Collapsible days** — chevron collapses a day to its header for scanning long trips.
+- **Inline day rename** — click a day title to rename it in place (Enter saves, Esc cancels).
+- **Route sparkline** — tiny inline SVG of the day's route shape (start dot in saffron), no map mount; hidden on mobile.
+- **Copy day (⧉)** — duplicate a day's stops onto the next day through the impact-preview flow.
+- **Empty-day suggestions** — unplanned days offer one-click chips: "➡ Continue to {next destination}" (auto waypoint) and nearby-POI ideas from where you'd arrive from.
+
+### Changed
+- Stop-card action buttons (▲▼, edit, confirm, move, delete) now sit in a single horizontal row — cards hug their content instead of stretching to a tall action column.
+
 ## [0.13.0] — 2026-08-28
 
 Geography-aware planning: real road data flows into estimates, and adding a stop now understands the journey you're inserting it into.

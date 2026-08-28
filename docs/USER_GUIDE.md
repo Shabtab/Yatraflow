@@ -33,6 +33,9 @@ Inside a trip, open the **Timeline** tab:
 
 - **Add stops** to any day: name, category, location (searchable — picking from suggestions pins it accurately on the map), duration, opening hours, entry fee, transport cost, priority.
 - **Leg-aware travel panel** — once you pick a geocoded place, a "🚗 Travel to this stop" panel appears showing where you're coming from and where you're headed next. It auto-fills the road distance, travel time and fuel/fare cost, and computes your **arrival time** from the **departure time** (default 08:30). Every value stays editable — arrows step by 1 minute.
+- **Read the time rail** — each stop shows its scheduled **arrival** and **departure** in the left gutter, with dashed connectors for travel legs between stops.
+- **Drag stops anywhere** — reorder within a day, or drag a stop onto another day: drop it on a card to insert before it, into a gap between stops, or at the day's end. Every move shows its impact before saving.
+- **Day tools** — click a day title to rename it; ▾ collapses the day; the thin progress bar shows how full the day is (green → saffron → red as warnings appear); ⧉ Copy duplicates the day onto the next; empty days suggest "Continue to…" and nearby places.
 - **Reorder** stops within a day or **move them between days** — every change re-runs the schedule simulation instantly.
 - **Mark statuses:** `suggested` → `confirmed` / `needs-booking` / `rejected`. Rejected stops drop off the map and out of estimates.
 - Watch the **health signals**: warnings appear when a day is overstuffed, a stop would arrive after closing time, or a fixed commitment gets squeezed.
