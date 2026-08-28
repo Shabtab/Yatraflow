@@ -16,12 +16,22 @@ if (!url || !anonKey) {
   )
 }
 
-export const supabase: SupabaseClient = createClient(url ?? '', anonKey ?? '', {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true, // handles the OAuth redirect callback (?code=...)
+// createClient() throws on an empty URL ("supabaseUrl is required."), which
+// would crash the whole module graph before React mounts — every page imports
+// the store, which imports this file — leaving a white blank page for anyone
+// running without a configured backend. Fall back to a syntactically valid
+// placeholder so the UI still renders; individual data/auth calls then fail
+// with a normal fetch error instead of killing the app at startup.
+export const supabase: SupabaseClient = createClient(
+  url ?? 'http://localhost:54321',
+  anonKey ?? 'public-anon-key-placeholder',
+  {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true, // handles the OAuth redirect callback (?code=...)
+    },
   },
-})
+)
 
 export const isSupabaseConfigured = Boolean(url && anonKey)

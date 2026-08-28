@@ -3,6 +3,7 @@ import { useState } from 'react'
 import type { FixedCommitment, LatLngPoint, TransportMode, TravelStyle } from '../data/types'
 import { TRANSPORT_MODES, TRAVEL_STYLES } from '../data/types'
 import { useDb, currentUser, createTrip } from '../store/store'
+import { FUEL_PRICE_INR_PER_L, isFuelEconomyMode, parseFuelEconomyKmL, parseFuelPricePerL, isImplausibleFuelEconomy } from '../lib/engine'
 import { Field, Chip, toast } from '../components/ui'
 import { LocationInput } from '../components/LocationInput'
 import type { PlaceHit } from '../components/LocationInput'
@@ -29,6 +30,9 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
     name: '', startLocation: '',
     startDate: '', endDate: '', travellers: 2,
     transportMode: 'car' as TransportMode,
+    fuelEconomy: '',
+    fuelPrice: '',
+    roundTrip: true,
     budgetPerPersonInr: 15000,
     travelStyle: 'balanced' as TravelStyle,
     coverEmoji: '🧭',
@@ -86,6 +90,9 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
       startDate: f.startDate, endDate: f.endDate,
       travellers: f.travellers,
       transportMode: f.transportMode,
+      fuelEconomyKmL: isFuelEconomyMode(f.transportMode) ? parseFuelEconomyKmL(f.fuelEconomy) : undefined,
+      fuelPricePerL: isFuelEconomyMode(f.transportMode) ? parseFuelPricePerL(f.fuelPrice) : undefined,
+      roundTrip: isFuelEconomyMode(f.transportMode) ? f.roundTrip : undefined,
       budgetPerPersonInr: f.budgetPerPersonInr,
       travelStyle: f.travelStyle,
       fixedCommitments: commitments.filter(x => x.title.trim()),
@@ -186,6 +193,30 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
                 {TRANSPORT_MODES.map(m => <option key={m} value={m}>{cap(m)}</option>)}
               </select>
             </Field>
+            {isFuelEconomyMode(f.transportMode) && (
+              <>
+              <div className="form-row">
+                <Field label="Fuel economy (km per litre)" hint="Optional — makes fuel costs accurate: route distance ÷ economy × price per litre. Cars typically do 12–25 km/L, bikes 25–45.">
+                  <input className="input" type="number" min={2} max={80} step={0.1} value={f.fuelEconomy}
+                    onChange={e => setF(x => ({ ...x, fuelEconomy: e.target.value }))} placeholder="e.g. 18" />
+                  {isImplausibleFuelEconomy(f.transportMode, parseFuelEconomyKmL(f.fuelEconomy)) && (
+                    <p className="hint-text" style={{ marginTop: 5, color: '#b45309' }}>
+                      ⚠️ Unusual for a {f.transportMode} — most do far better. Double-check the value (km per litre).
+                    </p>
+                  )}
+                </Field>
+                <Field label="Fuel price (₹ per litre)" hint={`Optional — defaults to ₹${FUEL_PRICE_INR_PER_L}/L (indicative national average). Enter your local pump price for a sharper estimate.`}>
+                  <input className="input" type="number" min={50} max={250} step={0.1} value={f.fuelPrice}
+                    onChange={e => setF(x => ({ ...x, fuelPrice: e.target.value }))} placeholder="e.g. 105.5" />
+                </Field>
+              </div>
+              <div className="chip-row" style={{ margin: '4px 0 12px' }}>
+                <Chip active={f.roundTrip} onClick={() => setF(x => ({ ...x, roundTrip: !x.roundTrip }))}>
+                  Round trip — return to start
+                </Chip>
+              </div>
+              </>
+            )}
             <Field label="Travel style">
               <select className="select" value={f.travelStyle} onChange={e => setF(x => ({ ...x, travelStyle: e.target.value as TravelStyle }))}>
                 {TRAVEL_STYLES.map(s => <option key={s} value={s}>{cap(s)}</option>)}

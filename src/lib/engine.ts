@@ -11,6 +11,12 @@ export interface EngineAssumptions {
   dayStart: string
   dayEnd: string
   inrPerKm?: number
+  /** user-stated fuel economy (km/L) — present only when it drives inrPerKm */
+  kmPerLiter?: number
+  /** effective fuel price behind the economy-derived inrPerKm (user's local pump price or the indicative default) */
+  fuelPricePerL?: number
+  /** true when fuelPricePerL came from the user rather than the indicative default */
+  fuelPriceIsUserSet?: boolean
 }
 
 const MODE_SPEED: Record<string, number> = {
@@ -20,10 +26,63 @@ const MODE_COST_PER_KM: Record<string, number> = {
   car: 9, motorcycle: 4.5, taxi: 16, bus: 2.2, train: 1.6, flight: 6.5, mixed: 8,
 }
 
+/**
+ * Indicative all-India petrol price (₹/litre) used when a trip states its fuel
+ * economy. Deliberately surfaced (Budget tab, field hints, StopEditor) — never
+ * presented as live data, per the transparency promise.
+ */
+export const FUEL_PRICE_INR_PER_L = 105
+
+/** Modes where the vehicle's own fuel economy meaningfully sets the ₹/km rate. */
+const FUEL_ECONOMY_MODES = new Set<string>(['car', 'motorcycle'])
+
+/** True when the trip mode benefits from a user-stated fuel economy. */
+export function isFuelEconomyMode(mode: string): boolean {
+  return FUEL_ECONOMY_MODES.has(mode)
+}
+
+/**
+ * Parse a fuel-economy form input into a sane km/L number, or undefined when
+ * blank/implausible (cars do ~12–25 km/L, bikes ~25–45; anything outside
+ * 2–80 is a typo, not a vehicle).
+ */
+export function parseFuelEconomyKmL(raw: string | number | undefined | null): number | undefined {
+  const n = typeof raw === 'number' ? raw : Number(String(raw ?? '').trim())
+  return Number.isFinite(n) && n >= 2 && n <= 80 ? n : undefined
+}
+
+/** Soft plausibility bands (hard acceptance stays 2–80) — used to nudge, never to block. */
+const PLAUSIBLE_KM_PER_L: Record<string, [number, number]> = { car: [8, 35], motorcycle: [12, 75] }
+
+/** True when a stated economy is outside the typical band for the mode — a nudge, not a veto. */
+export function isImplausibleFuelEconomy(mode: string, economy: number | undefined): boolean {
+  const band = PLAUSIBLE_KM_PER_L[mode]
+  return !!band && !!economy && economy > 0 && (economy < band[0] || economy > band[1])
+}
+
+/**
+ * True when the route should also price the drive back to its start. Defaults
+ * to on for self-drive modes (the overwhelmingly common case) — one-way drives
+ * opt out explicitly via trip.roundTrip === false.
+ */
+export function isRoundTrip(trip: Pick<Trip, 'transportMode' | 'roundTrip'>): boolean {
+  return FUEL_ECONOMY_MODES.has(trip.transportMode) && trip.roundTrip !== false
+}
+
+/**
+ * Parse a fuel-price form input (₹/L) into a sane number, or undefined when
+ * blank/implausible. A generous 50–250 band covers petrol, diesel and CNG
+ * across Indian states without accepting typos.
+ */
+export function parseFuelPricePerL(raw: string | number | undefined | null): number | undefined {
+  const n = typeof raw === 'number' ? raw : Number(String(raw ?? '').trim())
+  return Number.isFinite(n) && n >= 50 && n <= 250 ? n : undefined
+}
+
 /** Default planning assumptions shown to users wherever we estimate. */
-export function getAssumptions(trip: Pick<Trip, 'transportMode'>): EngineAssumptions {
+export function getAssumptions(trip: Pick<Trip, 'transportMode' | 'fuelEconomyKmL' | 'fuelPricePerL'>): EngineAssumptions {
   const mode = trip.transportMode
-  return {
+  const base: EngineAssumptions = {
     mode,
     avgSpeedKmph: MODE_SPEED[mode] ?? 40,
     bufferMinutesPerStop: 15,
@@ -32,6 +91,23 @@ export function getAssumptions(trip: Pick<Trip, 'transportMode'>): EngineAssumpt
     dayEnd: '20:00',
     inrPerKm: MODE_COST_PER_KM[mode],
   }
+  // A stated fuel economy beats the blended ₹/km table for self-drive modes:
+  // litres burned = distance ÷ economy, so ₹/km = price-per-litre ÷ economy.
+  // The price itself is the user's local pump price when stated, else the
+  // indicative national average.
+  const economy = trip.fuelEconomyKmL
+  if (economy && economy > 0 && FUEL_ECONOMY_MODES.has(mode)) {
+    const userPrice = parseFuelPricePerL(trip.fuelPricePerL)
+    const price = userPrice ?? FUEL_PRICE_INR_PER_L
+    return {
+      ...base,
+      kmPerLiter: economy,
+      fuelPricePerL: price,
+      fuelPriceIsUserSet: userPrice != null,
+      inrPerKm: Math.round((price / economy) * 100) / 100,
+    }
+  }
+  return base
 }
 
 export function minutesToHM(mins: number): string {
@@ -201,7 +277,7 @@ export interface StopLegEstimate extends LegEstimate {
 export function estimateLeg(
   from: { lat: number; lng: number },
   to: { lat: number; lng: number },
-  trip: Pick<Trip, 'transportMode'>,
+  trip: Pick<Trip, 'transportMode' | 'fuelEconomyKmL' | 'fuelPricePerL'>,
 ): StopLegEstimate {
   const A = getAssumptions(trip)
   const est = legBetween(from, to, A)
@@ -364,6 +440,18 @@ export function firstFixedPoint(trip: Trip): { lat: number; lng: number } {
   return { lat: 9.9312, lng: 76.2673 } // Kochi fallback
 }
 
+/** Last active stop across the trip's days — the turnaround point of the route. */
+export function lastActiveStopPoint(trip: Trip): { lat: number; lng: number } | null {
+  for (let d = trip.days.length - 1; d >= 0; d--) {
+    const stops = trip.days[d]?.stops.filter(s => s.status !== 'rejected') ?? []
+    if (stops.length) {
+      const last = [...stops].sort((a, b) => a.orderInDay - b.orderInDay)[stops.length - 1]
+      return { lat: last.lat, lng: last.lng }
+    }
+  }
+  return null
+}
+
 // ---------------- Totals ----------------
 
 export interface TripTotals {
@@ -390,6 +478,20 @@ export function computeTotals(trip: Trip, legCorrections?: Record<string, LegEst
     // per-leg fuel/fare cost derived from distance
     sim.legs.forEach(l => { transportKmCost += l.distanceKm * (A.inrPerKm ?? 8) })
   })
+
+  // Round trip: the drive back to the start burns fuel too, so it belongs in
+  // the budget. Priced with the same assumptions and refined by the OSRM
+  // correction for that leg when the UI has fetched one.
+  if (isRoundTrip(trip)) {
+    const turnaround = lastActiveStopPoint(trip)
+    if (turnaround) {
+      const home = firstFixedPoint(trip)
+      const ret = legCorrections?.[legKey(turnaround, home)] ?? legBetween(turnaround, home, A)
+      distanceKm += ret.distanceKm
+      travelMinutes += ret.durationMinutes
+      transportKmCost += ret.distanceKm * (A.inrPerKm ?? 8)
+    }
+  }
 
   let sum = 0, essential = 0, optional = 0
   const byCategory: Record<string, number> = {}

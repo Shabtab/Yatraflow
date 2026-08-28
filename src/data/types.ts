@@ -128,6 +128,24 @@ export interface Trip {
   endDate: string
   travellers: number
   transportMode: TransportMode
+  /**
+   * Optional user-stated fuel economy (km per litre) for self-drive modes.
+   * When set on a car/motorcycle trip the engine derives fuel ₹/km from it
+   * (distance ÷ economy × indicative ₹/L) instead of the blended mode table.
+   */
+  fuelEconomyKmL?: number
+  /**
+   * Optional fuel price the user pays at their local pump (₹ per litre).
+   * Falls back to the indicative national average (FUEL_PRICE_INR_PER_L) when
+   * unset — pump prices vary ~₹94–110/L across states, so this beats averages.
+   */
+  fuelPricePerL?: number
+  /**
+   * True when the self-drive route returns to its starting point (the common
+   * case). Adds the final-destination → start leg to distance, travel time and
+   * fuel cost. Defaults to true for car/motorcycle; one-way drives set false.
+   */
+  roundTrip?: boolean
   budgetPerPersonInr: number
   travelStyle: TravelStyle
   fixedCommitments: FixedCommitment[]
