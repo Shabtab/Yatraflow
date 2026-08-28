@@ -649,6 +649,15 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
 .yf-map-pin:hover { transform: scale(1.18); }
 [data-theme='dark'] .yf-map-pin { border-color: rgba(255,255,255,.85); }
 
+/* Distinct start/end badges on the map (auto anchor stops) */
+.yf-map-flag {
+  width: 30px; height: 30px; border-radius: 999px;
+  font-size: 15px; cursor: default;
+  background: linear-gradient(135deg, #0e7c66, #149A90);
+  border: 2.5px solid #fff; box-shadow: 0 2px 8px rgba(11,37,69,.35);
+}
+[data-theme='dark'] .yf-map-flag { border-color: rgba(255,255,255,.85); }
+
 /* ---- Location autocomplete dropdown ---- */
 .loc-dropdown {
   position: absolute;

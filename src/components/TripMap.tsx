@@ -42,7 +42,7 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby }: {
     () => (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'),
   )
   const mapRef = useRef<MapRef | null>(null)
-  const fittedRef = useRef(false)
+  const [mapLoaded, setMapLoaded] = useState(false)
 
   // follow the app's theme toggle
   useEffect(() => {
@@ -73,53 +73,119 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby }: {
     [daysToPlot],
   )
 
-  // fit the viewport to the route once points are available (after a resize()
-  // so fitBounds computes against the canvas's real, current pixel size)
+  // The map mounts lazily inside a Suspense boundary, so mapRef may be null on
+  // the first render(s). Poll until the instance exists, then attach to its real
+  // 'load' event (checking isStyleLoaded in case it already fired) so mapLoaded
+  // reflects the map actually being ready — not just the ref existing.
+  const pointsKey = useMemo(
+    () => allPoints.map(p => `${p.dayIndex}:${p.lat.toFixed(4)},${p.lng.toFixed(4)}`).join('|'),
+    [allPoints],
+  )
   useEffect(() => {
-    if (!mapRef.current || allPoints.length === 0) return
-    const lons = allPoints.map(p => p.lng)
-    const lats = allPoints.map(p => p.lat)
-    mapRef.current.resize()
-    mapRef.current.fitBounds(
-      [
-        [Math.min(...lons), Math.min(...lats)],
-        [Math.max(...lons), Math.max(...lats)],
-      ],
-      { padding: 70, maxZoom: 12, duration: 400 },
-    )
-    fittedRef.current = true
-  }, [allPoints]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (allPoints.length === 0) { setMapLoaded(false); return }
+    let cancelled = false
+    let attached = false
+    const tick = setInterval(() => {
+      if (cancelled) return
+      const m = mapRef.current
+      if (!m) return
+      if (!attached) {
+        attached = true
+        const onLoad = () => { if (!cancelled) setMapLoaded(true) }
+        if (m.isStyleLoaded()) onLoad()
+        else m.once('load', onLoad)
+        clearInterval(tick)
+      }
+    }, 120)
+    return () => { cancelled = true; clearInterval(tick) }
+  }, [pointsKey]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // fit the viewport to the route whenever the map is ready and the points change
+  useEffect(() => {
+    if (!mapLoaded || !mapRef.current || allPoints.length === 0) return
+    const m = mapRef.current
+    let minLng = Infinity, maxLng = -Infinity, minLat = Infinity, maxLat = -Infinity
+    for (const p of allPoints) {
+      if (p.lng < minLng) minLng = p.lng
+      if (p.lng > maxLng) maxLng = p.lng
+      if (p.lat < minLat) minLat = p.lat
+      if (p.lat > maxLat) maxLat = p.lat
+    }
+    // single point (or near-zero bounds) — pad so fitBounds has real area
+    if (maxLng - minLng < 1e-4) { minLng -= 0.08; maxLng += 0.08 }
+    if (maxLat - minLat < 1e-4) { minLat -= 0.08; maxLat += 0.08 }
+    const run = () => {
+      m.resize()
+      m.fitBounds(
+        [[minLng, minLat], [maxLng, maxLat]],
+        { padding: 70, maxZoom: 12, duration: 400 },
+      )
+    }
+    requestAnimationFrame(run)
+  }, [pointsKey, mapLoaded]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function fitToTrip() {
+    const m = mapRef.current
+    if (!m || allPoints.length === 0) return
+    let minLng = Infinity, maxLng = -Infinity, minLat = Infinity, maxLat = -Infinity
+    for (const p of allPoints) {
+      if (p.lng < minLng) minLng = p.lng
+      if (p.lng > maxLng) maxLng = p.lng
+      if (p.lat < minLat) minLat = p.lat
+      if (p.lat > maxLat) maxLat = p.lat
+    }
+    if (maxLng - minLng < 1e-4) { minLng -= 0.08; maxLng += 0.08 }
+    if (maxLat - minLat < 1e-4) { minLat -= 0.08; maxLat += 0.08 }
+    m.resize()
+    m.fitBounds([[minLng, minLat], [maxLng, maxLat]], { padding: 70, maxZoom: 12, duration: 400 })
+  }
 
   function colorForDay(i: number): string {
     return DAY_COLORS[i % DAY_COLORS.length]
   }
 
-  // Real road geometry per plotted day from OSRM; falls back to straight
-  // lines when the service is unreachable. Keyed by day index.
-  const [roadGeoms, setRoadGeoms] = useState<Record<number, [number, number][]>>({})
-  const geomKey = useMemo(
-    () => daysToPlot.map(d => `${d.index}:${d.stops.map(s => s.id).join(',')}`).join('|'),
-    [daysToPlot],
+  // Real road geometry from OSRM. In "all days" mode a single connected chain —
+  // the stops in timeline order — is drawn as one main line. In single-day mode
+  // each day gets its own coloured line. Falls back to straight lines.
+  const [geom, setGeom] = useState<Record<string, [number, number][]>>({})
+  const chainKey = useMemo(
+    () => allPoints.map(p => `${p.lat.toFixed(5)},${p.lng.toFixed(5)}`).join('>'),
+    [allPoints],
+  )
+  // straight-line fallback geometry for the sequential path (all mode)
+  const allStraight = useMemo(
+    () => allPoints.map(p => [p.lng, p.lat] as [number, number]),
+    [allPoints],
   )
 
   useEffect(() => {
-    if (daysToPlot.length === 0) { setRoadGeoms({}); return }
+    if (allPoints.length === 0) { setGeom({}); return }
     let cancelled = false
     ;(async () => {
-      const next: Record<number, [number, number][]> = {}
-      for (const d of daysToPlot) {
-        const pts = d.stops.map(s => ({ lat: s.lat, lng: s.lng }))
-        if (pts.length < 2) continue
+      const pts: { lat: number; lng: number }[] = allPoints.map(p => ({ lat: p.lat, lng: p.lng }))
+      if (dayFilter === 'all') {
+        if (pts.length < 2) return
         try {
           const legs = await routePath(pts, getAssumptions(trip))
           const coords = legs.flatMap(l => l.geometry)
-          if (!cancelled && coords.length > 1) next[d.index] = dedupeConsecutive(coords)
-        } catch { /* keep straight line */ }
+          if (!cancelled && coords.length > 1) setGeom({ all: dedupeConsecutive(coords) })
+        } catch { /* straight-line fallback below */ }
+      } else {
+        const next: Record<string, [number, number][]> = {}
+        for (const d of daysToPlot) {
+          const dpts = d.stops.map(s => ({ lat: s.lat, lng: s.lng }))
+          if (dpts.length < 2) continue
+          try {
+            const legs = await routePath(dpts, getAssumptions(trip))
+            const coords = legs.flatMap(l => l.geometry)
+            if (!cancelled && coords.length > 1) next[String(d.index)] = dedupeConsecutive(coords)
+          } catch { /* keep straight line */ }
+        }
+        if (!cancelled) setGeom(next)
       }
-      if (!cancelled) setRoadGeoms(next)
     })()
     return () => { cancelled = true }
-  }, [geomKey]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [chainKey, dayFilter]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div>
@@ -131,6 +197,7 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby }: {
               Day {d.index + 1}
             </button>
           ))}
+          <button className="map-day-chip map-recenter" onClick={fitToTrip} title="Recentre the map on the trip route">🎯 Recentre</button>
         </div>
 
         {allPoints.length === 0 ? (
@@ -144,23 +211,47 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby }: {
             zoom={5}
           >
             <MapControls position="top-right" showFullscreen />
-            {/* connect consecutive stops of each plotted day — real road shape when OSRM responds */}
-            {daysToPlot.map(d => (
+            {/* In All-days view a single connected main line from the trip start
+                through every stop to the end; in single-day view, coloured lines. */}
+            {dayFilter === 'all' ? (
               <MapRoute
-                key={d.index}
-                coordinates={
-                  roadGeoms[d.index]?.length ? roadGeoms[d.index]
-                  : d.stops.map(s => [s.lng, s.lat] as [number, number])
-                }
-                color={colorForDay(d.index)}
-                width={3.5}
+                coordinates={geom.all?.length ? geom.all : allStraight}
+                color="#2A6FDB"
+                width={4}
                 opacity={0.85}
               />
-              // backtracking legs are flagged in the Timeline tab, not re-derived here
-            ))}
+            ) : (
+              daysToPlot.map(d => (
+                <MapRoute
+                  key={d.index}
+                  coordinates={
+                    geom[String(d.index)]?.length ? geom[String(d.index)]
+                    : d.stops.map(s => [s.lng, s.lat] as [number, number])
+                  }
+                  color={colorForDay(d.index)}
+                  width={3.5}
+                  opacity={0.85}
+                />
+              ))
+            )}
             {(() => {
               let num = 0
-              return allPoints.map(p => {
+              return allPoints.map((p, idx) => {
+                // Auto anchor stops (trip start / final destination) render as
+                // distinct start/end badges instead of numbered pins.
+                const isFirst = idx === 0
+                const isLast = idx === allPoints.length - 1
+                if (p.auto) {
+                  const label = isLast ? '🏁' : '🛫'
+                  return (
+                    <MapMarker key={p.id} longitude={p.lng} latitude={p.lat}>
+                      <MarkerContent>
+                        <span className="yf-map-pin yf-map-flag" title={p.title}>{label}</span>
+                      </MarkerContent>
+                      <MarkerTooltip>{isLast ? `Final destination — ${p.title}` : `Trip start — ${p.title}`}</MarkerTooltip>
+                    </MapMarker>
+                  )
+                }
                 num += 1
                 return (
                   <MapMarker key={p.id} longitude={p.lng} latitude={p.lat}>
@@ -205,12 +296,14 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby }: {
         )}
 
         <div className="map-legend">
-          {dayFilter === 'all' && <>colours = days · </>}
-          numbers follow timeline order · 💡 gold markers = nearby ideas{onAddNearby ? ' (+ to add)' : ''} · click a pin for details
+          {dayFilter === 'all'
+            ? <>blue line = whole route · </> 
+            : <>colours = day · </>}
+          numbers follow timeline order · 🛫/🏁 = start & final destination · 💡 gold markers = nearby ideas{onAddNearby ? ' (+ to add)' : ''} · click a pin for details
         </div>
       </div>
       <p className="hint-text" style={{ marginTop: 8 }}>
-        ⚠️ Route lines follow real roads (© OSRM/OpenStreetMap) when available; distances/durations in the plan remain transparent estimates from fixed assumptions — no live traffic data.
+        ⚠️ Route lines follow real roads (© OSRM/OpenStreetMap) when available; distances/durations in the plan are real-road estimates for ground travel, falling back to transparent haversine assumptions when offline/other modes — no live traffic data.
       </p>
     </div>
   )

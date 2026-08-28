@@ -6,10 +6,11 @@
 import { describe, it, expect } from 'vitest'
 import {
   addMinutesToClock, hmToMinutes, legBetween, simulateDay,
-  computeTotals, computeHealth, collectWarnings, countHotelNights, originOf,
-  getAssumptions, formatInr, scoreWarnings,
+  computeTotals, computeHealth, collectWarnings, countHotelNights, originOf, firstFixedPoint,
+  getAssumptions, formatInr, scoreWarnings, predecessorOf, nextAfter, estimateLeg,
 } from '../src/lib/engine'
 import { seedData } from '../src/data/seed'
+import type { Trip, ItineraryStop } from '../src/data/types'
 
 const keralaTrip = seedData.trips[0]
 
@@ -64,6 +65,58 @@ describe('leg estimation (haversine × road factor)', () => {
   })
 })
 
+describe('leg-aware stop insertion', () => {
+  // Kolkata → Mandarmani style fixture: start anchor + a Day-1 stop, Day 2 empty-ish
+  const trip = {
+    ...keralaTrip,
+    startLocation: 'Kolkata',
+    startLocationCoords: { lat: 22.5726, lng: 88.3639 },
+    destinations: ['Mandarmani'],
+    destinationCoords: [{ lat: 21.6627, lng: 87.7833 }],
+    days: [
+      { id: 'd0', index: 0, stops: keralaTrip.days[0]?.stops.slice(0, 1) ?? [] },
+      { id: 'd1', index: 1, stops: [] },
+    ],
+  } as Trip
+
+  it('predecessorOf: last stop of the day wins', () => {
+    const p = predecessorOf(trip, 0)
+    expect(p).not.toBeNull()
+    expect(p!.point).toEqual({ lat: trip.days[0].stops[0].lat, lng: trip.days[0].stops[0].lng })
+  })
+  it('predecessorOf: falls back to previous day, then the start anchor', () => {
+    expect(predecessorOf(trip, 1)!.name).toBe(trip.days[0].stops[0].locationName || trip.days[0].stops[0].title)
+    const empty: Trip = { ...trip, days: [{ id: 'd0', index: 0, stops: [] }] }
+    const fromStart = predecessorOf(empty, 0)
+    expect(fromStart!.name).toBe('Kolkata (start)')
+    expect(fromStart!.point).toEqual({ lat: 22.5726, lng: 88.3639 })
+  })
+  it('predecessorOf: null when no stops, no start coords, no prior days', () => {
+    const orphan: Trip = { ...trip, startLocationCoords: undefined, days: [{ id: 'd0', index: 0, stops: [] }] }
+    expect(predecessorOf(orphan, 0)).toBeNull()
+  })
+  it('nextAfter: first stop of a later day wins, else the end anchor', () => {
+    const withNext: Trip = { ...trip, days: [trip.days[0], { id: 'd1', index: 1, stops: [{ ...(trip.days[0].stops[0]), id: 'x', locationName: 'Digha', orderInDay: 1 }] }] }
+    expect(nextAfter(withNext, 0)!.name).toBe('Digha')
+    expect(nextAfter(trip, 0)!.name).toBe('Mandarmani (end)')
+  })
+  it('nextAfter: null when nothing follows', () => {
+    const tail: Trip = { ...trip, destinationCoords: undefined, days: [{ id: 'd0', index: 0, stops: trip.days[0].stops }] }
+    expect(nextAfter(tail, 0)).toBeNull()
+  })
+  it('estimateLeg: zero-distance legs cost nothing', () => {
+    const pt = { lat: 22.5726, lng: 88.3639 }
+    const leg = estimateLeg(pt, pt, { transportMode: 'car' })
+    expect(leg.distanceKm).toBeCloseTo(0)
+    expect(leg.costInr).toBeCloseTo(0)
+  })
+  it('estimateLeg: cost tracks distance at the mode rate', () => {
+    const leg = estimateLeg({ lat: 22.5726, lng: 88.3639 }, { lat: 21.6627, lng: 87.7833 }, { transportMode: 'car' })
+    expect(leg.distanceKm).toBeGreaterThan(100)  // Kolkata→Mandarmani is ~170 road km
+    expect(leg.costInr).toBeCloseTo(leg.distanceKm * 9, 0)
+  })
+})
+
 describe('day simulation on the Kerala seed trip', () => {
   const trip = keralaTrip
   trip.days.forEach((day) => {
@@ -110,6 +163,37 @@ describe('totals & health on all seed trips', () => {
     })))
     expect(brutal.score).toBe(5)
     expect(brutal.band).toBe('Unrealistic')
+  })
+})
+
+describe('waypoint anchors (auto start/end stops)', () => {
+  const startCoords = { lat: 9.98, lng: 76.28 }
+
+  it('a zero-dwell waypoint adds distance but no buffer dwell time', () => {
+    const aStop = structuredClone(keralaTrip.days[0].stops[0]) as ItineraryStop
+    const dayStop: ItineraryStop = {
+      ...aStop, title: 'Trip start', auto: true, visitMinutes: 0, category: 'travel',
+    }
+    const ctx = structuredClone(keralaTrip) as Trip
+    const sim = simulateDay({ stops: [dayStop] }, ctx, startCoords, 0)
+    const travelOnly = legBetween(startCoords, dayStop, getAssumptions({ transportMode: 'car' })).durationMinutes
+    expect(sim.totalTravelMinutes).toBeGreaterThanOrEqual(travelOnly)
+    // no dwell/buffer per waypoint — a regular stop would add a +15 buffer
+    expect(sim.totalTravelMinutes).toBeLessThan(travelOnly + 20)
+  })
+
+  describe('origin resolution', () => {
+    it('prefers trip.startLocationCoords (real point A) over the Kochi fallback', () => {
+      const withStart = { ...structuredClone(keralaTrip), startLocationCoords: { lat: 28.61, lng: 77.21 } }
+      expect(firstFixedPoint(withStart)).toEqual({ lat: 28.61, lng: 77.21 })
+    })
+    it('falls back to the first active stop when no geocoded start exists', () => {
+      const noStart = { ...structuredClone(keralaTrip), startLocationCoords: undefined }
+      const pts = firstFixedPoint(noStart)
+      const first = [...keralaTrip.days[0].stops].filter(s => s.status !== 'rejected').sort((a, b) => a.orderInDay - b.orderInDay)[0]
+      expect(pts.lat).toBe(first.lat)
+      expect(pts.lng).toBe(first.lng)
+    })
   })
 })
 

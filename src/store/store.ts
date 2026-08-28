@@ -13,6 +13,7 @@ import type {
   PublishedItinerary, ID, ItineraryStop, ItineraryDay, TripMember, Expense, FixedCommitment,
 } from '../data/types'
 import { seedData, uid } from '../data/seed'
+import type { LatLngPoint } from '../data/types'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { toast } from '../components/ui'
 
@@ -57,7 +58,9 @@ function patch(next: Partial<DB>) {
 // ---------------- Supabase row <-> domain mapping ----------------
 
 interface TripRow {
-  id: string; owner_id: string; name: string; start_location: string; destinations: string[];
+  id: string; owner_id: string; name: string; start_location: string;
+  start_location_coords: LatLngPoint | null; destinations: string[];
+  destination_coords: (LatLngPoint | null)[] | null;
   start_date: string; end_date: string; travellers: number; transport_mode: string;
   budget_per_person_inr: number; travel_style: string; fixed_commitments: FixedCommitment[];
   days: ItineraryDay[]; expenses: Expense[]; cover_emoji: string; visibility: 'private' | 'public';
@@ -66,7 +69,9 @@ interface TripRow {
 
 function rowToTrip(row: TripRow, members: TripMember[]): Trip {
   return {
-    id: row.id, name: row.name, startLocation: row.start_location, destinations: row.destinations ?? [],
+    id: row.id, name: row.name, startLocation: row.start_location, startLocationCoords: row.start_location_coords ?? undefined,
+    destinations: row.destinations ?? [],
+    destinationCoords: row.destination_coords ?? undefined,
     startDate: row.start_date, endDate: row.end_date, travellers: row.travellers,
     transportMode: row.transport_mode as Trip['transportMode'], budgetPerPersonInr: row.budget_per_person_inr,
     travelStyle: row.travel_style as Trip['travelStyle'], fixedCommitments: row.fixed_commitments ?? [],
@@ -78,7 +83,10 @@ function rowToTrip(row: TripRow, members: TripMember[]): Trip {
 function tripToRow(trip: Trip, ownerId: string): Omit<TripRow, 'created_at' | 'updated_at'> {
   return {
     id: trip.id, owner_id: ownerId, name: trip.name, start_location: trip.startLocation,
-    destinations: trip.destinations, start_date: trip.startDate, end_date: trip.endDate,
+    start_location_coords: trip.startLocationCoords ?? null,
+    destinations: trip.destinations,
+    destination_coords: trip.destinationCoords ?? null,
+    start_date: trip.startDate, end_date: trip.endDate,
     travellers: trip.travellers, transport_mode: trip.transportMode, budget_per_person_inr: trip.budgetPerPersonInr,
     travel_style: trip.travelStyle, fixed_commitments: trip.fixedCommitments, days: trip.days,
     expenses: trip.expenses, cover_emoji: trip.coverEmoji, visibility: trip.visibility,
@@ -295,6 +303,8 @@ export function tripById(id: ID): Trip | undefined {
 
 export interface NewTripInput {
   name: string; startLocation: string; destinations: string[];
+  startLocationCoords?: LatLngPoint;
+  destinationCoords?: (LatLngPoint | null)[];
   startDate: string; endDate: string; travellers: number;
   transportMode: Trip['transportMode']; budgetPerPersonInr: number;
   travelStyle: Trip['travelStyle'];
@@ -307,11 +317,37 @@ export function createTrip(ownerId: ID, input: NewTripInput, seedStops?: Itinera
   const days: ItineraryDay[] = Array.from({ length: dayCount }, (_, i) => ({
     id: uid('day'), index: i, stops: [],
   }))
-  if (seedStops) days.forEach((d, i) => { if (seedStops[i]) d.stops = seedStops[i] })
+
+  // Anchor stops for point A (trip start) and point B (final destination), so
+  // the route and estimates are grounded even before the user adds places in
+  // between. Only created when a real geocoded place was picked.
+  const startAnchor = input.startLocationCoords
+    ? autoAnchor(input.startLocationCoords, input.startLocation)
+    : null
+  const dests = input.destinations
+  const lastIdx = dests.length - 1
+  const endAnchor = lastIdx >= 0 && input.destinationCoords?.[lastIdx]
+    ? autoAnchor(input.destinationCoords[lastIdx]!, dests[lastIdx])
+    : null
+
+  // User-seeded per-day stops land between the anchors.
+  days.forEach((d, i) => {
+    const base = seedStops?.[i] ?? []
+    const isFirst = i === 0
+    const isLast = i === dayCount - 1
+    const list = [
+      ...(isFirst && startAnchor ? [startAnchor] : []),
+      ...base,
+      ...(isLast && endAnchor ? [endAnchor] : []),
+    ]
+    d.stops = list.map((s, n) => ({ ...s, orderInDay: n + 1 }))
+  })
 
   const trip: Trip = {
     id: uuid(),
     ...input,
+    startLocationCoords: input.startLocationCoords,
+    destinationCoords: input.destinationCoords,
     fixedCommitments: input.fixedCommitments.map(fc => ({ ...fc, id: uid('fc') })),
     days, expenses: [], coverEmoji: input.coverEmoji ?? '🧭',
     visibility: 'private', createdAt: Date.now(), updatedAt: Date.now(),
@@ -321,6 +357,16 @@ export function createTrip(ownerId: ID, input: NewTripInput, seedStops?: Itinera
   commit()
   void persistTrip(trip, ownerId)
   return trip
+}
+
+/** A zero-dwell, auto anchor stop for a trip start/end point. */
+function autoAnchor(coords: LatLngPoint, name: string): ItineraryStop {
+  return {
+    id: uid('st'), title: name, category: 'travel', locationName: name,
+    lat: coords.lat, lng: coords.lng, visitMinutes: 0,
+    entryFeeInrPerPerson: 0, transportCostInrTotal: 0,
+    priority: 'must-do', status: 'confirmed', orderInDay: 1, auto: true,
+  }
 }
 
 async function persistTrip(trip: Trip, ownerId: ID) {

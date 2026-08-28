@@ -39,9 +39,11 @@ try {
     console.log('functions in public:', fn.rows.map(r => r.proname))
     process.exit(0)
   }
-  const sql = `notify pgrst, 'reload schema'`
+  const sql = `alter table public.trips add column if not exists start_location_coords jsonb;
+alter table public.trips add column if not exists destination_coords jsonb;
+notify pgrst, 'reload schema'`
   await client.query(sql)
-  console.log('OK — PostgREST schema reload notified')
+  console.log('OK — trips columns added + PostgREST schema reload notified')
 } finally {
   await client.end()
 }

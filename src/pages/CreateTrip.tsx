@@ -1,6 +1,6 @@
 // ============ Create trip ============
 import { useState } from 'react'
-import type { FixedCommitment, TransportMode, TravelStyle } from '../data/types'
+import type { FixedCommitment, LatLngPoint, TransportMode, TravelStyle } from '../data/types'
 import { TRANSPORT_MODES, TRAVEL_STYLES } from '../data/types'
 import { useDb, currentUser, createTrip } from '../store/store'
 import { Field, Chip, toast } from '../components/ui'
@@ -35,6 +35,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
   })
   const [dests, setDests] = useState<DestDraft[]>([])
   const [destInput, setDestInput] = useState('')
+  const [startCoords, setStartCoords] = useState<LatLngPoint | null>(null)
   const [commitments, setCommitments] = useState<CommitDraft[]>([])
   const [c, setC] = useState<CommitDraft>({ title: '', type: 'hotel-checkin', dayIndex: 0, time: '14:00' })
   const [errs, setErrs] = useState<Record<string, string>>({})
@@ -79,7 +80,9 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
     const trip = createTrip(me.id, {
       name: f.name.trim(),
       startLocation: f.startLocation.trim(),
+      startLocationCoords: startCoords ?? undefined,
       destinations: dests.map(d => d.name),
+      destinationCoords: dests.map(d => (d.lat != null && d.lng != null ? { lat: d.lat, lng: d.lng } : null)),
       startDate: f.startDate, endDate: f.endDate,
       travellers: f.travellers,
       transportMode: f.transportMode,
@@ -119,6 +122,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
                 <LocationInput
                   value={f.startLocation}
                   onChange={v => setF(x => ({ ...x, startLocation: v }))}
+                  onPick={p => setStartCoords({ lat: p.latitude, lng: p.longitude })}
                   placeholder="Search a city, e.g. Kochi"
                 />
               </Field>

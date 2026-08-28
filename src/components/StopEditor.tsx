@@ -6,6 +6,8 @@ import { Modal, Field } from './ui'
 import { LocationInput } from './LocationInput'
 import type { PlaceHit } from './LocationInput'
 import { fetchOpeningHours } from '../lib/geocode'
+import { roadLegBetween } from '../lib/routing'
+import { getAssumptions, hmToMinutes, addMinutesToClock, formatInr } from '../lib/engine'
 
 export interface StopFormValues {
   title: string
@@ -25,9 +27,26 @@ export interface StopFormValues {
   status: StopStatus
   /** true once the user picked a real geocoded place (lat/lng verified) */
   geocoded?: boolean
+  /** leg-aware travel fields (auto-filled when a geocoded place is picked) */
+  departTime: string
+  arrivalTime: string
+  legDistanceKm: number
+  legTravelMinutes: number
+  /** true while the leg numbers came from the road-routing lookup */
+  legFromOsrm?: boolean
 }
 
-export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel }: {
+/** Where the user is travelling FROM (and optionally the next destination after). */
+export interface LegContext {
+  fromName: string
+  fromPoint: { lat: number; lng: number }
+  nextName?: string
+  /** engine day start ("08:30") used as the default departure */
+  dayStart: string
+  transportMode: Trip['transportMode']
+}
+
+export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel, legContext }: {
   open: boolean
   onClose: () => void
   initial?: Partial<StopFormValues>
@@ -35,18 +54,45 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel 
   resetKey?: string
   onSave: (v: StopFormValues) => void
   dayLabel?: string
+  legContext?: LegContext
 }) {
   const [v, setV] = useState<StopFormValues>(normalize(initial))
   const [errs, setErrs] = useState<Record<string, string>>({})
   /** "idle" | "loading" | "found" | "none" — OSM hours lookup after picking a place */
   const [hoursState, setHoursState] = useState<'idle' | 'loading' | 'found' | 'none'>('idle')
+  /** "idle" | "loading" — road-leg lookup after picking a place */
+  const [legState, setLegState] = useState<'idle' | 'loading'>('idle')
   // re-init when opening for a different stop
   const [lastKey, setLastKey] = useState(resetKey)
-  if (open && lastKey !== resetKey) { setLastKey(resetKey); setV(normalize(initial)); setErrs({}); setHoursState('idle') }
+  if (open && lastKey !== resetKey) { setLastKey(resetKey); setV(normalize(initial)); setErrs({}); setHoursState('idle'); setLegState('idle') }
 
   async function onPlacePicked(p: PlaceHit) {
     set('locationName', p.name + (p.admin1 ? `, ${p.admin1}` : ''))
     set('lat', p.latitude); set('lng', p.longitude); set('geocoded', true)
+    // leg-aware flow: once we know where this stop is, auto-fill the travel leg
+    if (legContext) {
+      setLegState('loading')
+      try {
+        const leg = await roadLegBetween(legContext.fromPoint, { lat: p.latitude, lng: p.longitude }, getAssumptions({ transportMode: legContext.transportMode }))
+        const perKm = getAssumptions({ transportMode: legContext.transportMode }).inrPerKm ?? 8
+        setV(prev => {
+          const depart = prev.departTime || legContext.dayStart
+          return {
+            ...prev,
+            legDistanceKm: Math.round(leg.distanceKm * 10) / 10,
+            legTravelMinutes: Math.max(1, Math.round(leg.durationMinutes)),
+            transportCostInrTotal: Math.round(leg.distanceKm * perKm),
+            departTime: depart,
+            arrivalTime: addMinutesToClock(hmToMinutes(depart), leg.durationMinutes),
+            legFromOsrm: leg.fromOsrm,
+          }
+        })
+      } catch {
+        /* leg fill is best-effort — the manual fields still work */
+      } finally {
+        setLegState('idle')
+      }
+    }
     // auto-feed open/close times from OpenStreetMap when the place has them
     if (p.kind === 'poi' && !v.openTime) {
       setHoursState('loading')
@@ -139,6 +185,39 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel 
           </Field>
         </div>
 
+        {legContext && v.geocoded && (
+          <div className="card" style={{ background: 'var(--bg-2, #f7f7f5)', padding: 12, marginBottom: 12 }}>
+            <div className="small" style={{ fontWeight: 600, marginBottom: 6 }}>
+              🚗 Travel to this stop {legState === 'loading' ? <span className="muted">— measuring road…</span> : ''}
+            </div>
+            <div className="small muted" style={{ marginBottom: 10 }}>
+              {legContext.fromName} → {v.title || v.locationName || 'this stop'}
+              {legContext.nextName ? <> → {legContext.nextName}</> : null}
+              {v.legFromOsrm ? ' · real road data' : ''}
+            </div>
+            <div className="form-row" style={{ gridTemplateColumns: '1fr 1fr 1fr 1fr' }}>
+              <Field label="Distance (km)">
+                <input type="number" min={0} step={0.1} className="input" value={v.legDistanceKm} onChange={e => set('legDistanceKm', Number(e.target.value))} />
+              </Field>
+              <Field label="Travel time (min)">
+                <input type="number" min={0} step={1} className="input" value={v.legTravelMinutes} onChange={e => set('legTravelMinutes', Number(e.target.value))} />
+              </Field>
+              <Field label="Depart at">
+                <input type="time" className="input" value={v.departTime} onChange={e => {
+                  const dep = e.target.value
+                  setV(prev => ({ ...prev, departTime: dep, arrivalTime: dep && prev.legTravelMinutes ? addMinutesToClock(hmToMinutes(dep), prev.legTravelMinutes) : prev.arrivalTime }))
+                }} />
+              </Field>
+              <Field label="Arrive at">
+                <input type="time" className="input" value={v.arrivalTime} onChange={e => set('arrivalTime', e.target.value)} />
+              </Field>
+            </div>
+            {v.legDistanceKm > 0 && (
+              <div className="small muted">≈ {formatInr(v.legDistanceKm * (getAssumptions({ transportMode: legContext.transportMode }).inrPerKm ?? 8))} fuel/fare at {legContext.transportMode} rates</div>
+            )}
+          </div>
+        )}
+
         <Field label="Description">
           <textarea className="textarea" value={v.description} onChange={e => set('description', e.target.value)} placeholder="What makes this place worth the detour?" />
         </Field>
@@ -173,6 +252,7 @@ function normalize(v?: Partial<StopFormValues>): StopFormValues {
     description: '', visitMinutes: 60, openTime: '', closeTime: '',
     entryFeeInrPerPerson: 0, transportCostInrTotal: 0,
     priority: 'nice-to-have', notes: '', sourceUrl: '', status: 'suggested', geocoded: false,
+    departTime: '', arrivalTime: '', legDistanceKm: 0, legTravelMinutes: 0,
     ...v,
   }
 }

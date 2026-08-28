@@ -14,11 +14,12 @@ YatraFlow is a collaborative travel-planning web app built India-first: real mul
 ### Plan
 - **Create trips** with start location, ordered destinations (real place autocomplete), dates, crew size, transport mode, budget and travel style
 - **Day-by-day timeline** — add/edit/reorder/move stops between days, each with visit duration, opening hours, entry fees, priority (`must-do` / `nice-to-have` / `optional`) and status (`suggested` → `confirmed` / `rejected`)
+- **Leg-aware stop insertion** — picking a place auto-detects your current location and next destination, fills real road distance/travel time/fuel cost, and computes arrival from a departure time you can adjust
 - **Location autocomplete** on every location input, powered by the free [Open-Meteo geocoding API](https://open-meteo.com/en/docs/geocoding-api) — no API key needed. Picking a suggestion pins the stop to real coordinates so maps and distance estimates stay accurate
 - **Interactive map** (MapLibre via [mapcn](https://github.com/AnmolSaini16/mapcn)) — numbered stop pins per day, colour-coded route lines, auto-fit bounds, day filter chips, light/dark basemaps
 
 ### Estimate (transparently)
-- **Schedule engine** — simulates each day leg-by-leg using haversine distances × road factor, per-mode average speeds and ₹/km costs. Shows arrival times, flags tight schedules, missed fixed commitments (hotel check-ins, train departures) and stops that arrive after closing time
+- **Schedule engine** — simulates each day leg-by-leg using real road distances and durations from OSRM (haversine × road factor as the offline fallback), per-mode average speeds and ₹/km costs. Shows arrival times, flags tight schedules, missed fixed commitments (hotel check-ins, train departures) and stops that arrive after closing time
 - **Budget engine** — running totals split per-person vs group, essential vs optional, category breakdown, hotel-night counting
 - **Impact Preview** — before you accept a suggestion or edit a stop, see the delta: ±time, ±distance, ±cost, new/cleared warnings, backtracking detection
 - Every estimate states its assumptions on-screen. **No fake live traffic or prices — ever.**

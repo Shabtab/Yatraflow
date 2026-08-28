@@ -1,7 +1,7 @@
 // ============ Trip workspace ============
 // Tabs: Overview / Timeline / Map / Suggestions / Budget / Decisions / Share
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import type { Trip, ItineraryStop, Expense } from '../data/types'
+import type { Trip, ItineraryStop, Expense, LatLngPoint } from '../data/types'
 import { TRANSPORT_MODES, TRAVEL_STYLES } from '../data/types'
 import {
   useDb, tripById, userById, currentUser, roleOf, canEdit,
@@ -11,9 +11,11 @@ import {
   activityFor, setMemberRole, removeMember, restoreMember, updateTrip, publishItinerary,
 } from '../store/store'
 import {
-  computeHealth, computeTotals, simulateDay, originOf, getAssumptions,
-  minutesToHM, formatInr, countHotelNights,
+  computeHealth, computeTotals, simulateDay, originOf, getAssumptions, legKey,
+  minutesToHM, formatInr, countHotelNights, predecessorOf, nextAfter,
 } from '../lib/engine'
+import type { LegEstimate } from '../lib/engine'
+import { routePath } from '../lib/routing'
 import { computeImpact, type ImpactResult } from '../lib/impact'
 import { Avatar, Chip, Modal, ConfirmDialog, Field, StatTile, HealthRing, EmptyState, toast, undoToast, useReorder, CopyButton } from '../components/ui'
 import { ImpactPreviewPanel } from '../components/ImpactPreview'
@@ -51,6 +53,11 @@ export function TripWorkspace({ tripId, onNavigate }: { tripId: string; onNaviga
   const role = me && trip ? roleOf(trip, me.id) : null
   const editable = canEdit(role)
 
+  // Real road distances/durations for the estimate totals, refreshed when the
+  // route changes. Only applied for ground modes (OSRM is driving-only); the
+  // deterministic haversine engine stays the fallback and powers warnings/impact.
+  const legCorrections = useTripCorrections(trip)
+
   // Pending change: a proposed plan held until the user keeps or discards it.
   const [pending, setPending] = useState<{ proposed: Trip; result: ImpactResult } | null>(null)
 
@@ -60,7 +67,7 @@ export function TripWorkspace({ tripId, onNavigate }: { tripId: string; onNaviga
 
   const effective = pending?.proposed ?? trip
   const health = computeHealth(effective)
-  const totals = computeTotals(effective)
+  const totals = computeTotals(effective, legCorrections)
 
   function applyChange(mutator: (draft: Trip) => void, kind: ImpactResult['kind'], dayIndex: number) {
     const proposed = structuredClone(trip!) as Trip
@@ -153,7 +160,7 @@ export function TripWorkspace({ tripId, onNavigate }: { tripId: string; onNaviga
       )}
 
       {tab === 'overview' && <OverviewTab trip={effective} editable={editable} onOpenDecisions={() => setTab('decisions')} health={health} totals={totals} />}
-      {tab === 'timeline' && <TimelineTab trip={trip} editable={editable} applyChange={applyChange} />}
+      {tab === 'timeline' && <TimelineTab trip={trip} editable={editable} applyChange={applyChange} legCorrections={legCorrections} />}
       {tab === 'map' && (
         <React.Suspense fallback={<div className="container loading-block"><div className="spinner" />Loading map…</div>}>
           <MapTab trip={trip} editable={editable} applyChange={applyChange} />
@@ -311,10 +318,11 @@ function isoAddDays(iso: string, days: number): string {
 
 // ================= Timeline =================
 
-function TimelineTab({ trip, editable, applyChange }: {
+function TimelineTab({ trip, editable, applyChange, legCorrections }: {
   trip: Trip
   editable: boolean
   applyChange: (mutator: (d: Trip) => void, kind: ImpactResult['kind'], dayIndex: number) => void
+  legCorrections?: Record<string, LegEstimate>
 }) {
   const [editorState, setEditorState] = useState<
     { mode: 'add'; dayIndex: number } | { mode: 'edit'; stopId: string } | null
@@ -325,12 +333,14 @@ function TimelineTab({ trip, editable, applyChange }: {
 
   function handleSave(v: StopFormValues) {
     if (!editorState) return
+    // legFromOsrm is display-only — never persist it onto the stop
+    const { legFromOsrm: _drop, ...legFields } = v
     if (editorState.mode === 'add') {
       const dayIndex = editorState.dayIndex
       applyChange(draft => {
         const day = draft.days.find(d => d.index === dayIndex)!
         day.stops.push({
-          ...(v as unknown as ItineraryStop),
+          ...(legFields as unknown as ItineraryStop),
           id: 'pending_' + Math.random().toString(36).slice(2),
           orderInDay: day.stops.length + 1,
         })
@@ -340,7 +350,7 @@ function TimelineTab({ trip, editable, applyChange }: {
       applyChange(draft => {
         for (const day of draft.days) {
           const s = day.stops.find(x => x.id === stopId)
-          if (s) { Object.assign(s, v); break }
+          if (s) { Object.assign(s, legFields); break }
         }
       }, 'edit', dayIndexOfStop(trip, stopId))
     }
@@ -385,7 +395,7 @@ function TimelineTab({ trip, editable, applyChange }: {
       </div>
 
       {days.map(day => (
-        <DaySection key={day.id} day={day} trip={trip} editable={editable}
+        <DaySection key={day.id} day={day} trip={trip} editable={editable} legCorrections={legCorrections}
           onAdd={() => setEditorState({ mode: 'add', dayIndex: day.index })}
           onEdit={(sid) => setEditorState({ mode: 'edit', stopId: sid })}
           onDelete={handleDelete}
@@ -402,6 +412,7 @@ function TimelineTab({ trip, editable, applyChange }: {
         resetKey={editorState ? (editorState.mode === 'edit' ? editorState.stopId : `add-${editorState.dayIndex}`) : ''}
         onSave={handleSave}
         dayLabel={editorState?.mode === 'add' ? `Day ${editorState.dayIndex + 1}` : undefined}
+        legContext={legContextFor(editorState, trip)}
       />
 
       <MoveStopModal
@@ -430,10 +441,11 @@ function TimelineTab({ trip, editable, applyChange }: {
   )
 }
 
-function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithinDay, onMoveBetweenDays, onStatus }: {
+function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithinDay, onMoveBetweenDays, onStatus, legCorrections }: {
   day: Trip['days'][number]
   trip: Trip
   editable: boolean
+  legCorrections?: Record<string, LegEstimate>
   onAdd: () => void
   onEdit: (stopId: string) => void
   onDelete: (stopId: string, dayIndex: number) => void
@@ -441,7 +453,7 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
   onMoveBetweenDays: (stop: ItineraryStop) => void
   onStatus: (stop: ItineraryStop, status: ItineraryStop['status']) => void
 }) {
-  const sim = simulateDay(day, trip, originOf(trip, day.index), day.index)
+  const sim = simulateDay(day, trip, originOf(trip, day.index), day.index, legCorrections)
   const A = getAssumptions(trip)
   const ordered = [...day.stops].sort((a, b) => a.orderInDay - b.orderInDay)
   const { dndHandlers, dragging, over, moveUp, moveDown } = useReorder(ordered, (f, t) => onMoveWithinDay(f, t, day.index))
@@ -499,6 +511,9 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
                   {s.openTime && <span>🕒 {s.openTime}–{s.closeTime}</span>}
                   <span>🎫 ₹{s.entryFeeInrPerPerson}/person</span>
                   <span>🚗 ₹{s.transportCostInrTotal} transport</span>
+                  {s.departTime && s.arrivalTime && (
+                    <span>🕰 dep {s.departTime} · arr {s.arrivalTime}{s.legDistanceKm ? ` · ${s.legDistanceKm.toFixed(0)} km` : ''}</span>
+                  )}
                   {sim.arrivalTimes[i] && <span>→ arrives ~{sim.arrivalTimes[i]}</span>}
                 </div>
                 {s.description && <div className="stop-desc">{s.description}</div>}
@@ -1320,15 +1335,18 @@ function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boolean })
     travellers: trip.travellers, budget: trip.budgetPerPersonInr,
     transportMode: trip.transportMode, travelStyle: trip.travelStyle,
   })
+  const [startCoords, setStartCoords] = useState<LatLngPoint | null>(trip.startLocationCoords ?? null)
+  const [destCoords, setDestCoords] = useState<(LatLngPoint | null)[]>(trip.destinationCoords ?? [])
   const [destInput, setDestInput] = useState('')
 
-  function addDest(name: string) {
+  function addDest(name: string, coords: LatLngPoint | null) {
     const clean = name.trim()
     if (!clean) return
     if (f.destinations.some(d => d.toLowerCase() === clean.toLowerCase())) {
       toast('Already on the route.', 'err'); return
     }
     setF(x => ({ ...x, destinations: [...x.destinations, clean] }))
+    setDestCoords(list => [...list, coords])
     setDestInput('')
   }
 
@@ -1340,6 +1358,7 @@ function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boolean })
           <LocationInput
             value={f.startLocation}
             onChange={v => setF(x => ({ ...x, startLocation: v }))}
+            onPick={p => setStartCoords({ lat: p.latitude, lng: p.longitude })}
             placeholder="Search a city…"
           />
         </Field>
@@ -1348,7 +1367,7 @@ function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boolean })
         <LocationInput
           value={destInput}
           onChange={setDestInput}
-          onPick={p => addDest(p.name + (p.admin1 ? `, ${p.admin1}` : ''))}
+          onPick={p => addDest(p.name + (p.admin1 ? `, ${p.admin1}` : ''), { lat: p.latitude, lng: p.longitude })}
           placeholder={f.destinations.length ? 'Add another destination…' : 'Add your first destination…'}
         />
         {f.destinations.length > 0 && (
@@ -1359,16 +1378,23 @@ function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boolean })
                 <button type="button" aria-label={`Move ${d} earlier`} disabled={!editable || i === 0}
                   onClick={() => setF(x => {
                     const list = [...x.destinations]; if (i === 0) return x
-                    ;[list[i - 1], list[i]] = [list[i], list[i - 1]]; return { ...x, destinations: list }
+                    ;[list[i - 1], list[i]] = [list[i], list[i - 1]]
+                    const dc = [...destCoords]; [dc[i - 1], dc[i]] = [dc[i], dc[i - 1]]; setDestCoords(dc)
+                    return { ...x, destinations: list }
                   })} style={{ opacity: i === 0 ? .25 : undefined }}>↑</button>
                 <button type="button" aria-label={`Move ${d} later`} disabled={!editable || i === f.destinations.length - 1}
                   onClick={() => setF(x => {
                     const list = [...x.destinations]; if (i >= list.length - 1) return x
-                    ;[list[i + 1], list[i]] = [list[i], list[i + 1]]; return { ...x, destinations: list }
+                    ;[list[i + 1], list[i]] = [list[i], list[i + 1]]
+                    const dc = [...destCoords]; [dc[i + 1], dc[i]] = [dc[i], dc[i + 1]]; setDestCoords(dc)
+                    return { ...x, destinations: list }
                   })} style={{ opacity: i === f.destinations.length - 1 ? .25 : undefined }}>↓</button>
                 {editable && (
                   <button type="button" aria-label={`Remove ${d}`}
-                    onClick={() => setF(x => ({ ...x, destinations: x.destinations.filter((_, j) => j !== i) }))}>✕</button>
+                    onClick={() => {
+                      setF(x => ({ ...x, destinations: x.destinations.filter((_, j) => j !== i) }))
+                      setDestCoords(list => list.filter((_, j) => j !== i))
+                    }}>✕</button>
                 )}
               </span>
             ))}
@@ -1395,7 +1421,9 @@ function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boolean })
         <button className="btn btn-primary btn-sm" onClick={() => {
           updateTrip(trip.id, {
             name: f.name, startLocation: f.startLocation,
+            startLocationCoords: startCoords ?? undefined,
             destinations: f.destinations.map(s => s.trim()).filter(Boolean),
+            destinationCoords: destCoords,
             travellers: Math.max(1, f.travellers),
             budgetPerPersonInr: Math.max(0, f.budget),
             transportMode: f.transportMode, travelStyle: f.travelStyle,
@@ -1405,6 +1433,66 @@ function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boolean })
       )}
     </div>
   )
+}
+
+// ================= Real-road distance refinement =================
+
+/** Road modes where OSRM's driving distances make sense as estimates. */
+const ROAD_MODES = ['car', 'motorcycle', 'taxi', 'bus', 'mixed']
+
+/**
+ * Fetches real road distances/durations (OSRM) for the trip's legs and returns
+ * a map keyed by `legKey(a, b)` that the engine consumes to replace its
+ * haversine estimates. Falls back to the deterministic values when the service
+ * is unreachable or the mode isn't ground-based.
+ */
+function useTripCorrections(trip: Trip | null | undefined): Record<string, LegEstimate> | undefined {
+  const [corrections, setCorrections] = useState<Record<string, LegEstimate> | undefined>(undefined)
+
+  const chain = useMemo(() => {
+    if (!trip) return []
+    const pts: { lat: number; lng: number }[] = []
+    if (trip.startLocationCoords) pts.push({ lat: trip.startLocationCoords.lat, lng: trip.startLocationCoords.lng })
+    ;[...trip.days]
+      .sort((a, b) => a.index - b.index)
+      .forEach(d => [...d.stops].filter(s => s.status !== 'rejected').sort((a, b) => a.orderInDay - b.orderInDay)
+        .forEach(s => pts.push({ lat: s.lat, lng: s.lng })))
+    const dc = trip.destinationCoords ?? []
+    const lastDest = dc.length ? dc[dc.length - 1] : undefined
+    if (lastDest && !(pts.length && pts[pts.length - 1].lat === lastDest.lat && pts[pts.length - 1].lng === lastDest.lng)) {
+      pts.push({ lat: lastDest.lat, lng: lastDest.lng })
+    }
+    return pts
+  }, [trip])
+
+  const mode = trip?.transportMode
+
+  useEffect(() => {
+    if (!trip) return
+    setCorrections(undefined)
+    if (!mode || !ROAD_MODES.includes(mode) || chain.length < 2) { setCorrections({}); return }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const legs = await routePath(chain, getAssumptions(trip))
+        if (cancelled) return
+        const map: Record<string, LegEstimate> = {}
+        for (let i = 0; i < legs.length; i++) {
+          map[legKey(chain[i], chain[i + 1])] = {
+            distanceKm: legs[i].distanceKm,
+            durationMinutes: legs[i].durationMinutes,
+          }
+        }
+        setCorrections(map)
+      } catch {
+        if (!cancelled) setCorrections({})
+      }
+    })()
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trip, mode, chain])
+
+  return corrections
 }
 
 // ================= helpers =================
@@ -1454,9 +1542,28 @@ function initialValues(state: { mode: 'add'; dayIndex: number } | { mode: 'edit'
           notes: s.notes ?? '',
           openTime: s.openTime ?? '',
           closeTime: s.closeTime ?? '',
+          departTime: s.departTime ?? '',
+          arrivalTime: s.arrivalTime ?? '',
+          legDistanceKm: s.legDistanceKm ?? 0,
+          legTravelMinutes: s.legTravelMinutes ?? 0,
         }
       }
     }
   }
   return undefined
+}
+
+/** Leg context for the add-stop flow: where you're coming from and where you're headed next. */
+function legContextFor(state: { mode: 'add'; dayIndex: number } | { mode: 'edit'; stopId: string } | null, trip: Trip) {
+  if (!state || state.mode !== 'add') return undefined
+  const pred = predecessorOf(trip, state.dayIndex)
+  if (!pred) return undefined
+  const nxt = nextAfter(trip, state.dayIndex)
+  return {
+    fromName: pred.name,
+    fromPoint: pred.point,
+    nextName: nxt?.name,
+    dayStart: getAssumptions(trip).dayStart,
+    transportMode: trip.transportMode,
+  }
 }
