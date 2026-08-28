@@ -17,6 +17,7 @@ YatraFlow is a collaborative travel-planning web app built India-first: real mul
 - **Leg-aware stop insertion** — picking a place auto-detects your current location and next destination, fills real road distance/travel time/fuel cost, and computes arrival from a departure time you can adjust
 - **Location autocomplete** on every location input — [Mappls](https://about.mappls.com/api/) (MapmyIndia) suggestions when `VITE_MAPPLS_KEY` is configured, with keyless fallbacks to the free [Open-Meteo geocoding API](https://open-meteo.com/en/docs/geocoding-api) + Wikipedia. Picking a suggestion pins the stop to real coordinates so maps and distance estimates stay accurate.
 - **Context-aware opening hours** — the stop editor only shows open/close times where they make sense (POIs, temples, food, hotels…), never for a whole city/town.
+- **Stoppage-point suggestions** — the Map tab's nearby ideas and empty-day suggestions cover attractions, restaurants, hotels, fuel pumps and ATMs (Mappls Nearby), each added as its matching stop type.
 - **Interactive map** (MapLibre via [mapcn](https://github.com/AnmolSaini16/mapcn)) — numbered stop pins per day, colour-coded route lines, auto-fit bounds, day filter chips, light/dark basemaps
 
 ### Estimate (transparently)

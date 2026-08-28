@@ -2,6 +2,12 @@
 
 All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions are pre-1.0 MVP milestones.
 
+## [0.15.1] — 2026-08-28
+
+### Added
+- **Richer nearby ideas** — the Map tab's "💡 Nearby ideas" panel and empty-day suggestions now pull from Mappls Nearby across several categories at once (attractions, food, restaurants, cafés, hotels, fuel pumps, ATMs) instead of just tourist spots. Each suggestion carries a category label, and adding one creates the matching stop type (a hotel becomes a `hotel` stop, a restaurant a `food` stop with a sensible visit length, a fuel pump a `transport-hub`), so hotels, restaurants and petrol pumps are now first-class stoppage points. Keyless Wikipedia geosearch remains the fallback when no Mappls key is set.
+- Explicit **"Add to timeline"** confirm in the pick-a-day modal — adding from a map marker or a nearby-ideas card now requires an explicit confirm (plus a Cancel), instead of silently adding when the day was changed.
+
 ## [0.15.0] — 2026-08-28
 
 India-grade place data: Mappls (MapmyIndia) drives search and suggestions, and opening-hours fields now make contextual sense.
