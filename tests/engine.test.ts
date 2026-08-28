@@ -8,7 +8,7 @@ import {
   addMinutesToClock, hmToMinutes, legBetween, simulateDay,
   computeTotals, computeHealth, collectWarnings, countHotelNights, originOf, firstFixedPoint,
   getAssumptions, formatInr, scoreWarnings, predecessorOf, nextAfter, estimateLeg,
-  FUEL_PRICE_INR_PER_L, parseFuelEconomyKmL, isImplausibleFuelEconomy,
+  FUEL_PRICE_INR_PER_L, parseFuelEconomyKmL, isImplausibleFuelEconomy, parseFuelPricePerL,
 } from '../src/lib/engine'
 import { seedData } from '../src/data/seed'
 import type { Trip, ItineraryStop } from '../src/data/types'
@@ -101,6 +101,24 @@ describe('fuel-economy-aware costs', () => {
     expect(isImplausibleFuelEconomy('motorcycle', 40)).toBe(false)
     expect(isImplausibleFuelEconomy('train', 5)).toBe(false)   // mode without an economy field
     expect(isImplausibleFuelEconomy('car', undefined)).toBe(false)
+  })
+  it('uses the stated local fuel price, else the indicative default', () => {
+    const local = getAssumptions({ transportMode: 'car', fuelEconomyKmL: 15, fuelPricePerL: 92 })
+    expect(local.fuelPricePerL).toBe(92)
+    expect(local.fuelPriceIsUserSet).toBe(true)
+    // engine rounds inrPerKm to 2 decimals (display-friendly; error is < ₹2 on a 500 km trip)
+    expect(local.inrPerKm).toBeCloseTo(92 / 15, 2)
+    const fallback = getAssumptions({ transportMode: 'car', fuelEconomyKmL: 15 })
+    expect(fallback.fuelPricePerL).toBe(FUEL_PRICE_INR_PER_L)
+    expect(fallback.fuelPriceIsUserSet).toBe(false)
+  })
+  it('parseFuelPricePerL accepts only sane rupee-per-litre values', () => {
+    expect(parseFuelPricePerL('92.5')).toBe(92.5)
+    expect(parseFuelPricePerL('105')).toBe(105)
+    expect(parseFuelPricePerL('')).toBeUndefined()
+    expect(parseFuelPricePerL('10')).toBeUndefined()    // implausible in any state
+    expect(parseFuelPricePerL('300')).toBeUndefined()   // implausible in any state
+    expect(parseFuelPricePerL('abc')).toBeUndefined()
   })
 })
 

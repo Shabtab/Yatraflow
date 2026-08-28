@@ -38,6 +38,7 @@ create table if not exists public.trips (
   travellers                integer not null default 1,
   transport_mode            text not null default 'car',
   fuel_economy_km_per_l     numeric,
+  fuel_price_per_l          numeric,
   budget_per_person_inr     integer not null default 0,
   travel_style              text not null default 'balanced',
   fixed_commitments         jsonb not null default '[]'::jsonb,
@@ -50,9 +51,10 @@ create table if not exists public.trips (
   updated_at                bigint not null default extract(epoch from now()) * 1000
 );
 
--- Pre-existing installs: add the fuel-economy column without touching data
--- (idempotent — safe to re-run).
+-- Pre-existing installs: add the fuel-economy/price columns without touching
+-- data (idempotent — safe to re-run).
 alter table public.trips add column if not exists fuel_economy_km_per_l numeric;
+alter table public.trips add column if not exists fuel_price_per_l numeric;
 
 -- ---------- trip_members ----------
 create table if not exists public.trip_members (

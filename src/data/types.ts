@@ -134,6 +134,12 @@ export interface Trip {
    * (distance ÷ economy × indicative ₹/L) instead of the blended mode table.
    */
   fuelEconomyKmL?: number
+  /**
+   * Optional fuel price the user pays at their local pump (₹ per litre).
+   * Falls back to the indicative national average (FUEL_PRICE_INR_PER_L) when
+   * unset — pump prices vary ~₹94–110/L across states, so this beats averages.
+   */
+  fuelPricePerL?: number
   budgetPerPersonInr: number
   travelStyle: TravelStyle
   fixedCommitments: FixedCommitment[]

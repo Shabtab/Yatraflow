@@ -48,6 +48,8 @@ export interface LegContext {
   transportMode: Trip['transportMode']
   /** trip's stated fuel economy — sharpens the per-leg fuel estimate */
   fuelEconomyKmL?: number
+  /** trip's stated local pump price — used instead of the indicative default */
+  fuelPricePerL?: number
 }
 
 export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel, legContext }: {
@@ -72,7 +74,7 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel,
 
   /** assumptions for the travel-leg preview (null when no leg context) */
   const legAssumptions = legContext
-    ? getAssumptions({ transportMode: legContext.transportMode, fuelEconomyKmL: legContext.fuelEconomyKmL })
+    ? getAssumptions({ transportMode: legContext.transportMode, fuelEconomyKmL: legContext.fuelEconomyKmL, fuelPricePerL: legContext.fuelPricePerL })
     : null
   /** one-line fuel/fare preview under the leg fields — litres-first when an economy is stated */
   const legPreview = (() => {

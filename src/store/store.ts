@@ -62,8 +62,9 @@ interface TripRow {
   start_location_coords: LatLngPoint | null; destinations: string[];
   destination_coords: (LatLngPoint | null)[] | null;
   start_date: string; end_date: string; travellers: number; transport_mode: string;
-  /** present only after the fuel-economy migration (see supabase/schema.sql) */
+  /** present only after the fuel migrations (see supabase/schema.sql) */
   fuel_economy_km_per_l?: number | null;
+  fuel_price_per_l?: number | null;
   budget_per_person_inr: number; travel_style: string; fixed_commitments: FixedCommitment[];
   days: ItineraryDay[]; expenses: Expense[]; cover_emoji: string; visibility: 'private' | 'public';
   created_at: number; updated_at: number;
@@ -77,6 +78,7 @@ function rowToTrip(row: TripRow, members: TripMember[]): Trip {
     startDate: row.start_date, endDate: row.end_date, travellers: row.travellers,
     transportMode: row.transport_mode as Trip['transportMode'], budgetPerPersonInr: row.budget_per_person_inr,
     fuelEconomyKmL: row.fuel_economy_km_per_l ?? undefined,
+    fuelPricePerL: row.fuel_price_per_l ?? undefined,
     travelStyle: row.travel_style as Trip['travelStyle'], fixedCommitments: row.fixed_commitments ?? [],
     days: row.days ?? [], expenses: row.expenses ?? [], coverEmoji: row.cover_emoji, visibility: row.visibility,
     createdAt: row.created_at, updatedAt: row.updated_at, members,
@@ -84,11 +86,11 @@ function rowToTrip(row: TripRow, members: TripMember[]): Trip {
 }
 
 /**
- * Map a trip to its Postgres row. `includeFuelEconomy` stays false until the
- * store has probed that the `fuel_economy_km_per_l` column exists — writing a
- * column the database doesn't know yet would fail the whole insert/update.
+ * Map a trip to its Postgres row. `fuelCols` says which optional fuel columns
+ * the database actually has (see tripsHaveFuelColumns) — writing a column the
+ * database doesn't know yet would fail the whole insert/update.
  */
-function tripToRow(trip: Trip, ownerId: string, includeFuelEconomy = false): Omit<TripRow, 'created_at' | 'updated_at'> {
+function tripToRow(trip: Trip, ownerId: string, fuelCols?: { economy: boolean; price: boolean }): Omit<TripRow, 'created_at' | 'updated_at'> {
   const row: Omit<TripRow, 'created_at' | 'updated_at'> = {
     id: trip.id, owner_id: ownerId, name: trip.name, start_location: trip.startLocation,
     start_location_coords: trip.startLocationCoords ?? null,
@@ -99,7 +101,8 @@ function tripToRow(trip: Trip, ownerId: string, includeFuelEconomy = false): Omi
     travel_style: trip.travelStyle, fixed_commitments: trip.fixedCommitments, days: trip.days,
     expenses: trip.expenses, cover_emoji: trip.coverEmoji, visibility: trip.visibility,
   }
-  if (includeFuelEconomy) row.fuel_economy_km_per_l = trip.fuelEconomyKmL ?? null
+  if (fuelCols?.economy) row.fuel_economy_km_per_l = trip.fuelEconomyKmL ?? null
+  if (fuelCols?.price) row.fuel_price_per_l = trip.fuelPricePerL ?? null
   return row
 }
 
@@ -235,8 +238,8 @@ async function seedDemoFor(userId: string): Promise<void> {
     // Regenerate the trip id: seed data carries stable display ids that are
     // not valid UUIDs, but trips.id is a Postgres uuid column.
     const trip: Trip = { ...structuredClone(t), id: uuid(), members: [owner] }
-    const withFuel = await tripsHaveFuelColumn()
-    const { error } = await supabase.from('trips').insert(tripToRow(trip, userId, withFuel))
+    const cols = await tripsHaveFuelColumns()
+    const { error } = await supabase.from('trips').insert(tripToRow(trip, userId, cols))
     if (error) { console.error('seed trip failed', error); continue }
     await supabase.from('trip_members').insert({ trip_id: trip.id, user_id: userId, role: 'owner', joined_at: Date.now() })
   }
@@ -320,6 +323,8 @@ export interface NewTripInput {
   transportMode: Trip['transportMode']; budgetPerPersonInr: number;
   /** optional km/L for car/motorcycle trips — fuels an accurate transport estimate */
   fuelEconomyKmL?: number;
+  /** optional local pump price (₹/L) — defaults to the indicative national average */
+  fuelPricePerL?: number;
   travelStyle: Trip['travelStyle'];
   fixedCommitments: Omit<FixedCommitment, 'id'>[];
   coverEmoji?: string;
@@ -383,25 +388,30 @@ function autoAnchor(coords: LatLngPoint, name: string): ItineraryStop {
 }
 
 // ---------------- Optional-column capability probe ----------------
-// fuel_economy_km_per_l ships with supabase/schema.sql, but databases created
-// before it (e.g. a shared demo project) reject writes that mention an unknown
-// column. Probe once per session with a harmless read — never assume.
-let fuelColumnSupported: boolean | null = null
+// The fuel columns ship with supabase/schema.sql, but databases created before
+// it (e.g. a shared demo project) reject writes that mention an unknown column.
+// Probe once per session with harmless reads — never assume. The promise is
+// cached so concurrent callers share one probe.
+let fuelColumnsProbe: Promise<{ economy: boolean; price: boolean }> | null = null
 
-async function tripsHaveFuelColumn(): Promise<boolean> {
-  if (!isSupabaseConfigured) return false
-  if (fuelColumnSupported !== null) return fuelColumnSupported
-  const { error } = await supabase.from('trips').select('fuel_economy_km_per_l').limit(1)
-  fuelColumnSupported = !error
-  if (error) {
-    console.warn('[yatraflow] trips.fuel_economy_km_per_l missing — run supabase/schema.sql; fuel economy stays session-only until then.', error.message)
+function tripsHaveFuelColumns(): Promise<{ economy: boolean; price: boolean }> {
+  if (!isSupabaseConfigured) return Promise.resolve({ economy: false, price: false })
+  if (!fuelColumnsProbe) {
+    fuelColumnsProbe = (async () => {
+      const economy = !(await supabase.from('trips').select('fuel_economy_km_per_l').limit(1)).error
+      const price = !(await supabase.from('trips').select('fuel_price_per_l').limit(1)).error
+      if (!economy || !price) {
+        console.warn('[yatraflow] trips fuel columns missing — run supabase/schema.sql; fuel inputs stay session-only until then.')
+      }
+      return { economy, price }
+    })()
   }
-  return fuelColumnSupported
+  return fuelColumnsProbe
 }
 
 async function persistTrip(trip: Trip, ownerId: ID) {
-  const withFuel = await tripsHaveFuelColumn()
-  const { error } = await supabase.from('trips').insert(tripToRow(trip, ownerId, withFuel))
+  const cols = await tripsHaveFuelColumns()
+  const { error } = await supabase.from('trips').insert(tripToRow(trip, ownerId, cols))
   if (error) { toast('Could not save trip.'); return }
   const { error: mErr } = await supabase.from('trip_members').insert(
     (trip.members ?? []).map(m => ({ trip_id: trip.id, user_id: m.userId, role: m.role, joined_at: m.joinedAt }))
@@ -471,8 +481,8 @@ export function updateTrip(id: ID, patchFields: Partial<Trip>): void {
 
 async function persistTripField(id: ID, t: Trip) {
   const owner = t.members?.find(m => m.role === 'owner')
-  const withFuel = await tripsHaveFuelColumn()
-  const { error } = await supabase.from('trips').update(tripToRow(t, owner?.userId ?? id, withFuel)).eq('id', id)
+  const cols = await tripsHaveFuelColumns()
+  const { error } = await supabase.from('trips').update(tripToRow(t, owner?.userId ?? id, cols)).eq('id', id)
   if (error) toast('Could not save changes.')
 }
 
