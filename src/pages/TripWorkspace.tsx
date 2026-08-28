@@ -12,7 +12,7 @@ import {
 } from '../store/store'
 import {
   computeHealth, computeTotals, simulateDay, originOf, getAssumptions, legKey,
-  minutesToHM, formatInr, countHotelNights,
+  minutesToHM, formatInr, countHotelNights, predecessorOf, nextAfter,
 } from '../lib/engine'
 import type { LegEstimate } from '../lib/engine'
 import { routePath } from '../lib/routing'
@@ -333,12 +333,14 @@ function TimelineTab({ trip, editable, applyChange, legCorrections }: {
 
   function handleSave(v: StopFormValues) {
     if (!editorState) return
+    // legFromOsrm is display-only — never persist it onto the stop
+    const { legFromOsrm: _drop, ...legFields } = v
     if (editorState.mode === 'add') {
       const dayIndex = editorState.dayIndex
       applyChange(draft => {
         const day = draft.days.find(d => d.index === dayIndex)!
         day.stops.push({
-          ...(v as unknown as ItineraryStop),
+          ...(legFields as unknown as ItineraryStop),
           id: 'pending_' + Math.random().toString(36).slice(2),
           orderInDay: day.stops.length + 1,
         })
@@ -348,7 +350,7 @@ function TimelineTab({ trip, editable, applyChange, legCorrections }: {
       applyChange(draft => {
         for (const day of draft.days) {
           const s = day.stops.find(x => x.id === stopId)
-          if (s) { Object.assign(s, v); break }
+          if (s) { Object.assign(s, legFields); break }
         }
       }, 'edit', dayIndexOfStop(trip, stopId))
     }
@@ -410,6 +412,7 @@ function TimelineTab({ trip, editable, applyChange, legCorrections }: {
         resetKey={editorState ? (editorState.mode === 'edit' ? editorState.stopId : `add-${editorState.dayIndex}`) : ''}
         onSave={handleSave}
         dayLabel={editorState?.mode === 'add' ? `Day ${editorState.dayIndex + 1}` : undefined}
+        legContext={legContextFor(editorState, trip)}
       />
 
       <MoveStopModal
@@ -508,6 +511,9 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
                   {s.openTime && <span>🕒 {s.openTime}–{s.closeTime}</span>}
                   <span>🎫 ₹{s.entryFeeInrPerPerson}/person</span>
                   <span>🚗 ₹{s.transportCostInrTotal} transport</span>
+                  {s.departTime && s.arrivalTime && (
+                    <span>🕰 dep {s.departTime} · arr {s.arrivalTime}{s.legDistanceKm ? ` · ${s.legDistanceKm.toFixed(0)} km` : ''}</span>
+                  )}
                   {sim.arrivalTimes[i] && <span>→ arrives ~{sim.arrivalTimes[i]}</span>}
                 </div>
                 {s.description && <div className="stop-desc">{s.description}</div>}
@@ -1536,9 +1542,28 @@ function initialValues(state: { mode: 'add'; dayIndex: number } | { mode: 'edit'
           notes: s.notes ?? '',
           openTime: s.openTime ?? '',
           closeTime: s.closeTime ?? '',
+          departTime: s.departTime ?? '',
+          arrivalTime: s.arrivalTime ?? '',
+          legDistanceKm: s.legDistanceKm ?? 0,
+          legTravelMinutes: s.legTravelMinutes ?? 0,
         }
       }
     }
   }
   return undefined
+}
+
+/** Leg context for the add-stop flow: where you're coming from and where you're headed next. */
+function legContextFor(state: { mode: 'add'; dayIndex: number } | { mode: 'edit'; stopId: string } | null, trip: Trip) {
+  if (!state || state.mode !== 'add') return undefined
+  const pred = predecessorOf(trip, state.dayIndex)
+  if (!pred) return undefined
+  const nxt = nextAfter(trip, state.dayIndex)
+  return {
+    fromName: pred.name,
+    fromPoint: pred.point,
+    nextName: nxt?.name,
+    dayStart: getAssumptions(trip).dayStart,
+    transportMode: trip.transportMode,
+  }
 }

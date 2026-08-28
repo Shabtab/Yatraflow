@@ -137,6 +137,77 @@ function legsLabel(p: { lat: number; lng: number }): string {
   return `${p.lat.toFixed(2)}, ${p.lng.toFixed(2)}`
 }
 
+// ---------------- Leg-aware stop insertion ----------------
+
+/** Where you'd be coming from / heading to when inserting a stop on a day. */
+export interface LegAnchor {
+  name: string
+  point: { lat: number; lng: number }
+}
+
+/**
+ * Current location before the insertion point of `dayIndex`: the last active
+ * stop of that day, else the last stop of the nearest previous day, else the
+ * trip's geocoded start anchor (point A).
+ */
+export function predecessorOf(trip: Trip, dayIndex: number): LegAnchor | null {
+  const day = trip.days.find(d => d.index === dayIndex)
+  if (day) {
+    const active = [...day.stops].filter(s => s.status !== 'rejected').sort((a, b) => a.orderInDay - b.orderInDay)
+    const last = active[active.length - 1]
+    if (last) return { name: last.locationName || last.title, point: { lat: last.lat, lng: last.lng } }
+  }
+  for (let d = dayIndex - 1; d >= 0; d--) {
+    const stops = trip.days.find(x => x.index === d)?.stops.filter(s => s.status !== 'rejected') ?? []
+    if (stops.length) {
+      const last = [...stops].sort((a, b) => a.orderInDay - b.orderInDay)[stops.length - 1]
+      return { name: last.locationName || last.title, point: { lat: last.lat, lng: last.lng } }
+    }
+  }
+  if (trip.startLocationCoords) {
+    return { name: `${trip.startLocation} (start)`, point: { lat: trip.startLocationCoords.lat, lng: trip.startLocationCoords.lng } }
+  }
+  return null
+}
+
+/**
+ * Next destination after the insertion point of `dayIndex`: the first stop of
+ * the nearest later day, else the trip's final geocoded destination anchor.
+ */
+export function nextAfter(trip: Trip, dayIndex: number): LegAnchor | null {
+  for (let d = dayIndex + 1; d < trip.days.length; d++) {
+    const stops = trip.days.find(x => x.index === d)?.stops.filter(s => s.status !== 'rejected') ?? []
+    if (stops.length) {
+      const first = [...stops].sort((a, b) => a.orderInDay - b.orderInDay)[0]
+      return { name: first.locationName || first.title, point: { lat: first.lat, lng: first.lng } }
+    }
+  }
+  if (trip.destinationCoords?.length) {
+    for (let i = trip.destinationCoords.length - 1; i >= 0; i--) {
+      const c = trip.destinationCoords[i]
+      const name = trip.destinations[i]
+      if (c && name) return { name: `${name} (end)`, point: { lat: c.lat, lng: c.lng } }
+    }
+  }
+  return null
+}
+
+export interface StopLegEstimate extends LegEstimate {
+  /** fuel/fare cost for the leg at the trip mode's ₹/km rate */
+  costInr: number
+}
+
+/** Distance/time/cost for the leg into a new stop (haversine estimate — OSRM refines in the UI). */
+export function estimateLeg(
+  from: { lat: number; lng: number },
+  to: { lat: number; lng: number },
+  trip: Pick<Trip, 'transportMode'>,
+): StopLegEstimate {
+  const A = getAssumptions(trip)
+  const est = legBetween(from, to, A)
+  return { ...est, costInr: est.distanceKm * (A.inrPerKm ?? 8) }
+}
+
 // ---------------- Warnings ----------------
 
 export type Severity = 'high' | 'medium' | 'low'

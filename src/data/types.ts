@@ -98,6 +98,11 @@ export interface ItineraryStop {
   /** true for auto-generated start/destination anchor stops (safe to move/delete) */
   auto?: boolean
   weatherSensitive?: boolean // e.g. beach, trek viewpoints
+  /** leg-aware travel fields — auto-filled by the StopEditor when a geocoded place is picked */
+  departTime?: string        // "HH:MM" — departure from the previous point
+  arrivalTime?: string       // "HH:MM" — computed as departTime + legTravelMinutes
+  legDistanceKm?: number     // road distance from the previous point (OSRM or estimate)
+  legTravelMinutes?: number  // travel time in minutes for that leg
 }
 
 export interface ItineraryDay {
