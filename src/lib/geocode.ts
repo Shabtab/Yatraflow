@@ -19,6 +19,8 @@ export interface PlaceHit {
   thumb?: string           // small image URL (Wikipedia only)
   /** Mappls place id — present when the hit came from Mappls (coords pending) */
   eLoc?: string
+  /** stop category hint (e.g. from a Mappls nearby category) — used by the add flows */
+  category?: string
 }
 
 const MAPPLS_KEY = ((import.meta.env.VITE_MAPPLS_KEY as string | undefined) ?? '').trim()
@@ -166,37 +168,67 @@ export async function searchPlaces(q: string, opts?: { indiaOnly?: boolean }): P
 
 export { DEBOUNCE_MS }
 
+/** Nearby categories — a stoppage can be an attraction, a meal, a hotel or a pit stop. */
+const NEARBY_CATEGORIES = [
+  { kw: 'tourist attraction', label: 'Attraction', cat: 'sightseeing' },
+  { kw: 'food', label: 'Food', cat: 'food' },
+  { kw: 'restaurant', label: 'Restaurant', cat: 'food' },
+  { kw: 'cafe', label: 'Cafe', cat: 'food' },
+  { kw: 'hotel', label: 'Hotel', cat: 'hotel' },
+  { kw: 'fuel', label: 'Petrol pump', cat: 'transport-hub' },
+  { kw: 'atm', label: 'ATM', cat: 'shopping' },
+]
+
 /**
- * Nearby POIs around a coordinate — Mappls Nearby (real tourist attractions
- * with addresses) when a key is configured, resolving each result's
- * coordinates via Nominatim; falls back to Wikipedia geosearch otherwise.
+ * Nearby stoppage points around a coordinate — Mappls Nearby (attractions,
+ * restaurants, hotels, fuel pumps, ATMs…) when a key is configured, resolving
+ * each result's coordinates via Nominatim; falls back to Wikipedia geosearch
+ * otherwise.
  */
 export async function searchNearbyPois(lat: number, lng: number, radiusM = 10000, count = 10): Promise<PlaceHit[]> {
   if (mapplsEnabled()) {
     try {
-      const res = await fetch(
-        `https://search.mappls.com/search/places/nearby/json?keywords=${encodeURIComponent('tourist attraction')}` +
-        `&refLocation=${lat},${lng}&distance=${Math.min(radiusM, 10000)}&access_token=${MAPPLS_KEY}`,
-        { signal: AbortSignal.timeout(6000) },
+      // query each category in parallel, tag each with its stop category, merge + dedup
+      const results = await Promise.all(
+        NEARBY_CATEGORIES.map(async (c) => {
+          try {
+            const r = await fetch(
+              `https://search.mappls.com/search/places/nearby/json?keywords=${encodeURIComponent(c.kw)}` +
+              `&refLocation=${lat},${lng}&distance=${Math.min(radiusM, 10000)}&access_token=${MAPPLS_KEY}`,
+              { signal: AbortSignal.timeout(6000) },
+            )
+            if (!r.ok) return [] as PlaceHit[]
+            const d = await r.json()
+            const arr = (d.suggestedLocations ?? []) as Record<string, string>[]
+            return arr
+              .filter(l => l.eLoc && l.placeName)
+              .map(l => ({
+                id: `mappls_${l.eLoc}`,
+                name: l.placeName,
+                latitude: 0, longitude: 0,
+                admin1: (l.placeAddress ?? '').split(',').map(s => s.trim()).filter(Boolean).pop(),
+                kind: 'poi' as const,
+                description: l.placeAddress || undefined,
+                eLoc: l.eLoc,
+                category: c.cat,
+              }))
+          } catch {
+            return [] as PlaceHit[]
+          }
+        }),
       )
-      if (res.ok) {
-        const data = await res.json()
-        const raw = ((data.suggestedLocations ?? []) as Record<string, string>[])
-          .filter(l => l.eLoc && l.placeName)
-          .slice(0, count)
-          .map(l => ({
-            id: `mappls_${l.eLoc}`,
-            name: l.placeName,
-            latitude: 0, longitude: 0,
-            admin1: (l.placeAddress ?? '').split(',').map(s => s.trim()).filter(Boolean).pop(),
-            kind: 'poi' as const,
-            description: l.placeAddress || undefined,
-            eLoc: l.eLoc,
-          }))
-        const resolved = await Promise.all(raw.map(h => resolveHitCoords(h)))
-        const good = resolved.filter(h => h.latitude !== 0 || h.longitude !== 0)
-        if (good.length) return good
+      const seen = new Set<string>()
+      const merged = results.flat()
+      const deduped: PlaceHit[] = []
+      for (const h of merged) {
+        const key = String(h.id)
+        if (seen.has(key)) continue
+        seen.add(key)
+        deduped.push(h)
       }
+      const resolved = await Promise.all(deduped.slice(0, count).map(h => resolveHitCoords(h)))
+      const good = resolved.filter(h => h.latitude !== 0 || h.longitude !== 0)
+      if (good.length) return good
     } catch { /* fall through to Wikipedia */ }
   }
   return searchNearbyPoisWikipedia(lat, lng, radiusM, count)
