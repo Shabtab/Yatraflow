@@ -42,7 +42,7 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby }: {
     () => (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'),
   )
   const mapRef = useRef<MapRef | null>(null)
-  const [mapReady, setMapReady] = useState(false)
+  const [mapLoaded, setMapLoaded] = useState(false)
 
   // follow the app's theme toggle
   useEffect(() => {
@@ -73,41 +73,72 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby }: {
     [daysToPlot],
   )
 
-  // Resolve map readiness: the map mounts lazily inside a Suspense boundary, so
-  // the fit effect below can't assume mapRef is set on the first render. Poll
-  // briefly until the instance exists, then fit once. Re-fits when points change.
+  // The map mounts lazily inside a Suspense boundary, so mapRef may be null on
+  // the first render(s). Poll until the instance exists, then attach to its real
+  // 'load' event (checking isStyleLoaded in case it already fired) so mapLoaded
+  // reflects the map actually being ready — not just the ref existing.
   const pointsKey = useMemo(
     () => allPoints.map(p => `${p.dayIndex}:${p.lat.toFixed(4)},${p.lng.toFixed(4)}`).join('|'),
     [allPoints],
   )
   useEffect(() => {
-    if (allPoints.length === 0) return
+    if (allPoints.length === 0) { setMapLoaded(false); return }
     let cancelled = false
+    let attached = false
     const tick = setInterval(() => {
-      if (!cancelled && mapRef.current) { clearInterval(tick); setMapReady(true) }
+      if (cancelled) return
+      const m = mapRef.current
+      if (!m) return
+      if (!attached) {
+        attached = true
+        const onLoad = () => { if (!cancelled) setMapLoaded(true) }
+        if (m.isStyleLoaded()) onLoad()
+        else m.once('load', onLoad)
+        clearInterval(tick)
+      }
     }, 120)
     return () => { cancelled = true; clearInterval(tick) }
   }, [pointsKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // fit the viewport to the route once the canvas is real and sized
+  // fit the viewport to the route whenever the map is ready and the points change
   useEffect(() => {
-    if (!mapReady || !mapRef.current || allPoints.length === 0) return
+    if (!mapLoaded || !mapRef.current || allPoints.length === 0) return
     const m = mapRef.current
-    const lons = allPoints.map(p => p.lng)
-    const lats = allPoints.map(p => p.lat)
+    let minLng = Infinity, maxLng = -Infinity, minLat = Infinity, maxLat = -Infinity
+    for (const p of allPoints) {
+      if (p.lng < minLng) minLng = p.lng
+      if (p.lng > maxLng) maxLng = p.lng
+      if (p.lat < minLat) minLat = p.lat
+      if (p.lat > maxLat) maxLat = p.lat
+    }
+    // single point (or near-zero bounds) — pad so fitBounds has real area
+    if (maxLng - minLng < 1e-4) { minLng -= 0.08; maxLng += 0.08 }
+    if (maxLat - minLat < 1e-4) { minLat -= 0.08; maxLat += 0.08 }
     const run = () => {
       m.resize()
       m.fitBounds(
-        [
-          [Math.min(...lons), Math.min(...lats)],
-          [Math.max(...lons), Math.max(...lats)],
-        ],
+        [[minLng, minLat], [maxLng, maxLat]],
         { padding: 70, maxZoom: 12, duration: 400 },
       )
     }
-    if (m.isStyleLoaded()) run()
-    else m.once('load', run)
-  }, [pointsKey, mapReady]) // eslint-disable-line react-hooks/exhaustive-deps
+    requestAnimationFrame(run)
+  }, [pointsKey, mapLoaded]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function fitToTrip() {
+    const m = mapRef.current
+    if (!m || allPoints.length === 0) return
+    let minLng = Infinity, maxLng = -Infinity, minLat = Infinity, maxLat = -Infinity
+    for (const p of allPoints) {
+      if (p.lng < minLng) minLng = p.lng
+      if (p.lng > maxLng) maxLng = p.lng
+      if (p.lat < minLat) minLat = p.lat
+      if (p.lat > maxLat) maxLat = p.lat
+    }
+    if (maxLng - minLng < 1e-4) { minLng -= 0.08; maxLng += 0.08 }
+    if (maxLat - minLat < 1e-4) { minLat -= 0.08; maxLat += 0.08 }
+    m.resize()
+    m.fitBounds([[minLng, minLat], [maxLng, maxLat]], { padding: 70, maxZoom: 12, duration: 400 })
+  }
 
   function colorForDay(i: number): string {
     return DAY_COLORS[i % DAY_COLORS.length]
@@ -166,6 +197,7 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby }: {
               Day {d.index + 1}
             </button>
           ))}
+          <button className="map-day-chip map-recenter" onClick={fitToTrip} title="Recentre the map on the trip route">🎯 Recentre</button>
         </div>
 
         {allPoints.length === 0 ? (
