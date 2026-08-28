@@ -13,7 +13,7 @@ YatraFlow is a collaborative travel-planning web app built India-first: real mul
 
 ### Plan
 - **Create trips** with start location, ordered destinations (real place autocomplete), dates, crew size, transport mode, budget and travel style
-- **Day-by-day timeline** — add/edit/reorder/move stops between days, each with visit duration, opening hours, entry fees, priority (`must-do` / `nice-to-have` / `optional`) and status (`suggested` → `confirmed` / `rejected`)
+- **Day-by-day timeline** — add/edit/reorder/move stops between days, each with visit duration, opening hours, entry fees, priority (`must-do` / `nice-to-have` / `optional`) and status (`suggested` → `confirmed` / `rejected`); rendered on a time rail with arrival/departure pills, per-day progress, collapsible headers, route sparklines and cross-day drag-and-drop
 - **Leg-aware stop insertion** — picking a place auto-detects your current location and next destination, fills real road distance/travel time/fuel cost, and computes arrival from a departure time you can adjust
 - **Location autocomplete** on every location input, powered by the free [Open-Meteo geocoding API](https://open-meteo.com/en/docs/geocoding-api) — no API key needed. Picking a suggestion pins the stop to real coordinates so maps and distance estimates stay accurate
 - **Interactive map** (MapLibre via [mapcn](https://github.com/AnmolSaini16/mapcn)) — numbered stop pins per day, colour-coded route lines, auto-fit bounds, day filter chips, light/dark basemaps
