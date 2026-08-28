@@ -200,7 +200,7 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel,
                 <input type="number" min={0} step={0.1} className="input" value={v.legDistanceKm} onChange={e => set('legDistanceKm', Number(e.target.value))} />
               </Field>
               <Field label="Travel time (min)">
-                <input type="number" min={0} step={5} className="input" value={v.legTravelMinutes} onChange={e => set('legTravelMinutes', Number(e.target.value))} />
+                <input type="number" min={0} step={1} className="input" value={v.legTravelMinutes} onChange={e => set('legTravelMinutes', Number(e.target.value))} />
               </Field>
               <Field label="Depart at">
                 <input type="time" className="input" value={v.departTime} onChange={e => {
