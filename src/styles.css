@@ -289,6 +289,32 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
   border: 1.5px dashed var(--saffron);
   box-shadow: 0 0 0 3px var(--saffron-soft);
 }
+
+/* ---------- Day header: collapse, rename, progress, sparkline, suggestions ---------- */
+.day-collapse {
+  border: none; background: none; cursor: pointer; flex: 0 0 auto;
+  font-size: 14px; color: var(--text-3); padding: 5px 6px; border-radius: 8px;
+}
+.day-collapse:hover { background: var(--bg-soft); color: var(--text); }
+.day-header h3[style*='pointer'] { text-decoration: transparent; }
+.day-progress {
+  height: 5px; border-radius: 3px; background: var(--bg-soft);
+  max-width: 320px; margin-top: 7px; overflow: hidden;
+}
+.day-progress.compact { margin-top: 5px; }
+.day-progress-fill { height: 100%; border-radius: 3px; transition: width .3s ease; }
+.day-progress-fill.sev-ok { background: var(--ok); }
+.day-progress-fill.sev-medium { background: var(--saffron); }
+.day-progress-fill.sev-high { background: var(--danger); }
+.day-spark { flex: 0 0 auto; opacity: .92; }
+@media (max-width: 720px) { .day-spark { display: none; } }
+.day-suggest { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; align-items: center; }
+.chip-btn {
+  border: 1px dashed var(--line); background: var(--card-soft); color: var(--text-2);
+  border-radius: 999px; padding: 5px 12px; font-size: 12.5px; font-weight: 600; cursor: pointer;
+  transition: border-color .15s, color .15s, background .15s;
+}
+.chip-btn:hover { border-color: var(--teal); color: var(--teal-deep); background: var(--teal-soft); }
 @media (max-width: 640px) {
   .tl-row, .tl-legrow, .tl-end { grid-template-columns: 52px 1fr; gap: 8px; }
   .tl-time { font-size: 10px; padding: 1px 4px; }

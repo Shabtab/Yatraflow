@@ -12,9 +12,10 @@ import {
 } from '../store/store'
 import {
   computeHealth, computeTotals, simulateDay, originOf, getAssumptions, legKey,
-  minutesToHM, formatInr, countHotelNights, predecessorOf, nextAfter,
+  minutesToHM, hmToMinutes, formatInr, countHotelNights, predecessorOf, nextAfter,
+  collectWarnings,
 } from '../lib/engine'
-import type { LegEstimate } from '../lib/engine'
+import type { LegEstimate, ScheduleWarning } from '../lib/engine'
 import { routePath } from '../lib/routing'
 import { computeImpact, type ImpactResult } from '../lib/impact'
 import { Avatar, Chip, Modal, ConfirmDialog, Field, StatTile, HealthRing, EmptyState, toast, undoToast, useReorder, CopyButton } from '../components/ui'
@@ -398,6 +399,47 @@ function TimelineTab({ trip, editable, applyChange, legCorrections }: {
     }, 'move-day', toDayIndex)
   }
 
+  // warnings grouped by day index — powers the per-day progress-bar colour
+  const dayWarnings = useMemo(() => {
+    const map: Record<number, ScheduleWarning[]> = {}
+    for (const w of collectWarnings(trip)) {
+      const m = /^Day (\d+):/.exec(w.title)
+      if (m) { const di = Number(m[1]) - 1; (map[di] ??= []).push(w) }
+    }
+    return map
+  }, [trip])
+
+  /** Inline day rename — a lightweight label change, applied directly (no impact preview). */
+  function handleRenameDay(dayIndex: number, title: string) {
+    updateTrip(trip.id, { days: trip.days.map(d => d.index === dayIndex ? { ...d, title: title.trim() || undefined } : d) })
+    toast('Day renamed')
+  }
+
+  /** Duplicate this day's stops onto the next day (base-camp style planning). */
+  function handleCopyDay(dayIndex: number) {
+    applyChange(draft => {
+      const src = draft.days.find(d => d.index === dayIndex)
+      const dst = draft.days.find(d => d.index === dayIndex + 1)
+      if (!src || !dst) return
+      const sorted = [...src.stops].sort((a, b) => a.orderInDay - b.orderInDay)
+      for (const s of sorted) {
+        dst.stops.push({
+          ...structuredClone(s),
+          id: 'pending_' + Math.random().toString(36).slice(2),
+          orderInDay: dst.stops.length + 1,
+        })
+      }
+    }, 'add', dayIndex + 1)
+  }
+
+  /** One-click add from the empty-day suggestions (route continuation / nearby POI). */
+  function handleAddQuickStop(dayIndex: number, stop: Omit<ItineraryStop, 'id' | 'orderInDay'>) {
+    applyChange(draft => {
+      const day = draft.days.find(d => d.index === dayIndex)!
+      day.stops.push({ ...stop, id: 'pending_' + Math.random().toString(36).slice(2), orderInDay: day.stops.length + 1 })
+    }, 'add', dayIndex)
+  }
+
   function handleStatus(stop: ItineraryStop, status: ItineraryStop['status']) {
     // Status flips are lightweight group signals — applied directly.
     setStopStatus(trip.id, status, stop.id)
@@ -424,6 +466,10 @@ function TimelineTab({ trip, editable, applyChange, legCorrections }: {
           onMoveWithinDay={handleMoveWithinDay}
           onMoveBetweenDays={setMoveModalStop}
           onMoveStopIn={handleMoveStopInto}
+          onRenameDay={handleRenameDay}
+          onCopyDay={handleCopyDay}
+          onAddQuickStop={handleAddQuickStop}
+          warnings={dayWarnings[day.index] ?? []}
           onStatus={handleStatus}
         />
       ))}
@@ -464,7 +510,7 @@ function TimelineTab({ trip, editable, applyChange, legCorrections }: {
   )
 }
 
-function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithinDay, onMoveBetweenDays, onMoveStopIn, onStatus, legCorrections }: {
+function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithinDay, onMoveBetweenDays, onMoveStopIn, onRenameDay, onCopyDay, onAddQuickStop, warnings, onStatus, legCorrections }: {
   day: Trip['days'][number]
   trip: Trip
   editable: boolean
@@ -476,6 +522,10 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
   onMoveBetweenDays: (stop: ItineraryStop) => void
   /** cross-day drag landed on this day: insert the stop at `position` */
   onMoveStopIn: (stopId: string, fromDayIndex: number, toDayIndex: number, position: number) => void
+  onRenameDay: (dayIndex: number, title: string) => void
+  onCopyDay: (dayIndex: number) => void
+  onAddQuickStop: (dayIndex: number, stop: Omit<ItineraryStop, 'id' | 'orderInDay'>) => void
+  warnings: ScheduleWarning[]
   onStatus: (stop: ItineraryStop, status: ItineraryStop['status']) => void
 }) {
   const sim = simulateDay(day, trip, originOf(trip, day.index), day.index, legCorrections)
@@ -498,20 +548,85 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
   )
   const commitmentsToday = trip.fixedCommitments.filter(fc => fc.dayIndex === day.index)
 
+  // --- Phase 3/4: collapse, rename, day progress, empty-day suggestions ---
+  const [collapsed, setCollapsed] = useState(false)
+  const [editingTitle, setEditingTitle] = useState(false)
+  const [titleDraft, setTitleDraft] = useState(day.title ?? '')
+  const [nearby, setNearby] = useState<PlaceHit[]>([])
+  const nextAnchor = useMemo(() => nextAfter(trip, day.index), [trip]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // anchor suggestions on where you'd arrive from; only for unplanned days
+  useEffect(() => {
+    if (!editable || ordered.length > 0) { setNearby([]); return }
+    let cancelled = false
+    const anchor = predecessorOf(trip, day.index)?.point ?? trip.startLocationCoords
+    if (!anchor) return
+    searchNearbyPois(anchor.lat, anchor.lng, 10000, 6)
+      .then(hits => { if (!cancelled) setNearby(hits.slice(0, 3)) })
+      .catch(() => { /* suggestions are best-effort */ })
+    return () => { cancelled = true }
+  }, [editable, ordered.length]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // day progress: how much of the realistic window (08:30–20:00) the plan consumes
+  const startMin = hmToMinutes(A.dayStart)
+  const windowMin = Math.max(1, hmToMinutes(A.dayEnd) - startMin)
+  const used = Math.max(0, Math.min(1, (hmToMinutes(sim.endsAt) - startMin) / windowMin))
+  const sev = warnings.some(w => w.severity === 'high') ? 'high' : warnings.some(w => w.severity === 'medium') ? 'medium' : 'ok'
+
   return (
     <div className="day-section">
       <div className="day-header">
+        <button className="day-collapse" onClick={() => setCollapsed(c => !c)} aria-label={collapsed ? `Expand Day ${day.index + 1}` : `Collapse Day ${day.index + 1}`}>
+          {collapsed ? '▸' : '▾'}
+        </button>
         <div className="day-badge"><small>DAY</small><b>{day.index + 1}</b></div>
         <div style={{ flex: 1, minWidth: 160 }}>
-          <h3>{day.title ?? `Day ${day.index + 1}`}</h3>
+          {editingTitle ? (
+            <input
+              autoFocus
+              className="input"
+              value={titleDraft}
+              style={{ maxWidth: 300, marginBottom: 4 }}
+              placeholder={`Day ${day.index + 1}`}
+              onChange={e => setTitleDraft(e.target.value)}
+              onBlur={() => { setEditingTitle(false); if (titleDraft.trim() !== (day.title ?? '')) onRenameDay(day.index, titleDraft) }}
+              onKeyDown={e => {
+                if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+                if (e.key === 'Escape') { setTitleDraft(day.title ?? ''); setEditingTitle(false) }
+              }}
+            />
+          ) : (
+            <h3
+              onClick={editable ? () => { setTitleDraft(day.title ?? ''); setEditingTitle(true) } : undefined}
+              style={{ cursor: editable ? 'pointer' : 'default' }}
+              title={editable ? 'Click to rename this day' : undefined}
+            >
+              {day.title ?? `Day ${day.index + 1}`}
+            </h3>
+          )}
           <div className="small muted">
             {sim.activeStops.length} active stop{sim.activeStops.length !== 1 ? 's' : ''} · ~{minutesToHM(sim.totalTravelMinutes)} travel · ~{Math.round(sim.totalDistanceKm)} km · ends ~{sim.endsAt}
           </div>
-          <DayWeatherChip trip={trip} dayIndex={day.index} />
+          <div className={`day-progress ${collapsed ? 'compact' : ''}`} title={`${Math.round(used * 100)}% of the ${A.dayStart}–${A.dayEnd} window`}>
+            <div className={`day-progress-fill sev-${sev}`} style={{ width: `${Math.round(used * 100)}%` }} />
+          </div>
+          {!collapsed && <DayWeatherChip trip={trip} dayIndex={day.index} />}
         </div>
-        {editable && <button className="btn btn-outline btn-sm" onClick={onAdd}>+ Add here</button>}
+        {ordered.filter(s => s.status !== 'rejected').length >= 2 && <DaySpark stops={ordered.filter(s => s.status !== 'rejected')} />}
+        {editable && (
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            <button
+              className="btn btn-outline btn-sm"
+              disabled={ordered.length === 0 || day.index + 1 >= trip.days.length}
+              onClick={() => onCopyDay(day.index)}
+              title={ordered.length ? `Copy these stops to Day ${day.index + 2}` : 'Nothing to copy yet'}
+            >⧉ Copy</button>
+            <button className="btn btn-outline btn-sm" onClick={onAdd}>+ Add here</button>
+          </div>
+        )}
       </div>
 
+      {!collapsed && <>
       {commitmentsToday.map(fc => (
         <div key={fc.id} className="warn-item sev-low" style={{ marginBottom: 8 }}>
           <span className="warn-icon">📌</span>
@@ -522,10 +637,24 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
         </div>
       ))}
 
-      {ordered.length === 0 && (
+      {ordered.length === 0 && (<>
         <EmptyState icon="🌤️" title="Nothing planned yet" body="Add your first stop for this day — or drag one here from another day."
           action={editable ? <button className="btn btn-primary btn-sm" onClick={onAdd}>+ Add stop</button> : undefined} />
-      )}
+        {editable && (nextAnchor || nearby.length > 0) && (
+          <div className="day-suggest">
+            {nextAnchor && (
+              <button className="chip-btn" onClick={() => onAddQuickStop(day.index, nextWaypointStop(nextAnchor))} title="Add this as a route waypoint">
+                ➡ Continue to {nextAnchor.name.replace(/ \((start|end)\)$/, '')}
+              </button>
+            )}
+            {nearby.map(h => (
+              <button key={h.name} className="chip-btn" onClick={() => onAddQuickStop(day.index, poiQuickStop(h))} title="Add this nearby idea">
+                ＋ {h.name}
+              </button>
+            ))}
+          </div>
+        )}
+      </>)}
 
       <div className="tl">
         {ordered.map((s, i) => (
@@ -603,7 +732,59 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
           </div>
         )}
       </div>
+      </>}
     </div>
+  )
+}
+
+/** One-click "continue the route" waypoint for an empty day. */
+function nextWaypointStop(a: { name: string; point: { lat: number; lng: number } }): Omit<ItineraryStop, 'id' | 'orderInDay'> {
+  const name = a.name.replace(/ \((start|end)\)$/, '')
+  return {
+    title: name, category: 'travel', locationName: name,
+    lat: a.point.lat, lng: a.point.lng,
+    description: '', notes: 'Route continuation',
+    visitMinutes: 0, openTime: '', closeTime: '',
+    entryFeeInrPerPerson: 0, transportCostInrTotal: 0,
+    priority: 'nice-to-have', sourceUrl: '', status: 'confirmed', auto: true,
+  }
+}
+
+/** One-click nearby-POI stop for an empty day. */
+function poiQuickStop(h: PlaceHit): Omit<ItineraryStop, 'id' | 'orderInDay'> {
+  return {
+    title: h.name, category: 'sightseeing', locationName: h.description ?? h.name,
+    lat: h.latitude, lng: h.longitude,
+    description: h.description ?? '', notes: 'Nearby idea',
+    visitMinutes: 60, openTime: '', closeTime: '',
+    entryFeeInrPerPerson: 0, transportCostInrTotal: 0,
+    priority: 'nice-to-have', sourceUrl: '', status: 'suggested',
+  }
+}
+
+/** Tiny inline SVG of the day's route shape — no map mount, pure geometry. */
+function DaySpark({ stops }: { stops: ItineraryStop[] }) {
+  const lats = stops.map(s => s.lat)
+  const lngs = stops.map(s => s.lng)
+  const minLat = Math.min(...lats), maxLat = Math.max(...lats)
+  const minLng = Math.min(...lngs), maxLng = Math.max(...lngs)
+  const spanLat = Math.max(1e-4, maxLat - minLat)
+  const spanLng = Math.max(1e-4, maxLng - minLng)
+  const px = (s: ItineraryStop) => 6 + ((s.lng - minLng) / spanLng) * 68
+  const py = (s: ItineraryStop) => 38 - ((s.lat - minLat) / spanLat) * 32
+  return (
+    <svg className="day-spark" viewBox="0 0 80 44" width={80} height={44} aria-hidden="true">
+      <polyline
+        points={stops.map(s => `${px(s)},${py(s)}`).join(' ')}
+        fill="none" stroke="var(--teal)" strokeWidth="2"
+        strokeLinejoin="round" strokeLinecap="round"
+      />
+      {stops.map((s, i) => (
+        <circle key={i} cx={px(s)} cy={py(s)}
+          r={i === 0 ? 3.4 : i === stops.length - 1 ? 3 : 2.3}
+          fill={i === 0 ? 'var(--saffron)' : 'var(--teal-deep)'} />
+      ))}
+    </svg>
   )
 }
 
