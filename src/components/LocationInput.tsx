@@ -2,7 +2,7 @@
 // Searches cities AND points of interest (via src/lib/geocode.ts — free, no key).
 // Keyboard navigable: ↑/↓ to move, Enter to pick, Esc to dismiss.
 import { useEffect, useId, useRef, useState } from 'react'
-import { searchPlaces } from '../lib/geocode'
+import { mapplsEnabled, resolveHitCoords, searchPlaces } from '../lib/geocode'
 import type { PlaceHit } from '../lib/geocode'
 
 export type { PlaceHit } from '../lib/geocode'
@@ -25,6 +25,8 @@ export function LocationInput({ value, onChange, onPick, placeholder, error, aut
   const [loading, setLoading] = useState(false)
   const [searched, setSearched] = useState(false)
   const [highlight, setHighlight] = useState(0)
+  /** true while a picked Mappls hit is getting its coordinates resolved */
+  const [resolving, setResolving] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const listId = useId()
@@ -59,7 +61,13 @@ export function LocationInput({ value, onChange, onPick, placeholder, error, aut
     return [hit.admin1, hit.country].filter(Boolean).join(' · ')
   }
 
-  function choose(hit: PlaceHit) {
+  async function choose(hit: PlaceHit) {
+    // Mappls hits carry an eLoc but no coordinates — resolve before handing
+    // the place to the caller so onPick always receives verified coordinates.
+    if (hit.eLoc && hit.latitude === 0 && hit.longitude === 0) {
+      setResolving(true)
+      try { hit = await resolveHitCoords(hit) } finally { setResolving(false) }
+    }
     onChange(hit.name + (hit.kind === 'place' && hit.admin1 ? `, ${hit.admin1}` : ''))
     onPick?.(hit)
     setOpen(false)
@@ -97,6 +105,7 @@ export function LocationInput({ value, onChange, onPick, placeholder, error, aut
         aria-activedescendant={open && hits[highlight] ? `${listId}-opt-${highlight}` : undefined}
       />
       {loading && <span className="loc-spinner" aria-label="Searching places" />}
+      {resolving && <span className="loc-spinner" aria-label="Pinning the place" />}
       {open && hits.length > 0 && (
         <ul className="loc-dropdown" role="listbox" id={listId}>
           {hits.map((hit, i) => (
@@ -123,6 +132,9 @@ export function LocationInput({ value, onChange, onPick, placeholder, error, aut
             </li>
           ))}
         </ul>
+      )}
+      {open && hits.length > 0 && mapplsEnabled() && (
+        <div className="loc-attribution">Place suggestions by Mappls · coords by OpenStreetMap</div>
       )}
       {open && !loading && searched && hits.length === 0 && value.trim().length >= 2 && (
         <div className="loc-empty">No places matched “{value.trim()}”. You can still use this text as-is.</div>
