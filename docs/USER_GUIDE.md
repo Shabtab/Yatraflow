@@ -31,7 +31,8 @@ New accounts get a fully-modelled **Kerala demo trip** on first login — open i
 
 Inside a trip, open the **Timeline** tab:
 
-- **Add stops** to any day: name, category, location (searchable — picking from suggestions pins it accurately on the map), duration, opening hours, entry fee, transport cost, priority.
+- **Add stops** to any day: name, category, location (searchable — Mappls-backed suggestions when configured, with keyless fallbacks), duration, opening hours, entry fee, transport cost, priority.
+- **Context-aware opening hours** — Opens at / Closes at appear only when they're relevant (a geocoded attraction, or categories like temple/museum/food/hotel), and clear themselves for a whole city or town.
 - **Leg-aware travel panel** — once you pick a geocoded place, a "🚗 Travel to this stop" panel appears showing where you're coming from and where you're headed next. It auto-fills the road distance, travel time and fuel/fare cost, and computes your **arrival time** from the **departure time** (default 08:30). Every value stays editable — arrows step by 1 minute.
 - **Read the time rail** — each stop shows its scheduled **arrival** and **departure** in the left gutter, with dashed connectors for travel legs between stops.
 - **Drag stops anywhere** — reorder within a day, or drag a stop onto another day: drop it on a card to insert before it, into a gap between stops, or at the day's end. Every move shows its impact before saving.

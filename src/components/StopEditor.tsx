@@ -27,6 +27,8 @@ export interface StopFormValues {
   status: StopStatus
   /** true once the user picked a real geocoded place (lat/lng verified) */
   geocoded?: boolean
+  /** kind of the picked place ('place' = city/town — hours are illogical for these) */
+  pickedKind: 'place' | 'poi' | ''
   /** leg-aware travel fields (auto-filled when a geocoded place is picked) */
   departTime: string
   arrivalTime: string
@@ -69,6 +71,9 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel,
   async function onPlacePicked(p: PlaceHit) {
     set('locationName', p.name + (p.admin1 ? `, ${p.admin1}` : ''))
     set('lat', p.latitude); set('lng', p.longitude); set('geocoded', true)
+    set('pickedKind', p.kind)
+    // cities/towns/regions don't have opening hours — drop any stale values
+    if (p.kind === 'place') { set('openTime', ''); set('closeTime', ''); setHoursState('idle') }
     // leg-aware flow: once we know where this stop is, auto-fill the travel leg
     if (legContext) {
       setLegState('loading')
@@ -164,17 +169,27 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel,
           </Field>
         </div>
 
-        <div className="form-row" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
-          <Field label="Visit duration (min)" error={errs.visitMinutes}>
-            <input type="number" min={0} step={5} className="input" value={v.visitMinutes} onChange={e => set('visitMinutes', Number(e.target.value))} />
-          </Field>
-          <Field label="Opens at" hint={hoursHint}>
-            <input type="time" className="input" value={v.openTime} onChange={e => set('openTime', e.target.value)} />
-          </Field>
-          <Field label="Closes at" error={errs.closeTime}>
-            <input type="time" className="input" value={v.closeTime} onChange={e => set('closeTime', e.target.value)} />
-          </Field>
-</div>
+        {(() => {
+          const hoursRelevant = v.pickedKind === 'poi' || !!v.openTime || !!v.closeTime ||
+            (!v.geocoded && HOURS_CATEGORIES.has(v.category))
+          return (
+            <div className="form-row" style={{ gridTemplateColumns: hoursRelevant ? '1fr 1fr 1fr' : '1fr' }}>
+              <Field label="Visit duration (min)" error={errs.visitMinutes}>
+                <input type="number" min={0} step={5} className="input" value={v.visitMinutes} onChange={e => set('visitMinutes', Number(e.target.value))} />
+              </Field>
+              {hoursRelevant && (
+                <Field label="Opens at" hint={hoursHint}>
+                  <input type="time" className="input" value={v.openTime} onChange={e => set('openTime', e.target.value)} />
+                </Field>
+              )}
+              {hoursRelevant && (
+                <Field label="Closes at" error={errs.closeTime}>
+                  <input type="time" className="input" value={v.closeTime} onChange={e => set('closeTime', e.target.value)} />
+                </Field>
+              )}
+            </div>
+          )
+        })()}
 
         <div className="form-row" style={{ gridTemplateColumns: '1fr 1fr' }}>
           <Field label="Entry fee per person (₹)" hint="0 for free places">
@@ -252,10 +267,14 @@ function normalize(v?: Partial<StopFormValues>): StopFormValues {
     description: '', visitMinutes: 60, openTime: '', closeTime: '',
     entryFeeInrPerPerson: 0, transportCostInrTotal: 0,
     priority: 'nice-to-have', notes: '', sourceUrl: '', status: 'suggested', geocoded: false,
+    pickedKind: '',
     departTime: '', arrivalTime: '', legDistanceKm: 0, legTravelMinutes: 0,
     ...v,
   }
 }
+
+/** Categories whose stops plausibly have opening hours even without a geocoded pick. */
+const HOURS_CATEGORIES = new Set<string>(['temple', 'museum', 'food', 'hotel', 'adventure', 'shopping', 'event'])
 
 const DEFAULT_LATLNG = { lat: 10.0889, lng: 77.0595 } // Munnar default until geocoding exists
 

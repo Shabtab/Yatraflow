@@ -2,6 +2,18 @@
 
 All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions are pre-1.0 MVP milestones.
 
+## [0.15.0] — 2026-08-28
+
+India-grade place data: Mappls (MapmyIndia) drives search and suggestions, and opening-hours fields now make contextual sense.
+
+### Added
+- **Mappls (MapmyIndia) place search** — location autocomplete is now powered by Mappls autosuggest (configurable with `VITE_MAPPLS_KEY`), giving far better coverage of Indian cities, towns and POIs than the previous keyless sources alone. Picked results resolve their coordinates via OSM Nominatim on selection (Mappls' free key doesn't return coordinates); if the key is absent or any lookup fails, the app falls back to keyless Open-Meteo + Wikipedia exactly as before.
+- **Mappls Nearby for place suggestions** — the empty-day "nearby idea" chips and the Map tab's nearby-POI suggestions now use Mappls Nearby (real tourist attractions/POIs) when the key is configured, again falling back to Wikipedia geosearch otherwise.
+- Third-party attribution is shown in the location dropdown ("Place suggestions by Mappls · coords by OpenStreetMap").
+
+### Changed
+- **Context-aware opening hours** — the step editor only shows **Opens at / Closes at** when they're meaningful: for geocoded POIs (attractions, temples, museums…), for time-sensitive categories (food, hotel, adventure, shopping, event, rest), or when values are already set. City/town picks now clear stale hours instead of suggesting them.
+
 ## [0.14.0] — 2026-08-28
 
 The timeline becomes a real itinerary view: a time rail, cross-day drag-and-drop, and day headers that earn their space.
