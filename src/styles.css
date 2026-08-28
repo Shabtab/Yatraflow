@@ -805,11 +805,12 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
   z-index: 59;
   margin-top: 2px;
   padding: 4px 12px;
-  color: var(--text-3);
   font-size: 10.5px;
   text-align: right;
   pointer-events: none;
 }
+.loc-attribution.on { color: var(--teal-deep); }
+.loc-attribution.off { color: var(--warn); font-weight: 600; }
   opacity: .75;
 }
 

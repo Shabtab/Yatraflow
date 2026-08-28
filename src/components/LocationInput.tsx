@@ -133,8 +133,12 @@ export function LocationInput({ value, onChange, onPick, placeholder, error, aut
           ))}
         </ul>
       )}
-      {open && hits.length > 0 && mapplsEnabled() && (
-        <div className="loc-attribution">Place suggestions by Mappls · coords by OpenStreetMap</div>
+      {open && hits.length > 0 && (
+        <div className={`loc-attribution ${mapplsEnabled() ? 'on' : 'off'}`}>
+          {mapplsEnabled()
+            ? '🟢 Place search: Mappls · coords by OpenStreetMap'
+            : '🟠 Place search: basic (add VITE_MAPPLS_KEY for Mappls)'}
+        </div>
       )}
       {open && !loading && searched && hits.length === 0 && value.trim().length >= 2 && (
         <div className="loc-empty">No places matched “{value.trim()}”. You can still use this text as-is.</div>
