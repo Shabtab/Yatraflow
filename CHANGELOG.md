@@ -2,6 +2,22 @@
 
 All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions are pre-1.0 MVP milestones.
 
+## [0.13.0] — 2026-08-28
+
+Geography-aware planning: real road data flows into estimates, and adding a stop now understands the journey you're inserting it into.
+
+### Added
+- **Leg-aware "Add stop"** — when you pick a geocoded place in the stop editor, a new **"🚗 Travel to this stop"** panel auto-detects where you're coming from (the day's last stop → the previous day's last stop → the trip's start anchor) and where you're headed next, then auto-fills the road **distance, travel time and fuel/fare cost** (OSRM real-road routing, haversine fallback when offline). A **Depart at** time defaults to the engine's 08:30 day start and **Arrive at** is computed as depart + travel — both editable, both persisted on the stop and shown in the timeline (`🕰 dep 09:00 · arr 10:12 · 23 km`).
+- Engine helpers `predecessorOf` / `nextAfter` / `estimateLeg` (unit-tested) for leg detection and ₹/km cost estimation.
+- **🎯 Recentre button** on the map — one-click manual fallback to fit the trip route.
+
+### Changed
+- **Real road distances in estimates** (Phases 1–3): trip routes are refined with OSRM driving distances/durations per leg, applied for ground transport modes; the deterministic haversine engine stays as the fallback and still powers warnings and impact previews.
+
+### Fixed
+- **Map stuck on its default view (e.g. Kerala)**: the auto-fit previously polled for the map instance and raced the `load` event — if the map loaded between poll ticks, `fitBounds` never ran. The map's readiness now comes from its real `load` event, single-point trips get padded bounds instead of zero-size ones, a refit runs after a resize pass, and the Recentre button covers any residual case.
+- **"Please enter a valid value… 65 and 70"** in the travel-time field: it used 5-minute steps while OSRM fills exact values (67 min etc.); it now accepts 1-minute steps.
+
 ## [0.12.0] — 2026-08-27
 
 Real accounts and shared persistence: YatraFlow moves from a single-browser localStorage app to a Supabase-backed one — accounts work across devices, and collaboration data finally lives in one place.
