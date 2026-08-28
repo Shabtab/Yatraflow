@@ -2,8 +2,6 @@
 
 All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions are pre-1.0 MVP milestones.
 
-## [Unreleased]
-
 ## [0.16.0] — 2026-08-29
 
 Fuel-accurate self-drive budgeting: your vehicle's own economy and pump price drive the transport numbers, and the drive home counts by default.
