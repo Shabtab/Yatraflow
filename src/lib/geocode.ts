@@ -167,10 +167,42 @@ export async function searchPlaces(q: string, opts?: { indiaOnly?: boolean }): P
 export { DEBOUNCE_MS }
 
 /**
- * Nearby POIs around a coordinate via Wikipedia geosearch — used to suggest
- * potential stops on the Map tab. Free, keyless, CORS-enabled.
+ * Nearby POIs around a coordinate — Mappls Nearby (real tourist attractions
+ * with addresses) when a key is configured, resolving each result's
+ * coordinates via Nominatim; falls back to Wikipedia geosearch otherwise.
  */
 export async function searchNearbyPois(lat: number, lng: number, radiusM = 10000, count = 10): Promise<PlaceHit[]> {
+  if (mapplsEnabled()) {
+    try {
+      const res = await fetch(
+        `https://search.mappls.com/search/places/nearby/json?keywords=${encodeURIComponent('tourist attraction')}` +
+        `&refLocation=${lat},${lng}&distance=${Math.min(radiusM, 10000)}&access_token=${MAPPLS_KEY}`,
+        { signal: AbortSignal.timeout(6000) },
+      )
+      if (res.ok) {
+        const data = await res.json()
+        const raw = ((data.suggestedLocations ?? []) as Record<string, string>[])
+          .filter(l => l.eLoc && l.placeName)
+          .slice(0, count)
+          .map(l => ({
+            id: `mappls_${l.eLoc}`,
+            name: l.placeName,
+            latitude: 0, longitude: 0,
+            admin1: (l.placeAddress ?? '').split(',').map(s => s.trim()).filter(Boolean).pop(),
+            kind: 'poi' as const,
+            description: l.placeAddress || undefined,
+            eLoc: l.eLoc,
+          }))
+        const resolved = await Promise.all(raw.map(h => resolveHitCoords(h)))
+        const good = resolved.filter(h => h.latitude !== 0 || h.longitude !== 0)
+        if (good.length) return good
+      }
+    } catch { /* fall through to Wikipedia */ }
+  }
+  return searchNearbyPoisWikipedia(lat, lng, radiusM, count)
+}
+
+async function searchNearbyPoisWikipedia(lat: number, lng: number, radiusM = 10000, count = 10): Promise<PlaceHit[]> {
   const params = new URLSearchParams({
     action: 'query',
     generator: 'geosearch',
