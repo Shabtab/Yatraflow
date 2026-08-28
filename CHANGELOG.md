@@ -2,6 +2,11 @@
 
 All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions are pre-1.0 MVP milestones.
 
+## [0.15.2] — 2026-08-28
+
+### Fixed
+- **Mappls search never actually worked in the browser** — the Mappls APIs send no `Access-Control-Allow-Origin` header, so every browser `fetch()` failed with a CORS error and the app silently fell back to the keyless sources (which is why petrol pumps never appeared and the key showed no usage). All Mappls calls now go through our own origin: a Vercel external rewrite (`vercel.json`: `/mappls/* → search.mappls.com/*`) in production and a matching Vite dev proxy locally, so the browser reads the responses same-origin with no CORS involved. Verified end-to-end on production: autosuggest via the proxy returns petrol pumps.
+
 ## [0.15.1] — 2026-08-28
 
 ### Added
