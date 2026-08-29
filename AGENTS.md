@@ -1,0 +1,90 @@
+# AGENTS.md — YatraFlow
+
+Operating manual for AI coding agents (Cline and friends) working in this repo.
+Read it fully before starting work. Follow the rules. **Keep this file growing.**
+
+## 0. The learning rule (this file must grow)
+
+Any crucial learning made while working here — a pitfall that cost debugging
+time, a project quirk, a convention the user cares about, a "local lied, CI was
+right" moment — **must be recorded in this file in the same session it was
+learned**, as a short actionable rule in the most relevant section below.
+Before committing, ask: *"did this session teach something a fresh session
+would need?"* If yes, add it here and include the update in the same commit.
+Prune entries that stop being true.
+
+## 1. What this project is
+
+YatraFlow — collaborative India trip-planning app. React 19 + Vite +
+TypeScript, Supabase (auth + data), MapLibre GL maps, hash-based routing,
+deployed on Vercel from `main`. No bookings/payments — planning only.
+
+Key locations:
+- `src/App.tsx` — app shell: hash routes, nav (hamburger ≤720px), theme, notifications
+- `src/store/store.ts` — data layer (`useSyncExternalStore`) over Supabase
+- `src/lib/engine.ts` — pure planning engine (schedule, budget, breaks, warnings)
+- `src/lib/geocode.ts` — provider facade: Google-first (opt-in key), free-stack fallback
+- `src/lib/providers/` — `google.ts`, `free.ts` (OSM/Wikipedia/Mappls), shared hits logic
+- `src/lib/timefmt.ts` — 12h/24h clock preference + formatters (default 12h)
+- `src/lib/uiPrefs.ts` — per-day collapse persistence (localStorage)
+- `src/components/TripMap.tsx` — MapLibre map (lazy chunk); `src/components/mapcn/` wrapper
+- `src/pages/TripWorkspace.tsx` — the big one: tabs (timeline, map, budget, share…)
+- `tests/` — vitest in **node env (no DOM)** — test pure logic, not DOM
+- CHANGELOG.md — Keep-a-Changelog-style; versions are pre-1.0 milestones
+
+## 2. Workflow rules (non-negotiable, user-mandated)
+
+1. **Never push to `main` without the user's explicit confirmation** — commit
+   locally, then ask.
+2. **Every push ships documentation**: CHANGELOG.md entry in the same commit
+   (under `[Unreleased]`, or a versioned section for releases). Feature-worthy
+   releases also bump `package.json` + lockfile version and update README.
+3. Fixes and features get changelog entries with enough context to understand
+   them six months later.
+
+## 3. Verification before every push
+
+Use `npm run verify` — it runs the full gate:
+`tsc -b --clean` → fresh typecheck → full test suite → production build.
+
+Hard rules (each learned the hard way — do not relearn them):
+- **Bare commands only.** NEVER verify with `cmd /c "... & echo %ERRORLEVEL%"`.
+  `cmd` expands `%ERRORLEVEL%` **at parse time, before the commands run**, so it
+  echoes a stale exit code and masks real failures. This caused repeated
+  "local passes / Vercel fails" drift (Aug 2026, twice).
+- **`tsc -b --clean` first** in any session before trusting a typecheck —
+  incremental build caches pass code that clean builds reject.
+- If Vercel's deploy fails, reproduce locally with `npm run build` (the exact
+  Vercel command: `tsc -b && vite build`), not `tsc` alone.
+- `npm warn allow-scripts` about esbuild is a **warning, not a failure**; it's
+  allowlisted via `allowScripts` in package.json.
+
+## 4. Code conventions & pitfalls
+
+- **Data model**: times are always stored as 24h `"HH:MM"` strings. Format at
+  render with `formatHM`/`formatHMRange` + `useTimeFormat()` from
+  `lib/timefmt.ts`. 12h is the default; 24h is a user setting (Profile page).
+- **Optional fields are `string | undefined`** (`closeTime`, `openTime`,
+  `departTime`, …). Helpers must type their params for the data model's real
+  shape, not the happy-path call site — a helper requiring bare `string` turned
+  into a Vercel-only build failure.
+- Browser-native `<input type="time">` follows the OS format **by design** —
+  don't "fix" it to match the app preference.
+- **Mobile**: breakpoint is **720px**; mobile CSS lives in the single
+  `@media (max-width: 720px)` block at the end of `src/styles.css`; keep touch
+  targets ≥40px; inputs 16px on mobile (iOS Safari zooms smaller ones).
+- **MapLibre/mapcn**: don't import `maplibre-gl` types directly in components —
+  use the structural-cast pattern (`GeoJSONSourceLike` in TripMap.tsx).
+- **localStorage prefs** (`yatraflow_*`): failure-tolerant — corrupted JSON,
+  private mode, or missing storage must degrade to safe defaults, never crash.
+- `dev.log` is untracked local clutter — ignore it, never commit it.
+- Test style: pure logic only, node env; mock `fetch` with route tables
+  (`tests/providers.test.ts` has the pattern); `vi.stubEnv` for API keys.
+
+## 5. External services
+
+Supabase (auth/data) · Vercel (auto-deploy from `main`) · Google Places
+(opt-in key, quota-guarded, always falls back to the free stack) · OSRM ·
+Open-Meteo · Mappls. Live probe for Google: `scripts/verify-google-places.mjs`.
+When touching provider code, keep the facade contract: Google failure or
+absent key must silently fall back to the free stack.
