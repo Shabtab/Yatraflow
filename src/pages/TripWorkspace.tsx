@@ -14,7 +14,7 @@ import {
   computeHealth, computeTotals, simulateDay, originOf, getAssumptions, legKey,
   minutesToHM, hmToMinutes, formatInr, countHotelNights, predecessorOf, nextAfter,
   collectWarnings, FUEL_PRICE_INR_PER_L, isFuelEconomyMode, parseFuelEconomyKmL, isImplausibleFuelEconomy,
-  parseFuelPricePerL, isRoundTrip,
+  parseFuelPricePerL, isRoundTrip, computeCategoryBias,
 } from '../lib/engine'
 import type { LegEstimate, ScheduleWarning } from '../lib/engine'
 import { routePath } from '../lib/routing'
@@ -565,6 +565,7 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
     searchNearbyPois(anchor.lat, anchor.lng, 10000, 6, {
       includeFuel: trip.transportMode === 'car' || trip.transportMode === 'motorcycle',
       homeCenter: trip.startLocationCoords ?? null,
+      categoryBias: computeCategoryBias(trip),
     })
       .then(hits => { if (!cancelled) setNearby(hits.slice(0, 3)) })
       .catch(() => { /* suggestions are best-effort */ })
@@ -939,7 +940,9 @@ function MapTab({ trip, editable, applyChange }: {
   const nearbyOpts: NearbyOpts = useMemo(() => ({
     includeFuel: trip.transportMode === 'car' || trip.transportMode === 'motorcycle',
     homeCenter: trip.startLocationCoords ?? null,
-  }), [trip.transportMode, trip.startLocationCoords])
+    // fill what the itinerary lacks, demote what it already covers
+    categoryBias: computeCategoryBias(trip),
+  }), [trip])
 
   useEffect(() => {
     if (anchors.length === 0) return

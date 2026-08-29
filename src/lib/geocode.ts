@@ -445,6 +445,8 @@ export interface NearbyOpts {
   includeFuel?: boolean
   /** the trip's starting point — hits inside HOME_ZONE_KM of it are dropped */
   homeCenter?: { lat: number; lng: number } | null
+  /** additive per-category score bias from itinerary gaps (computeCategoryBias) */
+  categoryBias?: Record<string, number>
 }
 
 /**
@@ -508,12 +510,13 @@ const CATEGORY_PRIORITY: Record<string, number> = {
   food: 2, event: 2, travel: 2, rest: 3, hotel: 3, 'transport-hub': 4, shopping: 5,
 }
 
-function poiTouristScore(h: PlaceHit, anchors: { lat: number; lng: number }[], radiusM: number): number {
+function poiTouristScore(h: PlaceHit, anchors: { lat: number; lng: number }[], radiusM: number, categoryBias?: Record<string, number>): number {
   const cat = h.category ?? 'sightseeing'
   let s = -(CATEGORY_PRIORITY[cat] ?? 2) * 8
   if (h.thumb) s += 5 // Wikipedia imagery ⇒ notable place
   if ((h.description ?? '').length > 40) s += 3
   if (cat === 'sightseeing' || cat === 'nature' || cat === 'beach' || cat === 'temple' || cat === 'museum') s += 3
+  if (categoryBias && categoryBias[cat]) s += categoryBias[cat] // itinerary gaps
   const frac = Math.min(1, distToNearest(h, anchors) / Math.max(1, radiusM))
   s -= frac * 6
   return s
@@ -551,8 +554,9 @@ export async function searchNearbyPoisMulti(
   const homeFiltered = home
     ? merged.filter(h => haversineKm(h.latitude, h.longitude, home.lat, home.lng) * 1000 >= HOME_ZONE_KM * 1000)
     : merged
-  // rank by tourist value, not raw distance
-  homeFiltered.sort((a, b) => poiTouristScore(b, capped, radiusM) - poiTouristScore(a, capped, radiusM))
+  // rank by tourist value + itinerary gaps, not raw distance
+  homeFiltered.sort((a, b) =>
+    poiTouristScore(b, capped, radiusM, opts.categoryBias) - poiTouristScore(a, capped, radiusM, opts.categoryBias))
   // greedy pick with a per-category cap so the list stays varied
   const catCap = Math.max(2, Math.ceil(count / 3))
   const fuelCap = opts.includeFuel ? 2 : 0

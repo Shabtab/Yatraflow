@@ -12,6 +12,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
   - **Worth-a-visit ranking** — results are scored by tourist value (things to see & do > meals > stays > pit stops), notability (Wikipedia imagery/description, strong OSM tags like `tourism=attraction`, `historic=fort`, `natural=waterfall`) and distance decay — replacing the old nearest-first sort, where a random café 200 m away beat a famous waterfall 8 km off-route.
   - **Tourist categories** — OSM now also surfaces nature (beaches, waterfalls, peaks), parks & gardens and places of worship; **ATMs are no longer suggested at all**, and petrol pumps appear only as capped pit stops on self-drive (car/motorcycle) trips.
   - Category-aware visit defaults when adding a suggestion (meals 45 min, museums/temples/nature 90, pit stops 20, hotels 0).
+  - **Itinerary-gap awareness** — suggestions now fill what the plan lacks instead of duplicating it: a long self-drive day with no meal stop boosts food ideas, a multi-day trip with no hotel stops boosts stays, a bare itinerary is seeded with things to see & do, and any category already covered by 3+ planned stops is demoted.
 
 ## [0.16.0] — 2026-08-29
 

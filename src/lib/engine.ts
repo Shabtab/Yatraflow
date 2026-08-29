@@ -528,3 +528,56 @@ export function computeTotals(trip: Trip, legCorrections?: Record<string, LegEst
 export function formatInr(n: number): string {
   return '₹' + Math.round(n).toLocaleString('en-IN')
 }
+
+// ============ Itinerary-gap awareness (nearby suggestions) ============
+// Nearby suggestions should fill what the plan lacks, not duplicate what it
+// already has. computeCategoryBias inspects the itinerary and returns additive
+// per-category score adjustments consumed by the nearby-suggestion ranking
+// (src/lib/geocode.ts). Positive = suggest more of it; negative = the plan
+// already covers it.
+
+/** A self-drive day this long without a meal stop wants food ideas. */
+const GAP_FOOD_DRIVE_KM = 120
+/** Categories are considered "well covered" once the plan has this many stops of them. */
+const GAP_COVERED_COUNT = 3
+
+export function computeCategoryBias(trip: Trip): Record<string, number> {
+  const bias: Record<string, number> = {}
+  const bump = (cat: string, v: number) => { bias[cat] = (bias[cat] ?? 0) + v }
+  const active = trip.days.flatMap(d => d.stops.filter(s => s.status !== 'rejected'))
+
+  // A bare itinerary (nothing planned yet): seed a plausible tourist day —
+  // things to see & do dominate, meals and stays follow on their own priority.
+  if (active.length === 0) {
+    bump('sightseeing', 5)
+    bump('nature', 5)
+    bump('beach', 3)
+    bump('temple', 3)
+    bump('museum', 3)
+    return bias
+  }
+
+  // Already-covered categories get demoted so suggestions fill the gaps.
+  const counts = new Map<string, number>()
+  for (const s of active) counts.set(s.category, (counts.get(s.category) ?? 0) + 1)
+  for (const [cat, n] of counts) if (n >= GAP_COVERED_COUNT) bump(cat, -4)
+
+  // Self-drive specifics: long hungry drives and overnight stays.
+  if (isFuelEconomyMode(trip.transportMode)) {
+    for (const d of trip.days) {
+      const stops = d.stops.filter(s => s.status !== 'rejected')
+      if (stops.length === 0) continue
+      let km = 0
+      for (let i = 1; i < stops.length; i++) {
+        km += haversineKm(stops[i - 1].lat, stops[i - 1].lng, stops[i].lat, stops[i].lng)
+      }
+      const hasFood = stops.some(s => s.category === 'food')
+      if (km >= GAP_FOOD_DRIVE_KM && !hasFood) bump('food', 5)
+    }
+    const hasHotel = active.some(s => s.category === 'hotel')
+    if (!hasHotel && trip.days.length >= 2) bump('hotel', 5)
+  }
+
+  return bias
+}
+

@@ -60,3 +60,69 @@ describe('detourKm', () => {
     expect(detourKm(hit as never, anchors)).toBeCloseTo(haversineKm(MID.lat, MID.lng, START.lat, START.lng), 5)
   })
 })
+
+// ============ Itinerary-gap awareness ============
+import { computeCategoryBias } from '../src/lib/engine'
+import type { Trip } from '../src/data/types'
+
+function makeTrip(over: Partial<Trip>): Trip {
+  return {
+    id: 't1', name: 'T', startLocation: 'A', destinations: ['B'],
+    startDate: '2026-09-01', endDate: '2026-09-02', travellers: 2,
+    transportMode: 'car', budgetPerPersonInr: 10000, travelStyle: 'balanced',
+    fixedCommitments: [], days: [], expenses: [], coverEmoji: '🚗',
+    visibility: 'private', createdAt: 0, updatedAt: 0,
+    ...over,
+  } as Trip
+}
+function gapStop(cat: string, lat = 25, lng = 88) {
+  return {
+    id: 's_' + Math.random(), title: 'S', category: cat, locationName: 'L', lat, lng,
+    description: '', notes: '', visitMinutes: 60, openTime: '', closeTime: '',
+    entryFeeInrPerPerson: 0, transportCostInrTotal: 0, priority: 'nice-to-have',
+    sourceUrl: '', status: 'confirmed', orderInDay: 1,
+  } as never
+}
+function gapDay(stops: unknown[]) {
+  return { index: 0, title: '', stops } as never
+}
+
+describe('computeCategoryBias', () => {
+  it('a bare itinerary seeds a things-to-do day', () => {
+    const bias = computeCategoryBias(makeTrip({}))
+    expect(bias.sightseeing).toBeGreaterThanOrEqual(5)
+    expect(bias.nature).toBeGreaterThanOrEqual(5)
+    expect(bias.food).toBeUndefined() // meals/stays follow base priority, no gap bump
+  })
+
+  it('a long self-drive day without a meal stop boosts food', () => {
+    // two stops ~330 km apart
+    const trip = makeTrip({ days: [gapDay([gapStop('sightseeing', 22.5, 88.3), gapStop('sightseeing', 25.5, 88.2)])] })
+    expect(computeCategoryBias(trip).food).toBeGreaterThanOrEqual(5)
+  })
+
+  it('a long drive that already has a meal stop gets no food boost', () => {
+    const trip = makeTrip({ days: [gapDay([gapStop('sightseeing', 22.5, 88.3), gapStop('food', 24.0, 88.2), gapStop('sightseeing', 25.5, 88.2)])] })
+    expect(computeCategoryBias(trip).food).toBeUndefined()
+  })
+
+  it('multi-day self-drive without hotel stops boosts stays', () => {
+    const trip = makeTrip({ days: [gapDay([gapStop('sightseeing')]), gapDay([gapStop('sightseeing', 25.5, 88.2)])] })
+    expect(computeCategoryBias(trip).hotel).toBeGreaterThanOrEqual(5)
+    const oneDay = makeTrip({ days: [gapDay([gapStop('sightseeing')])] })
+    expect(computeCategoryBias(oneDay).hotel).toBeUndefined()
+  })
+
+  it('well-covered categories are demoted', () => {
+    const trip = makeTrip({ days: [gapDay([gapStop('food'), gapStop('food', 25.1), gapStop('food', 25.2)])] })
+    expect(computeCategoryBias(trip).food).toBeLessThanOrEqual(-4)
+  })
+
+  it('non-self-drive trips get no drive/stay gap logic', () => {
+    const trip = makeTrip({ transportMode: 'train', days: [gapDay([gapStop('sightseeing', 22.5, 88.3), gapStop('sightseeing', 25.5, 88.2)]), gapDay([gapStop('sightseeing')])] })
+    const bias = computeCategoryBias(trip)
+    expect(bias.food).toBeUndefined()
+    expect(bias.hotel).toBeUndefined()
+  })
+})
+
