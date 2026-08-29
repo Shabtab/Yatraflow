@@ -6,6 +6,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ### Added
 - **Project start script** (`scripts/start.ps1`, also `npm start`) — one entry point for the daily dev rituals: verifies dependencies are installed (runs `npm install` on a fresh clone), then boots the Vite dev server with output teed to `dev.log`. Flags: `-Test` for the test suite, `-Build` for the production build. Documented in the README quick-start.
+- **Desktop launcher generator** (`scripts/make-dev-shortcut.ps1`) — creates a "YatraFlow Dev" desktop shortcut (VS Code + dev server in one double-click) with auto-detected install paths, so any Windows collaborator gets the same launcher by running it once.
 
 ## [0.17.0] — 2026-08-29
 

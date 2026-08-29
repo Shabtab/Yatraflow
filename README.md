@@ -64,7 +64,7 @@ cp .env.example .env.local   # fill in VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KE
 npm run dev        # → http://localhost:5173
 ```
 
-**One-command start (Windows):** `./scripts/start.ps1` installs dependencies if they're missing and boots the dev server in a single step — handy right after a clone or a pull. Flags: `-Test` runs the test suite, `-Build` runs the production build.
+**One-command start (Windows):** `./scripts/start.ps1` installs dependencies if they're missing and boots the dev server in a single step — handy right after a clone or a pull. Flags: `-Test` runs the test suite, `-Build` runs the production build. On Windows you can also run `powershell -File scripts\make-dev-shortcut.ps1` once to add a **"YatraFlow Dev" desktop shortcut** that opens VS Code and starts the dev server together.
 
 Other scripts:
 
