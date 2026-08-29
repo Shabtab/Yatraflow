@@ -922,11 +922,14 @@ function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddBreakSt
     [day.stops],
   )
 
-  // A day that never leaves its start has no travel to show — intermediate
-  // days of a round trip parked at the destination. The travelling card only
-  // belongs to days that actually drive (departure day, return day, transfers)
-  // or days where the user plans travel manually below.
-  const isStayDay = journey.points.length <= 1 && journey.distanceKm < 0.5
+  // No real drive — no travelling card at all. Stay days (parked at the base
+  // with no chain) and local days (visits around one place) render nothing
+  // here: with no ride on the road there is no drive to clock and no halt to
+  // add. The full panel appears the moment the day actually drives — e.g. the
+  // user adds a stop in another town via the day's "+ Add stop" or drags one
+  // in — which revives the departure clocks, halts and corridor suggestions.
+  const hasDrive = journey.distanceKm >= 0.5 || journey.driveMinutes > 0
+  if (!hasDrive) return null
 
   const startMin = hmToMinutes(journey.startTime)
   const isReturn = journey.direction === 'return'
@@ -953,20 +956,6 @@ function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddBreakSt
       entryFeeInrPerPerson: 0, transportCostInrTotal: 0,
       priority: 'optional', sourceUrl: '', status: 'confirmed',
     }, insertPos)
-  }
-
-  // Stay days get a minimal panel: no bike/drive stats, just the way to plan
-  // a drive manually — which brings the full travelling card to life.
-  if (isStayDay) {
-    if (!editable) return null
-    return (
-      <div className="travel-panel">
-        <div className="travel-panel-add">
-          <span className="small muted">No drive planned for this day — add one if you're heading out.</span>
-          <button className="btn btn-outline btn-sm" onClick={addHalt}>+ Add a halt</button>
-        </div>
-      </div>
-    )
   }
 
   /** Real food/fuel/rest spots along the day's route corridor — at any distance. */
