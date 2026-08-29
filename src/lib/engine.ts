@@ -320,7 +320,8 @@ function cleanPlaceName(name: string): string {
   return name.replace(/ \((start|end)\)$/, '')
 }
 
-function coLocates(a: { lat: number; lng: number }, b: { lat: number; lng: number } | null | undefined): boolean {
+/** True when two points sit within ~1 km — the same place, for route purposes. */
+export function coLocates(a: { lat: number; lng: number }, b: { lat: number; lng: number } | null | undefined): boolean {
   return !!b && haversineKm(a.lat, a.lng, b.lat, b.lng) < 1
 }
 

@@ -11,7 +11,7 @@ import {
   activityFor, setMemberRole, removeMember, restoreMember, updateTrip, publishItinerary,
 } from '../store/store'
 import {
-  computeHealth, computeTotals, simulateDay, originOf, getAssumptions, legKey,
+  computeHealth, computeTotals, simulateDay, originOf, getAssumptions, legKey, coLocates,
   minutesToHM, hmToMinutes, formatInr, countHotelNights, predecessorOf, nextAfter,
   collectWarnings, FUEL_PRICE_INR_PER_L, isFuelEconomyMode, parseFuelEconomyKmL, isImplausibleFuelEconomy,
   parseFuelPricePerL, isRoundTrip, computeCategoryBias, addMinutesToClock, buildJourney,
@@ -587,6 +587,15 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
   const [titleDraft, setTitleDraft] = useState(day.title ?? '')
   const [nearby, setNearby] = useState<PlaceHit[]>([])
   const nextAnchor = useMemo(() => nextAfter(trip, day.index), [trip]) // eslint-disable-line react-hooks/exhaustive-deps
+  // "Continue to X" only makes sense while X is still ahead of you. The day
+  // wakes up where the previous day's JOURNEY ended — when that IS the next
+  // anchor (you arrived at the trip's destination on day 1, so every later
+  // unplanned day is parked there), the chip would offer a drive to where
+  // you already stand. Suppress it; nearby-idea chips are unaffected.
+  const alreadyAtNext = useMemo(
+    () => !!nextAnchor && coLocates(originOf(trip, day.index), nextAnchor.point),
+    [trip, nextAnchor], // eslint-disable-line react-hooks/exhaustive-deps
+  )
 
   // anchor suggestions on where you'd arrive from; only for unplanned days
   useEffect(() => {
@@ -694,9 +703,9 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
       {ordered.length === 0 && (<>
         <EmptyState icon="🌤️" title="Nothing planned yet" body="Add your first stop for this day — or drag one here from another day."
           action={editable ? <button className="btn btn-primary btn-sm" onClick={onAdd}>+ Add stop</button> : undefined} />
-        {editable && (nextAnchor || nearby.length > 0) && (
+        {editable && ((nextAnchor && !alreadyAtNext) || nearby.length > 0) && (
           <div className="day-suggest">
-            {nextAnchor && (
+            {nextAnchor && !alreadyAtNext && (
               <button className="chip-btn" onClick={() => onAddQuickStop(day.index, nextWaypointStop(nextAnchor))} title="Add this as a route waypoint">
                 ➡ Continue to {nextAnchor.name.replace(/ \((start|end)\)$/, '')}
               </button>
@@ -2299,10 +2308,12 @@ function legContextFor(state: { mode: 'add'; dayIndex: number } | { mode: 'edit'
   const pred = predecessorOf(trip, state.dayIndex)
   if (!pred) return undefined
   const nxt = nextAfter(trip, state.dayIndex)
+  // Don't advertise "headed next to X" when you're already standing in X.
+  const next = nxt && !coLocates(pred.point, nxt.point) ? nxt : undefined
   return {
     fromName: pred.name,
     fromPoint: pred.point,
-    nextName: nxt?.name,
+    nextName: next?.name,
     dayStart: getAssumptions(trip).dayStart,
     transportMode: trip.transportMode,
     fuelEconomyKmL: trip.fuelEconomyKmL,
