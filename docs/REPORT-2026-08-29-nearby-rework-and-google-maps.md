@@ -47,27 +47,30 @@ Provider-agnostic seams already exist: `PlaceHit` (search results), `RoadLeg` (r
 
 ## 3. Proposal — Google Maps with the free stack as automatic fallback
 
-### The compliance constraint that shapes it
-Google Places ToS requires Places data to be displayed **on a Google map** — so "Google data on MapLibre" is not allowed, and partial hybrids are gray-zone. The clean model is **two complete stacks with one runtime switch**:
+### Scope — only the two things Google does best for us
+We use Google **only for data**: (1) place autocomplete with coordinates for location picking, and (2) nearby POI data fed into our tourist engine. Routing stays on OSRM, weather on Open-Meteo, hours on Overpass, rendering on MapLibre. No Directions API, no Place Details for hours, no Google map rewrite.
 
-```
-Google mode (key present + quota OK)      Free mode (no key / quota spent / errors)
-──────────────────────────────────────    ─────────────────────────────────────────
-Google Maps JS render                     MapLibre + CARTO (current)
-Places Autocomplete / Text Search         Mappls + Open-Meteo + Wikipedia
-Places Nearby (New) — 1 call/scan         Overpass + Wikipedia + Mappls corridor
-Directions API (cached per leg)           OSRM
-Place Details (hours/photos/ratings)      Overpass hours
-```
+### The compliance caveat (decide consciously)
+Google Places ToS expects Places results to be displayed on a Google map and not blended with other providers' data. Plotting Google POIs on MapLibre and merging them into our ranked list is a gray zone — realistically unenforced for small apps, but it's a terms question, not a cost question. Mitigation if we ever want strict compliance: render the Map tab on a Google map, or keep nearby on the free stack and use Google only for autocomplete (explicitly allowed mapless).
 
-### Implementation shape (~3–3.5 days)
-- **Phase A — provider facade (~1 d):** engines split into `src/lib/providers/free.ts` (today's code, untouched) and `src/lib/providers/google.ts`. `geocode.ts`/`routing.ts` become facades: Google first → free on key-absence, error, or quota-exhaustion. All Phase 1–4 logic survives untouched. `resolveHitCoords` + Nominatim fallback get deleted (Google returns coordinates natively).
-- **Phase B — quota guard (~0.5 d):** monthly per-SKU event counters in localStorage, 8,000 soft-cap (20% margin under the 10k free allowance); hitting the cap silently drops that SKU to the free stack for the month. Corridor capped at 6 anchors in Google mode; Directions cached per leg.
-- **Phase C — Google renderer (~1.5 d):** `TripMapGoogle.tsx` with the same props as `TripMap` (stop markers, idea pins, polyline, fitBounds); `TripWorkspace` picks the renderer from the resolved provider mode. Key restricted by HTTP-referrer to the Vercel domain.
-- **Phase D — validation & docs (~0.5 d):** test all three states (key present / absent / quota exhausted), provider badge in the UI (🟢 Google / 🟠 free fallback, same pattern as the Mappls badge), README env docs.
+### Verified India SKUs (pricing-india, updated 2026-08-25 — India billing account)
+| SKU | Free cap/month | Beyond cap |
+|---|---|---|
+| Autocomplete Requests (India) | **70,000** | $0.85/1k |
+| Autocomplete Session Usage (India) | **Unlimited** | — |
+| **Text Search Pro (India)** — incl. **Search Along Route** | **35,000** | $9.60/1k |
+| Nearby Search Pro (India) | **35,000** | $9.60/1k |
+| Place Details Essentials/Pro (India) | 70,000 / 35,000 | $1.50 / $5.10 per 1k |
+| Geocoding (India) | 70,000 | $1.50/1k |
 
-**What we'd gain:** ratings, photos, phone numbers and reliable hours on suggestion cards; better POI coverage in parts of India; no CORS proxy; no Overpass saturation.
-**What we'd keep:** everything — the free stack remains the automatic fallback, so the app behaves exactly as today when the key is absent.
+**Killer feature:** Places **Search Along Route** takes our existing OSRM route polyline and returns places biased along the entire route with real detour summaries (`routingSummaries`) in **1 request** — a native version of our whole corridor-sampling + "~N km off route" concept. 1–3 events per scan instead of 6 Nearby calls.
+
+### Implementation shape (~1.5 days)
+- **Phase A — provider facade (~1 d):** `src/lib/providers/free.ts` (today's engines, untouched) + `src/lib/providers/google.ts` (Places Autocomplete for location picking; Text Search with `searchAlongRouteParameters` for nearby ideas). `geocode.ts` becomes a facade: Google first → free stack on key-absence, error, or quota exhaustion. All Phase 1–4 logic untouched. `resolveHitCoords`/Nominatim fallback deleted (Google returns coordinates).
+- **Phase B — quota guard (~0.5 d):** monthly per-SKU counters in localStorage, soft-cap at ~28,000 (80% of the 35k free allowance) → silently falls back to the free stack for the rest of the month. Key restricted by HTTP-referrer to the Vercel domain.
+
+**What we'd gain:** India-best autocomplete with coordinates for free; richer en-route POI data with native detour ranking; no CORS proxy for the Google path.
+**What we'd keep:** everything — the free stack remains the automatic fallback; the app behaves exactly as today when the key is absent.
 
 ---
 
@@ -77,23 +80,20 @@ Per-trip events (Google mode, with the Phase-B optimizations):
 
 | Action | SKU events |
 |---|---|
-| Trip setup (start + 2–3 destinations, debounced picks) | ~6 Text Search |
-| First map view (corridor scan, 6 anchors × 1 Nearby call) | ~6 Nearby |
-| Scope tweaks / later views (per anchor+scope cache) | ~4 Nearby |
-| Route legs (5–8, cached per endpoint pair) | ~8 Directions |
-| Place Details on actual adds | ~3 |
-| **Per trip** | **~27** |
+| Trip setup (start + 2–3 destinations, debounced picks) | ~6 Autocomplete Requests |
+| First map view (Search Along Route: 1 request × 2–3 category queries) | ~3 Text Search Pro |
+| Scope tweaks / later views (per anchor+scope cache) | ~2 Text Search Pro |
+| Route legs / hours / weather | 0 (OSRM, Overpass, Open-Meteo — all free) |
+| **Per trip** | **~11** |
 
-Monthly totals at 100 users × 2.5 trips, against the **per-SKU** 10k free allowance:
+Monthly totals at 100 users × 2.5 trips, against the **India per-SKU free allowances**:
 
 | SKU | Monthly | Allowance | Headroom |
 |---|---|---|---|
-| Text Search | ~1,500 | 10,000 | 85% |
-| Nearby Search | ~2,500 | 10,000 | 75% |
-| Directions | ~2,000 | 10,000 | 80% |
-| Place Details | ~750 | 10,000 | 92% |
+| Text Search Pro (Search Along Route) | ~1,250 | 35,000 | **96%** |
+| Autocomplete Requests | ~1,500 | 70,000 | **98%** |
 
-**Verdict: the free tier is 10k events *per SKU*** — the binding SKU (Nearby) sits at ~25% usage. Stress cases: heavy users (3 trips + scope tweaks) ≈ 5k; worst case with zero caching ≈ 5.4k — still under. At ~10× traffic the quota guard degrades to the free stack mid-month: zero cost, zero breakage. **Projected bill at current scale: ₹0.**
+**Verdict:** with India billing, the binding SKU (Text Search Pro) sits at **~4% of its 35k free allowance**. Stress cases: heavy users (3 trips, scope tweaks ×2) ≈ 2,000 (6%); worst case with zero caching ≈ 3,600 (10%); **10× growth (1,000 users) ≈ 12,500 — still 64% headroom**. The quota guard (28k soft-cap) becomes near-unreachable insurance. **Projected bill at current scale and well beyond: ₹0.**
 
 ---
 
@@ -102,16 +102,15 @@ Monthly totals at 100 users × 2.5 trips, against the **per-SKU** 10k free allow
 | Risk | Mitigation |
 |---|---|
 | Key leakage → runaway usage | HTTP-referrer restriction to the Vercel domain; quota guard as second net |
-| Billing surprise | 8k soft-cap per SKU → free stack, never a paid event |
-| ToS drift | Places data only ever rendered on the Google map; free mode untouched |
-| Regression risk in the map render | Free-mode MapLibre stays default; Google mode is opt-in via env key |
+| Billing surprise | 28k soft-cap per SKU → free stack, never a paid event (overage would be $9.60/1k if the guard were ever off) |
+| Places ToS (display on non-Google map + blending) | Documented gray zone — decide consciously; strict-compliance option: Google-only autocomplete (mapless-allowed), nearby stays on free stack |
 
 ---
 
 ## 6. Open questions for discussion
 
-1. **Adopt Google now, or stay on the free stack?** The simulation says ₹0 at current scale; the main argument *for* is data richness (ratings/photos/hours) on suggestion cards.
-2. **Who builds it?** Phases A–B are self-contained and testable without the map swap; Phase C is the biggest chunk and could go to a contributor with a clear spec.
+1. **Adopt Google now, or stay on the free stack?** The simulation says ₹0 with huge headroom (India SKUs verified); the main argument *for* is India-best autocomplete + native Search-Along-Route detour ranking. The main argument *against* is the Places ToS gray zone on MapLibre display/blending.
+2. **Who builds it?** Phases A–B (~1.5 days) are self-contained and testable without touching the map; a good contributor task with a clear spec.
 3. **Issue #5 (nearby filter chips):** please build the chips from the **new** category set — `sightseeing / nature / beach / temple / museum / food / hotel / pit stop` — not the old All/Food/Hotels/Fuel/ATMs list. Categories arrive on each hit as `hit.category`; detour distance via `detourKm(hit, anchors)` in `src/lib/geocode.ts`.
 4. **Public view counters (follow-up from PR #10):** the RLS-safe fix stops the doomed writes, but counters only persist from the owner's visits. Proper fix: a `security definer` RPC or an insert-only events table — good candidate for a contributor issue.
 
