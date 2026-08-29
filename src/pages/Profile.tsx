@@ -4,10 +4,12 @@ import type { TravelStyle } from '../data/types'
 import { TRAVEL_STYLES } from '../data/types'
 import { useDb, currentUser, updateProfile, tripsForUser } from '../store/store'
 import { Avatar, Chip, Field, toast } from '../components/ui'
+import { useTimeFormat, setTimeFormat, formatHM, type TimeFormat } from '../lib/timefmt'
 
 export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void }) {
   const db = useDb()
   const me = currentUser(db)
+  const timeFormat = useTimeFormat()
   const tripCount = tripsForUser(me?.id ?? null).length
 
   const [f, setF] = useState(() => ({
@@ -54,6 +56,20 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
                 <Chip key={s} active={me.profile.travelStyles.includes(s)} onClick={() => toggleStyle(s)}>{cap(s)}</Chip>
               ))}
             </div>
+          </div>
+
+          <div className="card" style={{ marginTop: 16 }}>
+            <h3>Display preferences</h3>
+            <hr className="divider" />
+            <Field label="Clock format" hint={`Applies across the app. Example: ${formatHM('18:30', timeFormat)}`}>
+              <div className="chip-row">
+                {(['12h', '24h'] as TimeFormat[]).map(opt => (
+                  <Chip key={opt} active={timeFormat === opt} onClick={() => setTimeFormat(opt)}>
+                    {opt === '12h' ? '12h (AM/PM)' : '24h'}
+                  </Chip>
+                ))}
+              </div>
+            </Field>
           </div>
         </div>
 

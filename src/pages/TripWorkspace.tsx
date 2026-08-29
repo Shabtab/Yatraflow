@@ -23,6 +23,7 @@ import { computeImpact, type ImpactResult } from '../lib/impact'
 import { planRide, RIDE_STYLES, recommendedStyle, MAX_BREAKS, type RideStyle } from '../lib/ridebreaks'
 import { haversineKm } from '../lib/geo'
 import { loadDayCollapsed, saveDayCollapsed } from '../lib/uiPrefs'
+import { useTimeFormat, formatHM, formatHMRange } from '../lib/timefmt'
 import { Avatar, Chip, Modal, ConfirmDialog, Field, StatTile, HealthRing, EmptyState, toast, undoToast, useReorder, CopyButton } from '../components/ui'
 import { ImpactPreviewPanel } from '../components/ImpactPreview'
 // MapLibre is heavy (~1MB) — load it only when the Map tab is actually opened.
@@ -192,6 +193,7 @@ function OverviewTab({ trip, editable, onOpenDecisions, health, totals }: {
   totals: ReturnType<typeof computeTotals>
 }) {
   const db = useDb()
+  const timeFormat = useTimeFormat()
   const unresolvedDecisions = db.decisions.filter(d => d.tripId === trip.id && d.status === 'open').length
   const nextCommitment = [...trip.fixedCommitments]
     .sort((a, b) => a.dayIndex - b.dayIndex || a.time.localeCompare(b.time))[0]
@@ -242,12 +244,12 @@ function OverviewTab({ trip, editable, onOpenDecisions, health, totals }: {
                 <span className="warn-icon">📌</span>
                 <div>
                   <div className="warn-title">Next: {nextCommitment.title}</div>
-                  <div className="warn-fix">Day {nextCommitment.dayIndex + 1} at {nextCommitment.time}{nextCommitment.notes ? ` — ${nextCommitment.notes}` : ''}</div>
+                  <div className="warn-fix">Day {nextCommitment.dayIndex + 1} at {formatHM(nextCommitment.time, timeFormat)}{nextCommitment.notes ? ` — ${nextCommitment.notes}` : ''}</div>
                 </div>
               </div>
               {trip.fixedCommitments.filter(fc => fc !== nextCommitment).map(fc => (
                 <div key={fc.id} className="row-between small" style={{ padding: '4px 0' }}>
-                  <span><b>{fc.title}</b> <span className="muted">· Day {fc.dayIndex + 1}, {fc.time}</span></span>
+                  <span><b>{fc.title}</b> <span className="muted">· Day {fc.dayIndex + 1}, {formatHM(fc.time, timeFormat)}</span></span>
                   <Chip tone="info">{labelCommitType(fc.type)}</Chip>
                 </div>
               ))}
@@ -581,6 +583,7 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
   // data — it's a view preference, not part of the plan). Unknown days default
   // to expanded.
   const [collapsed, setCollapsed] = useState(() => loadDayCollapsed(trip.id, day.index))
+  const timeFormat = useTimeFormat()
   function toggleCollapsed() {
     setCollapsed(c => {
       saveDayCollapsed(trip.id, day.index, !c)
@@ -648,12 +651,12 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
           )}
           <div className="small muted">
             {(ridePlan.isOutboundDrive || ridePlan.isReturnDrive) && ridePlan.targetLabel ? (
-              <span>Route day — ~{Math.round(ridePlan.distanceKm)} km drive {ridePlan.isReturnDrive ? 'back to' : 'to'} {ridePlan.targetLabel} · ~{minutesToHM(ridePlan.driveMinutes)} · start ~{ridePlan.startClock}</span>
+              <span>Route day — ~{Math.round(ridePlan.distanceKm)} km drive {ridePlan.isReturnDrive ? 'back to' : 'to'} {ridePlan.targetLabel} · ~{minutesToHM(ridePlan.driveMinutes)} · start ~{formatHM(ridePlan.startClock, timeFormat)}</span>
             ) : (
-              <span>{sim.activeStops.length} active stop{sim.activeStops.length !== 1 ? 's' : ''} · ~{minutesToHM(sim.totalTravelMinutes)} travel · ~{Math.round(sim.totalDistanceKm)} km · start ~{sim.startsAt} · ends ~{sim.endsAt}</span>
+              <span>{sim.activeStops.length} active stop{sim.activeStops.length !== 1 ? 's' : ''} · ~{minutesToHM(sim.totalTravelMinutes)} travel · ~{Math.round(sim.totalDistanceKm)} km · start ~{formatHM(sim.startsAt, timeFormat)} · ends ~{formatHM(sim.endsAt, timeFormat)}</span>
             )}
           </div>
-          <div className={`day-progress ${collapsed ? 'compact' : ''}`} title={`${Math.round(used * 100)}% of the ${dayStartHM}–${A.dayEnd} window`}>
+          <div className={`day-progress ${collapsed ? 'compact' : ''}`} title={`${Math.round(used * 100)}% of the ${formatHM(dayStartHM, timeFormat)}–${formatHM(A.dayEnd, timeFormat)} window`}>
             <div className={`day-progress-fill sev-${sev}`} style={{ width: `${Math.round(used * 100)}%` }} />
           </div>
           {!collapsed && <DayWeatherChip trip={trip} dayIndex={day.index} />}
@@ -678,7 +681,7 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
           <span className="warn-icon">📌</span>
           <div>
             <div className="warn-title">{fc.title}</div>
-            <div className="warn-fix">Fixed at {fc.time}{fc.notes ? ` — ${fc.notes}` : ''}</div>
+            <div className="warn-fix">Fixed at {formatHM(fc.time, timeFormat)}{fc.notes ? ` — ${fc.notes}` : ''}</div>
           </div>
         </div>
       ))}
@@ -713,9 +716,9 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
               {...(editable ? dndHandlers(i) : {})}
             >
               <div className="tl-gutter" aria-hidden="true">
-                <span className="tl-time tl-arr">{sim.arrivalTimes[i] ?? '--:--'}</span>
+                <span className="tl-time tl-arr">{sim.arrivalTimes[i] ? formatHM(sim.arrivalTimes[i], timeFormat) : '--:--'}</span>
                 <span className="tl-line" />
-                <span className="tl-time tl-dep">{sim.departures[i] ?? '--:--'}</span>
+                <span className="tl-time tl-dep">{sim.departures[i] ? formatHM(sim.departures[i], timeFormat) : '--:--'}</span>
               </div>
               <div
                 className={`stop-card status-${s.status} ${dragging === i ? 'dragging' : ''} ${over === i && dragging !== null && dragging !== i ? 'drag-over' : ''} ${foreignOver === i && dragging === null ? 'foreign-over' : ''}`}
@@ -733,11 +736,11 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
                 <div className="stop-meta">
                   <span>📍 {s.locationName}</span>
                   <span>⏱ {minutesToHM(s.visitMinutes)}</span>
-                  {s.openTime && <span>🕒 {s.openTime}–{s.closeTime}</span>}
+                  {s.openTime && <span>🕒 {formatHMRange(s.openTime, s.closeTime, timeFormat)}</span>}
                   <span>🎫 ₹{s.entryFeeInrPerPerson}/person</span>
                   <span>🚗 ₹{s.transportCostInrTotal} transport</span>
                   {s.departTime && s.arrivalTime && (
-                    <span>🕰 dep {s.departTime} · arr {s.arrivalTime}{s.legDistanceKm ? ` · ${s.legDistanceKm.toFixed(0)} km` : ''}</span>
+                    <span>🕰 dep {formatHM(s.departTime, timeFormat)} · arr {formatHM(s.arrivalTime, timeFormat)}{s.legDistanceKm ? ` · ${s.legDistanceKm.toFixed(0)} km` : ''}</span>
                   )}
                 </div>
                 {s.description && <div className="stop-desc">{s.description}</div>}
@@ -829,6 +832,7 @@ function LongRidePanel({ trip, day, editable, legCorrections, onSetDayStart, onA
   onAddBreakStop: (dayIndex: number, stop: Omit<ItineraryStop, 'id' | 'orderInDay'>, position: number) => void
 }) {
   const A = getAssumptions(trip)
+  const timeFormat = useTimeFormat()
   const [styleChoice, setStyleChoice] = useState<RideStyle | null>(null)
   const [customHalts, setCustomHalts] = useState(2)
   const [spots, setSpots] = useState<Record<number, PlaceHit[]>>({})
@@ -938,7 +942,7 @@ function LongRidePanel({ trip, day, editable, legCorrections, onSetDayStart, onA
           <div className="small muted" style={{ marginTop: 4 }}>
             Wheel time ~{minutesToHM(plan.driveMinutes)}
             {plan.breakMinutes > 0 && <> · halts {minutesToHM(plan.breakMinutes)} → <b>~{minutesToHM(plan.totalMinutes)} total</b> (+{minutesToHM(plan.breakMinutes)} vs one go)</>}
-            {' '}· leave {plan.startClock} → arrive ~{plan.breakMinutes > 0 ? plan.finishWithBreaks : plan.finishClock}
+            {' '}· leave {formatHM(plan.startClock, timeFormat)} → arrive ~{formatHM(plan.breakMinutes > 0 ? plan.finishWithBreaks : plan.finishClock, timeFormat)}
           </div>
         </div>
         {editable && (
@@ -1191,6 +1195,7 @@ function MapTab({ trip, editable, applyChange }: {
   applyChange: (mutator: (d: Trip) => void, kind: ImpactResult['kind'], dayIndex: number) => void
 }) {
   const [pois, setPois] = useState<PlaceHit[]>([])
+  const timeFormat = useTimeFormat()
   const [loadingPois, setLoadingPois] = useState(false)
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set())
   // detour-scope control — how far off the route suggestions may sit
@@ -1352,7 +1357,7 @@ function MapTab({ trip, editable, applyChange }: {
                     </div>
                   )}
                   {(hit.openTime || hit.closeTime) && (
-                    <div className="poi-desc small muted">🕘 {hit.openTime}–{hit.closeTime} (reported)</div>
+                    <div className="poi-desc small muted">🕘 {formatHMRange(hit.openTime, hit.closeTime, timeFormat)} (reported)</div>
                   )}
                 </div>
                 {editable && (

@@ -5,6 +5,7 @@ import { TRANSPORT_MODES, TRAVEL_STYLES } from '../data/types'
 import { useDb, currentUser, createTrip } from '../store/store'
 import { FUEL_PRICE_INR_PER_L, isFuelEconomyMode, parseFuelEconomyKmL, parseFuelPricePerL, isImplausibleFuelEconomy } from '../lib/engine'
 import { Field, Chip, toast } from '../components/ui'
+import { useTimeFormat, formatHM } from '../lib/timefmt'
 import { LocationInput } from '../components/LocationInput'
 import type { PlaceHit } from '../components/LocationInput'
 
@@ -25,6 +26,7 @@ interface DestDraft {
 export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void }) {
   const db = useDb()
   const me = currentUser(db)
+  const timeFormat = useTimeFormat()
 
   const [f, setF] = useState({
     name: '', startLocation: '',
@@ -246,7 +248,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
                   <span className="warn-icon">📌</span>
                   <div style={{ flex: 1 }}>
                     <div className="warn-title">{x.title}</div>
-                    <div className="warn-fix">Day {x.dayIndex + 1} at {x.time}</div>
+                    <div className="warn-fix">Day {x.dayIndex + 1} at {formatHM(x.time, timeFormat)}</div>
                   </div>
                   <button type="button" className="icon-btn" aria-label={`Remove ${x.title}`} onClick={() => setCommitments(l => l.filter((_, j) => j !== i))}>✕</button>
                 </div>

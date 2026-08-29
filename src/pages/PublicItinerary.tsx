@@ -3,10 +3,12 @@ import { useEffect } from 'react'
 import type { Trip, PublishedItinerary } from '../data/types'
 import { useDb, currentUser, tripById, userById, duplicateTrip, registerPubCopy, registerPubView } from '../store/store'
 import { simulateDay, originOf, minutesToHM, formatInr } from '../lib/engine'
+import { useTimeFormat, formatHMRange } from '../lib/timefmt'
 import { Avatar, Chip, EmptyState, toast, CopyButton } from '../components/ui'
 
 export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavigate: (r: string) => void }) {
   const db = useDb()
+  const timeFormat = useTimeFormat()
   const me = currentUser(db)
   const pub: PublishedItinerary | undefined = db.published.find(p => p.id === slug)
   const trip: Trip | undefined = pub ? tripById(pub.tripId) : undefined
@@ -113,7 +115,7 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
                           <div className="stop-toprow">
                             <span className="stop-title">{s.title}</span>
                             <Chip tone="info">{labelCat(s.category)}</Chip>
-                            {s.openTime && <span className="small muted">🕒 {s.openTime}–{s.closeTime}</span>}
+                            {s.openTime && <span className="small muted">🕒 {formatHMRange(s.openTime, s.closeTime, timeFormat)}</span>}
                           </div>
                           <div className="stop-meta">
                             <span>📍 {s.locationName}</span>
