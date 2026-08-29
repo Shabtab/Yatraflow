@@ -5,6 +5,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 ## [Unreleased]
 
 ### Added
+- **Persisted day collapse state in the Timeline** (closes #4) — collapsed/expanded days now survive reloads and navigation, stored per trip+day in `localStorage` (`yatraflow_day_collapsed`) as a view preference kept out of the trip data model (no Supabase/snapshot changes). New `src/lib/uiPrefs.ts` exposes a hardened, unit-tested parser that degrades corrupted storage entries to "expanded" instead of crashing, plus no-op-safe wrappers for environments without `localStorage`.
 - **Category filter chips for nearby ideas on the map** (closes #5) — the gold 💡 idea markers can now be filtered by category straight from the map's filter bar: one chip per category actually present among the ideas (e.g. Sightseeing, Food, Nature), each showing a live count, the category's stroke icon, and toggling that category's markers on/off. Chips only appear when ideas exist, desktop and mobile styling follow the existing day-chip pills, and the legend explains the filter.
 
 ### Fixed

@@ -22,6 +22,7 @@ import { routePath } from '../lib/routing'
 import { computeImpact, type ImpactResult } from '../lib/impact'
 import { planRide, RIDE_STYLES, recommendedStyle, MAX_BREAKS, type RideStyle } from '../lib/ridebreaks'
 import { haversineKm } from '../lib/geo'
+import { loadDayCollapsed, saveDayCollapsed } from '../lib/uiPrefs'
 import { Avatar, Chip, Modal, ConfirmDialog, Field, StatTile, HealthRing, EmptyState, toast, undoToast, useReorder, CopyButton } from '../components/ui'
 import { ImpactPreviewPanel } from '../components/ImpactPreview'
 // MapLibre is heavy (~1MB) — load it only when the Map tab is actually opened.
@@ -576,7 +577,16 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
   const commitmentsToday = trip.fixedCommitments.filter(fc => fc.dayIndex === day.index)
 
   // --- Phase 3/4: collapse, rename, day progress, empty-day suggestions ---
-  const [collapsed, setCollapsed] = useState(false)
+  // Collapse state persists across reloads per trip+day (localStorage, not trip
+  // data — it's a view preference, not part of the plan). Unknown days default
+  // to expanded.
+  const [collapsed, setCollapsed] = useState(() => loadDayCollapsed(trip.id, day.index))
+  function toggleCollapsed() {
+    setCollapsed(c => {
+      saveDayCollapsed(trip.id, day.index, !c)
+      return !c
+    })
+  }
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState(day.title ?? '')
   const [nearby, setNearby] = useState<PlaceHit[]>([])
@@ -608,7 +618,7 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
   return (
     <div className="day-section">
       <div className="day-header">
-        <button className="day-collapse" onClick={() => setCollapsed(c => !c)} aria-label={collapsed ? `Expand Day ${day.index + 1}` : `Collapse Day ${day.index + 1}`}>
+        <button className="day-collapse" onClick={toggleCollapsed} aria-label={collapsed ? `Expand Day ${day.index + 1}` : `Collapse Day ${day.index + 1}`}>
           {collapsed ? '▸' : '▾'}
         </button>
         <div className="day-badge"><small>DAY</small><b>{day.index + 1}</b></div>
