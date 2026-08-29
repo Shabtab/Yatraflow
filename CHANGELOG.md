@@ -2,6 +2,11 @@
 
 All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions are pre-1.0 MVP milestones.
 
+## [Unreleased]
+
+### Changed
+- **AGENTS.md: new pitfall rule — section-restructure edits can silently swallow bullets** — an editor replacement whose `old_text` spans a heading, its bullets and the next heading, replaced by just the next heading, deletes the **bullets**, not only the heading; after any heading-level restructure (CHANGELOG releases especially), re-grep all headings and re-read the affected range before trusting it. (The 0.18.0 release-notes restructure briefly lost four Fixed bullets this way — caught and restored in the same session.)
+
 ## [0.18.0] — 2026-08-30
 
 ### Added

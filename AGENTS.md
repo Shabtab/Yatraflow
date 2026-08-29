@@ -101,6 +101,12 @@ Hard rules (each learned the hard way — do not relearn them):
 - `dev.log` is untracked local clutter — ignore it, never commit it.
 - Test style: pure logic only, node env; mock `fetch` with route tables
   (`tests/providers.test.ts` has the pattern); `vi.stubEnv` for API keys.
+- **Section-restructure edits can silently swallow bullets** — an edit whose
+  `old_text` spans `<heading>` + its bullets + the next `<heading>`, replaced
+  by just the next heading, **deletes the bullets**, not only the heading.
+  After any heading-level restructure (CHANGELOG releases especially),
+  re-grep all headings and re-read the affected range before trusting it.
+  (The 0.18.0 restructure briefly lost four Fixed bullets this way.)
 
 ## 5. External services
 
