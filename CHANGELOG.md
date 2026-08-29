@@ -4,6 +4,14 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Fixed
+- **Store never re-rendered after mutations** (PR #9/#10) — `commit()` mutated the cache in place, so `useSyncExternalStore` kept seeing the same object reference and the UI only refreshed on an unrelated re-render. The top-level cache is now reassigned on every commit. Regression-tested by a snapshot-reference contract test.
+- **Impossible fuel economies produced absurd costs** (PR #9/#10) — `getAssumptions()` read `trip.fuelEconomyKmL` without validation; values like 1 or 500 km/L drove wildly wrong transport/round-trip estimates. Now routed through the existing 2–80 guard, falling back to the blended ₹/km table.
+- **AI router answered "train" questions with the rain plan** (PR #9/#10) — `q.includes('rain')` matched the substring inside "train"; now a word-boundary match.
+- **Published-trip view/copy counters fired a doomed write for every visitor** (PR #10) — the `published_itineraries` RLS policy only lets the creator update a row, so non-owner views attempted an always-failing UPDATE on every page load. The write is now skipped unless the viewer owns the row (note: public view counts still only persist from the owner's own visits until a counter RPC exists).
+- **`reorderStop` could insert `undefined` into the timeline** (PR #10) — out-of-range indices are now clamped and degenerate moves are no-ops instead of corrupting `day.stops`.
+- **Weather forecast window was timezone-sensitive** (PR #10) — trip start and "today" are both parsed at UTC midnight so the 15-day availability check no longer shifts by a day across timezones.
+
 ### Changed
 - **Tourist-logical nearby suggestions** — the Map tab's "Nearby ideas" and the empty-day chips no longer behave like a POI directory:
   - **Whole-route corridor search** — suggestions are sampled along the entire route line (start → stops → destination) instead of three stop anchors, so every stretch of the drive is covered, not just the first/last/max-dispersion stops.
