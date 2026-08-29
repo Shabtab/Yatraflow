@@ -598,8 +598,16 @@ export function reorderStop(tripId: ID, dayIndex: number, fromIdx: number, toIdx
   const trip = tripById(tripId)!
   const day = trip.days.find(d => d.index === dayIndex)!
   const arr = [...day.stops].sort((a, b) => a.orderInDay - b.orderInDay)
-  const [moved] = arr.splice(fromIdx, 1)
-  arr.splice(toIdx, 0, moved)
+  // Guard out-of-range indices: an OOB splice would insert `undefined` into
+  // day.stops, which later crashes simulateDay()/renders (bug #5).
+  const len = arr.length
+  if (len === 0) return
+  const from = Math.max(0, Math.min(fromIdx, len - 1))
+  const to = Math.max(0, Math.min(toIdx, len))
+  if (from === to) return
+  const [moved] = arr.splice(from, 1)
+  if (!moved) return
+  arr.splice(to, 0, moved)
   arr.forEach((s, i) => { s.orderInDay = i + 1 })
   day.stops = arr
   touchAndLog(trip, `reordered Day ${dayIndex + 1}`, 'Timeline')
@@ -724,7 +732,8 @@ export function acceptSuggestionIntoTimeline(tripId: ID, suggestionId: ID): void
     priority: 'nice-to-have', status: 'confirmed',
   })
   sg.status = 'accepted'
-  addActivity(tripId, cache.sessionUserId!, 'accepted suggestion into timeline', sg.title)
+  const actor = cache.sessionUserId
+  if (actor) addActivity(tripId, actor, 'accepted suggestion into timeline', sg.title)
   commit()
   void supabase.from('suggestions').update({ status: 'accepted' }).eq('id', suggestionId)
 }
@@ -795,12 +804,28 @@ export function unpublishedTripIds(userId: ID): ID[] {
 
 export function registerPubView(id: ID): void {
   const p = cache.published.find(x => x.id === id)
-  if (p) { p.views += 1; commit(); void supabase.from('published_itineraries').update({ views: p.views }).eq('id', id) }
+  if (p) {
+    p.views += 1
+    commit()
+    // The published_itineraries RLS policy only allows the creator to update a
+    // row (auth.uid() = creator_id). A non-owner viewing a public trip would
+    // otherwise fire a doomed write on every page load (bug #4). Only attempt
+    // the increment when the current user actually owns the published row.
+    if (cache.sessionUserId && p.creatorId === cache.sessionUserId) {
+      void supabase.from('published_itineraries').update({ views: p.views }).eq('id', id)
+    }
+  }
 }
 
 export function registerPubCopy(id: ID): void {
   const p = cache.published.find(x => x.id === id)
-  if (p) { p.copies += 1; commit(); void supabase.from('published_itineraries').update({ copies: p.copies }).eq('id', id) }
+  if (p) {
+    p.copies += 1
+    commit()
+    if (cache.sessionUserId && p.creatorId === cache.sessionUserId) {
+      void supabase.from('published_itineraries').update({ copies: p.copies }).eq('id', id)
+    }
+  }
 }
 
 // ---------------- Feed & notifications ----------------
