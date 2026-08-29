@@ -96,6 +96,11 @@ function dedupeConsecutive(coords: [number, number][]): [number, number][] {
   return out
 }
 
+/** "transport-hub" → "Transport Hub" for chip labels. */
+function labelCat(c: string): string {
+  return c.replace(/-/g, ' ').replace(/\b\w/g, m => m.toUpperCase())
+}
+
 /** Clean monochrome stroke icon per stop category — Lucide-style paths, no dep. */
 function catIcon(cat: string | undefined): React.ReactNode {
   const paths: Record<string, string> = {
@@ -132,6 +137,33 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby }: {
 }) {
   const [dayFilter, setDayFilter] = useState<number | 'all'>('all')
   const [showReturn, setShowReturn] = useState(true)
+  // Nearby-idea category filter: categories listed here are HIDDEN on the map.
+  // Empty set = everything visible (the default).
+  const [hiddenIdeaCats, setHiddenIdeaCats] = useState<Set<string>>(new Set())
+  // Categories actually present among the ideas, most common first — chips are
+  // only shown for categories that have at least one marker on the map.
+  const ideaCats = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const h of nearbyPois) {
+      const c = h.category ?? 'sightseeing'
+      counts.set(c, (counts.get(c) ?? 0) + 1)
+    }
+    return [...counts.entries()].sort((a, b) => b[1] - a[1])
+  }, [nearbyPois])
+  const visiblePois = useMemo(
+    () => (hiddenIdeaCats.size === 0
+      ? nearbyPois
+      : nearbyPois.filter(h => !hiddenIdeaCats.has(h.category ?? 'sightseeing'))),
+    [nearbyPois, hiddenIdeaCats],
+  )
+  function toggleIdeaCat(cat: string) {
+    setHiddenIdeaCats(prev => {
+      const next = new Set(prev)
+      if (next.has(cat)) next.delete(cat)
+      else next.add(cat)
+      return next
+    })
+  }
   const [theme, setTheme] = useState<'light' | 'dark'>(
     () => (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'),
   )
@@ -327,6 +359,24 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby }: {
              ↩ Return home
             </button>
           )}
+          {/* Nearby-idea category filters — hide/show the gold idea markers by
+              type. Only rendered when there are ideas to filter. */}
+          {ideaCats.length > 0 && (
+            <>
+              {ideaCats.map(([cat, count]) => (
+                <button
+                  key={cat}
+                  className={`map-day-chip map-idea-chip ${hiddenIdeaCats.has(cat) ? '' : 'on'}`}
+                  onClick={() => toggleIdeaCat(cat)}
+                  title={hiddenIdeaCats.has(cat) ? `Show ${count} ${labelCat(cat).toLowerCase()} idea${count === 1 ? '' : 's'}` : `Hide ${labelCat(cat).toLowerCase()} ideas`}
+                >
+                  <CatIcon category={cat} size={13} className="yf-idea-chip-ico" />
+                  {labelCat(cat)}
+                  <span className="yf-idea-chip-count">{count}</span>
+                </button>
+              ))}
+            </>
+          )}
         </div>
 
         {allPoints.length === 0 ? (
@@ -466,7 +516,7 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby }: {
               </MapMarker>
             )}
             {/* nearby idea markers — gold, dashed, with a quick-add button */}
-            {nearbyPois.map(hit => (
+            {visiblePois.map(hit => (
               <MapMarker key={`nearby_${hit.id}`} longitude={hit.longitude} latitude={hit.latitude}>
                 <MarkerContent>
                   <span className="yf-map-idea" title={`${hit.name}${onAddNearby ? ' — click to add' : ''}`}>
@@ -493,7 +543,7 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby }: {
           {dayFilter === 'all'
             ? <>blue line = whole route{returnLeg ? ' · dashed = drive back home' : ''} · </> 
             : <>colours = day · </>}
-          pin icon = stop type · number = timeline order · dashed pin = "maybe" · 🛫/🏁 = start & final destination · 💡 gold markers = nearby ideas{onAddNearby ? ' (+ to add)' : ''} · click a pin for details
+          pin icon = stop type · number = timeline order · dashed pin = "maybe" · 🛫/🏁 = start & final destination · 💡 gold markers = nearby ideas{onAddNearby ? ' (+ to add)' : ''}{ideaCats.length > 0 ? ' · chips filter ideas by type' : ''} · click a pin for details
         </div>
       </div>
       <p className="hint-text" style={{ marginTop: 8 }}>

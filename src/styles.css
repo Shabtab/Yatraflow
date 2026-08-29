@@ -519,6 +519,18 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
 [data-theme='dark'] .map-day-chip { background: rgba(22,35,58,.88); color: var(--text); }
 [data-theme='dark'] .map-day-chip.on { background: var(--teal); color: #06251f; border-color: var(--teal); }
 [data-theme='dark'] .map-legend { background: rgba(22,35,58,.9); }
+/* Nearby-idea category filter chips — same pill as day chips, with the
+   category icon inline and a small count. "on" = category visible. */
+.map-idea-chip { display: inline-flex; align-items: center; gap: 5px; }
+.map-idea-chip .yf-idea-chip-ico { opacity: .85; flex: 0 0 auto; }
+.map-idea-chip .yf-idea-chip-count {
+  background: rgba(11,37,69,.12); border-radius: 99px;
+  font-size: 10.5px; font-weight: 800; padding: 1px 6px;
+  font-variant-numeric: tabular-nums;
+}
+.map-idea-chip.on .yf-idea-chip-count { background: rgba(255,255,255,.35); }
+[data-theme='dark'] .map-idea-chip .yf-idea-chip-count { background: rgba(255,255,255,.14); }
+[data-theme='dark'] .map-idea-chip.on .yf-idea-chip-count { background: rgba(6,37,31,.28); }
 .marker-pin { cursor: pointer; }
 
 /* ---------- Suggestions & votes ---------- */

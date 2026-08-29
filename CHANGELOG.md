@@ -4,6 +4,9 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Added
+- **Category filter chips for nearby ideas on the map** (closes #5) — the gold 💡 idea markers can now be filtered by category straight from the map's filter bar: one chip per category actually present among the ideas (e.g. Sightseeing, Food, Nature), each showing a live count, the category's stroke icon, and toggling that category's markers on/off. Chips only appear when ideas exist, desktop and mobile styling follow the existing day-chip pills, and the legend explains the filter.
+
 ### Fixed
 - **Build fix for Vercel deploys** — a `maplibreGLTypes.GeoJSONSource` namespace reference in `TripMap.tsx` compiled under cached incremental local builds but failed a clean `tsc -b` on Vercel (TS2503). Replaced with the equivalent structural cast; verified with a fully clean `tsc -b --clean` build and the full test suite.
 
