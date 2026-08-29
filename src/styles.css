@@ -705,23 +705,40 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
 .yf-maplibre { position: absolute; inset: 0; }
 .yf-map-pin {
   display: flex; align-items: center; justify-content: center;
-  width: 28px; height: 28px; border-radius: 999px;
-  border: 2.5px solid #fff; color: #fff;
-  font-size: 12.5px; font-weight: 800; font-family: inherit;
-  cursor: pointer; box-shadow: 0 2px 8px rgba(11,37,69,.35);
-  transition: transform .15s ease;
+  width: 30px; height: 30px; border-radius: 999px;
+  border: 3px solid #fff; color: #fff;
+  font-size: 13px; font-weight: 800; font-family: inherit;
+  cursor: pointer;
+  /* layered shadow: contact shadow + ambient lift + inner top highlight so the
+     flat day-colour circle reads as a glossy physical pin */
+  box-shadow:
+    0 2px 4px rgba(11,37,69,.28),
+    0 6px 14px rgba(11,37,69,.30),
+    inset 0 2px 3px rgba(255,255,255,.35);
+  transition: transform .16s cubic-bezier(.34,1.56,.64,1), box-shadow .16s ease;
+  text-shadow: 0 1px 2px rgba(0,0,0,.25);
 }
-.yf-map-pin:hover { transform: scale(1.18); }
-[data-theme='dark'] .yf-map-pin { border-color: rgba(255,255,255,.85); }
+.yf-map-pin:hover {
+  transform: scale(1.22) translateY(-2px);
+  box-shadow:
+    0 3px 6px rgba(11,37,69,.30),
+    0 10px 22px rgba(11,37,69,.36),
+    inset 0 2px 3px rgba(255,255,255,.35);
+}
+[data-theme='dark'] .yf-map-pin { border-color: rgba(255,255,255,.9); }
 
 /* Distinct start/end badges on the map (auto anchor stops) */
 .yf-map-flag {
-  width: 30px; height: 30px; border-radius: 999px;
-  font-size: 15px; cursor: default;
+  width: 32px; height: 32px; border-radius: 999px;
+  font-size: 16px; cursor: default;
   background: linear-gradient(135deg, #0e7c66, #149A90);
-  border: 2.5px solid #fff; box-shadow: 0 2px 8px rgba(11,37,69,.35);
+  border: 3px solid #fff;
+  box-shadow:
+    0 2px 4px rgba(11,37,69,.28),
+    0 6px 14px rgba(11,37,69,.30),
+    inset 0 2px 3px rgba(255,255,255,.30);
 }
-[data-theme='dark'] .yf-map-flag { border-color: rgba(255,255,255,.85); }
+[data-theme='dark'] .yf-map-flag { border-color: rgba(255,255,255,.9); }
 
 /* ---- Location autocomplete dropdown ---- */
 .loc-dropdown {
@@ -905,9 +922,18 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
 
 /* ---- Nearby POI suggestions (Map tab) ---- */
 .yf-map-pin-idea {
-  background: var(--saffron);
+  background: linear-gradient(135deg, #FBBF3C, #F59E2D);
   border-style: dashed;
   font-size: 14px;
+  animation: yf-idea-pulse 2.2s ease-in-out infinite;
+}
+/* soft gold attention pulse so ideas read as "not part of the plan yet" */
+@keyframes yf-idea-pulse {
+  0%, 100% { box-shadow: 0 2px 4px rgba(11,37,69,.28), 0 0 0 0 rgba(245,158,45,.45); }
+  50% { box-shadow: 0 2px 4px rgba(11,37,69,.28), 0 0 0 9px rgba(245,158,45,0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .yf-map-pin-idea { animation: none; }
 }
 .poi-suggest-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
 .poi-suggest-card {

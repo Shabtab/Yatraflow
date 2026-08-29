@@ -15,9 +15,76 @@ import {
   MarkerTooltip,
   MapRoute,
   MapControls,
+  useMap,
 } from './mapcn/map'
 
 const DAY_COLORS = ['#149A90', '#F59E2D', '#7C5CFC', '#E2557B', '#2D9CDB', '#6BBF59', '#B7791F']
+
+// Basemaps — CARTO Voyager reads warmer/cleaner for travel than the default
+// Positron; Esri World Imagery gives a free satellite toggle.
+const STYLE_VOYAGER = 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json'
+const STYLE_DARK = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json'
+const STYLE_SAT = 'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+// Esri's World_Imagery TileJSON (so MapLibre gets attribution + maxzoom right)
+const STYLE_SAT_JSON = 'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tilemap?blank=false'
+
+/**
+ * Direction chevrons along the route — a symbol layer fed by the same line
+ * geometry, rendered with a tiny dependency-free triangle icon (addImage from
+ * raw pixel data, so no font/glyph dependency on the basemap).
+ */
+function RouteArrows({ coordinates, dark }: { coordinates: [number, number][]; dark: boolean }) {
+  const { map, isLoaded } = useMap()
+  useEffect(() => {
+    if (!isLoaded || !map || coordinates.length < 2) return
+    const SRC = 'yf-arrows-src'
+    const LAYER = 'yf-arrows'
+    if (!map.hasImage('yf-arrow')) {
+      // 9×9 solid triangle pointing up, drawn into raw RGBA pixels
+      const size = 9
+      const data = new Uint8Array(size * size * 4)
+      for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+          // a filled isoceles triangle: wide base at bottom, apex top-centre
+          const within = Math.abs(x - (size - 1) / 2) <= (y / (size - 1)) * ((size - 1) / 2) + 0.5
+          const i = (y * size + x) * 4
+          if (within) { data[i] = 255; data[i + 1] = 255; data[i + 2] = 255; data[i + 3] = 230 }
+        }
+      }
+      map.addImage('yf-arrow', { width: size, height: size, data })
+    }
+    if (!map.getSource(SRC)) {
+      map.addSource(SRC, { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [] } } })
+      map.addLayer({
+        id: LAYER, type: 'symbol', source: SRC,
+        layout: {
+          'symbol-placement': 'line',
+          'symbol-spacing': 130,
+          'icon-image': 'yf-arrow',
+          'icon-rotate': 0,
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': true,
+        },
+        paint: { 'icon-opacity': dark ? 0.75 : 0.6 },
+      })
+    }
+    const src = map.getSource(SRC) as maplibreGLTypes.GeoJSONSource
+    src.setData({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates } })
+    map.setPaintProperty(LAYER, 'icon-opacity', dark ? 0.75 : 0.6)
+    return () => {
+      try {
+        if (map.getLayer(LAYER)) map.removeLayer(LAYER)
+        if (map.getSource(SRC)) map.removeSource(SRC)
+      } catch { /* style swapped mid-flight */ }
+    }
+  }, [map, isLoaded, coordinates, dark])
+  return null
+}
+
+// minimal structural typing so we don't need to import maplibre-gl directly here
+declare module './mapcn/map' {}
+type GeoJSONSourceLike = { setData(d: unknown): void }
+const maplibreGLTypes = { GeoJSONSource: null as unknown as GeoJSONSourceLike }
 
 /** Drop consecutive duplicate points (shared endpoints between legs). */
 function dedupeConsecutive(coords: [number, number][]): [number, number][] {
@@ -212,27 +279,53 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby }: {
           >
             <MapControls position="top-right" showFullscreen />
             {/* In All-days view a single connected main line from the trip start
-                through every stop to the end; in single-day view, coloured lines. */}
-            {dayFilter === 'all' ? (
-              <MapRoute
-                coordinates={geom.all?.length ? geom.all : allStraight}
-                color="#2A6FDB"
-                width={4}
-                opacity={0.85}
-              />
-            ) : (
-              daysToPlot.map(d => (
-                <MapRoute
-                  key={d.index}
-                  coordinates={
-                    geom[String(d.index)]?.length ? geom[String(d.index)]
-                    : d.stops.map(s => [s.lng, s.lat] as [number, number])
-                  }
-                  color={colorForDay(d.index)}
-                  width={3.5}
-                  opacity={0.85}
-                />
-              ))
+                through every stop to the end; in single-day view, coloured lines.
+                Both get a contrasting casing underneath (road-map halo) and
+                direction chevrons on top so travel order reads at a glance. */}
+            {dayFilter === 'all' ? (() => {
+              const coords = geom.all?.length ? geom.all : allStraight
+              const dark = theme === 'dark'
+              return (
+                <>
+                  <MapRoute
+                    id="yf-main-casing"
+                    coordinates={coords}
+                    color={dark ? '#0B2545' : '#FFFFFF'}
+                    width={9}
+                    opacity={dark ? 0.6 : 0.75}
+                    interactive={false}
+                  />
+                  <MapRoute coordinates={coords} color="#2A6FDB" width={4.5} opacity={0.95} />
+                  <RouteArrows coordinates={coords} dark={dark} />
+                </>
+              )
+            })() : (
+              daysToPlot.map(d => {
+                const coords = geom[String(d.index)]?.length
+                  ? geom[String(d.index)]
+                  : d.stops.map(s => [s.lng, s.lat] as [number, number])
+                return (
+                  <>
+                    <MapRoute
+                      key={`casing-${d.index}`}
+                      id={`yf-day-casing-${d.index}`}
+                      coordinates={coords}
+                      color={theme === 'dark' ? '#0B2545' : '#FFFFFF'}
+                      width={8}
+                      opacity={theme === 'dark' ? 0.6 : 0.75}
+                      interactive={false}
+                    />
+                    <MapRoute
+                      key={d.index}
+                      coordinates={coords}
+                      color={colorForDay(d.index)}
+                      width={4}
+                      opacity={0.95}
+                    />
+                    <RouteArrows key={`arrows-${d.index}`} coordinates={coords} dark={theme === 'dark'} />
+                  </>
+                )
+              })
             )}
             {(() => {
               let num = 0
