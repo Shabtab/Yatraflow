@@ -9,7 +9,7 @@ import {
   computeTotals, computeHealth, collectWarnings, countHotelNights, originOf, firstFixedPoint,
   getAssumptions, formatInr, scoreWarnings, predecessorOf, nextAfter, estimateLeg,
   FUEL_PRICE_INR_PER_L, parseFuelEconomyKmL, isImplausibleFuelEconomy, parseFuelPricePerL,
-  isRoundTrip, lastActiveStopPoint,
+  isRoundTrip, lastActiveStopPoint, routeDayDrive,
 } from '../src/lib/engine'
 import { seedData } from '../src/data/seed'
 import type { Trip, ItineraryStop } from '../src/data/types'
@@ -325,5 +325,74 @@ describe('formatting', () => {
   it('renders INR with Indian digit grouping', () => {
     expect(formatInr(14250)).toBe('₹14,250')
     expect(formatInr(150000)).toBe('₹1,50,000')
+  })
+})
+
+// ============ Route-day overlays (multi-day drives) ============
+
+const KOLKATA = { lat: 22.5726, lng: 88.3639 }
+const SILIGURI = { lat: 26.7271, lng: 88.3953 }
+
+function travelAnchor(name: string, p: { lat: number; lng: number }, orderInDay: number, id: string): ItineraryStop {
+  return {
+    id, title: name, category: 'travel', locationName: name,
+    lat: p.lat, lng: p.lng, visitMinutes: 0,
+    entryFeeInrPerPerson: 0, transportCostInrTotal: 0,
+    priority: 'must-do', status: 'confirmed', orderInDay, auto: true,
+  }
+}
+
+/** Two-day Kolkata → Siliguri drive built on the seed trip's shape. */
+function makeKolkataSiliguriTrip(roundTrip?: boolean): Trip {
+  const t = structuredClone(keralaTrip)
+  t.transportMode = 'car'
+  t.roundTrip = roundTrip
+  t.startLocation = 'Kolkata'
+  t.startLocationCoords = KOLKATA
+  t.destinations = ['Siliguri']
+  t.destinationCoords = [SILIGURI]
+  t.fixedCommitments = []
+  t.days = [
+    { id: 'kd0', index: 0, stops: [travelAnchor('Kolkata', KOLKATA, 1, 'ka')] },
+    { id: 'kd1', index: 1, stops: [travelAnchor('Siliguri', SILIGURI, 1, 'sa')] },
+  ] as Trip['days']
+  return t
+}
+
+describe('route-day overlays (multi-day drives)', () => {
+  it('treats an anchor-only departure day as the outbound drive to the next planned stop', () => {
+    const t = makeKolkataSiliguriTrip(true)
+    const o = routeDayDrive(t, t.days[0])
+    expect(o?.direction).toBe('outbound')
+    expect(o?.targetName).toBe('Siliguri')
+    expect(o?.km).toBeGreaterThan(450)
+    expect(o?.minutes).toBeGreaterThan(300)
+  })
+
+  it("treats the round trip's destination-anchor day as the drive back home", () => {
+    const t = makeKolkataSiliguriTrip(true)
+    const o = routeDayDrive(t, t.days[1])
+    expect(o?.direction).toBe('return')
+    expect(o?.targetName).toBe('Kolkata')
+    expect(o?.km).toBeGreaterThan(450)
+  })
+
+  it('stays quiet for one-way trips and single-day round trips', () => {
+    const oneWay = makeKolkataSiliguriTrip(false)
+    expect(routeDayDrive(oneWay, oneWay.days[1])).toBeNull()
+    const single = makeKolkataSiliguriTrip(true)
+    single.days = [
+      { id: 'sd', index: 0, stops: [travelAnchor('Kolkata', KOLKATA, 1, 'ka'), travelAnchor('Siliguri', SILIGURI, 2, 'sa')] },
+    ] as Trip['days']
+    expect(routeDayDrive(single, single.days[0])).toBeNull()
+  })
+
+  it('feeds the real drive into travel/fatigue warnings on a route day', () => {
+    const t = makeKolkataSiliguriTrip(true)
+    const w = collectWarnings(t)
+    // Day 1's own chain is empty (only the start anchor) — the warnings can
+    // only come from the overlay drive
+    expect(w.some(x => x.code === 'fatigue' && x.title.startsWith('Day 1'))).toBe(true)
+    expect(w.some(x => x.code === 'travel' && x.title.startsWith('Day 1'))).toBe(true)
   })
 })
