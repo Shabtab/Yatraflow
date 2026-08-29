@@ -169,7 +169,7 @@ These are extension points, not oversights — see the architecture doc's "Swapp
 ## 🗺 Roadmap ideas
 
 - Backend (Supabase/Firebase) behind the existing store interface for real multi-device sync
-- Google Places / Mapbox geocoding option for deeper POI coverage
+- Google Maps layers beyond data-only Places (JS API rendering, Street View embeds) — Places autocomplete + nearby search shipped in 0.17.0 as an opt-in layer with free-stack fallback
 - Weather outlook per day (Open-Meteo forecast API pairs naturally with the geocoder already in use)
 - Regional-language UI (the profile model already stores language preferences)
 - Split-expense settlement between group members
