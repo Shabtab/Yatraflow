@@ -31,6 +31,7 @@ import {
   googleEnabled,
   googleAutocomplete,
   googleNearbyAlongRoute,
+  googleNearbyAtPoint,
   googleResolveHitCoords,
 } from './providers/google'
 
@@ -89,8 +90,10 @@ export async function searchNearbyPois(lat: number, lng: number, radiusM = 10000
  * Nearby ideas for the whole route. Google mode (key + OSRM geometry in
  * `opts.routeCoords`): Search-Along-Route — one Text Search Pro event per
  * category, opening hours and real road detours on every hit, ranked by the
- * same tourist engine. Any failure, empty result (round trips), or quota trip
- * falls back to the free stack.
+ * same tourist engine. Single-anchor flows without route geometry (empty-day
+ * chips) use a Google locationBias point search instead — same SKU, reported
+ * hours, straight-line detour fallback. Any failure, empty result (round
+ * trips), or quota trip falls back to the free stack.
  */
 export async function searchNearbyPoisMulti(
   anchors: { lat: number; lng: number }[],
@@ -107,6 +110,14 @@ export async function searchNearbyPoisMulti(
       if (hits.length > 0) return rankAndCap(hits, capped, radiusM, count, opts)
       // round-trip routes (origin ≈ destination) can legitimately return
       // zero along-route results → fall through to the free corridor search
+    } catch { /* quota or network → free stack */ }
+  } else if (googleEnabled()) {
+    // single-anchor flows (empty-day chips): point search around the anchor
+    try {
+      const hits = await googleNearbyAtPoint({
+        lat: capped[0].lat, lng: capped[0].lng, radiusM, count, includeFuel: opts.includeFuel,
+      })
+      if (hits.length > 0) return rankAndCap(hits, capped, radiusM, count, opts)
     } catch { /* quota or network → free stack */ }
   }
   return searchNearbyPoisMultiFree(capped, radiusM, count, opts)

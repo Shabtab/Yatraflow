@@ -9,7 +9,7 @@ import {
   SOFT_CAPS, quotaAllows, quotaCount, quotaMonthKey, quotaResetForTests, quotaUsed,
 } from '../src/lib/providers/quota'
 import type { QuotaSku } from '../src/lib/providers/quota'
-import { detourKm, searchNearbyPoisMulti, searchPlaces, resolveHitCoords, type PlaceHit } from '../src/lib/geocode'
+import { detourKm, searchNearbyPois, searchNearbyPoisMulti, searchPlaces, resolveHitCoords, type PlaceHit } from '../src/lib/geocode'
 
 describe('encodePolyline', () => {
   it('encodes [lng,lat] points with the canonical Google algorithm', () => {
@@ -230,5 +230,51 @@ describe('facade: searchNearbyPoisMulti (Search-Along-Route)', () => {
     ]))
     await searchNearbyPoisMulti([{ lat: 10.0, lng: 77.0 }], 20000, 10, { routeCoords: [[77.0, 10.0], [77.4, 10.5]] })
     expect(quotaUsed('textSearchPro')).toBe(3)
+  })
+
+  it('single-anchor calls (no route geometry) use Google point search with locationBias', async () => {
+    vi.stubEnv('VITE_GOOGLE_MAPS_API_KEY', 'test-key')
+    const f = routeFetch([
+      [/places:searchText/, {
+        places: [
+          { id: 'P9', displayName: { text: 'Spice Garden' }, location: { latitude: 10.05, longitude: 77.05 }, primaryTypeDisplayName: { text: 'Tourist attraction' }, currentOpeningHours: { periods: [{ open: { hour: 9, minute: 30 }, close: { hour: 17, minute: 0 } }] } },
+        ],
+      }],
+    ])
+    vi.stubGlobal('fetch', f)
+    const hits = await searchNearbyPois(10.0, 77.0, 10000, 6)
+    const searchCalls = f.mock.calls.filter(([u]) => String(u).includes('places:searchText'))
+    expect(searchCalls.length).toBe(3) // attractions + food + hotels
+    const body = JSON.parse(String(searchCalls[0][1]?.body))
+    expect(body.locationBias.circle.center).toEqual({ latitude: 10.0, longitude: 77.0 })
+    expect(body.locationBias.circle.radius).toBe(10000)
+    expect(body.regionCode).toBe('IN')
+    expect(hits[0]).toMatchObject({ name: 'Spice Garden', source: 'google', category: 'sightseeing', openTime: '09:30', closeTime: '17:00' })
+  })
+
+  it('single-anchor calls fall back to the free stack without a key', async () => {
+    vi.stubEnv('VITE_GOOGLE_MAPS_API_KEY', '')
+    const f = routeFetch([
+      [/overpass/, OVERPASS_FALLS],
+      [/open-meteo/, EMPTY],
+      [/wikipedia/, EMPTY],
+    ])
+    vi.stubGlobal('fetch', f)
+    const hits = await searchNearbyPois(10.0, 77.0)
+    expect(hits.some(h => h.name === 'KFDC Falls')).toBe(true)
+    expect(hits.some(h => h.source === 'google')).toBe(false)
+    expect(f.mock.calls.some(([u]) => String(u).includes('places:'))).toBe(false)
+  })
+
+  it('single-anchor Google failure falls back to the free stack', async () => {
+    vi.stubEnv('VITE_GOOGLE_MAPS_API_KEY', 'test-key')
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes('places:searchText')) throw new Error('boom')
+      if (/overpass/.test(String(input))) return new Response(JSON.stringify(OVERPASS_FALLS), { status: 200 })
+      return new Response(JSON.stringify(EMPTY), { status: 200 })
+    }))
+    const hits = await searchNearbyPois(10.0, 77.0)
+    expect(hits.some(h => h.name === 'KFDC Falls')).toBe(true)
+    expect(hits.some(h => h.source === 'google')).toBe(false)
   })
 })

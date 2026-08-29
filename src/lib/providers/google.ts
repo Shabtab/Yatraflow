@@ -3,9 +3,11 @@
 //   1. Autocomplete for location picking — cheap Autocomplete Requests SKU;
 //      picked suggestions get coordinates via one Place Details Essentials
 //      call (Autocomplete itself returns predictions, never coordinates).
-//   2. Search-Along-Route POIs for the nearby tourist engine — Text Search Pro
-//      events with searchAlongRouteParameters.polyline (native version of our
-//      corridor sampling; routingSummaries give the real road detour).
+//   2. Nearby POIs for the tourist engine — Text Search Pro events, in two
+//      flavours: Search-Along-Route (whole-route polyline, real road detours
+//      via routingSummaries) for multi-anchor corridor scans, and circular
+//      locationBias (Text Search, same SKU) for single-anchor flows like the
+//      Timeline's empty-day chips.
 //   3. Opening hours on the SAME Text Search events — requested via FieldMask
 //      (places.regularOpeningHours + places.currentOpeningHours), so they cost
 //      zero extra SKU events and need no Place Details calls. Rendered as
@@ -269,19 +271,16 @@ export interface AlongRouteArgs {
  * legitimately return zero results — the facade falls back to the free stack
  * when that happens.
  */
-export async function googleNearbyAlongRoute(args: AlongRouteArgs): Promise<PlaceHit[]> {
-  const encoded = encodePolyline(args.routeCoords)
-  if (!encoded) return []
-  const queries = args.includeFuel ? [...ALONG_ROUTE_QUERIES, FUEL_QUERY] : ALONG_ROUTE_QUERIES
-  const responses = await Promise.all(queries.map(qv =>
-    placesPost('/places:searchText', 'textSearchPro', {
-      textQuery: qv.textQuery,
-      searchAlongRouteParameters: { polyline: { encodedPolyline: encoded } },
-      maxResultCount: 10,
-      languageCode: 'en',
-      regionCode: REGION_CODE,
-    }, NEARBY_FIELD_MASK) as Promise<{ places?: GooglePlace[]; routingSummaries?: RoutingSummary[] }>,
-  ))
+/**
+ * Shared mapper: Text Search responses (one per category query) → PlaceHits,
+ * deduped across queries. `routeTotalKm` is only present for Search-Along-Route
+ * (routingSummaries legs → real road detour); point searches pass null.
+ */
+function hitsFromResponses(
+  responses: { places?: GooglePlace[]; routingSummaries?: RoutingSummary[] }[],
+  queries: { textQuery: string; cat: string }[],
+  routeTotalKm: number | null | undefined,
+): PlaceHit[] {
   const seen = new Set<string>()
   const out: PlaceHit[] = []
   for (let qi = 0; qi < responses.length; qi++) {
@@ -304,8 +303,8 @@ export async function googleNearbyAlongRoute(args: AlongRouteArgs): Promise<Plac
       const l0 = legs[0]?.distanceMeters
       const l1 = legs[1]?.distanceMeters
       const detourM =
-        l0 != null && l1 != null && args.routeTotalKm != null
-          ? l0 + l1 - args.routeTotalKm * 1000
+        l0 != null && l1 != null && routeTotalKm != null
+          ? l0 + l1 - routeTotalKm * 1000
           : null
       out.push({
         id: `google_${p.id}`,
@@ -325,4 +324,64 @@ export async function googleNearbyAlongRoute(args: AlongRouteArgs): Promise<Plac
     }
   }
   return out
+}
+
+export async function googleNearbyAlongRoute(args: AlongRouteArgs): Promise<PlaceHit[]> {
+  const encoded = encodePolyline(args.routeCoords)
+  if (!encoded) return []
+  const queries = args.includeFuel ? [...ALONG_ROUTE_QUERIES, FUEL_QUERY] : ALONG_ROUTE_QUERIES
+  const responses = await Promise.all(queries.map(qv =>
+    placesPost('/places:searchText', 'textSearchPro', {
+      textQuery: qv.textQuery,
+      searchAlongRouteParameters: { polyline: { encodedPolyline: encoded } },
+      maxResultCount: 10,
+      languageCode: 'en',
+      regionCode: REGION_CODE,
+    }, NEARBY_FIELD_MASK) as Promise<{ places?: GooglePlace[]; routingSummaries?: RoutingSummary[] }>,
+  ))
+  return hitsFromResponses(responses, queries, args.routeTotalKm)
+}
+
+// Places-only mask for point searches — routingSummaries exist only for
+// Search-Along-Route, and requesting inapplicable mask paths risks a 400.
+const POINT_FIELD_MASK = [
+  'places.id',
+  'places.displayName',
+  'places.location',
+  'places.formattedAddress',
+  'places.primaryTypeDisplayName',
+  'places.regularOpeningHours',
+  'places.currentOpeningHours',
+].join(',')
+
+export interface AtPointArgs {
+  lat: number
+  lng: number
+  radiusM: number
+  count: number
+  includeFuel?: boolean
+}
+
+/**
+ * Nearby ideas around ONE anchor via Text Search with a circular locationBias —
+ * the single-anchor counterpart of Search-Along-Route (used by the Timeline's
+ * empty-day chips, which have no route geometry). Same Text Search Pro SKU and
+ * the same tourist queries, so hits carry reported opening hours; no road
+ * detours (routingSummaries don't exist here — hits keep straight-line
+ * distance-to-anchor fallbacks via detourKm).
+ */
+export async function googleNearbyAtPoint(args: AtPointArgs): Promise<PlaceHit[]> {
+  const queries = args.includeFuel ? [...ALONG_ROUTE_QUERIES, FUEL_QUERY] : ALONG_ROUTE_QUERIES
+  const responses = await Promise.all(queries.map(qv =>
+    placesPost('/places:searchText', 'textSearchPro', {
+      textQuery: qv.textQuery,
+      locationBias: {
+        circle: { center: { latitude: args.lat, longitude: args.lng }, radius: args.radiusM },
+      },
+      maxResultCount: 10,
+      languageCode: 'en',
+      regionCode: REGION_CODE,
+    }, POINT_FIELD_MASK) as Promise<{ places?: GooglePlace[] }>,
+  ))
+  return hitsFromResponses(responses, queries, null)
 }
