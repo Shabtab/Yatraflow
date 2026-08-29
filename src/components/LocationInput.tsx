@@ -2,7 +2,7 @@
 // Searches cities AND points of interest (via src/lib/geocode.ts — free, no key).
 // Keyboard navigable: ↑/↓ to move, Enter to pick, Esc to dismiss.
 import { useEffect, useId, useRef, useState } from 'react'
-import { mapplsEnabled, resolveHitCoords, searchPlaces } from '../lib/geocode'
+import { googleEnabled, mapplsEnabled, resolveHitCoords, searchPlaces } from '../lib/geocode'
 import type { PlaceHit } from '../lib/geocode'
 
 export type { PlaceHit } from '../lib/geocode'
@@ -62,9 +62,9 @@ export function LocationInput({ value, onChange, onPick, placeholder, error, aut
   }
 
   async function choose(hit: PlaceHit) {
-    // Mappls hits carry an eLoc but no coordinates — resolve before handing
-    // the place to the caller so onPick always receives verified coordinates.
-    if (hit.eLoc && hit.latitude === 0 && hit.longitude === 0) {
+    // Mappls hits carry an eLoc, Google hits a placeId — either way the pick
+    // is resolved to verified coordinates before it reaches the caller.
+    if ((hit.eLoc || hit.placeId) && hit.latitude === 0 && hit.longitude === 0) {
       setResolving(true)
       try { hit = await resolveHitCoords(hit) } finally { setResolving(false) }
     }
@@ -134,10 +134,12 @@ export function LocationInput({ value, onChange, onPick, placeholder, error, aut
         </ul>
       )}
       {open && hits.length > 0 && (
-        <div className={`loc-attribution ${mapplsEnabled() ? 'on' : 'off'}`}>
-          {mapplsEnabled()
-            ? '🟢 Place search: Mappls · coords by OpenStreetMap'
-            : '🟠 Place search: basic (add VITE_MAPPLS_KEY for Mappls)'}
+        <div className={`loc-attribution ${googleEnabled() || mapplsEnabled() ? 'on' : 'off'}`}>
+          {googleEnabled()
+            ? '🟢 Place search: Google'
+            : mapplsEnabled()
+              ? '🟢 Place search: Mappls · coords by OpenStreetMap'
+              : '🟠 Place search: basic (add VITE_GOOGLE_MAPS_API_KEY or VITE_MAPPLS_KEY)'}
         </div>
       )}
       {open && !loading && searched && hits.length === 0 && value.trim().length >= 2 && (

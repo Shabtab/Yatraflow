@@ -26,7 +26,7 @@ const TripMap = React.lazy(() => import('../components/TripMap').then(m => ({ de
 import { StopEditor, type StopFormValues } from '../components/StopEditor'
 import { AiDrawer } from '../components/AiDrawer'
 import { LocationInput } from '../components/LocationInput'
-import { searchNearbyPois, searchNearbyPoisMulti, corridorAnchors, detourKm, type NearbyOpts } from '../lib/geocode'
+import { searchNearbyPois, searchNearbyPoisMulti, corridorAnchors, detourKm, googleEnabled, type NearbyOpts } from '../lib/geocode'
 import type { PlaceHit } from '../lib/geocode'
 import { fetchDailyWeather, forecastAvailable, wmoInfo } from '../lib/weather'
 import type { DayWeather } from '../lib/weather'
@@ -937,12 +937,31 @@ function MapTab({ trip, editable, applyChange }: {
     return corridorAnchors(pts, trip.startLocationCoords ?? null, scopeKm * 1000)
   }, [trip, scopeKm])
 
+  // OSRM road geometry of the whole route — feeds Google Search-Along-Route
+  // (the report's killer feature); the free stack ignores it. TripMap draws
+  // the same legs independently, so this is one extra free OSRM call per route.
+  const [routeGeometry, setRouteGeometry] = useState<[number, number][] | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    const pts = [
+      ...(trip.startLocationCoords ? [trip.startLocationCoords] : []),
+      ...trip.days.flatMap(d => d.stops).filter(s => s.status !== 'rejected').map(s => ({ lat: s.lat, lng: s.lng })),
+    ]
+    if (pts.length < 2) { setRouteGeometry(null); return }
+    routePath(pts, getAssumptions(trip))
+      .then(legs => { if (!cancelled) setRouteGeometry(legs.flatMap(l => l.geometry)) })
+      .catch(() => { if (!cancelled) setRouteGeometry(null) })
+    return () => { cancelled = true }
+  }, [trip])
+
   const nearbyOpts: NearbyOpts = useMemo(() => ({
     includeFuel: trip.transportMode === 'car' || trip.transportMode === 'motorcycle',
     homeCenter: trip.startLocationCoords ?? null,
     // fill what the itinerary lacks, demote what it already covers
     categoryBias: computeCategoryBias(trip),
-  }), [trip])
+    // Google mode: bias the search along the real road polyline; free mode ignores it
+    routeCoords: routeGeometry,
+  }), [trip, routeGeometry])
 
   useEffect(() => {
     if (anchors.length === 0) return
@@ -968,7 +987,8 @@ function MapTab({ trip, editable, applyChange }: {
         description: hit.description ?? '',
         notes: 'Added from nearby suggestions',
         visitMinutes: poiVisitMinutes(hit.category),
-        openTime: '', closeTime: '',
+        // reported hours arrive on Google suggestion hits; free hits stay blank
+        openTime: hit.openTime ?? '', closeTime: hit.closeTime ?? '',
         entryFeeInrPerPerson: 0,
         transportCostInrTotal: 0,
         priority: 'nice-to-have',
@@ -997,7 +1017,7 @@ function MapTab({ trip, editable, applyChange }: {
           <span className="small muted">{loadingPois ? 'searching…' : `${pois.length} found near your route`}</span>
         </div>
         <p className="hint-text" style={{ margin: '4px 0 6px' }}>
-          Things to see, eat and stay en-route and around your destination (live data from OpenStreetMap, Wikipedia & Mappls) — never around your starting point. Add one straight to a day.
+          Things to see, eat and stay en-route and around your destination (live data from {googleEnabled() ? 'Google Places' : 'OpenStreetMap, Wikipedia & Mappls'}) — never around your starting point. Add one straight to a day.
         </p>
         <div className="row-between" style={{ gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
           <label className="small" style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 230 }}>
@@ -1035,6 +1055,9 @@ function MapTab({ trip, editable, applyChange }: {
                       {' · '}
                       ~{Math.round(detourKm(hit, anchors))} km off route
                     </div>
+                  )}
+                  {(hit.openTime || hit.closeTime) && (
+                    <div className="poi-desc small muted">🕘 {hit.openTime}–{hit.closeTime} (reported)</div>
                   )}
                 </div>
                 {editable && (
