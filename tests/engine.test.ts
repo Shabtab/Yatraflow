@@ -9,7 +9,7 @@ import {
   computeTotals, computeHealth, collectWarnings, countHotelNights, originOf, firstFixedPoint,
   getAssumptions, formatInr, scoreWarnings, predecessorOf, nextAfter, estimateLeg,
   FUEL_PRICE_INR_PER_L, parseFuelEconomyKmL, isImplausibleFuelEconomy, parseFuelPricePerL,
-  isRoundTrip, lastActiveStopPoint, routeDayDrive,
+  isRoundTrip, lastActiveStopPoint, buildJourney,
 } from '../src/lib/engine'
 import { seedData } from '../src/data/seed'
 import type { Trip, ItineraryStop } from '../src/data/types'
@@ -280,17 +280,41 @@ describe('totals & health on all seed trips', () => {
 describe('waypoint anchors (auto start/end stops)', () => {
   const startCoords = { lat: 9.98, lng: 76.28 }
 
-  it('a zero-dwell waypoint adds distance but no buffer dwell time', () => {
+  /** Minimal single-day trip so journey synthesis (next-destination lookup) stays out of the way. */
+  function bareTrip(): Trip {
+    return {
+      ...structuredClone(keralaTrip),
+      startLocationCoords: startCoords,
+      destinationCoords: undefined,
+      destinations: [],
+      roundTrip: false,
+      days: [{ id: 'bd0', index: 0, stops: [] }],
+    } as Trip
+  }
+
+  it('a start anchor sitting at the origin starts the day — no phantom drive', () => {
     const aStop = structuredClone(keralaTrip.days[0].stops[0]) as ItineraryStop
     const dayStop: ItineraryStop = {
       ...aStop, title: 'Trip start', auto: true, visitMinutes: 0, category: 'travel',
+      lat: startCoords.lat, lng: startCoords.lng,
     }
-    const ctx = structuredClone(keralaTrip) as Trip
-    const sim = simulateDay({ stops: [dayStop] }, ctx, startCoords, 0)
-    const travelOnly = legBetween(startCoords, dayStop, getAssumptions({ transportMode: 'car' })).durationMinutes
-    expect(sim.totalTravelMinutes).toBeGreaterThanOrEqual(travelOnly)
+    const sim = simulateDay({ stops: [dayStop] }, bareTrip(), startCoords, 0)
+    expect(sim.totalTravelMinutes).toBeLessThan(5)
+    expect(sim.totalDistanceKm).toBeCloseTo(0, 0)
+  })
+
+  it('a zero-dwell waypoint adds distance but no buffer dwell time', () => {
+    const aStop = structuredClone(keralaTrip.days[0].stops[0]) as ItineraryStop
+    const far = { lat: startCoords.lat + 0.5, lng: startCoords.lng + 0.5 }
+    const wp: ItineraryStop = {
+      ...aStop, title: 'Waypoint', auto: true, visitMinutes: 0, category: 'travel',
+      lat: far.lat, lng: far.lng,
+    }
+    const sim = simulateDay({ stops: [wp] }, bareTrip(), startCoords, 0)
+    const A = getAssumptions({ transportMode: 'car' })
+    expect(sim.totalDistanceKm).toBeGreaterThan(legBetween(startCoords, far, A).distanceKm * 0.9)
     // no dwell/buffer per waypoint — a regular stop would add a +15 buffer
-    expect(sim.totalTravelMinutes).toBeLessThan(travelOnly + 20)
+    expect(sim.totalTravelMinutes).toBeLessThan(legBetween(startCoords, far, A).durationMinutes + 5)
   })
 
   describe('origin resolution', () => {
@@ -359,40 +383,130 @@ function makeKolkataSiliguriTrip(roundTrip?: boolean): Trip {
   return t
 }
 
-describe('route-day overlays (multi-day drives)', () => {
-  it('treats an anchor-only departure day as the outbound drive to the next planned stop', () => {
+// ============ Unified day journeys (one travel system, any distance) ============
+
+function foodStop(p: { lat: number; lng: number }, orderInDay: number, id = 'st_food'): ItineraryStop {
+  return {
+    id, title: 'Highway dhaba', category: 'food', locationName: 'Highway dhaba',
+    lat: p.lat, lng: p.lng, visitMinutes: 40,
+    entryFeeInrPerPerson: 0, transportCostInrTotal: 0,
+    priority: 'nice-to-have', status: 'confirmed', orderInDay,
+  }
+}
+
+const MANDARMANI = { lat: 21.6647, lng: 87.2833 }
+
+/** ~150 km round trip — like Kolkata → Mandarmani, far below the old 350 km floor. */
+function makeKolkataMandarmaniTrip(): Trip {
+  const t = makeKolkataSiliguriTrip(true)
+  t.destinations = ['Mandarmani']
+  t.destinationCoords = [MANDARMANI]
+  t.days = [
+    { id: 'md0', index: 0, stops: [travelAnchor('Kolkata', KOLKATA, 1, 'ma')] },
+    { id: 'md1', index: 1, stops: [travelAnchor('Mandarmani', MANDARMANI, 1, 'mb')] },
+  ] as Trip['days']
+  return t
+}
+
+describe('unified day journeys (one travel system, any distance)', () => {
+  it('Day 1 of a round trip drives start → destination with a synthesized arrival anchor', () => {
     const t = makeKolkataSiliguriTrip(true)
-    const o = routeDayDrive(t, t.days[0])
-    expect(o?.direction).toBe('outbound')
-    expect(o?.targetName).toBe('Siliguri')
-    expect(o?.km).toBeGreaterThan(450)
-    expect(o?.minutes).toBeGreaterThan(300)
+    const j = buildJourney(t, t.days[0])
+    expect(j.direction).toBe('outbound')
+    expect(j.startTitle).toBe('Kolkata')
+    expect(j.endTitle).toBe('Siliguri')
+    expect(j.distanceKm).toBeGreaterThan(450)
+    expect(j.driveMinutes).toBeGreaterThan(300)
+    expect(j.points.map(p => p.kind)).toEqual(['start', 'destination'])
+    expect(j.points[1].synthesized).toBe(true)
+    expect(j.arrivalTime).toBe(addMinutesToClock(hmToMinutes(j.startTime), j.driveMinutes))
+    expect(j.endsAtStart).toBe(false)
   })
 
-  it("treats the round trip's destination-anchor day as the drive back home", () => {
+  it('a planned halt sits between start and destination and pushes the arrival later', () => {
     const t = makeKolkataSiliguriTrip(true)
-    const o = routeDayDrive(t, t.days[1])
-    expect(o?.direction).toBe('return')
-    expect(o?.targetName).toBe('Kolkata')
-    expect(o?.km).toBeGreaterThan(450)
+    const quarter = {
+      lat: KOLKATA.lat + (SILIGURI.lat - KOLKATA.lat) / 4,
+      lng: KOLKATA.lng + (SILIGURI.lng - KOLKATA.lng) / 4,
+    }
+    t.days[0].stops = [travelAnchor('Kolkata', KOLKATA, 1, 'ka'), foodStop(quarter, 2)]
+    const j = buildJourney(t, t.days[0])
+    expect(j.points.map(p => p.kind)).toEqual(['start', 'halt', 'destination'])
+    expect(j.halts).toHaveLength(1)
+    expect(j.distanceKm).toBeGreaterThan(450)          // the halt rides the real route
+    expect(j.dwellMinutes).toBe(40 + 15)               // 40 min halt + the engine's per-stop buffer
+    expect(j.arrivalTime).toBe(addMinutesToClock(hmToMinutes(j.startTime), j.driveMinutes + j.dwellMinutes))
   })
 
-  it('stays quiet for one-way trips and single-day round trips', () => {
-    const oneWay = makeKolkataSiliguriTrip(false)
-    expect(routeDayDrive(oneWay, oneWay.days[1])).toBeNull()
-    const single = makeKolkataSiliguriTrip(true)
-    single.days = [
-      { id: 'sd', index: 0, stops: [travelAnchor('Kolkata', KOLKATA, 1, 'ka'), travelAnchor('Siliguri', SILIGURI, 2, 'sa')] },
-    ] as Trip['days']
-    expect(routeDayDrive(single, single.days[0])).toBeNull()
+  it('the return day drives back home and ends at the start', () => {
+    const t = makeKolkataSiliguriTrip(true)
+    const j = buildJourney(t, t.days[1])
+    expect(j.direction).toBe('return')
+    expect(j.startTitle).toBe('Siliguri')
+    expect(j.endTitle).toBe('Kolkata')
+    expect(j.endsAtStart).toBe(true)
+    expect(j.distanceKm).toBeGreaterThan(450)
+    // the stored Siliguri anchor is the journey's start, not a visited stop
+    expect(j.points[0].stop.id).toBe('sa')
   })
 
-  it('feeds the real drive into travel/fatigue warnings on a route day', () => {
+  it('simulateDay exposes the destination as an appended active stop with aligned times', () => {
+    const t = makeKolkataSiliguriTrip(true)
+    const sim = simulateDay(t.days[0], t, originOf(t, 0), 0)
+    expect(sim.activeStops).toHaveLength(2)            // start anchor + synthesized destination
+    expect(sim.activeStops[1].auto).toBe(true)
+    expect(sim.arrivalTimes).toHaveLength(2)
+    expect(sim.departures).toHaveLength(2)
+    expect(sim.legs).toHaveLength(2)
+    expect(sim.totalDistanceKm).toBeGreaterThan(450)   // day-header stats see the real drive now
+    expect(sim.endsAt).not.toBe(sim.startsAt)
+    expect(sim.endsAt).toBe(sim.arrivalTimes[1])       // the day ends on arrival
+  })
+
+  it('works the same below any km threshold — no long-ride special case', () => {
+    const t = makeKolkataMandarmaniTrip()
+    const j = buildJourney(t, t.days[0])
+    expect(j.direction).toBe('outbound')
+    expect(j.endTitle).toBe('Mandarmani')
+    expect(j.distanceKm).toBeGreaterThan(100)
+  })
+
+  it('a one-way trip shows the drive to the destination and prices no drive home', () => {
+    const t = makeKolkataSiliguriTrip(false)
+    const j0 = buildJourney(t, t.days[0])
+    expect(j0.direction).toBe('outbound')
+    const j1 = buildJourney(t, t.days[1])
+    expect(j1.direction).toBe('local')                 // the chain runs Kolkata → Siliguri
+    expect(j1.points[j1.points.length - 1].synthesized).toBe(false)
+    const totals = computeTotals(t)
+    // roundTrip: false → no drive home is priced anywhere
+    expect(Math.round(totals.totalDistanceKm)).toBe(Math.round(j0.distanceKm + j1.distanceKm))
+  })
+
+  it('computeTotals counts a planned return day exactly once — no double-counted drive home', () => {
+    const t = makeKolkataSiliguriTrip(true)
+    const journeysKm = t.days.reduce((a, d) => a + buildJourney(t, d).distanceKm, 0)
+    const totals = computeTotals(t)
+    expect(Math.round(totals.totalDistanceKm)).toBe(Math.round(journeysKm))
+  })
+
+  it('feeds the real drive into travel/fatigue warnings on a departure day', () => {
     const t = makeKolkataSiliguriTrip(true)
     const w = collectWarnings(t)
-    // Day 1's own chain is empty (only the start anchor) — the warnings can
-    // only come from the overlay drive
+    // Day 1's stored chain is just the start anchor — the warnings can only
+    // come from the unified journey's drive to Siliguri
     expect(w.some(x => x.code === 'fatigue' && x.title.startsWith('Day 1'))).toBe(true)
     expect(w.some(x => x.code === 'travel' && x.title.startsWith('Day 1'))).toBe(true)
+  })
+
+  it('keeps an ordinary visit day a plain chain — the destination is not appended onto visits', () => {
+    const t = makeKolkataSiliguriTrip(true)
+    t.days[0].stops = [
+      travelAnchor('Kolkata', KOLKATA, 1, 'ka'),
+      { ...foodStop({ lat: 24.5, lng: 88.2 }, 2), category: 'sightseeing', title: 'Planned visit', locationName: 'Planned visit' },
+    ]
+    const j = buildJourney(t, t.days[0])
+    expect(j.points.map(p => p.kind)).toEqual(['start', 'visit'])
+    expect(j.endTitle).toBe('Planned visit')
   })
 })

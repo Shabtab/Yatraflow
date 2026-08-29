@@ -2,7 +2,7 @@
 import { useEffect } from 'react'
 import type { Trip, PublishedItinerary } from '../data/types'
 import { useDb, currentUser, tripById, userById, duplicateTrip, registerPubCopy, registerPubView } from '../store/store'
-import { simulateDay, originOf, minutesToHM, formatInr } from '../lib/engine'
+import { simulateDay, originOf, minutesToHM, formatInr, getAssumptions } from '../lib/engine'
 import { Avatar, Chip, EmptyState, toast, CopyButton } from '../components/ui'
 
 export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavigate: (r: string) => void }) {
@@ -93,6 +93,7 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
             {trip.days.map(day => {
               const isFree = pub.freeDayIndexes.includes(day.index)
               const sim = simulateDay(day, trip, originOf(trip, day.index), day.index)
+              const A = getAssumptions(trip)
               const stops = [...day.stops].filter(s => s.status !== 'rejected').sort((a, b) => a.orderInDay - b.orderInDay)
               return (
                 <div key={day.id} className="day-section" style={{ position: 'relative', overflow: 'hidden' }}>
@@ -106,24 +107,56 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
                   </div>
 
                   {isFree ? (
-                    stops.map((s, i) => (
-                      <div key={s.id} className="stop-card">
-                        <div className={`stop-num cat-${s.category}`}>{i + 1}</div>
-                        <div className="stop-main">
-                          <div className="stop-toprow">
-                            <span className="stop-title">{s.title}</span>
-                            <Chip tone="info">{labelCat(s.category)}</Chip>
-                            {s.openTime && <span className="small muted">🕒 {s.openTime}–{s.closeTime}</span>}
+                    stops.map((s, i) => {
+                      // Auto anchors are pure travel, not activities — show the
+                      // drive (times, duration, distance, cost) as a travelling
+                      // strip instead of an empty stop-card.
+                      if (s.auto === true) {
+                        const cleanName = (s.locationName || s.title).replace(/ \((start|end)\)$/, '')
+                        const inbound = i > 0 ? sim.legs[i - 1] : null
+                        const dep = inbound ? (sim.departures[i - 1] ?? '--:--') : (sim.departures[i] ?? '--:--')
+                        const arr = sim.arrivalTimes[i] ?? dep
+                        const cost = inbound ? Math.round(inbound.distanceKm * (A.inrPerKm ?? 8)) : 0
+                        return (
+                          <div key={s.id} className="travel-anchor">
+                            <div className="travel-anchor-title">
+                              <span className="travel-anchor-ico">{i === 0 ? '🏁' : '🚗'}</span>
+                              <span>{i === 0 ? `Start · ${cleanName}` : `Travelling to ${cleanName}`}</span>
+                            </div>
+                            <div className="travel-anchor-meta">
+                              {inbound ? (
+                                <>
+                                  <span>🕰 Depart {dep} → arrive {arr}</span>
+                                  <span>⏱ {minutesToHM(inbound.durationMinutes)}</span>
+                                  <span>📍 {inbound.distanceKm.toFixed(0)} km</span>
+                                  <span>🚗 est ₹{formatInr(cost)} ({A.mode})</span>
+                                </>
+                              ) : (
+                                <span>Departure {dep}</span>
+                              )}
+                            </div>
                           </div>
-                          <div className="stop-meta">
-                            <span>📍 {s.locationName}</span>
-                            <span>⏱ {minutesToHM(s.visitMinutes)}</span>
-                            {s.entryFeeInrPerPerson > 0 && <span>🎫 ₹{s.entryFeeInrPerPerson}/person</span>}
+                        )
+                      }
+                      return (
+                        <div key={s.id} className="stop-card">
+                          <div className={`stop-num cat-${s.category}`}>{i + 1}</div>
+                          <div className="stop-main">
+                            <div className="stop-toprow">
+                              <span className="stop-title">{s.title}</span>
+                              <Chip tone="info">{labelCat(s.category)}</Chip>
+                              {s.openTime && <span className="small muted">🕒 {s.openTime}–{s.closeTime}</span>}
+                            </div>
+                            <div className="stop-meta">
+                              <span>📍 {s.locationName}</span>
+                              <span>⏱ {minutesToHM(s.visitMinutes)}</span>
+                              {s.entryFeeInrPerPerson > 0 && <span>🎫 ₹{s.entryFeeInrPerPerson}/person</span>}
+                            </div>
+                            {s.description && <div className="stop-desc">{s.description}</div>}
                           </div>
-                          {s.description && <div className="stop-desc">{s.description}</div>}
                         </div>
-                      </div>
-                    ))
+                      )
+                    })
                   ) : (
                     <>
                       <div className="locked-overlay">

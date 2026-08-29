@@ -260,6 +260,88 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
   border-radius: var(--radius-sm); padding: 4px 8px;
 }
 
+/* Auto travel anchors (trip start/end, route waypoints) render as a compact
+   "travelling" strip — the drive itself (times, duration, distance, cost),
+   not a fake stop/activity card with nothing in it. */
+.travel-anchor {
+  display: flex; flex-direction: column; gap: 3px;
+  background: var(--card-soft);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  padding: 10px 13px;
+  width: 100%;
+}
+.tl-anchor { margin-bottom: 8px; }
+.travel-anchor-title {
+  display: flex; align-items: center; gap: 7px;
+  font-weight: 700; font-size: 13px; color: var(--text-2);
+  font-family: var(--font-display);
+}
+.travel-anchor-ico { font-size: 14px; line-height: 1; }
+.travel-anchor-meta {
+  display: flex; flex-wrap: wrap; gap: 5px 12px;
+  font-size: 12px; color: var(--text-3); font-weight: 600;
+}
+
+/* Compact route-endpoint marker used in the workspace Timeline (the rich
+   travel summary lives in .travel-panel above the timeline). */
+.travel-endpoint {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--card-soft);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  padding: 8px 12px;
+  font-size: 13px; font-weight: 600; color: var(--text-2);
+  width: 100%;
+}
+
+/* ---------- Travel panel ---------- */
+.travel-panel {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px 15px;
+  margin-bottom: 12px;
+  box-shadow: var(--shadow-sm);
+}
+.travel-panel-head { display: flex; flex-direction: column; gap: 2px; margin-bottom: 10px; }
+.travel-panel-title { font-weight: 800; font-size: 15px; font-family: var(--font-display); color: var(--text); }
+.travel-panel-stats { display: flex; flex-wrap: wrap; gap: 10px 26px; }
+.tps-stat { display: flex; flex-direction: column; gap: 1px; }
+.tps-label { font-size: 11px; font-weight: 700; color: var(--text-3); text-transform: uppercase; letter-spacing: .03em; }
+.tps-stat b { font-size: 16px; font-family: var(--font-display); color: var(--text); }
+.travel-panel-fuel { margin-top: 8px; font-size: 12.5px; color: var(--text-2); }
+.travel-panel-fuel b { color: var(--teal-deep); }
+.travel-panel-eta {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px;
+  margin-top: 12px; padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.tps-dep { display: inline-flex; align-items: center; gap: 6px; }
+.tps-dep input[type="time"] {
+  border: 1px solid var(--line); border-radius: 8px;
+  padding: 4px 8px; font-size: 13px; font-family: inherit;
+  background: var(--card); color: var(--text);
+}
+.tps-arrow { font-size: 18px; color: var(--text-3); }
+.tps-eta { display: flex; flex-direction: column; gap: 1px; }
+.tps-eta b { font-size: 16px; color: var(--teal-deep); font-family: var(--font-display); }
+.travel-panel-halts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.tp-halt-chip {
+  background: var(--info-soft); color: var(--text-2);
+  border-radius: var(--radius-sm); padding: 3px 9px;
+  font-size: 12px; font-weight: 600;
+}
+.travel-panel-add {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+  margin-top: 12px; padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.travel-panel-add input[type="number"] {
+  border: 1px solid var(--line); border-radius: 8px;
+  padding: 4px 6px; font-size: 13px; background: var(--card); color: var(--text);
+}
+
 /* ---------- Timeline time rail ---------- */
 .tl-row { display: grid; grid-template-columns: 74px 1fr; gap: 12px; margin-bottom: 8px; align-items: center; }
 .tl-row .stop-card { margin-bottom: 0; }
@@ -947,24 +1029,7 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
 .btn-teal { background: var(--teal); color: #fff; }
 .btn-teal:hover { background: var(--teal-deep, #0e7a72); }
 
-/* ---------- Long-ride break planner ---------- */
-.ride-plan {
-  border: 1px solid var(--line);
-  border-left: 3px solid var(--saffron);
-  background: var(--card-soft);
-  border-radius: var(--radius-sm);
-  padding: 14px 16px;
-  margin-bottom: 14px;
-}
-.ride-plan-head { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; }
-.ride-plan-head > div:first-child { flex: 1; min-width: 220px; }
-.ride-plan-title { font-weight: 700; }
-.ride-start { display: flex; flex-direction: column; gap: 4px; }
-.ride-start .input { width: 132px; padding: 6px 8px; }
-.ride-style-row { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0 2px; }
-.ride-style-chip.active { outline: 2px solid var(--teal); font-weight: 700; }
-.ride-break { border-top: 1px dashed var(--line); margin-top: 10px; padding-top: 10px; }
-.ride-break-body { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+/* ---------- Halt spot rows (unified travel panel) ---------- */
 .ride-spot {
   display: flex; gap: 10px; align-items: center; justify-content: space-between;
   width: 100%; flex-wrap: wrap;
@@ -974,4 +1039,3 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
 .ride-spot-main { flex: 1; min-width: 180px; }
 .ride-spot-actions { display: flex; gap: 8px; align-items: center; }
 .ride-spot-mins { width: 100px; padding: 6px 8px; }
-.ride-plan-note { margin-top: 10px; }

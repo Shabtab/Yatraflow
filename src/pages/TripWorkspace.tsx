@@ -14,12 +14,11 @@ import {
   computeHealth, computeTotals, simulateDay, originOf, getAssumptions, legKey,
   minutesToHM, hmToMinutes, formatInr, countHotelNights, predecessorOf, nextAfter,
   collectWarnings, FUEL_PRICE_INR_PER_L, isFuelEconomyMode, parseFuelEconomyKmL, isImplausibleFuelEconomy,
-  parseFuelPricePerL, isRoundTrip, computeCategoryBias,
+  parseFuelPricePerL, isRoundTrip, computeCategoryBias, addMinutesToClock, buildJourney,
 } from '../lib/engine'
-import type { LegEstimate, ScheduleWarning } from '../lib/engine'
+import type { LegEstimate, ScheduleWarning, Journey } from '../lib/engine'
 import { routePath } from '../lib/routing'
 import { computeImpact, type ImpactResult } from '../lib/impact'
-import { planRide, RIDE_STYLES, recommendedStyle, MAX_BREAKS, type RideStyle } from '../lib/ridebreaks'
 import { haversineKm } from '../lib/geo'
 import { Avatar, Chip, Modal, ConfirmDialog, Field, StatTile, HealthRing, EmptyState, toast, undoToast, useReorder, CopyButton } from '../components/ui'
 import { ImpactPreviewPanel } from '../components/ImpactPreview'
@@ -554,7 +553,10 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
   onStatus: (stop: ItineraryStop, status: ItineraryStop['status']) => void
 }) {
   const sim = simulateDay(day, trip, originOf(trip, day.index), day.index, legCorrections)
-  const ridePlan = planRide(day, trip, legCorrections)
+  // One unified journey per day — start → halts/visits → destination with an
+  // arrival clock — regardless of distance. This is the single travel system.
+  const journey = useMemo(() => buildJourney(trip, day, legCorrections), [trip, day, legCorrections])
+  const visitCount = journey.points.filter(p => p.kind === 'visit').length
   const A = getAssumptions(trip)
   const ordered = [...day.stops].sort((a, b) => a.orderInDay - b.orderInDay)
   const { dndHandlers, dayDropHandlers, dragging, over, foreignOver, moveUp, moveDown } = useReorder(
@@ -636,11 +638,11 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
             </h3>
           )}
           <div className="small muted">
-            {(ridePlan.isOutboundDrive || ridePlan.isReturnDrive) && ridePlan.targetLabel ? (
-              <span>Route day — ~{Math.round(ridePlan.distanceKm)} km drive {ridePlan.isReturnDrive ? 'back to' : 'to'} {ridePlan.targetLabel} · ~{minutesToHM(ridePlan.driveMinutes)} · start ~{ridePlan.startClock}</span>
-            ) : (
-              <span>{sim.activeStops.length} active stop{sim.activeStops.length !== 1 ? 's' : ''} · ~{minutesToHM(sim.totalTravelMinutes)} travel · ~{Math.round(sim.totalDistanceKm)} km · start ~{sim.startsAt} · ends ~{sim.endsAt}</span>
-            )}
+            {journey.startTitle} → {journey.endTitle}
+            {' · '}~{Math.round(journey.distanceKm)} km · drive ~{minutesToHM(journey.driveMinutes)}
+            {journey.halts.length > 0 && ` · ${journey.halts.length} halt${journey.halts.length !== 1 ? 's' : ''}`}
+            {visitCount > 0 && ` · ${visitCount} visit${visitCount !== 1 ? 's' : ''}`}
+            {' · '}start {journey.startTime} → ends ~{sim.endsAt}
           </div>
           <div className={`day-progress ${collapsed ? 'compact' : ''}`} title={`${Math.round(used * 100)}% of the ${dayStartHM}–${A.dayEnd} window`}>
             <div className={`day-progress-fill sev-${sev}`} style={{ width: `${Math.round(used * 100)}%` }} />
@@ -672,7 +674,7 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
         </div>
       ))}
 
-      <LongRidePanel trip={trip} day={day} editable={editable} legCorrections={legCorrections}
+      <TravelPanel trip={trip} day={day} editable={editable} journey={journey}
         onSetDayStart={onSetDayStart} onAddBreakStop={onAddBreakStop} />
 
       {ordered.length === 0 && (<>
@@ -695,21 +697,47 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
       </>)}
 
       <div className="tl">
-        {ordered.map((s, i) => (
-          <React.Fragment key={s.id}>
-            <div
-              className="tl-row"
-              {...(editable ? dndHandlers(i) : {})}
-            >
-              <div className="tl-gutter" aria-hidden="true">
-                <span className="tl-time tl-arr">{sim.arrivalTimes[i] ?? '--:--'}</span>
-                <span className="tl-line" />
-                <span className="tl-time tl-dep">{sim.departures[i] ?? '--:--'}</span>
+        {ordered.map((s, i) => {
+          // Auto anchors (trip start/end, route-continuation waypoints) are pure
+          // route endpoints, not activities. The rich travel summary (mode,
+          // distance, fuel, departure→ETA, halts) lives in TravelPanel above;
+          // here we just anchor the timeline leg with a clean marker.
+          const isAnchor = s.auto === true
+          if (isAnchor) {
+            const cleanName = (s.locationName || s.title).replace(/ \((start|end)\)$/, '')
+            // The day's final anchor (when the journey ends at a stored stop,
+            // not a synthesized one) reads as the destination with its arrival.
+            const isFinal = i !== 0 && journey.points[journey.points.length - 1].stop.id === s.id
+            return (
+              <div key={s.id} className="tl-row tl-anchor" {...(editable ? dndHandlers(i) : {})}>
+                <div className="tl-gutter" aria-hidden="true">
+                  <span className="tl-time">{isFinal ? (sim.arrivalTimes[i] ?? '--:--') : (sim.departures[i] ?? '--:--')}</span>
+                </div>
+                <div className="travel-endpoint">
+                  <span className="travel-anchor-ico">{i === 0 ? '🏁' : isFinal ? '🏁' : '📍'}</span>
+                  <span>
+                    {i === 0 ? `Start — ${cleanName}` : isFinal ? `Destination — ${cleanName}` : cleanName}
+                  </span>
+                  {isFinal && <span className="small muted" style={{ marginLeft: 6 }}>arrives ~{sim.arrivalTimes[i]}</span>}
+                </div>
               </div>
+            )
+          }
+          return (
+            <React.Fragment key={s.id}>
               <div
-                className={`stop-card status-${s.status} ${dragging === i ? 'dragging' : ''} ${over === i && dragging !== null && dragging !== i ? 'drag-over' : ''} ${foreignOver === i && dragging === null ? 'foreign-over' : ''}`}
+                className="tl-row"
+                {...(editable ? dndHandlers(i) : {})}
               >
-              <div className={`stop-num cat-${s.category}`}>{i + 1}</div>
+                <div className="tl-gutter" aria-hidden="true">
+                  <span className="tl-time tl-arr">{sim.arrivalTimes[i] ?? '--:--'}</span>
+                  <span className="tl-line" />
+                  <span className="tl-time tl-dep">{sim.departures[i] ?? '--:--'}</span>
+                </div>
+                <div
+                  className={`stop-card status-${s.status} ${dragging === i ? 'dragging' : ''} ${over === i && dragging !== null && dragging !== i ? 'drag-over' : ''} ${foreignOver === i && dragging === null ? 'foreign-over' : ''}`}
+                >
+                <div className={`stop-num cat-${s.category}`}>{i + 1}</div>
               <div className="stop-main">
                 <div className="stop-toprow">
                   <span className="stop-title">{s.title}</span>
@@ -750,20 +778,49 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
               </div>
             </div>
 
-            {i < ordered.length - 1 && (() => {
-              const leg = sim.legs[i]
-              if (!leg) return null
-              return (
-                <div className="tl-legrow" {...(editable ? dayDropHandlers(i + 1) : {})}>
+            {i < ordered.length - 1 && !(ordered[i + 1].auto === true) && (() => {
+                const leg = sim.legs[i]
+                if (!leg) return null
+                return (
+                  <div className="tl-legrow" {...(editable ? dayDropHandlers(i + 1) : {})}>
+                    <div className="tl-gutter tl-gutter-leg"><span className="tl-line tl-line-leg" /></div>
+                    <div className={`travel-leg ${foreignOver === i + 1 && dragging === null ? 'foreign-over' : ''}`}>
+                      🚗 ~{leg.distanceKm.toFixed(0)} km · ~{Math.round(leg.durationMinutes)} min from {leg.fromTitle.replace(/ \((start|end)\)$/, '')} · est ₹{Math.round(leg.distanceKm * (A.inrPerKm ?? 8))} ({A.mode})
+                    </div>
+                  </div>
+                )
+              })()}
+            </React.Fragment>
+          )
+        })}
+        {/* The engine-closed journey: a destination the day doesn't hold as a
+            stored stop gets its own endpoint row with the arrival clock. */}
+        {(() => {
+          const last = journey.points[journey.points.length - 1]
+          if (!(last.synthesized && last.kind === 'destination')) return null
+          return (
+            <>
+              {last.legIn && last.legIn.distanceKm >= 0.5 && (
+                <div className="tl-legrow">
                   <div className="tl-gutter tl-gutter-leg"><span className="tl-line tl-line-leg" /></div>
-                  <div className={`travel-leg ${foreignOver === i + 1 && dragging === null ? 'foreign-over' : ''}`}>
-                    🚗 ~{leg.distanceKm.toFixed(0)} km · ~{Math.round(leg.durationMinutes)} min from {leg.fromTitle} · est ₹{Math.round(leg.distanceKm * (A.inrPerKm ?? 8))} ({A.mode})
+                  <div className="travel-leg">
+                    🚗 ~{last.legIn.distanceKm.toFixed(0)} km · ~{Math.round(last.legIn.durationMinutes)} min from {last.legIn.fromTitle} · est ₹{Math.round(last.legIn.distanceKm * (A.inrPerKm ?? 8))} ({A.mode})
                   </div>
                 </div>
-              )
-            })()}
-          </React.Fragment>
-        ))}
+              )}
+              <div className="tl-row tl-anchor">
+                <div className="tl-gutter" aria-hidden="true">
+                  <span className="tl-time tl-arr">{last.arrive}</span>
+                </div>
+                <div className="travel-endpoint">
+                  <span className="travel-anchor-ico">🏁</span>
+                  <span>{journey.direction === 'return' ? `Home — ${last.title}` : `Destination — ${last.title}`}</span>
+                  <span className="small muted" style={{ marginLeft: 6 }}>arrives ~{last.arrive}</span>
+                </div>
+              </div>
+            </>
+          )
+        })()}
         {ordered.length > 0 && (
           <div className="tl-end" {...(editable ? dayDropHandlers(ordered.length) : {})}>
             {foreignOver === ordered.length && dragging === null && <div className="tl-drop-line">Drop to add here</div>}
@@ -800,220 +857,218 @@ function poiQuickStop(h: PlaceHit): Omit<ItineraryStop, 'id' | 'orderInDay'> {
   }
 }
 
-// ================= Long-ride break planner =================
+function modeLabelMode(m: string): string {
+  const map: Record<string, string> = {
+    car: '🚗 Car', motorcycle: '🏍️ Motorcycle', taxi: '🚕 Taxi', bus: '🚌 Bus',
+    train: '🚆 Train', flight: '✈️ Flight', mixed: '🔀 Mixed',
+  }
+  return map[m] ?? cap(m)
+}
 
 /**
- * Fatigue-aware plan for a long self-drive day (Kolkata → Siliguri is not one
- * sitting): ride style (push through / one halt / regular breaks), per-halt
- * recommendations with clock times, real stop-spot suggestions along the route
- * corridor, and the total-ride-time effect. Adds go through the impact preview
- * so the time/cost delta is visible before anything is saved.
+ * The one travel panel — every day, any distance, any mode. Shows the day's
+ * journey (mode, distance, drive time, fuel), the departure → arrival clocks,
+ * planned halts, and lets you add halts manually or from real spots along the
+ * route corridor. Replaces the old split where long rides got a completely
+ * different "LongRidePanel" with its own ride-style options.
  */
-function LongRidePanel({ trip, day, editable, legCorrections, onSetDayStart, onAddBreakStop }: {
+function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddBreakStop }: {
   trip: Trip
   day: Trip['days'][number]
   editable: boolean
-  legCorrections?: Record<string, LegEstimate>
+  journey: Journey
   onSetDayStart: (dayIndex: number, time: string) => void
   onAddBreakStop: (dayIndex: number, stop: Omit<ItineraryStop, 'id' | 'orderInDay'>, position: number) => void
 }) {
   const A = getAssumptions(trip)
-  const [styleChoice, setStyleChoice] = useState<RideStyle | null>(null)
-  const [customHalts, setCustomHalts] = useState(2)
-  const [spots, setSpots] = useState<Record<number, PlaceHit[]>>({})
-  const [loadingSlot, setLoadingSlot] = useState<number | null>(null)
-  const plan = useMemo(
-    () => planRide(day, trip, legCorrections, styleChoice ?? undefined, customHalts),
-    [trip, day, legCorrections, styleChoice, customHalts],
-  )
+  const [haltDraft, setHaltDraft] = useState(20)
+  const [spots, setSpots] = useState<PlaceHit[]>([])
+  const [searched, setSearched] = useState(false)
+  const [loadingSpots, setLoadingSpots] = useState(false)
+
+  // The day changed — cached spot suggestions would point at stale positions.
+  useEffect(() => { setSpots([]); setSearched(false) }, [day])
+
   const orderedActive = useMemo(
     () => [...day.stops].filter(s => s.status !== 'rejected').sort((a, b) => a.orderInDay - b.orderInDay),
     [day.stops],
   )
 
-  if (!plan.isLongRide) return null
+  // A day that never leaves its start has no travel to show.
+  if (journey.points.length <= 1 && journey.distanceKm < 0.5) return null
 
-  const lastStop = orderedActive[orderedActive.length - 1]
-  const lastStopName = lastStop ? (lastStop.locationName || lastStop.title).replace(/ \((start|end)\)$/, '') : ''
-  const originName = (predecessorOf(trip, day.index)?.name ?? trip.startLocation).replace(/ \((start|end)\)$/, '')
-  // Direction-aware labels: the return day of a round trip drives BACK to the
-  // start, so its "from" is the day's destination anchor and its "to" is home.
-  const fromName = plan.isReturnDrive ? lastStopName : originName
-  const toName = plan.isOutboundDrive && plan.targetLabel
-    ? plan.targetLabel
-    : plan.isReturnDrive ? trip.startLocation : lastStopName
-  // Anchor spot suggestions to the drive this day actually represents so
-  // "suggest spots" works along the real route (outbound toward the next
-  // planned destination, return toward home through the day's halts).
-  const outboundTarget = plan.isOutboundDrive ? nextAfter(trip, day.index) : null
-  const routePts: { lat: number; lng: number }[] = plan.isReturnDrive && lastStop && trip.startLocationCoords
-    ? [
-        { lat: lastStop.lat, lng: lastStop.lng },
-        ...orderedActive.filter(s => !s.auto).map(s => ({ lat: s.lat, lng: s.lng })),
-        { lat: trip.startLocationCoords.lat, lng: trip.startLocationCoords.lng },
-      ]
-    : outboundTarget
-      ? [
-          originOf(trip, day.index),
-          ...orderedActive.filter(s => !s.auto).map(s => ({ lat: s.lat, lng: s.lng })),
-          outboundTarget.point,
-        ]
-      : [originOf(trip, day.index), ...orderedActive.map(s => ({ lat: s.lat, lng: s.lng }))]
-  const recommended = recommendedStyle(plan.driveMinutes)
+  const startMin = hmToMinutes(journey.startTime)
+  const isReturn = journey.direction === 'return'
+  const fuelPrice = A.fuelPricePerL ?? FUEL_PRICE_INR_PER_L
+  const fuelCost = journey.fuelLitres != null ? journey.fuelLitres * fuelPrice : journey.transportCostInr
 
-  function pickStyle(s: RideStyle) {
-    setStyleChoice(s)
-    setSpots({}) // slots moved — stale suggestions would land at the wrong place
+  // New halts slot in after the last existing halt (else mid-route) — always
+  // before the day's destination, so they ride the real drive.
+  const lastHaltPos = orderedActive.reduce(
+    (acc, s, i) => (!s.auto && (s.category === 'food' || s.category === 'rest')) ? i + 1 : acc, 0)
+  const insertPos = lastHaltPos > 0 ? lastHaltPos : Math.max(1, Math.floor(orderedActive.length / 2))
+  const first = journey.points[0]
+  const last = journey.points[journey.points.length - 1]
+
+  function addHalt() {
+    onAddBreakStop(day.index, {
+      title: 'Break — tea & stretch',
+      category: 'rest',
+      locationName: 'Ride break en route',
+      lat: (first.lat + last.lat) / 2,
+      lng: (first.lng + last.lng) / 2,
+      notes: `Ride break — adds ~${haltDraft} min before you carry on`,
+      visitMinutes: haltDraft, openTime: '', closeTime: '',
+      entryFeeInrPerPerson: 0, transportCostInrTotal: 0,
+      priority: 'optional', sourceUrl: '', status: 'confirmed',
+    }, insertPos)
   }
 
-  /** Real food/fuel/rest candidates near one slot's ideal position. */
-  async function suggestSpots(slotIdx: number) {
-    const slot = plan.breaks[slotIdx]
-    if (!slot) return
-    setLoadingSlot(slotIdx)
+  /** Real food/fuel/rest spots along the day's route corridor — at any distance. */
+  async function suggestSpots() {
+    setLoadingSpots(true)
     try {
+      const routePts = journey.points.map(p => ({ lat: p.lat, lng: p.lng }))
       const anchors = corridorAnchors(routePts, trip.startLocationCoords, 35000, 6)
       const hits = await searchNearbyPoisMulti(anchors, 35000, 12, {
         includeFuel: true,
         homeCenter: trip.startLocationCoords ?? null,
       })
-      // Rank by how close the hit sits to the slot's position along the route
-      // (nearest anchor ≈ coarse along-route fraction) plus a small detour and
-      // category penalty — sightseeing is a visit, not a break.
-      const n = Math.max(1, anchors.length - 1)
+      // Rank by how close each hit sits to the route (nearest corridor anchor
+      // ≈ coarse along-route position) plus a small detour and category
+      // penalty — sightseeing is a visit, not a break.
       const scored = hits.map(h => {
-        let bi = 0, bd = Infinity
-        anchors.forEach((a, i) => {
+        let bd = Infinity
+        anchors.forEach(a => {
           const d = haversineKm(h.latitude, h.longitude, a.lat, a.lng)
-          if (d < bd) { bd = d; bi = i }
+          if (d < bd) bd = d
         })
-        const alongKm = Math.abs(bi / n - slot.fraction) * plan.distanceKm
         const cat = h.category ?? 'sightseeing'
         const catPenalty = cat === 'sightseeing' || cat === 'temple' || cat === 'museum' || cat === 'beach' || cat === 'nature' ? 10 : cat === 'hotel' ? 5 : 0
-        return { h, score: alongKm + detourKm(h, anchors) * 2 + catPenalty }
+        return { h, score: bd + detourKm(h, anchors) * 2 + catPenalty }
       })
-      setSpots(prev => ({ ...prev, [slotIdx]: scored.sort((a, b) => a.score - b.score).slice(0, 3).map(s => s.h) }))
+      setSpots(scored.sort((a, b) => a.score - b.score).slice(0, 4).map(s => s.h))
     } catch {
-      toast('Could not fetch break-spot suggestions', 'err')
+      toast('Could not fetch halt-spot suggestions', 'err')
     } finally {
-      setLoadingSlot(null)
+      setLoadingSpots(false)
+      setSearched(true)
     }
   }
 
-  function addSpot(slotIdx: number, h: PlaceHit, minutes: number) {
-    const slot = plan.breaks[slotIdx]
-    if (!slot) return
+  function addSpot(h: PlaceHit, minutes: number) {
     onAddBreakStop(day.index, {
       title: h.name,
       category: h.category === 'food' ? 'food' : 'rest',
       locationName: h.description ?? h.name,
       lat: h.latitude, lng: h.longitude,
       description: h.description ?? '',
-      notes: `Ride break — ${slot.kind === 'meal' ? 'meal halt' : 'tea/fuel stretch'} (long-ride planner)`,
+      notes: `Ride break — suggested halt spot (+${minutes} min)`,
       visitMinutes: minutes, openTime: '', closeTime: '',
-      // route fuel cost comes from the leg geometry in the engine — the halt
-      // itself adds no separate transport line
       entryFeeInrPerPerson: 0, transportCostInrTotal: 0,
       priority: 'nice-to-have', sourceUrl: '', status: 'confirmed',
-    }, slot.insertAt)
-    setSpots({}) // the day changed — every remaining slot (and its cached suggestions) shifted
+    }, insertPos)
+    setSpots([]) // the day changed — remaining suggestions sit at stale positions
   }
 
+  const title = isReturn
+    ? `Return drive · back to ${journey.endTitle}`
+    : `Travelling · ${journey.startTitle} → ${journey.endTitle}`
+
   return (
-    <div className="ride-plan">
-      <div className="ride-plan-head">
-        <div>
-          <div className="ride-plan-title">🛣️ Long ride — ~{Math.round(plan.distanceKm)} km · {fromName} → {toName}</div>
-          <div className="small muted" style={{ marginTop: 4 }}>
-            Wheel time ~{minutesToHM(plan.driveMinutes)}
-            {plan.breakMinutes > 0 && <> · halts {minutesToHM(plan.breakMinutes)} → <b>~{minutesToHM(plan.totalMinutes)} total</b> (+{minutesToHM(plan.breakMinutes)} vs one go)</>}
-            {' '}· leave {plan.startClock} → arrive ~{plan.breakMinutes > 0 ? plan.finishWithBreaks : plan.finishClock}
-          </div>
+    <div className="travel-panel">
+      <div className="travel-panel-head">
+        <div className="travel-panel-title">🛣️ {title}</div>
+        <div className="small muted">
+          {modeLabelMode(trip.transportMode)} · {journey.distanceKm.toFixed(0)} km · {minutesToHM(journey.driveMinutes)} wheel time
+          {journey.halts.length > 0 && ` · ${journey.halts.length} halt${journey.halts.length !== 1 ? 's' : ''}`}
         </div>
-        {editable && (
-          <label className="ride-start">
-            <span className="small muted">Ride start</span>
-            <input
-              type="time"
-              className="input"
-              value={day.startTime ?? A.dayStart}
-              aria-label="Ride start time"
-              onChange={e => onSetDayStart(day.index, e.target.value)}
-            />
-          </label>
-        )}
       </div>
 
-      {editable && (
-        <>
-          <div className="ride-style-row">
-            {RIDE_STYLES.map(rs => (
-              <button
-                key={rs.key}
-                className={`chip-btn ride-style-chip ${plan.style === rs.key ? 'active' : ''}`}
-                title={rs.blurb + (recommended === rs.key ? ' — recommended for this ride' : '')}
-                onClick={() => pickStyle(rs.key)}
-              >{rs.label}{recommended === rs.key ? ' ★' : ''}</button>
-            ))}
-          </div>
-          {plan.style === 'custom' && (
-            <div className="ride-style-row" style={{ marginTop: 6 }} role="group" aria-label="Number of halts">
-              <span className="small muted">Halts</span>
-              <button className="btn btn-outline btn-sm" aria-label="Fewer halts" onClick={() => { setCustomHalts(c => Math.max(1, c - 1)); setSpots({}) }}>−</button>
-              <b>{plan.breaks.length}</b>
-              <button className="btn btn-outline btn-sm" aria-label="More halts" onClick={() => { setCustomHalts(c => Math.min(MAX_BREAKS, c + 1)); setSpots({}) }}>+</button>
-              <span className="small muted">spaced evenly across the drive (max {MAX_BREAKS})</span>
-            </div>
-          )}
-        </>
+      <div className="travel-panel-stats">
+        <div className="tps-stat"><div className="tps-label">Mode</div><b>{modeLabelMode(trip.transportMode)}</b></div>
+        <div className="tps-stat"><div className="tps-label">Distance</div><b>{journey.distanceKm.toFixed(0)} km</b></div>
+        <div className="tps-stat"><div className="tps-label">Drive time</div><b>{minutesToHM(journey.driveMinutes)}</b></div>
+        <div className="tps-stat">
+          <div className="tps-label">{journey.fuelLitres != null ? 'Fuel needed' : 'Est. transport'}</div>
+          <b>{journey.fuelLitres != null ? `${journey.fuelLitres.toFixed(1)} L` : formatInr(Math.round(fuelCost))}</b>
+        </div>
+      </div>
+
+      {journey.fuelLitres != null && (
+        <div className="travel-panel-fuel">
+          ≈ {journey.fuelLitres.toFixed(1)} L × ₹{fuelPrice}/L = <b>{formatInr(Math.round(fuelCost))}</b>
+          {' '}<span className="small muted">{A.fuelPriceIsUserSet ? '(your pump price)' : '(indicative national rate)'}</span>
+        </div>
       )}
 
-      {plan.style === 'nonstop' && (
-        <div className="warn-item sev-high" style={{ marginTop: 10 }}>
+      <div className="travel-panel-eta">
+        {editable ? (
+          <label className="tps-dep">
+            <span className="tps-label">Departure</span>
+            <input type="time" value={journey.startTime} onChange={e => onSetDayStart(day.index, e.target.value)} />
+          </label>
+        ) : (
+          <span className="tps-label">Departure {journey.startTime}</span>
+        )}
+        <span className="tps-arrow">→</span>
+        <div className="tps-eta">
+          <div className="tps-label">{isReturn ? 'Home by' : 'Arrival'}</div>
+          <b>{journey.arrivalTime}</b>
+        </div>
+        {journey.dwellMinutes > 0 && <div className="small muted">includes {minutesToHM(journey.dwellMinutes)} of stops</div>}
+      </div>
+
+      {journey.driveMinutes >= 420 && journey.halts.length === 0 && (
+        <div className="warn-item sev-medium" style={{ marginTop: 10 }}>
           <span className="warn-icon">⚠️</span>
           <div>
-            <div className="warn-title">~{minutesToHM(plan.driveMinutes)} behind the wheel with no halt</div>
-            <div className="warn-fix">Riding more than ~6–7 h in one go is a fatigue risk — take one halt, or split the drive across two days.</div>
+            <div className="warn-title">~{minutesToHM(journey.driveMinutes)} behind the wheel with no halt</div>
+            <div className="warn-fix">Riding more than ~6–7 h in one go is a fatigue risk — add a halt below or split the drive across two days.</div>
           </div>
         </div>
       )}
 
-      {plan.style !== 'nonstop' && plan.breaks.map((slot, i) => (
-        <div className="ride-break" key={i}>
-          <div className="ride-break-head">
-            <b>Halt {i + 1}</b> — {slot.kind === 'meal' ? 'meal halt' : 'tea / fuel stretch'}
-            <span className="muted small">
-              {' '}· recommend {slot.stopMinutes} min · ≈ {slot.atKm} km in ({Math.round(slot.fraction * 100)}% of the drive) · expect ~{slot.clock}
-            </span>
-          </div>
-          {slot.alreadyStopped ? (
-            <div className="small muted" style={{ marginTop: 6 }}>✓ A food/rest halt already sits around this point on the day.</div>
-          ) : editable && (
-            <div className="ride-break-body">
-              {!spots[i] && (
-                <button className="btn btn-outline btn-sm" disabled={loadingSlot === i} onClick={() => suggestSpots(i)}>
-                  {loadingSlot === i ? 'Searching the route…' : '📍 Suggest spots near this point'}
-                </button>
-              )}
-              {(spots[i] ?? []).map(h => (
-                <RideSpotRow
-                  key={`${h.kind}-${h.name}-${h.latitude}`}
-                  hit={h}
-                  defaultMinutes={slot.stopMinutes}
-                  onAdd={mins => addSpot(i, h, mins)}
-                />
-              ))}
-              {spots[i] && spots[i].length === 0 && (
-                <div className="small muted">No good halt spots found along this stretch — add one manually with “+ Add here”.</div>
-              )}
+      {journey.halts.length > 0 && (
+        <div className="travel-panel-halts">
+          {journey.halts.map(h => (
+            <span key={h.id} className="tp-halt-chip">{h.title} · {minutesToHM(h.visitMinutes || 0)}</span>
+          ))}
+        </div>
+      )}
+
+      {editable && (
+        <div className="travel-panel-add">
+          <input
+            type="number" min={5} max={180} step={5} value={haltDraft}
+            onChange={e => setHaltDraft(Math.max(5, Math.min(180, Number(e.target.value) || 20)))}
+            title="Halt length (minutes)" style={{ width: 64 }}
+          /> min
+          <button className="btn btn-outline btn-sm" onClick={addHalt}>+ Add a halt</button>
+          <span className="small muted">Adds {minutesToHM(haltDraft)} → arrival moves to {addMinutesToClock(startMin, journey.driveMinutes + journey.dwellMinutes + haltDraft + A.bufferMinutesPerStop)}</span>
+        </div>
+      )}
+
+      {editable && (
+        <div className="travel-panel-add" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
+          {!spots.length && (
+            <div>
+              <button className="btn btn-outline btn-sm" disabled={loadingSpots} onClick={suggestSpots}>
+                {loadingSpots ? 'Searching the route…' : '📍 Suggest halt spots along the route'}
+              </button>
+              {searched && <span className="small muted" style={{ marginLeft: 8 }}>No good halt spots found along this stretch — add one manually above.</span>}
             </div>
           )}
+          {spots.map(h => (
+            <RideSpotRow
+              key={`${h.kind}-${h.name}-${h.latitude}`}
+              hit={h}
+              defaultMinutes={20}
+              onAdd={mins => addSpot(h, mins)}
+            />
+          ))}
         </div>
-      ))}
-
-      <div className="small muted ride-plan-note">
-        Assumes ~{A.avgSpeedKmph} km/h average road speed for {A.mode} (blended, not live traffic){plan.style === 'regular-breaks' ? ` and a halt every ~${trip.transportMode === 'motorcycle' ? '2' : '2.5'} h` : ''}. Halt spots come from open map sources — verify before relying on them.
-      </div>
+      )}
     </div>
   )
 }
