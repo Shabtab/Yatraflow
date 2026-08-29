@@ -101,7 +101,11 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
                     <div className="day-badge"><small>DAY</small><b>{day.index + 1}</b></div>
                     <div>
                       <h3>{day.title ?? `Day ${day.index + 1}`}</h3>
-                      <div className="small muted">{stops.length} stops · ~{minutesToHM(sim.totalTravelMinutes)} travel</div>
+                      <div className="small muted">
+                        {sim.activeStops.length <= 1 && sim.totalDistanceKm < 0.5
+                          ? 'Local day — no drive planned'
+                          : `${stops.length} stops · ~${minutesToHM(sim.totalTravelMinutes)} travel`}
+                      </div>
                     </div>
                     {!isFree && <Chip tone="saffron">🔒 Premium</Chip>}
                   </div>
@@ -113,6 +117,18 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
                       // strip instead of an empty stop-card.
                       if (s.auto === true) {
                         const cleanName = (s.locationName || s.title).replace(/ \((start|end)\)$/, '')
+                        // Stay day: the journey never leaves this place — a
+                        // plain base marker, not a travelling strip.
+                        if (sim.activeStops.length <= 1 && sim.totalDistanceKm < 0.5) {
+                          return (
+                            <div key={s.id} className="travel-anchor">
+                              <div className="travel-anchor-title">
+                                <span className="travel-anchor-ico">📍</span>
+                                <span>Based in {cleanName}</span>
+                              </div>
+                            </div>
+                          )
+                        }
                         const inbound = i > 0 ? sim.legs[i - 1] : null
                         const dep = inbound ? (sim.departures[i - 1] ?? '--:--') : (sim.departures[i] ?? '--:--')
                         const arr = sim.arrivalTimes[i] ?? dep

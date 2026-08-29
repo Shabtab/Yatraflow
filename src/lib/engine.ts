@@ -356,8 +356,9 @@ function dayStartLabel(trip: Trip, dayIndex: number): string {
  *    is empty): the drive to the next planned destination, appended by the
  *    engine as a synthesized destination anchor so the day visibly ENDS
  *    somewhere;
- *  - return days (round trip, final-destination anchor + at most food/rest
- *    halts, outbound planned on an earlier day): the drive back home;
+ *  - the trip's final day of a round trip holding the final-destination
+ *    anchor + at most food/rest halts (with the outbound planned on an
+ *    earlier day): the drive back home;
  *  - one-way tails: the plain chain out to the stored destination anchor.
  */
 export function buildJourney(
@@ -393,13 +394,16 @@ export function buildJourney(
   }
 
   // --- shape: is this day the drive back home? ---------------------------
-  // A round trip whose day holds the final-destination anchor (plus at most
-  // food/rest halts) while the outbound drive was planned on an earlier day
-  // starts at the turnaround point, not where the previous day ended.
+  // The trip's FINAL day of a round trip holding the final-destination anchor
+  // (plus at most food/rest halts) while the outbound drive was planned on an
+  // earlier day starts at the turnaround point, not where the previous day
+  // ended. Intermediate days parked at the same anchor are stay days — the
+  // drive home happens once, at the end of the trip, not on every day.
   const anchorAtFinalDest = active.find(s => s.auto && coLocates(s, lastDest))
   const outboundPlannedEarlier = trip.days.some(d =>
     d.index < day.index && d.stops.some(s => s.status !== 'rejected'))
   const isReturnShape = !!(
+    day.index === trip.days.length - 1 &&
     isRoundTrip(trip) && home && anchorAtFinalDest && outboundPlannedEarlier &&
     nonAuto.every(s => (s.category === 'food' || s.category === 'rest') && s.visitMinutes > 0)
   )
@@ -676,16 +680,57 @@ export function countHotelNights(trip: Trip): number {
   return hotels.size
 }
 
-export function originOf(trip: Trip, dayIndex: number): { lat: number; lng: number } {
-  // Origin = last stop of previous day, else the first fixed point we know.
-  for (let d = dayIndex - 1; d >= 0; d--) {
-    const stops = trip.days[d]?.stops.filter(s => s.status !== 'rejected') ?? []
-    if (stops.length) {
-      const last = [...stops].sort((a, b) => a.orderInDay - b.orderInDay)[stops.length - 1]
-      return { lat: last.lat, lng: last.lng }
-    }
+/**
+ * Where the traveller is when day `dayIndex` is over, given they woke up at
+ * `startPos`. Mirrors buildJourney's closure rules exactly: a day with real
+ * visits ends at its last stored stop; a halt-only/anchor-only/empty day
+ * continues on to the next planned destination (the synthesized destination)
+ * unless the journey is already there; a planned return day ends back home.
+ */
+function dayEndPosition(trip: Trip, dayIndex: number, startPos: { lat: number; lng: number }): { lat: number; lng: number } {
+  const day = trip.days[dayIndex]
+  if (!day) return startPos
+  const active = [...day.stops].filter(s => s.status !== 'rejected').sort((a, b) => a.orderInDay - b.orderInDay)
+  if (active.length === 0) return startPos
+  const home = trip.startLocationCoords ?? null
+  const lastDest = trip.destinationCoords?.length
+    ? trip.destinationCoords[trip.destinationCoords.length - 1]
+    : undefined
+  const nonAuto = active.filter(s => !s.auto)
+  const haltOnly = nonAuto.every(s => (s.category === 'food' || s.category === 'rest') && s.visitMinutes > 0)
+  const anchorAtFinalDest = active.find(s => s.auto && coLocates(s, lastDest))
+  const outboundPlannedEarlier = trip.days.some(d =>
+    d.index < day.index && d.stops.some(s => s.status !== 'rejected'))
+  if (
+    day.index === trip.days.length - 1 && isRoundTrip(trip) && home &&
+    anchorAtFinalDest && outboundPlannedEarlier && haltOnly
+  ) {
+    return home // planned return day: the journey ends back at the start
   }
-  return firstFixedPoint(trip)
+  const startPoint = active[0].auto && coLocates(active[0], startPos)
+    ? { lat: active[0].lat, lng: active[0].lng }
+    : startPos
+  if (haltOnly) {
+    const target = nextAfter(trip, day.index)
+    const lastAnchor = active[active.length - 1]
+    const alreadyThere = (!!lastAnchor && coLocates(lastAnchor, target?.point)) || coLocates(startPoint, target?.point)
+    if (target && !alreadyThere) return target.point // the synthesized destination
+  }
+  const last = active[active.length - 1]
+  return { lat: last.lat, lng: last.lng }
+}
+
+export function originOf(trip: Trip, dayIndex: number): { lat: number; lng: number } {
+  if (dayIndex <= 0) return firstFixedPoint(trip)
+  // The traveller wakes up where the previous day's JOURNEY ended — the
+  // synthesized destination on a driving day, not the last stored stop.
+  // (Using the raw last stop made every following day replay the outbound
+  // drive from a mid-route halt.) Walk the route forward to stay exact.
+  let pos = firstFixedPoint(trip)
+  for (let d = 0; d < dayIndex; d++) {
+    pos = dayEndPosition(trip, d, pos)
+  }
+  return pos
 }
 
 export function firstFixedPoint(trip: Trip): { lat: number; lng: number } {

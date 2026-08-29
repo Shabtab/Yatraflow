@@ -476,11 +476,40 @@ describe('unified day journeys (one travel system, any distance)', () => {
     const j0 = buildJourney(t, t.days[0])
     expect(j0.direction).toBe('outbound')
     const j1 = buildJourney(t, t.days[1])
-    expect(j1.direction).toBe('local')                 // the chain runs Kolkata → Siliguri
+    expect(j1.direction).toBe('local')                 // Day 2 stays put in Siliguri
+    expect(j1.startTitle).toBe('Siliguri')
+    expect(j1.distanceKm).toBe(0)                      // no replayed drive on the tail day
     expect(j1.points[j1.points.length - 1].synthesized).toBe(false)
     const totals = computeTotals(t)
     // roundTrip: false → no drive home is priced anywhere
     expect(Math.round(totals.totalDistanceKm)).toBe(Math.round(j0.distanceKm + j1.distanceKm))
+  })
+
+  it('intermediate days of a round trip stay put — no replayed drive, no phantom return', () => {
+    const t = makeKolkataSiliguriTrip(true)
+    t.days = [
+      { id: 'kd0', index: 0, stops: [travelAnchor('Kolkata', KOLKATA, 1, 'ka')] },
+      { id: 'kd1', index: 1, stops: [travelAnchor('Siliguri', SILIGURI, 1, 'sa')] },
+      { id: 'kd2', index: 2, stops: [travelAnchor('Siliguri', SILIGURI, 1, 'sb')] },
+      { id: 'kd3', index: 3, stops: [travelAnchor('Siliguri', SILIGURI, 1, 'sc')] },
+    ] as Trip['days']
+    // Days 2–3 hold the destination anchor but are stay days: the drive home
+    // belongs to the last day only, and no day replays the outbound drive.
+    for (const day of [t.days[1], t.days[2]]) {
+      const j = buildJourney(t, day)
+      expect(j.direction).toBe('local')
+      expect(j.startTitle).toBe('Siliguri')
+      expect(j.points.map(p => p.kind)).toEqual(['start'])
+      expect(j.distanceKm).toBe(0)
+    }
+    const last = buildJourney(t, t.days[3])
+    expect(last.direction).toBe('return')
+    expect(last.endsAtStart).toBe(true)
+    // the route is priced exactly twice — out and back — not once per day
+    const journeysKm = t.days.reduce((a, d) => a + buildJourney(t, d).distanceKm, 0)
+    const totals = computeTotals(t)
+    expect(Math.round(totals.totalDistanceKm)).toBe(Math.round(journeysKm))
+    expect(Math.round(totals.totalDistanceKm)).toBe(Math.round(2 * buildJourney(t, t.days[0]).distanceKm))
   })
 
   it('computeTotals counts a planned return day exactly once — no double-counted drive home', () => {
