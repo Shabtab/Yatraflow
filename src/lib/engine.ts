@@ -172,53 +172,41 @@ export interface DaySchedule {
   totalDistanceKm: number
   activeStops: ItineraryStop[]
   endsAt: string
+  /** true when the day's journey already ends back at the trip's start (planned return drive) */
+  endsAtStart: boolean
 }
 
-/** Simulate one day's schedule: arrivals, departures, legs. Rejected stops are skipped. */
+/**
+ * Simulate one day's schedule: arrivals, departures, legs. Rejected stops are
+ * skipped. Thin adapter over buildJourney — the day's full journey (including
+ * the drive to its destination, or back home on a return day) is what the
+ * schedule now describes, so the timeline, warnings, totals and the impact
+ * preview all see the same numbers.
+ */
 export function simulateDay(
   day: { stops: ItineraryStop[]; startTime?: string },
-  trip: Pick<Trip, 'transportMode' | 'startLocation'>,
+  trip: Trip,
   startOrigin: { lat: number; lng: number },
   dayIndex: number,
-  /**
-   * Optional per-leg corrections from real road data (OSRM). Keyed by
-   * `legKey(from, to)`. When present for a leg, its distance/duration replace
-   * the haversine estimate — the engine itself stays deterministic.
-   */
   legCorrections?: Record<string, LegEstimate>,
 ): DaySchedule {
-  const A = getAssumptions(trip)
-  const active = [...day.stops].filter(s => s.status !== 'rejected').sort((x, y) => x.orderInDay - y.orderInDay)
-  // The day's ride/drive start: a per-day override (long-ride planner) beats
-  // the 08:30 planning default.
-  const startHM = day.startTime ?? A.dayStart
-  const startMin = hmToMinutes(startHM)
-  let t = startMin
-  const arrivalTimes: string[] = []
-  const departures: string[] = []
-  const legs: ScheduledLeg[] = []
-  let travelMin = 0
-  let distKm = 0
-  let prev = startOrigin
-
-  for (const s of active) {
-    // pure waypoint (auto start/end anchors): counts for distance but adds no dwell/buffer time
-    const isWaypoint = s.auto === true || (s.category === 'travel' && s.visitMinutes === 0 && s.transportCostInrTotal === 0)
-    const leg = (legCorrections && legCorrections[legKey(prev, s)]) ?? legBetween(prev, s, A)
-    t += leg.durationMinutes
-    arrivalTimes.push(addMinutesToClock(startMin, t - startMin))
-    travelMin += leg.durationMinutes
-    distKm += leg.distanceKm
-    legs.push({ fromTitle: prev === startOrigin ? `${trip.startLocation} (start)` : legsLabel(prev), toTitle: s.locationName || s.title, distanceKm: leg.distanceKm, durationMinutes: leg.durationMinutes })
-    departures.push(addMinutesToClock(startMin, t - startMin + s.visitMinutes + (isWaypoint ? 0 : A.bufferMinutesPerStop)))
-    t += s.visitMinutes + (isWaypoint ? 0 : A.bufferMinutesPerStop)
-    prev = s
+  const j = buildJourney(trip, { ...day, index: dayIndex }, legCorrections, startOrigin)
+  // Timeline rows: every stored stop, plus the engine-added destination
+  // anchor when the journey needs one. The synthesized START (where the
+  // traveller wakes up that morning) is journey context, not a row.
+  const rows = j.points.filter(p => !p.synthesized || p.kind === 'destination')
+  return {
+    dayIndex,
+    startsAt: j.startTime,
+    arrivalTimes: rows.map(p => p.arrive),
+    departures: rows.map(p => p.depart),
+    legs: rows.map(p => p.legIn ?? { fromTitle: j.startTitle, toTitle: j.startTitle, distanceKm: 0, durationMinutes: 0 }),
+    totalTravelMinutes: j.driveMinutes,
+    totalDistanceKm: j.distanceKm,
+    activeStops: rows.map(p => p.stop),
+    endsAt: rows.length ? rows[rows.length - 1].depart : j.startTime,
+    endsAtStart: j.endsAtStart,
   }
-  return { dayIndex, startsAt: startHM, arrivalTimes, departures, legs, totalTravelMinutes: travelMin, totalDistanceKm: distKm, activeStops: active, endsAt: addMinutesToClock(startMin, t - startMin) }
-}
-
-function legsLabel(p: { lat: number; lng: number }): string {
-  return `${p.lat.toFixed(2)}, ${p.lng.toFixed(2)}`
 }
 
 // ---------------- Leg-aware stop insertion ----------------
@@ -276,109 +264,253 @@ export function nextAfter(trip: Trip, dayIndex: number): LegAnchor | null {
   return null
 }
 
-/** Minimum one-way distance for a route-day overlay — same threshold as the long-ride planner. */
-export const ROUTE_DAY_MIN_KM = 350
+// ---------------- Unified day journey ----------------
+// Every day is ONE journey — a start point, optional halts and visits, and a
+// destination with a clock arrival — no matter the distance or mode. This
+// single model replaced the old split (plain stop-chain vs ≥350 km "route
+// day" overlay vs the long-ride break planner): the timeline, the day
+// header, the travel panel, warnings, totals and the impact preview all
+// read from it.
 
-export interface RouteDayDrive {
-  /** 'outbound' = leaving the trip start toward the next planned stop; 'return' = driving back home */
-  direction: 'outbound' | 'return'
-  /** drive legs in order (OSRM-corrected estimates when legCorrections are given) */
-  legs: LegEstimate[]
-  /** total wheel minutes across the whole drive */
-  minutes: number
-  /** total km across the whole drive */
-  km: number
-  /** plain name of the far end of the drive */
-  targetName: string
+export type JourneyPointKind = 'start' | 'waypoint' | 'halt' | 'visit' | 'destination'
+
+export interface JourneyPoint {
+  kind: JourneyPointKind
+  /** display name — "(start)"/"(end)" suffixes stripped */
+  title: string
+  lat: number
+  lng: number
+  /** the stored stop behind this point; synthesized anchors carry auto: true */
+  stop: ItineraryStop
+  /** true when the engine added this point to close the journey (not a stored stop) */
+  synthesized: boolean
+  /** the drive INTO this point (null only for a journey that never moves) */
+  legIn: ScheduledLeg | null
+  arrive: string
+  depart: string
+  dwellMinutes: number
+}
+
+export interface Journey {
+  dayIndex: number
+  /** outbound = driving toward the trip's next destination; return = driving home */
+  direction: 'outbound' | 'return' | 'local'
+  startTitle: string
+  endTitle: string
+  startTime: string
+  /** clock arrival at the day's final point */
+  arrivalTime: string
+  distanceKm: number
+  /** wheel time — driving only; halts and visits live in dwellMinutes */
+  driveMinutes: number
+  dwellMinutes: number
+  totalMinutes: number
+  transportCostInr: number
+  fuelLitres: number | null
+  fuelPricePerL: number | null
+  points: JourneyPoint[]
+  /** food/rest halts planned on this day — they push the arrival later */
+  halts: ItineraryStop[]
+  /** the journey ends back where the trip started (planned drive home) */
+  endsAtStart: boolean
+}
+
+/** Strip the "(start)"/"(end)" suffix the UI uses on anchor names. */
+function cleanPlaceName(name: string): string {
+  return name.replace(/ \((start|end)\)$/, '')
+}
+
+/** True when two points sit within ~1 km — the same place, for route purposes. */
+export function coLocates(a: { lat: number; lng: number }, b: { lat: number; lng: number } | null | undefined): boolean {
+  return !!b && haversineKm(a.lat, a.lng, b.lat, b.lng) < 1
+}
+
+/** A pure route endpoint the engine added itself — auto: true, safe to move/delete. */
+function synthesizedAnchor(id: string, title: string, p: { lat: number; lng: number }): ItineraryStop {
+  return {
+    id, title, category: 'travel', locationName: title,
+    lat: p.lat, lng: p.lng, visitMinutes: 0,
+    entryFeeInrPerPerson: 0, transportCostInrTotal: 0,
+    priority: 'must-do', status: 'confirmed', orderInDay: 0, auto: true,
+    notes: 'Auto-added destination anchor',
+  }
+}
+
+/** Where the traveller wakes up on `dayIndex`: last stop of the previous day, else the trip start. */
+function dayStartLabel(trip: Trip, dayIndex: number): string {
+  for (let d = dayIndex - 1; d >= 0; d--) {
+    const stops = trip.days.find(x => x.index === d)?.stops.filter(s => s.status !== 'rejected') ?? []
+    if (stops.length) {
+      const last = [...stops].sort((a, b) => a.orderInDay - b.orderInDay)[stops.length - 1]
+      return cleanPlaceName(last.locationName || last.title)
+    }
+  }
+  return cleanPlaceName(trip.startLocation)
 }
 
 /**
- * The drive a self-drive "route day" really represents, beyond what its own
- * stop chain carries. Two day shapes qualify — no real visits, just trip
- * anchors and (optionally) food/rest ride halts:
+ * Build a day's full journey. Shapes it handles (all through the same code
+ * path — there is no distance threshold and no separate planner anymore):
  *
- *  - outbound: the day starts at the trip's start anchor (Day 1 of a
- *    Kolkata → Siliguri trip). Its chain carries at most a prefix of the real
- *    drive, so the day's ride actually continues on toward the next planned
- *    destination.
- *  - return: the day ends at the final-destination anchor (Day 2 of a round
- *    trip) and the outbound has been planned on an earlier day. The chain then
- *    still carries the outbound leg (originOf walks back to the start), while
- *    the drive the user makes that day is the ride back home.
- *
- * Returns null for ordinary days (real visits, multi-stop chains, one-way
- * tails, non-drive modes, short hops). The long-ride planner
- * (src/lib/ridebreaks.ts) turns these days into break plans; collectWarnings
- * uses the same overlay so fatigue/travel checks see the true wheel time.
+ *  - ordinary days: origin → the day's stops → its last stop;
+ *  - departure days (Day 1 holds only the start anchor and/or ride halts, or
+ *    is empty): the drive to the next planned destination, appended by the
+ *    engine as a synthesized destination anchor so the day visibly ENDS
+ *    somewhere;
+ *  - the trip's final day of a round trip holding the final-destination
+ *    anchor + at most food/rest halts (with the outbound planned on an
+ *    earlier day): the drive back home;
+ *  - one-way tails: the plain chain out to the stored destination anchor.
  */
-export function routeDayDrive(
+export function buildJourney(
   trip: Trip,
-  day: Pick<ItineraryDay, 'stops' | 'index'>,
+  day: Pick<ItineraryDay, 'stops' | 'index' | 'startTime'>,
   legCorrections?: Record<string, LegEstimate>,
-): RouteDayDrive | null {
-  if (!isFuelEconomyMode(trip.transportMode)) return null
+  /** overrides the resolved start point (tests, special callers) */
+  startOriginOverride?: { lat: number; lng: number },
+): Journey {
   const A = getAssumptions(trip)
   const active = [...day.stops].filter(s => s.status !== 'rejected').sort((a, b) => a.orderInDay - b.orderInDay)
-  if (active.length === 0) return null
   const nonAuto = active.filter(s => !s.auto)
-  // every non-anchor stop must be a ride halt (a food/rest break), not a visit
-  if (!nonAuto.every(s => (s.category === 'food' || s.category === 'rest') && s.visitMinutes > 0)) return null
   const home = trip.startLocationCoords
     ? { lat: trip.startLocationCoords.lat, lng: trip.startLocationCoords.lng }
     : null
   const lastDest = trip.destinationCoords?.length
     ? trip.destinationCoords[trip.destinationCoords.length - 1]
     : undefined
-  const coLocates = (s: { lat: number; lng: number }, p: { lat: number; lng: number } | null | undefined) =>
-    !!p && haversineKm(s.lat, s.lng, p.lat, p.lng) < 1
-  const leg = (a: { lat: number; lng: number }, b: { lat: number; lng: number }): LegEstimate => {
+  const origin = startOriginOverride ?? originOf(trip, day.index)
+  const startHM = day.startTime ?? A.dayStart
+  const startMin = hmToMinutes(startHM)
+  const leg = (a: { lat: number; lng: number }, b: { lat: number; lng: number }, fromTitle: string, toTitle: string): ScheduledLeg => {
     const hit = legCorrections?.[legKey(a, b)]
-    return hit ?? legBetween(a, b, A)
-  }
-  const driveFrom = (waypoints: { lat: number; lng: number }[], direction: RouteDayDrive['direction'], targetName: string): RouteDayDrive => {
-    const legs = waypoints.slice(0, -1).map((p, i) => leg(p, waypoints[i + 1]))
+    if (hit) return { fromTitle, toTitle, distanceKm: hit.distanceKm, durationMinutes: hit.durationMinutes }
+    const est = legBetween(a, b, A)
+    // two points at the same place are not a drive — skip the city-traffic pad
+    const samePlace = haversineKm(a.lat, a.lng, b.lat, b.lng) < 0.5
     return {
-      direction, legs, targetName,
-      minutes: legs.reduce((a, l) => a + l.durationMinutes, 0),
-      km: legs.reduce((a, l) => a + l.distanceKm, 0),
+      fromTitle, toTitle,
+      distanceKm: samePlace ? 0 : est.distanceKm,
+      durationMinutes: samePlace ? 0 : est.durationMinutes,
     }
   }
 
-  // Outbound route day — unless this day already ends at the next destination
-  // (then the whole drive lives inside its own chain and plans normally).
-  if (home && coLocates(active[0], home)) {
-    const target = nextAfter(trip, day.index)
-    if (target && !coLocates(active[active.length - 1], target.point)
-      && leg(home, target.point).distanceKm >= ROUTE_DAY_MIN_KM) {
-      return driveFrom(
-        [home, ...nonAuto.map(s => ({ lat: s.lat, lng: s.lng })), target.point],
-        'outbound',
-        target.name.replace(/ \((start|end)\)$/, ''),
-      )
-    }
-  }
-
-  // Return route day — only when the outbound drive has already been planned
-  // on an earlier day (a single-day round trip plans its drive as a normal
-  // day). The day holds exactly one trip anchor (the final destination) plus
-  // optional ride halts; the anchor's list position doesn't matter (halts are
-  // spliced after it by the planner) — the drive the day represents always
-  // runs destination → halts → home.
-  const anchor = active.find(s => s.auto)
+  // --- shape: is this day the drive back home? ---------------------------
+  // The trip's FINAL day of a round trip holding the final-destination anchor
+  // (plus at most food/rest halts) while the outbound drive was planned on an
+  // earlier day starts at the turnaround point, not where the previous day
+  // ended. Intermediate days parked at the same anchor are stay days — the
+  // drive home happens once, at the end of the trip, not on every day.
+  const anchorAtFinalDest = active.find(s => s.auto && coLocates(s, lastDest))
   const outboundPlannedEarlier = trip.days.some(d =>
     d.index < day.index && d.stops.some(s => s.status !== 'rejected'))
-  if (nonAuto.length === active.length - 1 && anchor && coLocates(anchor, lastDest)
-    && isRoundTrip(trip) && home && outboundPlannedEarlier) {
-    const est = leg({ lat: anchor.lat, lng: anchor.lng }, home)
-    if (est.distanceKm >= ROUTE_DAY_MIN_KM) {
-      return driveFrom(
-        [{ lat: anchor.lat, lng: anchor.lng }, ...nonAuto.map(s => ({ lat: s.lat, lng: s.lng })), home],
-        'return',
-        trip.startLocation,
-      )
+  const isReturnShape = !!(
+    day.index === trip.days.length - 1 &&
+    isRoundTrip(trip) && home && anchorAtFinalDest && outboundPlannedEarlier &&
+    nonAuto.every(s => (s.category === 'food' || s.category === 'rest') && s.visitMinutes > 0)
+  )
+
+  // --- start point ---------------------------------------------------------
+  let startTitle: string
+  let startPoint: { lat: number; lng: number }
+  let startStop: ItineraryStop | null = null
+  if (isReturnShape && anchorAtFinalDest) {
+    startTitle = cleanPlaceName(anchorAtFinalDest.locationName || anchorAtFinalDest.title)
+    startPoint = { lat: anchorAtFinalDest.lat, lng: anchorAtFinalDest.lng }
+    startStop = anchorAtFinalDest
+  } else if (active.length > 0 && active[0].auto && coLocates(active[0], origin)) {
+    // the day opens with its own start anchor at the resolved origin — it IS the start
+    startTitle = cleanPlaceName(active[0].locationName || active[0].title)
+    startPoint = { lat: active[0].lat, lng: active[0].lng }
+    startStop = active[0]
+  } else {
+    startTitle = dayStartLabel(trip, day.index)
+    startPoint = origin
+  }
+
+  // --- does the journey need a synthesized destination? --------------------
+  let direction: Journey['direction'] = isReturnShape ? 'return' : 'local'
+  let synthDest: { title: string; point: { lat: number; lng: number } } | null = null
+  if (isReturnShape && home) {
+    synthDest = { title: cleanPlaceName(trip.startLocation), point: home }
+  } else if (nonAuto.every(s => (s.category === 'food' || s.category === 'rest') && s.visitMinutes > 0)) {
+    // The day holds no real visits — just ride halts (or nothing at all): the
+    // journey continues on to the next planned destination, so the day visibly
+    // ENDS somewhere. Days with real visits end at their last visit instead.
+    const target = nextAfter(trip, day.index)
+    const lastAnchor = active.length ? active[active.length - 1] : null
+    const alreadyThere = (!!lastAnchor && coLocates(lastAnchor, target?.point)) || coLocates(startPoint, target?.point)
+    if (target && !alreadyThere) {
+      synthDest = { title: cleanPlaceName(target.name), point: target.point }
+      direction = 'outbound'
     }
   }
-  return null
+
+  // --- walk the chain --------------------------------------------------------
+  const points: JourneyPoint[] = [{
+    kind: 'start', title: startTitle, lat: startPoint.lat, lng: startPoint.lng,
+    stop: startStop ?? synthesizedAnchor(`journey_start_${day.index}`, startTitle, startPoint),
+    synthesized: !startStop, legIn: null,
+    arrive: startHM, depart: startHM, dwellMinutes: 0,
+  }]
+  const halts: ItineraryStop[] = []
+  let cursor = startMin
+  let prev = { title: startTitle, point: startPoint }
+  const startStopId = startStop?.id
+  const chain = startStopId ? active.filter(s => s.id !== startStopId) : active
+  for (const s of chain) {
+    const isWaypoint = s.auto === true || (s.category === 'travel' && s.visitMinutes === 0 && s.transportCostInrTotal === 0)
+    const isHalt = !isWaypoint && (s.category === 'food' || s.category === 'rest') && s.visitMinutes > 0
+    const title = cleanPlaceName(s.locationName || s.title)
+    const p = { lat: s.lat, lng: s.lng }
+    const lg = leg(prev.point, p, prev.title, title)
+    cursor += lg.durationMinutes
+    const arrive = addMinutesToClock(startMin, cursor - startMin)
+    // pure waypoints (auto anchors) count for distance but add no dwell/buffer
+    const dwell = isWaypoint ? 0 : s.visitMinutes + A.bufferMinutesPerStop
+    cursor += dwell
+    const depart = addMinutesToClock(startMin, cursor - startMin)
+    points.push({
+      kind: isWaypoint ? 'waypoint' : isHalt ? 'halt' : 'visit',
+      title, lat: s.lat, lng: s.lng, stop: s, synthesized: false,
+      legIn: lg, arrive, depart, dwellMinutes: dwell,
+    })
+    if (isHalt) halts.push(s)
+    prev = { title, point: p }
+  }
+  if (synthDest) {
+    const lg = leg(prev.point, synthDest.point, prev.title, synthDest.title)
+    cursor += lg.durationMinutes
+    const arrive = addMinutesToClock(startMin, cursor - startMin)
+    points.push({
+      kind: 'destination', title: synthDest.title,
+      lat: synthDest.point.lat, lng: synthDest.point.lng,
+      stop: synthesizedAnchor(`journey_dest_${day.index}`, synthDest.title, synthDest.point),
+      synthesized: true, legIn: lg, arrive, depart: arrive, dwellMinutes: 0,
+    })
+  }
+
+  const distanceKm = points.reduce((a, p) => a + (p.legIn?.distanceKm ?? 0), 0)
+  const driveMinutes = points.reduce((a, p) => a + (p.legIn?.durationMinutes ?? 0), 0)
+  const dwellMinutes = points.reduce((a, p) => a + p.dwellMinutes, 0)
+  const lastPoint = points[points.length - 1]
+  return {
+    dayIndex: day.index,
+    direction,
+    startTitle,
+    endTitle: lastPoint.title,
+    startTime: startHM,
+    arrivalTime: lastPoint.arrive,
+    distanceKm,
+    driveMinutes,
+    dwellMinutes,
+    totalMinutes: driveMinutes + dwellMinutes,
+    transportCostInr: points.reduce((a, p) => a + (p.legIn ? p.legIn.distanceKm * (A.inrPerKm ?? 8) : 0), 0),
+    fuelLitres: A.kmPerLiter ? distanceKm / A.kmPerLiter : null,
+    fuelPricePerL: A.fuelPricePerL ?? null,
+    points,
+    halts,
+    endsAtStart: coLocates(lastPoint, home),
+  }
 }
 
 export interface StopLegEstimate extends LegEstimate {
@@ -428,16 +560,13 @@ export function collectWarnings(trip: Trip): ScheduleWarning[] {
   const dayCount = Math.max(1, trip.days.length)
 
   trip.days.forEach((day) => {
+    // simulateDay already builds the day's full unified journey — the drive
+    // to the day's destination (or back home) is inside these totals, so no
+    // overlay math is needed to make travel/fatigue checks honest.
     const sim = simulateDay(day, trip, originOf(trip, day.index), day.index)
     const n = sim.activeStops.length
-
-    // Route-day overlay: a self-drive day holding only anchors and ride halts
-    // really drives out of the start (or back home on a round trip) — wheel
-    // time the day's own chain doesn't carry. Judge travel/fatigue on the
-    // larger of the two so the warnings stay honest (see routeDayDrive).
-    const overlay = routeDayDrive(trip, day)
-    const travelMinutes = Math.max(sim.totalTravelMinutes, overlay?.minutes ?? 0)
-    const travelKm = Math.max(sim.totalDistanceKm, overlay?.km ?? 0)
+    const travelMinutes = sim.totalTravelMinutes
+    const travelKm = sim.totalDistanceKm
 
     // Excessive daily travel (>5h on the road)
     if (travelMinutes > 300) {
@@ -552,16 +681,57 @@ export function countHotelNights(trip: Trip): number {
   return hotels.size
 }
 
-export function originOf(trip: Trip, dayIndex: number): { lat: number; lng: number } {
-  // Origin = last stop of previous day, else the first fixed point we know.
-  for (let d = dayIndex - 1; d >= 0; d--) {
-    const stops = trip.days[d]?.stops.filter(s => s.status !== 'rejected') ?? []
-    if (stops.length) {
-      const last = [...stops].sort((a, b) => a.orderInDay - b.orderInDay)[stops.length - 1]
-      return { lat: last.lat, lng: last.lng }
-    }
+/**
+ * Where the traveller is when day `dayIndex` is over, given they woke up at
+ * `startPos`. Mirrors buildJourney's closure rules exactly: a day with real
+ * visits ends at its last stored stop; a halt-only/anchor-only/empty day
+ * continues on to the next planned destination (the synthesized destination)
+ * unless the journey is already there; a planned return day ends back home.
+ */
+function dayEndPosition(trip: Trip, dayIndex: number, startPos: { lat: number; lng: number }): { lat: number; lng: number } {
+  const day = trip.days[dayIndex]
+  if (!day) return startPos
+  const active = [...day.stops].filter(s => s.status !== 'rejected').sort((a, b) => a.orderInDay - b.orderInDay)
+  if (active.length === 0) return startPos
+  const home = trip.startLocationCoords ?? null
+  const lastDest = trip.destinationCoords?.length
+    ? trip.destinationCoords[trip.destinationCoords.length - 1]
+    : undefined
+  const nonAuto = active.filter(s => !s.auto)
+  const haltOnly = nonAuto.every(s => (s.category === 'food' || s.category === 'rest') && s.visitMinutes > 0)
+  const anchorAtFinalDest = active.find(s => s.auto && coLocates(s, lastDest))
+  const outboundPlannedEarlier = trip.days.some(d =>
+    d.index < day.index && d.stops.some(s => s.status !== 'rejected'))
+  if (
+    day.index === trip.days.length - 1 && isRoundTrip(trip) && home &&
+    anchorAtFinalDest && outboundPlannedEarlier && haltOnly
+  ) {
+    return home // planned return day: the journey ends back at the start
   }
-  return firstFixedPoint(trip)
+  const startPoint = active[0].auto && coLocates(active[0], startPos)
+    ? { lat: active[0].lat, lng: active[0].lng }
+    : startPos
+  if (haltOnly) {
+    const target = nextAfter(trip, day.index)
+    const lastAnchor = active[active.length - 1]
+    const alreadyThere = (!!lastAnchor && coLocates(lastAnchor, target?.point)) || coLocates(startPoint, target?.point)
+    if (target && !alreadyThere) return target.point // the synthesized destination
+  }
+  const last = active[active.length - 1]
+  return { lat: last.lat, lng: last.lng }
+}
+
+export function originOf(trip: Trip, dayIndex: number): { lat: number; lng: number } {
+  if (dayIndex <= 0) return firstFixedPoint(trip)
+  // The traveller wakes up where the previous day's JOURNEY ended — the
+  // synthesized destination on a driving day, not the last stored stop.
+  // (Using the raw last stop made every following day replay the outbound
+  // drive from a mid-route halt.) Walk the route forward to stay exact.
+  let pos = firstFixedPoint(trip)
+  for (let d = 0; d < dayIndex; d++) {
+    pos = dayEndPosition(trip, d, pos)
+  }
+  return pos
 }
 
 export function firstFixedPoint(trip: Trip): { lat: number; lng: number } {
@@ -604,19 +774,23 @@ export function computeTotals(trip: Trip, legCorrections?: Record<string, LegEst
   const A = getAssumptions(trip)
   let travelMinutes = 0, distanceKm = 0, stopCount = 0
   let transportKmCost = 0
+  let journeyReturnsHome = false
   trip.days.forEach(day => {
     const sim = simulateDay(day, trip, originOf(trip, day.index), day.index, legCorrections)
     travelMinutes += sim.totalTravelMinutes
     distanceKm += sim.totalDistanceKm
-    sim.activeStops.forEach(() => { stopCount++ })
+    stopCount += day.stops.filter(s => s.status !== 'rejected').length
     // per-leg fuel/fare cost derived from distance
     sim.legs.forEach(l => { transportKmCost += l.distanceKm * (A.inrPerKm ?? 8) })
+    if (sim.endsAtStart) journeyReturnsHome = true
   })
 
   // Round trip: the drive back to the start burns fuel too, so it belongs in
-  // the budget. Priced with the same assumptions and refined by the OSRM
-  // correction for that leg when the UI has fetched one.
-  if (isRoundTrip(trip)) {
+  // the budget — unless a planned return day already drives home inside its
+  // own journey (adding it again would double-count). Priced with the same
+  // assumptions and refined by the OSRM correction for that leg when the UI
+  // has fetched one.
+  if (isRoundTrip(trip) && !journeyReturnsHome) {
     const turnaround = lastActiveStopPoint(trip)
     if (turnaround) {
       const home = firstFixedPoint(trip)
