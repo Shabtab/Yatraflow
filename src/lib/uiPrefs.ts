@@ -54,3 +54,28 @@ export function saveDayCollapsed(tripId: string, dayIndex: number, collapsed: bo
     // Private mode / quota exceeded — persistence is best-effort by design.
   }
 }
+
+// Same map-of-booleans pattern, for long-ride hint dismissal (user chose
+// "not needed" for a given day's halt suggestions; restorable).
+const RIDE_HINTS_KEY = 'yatraflow_ride_hints_hidden'
+
+/** True when the user dismissed the long-ride hints for this trip+day. */
+export function loadRideHintsHidden(tripId: string, dayIndex: number): boolean {
+  if (typeof localStorage === 'undefined') return false
+  try {
+    return parseDayCollapseMap(localStorage.getItem(RIDE_HINTS_KEY))[dayCollapseKey(tripId, dayIndex)] ?? false
+  } catch {
+    return false
+  }
+}
+
+export function saveRideHintsHidden(tripId: string, dayIndex: number, hidden: boolean): void {
+  if (typeof localStorage === 'undefined') return
+  try {
+    const map = parseDayCollapseMap(localStorage.getItem(RIDE_HINTS_KEY))
+    map[dayCollapseKey(tripId, dayIndex)] = hidden
+    localStorage.setItem(RIDE_HINTS_KEY, JSON.stringify(map))
+  } catch {
+    // best-effort
+  }
+}

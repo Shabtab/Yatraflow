@@ -22,7 +22,7 @@ import { routePath } from '../lib/routing'
 import { computeImpact, type ImpactResult } from '../lib/impact'
 import { planRide, RIDE_STYLES, recommendedStyle, MAX_BREAKS, type RideStyle } from '../lib/ridebreaks'
 import { haversineKm } from '../lib/geo'
-import { loadDayCollapsed, saveDayCollapsed } from '../lib/uiPrefs'
+import { loadDayCollapsed, saveDayCollapsed, loadRideHintsHidden, saveRideHintsHidden } from '../lib/uiPrefs'
 import { useTimeFormat, formatHM, formatHMRange } from '../lib/timefmt'
 import { Avatar, Chip, Modal, ConfirmDialog, Field, StatTile, HealthRing, EmptyState, toast, undoToast, useReorder, CopyButton } from '../components/ui'
 import { ImpactPreviewPanel } from '../components/ImpactPreview'
@@ -833,6 +833,9 @@ function LongRidePanel({ trip, day, editable, legCorrections, onSetDayStart, onA
 }) {
   const A = getAssumptions(trip)
   const timeFormat = useTimeFormat()
+  // User can dismiss these hints per day ("done planning / not needed") — a
+  // local view preference, restorable from the one-line placeholder.
+  const [hintsHidden, setHintsHidden] = useState(() => loadRideHintsHidden(trip.id, day.index))
   const [styleChoice, setStyleChoice] = useState<RideStyle | null>(null)
   const [customHalts, setCustomHalts] = useState(2)
   const [spots, setSpots] = useState<Record<number, PlaceHit[]>>({})
@@ -934,6 +937,21 @@ function LongRidePanel({ trip, day, editable, legCorrections, onSetDayStart, onA
     setSpots({}) // the day changed — every remaining slot (and its cached suggestions) shifted
   }
 
+  // dismissed by the user — collapse to a restorable one-liner
+  if (hintsHidden) {
+    return (
+      <div className="ride-plan ride-plan-dismissed">
+        <span className="small muted">🛣️ Long-ride hints hidden for this day.</span>
+        <button
+          className="btn btn-ghost btn-sm"
+          onClick={() => { setHintsHidden(false); saveRideHintsHidden(trip.id, day.index, false) }}
+        >
+          Show again
+        </button>
+      </div>
+    )
+  }
+
   return (
     <div className="ride-plan">
       <div className="ride-plan-head">
@@ -946,16 +964,26 @@ function LongRidePanel({ trip, day, editable, legCorrections, onSetDayStart, onA
           </div>
         </div>
         {editable && (
-          <label className="ride-start">
-            <span className="small muted">Ride start</span>
-            <input
-              type="time"
-              className="input"
-              value={day.startTime ?? A.dayStart}
-              aria-label="Ride start time"
-              onChange={e => onSetDayStart(day.index, e.target.value)}
-            />
-          </label>
+          <>
+            <label className="ride-start">
+              <span className="small muted">Ride start</span>
+              <input
+                type="time"
+                className="input"
+                value={day.startTime ?? A.dayStart}
+                aria-label="Ride start time"
+                onChange={e => onSetDayStart(day.index, e.target.value)}
+              />
+            </label>
+            <button
+              className="icon-btn ride-hints-hide"
+              title="Hide these long-ride hints"
+              aria-label="Hide long-ride hints"
+              onClick={() => { setHintsHidden(true); saveRideHintsHidden(trip.id, day.index, true) }}
+            >
+              ✕
+            </button>
+          </>
         )}
       </div>
 
@@ -998,7 +1026,7 @@ function LongRidePanel({ trip, day, editable, legCorrections, onSetDayStart, onA
           <div className="ride-break-head">
             <b>Halt {i + 1}</b> — {slot.kind === 'meal' ? 'meal halt' : 'tea / fuel stretch'}
             <span className="muted small">
-              {' '}· recommend {slot.stopMinutes} min · ≈ {slot.atKm} km in ({Math.round(slot.fraction * 100)}% of the drive) · expect ~{slot.clock}
+              {' '}· recommend {slot.stopMinutes} min · ≈ {slot.atKm} km in ({Math.round(slot.fraction * 100)}% of the drive) · expect ~{formatHM(slot.clock, timeFormat)}
             </span>
           </div>
           {slot.alreadyStopped ? (

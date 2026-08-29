@@ -1049,6 +1049,11 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
 }
 .ride-plan-head { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; }
 .ride-plan-head > div:first-child { flex: 1; min-width: 220px; }
+.ride-hints-hide { margin-left: auto; flex: 0 0 auto; }
+.ride-plan-dismissed { display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 10px 16px; }
+/* Formatted 12h/24h preview under native <input type="time"> fields — the
+   browser controls the input's own display format, so we echo the app pref. */
+.time-preview { margin-top: 3px; font-variant-numeric: tabular-nums; }
 .ride-plan-title { font-weight: 700; }
 .ride-start { display: flex; flex-direction: column; gap: 4px; }
 .ride-start .input { width: 132px; padding: 6px 8px; }

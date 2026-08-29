@@ -8,6 +8,7 @@ import type { PlaceHit } from './LocationInput'
 import { fetchOpeningHours } from '../lib/geocode'
 import { roadLegBetween } from '../lib/routing'
 import { getAssumptions, hmToMinutes, addMinutesToClock, formatInr } from '../lib/engine'
+import { useTimeFormat, formatHM } from '../lib/timefmt'
 
 export interface StopFormValues {
   title: string
@@ -62,6 +63,7 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel,
   dayLabel?: string
   legContext?: LegContext
 }) {
+  const timeFormat = useTimeFormat()
   const [v, setV] = useState<StopFormValues>(normalize(initial))
   const [errs, setErrs] = useState<Record<string, string>>({})
   /** "idle" | "loading" | "found" | "none" — OSM hours lookup after picking a place */
@@ -198,11 +200,13 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel,
               {hoursRelevant && (
                 <Field label="Opens at" hint={hoursHint}>
                   <input type="time" className="input" value={v.openTime} onChange={e => set('openTime', e.target.value)} />
+                  {v.openTime && <div className="time-preview small muted">= {formatHM(v.openTime, timeFormat)}</div>}
                 </Field>
               )}
               {hoursRelevant && (
                 <Field label="Closes at" error={errs.closeTime}>
                   <input type="time" className="input" value={v.closeTime} onChange={e => set('closeTime', e.target.value)} />
+                  {v.closeTime && <div className="time-preview small muted">= {formatHM(v.closeTime, timeFormat)}</div>}
                 </Field>
               )}
             </div>
@@ -240,9 +244,11 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel,
                   const dep = e.target.value
                   setV(prev => ({ ...prev, departTime: dep, arrivalTime: dep && prev.legTravelMinutes ? addMinutesToClock(hmToMinutes(dep), prev.legTravelMinutes) : prev.arrivalTime }))
                 }} />
+                {v.departTime && <div className="time-preview small muted">= {formatHM(v.departTime, timeFormat)}</div>}
               </Field>
               <Field label="Arrive at">
                 <input type="time" className="input" value={v.arrivalTime} onChange={e => set('arrivalTime', e.target.value)} />
+                {v.arrivalTime && <div className="time-preview small muted">= {formatHM(v.arrivalTime, timeFormat)}</div>}
               </Field>
             </div>
             {legPreview && (

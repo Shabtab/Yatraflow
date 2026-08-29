@@ -68,15 +68,20 @@ Hard rules (each learned the hard way — do not relearn them):
   `departTime`, …). Helpers must type their params for the data model's real
   shape, not the happy-path call site — a helper requiring bare `string` turned
   into a Vercel-only build failure.
-- Browser-native `<input type="time">` follows the OS format **by design** —
-  don't "fix" it to match the app preference.
+- Browser-native `<input type="time">` follows the OS format **by design** and
+  cannot be forced to 12h — don't replace it. The convention: keep the native
+  input and echo the app preference as a live `.time-preview` ("= 6:30 PM")
+  under it (see StopEditor / timefmt).
 - **Mobile**: breakpoint is **720px**; mobile CSS lives in the single
   `@media (max-width: 720px)` block at the end of `src/styles.css`; keep touch
   targets ≥40px; inputs 16px on mobile (iOS Safari zooms smaller ones).
 - **MapLibre/mapcn**: don't import `maplibre-gl` types directly in components —
   use the structural-cast pattern (`GeoJSONSourceLike` in TripMap.tsx).
-- **localStorage prefs** (`yatraflow_*`): failure-tolerant — corrupted JSON,
-  private mode, or missing storage must degrade to safe defaults, never crash.
+- **View prefs pattern**: per-object UI preferences (day collapse
+  `yatraflow_day_collapsed`, hidden ride hints `yatraflow_ride_hints_hidden`,
+  clock format `yatraflow_time_format`) live in localStorage via
+  `lib/uiPrefs.ts`/`lib/timefmt.ts` — failure-tolerant maps of booleans keyed
+  `"<tripId>:<dayIndex>"`, never trip data.
 - `dev.log` is untracked local clutter — ignore it, never commit it.
 - Test style: pure logic only, node env; mock `fetch` with route tables
   (`tests/providers.test.ts` has the pattern); `vi.stubEnv` for API keys.

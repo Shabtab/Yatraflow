@@ -4,7 +4,11 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Added
+- **Dismissible long-ride hints** (per trip+day) — the long-ride halt-suggestion panel now has a ✕ "Hide these long-ride hints" button; dismissed days collapse to a one-line "hints hidden" placeholder with a **Show again** button. Persisted in `localStorage` (`yatraflow_ride_hints_hidden`) via the failure-tolerant `uiPrefs` pattern — a view preference, not trip data.
+
 ### Fixed
+- **Last 24h-format leaks** — the long-ride halt slots' "expect ~18:40" clock now renders in the user's 12h/24h preference, and the Stop Editor's **Opens at / Closes at / Depart at / Arrive at** fields show a live "= 6:30 PM" preview under each input. Native `<input type="time">` controls follow the browser/OS locale and can't be forced to 12h, so the app preference is echoed as formatted text beside every one (data entry stays native and unbroken).
 - **Vercel deploy failure (TS2345)** — `formatHMRange` required non-optional strings but stop `closeTime`/`closeTime` fields are optional in the data model (`string | undefined`); the signature now accepts optional sides. Also widened local verification: previous `cmd` one-liners expanded `%ERRORLEVEL%` at parse time (before commands ran), masking real `tsc` failures behind a stale exit code — the exact reason clean-build failures kept surfacing only on Vercel. Verification now runs bare commands so true exit codes surface.
 - **Chore: `allowScripts` allowlist for esbuild** — Vercel's npm emits `npm warn allow-scripts` for esbuild's postinstall because the package.json had no allowlist. Added `"allowScripts": { "esbuild": true }` (esbuild's postinstall is a standard, integrity-checked binary install). The warning was never the deploy failure — builds proceeded — but this silences it at the source.
 
