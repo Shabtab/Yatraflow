@@ -98,6 +98,17 @@ describe('fuel-economy-aware costs', () => {
     expect(parseFuelEconomyKmL('200')).toBeUndefined()
     expect(parseFuelEconomyKmL('abc')).toBeUndefined()
   })
+  it('getAssumptions rejects impossible fuel economy (regression for #2)', () => {
+    // 1 km/L and 500 km/L are physically impossible for a car — the engine
+    // must ignore them and fall back to the blended ₹9/km table, NOT compute
+    // a wildly wrong per-km rate.
+    const absurdLow = getAssumptions({ transportMode: 'car', fuelEconomyKmL: 1 })
+    const absurdHigh = getAssumptions({ transportMode: 'car', fuelEconomyKmL: 500 })
+    expect(absurdLow.inrPerKm).toBe(9)
+    expect(absurdHigh.inrPerKm).toBe(9)
+    // a sane value still flows through
+    expect(getAssumptions({ transportMode: 'car', fuelEconomyKmL: 15 }).inrPerKm).toBeCloseTo(FUEL_PRICE_INR_PER_L / 15, 6)
+  })
   it('isImplausibleFuelEconomy flags out-of-band values without blocking', () => {
     expect(isImplausibleFuelEconomy('motorcycle', 5)).toBe(true)
     expect(isImplausibleFuelEconomy('car', 5)).toBe(true)

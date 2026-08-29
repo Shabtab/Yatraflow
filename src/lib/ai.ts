@@ -65,7 +65,9 @@ export function answerQuestion(trip: Trip, question: string): AiReply {
   if (q.includes('less tiring') || q.includes('tiring') || q.includes('relax')) return makeLessTiring(trip)
   if (q.includes('airport') || (q.includes('reach') && q.includes('pm'))) return airportFeasibility(trip)
   if (q.includes('cheaper') || q.includes('alternative') && q.includes('cheap')) return cheaperAlternative(trip)
-  if (q.includes('rain')) return rainPlan(trip)
+  // Word-boundary match so the substring "rain" inside "train" does not
+  // mis-route train questions to the rain plan.
+  if (/\brain\b/.test(q)) return rainPlan(trip)
   if (q.includes('family-friendly') || q.includes('family friendly')) return familyVersion(trip)
   if (q.includes('children') || q.includes('kids')) return removeForKids(trip)
   if (q.includes('relaxed') && q.includes('packed')) return compareRelaxedPacked(trip)

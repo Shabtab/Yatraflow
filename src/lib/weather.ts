@@ -75,9 +75,13 @@ export async function fetchDailyWeather(
 
 /** True when the trip start is within Open-Meteo's reliable forecast window. */
 export function forecastAvailable(startDate: string): boolean {
+  // Parse both dates at UTC midnight so the diff is a true whole-day count
+  // and does not shift by the local timezone (bug #6).
   const today = new Date()
-  const start = new Date(startDate + 'T00:00')
-  const diffDays = Math.round((start.getTime() - today.getTime()) / 86400000)
+  const todayUtc = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate())
+  const [y, m, d] = startDate.split('-').map(Number)
+  const startUtc = Date.UTC(y, m - 1, d)
+  const diffDays = Math.round((startUtc - todayUtc) / 86400000)
   return diffDays <= 15
 }
 
