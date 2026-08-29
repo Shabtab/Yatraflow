@@ -189,7 +189,7 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby }: {
 
   return (
     <div>
-      <div className="map-frame" style={{ height: 480 }}>
+      <div className="map-frame">
         <div className="map-day-filter">
           <button className={`map-day-chip ${dayFilter === 'all' ? 'on' : ''}`} onClick={() => setDayFilter('all')}>All days</button>
           {trip.days.map(d => (

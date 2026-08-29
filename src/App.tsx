@@ -25,11 +25,12 @@ export default function App() {
   const [dark, setDark] = useState(() => localStorage.getItem('yatraflow_theme') === 'dark')
   const [notifOpen, setNotifOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [mobileNav, setMobileNav] = useState(false)
   const notifRef = useClickOutside(() => setNotifOpen(false))
   const menuRef = useClickOutside(() => setMenuOpen(false))
 
   useEffect(() => {
-    const onHash = () => { setRoute(currentRoute()); window.scrollTo(0, 0) }
+    const onHash = () => { setRoute(currentRoute()); setMobileNav(false); window.scrollTo(0, 0) }
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
   }, [])
@@ -112,6 +113,16 @@ export default function App() {
             <button className="nav-link" onClick={() => navigate('/explore')}>Explore</button>
           </div>
         <div className="nav-right">
+          {/* Hamburger — only rendered ≤720px where .nav-links is hidden */}
+          <button
+            className="mobile-nav-btn"
+            onClick={() => setMobileNav(o => !o)}
+            aria-label="Menu"
+            aria-expanded={mobileNav}
+          >
+            {mobileNav ? '✕' : '☰'}
+          </button>
+
           <button className="theme-toggle" onClick={() => setDark(d => !d)} aria-label="Toggle dark mode" title="Toggle dark mode">
             {dark ? '☀️' : '🌙'}
           </button>
@@ -166,6 +177,17 @@ export default function App() {
         </div>
       </div>
       </nav>
+
+      {mobileNav && (
+        <div className="mobile-menu" onClick={() => setMobileNav(false)}>
+          {me && <>
+            <button className="nav-link" onClick={() => navigate('/trips')}>🏕️ My trips</button>
+            <button className="nav-link" onClick={() => navigate('/new')}>➕ Plan a trip</button>
+          </>}
+          <button className="nav-link" onClick={() => navigate('/explore')}>🧭 Explore</button>
+          {me && <button className="nav-link" onClick={() => navigate('/profile')}>⚙️ Profile & settings</button>}
+        </div>
+      )}
 
       <main style={{ flex: 1 }}>{page}</main>
 
