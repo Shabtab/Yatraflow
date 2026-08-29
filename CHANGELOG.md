@@ -5,6 +5,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 ## [Unreleased]
 
 ### Added
+- **Touch drag & drop for the timeline** (closes #2) — stop cards are now reorderable on phones/tablets: **press and hold a stop (~0.35s, holding still), then drag** to reorder within the day or drag it onto another day (or into a gap between stops), with haptic feedback on lift, edge auto-scroll near the viewport top/bottom, and the same highlight + impact-preview flow as desktop. New `src/lib/touchDnd.ts`: a React-free pointer-event engine (long-press activation, movement-cancel so normal scrolling still works, `elementFromPoint` drop targeting via `data-yf-drop`/`data-yf-gap` attributes, non-passive `touchmove` scroll-lock only while dragging, post-drag click suppression, context-menu suppression) integrated into the shared `useReorder` hook — desktop HTML5 drag is untouched, and presses on buttons/links/inputs are never hijacked. 11 new unit tests (151 total).
 - **Dismissible long-ride hints** (per trip+day) — the long-ride halt-suggestion panel now has a ✕ "Hide these long-ride hints" button; dismissed days collapse to a one-line "hints hidden" placeholder with a **Show again** button. Persisted in `localStorage` (`yatraflow_ride_hints_hidden`) via the failure-tolerant `uiPrefs` pattern — a view preference, not trip data.
 
 ### Fixed

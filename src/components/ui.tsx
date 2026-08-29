@@ -1,6 +1,7 @@
 // ============ Reusable UI components ============
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useId, useRef, useState } from 'react'
 import { formatInr } from '../lib/engine'
+import { registerTouchDnd, touchPressAbort, touchPressStart, encodeDropKey, isInteractiveTarget } from '../lib/touchDnd'
 
 export function Avatar({ user, size = 'sm' }: { user?: { profile: { name: string; avatarUrl?: string } }; size?: 'sm' | 'lg' }) {
   const cls = `avatar ${size === 'lg' ? 'lg' : ''}`
@@ -239,12 +240,49 @@ export function useReorder<T extends { id: string }>(
     dragPayload?: (item: T) => string
     /** called with the payload and the insertion index when a foreign drag lands */
     onForeignDrop?: (payload: string, toIdx: number) => void
+    /** touch dragging is enabled only for editable lists (default true) */
+    touch?: boolean
   },
 ) {
   const [dragIdx, setDragIdx] = useState<number | null>(null)
   const [overIdx, setOverIdx] = useState<number | null>(null)
   /** insertion index a foreign drag is hovering (cards + gap zones) */
   const [foreignOver, setForeignOver] = useState<number | null>(null)
+
+  // ---- touch long-press integration (see lib/touchDnd.ts) ----
+  // The engine is a module singleton and needs stable callbacks; route it
+  // through a ref that always points at the latest closures.
+  const instId = useId()
+  const latest = useRef({ items, onMove, options, touch: options?.touch ?? true })
+  latest.current = { items, onMove, options, touch: options?.touch ?? true }
+  useEffect(() => {
+    return registerTouchDnd(instId, {
+      onOwnDragStart: idx => setDragIdx(idx),
+      onDragOver: (idx, foreign) => { if (foreign) setForeignOver(idx); else setOverIdx(idx) },
+      onDropOnSelf: (from, to) => latest.current.onMove(from, to),
+      onForeignDrop: (payload, to) => latest.current.options?.onForeignDrop?.(payload, to),
+      onDragEnd: () => { setDragIdx(null); setOverIdx(null); setForeignOver(null) },
+    })
+  }, [instId])
+  // unmount safety: end any press/drag owned by this list
+  useEffect(() => () => touchPressAbort(), [])
+
+  /** True when a touch/pen pointer is pressing an interactive control — those
+      keep their normal behaviour; long-press drag is for the row background. */
+  const touchPress = (idx: number) => (e: React.PointerEvent<HTMLElement>) => {
+    if (!latest.current.touch) return
+    if (e.pointerType === 'mouse') return
+    if (isInteractiveTarget(e.target as Element)) return
+    const item = latest.current.items[idx]
+    touchPressStart({
+      instanceId: instId,
+      idx,
+      payload: latest.current.options?.dragPayload?.(item) ?? '',
+      element: e.currentTarget as HTMLElement,
+      x: e.clientX,
+      y: e.clientY,
+    })
+  }
 
   // During dragover, dataTransfer values are unreadable — only its `types` list.
   // A drag started in this same list is tracked by dragIdx instead.
@@ -253,6 +291,8 @@ export function useReorder<T extends { id: string }>(
 
   const dndHandlers = (idx: number) => ({
     draggable: true,
+    'data-yf-drop': encodeDropKey(instId, idx),
+    onPointerDown: touchPress(idx),
     onDragStart: (e: React.DragEvent) => {
       setDragIdx(idx)
       const payload = options?.dragPayload?.(items[idx])
@@ -285,6 +325,7 @@ export function useReorder<T extends { id: string }>(
 
   /** Drop zone for gap/empty areas of the list — foreign drags only. */
   const dayDropHandlers = (idx: number) => ({
+    'data-yf-gap': encodeDropKey(instId, idx),
     onDragOver: (e: React.DragEvent) => {
       if (!isForeign(e)) return
       e.preventDefault()

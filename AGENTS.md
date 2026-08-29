@@ -77,6 +77,10 @@ Hard rules (each learned the hard way — do not relearn them):
   targets ≥40px; inputs 16px on mobile (iOS Safari zooms smaller ones).
 - **MapLibre/mapcn**: don't import `maplibre-gl` types directly in components —
   use the structural-cast pattern (`GeoJSONSourceLike` in TripMap.tsx).
+- **HTML5 drag-and-drop does not work on touch devices** (no `dragstart`).
+  The convention: keep HTML5 DnD for desktop, and route touch through the
+  long-press pointer engine in `lib/touchDnd.ts` (integrated via `useReorder`).
+  Any new drag surface must add both paths or explicitly opt out.
 - **View prefs pattern**: per-object UI preferences (day collapse
   `yatraflow_day_collapsed`, hidden ride hints `yatraflow_ride_hints_hidden`,
   clock format `yatraflow_time_format`) live in localStorage via

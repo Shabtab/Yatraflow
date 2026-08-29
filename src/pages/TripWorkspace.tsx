@@ -474,7 +474,7 @@ function TimelineTab({ trip, editable, applyChange, legCorrections }: {
       <div className="row-between" style={{ marginBottom: 16 }}>
         <div>
           <h2>Day-by-day timeline</h2>
-          <p className="muted small">Drag stops to reorder within a day — or drop them onto another day to move them there. Every change shows its impact before saving.</p>
+          <p className="muted small">Drag stops to reorder within a day — or drop them onto another day to move them there. On touch devices: press and hold a stop, then drag it. Every change shows its impact before saving.</p>
         </div>
         {editable && (
           <button className="btn btn-primary btn-sm" onClick={() => setEditorState({ mode: 'add', dayIndex: 0 })}>+ Add stop</button>
