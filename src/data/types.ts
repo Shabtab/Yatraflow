@@ -109,6 +109,11 @@ export interface ItineraryDay {
   id: ID
   index: number             // 0-based
   title?: string            // e.g. "Munnar hills"
+  /**
+   * "HH:MM" — when this day's ride/drive starts (long-ride planner). Overrides
+   * the 08:30 planning default in the schedule; unset keeps the default.
+   */
+  startTime?: string
   stops: ItineraryStop[]
 }
 

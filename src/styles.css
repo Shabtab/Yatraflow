@@ -890,3 +890,32 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
 }
 .btn-teal { background: var(--teal); color: #fff; }
 .btn-teal:hover { background: var(--teal-deep, #0e7a72); }
+
+/* ---------- Long-ride break planner ---------- */
+.ride-plan {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--saffron);
+  background: var(--card-soft);
+  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+.ride-plan-head { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; }
+.ride-plan-head > div:first-child { flex: 1; min-width: 220px; }
+.ride-plan-title { font-weight: 700; }
+.ride-start { display: flex; flex-direction: column; gap: 4px; }
+.ride-start .input { width: 132px; padding: 6px 8px; }
+.ride-style-row { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0 2px; }
+.ride-style-chip.active { outline: 2px solid var(--teal); font-weight: 700; }
+.ride-break { border-top: 1px dashed var(--line); margin-top: 10px; padding-top: 10px; }
+.ride-break-body { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.ride-spot {
+  display: flex; gap: 10px; align-items: center; justify-content: space-between;
+  width: 100%; flex-wrap: wrap;
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+  padding: 8px 10px;
+}
+.ride-spot-main { flex: 1; min-width: 180px; }
+.ride-spot-actions { display: flex; gap: 8px; align-items: center; }
+.ride-spot-mins { width: 100px; padding: 6px 8px; }
+.ride-plan-note { margin-top: 10px; }

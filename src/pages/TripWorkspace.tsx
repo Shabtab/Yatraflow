@@ -19,6 +19,8 @@ import {
 import type { LegEstimate, ScheduleWarning } from '../lib/engine'
 import { routePath } from '../lib/routing'
 import { computeImpact, type ImpactResult } from '../lib/impact'
+import { planRide, RIDE_STYLES, recommendedStyle, MAX_BREAKS, type RideStyle } from '../lib/ridebreaks'
+import { haversineKm } from '../lib/geo'
 import { Avatar, Chip, Modal, ConfirmDialog, Field, StatTile, HealthRing, EmptyState, toast, undoToast, useReorder, CopyButton } from '../components/ui'
 import { ImpactPreviewPanel } from '../components/ImpactPreview'
 // MapLibre is heavy (~1MB) — load it only when the Map tab is actually opened.
@@ -441,6 +443,22 @@ function TimelineTab({ trip, editable, applyChange, legCorrections }: {
     }, 'add', dayIndex)
   }
 
+  /** Ride start time for a day — a lightweight plan field, applied directly (like rename). */
+  function handleSetDayStart(dayIndex: number, time: string) {
+    updateTrip(trip.id, { days: trip.days.map(d => d.index === dayIndex ? { ...d, startTime: time || undefined } : d) })
+    toast(time ? `Day ${dayIndex + 1} now starts ${time}` : 'Ride start reset to the default')
+  }
+
+  /** Insert a long-ride break halt at a specific position in the day (impact preview applies it). */
+  function handleAddBreakStop(dayIndex: number, stop: Omit<ItineraryStop, 'id' | 'orderInDay'>, position: number) {
+    applyChange(draft => {
+      const day = draft.days.find(d => d.index === dayIndex)!
+      const pos = Math.max(0, Math.min(position, day.stops.length))
+      day.stops.splice(pos, 0, { ...stop, id: 'pending_' + Math.random().toString(36).slice(2), orderInDay: pos + 1 })
+      day.stops.forEach((s, i) => { s.orderInDay = i + 1 })
+    }, 'add', dayIndex)
+  }
+
   function handleStatus(stop: ItineraryStop, status: ItineraryStop['status']) {
     // Status flips are lightweight group signals — applied directly.
     setStopStatus(trip.id, status, stop.id)
@@ -470,6 +488,8 @@ function TimelineTab({ trip, editable, applyChange, legCorrections }: {
           onRenameDay={handleRenameDay}
           onCopyDay={handleCopyDay}
           onAddQuickStop={handleAddQuickStop}
+          onSetDayStart={handleSetDayStart}
+          onAddBreakStop={handleAddBreakStop}
           warnings={dayWarnings[day.index] ?? []}
           onStatus={handleStatus}
         />
@@ -511,7 +531,7 @@ function TimelineTab({ trip, editable, applyChange, legCorrections }: {
   )
 }
 
-function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithinDay, onMoveBetweenDays, onMoveStopIn, onRenameDay, onCopyDay, onAddQuickStop, warnings, onStatus, legCorrections }: {
+function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithinDay, onMoveBetweenDays, onMoveStopIn, onRenameDay, onCopyDay, onAddQuickStop, onSetDayStart, onAddBreakStop, warnings, onStatus, legCorrections }: {
   day: Trip['days'][number]
   trip: Trip
   editable: boolean
@@ -526,10 +546,15 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
   onRenameDay: (dayIndex: number, title: string) => void
   onCopyDay: (dayIndex: number) => void
   onAddQuickStop: (dayIndex: number, stop: Omit<ItineraryStop, 'id' | 'orderInDay'>) => void
+  /** set the day's ride/drive start time (long-ride planner) */
+  onSetDayStart: (dayIndex: number, time: string) => void
+  /** insert a break halt at a specific position in the day */
+  onAddBreakStop: (dayIndex: number, stop: Omit<ItineraryStop, 'id' | 'orderInDay'>, position: number) => void
   warnings: ScheduleWarning[]
   onStatus: (stop: ItineraryStop, status: ItineraryStop['status']) => void
 }) {
   const sim = simulateDay(day, trip, originOf(trip, day.index), day.index, legCorrections)
+  const ridePlan = planRide(day, trip, legCorrections)
   const A = getAssumptions(trip)
   const ordered = [...day.stops].sort((a, b) => a.orderInDay - b.orderInDay)
   const { dndHandlers, dayDropHandlers, dragging, over, foreignOver, moveUp, moveDown } = useReorder(
@@ -572,8 +597,9 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
     return () => { cancelled = true }
   }, [editable, ordered.length]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // day progress: how much of the realistic window (08:30–20:00) the plan consumes
-  const startMin = hmToMinutes(A.dayStart)
+  // day progress: how much of the realistic window (start–20:00) the plan consumes
+  const dayStartHM = day.startTime ?? A.dayStart
+  const startMin = hmToMinutes(dayStartHM)
   const windowMin = Math.max(1, hmToMinutes(A.dayEnd) - startMin)
   const used = Math.max(0, Math.min(1, (hmToMinutes(sim.endsAt) - startMin) / windowMin))
   const sev = warnings.some(w => w.severity === 'high') ? 'high' : warnings.some(w => w.severity === 'medium') ? 'medium' : 'ok'
@@ -610,9 +636,13 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
             </h3>
           )}
           <div className="small muted">
-            {sim.activeStops.length} active stop{sim.activeStops.length !== 1 ? 's' : ''} · ~{minutesToHM(sim.totalTravelMinutes)} travel · ~{Math.round(sim.totalDistanceKm)} km · ends ~{sim.endsAt}
+            {(ridePlan.isOutboundDrive || ridePlan.isReturnDrive) && ridePlan.targetLabel ? (
+              <span>Route day — ~{Math.round(ridePlan.distanceKm)} km drive {ridePlan.isReturnDrive ? 'back to' : 'to'} {ridePlan.targetLabel} · ~{minutesToHM(ridePlan.driveMinutes)} · start ~{ridePlan.startClock}</span>
+            ) : (
+              <span>{sim.activeStops.length} active stop{sim.activeStops.length !== 1 ? 's' : ''} · ~{minutesToHM(sim.totalTravelMinutes)} travel · ~{Math.round(sim.totalDistanceKm)} km · start ~{sim.startsAt} · ends ~{sim.endsAt}</span>
+            )}
           </div>
-          <div className={`day-progress ${collapsed ? 'compact' : ''}`} title={`${Math.round(used * 100)}% of the ${A.dayStart}–${A.dayEnd} window`}>
+          <div className={`day-progress ${collapsed ? 'compact' : ''}`} title={`${Math.round(used * 100)}% of the ${dayStartHM}–${A.dayEnd} window`}>
             <div className={`day-progress-fill sev-${sev}`} style={{ width: `${Math.round(used * 100)}%` }} />
           </div>
           {!collapsed && <DayWeatherChip trip={trip} dayIndex={day.index} />}
@@ -641,6 +671,9 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
           </div>
         </div>
       ))}
+
+      <LongRidePanel trip={trip} day={day} editable={editable} legCorrections={legCorrections}
+        onSetDayStart={onSetDayStart} onAddBreakStop={onAddBreakStop} />
 
       {ordered.length === 0 && (<>
         <EmptyState icon="🌤️" title="Nothing planned yet" body="Add your first stop for this day — or drag one here from another day."
@@ -765,6 +798,249 @@ function poiQuickStop(h: PlaceHit): Omit<ItineraryStop, 'id' | 'orderInDay'> {
     entryFeeInrPerPerson: 0, transportCostInrTotal: 0,
     priority: 'nice-to-have', sourceUrl: '', status: 'suggested',
   }
+}
+
+// ================= Long-ride break planner =================
+
+/**
+ * Fatigue-aware plan for a long self-drive day (Kolkata → Siliguri is not one
+ * sitting): ride style (push through / one halt / regular breaks), per-halt
+ * recommendations with clock times, real stop-spot suggestions along the route
+ * corridor, and the total-ride-time effect. Adds go through the impact preview
+ * so the time/cost delta is visible before anything is saved.
+ */
+function LongRidePanel({ trip, day, editable, legCorrections, onSetDayStart, onAddBreakStop }: {
+  trip: Trip
+  day: Trip['days'][number]
+  editable: boolean
+  legCorrections?: Record<string, LegEstimate>
+  onSetDayStart: (dayIndex: number, time: string) => void
+  onAddBreakStop: (dayIndex: number, stop: Omit<ItineraryStop, 'id' | 'orderInDay'>, position: number) => void
+}) {
+  const A = getAssumptions(trip)
+  const [styleChoice, setStyleChoice] = useState<RideStyle | null>(null)
+  const [customHalts, setCustomHalts] = useState(2)
+  const [spots, setSpots] = useState<Record<number, PlaceHit[]>>({})
+  const [loadingSlot, setLoadingSlot] = useState<number | null>(null)
+  const plan = useMemo(
+    () => planRide(day, trip, legCorrections, styleChoice ?? undefined, customHalts),
+    [trip, day, legCorrections, styleChoice, customHalts],
+  )
+  const orderedActive = useMemo(
+    () => [...day.stops].filter(s => s.status !== 'rejected').sort((a, b) => a.orderInDay - b.orderInDay),
+    [day.stops],
+  )
+
+  if (!plan.isLongRide) return null
+
+  const lastStop = orderedActive[orderedActive.length - 1]
+  const lastStopName = lastStop ? (lastStop.locationName || lastStop.title).replace(/ \((start|end)\)$/, '') : ''
+  const originName = (predecessorOf(trip, day.index)?.name ?? trip.startLocation).replace(/ \((start|end)\)$/, '')
+  // Direction-aware labels: the return day of a round trip drives BACK to the
+  // start, so its "from" is the day's destination anchor and its "to" is home.
+  const fromName = plan.isReturnDrive ? lastStopName : originName
+  const toName = plan.isOutboundDrive && plan.targetLabel
+    ? plan.targetLabel
+    : plan.isReturnDrive ? trip.startLocation : lastStopName
+  // Anchor spot suggestions to the drive this day actually represents so
+  // "suggest spots" works along the real route (outbound toward the next
+  // planned destination, return toward home through the day's halts).
+  const outboundTarget = plan.isOutboundDrive ? nextAfter(trip, day.index) : null
+  const routePts: { lat: number; lng: number }[] = plan.isReturnDrive && lastStop && trip.startLocationCoords
+    ? [
+        { lat: lastStop.lat, lng: lastStop.lng },
+        ...orderedActive.filter(s => !s.auto).map(s => ({ lat: s.lat, lng: s.lng })),
+        { lat: trip.startLocationCoords.lat, lng: trip.startLocationCoords.lng },
+      ]
+    : outboundTarget
+      ? [
+          originOf(trip, day.index),
+          ...orderedActive.filter(s => !s.auto).map(s => ({ lat: s.lat, lng: s.lng })),
+          outboundTarget.point,
+        ]
+      : [originOf(trip, day.index), ...orderedActive.map(s => ({ lat: s.lat, lng: s.lng }))]
+  const recommended = recommendedStyle(plan.driveMinutes)
+
+  function pickStyle(s: RideStyle) {
+    setStyleChoice(s)
+    setSpots({}) // slots moved — stale suggestions would land at the wrong place
+  }
+
+  /** Real food/fuel/rest candidates near one slot's ideal position. */
+  async function suggestSpots(slotIdx: number) {
+    const slot = plan.breaks[slotIdx]
+    if (!slot) return
+    setLoadingSlot(slotIdx)
+    try {
+      const anchors = corridorAnchors(routePts, trip.startLocationCoords, 35000, 6)
+      const hits = await searchNearbyPoisMulti(anchors, 35000, 12, {
+        includeFuel: true,
+        homeCenter: trip.startLocationCoords ?? null,
+      })
+      // Rank by how close the hit sits to the slot's position along the route
+      // (nearest anchor ≈ coarse along-route fraction) plus a small detour and
+      // category penalty — sightseeing is a visit, not a break.
+      const n = Math.max(1, anchors.length - 1)
+      const scored = hits.map(h => {
+        let bi = 0, bd = Infinity
+        anchors.forEach((a, i) => {
+          const d = haversineKm(h.latitude, h.longitude, a.lat, a.lng)
+          if (d < bd) { bd = d; bi = i }
+        })
+        const alongKm = Math.abs(bi / n - slot.fraction) * plan.distanceKm
+        const cat = h.category ?? 'sightseeing'
+        const catPenalty = cat === 'sightseeing' || cat === 'temple' || cat === 'museum' || cat === 'beach' || cat === 'nature' ? 10 : cat === 'hotel' ? 5 : 0
+        return { h, score: alongKm + detourKm(h, anchors) * 2 + catPenalty }
+      })
+      setSpots(prev => ({ ...prev, [slotIdx]: scored.sort((a, b) => a.score - b.score).slice(0, 3).map(s => s.h) }))
+    } catch {
+      toast('Could not fetch break-spot suggestions', 'err')
+    } finally {
+      setLoadingSlot(null)
+    }
+  }
+
+  function addSpot(slotIdx: number, h: PlaceHit, minutes: number) {
+    const slot = plan.breaks[slotIdx]
+    if (!slot) return
+    onAddBreakStop(day.index, {
+      title: h.name,
+      category: h.category === 'food' ? 'food' : 'rest',
+      locationName: h.description ?? h.name,
+      lat: h.latitude, lng: h.longitude,
+      description: h.description ?? '',
+      notes: `Ride break — ${slot.kind === 'meal' ? 'meal halt' : 'tea/fuel stretch'} (long-ride planner)`,
+      visitMinutes: minutes, openTime: '', closeTime: '',
+      // route fuel cost comes from the leg geometry in the engine — the halt
+      // itself adds no separate transport line
+      entryFeeInrPerPerson: 0, transportCostInrTotal: 0,
+      priority: 'nice-to-have', sourceUrl: '', status: 'confirmed',
+    }, slot.insertAt)
+    setSpots({}) // the day changed — every remaining slot (and its cached suggestions) shifted
+  }
+
+  return (
+    <div className="ride-plan">
+      <div className="ride-plan-head">
+        <div>
+          <div className="ride-plan-title">🛣️ Long ride — ~{Math.round(plan.distanceKm)} km · {fromName} → {toName}</div>
+          <div className="small muted" style={{ marginTop: 4 }}>
+            Wheel time ~{minutesToHM(plan.driveMinutes)}
+            {plan.breakMinutes > 0 && <> · halts {minutesToHM(plan.breakMinutes)} → <b>~{minutesToHM(plan.totalMinutes)} total</b> (+{minutesToHM(plan.breakMinutes)} vs one go)</>}
+            {' '}· leave {plan.startClock} → arrive ~{plan.breakMinutes > 0 ? plan.finishWithBreaks : plan.finishClock}
+          </div>
+        </div>
+        {editable && (
+          <label className="ride-start">
+            <span className="small muted">Ride start</span>
+            <input
+              type="time"
+              className="input"
+              value={day.startTime ?? A.dayStart}
+              aria-label="Ride start time"
+              onChange={e => onSetDayStart(day.index, e.target.value)}
+            />
+          </label>
+        )}
+      </div>
+
+      {editable && (
+        <>
+          <div className="ride-style-row">
+            {RIDE_STYLES.map(rs => (
+              <button
+                key={rs.key}
+                className={`chip-btn ride-style-chip ${plan.style === rs.key ? 'active' : ''}`}
+                title={rs.blurb + (recommended === rs.key ? ' — recommended for this ride' : '')}
+                onClick={() => pickStyle(rs.key)}
+              >{rs.label}{recommended === rs.key ? ' ★' : ''}</button>
+            ))}
+          </div>
+          {plan.style === 'custom' && (
+            <div className="ride-style-row" style={{ marginTop: 6 }} role="group" aria-label="Number of halts">
+              <span className="small muted">Halts</span>
+              <button className="btn btn-outline btn-sm" aria-label="Fewer halts" onClick={() => { setCustomHalts(c => Math.max(1, c - 1)); setSpots({}) }}>−</button>
+              <b>{plan.breaks.length}</b>
+              <button className="btn btn-outline btn-sm" aria-label="More halts" onClick={() => { setCustomHalts(c => Math.min(MAX_BREAKS, c + 1)); setSpots({}) }}>+</button>
+              <span className="small muted">spaced evenly across the drive (max {MAX_BREAKS})</span>
+            </div>
+          )}
+        </>
+      )}
+
+      {plan.style === 'nonstop' && (
+        <div className="warn-item sev-high" style={{ marginTop: 10 }}>
+          <span className="warn-icon">⚠️</span>
+          <div>
+            <div className="warn-title">~{minutesToHM(plan.driveMinutes)} behind the wheel with no halt</div>
+            <div className="warn-fix">Riding more than ~6–7 h in one go is a fatigue risk — take one halt, or split the drive across two days.</div>
+          </div>
+        </div>
+      )}
+
+      {plan.style !== 'nonstop' && plan.breaks.map((slot, i) => (
+        <div className="ride-break" key={i}>
+          <div className="ride-break-head">
+            <b>Halt {i + 1}</b> — {slot.kind === 'meal' ? 'meal halt' : 'tea / fuel stretch'}
+            <span className="muted small">
+              {' '}· recommend {slot.stopMinutes} min · ≈ {slot.atKm} km in ({Math.round(slot.fraction * 100)}% of the drive) · expect ~{slot.clock}
+            </span>
+          </div>
+          {slot.alreadyStopped ? (
+            <div className="small muted" style={{ marginTop: 6 }}>✓ A food/rest halt already sits around this point on the day.</div>
+          ) : editable && (
+            <div className="ride-break-body">
+              {!spots[i] && (
+                <button className="btn btn-outline btn-sm" disabled={loadingSlot === i} onClick={() => suggestSpots(i)}>
+                  {loadingSlot === i ? 'Searching the route…' : '📍 Suggest spots near this point'}
+                </button>
+              )}
+              {(spots[i] ?? []).map(h => (
+                <RideSpotRow
+                  key={`${h.kind}-${h.name}-${h.latitude}`}
+                  hit={h}
+                  defaultMinutes={slot.stopMinutes}
+                  onAdd={mins => addSpot(i, h, mins)}
+                />
+              ))}
+              {spots[i] && spots[i].length === 0 && (
+                <div className="small muted">No good halt spots found along this stretch — add one manually with “+ Add here”.</div>
+              )}
+            </div>
+          )}
+        </div>
+      ))}
+
+      <div className="small muted ride-plan-note">
+        Assumes ~{A.avgSpeedKmph} km/h average road speed for {A.mode} (blended, not live traffic){plan.style === 'regular-breaks' ? ` and a halt every ~${trip.transportMode === 'motorcycle' ? '2' : '2.5'} h` : ''}. Halt spots come from open map sources — verify before relying on them.
+      </div>
+    </div>
+  )
+}
+
+/** One suggested halt spot with a duration picker (how long the user wants to stop). */
+function RideSpotRow({ hit, defaultMinutes, onAdd }: {
+  hit: PlaceHit
+  defaultMinutes: number
+  onAdd: (minutes: number) => void
+}) {
+  const [mins, setMins] = useState(defaultMinutes)
+  return (
+    <div className="ride-spot">
+      <div className="ride-spot-main">
+        <b>{hit.name}</b>{' '}
+        <span className="muted small">
+          {hit.category ? `${labelCatText(hit.category)} · ` : ''}{hit.description ?? ''}
+        </span>
+      </div>
+      <div className="ride-spot-actions">
+        <select className="input ride-spot-mins" value={mins} onChange={e => setMins(Number(e.target.value))} aria-label="Halt duration">
+          {[15, 20, 30, 40, 45, 60].map(v => <option key={v} value={v}>{v} min</option>)}
+        </select>
+        <button className="btn btn-primary btn-sm" onClick={() => onAdd(mins)}>＋ Add halt</button>
+      </div>
+    </div>
+  )
 }
 
 /** Tiny inline SVG of the day's route shape — no map mount, pure geometry. */
@@ -1819,10 +2095,13 @@ function useTripCorrections(trip: Trip | null | undefined): Record<string, LegEs
         if (cancelled) return
         const map: Record<string, LegEstimate> = {}
         for (let i = 0; i < legs.length; i++) {
-          map[legKey(chain[i], chain[i + 1])] = {
-            distanceKm: legs[i].distanceKm,
-            durationMinutes: legs[i].durationMinutes,
-          }
+          const est = { distanceKm: legs[i].distanceKm, durationMinutes: legs[i].durationMinutes }
+          map[legKey(chain[i], chain[i + 1])] = est
+          // Store the mirrored leg too: the return drive runs the same road in
+          // the opposite direction (e.g. Siliguri → home through a halt), and a
+          // reversed road number beats a haversine fallback.
+          const rk = legKey(chain[i + 1], chain[i])
+          if (!map[rk]) map[rk] = est
         }
         setCorrections(map)
       } catch {

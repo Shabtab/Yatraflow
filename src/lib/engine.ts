@@ -1,6 +1,6 @@
 // ============ Scheduling & impact engine ============
 // All outputs are transparent estimates. Nothing here claims live data.
-import type { Trip, ItineraryStop, FixedCommitment } from '../data/types'
+import type { Trip, ItineraryStop, ItineraryDay, FixedCommitment } from '../data/types'
 import { haversineKm } from './geo'
 
 export interface EngineAssumptions {
@@ -164,6 +164,7 @@ export interface ScheduledLeg {
 
 export interface DaySchedule {
   dayIndex: number
+  startsAt: string           // clock the day starts (per-day override or default)
   arrivalTimes: string[]     // per stop (active stops only)
   departures: string[]
   legs: ScheduledLeg[]
@@ -175,7 +176,7 @@ export interface DaySchedule {
 
 /** Simulate one day's schedule: arrivals, departures, legs. Rejected stops are skipped. */
 export function simulateDay(
-  day: { stops: ItineraryStop[] },
+  day: { stops: ItineraryStop[]; startTime?: string },
   trip: Pick<Trip, 'transportMode' | 'startLocation'>,
   startOrigin: { lat: number; lng: number },
   dayIndex: number,
@@ -188,7 +189,11 @@ export function simulateDay(
 ): DaySchedule {
   const A = getAssumptions(trip)
   const active = [...day.stops].filter(s => s.status !== 'rejected').sort((x, y) => x.orderInDay - y.orderInDay)
-  let t = hmToMinutes(A.dayStart)
+  // The day's ride/drive start: a per-day override (long-ride planner) beats
+  // the 08:30 planning default.
+  const startHM = day.startTime ?? A.dayStart
+  const startMin = hmToMinutes(startHM)
+  let t = startMin
   const arrivalTimes: string[] = []
   const departures: string[] = []
   const legs: ScheduledLeg[] = []
@@ -201,15 +206,15 @@ export function simulateDay(
     const isWaypoint = s.auto === true || (s.category === 'travel' && s.visitMinutes === 0 && s.transportCostInrTotal === 0)
     const leg = (legCorrections && legCorrections[legKey(prev, s)]) ?? legBetween(prev, s, A)
     t += leg.durationMinutes
-    arrivalTimes.push(addMinutesToClock(hmToMinutes(A.dayStart), t - hmToMinutes(A.dayStart)))
+    arrivalTimes.push(addMinutesToClock(startMin, t - startMin))
     travelMin += leg.durationMinutes
     distKm += leg.distanceKm
     legs.push({ fromTitle: prev === startOrigin ? `${trip.startLocation} (start)` : legsLabel(prev), toTitle: s.locationName || s.title, distanceKm: leg.distanceKm, durationMinutes: leg.durationMinutes })
-    departures.push(addMinutesToClock(hmToMinutes(A.dayStart), t - hmToMinutes(A.dayStart) + s.visitMinutes + (isWaypoint ? 0 : A.bufferMinutesPerStop)))
+    departures.push(addMinutesToClock(startMin, t - startMin + s.visitMinutes + (isWaypoint ? 0 : A.bufferMinutesPerStop)))
     t += s.visitMinutes + (isWaypoint ? 0 : A.bufferMinutesPerStop)
     prev = s
   }
-  return { dayIndex, arrivalTimes, departures, legs, totalTravelMinutes: travelMin, totalDistanceKm: distKm, activeStops: active, endsAt: addMinutesToClock(hmToMinutes(A.dayStart), t - hmToMinutes(A.dayStart)) }
+  return { dayIndex, startsAt: startHM, arrivalTimes, departures, legs, totalTravelMinutes: travelMin, totalDistanceKm: distKm, activeStops: active, endsAt: addMinutesToClock(startMin, t - startMin) }
 }
 
 function legsLabel(p: { lat: number; lng: number }): string {
@@ -271,6 +276,111 @@ export function nextAfter(trip: Trip, dayIndex: number): LegAnchor | null {
   return null
 }
 
+/** Minimum one-way distance for a route-day overlay — same threshold as the long-ride planner. */
+export const ROUTE_DAY_MIN_KM = 350
+
+export interface RouteDayDrive {
+  /** 'outbound' = leaving the trip start toward the next planned stop; 'return' = driving back home */
+  direction: 'outbound' | 'return'
+  /** drive legs in order (OSRM-corrected estimates when legCorrections are given) */
+  legs: LegEstimate[]
+  /** total wheel minutes across the whole drive */
+  minutes: number
+  /** total km across the whole drive */
+  km: number
+  /** plain name of the far end of the drive */
+  targetName: string
+}
+
+/**
+ * The drive a self-drive "route day" really represents, beyond what its own
+ * stop chain carries. Two day shapes qualify — no real visits, just trip
+ * anchors and (optionally) food/rest ride halts:
+ *
+ *  - outbound: the day starts at the trip's start anchor (Day 1 of a
+ *    Kolkata → Siliguri trip). Its chain carries at most a prefix of the real
+ *    drive, so the day's ride actually continues on toward the next planned
+ *    destination.
+ *  - return: the day ends at the final-destination anchor (Day 2 of a round
+ *    trip) and the outbound has been planned on an earlier day. The chain then
+ *    still carries the outbound leg (originOf walks back to the start), while
+ *    the drive the user makes that day is the ride back home.
+ *
+ * Returns null for ordinary days (real visits, multi-stop chains, one-way
+ * tails, non-drive modes, short hops). The long-ride planner
+ * (src/lib/ridebreaks.ts) turns these days into break plans; collectWarnings
+ * uses the same overlay so fatigue/travel checks see the true wheel time.
+ */
+export function routeDayDrive(
+  trip: Trip,
+  day: Pick<ItineraryDay, 'stops' | 'index'>,
+  legCorrections?: Record<string, LegEstimate>,
+): RouteDayDrive | null {
+  if (!isFuelEconomyMode(trip.transportMode)) return null
+  const A = getAssumptions(trip)
+  const active = [...day.stops].filter(s => s.status !== 'rejected').sort((a, b) => a.orderInDay - b.orderInDay)
+  if (active.length === 0) return null
+  const nonAuto = active.filter(s => !s.auto)
+  // every non-anchor stop must be a ride halt (a food/rest break), not a visit
+  if (!nonAuto.every(s => (s.category === 'food' || s.category === 'rest') && s.visitMinutes > 0)) return null
+  const home = trip.startLocationCoords
+    ? { lat: trip.startLocationCoords.lat, lng: trip.startLocationCoords.lng }
+    : null
+  const lastDest = trip.destinationCoords?.length
+    ? trip.destinationCoords[trip.destinationCoords.length - 1]
+    : undefined
+  const coLocates = (s: { lat: number; lng: number }, p: { lat: number; lng: number } | null | undefined) =>
+    !!p && haversineKm(s.lat, s.lng, p.lat, p.lng) < 1
+  const leg = (a: { lat: number; lng: number }, b: { lat: number; lng: number }): LegEstimate => {
+    const hit = legCorrections?.[legKey(a, b)]
+    return hit ?? legBetween(a, b, A)
+  }
+  const driveFrom = (waypoints: { lat: number; lng: number }[], direction: RouteDayDrive['direction'], targetName: string): RouteDayDrive => {
+    const legs = waypoints.slice(0, -1).map((p, i) => leg(p, waypoints[i + 1]))
+    return {
+      direction, legs, targetName,
+      minutes: legs.reduce((a, l) => a + l.durationMinutes, 0),
+      km: legs.reduce((a, l) => a + l.distanceKm, 0),
+    }
+  }
+
+  // Outbound route day — unless this day already ends at the next destination
+  // (then the whole drive lives inside its own chain and plans normally).
+  if (home && coLocates(active[0], home)) {
+    const target = nextAfter(trip, day.index)
+    if (target && !coLocates(active[active.length - 1], target.point)
+      && leg(home, target.point).distanceKm >= ROUTE_DAY_MIN_KM) {
+      return driveFrom(
+        [home, ...nonAuto.map(s => ({ lat: s.lat, lng: s.lng })), target.point],
+        'outbound',
+        target.name.replace(/ \((start|end)\)$/, ''),
+      )
+    }
+  }
+
+  // Return route day — only when the outbound drive has already been planned
+  // on an earlier day (a single-day round trip plans its drive as a normal
+  // day). The day holds exactly one trip anchor (the final destination) plus
+  // optional ride halts; the anchor's list position doesn't matter (halts are
+  // spliced after it by the planner) — the drive the day represents always
+  // runs destination → halts → home.
+  const anchor = active.find(s => s.auto)
+  const outboundPlannedEarlier = trip.days.some(d =>
+    d.index < day.index && d.stops.some(s => s.status !== 'rejected'))
+  if (nonAuto.length === active.length - 1 && anchor && coLocates(anchor, lastDest)
+    && isRoundTrip(trip) && home && outboundPlannedEarlier) {
+    const est = leg({ lat: anchor.lat, lng: anchor.lng }, home)
+    if (est.distanceKm >= ROUTE_DAY_MIN_KM) {
+      return driveFrom(
+        [{ lat: anchor.lat, lng: anchor.lng }, ...nonAuto.map(s => ({ lat: s.lat, lng: s.lng })), home],
+        'return',
+        trip.startLocation,
+      )
+    }
+  }
+  return null
+}
+
 export interface StopLegEstimate extends LegEstimate {
   /** fuel/fare cost for the leg at the trip mode's ₹/km rate */
   costInr: number
@@ -290,6 +400,9 @@ export function estimateLeg(
 // ---------------- Warnings ----------------
 
 export type Severity = 'high' | 'medium' | 'low'
+
+/** Wheel time on a self-drive day past which fatigue risk is flagged. */
+const FATIGUE_DRIVE_MINUTES = 420
 
 export interface ScheduleWarning {
   code: string
@@ -318,11 +431,29 @@ export function collectWarnings(trip: Trip): ScheduleWarning[] {
     const sim = simulateDay(day, trip, originOf(trip, day.index), day.index)
     const n = sim.activeStops.length
 
+    // Route-day overlay: a self-drive day holding only anchors and ride halts
+    // really drives out of the start (or back home on a round trip) — wheel
+    // time the day's own chain doesn't carry. Judge travel/fatigue on the
+    // larger of the two so the warnings stay honest (see routeDayDrive).
+    const overlay = routeDayDrive(trip, day)
+    const travelMinutes = Math.max(sim.totalTravelMinutes, overlay?.minutes ?? 0)
+    const travelKm = Math.max(sim.totalDistanceKm, overlay?.km ?? 0)
+
     // Excessive daily travel (>5h on the road)
-    if (sim.totalTravelMinutes > 300) {
-      warnings.push({ code: 'travel', severity: 'high', title: `Day ${day.index + 1}: heavy travel time`, detail: `About ${minutesToHM(sim.totalTravelMinutes)} of driving/transit across ${sim.totalDistanceKm.toFixed(0)} km.`, fix: 'Move one activity to another day or pick a closer alternative.' })
-    } else if (sim.totalTravelMinutes > 210) {
-      warnings.push({ code: 'travel', severity: 'medium', title: `Day ${day.index + 1}: long travel time`, detail: `Roughly ${minutesToHM(sim.totalTravelMinutes)} in transit.`, fix: 'Consider starting earlier or dropping an optional stop.' })
+    if (travelMinutes > 300) {
+      warnings.push({ code: 'travel', severity: 'high', title: `Day ${day.index + 1}: heavy travel time`, detail: `About ${minutesToHM(travelMinutes)} of driving/transit across ${travelKm.toFixed(0)} km.`, fix: 'Move one activity to another day or pick a closer alternative.' })
+    } else if (travelMinutes > 210) {
+      warnings.push({ code: 'travel', severity: 'medium', title: `Day ${day.index + 1}: long travel time`, detail: `Roughly ${minutesToHM(travelMinutes)} in transit.`, fix: 'Consider starting earlier or dropping an optional stop.' })
+    }
+
+    // Fatigue risk: a self-drive day pushing well past ~7 h of wheel time with
+    // no proper halt. Distinct from the generic travel warning above — the fix
+    // here is a rest/meal halt (long-ride planner), not a route change.
+    if (isFuelEconomyMode(trip.transportMode)) {
+      const hasHalt = sim.activeStops.some(s => (s.category === 'food' || s.category === 'rest') && !s.auto && s.visitMinutes > 0)
+      if (travelMinutes > FATIGUE_DRIVE_MINUTES && !hasHalt) {
+        warnings.push({ code: 'fatigue', severity: 'high', title: `Day ${day.index + 1}: fatigue risk on a long drive`, detail: `About ${minutesToHM(travelMinutes)} of wheel time with no meal or rest halt.`, fix: 'Use the long-ride planner on this day to add a halt — or split the drive across two days.' })
+      }
     }
 
     // Too many activities

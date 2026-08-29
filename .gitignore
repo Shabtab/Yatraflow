@@ -12,3 +12,5 @@ tsconfig.tsbuildinfo
 .vercel
 .env*
 supabase/.temp/
+dev_server_run.log
+dev_server_err.log
