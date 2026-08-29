@@ -49,6 +49,13 @@ describe('formatHMRange', () => {
     expect(formatHMRange('09:00', '', '12h')).toBe('9:00 AM')
     expect(formatHMRange('', '17:30', '12h')).toBe('5:30 PM')
   })
+
+  it('accepts undefined sides (optional fields in the data model)', () => {
+    expect(formatHMRange(undefined, undefined, '12h')).toBe('')
+    expect(formatHMRange('09:00', undefined, '12h')).toBe('9:00 AM')
+    expect(formatHMRange(undefined, '17:30', '24h')).toBe('17:30')
+    expect(formatHMRange('09:00', '17:30', '12h')).toBe('9:00 AM–5:30 PM')
+  })
 })
 
 describe('preference store', () => {

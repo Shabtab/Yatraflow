@@ -69,9 +69,11 @@ export function formatHM(hm: string, fmt: TimeFormat): string {
   return `${hour}:${String(m).padStart(2, '0')} ${suffix}`
 }
 
-/** Format an "open–close" pair (either side may be empty — it's skipped). */
-export function formatHMRange(a: string, b: string, fmt: TimeFormat): string {
-  if (!a && !b) return ''
-  if (!a || !b) return formatHM(a || b, fmt)
-  return `${formatHM(a, fmt)}–${formatHM(b, fmt)}`
+/** Format an "open–close" pair (either side may be empty/undefined — skipped). */
+export function formatHMRange(a: string | undefined, b: string | undefined, fmt: TimeFormat): string {
+  const aS = a ?? ''
+  const bS = b ?? ''
+  if (!aS && !bS) return ''
+  if (!aS || !bS) return formatHM(aS || bS, fmt)
+  return `${formatHM(aS, fmt)}–${formatHM(bS, fmt)}`
 }
