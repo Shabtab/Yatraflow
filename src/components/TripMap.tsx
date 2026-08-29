@@ -69,7 +69,7 @@ function RouteArrows({ coordinates, dark }: { coordinates: [number, number][]; d
         paint: { 'icon-opacity': dark ? 0.75 : 0.6 },
       })
     }
-    const src = map.getSource(SRC) as maplibreGLTypes.GeoJSONSource
+    const src = map.getSource(SRC) as unknown as GeoJSONSourceLike
     src.setData({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates } })
     map.setPaintProperty(LAYER, 'icon-opacity', dark ? 0.75 : 0.6)
     return () => {
@@ -85,7 +85,6 @@ function RouteArrows({ coordinates, dark }: { coordinates: [number, number][]; d
 // minimal structural typing so we don't need to import maplibre-gl directly here
 declare module './mapcn/map' {}
 type GeoJSONSourceLike = { setData(d: unknown): void }
-const maplibreGLTypes = { GeoJSONSource: null as unknown as GeoJSONSourceLike }
 
 /** Drop consecutive duplicate points (shared endpoints between legs). */
 function dedupeConsecutive(coords: [number, number][]): [number, number][] {

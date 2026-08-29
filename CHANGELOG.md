@@ -4,6 +4,9 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Fixed
+- **Build fix for Vercel deploys** — a `maplibreGLTypes.GeoJSONSource` namespace reference in `TripMap.tsx` compiled under cached incremental local builds but failed a clean `tsc -b` on Vercel (TS2503). Replaced with the equivalent structural cast; verified with a fully clean `tsc -b --clean` build and the full test suite.
+
 ### Added
 - **Return-journey layer on the map** — self-drive round trips now draw the drive **back home** as a **dashed slate line** (with direction chevrons and a 🏠 home marker at the trip start), visually distinct from the solid day-coloured outbound route. The drive home was previously budgeted but never drawn. Toggleable via a "↩ Return home" chip in the map filter bar; legend updated; real-road geometry via OSRM with straight-line fallback.
 - **Category-aware map pins with clean stroke icons** — every stop marker is now a teardrop pin (not a flat circle) carrying a **monochrome Lucide-style SVG glyph** for its category (camera, utensils, bed, coffee, landmark, umbrella, leaf, mountains, bag, museum, train, calendar) instead of colourful emojis, with the day colour as the pin fill and the stop number as a corner badge. Maybe-status stops render dashed/outlined so unplanned stops read differently from confirmed ones. Pins cast grounded shadows and lift on hover.
