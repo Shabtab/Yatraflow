@@ -26,8 +26,7 @@ const TripMap = React.lazy(() => import('../components/TripMap').then(m => ({ de
 import { StopEditor, type StopFormValues } from '../components/StopEditor'
 import { AiDrawer } from '../components/AiDrawer'
 import { LocationInput } from '../components/LocationInput'
-import { searchNearbyPois, searchNearbyPoisMulti } from '../lib/geocode'
-import { haversineKm } from '../lib/geo'
+import { searchNearbyPois, searchNearbyPoisMulti, corridorAnchors, detourKm, type NearbyOpts } from '../lib/geocode'
 import type { PlaceHit } from '../lib/geocode'
 import { fetchDailyWeather, forecastAvailable, wmoInfo } from '../lib/weather'
 import type { DayWeather } from '../lib/weather'
@@ -563,7 +562,10 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
     let cancelled = false
     const anchor = predecessorOf(trip, day.index)?.point ?? trip.startLocationCoords
     if (!anchor) return
-    searchNearbyPois(anchor.lat, anchor.lng, 10000, 6)
+    searchNearbyPois(anchor.lat, anchor.lng, 10000, 6, {
+      includeFuel: trip.transportMode === 'car' || trip.transportMode === 'motorcycle',
+      homeCenter: trip.startLocationCoords ?? null,
+    })
       .then(hits => { if (!cancelled) setNearby(hits.slice(0, 3)) })
       .catch(() => { /* suggestions are best-effort */ })
     return () => { cancelled = true }
@@ -880,28 +882,19 @@ function smallThumb(url: string): string {
   return url.replace(/\/(\d+)px-/, '/120px-')
 }
 
-/**
- * Pick up to `maxN` stops spread along the route (first + last, then
- * max-min dispersion) so "nearby ideas" are searched around real stops —
- * the bare centroid of a long route usually lands in the middle of nowhere.
- */
-function spreadRouteAnchors(stops: { lat: number; lng: number }[], maxN: number): { lat: number; lng: number }[] {
-  const pts = stops.filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lng))
-  if (pts.length === 0) return []
-  if (pts.length <= maxN) return pts.map(p => ({ lat: p.lat, lng: p.lng }))
-  const sel = [pts[0], pts[pts.length - 1]]
-  while (sel.length < maxN) {
-    let best: { lat: number; lng: number } | null = null
-    let bestD = -1
-    for (const p of pts) {
-      if (sel.includes(p)) continue
-      const d = Math.min(...sel.map(s => haversineKm(s.lat, s.lng, p.lat, p.lng)))
-      if (d > bestD) { bestD = d; best = p }
-    }
-    if (!best || bestD <= 0) break
-    sel.push(best)
+/** Detour-scope presets for nearby suggestions (km off the route). */
+const SCOPE_KM_STEPS = [10, 20, 30, 50, 80, 100]
+const SCOPE_STORAGE_KEY = 'yf_nearby_scope_km'
+
+/** Sensible visit durations per suggestion category (tourist pacing). */
+function poiVisitMinutes(cat?: string): number {
+  switch (cat) {
+    case 'food': return 45
+    case 'hotel': return 0        // overnight stay — consumes no daylight
+    case 'transport-hub': return 20 // petrol-pump pit stop
+    case 'museum': case 'temple': case 'nature': case 'beach': return 90
+    default: return 60
   }
-  return sel.map(p => ({ lat: p.lat, lng: p.lng }))
 }
 
 function MapTab({ trip, editable, applyChange }: {
@@ -912,6 +905,17 @@ function MapTab({ trip, editable, applyChange }: {
   const [pois, setPois] = useState<PlaceHit[]>([])
   const [loadingPois, setLoadingPois] = useState(false)
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set())
+  // detour-scope control — how far off the route suggestions may sit
+  const [scopeIdx, setScopeIdx] = useState(() => {
+    const saved = Number(localStorage.getItem(SCOPE_STORAGE_KEY))
+    const i = SCOPE_KM_STEPS.indexOf(saved)
+    return i >= 0 ? i : 1 // default 20 km
+  })
+  const scopeKm = SCOPE_KM_STEPS[scopeIdx]
+  function changeScope(i: number) {
+    setScopeIdx(i)
+    localStorage.setItem(SCOPE_STORAGE_KEY, String(SCOPE_KM_STEPS[i]))
+  }
   // pending "add from map / nearby" — pick a day, then confirm
   const [poiDraft, setPoiDraft] = useState<{ hit: PlaceHit } | null>(null)
   const [pickDay, setPickDay] = useState<number>(0)
@@ -922,25 +926,31 @@ function MapTab({ trip, editable, applyChange }: {
     return names
   }, [trip])
 
-  // anchor the search on stops spread along the route (or the first real destination point)
+  // search the WHOLE route corridor (start → stops → destination); the home
+  // zone around the starting point is excluded inside the engine
   const anchors = useMemo(() => {
-    const pts = trip.days.flatMap(d => d.stops).filter(s => s.status !== 'rejected')
-    const stopAnchors = spreadRouteAnchors(pts, 3)
-    if (stopAnchors.length > 0) return stopAnchors
-    const destCoord = (trip.destinationCoords ?? []).find((c): c is LatLngPoint => !!c)
-    return destCoord ? [{ lat: destCoord.lat, lng: destCoord.lng }] : []
-  }, [trip])
+    const pts = trip.days
+      .flatMap(d => d.stops)
+      .filter(s => s.status !== 'rejected')
+      .map(s => ({ lat: s.lat, lng: s.lng }))
+    return corridorAnchors(pts, trip.startLocationCoords ?? null, scopeKm * 1000)
+  }, [trip, scopeKm])
+
+  const nearbyOpts: NearbyOpts = useMemo(() => ({
+    includeFuel: trip.transportMode === 'car' || trip.transportMode === 'motorcycle',
+    homeCenter: trip.startLocationCoords ?? null,
+  }), [trip.transportMode, trip.startLocationCoords])
 
   useEffect(() => {
     if (anchors.length === 0) return
     let cancelled = false
     setLoadingPois(true)
-    searchNearbyPoisMulti(anchors, 10000, 12)
+    searchNearbyPoisMulti(anchors, scopeKm * 1000, 12, nearbyOpts)
       .then(hits => { if (!cancelled) setPois(hits.slice(0, 10)) })
       .catch(() => { /* suggestions are best-effort */ })
       .finally(() => { if (!cancelled) setLoadingPois(false) })
     return () => { cancelled = true }
-  }, [anchors]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [anchors, nearbyOpts, scopeKm]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function addPoiToDay(hit: PlaceHit, dayIndex: number) {
     applyChange(draft => {
@@ -954,7 +964,7 @@ function MapTab({ trip, editable, applyChange }: {
         lng: hit.longitude,
         description: hit.description ?? '',
         notes: 'Added from nearby suggestions',
-        visitMinutes: hit.category === 'food' ? 45 : hit.category === 'hotel' ? 0 : 60,
+        visitMinutes: poiVisitMinutes(hit.category),
         openTime: '', closeTime: '',
         entryFeeInrPerPerson: 0,
         transportCostInrTotal: 0,
@@ -983,9 +993,25 @@ function MapTab({ trip, editable, applyChange }: {
           <h3 style={{ margin: 0 }}>💡 Nearby ideas</h3>
           <span className="small muted">{loadingPois ? 'searching…' : `${pois.length} found near your route`}</span>
         </div>
-        <p className="hint-text" style={{ margin: '4px 0 10px' }}>
-          Stoppage points around your route — attractions, restaurants, hotels, fuel pumps and more (live data from OpenStreetMap, Wikipedia & Mappls). Add one straight to a day.
+        <p className="hint-text" style={{ margin: '4px 0 6px' }}>
+          Things to see, eat and stay en-route and around your destination (live data from OpenStreetMap, Wikipedia & Mappls) — never around your starting point. Add one straight to a day.
         </p>
+        <div className="row-between" style={{ gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
+          <label className="small" style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 230 }}>
+            <span className="muted" style={{ whiteSpace: 'nowrap' }}>Detour scope</span>
+            <input
+              type="range"
+              min={0}
+              max={SCOPE_KM_STEPS.length - 1}
+              step={1}
+              value={scopeIdx}
+              onChange={e => changeScope(Number(e.target.value))}
+              style={{ flex: 1 }}
+              aria-label="How far from the route to search suggestions"
+            />
+            <b style={{ whiteSpace: 'nowrap', minWidth: 46, textAlign: 'right' }}>{scopeKm} km</b>
+          </label>
+        </div>
         {!loadingPois && pois.length === 0 && (
           <p className="muted small">No nearby suggestions found — add stops in the Timeline and ideas will appear here.</p>
         )}
@@ -1000,7 +1026,13 @@ function MapTab({ trip, editable, applyChange }: {
                 <div className="poi-info">
                   <div className="poi-name">{hit.name}</div>
                   {hit.description && <div className="poi-desc small muted">{hit.description}</div>}
-                  {hit.category && <div className="poi-cat small">{labelCatText(String(hit.category))}</div>}
+                  {hit.category && (
+                    <div className="poi-cat small">
+                      {labelCatText(String(hit.category))}
+                      {' · '}
+                      ~{Math.round(detourKm(hit, anchors))} km off route
+                    </div>
+                  )}
                 </div>
                 {editable && (
                   added

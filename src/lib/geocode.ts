@@ -176,15 +176,15 @@ export async function searchPlaces(q: string, opts?: { indiaOnly?: boolean }): P
 
 export { DEBOUNCE_MS }
 
-/** Nearby categories — a stoppage can be an attraction, a meal, a hotel or a pit stop. */
+/** Nearby categories — what a tourist plans into an itinerary: things to see & do, meals, stays. */
 const NEARBY_CATEGORIES = [
   { kw: 'tourist attraction', label: 'Attraction', cat: 'sightseeing' },
-  { kw: 'food', label: 'Food', cat: 'food' },
   { kw: 'restaurant', label: 'Restaurant', cat: 'food' },
   { kw: 'cafe', label: 'Cafe', cat: 'food' },
   { kw: 'hotel', label: 'Hotel', cat: 'hotel' },
+  { kw: 'park', label: 'Park', cat: 'nature' },
+  // fetched only for self-drive trips, capped at a couple of pit stops
   { kw: 'fuel', label: 'Petrol pump', cat: 'transport-hub' },
-  { kw: 'atm', label: 'ATM', cat: 'shopping' },
 ]
 
 // ============ Nearby stoppage points ============
@@ -192,7 +192,7 @@ const NEARBY_CATEGORIES = [
 // POIs but returns NO coordinates — pins used to be guessed by a global name
 // search, which often landed on a same-named place in a different state (the
 // "odd suggestions" bug). The engines below all pin real, nearby positions:
-//  1. OpenStreetMap via Overpass — restaurants, hotels, fuel, ATMs, attractions
+//  1. OpenStreetMap via Overpass — attractions, nature, temples, meals, stays
 //  2. Wikipedia geosearch — attractions, junk-filtered
 //  3. Mappls Nearby — India-rich listings, kept only when a same-named place
 //     is confirmed near the anchor (Photon geocoder, proximity-biased)
@@ -211,27 +211,65 @@ interface OverpassElement {
   tags?: Record<string, string>
 }
 
+/**
+ * Map an OSM POI's tags onto the app's real stop categories, from a tourist's
+ * point of view: things to see & do first, meals, stays. Utility points
+ * (fuel) are labelled distinctly; ATMs are not fetched at all — nobody plans
+ * an ATM into an itinerary.
+ */
 function classifyOsmTags(tags: Record<string, string>): { cat: string; label: string } {
   const a = tags.amenity
   const t = tags.tourism
+  const nat = tags.natural
+  const l = tags.leisure
+  const cap = (s: string) => s.split('_').map(w => w[0]?.toUpperCase() + w.slice(1)).join(' ')
   if (a === 'fuel') return { cat: 'transport-hub', label: 'Petrol pump' }
-  if (a === 'atm') return { cat: 'shopping', label: 'ATM' }
+  if (a === 'place_of_worship') {
+    const label = tags.religion === 'muslim' ? 'Mosque' : tags.religion === 'christian' ? 'Church' : 'Temple'
+    return { cat: 'temple', label }
+  }
+  if (nat === 'beach') return { cat: 'beach', label: 'Beach' }
+  if (nat === 'waterfall') return { cat: 'nature', label: 'Waterfall' }
+  if (nat) return { cat: 'nature', label: cap(nat) }
+  if (l === 'park') return { cat: 'nature', label: 'Park' }
+  if (l === 'garden') return { cat: 'nature', label: 'Garden' }
+  if (l === 'nature_reserve') return { cat: 'nature', label: 'Nature reserve' }
   if (a === 'restaurant' || a === 'fast_food' || a === 'food_court') return { cat: 'food', label: 'Restaurant' }
   if (a === 'cafe' || a === 'ice_cream') return { cat: 'food', label: 'Cafe' }
   if (t === 'museum') return { cat: 'museum', label: 'Museum' }
+  if (t === 'gallery') return { cat: 'museum', label: 'Art gallery' }
+  if (t === 'zoo') return { cat: 'sightseeing', label: 'Zoo' }
+  if (t === 'theme_park') return { cat: 'sightseeing', label: 'Theme park' }
+  if (t === 'aquarium') return { cat: 'sightseeing', label: 'Aquarium' }
+  if (t === 'viewpoint') return { cat: 'sightseeing', label: 'Viewpoint' }
   if (t === 'hotel' || t === 'guest_house' || t === 'hostel' || t === 'resort' || t === 'motel') return { cat: 'hotel', label: 'Hotel' }
   if (t) return { cat: 'sightseeing', label: 'Attraction' }
-  if (tags.historic) return { cat: 'sightseeing', label: 'Historic site' }
+  if (tags.historic) {
+    const h = tags.historic
+    const label = h === 'fort' || h === 'castle' ? 'Fort'
+      : h === 'monument' ? 'Monument'
+      : h === 'memorial' ? 'Memorial'
+      : h === 'ruins' ? 'Ruins'
+      : h === 'archaeological_site' || h === 'stupa' ? 'Historic site'
+      : 'Historic site'
+    return { cat: 'sightseeing', label }
+  }
   return { cat: 'sightseeing', label: 'Place' }
 }
 
+/**
+ * Tourist-worthy OSM selectors. Fuel is appended conditionally (self-drive
+ * pit stops only); ATMs/banks/post offices are deliberately absent — they are
+ * errands, not itinerary items.
+ */
 const OVERPASS_NEARBY_SELECTORS = [
+  'tourism~"^(attraction|viewpoint|zoo|theme_park|aquarium|museum|gallery)$"',
+  'historic~"^(monument|fort|castle|memorial|archaeological_site|ruins|stupa)$"',
+  'natural~"^(beach|waterfall|peak|cape|hot_spring|spring|geyser|cliff)$"',
+  'leisure~"^(park|garden|nature_reserve)$"',
+  'amenity=place_of_worship',
   'amenity~"^(restaurant|cafe|fast_food|food_court|ice_cream)$"',
   'tourism~"^(hotel|guest_house|hostel|resort|motel)$"',
-  'amenity=fuel',
-  'amenity=atm',
-  'tourism~"^(attraction|viewpoint|zoo|theme_park|aquarium|museum)$"',
-  'historic~"^(monument|fort|castle|memorial|archaeological_site)$"',
 ]
 
 async function fetchOverpass(query: string): Promise<OverpassElement[]> {
@@ -251,9 +289,10 @@ async function fetchOverpass(query: string): Promise<OverpassElement[]> {
   return []
 }
 
-async function searchNearbyOverpass(anchors: { lat: number; lng: number }[], radiusM: number, count: number): Promise<PlaceHit[]> {
-  const radius = Math.min(Math.max(radiusM, 2000), 20000)
-  const stmts = OVERPASS_NEARBY_SELECTORS.flatMap(sel =>
+async function searchNearbyOverpass(anchors: { lat: number; lng: number }[], radiusM: number, count: number, includeFuel = false): Promise<PlaceHit[]> {
+  const radius = Math.min(Math.max(radiusM, 2000), 120000)
+  const selectors = includeFuel ? [...OVERPASS_NEARBY_SELECTORS, 'amenity=fuel'] : OVERPASS_NEARBY_SELECTORS
+  const stmts = selectors.flatMap(sel =>
     anchors.map(a => `nwr(around:${radius},${a.lat},${a.lng})[${sel}];`)
   ).join('')
   const elements = await fetchOverpass(`[out:json][timeout:20];(${stmts});out center tags ${Math.max(60, count * 6)};`)
@@ -343,10 +382,11 @@ async function resolveMapplsHitNear(hit: PlaceHit, anchor: { lat: number; lng: n
   return null
 }
 
-async function searchNearbyMappls(anchor: { lat: number; lng: number }, radiusM: number, count: number): Promise<PlaceHit[]> {
+async function searchNearbyMappls(anchor: { lat: number; lng: number }, radiusM: number, count: number, includeFuel = false): Promise<PlaceHit[]> {
   if (!mapplsEnabled()) return []
+  const cats = NEARBY_CATEGORIES.filter(c => includeFuel || c.cat !== 'transport-hub')
   const results = await Promise.all(
-    NEARBY_CATEGORIES.map(async (c) => {
+    cats.map(async (c) => {
       try {
         const r = await fetch(
           `${MAPPLS_SEARCH}/nearby/json?keywords=${encodeURIComponent(c.kw)}` +
@@ -388,26 +428,114 @@ async function searchNearbyMappls(anchor: { lat: number; lng: number }, radiusM:
   )
   return resolved.filter((h): h is PlaceHit => h !== null)
 }
+// ============ Route-corridor search ============
+// Suggestions must read like a tourist's plan, not a POI directory:
+//  - search the WHOLE route (start → stops → destination), not just a few stops
+//  - never suggest anything around the trip's starting point (a "home zone" —
+//    sightseeing at home is meaningless; suggestions are en-route + destination)
+//  - rank by tourist value (things to see & do > meals > stays > pit stops),
+//    notability (Wikipedia article, strong OSM tags) and distance decay —
+//    not by raw proximity
+
+/** Nothing within this radius of the trip's start is ever suggested. */
+export const HOME_ZONE_KM = 15
+
+export interface NearbyOpts {
+  /** include petrol pumps as pit stops (self-drive trips only, capped) */
+  includeFuel?: boolean
+  /** the trip's starting point — hits inside HOME_ZONE_KM of it are dropped */
+  homeCenter?: { lat: number; lng: number } | null
+}
+
 /**
- * Nearby stoppage points around a route anchor — verified coordinates only.
- * Categories are interleaved so one dominant type (e.g. hotels) can't crowd
- * out the rest; within a category results are nearest-first.
+ * Sample anchors along the WHOLE route line (consecutive stop points) so the
+ * search corridor covers every part of the drive, spaced ~`radiusM` apart and
+ * capped at `maxAnchors` points. Samples inside the home zone around `start`
+ * are skipped — no suggestions around where the trip begins.
  */
-export async function searchNearbyPois(lat: number, lng: number, radiusM = 10000, count = 10): Promise<PlaceHit[]> {
-  return searchNearbyPoisMulti([{ lat, lng }], radiusM, count)
+export function corridorAnchors(
+  routePts: { lat: number; lng: number }[],
+  start: { lat: number; lng: number } | null | undefined,
+  radiusM: number,
+  maxAnchors = 12,
+): { lat: number; lng: number }[] {
+  const raw = routePts.filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng))
+  if (raw.length === 0) return []
+  // drop consecutive duplicates (< 500 m) so legs are real
+  const pts = raw.filter((p, i) => i === 0 || haversineKm(p.lat, p.lng, raw[i - 1].lat, raw[i - 1].lng) > 0.5)
+  const cum = [0]
+  for (let i = 1; i < pts.length; i++) {
+    cum.push(cum[i - 1] + haversineKm(pts[i - 1].lat, pts[i - 1].lng, pts[i].lat, pts[i].lng) * 1000)
+  }
+  const total = cum[cum.length - 1]
+  const homeZoneM = HOME_ZONE_KM * 1000
+  const radius = Math.min(Math.max(radiusM, 1000), 120000)
+  const n = Math.max(2, Math.min(maxAnchors, Math.ceil(total / radius) + 1))
+  const out: { lat: number; lng: number }[] = []
+  const add = (p: { lat: number; lng: number }): boolean => {
+    if (start && haversineKm(p.lat, p.lng, start.lat, start.lng) * 1000 < homeZoneM) return false
+    if (out.some(q => haversineKm(q.lat, q.lng, p.lat, p.lng) < 1)) return false
+    out.push(p)
+    return true
+  }
+  for (let i = 0; i < n; i++) {
+    const target = (total * i) / (n - 1)
+    let j = 1
+    while (j < cum.length - 1 && cum[j] < target) j++
+    const segLen = Math.max(1e-9, cum[j] - cum[j - 1])
+    const f = Math.min(1, Math.max(0, (target - cum[j - 1]) / segLen))
+    add({ lat: pts[j - 1].lat + (pts[j].lat - pts[j - 1].lat) * f, lng: pts[j - 1].lng + (pts[j].lng - pts[j - 1].lng) * f })
+  }
+  // the destination always gets coverage — unless it sits in the home zone
+  const last = pts[pts.length - 1]
+  if (!out.some(q => haversineKm(q.lat, q.lng, last.lat, last.lng) < 1)) add(last)
+  return out
+}
+
+/** How far a hit sits off the route corridor, in km. */
+export function detourKm(h: PlaceHit, anchors: { lat: number; lng: number }[]): number {
+  return distToNearest(h, anchors) / 1000
+}
+
+/**
+ * Tourist-value score. Category priority (see & do > meals > stays > pit
+ * stops), notability signals (Wikipedia thumb / rich description, strong OSM
+ * categories), and a distance decay across the scope — a far POI must be more
+ * notable to survive, but proximity is never the whole answer.
+ */
+const CATEGORY_PRIORITY: Record<string, number> = {
+  sightseeing: 0, nature: 0, beach: 1, temple: 1, museum: 1, adventure: 1,
+  food: 2, event: 2, travel: 2, rest: 3, hotel: 3, 'transport-hub': 4, shopping: 5,
+}
+
+function poiTouristScore(h: PlaceHit, anchors: { lat: number; lng: number }[], radiusM: number): number {
+  const cat = h.category ?? 'sightseeing'
+  let s = -(CATEGORY_PRIORITY[cat] ?? 2) * 8
+  if (h.thumb) s += 5 // Wikipedia imagery ⇒ notable place
+  if ((h.description ?? '').length > 40) s += 3
+  if (cat === 'sightseeing' || cat === 'nature' || cat === 'beach' || cat === 'temple' || cat === 'museum') s += 3
+  const frac = Math.min(1, distToNearest(h, anchors) / Math.max(1, radiusM))
+  s -= frac * 6
+  return s
+}
+
+/** Single-anchor convenience wrapper (empty-day chips). */
+export async function searchNearbyPois(lat: number, lng: number, radiusM = 10000, count = 10, opts: NearbyOpts = {}): Promise<PlaceHit[]> {
+  return searchNearbyPoisMulti([{ lat, lng }], radiusM, count, opts)
 }
 
 export async function searchNearbyPoisMulti(
   anchors: { lat: number; lng: number }[],
   radiusM = 10000,
   count = 10,
+  opts: NearbyOpts = {},
 ): Promise<PlaceHit[]> {
-  const capped = anchors.filter(a => Number.isFinite(a.lat) && Number.isFinite(a.lng)).slice(0, 3)
+  const capped = anchors.filter(a => Number.isFinite(a.lat) && Number.isFinite(a.lng)).slice(0, 12)
   if (capped.length === 0) return []
   const [osm, wiki, mappls] = await Promise.all([
-    searchNearbyOverpass(capped, radiusM, count).catch(() => [] as PlaceHit[]),
+    searchNearbyOverpass(capped, radiusM, count, opts.includeFuel).catch(() => [] as PlaceHit[]),
     searchNearbyWikipedia(capped, radiusM, Math.min(count, 6)).catch(() => [] as PlaceHit[]),
-    searchNearbyMappls(capped[0], radiusM, count).catch(() => [] as PlaceHit[]),
+    searchNearbyMappls(capped[0], radiusM, count, opts.includeFuel).catch(() => [] as PlaceHit[]),
   ])
   // merge in trust order (OSM verified → Wikipedia → Mappls), dedupe by name
   const seen = new Set<string>()
@@ -418,27 +546,31 @@ export async function searchNearbyPoisMulti(
     seen.add(key)
     merged.push(h)
   }
-  merged.sort((a, b) => distToNearest(a, capped) - distToNearest(b, capped))
-  // round-robin the categories so the list stays varied
-  const byCat = new Map<string, PlaceHit[]>()
-  for (const h of merged) {
-    const k = h.category ?? 'sightseeing'
-    if (!byCat.has(k)) byCat.set(k, [])
-    byCat.get(k)!.push(h)
-  }
-  const queues = [...byCat.values()]
+  // never suggest anything in the home zone around the trip's start
+  const home = opts.homeCenter
+  const homeFiltered = home
+    ? merged.filter(h => haversineKm(h.latitude, h.longitude, home.lat, home.lng) * 1000 >= HOME_ZONE_KM * 1000)
+    : merged
+  // rank by tourist value, not raw distance
+  homeFiltered.sort((a, b) => poiTouristScore(b, capped, radiusM) - poiTouristScore(a, capped, radiusM))
+  // greedy pick with a per-category cap so the list stays varied
+  const catCap = Math.max(2, Math.ceil(count / 3))
+  const fuelCap = opts.includeFuel ? 2 : 0
+  const used = new Map<string, number>()
   const out: PlaceHit[] = []
-  let progressed = true
-  while (out.length < count && progressed) {
-    progressed = false
-    for (const q of queues) {
-      const h = q.shift()
-      if (h) {
-        out.push(h)
-        progressed = true
-      }
-      if (out.length >= count) break
+  let fuelUsed = 0
+  for (const h of homeFiltered) {
+    if (out.length >= count) break
+    const k = h.category ?? 'sightseeing'
+    if (k === 'transport-hub') {
+      if (fuelUsed >= fuelCap) continue
+      fuelUsed++
+    } else {
+      const n = used.get(k) ?? 0
+      if (n >= catCap) continue
+      used.set(k, n + 1)
     }
+    out.push(h)
   }
   return out
 }

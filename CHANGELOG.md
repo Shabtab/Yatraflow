@@ -2,6 +2,17 @@
 
 All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions are pre-1.0 MVP milestones.
 
+## [Unreleased]
+
+### Changed
+- **Tourist-logical nearby suggestions** — the Map tab's "Nearby ideas" and the empty-day chips no longer behave like a POI directory:
+  - **Whole-route corridor search** — suggestions are sampled along the entire route line (start → stops → destination) instead of three stop anchors, so every stretch of the drive is covered, not just the first/last/max-dispersion stops.
+  - **Home-zone exclusion** — nothing within 15 km of the trip's own starting point is ever suggested (sightseeing at home is meaningless); ideas are strictly en-route and around the destination.
+  - **Detour-scope control** — a slider on the Nearby ideas card (10/20/30/50/80/100 km, default 20, remembered per browser) sets how far off-route suggestions may sit, and each card shows its "~N km off route" detour.
+  - **Worth-a-visit ranking** — results are scored by tourist value (things to see & do > meals > stays > pit stops), notability (Wikipedia imagery/description, strong OSM tags like `tourism=attraction`, `historic=fort`, `natural=waterfall`) and distance decay — replacing the old nearest-first sort, where a random café 200 m away beat a famous waterfall 8 km off-route.
+  - **Tourist categories** — OSM now also surfaces nature (beaches, waterfalls, peaks), parks & gardens and places of worship; **ATMs are no longer suggested at all**, and petrol pumps appear only as capped pit stops on self-drive (car/motorcycle) trips.
+  - Category-aware visit defaults when adding a suggestion (meals 45 min, museums/temples/nature 90, pit stops 20, hotels 0).
+
 ## [0.16.0] — 2026-08-29
 
 Fuel-accurate self-drive budgeting: your vehicle's own economy and pump price drive the transport numbers, and the drive home counts by default.
