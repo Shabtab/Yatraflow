@@ -15,10 +15,11 @@
 // free stack (providers/free.ts) — and the Phase-B quota guard
 // (providers/quota.ts) gates every request BEFORE it goes out.
 //
-// NOTE (first-build checklist): confirm the exact FieldMask string below in
-// the Google API Explorer with a real key — the Pro-tier classification of
-// regularOpeningHours/currentOpeningHours was verified from the docs but not
-// yet against a live billing account.
+// NOTE (verified live 2026-08-29): all three FieldMask strings below were
+// executed against the live Places API with a real key — autocomplete,
+// Place Details and Text Search Along-Route all return HTTP 200. One fix was
+// applied from that run: routingSummaries paths are legs-scoped
+// (`routingSummaries.legs.distanceMeters`). See scripts/verify-google-places.mjs.
 import { normWords, hasCoords, type PlaceHit } from './hits'
 import { quotaAllows, quotaCount, type QuotaSku } from './quota'
 
@@ -202,13 +203,21 @@ interface GooglePeriod {
 }
 
 interface RoutingSummary {
-  distanceMeters?: number
-  duration?: string
+  /**
+   * Search-Along-Route legs: [0] = route origin → place, [1] = place → route
+   * destination (live-verified 2026-08-29). The detour is the extra travel
+   * over the direct route: legs[0] + legs[1] − routeTotalKm.
+   */
+  legs?: { distanceMeters?: number }[]
 }
 
 // FieldMask: places.* paths for the search response + ROOT-level
 // routingSummaries (parallel array to places). Opening-hours fields are part
 // of the same mask — they bill as part of the same Text Search event.
+// NOTE: routingSummaries paths are legs-scoped — `routingSummaries.legs.
+// distanceMeters`, NOT `routingSummaries.distanceMeters` (live-verified
+// 2026-08-29: the latter shape 400s with INVALID_ARGUMENT). duration is
+// omitted — nothing consumes it.
 const NEARBY_FIELD_MASK = [
   'places.id',
   'places.displayName',
@@ -217,8 +226,7 @@ const NEARBY_FIELD_MASK = [
   'places.primaryTypeDisplayName',
   'places.regularOpeningHours',
   'places.currentOpeningHours',
-  'routingSummaries.distanceMeters',
-  'routingSummaries.duration',
+  'routingSummaries.legs.distanceMeters',
 ].join(',')
 
 const ALONG_ROUTE_QUERIES: { textQuery: string; cat: string }[] = [
@@ -244,6 +252,12 @@ function hoursFrom(p: GooglePlace): { openTime?: string; closeTime?: string } {
 export interface AlongRouteArgs {
   /** OSRM road geometry of the whole route, [lng, lat][] */
   routeCoords: [number, number][]
+  /**
+   * Total road distance of routeCoords in km (OSRM leg sum). Needed to
+   * derive the real detour from the routingSummaries legs; without it hits
+   * keep the straight-line-to-anchor detour estimate.
+   */
+  routeTotalKm?: number | null
   count: number
   includeFuel?: boolean
 }
@@ -282,6 +296,17 @@ export async function googleNearbyAlongRoute(args: AlongRouteArgs): Promise<Plac
       if (!key || seen.has(key)) continue
       seen.add(key)
       const summary = routingSummaries[i]
+      // legs[0] = route origin → place, legs[1] = place → route destination;
+      // the detour is the extra travel over the direct route. Clamp at 0 —
+      // a place can legitimately sit on the way (zero extra), and floating
+      // noise should never show negative detours.
+      const legs = summary?.legs ?? []
+      const l0 = legs[0]?.distanceMeters
+      const l1 = legs[1]?.distanceMeters
+      const detourM =
+        l0 != null && l1 != null && args.routeTotalKm != null
+          ? l0 + l1 - args.routeTotalKm * 1000
+          : null
       out.push({
         id: `google_${p.id}`,
         name: p.displayName.text,
@@ -293,8 +318,8 @@ export async function googleNearbyAlongRoute(args: AlongRouteArgs): Promise<Plac
         source: 'google',
         category: queries[qi].cat,
         ...hoursFrom(p),
-        ...(summary?.distanceMeters != null && Number.isFinite(summary.distanceMeters)
-          ? { offRouteKm: summary.distanceMeters / 1000 }
+        ...(detourM != null && Number.isFinite(detourM)
+          ? { offRouteKm: Math.max(0, detourM) / 1000 }
           : {}),
       })
     }

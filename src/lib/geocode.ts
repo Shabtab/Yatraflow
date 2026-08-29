@@ -103,7 +103,7 @@ export async function searchNearbyPoisMulti(
   const route = opts.routeCoords ?? []
   if (googleEnabled() && route.length >= 2) {
     try {
-      const hits = await googleNearbyAlongRoute({ routeCoords: route, count, includeFuel: opts.includeFuel })
+      const hits = await googleNearbyAlongRoute({ routeCoords: route, routeTotalKm: opts.routeTotalKm, count, includeFuel: opts.includeFuel })
       if (hits.length > 0) return rankAndCap(hits, capped, radiusM, count, opts)
       // round-trip routes (origin ≈ destination) can legitimately return
       // zero along-route results → fall through to the free corridor search

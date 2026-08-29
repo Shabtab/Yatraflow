@@ -64,6 +64,13 @@ export interface NearbyOpts {
    * Search-Along-Route request per category instead of per-anchor free calls.
    */
   routeCoords?: [number, number][] | null
+  /**
+   * Total road distance of routeCoords in km (OSRM leg sum). Google's
+   * routingSummaries report origin→place and place→destination legs, so the
+   * real detour of each hit is (leg0 + leg1) − routeTotalKm; when this is
+   * absent, Google hits fall back to the straight-line-to-anchor estimate.
+   */
+  routeTotalKm?: number | null
 }
 
 /**

@@ -180,12 +180,17 @@ describe('facade: searchNearbyPoisMulti (Search-Along-Route)', () => {
           { id: 'P1', displayName: { text: 'Echo Point' }, location: { latitude: 10.15, longitude: 77.15 }, primaryTypeDisplayName: { text: 'Tourist attraction' }, regularOpeningHours: { periods: [{ open: { hour: 9, minute: 0 }, close: { hour: 18, minute: 0 } }] } },
           { id: 'P2', displayName: { text: 'Home Cafe' }, location: { latitude: HOME.lat, longitude: HOME.lng }, primaryTypeDisplayName: { text: 'Cafe' }, currentOpeningHours: { periods: [{ open: { hour: 8, minute: 30 }, close: { hour: 22, minute: 0 } }] } },
         ],
-        routingSummaries: [{ distanceMeters: 4200 }, { distanceMeters: 300 }],
+        routingSummaries: [
+          // live-verified legs shape: [0] = route origin → place, [1] = place → route destination
+          { legs: [{ distanceMeters: 30000 }, { distanceMeters: 24200 }] },
+          { legs: [{ distanceMeters: 300 }, { distanceMeters: 300 }] },
+        ],
       }],
     ])
     vi.stubGlobal('fetch', f)
     const hits = await searchNearbyPoisMulti([{ lat: 10.0, lng: 77.0 }], 20000, 10, {
       routeCoords: [[77.0, 10.0], [77.4, 10.5]],
+      routeTotalKm: 50, // detour = (30 + 24.2) − 50 = 4.2 km
       homeCenter: HOME,
     })
     const searchCalls = f.mock.calls.filter(([u]) => String(u).includes('places:searchText'))

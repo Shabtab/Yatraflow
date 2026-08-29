@@ -941,16 +941,23 @@ function MapTab({ trip, editable, applyChange }: {
   // (the report's killer feature); the free stack ignores it. TripMap draws
   // the same legs independently, so this is one extra free OSRM call per route.
   const [routeGeometry, setRouteGeometry] = useState<[number, number][] | null>(null)
+  const [routeTotalKm, setRouteTotalKm] = useState<number | null>(null)
   useEffect(() => {
     let cancelled = false
     const pts = [
       ...(trip.startLocationCoords ? [trip.startLocationCoords] : []),
       ...trip.days.flatMap(d => d.stops).filter(s => s.status !== 'rejected').map(s => ({ lat: s.lat, lng: s.lng })),
     ]
-    if (pts.length < 2) { setRouteGeometry(null); return }
+    if (pts.length < 2) { setRouteGeometry(null); setRouteTotalKm(null); return }
     routePath(pts, getAssumptions(trip))
-      .then(legs => { if (!cancelled) setRouteGeometry(legs.flatMap(l => l.geometry)) })
-      .catch(() => { if (!cancelled) setRouteGeometry(null) })
+      .then(legs => {
+        if (cancelled) return
+        setRouteGeometry(legs.flatMap(l => l.geometry))
+        // Google's routingSummaries legs are origin→place and place→destination,
+        // so the real detour per hit is (leg0 + leg1) − this total.
+        setRouteTotalKm(legs.reduce((sum, l) => sum + l.distanceKm, 0))
+      })
+      .catch(() => { if (!cancelled) { setRouteGeometry(null); setRouteTotalKm(null) } })
     return () => { cancelled = true }
   }, [trip])
 
@@ -961,7 +968,8 @@ function MapTab({ trip, editable, applyChange }: {
     categoryBias: computeCategoryBias(trip),
     // Google mode: bias the search along the real road polyline; free mode ignores it
     routeCoords: routeGeometry,
-  }), [trip, routeGeometry])
+    routeTotalKm,
+  }), [trip, routeGeometry, routeTotalKm])
 
   useEffect(() => {
     if (anchors.length === 0) return
