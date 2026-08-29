@@ -6,7 +6,7 @@ import { useMemo, useState, useEffect, useRef } from 'react'
 import type { Trip } from '../data/types'
 import type { PlaceHit } from '../lib/geocode'
 import { routePath } from '../lib/routing'
-import { getAssumptions } from '../lib/engine'
+import { getAssumptions, isRoundTrip } from '../lib/engine'
 import type { MapRef } from './mapcn/map'
 import { CatIcon } from './icons'
 import {
@@ -132,6 +132,7 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby }: {
   onAddNearby?: (hit: PlaceHit) => void
 }) {
   const [dayFilter, setDayFilter] = useState<number | 'all'>('all')
+  const [showReturn, setShowReturn] = useState(true)
   const [theme, setTheme] = useState<'light' | 'dark'>(
     () => (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'),
   )
@@ -252,6 +253,22 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby }: {
     [allPoints],
   )
 
+  // Round-trip return drive: last plotted point → trip start (home). Only for
+  // self-drive round trips with a geocoded home, and only when home isn't
+  // already the last plotted anchor. Toggleable via the map filter chips.
+  const returnLeg = useMemo(() => {
+    if (!isRoundTrip(trip) || !trip.startLocationCoords) return null
+    const last = allPoints[allPoints.length - 1]
+    if (!last) return null
+    const h = trip.startLocationCoords
+    if (Math.abs(h.lat - last.lat) < 1e-4 && Math.abs(h.lng - last.lng) < 1e-4) return null
+    return { from: { lat: last.lat, lng: last.lng }, home: { lat: h.lat, lng: h.lng } }
+  }, [trip, allPoints])
+  const returnStraight = useMemo(
+    () => (returnLeg ? [[returnLeg.from.lng, returnLeg.from.lat], [returnLeg.home.lng, returnLeg.home.lat]] as [number, number][] : null),
+    [returnLeg],
+  )
+
   useEffect(() => {
     if (allPoints.length === 0) { setGeom({}); return }
     let cancelled = false
@@ -259,11 +276,21 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby }: {
       const pts: { lat: number; lng: number }[] = allPoints.map(p => ({ lat: p.lat, lng: p.lng }))
       if (dayFilter === 'all') {
         if (pts.length < 2) return
+        const next: Record<string, [number, number][]> = {}
         try {
           const legs = await routePath(pts, getAssumptions(trip))
           const coords = legs.flatMap(l => l.geometry)
-          if (!cancelled && coords.length > 1) setGeom({ all: dedupeConsecutive(coords) })
+          if (!cancelled && coords.length > 1) next.all = dedupeConsecutive(coords)
         } catch { /* straight-line fallback below */ }
+        // return drive home — real roads when OSRM answers, straight line otherwise
+        if (returnLeg) {
+          try {
+            const legs = await routePath([returnLeg.from, returnLeg.home], getAssumptions(trip))
+            const coords = legs.flatMap(l => l.geometry)
+            if (!cancelled && coords.length > 1) next.return = dedupeConsecutive(coords)
+          } catch { /* keep straight line */ }
+        }
+        if (!cancelled) setGeom(next)
       } else {
         const next: Record<string, [number, number][]> = {}
         for (const d of daysToPlot) {
@@ -279,7 +306,7 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby }: {
       }
     })()
     return () => { cancelled = true }
-  }, [chainKey, dayFilter]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [chainKey, dayFilter, returnLeg]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div>
@@ -292,6 +319,15 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby }: {
             </button>
           ))}
           <button className="map-day-chip map-recenter" onClick={fitToTrip} title="Recentre the map on the trip route">🎯 Recentre</button>
+          {returnLeg && (
+            <button
+              className={`map-day-chip ${showReturn ? 'on' : ''}`}
+              onClick={() => setShowReturn(s => !s)}
+              title="Show or hide the drive back home"
+            >
+             ↩ Return home
+            </button>
+          )}
         </div>
 
         {allPoints.length === 0 ? (
@@ -354,6 +390,33 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby }: {
                 )
               })
             )}
+            {/* Round-trip return drive home — dashed slate line so "coming back"
+                reads differently from the outbound day colours. Toggleable. */}
+            {dayFilter === 'all' && returnLeg && showReturn && (() => {
+              const rCoords = geom.return?.length ? geom.return : returnStraight!
+              const dark = theme === 'dark'
+              return (
+                <>
+                  <MapRoute
+                    id="yf-return-casing"
+                    coordinates={rCoords}
+                    color={dark ? '#0B2545' : '#FFFFFF'}
+                    width={8}
+                    opacity={dark ? 0.6 : 0.75}
+                    interactive={false}
+                  />
+                  <MapRoute
+                    id="yf-return-line"
+                    coordinates={rCoords}
+                    color={dark ? '#94A3B8' : '#64748B'}
+                    width={3.5}
+                    opacity={0.95}
+                    dashArray={[1.8, 1.6]}
+                  />
+                  <RouteArrows coordinates={rCoords} dark={dark} />
+                </>
+              )
+            })()}
             {(() => {
               let num = 0
               return allPoints.map((p, idx) => {
@@ -394,6 +457,15 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby }: {
                 )
               })
             })()}
+            {/* home anchor for round trips — the return drive ends here */}
+            {dayFilter === 'all' && returnLeg && (
+              <MapMarker longitude={returnLeg.home.lng} latitude={returnLeg.home.lat}>
+                <MarkerContent>
+                  <span className="yf-map-pin yf-map-flag" title={trip.startLocation}>🏠</span>
+                </MarkerContent>
+                <MarkerTooltip>Home — return drive ends here ({trip.startLocation})</MarkerTooltip>
+              </MapMarker>
+            )}
             {/* nearby idea markers — gold, dashed, with a quick-add button */}
             {nearbyPois.map(hit => (
               <MapMarker key={`nearby_${hit.id}`} longitude={hit.longitude} latitude={hit.latitude}>
@@ -420,7 +492,7 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby }: {
 
         <div className="map-legend">
           {dayFilter === 'all'
-            ? <>blue line = whole route · </> 
+            ? <>blue line = whole route{returnLeg ? ' · dashed = drive back home' : ''} · </> 
             : <>colours = day · </>}
           pin icon = stop type · number = timeline order · dashed pin = "maybe" · 🛫/🏁 = start & final destination · 💡 gold markers = nearby ideas{onAddNearby ? ' (+ to add)' : ''} · click a pin for details
         </div>
