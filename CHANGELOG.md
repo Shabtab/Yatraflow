@@ -4,6 +4,9 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Added
+- **Project start script** (`scripts/start.ps1`, also `npm start`) — one entry point for the daily dev rituals: verifies dependencies are installed (runs `npm install` on a fresh clone), then boots the Vite dev server with output teed to `dev.log`. Flags: `-Test` for the test suite, `-Build` for the production build. Documented in the README quick-start.
+
 ## [0.17.0] — 2026-08-29
 
 Google Places integration (data-only, Google-first with free-stack fallback) and a full mobile usability pass.

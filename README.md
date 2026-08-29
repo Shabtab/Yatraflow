@@ -64,10 +64,15 @@ cp .env.example .env.local   # fill in VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KE
 npm run dev        # → http://localhost:5173
 ```
 
+**One-command start (Windows):** `./scripts/start.ps1` installs dependencies if they're missing and boots the dev server in a single step — handy right after a clone or a pull. Flags: `-Test` runs the test suite, `-Build` runs the production build.
+
 Other scripts:
 
 | Command | What it does |
 |---|---|
+| `./scripts/start.ps1` (or `npm start`) | Install-if-needed + Vite dev server (output teed to `dev.log`) |
+| `./scripts/start.ps1 -Test` | Full test suite |
+| `./scripts/start.ps1 -Build` | TypeScript check then production bundle |
 | `npm run dev` | Vite dev server with hot reload |
 | `npm run build` | TypeScript check (`tsc -b`) then production bundle into `dist/` |
 | `npm run preview` | Serve the production build locally |
