@@ -58,6 +58,18 @@ Hard rules (each learned the hard way — do not relearn them):
   Vercel command: `tsc -b && vite build`), not `tsc` alone.
 - `npm warn allow-scripts` about esbuild is a **warning, not a failure**; it's
   allowlisted via `allowScripts` in package.json.
+- **Never fetch with a wildcard refspec** (`git fetch origin
+  '+refs/*:refs/remotes/origin/*'`) — it remaps `refs/heads/*` to
+  `refs/remotes/origin/heads/*` and **deletes** `origin/main`, `origin/test`
+  and PR-tracking refs, so `origin/main` becomes "not a valid object name".
+  Use plain `git fetch origin [--prune]`; to grab a PR, use
+  `gh pr checkout <n>` or `git fetch origin pull/<n>/head`.
+- **Never run dependent git checks as parallel shell calls** — during the PR
+  audit, a ref-rewriting fetch raced a `merge-base --is-ancestor` check and
+  returned contradictory results. Sequence dependent git commands in one call,
+  and confirm merges via `gh pr view <n> --json mergeCommit` +
+  `git merge-base --is-ancestor <mergeCommit> origin/main` (exit 0 = merged),
+  not by eyeballing short `git log` windows.
 
 ## 4. Code conventions & pitfalls
 
