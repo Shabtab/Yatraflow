@@ -95,7 +95,10 @@ export function getAssumptions(trip: Pick<Trip, 'transportMode' | 'fuelEconomyKm
   // litres burned = distance ÷ economy, so ₹/km = price-per-litre ÷ economy.
   // The price itself is the user's local pump price when stated, else the
   // indicative national average.
-  const economy = trip.fuelEconomyKmL
+  // Validate through parseFuelEconomyKmL so impossible values (e.g. 1 km/L or
+  // 500 km/L) are rejected and we fall back to the blended ₹/km table instead
+  // of producing a wildly wrong fuel cost / round-trip estimate.
+  const economy = parseFuelEconomyKmL(trip.fuelEconomyKmL)
   if (economy && economy > 0 && FUEL_ECONOMY_MODES.has(mode)) {
     const userPrice = parseFuelPricePerL(trip.fuelPricePerL)
     const price = userPrice ?? FUEL_PRICE_INR_PER_L

@@ -48,6 +48,11 @@ export function useDb(): DB {
 }
 
 function commit() {
+  // Reassign the top-level cache so useSyncExternalStore sees a NEW reference
+  // and re-renders subscribers. In-place mutations keep the same object
+  // reference, which makes React bail out — the UI would not refresh after
+  // add/edit/delete/reorder until some unrelated re-render happened.
+  cache = { ...cache }
   listeners.forEach(l => l())
 }
 
