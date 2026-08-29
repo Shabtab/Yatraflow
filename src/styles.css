@@ -727,6 +727,59 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
 }
 [data-theme='dark'] .yf-map-pin { border-color: rgba(255,255,255,.9); }
 
+/* Teardrop place-pins: day colour fills the drop, the category emoji is the
+   main glyph and the timeline number rides as a small corner badge. The drop
+   is a rounded square rotated -45°; everything inside is counter-rotated. */
+.yf-map-tear {
+  position: relative;
+  width: 34px; height: 34px;
+  background: var(--pin-color, var(--teal));
+  border: 2.5px solid #fff;
+  border-radius: 50% 50% 50% 4px;
+  transform: rotate(-45deg);
+  box-shadow:
+    0 3px 5px rgba(11,37,69,.30),
+    0 8px 16px rgba(11,37,69,.28),
+    inset 0 2px 3px rgba(255,255,255,.30);
+}
+.yf-map-tear:hover {
+  transform: rotate(-45deg) scale(1.2) translate(1px, -1px);
+}
+/* planted-on-the-ground contact shadow */
+.yf-map-tear::after {
+  content: ''; position: absolute;
+  left: 50%; bottom: -7px;
+  width: 14px; height: 5px;
+  transform: translateX(-50%) rotate(45deg);
+  border-radius: 50%;
+  background: rgba(11,37,69,.30);
+  filter: blur(1px);
+}
+.yf-pin-face {
+  display: flex; align-items: center; justify-content: center;
+  transform: rotate(45deg);
+  position: relative;
+  width: 100%; height: 100%;
+}
+.yf-pin-ico {
+  display: flex; align-items: center; justify-content: center;
+  translate: 0 -1px; /* optically centre above the tail */
+}
+.yf-pin-svg { width: 15px; height: 15px; display: block; filter: drop-shadow(0 1px 1px rgba(0,0,0,.25)); }
+.yf-pin-num {
+  position: absolute; top: -1px; right: -1px;
+  min-width: 13px; height: 13px; padding: 0 3px;
+  border-radius: 999px; background: #fff;
+  color: var(--text); font-size: 9px; font-weight: 800; font-style: normal;
+  font-family: inherit; line-height: 13px; text-align: center;
+  box-shadow: 0 1px 2px rgba(11,37,69,.35);
+}
+/* Unconfirmed ("maybe") stops: dashed outline + translucent so planners can
+   tell locked-in stops from ideas at a glance. */
+.yf-map-maybe {
+  border-style: dashed; opacity: .78;
+  background: color-mix(in srgb, var(--pin-color, var(--teal)) 72%, #fff);
+}
 /* Distinct start/end badges on the map (auto anchor stops) */
 .yf-map-flag {
   width: 32px; height: 32px; border-radius: 999px;
@@ -945,7 +998,7 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
   width: 52px; height: 52px; border-radius: 10px; object-fit: cover; flex-shrink: 0;
   border: 1px solid var(--line);
 }
-.poi-thumb-empty { display: flex; align-items: center; justify-content: center; font-size: 22px; background: var(--card); }
+.poi-thumb-empty { display: flex; align-items: center; justify-content: center; color: var(--text-3); background: var(--card); }
 .poi-info { flex: 1; min-width: 0; }
 .poi-name { font-weight: 700; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .poi-desc { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }

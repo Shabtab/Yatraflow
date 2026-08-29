@@ -2,6 +2,7 @@
 // Tabs: Overview / Timeline / Map / Suggestions / Budget / Decisions / Share
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import type { Trip, ItineraryStop, Expense, LatLngPoint } from '../data/types'
+import { CatIcon } from '../components/icons'
 import { TRANSPORT_MODES, TRAVEL_STYLES } from '../data/types'
 import {
   useDb, tripById, userById, currentUser, roleOf, canEdit,
@@ -1329,7 +1330,7 @@ function MapTab({ trip, editable, applyChange }: {
               <div key={hit.id} className="poi-suggest-card">
                 {hit.thumb
                   ? <img className="poi-thumb" src={smallThumb(hit.thumb)} alt="" loading="lazy" />
-                  : <div className="poi-thumb poi-thumb-empty">🏞️</div>}
+                  : <div className="poi-thumb poi-thumb-empty"><CatIcon category={hit.category} size={22} /></div>}
                 <div className="poi-info">
                   <div className="poi-name">{hit.name}</div>
                   {hit.description && <div className="poi-desc small muted">{hit.description}</div>}
