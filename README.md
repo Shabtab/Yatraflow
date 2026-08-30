@@ -143,7 +143,7 @@ src/
     └── Profile.tsx        # User profile & creator settings
 ```
 
-For how the pieces fit together — data model, engine math, store design — see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+For how the pieces fit together — data model, engine math, store design — see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). For the design-token system (color/state tokens) see [DESIGN_TOKENS.md](DESIGN_TOKENS.md).
 
 ---
 
@@ -166,18 +166,19 @@ YatraFlow's MVP deliberately does **not** include:
 - ❌ Hotel/flight **booking** — placeholder buttons only; they toast "no payments in this MVP"
 - ❌ **Payments** — no gateway integration anywhere
 - ❌ **Live traffic/prices** — all estimates are transparent formulas with stated assumptions
-- ❌ Real authentication backend — passwords use a demo-grade hash and storage is browser-local
+- ❌ Real authentication backend — auth is Supabase (real password hashing + server storage); demo-mode was removed in 0.12.0
 - ❌ INR is the default and only currency
 
 These are extension points, not oversights — see the architecture doc's "Swapping things out" section.
 
 ## 🗺 Roadmap ideas
 
-- Backend (Supabase/Firebase) behind the existing store interface for real multi-device sync
-- Google Maps layers beyond data-only Places (JS API rendering, Street View embeds) — Places autocomplete + nearby search shipped in 0.17.0 as an opt-in layer with free-stack fallback
-- Weather outlook per day (Open-Meteo forecast API pairs naturally with the geocoder already in use)
-- Regional-language UI (the profile model already stores language preferences)
+Shipped since these notes were first written: Supabase backend (0.12.0), Google Maps data-only Places layer (0.17.0), Open-Meteo weather outlook per day (0.7.0), regional-language preference field in the profile model.
+
+Still open:
+- Google Maps layers beyond data-only Places (JS API rendering, Street View embeds)
 - Split-expense settlement between group members
+- Real-time collaboration sync (live multi-user editing of a trip)
 
 ## 🤝 Contributing
 
