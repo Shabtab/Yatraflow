@@ -1141,9 +1141,7 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
   pointer-events: none;
 }
 .loc-attribution.on { color: var(--teal-deep); }
-.loc-attribution.off { color: var(--warn); font-weight: 600; }
-  opacity: .75;
-}
+.loc-attribution.off { color: var(--warn); font-weight: 600; opacity: .75; }
 
 /* ---- Mobile touch targets & polish ---- */
 @media (max-width: 720px) {
