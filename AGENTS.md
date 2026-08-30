@@ -142,3 +142,12 @@ Supabase (auth/data) · Vercel (auto-deploy from `main`) · Google Places
 Open-Meteo · Mappls. Live probe for Google: `scripts/verify-google-places.mjs`.
 When touching provider code, keep the facade contract: Google failure or
 absent key must silently fall back to the free stack.
+
+Applying `supabase/schema.sql` DDL: the Dashboard SQL editor can run inside a
+**read-only transaction** — DDL like `ALTER PUBLICATION` then fails with
+`cannot execute … in a read-only transaction` (typical causes: the disk-full
+read-only flip on the free tier, or a replica-routed session). Manage realtime
+publications via **Dashboard → Database → Publications** instead (the UI
+mutates through the management plane, not your SQL session), and verify live
+membership with a plain SELECT (always allowed):
+`select * from pg_publication_tables where pubname = 'supabase_realtime';`
