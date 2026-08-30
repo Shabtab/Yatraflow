@@ -14,4 +14,4 @@ tsconfig.tsbuildinfo
 supabase/.temp/
 dev_server_run.log
 dev_server_err.log
-docs/diagrams/
+docs/diagrams/*.html

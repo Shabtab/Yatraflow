@@ -5,7 +5,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 ## [Unreleased]
 
 ### Docs
-- **Documentation hygiene pass (PR #25)** — fixed stale claims that contradicted shipped code: removed the false "demo-grade hash / browser-local" auth line from README (auth is real Supabase since 0.12.0); removed non-existent `demo@yatraflow.in` login from CONTRIBUTING; moved already-shipped items (Supabase 0.12.0, Google Places 0.17.0, Open-Meteo weather, regional-language field) out of the README roadmap; de-duplicated contributor Setup to link DEPLOYMENT/README. Added `docs/README.md` index, consolidated the env-var reference into DEPLOYMENT.md, linked `DESIGN_TOKENS.md` from README/ARCHITECTURE, marked the Google-Maps report HISTORICAL, and gitignored the generated `docs/diagrams/` artifact. (By Hermes Agent — `aql-hermes`.)
+- **Documentation hygiene pass (PR #25)** — fixed stale claims that contradicted shipped code: removed the false "demo-grade hash / browser-local" auth line from README (auth is real Supabase since 0.12.0); removed non-existent `demo@yatraflow.in` login from CONTRIBUTING; moved already-shipped items (Supabase 0.12.0, Google Places 0.17.0, Open-Meteo weather, regional-language field) out of the README roadmap; de-duplicated contributor Setup to link DEPLOYMENT/README. Added `docs/README.md` index, consolidated the env-var reference into DEPLOYMENT.md, linked `DESIGN_TOKENS.md` from README/ARCHITECTURE, marked the Google-Maps report HISTORICAL, and untracked the generated `docs/diagrams/*.html` artifact (gitignored; the diagram's JSON source stays tracked so it remains regenerable). (By Hermes Agent — `aql-hermes`.)
 
 ## [0.19.0] — 2026-08-30
 
