@@ -13,7 +13,7 @@ npm install
 npm run dev
 ```
 
-Full environment setup (Supabase keys, env vars, deploy) is in [DEPLOYMENT.md](../docs/DEPLOYMENT.md) and the top-level [README](../README.md#getting-started).
+Full environment setup (Supabase keys, env vars, deploy) is in [DEPLOYMENT.md](docs/DEPLOYMENT.md) and the top-level [README](README.md#-getting-started).
 
 Sign up / log in with a real account (Supabase auth) — first sign-in seeds demo trip data automatically.
 

@@ -1,6 +1,6 @@
 # Engineering Report — Nearby Suggestions Rework & Google Maps Proposal
 
-> ⚠️ **HISTORICAL DESIGN RECORD** — written 2026-08-29. Sections 1–2 (fuel costing, tourist-logical nearby, bug-hunt) and the Google Maps Places layer it proposes (§3–6) **shipped in 0.17.0**. Read this as a decision log, not live guidance. For current architecture see [ARCHITECTURE.md](./ARCHITECTURE.md) and [DESIGN_TOKENS.md](./DESIGN_TOKENS.md).
+> ⚠️ **HISTORICAL DESIGN RECORD** — written 2026-08-29. Sections 1–2 (fuel costing, tourist-logical nearby, bug-hunt) and the Google Maps Places layer it proposes (§3–6) **shipped in 0.17.0**. Read this as a decision log, not live guidance. For current architecture see [ARCHITECTURE.md](./ARCHITECTURE.md) and [DESIGN_TOKENS.md](../DESIGN_TOKENS.md).
 
 **Date:** 2026-08-29 · **Status:** shipped (sections 1–2) + proposal for discussion (sections 3–6)
 **For:** discussion with contributors · **Author:** hasnaina955 (+ Cline sessions)
