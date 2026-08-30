@@ -534,6 +534,41 @@ function TimelineTab({ trip, editable, applyChange, legCorrections }: {
   )
 }
 
+// ============ Clamp long stop descriptions behind a "Show more" toggle (#3) ============
+// Renders text clamped to 2 lines; shows a toggle only when the text actually
+// overflows. Detection uses a hidden always-clamped twin, so the toggle stays
+// present even while the visible block is expanded (measurement never flips).
+function ClampedText({ children, className }: { children: React.ReactNode; className?: string }) {
+  const measurerRef = useRef<HTMLDivElement>(null)
+  const [expanded, setExpanded] = useState(false)
+  const [overflows, setOverflows] = useState(false)
+
+  useEffect(() => {
+    const el = measurerRef.current
+    if (!el) return
+    const check = () => setOverflows(el.scrollHeight > el.clientHeight + 1)
+    check()
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(check)
+      ro.observe(el)
+      return () => ro.disconnect()
+    }
+  }, [children])
+
+  return (
+    <div className="clamp-wrap">
+      {/* invisible always-clamped twin: keeps overflow detection independent of expansion */}
+      <div ref={measurerRef} aria-hidden="true" className="clamp-measure">{children}</div>
+      <div className={`${className ?? ''} ${expanded ? '' : 'clamp-lines'}`}>{children}</div>
+      {overflows && (
+        <button type="button" className="clamp-toggle" onClick={() => setExpanded(x => !x)} aria-expanded={expanded}>
+          {expanded ? 'Show less' : 'Show more'}
+        </button>
+      )}
+    </div>
+  )
+}
+
 function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithinDay, onMoveBetweenDays, onMoveStopIn, onRenameDay, onCopyDay, onAddQuickStop, onSetDayStart, onAddBreakStop, warnings, onStatus, legCorrections }: {
   day: Trip['days'][number]
   trip: Trip
@@ -808,8 +843,8 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
                     <span>🕰 dep {formatHM(s.departTime, timeFormat)} · arr {formatHM(s.arrivalTime, timeFormat)}{s.legDistanceKm ? ` · ${s.legDistanceKm.toFixed(0)} km` : ''}</span>
                   )}
                 </div>
-                {s.description && <div className="stop-desc">{s.description}</div>}
-                {s.notes && <div className="stop-desc muted">📝 {s.notes}</div>}
+                {s.description && <ClampedText className="stop-desc">{s.description}</ClampedText>}
+                {s.notes && <ClampedText className="stop-desc muted">📝 {s.notes}</ClampedText>}
                 {s.sourceUrl && <a href={s.sourceUrl} target="_blank" rel="noreferrer" className="small">Source ↗</a>}
               </div>
               {editable && (

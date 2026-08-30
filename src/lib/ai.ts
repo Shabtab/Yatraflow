@@ -64,7 +64,10 @@ export function answerQuestion(trip: Trip, question: string): AiReply {
   // Route to the most relevant handler
   if (q.includes('less tiring') || q.includes('tiring') || q.includes('relax')) return makeLessTiring(trip)
   if (q.includes('airport') || (q.includes('reach') && q.includes('pm'))) return airportFeasibility(trip)
-  if (q.includes('cheaper') || q.includes('alternative') && q.includes('cheap')) return cheaperAlternative(trip)
+  // Explicit grouping (issue #15): without parens JS binds && tighter than ||,
+  // making the rule fragile to read and easy to regress. Semantics are unchanged:
+  // "cheaper" alone, or both "alternative" AND "cheap", route to cheaperAlternative.
+  if (q.includes('cheaper') || (q.includes('alternative') && q.includes('cheap'))) return cheaperAlternative(trip)
   // Word-boundary match so the substring "rain" inside "train" does not
   // mis-route train questions to the rain plan.
   if (/\brain\b/.test(q)) return rainPlan(trip)

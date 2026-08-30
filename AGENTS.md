@@ -58,6 +58,10 @@ Hard rules (each learned the hard way — do not relearn them):
   `cmd` expands `%ERRORLEVEL%` **at parse time, before the commands run**, so it
   echoes a stale exit code and masks real failures. This caused repeated
   "local passes / Vercel fails" drift (Aug 2026, twice).
+- **PowerShell: a bare `echo;` (no argument) prompts for `InputObject` and hangs
+  captured output** — always pass an argument (`echo '---'` / `Write-Host "…"`).
+  The terminal looks stuck and shell-integration reports the command as still
+  running (cost debugging time fetching `gh issue view` bodies, Aug 2026).
 - **`tsc -b --clean` first** in any session before trusting a typecheck —
   incremental build caches pass code that clean builds reject.
 - If Vercel's deploy fails, reproduce locally with `npm run build` (the exact

@@ -20,4 +20,17 @@ describe('answerQuestion routing', () => {
     const reply = answerQuestion(trip, 'What if it rains on Day 2?')
     expect(reply.text).toMatch(/rain/i)
   })
+
+  it('does NOT route "alternative" (without "cheap"/"cheaper") to cheaperAlternative (regression for #15)', () => {
+    // JS operator precedence made `q.includes('cheaper') || q.includes('alternative') && q.includes('cheap')`
+    // hard to reason about. "suggest an alternative museum" must stay in the
+    // generic handler, never the budget-levers answer.
+    const reply = answerQuestion(trip, 'suggest an alternative museum')
+    expect(reply.text).not.toMatch(/Biggest levers/)
+  })
+
+  it('routes "find a cheaper alternative" to cheaperAlternative', () => {
+    const reply = answerQuestion(trip, 'find a cheaper alternative')
+    expect(reply.text).toMatch(/Current estimated total/)
+  })
 })
