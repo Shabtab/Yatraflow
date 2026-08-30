@@ -4,6 +4,8 @@ Thanks for wanting to help! This is a small, deliberately dependency-light MVP â
 
 ## Setup
 
+Clone, install, link your Supabase project, and start the dev server:
+
 ```bash
 git clone https://github.com/hasnaina955/Yatraflow.git
 cd Yatraflow
@@ -11,7 +13,9 @@ npm install
 npm run dev
 ```
 
-Log in with `demo@yatraflow.in` / `demo1234` (or the demo button) to get seeded data.
+Full environment setup (Supabase keys, env vars, deploy) is in [DEPLOYMENT.md](docs/DEPLOYMENT.md) and the top-level [README](README.md#-getting-started).
+
+Sign up / log in with a real account (Supabase auth) â€” first sign-in seeds demo trip data automatically.
 
 ## Before you open a PR
 

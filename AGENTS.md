@@ -118,6 +118,12 @@ Hard rules (each learned the hard way — do not relearn them):
   After any heading-level restructure (CHANGELOG releases especially),
   re-grep all headings and re-read the affected range before trusting it.
   (The 0.18.0 restructure briefly lost four Fixed bullets this way.)
+- **GitHub markdown links resolve from the file's own directory** — a
+  root-level file links `docs/X.md` (never `../docs/`), files in `docs/`
+  need `../` to reach root files like `DESIGN_TOKENS.md`, and emoji
+  headings anchor with a leading dash (`## 🚀 Getting started` →
+  `#-getting-started`). PR #25 shipped four broken links this way — check
+  every link target against the tree before merging doc changes.
 
 ## 5. External services
 
