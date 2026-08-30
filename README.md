@@ -143,7 +143,7 @@ src/
     └── Profile.tsx        # User profile & creator settings
 ```
 
-For how the pieces fit together — data model, engine math, store design — see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). For the design-token system (color/state tokens) see [DESIGN_TOKENS.md](DESIGN_TOKENS.md).
+For how the pieces fit together — data model, engine math, store design — see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). For the design-token system (color/state tokens) see [DESIGN_TOKENS.md](DESIGN_TOKENS.md). For the full docs index see [docs/README.md](docs/README.md).
 
 ---
 

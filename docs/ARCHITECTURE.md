@@ -201,7 +201,7 @@ Navigation is a plain `onNavigate(route)` callback that sets `location.hash`. Ha
 
 ## 10. Theming
 
-Single stylesheet [`src/styles.css`](../src/styles.css). The token system (primitive → semantic → component layers, plus the button/input state matrix) is documented in [DESIGN_TOKENS.md](../DESIGN_TOKENS.md). Dark mode flips CSS custom properties via `data-theme="dark"` on `<html>`; a toggle persists the choice and map basemaps follow via the observer described above. Mobile-first breakpoints at 720 px enforce ≥44 px touch targets and 16 px inputs (prevents iOS focus zoom).
+Single stylesheet [`src/styles.css`](../src/styles.css). The token system (primitive → semantic → component layers, plus the button/input state matrix) is documented in [DESIGN_TOKENS.md](DESIGN_TOKENS.md). A generated architecture diagram lives at [`diagrams/yatraflow-architecture.html`](diagrams/yatraflow-architecture.html) (regenerate, don't hand-edit). Dark mode flips CSS custom properties via `data-theme="dark"` on `<html>`; a toggle persists the choice and map basemaps follow via the observer described above. Mobile-first breakpoints at 720 px enforce ≥44 px touch targets and 16 px inputs (prevents iOS focus zoom).
 
 ## 11. Swapping things out
 

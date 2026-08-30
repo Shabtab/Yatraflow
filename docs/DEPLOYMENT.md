@@ -42,6 +42,19 @@ For GitHub Pages specifically, the Vite config already uses relative asset paths
 - Top-level table ids are UUIDs; the client generates them (`crypto.randomUUID`). JSONB-internal ids (stops/days/expenses) may be any string.
 - Map tiles load from CARTO CDNs; geocoding calls go to `geocoding-api.open-meteo.com`. Both are public/free with no keys; behind a strict CSP you'd need to allow those origins plus the unpkg worker script used by maplibre-gl.
 
+## Environment variables
+
+All client config is read from `VITE_`-prefixed variables (see `.env.example`). Set these at build time in Vercel (Project → Settings → Environment Variables) for **Preview** and **Production**, or in `.env.local` for local dev.
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `VITE_SUPABASE_URL` | ✅ | Your Supabase project URL. |
+| `VITE_SUPABASE_ANON_KEY` | ✅ | Supabase **anon** key (public by design). Never put the `service_role` key in a `VITE_` var. |
+| `VITE_MAPPLS_KEY` | optional | Mappls REST key — powers India-best place autocomplete when set; falls back to the free stack when absent. |
+| `VITE_GOOGLE_MAPS_API_KEY` | optional | Google Places key — opt-in Google autocomplete/nearby/opening-hours; quota-guarded, always falls back to the free stack. |
+
+The Google key is **optional** and the app fully works without it (free stack only). See the provider facade in `src/lib/geocode.ts`.
+
 ## Release checklist
 
 1. `npx tsc --noEmit` — clean
