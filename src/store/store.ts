@@ -16,6 +16,7 @@ import { seedData, uid } from '../data/seed'
 import type { LatLngPoint } from '../data/types'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { toast } from '../components/ui'
+import { isMissingColumnError, rowToTrip, tripToRow, type OptionalColumnsProbe, type TripRow } from '../lib/tripRow'
 
 // In-memory cache — the synchronous snapshot the UI reads. No localStorage.
 interface DB {
@@ -61,59 +62,7 @@ function patch(next: Partial<DB>) {
 }
 
 // ---------------- Supabase row <-> domain mapping ----------------
-
-interface TripRow {
-  id: string; owner_id: string; name: string; start_location: string;
-  start_location_coords: LatLngPoint | null; destinations: string[];
-  destination_coords: (LatLngPoint | null)[] | null;
-  start_date: string; end_date: string; travellers: number; transport_mode: string;
-  /** present only after the fuel migrations (see supabase/schema.sql) */
-  fuel_economy_km_per_l?: number | null;
-  fuel_price_per_l?: number | null;
-  /** absent/null = default (round trip on for self-drive) */
-  round_trip?: boolean | null;
-  budget_per_person_inr: number; travel_style: string; fixed_commitments: FixedCommitment[];
-  days: ItineraryDay[]; expenses: Expense[]; cover_emoji: string; visibility: 'private' | 'public';
-  created_at: number; updated_at: number;
-}
-
-function rowToTrip(row: TripRow, members: TripMember[]): Trip {
-  return {
-    id: row.id, name: row.name, startLocation: row.start_location, startLocationCoords: row.start_location_coords ?? undefined,
-    destinations: row.destinations ?? [],
-    destinationCoords: row.destination_coords ?? undefined,
-    startDate: row.start_date, endDate: row.end_date, travellers: row.travellers,
-    transportMode: row.transport_mode as Trip['transportMode'], budgetPerPersonInr: row.budget_per_person_inr,
-    fuelEconomyKmL: row.fuel_economy_km_per_l ?? undefined,
-    fuelPricePerL: row.fuel_price_per_l ?? undefined,
-    roundTrip: row.round_trip ?? undefined,
-    travelStyle: row.travel_style as Trip['travelStyle'], fixedCommitments: row.fixed_commitments ?? [],
-    days: row.days ?? [], expenses: row.expenses ?? [], coverEmoji: row.cover_emoji, visibility: row.visibility,
-    createdAt: row.created_at, updatedAt: row.updated_at, members,
-  }
-}
-
-/**
- * Map a trip to its Postgres row. `cols` says which optional columns the
- * database actually has (see tripsHaveOptionalColumns) — writing a column the
- * database doesn't know yet would fail the whole insert/update.
- */
-function tripToRow(trip: Trip, ownerId: string, cols?: { economy: boolean; price: boolean; roundTrip: boolean }): Omit<TripRow, 'created_at' | 'updated_at'> {
-  const row: Omit<TripRow, 'created_at' | 'updated_at'> = {
-    id: trip.id, owner_id: ownerId, name: trip.name, start_location: trip.startLocation,
-    start_location_coords: trip.startLocationCoords ?? null,
-    destinations: trip.destinations,
-    destination_coords: trip.destinationCoords ?? null,
-    start_date: trip.startDate, end_date: trip.endDate,
-    travellers: trip.travellers, transport_mode: trip.transportMode, budget_per_person_inr: trip.budgetPerPersonInr,
-    travel_style: trip.travelStyle, fixed_commitments: trip.fixedCommitments, days: trip.days,
-    expenses: trip.expenses, cover_emoji: trip.coverEmoji, visibility: trip.visibility,
-  }
-  if (cols?.economy) row.fuel_economy_km_per_l = trip.fuelEconomyKmL ?? null
-  if (cols?.price) row.fuel_price_per_l = trip.fuelPricePerL ?? null
-  if (cols?.roundTrip) row.round_trip = trip.roundTrip ?? null
-  return row
-}
+// rowToTrip / tripToRow live in src/lib/tripRow.ts (pure, unit-tested).
 
 interface ProfileRow {
   id: string; email: string; name: string; avatar_url?: string; home_city?: string;
@@ -401,24 +350,41 @@ function autoAnchor(coords: LatLngPoint, name: string): ItineraryStop {
 // ---------------- Optional-column capability probe ----------------
 // The optional trip columns ship with supabase/schema.sql, but databases
 // created before them (e.g. a shared demo project) reject writes that mention
-// an unknown column. Probe once per session with harmless reads — never
-// assume. The promise is cached so concurrent callers share one probe.
-let optionalColumnsProbe: Promise<{ economy: boolean; price: boolean; roundTrip: boolean }> | null = null
+// an unknown column. Probe lazily with harmless reads. Only a DEFINITIVE
+// "column missing" result (PGRST204/42703) is cached — a transient network or
+// auth error must not pin the columns to false for the whole session (#17), or
+// fuel economy / pump price / one-way settings silently stop persisting.
+let optionalColumnsProbe: Promise<OptionalColumnsProbe> | null = null
 
-function tripsHaveOptionalColumns(): Promise<{ economy: boolean; price: boolean; roundTrip: boolean }> {
+function tripsHaveOptionalColumns(): Promise<OptionalColumnsProbe> {
   if (!isSupabaseConfigured) return Promise.resolve({ economy: false, price: false, roundTrip: false })
-  if (!optionalColumnsProbe) {
-    optionalColumnsProbe = (async () => {
-      const economy = !(await supabase.from('trips').select('fuel_economy_km_per_l').limit(1)).error
-      const price = !(await supabase.from('trips').select('fuel_price_per_l').limit(1)).error
-      const roundTrip = !(await supabase.from('trips').select('round_trip').limit(1)).error
-      if (!economy || !price || !roundTrip) {
-        console.warn('[yatraflow] trips optional columns missing — run supabase/schema.sql; fuel/round-trip inputs stay session-only until then.')
-      }
-      return { economy, price, roundTrip }
-    })()
-  }
+  if (!optionalColumnsProbe) optionalColumnsProbe = probeOptionalColumns()
   return optionalColumnsProbe
+}
+
+async function probeOptionalColumns(): Promise<OptionalColumnsProbe> {
+  const [economy, price, roundTrip] = await Promise.all([
+    probeOptionalColumn('fuel_economy_km_per_l'),
+    probeOptionalColumn('fuel_price_per_l'),
+    probeOptionalColumn('round_trip'),
+  ])
+  if (!economy || !price || !roundTrip) {
+    console.warn('[yatraflow] trips optional columns missing — run supabase/schema.sql; fuel/round-trip inputs stay session-only until then.')
+  }
+  return { economy, price, roundTrip }
+}
+
+/** Probe one optional column. True = present (or transient error, treated optimistically). */
+async function probeOptionalColumn(column: string): Promise<boolean> {
+  const { error } = await supabase.from('trips').select(column).limit(1)
+  if (!error) return true
+  if (isMissingColumnError(error)) return false
+  // Transient error (network / auth / RLS hiccup): never cache a false negative.
+  // Assume the column exists so the next write attempts it — a genuinely missing
+  // column then fails loudly via the save toast instead of silently dropping the
+  // settings — and clear the cached probe so the next call re-checks.
+  optionalColumnsProbe = null
+  return true
 }
 
 async function persistTrip(trip: Trip, ownerId: ID) {

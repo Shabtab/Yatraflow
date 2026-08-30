@@ -41,6 +41,12 @@ Key locations:
    releases also bump `package.json` + lockfile version and update README.
 3. Fixes and features get changelog entries with enough context to understand
    them six months later.
+4. **Another agent may commit into this same working copy** — Hermes has
+   dropped doc commits directly onto local `test` (an uncorrected duplicate
+   of its own PR branch). Before trusting or pushing a local branch, run
+   `git status -sb` and `git log origin/<branch>..<branch>`; reconcile
+   foreign unpushed commits (reset/supersede **with user approval**) rather
+   than shipping them.
 
 ## 3. Verification before every push
 
@@ -52,6 +58,10 @@ Hard rules (each learned the hard way — do not relearn them):
   `cmd` expands `%ERRORLEVEL%` **at parse time, before the commands run**, so it
   echoes a stale exit code and masks real failures. This caused repeated
   "local passes / Vercel fails" drift (Aug 2026, twice).
+- **PowerShell: a bare `echo;` (no argument) prompts for `InputObject` and hangs
+  captured output** — always pass an argument (`echo '---'` / `Write-Host "…"`).
+  The terminal looks stuck and shell-integration reports the command as still
+  running (cost debugging time fetching `gh issue view` bodies, Aug 2026).
 - **`tsc -b --clean` first** in any session before trusting a typecheck —
   incremental build caches pass code that clean builds reject.
 - If Vercel's deploy fails, reproduce locally with `npm run build` (the exact
