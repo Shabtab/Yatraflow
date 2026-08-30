@@ -7,6 +7,9 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 ### Changed
 - **AGENTS.md: new pitfall rule — section-restructure edits can silently swallow bullets** — an editor replacement whose `old_text` spans a heading, its bullets and the next heading, replaced by just the next heading, deletes the **bullets**, not only the heading; after any heading-level restructure (CHANGELOG releases especially), re-grep all headings and re-read the affected range before trusting it. (The 0.18.0 release-notes restructure briefly lost four Fixed bullets this way — caught and restored in the same session.)
 
+### Fixed
+- **#14 (latent on main): dangling `opacity: .75;` + stray `}` outside the `.loc-attribution.off` rule** in styles.css — shipped with the 0.18.0 merge. vite 5.4 only logged a minify *warning* while silently dropping the declaration; any vite upgrade hard-fails `vite build` on it (exactly what happened on the test branch — issue #14). Now merged into the rule as one well-formed declaration.
+
 ## [0.18.0] — 2026-08-30
 
 ### Added
