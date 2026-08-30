@@ -15,7 +15,7 @@ Prune entries that stop being true.
 
 ## 1. What this project is
 
-YatraFlow — collaborative India trip-planning app. React 19 + Vite +
+YatraFlow — collaborative India trip-planning app. React 18 + Vite 8 +
 TypeScript, Supabase (auth + data), MapLibre GL maps, hash-based routing,
 deployed on Vercel from `main`. No bookings/payments — planning only.
 
@@ -77,10 +77,10 @@ Hard rules (each learned the hard way — do not relearn them):
   hard error. Treat ANY minify warning in build output as a latent build
   blocker and fix it in the same pass. Related: junk dependencies can sneak
   into package.json from accidental installs (the `"24": "^0.0.0"` of
-  issue #19) — review dependency diffs before committing. And since vite 8
-  (test branch), `.npmrc` pins `legacy-peer-deps=true` because
-  `@vitejs/plugin-react` 4.x predates vite 8 — bump plugin-react to v6 to
-  drop the pin.
+  issue #19) — review dependency diffs before committing. Since the vite 8
+  upgrade, `@vitejs/plugin-react` must be v6+ (native vite 8 peers);
+  plugin-react 4.x triggers ERESOLVE — the temporary `.npmrc`
+  `legacy-peer-deps` pin was removed once v6 landed (0.19.0).
 
 ## 4. Code conventions & pitfalls
 

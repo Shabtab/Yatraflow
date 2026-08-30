@@ -2,12 +2,13 @@
 
 All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions are pre-1.0 MVP milestones.
 
-## [Unreleased]
+## [0.19.0] — 2026-08-30
 
 ### Changed
 - **AGENTS.md: new pitfall rule — section-restructure edits can silently swallow bullets** — an editor replacement whose `old_text` spans a heading, its bullets and the next heading, replaced by just the next heading, deletes the **bullets**, not only the heading; after any heading-level restructure (CHANGELOG releases especially), re-grep all headings and re-read the affected range before trusting it. (The 0.18.0 release-notes restructure briefly lost four Fixed bullets this way — caught and restored in the same session.)
 - **Design system: 3-layer design tokens** — primitive → semantic → component layering with hover/active/foreground/focus-ring semantic tokens for light+dark; buttons and focus-visible wired to them; `--text-3` darkened toward WCAG AA. Legacy flat token names kept as aliases so existing references keep working; new `DESIGN_TOKENS.md` documents the button/input state matrix. No behavior change. (Part of #24, implemented by Hermes Agent.)
-- **Toolchain: vite `^5.4.11` → `^8.2.2`** — rolldown-based engine, markedly faster production builds. Note: vite 8's lightningcss minifier promotes CSS syntax warnings to hard build errors, which is what surfaced #14. Requires `legacy-peer-deps` (now pinned in `.npmrc`) because `@vitejs/plugin-react` 4.x's peer range predates vite 8 — bump it to v6 for native vite 8 support as the follow-up.
+- **Toolchain: vite `^5.4.11` → `^8.2.2`** — rolldown-based engine, markedly faster production builds. Note: vite 8's lightningcss minifier promotes CSS syntax warnings to hard build errors, which is what surfaced #14. Initially required a `legacy-peer-deps` pin because `@vitejs/plugin-react` 4.x's peer range predates vite 8; resolved later in this release by bumping plugin-react to v6 (pin removed).
+- **Toolchain: `@vitejs/plugin-react` `4.7.0` → `^6.0`** — v6 is oxc-based (babel transform dropped: 44 packages lighter, builds ~20% faster) with native vite 8 peer support, so the temporary `.npmrc` `legacy-peer-deps` pin is gone. Side effect: vite's esbuild-option deprecation warnings (`vite:react-babel` / `optimizeDeps.rollupOptions`) no longer appear in test/dev/build output.
 
 ### Fixed
 - **#14 — `vite build` crashed on styles.css (deploy blocker on the test branch)**: stray `opacity: .75;` + extra `}` sat outside the `.loc-attribution.off` rule (brace balance off by 1). Invisible to tsc and the 128 tests — only the full vite build failed. Rule restored to a single well-formed declaration. Found and fixed by Hermes Agent (`cca6fdd`).

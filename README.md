@@ -91,7 +91,7 @@ You'll need a free [Supabase](https://supabase.com) project for accounts and dat
 
 | Layer | Choice | Why |
 |---|---|---|
-| Build | [Vite 5](https://vitejs.dev) | Instant dev server, zero-config prod builds |
+| Build | [Vite 8](https://vitejs.dev) | Instant dev server, zero-config prod builds |
 | UI | React 18 + TypeScript (strict) | No router lib, no UI kit — hash routing + hand-rolled components keep the MVP dependency-light |
 | State | `useSyncExternalStore` over a module-level store | Tiny reactive cache hydrated from Supabase; every mutation writes through to Postgres (optimistic UI, fire-and-forget persistence) |
 | Maps | [mapcn](https://github.com/AnmolSaini16/mapcn) (MapLibre GL) vendored into `src/components/mapcn/` | shadcn-style registry component; CARTO basemaps switch light/dark automatically |
