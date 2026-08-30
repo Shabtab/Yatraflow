@@ -1,23 +1,78 @@
 /* ============ YatraFlow Design System ============ */
+/* Token architecture (3 layers, per ui-ux-pro-max-skill design-system ref):
+ *   1. PRIMITIVES  — raw palette values (brand + neutral ramp)
+ *   2. SEMANTICS   — purpose aliases (--color-*) mapped from primitives; carry
+ *                    hover/active/foreground so interactive states stay consistent
+ *   3. COMPONENTS  — consume semantics only (see DESIGN_TOKENS.md state matrix)
+ * Existing flat names (--teal, --saffron, …) are KEPT as legacy aliases so the
+ * ~200 existing references keep working; new code should use --color-*.
+ */
 :root {
-  --bg: #FAF7F2;
-  --bg-soft: #F3EEE5;
+  /* ---- 1. PRIMITIVES: brand ---- */
+  --teal-500: #149A90;
+  --teal-600: #0E7A72;
+  --teal-700: #0B6B63;
+  --saffron-500: #F59E2D;
+  --saffron-600: #E0860F;
+  --danger-500: #C93B3B;
+  --danger-600: #A82E2E;
+  --ok-500: #2E8B57;
+  --warn-600: #B47207;
+  /* ---- 1. PRIMITIVES: neutral ramp (cool slate, for shadows/disabled) ---- */
+  --gray-50: #FAF7F2;
+  --gray-100: #F3EEE5;
+  --gray-200: #E4DCCC;
+  --gray-400: #8291A6;
+  --gray-500: #647489;
+  --gray-700: #45566E;
+  --gray-900: #0B2545;
+
+  /* ---- 2. SEMANTICS (light) ---- */
+  --color-background: var(--gray-50);
+  --color-foreground: var(--gray-900);
+  --color-card: #FFFFFF;
+  --color-card-foreground: var(--gray-900);
+  --color-popover: #FFFFFF;
+  --color-popover-foreground: var(--gray-900);
+  --color-muted: var(--gray-100);
+  --color-muted-foreground: var(--gray-500);
+  --color-border: var(--gray-200);
+  --color-primary: var(--teal-500);
+  --color-primary-hover: var(--teal-600);
+  --color-primary-active: var(--teal-700);
+  --color-primary-foreground: #FFFFFF;
+  --color-accent: var(--saffron-500);
+  --color-accent-hover: var(--saffron-600);
+  --color-accent-foreground: #3A2506;
+  --color-destructive: var(--danger-500);
+  --color-destructive-hover: var(--danger-600);
+  --color-destructive-foreground: #FFFFFF;
+  --color-destructive-soft: #F9E7E7;
+  --color-success: var(--ok-500);
+  --color-success-foreground: #FFFFFF;
+  --color-warning: var(--warn-600);
+  --color-info-soft: #E8EEF6;
+  --ring: 0 0 0 3px color-mix(in srgb, var(--teal-500) 35%, transparent);
+
+  /* ---- 3. LEGACY flat aliases (do not remove; new code uses --color-*) ---- */
+  --bg: var(--gray-50);
+  --bg-soft: var(--gray-100);
   --card: #FFFFFF;
   --card-soft: #FDFBF7;
-  --text: #0B2545;
-  --text-2: #45566E;
-  --text-3: #8291A6;
-  --line: #E4DCCC;
-  --teal: #149A90;
-  --teal-deep: #0E7A72;
+  --text: var(--gray-900);
+  --text-2: var(--gray-700);
+  --text-3: var(--gray-500);
+  --line: var(--gray-200);
+  --teal: var(--teal-500);
+  --teal-deep: var(--teal-600);
   --teal-soft: #E0F2F0;
-  --saffron: #F59E2D;
+  --saffron: var(--saffron-500);
   --saffron-soft: #FCF0DC;
-  --danger: #C93B3B;
+  --danger: var(--danger-500);
   --danger-soft: #F9E7E7;
-  --ok: #2E8B57;
+  --ok: var(--ok-500);
   --ok-soft: #E3F2EA;
-  --warn: #B47207;
+  --warn: var(--warn-600);
   --warn-soft: #FBF1DD;
   --info-soft: #E8EEF6;
   --shadow: 0 1px 2px rgba(11,37,69,.05), 0 8px 28px rgba(11,37,69,.08);
@@ -30,24 +85,70 @@
 }
 
 [data-theme='dark'] {
-  --bg: #0C1420;
-  --bg-soft: #101B2B;
+  /* ---- 1. PRIMITIVES: brand (dark) ---- */
+  --teal-500: #2BB8AC;
+  --teal-600: #35C9BC;
+  --teal-700: #1E9D92;
+  --saffron-500: #F5A94A;
+  --saffron-600: #E0860F;
+  --danger-500: #E06C6C;
+  --danger-600: #C95050;
+  --ok-500: #52BE80;
+  --warn-600: #D99A2B;
+  --gray-50: #0C1420;
+  --gray-100: #101B2B;
+  --gray-200: #27395A;
+  --gray-400: #74879E;
+  --gray-500: #8FA0B5;
+  --gray-700: #ADBCCF;
+  --gray-900: #ECF1F8;
+
+  /* ---- 2. SEMANTICS (dark) ---- */
+  --color-background: var(--gray-50);
+  --color-foreground: var(--gray-900);
+  --color-card: #16233A;
+  --color-card-foreground: var(--gray-900);
+  --color-popover: #16233A;
+  --color-popover-foreground: var(--gray-900);
+  --color-muted: var(--gray-100);
+  --color-muted-foreground: var(--gray-500);
+  --color-border: var(--gray-200);
+  --color-primary: var(--teal-500);
+  --color-primary-hover: var(--teal-600);
+  --color-primary-active: var(--teal-700);
+  --color-primary-foreground: #06251F;
+  --color-accent: var(--saffron-500);
+  --color-accent-hover: var(--saffron-600);
+  --color-accent-foreground: #3A2506;
+  --color-destructive: var(--danger-500);
+  --color-destructive-hover: var(--danger-600);
+  --color-destructive-foreground: #2A0F0F;
+  --color-destructive-soft: #3A2020;
+  --color-success: var(--ok-500);
+  --color-success-foreground: #06251F;
+  --color-warning: var(--warn-600);
+  --color-info-soft: #1B2B45;
+  --ring: 0 0 0 3px color-mix(in srgb, var(--teal-500) 40%, transparent);
+
+  /* ---- 3. LEGACY flat aliases (dark) ---- */
+  --bg: var(--gray-50);
+  --bg-soft: var(--gray-100);
   --card: #16233A;
   --card-soft: #1A2A44;
-  --text: #ECF1F8;
-  --text-2: #ADBCCF;
-  --text-3: #74879E;
-  --line: #27395A;
-  --teal: #2BB8AC;
-  --teal-deep: #35C9BC;
+  --text: var(--gray-900);
+  --text-2: var(--gray-700);
+  --text-3: var(--gray-500);
+  --line: var(--gray-200);
+  --teal: var(--teal-500);
+  --teal-deep: var(--teal-600);
   --teal-soft: #12332F;
-  --saffron: #F5A94A;
+  --saffron: var(--saffron-500);
   --saffron-soft: #3A2C15;
-  --danger: #E06C6C;
+  --danger: var(--danger-500);
   --danger-soft: #3A2020;
-  --ok: #52BE80;
+  --ok: var(--ok-500);
   --ok-soft: #16301F;
-  --warn: #D99A2B;
+  --warn: var(--warn-600);
   --warn-soft: #36290F;
   --info-soft: #1B2B45;
   --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
@@ -104,18 +205,23 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
   transition: transform .06s ease, box-shadow .15s ease, background .15s ease;
   white-space: nowrap;
 }
+/* Button state matrix (sizes + variants + states): see DESIGN_TOKENS.md */
 .btn:active { transform: scale(.97); }
 .btn:disabled { opacity: .55; cursor: not-allowed; }
-.btn-primary { background: var(--teal); color: #fff; box-shadow: var(--shadow-sm); }
-.btn-primary:hover:not(:disabled) { background: var(--teal-deep); }
-[data-theme='dark'] .btn-primary { color: #06251f; }
-.btn-saffron { background: var(--saffron); color: #3A2506; box-shadow: var(--shadow-sm); }
+.btn:focus-visible { outline: none; box-shadow: var(--ring); }
+.btn-primary { background: var(--color-primary); color: var(--color-primary-foreground); box-shadow: var(--shadow-sm); }
+.btn-primary:hover:not(:disabled) { background: var(--color-primary-hover); }
+.btn-primary:active:not(:disabled) { background: var(--color-primary-active); }
+[data-theme='dark'] .btn-primary { color: var(--color-primary-foreground); }
+.btn-saffron { background: var(--color-accent); color: var(--color-accent-foreground); box-shadow: var(--shadow-sm); }
+.btn-saffron:hover:not(:disabled) { background: var(--color-accent-hover); }
 .btn-navy { background: var(--text); color: var(--bg); }
 .btn-outline { background: transparent; border-color: var(--line); color: var(--text); }
 .btn-outline:hover { background: var(--bg-soft); }
 .btn-ghost { background: none; border: none; color: var(--text-2); padding: 8px 10px; border-radius: 999px; }
 .btn-ghost:hover { background: var(--bg-soft); color: var(--text); }
-.btn-danger { background: var(--danger-soft); color: var(--danger); }
+.btn-danger { background: var(--color-destructive-soft); color: var(--color-destructive); }
+.btn-danger:hover:not(:disabled) { background: color-mix(in srgb, var(--color-destructive) 14%, transparent); }
 .btn-sm { padding: 6px 12px; font-size: 13px; }
 .btn-lg { padding: 12px 24px; font-size: 15.5px; }
 .icon-btn {
@@ -771,7 +877,7 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
 .explore-filters { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 20px; }
 .explore-filters .input, .explore-filters .select { width: auto; min-width: 140px; flex: 0 1 auto; }
 .trip-card-hit { all: unset; cursor: pointer; display: block; }
-.trip-card-hit:focus-visible { outline: 2px solid var(--teal); outline-offset: 4px; border-radius: 8px; }
+.trip-card-hit:focus-visible { outline: none; box-shadow: var(--ring); border-radius: 8px; }
 .route-flow { display: flex; flex-wrap: wrap; gap: 6px 4px; align-items: center; }
 .route-node { font-weight: 650; font-size: 14px; }
 .route-arrow { color: var(--saffron); font-weight: 800; margin-right: 7px; }
@@ -1052,8 +1158,8 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
 /* smooth focus visibility for keyboard users */
 .input:focus-visible, .select:focus-visible, .textarea:focus-visible,
 .btn:focus-visible, .icon-btn:focus-visible {
-  outline: 2px solid var(--accent, #149A90);
-  outline-offset: 1px;
+  outline: none;
+  box-shadow: var(--ring);
 }
 
 /* ---- Location dropdown: two-line rows with POI thumbnails ---- */
