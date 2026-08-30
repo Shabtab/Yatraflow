@@ -6,6 +6,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ### Docs
 - **Documentation hygiene pass (PR #25)** — fixed stale claims that contradicted shipped code: removed the false "demo-grade hash / browser-local" auth line from README (auth is real Supabase since 0.12.0); removed non-existent `demo@yatraflow.in` login from CONTRIBUTING; moved already-shipped items (Supabase 0.12.0, Google Places 0.17.0, Open-Meteo weather, regional-language field) out of the README roadmap; de-duplicated contributor Setup to link DEPLOYMENT/README. Added `docs/README.md` index, consolidated the env-var reference into DEPLOYMENT.md, linked `DESIGN_TOKENS.md` from README/ARCHITECTURE, marked the Google-Maps report HISTORICAL, and untracked the generated `docs/diagrams/*.html` artifact (gitignored; the diagram's JSON source stays tracked so it remains regenerable). (By Hermes Agent — `aql-hermes`.)
+- **README: dropped the self-contradictory "❌ Real authentication backend" bullet from the MVP-constraints list** — the bullet claimed auth was not included while its own text acknowledged auth is real Supabase with server-side password storage since 0.12.0; removing it leaves the "does not include" list consistent with the shipped auth feature (follow-up to PR #25's cleanup).
 
 ## [0.19.0] — 2026-08-30
 

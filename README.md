@@ -166,7 +166,6 @@ YatraFlow's MVP deliberately does **not** include:
 - ❌ Hotel/flight **booking** — placeholder buttons only; they toast "no payments in this MVP"
 - ❌ **Payments** — no gateway integration anywhere
 - ❌ **Live traffic/prices** — all estimates are transparent formulas with stated assumptions
-- ❌ Real authentication backend — auth is Supabase (real password hashing + server storage); demo-mode was removed in 0.12.0
 - ❌ INR is the default and only currency
 
 These are extension points, not oversights — see the architecture doc's "Swapping things out" section.
