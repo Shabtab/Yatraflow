@@ -41,6 +41,12 @@ Key locations:
    releases also bump `package.json` + lockfile version and update README.
 3. Fixes and features get changelog entries with enough context to understand
    them six months later.
+4. **Another agent may commit into this same working copy** — Hermes has
+   dropped doc commits directly onto local `test` (an uncorrected duplicate
+   of its own PR branch). Before trusting or pushing a local branch, run
+   `git status -sb` and `git log origin/<branch>..<branch>`; reconcile
+   foreign unpushed commits (reset/supersede **with user approval**) rather
+   than shipping them.
 
 ## 3. Verification before every push
 
