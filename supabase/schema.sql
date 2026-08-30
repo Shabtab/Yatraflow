@@ -351,3 +351,4 @@ alter publication supabase_realtime add table public.decisions;
 alter publication supabase_realtime add table public.activity;
 alter publication supabase_realtime add table public.notifications;
 alter publication supabase_realtime add table public.published_itineraries;
+alter publication supabase_realtime add table public.profiles;  -- profile cards live-update (names/avatars are public app-wide)

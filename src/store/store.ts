@@ -17,6 +17,8 @@ import type { LatLngPoint } from '../data/types'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { toast } from '../components/ui'
 import { isMissingColumnError, rowToTrip, tripToRow, type OptionalColumnsProbe, type TripRow } from '../lib/tripRow'
+import { reduceSlice, applyMemberChange, isRecentLocalWrite } from '../lib/realtimeCore'
+import type { RealtimeChannel, RealtimePostgresChangesPayload } from '@supabase/supabase-js'
 
 // In-memory cache — the synchronous snapshot the UI reads. No localStorage.
 interface DB {
@@ -130,11 +132,13 @@ export function init(): void {
 
   const hydrate = async (userId: string | null) => {
     if (!userId) {
+      disconnectRealtime()
       patch({ users: [], trips: [], suggestions: [], decisions: [], activity: [], notifications: [], published: [], sessionUserId: null })
       commit()
       return
     }
     await hydrateFromSupabase(userId)
+    connectRealtime(userId)
   }
 
   supabase.auth.getSession().then(({ data }) => { void hydrate(data.session?.user?.id ?? null) })
@@ -390,6 +394,7 @@ async function probeOptionalColumn(column: string): Promise<boolean> {
 async function persistTrip(trip: Trip, ownerId: ID) {
   const cols = await tripsHaveOptionalColumns()
   const { error } = await supabase.from('trips').insert(tripToRow(trip, ownerId, cols))
+  markLocalWrite('trips', trip.id)
   if (error) { toast('Could not save trip.'); return }
   const { error: mErr } = await supabase.from('trip_members').insert(
     (trip.members ?? []).map(m => ({ trip_id: trip.id, user_id: m.userId, role: m.role, joined_at: m.joinedAt }))
@@ -420,6 +425,7 @@ export function deleteTrip(id: ID): void {
   const removed = cache.trips[idx]
   cache.trips = cache.trips.filter(t => t.id !== id)
   commit()
+  markLocalWrite('trips', id)
   void supabase.from('trips').delete().eq('id', id).then(({ error }) => { if (error) { cache.trips.splice(idx, 0, removed); commit() } })
 }
 
@@ -428,6 +434,7 @@ export function restoreTrip(trip: Trip, index: number): void {
   if (cache.trips.some(t => t.id === trip.id)) return
   cache.trips.splice(Math.min(index, cache.trips.length), 0, trip)
   commit()
+  markLocalWrite('trips', trip.id)
   if (trip.members?.[0]) void persistTrip(trip, trip.members[0].userId)
 }
 
@@ -461,6 +468,7 @@ async function persistTripField(id: ID, t: Trip) {
   const owner = t.members?.find(m => m.role === 'owner')
   const cols = await tripsHaveOptionalColumns()
   const { error } = await supabase.from('trips').update(tripToRow(t, owner?.userId ?? id, cols)).eq('id', id)
+  markLocalWrite('trips', id)
   if (error) toast('Could not save changes.')
 }
 
@@ -826,6 +834,149 @@ export function markAllNotificationsRead(userId: ID): void {
   cache.notifications.forEach(n => { if (n.userId === userId) n.read = true })
   commit()
   void supabase.from('notifications').update({ read: true }).eq('user_id', userId)
+}
+
+// ---------------- Realtime collaboration (issue #18) ----------------
+// One supabase channel subscribes to all the tables in the `supabase_realtime`
+// publication. RLS SELECT policies gate what each user actually receives
+// (owner/member/public rows only), so a single channel is safe app-wide. Each
+// event updates the relevant cache slice and commits — collaborators see
+// changes without reloading. Own writes are echo-suppressed for trips (the only
+// slice replaced wholesale) so a fresh server row never clobbers optimistic
+// local state; the rest of the tables are idempotent upserts.
+let realtimeChannel: RealtimeChannel | null = null
+const recentLocalWrites = new Map<string, number>()
+
+/** Record a recent local write so its realtime echo can be suppressed. */
+function markLocalWrite(table: string, id: string): void {
+  recentLocalWrites.set(`${table}:${id}`, Date.now())
+}
+
+function echoWindowEh(table: string, id: string): boolean {
+  return isRecentLocalWrite(recentLocalWrites, table, id, Date.now())
+}
+
+/** Start listening for row changes. Call after a successful hydration. */
+export function connectRealtime(_userId: string): void {
+  if (!isSupabaseConfigured || realtimeChannel) return
+  try {
+    realtimeChannel = supabase
+      .channel('yatraflow-live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'trips' }, p => applyRealtimeEvent('trips', p))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'trip_members' }, p => applyRealtimeEvent('trip_members', p))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'suggestions' }, p => applyRealtimeEvent('suggestions', p))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'decisions' }, p => applyRealtimeEvent('decisions', p))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'activity' }, p => applyRealtimeEvent('activity', p))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, p => applyRealtimeEvent('notifications', p))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, p => applyRealtimeEvent('profiles', p))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'published_itineraries' }, p => applyRealtimeEvent('published_itineraries', p))
+      .subscribe()
+  } catch (e) {
+    console.error('[yatraflow] realtime subscribe failed', e)
+    realtimeChannel = null
+  }
+}
+
+/** Tear down the channel. Call on sign-out. */
+export function disconnectRealtime(): void {
+  if (realtimeChannel) {
+    void supabase.removeChannel(realtimeChannel)
+    realtimeChannel = null
+  }
+}
+
+function applyRealtimeEvent(table: string, payload: RealtimePostgresChangesPayload<Record<string, unknown>>): void {
+  const event = payload.eventType as 'INSERT' | 'UPDATE' | 'DELETE'
+  const row = payload.new as Record<string, any> | undefined
+  const oldRow = payload.old as Record<string, any> | undefined
+  const id: string = row?.id ?? oldRow?.id
+  if (id === undefined) return
+
+  switch (table) {
+    case 'trips': {
+      if (echoWindowEh('trips', id)) return
+      if (event === 'DELETE') {
+        cache.trips = cache.trips.filter(t => t.id !== id)
+        cache.suggestions = cache.suggestions.filter(s => s.tripId !== id)
+        cache.decisions = cache.decisions.filter(d => d.tripId !== id)
+        cache.activity = cache.activity.filter(a => a.tripId !== id)
+        cache.notifications = cache.notifications.filter(n => n.tripId !== id)
+      } else {
+        const existing = tripById(id)
+        cache.trips = reduceSlice(cache.trips, event, rowToTrip(row as TripRow, existing?.members ?? []), oldRow?.id)
+      }
+      break
+    }
+    case 'trip_members': {
+      const tripId: string = row?.trip_id ?? oldRow?.trip_id
+      if (!tripId) return
+      const trip = tripById(tripId)
+      if (!trip) {
+        // A membership row for a trip we don't have yet (we were just added to
+        // / joined a trip elsewhere): fetch the whole trip + members.
+        if (event !== 'DELETE') void fetchTripIntoCache(tripId)
+        return
+      }
+      const userId: string = row?.user_id ?? oldRow?.user_id
+      if (!userId) return
+      trip.members = applyMemberChange(trip.members ?? [], {
+        event,
+        userId,
+        role: (row?.role as TripMember['role']) ?? 'editor',
+        joinedAt: Number(row?.joined_at ?? oldRow?.joined_at ?? Date.now()),
+      })
+      // If we were removed, the trip disappears from our view.
+      if (event === 'DELETE' && userId === cache.sessionUserId) {
+        cache.trips = cache.trips.filter(t => t.id !== tripId)
+      }
+      break
+    }
+    case 'suggestions':
+      cache.suggestions = reduceSlice(cache.suggestions, event, row ? rowToSuggestion(row) : undefined, oldRow?.id)
+      break
+    case 'decisions':
+      cache.decisions = reduceSlice(cache.decisions, event, row ? rowToDecision(row) : undefined, oldRow?.id)
+      break
+    case 'activity': {
+      if (event === 'DELETE') {
+        cache.activity = cache.activity.filter(a => a.id !== id)
+        break
+      }
+      const entry = rowToActivity(row)
+      if (!cache.activity.some(a => a.id === entry.id)) cache.activity.push(entry)
+      break
+    }
+    case 'notifications':
+      cache.notifications = reduceSlice(cache.notifications, event, row ? rowToNotification(row) : undefined, oldRow?.id)
+      break
+    case 'profiles': {
+      if (event === 'DELETE') {
+        cache.users = cache.users.filter(u => u.id !== id)
+        break
+      }
+      cache.users = reduceSlice(cache.users, event, rowToUser(row as ProfileRow), oldRow?.id)
+      break
+    }
+    case 'published_itineraries':
+      cache.published = reduceSlice(cache.published, event, row ? rowToPublished(row) : undefined, oldRow?.id)
+      break
+    default:
+      return
+  }
+  commit()
+}
+
+/** Fetch a trip row + its members into the cache (used on join/share events). */
+async function fetchTripIntoCache(tripId: string): Promise<void> {
+  const [tripRes, memRes] = await Promise.all([
+    supabase.from('trips').select('*').eq('id', tripId).maybeSingle(),
+    supabase.from('trip_members').select('*').eq('trip_id', tripId),
+  ])
+  if (tripRes.error || !tripRes.data) return
+  const members = ((memRes.data ?? []) as MemberRow[]).map(m => ({ userId: m.user_id, role: m.role as TripMember['role'], joinedAt: m.joined_at }))
+  const trip = rowToTrip(tripRes.data as TripRow, members)
+  if (!cache.trips.some(t => t.id === trip.id)) cache.trips.push(trip)
+  commit()
 }
 
 // ---------------- utils ----------------

@@ -9,13 +9,16 @@
 // HTTP-referrer-restricted to the deployment domain (Google Cloud console),
 // the quota guard is the second net if the key ever leaks.
 
-export type QuotaSku = 'autocomplete' | 'placeDetails' | 'textSearchPro'
+export type QuotaSku = 'autocomplete' | 'placeDetails' | 'textSearchPro' | 'routes'
 
-/** Verified India monthly free allowances per SKU (pricing-india, 2026-08-25). */
+/** Verified India monthly free allowances per SKU (pricing-india, 2026-08-25).
+ *  `routes` = Routes API computeRoutes: 10k free computeRoutes calls/month
+ *  (Google Maps Platform standard quota). */
 export const SKU_ALLOWANCE: Record<QuotaSku, number> = {
   autocomplete: 70_000,
   placeDetails: 70_000,
   textSearchPro: 35_000,
+  routes: 10_000,
 }
 
 /** 80%-of-allowance soft caps — hitting one flips that SKU to the free stack. */
@@ -23,6 +26,7 @@ export const SOFT_CAPS: Record<QuotaSku, number> = {
   autocomplete: Math.round(SKU_ALLOWANCE.autocomplete * 0.8),   // 56,000
   placeDetails: Math.round(SKU_ALLOWANCE.placeDetails * 0.8),   // 56,000
   textSearchPro: Math.round(SKU_ALLOWANCE.textSearchPro * 0.8), // 28,000
+  routes: Math.round(SKU_ALLOWANCE.routes * 0.8),               //  8,000
 }
 
 const NS = 'yf.gquota'

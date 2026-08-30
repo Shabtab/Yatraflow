@@ -35,8 +35,8 @@ export interface StopFormValues {
   arrivalTime: string
   legDistanceKm: number
   legTravelMinutes: number
-  /** true while the leg numbers came from the road-routing lookup */
-  legFromOsrm?: boolean
+  /** which provider produced the auto-filled leg ('estimate' = haversine fallback) */
+  legFromSource?: 'google' | 'osrm' | 'estimate'
 }
 
 /** Where the user is travelling FROM (and optionally the next destination after). */
@@ -109,7 +109,7 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel,
             transportCostInrTotal: Math.round(leg.distanceKm * perKm),
             departTime: depart,
             arrivalTime: addMinutesToClock(hmToMinutes(depart), leg.durationMinutes),
-            legFromOsrm: leg.fromOsrm,
+            legFromSource: leg.source,
           }
         })
       } catch {
@@ -230,7 +230,7 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel,
             <div className="small muted" style={{ marginBottom: 10 }}>
               {legContext.fromName} → {v.title || v.locationName || 'this stop'}
               {legContext.nextName ? <> → {legContext.nextName}</> : null}
-              {v.legFromOsrm ? ' · real road data' : ''}
+              {v.legFromSource && v.legFromSource !== 'estimate' ? ' · real road data' : ''}
             </div>
             <div className="form-row" style={{ gridTemplateColumns: '1fr 1fr 1fr 1fr' }}>
               <Field label="Distance (km)">

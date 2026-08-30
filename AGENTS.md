@@ -119,7 +119,7 @@ Hard rules (each learned the hard way — do not relearn them):
   clock format `yatraflow_time_format`) live in localStorage via
   `lib/uiPrefs.ts`/`lib/timefmt.ts` — failure-tolerant maps of booleans keyed
   `"<tripId>:<dayIndex>"`, never trip data.
-- `dev.log` is untracked local clutter — ignore it, never commit it.
+- `dev.log` is untracked local clutter — ignore it, never commit it. (It **did** get committed in `f09aaf9` when a bulk `git add` in this shared working copy swept it up — and the commit was pushed, so removing it needed a follow-up untrack commit. Stage explicit paths only; never `git add -A` / `git add .` here.)
 - Test style: pure logic only, node env; mock `fetch` with route tables
   (`tests/providers.test.ts` has the pattern); `vi.stubEnv` for API keys.
 - **Section-restructure edits can silently swallow bullets** — an edit whose
