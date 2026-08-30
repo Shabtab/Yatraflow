@@ -11,6 +11,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ### Fixed
 - **#14 — `vite build` crashed on styles.css (deploy blocker on the test branch)**: stray `opacity: .75;` + extra `}` sat outside the `.loc-attribution.off` rule (brace balance off by 1). Invisible to tsc and the 128 tests — only the full vite build failed. Rule restored to a single well-formed declaration. Found and fixed by Hermes Agent (`cca6fdd`).
+- **#14 (latent on main): the same dangling `opacity: .75;` + stray `}` had shipped on main with the 0.18.0 merge** — vite 5.4 only logged a minify *warning* while silently dropping the declaration; any vite upgrade hard-fails `vite build` on it (exactly what happened on the test branch). Merged into the rule as one well-formed declaration (`9d987a0`).
 
 ## [0.18.0] — 2026-08-30
 

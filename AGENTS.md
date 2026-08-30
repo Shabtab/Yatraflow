@@ -70,6 +70,17 @@ Hard rules (each learned the hard way — do not relearn them):
   and confirm merges via `gh pr view <n> --json mergeCommit` +
   `git merge-base --is-ancestor <mergeCommit> origin/main` (exit 0 = merged),
   not by eyeballing short `git log` windows.
+- **CSS breakage is invisible to `tsc` + tests — only the full `vite build`
+  sees it** (issue #14): a dangling declaration + stray `}` passed the
+  typecheck and all 128 tests while vite 5 logged it as a mere minify
+  *warning* for an entire release; a vite upgrade turned that warning into a
+  hard error. Treat ANY minify warning in build output as a latent build
+  blocker and fix it in the same pass. Related: junk dependencies can sneak
+  into package.json from accidental installs (the `"24": "^0.0.0"` of
+  issue #19) — review dependency diffs before committing. And since vite 8
+  (test branch), `.npmrc` pins `legacy-peer-deps=true` because
+  `@vitejs/plugin-react` 4.x predates vite 8 — bump plugin-react to v6 to
+  drop the pin.
 
 ## 4. Code conventions & pitfalls
 
