@@ -151,3 +151,7 @@ publications via **Dashboard → Database → Publications** instead (the UI
 mutates through the management plane, not your SQL session), and verify live
 membership with a plain SELECT (always allowed):
 `select * from pg_publication_tables where pubname = 'supabase_realtime';`
+No-SQL alternative: subscribe a `postgres_changes` channel per table with the
+public anon key — Realtime rejects non-published tables at SUBSCRIBE time, so
+a `SUBSCRIBED` status is functional proof of membership (verified all 8 tables
+PASS this way after the #18 `profiles` toggle).
