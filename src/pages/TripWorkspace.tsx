@@ -340,8 +340,8 @@ function TimelineTab({ trip, editable, applyChange, legCorrections }: {
 
   function handleSave(v: StopFormValues) {
     if (!editorState) return
-    // legFromOsrm is display-only — never persist it onto the stop
-    const { legFromOsrm: _drop, ...legFields } = v
+    // legFromSource is display-only - never persist it onto the stop
+    const { legFromSource: _drop, ...legFields } = v
     if (editorState.mode === 'add') {
       const dayIndex = editorState.dayIndex
       applyChange(draft => {
