@@ -7,6 +7,7 @@ import type { Trip } from '../data/types'
 import type { PlaceHit } from '../lib/geocode'
 import { routePath } from '../lib/routing'
 import { getAssumptions, isRoundTrip } from '../lib/engine'
+import { loadFlag, saveFlag } from '../lib/uiPrefs'
 import type { MapRef } from './mapcn/map'
 import { CatIcon } from './icons'
 import {
@@ -134,6 +135,25 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby }: {
 }) {
   const [dayFilter, setDayFilter] = useState<number | 'all'>('all')
   const [showReturn, setShowReturn] = useState(true)
+  // Map key (legend) visibility — hidden by default so it stops covering the
+  // bottom-right of the map; the choice persists per browser via uiPrefs.
+  const [legendOpen, setLegendOpen] = useState(() => loadFlag('map_legend_open', false))
+  function toggleLegend() {
+    setLegendOpen(open => {
+      saveFlag('map_legend_open', !open)
+      return !open
+    })
+  }
+  // Expanded mode — the whole map shell breaks out of the page into a fixed
+  // overlay so the canvas gets the viewport. Transient by design: Escape or
+  // the same chip (now "⤡ Collapse") reverts it; nothing is persisted.
+  const [expanded, setExpanded] = useState(false)
+  useEffect(() => {
+    if (!expanded) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setExpanded(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [expanded])
   // Nearby-idea category filter: categories listed here are HIDDEN on the map.
   // Empty set = everything visible (the default).
   const [hiddenIdeaCats, setHiddenIdeaCats] = useState<Set<string>>(new Set())
@@ -337,8 +357,8 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby }: {
   }, [chainKey, dayFilter, returnLeg]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div>
-      <div className="map-frame">
+    <div className={`map-shell${expanded ? ' map-shell--expanded' : ''}`}>
+      <div className="map-toolbar">
         <div className="map-day-filter">
           <button className={`map-day-chip ${dayFilter === 'all' ? 'on' : ''}`} onClick={() => setDayFilter('all')}>All days</button>
           {trip.days.map(d => (
@@ -374,8 +394,17 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby }: {
               ))}
             </>
           )}
+          <button
+            className={`map-day-chip map-expand-chip${expanded ? ' on' : ''}`}
+            onClick={() => setExpanded(e => !e)}
+            title={expanded ? 'Shrink the map back into the page (Esc)' : 'Expand the map to fill the screen'}
+          >
+            {expanded ? '⤡ Collapse' : '⤢ Expand'}
+          </button>
         </div>
+      </div>
 
+      <div className="map-frame">
         {allPoints.length === 0 ? (
           <div className="empty-state"><div className="big">🗺️</div><p>No confirmed stops to plot yet — add some in the Timeline.</p></div>
         ) : (
@@ -539,10 +568,22 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby }: {
         )}
 
         <div className="map-legend">
-          {dayFilter === 'all'
-            ? <>blue line = whole route{returnLeg ? ' · dashed = drive back home' : ''} · </> 
-            : <>colours = day · </>}
-          pin icon = stop type · number = timeline order · dashed pin = "maybe" · 🛫/🏁 = start & final destination · 💡 gold markers = nearby ideas{onAddNearby ? ' (+ to add)' : ''}{ideaCats.length > 0 ? ' · chips filter ideas by type' : ''} · click a pin for details
+          <button
+            className="map-legend-toggle"
+            onClick={toggleLegend}
+            aria-expanded={legendOpen}
+            title={legendOpen ? 'Hide the map key' : 'Show the map key'}
+          >
+            {legendOpen ? '✕ Hide key' : 'ⓘ Key'}
+          </button>
+          {legendOpen && (
+            <div className="map-legend-body">
+              {dayFilter === 'all'
+                ? <>blue line = whole route{returnLeg ? ' · dashed = drive back home' : ''} · </>
+                : <>colours = day · </>}
+              pin icon = stop type · number = timeline order · dashed pin = "maybe" · 🛫/🏁 = start & final destination · 💡 gold markers = nearby ideas{onAddNearby ? ' (+ to add)' : ''}{ideaCats.length > 0 ? ' · chips filter ideas by type' : ''} · click a pin for details
+            </div>
+          )}
         </div>
       </div>
       <p className="hint-text" style={{ marginTop: 8 }}>

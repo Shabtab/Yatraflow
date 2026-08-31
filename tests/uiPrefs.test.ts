@@ -2,7 +2,7 @@
 // Node env: no localStorage. That's deliberate — the pure parser is what we
 // assert on; the storage wrappers degrade to no-ops when storage is missing.
 import { describe, it, expect } from 'vitest'
-import { dayCollapseKey, parseDayCollapseMap, loadDayCollapsed, saveDayCollapsed } from '../src/lib/uiPrefs'
+import { dayCollapseKey, parseDayCollapseMap, loadDayCollapsed, saveDayCollapsed, loadFlag, saveFlag } from '../src/lib/uiPrefs'
 
 describe('dayCollapseKey', () => {
   it('namespaces by trip id and day index', () => {
@@ -77,6 +77,41 @@ describe('storage wrappers with a real storage stub', () => {
       expect(loadDayCollapsed('tripX', 1)).toBe(false)
       saveDayCollapsed('tripX', 2, true)
       expect(loadDayCollapsed('tripX', 2)).toBe(true)
+    } finally {
+      ;(globalThis as unknown as { localStorage: Storage }).localStorage = prev
+    }
+  })
+})
+
+describe('named boolean flags', () => {
+  it('degrade to the fallback without localStorage (node)', () => {
+    expect(loadFlag('map_legend_open', false)).toBe(false)
+    expect(loadFlag('map_legend_open', true)).toBe(true)
+    expect(() => saveFlag('map_legend_open', true)).not.toThrow()
+  })
+
+  it('write then read back, keeping other keys untouched', () => {
+    const store = new Map<string, string>()
+    const prev = globalThis.localStorage
+    ;(globalThis as unknown as { localStorage: Storage }).localStorage = {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => { store.set(k, v) },
+      removeItem: (k: string) => { store.delete(k) },
+      clear: () => store.clear(),
+      key: () => null,
+      get length() { return store.size },
+    } as Storage
+    try {
+      expect(loadFlag('map_legend_open', false)).toBe(false)
+      saveFlag('map_legend_open', true)
+      expect(loadFlag('map_legend_open', false)).toBe(true)
+      // stored under the documented key, as "1"/"0"
+      expect(store.get('yatraflow_map_legend_open')).toBe('1')
+      saveFlag('map_legend_open', false)
+      expect(loadFlag('map_legend_open', true)).toBe(false)
+      expect(store.get('yatraflow_map_legend_open')).toBe('0')
+      // a flag that was never saved still falls back
+      expect(loadFlag('never_saved', true)).toBe(true)
     } finally {
       ;(globalThis as unknown as { localStorage: Storage }).localStorage = prev
     }

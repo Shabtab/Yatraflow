@@ -79,3 +79,31 @@ export function saveRideHintsHidden(tripId: string, dayIndex: number, hidden: bo
     // best-effort
   }
 }
+
+// ---- Generic named boolean flags ----
+// For one-off view prefs that don't warrant their own load/save pair. The
+// storage key is `yatraflow_<name>` and the value is stored as "1"/"0" —
+// a missing key (or unavailable storage) reads back as the caller's fallback.
+const FLAG_KEY_PREFIX = 'yatraflow_'
+
+/** Read a named boolean flag; missing key / unavailable storage → `fallback`. */
+export function loadFlag(name: string, fallback: boolean): boolean {
+  if (typeof localStorage === 'undefined') return fallback
+  try {
+    const raw = localStorage.getItem(FLAG_KEY_PREFIX + name)
+    if (raw === null) return fallback
+    return raw === '1'
+  } catch {
+    return fallback
+  }
+}
+
+/** Write a named boolean flag. Silent no-op when storage is unavailable. */
+export function saveFlag(name: string, value: boolean): void {
+  if (typeof localStorage === 'undefined') return
+  try {
+    localStorage.setItem(FLAG_KEY_PREFIX + name, value ? '1' : '0')
+  } catch {
+    // Private mode / quota exceeded — persistence is best-effort by design.
+  }
+}

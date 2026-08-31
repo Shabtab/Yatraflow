@@ -170,6 +170,13 @@ Hard rules (each learned the hard way — do not relearn them):
   targets ≥40px; inputs 16px on mobile (iOS Safari zooms smaller ones).
 - **MapLibre/mapcn**: don't import `maplibre-gl` types directly in components —
   use the structural-cast pattern (`GeoJSONSourceLike` in TripMap.tsx).
+- **Overlay z-index ladder** — toast 200 > modal 100 > impact sheet 90 >
+  notif 80 > expanded map shell 70. Any full-page overlay (e.g. the map's
+  `⤢ Expand` mode, `.map-shell--expanded`) must sit BELOW the dialogs it can
+  spawn, so modals/impact sheets opened from it still layer on top — no
+  collapse-on-open coordination needed. Corollary: container-size changes need
+  no manual `map.resize()` — mapcn's wrapper already runs a ResizeObserver
+  that re-fits the canvas (map.tsx).
 - **Basemaps are OpenFreeMap (keyless, commercial-OK) — never reintroduce CARTO
   or Esri tiles.** `mapcn/map.tsx` `defaultStyles` =
   `https://tiles.openfreemap.org/styles/{positron,dark}`. Their `style.json`
