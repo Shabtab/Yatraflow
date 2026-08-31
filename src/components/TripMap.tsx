@@ -1,5 +1,5 @@
 // ============ Trip route map ============
-// Real slippy-map rendering via mapcn (MapLibre GL): CARTO basemaps that follow
+// Real slippy-map rendering via mapcn (MapLibre GL): OpenFreeMap basemaps that follow
 // light/dark theme, numbered stop markers in timeline order, and a polyline
 // connecting each day's stops. Distances/durations still come from the engine.
 import { useMemo, useState, useEffect, useRef } from 'react'
@@ -21,13 +21,10 @@ import {
 
 const DAY_COLORS = ['#149A90', '#F59E2D', '#7C5CFC', '#E2557B', '#2D9CDB', '#6BBF59', '#B7791F']
 
-// Basemaps — CARTO Voyager reads warmer/cleaner for travel than the default
-// Positron; Esri World Imagery gives a free satellite toggle.
-const STYLE_VOYAGER = 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json'
-const STYLE_DARK = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json'
-const STYLE_SAT = 'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
-// Esri's World_Imagery TileJSON (so MapLibre gets attribution + maxzoom right)
-const STYLE_SAT_JSON = 'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tilemap?blank=false'
+// Basemaps come from the mapcn <Map> default (OpenFreeMap — see mapcn/map.tsx).
+// The old CARTO Voyager / dark-matter and Esri World Imagery style URLs that
+// used to live here were dead code (never referenced) and carried a licensing
+// exposure, so they are gone as of issue #23 — there is no satellite layer.
 
 /**
  * Direction chevrons along the route — a symbol layer fed by the same line

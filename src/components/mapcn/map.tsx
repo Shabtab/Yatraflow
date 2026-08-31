@@ -28,10 +28,22 @@ if (typeof window !== "undefined" && !MapLibreGL.getWorkerUrl()) {
   );
 }
 
+// Basemaps — OpenFreeMap (https://openfreemap.org): OpenMapTiles-schema vector
+// tiles, served keyless, using styles forked from the same open-source lineage
+// CARTO's dark-matter / positron styles came from — so the look is effectively
+// unchanged. No API key, no signup, no request limits, commercial use allowed.
+// This replaces CARTO Basemaps (non-commercial terms) and Esri World Imagery
+// (needs an ArcGIS Developer plan for production) — issue #23.
 const defaultStyles = {
-  dark: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
-  light: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+  dark: "https://tiles.openfreemap.org/styles/dark",
+  light: "https://tiles.openfreemap.org/styles/positron",
 };
+
+// OpenFreeMap's style.json ships WITHOUT a `sources.*.attribution` field, so
+// MapLibre's attribution control would render nothing on its own. The credit
+// required by the OpenStreetMap and OpenMapTiles licenses is injected below.
+export const BASEMAP_ATTRIBUTION =
+  "© OpenFreeMap © OpenMapTiles · Data from OpenStreetMap contributors";
 
 // A tile-less, dependency-free style with a transparent background. Use it for
 // data visualizations (choropleths, world arcs, dot maps) where you draw your
@@ -183,13 +195,13 @@ type MapProps = {
    * Pass your theme value here.
    */
   theme?: Theme;
-  /** Custom map styles for light and dark themes. Overrides the default Carto styles. */
+  /** Custom map styles for light and dark themes. Overrides the default OpenFreeMap styles. */
   styles?: {
     light?: MapStyleOption;
     dark?: MapStyleOption;
   };
   /**
-   * Use a transparent, tile-less basemap instead of the default Carto street
+   * Use a transparent, tile-less basemap instead of the default OpenFreeMap street
    * basemap — a blank canvas. Used alone it renders nothing; add your own
    * layers on top (`<MapGeoJSON>`, `<MapArc>`, markers, etc.). Ideal for data
    * visualizations (choropleths, arcs, dot maps).
@@ -269,7 +281,7 @@ const Map = forwardRef<MapRef, MapProps>(function Map(
 
   const mapStyles = useMemo(() => {
     // Explicit styles win. Otherwise `blank` opts into the transparent
-    // tile-less basemap; with neither, fall back to the Carto defaults.
+    // tile-less basemap; with neither, fall back to the OpenFreeMap defaults.
     if (stableStyles) {
       return {
         dark: stableStyles.dark ?? defaultStyles.dark,
@@ -299,6 +311,7 @@ const Map = forwardRef<MapRef, MapProps>(function Map(
       renderWorldCopies: false,
       attributionControl: {
         compact: true,
+        customAttribution: BASEMAP_ATTRIBUTION,
       },
       ...props,
       ...viewport,

@@ -77,7 +77,7 @@ For GitHub Pages specifically, the Vite config already uses relative asset paths
 - **Email confirmation** is a Supabase Auth setting (Authentication → Sign In / Providers). With it on, signups send a confirmation email (free tier: ~2/hour); the app detects the unconfirmed state and asks the user to check their inbox.
 - RLS gotcha: policies that query `trip_members` must go through the `security definer` helpers (`is_member`/`is_editor`) — a direct subquery inside a policy causes infinite recursion (Postgres `42P17`) and every request 500s.
 - Top-level table ids are UUIDs; the client generates them (`crypto.randomUUID`). JSONB-internal ids (stops/days/expenses) may be any string.
-- Map tiles load from CARTO CDNs; geocoding calls go to `geocoding-api.open-meteo.com`. Both are public/free with no keys; behind a strict CSP you'd need to allow those origins plus the unpkg worker script used by maplibre-gl.
+- Map tiles load from OpenFreeMap (`tiles.openfreemap.org` — styles, vector tiles and the Natural Earth raster source), geocoding calls go to `geocoding-api.open-meteo.com`. Both are public/free with no keys; behind a strict CSP you'd need to allow those origins plus the unpkg worker script used by maplibre-gl.
 
 ## Environment variables
 

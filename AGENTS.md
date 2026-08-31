@@ -170,6 +170,19 @@ Hard rules (each learned the hard way — do not relearn them):
   targets ≥40px; inputs 16px on mobile (iOS Safari zooms smaller ones).
 - **MapLibre/mapcn**: don't import `maplibre-gl` types directly in components —
   use the structural-cast pattern (`GeoJSONSourceLike` in TripMap.tsx).
+- **Basemaps are OpenFreeMap (keyless, commercial-OK) — never reintroduce CARTO
+  or Esri tiles.** `mapcn/map.tsx` `defaultStyles` =
+  `https://tiles.openfreemap.org/styles/{positron,dark}`. Their `style.json`
+  ships **without** `sources.*.attribution`, so MapLibre renders no credit on its
+  own — the OSM/OpenMapTiles license requires the `BASEMAP_ATTRIBUTION` string
+  passed as `attributionControl.customAttribution`. Do **not** "switch to OSM
+  raster tiles": `tile.openstreetmap.org` is a different look, has no dark
+  variant, and its usage policy discourages production apps.
+- **`noUnusedLocals: false` lets dead provider URLs rot in the tree** — four
+  unused CARTO/Esri style constants sat in `TripMap.tsx` (with a comment
+  describing a satellite toggle that never existed in the UI) and were a live
+  licensing exposure in a file nobody was reading. When auditing third-party
+  usage, grep for the **URL strings**, not just call sites.
 - **HTML5 drag-and-drop does not work on touch devices** (no `dragstart`).
   The convention: keep HTML5 DnD for desktop, and route touch through the
   long-press pointer engine in `lib/touchDnd.ts` (integrated via `useReorder`).
@@ -199,7 +212,9 @@ Hard rules (each learned the hard way — do not relearn them):
 
 Supabase (auth/data) · Vercel (auto-deploy from `main`) · Google Places
 (opt-in key, quota-guarded, always falls back to the free stack) · OSRM ·
-Open-Meteo · Mappls. Live probe for Google: `scripts/verify-google-places.mjs`.
+Open-Meteo · Mappls · **OpenFreeMap** (basemap tiles — keyless, no request
+limits, commercial-OK; attribution must stay injected, see §4). Live probe for
+Google: `scripts/verify-google-places.mjs`.
 When touching provider code, keep the facade contract: Google failure or
 absent key must silently fall back to the free stack.
 

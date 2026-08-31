@@ -49,7 +49,7 @@ A guided tour of how the app works internally — the data model, the estimation
           OSRM demo server      — real road geometry on the map (haversine fallback)
           Wikipedia geosearch   — nearby POI ideas on the Map tab
           OSM Overpass          — auto-fed opening hours for picked POIs
-          MapLibre / CARTO tiles— basemap display only
+          MapLibre / OpenFreeMap tiles — basemap display only (keyless)
 ```
 
 Key properties:
@@ -164,7 +164,7 @@ The same geocoder powers a second capability in [`src/lib/geocode.ts`](../src/li
 
 ## 8. Maps
 
-[`src/components/mapcn/map.tsx`](../src/components/mapcn/map.tsx) is the [mapcn](https://github.com/AnmolSaini16/mapcn) registry component vendored verbatim (its single `@/lib/utils` import replaced by a local [`cn()`](./src/components/mapcn/cn.ts)). It renders MapLibre GL with CARTO basemaps that follow light/dark theme automatically.
+[`src/components/mapcn/map.tsx`](../src/components/mapcn/map.tsx) is the [mapcn](https://github.com/AnmolSaini16/mapcn) registry component vendored with local adjustments (its single `@/lib/utils` import replaced by a local [`cn()`](../src/components/mapcn/cn.ts), and its default basemap styles pointed at [OpenFreeMap](https://openfreemap.org) instead of CARTO — issue #23). It renders MapLibre GL with OpenFreeMap vector basemaps (`styles/positron` light / `styles/dark`) that follow the light/dark theme automatically, and injects `BASEMAP_ATTRIBUTION` as `attributionControl.customAttribution` because those styles ship without a `sources.*.attribution` field.
 
 [`src/components/TripMap.tsx`](../src/components/TripMap.tsx) builds the trip view on top:
 

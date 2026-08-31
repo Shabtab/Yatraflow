@@ -4,20 +4,22 @@ Living document — reviewed each session, updated as items land. Done items mov
 to [CHANGELOG.md](CHANGELOG.md); this file only tracks what's ahead.
 
 **Snapshot (2026-08-31):** v0.19.0 · 138 tests green · CI gate on `main` ·
-realtime live (all 8 tables) · 3 open issues (#20, #22, #23).
+realtime live (all 8 tables) · basemap licensing (#23) shipped · 2 open issues
+(#20, #22).
 
 ---
 
 ## 🔴 P0 — Compliance & licensing
 
-### 1. #23 — Basemap licensing swap (CARTO → legal-for-public-deploy)
-- **Risk:** `src/components/mapcn/map.tsx` uses CARTO Basemaps, whose terms
-  are non-commercial only. YatraFlow is publicly deployed with a public
-  itinerary gallery — gray zone.
-- **Fix:** swap to OSM raster tiles (free, keyless, attribution-only), or
-  Stadia/MapTiler free tier. Update attribution + README license note.
-- **Effort:** ~1 h · self-contained · zero risk.
-- **Verification:** map renders, attribution correct, README documents it.
+### 1. ~~#23 — Basemap licensing swap~~ ✅ shipped (see CHANGELOG `[Unreleased]`)
+CARTO Basemaps + Esri World Imagery replaced with keyless
+[OpenFreeMap](https://openfreemap.org) vector styles (`positron` / `dark`) —
+same look, MIT service, ODbL map data, no request limits, no key, no bill.
+Attribution is injected explicitly (`BASEMAP_ATTRIBUTION` →
+`attributionControl.customAttribution`) because OpenFreeMap's `style.json` ships
+without a `sources.*.attribution` field. Google tiles rejected: not licensed to
+third-party renderers, and would need a Maps JS API rewrite plus a mandatory
+billing account. **No P0 items remain.**
 
 ## 🟡 P1 — AI / LLM (issues #22 → #20, in that order)
 

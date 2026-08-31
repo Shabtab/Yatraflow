@@ -20,7 +20,7 @@ YatraFlow is a collaborative travel-planning web app built India-first: real mul
 - **Location autocomplete** on every location input — [Mappls](https://about.mappls.com/api/) (MapmyIndia) suggestions when `VITE_MAPPLS_KEY` is configured, with keyless fallbacks to the free [Open-Meteo geocoding API](https://open-meteo.com/en/docs/geocoding-api) + Wikipedia. Mappls calls are proxied same-origin (Vercel rewrite in production, Vite dev proxy locally) because their APIs send no CORS headers. Picking a suggestion pins the stop to real coordinates so maps and distance estimates stay accurate.
 - **Context-aware opening hours** — the stop editor only shows open/close times where they make sense (POIs, temples, food, hotels…), never for a whole city/town.
 - **Stoppage-point suggestions** — the Map tab's nearby ideas and empty-day suggestions cover attractions, restaurants, hotels, fuel pumps and ATMs from live OpenStreetMap, Wikipedia and Mappls data — every pin at a **verified coordinate** (never a guessed same-name match in the wrong state), anchored on stops spread along your route, each added as its matching stop type.
-- **Interactive map** (MapLibre via [mapcn](https://github.com/AnmolSaini16/mapcn)) — numbered stop pins per day, colour-coded route lines, auto-fit bounds, day filter chips, light/dark basemaps
+- **Interactive map** (MapLibre via [mapcn](https://github.com/AnmolSaini16/mapcn)) — numbered stop pins per day, colour-coded route lines, auto-fit bounds, day filter chips, light/dark basemaps from [OpenFreeMap](https://openfreemap.org) (keyless, no request caps, commercial use allowed)
 
 ### Estimate (transparently)
 - **Schedule engine** — simulates each day leg-by-leg using real road distances and durations from OSRM (haversine × road factor as the offline fallback), per-mode average speeds and ₹/km costs. Shows arrival times, flags tight schedules, missed fixed commitments (hotel check-ins, train departures) and stops that arrive after closing time
@@ -94,7 +94,7 @@ You'll need a free [Supabase](https://supabase.com) project for accounts and dat
 | Build | [Vite 8](https://vitejs.dev) | Instant dev server, zero-config prod builds |
 | UI | React 18 + TypeScript (strict) | No router lib, no UI kit — hash routing + hand-rolled components keep the MVP dependency-light |
 | State | `useSyncExternalStore` over a module-level store | Tiny reactive cache hydrated from Supabase; every mutation writes through to Postgres (optimistic UI, fire-and-forget persistence) |
-| Maps | [mapcn](https://github.com/AnmolSaini16/mapcn) (MapLibre GL) vendored into `src/components/mapcn/` | shadcn-style registry component; CARTO basemaps switch light/dark automatically |
+| Maps | [mapcn](https://github.com/AnmolSaini16/mapcn) (MapLibre GL) vendored into `src/components/mapcn/` | shadcn-style registry component; [OpenFreeMap](https://openfreemap.org) basemaps switch light/dark automatically — no key, no signup, no request limits |
 | Backend | [Supabase](https://supabase.com) (Postgres + Auth + RLS) | Free tier covers the MVP; JSONB keeps trip internals denormalized so the TS model maps 1:1 |
 | Geocoding | Open-Meteo geocoding API | Free, keyless, India-biasable |
 | Icons | lucide-react | Used inside the vendored map component |
@@ -144,6 +144,41 @@ src/
 ```
 
 For how the pieces fit together — data model, engine math, store design — see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). For the design-token system (color/state tokens) see [DESIGN_TOKENS.md](DESIGN_TOKENS.md). For the full docs index see [docs/README.md](docs/README.md).
+
+---
+
+## 🗺️ Data sources, basemaps & attribution
+
+Every map/data service below is **free and keyless** unless the row says
+otherwise — the app never requires an API key to render a map.
+
+| Concern | Provider | Licensing / terms |
+|---|---|---|
+| **Basemap tiles** | [OpenFreeMap](https://openfreemap.org) — OpenMapTiles-schema vector tiles + open-source styles | Service is MIT with **no request limits, no registration, commercial use allowed**; map data is © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors (ODbL) |
+| Road routing | [OSRM](https://project-osrm.org/) demo server | Free, keyless; haversine fallback keeps planning working offline |
+| Weather | [Open-Meteo](https://open-meteo.com) | Free, keyless, CC-BY 4.0 |
+| Geocoding / nearby POIs | Open-Meteo geocoding, Wikipedia geosearch, [Overpass (OSM)](https://overpass-api.de) | Free / ODbL |
+| Place autocomplete (optional) | [Mappls](https://about.mappls.com/api/) when `VITE_MAPPLS_KEY` is set | Free India dev tier, key required |
+| Places & Routes (optional) | [Google Maps Platform](https://mapsplatform.google.com) when `VITE_GOOGLE_MAPS_API_KEY` is set | Google Maps Platform Terms; needs a billing account; client-side quota guard soft-caps every SKU at 80% of the free allowance (`src/lib/providers/quota.ts`) |
+
+**Basemap attribution** is rendered by MapLibre's attribution control in the
+corner of every map. OpenFreeMap's `style.json` ships *without* a
+`sources.*.attribution` field, so the credit is injected explicitly as
+`BASEMAP_ATTRIBUTION` in `src/components/mapcn/map.tsx` — don't remove it.
+
+**Why not Google map tiles?** Google does not license its basemap rendering to
+third-party renderers such as MapLibre, so the Google *look* would mean replacing
+the entire map component with the Maps JavaScript API — plus a mandatory billing
+account, per-map-load billing with no hard spending cap, and a per-browser quota
+guard that cannot aggregate across visitors. Google stays where it earns its
+keep: optional Places/Routes *data* behind the `src/lib/geocode.ts` /
+`src/lib/routing.ts` facade, always falling back to the free stack.
+
+> History: the map previously loaded CARTO Basemaps and an Esri World Imagery
+> satellite layer. CARTO's free basemaps are non-commercial-only and Esri's
+> public tile endpoints require an ArcGIS Developer plan for production — both a
+> mismatch for a publicly deployed app with a public itinerary gallery, so they
+> were swapped out (issue #23).
 
 ---
 
