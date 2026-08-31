@@ -14,15 +14,31 @@ The app lives at **https://yatraflow-blond.vercel.app**, connected to `hasnaina9
 
 - Every push to `main` auto-deploys production (~1 min).
 - Every push to another branch (e.g. `test`) gets its own preview deployment, and `yatraflow-git-<branch>-….vercel.app` always serves the branch's latest build.
-- Environment variables (Project → Settings → Environment Variables) — required for **Preview** and **Production**:
+- Environment variables (Project → Settings → Environment Variables) — required for **Production, Preview and Development**. When editing one, tick **all three** environment checkboxes; a var created with only Production ticked is silently absent from every preview build:
   - `VITE_SUPABASE_URL`
   - `VITE_SUPABASE_ANON_KEY`
+  Vite **inlines these at build time**, so changing them never affects an existing deployment — you must **Redeploy** (Vercel → Deployments → ⋯ → Redeploy) for a preview to pick them up. Since 2026-08-31 `vite.config.ts` aborts a Vercel build outright when either is missing, so a mis-scoped environment fails loudly instead of shipping an app whose login is broken.
 - Build settings (auto-detected Vite preset):
   - Build command: `npm run build`
   - Output directory: `dist`
   - Install command: `npm ci`
 
 Preview deployments are protected by Vercel SSO by default — log in with your Vercel account to view them.
+
+### If login fails on a preview but works on production
+
+That preview was **built** without the two Supabase variables, so the client fell back to its placeholder origin and every auth call went nowhere. The app still renders — the giveaway is the "This build has no backend configured" banner on the sign-in page, or a `Failed to fetch` that looks like a wrong password.
+
+1. Vercel → Project → Settings → **Environment Variables** → edit each var → tick **Production, Preview and Development**.
+2. Vercel → Deployments → ⋯ → **Redeploy** the preview (step 1 alone changes nothing — the values were already compiled in).
+3. Confirm what a live build actually contains by grepping its bundle for `supabase.co`:
+
+```powershell
+$h = (Invoke-WebRequest https://yatraflow-blond.vercel.app -UseBasicParsing).Content
+$js = [regex]::Match($h, '/assets/[A-Za-z0-9_.-]+\.js').Value
+(Invoke-WebRequest ("https://yatraflow-blond.vercel.app" + $js) -UseBasicParsing)
+  .Content.Contains('.supabase.co')   # True = backend compiled in, False = broken auth
+```
 
 ## Any other static host
 
@@ -60,7 +76,7 @@ The Google key is **optional** and the app fully works without it (free stack on
 1. `npx tsc --noEmit` — clean
 2. `npm run build` — succeeds
 3. Smoke-test locally: login → demo trips load → create trip (persists after reload) → add stop → map renders → publish → copy from Explore
-4. Check `vercel env ls` — `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` present for Production
+4. Check `vercel env ls` — `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` present for **Production *and* Preview** (Production-only scoping is the #1 cause of "login works here but not on the preview")
 5. Update `CHANGELOG.md`
 6. Commit, merge to `main`, push, watch the Vercel deployment finish
 7. Verify the live URL serves the new build (hard-refresh; check bundle hash changed)

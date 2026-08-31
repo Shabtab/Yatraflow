@@ -4,15 +4,27 @@
 // NEVER be exposed here. Row Level Security in supabase/schema.sql is the
 // real authorization boundary.
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { isRealSupabaseUrl, PLACEHOLDER_SUPABASE_URL } from './authErrors'
 
 const url = import.meta.env.VITE_SUPABASE_URL as string | undefined
 const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
 
-if (!url || !anonKey) {
+/**
+ * False when no real project was compiled into this bundle. Surfaced as a
+ * banner on the auth page (Auth.tsx) and as an actionable error from
+ * store.login/signup, because the placeholder client below otherwise fails
+ * with a bare "Failed to fetch" that looks like a wrong password.
+ */
+export const isSupabaseConfigured = isRealSupabaseUrl(url) && Boolean(anonKey)
+
+if (!isSupabaseConfigured) {
   // Surfaced loudly so a missing .env.local / Vercel env var isn't silent.
   console.error(
-    '[yatraflow] Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY. ' +
-    'Copy .env.example to .env.local and fill in your Supabase project values.',
+    '[yatraflow] No Supabase project compiled into this build ' +
+    '(missing or placeholder VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY). ' +
+    'Login and every data call will fail. Locally: copy .env.example to .env.local. ' +
+    'On Vercel: set both variables for Preview as well as Production, then REDEPLOY ' +
+    '— Vite inlines them at build time, so an existing deployment never picks them up.',
   )
 }
 
@@ -23,7 +35,7 @@ if (!url || !anonKey) {
 // placeholder so the UI still renders; individual data/auth calls then fail
 // with a normal fetch error instead of killing the app at startup.
 export const supabase: SupabaseClient = createClient(
-  url ?? 'http://localhost:54321',
+  url ?? PLACEHOLDER_SUPABASE_URL,
   anonKey ?? 'public-anon-key-placeholder',
   {
     auth: {
@@ -34,4 +46,3 @@ export const supabase: SupabaseClient = createClient(
   },
 )
 
-export const isSupabaseConfigured = Boolean(url && anonKey)

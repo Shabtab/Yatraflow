@@ -91,6 +91,30 @@ Hard rules (each learned the hard way — do not relearn them):
   upgrade, `@vitejs/plugin-react` must be v6+ (native vite 8 peers);
   plugin-react 4.x triggers ERESOLVE — the temporary `.npmrc`
   `legacy-peer-deps` pin was removed once v6 landed (0.19.0).
+- **Vercel env vars are per-environment, and Vite bakes them at build time.**
+  A var ticked for Production only is *absent* from every Preview build — the
+  app renders normally, then login fails with a bare `Failed to fetch` that
+  reads exactly like a wrong password (this is why "login breaks on preview"
+  kept recurring). `vite.config.ts` now **aborts a Vercel build** when
+  `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` are missing or still the
+  `YOUR-PROJECT` template; CI and local builds only warn, since they
+  legitimately have no credentials. Editing a var never fixes an existing
+  deployment — **Redeploy** it.
+- **To reproduce a no-env build, move `.env.local` aside — blanking
+  `$env:VITE_*` does nothing.** `vite build` reads `.env.local` regardless of
+  the process environment, so a "stripped" build silently still had the real
+  values and appeared to disprove the diagnosis. Check what a live deployment
+  actually contains by fetching its `index-*.js` and grepping for `supabase.co`
+  (recipe in `docs/DEPLOYMENT.md`).
+- **Supabase auth fails two different ways** — rejected credentials come back as
+  `{ error }`, but a network failure *throws* `AuthRetryableFetchError`. Wrap
+  both (see `store.login`/`signup`) and map through `lib/authErrors.ts`; an
+  unwrapped throw leaves the sign-in form silently re-enabling after its 10 s
+  failsafe timer with no message shown.
+- **Each `run_commands` array entry is a separate shell process** — a `$var`
+  assigned in one entry is empty in the next, so multi-step probes silently
+  return nothing and look like failures. Put a dependent pipeline in a single
+  command string, with `try/finally` whenever it touches real files.
 
 ## 4. Code conventions & pitfalls
 

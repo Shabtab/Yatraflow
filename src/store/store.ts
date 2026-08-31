@@ -18,6 +18,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { toast } from '../components/ui'
 import { isMissingColumnError, rowToTrip, tripToRow, type OptionalColumnsProbe, type TripRow } from '../lib/tripRow'
 import { reduceSlice, applyMemberChange, isRecentLocalWrite } from '../lib/realtimeCore'
+import { MISSING_BACKEND_MESSAGE, describeAuthFailure } from '../lib/authErrors'
 import type { RealtimeChannel, RealtimePostgresChangesPayload } from '@supabase/supabase-js'
 
 // In-memory cache — the synchronous snapshot the UI reads. No localStorage.
@@ -96,9 +97,21 @@ export function currentUser(db: DB = getSnapshot()): User | null {
 
 /** Email/password sign in via Supabase Auth. */
 export async function login(email: string, password: string): Promise<{ ok: boolean; error?: string }> {
-  const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
-  if (error) return { ok: false, error: error.message }
-  return { ok: true }
+  // Fail with the *cause* instead of letting the placeholder client produce a
+  // confusing "Failed to fetch" that reads like a wrong password.
+  if (!isSupabaseConfigured) return { ok: false, error: MISSING_BACKEND_MESSAGE }
+  try {
+    // Lowercased to match signup(): Supabase stores the address it was given,
+    // so "Me@X.com" at signup and "me@x.com" at login are different users.
+    const { error } = await supabase.auth.signInWithPassword({ email: email.trim().toLowerCase(), password })
+    if (error) return { ok: false, error: describeAuthFailure(error, { configured: true }) }
+    return { ok: true }
+  } catch (e) {
+    // Network failures *throw* (AuthRetryableFetchError) rather than returning
+    // { error } — without this the promise rejects and the form just re-enables
+    // after its failsafe timeout with no message at all.
+    return { ok: false, error: describeAuthFailure(e, { configured: true }) }
+  }
 }
 
 /** Email/password sign up via Supabase Auth. Profile row is created by the DB trigger. */
@@ -106,16 +119,21 @@ export async function signup(name: string, email: string, password: string): Pro
   const cleanEmail = email.trim().toLowerCase()
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) return { ok: false, error: 'Enter a valid email address.' }
   if (password.length < 8) return { ok: false, error: 'Password must be at least 8 characters.' }
-  const { data, error } = await supabase.auth.signUp({
-    email: cleanEmail, password,
-    options: { data: { name: name.trim() } },
-  })
-  if (error) return { ok: false, error: error.message }
-  // Supabase may require email confirmation; surface that gently.
-  if (data.session === null) {
-    return { ok: false, error: 'Check your email to confirm your account, then log in.' }
+  if (!isSupabaseConfigured) return { ok: false, error: MISSING_BACKEND_MESSAGE }
+  try {
+    const { data, error } = await supabase.auth.signUp({
+      email: cleanEmail, password,
+      options: { data: { name: name.trim() } },
+    })
+    if (error) return { ok: false, error: describeAuthFailure(error, { configured: true }) }
+    // Supabase may require email confirmation; surface that gently.
+    if (data.session === null) {
+      return { ok: false, error: 'Check your email to confirm your account, then log in.' }
+    }
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: describeAuthFailure(e, { configured: true }) }
   }
-  return { ok: true }
 }
 
 export async function logout(): Promise<void> {
