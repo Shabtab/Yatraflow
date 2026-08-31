@@ -40,7 +40,7 @@ import { pickTripQueryCandidates } from '../lib/tripThumb'
 import { searchNearbyPois, corridorAnchors, detourKm, googleEnabled, planJourneyHalts, type NearbyOpts } from '../lib/geocode'
 import type { PlaceHit, SegmentHit } from '../lib/geocode'
 import { anchorHash } from '../lib/providers/hits'
-import { fetchDailyWeather, forecastAvailable, wmoInfo } from '../lib/weather'
+import { fetchDailyWeather, forecastAvailable, isoAddDays, wmoInfo } from '../lib/weather'
 import type { DayWeather } from '../lib/weather'
 import { encodeTripSnapshot, decodeTripSnapshot, snapshotUrl, downloadTripJson } from '../lib/snapshot'
 import { duplicateTrip } from '../store/store'
@@ -462,12 +462,6 @@ function DayWeatherChip({ trip, dayIndex }: { trip: Trip; dayIndex: number }) {
       {info.icon} {Math.round(w.tempMaxC)}° 💧{w.rainChancePct}%
     </span>
   )
-}
-
-function isoAddDays(iso: string, days: number): string {
-  const d = new Date(iso + 'T00:00')
-  d.setDate(d.getDate() + days)
-  return d.toISOString().slice(0, 10)
 }
 
 // ================= Timeline =================
