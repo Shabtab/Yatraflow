@@ -201,6 +201,7 @@ describe('facade: searchNearbyPoisMulti (Search-Along-Route)', () => {
     const echo = hits.find(h => h.name === 'Echo Point')!
     expect(echo).toMatchObject({ category: 'sightseeing', openTime: '09:00', closeTime: '18:00' })
     expect(echo.offRouteKm).toBeCloseTo(4.2) // real road detour from routingSummaries
+    expect(echo.alongRouteKm).toBeCloseTo(30) // leg0 → km from the route origin (ride-plan position)
     // the home-zone exclusion still applies to Google hits
     expect(hits.some(h => h.name === 'Home Cafe')).toBe(false)
   })

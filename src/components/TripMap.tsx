@@ -530,7 +530,9 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby }: {
                     )}
                   </span>
                 </MarkerContent>
-                <MarkerTooltip>💡 {hit.name}</MarkerTooltip>
+                <MarkerTooltip>
+                  💡 {hit.name}{hit.haltPurpose ? ` · ${hit.haltPurpose === 'overnight' ? 'overnight option' : hit.haltPurpose}` : ''}{hit.cumKm != null ? ` · ~${hit.cumKm} km in` : ''}{hit.nearestCity ? ` · near ${hit.nearestCity}` : ''}
+                </MarkerTooltip>
               </MapMarker>
             ))}
           </MapLibreMap>

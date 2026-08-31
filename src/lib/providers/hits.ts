@@ -30,7 +30,27 @@ export interface PlaceHit {
   closeTime?: string
   /** real road detour in km (Google routingSummaries); falls back to straight-line-to-anchor */
   offRouteKm?: number
+  // ---- ride-plan annotations (filled by src/lib/ridePlan.ts + providers) ----
+  /** road km along the route from the journey origin (Google leg0/1000; free = coarse anchor position) */
+  alongRouteKm?: number
+  /** which fatigue segment this suggestion is for (stretch / meal / fuel / rest / overnight / sight) */
+  haltPurpose?: HaltPurpose
+  /** km from the previous planned stop/suggestion (ridePlan fills) */
+  legKm?: number
+  /** est. drive minutes for that leg (ridePlan fills) */
+  legMinutes?: number
+  /** cumulative km from journey origin (ridePlan fills) */
+  cumKm?: number
+  /** nearest key city to this hit (city overlay fills) */
+  nearestCity?: string
+  /** true for populated-place/city hits from the city overlay */
+  isPopulatedPlace?: boolean
+  /** OSM `population` tag when present (city ordering) */
+  population?: number
 }
+
+/** What kind of journey break a suggestion serves. */
+export type HaltPurpose = 'stretch' | 'meal' | 'fuel' | 'rest' | 'overnight' | 'sight'
 
 /** true when a hit already carries usable coordinates */
 export function hasCoords(h: PlaceHit): boolean {
@@ -50,6 +70,36 @@ export function detourKm(h: Pick<PlaceHit, 'latitude' | 'longitude' | 'offRouteK
 
 /** Nothing within this radius of the trip's start is ever suggested. */
 export const HOME_ZONE_KM = 15
+
+/**
+ * Coarse along-route position of a hit (km from the journey origin).
+ * Prefers the real road distance when the provider gave one (`alongRouteKm`,
+ * e.g. Google's routingSummaries leg0); otherwise maps the hit onto the
+ * nearest ordered corridor anchor and returns that anchor's cumulative route
+ * distance (interpolated between consecutive anchors' straight-line spans).
+ * Returns null when there are no usable anchors.
+ */
+export function kmFromStartForHit(
+  h: Pick<PlaceHit, 'latitude' | 'longitude' | 'alongRouteKm'>,
+  anchors: { lat: number; lng: number }[],
+): number | null {
+  if (h.alongRouteKm != null && Number.isFinite(h.alongRouteKm)) return Math.max(0, h.alongRouteKm)
+  const pts = anchors.filter(a => Number.isFinite(a.lat) && Number.isFinite(a.lng))
+  if (pts.length === 0 || !Number.isFinite(h.latitude) || !Number.isFinite(h.longitude)) return null
+  // cumulative km at each anchor (anchors sit ON the route line, so the
+  // straight-line sum between consecutive ones approximates along-route travel)
+  const cum: number[] = [0]
+  for (let i = 1; i < pts.length; i++) {
+    cum.push(cum[i - 1] + haversineKm(pts[i - 1].lat, pts[i - 1].lng, pts[i].lat, pts[i].lng))
+  }
+  let best = 0
+  let bestD = Infinity
+  for (let i = 0; i < pts.length; i++) {
+    const d = haversineKm(h.latitude, h.longitude, pts[i].lat, pts[i].lng)
+    if (d < bestD) { bestD = d; best = i }
+  }
+  return cum[best]
+}
 
 export interface NearbyOpts {
   /** include petrol pumps as pit stops (self-drive trips only, capped) */
@@ -71,6 +121,16 @@ export interface NearbyOpts {
    * absent, Google hits fall back to the straight-line-to-anchor estimate.
    */
   routeTotalKm?: number | null
+  /**
+   * Vehicle tank range in km — sets the fuel-stop cadence (default 450).
+   * 0/undefined keep the default; only meaningful when includeFuel is true.
+   */
+  vehicleRangeKm?: number
+  /**
+   * true = plan the WHOLE trip (cross-day overnight segments allowed);
+   * false/undefined = single-day journey (fatigue halts only, no overnight).
+   */
+  multiDay?: boolean
 }
 
 /**

@@ -2,7 +2,6 @@
 // Tabs: Overview / Timeline / Map / Suggestions / Budget / Decisions / Share
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import type { Trip, ItineraryStop, Expense, LatLngPoint } from '../data/types'
-import { CatIcon } from '../components/icons'
 import { TRANSPORT_MODES, TRAVEL_STYLES } from '../data/types'
 import {
   useDb, tripById, userById, currentUser, roleOf, canEdit,
@@ -20,7 +19,6 @@ import {
 import type { LegEstimate, ScheduleWarning, Journey } from '../lib/engine'
 import { routePath } from '../lib/routing'
 import { computeImpact, type ImpactResult } from '../lib/impact'
-import { haversineKm } from '../lib/geo'
 import { loadDayCollapsed, saveDayCollapsed } from '../lib/uiPrefs'
 import { useTimeFormat, formatHM, formatHMRange } from '../lib/timefmt'
 import { Avatar, Chip, Modal, ConfirmDialog, Field, StatTile, HealthRing, EmptyState, toast, undoToast, useReorder, CopyButton } from '../components/ui'
@@ -30,8 +28,8 @@ const TripMap = React.lazy(() => import('../components/TripMap').then(m => ({ de
 import { StopEditor, type StopFormValues } from '../components/StopEditor'
 import { AiDrawer } from '../components/AiDrawer'
 import { LocationInput } from '../components/LocationInput'
-import { searchNearbyPois, searchNearbyPoisMulti, corridorAnchors, detourKm, googleEnabled, type NearbyOpts } from '../lib/geocode'
-import type { PlaceHit } from '../lib/geocode'
+import { searchNearbyPois, corridorAnchors, detourKm, googleEnabled, planJourneyHalts, type NearbyOpts } from '../lib/geocode'
+import type { PlaceHit, SegmentHit } from '../lib/geocode'
 import { fetchDailyWeather, forecastAvailable, wmoInfo } from '../lib/weather'
 import type { DayWeather } from '../lib/weather'
 import { encodeTripSnapshot, decodeTripSnapshot, snapshotUrl, downloadTripJson } from '../lib/snapshot'
@@ -969,7 +967,7 @@ function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddBreakSt
   const A = getAssumptions(trip)
   const timeFormat = useTimeFormat()
   const [haltDraft, setHaltDraft] = useState(20)
-  const [spots, setSpots] = useState<PlaceHit[]>([])
+  const [spots, setSpots] = useState<SegmentHit[]>([])
   const [searched, setSearched] = useState(false)
   const [loadingSpots, setLoadingSpots] = useState(false)
 
@@ -999,7 +997,7 @@ function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddBreakSt
   // New halts slot in after the last existing halt (else mid-route) — always
   // before the day's destination, so they ride the real drive.
   const lastHaltPos = orderedActive.reduce(
-    (acc, s, i) => (!s.auto && (s.category === 'food' || s.category === 'rest')) ? i + 1 : acc, 0)
+    (acc, s, i) => (!s.auto && (s.category === 'food' || s.category === 'rest' || s.category === 'transport-hub' || s.category === 'hotel')) ? i + 1 : acc, 0)
   const insertPos = lastHaltPos > 0 ? lastHaltPos : Math.max(1, Math.floor(orderedActive.length / 2))
   const first = journey.points[0]
   const last = journey.points[journey.points.length - 1]
@@ -1018,30 +1016,18 @@ function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddBreakSt
     }, insertPos)
   }
 
-  /** Real food/fuel/rest spots along the day's route corridor — at any distance. */
+  /** Ride-plan halt spots along the day's corridor — spaced for fatigue, anchored on towns. */
   async function suggestSpots() {
     setLoadingSpots(true)
     try {
       const routePts = journey.points.map(p => ({ lat: p.lat, lng: p.lng }))
-      const anchors = corridorAnchors(routePts, trip.startLocationCoords, 35000, 6)
-      const hits = await searchNearbyPoisMulti(anchors, 35000, 12, {
-        includeFuel: true,
+      const anchors = corridorAnchors(routePts, trip.startLocationCoords, 35000, 8)
+      const plan = await planJourneyHalts(anchors, journey.distanceKm, journey.driveMinutes, {
+        includeFuel: trip.transportMode === 'car' || trip.transportMode === 'motorcycle',
         homeCenter: trip.startLocationCoords ?? null,
-      })
-      // Rank by how close each hit sits to the route (nearest corridor anchor
-      // ≈ coarse along-route position) plus a small detour and category
-      // penalty — sightseeing is a visit, not a break.
-      const scored = hits.map(h => {
-        let bd = Infinity
-        anchors.forEach(a => {
-          const d = haversineKm(h.latitude, h.longitude, a.lat, a.lng)
-          if (d < bd) bd = d
-        })
-        const cat = h.category ?? 'sightseeing'
-        const catPenalty = cat === 'sightseeing' || cat === 'temple' || cat === 'museum' || cat === 'beach' || cat === 'nature' ? 10 : cat === 'hotel' ? 5 : 0
-        return { h, score: bd + detourKm(h, anchors) * 2 + catPenalty }
-      })
-      setSpots(scored.sort((a, b) => a.score - b.score).slice(0, 4).map(s => s.h))
+        multiDay: false,
+      }, 35000)
+      setSpots(plan)
     } catch {
       toast('Could not fetch halt-spot suggestions', 'err')
     } finally {
@@ -1050,14 +1036,19 @@ function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddBreakSt
     }
   }
 
-  function addSpot(h: PlaceHit, minutes: number) {
+  function addSpot(sh: SegmentHit, minutes: number) {
+    const h = sh.hit
+    if (!h) return
+    const purpose = sh.segment.purpose
+    const cat: ItineraryStop['category'] =
+      purpose === 'meal' ? 'food' : purpose === 'fuel' ? 'transport-hub' : purpose === 'overnight' ? 'hotel' : 'rest'
     onAddBreakStop(day.index, {
       title: h.name,
-      category: h.category === 'food' ? 'food' : 'rest',
+      category: cat,
       locationName: h.description ?? h.name,
       lat: h.latitude, lng: h.longitude,
       description: h.description ?? '',
-      notes: `Ride break — suggested halt spot (+${minutes} min)`,
+      notes: `Ride break — ${sh.segment.label.toLowerCase()} at ~${h.cumKm ?? sh.segment.targetKm.toFixed(0)} km (+${minutes} min)`,
       visitMinutes: minutes, openTime: '', closeTime: '',
       entryFeeInrPerPerson: 0, transportCostInrTotal: 0,
       priority: 'nice-to-have', sourceUrl: '', status: 'confirmed',
@@ -1154,12 +1145,11 @@ function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddBreakSt
               {searched && <span className="small muted" style={{ marginLeft: 8 }}>No good halt spots found along this stretch — add one manually above.</span>}
             </div>
           )}
-          {spots.map(h => (
+          {spots.map(sh => (
             <RideSpotRow
-              key={`${h.kind}-${h.name}-${h.latitude}`}
-              hit={h}
-              defaultMinutes={20}
-              onAdd={mins => addSpot(h, mins)}
+              key={`${sh.segment.index}-${sh.hit?.name ?? 'gap'}`}
+              segHit={sh}
+              onAdd={mins => addSpot(sh, mins)}
             />
           ))}
         </div>
@@ -1168,26 +1158,65 @@ function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddBreakSt
   )
 }
 
-/** One suggested halt spot with a duration picker (how long the user wants to stop). */
-function RideSpotRow({ hit, defaultMinutes, onAdd }: {
-  hit: PlaceHit
-  defaultMinutes: number
+/** Default halt length per ride-plan purpose (stretch 20, rest 20, meal 45, fuel 10, overnight 0). */
+function purposeMinutes(purpose: string): number {
+  switch (purpose) {
+    case 'meal': return 45
+    case 'fuel': return 10
+    case 'overnight': return 0
+    case 'stretch': return 20
+    default: return 20
+  }
+}
+
+/** One fatigue-plan segment with its best real stop (or a gap note when none fit). */
+function RideSpotRow({ segHit, onAdd }: {
+  segHit: SegmentHit
   onAdd: (minutes: number) => void
 }) {
-  const [mins, setMins] = useState(defaultMinutes)
+  const h = segHit.hit
+  const seg = segHit.segment
+  const [mins, setMins] = useState(purposeMinutes(seg.purpose))
+
+  if (!h) {
+    return (
+      <div className="ride-spot ride-spot-gap">
+        <div className="ride-spot-main">
+          <span className="ride-purpose ride-purpose-muted">{seg.label}</span>
+          <span className="muted small">no good {seg.purpose} spot within ~{seg.targetKm.toFixed(0)} km — add one manually above</span>
+        </div>
+      </div>
+    )
+  }
+
+  const isOvernight = seg.purpose === 'overnight'
   return (
     <div className="ride-spot">
       <div className="ride-spot-main">
-        <b>{hit.name}</b>{' '}
+        <div className="ride-spot-title">
+          <span className={`ride-purpose ride-purpose-${seg.purpose}`}>{seg.label}</span>
+          <b>{h.name}</b>
+        </div>
         <span className="muted small">
-          {hit.category ? `${labelCatText(hit.category)} · ` : ''}{hit.description ?? ''}
+          ~{h.cumKm ?? seg.targetKm.toFixed(0)} km into the journey · ≈{seg.kmFromPrev.toFixed(0)} km / {minutesToHM(seg.minutesFromPrev)} since the last stop
+          {h.offRouteKm != null ? ` · ~${Math.round(h.offRouteKm)} km off route` : ''}
+          {h.nearestCity ? ` · near ${h.nearestCity}` : ''}
         </span>
+        <div className="muted small">
+          {h.category ? `${labelCatText(h.category)} · ` : ''}{h.description ?? ''}
+        </div>
       </div>
       <div className="ride-spot-actions">
-        <select className="input ride-spot-mins" value={mins} onChange={e => setMins(Number(e.target.value))} aria-label="Halt duration">
-          {[15, 20, 30, 40, 45, 60].map(v => <option key={v} value={v}>{v} min</option>)}
-        </select>
-        <button className="btn btn-primary btn-sm" onClick={() => onAdd(mins)}>＋ Add halt</button>
+        {isOvernight ? (
+          <button className="btn btn-primary btn-sm" onClick={() => onAdd(0)}>＋ Add overnight stay</button>
+        ) : (
+          <>
+            <select className="input ride-spot-mins" value={mins} onChange={e => setMins(Number(e.target.value))} aria-label="Halt duration">
+              {[15, 20, 30, 40, 45, 60].map(v => <option key={v} value={v}>{v} min</option>)}
+            </select>
+            <button className="btn btn-primary btn-sm" onClick={() => onAdd(mins)}>＋ Add halt</button>
+          </>
+        )}
       </div>
     </div>
   )
@@ -1329,7 +1358,7 @@ function MapTab({ trip, editable, applyChange }: {
   editable: boolean
   applyChange: (mutator: (d: Trip) => void, kind: ImpactResult['kind'], dayIndex: number) => void
 }) {
-  const [pois, setPois] = useState<PlaceHit[]>([])
+  const [pois, setPois] = useState<SegmentHit[]>([])
   const timeFormat = useTimeFormat()
   const [loadingPois, setLoadingPois] = useState(false)
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set())
@@ -1354,6 +1383,30 @@ function MapTab({ trip, editable, applyChange }: {
     return names
   }, [trip])
 
+  // whole-trip wheel distance & time (journey sums) — the plan budget for the
+  // fatigue math; OSRM's road total wins when it's available (more accurate).
+  const wholeTrip = useMemo(() => {
+    let km = 0
+    let min = 0
+    for (const d of trip.days) {
+      const j = buildJourney(trip, d)
+      km += j.distanceKm
+      min += j.driveMinutes
+    }
+    return { km, min }
+  }, [trip])
+
+  /** Which day's cumulative drive covers a given along-route km (for pick-a-day defaults). */
+  function dayForKm(km: number | undefined): number {
+    if (km == null) return trip.days[0]?.index ?? 0
+    let covered = 0
+    for (const d of trip.days) {
+      covered += buildJourney(trip, d).distanceKm
+      if (km <= covered) return d.index
+    }
+    return trip.days[trip.days.length - 1]?.index ?? 0
+  }
+
   // search the WHOLE route corridor (start → stops → destination); the home
   // zone around the starting point is excluded inside the engine
   const anchors = useMemo(() => {
@@ -1369,6 +1422,9 @@ function MapTab({ trip, editable, applyChange }: {
   // the same legs independently, so this is one extra free OSRM call per route.
   const [routeGeometry, setRouteGeometry] = useState<[number, number][] | null>(null)
   const [routeTotalKm, setRouteTotalKm] = useState<number | null>(null)
+  // OSRM's road total (when resolved) is the most accurate journey budget for
+  // the fatigue math; until then use the journey-summed estimate.
+  const planKm = routeTotalKm && routeTotalKm >= 90 ? routeTotalKm : wholeTrip.km
   useEffect(() => {
     let cancelled = false
     const pts = [
@@ -1402,12 +1458,12 @@ function MapTab({ trip, editable, applyChange }: {
     if (anchors.length === 0) return
     let cancelled = false
     setLoadingPois(true)
-    searchNearbyPoisMulti(anchors, scopeKm * 1000, 12, nearbyOpts)
-      .then(hits => { if (!cancelled) setPois(hits.slice(0, 10)) })
+    planJourneyHalts(anchors, planKm, wholeTrip.min, { ...nearbyOpts, multiDay: trip.days.length > 1 }, scopeKm * 1000)
+      .then(plan => { if (!cancelled) setPois(plan) })
       .catch(() => { /* suggestions are best-effort */ })
       .finally(() => { if (!cancelled) setLoadingPois(false) })
     return () => { cancelled = true }
-  }, [anchors, nearbyOpts, scopeKm]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [anchors, nearbyOpts, scopeKm, planKm, wholeTrip.min, trip.days.length]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function addPoiToDay(hit: PlaceHit, dayIndex: number) {
     applyChange(draft => {
@@ -1420,7 +1476,7 @@ function MapTab({ trip, editable, applyChange }: {
         lat: hit.latitude,
         lng: hit.longitude,
         description: hit.description ?? '',
-        notes: 'Added from nearby suggestions',
+        notes: hit.haltPurpose ? 'Added from the ride plan' : 'Added from nearby suggestions',
         visitMinutes: poiVisitMinutes(hit.category),
         // reported hours arrive on Google suggestion hits; free hits stay blank
         openTime: hit.openTime ?? '', closeTime: hit.closeTime ?? '',
@@ -1437,7 +1493,7 @@ function MapTab({ trip, editable, applyChange }: {
   }
 
   function openAddModal(hit: PlaceHit) {
-    setPickDay(trip.days[0]?.index ?? 0)
+    setPickDay(dayForKm(hit.cumKm))
     setPoiDraft({ hit })
   }
 
@@ -1445,14 +1501,14 @@ function MapTab({ trip, editable, applyChange }: {
 
   return (
     <div>
-      <TripMap trip={trip} nearbyPois={pois} onAddNearby={editable ? (hit) => openAddModal(hit) : undefined} />
+      <TripMap trip={trip} nearbyPois={pois.flatMap(p => p.hit ? [p.hit] : [])} onAddNearby={editable ? (hit) => openAddModal(hit) : undefined} />
       <div className="card" style={{ marginTop: 14 }}>
         <div className="row-between">
           <h3 style={{ margin: 0 }}>💡 Nearby ideas</h3>
-          <span className="small muted">{loadingPois ? 'searching…' : `${pois.length} found near your route`}</span>
+          <span className="small muted">{loadingPois ? 'searching…' : `${pois.filter(p => p.hit).length} suggested stops — spaced for fatigue & anchored on cities`}</span>
         </div>
         <p className="hint-text" style={{ margin: '4px 0 6px' }}>
-          Things to see, eat and stay en-route and around your destination (live data from {googleEnabled() ? 'Google Places' : 'OpenStreetMap, Wikipedia & Mappls'}) — never around your starting point. Add one straight to a day.
+          Live data from {googleEnabled() ? 'Google Places' : 'OpenStreetMap, Wikipedia & Mappls'}: lunch ~ every 300 km, stretch & fuel breaks in between, and for long trips an overnight stop in a key city at the end of each day's drive. Never around your starting point.
         </p>
         <div className="row-between" style={{ gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
           <label className="small" style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 230 }}>
@@ -1471,35 +1527,43 @@ function MapTab({ trip, editable, applyChange }: {
           </label>
         </div>
         {!loadingPois && pois.length === 0 && (
-          <p className="muted small">No nearby suggestions found — add stops in the Timeline and ideas will appear here.</p>
+          <p className="muted small">Not enough driving distance yet for a fatigue plan — add a longer route (90+ km) in the Timeline and segmented stop suggestions will appear here.</p>
         )}
-        <div className="poi-suggest-grid">
-          {pois.map(hit => {
+        <div className="poi-plan-list">
+          {pois.map(sh => {
+            const hit = sh.hit
+            if (!hit) {
+              return (
+                <div key={`gap-${sh.segment.index}`} className="poi-plan-row poi-plan-gap">
+                  <span className={`ride-purpose ride-purpose-${sh.segment.purpose} ride-purpose-muted`}>{sh.segment.label}</span>
+                  <span className="muted small">no good match around ~{sh.segment.targetKm.toFixed(0)} km — add a stop on the Timeline and it will pin itself here.</span>
+                </div>
+              )
+            }
             const added = addedIds.has(hit.id as string) || existingNames.has(hit.name.toLowerCase())
             return (
-              <div key={hit.id} className="poi-suggest-card">
-                {hit.thumb
-                  ? <img className="poi-thumb" src={smallThumb(hit.thumb)} alt="" loading="lazy" />
-                  : <div className="poi-thumb poi-thumb-empty"><CatIcon category={hit.category} size={22} /></div>}
-                <div className="poi-info">
-                  <div className="poi-name">{hit.name}</div>
-                  {hit.description && <div className="poi-desc small muted">{hit.description}</div>}
-                  {hit.category && (
-                    <div className="poi-cat small">
-                      {labelCatText(String(hit.category))}
-                      {' · '}
-                      ~{Math.round(detourKm(hit, anchors))} km off route
-                    </div>
-                  )}
-                  {(hit.openTime || hit.closeTime) && (
-                    <div className="poi-desc small muted">🕘 {formatHMRange(hit.openTime, hit.closeTime, timeFormat)} (reported)</div>
+              <div key={hit.id} className="poi-plan-row">
+                <div className="ride-spot-title">
+                  <span className={`ride-purpose ride-purpose-${sh.segment.purpose}`}>{sh.segment.label}</span>
+                  {hit.thumb && <img className="poi-thumb" src={smallThumb(hit.thumb)} alt="" loading="lazy" />}
+                  <b>{hit.name}</b>
+                </div>
+                <div className="poi-desc small muted">
+                  ~{hit.cumKm ?? sh.segment.targetKm.toFixed(0)} km into the trip · ≈{sh.segment.kmFromPrev.toFixed(0)} km / {minutesToHM(sh.segment.minutesFromPrev)} since the last stop
+                  {hit.nearestCity ? ` · near ${hit.nearestCity}` : ''}
+                  {' · '}{Math.round(detourKm(hit, anchors))} km off route
+                </div>
+                {hit.description && <div className="poi-desc small muted">{hit.description}</div>}
+                {(hit.openTime || hit.closeTime) && (
+                  <div className="poi-desc small muted">🕘 {formatHMRange(hit.openTime, hit.closeTime, timeFormat)} (reported)</div>
+                )}
+                <div>
+                  {editable && (
+                    added
+                      ? <span className="chip chip-teal">✓ Added</span>
+                      : <button className="btn btn-primary btn-sm" onClick={() => openAddModal(hit)}>+ Add</button>
                   )}
                 </div>
-                {editable && (
-                  added
-                    ? <span className="chip chip-teal">✓ Added</span>
-                    : <button className="btn btn-primary btn-sm" onClick={() => openAddModal(hit)}>+ Add</button>
-                )}
               </div>
             )
           })}

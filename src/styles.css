@@ -1279,3 +1279,32 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
 .ride-spot-main { flex: 1; min-width: 180px; }
 .ride-spot-actions { display: flex; gap: 8px; align-items: center; }
 .ride-spot-mins { width: 100px; padding: 6px 8px; }
+.ride-spot-title { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.ride-spot-gap { border-style: dashed; opacity: .8; }
+
+/* Ride-plan purpose chips — colour-coded stop type on suggested halt cards */
+.ride-purpose {
+  display: inline-flex; align-items: center;
+  font-size: 10.5px; font-weight: 800; letter-spacing: .3px; text-transform: uppercase;
+  padding: 2px 8px; border-radius: 999px; white-space: nowrap;
+  background: var(--line); color: var(--text-2);
+}
+.ride-purpose-meal { background: color-mix(in srgb, var(--saffron) 16%, transparent); color: var(--teal-deep); }
+.ride-purpose-fuel { background: var(--info-soft); color: var(--teal-deep); }
+.ride-purpose-stretch { background: color-mix(in srgb, var(--teal) 14%, transparent); color: var(--teal-deep); }
+.ride-purpose-rest { background: color-mix(in srgb, var(--teal) 14%, transparent); color: var(--teal-deep); }
+.ride-purpose-overnight { background: var(--text); color: var(--bg); }
+.ride-purpose-sight { background: color-mix(in srgb, var(--saffron) 22%, transparent); color: var(--text); }
+.ride-purpose-muted { background: transparent; border: 1px dashed var(--line); color: var(--text-3); }
+
+/* Whole-trip segmented suggestion list (Map tab) */
+.poi-plan-list { display: flex; flex-direction: column; gap: 9px; }
+.poi-plan-row {
+  border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 9px 12px; background: var(--bg);
+  display: flex; flex-direction: column; gap: 4px;
+}
+.poi-plan-gap { border-style: dashed; opacity: .85; }
+.poi-plan-row .poi-desc { -webkit-line-clamp: unset; -webkit-box-orient: unset; overflow: visible; }
+.poi-plan-row .poi-thumb { width: 34px; height: 34px; border-radius: 8px; }
+[data-theme='dark'] .ride-purpose-overnight { background: #fff; color: #06251f; }

@@ -181,6 +181,8 @@ By default route lines follow **real roads**: [`src/lib/routing.ts`](../src/lib/
 
 The Map tab also surfaces **nearby POI ideas**: gold 💡 markers for real Wikipedia-geosearch points of interest within 10 km of your route, with a "Nearby ideas" panel and a **+ Add** button (pick-a-day modal) that creates the stop through the normal impact-preview flow; already-added ideas show a ✓ badge.
 
+For **long drives** the same panel switches from even-spaced tourist ranking to the fatigue-budget ride planner in [`src/lib/ridePlan.ts`](../src/lib/ridePlan.ts): the total distance is split into fatigue segments (stretch ~150 km, meal ~300 km, fuel on tank range, overnight ~550 km end-of-day), long/cross-day segments are anchored on key cities (Overpass `place=city|town` + Wikipedia populated places, population-weighted), and one best-fit real stop is assigned per segment — cards/tooltips carry the halt purpose, cumulative trip km, leg distance/time, detour and nearest city. Google mode adds exact along-route km from `routingSummaries` leg0; the free stack maps hits onto corridor anchors so the planner works with no keys.
+
 ## 9. Routing & pages
 
 No router library. [`App.tsx`](../src/App.tsx) parses `location.hash` into a route string and switches pages:

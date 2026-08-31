@@ -528,3 +528,63 @@ export async function searchNearbyPoisMultiFree(
   // home-zone filter + tourist ranking + per-category caps (shared with the Google path)
   return rankAndCap(merged, capped, radiusM, count, opts)
 }
+
+/**
+ * Key cities/towns along the ride corridor — the anchor layer for long-drive
+ * and cross-day overnight planning. Overpass `place=city|town` nodes
+ * (authoritative, with OSM `population` when mapped), merged with Wikipedia
+ * geosearch populated-place articles, deduped by name (larger population wins).
+ * Best-effort: any failure → [] — the ride planner degrades to pure cadence.
+ */
+export async function searchCitiesAlong(
+  anchors: { lat: number; lng: number }[],
+  radiusM = 35000,
+  count = 8,
+): Promise<PlaceHit[]> {
+  const radius = Math.min(Math.max(radiusM, 5000), 60000)
+  const stmts = anchors
+    .filter(a => Number.isFinite(a.lat) && Number.isFinite(a.lng))
+    .map(a => `node(around:${radius},${a.lat},${a.lng})[place~"^(city|town)$"];`)
+    .join('')
+  const byName = new Map<string, PlaceHit>()
+  if (stmts) {
+    const elements = await fetchOverpass(`[out:json][timeout:20];(${stmts});out center tags 120;`)
+    for (const el of elements) {
+      const tags = el.tags ?? {}
+      const name = tags.name?.trim()
+      if (!name) continue
+      const lat = el.lat ?? el.center?.lat
+      const lng = el.lon ?? el.center?.lon
+      if (lat == null || lng == null || !Number.isFinite(lat) || !Number.isFinite(lng)) continue
+      const pop = tags.population ? Number(String(tags.population).replace(/,/g, '')) : undefined
+      const hit: PlaceHit = {
+        id: `osm_city_${el.type}_${el.id}`,
+        name,
+        latitude: lat,
+        longitude: lng,
+        kind: 'place',
+        category: 'rest',
+        description: tags.place,
+        source: 'osm',
+        isPopulatedPlace: true,
+        ...(typeof pop === 'number' && Number.isFinite(pop) && pop > 0 ? { population: pop } : {}),
+      }
+      const prev = byName.get(name.toLowerCase())
+      if (!prev || (pop ?? 0) > (prev.population ?? 0)) byName.set(name.toLowerCase(), hit)
+    }
+  }
+  // Wikipedia geosearch adds notable populated places Overpass may miss.
+  const per = Math.max(3, Math.ceil((count * 2) / Math.max(1, anchors.length)))
+  const wiki = (
+    await Promise.all(
+      anchors.slice(0, 6).map(a => searchNearbyPoisWikipedia(a.lat, a.lng, radius, per)),
+    )
+  ).flat()
+  for (const h of wiki) {
+    const desc = (h.description ?? '').toLowerCase()
+    if (!/(city|town|capital|municipal|settlement)/.test(desc)) continue
+    if (byName.has(h.name.toLowerCase())) continue
+    byName.set(h.name.toLowerCase(), { ...h, category: 'rest', isPopulatedPlace: true })
+  }
+  return [...byName.values()].slice(0, count)
+}

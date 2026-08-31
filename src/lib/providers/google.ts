@@ -317,6 +317,9 @@ function hitsFromResponses(
         source: 'google',
         category: queries[qi].cat,
         ...hoursFrom(p),
+        // leg0 = road km from the route origin to this place — its position
+        // along the journey (ride-plan segment assignment + card labels)
+        ...(l0 != null && Number.isFinite(l0) ? { alongRouteKm: Math.max(0, l0) / 1000 } : {}),
         ...(detourM != null && Number.isFinite(detourM)
           ? { offRouteKm: Math.max(0, detourM) / 1000 }
           : {}),

@@ -20,11 +20,13 @@ export { mapplsEnabled, parseOpeningHours, fetchOpeningHours, type OpeningHours 
 export { HOME_ZONE_KM, corridorAnchors, detourKm } from './providers/hits'
 export type { NearbyOpts, PlaceHit } from './providers/hits'
 export { googleEnabled } from './providers/google'
+export { planRideSegments, assignSegmentHits, type SegmentHit, type RideSegment } from './ridePlan'
 
 import { hasCoords, rankAndCap, type NearbyOpts, type PlaceHit } from './providers/hits'
 import {
   searchPlacesFree,
   searchNearbyPoisMultiFree,
+  searchCitiesAlong,
   resolveHitCoords as resolveFreeHitCoords,
 } from './providers/free'
 import {
@@ -34,6 +36,10 @@ import {
   googleNearbyAtPoint,
   googleResolveHitCoords,
 } from './providers/google'
+import {
+  planRideSegments, assignSegmentHits, annotateSegmentHits,
+  type SegmentHit, type RideSegment,
+} from './ridePlan'
 
 /**
  * Search cities AND points of interest at once. Google autocomplete first
@@ -121,4 +127,46 @@ export async function searchNearbyPoisMulti(
     } catch { /* quota or network → free stack */ }
   }
   return searchNearbyPoisMultiFree(capped, radiusM, count, opts)
+}
+
+/**
+ * Whole-journey ride plan: fatigue-budget segments, each with the single best
+ * real stop, anchored on key cities for long / cross-day drives. Runs the
+ * provider-agnostic segment math (ridePlan) over Google Search-Along-Route
+ * hits (real along-route positions) + the free-stack city overlay (OSM /
+ * Wikipedia populated places) + the free POI search as the fallback, so the
+ * algorithm works identically with or without a key. Returns ordered
+ * SegmentHit[] with position metadata (cumKm / legKm / legMinutes /
+ * nearestCity / purpose). Any provider failure degrades to whatever survived;
+ * a planning failure returns an empty list (caller toasts).
+ */
+export async function planJourneyHalts(
+  anchors: { lat: number; lng: number }[],
+  totalKm: number,
+  driveMinutes: number,
+  opts: NearbyOpts = {},
+  radiusM = 35000,
+): Promise<SegmentHit[]> {
+  const [hits, cities] = await Promise.all([
+    searchNearbyPoisMulti(anchors, radiusM, 16, opts).catch(() => [] as PlaceHit[]),
+    searchCitiesAlong(anchors, radiusM, 8).catch(() => [] as PlaceHit[]),
+  ])
+  const seen = new Set<string>()
+  const candidates: PlaceHit[] = []
+  for (const h of [...cities, ...hits]) {
+    if (!h.name) continue
+    const key = h.name.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    candidates.push(h)
+  }
+  const segments = planRideSegments({
+    totalKm,
+    driveMinutes,
+    includeFuel: opts.includeFuel,
+    multiDay: opts.multiDay,
+    vehicleRangeKm: opts.vehicleRangeKm,
+  })
+  const assigned = assignSegmentHits(candidates, segments, anchors, { homeCenter: opts.homeCenter ?? null })
+  return annotateSegmentHits(assigned, candidates)
 }
