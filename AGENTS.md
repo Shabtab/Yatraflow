@@ -204,6 +204,20 @@ Hard rules (each learned the hard way — do not relearn them):
   After any heading-level restructure (CHANGELOG releases especially),
   re-grep all headings and re-read the affected range before trusting it.
   (The 0.18.0 restructure briefly lost four Fixed bullets this way.)
+- **`git diff --check` before committing any merge** — conflict markers in
+  *non-code* files (CHANGELOG.md) are invisible to the whole verify gate
+  (`tsc` + tests + `vite build` all passed with a leftover `<<<<<<< HEAD` in
+  the CHANGELOG during the PR #30 merge, Aug 2026). `git diff --check` exits
+  non-zero on leftover markers; run it before `git commit` on every merge.
+- **When merging an agent PR that's based on pre-rewrite code, keep the local
+  structure and re-apply the PR's *intent*** — PR #30 was based on the
+  pre-`ridePlan.ts` tree, so its TripWorkspace hunks showed obsolete ranking
+  code; taking "their" side wholesale would have reverted the ride-plan
+  engine. Also: a signature change arriving via merge (`detourKm` →
+  `number | null`) must be null-guarded at *every* caller, including files
+  the PR never touched (`ridePlan.ts:256` — tsc catches it, but only because
+  strict null checks were on; auto-merged hunks in other files won't be
+  flagged by the PR author's green CI).
 - **GitHub markdown links resolve from the file's own directory** — a
   root-level file links `docs/X.md` (never `../docs/`), files in `docs/`
   need `../` to reach root files like `DESIGN_TOKENS.md`, and emoji
