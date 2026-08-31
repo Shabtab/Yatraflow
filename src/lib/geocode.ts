@@ -40,6 +40,7 @@ import {
   planRideSegments, assignSegmentHits, annotateSegmentHits,
   type SegmentHit, type RideSegment,
 } from './ridePlan'
+import { resolveVehicleRange } from './vehicleProfile'
 
 /**
  * Search cities AND points of interest at once. Google autocomplete first
@@ -112,7 +113,10 @@ export async function searchNearbyPoisMulti(
   const route = opts.routeCoords ?? []
   if (googleEnabled() && route.length >= 2) {
     try {
-      const hits = await googleNearbyAlongRoute({ routeCoords: route, routeTotalKm: opts.routeTotalKm, count, includeFuel: opts.includeFuel })
+      const hits = await googleNearbyAlongRoute({
+        routeCoords: route, routeTotalKm: opts.routeTotalKm, count,
+        includeFuel: opts.includeFuel, purposes: opts.purposes,
+      })
       if (hits.length > 0) return rankAndCap(hits, capped, radiusM, count, opts)
       // round-trip routes (origin ≈ destination) can legitimately return
       // zero along-route results → fall through to the free corridor search
@@ -126,7 +130,7 @@ export async function searchNearbyPoisMulti(
       if (hits.length > 0) return rankAndCap(hits, capped, radiusM, count, opts)
     } catch { /* quota or network → free stack */ }
   }
-  return searchNearbyPoisMultiFree(capped, radiusM, count, opts)
+  return searchNearbyPoisMultiFree(capped, radiusM, count, opts, opts.purposes)
 }
 
 /**
@@ -147,8 +151,22 @@ export async function planJourneyHalts(
   opts: NearbyOpts = {},
   radiusM = 35000,
 ): Promise<SegmentHit[]> {
+  // 1. Plan segments first so we know which purposes we need to search for
+  const vehicleRange = opts.vehicleRangeKm
+    ?? (opts.vehicleProfile ? resolveVehicleRange(opts.vehicleProfile).planCadenceKm : undefined)
+  const segments = planRideSegments({
+    totalKm,
+    driveMinutes,
+    includeFuel: opts.includeFuel,
+    multiDay: opts.multiDay,
+    vehicleRangeKm: vehicleRange,
+  })
+  if (segments.length === 0) return []
+  const purposes = [...new Set(segments.map(s => s.purpose))]
+
+  // 2. Search with purpose-specific queries (merged into one call per provider)
   const [hits, cities] = await Promise.all([
-    searchNearbyPoisMulti(anchors, radiusM, 16, opts).catch(() => [] as PlaceHit[]),
+    searchNearbyPoisMulti(anchors, radiusM, 16, { ...opts, purposes }).catch(() => [] as PlaceHit[]),
     searchCitiesAlong(anchors, radiusM, 8).catch(() => [] as PlaceHit[]),
   ])
   const seen = new Set<string>()
@@ -160,13 +178,6 @@ export async function planJourneyHalts(
     seen.add(key)
     candidates.push(h)
   }
-  const segments = planRideSegments({
-    totalKm,
-    driveMinutes,
-    includeFuel: opts.includeFuel,
-    multiDay: opts.multiDay,
-    vehicleRangeKm: opts.vehicleRangeKm,
-  })
   const assigned = assignSegmentHits(candidates, segments, anchors, { homeCenter: opts.homeCenter ?? null })
   return annotateSegmentHits(assigned, candidates)
 }

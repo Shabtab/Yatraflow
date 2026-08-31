@@ -1,3 +1,4 @@
+import type { VehicleProfile } from '../../data/types'
 // ============ Provider-agnostic hit model & pure ranking logic ============
 // The shared contract between the free engines (providers/free.ts) and the
 // Google provider (providers/google.ts), plus the pure part of the tourist
@@ -101,6 +102,15 @@ export function kmFromStartForHit(
   return cum[best]
 }
 
+/** Stable hash string for a list of anchors — used as a cache key so that
+ * adding, removing, or reordering stops invalidates the suggestion cache. */
+export function anchorHash(anchors: { lat: number; lng: number }[]): string {
+  const pts = anchors
+    .filter(a => Number.isFinite(a.lat) && Number.isFinite(a.lng))
+    .map(a => `${a.lat.toFixed(5)},${a.lng.toFixed(5)}`)
+  return pts.join('|')
+}
+
 export interface NearbyOpts {
   /** include petrol pumps as pit stops (self-drive trips only, capped) */
   includeFuel?: boolean
@@ -131,6 +141,10 @@ export interface NearbyOpts {
    * false/undefined = single-day journey (fatigue halts only, no overnight).
    */
   multiDay?: boolean
+  /** When set, nearby searches use purpose-specific queries instead of generic tourist queries. */
+  purposes?: HaltPurpose[]
+  /** Vehicle profile for accurate fuel/charging cadence. */
+  vehicleProfile?: VehicleProfile
 }
 
 /**

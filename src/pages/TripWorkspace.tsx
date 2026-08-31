@@ -23,6 +23,7 @@ import { loadDayCollapsed, saveDayCollapsed } from '../lib/uiPrefs'
 import { useTimeFormat, formatHM, formatHMRange } from '../lib/timefmt'
 import { Avatar, Chip, Modal, ConfirmDialog, Field, StatTile, HealthRing, EmptyState, toast, undoToast, useReorder, CopyButton } from '../components/ui'
 import { ImpactPreviewPanel } from '../components/ImpactPreview'
+import { useSuggestionCache } from '../hooks/useSuggestionCache'
 // MapLibre is heavy (~1MB) — load it only when the Map tab is actually opened.
 const TripMap = React.lazy(() => import('../components/TripMap').then(m => ({ default: m.TripMap })))
 import { StopEditor, type StopFormValues } from '../components/StopEditor'
@@ -30,6 +31,7 @@ import { AiDrawer } from '../components/AiDrawer'
 import { LocationInput } from '../components/LocationInput'
 import { searchNearbyPois, corridorAnchors, detourKm, googleEnabled, planJourneyHalts, type NearbyOpts } from '../lib/geocode'
 import type { PlaceHit, SegmentHit } from '../lib/geocode'
+import { anchorHash } from '../lib/providers/hits'
 import { fetchDailyWeather, forecastAvailable, wmoInfo } from '../lib/weather'
 import type { DayWeather } from '../lib/weather'
 import { encodeTripSnapshot, decodeTripSnapshot, snapshotUrl, downloadTripJson } from '../lib/snapshot'
@@ -64,6 +66,19 @@ export function TripWorkspace({ tripId, onNavigate }: { tripId: string; onNaviga
 
   // Pending change: a proposed plan held until the user keeps or discards it.
   const [pending, setPending] = useState<{ proposed: Trip; result: ImpactResult } | null>(null)
+
+  // Suggestion cache: persists across tab switches, invalidated by anchor changes.
+  const suggestionCache = useSuggestionCache(tripId)
+
+  function scrollToDay(dayIndex: number) {
+    const el = document.getElementById(`day-card-${dayIndex}`)
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    const isVisible = rect.top >= 0 && rect.bottom <= window.innerHeight
+    if (!isVisible) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }
 
   if (!trip || !me) {
     return <div className="container loading-block">Trip not found. <button className="btn btn-outline btn-sm" onClick={() => onNavigate('trips')}>Back to my trips</button></div>
@@ -160,6 +175,7 @@ export function TripWorkspace({ tripId, onNavigate }: { tripId: string; onNaviga
           onKeep={keepPending}
           onMoveDay={moveToAnotherDay}
           onRemove={removePending}
+          onScrollToDay={scrollToDay}
         />
       )}
 
@@ -167,7 +183,7 @@ export function TripWorkspace({ tripId, onNavigate }: { tripId: string; onNaviga
       {tab === 'timeline' && <TimelineTab trip={trip} editable={editable} applyChange={applyChange} legCorrections={legCorrections} />}
       {tab === 'map' && (
         <React.Suspense fallback={<div className="container loading-block"><div className="spinner" />Loading map…</div>}>
-          <MapTab trip={trip} editable={editable} applyChange={applyChange} />
+          <MapTab trip={trip} editable={editable} applyChange={applyChange} suggestionCache={suggestionCache} />
         </React.Suspense>
       )}
       {tab === 'suggestions' && <SuggestionsTab trip={trip} editable={editable} me={me} />}
@@ -668,7 +684,7 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
   const sev = warnings.some(w => w.severity === 'high') ? 'high' : warnings.some(w => w.severity === 'medium') ? 'medium' : 'ok'
 
   return (
-    <div className="day-section">
+    <div className="day-section" id={`day-card-${day.index}`}>
       <div className="day-header">
         <button className="day-collapse" onClick={toggleCollapsed} aria-label={collapsed ? `Expand Day ${day.index + 1}` : `Collapse Day ${day.index + 1}`}>
           {collapsed ? '▸' : '▾'}
@@ -1353,10 +1369,11 @@ function poiVisitMinutes(cat?: string): number {
   }
 }
 
-function MapTab({ trip, editable, applyChange }: {
+function MapTab({ trip, editable, applyChange, suggestionCache }: {
   trip: Trip
   editable: boolean
   applyChange: (mutator: (d: Trip) => void, kind: ImpactResult['kind'], dayIndex: number) => void
+  suggestionCache: ReturnType<typeof useSuggestionCache>
 }) {
   const [pois, setPois] = useState<SegmentHit[]>([])
   const timeFormat = useTimeFormat()
@@ -1456,10 +1473,21 @@ function MapTab({ trip, editable, applyChange }: {
 
   useEffect(() => {
     if (anchors.length === 0) return
+    const hash = anchorHash(anchors)
+    const cached = suggestionCache.cache.map
+    if (cached && cached.anchorsHash === hash) {
+      setPois(cached.segments)
+      return
+    }
     let cancelled = false
     setLoadingPois(true)
     planJourneyHalts(anchors, planKm, wholeTrip.min, { ...nearbyOpts, multiDay: trip.days.length > 1 }, scopeKm * 1000)
-      .then(plan => { if (!cancelled) setPois(plan) })
+      .then(plan => {
+        if (!cancelled) {
+          setPois(plan)
+          suggestionCache.setMapCache(plan, hash)
+        }
+      })
       .catch(() => { /* suggestions are best-effort */ })
       .finally(() => { if (!cancelled) setLoadingPois(false) })
     return () => { cancelled = true }
@@ -1505,7 +1533,17 @@ function MapTab({ trip, editable, applyChange }: {
       <div className="card" style={{ marginTop: 14 }}>
         <div className="row-between">
           <h3 style={{ margin: 0 }}>💡 Nearby ideas</h3>
-          <span className="small muted">{loadingPois ? 'searching…' : `${pois.filter(p => p.hit).length} suggested stops — spaced for fatigue & anchored on cities`}</span>
+          <div className="row-between" style={{ gap: 10 }}>
+            <span className="small muted">{loadingPois ? 'searching…' : `${pois.filter(p => p.hit).length} suggested stops — spaced for fatigue & anchored on cities`}</span>
+            <button
+              className="btn btn-outline btn-sm suggestion-refresh-btn"
+              title="Refresh suggestions"
+              onClick={() => { suggestionCache.clearMap(); setPois([]) }}
+              disabled={loadingPois}
+            >
+              ↻ Refresh
+            </button>
+          </div>
         </div>
         <p className="hint-text" style={{ margin: '4px 0 6px' }}>
           Live data from {googleEnabled() ? 'Google Places' : 'OpenStreetMap, Wikipedia & Mappls'}: lunch ~ every 300 km, stretch & fuel breaks in between, and for long trips an overnight stop in a key city at the end of each day's drive. Never around your starting point.
@@ -2166,6 +2204,10 @@ function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boolean })
     fuelEconomy: trip.fuelEconomyKmL?.toString() ?? '',
     fuelPrice: trip.fuelPricePerL?.toString() ?? '',
     roundTrip: trip.roundTrip ?? true,
+    vehicleType: trip.vehicleProfile?.vehicleType ?? 'car',
+    fuelType: trip.vehicleProfile?.fuelType ?? 'petrol',
+    capacity: trip.vehicleProfile?.capacity?.toString() ?? '',
+    vehicleEconomy: trip.vehicleProfile?.economy?.toString() ?? '',
   })
   const [startCoords, setStartCoords] = useState<LatLngPoint | null>(trip.startLocationCoords ?? null)
   const [destCoords, setDestCoords] = useState<(LatLngPoint | null)[]>(trip.destinationCoords ?? [])
@@ -2273,6 +2315,37 @@ function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boolean })
           </Chip>
         </div>
       )}
+      {isFuelEconomyMode(f.transportMode) && (
+        <div className="vehicle-profile-form" style={{ margin: '4px 0 16px' }}>
+          <div className="form-row">
+            <Field label="Vehicle type">
+              <select className="select" disabled={!editable} value={f.vehicleType} onChange={e => setF(x => ({ ...x, vehicleType: e.target.value as never }))}>
+                <option value="car">Car</option>
+                <option value="motorcycle">Motorcycle</option>
+                <option value="ev">Electric (EV)</option>
+              </select>
+            </Field>
+            <Field label="Fuel / energy">
+              <select className="select" disabled={!editable} value={f.fuelType} onChange={e => setF(x => ({ ...x, fuelType: e.target.value as never }))}>
+                <option value="petrol">Petrol</option>
+                <option value="diesel">Diesel</option>
+                <option value="electric">Electric</option>
+                <option value="cng">CNG</option>
+              </select>
+            </Field>
+          </div>
+          <div className="form-row">
+            <Field label={f.fuelType === 'electric' ? 'Battery (kWh)' : 'Tank capacity (L)'} hint={f.fuelType === 'electric' ? 'e.g. 50' : 'e.g. 45'}>
+              <input type="number" min={1} max={300} step={0.5} className="input" disabled={!editable} value={f.capacity}
+                onChange={e => setF(x => ({ ...x, capacity: e.target.value }))} placeholder={f.fuelType === 'electric' ? '50' : '45'} />
+            </Field>
+            <Field label={f.fuelType === 'electric' ? 'Efficiency (km / kWh)' : 'Economy (km / L)'} hint={f.fuelType === 'electric' ? 'e.g. 6' : 'e.g. 15'}>
+              <input type="number" min={1} max={200} step={0.1} className="input" disabled={!editable} value={f.vehicleEconomy}
+                onChange={e => setF(x => ({ ...x, vehicleEconomy: e.target.value }))} placeholder={f.fuelType === 'electric' ? '6' : '15'} />
+            </Field>
+          </div>
+        </div>
+      )}
       {editable && (
         <button className="btn btn-primary btn-sm" onClick={() => {
           updateTrip(trip.id, {
@@ -2286,6 +2359,12 @@ function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boolean })
             fuelEconomyKmL: isFuelEconomyMode(f.transportMode) ? parseFuelEconomyKmL(f.fuelEconomy) : undefined,
             fuelPricePerL: isFuelEconomyMode(f.transportMode) ? parseFuelPricePerL(f.fuelPrice) : undefined,
             roundTrip: isFuelEconomyMode(f.transportMode) ? f.roundTrip : undefined,
+            vehicleProfile: isFuelEconomyMode(f.transportMode) ? {
+              vehicleType: f.vehicleType as 'car' | 'motorcycle' | 'ev',
+              fuelType: f.fuelType as 'petrol' | 'diesel' | 'electric' | 'cng',
+              capacity: Number(f.capacity) || 45,
+              economy: Number(f.vehicleEconomy) || 15,
+            } : undefined,
           })
           toast('Trip settings updated')
         }}>Save settings</button>

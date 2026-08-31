@@ -5,7 +5,8 @@
 // Google call fails, or the Phase-B quota guard trips (providers/quota.ts) —
 // with the free stack in charge the app behaves exactly as it always has.
 import { haversineKm } from '../geo'
-import { hasCoords, distToNearest, normWords, rankAndCap, type NearbyOpts, type PlaceHit } from './hits'
+import { hasCoords, distToNearest, normWords, rankAndCap, type NearbyOpts, type PlaceHit, type HaltPurpose } from './hits'
+import { queriesForPurpose } from '../purposeQueries'
 
 // Mappls autosuggest (when VITE_MAPPLS_KEY is set) → India's best place/POI
 // coverage. Results carry an eLoc but no coordinates; they are resolved on
@@ -270,10 +271,10 @@ async function fetchOverpass(query: string): Promise<OverpassElement[]> {
   return []
 }
 
-async function searchNearbyOverpass(anchors: { lat: number; lng: number }[], radiusM: number, count: number, includeFuel = false): Promise<PlaceHit[]> {
+async function searchNearbyOverpass(anchors: { lat: number; lng: number }[], radiusM: number, count: number, includeFuel = false, selectors?: string[]): Promise<PlaceHit[]> {
   const radius = Math.min(Math.max(radiusM, 2000), 120000)
-  const selectors = includeFuel ? [...OVERPASS_NEARBY_SELECTORS, 'amenity=fuel'] : OVERPASS_NEARBY_SELECTORS
-  const stmts = selectors.flatMap(sel =>
+  const baseSelectors = selectors ?? (includeFuel ? [...OVERPASS_NEARBY_SELECTORS, 'amenity=fuel'] : OVERPASS_NEARBY_SELECTORS)
+  const stmts = baseSelectors.flatMap(sel =>
     anchors.map(a => `nwr(around:${radius},${a.lat},${a.lng})[${sel}];`)
   ).join('')
   const elements = await fetchOverpass(`[out:json][timeout:20];(${stmts});out center tags ${Math.max(60, count * 6)};`)
@@ -508,11 +509,16 @@ export async function searchNearbyPoisMultiFree(
   radiusM = 10000,
   count = 10,
   opts: NearbyOpts = {},
+  purposes?: HaltPurpose[],
 ): Promise<PlaceHit[]> {
   const capped = anchors.filter(a => Number.isFinite(a.lat) && Number.isFinite(a.lng)).slice(0, 12)
   if (capped.length === 0) return []
+  // When purposes are given, merge all their Overpass selectors into one scan
+  const selectors = purposes && purposes.length > 0
+    ? [...new Set(purposes.flatMap(p => queriesForPurpose(p).overpassSelectors))]
+    : undefined
   const [osm, wiki, mappls] = await Promise.all([
-    searchNearbyOverpass(capped, radiusM, count, opts.includeFuel).catch(() => [] as PlaceHit[]),
+    searchNearbyOverpass(capped, radiusM, count, opts.includeFuel, selectors).catch(() => [] as PlaceHit[]),
     searchNearbyWikipedia(capped, radiusM, Math.min(count, 6)).catch(() => [] as PlaceHit[]),
     searchNearbyMappls(capped[0], radiusM, count, opts.includeFuel).catch(() => [] as PlaceHit[]),
   ])

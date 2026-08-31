@@ -22,8 +22,9 @@
 // Place Details and Text Search Along-Route all return HTTP 200. One fix was
 // applied from that run: routingSummaries paths are legs-scoped
 // (`routingSummaries.legs.distanceMeters`). See scripts/verify-google-places.mjs.
-import { normWords, hasCoords, type PlaceHit } from './hits'
+import { normWords, hasCoords, type PlaceHit, type HaltPurpose } from './hits'
 import { quotaAllows, quotaCount, type QuotaSku } from './quota'
+import { queriesForPurpose } from '../purposeQueries'
 
 const PLACES = 'https://places.googleapis.com/v1'
 const REGION_CODE = 'IN'
@@ -262,6 +263,8 @@ export interface AlongRouteArgs {
   routeTotalKm?: number | null
   count: number
   includeFuel?: boolean
+  /** When provided, searches use purpose-specific queries instead of the static tourist set. */
+  purposes?: HaltPurpose[]
 }
 
 /**
@@ -332,7 +335,11 @@ function hitsFromResponses(
 export async function googleNearbyAlongRoute(args: AlongRouteArgs): Promise<PlaceHit[]> {
   const encoded = encodePolyline(args.routeCoords)
   if (!encoded) return []
-  const queries = args.includeFuel ? [...ALONG_ROUTE_QUERIES, FUEL_QUERY] : ALONG_ROUTE_QUERIES
+  // Build query list: static tourist set (backward compat) OR purpose-specific dynamic set
+  const staticQueries = args.includeFuel ? [...ALONG_ROUTE_QUERIES, FUEL_QUERY] : ALONG_ROUTE_QUERIES
+  const queries = args.purposes && args.purposes.length > 0
+    ? args.purposes.flatMap(p => queriesForPurpose(p).googleQueries.map(textQuery => ({ textQuery, cat: p })))
+    : staticQueries
   const responses = await Promise.all(queries.map(qv =>
     placesPost('/places:searchText', 'textSearchPro', {
       textQuery: qv.textQuery,

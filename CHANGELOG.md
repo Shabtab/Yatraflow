@@ -4,6 +4,22 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Added
+- **Vehicle profile for accurate fuel/charging range** — `Trip` now carries an optional `vehicleProfile` (`vehicleType`, `fuelType`, `capacity`, `economy`). The engine derives fuel-stop cadence from `capacity × economy × 0.85` (15 % reserve buffer) instead of the hard-coded `FUEL_INTERVAL_KM = 450`. EVs get charging-station queries; CNG gets CNG-pump queries; petrol/diesel stay on regular fuel stations. New pure modules: `src/lib/vehicleProfile.ts` (defaults for car/motorcycle/EV, range math, capacity formatting) + `tests/vehicleProfile.test.ts` (11 tests); `src/lib/purposeQueries.ts` (maps each `HaltPurpose` to highway-biased Google/Overpass queries) + `tests/purposeQueries.test.ts` (8 tests).
+- **Purpose-specific search queries** — `planJourneyHalts` now plans segments first, extracts the distinct `HaltPurpose`s needed, and searches with purpose-tuned queries (e.g. `"highway dhabas"` for meal, `"petrol pumps"` for fuel, `"EV charging stations"` for electric). Wired through `geocode.ts` → `googleNearbyAlongRoute` / `searchNearbyPoisMultiFree` with new optional `purposes` params; backward-compatible (omitting it yields the old generic tourist queries).
+- **Highway-aware route geometry sampling** — new `routeGeometryToAnchors` in `src/lib/routing.ts` samples an OSRM road geometry into anchor points at ~25 km spacing for search bias.
+- **Trip-scoped suggestion cache** — new `src/hooks/useSuggestionCache.ts` persists Map-tab suggestion results in `localStorage` keyed by `tripId`. Cache invalidation is automatic via `anchorHash` (stable lat/lng string): adding, removing, or reordering stops changes the anchors → cache miss → fresh fetch. The Map tab now reads from cache before fetching and renders a **↻ Refresh** button to force a re-scan.
+- **Fixed-position impact confirmation sheet** — `ImpactPreviewPanel` is now a `position: fixed` bottom sheet (`z-index: 90`, max-width 720 px, safe-area padding) so it stays visible when the user edits a day deep in the Timeline. On "Keep change", it auto-scrolls the viewport to the impacted day's card if the card is off-screen.
+- **Vehicle profile form in Trip settings** — the Share tab's "Trip settings" card now shows vehicle-type, fuel-type, capacity and economy fields when the transport mode is car/motorcycle/EV. Values are optional and fall back to sensible defaults (car: 45 L / 15 km/L; motorcycle: 12 L / 40 km/L; EV: 50 kWh / 6 km/kWh).
+
+### Changed
+- `src/data/types.ts` — added `FuelType`, `VehicleProfile`, and optional `trip.vehicleProfile`.
+- `src/lib/providers/hits.ts` — added `anchorHash()` helper and `purposes?: HaltPurpose[]` + `vehicleProfile?: VehicleProfile` to `NearbyOpts`.
+- `src/lib/ridePlan.ts` — `planRideSegments` already accepted `vehicleRangeKm`; now `planJourneyHalts` resolves it from `vehicleProfile` when present.
+- `src/lib/geocode.ts` — `planJourneyHalts` now computes segments before searching, passes `purposes` and `vehicleProfile` through to the provider layer.
+- `src/lib/providers/google.ts` — `googleNearbyAlongRoute` accepts optional `purposes`; builds dynamic query list from `queriesForPurpose` instead of static `ALONG_ROUTE_QUERIES` when set.
+- `src/lib/providers/free.ts` — `searchNearbyOverpass` accepts optional `selectors` override; `searchNearbyPoisMultiFree` accepts optional `purposes` and merges per-purpose Overpass selectors.
+
 ## [0.20.0] — 2026-08-31
 
 ### Docs

@@ -541,10 +541,18 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
 }
 
 /* ---------- Impact preview ---------- */
+.impact-sheet {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  z-index: 90;
+  background: rgba(0,0,0,0.35);
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+  display: flex; justify-content: center;
+}
 .impact-panel {
   border: 1.5px solid var(--saffron); border-radius: var(--radius);
-  background: var(--card); overflow: hidden; margin-top: 14px;
+  background: var(--card); overflow: hidden; margin-top: 0;
   animation: slideUp .25s ease;
+  width: 100%; max-width: 720px;
 }
 @keyframes slideUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes popIn { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: none; } }
@@ -562,6 +570,11 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
 .delta-pos { color: var(--danger); } .delta-neg { color: var(--ok); } .delta-zero { color: var(--text-2); }
 .assumptions { font-size: 12px; color: var(--text-3); background: var(--bg-soft); padding: 9px 12px; border-radius: 10px; line-height: 1.6; }
 .impact-actions { display: flex; gap: 8px; margin-top: 13px; flex-wrap: wrap; }
+
+.suggestion-refresh-btn { white-space: nowrap; }
+
+.vehicle-profile-form .form-row { gap: 12px; margin-bottom: 10px; }
+.vehicle-profile-form .form-row:last-child { margin-bottom: 0; }
 
 /* ---------- Tabs ---------- */
 .tabbar { display: flex; gap: 2px; overflow-x: auto; border-bottom: 1.5px solid var(--line); margin-bottom: 20px; scrollbar-width: none; }

@@ -24,6 +24,20 @@ export type StopStatus = (typeof STOP_STATUSES)[number]
 
 export type FixedCommitmentType = 'hotel-checkin' | 'train-departure' | 'flight-departure' | 'event' | 'other'
 
+/** Fuel or energy source for the vehicle on this trip. */
+export type FuelType = 'petrol' | 'diesel' | 'electric' | 'cng'
+
+/** Extended vehicle metadata for accurate fuel/charging stop planning. */
+export interface VehicleProfile {
+  /** car / motorcycle / ev (ev treated as car with electric fuelType) */
+  vehicleType: 'car' | 'motorcycle' | 'ev'
+  fuelType: FuelType
+  /** Tank capacity in litres (petrol/diesel/CNG) or battery in kWh (electric). */
+  capacity: number
+  /** km per litre (liquid fuel) or km per kWh (electric). Falls back to mode defaults. */
+  economy: number
+}
+
 /** A geocoded lat/lng pair — used for trip start/end geography and map anchors. */
 export interface LatLngPoint {
   lat: number
@@ -151,6 +165,8 @@ export interface Trip {
    * fuel cost. Defaults to true for car/motorcycle; one-way drives set false.
    */
   roundTrip?: boolean
+  /** Optional vehicle profile for accurate fuel/charging stop cadence. */
+  vehicleProfile?: VehicleProfile
   budgetPerPersonInr: number
   travelStyle: TravelStyle
   fixedCommitments: FixedCommitment[]
