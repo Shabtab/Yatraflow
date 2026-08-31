@@ -4,6 +4,8 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+## [0.21.0] — 2026-08-31
+
 ### Added
 - **Vehicle profile for accurate fuel/charging range** — `Trip` now carries an optional `vehicleProfile` (`vehicleType`, `fuelType`, `capacity`, `economy`). The engine derives fuel-stop cadence from `capacity × economy × 0.85` (15 % reserve buffer) instead of the hard-coded `FUEL_INTERVAL_KM = 450`. EVs get charging-station queries; CNG gets CNG-pump queries; petrol/diesel stay on regular fuel stations. New pure modules: `src/lib/vehicleProfile.ts` (defaults for car/motorcycle/EV, range math, capacity formatting) + `tests/vehicleProfile.test.ts` (11 tests); `src/lib/purposeQueries.ts` (maps each `HaltPurpose` to highway-biased Google/Overpass queries) + `tests/purposeQueries.test.ts` (8 tests).
 - **Purpose-specific search queries** — `planJourneyHalts` now plans segments first, extracts the distinct `HaltPurpose`s needed, and searches with purpose-tuned queries (e.g. `"highway dhabas"` for meal, `"petrol pumps"` for fuel, `"EV charging stations"` for electric). Wired through `geocode.ts` → `googleNearbyAlongRoute` / `searchNearbyPoisMultiFree` with new optional `purposes` params; backward-compatible (omitting it yields the old generic tourist queries).
