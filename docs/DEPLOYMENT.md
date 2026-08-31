@@ -48,7 +48,7 @@ In the dashboard, the equivalent is editing the variable and clearing its **Git 
 
 3. **Redeploy** — `vercel redeploy <deployment-url>`, or Deployments → ⋯ → Redeploy. Step 2 alone changes nothing on an existing deployment, because the values were already compiled in.
 
-4. Confirm the backend is actually inlined — **on production's URL only**. Previews sit behind Vercel SSO, so an anonymous request returns Vercel's own login page, not the app, and the check below misleadingly reports `False`:
+4. Confirm the backend is actually inlined — **on production's canonical alias only**. Two traps make this check lie to you: previews sit behind Vercel SSO, and so do *deployment-specific* URLs (`yatraflow-<8char>-<scope>.vercel.app`) even when `vercel inspect` says `target production`. An anonymous request to either returns Vercel's own login page, not the app, and the check below misleadingly reports `False`. Use `yatraflow-blond.vercel.app`; the real `index.html` is ~1.2 KB, the SSO page ~340 KB, so the size tells you which one you got.
 
 ```powershell
 $h = (Invoke-WebRequest https://yatraflow-blond.vercel.app -UseBasicParsing).Content
@@ -57,7 +57,9 @@ $js = [regex]::Match($h, '/assets/[A-Za-z0-9_.-]+\.js').Value
   .Content.Contains('.supabase.co')   # True = backend compiled in, False = broken auth
 ```
 
-For a preview, a green Vercel check *is* the proof — the guard aborts unless both variables were present at build time. To compare against production, extract the inlined ref with `https://([a-z0-9]+)\.supabase\.co` and check it matches your project.
+**Only `.supabase.co` is a valid signal.** Do *not* test for the `http://localhost:54321` fallback: `supabase.ts` compiles `import.meta.env.VITE_SUPABASE_URL || 'http://localhost:54321'`, so that string appears in every bundle, correctly configured or not.
+
+For a preview, a green Vercel check *is* the proof — the guard aborts unless both variables were present at build time. To compare against production, extract the inlined ref with `https://([a-z0-9]+)\.supabase\.co` and check it matches your project. The strongest check of all: the alias's bundle hash (`index-<hash>.js`) should equal the one your local `npm run build` produced — that means the artifact you verified is literally the artifact that shipped.
 
 ## Any other static host
 

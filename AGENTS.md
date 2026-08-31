@@ -123,11 +123,25 @@ Hard rules (each learned the hard way — do not relearn them):
   the process environment, so a "stripped" build silently still had the real
   values and appeared to disprove the diagnosis. Check what a live deployment
   actually contains by fetching its `index-*.js` and grepping for `supabase.co`
-  (recipe in `docs/DEPLOYMENT.md`) — but **only on unprotected deployments**:
-  previews sit behind Vercel SSO, so an anonymous fetch of a `*.vercel.app`
-  preview returns Vercel's own Next.js login page (~340 KB,
-  `X-Matched-Path: /login`) and the grep reports a misleading `False`. Grep
-  production's URL, and treat a green Vercel check as proof for previews.
+  (recipe in `docs/DEPLOYMENT.md`) — with three traps, all of which produced
+  wrong readings here:
+  - **SSO walls more than previews.** The *deployment-specific* URL
+    (`yatraflow-<8char>-<scope>.vercel.app`) is behind Vercel SSO **even when
+    `vercel inspect` reports `target production`**, so an anonymous fetch
+    returns Vercel's own Next.js login page (~340 KB, `X-Matched-Path: /login`)
+    and the grep reports a misleading `False`. Grep the **canonical alias**
+    (`yatraflow-blond.vercel.app`). Tell them apart by size: the real
+    `index.html` is ~1.2 KB, the login page ~340 KB.
+  - **The `localhost:54321` fallback is in *every* bundle.** `supabase.ts`
+    compiles `import.meta.env.X || 'http://localhost:54321'`, so the placeholder
+    string is present whether or not the env var was set — its presence proves
+    nothing. Only the real `.supabase.co` host / project ref discriminates.
+  - **`vercel ls` is newest-first** — `Select-Object -Last N` returns the
+    *oldest* rows and can make a deploy that finished two minutes ago look
+    entirely absent. Use `-First N`, or filter on `vercel\.app`.
+  A green Vercel check is the proof for previews. Strongest proof for
+  production: the alias's bundle hash equals a local `npm run build`'s, i.e.
+  the artifact you tested is the artifact that shipped.
 - **Supabase auth fails two different ways** — rejected credentials come back as
   `{ error }`, but a network failure *throws* `AuthRetryableFetchError`. Wrap
   both (see `store.login`/`signup`) and map through `lib/authErrors.ts`; an
