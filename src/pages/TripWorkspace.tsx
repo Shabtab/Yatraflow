@@ -1579,6 +1579,7 @@ function MapTab({ trip, editable, applyChange, suggestionCache }: {
               )
             }
             const added = addedIds.has(hit.id as string) || existingNames.has(hit.name.toLowerCase())
+            const offRoute = detourKm(hit, anchors)
             return (
               <div key={hit.id} className="poi-plan-row">
                 <div className="ride-spot-title">
@@ -1589,7 +1590,7 @@ function MapTab({ trip, editable, applyChange, suggestionCache }: {
                 <div className="poi-desc small muted">
                   ~{hit.cumKm ?? sh.segment.targetKm.toFixed(0)} km into the trip · ≈{sh.segment.kmFromPrev.toFixed(0)} km / {minutesToHM(sh.segment.minutesFromPrev)} since the last stop
                   {hit.nearestCity ? ` · near ${hit.nearestCity}` : ''}
-                  {' · '}{Math.round(detourKm(hit, anchors))} km off route
+                  {' · '}{offRoute == null ? 'on route' : `~${Math.round(offRoute * 10) / 10} km off route`}
                 </div>
                 {hit.description && <div className="poi-desc small muted">{hit.description}</div>}
                 {(hit.openTime || hit.closeTime) && (

@@ -253,7 +253,7 @@ export function assignSegmentHits(
       const window = Math.max(1, seg.maxKm - seg.minKm)
       const distPenalty = dist > window / 2 ? dist + window : dist
       const fit = fitScoreForPurpose(h, seg.purpose)
-      const score = distPenalty + detourKm(h, anchors) * 2 + (3 - fit) * 4
+      const score = distPenalty + (detourKm(h, anchors) ?? 0) * 2 + (3 - fit) * 4
       if (score < bestScore) { bestScore = score; best = h }
     }
     if (best) used.add(best.id as string)

@@ -20,6 +20,9 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - `src/lib/providers/google.ts` — `googleNearbyAlongRoute` accepts optional `purposes`; builds dynamic query list from `queriesForPurpose` instead of static `ALONG_ROUTE_QUERIES` when set.
 - `src/lib/providers/free.ts` — `searchNearbyOverpass` accepts optional `selectors` override; `searchNearbyPoisMultiFree` accepts optional `purposes` and merges per-purpose Overpass selectors.
 
+### Fixed
+- **#30 — Nearby-ideas "off route" distance was misleadingly always ~0 km for Google results** — Search-Along-Route POIs hug the polyline, so when the OSRM `routeTotalKm` (needed to derive the real road detour from `routingSummaries`) was missing, the display fell back to a straight-line-to-anchor estimate that read as "0 km" for *every* card. `detourKm` now returns `null` for Google along-route hits whose real detour is unknown (the UI shows **"on route"** instead of a fake number), while free-stack / point-search hits keep the honest straight-line estimate. Off-route distances are now shown to 1 decimal (`~2.3 km off route`) so small real detours are visible. New unit tests cover all three cases. (By Hermes Agent — `aql-hermes`.)
+
 ## [0.20.0] — 2026-08-31
 
 ### Docs

@@ -318,6 +318,7 @@ function hitsFromResponses(
         description: p.primaryTypeDisplayName?.text ?? p.formattedAddress ?? undefined,
         placeId: p.id,
         source: 'google',
+        fromGoogleAlongRoute: routeTotalKm != null,
         category: queries[qi].cat,
         ...hoursFrom(p),
         // leg0 = road km from the route origin to this place — its position
