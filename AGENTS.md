@@ -173,9 +173,12 @@ Hard rules (each learned the hard way — do not relearn them):
 - **Basemaps are OpenFreeMap (keyless, commercial-OK) — never reintroduce CARTO
   or Esri tiles.** `mapcn/map.tsx` `defaultStyles` =
   `https://tiles.openfreemap.org/styles/{positron,dark}`. Their `style.json`
-  ships **without** `sources.*.attribution`, so MapLibre renders no credit on its
-  own — the OSM/OpenMapTiles license requires the `BASEMAP_ATTRIBUTION` string
-  passed as `attributionControl.customAttribution`. Do **not** "switch to OSM
+  ships without `sources.*.attribution`, **but** the `openmaptiles` source
+  points at the TileJSON `https://tiles.openfreemap.org/planet`, which carries
+  the required OSM/OpenMapTiles credit — MapLibre resolves it and renders it
+  itself. Do **not** also pass `attributionControl.customAttribution`: that
+  duplicates the credit across the map (the bug the first #23 pass shipped;
+  `tests/basemap-license.test.ts` is the tripwire). Do **not** "switch to OSM
   raster tiles": `tile.openstreetmap.org` is a different look, has no dark
   variant, and its usage policy discourages production apps.
 - **`noUnusedLocals: false` lets dead provider URLs rot in the tree** — four
@@ -213,7 +216,7 @@ Hard rules (each learned the hard way — do not relearn them):
 Supabase (auth/data) · Vercel (auto-deploy from `main`) · Google Places
 (opt-in key, quota-guarded, always falls back to the free stack) · OSRM ·
 Open-Meteo · Mappls · **OpenFreeMap** (basemap tiles — keyless, no request
-limits, commercial-OK; attribution must stay injected, see §4). Live probe for
+limits, commercial-OK; its TileJSON carries the required attribution, see §4). Live probe for
 Google: `scripts/verify-google-places.mjs`.
 When touching provider code, keep the facade contract: Google failure or
 absent key must silently fall back to the free stack.

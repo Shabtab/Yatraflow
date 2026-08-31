@@ -34,16 +34,18 @@ if (typeof window !== "undefined" && !MapLibreGL.getWorkerUrl()) {
 // unchanged. No API key, no signup, no request limits, commercial use allowed.
 // This replaces CARTO Basemaps (non-commercial terms) and Esri World Imagery
 // (needs an ArcGIS Developer plan for production) — issue #23.
+//
+// Attribution: the style.json files carry no `sources.*.attribution` field,
+// BUT the `openmaptiles` vector source references the TileJSON at
+// https://tiles.openfreemap.org/planet, which DOES ship an
+// "OpenFreeMap © OpenMapTiles · Data from OpenStreetMap" attribution (with
+// links). MapLibre resolves it and renders it in the attribution control on
+// its own — do NOT also inject it via `customAttribution`, or the credit
+// appears twice across the map (the bug the first #23 pass shipped).
 const defaultStyles = {
   dark: "https://tiles.openfreemap.org/styles/dark",
   light: "https://tiles.openfreemap.org/styles/positron",
 };
-
-// OpenFreeMap's style.json ships WITHOUT a `sources.*.attribution` field, so
-// MapLibre's attribution control would render nothing on its own. The credit
-// required by the OpenStreetMap and OpenMapTiles licenses is injected below.
-export const BASEMAP_ATTRIBUTION =
-  "© OpenFreeMap © OpenMapTiles · Data from OpenStreetMap contributors";
 
 // A tile-less, dependency-free style with a transparent background. Use it for
 // data visualizations (choropleths, world arcs, dot maps) where you draw your
@@ -311,7 +313,6 @@ const Map = forwardRef<MapRef, MapProps>(function Map(
       renderWorldCopies: false,
       attributionControl: {
         compact: true,
-        customAttribution: BASEMAP_ATTRIBUTION,
       },
       ...props,
       ...viewport,

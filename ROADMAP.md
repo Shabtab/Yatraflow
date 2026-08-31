@@ -15,9 +15,10 @@ realtime live (all 8 tables) · basemap licensing (#23) shipped · 2 open issues
 CARTO Basemaps + Esri World Imagery replaced with keyless
 [OpenFreeMap](https://openfreemap.org) vector styles (`positron` / `dark`) —
 same look, MIT service, ODbL map data, no request limits, no key, no bill.
-Attribution is injected explicitly (`BASEMAP_ATTRIBUTION` →
-`attributionControl.customAttribution`) because OpenFreeMap's `style.json` ships
-without a `sources.*.attribution` field. Google tiles rejected: not licensed to
+Attribution arrives via the TileJSON (`tiles.openfreemap.org/planet`) that the
+style's `openmaptiles` source resolves — MapLibre renders it automatically, so
+no `customAttribution` injection is needed (injecting one duplicates the
+credit). Google tiles rejected: not licensed to
 third-party renderers, and would need a Maps JS API rewrite plus a mandatory
 billing account. **No P0 items remain.**
 

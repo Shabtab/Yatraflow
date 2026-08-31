@@ -52,18 +52,14 @@ describe('basemap licensing (issue #23)', () => {
     expect(block).toContain('https://tiles.openfreemap.org/styles/positron')
   })
 
-  it('credits OSM + OpenMapTiles, since OpenFreeMap styles carry no attribution field', () => {
+  it('credits OSM + OpenMapTiles via the TileJSON, without a duplicate customAttribution', () => {
+    // The openfreemap styles reference the TileJSON at tiles.openfreemap.org/
+    // planet, which ships the required "OpenFreeMap © OpenMapTiles · Data from
+    // OpenStreetMap" attribution itself. MapLibre resolves and renders it, so
+    // injecting customAttribution on top duplicates the credit across the map
+    // (the bug the first #23 pass shipped). Tripwire: no customAttribution.
     const text = readFileSync(MAP_TSX, 'utf8')
-    const decl = /export const BASEMAP_ATTRIBUTION\s*=\s*\n?\s*"([^"]+)"/.exec(text)
-    expect(decl).not.toBeNull()
-    const value = decl![1]
-    expect(value).toContain('OpenMapTiles')
-    expect(value).toContain('OpenStreetMap')
-    expect(value).toContain('OpenFreeMap')
-  })
-
-  it('wires that attribution into the map attribution control', () => {
-    const text = readFileSync(MAP_TSX, 'utf8')
-    expect(text).toMatch(/attributionControl:\s*\{[^}]*customAttribution:\s*BASEMAP_ATTRIBUTION/s)
+    expect(text).not.toMatch(/customAttribution\s*:/)
+    expect(text).not.toMatch(/BASEMAP_ATTRIBUTION/)
   })
 })

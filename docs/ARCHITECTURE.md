@@ -164,7 +164,7 @@ The same geocoder powers a second capability in [`src/lib/geocode.ts`](../src/li
 
 ## 8. Maps
 
-[`src/components/mapcn/map.tsx`](../src/components/mapcn/map.tsx) is the [mapcn](https://github.com/AnmolSaini16/mapcn) registry component vendored with local adjustments (its single `@/lib/utils` import replaced by a local [`cn()`](../src/components/mapcn/cn.ts), and its default basemap styles pointed at [OpenFreeMap](https://openfreemap.org) instead of CARTO — issue #23). It renders MapLibre GL with OpenFreeMap vector basemaps (`styles/positron` light / `styles/dark`) that follow the light/dark theme automatically, and injects `BASEMAP_ATTRIBUTION` as `attributionControl.customAttribution` because those styles ship without a `sources.*.attribution` field.
+[`src/components/mapcn/map.tsx`](../src/components/mapcn/map.tsx) is the [mapcn](https://github.com/AnmolSaini16/mapcn) registry component vendored with local adjustments (its single `@/lib/utils` import replaced by a local [`cn()`](../src/components/mapcn/cn.ts), and its default basemap styles pointed at [OpenFreeMap](https://openfreemap.org) instead of CARTO — issue #23). It renders MapLibre GL with OpenFreeMap vector basemaps (`styles/positron` light / `styles/dark`) that follow the light/dark theme automatically. The required OSM/OpenMapTiles credit is rendered by MapLibre's own attribution control: the style's `openmaptiles` source resolves the TileJSON at `tiles.openfreemap.org/planet`, which carries the attribution — no `customAttribution` injection is needed (doing so duplicates the credit).
 
 [`src/components/TripMap.tsx`](../src/components/TripMap.tsx) builds the trip view on top:
 

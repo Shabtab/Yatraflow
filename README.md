@@ -163,8 +163,10 @@ otherwise — the app never requires an API key to render a map.
 
 **Basemap attribution** is rendered by MapLibre's attribution control in the
 corner of every map. OpenFreeMap's `style.json` ships *without* a
-`sources.*.attribution` field, so the credit is injected explicitly as
-`BASEMAP_ATTRIBUTION` in `src/components/mapcn/map.tsx` — don't remove it.
+`sources.*.attribution` field, but its `openmaptiles` source resolves the
+TileJSON at `tiles.openfreemap.org/planet`, which carries the required
+OSM/OpenMapTiles credit — MapLibre renders it automatically. Don't also inject
+it via `customAttribution`: that shows the credit twice.
 
 **Why not Google map tiles?** Google does not license its basemap rendering to
 third-party renderers such as MapLibre, so the Google *look* would mean replacing
