@@ -28,8 +28,12 @@ export interface PlaceHit {
   /** reported opening hours "HH:MM" — Google hits only, rendered as "reported" */
   openTime?: string
   closeTime?: string
-  /** real road detour in km (Google routingSummaries); falls back to straight-line-to-anchor */
+  /** real road detour in km (Google routingSummaries); undefined when unknown */
   offRouteKm?: number
+  /** true for Google Search-Along-Route hits — their straight-line-to-anchor distance is
+   *  meaningless (they already hug the polyline), so when offRouteKm is unknown we report
+   *  "on route" rather than a bogus small number */
+  fromGoogleAlongRoute?: boolean
 }
 
 /** true when a hit already carries usable coordinates */
@@ -42,9 +46,18 @@ export function distToNearest(h: Pick<PlaceHit, 'latitude' | 'longitude'>, ancho
   return Math.min(...anchors.map(a => haversineKm(h.latitude, h.longitude, a.lat, a.lng) * 1000))
 }
 
-/** How far a hit sits off the route corridor, in km (real road detour when known). */
-export function detourKm(h: Pick<PlaceHit, 'latitude' | 'longitude' | 'offRouteKm'>, anchors: { lat: number; lng: number }[]): number {
+/** How far a hit sits off the route corridor, in km (real road detour when known).
+ *  Returns null when the detour is genuinely unknown (Google along-route hits with no
+ *  computed detour) so the UI can say "on route" instead of a misleading straight-line estimate. */
+export function detourKm(
+  h: Pick<PlaceHit, 'latitude' | 'longitude' | 'offRouteKm' | 'fromGoogleAlongRoute'>,
+  anchors: { lat: number; lng: number }[],
+): number | null {
   if (h.offRouteKm != null && Number.isFinite(h.offRouteKm)) return h.offRouteKm
+  // Google Search-Along-Route hits already hug the polyline, so a straight-line fallback
+  // would report a misleadingly tiny "off route" distance. When the real detour is unknown,
+  // return null and let the UI say "on route".
+  if (h.fromGoogleAlongRoute) return null
   return distToNearest(h, anchors) / 1000
 }
 

@@ -315,6 +315,7 @@ function hitsFromResponses(
         description: p.primaryTypeDisplayName?.text ?? p.formattedAddress ?? undefined,
         placeId: p.id,
         source: 'google',
+        fromGoogleAlongRoute: routeTotalKm != null,
         category: queries[qi].cat,
         ...hoursFrom(p),
         ...(detourM != null && Number.isFinite(detourM)

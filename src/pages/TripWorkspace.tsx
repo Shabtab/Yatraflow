@@ -1039,7 +1039,7 @@ function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddBreakSt
         })
         const cat = h.category ?? 'sightseeing'
         const catPenalty = cat === 'sightseeing' || cat === 'temple' || cat === 'museum' || cat === 'beach' || cat === 'nature' ? 10 : cat === 'hotel' ? 5 : 0
-        return { h, score: bd + detourKm(h, anchors) * 2 + catPenalty }
+        return { h, score: bd + (detourKm(h, anchors) ?? 0) * 2 + catPenalty }
       })
       setSpots(scored.sort((a, b) => a.score - b.score).slice(0, 4).map(s => s.h))
     } catch {
@@ -1476,6 +1476,7 @@ function MapTab({ trip, editable, applyChange }: {
         <div className="poi-suggest-grid">
           {pois.map(hit => {
             const added = addedIds.has(hit.id as string) || existingNames.has(hit.name.toLowerCase())
+            const offRoute = detourKm(hit, anchors)
             return (
               <div key={hit.id} className="poi-suggest-card">
                 {hit.thumb
@@ -1488,7 +1489,7 @@ function MapTab({ trip, editable, applyChange }: {
                     <div className="poi-cat small">
                       {labelCatText(String(hit.category))}
                       {' · '}
-                      ~{Math.round(detourKm(hit, anchors))} km off route
+                      {offRoute == null ? 'on route' : `~${Math.round(offRoute * 10) / 10} km off route`}
                     </div>
                   )}
                   {(hit.openTime || hit.closeTime) && (

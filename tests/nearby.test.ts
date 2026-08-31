@@ -59,6 +59,26 @@ describe('detourKm', () => {
     const hit = { latitude: MID.lat, longitude: MID.lng }
     expect(detourKm(hit as never, anchors)).toBeCloseTo(haversineKm(MID.lat, MID.lng, START.lat, START.lng), 5)
   })
+
+  it('returns the real road detour when Google routingSummaries provide it', () => {
+    const anchors = [{ lat: START.lat, lng: START.lng }]
+    const hit = { latitude: MID.lat, longitude: MID.lng, offRouteKm: 12.5, fromGoogleAlongRoute: true }
+    expect(detourKm(hit as never, anchors)).toBe(12.5)
+  })
+
+  it('returns null (not a bogus straight-line) for Google along-route hits lacking a detour', () => {
+    // Search-Along-Route results hug the polyline, so a straight-line fallback would
+    // wrongly report ~0 km. Without a computed detour we report "on route" instead.
+    const anchors = [{ lat: START.lat, lng: START.lng }]
+    const hit = { latitude: MID.lat, longitude: MID.lng, fromGoogleAlongRoute: true }
+    expect(detourKm(hit as never, anchors)).toBeNull()
+  })
+
+  it('still falls back to straight-line for free-stack / point-search hits', () => {
+    const anchors = [{ lat: START.lat, lng: START.lng }]
+    const hit = { latitude: MID.lat, longitude: MID.lng }
+    expect(detourKm(hit as never, anchors)).toBeCloseTo(haversineKm(MID.lat, MID.lng, START.lat, START.lng), 5)
+  })
 })
 
 // ============ Itinerary-gap awareness ============
