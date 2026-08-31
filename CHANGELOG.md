@@ -4,6 +4,8 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+## [0.20.0] — 2026-08-31
+
 ### Docs
 - **Corrected two unsound deployment checks found while verifying the preview-login fix** — (a) the `http://localhost:54321` fallback string is compiled into *every* bundle (`supabase.ts` uses `import.meta.env.X || 'http://localhost:54321'`), so testing for it proves nothing; only the real `.supabase.co` host / project ref discriminates. (b) *Deployment-specific* URLs (`yatraflow-<8char>-<scope>.vercel.app`) are behind Vercel SSO even when `vercel inspect` reports `target production`, so the bundle-grep recipe must use the canonical alias `yatraflow-blond.vercel.app` — tell the two apart by size (~1.2 KB real `index.html` vs ~340 KB login page). Added the strongest check to `docs/DEPLOYMENT.md`: the alias's bundle hash should equal the one your local `npm run build` produced. Also noted that `vercel ls` lists newest-first, so `Select-Object -Last N` shows the *oldest* deploys and can make a fresh one look absent.
 - **Removed the raw `Roadmap` file (superseded by `ROADMAP.md`)** — another agent had committed a verbatim paste of the roadmap *chat reply* (conversation opener/closer included, no filename extension) directly onto `main`; the curated, tracked `ROADMAP.md` carries the same content, so the duplicate is dropped.

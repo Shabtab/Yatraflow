@@ -3,7 +3,7 @@
 Living document — reviewed each session, updated as items land. Done items move
 to [CHANGELOG.md](CHANGELOG.md); this file only tracks what's ahead.
 
-**Snapshot (2026-08-31):** v0.19.0 · 138 tests green · CI gate on `main` ·
+**Snapshot (2026-08-31):** v0.20.0 · 168 tests green · CI gate on `main` ·
 realtime live (all 8 tables) · basemap licensing (#23) shipped · 2 open issues
 (#20, #22).
 
