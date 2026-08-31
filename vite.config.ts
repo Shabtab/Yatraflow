@@ -24,7 +24,9 @@ function assertDeployEnv(env: Record<string, string>) {
     `Build aborted: ${missing.join(' and ')} ${missing.length > 1 ? 'are' : 'is'} not set for the ` +
     `"${where}" environment. Vite inlines these at build time, so the deployed app would render but ` +
     `every login would fail. Fix: Vercel → Project → Settings → Environment Variables → edit each → ` +
-    `tick Production, Preview and Development → Redeploy.`
+    `tick Production, Preview and Development → Redeploy. If they already look ticked, run ` +
+    `\`vercel env ls\` — a Preview value pinned to one git branch (shown as "Preview (<branch>)") is ` +
+    `absent from every other branch's build.`
   if (process.env.VERCEL) throw new Error(msg)
   console.warn(`\n[yatraflow] WARNING — ${msg}\n`)
 }

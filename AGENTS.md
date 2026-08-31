@@ -91,21 +91,43 @@ Hard rules (each learned the hard way — do not relearn them):
   upgrade, `@vitejs/plugin-react` must be v6+ (native vite 8 peers);
   plugin-react 4.x triggers ERESOLVE — the temporary `.npmrc`
   `legacy-peer-deps` pin was removed once v6 landed (0.19.0).
-- **Vercel env vars are per-environment, and Vite bakes them at build time.**
-  A var ticked for Production only is *absent* from every Preview build — the
-  app renders normally, then login fails with a bare `Failed to fetch` that
-  reads exactly like a wrong password (this is why "login breaks on preview"
-  kept recurring). `vite.config.ts` now **aborts a Vercel build** when
+- **Vercel env vars are per-environment *and per-git-branch*, and Vite bakes
+  them at build time.** The real cause of the recurring "login breaks on
+  preview" was **not** Production-only scoping: `VITE_SUPABASE_URL` /
+  `VITE_SUPABASE_ANON_KEY` *were* ticked for Preview, but pinned to
+  `gitBranch: "test"` — so only previews built from branch `test` got a
+  backend and every other branch compiled blind. The app renders normally,
+  then login fails with a bare `Failed to fetch` that reads exactly like a
+  wrong password. `vite.config.ts` now **aborts a Vercel build** when
   `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` are missing or still the
   `YOUR-PROJECT` template; CI and local builds only warn, since they
   legitimately have no credentials. Editing a var never fixes an existing
   deployment — **Redeploy** it.
+- **Trust `vercel env ls`, not the dashboard's checkboxes.** Its
+  `environments (git branch)` column is the only place a branch pin shows up;
+  the UI reads as "all enabled" (this misread cost a full wrong-diagnosis
+  cycle). `vercel env add NAME preview --value … --type config --force`
+  **adds** a branch-free record rather than editing the pinned one — both then
+  coexist. Inspect/delete precisely via the API:
+  `vercel api '/v10/projects/<prj>/env?teamId=<team>'` lists every record with
+  its `id` + `gitBranch` (payload key is `.envs`, not `.env`),
+  `vercel api '/v1/projects/<prj>/env/<id>?teamId=<team>'` returns the
+  **decrypted** value (the only way to prove what is really stored), and
+  duplicates go via the *batch* endpoint —
+  `-X DELETE --field 'ids=["<id>","<id>"]'` on `/v1/projects/<prj>/env`
+  (a per-id DELETE path 404s). Caveat: captured CLI output can swallow an id's
+  **first character** into a preceding ANSI escape — print `.Length` (16) to
+  catch it before a 404.
 - **To reproduce a no-env build, move `.env.local` aside — blanking
   `$env:VITE_*` does nothing.** `vite build` reads `.env.local` regardless of
   the process environment, so a "stripped" build silently still had the real
   values and appeared to disprove the diagnosis. Check what a live deployment
   actually contains by fetching its `index-*.js` and grepping for `supabase.co`
-  (recipe in `docs/DEPLOYMENT.md`).
+  (recipe in `docs/DEPLOYMENT.md`) — but **only on unprotected deployments**:
+  previews sit behind Vercel SSO, so an anonymous fetch of a `*.vercel.app`
+  preview returns Vercel's own Next.js login page (~340 KB,
+  `X-Matched-Path: /login`) and the grep reports a misleading `False`. Grep
+  production's URL, and treat a green Vercel check as proof for previews.
 - **Supabase auth fails two different ways** — rejected credentials come back as
   `{ error }`, but a network failure *throws* `AuthRetryableFetchError`. Wrap
   both (see `store.login`/`signup`) and map through `lib/authErrors.ts`; an
