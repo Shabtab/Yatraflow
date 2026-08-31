@@ -46,6 +46,7 @@ YatraFlow is a collaborative travel-planning web app built India-first: real mul
 - **Real road routing**: route lines between stops follow actual roads via the free OSRM demo server, with a silent straight-line fallback when it's unreachable — planning never blocks on the network
 - **Weather along the route**: per-day forecasts from Open-Meteo (free, keyless) — icon, min/max °C and rain chance, with wet days flagged and a nudge to reshuffle weather-sensitive stops
 - **Nearby POI ideas**: real points of interest within 10 km of your route from OpenStreetMap (Overpass), Wikipedia geosearch and Mappls — verified coordinates only, with a "+ Add" button that drops them into the timeline through the normal impact-preview flow
+- **Expandable, decluttered map** — day/idea filter pills sit in a toolbar above the canvas instead of covering it, the marker key tucks behind an ⓘ chip (your choice is remembered), and a ⤢ Expand chip blows the map up to near-fullscreen — ⤡ Collapse or Escape returns it to the page
 
 ---
 

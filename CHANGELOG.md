@@ -2,7 +2,7 @@
 
 All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions are pre-1.0 MVP milestones.
 
-## [Unreleased]
+## [0.22.0] — 2026-08-31
 
 ### Added
 - **Expandable map view + decluttered map chrome.** The Map tab's filter pills (All days / Day N, 🎯 Recentre, ↩ Return home, idea-category filters) moved out of the map canvas into a static toolbar row **above** it — they were an absolute overlay (`z-index 5`) covering the map's north-west corner. The marker-key box is now hidden behind a small **ⓘ Key** chip at the bottom-right (re-openable; the choice persists across visits via the new `yatraflow_map_legend_open` uiPrefs flag) instead of permanently blanketing the route. A new **⤢ Expand** chip (right end of the toolbar) breaks the whole map shell out into a fixed near-fullscreen overlay so the canvas gets the viewport; the same chip flips to **⤡ Collapse** and **Escape** also reverts. The overlay deliberately layers *below* the add-POI modal (z 100), impact sheet (90) and notifications (80) so dialogs opened from the expanded map still appear on top, and mapcn's existing ResizeObserver re-fits the canvas automatically on the size change. On mobile the toolbar becomes a single horizontally-scrolling row (≥40px touch targets) and the expanded inset tightens to 6px.
