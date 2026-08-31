@@ -157,6 +157,8 @@ Static hosting is enough. The repo deploys automatically to **Vercel** on every 
 
 Any static host works the same way (Netlify, GitHub Pages behind a base path, etc.) because routing is hash-based.
 
+**Preview builds need the Supabase variables too.** Vite inlines `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` at *build* time and Vercel scopes them per environment, so a variable ticked for Production only leaves every branch preview rendering fine but failing login with `Failed to fetch`. Tick **Production, Preview and Development**, then **Redeploy** — the build guard in `vite.config.ts` fails a Vercel deploy outright if either is missing. See [If login fails on a preview](docs/DEPLOYMENT.md#if-login-fails-on-a-preview-but-works-on-production).
+
 ---
 
 ## 📌 MVP constraints (intentional)

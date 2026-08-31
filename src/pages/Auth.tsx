@@ -1,6 +1,8 @@
 // ============ Auth page ============
 import { useEffect, useState } from 'react'
 import { useDb, currentUser, login, signup } from '../store/store'
+import { isSupabaseConfigured } from '../lib/supabase'
+import { MISSING_BACKEND_MESSAGE } from '../lib/authErrors'
 import { Field } from '../components/ui'
 
 export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
@@ -51,6 +53,15 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
           <button className={`tab-btn ${mode === 'login' ? 'active' : ''}`} onClick={() => { setMode('login'); setError(null) }}>Log in</button>
           <button className={`tab-btn ${mode === 'signup' ? 'active' : ''}`} onClick={() => { setMode('signup'); setError(null) }}>Sign up</button>
         </div>
+
+        {/* Say so up front: a build with no Supabase project compiled in can
+            only ever fail, and "Failed to fetch" blames the wrong thing. */}
+        {!isSupabaseConfigured && (
+          <div className="err-text" style={{ marginBottom: 12 }}>
+            ⚠️ <strong>This build has no backend configured.</strong>
+            <div className="small" style={{ marginTop: 4 }}>{MISSING_BACKEND_MESSAGE}</div>
+          </div>
+        )}
 
         <form onSubmit={submit}>
           {mode === 'signup' && (
