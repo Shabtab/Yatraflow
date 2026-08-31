@@ -1,14 +1,15 @@
 // ============ Trip-scoped suggestion cache ============
 // Persists suggestion results across tab switches in TripWorkspace.
-// Invalidated when the trip's anchor geometry changes (anchorHash mismatch).
+// Hydration never refetches — only explicit user actions (↻ Refresh, the
+// detour-scope slider, 📍 Suggest) re-run the expensive corridor searches.
 
 import { useCallback, useState } from 'react'
-import type { SegmentHit, RideSegment } from '../lib/ridePlan'
-import type { PlaceHit } from '../lib/providers/hits'
+import type { SegmentHit } from '../lib/ridePlan'
 
 export interface SuggestionCache {
-  map: { segments: SegmentHit[]; anchorsHash: string; ts: number } | null
-  days: Record<number, { nearby: PlaceHit[]; anchorHash: string; ts: number }>
+  map: { segments: SegmentHit[]; anchorsHash: string; scopeKm: number; ts: number } | null
+  /** per-day ride-plan halt suggestions (Timeline "Suggest halt spots") */
+  halts: Record<number, { segments: SegmentHit[]; ts: number }>
 }
 
 const CACHE_TTL_MS = 1000 * 60 * 60 * 4 // 4 hours
@@ -20,18 +21,18 @@ function cacheKey(tripId: string) {
 function load(tripId: string): SuggestionCache {
   try {
     const raw = localStorage.getItem(cacheKey(tripId))
-    if (!raw) return { map: null, days: {} }
-    const parsed = JSON.parse(raw) as SuggestionCache
+    if (!raw) return { map: null, halts: {} }
+    const parsed = JSON.parse(raw) as Partial<SuggestionCache>
     const now = Date.now()
     // evict stale entries on load
-    const days: SuggestionCache['days'] = {}
-    for (const [k, v] of Object.entries(parsed.days ?? {})) {
-      if (now - v.ts < CACHE_TTL_MS) days[Number(k)] = v
+    const halts: SuggestionCache['halts'] = {}
+    for (const [k, v] of Object.entries(parsed.halts ?? {})) {
+      if (now - v.ts < CACHE_TTL_MS) halts[Number(k)] = v
     }
     const map = parsed.map && (now - parsed.map.ts < CACHE_TTL_MS) ? parsed.map : null
-    return { map, days }
+    return { map, halts }
   } catch {
-    return { map: null, days: {} }
+    return { map: null, halts: {} }
   }
 }
 
@@ -44,22 +45,22 @@ function save(tripId: string, cache: SuggestionCache) {
 export function useSuggestionCache(tripId: string) {
   const [cache, setCache] = useState<SuggestionCache>(() => load(tripId))
 
-  const setMapCache = useCallback((segments: SegmentHit[], anchorsHash: string) => {
+  const setMapCache = useCallback((segments: SegmentHit[], anchorsHash: string, scopeKm: number) => {
     setCache(prev => {
       const next: SuggestionCache = {
         ...prev,
-        map: { segments, anchorsHash, ts: Date.now() },
+        map: { segments, anchorsHash, scopeKm, ts: Date.now() },
       }
       save(tripId, next)
       return next
     })
   }, [tripId])
 
-  const setDayCache = useCallback((dayIndex: number, nearby: PlaceHit[], anchorHash: string) => {
+  const setHaltCache = useCallback((dayIndex: number, segments: SegmentHit[]) => {
     setCache(prev => {
       const next: SuggestionCache = {
         ...prev,
-        days: { ...prev.days, [dayIndex]: { nearby, anchorHash, ts: Date.now() } },
+        halts: { ...prev.halts, [dayIndex]: { segments, ts: Date.now() } },
       }
       save(tripId, next)
       return next
@@ -74,21 +75,5 @@ export function useSuggestionCache(tripId: string) {
     })
   }, [tripId])
 
-  const clearDay = useCallback((dayIndex: number) => {
-    setCache(prev => {
-      const days = { ...prev.days }
-      delete days[dayIndex]
-      const next: SuggestionCache = { ...prev, days }
-      save(tripId, next)
-      return next
-    })
-  }, [tripId])
-
-  const clearAll = useCallback(() => {
-    const next: SuggestionCache = { map: null, days: {} }
-    save(tripId, next)
-    setCache(next)
-  }, [tripId])
-
-  return { cache, setMapCache, setDayCache, clearMap, clearDay, clearAll }
+  return { cache, setMapCache, setHaltCache, clearMap }
 }

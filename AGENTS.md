@@ -224,6 +224,15 @@ Hard rules (each learned the hard way — do not relearn them):
   headings anchor with a leading dash (`## 🚀 Getting started` →
   `#-getting-started`). PR #25 shipped four broken links this way — check
   every link target against the tree before merging doc changes.
+- **Suggestion searches are expensive — persistence is the contract.** Corridor
+  searches (Map-tab nearby, timeline halt spots) must hydrate from
+  `useSuggestionCache` and never auto-refetch from derived-state churn: the map
+  effect's deps on `planKm`/`wholeTrip.min` re-fire when OSRM resolves *after*
+  mount, and a `[day]`-reset effect wiped timeline spots on every trip edit.
+  Only explicit user controls (↻ Refresh, detour-scope slider, 📍 Suggest) may
+  re-run a search. Corollary: a "clear the cache" button does nothing unless
+  some state it affects is in the fetch effect's dep array (the broken ↻
+  Refresh) — pair cache-clearing with a `refreshTick` bump.
 
 ## 5. External services
 

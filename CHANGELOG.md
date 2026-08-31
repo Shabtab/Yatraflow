@@ -4,6 +4,10 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Fixed
+- **Suggestions persist across tab switches — no more phantom re-searches.** Timeline halt suggestions lived in TravelPanel's local state, so switching to the Map tab (and back) discarded them and forced a fresh corridor search; they were also wiped by a `[day]` reset effect on *every* trip edit (including keeping an unrelated change in the impact sheet). They now hydrate from a per-day slot in the trip-scoped suggestion cache (`useSuggestionCache`) and only 📍 Suggest halt spots / ↻ Refresh re-runs the search. The Map tab's ↻ Refresh button was outright broken — it cleared the cache and the list without triggering a refetch, permanently blanking suggestions; it now bumps a refresh tick that actually re-runs the search. Map suggestions also no longer auto-refetch when OSRM resolves after mount (`planKm`/`wholeTrip.min` effect deps) or when the trip's route drifts — cached results always render until the user refreshes. Detour-scope changes still re-search immediately (explicit control), and the cache record now stores `scopeKm` to distinguish that case.
+- **Adding a halt no longer wipes the remaining timeline suggestions** — the added row flips to a disabled "✓ Added" state (title-matched against the day's stops, same pattern as the map's `existingNames`) and the rest stay listed for further adds.
+
 ## [0.21.0] — 2026-08-31
 
 ### Added

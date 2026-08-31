@@ -180,7 +180,7 @@ export function TripWorkspace({ tripId, onNavigate }: { tripId: string; onNaviga
       )}
 
       {tab === 'overview' && <OverviewTab trip={effective} editable={editable} onOpenDecisions={() => setTab('decisions')} health={health} totals={totals} />}
-      {tab === 'timeline' && <TimelineTab trip={trip} editable={editable} applyChange={applyChange} legCorrections={legCorrections} />}
+      {tab === 'timeline' && <TimelineTab trip={trip} editable={editable} applyChange={applyChange} legCorrections={legCorrections} suggestionCache={suggestionCache} />}
       {tab === 'map' && (
         <React.Suspense fallback={<div className="container loading-block"><div className="spinner" />Loading map…</div>}>
           <MapTab trip={trip} editable={editable} applyChange={applyChange} suggestionCache={suggestionCache} />
@@ -339,11 +339,12 @@ function isoAddDays(iso: string, days: number): string {
 
 // ================= Timeline =================
 
-function TimelineTab({ trip, editable, applyChange, legCorrections }: {
+function TimelineTab({ trip, editable, applyChange, legCorrections, suggestionCache }: {
   trip: Trip
   editable: boolean
   applyChange: (mutator: (d: Trip) => void, kind: ImpactResult['kind'], dayIndex: number) => void
   legCorrections?: Record<string, LegEstimate>
+  suggestionCache: ReturnType<typeof useSuggestionCache>
 }) {
   const [editorState, setEditorState] = useState<
     { mode: 'add'; dayIndex: number } | { mode: 'edit'; stopId: string } | null
@@ -495,7 +496,7 @@ function TimelineTab({ trip, editable, applyChange, legCorrections }: {
       </div>
 
       {days.map(day => (
-        <DaySection key={day.id} day={day} trip={trip} editable={editable} legCorrections={legCorrections}
+        <DaySection key={day.id} day={day} trip={trip} editable={editable} legCorrections={legCorrections} suggestionCache={suggestionCache}
           onAdd={() => setEditorState({ mode: 'add', dayIndex: day.index })}
           onEdit={(sid) => setEditorState({ mode: 'edit', stopId: sid })}
           onDelete={handleDelete}
@@ -583,11 +584,12 @@ function ClampedText({ children, className }: { children: React.ReactNode; class
   )
 }
 
-function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithinDay, onMoveBetweenDays, onMoveStopIn, onRenameDay, onCopyDay, onAddQuickStop, onSetDayStart, onAddBreakStop, warnings, onStatus, legCorrections }: {
+function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithinDay, onMoveBetweenDays, onMoveStopIn, onRenameDay, onCopyDay, onAddQuickStop, onSetDayStart, onAddBreakStop, warnings, onStatus, legCorrections, suggestionCache }: {
   day: Trip['days'][number]
   trip: Trip
   editable: boolean
   legCorrections?: Record<string, LegEstimate>
+  suggestionCache: ReturnType<typeof useSuggestionCache>
   onAdd: () => void
   onEdit: (stopId: string) => void
   onDelete: (stopId: string, dayIndex: number) => void
@@ -760,7 +762,7 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
         </div>
       ))}
 
-      <TravelPanel trip={trip} day={day} editable={editable} journey={journey}
+      <TravelPanel trip={trip} day={day} editable={editable} journey={journey} suggestionCache={suggestionCache}
         onSetDayStart={onSetDayStart} onAddBreakStop={onAddBreakStop} />
 
       {ordered.length === 0 && (<>
@@ -972,29 +974,39 @@ function modeLabelMode(m: string): string {
  * route corridor. Replaces the old split where long rides got a completely
  * different "LongRidePanel" with its own ride-style options.
  */
-function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddBreakStop }: {
+function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddBreakStop, suggestionCache }: {
   trip: Trip
   day: Trip['days'][number]
   editable: boolean
   journey: Journey
   onSetDayStart: (dayIndex: number, time: string) => void
   onAddBreakStop: (dayIndex: number, stop: Omit<ItineraryStop, 'id' | 'orderInDay'>, position: number) => void
+  suggestionCache: ReturnType<typeof useSuggestionCache>
 }) {
   const A = getAssumptions(trip)
   const timeFormat = useTimeFormat()
+  const { cache: sugCache, setHaltCache } = suggestionCache
   const [haltDraft, setHaltDraft] = useState(20)
   const [spots, setSpots] = useState<SegmentHit[]>([])
   const [searched, setSearched] = useState(false)
   const [loadingSpots, setLoadingSpots] = useState(false)
 
-  // The day changed — cached spot suggestions would point at stale positions.
-  useEffect(() => { setSpots([]); setSearched(false) }, [day])
+  // Hydrate this day's persisted halt suggestions — they survive tab switches
+  // and unrelated trip edits; only 📍 Suggest halt spots (a manual search)
+  // replaces them. First-ever search for the day starts from an empty cache.
+  useEffect(() => {
+    const cached = sugCache.halts[day.index]
+    if (cached) { setSpots(cached.segments); setSearched(true) }
+    else { setSpots([]); setSearched(false) }
+  }, [day, sugCache])
 
 
   const orderedActive = useMemo(
     () => [...day.stops].filter(s => s.status !== 'rejected').sort((a, b) => a.orderInDay - b.orderInDay),
     [day.stops],
   )
+  // suggestions already added to the day (title match, like MapTab's existingNames)
+  const addedNames = useMemo(() => new Set(day.stops.map(s => s.title.toLowerCase())), [day.stops])
 
   // No real drive — no travelling card at all. Stay days (parked at the base
   // with no chain) and local days (visits around one place) render nothing
@@ -1044,6 +1056,7 @@ function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddBreakSt
         multiDay: false,
       }, 35000)
       setSpots(plan)
+      setHaltCache(day.index, plan)
     } catch {
       toast('Could not fetch halt-spot suggestions', 'err')
     } finally {
@@ -1069,7 +1082,9 @@ function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddBreakSt
       entryFeeInrPerPerson: 0, transportCostInrTotal: 0,
       priority: 'nice-to-have', sourceUrl: '', status: 'confirmed',
     }, insertPos)
-    setSpots([]) // the day changed — remaining suggestions sit at stale positions
+    // Keep the remaining suggestions visible — the added row flips to "✓ Added"
+    // via addedNames, and insertPos is recomputed from the live day on the next
+    // add. Only 📍 Suggest / ↻ Refresh re-runs the search.
   }
 
   const title = isReturn
@@ -1161,10 +1176,18 @@ function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddBreakSt
               {searched && <span className="small muted" style={{ marginLeft: 8 }}>No good halt spots found along this stretch — add one manually above.</span>}
             </div>
           )}
+          {spots.length > 0 && (
+            <div className="row-between" style={{ gap: 8 }}>
+              <span className="small muted">{loadingSpots ? 'searching…' : `${spots.filter(s => s.hit).length} halt spots — spaced for fatigue & anchored on towns`}</span>
+              <button className="btn btn-outline btn-sm suggestion-refresh-btn" title="Refresh suggestions"
+                onClick={suggestSpots} disabled={loadingSpots}>↻ Refresh</button>
+            </div>
+          )}
           {spots.map(sh => (
             <RideSpotRow
               key={`${sh.segment.index}-${sh.hit?.name ?? 'gap'}`}
               segHit={sh}
+              added={sh.hit != null && addedNames.has(sh.hit.name.toLowerCase())}
               onAdd={mins => addSpot(sh, mins)}
             />
           ))}
@@ -1186,9 +1209,11 @@ function purposeMinutes(purpose: string): number {
 }
 
 /** One fatigue-plan segment with its best real stop (or a gap note when none fit). */
-function RideSpotRow({ segHit, onAdd }: {
+function RideSpotRow({ segHit, onAdd, added }: {
   segHit: SegmentHit
   onAdd: (minutes: number) => void
+  /** this hit is already a stop on the day */
+  added?: boolean
 }) {
   const h = segHit.hit
   const seg = segHit.segment
@@ -1224,13 +1249,16 @@ function RideSpotRow({ segHit, onAdd }: {
       </div>
       <div className="ride-spot-actions">
         {isOvernight ? (
-          <button className="btn btn-primary btn-sm" onClick={() => onAdd(0)}>＋ Add overnight stay</button>
+          added ? <button className="btn btn-outline btn-sm" disabled>✓ Added</button>
+            : <button className="btn btn-primary btn-sm" onClick={() => onAdd(0)}>＋ Add overnight stay</button>
         ) : (
           <>
-            <select className="input ride-spot-mins" value={mins} onChange={e => setMins(Number(e.target.value))} aria-label="Halt duration">
+            <select className="input ride-spot-mins" value={mins} onChange={e => setMins(Number(e.target.value))} aria-label="Halt duration" disabled={added}>
               {[15, 20, 30, 40, 45, 60].map(v => <option key={v} value={v}>{v} min</option>)}
             </select>
-            <button className="btn btn-primary btn-sm" onClick={() => onAdd(mins)}>＋ Add halt</button>
+            {added
+              ? <button className="btn btn-outline btn-sm" disabled title="Already on this day">✓ Added</button>
+              : <button className="btn btn-primary btn-sm" onClick={() => onAdd(mins)}>＋ Add halt</button>}
           </>
         )}
       </div>
@@ -1379,6 +1407,9 @@ function MapTab({ trip, editable, applyChange, suggestionCache }: {
   const timeFormat = useTimeFormat()
   const [loadingPois, setLoadingPois] = useState(false)
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set())
+  // bump to force a corridor re-search — the only refetch path besides a
+  // detour-scope change or a first-ever load (empty cache)
+  const [refreshTick, setRefreshTick] = useState(0)
   // detour-scope control — how far off the route suggestions may sit
   const [scopeIdx, setScopeIdx] = useState(() => {
     const saved = Number(localStorage.getItem(SCOPE_STORAGE_KEY))
@@ -1473,25 +1504,28 @@ function MapTab({ trip, editable, applyChange, suggestionCache }: {
 
   useEffect(() => {
     if (anchors.length === 0) return
-    const hash = anchorHash(anchors)
     const cached = suggestionCache.cache.map
-    if (cached && cached.anchorsHash === hash) {
+    // Persisted results always win: returning to this tab, editing the trip, or
+    // OSRM resolving after mount must NOT silently re-run the expensive corridor
+    // search. Only ↻ Refresh, a detour-scope change, or an empty cache does.
+    if (cached && cached.scopeKm === scopeKm) {
       setPois(cached.segments)
       return
     }
     let cancelled = false
     setLoadingPois(true)
+    const hash = anchorHash(anchors)
     planJourneyHalts(anchors, planKm, wholeTrip.min, { ...nearbyOpts, multiDay: trip.days.length > 1 }, scopeKm * 1000)
       .then(plan => {
         if (!cancelled) {
           setPois(plan)
-          suggestionCache.setMapCache(plan, hash)
+          suggestionCache.setMapCache(plan, hash, scopeKm)
         }
       })
       .catch(() => { /* suggestions are best-effort */ })
       .finally(() => { if (!cancelled) setLoadingPois(false) })
     return () => { cancelled = true }
-  }, [anchors, nearbyOpts, scopeKm, planKm, wholeTrip.min, trip.days.length]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [anchors, nearbyOpts, scopeKm, planKm, wholeTrip.min, trip.days.length, refreshTick]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function addPoiToDay(hit: PlaceHit, dayIndex: number) {
     applyChange(draft => {
@@ -1538,7 +1572,7 @@ function MapTab({ trip, editable, applyChange, suggestionCache }: {
             <button
               className="btn btn-outline btn-sm suggestion-refresh-btn"
               title="Refresh suggestions"
-              onClick={() => { suggestionCache.clearMap(); setPois([]) }}
+              onClick={() => { suggestionCache.clearMap(); setRefreshTick(t => t + 1) }}
               disabled={loadingPois}
             >
               ↻ Refresh
