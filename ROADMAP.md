@@ -3,9 +3,9 @@
 Living document — reviewed each session, updated as items land. Done items move
 to [CHANGELOG.md](CHANGELOG.md); this file only tracks what's ahead.
 
-**Snapshot (2026-08-31):** v0.20.0 · 168 tests green · CI gate on `main` ·
-realtime live (all 8 tables) · basemap licensing (#23) shipped · 2 open issues
-(#20, #22).
+**Snapshot (2026-09-01):** v0.22.0 + UI-audit batch 1 (`6a96914`) · all tests
+green · CI gate on `main` · realtime live (all 8 tables) · UI-audit remediation
+tracked below (11/32 done).
 
 ---
 
@@ -37,6 +37,26 @@ billing account. **No P0 items remain.**
   Keep the deterministic router as the honest offline fallback; badge the
   AiDrawer "(LLM)" vs "(offline rules)"; keep the "not live data" disclaimer.
 - **Effort:** ~3 h · depends on #22.
+
+## 🟣 UI-audit remediation — 32 findings (Vercel Web Interface Guidelines + WCAG 2.2 AA)
+
+Full report: [`docs/UI_AUDIT.md`](docs/UI_AUDIT.md) — 2 P0 · 15 P1 · 15 P2, each
+with `file:line` + a concrete example fix (on `test` until merged to `main`).
+This section is the **live tracker**: tick a finding in the same commit that
+fixes it; CHANGELOG carries the narrative.
+
+| Batch | Scope | Findings | Status |
+|---|---|---|---|
+| 1 | Theming & touch CSS (`color-scheme`, `theme-color`, `touch-action`, `overscroll-behavior`, safe areas, `accent-color`, `text-wrap: balance`, `tabular-nums`, title clamp) | F-18 F-19 F-20 F-23 F-24 F-25 F-26 F-27 F-28 ✅ F-29 F-30 | ✅ `6a96914` |
+| 2 | Shared primitives — the `Field` label fix covers ~30 call sites | F-01 (P0) F-03 F-11 | ⬜ |
+| 3 | Focus ring (17 selectors) + reduced-motion guard | F-12 F-17 | ⬜ |
+| 4 | A11y attributes & navigation semantics | F-02 F-05 F-06 F-07 F-08 F-09 F-10 | ⬜ |
+| 5 | Form hygiene (autocomplete, focus-first-error, unsaved-changes guard) | F-13 F-14 F-15 F-16 | ⬜ |
+| 6 | URL state (tabs, Explore filters) + copy | F-21 F-22 F-31 F-32 | ⬜ |
+
+**Progress: 11/32** · P0s: 1 of 2 closed (F-28 ✅, F-01 open) · ~9 h remaining.
+CSS-only batches are invisible to tsc+tests — always gate on the full
+`npm run verify` (vite build is the step that catches them).
 
 ## 🟠 P2 — Polish & UX debt (not yet tracked as issues)
 
@@ -101,6 +121,9 @@ billing account. **No P0 items remain.**
 7.      push notifications          (1h)
 8.      integration tests           (3h, protects schema+RLS)
 ```
+
+Interleaved with items 2–3: **UI-audit batches 2–6** (~9 h) — tracked in the
+🟣 section above; batches 2 and 3 are the highest fix-per-risk ratio left.
 
 Items 1–7 ≈ **10 h** and reach a solid 1.0-ready state: everything marketed
 works end-to-end, no legal exposure, no UX dead-ends. Items 8–10 are the

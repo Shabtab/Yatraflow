@@ -47,6 +47,11 @@ Key locations:
    `git status -sb` and `git log origin/<branch>..<branch>`; reconcile
    foreign unpushed commits (reset/supersede **with user approval**) rather
    than shipping them.
+5. **UI-audit remediation is tracked in `ROADMAP.md`** (🟣 section): tick a
+   finding in the same commit that fixes it — batch status table only, prose
+   goes to CHANGELOG. `docs/UI_AUDIT.md` is the per-finding reference
+   (file:line + example fix); don't duplicate its content in the tracker.
+
 
 ## 3. Verification before every push
 
