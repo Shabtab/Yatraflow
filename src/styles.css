@@ -831,40 +831,41 @@ a.btn { text-decoration: none; }
   display: flex; justify-content: space-between; align-items: stretch; gap: 12px; flex-wrap: wrap;
   margin: 14px 16px 4px;
 }
-/* Equal-size pair (mockup): both glass cards share width/height rules and
-   stretch to the same height, anchored to the board's left/right edges. */
-.board-info { flex: 0 1 560px; border-radius: 18px; padding: 13px 16px; max-width: 560px; box-shadow: var(--shadow-soft); }
+/* Compact corner pair (mockup): small equal glass cards in the board's top
+   corners — most of the map stays visible between and above them. */
+.board-info { flex: 0 1 340px; border-radius: 16px; padding: 11px 14px; max-width: 340px; box-shadow: var(--shadow-soft); }
 .board-fit {
-  margin-top: 9px; border: none; background: var(--teal-soft); color: var(--teal-deep);
-  border-radius: 999px; font-size: 12px; font-weight: 800; padding: 7px 14px; cursor: pointer;
+  margin-top: 8px; border: none; background: var(--teal-soft); color: var(--teal-deep);
+  border-radius: 999px; font-size: 11.5px; font-weight: 800; padding: 6px 12px; cursor: pointer;
 }
 .board-fit:hover { filter: brightness(.96); }
-.board-pulse { flex: 0 1 560px; border-radius: 18px; padding: 13px 16px; max-width: 560px; box-shadow: var(--shadow-soft); }
-.board-pulse .board-pulse-lines { display: flex; flex-wrap: wrap; gap: 3px 14px; margin-top: 9px; font-size: 12.5px; color: var(--text-2); }
-.board-pulse .pulse-label { font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--yf-text-muted); }
-.board-pulse-row { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
-.board-pulse-row .health-num-big { font-size: 34px; }
-.board-pulse-band { font-size: 13px; font-weight: 750; }
+.board-pulse { flex: 0 1 340px; border-radius: 16px; padding: 11px 14px; max-width: 340px; box-shadow: var(--shadow-soft); }
+.board-pulse .pulse-label { font-size: 10.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--yf-text-muted); }
+.board-pulse-row { display: flex; align-items: center; gap: 10px; margin-top: 3px; }
+.board-pulse-row .health-num-big { font-size: 28px; }
+.board-pulse-band { font-size: 12px; font-weight: 750; }
 .board-pulse-band.ok { color: var(--ok); }
 .board-pulse-band.mid { color: var(--yf-amber); }
 .board-pulse-band.bad { color: var(--yf-coral); }
-.board-pulse .health-bar { margin-top: 6px; }
-.board-pulse-lines { display: grid; gap: 3px; margin-top: 9px; font-size: 12.5px; color: var(--text-2); }
+.board-pulse .health-bar { margin-top: 5px; }
+.board-pulse-lines { display: grid; gap: 3px; margin-top: 8px; font-size: 12px; color: var(--text-2); }
 .board-pulse-link {
-  margin-top: 9px; background: none; border: none; padding: 0; cursor: pointer;
-  color: var(--teal-deep); font-weight: 800; font-size: 12.5px; font-family: var(--font-body);
+  margin-top: 8px; background: none; border: none; padding: 0; cursor: pointer;
+  color: var(--teal-deep); font-weight: 800; font-size: 12px; font-family: var(--font-body);
 }
 .board-cols {
   position: relative; z-index: 2; flex: 1 1 auto; min-height: 0;
-  display: flex; align-items: stretch; gap: 14px; overflow-x: auto;
+  display: flex; align-items: flex-end; gap: 14px; overflow-x: auto;
   justify-content: center; /* centre short trips; `safe` keeps long-trip scroll from clipping */
   justify-content: safe center;
   padding: 6px 16px 14px; scrollbar-width: thin;
 }
 .board-col {
   /* Fill the row: columns share the spare width (capped so a 3-day trip doesn't
-     stretch into billboards); long trips fall back to the min-width scroll. */
+     stretch into billboards); long trips fall back to the min-width scroll.
+     Bottom-anchored at ~72% height so the map stays visible above the kanban. */
   flex: 1 1 264px; min-width: 250px; max-width: 424px;
+  height: 72%; min-height: 340px;
   display: flex; flex-direction: column;
   border-radius: var(--radius-lg); overflow: hidden;
   background: color-mix(in srgb, var(--card) 97%, transparent);
@@ -1920,7 +1921,7 @@ main:focus { outline: none; }
      560px height here — stack panels at natural size instead */
   .board-topbar .board-info, .board-topbar .board-pulse { flex: 0 0 auto; }
   .board-cols { position: static; inset: auto; margin-top: 4px; padding-bottom: 10px; }
-  .board-col { flex: 0 0 264px; }
+  .board-col { flex: 0 0 264px; height: auto; min-height: 0; }
   .board-col-head { min-height: 52px; }
   .dec-strip { grid-template-columns: 1fr; gap: 8px; }
   .budget-hero-num { font-size: 32px; }
