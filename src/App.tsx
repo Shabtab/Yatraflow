@@ -43,6 +43,11 @@ export default function App() {
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? 'dark' : 'light'
     localStorage.setItem('yatraflow_theme', dark ? 'dark' : 'light')
+    // Keep the browser chrome (address bar) in step with the explicit toggle —
+    // the two media-scoped <meta name="theme-color"> tags only react to the
+    // OS preference, not to this in-app switch.
+    document.querySelectorAll('meta[name="theme-color"]').forEach(m =>
+      m.setAttribute('content', dark ? '#0C1420' : '#FAF7F2'))
   }, [dark])
 
   function navigate(to: string) {

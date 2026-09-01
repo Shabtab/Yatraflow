@@ -2,6 +2,11 @@
 
 All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions are pre-1.0 MVP milestones.
 
+## [Unreleased]
+
+### Fixed
+- **UI batch 1 — theming & touch hardening** (findings F-18/F-19/F-20/F-23/F-24/F-25/F-26/F-27/F-28/F-29/F-30 from `docs/UI_AUDIT.md`, on `test`): native UA chrome now follows the active theme via `color-scheme: light/dark` (P0 — scrollbars, `<select>` popups and date/time pickers used to render light inside dark mode) and native checkboxes/radios/the detour-scope slider pick up the brand teal via `accent-color`. Two `theme-color` metas keep the browser address bar themed, synced with the in-app toggle in `App.tsx`. Touch: `touch-action: manipulation` kills the double-tap-zoom delay (safe for the `touchDnd` long-press engine and the MapLibre canvas, which keep their own gesture handling), `-webkit-tap-highlight-color: transparent` removes the grey UA tap flash, and `overscroll-behavior: contain` stops the modal, AI chat and location dropdown from scroll-chaining the page behind them. Safe areas: `viewport-fit=cover` activated (it was missing, so the one pre-existing `env()` inset on the impact sheet was silently inert) and insets added to the toast zone, AI fab/drawer, topnav, mobile-menu offset and `scroll-padding-top`. Typography: `text-wrap: balance` on headings, `tabular-nums` on stat/health/impact/vote figures, 2-line clamp on trip-card titles so grids stay aligned.
+
 ## [0.22.0] — 2026-08-31
 
 ### Added

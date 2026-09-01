@@ -8,6 +8,12 @@
  * ~200 existing references keep working; new code should use --color-*.
  */
 :root {
+  /* Native UA chrome (scrollbars, <select> popups, date/time pickers, autofill)
+     must follow the active theme, and native checkboxes/radios/range sliders
+     pick up the brand accent. --teal-500 re-resolves per theme below. */
+  color-scheme: light;
+  accent-color: var(--teal-500);
+
   /* ---- 1. PRIMITIVES: brand ---- */
   --teal-500: #149A90;
   --teal-600: #0E7A72;
@@ -85,6 +91,8 @@
 }
 
 [data-theme='dark'] {
+  color-scheme: dark;
+
   /* ---- 1. PRIMITIVES: brand (dark) ---- */
   --teal-500: #2BB8AC;
   --teal-600: #35C9BC;
@@ -156,7 +164,13 @@
 }
 
 * { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; }
+html {
+  -webkit-text-size-adjust: 100%;
+  /* No grey UA tap-flash on touch devices. */
+  -webkit-tap-highlight-color: transparent;
+  /* Anchor/scrollIntoView targets land clear of the sticky topnav. */
+  scroll-padding-top: calc(var(--nav-h) + env(safe-area-inset-top) + 12px);
+}
 body {
   margin: 0;
   background: var(--bg);
@@ -164,8 +178,13 @@ body {
   font-family: var(--font-body);
   font-size: 15px;
   line-height: 1.55;
+  /* Drops the double-tap-zoom delay on rapid taps (pan + pinch still allowed).
+     touchDnd's touchstart/touchmove preventDefault still vetoes browser
+     gestures during long-press drag, and MapLibre's canvas container sets its
+     own touch-action: none. */
+  touch-action: manipulation;
 }
-h1,h2,h3,h4 { font-family: var(--font-display); line-height: 1.22; margin: 0; letter-spacing: -0.01em; }
+h1,h2,h3,h4 { font-family: var(--font-display); line-height: 1.22; margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
 h1 { font-size: clamp(26px, 4.5vw, 40px); font-weight: 800; }
 h2 { font-size: 21px; font-weight: 700; }
 h3 { font-size: 16px; font-weight: 700; }
@@ -184,6 +203,8 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
   background: color-mix(in srgb, var(--bg) 88%, transparent);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--line);
+  /* Edge-to-edge (viewport-fit=cover): sit below the notch/status bar. */
+  padding-top: env(safe-area-inset-top);
 }
 .topnav-inner { display: flex; align-items: center; gap: 14px; height: var(--nav-h); }
 .brand { display: flex; align-items: center; gap: 9px; font-family: var(--font-display); font-weight: 800; font-size: 19px; color: var(--text); cursor: pointer; background:none;border:none;padding:0; }
@@ -287,7 +308,7 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
 .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
 .stat-tile { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 15px 17px; box-shadow: var(--shadow-sm); }
 .stat-label { font-size: 12px; font-weight: 650; text-transform: uppercase; letter-spacing: .05em; color: var(--text-3); }
-.stat-value { font-family: var(--font-display); font-size: 23px; font-weight: 800; margin-top: 3px; }
+.stat-value { font-family: var(--font-display); font-size: 23px; font-weight: 800; margin-top: 3px; font-variant-numeric: tabular-nums; }
 .stat-sub { font-size: 12px; color: var(--text-3); margin-top: 2px; }
 
 /* ---------- Health score ring ---------- */
@@ -295,7 +316,7 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
 .health-ring { position: relative; width: 108px; height: 108px; flex: 0 0 auto; }
 .health-ring svg { transform: rotate(-90deg); }
 .health-num { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-.health-num b { font-family: var(--font-display); font-size: 30px; font-weight: 800; }
+.health-num b { font-family: var(--font-display); font-size: 30px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .health-num span { font-size: 10.5px; color: var(--text-3); font-weight: 650; text-transform: uppercase; letter-spacing: .06em; }
 .health-band { font-family: var(--font-display); font-weight: 800; font-size: 17px; }
 .band-comfortable { color: var(--ok); } .band-manageable { color: var(--teal-deep); }
@@ -566,7 +587,7 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
 .impact-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 9px; margin-bottom: 12px; }
 .impact-cell { background: var(--bg-soft); border-radius: 10px; padding: 9px 12px; }
 .impact-cell .k { font-size: 11px; font-weight: 700; color: var(--text-3); text-transform: uppercase; letter-spacing: .04em; }
-.impact-cell .v { font-weight: 750; font-size: 14.5px; margin-top: 1px; font-family: var(--font-display); }
+.impact-cell .v { font-weight: 750; font-size: 14.5px; margin-top: 1px; font-family: var(--font-display); font-variant-numeric: tabular-nums; }
 .delta-pos { color: var(--danger); } .delta-neg { color: var(--ok); } .delta-zero { color: var(--text-2); }
 .assumptions { font-size: 12px; color: var(--text-3); background: var(--bg-soft); padding: 9px 12px; border-radius: 10px; line-height: 1.6; }
 .impact-actions { display: flex; gap: 8px; margin-top: 13px; flex-wrap: wrap; }
@@ -601,13 +622,15 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
   background: var(--card); border-radius: 22px 22px 0 0;
   width: 100%; max-width: 620px; max-height: 92vh; overflow-y: auto;
   padding: 22px; animation: slideUp .25s ease;
+  /* Stop the sheet's scroll from chaining to the page behind it. */
+  overscroll-behavior: contain;
 }
 @media (min-width: 640px) {
   .modal-overlay { align-items: center; padding: 20px; }
   .modal { border-radius: 22px; }
 }
 .modal-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; gap: 10px; }
-.toast-zone { position: fixed; bottom: 18px; left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; z-index: 200; pointer-events: none; padding: 0 14px; }
+.toast-zone { position: fixed; bottom: calc(18px + env(safe-area-inset-bottom)); left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; z-index: 200; pointer-events: none; padding: 0 14px; }
 .toast {
   pointer-events: auto; background: var(--text); color: var(--bg);
   padding: 11px 20px; border-radius: 999px; font-size: 13.5px; font-weight: 600;
@@ -720,6 +743,10 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
 .itin-cover-fallback { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 44px; }
 .itin-cover .chip { position: absolute; top: 11px; left: 11px; background: rgba(255,255,255,.92); color: var(--text); backdrop-filter: blur(4px); }
 .itin-body { padding: 15px 17px 17px; display: flex; flex-direction: column; gap: 9px; flex: 1; }
+/* Trip names can be long — cap at two lines so card grids stay aligned. */
+.itin-body h3 {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
 .itin-meta { display: flex; flex-wrap: wrap; gap: 4px 13px; font-size: 12.5px; color: var(--text-3); font-weight: 600; }
 /* Explore card footer: full-width divider to the card edges, content inset to
    align with .itin-body's 17px side padding (separate from itin-body above). */
@@ -805,7 +832,7 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
 .vote-btn { width: 34px; height: 30px; border-radius: 9px; border: 1.5px solid var(--line); background: var(--card); font-size: 14px; color: var(--text-2); }
 .vote-btn:hover { border-color: var(--teal); color: var(--teal-deep); }
 .vote-btn.on { background: var(--teal); border-color: var(--teal); color: #fff; }
-.vote-count { font-weight: 800; font-size: 15px; font-family: var(--font-display); }
+.vote-count { font-weight: 800; font-size: 15px; font-family: var(--font-display); font-variant-numeric: tabular-nums; }
 .consensus-bar { height: 7px; border-radius: 99px; background: var(--bg-soft); overflow: hidden; display: flex; }
 .consensus-bar > div { height: 100%; }
 .comment { display: flex; gap: 9px; padding: 9px 0; border-top: 1px dashed var(--line); }
@@ -830,7 +857,10 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
 
 /* ---------- AI panel ---------- */
 .ai-fab {
-  position: fixed; right: 18px; bottom: 18px; z-index: 70;
+  position: fixed;
+  right: calc(18px + env(safe-area-inset-right));
+  bottom: calc(18px + env(safe-area-inset-bottom));
+  z-index: 70;
   width: 56px; height: 56px; border-radius: 50%; border: none;
   background: var(--text); color: var(--bg); font-size: 24px;
   box-shadow: var(--shadow); display: flex; align-items: center; justify-content: center;
@@ -842,10 +872,12 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
   width: min(420px, 100vw); background: var(--card);
   border-left: 1px solid var(--line); box-shadow: -12px 0 40px rgba(11,37,69,.14);
   display: flex; flex-direction: column; animation: drawerIn .22s ease;
+  /* Edge-to-edge: keep content clear of the landscape home-indicator edge. */
+  padding-right: env(safe-area-inset-right);
 }
 @keyframes drawerIn { from { transform: translateX(40px); opacity: 0; } to { transform: none; opacity: 1; } }
 .ai-head { display: flex; align-items: center; gap: 10px; padding: 15px 17px; border-bottom: 1px solid var(--line); }
-.ai-msgs { flex: 1; overflow-y: auto; padding: 17px; display: flex; flex-direction: column; gap: 13px; }
+.ai-msgs { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 17px; display: flex; flex-direction: column; gap: 13px; }
 .ai-bubble { max-width: 92%; padding: 11px 14px; border-radius: 16px; font-size: 13.8px; white-space: pre-wrap; }
 .ai-bubble.user { align-self: flex-end; background: var(--text); color: var(--bg); border-bottom-right-radius: 5px; }
 .ai-bubble.bot { align-self: flex-start; background: var(--bg-soft); color: var(--text); border-bottom-left-radius: 5px; }
@@ -1085,6 +1117,7 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
   box-shadow: 0 12px 32px rgba(0,0,0,.18);
   max-height: 280px;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .loc-option {
   display: flex; align-items: baseline; gap: 8px;
@@ -1107,7 +1140,7 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
   font-size: 18px; line-height: 1; color: var(--text);
 }
 .mobile-menu {
-  position: fixed; top: var(--nav-h); left: 0; right: 0; z-index: 55;
+  position: fixed; top: calc(var(--nav-h) + env(safe-area-inset-top)); left: 0; right: 0; z-index: 55;
   background: var(--card); border-bottom: 1px solid var(--line);
   box-shadow: var(--shadow); padding: 8px 14px 14px;
   display: flex; flex-direction: column; gap: 2px;

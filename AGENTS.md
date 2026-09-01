@@ -205,6 +205,7 @@ Hard rules (each learned the hard way — do not relearn them):
 - `dev.log` is untracked local clutter — ignore it, never commit it. (It **did** get committed in `f09aaf9` when a bulk `git add` in this shared working copy swept it up — and the commit was pushed, so removing it needed a follow-up untrack commit. Stage explicit paths only; never `git add -A` / `git add .` here.)
 - Test style: pure logic only, node env; mock `fetch` with route tables
   (`tests/providers.test.ts` has the pattern); `vi.stubEnv` for API keys.
+- **`env(safe-area-inset-*)` is inert without `viewport-fit=cover`** — `.impact-sheet` shipped an `env(safe-area-inset-bottom)` padding that silently did nothing because `index.html`'s viewport meta lacked `viewport-fit=cover` (found while fixing UI-audit F-26, Sep 2026). Activating `cover` turns EVERY inset on at once, so audit all fixed/sticky layers (topnav, toast zone, fabs, drawers, `top:`/`scroll-padding` offsets derived from `--nav-h`) in the same change — adding them one at a time leaves half the UI under the home indicator.
 - **Section-restructure edits can silently swallow bullets** — an edit whose
   `old_text` spans `<heading>` + its bullets + the next `<heading>`, replaced
   by just the next heading, **deletes the bullets**, not only the heading.
