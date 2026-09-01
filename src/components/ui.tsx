@@ -212,18 +212,29 @@ export function HealthRing({ score, band }: { score: number; band: string }) {
   )
 }
 
-/** Route illustration used in dark hero/snapshot cards (CTI mockups):
- *  a saffron squiggle with numbered stops. Purely decorative. */
-export function RouteSquiggle({ height = 72 }: { height?: number }) {
-  const stroke = '#F3AA3D'
-  const stops: Array<[number, number, number]> = [[10, 46, 1], [112, 20, 3], [202, 44, 6], [308, 24, 10]]
+/** Route snapshot for dark hero/snapshot cards (CTI homepage mockup): the trip
+ *  route as an illustration — a gradient road (saffron→gold→coral) with a dashed
+ *  cream centreline and white day-numbered badges (1 · 3 · 6 · 10), exactly the
+ *  mockup's grammar. Aspect preserved: 'none' stretching is what made the old
+ *  version read as a decorative wave instead of a route. */
+export function RouteSquiggle({ height }: { height?: number }) {
+  const gid = React.useId().replace(/[:]/g, '')
+  const stops: Array<[number, number, number]> = [[21, 91, 1], [176, 55, 3], [361, 67, 6], [510, 36, 10]]
   return (
-    <svg viewBox="0 0 320 64" style={{ width: '100%', height, display: 'block' }} aria-hidden="true" preserveAspectRatio="none">
-      <path d="M10 46 C 52 8, 92 50, 142 38 S 244 4, 308 24" fill="none" stroke={stroke} strokeWidth="5" strokeLinecap="round" />
+    <svg viewBox="0 0 532 132" style={height ? { width: '100%', height, display: 'block' } : { width: '100%', height: 'auto', display: 'block' }} aria-hidden="true" role="presentation">
+      <defs>
+        <linearGradient id={`rg-${gid}`} x1="0" x2="1">
+          <stop stopColor="#EFAD54" /><stop offset=".5" stopColor="#FFDF93" /><stop offset="1" stopColor="#E8684C" />
+        </linearGradient>
+      </defs>
+      <path d="M21 104 C 83 40, 139 107, 197 55 S 320 5, 382 67 S 484 128, 531 36"
+        fill="none" stroke={`url(#rg-${gid})`} strokeWidth="8" strokeLinecap="round" />
+      <path d="M21 104 C 83 40, 139 107, 197 55 S 320 5, 382 67 S 484 128, 531 36"
+        fill="none" stroke="#FFF8D7" strokeWidth="2" strokeDasharray="7 9" strokeLinecap="round" />
       {stops.map(([x, y, n]) => (
         <g key={n}>
-          <circle cx={x} cy={y} r="9.5" fill="#0F2A33" stroke={stroke} strokeWidth="2.5" />
-          <text x={x} y={y + 3.5} textAnchor="middle" fontSize="9.5" fontWeight="800" fill="#FFFFFF">{n}</text>
+          <circle cx={x} cy={y} r="13" fill="#FFFFFF" />
+          <text x={x} y={y + 4} textAnchor="middle" fontSize="11" fontWeight="700" fill="#155B60">{n}</text>
         </g>
       ))}
     </svg>
