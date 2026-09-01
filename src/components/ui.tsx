@@ -241,6 +241,84 @@ export function RouteSquiggle({ height }: { height?: number }) {
   )
 }
 
+/** Dynamic route snapshot (CTI homepage mockup grammar) for real trip data:
+ *  the same gradient road + dashed centreline as RouteSquiggle, but the
+ *  day-numbered badges are placed at even arc-length positions for the actual
+ *  day count, and the trip's start/end locations label the curve's ends.
+ *  Pure math (cubic sampling) — no DOM measurement. */
+export function RouteSnapshot({ count, startLabel, endLabel }: {
+  count: number
+  startLabel?: string
+  endLabel?: string
+}) {
+  const gid = React.useId().replace(/[:]/g, '')
+  // The mockup route curve as explicit cubic segments (S commands resolved).
+  const segs: Array<[number, number, number, number, number, number, number, number]> = [
+    [21, 104, 83, 40, 139, 107, 197, 55],
+    [197, 55, 255, 3, 320, 5, 382, 67],
+    [382, 67, 444, 129, 484, 128, 531, 36],
+  ]
+  const d = 'M21 104 C 83 40, 139 107, 197 55 S 320 5, 382 67 S 484 128, 531 36'
+  // sample arc length, then place badges at even fractions of it
+  const SAMPLES = 90
+  const pts: Array<[number, number]> = []
+  for (const [x0, y0, x1, y1, x2, y2, x3, y3] of segs) {
+    for (let i = 1; i <= SAMPLES; i++) {
+      const t = i / SAMPLES, u = 1 - t
+      pts.push([
+        u * u * u * x0 + 3 * u * u * t * x1 + 3 * u * t * t * x2 + t * t * t * x3,
+        u * u * u * y0 + 3 * u * u * t * y1 + 3 * u * t * t * y2 + t * t * t * y3,
+      ])
+    }
+  }
+  const cum: number[] = [0]
+  for (let i = 1; i < pts.length; i++) {
+    cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]))
+  }
+  const total = cum[cum.length - 1]
+  const pointAt = (f: number): [number, number] => {
+    const target = f * total
+    let i = cum.findIndex(c => c >= target)
+    if (i < 1) i = 1
+    return pts[i - 1]
+  }
+  const n = Math.max(2, Math.min(count || 2, 9))
+  const dayNums: number[] = []
+  if (count > 9) {
+    // long trips: first, ~evenly spread middles, last (mockup shows sparse badges)
+    for (let i = 0; i < 7; i++) dayNums.push(Math.round((i * (count - 1)) / 6) + 1)
+    if (!dayNums.includes(count)) dayNums[dayNums.length - 1] = count
+  } else {
+    for (let i = 1; i <= n; i++) dayNums.push(i)
+  }
+  const badges = dayNums.map((day, i) => { const [x, y] = pointAt(i / (dayNums.length - 1)); return { day, x, y } })
+  const short = (s?: string) => (s && s.length > 14 ? s.slice(0, 13) + '…' : s)
+  return (
+    <svg viewBox="-6 -10 552 158" style={{ width: '100%', height: 'auto', display: 'block' }} role="img"
+      aria-label={`Route across ${count} days${startLabel ? `, starting at ${startLabel}` : ''}${endLabel ? `, ending at ${endLabel}` : ''}`}>
+      <defs>
+        <linearGradient id={`rs-${gid}`} x1="0" x2="1">
+          <stop stopColor="#EFAD54" /><stop offset=".5" stopColor="#FFDF93" /><stop offset="1" stopColor="#E8684C" />
+        </linearGradient>
+      </defs>
+      <path d={d} fill="none" stroke={`url(#rs-${gid})`} strokeWidth="8" strokeLinecap="round" />
+      <path d={d} fill="none" stroke="#FFF8D7" strokeWidth="2" strokeDasharray="7 9" strokeLinecap="round" />
+      {badges.map(({ day, x, y }) => (
+        <g key={day}>
+          <circle cx={x} cy={y} r="13" fill="#FFFFFF" />
+          <text x={x} y={y + 4} textAnchor="middle" fontSize="11" fontWeight="700" fill="#155B60">{day}</text>
+        </g>
+      ))}
+      {startLabel && (
+        <text x="21" y="140" textAnchor="start" fontSize="12" fontWeight="700" fill="#C8E3DF">{short(startLabel)}</text>
+      )}
+      {endLabel && (
+        <text x="531" y="10" textAnchor="end" fontSize="12" fontWeight="700" fill="#C8E3DF">{short(endLabel)}</text>
+      )}
+    </svg>
+  )
+}
+
 export function StatTile({ label, value, sub }: { label: string; value: React.ReactNode; sub?: React.ReactNode }) {
   return (
     <div className="stat-tile">

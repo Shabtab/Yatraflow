@@ -23,7 +23,7 @@ import { loadDayCollapsed, saveDayCollapsed } from '../lib/uiPrefs'
 import { useTimeFormat, formatHM, formatHMRange } from '../lib/timefmt'
 import { scrollBehavior } from '../lib/motion'
 import { stopKindOf, STOP_KIND_LABELS } from '../lib/stopKind'
-import { Avatar, Chip, Modal, ConfirmDialog, Field, StatTile, HealthRing, EmptyState, toast, undoToast, useReorder, CopyButton, RouteSquiggle } from '../components/ui'
+import { Avatar, Chip, Modal, ConfirmDialog, Field, StatTile, HealthRing, EmptyState, toast, undoToast, useReorder, CopyButton, RouteSnapshot } from '../components/ui'
 import { ImpactPreviewPanel } from '../components/ImpactPreview'
 import { useSuggestionCache } from '../hooks/useSuggestionCache'
 // MapLibre is heavy (~1MB) — load it only when the Map tab is actually opened.
@@ -165,7 +165,7 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
   }
 
   return (
-    <div className="container" style={{ paddingTop: 22 }}>
+    <div className={`container${tab === 'board' ? ' container--board' : ''}`} style={{ paddingTop: 22 }}>
       {/* ---------- Header ---------- */}
       <div className="trip-head-card">
         <div className="row-between">
@@ -334,7 +334,11 @@ function OverviewTab({ trip, editable, onOpenDecisions, onOpenTimeline, onOpenMa
       <div>
         <div className="card route-snap">
           <h3>Route snapshot</h3>
-          <RouteSquiggle />
+          <RouteSnapshot
+            count={trip.days.length}
+            startLabel={trip.startLocation}
+            endLabel={isRoundTrip(trip) ? trip.startLocation : trip.destinations[trip.destinations.length - 1]}
+          />
           <p style={{ margin: '4px 0 0', fontSize: 12.5, opacity: .85, lineHeight: 1.6 }}>
             <b>{trip.startLocation}</b>
             {trip.destinations.map((d, i) => <span key={i}> → {d}</span>)}
