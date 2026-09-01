@@ -9,39 +9,40 @@ export function LandingPage({ onNavigate }: { onNavigate: (r: string) => void })
         <div className="container">
           <span className="chip chip-saffron">🇮🇳 Made for Indian travellers</span>
           <h1 style={{ fontSize: 'clamp(2.2rem, 5.5vw, 3.6rem)', margin: '18px auto 14px', maxWidth: 780 }}>
-            Plan group trips that actually <span style={{ color: 'var(--teal)' }}>add up</span>
+            Plan trips that actually <span style={{ color: 'var(--yf-teal-600)' }}>flow together</span>
           </h1>
           <p className="hero-sub">
-            YatraFlow shows the time, distance and cost impact of every stop — the moment you add,
-            move or remove it. Plan together, vote on ideas, and keep the whole crew honest.
+            Build the route, see every time and cost impact the moment you touch it,
+            and keep your whole crew on the same page.
           </p>
           <div className="hero-ctas">
             <a className="btn btn-primary btn-lg" href="#/auth?mode=signup">Start planning free</a>
             <a className="btn btn-saffron btn-lg" href="#/explore">Explore itineraries</a>
           </div>
-          <p className="small muted" style={{ marginTop: 14 }}>Free forever · No credit card · Your data stays in your browser</p>
+          <p className="small muted" style={{ marginTop: 14 }}>Free forever · No card needed · Your planning data is yours</p>
 
-          {/* Product preview mock */}
+          {/* Product preview mock (per the CTI homepage mockup) */}
           <div className="hero-preview" aria-hidden="true">
             <div className="hp-window">
               <div className="hp-titlebar"><span /><span /><span /></div>
               <div className="hp-body">
-                <div className="hp-tripname">🏔️ Kerala monsoon escape</div>
-                <div className="hp-route">Kochi → Munnar → Thekkady → Alleppey</div>
+                <div className="hp-tripname">🏔️ Leh–Ladakh road escape</div>
+                <div className="hp-route">12–21 Sep · 10 days · 4 travellers · Motorcycle</div>
                 <div className="hp-stats">
-                  <div><b>₹14,250</b><span>per person</span></div>
-                  <div><b>18h 40m</b><span>travel time</span></div>
-                  <div><b className="hp-good">92</b><span>health score</span></div>
+                  <div><b>₹5,408</b><span>est. per person</span></div>
+                  <div><b>60h 15m</b><span>driving time</span></div>
+                  <div><b className="hp-mid">53</b><span>trip health</span></div>
                 </div>
                 <div className="hp-warning">
-                  <span>⚠️</span> Adding Vagamon adds +52 min & misses the 12:00 houseboat
+                  <span>⚠️</span> Day 3 is overloaded — add a rest halt to protect your arrival time.
                 </div>
                 <div className="hp-days">
                   <span className="hp-day d0">Day 1</span>
-                  <span className="hp-day d1">Day 2</span>
-                  <span className="hp-day d2">Day 3</span>
-                  <span className="hp-day d3">Day 4</span>
+                  <span className="hp-day d1">Day 3</span>
+                  <span className="hp-day d2">Day 6</span>
+                  <span className="hp-day d3">Day 10</span>
                 </div>
+                <div className="hp-live"><span>👥 3 friends synced</span><span>live group signal</span></div>
               </div>
             </div>
           </div>
