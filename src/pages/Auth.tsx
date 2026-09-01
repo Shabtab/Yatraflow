@@ -71,7 +71,7 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
           <Field label="Password" hint={mode === 'signup' ? 'At least 8 characters' : undefined}>
             <input className="input" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" />
           </Field>
-          {error && <div className="err-text" style={{ marginBottom: 10 }}>⚠️ {error}</div>}
+          {error && <div className="err-text" role="alert" style={{ marginBottom: 10 }}>⚠️ {error}</div>}
           <button type="submit" className="btn btn-primary btn-lg" style={{ width: '100%' }} disabled={saving}>
             {saving ? 'Signing in…' : mode === 'login' ? 'Log in' : 'Create account'}
           </button>

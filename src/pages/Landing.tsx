@@ -16,8 +16,8 @@ export function LandingPage({ onNavigate }: { onNavigate: (r: string) => void })
             move or remove it. Plan together, vote on ideas, and keep the whole crew honest.
           </p>
           <div className="hero-ctas">
-            <button className="btn btn-primary btn-lg" onClick={() => onNavigate('/auth?mode=signup')}>Start planning free</button>
-            <button className="btn btn-saffron btn-lg" onClick={() => onNavigate('/explore')}>Explore itineraries</button>
+            <a className="btn btn-primary btn-lg" href="#/auth?mode=signup">Start planning free</a>
+            <a className="btn btn-saffron btn-lg" href="#/explore">Explore itineraries</a>
           </div>
           <p className="small muted" style={{ marginTop: 14 }}>Free forever · No credit card · Your data stays in your browser</p>
 
@@ -97,9 +97,9 @@ export function LandingPage({ onNavigate }: { onNavigate: (r: string) => void })
 function DemoButtons({ onNavigate }: { onNavigate: (r: string) => void }) {
   return (
     <div className="cta-buttons">
-      <button className="btn btn-navy btn-lg" onClick={() => onNavigate('/auth?mode=signup')}>
+      <a className="btn btn-navy btn-lg" href="#/auth?mode=signup">
         🚀 Create a free account
-      </button>
+      </a>
       <BrandHint />
     </div>
   )

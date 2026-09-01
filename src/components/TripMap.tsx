@@ -398,6 +398,7 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby }: {
             className={`map-day-chip map-expand-chip${expanded ? ' on' : ''}`}
             onClick={() => setExpanded(e => !e)}
             title={expanded ? 'Shrink the map back into the page (Esc)' : 'Expand the map to fill the screen'}
+            aria-label={expanded ? 'Shrink the map back into the page' : 'Expand the map to fill the screen'}
           >
             {expanded ? '⤡ Collapse' : '⤢ Expand'}
           </button>
@@ -573,6 +574,7 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby }: {
             onClick={toggleLegend}
             aria-expanded={legendOpen}
             title={legendOpen ? 'Hide the map key' : 'Show the map key'}
+            aria-label={legendOpen ? 'Hide the map key' : 'Show the map key'}
           >
             {legendOpen ? '✕ Hide key' : 'ⓘ Key'}
           </button>

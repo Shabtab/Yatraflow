@@ -59,7 +59,7 @@ export function AiDrawer({ trip, open, onOpen, onClose }: { trip: Trip; open: bo
           <button className="icon-btn" style={{ marginLeft: 'auto' }} onClick={onClose} aria-label="Close assistant">✕</button>
         </div>
 
-        <div className="ai-msgs" ref={scrollRef}>
+        <div className="ai-msgs" ref={scrollRef} role="log" aria-live="polite">
           {msgs.map(m => (
             <div key={m.id} className={`ai-bubble ${m.role}`}>
               {m.text}
@@ -83,6 +83,7 @@ export function AiDrawer({ trip, open, onOpen, onClose }: { trip: Trip; open: bo
           <input
             className="input"
             placeholder="Ask about this trip…"
+            aria-label="Ask the travel companion"
             value={input}
             onChange={e => setInput(e.target.value)}
           />

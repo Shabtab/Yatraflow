@@ -136,7 +136,7 @@ export function Field(props: {
       <label className="label" htmlFor={associated ? controlId : undefined}>{props.label}</label>
       {wired}
       {props.hint && !props.error && <span className="hint-text">{props.hint}</span>}
-      {props.error && <span className="err-text">{props.error}</span>}
+      {props.error && <span className="err-text" role="alert">{props.error}</span>}
     </div>
   )
 }

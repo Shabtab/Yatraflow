@@ -50,6 +50,18 @@ export default function App() {
       m.setAttribute('content', dark ? '#0C1420' : '#FAF7F2'))
   }, [dark])
 
+  // Escape closes any open popover (UI audit F-10) — outside-click alone
+  // leaves keyboard users stranded.
+  useEffect(() => {
+    if (!mobileNav && !notifOpen && !menuOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      setMobileNav(false); setNotifOpen(false); setMenuOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [mobileNav, notifOpen, menuOpen])
+
   function navigate(to: string) {
     location.hash = to
   }
@@ -104,18 +116,21 @@ export default function App() {
 
   return (
     <div className="app-shell">
+      {/* Skip link (F-08): href="#main" would fight the hash router, so we
+          preventDefault and focus <main> programmatically instead. */}
+      <a className="skip-link" href="#main" onClick={e => { e.preventDefault(); document.getElementById('main')?.focus() }}>Skip to main content</a>
       <nav className="topnav">
         <div className="container topnav-inner">
-          <button className="brand" onClick={() => navigate('/')} aria-label="YatraFlow home">
+          <a className="brand" href="#/" aria-label="YatraFlow home">
             <BrandMark />
             <span>Yatra<b style={{ color: 'var(--teal)' }}>Flow</b></span>
-          </button>
+          </a>
           <div className="nav-links">
             {me && <>
-              <button className="nav-link" onClick={() => navigate('/trips')}>My trips</button>
-              <button className="nav-link" onClick={() => navigate('/new')}>Plan a trip</button>
+              <a className={`nav-link ${route === '/trips' ? 'active' : ''}`} href="#/trips">My trips</a>
+              <a className={`nav-link ${route === '/new' ? 'active' : ''}`} href="#/new">Plan a trip</a>
             </>}
-            <button className="nav-link" onClick={() => navigate('/explore')}>Explore</button>
+            <a className={`nav-link ${route === '/explore' ? 'active' : ''}`} href="#/explore">Explore</a>
           </div>
         <div className="nav-right">
           {/* Hamburger — only rendered ≤720px where .nav-links is hidden */}
@@ -124,6 +139,7 @@ export default function App() {
             onClick={() => setMobileNav(o => !o)}
             aria-label="Menu"
             aria-expanded={mobileNav}
+            aria-controls="mobile-menu"
           >
             {mobileNav ? '✕' : '☰'}
           </button>
@@ -133,11 +149,11 @@ export default function App() {
           </button>
           {me && (
             <div style={{ position: 'relative' }} ref={notifRef}>
-              <button className="icon-btn" onClick={() => setNotifOpen(o => !o)} aria-label={`Notifications (${unread} unread)`}>
+              <button className="icon-btn" onClick={() => setNotifOpen(o => !o)} aria-label={`Notifications (${unread} unread)`} aria-expanded={notifOpen} aria-controls="notif-pop">
                 🔔{unread > 0 && <span className="notif-badge">{unread}</span>}
               </button>
               {notifOpen && (
-                <div className="notif-pop">
+                <div className="notif-pop" id="notif-pop">
                   <div className="row-between" style={{ padding: '10px 14px', borderBottom: '1px solid var(--line)' }}>
                     <b>Notifications</b>
                     {unread > 0 && <button className="btn btn-ghost btn-sm" onClick={() => markAllNotificationsRead(me.id)}>Mark all read</button>}
@@ -157,11 +173,11 @@ export default function App() {
           )}
           {me ? (
             <div style={{ position: 'relative' }} ref={menuRef}>
-              <button className="avatar-btn" onClick={() => setMenuOpen(o => !o)} aria-label="Account menu">
+              <button className="avatar-btn" onClick={() => setMenuOpen(o => !o)} aria-label="Account menu" aria-expanded={menuOpen} aria-controls="user-menu">
                 <Avatar user={me} />
               </button>
               {menuOpen && (
-                <div className="user-menu">
+                <div className="user-menu" id="user-menu">
                   <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--line)' }}>
                     <b>{me.profile.name}</b>
                     <div className="small muted">{me.email}</div>
@@ -175,8 +191,8 @@ export default function App() {
             </div>
           ) : (
             <>
-              <button className="btn btn-outline btn-sm" onClick={() => navigate('/auth')}>Log in</button>
-              <button className="btn btn-primary btn-sm" onClick={() => navigate('/auth?mode=signup')}>Sign up free</button>
+              <a className="btn btn-outline btn-sm" href="#/auth">Log in</a>
+              <a className="btn btn-primary btn-sm" href="#/auth?mode=signup">Sign up free</a>
             </>
           )}
         </div>
@@ -184,17 +200,17 @@ export default function App() {
       </nav>
 
       {mobileNav && (
-        <div className="mobile-menu" onClick={() => setMobileNav(false)}>
+        <div className="mobile-menu" id="mobile-menu" onClick={() => setMobileNav(false)}>
           {me && <>
-            <button className="nav-link" onClick={() => navigate('/trips')}>🏕️ My trips</button>
-            <button className="nav-link" onClick={() => navigate('/new')}>➕ Plan a trip</button>
+            <a className={`nav-link ${route === '/trips' ? 'active' : ''}`} href="#/trips">🏕️ My trips</a>
+            <a className={`nav-link ${route === '/new' ? 'active' : ''}`} href="#/new">➕ Plan a trip</a>
           </>}
-          <button className="nav-link" onClick={() => navigate('/explore')}>🧭 Explore</button>
-          {me && <button className="nav-link" onClick={() => navigate('/profile')}>⚙️ Profile & settings</button>}
+          <a className={`nav-link ${route === '/explore' ? 'active' : ''}`} href="#/explore">🧭 Explore</a>
+          {me && <a className={`nav-link ${route === '/profile' ? 'active' : ''}`} href="#/profile">⚙️ Profile & settings</a>}
         </div>
       )}
 
-      <main style={{ flex: 1 }}>{page}</main>
+      <main id="main" tabIndex={-1} style={{ flex: 1 }}>{page}</main>
 
       <footer className="footer">
         <div className="container footer-inner">

@@ -689,7 +689,9 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
   return (
     <div className="day-section" id={`day-card-${day.index}`}>
       <div className="day-header">
-        <button className="day-collapse" onClick={toggleCollapsed} aria-label={collapsed ? `Expand Day ${day.index + 1}` : `Collapse Day ${day.index + 1}`}>
+        {/* Stable name + state attribute (UI audit F-09); the collapsible body
+            is a fragment of siblings, so there's no single aria-controls id. */}
+        <button className="day-collapse" onClick={toggleCollapsed} aria-expanded={!collapsed} aria-label={`Day ${day.index + 1} stops`}>
           {collapsed ? '▸' : '▾'}
         </button>
         <div className="day-badge"><small>DAY</small><b>{day.index + 1}</b></div>
@@ -701,6 +703,7 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
               value={titleDraft}
               style={{ maxWidth: 300, marginBottom: 4 }}
               placeholder={`Day ${day.index + 1}`}
+              aria-label={`Rename Day ${day.index + 1}`}
               onChange={e => setTitleDraft(e.target.value)}
               onBlur={() => { setEditingTitle(false); if (titleDraft.trim() !== (day.title ?? '')) onRenameDay(day.index, titleDraft) }}
               onKeyDown={e => {
@@ -872,9 +875,9 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
                   </div>
                   <button className="icon-btn" onClick={() => onEdit(s.id)} aria-label={`Edit ${s.title}`}>✏️</button>
                   {s.status !== 'confirmed'
-                    ? <button className="icon-btn" title="Mark confirmed" onClick={() => onStatus(s, 'confirmed')}>✔️</button>
-                    : <button className="icon-btn" title="Mark maybe" onClick={() => onStatus(s, 'maybe')}>❓</button>}
-                  <button className="icon-btn" title="Move to another day" onClick={() => onMoveBetweenDays(s)}>↔️</button>
+                    ? <button className="icon-btn" title="Mark confirmed" aria-label={`Mark ${s.title} confirmed`} onClick={() => onStatus(s, 'confirmed')}>✔️</button>
+                    : <button className="icon-btn" title="Mark maybe" aria-label={`Mark ${s.title} maybe`} onClick={() => onStatus(s, 'maybe')}>❓</button>}
+                  <button className="icon-btn" title="Move to another day" aria-label={`Move ${s.title} to another day`} onClick={() => onMoveBetweenDays(s)}>↔️</button>
                   <button className="icon-btn" onClick={() => onDelete(s.id, day.index)} aria-label={`Delete ${s.title}`}>🗑️</button>
                 </div>
               )}
@@ -1160,7 +1163,7 @@ function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddBreakSt
           <input
             type="number" min={5} max={180} step={5} value={haltDraft}
             onChange={e => setHaltDraft(Math.max(5, Math.min(180, Number(e.target.value) || 20)))}
-            title="Halt length (minutes)" style={{ width: 64 }}
+            title="Halt length (minutes)" aria-label="Halt length in minutes" style={{ width: 64 }}
           /> min
           <button className="btn btn-outline btn-sm" onClick={addHalt}>+ Add a halt</button>
           <span className="small muted">Adds {minutesToHM(haltDraft)} → arrival moves to {formatHM(addMinutesToClock(startMin, journey.driveMinutes + journey.dwellMinutes + haltDraft + A.bufferMinutesPerStop), timeFormat)}</span>
@@ -1794,7 +1797,7 @@ function CommentForm({ onSubmit }: { onSubmit: (text: string) => void }) {
   const [text, setText] = useState('')
   return (
     <form style={{ display: 'flex', gap: 7, marginTop: 10 }} onSubmit={e => { e.preventDefault(); if (text.trim()) { onSubmit(text.trim()); setText('') } }}>
-      <input className="input" placeholder="Add a comment…" value={text} onChange={e => setText(e.target.value)} />
+      <input className="input" placeholder="Add a comment…" aria-label="Add a comment" value={text} onChange={e => setText(e.target.value)} />
       <button className="btn btn-sm btn-outline">Post</button>
     </form>
   )

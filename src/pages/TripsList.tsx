@@ -55,7 +55,7 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
             const others = (t.members ?? []).filter(m => m.userId !== me?.id)
             return (
               <div key={t.id} className="card itin-card">
-                <button className="trip-card-hit" onClick={() => onNavigate(`/trip/${t.id}`)} aria-label={`Open ${t.name}`}>
+                <a className="trip-card-hit" href={`#/trip/${t.id}`}>
                   <div className="itin-emoji">{t.coverEmoji}</div>
                   <div className="itin-body">
                     <h3>{t.name}</h3>
@@ -71,7 +71,7 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
                       {(t.members ?? []).length > 1 && <Chip tone="info">{(t.members ?? []).length} planners</Chip>}
                     </div>
                   </div>
-                </button>
+                </a>
                 <div className="row-between itin-meta">
                   <div className="member-stack">
                     {others.slice(0, 3).map(m => <Avatar key={m.userId} user={userById(m.userId)} />)}

@@ -65,7 +65,7 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
       <div className="card" style={{ marginBottom: 20 }}>
         <div className="explore-filters">
           <input className="input" style={{ minWidth: 180, flex: 1 }} placeholder="Search destination or creator…"
-            value={q} onChange={e => setQ(e.target.value)} />
+            aria-label="Search destination or creator" value={q} onChange={e => setQ(e.target.value)} />
           <select className="select" value={style} onChange={e => setStyle(e.target.value)} aria-label="Travel style">
             <option value="all">Any style</option>
             {['relaxed', 'balanced', 'packed', 'adventure', 'luxury', 'budget', 'family', 'spiritual', 'food-focused', 'creator'].map(s =>
@@ -90,6 +90,10 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
         )}
       </div>
 
+      {/* Screen-reader-only result count — filter changes reflow the grid
+          silently otherwise (UI audit F-04) */}
+      <p className="sr-only" role="status">{pubs.length} {pubs.length === 1 ? 'itinerary matches' : 'itineraries match'}</p>
+
       {pubs.length === 0 ? (
         <EmptyState icon="🔍" title="Nothing matches those filters"
           body="Try widening the budget or clearing a filter." />
@@ -99,7 +103,7 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
             const creator = userOf(db.users, p.creatorId)
             return (
               <div key={p.id} className="card itin-card">
-                <button className="trip-card-hit" onClick={() => onNavigate(`/pub/${p.id}`)} aria-label={`Open ${p.title}`}>
+                <a className="trip-card-hit" href={`#/pub/${p.id}`}>
                   <div className="itin-cover">
                     <span className="itin-cover-route">{p.routeSummary[0]} → {p.routeSummary[p.routeSummary.length - 1]}</span>
                     <span className="itin-cover-fallback" aria-hidden="true">🧭</span>
@@ -117,7 +121,7 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
                       <span>📍 {p.routeSummary.length} places</span>
                     </div>
                   </div>
-                </button>
+                </a>
                 <div className="row-between itin-meta">
                   <span className="creator-line"><Avatar user={creator} />{creator?.profile.name ?? 'Creator'}{creator?.profile.isCreator && <span title="Verified creator">✨</span>}</span>
                   <button className="btn btn-primary btn-sm" onClick={() => copyTrip(p.id)}>Copy This Trip</button>
