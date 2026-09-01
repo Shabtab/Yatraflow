@@ -1,71 +1,55 @@
 // ============ Landing page ============
-import { BrandMark } from '../components/ui'
+import { BrandMark, RouteSquiggle } from '../components/ui'
 
 export function LandingPage({ onNavigate }: { onNavigate: (r: string) => void }) {
   return (
     <div>
-      {/* ---------- Hero ---------- */}
+      {/* ---------- Hero (split layout, per CTI homepage mockup) ---------- */}
       <section className="hero">
-        <div className="container">
-          <span className="chip chip-saffron">🇮🇳 Made for Indian travellers</span>
-          <h1 style={{ fontSize: 'clamp(2.2rem, 5.5vw, 3.6rem)', margin: '18px auto 14px', maxWidth: 780 }}>
-            Plan trips that actually <span style={{ color: 'var(--yf-teal-600)' }}>flow together</span>
-          </h1>
-          <p className="hero-sub">
-            Build the route, see every time and cost impact the moment you touch it,
-            and keep your whole crew on the same page.
-          </p>
-          <div className="hero-ctas">
-            <a className="btn btn-primary btn-lg" href="#/auth?mode=signup">Start planning free</a>
-            <a className="btn btn-saffron btn-lg" href="#/explore">Explore itineraries</a>
+        <div className="container hero-split">
+          <div className="hero-copy">
+            <span className="chip chip-saffron">🇮🇳 Built for Indian travellers</span>
+            <h1 style={{ fontSize: 'clamp(2.4rem, 5vw, 3.7rem)', margin: '18px 0 14px', lineHeight: 1.12 }}>
+              Plan trips that actually <span style={{ color: 'var(--yf-teal-600)' }}>flow together</span>
+            </h1>
+            <p className="hero-sub">
+              Build the route, see every time and cost impact,
+              and keep your whole crew on the same page.
+            </p>
+            <div className="hero-ctas">
+              <a className="btn btn-primary btn-lg" href="#/auth?mode=signup">Start planning free →</a>
+              <a className="btn btn-outline btn-lg" style={{ background: 'var(--card)' }} href="#/explore">Explore trips</a>
+            </div>
+            <p className="small muted" style={{ marginTop: 16 }}>No card needed · Free forever · Your planning data is yours</p>
           </div>
-          <p className="small muted" style={{ marginTop: 14 }}>Free forever · No card needed · Your planning data is yours</p>
 
-          {/* Product preview mock (per the CTI homepage mockup) */}
-          <div className="hero-preview" aria-hidden="true">
-            <div className="hp-window">
-              <div className="hp-titlebar"><span /><span /><span /></div>
-              <div className="hp-body">
-                <div className="hp-tripname">🏔️ Leh–Ladakh road escape</div>
-                <div className="hp-route">12–21 Sep · 10 days · 4 travellers · Motorcycle</div>
-                <div className="hp-stats">
-                  <div><b>₹5,408</b><span>est. per person</span></div>
-                  <div><b>60h 15m</b><span>driving time</span></div>
-                  <div><b className="hp-mid">53</b><span>trip health</span></div>
-                </div>
-                <div className="hp-warning">
-                  <span>⚠️</span> Day 3 is overloaded — add a rest halt to protect your arrival time.
-                </div>
-                <div className="hp-days">
-                  <span className="hp-day d0">Day 1</span>
-                  <span className="hp-day d1">Day 3</span>
-                  <span className="hp-day d2">Day 6</span>
-                  <span className="hp-day d3">Day 10</span>
-                </div>
-                <div className="hp-live"><span>👥 3 friends synced</span><span>live group signal</span></div>
-              </div>
+          {/* Adventure preview card (dark navy, route illustration, mockup) */}
+          <div className="hero-adventure" aria-hidden="true">
+            <div className="ha-kicker">Your next adventure</div>
+            <div className="ha-name">🏔️ Leh–Ladakh road escape</div>
+            <div className="ha-meta">12–21 Sep · 10 days · 4 travellers · Motorcycle</div>
+            <div className="ha-stats">
+              <div><b>₹5,408</b><span>est. per person</span></div>
+              <div><b>60h 15m</b><span>driving time</span></div>
+              <div><b style={{ color: '#F3AA3D' }}>53</b><span>trip health</span></div>
+            </div>
+            <RouteSquiggle />
+            <div className="ha-row">
+              <div className="ha-warn">⚠️ Day 3 is overloaded<span>add a rest halt to protect your arrival time.</span></div>
+              <div className="ha-sync">3 friends synced<span>live collaboration on</span></div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* ---------- Feature grid ---------- */}
+      {/* ---------- What changes for you ---------- */}
       <section className="container" style={{ paddingBottom: 8 }}>
-        <h2 className="section-title">Everything a crew needs, nothing it doesn’t</h2>
-        <p className="muted section-sub">Built around one idea: every change shows its cost before you commit.</p>
+        <p className="small" style={{ textAlign: 'center', fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--yf-teal-600)', marginBottom: 8 }}>One place for the reality of a trip</p>
+        <h2 className="section-title" style={{ maxWidth: 640, margin: '0 auto 26px' }}>From “let’s go” to a plan everyone can actually follow.</h2>
         <div className="feature-strip">
-          <FeatureCard icon="⚡" title="Impact before you commit"
-            body="Add or reorder a stop and instantly see travel time, distance, cost deltas, arrival shifts and schedule conflicts — before anything is saved." />
-          <FeatureCard icon="🗺️" title="Real maps, real places"
-            body="Search actual locations while planning, see your whole route colour-coded day by day, and click any pin to jump into its details." />
-          <FeatureCard icon="🏥" title="Trip Health Score"
-            body="A 0–100 score flags over-packed days, thin buffers before trains, backtracking routes and opening-hours misses — each with a suggested fix." />
-          <FeatureCard icon="👥" title="Plan as a crew"
-            body="Invite friends by link, propose stops, upvote ideas, comment, and settle debates in a Decisions area instead of a chaotic group chat." />
-          <FeatureCard icon="🤖" title="A companion that knows your trip"
-            body='Ask "make Day 2 less tiring" or "can we still catch the train?" — answers come from your actual plan, with assumptions cited.' />
-          <FeatureCard icon="💰" title="Honest INR budgets"
-            body="Category-wise cost estimates with essential vs optional splits, per-person totals and budget-usage tracking. Estimates only — no fake precision." />
+          <FeatureCard icon="⚡" title="See the impact before you change" body="Every move shows time, distance and budget consequences — no surprises later." />
+          <FeatureCard icon="🛣️" title="Plan around real road time" body="Route days, break suggestions and arrival times designed for how journeys really work." />
+          <FeatureCard icon="👥" title="Keep the whole group aligned" body="Share the itinerary, decide together, and know what still needs an answer." />
         </div>
       </section>
 
@@ -91,6 +75,10 @@ export function LandingPage({ onNavigate }: { onNavigate: (r: string) => void })
           <DemoButtons onNavigate={onNavigate} />
         </div>
       </section>
+
+      <footer className="container small muted" style={{ textAlign: 'center', padding: '26px 20px 34px', borderTop: '1px solid var(--line)' }}>
+        YatraFlow · Plan real trips, together.
+      </footer>
     </div>
   )
 }

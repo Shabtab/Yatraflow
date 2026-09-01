@@ -22,7 +22,7 @@ import { computeImpact, type ImpactResult } from '../lib/impact'
 import { loadDayCollapsed, saveDayCollapsed } from '../lib/uiPrefs'
 import { useTimeFormat, formatHM, formatHMRange } from '../lib/timefmt'
 import { scrollBehavior } from '../lib/motion'
-import { Avatar, Chip, Modal, ConfirmDialog, Field, StatTile, HealthRing, EmptyState, toast, undoToast, useReorder, CopyButton } from '../components/ui'
+import { Avatar, Chip, Modal, ConfirmDialog, Field, StatTile, HealthRing, EmptyState, toast, undoToast, useReorder, CopyButton, RouteSquiggle } from '../components/ui'
 import { ImpactPreviewPanel } from '../components/ImpactPreview'
 import { useSuggestionCache } from '../hooks/useSuggestionCache'
 // MapLibre is heavy (~1MB) — load it only when the Map tab is actually opened.
@@ -165,7 +165,7 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
       <div className="trip-head-card">
         <div className="row-between">
           <div style={{ position: 'relative', zIndex: 1 }}>
-            <button className="btn btn-sm btn-outline" style={{ color: '#fff', borderColor: 'rgba(255,255,255,.4)' }} onClick={() => onNavigate('trips')}>← All trips</button>
+            <button className="trip-hero-back" onClick={() => onNavigate('trips')}>← All trips</button>
             <h1 style={{ marginTop: 12 }}>{trip.coverEmoji} {trip.name}</h1>
             <p style={{ opacity: .9, marginTop: 6 }}>
               {trip.startLocation} → {trip.destinations.join(' → ')} · {fmtDateRange(trip.startDate, trip.endDate)} · {trip.travellers} travellers · {cap(trip.transportMode)} · {cap(trip.travelStyle)}
@@ -210,7 +210,7 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
         />
       )}
 
-      {tab === 'overview' && <OverviewTab trip={effective} editable={editable} onOpenDecisions={() => setTab('decisions')} onOpenTimeline={() => setTab('timeline')} health={health} totals={totals} />}
+      {tab === 'overview' && <OverviewTab trip={effective} editable={editable} onOpenDecisions={() => setTab('decisions')} onOpenTimeline={() => setTab('timeline')} onOpenMap={() => setTab('map')} onInvite={() => setTab('share')} health={health} totals={totals} />}
       {tab === 'timeline' && <TimelineTab trip={trip} editable={editable} applyChange={applyChange} legCorrections={legCorrections} suggestionCache={suggestionCache} />}
       {tab === 'map' && (
         <React.Suspense fallback={<div className="container loading-block"><div className="spinner" />Loading map…</div>}>
@@ -229,11 +229,13 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
 
 // ================= Overview =================
 
-function OverviewTab({ trip, editable, onOpenDecisions, onOpenTimeline, health, totals }: {
+function OverviewTab({ trip, editable, onOpenDecisions, onOpenTimeline, onOpenMap, onInvite, health, totals }: {
   trip: Trip
   editable: boolean
   onOpenDecisions: () => void
   onOpenTimeline: () => void
+  onOpenMap: () => void
+  onInvite: () => void
   health: ReturnType<typeof computeHealth>
   totals: ReturnType<typeof computeTotals>
 }) {
@@ -252,35 +254,35 @@ function OverviewTab({ trip, editable, onOpenDecisions, onOpenTimeline, health, 
   return (
     <div className="two-col bento">
       <div>
+        <div className="page-head" style={{ marginTop: 0 }}>
+          <h2>Trip briefing</h2>
+          <p className="page-head-sub">What needs attention before this road trip starts.</p>
+        </div>
+
         <div className="card">
           <div className="row-between">
-            <h3>Trip Health Score</h3>
+            <h3>Trip health</h3>
             <Chip tone={health.band === 'Comfortable' ? 'ok' : health.band === 'Manageable' ? 'teal' : health.band === 'Tight' ? 'saffron' : 'danger'}>
               {health.band}
             </Chip>
           </div>
           <hr className="divider" />
-          <div className="health-wrap">
-            <HealthRing score={health.score} band={health.band} />
-            <div style={{ flex: 1, minWidth: 220 }}>
-              {health.warnings.length === 0 ? (
-                <p className="muted small">No schedule issues detected. Buffers look healthy — enjoy the yatra! 🎉</p>
-              ) : (
-                <div className="warn-list">
-                  {health.warnings.slice(0, 4).map(w => (
-                    <div key={w.code + w.title} className={`warn-item ${w.severity === 'high' ? 'sev-high' : w.severity === 'low' ? 'sev-low' : ''}`}>
-                      <span className="warn-icon">{w.severity === 'high' ? '🚨' : w.severity === 'medium' ? '⚠️' : '💡'}</span>
-                      <div>
-                        <div className="warn-title">{w.title}</div>
-                        <div className="warn-fix">✅ Recommended: {w.fix}</div>
-                      </div>
-                    </div>
+          <div className="health-big">
+            <div className={`health-num-big ${health.band === 'Tight' ? 'mid' : health.band === 'Comfortable' || health.band === 'Manageable' ? 'ok' : 'bad'}`}>{health.score}</div>
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <div className="health-bar">
+                <i className={health.band === 'Tight' ? 'mid' : health.band === 'Comfortable' || health.band === 'Manageable' ? 'ok' : 'bad'} style={{ width: `${health.score}%` }} />
+              </div>
+              <ul className="health-reasons">
+                {health.warnings.length === 0
+                  ? <li>No schedule issues detected — buffers look healthy. 🎉</li>
+                  : health.warnings.slice(0, 3).map(w => (
+                    <li key={w.code + w.title}>{w.severity === 'high' ? '🚨 ' : w.severity === 'medium' ? '⚠️ ' : '💡 '}{w.title}</li>
                   ))}
-                  {health.warnings.length > 4 && <span className="small muted">+{health.warnings.length - 4} more — see Timeline.</span>}
-                </div>
-              )}
+              </ul>
             </div>
           </div>
+          <button className="health-rec" onClick={onOpenTimeline}>View health recommendations →</button>
         </div>
 
         {/* Bento stat cluster: cost / per-person / effort / stops at a glance */}
@@ -314,21 +316,23 @@ function OverviewTab({ trip, editable, onOpenDecisions, onOpenTimeline, health, 
               {health.warnings.length > 3 && <span className="small muted">+{health.warnings.length - 3} more — see Timeline.</span>}
             </div>
           )}
-          <button className="btn btn-outline btn-sm" style={{ marginTop: 10 }} onClick={onOpenTimeline}>Open Timeline to fix</button>
+          <button className="link-btn teal" style={{ marginTop: 12 }} onClick={onOpenTimeline}>Open Timeline to resolve →</button>
         </div>
       </div>
 
       <div>
-        {/* Group pulse strip: crew, decisions and commitments at a glance */}
-        <div className="card">
-          <h3>Group pulse</h3>
-          <hr className="divider" />
-          <div className="pulse-strip">
-            <span className="chip chip-info">👥 {crew.length} traveller{crew.length !== 1 ? 's' : ''}</span>
-            <span className={`chip ${unresolvedDecisions ? 'chip-saffron' : 'chip-info'}`}>🗳️ {unresolvedDecisions} open decision{unresolvedDecisions !== 1 ? 's' : ''}</span>
-            <span className="chip chip-info">📌 {trip.fixedCommitments.length} commitment{trip.fixedCommitments.length !== 1 ? 's' : ''}</span>
+        <div className="card route-snap">
+          <h3>Route snapshot</h3>
+          <RouteSquiggle />
+          <p style={{ margin: '4px 0 0', fontSize: 12.5, opacity: .85, lineHeight: 1.6 }}>
+            <b>{trip.startLocation}</b>
+            {trip.destinations.map((d, i) => <span key={i}> → {d}</span>)}
+            {isRoundTrip(trip) && <> → {trip.startLocation}</>}
+          </p>
+          <div className="route-snap-meta">
+            <span>{trip.days.length} days · ≈{Math.round(totals.totalDistanceKm)} km · {totals.stopCount} stops</span>
+            <button className="link-btn" onClick={onOpenMap}>Open map →</button>
           </div>
-          <button className="btn btn-outline btn-sm" style={{ marginTop: 12 }} onClick={onOpenDecisions}>Open Decisions tab</button>
         </div>
 
         <div className="card">
@@ -358,20 +362,6 @@ function OverviewTab({ trip, editable, onOpenDecisions, onOpenTimeline, health, 
           )}
         </div>
 
-        {/* Route snapshot: the journey in one line, no second map instance */}
-        <div className="card">
-          <h3>Route snapshot</h3>
-          <hr className="divider" />
-          <p className="small" style={{ lineHeight: 1.8, margin: 0 }}>
-            <b>{trip.startLocation}</b>
-            {trip.destinations.map((d, i) => <span key={i}> → <b>{d}</b></span>)}
-            {isRoundTrip(trip) && <> → <b>{trip.startLocation}</b></>}
-          </p>
-          <p className="small muted" style={{ marginTop: 8, marginBottom: 0 }}>
-            {trip.days.length} day{trip.days.length !== 1 ? 's' : ''} · ≈{Math.round(totals.totalDistanceKm)} km · {minutesToHM(totals.totalTravelMinutes)} on the road · {countHotelNights(trip)} overnight base{countHotelNights(trip) !== 1 ? 's' : ''}
-          </p>
-        </div>
-
         <div className="card">
           <h3>Recent activity</h3>
           <hr className="divider" />
@@ -385,6 +375,16 @@ function OverviewTab({ trip, editable, onOpenDecisions, onOpenTimeline, health, 
         </div>
 
         <WeatherCard trip={trip} />
+      </div>
+
+      <div className="card pulse-bar">
+        <span className="pulse-label">Group pulse</span>
+        <span className="pulse-item"><b>{crew.length}</b> member{crew.length !== 1 ? 's' : ''}</span>
+        <span className="pulse-dot">·</span>
+        <span className="pulse-item"><b>{unresolvedDecisions}</b> open decision{unresolvedDecisions !== 1 ? 's' : ''}</span>
+        <span className="pulse-dot">·</span>
+        <span className="pulse-item">{trip.fixedCommitments.length ? <><b>{trip.fixedCommitments.length}</b> fixed commitment{trip.fixedCommitments.length !== 1 ? 's' : ''}</> : 'No fixed commitments yet'}</span>
+        <button className="link-btn teal pulse-link" onClick={onInvite}>Invite travellers →</button>
       </div>
     </div>
   )

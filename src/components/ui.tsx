@@ -212,6 +212,24 @@ export function HealthRing({ score, band }: { score: number; band: string }) {
   )
 }
 
+/** Route illustration used in dark hero/snapshot cards (CTI mockups):
+ *  a saffron squiggle with numbered stops. Purely decorative. */
+export function RouteSquiggle({ height = 72 }: { height?: number }) {
+  const stroke = '#F3AA3D'
+  const stops: Array<[number, number, number]> = [[10, 46, 1], [112, 20, 3], [202, 44, 6], [308, 24, 10]]
+  return (
+    <svg viewBox="0 0 320 64" style={{ width: '100%', height, display: 'block' }} aria-hidden="true" preserveAspectRatio="none">
+      <path d="M10 46 C 52 8, 92 50, 142 38 S 244 4, 308 24" fill="none" stroke={stroke} strokeWidth="5" strokeLinecap="round" />
+      {stops.map(([x, y, n]) => (
+        <g key={n}>
+          <circle cx={x} cy={y} r="9.5" fill="#0F2A33" stroke={stroke} strokeWidth="2.5" />
+          <text x={x} y={y + 3.5} textAnchor="middle" fontSize="9.5" fontWeight="800" fill="#FFFFFF">{n}</text>
+        </g>
+      ))}
+    </svg>
+  )
+}
+
 export function StatTile({ label, value, sub }: { label: string; value: React.ReactNode; sub?: React.ReactNode }) {
   return (
     <div className="stat-tile">
