@@ -346,7 +346,9 @@ button { font-family: var(--font-body); cursor: pointer; }
 input, select, textarea { font-family: var(--font-body); font-size: 14.5px; color: var(--text); }
 
 .app-shell { min-height: 100vh; display: flex; flex-direction: column; }
-.container { width: 100%; max-width: 1180px; margin: 0 auto; padding: 0 20px; }
+.container { width: 100%; max-width: 1180px; margin: 0 auto; padding: 0 20px;
+  /* the Board tab widens the canvas to 1680px — glide it (both directions) */
+  transition: max-width var(--t-slow) var(--ease-out); }
 @media (max-width: 640px) { .container { padding: 0 14px; } }
 
 /* ---------- Top navigation ---------- */
@@ -813,7 +815,9 @@ a.btn { text-decoration: none; }
 .container--board .trip-head-card { padding: 13px 20px; }
 .container--board .trip-head-card h1 { font-size: 20px; margin-top: 4px; }
 .container--board .trip-head-card p { margin-top: 3px; }
-.container--board .member-stack { display: none; }
+/* fade+collapse the member row on the Board tab (display:none would snap) */
+.member-stack { max-height: 48px; overflow: hidden; transition: opacity var(--t-med) var(--ease-out), max-height var(--t-med) var(--ease-out); }
+.container--board .member-stack { opacity: 0; max-height: 0; margin-top: 0 !important; }
 .container--board .tabbar { margin-top: 12px; margin-bottom: 12px; }
 .container--board .board-head { margin-bottom: 10px; }
 .container--board .board-head h2 { font-size: 19px; margin: 0 0 2px; }
@@ -1029,7 +1033,8 @@ a.btn { text-decoration: none; }
 .vehicle-profile-form .form-row:last-child { margin-bottom: 0; }
 
 /* ---------- Tabs ---------- */
-.tabbar { display: flex; gap: 2px; overflow-x: auto; border-bottom: 1.5px solid var(--line); margin-bottom: 20px; scrollbar-width: none; }
+.tabbar { display: flex; gap: 2px; overflow-x: auto; border-bottom: 1.5px solid var(--line); margin-bottom: 20px; scrollbar-width: none;
+  transition: margin var(--t-med) var(--ease-out); }
 .tabbar::-webkit-scrollbar { display: none; }
 .tab-btn {
   border: none; background: none; padding: 11px 15px; font-size: 14px; font-weight: 650;
@@ -1410,6 +1415,7 @@ a.btn { text-decoration: none; }
 .two-col { display: grid; grid-template-columns: 1fr 340px; gap: 18px; align-items: start; }
 @media (max-width: 980px) { .two-col { grid-template-columns: 1fr; } }
 .trip-head-card {
+  transition: padding var(--t-med) var(--ease-out);
   border-radius: var(--radius-lg); padding: 26px 28px; color: #fff;
   background:
     radial-gradient(circle at 86% 12%, rgba(245,158,45,.15), transparent 42%),
@@ -1418,7 +1424,7 @@ a.btn { text-decoration: none; }
   box-shadow: var(--shadow-soft);
 }
 .trip-head-card::after { content: ''; position: absolute; right: -60px; top: -60px; width: 220px; height: 220px; border-radius: 50%; background: rgba(245,158,45,.10); }
-.trip-head-card h1 { font-family: var(--font-display); }
+.trip-head-card h1 { font-family: var(--font-display); transition: font-size var(--t-med) var(--ease-out); }
 .trip-hero-back {
   border: none; background: none; padding: 0; cursor: pointer;
   color: rgba(255,255,255,.75); font-size: 11.5px; font-weight: 800;
@@ -1991,8 +1997,13 @@ main:focus { outline: none; }
 .btn:active, .tab-btn:active { transform: scale(.98); }
 
 /* Theme cross-fade: light↔dark glides instead of snapping. */
-body, .topnav, .trip-head-card, .glass, .board, .board-col, .modal, .toast {
+body, .topnav, .glass, .board, .board-col, .modal, .toast {
   transition: background-color var(--t-slow) var(--ease-out), color var(--t-slow) var(--ease-out), border-color var(--t-slow) var(--ease-out);
+}
+/* the trip band also compacts on the Board tab — include padding in its glide */
+.trip-head-card {
+  transition: background-color var(--t-slow) var(--ease-out), color var(--t-slow) var(--ease-out),
+    border-color var(--t-slow) var(--ease-out), padding var(--t-med) var(--ease-out);
 }
 
 /* Route-level entrance: every main page change (My trips ↔ Explore ↔ a trip)
