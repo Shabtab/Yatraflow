@@ -3,10 +3,14 @@
 Living document — reviewed each session, updated as items land. Done items move
 to [CHANGELOG.md](CHANGELOG.md); this file only tracks what's ahead.
 
-**Snapshot (2026-09-01):** v0.23.0 · all tests green · realtime live (all 8
-tables) · UI-audit remediation complete (32/32, both P0s closed) · next up:
-"Calm Travel Intelligence" design refresh on the `redesign/` branch (see
-`docs/redesign/YATRAFLOW_DESIGN_DIRECTION.md`).
+**Snapshot (2026-09-01):** v0.23.0 · all tests green (218) · realtime live
+(all 8 tables) · UI-audit remediation complete (32/32, both P0s closed) ·
+"Calm Travel Intelligence" redesign **in progress** on
+`redesign/calm-travel-intelligence` (see
+`docs/redesign/YATRAFLOW_DESIGN_DIRECTION.md` + `implementation_plan.md`):
+M1 tokens ✅ · M2 landing/nav ✅ (+M2.1 floating pill nav) · M3 Overview bento
+✅ · M4 Timeline polish ✅ · next: M5 Board view. Merges to `main` as v0.24.0
+only with user confirmation.
 
 ---
 

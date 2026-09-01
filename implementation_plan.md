@@ -88,10 +88,10 @@ None — function modules + React function components, unchanged.
 
 **Workstream B — redesign (branch off step 5)**
 7. M0: save this plan doc; branch `redesign/calm-travel-intelligence`.
-8. M1 tokens: `--yf-*` palette + atmospheric gradient + surface/shadow tokens (light+dark), `DESIGN_TOKENS.md` sync.
-9. M2: Landing hero + glass topnav.
-10. M3: Overview Bento briefing.
-11. M4: Timeline polish.
+8. ✅ M1 tokens: `--yf-*` palette + atmospheric gradient + surface/shadow tokens (light+dark), `DESIGN_TOKENS.md` sync. → `d7b86d5`
+9. ✅ M2: Landing hero + glass topnav. → `d9db55b`; deepened structurally per mockups (split hero + dark adventure card, navy trip header band) in `7c5cef8`; nav became a floating glass pill + cream control tray in M2.1 → `d72298d`
+10. ✅ M3: Overview Bento briefing. → `aaff1b6`, structural deep-pass in `7c5cef8`
+11. ✅ M4: Timeline polish. → `0960d44` (sticky trip-total strip, day-jump rail, day cards + in-day warnings, `stopKindOf` stop-type markers)
 12. M5: Board view (z-index + DnD audit).
 13. M6: Map / Suggestions / Budget / Decisions / Share hierarchy pass.
 14. M7: Explore + Public Itinerary editorial treatment.
