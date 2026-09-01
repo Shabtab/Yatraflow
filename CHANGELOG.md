@@ -2,6 +2,11 @@
 
 All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions are pre-1.0 MVP milestones.
 
+## [Unreleased]
+
+### Changed
+- **M1 (Calm Travel Intelligence) — design-token foundation.** New `--yf-*` primitive palette from the design direction (`docs/redesign/YATRAFLOW_DESIGN_DIRECTION.md` §4.1) added beside the existing token layers and fully mirrored in the dark theme; the light app canvas re-pointed to `--yf-cream` (`#F8F7EF`); `--radius-lg` (24px bento cards) and `--shadow-soft` (diffuse depth) added; new `.atmos` (level-1 atmospheric canvas gradient) and `.glass` (level-2 translucent overlay) utilities implementing the doc's four-level transparency system. `DESIGN_TOKENS.md` documents the whole layer. No component re-skins in this milestone — M2+ applies the tokens.
+
 ## [0.23.0] — 2026-09-01
 
 ### Fixed

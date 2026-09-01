@@ -33,8 +33,36 @@
   --gray-700: #45566E;
   --gray-900: #0B2545;
 
+  /* ---- 1b. PRIMITIVES: Calm Travel Intelligence palette (design refresh;
+        docs/redesign/YATRAFLOW_DESIGN_DIRECTION.md §4.1) ---- */
+  --yf-ink: #102E4B;           /* headings, high-trust text */
+  --yf-navy: #123F49;          /* header bands, dark cards, AI anchor surfaces */
+  --yf-teal-600: #0D8D82;      /* CTI primary */
+  --yf-teal-700: #0C716D;      /* CTI primary hover/pressed */
+  --yf-teal-100: #E5F4EE;      /* selected backgrounds */
+  --yf-mint: #DFF5ED;          /* confirmed / synced states */
+  --yf-saffron: #F3AA3D;       /* invite / share / publish / explore */
+  --yf-saffron-100: #FFF4E4;
+  --yf-amber: #E4AE43;         /* attention / trade-offs / pending */
+  --yf-amber-100: #FFF7E9;
+  --yf-coral: #D6534D;         /* critical risk / destructive */
+  --yf-coral-100: #FFF0EC;
+  --yf-purple: #897ABB;        /* scenic / creative discovery */
+  --yf-purple-100: #F0EAFA;
+  --yf-cream: #F8F7EF;         /* main app canvas */
+  --yf-mist: #ECF8F4;          /* atmospheric gradient edge */
+  --yf-peach: #FFF2E8;         /* atmospheric gradient edge */
+  --yf-atmos-mint: rgba(124, 225, 207, 0.20);
+  --yf-atmos-peach: rgba(255, 179, 107, 0.16);
+  --yf-surface: #FFFFFF;
+  --yf-surface-muted: #F0F4F1;
+  --yf-border: #DCE7E1;
+  --yf-text-muted: #637B7D;
+  --yf-glass: rgba(255, 255, 255, 0.72);        /* level-2 overlay (nav, map panels) */
+  --yf-glass-border: rgba(255, 255, 255, 0.65);
+
   /* ---- 2. SEMANTICS (light) ---- */
-  --color-background: var(--gray-50);
+  --color-background: var(--yf-cream);   /* CTI canvas (was --gray-50) */
   --color-foreground: var(--gray-900);
   --color-card: #FFFFFF;
   --color-card-foreground: var(--gray-900);
@@ -61,7 +89,7 @@
   --ring: 0 0 0 3px color-mix(in srgb, var(--teal-500) 35%, transparent);
 
   /* ---- 3. LEGACY flat aliases (do not remove; new code uses --color-*) ---- */
-  --bg: var(--gray-50);
+  --bg: var(--yf-cream);   /* CTI canvas (was --gray-50) */
   --bg-soft: var(--gray-100);
   --card: #FFFFFF;
   --card-soft: #FDFBF7;
@@ -83,8 +111,10 @@
   --info-soft: #E8EEF6;
   --shadow: 0 1px 2px rgba(11,37,69,.05), 0 8px 28px rgba(11,37,69,.08);
   --shadow-sm: 0 1px 2px rgba(11,37,69,.07);
+  --shadow-soft: 0 2px 6px rgba(16,46,75,.04), 0 16px 40px rgba(16,46,75,.10);  /* CTI diffuse depth */
   --radius: 18px;
   --radius-sm: 12px;
+  --radius-lg: 24px;   /* CTI large bento cards */
   --nav-h: 62px;
   --font-display: 'Sora', 'Inter', system-ui, sans-serif;
   --font-body: 'Inter', system-ui, -apple-system, sans-serif;
@@ -110,6 +140,33 @@
   --gray-500: #8FA0B5;
   --gray-700: #ADBCCF;
   --gray-900: #ECF1F8;
+
+  /* ---- 1b. PRIMITIVES: CTI palette (dark mirror) ---- */
+  --yf-ink: #ECF1F8;
+  --yf-navy: #0F2A33;
+  --yf-teal-600: #2BB8AC;
+  --yf-teal-700: #1E9D92;
+  --yf-teal-100: #12332F;
+  --yf-mint: #16301F;
+  --yf-saffron: #F5A94A;
+  --yf-saffron-100: #3A2C15;
+  --yf-amber: #D99A2B;
+  --yf-amber-100: #36290F;
+  --yf-coral: #E06C6C;
+  --yf-coral-100: #3A2020;
+  --yf-purple: #A99BD6;
+  --yf-purple-100: #2A2440;
+  --yf-cream: #0C1420;
+  --yf-mist: #0F1B2B;
+  --yf-peach: #1A2030;
+  --yf-atmos-mint: rgba(43, 184, 172, 0.10);
+  --yf-atmos-peach: rgba(245, 169, 74, 0.08);
+  --yf-surface: #16233A;
+  --yf-surface-muted: #101B2B;
+  --yf-border: #27395A;
+  --yf-text-muted: #8FA0B5;
+  --yf-glass: rgba(16, 27, 43, 0.72);
+  --yf-glass-border: rgba(255, 255, 255, 0.14);
 
   /* ---- 2. SEMANTICS (dark) ---- */
   --color-background: var(--gray-50);
@@ -161,6 +218,25 @@
   --info-soft: #1B2B45;
   --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
   --shadow-sm: 0 1px 3px rgba(0,0,0,.35);
+  --shadow-soft: 0 2px 8px rgba(0,0,0,.4), 0 18px 44px rgba(0,0,0,.5);
+}
+
+/* ---- Calm Travel Intelligence utilities (design refresh M1) ---- */
+/* Level-1 atmospheric canvas (doc §4.2): Landing, Explore, Public Itinerary,
+   workspace outer shell. Two soft gradient blobs over the mist→cream→peach ramp. */
+.atmos {
+  background:
+    radial-gradient(circle at 18% 12%, var(--yf-atmos-mint), transparent 32%),
+    radial-gradient(circle at 88% 28%, var(--yf-atmos-peach), transparent 30%),
+    linear-gradient(135deg, var(--yf-mist) 0%, var(--yf-cream) 52%, var(--yf-peach) 100%);
+}
+/* Level-2 expressive overlay (doc §3.3): translucent nav, map panels, hero
+   support cards. Content that must be read/edited stays on --color-card. */
+.glass {
+  background: var(--yf-glass);
+  border: 1px solid var(--yf-glass-border);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
 }
 
 * { box-sizing: border-box; }
