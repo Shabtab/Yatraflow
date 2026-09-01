@@ -12,7 +12,7 @@ Legend for the **Where** column:
 `U=<src/components/ui.tsx>`, `S=<src/lib/stopKind.ts>`,
 `docs` = tracker/docs only.
 
-Last full audit: **M5 complete** (Board shipped — §6.4 fully delivered; all prior rows re-verified against the doc).
+Last full audit: **M6 complete + post-M5 board polish & motion pass** (2026-09-02) — Board re-verified against the doc after the mockup-cleanliness, canvas and motion/glass passes; M6 rows reflect the shipped Budget/Decisions/Share/Suggestions hierarchy.
 
 ---
 
@@ -82,17 +82,18 @@ Last full audit: **M5 complete** (Board shipped — §6.4 fully delivered; all p
 | Warning state directly inside the affected day | ✅ | TW header pill + in-body items/fixes |
 | "Open in Board" bridge | ✅ | TW header button "Open in Board →" (added with the Board view itself) |
 
-### 6.4 Board (M5 — complete)
+### 6.4 Board (M5 — complete; polish passes 2026-09-02)
+Post-M5 polish per user review against the board mockup: mockup card anatomy (accent spine + kicker + title + one meta line), mist wash over the map, 1680px board canvas with compacted trip band, equal-size glass corner panels, centred content-fitted columns, board-choreography motion (stagger/hover/drag pulse). See `CHANGELOG.md [Unreleased]`.
 | Doc item | Status | Where / note |
 |---|---|---|
 | Pinned route map background | ✅ | B `.board-map` embeds the existing `TripMap` (no second map system); lazy chunk shared with Map tab |
-| Floating day columns (kanban) | ✅ | B `.board-col` near-opaque soft cards (radius-lg + shadow-soft, ~`--card` 97%) |
+| Floating day columns (kanban) | ✅ | B `.board-col` near-opaque soft cards with **kind-coloured face washes** + tinted borders; content-fitted uniform height (board floor grows — no internal scrollbars in realistic days) |
 | Cross-day drag-and-drop | ✅ | B `useReorder` + `touchDnd` both paths (AGENTS §4 pair); payload `{stopId, fromDay}` |
 | Day-level route focus on column select | ✅ | TM `focusDay` prop (additive) drives the existing day filter; column header click toggles |
-| Warnings + stop-type info within cards | ✅ | B reuses `stopKindOf` spine+tag + `dayWarnings` severity pill in column header |
+| Warnings + stop-type info within cards | ✅ | B `stopKindOf` coloured spine + uppercase kicker (mockup card anatomy: kicker → title → one meta line) + `dayWarnings` severity pill on its own header row |
 | Clear drop zones + impact preview before persisting | ✅ | B dashed "＋ Add or drop a stop" zone (foreign-drop only) → `applyChange` → ImpactPreviewPanel |
-| Small Trip Pulse panel | ✅ | B glass top-right: health score/band/bar, overloaded days, open decisions, budget + "Open health advice →" |
-| 3–7 day trips; long trips → focused-day rail | ✅ | B horizontal scroll of 272 px columns (no squeezing); mobile stacks |
+| Small Trip Pulse panel | ✅ | B compact 264px **glass corner pair** with the info card (equal size, 18px blur + sheen) top-right: health score/band/bar, overloaded days, decisions, budget + "Open health advice →" |
+| 3–7 day trips; long trips → focused-day rail | ✅ | B flex-width columns (264px basis, 250–424px) that centre when short and scroll horizontally when long; mobile stacks |
 | "Open in Board" bridge from Timeline | ✅ | TW header button (§6.3 deferred item shipped here) |
 
 ### 6.5–6.11 Map / Suggestions / Budget / Decisions / Share / Explore / Public
@@ -137,17 +138,25 @@ Last full audit: **M5 complete** (Board shipped — §6.4 fully delivered; all p
 - **Dark mode:** the doc is light-first and never mentions it; the app ships both themes —
   every `--yf-*` token is mirrored in the dark block (documented in `implementation_plan.md`).
 
-## 8 · Design-quality checklist (§9) — last scored screen (Board, M5)
+## 8 · Design-quality checklist (§9) — last scored screen (Board, post-M5 polish)
 
 | Question | Verdict |
 |---|---|
 | Answers its core user question? | Yes — "where does each stop live + how does moving it affect the route" via pinned map + columns + pulse |
 | Main action identifiable <3s? | Yes — drag a card to a column; dashed "＋ Add or drop a stop" zone is the obvious drop target |
 | Risks explained in human language? | Yes — severity pill on column header + impact preview on drop |
-| Solid vs transparency? | near-opaque columns (`--card` 97%) per §3.1; info/pulse use level-2 glass |
+| Solid vs transparency? | near-opaque columns (`--card` 97%) per §3.1; info/pulse use deepened level-2 glass (0.58 alpha, 18px blur + sheen) |
 | Room for route/time/cost detail? | Yes — map keeps route; cards keep clock/km meta; pulse carries budget |
 | Status without colour alone? | Yes — ⚠ icon + label on warn pill; band text + score number |
 | Consequence visibly communicated? | Yes — every cross-day drop opens the impact preview before saving |
 | Permissions understandable? | N/A this screen (Share = M6) |
 | Usable on phone? | Yes — map stacks to 240 px block, columns flow below, ≥40 px touch rows |
 | Travel planning product, not generic dashboard? | Yes — the pinned route makes it unmistakably a trip planner |
+
+- **Nav stickiness:** M2.1 shipped the pill as `position: sticky` (floating over content); user review found it
+  obstructs the page while scrolling — shipped is now **static** (scrolls away) while keeping the pill look.
+  Logged 2026-09-02.
+- **Motion & glass intensity:** the doc/motion isn't specified by the design doc; per user direction the app ships
+  a subtle & premium motion system (one easing family, transform/opacity only, `prefers-reduced-motion` honoured)
+  and deeper glass (blur 18px + saturate + sheen, alpha 0.58) on the existing level-2 surfaces. Content cards stay
+  solid per §3.1. Logged 2026-09-02.
