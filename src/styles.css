@@ -770,10 +770,25 @@ a.btn { text-decoration: none; }
    impact sheet (90) / notifications (80) — the impact preview opened by a card
    drop still lands on top of everything. */
 .board-head { margin-bottom: 14px; }
+/* ---- Board tab canvas: the kanban wants the whole viewport. The default page
+   container caps at 1180px and the trip band + tabs eat ~440px of height, which
+   squeezed columns into fixed 272px strips with both scrollbars going at once.
+   On the Board tab the container widens, the trip band compacts (members row
+   lives on Overview/Share), and the board claims what's left of the viewport. */
+.container--board { max-width: 1680px; }
+.container--board .trip-head-card { padding: 13px 20px; }
+.container--board .trip-head-card h1 { font-size: 20px; margin-top: 4px; }
+.container--board .trip-head-card p { margin-top: 3px; }
+.container--board .member-stack { display: none; }
+.container--board .tabbar { margin-top: 12px; margin-bottom: 12px; }
+.container--board .board-head { margin-bottom: 10px; }
+.container--board .board-head h2 { font-size: 19px; margin: 0 0 2px; }
 .board {
   position: relative; /* viewport-driven height: a wide 640px letterbox squeezed tall routes
-     into a thin squiggle band — give the pinned map real vertical room (CTI mockup) */
-  height: clamp(640px, calc(100vh - 235px), 920px); overflow: hidden;
+     into a thin squiggle band — give the pinned map real vertical room (CTI mockup).
+     292px = compact board-tab chrome (nav pill + band + tabs + board head) above it. */
+  height: clamp(540px, calc(100vh - 292px), 1200px);
+  height: clamp(540px, calc(100dvh - 292px), 1200px); overflow: hidden;
   border-radius: var(--radius-lg);
   border: 1px solid var(--yf-glass-border);
   box-shadow: var(--shadow-soft);
@@ -823,7 +838,10 @@ a.btn { text-decoration: none; }
   padding: 6px 16px 14px; scrollbar-width: thin;
 }
 .board-col {
-  flex: 0 0 272px; display: flex; flex-direction: column;
+  /* Fill the row: columns share the spare width (capped so a 3-day trip doesn't
+     stretch into billboards); long trips fall back to the min-width scroll. */
+  flex: 1 1 264px; min-width: 250px; max-width: 424px;
+  display: flex; flex-direction: column;
   border-radius: var(--radius-lg); overflow: hidden;
   background: color-mix(in srgb, var(--card) 97%, transparent);
   border: 1px solid var(--yf-glass-border);
