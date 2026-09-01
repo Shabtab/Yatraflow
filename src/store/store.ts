@@ -184,6 +184,17 @@ async function hydrateFromSupabase(userId: string): Promise<void> {
     const trips = (tripsRes.data ?? []) as TripRow[]
     const members = (memRes.data ?? []) as MemberRow[]
 
+    // Supabase surfaces query failures as { error } rather than rejecting, so
+    // a denied/missing table silently hydrated as an empty list — data that
+    // exists server-side "vanishes" after refresh with no trace in the logs.
+    for (const [name, res] of [
+      ['profiles', profRes], ['trips', tripsRes], ['trip_members', memRes],
+      ['suggestions', sugRes], ['decisions', decRes], ['activity', actRes],
+      ['notifications', notRes], ['published_itineraries', pubRes],
+    ] as const) {
+      if (res.error) console.error(`[yatraflow] hydrate ${name} failed`, res.error)
+    }
+
     const users = profiles.map(rowToUser)
     const tripList = trips.map(row =>
       rowToTrip(row, members.filter(m => m.trip_id === row.id).map(m => ({ userId: m.user_id, role: m.role, joinedAt: m.joined_at })))
@@ -776,15 +787,31 @@ export function publishItinerary(pub: Omit<PublishedItinerary, 'id' | 'published
   const id = uid('pub')
   const p: PublishedItinerary = { ...pub, id, publishedAt: Date.now(), views: 0, copies: 0 }
   const existingIdx = cache.published.findIndex(x => x.tripId === p.tripId)
+  const previous = existingIdx >= 0 ? cache.published[existingIdx] : undefined
   if (existingIdx >= 0) cache.published[existingIdx] = p
   else cache.published.push(p)
   commit()
+  // The Supabase row is the ONLY persistence for a publication — if this
+  // upsert is rejected, the optimistic cache write makes it look published
+  // until the next refresh silently wipes it. Surface the failure and roll
+  // the cache back so the UI never disagrees with the server. (Found live:
+  // the gallery table was empty while the UI showed a published card.)
   void supabase.from('published_itineraries').upsert({
     id: p.id, trip_id: p.tripId, creator_id: p.creatorId, title: p.title, tagline: p.tagline,
     cover_image_url: p.coverImageUrl, route_summary: p.routeSummary, duration_days: p.durationDays,
     estimated_budget_per_person_inr: p.estimatedBudgetPerPersonInr, travel_style: p.travelStyle,
     best_season: p.bestSeason, travel_tips: p.travelTips, warnings_and_assumptions: p.warningsAndAssumptions,
     free_day_indexes: p.freeDayIndexes, premium_price_inr: p.premiumPriceInr, subscriber_cta: p.subscriberCta,
+  }).then(({ error }) => {
+    if (!error) return
+    console.error('[yatraflow] publish persist failed', error)
+    toast('Could not save the publication — it will not survive a refresh. (' + error.message + ')')
+    const idx = cache.published.findIndex(x => x.id === p.id)
+    if (idx >= 0) {
+      if (previous) cache.published[idx] = previous
+      else cache.published.splice(idx, 1)
+      commit()
+    }
   })
   return p
 }
