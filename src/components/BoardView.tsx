@@ -84,8 +84,9 @@ export function BoardView({ trip, editable, applyChange, health, totals, onOpenO
           <TripMap trip={trip} focusDay={focusedDay} />
         </div>
 
-        {/* floating info card */}
-        <div className="board-float">
+        {/* floating info card (normal-flow top bar above the columns; the map still
+            paints behind everything, so nothing can cover a column) */}
+        <div className="board-topbar">
           <div className="glass board-info">
             <b>Plan by day, see the route</b>
             <span className="small muted" style={{ display: 'block', marginTop: 3 }}>

@@ -776,16 +776,19 @@ a.btn { text-decoration: none; }
   border: 1px solid var(--yf-glass-border);
   box-shadow: var(--shadow-soft);
   background: var(--yf-mist);
+  /* The map is an absolute backdrop; the top bar and columns sit in normal
+     flow above it, so no floating panel can ever overlap a column — at any
+     width, and even if the top bar wraps on narrower screens. */
+  display: flex; flex-direction: column;
 }
 .board-map { position: absolute; inset: 0; z-index: 0; }
 .board-map .map-shell { height: 100%; display: flex; flex-direction: column; }
 .board-map .map-frame { flex: 1 1 auto; height: auto; min-height: 0; border: none; border-radius: 0; }
-.board-float {
-  position: absolute; z-index: 3; top: 14px; left: 16px; right: 16px;
-  display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;
-  pointer-events: none;
+.board-topbar {
+  position: relative; z-index: 3;
+  display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap;
+  margin: 14px 16px 4px;
 }
-.board-float > * { pointer-events: auto; }
 .board-info { border-radius: 18px; padding: 13px 16px; max-width: 400px; box-shadow: var(--shadow-soft); }
 .board-fit {
   margin-top: 9px; border: none; background: var(--teal-soft); color: var(--teal-deep);
@@ -807,9 +810,9 @@ a.btn { text-decoration: none; }
   color: var(--teal-deep); font-weight: 800; font-size: 12.5px; font-family: var(--font-body);
 }
 .board-cols {
-  position: absolute; z-index: 2; top: 96px; bottom: 14px; left: 14px; right: 14px;
-  display: flex; gap: 14px; align-items: stretch; overflow-x: auto;
-  padding: 4px 2px 14px; scrollbar-width: thin;
+  position: relative; z-index: 2; flex: 1 1 auto; min-height: 0;
+  display: flex; align-items: stretch; gap: 14px; overflow-x: auto;
+  padding: 6px 16px 14px; scrollbar-width: thin;
 }
 .board-col {
   flex: 0 0 272px; display: flex; flex-direction: column;
@@ -1799,7 +1802,7 @@ main:focus { outline: none; }
     box-shadow: var(--shadow-soft); margin-bottom: 12px;
   }
   .board-map .map-frame { min-height: 0; }
-  .board-float { position: static; inset: auto; flex-direction: column; margin-bottom: 10px; gap: 8px; }
+  .board-topbar { position: static; inset: auto; flex-direction: column; margin: 0 0 8px; gap: 8px; }
   .board-info { max-width: none; }
   .board-pulse { width: 100%; }
   .board-cols { position: static; inset: auto; margin-top: 4px; padding-bottom: 10px; }
