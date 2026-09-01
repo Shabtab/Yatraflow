@@ -210,7 +210,7 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
         />
       )}
 
-      {tab === 'overview' && <OverviewTab trip={effective} editable={editable} onOpenDecisions={() => setTab('decisions')} health={health} totals={totals} />}
+      {tab === 'overview' && <OverviewTab trip={effective} editable={editable} onOpenDecisions={() => setTab('decisions')} onOpenTimeline={() => setTab('timeline')} health={health} totals={totals} />}
       {tab === 'timeline' && <TimelineTab trip={trip} editable={editable} applyChange={applyChange} legCorrections={legCorrections} suggestionCache={suggestionCache} />}
       {tab === 'map' && (
         <React.Suspense fallback={<div className="container loading-block"><div className="spinner" />Loading map…</div>}>
@@ -229,10 +229,11 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
 
 // ================= Overview =================
 
-function OverviewTab({ trip, editable, onOpenDecisions, health, totals }: {
+function OverviewTab({ trip, editable, onOpenDecisions, onOpenTimeline, health, totals }: {
   trip: Trip
   editable: boolean
   onOpenDecisions: () => void
+  onOpenTimeline: () => void
   health: ReturnType<typeof computeHealth>
   totals: ReturnType<typeof computeTotals>
 }) {
@@ -241,9 +242,15 @@ function OverviewTab({ trip, editable, onOpenDecisions, health, totals }: {
   const unresolvedDecisions = db.decisions.filter(d => d.tripId === trip.id && d.status === 'open').length
   const nextCommitment = [...trip.fixedCommitments]
     .sort((a, b) => a.dayIndex - b.dayIndex || a.time.localeCompare(b.time))[0]
+  const crew = trip.members ?? []
+  // Bento briefing (CTI §6.2): lead with the most consequential issues.
+  const severityRank = { high: 0, medium: 1, low: 2 } as const
+  const priorityActions = [...health.warnings]
+    .sort((a, b) => severityRank[a.severity] - severityRank[b.severity])
+    .slice(0, 3)
 
   return (
-    <div className="two-col">
+    <div className="two-col bento">
       <div>
         <div className="card">
           <div className="row-between">
@@ -276,6 +283,54 @@ function OverviewTab({ trip, editable, onOpenDecisions, health, totals }: {
           </div>
         </div>
 
+        {/* Bento stat cluster: cost / per-person / effort / stops at a glance */}
+        <div className="stat-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)', marginTop: 14 }}>
+          <StatTile label="Total cost" value={formatInr(totals.totalCostInr)} sub={`${formatInr(totals.costPerDayInr)}/day · estimates`} />
+          <StatTile label="Per person" value={formatInr(totals.costPerPersonInr)} sub={`vs ${formatInr(trip.budgetPerPersonInr)} target`} />
+          <StatTile label="Travel effort" value={minutesToHM(totals.totalTravelMinutes)} sub={`≈${Math.round(totals.totalDistanceKm)} km route`} />
+          <StatTile label="Stops planned" value={totals.stopCount} sub={`${countHotelNights(trip)} overnight base${countHotelNights(trip) !== 1 ? 's' : ''}`} />
+        </div>
+
+        {/* Priority actions: the most consequential issues with a direct fix link */}
+        <div className="card">
+          <div className="row-between">
+            <h3>Priority actions</h3>
+            {health.warnings.length > 0 && <span className="chip chip-saffron">{health.warnings.length} to review</span>}
+          </div>
+          <hr className="divider" />
+          {priorityActions.length === 0 ? (
+            <p className="muted small">Nothing needs fixing right now — the plan flows. 🎉</p>
+          ) : (
+            <div className="warn-list">
+              {priorityActions.map(w => (
+                <div key={w.code + w.title} className={`warn-item ${w.severity === 'high' ? 'sev-high' : w.severity === 'low' ? 'sev-low' : ''}`}>
+                  <span className="warn-icon">{w.severity === 'high' ? '🚨' : w.severity === 'medium' ? '⚠️' : '💡'}</span>
+                  <div>
+                    <div className="warn-title">{w.title}</div>
+                    <div className="warn-fix">✅ {w.fix}</div>
+                  </div>
+                </div>
+              ))}
+              {health.warnings.length > 3 && <span className="small muted">+{health.warnings.length - 3} more — see Timeline.</span>}
+            </div>
+          )}
+          <button className="btn btn-outline btn-sm" style={{ marginTop: 10 }} onClick={onOpenTimeline}>Open Timeline to fix</button>
+        </div>
+      </div>
+
+      <div>
+        {/* Group pulse strip: crew, decisions and commitments at a glance */}
+        <div className="card">
+          <h3>Group pulse</h3>
+          <hr className="divider" />
+          <div className="pulse-strip">
+            <span className="chip chip-info">👥 {crew.length} traveller{crew.length !== 1 ? 's' : ''}</span>
+            <span className={`chip ${unresolvedDecisions ? 'chip-saffron' : 'chip-info'}`}>🗳️ {unresolvedDecisions} open decision{unresolvedDecisions !== 1 ? 's' : ''}</span>
+            <span className="chip chip-info">📌 {trip.fixedCommitments.length} commitment{trip.fixedCommitments.length !== 1 ? 's' : ''}</span>
+          </div>
+          <button className="btn btn-outline btn-sm" style={{ marginTop: 12 }} onClick={onOpenDecisions}>Open Decisions tab</button>
+        </div>
+
         <div className="card">
           <div className="row-between">
             <h3>Fixed commitments</h3>
@@ -303,6 +358,20 @@ function OverviewTab({ trip, editable, onOpenDecisions, health, totals }: {
           )}
         </div>
 
+        {/* Route snapshot: the journey in one line, no second map instance */}
+        <div className="card">
+          <h3>Route snapshot</h3>
+          <hr className="divider" />
+          <p className="small" style={{ lineHeight: 1.8, margin: 0 }}>
+            <b>{trip.startLocation}</b>
+            {trip.destinations.map((d, i) => <span key={i}> → <b>{d}</b></span>)}
+            {isRoundTrip(trip) && <> → <b>{trip.startLocation}</b></>}
+          </p>
+          <p className="small muted" style={{ marginTop: 8, marginBottom: 0 }}>
+            {trip.days.length} day{trip.days.length !== 1 ? 's' : ''} · ≈{Math.round(totals.totalDistanceKm)} km · {minutesToHM(totals.totalTravelMinutes)} on the road · {countHotelNights(trip)} overnight base{countHotelNights(trip) !== 1 ? 's' : ''}
+          </p>
+        </div>
+
         <div className="card">
           <h3>Recent activity</h3>
           <hr className="divider" />
@@ -316,22 +385,6 @@ function OverviewTab({ trip, editable, onOpenDecisions, health, totals }: {
         </div>
 
         <WeatherCard trip={trip} />
-      </div>
-
-      <div>
-        <div className="stat-grid" style={{ gridTemplateColumns: '1fr' }}>
-          <StatTile label="Total estimated cost" value={formatInr(totals.totalCostInr)} sub={`${formatInr(totals.costPerDayInr)}/day · estimates only`} />
-          <StatTile label="Cost per person" value={formatInr(totals.costPerPersonInr)} sub={`vs budget ${formatInr(trip.budgetPerPersonInr)} per head`} />
-          <StatTile label="Total travel time" value={minutesToHM(totals.totalTravelMinutes)} sub={`≈${Math.round(totals.totalDistanceKm)} km across the route`} />
-          <StatTile label="Stops planned" value={totals.stopCount} sub={`${countHotelNights(trip)} overnight base${countHotelNights(trip) !== 1 ? 's' : ''}`} />
-        </div>
-        <div className="card" style={{ marginTop: 14, textAlign: 'center' }}>
-          <h3>Unresolved decisions</h3>
-          <p style={{ fontSize: 34, fontWeight: 800, fontFamily: 'var(--font-display)', margin: '8px 0', color: unresolvedDecisions ? 'var(--warn)' : 'var(--ok)' }}>
-            {unresolvedDecisions}
-          </p>
-          <button className="btn btn-outline btn-sm" onClick={onOpenDecisions}>Open Decisions tab</button>
-        </div>
       </div>
     </div>
   )

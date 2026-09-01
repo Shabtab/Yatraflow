@@ -240,6 +240,11 @@
 }
 
 * { box-sizing: border-box; }
+
+/* ---------- Overview Bento briefing (CTI §6.2) ---------- */
+/* Large-radius, softly-shadowed cards; the briefing reads as tiles, not a form. */
+.bento .card, .bento .stat-tile { border-radius: var(--radius-lg); box-shadow: var(--shadow-soft); }
+.pulse-strip { display: flex; flex-wrap: wrap; gap: 8px; }
 html {
   -webkit-text-size-adjust: 100%;
   /* No grey UA tap-flash on touch devices. */
@@ -1503,3 +1508,8 @@ main:focus { outline: none; }
 .poi-plan-row .poi-desc { -webkit-line-clamp: unset; -webkit-box-orient: unset; overflow: visible; }
 .poi-plan-row .poi-thumb { width: 34px; height: 34px; border-radius: 8px; }
 [data-theme='dark'] .ride-purpose-overnight { background: #fff; color: #06251f; }
+
+/* ---- Mobile: Bento pulse chips get comfortable touch height ---- */
+@media (max-width: 720px) {
+  .pulse-strip .chip { min-height: 36px; display: inline-flex; align-items: center; }
+}
