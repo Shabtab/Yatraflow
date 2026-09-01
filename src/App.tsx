@@ -95,7 +95,7 @@ export default function App() {
         page = <CreateTripPage onNavigate={navigate} />
         break
       case 'trip':
-        page = <TripWorkspace tripId={parts[1] ?? ''} onNavigate={navigate} />
+        page = <TripWorkspace tripId={parts[1] ?? ''} initialTab={parts[2]} onNavigate={navigate} />
         break
       case 'explore':
         page = <ExplorePage onNavigate={navigate} />
@@ -159,7 +159,7 @@ export default function App() {
                     {unread > 0 && <button className="btn btn-ghost btn-sm" onClick={() => markAllNotificationsRead(me.id)}>Mark all read</button>}
                   </div>
                   <div style={{ maxHeight: 320, overflowY: 'auto' }}>
-                    {notifs.length === 0 && <p className="muted small" style={{ padding: 16 }}>You're all caught up ✨</p>}
+                    {notifs.length === 0 && <p className="muted small" style={{ padding: 16 }}>You’re all caught up ✨</p>}
                     {notifs.slice(0, 12).map(n => (
                       <div key={n.id} className={`notif-item ${n.read ? '' : 'unread'}`}>
                         <span>{n.text}</span>
@@ -257,7 +257,7 @@ function SharedTripPage({ payload, onNavigate }: { payload: string; onNavigate: 
       <div className="container empty-state">
         <div className="big">🔗</div>
         <h2>This snapshot link is broken</h2>
-        <p className="muted">The link may have been truncated — ask for a fresh one from the trip's Share tab.</p>
+        <p className="muted">The link may have been truncated — ask for a fresh one from the trip’s Share tab.</p>
         <button className="btn btn-primary" style={{ marginTop: 14 }} onClick={() => onNavigate('/')}>Go home</button>
       </div>
     )
@@ -301,7 +301,7 @@ function InviteGate({ tripId, onNavigate }: { tripId: string; onNavigate: (r: st
       <div className="container empty-state">
         <div className="big">🔗</div>
         <h2>This invite link is broken</h2>
-        <p className="muted">Ask the trip organiser for a fresh link from the trip's Share tab.</p>
+        <p className="muted">Ask the trip organiser for a fresh link from the trip’s Share tab.</p>
         <button className="btn btn-primary" style={{ marginTop: 14 }} onClick={() => onNavigate('/')}>Go home</button>
       </div>
     )
@@ -311,7 +311,7 @@ function InviteGate({ tripId, onNavigate }: { tripId: string; onNavigate: (r: st
     return (
       <div className="container empty-state">
         <div className="big">✉️</div>
-        <h2>You've been invited to “{trip.name}”</h2>
+        <h2>You’ve been invited to “{trip.name}”</h2>
         <p className="muted">Log in or create a free account to join the planning crew.</p>
         <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 14 }}>
           <button className="btn btn-outline" onClick={() => onNavigate('/auth')}>Log in</button>

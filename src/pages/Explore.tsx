@@ -1,6 +1,7 @@
 // ============ Explore public itineraries ============
 import { useMemo, useState } from 'react'
 import { useDb, currentUser, tripById, duplicateTrip, registerPubCopy } from '../store/store'
+import { formatInr } from '../lib/engine'
 import { Avatar, Chip, EmptyState, toast } from '../components/ui'
 
 type SortKey = 'popular' | 'budget-asc' | 'budget-desc' | 'duration'
@@ -8,11 +9,25 @@ type SortKey = 'popular' | 'budget-asc' | 'budget-desc' | 'duration'
 export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void }) {
   const db = useDb()
   const me = currentUser(db)
-  const [sortKey] = useState<SortKey>('popular')
-  const [q, setQ] = useState('')
-  const [style, setStyle] = useState('all')
-  const [maxBudget, setMaxBudget] = useState<number | ''>('')
-  const [duration, setDuration] = useState<'all' | 'short' | 'medium' | 'long'>('all')
+  // F-22: filters + sort live in the hash query (#/explore?q=goa&sort=budget-asc)
+  // so they survive a refresh and can be shared; sortKey finally gets a control.
+  const params = new URLSearchParams(location.hash.split('?')[1] ?? '')
+  const s0 = params.get('sort')
+  const [sortKey, setSortKey] = useState<SortKey>(s0 === 'budget-asc' || s0 === 'budget-desc' || s0 === 'duration' ? s0 : 'popular')
+  const [q, setQ] = useState(params.get('q') ?? '')
+  const [style, setStyle] = useState(params.get('style') ?? 'all')
+  const [maxBudget, setMaxBudget] = useState<number | ''>(params.get('max') ? Number(params.get('max')) : '')
+  const d0 = params.get('dur')
+  const [duration, setDuration] = useState<'all' | 'short' | 'medium' | 'long'>(d0 === 'short' || d0 === 'medium' || d0 === 'long' ? d0 : 'all')
+
+  /** Write the current filters back into the hash query (F-22). replaceState —
+      filter fiddling shouldn't spam history or retrigger App's scroll-reset. */
+  function syncUrl(next: Partial<Record<'q' | 'style' | 'max' | 'dur' | 'sort', string>>) {
+    const p = new URLSearchParams({ q, style, max: String(maxBudget), dur: duration, sort: sortKey, ...next })
+    for (const [k, v] of [...p]) if (!v || v === 'all' || v === '0' || (k === 'sort' && v === 'popular')) p.delete(k)
+    const qs = p.toString()
+    history.replaceState(null, '', `#/explore${qs ? '?' + qs : ''}`)
+  }
 
   const pubs = useMemo(() => {
     let list = [...db.published]
@@ -32,7 +47,7 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
       )
     }
     return sortList(list)
-  }, [db.published, db.users, q, style, maxBudget, duration])
+  }, [db.published, db.users, q, style, maxBudget, duration, sortKey])
 
   function sortList(list: typeof db.published) {
     switch (sortKey) {
@@ -65,28 +80,34 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
       <div className="card" style={{ marginBottom: 20 }}>
         <div className="explore-filters">
           <input className="input" style={{ minWidth: 180, flex: 1 }} placeholder="Search destination or creator…"
-            aria-label="Search destination or creator" value={q} onChange={e => setQ(e.target.value)} />
-          <select className="select" value={style} onChange={e => setStyle(e.target.value)} aria-label="Travel style">
+            aria-label="Search destination or creator" value={q} onChange={e => { setQ(e.target.value); syncUrl({ q: e.target.value }) }} />
+          <select className="select" value={style} onChange={e => { setStyle(e.target.value); syncUrl({ style: e.target.value }) }} aria-label="Travel style">
             <option value="all">Any style</option>
             {['relaxed', 'balanced', 'packed', 'adventure', 'luxury', 'budget', 'family', 'spiritual', 'food-focused', 'creator'].map(s =>
               <option key={s} value={s}>{cap(s)}</option>)}
           </select>
-          <select className="select" value={duration} onChange={e => setDuration(e.target.value as never)} aria-label="Duration">
+          <select className="select" value={duration} onChange={e => { setDuration(e.target.value as never); syncUrl({ dur: e.target.value }) }} aria-label="Duration">
             <option value="all">Any length</option>
             <option value="short">≤3 days</option>
             <option value="medium">4–6 days</option>
             <option value="long">7+ days</option>
           </select>
-          <select className="select" value={maxBudget} onChange={e => setMaxBudget(e.target.value === '' ? '' : Number(e.target.value))} aria-label="Max budget">
+          <select className="select" value={maxBudget} onChange={e => { setMaxBudget(e.target.value === '' ? '' : Number(e.target.value)); syncUrl({ max: e.target.value }) }} aria-label="Max budget">
             <option value="">Any budget</option>
             <option value={10000}>Under ₹10k</option>
             <option value={20000}>Under ₹20k</option>
             <option value={35000}>Under ₹35k</option>
             <option value={60000}>Under ₹60k</option>
           </select>
+          <select className="select" value={sortKey} onChange={e => { setSortKey(e.target.value as SortKey); syncUrl({ sort: e.target.value }) }} aria-label="Sort by">
+            <option value="popular">Most popular</option>
+            <option value="budget-asc">Budget: low → high</option>
+            <option value="budget-desc">Budget: high → low</option>
+            <option value="duration">Longest first</option>
+          </select>
         </div>
         {(q || style !== 'all' || maxBudget !== '' || duration !== 'all') && (
-          <button className="btn btn-ghost btn-sm" onClick={() => { setQ(''); setStyle('all'); setMaxBudget(''); setDuration('all') }}>✕ Clear filters</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => { setQ(''); setStyle('all'); setMaxBudget(''); setDuration('all'); syncUrl({ q: '', style: 'all', max: '', dur: 'all' }) }}>✕ Clear filters</button>
         )}
       </div>
 
@@ -117,7 +138,7 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
                     <p className="small muted" style={{ margin: 0 }}>{p.tagline}</p>
                     <div className="stop-meta" style={{ marginTop: 2 }}>
                       <span>🗓 {p.durationDays} days</span>
-                      <span>💰 ~₹{p.estimatedBudgetPerPersonInr.toLocaleString('en-IN')}/person</span>
+                      <span>💰 ~{formatInr(p.estimatedBudgetPerPersonInr)}/person</span>
                       <span>📍 {p.routeSummary.length} places</span>
                     </div>
                   </div>

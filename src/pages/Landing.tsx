@@ -50,7 +50,7 @@ export function LandingPage({ onNavigate }: { onNavigate: (r: string) => void })
 
       {/* ---------- Feature grid ---------- */}
       <section className="container" style={{ paddingBottom: 8 }}>
-        <h2 className="section-title">Everything a crew needs, nothing it doesn't</h2>
+        <h2 className="section-title">Everything a crew needs, nothing it doesn’t</h2>
         <p className="muted section-sub">Built around one idea: every change shows its cost before you commit.</p>
         <div className="feature-strip">
           <FeatureCard icon="⚡" title="Impact before you commit"

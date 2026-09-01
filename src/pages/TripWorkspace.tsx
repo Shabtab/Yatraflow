@@ -50,11 +50,29 @@ const TABS: [TabKey, string][] = [
   ['share', 'Share'],
 ]
 
-export function TripWorkspace({ tripId, onNavigate }: { tripId: string; onNavigate: (route: string) => void }) {
+/** URL tab segment → TabKey (F-21): junk falls back to Overview. */
+function sanitizeTab(s: string | undefined): TabKey {
+  return TABS.some(([k]) => k === s) ? (s as TabKey) : 'overview'
+}
+
+export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: string; initialTab?: string; onNavigate: (route: string) => void }) {
   const db = useDb()
   const me = currentUser(db)
   const trip = tripById(tripId)
-  const [tab, setTab] = useState<TabKey>('overview')
+  const [tab, setTabState] = useState<TabKey>(() => sanitizeTab(initialTab))
+  /** F-21: the active tab rides the URL as #/trip/<id>/<tab> (no segment =
+      Overview). replaceState, not location.hash, so switching tabs writes no
+      extra history entry and doesn't trip App's scroll-reset; browser Back
+      still leaves the trip rather than cycling tabs — a tab is a view
+      preference, not a navigation step. */
+  function setTab(t: TabKey) {
+    setTabState(t)
+    const seg = location.hash.replace(/^#/, '').split('/').filter(Boolean)
+    if (t === 'overview') seg.splice(2)
+    else if (seg.length >= 3) seg[2] = t
+    else seg.push(t)
+    history.replaceState(null, '', `#/${seg.join('/')}`)
+  }
   const [aiOpen, setAiOpen] = useState(false)
 
   const role = me && trip ? roleOf(trip, me.id) : null
@@ -1596,7 +1614,7 @@ function MapTab({ trip, editable, applyChange, suggestionCache }: {
           </div>
         </div>
         <p className="hint-text" style={{ margin: '4px 0 6px' }}>
-          Live data from {googleEnabled() ? 'Google Places' : 'OpenStreetMap, Wikipedia & Mappls'}: lunch ~ every 300 km, stretch & fuel breaks in between, and for long trips an overnight stop in a key city at the end of each day's drive. Never around your starting point.
+          Live data from {googleEnabled() ? 'Google Places' : 'OpenStreetMap, Wikipedia & Mappls'}: lunch ~ every 300 km, stretch & fuel breaks in between, and for long trips an overnight stop in a key city at the end of each day’s drive. Never around your starting point.
         </p>
         <div className="row-between" style={{ gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
           <label className="small" style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 230 }}>
@@ -1797,7 +1815,7 @@ function SuggestionsTab({ trip, editable, me }: {
             <Field label="Visit minutes"><input type="number" className="input" min={15} step={5} value={form.visitMinutes} onChange={e => setForm(f => ({ ...f, visitMinutes: Number(e.target.value) }))} /></Field>
             <Field label="Entry fee ₹/person"><input type="number" className="input" min={0} value={form.entryFee} onChange={e => setForm(f => ({ ...f, entryFee: Number(e.target.value) }))} /></Field>
           </div>
-          <Field label="Why it's worth it"><textarea className="textarea" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} /></Field>
+          <Field label="Why it’s worth it"><textarea className="textarea" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} /></Field>
           <button className="btn btn-primary" style={{ width: '100%' }}>Share suggestion</button>
         </form>
       </div>

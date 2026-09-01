@@ -27,7 +27,7 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
       <div className="row-between" style={{ marginBottom: 18 }}>
         <div>
           <h1>My trips</h1>
-          <p className="muted small">Everything you're planning or collaborating on.</p>
+          <p className="muted small">Everything you’re planning or collaborating on.</p>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
           <button className="btn btn-outline" onClick={addDemoTrips} title="Adds a 4-day Kerala sample trip to your account">🚀 Load demo trips</button>
@@ -88,7 +88,7 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
       <ConfirmDialog
         open={!!pendingDelete}
         title={`Delete “${pendingDelete?.name ?? ''}”?`}
-        body="This removes the trip from your workspace. You'll get a short window to undo from the toast."
+        body="This removes the trip from your workspace. You’ll get a short window to undo from the toast."
         confirmLabel="Delete trip"
         danger
         onConfirm={confirmDelete}

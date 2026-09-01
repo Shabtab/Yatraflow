@@ -233,7 +233,7 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
               {pub.subscriberCta && <p className="hint-text" style={{ textAlign: 'center', marginTop: 8 }}>{pub.subscriberCta}</p>}
               <hr className="divider" />
               <div className="share-link-box"><code>{shareLink}</code><CopyButton text={shareLink} label="Share" /></div>
-              {!me && <p className="hint-text" style={{ marginTop: 10 }}>You'll need a free account to copy trips.</p>}
+              {!me && <p className="hint-text" style={{ marginTop: 10 }}>You’ll need a free account to copy trips.</p>}
             </div>
           </div>
         </div>

@@ -174,7 +174,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
                 </div>
               )}
               {dests.length === 0 && !errs.destinations && (
-                <p className="hint-text" style={{ marginTop: 8 }}>e.g. Munnar → Thekkady → Alleppey. Add them in the order you'll visit.</p>
+                <p className="hint-text" style={{ marginTop: 8 }}>e.g. Munnar → Thekkady → Alleppey. Add them in the order you’ll visit.</p>
               )}
             </Field>
             <div className="form-row">
@@ -186,7 +186,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
               </Field>
             </div>
             {dayCount > 0 && (
-              <p className="hint-text">📅 That's {dayCount} day{dayCount !== 1 ? 's' : ''} of planning.</p>
+              <p className="hint-text">📅 That’s {dayCount} day{dayCount !== 1 ? 's' : ''} of planning.</p>
             )}
           </div>
 

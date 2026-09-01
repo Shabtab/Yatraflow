@@ -15,7 +15,7 @@ interface Msg {
 export function AiDrawer({ trip, open, onOpen, onClose }: { trip: Trip; open: boolean; onOpen: () => void; onClose: () => void }) {
   const [msgs, setMsgs] = useState<Msg[]>([{
     id: 1, role: 'bot',
-    text: `Hi! I'm your YatraFlow companion. I can see “${trip.name}” — ${trip.days.length} days, ${trip.destinations.join(' → ')}. Ask me to lighten a day, check timings against a fixed commitment, find savings or plan for rain.`,
+    text: `Hi! I’m your YatraFlow companion. I can see “${trip.name}” — ${trip.days.length} days, ${trip.destinations.join(' → ')}. Ask me to lighten a day, check timings against a fixed commitment, find savings or plan for rain.`,
   }])
   const [input, setInput] = useState('')
   const [thinking, setThinking] = useState(false)
@@ -54,7 +54,7 @@ export function AiDrawer({ trip, open, onOpen, onClose }: { trip: Trip; open: bo
           <span style={{ fontSize: 20 }}>✨</span>
           <div>
             <b style={{ fontFamily: 'var(--font-display)' }}>YatraFlow Companion</b>
-            <div className="small muted">Grounded in this trip's data · estimates only</div>
+            <div className="small muted">Grounded in this trip’s data · estimates only</div>
           </div>
           <button className="icon-btn" style={{ marginLeft: 'auto' }} onClick={onClose} aria-label="Close assistant">✕</button>
         </div>
