@@ -320,7 +320,8 @@ html {
   -webkit-tap-highlight-color: transparent;
   /* Anchor/scrollIntoView targets land clear of the floating pill topnav
      (10px float gap + a little breathing room below it). */
-  scroll-padding-top: calc(var(--nav-h) + env(safe-area-inset-top) + 16px);
+  /* nav is static now — this clears only the sticky trip-total strip (Timeline) */
+  scroll-padding-top: 64px;
 }
 body {
   margin: 0;
@@ -350,7 +351,10 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
 
 /* ---------- Top navigation ---------- */
 .topnav {
-  position: sticky; top: calc(10px + env(safe-area-inset-top)); z-index: 60;
+  /* Static (scrolls away with the page) — the sticky follow was obstructing
+     content while scrolling. Stays a floating-style pill visually; `relative`
+     keeps it the positioning anchor for the mobile dropdown. */
+  position: relative; z-index: 60;
   /* CTI nav language: a floating pill detached from the viewport edges,
      not a full-bleed bar — the page atmosphere shows around it. */
   width: min(1180px, calc(100% - 28px));
@@ -518,7 +522,7 @@ a.btn { text-decoration: none; }
   transition: border-color .15s, box-shadow .15s;
 }
 .stop-card:hover { border-color: color-mix(in srgb, var(--teal) 45%, var(--line)); }
-.stop-card.dragging { opacity: .45; border-style: dashed; }
+.stop-card.dragging { opacity: .45; border-style: dashed; transform: scale(.985); }
 .stop-card.drag-over { border-color: var(--teal); box-shadow: 0 0 0 3px var(--teal-soft); }
 .stop-card.status-rejected { opacity: .55; }
 .stop-card.status-maybe { background: var(--card-soft); }
@@ -1466,7 +1470,7 @@ a.btn { text-decoration: none; }
 @media (max-width: 720px) {
   .nav-links { display: none; }
   /* Smaller float gap on phones; the tray keeps the hamburger reachable. */
-  .topnav { width: calc(100% - 20px); top: calc(8px + env(safe-area-inset-top)); margin-top: 10px; }
+  .topnav { width: calc(100% - 20px); margin-top: 10px; }
 }
 
 /* ---------- Footer ---------- */
@@ -1990,3 +1994,20 @@ main:focus { outline: none; }
 body, .topnav, .trip-head-card, .glass, .board, .board-col, .modal, .toast {
   transition: background-color var(--t-slow) var(--ease-out), color var(--t-slow) var(--ease-out), border-color var(--t-slow) var(--ease-out);
 }
+
+/* Route-level entrance: every main page change (My trips ↔ Explore ↔ a trip)
+   replays the same gentle fade+rise as workspace tab switches. */
+.route-panel { animation: panelIn var(--t-med) var(--ease-out); }
+
+/* Drag-and-drop feedback: the carried card shrinks/dims (the browser's drag
+   ghost shows the card itself), while any valid drop target breathes a teal
+   halo so the landing zone is unmistakable on both the HTML5 and touch paths. */
+@keyframes dropPulse {
+  0%, 100% { box-shadow: 0 0 0 3px var(--teal-soft); }
+  50% { box-shadow: 0 0 0 8px var(--teal-soft); }
+}
+.stop-card.drag-over, .stop-card.foreign-over,
+.board-col-zone.foreign-over, .travel-leg.foreign-over {
+  animation: dropPulse 1.1s var(--ease-out) infinite;
+}
+.stop-card.drag-over, .stop-card.foreign-over { border-color: var(--teal); }

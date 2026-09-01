@@ -215,7 +215,11 @@ export default function App() {
         </div>
       )}
 
-      <main id="main" tabIndex={-1} style={{ flex: 1 }}>{page}</main>
+      <main id="main" tabIndex={-1} style={{ flex: 1 }}>
+        {/* keyed on the route so every page change (My trips ↔ Explore ↔ a trip)
+            re-mounts and plays the route-panel entrance animation */}
+        <div className="route-panel" key={route}>{page}</div>
+      </main>
 
       <footer className="footer">
         <div className="container footer-inner">
