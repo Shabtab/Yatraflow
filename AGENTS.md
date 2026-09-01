@@ -51,6 +51,14 @@ Key locations:
    finding in the same commit that fixes it — batch status table only, prose
    goes to CHANGELOG. `docs/UI_AUDIT.md` is the per-finding reference
    (file:line + example fix); don't duplicate its content in the tracker.
+6. **Verify "done" claims against git before acting on them.** A session cut
+   off mid-batch can leave completion summaries that were never true — this
+   cost a full re-do when batches 5–6 were reported as committed while
+   `git log` showed only batch 3 and half of batch 4 sat uncommitted in the
+   working tree. On resume: `git status -sb` + `git log --oneline -5` +
+   re-grep the tracker table, and treat any prior "committed ✅" summary as a
+   hypothesis until the commit hash exists. Never re-report status from
+   memory; re-derive it from the repo.
 
 
 ## 3. Verification before every push
