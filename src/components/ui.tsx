@@ -5,7 +5,10 @@ import { registerTouchDnd, touchPressAbort, touchPressStart, encodeDropKey, isIn
 
 export function Avatar({ user, size = 'sm' }: { user?: { profile: { name: string; avatarUrl?: string } }; size?: 'sm' | 'lg' }) {
   const cls = `avatar ${size === 'lg' ? 'lg' : ''}`
-  if (user?.profile.avatarUrl) return <img className={cls} src={user.profile.avatarUrl} alt={user.profile.name} />
+  const px = size === 'lg' ? 44 : 26
+  // width/height give the <img> an intrinsic size so the row doesn't shift
+  // while the avatar loads (matches .avatar / .avatar.lg in styles.css).
+  if (user?.profile.avatarUrl) return <img className={cls} src={user.profile.avatarUrl} alt={user.profile.name} width={px} height={px} />
   const initials = (user?.profile.name ?? '?').split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()
   return <span className={cls}>{initials}</span>
 }
@@ -18,7 +21,7 @@ export function Chip({ children, tone, onClick, active }: { children: React.Reac
   return <span className={cls}>{children}</span>
 }
 
-export function Modal({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: React.ReactNode }) {
+export function Modal({ open, onClose, title, children, initialFocus }: { open: boolean; onClose: () => void; title: string; children: React.ReactNode; initialFocus?: string }) {
   const bodyRef = useRef<HTMLDivElement>(null)
   const dialogRef = useRef<HTMLDivElement>(null)
   const titleId = React.useId()
@@ -45,9 +48,12 @@ export function Modal({ open, onClose, title, children }: { open: boolean; onClo
     // lock page scroll while the dialog is up
     const prevOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
-    // focus the first sensible control so keyboard users can start typing immediately
+    // focus the first sensible control so keyboard users can start typing
+    // immediately — callers can override via `initialFocus` (ConfirmDialog
+    // aims at Cancel so a stray Enter can't confirm a destructive action)
     const t = setTimeout(() => {
-      const el = bodyRef.current?.querySelector<HTMLElement>('input:not([type=hidden]):not([disabled]), textarea, select')
+      const el = (initialFocus ? dialogRef.current?.querySelector<HTMLElement>(initialFocus) : null)
+        ?? bodyRef.current?.querySelector<HTMLElement>('input:not([type=hidden]):not([disabled]), textarea, select')
         ?? dialogRef.current?.querySelector<HTMLElement>('button')
       el?.focus()
     }, 30)
@@ -57,7 +63,7 @@ export function Modal({ open, onClose, title, children }: { open: boolean; onClo
       clearTimeout(t)
       previouslyFocused?.isConnected && previouslyFocused.focus()
     }
-  }, [open, onClose])
+  }, [open, onClose, initialFocus])
   if (!open) return null
   return (
     <div className="modal-overlay" onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
@@ -86,7 +92,7 @@ export function ConfirmDialog({ open, title, body, confirmLabel = 'Confirm', can
   onClose: () => void
 }) {
   return (
-    <Modal open={open} onClose={onClose} title={title}>
+    <Modal open={open} onClose={onClose} title={title} initialFocus=".confirm-actions .btn-outline">
       {body && <p className="muted" style={{ marginTop: 0 }}>{body}</p>}
       <div className="confirm-actions">
         <button
@@ -99,16 +105,36 @@ export function ConfirmDialog({ open, title, body, confirmLabel = 'Confirm', can
   )
 }
 
+/** Form row: label + control + hint/error. The label is programmatically
+ *  associated with the row's control (UI audit F-01): Field generates an id
+ *  and injects it into the first control child via cloneElement — host
+ *  controls (input/select/textarea) take it directly, custom control
+ *  components (LocationInput) accept an `id` prop and forward it to their
+ *  input. An explicit `id` on the child wins. Non-control children (chip
+ *  rows, time previews) are left untouched and the label gets no htmlFor. */
 export function Field(props: {
   label: string
   error?: string
   hint?: string
   children: React.ReactNode
 }) {
+  const controlId = useId()
+  let associated = false
+  const wired = React.Children.toArray(props.children).map(child => {
+    if (associated || !React.isValidElement(child)) return child
+    const el = child as React.ReactElement<{ id?: string }>
+    const tag = typeof el.type === 'string' ? el.type : null
+    const isHostControl = tag === 'input' || tag === 'select' || tag === 'textarea'
+    const isCustomControl = typeof el.type === 'function'
+    if (!isHostControl && !isCustomControl) return child
+    if (el.props.id != null) { associated = true; return child }
+    associated = true
+    return React.cloneElement(el, { id: controlId })
+  })
   return (
     <div className="field">
-      <label className="label">{props.label}</label>
-      {props.children}
+      <label className="label" htmlFor={associated ? controlId : undefined}>{props.label}</label>
+      {wired}
       {props.hint && !props.error && <span className="hint-text">{props.hint}</span>}
       {props.error && <span className="err-text">{props.error}</span>}
     </div>

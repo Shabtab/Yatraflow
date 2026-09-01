@@ -17,9 +17,11 @@ interface Props {
   autoFocus?: boolean
   /** Bias results toward India by default; set false for worldwide. */
   indiaOnly?: boolean
+  /** id for the inner input — lets `Field` associate its label (UI audit F-01). */
+  id?: string
 }
 
-export function LocationInput({ value, onChange, onPick, placeholder, error, autoFocus, indiaOnly = true }: Props) {
+export function LocationInput({ value, onChange, onPick, placeholder, error, autoFocus, indiaOnly = true, id }: Props) {
   const [hits, setHits] = useState<PlaceHit[]>([])
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -86,6 +88,7 @@ export function LocationInput({ value, onChange, onPick, placeholder, error, aut
   return (
     <div ref={wrapRef} style={{ position: 'relative' }}>
       <input
+        id={id}
         className="input"
         style={error ? { borderColor: 'var(--danger)' } : undefined}
         value={value}
