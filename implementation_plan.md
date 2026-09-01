@@ -92,7 +92,7 @@ None — function modules + React function components, unchanged.
 9. ✅ M2: Landing hero + glass topnav. → `d9db55b`; deepened structurally per mockups (split hero + dark adventure card, navy trip header band) in `7c5cef8`; nav became a floating glass pill + cream control tray in M2.1 → `d72298d`
 10. ✅ M3: Overview Bento briefing. → `aaff1b6`, structural deep-pass in `7c5cef8`
 11. ✅ M4: Timeline polish. → `0960d44` (sticky trip-total strip, day-jump rail, day cards + in-day warnings, `stopKindOf` stop-type markers)
-12. M5: Board view (z-index + DnD audit).
+12. ✅ M5: Board view (z-index + DnD audit). New **Board** tab between Timeline and Map; reuses TripMap as pinned background via a new additive `focusDay` prop (day-level route focus on column select); floating near-opaque day columns; cross-day DnD on both HTML5 + touch paths; every drop → impact preview; Trip Pulse panel; long trips scroll horizontally; Timeline gains the "Open in Board →" bridge. (BoardView lazy chunk; map chunk shared with Map tab.)
 13. M6: Map / Suggestions / Budget / Decisions / Share hierarchy pass.
 14. M7: Explore + Public Itinerary editorial treatment.
 15. Each of 8–14: verify → commit → changelog entry. Merge to `main` + `0.24.0` cut only with user confirmation.

@@ -28,6 +28,9 @@ import { ImpactPreviewPanel } from '../components/ImpactPreview'
 import { useSuggestionCache } from '../hooks/useSuggestionCache'
 // MapLibre is heavy (~1MB) — load it only when the Map tab is actually opened.
 const TripMap = React.lazy(() => import('../components/TripMap').then(m => ({ default: m.TripMap })))
+// Board also embeds TripMap (so it pulls the same lazy map chunk) — load the whole
+// view lazily so the Board tab never adds app-start cost either.
+const BoardView = React.lazy(() => import('../components/BoardView').then(m => ({ default: m.BoardView })))
 import { StopEditor, type StopFormValues } from '../components/StopEditor'
 import { AiDrawer } from '../components/AiDrawer'
 import { LocationInput } from '../components/LocationInput'
@@ -39,11 +42,12 @@ import type { DayWeather } from '../lib/weather'
 import { encodeTripSnapshot, decodeTripSnapshot, snapshotUrl, downloadTripJson } from '../lib/snapshot'
 import { duplicateTrip } from '../store/store'
 
-type TabKey = 'overview' | 'timeline' | 'map' | 'suggestions' | 'budget' | 'decisions' | 'share'
+type TabKey = 'overview' | 'timeline' | 'board' | 'map' | 'suggestions' | 'budget' | 'decisions' | 'share'
 
 const TABS: [TabKey, string][] = [
   ['overview', 'Overview'],
   ['timeline', 'Timeline'],
+  ['board', 'Board'],
   ['map', 'Map'],
   ['suggestions', 'Suggestions'],
   ['budget', 'Budget'],
@@ -212,7 +216,13 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
       )}
 
       {tab === 'overview' && <OverviewTab trip={effective} editable={editable} onOpenDecisions={() => setTab('decisions')} onOpenTimeline={() => setTab('timeline')} onOpenMap={() => setTab('map')} onInvite={() => setTab('share')} health={health} totals={totals} />}
-      {tab === 'timeline' && <TimelineTab trip={trip} editable={editable} applyChange={applyChange} legCorrections={legCorrections} suggestionCache={suggestionCache} />}
+      {tab === 'timeline' && <TimelineTab trip={trip} editable={editable} applyChange={applyChange} legCorrections={legCorrections} suggestionCache={suggestionCache} onOpenBoard={() => setTab('board')} />}
+      {tab === 'board' && (
+        <React.Suspense fallback={<div className="container loading-block"><div className="spinner" />Loading board…</div>}>
+          <BoardView trip={trip} editable={editable} applyChange={applyChange} health={health} totals={totals}
+            onOpenOverview={() => setTab('overview')} onOpenTimeline={() => setTab('timeline')} />
+        </React.Suspense>
+      )}
       {tab === 'map' && (
         <React.Suspense fallback={<div className="container loading-block"><div className="spinner" />Loading map…</div>}>
           <MapTab trip={trip} editable={editable} applyChange={applyChange} suggestionCache={suggestionCache} />
@@ -424,12 +434,14 @@ function isoAddDays(iso: string, days: number): string {
 
 // ================= Timeline =================
 
-function TimelineTab({ trip, editable, applyChange, legCorrections, suggestionCache }: {
+function TimelineTab({ trip, editable, applyChange, legCorrections, suggestionCache, onOpenBoard }: {
   trip: Trip
   editable: boolean
   applyChange: (mutator: (d: Trip) => void, kind: ImpactResult['kind'], dayIndex: number) => void
   legCorrections?: Record<string, LegEstimate>
   suggestionCache: ReturnType<typeof useSuggestionCache>
+  /** M5: the doc's §6.3 "Open in Board" bridge — Board now exists. */
+  onOpenBoard?: () => void
 }) {
   const [editorState, setEditorState] = useState<
     { mode: 'add'; dayIndex: number } | { mode: 'edit'; stopId: string } | null
@@ -588,7 +600,12 @@ function TimelineTab({ trip, editable, applyChange, legCorrections, suggestionCa
           <p className="muted small">Drag stops to reorder within a day — or drop them onto another day to move them there. On touch devices: press and hold a stop, then drag it. Every change shows its impact before saving.</p>
         </div>
         {editable && (
-          <button className="btn btn-primary btn-sm" onClick={() => setEditorState({ mode: 'add', dayIndex: 0 })}>+ Add stop</button>
+          <div className="row" style={{ gap: 8 }}>
+            {onOpenBoard && (
+              <button className="btn btn-outline btn-sm" onClick={onOpenBoard} title="Arrange stops across days with the route in view">Open in Board →</button>
+            )}
+            <button className="btn btn-primary btn-sm" onClick={() => setEditorState({ mode: 'add', dayIndex: 0 })}>+ Add stop</button>
+          </div>
         )}
       </div>
 

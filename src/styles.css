@@ -763,6 +763,89 @@ a.btn { text-decoration: none; }
 .stop-kind-tag.kind-activity { background: var(--yf-purple-100); }
 .stop-kind-tag.kind-viewpoint { background: var(--teal-soft); }
 
+/* ---------- Board — spatial group coordination (CTI §6.4) ---------- */
+/* Pinned route map with day columns floating over it. The floats live inside
+   .board (a stacking context of its own), so nothing here fights the app's
+   fixed-overlay ladder: map, columns and panels all layer below modals (100) /
+   impact sheet (90) / notifications (80) — the impact preview opened by a card
+   drop still lands on top of everything. */
+.board-head { margin-bottom: 14px; }
+.board {
+  position: relative; height: 640px; overflow: hidden;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--yf-glass-border);
+  box-shadow: var(--shadow-soft);
+  background: var(--yf-mist);
+}
+.board-map { position: absolute; inset: 0; z-index: 0; }
+.board-map .map-shell { height: 100%; display: flex; flex-direction: column; }
+.board-map .map-frame { flex: 1 1 auto; height: auto; min-height: 0; border: none; border-radius: 0; }
+.board-float {
+  position: absolute; z-index: 3; top: 14px; left: 16px; right: 16px;
+  display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;
+  pointer-events: none;
+}
+.board-float > * { pointer-events: auto; }
+.board-info { border-radius: 18px; padding: 13px 16px; max-width: 400px; box-shadow: var(--shadow-soft); }
+.board-fit {
+  margin-top: 9px; border: none; background: var(--teal-soft); color: var(--teal-deep);
+  border-radius: 999px; font-size: 12px; font-weight: 800; padding: 7px 14px; cursor: pointer;
+}
+.board-fit:hover { filter: brightness(.96); }
+.board-pulse { border-radius: 18px; padding: 13px 16px; width: 268px; box-shadow: var(--shadow-soft); }
+.board-pulse .pulse-label { font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--yf-text-muted); }
+.board-pulse-row { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+.board-pulse-row .health-num-big { font-size: 34px; }
+.board-pulse-band { font-size: 13px; font-weight: 750; }
+.board-pulse-band.ok { color: var(--ok); }
+.board-pulse-band.mid { color: var(--yf-amber); }
+.board-pulse-band.bad { color: var(--yf-coral); }
+.board-pulse .health-bar { margin-top: 6px; }
+.board-pulse-lines { display: grid; gap: 3px; margin-top: 9px; font-size: 12.5px; color: var(--text-2); }
+.board-pulse-link {
+  margin-top: 9px; background: none; border: none; padding: 0; cursor: pointer;
+  color: var(--teal-deep); font-weight: 800; font-size: 12.5px; font-family: var(--font-body);
+}
+.board-cols {
+  position: absolute; z-index: 2; top: 96px; bottom: 14px; left: 14px; right: 14px;
+  display: flex; gap: 14px; align-items: stretch; overflow-x: auto;
+  padding: 4px 2px 14px; scrollbar-width: thin;
+}
+.board-col {
+  flex: 0 0 272px; display: flex; flex-direction: column;
+  border-radius: var(--radius-lg); overflow: hidden;
+  background: color-mix(in srgb, var(--card) 97%, transparent);
+  border: 1px solid var(--yf-glass-border);
+  box-shadow: var(--shadow-soft);
+}
+.board-col--focused { outline: 2px solid var(--yf-teal-600); outline-offset: -2px; }
+.board-col-head {
+  display: flex; align-items: center; gap: 10px; padding: 11px 13px; text-align: left;
+  background: transparent; border: none; border-bottom: 1px solid var(--line); cursor: pointer;
+  font-family: var(--font-body);
+}
+.board-col-head:hover { background: var(--card-soft); }
+.board-col-head .day-badge { flex: 0 0 auto; }
+.board-col-title { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.board-col-title b { font-family: var(--font-display); font-size: 14px; }
+.board-col-head .day-warn-pill { padding: 4px 9px; font-size: 10.5px; max-width: 150px; flex: 0 1 auto; }
+.board-col-stops {
+  flex: 1 1 auto; overflow-y: auto; padding: 11px; min-height: 0;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.board-stop { padding: 10px 12px; }
+.board-stop .stop-num { width: 26px; height: 26px; font-size: 12px; }
+.board-stop .stop-title { font-size: 14px; }
+.board-stop .stop-meta { margin-top: 3px; }
+.board-col-zone {
+  border: 1.5px dashed var(--yf-border); border-radius: 13px;
+  padding: 11px 10px; text-align: center; color: var(--yf-text-muted);
+  display: flex; flex-direction: column; gap: 2px; flex: 0 0 auto;
+}
+.board-col-zone b { font-size: 12.5px; color: var(--teal-deep); }
+.board-col-zone.foreign-over { border-color: var(--teal); background: var(--teal-soft); }
+.board-col-zone.foreign-over b { color: var(--teal-deep); }
+
 @media (max-width: 640px) {
   .tl-row, .tl-legrow, .tl-end { grid-template-columns: 52px 1fr; gap: 8px; }
   .tl-time { font-size: 10px; padding: 1px 4px; }
@@ -1701,4 +1784,26 @@ main:focus { outline: none; }
 /* ---- Mobile: Bento pulse chips get comfortable touch height ---- */
 @media (max-width: 720px) {
   .pulse-strip .chip { min-height: 36px; display: inline-flex; align-items: center; }
+}
+
+/* ---- Mobile: Board stacks instead of overlaying — the map becomes a fixed
+       landscape block, the info/pulse cards stack above it, and the day columns
+       scroll below in normal flow (nothing fights the small viewport). ---- */
+@media (max-width: 720px) {
+  .board-head { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .board { height: auto; overflow: visible; border: none; background: transparent; box-shadow: none; }
+  .board-map {
+    position: relative; inset: auto; height: 240px;
+    border-radius: var(--radius-lg); overflow: hidden;
+    border: 1px solid var(--yf-glass-border);
+    box-shadow: var(--shadow-soft); margin-bottom: 12px;
+  }
+  .board-map .map-frame { min-height: 0; }
+  .board-float { position: static; inset: auto; flex-direction: column; margin-bottom: 10px; gap: 8px; }
+  .board-info { max-width: none; }
+  .board-pulse { width: 100%; }
+  .board-cols { position: static; inset: auto; margin-top: 4px; padding-bottom: 10px; }
+  .board-col { flex: 0 0 264px; }
+  .board-col-head { min-height: 52px; }
+  .board-col-zone { min-height: 48px; justify-content: center; }
 }

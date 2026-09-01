@@ -125,15 +125,23 @@ function catIcon(cat: string | undefined): React.ReactNode {
   )
 }
 
-export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby }: {
+export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusDay }: {
   trip: Trip
   onOpenStop?: (stopId: string) => void
   /** potential POIs to show as gold "idea" markers */
   nearbyPois?: PlaceHit[]
   /** when set, idea markers get a + button to add the POI straight from the map */
   onAddNearby?: (hit: PlaceHit) => void
+  /** external day-focus driver (Board column select): a day index shows just that
+      day's route, 'all' resets to the whole trip. Undefined = map owns its filter. */
+  focusDay?: number | 'all'
 }) {
   const [dayFilter, setDayFilter] = useState<number | 'all'>('all')
+  // Board drives the day filter through the prop; the map's own chips keep working
+  // independently until the next focus change (React bails on identical values).
+  useEffect(() => {
+    if (focusDay !== undefined) setDayFilter(focusDay)
+  }, [focusDay])
   const [showReturn, setShowReturn] = useState(true)
   // Map key (legend) visibility — hidden by default so it stops covering the
   // bottom-right of the map; the choice persists per browser via uiPrefs.

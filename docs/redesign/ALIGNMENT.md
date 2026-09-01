@@ -7,11 +7,12 @@ deferred (reason noted).
 
 Legend for the **Where** column:
 `L=<src/pages/Landing.tsx>`, `W=<src/pages/TripWorkspace.tsx>`,
-`TW=<src/pages/TimelineTab.tsx>` (or inline in W), `C=<src/styles.css>`,
+`TW=<src/pages/TimelineTab.tsx>` (or inline in W), `B=<src/components/BoardView.tsx>`,
+`TM=<src/components/TripMap.tsx>`, `C=<src/styles.css>`,
 `U=<src/components/ui.tsx>`, `S=<src/lib/stopKind.ts>`,
 `docs` = tracker/docs only.
 
-Last full audit: **M5 kickoff** (against doc read in full, §1–§10).
+Last full audit: **M5 complete** (Board shipped — §6.4 fully delivered; all prior rows re-verified against the doc).
 
 ---
 
@@ -79,19 +80,20 @@ Last full audit: **M5 kickoff** (against doc read in full, §1–§10).
 | Compact, expandable route-day headers | ✅ | TW day card header (collapse prefs retained) |
 | Clear stop-type markers (Drive/Stay/Food/Fuel/Rest/Activity/Viewpoint) | ✅ | S `stopKindOf()` + spine colour + uppercase tag |
 | Warning state directly inside the affected day | ✅ | TW header pill + in-body items/fixes |
-| "Open in Board" bridge | 🔒 deferred to M5 | arrives with the Board view rather than as a dead link |
+| "Open in Board" bridge | ✅ | TW header button "Open in Board →" (added with the Board view itself) |
 
-### 6.4 Board (M5 — current milestone)
+### 6.4 Board (M5 — complete)
 | Doc item | Status | Where / note |
 |---|---|---|
-| Pinned route map background | 🚫 | Board pull → reuse `TripMap` + fit controls |
-| Floating day columns (kanban) | 🚫 | near-opaque soft cards reusing day/stop data |
-| Cross-day drag-and-drop | 🚫 | reuse `useReorder`/`touchDnd` both paths |
-| Day-level route focus on column select | 🚫 | fit bounds of selected day |
-| Warnings + stop-type info within cards | 🚫 | reuse `stopKindOf` + per-day warnings |
-| Clear drop zones + impact preview before persisting | 🚫 | reuse `applyChange`/proposal pattern |
-| Small Trip Pulse panel | 🚫 | reuse Overview pulse + health |
-| 3–7 day trips; long trips → focused-day rail | 🚫 | implement per guardrail (max 5 columns, scroll for more) |
+| Pinned route map background | ✅ | B `.board-map` embeds the existing `TripMap` (no second map system); lazy chunk shared with Map tab |
+| Floating day columns (kanban) | ✅ | B `.board-col` near-opaque soft cards (radius-lg + shadow-soft, ~`--card` 97%) |
+| Cross-day drag-and-drop | ✅ | B `useReorder` + `touchDnd` both paths (AGENTS §4 pair); payload `{stopId, fromDay}` |
+| Day-level route focus on column select | ✅ | TM `focusDay` prop (additive) drives the existing day filter; column header click toggles |
+| Warnings + stop-type info within cards | ✅ | B reuses `stopKindOf` spine+tag + `dayWarnings` severity pill in column header |
+| Clear drop zones + impact preview before persisting | ✅ | B dashed "＋ Add or drop a stop" zone (foreign-drop only) → `applyChange` → ImpactPreviewPanel |
+| Small Trip Pulse panel | ✅ | B glass top-right: health score/band/bar, overloaded days, open decisions, budget + "Open health advice →" |
+| 3–7 day trips; long trips → focused-day rail | ✅ | B horizontal scroll of 272 px columns (no squeezing); mobile stacks |
+| "Open in Board" bridge from Timeline | ✅ | TW header button (§6.3 deferred item shipped here) |
 
 ### 6.5–6.11 Map / Suggestions / Budget / Decisions / Share / Explore / Public
 | Doc item | Status | Where / note |
@@ -135,17 +137,17 @@ Last full audit: **M5 kickoff** (against doc read in full, §1–§10).
 - **Dark mode:** the doc is light-first and never mentions it; the app ships both themes —
   every `--yf-*` token is mirrored in the dark block (documented in `implementation_plan.md`).
 
-## 8 · Design-quality checklist (§9) — last scored screen (Timeline, M4)
+## 8 · Design-quality checklist (§9) — last scored screen (Board, M5)
 
 | Question | Verdict |
 |---|---|
-| Answers its core user question? | Yes — "where am I, what needs fixing" via sticky strip + in-day warnings |
-| Main action identifiable <3s? | Yes — add-stop / stop-edit controls unchanged, strip prominent |
-| Risks explained in human language? | Yes — severity pill + fix copy + "⚠ N days need attention" |
-| Solid vs transparency? | near-opaque day cards per §6.3 explicitly |
-| Room for route/time/cost detail? | Yes — strip totals + per-stop meta |
-| Status without colour alone? | Yes — ⚠ icon + label + tag |
-| Consequence visibly communicated? | Yes — impact preview, strip updates |
+| Answers its core user question? | Yes — "where does each stop live + how does moving it affect the route" via pinned map + columns + pulse |
+| Main action identifiable <3s? | Yes — drag a card to a column; dashed "＋ Add or drop a stop" zone is the obvious drop target |
+| Risks explained in human language? | Yes — severity pill on column header + impact preview on drop |
+| Solid vs transparency? | near-opaque columns (`--card` 97%) per §3.1; info/pulse use level-2 glass |
+| Room for route/time/cost detail? | Yes — map keeps route; cards keep clock/km meta; pulse carries budget |
+| Status without colour alone? | Yes — ⚠ icon + label on warn pill; band text + score number |
+| Consequence visibly communicated? | Yes — every cross-day drop opens the impact preview before saving |
 | Permissions understandable? | N/A this screen (Share = M6) |
-| Usable on phone? | Yes — strip static <720, rail scrolls, targets ≥40px |
-| Travel planning product, not generic dashboard? | Yes after M1–M4 |
+| Usable on phone? | Yes — map stacks to 240 px block, columns flow below, ≥40 px touch rows |
+| Travel planning product, not generic dashboard? | Yes — the pinned route makes it unmistakably a trip planner |
