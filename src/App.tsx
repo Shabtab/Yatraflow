@@ -133,25 +133,28 @@ export default function App() {
             <a className={`nav-link ${route === '/explore' ? 'active' : ''}`} href="#/explore">Explore</a>
           </div>
         <div className="nav-right">
-          {/* Hamburger — only rendered ≤720px where .nav-links is hidden */}
-          <button
-            className="mobile-nav-btn"
-            onClick={() => setMobileNav(o => !o)}
-            aria-label="Menu"
-            aria-expanded={mobileNav}
-            aria-controls="mobile-menu"
-          >
-            {mobileNav ? '✕' : '☰'}
-          </button>
+          {/* CTI control tray: icon controls live in one soft pill. Auth
+              buttons stay outside it (they're wide, and logged-out mobile
+              needs the width). Hamburger is ≤720px only (CSS-gated). */}
+          <div className="nav-pill-group">
+            <button
+              className="mobile-nav-btn"
+              onClick={() => setMobileNav(o => !o)}
+              aria-label="Menu"
+              aria-expanded={mobileNav}
+              aria-controls="mobile-menu"
+            >
+              {mobileNav ? '✕' : '☰'}
+            </button>
 
-          <button className="theme-toggle" onClick={() => setDark(d => !d)} aria-label="Toggle dark mode" title="Toggle dark mode">
-            {dark ? '☀️' : '🌙'}
-          </button>
-          {me && (
-            <div style={{ position: 'relative' }} ref={notifRef}>
-              <button className="icon-btn" onClick={() => setNotifOpen(o => !o)} aria-label={`Notifications (${unread} unread)`} aria-expanded={notifOpen} aria-controls="notif-pop">
-                🔔{unread > 0 && <span className="notif-badge">{unread}</span>}
-              </button>
+            <button className="theme-toggle" onClick={() => setDark(d => !d)} aria-label="Toggle dark mode" title="Toggle dark mode">
+              {dark ? '☀️' : '🌙'}
+            </button>
+            {me && (
+              <div style={{ position: 'relative' }} ref={notifRef}>
+                  <button className="icon-btn" onClick={() => setNotifOpen(o => !o)} aria-label={`Notifications (${unread} unread)`} aria-expanded={notifOpen} aria-controls="notif-pop">
+                    🔔{unread > 0 && <span className="notif-badge">{unread}</span>}
+                  </button>
               {notifOpen && (
                 <div className="notif-pop" id="notif-pop">
                   <div className="row-between" style={{ padding: '10px 14px', borderBottom: '1px solid var(--line)' }}>
@@ -171,7 +174,7 @@ export default function App() {
               )}
             </div>
           )}
-          {me ? (
+          {me && (
             <div style={{ position: 'relative' }} ref={menuRef}>
               <button className="avatar-btn" onClick={() => setMenuOpen(o => !o)} aria-label="Account menu" aria-expanded={menuOpen} aria-controls="user-menu">
                 <Avatar user={me} />
@@ -189,7 +192,9 @@ export default function App() {
                 </div>
               )}
             </div>
-          ) : (
+          )}
+          </div>{/* /nav-pill-group */}
+          {!me && (
             <>
               <a className="btn btn-outline btn-sm" href="#/auth">Log in</a>
               <a className="btn btn-primary btn-sm" href="#/auth?mode=signup">Sign up free</a>

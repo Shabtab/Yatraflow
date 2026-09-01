@@ -288,8 +288,9 @@ html {
   -webkit-text-size-adjust: 100%;
   /* No grey UA tap-flash on touch devices. */
   -webkit-tap-highlight-color: transparent;
-  /* Anchor/scrollIntoView targets land clear of the sticky topnav. */
-  scroll-padding-top: calc(var(--nav-h) + env(safe-area-inset-top) + 12px);
+  /* Anchor/scrollIntoView targets land clear of the floating pill topnav
+     (10px float gap + a little breathing room below it). */
+  scroll-padding-top: calc(var(--nav-h) + env(safe-area-inset-top) + 16px);
 }
 body {
   margin: 0;
@@ -319,15 +320,19 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
 
 /* ---------- Top navigation ---------- */
 .topnav {
-  position: sticky; top: 0; z-index: 60;
-  /* Level-2 translucent overlay (CTI §3.3): glass nav over the atmosphere. */
+  position: sticky; top: calc(10px + env(safe-area-inset-top)); z-index: 60;
+  /* CTI nav language: a floating pill detached from the viewport edges,
+     not a full-bleed bar — the page atmosphere shows around it. */
+  width: min(1180px, calc(100% - 28px));
+  margin: 12px auto 0;
   background: var(--yf-glass);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-bottom: 1px solid var(--yf-glass-border);
-  /* Edge-to-edge (viewport-fit=cover): sit below the notch/status bar. */
-  padding-top: env(safe-area-inset-top);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--yf-glass-border);
+  border-radius: 999px;
+  box-shadow: var(--shadow-soft);
 }
+.topnav .container.topnav-inner { max-width: none; padding: 0 10px 0 22px; }
 .topnav-inner { display: flex; align-items: center; gap: 14px; height: var(--nav-h); }
 .brand { display: flex; align-items: center; gap: 9px; font-family: var(--font-display); font-weight: 800; font-size: 19px; color: var(--text); cursor: pointer; background:none;border:none;padding:0; }
 .brand svg { flex: 0 0 auto; }
@@ -1132,6 +1137,23 @@ a.btn { text-decoration: none; }
 .topnav-inner { display: flex; align-items: center; gap: 14px; height: var(--nav-h); }
 .topnav .container.topnav-inner { display: flex; }
 .nav-right { margin-left: auto; display: flex; align-items: center; gap: 9px; position: relative; z-index: 2; }
+/* CTI control tray: theme / bell / avatar (and the mobile hamburger) cluster
+   inside one soft pill, echoing the nav pill itself. */
+.nav-pill-group {
+  display: flex; align-items: center; gap: 2px; padding: 4px;
+  background: var(--yf-cream);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+.nav-pill-group .theme-toggle,
+.nav-pill-group .icon-btn,
+.nav-pill-group .mobile-nav-btn { background: transparent; border-color: transparent; }
+.nav-pill-group .theme-toggle:hover,
+.nav-pill-group .icon-btn:hover,
+.nav-pill-group .mobile-nav-btn:hover { background: rgba(15, 40, 35, .06); }
+[data-theme='dark'] .nav-pill-group .theme-toggle:hover,
+[data-theme='dark'] .nav-pill-group .icon-btn:hover,
+[data-theme='dark'] .nav-pill-group .mobile-nav-btn:hover { background: rgba(255, 255, 255, .08); }
 .theme-toggle { background: var(--bg-soft); border: 1.5px solid var(--line); border-radius: 10px;
   width: 36px; height: 36px; cursor: pointer; font-size: 15px; flex: 0 0 auto; }
 .avatar-btn { background: none; border: none; cursor: pointer; padding: 0; border-radius: 50%; flex: 0 0 auto; }
@@ -1146,6 +1168,8 @@ a.btn { text-decoration: none; }
   border-radius: 99px; font-size: 10px; font-weight: 800; min-width: 17px; height: 17px; line-height: 17px; }
 @media (max-width: 720px) {
   .nav-links { display: none; }
+  /* Smaller float gap on phones; the tray keeps the hamburger reachable. */
+  .topnav { width: calc(100% - 20px); top: calc(8px + env(safe-area-inset-top)); margin-top: 10px; }
 }
 
 /* ---------- Footer ---------- */
@@ -1312,7 +1336,7 @@ a.btn { text-decoration: none; }
   font-size: 18px; line-height: 1; color: var(--text);
 }
 .mobile-menu {
-  position: fixed; top: calc(var(--nav-h) + env(safe-area-inset-top)); left: 0; right: 0; z-index: 55;
+  position: fixed; top: calc(var(--nav-h) + 22px + env(safe-area-inset-top)); left: 0; right: 0; z-index: 55;
   background: var(--card); border-bottom: 1px solid var(--line);
   box-shadow: var(--shadow); padding: 8px 14px 14px;
   display: flex; flex-direction: column; gap: 2px;
