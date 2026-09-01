@@ -3,9 +3,10 @@
 Living document — reviewed each session, updated as items land. Done items move
 to [CHANGELOG.md](CHANGELOG.md); this file only tracks what's ahead.
 
-**Snapshot (2026-09-01):** v0.22.0 + UI-audit batches 1–6 · all tests
-green · CI gate on `main` · realtime live (all 8 tables) · UI-audit remediation
-tracked below (32/32 done, both P0s closed — audit fully remediated).
+**Snapshot (2026-09-01):** v0.23.0 · all tests green · realtime live (all 8
+tables) · UI-audit remediation complete (32/32, both P0s closed) · next up:
+"Calm Travel Intelligence" design refresh on the `redesign/` branch (see
+`docs/redesign/YATRAFLOW_DESIGN_DIRECTION.md`).
 
 ---
 

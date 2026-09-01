@@ -48,6 +48,11 @@ YatraFlow is a collaborative travel-planning web app built India-first: real mul
 - **Nearby POI ideas**: real points of interest within 10 km of your route from OpenStreetMap (Overpass), Wikipedia geosearch and Mappls — verified coordinates only, with a "+ Add" button that drops them into the timeline through the normal impact-preview flow
 - **Expandable, decluttered map** — day/idea filter pills sit in a toolbar above the canvas instead of covering it, the marker key tucks behind an ⓘ chip (your choice is remembered), and a ⤢ Expand chip blows the map up to near-fullscreen — ⤡ Collapse or Escape returns it to the page
 
+### Accessible & deep-linkable
+- **Screen-reader & keyboard friendly** — skip-to-content link, real `<a>` navigation (middle-click works), labelled icon-only buttons, Escape closes popovers, live regions for auth/AI/error messages, a visible focus ring on every interactive control, and `prefers-reduced-motion` honoured globally
+- **Deep-linkable state** — the workspace's active tab (`#/trip/<id>/<tab>`) and Explore's filters + sort (`#/explore?q=…&sort=…`) live in the URL: refresh, bookmark or share any view
+- **Honest writes** — persisted mutations surface failures (toast + rollback) instead of showing data that silently vanishes on refresh
+
 ---
 
 ## 🚀 Getting started

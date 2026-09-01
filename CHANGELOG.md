@@ -2,7 +2,7 @@
 
 All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions are pre-1.0 MVP milestones.
 
-## [Unreleased]
+## [0.23.0] — 2026-09-01
 
 ### Fixed
 - **Publishing an itinerary silently failed to persist — the card vanished from Explore on refresh.** `publishItinerary` wrote the new publication into the in-memory store and then fire-and-forget the Supabase upsert (`void supabase…upsert(…)` with no error check), so any rejection (RLS, expired session, schema drift) showed a "published" card that the next hydration — which reads the table fresh — wiped without a trace. Diagnosed against the live project: `published_itineraries` had **0 rows** while the UI showed the publication; a scripted authenticated insert (throwaway QA account) succeeded, proving table, columns and RLS are sound and the failure is client-side/session-bound. The upsert now checks its result: on error it logs, toasts the PostgREST message, and **rolls back the optimistic cache write** so the UI never disagrees with the server. Additionally, `hydrateFromSupabase` now logs a per-table error for each of the 8 hydrated tables — Supabase returns failures as `{ error }` rather than rejecting, so a denied or missing table previously hydrated as an empty list with nothing in the console.
