@@ -18,7 +18,7 @@ export function LandingPage({ onNavigate }: { onNavigate: (r: string) => void })
             </p>
             <div className="hero-ctas">
               <a className="btn btn-primary btn-lg" href="#/auth?mode=signup">Start planning free →</a>
-              <a className="btn btn-outline btn-lg" style={{ background: 'var(--card)' }} href="#/explore">Explore trips</a>
+              <a className="btn btn-saffron btn-lg" href="#/explore">Explore itineraries</a>
             </div>
             <p className="small muted" style={{ marginTop: 16 }}>No card needed · Free forever · Your planning data is yours</p>
           </div>
