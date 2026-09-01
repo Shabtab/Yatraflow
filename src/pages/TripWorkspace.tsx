@@ -22,6 +22,7 @@ import { computeImpact, type ImpactResult } from '../lib/impact'
 import { loadDayCollapsed, saveDayCollapsed } from '../lib/uiPrefs'
 import { useTimeFormat, formatHM, formatHMRange } from '../lib/timefmt'
 import { scrollBehavior } from '../lib/motion'
+import { stopKindOf, STOP_KIND_LABELS } from '../lib/stopKind'
 import { Avatar, Chip, Modal, ConfirmDialog, Field, StatTile, HealthRing, EmptyState, toast, undoToast, useReorder, CopyButton, RouteSquiggle } from '../components/ui'
 import { ImpactPreviewPanel } from '../components/ImpactPreview'
 import { useSuggestionCache } from '../hooks/useSuggestionCache'
@@ -513,6 +514,18 @@ function TimelineTab({ trip, editable, applyChange, legCorrections, suggestionCa
     }
     return map
   }, [trip])
+  const warnDayCount = Object.keys(dayWarnings).length
+  // M4: sticky trip-total strip (doc §6.3) — same engine numbers as Overview.
+  const totals = useMemo(() => computeTotals(trip, legCorrections), [trip, legCorrections])
+
+  /** Day-jump rail: scroll a long timeline straight to a day card. */
+  function jumpToDay(dayIndex: number) {
+    const el = document.getElementById(`day-card-${dayIndex}`)
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    const isVisible = rect.top >= 0 && rect.bottom <= window.innerHeight
+    if (!isVisible) el.scrollIntoView({ behavior: scrollBehavior(), block: 'start' })
+  }
 
   /** Inline day rename — a lightweight label change, applied directly (no impact preview). */
   function handleRenameDay(dayIndex: number, title: string) {
@@ -578,6 +591,34 @@ function TimelineTab({ trip, editable, applyChange, legCorrections, suggestionCa
           <button className="btn btn-primary btn-sm" onClick={() => setEditorState({ mode: 'add', dayIndex: 0 })}>+ Add stop</button>
         )}
       </div>
+
+      <div className="tl-total-strip">
+        <span className="tl-total-label">Trip total</span>
+        <span>{Math.round(totals.totalDistanceKm).toLocaleString('en-IN')} km</span>
+        <span className="tl-total-dot" aria-hidden="true">·</span>
+        <span>{minutesToHM(totals.totalTravelMinutes)} driving</span>
+        <span className="tl-total-dot" aria-hidden="true">·</span>
+        <span>{formatInr(totals.totalCostInr)} estimated</span>
+        {warnDayCount > 0 && (
+          <span className="tl-total-warn">⚠ {warnDayCount} day{warnDayCount !== 1 ? 's' : ''} need{warnDayCount === 1 ? 's' : ''} attention</span>
+        )}
+      </div>
+
+      {days.length >= 4 && (
+        <div className="day-rail" role="navigation" aria-label="Jump to day">
+          <span className="day-rail-label">Jump to day</span>
+          <div className="day-rail-chips">
+            {days.map(d => {
+              const hasWarn = (dayWarnings[d.index] ?? []).length > 0
+              return (
+                <button key={d.id} type="button" className={`day-rail-chip ${hasWarn ? 'warn' : ''}`} onClick={() => jumpToDay(d.index)}>
+                  Day {d.index + 1}{hasWarn ? ' ⚠' : ''}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {days.map(day => (
         <DaySection key={day.id} day={day} trip={trip} editable={editable} legCorrections={legCorrections} suggestionCache={suggestionCache}
@@ -824,6 +865,11 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
           </div>
           {!collapsed && <DayWeatherChip trip={trip} dayIndex={day.index} />}
         </div>
+        {sev !== 'ok' && (
+          <span className={`day-warn-pill sev-${sev}`} title={warnings.map(w => w.title).join('\n')}>
+            ⚠ {warnings[0].title.replace(/^Day \d+:\s*/, '')}{warnings.length > 1 ? ` +${warnings.length - 1}` : ''}
+          </span>
+        )}
         {ordered.filter(s => s.status !== 'rejected').length >= 2 && <DaySpark stops={ordered.filter(s => s.status !== 'rejected')} />}
         {editable && (
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -845,6 +891,18 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
           <div>
             <div className="warn-title">{fc.title}</div>
             <div className="warn-fix">Fixed at {formatHM(fc.time, timeFormat)}{fc.notes ? ` — ${fc.notes}` : ''}</div>
+          </div>
+        </div>
+      ))}
+
+      {/* Warning state lives inside the affected day (doc §6.3) — the "Day N:"
+          prefix is redundant here, the pill + card already say which day. */}
+      {warnings.map((w, i) => (
+        <div key={i} className={`warn-item ${w.severity === 'high' ? 'sev-high' : w.severity === 'medium' ? '' : 'sev-low'}`} style={{ marginBottom: 8 }}>
+          <span className="warn-icon">{w.severity === 'high' ? '⛔' : '⚠️'}</span>
+          <div>
+            <div className="warn-title">{w.title.replace(/^Day \d+:\s*/, '')}</div>
+            {w.fix && <div className="warn-fix">{w.fix}</div>}
           </div>
         </div>
       ))}
@@ -912,6 +970,7 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
               </div>
             )
           }
+          const kind = stopKindOf(s)
           return (
             <React.Fragment key={s.id}>
               <div
@@ -924,14 +983,14 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
                   <span className="tl-time tl-dep">{sim.departures[i] ?? '--:--'}</span>
                 </div>
                 <div
-                  className={`stop-card status-${s.status} ${dragging === i ? 'dragging' : ''} ${over === i && dragging !== null && dragging !== i ? 'drag-over' : ''} ${foreignOver === i && dragging === null ? 'foreign-over' : ''}`}
+                  className={`stop-card kind-${kind} status-${s.status} ${dragging === i ? 'dragging' : ''} ${over === i && dragging !== null && dragging !== i ? 'drag-over' : ''} ${foreignOver === i && dragging === null ? 'foreign-over' : ''}`}
                 >
                 <div className={`stop-num cat-${s.category}`}>{i + 1}</div>
               <div className="stop-main">
                 <div className="stop-toprow">
                   <span className="stop-title">{s.title}</span>
                   <Chip tone={statusTone(s.status)}>{labelStatusText(s.status)}</Chip>
-                  <Chip tone="info">{labelCatText(s.category)}</Chip>
+                  <span className={`stop-kind-tag kind-${kind}`}>{STOP_KIND_LABELS[kind]}</span>
                   {s.priority === 'must-do' && <Chip tone="danger">Must do</Chip>}
                   {s.priority === 'optional' && <Chip tone="saffron">Optional</Chip>}
                   {s.weatherSensitive && <Chip tone="info">🌧️ weather-sensitive</Chip>}
