@@ -12,6 +12,50 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - **UI batch 2 — shared primitives** (findings F-01/F-03/F-11 from `docs/UI_AUDIT.md`): **P0 fixed** — `Field` now programmatically associates its label with the row's control (`useId` + `cloneElement`), so every form field app-wide (~30 call sites across Auth, CreateTrip, StopEditor, Profile, TripWorkspace) announces its label to screen readers and focuses on label click; custom controls (`LocationInput`) accept an `id` prop and forward it, explicit child ids win, non-control children (chip rows, time previews) are skipped. `ConfirmDialog` opens with focus on **Cancel** (new `Modal` `initialFocus` selector) so a stray Enter can no longer fire a destructive action. `Avatar` images carry intrinsic `width`/`height`, killing the layout shift while they load.
 - **UI batch 1 — theming & touch hardening** (findings F-18/F-19/F-20/F-23/F-24/F-25/F-26/F-27/F-28/F-29/F-30 from `docs/UI_AUDIT.md`): native UA chrome now follows the active theme via `color-scheme: light/dark` (P0 — scrollbars, `<select>` popups and date/time pickers used to render light inside dark mode) and native checkboxes/radios/the detour-scope slider pick up the brand teal via `accent-color`. Two `theme-color` metas keep the browser address bar themed, synced with the in-app toggle in `App.tsx`. Touch: `touch-action: manipulation` kills the double-tap-zoom delay (safe for the `touchDnd` long-press engine and the MapLibre canvas, which keep their own gesture handling), `-webkit-tap-highlight-color: transparent` removes the grey UA tap flash, and `overscroll-behavior: contain` stops the modal, AI chat and location dropdown from scroll-chaining the page behind them. Safe areas: `viewport-fit=cover` activated (it was missing, so the one pre-existing `env()` inset on the impact sheet was silently inert) and insets added to the toast zone, AI fab/drawer, topnav, mobile-menu offset and `scroll-padding-top`. Typography: `text-wrap: balance` on headings, `tabular-nums` on stat/health/impact/vote figures, 2-line clamp on trip-card titles so grids stay aligned.
 
+### Verification (production QA checklist for commit `9b551f8`)
+Run-through used to check the live build after shipping batches 4–6; kept here so the next deploy can reuse it. Ordered by regression risk — §1/§2 touch routing & history and are the ones to watch hardest.
+
+**0 · Deploy shipped at all**
+- Vercel production deployment shows commit `9b551f8` and "Ready" (strongest proof: the canonical alias's bundle hash matches a local `npm run build`).
+- Login still works — this app's recurring "renders fine, auth broken" failure mode (env vars per-branch, see AGENTS.md §3).
+
+**1 · Workspace tab in the URL (F-21) — highest risk, touches routing**
+- Switch to Budget → hash becomes `#/trip/<id>/budget`; refresh stays on Budget.
+- Copy a Chat-tab URL into a new tab → opens directly on Chat.
+- Browser Back on a tab → leaves the trip entirely (does not step back through visited tabs — replaceState, no history spam).
+- Hand-edited junk segment `#/trip/<id>/junk` → falls back to Overview, no blank page.
+- All five tabs render and highlight; watch callers that switch tabs programmatically (AI drawer links, confirm-dialog follow-ups) for a tab that changed state but not URL.
+- Switching tabs does not jump scroll to top (no hash-change → scroll-reset interaction).
+
+**2 · Explore filters + sort in the URL (F-22) — second-highest, same reasons**
+- Set search/style/budget/duration → hash like `#/explore?q=goa&max=20000&dur=short`; empty defaults omitted, no `?` when everything is default.
+- Refresh → filters survive **and the inputs show the restored values**, not just the filtered list.
+- Sort dropdown appears (brand-new UI on previously dead comparator code): all four options visibly reorder the cards.
+- Latent-bug fix check: change sort while a filter is active → order updates immediately (`sortKey` was missing from the results `useMemo` deps).
+- "✕ Clear filters" → inputs reset, list unfiltered, query empties, button disappears; filter fiddling creates no history entries.
+
+**3 · Forms & data-loss guard (F-13/F-15/F-16)**
+- Browser offers to save credentials on signup and autofills on login (`name`/`autoComplete` — verify Chrome + Safari).
+- CreateTrip: failed submit focuses the **first** invalid field with `aria-invalid`; same in StopEditor.
+- Pending impact change on screen → tab close / F5 shows the browser "Leave site?" dialog; after keep/discard, closing is prompt-free.
+
+**4 · Keyboard & screen reader (batch 4)**
+- Tab from page load → skip link appears; Enter focuses `<main>` and the next Tab continues from there.
+- Topnav items are real links: URL preview on hover; middle-click / ⌘-click opens a trip in a new tab.
+- Escape closes mobile menu, notifications popover, account menu — focus returns to the trigger.
+- Screen reader / a11y tree: stop actions name the stop (not "button, ellipsis"), halt-minutes/comment/AI-chat/map toggles labelled, day-collapse reads "Day N stops" + state.
+- Wrong password on login → error announced (`role="alert"`); AI drawer messages announced (`role="log"`).
+- Explore result count exposed to SR via `.sr-only` line.
+
+**5 · Copy & formatting sweep (F-31/F-32) — quick eyeball pass**
+- Explore budget line uses `formatInr` (₹ grouping consistent with the rest of the app).
+- Curly apostrophes render correctly (no entities, no mojibake) in: notifications empty state, both invite/link error pages, AI welcome message, CreateTrip hints, Landing heading, TripsList empty state + delete confirm, public-itinerary copy hint, halt-spots hint, "Why it's worth it" label.
+- Template strings from the sweep still interpolate (`${trip.name}` in the AI welcome; the `googleEnabled()` branch in the halt-spots hint).
+
+**6 · Mobile spot-check (≤720px)**
+- Hamburger items navigate as links, Escape closes, touch targets ≥40px.
+- Tab URLs still update on mobile nav route changes.
+
 ### Docs
 - **Full UI audit report (`docs/UI_AUDIT.md`)** — rule-by-rule pass of every user-facing surface (app shell, all pages, shared components, `styles.css`, `index.html`) against the Vercel Web Interface Guidelines + WCAG 2.2 AA + mobile-web standards: **32 findings (2 P0 · 15 P1 · 15 P2)**, each with `file:line` references and a concrete example fix. Headliners: `Field` labels are not programmatically associated with their controls (one shared fix in `ui.tsx` covers ~30 call sites); dark mode never sets `color-scheme`/`theme-color` so native controls render light; missing `touch-action`/`overscroll-behavior`/safe-area insets; `prefers-reduced-motion` guards only one animation; workspace tabs + Explore filters aren't URL-addressable (Explore's sort control is dead code). Includes what's already strong (focus-trapped modal, live-region toasts, ARIA combobox, token system), a 16-row anti-pattern checklist (14/16 clean), a 6-batch fix roadmap (~14 h) and a verification plan. No code changed in this pass.
 
