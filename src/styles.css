@@ -267,8 +267,27 @@
 .health-rec:hover { filter: brightness(.97); }
 .health-rec:focus-visible { outline: none; box-shadow: var(--ring); }
 
-/* Route snapshot dark card (mockup) */
-.route-snap { background: linear-gradient(150deg, var(--yf-navy), #0B2545 88%); color: #fff; }
+/* Route snapshot dark card (mockup) — same rich treatment as the landing hero:
+   navy gradient + faint cartographic grid + ambient saffron/coral glows.
+   .card.route-snap (0,2,0) on purpose: `.card`'s `background: var(--card)`
+   shorthand is declared LATER in this file and would otherwise strip the
+   gradient — light theme rendered a cream card under light-on-light SVG labels. */
+.card.route-snap {
+  position: relative; overflow: hidden;
+  background: linear-gradient(150deg, var(--yf-navy), #0B2545 88%);
+  color: #fff;
+  box-shadow: 0 30px 60px rgba(11,37,69,.28);
+}
+.route-snap::before {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background-image:
+    radial-gradient(420px 180px at 8% 0%, rgba(239,173,84,.14), transparent 70%),
+    radial-gradient(380px 200px at 96% 100%, rgba(232,104,76,.13), transparent 70%),
+    linear-gradient(rgba(255,255,255,.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.05) 1px, transparent 1px);
+  background-size: auto, auto, 26px 26px, 26px 26px;
+}
+.route-snap > * { position: relative; }
 .route-snap h3 { color: #fff; }
 .route-snap .divider { border-top-color: rgba(255,255,255,.16); }
 .route-snap-meta { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 6px; font-size: 13px; font-weight: 650; flex-wrap: wrap; }
@@ -809,16 +828,19 @@ a.btn { text-decoration: none; }
 .board-map .map-frame { flex: 1 1 auto; height: auto; min-height: 0; border: none; border-radius: 0; }
 .board-topbar {
   position: relative; z-index: 3;
-  display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap;
+  display: flex; justify-content: space-between; align-items: stretch; gap: 12px; flex-wrap: wrap;
   margin: 14px 16px 4px;
 }
-.board-info { border-radius: 18px; padding: 13px 16px; max-width: 400px; box-shadow: var(--shadow-soft); }
+/* Equal-size pair (mockup): both glass cards share width/height rules and
+   stretch to the same height, anchored to the board's left/right edges. */
+.board-info { flex: 0 1 560px; border-radius: 18px; padding: 13px 16px; max-width: 560px; box-shadow: var(--shadow-soft); }
 .board-fit {
   margin-top: 9px; border: none; background: var(--teal-soft); color: var(--teal-deep);
   border-radius: 999px; font-size: 12px; font-weight: 800; padding: 7px 14px; cursor: pointer;
 }
 .board-fit:hover { filter: brightness(.96); }
-.board-pulse { border-radius: 18px; padding: 13px 16px; width: 268px; box-shadow: var(--shadow-soft); }
+.board-pulse { flex: 0 1 560px; border-radius: 18px; padding: 13px 16px; max-width: 560px; box-shadow: var(--shadow-soft); }
+.board-pulse .board-pulse-lines { display: flex; flex-wrap: wrap; gap: 3px 14px; margin-top: 9px; font-size: 12.5px; color: var(--text-2); }
 .board-pulse .pulse-label { font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--yf-text-muted); }
 .board-pulse-row { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
 .board-pulse-row .health-num-big { font-size: 34px; }
@@ -835,6 +857,8 @@ a.btn { text-decoration: none; }
 .board-cols {
   position: relative; z-index: 2; flex: 1 1 auto; min-height: 0;
   display: flex; align-items: stretch; gap: 14px; overflow-x: auto;
+  justify-content: center; /* centre short trips; `safe` keeps long-trip scroll from clipping */
+  justify-content: safe center;
   padding: 6px 16px 14px; scrollbar-width: thin;
 }
 .board-col {
@@ -853,47 +877,56 @@ a.btn { text-decoration: none; }
    so long titles can never wrap the header into a jumble. */
 .board-col-head {
   display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 2px 10px;
-  padding: 11px 13px 9px; text-align: left;
+  padding: 9px 12px 7px; text-align: left;
   background: transparent; border: none; border-bottom: 1px solid var(--line); cursor: pointer;
   font-family: var(--font-body);
 }
 .board-col-head:hover { background: var(--card-soft); }
-.board-col-day { font-size: 12.5px; font-weight: 800; color: var(--text-1); }
+.board-col-day { font-size: 12px; font-weight: 800; color: var(--text-1); }
 .board-col-count {
-  font-size: 11px; font-weight: 800; padding: 3px 9px; border-radius: 999px;
+  font-size: 10.5px; font-weight: 800; padding: 2px 8px; border-radius: 999px;
   background: var(--teal-soft); color: var(--teal-deep); white-space: nowrap;
 }
 .board-col-subtitle {
-  grid-column: 1 / -1; font-size: 12px; color: var(--text-3);
+  grid-column: 1 / -1; font-size: 11.5px; color: var(--text-3);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .board-col-head .day-warn-pill { grid-column: 1 / -1; justify-self: start; margin-top: 3px; max-width: 100%; }
 .board-col-stops {
-  flex: 1 1 auto; overflow-y: auto; padding: 11px; min-height: 0;
-  display: flex; flex-direction: column; gap: 10px;
+  flex: 1 1 auto; overflow-y: auto; padding: 9px; min-height: 0;
+  display: flex; flex-direction: column; gap: 8px;
 }
-.board-stop { padding: 9px 12px 9px 14px; box-shadow: var(--shadow-soft); }
+.board-stop { padding: 7px 10px 7px 13px; box-shadow: var(--shadow-soft); }
+/* Kind-tinted cards (mockup): the whole card washes with its kind colour, not
+   just the spine — soft gradient + tinted border; the spine stays saturated. */
+.board-stop.stop-card {
+  border-color: color-mix(in srgb, var(--kind-c, var(--line)) 25%, var(--line));
+  background: linear-gradient(to right,
+    color-mix(in srgb, var(--kind-c, var(--line)) 9%, var(--card)) 0%,
+    color-mix(in srgb, var(--kind-c, var(--line)) 4%, var(--card)) 55%,
+    var(--card) 100%);
+}
 /* Mockup card anatomy: accent bar (from kind-*) → kicker → title → one meta line. */
 .board-stop-kicker {
-  display: block; font-size: 10px; font-weight: 800; letter-spacing: .08em;
+  display: block; font-size: 9.5px; font-weight: 800; letter-spacing: .08em;
   text-transform: uppercase; color: var(--text-3);
 }
 .board-stop .stop-title {
-  display: block; font-size: 14px; margin-top: 3px;
+  display: block; font-size: 13px; margin-top: 2px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .board-stop-meta {
-  display: block; margin-top: 3px; font-size: 11.5px; color: var(--text-3); font-weight: 550;
+  display: block; margin-top: 2px; font-size: 11px; color: var(--text-3); font-weight: 550;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .board-col-zone {
   border: 1.5px dashed color-mix(in srgb, var(--yf-teal-600) 40%, var(--yf-border));
   border-radius: 13px;
-  padding: 11px 10px; text-align: center; color: var(--yf-text-muted);
+  padding: 9px 9px; text-align: center; color: var(--yf-text-muted);
   display: flex; flex-direction: column; gap: 2px; flex: 0 0 auto;
   background: color-mix(in srgb, var(--card) 55%, transparent);
 }
-.board-col-zone b { font-size: 12.5px; color: var(--teal-deep); }
+.board-col-zone b { font-size: 12px; color: var(--teal-deep); }
 .board-col-zone.foreign-over { border-color: var(--teal); background: var(--teal-soft); }
 .board-col-zone.foreign-over b { color: var(--teal-deep); }
 
@@ -1883,6 +1916,9 @@ main:focus { outline: none; }
   .board-topbar { position: static; inset: auto; flex-direction: column; margin: 0 0 8px; gap: 8px; }
   .board-info { max-width: none; }
   .board-pulse { width: 100%; }
+  /* column-direction topbar: the desktop equal-size flex basis would become a
+     560px height here — stack panels at natural size instead */
+  .board-topbar .board-info, .board-topbar .board-pulse { flex: 0 0 auto; }
   .board-cols { position: static; inset: auto; margin-top: 4px; padding-bottom: 10px; }
   .board-col { flex: 0 0 264px; }
   .board-col-head { min-height: 52px; }

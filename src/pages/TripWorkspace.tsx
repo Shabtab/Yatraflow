@@ -256,6 +256,20 @@ function OverviewTab({ trip, editable, onOpenDecisions, onOpenTimeline, onOpenMa
   const nextCommitment = [...trip.fixedCommitments]
     .sort((a, b) => a.dayIndex - b.dayIndex || a.time.localeCompare(b.time))[0]
   const crew = trip.members ?? []
+  // Real-geometry snapshot: ordered stop coordinates (rejected stops excluded),
+  // each tagged with its day index so badges land on each day's first stop.
+  const routePoints = useMemo(() => {
+    const pts: Array<{ lat: number; lng: number; day: number }> = []
+    if (trip.startLocationCoords) pts.push({ lat: trip.startLocationCoords.lat, lng: trip.startLocationCoords.lng, day: 0 })
+    for (const day of [...trip.days].sort((a, b) => a.index - b.index)) {
+      for (const s of [...day.stops].sort((a, b) => a.orderInDay - b.orderInDay)) {
+        if (s.status !== 'rejected' && Number.isFinite(s.lat) && Number.isFinite(s.lng)) {
+          pts.push({ lat: s.lat, lng: s.lng, day: day.index })
+        }
+      }
+    }
+    return pts.length >= 2 ? pts : undefined
+  }, [trip.days, trip.startLocationCoords])
   // Bento briefing (CTI §6.2): lead with the most consequential issues.
   const severityRank = { high: 0, medium: 1, low: 2 } as const
   const priorityActions = [...health.warnings]
@@ -337,7 +351,9 @@ function OverviewTab({ trip, editable, onOpenDecisions, onOpenTimeline, onOpenMa
           <RouteSnapshot
             count={trip.days.length}
             startLabel={trip.startLocation}
-            endLabel={isRoundTrip(trip) ? trip.startLocation : trip.destinations[trip.destinations.length - 1]}
+            endLabel={trip.destinations[trip.destinations.length - 1]}
+            roundTripNote={isRoundTrip(trip) ? `↩ returns to ${trip.startLocation}` : undefined}
+            points={routePoints}
           />
           <p style={{ margin: '4px 0 0', fontSize: 12.5, opacity: .85, lineHeight: 1.6 }}>
             <b>{trip.startLocation}</b>
