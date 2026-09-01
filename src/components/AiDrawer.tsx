@@ -2,6 +2,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import type { Trip } from '../data/types'
 import { answerQuestion, quickPrompts, type AiReply } from '../lib/ai'
+import { scrollBehavior } from '../lib/motion'
 import { Chip } from './ui'
 
 interface Msg {
@@ -21,7 +22,7 @@ export function AiDrawer({ trip, open, onOpen, onClose }: { trip: Trip; open: bo
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: scrollBehavior() })
   }, [msgs, thinking])
 
   function ask(q: string) {

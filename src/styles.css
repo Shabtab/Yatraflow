@@ -986,8 +986,7 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
 .divider-wrap .divider { flex: 1; margin: 0; }
 .explore-filters { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 20px; }
 .explore-filters .input, .explore-filters .select { width: auto; min-width: 140px; flex: 0 1 auto; }
-.trip-card-hit { all: unset; cursor: pointer; display: block; }
-.trip-card-hit:focus-visible { outline: none; box-shadow: var(--ring); border-radius: 8px; }
+.trip-card-hit { all: unset; cursor: pointer; display: block; border-radius: 8px; }
 .route-flow { display: flex; flex-wrap: wrap; gap: 6px 4px; align-items: center; }
 .route-node { font-weight: 650; font-size: 14px; }
 .route-arrow { color: var(--saffron); font-weight: 800; margin-right: 7px; }
@@ -1264,12 +1263,23 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
   .loc-dropdown { max-height: 240px; }
 }
 
-/* smooth focus visibility for keyboard users */
+/* Smooth focus visibility for keyboard users — one shared teal ring for every
+   interactive control (UI audit F-12; state matrix in DESIGN_TOKENS.md).
+   .skip-link is pre-wired for the F-08 skip link; .yf-map-pin gets an extra
+   outline-offset below so the ring clears the map tiles. */
 .input:focus-visible, .select:focus-visible, .textarea:focus-visible,
-.btn:focus-visible, .icon-btn:focus-visible {
+.btn:focus-visible, .icon-btn:focus-visible,
+.nav-link:focus-visible, .tab-btn:focus-visible, .brand:focus-visible,
+.mobile-nav-btn:focus-visible,
+.day-collapse:focus-visible, .move-btn:focus-visible, .vote-btn:focus-visible,
+.chip-btn:focus-visible, .clickable-chip:focus-visible, .toast-action:focus-visible,
+.map-day-chip:focus-visible, .map-idea-chip:focus-visible, .map-legend-toggle:focus-visible,
+.map-expand-chip:focus-visible, .loc-option:focus-visible, .ai-fab:focus-visible,
+.trip-card-hit:focus-visible, .skip-link:focus-visible, .yf-map-pin:focus-visible {
   outline: none;
   box-shadow: var(--ring);
 }
+.yf-map-pin:focus-visible { outline-offset: 2px; }
 
 /* ---- Location dropdown: two-line rows with POI thumbnails ---- */
 .loc-option { align-items: center; }
@@ -1299,7 +1309,17 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
   0%, 100% { box-shadow: 0 2px 4px rgba(11,37,69,.28), 0 0 0 0 rgba(245,158,45,.45); }
   50% { box-shadow: 0 2px 4px rgba(11,37,69,.28), 0 0 0 9px rgba(245,158,45,0); }
 }
+/* Honour the OS reduce-motion setting globally (UI audit F-17): collapse all
+   animations and transitions to a single frame instead of guarding each one —
+   spinners/typing dots freeze, hover lifts become instant, sheets appear
+   without sliding. */
 @media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+  /* keep the idea-pin visible but static (it already keeps its dashed gold style) */
   .yf-map-pin-idea { animation: none; }
 }
 .poi-suggest-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }

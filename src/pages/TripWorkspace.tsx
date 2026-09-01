@@ -21,6 +21,7 @@ import { routePath } from '../lib/routing'
 import { computeImpact, type ImpactResult } from '../lib/impact'
 import { loadDayCollapsed, saveDayCollapsed } from '../lib/uiPrefs'
 import { useTimeFormat, formatHM, formatHMRange } from '../lib/timefmt'
+import { scrollBehavior } from '../lib/motion'
 import { Avatar, Chip, Modal, ConfirmDialog, Field, StatTile, HealthRing, EmptyState, toast, undoToast, useReorder, CopyButton } from '../components/ui'
 import { ImpactPreviewPanel } from '../components/ImpactPreview'
 import { useSuggestionCache } from '../hooks/useSuggestionCache'
@@ -76,7 +77,7 @@ export function TripWorkspace({ tripId, onNavigate }: { tripId: string; onNaviga
     const rect = el.getBoundingClientRect()
     const isVisible = rect.top >= 0 && rect.bottom <= window.innerHeight
     if (!isVisible) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      el.scrollIntoView({ behavior: scrollBehavior(), block: 'center' })
     }
   }
 
