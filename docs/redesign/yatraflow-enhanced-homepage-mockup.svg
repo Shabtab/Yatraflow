@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1120" viewBox="0 0 1600 1120" role="img" aria-label="Enhanced YatraFlow homepage concept with contemporary gradients, translucent panels and trip planner preview">
+  <defs>
+    <linearGradient id="page" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#eef9f6"/><stop offset=".48" stop-color="#f8f7ed"/><stop offset="1" stop-color="#fff3e8"/></linearGradient>
+    <radialGradient id="mintGlow" cx="0" cy="0" r="1" gradientTransform="translate(370 210) rotate(38) scale(560 430)"><stop stop-color="#7ce1cf" stop-opacity=".52"/><stop offset="1" stop-color="#7ce1cf" stop-opacity="0"/></radialGradient>
+    <radialGradient id="peachGlow" cx="0" cy="0" r="1" gradientTransform="translate(1315 280) rotate(-42) scale(520 430)"><stop stop-color="#ffb36b" stop-opacity=".42"/><stop offset="1" stop-color="#ffb36b" stop-opacity="0"/></radialGradient>
+    <linearGradient id="nav" x1="0" x2="1"><stop stop-color="#ffffffdc"/><stop offset="1" stop-color="#fffaf2c9"/></linearGradient>
+    <linearGradient id="preview" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#0e484b"/><stop offset=".55" stop-color="#135e5b"/><stop offset="1" stop-color="#123256"/></linearGradient>
+    <linearGradient id="route" x1="0" x2="1"><stop stop-color="#efad54"/><stop offset=".5" stop-color="#ffdf93"/><stop offset="1" stop-color="#e8684c"/></linearGradient>
+    <linearGradient id="cta" x1="0" x2="1"><stop stop-color="#0e8d82"/><stop offset="1" stop-color="#0c716d"/></linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="170%" height="180%"><feDropShadow dx="0" dy="18" stdDeviation="26" flood-color="#123c40" flood-opacity=".18"/></filter>
+    <filter id="soft" x="-30%" y="-30%" width="170%" height="180%"><feDropShadow dx="0" dy="7" stdDeviation="13" flood-color="#163f42" flood-opacity=".12"/></filter>
+    <filter id="blur"><feGaussianBlur stdDeviation="28"/></filter>
+    <pattern id="grid" width="34" height="34" patternUnits="userSpaceOnUse"><path d="M34 0H0V34" fill="none" stroke="#fff" stroke-opacity=".13"/></pattern>
+  </defs>
+  <rect width="1600" height="1120" fill="url(#page)"/>
+  <rect width="1600" height="690" fill="url(#mintGlow)"/>
+  <rect width="1600" height="690" fill="url(#peachGlow)"/>
+  <circle cx="130" cy="570" r="180" fill="#98dfd2" fill-opacity=".16" filter="url(#blur)"/>
+  <circle cx="1460" cy="620" r="230" fill="#f9a56b" fill-opacity=".14" filter="url(#blur)"/>
+
+  <rect x="34" y="25" width="1532" height="68" rx="20" fill="url(#nav)" stroke="#fff" stroke-opacity=".8" filter="url(#soft)"/>
+  <circle cx="75" cy="59" r="17" fill="#103f49"/><path d="M67 63c4-11 10-11 16 0" fill="none" stroke="#69d0c1" stroke-width="2.4" stroke-linecap="round"/><circle cx="75" cy="52" r="2" fill="#f5c15f"/>
+  <text x="104" y="67" font-family="Arial, sans-serif" font-size="24" font-weight="700" fill="#123544">Yatra<tspan fill="#0b8d84">Flow</tspan></text>
+  <text x="282" y="65" font-family="Arial, sans-serif" font-size="14" font-weight="700" fill="#35565d">My trips</text><text x="370" y="65" font-family="Arial, sans-serif" font-size="14" font-weight="700" fill="#35565d">Plan a trip</text><text x="473" y="65" font-family="Arial, sans-serif" font-size="14" font-weight="700" fill="#35565d">Explore</text>
+  <rect x="1262" y="40" width="103" height="38" rx="12" fill="#fff" fill-opacity=".75" stroke="#dfeae4"/><text x="1283" y="65" font-family="Arial, sans-serif" font-size="13" font-weight="700" fill="#33585a">Log in</text>
+  <rect x="1377" y="40" width="158" height="38" rx="12" fill="#123f49"/><text x="1401" y="65" font-family="Arial, sans-serif" font-size="13" font-weight="700" fill="#fff">Start planning →</text>
+
+  <g font-family="Arial, sans-serif">
+    <rect x="184" y="151" width="208" height="32" rx="16" fill="#fff8e9" stroke="#f6dfb3"/>
+    <circle cx="204" cy="167" r="5" fill="#f09d36"/><text x="218" y="172" font-size="12" font-weight="700" fill="#94651d">Built for Indian travellers</text>
+    <text x="181" y="263" font-size="65" font-weight="700" fill="#102e4b">Plan trips that</text>
+    <text x="181" y="338" font-size="65" font-weight="700" fill="#102e4b">actually <tspan fill="#0b9185">flow together.</tspan></text>
+    <text x="184" y="390" font-size="19" fill="#466168">Build the route, see every time and cost impact,</text>
+    <text x="184" y="419" font-size="19" fill="#466168">and keep your whole crew on the same page.</text>
+    <rect x="183" y="459" width="196" height="55" rx="16" fill="url(#cta)" filter="url(#soft)"/><text x="208" y="493" font-size="15" font-weight="700" fill="#fff">Start planning free</text><text x="350" y="493" font-size="22" font-weight="700" fill="#fff">→</text>
+    <rect x="394" y="459" width="178" height="55" rx="16" fill="#ffffffa8" stroke="#d5e4de"/><text x="419" y="493" font-size="15" font-weight="700" fill="#1c4b50">Explore trips</text>
+    <text x="184" y="553" font-size="13" fill="#607579">No card needed</text><circle cx="281" cy="549" r="2" fill="#98a9a8"/><text x="292" y="553" font-size="13" fill="#607579">Free forever</text><circle cx="380" cy="549" r="2" fill="#98a9a8"/><text x="391" y="553" font-size="13" fill="#607579">Your planning data is yours</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="817" y="139" width="602" height="458" rx="28" fill="url(#preview)"/>
+  </g>
+  <rect x="817" y="139" width="602" height="458" rx="28" fill="url(#grid)"/>
+  <circle cx="1356" cy="213" r="112" fill="#e8aa52" fill-opacity=".14"/><circle cx="1371" cy="208" r="76" fill="none" stroke="#f6cc82" stroke-opacity=".28"/>
+  <text x="854" y="182" font-family="Arial, sans-serif" font-size="12" font-weight="700" fill="#b5dad2">YOUR NEXT ADVENTURE</text>
+  <text x="854" y="222" font-family="Arial, sans-serif" font-size="27" font-weight="700" fill="#fff">🏔️ Leh–Ladakh road escape</text>
+  <text x="855" y="250" font-family="Arial, sans-serif" font-size="13" fill="#c8e3df">12–21 Sep · 10 days · 4 travellers · Motorcycle</text>
+  <rect x="854" y="278" width="142" height="82" rx="16" fill="#ffffff18" stroke="#ffffff24"/><text x="871" y="305" font-family="Arial, sans-serif" font-size="11" fill="#bcded9">EST. PER PERSON</text><text x="871" y="337" font-family="Arial, sans-serif" font-size="24" font-weight="700" fill="#fff">₹5,408</text>
+  <rect x="1010" y="278" width="142" height="82" rx="16" fill="#ffffff18" stroke="#ffffff24"/><text x="1027" y="305" font-family="Arial, sans-serif" font-size="11" fill="#bcded9">DRIVING TIME</text><text x="1027" y="337" font-family="Arial, sans-serif" font-size="24" font-weight="700" fill="#fff">60h 15m</text>
+  <rect x="1166" y="278" width="142" height="82" rx="16" fill="#ffffff18" stroke="#ffffff24"/><text x="1183" y="305" font-family="Arial, sans-serif" font-size="11" fill="#bcded9">TRIP HEALTH</text><text x="1183" y="337" font-family="Arial, sans-serif" font-size="24" font-weight="700" fill="#ffca70">53</text>
+  <path d="M866 466 C928 402 984 469 1042 417 S1165 367 1227 429 S1327 490 1376 398" fill="none" stroke="url(#route)" stroke-width="8" stroke-linecap="round"/>
+  <path d="M866 466 C928 402 984 469 1042 417 S1165 367 1227 429 S1327 490 1376 398" fill="none" stroke="#fff8d7" stroke-width="2" stroke-dasharray="7 9" stroke-linecap="round"/>
+  <g font-family="Arial, sans-serif" font-size="11" font-weight="700" text-anchor="middle"><g><circle cx="887" cy="453" r="13" fill="#fff"/><text x="887" y="457" fill="#155b60">1</text></g><g><circle cx="1042" cy="417" r="13" fill="#fff"/><text x="1042" y="421" fill="#155b60">3</text></g><g><circle cx="1227" cy="429" r="13" fill="#fff"/><text x="1227" y="433" fill="#155b60">6</text></g><g><circle cx="1376" cy="398" r="13" fill="#fff"/><text x="1376" y="402" fill="#155b60">10</text></g></g>
+  <rect x="849" y="512" width="345" height="55" rx="14" fill="#fff3e5" fill-opacity=".96"/><text x="867" y="536" font-family="Arial, sans-serif" font-size="13" font-weight="700" fill="#864c24">⚠ Day 3 is overloaded</text><text x="867" y="555" font-family="Arial, sans-serif" font-size="11" fill="#926448">Add a rest halt to protect your arrival time.</text>
+  <rect x="1207" y="512" width="184" height="55" rx="14" fill="#dff5ed" fill-opacity=".95"/><text x="1223" y="536" font-family="Arial, sans-serif" font-size="13" font-weight="700" fill="#176a5e">3 friends synced</text><text x="1223" y="555" font-family="Arial, sans-serif" font-size="11" fill="#35776d">Live collaboration on</text>
+
+  <g filter="url(#soft)"><rect x="700" y="534" width="177" height="93" rx="18" fill="#ffffffed"/></g>
+  <text x="721" y="561" font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="#668082">LIVE GROUP SIGNAL</text><text x="721" y="588" font-family="Arial, sans-serif" font-size="14" font-weight="700" fill="#21494e">Everyone voted</text><circle cx="828" cy="603" r="13" fill="#ddab7d"/><circle cx="849" cy="603" r="13" fill="#81c4ba"/><circle cx="870" cy="603" r="13" fill="#796da6"/>
+
+  <text x="800" y="719" text-anchor="middle" font-family="Arial, sans-serif" font-size="15" font-weight="700" fill="#0d877d">ONE PLACE FOR THE REALITY OF A TRIP</text>
+  <text x="800" y="765" text-anchor="middle" font-family="Arial, sans-serif" font-size="38" font-weight="700" fill="#123044">From “let’s go” to a plan</text>
+  <text x="800" y="808" text-anchor="middle" font-family="Arial, sans-serif" font-size="38" font-weight="700" fill="#123044">everyone can actually follow.</text>
+
+  <g filter="url(#soft)" font-family="Arial, sans-serif">
+    <rect x="183" y="867" width="372" height="163" rx="22" fill="#ffffffba" stroke="#fff"/><circle cx="226" cy="912" r="22" fill="#e5f4ee"/><text x="216" y="920" font-size="22">⌁</text><text x="268" y="912" font-size="17" font-weight="700" fill="#193f48">See the impact before you change</text><text x="226" y="949" font-size="13" fill="#597176">Every move shows time, distance and</text><text x="226" y="971" font-size="13" fill="#597176">budget consequences — no surprises later.</text>
+    <rect x="614" y="867" width="372" height="163" rx="22" fill="#ffffffba" stroke="#fff"/><circle cx="657" cy="912" r="22" fill="#fff0d9"/><text x="647" y="920" font-size="22">✦</text><text x="699" y="912" font-size="17" font-weight="700" fill="#193f48">Plan around real road time</text><text x="657" y="949" font-size="13" fill="#597176">Route days, break suggestions and arrival</text><text x="657" y="971" font-size="13" fill="#597176">times designed for how journeys really work.</text>
+    <rect x="1045" y="867" width="372" height="163" rx="22" fill="#ffffffba" stroke="#fff"/><circle cx="1088" cy="912" r="22" fill="#ebebfa"/><text x="1078" y="920" font-size="21">◉</text><text x="1130" y="912" font-size="17" font-weight="700" fill="#193f48">Keep the whole group aligned</text><text x="1088" y="949" font-size="13" fill="#597176">Share the itinerary, decide together, and</text><text x="1088" y="971" font-size="13" fill="#597176">know what still needs an answer.</text>
+  </g>
+  <text x="800" y="1084" text-anchor="middle" font-family="Arial, sans-serif" font-size="13" fill="#728486">YatraFlow · Plan real trips, together</text>
+</svg>
