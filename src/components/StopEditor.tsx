@@ -1,5 +1,5 @@
 // ============ Stop add/edit modal ============
-import React, { useState } from 'react'
+import React, { useRef, useState } from 'react'
 import type { ItineraryStop, StopCategory, StopStatus, Trip } from '../data/types'
 import { STOP_CATEGORIES, STOP_STATUSES } from '../data/types'
 import { Modal, Field } from './ui'
@@ -66,6 +66,8 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel,
   const timeFormat = useTimeFormat()
   const [v, setV] = useState<StopFormValues>(normalize(initial))
   const [errs, setErrs] = useState<Record<string, string>>({})
+  /** first-invalid focus targets (F-15) — plain inputs register here */
+  const fieldRefs = useRef<Record<string, HTMLElement | null>>({})
   /** "idle" | "loading" | "found" | "none" — OSM hours lookup after picking a place */
   const [hoursState, setHoursState] = useState<'idle' | 'loading' | 'found' | 'none'>('idle')
   /** "idle" | "loading" — road-leg lookup after picking a place */
@@ -153,7 +155,13 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel,
     if (v.sourceUrl && !/^https?:\/\//.test(v.sourceUrl)) next.sourceUrl = 'Link must start with http:// or https://'
     if (v.openTime && v.closeTime && v.closeTime <= v.openTime) next.closeTime = 'Closing time must be after opening time.'
     setErrs(next)
-    if (Object.keys(next).length) return
+    if (Object.keys(next).length) {
+      // F-15: focus the first invalid field (role="alert" announces the message;
+      // LocationInput fields don't register a ref, so the first focusable one wins)
+      const first = Object.keys(next).find(k => fieldRefs.current[k])
+      if (first) fieldRefs.current[first]!.focus()
+      return
+    }
     onSave({ ...v, title: v.title.trim(), locationName: v.locationName.trim() })
   }
 
@@ -162,7 +170,7 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel,
       <form onSubmit={submit}>
         <div className="form-row">
           <Field label="Stop name" error={errs.title}>
-            <input className="input" value={v.title} onChange={e => set('title', e.target.value)} placeholder="e.g. Cheeyappara Waterfalls" />
+            <input className="input" ref={el => (fieldRefs.current.title = el)} aria-invalid={!!errs.title} value={v.title} onChange={e => set('title', e.target.value)} placeholder="e.g. Cheeyappara Waterfalls" />
           </Field>
           <Field label="Category">
             <select className="select" value={v.category} onChange={e => set('category', e.target.value as StopCategory)}>
@@ -195,7 +203,7 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel,
           return (
             <div className="form-row" style={{ gridTemplateColumns: hoursRelevant ? '1fr 1fr 1fr' : '1fr' }}>
               <Field label="Visit duration (min)" error={errs.visitMinutes}>
-                <input type="number" min={0} step={5} className="input" value={v.visitMinutes} onChange={e => set('visitMinutes', Number(e.target.value))} />
+                <input type="number" min={0} step={5} className="input" ref={el => (fieldRefs.current.visitMinutes = el)} aria-invalid={!!errs.visitMinutes} value={v.visitMinutes} onChange={e => set('visitMinutes', Number(e.target.value))} />
               </Field>
               {hoursRelevant && (
                 <Field label="Opens at" hint={hoursHint}>
@@ -205,7 +213,7 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel,
               )}
               {hoursRelevant && (
                 <Field label="Closes at" error={errs.closeTime}>
-                  <input type="time" className="input" value={v.closeTime} onChange={e => set('closeTime', e.target.value)} />
+                  <input type="time" className="input" ref={el => (fieldRefs.current.closeTime = el)} aria-invalid={!!errs.closeTime} value={v.closeTime} onChange={e => set('closeTime', e.target.value)} />
                   {v.closeTime && <div className="time-preview small muted">= {formatHM(v.closeTime, timeFormat)}</div>}
                 </Field>
               )}
@@ -266,7 +274,7 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel,
 
         <div className="form-row">
           <Field label="Source link (optional)">
-            <input className="input" value={v.sourceUrl} onChange={e => set('sourceUrl', e.target.value)} placeholder="https://…" />
+            <input className="input" ref={el => (fieldRefs.current.sourceUrl = el)} aria-invalid={!!errs.sourceUrl} value={v.sourceUrl} onChange={e => set('sourceUrl', e.target.value)} placeholder="https://…" />
           </Field>
           <Field label="Status">
             <select className="select" value={v.status} onChange={e => set('status', e.target.value as StopStatus)}>

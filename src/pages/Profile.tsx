@@ -41,8 +41,8 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
               <Avatar user={me} size="lg" />
               <span className="small muted">Avatars use your initials in this MVP.</span>
             </div>
-            <Field label="Display name"><input className="input" value={f.name} onChange={e => setF(x => ({ ...x, name: e.target.value }))} /></Field>
-            <Field label="Home city"><input className="input" value={f.homeCity} onChange={e => setF(x => ({ ...x, homeCity: e.target.value }))} placeholder="e.g. Kochi" /></Field>
+            <Field label="Display name"><input className="input" autoComplete="name" value={f.name} onChange={e => setF(x => ({ ...x, name: e.target.value }))} /></Field>
+            <Field label="Home city"><input className="input" autoComplete="address-level2" value={f.homeCity} onChange={e => setF(x => ({ ...x, homeCity: e.target.value }))} placeholder="e.g. Kochi" /></Field>
             <Field label="Languages you speak" hint="Comma separated — e.g. en, hi, ml">
               <input className="input" value={f.languages} onChange={e => setF(x => ({ ...x, languages: e.target.value }))} />
             </Field>
@@ -86,8 +86,8 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
               <>
                 <Field label="Creator bio"><textarea className="textarea" value={creatorBio} onChange={e => setCreatorBio(e.target.value)} placeholder="Tell readers who you are and why they should trust your routes." /></Field>
                 <div className="form-row">
-                  <Field label="YouTube link"><input className="input" value={youtube} onChange={e => setYoutube(e.target.value)} placeholder="https://youtube.com/@…" /></Field>
-                  <Field label="Instagram link"><input className="input" value={instagram} onChange={e => setInstagram(e.target.value)} placeholder="https://instagram.com/…" /></Field>
+                  <Field label="YouTube link"><input className="input" type="url" inputMode="url" value={youtube} onChange={e => setYoutube(e.target.value)} placeholder="https://youtube.com/@…" /></Field>
+                  <Field label="Instagram link"><input className="input" type="url" inputMode="url" value={instagram} onChange={e => setInstagram(e.target.value)} placeholder="https://instagram.com/…" /></Field>
                 </div>
                 <button className="btn btn-primary btn-sm" onClick={() => {
                   updateProfile({

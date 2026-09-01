@@ -3,9 +3,9 @@
 Living document — reviewed each session, updated as items land. Done items move
 to [CHANGELOG.md](CHANGELOG.md); this file only tracks what's ahead.
 
-**Snapshot (2026-09-01):** v0.22.0 + UI-audit batches 1–4 · all tests
+**Snapshot (2026-09-01):** v0.22.0 + UI-audit batches 1–5 · all tests
 green · CI gate on `main` · realtime live (all 8 tables) · UI-audit remediation
-tracked below (24/32 done, both P0s closed).
+tracked below (28/32 done, both P0s closed).
 
 ---
 
@@ -51,7 +51,7 @@ fixes it; CHANGELOG carries the narrative.
 | 2 | Shared primitives — the `Field` label fix covers ~30 call sites | F-01 (P0) ✅ F-03 ✅ F-11 ✅ | ✅ this commit |
 | 3 | Focus ring (17 selectors) + reduced-motion guard | F-12 ✅ F-17 ✅ | ✅ this commit |
 | 4 | A11y attributes & navigation semantics (+ orphaned F-04 folded in) | F-02 ✅ F-04 ✅ F-05 ✅ F-06 ✅ F-07 ✅ F-08 ✅ F-09 ✅ F-10 ✅ | ✅ this commit |
-| 5 | Form hygiene (autocomplete, focus-first-error, unsaved-changes guard) | F-13 F-14 F-15 F-16 | ⬜ |
+| 5 | Form hygiene (autocomplete, focus-first-error, unsaved-changes guard) | F-13 ✅ F-14 ✅ F-15 ✅ F-16 ✅ | ✅ this commit |
 | 6 | URL state (tabs, Explore filters) + copy | F-21 F-22 F-31 F-32 | ⬜ |
 
 **Progress: 16/32** · P0s: **2 of 2 closed** (F-28 ✅, F-01 ✅) · ~6 h remaining.

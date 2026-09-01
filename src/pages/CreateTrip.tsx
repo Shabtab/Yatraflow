@@ -1,5 +1,5 @@
 // ============ Create trip ============
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { FixedCommitment, LatLngPoint, TransportMode, TravelStyle } from '../data/types'
 import { TRANSPORT_MODES, TRAVEL_STYLES } from '../data/types'
 import { useDb, currentUser, createTrip } from '../store/store'
@@ -45,6 +45,8 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
   const [commitments, setCommitments] = useState<CommitDraft[]>([])
   const [c, setC] = useState<CommitDraft>({ title: '', type: 'hotel-checkin', dayIndex: 0, time: '14:00' })
   const [errs, setErrs] = useState<Record<string, string>>({})
+  /** first-invalid focus targets (F-15) — plain inputs only register here */
+  const fieldRefs = useRef<Record<string, HTMLElement | null>>({})
 
   function addDest(d: DestDraft) {
     const name = d.name.trim()
@@ -81,7 +83,16 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
     if (f.travellers < 1) next.travellers = 'At least one traveller!'
     if (f.budgetPerPersonInr <= 0) next.budgetPerPersonInr = 'Give a per-person budget in ₹.'
     setErrs(next)
-    if (Object.keys(next).length) return
+    if (Object.keys(next).length) {
+      // F-15: move focus to the first invalid field so keyboard / screen-reader
+      // users don't have to hunt for what failed (the Field error span carries
+      // role="alert", so the message itself is announced on arrival). Fields
+      // rendered through LocationInput don't register a ref — the first
+      // focusable invalid input wins in that case.
+      const first = Object.keys(next).find(k => fieldRefs.current[k])
+      if (first) fieldRefs.current[first]!.focus()
+      return
+    }
 
     const trip = createTrip(me.id, {
       name: f.name.trim(),
@@ -124,7 +135,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
             <h3>The basics</h3>
             <hr className="divider" />
             <Field label="Trip name" error={errs.name}>
-              <input className="input" value={f.name} onChange={e => setF(x => ({ ...x, name: e.target.value }))} placeholder="e.g. Kerala monsoon escape" />
+              <input className="input" autoComplete="off" ref={el => (fieldRefs.current.name = el)} aria-invalid={!!errs.name} value={f.name} onChange={e => setF(x => ({ ...x, name: e.target.value }))} placeholder="e.g. Kerala monsoon escape" />
             </Field>
             <div className="form-row">
               <Field label="Starting location" error={errs.startLocation}>
@@ -168,10 +179,10 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
             </Field>
             <div className="form-row">
               <Field label="Start date" error={errs.startDate}>
-                <input className="input" type="date" value={f.startDate} onChange={e => setF(x => ({ ...x, startDate: e.target.value }))} />
+                <input className="input" type="date" ref={el => (fieldRefs.current.startDate = el)} aria-invalid={!!errs.startDate} value={f.startDate} onChange={e => setF(x => ({ ...x, startDate: e.target.value }))} />
               </Field>
               <Field label="End date" error={errs.endDate}>
-                <input className="input" type="date" value={f.endDate} onChange={e => setF(x => ({ ...x, endDate: e.target.value }))} />
+                <input className="input" type="date" ref={el => (fieldRefs.current.endDate = el)} aria-invalid={!!errs.endDate} value={f.endDate} onChange={e => setF(x => ({ ...x, endDate: e.target.value }))} />
               </Field>
             </div>
             {dayCount > 0 && (
@@ -184,10 +195,10 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
             <hr className="divider" />
             <div className="form-row">
               <Field label="Travellers" error={errs.travellers}>
-                <input className="input" type="number" min={1} max={30} value={f.travellers} onChange={e => setF(x => ({ ...x, travellers: Number(e.target.value) }))} />
+                <input className="input" type="number" min={1} max={30} ref={el => (fieldRefs.current.travellers = el)} aria-invalid={!!errs.travellers} value={f.travellers} onChange={e => setF(x => ({ ...x, travellers: Number(e.target.value) }))} />
               </Field>
               <Field label="Budget per person (₹)" error={errs.budgetPerPersonInr}>
-                <input className="input" type="number" min={500} step={500} value={f.budgetPerPersonInr} onChange={e => setF(x => ({ ...x, budgetPerPersonInr: Number(e.target.value) }))} />
+                <input className="input" type="number" min={500} step={500} ref={el => (fieldRefs.current.budgetPerPersonInr = el)} aria-invalid={!!errs.budgetPerPersonInr} value={f.budgetPerPersonInr} onChange={e => setF(x => ({ ...x, budgetPerPersonInr: Number(e.target.value) }))} />
               </Field>
             </div>
             <Field label="Transport mode">

@@ -68,6 +68,18 @@ export function TripWorkspace({ tripId, onNavigate }: { tripId: string; onNaviga
   // Pending change: a proposed plan held until the user keeps or discards it.
   const [pending, setPending] = useState<{ proposed: Trip; result: ImpactResult } | null>(null)
 
+  // F-16: a reload or tab close while a proposed change is pending silently
+  // discards the preview the user is studying — ask before leaving. (The soft
+  // in-app hash-nav guard from the audit is deliberately skipped: intercepting
+  // every hashchange in App would need pending state lifted app-wide, and the
+  // beforeunload layer already covers the common accident — F5 / tab close.)
+  useEffect(() => {
+    if (!pending) return
+    const onBeforeUnload = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = '' }
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => window.removeEventListener('beforeunload', onBeforeUnload)
+  }, [pending])
+
   // Suggestion cache: persists across tab switches, invalidated by anchor changes.
   const suggestionCache = useSuggestionCache(tripId)
 

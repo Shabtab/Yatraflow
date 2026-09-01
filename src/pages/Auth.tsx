@@ -65,11 +65,11 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
 
         <form onSubmit={submit}>
           {mode === 'signup' && (
-            <Field label="Your name"><input className="input" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Meera Nair" /></Field>
+            <Field label="Your name"><input className="input" name="name" autoComplete="name" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Meera Nair" /></Field>
           )}
-          <Field label="Email"><input className="input" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" /></Field>
+          <Field label="Email"><input className="input" type="email" name="email" autoComplete="email" spellCheck={false} value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" /></Field>
           <Field label="Password" hint={mode === 'signup' ? 'At least 8 characters' : undefined}>
-            <input className="input" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" />
+            <input className="input" type="password" name="password" autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" />
           </Field>
           {error && <div className="err-text" role="alert" style={{ marginBottom: 10 }}>⚠️ {error}</div>}
           <button type="submit" className="btn btn-primary btn-lg" style={{ width: '100%' }} disabled={saving}>
