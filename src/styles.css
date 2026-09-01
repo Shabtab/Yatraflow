@@ -771,7 +771,9 @@ a.btn { text-decoration: none; }
    drop still lands on top of everything. */
 .board-head { margin-bottom: 14px; }
 .board {
-  position: relative; height: 640px; overflow: hidden;
+  position: relative; /* viewport-driven height: a wide 640px letterbox squeezed tall routes
+     into a thin squiggle band — give the pinned map real vertical room (CTI mockup) */
+  height: clamp(640px, calc(100vh - 235px), 920px); overflow: hidden;
   border-radius: var(--radius-lg);
   border: 1px solid var(--yf-glass-border);
   box-shadow: var(--shadow-soft);
