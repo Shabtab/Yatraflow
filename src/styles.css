@@ -832,14 +832,21 @@ a.btn { text-decoration: none; }
   margin: 14px 16px 4px;
 }
 /* Compact corner pair (mockup): small equal glass cards in the board's top
-   corners — most of the map stays visible between and above them. */
-.board-info { flex: 0 1 340px; border-radius: 16px; padding: 11px 14px; max-width: 340px; box-shadow: var(--shadow-soft); }
+   corners — most of the map stays visible between and above them. The glass
+   is dialled stronger than the shared utility (lower alpha + more blur) so
+   the map visibly reads through the panels over the pale washed backdrop. */
+.board-info, .board-pulse {
+  background: color-mix(in srgb, var(--yf-glass) 55%, transparent);
+  backdrop-filter: blur(14px) saturate(1.2);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+}
+.board-info { flex: 0 1 264px; border-radius: 16px; padding: 10px 12px; max-width: 264px; box-shadow: var(--shadow-soft); }
 .board-fit {
-  margin-top: 8px; border: none; background: var(--teal-soft); color: var(--teal-deep);
-  border-radius: 999px; font-size: 11.5px; font-weight: 800; padding: 6px 12px; cursor: pointer;
+  margin-top: 7px; border: none; background: var(--teal-soft); color: var(--teal-deep);
+  border-radius: 999px; font-size: 11px; font-weight: 800; padding: 5px 11px; cursor: pointer;
 }
 .board-fit:hover { filter: brightness(.96); }
-.board-pulse { flex: 0 1 340px; border-radius: 16px; padding: 11px 14px; max-width: 340px; box-shadow: var(--shadow-soft); }
+.board-pulse { flex: 0 1 264px; border-radius: 16px; padding: 10px 12px; max-width: 264px; box-shadow: var(--shadow-soft); }
 .board-pulse .pulse-label { font-size: 10.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--yf-text-muted); }
 .board-pulse-row { display: flex; align-items: center; gap: 10px; margin-top: 3px; }
 .board-pulse-row .health-num-big { font-size: 28px; }
