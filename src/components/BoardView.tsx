@@ -171,35 +171,29 @@ function BoardColumn({ day, editable, warnings, focused, onToggleFocus, onMoveSt
     <div className={`board-col${focused ? ' board-col--focused' : ''}`} role="listitem">
       <button type="button" className="board-col-head" onClick={() => onToggleFocus(!focused)}
         aria-pressed={focused} title={focused ? `Show the whole route again` : `Focus the map on Day ${day.index + 1}`}>
-        <span className="day-badge"><small>DAY</small><b>{day.index + 1}</b></span>
-        <span className="board-col-title">
-          <b>{day.title || `Day ${day.index + 1}`}</b>
-          <span className="small muted">{totalStops} stop{totalStops === 1 ? '' : 's'}{focused ? ' · focused' : ''}</span>
-        </span>
+        <span className="board-col-day">Day {day.index + 1}</span>
+        <span className="board-col-count">{focused ? 'Focused · ' : ''}{totalStops} stop{totalStops === 1 ? '' : 's'}</span>
+        <span className="board-col-subtitle">{day.title || `Day ${day.index + 1}`}</span>
         {topWarn && <span className={`day-warn-pill ${sev === 'high' ? 'sev-high' : ''}`}>⚠ {topWarn.title.replace(/^Day \d+: /, '')}{warnings.length > 1 ? ` +${warnings.length - 1}` : ''}</span>}
       </button>
 
       <div className="board-col-stops">
         {ordered.map((s, i) => {
           const kind = stopKindOf(s)
+          const meta = [
+            s.locationName,
+            minutesToHM(s.visitMinutes),
+            s.entryFeeInrPerPerson > 0 ? `₹${s.entryFeeInrPerPerson}/person` : '',
+          ].filter(Boolean).join(' · ')
           return (
             <div key={s.id}
+              title={meta ? `${s.title} — ${meta}` : s.title}
               className={`board-stop stop-card kind-${kind} status-${s.status} ${dragging === i ? 'dragging' : ''} ${over === i && dragging !== null && dragging !== i ? 'drag-over' : ''} ${foreignOver === i && dragging === null ? 'foreign-over' : ''}`}
               {...(editable ? dndHandlers(i) : {})}>
-              <div className={`stop-num cat-${s.category}`}>{i + 1}</div>
               <div className="stop-main">
-                <div className="stop-toprow">
-                  <span className="stop-title">{s.title}</span>
-                  <span className={`stop-kind-tag kind-${kind}`}>{STOP_KIND_LABELS[kind]}</span>
-                </div>
-                <div className="stop-meta">
-                  {s.locationName && <span>📍 {s.locationName}</span>}
-                  <span>⏱ {minutesToHM(s.visitMinutes)}</span>
-                  {s.departTime && s.arrivalTime && (
-                    <span>{formatHM(s.departTime, timeFormat)}–{formatHM(s.arrivalTime, timeFormat)}</span>
-                  )}
-                  {s.entryFeeInrPerPerson > 0 && <span>₹{s.entryFeeInrPerPerson}/person</span>}
-                </div>
+                <span className="board-stop-kicker">{s.departTime ? `${formatHM(s.departTime, timeFormat)} · ` : ''}{STOP_KIND_LABELS[kind]}</span>
+                <span className="stop-title">{s.title}</span>
+                {meta && <span className="board-stop-meta">{meta}</span>}
               </div>
             </div>
           )

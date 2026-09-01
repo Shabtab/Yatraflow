@@ -784,6 +784,12 @@ a.btn { text-decoration: none; }
   display: flex; flex-direction: column;
 }
 .board-map { position: absolute; inset: 0; z-index: 0; }
+/* Cream wash so the real map recedes behind the columns like the mockup's
+   calm sage backdrop — pointer-events pass through, map stays interactive. */
+.board-map::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: color-mix(in srgb, var(--yf-mist) 45%, transparent);
+}
 .board-map .map-shell { height: 100%; display: flex; flex-direction: column; }
 .board-map .map-frame { flex: 1 1 auto; height: auto; min-height: 0; border: none; border-radius: 0; }
 .board-topbar {
@@ -824,28 +830,50 @@ a.btn { text-decoration: none; }
   box-shadow: var(--shadow-soft);
 }
 .board-col--focused { outline: 2px solid var(--yf-teal-600); outline-offset: -2px; }
+/* Compact header per the board mockup: "Day N" + stops chip on one row, the
+   day title as a one-line ellipsised subtitle, warning pill on its own row —
+   so long titles can never wrap the header into a jumble. */
 .board-col-head {
-  display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; padding: 11px 13px; text-align: left;
+  display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 2px 10px;
+  padding: 11px 13px 9px; text-align: left;
   background: transparent; border: none; border-bottom: 1px solid var(--line); cursor: pointer;
   font-family: var(--font-body);
 }
 .board-col-head:hover { background: var(--card-soft); }
-.board-col-head .day-badge { flex: 0 0 auto; }
-.board-col-title { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.board-col-title b { font-family: var(--font-display); font-size: 14px; }
-.board-col-head .day-warn-pill { padding: 4px 9px; font-size: 10.5px; max-width: 100%; flex: 0 1 auto; margin-left: auto; }
+.board-col-day { font-size: 12.5px; font-weight: 800; color: var(--text-1); }
+.board-col-count {
+  font-size: 11px; font-weight: 800; padding: 3px 9px; border-radius: 999px;
+  background: var(--teal-soft); color: var(--teal-deep); white-space: nowrap;
+}
+.board-col-subtitle {
+  grid-column: 1 / -1; font-size: 12px; color: var(--text-3);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.board-col-head .day-warn-pill { grid-column: 1 / -1; justify-self: start; margin-top: 3px; max-width: 100%; }
 .board-col-stops {
   flex: 1 1 auto; overflow-y: auto; padding: 11px; min-height: 0;
   display: flex; flex-direction: column; gap: 10px;
 }
-.board-stop { padding: 10px 12px; }
-.board-stop .stop-num { width: 26px; height: 26px; font-size: 12px; }
-.board-stop .stop-title { font-size: 14px; }
-.board-stop .stop-meta { margin-top: 3px; }
+.board-stop { padding: 9px 12px 9px 14px; box-shadow: var(--shadow-soft); }
+/* Mockup card anatomy: accent bar (from kind-*) → kicker → title → one meta line. */
+.board-stop-kicker {
+  display: block; font-size: 10px; font-weight: 800; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--text-3);
+}
+.board-stop .stop-title {
+  display: block; font-size: 14px; margin-top: 3px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.board-stop-meta {
+  display: block; margin-top: 3px; font-size: 11.5px; color: var(--text-3); font-weight: 550;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .board-col-zone {
-  border: 1.5px dashed var(--yf-border); border-radius: 13px;
+  border: 1.5px dashed color-mix(in srgb, var(--yf-teal-600) 40%, var(--yf-border));
+  border-radius: 13px;
   padding: 11px 10px; text-align: center; color: var(--yf-text-muted);
   display: flex; flex-direction: column; gap: 2px; flex: 0 0 auto;
+  background: color-mix(in srgb, var(--card) 55%, transparent);
 }
 .board-col-zone b { font-size: 12.5px; color: var(--teal-deep); }
 .board-col-zone.foreign-over { border-color: var(--teal); background: var(--teal-soft); }
