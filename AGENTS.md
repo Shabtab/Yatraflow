@@ -59,6 +59,17 @@ Key locations:
    re-grep the tracker table, and treat any prior "committed ✅" summary as a
    hypothesis until the commit hash exists. Never re-report status from
    memory; re-derive it from the repo.
+7. **When asking the user to review/test locally, always hand them the exact
+   URL — never make them find or start the server.** Check if the dev server
+   is up (probe `http://localhost:5173`); if not, start `npm run dev`
+   detached (`Start-Process npm.cmd -ArgumentList 'run','dev'`). Confirm it
+   serves *this* working tree before linking (fetch
+   `http://localhost:5173/src/styles.css` and grep for a token/marker that
+   only exists in the current branch's changes — a stale server from another
+   branch will otherwise silently show old UI). Then give deep links per
+   screen (e.g. `http://localhost:5173/#/` for Landing,
+   `http://localhost:5173/#/trips` for My Trips) and say what to check
+   (themes, mobile width, specific interactions).
 
 
 ## 3. Verification before every push
