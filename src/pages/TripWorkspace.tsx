@@ -215,6 +215,7 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
         />
       )}
 
+      <div className="tab-panel" key={tab}>
       {tab === 'overview' && <OverviewTab trip={effective} editable={editable} onOpenDecisions={() => setTab('decisions')} onOpenTimeline={() => setTab('timeline')} onOpenMap={() => setTab('map')} onInvite={() => setTab('share')} health={health} totals={totals} />}
       {tab === 'timeline' && <TimelineTab trip={trip} editable={editable} applyChange={applyChange} legCorrections={legCorrections} suggestionCache={suggestionCache} onOpenBoard={() => setTab('board')} />}
       {tab === 'board' && (
@@ -232,6 +233,7 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
       {tab === 'budget' && <BudgetTab trip={trip} totals={totals} editable={editable} />}
       {tab === 'decisions' && <DecisionsTab trip={trip} me={me} editable={editable} />}
       {tab === 'share' && <ShareTab trip={trip} me={me} editable={editable} onNavigate={onNavigate} />}
+      </div>
 
       <AiDrawer trip={trip} open={aiOpen} onOpen={() => setAiOpen(true)} onClose={() => setAiOpen(false)} />
     </div>

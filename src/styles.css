@@ -58,8 +58,16 @@
   --yf-surface-muted: #F0F4F1;
   --yf-border: #DCE7E1;
   --yf-text-muted: #637B7D;
-  --yf-glass: rgba(255, 255, 255, 0.72);        /* level-2 overlay (nav, map panels) */
+  --yf-glass: rgba(255, 255, 255, 0.58);        /* level-2 overlay (nav, map panels) */
   --yf-glass-border: rgba(255, 255, 255, 0.65);
+  --yf-glass-sheen: rgba(255, 255, 255, 0.35);  /* top-edge highlight on glass panels */
+
+  /* ---- motion (subtle & premium): one easing family, three speeds ---- */
+  --ease-out: cubic-bezier(.22, .61, .36, 1);
+  --ease-soft: cubic-bezier(.3, .7, .4, 1);
+  --t-fast: 140ms;
+  --t-med: 220ms;
+  --t-slow: 320ms;
 
   /* ---- 2. SEMANTICS (light) ---- */
   --color-background: var(--yf-cream);   /* CTI canvas (was --gray-50) */
@@ -165,8 +173,9 @@
   --yf-surface-muted: #101B2B;
   --yf-border: #27395A;
   --yf-text-muted: #8FA0B5;
-  --yf-glass: rgba(16, 27, 43, 0.72);
+  --yf-glass: rgba(16, 27, 43, 0.58);
   --yf-glass-border: rgba(255, 255, 255, 0.14);
+  --yf-glass-sheen: rgba(255, 255, 255, 0.08);
 
   /* ---- 2. SEMANTICS (dark) ---- */
   --color-background: var(--gray-50);
@@ -231,12 +240,14 @@
     linear-gradient(135deg, var(--yf-mist) 0%, var(--yf-cream) 52%, var(--yf-peach) 100%);
 }
 /* Level-2 expressive overlay (doc §3.3): translucent nav, map panels, hero
-   support cards. Content that must be read/edited stays on --color-card. */
+   support cards. Content that must be read/edited stays on --color-card.
+   Dialled up for the glass-first look: deep blur + saturation + a top sheen. */
 .glass {
   background: var(--yf-glass);
   border: 1px solid var(--yf-glass-border);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(18px) saturate(1.25);
+  -webkit-backdrop-filter: blur(18px) saturate(1.25);
+  box-shadow: inset 0 1px 0 var(--yf-glass-sheen);
 }
 
 * { box-sizing: border-box; }
@@ -835,21 +846,19 @@ a.btn { text-decoration: none; }
   margin: 14px 16px 4px;
 }
 /* Compact corner pair (mockup): small equal glass cards in the board's top
-   corners — most of the map stays visible between and above them. The glass
-   is dialled stronger than the shared utility (lower alpha + more blur) so
-   the map visibly reads through the panels over the pale washed backdrop. */
+   corners — most of the map stays visible between and above them. They use the
+   shared .glass treatment (deep blur + sheen) so the map visibly reads through. */
 .board-info, .board-pulse {
-  background: color-mix(in srgb, var(--yf-glass) 55%, transparent);
-  backdrop-filter: blur(14px) saturate(1.2);
-  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  backdrop-filter: blur(18px) saturate(1.25);
+  -webkit-backdrop-filter: blur(18px) saturate(1.25);
 }
-.board-info { flex: 0 1 264px; border-radius: 16px; padding: 10px 12px; max-width: 264px; box-shadow: var(--shadow-soft); }
+.board-info { flex: 0 1 264px; border-radius: 16px; padding: 10px 12px; max-width: 264px; box-shadow: inset 0 1px 0 var(--yf-glass-sheen), var(--shadow-soft); }
 .board-fit {
   margin-top: 7px; border: none; background: var(--teal-soft); color: var(--teal-deep);
   border-radius: 999px; font-size: 11px; font-weight: 800; padding: 5px 11px; cursor: pointer;
 }
 .board-fit:hover { filter: brightness(.96); }
-.board-pulse { flex: 0 1 264px; border-radius: 16px; padding: 10px 12px; max-width: 264px; box-shadow: var(--shadow-soft); }
+.board-pulse { flex: 0 1 264px; border-radius: 16px; padding: 10px 12px; max-width: 264px; box-shadow: inset 0 1px 0 var(--yf-glass-sheen), var(--shadow-soft); }
 .board-pulse .pulse-label { font-size: 10.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--yf-text-muted); }
 .board-pulse-row { display: flex; align-items: center; gap: 10px; margin-top: 3px; }
 .board-pulse-row .health-num-big { font-size: 28px; }
@@ -990,7 +999,7 @@ a.btn { text-decoration: none; }
 .impact-panel {
   border: 1.5px solid var(--saffron); border-radius: var(--radius);
   background: var(--card); overflow: hidden; margin-top: 0;
-  animation: slideUp .25s ease;
+  animation: slideUp var(--t-med) var(--ease-out);
   width: 100%; max-width: 720px;
 }
 @keyframes slideUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
@@ -1033,13 +1042,13 @@ a.btn { text-decoration: none; }
   background: rgba(11,37,69,.42);
   display: flex; align-items: flex-end; justify-content: center;
   backdrop-filter: blur(3px);
-  animation: fadeIn .18s ease;
+  animation: fadeIn var(--t-fast) var(--ease-out);
 }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 .modal {
   background: var(--card); border-radius: 22px 22px 0 0;
   width: 100%; max-width: 620px; max-height: 92vh; overflow-y: auto;
-  padding: 22px; animation: slideUp .25s ease;
+  padding: 22px; animation: slideUp var(--t-med) var(--ease-out);
   /* Stop the sheet's scroll from chaining to the page behind it. */
   overscroll-behavior: contain;
 }
@@ -1052,7 +1061,7 @@ a.btn { text-decoration: none; }
 .toast {
   pointer-events: auto; background: var(--text); color: var(--bg);
   padding: 11px 20px; border-radius: 999px; font-size: 13.5px; font-weight: 600;
-  box-shadow: var(--shadow); animation: slideUp .25s ease; max-width: 100%;
+  box-shadow: var(--shadow); animation: slideUp var(--t-med) var(--ease-out); max-width: 100%;
 }
 .toast.ok { background: var(--teal-deep); color: #fff; }
 .toast.err { background: var(--danger); color: #fff; }
@@ -1325,7 +1334,7 @@ a.btn { text-decoration: none; }
   position: fixed; z-index: 90; right: 0; top: 0; bottom: 0;
   width: min(420px, 100vw); background: var(--card);
   border-left: 1px solid var(--line); box-shadow: -12px 0 40px rgba(11,37,69,.14);
-  display: flex; flex-direction: column; animation: drawerIn .22s ease;
+  display: flex; flex-direction: column; animation: drawerIn var(--t-med) var(--ease-out);
   /* Edge-to-edge: keep content clear of the landscape home-indicator edge. */
   padding-right: env(safe-area-inset-right);
 }
@@ -1348,7 +1357,7 @@ a.btn { text-decoration: none; }
 .notif-pop {
   position: absolute; top: calc(100% + 8px); right: 0; width: min(360px, 92vw);
   background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
-  box-shadow: var(--shadow); overflow: hidden; z-index: 80; animation: slideUp .18s ease;
+  box-shadow: var(--shadow); overflow: hidden; z-index: 80; animation: slideUp var(--t-fast) var(--ease-out);
 }
 .notif-item { padding: 11px 15px; border-bottom: 1px dashed var(--line); font-size: 13px; display: flex; gap: 9px; cursor: pointer; }
 .notif-item:hover { background: var(--bg-soft); }
@@ -1628,7 +1637,7 @@ a.btn { text-decoration: none; }
   background: var(--card); border-bottom: 1px solid var(--line);
   box-shadow: var(--shadow); padding: 8px 14px 14px;
   display: flex; flex-direction: column; gap: 2px;
-  animation: slideUp .18s ease;
+  animation: slideUp var(--t-fast) var(--ease-out);
 }
 .mobile-menu .nav-link {
   padding: 13px 14px; border-radius: 10px; font-size: 15px; text-align: left;
@@ -1938,4 +1947,46 @@ main:focus { outline: none; }
   .dec-strip { grid-template-columns: 1fr; gap: 8px; }
   .budget-hero-num { font-size: 32px; }
   .board-col-zone { min-height: 48px; justify-content: center; }
+}
+
+/* ---------- Motion system (subtle & premium, CTI §9) ----------
+   One easing family + three speeds (--ease-out / --t-fast|med|slow). Only
+   transform and opacity animate — compositor-friendly, no layout thrash.
+   The global prefers-reduced-motion block above freezes all of this. */
+@keyframes panelIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+.tab-panel { animation: panelIn var(--t-med) var(--ease-out); }
+
+/* Board choreography: day columns drift in with a light stagger on mount. */
+.board-col { animation: panelIn var(--t-slow) var(--ease-out) both; }
+.board-col:nth-child(2) { animation-delay: 40ms; }
+.board-col:nth-child(3) { animation-delay: 80ms; }
+.board-col:nth-child(4) { animation-delay: 120ms; }
+.board-col:nth-child(5) { animation-delay: 160ms; }
+.board-col:nth-child(6) { animation-delay: 200ms; }
+.board-col:nth-child(7) { animation-delay: 240ms; }
+.board-col:nth-child(8) { animation-delay: 280ms; }
+/* Drag/focus states glide instead of snapping. */
+.board-stop, .board-col-zone, .board-col--focused { transition: box-shadow var(--t-med) var(--ease-out), border-color var(--t-med) var(--ease-out), background var(--t-med) var(--ease-out), transform var(--t-fast) var(--ease-out); }
+.board-stop:hover { transform: translateY(-1px); }
+
+/* Unified card hover lift (cards that don't already define one). */
+.trip-card, .trip-card-hit, .stat-card, .bento-card, .brief-card {
+  transition: transform var(--t-fast) var(--ease-out), box-shadow var(--t-fast) var(--ease-out), border-color var(--t-fast) var(--ease-out);
+}
+.trip-card:hover, .trip-card-hit:hover, .stat-card:hover, .bento-card:hover, .brief-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-soft); }
+
+/* Button feedback: smooth state changes + a gentle press. */
+.btn, .tab-btn, .board-fit, .board-pulse-link {
+  transition: background var(--t-fast) var(--ease-out), color var(--t-fast) var(--ease-out),
+    border-color var(--t-fast) var(--ease-out), box-shadow var(--t-fast) var(--ease-out),
+    transform var(--t-fast) var(--ease-out), filter var(--t-fast) var(--ease-out);
+}
+.btn:active, .tab-btn:active { transform: scale(.98); }
+
+/* Theme cross-fade: light↔dark glides instead of snapping. */
+body, .topnav, .trip-head-card, .glass, .board, .board-col, .modal, .toast {
+  transition: background-color var(--t-slow) var(--ease-out), color var(--t-slow) var(--ease-out), border-color var(--t-slow) var(--ease-out);
 }
