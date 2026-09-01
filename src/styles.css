@@ -803,11 +803,14 @@ a.btn { text-decoration: none; }
 .container--board .board-head { margin-bottom: 10px; }
 .container--board .board-head h2 { font-size: 19px; margin: 0 0 2px; }
 .board {
-  position: relative; /* viewport-driven height: a wide 640px letterbox squeezed tall routes
-     into a thin squiggle band — give the pinned map real vertical room (CTI mockup).
-     292px = compact board-tab chrome (nav pill + band + tabs + board head) above it. */
-  height: clamp(540px, calc(100vh - 292px), 1200px);
-  height: clamp(540px, calc(100dvh - 292px), 1200px); overflow: hidden;
+  position: relative; /* a wide 640px letterbox squeezed tall routes into a thin squiggle
+     band — give the pinned map real vertical room (CTI mockup). 292px = compact
+     board-tab chrome (nav pill + band + tabs + board head) above it. The board is a
+     FLOOR, not a cap: it grows with column content so cards never need internal
+     scrollbars — the map backdrop stretches with it. */
+  height: auto;
+  min-height: clamp(540px, calc(100vh - 292px), 1200px);
+  min-height: clamp(540px, calc(100dvh - 292px), 1200px); overflow: hidden;
   border-radius: var(--radius-lg);
   border: 1px solid var(--yf-glass-border);
   box-shadow: var(--shadow-soft);
@@ -862,7 +865,7 @@ a.btn { text-decoration: none; }
 }
 .board-cols {
   position: relative; z-index: 2; flex: 1 1 auto; min-height: 0;
-  display: flex; align-items: flex-end; gap: 14px; overflow-x: auto;
+  display: flex; align-items: stretch; gap: 14px; overflow-x: auto;
   justify-content: center; /* centre short trips; `safe` keeps long-trip scroll from clipping */
   justify-content: safe center;
   padding: 6px 16px 14px; scrollbar-width: thin;
@@ -870,9 +873,11 @@ a.btn { text-decoration: none; }
 .board-col {
   /* Fill the row: columns share the spare width (capped so a 3-day trip doesn't
      stretch into billboards); long trips fall back to the min-width scroll.
-     Bottom-anchored at ~72% height so the map stays visible above the kanban. */
+     Height fits the column's own content — no internal scrollbar in realistic
+     days; the board floor grows with the tallest column. 760px cap is a safety
+     net so a monster day scrolls internally instead of stretching the page. */
   flex: 1 1 264px; min-width: 250px; max-width: 424px;
-  height: 72%; min-height: 340px;
+  height: auto; max-height: 760px; min-height: 340px;
   display: flex; flex-direction: column;
   border-radius: var(--radius-lg); overflow: hidden;
   background: color-mix(in srgb, var(--card) 97%, transparent);
