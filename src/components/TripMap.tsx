@@ -125,7 +125,7 @@ function catIcon(cat: string | undefined): React.ReactNode {
   )
 }
 
-export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusDay }: {
+export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusDay, showToolbar = true }: {
   trip: Trip
   onOpenStop?: (stopId: string) => void
   /** potential POIs to show as gold "idea" markers */
@@ -135,6 +135,11 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
   /** external day-focus driver (Board column select): a day index shows just that
       day's route, 'all' resets to the whole trip. Undefined = map owns its filter. */
   focusDay?: number | 'all'
+  /** false = no in-map toolbar (day chips / Recentre / Expand). The Board hides
+      it: those controls sit at the top of the map shell, which is an absolute
+      backdrop there, so the chips peeked out from behind the Board's info card.
+      The Board provides the equivalents (column-click focus + 🎯 Fit route). */
+  showToolbar?: boolean
 }) {
   const [dayFilter, setDayFilter] = useState<number | 'all'>('all')
   // Board drives the day filter through the prop; the map's own chips keep working
@@ -366,6 +371,7 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
 
   return (
     <div className={`map-shell${expanded ? ' map-shell--expanded' : ''}`}>
+      {showToolbar && (
       <div className="map-toolbar">
         <div className="map-day-filter">
           <button className={`map-day-chip ${dayFilter === 'all' ? 'on' : ''}`} onClick={() => setDayFilter('all')}>All days</button>
@@ -412,6 +418,7 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
           </button>
         </div>
       </div>
+      )}
 
       <div className="map-frame">
         {allPoints.length === 0 ? (

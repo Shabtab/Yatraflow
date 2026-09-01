@@ -81,7 +81,7 @@ export function BoardView({ trip, editable, applyChange, health, totals, onOpenO
       <div className="board">
         {/* pinned route map — the existing component, no second map system (§8 guardrail) */}
         <div className="board-map">
-          <TripMap trip={trip} focusDay={focusedDay} />
+          <TripMap trip={trip} focusDay={focusedDay} showToolbar={false} />
         </div>
 
         {/* floating info card (normal-flow top bar above the columns; the map still

@@ -5,6 +5,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 ## [Unreleased]
 
 ### Fixed
+- **Board: the map's own chip toolbar (day filters / 🎯 Recentre / ⤢ Expand) rendered inside the absolute map backdrop, so its chips peeked out from behind the Board's info card**, and the Day-column header could wrap its warning pill into the title text. `TripMap` gains a `showToolbar` prop (default `true` — Map tab unchanged); the Board passes `false` and already provides the equivalents (column-click day focus + Fit route). Column headers now `flex-wrap` with the warn pill pushed right (`margin-left:auto`, full-width cap instead of the 150px clip), so long warnings drop to their own row cleanly.
 - **Board: Trip Pulse / info panels could cover the top of a day column.** The float cards were absolutely positioned `top:14px` while the column strip began at `top:96px` — the ~180px-tall Trip Pulse overlapped the first rows of the rightmost column(s) on any viewport, and a wrapped top row on narrower screens made it worse. The `.board` container is now a flex column: the map remains an absolute full-bleed backdrop, the info + Trip Pulse cards sit in a **normal-flow top bar** (still glass, still visually floating over the map), and the column strip is `flex:1` below it — so columns can **never** be covered by a panel, at any width or wrap state. Mobile stacking is unchanged. (`board-float` class removed; dev-server verified serving the fix.)
 
 ### Changed
