@@ -1887,7 +1887,10 @@ function SuggestionsTab({ trip, editable, me }: {
               <div>
                 <div className="row-between">
                   <h3>{sg.title}</h3>
-                  <Chip tone={sg.status === 'accepted' ? 'ok' : sg.status === 'declined' ? 'danger' : 'teal'}>{sg.status}</Chip>
+                  <span style={{ display: 'inline-flex', gap: 6 }}>
+                    {sg.status === 'open' && consensusPct >= 60 && <Chip tone="teal">Best fit</Chip>}
+                    <Chip tone={sg.status === 'accepted' ? 'ok' : sg.status === 'declined' ? 'danger' : 'teal'}>{sg.status}</Chip>
+                  </span>
                 </div>
                 <div className="creator-line" style={{ margin: '5px 0' }}>
                   <Avatar user={author} /> {author?.profile.name ?? 'Traveller'} suggested for Day {sg.dayIndex + 1}
@@ -2086,21 +2089,29 @@ function BudgetTab({ trip, totals, editable }: { trip: Trip; totals: ReturnType<
             </details>
           )}
         </div>
+        <div className="budget-reassure">
+          <b>✦ Keep estimates honest</b>
+          <span>When you move a stop or pick a different stay, YatraFlow previews the new total before you save.</span>
+        </div>
       </div>
 
       <div>
-        <div className="stat-grid" style={{ gridTemplateColumns: '1fr' }}>
-          <StatTile label="Total estimated" value={formatInr(totals.totalCostInr)} />
-          <StatTile label="Per person" value={formatInr(totals.costPerPersonInr)} sub={`Budget: ${formatInr(trip.budgetPerPersonInr)}/head`} />
-          <StatTile label="Per day" value={formatInr(totals.costPerDayInr)} />
-          <div className="stat-tile">
-            <div className="stat-label">Budget usage</div>
-            <div className="stat-value">{pctUsed}%</div>
-            <div className="budget-bar-track" style={{ marginTop: 8 }}>
-              <div className="budget-bar-fill" style={{ width: `${Math.min(100, pctUsed)}%`, background: pctUsed > 100 ? 'var(--danger)' : pctUsed > 85 ? 'var(--saffron)' : 'var(--teal)' }} />
-            </div>
-            {pctUsed > 100 && <div className="stat-sub" style={{ color: 'var(--danger)' }}>Over group budget — trim optional lines.</div>}
+        <div className="budget-hero">
+          <span className="budget-hero-label">Total trip estimate</span>
+          <div className="budget-hero-num">{formatInr(totals.totalCostInr)}</div>
+          <div className="budget-hero-sub">
+            {formatInr(totals.costPerPersonInr)} per person · target {formatInr(trip.budgetPerPersonInr)}/head · {formatInr(totals.costPerDayInr)}/day
           </div>
+          <div className="budget-bar-track" style={{ marginTop: 10 }}>
+            <div className="budget-bar-fill" style={{ width: `${Math.min(100, pctUsed)}%`, background: pctUsed > 100 ? 'var(--danger)' : pctUsed > 85 ? 'var(--saffron)' : 'var(--teal)' }} />
+          </div>
+          <div className="budget-hero-pct">
+            {pctUsed}% of group budget{pctUsed > 100 ? ' — over budget; trim optional lines' : pctUsed > 85 ? ' — getting close' : ''}
+          </div>
+        </div>
+        <div className="stat-grid" style={{ gridTemplateColumns: '1fr' }}>
+          <StatTile label="Per day" value={formatInr(totals.costPerDayInr)} />
+          <StatTile label="Optional spending" value={formatInr(totals.optionalInr)} sub={`${formatInr(totals.essentialInr)} essential`} />
         </div>
 
         <div className="card" style={{ marginTop: 14 }}>
@@ -2129,6 +2140,17 @@ function DecisionsTab({ trip, me, editable }: { trip: Trip; me: { id: string }; 
   const decisions = db.decisions.filter(d => d.tripId === trip.id).sort((a, b) => b.createdAt - a.createdAt)
   const [q, setQ] = useState('')
   const [opts, setOpts] = useState('')
+  const [filter, setFilter] = useState<'all' | 'open' | 'mine' | 'resolved'>('all')
+
+  // §6.8 hierarchy: open / needs-me / resolved counts + "next to unblock" focus
+  const openDecisions = decisions.filter(d => d.status === 'open')
+  const needsMe = openDecisions.filter(d => !d.votesByUserId[me.id])
+  const resolvedCount = decisions.length - openDecisions.length
+  const unblock = needsMe[0]
+  const shown = filter === 'open' ? openDecisions
+    : filter === 'mine' ? needsMe
+    : filter === 'resolved' ? decisions.filter(d => d.status === 'resolved')
+    : decisions
 
   function create(e: React.FormEvent) {
     e.preventDefault()
@@ -2146,14 +2168,38 @@ function DecisionsTab({ trip, me, editable }: { trip: Trip; me: { id: string }; 
   return (
     <div className="two-col">
       <div>
+        <div className="dec-strip">
+          <div className="stat-tile">
+            <div className="stat-label">Open decisions</div>
+            <div className="stat-value">{openDecisions.length}</div>
+          </div>
+          <div className="stat-tile">
+            <div className="stat-label">Need your vote</div>
+            <div className="stat-value">{needsMe.length}</div>
+          </div>
+          <div className="stat-tile">
+            <div className="stat-label">Resolved</div>
+            <div className="stat-value">{resolvedCount}</div>
+          </div>
+        </div>
+        <div className="chip-row" style={{ marginBottom: 14 }} role="group" aria-label="Filter decisions">
+          {([['all', 'All'], ['open', 'Open'], ['mine', 'Needs me'], ['resolved', 'Resolved']] as const).map(([k, label]) => (
+            <button key={k} type="button" className={`clickable-chip chip${filter === k ? ' on-teal' : ''}`}
+              onClick={() => setFilter(k)} aria-pressed={filter === k}>{label}</button>
+          ))}
+        </div>
         {decisions.length === 0 && (
           <EmptyState icon="⚖️" title="No decisions tracked"
             body='Raise questions like "houseboat menu — veg or mixed?" so nothing gets lost in a chaotic group chat.' />
         )}
-        {decisions.map(d => {
+        {decisions.length > 0 && shown.length === 0 && (
+          <p className="muted small" style={{ margin: '4px 0 14px' }}>Nothing under this filter right now.</p>
+        )}
+        {shown.map(d => {
           const tally = d.options.map(o => Object.values(d.votesByUserId).filter(v => v === o.id).length)
           return (
-            <div key={d.id} className="card" style={{ marginBottom: 14 }}>
+            <div key={d.id} className={`card${d.id === unblock?.id ? ' decision-unblock' : ''}`} style={{ marginBottom: 14 }}>
+              {d.id === unblock?.id && <div className="unblock-label">⚡ Next to unblock</div>}
               <div className="row-between">
                 <h3>{d.question}</h3>
                 <Chip tone={d.status === 'open' ? 'saffron' : 'ok'}>{d.status}</Chip>
@@ -2248,6 +2294,7 @@ function SnapshotCard({ trip, me, onNavigate }: {
 
   return (
     <div className="card">
+      <span className="share-intent share-intent--info">3 · Keep a record</span>
       <h3>Export & snapshot sharing</h3>
       <p className="hint-text" style={{ margin: '6px 0 12px' }}>
         Take the whole plan anywhere — no server stores it. Snapshot links embed the trip in the URL itself.
@@ -2296,6 +2343,7 @@ function ShareTab({ trip, me, editable, onNavigate }: {
     <div className="two-col">
       <div>
         <div className="card">
+          <span className="share-intent share-intent--teal">1 · Plan together</span>
           <h3>Invite collaborators</h3>
           <p className="hint-text" style={{ margin: '6px 0 12px' }}>Anyone with this link joins as an editor after logging in.</p>
           <div className="share-link-box"><code>{inviteLink}</code><CopyButton text={inviteLink} /></div>
@@ -2326,6 +2374,7 @@ function ShareTab({ trip, me, editable, onNavigate }: {
         </div>
 
         <div className="card">
+          <span className="share-intent share-intent--saffron">2 · Share publicly</span>
           <h3>Publish as public itinerary</h3>
           <p className="hint-text" style={{ margin: '6px 0 12px' }}>
             Creators can list this trip on Explore. Day 1 is the free preview; later days sit behind a premium placeholder (no real payments in this MVP).

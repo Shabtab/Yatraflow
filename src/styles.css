@@ -849,6 +849,36 @@ a.btn { text-decoration: none; }
 .board-col-zone.foreign-over { border-color: var(--teal); background: var(--teal-soft); }
 .board-col-zone.foreign-over b { color: var(--teal-deep); }
 
+/* ---------- M6: Budget / Decisions / Share / Suggestions hierarchy (CTI §6.6–6.9) ---------- */
+.budget-hero {
+  background: linear-gradient(120deg, #143f4c, #112c4c);
+  color: #fff; border-radius: var(--radius-lg); padding: 18px 20px;
+  box-shadow: var(--shadow-soft); margin-bottom: 14px;
+}
+.budget-hero-label { font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: #bde1da; }
+.budget-hero-num { font-size: 40px; font-weight: 800; font-family: var(--font-display); margin-top: 2px; }
+.budget-hero-sub { font-size: 13px; color: #d2e7e3; margin-top: 2px; }
+.budget-hero-pct { font-size: 12.5px; font-weight: 700; color: #ffcc74; margin-top: 8px; }
+.budget-reassure {
+  margin-top: 14px; display: flex; gap: 6px 12px; align-items: baseline; flex-wrap: wrap;
+  background: linear-gradient(120deg, #143f4c, #112c4c); color: #c5e1dc;
+  border-radius: 16px; padding: 13px 16px; font-size: 13px;
+}
+.budget-reassure b { color: #fff; }
+.dec-strip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; }
+.decision-unblock { border-left: 4px solid var(--saffron); }
+.unblock-label { font-size: 10.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--warn); margin-bottom: 6px; }
+.share-intent {
+  display: inline-block; font-size: 10.5px; font-weight: 800; letter-spacing: .08em;
+  text-transform: uppercase; padding: 4px 10px; border-radius: 999px; margin-bottom: 8px;
+}
+.share-intent--teal { background: var(--teal-soft); color: var(--teal-deep); }
+.share-intent--saffron { background: var(--saffron-soft); color: var(--warn); }
+.share-intent--info { background: var(--info-soft); color: var(--text-2); }
+[data-theme='dark'] .budget-hero,
+[data-theme='dark'] .budget-reassure { background: linear-gradient(120deg, #0e2f39, #0c1e35); }
+[data-theme='dark'] .budget-hero-sub { color: #9fc4bf; }
+
 @media (max-width: 640px) {
   .tl-row, .tl-legrow, .tl-end { grid-template-columns: 52px 1fr; gap: 8px; }
   .tl-time { font-size: 10px; padding: 1px 4px; }
@@ -1808,5 +1838,7 @@ main:focus { outline: none; }
   .board-cols { position: static; inset: auto; margin-top: 4px; padding-bottom: 10px; }
   .board-col { flex: 0 0 264px; }
   .board-col-head { min-height: 52px; }
+  .dec-strip { grid-template-columns: 1fr; gap: 8px; }
+  .budget-hero-num { font-size: 32px; }
   .board-col-zone { min-height: 48px; justify-content: center; }
 }

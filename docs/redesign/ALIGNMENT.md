@@ -98,11 +98,11 @@ Last full audit: **M5 complete** (Board shipped — §6.4 fully delivered; all p
 ### 6.5–6.11 Map / Suggestions / Budget / Decisions / Share / Explore / Public
 | Doc item | Status | Where / note |
 |---|---|---|
-| 6.5 Map polish (rounded canvas, translucent panel, filter chips, numbered colour-coded stops, popup→Board/Timeline, nearby, legend) | 🚫 | M6 |
-| 6.6 Suggestions hierarchy | 🚫 | M6 |
-| 6.7 Budget hierarchy + unconfirmed expense treatment | 🚫 | M6 |
-| 6.8 Decisions ("Next to unblock", filters, impact panel, assistant) | 🚫 | M6 |
-| 6.9 Share four intents unmistakable | 🚫 | M6 |
+| 6.5 Map polish (rounded canvas, translucent panel, filter chips, numbered colour-coded stops, popup→Board/Timeline, nearby, legend) | ⚠️ | Pre-existing: day-filter chips, numbered colour-coded stops, legend ⓘ, nearby-idea chips all shipped; toolbar hides on Board embed (`showToolbar`). Deferred: in-map place search, popup→Board/Timeline cross-links (M6 remainder) |
+| 6.6 Suggestions hierarchy | ⚠️ | "Best fit" teal badge on ≥60%-consensus open suggestions; purpose chips + detour scope pre-existing. Deferred: route-position/"why it fits" copy per card |
+| 6.7 Budget hierarchy + unconfirmed expense treatment | ✅ | Navy `.budget-hero` (total + per-person/day + usage bar + plain-language state), "Keep estimates honest" reassurance band, optional-vs-essential split; per-person accountability in hero sub |
+| 6.8 Decisions ("Next to unblock", filters, impact panel, assistant) | ⚠️ | Stat strip (open / need-your-vote / resolved), All/Open/Needs-me/Resolved filters, ⚡ Next-to-unblock emphasis. Deferred: per-decision route/budget impact panel + grounded assistant prompt (needs engine data) |
+| 6.9 Share four intents unmistakable | ⚠️ | Numbered intent tags: 1·Plan together (teal), 2·Share publicly (saffron), 3·Keep a record (info); plain-language permission copy pre-existing. View-only live link exists as the `viewer` member role — deliberate divergence (doc's four-intent table collapses to three surfaces; snapshot link doubles as the no-account read link) |
 | 6.10 Explore editorial hero, travel-style chips, "Fork this trip" | 🚫 | M7 |
 | 6.11 Public itinerary editorial story + stats + fork | 🚫 | M7 |
 
