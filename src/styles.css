@@ -2097,18 +2097,17 @@ body, .topnav, .glass, .board, .board-col, .modal, .toast {
 /* day highlight cards */
 .pub-highlights { margin: 22px 0 4px; }
 
-/* ---- Radiating theme reveal (View Transitions API, driven from App.tsx) ----
-   Default: the NEW theme expands as a clip-path circle from the theme-toggle
-   button (::view-transition-new stacked above the old snapshot). Switching
-   dark-ward inverts via the `theme-vt-collapse` class on <html>: the OLD light
-   snapshot is stacked on top and its clip-path collapses INTO the icon, so the
-   light visibly retreats home. Reduced-motion users skip the JS path entirely. */
-::view-transition-old(root),
-::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
-::view-transition-old(root) { z-index: 1; }
-::view-transition-new(root) { z-index: 2; }
-:root.theme-vt-collapse::view-transition-old(root) { z-index: 2; }
-:root.theme-vt-collapse::view-transition-new(root) { z-index: 1; }
+/* ---- Theme radiate overlay (driven from App.tsx; replaces View Transitions,
+   whose snapshots render backdrop-filter glass as a flat gray veil) ---- */
+.theme-radiate {
+  position: fixed; inset: 0; z-index: 75; /* above page + expanded map (70), below notif (80) */
+  pointer-events: none;
+  background: radial-gradient(circle at var(--vt-x, 50%) var(--vt-y, 50%),
+    #FFFDF8 0%, #FAF7F2 40%, #F1ECE1 100%);
+}
+@media (prefers-reduced-motion: reduce) {
+  .theme-radiate { display: none; }
+}
 
 /* ---- My Trips staggered card entrance ---- */
 .trip-enter { animation: cardIn var(--t-slow) var(--ease-out) both; }

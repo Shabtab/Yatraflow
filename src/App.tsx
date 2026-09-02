@@ -50,60 +50,51 @@ export default function App() {
       m.setAttribute('content', dark ? '#0C1420' : '#FAF7F2'))
   }, [dark])
 
-  // Radiating theme reveal (View Transitions API), driven from the theme-toggle
-  // button. Coming FROM dark, the new light view accelerates out of the icon —
-  // slow start, zap at the end ("source of light"). Coming FROM light, it's the
-  // exact inverse: the old light view's clip-path collapses INTO the icon —
-  // light visibly retreats home, fast then settling. Falls back to the instant
-  // switch where the API is missing or the user prefers reduced motion.
+  // Theme radiate (DOM overlay, no View Transitions): a fixed light-canvas
+  // overlay anchored at the theme-toggle button. Coming FROM dark it expands
+  // from the icon (slow start, zap — the icon is the source of light); coming
+  // FROM light it covers the screen and its clip-path collapses INTO the icon
+  // (light retreats home, fast then settling). A DOM overlay is used instead
+  // of View Transition snapshots because Chromium renders backdrop-filter
+  // glass without its backdrop inside snapshots — the whole captured page
+  // turns into a flat gray veil (seen on #/trips). Falls back to the instant
+  // switch under prefers-reduced-motion.
   function toggleTheme(e: MouseEvent<HTMLButtonElement>) {
     const rect = e.currentTarget.getBoundingClientRect()
     const x = rect.left + rect.width / 2
     const y = rect.top + rect.height / 2
-    const apply = () => setDark(d => !d)
-    const doc = document as Document & {
-      startViewTransition?: (cb: () => void) => { ready: Promise<void>; finished: Promise<void> }
-    }
-    if (!doc.startViewTransition || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      apply(); return
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setDark(d => !d); return
     }
     const radius = Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y))
+    const overlay = document.createElement('div')
+    overlay.className = 'theme-radiate'
+    overlay.style.setProperty('--vt-x', `${x}px`)
+    overlay.style.setProperty('--vt-y', `${y}px`)
+    document.body.appendChild(overlay)
     if (!dark) {
-      // Currently LIGHT → switching to dark: the light collapses INTO the
-      // icon (old snapshot implodes on top); darkness waits beneath.
-      // fill:'both' holds the collapsed end-state until teardown — without it
-      // the old snapshot pops back for a frame and the screen flashes light.
-      document.documentElement.classList.add('theme-vt-collapse')
-      const vt = doc.startViewTransition(apply)
-      vt.ready.then(() => {
-        document.documentElement.animate(
-          { clipPath: [`circle(${radius}px at ${x}px ${y}px)`, `circle(0px at ${x}px ${y}px)`] },
-          {
-            duration: 620,
-            easing: 'cubic-bezier(.16, .84, .32, 1)',
-            pseudoElement: '::view-transition-old(root)',
-            fill: 'both' as FillMode,
-          },
-        )
-      }).catch(() => { /* transition skipped — theme already applied */ })
-      vt.finished.finally(() => document.documentElement.classList.remove('theme-vt-collapse')).catch(() => {})
-      return
-    }
-    // Currently DARK → switching to light: light radiates OUT from the icon
-    // (new snapshot expands on top), slow start then zap. Kept exactly as the
-    // 4ac890a iteration (no fill, no pinning class) — that felt right; extra
-    // plumbing here made the pre-ready frames render wrong.
-    const vt = doc.startViewTransition(apply)
-    vt.ready.then(() => {
-      document.documentElement.animate(
-        { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${radius}px at ${x}px ${y}px)`] },
-        {
-          duration: 780,
-          easing: 'cubic-bezier(.55, 0, .85, .36)',
-          pseudoElement: '::view-transition-new(root)',
-        },
+      // Currently LIGHT → dark: swap beneath immediately, the light overlay
+      // then shrinks into the icon revealing dark from the edges inward.
+      setDark(d => !d)
+      const anim = overlay.animate(
+        { clipPath: [`circle(${radius}px at ${x}px ${y}px)`, `circle(0px at ${x}px ${y}px)`] },
+        { duration: 620, easing: 'cubic-bezier(.16, .84, .32, 1)', fill: 'forwards' },
       )
-    }).catch(() => { /* transition skipped — theme already applied */ })
+      anim.onfinish = () => overlay.remove()
+    } else {
+      // Currently DARK → light: the light overlay radiates OUT from the icon
+      // over the still-dark page, slow start then zap; the theme swaps beneath
+      // once covered, then the overlay fades into the real light UI.
+      const anim = overlay.animate(
+        { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${radius}px at ${x}px ${y}px)`] },
+        { duration: 780, easing: 'cubic-bezier(.55, 0, .85, .36)', fill: 'forwards' },
+      )
+      anim.onfinish = () => {
+        setDark(d => !d)
+        overlay.animate({ opacity: [1, 0] }, { duration: 240, delay: 80, fill: 'forwards' })
+          .onfinish = () => overlay.remove()
+      }
+    }
   }
 
   // Escape closes any open popover (UI audit F-10) — outside-click alone
