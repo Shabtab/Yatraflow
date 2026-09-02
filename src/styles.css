@@ -1617,6 +1617,14 @@ a.btn { text-decoration: none; }
 }
 [data-theme='dark'] .itin-emoji { background: linear-gradient(135deg, var(--teal-soft), var(--info-soft)); }
 
+/* Trip card photo cover (Wikipedia lead image — lib/tripThumb.ts). Same 16:7
+   footprint as the emoji fallback; the gradient shows while the image loads. */
+.trip-thumb {
+  width: 100%; aspect-ratio: 16 / 7; object-fit: cover; display: block;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(135deg, var(--teal-soft), var(--bg-soft));
+}
+
 /* Locked premium overlay (public itinerary) */
 .locked-overlay { position: relative; }
 .locked-cta { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;

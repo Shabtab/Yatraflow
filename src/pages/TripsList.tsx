@@ -1,9 +1,53 @@
 // ============ My trips ============
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useDb, currentUser, tripsForUser, userById, deleteTrip, restoreTrip, addDemoTrips } from '../store/store'
 import { computeTotals } from '../lib/engine'
 import { Avatar, Chip, EmptyState, toast, undoToast, ConfirmDialog } from '../components/ui'
+import { pickTripQuery, fetchTripThumbUrl, getCachedThumb, setCachedThumb } from '../lib/tripThumb'
 import type { Trip } from '../data/types'
+
+/**
+ * 16:7 card banner: the trip's Wikipedia lead image when one exists, else the
+ * cover-emoji gradient. Lookup runs once per mount, only when the cache has no
+ * fresh entry — realtime db refreshes re-render but never re-fetch (the cache
+ * is the contract; see lib/tripThumb.ts).
+ */
+function TripThumb({ trip }: { trip: Trip }) {
+  const [url, setUrl] = useState<string | null>(() => getCachedThumb(trip.id)?.url ?? null)
+  const [broken, setBroken] = useState(false)
+
+  useEffect(() => {
+    const cached = getCachedThumb(trip.id)
+    if (cached && !cached.stale) return // positive hit, or a fresh negative — nothing to do
+    let dead = false
+    fetchTripThumbUrl(pickTripQuery(trip))
+      .then(u => {
+        if (dead) return
+        setCachedThumb(trip.id, u)
+        if (u) setUrl(u)
+      })
+      .catch(() => {
+        if (!dead) setCachedThumb(trip.id, null)
+      })
+    return () => { dead = true }
+    // trip.id only: a realtime refresh re-renders with a new trip object but the
+    // same id — the cached entry decides, so no refetch storm on derived churn.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trip.id])
+
+  if (url && !broken) {
+    return (
+      <img
+        className="trip-thumb"
+        src={url}
+        alt={`${trip.name} — cover image`}
+        loading="lazy"
+        onError={() => setBroken(true)}
+      />
+    )
+  }
+  return <div className="itin-emoji">{trip.coverEmoji}</div>
+}
 
 export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void }) {
   const db = useDb()
@@ -56,7 +100,7 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
             return (
               <div key={t.id} className="card itin-card trip-enter" style={{ animationDelay: `${Math.min(i, 8) * 70}ms` }}>
                 <a className="trip-card-hit" href={`#/trip/${t.id}`}>
-                  <div className="itin-emoji">{t.coverEmoji}</div>
+                  <TripThumb trip={t} />
                   <div className="itin-body">
                     <h3>{t.name}</h3>
                     <div className="small muted">
