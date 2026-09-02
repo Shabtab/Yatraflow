@@ -80,6 +80,7 @@ export default function App() {
             duration: 620,
             easing: 'cubic-bezier(.16, .84, .32, 1)',
             pseudoElement: '::view-transition-old(root)',
+            fill: 'both' as FillMode,
           },
         )
       }).catch(() => { /* transition skipped — theme already applied */ })
@@ -96,6 +97,7 @@ export default function App() {
           duration: 780,
           easing: 'cubic-bezier(.55, 0, .85, .36)',
           pseudoElement: '::view-transition-new(root)',
+          fill: 'both' as FillMode,
         },
       )
     }).catch(() => { /* transition skipped — theme already applied */ })
