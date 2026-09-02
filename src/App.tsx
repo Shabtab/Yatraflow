@@ -51,12 +51,11 @@ export default function App() {
   }, [dark])
 
   // Radiating theme reveal (View Transitions API), driven from the theme-toggle
-  // button. Going LIGHT the new view accelerates out of the icon — slow start,
-  // zap at the end ("source of light"). Going DARK it's the exact inverse: the
-  // new dark view sits still underneath while the OLD light view's clip-path
-  // collapses INTO the icon — light visibly retreats home, fast then settling.
-  // Falls back to the instant switch where the API is missing or the user
-  // prefers reduced motion.
+  // button. Coming FROM dark, the new light view accelerates out of the icon —
+  // slow start, zap at the end ("source of light"). Coming FROM light, it's the
+  // exact inverse: the old light view's clip-path collapses INTO the icon —
+  // light visibly retreats home, fast then settling. Falls back to the instant
+  // switch where the API is missing or the user prefers reduced motion.
   function toggleTheme(e: MouseEvent<HTMLButtonElement>) {
     const rect = e.currentTarget.getBoundingClientRect()
     const x = rect.left + rect.width / 2
@@ -69,8 +68,9 @@ export default function App() {
       apply(); return
     }
     const radius = Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y))
-    if (dark) {
-      // → dark: old (light) snapshot implodes into the icon; dark waits beneath.
+    if (!dark) {
+      // Currently LIGHT → switching to dark: the light collapses INTO the
+      // icon (old snapshot implodes on top); darkness waits beneath.
       document.documentElement.classList.add('theme-vt-collapse')
       const vt = doc.startViewTransition(apply)
       vt.ready.then(() => {
@@ -86,7 +86,8 @@ export default function App() {
       vt.finished.finally(() => document.documentElement.classList.remove('theme-vt-collapse')).catch(() => {})
       return
     }
-    // → light: new (light) snapshot radiates from the icon.
+    // Currently DARK → switching to light: light radiates OUT from the icon
+    // (new snapshot expands on top), slow start then zap.
     const vt = doc.startViewTransition(apply)
     vt.ready.then(() => {
       document.documentElement.animate(

@@ -2099,10 +2099,10 @@ body, .topnav, .glass, .board, .board-col, .modal, .toast {
 
 /* ---- Radiating theme reveal (View Transitions API, driven from App.tsx) ----
    Default: the NEW theme expands as a clip-path circle from the theme-toggle
-   button (::view-transition-new stacked above the old snapshot). Dark mode
-   inverts via the `theme-vt-collapse` class on <html>: the OLD light snapshot
-   is stacked on top and its clip-path collapses INTO the icon, so the light
-   visibly retreats home. Reduced-motion users skip the JS path entirely. */
+   button (::view-transition-new stacked above the old snapshot). Switching
+   dark-ward inverts via the `theme-vt-collapse` class on <html>: the OLD light
+   snapshot is stacked on top and its clip-path collapses INTO the icon, so the
+   light visibly retreats home. Reduced-motion users skip the JS path entirely. */
 ::view-transition-old(root),
 ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
 ::view-transition-old(root) { z-index: 1; }
