@@ -9,7 +9,7 @@ import {
   computeTotals, computeHealth, collectWarnings, countHotelNights, originOf, firstFixedPoint,
   getAssumptions, formatInr, scoreWarnings, predecessorOf, nextAfter, estimateLeg,
   FUEL_PRICE_INR_PER_L, parseFuelEconomyKmL, isImplausibleFuelEconomy, parseFuelPricePerL,
-  isRoundTrip, lastActiveStopPoint, buildJourney,
+  isRoundTrip, lastActiveStopPoint, buildJourney, minutesToHM,
 } from '../src/lib/engine'
 import { seedData } from '../src/data/seed'
 import type { Trip, ItineraryStop } from '../src/data/types'
@@ -537,5 +537,27 @@ describe('unified day journeys (one travel system, any distance)', () => {
     const j = buildJourney(t, t.days[0])
     expect(j.points.map(p => p.kind)).toEqual(['start', 'visit'])
     expect(j.endTitle).toBe('Planned visit')
+  })
+})
+
+describe('minutesToHM — non-finite guard', () => {
+  it('renders an em dash instead of NaN for non-finite input', () => {
+    expect(minutesToHM(NaN)).toBe('—')
+    expect(minutesToHM(Infinity)).toBe('—')
+    expect(minutesToHM(45)).toBe('0h 45m')
+    expect(minutesToHM(130)).toBe('2h 10m')
+  })
+})
+
+describe('dirty stop data', () => {
+  it('a missing visitMinutes cannot make a day’s dwell or clocks NaN', () => {
+    // Simulates a stored row read back without visit_minutes (undefined, not 0).
+    const broken = structuredClone(keralaTrip) as Trip
+    ;(broken.days[0].stops[1] as { visitMinutes?: number }).visitMinutes = undefined
+    const sim = simulateDay(broken.days[0], broken, originOf(broken, 0), 0)
+    expect(Number.isFinite(sim.dwellMinutes)).toBe(true)
+    expect(sim.arrivalTimes.every(t => !t.includes('NaN'))).toBe(true)
+    // The broken stop still counts its buffer as stop time.
+    expect(sim.dwellMinutes).toBeGreaterThanOrEqual(getAssumptions(keralaTrip).bufferMinutesPerStop)
   })
 })

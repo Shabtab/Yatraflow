@@ -53,3 +53,20 @@ describe('computeImpact — time on the road', () => {
     expect(twenty - zero).toBeGreaterThanOrEqual(20)
   })
 })
+
+describe('computeImpact — survives dirty stop data', () => {
+  it('a stop read back without visitMinutes cannot turn the delta NaN', () => {
+    // Simulates a DB row whose visit_minutes never made it back (undefined,
+    // not 0): `undefined + buffer` used to poison the day's dwell and the
+    // dialog rendered "NaNh NaNm". The engine now coerces it to 0.
+    const broken = structuredClone(kerala) as Trip
+    ;(broken.days[0].stops[1] as { visitMinutes?: number }).visitMinutes = undefined
+    const withHalt = structuredClone(broken) as Trip
+    const day = withHalt.days[0]
+    day.stops.splice(1, 0, { ...haltStop(20), id: 'st_test_halt', orderInDay: 2 })
+    day.stops.forEach((s, i) => { s.orderInDay = i + 1 })
+    const impact = computeImpact(broken, withHalt, 'add', 0)
+    expect(Number.isFinite(impact.timeDeltaMin)).toBe(true)
+    expect(impact.timeDeltaMin).toBeGreaterThanOrEqual(20 + A.bufferMinutesPerStop)
+  })
+})
