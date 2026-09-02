@@ -21,6 +21,11 @@ create table if not exists public.profiles (
   social_links jsonb,
   created_at   bigint not null default extract(epoch from now()) * 1000
 );
+-- Idempotent additive column: marks the wall-clock ms timestamp of the most
+-- recent demo-seed run for the user. NULL on hydration triggers the full
+-- 10-trip demo seed (one-shot per account). Added lazily so existing
+-- deployments don't need a re-create.
+alter table public.profiles add column if not exists demo_seeded_at bigint;
 
 -- ---------- trips ----------
 -- Trip internals (days/stops/expenses/fixedCommitments) live in JSONB to
@@ -46,17 +51,19 @@ create table if not exists public.trips (
   days                      jsonb not null default '[]'::jsonb,
   expenses                  jsonb not null default '[]'::jsonb,
   cover_emoji               text not null default '🧭',
+  cover_image_url           text,
   visibility                text not null default 'private'
                               check (visibility in ('private', 'public')),
   created_at                bigint not null default extract(epoch from now()) * 1000,
   updated_at                bigint not null default extract(epoch from now()) * 1000
 );
 
--- Pre-existing installs: add the fuel/round-trip columns without touching
--- data (idempotent — safe to re-run).
+-- Pre-existing installs: add the fuel/round-trip/cover-image columns without
+-- touching data (idempotent — safe to re-run).
 alter table public.trips add column if not exists fuel_economy_km_per_l numeric;
 alter table public.trips add column if not exists fuel_price_per_l numeric;
 alter table public.trips add column if not exists round_trip boolean;
+alter table public.trips add column if not exists cover_image_url text;
 
 -- ---------- trip_members ----------
 create table if not exists public.trip_members (

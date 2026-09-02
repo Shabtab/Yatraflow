@@ -14,7 +14,9 @@ export interface TripRow {
   /** absent/null = default (round trip on for self-drive) */
   round_trip?: boolean | null;
   budget_per_person_inr: number; travel_style: string; fixed_commitments: FixedCommitment[];
-  days: ItineraryDay[]; expenses: Expense[]; cover_emoji: string; visibility: 'private' | 'public';
+  days: ItineraryDay[]; expenses: Expense[]; cover_emoji: string;
+  /** present only after the cover-image migration (see supabase/schema.sql) */
+  cover_image_url?: string | null; visibility: 'private' | 'public';
   created_at: number; updated_at: number;
 }
 
@@ -29,13 +31,14 @@ export function rowToTrip(row: TripRow, members: TripMember[]): Trip {
     fuelPricePerL: row.fuel_price_per_l ?? undefined,
     roundTrip: row.round_trip ?? undefined,
     travelStyle: row.travel_style as Trip['travelStyle'], fixedCommitments: row.fixed_commitments ?? [],
-    days: row.days ?? [], expenses: row.expenses ?? [], coverEmoji: row.cover_emoji, visibility: row.visibility,
+    days: row.days ?? [], expenses: row.expenses ?? [], coverEmoji: row.cover_emoji,
+    coverImageUrl: row.cover_image_url ?? undefined, visibility: row.visibility,
     createdAt: row.created_at, updatedAt: row.updated_at, members,
   }
 }
 
 export interface OptionalColumnsProbe {
-  economy: boolean; price: boolean; roundTrip: boolean
+  economy: boolean; price: boolean; roundTrip: boolean; cover: boolean
 }
 
 /**
@@ -57,6 +60,7 @@ export function tripToRow(trip: Trip, ownerId: string, cols?: OptionalColumnsPro
   if (cols?.economy) row.fuel_economy_km_per_l = trip.fuelEconomyKmL ?? null
   if (cols?.price) row.fuel_price_per_l = trip.fuelPricePerL ?? null
   if (cols?.roundTrip) row.round_trip = trip.roundTrip ?? null
+  if (cols?.cover) row.cover_image_url = trip.coverImageUrl ?? null
   return row
 }
 

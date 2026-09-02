@@ -51,19 +51,7 @@ Key locations:
    finding in the same commit that fixes it — batch status table only, prose
    goes to CHANGELOG. `docs/UI_AUDIT.md` is the per-finding reference
    (file:line + example fix); don't duplicate its content in the tracker.
-6. **Resuming local (Cline/other-agent) work in a fresh Verdent workspace.**
-   The Verdent project dir ships with bare `.git` metadata — `git clone` into
-   it fails; `git remote add origin …` + `git fetch` +
-   `git checkout -b <branch> origin/<branch>` attaches the repo instead. When
-   the local copy's uncommitted WIP has been committed + pushed in the
-   meantime, **diff the ported worktree against `origin/<branch>` before
-   discarding anything** — the commit is usually a strict superset (the
-   session continued past your snapshot), but verify the divergent lines
-   first (Sep 2026: the ported WIP differed from `9201702` by one old
-   `.select` rule; the commit superseded it cleanly). Re-derive all state
-   from `git status -sb` + `git log` on *both* copies; never trust a
-   snapshot from earlier in the conversation.
-7. **Verify "done" claims against git before acting on them.** A session cut
+6. **Verify "done" claims against git before acting on them.** A session cut
    off mid-batch can leave completion summaries that were never true — this
    cost a full re-do when batches 5–6 were reported as committed while
    `git log` showed only batch 3 and half of batch 4 sat uncommitted in the
@@ -82,29 +70,6 @@ Key locations:
    screen (e.g. `http://localhost:5173/#/` for Landing,
    `http://localhost:5173/#/trips` for My Trips) and say what to check
    (themes, mobile width, specific interactions).
-8. **A screenshot or "current values" report from another agent describes
-   *its own working copy*, not the shared branch.** A Cline report quoted
-   the nav pill's pre-fix CSS as "shipped, nothing to re-verify" while the
-   pushed branch carried the fix — the local tree it read was simply behind.
-   Before applying forwarded values (or trusting "no change needed"), ask
-   which tree the report came from and diff it against `origin/<branch>`;
-   the two agents may legitimately disagree because they are reading
-   different files. Corollary (same day): the user's own browser tab can be
-   the stale copy — a Vite HMR tab kept rendering pre-revert CSS and made
-   "local looks fine / preview looks broken" seem like a deploy bug.
-   Hard-refresh before comparing environments. Corollary: localhost ports
-   are separate localStorage origins — `:5173` and `:5174` render different
-   auth states (nav links differ); don't read that as a code difference.
-9. **Nav glass is user-decided: the floating `.topnav` uses the dedicated
-   `--yf-nav-glass` token at 0.58 white light / 0.58 ink-navy dark with
-   `blur(18px) saturate(1.2)` (final Sep 2); the shared 0.58 `--yf-glass`
-   stays for map/board panels only.** The day's opacity ladder
-   (0.85 → 0.75 → 0.66 → 0.58, user-judged live at the headline scroll
-   position) only resolved once the minifier blur bug was fixed — 0.58 with
-   real blur is the user's chosen glass; earlier in the day they rejected
-   0.58 because prod shipped it blur-less (see §4 minifier rule). Do not
-   change nav transparency/blur again without an explicit request naming
-   the exact values.
 
 
 ## 3. Verification before every push
@@ -150,18 +115,6 @@ Hard rules (each learned the hard way — do not relearn them):
   upgrade, `@vitejs/plugin-react` must be v6+ (native vite 8 peers);
   plugin-react 4.x triggers ERESOLVE — the temporary `.npmrc`
   `legacy-peer-deps` pin was removed once v6 landed (0.19.0).
-- **The CSS minifier keeps only the LAST declaration of a `-webkit-`/standard
-  pair — author `-webkit-` FIRST, standard LAST.** Vite 8's Lightning CSS
-  merges `backdrop-filter` + `-webkit-backdrop-filter` into one declaration,
-  keeping whichever is last (its data wrongly assumes the `-webkit-` form
-  covers Chromium), and `css.lightningcss.targets` does NOT change this
-  (probed on v1.33.0). Every production build shipped blur-less glass while
-  the unminified dev server looked fine — that dev/prod asymmetry was the
-  real cause of the Sep 2 "nav see-through on Vercel, fine on localhost"
-  saga (five opacity flip-flops before the root cause surfaced; the pair
-  order in `styles.css` was the whole bug). When adding glass surfaces, grep
-  the built `dist/assets/index-*.css` for BOTH declarations and verify
-  visually against `vite preview`, never the dev server alone.
 - **Vercel env vars are per-environment *and per-git-branch*, and Vite bakes
   them at build time.** The real cause of the recurring "login breaks on
   preview" was **not** Production-only scoping: `VITE_SUPABASE_URL` /
