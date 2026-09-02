@@ -69,8 +69,10 @@ export function answerQuestion(trip: Trip, question: string): AiReply {
   // "cheaper" alone, or both "alternative" AND "cheap", route to cheaperAlternative.
   if (q.includes('cheaper') || (q.includes('alternative') && q.includes('cheap'))) return cheaperAlternative(trip)
   // Word-boundary match so the substring "rain" inside "train" does not
-  // mis-route train questions to the rain plan.
-  if (/\brain\b/.test(q)) return rainPlan(trip)
+  // mis-route train questions to the rain plan. Extended to also match
+  // common conjugations (rains, raining, rainy) while still rejecting
+  // false positives like "rainbow" or "rainforest".
+  if (/\brain([s]|ing|y)?\b/.test(q)) return rainPlan(trip)
   if (q.includes('family-friendly') || q.includes('family friendly')) return familyVersion(trip)
   if (q.includes('children') || q.includes('kids')) return removeForKids(trip)
   if (q.includes('relaxed') && q.includes('packed')) return compareRelaxedPacked(trip)

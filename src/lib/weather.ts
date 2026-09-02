@@ -85,8 +85,11 @@ export function forecastAvailable(startDate: string): boolean {
   return diffDays <= 15
 }
 
-function isoAddDays(iso: string, days: number): string {
+export function isoAddDays(iso: string, days: number): string {
   const d = new Date(iso + 'T00:00')
   d.setDate(d.getDate() + days)
-  return d.toISOString().slice(0, 10)
+  // Format from LOCAL getters — toISOString() shifts the date back a day on
+  // positive-UTC-offset timezones (e.g. IST, +5:30) because the local-midnight
+  // timestamp converts to a UTC date that is one calendar day behind.
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
