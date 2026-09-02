@@ -249,8 +249,8 @@
 .glass {
   background: var(--yf-glass);
   border: 1px solid var(--yf-glass-border);
-  backdrop-filter: blur(18px) saturate(1.25);
   -webkit-backdrop-filter: blur(18px) saturate(1.25);
+  backdrop-filter: blur(18px) saturate(1.25);
   box-shadow: inset 0 1px 0 var(--yf-glass-sheen);
 }
 
@@ -365,8 +365,8 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
   width: min(1180px, calc(100% - 28px));
   margin: 12px auto 0;
   background: var(--yf-nav-glass);
-  backdrop-filter: blur(18px) saturate(1.2);
   -webkit-backdrop-filter: blur(18px) saturate(1.2);
+  backdrop-filter: blur(18px) saturate(1.2);
   border: 1px solid var(--yf-glass-border);
   border-radius: 999px;
   box-shadow: var(--shadow-soft);
@@ -497,7 +497,7 @@ a.btn { text-decoration: none; }
 .filter-pillbar {
   display: inline-flex; gap: 2px; padding: 4px; flex-wrap: wrap;
   background: var(--yf-glass); border: 1px solid var(--yf-glass-border);
-  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
   border-radius: 999px; box-shadow: var(--shadow-soft);
 }
 .filter-pillbar .clickable-chip { border: none; background: transparent; }
@@ -776,7 +776,7 @@ a.btn { text-decoration: none; }
   display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px;
   background: var(--yf-glass);
   border: 1px solid var(--yf-glass-border);
-  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
   border-radius: 16px; padding: 9px 16px; margin-bottom: 16px;
   box-shadow: var(--shadow-soft);
   font-size: 12.5px; font-weight: 600; color: var(--text-2);
@@ -893,8 +893,8 @@ a.btn { text-decoration: none; }
    corners — most of the map stays visible between and above them. They use the
    shared .glass treatment (deep blur + sheen) so the map visibly reads through. */
 .board-info, .board-pulse {
-  backdrop-filter: blur(18px) saturate(1.25);
   -webkit-backdrop-filter: blur(18px) saturate(1.25);
+  backdrop-filter: blur(18px) saturate(1.25);
 }
 .board-info { flex: 0 1 264px; border-radius: 16px; padding: 10px 12px; max-width: 264px; box-shadow: inset 0 1px 0 var(--yf-glass-sheen), var(--shadow-soft); }
 .board-fit {
@@ -1292,7 +1292,7 @@ a.btn { text-decoration: none; }
 .map-day-filter { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
 .map-day-chip {
   border: 1px solid var(--yf-glass-border); background: var(--yf-glass);
-  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
   color: var(--text-2); border-radius: 999px; font-size: 12px; font-weight: 700;
   padding: 4px 13px; white-space: nowrap; transition: background var(--t-fast) var(--ease-out),
     color var(--t-fast) var(--ease-out), border-color var(--t-fast) var(--ease-out), box-shadow var(--t-fast) var(--ease-out);
@@ -2289,8 +2289,8 @@ body, .topnav, .glass, .board, .board-col, .modal, .toast {
 ::view-transition-old(root),
 ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
 html.vt-active :where(*) {
-  backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
 }
 :root.vt-radiate-out::view-transition-new(root) {
   animation: vt-radiate-out 780ms cubic-bezier(.55, 0, .85, .36) both;
