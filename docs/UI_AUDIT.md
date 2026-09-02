@@ -597,5 +597,22 @@ Batch 1 + 3 are pure CSS/one-liners (highest fix-per-risk ratio). Batch 6 contai
 | F-30 | P2 | No `accent-color` | `styles.css` |
 | F-31 | P2 | Hardcoded `toLocaleString('en-IN')` | `Explore.tsx:116` |
 | F-32 | P2 | Straight apostrophes in copy | `Landing.tsx:53`, `TripsList.tsx:30,91` |
+| F-33 | P2 | Glass rules missing `-webkit-backdrop-filter` (Safari: no blur) | `styles.css` — `.modal-overlay`, `.itin-cover .chip`, `.map-legend-toggle/-body`, `.locked-overlay`, `.locked-cta`, `.explore-hero-search` |
 
-*Counts: 32 findings — 2 P0 · 15 P1 · 15 P2. Sections 11, 14, 15 record the passes.*
+*Counts: 33 findings — 2 P0 · 15 P1 · 16 P2. Sections 11, 14, 15 record the passes.*
+
+### F-33 · P2 · Six glass rules kept only the standard `backdrop-filter`
+
+**Found** during the Sep 2 post-CTI design-language sweep (after the minifier
+blur saga, see AGENTS.md §4). The 7 original paired rules were fixed to author
+`-webkit-` first; these 6 single-declaration rules were missed because they
+never had a `-webkit-` twin to merge with — Lightning CSS leaves them alone, so
+Chromium is fine, but **Safari renders them blur-less** (same class of bug the
+minifier saga exposed, opposite direction).
+
+**Fix (applied in the same commit as this entry):** author the `-webkit-` form
+first, standard last, per the AGENTS.md §4 rule:
+
+```css
+-webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
+```
