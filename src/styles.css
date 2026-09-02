@@ -319,9 +319,8 @@ html {
   /* No grey UA tap-flash on touch devices. */
   -webkit-tap-highlight-color: transparent;
   /* Anchor/scrollIntoView targets land clear of the floating pill topnav
-     (10px float gap + a little breathing room below it). */
-  /* nav is static now — this clears only the sticky trip-total strip (Timeline) */
-  scroll-padding-top: 64px;
+     (12px top gap + nav height + breathing room). */
+  scroll-padding-top: calc(12px + var(--nav-h) + 16px);
 }
 body {
   margin: 0;
@@ -353,10 +352,10 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
 
 /* ---------- Top navigation ---------- */
 .topnav {
-  /* Static (scrolls away with the page) — the sticky follow was obstructing
-     content while scrolling. Stays a floating-style pill visually; `relative`
-     keeps it the positioning anchor for the mobile dropdown. */
-  position: relative; z-index: 60;
+  /* Float on scroll: sticky pins the pill to the top of the viewport once the
+     page scrolls, so the glass pill nav "follows" alongside the trip-total
+     strip the way the user asked. It keeps the CTI floating-pill look. */
+  position: sticky; top: 12px; z-index: 60;
   /* CTI nav language: a floating pill detached from the viewport edges,
      not a full-bleed bar — the page atmosphere shows around it. */
   width: min(1180px, calc(100% - 28px));
@@ -441,7 +440,27 @@ a.btn { text-decoration: none; }
   border-color: var(--teal); box-shadow: 0 0 0 3px color-mix(in srgb, var(--teal) 18%, transparent);
 }
 .textarea { resize: vertical; min-height: 74px; }
-.select { appearance: none; background-image: linear-gradient(45deg, transparent 49%, var(--text-3) 50%), linear-gradient(-135deg, transparent 49%, var(--text-3) 50%); background-position: calc(100% - 19px) 55%, calc(100% - 14px) 55%; background-size: 5px 5px; background-repeat: no-repeat; }
+/* Modern dropdown (select) — glass pill, CTI tone */
+.select {
+  appearance: none;
+  border-radius: 999px;
+  padding: 10px 14px 10px 38px;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  background: var(--bg-soft);
+  /* soft teal chevron, matching the chip style */
+  background-image:
+    linear-gradient(45deg, transparent 49%, var(--teal-deep) 50%),
+    linear-gradient(-135deg, transparent 49%, var(--teal-deep) 50%);
+  background-position: calc(100% - 20px) 55%, calc(100% - 15px) 55%;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+  transition: border-color .15s ease, box-shadow .15s ease, background-color .15s ease;
+}
+.select:hover { border-color: var(--teal); }
+@media (max-width: 720px) { .select { padding: 11px 14px 11px 38px; } }
 .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
 .err-text { color: var(--danger); font-size: 12.5px; font-weight: 550; }
 .hint-text { color: var(--text-3); font-size: 12.5px; }
@@ -469,6 +488,19 @@ a.btn { text-decoration: none; }
 .clickable-chip.on-saffron { border-color: var(--saffron); background: var(--saffron-soft); color: var(--warn); }
 .clickable-chip:hover { transform: translateY(-1px); }
 .chip-row { display: flex; flex-wrap: wrap; gap: 7px; }
+/* Segmented pill filter bar (Decisions etc.) — glass capsule with a sliding
+   active state, per the CTI pill design language. */
+.filter-pillbar {
+  display: inline-flex; gap: 2px; padding: 4px; flex-wrap: wrap;
+  background: var(--yf-glass); border: 1px solid var(--yf-glass-border);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  border-radius: 999px; box-shadow: var(--shadow-soft);
+}
+.filter-pillbar .clickable-chip { border: none; background: transparent; }
+.filter-pillbar .clickable-chip:hover { transform: none; }
+.filter-pillbar .clickable-chip.on-teal { background: var(--teal-deep); color: #fff; box-shadow: 0 2px 10px rgba(11,138,128,.35); }
+[data-theme='dark'] .filter-pillbar .clickable-chip.on-teal { background: var(--teal); color: #06251f; }
+.filter-pillbar .clickable-chip.on-saffron { background: var(--saffron); color: #fff; }
 
 /* ---------- Stat tiles ---------- */
 .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
@@ -735,7 +767,7 @@ a.btn { text-decoration: none; }
    in view while scrolling long timelines. */
 .tl-total-strip {
   position: sticky;
-  top: calc(var(--nav-h) + env(safe-area-inset-top) + 20px);
+  top: calc(12px + var(--nav-h) + 10px + env(safe-area-inset-top));
   z-index: 40;
   display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px;
   background: var(--yf-glass);
@@ -1254,11 +1286,19 @@ a.btn { text-decoration: none; }
    wraps on desktop and scrolls horizontally on mobile (media query below). */
 .map-toolbar { margin-bottom: 8px; }
 .map-day-filter { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
-.map-day-chip { border: 1.5px solid var(--line); background: var(--card); color: var(--text); border-radius: 999px; font-size: 12px; font-weight: 700; padding: 4px 11px; white-space: nowrap; }
-.map-day-chip.on { background: var(--text); color: var(--bg); border-color: var(--text); }
+.map-day-chip {
+  border: 1px solid var(--yf-glass-border); background: var(--yf-glass);
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  color: var(--text-2); border-radius: 999px; font-size: 12px; font-weight: 700;
+  padding: 4px 13px; white-space: nowrap; transition: background var(--t-fast) var(--ease-out),
+    color var(--t-fast) var(--ease-out), border-color var(--t-fast) var(--ease-out), box-shadow var(--t-fast) var(--ease-out);
+}
+.map-day-chip:hover { color: var(--text); border-color: var(--teal); }
+.map-day-chip.on { background: var(--teal-deep); color: #fff; border-color: var(--teal-deep); box-shadow: 0 2px 10px rgba(11,138,128,.35); }
 .map-expand-chip { margin-left: auto; }
-[data-theme='dark'] .map-day-chip { background: rgba(22,35,58,.88); color: var(--text); }
-[data-theme='dark'] .map-day-chip.on { background: var(--teal); color: #06251f; border-color: var(--teal); }
+[data-theme='dark'] .map-day-chip { background: rgba(22,35,58,.72); color: var(--text); }
+[data-theme='dark'] .map-day-chip:hover { background: rgba(22,35,58,.95); }
+[data-theme='dark'] .map-day-chip.on { background: var(--teal); color: #06251f; border-color: var(--teal); box-shadow: 0 2px 12px rgba(11,138,128,.4); }
 /* Map key: hidden behind a small ⓘ chip by default (it used to blanket the
    bottom-right corner); the body card reopens above the same corner. */
 .map-legend { position: absolute; right: 12px; bottom: 12px; z-index: 5; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
@@ -1333,7 +1373,18 @@ a.btn { text-decoration: none; }
 .budget-bars { display: flex; flex-direction: column; gap: 11px; }
 .budget-bar-row { display: grid; grid-template-columns: 120px 1fr auto; gap: 10px; align-items: center; font-size: 13.5px; }
 .budget-bar-track { height: 10px; background: var(--bg-soft); border-radius: 99px; overflow: hidden; }
-.budget-bar-fill { height: 100%; border-radius: 99px; transition: width .4s ease; }
+.budget-bar-fill {
+  height: 100%; border-radius: 99px; transition: width .4s ease;
+  position: relative; overflow: hidden;
+}
+/* A calm, smooth sheen sweeping across each budget bar — a single compositor
+   transform slide, never a repaint. Reduced-motion users get a static bar. */
+.budget-bar-fill::after {
+  content: ''; position: absolute; top: 0; bottom: 0; width: 42%;
+  background: linear-gradient(105deg, transparent, rgba(255,255,255,.45), transparent);
+  animation: barSheen 2.6s var(--ease-out) infinite;
+}
+@keyframes barSheen { from { left: -42%; } to { left: 108%; } }
 .compare-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .compare-table th, .compare-table td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); }
 .compare-table th { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-3); }
@@ -1983,6 +2034,52 @@ main:focus { outline: none; }
 .poi-plan-row .poi-desc { -webkit-line-clamp: unset; -webkit-box-orient: unset; overflow: visible; }
 .poi-plan-row .poi-thumb { width: 34px; height: 34px; border-radius: 8px; }
 [data-theme='dark'] .ride-purpose-overnight { background: #fff; color: #06251f; }
+
+/* Map-tab corridor suggestions — two curated columns (§6.10 tone coding):
+   need-based halts (fuel/food/rest/stretch/overnight) LEFT in teal, and
+   see-&-do / detours / scenic stops RIGHT in scenic purple. The tinted
+   wash makes each lane read as its own category at a glance while the
+   cards inside stay neutral for readable text. */
+.poi-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-top: 12px;
+  align-items: start;
+}
+@media (max-width: 900px) { .poi-split { grid-template-columns: 1fr; } }
+.poi-col {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  background: var(--bg);
+  min-width: 0;
+}
+.poi-col--needs {
+  background: color-mix(in srgb, var(--teal) 5%, var(--bg));
+  border-color: color-mix(in srgb, var(--teal) 22%, var(--line));
+}
+.poi-col--see {
+  background: color-mix(in srgb, #7C5CFC 5%, var(--bg));
+  border-color: color-mix(in srgb, #7C5CFC 24%, var(--line));
+}
+[data-theme='dark'] .poi-col--needs { background: color-mix(in srgb, var(--teal) 10%, var(--bg)); }
+[data-theme='dark'] .poi-col--see { background: color-mix(in srgb, #7C5CFC 12%, var(--bg)); }
+.poi-col-head { display: flex; align-items: center; gap: 9px; margin-bottom: 10px; }
+.poi-col-head-ico {
+  width: 30px; height: 30px; border-radius: 10px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 15px; flex: 0 0 auto;
+}
+.poi-col--needs .poi-col-head-ico { background: var(--teal-soft); }
+.poi-col--see .poi-col-head-ico { background: color-mix(in srgb, #7C5CFC 16%, transparent); }
+.poi-col-head b { display: block; font-size: 14px; }
+.poi-col--needs .poi-col-head b { color: var(--teal-deep); }
+.poi-col--see .poi-col-head b { color: #5540B8; }
+[data-theme='dark'] .poi-col--see .poi-col-head b { color: #B4A5FF; }
+/* tint the purpose chips inside their lane — sightseeing reads scenic purple */
+.poi-col--see .ride-purpose-sight { background: color-mix(in srgb, #7C5CFC 16%, transparent); color: #5540B8; }
+[data-theme='dark'] .poi-col--see .ride-purpose-sight { color: #B4A5FF; }
 
 /* ---- Mobile: Bento pulse chips get comfortable touch height ---- */
 @media (max-width: 720px) {

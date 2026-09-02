@@ -1746,6 +1746,54 @@ function MapTab({ trip, editable, applyChange, suggestionCache }: {
 
   const dayOptions = trip.days.map(d => ({ index: d.index }))
 
+  // Split corridor suggestions into two curated columns: need-based halts
+  // (fuel/food/rest/stretch/overnight/stay) on the LEFT in teal-amber, and
+  // see-&-do / sightseeing + detours on the RIGHT in scenic purple — so the
+  // map tab needs no scrolling to reach either kind (§6.10 CTI tone coding).
+  const NEED_PURPOSES = new Set(['fuel', 'meal', 'food', 'rest', 'stretch', 'overnight', 'stay'])
+  const needs = pois.filter(sh => sh.segment && NEED_PURPOSES.has(sh.segment.purpose))
+  const seeAndDo = pois.filter(sh => sh.segment && !NEED_PURPOSES.has(sh.segment.purpose))
+
+  /** One corridor-suggestion row (gap or hit). Shared by both split columns. */
+  function renderPoi(sh: SegmentHit) {
+    const hit = sh.hit
+    if (!hit) {
+      return (
+        <div key={`gap-${sh.segment.index}`} className="poi-plan-row poi-plan-gap">
+          <span className={`ride-purpose ride-purpose-${sh.segment.purpose} ride-purpose-muted`}>{sh.segment.label}</span>
+          <span className="muted small">no good match around ~{sh.segment.targetKm.toFixed(0)} km — add a stop on the Timeline and it will pin itself here.</span>
+        </div>
+      )
+    }
+    const added = addedIds.has(hit.id as string) || existingNames.has(hit.name.toLowerCase())
+    const offRoute = detourKm(hit, anchors)
+    return (
+      <div key={hit.id} className="poi-plan-row">
+        <div className="ride-spot-title">
+          <span className={`ride-purpose ride-purpose-${sh.segment.purpose}`}>{sh.segment.label}</span>
+          {hit.thumb && <img className="poi-thumb" src={smallThumb(hit.thumb)} alt="" loading="lazy" />}
+          <b>{hit.name}</b>
+        </div>
+        <div className="poi-desc small muted">
+          ~{hit.cumKm ?? sh.segment.targetKm.toFixed(0)} km into the trip · ≈{sh.segment.kmFromPrev.toFixed(0)} km / {minutesToHM(sh.segment.minutesFromPrev)} since the last stop
+          {hit.nearestCity ? ` · near ${hit.nearestCity}` : ''}
+          {' · '}{offRoute == null ? 'on route' : `~${Math.round(offRoute * 10) / 10} km off route`}
+        </div>
+        {hit.description && <div className="poi-desc small muted">{hit.description}</div>}
+        {(hit.openTime || hit.closeTime) && (
+          <div className="poi-desc small muted">🕘 {formatHMRange(hit.openTime, hit.closeTime, timeFormat)} (reported)</div>
+        )}
+        <div>
+          {editable && (
+            added
+              ? <span className="chip chip-teal">✓ Added</span>
+              : <button className="btn btn-primary btn-sm" onClick={() => openAddModal(hit)}>+ Add</button>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div>
       <TripMap trip={trip} nearbyPois={pois.flatMap(p => p.hit ? [p.hit] : [])} onAddNearby={editable ? (hit) => openAddModal(hit) : undefined} />
@@ -1786,45 +1834,35 @@ function MapTab({ trip, editable, applyChange, suggestionCache }: {
         {!loadingPois && pois.length === 0 && (
           <p className="muted small">Not enough driving distance yet for a fatigue plan — add a longer route (90+ km) in the Timeline and segmented stop suggestions will appear here.</p>
         )}
-        <div className="poi-plan-list">
-          {pois.map(sh => {
-            const hit = sh.hit
-            if (!hit) {
-              return (
-                <div key={`gap-${sh.segment.index}`} className="poi-plan-row poi-plan-gap">
-                  <span className={`ride-purpose ride-purpose-${sh.segment.purpose} ride-purpose-muted`}>{sh.segment.label}</span>
-                  <span className="muted small">no good match around ~{sh.segment.targetKm.toFixed(0)} km — add a stop on the Timeline and it will pin itself here.</span>
-                </div>
-              )
-            }
-            const added = addedIds.has(hit.id as string) || existingNames.has(hit.name.toLowerCase())
-            const offRoute = detourKm(hit, anchors)
-            return (
-              <div key={hit.id} className="poi-plan-row">
-                <div className="ride-spot-title">
-                  <span className={`ride-purpose ride-purpose-${sh.segment.purpose}`}>{sh.segment.label}</span>
-                  {hit.thumb && <img className="poi-thumb" src={smallThumb(hit.thumb)} alt="" loading="lazy" />}
-                  <b>{hit.name}</b>
-                </div>
-                <div className="poi-desc small muted">
-                  ~{hit.cumKm ?? sh.segment.targetKm.toFixed(0)} km into the trip · ≈{sh.segment.kmFromPrev.toFixed(0)} km / {minutesToHM(sh.segment.minutesFromPrev)} since the last stop
-                  {hit.nearestCity ? ` · near ${hit.nearestCity}` : ''}
-                  {' · '}{offRoute == null ? 'on route' : `~${Math.round(offRoute * 10) / 10} km off route`}
-                </div>
-                {hit.description && <div className="poi-desc small muted">{hit.description}</div>}
-                {(hit.openTime || hit.closeTime) && (
-                  <div className="poi-desc small muted">🕘 {formatHMRange(hit.openTime, hit.closeTime, timeFormat)} (reported)</div>
-                )}
-                <div>
-                  {editable && (
-                    added
-                      ? <span className="chip chip-teal">✓ Added</span>
-                      : <button className="btn btn-primary btn-sm" onClick={() => openAddModal(hit)}>+ Add</button>
-                  )}
-                </div>
+        <div className="poi-split">
+          <div className="poi-col poi-col--needs">
+            <div className="poi-col-head">
+              <span className="poi-col-head-ico">⛽</span>
+              <div>
+                <b>Need-based halts</b>
+                <span className="small muted">fuel · food · rest · stretch · overnight</span>
               </div>
-            )
-          })}
+            </div>
+            <div className="poi-plan-list">
+              {needs.length === 0
+                ? <p className="muted small">No need-based halts surfaced yet — they appear as you add driving days.</p>
+                : needs.map(renderPoi)}
+            </div>
+          </div>
+          <div className="poi-col poi-col--see">
+            <div className="poi-col-head">
+              <span className="poi-col-head-ico">📍</span>
+              <div>
+                <b>See &amp; do</b>
+                <span className="small muted">sightseeing · detours · scenic stops</span>
+              </div>
+            </div>
+            <div className="poi-plan-list">
+              {seeAndDo.length === 0
+                ? <p className="muted small">Sightseeing &amp; detour stops will appear here along the corridor.</p>
+                : seeAndDo.map(renderPoi)}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -2204,7 +2242,7 @@ function DecisionsTab({ trip, me, editable }: { trip: Trip; me: { id: string }; 
             <div className="stat-value">{resolvedCount}</div>
           </div>
         </div>
-        <div className="chip-row" style={{ marginBottom: 14 }} role="group" aria-label="Filter decisions">
+        <div className="filter-pillbar" style={{ marginBottom: 14 }} role="group" aria-label="Filter decisions">
           {([['all', 'All'], ['open', 'Open'], ['mine', 'Needs me'], ['resolved', 'Resolved']] as const).map(([k, label]) => (
             <button key={k} type="button" className={`clickable-chip chip${filter === k ? ' on-teal' : ''}`}
               onClick={() => setFilter(k)} aria-pressed={filter === k}>{label}</button>
