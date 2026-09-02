@@ -68,6 +68,13 @@ export default function App() {
       apply(); return
     }
     const radius = Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y))
+    // Origin vars go on <html> BEFORE the transition starts, so the pre-ready
+    // frames are already clipped by the CSS rule — otherwise the incoming
+    // snapshot sits fully visible for a beat and the screen "flashes" cream.
+    const rootStyle = document.documentElement.style
+    rootStyle.setProperty('--vt-x', `${x}px`)
+    rootStyle.setProperty('--vt-y', `${y}px`)
+    rootStyle.setProperty('--vt-r', `${radius}px`)
     if (!dark) {
       // Currently LIGHT → switching to dark: the light collapses INTO the
       // icon (old snapshot implodes on top); darkness waits beneath.
@@ -84,11 +91,16 @@ export default function App() {
           },
         )
       }).catch(() => { /* transition skipped — theme already applied */ })
-      vt.finished.finally(() => document.documentElement.classList.remove('theme-vt-collapse')).catch(() => {})
+      vt.finished.finally(() => {
+        document.documentElement.classList.remove('theme-vt-collapse')
+        rootStyle.removeProperty('--vt-x'); rootStyle.removeProperty('--vt-y'); rootStyle.removeProperty('--vt-r')
+      }).catch(() => {})
       return
     }
     // Currently DARK → switching to light: light radiates OUT from the icon
-    // (new snapshot expands on top), slow start then zap.
+    // (new snapshot expands on top), slow start then zap. The `theme-vt-expand`
+    // class pins the new snapshot to circle(0) from its very first frame.
+    document.documentElement.classList.add('theme-vt-expand')
     const vt = doc.startViewTransition(apply)
     vt.ready.then(() => {
       document.documentElement.animate(
@@ -101,6 +113,10 @@ export default function App() {
         },
       )
     }).catch(() => { /* transition skipped — theme already applied */ })
+    vt.finished.finally(() => {
+      document.documentElement.classList.remove('theme-vt-expand')
+      rootStyle.removeProperty('--vt-x'); rootStyle.removeProperty('--vt-y'); rootStyle.removeProperty('--vt-r')
+    }).catch(() => {})
   }
 
   // Escape closes any open popover (UI audit F-10) — outside-click alone

@@ -2109,6 +2109,12 @@ body, .topnav, .glass, .board, .board-col, .modal, .toast {
 ::view-transition-new(root) { z-index: 2; }
 :root.theme-vt-collapse::view-transition-old(root) { z-index: 2; }
 :root.theme-vt-collapse::view-transition-new(root) { z-index: 1; }
+/* Pin the incoming light snapshot to circle(0) at the toggle from its FIRST
+   frame (CSS vars set in App.tsx before startViewTransition) — without this,
+   the pre-ready frames render it unclipped and the screen flashes cream. */
+:root.theme-vt-expand::view-transition-new(root) {
+  clip-path: circle(0px at var(--vt-x, 50%) var(--vt-y, 50%));
+}
 
 /* ---- My Trips staggered card entrance ---- */
 .trip-enter { animation: cardIn var(--t-slow) var(--ease-out) both; }
