@@ -173,6 +173,11 @@ function removeForKids(trip: Trip): AiReply {
 
 function compareRelaxedPacked(trip: Trip): AiReply {
   const curStopsPerDay = trip.days.map(d => d.stops.filter(s => s.status !== 'rejected').length)
+  // Guard a dayless trip — Math.min()/Math.max() on an empty spread are
+  // ±Infinity, which would print "~∞/day".
+  if (curStopsPerDay.length === 0) {
+    return { text: 'Your itinerary has no days yet — add at least one day to compare a relaxed vs packed version.', assumptions: DISCLAIMER }
+  }
   const relaxedCount = Math.max(1, Math.round(Math.min(...curStopsPerDay) * 0.8))
   const packedCount = Math.max(...curStopsPerDay) + 2
   const t = totals_of(trip)

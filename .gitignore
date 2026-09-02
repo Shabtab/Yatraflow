@@ -16,3 +16,7 @@ dev_server_run.log
 dev_server_err.log
 dev.log
 docs/diagrams/*.html
+
+# local build/verify output dumps
+tsc_out.txt
+vitest_out.txt

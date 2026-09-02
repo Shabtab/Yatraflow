@@ -2,6 +2,18 @@
 
 All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions are pre-1.0 MVP milestones.
 
+## [Unreleased]
+
+### Fixed
+- **Accepting a suggestion no longer loses the stop on reload.** `addStop()` — the path behind the Suggestions tab's "Add to timeline" — mutated the in-memory cache but never wrote the trip back to Supabase, so the new stop vanished on the next hydration. It now calls `persistTripField()` like every other stop mutation, and a new mocked-DB test (`tests/store-persistence.test.ts`) pins the write-through so a regression can't slip past the gate again.
+- **Invite links now auto-join.** `InviteGate` ran its join effect once on mount with an empty dependency array, which fired before the store's async hydration resolved — `me`/`trip` were still null, so a signed-in user with a valid invite sat on the "Joining…" screen forever. The effect now depends on the resolved `me`/`trip` objects (the navigate callback is kept in a ref) and re-runs once hydration or login makes them available.
+- **`moveStopBetweenDays` can no longer drop a stop.** If the target day index didn't exist, the stop was spliced out of its source day and never re-inserted (silent data loss); moving a stop within its own day also ignored the requested position. A missing target day now restores the stop to its original day, and same-day moves insert at the requested (clamped) position.
+- **`DaySpark` and the AI "relaxed vs packed" comparison no longer render `NaN`/`Infinity`** for a day with no stops or a trip with no days (empty `Math.min`/`Math.max` spreads).
+
+### Added
+- **ESLint tooling** (`npm run lint`, `eslint.config.js`): typescript-eslint + `eslint-plugin-react-hooks` over `src/`. Non-gating by design — the repo's gate stays `npm run verify` — but it already caught the `InviteGate` dependency bug above and surfaces pre-existing unused-vars/`any`/set-state-in-effect findings to clean up over time.
+- **`tests/store-persistence.test.ts`** — mocked-Supabase write-through tests for `duplicateTrip`, `addStop`, `updateStop` and `moveStopBetweenDays` (5 tests).
+
 ## [0.23.0] — 2026-09-01
 
 ### Fixed

@@ -1302,6 +1302,9 @@ function RideSpotRow({ segHit, onAdd, added }: {
 
 /** Tiny inline SVG of the day's route shape — no map mount, pure geometry. */
 function DaySpark({ stops }: { stops: ItineraryStop[] }) {
+  // A day with no stops has no shape — bail out before Math.min() on an empty
+  // spread turns into ±Infinity and the polyline renders `NaN` coordinates.
+  if (stops.length === 0) return null
   const lats = stops.map(s => s.lat)
   const lngs = stops.map(s => s.lng)
   const minLat = Math.min(...lats), maxLat = Math.max(...lats)
