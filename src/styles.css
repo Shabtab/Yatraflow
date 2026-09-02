@@ -1394,6 +1394,15 @@ main:focus { outline: none; }
 .ride-spot-title { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
 .ride-spot-gap { border-style: dashed; opacity: .8; }
 
+/* ---- Halt planner (user-chosen km points + durations) ---- */
+.halt-planner-inputs { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.hp-field { display: inline-flex; align-items: center; gap: 5px; }
+.hp-field input[type="number"] { padding: 6px 8px; font-variant-numeric: tabular-nums; }
+.halt-plan-list { display: flex; flex-direction: column; gap: 6px; }
+.halt-plan-row { align-items: flex-start; }
+.hp-pin { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.hp-pin input { accent-color: var(--teal); }
+
 /* Ride-plan purpose chips — colour-coded stop type on suggested halt cards */
 .ride-purpose {
   display: inline-flex; align-items: center;
