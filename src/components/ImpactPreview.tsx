@@ -33,7 +33,7 @@ export function ImpactPreviewPanel({ result, trip, onKeep, onMoveDay, onRemove, 
         <div className="impact-body">
           <div className="impact-grid">
             <div className="impact-cell">
-              <div className="k">Travel time</div>
+              <div className="k">Time on the road<span className="muted small" style={{ display: 'block', fontWeight: 400 }}>driving + stops</span></div>
               <div className={`v ${cls(result.timeDeltaMin)}`}>{signMin(result.timeDeltaMin)}</div>
             </div>
             <div className="impact-cell">

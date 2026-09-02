@@ -777,6 +777,10 @@ export function addStop(tripId: ID, dayIndex: number, stop: Omit<ItineraryStop, 
   day.stops.push(s)
   renumber(day)
   touchAndLog(trip, `added “${stop.title}”`, `Day ${dayIndex + 1}`)
+  // Persist the trip so the new stop survives a reload — the manual add flow
+  // goes through updateTrip() → persistTripField(), but acceptSuggestionInto-
+  // Timeline calls addStop() directly and used to drop the stop on refresh.
+  void persistTripField(tripId, trip)
   return s
 }
 
@@ -836,16 +840,25 @@ export function reorderStop(tripId: ID, dayIndex: number, fromIdx: number, toIdx
 export function moveStopBetweenDays(tripId: ID, stopId: ID, toDayIndex: number, position?: number): void {
   const trip = tripById(tripId)!
   let moved: ItineraryStop | undefined
+  let fromDay: ItineraryDay | undefined
   for (const day of trip.days) {
     const idx = day.stops.findIndex(s => s.id === stopId)
-    if (idx >= 0) { [moved] = day.stops.splice(idx, 1); renumber(day) }
+    if (idx >= 0) { [moved] = day.stops.splice(idx, 1); renumber(day); fromDay = day; break }
   }
   const target = trip.days.find(d => d.index === toDayIndex)
-  if (target && moved) {
-    moved.orderInDay = position ?? target.stops.length + 1
-    target.stops.push(moved)
+  if (!moved) { commit(); void persistTripField(tripId, trip); return }
+  if (target) {
+    // Same-day or cross-day: insert at the requested position (clamped), defaulting
+    // to the end of the target day so no stop is ever dropped or silently reordered.
+    const at = Math.max(0, Math.min(position ?? target.stops.length, target.stops.length))
+    moved.orderInDay = at + 1
+    target.stops.splice(at, 0, moved)
     renumber(target)
     touchAndLog(trip, `moved “${moved.title}” to Day ${toDayIndex + 1}`, 'Timeline')
+  } else if (fromDay) {
+    // Unknown target day — restore the stop to where it came from rather than losing it.
+    fromDay.stops.push(moved)
+    renumber(fromDay)
   }
   commit()
   void persistTripField(tripId, trip)
