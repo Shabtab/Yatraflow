@@ -220,7 +220,7 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
       {tab === 'timeline' && <TimelineTab trip={trip} editable={editable} applyChange={applyChange} legCorrections={legCorrections} suggestionCache={suggestionCache} onOpenBoard={() => setTab('board')} />}
       {tab === 'board' && (
         <React.Suspense fallback={<div className="container loading-block"><div className="spinner" />Loading board…</div>}>
-          <BoardView trip={trip} editable={editable} applyChange={applyChange} health={health} totals={totals}
+          <BoardView trip={effective} editable={editable} applyChange={applyChange} health={health} totals={totals}
             onOpenOverview={() => setTab('overview')} onOpenTimeline={() => setTab('timeline')} />
         </React.Suspense>
       )}

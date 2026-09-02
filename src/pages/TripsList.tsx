@@ -50,11 +50,11 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
         />
       ) : (
         <div className="explore-grid">
-          {trips.map(t => {
+          {trips.map((t, i) => {
             const totals = computeTotals(t)
             const others = (t.members ?? []).filter(m => m.userId !== me?.id)
             return (
-              <div key={t.id} className="card itin-card">
+              <div key={t.id} className="card itin-card trip-enter" style={{ animationDelay: `${Math.min(i, 8) * 70}ms` }}>
                 <a className="trip-card-hit" href={`#/trip/${t.id}`}>
                   <div className="itin-emoji">{t.coverEmoji}</div>
                   <div className="itin-body">

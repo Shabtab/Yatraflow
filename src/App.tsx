@@ -1,6 +1,6 @@
 // ============ YatraFlow app shell ============
 // Hash-based routing so the built app works from any static host or file://.
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type MouseEvent } from 'react'
 import type { Trip } from './data/types'
 import { useDb, currentUser, logout, notificationsFor, markAllNotificationsRead, tripById, joinViaInvite, duplicateTrip, init } from './store/store'
 import { Avatar, BrandMark, ToastZone, useClickOutside, toast } from './components/ui'
@@ -49,6 +49,38 @@ export default function App() {
     document.querySelectorAll('meta[name="theme-color"]').forEach(m =>
       m.setAttribute('content', dark ? '#0C1420' : '#FAF7F2'))
   }, [dark])
+
+  // Radiating theme reveal (View Transitions API): the new theme expands as a
+  // circle from the theme-toggle button. Going LIGHT the new (light) view
+  // accelerates out of the icon — slow start, zap at the end ("source of
+  // light"); going DARK the boundary starts fast and settles as the light
+  // recedes back into the icon. Falls back to the instant switch where the
+  // API is missing or the user prefers reduced motion.
+  function toggleTheme(e: MouseEvent<HTMLButtonElement>) {
+    const rect = e.currentTarget.getBoundingClientRect()
+    const x = rect.left + rect.width / 2
+    const y = rect.top + rect.height / 2
+    const apply = () => setDark(d => !d)
+    const doc = document as Document & {
+      startViewTransition?: (cb: () => void) => { ready: Promise<void> }
+    }
+    if (!doc.startViewTransition || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      apply(); return
+    }
+    const vt = doc.startViewTransition(apply)
+    vt.ready.then(() => {
+      const radius = Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y))
+      // `dark` here is the PRE-toggle state: dark=true → switching to light.
+      document.documentElement.animate(
+        { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${radius}px at ${x}px ${y}px)`] },
+        {
+          duration: dark ? 780 : 620,
+          easing: dark ? 'cubic-bezier(.55, 0, .85, .36)' : 'cubic-bezier(.16, .84, .32, 1)',
+          pseudoElement: '::view-transition-new(root)',
+        },
+      )
+    }).catch(() => { /* transition skipped (tab hidden etc.) — theme already applied */ })
+  }
 
   // Escape closes any open popover (UI audit F-10) — outside-click alone
   // leaves keyboard users stranded.
@@ -147,7 +179,7 @@ export default function App() {
               {mobileNav ? '✕' : '☰'}
             </button>
 
-            <button className="theme-toggle" onClick={() => setDark(d => !d)} aria-label="Toggle dark mode" title="Toggle dark mode">
+            <button className="theme-toggle" onClick={toggleTheme} aria-label="Toggle dark mode" title="Toggle dark mode">
               {dark ? '☀️' : '🌙'}
             </button>
             {me && (
