@@ -4,8 +4,8 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
-### Fixed
-- **Floating nav pill was too transparent.** The sticky glass-pill topnav reused the shared level-2 `--yf-glass` token (58% alpha), which reads fine on anchored map panels but turned see-through now that the nav pins to the viewport and scrolls over the busy page — nav links lost legibility over hero blobs, the timeline and the board map. The nav gets its own `--yf-nav-glass` token (85% white in light theme, 82% ink-navy in dark) with a stronger `blur(18px) saturate(1.2)` backdrop, so the pill keeps its frosted-glass look while the text stays readable; the shared `--yf-glass` (and every other glass surface: map panels, board panels, trip-total strip) is unchanged.
+### Changed
+- **Nav pill stays on the original shared glass.** Three opacity experiments on the floating `.topnav` pill (a more opaque dedicated token, a revert to the shared 0.58 glass, then re-applying the opaque token) were all rolled back — side-by-side against the original, the user prefers the shipped CTI look: shared `--yf-glass` (58% tint light, 58% dark) with `blur(14px)`. `src/styles.css` is byte-identical to the pre-experiment state; no nav-specific token remains.
 
 ## [0.24.0] — 2026-09-02
 

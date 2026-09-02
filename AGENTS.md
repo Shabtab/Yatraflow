@@ -92,7 +92,14 @@ Key locations:
    different files. Corollary (same day): the user's own browser tab can be
    the stale copy — a Vite HMR tab kept rendering pre-revert CSS and made
    "local looks fine / preview looks broken" seem like a deploy bug.
-   Hard-refresh before comparing environments.
+   Hard-refresh before comparing environments. Corollary: localhost ports
+   are separate localStorage origins — `:5173` and `:5174` render different
+   auth states (nav links differ); don't read that as a code difference.
+9. **Nav-pill glass is user-approved as shipped — do not tune it unprompted.**
+   The user rejected all three opacity experiments on the floating `.topnav`
+   (0.85 dedicated token → 0.58 revert → 0.85 re-apply) and prefers the
+   original shared `--yf-glass` 0.58/14px look. Only touch nav
+   transparency/blur on an explicit request that names the exact change.
 
 
 ## 3. Verification before every push
