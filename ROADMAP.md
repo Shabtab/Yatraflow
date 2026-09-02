@@ -11,9 +11,9 @@ to [CHANGELOG.md](CHANGELOG.md); this file only tracks what's ahead.
 M1 tokens ✅ · M2 landing/nav ✅ (+M2.1 pill nav, now static) · M3 Overview
 bento ✅ (+ real-geometry route snapshot) · M4 Timeline polish ✅ · M5 Board
 ✅ (+ mockup-cleanliness, map-first canvas & motion passes) · M6 Budget/
-Decisions/Share/Suggestions hierarchy ✅ · next: M7 Explore + Public
-Itinerary editorial treatment. Merges to `main` as v0.24.0 only with user
-confirmation.
+Decisions/Share/Suggestions hierarchy ✅ · M7 Explore + Public Itinerary editorial treatment ✅ — **redesign
+feature-complete**; pending v0.24.0 merge confirmation. Merges to `main` as
+v0.24.0 only with user confirmation.
 
 ---
 

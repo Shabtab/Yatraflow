@@ -98,7 +98,7 @@ None — function modules + React function components, unchanged.
     (kind-tinted faces, kicker/title/meta), mist map wash, 1680px canvas + compact band, equal glass corner panels,
     content-fitted columns (no internal scrollbars), app-wide subtle motion system + deeper glass, DnD pulse, static nav.
     → `c6ca8c9`/`3d28d3b`/`4c29a95`/`9c5ffcf`/`308800a`/`98976a8`/`9ac5058`
-14. M7: Explore + Public Itinerary editorial treatment.
+14. ✅ M7: Explore + Public Itinerary editorial treatment (editorial heroes, style chips, featured card, paper sheet + route glance + highlights, Fork/Save).
 15. Each of 8–14: verify → commit → changelog entry. Merge to `main` + `0.24.0` cut only with user confirmation.
 
 ## Risks & guardrails

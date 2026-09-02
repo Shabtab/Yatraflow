@@ -104,8 +104,8 @@ Post-M5 polish per user review against the board mockup: mockup card anatomy (ac
 | 6.7 Budget hierarchy + unconfirmed expense treatment | ✅ | Navy `.budget-hero` (total + per-person/day + usage bar + plain-language state), "Keep estimates honest" reassurance band, optional-vs-essential split; per-person accountability in hero sub |
 | 6.8 Decisions ("Next to unblock", filters, impact panel, assistant) | ⚠️ | Stat strip (open / need-your-vote / resolved), All/Open/Needs-me/Resolved filters, ⚡ Next-to-unblock emphasis. Deferred: per-decision route/budget impact panel + grounded assistant prompt (needs engine data) |
 | 6.9 Share four intents unmistakable | ⚠️ | Numbered intent tags: 1·Plan together (teal), 2·Share publicly (saffron), 3·Keep a record (info); plain-language permission copy pre-existing. View-only live link exists as the `viewer` member role — deliberate divergence (doc's four-intent table collapses to three surfaces; snapshot link doubles as the no-account read link) |
-| 6.10 Explore editorial hero, travel-style chips, "Fork this trip" | 🚫 | M7 |
-| 6.11 Public itinerary editorial story + stats + fork | 🚫 | M7 |
+| 6.10 Explore editorial hero, travel-style chips, "Fork this trip" | ✅ | E dark-teal hero + in-hero search, style chips w/ counts + ♥ Saved chip, featured card w/ explained credibility, cards show 🍴 forks + ♡ + Fork CTA (copy renamed) |
+| 6.11 Public itinerary editorial story + stats + fork | ✅ | PI editorial hero + byline, "practical bit" stat card, paper sheet (action rail, why-this-route-works, RouteSnapshot glance card, day highlights), Fork CTA; divergence: no "Open interactive map" (no public map route), Save = localStorage |
 
 ## 5 · Interaction & accessibility (§7)
 
