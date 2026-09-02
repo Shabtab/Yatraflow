@@ -33,8 +33,44 @@
   --gray-700: #45566E;
   --gray-900: #0B2545;
 
+  /* ---- 1b. PRIMITIVES: Calm Travel Intelligence palette (design refresh;
+        docs/redesign/YATRAFLOW_DESIGN_DIRECTION.md §4.1) ---- */
+  --yf-ink: #102E4B;           /* headings, high-trust text */
+  --yf-navy: #123F49;          /* header bands, dark cards, AI anchor surfaces */
+  --yf-teal-600: #0D8D82;      /* CTI primary */
+  --yf-teal-700: #0C716D;      /* CTI primary hover/pressed */
+  --yf-teal-100: #E5F4EE;      /* selected backgrounds */
+  --yf-mint: #DFF5ED;          /* confirmed / synced states */
+  --yf-saffron: #F3AA3D;       /* invite / share / publish / explore */
+  --yf-saffron-100: #FFF4E4;
+  --yf-amber: #E4AE43;         /* attention / trade-offs / pending */
+  --yf-amber-100: #FFF7E9;
+  --yf-coral: #D6534D;         /* critical risk / destructive */
+  --yf-coral-100: #FFF0EC;
+  --yf-purple: #897ABB;        /* scenic / creative discovery */
+  --yf-purple-100: #F0EAFA;
+  --yf-cream: #F8F7EF;         /* main app canvas */
+  --yf-mist: #ECF8F4;          /* atmospheric gradient edge */
+  --yf-peach: #FFF2E8;         /* atmospheric gradient edge */
+  --yf-atmos-mint: rgba(124, 225, 207, 0.20);
+  --yf-atmos-peach: rgba(255, 179, 107, 0.16);
+  --yf-surface: #FFFFFF;
+  --yf-surface-muted: #F0F4F1;
+  --yf-border: #DCE7E1;
+  --yf-text-muted: #637B7D;
+  --yf-glass: rgba(255, 255, 255, 0.58);        /* level-2 overlay (nav, map panels) */
+  --yf-glass-border: rgba(255, 255, 255, 0.65);
+  --yf-glass-sheen: rgba(255, 255, 255, 0.35);  /* top-edge highlight on glass panels */
+
+  /* ---- motion (subtle & premium): one easing family, three speeds ---- */
+  --ease-out: cubic-bezier(.22, .61, .36, 1);
+  --ease-soft: cubic-bezier(.3, .7, .4, 1);
+  --t-fast: 180ms;
+  --t-med: 300ms;
+  --t-slow: 440ms;
+
   /* ---- 2. SEMANTICS (light) ---- */
-  --color-background: var(--gray-50);
+  --color-background: var(--yf-cream);   /* CTI canvas (was --gray-50) */
   --color-foreground: var(--gray-900);
   --color-card: #FFFFFF;
   --color-card-foreground: var(--gray-900);
@@ -61,7 +97,7 @@
   --ring: 0 0 0 3px color-mix(in srgb, var(--teal-500) 35%, transparent);
 
   /* ---- 3. LEGACY flat aliases (do not remove; new code uses --color-*) ---- */
-  --bg: var(--gray-50);
+  --bg: var(--yf-cream);   /* CTI canvas (was --gray-50) */
   --bg-soft: var(--gray-100);
   --card: #FFFFFF;
   --card-soft: #FDFBF7;
@@ -83,8 +119,10 @@
   --info-soft: #E8EEF6;
   --shadow: 0 1px 2px rgba(11,37,69,.05), 0 8px 28px rgba(11,37,69,.08);
   --shadow-sm: 0 1px 2px rgba(11,37,69,.07);
+  --shadow-soft: 0 2px 6px rgba(16,46,75,.04), 0 16px 40px rgba(16,46,75,.10);  /* CTI diffuse depth */
   --radius: 18px;
   --radius-sm: 12px;
+  --radius-lg: 24px;   /* CTI large bento cards */
   --nav-h: 62px;
   --font-display: 'Sora', 'Inter', system-ui, sans-serif;
   --font-body: 'Inter', system-ui, -apple-system, sans-serif;
@@ -110,6 +148,34 @@
   --gray-500: #8FA0B5;
   --gray-700: #ADBCCF;
   --gray-900: #ECF1F8;
+
+  /* ---- 1b. PRIMITIVES: CTI palette (dark mirror) ---- */
+  --yf-ink: #ECF1F8;
+  --yf-navy: #0F2A33;
+  --yf-teal-600: #2BB8AC;
+  --yf-teal-700: #1E9D92;
+  --yf-teal-100: #12332F;
+  --yf-mint: #16301F;
+  --yf-saffron: #F5A94A;
+  --yf-saffron-100: #3A2C15;
+  --yf-amber: #D99A2B;
+  --yf-amber-100: #36290F;
+  --yf-coral: #E06C6C;
+  --yf-coral-100: #3A2020;
+  --yf-purple: #A99BD6;
+  --yf-purple-100: #2A2440;
+  --yf-cream: #0C1420;
+  --yf-mist: #0F1B2B;
+  --yf-peach: #1A2030;
+  --yf-atmos-mint: rgba(43, 184, 172, 0.10);
+  --yf-atmos-peach: rgba(245, 169, 74, 0.08);
+  --yf-surface: #16233A;
+  --yf-surface-muted: #101B2B;
+  --yf-border: #27395A;
+  --yf-text-muted: #8FA0B5;
+  --yf-glass: rgba(16, 27, 43, 0.58);
+  --yf-glass-border: rgba(255, 255, 255, 0.14);
+  --yf-glass-sheen: rgba(255, 255, 255, 0.08);
 
   /* ---- 2. SEMANTICS (dark) ---- */
   --color-background: var(--gray-50);
@@ -161,15 +227,100 @@
   --info-soft: #1B2B45;
   --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
   --shadow-sm: 0 1px 3px rgba(0,0,0,.35);
+  --shadow-soft: 0 2px 8px rgba(0,0,0,.4), 0 18px 44px rgba(0,0,0,.5);
+}
+
+/* ---- Calm Travel Intelligence utilities (design refresh M1) ---- */
+/* Level-1 atmospheric canvas (doc §4.2): Landing, Explore, Public Itinerary,
+   workspace outer shell. Two soft gradient blobs over the mist→cream→peach ramp. */
+.atmos {
+  background:
+    radial-gradient(circle at 18% 12%, var(--yf-atmos-mint), transparent 32%),
+    radial-gradient(circle at 88% 28%, var(--yf-atmos-peach), transparent 30%),
+    linear-gradient(135deg, var(--yf-mist) 0%, var(--yf-cream) 52%, var(--yf-peach) 100%);
+}
+/* Level-2 expressive overlay (doc §3.3): translucent nav, map panels, hero
+   support cards. Content that must be read/edited stays on --color-card.
+   Dialled up for the glass-first look: deep blur + saturation + a top sheen. */
+.glass {
+  background: var(--yf-glass);
+  border: 1px solid var(--yf-glass-border);
+  backdrop-filter: blur(18px) saturate(1.25);
+  -webkit-backdrop-filter: blur(18px) saturate(1.25);
+  box-shadow: inset 0 1px 0 var(--yf-glass-sheen);
 }
 
 * { box-sizing: border-box; }
+
+/* ---------- Overview Bento briefing (CTI §6.2) ---------- */
+/* Large-radius, softly-shadowed cards; the briefing reads as tiles, not a form. */
+.bento .card, .bento .stat-tile { border-radius: var(--radius-lg); box-shadow: var(--shadow-soft); }
+.pulse-strip { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* Trip Health big-number layout (mockup): number, horizontal bar, reasons */
+.health-big { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
+.health-num-big { font-size: 54px; font-weight: 800; font-family: var(--font-display); line-height: 1; font-variant-numeric: tabular-nums; }
+.health-num-big.ok { color: var(--ok); }
+.health-num-big.mid { color: var(--yf-amber); }
+.health-num-big.bad { color: var(--yf-coral); }
+.health-bar { height: 8px; border-radius: 999px; background: var(--yf-amber-100); overflow: hidden; }
+.health-bar > i { display: block; height: 100%; border-radius: 999px; transition: width .5s ease; }
+.health-bar > i.ok { background: var(--ok); }
+.health-bar > i.mid { background: var(--yf-amber); }
+.health-bar > i.bad { background: var(--yf-coral); }
+.health-reasons { list-style: none; margin: 9px 0 0; padding: 0; display: grid; gap: 3px; font-size: 13px; color: var(--text-2); }
+.health-rec {
+  display: block; width: 100%; margin-top: 12px;
+  background: var(--yf-amber-100); color: var(--text);
+  border: none; border-radius: 10px; padding: 10px 13px;
+  font-weight: 700; font-size: 13px; cursor: pointer; text-align: left; font-family: var(--font-body);
+}
+.health-rec:hover { filter: brightness(.97); }
+.health-rec:focus-visible { outline: none; box-shadow: var(--ring); }
+
+/* Route snapshot dark card (mockup) — same rich treatment as the landing hero:
+   navy gradient + faint cartographic grid + ambient saffron/coral glows.
+   .card.route-snap (0,2,0) on purpose: `.card`'s `background: var(--card)`
+   shorthand is declared LATER in this file and would otherwise strip the
+   gradient — light theme rendered a cream card under light-on-light SVG labels. */
+.card.route-snap {
+  position: relative; overflow: hidden;
+  background: linear-gradient(150deg, var(--yf-navy), #0B2545 88%);
+  color: #fff;
+  box-shadow: 0 30px 60px rgba(11,37,69,.28);
+}
+.route-snap::before {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background-image:
+    radial-gradient(420px 180px at 8% 0%, rgba(239,173,84,.14), transparent 70%),
+    radial-gradient(380px 200px at 96% 100%, rgba(232,104,76,.13), transparent 70%),
+    linear-gradient(rgba(255,255,255,.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.05) 1px, transparent 1px);
+  background-size: auto, auto, 26px 26px, 26px 26px;
+}
+.route-snap > * { position: relative; }
+.route-snap h3 { color: #fff; }
+.route-snap .divider { border-top-color: rgba(255,255,255,.16); }
+.route-snap-meta { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 6px; font-size: 13px; font-weight: 650; flex-wrap: wrap; }
+.link-btn { background: none; border: none; padding: 0; color: var(--yf-saffron); font-weight: 750; font-size: 13px; cursor: pointer; font-family: var(--font-body); }
+.link-btn:hover { text-decoration: underline; }
+.link-btn.teal { color: var(--teal-deep); }
+.link-btn:focus-visible { outline: none; box-shadow: var(--ring); border-radius: 6px; }
+
+/* Group pulse full-width strip (mockup) */
+.pulse-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 14px 18px; }
+.pulse-bar .pulse-label { font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--yf-text-muted); }
+.pulse-bar .pulse-item { font-size: 13.5px; color: var(--text-2); }
+.pulse-bar .pulse-item b { color: var(--text); }
+.pulse-bar .pulse-dot { color: var(--yf-border); }
+.pulse-bar .pulse-link { margin-left: auto; }
 html {
   -webkit-text-size-adjust: 100%;
   /* No grey UA tap-flash on touch devices. */
   -webkit-tap-highlight-color: transparent;
-  /* Anchor/scrollIntoView targets land clear of the sticky topnav. */
-  scroll-padding-top: calc(var(--nav-h) + env(safe-area-inset-top) + 12px);
+  /* Anchor/scrollIntoView targets land clear of the floating pill topnav
+     (12px top gap + nav height + breathing room). */
+  scroll-padding-top: calc(12px + var(--nav-h) + 16px);
 }
 body {
   margin: 0;
@@ -194,18 +345,29 @@ button { font-family: var(--font-body); cursor: pointer; }
 input, select, textarea { font-family: var(--font-body); font-size: 14.5px; color: var(--text); }
 
 .app-shell { min-height: 100vh; display: flex; flex-direction: column; }
-.container { width: 100%; max-width: 1180px; margin: 0 auto; padding: 0 20px; }
+.container { width: 100%; max-width: 1180px; margin: 0 auto; padding: 0 20px;
+  /* the Board tab widens the canvas to 1680px — glide it (both directions) */
+  transition: max-width var(--t-slow) var(--ease-out); }
 @media (max-width: 640px) { .container { padding: 0 14px; } }
 
 /* ---------- Top navigation ---------- */
 .topnav {
-  position: sticky; top: 0; z-index: 60;
-  background: color-mix(in srgb, var(--bg) 88%, transparent);
-  backdrop-filter: blur(12px);
-  border-bottom: 1px solid var(--line);
-  /* Edge-to-edge (viewport-fit=cover): sit below the notch/status bar. */
-  padding-top: env(safe-area-inset-top);
+  /* Float on scroll: sticky pins the pill to the top of the viewport once the
+     page scrolls, so the glass pill nav "follows" alongside the trip-total
+     strip the way the user asked. It keeps the CTI floating-pill look. */
+  position: sticky; top: 12px; z-index: 60;
+  /* CTI nav language: a floating pill detached from the viewport edges,
+     not a full-bleed bar — the page atmosphere shows around it. */
+  width: min(1180px, calc(100% - 28px));
+  margin: 12px auto 0;
+  background: var(--yf-glass);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--yf-glass-border);
+  border-radius: 999px;
+  box-shadow: var(--shadow-soft);
 }
+.topnav .container.topnav-inner { max-width: none; padding: 0 10px 0 22px; }
 .topnav-inner { display: flex; align-items: center; gap: 14px; height: var(--nav-h); }
 .brand { display: flex; align-items: center; gap: 9px; font-family: var(--font-display); font-weight: 800; font-size: 19px; color: var(--text); cursor: pointer; background:none;border:none;padding:0; }
 .brand svg { flex: 0 0 auto; }
@@ -278,7 +440,27 @@ a.btn { text-decoration: none; }
   border-color: var(--teal); box-shadow: 0 0 0 3px color-mix(in srgb, var(--teal) 18%, transparent);
 }
 .textarea { resize: vertical; min-height: 74px; }
-.select { appearance: none; background-image: linear-gradient(45deg, transparent 49%, var(--text-3) 50%), linear-gradient(-135deg, transparent 49%, var(--text-3) 50%); background-position: calc(100% - 19px) 55%, calc(100% - 14px) 55%; background-size: 5px 5px; background-repeat: no-repeat; }
+/* Modern dropdown (select) — glass pill, CTI tone */
+.select {
+  appearance: none;
+  border-radius: 999px;
+  padding: 10px 14px 10px 38px;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  background: var(--bg-soft);
+  /* soft teal chevron, matching the chip style */
+  background-image:
+    linear-gradient(45deg, transparent 49%, var(--teal-deep) 50%),
+    linear-gradient(-135deg, transparent 49%, var(--teal-deep) 50%);
+  background-position: calc(100% - 20px) 55%, calc(100% - 15px) 55%;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+  transition: border-color .15s ease, box-shadow .15s ease, background-color .15s ease;
+}
+.select:hover { border-color: var(--teal); }
+@media (max-width: 720px) { .select { padding: 11px 14px 11px 38px; } }
 .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
 .err-text { color: var(--danger); font-size: 12.5px; font-weight: 550; }
 .hint-text { color: var(--text-3); font-size: 12.5px; }
@@ -306,6 +488,19 @@ a.btn { text-decoration: none; }
 .clickable-chip.on-saffron { border-color: var(--saffron); background: var(--saffron-soft); color: var(--warn); }
 .clickable-chip:hover { transform: translateY(-1px); }
 .chip-row { display: flex; flex-wrap: wrap; gap: 7px; }
+/* Segmented pill filter bar (Decisions etc.) — glass capsule with a sliding
+   active state, per the CTI pill design language. */
+.filter-pillbar {
+  display: inline-flex; gap: 2px; padding: 4px; flex-wrap: wrap;
+  background: var(--yf-glass); border: 1px solid var(--yf-glass-border);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  border-radius: 999px; box-shadow: var(--shadow-soft);
+}
+.filter-pillbar .clickable-chip { border: none; background: transparent; }
+.filter-pillbar .clickable-chip:hover { transform: none; }
+.filter-pillbar .clickable-chip.on-teal { background: var(--teal-deep); color: #fff; box-shadow: 0 2px 10px rgba(11,138,128,.35); }
+[data-theme='dark'] .filter-pillbar .clickable-chip.on-teal { background: var(--teal); color: #06251f; }
+.filter-pillbar .clickable-chip.on-saffron { background: var(--saffron); color: #fff; }
 
 /* ---------- Stat tiles ---------- */
 .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
@@ -335,11 +530,19 @@ a.btn { text-decoration: none; }
 .warn-list { display: flex; flex-direction: column; gap: 9px; }
 
 /* ---------- Timeline ---------- */
-.day-section { margin-bottom: 26px; }
+/* M4: the day is a near-opaque soft card (doc §6.3 — readability before transparency). */
+.day-section {
+  margin-bottom: 22px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 18px 20px 14px;
+  box-shadow: var(--shadow-soft);
+}
 .day-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
 .day-badge {
-  width: 46px; height: 46px; border-radius: 14px; flex: 0 0 auto;
-  background: var(--text); color: var(--bg);
+  width: 46px; height: 46px; border-radius: 16px; flex: 0 0 auto;
+  background: var(--yf-navy); color: #fff;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   font-family: var(--font-display);
 }
@@ -353,7 +556,7 @@ a.btn { text-decoration: none; }
   transition: border-color .15s, box-shadow .15s;
 }
 .stop-card:hover { border-color: color-mix(in srgb, var(--teal) 45%, var(--line)); }
-.stop-card.dragging { opacity: .45; border-style: dashed; }
+.stop-card.dragging { opacity: .45; border-style: dashed; transform: scale(.985); }
 .stop-card.drag-over { border-color: var(--teal); box-shadow: 0 0 0 3px var(--teal-soft); }
 .stop-card.status-rejected { opacity: .55; }
 .stop-card.status-maybe { background: var(--card-soft); }
@@ -558,6 +761,267 @@ a.btn { text-decoration: none; }
   transition: border-color .15s, color .15s, background .15s;
 }
 .chip-btn:hover { border-color: var(--teal); color: var(--teal-deep); background: var(--teal-soft); }
+
+/* ---------- M4: trip-total strip, day-jump rail, stop-kind markers ---------- */
+/* Sticky glass strip mirroring the floating pill nav — the trip's totals stay
+   in view while scrolling long timelines. */
+.tl-total-strip {
+  position: sticky;
+  top: calc(12px + var(--nav-h) + 10px + env(safe-area-inset-top));
+  z-index: 40;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px;
+  background: var(--yf-glass);
+  border: 1px solid var(--yf-glass-border);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  border-radius: 16px; padding: 9px 16px; margin-bottom: 16px;
+  box-shadow: var(--shadow-soft);
+  font-size: 12.5px; font-weight: 600; color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.tl-total-label { font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--teal-deep); }
+.tl-total-dot { color: var(--text-3); }
+.tl-total-warn {
+  margin-left: auto;
+  background: var(--yf-amber-100); color: var(--warn);
+  border-radius: 999px; padding: 3px 11px;
+  font-size: 11.5px; font-weight: 700;
+}
+.day-rail { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+.day-rail-label { font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); flex: 0 0 auto; }
+.day-rail-chips { display: flex; gap: 8px; overflow-x: auto; padding: 2px; scrollbar-width: thin; }
+.day-rail-chip {
+  border: 1px solid var(--line); background: var(--card); color: var(--text-2);
+  border-radius: 12px; padding: 7px 14px; font-size: 12.5px; font-weight: 650;
+  cursor: pointer; white-space: nowrap; flex: 0 0 auto;
+  transition: border-color .15s, background .15s, color .15s;
+}
+.day-rail-chip:hover { border-color: var(--teal); color: var(--teal-deep); background: var(--teal-soft); }
+.day-rail-chip.warn { background: var(--yf-amber-100); border-color: transparent; color: var(--warn); font-weight: 700; }
+.day-rail-chip.warn:hover { background: var(--saffron-soft); color: var(--warn); }
+/* Warning state inside the affected day's header (doc §6.3). */
+.day-warn-pill {
+  align-self: flex-start;
+  border-radius: 12px; padding: 6px 12px;
+  font-size: 11.5px; font-weight: 700;
+  background: var(--yf-amber-100); color: var(--warn);
+  max-width: 340px;
+}
+.day-warn-pill.sev-high { background: var(--yf-coral-100); color: var(--danger); }
+/* Stop-kind markers: a coloured spine on the card + a small type tag.
+   Tag text stays --text-2 on soft tinted backgrounds so both themes keep
+   AA contrast; the spine carries the hue. */
+.stop-card[class*='kind-'] { border-left: 4px solid var(--kind-c, var(--line)); padding-left: 12px; }
+.stop-card.kind-drive { --kind-c: var(--yf-coral); }
+.stop-card.kind-stay { --kind-c: var(--ok-500); }
+.stop-card.kind-food { --kind-c: var(--yf-amber); }
+.stop-card.kind-fuel { --kind-c: var(--gray-400); }
+.stop-card.kind-rest { --kind-c: var(--yf-saffron); }
+.stop-card.kind-activity { --kind-c: var(--yf-purple); }
+.stop-card.kind-viewpoint { --kind-c: var(--yf-teal-600); }
+.stop-kind-tag {
+  font-size: 10.5px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase;
+  border-radius: 999px; padding: 2px 9px; line-height: 1.6;
+  color: var(--text-2); background: var(--bg-soft);
+}
+.stop-kind-tag.kind-drive { background: var(--yf-coral-100); }
+.stop-kind-tag.kind-stay { background: var(--ok-soft); }
+.stop-kind-tag.kind-food { background: var(--yf-amber-100); }
+.stop-kind-tag.kind-fuel { background: var(--info-soft); }
+.stop-kind-tag.kind-rest { background: var(--saffron-soft); }
+.stop-kind-tag.kind-activity { background: var(--yf-purple-100); }
+.stop-kind-tag.kind-viewpoint { background: var(--teal-soft); }
+
+/* ---------- Board — spatial group coordination (CTI §6.4) ---------- */
+/* Pinned route map with day columns floating over it. The floats live inside
+   .board (a stacking context of its own), so nothing here fights the app's
+   fixed-overlay ladder: map, columns and panels all layer below modals (100) /
+   impact sheet (90) / notifications (80) — the impact preview opened by a card
+   drop still lands on top of everything. */
+.board-head { margin-bottom: 14px; }
+/* ---- Board tab canvas: the kanban wants the whole viewport. The default page
+   container caps at 1180px and the trip band + tabs eat ~440px of height, which
+   squeezed columns into fixed 272px strips with both scrollbars going at once.
+   On the Board tab the container widens, the trip band compacts (members row
+   lives on Overview/Share), and the board claims what's left of the viewport. */
+.container--board { max-width: 1680px; }
+.container--board .trip-head-card { padding: 13px 20px; }
+.container--board .trip-head-card h1 { font-size: 20px; margin-top: 4px; }
+.container--board .trip-head-card p { margin-top: 3px; }
+/* fade+collapse the member row on the Board tab (display:none would snap) */
+.member-stack { max-height: 48px; overflow: hidden; transition: opacity var(--t-med) var(--ease-out), max-height var(--t-med) var(--ease-out); }
+.container--board .member-stack { opacity: 0; max-height: 0; margin-top: 0 !important; }
+.container--board .tabbar { margin-top: 12px; margin-bottom: 12px; }
+.container--board .board-head { margin-bottom: 10px; }
+.container--board .board-head h2 { font-size: 19px; margin: 0 0 2px; }
+.board {
+  position: relative; /* a wide 640px letterbox squeezed tall routes into a thin squiggle
+     band — give the pinned map real vertical room (CTI mockup). 292px = compact
+     board-tab chrome (nav pill + band + tabs + board head) above it. The board is a
+     FLOOR, not a cap: it grows with column content so cards never need internal
+     scrollbars — the map backdrop stretches with it. */
+  height: auto;
+  min-height: clamp(540px, calc(100vh - 292px), 1200px);
+  min-height: clamp(540px, calc(100dvh - 292px), 1200px); overflow: hidden;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--yf-glass-border);
+  box-shadow: var(--shadow-soft);
+  background: var(--yf-mist);
+  /* The map is an absolute backdrop; the top bar and columns sit in normal
+     flow above it, so no floating panel can ever overlap a column — at any
+     width, and even if the top bar wraps on narrower screens. */
+  display: flex; flex-direction: column;
+}
+.board-map { position: absolute; inset: 0; z-index: 0; }
+/* Cream wash so the real map recedes behind the columns like the mockup's
+   calm sage backdrop — pointer-events pass through, map stays interactive. */
+.board-map::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: color-mix(in srgb, var(--yf-mist) 45%, transparent);
+}
+.board-map .map-shell { height: 100%; display: flex; flex-direction: column; }
+.board-map .map-frame { flex: 1 1 auto; height: auto; min-height: 0; border: none; border-radius: 0; }
+.board-topbar {
+  position: relative; z-index: 3;
+  display: flex; justify-content: space-between; align-items: stretch; gap: 12px; flex-wrap: wrap;
+  margin: 14px 16px 4px;
+}
+/* Compact corner pair (mockup): small equal glass cards in the board's top
+   corners — most of the map stays visible between and above them. They use the
+   shared .glass treatment (deep blur + sheen) so the map visibly reads through. */
+.board-info, .board-pulse {
+  backdrop-filter: blur(18px) saturate(1.25);
+  -webkit-backdrop-filter: blur(18px) saturate(1.25);
+}
+.board-info { flex: 0 1 264px; border-radius: 16px; padding: 10px 12px; max-width: 264px; box-shadow: inset 0 1px 0 var(--yf-glass-sheen), var(--shadow-soft); }
+.board-fit {
+  margin-top: 7px; border: none; background: var(--teal-soft); color: var(--teal-deep);
+  border-radius: 999px; font-size: 11px; font-weight: 800; padding: 5px 11px; cursor: pointer;
+}
+.board-fit:hover { filter: brightness(.96); }
+.board-pulse { flex: 0 1 264px; border-radius: 16px; padding: 10px 12px; max-width: 264px; box-shadow: inset 0 1px 0 var(--yf-glass-sheen), var(--shadow-soft); }
+.board-pulse .pulse-label { font-size: 10.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--yf-text-muted); }
+.board-pulse-row { display: flex; align-items: center; gap: 10px; margin-top: 3px; }
+.board-pulse-row .health-num-big { font-size: 28px; }
+.board-pulse-band { font-size: 12px; font-weight: 750; }
+.board-pulse-band.ok { color: var(--ok); }
+.board-pulse-band.mid { color: var(--yf-amber); }
+.board-pulse-band.bad { color: var(--yf-coral); }
+.board-pulse .health-bar { margin-top: 5px; }
+.board-pulse-lines { display: grid; gap: 3px; margin-top: 8px; font-size: 12px; color: var(--text-2); }
+.board-pulse-link {
+  margin-top: 8px; background: none; border: none; padding: 0; cursor: pointer;
+  color: var(--teal-deep); font-weight: 800; font-size: 12px; font-family: var(--font-body);
+}
+.board-cols {
+  position: relative; z-index: 2; flex: 1 1 auto; min-height: 0;
+  display: flex; align-items: stretch; gap: 14px; overflow-x: auto;
+  justify-content: center; /* centre short trips; `safe` keeps long-trip scroll from clipping */
+  justify-content: safe center;
+  padding: 6px 16px 14px; scrollbar-width: thin;
+}
+.board-col {
+  /* Fill the row: columns share the spare width (capped so a 3-day trip doesn't
+     stretch into billboards); long trips fall back to the min-width scroll.
+     Height fits the column's own content — no internal scrollbar in realistic
+     days; the board floor grows with the tallest column. 760px cap is a safety
+     net so a monster day scrolls internally instead of stretching the page. */
+  flex: 1 1 264px; min-width: 250px; max-width: 424px;
+  height: auto; max-height: 760px; min-height: 340px;
+  display: flex; flex-direction: column;
+  border-radius: var(--radius-lg); overflow: hidden;
+  background: color-mix(in srgb, var(--card) 97%, transparent);
+  border: 1px solid var(--yf-glass-border);
+  box-shadow: var(--shadow-soft);
+}
+.board-col--focused { outline: 2px solid var(--yf-teal-600); outline-offset: -2px; }
+/* Compact header per the board mockup: "Day N" + stops chip on one row, the
+   day title as a one-line ellipsised subtitle, warning pill on its own row —
+   so long titles can never wrap the header into a jumble. */
+.board-col-head {
+  display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 2px 10px;
+  padding: 9px 12px 7px; text-align: left;
+  background: transparent; border: none; border-bottom: 1px solid var(--line); cursor: pointer;
+  font-family: var(--font-body);
+}
+.board-col-head:hover { background: var(--card-soft); }
+.board-col-day { font-size: 12px; font-weight: 800; color: var(--text-1); }
+.board-col-count {
+  font-size: 10.5px; font-weight: 800; padding: 2px 8px; border-radius: 999px;
+  background: var(--teal-soft); color: var(--teal-deep); white-space: nowrap;
+}
+.board-col-subtitle {
+  grid-column: 1 / -1; font-size: 11.5px; color: var(--text-3);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.board-col-head .day-warn-pill { grid-column: 1 / -1; justify-self: start; margin-top: 3px; max-width: 100%; }
+.board-col-stops {
+  flex: 1 1 auto; overflow-y: auto; padding: 9px; min-height: 0;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.board-stop { padding: 7px 10px 7px 13px; box-shadow: var(--shadow-soft); }
+/* Kind-tinted cards (mockup): the whole card washes with its kind colour, not
+   just the spine — soft gradient + tinted border; the spine stays saturated. */
+.board-stop.stop-card {
+  border-color: color-mix(in srgb, var(--kind-c, var(--line)) 25%, var(--line));
+  background: linear-gradient(to right,
+    color-mix(in srgb, var(--kind-c, var(--line)) 9%, var(--card)) 0%,
+    color-mix(in srgb, var(--kind-c, var(--line)) 4%, var(--card)) 55%,
+    var(--card) 100%);
+}
+/* Mockup card anatomy: accent bar (from kind-*) → kicker → title → one meta line. */
+.board-stop-kicker {
+  display: block; font-size: 9.5px; font-weight: 800; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--text-3);
+}
+.board-stop .stop-title {
+  display: block; font-size: 13px; margin-top: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.board-stop-meta {
+  display: block; margin-top: 2px; font-size: 11px; color: var(--text-3); font-weight: 550;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.board-col-zone {
+  border: 1.5px dashed color-mix(in srgb, var(--yf-teal-600) 40%, var(--yf-border));
+  border-radius: 13px;
+  padding: 9px 9px; text-align: center; color: var(--yf-text-muted);
+  display: flex; flex-direction: column; gap: 2px; flex: 0 0 auto;
+  background: color-mix(in srgb, var(--card) 55%, transparent);
+}
+.board-col-zone b { font-size: 12px; color: var(--teal-deep); }
+.board-col-zone.foreign-over { border-color: var(--teal); background: var(--teal-soft); }
+.board-col-zone.foreign-over b { color: var(--teal-deep); }
+
+/* ---------- M6: Budget / Decisions / Share / Suggestions hierarchy (CTI §6.6–6.9) ---------- */
+.budget-hero {
+  background: linear-gradient(120deg, #143f4c, #112c4c);
+  color: #fff; border-radius: var(--radius-lg); padding: 18px 20px;
+  box-shadow: var(--shadow-soft); margin-bottom: 14px;
+}
+.budget-hero-label { font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: #bde1da; }
+.budget-hero-num { font-size: 40px; font-weight: 800; font-family: var(--font-display); margin-top: 2px; }
+.budget-hero-sub { font-size: 13px; color: #d2e7e3; margin-top: 2px; }
+.budget-hero-pct { font-size: 12.5px; font-weight: 700; color: #ffcc74; margin-top: 8px; }
+.budget-reassure {
+  margin-top: 14px; display: flex; gap: 6px 12px; align-items: baseline; flex-wrap: wrap;
+  background: linear-gradient(120deg, #143f4c, #112c4c); color: #c5e1dc;
+  border-radius: 16px; padding: 13px 16px; font-size: 13px;
+}
+.budget-reassure b { color: #fff; }
+.dec-strip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; }
+.decision-unblock { border-left: 4px solid var(--saffron); }
+.unblock-label { font-size: 10.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--warn); margin-bottom: 6px; }
+.share-intent {
+  display: inline-block; font-size: 10.5px; font-weight: 800; letter-spacing: .08em;
+  text-transform: uppercase; padding: 4px 10px; border-radius: 999px; margin-bottom: 8px;
+}
+.share-intent--teal { background: var(--teal-soft); color: var(--teal-deep); }
+.share-intent--saffron { background: var(--saffron-soft); color: var(--warn); }
+.share-intent--info { background: var(--info-soft); color: var(--text-2); }
+[data-theme='dark'] .budget-hero,
+[data-theme='dark'] .budget-reassure { background: linear-gradient(120deg, #0e2f39, #0c1e35); }
+[data-theme='dark'] .budget-hero-sub { color: #9fc4bf; }
+
 @media (max-width: 640px) {
   .tl-row, .tl-legrow, .tl-end { grid-template-columns: 52px 1fr; gap: 8px; }
   .tl-time { font-size: 10px; padding: 1px 4px; }
@@ -575,7 +1039,7 @@ a.btn { text-decoration: none; }
 .impact-panel {
   border: 1.5px solid var(--saffron); border-radius: var(--radius);
   background: var(--card); overflow: hidden; margin-top: 0;
-  animation: slideUp .25s ease;
+  animation: slideUp var(--t-med) var(--ease-out);
   width: 100%; max-width: 720px;
 }
 @keyframes slideUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
@@ -601,7 +1065,8 @@ a.btn { text-decoration: none; }
 .vehicle-profile-form .form-row:last-child { margin-bottom: 0; }
 
 /* ---------- Tabs ---------- */
-.tabbar { display: flex; gap: 2px; overflow-x: auto; border-bottom: 1.5px solid var(--line); margin-bottom: 20px; scrollbar-width: none; }
+.tabbar { display: flex; gap: 2px; overflow-x: auto; border-bottom: 1.5px solid var(--line); margin-bottom: 20px; scrollbar-width: none;
+  transition: margin var(--t-med) var(--ease-out); }
 .tabbar::-webkit-scrollbar { display: none; }
 .tab-btn {
   border: none; background: none; padding: 11px 15px; font-size: 14px; font-weight: 650;
@@ -618,13 +1083,13 @@ a.btn { text-decoration: none; }
   background: rgba(11,37,69,.42);
   display: flex; align-items: flex-end; justify-content: center;
   backdrop-filter: blur(3px);
-  animation: fadeIn .18s ease;
+  animation: fadeIn var(--t-fast) var(--ease-out);
 }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 .modal {
   background: var(--card); border-radius: 22px 22px 0 0;
   width: 100%; max-width: 620px; max-height: 92vh; overflow-y: auto;
-  padding: 22px; animation: slideUp .25s ease;
+  padding: 22px; animation: slideUp var(--t-med) var(--ease-out);
   /* Stop the sheet's scroll from chaining to the page behind it. */
   overscroll-behavior: contain;
 }
@@ -637,7 +1102,7 @@ a.btn { text-decoration: none; }
 .toast {
   pointer-events: auto; background: var(--text); color: var(--bg);
   padding: 11px 20px; border-radius: 999px; font-size: 13.5px; font-weight: 600;
-  box-shadow: var(--shadow); animation: slideUp .25s ease; max-width: 100%;
+  box-shadow: var(--shadow); animation: slideUp var(--t-med) var(--ease-out); max-width: 100%;
 }
 .toast.ok { background: var(--teal-deep); color: #fff; }
 .toast.err { background: var(--danger); color: #fff; }
@@ -659,13 +1124,46 @@ a.btn { text-decoration: none; }
 .auth-card { width: 100%; max-width: 430px; }
 .auth-hero-line { font-size: 15px; color: var(--text-2); margin-top: 8px; }
 
-/* ---------- Hero (landing) ---------- */
+/* ---------- Hero (landing) — split layout per CTI homepage mockup ---------- */
 .hero {
+  /* Level-1 atmospheric canvas (CTI §4.2): quiet mint/cream/peach. */
   background:
-    radial-gradient(ellipse 80% 60% at 50% -10%, color-mix(in srgb, var(--teal) 16%, transparent), transparent),
-    linear-gradient(160deg, var(--teal-soft), var(--bg) 70%);
-  padding: 74px 0 56px; text-align: center;
+    radial-gradient(circle at 18% 12%, var(--yf-atmos-mint), transparent 32%),
+    radial-gradient(circle at 88% 28%, var(--yf-atmos-peach), transparent 30%),
+    linear-gradient(135deg, var(--yf-mist) 0%, var(--yf-cream) 52%, var(--yf-peach) 100%);
+  padding: 64px 0 64px; text-align: center;
 }
+.hero-split { display: grid; grid-template-columns: 1.05fr .95fr; gap: 44px; align-items: center; text-align: left; }
+.hero-copy .hero-sub { margin-left: 0; }
+.hero-copy .hero-ctas { justify-content: flex-start; }
+.hero-adventure {
+  background: linear-gradient(150deg, var(--yf-navy), #0B2545 88%);
+  color: #fff; border-radius: var(--radius-lg); padding: 22px;
+  box-shadow: 0 30px 60px rgba(11,37,69,.28);
+  position: relative; overflow: hidden;
+}
+.hero-adventure::before {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255,255,255,.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.05) 1px, transparent 1px);
+  background-size: 26px 26px;
+}
+.hero-adventure > * { position: relative; }
+.ha-kicker { font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; opacity: .75; font-weight: 800; }
+.ha-name { font-family: var(--font-display); font-weight: 800; font-size: 21px; margin-top: 8px; }
+.ha-meta { font-size: 12.5px; opacity: .8; margin-top: 3px; }
+.ha-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 14px 0 8px; }
+.ha-stats > div { background: rgba(255,255,255,.09); border: 1px solid rgba(255,255,255,.14); border-radius: 10px; padding: 8px 10px; }
+.ha-stats b { display: block; font-family: var(--font-display); font-size: 15px; font-variant-numeric: tabular-nums; }
+.ha-stats span { font-size: 9.5px; letter-spacing: .06em; text-transform: uppercase; opacity: .72; font-weight: 700; }
+.ha-row { display: grid; grid-template-columns: 1.4fr 1fr; gap: 8px; margin-top: 8px; }
+.ha-warn { background: #FFF4E4; color: #3A2506; border-radius: 10px; padding: 8px 11px; font-size: 12px; font-weight: 700; }
+.ha-warn span { display: block; font-weight: 500; font-size: 11px; opacity: .8; }
+.ha-sync { background: var(--yf-teal-100); color: #0C4A42; border-radius: 10px; padding: 8px 11px; font-size: 12px; font-weight: 700; }
+.ha-sync span { display: block; font-weight: 500; font-size: 11px; opacity: .75; }
+.ha-teal { color: #7CE1CF; }
+@media (max-width: 980px) { .hero-split { grid-template-columns: 1fr; gap: 30px; } }
 .hero-sub { font-size: 17px; color: var(--text-2); max-width: 640px; margin: 14px auto 26px; }
 .hero-ctas { display: flex; gap: 11px; justify-content: center; flex-wrap: wrap; }
 
@@ -683,6 +1181,9 @@ a.btn { text-decoration: none; }
 .hp-stats b { font-size: 15.5px; font-family: var(--font-display); }
 .hp-stats span { font-size: 10.5px; color: var(--text-3); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
 .hp-good { color: var(--teal-deep); }
+.hp-mid { color: var(--yf-amber); }
+.hp-live { display: flex; justify-content: space-between; align-items: center; gap: 8px; background: var(--yf-teal-100); border-radius: 10px; padding: 8px 11px; font-weight: 700; font-size: 12px; color: var(--teal-deep); }
+.hp-live span:last-child { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; }
 .hp-warning { display: flex; gap: 7px; align-items: baseline; background: color-mix(in srgb, var(--saffron) 12%, transparent); border: 1px dashed color-mix(in srgb, var(--saffron) 55%, transparent); border-radius: 10px; padding: 9px 11px; font-weight: 600; color: var(--text-2); }
 .hp-days { display: flex; gap: 6px; }
 .hp-day { flex: 1; text-align: center; font-weight: 700; font-size: 11px; padding: 6px 0; border-radius: 8px; }
@@ -785,11 +1286,19 @@ a.btn { text-decoration: none; }
    wraps on desktop and scrolls horizontally on mobile (media query below). */
 .map-toolbar { margin-bottom: 8px; }
 .map-day-filter { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
-.map-day-chip { border: 1.5px solid var(--line); background: var(--card); color: var(--text); border-radius: 999px; font-size: 12px; font-weight: 700; padding: 4px 11px; white-space: nowrap; }
-.map-day-chip.on { background: var(--text); color: var(--bg); border-color: var(--text); }
+.map-day-chip {
+  border: 1px solid var(--yf-glass-border); background: var(--yf-glass);
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  color: var(--text-2); border-radius: 999px; font-size: 12px; font-weight: 700;
+  padding: 4px 13px; white-space: nowrap; transition: background var(--t-fast) var(--ease-out),
+    color var(--t-fast) var(--ease-out), border-color var(--t-fast) var(--ease-out), box-shadow var(--t-fast) var(--ease-out);
+}
+.map-day-chip:hover { color: var(--text); border-color: var(--teal); }
+.map-day-chip.on { background: var(--teal-deep); color: #fff; border-color: var(--teal-deep); box-shadow: 0 2px 10px rgba(11,138,128,.35); }
 .map-expand-chip { margin-left: auto; }
-[data-theme='dark'] .map-day-chip { background: rgba(22,35,58,.88); color: var(--text); }
-[data-theme='dark'] .map-day-chip.on { background: var(--teal); color: #06251f; border-color: var(--teal); }
+[data-theme='dark'] .map-day-chip { background: rgba(22,35,58,.72); color: var(--text); }
+[data-theme='dark'] .map-day-chip:hover { background: rgba(22,35,58,.95); }
+[data-theme='dark'] .map-day-chip.on { background: var(--teal); color: #06251f; border-color: var(--teal); box-shadow: 0 2px 12px rgba(11,138,128,.4); }
 /* Map key: hidden behind a small ⓘ chip by default (it used to blanket the
    bottom-right corner); the body card reopens above the same corner. */
 .map-legend { position: absolute; right: 12px; bottom: 12px; z-index: 5; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
@@ -806,6 +1315,18 @@ a.btn { text-decoration: none; }
   position: fixed; inset: 10px; z-index: 70;
   background: var(--bg); padding: 2px;
   display: flex; flex-direction: column;
+  animation: mapExpand 320ms var(--ease-out);
+}
+/* Collapse plays the reverse scale-down first; the shell is removed from the
+   fixed overlay only after it finishes (TripMap keeps a `closing` state). */
+.map-shell--closing { animation: mapCollapse 280ms var(--ease-out) both; pointer-events: none; }
+@keyframes mapExpand {
+  from { opacity: .25; transform: scale(.94); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes mapCollapse {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: scale(.94); }
 }
 .map-shell--expanded .map-frame { flex: 1 1 auto; height: auto; min-height: 0; }
 @media (max-width: 720px) {
@@ -852,7 +1373,18 @@ a.btn { text-decoration: none; }
 .budget-bars { display: flex; flex-direction: column; gap: 11px; }
 .budget-bar-row { display: grid; grid-template-columns: 120px 1fr auto; gap: 10px; align-items: center; font-size: 13.5px; }
 .budget-bar-track { height: 10px; background: var(--bg-soft); border-radius: 99px; overflow: hidden; }
-.budget-bar-fill { height: 100%; border-radius: 99px; transition: width .4s ease; }
+.budget-bar-fill {
+  height: 100%; border-radius: 99px; transition: width .4s ease;
+  position: relative; overflow: hidden;
+}
+/* A calm, smooth sheen sweeping across each budget bar — a single compositor
+   transform slide, never a repaint. Reduced-motion users get a static bar. */
+.budget-bar-fill::after {
+  content: ''; position: absolute; top: 0; bottom: 0; width: 42%;
+  background: linear-gradient(105deg, transparent, rgba(255,255,255,.45), transparent);
+  animation: barSheen 2.6s var(--ease-out) infinite;
+}
+@keyframes barSheen { from { left: -42%; } to { left: 108%; } }
 .compare-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .compare-table th, .compare-table td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); }
 .compare-table th { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-3); }
@@ -874,7 +1406,7 @@ a.btn { text-decoration: none; }
   position: fixed; z-index: 90; right: 0; top: 0; bottom: 0;
   width: min(420px, 100vw); background: var(--card);
   border-left: 1px solid var(--line); box-shadow: -12px 0 40px rgba(11,37,69,.14);
-  display: flex; flex-direction: column; animation: drawerIn .22s ease;
+  display: flex; flex-direction: column; animation: drawerIn var(--t-med) var(--ease-out);
   /* Edge-to-edge: keep content clear of the landscape home-indicator edge. */
   padding-right: env(safe-area-inset-right);
 }
@@ -897,7 +1429,7 @@ a.btn { text-decoration: none; }
 .notif-pop {
   position: absolute; top: calc(100% + 8px); right: 0; width: min(360px, 92vw);
   background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
-  box-shadow: var(--shadow); overflow: hidden; z-index: 80; animation: slideUp .18s ease;
+  box-shadow: var(--shadow); overflow: hidden; z-index: 80; animation: slideUp var(--t-fast) var(--ease-out);
 }
 .notif-item { padding: 11px 15px; border-bottom: 1px dashed var(--line); font-size: 13px; display: flex; gap: 9px; cursor: pointer; }
 .notif-item:hover { background: var(--bg-soft); }
@@ -911,11 +1443,44 @@ a.btn { text-decoration: none; }
 .resolve-btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
 
 /* ---------- Public page ---------- */
-.pub-hero { position: relative; min-height: 320px; display: flex; align-items: flex-end; color: #fff; overflow: hidden; }
-.pub-hero-bg { position: absolute; inset: 0; background: linear-gradient(135deg, #0E7A72, #0B2545); }
-.pub-hero-bg img { width: 100%; height: 100%; object-fit: cover; }
-.pub-hero-overlay { position: absolute; inset: 0; background: linear-gradient(to top, rgba(7,20,40,.86) 15%, rgba(7,20,40,.25) 60%, transparent); }
-.pub-hero-content { position: relative; padding: 30px 0 26px; width: 100%; }
+/* ---------- M7: public itinerary editorial hero (§6.11, editorial mockup) ---------- */
+.pub-hero {
+  position: relative; color: #fff; overflow: hidden;
+  padding: 96px 0 132px; /* room for the floating practical-bit card */
+  background: linear-gradient(168deg, var(--yf-navy) 0%, #0d4b56 46%, #176e70 74%, #b97a3f 118%);
+}
+.pub-hero-bg {
+  position: absolute; inset: 0; pointer-events: none;
+  /* topographic contour lines + mountain silhouettes, drawn with gradients only */
+  background:
+    radial-gradient(120% 56% at 50% 118%, rgba(16, 47, 67, .73) 0%, transparent 62%),
+    radial-gradient(96% 48% at 30% 122%, rgba(20, 60, 74, .44) 0%, transparent 58%),
+    repeating-radial-gradient(140% 90% at 78% 8%, transparent 0 38px, rgba(255, 255, 255, .05) 38px 39px);
+}
+.pub-hero-inner { position: relative; z-index: 1; }
+.pub-hero-back { color: #dff0ec; border-color: rgba(255,255,255,.25); margin-bottom: 14px; }
+.pub-hero-badge {
+  display: inline-block; font-size: 11px; font-weight: 800; letter-spacing: .1em;
+  background: #fff7e6; color: #8e5b21; border-radius: 999px; padding: 5px 12px; margin-bottom: 14px;
+}
+.pub-hero-kicker { font-size: 13px; font-weight: 700; letter-spacing: .04em; color: #a9eadc; margin: 0 0 8px; }
+.pub-hero-title {
+  font-family: var(--font-display); font-size: clamp(28px, 5vw, 52px); font-weight: 800;
+  line-height: 1.12; max-width: 720px; margin: 0;
+}
+.pub-hero-story { font-size: clamp(15px, 1.6vw, 18px); color: #e2f1ef; max-width: 640px; margin: 12px 0 0; line-height: 1.6; }
+.pub-hero-byline { font-size: 12.5px; font-weight: 800; letter-spacing: .08em; color: #cfe8e4; margin: 14px 0 0; }
+/* "The practical bit" — evidence card floating over the hero's right edge */
+.pub-hero-stats {
+  position: absolute; z-index: 2; right: max(20px, calc((100% - 1180px) / 2 + 20px)); bottom: -66px;
+  width: 300px; border-radius: 21px; padding: 15px 18px;
+  background: rgba(255, 253, 245, .96); color: var(--text); box-shadow: var(--shadow-soft);
+}
+.pub-stats-label { display: block; font-size: 10.5px; font-weight: 800; letter-spacing: .1em; color: #6b8080; }
+.pub-stats-figure { display: block; font-family: var(--font-display); font-size: 26px; font-weight: 800; color: #14344b; margin-top: 2px; }
+.pub-stats-sub { display: block; font-size: 12px; color: #5c7172; }
+.pub-stats-divider { border: none; border-top: 1px solid #e2e7df; margin: 10px 0 8px; }
+.pub-stats-row { display: grid; gap: 4px; font-size: 12px; color: #607778; }
 .locked-section { position: relative; }
 .locked-overlay {
   position: absolute; inset: 0; z-index: 5;
@@ -940,16 +1505,29 @@ a.btn { text-decoration: none; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .loading-block { padding: 60px 0; text-align: center; color: var(--text-3); font-weight: 600; }
 .page-head { margin: 26px 0 20px; }
+.page-head h2 { font-family: var(--font-display); font-size: 26px; margin: 0 0 4px; }
 .page-head-sub { color: var(--text-2); margin-top: 6px; font-size: 14.5px; max-width: 640px; }
 .divider { border: none; border-top: 1px solid var(--line); margin: 18px 0; }
 .two-col { display: grid; grid-template-columns: 1fr 340px; gap: 18px; align-items: start; }
 @media (max-width: 980px) { .two-col { grid-template-columns: 1fr; } }
 .trip-head-card {
-  border-radius: var(--radius); padding: 22px; color: #fff;
-  background: linear-gradient(120deg, var(--teal-deep) 0%, #0B2545 75%);
+  transition: padding var(--t-med) var(--ease-out);
+  border-radius: var(--radius-lg); padding: 26px 28px; color: #fff;
+  background:
+    radial-gradient(circle at 86% 12%, rgba(245,158,45,.15), transparent 42%),
+    linear-gradient(115deg, var(--yf-navy) 0%, #0B2545 78%);
   position: relative; overflow: hidden;
+  box-shadow: var(--shadow-soft);
 }
-.trip-head-card::after { content: ''; position: absolute; right: -60px; top: -60px; width: 220px; height: 220px; border-radius: 50%; background: rgba(245,158,45,.16); }
+.trip-head-card::after { content: ''; position: absolute; right: -60px; top: -60px; width: 220px; height: 220px; border-radius: 50%; background: rgba(245,158,45,.10); }
+.trip-head-card h1 { font-family: var(--font-display); transition: font-size var(--t-med) var(--ease-out); }
+.trip-hero-back {
+  border: none; background: none; padding: 0; cursor: pointer;
+  color: rgba(255,255,255,.75); font-size: 11.5px; font-weight: 800;
+  letter-spacing: .08em; text-transform: uppercase; font-family: var(--font-body);
+}
+.trip-hero-back:hover { color: #fff; }
+.trip-hero-back:focus-visible { outline: none; box-shadow: var(--ring); border-radius: 6px; }
 .member-stack { display: flex; }
 .member-stack .avatar { margin-left: -8px; border: 2px solid var(--card); }
 .member-stack .avatar:first-child { margin-left: 0; }
@@ -962,6 +1540,23 @@ a.btn { text-decoration: none; }
 .topnav-inner { display: flex; align-items: center; gap: 14px; height: var(--nav-h); }
 .topnav .container.topnav-inner { display: flex; }
 .nav-right { margin-left: auto; display: flex; align-items: center; gap: 9px; position: relative; z-index: 2; }
+/* CTI control tray: theme / bell / avatar (and the mobile hamburger) cluster
+   inside one soft pill, echoing the nav pill itself. */
+.nav-pill-group {
+  display: flex; align-items: center; gap: 2px; padding: 4px;
+  background: var(--yf-cream);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+.nav-pill-group .theme-toggle,
+.nav-pill-group .icon-btn,
+.nav-pill-group .mobile-nav-btn { background: transparent; border-color: transparent; }
+.nav-pill-group .theme-toggle:hover,
+.nav-pill-group .icon-btn:hover,
+.nav-pill-group .mobile-nav-btn:hover { background: rgba(15, 40, 35, .06); }
+[data-theme='dark'] .nav-pill-group .theme-toggle:hover,
+[data-theme='dark'] .nav-pill-group .icon-btn:hover,
+[data-theme='dark'] .nav-pill-group .mobile-nav-btn:hover { background: rgba(255, 255, 255, .08); }
 .theme-toggle { background: var(--bg-soft); border: 1.5px solid var(--line); border-radius: 10px;
   width: 36px; height: 36px; cursor: pointer; font-size: 15px; flex: 0 0 auto; }
 .avatar-btn { background: none; border: none; cursor: pointer; padding: 0; border-radius: 50%; flex: 0 0 auto; }
@@ -976,6 +1571,8 @@ a.btn { text-decoration: none; }
   border-radius: 99px; font-size: 10px; font-weight: 800; min-width: 17px; height: 17px; line-height: 17px; }
 @media (max-width: 720px) {
   .nav-links { display: none; }
+  /* Smaller float gap on phones; the tray keeps the hamburger reachable. */
+  .topnav { width: calc(100% - 20px); margin-top: 10px; }
 }
 
 /* ---------- Footer ---------- */
@@ -993,7 +1590,6 @@ a.btn { text-decoration: none; }
 .route-flow { display: flex; flex-wrap: wrap; gap: 6px 4px; align-items: center; }
 .route-node { font-weight: 650; font-size: 14px; }
 .route-arrow { color: var(--saffron); font-weight: 800; margin-right: 7px; }
-.pub-hero { position: relative; color: #fff; background: linear-gradient(135deg, #0E7A72, #0B2545); padding: 26px 0 34px; }
 
 /* Trip card emoji cover */
 .itin-emoji {
@@ -1142,11 +1738,11 @@ a.btn { text-decoration: none; }
   font-size: 18px; line-height: 1; color: var(--text);
 }
 .mobile-menu {
-  position: fixed; top: calc(var(--nav-h) + env(safe-area-inset-top)); left: 0; right: 0; z-index: 55;
+  position: fixed; top: calc(var(--nav-h) + 22px + env(safe-area-inset-top)); left: 0; right: 0; z-index: 55;
   background: var(--card); border-bottom: 1px solid var(--line);
   box-shadow: var(--shadow); padding: 8px 14px 14px;
   display: flex; flex-direction: column; gap: 2px;
-  animation: slideUp .18s ease;
+  animation: slideUp var(--t-fast) var(--ease-out);
 }
 .mobile-menu .nav-link {
   padding: 13px 14px; border-radius: 10px; font-size: 15px; text-align: left;
@@ -1182,12 +1778,29 @@ a.btn { text-decoration: none; }
   .tab-btn { padding: 12px 15px; }
   .vote-btn { width: 44px; height: 38px; }
   .day-badge { width: 40px; height: 40px; }
+  /* M4: a sticky trip-total strip would eat the small viewport — flatten it. */
+  .tl-total-strip { position: static; }
+  .day-rail-chip { padding: 9px 14px; }
+  .day-section { padding: 14px 14px 10px; }
   .modal { padding: 18px 16px 22px; }
   /* Long-press drag & drop: the row must not text-select or pop the OS
      callout while the hold timer runs; a pressing row reads as "grabbed". */
   .tl-row { -webkit-user-select: none; -webkit-touch-callout: none; user-select: none; }
   .tl-row.yf-pressing { transform: scale(.98); opacity: .8; }
-  .tl-row.dragging { opacity: .35; }
+  .tl.is-dragging .tl-row:not(.dragging):not(.drag-over):not(.foreign-over) {
+  animation: stopWiggle 460ms var(--ease-out) 3;
+}
+@keyframes stopWiggle {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(.5deg) translateY(-1px); }
+  75% { transform: rotate(-.5deg); }
+}
+.tl.is-dragging .tl-row { will-change: transform; }
+/* The carried row's original becomes an empty dashed slot — the browser's
+   drag ghost stays the only floating copy (no double-ghost). */
+.tl-row.dragging { opacity: .45; border: 1.5px dashed var(--teal); box-shadow: none; }
+.tl-row.dragging > * { visibility: hidden; }
+.tl-row.dragging { min-height: 44px; }
   /* Workspace header: let long trip names wrap instead of forcing overflow. */
   .trip-head-card { padding: 16px; }
   .trip-head-card h1 { font-size: clamp(22px, 6vw, 30px); }
@@ -1291,6 +1904,7 @@ main:focus { outline: none; }
 .mobile-nav-btn:focus-visible,
 .day-collapse:focus-visible, .move-btn:focus-visible, .vote-btn:focus-visible,
 .chip-btn:focus-visible, .clickable-chip:focus-visible, .toast-action:focus-visible,
+.day-rail-chip:focus-visible,
 .map-day-chip:focus-visible, .map-idea-chip:focus-visible, .map-legend-toggle:focus-visible,
 .map-expand-chip:focus-visible, .loc-option:focus-visible, .ai-fab:focus-visible,
 .trip-card-hit:focus-visible, .skip-link:focus-visible, .yf-map-pin:focus-visible {
@@ -1420,3 +2034,366 @@ main:focus { outline: none; }
 .poi-plan-row .poi-desc { -webkit-line-clamp: unset; -webkit-box-orient: unset; overflow: visible; }
 .poi-plan-row .poi-thumb { width: 34px; height: 34px; border-radius: 8px; }
 [data-theme='dark'] .ride-purpose-overnight { background: #fff; color: #06251f; }
+
+/* Map-tab corridor suggestions — two curated columns (§6.10 tone coding):
+   need-based halts (fuel/food/rest/stretch/overnight) LEFT in teal, and
+   see-&-do / detours / scenic stops RIGHT in scenic purple. The tinted
+   wash makes each lane read as its own category at a glance while the
+   cards inside stay neutral for readable text. */
+.poi-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-top: 12px;
+  align-items: start;
+}
+@media (max-width: 900px) { .poi-split { grid-template-columns: 1fr; } }
+.poi-col {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  background: var(--bg);
+  min-width: 0;
+}
+.poi-col--needs {
+  background: color-mix(in srgb, var(--teal) 5%, var(--bg));
+  border-color: color-mix(in srgb, var(--teal) 22%, var(--line));
+}
+.poi-col--see {
+  background: color-mix(in srgb, #7C5CFC 5%, var(--bg));
+  border-color: color-mix(in srgb, #7C5CFC 24%, var(--line));
+}
+[data-theme='dark'] .poi-col--needs { background: color-mix(in srgb, var(--teal) 10%, var(--bg)); }
+[data-theme='dark'] .poi-col--see { background: color-mix(in srgb, #7C5CFC 12%, var(--bg)); }
+.poi-col-head { display: flex; align-items: center; gap: 9px; margin-bottom: 10px; }
+.poi-col-head-ico {
+  width: 30px; height: 30px; border-radius: 10px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 15px; flex: 0 0 auto;
+}
+.poi-col--needs .poi-col-head-ico { background: var(--teal-soft); }
+.poi-col--see .poi-col-head-ico { background: color-mix(in srgb, #7C5CFC 16%, transparent); }
+.poi-col-head b { display: block; font-size: 14px; }
+.poi-col--needs .poi-col-head b { color: var(--teal-deep); }
+.poi-col--see .poi-col-head b { color: #5540B8; }
+[data-theme='dark'] .poi-col--see .poi-col-head b { color: #B4A5FF; }
+/* tint the purpose chips inside their lane — sightseeing reads scenic purple */
+.poi-col--see .ride-purpose-sight { background: color-mix(in srgb, #7C5CFC 16%, transparent); color: #5540B8; }
+[data-theme='dark'] .poi-col--see .ride-purpose-sight { color: #B4A5FF; }
+
+/* ---- Mobile: Bento pulse chips get comfortable touch height ---- */
+@media (max-width: 720px) {
+  .pulse-strip .chip { min-height: 36px; display: inline-flex; align-items: center; }
+}
+
+/* ---- Mobile: Board stacks instead of overlaying — the map becomes a fixed
+       landscape block, the info/pulse cards stack above it, and the day columns
+       scroll below in normal flow (nothing fights the small viewport). ---- */
+@media (max-width: 720px) {
+  .board-head { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .board { height: auto; overflow: visible; border: none; background: transparent; box-shadow: none; }
+  .board-map {
+    position: relative; inset: auto; height: 240px;
+    border-radius: var(--radius-lg); overflow: hidden;
+    border: 1px solid var(--yf-glass-border);
+    box-shadow: var(--shadow-soft); margin-bottom: 12px;
+  }
+  .board-map .map-frame { min-height: 0; }
+  .board-topbar { position: static; inset: auto; flex-direction: column; margin: 0 0 8px; gap: 8px; }
+  .board-info { max-width: none; }
+  .board-pulse { width: 100%; }
+  /* column-direction topbar: the desktop equal-size flex basis would become a
+     560px height here — stack panels at natural size instead */
+  .board-topbar .board-info, .board-topbar .board-pulse { flex: 0 0 auto; }
+  .board-cols { position: static; inset: auto; margin-top: 4px; padding-bottom: 10px; }
+  .board-col { flex: 0 0 264px; height: auto; min-height: 0; }
+  .board-col-head { min-height: 52px; }
+  .dec-strip { grid-template-columns: 1fr; gap: 8px; }
+  .budget-hero-num { font-size: 32px; }
+  .board-col-zone { min-height: 48px; justify-content: center; }
+}
+
+/* ---------- Motion system (subtle & premium, CTI §9) ----------
+   One easing family + three speeds (--ease-out / --t-fast|med|slow). Only
+   transform and opacity animate — compositor-friendly, no layout thrash.
+   The global prefers-reduced-motion block above freezes all of this. */
+@keyframes panelIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+.tab-panel { animation: panelIn var(--t-med) var(--ease-out); }
+
+/* Board choreography: day columns drift in with a light stagger on mount. */
+.board-col { animation: panelIn var(--t-slow) var(--ease-out) backwards; }
+.board-col:nth-child(2) { animation-delay: 40ms; }
+.board-col:nth-child(3) { animation-delay: 80ms; }
+.board-col:nth-child(4) { animation-delay: 120ms; }
+.board-col:nth-child(5) { animation-delay: 160ms; }
+.board-col:nth-child(6) { animation-delay: 200ms; }
+.board-col:nth-child(7) { animation-delay: 240ms; }
+.board-col:nth-child(8) { animation-delay: 280ms; }
+/* Drag/focus states glide instead of snapping. */
+.board-stop, .board-col-zone, .board-col--focused { transition: border-color var(--t-med) var(--ease-out), background var(--t-med) var(--ease-out), transform var(--t-fast) var(--ease-out); }
+.board-stop:hover { transform: translateY(-1px); }
+
+/* ---- Map-focus ("peek") mode: columns glide ~90% off the board's bottom
+   edge — a 48px sliver of each stays visible while the map owns the board —
+   and slide back with a staggered settle. transform-only: compositor run. */
+.board-col { transition: transform 500ms var(--ease-out); }
+.board--mapfocus .board-col { transform: translateY(88%); } /* 12% sliver keeps a readable card edge */
+/* staggered choreography: slide-off cascades left→right, return settles in
+   reverse — both directions read as one satisfying wave */
+.board-col:nth-child(2), .board--mapfocus .board-col:nth-child(2) { transition-delay: 40ms; }
+.board-col:nth-child(3), .board--mapfocus .board-col:nth-child(3) { transition-delay: 80ms; }
+.board-col:nth-child(4), .board--mapfocus .board-col:nth-child(4) { transition-delay: 120ms; }
+.board-col:nth-child(5), .board--mapfocus .board-col:nth-child(5) { transition-delay: 160ms; }
+.board-col:nth-child(6), .board--mapfocus .board-col:nth-child(6) { transition-delay: 200ms; }
+.board-col:nth-child(7), .board--mapfocus .board-col:nth-child(7) { transition-delay: 240ms; }
+.board-col:nth-child(8), .board--mapfocus .board-col:nth-child(8) { transition-delay: 280ms; }
+.board--mapfocus .board-topbar { opacity: .35; transform: translateY(-8px); }
+.board-topbar { transition: opacity var(--t-slow) var(--ease-out), transform var(--t-slow) var(--ease-out); }
+
+/* ---- Drag feel: while a card is carried, the column live-reorders (FLIP
+   pass in BoardView provides the up/down motion). No CSS wiggle here on
+   purpose: an infinite keyframe transform on the same cards fights the WAAPI
+   FLIP animations frame-by-frame (jitter + broken native drag). The original
+   of the carried card becomes an empty dashed slot — the browser's drag ghost
+   is then the only "copy", killing the double-ghost effect. */
+.board-col-stops.is-dragging .board-stop { will-change: transform; }
+/* Insertion marker — a slim teal line that glides between cards to show where
+   the carried card will land; the cards themselves never move during a drag.
+   transform-only movement on a 3px element = pure compositor, zero churn. */
+.board-col-stops { position: relative; }
+.board-drop-marker {
+  position: absolute; left: 10px; right: 10px; top: 0; height: 3px;
+  border-radius: 2px; background: var(--teal); pointer-events: none;
+  box-shadow: 0 0 0 2px var(--teal-soft);
+  transition: transform 160ms var(--ease-out);
+}
+.board-drop-marker::before {
+  content: ''; position: absolute; left: -8px; top: -3.5px;
+  width: 10px; height: 10px; border-radius: 50%; background: var(--teal);
+}
+.board-stop.dragging {
+  opacity: .45; background: transparent; box-shadow: none;
+  border: 1.5px dashed var(--teal);
+}
+.board-stop.dragging .stop-main { visibility: hidden; }
+/* Kanban cards are drag surfaces — text selection has no use here and a
+   failed/late drag gesture must never fall back to painting blue over
+   the whole board. */
+.board-cols { user-select: none; -webkit-user-select: none; }
+
+/* Unified card hover lift (cards that don't already define one). */
+.trip-card, .trip-card-hit, .stat-card, .bento-card, .brief-card {
+  transition: transform var(--t-fast) var(--ease-out), box-shadow var(--t-fast) var(--ease-out), border-color var(--t-fast) var(--ease-out);
+}
+.trip-card:hover, .trip-card-hit:hover, .stat-card:hover, .bento-card:hover, .brief-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-soft); }
+
+/* Button feedback: smooth state changes + a gentle press. */
+.btn, .tab-btn, .board-fit, .board-pulse-link {
+  transition: background var(--t-fast) var(--ease-out), color var(--t-fast) var(--ease-out),
+    border-color var(--t-fast) var(--ease-out), box-shadow var(--t-fast) var(--ease-out),
+    transform var(--t-fast) var(--ease-out), filter var(--t-fast) var(--ease-out);
+}
+.btn:active, .tab-btn:active { transform: scale(.98); }
+
+/* Theme cross-fade: light↔dark glides instead of snapping. */
+body, .topnav, .glass, .board, .board-col, .modal, .toast {
+  transition: background-color var(--t-slow) var(--ease-out), color var(--t-slow) var(--ease-out), border-color var(--t-slow) var(--ease-out);
+}
+/* the trip band also compacts on the Board tab — include padding in its glide */
+.trip-head-card {
+  transition: background-color var(--t-slow) var(--ease-out), color var(--t-slow) var(--ease-out),
+    border-color var(--t-slow) var(--ease-out), padding var(--t-med) var(--ease-out);
+}
+
+/* Route-level entrance: every main page change (My trips ↔ Explore ↔ a trip)
+   replays the same gentle fade+rise as workspace tab switches. */
+.route-panel { animation: panelIn var(--t-med) var(--ease-out); }
+
+/* Drag-and-drop feedback: the carried card's original becomes a dashed slot
+   (above), while any valid drop target breathes a teal ring so the landing
+   zone is unmistakable on both the HTML5 and touch paths. The ring is a
+   scaling ::after — transform+opacity only, compositor-friendly (a pulsing
+   box-shadow repaints every frame and stutters on big lists). */
+@keyframes dropPulse {
+  0%, 100% { transform: scale(1); opacity: .9; }
+  50% { transform: scale(1.05); opacity: .35; }
+}
+.stop-card.drag-over, .stop-card.foreign-over,
+.board-col-zone.foreign-over, .travel-leg.foreign-over { position: relative; }
+.stop-card.drag-over::after, .stop-card.foreign-over::after,
+.board-col-zone.foreign-over::after, .travel-leg.foreign-over::after {
+  content: ''; position: absolute; inset: -2px; border-radius: inherit;
+  border: 3px solid var(--teal-soft); pointer-events: none;
+  animation: dropPulse 1.1s var(--ease-out) infinite;
+}
+.stop-card.drag-over, .stop-card.foreign-over { border-color: var(--teal); }
+
+/* ---------- M7: editorial paper sheet + actions (public itinerary) ---------- */
+.pub-body { padding-top: 0; position: relative; }
+.paper-sheet {
+  border-radius: 30px; margin-top: 0; padding: 18px 24px 26px; position: relative;
+  background: linear-gradient(180deg, var(--yf-surface), color-mix(in srgb, var(--yf-cream) 70%, var(--yf-surface)));
+  border: 1px solid var(--yf-glass-border); box-shadow: var(--shadow-soft);
+}
+.pub-actions {
+  display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
+  border-radius: 18px; padding: 12px 16px; margin-bottom: 22px;
+  background: color-mix(in srgb, var(--card) 80%, transparent);
+  border: 1px solid var(--yf-glass-border);
+}
+.pub-actions > b { font-size: 14px; color: var(--text); }
+.pub-actions-btns { display: flex; gap: 10px; }
+.save-btn {
+  background: #fff4e3; color: #a25f25; border: 1px solid #ead9bd; font-weight: 800;
+  border-radius: 999px; padding: 9px 16px;
+}
+[data-theme='dark'] .save-btn { background: rgba(240, 165, 63, .12); color: #ffcf96; border-color: rgba(240, 165, 63, .25); }
+.fork-btn {
+  background: linear-gradient(120deg, #0e9185, #0b6e69); color: #fff; border: none; font-weight: 800;
+  border-radius: 999px; padding: 9px 18px; box-shadow: 0 6px 16px rgba(11, 110, 105, .28);
+}
+[data-theme='dark'] .fork-btn { filter: brightness(.94); }
+
+/* editorial narrative + route glance */
+.pub-editorial { align-items: start; margin-bottom: 8px; }
+.editorial-kicker { font-size: 12px; font-weight: 800; letter-spacing: .12em; color: #0b8a80; }
+[data-theme='dark'] .editorial-kicker { color: #57c4b8; }
+.editorial-title { font-family: var(--font-display); font-size: clamp(24px, 3vw, 32px); font-weight: 800; color: var(--text); margin: 6px 0 12px; }
+.editorial-body { font-size: 15px; line-height: 1.75; color: var(--text-2); max-width: 560px; }
+.editorial-sub { font-size: 14px; font-weight: 800; color: var(--text); margin: 16px 0 8px; }
+.editorial-list { padding-left: 18px; margin: 0; color: var(--text-2); line-height: 1.85; font-size: 14px; }
+.route-glance { padding: 16px 18px; }
+.route-glance .route-glance-label { font-size: 11px; font-weight: 800; letter-spacing: .12em; color: #bbe0d9; }
+.route-glance-list { color: #d5e7e4; font-size: 12.5px; margin-top: 8px; line-height: 1.6; }
+.route-glance-meta { color: #9fc4bf; font-size: 12px; display: block; margin-top: 6px; }
+
+/* day highlight cards */
+.pub-highlights { margin: 22px 0 4px; }
+
+/* ---- Theme radiate via View Transitions (driven from App.tsx) ----
+   The real UI of the incoming theme is revealed by a clip-path circle anchored
+   at the theme-toggle button (--vt-x/--vt-y/--vt-r, set before the transition
+   starts). Classes select direction: vt-radiate-out = dark→light (the new view
+   radiates from the icon), vt-radiate-in = light→dark (the old view collapses
+   into the icon). While the transition runs, vt-active suppresses
+   backdrop-filter everywhere — Chromium renders glass inside VT snapshots
+   without its backdrop, which otherwise turns the whole page into a gray veil.
+   Reduced-motion users skip the whole JS path (instant swap). */
+::view-transition-old(root),
+::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+html.vt-active :where(*) {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+:root.vt-radiate-out::view-transition-new(root) {
+  animation: vt-radiate-out 780ms cubic-bezier(.55, 0, .85, .36) both;
+}
+@keyframes vt-radiate-out {
+  from { clip-path: circle(0px at var(--vt-x, 50%) var(--vt-y, 50%)); }
+  to { clip-path: circle(var(--vt-r, 120vmax) at var(--vt-x, 50%) var(--vt-y, 50%)); }
+}
+:root.vt-radiate-in::view-transition-old(root) {
+  /* light→dark: start slow, accelerate home (mirror of the bloom) */
+  animation: vt-radiate-in 680ms cubic-bezier(.55, 0, .85, .36) both;
+}
+/* Collapse direction needs the OLD snapshot painted on top of the new one
+   (UA default stacks new above old) — otherwise the imploding light is
+   hidden beneath the already-dark new view and nothing animates. */
+:root.vt-radiate-in::view-transition-old(root) { z-index: 2; }
+:root.vt-radiate-in::view-transition-new(root) { z-index: 1; }
+@keyframes vt-radiate-in {
+  from { clip-path: circle(var(--vt-r, 120vmax) at var(--vt-x, 50%) var(--vt-y, 50%)); }
+  to { clip-path: circle(0px at var(--vt-x, 50%) var(--vt-y, 50%)); }
+}
+
+/* ---- My Trips staggered card entrance ---- */
+.trip-enter { animation: cardIn var(--t-slow) var(--ease-out) both; }
+@keyframes cardIn {
+  from { opacity: 0; transform: translateY(14px) scale(.98); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .trip-enter { animation: none; }
+}
+.day-highlight-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-top: 12px; }
+.day-highlight-card {
+  background: var(--card); border: 1px solid var(--yf-border); border-radius: 19px; padding: 14px 16px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.day-highlight-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.day-highlight-top .editorial-kicker { font-size: 10.5px; }
+.day-highlight-title { font-size: 17px; font-family: var(--font-display); color: var(--text); }
+.day-highlight-meta { font-size: 12.5px; color: var(--text-3); }
+.pub-footer-line { text-align: center; color: var(--text-3); font-size: 13px; padding: 26px 0 12px; }
+
+/* ---------- M7: Explore editorial treatment (§6.10) ---------- */
+.explore-hero {
+  color: #fff; padding: 52px 0 44px;
+  background: linear-gradient(160deg, var(--yf-navy) 0%, #0d4b56 58%, #0b3844 100%);
+  position: relative; overflow: hidden;
+}
+.explore-hero::before {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background:
+    radial-gradient(60% 70% at 88% 10%, rgba(23, 110, 112, .35), transparent 60%),
+    repeating-radial-gradient(150% 100% at 10% -10%, transparent 0 42px, rgba(255, 255, 255, .045) 42px 43px);
+}
+.explore-hero-inner { position: relative; z-index: 1; }
+.explore-hero h1 { font-family: var(--font-display); font-size: clamp(30px, 4.6vw, 46px); font-weight: 800; margin: 6px 0 0; }
+.explore-hero-kicker { color: #a9eadc; }
+.explore-hero-sub { color: #d9efeb; font-size: clamp(14px, 1.6vw, 16.5px); max-width: 620px; margin: 10px 0 18px; line-height: 1.6; }
+.explore-hero-search {
+  max-width: 520px; width: 100%; border-radius: 14px; padding: 13px 16px;
+  border: 1px solid rgba(255, 255, 255, .3); background: rgba(255, 255, 255, .12); color: #fff;
+  backdrop-filter: blur(8px);
+}
+.explore-hero-search::placeholder { color: rgba(226, 241, 239, .75); }
+.explore-hero-search:focus { background: rgba(255, 255, 255, .18); border-color: rgba(255, 255, 255, .5); outline: none; }
+.explore-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.chip-count { opacity: .65; font-size: 11px; margin-left: 3px; }
+
+/* featured itinerary */
+.featured-card {
+  border-radius: var(--radius-lg); padding: 20px 24px; margin-bottom: 22px; position: relative;
+  background: linear-gradient(120deg, #0e3a45, #0b2740);
+  color: #fff; box-shadow: var(--shadow-soft); overflow: hidden;
+}
+.featured-card::before {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(52% 90% at 90% 6%, rgba(240, 165, 63, .18), transparent 62%);
+}
+.featured-body { position: relative; z-index: 1; }
+.featured-kicker { color: #ffd79a; }
+.featured-body h2 { font-family: var(--font-display); font-size: clamp(22px, 2.6vw, 30px); margin: 6px 0 8px; }
+.featured-title-link { color: #fff; text-decoration: none; }
+.featured-title-link:hover { text-decoration: underline; }
+.featured-tagline { color: #d5e7e4; margin: 0 0 8px; max-width: 640px; line-height: 1.6; }
+.featured-credibility { color: #a9d8cf; font-size: 13px; margin: 0 0 12px; }
+.featured-meta { display: flex; gap: 18px; flex-wrap: wrap; color: #e2f1ef; font-size: 13px; margin-bottom: 16px; }
+.featured-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+/* save heart on grid cards */
+.save-heart {
+  position: absolute; top: 10px; right: 10px; z-index: 2; cursor: pointer;
+  background: rgba(255, 255, 255, .9); color: #c25b4a; border: 1px solid rgba(194, 91, 74, .25);
+  border-radius: 999px; width: 34px; height: 34px; font-size: 16px; line-height: 1;
+}
+[data-theme='dark'] .save-heart { background: rgba(20, 32, 46, .85); color: #e58875; }
+.itin-card { position: relative; }
+
+/* M7 mobile (single ≤720px block additions) */
+@media (max-width: 720px) {
+  .pub-hero { padding: 64px 0 120px; }
+  .pub-hero-stats { position: static; width: auto; margin: 0 16px; }
+  .pub-body { padding-top: 16px; }
+  .paper-sheet { padding: 14px 14px 20px; }
+  .pub-actions { flex-direction: column; align-items: stretch; }
+  .pub-actions-btns { justify-content: stretch; }
+  .pub-actions-btns .btn { flex: 1; }
+  .day-highlight-row { grid-template-columns: 1fr; }
+  .explore-hero { padding: 36px 0 32px; }
+  .featured-actions .btn { flex: 1; }
+}

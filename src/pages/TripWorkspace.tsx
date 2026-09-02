@@ -22,11 +22,15 @@ import { computeImpact, type ImpactResult } from '../lib/impact'
 import { loadDayCollapsed, saveDayCollapsed } from '../lib/uiPrefs'
 import { useTimeFormat, formatHM, formatHMRange } from '../lib/timefmt'
 import { scrollBehavior } from '../lib/motion'
-import { Avatar, Chip, Modal, ConfirmDialog, Field, StatTile, HealthRing, EmptyState, toast, undoToast, useReorder, CopyButton } from '../components/ui'
+import { stopKindOf, STOP_KIND_LABELS } from '../lib/stopKind'
+import { Avatar, Chip, Modal, ConfirmDialog, Field, StatTile, HealthRing, EmptyState, toast, undoToast, useReorder, CopyButton, RouteSnapshot } from '../components/ui'
 import { ImpactPreviewPanel } from '../components/ImpactPreview'
 import { useSuggestionCache } from '../hooks/useSuggestionCache'
 // MapLibre is heavy (~1MB) — load it only when the Map tab is actually opened.
 const TripMap = React.lazy(() => import('../components/TripMap').then(m => ({ default: m.TripMap })))
+// Board also embeds TripMap (so it pulls the same lazy map chunk) — load the whole
+// view lazily so the Board tab never adds app-start cost either.
+const BoardView = React.lazy(() => import('../components/BoardView').then(m => ({ default: m.BoardView })))
 import { StopEditor, type StopFormValues } from '../components/StopEditor'
 import { AiDrawer } from '../components/AiDrawer'
 import { LocationInput } from '../components/LocationInput'
@@ -38,11 +42,12 @@ import type { DayWeather } from '../lib/weather'
 import { encodeTripSnapshot, decodeTripSnapshot, snapshotUrl, downloadTripJson } from '../lib/snapshot'
 import { duplicateTrip } from '../store/store'
 
-type TabKey = 'overview' | 'timeline' | 'map' | 'suggestions' | 'budget' | 'decisions' | 'share'
+type TabKey = 'overview' | 'timeline' | 'board' | 'map' | 'suggestions' | 'budget' | 'decisions' | 'share'
 
 const TABS: [TabKey, string][] = [
   ['overview', 'Overview'],
   ['timeline', 'Timeline'],
+  ['board', 'Board'],
   ['map', 'Map'],
   ['suggestions', 'Suggestions'],
   ['budget', 'Budget'],
@@ -160,12 +165,12 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
   }
 
   return (
-    <div className="container" style={{ paddingTop: 22 }}>
+    <div className={`container${tab === 'board' ? ' container--board' : ''}`} style={{ paddingTop: 22 }}>
       {/* ---------- Header ---------- */}
       <div className="trip-head-card">
         <div className="row-between">
           <div style={{ position: 'relative', zIndex: 1 }}>
-            <button className="btn btn-sm btn-outline" style={{ color: '#fff', borderColor: 'rgba(255,255,255,.4)' }} onClick={() => onNavigate('trips')}>← All trips</button>
+            <button className="trip-hero-back" onClick={() => onNavigate('trips')}>← All trips</button>
             <h1 style={{ marginTop: 12 }}>{trip.coverEmoji} {trip.name}</h1>
             <p style={{ opacity: .9, marginTop: 6 }}>
               {trip.startLocation} → {trip.destinations.join(' → ')} · {fmtDateRange(trip.startDate, trip.endDate)} · {trip.travellers} travellers · {cap(trip.transportMode)} · {cap(trip.travelStyle)}
@@ -210,17 +215,25 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
         />
       )}
 
-      {tab === 'overview' && <OverviewTab trip={effective} editable={editable} onOpenDecisions={() => setTab('decisions')} health={health} totals={totals} />}
-      {tab === 'timeline' && <TimelineTab trip={trip} editable={editable} applyChange={applyChange} legCorrections={legCorrections} suggestionCache={suggestionCache} />}
+      <div className="tab-panel" key={tab}>
+      {tab === 'overview' && <OverviewTab trip={effective} editable={editable} onOpenDecisions={() => setTab('decisions')} onOpenTimeline={() => setTab('timeline')} onOpenMap={() => setTab('map')} onInvite={() => setTab('share')} health={health} totals={totals} />}
+      {tab === 'timeline' && <TimelineTab trip={effective} editable={editable} applyChange={applyChange} legCorrections={legCorrections} suggestionCache={suggestionCache} onOpenBoard={() => setTab('board')} />}
+      {tab === 'board' && (
+        <React.Suspense fallback={<div className="container loading-block"><div className="spinner" />Loading board…</div>}>
+          <BoardView trip={effective} editable={editable} applyChange={applyChange} health={health} totals={totals}
+            onOpenOverview={() => setTab('overview')} onOpenTimeline={() => setTab('timeline')} />
+        </React.Suspense>
+      )}
       {tab === 'map' && (
         <React.Suspense fallback={<div className="container loading-block"><div className="spinner" />Loading map…</div>}>
-          <MapTab trip={trip} editable={editable} applyChange={applyChange} suggestionCache={suggestionCache} />
+          <MapTab trip={effective} editable={editable} applyChange={applyChange} suggestionCache={suggestionCache} />
         </React.Suspense>
       )}
       {tab === 'suggestions' && <SuggestionsTab trip={trip} editable={editable} me={me} />}
       {tab === 'budget' && <BudgetTab trip={trip} totals={totals} editable={editable} />}
       {tab === 'decisions' && <DecisionsTab trip={trip} me={me} editable={editable} />}
       {tab === 'share' && <ShareTab trip={trip} me={me} editable={editable} onNavigate={onNavigate} />}
+      </div>
 
       <AiDrawer trip={trip} open={aiOpen} onOpen={() => setAiOpen(true)} onClose={() => setAiOpen(false)} />
     </div>
@@ -229,10 +242,13 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
 
 // ================= Overview =================
 
-function OverviewTab({ trip, editable, onOpenDecisions, health, totals }: {
+function OverviewTab({ trip, editable, onOpenDecisions, onOpenTimeline, onOpenMap, onInvite, health, totals }: {
   trip: Trip
   editable: boolean
   onOpenDecisions: () => void
+  onOpenTimeline: () => void
+  onOpenMap: () => void
+  onInvite: () => void
   health: ReturnType<typeof computeHealth>
   totals: ReturnType<typeof computeTotals>
 }) {
@@ -241,38 +257,114 @@ function OverviewTab({ trip, editable, onOpenDecisions, health, totals }: {
   const unresolvedDecisions = db.decisions.filter(d => d.tripId === trip.id && d.status === 'open').length
   const nextCommitment = [...trip.fixedCommitments]
     .sort((a, b) => a.dayIndex - b.dayIndex || a.time.localeCompare(b.time))[0]
+  const crew = trip.members ?? []
+  // Real-geometry snapshot: ordered stop coordinates (rejected stops excluded),
+  // each tagged with its day index so badges land on each day's first stop.
+  const routePoints = useMemo(() => {
+    const pts: Array<{ lat: number; lng: number; day: number }> = []
+    if (trip.startLocationCoords) pts.push({ lat: trip.startLocationCoords.lat, lng: trip.startLocationCoords.lng, day: 0 })
+    for (const day of [...trip.days].sort((a, b) => a.index - b.index)) {
+      for (const s of [...day.stops].sort((a, b) => a.orderInDay - b.orderInDay)) {
+        if (s.status !== 'rejected' && Number.isFinite(s.lat) && Number.isFinite(s.lng)) {
+          pts.push({ lat: s.lat, lng: s.lng, day: day.index })
+        }
+      }
+    }
+    return pts.length >= 2 ? pts : undefined
+  }, [trip.days, trip.startLocationCoords])
+  // Bento briefing (CTI §6.2): lead with the most consequential issues.
+  const severityRank = { high: 0, medium: 1, low: 2 } as const
+  const priorityActions = [...health.warnings]
+    .sort((a, b) => severityRank[a.severity] - severityRank[b.severity])
+    .slice(0, 3)
 
   return (
-    <div className="two-col">
+    <div className="two-col bento">
       <div>
+        <div className="page-head" style={{ marginTop: 0 }}>
+          <h2>Trip briefing</h2>
+          <p className="page-head-sub">What needs attention before this road trip starts.</p>
+        </div>
+
         <div className="card">
           <div className="row-between">
-            <h3>Trip Health Score</h3>
+            <h3>Trip health</h3>
             <Chip tone={health.band === 'Comfortable' ? 'ok' : health.band === 'Manageable' ? 'teal' : health.band === 'Tight' ? 'saffron' : 'danger'}>
               {health.band}
             </Chip>
           </div>
           <hr className="divider" />
-          <div className="health-wrap">
-            <HealthRing score={health.score} band={health.band} />
-            <div style={{ flex: 1, minWidth: 220 }}>
-              {health.warnings.length === 0 ? (
-                <p className="muted small">No schedule issues detected. Buffers look healthy — enjoy the yatra! 🎉</p>
-              ) : (
-                <div className="warn-list">
-                  {health.warnings.slice(0, 4).map(w => (
-                    <div key={w.code + w.title} className={`warn-item ${w.severity === 'high' ? 'sev-high' : w.severity === 'low' ? 'sev-low' : ''}`}>
-                      <span className="warn-icon">{w.severity === 'high' ? '🚨' : w.severity === 'medium' ? '⚠️' : '💡'}</span>
-                      <div>
-                        <div className="warn-title">{w.title}</div>
-                        <div className="warn-fix">✅ Recommended: {w.fix}</div>
-                      </div>
-                    </div>
+          <div className="health-big">
+            <div className={`health-num-big ${health.band === 'Tight' ? 'mid' : health.band === 'Comfortable' || health.band === 'Manageable' ? 'ok' : 'bad'}`}>{health.score}</div>
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <div className="health-bar">
+                <i className={health.band === 'Tight' ? 'mid' : health.band === 'Comfortable' || health.band === 'Manageable' ? 'ok' : 'bad'} style={{ width: `${health.score}%` }} />
+              </div>
+              <ul className="health-reasons">
+                {health.warnings.length === 0
+                  ? <li>No schedule issues detected — buffers look healthy. 🎉</li>
+                  : health.warnings.slice(0, 3).map(w => (
+                    <li key={w.code + w.title}>{w.severity === 'high' ? '🚨 ' : w.severity === 'medium' ? '⚠️ ' : '💡 '}{w.title}</li>
                   ))}
-                  {health.warnings.length > 4 && <span className="small muted">+{health.warnings.length - 4} more — see Timeline.</span>}
-                </div>
-              )}
+              </ul>
             </div>
+          </div>
+          <button className="health-rec" onClick={onOpenTimeline}>View health recommendations →</button>
+        </div>
+
+        {/* Bento stat cluster: cost / per-person / effort / stops at a glance */}
+        <div className="stat-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)', marginTop: 14 }}>
+          <StatTile label="Total cost" value={formatInr(totals.totalCostInr)} sub={`${formatInr(totals.costPerDayInr)}/day · estimates`} />
+          <StatTile label="Per person" value={formatInr(totals.costPerPersonInr)} sub={`vs ${formatInr(trip.budgetPerPersonInr)} target`} />
+          <StatTile label="Travel effort" value={minutesToHM(totals.totalTravelMinutes)} sub={`≈${Math.round(totals.totalDistanceKm)} km route`} />
+          <StatTile label="Stops planned" value={totals.stopCount} sub={`${countHotelNights(trip)} overnight base${countHotelNights(trip) !== 1 ? 's' : ''}`} />
+        </div>
+
+        {/* Priority actions: the most consequential issues with a direct fix link */}
+        <div className="card">
+          <div className="row-between">
+            <h3>Priority actions</h3>
+            {health.warnings.length > 0 && <span className="chip chip-saffron">{health.warnings.length} to review</span>}
+          </div>
+          <hr className="divider" />
+          {priorityActions.length === 0 ? (
+            <p className="muted small">Nothing needs fixing right now — the plan flows. 🎉</p>
+          ) : (
+            <div className="warn-list">
+              {priorityActions.map(w => (
+                <div key={w.code + w.title} className={`warn-item ${w.severity === 'high' ? 'sev-high' : w.severity === 'low' ? 'sev-low' : ''}`}>
+                  <span className="warn-icon">{w.severity === 'high' ? '🚨' : w.severity === 'medium' ? '⚠️' : '💡'}</span>
+                  <div>
+                    <div className="warn-title">{w.title}</div>
+                    <div className="warn-fix">✅ {w.fix}</div>
+                  </div>
+                </div>
+              ))}
+              {health.warnings.length > 3 && <span className="small muted">+{health.warnings.length - 3} more — see Timeline.</span>}
+            </div>
+          )}
+          <button className="link-btn teal" style={{ marginTop: 12 }} onClick={onOpenTimeline}>Open Timeline to resolve →</button>
+        </div>
+      </div>
+
+      <div>
+        <div className="card route-snap">
+          <h3>Route snapshot</h3>
+          <RouteSnapshot
+            count={trip.days.length}
+            startLabel={trip.startLocation}
+            endLabel={trip.destinations[trip.destinations.length - 1]}
+            roundTripNote={isRoundTrip(trip) ? `↩ returns to ${trip.startLocation}` : undefined}
+            points={routePoints}
+          />
+          <p style={{ margin: '4px 0 0', fontSize: 12.5, opacity: .85, lineHeight: 1.6 }}>
+            <b>{trip.startLocation}</b>
+            {trip.destinations.map((d, i) => <span key={i}> → {d}</span>)}
+            {isRoundTrip(trip) && <> → {trip.startLocation}</>}
+          </p>
+          <div className="route-snap-meta">
+            <span>{trip.days.length} days · ≈{Math.round(totals.totalDistanceKm)} km · {totals.stopCount} stops</span>
+            <button className="link-btn" onClick={onOpenMap}>Open map →</button>
           </div>
         </div>
 
@@ -318,20 +410,14 @@ function OverviewTab({ trip, editable, onOpenDecisions, health, totals }: {
         <WeatherCard trip={trip} />
       </div>
 
-      <div>
-        <div className="stat-grid" style={{ gridTemplateColumns: '1fr' }}>
-          <StatTile label="Total estimated cost" value={formatInr(totals.totalCostInr)} sub={`${formatInr(totals.costPerDayInr)}/day · estimates only`} />
-          <StatTile label="Cost per person" value={formatInr(totals.costPerPersonInr)} sub={`vs budget ${formatInr(trip.budgetPerPersonInr)} per head`} />
-          <StatTile label="Total travel time" value={minutesToHM(totals.totalTravelMinutes)} sub={`≈${Math.round(totals.totalDistanceKm)} km across the route`} />
-          <StatTile label="Stops planned" value={totals.stopCount} sub={`${countHotelNights(trip)} overnight base${countHotelNights(trip) !== 1 ? 's' : ''}`} />
-        </div>
-        <div className="card" style={{ marginTop: 14, textAlign: 'center' }}>
-          <h3>Unresolved decisions</h3>
-          <p style={{ fontSize: 34, fontWeight: 800, fontFamily: 'var(--font-display)', margin: '8px 0', color: unresolvedDecisions ? 'var(--warn)' : 'var(--ok)' }}>
-            {unresolvedDecisions}
-          </p>
-          <button className="btn btn-outline btn-sm" onClick={onOpenDecisions}>Open Decisions tab</button>
-        </div>
+      <div className="card pulse-bar">
+        <span className="pulse-label">Group pulse</span>
+        <span className="pulse-item"><b>{crew.length}</b> member{crew.length !== 1 ? 's' : ''}</span>
+        <span className="pulse-dot">·</span>
+        <span className="pulse-item"><b>{unresolvedDecisions}</b> open decision{unresolvedDecisions !== 1 ? 's' : ''}</span>
+        <span className="pulse-dot">·</span>
+        <span className="pulse-item">{trip.fixedCommitments.length ? <><b>{trip.fixedCommitments.length}</b> fixed commitment{trip.fixedCommitments.length !== 1 ? 's' : ''}</> : 'No fixed commitments yet'}</span>
+        <button className="link-btn teal pulse-link" onClick={onInvite}>Invite travellers →</button>
       </div>
     </div>
   )
@@ -370,12 +456,14 @@ function isoAddDays(iso: string, days: number): string {
 
 // ================= Timeline =================
 
-function TimelineTab({ trip, editable, applyChange, legCorrections, suggestionCache }: {
+function TimelineTab({ trip, editable, applyChange, legCorrections, suggestionCache, onOpenBoard }: {
   trip: Trip
   editable: boolean
   applyChange: (mutator: (d: Trip) => void, kind: ImpactResult['kind'], dayIndex: number) => void
   legCorrections?: Record<string, LegEstimate>
   suggestionCache: ReturnType<typeof useSuggestionCache>
+  /** M5: the doc's §6.3 "Open in Board" bridge — Board now exists. */
+  onOpenBoard?: () => void
 }) {
   const [editorState, setEditorState] = useState<
     { mode: 'add'; dayIndex: number } | { mode: 'edit'; stopId: string } | null
@@ -460,6 +548,18 @@ function TimelineTab({ trip, editable, applyChange, legCorrections, suggestionCa
     }
     return map
   }, [trip])
+  const warnDayCount = Object.keys(dayWarnings).length
+  // M4: sticky trip-total strip (doc §6.3) — same engine numbers as Overview.
+  const totals = useMemo(() => computeTotals(trip, legCorrections), [trip, legCorrections])
+
+  /** Day-jump rail: scroll a long timeline straight to a day card. */
+  function jumpToDay(dayIndex: number) {
+    const el = document.getElementById(`day-card-${dayIndex}`)
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    const isVisible = rect.top >= 0 && rect.bottom <= window.innerHeight
+    if (!isVisible) el.scrollIntoView({ behavior: scrollBehavior(), block: 'start' })
+  }
 
   /** Inline day rename — a lightweight label change, applied directly (no impact preview). */
   function handleRenameDay(dayIndex: number, title: string) {
@@ -522,9 +622,42 @@ function TimelineTab({ trip, editable, applyChange, legCorrections, suggestionCa
           <p className="muted small">Drag stops to reorder within a day — or drop them onto another day to move them there. On touch devices: press and hold a stop, then drag it. Every change shows its impact before saving.</p>
         </div>
         {editable && (
-          <button className="btn btn-primary btn-sm" onClick={() => setEditorState({ mode: 'add', dayIndex: 0 })}>+ Add stop</button>
+          <div className="row" style={{ gap: 8 }}>
+            {onOpenBoard && (
+              <button className="btn btn-outline btn-sm" onClick={onOpenBoard} title="Arrange stops across days with the route in view">Open in Board →</button>
+            )}
+            <button className="btn btn-primary btn-sm" onClick={() => setEditorState({ mode: 'add', dayIndex: 0 })}>+ Add stop</button>
+          </div>
         )}
       </div>
+
+      <div className="tl-total-strip">
+        <span className="tl-total-label">Trip total</span>
+        <span>{Math.round(totals.totalDistanceKm).toLocaleString('en-IN')} km</span>
+        <span className="tl-total-dot" aria-hidden="true">·</span>
+        <span>{minutesToHM(totals.totalTravelMinutes)} driving</span>
+        <span className="tl-total-dot" aria-hidden="true">·</span>
+        <span>{formatInr(totals.totalCostInr)} estimated</span>
+        {warnDayCount > 0 && (
+          <span className="tl-total-warn">⚠ {warnDayCount} day{warnDayCount !== 1 ? 's' : ''} need{warnDayCount === 1 ? 's' : ''} attention</span>
+        )}
+      </div>
+
+      {days.length >= 4 && (
+        <div className="day-rail" role="navigation" aria-label="Jump to day">
+          <span className="day-rail-label">Jump to day</span>
+          <div className="day-rail-chips">
+            {days.map(d => {
+              const hasWarn = (dayWarnings[d.index] ?? []).length > 0
+              return (
+                <button key={d.id} type="button" className={`day-rail-chip ${hasWarn ? 'warn' : ''}`} onClick={() => jumpToDay(d.index)}>
+                  Day {d.index + 1}{hasWarn ? ' ⚠' : ''}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {days.map(day => (
         <DaySection key={day.id} day={day} trip={trip} editable={editable} legCorrections={legCorrections} suggestionCache={suggestionCache}
@@ -771,6 +904,11 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
           </div>
           {!collapsed && <DayWeatherChip trip={trip} dayIndex={day.index} />}
         </div>
+        {sev !== 'ok' && (
+          <span className={`day-warn-pill sev-${sev}`} title={warnings.map(w => w.title).join('\n')}>
+            ⚠ {warnings[0].title.replace(/^Day \d+:\s*/, '')}{warnings.length > 1 ? ` +${warnings.length - 1}` : ''}
+          </span>
+        )}
         {ordered.filter(s => s.status !== 'rejected').length >= 2 && <DaySpark stops={ordered.filter(s => s.status !== 'rejected')} />}
         {editable && (
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -792,6 +930,18 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
           <div>
             <div className="warn-title">{fc.title}</div>
             <div className="warn-fix">Fixed at {formatHM(fc.time, timeFormat)}{fc.notes ? ` — ${fc.notes}` : ''}</div>
+          </div>
+        </div>
+      ))}
+
+      {/* Warning state lives inside the affected day (doc §6.3) — the "Day N:"
+          prefix is redundant here, the pill + card already say which day. */}
+      {warnings.map((w, i) => (
+        <div key={i} className={`warn-item ${w.severity === 'high' ? 'sev-high' : w.severity === 'medium' ? '' : 'sev-low'}`} style={{ marginBottom: 8 }}>
+          <span className="warn-icon">{w.severity === 'high' ? '⛔' : '⚠️'}</span>
+          <div>
+            <div className="warn-title">{w.title.replace(/^Day \d+:\s*/, '')}</div>
+            {w.fix && <div className="warn-fix">{w.fix}</div>}
           </div>
         </div>
       ))}
@@ -818,7 +968,7 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
         )}
       </>)}
 
-      <div className="tl">
+      <div className={`tl${dragging !== null ? ' is-dragging' : ''}`}>
         {ordered.map((s, i) => {
           // Auto anchors (trip start/end, route-continuation waypoints) are pure
           // route endpoints, not activities. The rich travel summary (mode,
@@ -859,6 +1009,7 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
               </div>
             )
           }
+          const kind = stopKindOf(s)
           return (
             <React.Fragment key={s.id}>
               <div
@@ -871,14 +1022,14 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
                   <span className="tl-time tl-dep">{sim.departures[i] ?? '--:--'}</span>
                 </div>
                 <div
-                  className={`stop-card status-${s.status} ${dragging === i ? 'dragging' : ''} ${over === i && dragging !== null && dragging !== i ? 'drag-over' : ''} ${foreignOver === i && dragging === null ? 'foreign-over' : ''}`}
+                  className={`stop-card kind-${kind} status-${s.status} ${dragging === i ? 'dragging' : ''} ${over === i && dragging !== null && dragging !== i ? 'drag-over' : ''} ${foreignOver === i && dragging === null ? 'foreign-over' : ''}`}
                 >
                 <div className={`stop-num cat-${s.category}`}>{i + 1}</div>
               <div className="stop-main">
                 <div className="stop-toprow">
                   <span className="stop-title">{s.title}</span>
                   <Chip tone={statusTone(s.status)}>{labelStatusText(s.status)}</Chip>
-                  <Chip tone="info">{labelCatText(s.category)}</Chip>
+                  <span className={`stop-kind-tag kind-${kind}`}>{STOP_KIND_LABELS[kind]}</span>
                   {s.priority === 'must-do' && <Chip tone="danger">Must do</Chip>}
                   {s.priority === 'optional' && <Chip tone="saffron">Optional</Chip>}
                   {s.weatherSensitive && <Chip tone="info">🌧️ weather-sensitive</Chip>}
@@ -1595,6 +1746,54 @@ function MapTab({ trip, editable, applyChange, suggestionCache }: {
 
   const dayOptions = trip.days.map(d => ({ index: d.index }))
 
+  // Split corridor suggestions into two curated columns: need-based halts
+  // (fuel/food/rest/stretch/overnight/stay) on the LEFT in teal-amber, and
+  // see-&-do / sightseeing + detours on the RIGHT in scenic purple — so the
+  // map tab needs no scrolling to reach either kind (§6.10 CTI tone coding).
+  const NEED_PURPOSES = new Set(['fuel', 'meal', 'food', 'rest', 'stretch', 'overnight', 'stay'])
+  const needs = pois.filter(sh => sh.segment && NEED_PURPOSES.has(sh.segment.purpose))
+  const seeAndDo = pois.filter(sh => sh.segment && !NEED_PURPOSES.has(sh.segment.purpose))
+
+  /** One corridor-suggestion row (gap or hit). Shared by both split columns. */
+  function renderPoi(sh: SegmentHit) {
+    const hit = sh.hit
+    if (!hit) {
+      return (
+        <div key={`gap-${sh.segment.index}`} className="poi-plan-row poi-plan-gap">
+          <span className={`ride-purpose ride-purpose-${sh.segment.purpose} ride-purpose-muted`}>{sh.segment.label}</span>
+          <span className="muted small">no good match around ~{sh.segment.targetKm.toFixed(0)} km — add a stop on the Timeline and it will pin itself here.</span>
+        </div>
+      )
+    }
+    const added = addedIds.has(hit.id as string) || existingNames.has(hit.name.toLowerCase())
+    const offRoute = detourKm(hit, anchors)
+    return (
+      <div key={hit.id} className="poi-plan-row">
+        <div className="ride-spot-title">
+          <span className={`ride-purpose ride-purpose-${sh.segment.purpose}`}>{sh.segment.label}</span>
+          {hit.thumb && <img className="poi-thumb" src={smallThumb(hit.thumb)} alt="" loading="lazy" />}
+          <b>{hit.name}</b>
+        </div>
+        <div className="poi-desc small muted">
+          ~{hit.cumKm ?? sh.segment.targetKm.toFixed(0)} km into the trip · ≈{sh.segment.kmFromPrev.toFixed(0)} km / {minutesToHM(sh.segment.minutesFromPrev)} since the last stop
+          {hit.nearestCity ? ` · near ${hit.nearestCity}` : ''}
+          {' · '}{offRoute == null ? 'on route' : `~${Math.round(offRoute * 10) / 10} km off route`}
+        </div>
+        {hit.description && <div className="poi-desc small muted">{hit.description}</div>}
+        {(hit.openTime || hit.closeTime) && (
+          <div className="poi-desc small muted">🕘 {formatHMRange(hit.openTime, hit.closeTime, timeFormat)} (reported)</div>
+        )}
+        <div>
+          {editable && (
+            added
+              ? <span className="chip chip-teal">✓ Added</span>
+              : <button className="btn btn-primary btn-sm" onClick={() => openAddModal(hit)}>+ Add</button>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div>
       <TripMap trip={trip} nearbyPois={pois.flatMap(p => p.hit ? [p.hit] : [])} onAddNearby={editable ? (hit) => openAddModal(hit) : undefined} />
@@ -1635,45 +1834,35 @@ function MapTab({ trip, editable, applyChange, suggestionCache }: {
         {!loadingPois && pois.length === 0 && (
           <p className="muted small">Not enough driving distance yet for a fatigue plan — add a longer route (90+ km) in the Timeline and segmented stop suggestions will appear here.</p>
         )}
-        <div className="poi-plan-list">
-          {pois.map(sh => {
-            const hit = sh.hit
-            if (!hit) {
-              return (
-                <div key={`gap-${sh.segment.index}`} className="poi-plan-row poi-plan-gap">
-                  <span className={`ride-purpose ride-purpose-${sh.segment.purpose} ride-purpose-muted`}>{sh.segment.label}</span>
-                  <span className="muted small">no good match around ~{sh.segment.targetKm.toFixed(0)} km — add a stop on the Timeline and it will pin itself here.</span>
-                </div>
-              )
-            }
-            const added = addedIds.has(hit.id as string) || existingNames.has(hit.name.toLowerCase())
-            const offRoute = detourKm(hit, anchors)
-            return (
-              <div key={hit.id} className="poi-plan-row">
-                <div className="ride-spot-title">
-                  <span className={`ride-purpose ride-purpose-${sh.segment.purpose}`}>{sh.segment.label}</span>
-                  {hit.thumb && <img className="poi-thumb" src={smallThumb(hit.thumb)} alt="" loading="lazy" />}
-                  <b>{hit.name}</b>
-                </div>
-                <div className="poi-desc small muted">
-                  ~{hit.cumKm ?? sh.segment.targetKm.toFixed(0)} km into the trip · ≈{sh.segment.kmFromPrev.toFixed(0)} km / {minutesToHM(sh.segment.minutesFromPrev)} since the last stop
-                  {hit.nearestCity ? ` · near ${hit.nearestCity}` : ''}
-                  {' · '}{offRoute == null ? 'on route' : `~${Math.round(offRoute * 10) / 10} km off route`}
-                </div>
-                {hit.description && <div className="poi-desc small muted">{hit.description}</div>}
-                {(hit.openTime || hit.closeTime) && (
-                  <div className="poi-desc small muted">🕘 {formatHMRange(hit.openTime, hit.closeTime, timeFormat)} (reported)</div>
-                )}
-                <div>
-                  {editable && (
-                    added
-                      ? <span className="chip chip-teal">✓ Added</span>
-                      : <button className="btn btn-primary btn-sm" onClick={() => openAddModal(hit)}>+ Add</button>
-                  )}
-                </div>
+        <div className="poi-split">
+          <div className="poi-col poi-col--needs">
+            <div className="poi-col-head">
+              <span className="poi-col-head-ico">⛽</span>
+              <div>
+                <b>Need-based halts</b>
+                <span className="small muted">fuel · food · rest · stretch · overnight</span>
               </div>
-            )
-          })}
+            </div>
+            <div className="poi-plan-list">
+              {needs.length === 0
+                ? <p className="muted small">No need-based halts surfaced yet — they appear as you add driving days.</p>
+                : needs.map(renderPoi)}
+            </div>
+          </div>
+          <div className="poi-col poi-col--see">
+            <div className="poi-col-head">
+              <span className="poi-col-head-ico">📍</span>
+              <div>
+                <b>See &amp; do</b>
+                <span className="small muted">sightseeing · detours · scenic stops</span>
+              </div>
+            </div>
+            <div className="poi-plan-list">
+              {seeAndDo.length === 0
+                ? <p className="muted small">Sightseeing &amp; detour stops will appear here along the corridor.</p>
+                : seeAndDo.map(renderPoi)}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1758,7 +1947,10 @@ function SuggestionsTab({ trip, editable, me }: {
               <div>
                 <div className="row-between">
                   <h3>{sg.title}</h3>
-                  <Chip tone={sg.status === 'accepted' ? 'ok' : sg.status === 'declined' ? 'danger' : 'teal'}>{sg.status}</Chip>
+                  <span style={{ display: 'inline-flex', gap: 6 }}>
+                    {sg.status === 'open' && consensusPct >= 60 && <Chip tone="teal">Best fit</Chip>}
+                    <Chip tone={sg.status === 'accepted' ? 'ok' : sg.status === 'declined' ? 'danger' : 'teal'}>{sg.status}</Chip>
+                  </span>
                 </div>
                 <div className="creator-line" style={{ margin: '5px 0' }}>
                   <Avatar user={author} /> {author?.profile.name ?? 'Traveller'} suggested for Day {sg.dayIndex + 1}
@@ -1957,21 +2149,29 @@ function BudgetTab({ trip, totals, editable }: { trip: Trip; totals: ReturnType<
             </details>
           )}
         </div>
+        <div className="budget-reassure">
+          <b>✦ Keep estimates honest</b>
+          <span>When you move a stop or pick a different stay, YatraFlow previews the new total before you save.</span>
+        </div>
       </div>
 
       <div>
-        <div className="stat-grid" style={{ gridTemplateColumns: '1fr' }}>
-          <StatTile label="Total estimated" value={formatInr(totals.totalCostInr)} />
-          <StatTile label="Per person" value={formatInr(totals.costPerPersonInr)} sub={`Budget: ${formatInr(trip.budgetPerPersonInr)}/head`} />
-          <StatTile label="Per day" value={formatInr(totals.costPerDayInr)} />
-          <div className="stat-tile">
-            <div className="stat-label">Budget usage</div>
-            <div className="stat-value">{pctUsed}%</div>
-            <div className="budget-bar-track" style={{ marginTop: 8 }}>
-              <div className="budget-bar-fill" style={{ width: `${Math.min(100, pctUsed)}%`, background: pctUsed > 100 ? 'var(--danger)' : pctUsed > 85 ? 'var(--saffron)' : 'var(--teal)' }} />
-            </div>
-            {pctUsed > 100 && <div className="stat-sub" style={{ color: 'var(--danger)' }}>Over group budget — trim optional lines.</div>}
+        <div className="budget-hero">
+          <span className="budget-hero-label">Total trip estimate</span>
+          <div className="budget-hero-num">{formatInr(totals.totalCostInr)}</div>
+          <div className="budget-hero-sub">
+            {formatInr(totals.costPerPersonInr)} per person · target {formatInr(trip.budgetPerPersonInr)}/head · {formatInr(totals.costPerDayInr)}/day
           </div>
+          <div className="budget-bar-track" style={{ marginTop: 10 }}>
+            <div className="budget-bar-fill" style={{ width: `${Math.min(100, pctUsed)}%`, background: pctUsed > 100 ? 'var(--danger)' : pctUsed > 85 ? 'var(--saffron)' : 'var(--teal)' }} />
+          </div>
+          <div className="budget-hero-pct">
+            {pctUsed}% of group budget{pctUsed > 100 ? ' — over budget; trim optional lines' : pctUsed > 85 ? ' — getting close' : ''}
+          </div>
+        </div>
+        <div className="stat-grid" style={{ gridTemplateColumns: '1fr' }}>
+          <StatTile label="Per day" value={formatInr(totals.costPerDayInr)} />
+          <StatTile label="Optional spending" value={formatInr(totals.optionalInr)} sub={`${formatInr(totals.essentialInr)} essential`} />
         </div>
 
         <div className="card" style={{ marginTop: 14 }}>
@@ -2000,6 +2200,17 @@ function DecisionsTab({ trip, me, editable }: { trip: Trip; me: { id: string }; 
   const decisions = db.decisions.filter(d => d.tripId === trip.id).sort((a, b) => b.createdAt - a.createdAt)
   const [q, setQ] = useState('')
   const [opts, setOpts] = useState('')
+  const [filter, setFilter] = useState<'all' | 'open' | 'mine' | 'resolved'>('all')
+
+  // §6.8 hierarchy: open / needs-me / resolved counts + "next to unblock" focus
+  const openDecisions = decisions.filter(d => d.status === 'open')
+  const needsMe = openDecisions.filter(d => !d.votesByUserId[me.id])
+  const resolvedCount = decisions.length - openDecisions.length
+  const unblock = needsMe[0]
+  const shown = filter === 'open' ? openDecisions
+    : filter === 'mine' ? needsMe
+    : filter === 'resolved' ? decisions.filter(d => d.status === 'resolved')
+    : decisions
 
   function create(e: React.FormEvent) {
     e.preventDefault()
@@ -2017,14 +2228,38 @@ function DecisionsTab({ trip, me, editable }: { trip: Trip; me: { id: string }; 
   return (
     <div className="two-col">
       <div>
+        <div className="dec-strip">
+          <div className="stat-tile">
+            <div className="stat-label">Open decisions</div>
+            <div className="stat-value">{openDecisions.length}</div>
+          </div>
+          <div className="stat-tile">
+            <div className="stat-label">Need your vote</div>
+            <div className="stat-value">{needsMe.length}</div>
+          </div>
+          <div className="stat-tile">
+            <div className="stat-label">Resolved</div>
+            <div className="stat-value">{resolvedCount}</div>
+          </div>
+        </div>
+        <div className="filter-pillbar" style={{ marginBottom: 14 }} role="group" aria-label="Filter decisions">
+          {([['all', 'All'], ['open', 'Open'], ['mine', 'Needs me'], ['resolved', 'Resolved']] as const).map(([k, label]) => (
+            <button key={k} type="button" className={`clickable-chip chip${filter === k ? ' on-teal' : ''}`}
+              onClick={() => setFilter(k)} aria-pressed={filter === k}>{label}</button>
+          ))}
+        </div>
         {decisions.length === 0 && (
           <EmptyState icon="⚖️" title="No decisions tracked"
             body='Raise questions like "houseboat menu — veg or mixed?" so nothing gets lost in a chaotic group chat.' />
         )}
-        {decisions.map(d => {
+        {decisions.length > 0 && shown.length === 0 && (
+          <p className="muted small" style={{ margin: '4px 0 14px' }}>Nothing under this filter right now.</p>
+        )}
+        {shown.map(d => {
           const tally = d.options.map(o => Object.values(d.votesByUserId).filter(v => v === o.id).length)
           return (
-            <div key={d.id} className="card" style={{ marginBottom: 14 }}>
+            <div key={d.id} className={`card${d.id === unblock?.id ? ' decision-unblock' : ''}`} style={{ marginBottom: 14 }}>
+              {d.id === unblock?.id && <div className="unblock-label">⚡ Next to unblock</div>}
               <div className="row-between">
                 <h3>{d.question}</h3>
                 <Chip tone={d.status === 'open' ? 'saffron' : 'ok'}>{d.status}</Chip>
@@ -2119,6 +2354,7 @@ function SnapshotCard({ trip, me, onNavigate }: {
 
   return (
     <div className="card">
+      <span className="share-intent share-intent--info">3 · Keep a record</span>
       <h3>Export & snapshot sharing</h3>
       <p className="hint-text" style={{ margin: '6px 0 12px' }}>
         Take the whole plan anywhere — no server stores it. Snapshot links embed the trip in the URL itself.
@@ -2167,6 +2403,7 @@ function ShareTab({ trip, me, editable, onNavigate }: {
     <div className="two-col">
       <div>
         <div className="card">
+          <span className="share-intent share-intent--teal">1 · Plan together</span>
           <h3>Invite collaborators</h3>
           <p className="hint-text" style={{ margin: '6px 0 12px' }}>Anyone with this link joins as an editor after logging in.</p>
           <div className="share-link-box"><code>{inviteLink}</code><CopyButton text={inviteLink} /></div>
@@ -2197,6 +2434,7 @@ function ShareTab({ trip, me, editable, onNavigate }: {
         </div>
 
         <div className="card">
+          <span className="share-intent share-intent--saffron">2 · Share publicly</span>
           <h3>Publish as public itinerary</h3>
           <p className="hint-text" style={{ margin: '6px 0 12px' }}>
             Creators can list this trip on Explore. Day 1 is the free preview; later days sit behind a premium placeholder (no real payments in this MVP).

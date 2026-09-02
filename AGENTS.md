@@ -51,7 +51,19 @@ Key locations:
    finding in the same commit that fixes it — batch status table only, prose
    goes to CHANGELOG. `docs/UI_AUDIT.md` is the per-finding reference
    (file:line + example fix); don't duplicate its content in the tracker.
-6. **Verify "done" claims against git before acting on them.** A session cut
+6. **Resuming local (Cline/other-agent) work in a fresh Verdent workspace.**
+   The Verdent project dir ships with bare `.git` metadata — `git clone` into
+   it fails; `git remote add origin …` + `git fetch` +
+   `git checkout -b <branch> origin/<branch>` attaches the repo instead. When
+   the local copy's uncommitted WIP has been committed + pushed in the
+   meantime, **diff the ported worktree against `origin/<branch>` before
+   discarding anything** — the commit is usually a strict superset (the
+   session continued past your snapshot), but verify the divergent lines
+   first (Sep 2026: the ported WIP differed from `9201702` by one old
+   `.select` rule; the commit superseded it cleanly). Re-derive all state
+   from `git status -sb` + `git log` on *both* copies; never trust a
+   snapshot from earlier in the conversation.
+7. **Verify "done" claims against git before acting on them.** A session cut
    off mid-batch can leave completion summaries that were never true — this
    cost a full re-do when batches 5–6 were reported as committed while
    `git log` showed only batch 3 and half of batch 4 sat uncommitted in the
@@ -59,6 +71,17 @@ Key locations:
    re-grep the tracker table, and treat any prior "committed ✅" summary as a
    hypothesis until the commit hash exists. Never re-report status from
    memory; re-derive it from the repo.
+7. **When asking the user to review/test locally, always hand them the exact
+   URL — never make them find or start the server.** Check if the dev server
+   is up (probe `http://localhost:5173`); if not, start `npm run dev`
+   detached (`Start-Process npm.cmd -ArgumentList 'run','dev'`). Confirm it
+   serves *this* working tree before linking (fetch
+   `http://localhost:5173/src/styles.css` and grep for a token/marker that
+   only exists in the current branch's changes — a stale server from another
+   branch will otherwise silently show old UI). Then give deep links per
+   screen (e.g. `http://localhost:5173/#/` for Landing,
+   `http://localhost:5173/#/trips` for My Trips) and say what to check
+   (themes, mobile width, specific interactions).
 
 
 ## 3. Verification before every push
@@ -218,6 +241,7 @@ Hard rules (each learned the hard way — do not relearn them):
 - `dev.log` is untracked local clutter — ignore it, never commit it. (It **did** get committed in `f09aaf9` when a bulk `git add` in this shared working copy swept it up — and the commit was pushed, so removing it needed a follow-up untrack commit. Stage explicit paths only; never `git add -A` / `git add .` here.)
 - Test style: pure logic only, node env; mock `fetch` with route tables
   (`tests/providers.test.ts` has the pattern); `vi.stubEnv` for API keys.
+- **View Transitions + theme radiate (Sep 2026): VT is usable on glass-heavy pages ONLY with `backdrop-filter` suppressed during the transition** — Chromium renders glass inside VT snapshots without its backdrop, so any glass layer (`--yf-glass: rgba(255,255,255,.58)`) turns the captured page into a flat gray veil (page-dependent: "perfect" on Landing, broken on #/trips). Shipped pattern in `toggleTheme` (App.tsx): set `--vt-x/--vt-y/--vt-r` on `<html>`, add a direction class (`vt-radiate-out` = dark→light, new view expands; `vt-radiate-in` = light→dark, old view collapses — and it needs old z-index 2 / new 1, since UA stacks new on top) plus `vt-active` (`html.vt-active :where(*) { backdrop-filter: none !important }`) BEFORE `startViewTransition`; the clip-path animation lives in CSS keyframes with `fill: both` (first-frame-correct, end-state held), classes removed on `vt.finished`. A DOM-overlay radiate was tried and rejected (flat color, not the real UI). Don't re-learn these the hard way.
 - **`env(safe-area-inset-*)` is inert without `viewport-fit=cover`** — `.impact-sheet` shipped an `env(safe-area-inset-bottom)` padding that silently did nothing because `index.html`'s viewport meta lacked `viewport-fit=cover` (found while fixing UI-audit F-26, Sep 2026). Activating `cover` turns EVERY inset on at once, so audit all fixed/sticky layers (topnav, toast zone, fabs, drawers, `top:`/`scroll-padding` offsets derived from `--nav-h`) in the same change — adding them one at a time leaves half the UI under the home indicator.
 - **Section-restructure edits can silently swallow bullets** — an edit whose
   `old_text` spans `<heading>` + its bullets + the next `<heading>`, replaced

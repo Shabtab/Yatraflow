@@ -12,6 +12,44 @@ Token architecture adopted from the `ui-ux-pro-max-skill` design-system referenc
 > aliases** of the primitives so the ~200 existing references keep working.
 > **New code should use `--color-*` semantic tokens.**
 
+## Calm Travel Intelligence layer (design refresh, `redesign/calm-travel-intelligence`)
+
+The redesign adds a `--yf-*` primitive scale from
+`docs/redesign/YATRAFLOW_DESIGN_DIRECTION.md` §4.1. These sit **beside** the
+existing primitives (evolve, don't replace); semantics re-point to them only
+where the direction doc says so. Every token is mirrored in
+`[data-theme='dark']`.
+
+| Token | Light | Dark | Use |
+|------|-------|------|-----|
+| `--yf-ink` | `#102E4B` | `#ECF1F8` | headings, high-trust text |
+| `--yf-navy` | `#123F49` | `#0F2A33` | header bands, dark cards, AI surfaces |
+| `--yf-teal-600` / `--yf-teal-700` | `#0D8D82` / `#0C716D` | `#2BB8AC` / `#1E9D92` | CTI primary / pressed |
+| `--yf-teal-100` | `#E5F4EE` | `#12332F` | selected backgrounds |
+| `--yf-mint` | `#DFF5ED` | `#16301F` | confirmed / synced |
+| `--yf-saffron` / `--yf-saffron-100` | `#F3AA3D` / `#FFF4E4` | `#F5A94A` / `#3A2C15` | invite / share / publish |
+| `--yf-amber` / `--yf-amber-100` | `#E4AE43` / `#FFF7E9` | `#D99A2B` / `#36290F` | attention / trade-offs |
+| `--yf-coral` / `--yf-coral-100` | `#D6534D` / `#FFF0EC` | `#E06C6C` / `#3A2020` | critical / destructive |
+| `--yf-purple` / `--yf-purple-100` | `#897ABB` / `#F0EAFA` | `#A99BD6` / `#2A2440` | scenic discovery |
+| `--yf-cream` | `#F8F7EF` | `#0C1420` | main canvas (now `--color-background`/`--bg` in light) |
+| `--yf-mist` / `--yf-peach` | `#ECF8F4` / `#FFF2E8` | `#0F1B2B` / `#1A2030` | atmosphere gradient edges |
+| `--yf-atmos-mint` / `--yf-atmos-peach` | `rgba(124,225,207,.20)` / `rgba(255,179,107,.16)` | `rgba(43,184,172,.10)` / `rgba(245,169,74,.08)` | gradient blobs |
+| `--yf-surface` / `--yf-surface-muted` | `#FFFFFF` / `#F0F4F1` | `#16233A` / `#101B2B` | readable cards / inputs |
+| `--yf-border` | `#DCE7E1` | `#27395A` | soft boundaries |
+| `--yf-text-muted` | `#637B7D` | `#8FA0B5` | secondary text |
+| `--yf-glass` / `--yf-glass-border` | `rgba(255,255,255,.72)` / `rgba(255,255,255,.65)` | `rgba(16,27,43,.72)` / `rgba(255,255,255,.14)` | level-2 overlays |
+
+**Utilities (doc §3.3 transparency levels):**
+- `.atmos` — level-1 atmospheric canvas (doc §4.2): two soft radial blobs over
+  the mist→cream→peach ramp. For Landing, Explore, Public Itinerary and the
+  workspace outer shell; keep it quiet behind dense content.
+- `.glass` — level-2 expressive overlay (nav, map panels, hero support cards):
+  translucent `--yf-glass` background + blur + light border. Readable/editable
+  content stays on near-opaque `--color-card` (level 3).
+
+**Also added:** `--radius-lg: 24px` (large bento cards) and `--shadow-soft`
+(diffuse CTI depth) in both themes.
+
 ## Primitive palette
 
 | Token | Light | Dark |
