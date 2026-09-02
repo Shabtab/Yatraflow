@@ -217,7 +217,7 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
 
       <div className="tab-panel" key={tab}>
       {tab === 'overview' && <OverviewTab trip={effective} editable={editable} onOpenDecisions={() => setTab('decisions')} onOpenTimeline={() => setTab('timeline')} onOpenMap={() => setTab('map')} onInvite={() => setTab('share')} health={health} totals={totals} />}
-      {tab === 'timeline' && <TimelineTab trip={trip} editable={editable} applyChange={applyChange} legCorrections={legCorrections} suggestionCache={suggestionCache} onOpenBoard={() => setTab('board')} />}
+      {tab === 'timeline' && <TimelineTab trip={effective} editable={editable} applyChange={applyChange} legCorrections={legCorrections} suggestionCache={suggestionCache} onOpenBoard={() => setTab('board')} />}
       {tab === 'board' && (
         <React.Suspense fallback={<div className="container loading-block"><div className="spinner" />Loading board…</div>}>
           <BoardView trip={effective} editable={editable} applyChange={applyChange} health={health} totals={totals}
@@ -226,7 +226,7 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
       )}
       {tab === 'map' && (
         <React.Suspense fallback={<div className="container loading-block"><div className="spinner" />Loading map…</div>}>
-          <MapTab trip={trip} editable={editable} applyChange={applyChange} suggestionCache={suggestionCache} />
+          <MapTab trip={effective} editable={editable} applyChange={applyChange} suggestionCache={suggestionCache} />
         </React.Suspense>
       )}
       {tab === 'suggestions' && <SuggestionsTab trip={trip} editable={editable} me={me} />}

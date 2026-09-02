@@ -161,12 +161,22 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
   // overlay so the canvas gets the viewport. Transient by design: Escape or
   // the same chip (now "⤡ Collapse") reverts it; nothing is persisted.
   const [expanded, setExpanded] = useState(false)
+  // Collapse plays a short scale-down first (mapCollapse) so expand/collapse
+  // both glide; the class is transient and the timer is cleared on unmount.
+  const [closing, setClosing] = useState(false)
+  const collapseTimer = useRef<number | undefined>(undefined)
+  function collapseExpanded() {
+    if (!expanded || closing) return
+    setClosing(true)
+    collapseTimer.current = window.setTimeout(() => { setExpanded(false); setClosing(false) }, 280)
+  }
+  useEffect(() => () => window.clearTimeout(collapseTimer.current), [])
   useEffect(() => {
     if (!expanded) return
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setExpanded(false) }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') collapseExpanded() }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [expanded])
+  }, [expanded, closing])
   // Nearby-idea category filter: categories listed here are HIDDEN on the map.
   // Empty set = everything visible (the default).
   const [hiddenIdeaCats, setHiddenIdeaCats] = useState<Set<string>>(new Set())
@@ -370,7 +380,7 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
   }, [chainKey, dayFilter, returnLeg]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className={`map-shell${expanded ? ' map-shell--expanded' : ''}`}>
+    <div className={`map-shell${expanded ? ' map-shell--expanded' : ''}${closing ? ' map-shell--closing' : ''}`}>
       {showToolbar && (
       <div className="map-toolbar">
         <div className="map-day-filter">
@@ -410,7 +420,7 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
           )}
           <button
             className={`map-day-chip map-expand-chip${expanded ? ' on' : ''}`}
-            onClick={() => setExpanded(e => !e)}
+            onClick={() => (expanded ? collapseExpanded() : setExpanded(true))}
             title={expanded ? 'Shrink the map back into the page (Esc)' : 'Expand the map to fill the screen'}
             aria-label={expanded ? 'Shrink the map back into the page' : 'Expand the map to fill the screen'}
           >

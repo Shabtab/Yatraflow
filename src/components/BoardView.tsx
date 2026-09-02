@@ -3,7 +3,7 @@
 // day columns float above it for kanban-style cross-day rearrangement. Every
 // change routes through the same applyChange → impact-preview flow as the
 // Timeline, so nothing persists without its consequence visible first.
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Trip, ItineraryStop } from '../data/types'
 import { computeTotals, computeHealth, collectWarnings, minutesToHM, formatInr } from '../lib/engine'
 import type { ScheduleWarning } from '../lib/engine'
@@ -27,6 +27,31 @@ export function BoardView({ trip, editable, applyChange, health, totals, onOpenO
   const days = useMemo(() => [...trip.days].sort((a, b) => a.index - b.index), [trip])
   // Column focus → the map shows just that day's route ('all' = whole trip).
   const [focusedDay, setFocusedDay] = useState<number | 'all'>('all')
+  // Map-focus ("peek") mode: columns slide ~90% off the bottom edge so the map
+  // owns the board; a 48px sliver of each column stays visible (and Escape or
+  // the same button brings everything back with a staggered settle). Transient.
+  const [mapFocus, setMapFocus] = useState(false)
+  useEffect(() => {
+    if (!mapFocus) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMapFocus(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [mapFocus])
+
+  /** Same-day reorder from a board column — same mutation shape as the
+      Timeline's handleMoveWithinDay, so both views stay byte-identical. */
+  function reorderWithinDay(dayIndex: number, fromIdx: number, toIdx: number) {
+    applyChange(draft => {
+      const day = draft.days.find(d => d.index === dayIndex)
+      if (!day) return
+      const arr = [...day.stops].filter(s => s.status !== 'rejected').sort((a, b) => a.orderInDay - b.orderInDay)
+      const [moved] = arr.splice(fromIdx, 1)
+      if (!moved) return
+      arr.splice(toIdx, 0, moved)
+      const orderMap = new Map(arr.map((s, i) => [s.id, i + 1]))
+      for (const s of day.stops) { const n = orderMap.get(s.id); if (n) s.orderInDay = n }
+    }, 'reorder', dayIndex)
+  }
 
   // warnings grouped by day — same parse used by the Timeline (§6.3 in-day state)
   const dayWarnings = useMemo(() => {
@@ -66,7 +91,7 @@ export function BoardView({ trip, editable, applyChange, health, totals, onOpenO
 
   function fitToTrip() { setFocusedDay('all') }
   return (
-    <div>
+    <div className={`board-tab${mapFocus ? ' board--mapfocus' : ''}`}>
       {/* ---- slim board header (above the map board, normal flow) ---- */}
       <div className="row-between board-head">
         <div>
@@ -74,7 +99,14 @@ export function BoardView({ trip, editable, applyChange, health, totals, onOpenO
           <p className="muted small">Arrange flexible stops across days while keeping the real route in view.</p>
         </div>
         {editable && (
-          <button className="btn btn-primary btn-sm" onClick={onOpenTimeline}>＋ Add a stop</button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" className={`btn btn-sm ${mapFocus ? 'btn-primary' : 'btn-outline'}`}
+              onClick={() => setMapFocus(f => !f)} aria-pressed={mapFocus}
+              title={mapFocus ? 'Bring the day columns back' : 'Slide the columns aside and read the map full-bleed (Esc)'}>
+              {mapFocus ? '⬅ Back to cards' : '🗺 View map'}
+            </button>
+            <button className="btn btn-primary btn-sm" onClick={onOpenTimeline}>＋ Add a stop</button>
+          </div>
         )}
       </div>
 
@@ -125,20 +157,22 @@ export function BoardView({ trip, editable, applyChange, health, totals, onOpenO
               warnings={dayWarnings[day.index] ?? []}
               focused={focusedDay === day.index}
               onToggleFocus={(focus) => setFocusedDay(focus ? day.index : focusedDay === day.index ? 'all' : day.index)}
-              onMoveStopIn={handleMoveStopInto} />
+              onMoveStopIn={handleMoveStopInto}
+              onReorder={reorderWithinDay} />
           ))}
         </div>
       </div>
     </div>
   )
 }
-function BoardColumn({ day, editable, warnings, focused, onToggleFocus, onMoveStopIn }: {
+function BoardColumn({ day, editable, warnings, focused, onToggleFocus, onMoveStopIn, onReorder }: {
   day: Trip['days'][number]
   editable: boolean
   warnings: ScheduleWarning[]
   focused: boolean
   onToggleFocus: (focus: boolean) => void
   onMoveStopIn: (stopId: string, fromDay: number, toDay: number, position: number) => void
+  onReorder: (dayIndex: number, fromIdx: number, toIdx: number) => void
 }) {
   const timeFormat = useTimeFormat()
   const ordered = useMemo(
@@ -147,9 +181,7 @@ function BoardColumn({ day, editable, warnings, focused, onToggleFocus, onMoveSt
   )
   const { dndHandlers, dayDropHandlers, dragging, over, foreignOver } = useReorder(
     ordered,
-    () => { /* within-day reorder of a board column is deferred to Timeline — the
-               board's job is cross-day move; same-row placement still works via
-               the gap zones, so keep onMove a no-op for same-day drags. */ },
+    (fromIdx, toIdx) => onReorder(day.index, fromIdx, toIdx),
     {
       dragPayload: (s) => JSON.stringify({ stopId: s.id, fromDay: day.index }),
       onForeignDrop: (payload, toIdx) => {
@@ -167,6 +199,38 @@ function BoardColumn({ day, editable, warnings, focused, onToggleFocus, onMoveSt
   const topWarn = warnings[0]
   const totalStops = day.stops.filter(s => s.status !== 'rejected').length
 
+  // FLIP slot-in: when this column's card arrangement changes (same-day drag
+  // reorder, or a card slotting in from another day), every card animates from
+  // its previous position to the new one — compositor-only, no ghosting.
+  const stopsRef = useRef<HTMLDivElement>(null)
+  const prevRects = useRef<Map<string, { x: number; y: number }> | null>(null)
+  useLayoutEffect(() => {
+    const rootEl = stopsRef.current
+    if (!rootEl) return
+    const now = new Map<string, { x: number; y: number }>()
+    for (const el of Array.from(rootEl.querySelectorAll<HTMLElement>('[data-stop-id]'))) {
+      const r = el.getBoundingClientRect()
+      now.set(el.dataset.stopId!, { x: r.left, y: r.top })
+    }
+    const prev = prevRects.current
+    if (prev) {
+      for (const [id, p] of now) {
+        const q = prev.get(id)
+        if (!q) continue
+        const dx = q.x - p.x
+        const dy = q.y - p.y
+        if (dx || dy) {
+          rootEl.querySelector<HTMLElement>(`[data-stop-id="${CSS.escape(id)}"]`)
+            ?.animate(
+              [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }],
+              { duration: 320, easing: 'cubic-bezier(.22, .61, .36, 1)' },
+            )
+        }
+      }
+    }
+    prevRects.current = now
+  }, [ordered])
+
   return (
     <div className={`board-col${focused ? ' board-col--focused' : ''}`} role="listitem">
       <button type="button" className="board-col-head" onClick={() => onToggleFocus(!focused)}
@@ -177,7 +241,7 @@ function BoardColumn({ day, editable, warnings, focused, onToggleFocus, onMoveSt
         {topWarn && <span className={`day-warn-pill ${sev === 'high' ? 'sev-high' : ''}`}>⚠ {topWarn.title.replace(/^Day \d+: /, '')}{warnings.length > 1 ? ` +${warnings.length - 1}` : ''}</span>}
       </button>
 
-      <div className="board-col-stops">
+      <div className={`board-col-stops${dragging !== null ? ' is-dragging' : ''}`} ref={stopsRef}>
         {ordered.map((s, i) => {
           const kind = stopKindOf(s)
           const meta = [
@@ -187,6 +251,7 @@ function BoardColumn({ day, editable, warnings, focused, onToggleFocus, onMoveSt
           ].filter(Boolean).join(' · ')
           return (
             <div key={s.id}
+              data-stop-id={s.id}
               title={meta ? `${s.title} — ${meta}` : s.title}
               className={`board-stop stop-card kind-${kind} status-${s.status} ${dragging === i ? 'dragging' : ''} ${over === i && dragging !== null && dragging !== i ? 'drag-over' : ''} ${foreignOver === i && dragging === null ? 'foreign-over' : ''}`}
               {...(editable ? dndHandlers(i) : {})}>

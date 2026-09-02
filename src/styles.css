@@ -1275,6 +1275,18 @@ a.btn { text-decoration: none; }
   position: fixed; inset: 10px; z-index: 70;
   background: var(--bg); padding: 2px;
   display: flex; flex-direction: column;
+  animation: mapExpand 320ms var(--ease-out);
+}
+/* Collapse plays the reverse scale-down first; the shell is removed from the
+   fixed overlay only after it finishes (TripMap keeps a `closing` state). */
+.map-shell--closing { animation: mapCollapse 280ms var(--ease-out) both; pointer-events: none; }
+@keyframes mapExpand {
+  from { opacity: .25; transform: scale(.94); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes mapCollapse {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: scale(.94); }
 }
 .map-shell--expanded .map-frame { flex: 1 1 auto; height: auto; min-height: 0; }
 @media (max-width: 720px) {
@@ -2011,8 +2023,44 @@ main:focus { outline: none; }
 .board-col:nth-child(7) { animation-delay: 240ms; }
 .board-col:nth-child(8) { animation-delay: 280ms; }
 /* Drag/focus states glide instead of snapping. */
-.board-stop, .board-col-zone, .board-col--focused { transition: box-shadow var(--t-med) var(--ease-out), border-color var(--t-med) var(--ease-out), background var(--t-med) var(--ease-out), transform var(--t-fast) var(--ease-out); }
+.board-stop, .board-col-zone, .board-col--focused { transition: border-color var(--t-med) var(--ease-out), background var(--t-med) var(--ease-out), transform var(--t-fast) var(--ease-out); }
 .board-stop:hover { transform: translateY(-1px); }
+
+/* ---- Map-focus ("peek") mode: columns glide ~90% off the board's bottom
+   edge — a 48px sliver of each stays visible while the map owns the board —
+   and slide back with a staggered settle. transform-only: compositor run. */
+.board-col { transition: transform 500ms var(--ease-out); }
+.board--mapfocus .board-col { transform: translateY(calc(100% - 48px)); }
+/* staggered choreography: slide-off cascades left→right, return settles in
+   reverse — both directions read as one satisfying wave */
+.board-col:nth-child(2), .board--mapfocus .board-col:nth-child(2) { transition-delay: 40ms; }
+.board-col:nth-child(3), .board--mapfocus .board-col:nth-child(3) { transition-delay: 80ms; }
+.board-col:nth-child(4), .board--mapfocus .board-col:nth-child(4) { transition-delay: 120ms; }
+.board-col:nth-child(5), .board--mapfocus .board-col:nth-child(5) { transition-delay: 160ms; }
+.board-col:nth-child(6), .board--mapfocus .board-col:nth-child(6) { transition-delay: 200ms; }
+.board-col:nth-child(7), .board--mapfocus .board-col:nth-child(7) { transition-delay: 240ms; }
+.board-col:nth-child(8), .board--mapfocus .board-col:nth-child(8) { transition-delay: 280ms; }
+.board--mapfocus .board-topbar { opacity: .35; transform: translateY(-8px); }
+.board-topbar { transition: opacity var(--t-slow) var(--ease-out), transform var(--t-slow) var(--ease-out); }
+
+/* ---- Drag feel: while a card is carried, its neighbours do a tiny attention
+   wiggle (compositor transform loop) and the carried card's original becomes
+   an empty dashed slot — the browser's drag ghost is then the only "copy",
+   killing the double-ghost effect. */
+@keyframes stopWiggle {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(.5deg) translateY(-1px); }
+  75% { transform: rotate(-.5deg); }
+}
+.board-col-stops.is-dragging .board-stop:not(.dragging):not(.drag-over):not(.foreign-over) {
+  animation: stopWiggle 460ms var(--ease-out) infinite;
+}
+.board-col-stops.is-dragging .board-stop { will-change: transform; }
+.board-stop.dragging {
+  opacity: .45; background: transparent; box-shadow: none;
+  border: 1.5px dashed var(--teal);
+}
+.board-stop.dragging .stop-main { visibility: hidden; }
 
 /* Unified card hover lift (cards that don't already define one). */
 .trip-card, .trip-card-hit, .stat-card, .bento-card, .brief-card {
@@ -2042,15 +2090,21 @@ body, .topnav, .glass, .board, .board-col, .modal, .toast {
    replays the same gentle fade+rise as workspace tab switches. */
 .route-panel { animation: panelIn var(--t-med) var(--ease-out); }
 
-/* Drag-and-drop feedback: the carried card shrinks/dims (the browser's drag
-   ghost shows the card itself), while any valid drop target breathes a teal
-   halo so the landing zone is unmistakable on both the HTML5 and touch paths. */
+/* Drag-and-drop feedback: the carried card's original becomes a dashed slot
+   (above), while any valid drop target breathes a teal ring so the landing
+   zone is unmistakable on both the HTML5 and touch paths. The ring is a
+   scaling ::after — transform+opacity only, compositor-friendly (a pulsing
+   box-shadow repaints every frame and stutters on big lists). */
 @keyframes dropPulse {
-  0%, 100% { box-shadow: 0 0 0 3px var(--teal-soft); }
-  50% { box-shadow: 0 0 0 8px var(--teal-soft); }
+  0%, 100% { transform: scale(1); opacity: .9; }
+  50% { transform: scale(1.05); opacity: .35; }
 }
 .stop-card.drag-over, .stop-card.foreign-over,
-.board-col-zone.foreign-over, .travel-leg.foreign-over {
+.board-col-zone.foreign-over, .travel-leg.foreign-over { position: relative; }
+.stop-card.drag-over::after, .stop-card.foreign-over::after,
+.board-col-zone.foreign-over::after, .travel-leg.foreign-over::after {
+  content: ''; position: absolute; inset: -2px; border-radius: inherit;
+  border: 3px solid var(--teal-soft); pointer-events: none;
   animation: dropPulse 1.1s var(--ease-out) infinite;
 }
 .stop-card.drag-over, .stop-card.foreign-over { border-color: var(--teal); }
