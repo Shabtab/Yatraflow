@@ -95,11 +95,15 @@ Key locations:
    Hard-refresh before comparing environments. Corollary: localhost ports
    are separate localStorage origins — `:5173` and `:5174` render different
    auth states (nav links differ); don't read that as a code difference.
-9. **Nav-pill glass is user-approved as shipped — do not tune it unprompted.**
-   The user rejected all three opacity experiments on the floating `.topnav`
-   (0.85 dedicated token → 0.58 revert → 0.85 re-apply) and prefers the
-   original shared `--yf-glass` 0.58/14px look. Only touch nav
-   transparency/blur on an explicit request that names the exact change.
+9. **Nav glass is user-decided: the floating `.topnav` uses the dedicated
+   opaque `--yf-nav-glass` token (0.85 white light / 0.82 ink-navy dark,
+   `blur(18px) saturate(1.2)`); the shared 0.58 `--yf-glass` stays for
+   map/board panels only.** After a full day of flip-flops (Sep 2: 0.85 →
+   0.58 → 0.85 → 0.58 → 0.85), the user compared all variants side-by-side
+   and explicitly chose the opaque pill — the see-through 0.58 reads as
+   "transparent shit" to them once the headline scrolls behind it. Do not
+   change nav transparency/blur again without an explicit request naming
+   the exact values.
 
 
 ## 3. Verification before every push
