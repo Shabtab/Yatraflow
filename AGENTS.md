@@ -82,6 +82,14 @@ Key locations:
    screen (e.g. `http://localhost:5173/#/` for Landing,
    `http://localhost:5173/#/trips` for My Trips) and say what to check
    (themes, mobile width, specific interactions).
+8. **A screenshot or "current values" report from another agent describes
+   *its own working copy*, not the shared branch.** A Cline report quoted
+   the nav pill's pre-fix CSS as "shipped, nothing to re-verify" while the
+   pushed branch carried the fix — the local tree it read was simply behind.
+   Before applying forwarded values (or trusting "no change needed"), ask
+   which tree the report came from and diff it against `origin/<branch>`;
+   the two agents may legitimately disagree because they are reading
+   different files.
 
 
 ## 3. Verification before every push
