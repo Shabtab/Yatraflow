@@ -28,6 +28,13 @@ YatraFlow is a collaborative travel-planning web app built India-first: real mul
 - **Impact Preview** — before you accept a suggestion or edit a stop, see the delta: ±time, ±distance, ±cost, new/cleared warnings, backtracking detection
 - Every estimate states its assumptions on-screen. **No fake live traffic or prices — ever.**
 
+### The Calm Travel Intelligence redesign (v0.24.0–0.25.0)
+- **A calmer design language throughout** — cream canvas, soft glass panels (frosted nav pill, corner cards), editorial dark-teal heroes on the landing, Explore and public-itinerary pages, and a warm paper-sheet reading layer for published trips
+- **Board view** — a kanban of your days floating over the pinned route map: cross-day drag with impact preview, day-focus on click, a Trip Pulse health panel, and a map-peek mode that hands the canvas to the map
+- **User-driven halt planner** — drop break halts exactly where you want them along a long ride (km + duration + purpose: meal, fuel, rest, overnight, sight), with the day re-ordering itself by true route distance
+- **Motion that stays calm** — tab fades, board choreography, theme cross-fade and hover lifts, all on one easing family and frozen under `prefers-reduced-motion`
+- **Editorial Explore** — style chips, featured itinerary with explained credibility, fork counts and ♡ saved favourites
+
 ### Collaborate
 - **Invite by link** — friends join as owner / editor / commenter / viewer
 - **Suggestions** — anyone can propose a stop; the group upvotes/downvotes and comments; owners accept straight into the timeline

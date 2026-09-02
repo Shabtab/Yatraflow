@@ -2,7 +2,7 @@
 
 All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions are pre-1.0 MVP milestones.
 
-## [Unreleased]
+## [0.25.0] — 2026-09-03
 
 ### Changed
 - **Halt planning is now user-driven — you pick where along the ride and for how long.** The Timeline's travel panel replaces the auto "📍 Suggest halt spots along the route" fatigue-cadence list (whose km points and durations were chosen for you and read as vague) with a **halt planner**: enter a km point (e.g. `100`), a duration (e.g. `20` min) and a stop type (Meal / Stretch / Fuel / Overnight), and add as many halts as the ride needs. Each planned halt then shows the best **real** place near that route km — restaurant, fuel station or hotel, matched to the halt's purpose through the same corridor search the map uses — which you can pin, or leave unpinned to get a generic break stop pinned at the exact route km. The arrival clock updates live as you add or remove halts, and **➕ Add N to the day** inserts them all in true route order (sorted by km against the day's existing stops) through the normal impact preview, so they land on the map, the timeline and the budget. New pure helpers: `pointAtKm` (geo) interpolates a route coordinate at a chosen km; `segmentsFromPlan` (ridePlan) builds assignment windows from your km points instead of a fatigue cadence. The plan + its resolved spots persist per day across tab switches.
