@@ -89,7 +89,10 @@ Key locations:
    Before applying forwarded values (or trusting "no change needed"), ask
    which tree the report came from and diff it against `origin/<branch>`;
    the two agents may legitimately disagree because they are reading
-   different files.
+   different files. Corollary (same day): the user's own browser tab can be
+   the stale copy — a Vite HMR tab kept rendering pre-revert CSS and made
+   "local looks fine / preview looks broken" seem like a deploy bug.
+   Hard-refresh before comparing environments.
 
 
 ## 3. Verification before every push
