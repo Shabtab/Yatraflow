@@ -4,6 +4,9 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Changed
+- **Nav pill glass finalised at 58% (light and dark) — the user's pick.** With `backdrop-filter` blur now surviving production builds (see Fixed below), the original CTI glass reads as true frosted glass instead of the see-through look that triggered the day's opacity ladder (0.85 → 0.75 → 0.66 → 0.58, each judged side-by-side at the headline scroll position). `--yf-nav-glass` stays a dedicated token, now at 0.58 white / 0.58 ink-navy with `blur(18px) saturate(1.2)`; the shared `--yf-glass` for map/board panels is untouched.
+
 ### Fixed
 - **Production builds dropped every `backdrop-filter` blur — the real cause of the "nav pill see-through on Vercel but fine on localhost" saga (Sep 2).** Vite 8's CSS minifier (Lightning CSS) keeps only the **last** declaration of a `-webkit-`/standard prefix pair, and its engine data wrongly assumes `-webkit-backdrop-filter` covers Chromium — so all 7 glass rules authored `backdrop-filter` first, `-webkit-` second lost the standard declaration in every production build. Chromium builds without the Safari alias rendered the 85% `--yf-nav-glass` pill with no blur at all: a crisp 15% ghost of the headline showed through, while the unminified dev server kept both declarations and looked opaque — hence "local fine, preview see-through" at every opacity value tried (0.58 → 0.85 → 0.58 → 0.85). Fix: author `-webkit-backdrop-filter` FIRST and the standard `backdrop-filter` LAST in all 7 paired rules (nav pill, shared glass panels, board info/pulse, map day chips, VT glass suppression) — minified output now retains both. No transparency values changed; the approved `--yf-nav-glass` look is untouched.
 

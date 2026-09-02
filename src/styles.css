@@ -61,9 +61,10 @@
   --yf-glass: rgba(255, 255, 255, 0.58);        /* level-2 overlay (map panels) */
   --yf-glass-border: rgba(255, 255, 255, 0.65);
   --yf-glass-sheen: rgba(255, 255, 255, 0.35);  /* top-edge highlight on glass panels */
-  --yf-nav-glass: rgba(255, 255, 255, 0.85);    /* floating pill nav — more opaque: it is
-                                                   sticky and must stay legible over the
-                                                   busy content it scrolls over */
+  --yf-nav-glass: rgba(255, 255, 255, 0.58);    /* floating pill nav — user-final glass
+                                                   (0.58 both themes, Sep 2): the original
+                                                   Cline look, viable once prod blur was
+                                                   fixed; blur(18px) saturate(1.2) below */
 
   /* ---- motion (subtle & premium): one easing family, three speeds ---- */
   --ease-out: cubic-bezier(.22, .61, .36, 1);
@@ -179,7 +180,7 @@
   --yf-glass: rgba(16, 27, 43, 0.58);
   --yf-glass-border: rgba(255, 255, 255, 0.14);
   --yf-glass-sheen: rgba(255, 255, 255, 0.08);
-  --yf-nav-glass: rgba(16, 27, 43, 0.82);
+  --yf-nav-glass: rgba(16, 27, 43, 0.58);
 
   /* ---- 2. SEMANTICS (dark) ---- */
   --color-background: var(--gray-50);
