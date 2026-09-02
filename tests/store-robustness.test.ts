@@ -3,11 +3,12 @@
 //  #4 registerPubView/Copy only writes when the viewer owns the published row
 //  #5 reorderStop guards out-of-range indices (no undefined in day.stops)
 //  #9 acceptSuggestionIntoTimeline no longer dereferences a null session user
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import {
   getSnapshot, createTrip, reorderStop, acceptSuggestionIntoTimeline,
   publishItinerary, registerPubView, currentUser,
 } from '../src/store/store'
+import { supabase } from '../src/lib/supabase'
 import type { Trip, PublishedItinerary } from '../src/data/types'
 
 function resetCacheForTest() {
@@ -74,24 +75,36 @@ describe('acceptSuggestionIntoTimeline tolerate missing session (regression #9)'
 })
 
 describe('registerPubView only writes for the owning viewer (regression #4)', () => {
-  it('does not fire a doomed Supabase write for a non-owner viewer', () => {
-    return import('../src/store/store').then(async (store) => {
+  it('does not fire a doomed Supabase write for a non-owner viewer', async () => {
+    // publishItinerary is async and rolls its optimistic cache write back when
+    // the upsert fails — and against the placeholder Supabase URL it always
+    // fails. Stub `from()` so the upsert resolves clean and the published row
+    // survives, which is the state this regression test needs.
+    const upsert = vi.fn().mockResolvedValue({ error: null })
+    const fromSpy = vi.spyOn(supabase, 'from').mockImplementation(
+      () => ({ upsert }) as unknown as ReturnType<typeof supabase.from>,
+    )
+    try {
+      const store = await import('../src/store/store')
       const pub: Omit<PublishedItinerary, 'id' | 'publishedAt' | 'views' | 'copies'> = {
         tripId: 't-pub', creatorId: 'owner-real', title: 'Kerala', tagline: 'x',
         routeSummary: ['Kochi'], durationDays: 3, estimatedBudgetPerPersonInr: 5000,
         travelStyle: 'balanced', bestSeason: 'winter', travelTips: [],
         warningsAndAssumptions: [], freeDayIndexes: [],
       }
-      const p = store.publishItinerary(pub)
+      const p = await store.publishItinerary(pub)
       const before = p.views
       // Simulate a NON-owner viewer (sessionUserId differs from creatorId)
       const snap = getSnapshot() as any
       snap.sessionUserId = 'someone-else'
-      registerPubView(p.id)
+      store.registerPubView(p.id)
       const after = getSnapshot().published.find(x => x.id === p.id)!
+      expect(after).toBeDefined() // the optimistic write survived the upsert
       expect(after.views).toBe(before + 1) // local counter still increments
       // (the assert that no doomed write fired is implicit: the function now
       //  branches on ownership, so a non-owner triggers no supabase.update)
-    })
+    } finally {
+      fromSpy.mockRestore()
+    }
   })
 })
