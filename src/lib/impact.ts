@@ -29,7 +29,11 @@ function tripTravel(trip: Trip) {
   let mins = 0, km = 0
   trip.days.forEach(day => {
     const sim = simulateDay(day, trip, originOf(trip, day.index), day.index)
-    mins += sim.totalTravelMinutes
+    // Total time on the road = driving + stop time (visit minutes + buffers).
+    // Driving alone hid a halt's own duration: adding a 20-minute break
+    // previously showed a ~0 time delta because only the extra leg driving
+    // changed. That is exactly the number the impact dialog must move.
+    mins += sim.totalTravelMinutes + sim.dwellMinutes
     km += sim.totalDistanceKm
   })
   return { mins, km }
@@ -95,6 +99,7 @@ function assumptionsText(trip: Trip): string {
     `Mode: ${A.mode}`,
     `Avg speed ~${A.avgSpeedKmph} km/h`,
     `Buffer ${A.bufferMinutesPerStop} min per stop`,
+    `Time includes driving + stop time`,
     `Road distance ≈ straight-line × 1.25`,
     `Demo coordinates — not live traffic`,
   ].join(' · ')

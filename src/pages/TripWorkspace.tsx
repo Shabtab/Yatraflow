@@ -1054,7 +1054,9 @@ function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddPlanned
         id: `pl-${day.index}-${i}-${p.km}-${p.minutes}`,
         km: p.km, minutes: p.minutes, purpose: p.purpose,
         hit: cached.segments[i]?.hit ?? null,
-        pin: true,
+        // Opt-in: a planned halt sits on the route unless the user explicitly
+        // chooses the real place found near it.
+        pin: false,
       }))
     })
     if (cached) setSearched(true)
@@ -1097,7 +1099,7 @@ function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddPlanned
     const km = Math.round(Math.max(1, Math.min(draftKm || 0, total > 0 ? total : draftKm)))
     const minutes = Math.max(5, Math.min(draftMin || 20, 480))
     if (!Number.isFinite(km) || km <= 0) { toast('Enter a km point along this ride first.', 'err'); return }
-    commitPlan([...plan, { id: `pl-${Date.now()}-${plan.length}`, km, minutes, purpose: draftPurpose, hit: null, pin: true }])
+    commitPlan([...plan, { id: `pl-${Date.now()}-${plan.length}`, km, minutes, purpose: draftPurpose, hit: null, pin: false }])
     setSearched(false)
   }
 
@@ -1254,7 +1256,7 @@ function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddPlanned
 
       {editable && (
         <div className="travel-panel-add halt-planner" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
-          <div className="small muted">🛑 Halt planner — you pick where along the ride and for how long</div>
+          <div className="small muted">🛑 Halt planner — you pick where along the ride and for how long. Halts sit on the route itself; tick a found spot to detour there instead.</div>
           <div className="halt-planner-inputs">
             <label className="hp-field">
               <span className="tps-label">after</span>
@@ -1341,7 +1343,7 @@ function HaltPlanRow({ item, onRemove, onTogglePin }: {
       <div className="ride-spot-main">
         <div className="ride-spot-title">
           <span className={`ride-purpose ride-purpose-${item.purpose}`}>{HALT_PURPOSE_TAG[item.purpose]}</span>
-          <b>{usingSpot ? h!.name : `~${Math.round(item.km)} km into the ride`}</b>
+          <b>{usingSpot ? h!.name : 'On the route'}</b>
         </div>
         <span className="muted small">
           after ~{Math.round(item.km)} km · {item.minutes} min halt
@@ -1349,8 +1351,8 @@ function HaltPlanRow({ item, onRemove, onTogglePin }: {
         </span>
         {h && (
           <label className="hp-pin muted small">
-            <input type="checkbox" checked={item.pin} onChange={onTogglePin} aria-label={`Use ${h.name} as this halt's spot`} />
-            <span>use {h.name}{h.nearestCity ? ` (near ${h.nearestCity})` : ''}</span>
+            <input type="checkbox" checked={item.pin} onChange={onTogglePin} aria-label={`Detour to ${h.name} instead of halting on the route`} />
+            <span>detour to {h.name}{h.nearestCity ? ` (near ${h.nearestCity})` : ''} instead of the route point</span>
           </label>
         )}
       </div>

@@ -174,6 +174,8 @@ export interface DaySchedule {
   endsAt: string
   /** true when the day's journey already ends back at the trip's start (planned return drive) */
   endsAtStart: boolean
+  /** stop time (visit minutes + per-stop buffers) — driving time lives in totalTravelMinutes */
+  dwellMinutes: number
 }
 
 /**
@@ -206,6 +208,7 @@ export function simulateDay(
     activeStops: rows.map(p => p.stop),
     endsAt: rows.length ? rows[rows.length - 1].depart : j.startTime,
     endsAtStart: j.endsAtStart,
+    dwellMinutes: j.dwellMinutes,
   }
 }
 
