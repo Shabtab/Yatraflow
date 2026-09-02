@@ -149,6 +149,18 @@ Hard rules (each learned the hard way — do not relearn them):
   upgrade, `@vitejs/plugin-react` must be v6+ (native vite 8 peers);
   plugin-react 4.x triggers ERESOLVE — the temporary `.npmrc`
   `legacy-peer-deps` pin was removed once v6 landed (0.19.0).
+- **The CSS minifier keeps only the LAST declaration of a `-webkit-`/standard
+  pair — author `-webkit-` FIRST, standard LAST.** Vite 8's Lightning CSS
+  merges `backdrop-filter` + `-webkit-backdrop-filter` into one declaration,
+  keeping whichever is last (its data wrongly assumes the `-webkit-` form
+  covers Chromium), and `css.lightningcss.targets` does NOT change this
+  (probed on v1.33.0). Every production build shipped blur-less glass while
+  the unminified dev server looked fine — that dev/prod asymmetry was the
+  real cause of the Sep 2 "nav see-through on Vercel, fine on localhost"
+  saga (five opacity flip-flops before the root cause surfaced; the pair
+  order in `styles.css` was the whole bug). When adding glass surfaces, grep
+  the built `dist/assets/index-*.css` for BOTH declarations and verify
+  visually against `vite preview`, never the dev server alone.
 - **Vercel env vars are per-environment *and per-git-branch*, and Vite bakes
   them at build time.** The real cause of the recurring "login breaks on
   preview" was **not** Production-only scoping: `VITE_SUPABASE_URL` /
