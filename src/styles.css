@@ -1739,6 +1739,11 @@ a.btn { text-decoration: none; }
   .tl.is-dragging .tl-row:not(.dragging):not(.drag-over):not(.foreign-over) {
   animation: stopWiggle 460ms var(--ease-out) 3;
 }
+@keyframes stopWiggle {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(.5deg) translateY(-1px); }
+  75% { transform: rotate(-.5deg); }
+}
 .tl.is-dragging .tl-row { will-change: transform; }
 /* The carried row's original becomes an empty dashed slot — the browser's
    drag ghost stays the only floating copy (no double-ghost). */
@@ -2051,24 +2056,22 @@ main:focus { outline: none; }
 .board--mapfocus .board-topbar { opacity: .35; transform: translateY(-8px); }
 .board-topbar { transition: opacity var(--t-slow) var(--ease-out), transform var(--t-slow) var(--ease-out); }
 
-/* ---- Drag feel: while a card is carried, its neighbours do a tiny attention
-   wiggle (compositor transform loop) and the carried card's original becomes
-   an empty dashed slot — the browser's drag ghost is then the only "copy",
-   killing the double-ghost effect. */
-@keyframes stopWiggle {
-  0%, 100% { transform: rotate(0deg); }
-  25% { transform: rotate(.5deg) translateY(-1px); }
-  75% { transform: rotate(-.5deg); }
-}
-.board-col-stops.is-dragging .board-stop:not(.dragging):not(.drag-over):not(.foreign-over) {
-  animation: stopWiggle 460ms var(--ease-out) 3; /* finite: never sticks around after a drop */
-}
+/* ---- Drag feel: while a card is carried, the column live-reorders (FLIP
+   pass in BoardView provides the up/down motion). No CSS wiggle here on
+   purpose: an infinite keyframe transform on the same cards fights the WAAPI
+   FLIP animations frame-by-frame (jitter + broken native drag). The original
+   of the carried card becomes an empty dashed slot — the browser's drag ghost
+   is then the only "copy", killing the double-ghost effect. */
 .board-col-stops.is-dragging .board-stop { will-change: transform; }
 .board-stop.dragging {
   opacity: .45; background: transparent; box-shadow: none;
   border: 1.5px dashed var(--teal);
 }
 .board-stop.dragging .stop-main { visibility: hidden; }
+/* Kanban cards are drag surfaces — text selection has no use here and a
+   failed/late drag gesture must never fall back to painting blue over
+   the whole board. */
+.board-cols { user-select: none; -webkit-user-select: none; }
 
 /* Unified card hover lift (cards that don't already define one). */
 .trip-card, .trip-card-hit, .stat-card, .bento-card, .brief-card {
