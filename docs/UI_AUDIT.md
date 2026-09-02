@@ -598,8 +598,11 @@ Batch 1 + 3 are pure CSS/one-liners (highest fix-per-risk ratio). Batch 6 contai
 | F-31 | P2 | Hardcoded `toLocaleString('en-IN')` | `Explore.tsx:116` |
 | F-32 | P2 | Straight apostrophes in copy | `Landing.tsx:53`, `TripsList.tsx:30,91` |
 | F-33 | P2 | Glass rules missing `-webkit-backdrop-filter` (Safari: no blur) | `styles.css` — `.modal-overlay`, `.itin-cover .chip`, `.map-legend-toggle/-body`, `.locked-overlay`, `.locked-cta`, `.explore-hero-search` |
+| F-34 | P2 | Dropdown menus ignore the glass popover language (solid where CTI is glass) | `styles.css` — `.user-menu`, `.loc-dropdown`, `.loc-empty` |
+| F-35 | P2 | `--accent` not a real token — wrong teal in dark mode | `styles.css` — `.loc-option.hl`, `.loc-spinner`, `.dest-chip`, `.dest-order` |
+| F-36 | P1 | Account dropdown button + menu items missing `:focus-visible` ring | `src/App.tsx:221`, `styles.css` `.user-menu-item` |
 
-*Counts: 33 findings — 2 P0 · 15 P1 · 16 P2. Sections 11, 14, 15 record the passes.*
+*Counts: 36 findings — 2 P0 · 16 P1 · 18 P2. Sections 11, 14, 15 record the passes.*
 
 ### F-33 · P2 · Six glass rules kept only the standard `backdrop-filter`
 
@@ -616,3 +619,59 @@ first, standard last, per the AGENTS.md §4 rule:
 ```css
 -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
 ```
+
+### F-34 · P2 · Dropdown menus ignore the glass popover language
+
+**Where:** `src/styles.css` — `.user-menu` (account menu, ~1581), `.loc-dropdown`
+(location autocomplete listbox, ~1739), `.loc-empty` (~1880). All three are
+floating popover surfaces rendered `background: var(--card)` (solid) with
+`border: 1px solid var(--line)` and a hard `box-shadow: 0 12px 32px rgba(0,0,0,.18)`
+— **no blur, no glass**. Every other floating surface in the Calm Travel
+Intelligence system is glass: `.glass`, `.filter-pillbar`, `.map-day-chip`,
+`.map-legend-body` use `var(--yf-glass)` + `var(--yf-glass-border)` +
+`backdrop-filter: blur()`, and `.modal-overlay` blurs the page behind it. The
+three dropdowns are the visible outliers — flat white cards floating over
+content while the nav, pills and chips around them are frosted.
+
+**Fix (this commit):** bring them onto the established glass recipe (matching
+`.filter-pillbar` / `.map-legend-body`):
+
+```css
+background: var(--yf-glass);
+border: 1px solid var(--yf-glass-border);
+-webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+box-shadow: var(--shadow-soft);   /* theme-aware; replaces light-only rgba(0,0,0,.18) */
+```
+
+This also fixes the dark-mode shadow (the old `rgba(0,0,0,.18)` was a
+light-mode value). Fully token-driven, so both themes stay correct.
+
+### F-35 · P2 · `--accent` is not a real token — wrong teal in dark mode
+
+**Where:** `src/styles.css` — `var(--accent, #149A90)` is used in 5 places:
+`.loc-option.hl` (1835), `.loc-spinner` (1844), `.dest-chip` (1856-1857),
+`.dest-order` (1871). `#149A90` happens to equal light-mode `--teal-500`, so it
+looks correct in light. But `--accent` is **never defined** as a token, so the
+dark-mode fallback stays `#149A90` while the real dark `--teal-500` is
+`#2BB8AC` — the highlighted autocomplete row, the spinner, and the CreateTrip
+destination chips all render a too-dark, slightly-off teal at night.
+
+**Fix (this commit):** define `--accent: var(--teal-500);` in both `:root` and
+`[data-theme='dark']` (right after `--teal-soft`). All 5 sites now resolve to
+the correct theme teal with zero hardcoded values.
+
+### F-36 · P1 · Account dropdown button + menu items have no focus ring
+
+**Where:** `src/App.tsx:221` (`.avatar-btn` — the account dropdown trigger) and
+`styles.css` `.user-menu-item` (the Profile / Explore / Log out rows). Both are
+keyboard-focusable but were **absent from the global `:focus-visible` ring rule**
+(the F-12 fix covered 19 selectors but missed these two), so a keyboard user
+tabbing into the account menu sees no teal ring — inconsistent with every other
+control and a silent a11y regression against the documented state matrix.
+
+**Fix (this commit):** `.avatar-btn:focus-visible` joins the global ring rule
+(`outline: none; box-shadow: var(--ring)`). `.user-menu-item:focus-visible`
+gets a dedicated rule with an **inset** outline
+(`outline: 2px solid var(--teal-500); outline-offset: -2px`) + `background:
+var(--bg-soft)` — an inset outline is used deliberately because `.user-menu`
+has `overflow: hidden`, which would clip a box-shadow ring.
