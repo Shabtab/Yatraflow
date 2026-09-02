@@ -2,7 +2,7 @@
 // Real slippy-map rendering via mapcn (MapLibre GL): OpenFreeMap basemaps that follow
 // light/dark theme, numbered stop markers in timeline order, and a polyline
 // connecting each day's stops. Distances/durations still come from the engine.
-import { useMemo, useState, useEffect, useRef } from 'react'
+import { useMemo, useState, useEffect, useRef, Fragment } from 'react'
 import type { Trip } from '../data/types'
 import type { PlaceHit } from '../lib/geocode'
 import { routePath } from '../lib/routing'
@@ -34,10 +34,13 @@ const DAY_COLORS = ['#149A90', '#F59E2D', '#7C5CFC', '#E2557B', '#2D9CDB', '#6BB
  */
 function RouteArrows({ coordinates, dark }: { coordinates: [number, number][]; dark: boolean }) {
   const { map, isLoaded } = useMap()
+  const instId = useRef(`inst-${Math.random().toString(36).slice(2)}`).current
   useEffect(() => {
     if (!isLoaded || !map || coordinates.length < 2) return
-    const SRC = 'yf-arrows-src'
-    const LAYER = 'yf-arrows'
+    // Per-instance source/layer ids — a single shared id made concurrent
+    // instances (main line + return drive) overwrite each other's geometry.
+    const SRC = `yf-arrows-src-${instId}`
+    const LAYER = `yf-arrows-${instId}`
     if (!map.hasImage('yf-arrow')) {
       // 9×9 solid triangle pointing up, drawn into raw RGBA pixels
       const size = 9
@@ -203,6 +206,7 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby }: {
         index: d.index,
         stops: [...d.stops]
           .filter(s => s.status !== 'rejected')
+          .filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lng))
           .sort((a, b) => a.orderInDay - b.orderInDay),
       }))
       .filter(d => d.stops.length > 0)
@@ -444,9 +448,8 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby }: {
                   ? geom[String(d.index)]
                   : d.stops.map(s => [s.lng, s.lat] as [number, number])
                 return (
-                  <>
+                  <Fragment key={`day-${d.index}`}>
                     <MapRoute
-                      key={`casing-${d.index}`}
                       id={`yf-day-casing-${d.index}`}
                       coordinates={coords}
                       color={theme === 'dark' ? '#0B2545' : '#FFFFFF'}
@@ -455,14 +458,13 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby }: {
                       interactive={false}
                     />
                     <MapRoute
-                      key={d.index}
                       coordinates={coords}
                       color={colorForDay(d.index)}
                       width={4}
                       opacity={0.95}
                     />
-                    <RouteArrows key={`arrows-${d.index}`} coordinates={coords} dark={theme === 'dark'} />
-                  </>
+                    <RouteArrows coordinates={coords} dark={theme === 'dark'} />
+                  </Fragment>
                 )
               })
             )}
