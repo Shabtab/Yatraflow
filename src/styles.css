@@ -65,9 +65,9 @@
   /* ---- motion (subtle & premium): one easing family, three speeds ---- */
   --ease-out: cubic-bezier(.22, .61, .36, 1);
   --ease-soft: cubic-bezier(.3, .7, .4, 1);
-  --t-fast: 140ms;
-  --t-med: 220ms;
-  --t-slow: 320ms;
+  --t-fast: 180ms;
+  --t-med: 300ms;
+  --t-slow: 440ms;
 
   /* ---- 2. SEMANTICS (light) ---- */
   --color-background: var(--yf-cream);   /* CTI canvas (was --gray-50) */
