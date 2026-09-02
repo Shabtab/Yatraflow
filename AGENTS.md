@@ -51,7 +51,19 @@ Key locations:
    finding in the same commit that fixes it — batch status table only, prose
    goes to CHANGELOG. `docs/UI_AUDIT.md` is the per-finding reference
    (file:line + example fix); don't duplicate its content in the tracker.
-6. **Verify "done" claims against git before acting on them.** A session cut
+6. **Resuming local (Cline/other-agent) work in a fresh Verdent workspace.**
+   The Verdent project dir ships with bare `.git` metadata — `git clone` into
+   it fails; `git remote add origin …` + `git fetch` +
+   `git checkout -b <branch> origin/<branch>` attaches the repo instead. When
+   the local copy's uncommitted WIP has been committed + pushed in the
+   meantime, **diff the ported worktree against `origin/<branch>` before
+   discarding anything** — the commit is usually a strict superset (the
+   session continued past your snapshot), but verify the divergent lines
+   first (Sep 2026: the ported WIP differed from `9201702` by one old
+   `.select` rule; the commit superseded it cleanly). Re-derive all state
+   from `git status -sb` + `git log` on *both* copies; never trust a
+   snapshot from earlier in the conversation.
+7. **Verify "done" claims against git before acting on them.** A session cut
    off mid-batch can leave completion summaries that were never true — this
    cost a full re-do when batches 5–6 were reported as committed while
    `git log` showed only batch 3 and half of batch 4 sat uncommitted in the
