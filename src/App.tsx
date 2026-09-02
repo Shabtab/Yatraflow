@@ -50,36 +50,54 @@ export default function App() {
       m.setAttribute('content', dark ? '#0C1420' : '#FAF7F2'))
   }, [dark])
 
-  // Radiating theme reveal (View Transitions API): the new theme expands as a
-  // circle from the theme-toggle button. Going LIGHT the new (light) view
-  // accelerates out of the icon — slow start, zap at the end ("source of
-  // light"); going DARK the boundary starts fast and settles as the light
-  // recedes back into the icon. Falls back to the instant switch where the
-  // API is missing or the user prefers reduced motion.
+  // Radiating theme reveal (View Transitions API), driven from the theme-toggle
+  // button. Going LIGHT the new view accelerates out of the icon — slow start,
+  // zap at the end ("source of light"). Going DARK it's the exact inverse: the
+  // new dark view sits still underneath while the OLD light view's clip-path
+  // collapses INTO the icon — light visibly retreats home, fast then settling.
+  // Falls back to the instant switch where the API is missing or the user
+  // prefers reduced motion.
   function toggleTheme(e: MouseEvent<HTMLButtonElement>) {
     const rect = e.currentTarget.getBoundingClientRect()
     const x = rect.left + rect.width / 2
     const y = rect.top + rect.height / 2
     const apply = () => setDark(d => !d)
     const doc = document as Document & {
-      startViewTransition?: (cb: () => void) => { ready: Promise<void> }
+      startViewTransition?: (cb: () => void) => { ready: Promise<void>; finished: Promise<void> }
     }
     if (!doc.startViewTransition || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       apply(); return
     }
+    const radius = Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y))
+    if (dark) {
+      // → dark: old (light) snapshot implodes into the icon; dark waits beneath.
+      document.documentElement.classList.add('theme-vt-collapse')
+      const vt = doc.startViewTransition(apply)
+      vt.ready.then(() => {
+        document.documentElement.animate(
+          { clipPath: [`circle(${radius}px at ${x}px ${y}px)`, `circle(0px at ${x}px ${y}px)`] },
+          {
+            duration: 620,
+            easing: 'cubic-bezier(.16, .84, .32, 1)',
+            pseudoElement: '::view-transition-old(root)',
+          },
+        )
+      }).catch(() => { /* transition skipped — theme already applied */ })
+      vt.finished.finally(() => document.documentElement.classList.remove('theme-vt-collapse')).catch(() => {})
+      return
+    }
+    // → light: new (light) snapshot radiates from the icon.
     const vt = doc.startViewTransition(apply)
     vt.ready.then(() => {
-      const radius = Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y))
-      // `dark` here is the PRE-toggle state: dark=true → switching to light.
       document.documentElement.animate(
         { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${radius}px at ${x}px ${y}px)`] },
         {
-          duration: dark ? 780 : 620,
-          easing: dark ? 'cubic-bezier(.55, 0, .85, .36)' : 'cubic-bezier(.16, .84, .32, 1)',
+          duration: 780,
+          easing: 'cubic-bezier(.55, 0, .85, .36)',
           pseudoElement: '::view-transition-new(root)',
         },
       )
-    }).catch(() => { /* transition skipped (tab hidden etc.) — theme already applied */ })
+    }).catch(() => { /* transition skipped — theme already applied */ })
   }
 
   // Escape closes any open popover (UI audit F-10) — outside-click alone
