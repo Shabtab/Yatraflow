@@ -96,12 +96,13 @@ Key locations:
    are separate localStorage origins — `:5173` and `:5174` render different
    auth states (nav links differ); don't read that as a code difference.
 9. **Nav glass is user-decided: the floating `.topnav` uses the dedicated
-   opaque `--yf-nav-glass` token (0.85 white light / 0.82 ink-navy dark,
-   `blur(18px) saturate(1.2)`); the shared 0.58 `--yf-glass` stays for
-   map/board panels only.** After a full day of flip-flops (Sep 2: 0.85 →
-   0.58 → 0.85 → 0.58 → 0.85), the user compared all variants side-by-side
-   and explicitly chose the opaque pill — the see-through 0.58 reads as
-   "transparent shit" to them once the headline scrolls behind it. Do not
+   `--yf-nav-glass` token at 0.58 white light / 0.58 ink-navy dark with
+   `blur(18px) saturate(1.2)` (final Sep 2); the shared 0.58 `--yf-glass`
+   stays for map/board panels only.** The day's opacity ladder
+   (0.85 → 0.75 → 0.66 → 0.58, user-judged live at the headline scroll
+   position) only resolved once the minifier blur bug was fixed — 0.58 with
+   real blur is the user's chosen glass; earlier in the day they rejected
+   0.58 because prod shipped it blur-less (see §4 minifier rule). Do not
    change nav transparency/blur again without an explicit request naming
    the exact values.
 
