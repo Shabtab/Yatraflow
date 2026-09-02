@@ -1,6 +1,6 @@
 // ============ YatraFlow app shell ============
 // Hash-based routing so the built app works from any static host or file://.
-import { useEffect, useState, type MouseEvent } from 'react'
+import { useEffect, useRef, useState, type MouseEvent } from 'react'
 import type { Trip } from './data/types'
 import { useDb, currentUser, logout, notificationsFor, markAllNotificationsRead, tripById, joinViaInvite, duplicateTrip, init } from './store/store'
 import { Avatar, BrandMark, ToastZone, useClickOutside, toast } from './components/ui'
@@ -338,14 +338,20 @@ function InviteGate({ tripId, onNavigate }: { tripId: string; onNavigate: (r: st
   const db = useDb()
   const me = currentUser(db)
   const trip = tripById(tripId)
+  // Keep the latest navigate callback in a ref so we don't re-fire the effect
+  // (and re-join / re-arm the timer) on every parent re-render.
+  const navigateRef = useRef(onNavigate)
+  useEffect(() => { navigateRef.current = onNavigate })
 
   useEffect(() => {
-    if (me && trip) {
-      joinViaInvite(tripId, me.id)
-      const t = setTimeout(() => onNavigate(`/trip/${tripId}`), 400)
-      return () => clearTimeout(t)
-    }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+    if (!me || !trip) return
+    joinViaInvite(tripId, me.id)
+    const t = setTimeout(() => navigateRef.current(`/trip/${tripId}`), 400)
+    return () => clearTimeout(t)
+    // Depend on the users/trip objects, not a mount-only []: the store hydrates
+    // them asynchronously after init(), so a one-shot effect ran before they
+    // existed and the invite never auto-joined.
+  }, [me, trip, tripId])
 
   if (!trip) {
     return (

@@ -114,6 +114,9 @@ export function getAssumptions(trip: Pick<Trip, 'transportMode' | 'fuelEconomyKm
 }
 
 export function minutesToHM(mins: number): string {
+  // Last-resort display guard: a non-finite input (broken upstream number)
+  // would render as "NaNh NaNm" — show an em dash instead of nonsense.
+  if (!Number.isFinite(mins)) return '—'
   const m = Math.max(0, Math.round(mins))
   return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`
 }
@@ -174,6 +177,8 @@ export interface DaySchedule {
   endsAt: string
   /** true when the day's journey already ends back at the trip's start (planned return drive) */
   endsAtStart: boolean
+  /** stop time (visit minutes + per-stop buffers) — driving time lives in totalTravelMinutes */
+  dwellMinutes: number
 }
 
 /**
@@ -206,6 +211,7 @@ export function simulateDay(
     activeStops: rows.map(p => p.stop),
     endsAt: rows.length ? rows[rows.length - 1].depart : j.startTime,
     endsAtStart: j.endsAtStart,
+    dwellMinutes: j.dwellMinutes,
   }
 }
 
@@ -458,15 +464,20 @@ export function buildJourney(
   const startStopId = startStop?.id
   const chain = startStopId ? active.filter(s => s.id !== startStopId) : active
   for (const s of chain) {
-    const isWaypoint = s.auto === true || (s.category === 'travel' && s.visitMinutes === 0 && s.transportCostInrTotal === 0)
-    const isHalt = !isWaypoint && (s.category === 'food' || s.category === 'rest') && s.visitMinutes > 0
+    // A stored stop can carry a missing or non-finite visitMinutes (older rows,
+    // hand-edited JSON, partial DB writes). Coerce once — otherwise
+    // `undefined + buffer` = NaN silently poisons the day's dwell, its clocks
+    // and every total built on top (the impact dialog showed "NaNh NaNm").
+    const visitMin = typeof s.visitMinutes === 'number' && Number.isFinite(s.visitMinutes) ? s.visitMinutes : 0
+    const isWaypoint = s.auto === true || (s.category === 'travel' && visitMin === 0 && s.transportCostInrTotal === 0)
+    const isHalt = !isWaypoint && (s.category === 'food' || s.category === 'rest') && visitMin > 0
     const title = cleanPlaceName(s.locationName || s.title)
     const p = { lat: s.lat, lng: s.lng }
     const lg = leg(prev.point, p, prev.title, title)
     cursor += lg.durationMinutes
     const arrive = addMinutesToClock(startMin, cursor - startMin)
     // pure waypoints (auto anchors) count for distance but add no dwell/buffer
-    const dwell = isWaypoint ? 0 : s.visitMinutes + A.bufferMinutesPerStop
+    const dwell = isWaypoint ? 0 : visitMin + A.bufferMinutesPerStop
     cursor += dwell
     const depart = addMinutesToClock(startMin, cursor - startMin)
     points.push({

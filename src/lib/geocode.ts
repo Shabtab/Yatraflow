@@ -20,6 +20,7 @@ export { mapplsEnabled, parseOpeningHours, fetchOpeningHours, type OpeningHours 
 export { HOME_ZONE_KM, corridorAnchors, detourKm } from './providers/hits'
 export type { NearbyOpts, PlaceHit } from './providers/hits'
 export { googleEnabled } from './providers/google'
+export { searchCitiesAlong } from './providers/free'
 export { planRideSegments, assignSegmentHits, type SegmentHit, type RideSegment } from './ridePlan'
 
 import { hasCoords, rankAndCap, type NearbyOpts, type PlaceHit } from './providers/hits'

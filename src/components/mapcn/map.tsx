@@ -1177,8 +1177,16 @@ function MapRoute({
   const id = propId ?? autoId;
   const sourceId = `route-source-${id}`;
   const layerId = `route-layer-${id}`;
+  // Latest coordinates without making the creation effect re-run on every
+  // render (the array identity changes each render by design).
+  const coordsRef = useRef(coordinates);
+  coordsRef.current = coordinates;
 
-  // Add source and layer on mount
+  // Add source and layer on mount — seeded with the CURRENT coordinates.
+  // Re-creation previously started from an empty source and relied on the
+  // coordinates prop changing again afterwards; a layer (re)created while a
+  // style swap was in flight, or after its `id` prop changed, could stay
+  // blank forever because nothing re-fired the data update.
   useEffect(() => {
     if (!isLoaded || !map) return;
 
@@ -1204,6 +1212,15 @@ function MapRoute({
       },
     });
 
+    const seed = coordsRef.current;
+    if (seed.length >= 2) {
+      (map.getSource(sourceId) as MapLibreGL.GeoJSONSource | undefined)?.setData({
+        type: "Feature",
+        properties: {},
+        geometry: { type: "LineString", coordinates: seed },
+      });
+    }
+
     return () => {
       try {
         if (map.getLayer(layerId)) map.removeLayer(layerId);
@@ -1213,20 +1230,24 @@ function MapRoute({
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoaded, map]);
+  }, [isLoaded, map, sourceId, layerId]);
 
-  // When coordinates change, update the source data
+  // When coordinates change, update the source data. Always applied when the
+  // source exists — including clearing it (< 2 points draws nothing) — so a
+  // stale line can never survive a coordinate change.
   useEffect(() => {
-    if (!isLoaded || !map || coordinates.length < 2) return;
+    if (!isLoaded || !map) return;
 
-    const source = map.getSource(sourceId) as MapLibreGL.GeoJSONSource;
-    if (source) {
-      source.setData({
-        type: "Feature",
-        properties: {},
-        geometry: { type: "LineString", coordinates },
-      });
-    }
+    const source = map.getSource(sourceId) as MapLibreGL.GeoJSONSource | undefined;
+    if (!source) return;
+    source.setData({
+      type: "Feature",
+      properties: {},
+      geometry: {
+        type: "LineString",
+        coordinates: coordinates.length >= 2 ? coordinates : [],
+      },
+    });
   }, [isLoaded, map, coordinates, sourceId]);
 
   useEffect(() => {

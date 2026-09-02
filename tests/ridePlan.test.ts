@@ -6,6 +6,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   planRideSegments, assignSegmentHits, fitScoreForPurpose, nearestCityName, kmFromStartForHit,
+  segmentsFromPlan,
   STRETCH_INTERVAL_KM, MEAL_INTERVAL_KM, ENDNO_KM, MIN_BREAK_GAP_KM,
   type RideSegment,
 } from '../src/lib/ridePlan'
@@ -234,5 +235,50 @@ describe('nearestCityName', () => {
     expect(nearestCityName(pool[0], pool)).toBeUndefined()
     // ~111 km away with a 100 km radius → no match
     expect(nearestCityName(hit('Far', 1.0, 0), pool, 100)).toBeUndefined()
+  })
+})
+
+// ============ segmentsFromPlan — the user-authored halt planner ============
+
+describe('segmentsFromPlan', () => {
+  it('orders the user’s halts by km and keeps one segment each', () => {
+    const plan = [
+      { km: 300, minutes: 45, purpose: 'meal' as const },
+      { km: 100, minutes: 20, purpose: 'stretch' as const },
+    ]
+    const segs = segmentsFromPlan(plan, 600)
+    expect(segs.map(s => s.targetKm)).toEqual([100, 300])
+    expect(segs[0].purpose).toBe('stretch')
+    expect(segs[1].purpose).toBe('meal')
+  })
+
+  it('builds acceptance windows as midpoints to the neighbours', () => {
+    const segs = segmentsFromPlan([
+      { km: 100, minutes: 20, purpose: 'stretch' },
+      { km: 300, minutes: 45, purpose: 'meal' },
+      { km: 500, minutes: 30, purpose: 'stretch' },
+    ], 600)
+    expect(segs[0].minKm).toBe(0) // first halt may sit right at the start
+    expect(segs[0].maxKm).toBe(200) // midpoint to the next halt
+    expect(segs[1].minKm).toBe(200)
+    expect(segs[1].maxKm).toBe(400)
+    expect(segs[2].maxKm).toBe(550) // midpoint to the journey end, never past it
+  })
+
+  it('scales kmFromPrev and minutesFromPrev to the whole ride', () => {
+    const segs = segmentsFromPlan([{ km: 300, minutes: 45, purpose: 'meal' }], 600, 480)
+    expect(segs[0].kmFromPrev).toBe(300)
+    expect(segs[0].minutesFromPrev).toBe(240) // half of 480 wheel minutes
+  })
+
+  it('ignores non-positive km and returns nothing for a short ride', () => {
+    expect(segmentsFromPlan([{ km: -5, minutes: 20, purpose: 'stretch' }], 600)).toEqual([])
+    expect(segmentsFromPlan([{ km: 100, minutes: 20, purpose: 'stretch' }], 0)).toEqual([])
+  })
+
+  it('marks an overnight halt as a day boundary', () => {
+    const segs = segmentsFromPlan([{ km: 400, minutes: 0, purpose: 'overnight' }], 600)
+    expect(segs[0].dayEnd).toBe(true)
+    expect(segs.find(s => s.purpose === 'meal')?.dayEnd).toBeUndefined()
   })
 })
