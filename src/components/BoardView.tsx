@@ -179,9 +179,27 @@ function BoardColumn({ day, editable, warnings, focused, onToggleFocus, onMoveSt
     () => [...day.stops].filter(s => s.status !== 'rejected').sort((a, b) => a.orderInDay - b.orderInDay),
     [day],
   )
-  const { dndHandlers, dayDropHandlers, dragging, over, foreignOver } = useReorder(
+  const stopsRef = useRef<HTMLDivElement>(null)
+  // Premium kanban drag pattern: the DOM order NEVER changes mid-drag (no
+  // churn, no jitter — native drag stays stable from the first pixel). A slim
+  // teal marker glides to the insertion slot instead, and the final
+  // arrangement settles ONCE via the FLIP pass on commit. The marker index is
+  // the source of truth for same-day drops (card-level drops delegate to it).
+  const [insert, setInsert] = useState<{ idx: number; y: number } | null>(null)
+  const insertRef = useRef(insert)
+  insertRef.current = insert
+
+  const { dndHandlers, dayDropHandlers, dragging, foreignOver } = useReorder(
     ordered,
-    (fromIdx, toIdx) => onReorder(day.index, fromIdx, toIdx),
+    // Same-list commits resolve through the marker, not the card the cursor
+    // happened to be over: idx counts positions in the full list (dragged slot
+    // included), so adjust for the removal shift.
+    (fromIdx) => {
+      const idx = insertRef.current?.idx ?? fromIdx
+      const toIdx = idx > fromIdx ? idx - 1 : idx
+      if (toIdx !== fromIdx) onReorder(day.index, fromIdx, toIdx)
+      setInsert(null)
+    },
     {
       dragPayload: (s) => JSON.stringify({ stopId: s.id, fromDay: day.index }),
       onForeignDrop: (payload, toIdx) => {
@@ -194,21 +212,39 @@ function BoardColumn({ day, editable, warnings, focused, onToggleFocus, onMoveSt
       },
     },
   )
-  // Live reorder preview: while a card is carried, the column renders the order
-  // as it WOULD be if dropped right now (dragged lifted, re-inserted at the
-  // hovered slot). The FLIP pass below animates every neighbour between
-  // arrangements in real time — cards glide up/down during the drag, not on
-  // release. The committed mutation uses the same indices, so the drop lands
-  // exactly where the preview showed it.
-  const preview = useMemo(() => {
-    if (dragging === null) return ordered
-    const arr = [...ordered]
-    const [m] = arr.splice(dragging, 1)
-    if (!m) return ordered
-    const to = over === null ? dragging : Math.max(0, Math.min(over, arr.length))
-    arr.splice(to, 0, m)
-    return arr
-  }, [ordered, dragging, over])
+
+  useEffect(() => { if (dragging === null) setInsert(null) }, [dragging])
+
+  function onColDragOver(e: React.DragEvent<HTMLDivElement>) {
+    if (dragging === null) return
+    e.preventDefault()
+    const rootEl = stopsRef.current
+    if (!rootEl) return
+    const cards = Array.from(rootEl.querySelectorAll<HTMLElement>('[data-stop-id]'))
+    let idx = cards.length
+    for (let i = 0; i < cards.length; i++) {
+      const r = cards[i].getBoundingClientRect()
+      if (e.clientY < r.top + r.height / 2) { idx = i; break }
+    }
+    const y = cards.length === 0 ? 8
+      : idx < cards.length ? cards[idx].offsetTop - 6
+      : cards[cards.length - 1].offsetTop + cards[cards.length - 1].offsetHeight + 4
+    const cur = insertRef.current
+    if (!cur || cur.idx !== idx || Math.abs(cur.y - y) > 2) setInsert({ idx, y })
+  }
+  function onColDragLeave(e: React.DragEvent<HTMLDivElement>) {
+    if (!stopsRef.current?.contains(e.relatedTarget as Node | null)) setInsert(null)
+  }
+  /** Drops landing in the gaps between cards (card handlers stopPropagation). */
+  function onColDrop(e: React.DragEvent<HTMLDivElement>) {
+    if (dragging === null) return
+    e.preventDefault()
+    const idx = insertRef.current?.idx ?? ordered.length
+    const toIdx = idx > dragging ? idx - 1 : idx
+    if (toIdx !== dragging) onReorder(day.index, dragging, toIdx)
+    setInsert(null)
+  }
+
   const draggingId = dragging !== null ? ordered[dragging]?.id : undefined
   const sev = warnings.some(w => w.severity === 'high') ? 'high'
     : warnings.some(w => w.severity === 'medium') ? 'medium' : undefined
@@ -218,7 +254,8 @@ function BoardColumn({ day, editable, warnings, focused, onToggleFocus, onMoveSt
   // FLIP slot-in: when this column's card arrangement changes (same-day drag
   // reorder, or a card slotting in from another day), every card animates from
   // its previous position to the new one — compositor-only, no ghosting.
-  const stopsRef = useRef<HTMLDivElement>(null)
+  // Fires once per committed arrangement (same-day drop or cross-day insert),
+  // never during the drag itself: the marker carries all the in-drag feedback.
   const prevRects = useRef<Map<string, { x: number; y: number }> | null>(null)
   useLayoutEffect(() => {
     const rootEl = stopsRef.current
@@ -239,13 +276,13 @@ function BoardColumn({ day, editable, warnings, focused, onToggleFocus, onMoveSt
           rootEl.querySelector<HTMLElement>(`[data-stop-id="${CSS.escape(id)}"]`)
             ?.animate(
               [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }],
-              { duration: 320, easing: 'cubic-bezier(.22, .61, .36, 1)' },
+              { duration: 240, easing: 'cubic-bezier(.22, .61, .36, 1)' },
             )
         }
       }
     }
     prevRects.current = now
-  }, [preview])
+  }, [ordered])
 
   return (
     <div className={`board-col${focused ? ' board-col--focused' : ''}`} role="listitem">
@@ -257,8 +294,12 @@ function BoardColumn({ day, editable, warnings, focused, onToggleFocus, onMoveSt
         {topWarn && <span className={`day-warn-pill ${sev === 'high' ? 'sev-high' : ''}`}>⚠ {topWarn.title.replace(/^Day \d+: /, '')}{warnings.length > 1 ? ` +${warnings.length - 1}` : ''}</span>}
       </button>
 
-      <div className={`board-col-stops${dragging !== null ? ' is-dragging' : ''}`} ref={stopsRef}>
-        {preview.map((s, i) => {
+      <div className={`board-col-stops${dragging !== null ? ' is-dragging' : ''}`} ref={stopsRef}
+        onDragOver={onColDragOver} onDragLeave={onColDragLeave} onDrop={onColDrop}>
+        {dragging !== null && insert && (
+          <div className="board-drop-marker" style={{ transform: `translateY(${insert.y}px)` }} />
+        )}
+        {ordered.map((s, i) => {
           const kind = stopKindOf(s)
           const isDragged = s.id === draggingId
           const meta = [
@@ -270,7 +311,7 @@ function BoardColumn({ day, editable, warnings, focused, onToggleFocus, onMoveSt
             <div key={s.id}
               data-stop-id={s.id}
               title={meta ? `${s.title} — ${meta}` : s.title}
-              className={`board-stop stop-card kind-${kind} status-${s.status} ${isDragged ? 'dragging' : ''} ${over === i && dragging !== null && !isDragged ? 'drag-over' : ''} ${foreignOver === i && dragging === null ? 'foreign-over' : ''}`}
+              className={`board-stop stop-card kind-${kind} status-${s.status} ${isDragged ? 'dragging' : ''} ${foreignOver === i && dragging === null ? 'foreign-over' : ''}`}
               {...(editable ? dndHandlers(i) : {})}>
               <div className="stop-main">
                 <span className="board-stop-kicker">{s.departTime ? `${formatHM(s.departTime, timeFormat)} · ` : ''}{STOP_KIND_LABELS[kind]}</span>

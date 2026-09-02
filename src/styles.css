@@ -2063,6 +2063,20 @@ main:focus { outline: none; }
    of the carried card becomes an empty dashed slot — the browser's drag ghost
    is then the only "copy", killing the double-ghost effect. */
 .board-col-stops.is-dragging .board-stop { will-change: transform; }
+/* Insertion marker — a slim teal line that glides between cards to show where
+   the carried card will land; the cards themselves never move during a drag.
+   transform-only movement on a 3px element = pure compositor, zero churn. */
+.board-col-stops { position: relative; }
+.board-drop-marker {
+  position: absolute; left: 10px; right: 10px; top: 0; height: 3px;
+  border-radius: 2px; background: var(--teal); pointer-events: none;
+  box-shadow: 0 0 0 2px var(--teal-soft);
+  transition: transform 160ms var(--ease-out);
+}
+.board-drop-marker::before {
+  content: ''; position: absolute; left: -8px; top: -3.5px;
+  width: 10px; height: 10px; border-radius: 50%; background: var(--teal);
+}
 .board-stop.dragging {
   opacity: .45; background: transparent; box-shadow: none;
   border: 1.5px dashed var(--teal);
