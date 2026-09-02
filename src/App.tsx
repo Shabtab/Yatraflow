@@ -1,6 +1,6 @@
 // ============ YatraFlow app shell ============
 // Hash-based routing so the built app works from any static host or file://.
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState, type MouseEvent } from 'react'
 import type { Trip } from './data/types'
 import { useDb, currentUser, logout, notificationsFor, markAllNotificationsRead, tripById, joinViaInvite, duplicateTrip, init } from './store/store'
 import { Avatar, BrandMark, ToastZone, useClickOutside, toast } from './components/ui'
@@ -49,6 +49,48 @@ export default function App() {
     document.querySelectorAll('meta[name="theme-color"]').forEach(m =>
       m.setAttribute('content', dark ? '#0C1420' : '#FAF7F2'))
   }, [dark])
+
+  // Theme radiate via View Transitions — the real UI morphs in both themes.
+  // Two hard-won rules make this flawless:
+  //  1. Suppress backdrop-filter for the transition's lifetime: Chromium
+  //     renders glass inside VT snapshots WITHOUT its backdrop, so any glass
+  //     layer turns the captured page into a flat gray veil. Unblurred glass
+  //     for ~600ms is imperceptible; the veil is not.
+  //  2. Drive the clip-path from CSS keyframes selected by a class that is set
+  //     BEFORE startViewTransition — the animation exists from the snapshot
+  //     tree's first frame (no JS-attach gap → no pre-flash) and `fill: both`
+  //     holds the end state until teardown (no end flash).
+  // Dark → light: the new light view radiates OUT of the icon (slow → zap).
+  // Light → dark: the old light view collapses INTO the icon (fast → settle).
+  function toggleTheme(e: MouseEvent<HTMLButtonElement>) {
+    const rect = e.currentTarget.getBoundingClientRect()
+    const x = rect.left + rect.width / 2
+    const y = rect.top + rect.height / 2
+    const root = document.documentElement
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setDark(d => !d); return
+    }
+    const radius = Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y))
+    root.style.setProperty('--vt-x', `${x}px`)
+    root.style.setProperty('--vt-y', `${y}px`)
+    root.style.setProperty('--vt-r', `${radius}px`)
+    const goingLight = dark
+    root.classList.remove('vt-radiate-out', 'vt-radiate-in')
+    root.classList.add(goingLight ? 'vt-radiate-out' : 'vt-radiate-in')
+    root.classList.add('vt-active') // backdrop-filter suppression window
+    const doc = document as Document & {
+      startViewTransition?: (cb: () => void) => { finished: Promise<void> }
+    }
+    if (!doc.startViewTransition) { // old browsers: skip straight to the swap
+      root.classList.remove('vt-radiate-out', 'vt-radiate-in', 'vt-active')
+      setDark(d => !d); return
+    }
+    const vt = doc.startViewTransition(() => setDark(d => !d))
+    vt.finished.finally(() => {
+      root.classList.remove('vt-radiate-out', 'vt-radiate-in', 'vt-active')
+      root.style.removeProperty('--vt-x'); root.style.removeProperty('--vt-y'); root.style.removeProperty('--vt-r')
+    }).catch(() => { /* nothing to clean up further */ })
+  }
 
   // Escape closes any open popover (UI audit F-10) — outside-click alone
   // leaves keyboard users stranded.
@@ -133,25 +175,28 @@ export default function App() {
             <a className={`nav-link ${route === '/explore' ? 'active' : ''}`} href="#/explore">Explore</a>
           </div>
         <div className="nav-right">
-          {/* Hamburger — only rendered ≤720px where .nav-links is hidden */}
-          <button
-            className="mobile-nav-btn"
-            onClick={() => setMobileNav(o => !o)}
-            aria-label="Menu"
-            aria-expanded={mobileNav}
-            aria-controls="mobile-menu"
-          >
-            {mobileNav ? '✕' : '☰'}
-          </button>
+          {/* CTI control tray: icon controls live in one soft pill. Auth
+              buttons stay outside it (they're wide, and logged-out mobile
+              needs the width). Hamburger is ≤720px only (CSS-gated). */}
+          <div className="nav-pill-group">
+            <button
+              className="mobile-nav-btn"
+              onClick={() => setMobileNav(o => !o)}
+              aria-label="Menu"
+              aria-expanded={mobileNav}
+              aria-controls="mobile-menu"
+            >
+              {mobileNav ? '✕' : '☰'}
+            </button>
 
-          <button className="theme-toggle" onClick={() => setDark(d => !d)} aria-label="Toggle dark mode" title="Toggle dark mode">
-            {dark ? '☀️' : '🌙'}
-          </button>
-          {me && (
-            <div style={{ position: 'relative' }} ref={notifRef}>
-              <button className="icon-btn" onClick={() => setNotifOpen(o => !o)} aria-label={`Notifications (${unread} unread)`} aria-expanded={notifOpen} aria-controls="notif-pop">
-                🔔{unread > 0 && <span className="notif-badge">{unread}</span>}
-              </button>
+            <button className="theme-toggle" onClick={toggleTheme} aria-label="Toggle dark mode" title="Toggle dark mode">
+              {dark ? '☀️' : '🌙'}
+            </button>
+            {me && (
+              <div style={{ position: 'relative' }} ref={notifRef}>
+                  <button className="icon-btn" onClick={() => setNotifOpen(o => !o)} aria-label={`Notifications (${unread} unread)`} aria-expanded={notifOpen} aria-controls="notif-pop">
+                    🔔{unread > 0 && <span className="notif-badge">{unread}</span>}
+                  </button>
               {notifOpen && (
                 <div className="notif-pop" id="notif-pop">
                   <div className="row-between" style={{ padding: '10px 14px', borderBottom: '1px solid var(--line)' }}>
@@ -171,7 +216,7 @@ export default function App() {
               )}
             </div>
           )}
-          {me ? (
+          {me && (
             <div style={{ position: 'relative' }} ref={menuRef}>
               <button className="avatar-btn" onClick={() => setMenuOpen(o => !o)} aria-label="Account menu" aria-expanded={menuOpen} aria-controls="user-menu">
                 <Avatar user={me} />
@@ -189,7 +234,9 @@ export default function App() {
                 </div>
               )}
             </div>
-          ) : (
+          )}
+          </div>{/* /nav-pill-group */}
+          {!me && (
             <>
               <a className="btn btn-outline btn-sm" href="#/auth">Log in</a>
               <a className="btn btn-primary btn-sm" href="#/auth?mode=signup">Sign up free</a>
@@ -210,7 +257,11 @@ export default function App() {
         </div>
       )}
 
-      <main id="main" tabIndex={-1} style={{ flex: 1 }}>{page}</main>
+      <main id="main" tabIndex={-1} style={{ flex: 1 }}>
+        {/* keyed on the route so every page change (My trips ↔ Explore ↔ a trip)
+            re-mounts and plays the route-panel entrance animation */}
+        <div className="route-panel" key={route}>{page}</div>
+      </main>
 
       <footer className="footer">
         <div className="container footer-inner">
@@ -287,14 +338,20 @@ function InviteGate({ tripId, onNavigate }: { tripId: string; onNavigate: (r: st
   const db = useDb()
   const me = currentUser(db)
   const trip = tripById(tripId)
+  // Keep the latest navigate callback in a ref so we don't re-fire the effect
+  // (and re-join / re-arm the timer) on every parent re-render.
+  const navigateRef = useRef(onNavigate)
+  useEffect(() => { navigateRef.current = onNavigate })
 
   useEffect(() => {
-    if (me && trip) {
-      joinViaInvite(tripId, me.id)
-      const t = setTimeout(() => onNavigate(`/trip/${tripId}`), 400)
-      return () => clearTimeout(t)
-    }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+    if (!me || !trip) return
+    joinViaInvite(tripId, me.id)
+    const t = setTimeout(() => navigateRef.current(`/trip/${tripId}`), 400)
+    return () => clearTimeout(t)
+    // Depend on the users/trip objects, not a mount-only []: the store hydrates
+    // them asynchronously after init(), so a one-shot effect ran before they
+    // existed and the invite never auto-joined.
+  }, [me, trip, tripId])
 
   if (!trip) {
     return (

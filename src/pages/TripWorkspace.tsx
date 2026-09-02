@@ -8,7 +8,7 @@ import {
   setStopStatus, addExpense, deleteExpense, restoreExpense, addSuggestion,
   voteSuggestion, addCommentToSuggestion,
   acceptSuggestionIntoTimeline, declineSuggestion, addDecision, voteOnDecision, resolveDecision,
-  activityFor, setMemberRole, removeMember, restoreMember, updateTrip, publishItinerary,
+  activityFor, setMemberRole, removeMember, restoreMember, updateTrip, publishItinerary, unpublishItinerary,
 } from '../store/store'
 import {
   computeHealth, computeTotals, simulateDay, originOf, getAssumptions, legKey, coLocates,
@@ -22,27 +22,37 @@ import { computeImpact, type ImpactResult } from '../lib/impact'
 import { loadDayCollapsed, saveDayCollapsed } from '../lib/uiPrefs'
 import { useTimeFormat, formatHM, formatHMRange } from '../lib/timefmt'
 import { scrollBehavior } from '../lib/motion'
-import { Avatar, Chip, Modal, ConfirmDialog, Field, StatTile, HealthRing, EmptyState, toast, undoToast, useReorder, CopyButton } from '../components/ui'
+import { stopKindOf, STOP_KIND_LABELS } from '../lib/stopKind'
+import { Avatar, Chip, Modal, ConfirmDialog, Field, StatTile, HealthRing, EmptyState, toast, undoToast, useReorder, CopyButton, RouteSnapshot } from '../components/ui'
 import { ImpactPreviewPanel } from '../components/ImpactPreview'
 import { useSuggestionCache } from '../hooks/useSuggestionCache'
 // MapLibre is heavy (~1MB) — load it only when the Map tab is actually opened.
 const TripMap = React.lazy(() => import('../components/TripMap').then(m => ({ default: m.TripMap })))
+// Board also embeds TripMap (so it pulls the same lazy map chunk) — load the whole
+// view lazily so the Board tab never adds app-start cost either.
+const BoardView = React.lazy(() => import('../components/BoardView').then(m => ({ default: m.BoardView })))
 import { StopEditor, type StopFormValues } from '../components/StopEditor'
 import { AiDrawer } from '../components/AiDrawer'
 import { LocationInput } from '../components/LocationInput'
-import { searchNearbyPois, corridorAnchors, detourKm, googleEnabled, planJourneyHalts, type NearbyOpts } from '../lib/geocode'
+import { CoverImagePicker } from '../components/CoverImagePicker'
+import { useDestinationCover } from '../hooks/useDestinationCover'
+import { pickTripQueryCandidates } from '../lib/tripThumb'
+import { searchNearbyPois, searchNearbyPoisMulti, searchCitiesAlong, corridorAnchors, detourKm, googleEnabled, planJourneyHalts, type NearbyOpts } from '../lib/geocode'
 import type { PlaceHit, SegmentHit } from '../lib/geocode'
-import { anchorHash } from '../lib/providers/hits'
-import { fetchDailyWeather, forecastAvailable, wmoInfo } from '../lib/weather'
+import { anchorHash, kmFromStartForHit, type HaltPurpose } from '../lib/providers/hits'
+import { segmentsFromPlan, assignSegmentHits, annotateSegmentHits, type HaltPlanItem } from '../lib/ridePlan'
+import { pointAtKm } from '../lib/geo'
+import { fetchDailyWeather, forecastAvailable, isoAddDays, wmoInfo } from '../lib/weather'
 import type { DayWeather } from '../lib/weather'
 import { encodeTripSnapshot, decodeTripSnapshot, snapshotUrl, downloadTripJson } from '../lib/snapshot'
 import { duplicateTrip } from '../store/store'
 
-type TabKey = 'overview' | 'timeline' | 'map' | 'suggestions' | 'budget' | 'decisions' | 'share'
+type TabKey = 'overview' | 'timeline' | 'board' | 'map' | 'suggestions' | 'budget' | 'decisions' | 'share'
 
 const TABS: [TabKey, string][] = [
   ['overview', 'Overview'],
   ['timeline', 'Timeline'],
+  ['board', 'Board'],
   ['map', 'Map'],
   ['suggestions', 'Suggestions'],
   ['budget', 'Budget'],
@@ -82,6 +92,11 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
   // route changes. Only applied for ground modes (OSRM is driving-only); the
   // deterministic haversine engine stays the fallback and powers warnings/impact.
   const legCorrections = useTripCorrections(trip)
+
+  // Auto (Wikipedia) destination photo for the workspace header cover badge.
+  // Walk all candidates (last stop → earlier stops → start city) so a single
+  // "no photo" Wikipedia page doesn't leave the cover blank.
+  const tripCoverAuto = useDestinationCover(trip ? pickTripQueryCandidates(trip) : null)
 
   // Pending change: a proposed plan held until the user keeps or discards it.
   const [pending, setPending] = useState<{ proposed: Trip; result: ImpactResult } | null>(null)
@@ -160,13 +175,21 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
   }
 
   return (
-    <div className="container" style={{ paddingTop: 22 }}>
+    <div className={`container${tab === 'board' ? ' container--board' : ''}`} style={{ paddingTop: 22 }}>
       {/* ---------- Header ---------- */}
       <div className="trip-head-card">
         <div className="row-between">
           <div style={{ position: 'relative', zIndex: 1 }}>
-            <button className="btn btn-sm btn-outline" style={{ color: '#fff', borderColor: 'rgba(255,255,255,.4)' }} onClick={() => onNavigate('trips')}>← All trips</button>
-            <h1 style={{ marginTop: 12 }}>{trip.coverEmoji} {trip.name}</h1>
+            <button className="trip-hero-back" onClick={() => onNavigate('trips')}>← All trips</button>
+            <h1 style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
+              {(() => {
+                const cover = trip.coverImageUrl || tripCoverAuto
+                return cover
+                  ? <span className="trip-cover-badge" style={{ backgroundImage: `url("${cover}")`, backgroundSize: 'cover', backgroundPosition: 'center' }} aria-hidden="true" />
+                  : <span className="trip-cover-badge trip-cover-badge--emoji" aria-hidden="true">{trip.coverEmoji}</span>
+              })()}
+              {trip.name}
+            </h1>
             <p style={{ opacity: .9, marginTop: 6 }}>
               {trip.startLocation} → {trip.destinations.join(' → ')} · {fmtDateRange(trip.startDate, trip.endDate)} · {trip.travellers} travellers · {cap(trip.transportMode)} · {cap(trip.travelStyle)}
             </p>
@@ -210,17 +233,25 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
         />
       )}
 
-      {tab === 'overview' && <OverviewTab trip={effective} editable={editable} onOpenDecisions={() => setTab('decisions')} health={health} totals={totals} />}
-      {tab === 'timeline' && <TimelineTab trip={trip} editable={editable} applyChange={applyChange} legCorrections={legCorrections} suggestionCache={suggestionCache} />}
+      <div className="tab-panel" key={tab}>
+      {tab === 'overview' && <OverviewTab trip={effective} editable={editable} onOpenDecisions={() => setTab('decisions')} onOpenTimeline={() => setTab('timeline')} onOpenMap={() => setTab('map')} onInvite={() => setTab('share')} health={health} totals={totals} />}
+      {tab === 'timeline' && <TimelineTab trip={effective} editable={editable} applyChange={applyChange} legCorrections={legCorrections} suggestionCache={suggestionCache} onOpenBoard={() => setTab('board')} />}
+      {tab === 'board' && (
+        <React.Suspense fallback={<div className="container loading-block"><div className="spinner" />Loading board…</div>}>
+          <BoardView trip={effective} editable={editable} applyChange={applyChange} health={health} totals={totals}
+            onOpenOverview={() => setTab('overview')} onOpenTimeline={() => setTab('timeline')} />
+        </React.Suspense>
+      )}
       {tab === 'map' && (
         <React.Suspense fallback={<div className="container loading-block"><div className="spinner" />Loading map…</div>}>
-          <MapTab trip={trip} editable={editable} applyChange={applyChange} suggestionCache={suggestionCache} />
+          <MapTab trip={effective} editable={editable} applyChange={applyChange} suggestionCache={suggestionCache} />
         </React.Suspense>
       )}
       {tab === 'suggestions' && <SuggestionsTab trip={trip} editable={editable} me={me} />}
       {tab === 'budget' && <BudgetTab trip={trip} totals={totals} editable={editable} />}
       {tab === 'decisions' && <DecisionsTab trip={trip} me={me} editable={editable} />}
       {tab === 'share' && <ShareTab trip={trip} me={me} editable={editable} onNavigate={onNavigate} />}
+      </div>
 
       <AiDrawer trip={trip} open={aiOpen} onOpen={() => setAiOpen(true)} onClose={() => setAiOpen(false)} />
     </div>
@@ -229,10 +260,13 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
 
 // ================= Overview =================
 
-function OverviewTab({ trip, editable, onOpenDecisions, health, totals }: {
+function OverviewTab({ trip, editable, onOpenDecisions, onOpenTimeline, onOpenMap, onInvite, health, totals }: {
   trip: Trip
   editable: boolean
   onOpenDecisions: () => void
+  onOpenTimeline: () => void
+  onOpenMap: () => void
+  onInvite: () => void
   health: ReturnType<typeof computeHealth>
   totals: ReturnType<typeof computeTotals>
 }) {
@@ -241,38 +275,114 @@ function OverviewTab({ trip, editable, onOpenDecisions, health, totals }: {
   const unresolvedDecisions = db.decisions.filter(d => d.tripId === trip.id && d.status === 'open').length
   const nextCommitment = [...trip.fixedCommitments]
     .sort((a, b) => a.dayIndex - b.dayIndex || a.time.localeCompare(b.time))[0]
+  const crew = trip.members ?? []
+  // Real-geometry snapshot: ordered stop coordinates (rejected stops excluded),
+  // each tagged with its day index so badges land on each day's first stop.
+  const routePoints = useMemo(() => {
+    const pts: Array<{ lat: number; lng: number; day: number }> = []
+    if (trip.startLocationCoords) pts.push({ lat: trip.startLocationCoords.lat, lng: trip.startLocationCoords.lng, day: 0 })
+    for (const day of [...trip.days].sort((a, b) => a.index - b.index)) {
+      for (const s of [...day.stops].sort((a, b) => a.orderInDay - b.orderInDay)) {
+        if (s.status !== 'rejected' && Number.isFinite(s.lat) && Number.isFinite(s.lng)) {
+          pts.push({ lat: s.lat, lng: s.lng, day: day.index })
+        }
+      }
+    }
+    return pts.length >= 2 ? pts : undefined
+  }, [trip.days, trip.startLocationCoords])
+  // Bento briefing (CTI §6.2): lead with the most consequential issues.
+  const severityRank = { high: 0, medium: 1, low: 2 } as const
+  const priorityActions = [...health.warnings]
+    .sort((a, b) => severityRank[a.severity] - severityRank[b.severity])
+    .slice(0, 3)
 
   return (
-    <div className="two-col">
+    <div className="two-col bento">
       <div>
+        <div className="page-head" style={{ marginTop: 0 }}>
+          <h2>Trip briefing</h2>
+          <p className="page-head-sub">What needs attention before this road trip starts.</p>
+        </div>
+
         <div className="card">
           <div className="row-between">
-            <h3>Trip Health Score</h3>
+            <h3>Trip health</h3>
             <Chip tone={health.band === 'Comfortable' ? 'ok' : health.band === 'Manageable' ? 'teal' : health.band === 'Tight' ? 'saffron' : 'danger'}>
               {health.band}
             </Chip>
           </div>
           <hr className="divider" />
-          <div className="health-wrap">
-            <HealthRing score={health.score} band={health.band} />
-            <div style={{ flex: 1, minWidth: 220 }}>
-              {health.warnings.length === 0 ? (
-                <p className="muted small">No schedule issues detected. Buffers look healthy — enjoy the yatra! 🎉</p>
-              ) : (
-                <div className="warn-list">
-                  {health.warnings.slice(0, 4).map(w => (
-                    <div key={w.code + w.title} className={`warn-item ${w.severity === 'high' ? 'sev-high' : w.severity === 'low' ? 'sev-low' : ''}`}>
-                      <span className="warn-icon">{w.severity === 'high' ? '🚨' : w.severity === 'medium' ? '⚠️' : '💡'}</span>
-                      <div>
-                        <div className="warn-title">{w.title}</div>
-                        <div className="warn-fix">✅ Recommended: {w.fix}</div>
-                      </div>
-                    </div>
+          <div className="health-big">
+            <div className={`health-num-big ${health.band === 'Tight' ? 'mid' : health.band === 'Comfortable' || health.band === 'Manageable' ? 'ok' : 'bad'}`}>{health.score}</div>
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <div className="health-bar">
+                <i className={health.band === 'Tight' ? 'mid' : health.band === 'Comfortable' || health.band === 'Manageable' ? 'ok' : 'bad'} style={{ width: `${health.score}%` }} />
+              </div>
+              <ul className="health-reasons">
+                {health.warnings.length === 0
+                  ? <li>No schedule issues detected — buffers look healthy. 🎉</li>
+                  : health.warnings.slice(0, 3).map(w => (
+                    <li key={w.code + w.title}>{w.severity === 'high' ? '🚨 ' : w.severity === 'medium' ? '⚠️ ' : '💡 '}{w.title}</li>
                   ))}
-                  {health.warnings.length > 4 && <span className="small muted">+{health.warnings.length - 4} more — see Timeline.</span>}
-                </div>
-              )}
+              </ul>
             </div>
+          </div>
+          <button className="health-rec" onClick={onOpenTimeline}>View health recommendations →</button>
+        </div>
+
+        {/* Bento stat cluster: cost / per-person / effort / stops at a glance */}
+        <div className="stat-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)', marginTop: 14 }}>
+          <StatTile label="Total cost" value={formatInr(totals.totalCostInr)} sub={`${formatInr(totals.costPerDayInr)}/day · estimates`} />
+          <StatTile label="Per person" value={formatInr(totals.costPerPersonInr)} sub={`vs ${formatInr(trip.budgetPerPersonInr)} target`} />
+          <StatTile label="Travel effort" value={minutesToHM(totals.totalTravelMinutes)} sub={`≈${Math.round(totals.totalDistanceKm)} km route`} />
+          <StatTile label="Stops planned" value={totals.stopCount} sub={`${countHotelNights(trip)} overnight base${countHotelNights(trip) !== 1 ? 's' : ''}`} />
+        </div>
+
+        {/* Priority actions: the most consequential issues with a direct fix link */}
+        <div className="card">
+          <div className="row-between">
+            <h3>Priority actions</h3>
+            {health.warnings.length > 0 && <span className="chip chip-saffron">{health.warnings.length} to review</span>}
+          </div>
+          <hr className="divider" />
+          {priorityActions.length === 0 ? (
+            <p className="muted small">Nothing needs fixing right now — the plan flows. 🎉</p>
+          ) : (
+            <div className="warn-list">
+              {priorityActions.map(w => (
+                <div key={w.code + w.title} className={`warn-item ${w.severity === 'high' ? 'sev-high' : w.severity === 'low' ? 'sev-low' : ''}`}>
+                  <span className="warn-icon">{w.severity === 'high' ? '🚨' : w.severity === 'medium' ? '⚠️' : '💡'}</span>
+                  <div>
+                    <div className="warn-title">{w.title}</div>
+                    <div className="warn-fix">✅ {w.fix}</div>
+                  </div>
+                </div>
+              ))}
+              {health.warnings.length > 3 && <span className="small muted">+{health.warnings.length - 3} more — see Timeline.</span>}
+            </div>
+          )}
+          <button className="link-btn teal" style={{ marginTop: 12 }} onClick={onOpenTimeline}>Open Timeline to resolve →</button>
+        </div>
+      </div>
+
+      <div>
+        <div className="card route-snap">
+          <h3>Route snapshot</h3>
+          <RouteSnapshot
+            count={trip.days.length}
+            startLabel={trip.startLocation}
+            endLabel={trip.destinations[trip.destinations.length - 1]}
+            roundTripNote={isRoundTrip(trip) ? `↩ returns to ${trip.startLocation}` : undefined}
+            points={routePoints}
+          />
+          <p style={{ margin: '4px 0 0', fontSize: 12.5, opacity: .85, lineHeight: 1.6 }}>
+            <b>{trip.startLocation}</b>
+            {trip.destinations.map((d, i) => <span key={i}> → {d}</span>)}
+            {isRoundTrip(trip) && <> → {trip.startLocation}</>}
+          </p>
+          <div className="route-snap-meta">
+            <span>{trip.days.length} days · ≈{Math.round(totals.totalDistanceKm)} km · {totals.stopCount} stops</span>
+            <button className="link-btn" onClick={onOpenMap}>Open map →</button>
           </div>
         </div>
 
@@ -318,20 +428,14 @@ function OverviewTab({ trip, editable, onOpenDecisions, health, totals }: {
         <WeatherCard trip={trip} />
       </div>
 
-      <div>
-        <div className="stat-grid" style={{ gridTemplateColumns: '1fr' }}>
-          <StatTile label="Total estimated cost" value={formatInr(totals.totalCostInr)} sub={`${formatInr(totals.costPerDayInr)}/day · estimates only`} />
-          <StatTile label="Cost per person" value={formatInr(totals.costPerPersonInr)} sub={`vs budget ${formatInr(trip.budgetPerPersonInr)} per head`} />
-          <StatTile label="Total travel time" value={minutesToHM(totals.totalTravelMinutes)} sub={`≈${Math.round(totals.totalDistanceKm)} km across the route`} />
-          <StatTile label="Stops planned" value={totals.stopCount} sub={`${countHotelNights(trip)} overnight base${countHotelNights(trip) !== 1 ? 's' : ''}`} />
-        </div>
-        <div className="card" style={{ marginTop: 14, textAlign: 'center' }}>
-          <h3>Unresolved decisions</h3>
-          <p style={{ fontSize: 34, fontWeight: 800, fontFamily: 'var(--font-display)', margin: '8px 0', color: unresolvedDecisions ? 'var(--warn)' : 'var(--ok)' }}>
-            {unresolvedDecisions}
-          </p>
-          <button className="btn btn-outline btn-sm" onClick={onOpenDecisions}>Open Decisions tab</button>
-        </div>
+      <div className="card pulse-bar">
+        <span className="pulse-label">Group pulse</span>
+        <span className="pulse-item"><b>{crew.length}</b> member{crew.length !== 1 ? 's' : ''}</span>
+        <span className="pulse-dot">·</span>
+        <span className="pulse-item"><b>{unresolvedDecisions}</b> open decision{unresolvedDecisions !== 1 ? 's' : ''}</span>
+        <span className="pulse-dot">·</span>
+        <span className="pulse-item">{trip.fixedCommitments.length ? <><b>{trip.fixedCommitments.length}</b> fixed commitment{trip.fixedCommitments.length !== 1 ? 's' : ''}</> : 'No fixed commitments yet'}</span>
+        <button className="link-btn teal pulse-link" onClick={onInvite}>Invite travellers →</button>
       </div>
     </div>
   )
@@ -362,20 +466,16 @@ function DayWeatherChip({ trip, dayIndex }: { trip: Trip; dayIndex: number }) {
   )
 }
 
-function isoAddDays(iso: string, days: number): string {
-  const d = new Date(iso + 'T00:00')
-  d.setDate(d.getDate() + days)
-  return d.toISOString().slice(0, 10)
-}
-
 // ================= Timeline =================
 
-function TimelineTab({ trip, editable, applyChange, legCorrections, suggestionCache }: {
+function TimelineTab({ trip, editable, applyChange, legCorrections, suggestionCache, onOpenBoard }: {
   trip: Trip
   editable: boolean
   applyChange: (mutator: (d: Trip) => void, kind: ImpactResult['kind'], dayIndex: number) => void
   legCorrections?: Record<string, LegEstimate>
   suggestionCache: ReturnType<typeof useSuggestionCache>
+  /** M5: the doc's §6.3 "Open in Board" bridge — Board now exists. */
+  onOpenBoard?: () => void
 }) {
   const [editorState, setEditorState] = useState<
     { mode: 'add'; dayIndex: number } | { mode: 'edit'; stopId: string } | null
@@ -460,6 +560,18 @@ function TimelineTab({ trip, editable, applyChange, legCorrections, suggestionCa
     }
     return map
   }, [trip])
+  const warnDayCount = Object.keys(dayWarnings).length
+  // M4: sticky trip-total strip (doc §6.3) — same engine numbers as Overview.
+  const totals = useMemo(() => computeTotals(trip, legCorrections), [trip, legCorrections])
+
+  /** Day-jump rail: scroll a long timeline straight to a day card. */
+  function jumpToDay(dayIndex: number) {
+    const el = document.getElementById(`day-card-${dayIndex}`)
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    const isVisible = rect.top >= 0 && rect.bottom <= window.innerHeight
+    if (!isVisible) el.scrollIntoView({ behavior: scrollBehavior(), block: 'start' })
+  }
 
   /** Inline day rename — a lightweight label change, applied directly (no impact preview). */
   function handleRenameDay(dayIndex: number, title: string) {
@@ -498,13 +610,20 @@ function TimelineTab({ trip, editable, applyChange, legCorrections, suggestionCa
     toast(time ? `Day ${dayIndex + 1} now starts ${time}` : 'Ride start reset to the default')
   }
 
-  /** Insert a long-ride break halt at a specific position in the day (impact preview applies it). */
-  function handleAddBreakStop(dayIndex: number, stop: Omit<ItineraryStop, 'id' | 'orderInDay'>, position: number) {
+  /** Insert a batch of long-ride break halts, each at a user-chosen km point, ordered by
+      distance along the route so the arrival clock and map reflect true stop order. Impact
+      preview applies the whole-day change. */
+  function handleAddPlannedHalts(dayIndex: number, halts: { km: number; stop: Omit<ItineraryStop, 'id' | 'orderInDay'> }[]) {
+    if (halts.length === 0) return
     applyChange(draft => {
       const day = draft.days.find(d => d.index === dayIndex)!
-      const pos = Math.max(0, Math.min(position, day.stops.length))
-      day.stops.splice(pos, 0, { ...stop, id: 'pending_' + Math.random().toString(36).slice(2), orderInDay: pos + 1 })
-      day.stops.forEach((s, i) => { s.orderInDay = i + 1 })
+      const j = buildJourney(draft, day) // existing stop → km lookup
+      const posOf = (p: { lat: number; lng: number }) => kmFromStartForHit({ latitude: p.lat, longitude: p.lng }, j.points) ?? 0
+      const merged = [
+        ...day.stops.map(s => ({ km: posOf(s), s: structuredClone(s) })),
+        ...halts.map(h => ({ km: h.km, s: { ...h.stop, id: 'pending_' + Math.random().toString(36).slice(2), orderInDay: 0 } })),
+      ].sort((a, b) => a.km - b.km)
+      day.stops = merged.map((m, i) => ({ ...m.s, orderInDay: i + 1 }))
     }, 'add', dayIndex)
   }
 
@@ -522,9 +641,42 @@ function TimelineTab({ trip, editable, applyChange, legCorrections, suggestionCa
           <p className="muted small">Drag stops to reorder within a day — or drop them onto another day to move them there. On touch devices: press and hold a stop, then drag it. Every change shows its impact before saving.</p>
         </div>
         {editable && (
-          <button className="btn btn-primary btn-sm" onClick={() => setEditorState({ mode: 'add', dayIndex: 0 })}>+ Add stop</button>
+          <div className="row" style={{ gap: 8 }}>
+            {onOpenBoard && (
+              <button className="btn btn-outline btn-sm" onClick={onOpenBoard} title="Arrange stops across days with the route in view">Open in Board →</button>
+            )}
+            <button className="btn btn-primary btn-sm" onClick={() => setEditorState({ mode: 'add', dayIndex: 0 })}>+ Add stop</button>
+          </div>
         )}
       </div>
+
+      <div className="tl-total-strip">
+        <span className="tl-total-label">Trip total</span>
+        <span>{Math.round(totals.totalDistanceKm).toLocaleString('en-IN')} km</span>
+        <span className="tl-total-dot" aria-hidden="true">·</span>
+        <span>{minutesToHM(totals.totalTravelMinutes)} driving</span>
+        <span className="tl-total-dot" aria-hidden="true">·</span>
+        <span>{formatInr(totals.totalCostInr)} estimated</span>
+        {warnDayCount > 0 && (
+          <span className="tl-total-warn">⚠ {warnDayCount} day{warnDayCount !== 1 ? 's' : ''} need{warnDayCount === 1 ? 's' : ''} attention</span>
+        )}
+      </div>
+
+      {days.length >= 4 && (
+        <div className="day-rail" role="navigation" aria-label="Jump to day">
+          <span className="day-rail-label">Jump to day</span>
+          <div className="day-rail-chips">
+            {days.map(d => {
+              const hasWarn = (dayWarnings[d.index] ?? []).length > 0
+              return (
+                <button key={d.id} type="button" className={`day-rail-chip ${hasWarn ? 'warn' : ''}`} onClick={() => jumpToDay(d.index)}>
+                  Day {d.index + 1}{hasWarn ? ' ⚠' : ''}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {days.map(day => (
         <DaySection key={day.id} day={day} trip={trip} editable={editable} legCorrections={legCorrections} suggestionCache={suggestionCache}
@@ -538,7 +690,7 @@ function TimelineTab({ trip, editable, applyChange, legCorrections, suggestionCa
           onCopyDay={handleCopyDay}
           onAddQuickStop={handleAddQuickStop}
           onSetDayStart={handleSetDayStart}
-          onAddBreakStop={handleAddBreakStop}
+          onAddPlannedHalts={handleAddPlannedHalts}
           warnings={dayWarnings[day.index] ?? []}
           onStatus={handleStatus}
         />
@@ -615,7 +767,7 @@ function ClampedText({ children, className }: { children: React.ReactNode; class
   )
 }
 
-function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithinDay, onMoveBetweenDays, onMoveStopIn, onRenameDay, onCopyDay, onAddQuickStop, onSetDayStart, onAddBreakStop, warnings, onStatus, legCorrections, suggestionCache }: {
+function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithinDay, onMoveBetweenDays, onMoveStopIn, onRenameDay, onCopyDay, onAddQuickStop, onSetDayStart, onAddPlannedHalts, warnings, onStatus, legCorrections, suggestionCache }: {
   day: Trip['days'][number]
   trip: Trip
   editable: boolean
@@ -633,8 +785,8 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
   onAddQuickStop: (dayIndex: number, stop: Omit<ItineraryStop, 'id' | 'orderInDay'>) => void
   /** set the day's ride/drive start time (long-ride planner) */
   onSetDayStart: (dayIndex: number, time: string) => void
-  /** insert a break halt at a specific position in the day */
-  onAddBreakStop: (dayIndex: number, stop: Omit<ItineraryStop, 'id' | 'orderInDay'>, position: number) => void
+  /** insert planned break halts, each at a user-chosen km point, ordered by distance */
+  onAddPlannedHalts: (dayIndex: number, halts: { km: number; stop: Omit<ItineraryStop, 'id' | 'orderInDay'> }[]) => void
   warnings: ScheduleWarning[]
   onStatus: (stop: ItineraryStop, status: ItineraryStop['status']) => void
 }) {
@@ -771,6 +923,11 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
           </div>
           {!collapsed && <DayWeatherChip trip={trip} dayIndex={day.index} />}
         </div>
+        {sev !== 'ok' && (
+          <span className={`day-warn-pill sev-${sev}`} title={warnings.map(w => w.title).join('\n')}>
+            ⚠ {warnings[0].title.replace(/^Day \d+:\s*/, '')}{warnings.length > 1 ? ` +${warnings.length - 1}` : ''}
+          </span>
+        )}
         {ordered.filter(s => s.status !== 'rejected').length >= 2 && <DaySpark stops={ordered.filter(s => s.status !== 'rejected')} />}
         {editable && (
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -796,8 +953,20 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
         </div>
       ))}
 
+      {/* Warning state lives inside the affected day (doc §6.3) — the "Day N:"
+          prefix is redundant here, the pill + card already say which day. */}
+      {warnings.map((w, i) => (
+        <div key={i} className={`warn-item ${w.severity === 'high' ? 'sev-high' : w.severity === 'medium' ? '' : 'sev-low'}`} style={{ marginBottom: 8 }}>
+          <span className="warn-icon">{w.severity === 'high' ? '⛔' : '⚠️'}</span>
+          <div>
+            <div className="warn-title">{w.title.replace(/^Day \d+:\s*/, '')}</div>
+            {w.fix && <div className="warn-fix">{w.fix}</div>}
+          </div>
+        </div>
+      ))}
+
       <TravelPanel trip={trip} day={day} editable={editable} journey={journey} suggestionCache={suggestionCache}
-        onSetDayStart={onSetDayStart} onAddBreakStop={onAddBreakStop} />
+        onSetDayStart={onSetDayStart} onAddPlannedHalts={onAddPlannedHalts} />
 
       {ordered.length === 0 && (<>
         <EmptyState icon="🌤️" title="Nothing planned yet" body="Add your first stop for this day — or drag one here from another day."
@@ -818,7 +987,7 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
         )}
       </>)}
 
-      <div className="tl">
+      <div className={`tl${dragging !== null ? ' is-dragging' : ''}`}>
         {ordered.map((s, i) => {
           // Auto anchors (trip start/end, route-continuation waypoints) are pure
           // route endpoints, not activities. The rich travel summary (mode,
@@ -859,6 +1028,7 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
               </div>
             )
           }
+          const kind = stopKindOf(s)
           return (
             <React.Fragment key={s.id}>
               <div
@@ -866,19 +1036,19 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
                 {...(editable ? dndHandlers(i) : {})}
               >
                 <div className="tl-gutter" aria-hidden="true">
-                  <span className="tl-time tl-arr">{sim.arrivalTimes[i] ?? '--:--'}</span>
+                  <span className="tl-time tl-arr">{sim.arrivalTimes[i] ? formatHM(sim.arrivalTimes[i], timeFormat) : '--:--'}</span>
                   <span className="tl-line" />
-                  <span className="tl-time tl-dep">{sim.departures[i] ?? '--:--'}</span>
+                  <span className="tl-time tl-dep">{sim.departures[i] ? formatHM(sim.departures[i], timeFormat) : '--:--'}</span>
                 </div>
                 <div
-                  className={`stop-card status-${s.status} ${dragging === i ? 'dragging' : ''} ${over === i && dragging !== null && dragging !== i ? 'drag-over' : ''} ${foreignOver === i && dragging === null ? 'foreign-over' : ''}`}
+                  className={`stop-card kind-${kind} status-${s.status} ${dragging === i ? 'dragging' : ''} ${over === i && dragging !== null && dragging !== i ? 'drag-over' : ''} ${foreignOver === i && dragging === null ? 'foreign-over' : ''}`}
                 >
                 <div className={`stop-num cat-${s.category}`}>{i + 1}</div>
               <div className="stop-main">
                 <div className="stop-toprow">
                   <span className="stop-title">{s.title}</span>
                   <Chip tone={statusTone(s.status)}>{labelStatusText(s.status)}</Chip>
-                  <Chip tone="info">{labelCatText(s.category)}</Chip>
+                  <span className={`stop-kind-tag kind-${kind}`}>{STOP_KIND_LABELS[kind]}</span>
                   {s.priority === 'must-do' && <Chip tone="danger">Must do</Chip>}
                   {s.priority === 'optional' && <Chip tone="saffron">Optional</Chip>}
                   {s.weatherSensitive && <Chip tone="info">🌧️ weather-sensitive</Chip>}
@@ -1008,39 +1178,50 @@ function modeLabelMode(m: string): string {
  * route corridor. Replaces the old split where long rides got a completely
  * different "LongRidePanel" with its own ride-style options.
  */
-function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddBreakStop, suggestionCache }: {
+function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddPlannedHalts, suggestionCache }: {
   trip: Trip
   day: Trip['days'][number]
   editable: boolean
   journey: Journey
   onSetDayStart: (dayIndex: number, time: string) => void
-  onAddBreakStop: (dayIndex: number, stop: Omit<ItineraryStop, 'id' | 'orderInDay'>, position: number) => void
+  onAddPlannedHalts: (dayIndex: number, halts: { km: number; stop: Omit<ItineraryStop, 'id' | 'orderInDay'> }[]) => void
   suggestionCache: ReturnType<typeof useSuggestionCache>
 }) {
   const A = getAssumptions(trip)
   const timeFormat = useTimeFormat()
   const { cache: sugCache, setHaltCache } = suggestionCache
-  const [haltDraft, setHaltDraft] = useState(20)
-  const [spots, setSpots] = useState<SegmentHit[]>([])
-  const [searched, setSearched] = useState(false)
-  const [loadingSpots, setLoadingSpots] = useState(false)
 
-  // Hydrate this day's persisted halt suggestions — they survive tab switches
-  // and unrelated trip edits; only 📍 Suggest halt spots (a manual search)
-  // replaces them. First-ever search for the day starts from an empty cache.
+  // ---- Halt planner ----
+  // The plan is user-authored: WHERE along the ride (km) and HOW LONG (minutes),
+  // per halt, plus what kind of stop it is. `hit` is the best real place found
+  // near that km (empty until 🔎 is pressed); `pin` picks the real spot over a
+  // generic break stop pinned at the route km.
+  const [plan, setPlan] = useState<HaltPlanDraft[]>([])
+  const [draftKm, setDraftKm] = useState(100)
+  const [draftMin, setDraftMin] = useState(20)
+  const [draftPurpose, setDraftPurpose] = useState<HaltPurpose>('meal')
+  const [resolving, setResolving] = useState(false)
+  const [searched, setSearched] = useState(false)
+
+  // Hydrate the persisted plan + resolved spots so tab switches don't lose work.
+  // Only rehydrates while the plan is empty, so in-flight edits are never
+  // clobbered by this component's own cache write coming back around.
   useEffect(() => {
     const cached = sugCache.halts[day.index]
-    if (cached) { setSpots(cached.segments); setSearched(true) }
-    else { setSpots([]); setSearched(false) }
+    setPlan(prev => {
+      if (prev.length > 0) return prev
+      if (!cached) return []
+      return (cached.plan ?? []).map((p, i) => ({
+        id: `pl-${day.index}-${i}-${p.km}-${p.minutes}`,
+        km: p.km, minutes: p.minutes, purpose: p.purpose,
+        hit: cached.segments[i]?.hit ?? null,
+        // Opt-in: a planned halt sits on the route unless the user explicitly
+        // chooses the real place found near it.
+        pin: false,
+      }))
+    })
+    if (cached) setSearched(true)
   }, [day, sugCache])
-
-
-  const orderedActive = useMemo(
-    () => [...day.stops].filter(s => s.status !== 'rejected').sort((a, b) => a.orderInDay - b.orderInDay),
-    [day.stops],
-  )
-  // suggestions already added to the day (title match, like MapTab's existingNames)
-  const addedNames = useMemo(() => new Set(day.stops.map(s => s.title.toLowerCase())), [day.stops])
 
   // No real drive — no travelling card at all. Stay days (parked at the base
   // with no chain) and local days (visits around one place) render nothing
@@ -1056,69 +1237,115 @@ function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddBreakSt
   const fuelPrice = A.fuelPricePerL ?? FUEL_PRICE_INR_PER_L
   const fuelCost = journey.fuelLitres != null ? journey.fuelLitres * fuelPrice : journey.transportCostInr
 
-  // New halts slot in after the last existing halt (else mid-route) — always
-  // before the day's destination, so they ride the real drive.
-  const lastHaltPos = orderedActive.reduce(
-    (acc, s, i) => (!s.auto && (s.category === 'food' || s.category === 'rest' || s.category === 'transport-hub' || s.category === 'hotel')) ? i + 1 : acc, 0)
-  const insertPos = lastHaltPos > 0 ? lastHaltPos : Math.max(1, Math.floor(orderedActive.length / 2))
-  const first = journey.points[0]
-  const last = journey.points[journey.points.length - 1]
+  // Live schedule preview for the planned (not yet added) halts: each one adds
+  // its duration plus the engine's per-stop buffer to the day's end clock.
+  const planMinutes = plan.reduce((a, p) => a + p.minutes, 0)
+  const planBuffer = plan.length * A.bufferMinutesPerStop
+  const arrivalPreview = formatHM(
+    addMinutesToClock(startMin, journey.driveMinutes + journey.dwellMinutes + planMinutes + planBuffer),
+    timeFormat,
+  )
 
-  function addHalt() {
-    onAddBreakStop(day.index, {
-      title: 'Break — tea & stretch',
-      category: 'rest',
-      locationName: 'Ride break en route',
-      lat: (first.lat + last.lat) / 2,
-      lng: (first.lng + last.lng) / 2,
-      notes: `Ride break — adds ~${haltDraft} min before you carry on`,
-      visitMinutes: haltDraft, openTime: '', closeTime: '',
-      entryFeeInrPerPerson: 0, transportCostInrTotal: 0,
-      priority: 'optional', sourceUrl: '', status: 'confirmed',
-    }, insertPos)
+  /** Persist the plan (and its best spots) so it survives tab switches. */
+  function commitPlan(next: HaltPlanDraft[]) {
+    setPlan(next)
+    const sorted = [...next].sort((a, b) => a.km - b.km)
+    const segments = segmentsFromPlan(sorted, journey.distanceKm || 0, journey.driveMinutes)
+    const hits: SegmentHit[] = segments.map((seg, i) => ({ segment: seg, hit: sorted[i]?.hit ?? null, score: 0 }))
+    setHaltCache(day.index, hits, sorted.map(s => ({ km: s.km, minutes: s.minutes, purpose: s.purpose })))
   }
 
-  /** Ride-plan halt spots along the day's corridor — spaced for fatigue, anchored on towns. */
-  async function suggestSpots() {
-    setLoadingSpots(true)
+  function addPlanHalt() {
+    const total = journey.distanceKm || 0
+    const km = Math.round(Math.max(1, Math.min(draftKm || 0, total > 0 ? total : draftKm)))
+    const minutes = Math.max(5, Math.min(draftMin || 20, 480))
+    if (!Number.isFinite(km) || km <= 0) { toast('Enter a km point along this ride first.', 'err'); return }
+    commitPlan([...plan, { id: `pl-${Date.now()}-${plan.length}`, km, minutes, purpose: draftPurpose, hit: null, pin: false }])
+    setSearched(false)
+  }
+
+  function removePlanHalt(id: string) {
+    commitPlan(plan.filter(p => p.id !== id))
+  }
+
+  function togglePin(id: string) {
+    commitPlan(plan.map(p => (p.id === id ? { ...p, pin: !p.pin } : p)))
+  }
+
+  /**
+   * Find a real spot near each planned km point (restaurant / fuel / hotel,
+   * matched to the halt's purpose) along the day's corridor. Runs only on this
+   * explicit action — never on derived-state churn.
+   */
+  async function resolveSpots() {
+    if (plan.length === 0) return
+    setResolving(true)
     try {
       const routePts = journey.points.map(p => ({ lat: p.lat, lng: p.lng }))
       const anchors = corridorAnchors(routePts, trip.startLocationCoords, 35000, 8)
-      const plan = await planJourneyHalts(anchors, journey.distanceKm, journey.driveMinutes, {
-        includeFuel: trip.transportMode === 'car' || trip.transportMode === 'motorcycle',
-        homeCenter: trip.startLocationCoords ?? null,
-        multiDay: false,
-      }, 35000)
-      setSpots(plan)
-      setHaltCache(day.index, plan)
+      const purposes = [...new Set(plan.map(p => p.purpose))]
+      const [hits, cities] = await Promise.all([
+        searchNearbyPoisMulti(anchors, 35000, 16, {
+          purposes,
+          includeFuel: trip.transportMode === 'car' || trip.transportMode === 'motorcycle',
+          homeCenter: trip.startLocationCoords ?? null,
+        }).catch(() => [] as PlaceHit[]),
+        searchCitiesAlong(anchors, 35000, 8).catch(() => [] as PlaceHit[]),
+      ])
+      const seen = new Set<string>()
+      const candidates: PlaceHit[] = []
+      for (const h of [...cities, ...hits]) {
+        if (!h.name) continue
+        const key = h.name.toLowerCase()
+        if (seen.has(key)) continue
+        seen.add(key)
+        candidates.push(h)
+      }
+      const sorted = [...plan].sort((a, b) => a.km - b.km)
+      const segments = segmentsFromPlan(sorted, journey.distanceKm || 0, journey.driveMinutes)
+      const assigned = annotateSegmentHits(
+        assignSegmentHits(candidates, segments, anchors, { homeCenter: trip.startLocationCoords ?? null }),
+        candidates,
+      )
+      const hitById = new Map<string, PlaceHit | null>()
+      sorted.forEach((item, i) => hitById.set(item.id, assigned[i]?.hit ?? null))
+      commitPlan(plan.map(item => ({ ...item, hit: hitById.get(item.id) ?? null })))
     } catch {
-      toast('Could not fetch halt-spot suggestions', 'err')
+      toast('Could not find spots for your halts.', 'err')
     } finally {
-      setLoadingSpots(false)
+      setResolving(false)
       setSearched(true)
     }
   }
 
-  function addSpot(sh: SegmentHit, minutes: number) {
-    const h = sh.hit
-    if (!h) return
-    const purpose = sh.segment.purpose
-    const cat: ItineraryStop['category'] =
-      purpose === 'meal' ? 'food' : purpose === 'fuel' ? 'transport-hub' : purpose === 'overnight' ? 'hotel' : 'rest'
-    onAddBreakStop(day.index, {
-      title: h.name,
-      category: cat,
-      locationName: h.description ?? h.name,
-      lat: h.latitude, lng: h.longitude,
-      description: h.description ?? '',
-      notes: `Ride break — ${sh.segment.label.toLowerCase()} at ~${h.cumKm ?? sh.segment.targetKm.toFixed(0)} km (+${minutes} min)`,
-      visitMinutes: minutes, openTime: '', closeTime: '',
-      entryFeeInrPerPerson: 0, transportCostInrTotal: 0,
-      priority: 'nice-to-have', sourceUrl: '', status: 'confirmed',
-    }, insertPos)
-    // Keep the remaining suggestions visible — the added row flips to "✓ Added"
-    // via addedNames, and insertPos is recomputed from the live day on the next
-    // add. Only 📍 Suggest / ↻ Refresh re-runs the search.
+  /** Turn the planned halts into real day stops (pinned spot, else generic at the route km). */
+  function addHaltsToDay() {
+    if (plan.length === 0) return
+    const genericTitle = (purpose: HaltPurpose) =>
+      purpose === 'meal' ? 'Meal break' : purpose === 'fuel' ? 'Fuel stop' : purpose === 'overnight' ? 'Overnight stay' : 'Break — tea & stretch'
+    const halts = plan.map(item => {
+      const useSpot = item.pin && item.hit
+      const pt = useSpot
+        ? { lat: item.hit!.latitude, lng: item.hit!.longitude }
+        : (pointAtKm(journey.points, item.km) ?? journey.points[0])
+      const cat: ItineraryStop['category'] =
+        item.purpose === 'meal' ? 'food' : item.purpose === 'fuel' ? 'transport-hub' : item.purpose === 'overnight' ? 'hotel' : 'rest'
+      return {
+        km: item.km,
+        stop: {
+          title: useSpot ? item.hit!.name : genericTitle(item.purpose),
+          category: cat,
+          locationName: useSpot ? (item.hit!.description || item.hit!.name) : 'Ride break en route',
+          lat: pt.lat, lng: pt.lng,
+          description: useSpot ? item.hit!.description ?? '' : '',
+          notes: `Halt at ~${Math.round(item.km)} km (+${item.minutes} min)${useSpot ? ` · ${item.hit!.name}` : ''}`,
+          visitMinutes: item.minutes, openTime: '', closeTime: '',
+          entryFeeInrPerPerson: 0, transportCostInrTotal: 0,
+          priority: 'nice-to-have', sourceUrl: '', status: 'confirmed',
+        } as Omit<ItineraryStop, 'id' | 'orderInDay'>,
+      }
+    })
+    onAddPlannedHalts(day.index, halts)
   }
 
   const title = isReturn
@@ -1189,112 +1416,110 @@ function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddBreakSt
       )}
 
       {editable && (
-        <div className="travel-panel-add">
-          <input
-            type="number" min={5} max={180} step={5} value={haltDraft}
-            onChange={e => setHaltDraft(Math.max(5, Math.min(180, Number(e.target.value) || 20)))}
-            title="Halt length (minutes)" aria-label="Halt length in minutes" style={{ width: 64 }}
-          /> min
-          <button className="btn btn-outline btn-sm" onClick={addHalt}>+ Add a halt</button>
-          <span className="small muted">Adds {minutesToHM(haltDraft)} → arrival moves to {formatHM(addMinutesToClock(startMin, journey.driveMinutes + journey.dwellMinutes + haltDraft + A.bufferMinutesPerStop), timeFormat)}</span>
-        </div>
-      )}
+        <div className="travel-panel-add halt-planner" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
+          <div className="small muted">🛑 Halt planner — you pick where along the ride and for how long. Halts sit on the route itself; tick a found spot to detour there instead.</div>
+          <div className="halt-planner-inputs">
+            <label className="hp-field">
+              <span className="tps-label">after</span>
+              <input
+                type="number" min={1} step={10} value={draftKm}
+                onChange={e => setDraftKm(Math.max(1, Number(e.target.value) || 0))}
+                aria-label="Halt after how many km" style={{ width: 78 }}
+              />
+              <span className="tps-label">km</span>
+            </label>
+            <label className="hp-field">
+              <span className="tps-label">for</span>
+              <input
+                type="number" min={5} max={480} step={5} value={draftMin}
+                onChange={e => setDraftMin(Math.max(5, Math.min(480, Number(e.target.value) || 20)))}
+                aria-label="Halt duration in minutes" style={{ width: 64 }}
+              />
+              <span className="tps-label">min</span>
+            </label>
+            <select className="input" value={draftPurpose} onChange={e => setDraftPurpose(e.target.value as HaltPurpose)} aria-label="Halt type">
+              <option value="meal">🍽 Meal</option>
+              <option value="stretch">☕ Stretch / rest</option>
+              <option value="fuel">⛽ Fuel</option>
+              <option value="overnight">🏨 Overnight</option>
+            </select>
+            <button className="btn btn-outline btn-sm" onClick={addPlanHalt}>+ Add halt</button>
+          </div>
 
-      {editable && (
-        <div className="travel-panel-add" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
-          {!spots.length && (
-            <div>
-              <button className="btn btn-outline btn-sm" disabled={loadingSpots} onClick={suggestSpots}>
-                {loadingSpots ? 'Searching the route…' : '📍 Suggest halt spots along the route'}
-              </button>
-              {searched && <span className="small muted" style={{ marginLeft: 8 }}>No good halt spots found along this stretch — add one manually above.</span>}
-            </div>
+          {plan.length > 0 && (
+            <>
+              <div className="halt-plan-list">
+                {plan.map(item => (
+                  <HaltPlanRow key={item.id} item={item}
+                    onRemove={() => removePlanHalt(item.id)}
+                    onTogglePin={() => togglePin(item.id)} />
+                ))}
+              </div>
+              <div className="row-between" style={{ gap: 8, flexWrap: 'wrap' }}>
+                <span className="small muted">
+                  {plan.length} halt{plan.length !== 1 ? 's' : ''} · +{minutesToHM(planMinutes)} → arrival ≈ <b>{arrivalPreview}</b>
+                </span>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button className="btn btn-outline btn-sm" onClick={resolveSpots} disabled={resolving}>
+                    {resolving ? 'Searching the route…' : plan.some(p => p.hit) ? '↻ Re-find real spots' : '🔎 Find real spots'}
+                  </button>
+                  <button className="btn btn-primary btn-sm" onClick={addHaltsToDay}>➕ Add {plan.length} to the day</button>
+                </div>
+              </div>
+              {searched && !plan.some(p => p.hit) && (
+                <span className="small muted">
+                  No good spots found near your km points — the halts will be added as generic breaks on the route itself.
+                </span>
+              )}
+            </>
           )}
-          {spots.length > 0 && (
-            <div className="row-between" style={{ gap: 8 }}>
-              <span className="small muted">{loadingSpots ? 'searching…' : `${spots.filter(s => s.hit).length} halt spots — spaced for fatigue & anchored on towns`}</span>
-              <button className="btn btn-outline btn-sm suggestion-refresh-btn" title="Refresh suggestions"
-                onClick={suggestSpots} disabled={loadingSpots}>↻ Refresh</button>
-            </div>
-          )}
-          {spots.map(sh => (
-            <RideSpotRow
-              key={`${sh.segment.index}-${sh.hit?.name ?? 'gap'}`}
-              segHit={sh}
-              added={sh.hit != null && addedNames.has(sh.hit.name.toLowerCase())}
-              onAdd={mins => addSpot(sh, mins)}
-            />
-          ))}
         </div>
       )}
     </div>
   )
 }
 
-/** Default halt length per ride-plan purpose (stretch 20, rest 20, meal 45, fuel 10, overnight 0). */
-function purposeMinutes(purpose: string): number {
-  switch (purpose) {
-    case 'meal': return 45
-    case 'fuel': return 10
-    case 'overnight': return 0
-    case 'stretch': return 20
-    default: return 20
-  }
+/** One user-planned halt in the halt planner: km point + duration + purpose,
+ *  plus the best real spot found near that km and whether to pin to it. */
+interface HaltPlanDraft extends HaltPlanItem {
+  id: string
+  hit: PlaceHit | null
+  pin: boolean
 }
 
-/** One fatigue-plan segment with its best real stop (or a gap note when none fit). */
-function RideSpotRow({ segHit, onAdd, added }: {
-  segHit: SegmentHit
-  onAdd: (minutes: number) => void
-  /** this hit is already a stop on the day */
-  added?: boolean
+const HALT_PURPOSE_TAG: Record<HaltPurpose, string> = {
+  meal: '🍽 Meal', stretch: '☕ Break', fuel: '⛽ Fuel', overnight: '🏨 Overnight', rest: '☕ Break', sight: '👀 Stop',
+}
+
+/** One planned halt: where along the ride, how long, and the real spot found near it (pinnable). */
+function HaltPlanRow({ item, onRemove, onTogglePin }: {
+  item: HaltPlanDraft
+  onRemove: () => void
+  onTogglePin: () => void
 }) {
-  const h = segHit.hit
-  const seg = segHit.segment
-  const [mins, setMins] = useState(purposeMinutes(seg.purpose))
-
-  if (!h) {
-    return (
-      <div className="ride-spot ride-spot-gap">
-        <div className="ride-spot-main">
-          <span className="ride-purpose ride-purpose-muted">{seg.label}</span>
-          <span className="muted small">no good {seg.purpose} spot within ~{seg.targetKm.toFixed(0)} km — add one manually above</span>
-        </div>
-      </div>
-    )
-  }
-
-  const isOvernight = seg.purpose === 'overnight'
+  const h = item.hit
+  const usingSpot = item.pin && h
   return (
-    <div className="ride-spot">
+    <div className="ride-spot halt-plan-row">
       <div className="ride-spot-main">
         <div className="ride-spot-title">
-          <span className={`ride-purpose ride-purpose-${seg.purpose}`}>{seg.label}</span>
-          <b>{h.name}</b>
+          <span className={`ride-purpose ride-purpose-${item.purpose}`}>{HALT_PURPOSE_TAG[item.purpose]}</span>
+          <b>{usingSpot ? h!.name : 'On the route'}</b>
         </div>
         <span className="muted small">
-          ~{h.cumKm ?? seg.targetKm.toFixed(0)} km into the journey · ≈{seg.kmFromPrev.toFixed(0)} km / {minutesToHM(seg.minutesFromPrev)} since the last stop
-          {h.offRouteKm != null ? ` · ~${Math.round(h.offRouteKm)} km off route` : ''}
-          {h.nearestCity ? ` · near ${h.nearestCity}` : ''}
+          after ~{Math.round(item.km)} km · {item.minutes} min halt
+          {usingSpot && h!.offRouteKm != null ? ` · ~${Math.round(h!.offRouteKm)} km off route` : ''}
         </span>
-        <div className="muted small">
-          {h.category ? `${labelCatText(h.category)} · ` : ''}{h.description ?? ''}
-        </div>
+        {h && (
+          <label className="hp-pin muted small">
+            <input type="checkbox" checked={item.pin} onChange={onTogglePin} aria-label={`Detour to ${h.name} instead of halting on the route`} />
+            <span>detour to {h.name}{h.nearestCity ? ` (near ${h.nearestCity})` : ''} instead of the route point</span>
+          </label>
+        )}
       </div>
       <div className="ride-spot-actions">
-        {isOvernight ? (
-          added ? <button className="btn btn-outline btn-sm" disabled>✓ Added</button>
-            : <button className="btn btn-primary btn-sm" onClick={() => onAdd(0)}>＋ Add overnight stay</button>
-        ) : (
-          <>
-            <select className="input ride-spot-mins" value={mins} onChange={e => setMins(Number(e.target.value))} aria-label="Halt duration" disabled={added}>
-              {[15, 20, 30, 40, 45, 60].map(v => <option key={v} value={v}>{v} min</option>)}
-            </select>
-            {added
-              ? <button className="btn btn-outline btn-sm" disabled title="Already on this day">✓ Added</button>
-              : <button className="btn btn-primary btn-sm" onClick={() => onAdd(mins)}>＋ Add halt</button>}
-          </>
-        )}
+        <button className="btn btn-ghost btn-sm" onClick={onRemove} title="Remove this planned halt"
+          aria-label={`Remove the halt planned at ${Math.round(item.km)} km`}>✕</button>
       </div>
     </div>
   )
@@ -1302,6 +1527,9 @@ function RideSpotRow({ segHit, onAdd, added }: {
 
 /** Tiny inline SVG of the day's route shape — no map mount, pure geometry. */
 function DaySpark({ stops }: { stops: ItineraryStop[] }) {
+  // A day with no stops has no shape — bail out before Math.min() on an empty
+  // spread turns into ±Infinity and the polyline renders `NaN` coordinates.
+  if (stops.length === 0) return null
   const lats = stops.map(s => s.lat)
   const lngs = stops.map(s => s.lng)
   const minLat = Math.min(...lats), maxLat = Math.max(...lats)
@@ -1595,6 +1823,54 @@ function MapTab({ trip, editable, applyChange, suggestionCache }: {
 
   const dayOptions = trip.days.map(d => ({ index: d.index }))
 
+  // Split corridor suggestions into two curated columns: need-based halts
+  // (fuel/food/rest/stretch/overnight/stay) on the LEFT in teal-amber, and
+  // see-&-do / sightseeing + detours on the RIGHT in scenic purple — so the
+  // map tab needs no scrolling to reach either kind (§6.10 CTI tone coding).
+  const NEED_PURPOSES = new Set(['fuel', 'meal', 'food', 'rest', 'stretch', 'overnight', 'stay'])
+  const needs = pois.filter(sh => sh.segment && NEED_PURPOSES.has(sh.segment.purpose))
+  const seeAndDo = pois.filter(sh => sh.segment && !NEED_PURPOSES.has(sh.segment.purpose))
+
+  /** One corridor-suggestion row (gap or hit). Shared by both split columns. */
+  function renderPoi(sh: SegmentHit) {
+    const hit = sh.hit
+    if (!hit) {
+      return (
+        <div key={`gap-${sh.segment.index}`} className="poi-plan-row poi-plan-gap">
+          <span className={`ride-purpose ride-purpose-${sh.segment.purpose} ride-purpose-muted`}>{sh.segment.label}</span>
+          <span className="muted small">no good match around ~{sh.segment.targetKm.toFixed(0)} km — add a stop on the Timeline and it will pin itself here.</span>
+        </div>
+      )
+    }
+    const added = addedIds.has(hit.id as string) || existingNames.has(hit.name.toLowerCase())
+    const offRoute = detourKm(hit, anchors)
+    return (
+      <div key={hit.id} className="poi-plan-row">
+        <div className="ride-spot-title">
+          <span className={`ride-purpose ride-purpose-${sh.segment.purpose}`}>{sh.segment.label}</span>
+          {hit.thumb && <img className="poi-thumb" src={smallThumb(hit.thumb)} alt="" loading="lazy" />}
+          <b>{hit.name}</b>
+        </div>
+        <div className="poi-desc small muted">
+          ~{hit.cumKm ?? sh.segment.targetKm.toFixed(0)} km into the trip · ≈{sh.segment.kmFromPrev.toFixed(0)} km / {minutesToHM(sh.segment.minutesFromPrev)} since the last stop
+          {hit.nearestCity ? ` · near ${hit.nearestCity}` : ''}
+          {' · '}{offRoute == null ? 'on route' : `~${Math.round(offRoute * 10) / 10} km off route`}
+        </div>
+        {hit.description && <div className="poi-desc small muted">{hit.description}</div>}
+        {(hit.openTime || hit.closeTime) && (
+          <div className="poi-desc small muted">🕘 {formatHMRange(hit.openTime, hit.closeTime, timeFormat)} (reported)</div>
+        )}
+        <div>
+          {editable && (
+            added
+              ? <span className="chip chip-teal">✓ Added</span>
+              : <button className="btn btn-primary btn-sm" onClick={() => openAddModal(hit)}>+ Add</button>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div>
       <TripMap trip={trip} nearbyPois={pois.flatMap(p => p.hit ? [p.hit] : [])} onAddNearby={editable ? (hit) => openAddModal(hit) : undefined} />
@@ -1635,45 +1911,35 @@ function MapTab({ trip, editable, applyChange, suggestionCache }: {
         {!loadingPois && pois.length === 0 && (
           <p className="muted small">Not enough driving distance yet for a fatigue plan — add a longer route (90+ km) in the Timeline and segmented stop suggestions will appear here.</p>
         )}
-        <div className="poi-plan-list">
-          {pois.map(sh => {
-            const hit = sh.hit
-            if (!hit) {
-              return (
-                <div key={`gap-${sh.segment.index}`} className="poi-plan-row poi-plan-gap">
-                  <span className={`ride-purpose ride-purpose-${sh.segment.purpose} ride-purpose-muted`}>{sh.segment.label}</span>
-                  <span className="muted small">no good match around ~{sh.segment.targetKm.toFixed(0)} km — add a stop on the Timeline and it will pin itself here.</span>
-                </div>
-              )
-            }
-            const added = addedIds.has(hit.id as string) || existingNames.has(hit.name.toLowerCase())
-            const offRoute = detourKm(hit, anchors)
-            return (
-              <div key={hit.id} className="poi-plan-row">
-                <div className="ride-spot-title">
-                  <span className={`ride-purpose ride-purpose-${sh.segment.purpose}`}>{sh.segment.label}</span>
-                  {hit.thumb && <img className="poi-thumb" src={smallThumb(hit.thumb)} alt="" loading="lazy" />}
-                  <b>{hit.name}</b>
-                </div>
-                <div className="poi-desc small muted">
-                  ~{hit.cumKm ?? sh.segment.targetKm.toFixed(0)} km into the trip · ≈{sh.segment.kmFromPrev.toFixed(0)} km / {minutesToHM(sh.segment.minutesFromPrev)} since the last stop
-                  {hit.nearestCity ? ` · near ${hit.nearestCity}` : ''}
-                  {' · '}{offRoute == null ? 'on route' : `~${Math.round(offRoute * 10) / 10} km off route`}
-                </div>
-                {hit.description && <div className="poi-desc small muted">{hit.description}</div>}
-                {(hit.openTime || hit.closeTime) && (
-                  <div className="poi-desc small muted">🕘 {formatHMRange(hit.openTime, hit.closeTime, timeFormat)} (reported)</div>
-                )}
-                <div>
-                  {editable && (
-                    added
-                      ? <span className="chip chip-teal">✓ Added</span>
-                      : <button className="btn btn-primary btn-sm" onClick={() => openAddModal(hit)}>+ Add</button>
-                  )}
-                </div>
+        <div className="poi-split">
+          <div className="poi-col poi-col--needs">
+            <div className="poi-col-head">
+              <span className="poi-col-head-ico">⛽</span>
+              <div>
+                <b>Need-based halts</b>
+                <span className="small muted">fuel · food · rest · stretch · overnight</span>
               </div>
-            )
-          })}
+            </div>
+            <div className="poi-plan-list">
+              {needs.length === 0
+                ? <p className="muted small">No need-based halts surfaced yet — they appear as you add driving days.</p>
+                : needs.map(renderPoi)}
+            </div>
+          </div>
+          <div className="poi-col poi-col--see">
+            <div className="poi-col-head">
+              <span className="poi-col-head-ico">📍</span>
+              <div>
+                <b>See &amp; do</b>
+                <span className="small muted">sightseeing · detours · scenic stops</span>
+              </div>
+            </div>
+            <div className="poi-plan-list">
+              {seeAndDo.length === 0
+                ? <p className="muted small">Sightseeing &amp; detour stops will appear here along the corridor.</p>
+                : seeAndDo.map(renderPoi)}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1758,7 +2024,10 @@ function SuggestionsTab({ trip, editable, me }: {
               <div>
                 <div className="row-between">
                   <h3>{sg.title}</h3>
-                  <Chip tone={sg.status === 'accepted' ? 'ok' : sg.status === 'declined' ? 'danger' : 'teal'}>{sg.status}</Chip>
+                  <span style={{ display: 'inline-flex', gap: 6 }}>
+                    {sg.status === 'open' && consensusPct >= 60 && <Chip tone="teal">Best fit</Chip>}
+                    <Chip tone={sg.status === 'accepted' ? 'ok' : sg.status === 'declined' ? 'danger' : 'teal'}>{sg.status}</Chip>
+                  </span>
                 </div>
                 <div className="creator-line" style={{ margin: '5px 0' }}>
                   <Avatar user={author} /> {author?.profile.name ?? 'Traveller'} suggested for Day {sg.dayIndex + 1}
@@ -1957,21 +2226,29 @@ function BudgetTab({ trip, totals, editable }: { trip: Trip; totals: ReturnType<
             </details>
           )}
         </div>
+        <div className="budget-reassure">
+          <b>✦ Keep estimates honest</b>
+          <span>When you move a stop or pick a different stay, YatraFlow previews the new total before you save.</span>
+        </div>
       </div>
 
       <div>
-        <div className="stat-grid" style={{ gridTemplateColumns: '1fr' }}>
-          <StatTile label="Total estimated" value={formatInr(totals.totalCostInr)} />
-          <StatTile label="Per person" value={formatInr(totals.costPerPersonInr)} sub={`Budget: ${formatInr(trip.budgetPerPersonInr)}/head`} />
-          <StatTile label="Per day" value={formatInr(totals.costPerDayInr)} />
-          <div className="stat-tile">
-            <div className="stat-label">Budget usage</div>
-            <div className="stat-value">{pctUsed}%</div>
-            <div className="budget-bar-track" style={{ marginTop: 8 }}>
-              <div className="budget-bar-fill" style={{ width: `${Math.min(100, pctUsed)}%`, background: pctUsed > 100 ? 'var(--danger)' : pctUsed > 85 ? 'var(--saffron)' : 'var(--teal)' }} />
-            </div>
-            {pctUsed > 100 && <div className="stat-sub" style={{ color: 'var(--danger)' }}>Over group budget — trim optional lines.</div>}
+        <div className="budget-hero">
+          <span className="budget-hero-label">Total trip estimate</span>
+          <div className="budget-hero-num">{formatInr(totals.totalCostInr)}</div>
+          <div className="budget-hero-sub">
+            {formatInr(totals.costPerPersonInr)} per person · target {formatInr(trip.budgetPerPersonInr)}/head · {formatInr(totals.costPerDayInr)}/day
           </div>
+          <div className="budget-bar-track" style={{ marginTop: 10 }}>
+            <div className="budget-bar-fill" style={{ width: `${Math.min(100, pctUsed)}%`, background: pctUsed > 100 ? 'var(--danger)' : pctUsed > 85 ? 'var(--saffron)' : 'var(--teal)' }} />
+          </div>
+          <div className="budget-hero-pct">
+            {pctUsed}% of group budget{pctUsed > 100 ? ' — over budget; trim optional lines' : pctUsed > 85 ? ' — getting close' : ''}
+          </div>
+        </div>
+        <div className="stat-grid" style={{ gridTemplateColumns: '1fr' }}>
+          <StatTile label="Per day" value={formatInr(totals.costPerDayInr)} />
+          <StatTile label="Optional spending" value={formatInr(totals.optionalInr)} sub={`${formatInr(totals.essentialInr)} essential`} />
         </div>
 
         <div className="card" style={{ marginTop: 14 }}>
@@ -2000,6 +2277,17 @@ function DecisionsTab({ trip, me, editable }: { trip: Trip; me: { id: string }; 
   const decisions = db.decisions.filter(d => d.tripId === trip.id).sort((a, b) => b.createdAt - a.createdAt)
   const [q, setQ] = useState('')
   const [opts, setOpts] = useState('')
+  const [filter, setFilter] = useState<'all' | 'open' | 'mine' | 'resolved'>('all')
+
+  // §6.8 hierarchy: open / needs-me / resolved counts + "next to unblock" focus
+  const openDecisions = decisions.filter(d => d.status === 'open')
+  const needsMe = openDecisions.filter(d => !d.votesByUserId[me.id])
+  const resolvedCount = decisions.length - openDecisions.length
+  const unblock = needsMe[0]
+  const shown = filter === 'open' ? openDecisions
+    : filter === 'mine' ? needsMe
+    : filter === 'resolved' ? decisions.filter(d => d.status === 'resolved')
+    : decisions
 
   function create(e: React.FormEvent) {
     e.preventDefault()
@@ -2017,14 +2305,38 @@ function DecisionsTab({ trip, me, editable }: { trip: Trip; me: { id: string }; 
   return (
     <div className="two-col">
       <div>
+        <div className="dec-strip">
+          <div className="stat-tile">
+            <div className="stat-label">Open decisions</div>
+            <div className="stat-value">{openDecisions.length}</div>
+          </div>
+          <div className="stat-tile">
+            <div className="stat-label">Need your vote</div>
+            <div className="stat-value">{needsMe.length}</div>
+          </div>
+          <div className="stat-tile">
+            <div className="stat-label">Resolved</div>
+            <div className="stat-value">{resolvedCount}</div>
+          </div>
+        </div>
+        <div className="filter-pillbar" style={{ marginBottom: 14 }} role="group" aria-label="Filter decisions">
+          {([['all', 'All'], ['open', 'Open'], ['mine', 'Needs me'], ['resolved', 'Resolved']] as const).map(([k, label]) => (
+            <button key={k} type="button" className={`clickable-chip chip${filter === k ? ' on-teal' : ''}`}
+              onClick={() => setFilter(k)} aria-pressed={filter === k}>{label}</button>
+          ))}
+        </div>
         {decisions.length === 0 && (
           <EmptyState icon="⚖️" title="No decisions tracked"
             body='Raise questions like "houseboat menu — veg or mixed?" so nothing gets lost in a chaotic group chat.' />
         )}
-        {decisions.map(d => {
+        {decisions.length > 0 && shown.length === 0 && (
+          <p className="muted small" style={{ margin: '4px 0 14px' }}>Nothing under this filter right now.</p>
+        )}
+        {shown.map(d => {
           const tally = d.options.map(o => Object.values(d.votesByUserId).filter(v => v === o.id).length)
           return (
-            <div key={d.id} className="card" style={{ marginBottom: 14 }}>
+            <div key={d.id} className={`card${d.id === unblock?.id ? ' decision-unblock' : ''}`} style={{ marginBottom: 14 }}>
+              {d.id === unblock?.id && <div className="unblock-label">⚡ Next to unblock</div>}
               <div className="row-between">
                 <h3>{d.question}</h3>
                 <Chip tone={d.status === 'open' ? 'saffron' : 'ok'}>{d.status}</Chip>
@@ -2119,6 +2431,7 @@ function SnapshotCard({ trip, me, onNavigate }: {
 
   return (
     <div className="card">
+      <span className="share-intent share-intent--info">3 · Keep a record</span>
       <h3>Export & snapshot sharing</h3>
       <p className="hint-text" style={{ margin: '6px 0 12px' }}>
         Take the whole plan anywhere — no server stores it. Snapshot links embed the trip in the URL itself.
@@ -2167,6 +2480,7 @@ function ShareTab({ trip, me, editable, onNavigate }: {
     <div className="two-col">
       <div>
         <div className="card">
+          <span className="share-intent share-intent--teal">1 · Plan together</span>
           <h3>Invite collaborators</h3>
           <p className="hint-text" style={{ margin: '6px 0 12px' }}>Anyone with this link joins as an editor after logging in.</p>
           <div className="share-link-box"><code>{inviteLink}</code><CopyButton text={inviteLink} /></div>
@@ -2197,15 +2511,17 @@ function ShareTab({ trip, me, editable, onNavigate }: {
         </div>
 
         <div className="card">
+          <span className="share-intent share-intent--saffron">2 · Share publicly</span>
           <h3>Publish as public itinerary</h3>
           <p className="hint-text" style={{ margin: '6px 0 12px' }}>
-            Creators can list this trip on Explore. Day 1 is the free preview; later days sit behind a premium placeholder (no real payments in this MVP).
+            List this trip on Explore so anyone can discover and fork it. Day 1 is the free preview; later days sit behind a premium placeholder (no real payments in this MVP).
           </p>
           {!pub ? (
             <button className="btn btn-saffron" disabled={!isOwner}
               onClick={() => {
                 publishItinerary({
                   tripId: trip.id, creatorId: me.id, title: trip.name,
+                  coverImageUrl: trip.coverImageUrl,
                   tagline: `${trip.days.length}-day ${trip.travelStyle} trip through ${trip.destinations.join(', ')}.`,
                   routeSummary: [trip.startLocation, ...trip.destinations],
                   durationDays: trip.days.length,
@@ -2219,9 +2535,32 @@ function ShareTab({ trip, me, editable, onNavigate }: {
                 toast('Published to Explore 🎉')
               }}>Publish to Explore</button>
           ) : (
-            <div className="row-between">
-              <span className="small muted">Live on Explore · {pub.views} views · {pub.copies} copies</span>
-              <button className="btn btn-outline btn-sm" onClick={() => onNavigate(`pub:${pub.id}`)}>View public page</button>
+            <div>
+              <div className="row-between">
+                <span className="small muted">Live on Explore · {pub.views} views · {pub.copies} forks</span>
+                <button className="btn btn-outline btn-sm" onClick={() => onNavigate(`pub:${pub.id}`)}>View public page</button>
+              </div>
+              <div className="row" style={{ gap: 8, marginTop: 10 }}>
+                <button className="btn btn-outline btn-sm"
+                  onClick={() => {
+                    publishItinerary({
+                      tripId: trip.id, creatorId: me.id, title: trip.name,
+                      coverImageUrl: trip.coverImageUrl,
+                      tagline: `${trip.days.length}-day ${trip.travelStyle} trip through ${trip.destinations.join(', ')}.`,
+                      routeSummary: [trip.startLocation, ...trip.destinations],
+                      durationDays: trip.days.length,
+                      estimatedBudgetPerPersonInr: trip.budgetPerPersonInr,
+                      travelStyle: trip.travelStyle,
+                      travelTips: ['Start ghat-section drives early.', 'Carry cash in hill towns.'],
+                      warningsAndAssumptions: ['All costs are estimates based on typical prices — verify locally before booking.'],
+                      freeDayIndexes: [0], premiumPriceInr: 199,
+                      subscriberCta: 'Full checklist + stay contacts.',
+                    })
+                    toast('Publication updated ✨')
+                  }}>Update</button>
+                <button className="btn btn-ghost btn-sm"
+                  onClick={() => { unpublishItinerary(trip.id); toast('Unpublished — removed from Explore') }}>Unpublish</button>
+              </div>
             </div>
           )}
           {!isOwner && <p className="hint-text" style={{ marginTop: 8 }}>Only the trip owner can publish.</p>}
@@ -2295,6 +2634,12 @@ function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boolean })
 
   return (
     <div>
+      <Field label="Cover image">
+        <CoverImagePicker trip={trip} editable={editable} />
+        <p className="hint-text" style={{ marginTop: 6 }}>
+          Pick a popular photo of your destination, paste your own image URL, or leave it to the emoji.
+        </p>
+      </Field>
       <Field label="Trip name"><input className="input" disabled={!editable} value={f.name} onChange={e => setF(x => ({ ...x, name: e.target.value }))} /></Field>
       <div className="form-row">
         <Field label="Starting location">

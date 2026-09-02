@@ -4,12 +4,12 @@
 // detour-scope slider, 📍 Suggest) re-run the expensive corridor searches.
 
 import { useCallback, useState } from 'react'
-import type { SegmentHit } from '../lib/ridePlan'
+import type { SegmentHit, HaltPlanItem } from '../lib/ridePlan'
 
 export interface SuggestionCache {
   map: { segments: SegmentHit[]; anchorsHash: string; scopeKm: number; ts: number } | null
-  /** per-day ride-plan halt suggestions (Timeline "Suggest halt spots") */
-  halts: Record<number, { segments: SegmentHit[]; ts: number }>
+  /** per-day manual halt planner: the user's {km, minutes, purpose} list + best real spots */
+  halts: Record<number, { segments: SegmentHit[]; plan: HaltPlanItem[]; ts: number }>
 }
 
 const CACHE_TTL_MS = 1000 * 60 * 60 * 4 // 4 hours
@@ -56,11 +56,11 @@ export function useSuggestionCache(tripId: string) {
     })
   }, [tripId])
 
-  const setHaltCache = useCallback((dayIndex: number, segments: SegmentHit[]) => {
+  const setHaltCache = useCallback((dayIndex: number, segments: SegmentHit[], plan: HaltPlanItem[]) => {
     setCache(prev => {
       const next: SuggestionCache = {
         ...prev,
-        halts: { ...prev.halts, [dayIndex]: { segments, ts: Date.now() } },
+        halts: { ...prev.halts, [dayIndex]: { segments, plan, ts: Date.now() } },
       }
       save(tripId, next)
       return next

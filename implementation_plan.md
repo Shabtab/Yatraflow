@@ -88,13 +88,17 @@ None — function modules + React function components, unchanged.
 
 **Workstream B — redesign (branch off step 5)**
 7. M0: save this plan doc; branch `redesign/calm-travel-intelligence`.
-8. M1 tokens: `--yf-*` palette + atmospheric gradient + surface/shadow tokens (light+dark), `DESIGN_TOKENS.md` sync.
-9. M2: Landing hero + glass topnav.
-10. M3: Overview Bento briefing.
-11. M4: Timeline polish.
-12. M5: Board view (z-index + DnD audit).
-13. M6: Map / Suggestions / Budget / Decisions / Share hierarchy pass.
-14. M7: Explore + Public Itinerary editorial treatment.
+8. ✅ M1 tokens: `--yf-*` palette + atmospheric gradient + surface/shadow tokens (light+dark), `DESIGN_TOKENS.md` sync. → `d7b86d5`
+9. ✅ M2: Landing hero + glass topnav. → `d9db55b`; deepened structurally per mockups (split hero + dark adventure card, navy trip header band) in `7c5cef8`; nav became a floating glass pill + cream control tray in M2.1 → `d72298d`
+10. ✅ M3: Overview Bento briefing. → `aaff1b6`, structural deep-pass in `7c5cef8`
+11. ✅ M4: Timeline polish. → `0960d44` (sticky trip-total strip, day-jump rail, day cards + in-day warnings, `stopKindOf` stop-type markers)
+12. ✅ M5: Board view (z-index + DnD audit). New **Board** tab between Timeline and Map; reuses TripMap as pinned background via a new additive `focusDay` prop (day-level route focus on column select); floating near-opaque day columns; cross-day DnD on both HTML5 + touch paths; every drop → impact preview; Trip Pulse panel; long trips scroll horizontally; Timeline gains the "Open in Board →" bridge. (BoardView lazy chunk; map chunk shared with Map tab.)
+13. ✅ M6: Map / Suggestions / Budget / Decisions / Share hierarchy pass.
+13b. ✅ Post-M5 board polish + motion/glass passes (user review against the board mockup): mockup card anatomy
+    (kind-tinted faces, kicker/title/meta), mist map wash, 1680px canvas + compact band, equal glass corner panels,
+    content-fitted columns (no internal scrollbars), app-wide subtle motion system + deeper glass, DnD pulse, static nav.
+    → `c6ca8c9`/`3d28d3b`/`4c29a95`/`9c5ffcf`/`308800a`/`98976a8`/`9ac5058`
+14. ✅ M7: Explore + Public Itinerary editorial treatment (editorial heroes, style chips, featured card, paper sheet + route glance + highlights, Fork/Save).
 15. Each of 8–14: verify → commit → changelog entry. Merge to `main` + `0.24.0` cut only with user confirmation.
 
 ## Risks & guardrails

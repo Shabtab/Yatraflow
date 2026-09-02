@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { useDb, currentUser, tripsForUser, userById, deleteTrip, restoreTrip, addDemoTrips } from '../store/store'
 import { computeTotals } from '../lib/engine'
 import { Avatar, Chip, EmptyState, toast, undoToast, ConfirmDialog } from '../components/ui'
+import { CoverThumb } from '../components/CoverThumb'
 import type { Trip } from '../data/types'
 
 export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void }) {
@@ -50,13 +51,18 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
         />
       ) : (
         <div className="explore-grid">
-          {trips.map(t => {
+          {trips.map((t, i) => {
             const totals = computeTotals(t)
             const others = (t.members ?? []).filter(m => m.userId !== me?.id)
             return (
-              <div key={t.id} className="card itin-card">
+              <div key={t.id} className="card itin-card trip-enter" style={{ animationDelay: `${Math.min(i, 8) * 70}ms` }}>
                 <a className="trip-card-hit" href={`#/trip/${t.id}`}>
-                  <div className="itin-emoji">{t.coverEmoji}</div>
+                  <CoverThumb
+                    variant="short"
+                    trip={t}
+                    explicitUrl={t.coverImageUrl}
+                    emoji={t.coverEmoji}
+                  />
                   <div className="itin-body">
                     <h3>{t.name}</h3>
                     <div className="small muted">

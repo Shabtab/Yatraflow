@@ -3,11 +3,31 @@
 Living document — reviewed each session, updated as items land. Done items move
 to [CHANGELOG.md](CHANGELOG.md); this file only tracks what's ahead.
 
-**Snapshot (2026-09-01):** v0.23.0 · all tests green · realtime live (all 8
-tables) · UI-audit remediation complete (32/32, both P0s closed) · next up:
-"Calm Travel Intelligence" design refresh on the `redesign/` branch (see
-`docs/redesign/YATRAFLOW_DESIGN_DIRECTION.md`).
+**Snapshot (2026-09-03):** **v0.25.0 merged to `main`** — the full "Calm Travel
+Intelligence" redesign (M1–M7), the motion system, the user-driven halt
+planner and the post-merge fix batch are now live on production (Vercel
+auto-deploys `main`). 273 tests green (25 files). CI gates `main`, `test`
+and `redesign/**` pushes. `main..test` is the integration line; feature
+work happens on branches and merges to `test` via PR.
 
+**Going forward — phased plan (sequenced by user direction, 2026-09-03):**
+- **Phase 1 — Real AI companion (v0.26.0, ~5h):** backlog #22 → #20.
+  User-configurable OpenAI-compatible endpoint (Profile settings,
+  `src/lib/aiProvider.ts`), real LLM answers with the deterministic router
+  kept as offline fallback + "(LLM)/(offline)" badge.
+- **Phase 2 — v0.27.0 "Together" (collaboration depth):** Supabase
+  integration/RLS test suite first (opt-in `VITE_RUN_INTEGRATION`), then
+  live multi-user editing sync + split-expense settlement.
+- **Phase 3 — v0.28.0 "Premium" (monetization):** gateway integration
+  (Razorpay fits INR), order/entitlement tables + webhook, purchase state,
+  unlock flow replacing the placeholder toasts. Needs an external gateway
+  account. Deliberately after the collaboration + test-suite groundwork.
+- **Phase 4 — 1.0 enablers:** offline-first (IndexedDB + service worker/
+  PWA), i18n (EN + HI), then the 1.0 cut.
+- **P4 nice-to-haves** (explore pagination, extra undos, feedback button,
+  trash purge, debounced writes) stay as a backlog pool slotted into
+  whatever phase has slack.
+- `main` merges stay explicitly user-gated per AGENTS rule 1.
 ---
 
 ## 🔴 P0 — Compliance & licensing

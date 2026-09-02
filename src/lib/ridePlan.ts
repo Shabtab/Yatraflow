@@ -198,6 +198,45 @@ export function planRideSegments(input: RidePlanInput): RideSegment[] {
   return segments
 }
 
+/** A user-entered halt in the manual planner: stop at `km` along the route for `minutes`, serving `purpose`. */
+export interface HaltPlanItem {
+  km: number
+  minutes: number
+  purpose: HaltPurpose
+}
+
+/**
+ * Build plan segments from a user's manual halt list (positions chosen by km,
+ * not by fatigue cadence). Sorted by km, windows = midpoints to neighbours,
+ * nothing past the destination. Returns [] for a short/empty plan.
+ */
+export function segmentsFromPlan(plan: HaltPlanItem[], totalKm: number, driveMinutes = 0): RideSegment[] {
+  const sorted = plan
+    .filter(p => Number.isFinite(p.km) && p.km > 0)
+    .sort((a, b) => a.km - b.km)
+  if (sorted.length === 0 || totalKm <= 0) return []
+  return sorted.map((it, i) => {
+    const prevKm = i === 0 ? 0 : sorted[i - 1].km
+    const nextKm = i === sorted.length - 1 ? totalKm : sorted[i + 1].km
+    const minKm = i === 0 ? 0 : Math.max(0, it.km - (it.km - prevKm) * 0.5)
+    const maxKm = i === sorted.length - 1 ? it.km + (totalKm - it.km) * 0.5 : it.km + (nextKm - it.km) * 0.5
+    const kmFromPrev = Math.max(0, it.km - prevKm)
+    const minutesFromPrev = driveMinutes > 0 ? Math.round((driveMinutes * kmFromPrev) / totalKm) : 0
+    return {
+      index: i,
+      purpose: it.purpose,
+      label: PURPOSE_LABEL[it.purpose],
+      targetKm: it.km,
+      minKm,
+      maxKm,
+      kmFromPrev,
+      minutesFromPrev,
+      hint: PURPOSE_HINT[it.purpose](minutesFromPrev),
+      dayEnd: it.purpose === 'overnight' ? true : undefined,
+    }
+  })
+}
+
 /** How well a hit serves a purpose. 0 = wrong kind of place; 3 = ideal (population/city bonuses cap at 3). */
 export function fitScoreForPurpose(h: PlaceHit, purpose: HaltPurpose): number {
   const cat = h.category ?? 'sightseeing'

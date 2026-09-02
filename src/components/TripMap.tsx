@@ -2,7 +2,7 @@
 // Real slippy-map rendering via mapcn (MapLibre GL): OpenFreeMap basemaps that follow
 // light/dark theme, numbered stop markers in timeline order, and a polyline
 // connecting each day's stops. Distances/durations still come from the engine.
-import { useMemo, useState, useEffect, useRef } from 'react'
+import { useMemo, useState, useEffect, useRef, Fragment } from 'react'
 import type { Trip } from '../data/types'
 import type { PlaceHit } from '../lib/geocode'
 import { routePath } from '../lib/routing'
@@ -34,10 +34,13 @@ const DAY_COLORS = ['#149A90', '#F59E2D', '#7C5CFC', '#E2557B', '#2D9CDB', '#6BB
  */
 function RouteArrows({ coordinates, dark }: { coordinates: [number, number][]; dark: boolean }) {
   const { map, isLoaded } = useMap()
+  const instId = useRef(`inst-${Math.random().toString(36).slice(2)}`).current
   useEffect(() => {
     if (!isLoaded || !map || coordinates.length < 2) return
-    const SRC = 'yf-arrows-src'
-    const LAYER = 'yf-arrows'
+    // Per-instance source/layer ids — a single shared id made concurrent
+    // instances (main line + return drive) overwrite each other's geometry.
+    const SRC = `yf-arrows-src-${instId}`
+    const LAYER = `yf-arrows-${instId}`
     if (!map.hasImage('yf-arrow')) {
       // 9×9 solid triangle pointing up, drawn into raw RGBA pixels
       const size = 9
@@ -125,15 +128,28 @@ function catIcon(cat: string | undefined): React.ReactNode {
   )
 }
 
-export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby }: {
+export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusDay, showToolbar = true }: {
   trip: Trip
   onOpenStop?: (stopId: string) => void
   /** potential POIs to show as gold "idea" markers */
   nearbyPois?: PlaceHit[]
   /** when set, idea markers get a + button to add the POI straight from the map */
   onAddNearby?: (hit: PlaceHit) => void
+  /** external day-focus driver (Board column select): a day index shows just that
+      day's route, 'all' resets to the whole trip. Undefined = map owns its filter. */
+  focusDay?: number | 'all'
+  /** false = no in-map toolbar (day chips / Recentre / Expand). The Board hides
+      it: those controls sit at the top of the map shell, which is an absolute
+      backdrop there, so the chips peeked out from behind the Board's info card.
+      The Board provides the equivalents (column-click focus + 🎯 Fit route). */
+  showToolbar?: boolean
 }) {
   const [dayFilter, setDayFilter] = useState<number | 'all'>('all')
+  // Board drives the day filter through the prop; the map's own chips keep working
+  // independently until the next focus change (React bails on identical values).
+  useEffect(() => {
+    if (focusDay !== undefined) setDayFilter(focusDay)
+  }, [focusDay])
   const [showReturn, setShowReturn] = useState(true)
   // Map key (legend) visibility — hidden by default so it stops covering the
   // bottom-right of the map; the choice persists per browser via uiPrefs.
@@ -148,12 +164,22 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby }: {
   // overlay so the canvas gets the viewport. Transient by design: Escape or
   // the same chip (now "⤡ Collapse") reverts it; nothing is persisted.
   const [expanded, setExpanded] = useState(false)
+  // Collapse plays a short scale-down first (mapCollapse) so expand/collapse
+  // both glide; the class is transient and the timer is cleared on unmount.
+  const [closing, setClosing] = useState(false)
+  const collapseTimer = useRef<number | undefined>(undefined)
+  function collapseExpanded() {
+    if (!expanded || closing) return
+    setClosing(true)
+    collapseTimer.current = window.setTimeout(() => { setExpanded(false); setClosing(false) }, 280)
+  }
+  useEffect(() => () => window.clearTimeout(collapseTimer.current), [])
   useEffect(() => {
     if (!expanded) return
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setExpanded(false) }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') collapseExpanded() }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [expanded])
+  }, [expanded, closing])
   // Nearby-idea category filter: categories listed here are HIDDEN on the map.
   // Empty set = everything visible (the default).
   const [hiddenIdeaCats, setHiddenIdeaCats] = useState<Set<string>>(new Set())
@@ -203,6 +229,7 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby }: {
         index: d.index,
         stops: [...d.stops]
           .filter(s => s.status !== 'rejected')
+          .filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lng))
           .sort((a, b) => a.orderInDay - b.orderInDay),
       }))
       .filter(d => d.stops.length > 0)
@@ -357,7 +384,8 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby }: {
   }, [chainKey, dayFilter, returnLeg]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className={`map-shell${expanded ? ' map-shell--expanded' : ''}`}>
+    <div className={`map-shell${expanded ? ' map-shell--expanded' : ''}${closing ? ' map-shell--closing' : ''}`}>
+      {showToolbar && (
       <div className="map-toolbar">
         <div className="map-day-filter">
           <button className={`map-day-chip ${dayFilter === 'all' ? 'on' : ''}`} onClick={() => setDayFilter('all')}>All days</button>
@@ -396,7 +424,7 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby }: {
           )}
           <button
             className={`map-day-chip map-expand-chip${expanded ? ' on' : ''}`}
-            onClick={() => setExpanded(e => !e)}
+            onClick={() => (expanded ? collapseExpanded() : setExpanded(true))}
             title={expanded ? 'Shrink the map back into the page (Esc)' : 'Expand the map to fill the screen'}
             aria-label={expanded ? 'Shrink the map back into the page' : 'Expand the map to fill the screen'}
           >
@@ -404,6 +432,7 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby }: {
           </button>
         </div>
       </div>
+      )}
 
       <div className="map-frame">
         {allPoints.length === 0 ? (
@@ -444,9 +473,8 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby }: {
                   ? geom[String(d.index)]
                   : d.stops.map(s => [s.lng, s.lat] as [number, number])
                 return (
-                  <>
+                  <Fragment key={`day-${d.index}`}>
                     <MapRoute
-                      key={`casing-${d.index}`}
                       id={`yf-day-casing-${d.index}`}
                       coordinates={coords}
                       color={theme === 'dark' ? '#0B2545' : '#FFFFFF'}
@@ -455,14 +483,13 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby }: {
                       interactive={false}
                     />
                     <MapRoute
-                      key={d.index}
                       coordinates={coords}
                       color={colorForDay(d.index)}
                       width={4}
                       opacity={0.95}
                     />
-                    <RouteArrows key={`arrows-${d.index}`} coordinates={coords} dark={theme === 'dark'} />
-                  </>
+                    <RouteArrows coordinates={coords} dark={theme === 'dark'} />
+                  </Fragment>
                 )
               })
             )}

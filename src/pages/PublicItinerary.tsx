@@ -1,10 +1,16 @@
-// ============ Public itinerary page ============
-import { useEffect } from 'react'
+// ============ Public itinerary page — editorial story + practical evidence (CTI §6.11) ============
+// A shareable travel document, not the private workspace: destination-led hero,
+// creator attribution, "why this route works" story, a practical stat cluster,
+// and curated day highlights ahead of the detailed (and premium-gated) plan.
+import { useEffect, useMemo } from 'react'
 import type { Trip, PublishedItinerary } from '../data/types'
 import { useDb, currentUser, tripById, userById, duplicateTrip, registerPubCopy, registerPubView } from '../store/store'
-import { simulateDay, originOf, minutesToHM, formatInr, getAssumptions } from '../lib/engine'
+import { simulateDay, originOf, minutesToHM, formatInr, getAssumptions, computeTotals, isRoundTrip } from '../lib/engine'
 import { useTimeFormat, formatHM, formatHMRange } from '../lib/timefmt'
-import { Avatar, Chip, EmptyState, toast, CopyButton } from '../components/ui'
+import { stopKindOf, STOP_KIND_LABELS } from '../lib/stopKind'
+import { useSavedPubs } from '../lib/savedPubs'
+import { useDestinationCover } from '../hooks/useDestinationCover'
+import { Avatar, Chip, EmptyState, toast, CopyButton, RouteSnapshot } from '../components/ui'
 
 export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavigate: (r: string) => void }) {
   const db = useDb()
@@ -12,7 +18,8 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
   const me = currentUser(db)
   const pub: PublishedItinerary | undefined = db.published.find(p => p.id === slug)
   const trip: Trip | undefined = pub ? tripById(pub.tripId) : undefined
-
+  const { isSaved, toggleSaved } = useSavedPubs()
+  const heroAuto = useDestinationCover(pub ? (pub.routeSummary.length ? pub.routeSummary : [pub.title]) : null)
   useEffect(() => {
     if (pub) registerPubView(pub.id)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -30,34 +37,156 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
   const creator = userById(pub.creatorId)
   const shareLink = `${location.origin}${location.pathname}#/pub/${pub.id}`
   const price = pub.premiumPriceInr ?? 199
+  const savedFlag = isSaved(pub.id)
 
   function copyThis() {
-    if (!me) { toast('Log in to copy this trip into your plans.'); onNavigate('/auth'); return }
+    if (!me) { toast('Log in to fork this trip into your plans.'); onNavigate('/auth'); return }
     duplicateTrip(trip!, me.id)
     registerPubCopy(pub!.id)
-    toast(`“${pub!.title}” copied — open it from My trips ✈️`)
+    toast(`“${pub!.title}” forked — open it from My trips ✈️`)
     onNavigate('/trips')
   }
 
+  function saveThis() {
+    const nowSaved = toggleSaved(pub!.id)
+    toast(nowSaved ? '♥ Saved to this browser.' : 'Removed from saved itineraries.')
+  }
+
+  // ---- practical evidence, computed from the real trip (no schema fields) ----
+  const totals = useMemo(() => computeTotals(trip), [trip])
+  const orderedDays = useMemo(() => [...trip.days].sort((a, b) => a.index - b.index), [trip])
+  const routePoints = useMemo(() => {
+    const pts: Array<{ lat: number; lng: number; day: number }> = []
+    if (trip.startLocationCoords) pts.push({ lat: trip.startLocationCoords.lat, lng: trip.startLocationCoords.lng, day: 0 })
+    for (const day of orderedDays) {
+      for (const s of [...day.stops].sort((a, b) => a.orderInDay - b.orderInDay)) {
+        if (s.status !== 'rejected' && Number.isFinite(s.lat) && Number.isFinite(s.lng)) {
+          pts.push({ lat: s.lat, lng: s.lng, day: day.index })
+        }
+      }
+    }
+    return pts.length >= 2 ? pts : undefined
+  }, [trip])
+
+  // Curated highlights: the three meatiest days, back in trip order.
+  const highlights = useMemo(() => {
+    const scored = orderedDays.map(day => {
+      const stops = [...day.stops].filter(s => s.status !== 'rejected').sort((a, b) => a.orderInDay - b.orderInDay)
+      const sim = simulateDay(day, trip, originOf(trip, day.index), day.index)
+      const lead = stops.find(s => s.auto !== true) ?? stops[0]
+      return {
+        day,
+        stops,
+        score: stops.length + (sim.totalDistanceKm > 1 ? 1 : 0),
+        kind: lead ? stopKindOf(lead) : 'drive' as const,
+        meta: `${stops.length} stop${stops.length === 1 ? '' : 's'} · ~${minutesToHM(sim.totalTravelMinutes)} travel${sim.totalDistanceKm > 1 ? ` · ${sim.totalDistanceKm.toFixed(0)} km` : ''}`,
+      }
+    })
+    return [...scored].sort((a, b) => b.score - a.score).slice(0, 3).sort((a, b) => a.day.index - b.day.index)
+  }, [trip])
+
   return (
     <div>
-      {/* ---- Cover hero ---- */}
+      {/* ---- Editorial hero: destination-led, creator-attributed (§6.11) ---- */}
       <section className="pub-hero">
-        <div className="container" style={{ position: 'relative', zIndex: 1 }}>
-          <button className="btn btn-sm btn-ghost" style={{ color: '#fff' }} onClick={() => onNavigate('/explore')}>← Explore</button>
-          <h1 style={{ fontSize: 'clamp(1.9rem, 4.5vw, 3rem)', marginTop: 12 }}>{pub.title}</h1>
-          <p style={{ opacity: .92, maxWidth: 640 }}>{pub.tagline}</p>
-          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 14 }} className="small">
-            <span>🗓 {pub.durationDays} days</span>
-            <span>💰 ~{formatInr(pub.estimatedBudgetPerPersonInr)} per person</span>
-            <span>🧭 {cap(pub.travelStyle)} travel</span>
-            {pub.bestSeason && <span>🌤 Best: {pub.bestSeason}</span>}
-            <span>👁 {pub.views} views</span>
-          </div>
+        {pub.coverImageUrl || heroAuto
+          ? <img className="pub-hero-photo" src={pub.coverImageUrl || heroAuto!} alt="" aria-hidden="true" />
+          : null}
+        <div className="pub-hero-bg" aria-hidden="true" />
+        <div className="container pub-hero-inner">
+          <button className="btn btn-sm btn-ghost pub-hero-back" onClick={() => onNavigate('/explore')}>← Explore</button>
+          <span className="pub-hero-badge">{cap(pub.travelStyle).toUpperCase()} ITINERARY</span>
+          <p className="pub-hero-kicker">
+            {trip.startLocation} → {trip.destinations.join(' → ')}
+            {isRoundTrip(trip) && <> → {trip.startLocation}</>}
+          </p>
+          <h1 className="pub-hero-title">{pub.title}</h1>
+          <p className="pub-hero-story">{pub.tagline}</p>
+          <p className="pub-hero-byline">
+            BY {creator?.profile.name ?? 'a YatraFlow traveller'} · {pub.durationDays} DAYS · {trip.travellers} TRAVELLERS · {cap(trip.transportMode)}
+            {creator?.profile.isCreator && <> · ✨ VERIFIED CREATOR</>}
+          </p>
         </div>
+        {/* "The practical bit" — the evidence cluster, floating over the hero */}
+        <aside className="pub-hero-stats">
+          <span className="pub-stats-label">THE PRACTICAL BIT</span>
+          <b className="pub-stats-figure">{formatInr(pub.estimatedBudgetPerPersonInr)}</b>
+          <span className="pub-stats-sub">estimated per traveller</span>
+          <hr className="pub-stats-divider" />
+          <div className="pub-stats-row">
+            <span>📍 {pub.routeSummary.length} place{pub.routeSummary.length === 1 ? '' : 's'}</span>
+            <span>🛣 {totals.totalDistanceKm.toFixed(0)} km</span>
+            <span>🕒 {minutesToHM(totals.totalTravelMinutes)} on the road</span>
+            <span>🗓 {pub.durationDays} days</span>
+          </div>
+        </aside>
       </section>
 
-      <div className="container" style={{ paddingTop: 22 }}>
+      <div className="container pub-body">
+        {/* ---- Paper sheet: the editorial layer over the hero ---- */}
+        <div className="paper-sheet">
+          <div className="pub-actions">
+            <b>Made to be copied, adjusted and made your own.</b>
+            <div className="pub-actions-btns">
+              <button className="btn save-btn" onClick={saveThis} aria-pressed={savedFlag}>
+                {savedFlag ? '♥ Saved' : '♡ Save itinerary'}
+              </button>
+              <button className="btn fork-btn" onClick={copyThis}>Fork this trip →</button>
+            </div>
+          </div>
+
+          <div className="two-col pub-editorial">
+            <div>
+              <span className="editorial-kicker">THE JOURNEY</span>
+              <h2 className="editorial-title">Why this route works</h2>
+              <p className="editorial-body">{pub.tagline}</p>
+              {pub.travelTips.length > 0 && (
+                <>
+                  <h3 className="editorial-sub">Route philosophy</h3>
+                  <ul className="editorial-list">
+                    {pub.travelTips.map((t, i) => <li key={i}>{t}</li>)}
+                  </ul>
+                </>
+              )}
+              <p className="editorial-body">
+                Built around {minutesToHM(totals.totalTravelMinutes)} of real road time across {pub.durationDays} days —
+                pacing, breaks and costs are all in the plan below.
+              </p>
+            </div>
+            <aside className="card route-snap route-glance">
+              <span className="route-glance-label">THE ROUTE AT A GLANCE</span>
+              <RouteSnapshot
+                count={trip.days.length}
+                startLabel={trip.startLocation}
+                endLabel={trip.destinations[trip.destinations.length - 1]}
+                roundTripNote={isRoundTrip(trip) ? `↩ returns to ${trip.startLocation}` : undefined}
+                points={routePoints}
+              />
+              <div className="route-glance-list">{pub.routeSummary.join(' · ')}</div>
+              <span className="route-glance-meta">{pub.durationDays} days · {totals.totalDistanceKm.toFixed(0)} km · {totals.stopCount} stops</span>
+            </aside>
+          </div>
+
+          {highlights.length > 0 && (
+            <div className="pub-highlights">
+              <span className="editorial-kicker">TRIP HIGHLIGHTS</span>
+              <h2 className="editorial-title">The rhythm of {pub.durationDays} days</h2>
+              <div className="day-highlight-row">
+                {highlights.map(h => (
+                  <div key={h.day.id} className="day-highlight-card">
+                    <div className="day-highlight-top">
+                      <span className="editorial-kicker">DAY {String(h.day.index + 1).padStart(2, '0')} · {STOP_KIND_LABELS[h.kind].toUpperCase()}</span>
+                      <span className={`stop-kind-tag kind-${h.kind}`}>{STOP_KIND_LABELS[h.kind]}</span>
+                    </div>
+                    <b className="day-highlight-title">{h.day.title ?? `Day ${h.day.index + 1}`}</b>
+                    <span className="day-highlight-meta">{h.meta}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
         <div className="two-col">
           <div>
             {/* ---- Creator ---- */}
@@ -78,17 +207,6 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
               {creator?.profile.socialLinks?.instagram == null && creator?.profile.socialLinks?.youtube == null && (
                 <button className="btn btn-outline btn-sm" style={{ marginTop: 10 }}>Book a planning consultation</button>
               )}
-            </div>
-
-            {/* ---- Route summary ---- */}
-            <div className="card">
-              <h3>The route</h3>
-              <hr className="divider" />
-              <div className="route-flow">
-                {pub.routeSummary.map((place, i) => (
-                  <span key={i} className="route-node">{i > 0 && <span className="route-arrow">→</span>}{place}</span>
-                ))}
-              </div>
             </div>
 
             {/* ---- Day-by-day (free vs premium) ---- */}
@@ -221,10 +339,10 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
             <div className="card" style={{ position: 'sticky', top: 80 }}>
               <h3>Take this trip with you</h3>
               <p className="hint-text" style={{ margin: '8px 0 14px' }}>
-                Copies the full plan into your YatraFlow account — editable timeline, impact previews and collaboration included.
+                Forks the full plan into your YatraFlow account — editable timeline, impact previews and collaboration included.
               </p>
-              <button className="btn btn-primary btn-lg" style={{ width: '100%' }} onClick={copyThis}>
-                📋 Copy This Trip
+              <button className="btn fork-btn btn-lg" style={{ width: '100%' }} onClick={copyThis}>
+                🍴 Fork this trip
               </button>
               <button className="btn btn-saffron btn-lg" style={{ width: '100%', marginTop: 10 }}
                 onClick={() => toast('Premium unlock is a placeholder — no payments in this MVP.')}>
@@ -233,10 +351,12 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
               {pub.subscriberCta && <p className="hint-text" style={{ textAlign: 'center', marginTop: 8 }}>{pub.subscriberCta}</p>}
               <hr className="divider" />
               <div className="share-link-box"><code>{shareLink}</code><CopyButton text={shareLink} label="Share" /></div>
-              {!me && <p className="hint-text" style={{ marginTop: 10 }}>You’ll need a free account to copy trips.</p>}
+              {!me && <p className="hint-text" style={{ marginTop: 10 }}>You’ll need a free account to fork trips.</p>}
             </div>
           </div>
         </div>
+
+        <p className="pub-footer-line">Published with YatraFlow · Plan real trips, together</p>
       </div>
     </div>
   )
