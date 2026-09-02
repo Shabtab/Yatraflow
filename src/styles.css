@@ -2097,16 +2097,39 @@ body, .topnav, .glass, .board, .board-col, .modal, .toast {
 /* day highlight cards */
 .pub-highlights { margin: 22px 0 4px; }
 
-/* ---- Theme radiate overlay (driven from App.tsx; replaces View Transitions,
-   whose snapshots render backdrop-filter glass as a flat gray veil) ---- */
-.theme-radiate {
-  position: fixed; inset: 0; z-index: 75; /* above page + expanded map (70), below notif (80) */
-  pointer-events: none;
-  background: radial-gradient(circle at var(--vt-x, 50%) var(--vt-y, 50%),
-    #FFFDF8 0%, #FAF7F2 40%, #F1ECE1 100%);
+/* ---- Theme radiate via View Transitions (driven from App.tsx) ----
+   The real UI of the incoming theme is revealed by a clip-path circle anchored
+   at the theme-toggle button (--vt-x/--vt-y/--vt-r, set before the transition
+   starts). Classes select direction: vt-radiate-out = dark→light (the new view
+   radiates from the icon), vt-radiate-in = light→dark (the old view collapses
+   into the icon). While the transition runs, vt-active suppresses
+   backdrop-filter everywhere — Chromium renders glass inside VT snapshots
+   without its backdrop, which otherwise turns the whole page into a gray veil.
+   Reduced-motion users skip the whole JS path (instant swap). */
+::view-transition-old(root),
+::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+html.vt-active :where(*) {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
-@media (prefers-reduced-motion: reduce) {
-  .theme-radiate { display: none; }
+:root.vt-radiate-out::view-transition-new(root) {
+  animation: vt-radiate-out 780ms cubic-bezier(.55, 0, .85, .36) both;
+}
+@keyframes vt-radiate-out {
+  from { clip-path: circle(0px at var(--vt-x, 50%) var(--vt-y, 50%)); }
+  to { clip-path: circle(var(--vt-r, 120vmax) at var(--vt-x, 50%) var(--vt-y, 50%)); }
+}
+:root.vt-radiate-in::view-transition-old(root) {
+  animation: vt-radiate-in 620ms cubic-bezier(.16, .84, .32, 1) both;
+}
+/* Collapse direction needs the OLD snapshot painted on top of the new one
+   (UA default stacks new above old) — otherwise the imploding light is
+   hidden beneath the already-dark new view and nothing animates. */
+:root.vt-radiate-in::view-transition-old(root) { z-index: 2; }
+:root.vt-radiate-in::view-transition-new(root) { z-index: 1; }
+@keyframes vt-radiate-in {
+  from { clip-path: circle(var(--vt-r, 120vmax) at var(--vt-x, 50%) var(--vt-y, 50%)); }
+  to { clip-path: circle(0px at var(--vt-x, 50%) var(--vt-y, 50%)); }
 }
 
 /* ---- My Trips staggered card entrance ---- */

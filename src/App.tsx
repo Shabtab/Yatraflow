@@ -50,51 +50,46 @@ export default function App() {
       m.setAttribute('content', dark ? '#0C1420' : '#FAF7F2'))
   }, [dark])
 
-  // Theme radiate (DOM overlay, no View Transitions): a fixed light-canvas
-  // overlay anchored at the theme-toggle button. Coming FROM dark it expands
-  // from the icon (slow start, zap — the icon is the source of light); coming
-  // FROM light it covers the screen and its clip-path collapses INTO the icon
-  // (light retreats home, fast then settling). A DOM overlay is used instead
-  // of View Transition snapshots because Chromium renders backdrop-filter
-  // glass without its backdrop inside snapshots — the whole captured page
-  // turns into a flat gray veil (seen on #/trips). Falls back to the instant
-  // switch under prefers-reduced-motion.
+  // Theme radiate via View Transitions — the real UI morphs in both themes.
+  // Two hard-won rules make this flawless:
+  //  1. Suppress backdrop-filter for the transition's lifetime: Chromium
+  //     renders glass inside VT snapshots WITHOUT its backdrop, so any glass
+  //     layer turns the captured page into a flat gray veil. Unblurred glass
+  //     for ~600ms is imperceptible; the veil is not.
+  //  2. Drive the clip-path from CSS keyframes selected by a class that is set
+  //     BEFORE startViewTransition — the animation exists from the snapshot
+  //     tree's first frame (no JS-attach gap → no pre-flash) and `fill: both`
+  //     holds the end state until teardown (no end flash).
+  // Dark → light: the new light view radiates OUT of the icon (slow → zap).
+  // Light → dark: the old light view collapses INTO the icon (fast → settle).
   function toggleTheme(e: MouseEvent<HTMLButtonElement>) {
     const rect = e.currentTarget.getBoundingClientRect()
     const x = rect.left + rect.width / 2
     const y = rect.top + rect.height / 2
+    const root = document.documentElement
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       setDark(d => !d); return
     }
     const radius = Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y))
-    const overlay = document.createElement('div')
-    overlay.className = 'theme-radiate'
-    overlay.style.setProperty('--vt-x', `${x}px`)
-    overlay.style.setProperty('--vt-y', `${y}px`)
-    document.body.appendChild(overlay)
-    if (!dark) {
-      // Currently LIGHT → dark: swap beneath immediately, the light overlay
-      // then shrinks into the icon revealing dark from the edges inward.
-      setDark(d => !d)
-      const anim = overlay.animate(
-        { clipPath: [`circle(${radius}px at ${x}px ${y}px)`, `circle(0px at ${x}px ${y}px)`] },
-        { duration: 620, easing: 'cubic-bezier(.16, .84, .32, 1)', fill: 'forwards' },
-      )
-      anim.onfinish = () => overlay.remove()
-    } else {
-      // Currently DARK → light: the light overlay radiates OUT from the icon
-      // over the still-dark page, slow start then zap; the theme swaps beneath
-      // once covered, then the overlay fades into the real light UI.
-      const anim = overlay.animate(
-        { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${radius}px at ${x}px ${y}px)`] },
-        { duration: 780, easing: 'cubic-bezier(.55, 0, .85, .36)', fill: 'forwards' },
-      )
-      anim.onfinish = () => {
-        setDark(d => !d)
-        overlay.animate({ opacity: [1, 0] }, { duration: 240, delay: 80, fill: 'forwards' })
-          .onfinish = () => overlay.remove()
-      }
+    root.style.setProperty('--vt-x', `${x}px`)
+    root.style.setProperty('--vt-y', `${y}px`)
+    root.style.setProperty('--vt-r', `${radius}px`)
+    const goingLight = dark
+    root.classList.remove('vt-radiate-out', 'vt-radiate-in')
+    root.classList.add(goingLight ? 'vt-radiate-out' : 'vt-radiate-in')
+    root.classList.add('vt-active') // backdrop-filter suppression window
+    const doc = document as Document & {
+      startViewTransition?: (cb: () => void) => { finished: Promise<void> }
     }
+    if (!doc.startViewTransition) { // old browsers: skip straight to the swap
+      root.classList.remove('vt-radiate-out', 'vt-radiate-in', 'vt-active')
+      setDark(d => !d); return
+    }
+    const vt = doc.startViewTransition(() => setDark(d => !d))
+    vt.finished.finally(() => {
+      root.classList.remove('vt-radiate-out', 'vt-radiate-in', 'vt-active')
+      root.style.removeProperty('--vt-x'); root.style.removeProperty('--vt-y'); root.style.removeProperty('--vt-r')
+    }).catch(() => { /* nothing to clean up further */ })
   }
 
   // Escape closes any open popover (UI audit F-10) — outside-click alone
