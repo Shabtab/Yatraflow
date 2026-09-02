@@ -1036,9 +1036,9 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
                 {...(editable ? dndHandlers(i) : {})}
               >
                 <div className="tl-gutter" aria-hidden="true">
-                  <span className="tl-time tl-arr">{sim.arrivalTimes[i] ?? '--:--'}</span>
+                  <span className="tl-time tl-arr">{sim.arrivalTimes[i] ? formatHM(sim.arrivalTimes[i], timeFormat) : '--:--'}</span>
                   <span className="tl-line" />
-                  <span className="tl-time tl-dep">{sim.departures[i] ?? '--:--'}</span>
+                  <span className="tl-time tl-dep">{sim.departures[i] ? formatHM(sim.departures[i], timeFormat) : '--:--'}</span>
                 </div>
                 <div
                   className={`stop-card kind-${kind} status-${s.status} ${dragging === i ? 'dragging' : ''} ${over === i && dragging !== null && dragging !== i ? 'drag-over' : ''} ${foreignOver === i && dragging === null ? 'foreign-over' : ''}`}

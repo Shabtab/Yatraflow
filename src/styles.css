@@ -446,23 +446,22 @@ a.btn { text-decoration: none; }
 .select {
   appearance: none;
   border-radius: 999px;
-  padding: 10px 14px 10px 38px;
+  padding: 10px 36px 10px 16px;
   font-weight: 600;
   font-size: 14px;
   cursor: pointer;
   box-shadow: var(--shadow-sm);
   background: var(--bg-soft);
-  /* soft teal chevron, matching the chip style */
-  background-image:
-    linear-gradient(45deg, transparent 49%, var(--teal-deep) 50%),
-    linear-gradient(-135deg, transparent 49%, var(--teal-deep) 50%);
-  background-position: calc(100% - 20px) 55%, calc(100% - 15px) 55%;
-  background-size: 5px 5px;
+  /* soft teal chevron (clean SVG stroke), vertically centred, clear of the text */
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1.5 1.5L6 6l4.5-4.5' fill='none' stroke='%230E7A72' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  background-size: 11px 7px;
   background-repeat: no-repeat;
   transition: border-color .15s ease, box-shadow .15s ease, background-color .15s ease;
 }
 .select:hover { border-color: var(--teal); }
-@media (max-width: 720px) { .select { padding: 11px 14px 11px 38px; } }
+@media (max-width: 720px) { .select { padding: 11px 34px 11px 14px; } }
 .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
 .err-text { color: var(--danger); font-size: 12.5px; font-weight: 550; }
 .hint-text { color: var(--text-3); font-size: 12.5px; }
@@ -485,7 +484,9 @@ a.btn { text-decoration: none; }
 .chip-danger { background: var(--danger-soft); color: var(--danger); }
 .chip-ok { background: var(--ok-soft); color: var(--ok); }
 .chip-info { background: var(--info-soft); color: var(--text-2); }
-.clickable-chip { cursor: pointer; border: 1.5px solid var(--line); background: var(--card); user-select: none; }
+.clickable-chip { cursor: pointer; border: 1.5px solid var(--line); background: var(--card); user-select: none;
+  border-radius: 999px; padding: 5px 13px; font-size: 12.5px; font-weight: 650;
+  transition: transform var(--t-fast) var(--ease-out), background var(--t-fast) var(--ease-out), border-color var(--t-fast) var(--ease-out); }
 .clickable-chip.on-teal { border-color: var(--teal); background: var(--teal-soft); color: var(--teal-deep); }
 .clickable-chip.on-saffron { border-color: var(--saffron); background: var(--saffron-soft); color: var(--warn); }
 .clickable-chip:hover { transform: translateY(-1px); }
@@ -1603,10 +1604,9 @@ a.btn { text-decoration: none; }
 .theme-toggle { background: var(--bg-soft); border: 1.5px solid var(--line); border-radius: 10px;
   width: 36px; height: 36px; cursor: pointer; font-size: 15px; flex: 0 0 auto; }
 .avatar-btn { background: none; border: none; cursor: pointer; padding: 0; border-radius: 50%; flex: 0 0 auto; }
-.user-menu { position: absolute; right: 0; top: calc(100% + 8px); background: var(--yf-glass);
-  border: 1px solid var(--yf-glass-border); border-radius: 12px;
-  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
-  box-shadow: var(--shadow-soft);
+.user-menu { position: absolute; right: 0; top: calc(100% + 8px); background: var(--card);
+  border: 1px solid var(--yf-border); border-radius: 12px;
+  box-shadow: 0 18px 40px rgba(11, 37, 69, .22);
   min-width: 220px; z-index: 60; overflow: hidden; }
 .user-menu-item { display: block; width: 100%; text-align: left; background: none; border: none;
   cursor: pointer; padding: 11px 15px; font-size: 13.5px; font-weight: 600; color: var(--text-2); }

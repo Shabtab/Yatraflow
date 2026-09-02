@@ -272,6 +272,12 @@ async function hydrateFromSupabase(userId: string): Promise<void> {
       rowToTrip(row, members.filter(m => m.trip_id === row.id).map(m => ({ userId: m.user_id, role: m.role, joinedAt: m.joined_at })))
     )
 
+    // A demo seed is running for this user: its cache-first trip writes are the
+    // source of truth right now, and this patch would wipe them with server
+    // state that can't contain the in-flight rows yet (the appearing/
+    // disappearing-trips flicker). The seed's final state is complete — skip.
+    if (seedingFor === userId) return
+
     patch({
       users,
       trips: tripList,
