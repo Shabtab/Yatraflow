@@ -194,6 +194,22 @@ function BoardColumn({ day, editable, warnings, focused, onToggleFocus, onMoveSt
       },
     },
   )
+  // Live reorder preview: while a card is carried, the column renders the order
+  // as it WOULD be if dropped right now (dragged lifted, re-inserted at the
+  // hovered slot). The FLIP pass below animates every neighbour between
+  // arrangements in real time — cards glide up/down during the drag, not on
+  // release. The committed mutation uses the same indices, so the drop lands
+  // exactly where the preview showed it.
+  const preview = useMemo(() => {
+    if (dragging === null) return ordered
+    const arr = [...ordered]
+    const [m] = arr.splice(dragging, 1)
+    if (!m) return ordered
+    const to = over === null ? dragging : Math.max(0, Math.min(over, arr.length))
+    arr.splice(to, 0, m)
+    return arr
+  }, [ordered, dragging, over])
+  const draggingId = dragging !== null ? ordered[dragging]?.id : undefined
   const sev = warnings.some(w => w.severity === 'high') ? 'high'
     : warnings.some(w => w.severity === 'medium') ? 'medium' : undefined
   const topWarn = warnings[0]
@@ -229,7 +245,7 @@ function BoardColumn({ day, editable, warnings, focused, onToggleFocus, onMoveSt
       }
     }
     prevRects.current = now
-  }, [ordered])
+  }, [preview])
 
   return (
     <div className={`board-col${focused ? ' board-col--focused' : ''}`} role="listitem">
@@ -242,8 +258,9 @@ function BoardColumn({ day, editable, warnings, focused, onToggleFocus, onMoveSt
       </button>
 
       <div className={`board-col-stops${dragging !== null ? ' is-dragging' : ''}`} ref={stopsRef}>
-        {ordered.map((s, i) => {
+        {preview.map((s, i) => {
           const kind = stopKindOf(s)
+          const isDragged = s.id === draggingId
           const meta = [
             s.locationName,
             minutesToHM(s.visitMinutes),
@@ -253,7 +270,7 @@ function BoardColumn({ day, editable, warnings, focused, onToggleFocus, onMoveSt
             <div key={s.id}
               data-stop-id={s.id}
               title={meta ? `${s.title} — ${meta}` : s.title}
-              className={`board-stop stop-card kind-${kind} status-${s.status} ${dragging === i ? 'dragging' : ''} ${over === i && dragging !== null && dragging !== i ? 'drag-over' : ''} ${foreignOver === i && dragging === null ? 'foreign-over' : ''}`}
+              className={`board-stop stop-card kind-${kind} status-${s.status} ${isDragged ? 'dragging' : ''} ${over === i && dragging !== null && !isDragged ? 'drag-over' : ''} ${foreignOver === i && dragging === null ? 'foreign-over' : ''}`}
               {...(editable ? dndHandlers(i) : {})}>
               <div className="stop-main">
                 <span className="board-stop-kicker">{s.departTime ? `${formatHM(s.departTime, timeFormat)} · ` : ''}{STOP_KIND_LABELS[kind]}</span>

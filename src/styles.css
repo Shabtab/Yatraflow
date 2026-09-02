@@ -1736,7 +1736,15 @@ a.btn { text-decoration: none; }
      callout while the hold timer runs; a pressing row reads as "grabbed". */
   .tl-row { -webkit-user-select: none; -webkit-touch-callout: none; user-select: none; }
   .tl-row.yf-pressing { transform: scale(.98); opacity: .8; }
-  .tl-row.dragging { opacity: .35; }
+  .tl.is-dragging .tl-row:not(.dragging):not(.drag-over):not(.foreign-over) {
+  animation: stopWiggle 460ms var(--ease-out) 3;
+}
+.tl.is-dragging .tl-row { will-change: transform; }
+/* The carried row's original becomes an empty dashed slot — the browser's
+   drag ghost stays the only floating copy (no double-ghost). */
+.tl-row.dragging { opacity: .45; border: 1.5px dashed var(--teal); box-shadow: none; }
+.tl-row.dragging > * { visibility: hidden; }
+.tl-row.dragging { min-height: 44px; }
   /* Workspace header: let long trip names wrap instead of forcing overflow. */
   .trip-head-card { padding: 16px; }
   .trip-head-card h1 { font-size: clamp(22px, 6vw, 30px); }
@@ -2014,7 +2022,7 @@ main:focus { outline: none; }
 .tab-panel { animation: panelIn var(--t-med) var(--ease-out); }
 
 /* Board choreography: day columns drift in with a light stagger on mount. */
-.board-col { animation: panelIn var(--t-slow) var(--ease-out) both; }
+.board-col { animation: panelIn var(--t-slow) var(--ease-out) backwards; }
 .board-col:nth-child(2) { animation-delay: 40ms; }
 .board-col:nth-child(3) { animation-delay: 80ms; }
 .board-col:nth-child(4) { animation-delay: 120ms; }
@@ -2030,7 +2038,7 @@ main:focus { outline: none; }
    edge — a 48px sliver of each stays visible while the map owns the board —
    and slide back with a staggered settle. transform-only: compositor run. */
 .board-col { transition: transform 500ms var(--ease-out); }
-.board--mapfocus .board-col { transform: translateY(calc(100% - 48px)); }
+.board--mapfocus .board-col { transform: translateY(88%); } /* 12% sliver keeps a readable card edge */
 /* staggered choreography: slide-off cascades left→right, return settles in
    reverse — both directions read as one satisfying wave */
 .board-col:nth-child(2), .board--mapfocus .board-col:nth-child(2) { transition-delay: 40ms; }
@@ -2053,7 +2061,7 @@ main:focus { outline: none; }
   75% { transform: rotate(-.5deg); }
 }
 .board-col-stops.is-dragging .board-stop:not(.dragging):not(.drag-over):not(.foreign-over) {
-  animation: stopWiggle 460ms var(--ease-out) infinite;
+  animation: stopWiggle 460ms var(--ease-out) 3; /* finite: never sticks around after a drop */
 }
 .board-col-stops.is-dragging .board-stop { will-change: transform; }
 .board-stop.dragging {
@@ -2174,7 +2182,8 @@ html.vt-active :where(*) {
   to { clip-path: circle(var(--vt-r, 120vmax) at var(--vt-x, 50%) var(--vt-y, 50%)); }
 }
 :root.vt-radiate-in::view-transition-old(root) {
-  animation: vt-radiate-in 620ms cubic-bezier(.16, .84, .32, 1) both;
+  /* light→dark: start slow, accelerate home (mirror of the bloom) */
+  animation: vt-radiate-in 680ms cubic-bezier(.55, 0, .85, .36) both;
 }
 /* Collapse direction needs the OLD snapshot painted on top of the new one
    (UA default stacks new above old) — otherwise the imploding light is

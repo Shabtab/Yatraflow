@@ -498,6 +498,9 @@ export function useReorder<T extends { id: string }>(
     onPointerDown: touchPress(idx),
     onDragStart: (e: React.DragEvent) => {
       setDragIdx(idx)
+      // Capture the drag ghost BEFORE the .dragging slot class paints — the
+      // floating copy must be the fully rendered card, never the empty slot.
+      try { e.dataTransfer.setDragImage(e.currentTarget as Element, 24, 18) } catch { /* optional */ }
       const payload = options?.dragPayload?.(items[idx])
       if (payload) {
         e.dataTransfer.setData('application/x-yf-stop', payload)

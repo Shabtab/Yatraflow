@@ -968,7 +968,7 @@ function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithin
         )}
       </>)}
 
-      <div className="tl">
+      <div className={`tl${dragging !== null ? ' is-dragging' : ''}`}>
         {ordered.map((s, i) => {
           // Auto anchors (trip start/end, route-continuation waypoints) are pure
           // route endpoints, not activities. The rich travel summary (mode,
