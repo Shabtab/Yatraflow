@@ -4,6 +4,7 @@ import type { FixedCommitment, LatLngPoint, TransportMode, TravelStyle } from '.
 import { TRANSPORT_MODES, TRAVEL_STYLES } from '../data/types'
 import { useDb, currentUser, createTrip } from '../store/store'
 import { FUEL_PRICE_INR_PER_L, isFuelEconomyMode, parseFuelEconomyKmL, parseFuelPricePerL, isImplausibleFuelEconomy } from '../lib/engine'
+import { fetchTripThumbUrl } from '../lib/tripThumb'
 import { Field, Chip, toast } from '../components/ui'
 import { useTimeFormat, formatHM } from '../lib/timefmt'
 import { LocationInput } from '../components/LocationInput'
@@ -38,6 +39,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
     budgetPerPersonInr: 15000,
     travelStyle: 'balanced' as TravelStyle,
     coverEmoji: '🧭',
+    coverImageUrl: '',
   })
   const [dests, setDests] = useState<DestDraft[]>([])
   const [destInput, setDestInput] = useState('')
@@ -45,6 +47,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
   const [commitments, setCommitments] = useState<CommitDraft[]>([])
   const [c, setC] = useState<CommitDraft>({ title: '', type: 'hotel-checkin', dayIndex: 0, time: '14:00' })
   const [errs, setErrs] = useState<Record<string, string>>({})
+  const [busyCover, setBusyCover] = useState(false)
   /** first-invalid focus targets (F-15) — plain inputs only register here */
   const fieldRefs = useRef<Record<string, HTMLElement | null>>({})
 
@@ -110,6 +113,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
       travelStyle: f.travelStyle,
       fixedCommitments: commitments.filter(x => x.title.trim()),
       coverEmoji: f.coverEmoji,
+      coverImageUrl: f.coverImageUrl.trim() || undefined,
     })
     toast('Trip created — add your first stop! 🎉')
     onNavigate(`/trip/${trip.id}`)
@@ -242,6 +246,27 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
                     <span style={{ fontSize: 18 }}>{em}</span>
                   </Chip>
                 ))}
+              </div>
+            </Field>
+            <Field label="Cover image (optional)"
+              hint="Leave blank to auto-use a popular photo of your destination, or paste your own image URL.">
+              <div className="cover-picker-controls">
+                <button type="button" className="btn btn-outline btn-sm" disabled={busyCover}
+                  onClick={async () => {
+                    setBusyCover(true)
+                    try {
+                      const last = dests[dests.length - 1]?.name?.trim()
+                      const q = last || f.startLocation.trim() || f.name.trim()
+                      const u = q ? await fetchTripThumbUrl(q) : null
+                      setF(x => ({ ...x, coverImageUrl: u ?? '' }))
+                    } finally { setBusyCover(false) }
+                  }}>
+                  {busyCover ? 'Finding photo…' : f.coverImageUrl ? 'Refresh destination photo' : 'Use destination photo'}
+                </button>
+                <div className="cover-picker-custom">
+                  <input className="input" placeholder="Paste an image URL…" value={f.coverImageUrl}
+                    onChange={e => setF(x => ({ ...x, coverImageUrl: e.target.value }))} />
+                </div>
               </div>
             </Field>
           </div>

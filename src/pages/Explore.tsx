@@ -4,6 +4,7 @@ import { useDb, currentUser, tripById, duplicateTrip, registerPubCopy } from '..
 import { computeHealth, formatInr } from '../lib/engine'
 import { useSavedPubs } from '../lib/savedPubs'
 import { Avatar, Chip, EmptyState, toast } from '../components/ui'
+import { CoverThumb } from '../components/CoverThumb'
 
 type SortKey = 'popular' | 'budget-asc' | 'budget-desc' | 'duration'
 const STYLES = ['relaxed', 'balanced', 'packed', 'adventure', 'luxury', 'budget', 'family', 'spiritual', 'food-focused', 'creator'] as const
@@ -127,7 +128,7 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
         </div>
 
         {/* ---- Compact filter bar: budget / duration / sort ---- */}
-        <div className="card" style={{ marginBottom: 20 }}>
+        <div className="card glass-soft" style={{ marginBottom: 20 }}>
           <div className="explore-filters">
             <select className="select" value={duration} onChange={e => { setDuration(e.target.value as never); syncUrl({ dur: e.target.value }) }} aria-label="Duration">
               <option value="all">Any length</option>
@@ -196,10 +197,12 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
                   <button className="save-heart" aria-pressed={isSaved(p.id)} aria-label={isSaved(p.id) ? 'Remove from saved' : 'Save itinerary'}
                     onClick={() => toggleHeart(p.id)}>{isSaved(p.id) ? '♥' : '♡'}</button>
                   <a className="trip-card-hit" href={`#/pub/${p.id}`}>
-                    <div className="itin-cover">
-                      <span className="itin-cover-route">{p.routeSummary[0]} → {p.routeSummary[p.routeSummary.length - 1]}</span>
-                      <span className="itin-cover-fallback" aria-hidden="true">🧭</span>
-                    </div>
+                    <CoverThumb
+                      trip={{ name: p.title, destinations: p.routeSummary }}
+                      explicitUrl={p.coverImageUrl}
+                      emoji="🧭"
+                      routeLabel={`${p.routeSummary[0]} → ${p.routeSummary[p.routeSummary.length - 1]}`}
+                    />
                     <div className="itin-body">
                       <div className="row-between" style={{ marginTop: 0 }}>
                         <Chip tone="teal">{cap(p.travelStyle)}</Chip>

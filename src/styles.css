@@ -58,13 +58,9 @@
   --yf-surface-muted: #F0F4F1;
   --yf-border: #DCE7E1;
   --yf-text-muted: #637B7D;
-  --yf-glass: rgba(255, 255, 255, 0.58);        /* level-2 overlay (map panels) */
+  --yf-glass: rgba(255, 255, 255, 0.58);        /* level-2 overlay (nav, map panels) */
   --yf-glass-border: rgba(255, 255, 255, 0.65);
   --yf-glass-sheen: rgba(255, 255, 255, 0.35);  /* top-edge highlight on glass panels */
-  --yf-nav-glass: rgba(255, 255, 255, 0.58);    /* floating pill nav — user-final glass
-                                                   (0.58 both themes, Sep 2): the original
-                                                   Cline look, viable once prod blur was
-                                                   fixed; blur(18px) saturate(1.2) below */
 
   /* ---- motion (subtle & premium): one easing family, three speeds ---- */
   --ease-out: cubic-bezier(.22, .61, .36, 1);
@@ -112,7 +108,6 @@
   --teal: var(--teal-500);
   --teal-deep: var(--teal-600);
   --teal-soft: #E0F2F0;
-  --accent: var(--teal-500);   /* alias so teal-tinted bits stay theme-aware (was hardcoded #149A90) */
   --saffron: var(--saffron-500);
   --saffron-soft: #FCF0DC;
   --danger: var(--danger-500);
@@ -181,7 +176,6 @@
   --yf-glass: rgba(16, 27, 43, 0.58);
   --yf-glass-border: rgba(255, 255, 255, 0.14);
   --yf-glass-sheen: rgba(255, 255, 255, 0.08);
-  --yf-nav-glass: rgba(16, 27, 43, 0.58);
 
   /* ---- 2. SEMANTICS (dark) ---- */
   --color-background: var(--gray-50);
@@ -222,7 +216,6 @@
   --teal: var(--teal-500);
   --teal-deep: var(--teal-600);
   --teal-soft: #12332F;
-  --accent: var(--teal-500);
   --saffron: var(--saffron-500);
   --saffron-soft: #3A2C15;
   --danger: var(--danger-500);
@@ -252,8 +245,8 @@
 .glass {
   background: var(--yf-glass);
   border: 1px solid var(--yf-glass-border);
-  -webkit-backdrop-filter: blur(18px) saturate(1.25);
   backdrop-filter: blur(18px) saturate(1.25);
+  -webkit-backdrop-filter: blur(18px) saturate(1.25);
   box-shadow: inset 0 1px 0 var(--yf-glass-sheen);
 }
 
@@ -367,9 +360,9 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
      not a full-bleed bar — the page atmosphere shows around it. */
   width: min(1180px, calc(100% - 28px));
   margin: 12px auto 0;
-  background: var(--yf-nav-glass);
-  -webkit-backdrop-filter: blur(18px) saturate(1.2);
-  backdrop-filter: blur(18px) saturate(1.2);
+  background: var(--yf-glass);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   border: 1px solid var(--yf-glass-border);
   border-radius: 999px;
   box-shadow: var(--shadow-soft);
@@ -500,7 +493,7 @@ a.btn { text-decoration: none; }
 .filter-pillbar {
   display: inline-flex; gap: 2px; padding: 4px; flex-wrap: wrap;
   background: var(--yf-glass); border: 1px solid var(--yf-glass-border);
-  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
   border-radius: 999px; box-shadow: var(--shadow-soft);
 }
 .filter-pillbar .clickable-chip { border: none; background: transparent; }
@@ -508,6 +501,32 @@ a.btn { text-decoration: none; }
 .filter-pillbar .clickable-chip.on-teal { background: var(--teal-deep); color: #fff; box-shadow: 0 2px 10px rgba(11,138,128,.35); }
 [data-theme='dark'] .filter-pillbar .clickable-chip.on-teal { background: var(--teal); color: #06251f; }
 .filter-pillbar .clickable-chip.on-saffron { background: var(--saffron); color: #fff; }
+
+/* Reusable CTI glass surface (nav-level blur, diffuse depth). Drop onto any
+   panel to lift it off the page with a frosted edge. */
+.glass-soft {
+  background: var(--yf-glass);
+  border: 1px solid var(--yf-glass-border);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  box-shadow: var(--shadow-soft);
+}
+
+/* ---- Explore travel-style filter pills: glass with backdrop (per CTI) ---- */
+.explore-chips .clickable-chip {
+  background: var(--yf-glass);
+  border: 1px solid var(--yf-glass-border);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  box-shadow: var(--shadow-sm);
+  color: var(--text-2);
+}
+.explore-chips .clickable-chip.chip-teal {
+  background: var(--teal-deep); color: #fff; border-color: transparent;
+  box-shadow: 0 2px 10px rgba(11,138,128,.35);
+}
+[data-theme='dark'] .explore-chips .clickable-chip.chip-teal { background: var(--teal); color: #06251f; }
+.explore-chips .clickable-chip.chip-saffron {
+  background: var(--saffron); color: #fff; border-color: transparent;
+}
 
 /* ---------- Stat tiles ---------- */
 .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
@@ -779,7 +798,7 @@ a.btn { text-decoration: none; }
   display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px;
   background: var(--yf-glass);
   border: 1px solid var(--yf-glass-border);
-  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
   border-radius: 16px; padding: 9px 16px; margin-bottom: 16px;
   box-shadow: var(--shadow-soft);
   font-size: 12.5px; font-weight: 600; color: var(--text-2);
@@ -896,8 +915,8 @@ a.btn { text-decoration: none; }
    corners — most of the map stays visible between and above them. They use the
    shared .glass treatment (deep blur + sheen) so the map visibly reads through. */
 .board-info, .board-pulse {
-  -webkit-backdrop-filter: blur(18px) saturate(1.25);
   backdrop-filter: blur(18px) saturate(1.25);
+  -webkit-backdrop-filter: blur(18px) saturate(1.25);
 }
 .board-info { flex: 0 1 264px; border-radius: 16px; padding: 10px 12px; max-width: 264px; box-shadow: inset 0 1px 0 var(--yf-glass-sheen), var(--shadow-soft); }
 .board-fit {
@@ -1072,29 +1091,16 @@ a.btn { text-decoration: none; }
 .vehicle-profile-form .form-row:last-child { margin-bottom: 0; }
 
 /* ---------- Tabs ---------- */
-.tabbar {
-  display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none;
-  /* Same glass pill as the floating topnav (user-decided §9 tokens): the
-     workspace tab strip floats as a pill over the page atmosphere. */
-  background: var(--yf-nav-glass);
-  -webkit-backdrop-filter: blur(18px) saturate(1.2);
-  backdrop-filter: blur(18px) saturate(1.2);
-  border: 1px solid var(--yf-glass-border);
-  border-radius: 999px;
-  padding: 5px;
-  box-shadow: var(--shadow-soft);
-  margin-bottom: 20px;
-  transition: margin var(--t-med) var(--ease-out);
-}
+.tabbar { display: flex; gap: 2px; overflow-x: auto; border-bottom: 1.5px solid var(--line); margin-bottom: 20px; scrollbar-width: none;
+  transition: margin var(--t-med) var(--ease-out); }
 .tabbar::-webkit-scrollbar { display: none; }
 .tab-btn {
-  border: none; background: none; padding: 9px 15px; font-size: 14px; font-weight: 650;
-  color: var(--text-2); border-radius: 999px; white-space: nowrap;
+  border: none; background: none; padding: 11px 15px; font-size: 14px; font-weight: 650;
+  color: var(--text-3); border-bottom: 2.5px solid transparent; margin-bottom: -1.5px; white-space: nowrap;
   display: inline-flex; align-items: center; gap: 6px;
-  transition: background var(--t-fast) var(--ease-out), color var(--t-fast) var(--ease-out);
 }
-.tab-btn:hover { background: var(--bg-soft); color: var(--text); }
-.tab-btn.active { background: var(--teal-soft); color: var(--teal-deep); }
+.tab-btn:hover { color: var(--text); }
+.tab-btn.active { color: var(--teal-deep); border-bottom-color: var(--teal); }
 .tab-count { background: var(--danger-soft); color: var(--danger); font-size: 11px; font-weight: 750; border-radius: 999px; padding: 1px 7px; }
 
 /* ---------- Modal / drawer / toast ---------- */
@@ -1102,7 +1108,7 @@ a.btn { text-decoration: none; }
   position: fixed; inset: 0; z-index: 100;
   background: rgba(11,37,69,.42);
   display: flex; align-items: flex-end; justify-content: center;
-  -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
   animation: fadeIn var(--t-fast) var(--ease-out);
 }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
@@ -1265,7 +1271,7 @@ a.btn { text-decoration: none; }
 }
 .itin-cover-fallback { opacity: .9; }
 .itin-cover-fallback { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 44px; }
-.itin-cover .chip { position: absolute; top: 11px; left: 11px; background: rgba(255,255,255,.92); color: var(--text); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
+.itin-cover .chip { position: absolute; top: 11px; left: 11px; background: rgba(255,255,255,.92); color: var(--text); backdrop-filter: blur(4px); }
 .itin-body { padding: 15px 17px 17px; display: flex; flex-direction: column; gap: 9px; flex: 1; }
 /* Trip names can be long — cap at two lines so card grids stay aligned. */
 .itin-body h3 {
@@ -1308,7 +1314,7 @@ a.btn { text-decoration: none; }
 .map-day-filter { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
 .map-day-chip {
   border: 1px solid var(--yf-glass-border); background: var(--yf-glass);
-  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
   color: var(--text-2); border-radius: 999px; font-size: 12px; font-weight: 700;
   padding: 4px 13px; white-space: nowrap; transition: background var(--t-fast) var(--ease-out),
     color var(--t-fast) var(--ease-out), border-color var(--t-fast) var(--ease-out), box-shadow var(--t-fast) var(--ease-out);
@@ -1322,8 +1328,8 @@ a.btn { text-decoration: none; }
 /* Map key: hidden behind a small ⓘ chip by default (it used to blanket the
    bottom-right corner); the body card reopens above the same corner. */
 .map-legend { position: absolute; right: 12px; bottom: 12px; z-index: 5; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
-.map-legend-toggle { border: 1.5px solid rgba(255,255,255,.5); background: rgba(255,255,255,.85); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); color: var(--text); border-radius: 999px; font-size: 12px; font-weight: 700; padding: 4px 11px; white-space: nowrap; }
-.map-legend-body { background: rgba(255,255,255,.92); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); border-radius: 12px; padding: 8px 12px; font-size: 11.5px; color: var(--text-2); font-weight: 600; max-width: min(440px, 78vw); }
+.map-legend-toggle { border: 1.5px solid rgba(255,255,255,.5); background: rgba(255,255,255,.85); backdrop-filter: blur(6px); color: var(--text); border-radius: 999px; font-size: 12px; font-weight: 700; padding: 4px 11px; white-space: nowrap; }
+.map-legend-body { background: rgba(255,255,255,.92); backdrop-filter: blur(6px); border-radius: 12px; padding: 8px 12px; font-size: 11.5px; color: var(--text-2); font-weight: 600; max-width: min(440px, 78vw); }
 [data-theme='dark'] .map-legend-toggle { background: rgba(22,35,58,.88); color: var(--text); }
 [data-theme='dark'] .map-legend-body { background: rgba(22,35,58,.92); }
 /* Expand mode — the map shell breaks out into a fixed overlay so the canvas
@@ -1448,8 +1454,9 @@ a.btn { text-decoration: none; }
 /* ---------- Notifications ---------- */
 .notif-pop {
   position: absolute; top: calc(100% + 8px); right: 0; width: min(360px, 92vw);
-  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
-  box-shadow: var(--shadow); overflow: hidden; z-index: 80; animation: slideUp var(--t-fast) var(--ease-out);
+  background: var(--yf-glass); border: 1px solid var(--yf-glass-border); border-radius: var(--radius);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  box-shadow: var(--shadow-soft); overflow: hidden; z-index: 80; animation: slideUp var(--t-fast) var(--ease-out);
 }
 .notif-item { padding: 11px 15px; border-bottom: 1px dashed var(--line); font-size: 13px; display: flex; gap: 9px; cursor: pointer; }
 .notif-item:hover { background: var(--bg-soft); }
@@ -1505,7 +1512,7 @@ a.btn { text-decoration: none; }
 .locked-overlay {
   position: absolute; inset: 0; z-index: 5;
   background: color-mix(in srgb, var(--bg) 72%, transparent);
-  -webkit-backdrop-filter: blur(5px); backdrop-filter: blur(5px);
+  backdrop-filter: blur(5px);
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 11px;
   border-radius: var(--radius); text-align: center; padding: 20px;
 }
@@ -1551,7 +1558,21 @@ a.btn { text-decoration: none; }
 .member-stack { display: flex; }
 .member-stack .avatar { margin-left: -8px; border: 2px solid var(--card); }
 .member-stack .avatar:first-child { margin-left: 0; }
-.role-select { padding: 4px 8px; border-radius: 8px; border: 1.5px solid var(--line); background: var(--card-soft); font-size: 12.5px; font-weight: 600; }
+.role-select {
+  appearance: none; -webkit-appearance: none;
+  padding: 5px 26px 5px 10px; border-radius: 999px;
+  border: 1px solid var(--yf-glass-border); background-color: var(--yf-glass);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  /* soft teal chevron replacing the native OS arrow */
+  background-image:
+    linear-gradient(45deg, transparent 49%, var(--teal-deep) 50%),
+    linear-gradient(-135deg, transparent 49%, var(--teal-deep) 50%);
+  background-position: calc(100% - 15px) 55%, calc(100% - 11px) 55%;
+  background-size: 5px 5px; background-repeat: no-repeat;
+  font-size: 12.5px; font-weight: 600; color: var(--text-2); cursor: pointer;
+  box-shadow: var(--shadow-sm); transition: border-color .15s ease, box-shadow .15s ease;
+}
+.role-select:hover { border-color: var(--teal); }
 .share-link-box { display: flex; gap: 8px; align-items: center; background: var(--bg-soft); border-radius: var(--radius-sm); padding: 9px 12px; font-size: 13px; overflow: hidden; }
 .share-link-box code { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; font-size: 12px; }
 .footer { border-top: 1px solid var(--line); padding: 26px 0 34px; margin-top: 50px; color: var(--text-3); font-size: 13px; }
@@ -1580,17 +1601,15 @@ a.btn { text-decoration: none; }
 .theme-toggle { background: var(--bg-soft); border: 1.5px solid var(--line); border-radius: 10px;
   width: 36px; height: 36px; cursor: pointer; font-size: 15px; flex: 0 0 auto; }
 .avatar-btn { background: none; border: none; cursor: pointer; padding: 0; border-radius: 50%; flex: 0 0 auto; }
-.user-menu { position: absolute; right: 0; top: calc(100% + 8px);
-  background: var(--yf-glass); border: 1px solid var(--yf-glass-border);
-  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
-  border-radius: 12px; box-shadow: var(--shadow-soft);
+.user-menu { position: absolute; right: 0; top: calc(100% + 8px); background: var(--yf-glass);
+  border: 1px solid var(--yf-glass-border); border-radius: 12px;
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  box-shadow: var(--shadow-soft);
   min-width: 220px; z-index: 60; overflow: hidden; }
 .user-menu-item { display: block; width: 100%; text-align: left; background: none; border: none;
   cursor: pointer; padding: 11px 15px; font-size: 13.5px; font-weight: 600; color: var(--text-2); }
 .user-menu-item:hover { background: var(--bg-soft); color: var(--text); }
 .user-menu-item.danger { color: var(--danger); }
-/* inset teal outline (not a box-shadow) so the ring isn't clipped by .user-menu's overflow:hidden */
-.user-menu-item:focus-visible { outline: 2px solid var(--teal-500); outline-offset: -2px; background: var(--bg-soft); }
 .notif-badge { position: absolute; top: -4px; right: -4px; background: var(--saffron); color: #fff;
   border-radius: 99px; font-size: 10px; font-weight: 800; min-width: 17px; height: 17px; line-height: 17px; }
 @media (max-width: 720px) {
@@ -1623,19 +1642,38 @@ a.btn { text-decoration: none; }
 }
 [data-theme='dark'] .itin-emoji { background: linear-gradient(135deg, var(--teal-soft), var(--info-soft)); }
 
-/* Trip card photo cover (Wikipedia lead image — lib/tripThumb.ts). Same 16:7
-   footprint as the emoji fallback; the gradient shows while the image loads. */
-.trip-thumb {
-  width: 100%; aspect-ratio: 16 / 7; object-fit: cover; display: block;
-  border-bottom: 1px solid var(--line);
+/* ---- Cover image picker (trip settings + create) ---- */
+.cover-picker { display: flex; flex-direction: column; gap: 10px; }
+.cover-picker-preview {
+  width: 100%; aspect-ratio: 16 / 7; border-radius: 14px; overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
   background: linear-gradient(135deg, var(--teal-soft), var(--bg-soft));
+  border: 1px solid var(--line);
 }
-[data-theme='dark'] .trip-thumb { background: linear-gradient(135deg, var(--teal-soft), var(--info-soft)); }
+[data-theme='dark'] .cover-picker-preview { background: linear-gradient(135deg, var(--teal-soft), var(--info-soft)); }
+.cover-picker-emoji { font-size: 46px; }
+.cover-picker-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.cover-picker-custom { display: flex; gap: 6px; flex: 1; min-width: 220px; }
+
+/* ---- Workspace header cover badge ---- */
+.trip-cover-badge {
+  width: 46px; height: 46px; border-radius: 12px; flex: 0 0 auto;
+  background: var(--teal-soft); border: 1px solid var(--line);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 24px; overflow: hidden;
+}
+.trip-cover-badge--emoji { background: linear-gradient(135deg, var(--teal-soft), var(--bg-soft)); }
+
+/* ---- Public itinerary hero photo ---- */
+.pub-hero-photo {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: cover; opacity: .42; z-index: 0;
+}
 
 /* Locked premium overlay (public itinerary) */
 .locked-overlay { position: relative; }
 .locked-cta { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
-  justify-content: center; text-align: center; gap: 6px; background: rgba(250,247,242,.55); -webkit-backdrop-filter: blur(1.5px); backdrop-filter: blur(1.5px); padding: 16px; }
+  justify-content: center; text-align: center; gap: 6px; background: rgba(250,247,242,.55); backdrop-filter: blur(1.5px); padding: 16px; }
 [data-theme='dark'] .locked-cta { background: rgba(11,20,35,.55); }
 
 /* Consistent vertical rhythm between stacked cards & sections */
@@ -1744,7 +1782,7 @@ a.btn { text-decoration: none; }
   list-style: none;
   background: var(--yf-glass);
   border: 1px solid var(--yf-glass-border);
-  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
   border-radius: 12px;
   box-shadow: var(--shadow-soft);
   max-height: 280px;
@@ -1886,7 +1924,7 @@ a.btn { text-decoration: none; }
   padding: 10px 12px;
   background: var(--yf-glass);
   border: 1px solid var(--yf-glass-border);
-  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
   border-radius: 12px;
   box-shadow: var(--shadow-soft);
   font-size: 13px;
@@ -1942,8 +1980,7 @@ main:focus { outline: none; }
 .day-rail-chip:focus-visible,
 .map-day-chip:focus-visible, .map-idea-chip:focus-visible, .map-legend-toggle:focus-visible,
 .map-expand-chip:focus-visible, .loc-option:focus-visible, .ai-fab:focus-visible,
-.trip-card-hit:focus-visible, .skip-link:focus-visible, .yf-map-pin:focus-visible,
-.avatar-btn:focus-visible {
+.trip-card-hit:focus-visible, .skip-link:focus-visible, .yf-map-pin:focus-visible {
   outline: none;
   box-shadow: var(--ring);
 }
@@ -2040,7 +2077,7 @@ main:focus { outline: none; }
 }
 .ride-spot-main { flex: 1; min-width: 180px; }
 .ride-spot-actions { display: flex; gap: 8px; align-items: center; }
-.ride-spot-mins { width: 100px; padding: 6px 8px; }
+.ride-spot-mins { width: 110px; padding: 6px 26px 6px 10px; }
 .ride-spot-title { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
 .ride-spot-gap { border-style: dashed; opacity: .8; }
 
@@ -2321,8 +2358,8 @@ body, .topnav, .glass, .board, .board-col, .modal, .toast {
 ::view-transition-old(root),
 ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
 html.vt-active :where(*) {
-  -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 :root.vt-radiate-out::view-transition-new(root) {
   animation: vt-radiate-out 780ms cubic-bezier(.55, 0, .85, .36) both;
@@ -2384,7 +2421,7 @@ html.vt-active :where(*) {
 .explore-hero-search {
   max-width: 520px; width: 100%; border-radius: 14px; padding: 13px 16px;
   border: 1px solid rgba(255, 255, 255, .3); background: rgba(255, 255, 255, .12); color: #fff;
-  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
 }
 .explore-hero-search::placeholder { color: rgba(226, 241, 239, .75); }
 .explore-hero-search:focus { background: rgba(255, 255, 255, .18); border-color: rgba(255, 255, 255, .5); outline: none; }

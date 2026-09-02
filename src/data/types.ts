@@ -62,6 +62,13 @@ export interface UserProfile {
   isCreator: boolean
   creatorBio?: string
   socialLinks?: { youtube?: string; instagram?: string }
+  /**
+   * Wall-clock ms timestamp of the most recent demo-seed run for this user.
+   * When unset on hydration, the full 10-trip demo is seeded (one-shot per
+   * account). The flag lets returning users pick up the latest demo showcase
+   * without us having to diff their trips against the seed.
+   */
+  demoSeededAt?: number
 }
 
 export interface User {
@@ -174,6 +181,13 @@ export interface Trip {
   expenses: Expense[]
   members?: TripMember[]
   coverEmoji: string
+  /**
+   * Optional owner-chosen cover image (URL). When set it is the trip's
+   * canonical cover and is carried over when the trip is forked or published.
+   * When unset, the UI falls back to a popular Wikipedia image of the
+   * destination (see lib/tripThumb).
+   */
+  coverImageUrl?: string
   visibility: 'private' | 'public'
   createdAt: number
   updatedAt: number

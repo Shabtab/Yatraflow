@@ -8,7 +8,7 @@ import {
   setStopStatus, addExpense, deleteExpense, restoreExpense, addSuggestion,
   voteSuggestion, addCommentToSuggestion,
   acceptSuggestionIntoTimeline, declineSuggestion, addDecision, voteOnDecision, resolveDecision,
-  activityFor, setMemberRole, removeMember, restoreMember, updateTrip, publishItinerary,
+  activityFor, setMemberRole, removeMember, restoreMember, updateTrip, publishItinerary, unpublishItinerary,
 } from '../store/store'
 import {
   computeHealth, computeTotals, simulateDay, originOf, getAssumptions, legKey, coLocates,
@@ -34,6 +34,9 @@ const BoardView = React.lazy(() => import('../components/BoardView').then(m => (
 import { StopEditor, type StopFormValues } from '../components/StopEditor'
 import { AiDrawer } from '../components/AiDrawer'
 import { LocationInput } from '../components/LocationInput'
+import { CoverImagePicker } from '../components/CoverImagePicker'
+import { useDestinationCover } from '../hooks/useDestinationCover'
+import { pickTripQueryCandidates } from '../lib/tripThumb'
 import { searchNearbyPois, corridorAnchors, detourKm, googleEnabled, planJourneyHalts, type NearbyOpts } from '../lib/geocode'
 import type { PlaceHit, SegmentHit } from '../lib/geocode'
 import { anchorHash } from '../lib/providers/hits'
@@ -87,6 +90,11 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
   // route changes. Only applied for ground modes (OSRM is driving-only); the
   // deterministic haversine engine stays the fallback and powers warnings/impact.
   const legCorrections = useTripCorrections(trip)
+
+  // Auto (Wikipedia) destination photo for the workspace header cover badge.
+  // Walk all candidates (last stop → earlier stops → start city) so a single
+  // "no photo" Wikipedia page doesn't leave the cover blank.
+  const tripCoverAuto = useDestinationCover(trip ? pickTripQueryCandidates(trip) : null)
 
   // Pending change: a proposed plan held until the user keeps or discards it.
   const [pending, setPending] = useState<{ proposed: Trip; result: ImpactResult } | null>(null)
@@ -171,7 +179,15 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
         <div className="row-between">
           <div style={{ position: 'relative', zIndex: 1 }}>
             <button className="trip-hero-back" onClick={() => onNavigate('trips')}>← All trips</button>
-            <h1 style={{ marginTop: 12 }}>{trip.coverEmoji} {trip.name}</h1>
+            <h1 style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
+              {(() => {
+                const cover = trip.coverImageUrl || tripCoverAuto
+                return cover
+                  ? <span className="trip-cover-badge" style={{ backgroundImage: `url("${cover}")`, backgroundSize: 'cover', backgroundPosition: 'center' }} aria-hidden="true" />
+                  : <span className="trip-cover-badge trip-cover-badge--emoji" aria-hidden="true">{trip.coverEmoji}</span>
+              })()}
+              {trip.name}
+            </h1>
             <p style={{ opacity: .9, marginTop: 6 }}>
               {trip.startLocation} → {trip.destinations.join(' → ')} · {fmtDateRange(trip.startDate, trip.endDate)} · {trip.travellers} travellers · {cap(trip.transportMode)} · {cap(trip.travelStyle)}
             </p>
@@ -1438,7 +1454,7 @@ function RideSpotRow({ segHit, onAdd, added }: {
             : <button className="btn btn-primary btn-sm" onClick={() => onAdd(0)}>＋ Add overnight stay</button>
         ) : (
           <>
-            <select className="input ride-spot-mins" value={mins} onChange={e => setMins(Number(e.target.value))} aria-label="Halt duration" disabled={added}>
+            <select className="select ride-spot-mins" value={mins} onChange={e => setMins(Number(e.target.value))} aria-label="Halt duration" disabled={added}>
               {[15, 20, 30, 40, 45, 60].map(v => <option key={v} value={v}>{v} min</option>)}
             </select>
             {added
@@ -2437,13 +2453,14 @@ function ShareTab({ trip, me, editable, onNavigate }: {
           <span className="share-intent share-intent--saffron">2 · Share publicly</span>
           <h3>Publish as public itinerary</h3>
           <p className="hint-text" style={{ margin: '6px 0 12px' }}>
-            Creators can list this trip on Explore. Day 1 is the free preview; later days sit behind a premium placeholder (no real payments in this MVP).
+            List this trip on Explore so anyone can discover and fork it. Day 1 is the free preview; later days sit behind a premium placeholder (no real payments in this MVP).
           </p>
           {!pub ? (
             <button className="btn btn-saffron" disabled={!isOwner}
               onClick={() => {
                 publishItinerary({
                   tripId: trip.id, creatorId: me.id, title: trip.name,
+                  coverImageUrl: trip.coverImageUrl,
                   tagline: `${trip.days.length}-day ${trip.travelStyle} trip through ${trip.destinations.join(', ')}.`,
                   routeSummary: [trip.startLocation, ...trip.destinations],
                   durationDays: trip.days.length,
@@ -2457,9 +2474,32 @@ function ShareTab({ trip, me, editable, onNavigate }: {
                 toast('Published to Explore 🎉')
               }}>Publish to Explore</button>
           ) : (
-            <div className="row-between">
-              <span className="small muted">Live on Explore · {pub.views} views · {pub.copies} copies</span>
-              <button className="btn btn-outline btn-sm" onClick={() => onNavigate(`pub:${pub.id}`)}>View public page</button>
+            <div>
+              <div className="row-between">
+                <span className="small muted">Live on Explore · {pub.views} views · {pub.copies} forks</span>
+                <button className="btn btn-outline btn-sm" onClick={() => onNavigate(`pub:${pub.id}`)}>View public page</button>
+              </div>
+              <div className="row" style={{ gap: 8, marginTop: 10 }}>
+                <button className="btn btn-outline btn-sm"
+                  onClick={() => {
+                    publishItinerary({
+                      tripId: trip.id, creatorId: me.id, title: trip.name,
+                      coverImageUrl: trip.coverImageUrl,
+                      tagline: `${trip.days.length}-day ${trip.travelStyle} trip through ${trip.destinations.join(', ')}.`,
+                      routeSummary: [trip.startLocation, ...trip.destinations],
+                      durationDays: trip.days.length,
+                      estimatedBudgetPerPersonInr: trip.budgetPerPersonInr,
+                      travelStyle: trip.travelStyle,
+                      travelTips: ['Start ghat-section drives early.', 'Carry cash in hill towns.'],
+                      warningsAndAssumptions: ['All costs are estimates based on typical prices — verify locally before booking.'],
+                      freeDayIndexes: [0], premiumPriceInr: 199,
+                      subscriberCta: 'Full checklist + stay contacts.',
+                    })
+                    toast('Publication updated ✨')
+                  }}>Update</button>
+                <button className="btn btn-ghost btn-sm"
+                  onClick={() => { unpublishItinerary(trip.id); toast('Unpublished — removed from Explore') }}>Unpublish</button>
+              </div>
             </div>
           )}
           {!isOwner && <p className="hint-text" style={{ marginTop: 8 }}>Only the trip owner can publish.</p>}
@@ -2533,6 +2573,12 @@ function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boolean })
 
   return (
     <div>
+      <Field label="Cover image">
+        <CoverImagePicker trip={trip} editable={editable} />
+        <p className="hint-text" style={{ marginTop: 6 }}>
+          Pick a popular photo of your destination, paste your own image URL, or leave it to the emoji.
+        </p>
+      </Field>
       <Field label="Trip name"><input className="input" disabled={!editable} value={f.name} onChange={e => setF(x => ({ ...x, name: e.target.value }))} /></Field>
       <div className="form-row">
         <Field label="Starting location">

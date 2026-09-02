@@ -9,6 +9,7 @@ import { simulateDay, originOf, minutesToHM, formatInr, getAssumptions, computeT
 import { useTimeFormat, formatHM, formatHMRange } from '../lib/timefmt'
 import { stopKindOf, STOP_KIND_LABELS } from '../lib/stopKind'
 import { useSavedPubs } from '../lib/savedPubs'
+import { useDestinationCover } from '../hooks/useDestinationCover'
 import { Avatar, Chip, EmptyState, toast, CopyButton, RouteSnapshot } from '../components/ui'
 
 export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavigate: (r: string) => void }) {
@@ -18,7 +19,7 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
   const pub: PublishedItinerary | undefined = db.published.find(p => p.id === slug)
   const trip: Trip | undefined = pub ? tripById(pub.tripId) : undefined
   const { isSaved, toggleSaved } = useSavedPubs()
-
+  const heroAuto = useDestinationCover(pub ? (pub.routeSummary.length ? pub.routeSummary : [pub.title]) : null)
   useEffect(() => {
     if (pub) registerPubView(pub.id)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -88,6 +89,9 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
     <div>
       {/* ---- Editorial hero: destination-led, creator-attributed (§6.11) ---- */}
       <section className="pub-hero">
+        {pub.coverImageUrl || heroAuto
+          ? <img className="pub-hero-photo" src={pub.coverImageUrl || heroAuto!} alt="" aria-hidden="true" />
+          : null}
         <div className="pub-hero-bg" aria-hidden="true" />
         <div className="container pub-hero-inner">
           <button className="btn btn-sm btn-ghost pub-hero-back" onClick={() => onNavigate('/explore')}>← Explore</button>
