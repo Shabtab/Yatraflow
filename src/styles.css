@@ -1070,16 +1070,29 @@ a.btn { text-decoration: none; }
 .vehicle-profile-form .form-row:last-child { margin-bottom: 0; }
 
 /* ---------- Tabs ---------- */
-.tabbar { display: flex; gap: 2px; overflow-x: auto; border-bottom: 1.5px solid var(--line); margin-bottom: 20px; scrollbar-width: none;
-  transition: margin var(--t-med) var(--ease-out); }
+.tabbar {
+  display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none;
+  /* Same glass pill as the floating topnav (user-decided §9 tokens): the
+     workspace tab strip floats as a pill over the page atmosphere. */
+  background: var(--yf-nav-glass);
+  -webkit-backdrop-filter: blur(18px) saturate(1.2);
+  backdrop-filter: blur(18px) saturate(1.2);
+  border: 1px solid var(--yf-glass-border);
+  border-radius: 999px;
+  padding: 5px;
+  box-shadow: var(--shadow-soft);
+  margin-bottom: 20px;
+  transition: margin var(--t-med) var(--ease-out);
+}
 .tabbar::-webkit-scrollbar { display: none; }
 .tab-btn {
-  border: none; background: none; padding: 11px 15px; font-size: 14px; font-weight: 650;
-  color: var(--text-3); border-bottom: 2.5px solid transparent; margin-bottom: -1.5px; white-space: nowrap;
+  border: none; background: none; padding: 9px 15px; font-size: 14px; font-weight: 650;
+  color: var(--text-2); border-radius: 999px; white-space: nowrap;
   display: inline-flex; align-items: center; gap: 6px;
+  transition: background var(--t-fast) var(--ease-out), color var(--t-fast) var(--ease-out);
 }
-.tab-btn:hover { color: var(--text); }
-.tab-btn.active { color: var(--teal-deep); border-bottom-color: var(--teal); }
+.tab-btn:hover { background: var(--bg-soft); color: var(--text); }
+.tab-btn.active { background: var(--teal-soft); color: var(--teal-deep); }
 .tab-count { background: var(--danger-soft); color: var(--danger); font-size: 11px; font-weight: 750; border-radius: 999px; padding: 1px 7px; }
 
 /* ---------- Modal / drawer / toast ---------- */
