@@ -187,49 +187,77 @@ export function init(): void {
 
 async function hydrateFromSupabase(userId: string): Promise<void> {
   try {
-    const [
-      profRes, tripsRes, memRes, sugRes, decRes, actRes, notRes, pubRes,
-    ] = await Promise.all([
+    // Stage 1 - global catalogs + the user's memberships. Explore reads the curated
+    // published_itineraries table and profiles are small rows for user avatars,so
+    // those stay global. Every per-trip table is SCOPED to the user's membership.
+    // Before, `trips.select('*')` pulled EVERY public row the token could select
+    // (the whole catalog, ~1000 trips) into "My Trips",drowning the user's own
+    // trips and letting a malformed foreign row crash a workspace render (which
+    // looked like the trip "disappeared").
+    const [profRes, pubRes, myMembershipsRes] = await Promise.all([
       supabase.from('profiles').select('*'),
-      supabase.from('trips').select('*'),
-      supabase.from('trip_members').select('*'),
-      supabase.from('suggestions').select('*'),
-      supabase.from('decisions').select('*'),
-      supabase.from('activity').select('*'),
-      supabase.from('notifications').select('*'),
       supabase.from('published_itineraries').select('*'),
+      supabase.from('trip_members').select('*').eq('user_id', userId),
     ])
-
     const profiles = (profRes.data ?? []) as ProfileRow[]
-    const trips = (tripsRes.data ?? []) as TripRow[]
-    const members = (memRes.data ?? []) as MemberRow[]
+    const myRows = (myMembershipsRes.data ?? []) as MemberRow[]
+    const memberTripIds = myRows.map(m => m.trip_id)
+    const myTripIds = [...new Set(memberTripIds)]
 
-    // Supabase surfaces query failures as { error } rather than rejecting, so
-    // a denied/missing table silently hydrated as an empty list — data that
-    // exists server-side "vanishes" after refresh with no trace in the logs.
-    for (const [name, res] of [
-      ['profiles', profRes], ['trips', tripsRes], ['trip_members', memRes],
-      ['suggestions', sugRes], ['decisions', decRes], ['activity', actRes],
-      ['notifications', notRes], ['published_itineraries', pubRes],
-    ] as const) {
-      if (res.error) console.error(`[yatraflow] hydrate ${name} failed`, res.error)
+    // Stage 2 - only the user's own trips + their collaboration data. PostgREST
+    // rejects `id=in.<empty>` so when the user has no trips yet, we record empty
+    // slices and the demo seed below still runs.
+    let trips: TripRow[] = []
+    const members: MemberRow[] = []
+    let suggestions: StopSuggestion[] = []
+    let decisions: TripDecision[] = []
+    let activity: ActivityEntry[] = []
+    let notifications: Notification[] = []
+    if (myTripIds.length > 0) {
+      const [tripsRes, memRes, sugRes, decRes, actRes, notRes] = await Promise.all([
+        supabase.from('trips').select('*').in('id', myTripIds),
+        supabase.from('trip_members').select('*').in('trip_id', myTripIds),
+        supabase.from('suggestions').select('*').in('trip_id', myTripIds),
+        supabase.from('decisions').select('*').in('trip_id', myTripIds),
+        supabase.from('activity').select('*').in('trip_id', myTripIds),
+        supabase.from('notifications').select('*').in('trip_id', myTripIds),
+      ])
+      // Supabase surfaces query failures as { error } rather than rejecting, so a
+      // denied/missing table silently hydrated as an empty list - data that exists
+      // server-side "vanishes" after refresh with no trace in the logs.
+      for (const [name, res] of [
+        ['trips', tripsRes], ['members', memRes], ['suggestions', sugRes],
+        ['decisions', decRes], ['activity', actRes], ['notifications', notRes],
+      ] as const) {
+        if (res.error) console.error(`[yatraflow] hydrate ${name} failed`, res.error)
+      }
+      trips = (tripsRes.data ?? []) as TripRow[]
+      members.push(...((memRes.data ?? []) as MemberRow[]))
+      suggestions = mapOrSkip((sugRes.data ?? []), rowToSuggestion)
+      decisions = mapOrSkip((decRes.data ?? []), rowToDecision)
+      activity = mapOrSkip((actRes.data ?? []), rowToActivity)
+      notifications = mapOrSkip((notRes.data ?? []), rowToNotification)
     }
 
-    const users = profiles.map(rowToUser)
-    const tripList = trips.map(row =>
+    const users = mapOrSkip(profiles, rowToUser)
+    const tripList = mapOrSkip(trips, row =>
       rowToTrip(row, members.filter(m => m.trip_id === row.id).map(m => ({ userId: m.user_id, role: m.role, joinedAt: m.joined_at })))
     )
+    console.info('[yatraflow] hydrate:', tripList.length, 'trips,', members.length,' members - ids:', tripList.map(t => t.id).join(','))
+
+    const pubRows = mapOrSkip((pubRes.data ?? []), rowToPublished)
+    pubRes.error && console.error('[yatraflow] hydrate published failed', pubRes.error)
 
     patch({
       users,
       trips: tripList,
-      suggestions: (sugRes.data ?? []).map(rowToSuggestion),
-      decisions: (decRes.data ?? []).map(rowToDecision),
-      activity: (actRes.data ?? []).map(rowToActivity),
-      notifications: (notRes.data ?? []).map(rowToNotification),
-      // De-dupe / drop orphan published rows left by earlier buggy seeds
-      // (publishItinerary mints a fresh id each call → many rows per tripId).
-      published: dedupePublished((pubRes.data ?? []).map(rowToPublished), new Set(tripList.map(t => t.id))),
+      suggestions,
+      decisions,
+      activity,
+      notifications,
+      // De-dupe / drop orphan published rows left by earlier buggy seeds (the
+      // publishItinerary path mints a fresh id each call - many rows per tripId).
+      published: dedupePublished(pubRows, new Set(tripList.map(t => t.id))),
       sessionUserId: userId,
     })
     commit()
@@ -238,9 +266,20 @@ async function hydrateFromSupabase(userId: string): Promise<void> {
     if (tripList.length === 0) await seedDemoFor(userId)
   } catch (e) {
     console.error('[yatraflow] hydration failed', e)
-    toast('Could not load your data — check your connection.')
+    toast('Could not load your data - check your connection.')
   }
 }
+
+/** Map rows safely - skip + log a single malformed row instead of letting its
+ *  thrown mapper crash the whole hydration / realtime apply (which looked
+ *  like trips "disappeared" (a white-screen) when a public catalog row had an
+ *  unexpected shape). */
+function mapOrSkip<T>(rows: unknown[], to: (row: any) => T): T[] {
+  const out: T[] = []
+  for (const r of rows ?? []) {
+    try { out.push(to(r)) } catch (e) { console.error('[yatraflow] skipped malformed row', e) }
+  }
+  return out}
 
 // ---------------- Seeding demo trips ----------------
 

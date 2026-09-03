@@ -300,3 +300,26 @@ No-SQL alternative: subscribe a `postgres_changes` channel per table with the
 public anon key — Realtime rejects non-published tables at SUBSCRIBE time, so
 a `SUBSCRIBED` status is functional proof of membership (verified all 8 tables
 PASS this way after the #18 `profiles` toggle).
+
+**Pruning junk Supabase data — probe before you prune, and prune by owner, not
+by orphan check** (Sep 2026): the reported "802 orphan rows" turned out to be
+~2,100 *valid* cross-account rows from demo-seed replays, not orphans.
+- An orphan probe (`child.trip_id NOT IN (SELECT id FROM trips)`) validates ONE
+  link only. If the cascade broke higher up (auth user → profile → trip), child
+  rows look "valid" while the whole subtree is junk. Probe each level: profiles
+  without auth users, trips without owner profiles, then children without trips.
+- **Membership counts ≠ trip-owner counts.** `trip_members` grouped by user
+  showed only 3 accounts (~412 rows) while `trips` held 2,113 — seed replays
+  wrote trips whose member inserts silently failed. The authoritative junk map
+  is `SELECT owner_id, COUNT(*) … FROM trips` joined to `profiles.email`, not
+  the membership table.
+- **The prune is one statement.** All six child tables carry `ON DELETE CASCADE`
+  on `trip_id → trips(id)` (schema.sql), so `DELETE FROM public.trips WHERE
+  owner_id <> '<keep-uuid>'` in the SQL editor (management plane, bypasses RLS)
+  sweeps everything. Capture per-table counts before/after in the same session
+  and paste them into the CHANGELOG entry.
+- **Accumulation signature:** trips-owned far exceeding memberships + a fresh
+  trip UUID per replay = the demo seed re-ran on every load because silent
+  write-through failures kept the hydrated trip count at zero. The
+  scoped-hydration + write-through fixes close the loop; if bloat reappears,
+  look for a new path that re-seeds non-idempotently.
