@@ -2,6 +2,12 @@
 
 All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions are pre-1.0 MVP milestones.
 
+## [Unreleased]
+
+### Changed
+- **Demo data reverted to the pre-v0.25.0 behavior** (`src/data/seed.ts` + `seedDemoFor` back to the v0.23.0 logic). The redesigned demo-seed system that shipped in the 0.25.0 mega merge — localStorage one-shot guard, seed-name collision deletion, ID remapping, auto-publishing all demo itineraries, layered demo collections — was removed after it kept making user-created trips vanish seconds after creation (even a writeGuard fix on the seed-import experiment couldn't stop it; root cause never proven). The old way is back: a fresh account hydrating with **zero trips** gets the classic demo trips inserted directly and a re-hydrate shows them. Kept from the redesign: the read-side `dedupePublished` cleanup (the shared DB carries junk duplicate/orphan `published_itineraries` rows from the buggy seeds — dropping it would flood Explore again), hydration error logging, and realtime `markLocalWrite` echo suppression. The unused `profiles.demo_seeded_at` schema addition was reverted too (existing live columns are harmless leftovers). Rest of the v0.25.0 redesign (CTI UI, halt planner, ridePlan engine, cover thumbnails) is untouched.
+
+## [0.25.0] — 2026-09-03
 ## [0.25.0] — 2026-09-03
 
 ### Changed

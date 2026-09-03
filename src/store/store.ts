@@ -12,7 +12,7 @@ import type {
   User, Trip, StopSuggestion, TripDecision, ActivityEntry, Notification,
   PublishedItinerary, ID, ItineraryStop, ItineraryDay, TripMember, Expense, FixedCommitment,
 } from '../data/types'
-import { seedData, uid, DEMO_USER_IDS } from '../data/seed'
+import { seedData, uid } from '../data/seed'
 import type { LatLngPoint } from '../data/types'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { toast } from '../components/ui'
@@ -67,46 +67,10 @@ function patch(next: Partial<DB>) {
 // ---------------- Supabase row <-> domain mapping ----------------
 // rowToTrip / tripToRow live in src/lib/tripRow.ts (pure, unit-tested).
 
-/** Postgres `uuid` columns reject anything that isn't a 36-char hyphenated
- *  hex string. Demo users (u_arjun, u_meera, u_devika, u_demo) are short
- *  slugs, so the seed must filter them out before writing to tables that FK
- *  to profiles.id — otherwise every collaborator insert raises
- *  "Invalid input syntax for type uuid: u_arjun" and the publish upsert
- *  fails. Keep them in the in-memory trip.members array (the cache drives
- *  the UI); the DB only needs rows the FK can actually satisfy. */
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-
-/** Re-entrancy guard for the demo seed. seedDemoFor awaits a re-hydrate at
- *  the end, and that re-hydrate would re-fire the seed trigger (because the
- *  cache.user's demoSeededAt is overwritten from the Supabase row, which
- *  may not have the column yet). Without this guard that becomes an
- *  infinite loop of failed publishes. */
-let seedingFor: string | null = null
-
-// ---------------- One-shot demo-seed guard (localStorage) ----------------
-// The original guard lived on `profiles.demo_seeded_at` in Supabase. On shared
-// demo DBs that column is often absent or the write is blocked by RLS, so every
-// re-hydrate overwrote the in-memory flag with `undefined` and the seed
-// re-fired on each load — deleting & re-inserting all 10 trips, which the UI
-// showed as "3 loaded then disappeared". localStorage survives re-hydration,
-// needs no DB schema/RLS, and is scoped per-user, so the seed runs exactly once
-// per browser. The Supabase marker is kept as a harmless best-effort backup.
-function demoSeededKey(userId: string): string { return `yatraflow_demo_seeded_${userId}` }
-function hasDemoSeeded(userId: string): boolean {
-  try { return typeof localStorage !== 'undefined' && localStorage.getItem(demoSeededKey(userId)) != null }
-  catch { return false }
-}
-function setDemoSeeded(userId: string, at: number): void {
-  try { if (typeof localStorage !== 'undefined') localStorage.setItem(demoSeededKey(userId), String(at)) } catch { /* ignore */ }
-}
-
 interface ProfileRow {
   id: string; email: string; name: string; avatar_url?: string; home_city?: string;
   languages: string[]; travel_styles: string[]; is_creator: boolean; creator_bio?: string;
   social_links?: { youtube?: string; instagram?: string }; created_at: number;
-  /** wall-clock ms timestamp of the most recent demo-seed run; absent on
-   *  rows that pre-date the column. NULL/undefined triggers a one-shot seed. */
-  demo_seeded_at?: number | null;
 }
 
 /** Shape of a trip_members row as stored in Postgres (snake_case). */
@@ -121,24 +85,8 @@ function rowToUser(row: ProfileRow): User {
       name: row.name, avatarUrl: row.avatar_url, homeCity: row.home_city,
       languages: row.languages ?? ['en'], travelStyles: (row.travel_styles ?? ['balanced']) as User['profile']['travelStyles'],
       isCreator: row.is_creator, creatorBio: row.creator_bio, socialLinks: row.social_links,
-      demoSeededAt: row.demo_seeded_at ?? undefined,
     },
   }
-}
-
-/** Persist the demo-seed marker. Primary store is localStorage (survives
- *  re-hydration, no RLS/schema dependency); the Supabase `demo_seeded_at`
- *  column is a harmless best-effort backup. The cache is updated synchronously
- *  too so the in-memory profile reflects the new state at once. */
-function markDemoSeeded(userId: string, at: number): void {
-  setDemoSeeded(userId, at)
-  const idx = cache.users.findIndex(u => u.id === userId)
-  if (idx >= 0) {
-    cache.users[idx] = { ...cache.users[idx], profile: { ...cache.users[idx].profile, demoSeededAt: at } }
-    commit()
-  }
-  void supabase.from('profiles').update({ demo_seeded_at: at }).eq('id', userId)
-    .then(({ error }) => { if (error) console.error('[yatraflow] mark demo seeded failed', error) })
 }
 
 // ---------------- Auth ----------------
@@ -272,12 +220,6 @@ async function hydrateFromSupabase(userId: string): Promise<void> {
       rowToTrip(row, members.filter(m => m.trip_id === row.id).map(m => ({ userId: m.user_id, role: m.role, joinedAt: m.joined_at })))
     )
 
-    // A demo seed is running for this user: its cache-first trip writes are the
-    // source of truth right now, and this patch would wipe them with server
-    // state that can't contain the in-flight rows yet (the appearing/
-    // disappearing-trips flicker). The seed's final state is complete — skip.
-    if (seedingFor === userId) return
-
     patch({
       users,
       trips: tripList,
@@ -292,15 +234,8 @@ async function hydrateFromSupabase(userId: string): Promise<void> {
     })
     commit()
 
-    // One-shot demo seed: any account without the localStorage demo-seed
-    // marker gets the full 10-trip showcase. The marker survives re-hydration
-    // (unlike the old Supabase column, which could be absent/RLS-blocked and
-    // got overwritten on every load → the seed re-fired and the trips
-    // flickered). The `seedingFor` guard breaks the re-entrant loop:
-    // seedDemoFor sets the marker up-front and is itself guarded, so a
-    // re-entrant hydration can never start a second seed.
-    const me = users.find(u => u.id === userId)
-    if (seedingFor !== userId && !hasDemoSeeded(userId)) await seedDemoFor(userId)
+    // First-time users get the demo trips seeded into their account.
+    if (tripList.length === 0) await seedDemoFor(userId)
   } catch (e) {
     console.error('[yatraflow] hydration failed', e)
     toast('Could not load your data — check your connection.')
@@ -310,134 +245,25 @@ async function hydrateFromSupabase(userId: string): Promise<void> {
 // ---------------- Seeding demo trips ----------------
 
 async function seedDemoFor(userId: string): Promise<void> {
-  if (seedingFor === userId) return
-  seedingFor = userId
-  try {
-  // Mark the one-shot guard up-front (localStorage) so even a partial/failed
-  // run can't be re-armed by a follow-up hydration into an infinite loop.
-  setDemoSeeded(userId, Date.now())
-
-  const idMap = new Map<string, string>()
   const seedTrips = structuredClone(seedData.trips)
-  const namesToReplace = new Set(seedTrips.map(t => t.name))
-  // Replace any user-owned trip that shares a seed name (removes stale copies
-  // and any junk rows left by earlier buggy seeds) so we never end up with two
-  // "Kerala Hills & Backwaters Road Trip" cards. Non-seed-named trips (the
-  // user's own real plans) are left untouched.
-  const collisions = cache.trips.filter(t =>
-    t.members?.some(m => m.userId === userId && m.role === 'owner') && namesToReplace.has(t.name)
-  )
-  if (collisions.length) {
-    const ids = new Set(collisions.map(c => c.id))
-    cache.trips = cache.trips.filter(t => !ids.has(t.id))
-    commit()
-    for (const old of collisions) {
-      await supabase.from('trip_members').delete().eq('trip_id', old.id)
-      await supabase.from('trips').delete().eq('id', old.id)
-    }
-  }
-
-  // Seed trips are owned by the current user so they appear in "My Trips".
-  // Each is added to the cache immediately (cache-first) and persisted to
-  // Supabase in the background — no mid-seed re-hydrate that would re-patch
-  // the cache with a half-written snapshot and make trips flicker/disappear.
   for (const t of seedTrips) {
-    const newId = uuid()
-    idMap.set(t.id, newId)
-    // Collaborators from the seed ride along in the in-memory members array to
-    // demonstrate multi-planner collaboration; only real-UUID members are
-    // written to trip_members (FK to profiles.id rejects the demo slugs).
-    const members: TripMember[] = [{ userId, role: 'owner', joinedAt: Date.now() }]
-    for (const m of (t.members ?? [])) {
-      if (m.userId !== DEMO_USER_IDS.demo) members.push({ ...m })
-    }
-    const trip: Trip = { ...structuredClone(t), id: newId, members }
-    cache.trips = [...cache.trips, trip]
-    commit()
-    markLocalWrite('trips', newId)
-
+    const owner: TripMember = { userId, role: 'owner', joinedAt: Date.now() }
+    // Regenerate the trip id: seed data carries stable display ids that are
+    // not valid UUIDs, but trips.id is a Postgres uuid column.
+    const trip: Trip = { ...structuredClone(t), id: uuid(), members: [owner] }
     const cols = await tripsHaveOptionalColumns()
     const { error } = await supabase.from('trips').insert(tripToRow(trip, userId, cols))
     if (error) { console.error('seed trip failed', error); continue }
-    const realMemberRows = members
-      .filter(m => UUID_RE.test(m.userId))
-      .map(m => ({ trip_id: newId, user_id: m.userId, role: m.role, joined_at: m.joinedAt }))
-    if (realMemberRows.length) {
-      const { error: memErr } = await supabase.from('trip_members').insert(realMemberRows)
-      if (memErr) console.error('seed trip_members failed', memErr)
-      else markLocalWrite('trip_members', newId)
-    }
+    await supabase.from('trip_members').insert({ trip_id: trip.id, user_id: userId, role: 'owner', joined_at: Date.now() })
+    markLocalWrite('trips', trip.id)
   }
-
-  // Publish the demo itineraries (one per travel style) so Explore is full.
-  // publishItinerary upserts to Supabase AND updates cache.published, so they
-  // survive the next refresh without any re-hydrate here. creatorId is
-  // remapped: non-UUID demo slugs become the real user (published_itineraries
-  // .creator_id FKs to profiles.id); the in-memory cache keeps the original
-  // creator name for display variety.
-  for (const p of (seedData.published ?? [])) {
-    await publishItinerary({
-      ...structuredClone(p),
-      tripId: idMap.get(p.tripId) ?? p.tripId,
-      creatorId: UUID_RE.test(p.creatorId) ? p.creatorId : userId,
-    })
-  }
-
-  // Layer the remaining demo collections (users, suggestions, decisions,
-  // activity, notifications) on top so every tab is populated immediately.
-  // These reference remapped trip ids. We intentionally do NOT re-hydrate
-  // from Supabase here — that re-patch read a partially-written snapshot mid
-  // seed and was the cause of "3 loaded then disappeared".
-  if (seedData.users?.length) {
-    const byId = new Map(cache.users.map(u => [u.id, u]))
-    for (const u of seedData.users) if (!byId.has(u.id)) byId.set(u.id, u)
-    cache.users = [...byId.values()]
-  }
-  const remap = (tripId: string | undefined) => (tripId ? (idMap.get(tripId) ?? tripId) : '')
-  if (seedData.suggestions?.length) {
-    const existing = new Set(cache.suggestions.map(s => s.id))
-    cache.suggestions = [
-      ...cache.suggestions,
-      ...seedData.suggestions.filter(s => !existing.has(s.id)).map(s => ({ ...structuredClone(s), tripId: remap(s.tripId) })),
-    ]
-  }
-  if (seedData.decisions?.length) {
-    const existing = new Set(cache.decisions.map(d => d.id))
-    cache.decisions = [
-      ...cache.decisions,
-      ...seedData.decisions.filter(d => !existing.has(d.id)).map(d => ({ ...structuredClone(d), tripId: remap(d.tripId) })),
-    ]
-  }
-  if (seedData.activity?.length) {
-    const existing = new Set(cache.activity.map(a => a.id))
-    cache.activity = [
-      ...cache.activity,
-      ...seedData.activity.filter(a => !existing.has(a.id)).map(a => ({ ...structuredClone(a), tripId: remap(a.tripId), actorId: a.actorId === DEMO_USER_IDS.demo ? userId : (a.actorId ?? userId) })),
-    ]
-  }
-  if (seedData.notifications?.length) {
-    const existing = new Set(cache.notifications.map(n => n.id))
-    cache.notifications = [
-      ...cache.notifications,
-      ...seedData.notifications.filter(n => !existing.has(n.id)).map(n => ({ ...structuredClone(n), userId, tripId: remap(n.tripId) })),
-    ]
-  }
-  // Drop published itineraries whose trip was just deleted (orphans left by
-  // earlier buggy seeds reference the old junk trip ids). This keeps Explore
-  // clean on THIS load, not only after the next refresh. The 10 we just
-  // published reference the fresh seed trip ids, which are live in cache.trips.
-  const liveTripIds = new Set(cache.trips.map(t => t.id))
-  cache.published = cache.published.filter(p => liveTripIds.has(p.tripId))
-  commit()
-
-  // Best-effort server-side marker (also keeps the in-memory profile flag);
-  // the localStorage guard set up-front is what actually prevents re-seeds.
-  markDemoSeeded(userId, Date.now())
-  } finally {
-    seedingFor = null
-  }
+  // re-hydrate so the freshly seeded trips show up
+  await hydrateFromSupabase(userId)
 }
 
+// ---------------- Seeding demo trips ----------------
+
+/** Manually load the demo trips into the current account (My Trips button). */
 /** Manually load the demo trips into the current account (My Trips button). */
 export function addDemoTrips(): void {
   if (!cache.sessionUserId) return

@@ -62,13 +62,6 @@ export interface UserProfile {
   isCreator: boolean
   creatorBio?: string
   socialLinks?: { youtube?: string; instagram?: string }
-  /**
-   * Wall-clock ms timestamp of the most recent demo-seed run for this user.
-   * When unset on hydration, the full 10-trip demo is seeded (one-shot per
-   * account). The flag lets returning users pick up the latest demo showcase
-   * without us having to diff their trips against the seed.
-   */
-  demoSeededAt?: number
 }
 
 export interface User {

@@ -21,12 +21,6 @@ create table if not exists public.profiles (
   social_links jsonb,
   created_at   bigint not null default extract(epoch from now()) * 1000
 );
--- Idempotent additive column: marks the wall-clock ms timestamp of the most
--- recent demo-seed run for the user. NULL on hydration triggers the full
--- 10-trip demo seed (one-shot per account). Added lazily so existing
--- deployments don't need a re-create.
-alter table public.profiles add column if not exists demo_seeded_at bigint;
-
 -- ---------- trips ----------
 -- Trip internals (days/stops/expenses/fixedCommitments) live in JSONB to
 -- preserve the exact TS shape. `members` is extracted to trip_members.
