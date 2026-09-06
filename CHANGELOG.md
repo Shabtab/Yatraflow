@@ -17,6 +17,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - **Detours get a daily budget.** Each day earns detour minutes from crew style and day density; cards show the spend share and flag over-budget picks.
 - **The engine remembers your picks.** Accepts and "not for us" dismissals build a per-trip taste vector; favoured kinds win scoring ties and cards note the streak.
 - **Crew ideas steer the corridor.** Open group-input proposals suppress duplicate suggestions near them and bias picks toward proposed kinds ("more like Arjun waterfall").
+- **Sights bundle into themed days.** Forts, temples, beaches and more cluster into story arcs with one-tap "add all".
 
 ### Fixed
 - **Suggestion positions are road-true on routes with geometry.** `kmFromStartForHit` now snaps hits onto the OSRM polyline when provided, so switchback roads report road km instead of straight-line km. Falls back to anchors when no geometry exists.

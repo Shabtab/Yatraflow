@@ -13,6 +13,7 @@ import { useSuggestionCache } from '../../hooks/useSuggestionCache'
 import { corridorAnchors, detourKm, detourMinutes, googleEnabled, planJourneyHalts, reasonForSegmentHit, type NearbyOpts } from '../../lib/geocode'
 import { dayDetourBudgetMin, budgetSharePct } from '../../lib/detourBudget'
 import { buildDnaVector, loadDnaLog, recordDnaEvent, dnaNoteForHit, crewSeedsFromSuggestions, crewSeedsToPlannedStops, crewSeedEvents, crewNoteForHit } from '../../lib/tripDna'
+import { clusterStoryArcs } from '../../lib/storyArcs'
 import type { PlaceHit, SegmentHit } from '../../lib/geocode'
 import { anchorHash } from '../../lib/providers/hits'
 import { fetchDailyWeather, forecastAvailable, isoAddDays } from '../../lib/weather'
@@ -253,6 +254,13 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
   const NEED_PURPOSES = new Set(['fuel', 'meal', 'food', 'rest', 'stretch', 'overnight', 'stay'])
   const needs = pois.filter(sh => sh.segment && NEED_PURPOSES.has(sh.segment.purpose))
   const seeAndDo = pois.filter(sh => sh.segment && !NEED_PURPOSES.has(sh.segment.purpose))
+  // Story arcs: themed bundles from live, not-yet-added sights.
+  const arcHits = seeAndDo.flatMap(sh => {
+    const h = sh.hit
+    if (!h || addedIds.has(h.id as string) || dismissedIds.has(h.id as string)) return []
+    return [h]
+  })
+  const arcs = clusterStoryArcs(arcHits)
 
   /** One corridor-suggestion row (gap or hit). Shared by both split columns. */
   function renderPoi(sh: SegmentHit) {
@@ -392,6 +400,35 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
               </div>
             </div>
             <div className="poi-plan-list">
+              {arcs.slice(0, 2).map(arc => (
+                <div key={arc.theme} className="poi-plan-row poi-plan-arc">
+                  <div className="ride-spot-title">
+                    <span className="ride-purpose ride-purpose-sight">{arc.label.split(':')[0]}</span>
+                    <b>{arc.label.split(':').slice(1).join(':').trim()}</b>
+                  </div>
+                  <div>
+                    <button
+                      className="btn btn-primary btn-sm"
+                      onClick={() => {
+                        let n = 0
+                        for (const id of arc.hitIds) {
+                          const m = arcHits.find(h => (h.id as string) === (id as string))
+                          if (!m || addedIds.has(m.id as string)) continue
+                          recordDnaEvent({ tripId: trip.id, action: 'accept', category: m.category })
+                          addPoiToDay(m, dayForKm(m.cumKm))
+                          n += 1
+                        }
+                        setAddedIds(prev => {
+                          const next = new Set(prev)
+                          for (const id of arc.hitIds) next.add(id as string)
+                          return next
+                        })
+                        toast(n > 0 ? `“${arc.label.split(':')[0]}” added (${n} stops)` : 'All of those are already added')
+                      }}
+                    >Add all ({arc.hitIds.length})</button>
+                  </div>
+                </div>
+              ))}
               {seeAndDo.length === 0
                 ? <p className="muted small">Sightseeing &amp; detour stops will appear here along the corridor.</p>
                 : seeAndDo.map(renderPoi)}
