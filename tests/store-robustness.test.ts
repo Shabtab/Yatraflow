@@ -111,3 +111,100 @@ describe('registerPubView only writes for the owning viewer (regression #4)', ()
     }
   })
 })
+
+// ============ v0.36: view counting + unpublish hardening ============
+
+describe('registerPubView counts real visits only (v0.36)', () => {
+  const publishAs = async (store: typeof import('../src/store/store'), creatorId: string) => {
+    const upsert = vi.fn().mockResolvedValue({ error: null })
+    const fromSpy = vi.spyOn(supabase, 'from').mockImplementation(
+      () => ({ upsert }) as unknown as ReturnType<typeof supabase.from>,
+    )
+    const p = await store.publishItinerary({
+      tripId: 't-views', creatorId, title: 'Kerala', tagline: 'x',
+      routeSummary: ['Kochi'], durationDays: 3, estimatedBudgetPerPersonInr: 5000,
+      travelStyle: 'balanced', bestSeason: 'winter', travelTips: [],
+      warningsAndAssumptions: [], freeDayIndexes: [],
+    })
+    return { p, fromSpy }
+  }
+
+  it("the creator's own visit never increments the counter", async () => {
+    const store = await import('../src/store/store')
+    const { p, fromSpy } = await publishAs(store, 'owner-real')
+    try {
+      ;(getSnapshot() as any).sessionUserId = 'owner-real'
+      const before = getSnapshot().published.find(x => x.id === p.id)!.views
+      store.registerPubView(p.id)
+      expect(getSnapshot().published.find(x => x.id === p.id)!.views).toBe(before)
+    } finally {
+      fromSpy.mockRestore()
+    }
+  })
+
+  it('one view per browser session — refreshes are deduped', async () => {
+    const backing = new Map<string, string>()
+    vi.stubGlobal('sessionStorage', {
+      getItem: (k: string) => backing.get(k) ?? null,
+      setItem: (k: string, v: string) => { backing.set(k, v) },
+    })
+    const store = await import('../src/store/store')
+    const { p, fromSpy } = await publishAs(store, 'owner-real')
+    try {
+      ;(getSnapshot() as any).sessionUserId = 'someone-else'
+      const before = getSnapshot().published.find(x => x.id === p.id)!.views
+      store.registerPubView(p.id)
+      store.registerPubView(p.id)
+      store.registerPubView(p.id)
+      expect(getSnapshot().published.find(x => x.id === p.id)!.views).toBe(before + 1)
+    } finally {
+      vi.unstubAllGlobals()
+      fromSpy.mockRestore()
+    }
+  })
+})
+
+describe('unpublishItinerary owner gate + rollback (v0.36)', () => {
+  const publishAs = async (creatorId: string) => {
+    const store = await import('../src/store/store')
+    const upsert = vi.fn().mockResolvedValue({ error: null })
+    const fromSpy = vi.spyOn(supabase, 'from').mockImplementation(
+      () => ({ upsert }) as unknown as ReturnType<typeof supabase.from>,
+    )
+    const p = await store.publishItinerary({
+      tripId: 't-unpub', creatorId, title: 'Kerala', tagline: 'x',
+      routeSummary: ['Kochi'], durationDays: 3, estimatedBudgetPerPersonInr: 5000,
+      travelStyle: 'balanced', bestSeason: 'winter', travelTips: [],
+      warningsAndAssumptions: [], freeDayIndexes: [],
+    })
+    return { store, p, fromSpy }
+  }
+  const flush = () => new Promise(resolve => setTimeout(resolve, 0))
+
+  it('a non-owner cannot unpublish', async () => {
+    const { store, p, fromSpy } = await publishAs('owner-real')
+    try {
+      ;(getSnapshot() as any).sessionUserId = 'not-the-owner'
+      store.unpublishItinerary(p.tripId)
+      expect(getSnapshot().published.some(x => x.id === p.id)).toBe(true)
+    } finally {
+      fromSpy.mockRestore()
+    }
+  })
+
+  it('a failed delete restores the cached publication', async () => {
+    const { store, p, fromSpy } = await publishAs('owner-real')
+    try {
+      ;(getSnapshot() as any).sessionUserId = 'owner-real'
+      const boom = { message: 'RLS blocked the delete' }
+      vi.spyOn(supabase, 'from').mockImplementation(
+        () => ({ delete: () => ({ eq: () => Promise.resolve({ error: boom }) }) }) as unknown as ReturnType<typeof supabase.from>,
+      )
+      store.unpublishItinerary(p.tripId)
+      await flush()
+      expect(getSnapshot().published.some(x => x.id === p.id)).toBe(true)
+    } finally {
+      vi.restoreAllMocks()
+    }
+  })
+})

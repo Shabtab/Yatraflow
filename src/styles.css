@@ -47,6 +47,16 @@
   --yf-coral-100: #FFF0EC;
   --yf-purple: #897ABB;        /* scenic / creative discovery */
   --yf-purple-100: #F0EAFA;
+  /* Expense-category bar colors (Budget tab "Where the money goes") — one
+     hue per spend category, reused by the per-line icon chips. */
+  --cat-transport: #897ABB;
+  --cat-accommodation: #0D8D82;
+  --cat-food: #F59E2D;
+  --cat-activities: #2E8B57;
+  --cat-entry-fees: #D6534D;
+  --cat-tolls-parking: #8291A6;
+  --cat-local-travel: #B47207;
+  --cat-emergency-buffer: #E4AE43;
   --yf-cream: #F8F7EF;         /* main app canvas */
   --yf-mist: #ECF8F4;          /* atmospheric gradient edge */
   --yf-peach: #FFF2E8;         /* atmospheric gradient edge */
@@ -175,6 +185,14 @@
   --yf-coral-100: #3A2020;
   --yf-purple: #A99BD6;
   --yf-purple-100: #2A2440;
+  --cat-transport: #A99BD6;
+  --cat-accommodation: #2BB8AC;
+  --cat-food: #F5A94A;
+  --cat-activities: #52BE80;
+  --cat-entry-fees: #E06C6C;
+  --cat-tolls-parking: #93A6BC;
+  --cat-local-travel: #D99A2B;
+  --cat-emergency-buffer: #E4B45E;
   --yf-cream: #0C1420;
   --yf-mist: #0F1B2B;
   --yf-peach: #1A2030;
@@ -439,24 +457,24 @@ a.btn { text-decoration: none; }
   border-color: var(--teal); box-shadow: 0 0 0 3px color-mix(in srgb, var(--teal) 18%, transparent);
 }
 .textarea { resize: vertical; min-height: 74px; }
-/* Modern dropdown (select) — glass pill, CTI tone */
+/* Dropdown (select) — the exact .input surface; the only tell is the chevron.
+   (Was a glass pill with its own background/weight, which read as a different
+   component family next to text inputs in the same form.) */
 .select {
   appearance: none;
-  border-radius: 999px;
-  padding: 10px 36px 10px 16px;
-  font-weight: 600;
-  font-size: 14px;
+  padding: 10px 32px 10px 13px;
   cursor: pointer;
-  box-shadow: var(--shadow-sm);
-  background: var(--bg-soft);
   /* soft teal chevron (clean SVG stroke), vertically centred, clear of the text */
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1.5 1.5L6 6l4.5-4.5' fill='none' stroke='%230E7A72' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/></svg>");
   background-repeat: no-repeat;
-  background-position: right 14px center;
+  background-position: right 12px center;
   background-size: 11px 7px;
   transition: border-color .15s ease, box-shadow .15s ease, background-color .15s ease;
 }
 .select:hover { border-color: var(--teal); }
+/* Theme the native popup rows (Chromium/Edge honour this; the system highlight
+   stays but stops clashing with the palette). */
+.select option { background: var(--card); color: var(--text); }
 /* The chevron is baked into a background-image, so it can't follow a token —
    re-declare it for dark mode or it lands ~1.8:1 on the dark pill. */
 [data-theme='dark'] .select {
@@ -1030,15 +1048,7 @@ a.btn { text-decoration: none; }
 .budget-hero-num { font-size: 40px; font-weight: 800; font-family: var(--font-display); margin-top: 2px; }
 .budget-hero-sub { font-size: 13px; color: #d2e7e3; margin-top: 2px; }
 .budget-hero-pct { font-size: 12.5px; font-weight: 700; color: #ffcc74; margin-top: 8px; }
-.budget-reassure {
-  margin-top: 14px; display: flex; gap: 6px 12px; align-items: baseline; flex-wrap: wrap;
-  background: linear-gradient(120deg, #143f4c, #112c4c); color: #c5e1dc;
-  border-radius: 16px; padding: 13px 16px; font-size: 13px;
-}
-.budget-reassure b { color: #fff; }
-.dec-strip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; }
-.decision-unblock { border-left: 4px solid var(--saffron); }
-.unblock-label { font-size: 10.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--warn); margin-bottom: 6px; }
+.gi-strip { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
 .share-intent {
   display: inline-block; font-size: 10.5px; font-weight: 800; letter-spacing: .08em;
   text-transform: uppercase; padding: 4px 10px; border-radius: 999px; margin-bottom: 8px;
@@ -1046,8 +1056,7 @@ a.btn { text-decoration: none; }
 .share-intent--teal { background: var(--teal-soft); color: var(--teal-deep); }
 .share-intent--saffron { background: var(--saffron-soft); color: var(--warn); }
 .share-intent--info { background: var(--info-soft); color: var(--text-2); }
-[data-theme='dark'] .budget-hero,
-[data-theme='dark'] .budget-reassure { background: linear-gradient(120deg, #0e2f39, #0c1e35); }
+[data-theme='dark'] .budget-hero { background: linear-gradient(120deg, #0e2f39, #0c1e35); }
 [data-theme='dark'] .budget-hero-sub { color: #9fc4bf; }
 
 
@@ -3243,7 +3252,7 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
    their original file order) ---- */
 @media (max-width: 720px) {
   /* forms */
-  .select { padding: 11px 34px 11px 14px; }
+  .select { padding: 10px 32px 10px 13px; }
   .commitment-row { grid-template-columns: 1fr 1fr; }
   .commitment-row .field:first-child { grid-column: 1 / -1; }
 
@@ -3375,3 +3384,119 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
   .plan-bench { padding-bottom: 92px; }
   .bench-dock { left: 10px; right: 10px; padding: 9px 12px; }
 }
+
+/* ============================================================
+   v0.36 — Budget + Group input redesigns
+   ============================================================ */
+
+/* ---- Budget: metric strip ---- */
+.metric-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+.metric-bad { color: var(--danger); }
+.metric-good { color: var(--ok); }
+
+/* ---- Budget: per-day cost bars ---- */
+.daybars { display: flex; flex-direction: column; gap: 10px; }
+.daybar-row { display: grid; grid-template-columns: 52px 1fr auto; gap: 10px; align-items: center; font-size: 13.5px; }
+.daybar-label { font-weight: 700; color: var(--text-2); white-space: nowrap; }
+.daybar-track { position: relative; height: 12px; background: var(--bg-soft); border-radius: 99px; }
+.daybar-fill { height: 100%; border-radius: 99px; transition: width 300ms cubic-bezier(0.2, 0, 0, 1); }
+/* the daily-average tick — amber line crossing every bar */
+.daybar-avg { position: absolute; top: -3px; bottom: -3px; width: 2px; border-radius: 1px; background: var(--saffron-600); }
+.daybar-meta { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.3; font-variant-numeric: tabular-nums; }
+.daybar-meta .muted { font-size: 11.5px; }
+.avg-key { display: inline-block; width: 2px; height: 10px; background: var(--saffron-600); vertical-align: -1px; margin: 0 3px; border-radius: 1px; }
+
+/* ---- Budget: category bars with icon chips ---- */
+.catbars .budget-bar-row { grid-template-columns: 172px 1fr auto; }
+.cat-name { display: inline-flex; align-items: center; gap: 8px; }
+.cat-chip { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 7px; flex: none; }
+.cat-chip.sm { width: 20px; height: 20px; border-radius: 6px; }
+
+/* ---- Budget: quick-add + inline edit ---- */
+.quick-add {
+  background: color-mix(in srgb, var(--teal-500) 6%, transparent);
+  border: 1.5px dashed color-mix(in srgb, var(--teal-500) 45%, transparent);
+  border-radius: var(--radius); padding: 10px 12px; margin-bottom: 14px;
+}
+/* the tab-level capture bar (above the two columns) */
+.quick-add.topline { margin-bottom: 16px; }
+.quick-add-row { display: grid; grid-template-columns: 1fr 110px auto auto; gap: 8px; align-items: center; }
+.quick-add-row .qa-amount { text-align: right; }
+.quick-add-more { margin-top: 10px; }
+.expense-edit { border: 1.5px solid var(--line); border-radius: var(--radius); padding: 10px 12px; background: var(--bg-soft); }
+.expense-table td { vertical-align: middle; }
+.exp-line { display: inline-flex; align-items: center; gap: 7px; font-weight: 600; }
+.payer-cell { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+.row-actions { display: inline-flex; gap: 2px; }
+
+/* ---- Budget: hero action chip (sits on the dark navy hero in both themes) ---- */
+.budget-hero-action { display: inline-block; margin-top: 10px; font-size: 12px; font-weight: 800; padding: 5px 11px; border-radius: 999px; }
+.budget-hero-action.warn { background: rgba(214, 83, 77, 0.22); color: #ffb3ae; }
+.budget-hero-action.ok { background: rgba(124, 225, 207, 0.16); color: #9fe8dc; }
+
+/* ---- Budget: who paid · who owes ---- */
+.balances { display: flex; flex-direction: column; }
+.balance-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px dashed var(--line); font-size: 13.5px; }
+.balance-row:last-child { border-bottom: none; }
+.balance-who { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; min-width: 0; }
+.balance-who .avatar { width: 22px; height: 22px; font-size: 10px; }
+.balance-pos { color: var(--ok); font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.balance-neg { color: var(--danger); font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* ---- Group input: one-row stat strip + filters ---- */
+.gi-stats { display: flex; gap: 8px; }
+.gi-stat {
+  display: inline-flex; align-items: baseline; gap: 6px; background: var(--card);
+  border: 1px solid var(--line); border-radius: 999px; padding: 6px 13px;
+  font: inherit; font-size: 12.5px; font-weight: 600; color: var(--text-2);
+  box-shadow: var(--shadow-sm); white-space: nowrap; cursor: pointer;
+}
+.gi-stat b { font-size: 14px; font-family: var(--font-display); color: var(--text); font-variant-numeric: tabular-nums; }
+.gi-stat.hot { border-color: color-mix(in srgb, var(--saffron-500) 55%, transparent); background: var(--yf-amber-100); }
+.gi-stat.hot b { color: var(--warn); }
+.gi-stat.on { border-color: var(--teal-600); background: var(--yf-teal-100); }
+.gi-stat.on b { color: var(--teal-700); }
+
+/* ---- Group input: needs-you emphasis + digest ---- */
+.gi-needs-you { border-left: 4px solid var(--saffron); }
+.gi-flash { animation: gi-flash 1.6s cubic-bezier(0.2, 0, 0, 1); }
+@keyframes gi-flash {
+  0%, 55% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--saffron-500) 50%, transparent); }
+  100% { box-shadow: 0 0 0 3px transparent; }
+}
+.digest-row {
+  display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
+  background: none; border: none; padding: 9px 2px; border-bottom: 1px dashed var(--line);
+  font-size: 13.5px; color: var(--text); cursor: pointer; border-radius: 6px;
+}
+.digest-row:last-of-type { border-bottom: none; }
+.digest-row:hover { background: var(--bg-soft); }
+.digest-row > svg { color: var(--warn); flex: none; }
+.digest-title { font-weight: 700; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.digest-sub { color: var(--text-3); font-size: 11.5px; white-space: nowrap; }
+
+/* ---- Group input: who-voted avatar stack + tally verdict ---- */
+.who-voted { display: inline-flex; align-items: center; }
+.who-voted .avatar { width: 22px; height: 22px; font-size: 10px; margin-left: -7px; box-shadow: 0 0 0 2px var(--card); }
+.who-voted .avatar:first-child { margin-left: 0; }
+.who-more { margin-left: 4px; font-size: 11px; font-weight: 700; color: var(--text-3); }
+.decision-option-row.leading { background: var(--yf-teal-100); border-radius: 10px; padding: 7px 9px; margin: 0 -9px; }
+.verdict-line { margin: 2px 0 8px; }
+.verdict-line b { color: var(--text); }
+
+/* ---- Group input: composer option rows ---- */
+.opt-row { display: grid; grid-template-columns: 1fr 92px auto; gap: 7px; align-items: center; }
+.opt-row .opt-cost { text-align: right; }
+
+/* ---- v0.36 responsive ---- */
+@media (max-width: 1100px) { .metric-strip { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 700px) {
+  .daybar-row { grid-template-columns: 44px 1fr; }
+  .daybar-meta { grid-column: 2; flex-direction: row; align-items: baseline; gap: 8px; }
+  .catbars .budget-bar-row { grid-template-columns: 44px 1fr auto; }
+  .catbars .cat-name span.cat-chip { display: none; }
+  .quick-add-row { grid-template-columns: 1fr 90px auto auto; }
+}
+
+/* lucide icons inside the suggestion meta row align with their text */
+.stop-meta span { display: inline-flex; align-items: center; gap: 4px; }

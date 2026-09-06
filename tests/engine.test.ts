@@ -561,3 +561,41 @@ describe('dirty stop data', () => {
     expect(sim.dwellMinutes).toBeGreaterThanOrEqual(getAssumptions(keralaTrip).bufferMinutesPerStop)
   })
 })
+
+describe('computeTotals byDay attribution (v0.36)', () => {
+  it('per-day stacks sum to the trip total, always', () => {
+    const t = computeTotals(structuredClone(keralaTrip))
+    const byDaySum = t.byDay.reduce((s, d) => s + d.totalInr, 0)
+    expect(byDaySum).toBeCloseTo(t.totalCostInr, 4)
+    expect(t.byDay).toHaveLength(keralaTrip.days.length)
+  })
+
+  it('lands attached expenses on their day, spreads unattached ones evenly', () => {
+    const trip = structuredClone(keralaTrip)
+    const lastDayIdx = trip.days.length - 1
+    const stopDay = trip.days[0]
+    trip.expenses.push(
+      { id: 'ex-att', label: 'Day-tagged', category: 'food', amountInr: 1000, dayIndex: lastDayIdx },
+      { id: 'ex-stop', label: 'Stop-tagged', category: 'activities', amountInr: 500, stopId: stopDay.stops[0].id },
+    )
+    const t = computeTotals(trip)
+    const plain = computeTotals(structuredClone(keralaTrip))
+    // the stop-tagged ₹500 rides on Day 1 (the day that owns the stop)
+    expect(t.byDay[0].expensesInr).toBeCloseTo(plain.byDay[0].expensesInr + 500, 4)
+    // the day-tagged ₹1,000 rides on the last day
+    expect(t.byDay[lastDayIdx].expensesInr).toBeCloseTo(plain.byDay[lastDayIdx].expensesInr + 1000, 4)
+    // intermediate days only moved by the even spread of nothing — unchanged
+    expect(t.byDay[1].expensesInr).toBeCloseTo(plain.byDay[1].expensesInr, 4)
+  })
+
+  it('charges the drive home to the last day of a round trip', () => {
+    const round = computeTotals(structuredClone(keralaTrip))
+    const oneway = computeTotals({ ...structuredClone(keralaTrip), roundTrip: false })
+    const lastRound = round.byDay[round.byDay.length - 1]
+    const lastOneway = oneway.byDay[oneway.byDay.length - 1]
+    if (isRoundTrip(structuredClone(keralaTrip))) {
+      expect(lastRound.transportInr).toBeGreaterThan(lastOneway.transportInr)
+      expect(lastRound.distanceKm).toBeGreaterThan(lastOneway.distanceKm)
+    }
+  })
+})

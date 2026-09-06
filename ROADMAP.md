@@ -50,7 +50,8 @@ and date), per the AGENTS §6 same-edit rule. Detail lives in
 - [x] **[Unreleased]** — demo-seed revert + one-off DB prune, master-roadmap consolidation, Sep 2026 comprehensive review
 
 ### Remaining — in release order (details in the tracks below)
-- [ ] **v0.32.0** — Stabilization completion (in flight on `redesign/stabilization-v032`): M0 leftovers (broken `pub:` route, router ready-gate for deep links / invite flash / loading-vs-empty) + M2 remainders (Profile save validation, demo-copy honesty, heading outline) + M1 leftovers (focus-ring gaps, touch targets, stagger freeze) + cuts the shipped `[54]`/`[53]`/nav-icon fixes out of `[Unreleased]`
+- [x] **v0.32.0** — Stabilization completion: M0 leftovers (broken `pub:` route, router ready-gate for deep links / invite flash / loading-vs-empty) + M2 remainders (Profile save validation, demo-copy honesty, heading outline) + M1 leftovers (focus-ring gaps, touch targets, stagger freeze)
+- [x] **v0.36.0** — Budget + Group-input deep redesign: metric strip, per-day cost bars, payer balances + settlement, quick-add + in-place expense editing, who-voted tallies + needs-you digest, real composer pickers; `bump_published_stats` uuid→text fix, view dedupe, unpublish owner gate (branch `redesign/budget-group`)
 - [x] **M3** — Performance architecture: store immutability → slice selectors → DaySection memo → workspace split into pages/trip/* + weather dedup + lazy routes (in [Unreleased], local branch redesign/perf-architecture)
 - [x] **M4** — Design-system hygiene: dead CSS purge, mobile-block consolidation, glass/z-index tokens (in [Unreleased], local branch redesign/perf-architecture; raw-rgba glass stragglers intentionally NOT migrated — see commit `f646b45`)
 - [ ] **M5** — AI companion: user-configurable LLM endpoint (#22 → #20) — the only open issues
@@ -152,8 +153,9 @@ as offline fallback + "(LLM)/(offline)" badge. #22 (~2h) blocks #20 (~3h).
 
 ### M6 — v0.32.0 "Together" (old Phase 2 — collaboration depth)
 Supabase integration/RLS test suite first (opt-in `VITE_RUN_INTEGRATION`,
-~3h — old item #10), then live multi-user editing sync + split-expense
-settlement.
+~3h — old item #10), then live multi-user editing sync. Split-expense
+settlement groundwork (payer tagging + balances card) shipped in v0.36.0;
+M6 adds the multi-currency-free refinement and co-editing depth on top.
 
 ### M7 — v0.33.0 "Premium" (old Phase 3 — monetization)
 Gateway integration (Razorpay fits INR), order/entitlement tables + webhook,
@@ -226,7 +228,6 @@ writes (1h — pairs naturally with M3).
 | Idea | Note |
 |---|---|
 | Decision comments | needs a `comments` JSON column on decisions (schema migration) |
-| Decision cost-impact editor | options carry costImpactInr/timeImpactMin but no UI sets them |
 | Explore creator bios + sorting | bio/newest-sort on cards (premium/respect work landed in 0.35) |
 | Premium purchase state | entitlements + unlock flow — folds into M7 payments |
 | Full Profile field editing | homeCity/languages/socialLinks UI exists partially |
@@ -234,6 +235,8 @@ writes (1h — pairs naturally with M3).
 | Route polylines on the map | routing.ts returns geometry; map renders markers only |
 | Trash + 30-day purge | soft-delete layer before hard deletes |
 | Explore pagination | grows with the catalog |
+
+*(Done from this pool: decision cost-impact editor + context field, v0.36.0.)*
 
 ## Historical plans (executed — kept for the record, not live guidance)
 

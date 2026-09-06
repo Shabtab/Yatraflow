@@ -1,6 +1,6 @@
 // ============ Scheduling & impact engine ============
 // All outputs are transparent estimates. Nothing here claims live data.
-import type { Trip, ItineraryStop, ItineraryDay, FixedCommitment } from '../data/types'
+import type { Trip, ItineraryStop, ItineraryDay, FixedCommitment, ID } from '../data/types'
 import { haversineKm } from './geo'
 
 export interface EngineAssumptions {
@@ -782,6 +782,10 @@ export interface TripTotals {
   essentialInr: number
   optionalInr: number
   byCategory: Record<string, number>
+  /** Per-day stack for the Budget tab's cost-per-day bars: attached expenses
+   *  land on their day, journey fuel on the day that drives it, stop entry
+   *  fees on the stop's day, unattached trip-level expenses spread evenly. */
+  byDay: { dayIndex: number; expensesInr: number; transportInr: number; totalInr: number; stops: number; distanceKm: number }[]
 }
 
 export function computeTotals(trip: Trip, legCorrections?: Record<string, LegEstimate>): TripTotals {
@@ -789,13 +793,26 @@ export function computeTotals(trip: Trip, legCorrections?: Record<string, LegEst
   let travelMinutes = 0, distanceKm = 0, stopCount = 0
   let transportKmCost = 0
   let journeyReturnsHome = false
+  const dayCount = Math.max(1, trip.days.length)
+  const byDay = trip.days.map(d => ({ dayIndex: d.index, expensesInr: 0, transportInr: 0, totalInr: 0, stops: 0, distanceKm: 0 }))
+  if (byDay.length === 0) byDay.push({ dayIndex: 0, expensesInr: 0, transportInr: 0, totalInr: 0, stops: 0, distanceKm: 0 })
+  const entryByDay = new Map<number, number>()
   trip.days.forEach(day => {
     const sim = simulateDay(day, trip, originOf(trip, day.index), day.index, legCorrections)
     travelMinutes += sim.totalTravelMinutes
     distanceKm += sim.totalDistanceKm
+    const bucket = byDay[day.index]
+    if (bucket) {
+      bucket.stops = day.stops.filter(s => s.status !== 'rejected').length
+      bucket.distanceKm = sim.totalDistanceKm
+    }
     stopCount += day.stops.filter(s => s.status !== 'rejected').length
     // per-leg fuel/fare cost derived from distance
-    sim.legs.forEach(l => { transportKmCost += l.distanceKm * (A.inrPerKm ?? 8) })
+    sim.legs.forEach(l => {
+      const legCost = l.distanceKm * (A.inrPerKm ?? 8)
+      transportKmCost += legCost
+      if (byDay[day.index]) byDay[day.index].transportInr += legCost
+    })
     if (sim.endsAtStart) journeyReturnsHome = true
   })
 
@@ -811,29 +828,45 @@ export function computeTotals(trip: Trip, legCorrections?: Record<string, LegEst
       const ret = legCorrections?.[legKey(turnaround, home)] ?? legBetween(turnaround, home, A)
       distanceKm += ret.distanceKm
       travelMinutes += ret.durationMinutes
-      transportKmCost += ret.distanceKm * (A.inrPerKm ?? 8)
+      const retCost = ret.distanceKm * (A.inrPerKm ?? 8)
+      transportKmCost += retCost
+      // The drive home happens at the end of the trip — charge the last day.
+      const lastDay = byDay[byDay.length - 1]
+      if (lastDay) { lastDay.transportInr += retCost; lastDay.distanceKm += ret.distanceKm }
     }
   }
 
   let sum = 0, essential = 0, optional = 0
   const byCategory: Record<string, number> = {}
+  // stopId → day, so attached expenses land on the day that holds the stop
+  const dayIndexOfStop = new Map<ID, number>()
+  trip.days.forEach(d => d.stops.forEach(s => dayIndexOfStop.set(s.id, d.index)))
   for (const e of trip.expenses) {
     const amt = e.perPerson ? e.amountInr * trip.travellers : e.amountInr
     sum += amt
     byCategory[e.category] = (byCategory[e.category] ?? 0) + amt
     if (e.optional) optional += amt; else essential += amt
+    const b = typeof e.dayIndex === 'number' ? byDay[Math.min(Math.max(e.dayIndex, 0), byDay.length - 1)]
+      : e.stopId !== undefined ? byDay[dayIndexOfStop.get(e.stopId) ?? -1]
+      : undefined
+    if (b) b.expensesInr += amt
+    else for (const bd of byDay) bd.expensesInr += amt / dayCount // unattached trip-level costs spread evenly
   }
   // entry fees from stops not already covered by explicit expenses
   let entryFromStops = 0
   trip.days.forEach(d => d.stops.forEach(s => {
-    if (s.status !== 'rejected') entryFromStops += s.entryFeeInrPerPerson * trip.travellers
+    if (s.status !== 'rejected') {
+      const fee = s.entryFeeInrPerPerson * trip.travellers
+      entryFromStops += fee
+      entryByDay.set(d.index, (entryByDay.get(d.index) ?? 0) + fee)
+    }
   }))
   sum += entryFromStops + transportKmCost
   byCategory['entry-fees'] = (byCategory['entry-fees'] ?? 0) + entryFromStops
   byCategory['transport'] = (byCategory['transport'] ?? 0) + transportKmCost
   essential += entryFromStops + transportKmCost
+  for (const bd of byDay) bd.totalInr = bd.expensesInr + bd.transportInr + (entryByDay.get(bd.dayIndex) ?? 0)
 
-  const dayCount = Math.max(1, trip.days.length)
   return {
     totalCostInr: sum,
     costPerPersonInr: sum / trip.travellers,
@@ -844,6 +877,7 @@ export function computeTotals(trip: Trip, legCorrections?: Record<string, LegEst
     essentialInr: essential,
     optionalInr: optional,
     byCategory,
+    byDay,
   }
 }
 

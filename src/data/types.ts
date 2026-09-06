@@ -77,17 +77,24 @@ export interface TripMember {
   joinedAt: number
 }
 
+export const EXPENSE_CATEGORIES = [
+  'transport', 'accommodation', 'food', 'activities',
+  'entry-fees', 'tolls-parking', 'local-travel', 'emergency-buffer',
+] as const
+export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number]
+
 export interface Expense {
   id: ID
   label: string
-  category:
-    | 'transport' | 'accommodation' | 'food' | 'activities'
-    | 'entry-fees' | 'tolls-parking' | 'local-travel' | 'emergency-buffer'
+  category: ExpenseCategory
   amountInr: number         // TOTAL for whole group unless perPerson is true
   perPerson?: boolean
   optional?: boolean        // false => essential cost
   stopId?: ID               // attached to an itinerary stop
   dayIndex?: number
+  /** Member who fronted the money (drives the who-paid/who-owes balances);
+   *  absent = paid from the shared kitty, so nobody is individually owed. */
+  paidBy?: ID
 }
 
 export interface ItineraryStop {

@@ -1101,6 +1101,17 @@ export function deleteExpense(tripId: ID, expenseId: ID): void {
   void persistTripField(tripId, tripById(tripId)!)
 }
 
+/** Edit an expense line in place — the Budget tab's pencil affordance — instead
+ *  of the old delete-and-retype dance. */
+export function updateExpense(tripId: ID, expenseId: ID, patch: Partial<Omit<Expense, 'id'>>): void {
+  const t = tripById(tripId)
+  if (!t || !t.expenses.some(x => x.id === expenseId)) return
+  mutateTrip(tripId, draft => {
+    draft.expenses = draft.expenses.map(x => x.id === expenseId ? { ...x, ...patch } : x)
+  }, { touch: false })
+  void persistTripField(tripId, tripById(tripId)!)
+}
+
 // ---------------- Suggestions / votes / comments ----------------
 
 export function addSuggestion(tripId: ID, s: Omit<StopSuggestion, 'id' | 'votes' | 'comments' | 'status' | 'createdAt' | 'tripId'>): void {
@@ -1220,13 +1231,9 @@ export function voteOnDecision(decisionId: ID, optionId: ID): void {
   d.votesByUserId[cache.sessionUserId] = optionId
   cache.decisions = [...cache.decisions.slice(0, dIdx), d, ...cache.decisions.slice(dIdx + 1)]
   addActivity(d.tripId, cache.sessionUserId, 'voted on a decision', d.question)
-  const votedLabel = d.options.find(o => o.id === optionId)?.label ?? 'an option'
-  const trip = tripById(d.tripId)
-  if (trip) {
-    for (const m of trip.members ?? []) {
-      if (m.userId !== cache.sessionUserId) pushNotification(m.userId, d.tripId, `${userName(cache.sessionUserId)} voted on “${d.question}” — ${votedLabel}.`)
-    }
-  }
+  // No per-vote member pings — on a 6-person trip every ballot pinged five
+  // people and the bell became noise. The activity feed carries the vote;
+  // members hear about the raise and the resolution only.
   commit()
   fire('decisions', supabase.from('decisions').update({ votes_by_user_id: d.votesByUserId }).eq('id', decisionId))
 }
@@ -1298,17 +1305,36 @@ export async function publishItinerary(pub: Omit<PublishedItinerary, 'id' | 'pub
 }
 
 /** Remove a trip's public itinerary from Explore. The cache row is removed
- *  synchronously (the UI reflects it at once) and the Supabase row is deleted
- *  fire-and-forget. Only the creator (creator_id = auth.uid()) can delete
- *  server-side via RLS; the trip itself stays in My Trips — unpublish ≠
- *  delete trip. On a failed delete the cache row is restored. */
+ *  synchronously (the UI reflects it at once) and the Supabase row is deleted;
+ *  on a failed delete the cache row is restored so the UI never claims an
+ *  unpublish that didn't stick. Owner-gated: only the trip owner (whose id
+ *  matches creator_id server-side via RLS) may unpublish. The trip itself
+ *  stays in My Trips — unpublish ≠ delete trip. */
 export function unpublishItinerary(tripId: ID): void {
   const idx = cache.published.findIndex(p => p.tripId === tripId)
   if (idx < 0) return
+  if (!cache.sessionUserId || cache.published[idx].creatorId !== cache.sessionUserId) {
+    toast('Only the trip owner can unpublish this itinerary.', 'err')
+    return
+  }
   const pub = cache.published[idx]
   cache.published = cache.published.filter((_, i) => i !== idx)
   commit()
-  fire('published_itineraries', supabase.from('published_itineraries').delete().eq('id', pub.id))
+  void (async () => {
+    const { error } = await supabase.from('published_itineraries').delete().eq('id', pub.id)
+    if (error) {
+      console.error('[yatraflow] unpublish persist failed', error)
+      toast('Could not remove the publication — it is still live on Explore. (' + error.message + ')')
+      // Roll the optimistic removal back; the next refresh would resurrect it
+      // anyway, and until then the UI must not disagree with the server.
+      if (!cache.published.some(x => x.id === pub.id)) {
+        cache.published = [...cache.published, pub]
+        commit()
+      }
+    } else {
+      markLocalWrite('published_itineraries', pub.id)
+    }
+  })()
 }
 
 export function unpublishedTripIds(userId: ID): ID[] {
@@ -1316,14 +1342,23 @@ export function unpublishedTripIds(userId: ID): ID[] {
   return mine.filter(t => !cache.published.some(p => p.tripId === t.id)).map(t => t.id)
 }
 
+/** One view per itinerary per browser session, and the creator's own visits
+ *  don't count — before this, every refresh and every self-check inflated the
+ *  Explore counter. (sessionStorage survives route changes within the tab but
+ *  resets on a genuinely new visit, which is the granularity views want.) */
 export function registerPubView(id: ID): void {
   const p = cache.published.find(x => x.id === id)
-  if (p) {
-    cache.published = cache.published.map(x => x.id === id ? { ...x, views: x.views + 1 } : x)
-    commit()
-    // Use RPC function that bypasses RLS - anyone can increment counters now.
-    fire('published_itineraries', supabase.rpc('bump_published_stats', { p_id: id, p_kind: 'views' }))
-  }
+  if (!p) return
+  if (cache.sessionUserId && p.creatorId === cache.sessionUserId) return
+  try {
+    const key = `yf-viewed-${id}`
+    if (sessionStorage.getItem(key)) return
+    sessionStorage.setItem(key, '1')
+  } catch { /* storage unavailable (private mode) — count the view */ }
+  cache.published = cache.published.map(x => x.id === id ? { ...x, views: x.views + 1 } : x)
+  commit()
+  // Use RPC function that bypasses RLS - anyone can increment counters now.
+  fire('published_itineraries', supabase.rpc('bump_published_stats', { p_id: id, p_kind: 'views' }))
 }
 
 export function registerPubCopy(id: ID): void {
