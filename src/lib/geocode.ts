@@ -179,6 +179,7 @@ export async function planJourneyHalts(
     seen.add(key)
     candidates.push(h)
   }
-  const assigned = assignSegmentHits(candidates, segments, anchors, { homeCenter: opts.homeCenter ?? null })
+  const routePolyline = (opts.routeCoords ?? []).filter(c => Number.isFinite(c[0]) && Number.isFinite(c[1])).map(c => ({ lat: c[1], lng: c[0] }))
+  const assigned = assignSegmentHits(candidates, segments, anchors, { homeCenter: opts.homeCenter ?? null, routePolyline: routePolyline.length >= 2 ? routePolyline : null })
   return annotateSegmentHits(assigned, candidates)
 }

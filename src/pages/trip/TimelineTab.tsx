@@ -916,7 +916,7 @@ function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddPlanned
       const sorted = [...plan].sort((a, b) => a.km - b.km)
       const segments = segmentsFromPlan(sorted, journey.distanceKm || 0, journey.driveMinutes)
       const assigned = annotateSegmentHits(
-        assignSegmentHits(candidates, segments, anchors, { homeCenter: trip.startLocationCoords ?? null }),
+        assignSegmentHits(candidates, segments, anchors, { homeCenter: trip.startLocationCoords ?? null, routePolyline: routePts.length >= 2 ? routePts : null }),
         candidates,
       )
       const hitById = new Map<string, PlaceHit | null>()
