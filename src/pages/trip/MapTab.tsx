@@ -13,6 +13,7 @@ import { useSuggestionCache } from '../../hooks/useSuggestionCache'
 import { corridorAnchors, detourKm, googleEnabled, planJourneyHalts, reasonForSegmentHit, type NearbyOpts } from '../../lib/geocode'
 import type { PlaceHit, SegmentHit } from '../../lib/geocode'
 import { anchorHash } from '../../lib/providers/hits'
+import { fetchDailyWeather, forecastAvailable, isoAddDays } from '../../lib/weather'
 // MapLibre is heavy (~1MB) — load it only when the Map tab is actually opened.
 const TripMap = React.lazy(() => import('../../components/TripMap').then(m => ({ default: m.TripMap })))
 
@@ -111,6 +112,24 @@ export function MapTab({ trip, editable, applyChange, suggestionCache }: {
   // the same legs independently, so this is one extra free OSRM call per route.
   const [routeGeometry, setRouteGeometry] = useState<[number, number][] | null>(null)
   const [routeTotalKm, setRouteTotalKm] = useState<number | null>(null)
+  // Per-day rain chance for the weather join — best-effort, null until loaded.
+  const [dayRainPct, setDayRainPct] = useState<(number | null)[] | null>(null)
+  useEffect(() => {
+    const stops = trip.days.flatMap(d => d.stops).filter(s => s.status !== 'rejected')
+    if (stops.length === 0 || !forecastAvailable(trip.startDate)) { setDayRainPct(null); return }
+    let cancelled = false
+    const anchor = {
+      lat: stops.reduce((a, s) => a + s.lat, 0) / stops.length,
+      lng: stops.reduce((a, s) => a + s.lng, 0) / stops.length,
+    }
+    fetchDailyWeather(anchor.lat, anchor.lng, trip.startDate, trip.days.length || 1)
+      .then(w => {
+        if (cancelled) return
+        setDayRainPct(trip.days.map((_, i) => w[isoAddDays(trip.startDate, i)]?.rainChancePct ?? null))
+      })
+      .catch(() => { if (!cancelled) setDayRainPct(null) })
+    return () => { cancelled = true }
+  }, [trip])
   // OSRM's road total (when resolved) is the most accurate journey budget for
   // the fatigue math; until then use the journey-summed estimate.
   const planKm = routeTotalKm && routeTotalKm >= 90 ? routeTotalKm : wholeTrip.km
@@ -148,7 +167,8 @@ export function MapTab({ trip, editable, applyChange, suggestionCache }: {
       .filter(s => s.status !== 'rejected' && Number.isFinite(s.lat) && Number.isFinite(s.lng))
       .map(s => ({ lat: s.lat, lng: s.lng, name: s.title })),
     dayStartTimes: trip.days.map(d => d.startTime ?? '08:30'),
-  }), [trip, routeGeometry, routeTotalKm])
+    dayRainPct: dayRainPct ?? undefined,
+  }), [trip, routeGeometry, routeTotalKm, dayRainPct])
 
   useEffect(() => {
     if (anchors.length === 0) return

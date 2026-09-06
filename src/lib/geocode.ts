@@ -162,6 +162,7 @@ export async function planJourneyHalts(
     multiDay: opts.multiDay,
     vehicleRangeKm: vehicleRange,
     dayStartTimes: opts.dayStartTimes,
+    dayRainPct: opts.dayRainPct,
     ...cadenceForCrew(opts.travellers, opts.travelStyle),
   })
   if (segments.length === 0) return []

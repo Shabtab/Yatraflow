@@ -45,6 +45,8 @@ export interface RidePlanInput {
   mealKm?: number
   /** "HH:MM" drive-start per day index — unset days fall back to 08:30 */
   dayStartTimes?: string[]
+  /** rain chance percent per day index (null = no forecast) — flags rainy segments */
+  dayRainPct?: (number | null)[]
 }
 
 /**
@@ -80,6 +82,10 @@ export interface RideSegment {
   minutesFromPrev: number
   /** est. wall-clock arrival in minutes since midnight (day start + wheel time) */
   etaMinutes?: number
+  /** true when the day's rain chance hits RAIN_PCT_THRESHOLD */
+  rainy?: boolean
+  /** the day's rain chance percent (null when no forecast) */
+  rainPct?: number | null
   /** true when this segment closes a day boundary (overnight stay) */
   dayEnd?: boolean
   /** human guidance line, e.g. "≈2 h wheel time — stretch & hydrate" */
@@ -224,6 +230,14 @@ function dayIndexAt(km: number, dayStarts: number[]): number {
   return idx
 }
 
+/** Rain flags for a route-km position from the per-day forecast. */
+function rainFor(km: number, dayStarts: number[], dayRainPct: (number | null)[] | undefined): { rainy?: boolean; rainPct?: number | null } {
+  if (!dayRainPct) return {}
+  const pct = dayRainPct[dayIndexAt(km, dayStarts)] ?? null
+  if (pct == null) return { rainPct: null }
+  return pct >= RAIN_PCT_THRESHOLD ? { rainy: true, rainPct: pct } : { rainPct: pct }
+}
+
 /** Est. wall-clock arrival for a route-km position (day start + proportional wheel time). */
 function etaAt(km: number, dayStarts: number[], dayStartTimes: string[] | undefined, total: number, drive: number): number {
   const di = dayIndexAt(km, dayStarts)
@@ -272,6 +286,7 @@ function etaAt(km: number, dayStarts: number[], dayStartTimes: string[] | undefi
       kmFromPrev,
       minutesFromPrev,
       etaMinutes: Math.round(etaAt(m.km, dayStarts, input.dayStartTimes, total, drive)),
+      ...rainFor(m.km, dayStarts, input.dayRainPct),
       dayEnd: purpose === 'overnight' ? true : undefined,
       hint: PURPOSE_HINT[purpose](minutesFromPrev),
     }
@@ -335,10 +350,22 @@ export interface AssignOpts {
   speedKmph?: number
 }
 
-/**
- * Cost of serving `seg` with `h`. Shared by the greedy pass and the
- * improvement sweep below. Returns null when the hit cannot be positioned.
- */
+/** Rain chance at or above this means the day counts as rainy. Matches OverviewTab. */
+export const RAIN_PCT_THRESHOLD = 60
+/** Categories that suffer in the rain. */
+const WEATHER_SENSITIVE = new Set(['nature', 'beach', 'temple', 'adventure'])
+/** Categories that shelter from it. */
+const WEATHER_SHELTERED = new Set(['museum', 'cafe', 'shopping'])
+
+/** purpose-fit adjusted for rain: exposed sights lose a point, sheltered picks gain one. */
+function weatherAdjustedFit(h: PlaceHit, purpose: HaltPurpose, rainy: boolean): number {
+  const base = fitScoreForPurpose(h, purpose)
+  if (!rainy) return base
+  const cat = h.category ?? 'sightseeing'
+  if (WEATHER_SENSITIVE.has(cat)) return Math.max(0, base - 1)
+  if (WEATHER_SHELTERED.has(cat)) return Math.min(3, base + 1)
+  return base
+}
 export function scoreHitForSegment(
   h: PlaceHit,
   seg: RideSegment,
@@ -350,7 +377,7 @@ export function scoreHitForSegment(
   const dist = Math.abs(pos - seg.targetKm)
   const window = Math.max(1, seg.maxKm - seg.minKm)
   const distPenalty = dist > window / 2 ? dist + window : dist
-  const fit = fitScoreForPurpose(h, seg.purpose)
+  const fit = weatherAdjustedFit(h, seg.purpose, seg.rainy === true)
   // Detour scores in minutes at the trip's speed, not flat km: the same
   // off-route distance costs a slow mode more. ×2 keeps the old weight at
   // the 60 km/h reference (10 km = 10 min = 20 points, as before).
@@ -486,7 +513,11 @@ export function reasonForSegmentHit(r: SegmentHit, detour: number | null): strin
   const fatigue = mins >= 60 ? `Breaks a ${Math.round(mins / 60)} h drive` : `Breaks a ${mins} min drive`
   const off = detour == null ? 'on route' : `${Math.round(detour)} km off-route`
   const city = r.hit?.nearestCity ? `near ${r.hit.nearestCity}` : null
-  return [fatigue, off, city].filter((s): s is string => !!s).join(' · ')
+  const parts = [fatigue, off, city].filter((s): s is string => !!s)
+  if (r.segment.rainy && r.hit && WEATHER_SHELTERED.has(r.hit.category ?? '')) {
+    parts.push(r.segment.rainPct != null ? `indoor pick — ${Math.round(r.segment.rainPct)}% rain` : 'indoor pick for rain')
+  }
+  return parts.join(' · ')
 }
 
 // re-export the pure position helper so callers reach the planner's own API

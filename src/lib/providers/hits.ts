@@ -248,6 +248,8 @@ export interface NearbyOpts {
   plannedStops?: PlannedStop[]
   /** "HH:MM" drive-start per day index for the journey clock (unset falls back to 08:30). */
   dayStartTimes?: string[]
+  /** rain chance percent per day index for the weather join (null = no forecast). */
+  dayRainPct?: (number | null)[]
 }
 
 /**
