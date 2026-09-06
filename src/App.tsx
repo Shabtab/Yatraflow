@@ -12,12 +12,12 @@ import { Avatar, BrandMark, ToastZone, useClickOutside, toast } from './componen
 import { decodeTripSnapshot } from './lib/snapshot'
 import { scrollBehavior } from './lib/motion'
 import { LandingPage } from './pages/Landing'
-import { TripsListPage } from './pages/TripsList'
-import { TripWorkspace } from './pages/TripWorkspace'
-import { ExplorePage } from './pages/Explore'
-// Route-level code splitting (M3.5): the landing page and the workspace stay in
-// the main chunk (they are the app's front door and its core); these four
-// secondary routes load on first visit instead.
+// Route-level code splitting: only the landing page stays in the main chunk (it
+// is the app's front door and reads no store data); every other route —
+// including the workspace and its map/editor subtree — loads on first visit.
+const TripsListPage = lazy(() => import('./pages/TripsList').then(m => ({ default: m.TripsListPage })))
+const TripWorkspace = lazy(() => import('./pages/TripWorkspace').then(m => ({ default: m.TripWorkspace })))
+const ExplorePage = lazy(() => import('./pages/Explore').then(m => ({ default: m.ExplorePage })))
 const AuthPage = lazy(() => import('./pages/Auth').then(m => ({ default: m.AuthPage })))
 const CreateTripPage = lazy(() => import('./pages/CreateTrip').then(m => ({ default: m.CreateTripPage })))
 const PublicItineraryPage = lazy(() => import('./pages/PublicItinerary').then(m => ({ default: m.PublicItineraryPage })))
@@ -192,7 +192,7 @@ export default function App() {
   } else if (!me) {
     // public pages stay accessible logged-out; everything else funnels to auth/landing
     if (parts[0] === 'pub' && parts[1]) page = <Suspense fallback={lazyRouteFallback}><PublicItineraryPage slug={parts[1]} onNavigate={navigate} /></Suspense>
-    else if (parts[0] === 'explore') page = <ExplorePage onNavigate={navigate} />
+    else if (parts[0] === 'explore') page = <Suspense fallback={lazyRouteFallback}><ExplorePage onNavigate={navigate} /></Suspense>
     else if (parts[0] === 'auth') page = <Suspense fallback={lazyRouteFallback}><AuthPage onNavigate={navigate} /></Suspense>
     else page = <LandingPage onNavigate={navigate} />
   } else {
@@ -202,16 +202,16 @@ export default function App() {
         page = <LandingPage onNavigate={navigate} />
         break
       case 'trips':
-        page = <TripsListPage onNavigate={navigate} />
+        page = <Suspense fallback={lazyRouteFallback}><TripsListPage onNavigate={navigate} /></Suspense>
         break
       case 'new':
         page = <Suspense fallback={lazyRouteFallback}><CreateTripPage onNavigate={navigate} /></Suspense>
         break
       case 'trip':
-        page = <TripWorkspace tripId={parts[1] ?? ''} initialTab={parts[2]} onNavigate={navigate} />
+        page = <Suspense fallback={lazyRouteFallback}><TripWorkspace tripId={parts[1] ?? ''} initialTab={parts[2]} onNavigate={navigate} /></Suspense>
         break
       case 'explore':
-        page = <ExplorePage onNavigate={navigate} />
+        page = <Suspense fallback={lazyRouteFallback}><ExplorePage onNavigate={navigate} /></Suspense>
         break
       case 'pub':
         page = <Suspense fallback={lazyRouteFallback}><PublicItineraryPage slug={parts[1] ?? ''} onNavigate={navigate} /></Suspense>
