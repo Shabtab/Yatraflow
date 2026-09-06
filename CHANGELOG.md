@@ -2,7 +2,7 @@
 
 All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions are pre-1.0 MVP milestones.
 
-## [Unreleased]
+## [0.35.0] — 2026-09-06
 
 ### Added
 - **Publishing is now an editor, not a hardcoded payload.** The Share tab's publish card lets the owner pick which days are the free preview (Day 1 free by default, at least one free day enforced), set an optional premium price — empty or ₹0 makes the whole itinerary free — and write the tagline, best season, travel tips and subscriber CTA, all pre-filled from the live publication when updating. Premium days require a CTA; the public page's Unlock buttons derive their price from the publication instead of an invented ₹199.
