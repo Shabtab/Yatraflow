@@ -66,6 +66,11 @@ export function hasCoords(h: PlaceHit): boolean {
   return Number.isFinite(h.latitude) && Number.isFinite(h.longitude) && (h.latitude !== 0 || h.longitude !== 0)
 }
 
+/** Only hits the map can actually pin (Mappls pending (0,0) hits excluded). */
+export function mappablePois<T extends PlaceHit>(hits: T[]): T[] {
+  return hits.filter(hasCoords)
+}
+
 /** Distance in meters between a hit and the nearest route anchor. */
 export function distToNearest(h: Pick<PlaceHit, 'latitude' | 'longitude'>, anchors: { lat: number; lng: number }[]): number {
   return Math.min(...anchors.map(a => haversineKm(h.latitude, h.longitude, a.lat, a.lng) * 1000))
