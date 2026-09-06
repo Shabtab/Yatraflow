@@ -21,7 +21,7 @@ export { HOME_ZONE_KM, corridorAnchors, detourKm, filterPlannedNearby } from './
 export type { NearbyOpts, PlaceHit, PlannedStop } from './providers/hits'
 export { googleEnabled } from './providers/google'
 export { searchCitiesAlong } from './providers/free'
-export { planRideSegments, assignSegmentHits, reasonForSegmentHit, reasonForHit, type SegmentHit, type RideSegment } from './ridePlan'
+export { planRideSegments, assignSegmentHits, leftoverAsSight, reasonForSegmentHit, reasonForHit, type SegmentHit, type RideSegment } from './ridePlan'
 
 import { hasCoords, rankAndCap, filterPlannedNearby, type NearbyOpts, type PlaceHit } from './providers/hits'
 import {
@@ -38,7 +38,7 @@ import {
   googleResolveHitCoords,
 } from './providers/google'
 import {
-  planRideSegments, assignSegmentHits, annotateSegmentHits, cadenceForCrew,
+  planRideSegments, assignSegmentHits, annotateSegmentHits, cadenceForCrew, leftoverAsSight,
   type SegmentHit, type RideSegment,
 } from './ridePlan'
 import { resolveVehicleRange } from './vehicleProfile'
@@ -186,6 +186,10 @@ export async function planJourneyHalts(
     ? filterPlannedNearby(candidates, opts.plannedStops)
     : candidates
   const routePolyline = (opts.routeCoords ?? []).filter(c => Number.isFinite(c[0]) && Number.isFinite(c[1])).map(c => ({ lat: c[1], lng: c[0] }))
-  const assigned = assignSegmentHits(unplanned, segments, anchors, { homeCenter: opts.homeCenter ?? null, routePolyline: routePolyline.length >= 2 ? routePolyline : null, speedKmph: opts.speedKmph })
-  return annotateSegmentHits(assigned, candidates)
+  const assignOpts = { homeCenter: opts.homeCenter ?? null, routePolyline: routePolyline.length >= 2 ? routePolyline : null, speedKmph: opts.speedKmph }
+  const assigned = assignSegmentHits(unplanned, segments, anchors, assignOpts)
+  // Unassigned corridor hits surface as See & do — otherwise the sightseeing
+  // column is empty by construction (the planner never makes 'sight' segments).
+  const full = [...assigned, ...leftoverAsSight(unplanned, assigned, anchors, assignOpts)]
+  return annotateSegmentHits(full, candidates)
 }

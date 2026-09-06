@@ -2108,6 +2108,29 @@ main:focus { outline: none; }
 .poi-col--see .ride-purpose-sight { background: color-mix(in srgb, #7C5CFC 16%, transparent); color: #5540B8; }
 [data-theme='dark'] .poi-col--see .ride-purpose-sight { color: #B4A5FF; }
 
+/* Map-tab ideas grid — need rail LEFT, map CENTER, see-&-do rail RIGHT, so both
+   suggestion lanes sit beside the map with no page scroll between them. Rails
+   scroll internally; on mobile everything stacks with the map first. */
+.map-ideas-grid {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr) 300px;
+  gap: 14px;
+  margin-top: 12px;
+  align-items: start;
+}
+.map-ideas-grid .poi-col {
+  max-height: 72vh;
+  overflow-y: auto;
+  position: sticky;
+  top: 12px;
+}
+.map-ideas-map { min-width: 0; }
+@media (max-width: 1100px) {
+  .map-ideas-grid { grid-template-columns: 1fr; }
+  .map-ideas-map { order: -1; }
+  .map-ideas-grid .poi-col { max-height: none; }
+}
+
 /* ---------- Motion system (subtle & premium, CTI §9) ----------
    One easing family + three speeds (--ease-out / --t-fast|med|slow). Only
    transform and opacity animate — compositor-friendly, no layout thrash.

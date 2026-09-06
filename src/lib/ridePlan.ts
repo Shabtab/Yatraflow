@@ -456,6 +456,50 @@ export function assignSegmentHits(
 }
 
 /**
+ * Unassigned corridor hits become See & do entries: the halt planner only
+ * makes fuel/meal/rest/stretch/overnight segments, so without this the
+ * sightseeing column is empty by construction. Each leftover gets a synthetic
+ * 'sight' segment at its road position (callers run annotateSegmentHits over
+ * the combined list for city/leg stamps). Capped — a long corridor yields
+ * hundreds of candidates.
+ */
+export function leftoverAsSight(
+  candidates: PlaceHit[],
+  assigned: SegmentHit[],
+  anchors: { lat: number; lng: number }[],
+  opts: AssignOpts = {},
+  cap = 8,
+): SegmentHit[] {
+  const used = new Set<string>()
+  for (const r of assigned) {
+    if (r.hit) used.add(r.hit.id as string)
+  }
+  const out: SegmentHit[] = []
+  for (const h of candidates) {
+    if (out.length >= cap) break
+    if (used.has(h.id as string)) continue
+    const pos = kmFromStartForHit(h, anchors, { routePolyline: opts.routePolyline ?? undefined })
+    if (pos == null) continue
+    out.push({
+      segment: {
+        index: 1000 + out.length,
+        purpose: 'sight',
+        label: 'Sightseeing',
+        targetKm: pos,
+        minKm: Math.max(0, pos - 25),
+        maxKm: pos + 25,
+        kmFromPrev: 0,
+        minutesFromPrev: 0,
+        hint: 'Worth-a-visit along the way',
+      },
+      hit: h,
+      score: 0,
+    })
+  }
+  return out
+}
+
+/**
  * Nearest populated place to a hit within `radiusKm` (from the city-candidate
  * pool) — the "nearest big city" label shown on suggestion cards.
  */

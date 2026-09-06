@@ -187,7 +187,9 @@ export function MapTab({ trip, editable, applyChange, suggestionCache }: {
       .then(plan => {
         if (!cancelled) {
           setPois(plan)
-          suggestionCache.setMapCache(plan, hash, scopeKm)
+          // Never cache an empty plan: the first search can run before the
+          // route resolves, and a persisted [] would stick until Refresh.
+          if (plan.length > 0) suggestionCache.setMapCache(plan, hash, scopeKm)
         }
       })
       .catch(() => { /* suggestions are best-effort */ })
@@ -280,8 +282,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache }: {
 
   return (
     <div>
-      <TripMap trip={trip} nearbyPois={pois.flatMap(p => p.hit ? [p.hit] : [])} onAddNearby={editable ? (hit) => openAddModal(hit) : undefined} />
-      <div className="card" style={{ marginTop: 14 }}>
+      <div className="card">
         <div className="row-between">
           <h3 style={{ margin: 0 }}><Lightbulb size={16} aria-hidden style={{ verticalAlign: '-3px', marginRight: 4 }} />Nearby ideas</h3>
           <div className="row-between" style={{ gap: 10 }}>
@@ -318,8 +319,9 @@ export function MapTab({ trip, editable, applyChange, suggestionCache }: {
         {!loadingPois && pois.length === 0 && (
           <p className="muted small">Not enough driving distance yet for a fatigue plan — add a longer route (90+ km) in the Timeline and segmented stop suggestions will appear here.</p>
         )}
-        <div className="poi-split">
-          <div className="poi-col poi-col--needs">
+      </div>
+      <div className="map-ideas-grid">
+        <div className="poi-col poi-col--needs">
             <div className="poi-col-head">
               <span className="poi-col-head-ico"><Fuel size={13} aria-hidden /></span>
               <div>
@@ -332,6 +334,9 @@ export function MapTab({ trip, editable, applyChange, suggestionCache }: {
                 ? <p className="muted small">No need-based halts surfaced yet — they appear as you add driving days.</p>
                 : needs.map(renderPoi)}
             </div>
+          </div>
+          <div className="map-ideas-map">
+            <TripMap trip={trip} nearbyPois={pois.flatMap(p => p.hit ? [p.hit] : [])} onAddNearby={editable ? (hit) => openAddModal(hit) : undefined} />
           </div>
           <div className="poi-col poi-col--see">
             <div className="poi-col-head">
@@ -347,9 +352,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache }: {
                 : seeAndDo.map(renderPoi)}
             </div>
           </div>
-        </div>
       </div>
-
       {/* pick-a-day modal for adding a suggested POI — explicit confirm */}
       <Modal open={!!poiDraft} onClose={() => setPoiDraft(null)} title={`Add “${poiDraft?.hit.name ?? ''}”`}>
         {poiDraft && (
