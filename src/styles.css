@@ -2657,6 +2657,12 @@ html.vt-active :where(*) {
    the actions row is hidden (visibility keeps the layout stable) while the
    receipt renders its capture-safe form. */
 .bench-receipt.bench-capturing .bench-receipt-actions { visibility: hidden; }
+/* html-to-image clones the node and copies computed styles — any surviving
+   transition re-runs in the clone, capturing the fatigue needle mid-sweep and
+   the gauge arc near-empty. Freeze every transition in the capture frame. */
+.bench-receipt.bench-capturing *,
+.bench-receipt.bench-capturing *::before,
+.bench-receipt.bench-capturing *::after { transition: none !important; }
 .bench-fineprint { font-size: 11px; color: var(--receipt-ink-faint); text-align: center; margin: 0; line-height: 1.5; }
 
 /* ---------- Plan Bench 3.0 — motion system (transform/opacity only) ---------- */
