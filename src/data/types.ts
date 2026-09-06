@@ -276,15 +276,10 @@ export interface PublishedItinerary {
   premiumPriceInr?: number  // placeholder for future payments
   subscriberCta?: string
   publishedAt: number
+  /** Last time the creator re-published (synced the page with the itinerary).
+   *  Absent on rows published before v0.37 — staleness then falls back to
+   *  publishedAt. */
+  refreshedAt?: number
   views: number
   copies: number
-}
-
-/** A snapshot of the plan used by the Budget tab's current-vs-proposed comparison. */
-export interface PlanSnapshot {
-  takenAt: number
-  label: string
-  totalCostInr: number
-  travelMinutes: number
-  stopCount: number
 }

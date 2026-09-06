@@ -1,15 +1,17 @@
 // ============ Explore public itineraries — discover, trust and fork (CTI §6.10) ============
 import { useMemo, useState } from 'react'
 import {
-  Calendar, Camera, Compass, Eye, GitFork, Heart, MapPin, Search, Sparkles, Star, TvMinimalPlay, Wallet, X,
+  Calendar, Compass, Eye, GitFork, Heart, MapPin, Search, Sparkles, Star, Wallet, X,
 } from 'lucide-react'
-import { usePublished, useUsers, useTrips, useSessionUserId, tripById, duplicateTrip, duplicateTripPublic, registerPubCopy } from '../store/store'
+import { usePublished, useUsers, useTrips, useSessionUserId } from '../store/store'
+import type { User } from '../data/types'
 import { computeHealth, formatInr } from '../lib/engine'
 import { useSavedPubs } from '../lib/savedPubs'
+import { forkPublication } from '../lib/forkPub'
 import { Avatar, Chip, EmptyState, toast } from '../components/ui'
-import { CoverThumb } from '../components/CoverThumb'
+import { PubCard } from '../components/PubCard'
 
-type SortKey = 'popular' | 'budget-asc' | 'budget-desc' | 'duration'
+type SortKey = 'popular' | 'newest' | 'budget-asc' | 'budget-desc' | 'duration'
 const STYLES = ['relaxed', 'balanced', 'packed', 'adventure', 'luxury', 'budget', 'family', 'spiritual', 'food-focused', 'creator'] as const
 
 export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void }) {
@@ -24,7 +26,7 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
   // so they survive a refresh and can be shared; sortKey finally gets a control.
   const params = new URLSearchParams(location.hash.split('?')[1] ?? '')
   const s0 = params.get('sort')
-  const [sortKey, setSortKey] = useState<SortKey>(s0 === 'budget-asc' || s0 === 'budget-desc' || s0 === 'duration' ? s0 : 'popular')
+  const [sortKey, setSortKey] = useState<SortKey>(s0 === 'budget-asc' || s0 === 'budget-desc' || s0 === 'duration' || s0 === 'newest' ? s0 : 'popular')
   const [q, setQ] = useState(params.get('q') ?? '')
   const [style, setStyle] = useState(params.get('style') ?? 'all')
   const [maxBudget, setMaxBudget] = useState<number | ''>(params.get('max') ? Number(params.get('max')) : '')
@@ -67,6 +69,7 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
 
   function sortList(list: typeof published) {
     switch (sortKey) {
+      case 'newest': return list.sort((a, b) => b.publishedAt - a.publishedAt)
       case 'budget-asc': return list.sort((a, b) => a.estimatedBudgetPerPersonInr - b.estimatedBudgetPerPersonInr)
       case 'budget-desc': return list.sort((a, b) => b.estimatedBudgetPerPersonInr - a.estimatedBudgetPerPersonInr)
       case 'duration': return list.sort((a, b) => b.durationDays - a.durationDays)
@@ -90,17 +93,8 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
 
   function forkTrip(slug: string) {
     const pub = published.find(p => p.id === slug)
-    const src = pub ? tripById(pub.tripId) : undefined
-    if (!pub || !src) { toast('That itinerary is no longer available.', 'err'); return }
-    if (!me) { toast('Log in first to fork this trip into your plans.'); onNavigate('/auth'); return }
-    // Premium-respecting fork when the publication actually has locked days;
-    // entirely-free publications keep the plain full copy.
-    const hasLockedDays = src.days.some(d => !pub.freeDayIndexes.includes(d.index))
-    if (hasLockedDays) duplicateTripPublic(src, me, pub.freeDayIndexes)
-    else duplicateTrip(src, me)
-    registerPubCopy(slug)
-    toast(`“${pub.title}” forked to My trips ✈️`)
-    onNavigate('/trips')
+    if (!pub) { toast('That itinerary is no longer available.', 'err'); return }
+    forkPublication(pub, me, onNavigate)
   }
 
   function toggleHeart(id: string) {
@@ -161,6 +155,7 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
             </select>
             <select className="select" value={sortKey} onChange={e => { setSortKey(e.target.value as SortKey); syncUrl({ sort: e.target.value }) }} aria-label="Sort by">
               <option value="popular">Most popular</option>
+              <option value="newest">Newest first</option>
               <option value="budget-asc">Budget: low → high</option>
               <option value="budget-desc">Budget: high → low</option>
               <option value="duration">Longest first</option>
@@ -224,53 +219,10 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
           )
         ) : (
           <div className="explore-grid">
-            {pubs.map(p => {
-              const creator = userOf(users, p.creatorId)
-              return (
-                <div key={p.id} className="card itin-card">
-                  <button className="save-heart" aria-pressed={isSaved(p.id)} aria-label={isSaved(p.id) ? 'Remove from saved' : 'Save itinerary'}
-                    onClick={() => toggleHeart(p.id)}><Heart size={13} aria-hidden fill={isSaved(p.id) ? 'currentColor' : 'none'} /></button>
-                  <a className="trip-card-hit" href={`#/pub/${p.id}`}>
-                    <CoverThumb
-                      trip={{ name: p.title, destinations: p.routeSummary }}
-                      explicitUrl={p.coverImageUrl}
-                      emoji="🧭"
-                      routeLabel={`${p.routeSummary[0]} → ${p.routeSummary[p.routeSummary.length - 1]}`}
-                    />
-                    <div className="itin-body">
-                      <div className="row-between" style={{ marginTop: 0 }}>
-                        <Chip tone="teal">{cap(p.travelStyle)}</Chip>
-                        <span className="small muted"><GitFork size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />{p.copies}</span>
-                      </div>
-                      <h2 className="card-title">{p.title}</h2>
-                      <p className="small muted" style={{ margin: 0 }}>{p.tagline}</p>
-                      <div className="stop-meta" style={{ marginTop: 2 }}>
-                        <span><Calendar size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />{p.durationDays} days</span>
-                        <span><Wallet size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />~{formatInr(p.estimatedBudgetPerPersonInr)}/person</span>
-                        <span><MapPin size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />{p.routeSummary.length} places</span>
-                      </div>
-                    </div>
-                  </a>
-                  <div className="row-between itin-meta">
-                    <span className="creator-line"><Avatar user={creator} />{creator?.profile.name ?? 'Creator'}{creator?.profile.isCreator && <span title="Verified creator" style={{ display: 'inline-flex', verticalAlign: '-2px', marginLeft: 2 }}><Sparkles size={12} aria-hidden /></span>}</span>
-                    <button className="btn btn-primary btn-sm" onClick={() => forkTrip(p.id)}>Fork this trip</button>
-                  </div>
-                  {creator?.profile.isCreator && (creator.profile.creatorBio || creator.profile.socialLinks?.youtube || creator.profile.socialLinks?.instagram) && (
-                    <div className="row-between" style={{ gap: 8, marginTop: 6 }}>
-                      <span className="small muted" style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{creator.profile.creatorBio}</span>
-                      <span style={{ display: 'inline-flex', gap: 6, flexShrink: 0 }}>
-                        {creator.profile.socialLinks?.youtube && (
-                          <a href={creator.profile.socialLinks.youtube} target="_blank" rel="noreferrer noopener" aria-label={`${creator.profile.name} on YouTube`} className="muted"><TvMinimalPlay size={14} aria-hidden /></a>
-                        )}
-                        {creator.profile.socialLinks?.instagram && (
-                          <a href={creator.profile.socialLinks.instagram} target="_blank" rel="noreferrer noopener" aria-label={`${creator.profile.name} on Instagram`} className="muted"><Camera size={14} aria-hidden /></a>
-                        )}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              )
-            })}
+            {pubs.map(p => (
+              <PubCard key={p.id} pub={p} creator={userOf(users, p.creatorId)} saved={isSaved(p.id)}
+                onFork={() => forkTrip(p.id)} onToggleSave={() => toggleHeart(p.id)} />
+            ))}
           </div>
         )}
       </div>
@@ -279,6 +231,6 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
 }
 
 function cap(s: string): string { return s[0].toUpperCase() + s.slice(1) }
-function userOf(users: { id: string; profile: { name: string; isCreator: boolean; creatorBio?: string; socialLinks?: { youtube?: string; instagram?: string } } }[], id: string) {
+function userOf(users: User[], id: string): User | undefined {
   return users.find(u => u.id === id)
 }

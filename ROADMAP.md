@@ -52,6 +52,7 @@ and date), per the AGENTS §6 same-edit rule. Detail lives in
 ### Remaining — in release order (details in the tracks below)
 - [x] **v0.32.0** — Stabilization completion: M0 leftovers (broken `pub:` route, router ready-gate for deep links / invite flash / loading-vs-empty) + M2 remainders (Profile save validation, demo-copy honesty, heading outline) + M1 leftovers (focus-ring gaps, touch targets, stagger freeze)
 - [x] **v0.36.0** — Budget + Group-input deep redesign: metric strip, per-day cost bars, payer balances + settlement, quick-add + in-place expense editing, who-voted tallies + needs-you digest, real composer pickers; `bump_published_stats` uuid→text fix, view dedupe, unpublish owner gate (branch `redesign/budget-group`)
+- [x] **v0.37.0** — Creator release: public creator page `#/creator/:id`, publications manager with stats/edit/unpublish + stale-page nudge (`refreshed_at` migration), Explore newest sort, shared PubCard/forkPublication paths (local branch `redesign/creator-page` until pushed)
 - [x] **M3** — Performance architecture: store immutability → slice selectors → DaySection memo → workspace split into pages/trip/* + weather dedup + lazy routes (in [Unreleased], local branch redesign/perf-architecture)
 - [x] **M4** — Design-system hygiene: dead CSS purge, mobile-block consolidation, glass/z-index tokens (in [Unreleased], local branch redesign/perf-architecture; raw-rgba glass stragglers intentionally NOT migrated — see commit `f646b45`)
 - [ ] **M5** — AI companion: user-configurable LLM endpoint (#22 → #20) — the only open issues
@@ -228,7 +229,6 @@ writes (1h — pairs naturally with M3).
 | Idea | Note |
 |---|---|
 | Decision comments | needs a `comments` JSON column on decisions (schema migration) |
-| Explore creator bios + sorting | bio/newest-sort on cards (premium/respect work landed in 0.35) |
 | Premium purchase state | entitlements + unlock flow — folds into M7 payments |
 | Full Profile field editing | homeCity/languages/socialLinks UI exists partially |
 | Browser push notifications | plumbing exists in realtimeCore; permission on login |
@@ -236,7 +236,7 @@ writes (1h — pairs naturally with M3).
 | Trash + 30-day purge | soft-delete layer before hard deletes |
 | Explore pagination | grows with the catalog |
 
-*(Done from this pool: decision cost-impact editor + context field, v0.36.0.)*
+*(Done from this pool: decision cost-impact editor + context field, v0.36.0; Explore creator bios + newest sorting, v0.35.0 + v0.37.0.)*
 
 ## Historical plans (executed — kept for the record, not live guidance)
 

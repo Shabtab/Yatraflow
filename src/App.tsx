@@ -22,6 +22,7 @@ const AuthPage = lazy(() => import('./pages/Auth').then(m => ({ default: m.AuthP
 const CreateTripPage = lazy(() => import('./pages/CreateTrip').then(m => ({ default: m.CreateTripPage })))
 const PublicItineraryPage = lazy(() => import('./pages/PublicItinerary').then(m => ({ default: m.PublicItineraryPage })))
 const ProfilePage = lazy(() => import('./pages/Profile').then(m => ({ default: m.ProfilePage })))
+const CreatorPage = lazy(() => import('./pages/CreatorPage').then(m => ({ default: m.CreatorPage })))
 
 /** Suspense fallback for the lazy routes — the same loading block the ready-gate shows. */
 const lazyRouteFallback = <div className="container loading-block"><div className="spinner" />Loading…</div>
@@ -166,7 +167,7 @@ export default function App() {
     location.hash = to
   }
 
-  // route shapes: /, /auth, /trips, /new, /trip/:id, /explore, /pub/:slug, /invite/:tripId, /share/<payload>, /profile
+  // route shapes: /, /auth, /trips, /new, /trip/:id, /explore, /pub/:slug, /creator/:id, /invite/:tripId, /share/<payload>, /profile
   // Query strings (e.g. /auth?mode=signup) ride on parts[0]; strip them so the
   // segment still matches the switch. Pages read their own params from location.hash.
   const parts = route.split('/').filter(Boolean).map(s => s.split('?')[0])
@@ -192,6 +193,7 @@ export default function App() {
   } else if (!me) {
     // public pages stay accessible logged-out; everything else funnels to auth/landing
     if (parts[0] === 'pub' && parts[1]) page = <Suspense fallback={lazyRouteFallback}><PublicItineraryPage slug={parts[1]} onNavigate={navigate} /></Suspense>
+    else if (parts[0] === 'creator' && parts[1]) page = <Suspense fallback={lazyRouteFallback}><CreatorPage creatorId={parts[1]} onNavigate={navigate} /></Suspense>
     else if (parts[0] === 'explore') page = <Suspense fallback={lazyRouteFallback}><ExplorePage onNavigate={navigate} /></Suspense>
     else if (parts[0] === 'auth') page = <Suspense fallback={lazyRouteFallback}><AuthPage onNavigate={navigate} /></Suspense>
     else page = <LandingPage onNavigate={navigate} />
@@ -215,6 +217,9 @@ export default function App() {
         break
       case 'pub':
         page = <Suspense fallback={lazyRouteFallback}><PublicItineraryPage slug={parts[1] ?? ''} onNavigate={navigate} /></Suspense>
+        break
+      case 'creator':
+        page = <Suspense fallback={lazyRouteFallback}><CreatorPage creatorId={parts[1] ?? ''} onNavigate={navigate} /></Suspense>
         break
       case 'profile':
         page = <Suspense fallback={lazyRouteFallback}><ProfilePage onNavigate={navigate} /></Suspense>

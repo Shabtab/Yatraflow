@@ -3500,3 +3500,50 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
 
 /* lucide icons inside the suggestion meta row align with their text */
 .stop-meta span { display: inline-flex; align-items: center; gap: 4px; }
+
+/* ============================================================
+   v0.37 — Creator page + dashboard
+   ============================================================ */
+
+/* ---- Public creator hero (#/creator/:id) — mirrors the Explore hero band ---- */
+.creator-hero {
+  color: #fff; padding: 40px 0 34px;
+  background: linear-gradient(160deg, var(--yf-navy) 0%, #0d4b56 58%, #0b3844 100%);
+  position: relative; overflow: hidden;
+}
+.creator-hero::before {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(60% 70% at 88% 10%, rgba(23, 110, 112, .35), transparent 60%);
+}
+.creator-hero-inner { position: relative; z-index: var(--z-content); display: flex; gap: 18px; align-items: flex-start; flex-wrap: wrap; }
+.creator-hero .avatar { width: 64px; height: 64px; font-size: 24px; box-shadow: 0 0 0 3px rgba(255, 255, 255, .25); }
+.creator-hero-id { flex: 1; min-width: 220px; }
+.creator-hero-id h1 { font-family: var(--font-display); font-size: clamp(24px, 3.4vw, 34px); font-weight: 800; margin: 0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.creator-badge {
+  display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 800;
+  letter-spacing: .06em; text-transform: uppercase; border-radius: 999px; padding: 4px 10px;
+  background: rgba(243, 170, 61, .18); color: #ffcc74;
+}
+.creator-hero-meta { color: #d9efeb; font-size: 13px; margin: 4px 0 0; }
+.creator-hero-bio { color: #c5e1dc; font-size: 14.5px; line-height: 1.55; margin: 8px 0 0; max-width: 560px; }
+.creator-hero-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+/* the hero is navy in BOTH themes — outline/ghost buttons need light text */
+.creator-hero-actions .btn-outline { border-color: rgba(255, 255, 255, .4); color: #fff; background: rgba(255, 255, 255, .08); }
+.creator-hero-actions .btn-outline:hover { background: rgba(255, 255, 255, .16); }
+.creator-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
+.creator-stats .stat-value { display: flex; align-items: center; }
+
+/* ---- Publications manager rows (Profile) ---- */
+.pub-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px dashed var(--line); }
+.pub-row:last-child { border-bottom: none; }
+.pub-row-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.pub-row-title { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; font-weight: 650; font-size: 14px; }
+.pub-row-title a { color: var(--text); }
+.pub-row-actions { display: inline-flex; gap: 6px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
+
+@media (max-width: 720px) {
+  .creator-hero-inner { flex-direction: column; }
+  .creator-stats { grid-template-columns: 1fr; }
+  .pub-row { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .pub-row-actions { justify-content: flex-start; }
+}

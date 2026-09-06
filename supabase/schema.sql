@@ -146,6 +146,9 @@ create table if not exists public.published_itineraries (
   premium_price_inr           integer,
   subscriber_cta              text,
   published_at                bigint not null default extract(epoch from now()) * 1000,
+  -- v0.37: when the page was last synced with its itinerary (staleness nudge);
+  -- see migrations/20260906_published_refreshed_at.sql
+  refreshed_at                bigint,
   views                       integer not null default 0,
   copies                      integer not null default 0
 );

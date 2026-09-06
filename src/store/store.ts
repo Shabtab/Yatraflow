@@ -489,7 +489,7 @@ function rowToPublished(row: unknown): PublishedItinerary {
     estimatedBudgetPerPersonInr: r.estimated_budget_per_person_inr, travelStyle: r.travel_style,
     bestSeason: r.best_season, travelTips: r.travel_tips ?? [], warningsAndAssumptions: r.warnings_and_assumptions ?? [],
     freeDayIndexes: r.free_day_indexes ?? [], premiumPriceInr: r.premium_price_inr, subscriberCta: r.subscriber_cta,
-    publishedAt: r.published_at, views: r.views ?? 0, copies: r.copies ?? 0,
+    publishedAt: r.published_at, refreshedAt: r.refreshed_at ?? undefined, views: r.views ?? 0, copies: r.copies ?? 0,
   }
 }
 
@@ -656,6 +656,26 @@ async function probeOptionalColumn(column: string): Promise<boolean> {
   // settings — and clear the cached probe so the next call re-checks.
   optionalColumnsProbe = null
   return true
+}
+
+// Same capability-probe idea for published_itineraries.refreshed_at (v0.37):
+// databases created before that migration reject upserts that mention it, and
+// publication is too important to break on an un-migrated project.
+let refreshedAtProbe: Promise<boolean> | null = null
+function publishedHaveRefreshedAt(): Promise<boolean> {
+  if (!isSupabaseConfigured) return Promise.resolve(false)
+  if (!refreshedAtProbe) {
+    refreshedAtProbe = (async () => {
+      try {
+        const { error } = await supabase.from('published_itineraries').select('refreshed_at').limit(1)
+        if (!error) return true
+        if (isMissingColumnError(error)) return false
+      } catch { /* thrown transport error — treat like any transient failure */ }
+      refreshedAtProbe = null // transient — re-check on the next call
+      return true
+    })()
+  }
+  return refreshedAtProbe
 }
 
 async function persistTrip(trip: Trip, ownerId: ID) {
@@ -1269,6 +1289,9 @@ export async function publishItinerary(pub: Omit<PublishedItinerary, 'id' | 'pub
   const p: PublishedItinerary = {
     ...pub, id,
     publishedAt: existing?.publishedAt ?? Date.now(),
+    // Freshness marker for the dashboard's "page behind itinerary" nudge —
+    // publishedAt stays the original date for Explore's newest sort.
+    refreshedAt: Date.now(),
     views: existing?.views ?? 0,
     copies: existing?.copies ?? 0,
   }
@@ -1283,12 +1306,14 @@ export async function publishItinerary(pub: Omit<PublishedItinerary, 'id' | 'pub
   // until the next refresh silently wipes it. Surface the failure and roll
   // the cache back so the UI never disagrees with the server. (Found live:
   // the gallery table was empty while the UI showed a published card.)
+  const hasRefreshedCol = await publishedHaveRefreshedAt()
   const { error } = await supabase.from('published_itineraries').upsert({
     id: p.id, trip_id: p.tripId, creator_id: p.creatorId, title: p.title, tagline: p.tagline,
     cover_image_url: p.coverImageUrl, route_summary: p.routeSummary, duration_days: p.durationDays,
     estimated_budget_per_person_inr: p.estimatedBudgetPerPersonInr, travel_style: p.travelStyle,
     best_season: p.bestSeason, travel_tips: p.travelTips, warnings_and_assumptions: p.warningsAndAssumptions,
     free_day_indexes: p.freeDayIndexes, premium_price_inr: p.premiumPriceInr, subscriber_cta: p.subscriberCta,
+    ...(hasRefreshedCol ? { refreshed_at: p.refreshedAt } : {}),
   })
   if (error) {
     console.error('[yatraflow] publish persist failed', error)
