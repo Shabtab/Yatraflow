@@ -15,7 +15,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ### Changed
 - **Per-vote decision pings stop.** On a six-person trip every ballot notified five people; members now hear about a decision when it is raised and when it is resolved — individual votes live in the activity feed.
-- **Group input fits in one header row and every filter has an exit.** The stat strip and filter pills compress to a single row, per-filter empty states get their own copy plus a "Show everything" escape, and the Budget tab's hardcoded category hexes move onto theme-aware `--cat-*` tokens (dead `.budget-reassure` / `.dec-strip` / unblock CSS removed).
+- **Group input fits in one header row and every filter has an exit.** The stat strip and filter pills compress to a single row — the Open / Need you / Resolved chips are themselves toggles for their view (click again to clear) — per-filter empty states get their own copy plus a "Show everything" escape, and the Budget tab's hardcoded category hexes move onto theme-aware `--cat-*` tokens (dead `.budget-reassure` / `.dec-strip` / unblock CSS removed).
 
 ### Fixed
 - **Views and forks on Explore now actually persist.** The `bump_published_stats` RPC declared its id `uuid` while published ids are text slugs, so every increment died on the cast — migration `supabase/migrations/20260906_bump_published_stats_text.sql` retypes it to `text` (**run once per environment**).

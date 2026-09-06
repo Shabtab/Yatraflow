@@ -23,7 +23,7 @@ import { timeAgo } from './shared'
 
 // ================= Group input tab =================
 
-type Filter = 'all' | 'ideas' | 'decisions' | 'mine' | 'resolved'
+type Filter = 'all' | 'open' | 'ideas' | 'decisions' | 'mine' | 'resolved'
 type ComposerMode = 'idea' | 'question'
 /** One interleaved list entry: either a stop suggestion or a trip decision. */
 type GroupItem = { kind: 'idea'; sg: StopSuggestion } | { kind: 'decision'; d: TripDecision }
@@ -31,6 +31,7 @@ type GroupItem = { kind: 'idea'; sg: StopSuggestion } | { kind: 'decision'; d: T
 /** Per-filter empty states — each with its own way out ("Show everything"). */
 const EMPTY_COPY: Record<Filter, { icon: 'idea' | 'question'; title: string; body: string }> = {
   all: { icon: 'idea', title: 'Nothing waiting on the group', body: 'Propose stops for everyone to vote on, or raise a decision — both land here with the activity feed.' },
+  open: { icon: 'idea', title: 'Nothing open right now', body: 'Every idea and question has landed — propose the next one from the composer.' },
   ideas: { icon: 'idea', title: 'No stop ideas here yet', body: 'Propose one from the composer — the group votes and comments right on the card.' },
   decisions: { icon: 'question', title: 'No open questions', body: 'Raise a decision to turn a group-chat debate into one clear vote.' },
   mine: { icon: 'idea', title: 'You’re all caught up', body: 'Nothing on this trip needs your vote right now.' },
@@ -76,6 +77,7 @@ export function GroupInputTab({ trip, editable, me }: {
 
   const shown = filter === 'ideas' ? items.filter(i => i.kind === 'idea')
     : filter === 'decisions' ? items.filter(i => i.kind === 'decision')
+    : filter === 'open' ? items.filter(i => !itemResolved(i))
     : filter === 'mine' ? items.filter(itemNeedsMe)
     : filter === 'resolved' ? items.filter(itemResolved)
     : items
@@ -94,10 +96,15 @@ export function GroupInputTab({ trip, editable, me }: {
   return (
     <div>
       <div className="gi-strip">
-        <div className="gi-stats" aria-label="Group input at a glance">
-          <span className="gi-stat"><b>{openCount}</b> Open</span>
-          <span className={`gi-stat${needsYouCount > 0 ? ' hot' : ''}`}><b>{needsYouCount}</b> Need you</span>
-          <span className="gi-stat"><b>{resolvedCount}</b> Resolved</span>
+        <div className="gi-stats" role="group" aria-label="Filter by state">
+          {([['open', 'Open', openCount], ['mine', 'Need you', needsYouCount], ['resolved', 'Resolved', resolvedCount]] as const).map(([key, label, count]) => (
+            <button key={key} type="button"
+              className={`gi-stat${count > 0 && key === 'mine' ? ' hot' : ''}${filter === key ? ' on' : ''}`}
+              aria-pressed={filter === key}
+              onClick={() => setFilter(f => f === key ? 'all' : key)}>
+              <b>{count}</b> {label}
+            </button>
+          ))}
         </div>
         <div className="filter-pillbar" role="group" aria-label="Filter group input">
           {([['all', 'All'], ['ideas', 'Stop ideas'], ['decisions', 'Decisions'], ['mine', 'Need you'], ['resolved', 'Resolved']] as const).map(([k, label]) => (
