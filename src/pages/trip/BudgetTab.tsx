@@ -174,6 +174,10 @@ export function BudgetTab({ trip, totals, editable }: { trip: Trip; totals: Retu
           sub={<>{formatInr(totals.totalCostInr)} of {formatInr(groupTarget)}</>} />
       </div>
 
+      {/* Capture bar sits above everything — an expense should take one
+          glance at the metrics and one row, not a hunt for the right card. */}
+      {editable && <QuickAdd trip={trip} members={members} meId={me?.id} topline />}
+
       <div className="two-col">
         <div>
           <div className="card">
@@ -240,7 +244,6 @@ export function BudgetTab({ trip, totals, editable }: { trip: Trip; totals: Retu
               <h2>Expense lines · {trip.expenses.length}</h2>
             </div>
             <hr className="divider" />
-            {editable && <QuickAdd trip={trip} members={members} meId={me?.id} />}
             {trip.expenses.length === 0
               ? <p className="muted small">No expense lines yet — add the big ones first (stay, fuel, food).</p>
               : (
@@ -395,7 +398,7 @@ function settle(balances: { id: ID; user: User | undefined; bal: number }[]) {
 
 const EMPTY_FORM: FormState = { label: '', amount: '', category: 'food', perPerson: false, optional: false, paidBy: '', attachStop: '' }
 
-function QuickAdd({ trip, members, meId }: { trip: Trip; members: { userId: ID }[]; meId?: ID }) {
+function QuickAdd({ trip, members, meId, topline }: { trip: Trip; members: { userId: ID }[]; meId?: ID; topline?: boolean }) {
   const [form, setForm] = useState<FormState>({ ...EMPTY_FORM, paidBy: meId ?? '' })
   const [more, setMore] = useState(false)
 
@@ -409,7 +412,7 @@ function QuickAdd({ trip, members, meId }: { trip: Trip; members: { userId: ID }
   }
 
   return (
-    <form className="quick-add" onSubmit={submit}>
+    <form className={`quick-add${topline ? ' topline' : ''}`} onSubmit={submit}>
       <div className="quick-add-row">
         <input className="input" placeholder="What was it — e.g. Houseboat boarding" aria-label="Expense name" value={form.label} onChange={e => setForm(f => ({ ...f, label: e.target.value }))} />
         <input className="input qa-amount" type="number" min={0} placeholder="₹" aria-label="Amount in rupees" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} />

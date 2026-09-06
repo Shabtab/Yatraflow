@@ -457,24 +457,24 @@ a.btn { text-decoration: none; }
   border-color: var(--teal); box-shadow: 0 0 0 3px color-mix(in srgb, var(--teal) 18%, transparent);
 }
 .textarea { resize: vertical; min-height: 74px; }
-/* Modern dropdown (select) — glass pill, CTI tone */
+/* Dropdown (select) — the exact .input surface; the only tell is the chevron.
+   (Was a glass pill with its own background/weight, which read as a different
+   component family next to text inputs in the same form.) */
 .select {
   appearance: none;
-  border-radius: 999px;
-  padding: 10px 36px 10px 16px;
-  font-weight: 600;
-  font-size: 14px;
+  padding: 10px 32px 10px 13px;
   cursor: pointer;
-  box-shadow: var(--shadow-sm);
-  background: var(--bg-soft);
   /* soft teal chevron (clean SVG stroke), vertically centred, clear of the text */
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1.5 1.5L6 6l4.5-4.5' fill='none' stroke='%230E7A72' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/></svg>");
   background-repeat: no-repeat;
-  background-position: right 14px center;
+  background-position: right 12px center;
   background-size: 11px 7px;
   transition: border-color .15s ease, box-shadow .15s ease, background-color .15s ease;
 }
 .select:hover { border-color: var(--teal); }
+/* Theme the native popup rows (Chromium/Edge honour this; the system highlight
+   stays but stops clashing with the palette). */
+.select option { background: var(--card); color: var(--text); }
 /* The chevron is baked into a background-image, so it can't follow a token —
    re-declare it for dark mode or it lands ~1.8:1 on the dark pill. */
 [data-theme='dark'] .select {
@@ -3252,7 +3252,7 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
    their original file order) ---- */
 @media (max-width: 720px) {
   /* forms */
-  .select { padding: 11px 34px 11px 14px; }
+  .select { padding: 10px 32px 10px 13px; }
   .commitment-row { grid-template-columns: 1fr 1fr; }
   .commitment-row .field:first-child { grid-column: 1 / -1; }
 
@@ -3418,6 +3418,8 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
   border: 1.5px dashed color-mix(in srgb, var(--teal-500) 45%, transparent);
   border-radius: var(--radius); padding: 10px 12px; margin-bottom: 14px;
 }
+/* the tab-level capture bar (above the two columns) */
+.quick-add.topline { margin-bottom: 16px; }
 .quick-add-row { display: grid; grid-template-columns: 1fr 110px auto auto; gap: 8px; align-items: center; }
 .quick-add-row .qa-amount { text-align: right; }
 .quick-add-more { margin-top: 10px; }
