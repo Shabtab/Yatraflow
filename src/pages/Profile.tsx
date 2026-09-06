@@ -4,6 +4,8 @@ import { ExternalLink, Pencil } from 'lucide-react'
 import type { PublishedItinerary, TravelStyle } from '../data/types'
 import { TRAVEL_STYLES } from '../data/types'
 import { useDb, currentUser, updateProfile, tripsForUser, unpublishItinerary, tripById } from '../store/store'
+import { projectEarnings } from '../lib/earnings'
+import { formatInr } from '../lib/engine'
 import { Avatar, Chip, ConfirmDialog, Field, toast } from '../components/ui'
 import { useTimeFormat, setTimeFormat, formatHM, type TimeFormat } from '../lib/timefmt'
 
@@ -26,6 +28,11 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
   // Disable-creator-mode + Unpublish both go through a confirm dialog.
   const [confirmDisable, setConfirmDisable] = useState(false)
   const [unpubTarget, setUnpubTarget] = useState<PublishedItinerary | null>(null)
+  // Creator-hub tabs: component state, deliberately NOT a ?tab= hash param —
+  // App keys the route panel on the full route string, so a hash change would
+  // remount this page and wipe the creator-bio form mid-typing.
+  const [hubTab, setHubTab] = useState<'overview' | 'earnings'>('overview')
+  const [earningsView, setEarningsView] = useState<'actual' | 'projection'>('actual')
   // Not logged in: route to auth instead of rendering a blank page.
   const loggedIn = Boolean(me)
   useEffect(() => { if (!loggedIn) onNavigate('/auth') })
@@ -130,40 +137,25 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
                 </a>
               )}
             </div>
-            <hr className="divider" />
-            {myPubs.length === 0 ? (
-              <p className="hint-text" style={{ margin: '6px 0 0' }}>
-                Nothing published yet — list a trip on Explore from its Share tab.
-              </p>
+            <div className="filter-pillbar" style={{ margin: '10px 0 12px' }} role="group" aria-label="Publications view">
+              {([['overview', 'Overview'], ['earnings', 'Earnings']] as const).map(([k, label]) => (
+                <button key={k} type="button" className={`clickable-chip chip${hubTab === k ? ' on-teal' : ''}`}
+                  onClick={() => setHubTab(k)} aria-pressed={hubTab === k}>{label}</button>
+              ))}
+            </div>
+
+            {hubTab === 'overview' ? (
+              myPubs.length === 0 ? (
+                <p className="hint-text" style={{ margin: '6px 0 0' }}>
+                  Nothing published yet — list a trip on Explore from its Share tab.
+                </p>
+              ) : (
+                <>
+                  <PubOverview myPubs={myPubs} onUnpublish={setUnpubTarget} onNavigate={onNavigate} />
+                </>
+              )
             ) : (
-              <div style={{ marginTop: 4 }}>
-                {myPubs.map(p => {
-                  const trip = tripById(p.tripId)
-                  // "Page behind itinerary": the trip changed after the last
-                  // publish/refresh. refreshedAt is absent on pre-v0.37 rows.
-                  const stale = !!trip && trip.updatedAt > (p.refreshedAt ?? p.publishedAt)
-                  return (
-                    <div key={p.id} className="pub-row">
-                      <div className="pub-row-main">
-                        <span className="pub-row-title">
-                          <a href={`#/pub/${p.id}`}>{p.title}</a>
-                          {stale && <Chip tone="saffron">Page behind itinerary</Chip>}
-                        </span>
-                        <span className="small muted">{p.views} view{p.views === 1 ? '' : 's'} · {p.copies} fork{p.copies === 1 ? '' : 's'}</span>
-                      </div>
-                      <span className="pub-row-actions">
-                        {stale && (
-                          <button className="btn btn-saffron btn-sm" onClick={() => onNavigate(`/trip/${p.tripId}/share`)}>Update page</button>
-                        )}
-                        <button className="btn btn-outline btn-sm" aria-label={`Edit ${p.title}`} onClick={() => onNavigate(`/trip/${p.tripId}/share`)}>
-                          <Pencil size={13} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />Edit
-                        </button>
-                        <button className="btn btn-ghost btn-sm" onClick={() => setUnpubTarget(p)}>Unpublish</button>
-                      </span>
-                    </div>
-                  )
-                })}
-              </div>
+              <EarningsTab myPubs={myPubs} view={earningsView} onView={setEarningsView} />
             )}
           </div>
 
@@ -227,3 +219,134 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
 }
 
 function cap(s: string): string { return s[0].toUpperCase() + s.slice(1) }
+
+/** Overview tab: lifetime KPIs + the per-publication manager rows. */
+function PubOverview({ myPubs, onUnpublish, onNavigate }: {
+  myPubs: PublishedItinerary[]
+  onUnpublish: (p: PublishedItinerary) => void
+  onNavigate: (r: string) => void
+}) {
+  const totalViews = myPubs.reduce((s, p) => s + p.views, 0)
+  const totalForks = myPubs.reduce((s, p) => s + p.copies, 0)
+  const staleCount = myPubs.filter(p => {
+    const t = tripById(p.tripId)
+    return !!t && t.updatedAt > (p.refreshedAt ?? p.publishedAt)
+  }).length
+  return (
+    <>
+      <div className="pub-kpis">
+        <div className="stat-tile"><div className="stat-label">Views</div><div className="stat-value">{totalViews}</div></div>
+        <div className="stat-tile"><div className="stat-label">Forks</div><div className="stat-value">{totalForks}</div></div>
+        <div className="stat-tile"><div className="stat-label">Live</div><div className="stat-value">{myPubs.length}</div></div>
+        <div className="stat-tile"><div className="stat-label">Behind</div><div className="stat-value">{staleCount > 0 ? <span className="metric-warn">{staleCount}</span> : 0}</div></div>
+      </div>
+      <div style={{ marginTop: 4 }}>
+        {myPubs.map(p => {
+          const trip = tripById(p.tripId)
+          // "Page behind itinerary": the trip changed after the last
+          // publish/refresh. refreshedAt is absent on pre-v0.37 rows.
+          const stale = !!trip && trip.updatedAt > (p.refreshedAt ?? p.publishedAt)
+          return (
+            <div key={p.id} className="pub-row">
+              <div className="pub-row-main">
+                <span className="pub-row-title">
+                  <a href={`#/pub/${p.id}`}>{p.title}</a>
+                  {stale && <Chip tone="saffron">Page behind itinerary</Chip>}
+                </span>
+                <span className="small muted num">{p.views} view{p.views === 1 ? '' : 's'} · {p.copies} fork{p.copies === 1 ? '' : 's'}</span>
+              </div>
+              <span className="pub-row-actions">
+                {stale && (
+                  <button className="btn btn-saffron btn-sm" onClick={() => onNavigate(`/trip/${p.tripId}/share`)}>Update page</button>
+                )}
+                <button className="btn btn-outline btn-sm" aria-label={`Edit ${p.title}`} onClick={() => onNavigate(`/trip/${p.tripId}/share`)}>
+                  <Pencil size={13} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />Edit
+                </button>
+                <button className="btn btn-ghost btn-sm" onClick={() => onUnpublish(p)}>Unpublish</button>
+              </span>
+            </div>
+          )
+        })}
+      </div>
+    </>
+  )
+}
+
+/** Earnings tab: the Gumroad-shaped payout ledger (empty, honestly) plus a
+ *  clearly-labeled projection view powered by real counters. */
+function EarningsTab({ myPubs, view, onView }: {
+  myPubs: PublishedItinerary[]
+  view: 'actual' | 'projection'
+  onView: (v: 'actual' | 'projection') => void
+}) {
+  const projection = projectEarnings(myPubs)
+  return (
+    <>
+      <div className="pub-kpis">
+        <div className="stat-tile wide"><div className="stat-label">Available balance</div><div className="stat-value">{formatInr(0)}</div></div>
+        <div className="stat-tile"><div className="stat-label">Lifetime</div><div className="stat-value">{formatInr(0)}</div></div>
+        <div className="stat-tile"><div className="stat-label">Next payout</div><div className="stat-value">—</div></div>
+      </div>
+      <div className="filter-pillbar" style={{ marginBottom: 12 }} role="group" aria-label="Earnings view">
+        {([['actual', 'Actual'], ['projection', 'Projection']] as const).map(([k, label]) => (
+          <button key={k} type="button" className={`clickable-chip chip${view === k ? ' on-teal' : ''}`}
+            onClick={() => onView(k)} aria-pressed={view === k}>{label}</button>
+        ))}
+      </div>
+
+      {view === 'actual' ? (
+        <>
+          <table className="compare-table pub-ledger">
+            <thead><tr><th>Payout period</th><th className="num">Sales</th><th className="num">Platform fee</th><th className="num">Net payout</th></tr></thead>
+            <tbody>
+              <tr><td colSpan={4} className="empty-ledger">No payouts yet</td></tr>
+            </tbody>
+          </table>
+          <div className="hub-note">
+            <b>Payments arrive with the premium launch.</b> Until then this ledger tracks nothing — but its shape is
+            final: when Razorpay lands, each payout lands here as a row with its sale period, sales, fees and net.
+          </div>
+        </>
+      ) : projection.rows.length === 0 ? (
+        <div className="hub-note">
+          <b>Nothing to project yet.</b> Projections need a priced publication — set a premium price on one from its
+          Share tab, and its earning potential (clearly marked as not-money) shows up here.
+        </div>
+      ) : (
+        <>
+          <table className="compare-table pub-ledger">
+            <thead><tr><th>Itinerary</th><th className="num">Price</th><th className="num">Forks</th><th className="num">If all unlocked</th><th className="num">Net*</th></tr></thead>
+            <tbody>
+              {projection.rows.map(r => (
+                <tr key={r.pubId}>
+                  <td>{r.title}</td>
+                  <td className="num">{formatInr(r.priceInr)}</td>
+                  <td className="num">{r.forks}</td>
+                  <td className="num">{formatInr(r.grossInr)}</td>
+                  <td className="num">{formatInr(r.netInr)}</td>
+                </tr>
+              ))}
+              <tr>
+                <td><b>Potential to date</b></td>
+                <td />
+                <td className="num"><b>{projection.rows.reduce((s, r) => s + r.forks, 0)}</b></td>
+                <td className="num"><b>{formatInr(projection.potentialInr)}</b></td>
+                <td className="num"><b>{formatInr(projection.netInr)}</b></td>
+              </tr>
+            </tbody>
+          </table>
+          <p className="hint-text" style={{ marginTop: 8 }}>
+            * A projection, not money: price × forks so far, assuming every fork had bought the unlock. The
+            platform-fee model arrives with Razorpay — until then the fee stays ₹0 (TBD).
+          </p>
+          {projection.unpricedCount > 0 && (
+            <div className="hub-note">
+              <b>{projection.unpricedCount} free publication{projection.unpricedCount === 1 ? '' : 's'} not shown.</b>{' '}
+              Fully free itineraries don't project — set a premium price on their Share tab to see them here.
+            </div>
+          )}
+        </>
+      )}
+    </>
+  )
+}

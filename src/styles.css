@@ -3547,3 +3547,29 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
   .pub-row { flex-direction: column; align-items: flex-start; gap: 8px; }
   .pub-row-actions { justify-content: flex-start; }
 }
+
+/* ============================================================
+   v0.38 — Creator hub (Profile · My publications: Overview | Earnings)
+   ============================================================ */
+
+/* mini KPI tiles inside the 340px profile column */
+.pub-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
+.pub-kpis .stat-tile { padding: 9px 11px; box-shadow: none; }
+.pub-kpis .stat-tile .stat-value { font-size: 16.5px; }
+.pub-kpis .stat-tile.wide { grid-column: span 2; }
+.pub-kpis .metric-warn { color: var(--warn-600); }
+
+/* the payout ledger (and its projection twin) */
+.pub-ledger th { font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); }
+.pub-ledger .empty-ledger { text-align: center; color: var(--text-3); padding: 18px 0; }
+.pub-ledger td, .pub-ledger th { font-variant-numeric: tabular-nums; }
+
+/* explainer/empty-state note (teal tint, both themes) */
+.hub-note { background: var(--yf-teal-100); border-radius: 12px; padding: 12px 14px; font-size: 12.5px; margin-top: 12px; line-height: 1.55; }
+.hub-note b { color: var(--teal-deep); }
+[data-theme='dark'] .hub-note b { color: var(--yf-teal-600); }
+
+@media (max-width: 720px) {
+  .pub-kpis { grid-template-columns: repeat(2, 1fr); }
+  .pub-kpis .stat-tile.wide { grid-column: span 2; }
+}

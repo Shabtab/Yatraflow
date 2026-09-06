@@ -87,7 +87,10 @@ Browsing Explore: filter by style/budget/duration, sort by popularity or **newes
 
 **Creators get a public page.** Turn on creator mode in Profile to add a bio and YouTube/Instagram links, then share `#/creator/<your-id>` — it lists everything you've published with your lifetime views and forks. It's linked from every Explore card, from each of your public itineraries ("More from you"), and from Profile ("View your public page").
 
-**Keep your pages honest.** Profile → **My publications** is your dashboard: views and forks per itinerary, **Edit** to jump into its Share tab, and a **"Page behind itinerary"** flag whenever you change a trip after publishing — one click on **Update page** re-syncs it. Unpublish takes a page down without touching the trip.
+**Keep your pages honest — and see your creator hub.** Profile → **My publications** is now two views:
+
+- **Overview** — your lifetime views, forks, live itineraries and how many pages are behind their trips, above the per-itinerary rows (views/forks, **Edit**, and the **"Page behind itinerary"** flag with its **Update page** shortcut whenever you change a trip after publishing). Unpublish takes a page down without touching the trip.
+- **Earnings** — the payouts ledger, ready before payments are. It shows ₹0 balances and a table shaped exactly like a payouts statement (payout period · sales · platform fee · net). The **Projection** toggle does the only honest arithmetic available today: for each priced itinerary, price × forks so far — clearly marked as *not money*, with free publications counted rather than projected. When the premium launch lands, real payouts start filling the ledger in exactly these columns.
 
 ## FAQ
 

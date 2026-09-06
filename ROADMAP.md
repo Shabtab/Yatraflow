@@ -53,6 +53,7 @@ and date), per the AGENTS §6 same-edit rule. Detail lives in
 - [x] **v0.32.0** — Stabilization completion: M0 leftovers (broken `pub:` route, router ready-gate for deep links / invite flash / loading-vs-empty) + M2 remainders (Profile save validation, demo-copy honesty, heading outline) + M1 leftovers (focus-ring gaps, touch targets, stagger freeze)
 - [x] **v0.36.0** — Budget + Group-input deep redesign: metric strip, per-day cost bars, payer balances + settlement, quick-add + in-place expense editing, who-voted tallies + needs-you digest, real composer pickers; `bump_published_stats` uuid→text fix, view dedupe, unpublish owner gate (branch `redesign/budget-group`)
 - [x] **v0.37.0** — Creator release: public creator page `#/creator/:id`, publications manager with stats/edit/unpublish + stale-page nudge (`refreshed_at` migration), Explore newest sort, shared PubCard/forkPublication paths (local branch `redesign/creator-page` until pushed)
+- [x] **v0.38.0** — Creator hub: My publications splits into Overview (lifetime KPIs + manager rows) | Earnings (Gumroad-shaped payouts ledger, honestly empty + labeled projection view via `projectEarnings`); M7 earnings contract documented in ARCHITECTURE (local branch `redesign/creator-hub`)
 - [x] **M3** — Performance architecture: store immutability → slice selectors → DaySection memo → workspace split into pages/trip/* + weather dedup + lazy routes (in [Unreleased], local branch redesign/perf-architecture)
 - [x] **M4** — Design-system hygiene: dead CSS purge, mobile-block consolidation, glass/z-index tokens (in [Unreleased], local branch redesign/perf-architecture; raw-rgba glass stragglers intentionally NOT migrated — see commit `f646b45`)
 - [ ] **M5** — AI companion: user-configurable LLM endpoint (#22 → #20) — the only open issues
@@ -236,7 +237,32 @@ writes (1h — pairs naturally with M3).
 | Trash + 30-day purge | soft-delete layer before hard deletes |
 | Explore pagination | grows with the catalog |
 
-*(Done from this pool: decision cost-impact editor + context field, v0.36.0; Explore creator bios + newest sorting, v0.35.0 + v0.37.0.)*
+### 💰 Budget ideas (web research, Sep 6 2026 — sources: YNAB/envelope patterns, budgeting-app UX guides)
+
+| Idea | Pattern source | Note / effort |
+|---|---|---|
+| Safe-to-spend per day | per-day allowance trend | `remaining ÷ days left` next to the per-day bars — v0.36's bars already attribute everything; this is one derived tile. 1–2 h |
+| Category envelopes | YNAB | per-category cap (₹) with progress state on the "Where the money goes" bars; cap editor on the category row. 3–4 h |
+| Overspending alerts | budget-app alert patterns | threshold notification when a day/category crosses its cap (plumbing exists in realtimeCore). 2 h |
+| Recurring expense templates | expense-tracker patterns | one-click re-add of past lines ("Fuel top-up ₹3,000") from an expense history chip row. 2 h |
+| Week-over-week spending insight | spending-insights dashboards | "Days 1–3 ran 18% hotter than days 4–5" — derived entirely from the existing byDay engine data. 2 h |
+| Settlement reminders + mark paid | Splitwise | balances card gains "mark settled" + a nudge; needs the payer model to persist who acknowledged (M6 adjacency). 3 h |
+| CSV export of expense lines | finance-app staple | client-side blob download from `trip.expenses`. 1 h |
+
+### 🟣 Creator hub ideas (web research, Sep 6 2026 — sources: Gumroad payouts, Twitch payout history, Patreon earnings, X creator dashboard)
+
+| Idea | Pattern source | Note / effort |
+|---|---|---|
+| Payout-schedule card | Gumroad/Twitch | "Next payout: Friday · clears ₹X once payments live" — the Earnings tab's `Next payout —` tile grows a date + threshold explainer with M7. 2 h (with M7) |
+| Gross vs net split | Patreon | ledger rows already carry the columns; M7 adds the fee model + a gross/net toggle. — (M7) |
+| Per-publication revenue attribution | Gumroad | sale rows join on `pub_id`; the Overview rows gain a "earned" figure. — (M7) |
+| Price history | accounting need | `premiumPriceInr` is overwritten on publish; M7 needs a per-sale price snapshot (or price-history rows) for correct books. schema (M7) |
+| Unlock conversion funnel | creator-analytics pattern | views → premium unlocks per publication; needs entitlement events from M7 first. — (post-M7) |
+| Monthly statements / invoice export | Gumroad | downloadable per-month earnings summary (client-side from the payouts table). 2–3 h (post-M7) |
+| Tiered platform fee | X's 90%-tier model | fee % drops above a lifetime-earnings threshold — a M7 pricing decision, surfaced in the fee column. — (M7 decision) |
+| Payout method + KYC management | Gumroad payout settings | bank/UPI + legal name + PAN on profiles — M7's biggest schema lift. — (M7) |
+
+*(Done from this pool: decision cost-impact editor + context field, v0.36.0; Explore creator bios + newest sorting, v0.35.0 + v0.37.0; creator hub Overview + Earnings pre-shape with projection view, v0.38.0.)*
 
 ## Historical plans (executed — kept for the record, not live guidance)
 

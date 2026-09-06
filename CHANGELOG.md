@@ -2,6 +2,19 @@
 
 All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions are pre-1.0 MVP milestones.
 
+## [0.38.0] — 2026-09-06
+
+**v0.38.0 = the creator hub: Profile's publications list becomes an Overview + Earnings surface, pre-shaped so the payouts ledger has a final home before payments exist.** Details in the per-commit bodies.
+
+### Added
+- **"My publications" is now a two-tab hub.** An Overview | Earnings switch tops the card. Overview opens with lifetime KPIs (views · forks · live itineraries · pages behind) above the existing manager rows — stale-page chips, Update page, Edit and Unpublish are all unchanged.
+- **The Earnings tab is the payouts ledger, shaped before money exists.** Zero-value KPI tiles (Available balance ₹0 · Lifetime ₹0 · Next payout —) over a Gumroad-shaped table — **Payout period · Sales · Platform fee · Net payout** — with an honest empty state: payments arrive with the premium launch, and each payout then lands as a row in exactly these columns.
+- **A clearly-labeled Projection view.** The arithmetic that IS honest today — price × forks, "if every fork had bought the unlock" — per priced publication plus a potential-to-date total, sorted by potential. Free publications are counted, never projected ("2 free publications not shown"), and the platform-fee column stays ₹0 (TBD) until Razorpay defines the model. Powered by a tested `projectEarnings` helper (`src/lib/earnings.ts`).
+- **The M7 contract is written down.** ARCHITECTURE.md documents the sale/payout/fee entities the ledger expects, so the payments milestone slots rows in without redesigning this surface. No speculative schema — tables arrive with M7.
+
+### Changed
+- The hub tabs are component state rather than a `?tab=` hash param — the router re-keys pages on the full route string, so a hash tab would remount Profile and wipe the creator-bio form mid-typing.
+
 ## [0.37.0] — 2026-09-06
 
 **v0.37.0 = the creator release: every creator gets a shareable public page, the publications list becomes a real manager, and a stale-page nudge keeps public itineraries honest.** Details in the per-commit bodies.
