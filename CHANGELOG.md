@@ -16,6 +16,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - **Smaller first load for the landing.** My Trips, the trip workspace and Explore now load on first visit instead of riding in the main bundle — the landing main chunk drops from 683 kB to 505 kB (gzip 200 → 148 kB). Fonts already load with `display=swap` plus both Google Fonts preconnects, so no further font work was needed.
 
 ### Fixed
+- **Raising, voting on or resolving a decision now notifies the other trip members.** Suggestions already pushed notifications to members on every raise, vote and comment, but decisions were silent — the parity fix adds the same member loop (actor excluded) to `addDecision`, `voteOnDecision` and `resolveDecision`.
 - **The shared bill image no longer catches the receipt mid-animation.** While "Share as image" renders, the odometer digits snap to their static-text path (the html-to-image clone re-ran the roll transition and photographed digits mid-roll), the "Rendering…" action row is hidden from the frame, and confetti is suppressed.
 - **Accessibility fixes on the landing.** Muted text, the receipt's teal accent, the ticker's offbeat tags and the saffron hero chip now meet AA contrast in their themes, the decorative ticker separator is a shape instead of a failing text glyph, and the "Return leg ×2" toggle's accessible name now contains its visible label.
 

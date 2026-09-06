@@ -1194,6 +1194,14 @@ export function addDecision(tripId: ID, d: Pick<TripDecision, 'question' | 'cont
   }
   cache.decisions = [...cache.decisions, { ...d, id, tripId, votesByUserId: {}, status: 'open', raisedBy: cache.sessionUserId, createdAt: Date.now(), options: row.options }]
   addActivity(tripId, cache.sessionUserId, `raised decision “${d.question}”`, 'Decisions')
+  // Notification parity with addSuggestion: the other members hear about new
+  // group input too, not just suggestions.
+  const trip = tripById(tripId)
+  if (trip) {
+    for (const m of trip.members ?? []) {
+      if (m.userId !== cache.sessionUserId) pushNotification(m.userId, tripId, `${userName(cache.sessionUserId)} raised a decision: “${d.question}”.`)
+    }
+  }
   commit()
   fire('decisions', supabase.from('decisions').insert(row))
 }
@@ -1205,6 +1213,12 @@ export function voteOnDecision(decisionId: ID, optionId: ID): void {
   d.votesByUserId[cache.sessionUserId] = optionId
   cache.decisions = [...cache.decisions.slice(0, dIdx), d, ...cache.decisions.slice(dIdx + 1)]
   addActivity(d.tripId, cache.sessionUserId, 'voted on a decision', d.question)
+  const trip = tripById(d.tripId)
+  if (trip) {
+    for (const m of trip.members ?? []) {
+      if (m.userId !== cache.sessionUserId) pushNotification(m.userId, d.tripId, `${userName(cache.sessionUserId)} voted on “${d.question}”.`)
+    }
+  }
   commit()
   fire('decisions', supabase.from('decisions').update({ votes_by_user_id: d.votesByUserId }).eq('id', decisionId))
 }
@@ -1216,6 +1230,12 @@ export function resolveDecision(decisionId: ID, optionId: ID): void {
   d.status = 'resolved'; d.resolvedOptionId = optionId; d.resolvedAt = Date.now()
   cache.decisions = [...cache.decisions.slice(0, dIdx), d, ...cache.decisions.slice(dIdx + 1)]
   addActivity(d.tripId, cache.sessionUserId!, 'resolved a decision', d.question)
+  const trip = tripById(d.tripId)
+  if (trip && cache.sessionUserId) {
+    for (const m of trip.members ?? []) {
+      if (m.userId !== cache.sessionUserId) pushNotification(m.userId, d.tripId, `${userName(cache.sessionUserId)} resolved “${d.question}”.`)
+    }
+  }
   commit()
   fire('decisions', supabase.from('decisions').update({ status: 'resolved', resolved_option_id: optionId, resolved_at: d.resolvedAt }).eq('id', decisionId))
 }
