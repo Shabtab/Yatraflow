@@ -3,6 +3,15 @@
 All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions are pre-1.0 MVP milestones.
 
 ## [Unreleased]
+### Fixed
+- Haptic vibration diagnostic logging added for Android issue investigation
+- AI drawer input now disabled while thinking to prevent duplicate questions
+- AI drawer animation uses CSS class instead of inline style
+- AI FAB now hidden when drawer is open and not thinking
+- Trip stop status now stores trip reference to avoid redundant lookups
+- moveStopBetweenDays now correctly commits once (double commit removed)
+- updateTrip now persists before committing to prevent UI/DB mismatch
+- store.ts persistTripField now returns Promise<void> for proper async handling
 
 ### Added
 - **Every suggestion says why.** Cards show a reason line built from the leg, detour and nearest city.
