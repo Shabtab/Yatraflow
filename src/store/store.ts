@@ -700,9 +700,12 @@ const LOCKED_STOP_DESCRIPTION = 'Locked — the full plan is on the original iti
  *  other day, reduces each stop to a stub: title and priority are kept, the
  *  description becomes the locked notice, notes are cleared, entry/transport
  *  costs and open/close times are zeroed, and the stop is marked confirmed.
- *  Structurally identical to `duplicateTrip` otherwise (fresh ids, new owner
- *  member, private copy, persisted once — the stripped version is what gets
- *  written through, never the full plan). */
+ *  Budget data for locked days does not ride along either: expenses tagged
+ *  with a locked `dayIndex` and fixed commitments on locked days are dropped
+ *  (trip-level expenses — no `dayIndex` — stay). Structurally identical to
+ *  `duplicateTrip` otherwise (fresh ids, new owner member, private copy,
+ *  persisted once — the stripped version is what gets written through, never
+ *  the full plan). */
 export function duplicateTripPublic(source: Trip, ownerId: ID, freeDayIndexes: number[]): Trip {
   const free = new Set(freeDayIndexes)
   const copy: Trip = structuredClone(source)
@@ -727,8 +730,12 @@ export function duplicateTripPublic(source: Trip, ownerId: ID, freeDayIndexes: n
           status: 'confirmed' as const,
         }),
   }))
-  copy.expenses = copy.expenses.map(e => ({ ...e, id: uid('ex') }))
-  copy.fixedCommitments = copy.fixedCommitments.map(f => ({ ...f, id: uid('fc') }))
+  copy.expenses = copy.expenses
+    .filter(e => e.dayIndex === undefined || free.has(e.dayIndex))
+    .map(e => ({ ...e, id: uid('ex') }))
+  copy.fixedCommitments = copy.fixedCommitments
+    .filter(f => free.has(f.dayIndex))
+    .map(f => ({ ...f, id: uid('fc') }))
   copy.members = [{ userId: ownerId, role: 'owner' as const, joinedAt: Date.now() }]
   copy.coverImageUrl = source.coverImageUrl
   cache.trips = [...cache.trips, copy]

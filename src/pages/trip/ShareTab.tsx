@@ -112,6 +112,9 @@ function PublicationForm({ trip, pub, isOwner, creatorId, onDone }: {
 
   function submit() {
     if (!Number.isFinite(priceNum) || priceNum < 0) { setErr('Price must be a number of rupees, 0 or more.'); return }
+    // Price > 0 with every day free would publish a premium price over fully
+    // viewable content — a "Unlock Premium" CTA that unlocks nothing. Block it.
+    if (!entirelyFree && free.size >= trip.days.length) { setErr('Every day is free — clear the price or lock a day.'); return }
     if (hasPremiumDay && !cta.trim()) { setErr('Premium days need a call-to-action — tell readers what they get when they unlock.'); return }
     setErr(null)
     publishItinerary({
@@ -166,7 +169,7 @@ function PublicationForm({ trip, pub, isOwner, creatorId, onDone }: {
               <span className="small">Day {d.index + 1}{d.title ? ` — ${d.title}` : ''}</span>
               <button type="button" className={`btn btn-sm ${isFree ? 'btn-outline' : 'btn-saffron'}`}
                 disabled={entirelyFree} aria-pressed={!isFree}
-                aria-label={`${isFree ? 'Make premium' : 'Make free'}: Day ${d.index + 1}${d.title ? ` — ${d.title}` : ''}`}
+                aria-label={`Day ${d.index + 1}${d.title ? ` — ${d.title}` : ''} lock`}
                 onClick={() => toggleDay(d.index)}>
                 {isFree ? <>Free</> : <><Lock size={11} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />Premium</>}
               </button>

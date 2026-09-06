@@ -99,6 +99,32 @@ describe('duplicateTripPublic premium stripping', () => {
     }
   })
 
+  it('drops expenses and fixed commitments tagged to locked days, keeps the rest', () => {
+    const withDayExpenses: Trip = {
+      ...source,
+      expenses: [
+        ...source.expenses,
+        { id: 'ex_locked', label: 'Houseboat premium add-on', category: 'accommodation', amountInr: 14500, dayIndex: 3 },
+        { id: 'ex_free', label: 'Park entry (day 0)', category: 'entry-fees', amountInr: 500, dayIndex: 0 },
+      ],
+    }
+    const copy = duplicateTripPublic(withDayExpenses, ownerId, [0])
+    // Trip-level expenses (no dayIndex) ride along.
+    expect(copy.expenses.some(e => e.label === 'Fuel estimate (~430 km)')).toBe(true)
+    // Day-0 expense survives; the day-3 (locked) expense is stripped.
+    expect(copy.expenses.some(e => e.label === 'Park entry (day 0)')).toBe(true)
+    expect(copy.expenses.some(e => e.label === 'Houseboat premium add-on')).toBe(false)
+    // Fixed commitments on locked days (day 3 pair) don't ship with the fork.
+    expect(copy.fixedCommitments.map(f => f.title)).toEqual(['Hotel check-in — Kochi'])
+  })
+
+  it('an all-free fork keeps every expense and fixed commitment', () => {
+    const all = source.days.map(d => d.index)
+    const copy = duplicateTripPublic(source, ownerId, all)
+    expect(copy.expenses.length).toBe(source.expenses.length)
+    expect(copy.fixedCommitments.length).toBe(source.fixedCommitments.length)
+  })
+
   it('is a fresh private trip owned by the forker, persisted with the stripped plan', async () => {
     calls.length = 0
     const copy = duplicateTripPublic(source, ownerId, [0])
