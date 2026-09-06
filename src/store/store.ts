@@ -1220,10 +1220,11 @@ export function voteOnDecision(decisionId: ID, optionId: ID): void {
   d.votesByUserId[cache.sessionUserId] = optionId
   cache.decisions = [...cache.decisions.slice(0, dIdx), d, ...cache.decisions.slice(dIdx + 1)]
   addActivity(d.tripId, cache.sessionUserId, 'voted on a decision', d.question)
+  const votedLabel = d.options.find(o => o.id === optionId)?.label ?? 'an option'
   const trip = tripById(d.tripId)
   if (trip) {
     for (const m of trip.members ?? []) {
-      if (m.userId !== cache.sessionUserId) pushNotification(m.userId, d.tripId, `${userName(cache.sessionUserId)} voted on “${d.question}”.`)
+      if (m.userId !== cache.sessionUserId) pushNotification(m.userId, d.tripId, `${userName(cache.sessionUserId)} voted on “${d.question}” — ${votedLabel}.`)
     }
   }
   commit()
@@ -1237,10 +1238,11 @@ export function resolveDecision(decisionId: ID, optionId: ID): void {
   d.status = 'resolved'; d.resolvedOptionId = optionId; d.resolvedAt = Date.now()
   cache.decisions = [...cache.decisions.slice(0, dIdx), d, ...cache.decisions.slice(dIdx + 1)]
   addActivity(d.tripId, cache.sessionUserId!, 'resolved a decision', d.question)
+  const winningLabel = d.options.find(o => o.id === optionId)?.label ?? 'an option'
   const trip = tripById(d.tripId)
   if (trip && cache.sessionUserId) {
     for (const m of trip.members ?? []) {
-      if (m.userId !== cache.sessionUserId) pushNotification(m.userId, d.tripId, `${userName(cache.sessionUserId)} resolved “${d.question}”.`)
+      if (m.userId !== cache.sessionUserId) pushNotification(m.userId, d.tripId, `${userName(cache.sessionUserId)} resolved “${d.question}” — ${winningLabel}.`)
     }
   }
   commit()

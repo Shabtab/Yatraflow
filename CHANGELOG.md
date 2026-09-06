@@ -2,6 +2,11 @@
 
 All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions are pre-1.0 MVP milestones.
 
+## [Unreleased]
+
+### Fixed
+- **Group input is usable without seeing colour, fork copy is honest, and decision notifications name the outcome.** Suggestion up/down and decision-option vote buttons expose their state via `aria-pressed` instead of colour alone; the day lock picker uses one stable accessible name ("Day N — title lock") with `aria-pressed` carrying the state; the public page's fork blurb says locked days arrive as placeholders instead of promising "the full plan"; and vote/resolution notifications to members now include the chosen option's label.
+
 ## [0.35.0] — 2026-09-06
 
 ### Added
