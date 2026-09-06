@@ -39,6 +39,25 @@ export interface RidePlanInput {
   multiDay?: boolean
   /** vehicle tank range in km — sets the fuel cadence (default FUEL_INTERVAL_KM) */
   vehicleRangeKm?: number
+  /** crew-tuned cadence overrides (see cadenceForCrew) — default STRETCH/MEAL_INTERVAL_KM */
+  stretchKm?: number
+  mealKm?: number
+}
+
+/**
+ * Fatigue cadence tuned to the crew. Big groups (5+) and relaxed trips tire
+ * faster (120/260); packed trips push further between stretches (180/300).
+ * Unknown style or small balanced crews get the defaults.
+ */
+export function cadenceForCrew(
+  travellers?: number,
+  style?: string,
+): { stretchKm: number; mealKm: number } {
+  if (style === 'packed') return { stretchKm: 180, mealKm: MEAL_INTERVAL_KM }
+  if (style === 'relaxed' || (travellers != null && travellers >= 5)) {
+    return { stretchKm: 120, mealKm: 260 }
+  }
+  return { stretchKm: STRETCH_INTERVAL_KM, mealKm: MEAL_INTERVAL_KM }
 }
 
 export interface RideSegment {
@@ -110,6 +129,21 @@ const PURPOSE_SHORT: Record<HaltPurpose, string> = {
 }
 
 /**
+ * Crew overrides must stay sane: finite, positive, inside [50, 1000] km.
+ * Garbage in falls back to the standard cadence, never to a crash or a
+ * segment every 2 km.
+ */
+function sanitizedStretchKm(input: RidePlanInput): number {
+  const v = input.stretchKm
+  return v != null && Number.isFinite(v) && v >= 50 && v <= 1000 ? v : STRETCH_INTERVAL_KM
+}
+
+function sanitizedMealKm(input: RidePlanInput): number {
+  const v = input.mealKm
+  return v != null && Number.isFinite(v) && v >= 50 && v <= 1000 ? v : MEAL_INTERVAL_KM
+}
+
+/**
  * Split a drive into fatigue-budget segments in journey order. Empty for short
  * drives. Cadences are walked independently, then merged: collisions closer
  * than MIN_BREAK_GAP_KM fold into one segment (priority overnight > meal >
@@ -141,9 +175,9 @@ export function planRideSegments(input: RidePlanInput): RideSegment[] {
     const push = (purpose: HaltPurpose, step: number) => {
       for (let km = dayStart + step; km < dayCap && km < cap; km += step) raws.push({ km, purpose })
     }
-    push('stretch', STRETCH_INTERVAL_KM)
+    push('stretch', sanitizedStretchKm(input))
     if (includeFuel) push('fuel', fuelEvery)
-    push('meal', MEAL_INTERVAL_KM)
+    push('meal', sanitizedMealKm(input))
   })
   dayEnds.forEach(e => raws.push({ km: e, purpose: 'overnight' }))
   if (raws.length === 0) return []

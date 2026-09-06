@@ -141,6 +141,8 @@ export function MapTab({ trip, editable, applyChange, suggestionCache }: {
     // Google mode: bias the search along the real road polyline; free mode ignores it
     routeCoords: routeGeometry,
     routeTotalKm,
+    travellers: trip.travellers,
+    travelStyle: trip.travelStyle,
   }), [trip, routeGeometry, routeTotalKm])
 
   useEffect(() => {

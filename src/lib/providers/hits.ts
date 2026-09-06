@@ -221,6 +221,10 @@ export interface NearbyOpts {
   purposes?: HaltPurpose[]
   /** Vehicle profile for accurate fuel/charging cadence. */
   vehicleProfile?: VehicleProfile
+  /** Crew size — tunes the fatigue cadence (see cadenceForCrew). */
+  travellers?: number
+  /** Trip travel style — tunes the fatigue cadence (see cadenceForCrew). */
+  travelStyle?: string
 }
 
 /**

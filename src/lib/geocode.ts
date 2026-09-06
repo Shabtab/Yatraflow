@@ -38,7 +38,7 @@ import {
   googleResolveHitCoords,
 } from './providers/google'
 import {
-  planRideSegments, assignSegmentHits, annotateSegmentHits,
+  planRideSegments, assignSegmentHits, annotateSegmentHits, cadenceForCrew,
   type SegmentHit, type RideSegment,
 } from './ridePlan'
 import { resolveVehicleRange } from './vehicleProfile'
@@ -161,6 +161,7 @@ export async function planJourneyHalts(
     includeFuel: opts.includeFuel,
     multiDay: opts.multiDay,
     vehicleRangeKm: vehicleRange,
+    ...cadenceForCrew(opts.travellers, opts.travelStyle),
   })
   if (segments.length === 0) return []
   const purposes = [...new Set(segments.map(s => s.purpose))]
