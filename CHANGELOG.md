@@ -14,6 +14,10 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - **Lunch lands at lunchtime.** Meal halts slide into 11:30-14:30 based on the day's start time.
 - **Rain reranks picks.** Wet days favor museums and cafes over beaches, and cards say so.
 - **Ratings count in Google mode.** Trusted 4.0+ picks outrank unrated equals.
+- **Planned stops never resurface as suggestions.** The itinerary filter is now wired into halt planning on both tabs.
+- **See & do fills with real sights.** Unassigned corridor hits surface as sightseeing entries instead of leaving the column empty by construction; empty plans are never cached.
+- **Map tab runs side rails.** Need-based halts left, map center, see & do right, with a widened shell so the map keeps full size. Stacks map-first below 1500px.
+- **Every idea gets a map marker.** Coord-less hits resolve in the background and pop in; unresolvable ones stay panel-only instead of plotting at 0,0.
 
 ## [0.39.0] — 2026-09-06
 
