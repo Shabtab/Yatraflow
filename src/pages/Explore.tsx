@@ -99,7 +99,7 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
 
   function toggleHeart(id: string) {
     const nowSaved = toggleSaved(id)
-    toast(nowSaved ? '♥ Saved to this browser.' : 'Removed from saved itineraries.')
+    toast(nowSaved ? 'Saved to this browser.' : 'Removed from saved itineraries.')
   }
 
   const stylesWithCounts = STYLES.filter(s => (styleCounts.get(s) ?? 0) > 0)
@@ -123,11 +123,11 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
       <div className="container" style={{ paddingTop: 20 }}>
         {/* ---- Travel-style chips (§6.10) — replaces the style dropdown ---- */}
         <div className="explore-chips" role="group" aria-label="Travel style">
-          <button className={`chip clickable-chip ${style === 'all' ? 'chip-teal' : ''}`}
+          <button className={`chip clickable-chip ${style === 'all' ? 'on-teal' : ''}`}
             aria-pressed={style === 'all'}
             onClick={() => { setStyle('all'); syncUrl({ style: 'all' }) }}>All styles</button>
           {stylesWithCounts.map(s => (
-            <button key={s} className={`chip clickable-chip ${style === s ? 'chip-teal' : ''}`}
+            <button key={s} className={`chip clickable-chip ${style === s ? 'on-teal' : ''}`}
               aria-pressed={style === s}
               onClick={() => { setStyle(style === s ? 'all' : s); syncUrl({ style: style === s ? 'all' : s }) }}>
               {cap(s)} <span className="chip-count">{styleCounts.get(s)}</span>
@@ -187,7 +187,7 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
                 <span><MapPin size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />{featured.routeSummary.length} places · {featured.routeSummary[0]} → {featured.routeSummary[featured.routeSummary.length - 1]}</span>
               </div>
               <div className="featured-actions">
-                <button className="btn fork-btn" onClick={() => forkTrip(featured.id)}>Fork this trip →</button>
+                <button className="btn fork-btn" onClick={() => forkTrip(featured.id)}><GitFork size={14} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />Fork this trip</button>
                 <button className="btn save-btn" onClick={() => toggleHeart(featured.id)} aria-pressed={isSaved(featured.id)}>
                   <Heart size={13} aria-hidden fill={isSaved(featured.id) ? 'currentColor' : 'none'} style={{ verticalAlign: '-2px', marginRight: 4 }} />
                   {isSaved(featured.id) ? 'Saved' : 'Save'}

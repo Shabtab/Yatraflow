@@ -885,6 +885,14 @@ export function formatInr(n: number): string {
   return '₹' + Math.round(n).toLocaleString('en-IN')
 }
 
+/** Compact rupees for card tiles — ₹1.2L / ₹5k — tabular-safe rounding.
+ *  (TripsList used to carry a private divergent copy of this.) */
+export function formatInrShort(n: number): string {
+  if (n >= 100000) return `₹${(n / 100000).toFixed(1)}L`
+  if (n >= 1000) return `₹${Math.round(n / 1000)}k`
+  return `₹${Math.round(n)}`
+}
+
 // ============ Itinerary-gap awareness (nearby suggestions) ============
 // Nearby suggestions should fill what the plan lacks, not duplicate what it
 // already has. computeCategoryBias inspects the itinerary and returns additive

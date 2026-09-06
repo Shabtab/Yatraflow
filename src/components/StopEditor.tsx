@@ -2,6 +2,7 @@
 import React, { useRef, useState } from 'react'
 import type { ItineraryStop, StopCategory, StopStatus, Trip } from '../data/types'
 import { STOP_CATEGORIES, STOP_STATUSES } from '../data/types'
+import { Car } from 'lucide-react'
 import { Modal, Field } from './ui'
 import { LocationInput } from './LocationInput'
 import type { PlaceHit } from './LocationInput'
@@ -142,8 +143,8 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel,
   }
 
   const hoursHint =
-    hoursState === 'loading' ? '⏳ Looking up hours from OpenStreetMap…' :
-    hoursState === 'found' ? '✓ Auto-filled from OpenStreetMap — edit if needed' :
+    hoursState === 'loading' ? 'Looking up hours from OpenStreetMap…' :
+    hoursState === 'found' ? 'Auto-filled from OpenStreetMap — edit if needed' :
     undefined
 
   function submit(e: React.FormEvent) {
@@ -180,7 +181,7 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel,
         </div>
 
         <div className="form-row">
-          <Field label="Location / area" hint={v.geocoded ? '✓ Pinned to a real place on the map' : 'Start typing and pick a suggestion to pin it on the map'} error={errs.locationName}>
+          <Field label="Location / area" hint={v.geocoded ? 'Pinned to a real place on the map' : 'Start typing and pick a suggestion to pin it on the map'} error={errs.locationName}>
             <LocationInput
               value={v.locationName}
               onChange={val => { set('locationName', val); if (v.geocoded) set('geocoded', false) }}
@@ -231,9 +232,9 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel,
         </div>
 
         {legContext && v.geocoded && (
-          <div className="card" style={{ background: 'var(--bg-2, #f7f7f5)', padding: 12, marginBottom: 12 }}>
+          <div className="card" style={{ background: 'var(--bg-soft)', padding: 12, marginBottom: 12 }}>
             <div className="small" style={{ fontWeight: 600, marginBottom: 6 }}>
-              🚗 Travel to this stop {legState === 'loading' ? <span className="muted">— measuring road…</span> : ''}
+              <Car size={13} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />Travel to this stop {legState === 'loading' ? <span className="muted">— measuring road…</span> : ''}
             </div>
             <div className="small muted" style={{ marginBottom: 10 }}>
               {legContext.fromName} → {v.title || v.locationName || 'this stop'}

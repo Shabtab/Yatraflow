@@ -393,7 +393,7 @@ function SuggestionComposerForm({ trip, me }: {
 
   return (
     <form onSubmit={submit}>
-      <h2>Add to the plan</h2>
+      <h3>Add to the plan</h3>
       <p className="hint-text" style={{ margin: '6px 0 12px' }}>Others can vote and comment; editors can accept it into the timeline.</p>
       <Field label="Idea"><input className="input" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="e.g. Pothamedu viewpoint" /></Field>
       <div className="form-row">

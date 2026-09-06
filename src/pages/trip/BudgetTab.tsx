@@ -181,7 +181,7 @@ export function BudgetTab({ trip, totals, editable }: { trip: Trip; totals: Retu
       <div className="two-col">
         <div>
           <div className="card">
-            <h2>Cost per day</h2>
+            <h3>Cost per day</h3>
             <p className="hint-text" style={{ margin: '4px 0 14px' }}>
               Day expenses + that day's drive{avg > 0 && <> · <span className="avg-key" aria-hidden /> tick = daily average ({formatInr(avg)})</>}
             </p>
@@ -211,7 +211,7 @@ export function BudgetTab({ trip, totals, editable }: { trip: Trip; totals: Retu
           </div>
 
           <div className="card">
-            <h2>Where the money goes</h2>
+            <h3>Where the money goes</h3>
             <p className="hint-text" style={{ margin: '4px 0 14px' }}>
               {A.kmPerLiter
                 ? <>All figures are estimates in INR. Transport is fuel-based: route distance{isRoundTrip(trip) ? ' (incl. return drive)' : ''} ≈{Math.round(totals.totalDistanceKm)} km ÷ {A.kmPerLiter} km/L ≈ <b>{Math.round(totals.totalDistanceKm / A.kmPerLiter)} L</b> of fuel × ₹{A.fuelPricePerL}/L ({A.fuelPriceIsUserSet ? 'your local pump price' : 'indicative petrol price — actual consumption varies'}).</>
@@ -241,7 +241,7 @@ export function BudgetTab({ trip, totals, editable }: { trip: Trip; totals: Retu
 
           <div className="card">
             <div className="row-between">
-              <h2>Expense lines · {trip.expenses.length}</h2>
+              <h3>Expense lines · {trip.expenses.length}</h3>
             </div>
             <hr className="divider" />
             {trip.expenses.length === 0
@@ -323,7 +323,7 @@ export function BudgetTab({ trip, totals, editable }: { trip: Trip; totals: Retu
 
           {trip.travellers >= 2 && (
             <div className="card" style={{ marginTop: 14 }}>
-              <h2>Who paid · who owes</h2>
+              <h3>Who paid · who owes</h3>
               {members.length < 2
                 ? <p className="hint-text" style={{ margin: '6px 0 0' }}>Fair share is {formatInr(fairShare)} each. Invite your crew from the Share tab, then tag who paid on expense lines — who owes whom shows up here.</p>
                 : <>
@@ -358,7 +358,7 @@ export function BudgetTab({ trip, totals, editable }: { trip: Trip; totals: Retu
           )}
 
           <div className="card" style={{ marginTop: trip.travellers >= 2 ? 14 : 0 }}>
-            <h2>Essential vs optional</h2>
+            <h3>Essential vs optional</h3>
             <hr className="divider" />
             <div className="budget-bars">
               <div className="budget-bar-row">

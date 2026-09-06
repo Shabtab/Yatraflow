@@ -52,7 +52,7 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
 
   function saveThis() {
     const nowSaved = toggleSaved(pub!.id)
-    toast(nowSaved ? '♥ Saved to this browser.' : 'Removed from saved itineraries.')
+    toast(nowSaved ? 'Saved to this browser.' : 'Removed from saved itineraries.')
   }
 
   // ---- practical evidence, computed from the real trip (no schema fields) ----
@@ -135,7 +135,7 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
                 <Heart size={13} aria-hidden fill={savedFlag ? 'currentColor' : 'none'} style={{ verticalAlign: '-2px', marginRight: 4 }} />
                 {savedFlag ? 'Saved' : 'Save itinerary'}
               </button>
-              <button className="btn fork-btn" onClick={copyThis}>Fork this trip →</button>
+              <button className="btn fork-btn" onClick={copyThis}><GitFork size={14} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />Fork this trip</button>
             </div>
           </div>
 
@@ -273,7 +273,7 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
                                   <span><Clock size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />Depart {depHM} → arrive {arrHM}</span>
                                   <span><Clock size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />{minutesToHM(inbound.durationMinutes)}</span>
                                   <span><MapPin size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />{inbound.distanceKm.toFixed(0)} km</span>
-                                  <span><Car size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />est ₹{formatInr(cost)} ({A.mode})</span>
+                                  <span><Car size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />est {formatInr(cost)} ({A.mode})</span>
                                 </>
                               ) : (
                                 <span>Departure {depHM}</span>
@@ -312,7 +312,7 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
                         <div className="locked-cta">
                           <b><Lock size={13} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />{stops.length} more stops on this day</b>
                           <p className="small">Unlock the full day-by-day plan with stay contacts, timings and budget breakdown.</p>
-                          {price !== undefined && <button className="btn btn-saffron" onClick={() => toast('Premium unlock is a placeholder — no payments in this MVP.')}>Unlock Premium · ₹{price}</button>}
+                          {price !== undefined && <button className="btn btn-saffron" onClick={() => toast('Premium unlock is a placeholder — no payments in this MVP.')}>Unlock Premium · {formatInr(price)}</button>}
                         </div>
                       </div>
                     </>
@@ -352,11 +352,11 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
               </button>
               {price !== undefined && <button className="btn btn-saffron btn-lg" style={{ width: '100%', marginTop: 10 }}
                 onClick={() => toast('Premium unlock is a placeholder — no payments in this MVP.')}>
-                <Lock size={15} aria-hidden style={{ verticalAlign: '-2px', marginRight: 5 }} />Unlock Premium · ₹{price}
+                <Lock size={15} aria-hidden style={{ verticalAlign: '-2px', marginRight: 5 }} />Unlock Premium · {formatInr(price)}
               </button>}
               {pub.subscriberCta && <p className="hint-text" style={{ textAlign: 'center', marginTop: 8 }}>{pub.subscriberCta}</p>}
               <hr className="divider" />
-              <div className="share-link-box"><code>{shareLink}</code><CopyButton text={shareLink} label="Share" /></div>
+              <div className="share-link-box"><code>{shareLink}</code><CopyButton text={shareLink} label="Copy page link" /></div>
               {!me && <p className="hint-text" style={{ marginTop: 10 }}>You’ll need a free account to fork trips.</p>}
             </div>
           </div>

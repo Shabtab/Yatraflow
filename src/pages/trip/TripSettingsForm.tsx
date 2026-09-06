@@ -1,7 +1,7 @@
 // ============ Trip workspace — trip settings form (Share tab) ============
 // Mechanical extraction from src/pages/TripWorkspace.tsx (M3.4) — no behavior changes.
 import { useState } from 'react'
-import { ChevronDown, ChevronUp, X } from 'lucide-react'
+import { ChevronDown, ChevronUp, TriangleAlert, X } from 'lucide-react'
 import type { Trip, LatLngPoint } from '../../data/types'
 import { TRANSPORT_MODES, TRAVEL_STYLES } from '../../data/types'
 import { updateTrip } from '../../store/store'
@@ -118,8 +118,8 @@ export function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boo
             <input type="number" min={2} max={80} step={0.1} className="input" disabled={!editable} value={f.fuelEconomy}
               onChange={e => setF(x => ({ ...x, fuelEconomy: e.target.value }))} placeholder="e.g. 18" />
             {isImplausibleFuelEconomy(f.transportMode, parseFuelEconomyKmL(f.fuelEconomy)) && (
-              <p className="hint-text" style={{ marginTop: 5, color: '#b45309' }}>
-                ⚠️ Unusual for a {f.transportMode} — most do far better. Double-check the value (km per litre).
+              <p className="hint-text" style={{ marginTop: 5, color: 'var(--warn-600)' }}>
+                <TriangleAlert size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />Unusual for a {f.transportMode} — most do far better. Double-check the value (km per litre).
               </p>
             )}
           </Field>
@@ -131,7 +131,7 @@ export function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boo
       )}
       {isFuelEconomyMode(f.transportMode) && (
         <div className="chip-row" style={{ margin: '4px 0 12px' }}>
-          <Chip active={f.roundTrip} onClick={editable ? () => setF(x => ({ ...x, roundTrip: !x.roundTrip })) : undefined}>
+          <Chip active={f.roundTrip} aria-pressed={f.roundTrip} onClick={editable ? () => setF(x => ({ ...x, roundTrip: !x.roundTrip })) : undefined}>
             Round trip — return to start
           </Chip>
         </div>

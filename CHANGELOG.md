@@ -2,6 +2,26 @@
 
 All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions are pre-1.0 MVP milestones.
 
+## [0.39.0] — 2026-09-06
+
+**v0.39.0 = the hard-surface pass: a full skills-based review of every page found ~70 issues — the 5 HIGH bugs are dead, one icon language now runs the whole app, and the numeric/a11y/consistency debt from the pre-redesign tabs is paid.** Details in the per-commit bodies.
+
+### Fixed
+- **Dark mode no longer breaks on the landing's two biggest surfaces.** The demo CTA band and the adventure scenario card built their gradients from theme-flipping tokens (`--gray-900` turns near-white in dark) under hardcoded white text — both bands now pin their dark-navy stops, like `.budget-hero` always did.
+- **The hero's saffron CTA regains its AA ink.** The landing-refresh override painted "Explore itineraries" white on light saffron (~1.9:1); it now uses the same dark accent-foreground as every other saffron button.
+- **StopEditor's travel panel stops ignoring the theme.** It styled itself with a nonexistent `--bg-2` token, so the fallback hex always won — a permanent light patch inside dark modals.
+- **CreateTrip's destination chips follow the theme again.** They referenced `--accent`, a token that doesn't exist, so they were frozen light-theme teal with AA-failing white text; now `--teal-600` + the primary-foreground ink, and their reorder/remove buttons get real 24px hit targets.
+- **"est ₹₹840" is just "est ₹840"** — the public itinerary page double-printed the rupee sign on every travel-leg meta row.
+
+### Changed
+- **One icon language across the workspace.** The pre-redesign tabs' emoji pictographs are now lucide, matching Budget/GroupInput: fixed commitments are a Pin everywhere (was 📌 in Timeline, Pin in Overview — same data, two languages), halt purposes and transport modes have icon maps (Utensils/Coffee/Fuel/BedDouble…, Car/Bike/Bus/Train…), weather cells render a lucide `wmoIcon` counterpart of the emoji WMO table, and the ✓/↻/✕/＋/↗/🕘/⛽/📍/🛑/🛣️ glyphs are icons. Toasts and empty-state copy lost their confetti emoji too.
+- **Numbers hold their width everywhere.** A global `.num` utility (tabular digits — the class used to work only inside tables) now backs the trip cards, day headers, travel-panel stats, stop meta, weather temps, hero figures and chip counts; TripsList's private divergent ₹ formatter moved into the engine as `formatInrShort`; unlock prices go through `formatInr` (no raw "₹1990").
+- **A11y structure catches up to the foundations.** The workspace tablist finally binds its panels (`role="tabpanel"` + aria-controls/labelledby), the trip-settings round-trip toggle and CreateTrip's emoji picker expose `aria-pressed`, the landing boarding-pass CTA joins the shared focus-ring list, labeled divs get roles, and the login form has a password-recovery path.
+- **One grammar for the whole app.** Card headings are `h3` with the divider pattern everywhere (BudgetTab's five h2s and the composer's h2/h3 wobble are gone), one selected-chip pattern (`on-teal`, global — Explore's parallel `chip-teal` variant retired), one fork-button face (token gradient + GitFork icon, no text arrows), share buttons are saffron (ShareTab's lone `btn-teal` gone), CopyButton labels match ("Copy page link"), and Overview's jump links agree on one color.
+
+### Removed
+- **Dead code from the extraction era:** the never-referenced `Loading`/`HealthRing`/`DeltaText`/`InrDelta` UI primitives (and their orphaned CSS), MapTab's unused geocode imports, the `currentDayOf` alias, a duplicated `.auth-card` rule and a split `.itin-cover-fallback` pair, and the landing footer's hand-rolled duplicate of `.footer`.
+
 ## [0.38.0] — 2026-09-06
 
 **v0.38.0 = the creator hub: Profile's publications list becomes an Overview + Earnings surface, pre-shaped so the payouts ledger has a final home before payments exist.** Details in the per-commit bodies.

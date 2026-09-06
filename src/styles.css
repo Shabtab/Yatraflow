@@ -321,7 +321,7 @@ html { overflow-x: clip; }
 .route-snap > * { position: relative; }
 .route-snap h3 { color: #fff; }
 .route-snap .divider { border-top-color: rgba(255,255,255,.16); }
-.route-snap-meta { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 6px; font-size: 13px; font-weight: 650; flex-wrap: wrap; }
+.route-snap-meta { font-variant-numeric: tabular-nums; display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 6px; font-size: 13px; font-weight: 650; flex-wrap: wrap; }
 .link-btn { background: none; border: none; padding: 0; color: var(--yf-saffron); font-weight: 750; font-size: 13px; cursor: pointer; font-family: var(--font-body); }
 .link-btn:hover { text-decoration: underline; }
 .link-btn.teal { color: var(--teal-deep); }
@@ -521,8 +521,9 @@ a.btn { text-decoration: none; }
 }
 .filter-pillbar .clickable-chip { border: none; background: transparent; }
 .filter-pillbar .clickable-chip:hover { transform: none; }
-.filter-pillbar .clickable-chip.on-teal { background: var(--teal-deep); color: #fff; box-shadow: var(--shadow-glow-teal); }
-[data-theme='dark'] .filter-pillbar .clickable-chip.on-teal { background: var(--teal); color: #06251f; }
+/* one selected-state pattern for every clickable chip, pillbar or not */
+.clickable-chip.on-teal { background: var(--teal-deep); color: #fff; box-shadow: var(--shadow-glow-teal); }
+[data-theme='dark'] .clickable-chip.on-teal { background: var(--teal); color: #06251f; }
 .filter-pillbar .clickable-chip.on-saffron { background: var(--saffron); color: #fff; }
 
 /* Reusable CTI glass surface (nav-level blur, diffuse depth). Drop onto any
@@ -542,11 +543,7 @@ a.btn { text-decoration: none; }
   box-shadow: var(--shadow-sm);
   color: var(--text-2);
 }
-.explore-chips .clickable-chip.chip-teal {
-  background: var(--teal-deep); color: #fff; border-color: transparent;
-  box-shadow: var(--shadow-glow-teal);
-}
-[data-theme='dark'] .explore-chips .clickable-chip.chip-teal { background: var(--teal); color: #06251f; }
+/* (explore-chips selected-state overrides removed — chips use the global .on-teal) */
 .explore-chips .clickable-chip.chip-saffron {
   background: var(--saffron); color: #fff; border-color: transparent;
 }
@@ -559,11 +556,6 @@ a.btn { text-decoration: none; }
 .stat-sub { font-size: 12px; color: var(--text-3); margin-top: 2px; }
 
 /* ---------- Health score ring ---------- */
-.health-ring { position: relative; width: 108px; height: 108px; flex: 0 0 auto; }
-.health-ring svg { transform: rotate(-90deg); }
-.health-num { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-.health-num b { font-family: var(--font-display); font-size: 30px; font-weight: 800; font-variant-numeric: tabular-nums; }
-.health-num span { font-size: 10.5px; color: var(--text-3); font-weight: 650; text-transform: uppercase; letter-spacing: .06em; }
 
 /* ---------- Warnings ---------- */
 .warn-item { display: flex; gap: 11px; padding: 12px 14px; border-radius: var(--radius-sm); background: var(--warn-soft); align-items: flex-start; }
@@ -617,7 +609,7 @@ a.btn { text-decoration: none; }
 .stop-main { flex: 1; min-width: 0; }
 .stop-toprow { display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap; }
 .stop-title { font-weight: 700; font-size: 15px; font-family: var(--font-display); }
-.stop-meta { display: flex; flex-wrap: wrap; gap: 5px 12px; margin-top: 5px; font-size: 12.5px; color: var(--text-3); font-weight: 550; }
+.stop-meta { font-variant-numeric: tabular-nums; display: flex; flex-wrap: wrap; gap: 5px 12px; margin-top: 5px; font-size: 12.5px; color: var(--text-3); font-weight: 550; }
 .stop-desc { font-size: 13.5px; color: var(--text-2); margin-top: 6px; }
 /* Clamped stop-card descriptions (issue #3): clamp to 2 lines + "Show more" toggle. */
 .clamp-wrap { position: relative; }
@@ -720,7 +712,7 @@ a.btn { text-decoration: none; }
 .travel-panel-stats { display: flex; flex-wrap: wrap; gap: 10px 26px; }
 .tps-stat { display: flex; flex-direction: column; gap: 1px; }
 .tps-label { font-size: 11px; font-weight: 700; color: var(--text-3); text-transform: uppercase; letter-spacing: .03em; }
-.tps-stat b { font-size: 16px; font-family: var(--font-display); color: var(--text); }
+.tps-stat b { font-variant-numeric: tabular-nums; font-size: 16px; font-family: var(--font-display); color: var(--text); }
 .travel-panel-fuel { margin-top: 8px; font-size: 12.5px; color: var(--text-2); }
 .travel-panel-fuel b { color: var(--teal-deep); }
 .travel-panel-eta {
@@ -1045,7 +1037,7 @@ a.btn { text-decoration: none; }
   box-shadow: var(--shadow-soft); margin-bottom: 14px;
 }
 .budget-hero-label { font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: #bde1da; }
-.budget-hero-num { font-size: 40px; font-weight: 800; font-family: var(--font-display); margin-top: 2px; }
+.budget-hero-num { font-variant-numeric: tabular-nums; font-size: 40px; font-weight: 800; font-family: var(--font-display); margin-top: 2px; }
 .budget-hero-sub { font-size: 13px; color: #d2e7e3; margin-top: 2px; }
 .budget-hero-pct { font-size: 12.5px; font-weight: 700; color: #ffcc74; margin-top: 8px; }
 .gi-strip { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
@@ -1175,7 +1167,9 @@ a.btn { text-decoration: none; }
 .hero-copy .hero-sub { margin-left: 0; }
 .hero-copy .hero-ctas { justify-content: flex-start; }
 .hero-adventure {
-  background: linear-gradient(150deg, var(--yf-navy), var(--gray-900) 88%);
+  /* forced-dark in both themes — the bottom stop must be a literal
+     (--gray-900 flips near-white in dark mode) */
+  background: linear-gradient(150deg, var(--yf-navy), #0c1e35 88%);
   color: #fff; border-radius: var(--radius-lg); padding: 22px;
   box-shadow: 0 30px 60px rgba(var(--shadow-navy-rgb),.28);
   position: relative; overflow: hidden;
@@ -1228,18 +1222,20 @@ a.btn { text-decoration: none; }
 .step-card h3 { font-size: 15px; }
 .step-card p { margin-top: 5px; line-height: 1.55; }
 
-/* Demo CTA band */
+/* Demo CTA band — a forced-dark surface in BOTH themes: its gradient stops
+   must be literals, not theme-flipping tokens (--gray-900 turns near-white in
+   dark mode and stranded the white text). Same rule as .budget-hero. */
 .cta-band {
   text-align: center; padding: 42px 26px; border-radius: 22px;
   background:
     radial-gradient(ellipse 90% 130% at 50% -30%, color-mix(in srgb, var(--saffron) 20%, transparent), transparent),
-    linear-gradient(150deg, var(--teal-deep), var(--gray-900));
+    linear-gradient(150deg, #143f4c, #112c4c);
   color: #fff;
 }
 .cta-band h2 { color: #fff; }
-.cta-band p { max-width: 560px; margin: 10px auto 22px; opacity: .88; }
+.cta-band p { max-width: 560px; margin: 10px auto 22px; opacity: .92; }
 .cta-buttons { display: flex; gap: 14px; justify-content: center; align-items: center; flex-wrap: wrap; }
-.cta-hint { opacity: .75; }
+.cta-hint { opacity: .85; }
 .cta-hint code { background: rgba(255,255,255,.14); padding: 2px 7px; border-radius: 6px; }
 
 /* ---------- Explore cards ---------- */
@@ -1254,8 +1250,7 @@ a.btn { text-decoration: none; }
   text-shadow: 0 1px 4px rgba(var(--shadow-navy-rgb),.5); white-space: nowrap;
   overflow: hidden; text-overflow: ellipsis;
 }
-.itin-cover-fallback { opacity: .9; }
-.itin-cover-fallback { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 44px; }
+.itin-cover-fallback { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 44px; opacity: .9; }
 .itin-cover .chip { position: absolute; top: 11px; left: 11px; background: rgba(255,255,255,.92); color: var(--text); -webkit-backdrop-filter: blur(var(--yf-blur-sm)); backdrop-filter: blur(var(--yf-blur-sm)); }
 .itin-body { padding: 15px 17px 17px; display: flex; flex-direction: column; gap: 9px; flex: 1; }
 /* Trip names can be long — cap at two lines so card grids stay aligned. */
@@ -1390,6 +1385,9 @@ a.btn { text-decoration: none; }
 .compare-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .compare-table th, .compare-table td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); }
 .compare-table th { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-3); }
+/* Global numeric utility: tabular digits for any changing figure. Tables keep
+   their right-alignment rule; outside tables .num is digits-only. */
+.num { font-variant-numeric: tabular-nums; }
 .compare-table td.num, .compare-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
 
 /* ---------- AI panel ---------- */
@@ -1605,9 +1603,8 @@ a.btn { text-decoration: none; }
 
 /* ---------- Pages ---------- */
 .auth-wrap { display: flex; justify-content: center; padding: 54px 18px; }
-.auth-card { width: 100%; max-width: 430px; }
 .form-page { max-width: 1080px; padding-top: 26px; padding-bottom: 30px; }
-.explore-filters { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 20px; }
+.explore-filters { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 .explore-filters .input, .explore-filters .select { width: auto; min-width: 140px; flex: 0 1 auto; }
 .trip-card-hit { all: unset; cursor: pointer; display: block; border-radius: 8px; }
 
@@ -1834,14 +1831,16 @@ a.btn { text-decoration: none; }
 .dest-chip {
   display: inline-flex; align-items: center; gap: 7px;
   padding: 6px 8px 6px 11px;
-  background: color-mix(in srgb, var(--accent, #149A90) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--accent, #149A90) 35%, transparent);
+  background: color-mix(in srgb, var(--teal-500) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--teal-500) 35%, transparent);
   border-radius: 999px;
   font-size: 13px; font-weight: 600;
 }
 .dest-chip button {
   border: none; background: none; cursor: pointer;
-  font-size: 13px; line-height: 1; padding: 2px;
+  font-size: 13px; line-height: 1; padding: 4px;
+  min-width: 24px; min-height: 24px;
+  display: inline-flex; align-items: center; justify-content: center;
   color: inherit; opacity: .65;
 }
 .dest-chip button:hover { opacity: 1; }
@@ -1849,8 +1848,8 @@ a.btn { text-decoration: none; }
   display: inline-flex; align-items: center; justify-content: center;
   width: 18px; height: 18px;
   border-radius: 50%;
-  background: var(--accent, #149A90);
-  color: #fff;
+  background: var(--teal-600);
+  color: var(--color-primary-foreground);
   font-size: 11px; font-weight: 700;
 }
 .loc-empty {
@@ -1913,6 +1912,7 @@ main:focus { outline: none; }
 .dest-chip button:focus-visible, .role-select:focus-visible, .day-title-btn:focus-visible,
 .trip-hero-back:focus-visible, .health-rec:focus-visible, .link-btn:focus-visible,
 .yf-range:focus-visible, .bench-mode-btn:focus-visible, .bench-stay-row:focus-visible,
+.hero-bench-cta:focus-visible,
 .bench-toggle:focus-visible, .bench-preset-chip:focus-visible,
 .bench-crew-btn:focus-visible,
 .bench-receipt-actions .chip:focus-visible, .bench-surprise:focus-visible {
@@ -1979,7 +1979,7 @@ main:focus { outline: none; }
 .weather-cell.wet { border-color: var(--saffron); background: color-mix(in srgb, var(--saffron) 9%, transparent); }
 .weather-day { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; }
 .weather-icon { font-size: 24px; margin: 3px 0; }
-.weather-temp { font-size: 13px; font-weight: 700; }
+.weather-temp { font-variant-numeric: tabular-nums; font-size: 13px; font-weight: 700; }
 .weather-chip {
   display: inline-flex; align-items: center; gap: 5px;
   margin-top: 5px; padding: 2.5px 9px;
@@ -2229,11 +2229,10 @@ body, .topnav, .glass, .board, .board-col, .modal, .toast {
 .save-btn:hover { filter: brightness(.97); }
 [data-theme='dark'] .save-btn { background: rgba(240, 165, 63, .12); color: #ffcf96; border-color: rgba(240, 165, 63, .25); }
 .fork-btn {
-  background: linear-gradient(120deg, #0e9185, #0b6e69); color: #fff; border: none; font-weight: 800;
+  background: linear-gradient(120deg, var(--yf-teal-600), var(--yf-teal-700)); color: #fff; border: none; font-weight: 800;
   border-radius: 999px; padding: 9px 17px; box-shadow: 0 6px 16px rgba(13, 141, 130, .28);
 }
-.fork-btn:hover { background: linear-gradient(120deg, var(--yf-teal-600), var(--yf-teal-700)); }
-[data-theme='dark'] .fork-btn { filter: brightness(.94); }
+.fork-btn:hover { filter: brightness(1.05); }
 /* One press scale (.97, matching .btn) and one hover lift (-2px cards, -1px
    chips) across every clickable control — no more three languages. */
 .icon-btn:active, .move-btn:active, .vote-btn:active, .clickable-chip:active,
@@ -2336,7 +2335,7 @@ html.vt-active :where(*) {
 .explore-hero-search::placeholder { color: rgba(226, 241, 239, .75); }
 .explore-hero-search:focus { background: rgba(255, 255, 255, .18); border-color: rgba(255, 255, 255, .5); outline: none; }
 .explore-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
-.chip-count { opacity: .65; font-size: 11px; margin-left: 3px; }
+.chip-count { font-variant-numeric: tabular-nums; opacity: .65; font-size: 11px; margin-left: 3px; }
 
 /* featured itinerary */
 .featured-card {
@@ -3117,7 +3116,8 @@ html.vt-active :where(*) {
 }
 .hero .btn-saffron {
   background: linear-gradient(120deg, #F8B14E, #EE8F33);
-  color: #fff; border-color: rgba(255,255,255,.3);
+  /* same AA ink as the base saffron variant — white on light saffron was ~1.9:1 */
+  color: var(--color-accent-foreground); border-color: rgba(255,255,255,.3);
   box-shadow: 0 10px 26px rgba(243,170,61,.44), inset 0 1px 0 rgba(255,255,255,.3);
 }
 [data-theme='dark'] .hero .btn-primary,

@@ -1,7 +1,7 @@
 // ============ Trip workspace — Overview tab ============
 // Mechanical extraction from src/pages/TripWorkspace.tsx (M3.4) — no behavior changes.
 import { useEffect, useMemo, useState } from 'react'
-import { CircleCheck, CloudSun, Lightbulb, Pin, Siren, TriangleAlert } from 'lucide-react'
+import { CircleCheck, CloudSun, Droplets, Lightbulb, Pin, Siren, TriangleAlert } from 'lucide-react'
 import type { Trip } from '../../data/types'
 import { useDb, userById, activityFor } from '../../store/store'
 import { computeHealth, computeTotals, formatInr, minutesToHM, countHotelNights, isRoundTrip } from '../../lib/engine'
@@ -10,6 +10,7 @@ import { fetchDailyWeather, forecastAvailable, wmoInfo } from '../../lib/weather
 import type { DayWeather } from '../../lib/weather'
 import { timeAgo } from './shared'
 import { Avatar, Chip, StatTile, RouteSnapshot } from '../../components/ui'
+import { wmoIcon } from '../../components/icons'
 
 // ================= Overview =================
 
@@ -73,7 +74,7 @@ export function OverviewTab({ trip, editable, onOpenDecisions, onOpenTimeline, o
               </div>
               <ul className="health-reasons">
                 {health.warnings.length === 0
-                  ? <li>No schedule issues detected — buffers look healthy. 🎉</li>
+                  ? <li>No schedule issues detected — buffers look healthy.</li>
                   : health.warnings.slice(0, 3).map(w => (
                     <li key={w.code + w.title}>{w.severity === 'high'
                       ? <><Siren size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} /></>
@@ -103,7 +104,7 @@ export function OverviewTab({ trip, editable, onOpenDecisions, onOpenTimeline, o
           </div>
           <hr className="divider" />
           {priorityActions.length === 0 ? (
-            <p className="muted small">Nothing needs fixing right now — the plan flows. 🎉</p>
+            <p className="muted small">Nothing needs fixing right now — the plan flows.</p>
           ) : (
             <div className="warn-list">
               {priorityActions.map(w => (
@@ -139,7 +140,7 @@ export function OverviewTab({ trip, editable, onOpenDecisions, onOpenTimeline, o
           </p>
           <div className="route-snap-meta">
             <span>{trip.days.length} days · ≈{Math.round(totals.totalDistanceKm)} km · {totals.stopCount} stops</span>
-            <button className="link-btn" onClick={onOpenMap}>Open map →</button>
+            <button className="link-btn teal" onClick={onOpenMap}>Open map →</button>
           </div>
         </div>
 
@@ -245,16 +246,16 @@ function WeatherCard({ trip }: { trip: Trip }) {
           return (
             <div key={w.date} className={`weather-cell ${wet ? 'wet' : ''}`} title={info.label}>
               <div className="weather-day">{dayNum >= 0 ? `Day ${dayNum + 1}` : w.date}</div>
-              <div className="weather-icon">{info.icon}</div>
+              <div className="weather-icon">{(() => { const W = wmoIcon(w.code); return <W size={15} aria-hidden /> })()}</div>
               <div className="weather-temp">{Math.round(w.tempMinC)}°–{Math.round(w.tempMaxC)}°</div>
-              <div className="small muted">💧{w.rainChancePct}%</div>
+              <div className="small muted"><Droplets size={11} aria-hidden style={{ verticalAlign: '-2px', marginRight: 2 }} />{w.rainChancePct}%</div>
             </div>
           )
         })}
       </div>
       {wetDays > 0 && (
         <p className="hint-text" style={{ marginTop: 8 }}>
-          ⚠️ High rain chance on {wetDays} day{wetDays > 1 ? 's' : ''} — consider indoor alternatives for weather-sensitive stops (beaches, viewpoints, treks).
+          <TriangleAlert size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />High rain chance on {wetDays} day{wetDays > 1 ? 's' : ''} — consider indoor alternatives for weather-sensitive stops (beaches, viewpoints, treks).
         </p>
       )}
     </div>

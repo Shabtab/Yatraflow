@@ -5,8 +5,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowRight, Ban, Car, ChevronDown, ChevronUp, CircleCheck, CircleHelp, Clock, CloudRain, CloudSun,
-  Copy, Droplets, Flag, MapPin, MoveHorizontal, PenLine, Pencil, Plus, RotateCcw, Search, Ticket,
-  Trash2, TriangleAlert,
+  BedDouble, Bike, Bus, CarTaxiFront, Coffee, Copy, Droplets, ExternalLink, Eye, Flag, Fuel, MapPin,
+  MoveHorizontal, PenLine, Pencil, Pin, Plane, Plus, RotateCcw, Route as RouteIcon, Search, Shuffle,
+  Ticket, TrainFront, Trash2, TriangleAlert, Utensils, X,
 } from 'lucide-react'
 import type { Trip, ItineraryStop } from '../../data/types'
 import { updateTrip, setStopStatus } from '../../store/store'
@@ -29,6 +30,7 @@ import type { PlaceHit, SegmentHit } from '../../lib/geocode'
 import { kmFromStartForHit, type HaltPurpose } from '../../lib/providers/hits'
 import { segmentsFromPlan, assignSegmentHits, annotateSegmentHits, type HaltPlanItem } from '../../lib/ridePlan'
 import { pointAtKm } from '../../lib/geo'
+import type { LucideIcon } from 'lucide-react'
 import { fetchDailyWeather, forecastAvailable, isoAddDays, wmoInfo } from '../../lib/weather'
 import type { DayWeather } from '../../lib/weather'
 import { cap } from './shared'
@@ -328,7 +330,7 @@ export function TimelineTab({ trip, editable, applyChange, legCorrections, sugge
               moved.orderInDay = target.stops.length + 1
               target.stops.push(moved)
             }
-          }, 'move-day', moveModalStop ? currentDayOf(trip, stopId) : 0)
+          }, 'move-day', moveModalStop ? dayIndexOfStop(trip, stopId) : 0)
           setMoveModalStop(null)
         }}
       />
@@ -511,7 +513,7 @@ const DaySection = React.memo(function DaySection({ day, trip, editable, onAdd, 
           ) : (
             <h3>{day.title ?? `Day ${day.index + 1}`}</h3>
           )}
-          <div className="small muted">
+          <div className="small muted num">
             {isStayDay ? (
               <>
                 Based in {journey.startTitle}
@@ -554,7 +556,7 @@ const DaySection = React.memo(function DaySection({ day, trip, editable, onAdd, 
       {!collapsed && <>
       {commitmentsToday.map(fc => (
         <div key={fc.id} className="warn-item sev-low" style={{ marginBottom: 8 }}>
-          <span className="warn-icon">📌</span>
+          <span className="warn-icon"><Pin size={13} aria-hidden /></span>
           <div>
             <div className="warn-title">{fc.title}</div>
             <div className="warn-fix">Fixed at {formatHM(fc.time, timeFormat)}{fc.notes ? ` — ${fc.notes}` : ''}</div>
@@ -589,7 +591,7 @@ const DaySection = React.memo(function DaySection({ day, trip, editable, onAdd, 
             )}
             {nearby.map(h => (
               <button key={h.name} className="chip-btn" onClick={() => onAddQuickStop(day.index, poiQuickStop(h))} title="Add this nearby idea">
-                ＋ {h.name}
+                <Plus size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />{h.name}
               </button>
             ))}
           </div>
@@ -674,7 +676,7 @@ const DaySection = React.memo(function DaySection({ day, trip, editable, onAdd, 
                 </div>
                 {s.description && <ClampedText className="stop-desc">{s.description}</ClampedText>}
                 {s.notes && <ClampedText className="stop-desc muted"><PenLine size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />{s.notes}</ClampedText>}
-                {s.sourceUrl && <a href={s.sourceUrl} target="_blank" rel="noreferrer" className="small">Source ↗</a>}
+                {s.sourceUrl && <a href={s.sourceUrl} target="_blank" rel="noreferrer" className="small">Source <ExternalLink size={11} aria-hidden style={{ verticalAlign: '-2px', marginLeft: 2 }} /></a>}
               </div>
               {editable && (
                 <div className="stop-actions">
@@ -774,8 +776,8 @@ function poiQuickStop(h: PlaceHit): Omit<ItineraryStop, 'id' | 'orderInDay'> {
 
 function modeLabelMode(m: string): string {
   const map: Record<string, string> = {
-    car: '🚗 Car', motorcycle: '🏍️ Motorcycle', taxi: '🚕 Taxi', bus: '🚌 Bus',
-    train: '🚆 Train', flight: '✈️ Flight', mixed: '🔀 Mixed',
+    car: 'Car', motorcycle: 'Motorcycle', taxi: 'Taxi', bus: 'Bus',
+    train: 'Train', flight: 'Flight', mixed: 'Mixed',
   }
   return map[m] ?? cap(m)
 }
@@ -964,7 +966,7 @@ function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddPlanned
   return (
     <div className="travel-panel">
       <div className="travel-panel-head">
-        <div className="travel-panel-title">🛣️ {title}</div>
+        <div className="travel-panel-title"><RouteIcon size={13} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />{title}</div>
         <div className="small muted">
           {modeLabelMode(trip.transportMode)} · {journey.distanceKm.toFixed(0)} km · {minutesToHM(journey.driveMinutes)} wheel time
           {journey.halts.length > 0 && ` · ${journey.halts.length} halt${journey.halts.length !== 1 ? 's' : ''}`}
@@ -1008,7 +1010,7 @@ function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddPlanned
 
       {journey.driveMinutes >= 420 && journey.halts.length === 0 && (
         <div className="warn-item sev-medium" style={{ marginTop: 10 }}>
-          <span className="warn-icon">⚠️</span>
+          <span className="warn-icon"><TriangleAlert size={13} aria-hidden /></span>
           <div>
             <div className="warn-title">~{minutesToHM(journey.driveMinutes)} behind the wheel with no halt</div>
             <div className="warn-fix">Riding more than ~6–7 h in one go is a fatigue risk — add a halt below or split the drive across two days.</div>
@@ -1026,7 +1028,7 @@ function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddPlanned
 
       {editable && (
         <div className="travel-panel-add halt-planner" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
-          <div className="small muted">🛑 Halt planner — you pick where along the ride and for how long. Halts sit on the route itself; tick a found spot to detour there instead.</div>
+          <div className="small muted"><MapPin size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />Halt planner — you pick where along the ride and for how long. Halts sit on the route itself; tick a found spot to detour there instead.</div>
           <div className="halt-planner-inputs">
             <label className="hp-field">
               <span className="tps-label">after</span>
@@ -1047,10 +1049,10 @@ function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddPlanned
               <span className="tps-label">min</span>
             </label>
             <select className="input" value={draftPurpose} onChange={e => setDraftPurpose(e.target.value as HaltPurpose)} aria-label="Halt type">
-              <option value="meal">🍽 Meal</option>
-              <option value="stretch">☕ Stretch / rest</option>
-              <option value="fuel">⛽ Fuel</option>
-              <option value="overnight">🏨 Overnight</option>
+              <option value="meal">Meal</option>
+              <option value="stretch">Stretch / rest</option>
+              <option value="fuel">Fuel</option>
+              <option value="overnight">Overnight</option>
             </select>
             <button className="btn btn-outline btn-sm" onClick={addPlanHalt}>+ Add halt</button>
           </div>
@@ -1098,8 +1100,13 @@ interface HaltPlanDraft extends HaltPlanItem {
   pin: boolean
 }
 
-const HALT_PURPOSE_TAG: Record<HaltPurpose, string> = {
-  meal: '🍽 Meal', stretch: '☕ Break', fuel: '⛽ Fuel', overnight: '🏨 Overnight', rest: '☕ Break', sight: '👀 Stop',
+const HALT_PURPOSE_META: Record<HaltPurpose, { label: string; Icon: LucideIcon }> = {
+  meal: { label: 'Meal', Icon: Utensils },
+  stretch: { label: 'Break', Icon: Coffee },
+  fuel: { label: 'Fuel', Icon: Fuel },
+  overnight: { label: 'Overnight', Icon: BedDouble },
+  rest: { label: 'Break', Icon: Coffee },
+  sight: { label: 'Stop', Icon: Eye },
 }
 
 /** One planned halt: where along the ride, how long, and the real spot found near it (pinnable). */
@@ -1114,7 +1121,7 @@ function HaltPlanRow({ item, onRemove, onTogglePin }: {
     <div className="ride-spot halt-plan-row">
       <div className="ride-spot-main">
         <div className="ride-spot-title">
-          <span className={`ride-purpose ride-purpose-${item.purpose}`}>{HALT_PURPOSE_TAG[item.purpose]}</span>
+          <span className={`ride-purpose ride-purpose-${item.purpose}`}>{(() => { const m = HALT_PURPOSE_META[item.purpose]; return <><m.Icon size={11} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />{m.label}</> })()}</span>
           <b>{usingSpot ? h!.name : 'On the route'}</b>
         </div>
         <span className="muted small">
@@ -1130,7 +1137,7 @@ function HaltPlanRow({ item, onRemove, onTogglePin }: {
       </div>
       <div className="ride-spot-actions">
         <button className="btn btn-ghost btn-sm" onClick={onRemove} title="Remove this planned halt"
-          aria-label={`Remove the halt planned at ${Math.round(item.km)} km`}>✕</button>
+          aria-label={`Remove the halt planned at ${Math.round(item.km)} km`}><X size={13} aria-hidden /></button>
       </div>
     </div>
   )
@@ -1195,9 +1202,6 @@ function labelStatusText(s: string): string {
 function dayIndexOfStop(trip: Trip, stopId: string): number {
   for (const d of trip.days) if (d.stops.some(s => s.id === stopId)) return d.index
   return 0
-}
-function currentDayOf(trip: Trip, stopId: string): number {
-  return dayIndexOfStop(trip, stopId)
 }
 function initialValues(state: { mode: 'add'; dayIndex: number } | { mode: 'edit'; stopId: string } | null, trip: Trip): Partial<StopFormValues> | undefined {
   if (!state) return undefined
