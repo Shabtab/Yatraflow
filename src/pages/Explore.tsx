@@ -1,7 +1,7 @@
 // ============ Explore public itineraries — discover, trust and fork (CTI §6.10) ============
 import { useMemo, useState } from 'react'
 import {
-  Calendar, Compass, Eye, GitFork, Heart, MapPin, Search, Sparkles, Star, Wallet, X,
+  Calendar, Camera, Compass, Eye, GitFork, Heart, MapPin, Search, Sparkles, Star, TvMinimalPlay, Wallet, X,
 } from 'lucide-react'
 import { usePublished, useUsers, useTrips, useSessionUserId, tripById, duplicateTrip, duplicateTripPublic, registerPubCopy } from '../store/store'
 import { computeHealth, formatInr } from '../lib/engine'
@@ -255,6 +255,19 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
                     <span className="creator-line"><Avatar user={creator} />{creator?.profile.name ?? 'Creator'}{creator?.profile.isCreator && <span title="Verified creator" style={{ display: 'inline-flex', verticalAlign: '-2px', marginLeft: 2 }}><Sparkles size={12} aria-hidden /></span>}</span>
                     <button className="btn btn-primary btn-sm" onClick={() => forkTrip(p.id)}>Fork this trip</button>
                   </div>
+                  {creator?.profile.isCreator && (creator.profile.creatorBio || creator.profile.socialLinks?.youtube || creator.profile.socialLinks?.instagram) && (
+                    <div className="row-between" style={{ gap: 8, marginTop: 6 }}>
+                      <span className="small muted" style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{creator.profile.creatorBio}</span>
+                      <span style={{ display: 'inline-flex', gap: 6, flexShrink: 0 }}>
+                        {creator.profile.socialLinks?.youtube && (
+                          <a href={creator.profile.socialLinks.youtube} target="_blank" rel="noreferrer noopener" aria-label={`${creator.profile.name} on YouTube`} className="muted"><TvMinimalPlay size={14} aria-hidden /></a>
+                        )}
+                        {creator.profile.socialLinks?.instagram && (
+                          <a href={creator.profile.socialLinks.instagram} target="_blank" rel="noreferrer noopener" aria-label={`${creator.profile.name} on Instagram`} className="muted"><Camera size={14} aria-hidden /></a>
+                        )}
+                      </span>
+                    </div>
+                  )}
                 </div>
               )
             })}
@@ -266,6 +279,6 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
 }
 
 function cap(s: string): string { return s[0].toUpperCase() + s.slice(1) }
-function userOf(users: { id: string; profile: { name: string; isCreator: boolean } }[], id: string) {
+function userOf(users: { id: string; profile: { name: string; isCreator: boolean; creatorBio?: string; socialLinks?: { youtube?: string; instagram?: string } } }[], id: string) {
   return users.find(u => u.id === id)
 }

@@ -1,9 +1,9 @@
 // ============ Profile & settings ============
 import { useEffect, useState } from 'react'
-import type { TravelStyle } from '../data/types'
+import type { PublishedItinerary, TravelStyle } from '../data/types'
 import { TRAVEL_STYLES } from '../data/types'
-import { useDb, currentUser, updateProfile, tripsForUser } from '../store/store'
-import { Avatar, Chip, Field, toast } from '../components/ui'
+import { useDb, currentUser, updateProfile, tripsForUser, unpublishItinerary } from '../store/store'
+import { Avatar, Chip, ConfirmDialog, Field, toast } from '../components/ui'
 import { useTimeFormat, setTimeFormat, formatHM, type TimeFormat } from '../lib/timefmt'
 
 export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void }) {
@@ -11,6 +11,7 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
   const me = currentUser(db)
   const timeFormat = useTimeFormat()
   const tripCount = tripsForUser(me?.id ?? null).length
+  const myPubs = me ? db.published.filter(p => p.creatorId === me.id) : []
 
   const [f, setF] = useState(() => ({
     name: me?.profile.name ?? '',
@@ -21,6 +22,9 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
   const [youtube, setYoutube] = useState(me?.profile.socialLinks?.youtube ?? '')
   const [instagram, setInstagram] = useState(me?.profile.socialLinks?.instagram ?? '')
   const [nameErr, setNameErr] = useState<string | null>(null)
+  // Disable-creator-mode + Unpublish both go through a confirm dialog.
+  const [confirmDisable, setConfirmDisable] = useState(false)
+  const [unpubTarget, setUnpubTarget] = useState<PublishedItinerary | null>(null)
   // Not logged in: route to auth instead of rendering a blank page.
   const loggedIn = Boolean(me)
   useEffect(() => { if (!loggedIn) onNavigate('/auth') })
@@ -84,7 +88,9 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
               <Chip tone={me.profile.isCreator ? 'ok' : 'info'}>{me.profile.isCreator ? 'Enabled' : 'Off'}</Chip>
             </div>
             <p className="hint-text" style={{ margin: '6px 0 12px' }}>
-              Creators can publish trips to Explore with a free preview and premium sections.
+              Publishing to Explore is open to everyone — do it from any trip&apos;s Share tab.
+              Creator mode is a trust and branding badge: your bio and social links appear
+              on the itineraries you publish.
             </p>
             {me.profile.isCreator ? (
               <>
@@ -102,11 +108,35 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
                   })
                   toast('Creator profile saved')
                 }}>Save creator profile</button>
+                <button className="btn btn-ghost btn-sm" style={{ marginLeft: 10 }}
+                  onClick={() => setConfirmDisable(true)}>Disable creator mode</button>
               </>
             ) : (
-              <button className="btn btn-saffron" onClick={() => { updateProfile({ isCreator: true }); toast('Creator mode enabled ✨ Publish trips from any trip Share tab.') }}>
+              <button className="btn btn-saffron" onClick={() => { updateProfile({ isCreator: true }); toast('Creator mode enabled ✨ Your bio and links now show on published itineraries.') }}>
                 Enable creator mode
               </button>
+            )}
+          </div>
+
+          <div className="card" style={{ marginTop: 16 }}>
+            <h3>My publications</h3>
+            <hr className="divider" />
+            {myPubs.length === 0 ? (
+              <p className="hint-text" style={{ margin: '6px 0 0' }}>
+                Nothing published yet — list a trip on Explore from its Share tab.
+              </p>
+            ) : (
+              <div style={{ marginTop: 8 }}>
+                {myPubs.map(p => (
+                  <div key={p.id} className="row-between" style={{ padding: '5px 0', gap: 10 }}>
+                    <span style={{ minWidth: 0 }}>
+                      <a href={`#/pub/${p.id}`} className="small" style={{ fontWeight: 600 }}>{p.title}</a>
+                      <span className="small muted" style={{ marginLeft: 8 }}>{p.views} view{p.views === 1 ? '' : 's'} · {p.copies} fork{p.copies === 1 ? '' : 's'}</span>
+                    </span>
+                    <button className="btn btn-ghost btn-sm" onClick={() => setUnpubTarget(p)}>Unpublish</button>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
 
@@ -137,6 +167,34 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
           </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmDisable}
+        title="Disable creator mode?"
+        body="Your bio and social links stop showing on your published itineraries and the creator badge is removed. Your publications stay live — you can re-enable the badge anytime."
+        confirmLabel="Disable"
+        danger
+        onConfirm={() => {
+          updateProfile({ isCreator: false })
+          setConfirmDisable(false)
+          toast('Creator mode disabled — your publications stay live.')
+        }}
+        onClose={() => setConfirmDisable(false)}
+      />
+      <ConfirmDialog
+        open={!!unpubTarget}
+        title={`Unpublish “${unpubTarget?.title ?? ''}”?`}
+        body="It is removed from Explore immediately and its public page stops working. The trip itself is not touched — you can publish it again from its Share tab."
+        confirmLabel="Unpublish"
+        danger
+        onConfirm={() => {
+          if (!unpubTarget) return
+          unpublishItinerary(unpubTarget.tripId)
+          setUnpubTarget(null)
+          toast('Unpublished — removed from Explore')
+        }}
+        onClose={() => setUnpubTarget(null)}
+      />
     </div>
   )
 }
