@@ -4,6 +4,45 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [0.39.0] — 2026-09-06
 
+## [0.40.0] — 2026-09-06
+
+**v0.40.0 = the hard‑surface pass: a full UI audit and redesign of every page, fixing ~70 issues.** Details in per‑commit bodies.
+
+### Added
+- **Glass‑pill navigation and tinted icons.** New glass‑pill style for top nav and workspace tab bar; all nav icons now use the unified Lucide set.
+- **Suggestion brainstorm UI.** Added a new suggestion flow with a dedicated UI component.
+- **Design tokens.** Introduced `--gray-900`, `--accent`, and other theme tokens for consistent colors.
+
+### Fixed
+- **Dark‑mode contrast fixes.** Landing CTA band and adventure scenario card now use dark‑navy stops; AA‑contrast restored.
+- **StopEditor theme handling.** Fixed theme‑aware background.
+- **Destination chips theme.** Restored proper hit‑targets and AA‑contrast.
+- **Typo correction.** Fixed duplicated rupee sign.
+- **Icon set unification.** Replaced emoji with Lucide across the workspace.
+- **Numeric width consistency.** Added `.num` utility for tabular digits.
+- **Accessibility structure.** Added ARIA roles, focus‑rings, and contrast fixes.
+- **Unified headings and copy.** Standardized headings and button text.
+
+### Removed
+- **Dead UI code.** Removed unused components and dead CSS.
+
+## [0.40.1] — 2026-09-06
+
+**v0.40.1 = final release for the sliding glider rollout.** The UI now has the sliding glider on all pill navigation components, and the release bumps the version.
+
+### Added
+- **Sliding glider on every pill navigation.** The glider now tracks rows and columns, works in Auth, GroupInput, Profile, and other pill navs. It also fixes background painting and hover states.
+- **Accessibility improvements.** ARIA roles for nav, focus rings, contrast fixes for dark mode.
+- **Documentation updates.** Updated README and UI docs to reflect the new navigation behavior.
+
+### Fixed
+- **Minor UI regressions.** Fixed background contrast on Auth log‑in tabs, stopped pills from painting their own active background, and corrected focus rings.
+- **Package lock and version bump.** Bumped `package.json` version to 0.40.1 and regenerated `package-lock.json`.
+
+### Removed
+- **Dead UI code.** Removed unused navigation components and stale CSS rules.
+
+
 **v0.39.0 = the hard-surface pass: a full skills-based review of every page found ~70 issues — the 5 HIGH bugs are dead, one icon language now runs the whole app, and the numeric/a11y/consistency debt from the pre-redesign tabs is paid.** Details in the per-commit bodies.
 
 ### Fixed
