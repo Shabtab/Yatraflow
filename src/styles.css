@@ -396,17 +396,22 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
 .pill-nav { position: relative; display: flex; gap: 2px; }
 .pill-nav > * { position: relative; z-index: 1; }
 .pill-glider {
-  position: absolute; top: 4px; bottom: 4px; left: 0; width: 0; z-index: 0;
+  position: absolute; left: 0; width: 0; z-index: 0;
   border-radius: 999px; background: var(--teal-soft);
-  transition: left 260ms cubic-bezier(0.2, 0, 0, 1), width 260ms cubic-bezier(0.2, 0, 0, 1), opacity 150ms ease;
+  transition: left 260ms cubic-bezier(0.2, 0, 0, 1), width 260ms cubic-bezier(0.2, 0, 0, 1),
+    top 260ms cubic-bezier(0.2, 0, 0, 1), height 260ms cubic-bezier(0.2, 0, 0, 1), opacity 150ms ease;
   pointer-events: none;
 }
 [data-theme='dark'] .pill-glider { background: var(--teal); }
 /* inside a pill nav the glider paints the active background — the items don't */
-.pill-nav .nav-link.active, .pill-nav .tab-btn.active { background: transparent; }
-.pill-nav .nav-link.active:hover, .pill-nav .tab-btn.active:hover { background: transparent; }
+.pill-nav .nav-link.active, .pill-nav .tab-btn.active,
+.pill-nav .clickable-chip.on-teal,
+.pill-nav .nav-link.active:hover, .pill-nav .tab-btn.active:hover,
+.pill-nav .clickable-chip.on-teal:hover { background: transparent; }
 /* dark glass gliders want dark ink on the active label */
-[data-theme='dark'] .pill-nav .nav-link.active, [data-theme='dark'] .pill-nav .tab-btn.active { color: #06251f; }
+[data-theme='dark'] .pill-nav .nav-link.active, [data-theme='dark'] .pill-nav .tab-btn.active,
+[data-theme='dark'] .pill-nav .clickable-chip.on-teal { color: #06251f; }
+.auth-tabs { margin: 18px 0; }
 .nav-link {
   border: none; background: none; padding: 8px 13px; border-radius: 999px;
   font-size: 14px; font-weight: 600; color: var(--text-2);

@@ -29,6 +29,9 @@ export function PillNav({ activeKey, className, role = 'presentation', 'aria-lab
       glider.style.opacity = '1'
       glider.style.left = `${el.offsetLeft}px`
       glider.style.width = `${el.offsetWidth}px`
+      // track the row too, so wrapping pillbars glide correctly
+      glider.style.top = `${el.offsetTop + 4}px`
+      glider.style.height = `${el.offsetHeight - 8}px`
     }
     move()
     // First measurement positions the glider without a transition; from then

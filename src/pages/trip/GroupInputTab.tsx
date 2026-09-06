@@ -9,6 +9,7 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { Car, Clock, Lightbulb, MapPin, Plus, Scale, Ticket, X } from 'lucide-react'
+import { PillNav } from '../../components/PillNav'
 import type { StopCategory, StopSuggestion, Trip, TripDecision } from '../../data/types'
 import { STOP_CATEGORIES } from '../../data/types'
 import {
@@ -106,12 +107,12 @@ export function GroupInputTab({ trip, editable, me }: {
             </button>
           ))}
         </div>
-        <div className="filter-pillbar" role="group" aria-label="Filter group input">
+        <PillNav className="filter-pillbar" role="group" aria-label="Filter group input" activeKey={filter}>
           {([['all', 'All'], ['ideas', 'Stop ideas'], ['decisions', 'Decisions'], ['mine', 'Need you'], ['resolved', 'Resolved']] as const).map(([k, label]) => (
-            <button key={k} type="button" className={`clickable-chip chip${filter === k ? ' on-teal' : ''}`}
+            <button key={k} type="button" data-pill-key={k} className={`clickable-chip chip${filter === k ? ' on-teal' : ''}`}
               onClick={() => setFilter(k)} aria-pressed={filter === k}>{label}</button>
           ))}
-        </div>
+        </PillNav>
       </div>
 
       <div className="two-col">
@@ -161,12 +162,12 @@ export function GroupInputTab({ trip, editable, me }: {
             </div>
           )}
           <div className="card">
-            <div className="filter-pillbar" style={{ marginBottom: 12 }} role="group" aria-label="What do you want to add?">
+            <PillNav className="filter-pillbar" role="group" aria-label="What do you want to add?" activeKey={composerMode}>
               {([['idea', 'Stop idea'], ['question', 'Question']] as const).map(([k, label]) => (
-                <button key={k} type="button" className={`clickable-chip chip${composerMode === k ? ' on-teal' : ''}`}
+                <button key={k} type="button" data-pill-key={k} className={`clickable-chip chip${composerMode === k ? ' on-teal' : ''}`}
                   onClick={() => setComposerMode(k)} aria-pressed={composerMode === k}>{label}</button>
               ))}
-            </div>
+            </PillNav>
             {composerMode === 'idea'
               ? <SuggestionComposerForm trip={trip} me={me} />
               : <DecisionComposerForm trip={trip} />}

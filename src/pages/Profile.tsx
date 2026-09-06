@@ -1,6 +1,7 @@
 // ============ Profile & settings ============
 import { useEffect, useState } from 'react'
 import { ExternalLink, Pencil } from 'lucide-react'
+import { PillNav } from '../components/PillNav'
 import type { PublishedItinerary, TravelStyle } from '../data/types'
 import { TRAVEL_STYLES } from '../data/types'
 import { useDb, currentUser, updateProfile, tripsForUser, unpublishItinerary, tripById } from '../store/store'
@@ -137,12 +138,12 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
                 </a>
               )}
             </div>
-            <div className="filter-pillbar" style={{ margin: '10px 0 12px' }} role="group" aria-label="Publications view">
+            <PillNav className="filter-pillbar hub-tabs" role="group" aria-label="Publications view" activeKey={hubTab}>
               {([['overview', 'Overview'], ['earnings', 'Earnings']] as const).map(([k, label]) => (
-                <button key={k} type="button" className={`clickable-chip chip${hubTab === k ? ' on-teal' : ''}`}
+                <button key={k} type="button" data-pill-key={k} className={`clickable-chip chip${hubTab === k ? ' on-teal' : ''}`}
                   onClick={() => setHubTab(k)} aria-pressed={hubTab === k}>{label}</button>
               ))}
-            </div>
+            </PillNav>
 
             {hubTab === 'overview' ? (
               myPubs.length === 0 ? (
@@ -287,12 +288,12 @@ function EarningsTab({ myPubs, view, onView }: {
         <div className="stat-tile"><div className="stat-label">Lifetime</div><div className="stat-value">{formatInr(0)}</div></div>
         <div className="stat-tile"><div className="stat-label">Next payout</div><div className="stat-value">—</div></div>
       </div>
-      <div className="filter-pillbar" style={{ marginBottom: 12 }} role="group" aria-label="Earnings view">
+      <PillNav className="filter-pillbar" role="group" aria-label="Earnings view" activeKey={view}>
         {([['actual', 'Actual'], ['projection', 'Projection']] as const).map(([k, label]) => (
-          <button key={k} type="button" className={`clickable-chip chip${view === k ? ' on-teal' : ''}`}
+          <button key={k} type="button" data-pill-key={k} className={`clickable-chip chip${view === k ? ' on-teal' : ''}`}
             onClick={() => onView(k)} aria-pressed={view === k}>{label}</button>
         ))}
-      </div>
+      </PillNav>
 
       {view === 'actual' ? (
         <>
