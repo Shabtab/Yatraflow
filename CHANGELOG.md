@@ -22,7 +22,21 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - **Empty plans are never cached.** A first search running before the route resolves no longer persists [] until Refresh.
 - **Detours scored in minutes.** The same off-route distance costs slow modes more.
 
-## [0.39.0] — 2026-09-06
+## [0.40.1] — 2026-09-06
+
+**v0.40.1 = final release for the sliding glider rollout.** The UI now has the sliding glider on all pill navigation components, and the release bumps the version.
+
+### Added
+- **Sliding glider on every pill navigation.** The glider now tracks rows and columns, works in Auth, GroupInput, Profile, and other pill navs. It also fixes background painting and hover states.
+- **Accessibility improvements.** ARIA roles for nav, focus rings, contrast fixes for dark mode.
+- **Documentation updates.** Updated README and UI docs to reflect the new navigation behavior.
+
+### Fixed
+- **Minor UI regressions.** Fixed background contrast on Auth log‑in tabs, stopped pills from painting their own active background, and corrected focus rings.
+- **Package lock and version bump.** Bumped `package.json` version to 0.40.1 and regenerated `package-lock.json`.
+
+### Removed
+- **Dead UI code.** Removed unused navigation components and stale CSS rules.
 
 ## [0.40.0] — 2026-09-06
 
@@ -46,22 +60,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 ### Removed
 - **Dead UI code.** Removed unused components and dead CSS.
 
-## [0.40.1] — 2026-09-06
-
-**v0.40.1 = final release for the sliding glider rollout.** The UI now has the sliding glider on all pill navigation components, and the release bumps the version.
-
-### Added
-- **Sliding glider on every pill navigation.** The glider now tracks rows and columns, works in Auth, GroupInput, Profile, and other pill navs. It also fixes background painting and hover states.
-- **Accessibility improvements.** ARIA roles for nav, focus rings, contrast fixes for dark mode.
-- **Documentation updates.** Updated README and UI docs to reflect the new navigation behavior.
-
-### Fixed
-- **Minor UI regressions.** Fixed background contrast on Auth log‑in tabs, stopped pills from painting their own active background, and corrected focus rings.
-- **Package lock and version bump.** Bumped `package.json` version to 0.40.1 and regenerated `package-lock.json`.
-
-### Removed
-- **Dead UI code.** Removed unused navigation components and stale CSS rules.
-
+## [0.39.0] — 2026-09-06
 
 **v0.39.0 = the hard-surface pass: a full skills-based review of every page found ~70 issues — the 5 HIGH bugs are dead, one icon language now runs the whole app, and the numeric/a11y/consistency debt from the pre-redesign tabs is paid.** Details in the per-commit bodies.
 
