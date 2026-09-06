@@ -300,6 +300,68 @@ export function normWords(s: string): string[] {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').split(' ').filter(Boolean)
 }
 
+const STOP_WORDS = new Set(['the', 'and', 'of', 'at', 'near', 'point'])
+
+function meaningfulWords(s: string): Set<string> {
+  return new Set(normWords(s).filter(w => w.length >= 4 && !STOP_WORDS.has(w)))
+}
+
+/** True when two hits are the same place: close together with overlapping names. */
+export function samePlace(
+  a: Pick<PlaceHit, 'latitude' | 'longitude' | 'name'>,
+  b: Pick<PlaceHit, 'latitude' | 'longitude' | 'name'>,
+): boolean {
+  if (!a.name || !b.name) return false
+  if (!Number.isFinite(a.latitude) || !Number.isFinite(a.longitude)) return false
+  if (!Number.isFinite(b.latitude) || !Number.isFinite(b.longitude)) return false
+  if (haversineKm(a.latitude, a.longitude, b.latitude, b.longitude) > 0.5) return false
+  const aw = meaningfulWords(a.name)
+  const bw = meaningfulWords(b.name)
+  if (aw.size === 0 || bw.size === 0) {
+    return a.name.toLowerCase().includes(b.name.toLowerCase()) || b.name.toLowerCase().includes(a.name.toLowerCase())
+  }
+  for (const w of aw) if (bw.has(w)) return true
+  return false
+}
+
+/** Collapse near-duplicate candidates, keeping the first of each group. */
+export function dedupeCandidates<T extends Pick<PlaceHit, 'latitude' | 'longitude' | 'name'>>(list: T[]): T[] {
+  const out: T[] = []
+  for (const h of list) {
+    if (out.some(k => samePlace(k, h))) continue
+    out.push(h)
+  }
+  return out
+}
+
+export interface PlannedStop {
+  lat: number
+  lng: number
+  name?: string
+}
+
+/** Drop candidates already covered by the itinerary: within 2 km of a planned stop, or a fuzzy name match. */
+export function filterPlannedNearby<T extends Pick<PlaceHit, 'latitude' | 'longitude' | 'name'>>(
+  candidates: T[],
+  planned: PlannedStop[],
+  radiusKm = 2,
+): T[] {
+  const pts = planned.filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng))
+  if (pts.length === 0) return candidates
+  return candidates.filter(h => {
+    if (!Number.isFinite(h.latitude) || !Number.isFinite(h.longitude)) return true
+    for (const p of pts) {
+      if (haversineKm(h.latitude, h.longitude, p.lat, p.lng) <= radiusKm) return false
+      if (p.name && h.name) {
+        const hn = h.name.toLowerCase()
+        const pn = p.name.toLowerCase()
+        if (hn.length >= 5 && pn.length >= 5 && (hn.includes(pn) || pn.includes(hn))) return false
+      }
+    }
+    return true
+  })
+}
+
 /**
  * Shared tail of every nearby search: drop hits in the home zone around the
  * trip's start, rank by tourist value (+ itinerary-gap bias), then greedy-pick
@@ -319,12 +381,13 @@ export function rankAndCap(
     : hits
   homeFiltered.sort((a, b) =>
     poiTouristScore(b, anchors, radiusM, opts.categoryBias) - poiTouristScore(a, anchors, radiusM, opts.categoryBias))
+  const deduped = dedupeCandidates(homeFiltered)
   const catCap = Math.max(2, Math.ceil(count / 3))
   const fuelCap = opts.includeFuel ? 2 : 0
   const used = new Map<string, number>()
   const out: PlaceHit[] = []
   let fuelUsed = 0
-  for (const h of homeFiltered) {
+  for (const h of deduped) {
     if (out.length >= count) break
     const k = h.category ?? 'sightseeing'
     if (k === 'transport-hub') {

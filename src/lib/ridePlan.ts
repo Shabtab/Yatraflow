@@ -11,7 +11,7 @@
 // directly.
 
 import { haversineKm } from './geo'
-import { HOME_ZONE_KM, kmFromStartForHit, detourKm, type HaltPurpose, type PlaceHit } from './providers/hits'
+import { HOME_ZONE_KM, kmFromStartForHit, detourKm, dedupeCandidates, type HaltPurpose, type PlaceHit } from './providers/hits'
 
 // ---- Fatigue cadence (named constants — later settings can expose them) ----
 /** ≈2 h at 70–80 km/h — stretch, hydrate, bio-break. */
@@ -272,13 +272,16 @@ export function assignSegmentHits(
     ? usable.filter(h => haversineKm(h.latitude, h.longitude, home.lat, home.lng) * 1000 >= HOME_ZONE_KM * 1000)
     : usable
   const seenNames = new Set<string>()
-  const pool: PlaceHit[] = []
+  const unnamed: PlaceHit[] = []
+  const named: PlaceHit[] = []
   for (const h of filtered) {
     const key = (h.name ?? '').toLowerCase()
-    if (!key || seenNames.has(key)) continue
+    if (!key) { unnamed.push(h); continue }
+    if (seenNames.has(key)) continue
     seenNames.add(key)
-    pool.push(h)
+    named.push(h)
   }
+  const pool: PlaceHit[] = [...unnamed, ...dedupeCandidates(named)]
 
   const used = new Set<string>()
   const results: SegmentHit[] = []
