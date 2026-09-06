@@ -122,7 +122,7 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
                   onClick={() => setConfirmDisable(true)}>Disable creator mode</button>
               </>
             ) : (
-              <button className="btn btn-saffron" onClick={() => { updateProfile({ isCreator: true }); toast('Creator mode enabled ✨ Your bio and links now show on published itineraries.') }}>
+              <button className="btn btn-saffron" onClick={() => { updateProfile({ isCreator: true }); toast('Creator mode enabled — your bio and links now show on published itineraries.') }}>
                 Enable creator mode
               </button>
             )}

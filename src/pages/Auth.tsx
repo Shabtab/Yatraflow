@@ -76,6 +76,12 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
           <button type="submit" className="btn btn-primary btn-lg" style={{ width: '100%' }} disabled={saving}>
             {saving ? (mode === 'login' ? 'Signing in…' : 'Creating account…') : mode === 'login' ? 'Log in' : 'Create account'}
           </button>
+          {mode === 'login' && (
+            <p className="hint-text" style={{ margin: '10px 0 0', textAlign: 'center' }}>
+              Forgot your password? Password resets open the Supabase console —{' '}
+              <a href="mailto:support@yatraflow.app?subject=Reset%20my%20YatraFlow%20password">mail support and we'll reset it</a>.
+            </p>
+          )}
         </form>
 
         <p className="hint-text" style={{ textAlign: 'center', marginTop: 14 }}>

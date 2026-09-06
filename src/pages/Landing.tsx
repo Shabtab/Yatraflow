@@ -1,6 +1,6 @@
 // ============ Landing page ============
 import { useEffect, type ReactNode } from 'react'
-import { ArrowDown, MapPin, Plane, Rocket, Route, Users, Zap } from 'lucide-react'
+import { ArrowDown, ArrowRight, MapPin, Plane, Rocket, Route, Users, Zap } from 'lucide-react'
 import { RouteSquiggle } from '../components/ui'
 import { PlanBench } from '../components/PlanBench'
 import { scrollBehavior } from '../lib/motion'
@@ -30,7 +30,7 @@ export function LandingPage({ onNavigate }: { onNavigate: (r: string) => void })
               and keep your whole crew on the same page.
             </p>
             <div className="hero-ctas hero-rise rise-d3">
-              <a className="btn btn-primary btn-lg" href="#/auth?mode=signup">Start planning free →</a>
+              <a className="btn btn-primary btn-lg" href="#/auth?mode=signup">Start planning free <ArrowRight size={16} aria-hidden style={{ verticalAlign: '-3px', marginLeft: 4 }} /></a>
               <a className="btn btn-saffron btn-lg" href="#/explore">Explore itineraries</a>
             </div>
             {/* Boarding-pass entry: travel-themed ticket that "issues" a pass to
@@ -108,7 +108,7 @@ export function LandingPage({ onNavigate }: { onNavigate: (r: string) => void })
         </div>
       </section>
 
-      <footer className="container small muted" style={{ textAlign: 'center', padding: '26px 20px 34px', borderTop: '1px solid var(--line)' }}>
+      <footer className="footer" style={{ justifyContent: 'center' }}>
         YatraFlow · Plan real trips, together.
       </footer>
       </div>
@@ -181,7 +181,7 @@ function DestTicker() {
     </div>
   )
   return (
-    <div className="dest-ticker" aria-label="Popular and offbeat Indian travel destinations">
+    <div className="dest-ticker" role="region" aria-label="Popular and offbeat Indian travel destinations">
       <div className="ticker-track">
         {set(false)}
         {set(true)}

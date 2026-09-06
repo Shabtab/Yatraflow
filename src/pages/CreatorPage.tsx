@@ -68,7 +68,7 @@ export function CreatorPage({ creatorId, onNavigate }: { creatorId: string; onNa
 
       <div className="container" style={{ paddingTop: 20 }}>
         {pubs.length > 0 && (
-          <div className="creator-stats" aria-label="Creator track record">
+          <div className="creator-stats" role="group" aria-label="Creator track record">
             <div className="stat-tile"><div className="stat-label">Itineraries</div><div className="stat-value">{pubs.length}</div></div>
             <div className="stat-tile"><div className="stat-label">Total views</div><div className="stat-value"><Eye size={15} aria-hidden style={{ verticalAlign: '-1px', marginRight: 5 }} />{totalViews}</div></div>
             <div className="stat-tile"><div className="stat-label">Total forks</div><div className="stat-value"><GitFork size={15} aria-hidden style={{ verticalAlign: '-1px', marginRight: 5 }} />{totalForks}</div></div>

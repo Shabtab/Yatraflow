@@ -1,6 +1,6 @@
 // ============ Create trip ============
 import { useEffect, useRef, useState } from 'react'
-import { Calendar, ChevronDown, ChevronUp, Pin, TriangleAlert, X } from 'lucide-react'
+import { Calendar, ChevronDown, ChevronUp, Pin, TriangleAlert, X , ArrowRight } from 'lucide-react'
 import type { FixedCommitment, LatLngPoint, TransportMode, TravelStyle } from '../data/types'
 import { TRANSPORT_MODES, TRAVEL_STYLES } from '../data/types'
 import { useDb, currentUser, createTrip } from '../store/store'
@@ -105,7 +105,9 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
     if (!f.endDate) next.endDate = 'Pick an end date.'
     else if (f.startDate && new Date(f.endDate) < new Date(f.startDate)) next.endDate = 'End date must be after the start date.'
     if (f.travellers < 1) next.travellers = 'At least one traveller!'
+    else if (f.travellers > 30) next.travellers = 'Split groups over 30 into multiple trips.'
     if (f.budgetPerPersonInr <= 0) next.budgetPerPersonInr = 'Give a per-person budget in ₹.'
+    else if (f.budgetPerPersonInr < 500) next.budgetPerPersonInr = 'The minimum budget is ₹500 per person.'
     setErrs(next)
     if (Object.keys(next).length) {
       // F-15: move focus to the first invalid field so keyboard / screen-reader
@@ -142,7 +144,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
       coverEmoji: f.coverEmoji,
       coverImageUrl: f.coverImageUrl.trim() || undefined,
     })
-    toast('Trip created — add your first stop! 🎉')
+    toast('Trip created — add your first stop')
     onNavigate(`/trip/${trip.id}`)
   }
 
@@ -269,7 +271,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
             <Field label="Trip emoji">
               <div className="chip-row" style={{ marginTop: 6 }}>
                 {['🧭', '🏔️', '🏖️', '🛕', '🚗', '🚂', '🌴', '🎒'].map(em => (
-                  <Chip key={em} active={f.coverEmoji === em} onClick={() => setF(x => ({ ...x, coverEmoji: em }))}>
+                  <Chip key={em} active={f.coverEmoji === em} aria-pressed={f.coverEmoji === em} aria-label={`Trip emoji ${em}`} onClick={() => setF(x => ({ ...x, coverEmoji: em }))}>
                     <span style={{ fontSize: 18 }}>{em}</span>
                   </Chip>
                 ))}
@@ -286,6 +288,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
                       const q = last || f.startLocation.trim() || f.name.trim()
                       const u = q ? await fetchTripThumbUrl(q) : null
                       setF(x => ({ ...x, coverImageUrl: u ?? '' }))
+                      if (!u) toast("Couldn't find a photo for that destination — paste an image URL instead.", 'err')
                     } finally { setBusyCover(false) }
                   }}>
                   {busyCover ? 'Finding photo…' : f.coverImageUrl ? 'Refresh destination photo' : 'Use destination photo'}
@@ -342,7 +345,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
 
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
           <button type="button" className="btn btn-outline" onClick={() => onNavigate('/trips')}>Cancel</button>
-          <button type="submit" className="btn btn-primary btn-lg">Create trip →</button>
+          <button type="submit" className="btn btn-primary btn-lg">Create trip <ArrowRight size={16} aria-hidden style={{ verticalAlign: '-3px', marginLeft: 4 }} /></button>
         </div>
       </form>
     </div>

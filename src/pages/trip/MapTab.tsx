@@ -1,7 +1,7 @@
 // ============ Trip workspace — Map tab ============
 // Mechanical extraction from src/pages/TripWorkspace.tsx (M3.4) — no behavior changes.
 import React, { useEffect, useMemo, useState } from 'react'
-import { Lightbulb } from 'lucide-react'
+import { CircleCheck, Clock, Fuel, Lightbulb, MapPin, RotateCcw } from 'lucide-react'
 import type { Trip, ItineraryStop } from '../../data/types'
 import type { ImpactResult } from '../../lib/impact'
 import { routePath } from '../../lib/routing'
@@ -9,7 +9,7 @@ import { getAssumptions, buildJourney, minutesToHM, computeCategoryBias } from '
 import { useTimeFormat, formatHMRange } from '../../lib/timefmt'
 import { Modal, Field, toast } from '../../components/ui'
 import { useSuggestionCache } from '../../hooks/useSuggestionCache'
-import { searchNearbyPoisMulti, searchCitiesAlong, corridorAnchors, detourKm, googleEnabled, planJourneyHalts, type NearbyOpts } from '../../lib/geocode'
+import { corridorAnchors, detourKm, googleEnabled, planJourneyHalts, type NearbyOpts } from '../../lib/geocode'
 import type { PlaceHit, SegmentHit } from '../../lib/geocode'
 import { anchorHash } from '../../lib/providers/hits'
 // MapLibre is heavy (~1MB) — load it only when the Map tab is actually opened.
@@ -236,12 +236,12 @@ export function MapTab({ trip, editable, applyChange, suggestionCache }: {
         </div>
         {hit.description && <div className="poi-desc small muted">{hit.description}</div>}
         {(hit.openTime || hit.closeTime) && (
-          <div className="poi-desc small muted">🕘 {formatHMRange(hit.openTime, hit.closeTime, timeFormat)} (reported)</div>
+          <div className="poi-desc small muted"><Clock size={11} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />{formatHMRange(hit.openTime, hit.closeTime, timeFormat)} (reported)</div>
         )}
         <div>
           {editable && (
             added
-              ? <span className="chip chip-teal">✓ Added</span>
+              ? <span className="chip chip-teal"><CircleCheck size={11} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />Added</span>
               : <button className="btn btn-primary btn-sm" onClick={() => openAddModal(hit)}>+ Add</button>
           )}
         </div>
@@ -254,7 +254,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache }: {
       <TripMap trip={trip} nearbyPois={pois.flatMap(p => p.hit ? [p.hit] : [])} onAddNearby={editable ? (hit) => openAddModal(hit) : undefined} />
       <div className="card" style={{ marginTop: 14 }}>
         <div className="row-between">
-          <h2 style={{ margin: 0 }}><Lightbulb size={16} aria-hidden style={{ verticalAlign: '-3px', marginRight: 4 }} />Nearby ideas</h2>
+          <h3 style={{ margin: 0 }}><Lightbulb size={16} aria-hidden style={{ verticalAlign: '-3px', marginRight: 4 }} />Nearby ideas</h3>
           <div className="row-between" style={{ gap: 10 }}>
             <span className="small muted">{loadingPois ? 'searching…' : `${pois.filter(p => p.hit).length} suggested stops — spaced for fatigue & anchored on cities`}</span>
             <button
@@ -263,7 +263,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache }: {
               onClick={() => { suggestionCache.clearMap(); setRefreshTick(t => t + 1) }}
               disabled={loadingPois}
             >
-              ↻ Refresh
+              <RotateCcw size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />Refresh
             </button>
           </div>
         </div>
@@ -292,7 +292,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache }: {
         <div className="poi-split">
           <div className="poi-col poi-col--needs">
             <div className="poi-col-head">
-              <span className="poi-col-head-ico">⛽</span>
+              <span className="poi-col-head-ico"><Fuel size={13} aria-hidden /></span>
               <div>
                 <b>Need-based halts</b>
                 <span className="small muted">fuel · food · rest · stretch · overnight</span>
@@ -306,7 +306,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache }: {
           </div>
           <div className="poi-col poi-col--see">
             <div className="poi-col-head">
-              <span className="poi-col-head-ico">📍</span>
+              <span className="poi-col-head-ico"><MapPin size={13} aria-hidden /></span>
               <div>
                 <b>See &amp; do</b>
                 <span className="small muted">sightseeing · detours · scenic stops</span>

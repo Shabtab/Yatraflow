@@ -450,7 +450,7 @@ async function seedDemoFor(userId: string, gen: number = hydrateGen): Promise<vo
 export function addDemoTrips(): void {
   if (!cache.sessionUserId) return
   toast('Adding demo trips…')
-  void seedDemoFor(cache.sessionUserId).then(() => toast('Demo trips added ✨'))
+  void seedDemoFor(cache.sessionUserId).then(() => toast('Demo trips added'))
 }
 
 // ---------------- Row mappers for collaboration tables ----------------

@@ -213,7 +213,8 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
               + db.decisions.filter(d => d.tripId === trip.id && d.status === 'open').length
             : undefined
           return (
-            <button key={key} role="tab" aria-selected={tab === key}
+            <button key={key} role="tab" id={`tab-${key}`} aria-selected={tab === key}
+              aria-controls={`panel-${key}`}
               className={`tab-btn ${tab === key ? 'active' : ''}`} onClick={() => setTab(key)}>
               {label}{count ? <span className="tab-count">{count}</span> : null}
             </button>
@@ -231,7 +232,7 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
         />
       )}
 
-      <div className="tab-panel" key={tab}>
+      <div className="tab-panel" key={tab} role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
       {tab === 'overview' && <OverviewTab trip={effective} editable={editable} onOpenDecisions={() => setTab('group')} onOpenTimeline={() => setTab('timeline')} onOpenMap={() => setTab('map')} onInvite={() => setTab('share')} health={health} totals={totals} />}
       {tab === 'timeline' && <TimelineTab trip={effective} editable={editable} applyChange={applyChange} legCorrections={legCorrections} suggestionCache={suggestionCache} onOpenBoard={() => setTab('board')} />}
       {tab === 'board' && (

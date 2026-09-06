@@ -53,7 +53,7 @@ function SnapshotCard({ trip, me, onNavigate }: {
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <button className="btn btn-outline btn-sm" onClick={() => downloadTripJson(trip)}><Download size={13} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />Download JSON</button>
                   <button className="btn btn-outline btn-sm" onClick={() => fileRef.current?.click()}><Upload size={13} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />Import JSON</button>
-                  <button className="btn btn-teal btn-sm" onClick={makeLink}><Link2 size={13} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />Create snapshot link</button>
+                  <button className="btn btn-saffron btn-sm" onClick={makeLink}><Link2 size={13} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />Create snapshot link</button>
         <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={onFile} />
       </div>
       {link && (
@@ -178,7 +178,7 @@ function PublicationForm({ trip, pub, isOwner, creatorId, onDone }: {
         })}
       </div>
 
-      {err && <p className="small" style={{ color: 'var(--danger, #c0392b)', margin: '8px 0 0' }} role="alert">{err}</p>}
+      {err && <p className="err-text" style={{ marginTop: 8 }} role="alert">{err}</p>}
       <button className="btn btn-saffron" style={{ marginTop: 12 }} disabled={!isOwner} onClick={submit}>
         {pub ? 'Update publication' : 'Publish to Explore'}
       </button>
@@ -258,7 +258,7 @@ export function ShareTab({ trip, me, editable, onNavigate }: {
             </div>
           )}
           <PublicationForm trip={trip} pub={pub} isOwner={isOwner} creatorId={me.id}
-            onDone={wasPublished => toast(wasPublished ? 'Publication updated ✨' : 'Published to Explore 🎉')} />
+            onDone={wasPublished => toast(wasPublished ? 'Publication updated' : 'Published to Explore')} />
           {pub && (
             <button className="btn btn-ghost btn-sm" style={{ marginTop: 10 }}
               onClick={() => { unpublishItinerary(trip.id); toast('Unpublished — removed from Explore') }}>Unpublish</button>
