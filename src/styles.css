@@ -1442,6 +1442,9 @@ a.btn { text-decoration: none; }
   /* Edge-to-edge: keep content clear of the landscape home-indicator edge. */
   padding-right: env(safe-area-inset-right);
 }
+.ai-drawer:not(.open) {
+  display: none;
+}
 @keyframes drawerIn { from { transform: translateX(40px); opacity: 0; } to { transform: none; opacity: 1; } }
 .ai-head { display: flex; align-items: center; gap: 10px; padding: 15px 17px; border-bottom: 1px solid var(--line); }
 .ai-msgs { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 17px; display: flex; flex-direction: column; gap: 13px; }

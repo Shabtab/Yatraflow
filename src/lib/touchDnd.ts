@@ -146,6 +146,10 @@ function activate() {
   element.classList.remove('yf-pressing')
   active = { srcId, srcIdx, payload, target: null, lastX: startX, lastY: startY, raf: 0 }
   pending = null
+  // Diagnostic logging
+  if (import.meta.env.DEV) {
+    console.log('[TOUCH_DND] Long-press activated, triggering vibration')
+  }
   try { navigator.vibrate?.(20) } catch { /* haptics are best-effort */ }
   instances.get(srcId)?.onOwnDragStart(srcIdx)
   active.raf = window.requestAnimationFrame(frame)

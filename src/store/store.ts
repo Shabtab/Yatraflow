@@ -905,11 +905,14 @@ export function restoreExpense(tripId: ID, expense: Expense, index: number): voi
 export function updateTrip(id: ID, patchFields: Partial<Trip>): void {
   const t = tripById(id)
   if (!t) return
-  mutateTrip(id, draft => Object.assign(draft, patchFields, { updatedAt: Date.now() }), { touch: false })
-  void persistTripField(id, tripById(id)!)
+  // Persist first, then commit only on success. This avoids UI/DB mismatch if
+  // the DB write fails.
+  void persistTripField(id, t).then(() => {
+    mutateTrip(id, draft => Object.assign(draft, patchFields, { updatedAt: Date.now() }), { touch: false })
+  })
 }
 
-async function persistTripField(id: ID, t: Trip) {
+async function persistTripField(id: ID, t: Trip): Promise<void> {
   const owner = t.members?.find(m => m.role === 'owner')
   const cols = await tripsHaveOptionalColumns()
   const { error } = await supabase.from('trips').update(tripToRow(t, owner?.userId ?? id, cols)).eq('id', id)
@@ -1084,7 +1087,6 @@ export function moveStopBetweenDays(tripId: ID, stopId: ID, toDayIndex: number, 
       renumber(fromDraft)
     }
   }, opts)
-  void persistTripField(tripId, tripById(tripId)!)
 }
 
 export function setStopStatus(tripId: ID, status: ItineraryStop['status'], stopId: ID): void {
@@ -1098,7 +1100,7 @@ export function setStopStatus(tripId: ID, status: ItineraryStop['status'], stopI
     const s = day.stops.find(x => x.id === stopId)!
     s.status = status
   }, { log: `marked “${before.title}” as ${status}`, target: `Day ${dayIdx + 1}` })
-  void persistTripField(tripId, tripById(tripId)!)
+  void persistTripField(tripId, t)
 }
 
 function renumber(day: ItineraryDay): void {
