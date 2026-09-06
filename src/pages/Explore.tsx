@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react'
 import {
   Calendar, Compass, Eye, GitFork, Heart, MapPin, Search, Sparkles, Star, Wallet, X,
 } from 'lucide-react'
-import { usePublished, useUsers, useTrips, useSessionUserId, tripById, duplicateTrip, registerPubCopy } from '../store/store'
+import { usePublished, useUsers, useTrips, useSessionUserId, tripById, duplicateTrip, duplicateTripPublic, registerPubCopy } from '../store/store'
 import { computeHealth, formatInr } from '../lib/engine'
 import { useSavedPubs } from '../lib/savedPubs'
 import { Avatar, Chip, EmptyState, toast } from '../components/ui'
@@ -93,7 +93,11 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
     const src = pub ? tripById(pub.tripId) : undefined
     if (!pub || !src) { toast('That itinerary is no longer available.', 'err'); return }
     if (!me) { toast('Log in first to fork this trip into your plans.'); onNavigate('/auth'); return }
-    duplicateTrip(src, me)
+    // Premium-respecting fork when the publication actually has locked days;
+    // entirely-free publications keep the plain full copy.
+    const hasLockedDays = src.days.some(d => !pub.freeDayIndexes.includes(d.index))
+    if (hasLockedDays) duplicateTripPublic(src, me, pub.freeDayIndexes)
+    else duplicateTrip(src, me)
     registerPubCopy(slug)
     toast(`“${pub.title}” forked to My trips ✈️`)
     onNavigate('/trips')

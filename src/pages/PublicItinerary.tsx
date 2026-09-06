@@ -8,7 +8,7 @@ import {
   Route, Sparkles, Ticket, TriangleAlert,
 } from 'lucide-react'
 import type { Trip, PublishedItinerary } from '../data/types'
-import { useDb, currentUser, tripById, userById, duplicateTrip, registerPubCopy, registerPubView } from '../store/store'
+import { useDb, currentUser, tripById, userById, duplicateTripPublic, registerPubCopy, registerPubView } from '../store/store'
 import { simulateDay, originOf, minutesToHM, formatInr, getAssumptions, computeTotals, isRoundTrip } from '../lib/engine'
 import { useTimeFormat, formatHM, formatHMRange } from '../lib/timefmt'
 import { stopKindOf, STOP_KIND_LABELS } from '../lib/stopKind'
@@ -47,7 +47,9 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
 
   function copyThis() {
     if (!me) { toast('Log in to fork this trip into your plans.'); onNavigate('/auth'); return }
-    duplicateTrip(trip!, me.id)
+    // Premium-respecting fork: days outside the free preview land as locked
+    // stubs — the full plan stays on the original itinerary only.
+    duplicateTripPublic(trip!, me.id, pub!.freeDayIndexes)
     registerPubCopy(pub!.id)
     toast(`“${pub!.title}” forked — open it from My trips ✈️`)
     onNavigate('/trips')

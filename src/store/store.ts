@@ -687,6 +687,56 @@ export function duplicateTrip(source: Trip, ownerId: ID, makePublic?: boolean): 
   return copy
 }
 
+/** Copy text stamped onto every stop of a premium (non-free) day when a
+ *  published itinerary is forked. Titles stay so the fork keeps the trip's
+ *  shape; every other detail is stripped. */
+const LOCKED_STOP_DESCRIPTION = 'Locked — the full plan is on the original itinerary.'
+
+/** Fork a PUBLISHED itinerary while respecting its premium gate.
+ *
+ *  `duplicateTrip` copies the entire trip — premium days included — so forking
+ *  from the public page was a total bypass of the free/premium split. This
+ *  variant keeps days listed in `freeDayIndexes` fully intact and, for every
+ *  other day, reduces each stop to a stub: title and priority are kept, the
+ *  description becomes the locked notice, notes are cleared, entry/transport
+ *  costs and open/close times are zeroed, and the stop is marked confirmed.
+ *  Structurally identical to `duplicateTrip` otherwise (fresh ids, new owner
+ *  member, private copy, persisted once — the stripped version is what gets
+ *  written through, never the full plan). */
+export function duplicateTripPublic(source: Trip, ownerId: ID, freeDayIndexes: number[]): Trip {
+  const free = new Set(freeDayIndexes)
+  const copy: Trip = structuredClone(source)
+  copy.id = uuid()
+  copy.name = source.name.includes('(copy)') ? source.name : `${source.name} (copy)`
+  copy.visibility = 'private'
+  copy.createdAt = Date.now(); copy.updatedAt = Date.now()
+  copy.days = copy.days.map(d => ({
+    ...d,
+    id: uid('day'),
+    stops: d.stops.map(s => free.has(d.index)
+      ? { ...s, id: uid('st') }
+      : {
+          ...s,
+          id: uid('st'),
+          description: LOCKED_STOP_DESCRIPTION,
+          notes: '',
+          entryFeeInrPerPerson: 0,
+          transportCostInrTotal: 0,
+          openTime: undefined,
+          closeTime: undefined,
+          status: 'confirmed' as const,
+        }),
+  }))
+  copy.expenses = copy.expenses.map(e => ({ ...e, id: uid('ex') }))
+  copy.fixedCommitments = copy.fixedCommitments.map(f => ({ ...f, id: uid('fc') }))
+  copy.members = [{ userId: ownerId, role: 'owner' as const, joinedAt: Date.now() }]
+  copy.coverImageUrl = source.coverImageUrl
+  cache.trips = [...cache.trips, copy]
+  commit()
+  void persistTrip(copy, ownerId)
+  return copy
+}
+
 // ---------------- Trip deletion + undo ----------------
 
 /** What `delete from public.trips` takes with it. Six tables cascade off a trip
