@@ -11,6 +11,7 @@
 // directly.
 
 import { haversineKm } from './geo'
+import { hmToMinutes } from './engine'
 import { HOME_ZONE_KM, kmFromStartForHit, detourKm, detourMinutes, dedupeCandidates, type HaltPurpose, type PlaceHit } from './providers/hits'
 
 // ---- Fatigue cadence (named constants — later settings can expose them) ----
@@ -42,6 +43,8 @@ export interface RidePlanInput {
   /** crew-tuned cadence overrides (see cadenceForCrew) — default STRETCH/MEAL_INTERVAL_KM */
   stretchKm?: number
   mealKm?: number
+  /** "HH:MM" drive-start per day index — unset days fall back to 08:30 */
+  dayStartTimes?: string[]
 }
 
 /**
@@ -75,6 +78,8 @@ export interface RideSegment {
   kmFromPrev: number
   /** est. wheel time since the previous segment target (proportional to km) */
   minutesFromPrev: number
+  /** est. wall-clock arrival in minutes since midnight (day start + wheel time) */
+  etaMinutes?: number
   /** true when this segment closes a day boundary (overnight stay) */
   dayEnd?: boolean
   /** human guidance line, e.g. "≈2 h wheel time — stretch & hydrate" */
@@ -199,6 +204,47 @@ export function planRideSegments(input: RidePlanInput): RideSegment[] {
     }
   }
 
+/** Meal window in minutes since midnight: lunch must land 11:30–14:30. */
+const MEAL_WINDOW: [number, number] = [11 * 60 + 30, 14 * 60 + 30]
+/** Fallback drive-start when a day has no startTime. */
+const DEFAULT_DAY_START = '08:30'
+
+function dayStartMin(dayStartTimes: string[] | undefined, dayIdx: number): number {
+  const raw = dayStartTimes?.[dayIdx]
+  if (raw && /^\d{1,2}:\d{2}$/.test(raw)) return hmToMinutes(raw)
+  return hmToMinutes(DEFAULT_DAY_START)
+}
+
+/** Day index for a route-km position given the day-start boundaries. */
+function dayIndexAt(km: number, dayStarts: number[]): number {
+  let idx = 0
+  for (let i = 0; i < dayStarts.length; i++) {
+    if (dayStarts[i] <= km) idx = i
+  }
+  return idx
+}
+
+/** Est. wall-clock arrival for a route-km position (day start + proportional wheel time). */
+function etaAt(km: number, dayStarts: number[], dayStartTimes: string[] | undefined, total: number, drive: number): number {
+  const di = dayIndexAt(km, dayStarts)
+  const wheel = total > 0 ? (drive * Math.max(0, km - dayStarts[di])) / total : 0
+  return dayStartMin(dayStartTimes, di) + wheel
+}
+
+  // Phase B2 — journey clock: slide meal targets into the 11:30–14:30 window.
+  // ETA = day start + proportional wheel time. Shifts clamp to [0, cap] and
+  // merged entries re-sort, so Phase C windows re-derive from moved positions.
+  // Overnights are annotated only — moving a day boundary would break cadence.
+  const kmPerMin = drive > 0 && total > 0 ? total / drive : 1.4
+  for (const m of merged) {
+    if (!m.purposes.includes('meal')) continue
+    const eta = etaAt(m.km, dayStarts, input.dayStartTimes, total, drive)
+    if (eta >= MEAL_WINDOW[0] && eta <= MEAL_WINDOW[1]) continue
+    const edge = Math.abs(eta - MEAL_WINDOW[0]) <= Math.abs(eta - MEAL_WINDOW[1]) ? MEAL_WINDOW[0] : MEAL_WINDOW[1]
+    m.km = Math.min(cap, Math.max(0, m.km + (edge - eta) * kmPerMin))
+  }
+  merged.sort((a, b) => a.km - b.km)
+
   // Phase C — windows = midpoints to neighbours; labels/hints; leg distances
   const segments: RideSegment[] = merged.map((m, i) => {
     const purpose = m.purposes.reduce((acc, p) => (PURPOSE_PRIORITY[p] > PURPOSE_PRIORITY[acc] ? p : acc), m.purposes[0])
@@ -225,6 +271,7 @@ export function planRideSegments(input: RidePlanInput): RideSegment[] {
       maxKm,
       kmFromPrev,
       minutesFromPrev,
+      etaMinutes: Math.round(etaAt(m.km, dayStarts, input.dayStartTimes, total, drive)),
       dayEnd: purpose === 'overnight' ? true : undefined,
       hint: PURPOSE_HINT[purpose](minutesFromPrev),
     }

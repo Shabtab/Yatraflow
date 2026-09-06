@@ -161,6 +161,7 @@ export async function planJourneyHalts(
     includeFuel: opts.includeFuel,
     multiDay: opts.multiDay,
     vehicleRangeKm: vehicleRange,
+    dayStartTimes: opts.dayStartTimes,
     ...cadenceForCrew(opts.travellers, opts.travelStyle),
   })
   if (segments.length === 0) return []

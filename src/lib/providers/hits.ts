@@ -246,6 +246,8 @@ export interface NearbyOpts {
   speedKmph?: number
   /** Already-planned stops — candidates near them are dropped (see filterPlannedNearby). */
   plannedStops?: PlannedStop[]
+  /** "HH:MM" drive-start per day index for the journey clock (unset falls back to 08:30). */
+  dayStartTimes?: string[]
 }
 
 /**

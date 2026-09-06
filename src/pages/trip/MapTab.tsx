@@ -147,6 +147,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache }: {
     plannedStops: trip.days.flatMap(d => d.stops)
       .filter(s => s.status !== 'rejected' && Number.isFinite(s.lat) && Number.isFinite(s.lng))
       .map(s => ({ lat: s.lat, lng: s.lng, name: s.title })),
+    dayStartTimes: trip.days.map(d => d.startTime ?? '08:30'),
   }), [trip, routeGeometry, routeTotalKm])
 
   useEffect(() => {
