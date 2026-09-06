@@ -221,6 +221,20 @@ writes (1h — pairs naturally with M3).
 
 ---
 
+## Idea pool (Sep 6 brainstorm — unprioritized, pull into any milestone)
+
+| Idea | Note |
+|---|---|
+| Decision comments | needs a `comments` JSON column on decisions (schema migration) |
+| Decision cost-impact editor | options carry costImpactInr/timeImpactMin but no UI sets them |
+| Explore creator bios + sorting | bio/newest-sort on cards (premium/respect work landed in 0.35) |
+| Premium purchase state | entitlements + unlock flow — folds into M7 payments |
+| Full Profile field editing | homeCity/languages/socialLinks UI exists partially |
+| Browser push notifications | plumbing exists in realtimeCore; permission on login |
+| Route polylines on the map | routing.ts returns geometry; map renders markers only |
+| Trash + 30-day purge | soft-delete layer before hard deletes |
+| Explore pagination | grows with the catalog |
+
 ## Historical plans (executed — kept for the record, not live guidance)
 
 - [implementation plan for v0.23.0 + the CTI redesign](docs/history/implementation-plan-v0.23.0-cti.md)

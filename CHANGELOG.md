@@ -2,6 +2,24 @@
 
 All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions are pre-1.0 MVP milestones.
 
+## [0.35.0] — 2026-09-06
+
+### Added
+- **Publishing is now an editor, not a hardcoded payload.** The Share tab's publish card lets the owner pick which days are the free preview (Day 1 free by default, at least one free day enforced), set an optional premium price — empty or ₹0 makes the whole itinerary free — and write the tagline, best season, travel tips and subscriber CTA, all pre-filled from the live publication when updating. Premium days require a CTA; the public page's Unlock buttons derive their price from the publication instead of an invented ₹199.
+- **Forking a public itinerary respects its premium gate.** Forking used to copy every premium day in full. `duplicateTripPublic` keeps the publication's free days intact and reduces every locked day's stops to stubs (title kept, description replaced with the locked notice, notes cleared, costs and times zeroed) — used by both fork buttons on the public page and by Explore forks of publications that actually have locked days; internal forks and free publications keep the full copy.
+- **Creator mode is real.** Explore cards from creators show a one-line bio snippet plus YouTube/Instagram links; Profile's creator toggle now works both ways (disabling confirms, publications stay live) with honest copy — publishing is open to everyone, the badge carries bio + links; and a "My publications" card lists your itineraries with views, forks and Unpublish.
+- **Sourcemaps ship with every build.** Production stack traces and Lighthouse's bundle attribution now map back to the original source.
+
+### Changed
+- **The two group-input tabs are now one.** Suggestions and Decisions merge into a single "Group input" tab: one stat strip (Open / Need you / Resolved) and one filter bar span both kinds, suggestion and decision cards interleave in a single list with whatever needs your vote first, and one composer card switches between "Stop idea" and "Question". The activity feed lives here now, and the ⚡ "next to unblock" focus extends to open suggestions you haven't voted on. Old `#/trip/<id>/suggestions` and `#/trip/<id>/decisions` links still work and redirect to the new tab.
+- **The landing page paints instantly instead of waiting on the backend.** The router's ready-gate no longer holds the landing behind a spinner — the page reads no store data and is the exact frame the gate would show anyway. This removes the spinner-to-landing swap that produced the 0.997 desktop CLS reading.
+- **Smaller first load for the landing.** My Trips, the trip workspace and Explore now load on first visit instead of riding in the main bundle — the landing main chunk drops from 683 kB to 505 kB (gzip 200 → 148 kB). Fonts already load with `display=swap` plus both Google Fonts preconnects, so no further font work was needed.
+
+### Fixed
+- **Raising, voting on or resolving a decision now notifies the other trip members.** Suggestions already pushed notifications to members on every raise, vote and comment, but decisions were silent — the parity fix adds the same member loop (actor excluded) to `addDecision`, `voteOnDecision` and `resolveDecision`.
+- **The shared bill image no longer catches the receipt mid-animation.** While "Share as image" renders, the odometer digits snap to their static-text path (the html-to-image clone re-ran the roll transition and photographed digits mid-roll), the "Rendering…" action row is hidden from the frame, and confetti is suppressed.
+- **Accessibility fixes on the landing.** Muted text, the receipt's teal accent, the ticker's offbeat tags and the saffron hero chip now meet AA contrast in their themes, the decorative ticker separator is a shape instead of a failing text glyph, and the "Return leg ×2" toggle's accessible name now contains its visible label.
+
 ## [0.34.0] — 2026-09-05
 
 **The Plan Bench is redesigned — prices on every choice, a receipt that looks like a receipt in both themes, and the bill shares as a crisp image.** Details in the per-commit bodies.

@@ -337,10 +337,18 @@ Hard rules (each learned the hard way — do not relearn them):
   (the bench receipt), pin the component's scoped custom properties to the wanted
   theme via an override class for the capture frame (`.bench-receipt.capture-dark`)
   instead of flipping `data-theme` on `<html>` — no theme flash, no restore race.
+- **"Landing + core stays in the main chunk" decisions rot — audit static page imports against the build, not the comment.** An old code-splitting note in `App.tsx` said the workspace "stays in the main chunk (it is the app's core)", and three `import { X } from './pages/...'` statements quietly kept TripsList + TripWorkspace (138 kB) + Explore eagerly in the landing bundle for months (main chunk 683 kB; landing LCP paid for tabs and editors it never renders). `lazy()` + `Suspense` is already the established pattern for secondary routes — default every non-landing route to it and re-measure the main chunk whenever a page grows. Corollary for Lighthouse a11y: `label-content-name-mismatch` requires the accessible name to contain the FULL visible text — a state suffix like "Return leg ×2" must appear inside the `aria-label`, and a decorative glyph separator (`.ticker-sep`'s ◇) can never pass text contrast; render it as an SVG shape instead of chasing a passing text colour.
 - **Buttons without an explicit colour inherit UA `buttontext` (black)** — fine on light
   surfaces, invisible on dark ones (Profile travel-style chips rendered black-on-navy in dark
   mode). The global `button { color: inherit }` reset in `styles.css` makes every button take
   theme text; set a colour explicitly only when a button deliberately differs.
+
+- **lucide-react 1.x removed all brand icons** (`Instagram`, `Youtube`, `Twitter`, … were
+  dropped upstream) — importing them is a tsc error, not a lint nit. Substitute a generic
+  glyph and carry the network in the `aria-label` (Explore creator links use
+  `TvMinimalPlay` for YouTube and `Camera` for Instagram). Check availability with
+  `node -e "console.log(Object.keys(require('lucide-react')).filter(n => /x/i.test(n)))"`
+  before writing the import.
 
 ## 5. External services
 

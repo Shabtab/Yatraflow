@@ -2,11 +2,11 @@
 // Mechanical extraction from src/pages/TripWorkspace.tsx (M3.4) — no behavior changes.
 // Includes SnapshotCard — ShareTab is its only consumer.
 import React, { useRef, useState } from 'react'
-import { Download, Link2, Upload } from 'lucide-react'
-import type { Trip } from '../../data/types'
+import { Download, Link2, Lock, Upload } from 'lucide-react'
+import type { Trip, PublishedItinerary } from '../../data/types'
 import { useDb, userById, setMemberRole, removeMember, restoreMember, publishItinerary, unpublishItinerary, duplicateTrip } from '../../store/store'
 import { encodeTripSnapshot, snapshotUrl, downloadTripJson } from '../../lib/snapshot'
-import { Avatar, Chip, ConfirmDialog, CopyButton, toast, undoToast } from '../../components/ui'
+import { Avatar, Chip, ConfirmDialog, CopyButton, Field, toast, undoToast } from '../../components/ui'
 import { TripSettingsForm } from './TripSettingsForm'
 import { timeAgo } from './shared'
 
@@ -62,6 +62,124 @@ function SnapshotCard({ trip, me, onNavigate }: {
           <CopyButton text={link} label="Copy" />
         </div>
       )}
+    </div>
+  )
+}
+
+// ================= Publication editor (free/premium picker) =================
+
+const DEFAULT_TRAVEL_TIPS = ['Start ghat-section drives early.', 'Carry cash in hill towns.']
+const DEFAULT_WARNINGS = ['All costs are estimates based on typical prices — verify locally before booking.']
+
+/** Per-day free/premium picker + pricing/CTA form for the public itinerary.
+ *  Replaces the hardcoded freeDayIndexes [0] / ₹199 publish payload: the owner
+ *  now chooses which days are the free preview, whether the itinerary is
+ *  premium at all (empty/₹0 price = entirely free), and the reader-facing
+ *  copy — pre-filled from the live publication when updating. */
+function PublicationForm({ trip, pub, isOwner, creatorId, onDone }: {
+  trip: Trip
+  pub: PublishedItinerary | undefined
+  isOwner: boolean
+  creatorId: string
+  onDone: (published: boolean) => void
+}) {
+  const defaultTagline = `${trip.days.length}-day ${trip.travelStyle} trip through ${trip.destinations.join(', ')}.`
+  const [free, setFree] = useState<Set<number>>(() => new Set(pub?.freeDayIndexes ?? [0]))
+  const [price, setPrice] = useState(pub?.premiumPriceInr != null ? String(pub.premiumPriceInr) : '')
+  const [tagline, setTagline] = useState(pub?.tagline ?? defaultTagline)
+  const [bestSeason, setBestSeason] = useState(pub?.bestSeason ?? '')
+  const [tips, setTips] = useState(pub ? pub.travelTips.join('\n') : DEFAULT_TRAVEL_TIPS.join('\n'))
+  const [cta, setCta] = useState(pub?.subscriberCta ?? '')
+  const [err, setErr] = useState<string | null>(null)
+
+  const priceNum = price.trim() === '' ? 0 : Number(price)
+  const entirelyFree = price.trim() === '' || priceNum === 0
+  const allIndexes = trip.days.map(d => d.index)
+  const hasPremiumDay = !entirelyFree && free.size < trip.days.length
+
+  function toggleDay(index: number) {
+    if (free.has(index) && free.size <= 1) {
+      setErr('At least one day must stay free — it is the preview readers see.')
+      return
+    }
+    setErr(null)
+    setFree(prev => {
+      const next = new Set(prev)
+      if (next.has(index)) next.delete(index); else next.add(index)
+      return next
+    })
+  }
+
+  function submit() {
+    if (!Number.isFinite(priceNum) || priceNum < 0) { setErr('Price must be a number of rupees, 0 or more.'); return }
+    if (hasPremiumDay && !cta.trim()) { setErr('Premium days need a call-to-action — tell readers what they get when they unlock.'); return }
+    setErr(null)
+    publishItinerary({
+      tripId: trip.id, creatorId,
+      title: trip.name,
+      coverImageUrl: trip.coverImageUrl,
+      tagline: tagline.trim() || defaultTagline,
+      routeSummary: [trip.startLocation, ...trip.destinations],
+      durationDays: trip.days.length,
+      estimatedBudgetPerPersonInr: trip.budgetPerPersonInr,
+      travelStyle: trip.travelStyle,
+      bestSeason: bestSeason.trim() || undefined,
+      travelTips: tips.split('\n').map(s => s.trim()).filter(Boolean),
+      warningsAndAssumptions: DEFAULT_WARNINGS,
+      freeDayIndexes: entirelyFree ? allIndexes : [...free],
+      premiumPriceInr: entirelyFree ? undefined : priceNum,
+      subscriberCta: cta.trim() || undefined,
+    })
+    onDone(Boolean(pub))
+  }
+
+  return (
+    <div>
+      <Field label="Tagline" hint="One line that sells the route on Explore and the public page.">
+        <input className="input" value={tagline} onChange={e => setTagline(e.target.value)} maxLength={140} />
+      </Field>
+      <div className="form-row">
+        <Field label="Premium price (₹)" hint="Leave empty or 0 for an entirely free itinerary.">
+          <input className="input" type="number" min={0} inputMode="numeric" placeholder="e.g. 199"
+            value={price} onChange={e => { setPrice(e.target.value); setErr(null) }} />
+        </Field>
+        <Field label="Best season" hint="Optional — shown as practical guidance.">
+          <input className="input" value={bestSeason} onChange={e => setBestSeason(e.target.value)} placeholder="e.g. Sep–Mar" />
+        </Field>
+      </div>
+      <Field label="Travel tips" hint="One per line.">
+        <textarea className="textarea" rows={3} value={tips} onChange={e => setTips(e.target.value)} />
+      </Field>
+      <Field label="Subscriber call-to-action" hint={hasPremiumDay ? 'Required while any day is premium.' : 'Used on premium days — add one before charging.'}>
+        <input className="input" value={cta} onChange={e => setCta(e.target.value)} placeholder="e.g. Full checklist + stay contacts." />
+      </Field>
+
+      <div style={{ margin: '10px 0 4px' }}>
+        <b className="small">Free preview days</b>
+        {entirelyFree && <span className="small muted" style={{ marginLeft: 8 }}>Entirely free — every day is viewable.</span>}
+      </div>
+      <div>
+        {trip.days.map(d => {
+          const isFree = entirelyFree || free.has(d.index)
+          return (
+            <div key={d.id} className="row-between" style={{ padding: '3px 0' }}>
+              <span className="small">Day {d.index + 1}{d.title ? ` — ${d.title}` : ''}</span>
+              <button type="button" className={`btn btn-sm ${isFree ? 'btn-outline' : 'btn-saffron'}`}
+                disabled={entirelyFree} aria-pressed={!isFree}
+                aria-label={`${isFree ? 'Make premium' : 'Make free'}: Day ${d.index + 1}${d.title ? ` — ${d.title}` : ''}`}
+                onClick={() => toggleDay(d.index)}>
+                {isFree ? <>Free</> : <><Lock size={11} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />Premium</>}
+              </button>
+            </div>
+          )
+        })}
+      </div>
+
+      {err && <p className="small" style={{ color: 'var(--danger, #c0392b)', margin: '8px 0 0' }} role="alert">{err}</p>}
+      <button className="btn btn-saffron" style={{ marginTop: 12 }} disabled={!isOwner} onClick={submit}>
+        {pub ? 'Update publication' : 'Publish to Explore'}
+      </button>
+      {!isOwner && <p className="hint-text" style={{ marginTop: 8 }}>Only the trip owner can publish.</p>}
     </div>
   )
 }
@@ -128,56 +246,20 @@ export function ShareTab({ trip, me, editable, onNavigate }: {
           <span className="share-intent share-intent--saffron">2 · Share publicly</span>
           <h3>Publish as public itinerary</h3>
           <p className="hint-text" style={{ margin: '6px 0 12px' }}>
-            List this trip on Explore so anyone can discover and fork it. Day 1 is the free preview; later days sit behind a premium placeholder (no real payments in this MVP).
+            List this trip on Explore so anyone can discover and fork it. Choose which days are the free preview — the rest sit behind a premium placeholder (no real payments in this MVP).
           </p>
-          {!pub ? (
-            <button className="btn btn-saffron" disabled={!isOwner}
-              onClick={() => {
-                publishItinerary({
-                  tripId: trip.id, creatorId: me.id, title: trip.name,
-                  coverImageUrl: trip.coverImageUrl,
-                  tagline: `${trip.days.length}-day ${trip.travelStyle} trip through ${trip.destinations.join(', ')}.`,
-                  routeSummary: [trip.startLocation, ...trip.destinations],
-                  durationDays: trip.days.length,
-                  estimatedBudgetPerPersonInr: trip.budgetPerPersonInr,
-                  travelStyle: trip.travelStyle,
-                  travelTips: ['Start ghat-section drives early.', 'Carry cash in hill towns.'],
-                  warningsAndAssumptions: ['All costs are estimates based on typical prices — verify locally before booking.'],
-                  freeDayIndexes: [0], premiumPriceInr: 199,
-                  subscriberCta: 'Full checklist + stay contacts.',
-                })
-                toast('Published to Explore 🎉')
-              }}>Publish to Explore</button>
-          ) : (
-            <div>
-              <div className="row-between">
-                <span className="small muted">Live on Explore · {pub.views} views · {pub.copies} forks</span>
-                <button className="btn btn-outline btn-sm" onClick={() => onNavigate(`/pub/${pub.id}`)}>View public page</button>
-              </div>
-              <div className="row" style={{ gap: 8, marginTop: 10 }}>
-                <button className="btn btn-outline btn-sm"
-                  onClick={() => {
-                    publishItinerary({
-                      tripId: trip.id, creatorId: me.id, title: trip.name,
-                      coverImageUrl: trip.coverImageUrl,
-                      tagline: `${trip.days.length}-day ${trip.travelStyle} trip through ${trip.destinations.join(', ')}.`,
-                      routeSummary: [trip.startLocation, ...trip.destinations],
-                      durationDays: trip.days.length,
-                      estimatedBudgetPerPersonInr: trip.budgetPerPersonInr,
-                      travelStyle: trip.travelStyle,
-                      travelTips: ['Start ghat-section drives early.', 'Carry cash in hill towns.'],
-                      warningsAndAssumptions: ['All costs are estimates based on typical prices — verify locally before booking.'],
-                      freeDayIndexes: [0], premiumPriceInr: 199,
-                      subscriberCta: 'Full checklist + stay contacts.',
-                    })
-                    toast('Publication updated ✨')
-                  }}>Update</button>
-                <button className="btn btn-ghost btn-sm"
-                  onClick={() => { unpublishItinerary(trip.id); toast('Unpublished — removed from Explore') }}>Unpublish</button>
-              </div>
+          {pub && (
+            <div className="row-between" style={{ marginBottom: 10 }}>
+              <span className="small muted">Live on Explore · {pub.views} views · {pub.copies} forks</span>
+              <button className="btn btn-outline btn-sm" onClick={() => onNavigate(`/pub/${pub.id}`)}>View public page</button>
             </div>
           )}
-          {!isOwner && <p className="hint-text" style={{ marginTop: 8 }}>Only the trip owner can publish.</p>}
+          <PublicationForm trip={trip} pub={pub} isOwner={isOwner} creatorId={me.id}
+            onDone={wasPublished => toast(wasPublished ? 'Publication updated ✨' : 'Published to Explore 🎉')} />
+          {pub && (
+            <button className="btn btn-ghost btn-sm" style={{ marginTop: 10 }}
+              onClick={() => { unpublishItinerary(trip.id); toast('Unpublished — removed from Explore') }}>Unpublish</button>
+          )}
           {pubLink && <div className="share-link-box" style={{ marginTop: 10 }}><code>{pubLink}</code><CopyButton text={pubLink} label="Copy" /></div>}
         </div>
 

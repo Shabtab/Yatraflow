@@ -36,6 +36,11 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react()],
     base: './',
+    build: {
+      // Ship sourcemaps so Lighthouse's "unused JavaScript" attribution and
+      // production stack traces map back to source instead of minified bundles.
+      sourcemap: true,
+    },
     server: {
       proxy: {
         // mirror the Vercel rewrite so local dev also avoids Mappls' missing CORS headers

@@ -226,7 +226,11 @@ export function init(): void {
     if (!userId) {
       // Anonymous user: fetch global catalogs (published itineraries + profiles) but skip user-specific data.
       // Explore needs published itineraries to work for logged-out users.
+      // Serialized like the signed-in path: getSession + onAuthStateChange both
+      // fire hydrate(null) on a cold load, which used to double-fetch.
       disconnectRealtime()
+      if (activeHydrate && activeHydrate.userId === null) { await activeHydrate.promise; return }
+      const anonPromise = (async () => {
       try {
         const [profRes, pubRes] = await Promise.all([
           supabase.from('profiles').select('*'),
@@ -236,14 +240,19 @@ export function init(): void {
         const pubRows = mapOrSkip((pubRes.data ?? []), rowToPublished)
         if (profRes.error) { console.error('[yatraflow] hydrate profiles failed', profRes.error) }
         if (pubRes.error) { console.error('[yatraflow] hydrate published failed', pubRes.error) }
-        patch({ users, trips: [], suggestions: [], decisions: [], activity: [], notifications: [], published: dedupePublished(pubRows, new Set()), sessionUserId: null, ready: true })
+        // The catalog has no backing trips in this cache — an empty valid-set
+        // made dedupePublished discard EVERY row as an "orphan". The rows' own
+        // tripIds are the valid set for the public gallery.
+        patch({ users, trips: [], suggestions: [], decisions: [], activity: [], notifications: [], published: dedupePublished(pubRows, new Set(pubRows.map(r => r.tripId))), sessionUserId: null, ready: true })
         commit()
       } catch (e) {
         console.error('[yatraflow] anonymous hydration failed', e)
         patch({ users: [], trips: [], suggestions: [], decisions: [], activity: [], notifications: [], published: [], sessionUserId: null, ready: true })
         commit()
       }
-      activeHydrate = null
+      })()
+      activeHydrate = { userId: null, promise: anonPromise }
+      try { await anonPromise } finally { if (activeHydrate?.userId === null) activeHydrate = null }
       return
     }
     // Serialize: a redundant hydrate for the same user (the load-time getSession
@@ -344,6 +353,28 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     const pubRows = mapOrSkip((pubRes.data ?? []), rowToPublished)
     if (pubRes.error) { console.error('[yatraflow] hydrate published failed', pubRes.error); partial.push('suggested itineraries') }
 
+    // Explore shows OTHER creators' itineraries too, and forking needs the
+    // underlying trip. The old dedupe call passed only the user's own trip ids,
+    // so every foreign publication was discarded as an "orphan". Fetch the
+    // catalog trips (members via the same trip_members table).
+    const pubTripIds = [...new Set(pubRows.map(r => r.tripId))]
+    const missingPubIds = pubTripIds.filter(id => !tripList.some(t => t.id === id))
+    let catalogTrips: Trip[] = []
+    if (missingPubIds.length > 0) {
+      const [catTripsRes, catMemRes] = await Promise.all([
+        supabase.from('trips').select('*').in('id', missingPubIds),
+        supabase.from('trip_members').select('*').in('trip_id', missingPubIds),
+      ])
+      if (catTripsRes.error) { console.error('[yatraflow] hydrate catalog trips failed', catTripsRes.error); partial.push('catalog trips') }
+      else {
+        const catMemRows = (catMemRes.data ?? []) as MemberRow[]
+        catalogTrips = mapOrSkip((catTripsRes.data ?? []) as TripRow[], rawRow => {
+          const row = rawRow as TripRow
+          return rowToTrip(row, catMemRows.filter(m => m.trip_id === row.id).map(m => ({ userId: m.user_id, role: m.role, joinedAt: m.joined_at })))
+        })
+      }
+    }
+
     // Stale run — a sign-out or account switch bumped hydrateGen while these
     // queries were in flight. Writing now would leak the previous account's rows
     // (and its sessionUserId) into the new session, so drop the whole patch.
@@ -351,14 +382,14 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
 
     patch({
       users,
-      trips: tripList,
+      trips: [...tripList, ...catalogTrips],
       suggestions,
       decisions,
       activity,
       notifications,
       // De-dupe / drop orphan published rows left by earlier buggy seeds (the
       // publishItinerary path mints a fresh id each call - many rows per tripId).
-      published: dedupePublished(pubRows, new Set(tripList.map(t => t.id))),
+      published: dedupePublished(pubRows, new Set([...tripList, ...catalogTrips].map(t => t.id))),
       sessionUserId: userId,
     })
     commit()
@@ -646,6 +677,56 @@ export function duplicateTrip(source: Trip, ownerId: ID, makePublic?: boolean): 
   copy.visibility = makePublic ? 'public' : 'private'
   copy.createdAt = Date.now(); copy.updatedAt = Date.now()
   copy.days = copy.days.map(d => ({ ...d, id: uid('day'), stops: d.stops.map(s => ({ ...s, id: uid('st') })) }))
+  copy.expenses = copy.expenses.map(e => ({ ...e, id: uid('ex') }))
+  copy.fixedCommitments = copy.fixedCommitments.map(f => ({ ...f, id: uid('fc') }))
+  copy.members = [{ userId: ownerId, role: 'owner' as const, joinedAt: Date.now() }]
+  copy.coverImageUrl = source.coverImageUrl
+  cache.trips = [...cache.trips, copy]
+  commit()
+  void persistTrip(copy, ownerId)
+  return copy
+}
+
+/** Copy text stamped onto every stop of a premium (non-free) day when a
+ *  published itinerary is forked. Titles stay so the fork keeps the trip's
+ *  shape; every other detail is stripped. */
+const LOCKED_STOP_DESCRIPTION = 'Locked — the full plan is on the original itinerary.'
+
+/** Fork a PUBLISHED itinerary while respecting its premium gate.
+ *
+ *  `duplicateTrip` copies the entire trip — premium days included — so forking
+ *  from the public page was a total bypass of the free/premium split. This
+ *  variant keeps days listed in `freeDayIndexes` fully intact and, for every
+ *  other day, reduces each stop to a stub: title and priority are kept, the
+ *  description becomes the locked notice, notes are cleared, entry/transport
+ *  costs and open/close times are zeroed, and the stop is marked confirmed.
+ *  Structurally identical to `duplicateTrip` otherwise (fresh ids, new owner
+ *  member, private copy, persisted once — the stripped version is what gets
+ *  written through, never the full plan). */
+export function duplicateTripPublic(source: Trip, ownerId: ID, freeDayIndexes: number[]): Trip {
+  const free = new Set(freeDayIndexes)
+  const copy: Trip = structuredClone(source)
+  copy.id = uuid()
+  copy.name = source.name.includes('(copy)') ? source.name : `${source.name} (copy)`
+  copy.visibility = 'private'
+  copy.createdAt = Date.now(); copy.updatedAt = Date.now()
+  copy.days = copy.days.map(d => ({
+    ...d,
+    id: uid('day'),
+    stops: d.stops.map(s => free.has(d.index)
+      ? { ...s, id: uid('st') }
+      : {
+          ...s,
+          id: uid('st'),
+          description: LOCKED_STOP_DESCRIPTION,
+          notes: '',
+          entryFeeInrPerPerson: 0,
+          transportCostInrTotal: 0,
+          openTime: undefined,
+          closeTime: undefined,
+          status: 'confirmed' as const,
+        }),
+  }))
   copy.expenses = copy.expenses.map(e => ({ ...e, id: uid('ex') }))
   copy.fixedCommitments = copy.fixedCommitments.map(f => ({ ...f, id: uid('fc') }))
   copy.members = [{ userId: ownerId, role: 'owner' as const, joinedAt: Date.now() }]
@@ -1113,6 +1194,14 @@ export function addDecision(tripId: ID, d: Pick<TripDecision, 'question' | 'cont
   }
   cache.decisions = [...cache.decisions, { ...d, id, tripId, votesByUserId: {}, status: 'open', raisedBy: cache.sessionUserId, createdAt: Date.now(), options: row.options }]
   addActivity(tripId, cache.sessionUserId, `raised decision “${d.question}”`, 'Decisions')
+  // Notification parity with addSuggestion: the other members hear about new
+  // group input too, not just suggestions.
+  const trip = tripById(tripId)
+  if (trip) {
+    for (const m of trip.members ?? []) {
+      if (m.userId !== cache.sessionUserId) pushNotification(m.userId, tripId, `${userName(cache.sessionUserId)} raised a decision: “${d.question}”.`)
+    }
+  }
   commit()
   fire('decisions', supabase.from('decisions').insert(row))
 }
@@ -1124,6 +1213,12 @@ export function voteOnDecision(decisionId: ID, optionId: ID): void {
   d.votesByUserId[cache.sessionUserId] = optionId
   cache.decisions = [...cache.decisions.slice(0, dIdx), d, ...cache.decisions.slice(dIdx + 1)]
   addActivity(d.tripId, cache.sessionUserId, 'voted on a decision', d.question)
+  const trip = tripById(d.tripId)
+  if (trip) {
+    for (const m of trip.members ?? []) {
+      if (m.userId !== cache.sessionUserId) pushNotification(m.userId, d.tripId, `${userName(cache.sessionUserId)} voted on “${d.question}”.`)
+    }
+  }
   commit()
   fire('decisions', supabase.from('decisions').update({ votes_by_user_id: d.votesByUserId }).eq('id', decisionId))
 }
@@ -1135,6 +1230,12 @@ export function resolveDecision(decisionId: ID, optionId: ID): void {
   d.status = 'resolved'; d.resolvedOptionId = optionId; d.resolvedAt = Date.now()
   cache.decisions = [...cache.decisions.slice(0, dIdx), d, ...cache.decisions.slice(dIdx + 1)]
   addActivity(d.tripId, cache.sessionUserId!, 'resolved a decision', d.question)
+  const trip = tripById(d.tripId)
+  if (trip && cache.sessionUserId) {
+    for (const m of trip.members ?? []) {
+      if (m.userId !== cache.sessionUserId) pushNotification(m.userId, d.tripId, `${userName(cache.sessionUserId)} resolved “${d.question}”.`)
+    }
+  }
   commit()
   fire('decisions', supabase.from('decisions').update({ status: 'resolved', resolved_option_id: optionId, resolved_at: d.resolvedAt }).eq('id', decisionId))
 }

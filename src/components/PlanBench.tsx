@@ -166,6 +166,10 @@ export function PlanBench() {
   const [stampKey, setStampKey] = useState(0)
   const [tearing, setTearing] = useState(false)
   const [imgState, setImgState] = useState<'idle' | 'busy' | 'done'>('idle')
+  // True for the duration of the share-image snapshot: the receipt renders its
+  // capture-safe form (static odometer digits, actions row hidden) so the PNG
+  // never catches a mid-roll odometer or the busy chip itself.
+  const [capturing, setCapturing] = useState(false)
 
   const reduced = useMedia('(prefers-reduced-motion: reduce)')
   const pointerFine = useMedia('(pointer: fine)')
@@ -304,6 +308,7 @@ export function PlanBench() {
   async function shareImage() {
     if (imgState === 'busy') return
     setImgState('busy')
+    setCapturing(true)
     try {
       const result = await shareBillImage(receiptRef.current)
       haptic(HAPTIC.success)
@@ -315,6 +320,8 @@ export function PlanBench() {
       const aborted = err instanceof DOMException && err.name === 'AbortError'
       if (!aborted) toast('Could not create the bill image — try "Copy bill as text"', 'err')
       setImgState('idle')
+    } finally {
+      setCapturing(false)
     }
   }
 
@@ -339,6 +346,10 @@ export function PlanBench() {
   }
 
   const fuelMode = isBenchFuelMode(input.mode)
+  // During a share-image capture the odometers render their static-text path:
+  // html-to-image's clone re-runs the .odo-strip transform transition and would
+  // otherwise rasterize the digits mid-roll.
+  const odometerAnimate = animate && !capturing
   const rideWord = input.mode === 'bus' || input.mode === 'train' ? 'on the move' : 'driving'
   const pct = (v: number) => Math.round((v / shown.total) * 100) || 0
   const stampTone = shown.fatigue.tone
@@ -367,7 +378,7 @@ export function PlanBench() {
             <div className="bench-head-actions">
               <button type="button" className={`bench-toggle${input.roundTrip ? ' on' : ''}`}
                 aria-pressed={input.roundTrip}
-                aria-label={`Return leg${input.roundTrip ? ' — billed twice (round trip)' : ' — off (one way)'}`}
+                aria-label={`Return leg${input.roundTrip ? ' ×2 — billed twice (round trip)' : ' — off (one way)'}`}
                 onClick={() => { haptic(HAPTIC.toggle); patch({ roundTrip: !input.roundTrip }) }}>
                 Return leg{input.roundTrip ? ' ×2' : ''}
               </button>
@@ -485,7 +496,7 @@ export function PlanBench() {
           )}
         </div>
 
-        <div className={`bench-receipt card${tearing ? ' tearing' : ''}`} ref={receiptRef}
+        <div className={`bench-receipt card${tearing ? ' tearing' : ''}${capturing ? ' bench-capturing' : ''}`} ref={receiptRef}
           onMouseMove={onTiltMove} onMouseLeave={onTiltEnd}>
           <span className="bench-barcode" aria-hidden="true" />
           <span className="bench-stamp" key={stampKey} aria-hidden="true">ESTIMATE</span>
@@ -500,7 +511,7 @@ export function PlanBench() {
           <div className="bench-total" aria-live="polite">
             <div className="bench-total-label">Per head</div>
             <div className="bench-total-main bench-total-perhead">
-              <Odometer value={formatInr(shown.perHead)} animate={animate} />
+              <Odometer value={formatInr(shown.perHead)} animate={odometerAnimate} />
               <span className="bench-perhead-unit">/ head</span>
             </div>
             <span className="bench-total-sub sr-only">{formatInr(shown.total)} total, {formatInr(shown.perHead)} per person</span>
@@ -520,15 +531,15 @@ export function PlanBench() {
           </div>
           <div className="bench-receipt-lines" key={lineKey}>
             <div className="bench-line">
-              <div className="bench-line-head"><span>{modeIcon(shownInput.mode, 14)} {fuelMode ? 'Fuel' : 'Fares'}</span><b><Odometer value={formatInr(shown.transportCost)} animate={animate} /></b></div>
+              <div className="bench-line-head"><span>{modeIcon(shownInput.mode, 14)} {fuelMode ? 'Fuel' : 'Fares'}</span><b><Odometer value={formatInr(shown.transportCost)} animate={odometerAnimate} /></b></div>
               <span className="bench-line-formula">{shown.transportFormula}</span>
             </div>
             <div className="bench-line">
-              <div className="bench-line-head"><span><BedDouble size={14} aria-hidden style={{ verticalAlign: '-2px', marginRight: 5 }} />Stays ({shown.rooms} room{shown.rooms === 1 ? '' : 's'})</span><b><Odometer value={formatInr(shown.stayCost)} animate={animate} /></b></div>
+              <div className="bench-line-head"><span><BedDouble size={14} aria-hidden style={{ verticalAlign: '-2px', marginRight: 5 }} />Stays ({shown.rooms} room{shown.rooms === 1 ? '' : 's'})</span><b><Odometer value={formatInr(shown.stayCost)} animate={odometerAnimate} /></b></div>
               <span className="bench-line-formula">{shown.stayFormula}</span>
             </div>
             <div className="bench-line">
-              <div className="bench-line-head"><span><UtensilsCrossed size={14} aria-hidden style={{ verticalAlign: '-2px', marginRight: 5 }} />Meals</span><b><Odometer value={formatInr(shown.mealCost)} animate={animate} /></b></div>
+              <div className="bench-line-head"><span><UtensilsCrossed size={14} aria-hidden style={{ verticalAlign: '-2px', marginRight: 5 }} />Meals</span><b><Odometer value={formatInr(shown.mealCost)} animate={odometerAnimate} /></b></div>
               <span className="bench-line-formula">{shown.mealFormula}</span>
             </div>
           </div>
@@ -561,7 +572,7 @@ export function PlanBench() {
                 ? <><Check size={13} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />Sent</>
                 : <><ImageDown size={13} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />{imgState === 'busy' ? 'Rendering…' : 'Share as image'}</>}
             </button>
-            {(copied || imgState === 'done') && !reduced && (
+            {(copied || imgState === 'done') && !reduced && !capturing && (
               <span className="bench-confetti" aria-hidden="true">
                 {Array.from({ length: 10 }, (_, i) => (
                   <i key={i} className="cf-bit" style={{

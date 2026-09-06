@@ -8,7 +8,7 @@ import {
   Route, Sparkles, Ticket, TriangleAlert,
 } from 'lucide-react'
 import type { Trip, PublishedItinerary } from '../data/types'
-import { useDb, currentUser, tripById, userById, duplicateTrip, registerPubCopy, registerPubView } from '../store/store'
+import { useDb, currentUser, tripById, userById, duplicateTripPublic, registerPubCopy, registerPubView } from '../store/store'
 import { simulateDay, originOf, minutesToHM, formatInr, getAssumptions, computeTotals, isRoundTrip } from '../lib/engine'
 import { useTimeFormat, formatHM, formatHMRange } from '../lib/timefmt'
 import { stopKindOf, STOP_KIND_LABELS } from '../lib/stopKind'
@@ -40,12 +40,16 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
 
   const creator = userById(pub.creatorId)
   const shareLink = `${location.origin}${location.pathname}#/pub/${pub.id}`
-  const price = pub.premiumPriceInr ?? 199
+  // Undefined when the creator published the itinerary as entirely free —
+  // the Unlock buttons below are hidden rather than inventing a ₹199 fallback.
+  const price = pub.premiumPriceInr
   const savedFlag = isSaved(pub.id)
 
   function copyThis() {
     if (!me) { toast('Log in to fork this trip into your plans.'); onNavigate('/auth'); return }
-    duplicateTrip(trip!, me.id)
+    // Premium-respecting fork: days outside the free preview land as locked
+    // stubs — the full plan stays on the original itinerary only.
+    duplicateTripPublic(trip!, me.id, pub!.freeDayIndexes)
     registerPubCopy(pub!.id)
     toast(`“${pub!.title}” forked — open it from My trips ✈️`)
     onNavigate('/trips')
@@ -308,7 +312,7 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
                         <div className="locked-cta">
                           <b><Lock size={13} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />{stops.length} more stops on this day</b>
                           <p className="small">Unlock the full day-by-day plan with stay contacts, timings and budget breakdown.</p>
-                          <button className="btn btn-saffron" onClick={() => toast('Premium unlock is a placeholder — no payments in this MVP.')}>Unlock Premium · ₹{price}</button>
+                          {price !== undefined && <button className="btn btn-saffron" onClick={() => toast('Premium unlock is a placeholder — no payments in this MVP.')}>Unlock Premium · ₹{price}</button>}
                         </div>
                       </div>
                     </>
@@ -346,10 +350,10 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
               <button className="btn fork-btn btn-lg" style={{ width: '100%' }} onClick={copyThis}>
                 <GitFork size={15} aria-hidden style={{ verticalAlign: '-2px', marginRight: 5 }} />Fork this trip
               </button>
-              <button className="btn btn-saffron btn-lg" style={{ width: '100%', marginTop: 10 }}
+              {price !== undefined && <button className="btn btn-saffron btn-lg" style={{ width: '100%', marginTop: 10 }}
                 onClick={() => toast('Premium unlock is a placeholder — no payments in this MVP.')}>
                 <Lock size={15} aria-hidden style={{ verticalAlign: '-2px', marginRight: 5 }} />Unlock Premium · ₹{price}
-              </button>
+              </button>}
               {pub.subscriberCta && <p className="hint-text" style={{ textAlign: 'center', marginTop: 8 }}>{pub.subscriberCta}</p>}
               <hr className="divider" />
               <div className="share-link-box"><code>{shareLink}</code><CopyButton text={shareLink} label="Share" /></div>

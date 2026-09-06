@@ -171,7 +171,13 @@ function DestTicker() {
           <span className={`t-tag${off ? ' t-off' : ''}`}>{tag}</span>
         </span>
       ))}
-      <span className="ticker-sep">◇</span>
+      {/* Decorative separator as an SVG shape, not the ◇ text glyph: text at
+          saffron-on-cream can never reach AA contrast — a shape is exempt. */}
+      <span className="ticker-sep" aria-hidden="true">
+        <svg width="9" height="9" viewBox="0 0 10 10" fill="none">
+          <path d="M5 1 L9 5 L5 9 L1 5 Z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+        </svg>
+      </span>
     </div>
   )
   return (
