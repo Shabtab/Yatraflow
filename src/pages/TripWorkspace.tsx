@@ -1,7 +1,8 @@
 // ============ Trip workspace ============
 // Shell: hero header, tab list, pending-change plumbing, applyChange, and
 // routing to the tab components in pages/trip/* (M3.4 split). Tabs:
-// Overview / Timeline / Map / Suggestions / Budget / Decisions / Share.
+// Overview / Timeline / Map / Group input / Budget / Share. The former
+// Suggestions and Decisions tabs merged into `group` (old slugs redirect).
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Trip } from '../data/types'
 import { useDb, tripById, currentUser, roleOf, canEdit, updateTrip, userById } from '../store/store'
@@ -23,27 +24,30 @@ import { pickTripQueryCandidates } from '../lib/tripThumb'
 import { OverviewTab } from './trip/OverviewTab'
 import { TimelineTab } from './trip/TimelineTab'
 import { MapTab } from './trip/MapTab'
-import { SuggestionsTab } from './trip/SuggestionsTab'
+import { GroupInputTab } from './trip/GroupInputTab'
 import { BudgetTab } from './trip/BudgetTab'
-import { DecisionsTab } from './trip/DecisionsTab'
 import { ShareTab } from './trip/ShareTab'
 import { cap } from './trip/shared'
 
-type TabKey = 'overview' | 'timeline' | 'board' | 'map' | 'suggestions' | 'budget' | 'decisions' | 'share'
+type TabKey = 'overview' | 'timeline' | 'board' | 'map' | 'group' | 'budget' | 'share'
 
 const TABS: [TabKey, string][] = [
   ['overview', 'Overview'],
   ['timeline', 'Timeline'],
   ['board', 'Board'],
   ['map', 'Map'],
-  ['suggestions', 'Suggestions'],
+  ['group', 'Group input'],
   ['budget', 'Budget'],
-  ['decisions', 'Decisions'],
   ['share', 'Share'],
 ]
 
-/** URL tab segment → TabKey (F-21): junk falls back to Overview. */
+/** Legacy tab slugs that now redirect to the merged Group input tab. */
+const LEGACY_TAB_SLUGS = ['suggestions', 'decisions']
+
+/** URL tab segment → TabKey (F-21): junk falls back to Overview; the old
+    `suggestions`/`decisions` slugs redirect to the merged `group` tab. */
 function sanitizeTab(s: string | undefined): TabKey {
+  if (s && LEGACY_TAB_SLUGS.includes(s)) return 'group'
   return TABS.some(([k]) => k === s) ? (s as TabKey) : 'overview'
 }
 
@@ -52,6 +56,15 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
   const me = currentUser(db)
   const trip = tripById(tripId)
   const [tab, setTabState] = useState<TabKey>(() => sanitizeTab(initialTab))
+  // Normalize a legacy slug in the URL once on mount so existing
+  // #/trip/<id>/suggestions|decisions links keep working but self-heal to `group`.
+  useEffect(() => {
+    const seg = location.hash.replace(/^#/, '').split('/').filter(Boolean)
+    if (seg[0] === 'trip' && LEGACY_TAB_SLUGS.includes(seg[2] ?? '')) {
+      seg[2] = 'group'
+      history.replaceState(null, '', `#/${seg.join('/')}`)
+    }
+  }, [])
   /** F-21: the active tab rides the URL as #/trip/<id>/<tab> (no segment =
       Overview). replaceState, not location.hash, so switching tabs writes no
       extra history entry and doesn't trip App's scroll-reset; browser Back
@@ -195,11 +208,10 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
       {/* ---------- Tabs ---------- */}
       <div className="tabbar" role="tablist" style={{ marginTop: 20 }}>
         {TABS.map(([key, label]) => {
-          const count = key === 'suggestions'
+          const count = key === 'group'
             ? db.suggestions.filter(s => s.tripId === trip.id && s.status === 'open').length
-            : key === 'decisions'
-              ? db.decisions.filter(d => d.tripId === trip.id && d.status === 'open').length
-              : undefined
+              + db.decisions.filter(d => d.tripId === trip.id && d.status === 'open').length
+            : undefined
           return (
             <button key={key} role="tab" aria-selected={tab === key}
               className={`tab-btn ${tab === key ? 'active' : ''}`} onClick={() => setTab(key)}>
@@ -220,7 +232,7 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
       )}
 
       <div className="tab-panel" key={tab}>
-      {tab === 'overview' && <OverviewTab trip={effective} editable={editable} onOpenDecisions={() => setTab('decisions')} onOpenTimeline={() => setTab('timeline')} onOpenMap={() => setTab('map')} onInvite={() => setTab('share')} health={health} totals={totals} />}
+      {tab === 'overview' && <OverviewTab trip={effective} editable={editable} onOpenDecisions={() => setTab('group')} onOpenTimeline={() => setTab('timeline')} onOpenMap={() => setTab('map')} onInvite={() => setTab('share')} health={health} totals={totals} />}
       {tab === 'timeline' && <TimelineTab trip={effective} editable={editable} applyChange={applyChange} legCorrections={legCorrections} suggestionCache={suggestionCache} onOpenBoard={() => setTab('board')} />}
       {tab === 'board' && (
         <React.Suspense fallback={<div className="container loading-block"><div className="spinner" />Loading board…</div>}>
@@ -233,9 +245,8 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
           <MapTab trip={effective} editable={editable} applyChange={applyChange} suggestionCache={suggestionCache} />
         </React.Suspense>
       )}
-      {tab === 'suggestions' && <SuggestionsTab trip={trip} editable={editable} me={me} />}
+      {tab === 'group' && <GroupInputTab trip={trip} editable={editable} me={me} />}
       {tab === 'budget' && <BudgetTab trip={trip} totals={totals} editable={editable} />}
-      {tab === 'decisions' && <DecisionsTab trip={trip} me={me} editable={editable} />}
       {tab === 'share' && <ShareTab trip={trip} me={me} editable={editable} onNavigate={onNavigate} />}
       </div>
 

@@ -11,6 +11,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - **Sourcemaps ship with every build.** Production stack traces and Lighthouse's bundle attribution now map back to the original source.
 
 ### Changed
+- **The two group-input tabs are now one.** Suggestions and Decisions merge into a single "Group input" tab: one stat strip (Open / Need you / Resolved) and one filter bar span both kinds, suggestion and decision cards interleave in a single list with whatever needs your vote first, and one composer card switches between "Stop idea" and "Question". The activity feed lives here now, and the ⚡ "next to unblock" focus extends to open suggestions you haven't voted on. Old `#/trip/<id>/suggestions` and `#/trip/<id>/decisions` links still work and redirect to the new tab.
 - **The landing page paints instantly instead of waiting on the backend.** The router's ready-gate no longer holds the landing behind a spinner — the page reads no store data and is the exact frame the gate would show anyway. This removes the spinner-to-landing swap that produced the 0.997 desktop CLS reading.
 - **Smaller first load for the landing.** My Trips, the trip workspace and Explore now load on first visit instead of riding in the main bundle — the landing main chunk drops from 683 kB to 505 kB (gzip 200 → 148 kB). Fonts already load with `display=swap` plus both Google Fonts preconnects, so no further font work was needed.
 
