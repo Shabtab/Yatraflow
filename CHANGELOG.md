@@ -2,6 +2,11 @@
 
 All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions are pre-1.0 MVP milestones.
 
+## [Unreleased]
+
+### Fixed
+- **Suggestion positions are road-true on routes with geometry.** `kmFromStartForHit` now snaps hits onto the OSRM polyline when provided, so switchback roads report road km instead of straight-line km. Falls back to anchors when no geometry exists.
+
 ## [0.39.0] — 2026-09-06
 
 **v0.39.0 = the hard-surface pass: a full skills-based review of every page found ~70 issues — the 5 HIGH bugs are dead, one icon language now runs the whole app, and the numeric/a11y/consistency debt from the pre-redesign tabs is paid.** Details in the per-commit bodies.

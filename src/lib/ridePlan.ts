@@ -249,6 +249,7 @@ export function fitScoreForPurpose(h: PlaceHit, purpose: HaltPurpose): number {
 
 export interface AssignOpts {
   homeCenter?: { lat: number; lng: number } | null
+  routePolyline?: { lat: number; lng: number }[] | null
 }
 
 /**
@@ -286,7 +287,7 @@ export function assignSegmentHits(
     let bestScore = Infinity
     for (const h of pool) {
       if (used.has(h.id as string)) continue
-      const pos = kmFromStartForHit(h, anchors)
+      const pos = kmFromStartForHit(h, anchors, { routePolyline: opts.routePolyline ?? undefined })
       if (pos == null) continue // unpositionable hit can't serve a timed segment
       const dist = Math.abs(pos - seg.targetKm)
       const window = Math.max(1, seg.maxKm - seg.minKm)

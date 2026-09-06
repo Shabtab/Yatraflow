@@ -85,6 +85,64 @@ export function detourKm(
 /** Nothing within this radius of the trip's start is ever suggested. */
 export const HOME_ZONE_KM = 15
 
+export interface RoutePolylineOpts {
+  /** Full OSRM route geometry. When present, hits snap to the polyline for road-true km. */
+  routePolyline?: { lat: number; lng: number }[] | null
+}
+
+/**
+ * Snap a point onto a route polyline (nearest-segment projection).
+ * Returns cumulative road km from the polyline origin, or null when unusable.
+ * Polyline is stride-sampled to 500 points max to bound CPU on dense OSRM geometry.
+ */
+export function projectOntoPolyline(
+  p: Pick<PlaceHit, 'latitude' | 'longitude'>,
+  polyline: { lat: number; lng: number }[],
+): { km: number; segIndex: number } | null {
+  if (!Number.isFinite(p.latitude) || !Number.isFinite(p.longitude)) return null
+  const raw = polyline.filter(q => Number.isFinite(q.lat) && Number.isFinite(q.lng))
+  if (raw.length < 2) return null
+  const stride = Math.max(1, Math.ceil(raw.length / 500))
+  const pts: { lat: number; lng: number }[] = []
+  for (let i = 0; i < raw.length; i += stride) pts.push(raw[i])
+  if (pts[pts.length - 1] !== raw[raw.length - 1]) pts.push(raw[raw.length - 1])
+  // cumulative road km at each polyline point
+  const cum: number[] = [0]
+  for (let i = 1; i < pts.length; i++) {
+    cum.push(cum[i - 1] + haversineKm(pts[i - 1].lat, pts[i - 1].lng, pts[i].lat, pts[i].lng))
+  }
+  // equirectangular km projection per segment (fine at segment scale)
+  const latRef = (p.latitude * Math.PI) / 180
+  const kx = 111.32 * Math.cos(latRef)
+  const ky = 111.32
+  const px = p.longitude * kx
+  const py = p.latitude * ky
+  let bestKm = 0
+  let bestD2 = Infinity
+  let bestSeg = 0
+  for (let i = 0; i < pts.length - 1; i++) {
+    const ax = pts[i].lng * kx
+    const ay = pts[i].lat * ky
+    const bx = pts[i + 1].lng * kx
+    const by = pts[i + 1].lat * ky
+    const dx = bx - ax
+    const dy = by - ay
+    const len2 = dx * dx + dy * dy
+    let t = len2 > 0 ? ((px - ax) * dx + (py - ay) * dy) / len2 : 0
+    t = Math.min(1, Math.max(0, t))
+    const cx = ax + t * dx
+    const cy = ay + t * dy
+    const d2 = (px - cx) * (px - cx) + (py - cy) * (py - cy)
+    if (d2 < bestD2) {
+      bestD2 = d2
+      bestSeg = i
+      const segLen = Math.max(0, cum[i + 1] - cum[i])
+      bestKm = cum[i] + t * segLen
+    }
+  }
+  return { km: Math.max(0, bestKm), segIndex: bestSeg }
+}
+
 /**
  * Coarse along-route position of a hit (km from the journey origin).
  * Prefers the real road distance when the provider gave one (`alongRouteKm`,
@@ -96,8 +154,13 @@ export const HOME_ZONE_KM = 15
 export function kmFromStartForHit(
   h: Pick<PlaceHit, 'latitude' | 'longitude' | 'alongRouteKm'>,
   anchors: { lat: number; lng: number }[],
+  opts: RoutePolylineOpts = {},
 ): number | null {
   if (h.alongRouteKm != null && Number.isFinite(h.alongRouteKm)) return Math.max(0, h.alongRouteKm)
+  if (opts.routePolyline && opts.routePolyline.length >= 2) {
+    const snap = projectOntoPolyline(h, opts.routePolyline)
+    if (snap) return snap.km
+  }
   const pts = anchors.filter(a => Number.isFinite(a.lat) && Number.isFinite(a.lng))
   if (pts.length === 0 || !Number.isFinite(h.latitude) || !Number.isFinite(h.longitude)) return null
   // cumulative km at each anchor (anchors sit ON the route line, so the
