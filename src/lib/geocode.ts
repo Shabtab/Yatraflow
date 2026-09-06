@@ -189,7 +189,7 @@ export async function planJourneyHalts(
     ? filterPlannedNearby(candidates, opts.plannedStops)
     : candidates
   const routePolyline = (opts.routeCoords ?? []).filter(c => Number.isFinite(c[0]) && Number.isFinite(c[1])).map(c => ({ lat: c[1], lng: c[0] }))
-  const assignOpts = { homeCenter: opts.homeCenter ?? null, routePolyline: routePolyline.length >= 2 ? routePolyline : null, speedKmph: opts.speedKmph }
+  const assignOpts = { homeCenter: opts.homeCenter ?? null, routePolyline: routePolyline.length >= 2 ? routePolyline : null, speedKmph: opts.speedKmph, dnaVector: opts.dnaVector }
   const assigned = assignSegmentHits(unplanned, segments, anchors, assignOpts)
   // Unassigned corridor hits surface as See & do — otherwise the sightseeing
   // column is empty by construction (the planner never makes 'sight' segments).

@@ -12,6 +12,7 @@ import { Modal, Field, toast } from '../../components/ui'
 import { useSuggestionCache } from '../../hooks/useSuggestionCache'
 import { corridorAnchors, detourKm, detourMinutes, googleEnabled, planJourneyHalts, reasonForSegmentHit, type NearbyOpts } from '../../lib/geocode'
 import { dayDetourBudgetMin, budgetSharePct } from '../../lib/detourBudget'
+import { buildDnaVector, loadDnaLog, recordDnaEvent, dnaNoteForHit } from '../../lib/tripDna'
 import type { PlaceHit, SegmentHit } from '../../lib/geocode'
 import { anchorHash } from '../../lib/providers/hits'
 import { fetchDailyWeather, forecastAvailable, isoAddDays } from '../../lib/weather'
@@ -50,6 +51,8 @@ export function MapTab({ trip, editable, applyChange, suggestionCache }: {
   const timeFormat = useTimeFormat()
   const [loadingPois, setLoadingPois] = useState(false)
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set())
+  // dismissed suggestion ids — logged as DNA declines, hidden for the session
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set())
   // bump to force a corridor re-search — the only refetch path besides a
   // detour-scope change or a first-ever load (empty cache)
   const [refreshTick, setRefreshTick] = useState(0)
@@ -164,6 +167,8 @@ export function MapTab({ trip, editable, applyChange, suggestionCache }: {
     travellers: trip.travellers,
     travelStyle: trip.travelStyle,
     speedKmph: MODE_SPEED[trip.transportMode] ?? 40,
+    // Trip DNA: the crew's past picks bias scoring ties toward favoured kinds
+    dnaVector: buildDnaVector(loadDnaLog(), trip.id),
     plannedStops: trip.days.flatMap(d => d.stops)
       .filter(s => s.status !== 'rejected' && Number.isFinite(s.lat) && Number.isFinite(s.lng))
       .map(s => ({ lat: s.lat, lng: s.lng, name: s.title })),
@@ -243,6 +248,8 @@ export function MapTab({ trip, editable, applyChange, suggestionCache }: {
   /** One corridor-suggestion row (gap or hit). Shared by both split columns. */
   function renderPoi(sh: SegmentHit) {
     const hit = sh.hit
+    // dismissed stays hidden for the session (logged as a DNA decline)
+    if (hit && dismissedIds.has(hit.id as string)) return null
     if (!hit) {
       return (
         <div key={`gap-${sh.segment.index}`} className="poi-plan-row poi-plan-gap">
@@ -258,6 +265,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache }: {
       travelStyle: trip.travelStyle,
       plannedStops: trip.days.flatMap(d => d.stops).filter(s => s.status !== 'rejected').length,
     })
+    const dnaNote = dnaNoteForHit(hit, buildDnaVector(loadDnaLog(), trip.id))
     return (
       <div key={hit.id} className="poi-plan-row">
         <div className="ride-spot-title">
@@ -278,6 +286,9 @@ export function MapTab({ trip, editable, applyChange, suggestionCache }: {
             {detourMin > dayBudget ? ' — over budget, pick it only if it is worth it' : ''}
           </div>
         )}
+        {dnaNote && (
+          <div className="poi-desc small">♥ {dnaNote}</div>
+        )}
         {hit.description && <div className="poi-desc small muted">{hit.description}</div>}
         {(hit.openTime || hit.closeTime) && (
           <div className="poi-desc small muted"><MetaIcon icon={ Clock } tone="time" />{formatHMRange(hit.openTime, hit.closeTime, timeFormat)} (reported)</div>
@@ -286,7 +297,18 @@ export function MapTab({ trip, editable, applyChange, suggestionCache }: {
           {editable && (
             added
               ? <span className="chip chip-teal"><CircleCheck size={11} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />Added</span>
-              : <button className="btn btn-primary btn-sm" onClick={() => openAddModal(hit)}>+ Add</button>
+              : <>
+                  <button className="btn btn-primary btn-sm" onClick={() => openAddModal(hit)}>+ Add</button>
+                  {' '}
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    title="Not interested — hide this and teach the engine"
+                    onClick={() => {
+                      recordDnaEvent({ tripId: trip.id, action: 'decline', category: hit.category })
+                      setDismissedIds(prev => new Set(prev).add(hit.id as string))
+                    }}
+                  >Not for us</button>
+                </>
           )}
         </div>
       </div>
@@ -383,7 +405,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache }: {
             <p className="hint-text">You can fine-tune duration, fees and timings in the Timeline afterwards.</p>
             <div style={{ display: 'flex', gap: 9, justifyContent: 'flex-end', marginTop: 8 }}>
               <button className="btn btn-outline" onClick={() => setPoiDraft(null)}>Cancel</button>
-              <button className="btn btn-primary" onClick={() => { addPoiToDay(poiDraft.hit, pickDay); setPoiDraft(null) }}>
+              <button className="btn btn-primary" onClick={() => { recordDnaEvent({ tripId: trip.id, action: 'accept', category: poiDraft.hit.category }); addPoiToDay(poiDraft.hit, pickDay); setPoiDraft(null) }}>
                 Add to timeline
               </button>
             </div>

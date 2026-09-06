@@ -6,6 +6,7 @@ import type { VehicleProfile } from '../../data/types'
 // and no env access live here — the corridor tests (tests/nearby.test.ts)
 // exercise this module directly.
 import { haversineKm } from '../geo'
+import type { DnaVector } from '../tripDna'
 
 export interface PlaceHit {
   id: number | string
@@ -259,6 +260,8 @@ export interface NearbyOpts {
   dayStartTimes?: string[]
   /** rain chance percent per day index for the weather join (null = no forecast). */
   dayRainPct?: (number | null)[]
+  /** trip preference vector — favoured categories win scoring ties. */
+  dnaVector?: DnaVector
 }
 
 /**

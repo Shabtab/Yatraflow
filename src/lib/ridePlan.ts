@@ -12,6 +12,7 @@
 
 import { haversineKm } from './geo'
 import { classifyRoadWindow, type RoadKind } from './roadPersonality'
+import { dnaBoostForHit, type DnaVector } from './tripDna'
 import { hmToMinutes } from './engine'
 import { HOME_ZONE_KM, kmFromStartForHit, detourKm, detourMinutes, dedupeCandidates, type HaltPurpose, type PlaceHit } from './providers/hits'
 
@@ -407,6 +408,8 @@ export interface AssignOpts {
   routePolyline?: { lat: number; lng: number }[] | null
   /** door-to-door speed for time-based detour scoring — defaults to 40 km/h */
   speedKmph?: number
+  /** trip preference vector — favoured categories score a similarity boost */
+  dnaVector?: DnaVector
 }
 
 /** Rain chance at or above this means the day counts as rainy. Matches OverviewTab. */
@@ -440,7 +443,9 @@ export function scoreHitForSegment(
   // Detour scores in minutes at the trip's speed, not flat km: the same
   // off-route distance costs a slow mode more. ×2 keeps the old weight at
   // the 60 km/h reference (10 km = 10 min = 20 points, as before).
-  return distPenalty + detourMinutes(h, anchors, opts.speedKmph) * 2 + (3 - fit) * 4
+  // Trip DNA bends ties only: favoured categories shave up to 3 points.
+  const dna = opts.dnaVector ? dnaBoostForHit(h, opts.dnaVector) : 0
+  return distPenalty + detourMinutes(h, anchors, opts.speedKmph) * 2 + (3 - fit) * 4 - dna
 }
 
 /**
