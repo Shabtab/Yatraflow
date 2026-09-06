@@ -1,6 +1,7 @@
 // ============ Auth page ============
 import { useEffect, useState } from 'react'
 import { TriangleAlert } from 'lucide-react'
+import { PillNav } from '../components/PillNav'
 import { useDb, currentUser, login, signup } from '../store/store'
 import { isSupabaseConfigured } from '../lib/supabase'
 import { MISSING_BACKEND_MESSAGE } from '../lib/authErrors'
@@ -50,10 +51,10 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
           {mode === 'login' ? 'Log in to your trip plans.' : 'Free forever for planning. No card needed.'}
         </p>
 
-        <div className="tabbar" style={{ margin: '18px 0' }}>
-          <button className={`tab-btn ${mode === 'login' ? 'active' : ''}`} aria-pressed={mode === 'login'} onClick={() => { setMode('login'); setError(null) }}>Log in</button>
-          <button className={`tab-btn ${mode === 'signup' ? 'active' : ''}`} aria-pressed={mode === 'signup'} onClick={() => { setMode('signup'); setError(null) }}>Sign up</button>
-        </div>
+        <PillNav className="tabbar auth-tabs" role="tablist" aria-label="Login or sign up" activeKey={mode}>
+          <button className="tab-btn" data-pill-key="login" aria-pressed={mode === 'login'} onClick={() => { setMode('login'); setError(null) }}>Log in</button>
+          <button className="tab-btn" data-pill-key="signup" aria-pressed={mode === 'signup'} onClick={() => { setMode('signup'); setError(null) }}>Sign up</button>
+        </PillNav>
 
         {/* Say so up front: a build with no Supabase project compiled in can
             only ever fail, and "Failed to fetch" blames the wrong thing. */}
