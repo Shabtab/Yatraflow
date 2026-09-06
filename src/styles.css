@@ -2650,6 +2650,10 @@ html.vt-active :where(*) {
 .bench-receipt-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
 .bench-receipt-actions .chip { cursor: pointer; font-size: 12px; font-weight: 650; }
 .bench-receipt-actions .chip:disabled { opacity: .65; cursor: default; }
+/* Capture frame: the share-image snapshot must not include the busy chip —
+   the actions row is hidden (visibility keeps the layout stable) while the
+   receipt renders its capture-safe form. */
+.bench-receipt.bench-capturing .bench-receipt-actions { visibility: hidden; }
 .bench-fineprint { font-size: 11px; color: var(--receipt-ink-faint); text-align: center; margin: 0; line-height: 1.5; }
 
 /* ---------- Plan Bench 3.0 — motion system (transform/opacity only) ---------- */
