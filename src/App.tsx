@@ -176,8 +176,14 @@ export default function App() {
   // #/trip/... used to flash Landing, "No trips yet" rendered before data, and
   // invite links showed "broken" mid-load. One gate at the router fixes all
   // three — auth and share links don't read the cache, so they stay live.
+  // The landing route stays live too: LandingPage (and the Plan Bench inside
+  // it) never reads the store, and route "/" renders LandingPage after the
+  // gate regardless of who is signed in — so rendering it immediately shows
+  // exactly what the post-gate frame would be, instead of a spinner that
+  // swaps to the full page (the landing load shift, Lighthouse CLS 0.997).
   const ready = useStoreReady()
-  if (!ready && parts[0] !== 'auth' && parts[0] !== 'share') {
+  const bareRoute = parts[0] === undefined || parts[0] === ''
+  if (!ready && parts[0] !== 'auth' && parts[0] !== 'share' && !bareRoute) {
     page = <div className="container loading-block"><div className="spinner" />Loading…</div>
   } else if (parts[0] === 'share' && parts[1]) {
     page = <SharedTripPage payload={parts[1]} onNavigate={navigate} />
