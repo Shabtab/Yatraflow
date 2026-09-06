@@ -198,6 +198,8 @@ interface GooglePlace {
   primaryTypeDisplayName?: { text?: string }
   regularOpeningHours?: { periods?: GooglePeriod[] }
   currentOpeningHours?: { periods?: GooglePeriod[] }
+  rating?: number
+  userRatingCount?: number
 }
 
 interface GooglePeriod {
@@ -221,7 +223,8 @@ interface RoutingSummary {
 // distanceMeters`, NOT `routingSummaries.distanceMeters` (live-verified
 // 2026-08-29: the latter shape 400s with INVALID_ARGUMENT). duration is
 // omitted — nothing consumes it.
-const NEARBY_FIELD_MASK = [
+// Rating paths ride the same events — no extra SKU, mask-only change.
+export const NEARBY_FIELD_MASK = [
   'places.id',
   'places.displayName',
   'places.location',
@@ -229,6 +232,8 @@ const NEARBY_FIELD_MASK = [
   'places.primaryTypeDisplayName',
   'places.regularOpeningHours',
   'places.currentOpeningHours',
+  'places.rating',
+  'places.userRatingCount',
   'routingSummaries.legs.distanceMeters',
 ].join(',')
 
@@ -321,6 +326,8 @@ function hitsFromResponses(
         fromGoogleAlongRoute: routeTotalKm != null,
         category: queries[qi].cat,
         ...hoursFrom(p),
+        ...(p.rating != null && Number.isFinite(p.rating) ? { rating: p.rating } : {}),
+        ...(p.userRatingCount != null && Number.isFinite(p.userRatingCount) ? { ratingCount: p.userRatingCount } : {}),
         // leg0 = road km from the route origin to this place — its position
         // along the journey (ride-plan segment assignment + card labels)
         ...(l0 != null && Number.isFinite(l0) ? { alongRouteKm: Math.max(0, l0) / 1000 } : {}),

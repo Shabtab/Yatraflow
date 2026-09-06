@@ -29,6 +29,10 @@ export interface PlaceHit {
   /** reported opening hours "HH:MM" — Google hits only, rendered as "reported" */
   openTime?: string
   closeTime?: string
+  /** Google rating 1–5 — present on Google hits when the mask returns it */
+  rating?: number
+  /** Google review count — gates the rating boost against thin samples */
+  ratingCount?: number
   /** real road detour in km (Google routingSummaries); undefined when unknown */
   offRouteKm?: number
   // ---- ride-plan annotations (filled by src/lib/ridePlan.ts + providers) ----
@@ -320,6 +324,13 @@ export function poiTouristScore(
   if ((h.description ?? '').length > 40) s += 3
   if (cat === 'sightseeing' || cat === 'nature' || cat === 'beach' || cat === 'temple' || cat === 'museum') s += 3
   if (categoryBias && categoryBias[cat]) s += categoryBias[cat] // itinerary gaps
+  // Google ratings: trusted samples only (10+ reviews). Strong picks outrank
+  // geography-only equals; free-mode hits without ratings score as before.
+  const rc = h.ratingCount ?? 0
+  if (rc >= 10 && h.rating != null && Number.isFinite(h.rating)) {
+    if (h.rating >= 4.5) s += 4
+    else if (h.rating >= 4.0) s += 2
+  }
   const frac = Math.min(1, distToNearest(h, anchors) / Math.max(1, radiusM))
   s -= frac * 6
   return s

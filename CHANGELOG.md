@@ -9,6 +9,11 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - **Smarter halt assignment.** Segment assignment now runs an improvement sweep after the greedy pass, so an early segment no longer steals a hit that fits a later segment better.
 - **No more duplicate or already-planned suggestions.** Near-duplicate places collapse into one, and candidates near an existing stop are dropped.
 - **Every suggestion says why.** Cards show a reason line built from the leg, detour and nearest city.
+- **Smarter cadence for your crew.** Relaxed trips and big groups get earlier breaks, packed trips push further.
+- **Detours scored in minutes.** The same off-route distance costs slow modes more.
+- **Lunch lands at lunchtime.** Meal halts slide into 11:30-14:30 based on the day's start time.
+- **Rain reranks picks.** Wet days favor museums and cafes over beaches, and cards say so.
+- **Ratings count in Google mode.** Trusted 4.0+ picks outrank unrated equals.
 
 ## [0.39.0] — 2026-09-06
 
