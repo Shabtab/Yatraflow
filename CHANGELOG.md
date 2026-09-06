@@ -5,6 +5,9 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 ## [Unreleased]
 
 ### Added
+- **Publishing is now an editor, not a hardcoded payload.** The Share tab's publish card lets the owner pick which days are the free preview (Day 1 free by default, at least one free day enforced), set an optional premium price — empty or ₹0 makes the whole itinerary free — and write the tagline, best season, travel tips and subscriber CTA, all pre-filled from the live publication when updating. Premium days require a CTA; the public page's Unlock buttons derive their price from the publication instead of an invented ₹199.
+- **Forking a public itinerary respects its premium gate.** Forking used to copy every premium day in full. `duplicateTripPublic` keeps the publication's free days intact and reduces every locked day's stops to stubs (title kept, description replaced with the locked notice, notes cleared, costs and times zeroed) — used by both fork buttons on the public page and by Explore forks of publications that actually have locked days; internal forks and free publications keep the full copy.
+- **Creator mode is real.** Explore cards from creators show a one-line bio snippet plus YouTube/Instagram links; Profile's creator toggle now works both ways (disabling confirms, publications stay live) with honest copy — publishing is open to everyone, the badge carries bio + links; and a "My publications" card lists your itineraries with views, forks and Unpublish.
 - **Sourcemaps ship with every build.** Production stack traces and Lighthouse's bundle attribution now map back to the original source.
 
 ### Changed

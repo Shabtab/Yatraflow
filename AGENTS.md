@@ -343,6 +343,13 @@ Hard rules (each learned the hard way — do not relearn them):
   mode). The global `button { color: inherit }` reset in `styles.css` makes every button take
   theme text; set a colour explicitly only when a button deliberately differs.
 
+- **lucide-react 1.x removed all brand icons** (`Instagram`, `Youtube`, `Twitter`, … were
+  dropped upstream) — importing them is a tsc error, not a lint nit. Substitute a generic
+  glyph and carry the network in the `aria-label` (Explore creator links use
+  `TvMinimalPlay` for YouTube and `Camera` for Instagram). Check availability with
+  `node -e "console.log(Object.keys(require('lucide-react')).filter(n => /x/i.test(n)))"`
+  before writing the import.
+
 ## 5. External services
 
 Supabase (auth/data) · Vercel (auto-deploy from `main`) · Google Places
