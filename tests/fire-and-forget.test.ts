@@ -90,7 +90,9 @@ async function freshStore() {
     options: [{ id: 'opt-1', label: 'Time Out' }], votesByUserId: {},
   } as any)
   db.published.push({
-    id: 'pub-1', tripId: 'trip-1', creatorId: 'amelia', slug: 'lisbon-3-days', views: 0, copies: 0,
+    // creator ≠ session user: registerPubView skips the creator's own visits,
+    // so seeding amelia here would mute the rpc the case asserts on.
+    id: 'pub-1', tripId: 'trip-1', creatorId: 'priya', slug: 'lisbon-3-days', views: 0, copies: 0,
   } as any)
   return store
 }

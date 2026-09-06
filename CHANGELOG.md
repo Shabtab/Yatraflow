@@ -2,10 +2,26 @@
 
 All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions are pre-1.0 MVP milestones.
 
-## [Unreleased]
+## [0.36.0] — 2026-09-06
+
+**v0.36.0 = the Budget + Group-input deep redesign: every rupee attributed (per day, per category, per person), every group item answerable at a glance, and the published-stats persistence bug fixed.** Details in the per-commit bodies.
+
+### Added
+- **The Budget tab answers "are we over?" in one glance.** A four-tile metric strip (per person vs target · per day · remaining vs target · % spent) replaces the sparse right column, the group-budget hero names the over/under figure with a "Trim ₹X to hit target" chip, and new per-day bars stack each day's expenses + drive against a daily-average tick — a day running hot turns amber with a one-line trim suggestion.
+- **Expenses gain "who paid" and a settlement card.** Expense lines take a payer (a member or the shared kitty; no schema migration — expenses ride in the trip row's JSONB); a new Who paid · who owes card shows each member's balance against their fair share and spells out the simplest settlement transfers.
+- **Expense lines edit in place and add in one row.** A teal quick-add row (name + ₹ + an ⋯ toggle for category/payer/flags/stop) replaces the buried details form, the pencil opens an inline editor backed by the new `updateExpense` store action (no more delete-and-retype), and the previously dead `dayIndex`/`stopId` fields are real: attach a line to a day or stop and the per-day bars follow it.
+- **Group input shows who voted what and where the tally leans.** Decision options list voter avatars with per-option tallies and cost impacts, the leading option tints, and a "Tally leans X — editors resolve" verdict keeps the final say with editors; a "Needs you" digest in the sidebar scrolls to and flashes the cards waiting on your vote.
+- **The composer picks a real day, category and cost.** Stop ideas get Day + category pickers (the hardcoded "Day 1 · sightseeing" is gone) and a visible transport-₹ field; decisions get a context field and per-option cost-impact inputs; and a suggestion without a picked place anchors to the trip's own start instead of silently inventing Munnar.
+
+### Changed
+- **Per-vote decision pings stop.** On a six-person trip every ballot notified five people; members now hear about a decision when it is raised and when it is resolved — individual votes live in the activity feed.
+- **Group input fits in one header row and every filter has an exit.** The stat strip and filter pills compress to a single row, per-filter empty states get their own copy plus a "Show everything" escape, and the Budget tab's hardcoded category hexes move onto theme-aware `--cat-*` tokens (dead `.budget-reassure` / `.dec-strip` / unblock CSS removed).
 
 ### Fixed
-- **Group input is usable without seeing colour, fork copy is honest, and decision notifications name the outcome.** Suggestion up/down and decision-option vote buttons expose their state via `aria-pressed` instead of colour alone; the day lock picker uses one stable accessible name ("Day N — title lock") with `aria-pressed` carrying the state; the public page's fork blurb says locked days arrive as placeholders instead of promising "the full plan"; and vote/resolution notifications to members now include the chosen option's label.
+- **Views and forks on Explore now actually persist.** The `bump_published_stats` RPC declared its id `uuid` while published ids are text slugs, so every increment died on the cast — migration `supabase/migrations/20260906_bump_published_stats_text.sql` retypes it to `text` (**run once per environment**).
+- **View counting counts visits, not refreshes.** One view per itinerary per browser session, and the creator's own visits don't count.
+- **Unpublish either sticks or says so.** It is owner-gated, and a failed delete restores the cached publication (with an error toast) instead of the UI silently disagreeing with the server until the next refresh.
+- **Group input is usable without seeing colour, fork copy is honest, and decision notifications name the outcome.** Suggestion up/down and decision-option vote buttons expose their state via `aria-pressed` instead of colour alone; the day lock picker uses one stable accessible name ("Day N — title lock") with `aria-pressed` carrying the state; the public page's fork blurb says locked days arrive as placeholders instead of promising "the full plan"; and resolution notifications include the chosen option's label.
 
 ## [0.35.0] — 2026-09-06
 

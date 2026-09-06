@@ -357,7 +357,10 @@ alter publication supabase_realtime add table public.profiles;  -- profile cards
 -- ============================================================
 -- RPC for published itinerary stats (bypasses RLS)
 -- ============================================================
-create or replace function public.bump_published_stats(p_id uuid, p_kind text)
+-- p_id is TEXT: published ids are client-minted slugs ("pub_xxx"), and the
+-- original uuid typing made every call fail the cast (see
+-- migrations/20260906_bump_published_stats_text.sql).
+create or replace function public.bump_published_stats(p_id text, p_kind text)
 returns void as $$
 begin
   if p_kind = 'views' then
@@ -367,3 +370,5 @@ begin
   end if;
 end;
 $$ language plpgsql security definer;
+
+grant execute on function public.bump_published_stats(text, text) to anon, authenticated;
