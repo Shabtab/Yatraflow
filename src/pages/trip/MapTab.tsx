@@ -12,7 +12,7 @@ import { Modal, Field, toast } from '../../components/ui'
 import { useSuggestionCache } from '../../hooks/useSuggestionCache'
 import { corridorAnchors, detourKm, detourMinutes, googleEnabled, planJourneyHalts, reasonForSegmentHit, type NearbyOpts } from '../../lib/geocode'
 import { dayDetourBudgetMin, budgetSharePct } from '../../lib/detourBudget'
-import { buildDnaVector, loadDnaLog, recordDnaEvent, dnaNoteForHit } from '../../lib/tripDna'
+import { buildDnaVector, loadDnaLog, recordDnaEvent, dnaNoteForHit, crewSeedsFromSuggestions, crewSeedsToPlannedStops, crewSeedEvents, crewNoteForHit } from '../../lib/tripDna'
 import type { PlaceHit, SegmentHit } from '../../lib/geocode'
 import { anchorHash } from '../../lib/providers/hits'
 import { fetchDailyWeather, forecastAvailable, isoAddDays } from '../../lib/weather'
@@ -41,11 +41,12 @@ function poiVisitMinutes(cat?: string): number {
   }
 }
 
-export function MapTab({ trip, editable, applyChange, suggestionCache }: {
+export function MapTab({ trip, editable, applyChange, suggestionCache, crewSuggestions }: {
   trip: Trip
   editable: boolean
   applyChange: (mutator: (d: Trip) => void, kind: ImpactResult['kind'], dayIndex: number) => void
   suggestionCache: ReturnType<typeof useSuggestionCache>
+  crewSuggestions?: { status: string; title: string; category?: string; lat: number; lng: number }[]
 }) {
   const [pois, setPois] = useState<SegmentHit[]>([])
   const timeFormat = useTimeFormat()
@@ -156,6 +157,10 @@ export function MapTab({ trip, editable, applyChange, suggestionCache }: {
     return () => { cancelled = true }
   }, [trip])
 
+  // Crew seeds: open group-input ideas suppress near-duplicates and bias the
+  // corridor toward crew-proposed kinds.
+  const crewSeeds = useMemo(() => crewSeedsFromSuggestions(crewSuggestions ?? []), [crewSuggestions])
+
   const nearbyOpts: NearbyOpts = useMemo(() => ({
     includeFuel: trip.transportMode === 'car' || trip.transportMode === 'motorcycle',
     homeCenter: trip.startLocationCoords ?? null,
@@ -168,13 +173,17 @@ export function MapTab({ trip, editable, applyChange, suggestionCache }: {
     travelStyle: trip.travelStyle,
     speedKmph: MODE_SPEED[trip.transportMode] ?? 40,
     // Trip DNA: the crew's past picks bias scoring ties toward favoured kinds
-    dnaVector: buildDnaVector(loadDnaLog(), trip.id),
-    plannedStops: trip.days.flatMap(d => d.stops)
-      .filter(s => s.status !== 'rejected' && Number.isFinite(s.lat) && Number.isFinite(s.lng))
-      .map(s => ({ lat: s.lat, lng: s.lng, name: s.title })),
+    dnaVector: buildDnaVector([...loadDnaLog(), ...crewSeedEvents(trip.id, crewSeeds)], trip.id),
+    plannedStops: [
+      ...trip.days.flatMap(d => d.stops)
+        .filter(s => s.status !== 'rejected' && Number.isFinite(s.lat) && Number.isFinite(s.lng))
+        .map(s => ({ lat: s.lat, lng: s.lng, name: s.title })),
+      // crew-proposed ideas suppress duplicate corridor suggestions near them
+      ...crewSeedsToPlannedStops(crewSeeds),
+    ],
     dayStartTimes: trip.days.map(d => d.startTime ?? '08:30'),
     dayRainPct: dayRainPct ?? undefined,
-  }), [trip, routeGeometry, routeTotalKm, dayRainPct])
+  }), [trip, routeGeometry, routeTotalKm, dayRainPct, crewSeeds])
 
   useEffect(() => {
     if (anchors.length === 0) return
@@ -265,7 +274,8 @@ export function MapTab({ trip, editable, applyChange, suggestionCache }: {
       travelStyle: trip.travelStyle,
       plannedStops: trip.days.flatMap(d => d.stops).filter(s => s.status !== 'rejected').length,
     })
-    const dnaNote = dnaNoteForHit(hit, buildDnaVector(loadDnaLog(), trip.id))
+    const dnaNote = dnaNoteForHit(hit, buildDnaVector([...loadDnaLog(), ...crewSeedEvents(trip.id, crewSeeds)], trip.id))
+      ?? crewNoteForHit(hit, crewSeeds)
     return (
       <div key={hit.id} className="poi-plan-row">
         <div className="ride-spot-title">

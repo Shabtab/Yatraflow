@@ -108,3 +108,41 @@ export function recordDnaEvent(event: DnaEvent): void {
     /* DNA is best-effort — a full/blocked store never breaks suggestions */
   }
 }
+
+// ---- crew seeds (Horizon 3.4): open group-input ideas feed the engine ----
+export interface CrewSeed {
+  name: string
+  category?: string
+  lat: number
+  lng: number
+}
+
+/** Open ideas with usable coords become seeds; declined/coord-less ones drop. */
+export function crewSeedsFromSuggestions(
+  suggestions: { status: string; title: string; category?: string; lat: number; lng: number }[],
+): CrewSeed[] {
+  return suggestions
+    .filter(s => s.status !== 'declined' && Number.isFinite(s.lat) && Number.isFinite(s.lng))
+    .map(s => ({ name: s.title, category: s.category, lat: s.lat, lng: s.lng }))
+}
+
+/** Seeds in planned-stop shape — near-duplicate corridor hits get suppressed. */
+export function crewSeedsToPlannedStops(seeds: CrewSeed[]): { lat: number; lng: number; name: string }[] {
+  return seeds.map(s => ({ lat: s.lat, lng: s.lng, name: s.name }))
+}
+
+/** Each seed counts as one accept — the corridor leans toward crew-proposed kinds. */
+export function crewSeedEvents(tripId: string, seeds: CrewSeed[]): DnaEvent[] {
+  return seeds.map(s => ({ tripId, action: 'accept' as const, category: s.category }))
+}
+
+/** "More like X" note when a hit matches a seed's kind. */
+export function crewNoteForHit(
+  hit: { category?: string },
+  seeds: CrewSeed[],
+): string | null {
+  const cat = normCat(hit.category)
+  if (!cat) return null
+  const seed = seeds.find(s => normCat(s.category) === cat)
+  return seed ? `more like ${seed.name}` : null
+}
