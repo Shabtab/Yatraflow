@@ -115,7 +115,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache }: {
   // Per-day rain chance for the weather join — best-effort, null until loaded.
   const [dayRainPct, setDayRainPct] = useState<(number | null)[] | null>(null)
   useEffect(() => {
-    const stops = trip.days.flatMap(d => d.stops).filter(s => s.status !== 'rejected')
+    const stops = trip.days.flatMap(d => d.stops).filter(s => s.status !== 'rejected' && Number.isFinite(s.lat) && Number.isFinite(s.lng))
     if (stops.length === 0 || !forecastAvailable(trip.startDate)) { setDayRainPct(null); return }
     let cancelled = false
     const anchor = {
@@ -260,9 +260,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache }: {
           <b>{hit.name}</b>
         </div>
         <div className="poi-desc small muted">
-          ~{hit.cumKm ?? sh.segment.targetKm.toFixed(0)} km into the trip · ≈{sh.segment.kmFromPrev.toFixed(0)} km / {minutesToHM(sh.segment.minutesFromPrev)} since the last stop
-          {hit.nearestCity ? ` · near ${hit.nearestCity}` : ''}
-          {' · '}{offRoute == null ? 'on route' : `~${Math.round(offRoute * 10) / 10} km off route`}
+          ~{hit.cumKm ?? sh.segment.targetKm.toFixed(0)} km into the trip{sh.segment.purpose === 'sight' ? '' : ` · ≈${sh.segment.kmFromPrev.toFixed(0)} km / ${minutesToHM(sh.segment.minutesFromPrev)} since the last stop`}
         </div>
         <div className="poi-desc small">Why: {reasonForSegmentHit(sh, offRoute)}</div>
         {hit.description && <div className="poi-desc small muted">{hit.description}</div>}

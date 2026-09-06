@@ -37,4 +37,10 @@ describe('leftoverAsSight', () => {
     const many = Array.from({ length: 20 }, (_, i) => hit(`h${i}`, 100 + i * 10))
     expect(leftoverAsSight(many, [], anchors, {}, 8)).toHaveLength(8)
   })
+
+  it('skips populated places — towns are not sights', () => {
+    const city: PlaceHit = { ...hit('Kochi', 400), isPopulatedPlace: true }
+    const out = leftoverAsSight([city, hit('Cave', 500)], [], anchors, {}, 8)
+    expect(out.map(r => r.hit!.id)).toEqual(['Cave'])
+  })
 })

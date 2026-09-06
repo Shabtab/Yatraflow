@@ -478,6 +478,7 @@ export function leftoverAsSight(
   for (const h of candidates) {
     if (out.length >= cap) break
     if (used.has(h.id as string)) continue
+    if (h.isPopulatedPlace) continue // towns are not sights — cities already anchor segments
     const pos = kmFromStartForHit(h, anchors, { routePolyline: opts.routePolyline ?? undefined })
     if (pos == null) continue
     out.push({
@@ -541,10 +542,12 @@ export function annotateSegmentHits(results: SegmentHit[], candidates: PlaceHit[
 export function reasonForHit(h: PlaceHit): string | null {
   if (h.legMinutes == null) return null
   const mins = h.legMinutes
-  const fatigue = mins >= 60 ? `Breaks a ${Math.round(mins / 60)} h drive` : `Breaks a ${mins} min drive`
+  const fatigue = mins > 0
+    ? [mins >= 60 ? `Breaks a ${Math.round(mins / 60)} h drive` : `Breaks a ${mins} min drive`]
+    : []
   const off = h.offRouteKm == null ? 'on route' : `${Math.round(h.offRouteKm)} km off-route`
   const city = h.nearestCity ? `near ${h.nearestCity}` : null
-  return [fatigue, off, city].filter((s): s is string => !!s).join(' · ')
+  return [...fatigue, off, city].filter((s): s is string => !!s).join(' · ')
 }
 
 /**
@@ -554,10 +557,14 @@ export function reasonForHit(h: PlaceHit): string | null {
  */
 export function reasonForSegmentHit(r: SegmentHit, detour: number | null): string {
   const mins = r.segment.minutesFromPrev
-  const fatigue = mins >= 60 ? `Breaks a ${Math.round(mins / 60)} h drive` : `Breaks a ${mins} min drive`
+  // Synthetic sight segments carry no leg (0 km / 0 min) — a fatigue slot
+  // would read "Breaks a 0 min drive", so it is skipped, not rendered.
+  const fatigue = mins > 0
+    ? [mins >= 60 ? `Breaks a ${Math.round(mins / 60)} h drive` : `Breaks a ${mins} min drive`]
+    : []
   const off = detour == null ? 'on route' : `${Math.round(detour)} km off-route`
   const city = r.hit?.nearestCity ? `near ${r.hit.nearestCity}` : null
-  const parts = [fatigue, off, city].filter((s): s is string => !!s)
+  const parts = [...fatigue, off, city].filter((s): s is string => !!s)
   if (r.segment.rainy && r.hit && WEATHER_SHELTERED.has(r.hit.category ?? '')) {
     parts.push(r.segment.rainPct != null ? `indoor pick — ${Math.round(r.segment.rainPct)}% rain` : 'indoor pick for rain')
   }

@@ -63,4 +63,14 @@ describe('rainy reason strings', () => {
     )
     expect(r).toContain('indoor pick — 90% rain')
   })
+
+  it('skips the fatigue slot for synthetic sight segments', () => {
+    const seg = segAt(500)
+    seg.purpose = 'sight'
+    seg.kmFromPrev = 0
+    seg.minutesFromPrev = 0
+    const r = reasonForSegmentHit({ segment: seg, hit: hit('cave', 'nature'), score: 0 }, 3)
+    expect(r).not.toContain('0 min')
+    expect(r).toContain('3 km off-route')
+  })
 })
