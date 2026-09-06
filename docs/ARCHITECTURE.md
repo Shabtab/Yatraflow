@@ -221,6 +221,29 @@ The architecture isolates its shortcuts behind small interfaces:
 | Supabase email/password auth | OAuth (Google, phone OTP) | `store.ts` `login/signup` + Auth page UI — RLS and data model unchanged |
 | Rule-based AI | LLM with engine grounding | `answerQuestion()` in `ai.ts` |
 | Placeholder payment buttons | Razorpay/etc. | Share tab CTAs + `premiumPriceInr` on `PublishedItinerary` |
+| Placeholder earnings ledger | Real payouts (M7) | Profile's Earnings tab (v0.38) — see "Creator earnings contract (M7)" below |
+
+### Creator earnings contract (M7)
+
+The Earnings tab (Profile · My publications) ships **before** payments so the
+surface never needs redesigning when Razorpay lands. Its fixed shape:
+
+- **KPI tiles:** Available balance · Lifetime earnings · Next payout (₹0/— today).
+- **Ledger columns (final):** Payout period · Sales · Platform fee · Net payout.
+  Each future payout inserts one row with these exact fields (Gumroad's
+  payouts-dashboard anatomy).
+- **Projection view (v0.38):** `projectEarnings()` in `src/lib/earnings.ts` —
+  price × forks per priced publication, labeled as not-money;
+  `PROJECTED_PLATFORM_FEE_INR` is the seam where the real fee model plugs in.
+
+What M7 must add for real rows (none of it exists yet, by design):
+`sale_events` (id, pub_id, buyer/guest, amount_inr, price snapshot, status
+created/paid/refunded, created_at), Razorpay order/payment ids + webhook log
+with idempotency keys, a platform-fee model (flat or tiered bps + GST/TCS
+fields), `payouts` (creator, period, gross/fees/net, status, UTR reference),
+payout-account/KYC fields on profiles, and an entitlements/unlocks table so
+premium gating persists across devices. Until then the ledger's empty state and
+the projection footnote say exactly this to the user.
 
 ## 12. Gotchas & hard-won lessons
 
