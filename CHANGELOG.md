@@ -2,6 +2,26 @@
 
 All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions are pre-1.0 MVP milestones.
 
+## [Unreleased]
+
+### Added
+- **Every suggestion says why.** Cards show a reason line built from the leg, detour and nearest city.
+- **Smarter cadence for your crew.** Relaxed trips and big groups get earlier breaks, packed trips push further.
+- **Lunch lands at lunchtime.** Meal halts slide into 11:30-14:30 based on the day's start time.
+- **Rain reranks picks.** Wet days favor museums and cafes over beaches, and cards say so.
+- **Ratings count in Google mode.** Trusted 4.0+ picks outrank unrated equals.
+- **See & do fills with real sights.** Unassigned corridor hits surface as sightseeing entries instead of leaving the column empty.
+- **Map tab runs side rails.** Need-based halts left, map center, see & do right, with a widened shell so the map keeps full size. Stacks map-first below 1500px.
+- **Every idea gets a map marker.** Coord-less hits resolve in the background and pop in; unresolvable ones stay panel-only.
+
+### Fixed
+- **Suggestion positions are road-true on routes with geometry.** `kmFromStartForHit` now snaps hits onto the OSRM polyline when provided, so switchback roads report road km instead of straight-line km. Falls back to anchors when no geometry exists.
+- **Smarter halt assignment.** Segment assignment now runs an improvement sweep after the greedy pass, so an early segment no longer steals a hit that fits a later segment better.
+- **No more duplicate or already-planned suggestions.** Near-duplicate places collapse into one, and candidates near an existing stop are dropped.
+- **Planned stops never resurface as suggestions.** The itinerary filter is now wired into halt planning on both tabs.
+- **Empty plans are never cached.** A first search running before the route resolves no longer persists [] until Refresh.
+- **Detours scored in minutes.** The same off-route distance costs slow modes more.
+
 ## [0.39.0] — 2026-09-06
 
 ## [0.40.0] — 2026-09-06

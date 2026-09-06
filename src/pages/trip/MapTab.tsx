@@ -6,13 +6,14 @@ import { MetaIcon } from '../../components/icons'
 import type { Trip, ItineraryStop } from '../../data/types'
 import type { ImpactResult } from '../../lib/impact'
 import { routePath } from '../../lib/routing'
-import { getAssumptions, buildJourney, minutesToHM, computeCategoryBias } from '../../lib/engine'
+import { getAssumptions, buildJourney, minutesToHM, computeCategoryBias, MODE_SPEED } from '../../lib/engine'
 import { useTimeFormat, formatHMRange } from '../../lib/timefmt'
 import { Modal, Field, toast } from '../../components/ui'
 import { useSuggestionCache } from '../../hooks/useSuggestionCache'
-import { corridorAnchors, detourKm, googleEnabled, planJourneyHalts, type NearbyOpts } from '../../lib/geocode'
+import { corridorAnchors, detourKm, googleEnabled, planJourneyHalts, reasonForSegmentHit, type NearbyOpts } from '../../lib/geocode'
 import type { PlaceHit, SegmentHit } from '../../lib/geocode'
 import { anchorHash } from '../../lib/providers/hits'
+import { fetchDailyWeather, forecastAvailable, isoAddDays } from '../../lib/weather'
 // MapLibre is heavy (~1MB) — load it only when the Map tab is actually opened.
 const TripMap = React.lazy(() => import('../../components/TripMap').then(m => ({ default: m.TripMap })))
 
@@ -111,6 +112,24 @@ export function MapTab({ trip, editable, applyChange, suggestionCache }: {
   // the same legs independently, so this is one extra free OSRM call per route.
   const [routeGeometry, setRouteGeometry] = useState<[number, number][] | null>(null)
   const [routeTotalKm, setRouteTotalKm] = useState<number | null>(null)
+  // Per-day rain chance for the weather join — best-effort, null until loaded.
+  const [dayRainPct, setDayRainPct] = useState<(number | null)[] | null>(null)
+  useEffect(() => {
+    const stops = trip.days.flatMap(d => d.stops).filter(s => s.status !== 'rejected' && Number.isFinite(s.lat) && Number.isFinite(s.lng))
+    if (stops.length === 0 || !forecastAvailable(trip.startDate)) { setDayRainPct(null); return }
+    let cancelled = false
+    const anchor = {
+      lat: stops.reduce((a, s) => a + s.lat, 0) / stops.length,
+      lng: stops.reduce((a, s) => a + s.lng, 0) / stops.length,
+    }
+    fetchDailyWeather(anchor.lat, anchor.lng, trip.startDate, trip.days.length || 1)
+      .then(w => {
+        if (cancelled) return
+        setDayRainPct(trip.days.map((_, i) => w[isoAddDays(trip.startDate, i)]?.rainChancePct ?? null))
+      })
+      .catch(() => { if (!cancelled) setDayRainPct(null) })
+    return () => { cancelled = true }
+  }, [trip])
   // OSRM's road total (when resolved) is the most accurate journey budget for
   // the fatigue math; until then use the journey-summed estimate.
   const planKm = routeTotalKm && routeTotalKm >= 90 ? routeTotalKm : wholeTrip.km
@@ -141,7 +160,15 @@ export function MapTab({ trip, editable, applyChange, suggestionCache }: {
     // Google mode: bias the search along the real road polyline; free mode ignores it
     routeCoords: routeGeometry,
     routeTotalKm,
-  }), [trip, routeGeometry, routeTotalKm])
+    travellers: trip.travellers,
+    travelStyle: trip.travelStyle,
+    speedKmph: MODE_SPEED[trip.transportMode] ?? 40,
+    plannedStops: trip.days.flatMap(d => d.stops)
+      .filter(s => s.status !== 'rejected' && Number.isFinite(s.lat) && Number.isFinite(s.lng))
+      .map(s => ({ lat: s.lat, lng: s.lng, name: s.title })),
+    dayStartTimes: trip.days.map(d => d.startTime ?? '08:30'),
+    dayRainPct: dayRainPct ?? undefined,
+  }), [trip, routeGeometry, routeTotalKm, dayRainPct])
 
   useEffect(() => {
     if (anchors.length === 0) return
@@ -160,7 +187,9 @@ export function MapTab({ trip, editable, applyChange, suggestionCache }: {
       .then(plan => {
         if (!cancelled) {
           setPois(plan)
-          suggestionCache.setMapCache(plan, hash, scopeKm)
+          // Never cache an empty plan: the first search can run before the
+          // route resolves, and a persisted [] would stick until Refresh.
+          if (plan.length > 0) suggestionCache.setMapCache(plan, hash, scopeKm)
         }
       })
       .catch(() => { /* suggestions are best-effort */ })
@@ -231,10 +260,9 @@ export function MapTab({ trip, editable, applyChange, suggestionCache }: {
           <b>{hit.name}</b>
         </div>
         <div className="poi-desc small muted">
-          ~{hit.cumKm ?? sh.segment.targetKm.toFixed(0)} km into the trip · ≈{sh.segment.kmFromPrev.toFixed(0)} km / {minutesToHM(sh.segment.minutesFromPrev)} since the last stop
-          {hit.nearestCity ? ` · near ${hit.nearestCity}` : ''}
-          {' · '}{offRoute == null ? 'on route' : `~${Math.round(offRoute * 10) / 10} km off route`}
+          ~{hit.cumKm ?? sh.segment.targetKm.toFixed(0)} km into the trip{sh.segment.purpose === 'sight' ? '' : ` · ≈${sh.segment.kmFromPrev.toFixed(0)} km / ${minutesToHM(sh.segment.minutesFromPrev)} since the last stop`}
         </div>
+        <div className="poi-desc small">Why: {reasonForSegmentHit(sh, offRoute)}</div>
         {hit.description && <div className="poi-desc small muted">{hit.description}</div>}
         {(hit.openTime || hit.closeTime) && (
           <div className="poi-desc small muted"><MetaIcon icon={ Clock } tone="time" />{formatHMRange(hit.openTime, hit.closeTime, timeFormat)} (reported)</div>
@@ -252,8 +280,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache }: {
 
   return (
     <div>
-      <TripMap trip={trip} nearbyPois={pois.flatMap(p => p.hit ? [p.hit] : [])} onAddNearby={editable ? (hit) => openAddModal(hit) : undefined} />
-      <div className="card" style={{ marginTop: 14 }}>
+      <div className="card">
         <div className="row-between">
           <h3 style={{ margin: 0 }}><Lightbulb size={16} aria-hidden style={{ verticalAlign: '-3px', marginRight: 4 }} />Nearby ideas</h3>
           <div className="row-between" style={{ gap: 10 }}>
@@ -290,8 +317,9 @@ export function MapTab({ trip, editable, applyChange, suggestionCache }: {
         {!loadingPois && pois.length === 0 && (
           <p className="muted small">Not enough driving distance yet for a fatigue plan — add a longer route (90+ km) in the Timeline and segmented stop suggestions will appear here.</p>
         )}
-        <div className="poi-split">
-          <div className="poi-col poi-col--needs">
+      </div>
+      <div className="map-ideas-grid">
+        <div className="poi-col poi-col--needs">
             <div className="poi-col-head">
               <span className="poi-col-head-ico"><Fuel size={13} aria-hidden /></span>
               <div>
@@ -304,6 +332,9 @@ export function MapTab({ trip, editable, applyChange, suggestionCache }: {
                 ? <p className="muted small">No need-based halts surfaced yet — they appear as you add driving days.</p>
                 : needs.map(renderPoi)}
             </div>
+          </div>
+          <div className="map-ideas-map">
+            <TripMap trip={trip} nearbyPois={pois.flatMap(p => p.hit ? [p.hit] : [])} onAddNearby={editable ? (hit) => openAddModal(hit) : undefined} />
           </div>
           <div className="poi-col poi-col--see">
             <div className="poi-col-head">
@@ -319,9 +350,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache }: {
                 : seeAndDo.map(renderPoi)}
             </div>
           </div>
-        </div>
       </div>
-
       {/* pick-a-day modal for adding a suggested POI — explicit confirm */}
       <Modal open={!!poiDraft} onClose={() => setPoiDraft(null)} title={`Add “${poiDraft?.hit.name ?? ''}”`}>
         {poiDraft && (

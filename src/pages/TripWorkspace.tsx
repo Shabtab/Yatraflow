@@ -175,7 +175,7 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
   }
 
   return (
-    <div className={`container${tab === 'board' ? ' container--board' : ''}`} style={{ paddingTop: 22 }}>
+    <div className={`container${tab === 'board' ? ' container--board' : ''}${tab === 'map' ? ' container--map' : ''}`} style={{ paddingTop: 22 }}>
       {/* ---------- Header ---------- */}
       <div className="trip-head-card">
         <div className="row-between">

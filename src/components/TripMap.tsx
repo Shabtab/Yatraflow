@@ -5,6 +5,8 @@
 import { useMemo, useState, useEffect, useRef, Fragment } from 'react'
 import type { Trip } from '../data/types'
 import type { PlaceHit } from '../lib/geocode'
+import { resolveHitCoords } from '../lib/geocode'
+import { hasCoords, mappablePois } from '../lib/providers/hits'
 import { routePath } from '../lib/routing'
 import { getAssumptions, isRoundTrip } from '../lib/engine'
 import { loadFlag, saveFlag } from '../lib/uiPrefs'
@@ -198,11 +200,43 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
     }
     return [...counts.entries()].sort((a, b) => b[1] - a[1])
   }, [nearbyPois])
+  // Coord-less ideas (Mappls eLoc hits arrive as 0,0) resolve in the
+  // background — Google Place Details when a placeId exists, Nominatim
+  // otherwise (1 req/s). Markers pop in as coords land; failures stay
+  // panel-only. Capped at 10 per ideas batch.
+  const [coordFixes, setCoordFixes] = useState<Record<string, { lat: number; lng: number }>>({})
+  useEffect(() => {
+    let cancelled = false
+    const pending = nearbyPois.filter(h => !hasCoords(h) && coordFixes[h.id as string] == null).slice(0, 10)
+    if (pending.length === 0) return
+    ;(async () => {
+      for (const h of pending) {
+        try {
+          const r = await resolveHitCoords(h)
+          if (!cancelled && hasCoords(r)) {
+            setCoordFixes(prev => ({ ...prev, [h.id as string]: { lat: r.latitude, lng: r.longitude } }))
+          }
+        } catch { /* best-effort — the panel still lists it */ }
+        if (!cancelled && !h.placeId) await new Promise(res => setTimeout(res, 1100))
+      }
+    })()
+    return () => { cancelled = true }
+  }, [nearbyPois])
+  const mappedPois = useMemo(
+    () => nearbyPois.map(h => {
+      const f = coordFixes[h.id as string]
+      return f ? { ...h, latitude: f.lat, longitude: f.lng } : h
+    }),
+    [nearbyPois, coordFixes],
+  )
   const visiblePois = useMemo(
-    () => (hiddenIdeaCats.size === 0
-      ? nearbyPois
-      : nearbyPois.filter(h => !hiddenIdeaCats.has(h.category ?? 'sightseeing'))),
-    [nearbyPois, hiddenIdeaCats],
+    () => {
+      const mappable = mappablePois(mappedPois)
+      return hiddenIdeaCats.size === 0
+        ? mappable
+        : mappable.filter(h => !hiddenIdeaCats.has(h.category ?? 'sightseeing'))
+    },
+    [mappedPois, hiddenIdeaCats],
   )
   function toggleIdeaCat(cat: string) {
     setHiddenIdeaCats(prev => {

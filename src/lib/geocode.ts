@@ -17,13 +17,13 @@
 // resolve via one Place Details call instead of OSM Nominatim.
 export { DEBOUNCE_MS } from './providers/free'
 export { mapplsEnabled, parseOpeningHours, fetchOpeningHours, type OpeningHours } from './providers/free'
-export { HOME_ZONE_KM, corridorAnchors, detourKm } from './providers/hits'
-export type { NearbyOpts, PlaceHit } from './providers/hits'
+export { HOME_ZONE_KM, corridorAnchors, detourKm, filterPlannedNearby } from './providers/hits'
+export type { NearbyOpts, PlaceHit, PlannedStop } from './providers/hits'
 export { googleEnabled } from './providers/google'
 export { searchCitiesAlong } from './providers/free'
-export { planRideSegments, assignSegmentHits, type SegmentHit, type RideSegment } from './ridePlan'
+export { planRideSegments, assignSegmentHits, leftoverAsSight, reasonForSegmentHit, reasonForHit, type SegmentHit, type RideSegment } from './ridePlan'
 
-import { hasCoords, rankAndCap, type NearbyOpts, type PlaceHit } from './providers/hits'
+import { hasCoords, rankAndCap, filterPlannedNearby, type NearbyOpts, type PlaceHit } from './providers/hits'
 import {
   searchPlacesFree,
   searchNearbyPoisMultiFree,
@@ -38,7 +38,7 @@ import {
   googleResolveHitCoords,
 } from './providers/google'
 import {
-  planRideSegments, assignSegmentHits, annotateSegmentHits,
+  planRideSegments, assignSegmentHits, annotateSegmentHits, cadenceForCrew, leftoverAsSight,
   type SegmentHit, type RideSegment,
 } from './ridePlan'
 import { resolveVehicleRange } from './vehicleProfile'
@@ -161,6 +161,9 @@ export async function planJourneyHalts(
     includeFuel: opts.includeFuel,
     multiDay: opts.multiDay,
     vehicleRangeKm: vehicleRange,
+    dayStartTimes: opts.dayStartTimes,
+    dayRainPct: opts.dayRainPct,
+    ...cadenceForCrew(opts.travellers, opts.travelStyle),
   })
   if (segments.length === 0) return []
   const purposes = [...new Set(segments.map(s => s.purpose))]
@@ -179,6 +182,14 @@ export async function planJourneyHalts(
     seen.add(key)
     candidates.push(h)
   }
-  const assigned = assignSegmentHits(candidates, segments, anchors, { homeCenter: opts.homeCenter ?? null })
-  return annotateSegmentHits(assigned, candidates)
+  const unplanned = opts.plannedStops && opts.plannedStops.length > 0
+    ? filterPlannedNearby(candidates, opts.plannedStops)
+    : candidates
+  const routePolyline = (opts.routeCoords ?? []).filter(c => Number.isFinite(c[0]) && Number.isFinite(c[1])).map(c => ({ lat: c[1], lng: c[0] }))
+  const assignOpts = { homeCenter: opts.homeCenter ?? null, routePolyline: routePolyline.length >= 2 ? routePolyline : null, speedKmph: opts.speedKmph }
+  const assigned = assignSegmentHits(unplanned, segments, anchors, assignOpts)
+  // Unassigned corridor hits surface as See & do — otherwise the sightseeing
+  // column is empty by construction (the planner never makes 'sight' segments).
+  const full = [...assigned, ...leftoverAsSight(unplanned, assigned, anchors, assignOpts)]
+  return annotateSegmentHits(full, candidates)
 }
