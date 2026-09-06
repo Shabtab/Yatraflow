@@ -11,6 +11,7 @@
 // directly.
 
 import { haversineKm } from './geo'
+import { classifyRoadWindow, type RoadKind } from './roadPersonality'
 import { hmToMinutes } from './engine'
 import { HOME_ZONE_KM, kmFromStartForHit, detourKm, detourMinutes, dedupeCandidates, type HaltPurpose, type PlaceHit } from './providers/hits'
 
@@ -47,6 +48,8 @@ export interface RidePlanInput {
   dayStartTimes?: string[]
   /** rain chance percent per day index (null = no forecast) — flags rainy segments */
   dayRainPct?: (number | null)[]
+  /** simplified route geometry {lat,lng}[] — enables road-personality tagging */
+  roadGeometry?: { lat: number; lng: number }[]
 }
 
 /**
@@ -88,6 +91,10 @@ export interface RideSegment {
   rainPct?: number | null
   /** true when this segment closes a day boundary (overnight stay) */
   dayEnd?: boolean
+  /** road personality of this segment's window (present when geometry given) */
+  roadPersonality?: RoadKind
+  /** human road warning for ghat/city windows, e.g. "rest before the climb" */
+  roadWarning?: string | null
   /** human guidance line, e.g. "≈2 h wheel time — stretch & hydrate" */
   hint: string
 }
@@ -152,6 +159,54 @@ function sanitizedStretchKm(input: RidePlanInput): number {
 function sanitizedMealKm(input: RidePlanInput): number {
   const v = input.mealKm
   return v != null && Number.isFinite(v) && v >= 50 && v <= 1000 ? v : MEAL_INTERVAL_KM
+}
+
+/**
+ * Tag each segment with the personality of its road window. The geometry is
+ * sliced by cumulative-km fraction (scaled to totalKm); windows with fewer
+ * than 2 points borrow neighbours so short urban hops still classify.
+ * No geometry (or degenerate input) leaves segments untagged.
+ */
+function annotateRoadPersonality(
+  segments: RideSegment[],
+  geometry: { lat: number; lng: number }[] | undefined,
+  totalKm: number,
+): void {
+  if (!geometry || geometry.length < 2 || segments.length === 0 || !(totalKm > 0)) return
+  const pts = geometry.filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng))
+  if (pts.length < 2) return
+  const cum: number[] = [0]
+  for (let i = 1; i < pts.length; i++) {
+    cum.push(cum[i - 1] + haversineKm(pts[i - 1].lat, pts[i - 1].lng, pts[i].lat, pts[i].lng))
+  }
+  const pathTotal = cum[cum.length - 1]
+  if (!(pathTotal > 0.01)) return
+  const scale = totalKm / pathTotal
+  let prevTarget = 0
+  for (const s of segments) {
+    const lo = prevTarget
+    const hi = s.targetKm
+    prevTarget = s.targetKm
+    let idx = cum.map((c, i) => ({ c: c * scale, i })).filter(o => o.c > lo && o.c <= hi).map(o => o.i)
+    if (idx.length < 2) {
+      // widen: nearest point below lo plus nearest above hi
+      let below = -1
+      let above = -1
+      for (let i = 0; i < cum.length; i++) {
+        if (cum[i] * scale <= lo) below = i
+        if (above === -1 && cum[i] * scale > hi) above = i
+      }
+      const set = new Set(idx)
+      if (below !== -1) set.add(below)
+      if (above !== -1) set.add(above)
+      idx = [...set].sort((a, b) => a - b)
+    }
+    if (idx.length < 2) continue
+    const slice = idx.map(i => pts[i])
+    const w = classifyRoadWindow(slice)
+    s.roadPersonality = w.kind
+    s.roadWarning = w.warning
+  }
 }
 
 /**
@@ -291,6 +346,10 @@ function etaAt(km: number, dayStarts: number[], dayStartTimes: string[] | undefi
       hint: PURPOSE_HINT[purpose](minutesFromPrev),
     }
   })
+  // Phase D — road personality: slice the route geometry into per-segment
+  // windows by cumulative-km fraction and classify each. Geometry-free plans
+  // keep segments untagged; hints stay untouched (warnings render separately).
+  annotateRoadPersonality(segments, input.roadGeometry, total)
   return segments
 }
 

@@ -263,6 +263,9 @@ export function MapTab({ trip, editable, applyChange, suggestionCache }: {
           ~{hit.cumKm ?? sh.segment.targetKm.toFixed(0)} km into the trip{sh.segment.purpose === 'sight' ? '' : ` · ≈${sh.segment.kmFromPrev.toFixed(0)} km / ${minutesToHM(sh.segment.minutesFromPrev)} since the last stop`}
         </div>
         <div className="poi-desc small">Why: {reasonForSegmentHit(sh, offRoute)}</div>
+        {sh.segment.roadWarning && (
+          <div className="poi-desc small">⚠ {sh.segment.roadWarning}</div>
+        )}
         {hit.description && <div className="poi-desc small muted">{hit.description}</div>}
         {(hit.openTime || hit.closeTime) && (
           <div className="poi-desc small muted"><MetaIcon icon={ Clock } tone="time" />{formatHMRange(hit.openTime, hit.closeTime, timeFormat)} (reported)</div>

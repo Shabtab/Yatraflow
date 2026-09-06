@@ -163,6 +163,9 @@ export async function planJourneyHalts(
     vehicleRangeKm: vehicleRange,
     dayStartTimes: opts.dayStartTimes,
     dayRainPct: opts.dayRainPct,
+    roadGeometry: (opts.routeCoords ?? [])
+      .filter(c => Number.isFinite(c[0]) && Number.isFinite(c[1]))
+      .map(c => ({ lat: c[1], lng: c[0] })),
     ...cadenceForCrew(opts.travellers, opts.travelStyle),
   })
   if (segments.length === 0) return []
