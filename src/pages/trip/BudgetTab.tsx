@@ -321,39 +321,43 @@ export function BudgetTab({ trip, totals, editable }: { trip: Trip; totals: Retu
               : <span className="budget-hero-action ok">{formatInr(remaining)} headroom — room for one more stop</span>}
           </div>
 
-          {members.length >= 2 && (
+          {trip.travellers >= 2 && (
             <div className="card" style={{ marginTop: 14 }}>
               <h2>Who paid · who owes</h2>
-              <p className="hint-text" style={{ margin: '6px 0 10px' }}>
-                {tagged
-                  ? <>Fair share is {formatInr(fairShare)} each.</>
-                  : <>Fair share is {formatInr(fairShare)} each — tag who paid on expense lines and balances appear here.</>}
-              </p>
-              {tagged && (
-                <>
-                  <div className="balances">
-                    {balances.map(b => (
-                      <div key={b.id} className="balance-row">
-                        <span className="balance-who"><Avatar user={b.user} /> {nameOf(b.user)}</span>
-                        {Math.abs(b.bal) <= 0.5
-                          ? <span className="muted small">settled</span>
-                          : b.bal > 0
-                            ? <span className="balance-pos">gets {formatInr(b.bal)}</span>
-                            : <span className="balance-neg">owes {formatInr(-b.bal)}</span>}
-                      </div>
-                    ))}
-                  </div>
-                  {transfers.length > 0 && (
-                    <p className="hint-text" style={{ marginTop: 10 }}>
-                      <b>Simplest settlement:</b> {transfers.map(t => `${nameOf(t.from.user)} → ${nameOf(t.to.user)} ${formatInr(t.amount)}`).join(' · ')}
+              {members.length < 2
+                ? <p className="hint-text" style={{ margin: '6px 0 0' }}>Fair share is {formatInr(fairShare)} each. Invite your crew from the Share tab, then tag who paid on expense lines — who owes whom shows up here.</p>
+                : <>
+                    <p className="hint-text" style={{ margin: '6px 0 10px' }}>
+                      {tagged
+                        ? <>Fair share is {formatInr(fairShare)} each.</>
+                        : <>Fair share is {formatInr(fairShare)} each — tag who paid on expense lines and balances appear here.</>}
                     </p>
-                  )}
-                </>
-              )}
+                    {tagged && (
+                      <>
+                        <div className="balances">
+                          {balances.map(b => (
+                            <div key={b.id} className="balance-row">
+                              <span className="balance-who"><Avatar user={b.user} /> {nameOf(b.user)}</span>
+                              {Math.abs(b.bal) <= 0.5
+                                ? <span className="muted small">settled</span>
+                                : b.bal > 0
+                                  ? <span className="balance-pos">gets {formatInr(b.bal)}</span>
+                                  : <span className="balance-neg">owes {formatInr(-b.bal)}</span>}
+                            </div>
+                          ))}
+                        </div>
+                        {transfers.length > 0 && (
+                          <p className="hint-text" style={{ marginTop: 10 }}>
+                            <b>Simplest settlement:</b> {transfers.map(t => `${nameOf(t.from.user)} → ${nameOf(t.to.user)} ${formatInr(t.amount)}`).join(' · ')}
+                          </p>
+                        )}
+                      </>
+                    )}
+                  </>}
             </div>
           )}
 
-          <div className="card" style={{ marginTop: members.length >= 2 ? 14 : 0 }}>
+          <div className="card" style={{ marginTop: trip.travellers >= 2 ? 14 : 0 }}>
             <h2>Essential vs optional</h2>
             <hr className="divider" />
             <div className="budget-bars">
