@@ -14,6 +14,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - **Map tab runs side rails.** Need-based halts left, map center, see & do right, with a widened shell so the map keeps full size. Stacks map-first below 1500px.
 - **Every idea gets a map marker.** Coord-less hits resolve in the background and pop in; unresolvable ones stay panel-only.
 - **Roads get a personality.** Each leg classifies from route geometry — highway, state road, ghat switchback, city crawl — and cards warn before technical stretches.
+- **Detours get a daily budget.** Each day earns detour minutes from crew style and day density; cards show the spend share and flag over-budget picks.
 
 ### Fixed
 - **Suggestion positions are road-true on routes with geometry.** `kmFromStartForHit` now snaps hits onto the OSRM polyline when provided, so switchback roads report road km instead of straight-line km. Falls back to anchors when no geometry exists.

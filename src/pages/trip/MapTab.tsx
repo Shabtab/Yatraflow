@@ -10,7 +10,8 @@ import { getAssumptions, buildJourney, minutesToHM, computeCategoryBias, MODE_SP
 import { useTimeFormat, formatHMRange } from '../../lib/timefmt'
 import { Modal, Field, toast } from '../../components/ui'
 import { useSuggestionCache } from '../../hooks/useSuggestionCache'
-import { corridorAnchors, detourKm, googleEnabled, planJourneyHalts, reasonForSegmentHit, type NearbyOpts } from '../../lib/geocode'
+import { corridorAnchors, detourKm, detourMinutes, googleEnabled, planJourneyHalts, reasonForSegmentHit, type NearbyOpts } from '../../lib/geocode'
+import { dayDetourBudgetMin, budgetSharePct } from '../../lib/detourBudget'
 import type { PlaceHit, SegmentHit } from '../../lib/geocode'
 import { anchorHash } from '../../lib/providers/hits'
 import { fetchDailyWeather, forecastAvailable, isoAddDays } from '../../lib/weather'
@@ -252,6 +253,11 @@ export function MapTab({ trip, editable, applyChange, suggestionCache }: {
     }
     const added = addedIds.has(hit.id as string) || existingNames.has(hit.name.toLowerCase())
     const offRoute = detourKm(hit, anchors)
+    const detourMin = detourMinutes(hit, anchors, MODE_SPEED[trip.transportMode] ?? 40)
+    const dayBudget = dayDetourBudgetMin({
+      travelStyle: trip.travelStyle,
+      plannedStops: trip.days.flatMap(d => d.stops).filter(s => s.status !== 'rejected').length,
+    })
     return (
       <div key={hit.id} className="poi-plan-row">
         <div className="ride-spot-title">
@@ -265,6 +271,12 @@ export function MapTab({ trip, editable, applyChange, suggestionCache }: {
         <div className="poi-desc small">Why: {reasonForSegmentHit(sh, offRoute)}</div>
         {sh.segment.roadWarning && (
           <div className="poi-desc small">⚠ {sh.segment.roadWarning}</div>
+        )}
+        {detourMin > 0.5 && (
+          <div className="poi-desc small muted">
+            uses ~{budgetSharePct(detourMin, dayBudget)}% of today&apos;s detour budget
+            {detourMin > dayBudget ? ' — over budget, pick it only if it is worth it' : ''}
+          </div>
         )}
         {hit.description && <div className="poi-desc small muted">{hit.description}</div>}
         {(hit.openTime || hit.closeTime) && (

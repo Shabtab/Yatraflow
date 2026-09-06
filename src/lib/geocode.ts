@@ -17,7 +17,7 @@
 // resolve via one Place Details call instead of OSM Nominatim.
 export { DEBOUNCE_MS } from './providers/free'
 export { mapplsEnabled, parseOpeningHours, fetchOpeningHours, type OpeningHours } from './providers/free'
-export { HOME_ZONE_KM, corridorAnchors, detourKm, filterPlannedNearby } from './providers/hits'
+export { HOME_ZONE_KM, corridorAnchors, detourKm, detourMinutes, filterPlannedNearby } from './providers/hits'
 export type { NearbyOpts, PlaceHit, PlannedStop } from './providers/hits'
 export { googleEnabled } from './providers/google'
 export { searchCitiesAlong } from './providers/free'
