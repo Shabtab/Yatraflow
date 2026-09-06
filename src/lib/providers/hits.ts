@@ -29,6 +29,10 @@ export interface PlaceHit {
   /** reported opening hours "HH:MM" — Google hits only, rendered as "reported" */
   openTime?: string
   closeTime?: string
+  /** Google rating 1–5 — present on Google hits when the mask returns it */
+  rating?: number
+  /** Google review count — gates the rating boost against thin samples */
+  ratingCount?: number
   /** real road detour in km (Google routingSummaries); undefined when unknown */
   offRouteKm?: number
   // ---- ride-plan annotations (filled by src/lib/ridePlan.ts + providers) ----
@@ -62,6 +66,11 @@ export function hasCoords(h: PlaceHit): boolean {
   return Number.isFinite(h.latitude) && Number.isFinite(h.longitude) && (h.latitude !== 0 || h.longitude !== 0)
 }
 
+/** Only hits the map can actually pin (Mappls pending (0,0) hits excluded). */
+export function mappablePois<T extends PlaceHit>(hits: T[]): T[] {
+  return hits.filter(hasCoords)
+}
+
 /** Distance in meters between a hit and the nearest route anchor. */
 export function distToNearest(h: Pick<PlaceHit, 'latitude' | 'longitude'>, anchors: { lat: number; lng: number }[]): number {
   return Math.min(...anchors.map(a => haversineKm(h.latitude, h.longitude, a.lat, a.lng) * 1000))
@@ -82,8 +91,83 @@ export function detourKm(
   return distToNearest(h, anchors) / 1000
 }
 
+/** Fallback door-to-door speed when the trip mode is unknown. Matches the engine default. */
+export const DEFAULT_SPEED_KMPH = 40
+
+/**
+ * Detour in minutes at the trip's door-to-door speed. Unknown detours
+ * (on-route hits) cost zero — never a straight-line guess.
+ */
+export function detourMinutes(
+  h: Pick<PlaceHit, 'latitude' | 'longitude' | 'offRouteKm' | 'fromGoogleAlongRoute'>,
+  anchors: { lat: number; lng: number }[],
+  speedKmph?: number,
+): number {
+  const speed = speedKmph != null && Number.isFinite(speedKmph) && speedKmph > 0 ? speedKmph : DEFAULT_SPEED_KMPH
+  const km = detourKm(h, anchors) ?? 0
+  return (km / speed) * 60
+}
+
 /** Nothing within this radius of the trip's start is ever suggested. */
 export const HOME_ZONE_KM = 15
+
+export interface RoutePolylineOpts {
+  /** Full OSRM route geometry. When present, hits snap to the polyline for road-true km. */
+  routePolyline?: { lat: number; lng: number }[] | null
+}
+
+/**
+ * Snap a point onto a route polyline (nearest-segment projection).
+ * Returns cumulative road km from the polyline origin, or null when unusable.
+ * Polyline is stride-sampled to 500 points max to bound CPU on dense OSRM geometry.
+ */
+export function projectOntoPolyline(
+  p: Pick<PlaceHit, 'latitude' | 'longitude'>,
+  polyline: { lat: number; lng: number }[],
+): { km: number; segIndex: number } | null {
+  if (!Number.isFinite(p.latitude) || !Number.isFinite(p.longitude)) return null
+  const raw = polyline.filter(q => Number.isFinite(q.lat) && Number.isFinite(q.lng))
+  if (raw.length < 2) return null
+  const stride = Math.max(1, Math.ceil(raw.length / 500))
+  const pts: { lat: number; lng: number }[] = []
+  for (let i = 0; i < raw.length; i += stride) pts.push(raw[i])
+  if (pts[pts.length - 1] !== raw[raw.length - 1]) pts.push(raw[raw.length - 1])
+  // cumulative road km at each polyline point
+  const cum: number[] = [0]
+  for (let i = 1; i < pts.length; i++) {
+    cum.push(cum[i - 1] + haversineKm(pts[i - 1].lat, pts[i - 1].lng, pts[i].lat, pts[i].lng))
+  }
+  // equirectangular km projection per segment (fine at segment scale)
+  const latRef = (p.latitude * Math.PI) / 180
+  const kx = 111.32 * Math.cos(latRef)
+  const ky = 111.32
+  const px = p.longitude * kx
+  const py = p.latitude * ky
+  let bestKm = 0
+  let bestD2 = Infinity
+  let bestSeg = 0
+  for (let i = 0; i < pts.length - 1; i++) {
+    const ax = pts[i].lng * kx
+    const ay = pts[i].lat * ky
+    const bx = pts[i + 1].lng * kx
+    const by = pts[i + 1].lat * ky
+    const dx = bx - ax
+    const dy = by - ay
+    const len2 = dx * dx + dy * dy
+    let t = len2 > 0 ? ((px - ax) * dx + (py - ay) * dy) / len2 : 0
+    t = Math.min(1, Math.max(0, t))
+    const cx = ax + t * dx
+    const cy = ay + t * dy
+    const d2 = (px - cx) * (px - cx) + (py - cy) * (py - cy)
+    if (d2 < bestD2) {
+      bestD2 = d2
+      bestSeg = i
+      const segLen = Math.max(0, cum[i + 1] - cum[i])
+      bestKm = cum[i] + t * segLen
+    }
+  }
+  return { km: Math.max(0, bestKm), segIndex: bestSeg }
+}
 
 /**
  * Coarse along-route position of a hit (km from the journey origin).
@@ -96,8 +180,13 @@ export const HOME_ZONE_KM = 15
 export function kmFromStartForHit(
   h: Pick<PlaceHit, 'latitude' | 'longitude' | 'alongRouteKm'>,
   anchors: { lat: number; lng: number }[],
+  opts: RoutePolylineOpts = {},
 ): number | null {
   if (h.alongRouteKm != null && Number.isFinite(h.alongRouteKm)) return Math.max(0, h.alongRouteKm)
+  if (opts.routePolyline && opts.routePolyline.length >= 2) {
+    const snap = projectOntoPolyline(h, opts.routePolyline)
+    if (snap) return snap.km
+  }
   const pts = anchors.filter(a => Number.isFinite(a.lat) && Number.isFinite(a.lng))
   if (pts.length === 0 || !Number.isFinite(h.latitude) || !Number.isFinite(h.longitude)) return null
   // cumulative km at each anchor (anchors sit ON the route line, so the
@@ -158,6 +247,18 @@ export interface NearbyOpts {
   purposes?: HaltPurpose[]
   /** Vehicle profile for accurate fuel/charging cadence. */
   vehicleProfile?: VehicleProfile
+  /** Crew size — tunes the fatigue cadence (see cadenceForCrew). */
+  travellers?: number
+  /** Trip travel style — tunes the fatigue cadence (see cadenceForCrew). */
+  travelStyle?: string
+  /** Door-to-door speed for time-based detour scoring (see detourMinutes). */
+  speedKmph?: number
+  /** Already-planned stops — candidates near them are dropped (see filterPlannedNearby). */
+  plannedStops?: PlannedStop[]
+  /** "HH:MM" drive-start per day index for the journey clock (unset falls back to 08:30). */
+  dayStartTimes?: string[]
+  /** rain chance percent per day index for the weather join (null = no forecast). */
+  dayRainPct?: (number | null)[]
 }
 
 /**
@@ -228,6 +329,13 @@ export function poiTouristScore(
   if ((h.description ?? '').length > 40) s += 3
   if (cat === 'sightseeing' || cat === 'nature' || cat === 'beach' || cat === 'temple' || cat === 'museum') s += 3
   if (categoryBias && categoryBias[cat]) s += categoryBias[cat] // itinerary gaps
+  // Google ratings: trusted samples only (10+ reviews). Strong picks outrank
+  // geography-only equals; free-mode hits without ratings score as before.
+  const rc = h.ratingCount ?? 0
+  if (rc >= 10 && h.rating != null && Number.isFinite(h.rating)) {
+    if (h.rating >= 4.5) s += 4
+    else if (h.rating >= 4.0) s += 2
+  }
   const frac = Math.min(1, distToNearest(h, anchors) / Math.max(1, radiusM))
   s -= frac * 6
   return s
@@ -235,6 +343,68 @@ export function poiTouristScore(
 
 export function normWords(s: string): string[] {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').split(' ').filter(Boolean)
+}
+
+const STOP_WORDS = new Set(['the', 'and', 'of', 'at', 'near', 'point'])
+
+function meaningfulWords(s: string): Set<string> {
+  return new Set(normWords(s).filter(w => w.length >= 4 && !STOP_WORDS.has(w)))
+}
+
+/** True when two hits are the same place: close together with overlapping names. */
+export function samePlace(
+  a: Pick<PlaceHit, 'latitude' | 'longitude' | 'name'>,
+  b: Pick<PlaceHit, 'latitude' | 'longitude' | 'name'>,
+): boolean {
+  if (!a.name || !b.name) return false
+  if (!Number.isFinite(a.latitude) || !Number.isFinite(a.longitude)) return false
+  if (!Number.isFinite(b.latitude) || !Number.isFinite(b.longitude)) return false
+  if (haversineKm(a.latitude, a.longitude, b.latitude, b.longitude) > 0.5) return false
+  const aw = meaningfulWords(a.name)
+  const bw = meaningfulWords(b.name)
+  if (aw.size === 0 || bw.size === 0) {
+    return a.name.toLowerCase().includes(b.name.toLowerCase()) || b.name.toLowerCase().includes(a.name.toLowerCase())
+  }
+  for (const w of aw) if (bw.has(w)) return true
+  return false
+}
+
+/** Collapse near-duplicate candidates, keeping the first of each group. */
+export function dedupeCandidates<T extends Pick<PlaceHit, 'latitude' | 'longitude' | 'name'>>(list: T[]): T[] {
+  const out: T[] = []
+  for (const h of list) {
+    if (out.some(k => samePlace(k, h))) continue
+    out.push(h)
+  }
+  return out
+}
+
+export interface PlannedStop {
+  lat: number
+  lng: number
+  name?: string
+}
+
+/** Drop candidates already covered by the itinerary: within 2 km of a planned stop, or a fuzzy name match. */
+export function filterPlannedNearby<T extends Pick<PlaceHit, 'latitude' | 'longitude' | 'name'>>(
+  candidates: T[],
+  planned: PlannedStop[],
+  radiusKm = 2,
+): T[] {
+  const pts = planned.filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng))
+  if (pts.length === 0) return candidates
+  return candidates.filter(h => {
+    if (!Number.isFinite(h.latitude) || !Number.isFinite(h.longitude)) return true
+    for (const p of pts) {
+      if (haversineKm(h.latitude, h.longitude, p.lat, p.lng) <= radiusKm) return false
+      if (p.name && h.name) {
+        const hn = h.name.toLowerCase()
+        const pn = p.name.toLowerCase()
+        if (hn.length >= 5 && pn.length >= 5 && (hn.includes(pn) || pn.includes(hn))) return false
+      }
+    }
+    return true
+  })
 }
 
 /**
@@ -256,12 +426,13 @@ export function rankAndCap(
     : hits
   homeFiltered.sort((a, b) =>
     poiTouristScore(b, anchors, radiusM, opts.categoryBias) - poiTouristScore(a, anchors, radiusM, opts.categoryBias))
+  const deduped = dedupeCandidates(homeFiltered)
   const catCap = Math.max(2, Math.ceil(count / 3))
   const fuelCap = opts.includeFuel ? 2 : 0
   const used = new Map<string, number>()
   const out: PlaceHit[] = []
   let fuelUsed = 0
-  for (const h of homeFiltered) {
+  for (const h of deduped) {
     if (out.length >= count) break
     const k = h.category ?? 'sightseeing'
     if (k === 'transport-hub') {

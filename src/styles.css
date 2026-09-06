@@ -898,6 +898,9 @@ a.btn { text-decoration: none; }
    On the Board tab the container widens, the trip band compacts (members row
    lives on Overview/Share), and the board claims what's left of the viewport. */
 .container--board { max-width: 1680px; }
+/* Map tab runs a 3-column rail layout — widen the shell so the map keeps its
+   full size and the two idea rails fit beside it. */
+.container--map { max-width: 1760px; }
 .container--board .trip-head-card { padding: 13px 20px; }
 .container--board .trip-head-card h1 { font-size: 20px; margin-top: 4px; }
 .container--board .trip-head-card p { margin-top: 3px; }
@@ -2107,6 +2110,29 @@ main:focus { outline: none; }
 /* tint the purpose chips inside their lane — sightseeing reads scenic purple */
 .poi-col--see .ride-purpose-sight { background: color-mix(in srgb, #7C5CFC 16%, transparent); color: #5540B8; }
 [data-theme='dark'] .poi-col--see .ride-purpose-sight { color: #B4A5FF; }
+
+/* Map-tab ideas grid — need rail LEFT, map CENTER, see-&-do rail RIGHT, so both
+   suggestion lanes sit beside the map with no page scroll between them. Rails
+   scroll internally; on mobile everything stacks with the map first. */
+.map-ideas-grid {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr) 320px;
+  gap: 14px;
+  margin-top: 12px;
+  align-items: start;
+}
+.map-ideas-grid .poi-col {
+  max-height: 72vh;
+  overflow-y: auto;
+  position: sticky;
+  top: 12px;
+}
+.map-ideas-map { min-width: 0; }
+@media (max-width: 1500px) {
+  .map-ideas-grid { grid-template-columns: 1fr; }
+  .map-ideas-map { order: -1; }
+  .map-ideas-grid .poi-col { max-height: none; }
+}
 
 /* ---------- Motion system (subtle & premium, CTI §9) ----------
    One easing family + three speeds (--ease-out / --t-fast|med|slow). Only
