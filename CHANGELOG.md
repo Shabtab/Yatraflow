@@ -2,6 +2,19 @@
 
 All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions are pre-1.0 MVP milestones.
 
+## [Unreleased]
+
+### Added
+- **Sourcemaps ship with every build.** Production stack traces and Lighthouse's bundle attribution now map back to the original source.
+
+### Changed
+- **The landing page paints instantly instead of waiting on the backend.** The router's ready-gate no longer holds the landing behind a spinner — the page reads no store data and is the exact frame the gate would show anyway. This removes the spinner-to-landing swap that produced the 0.997 desktop CLS reading.
+- **Smaller first load for the landing.** My Trips, the trip workspace and Explore now load on first visit instead of riding in the main bundle — the landing main chunk drops from 683 kB to 505 kB (gzip 200 → 148 kB). Fonts already load with `display=swap` plus both Google Fonts preconnects, so no further font work was needed.
+
+### Fixed
+- **The shared bill image no longer catches the receipt mid-animation.** While "Share as image" renders, the odometer digits snap to their static-text path (the html-to-image clone re-ran the roll transition and photographed digits mid-roll), the "Rendering…" action row is hidden from the frame, and confetti is suppressed.
+- **Accessibility fixes on the landing.** Muted text, the receipt's teal accent, the ticker's offbeat tags and the saffron hero chip now meet AA contrast in their themes, the decorative ticker separator is a shape instead of a failing text glyph, and the "Return leg ×2" toggle's accessible name now contains its visible label.
+
 ## [0.34.0] — 2026-09-05
 
 **The Plan Bench is redesigned — prices on every choice, a receipt that looks like a receipt in both themes, and the bill shares as a crisp image.** Details in the per-commit bodies.
