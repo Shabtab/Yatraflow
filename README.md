@@ -53,6 +53,8 @@ A collaborative travel-planning web app, built India-first. Real multi-day itine
 
 - **Schedule engine** — simulates each day leg-by-leg (OSRM road distances, per-mode speeds and ₹/km costs); flags tight days, missed check-ins, late arrivals
 - **Budget engine** — totals split per-person vs group, essential vs optional, category breakdown, hotel nights
+- **Every rupee attributed** — per-day cost bars show what each day really costs (expenses + that day's drive) against a daily-average line; hot days light up amber with a trim suggestion
+- **Split expenses fairly** — tag who paid on any expense and a balances card shows who owes whom, with the simplest set of settlements spelled out
 - **Impact Preview** — before you accept a suggestion, see ±time, ±distance, ±cost, new or cleared warnings
 - Every estimate states its assumptions on-screen. **No fake live traffic or prices — ever.**
 
@@ -75,15 +77,28 @@ A collaborative travel-planning web app, built India-first. Real multi-day itine
 #### 👥 Collaborate & share
 
 - **Invite by link** — friends join as owner / editor / commenter / viewer (enforced by Postgres RLS)
-- **Suggestions & votes** — anyone proposes a stop; group votes and comments; owners accept
-- **Decisions** — structured polls with per-option cost/time impact, votes, resolve
+- **One group-input stream** — stop ideas and group decisions share one tab; whatever needs *your* vote floats to the top with a sidebar digest, and decision cards show exactly who voted for what and where the tally leans
+- **Decisions** — structured polls with per-option cost/time impact and context, votes, resolve
 - **Publish itineraries** to the public Explore gallery; readers copy any trip in one click
+- **Creators get a public page** — `#/creator/:id` gathers a creator's bio, links, track record and every itinerary they've published, shareable in one link
 - **Export / import** JSON, or a self-contained snapshot link (`#/share/<payload>`, zero server storage)
 - **AI companion drawer** — deterministic, trip-grounded answers that always cite assumptions
 
 </td>
 </tr>
 </table>
+
+---
+
+## ✨ The v0.36–v0.37 rework, in plain words
+
+Two recent releases rebuilt the money and group sides of the app, and gave creators a home:
+
+- **The Budget tab answers "are we over?" in one glance.** Four tiles up top (per person, per day, remaining vs target, % spent), then a bar for every day of the trip so you can see *which* day is expensive — not just that the trip is. A day running hot turns amber with a one-line trim suggestion. Adding an expense is a single row at the very top — name, amount, done — and every line remembers **who paid**, so a card on the right tells the group exactly who owes whom, plus the shortest list of transfers that settles everything.
+- **Group ideas and decisions merged into one tab.** Stop ideas and group decisions used to live in two places; now they share one stream with simple filters. Anything waiting for *your* vote floats to the top (and into a sidebar digest), decision cards show the actual voters behind each option with a plain verdict — "tally leans Marari beach" — while editors keep the final call. The composer no longer guesses: you pick the real day, category and transport cost, and a suggestion without a place pins to your trip's start instead of a hardcoded Munnar. The constant "someone voted" pings are gone too — you hear when a question is raised and when it's settled.
+- **Every creator has a shareable page.** `#/creator/:id` shows a creator's bio, social links, lifetime views and forks, and everything they've published — reachable from any Explore card, any public itinerary ("More from X"), or Profile. Your publications list became a small dashboard: views and forks per itinerary, one-click edit, and if you change a trip after publishing, a "page behind itinerary" flag nudges you to sync it.
+- **Quiet consistency fixes** — dropdowns finally match the text fields they sit beside (the open list takes the app's colors too), every filter has a proper empty state with a way out, and Explore sorts by newest as well as popularity.
+
 <details>
 <summary><b>See the full tour of features</b></summary>
 
@@ -138,7 +153,7 @@ You'll need a free [Supabase](https://supabase.com) project for accounts + data;
 | Backend | [Supabase](https://supabase.com) (Postgres + Auth + RLS) | Free tier covers the MVP; JSONB keeps trip internals denormalized |
 | Routing / geo | OSRM, Open-Meteo, Wikipedia, Overpass | Free + keyless, India-biasable; optional Google / Mappls keys behind a failing-open facade |
 
-Routing is hash-based (`#/trip/:id`, `#/pub/:slug`, `#/invite/:id`) so the static build runs on any host with no rewrites.
+Routing is hash-based (`#/trip/:id`, `#/pub/:slug`, `#/creator/:id`, `#/invite/:id`) so the static build runs on any host with no rewrites.
 
 ## 📁 Project structure
 
@@ -151,9 +166,9 @@ src/
 ├── store/store.ts     # Supabase-backed reactive cache + all mutations
 ├── lib/               # engine.ts · impact.ts · ai.ts · ridePlan.ts · geocode.ts
 │                      # routing.ts · snapshot.ts · weather.ts
-├── components/        # ui.tsx · StopEditor.tsx · TripMap.tsx · ImpactPreview.tsx · mapcn/
+├── components/        # ui.tsx · StopEditor.tsx · TripMap.tsx · ImpactPreview.tsx · PubCard.tsx · mapcn/
 └── pages/             # Landing · Auth · TripsList · CreateTrip · TripWorkspace · Explore
-                       # PublicItinerary · Profile
+                       # PublicItinerary · CreatorPage · Profile + trip/ (one file per workspace tab)
 ```
 
 Deep dives: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (data model, engine math, store), [DESIGN_TOKENS.md](DESIGN_TOKENS.md) (design tokens), [docs/README.md](docs/README.md) (full index).

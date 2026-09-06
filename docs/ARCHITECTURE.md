@@ -69,10 +69,10 @@ All entities live in [`src/data/types.ts`](../src/data/types.ts). The important 
 | `ItineraryDay` | One day of the plan | `index` (0-based), ordered `stops[]` |
 | `ItineraryStop` | One visit | `visitMinutes`, `openTime/closeTime`, `entryFeeInrPerPerson`, `transportCostInrTotal`, `priority`, `status`, `orderInDay`, geocoded `lat/lng` |
 | `FixedCommitment` | Untouchable anchor | hotel check-ins / train & flight departures with day + time — the scheduler protects these |
-| `Expense` | Cost line | `perPerson?`, `optional?`, attachable to a stop or day |
+| `Expense` | Cost line | `perPerson?`, `optional?`, `paidBy?` (member who fronted it → balances card), attachable to a stop or day (feeds the Budget tab's per-day bars) |
 | `StopSuggestion` | Group idea | votes (+1/−1), comments, `open → accepted/declined` lifecycle |
 | `TripDecision` | Structured poll | options carry `costImpactInr`/`timeImpactMin`; `votesByUserId`; resolvable |
-| `PublishedItinerary` | Public share | slug id, `freeDayIndexes` for gated preview, view/copy counters |
+| `PublishedItinerary` | Public share | slug id, `freeDayIndexes` for gated preview, view/copy counters, `refreshedAt` staleness marker |
 | `ActivityEntry` / `Notification` | Social plumbing | per-trip feed / per-user inbox |
 
 Design notes:
@@ -118,7 +118,7 @@ Pipeline per day:
 2. Consecutive stops are joined by `legBetween()` = haversine × 1.25 road factor ÷ mode speed × 60 min + 10 min city-traffic pad.
 3. `simulateDay()` walks the clock forward: travel + visit duration + buffers, producing arrival/departure times per stop, total distance, total travel minutes and end-of-day time.
 4. `collectWarnings()` flags: arrivals after `closeTime`, days ending past `dayEnd`, fixed-commitment conflicts, excessive backtracking, over-stuffed days.
-5. Budget side: `computeTotals()` aggregates expenses (respecting `perPerson` and `optional` flags); `countHotelNights()` infers accommodation nights from the timeline.
+5. Budget side: `computeTotals()` aggregates expenses (respecting `perPerson` and `optional` flags) and attributes every rupee to a day in `byDay` — day-tagged/stop-tagged expenses land on their day, journey fuel on the driving day, the drive home on the last day, unattached lines spread evenly; `countHotelNights()` infers accommodation nights from the timeline.
 
 Every UI surface that shows an estimate also shows `getAssumptions()` output — speeds, ₹/km, buffers — so users can judge the numbers instead of trusting them blindly. This is a hard product rule: **no estimate without its assumptions on screen.**
 

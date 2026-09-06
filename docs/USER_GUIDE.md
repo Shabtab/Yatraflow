@@ -56,25 +56,38 @@ The **Map** tab shows your whole route:
 ### Invite
 **Share tab → copy invite link.** Friends who open it join your trip (you control whether they can edit or just comment).
 
-### Suggest
-The **Suggestions** tab lets anyone propose a stop with votes and comments. When something wins the group over, accept it straight into the timeline — you'll see the time/cost impact first.
+### Suggest & decide — one stream
+The **Group input** tab is where the group talks plans. One stream holds both **stop ideas** and **decisions**, with filter pills (All / Stop ideas / Decisions / Need you / Resolved) and clickable count chips up top.
 
-### Decide
-Stuck between options? Raise a **Decision** ("Varkala beach day vs backwater cruise") with per-option cost/time impacts. Everyone votes; anyone can resolve.
+- **Propose a stop** from the composer: name it, pick the **day** and **category**, search the area, set visit time, entry fee and transport cost, and say why it's worth it. The group votes ▲/▼ and comments right on the card; editors accept it into the timeline or decline it.
+- **Raise a decision** ("Beach day or backwater day?") with two or more options, optional context ("forecast says rain"), and an optional ₹ impact per option. Everyone votes.
+- **Cards that need you float up.** Anything you haven't voted on gets an amber edge, a "Needs your vote" chip, and a slot in the sidebar digest — click a digest row to jump to the card.
+- **Decisions show who voted what.** Each option lists its voters, a tally chip and its ₹ impact; the leading option is tinted and a verdict line says where the tally leans. Editors resolve with the final say.
+- Only two things ping your bell: a new question for the group, and its resolution. Individual votes live in the activity feed, not your notifications.
 
 ## 6. Watch the budget
 
-The **Budget** tab totals expenses per person and for the group, splits essential vs optional, breaks down by category, and compares against the trip budget. Add expenses as you plan (entry fees, fuel shares, hotel nights) or as you spend.
+The **Budget tab** opens with four tiles — **per person** (vs target), **per day**, **remaining vs target**, **% spent** — so over/under is one glance away.
+
+- **Cost per day** bars show each day's expenses plus that day's drive, with a tick marking the daily average; a day running hot turns amber with a trim suggestion.
+- **Where the money goes** breaks the total into categories (stay, food, transport, …) with icons.
+- **Add an expense in one row** at the very top of the tab: name + amount, with the ⋯ toggle for category, who paid, per-person/optional flags and attaching it to a stop. Pencil-edit any line in place — no delete-and-retype.
+- **Who paid · who owes**: expenses can carry a payer; the card compares what each member fronted against their fair share and spells out the simplest settlements ("Riya → Meera ₹3,131"). It appears on any trip with 2+ travellers and walks you through inviting the crew and tagging payers until there's something to settle.
+- **Essential vs optional** shows what you could trim if you need to save.
 
 ## 7. Ask the companion
 
 The **AI drawer** answers questions grounded in *your actual trip data*: "Make Day 2 less tiring", "Can we still make the airport if we add this?", "What should we cut with kids along?" Every answer cites the assumptions behind its numbers. It's rule-based, not magic — but it never invents facts.
 
-## 8. Publish & explore
+## 8. Publish, explore & grow an audience
 
-Proud of a route? **Share tab → publish** puts it in the public **Explore** gallery with a tagline, best season and tips. You choose which days preview free.
+Proud of a route? **Share tab → publish** puts it in the public **Explore** gallery with a tagline, best season and tips. You choose which days preview free (the rest unlock as premium stubs when forked).
 
-Browsing Explore: filter by style/budget/duration, open any itinerary, **Copy This Trip**, and it becomes yours to edit.
+Browsing Explore: filter by style/budget/duration, sort by popularity or **newest**, open any itinerary, and **fork** it into your trips as your own editable copy.
+
+**Creators get a public page.** Turn on creator mode in Profile to add a bio and YouTube/Instagram links, then share `#/creator/<your-id>` — it lists everything you've published with your lifetime views and forks. It's linked from every Explore card, from each of your public itineraries ("More from you"), and from Profile ("View your public page").
+
+**Keep your pages honest.** Profile → **My publications** is your dashboard: views and forks per itinerary, **Edit** to jump into its Share tab, and a **"Page behind itinerary"** flag whenever you change a trip after publishing — one click on **Update page** re-syncs it. Unpublish takes a page down without touching the trip.
 
 ## FAQ
 

@@ -1,8 +1,9 @@
 // ============ Profile & settings ============
 import { useEffect, useState } from 'react'
+import { ExternalLink, Pencil } from 'lucide-react'
 import type { PublishedItinerary, TravelStyle } from '../data/types'
 import { TRAVEL_STYLES } from '../data/types'
-import { useDb, currentUser, updateProfile, tripsForUser, unpublishItinerary } from '../store/store'
+import { useDb, currentUser, updateProfile, tripsForUser, unpublishItinerary, tripById } from '../store/store'
 import { Avatar, Chip, ConfirmDialog, Field, toast } from '../components/ui'
 import { useTimeFormat, setTimeFormat, formatHM, type TimeFormat } from '../lib/timefmt'
 
@@ -108,6 +109,8 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
                   })
                   toast('Creator profile saved')
                 }}>Save creator profile</button>
+                <button className="btn btn-outline btn-sm" style={{ marginLeft: 10 }}
+                  onClick={() => onNavigate(`/creator/${me.id}`)}>View your public page</button>
                 <button className="btn btn-ghost btn-sm" style={{ marginLeft: 10 }}
                   onClick={() => setConfirmDisable(true)}>Disable creator mode</button>
               </>
@@ -119,23 +122,47 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
           </div>
 
           <div className="card" style={{ marginTop: 16 }}>
-            <h3>My publications</h3>
+            <div className="row-between">
+              <h3>My publications</h3>
+              {myPubs.length > 0 && (
+                <a className="small" href={`#/creator/${me.id}`} style={{ fontWeight: 650 }}>
+                  <ExternalLink size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />View public page
+                </a>
+              )}
+            </div>
             <hr className="divider" />
             {myPubs.length === 0 ? (
               <p className="hint-text" style={{ margin: '6px 0 0' }}>
                 Nothing published yet — list a trip on Explore from its Share tab.
               </p>
             ) : (
-              <div style={{ marginTop: 8 }}>
-                {myPubs.map(p => (
-                  <div key={p.id} className="row-between" style={{ padding: '5px 0', gap: 10 }}>
-                    <span style={{ minWidth: 0 }}>
-                      <a href={`#/pub/${p.id}`} className="small" style={{ fontWeight: 600 }}>{p.title}</a>
-                      <span className="small muted" style={{ marginLeft: 8 }}>{p.views} view{p.views === 1 ? '' : 's'} · {p.copies} fork{p.copies === 1 ? '' : 's'}</span>
-                    </span>
-                    <button className="btn btn-ghost btn-sm" onClick={() => setUnpubTarget(p)}>Unpublish</button>
-                  </div>
-                ))}
+              <div style={{ marginTop: 4 }}>
+                {myPubs.map(p => {
+                  const trip = tripById(p.tripId)
+                  // "Page behind itinerary": the trip changed after the last
+                  // publish/refresh. refreshedAt is absent on pre-v0.37 rows.
+                  const stale = !!trip && trip.updatedAt > (p.refreshedAt ?? p.publishedAt)
+                  return (
+                    <div key={p.id} className="pub-row">
+                      <div className="pub-row-main">
+                        <span className="pub-row-title">
+                          <a href={`#/pub/${p.id}`}>{p.title}</a>
+                          {stale && <Chip tone="saffron">Page behind itinerary</Chip>}
+                        </span>
+                        <span className="small muted">{p.views} view{p.views === 1 ? '' : 's'} · {p.copies} fork{p.copies === 1 ? '' : 's'}</span>
+                      </div>
+                      <span className="pub-row-actions">
+                        {stale && (
+                          <button className="btn btn-saffron btn-sm" onClick={() => onNavigate(`/trip/${p.tripId}/share`)}>Update page</button>
+                        )}
+                        <button className="btn btn-outline btn-sm" aria-label={`Edit ${p.title}`} onClick={() => onNavigate(`/trip/${p.tripId}/share`)}>
+                          <Pencil size={13} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />Edit
+                        </button>
+                        <button className="btn btn-ghost btn-sm" onClick={() => setUnpubTarget(p)}>Unpublish</button>
+                      </span>
+                    </div>
+                  )
+                })}
               </div>
             )}
           </div>

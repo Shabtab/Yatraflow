@@ -45,6 +45,27 @@ where the direction doc says so. Every token is mirrored in
 (`--yf-ink`, `--yf-mint` and `--yf-surface-muted` were removed in v0.30.0 —
 defined but never referenced by any component.)
 
+**Expense-category tokens (v0.36.0, Budget tab):** one hue per spend category,
+consumed by the "Where the money goes" bars and the per-line icon chips.
+Defined in `:root` and mirrored in `[data-theme='dark']` — reference the token,
+never the hex.
+
+| Token | Light | Dark | Category |
+|------|-------|------|-----|
+| `--cat-transport` | `#897ABB` | `#A99BD6` | transport |
+| `--cat-accommodation` | `#0D8D82` | `#2BB8AC` | accommodation |
+| `--cat-food` | `#F59E2D` | `#F5A94A` | food |
+| `--cat-activities` | `#2E8B57` | `#52BE80` | activities |
+| `--cat-entry-fees` | `#D6534D` | `#E06C6C` | entry fees |
+| `--cat-tolls-parking` | `#8291A6` | `#93A6BC` | tolls & parking |
+| `--cat-local-travel` | `#B47207` | `#D99A2B` | local travel |
+| `--cat-emergency-buffer` | `#E4AE43` | `#E4B45E` | emergency buffer |
+
+Also (v0.37.0, selects): `.select` drops its glass-pill override and shares the
+exact `.input` surface — the custom chevron `background-image` is the only
+difference, and `.select option` takes the theme's card colors so the native
+popup stops clashing.
+
 **Utilities (doc §3.3 transparency levels):**
 - `.atmos` — level-1 atmospheric canvas (doc §4.2): two soft radial blobs over
   the mist→cream→peach ramp. For Landing, Explore, Public Itinerary and the

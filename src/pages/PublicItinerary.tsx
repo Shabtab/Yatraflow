@@ -8,7 +8,8 @@ import {
   Route, Sparkles, Ticket, TriangleAlert,
 } from 'lucide-react'
 import type { Trip, PublishedItinerary } from '../data/types'
-import { useDb, currentUser, tripById, userById, duplicateTripPublic, registerPubCopy, registerPubView } from '../store/store'
+import { useDb, currentUser, tripById, userById, registerPubView } from '../store/store'
+import { forkPublication } from '../lib/forkPub'
 import { simulateDay, originOf, minutesToHM, formatInr, getAssumptions, computeTotals, isRoundTrip } from '../lib/engine'
 import { useTimeFormat, formatHM, formatHMRange } from '../lib/timefmt'
 import { stopKindOf, STOP_KIND_LABELS } from '../lib/stopKind'
@@ -46,13 +47,7 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
   const savedFlag = isSaved(pub.id)
 
   function copyThis() {
-    if (!me) { toast('Log in to fork this trip into your plans.'); onNavigate('/auth'); return }
-    // Premium-respecting fork: days outside the free preview land as locked
-    // stubs — the full plan stays on the original itinerary only.
-    duplicateTripPublic(trip!, me.id, pub!.freeDayIndexes)
-    registerPubCopy(pub!.id)
-    toast(`“${pub!.title}” forked — open it from My trips ✈️`)
-    onNavigate('/trips')
+    forkPublication(pub!, me?.id ?? null, onNavigate)
   }
 
   function saveThis() {
@@ -208,10 +203,15 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
                 </div>
               </div>
               {creator?.profile.socialLinks && (
-                <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
                   {creator.profile.socialLinks.youtube && <a className="chip chip-info" href={creator.profile.socialLinks.youtube} target="_blank" rel="noreferrer">▶ YouTube</a>}
                   {creator.profile.socialLinks.instagram && <a className="chip chip-info" href={creator.profile.socialLinks.instagram} target="_blank" rel="noreferrer"><Camera size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />Instagram</a>}
                 </div>
+              )}
+              {creator && (
+                <a className="btn btn-outline btn-sm" style={{ marginTop: 12 }} href={`#/creator/${creator.id}`}>
+                  More from {creator.profile.name} →
+                </a>
               )}
             </div>
 

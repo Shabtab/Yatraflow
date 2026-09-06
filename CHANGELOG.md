@@ -2,6 +2,23 @@
 
 All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions are pre-1.0 MVP milestones.
 
+## [0.37.0] — 2026-09-06
+
+**v0.37.0 = the creator release: every creator gets a shareable public page, the publications list becomes a real manager, and a stale-page nudge keeps public itineraries honest.** Details in the per-commit bodies.
+
+### Added
+- **Creators get a shareable home at `#/creator/:id`.** A public page (works logged out) with the creator's avatar, bio, home city, social links, a copy-page-link button, their track record (itineraries · total views · total forks) and the grid of everything they've published. It's linked from every Explore card's creator line, from public itinerary pages ("More from X →"), and from Profile.
+- **"My publications" becomes a manager.** Each row shows views and forks with Edit (opens the trip's Share tab) and Unpublish beside them; the card header links to your public page, and enabling creator mode offers "View your public page" so the badge leads somewhere.
+- **"Page behind itinerary" staleness nudge.** Editing a trip after publishing flags the row in the dashboard with an Update page shortcut that jumps straight to the Share tab. Backed by a new `refreshed_at` column (`supabase/migrations/20260906_published_refreshed_at.sql` — **run once per environment**); a capability probe keeps publishing working on not-yet-migrated projects, and pre-migration rows simply fall back to the original publish date.
+- **Explore gains a "Newest first" sort** alongside popularity, budget and length.
+
+### Changed
+- **One itinerary card everywhere.** Explore's card is extracted into a shared `PubCard` (also rendered by the creator page), and its creator line is now a link to the creator's page.
+- **One fork path everywhere.** A shared `forkPublication` helper unifies the login gate, the premium-respecting fork rule, copy counting and the toast across Explore, the public itinerary page and the creator page.
+
+### Removed
+- **The dead `PlanSnapshot` type is gone** — a leftover from a budget-comparison feature that never shipped, flagged dead in the v0.36 Budget tab rewrite.
+
 ## [0.36.0] — 2026-09-06
 
 **v0.36.0 = the Budget + Group-input deep redesign: every rupee attributed (per day, per category, per person), every group item answerable at a glance, and the published-stats persistence bug fixed.** Details in the per-commit bodies.
