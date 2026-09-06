@@ -253,11 +253,32 @@ export interface AssignOpts {
 }
 
 /**
+ * Cost of serving `seg` with `h`. Shared by the greedy pass and the
+ * improvement sweep below. Returns null when the hit cannot be positioned.
+ */
+export function scoreHitForSegment(
+  h: PlaceHit,
+  seg: RideSegment,
+  anchors: { lat: number; lng: number }[],
+  opts: AssignOpts = {},
+): number | null {
+  const pos = kmFromStartForHit(h, anchors, { routePolyline: opts.routePolyline ?? undefined })
+  if (pos == null) return null // unpositionable hit can't serve a timed segment
+  const dist = Math.abs(pos - seg.targetKm)
+  const window = Math.max(1, seg.maxKm - seg.minKm)
+  const distPenalty = dist > window / 2 ? dist + window : dist
+  const fit = fitScoreForPurpose(h, seg.purpose)
+  return distPenalty + (detourKm(h, anchors) ?? 0) * 2 + (3 - fit) * 4
+}
+
+/**
  * Assign the single best hit to each segment (journey order). Scoring:
  * distance-to-target (heavier outside the segment's window), detour (×2),
  * purpose-fit mismatch (3 − fit) × 4. Greedy dedupe: a hit used for an earlier
- * segment leaves the later pools (roads don't repeat). Segments with no
- * suitable candidate keep hit = null — the caller renders them as gaps.
+ * segment leaves the later pools (roads don't repeat), then one improvement
+ * sweep tries every pairwise swap and keeps swaps that lower the total score.
+ * Segments with no suitable candidate keep hit = null — the caller renders
+ * them as gaps.
  */
 export function assignSegmentHits(
   hits: PlaceHit[],
@@ -290,17 +311,33 @@ export function assignSegmentHits(
     let bestScore = Infinity
     for (const h of pool) {
       if (used.has(h.id as string)) continue
-      const pos = kmFromStartForHit(h, anchors, { routePolyline: opts.routePolyline ?? undefined })
-      if (pos == null) continue // unpositionable hit can't serve a timed segment
-      const dist = Math.abs(pos - seg.targetKm)
-      const window = Math.max(1, seg.maxKm - seg.minKm)
-      const distPenalty = dist > window / 2 ? dist + window : dist
-      const fit = fitScoreForPurpose(h, seg.purpose)
-      const score = distPenalty + (detourKm(h, anchors) ?? 0) * 2 + (3 - fit) * 4
+      const score = scoreHitForSegment(h, seg, anchors, opts)
+      if (score == null) continue
       if (score < bestScore) { bestScore = score; best = h }
     }
     if (best) used.add(best.id as string)
     results.push({ segment: seg, hit: best, score: bestScore })
+  }
+  // Pass 2 — one improvement sweep: try swapping each pair's hits, keep swaps
+  // that lower the combined score. Fixes greedy steals where an early segment
+  // grabs a hit that fits a later segment better.
+  for (let i = 0; i < results.length; i++) {
+    for (let j = i + 1; j < results.length; j++) {
+      const a = results[i]
+      const b = results[j]
+      if (!a.hit || !b.hit || a.hit.id === b.hit.id) continue
+      const cur = a.score + b.score
+      const sa = scoreHitForSegment(b.hit, a.segment, anchors, opts)
+      const sb = scoreHitForSegment(a.hit, b.segment, anchors, opts)
+      if (sa == null || sb == null) continue
+      if (sa + sb < cur) {
+        const tmp = a.hit
+        a.hit = b.hit
+        b.hit = tmp
+        a.score = sa
+        b.score = sb
+      }
+    }
   }
   return results
 }
