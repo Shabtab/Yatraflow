@@ -378,7 +378,7 @@ export function PlanBench() {
             <div className="bench-head-actions">
               <button type="button" className={`bench-toggle${input.roundTrip ? ' on' : ''}`}
                 aria-pressed={input.roundTrip}
-                aria-label={`Return leg${input.roundTrip ? ' — billed twice (round trip)' : ' — off (one way)'}`}
+                aria-label={`Return leg${input.roundTrip ? ' ×2 — billed twice (round trip)' : ' — off (one way)'}`}
                 onClick={() => { haptic(HAPTIC.toggle); patch({ roundTrip: !input.roundTrip }) }}>
                 Return leg{input.roundTrip ? ' ×2' : ''}
               </button>

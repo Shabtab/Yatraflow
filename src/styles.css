@@ -29,7 +29,7 @@
   --gray-100: #F3EEE5;
   --gray-200: #E4DCCC;
   --gray-400: #8291A6;
-  --gray-500: #647489;
+  --gray-500: #5A6A80;
   --gray-700: #45566E;
   --gray-900: #0B2545;
 
@@ -480,6 +480,9 @@ a.btn { text-decoration: none; }
 .chip-teal { background: var(--teal-soft); color: var(--teal-deep); }
 .chip-outline { background: var(--card); color: var(--text-2); border-color: var(--line); }
 .chip-saffron { background: var(--saffron-soft); color: var(--warn); }
+/* AA contrast: warn-600 reads 3.48:1 on the saffron tint — light theme gets a
+   deeper amber (dark theme's #D99A2B on #3A2C15 already passes). */
+:root:not([data-theme='dark']) .chip-saffron { color: #8F5B06; }
 .chip-danger { background: var(--danger-soft); color: var(--danger); }
 .chip-ok { background: var(--ok-soft); color: var(--ok); }
 .chip-info { background: var(--info-soft); color: var(--text-2); }
@@ -2510,7 +2513,7 @@ html.vt-active :where(*) {
   --receipt-ink: var(--text);
   --receipt-ink-soft: var(--text-2);
   --receipt-ink-faint: var(--text-3);
-  --receipt-accent: var(--yf-teal-600);
+  --receipt-accent: var(--yf-teal-700);  /* teal-600 read 4.08:1 on paper — under AA for the 11px kicker */
   --receipt-line: var(--line);
   --receipt-barcode: rgba(13, 43, 38, .5);
   --receipt-fatigue-bg: var(--card-soft);
@@ -3049,6 +3052,11 @@ html.vt-active :where(*) {
 @keyframes ticker-scroll { to { transform: translateX(-50%); } }
 /* offbeat items get a purple tag tint to separate "common" from "offbeat" */
 .t-off { color: var(--yf-purple); background: color-mix(in srgb, var(--yf-purple) 12%, transparent); }
+/* AA contrast on the 10px tags: light-theme lavender reads 3.31:1 on its own
+   tint — deeper violet for light (dark's #A99BD6 passes). Dark theme's teal tag
+   (#1E9D92, 3.83:1) gets a brighter mint-teal instead. */
+:root:not([data-theme='dark']) .ticker-item .t-off { color: #6F60A6; }
+[data-theme='dark'] .ticker-item .t-tag { color: #26B3A6; }
 
 /* ---------- RouteSquiggle → multi-trip scenario carousel ---------- */
 .rs-shell { position: relative; margin: 14px 0 4px; }
