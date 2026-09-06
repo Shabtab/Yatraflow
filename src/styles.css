@@ -390,7 +390,23 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
 .topnav-inner { display: flex; align-items: center; gap: 14px; height: var(--nav-h); }
 .brand { display: flex; align-items: center; gap: 9px; font-family: var(--font-display); font-weight: 800; font-size: 19px; color: var(--text); cursor: pointer; background:none;border:none;padding:0; }
 .brand svg { flex: 0 0 auto; }
-.nav-links { display: flex; gap: 2px; margin-left: 10px; }
+.nav-links { margin-left: 10px; }
+/* PillNav: one sliding "glider" pill behind the active item — switching reads
+   as one continuous motion instead of two backgrounds cross-fading. */
+.pill-nav { position: relative; display: flex; gap: 2px; }
+.pill-nav > * { position: relative; z-index: 1; }
+.pill-glider {
+  position: absolute; top: 4px; bottom: 4px; left: 0; width: 0; z-index: 0;
+  border-radius: 999px; background: var(--teal-soft);
+  transition: left 260ms cubic-bezier(0.2, 0, 0, 1), width 260ms cubic-bezier(0.2, 0, 0, 1), opacity 150ms ease;
+  pointer-events: none;
+}
+[data-theme='dark'] .pill-glider { background: var(--teal); }
+/* inside a pill nav the glider paints the active background — the items don't */
+.pill-nav .nav-link.active, .pill-nav .tab-btn.active { background: transparent; }
+.pill-nav .nav-link.active:hover, .pill-nav .tab-btn.active:hover { background: transparent; }
+/* dark glass gliders want dark ink on the active label */
+[data-theme='dark'] .pill-nav .nav-link.active, [data-theme='dark'] .pill-nav .tab-btn.active { color: #06251f; }
 .nav-link {
   border: none; background: none; padding: 8px 13px; border-radius: 999px;
   font-size: 14px; font-weight: 600; color: var(--text-2);
@@ -504,7 +520,7 @@ a.btn { text-decoration: none; }
 .chip-danger { background: var(--danger-soft); color: var(--danger); }
 .chip-ok { background: var(--ok-soft); color: var(--ok); }
 .chip-info { background: var(--info-soft); color: var(--text-2); }
-.clickable-chip { cursor: pointer; border: 1.5px solid var(--line); background: var(--card); user-select: none;
+.clickable-chip { transition: background-color 160ms ease, color 160ms ease, box-shadow 160ms ease, border-color 160ms ease; cursor: pointer; border: 1.5px solid var(--line); background: var(--card); user-select: none;
   border-radius: 999px; padding: 5px 13px; font-size: 12.5px; font-weight: 650;
   transition: transform var(--t-fast) var(--ease-out), background var(--t-fast) var(--ease-out), border-color var(--t-fast) var(--ease-out); }
 .clickable-chip.on-teal { border-color: var(--teal); background: var(--teal-soft); color: var(--teal-deep); }
@@ -1091,16 +1107,24 @@ a.btn { text-decoration: none; }
 .vehicle-profile-form .form-row:last-child { margin-bottom: 0; }
 
 /* ---------- Tabs ---------- */
-.tabbar { display: flex; gap: 2px; overflow-x: auto; border-bottom: 1.5px solid var(--line); margin-bottom: 20px; scrollbar-width: none;
-  transition: margin var(--t-med) var(--ease-out); }
+/* Same floating glass pill as the top nav — the workspace's own section nav. */
+.tabbar {
+  padding: 4px; border-radius: 999px; overflow-x: auto; scrollbar-width: none;
+  background: var(--yf-nav-glass); border: 1px solid var(--yf-glass-border);
+  -webkit-backdrop-filter: blur(18px) saturate(1.2); backdrop-filter: blur(18px) saturate(1.2);
+  box-shadow: var(--shadow-soft); margin-bottom: 20px;
+  transition: margin var(--t-med) var(--ease-out);
+}
 .tabbar::-webkit-scrollbar { display: none; }
 .tab-btn {
-  border: none; background: none; padding: 11px 15px; font-size: 14px; font-weight: 650;
-  color: var(--text-3); border-bottom: 2.5px solid transparent; margin-bottom: -1.5px; white-space: nowrap;
+  border: none; background: none; padding: 9px 15px; font-size: 14px; font-weight: 650;
+  color: var(--text-3); border-radius: 999px; white-space: nowrap;
   display: inline-flex; align-items: center; gap: 6px;
 }
-.tab-btn:hover { color: var(--text); }
-.tab-btn.active { color: var(--teal-deep); border-bottom-color: var(--teal); }
+.tab-btn:hover { color: var(--text); background: var(--bg-soft); }
+[data-theme='dark'] .tab-btn:hover { background: rgba(255, 255, 255, .06); }
+.tab-btn.active { color: var(--teal-deep); }
+[data-theme='dark'] .tab-btn.active .tab-count { background: rgba(255, 255, 255, .14); color: #06251f; }
 .tab-count { background: var(--teal-soft); color: var(--teal-deep); font-size: 11px; font-weight: 750; border-radius: 999px; padding: 1px 7px; }
 /* Editable day title — a real button (keyboard-reachable rename), styled as
    the heading it replaces. */
@@ -3573,3 +3597,10 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
   .pub-kpis { grid-template-columns: repeat(2, 1fr); }
   .pub-kpis .stat-tile.wide { grid-column: span 2; }
 }
+
+/* ---- Semantic meta-icon tints (v0.40) — colour-coded icons app-wide ---- */
+.mi-money { color: var(--yf-saffron); }
+.mi-time { color: var(--yf-teal-600); }
+.mi-place { color: var(--yf-purple); }
+.mi-ticket { color: var(--ok-500); }
+[data-theme='dark'] .mi-time { color: var(--teal-600); }

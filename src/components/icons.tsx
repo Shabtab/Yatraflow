@@ -50,3 +50,12 @@ const WMO_ICONS: Record<number, LucideIcon> = {
 export function wmoIcon(code: number): LucideIcon {
   return WMO_ICONS[code] ?? Cloud
 }
+
+// ---- Semantic meta icons: one tinted hue per concept, app-wide ----
+// money = saffron, time = teal, place = purple, ticket (entry) = green.
+// Tokens mirror in dark theme, so both themes stay AA on their surfaces.
+export type MetaTone = 'money' | 'time' | 'place' | 'ticket'
+
+export function MetaIcon({ icon: Icon, tone, size = 12 }: { icon: LucideIcon; tone: MetaTone; size?: number }) {
+  return <Icon size={size} aria-hidden className={`mi mi-${tone}`} />
+}
