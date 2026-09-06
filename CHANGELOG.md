@@ -27,6 +27,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - **Empty plans are never cached.** A first search running before the route resolves no longer persists [] until Refresh.
 - **Detours scored in minutes.** The same off-route distance costs slow modes more.
 - **Scout triage fixes.** Map cache now keys on anchors as well as scope (edited stops re-search); detour budgets use the hit's own day, not the whole trip; accepts/declines bust the cache and re-score immediately; crawl-speed windows read as city crawls; visit-minute tables unified.
+- **Fuel halts never take colleges.** Need-based purposes (fuel, meal, overnight) now reject zero-fit hits, leaving an honest gap instead of a wrong-kind match.
 
 ## [0.40.1] — 2026-09-06
 

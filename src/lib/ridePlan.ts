@@ -445,6 +445,12 @@ export function scoreHitForSegment(
   const window = Math.max(1, seg.maxKm - seg.minKm)
   const distPenalty = dist > window / 2 ? dist + window : dist
   const fit = weatherAdjustedFit(h, seg.purpose, seg.rainy === true)
+  // Need-based purposes never take a wrong-kind place: a college with zero
+  // fuel-fit must leave the segment empty (rendered as a gap), not fill it
+  // as a bogus petrol pump. Generic breaks stay ungated.
+  if ((seg.purpose === 'fuel' || seg.purpose === 'meal' || seg.purpose === 'overnight') && fit < 1) {
+    return null
+  }
   // Detour scores in minutes at the trip's speed, not flat km: the same
   // off-route distance costs a slow mode more. ×2 keeps the old weight at
   // the 60 km/h reference (10 km = 10 min = 20 points, as before).
