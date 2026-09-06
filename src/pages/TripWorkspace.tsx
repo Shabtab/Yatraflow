@@ -6,6 +6,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Trip } from '../data/types'
 import { useDb, tripById, currentUser, roleOf, canEdit, updateTrip, userById } from '../store/store'
+import { PillNav } from '../components/PillNav'
 import { computeHealth, computeTotals, getAssumptions, legKey, isRoundTrip } from '../lib/engine'
 import type { LegEstimate } from '../lib/engine'
 import { routePath } from '../lib/routing'
@@ -206,21 +207,21 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
       </div>
 
       {/* ---------- Tabs ---------- */}
-      <div className="tabbar" role="tablist" style={{ marginTop: 20 }}>
+      <PillNav className="tabbar" role="tablist" aria-label="Trip sections" activeKey={tab}>
         {TABS.map(([key, label]) => {
           const count = key === 'group'
             ? db.suggestions.filter(s => s.tripId === trip.id && s.status === 'open').length
               + db.decisions.filter(d => d.tripId === trip.id && d.status === 'open').length
             : undefined
           return (
-            <button key={key} role="tab" id={`tab-${key}`} aria-selected={tab === key}
+            <button key={key} role="tab" id={`tab-${key}`} data-pill-key={key} aria-selected={tab === key}
               aria-controls={`panel-${key}`}
               className={`tab-btn ${tab === key ? 'active' : ''}`} onClick={() => setTab(key)}>
               {label}{count ? <span className="tab-count">{count}</span> : null}
             </button>
           )
         })}
-      </div>
+      </PillNav>
 
       {pending && (
         <ImpactPreviewPanel

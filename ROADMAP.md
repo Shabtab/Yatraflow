@@ -238,6 +238,23 @@ writes (1h — pairs naturally with M3).
 | Trash + 30-day purge | soft-delete layer before hard deletes |
 | Explore pagination | grows with the catalog |
 
+### 🧭 Suggestion-engine ideas (Sep 6 2026 deep brainstorm → [docs/SUGGESTION_ENGINE_BRAINSTORM.md](docs/SUGGESTION_ENGINE_BRAINSTORM.md))
+
+| Idea | Horizon | Note / effort |
+|---|---|---|
+| Road-projected hit positions (snap to OSRM polyline) | 1 | fixes haversine drift on ghat routes · 2–3 h |
+| Two-pass segment assignment (swap-improvement) | 1 | kills greedy starvation · ~1 h |
+| Itinerary + geo-fuzzy dedupe of candidates | 1 | no re-suggesting planned/adjacent places · 2 h |
+| Reason strings on suggestion cards ("why this") | 1 | data already in SegmentHit · 1–2 h |
+| Journey-clock segments (meals land at meal times) | 2 | needs schedule-engine join · 3–4 h |
+| Crew-aware fatigue cadence (style/travellers multipliers) | 2 | constants → derived · 2 h |
+| Weather-joined ranking (rain → indoor picks) | 2 | forecast layer exists · 2 h |
+| Time-based detour cost + on-way asymmetry | 2 | mode-speed conversion · 2 h |
+| Road personality (rest before the ghats) | 3 | OSRM curvature classification · 4–6 h |
+| Detour budget per day | 3 | finite honest menu · 3 h |
+| Trip DNA (learns the crew's picks) | 3 | acceptance history → preference vector · 6–8 h |
+| Crew-seeded corridor suggestions + story arcs + slack prompts | 3 | group-input ↔ engine bridge · 4–6 h |
+
 ### 💰 Budget ideas (web research, Sep 6 2026 — sources: YNAB/envelope patterns, budgeting-app UX guides)
 
 | Idea | Pattern source | Note / effort |

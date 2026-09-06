@@ -7,6 +7,7 @@ import {
   Calendar, Camera, Car, Clock, Flag, GitFork, Heart, Link2, Lock, MapPin,
   Route, Sparkles, Ticket, TriangleAlert,
 } from 'lucide-react'
+import { MetaIcon } from '../components/icons'
 import type { Trip, PublishedItinerary } from '../data/types'
 import { useDb, currentUser, tripById, userById, registerPubView } from '../store/store'
 import { forkPublication } from '../lib/forkPub'
@@ -117,10 +118,10 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
           <span className="pub-stats-sub">estimated per traveller</span>
           <hr className="pub-stats-divider" />
           <div className="pub-stats-row">
-            <span><MapPin size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />{pub.routeSummary.length} place{pub.routeSummary.length === 1 ? '' : 's'}</span>
+            <span><MetaIcon icon={ MapPin } tone="place" />{pub.routeSummary.length} place{pub.routeSummary.length === 1 ? '' : 's'}</span>
             <span><Route size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />{totals.totalDistanceKm.toFixed(0)} km</span>
-            <span><Clock size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />{minutesToHM(totals.totalTravelMinutes)} on the road</span>
-            <span><Calendar size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />{pub.durationDays} days</span>
+            <span><MetaIcon icon={ Clock } tone="time" />{minutesToHM(totals.totalTravelMinutes)} on the road</span>
+            <span><MetaIcon icon={ Calendar } tone="time" />{pub.durationDays} days</span>
           </div>
         </aside>
       </section>
@@ -270,10 +271,10 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
                             <div className="travel-anchor-meta">
                               {inbound ? (
                                 <>
-                                  <span><Clock size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />Depart {depHM} → arrive {arrHM}</span>
-                                  <span><Clock size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />{minutesToHM(inbound.durationMinutes)}</span>
-                                  <span><MapPin size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />{inbound.distanceKm.toFixed(0)} km</span>
-                                  <span><Car size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />est {formatInr(cost)} ({A.mode})</span>
+                                  <span><MetaIcon icon={ Clock } tone="time" />Depart {depHM} → arrive {arrHM}</span>
+                                  <span><MetaIcon icon={ Clock } tone="time" />{minutesToHM(inbound.durationMinutes)}</span>
+                                  <span><MetaIcon icon={ MapPin } tone="place" />{inbound.distanceKm.toFixed(0)} km</span>
+                                  <span><MetaIcon icon={ Car } tone="money" />est {formatInr(cost)} ({A.mode})</span>
                                 </>
                               ) : (
                                 <span>Departure {depHM}</span>
@@ -289,12 +290,12 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
                             <div className="stop-toprow">
                               <span className="stop-title">{s.title}</span>
                               <Chip tone="info">{labelCat(s.category)}</Chip>
-                              {s.openTime && <span className="small muted"><Clock size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />{formatHMRange(s.openTime, s.closeTime, timeFormat)}</span>}
+                              {s.openTime && <span className="small muted"><MetaIcon icon={ Clock } tone="time" />{formatHMRange(s.openTime, s.closeTime, timeFormat)}</span>}
                             </div>
                             <div className="stop-meta">
-                              <span><MapPin size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />{s.locationName}</span>
-                              <span><Clock size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />{minutesToHM(s.visitMinutes)}</span>
-                              {s.entryFeeInrPerPerson > 0 && <span><Ticket size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />₹{s.entryFeeInrPerPerson}/person</span>}
+                              <span><MetaIcon icon={ MapPin } tone="place" />{s.locationName}</span>
+                              <span><MetaIcon icon={ Clock } tone="time" />{minutesToHM(s.visitMinutes)}</span>
+                              {s.entryFeeInrPerPerson > 0 && <span><MetaIcon icon={ Ticket } tone="ticket" />₹{s.entryFeeInrPerPerson}/person</span>}
                             </div>
                             {s.description && <div className="stop-desc">{s.description}</div>}
                           </div>

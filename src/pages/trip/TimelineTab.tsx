@@ -31,6 +31,7 @@ import { kmFromStartForHit, type HaltPurpose } from '../../lib/providers/hits'
 import { segmentsFromPlan, assignSegmentHits, annotateSegmentHits, type HaltPlanItem } from '../../lib/ridePlan'
 import { pointAtKm } from '../../lib/geo'
 import type { LucideIcon } from 'lucide-react'
+import { MetaIcon } from '../../components/icons'
 import { fetchDailyWeather, forecastAvailable, isoAddDays, wmoInfo } from '../../lib/weather'
 import type { DayWeather } from '../../lib/weather'
 import { cap } from './shared'
@@ -665,13 +666,13 @@ const DaySection = React.memo(function DaySection({ day, trip, editable, onAdd, 
                   {s.weatherSensitive && <Chip tone="info"><CloudRain size={11} aria-hidden style={{ verticalAlign: '-1px', marginRight: 3 }} />weather-sensitive</Chip>}
                 </div>
                 <div className="stop-meta">
-                  <span><MapPin size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />{s.locationName}</span>
-                  <span><Clock size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />{minutesToHM(s.visitMinutes)}</span>
-                  {s.openTime && <span><Clock size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />{formatHMRange(s.openTime, s.closeTime, timeFormat)}</span>}
-                  <span><Ticket size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />₹{s.entryFeeInrPerPerson}/person</span>
-                  <span><Car size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />₹{s.transportCostInrTotal} transport</span>
+                  <span><MetaIcon icon={ MapPin } tone="place" />{s.locationName}</span>
+                  <span><MetaIcon icon={ Clock } tone="time" />{minutesToHM(s.visitMinutes)}</span>
+                  {s.openTime && <span><MetaIcon icon={ Clock } tone="time" />{formatHMRange(s.openTime, s.closeTime, timeFormat)}</span>}
+                  <span><MetaIcon icon={ Ticket } tone="ticket" />₹{s.entryFeeInrPerPerson}/person</span>
+                  <span><MetaIcon icon={ Car } tone="money" />₹{s.transportCostInrTotal} transport</span>
                   {s.departTime && s.arrivalTime && (
-                    <span><Clock size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />dep {formatHM(s.departTime, timeFormat)} · arr {formatHM(s.arrivalTime, timeFormat)}{s.legDistanceKm ? ` · ${s.legDistanceKm.toFixed(0)} km` : ''}</span>
+                    <span><MetaIcon icon={ Clock } tone="time" />dep {formatHM(s.departTime, timeFormat)} · arr {formatHM(s.arrivalTime, timeFormat)}{s.legDistanceKm ? ` · ${s.legDistanceKm.toFixed(0)} km` : ''}</span>
                   )}
                 </div>
                 {s.description && <ClampedText className="stop-desc">{s.description}</ClampedText>}
@@ -702,7 +703,7 @@ const DaySection = React.memo(function DaySection({ day, trip, editable, onAdd, 
                   <div className="tl-legrow" {...(editable ? dayDropHandlers(i + 1) : {})}>
                     <div className="tl-gutter tl-gutter-leg"><span className="tl-line tl-line-leg" /></div>
                     <div className={`travel-leg ${foreignOver === i + 1 && dragging === null ? 'foreign-over' : ''}`}>
-                      <Car size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />~{leg.distanceKm.toFixed(0)} km · ~{Math.round(leg.durationMinutes)} min from {leg.fromTitle.replace(/ \((start|end)\)$/, '')} · est ₹{Math.round(leg.distanceKm * (A.inrPerKm ?? 8))} ({A.mode})
+                      <MetaIcon icon={ Car } tone="money" />~{leg.distanceKm.toFixed(0)} km · ~{Math.round(leg.durationMinutes)} min from {leg.fromTitle.replace(/ \((start|end)\)$/, '')} · est ₹{Math.round(leg.distanceKm * (A.inrPerKm ?? 8))} ({A.mode})
                     </div>
                   </div>
                 )
@@ -721,7 +722,7 @@ const DaySection = React.memo(function DaySection({ day, trip, editable, onAdd, 
                 <div className="tl-legrow">
                   <div className="tl-gutter tl-gutter-leg"><span className="tl-line tl-line-leg" /></div>
                   <div className="travel-leg">
-                    <Car size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />~{last.legIn.distanceKm.toFixed(0)} km · ~{Math.round(last.legIn.durationMinutes)} min from {last.legIn.fromTitle} · est ₹{Math.round(last.legIn.distanceKm * (A.inrPerKm ?? 8))} ({A.mode})
+                    <MetaIcon icon={ Car } tone="money" />~{last.legIn.distanceKm.toFixed(0)} km · ~{Math.round(last.legIn.durationMinutes)} min from {last.legIn.fromTitle} · est ₹{Math.round(last.legIn.distanceKm * (A.inrPerKm ?? 8))} ({A.mode})
                   </div>
                 </div>
               )}
@@ -1028,7 +1029,7 @@ function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddPlanned
 
       {editable && (
         <div className="travel-panel-add halt-planner" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
-          <div className="small muted"><MapPin size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />Halt planner — you pick where along the ride and for how long. Halts sit on the route itself; tick a found spot to detour there instead.</div>
+          <div className="small muted"><MetaIcon icon={ MapPin } tone="place" />Halt planner — you pick where along the ride and for how long. Halts sit on the route itself; tick a found spot to detour there instead.</div>
           <div className="halt-planner-inputs">
             <label className="hp-field">
               <span className="tps-label">after</span>

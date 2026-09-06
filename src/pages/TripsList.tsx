@@ -1,6 +1,7 @@
 // ============ My trips ============
 import { useState } from 'react'
 import { Clock, Compass, Plus, Rocket, Trash2, Wallet } from 'lucide-react'
+import { MetaIcon } from '../components/icons'
 import { useTrips, useUsers, useSessionUserId, tripsForUser, deleteTrip, restoreTrip, addDemoTrips } from '../store/store'
 import { computeTotals, formatInrShort } from '../lib/engine'
 import { Avatar, Chip, EmptyState, toast, undoToast, ConfirmDialog } from '../components/ui'
@@ -73,8 +74,8 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
                       {t.startLocation} → {t.destinations[t.destinations.length - 1] ?? t.startLocation} · {t.days.length} days
                     </div>
                     <div className="stop-meta num">
-                      <span><Wallet size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />~{formatInrShort(totals.costPerPersonInr)}/person</span>
-                      <span><Clock size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />{Math.round(totals.totalTravelMinutes / 60)}h travel</span>
+                      <span><MetaIcon icon={ Wallet } tone="money" />~{formatInrShort(totals.costPerPersonInr)}/person</span>
+                      <span><MetaIcon icon={ Clock } tone="time" />{Math.round(totals.totalTravelMinutes / 60)}h travel</span>
                     </div>
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                       <Chip tone="teal">{cap(t.travelStyle)}</Chip>

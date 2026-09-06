@@ -9,6 +9,7 @@ import {
 import type { Trip } from './data/types'
 import { useDb, currentUser, useUsers, useNotifications, useSessionUserId, logout, markAllNotificationsRead, tripById, joinViaInvite, duplicateTrip, init, useStoreReady } from './store/store'
 import { Avatar, BrandMark, ToastZone, useClickOutside, toast } from './components/ui'
+import { PillNav } from './components/PillNav'
 import { decodeTripSnapshot } from './lib/snapshot'
 import { scrollBehavior } from './lib/motion'
 import { LandingPage } from './pages/Landing'
@@ -250,13 +251,13 @@ export default function App() {
             <BrandMark size={32} />
             <span>Yatra<b style={{ color: 'var(--teal)' }}>Flow</b></span>
           </a>
-          <div className="nav-links">
+          <PillNav activeKey={route} className="nav-links" role="navigation" aria-label="Primary">
             {me && <>
-              <a className={`nav-link ${route === '/trips' ? 'active' : ''}`} href="#/trips">My trips</a>
-              <a className={`nav-link ${route === '/new' ? 'active' : ''}`} href="#/new">Plan a trip</a>
+              <a className={`nav-link ${route === '/trips' ? 'active' : ''}`} data-pill-key="/trips" href="#/trips">My trips</a>
+              <a className={`nav-link ${route === '/new' ? 'active' : ''}`} data-pill-key="/new" href="#/new">Plan a trip</a>
             </>}
-            <a className={`nav-link ${route === '/explore' ? 'active' : ''}`} href="#/explore">Explore</a>
-          </div>
+            <a className={`nav-link ${route === '/explore' ? 'active' : ''}`} data-pill-key="/explore" href="#/explore">Explore</a>
+          </PillNav>
         <div className="nav-right">
           {/* CTI control tray: icon controls live in one soft pill. Auth
               buttons stay outside it (they're wide, and logged-out mobile

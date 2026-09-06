@@ -2,6 +2,7 @@
 // Mechanical extraction from src/pages/TripWorkspace.tsx (M3.4) — no behavior changes.
 import React, { useEffect, useMemo, useState } from 'react'
 import { CircleCheck, Clock, Fuel, Lightbulb, MapPin, RotateCcw } from 'lucide-react'
+import { MetaIcon } from '../../components/icons'
 import type { Trip, ItineraryStop } from '../../data/types'
 import type { ImpactResult } from '../../lib/impact'
 import { routePath } from '../../lib/routing'
@@ -236,7 +237,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache }: {
         </div>
         {hit.description && <div className="poi-desc small muted">{hit.description}</div>}
         {(hit.openTime || hit.closeTime) && (
-          <div className="poi-desc small muted"><Clock size={11} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />{formatHMRange(hit.openTime, hit.closeTime, timeFormat)} (reported)</div>
+          <div className="poi-desc small muted"><MetaIcon icon={ Clock } tone="time" />{formatHMRange(hit.openTime, hit.closeTime, timeFormat)} (reported)</div>
         )}
         <div>
           {editable && (

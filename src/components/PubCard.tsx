@@ -3,6 +3,7 @@
 // lands everywhere at once. Fork + save behavior arrive as callbacks; the
 // creator line links to the creator's public page (#/creator/:id).
 import { Calendar, Camera, GitFork, Heart, MapPin, Sparkles, TvMinimalPlay, Wallet } from 'lucide-react'
+import { MetaIcon } from './icons'
 import type { PublishedItinerary, User } from '../data/types'
 import { formatInr } from '../lib/engine'
 import { Avatar, Chip } from './ui'
@@ -34,9 +35,9 @@ export function PubCard({ pub, creator, saved, onFork, onToggleSave }: {
           <h2 className="card-title">{pub.title}</h2>
           <p className="small muted" style={{ margin: 0 }}>{pub.tagline}</p>
           <div className="stop-meta" style={{ marginTop: 2 }}>
-            <span><Calendar size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />{pub.durationDays} days</span>
-            <span><Wallet size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />~{formatInr(pub.estimatedBudgetPerPersonInr)}/person</span>
-            <span><MapPin size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />{pub.routeSummary.length} places</span>
+            <span><MetaIcon icon={ Calendar } tone="time" />{pub.durationDays} days</span>
+            <span><MetaIcon icon={ Wallet } tone="money" />~{formatInr(pub.estimatedBudgetPerPersonInr)}/person</span>
+            <span><MetaIcon icon={ MapPin } tone="place" />{pub.routeSummary.length} places</span>
           </div>
         </div>
       </a>

@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react'
 import {
   Calendar, Compass, Eye, GitFork, Heart, MapPin, Search, Sparkles, Star, Wallet, X,
 } from 'lucide-react'
+import { MetaIcon } from '../components/icons'
 import { usePublished, useUsers, useTrips, useSessionUserId } from '../store/store'
 import type { User } from '../data/types'
 import { computeHealth, formatInr } from '../lib/engine'
@@ -182,9 +183,9 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
                 {featuredHealth !== undefined && <> · trip health {featuredHealth}/100</>} — by {userOf(users, featured.creatorId)?.profile.name ?? 'a YatraFlow traveller'}{userOf(users, featured.creatorId)?.profile.isCreator && <Sparkles size={11} aria-hidden style={{ verticalAlign: '-1px', marginLeft: 2 }} />}.
               </p>
               <div className="featured-meta">
-                <span><Calendar size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />{featured.durationDays} days</span>
-                <span><Wallet size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />~{formatInr(featured.estimatedBudgetPerPersonInr)}/person</span>
-                <span><MapPin size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />{featured.routeSummary.length} places · {featured.routeSummary[0]} → {featured.routeSummary[featured.routeSummary.length - 1]}</span>
+                <span><MetaIcon icon={ Calendar } tone="time" />{featured.durationDays} days</span>
+                <span><MetaIcon icon={ Wallet } tone="money" />~{formatInr(featured.estimatedBudgetPerPersonInr)}/person</span>
+                <span><MetaIcon icon={ MapPin } tone="place" />{featured.routeSummary.length} places · {featured.routeSummary[0]} → {featured.routeSummary[featured.routeSummary.length - 1]}</span>
               </div>
               <div className="featured-actions">
                 <button className="btn fork-btn" onClick={() => forkTrip(featured.id)}><GitFork size={14} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />Fork this trip</button>
