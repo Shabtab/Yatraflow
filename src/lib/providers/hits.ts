@@ -244,6 +244,8 @@ export interface NearbyOpts {
   travelStyle?: string
   /** Door-to-door speed for time-based detour scoring (see detourMinutes). */
   speedKmph?: number
+  /** Already-planned stops — candidates near them are dropped (see filterPlannedNearby). */
+  plannedStops?: PlannedStop[]
 }
 
 /**

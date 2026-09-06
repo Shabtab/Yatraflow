@@ -144,6 +144,9 @@ export function MapTab({ trip, editable, applyChange, suggestionCache }: {
     travellers: trip.travellers,
     travelStyle: trip.travelStyle,
     speedKmph: MODE_SPEED[trip.transportMode] ?? 40,
+    plannedStops: trip.days.flatMap(d => d.stops)
+      .filter(s => s.status !== 'rejected' && Number.isFinite(s.lat) && Number.isFinite(s.lng))
+      .map(s => ({ lat: s.lat, lng: s.lng, name: s.title })),
   }), [trip, routeGeometry, routeTotalKm])
 
   useEffect(() => {

@@ -17,13 +17,13 @@
 // resolve via one Place Details call instead of OSM Nominatim.
 export { DEBOUNCE_MS } from './providers/free'
 export { mapplsEnabled, parseOpeningHours, fetchOpeningHours, type OpeningHours } from './providers/free'
-export { HOME_ZONE_KM, corridorAnchors, detourKm } from './providers/hits'
-export type { NearbyOpts, PlaceHit } from './providers/hits'
+export { HOME_ZONE_KM, corridorAnchors, detourKm, filterPlannedNearby } from './providers/hits'
+export type { NearbyOpts, PlaceHit, PlannedStop } from './providers/hits'
 export { googleEnabled } from './providers/google'
 export { searchCitiesAlong } from './providers/free'
 export { planRideSegments, assignSegmentHits, reasonForSegmentHit, reasonForHit, type SegmentHit, type RideSegment } from './ridePlan'
 
-import { hasCoords, rankAndCap, type NearbyOpts, type PlaceHit } from './providers/hits'
+import { hasCoords, rankAndCap, filterPlannedNearby, type NearbyOpts, type PlaceHit } from './providers/hits'
 import {
   searchPlacesFree,
   searchNearbyPoisMultiFree,
@@ -180,7 +180,10 @@ export async function planJourneyHalts(
     seen.add(key)
     candidates.push(h)
   }
+  const unplanned = opts.plannedStops && opts.plannedStops.length > 0
+    ? filterPlannedNearby(candidates, opts.plannedStops)
+    : candidates
   const routePolyline = (opts.routeCoords ?? []).filter(c => Number.isFinite(c[0]) && Number.isFinite(c[1])).map(c => ({ lat: c[1], lng: c[0] }))
-  const assigned = assignSegmentHits(candidates, segments, anchors, { homeCenter: opts.homeCenter ?? null, routePolyline: routePolyline.length >= 2 ? routePolyline : null, speedKmph: opts.speedKmph })
+  const assigned = assignSegmentHits(unplanned, segments, anchors, { homeCenter: opts.homeCenter ?? null, routePolyline: routePolyline.length >= 2 ? routePolyline : null, speedKmph: opts.speedKmph })
   return annotateSegmentHits(assigned, candidates)
 }

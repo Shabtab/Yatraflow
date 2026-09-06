@@ -26,7 +26,7 @@ import { stopKindOf, STOP_KIND_LABELS } from '../../lib/stopKind'
 import { Chip, Modal, EmptyState, toast, useReorder } from '../../components/ui'
 import { StopEditor, type StopFormValues } from '../../components/StopEditor'
 import { useSuggestionCache } from '../../hooks/useSuggestionCache'
-import { searchNearbyPois, searchNearbyPoisMulti, searchCitiesAlong, corridorAnchors, reasonForHit } from '../../lib/geocode'
+import { searchNearbyPois, searchNearbyPoisMulti, searchCitiesAlong, corridorAnchors, reasonForHit, filterPlannedNearby } from '../../lib/geocode'
 import type { PlaceHit, SegmentHit } from '../../lib/geocode'
 import { kmFromStartForHit, type HaltPurpose } from '../../lib/providers/hits'
 import { segmentsFromPlan, assignSegmentHits, annotateSegmentHits, type HaltPlanItem } from '../../lib/ridePlan'
@@ -916,8 +916,12 @@ function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddPlanned
       }
       const sorted = [...plan].sort((a, b) => a.km - b.km)
       const segments = segmentsFromPlan(sorted, journey.distanceKm || 0, journey.driveMinutes)
+      const planned = trip.days.flatMap(d => d.stops)
+        .filter(s => s.status !== 'rejected' && Number.isFinite(s.lat) && Number.isFinite(s.lng))
+        .map(s => ({ lat: s.lat, lng: s.lng, name: s.title }))
+      const unplanned = planned.length > 0 ? filterPlannedNearby(candidates, planned) : candidates
       const assigned = annotateSegmentHits(
-        assignSegmentHits(candidates, segments, anchors, { homeCenter: trip.startLocationCoords ?? null, routePolyline: routePts.length >= 2 ? routePts : null, speedKmph: MODE_SPEED[trip.transportMode] ?? 40 }),
+        assignSegmentHits(unplanned, segments, anchors, { homeCenter: trip.startLocationCoords ?? null, routePolyline: routePts.length >= 2 ? routePts : null, speedKmph: MODE_SPEED[trip.transportMode] ?? 40 }),
         candidates,
       )
       const hitById = new Map<string, PlaceHit | null>()
