@@ -10,7 +10,7 @@ import { getAssumptions, buildJourney, minutesToHM, computeCategoryBias } from '
 import { useTimeFormat, formatHMRange } from '../../lib/timefmt'
 import { Modal, Field, toast } from '../../components/ui'
 import { useSuggestionCache } from '../../hooks/useSuggestionCache'
-import { corridorAnchors, detourKm, googleEnabled, planJourneyHalts, type NearbyOpts } from '../../lib/geocode'
+import { corridorAnchors, detourKm, googleEnabled, planJourneyHalts, reasonForSegmentHit, type NearbyOpts } from '../../lib/geocode'
 import type { PlaceHit, SegmentHit } from '../../lib/geocode'
 import { anchorHash } from '../../lib/providers/hits'
 // MapLibre is heavy (~1MB) — load it only when the Map tab is actually opened.
@@ -235,6 +235,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache }: {
           {hit.nearestCity ? ` · near ${hit.nearestCity}` : ''}
           {' · '}{offRoute == null ? 'on route' : `~${Math.round(offRoute * 10) / 10} km off route`}
         </div>
+        <div className="poi-desc small">Why: {reasonForSegmentHit(sh, offRoute)}</div>
         {hit.description && <div className="poi-desc small muted">{hit.description}</div>}
         {(hit.openTime || hit.closeTime) && (
           <div className="poi-desc small muted"><MetaIcon icon={ Clock } tone="time" />{formatHMRange(hit.openTime, hit.closeTime, timeFormat)} (reported)</div>

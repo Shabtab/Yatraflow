@@ -379,5 +379,29 @@ export function annotateSegmentHits(results: SegmentHit[], candidates: PlaceHit[
   })
 }
 
+/** Hit-level variant for callers that kept the annotated hit but not its segment
+ *  (Timeline halt rows): reads the leg/nearestCity stamps annotateSegmentHits wrote. */
+export function reasonForHit(h: PlaceHit): string | null {
+  if (h.legMinutes == null) return null
+  const mins = h.legMinutes
+  const fatigue = mins >= 60 ? `Breaks a ${Math.round(mins / 60)} h drive` : `Breaks a ${mins} min drive`
+  const off = h.offRouteKm == null ? 'on route' : `${Math.round(h.offRouteKm)} km off-route`
+  const city = h.nearestCity ? `near ${h.nearestCity}` : null
+  return [fatigue, off, city].filter((s): s is string => !!s).join(' · ')
+}
+
+/**
+ * One-line "why this suggestion" for cards: fatigue slot (from the segment's
+ * leg) + detour slot (or "on route" when unknown) + place slot (nearest city).
+ * Pure — the caller supplies the detour it already computed.
+ */
+export function reasonForSegmentHit(r: SegmentHit, detour: number | null): string {
+  const mins = r.segment.minutesFromPrev
+  const fatigue = mins >= 60 ? `Breaks a ${Math.round(mins / 60)} h drive` : `Breaks a ${mins} min drive`
+  const off = detour == null ? 'on route' : `${Math.round(detour)} km off-route`
+  const city = r.hit?.nearestCity ? `near ${r.hit.nearestCity}` : null
+  return [fatigue, off, city].filter((s): s is string => !!s).join(' · ')
+}
+
 // re-export the pure position helper so callers reach the planner's own API
 export { kmFromStartForHit }

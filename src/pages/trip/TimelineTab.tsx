@@ -25,7 +25,7 @@ import { stopKindOf, STOP_KIND_LABELS } from '../../lib/stopKind'
 import { Chip, Modal, EmptyState, toast, useReorder } from '../../components/ui'
 import { StopEditor, type StopFormValues } from '../../components/StopEditor'
 import { useSuggestionCache } from '../../hooks/useSuggestionCache'
-import { searchNearbyPois, searchNearbyPoisMulti, searchCitiesAlong, corridorAnchors } from '../../lib/geocode'
+import { searchNearbyPois, searchNearbyPoisMulti, searchCitiesAlong, corridorAnchors, reasonForHit } from '../../lib/geocode'
 import type { PlaceHit, SegmentHit } from '../../lib/geocode'
 import { kmFromStartForHit, type HaltPurpose } from '../../lib/providers/hits'
 import { segmentsFromPlan, assignSegmentHits, annotateSegmentHits, type HaltPlanItem } from '../../lib/ridePlan'
@@ -1129,6 +1129,9 @@ function HaltPlanRow({ item, onRemove, onTogglePin }: {
           after ~{Math.round(item.km)} km · {item.minutes} min halt
           {usingSpot && h!.offRouteKm != null ? ` · ~${Math.round(h!.offRouteKm)} km off route` : ''}
         </span>
+        {usingSpot && h && reasonForHit(h) && (
+          <span className="muted small">Why: {reasonForHit(h)}</span>
+        )}
         {h && (
           <label className="hp-pin muted small">
             <input type="checkbox" checked={item.pin} onChange={onTogglePin} aria-label={`Detour to ${h.name} instead of halting on the route`} />

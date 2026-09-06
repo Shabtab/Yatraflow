@@ -6,6 +6,9 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ### Fixed
 - **Suggestion positions are road-true on routes with geometry.** `kmFromStartForHit` now snaps hits onto the OSRM polyline when provided, so switchback roads report road km instead of straight-line km. Falls back to anchors when no geometry exists.
+- **Smarter halt assignment.** Segment assignment now runs an improvement sweep after the greedy pass, so an early segment no longer steals a hit that fits a later segment better.
+- **No more duplicate or already-planned suggestions.** Near-duplicate places collapse into one, and candidates near an existing stop are dropped.
+- **Every suggestion says why.** Cards show a reason line built from the leg, detour and nearest city.
 
 ## [0.39.0] — 2026-09-06
 
