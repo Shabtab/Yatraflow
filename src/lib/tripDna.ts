@@ -76,7 +76,7 @@ export function dnaNoteForHit(
   if (!cat) return null
   const affinity = vector.categoryAffinity[cat] ?? 0
   if (affinity < NOTE_THRESHOLD) return null
-  return `you've picked ${affinity} ${cat} ${affinity === 1 ? 'stop' : 'stops'} this trip`
+  return `you've picked ${affinity} ${cat} stops this trip`
 }
 
 // ---- best-effort local log (impure; UI layer only) ----

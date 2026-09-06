@@ -14,6 +14,19 @@ export interface SuggestionCache {
 
 const CACHE_TTL_MS = 1000 * 60 * 60 * 4 // 4 hours
 
+/**
+ * A cached map plan is reusable only when the detour scope AND the anchor
+ * set match: editing stops moves anchors, so a scope-only check serves
+ * stale suggestions for the old route.
+ */
+export function isMapCacheFresh(
+  cached: SuggestionCache['map'],
+  scopeKm: number,
+  anchorsHash: string,
+): boolean {
+  return !!cached && cached.scopeKm === scopeKm && cached.anchorsHash === anchorsHash
+}
+
 function cacheKey(tripId: string) {
   return `yatraflow_suggestions_${tripId}`
 }

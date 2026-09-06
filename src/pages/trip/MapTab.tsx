@@ -9,11 +9,12 @@ import { routePath } from '../../lib/routing'
 import { getAssumptions, buildJourney, minutesToHM, computeCategoryBias, MODE_SPEED } from '../../lib/engine'
 import { useTimeFormat, formatHMRange } from '../../lib/timefmt'
 import { Modal, Field, toast } from '../../components/ui'
-import { useSuggestionCache } from '../../hooks/useSuggestionCache'
+import { useSuggestionCache, isMapCacheFresh } from '../../hooks/useSuggestionCache'
 import { corridorAnchors, detourKm, detourMinutes, googleEnabled, planJourneyHalts, reasonForSegmentHit, type NearbyOpts } from '../../lib/geocode'
 import { dayDetourBudgetMin, budgetSharePct } from '../../lib/detourBudget'
 import { buildDnaVector, loadDnaLog, recordDnaEvent, dnaNoteForHit, crewSeedsFromSuggestions, crewSeedsToPlannedStops, crewSeedEvents, crewNoteForHit } from '../../lib/tripDna'
 import { clusterStoryArcs } from '../../lib/storyArcs'
+import { visitMinutesForCategory } from '../../lib/slackPrompts'
 import type { PlaceHit, SegmentHit } from '../../lib/geocode'
 import { anchorHash } from '../../lib/providers/hits'
 import { fetchDailyWeather, forecastAvailable, isoAddDays } from '../../lib/weather'
@@ -32,15 +33,7 @@ const SCOPE_KM_STEPS = [10, 20, 30, 50, 80, 100]
 const SCOPE_STORAGE_KEY = 'yf_nearby_scope_km'
 
 /** Sensible visit durations per suggestion category (tourist pacing). */
-function poiVisitMinutes(cat?: string): number {
-  switch (cat) {
-    case 'food': return 45
-    case 'hotel': return 0        // overnight stay — consumes no daylight
-    case 'transport-hub': return 20 // petrol-pump pit stop
-    case 'museum': case 'temple': case 'nature': case 'beach': return 90
-    default: return 60
-  }
-}
+const poiVisitMinutes = visitMinutesForCategory
 
 export function MapTab({ trip, editable, applyChange, suggestionCache, crewSuggestions }: {
   trip: Trip
@@ -55,6 +48,9 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set())
   // dismissed suggestion ids — logged as DNA declines, hidden for the session
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set())
+  // DNA freshness: bumped on every accept/decline so scoring + notes re-read
+  // the log instead of serving the memoised vector
+  const [dnaTick, setDnaTick] = useState(0)
   // bump to force a corridor re-search — the only refetch path besides a
   // detour-scope change or a first-ever load (empty cache)
   const [refreshTick, setRefreshTick] = useState(0)
@@ -173,7 +169,8 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
     travellers: trip.travellers,
     travelStyle: trip.travelStyle,
     speedKmph: MODE_SPEED[trip.transportMode] ?? 40,
-    // Trip DNA: the crew's past picks bias scoring ties toward favoured kinds
+    // Trip DNA: the crew's past picks bias scoring ties toward favoured kinds.
+    // dnaTick re-reads the log after every accept/decline on this tab.
     dnaVector: buildDnaVector([...loadDnaLog(), ...crewSeedEvents(trip.id, crewSeeds)], trip.id),
     plannedStops: [
       ...trip.days.flatMap(d => d.stops)
@@ -184,21 +181,22 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
     ],
     dayStartTimes: trip.days.map(d => d.startTime ?? '08:30'),
     dayRainPct: dayRainPct ?? undefined,
-  }), [trip, routeGeometry, routeTotalKm, dayRainPct, crewSeeds])
+  }), [trip, routeGeometry, routeTotalKm, dayRainPct, crewSeeds, dnaTick])
 
   useEffect(() => {
     if (anchors.length === 0) return
     const cached = suggestionCache.cache.map
+    const hash = anchorHash(anchors)
     // Persisted results always win: returning to this tab, editing the trip, or
     // OSRM resolving after mount must NOT silently re-run the expensive corridor
-    // search. Only ↻ Refresh, a detour-scope change, or an empty cache does.
-    if (cached && cached.scopeKm === scopeKm) {
+    // search. Only ↻ Refresh, a detour-scope change, new anchors, or an empty
+    // cache does.
+    if (cached && isMapCacheFresh(cached, scopeKm, hash)) {
       setPois(cached.segments)
       return
     }
     let cancelled = false
     setLoadingPois(true)
-    const hash = anchorHash(anchors)
     planJourneyHalts(anchors, planKm, wholeTrip.min, { ...nearbyOpts, multiDay: trip.days.length > 1 }, scopeKm * 1000)
       .then(plan => {
         if (!cancelled) {
@@ -278,9 +276,11 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
     const added = addedIds.has(hit.id as string) || existingNames.has(hit.name.toLowerCase())
     const offRoute = detourKm(hit, anchors)
     const detourMin = detourMinutes(hit, anchors, MODE_SPEED[trip.transportMode] ?? 40)
+    // per-day budget: the hit's own day sets the density, not the whole trip
+    const hitDay = trip.days.find(d => d.index === dayForKm(hit.cumKm))
     const dayBudget = dayDetourBudgetMin({
       travelStyle: trip.travelStyle,
-      plannedStops: trip.days.flatMap(d => d.stops).filter(s => s.status !== 'rejected').length,
+      plannedStops: (hitDay?.stops ?? []).filter(s => s.status !== 'rejected').length,
     })
     const dnaNote = dnaNoteForHit(hit, buildDnaVector([...loadDnaLog(), ...crewSeedEvents(trip.id, crewSeeds)], trip.id))
       ?? crewNoteForHit(hit, crewSeeds)
@@ -323,6 +323,8 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
                     title="Not interested — hide this and teach the engine"
                     onClick={() => {
                       recordDnaEvent({ tripId: trip.id, action: 'decline', category: hit.category })
+                      suggestionCache.clearMap()
+                      setDnaTick(t => t + 1)
                       setDismissedIds(prev => new Set(prev).add(hit.id as string))
                     }}
                   >Not for us</button>
@@ -418,6 +420,8 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
                           addPoiToDay(m, dayForKm(m.cumKm))
                           n += 1
                         }
+                        suggestionCache.clearMap()
+                        setDnaTick(t => t + 1)
                         setAddedIds(prev => {
                           const next = new Set(prev)
                           for (const id of arc.hitIds) next.add(id as string)
@@ -452,7 +456,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
             <p className="hint-text">You can fine-tune duration, fees and timings in the Timeline afterwards.</p>
             <div style={{ display: 'flex', gap: 9, justifyContent: 'flex-end', marginTop: 8 }}>
               <button className="btn btn-outline" onClick={() => setPoiDraft(null)}>Cancel</button>
-              <button className="btn btn-primary" onClick={() => { recordDnaEvent({ tripId: trip.id, action: 'accept', category: poiDraft.hit.category }); addPoiToDay(poiDraft.hit, pickDay); setPoiDraft(null) }}>
+              <button className="btn btn-primary" onClick={() => { recordDnaEvent({ tripId: trip.id, action: 'accept', category: poiDraft.hit.category }); suggestionCache.clearMap(); setDnaTick(t => t + 1); addPoiToDay(poiDraft.hit, pickDay); setPoiDraft(null) }}>
                 Add to timeline
               </button>
             </div>

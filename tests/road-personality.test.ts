@@ -53,4 +53,20 @@ describe('road personality in segment planning', () => {
     expect(segs.length).toBeGreaterThan(0)
     expect(segs.every(s => s.roadPersonality === undefined)).toBe(true)
   })
+
+  it('tags crawl-speed windows as city', async () => {
+    const { planRideSegments } = await import('../src/lib/ridePlan')
+    // 400 km in 20 h = 20 km/h crawl → city, not highway
+    const segs = planRideSegments({ totalKm: 400, driveMinutes: 1200, roadGeometry: straightKm(40) })
+    expect(segs.length).toBeGreaterThan(0)
+    expect(segs[0].roadPersonality).toBe('city')
+  })
+
+  it('keeps highway-speed windows as highway', async () => {
+    const { planRideSegments } = await import('../src/lib/ridePlan')
+    // 400 km in 5 h = 80 km/h → highway
+    const segs = planRideSegments({ totalKm: 400, driveMinutes: 300, roadGeometry: straightKm(40) })
+    expect(segs.length).toBeGreaterThan(0)
+    expect(segs[0].roadPersonality).toBe('highway')
+  })
 })

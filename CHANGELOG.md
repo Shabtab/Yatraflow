@@ -19,7 +19,6 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - **Crew ideas steer the corridor.** Open group-input proposals suppress duplicate suggestions near them and bias picks toward proposed kinds ("more like Arjun waterfall").
 - **Sights bundle into themed days.** Forts, temples, beaches and more cluster into story arcs with one-tap "add all".
 - **Leftover time speaks up.** The Timeline shows the day's slack with one nearby pick that fits, addable in one tap.
-
 ### Fixed
 - **Suggestion positions are road-true on routes with geometry.** `kmFromStartForHit` now snaps hits onto the OSRM polyline when provided, so switchback roads report road km instead of straight-line km. Falls back to anchors when no geometry exists.
 - **Smarter halt assignment.** Segment assignment now runs an improvement sweep after the greedy pass, so an early segment no longer steals a hit that fits a later segment better.
@@ -27,6 +26,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - **Planned stops never resurface as suggestions.** The itinerary filter is now wired into halt planning on both tabs.
 - **Empty plans are never cached.** A first search running before the route resolves no longer persists [] until Refresh.
 - **Detours scored in minutes.** The same off-route distance costs slow modes more.
+- **Scout triage fixes.** Map cache now keys on anchors as well as scope (edited stops re-search); detour budgets use the hit's own day, not the whole trip; accepts/declines bust the cache and re-score immediately; crawl-speed windows read as city crawls; visit-minute tables unified.
 
 ## [0.40.1] — 2026-09-06
 

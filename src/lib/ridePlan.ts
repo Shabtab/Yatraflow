@@ -172,6 +172,7 @@ function annotateRoadPersonality(
   segments: RideSegment[],
   geometry: { lat: number; lng: number }[] | undefined,
   totalKm: number,
+  driveMinutes: number,
 ): void {
   if (!geometry || geometry.length < 2 || segments.length === 0 || !(totalKm > 0)) return
   const pts = geometry.filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng))
@@ -204,7 +205,11 @@ function annotateRoadPersonality(
     }
     if (idx.length < 2) continue
     const slice = idx.map(i => pts[i])
-    const w = classifyRoadWindow(slice)
+    // window speed feeds the city-crawl branch: slow urban windows read city
+    const windowKm = Math.max(0, hi - lo)
+    const windowMin = totalKm > 0 ? (driveMinutes * windowKm) / totalKm : 0
+    const avgSpeedKmh = windowMin > 0 ? windowKm / (windowMin / 60) : undefined
+    const w = classifyRoadWindow(slice, avgSpeedKmh != null ? { avgSpeedKmh } : {})
     s.roadPersonality = w.kind
     s.roadWarning = w.warning
   }
@@ -350,7 +355,7 @@ function etaAt(km: number, dayStarts: number[], dayStartTimes: string[] | undefi
   // Phase D — road personality: slice the route geometry into per-segment
   // windows by cumulative-km fraction and classify each. Geometry-free plans
   // keep segments untagged; hints stay untouched (warnings render separately).
-  annotateRoadPersonality(segments, input.roadGeometry, total)
+  annotateRoadPersonality(segments, input.roadGeometry, total, drive)
   return segments
 }
 
