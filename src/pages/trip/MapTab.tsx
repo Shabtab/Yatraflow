@@ -6,7 +6,7 @@ import { MetaIcon } from '../../components/icons'
 import type { Trip, ItineraryStop } from '../../data/types'
 import type { ImpactResult } from '../../lib/impact'
 import { routePath } from '../../lib/routing'
-import { getAssumptions, buildJourney, minutesToHM, computeCategoryBias } from '../../lib/engine'
+import { getAssumptions, buildJourney, minutesToHM, computeCategoryBias, MODE_SPEED } from '../../lib/engine'
 import { useTimeFormat, formatHMRange } from '../../lib/timefmt'
 import { Modal, Field, toast } from '../../components/ui'
 import { useSuggestionCache } from '../../hooks/useSuggestionCache'
@@ -143,6 +143,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache }: {
     routeTotalKm,
     travellers: trip.travellers,
     travelStyle: trip.travelStyle,
+    speedKmph: MODE_SPEED[trip.transportMode] ?? 40,
   }), [trip, routeGeometry, routeTotalKm])
 
   useEffect(() => {

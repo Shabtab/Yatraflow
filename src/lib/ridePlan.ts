@@ -11,7 +11,7 @@
 // directly.
 
 import { haversineKm } from './geo'
-import { HOME_ZONE_KM, kmFromStartForHit, detourKm, dedupeCandidates, type HaltPurpose, type PlaceHit } from './providers/hits'
+import { HOME_ZONE_KM, kmFromStartForHit, detourKm, detourMinutes, dedupeCandidates, type HaltPurpose, type PlaceHit } from './providers/hits'
 
 // ---- Fatigue cadence (named constants — later settings can expose them) ----
 /** ≈2 h at 70–80 km/h — stretch, hydrate, bio-break. */
@@ -284,6 +284,8 @@ export function fitScoreForPurpose(h: PlaceHit, purpose: HaltPurpose): number {
 export interface AssignOpts {
   homeCenter?: { lat: number; lng: number } | null
   routePolyline?: { lat: number; lng: number }[] | null
+  /** door-to-door speed for time-based detour scoring — defaults to 40 km/h */
+  speedKmph?: number
 }
 
 /**
@@ -302,7 +304,10 @@ export function scoreHitForSegment(
   const window = Math.max(1, seg.maxKm - seg.minKm)
   const distPenalty = dist > window / 2 ? dist + window : dist
   const fit = fitScoreForPurpose(h, seg.purpose)
-  return distPenalty + (detourKm(h, anchors) ?? 0) * 2 + (3 - fit) * 4
+  // Detour scores in minutes at the trip's speed, not flat km: the same
+  // off-route distance costs a slow mode more. ×2 keeps the old weight at
+  // the 60 km/h reference (10 km = 10 min = 20 points, as before).
+  return distPenalty + detourMinutes(h, anchors, opts.speedKmph) * 2 + (3 - fit) * 4
 }
 
 /**

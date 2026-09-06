@@ -16,6 +16,7 @@ import {
   predecessorOf, nextAfter, collectWarnings, buildJourney, addMinutesToClock, FUEL_PRICE_INR_PER_L,
   computeCategoryBias,
 } from '../../lib/engine'
+import { MODE_SPEED } from '../../lib/engine'
 import type { LegEstimate, ScheduleWarning, Journey } from '../../lib/engine'
 import type { ImpactResult } from '../../lib/impact'
 import { loadDayCollapsed, saveDayCollapsed } from '../../lib/uiPrefs'
@@ -916,7 +917,7 @@ function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddPlanned
       const sorted = [...plan].sort((a, b) => a.km - b.km)
       const segments = segmentsFromPlan(sorted, journey.distanceKm || 0, journey.driveMinutes)
       const assigned = annotateSegmentHits(
-        assignSegmentHits(candidates, segments, anchors, { homeCenter: trip.startLocationCoords ?? null, routePolyline: routePts.length >= 2 ? routePts : null }),
+        assignSegmentHits(candidates, segments, anchors, { homeCenter: trip.startLocationCoords ?? null, routePolyline: routePts.length >= 2 ? routePts : null, speedKmph: MODE_SPEED[trip.transportMode] ?? 40 }),
         candidates,
       )
       const hitById = new Map<string, PlaceHit | null>()

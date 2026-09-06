@@ -82,6 +82,23 @@ export function detourKm(
   return distToNearest(h, anchors) / 1000
 }
 
+/** Fallback door-to-door speed when the trip mode is unknown. Matches the engine default. */
+export const DEFAULT_SPEED_KMPH = 40
+
+/**
+ * Detour in minutes at the trip's door-to-door speed. Unknown detours
+ * (on-route hits) cost zero — never a straight-line guess.
+ */
+export function detourMinutes(
+  h: Pick<PlaceHit, 'latitude' | 'longitude' | 'offRouteKm' | 'fromGoogleAlongRoute'>,
+  anchors: { lat: number; lng: number }[],
+  speedKmph?: number,
+): number {
+  const speed = speedKmph != null && Number.isFinite(speedKmph) && speedKmph > 0 ? speedKmph : DEFAULT_SPEED_KMPH
+  const km = detourKm(h, anchors) ?? 0
+  return (km / speed) * 60
+}
+
 /** Nothing within this radius of the trip's start is ever suggested. */
 export const HOME_ZONE_KM = 15
 
@@ -225,6 +242,8 @@ export interface NearbyOpts {
   travellers?: number
   /** Trip travel style — tunes the fatigue cadence (see cadenceForCrew). */
   travelStyle?: string
+  /** Door-to-door speed for time-based detour scoring (see detourMinutes). */
+  speedKmph?: number
 }
 
 /**
