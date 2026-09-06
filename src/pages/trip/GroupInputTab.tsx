@@ -163,9 +163,9 @@ function SuggestionCard({ sg, trip, me, editable, memberCount, isUnblock }: {
       {isUnblock && <div className="unblock-label">⚡ Next to unblock</div>}
       <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 14 }}>
       <div className="vote-col">
-        <button className={`vote-btn ${myVote === 1 ? 'on' : ''}`} onClick={() => voteSuggestion(trip.id, sg.id, me.id, 1)} aria-label="Upvote">▲</button>
+        <button className={`vote-btn ${myVote === 1 ? 'on' : ''}`} onClick={() => voteSuggestion(trip.id, sg.id, me.id, 1)} aria-label="Upvote" aria-pressed={myVote === 1}>▲</button>
         <span className="vote-count">{ups - downs}</span>
-        <button className={`vote-btn ${myVote === -1 ? 'on' : ''}`} onClick={() => voteSuggestion(trip.id, sg.id, me.id, -1)} aria-label="Downvote">▼</button>
+        <button className={`vote-btn ${myVote === -1 ? 'on' : ''}`} onClick={() => voteSuggestion(trip.id, sg.id, me.id, -1)} aria-label="Downvote" aria-pressed={myVote === -1}>▼</button>
       </div>
       <div>
         <div className="row-between">
@@ -253,7 +253,7 @@ function DecisionCard({ d, me, editable, isUnblock }: {
           const mine = d.votesByUserId[me.id] === o.id
           return (
             <div key={o.id} className="decision-option-row">
-              <button className={`vote-btn ${mine ? 'on' : ''}`} disabled={d.status === 'resolved'}
+              <button className={`vote-btn ${mine ? 'on' : ''}`} disabled={d.status === 'resolved'} aria-pressed={mine}
                 onClick={() => voteOnDecision(d.id, o.id)} aria-label={`Vote for ${o.label}`}>▲</button>
               <span style={{ flex: 1 }}>{o.label}{o.costImpactInr ? <span className="muted small"> · {o.costImpactInr > 0 ? '+' : ''}{formatInr(o.costImpactInr)}</span> : null}</span>
               {votes > 0 && <span className="chip chip-info">{votes} vote{votes !== 1 ? 's' : ''}</span>}

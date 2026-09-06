@@ -345,7 +345,7 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
             <div className="card" style={{ position: 'sticky', top: 80 }}>
               <h2>Take this trip with you</h2>
               <p className="hint-text" style={{ margin: '8px 0 14px' }}>
-                Forks the full plan into your YatraFlow account — editable timeline, impact previews and collaboration included.
+                Forks the free preview into your YatraFlow account — locked days come over as placeholders you can fill in yourself.
               </p>
               <button className="btn fork-btn btn-lg" style={{ width: '100%' }} onClick={copyThis}>
                 <GitFork size={15} aria-hidden style={{ verticalAlign: '-2px', marginRight: 5 }} />Fork this trip
