@@ -26,10 +26,11 @@ import { stopKindOf, STOP_KIND_LABELS } from '../../lib/stopKind'
 import { Chip, Modal, EmptyState, toast, useReorder } from '../../components/ui'
 import { StopEditor, type StopFormValues } from '../../components/StopEditor'
 import { useSuggestionCache } from '../../hooks/useSuggestionCache'
-import { searchNearbyPois, searchNearbyPoisMulti, searchCitiesAlong, corridorAnchors, reasonForHit, filterPlannedNearby } from '../../lib/geocode'
+import { searchNearbyPois, searchNearbyPoisMulti, searchCitiesAlong, corridorAnchors, reasonForHit, filterPlannedNearby, detourMinutes } from '../../lib/geocode'
 import type { PlaceHit, SegmentHit } from '../../lib/geocode'
 import { kmFromStartForHit, type HaltPurpose } from '../../lib/providers/hits'
 import { segmentsFromPlan, assignSegmentHits, annotateSegmentHits, type HaltPlanItem } from '../../lib/ridePlan'
+import { daySlackMin, slackPrompt, pickSlackHit, visitMinutesForCategory } from '../../lib/slackPrompts'
 import { pointAtKm } from '../../lib/geo'
 import type { LucideIcon } from 'lucide-react'
 import { MetaIcon } from '../../components/icons'
@@ -815,6 +816,9 @@ function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddPlanned
   const [draftPurpose, setDraftPurpose] = useState<HaltPurpose>('meal')
   const [resolving, setResolving] = useState(false)
   const [searched, setSearched] = useState(false)
+  // nearby pool for slack prompts — refreshed on every spot search, picked
+  // live against current slack so any itinerary change re-computes the nudge
+  const [slackPool, setSlackPool] = useState<{ hit: PlaceHit; detourMin: number }[]>([])
 
   // Hydrate the persisted plan + resolved spots so tab switches don't lose work.
   // Only rehydrates while the plan is empty, so in-flight edits are never
@@ -920,6 +924,15 @@ function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddPlanned
         .filter(s => s.status !== 'rejected' && Number.isFinite(s.lat) && Number.isFinite(s.lng))
         .map(s => ({ lat: s.lat, lng: s.lng, name: s.title }))
       const unplanned = planned.length > 0 ? filterPlannedNearby(candidates, planned) : candidates
+      // refresh the slack pool: cheapest-detour unplanned hits (cap 12)
+      const speed = MODE_SPEED[trip.transportMode] ?? 40
+      setSlackPool(
+        unplanned
+          .map(h => ({ hit: h, detourMin: detourMinutes(h, anchors, speed) }))
+          .filter(o => Number.isFinite(o.detourMin) && o.detourMin >= 0)
+          .sort((a, b) => a.detourMin - b.detourMin)
+          .slice(0, 12),
+      )
       const assigned = annotateSegmentHits(
         assignSegmentHits(unplanned, segments, anchors, { homeCenter: trip.startLocationCoords ?? null, routePolyline: routePts.length >= 2 ? routePts : null, speedKmph: MODE_SPEED[trip.transportMode] ?? 40 }),
         candidates,
@@ -968,6 +981,21 @@ function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddPlanned
   const title = isReturn
     ? `Return drive · back to ${journey.endTitle}`
     : `Travelling · ${journey.startTitle} → ${journey.endTitle}`
+
+  // Slack prompt: leftover day window plus the cheapest fitting nearby pick.
+  // Recomputes live, so any itinerary change refreshes the nudge.
+  const slackMin = daySlackMin({
+    dayEndMin: hmToMinutes(A.dayEnd), startMin,
+    driveMin: journey.driveMinutes, dwellMin: journey.dwellMinutes,
+    planMin: planMinutes, bufferMin: planBuffer,
+  })
+  const slackCands = slackPool.map(o => ({ name: o.hit.name, detourMin: o.detourMin, category: o.hit.category }))
+  const slackPickHit = (() => {
+    const pick = pickSlackHit(slackMin, slackCands)
+    if (!pick) return null
+    return slackPool.find(o => o.hit.name === pick.name)?.hit ?? null
+  })()
+  const slackText = slackPrompt(slackMin, journey.startTitle, slackCands)
 
   return (
     <div className="travel-panel">
@@ -1091,6 +1119,36 @@ function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddPlanned
                 </span>
               )}
             </>
+          )}
+          {editable && slackText && slackPickHit && (
+            <div className="poi-desc small" style={{ marginTop: 6 }}>
+              ☀ {slackText}
+              {' '}
+              <button
+                className="btn btn-outline btn-sm"
+                onClick={() => {
+                  const h = slackPickHit
+                  const km = kmFromStartForHit({ latitude: h.latitude, longitude: h.longitude }, journey.points) ?? 0
+                  onAddPlannedHalts(day.index, [{
+                    km,
+                    stop: {
+                      title: h.name,
+                      category: (h.category as ItineraryStop['category']) ?? 'sightseeing',
+                      locationName: h.description || h.name,
+                      lat: h.latitude, lng: h.longitude,
+                      description: h.description ?? '',
+                      notes: "Slack pick — fits the day's leftover time",
+                      visitMinutes: visitMinutesForCategory(h.category),
+                      openTime: '', closeTime: '',
+                      entryFeeInrPerPerson: 0, transportCostInrTotal: 0,
+                      priority: 'nice-to-have', sourceUrl: '', status: 'suggested',
+                    },
+                  }])
+                  setSlackPool(prev => prev.filter(o => o.hit.name !== h.name))
+                  toast(`“${h.name}” added to Day ${day.index + 1} as a suggestion`)
+                }}
+              >+ Add</button>
+            </div>
           )}
         </div>
       )}
