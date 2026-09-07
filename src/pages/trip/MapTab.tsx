@@ -294,7 +294,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
     const speedK = MODE_SPEED[trip.transportMode] ?? 40
     const byDay = new Map<number, SegmentHit[]>()
     for (const sh of seeAndDo) {
-      if (!sh.hit || addedIds.has(sh.hit.id as string) || dismissedIds.has(sh.hit.id as string)) continue
+      if (!sh.hit) continue
       const d = dayForKm(sh.hit.cumKm) ?? 0
       const list = byDay.get(d) ?? []
       list.push(sh)

@@ -356,6 +356,8 @@ export function corridorAnchors(
   if (raw.length === 0) return []
   // drop consecutive duplicates (< 500 m) so legs are real
   const pts = raw.filter((p, i) => i === 0 || haversineKm(p.lat, p.lng, raw[i - 1].lat, raw[i - 1].lng) > 0.5)
+  // Guard C3: if all stops are within 500 m, dedupe leaves one point -> cum[1] undefined
+  if (pts.length < 2) return pts
   const cum = [0]
   for (let i = 1; i < pts.length; i++) {
     cum.push(cum[i - 1] + haversineKm(pts[i - 1].lat, pts[i - 1].lng, pts[i].lat, pts[i].lng) * 1000)
