@@ -3,15 +3,10 @@
 All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions are pre-1.0 MVP milestones.
 
 ## [Unreleased]
-### Fixed
-- Haptic vibration diagnostic logging added for Android issue investigation
-- AI drawer input now disabled while thinking to prevent duplicate questions
-- AI drawer animation uses CSS class instead of inline style
-- AI FAB now hidden when drawer is open and not thinking
-- Trip stop status now stores trip reference to avoid redundant lookups
-- moveStopBetweenDays now correctly commits once (double commit removed)
-- updateTrip now persists before committing to prevent UI/DB mismatch
-- store.ts persistTripField now returns Promise<void> for proper async handling
+
+## [0.41.0] — 2026-09-07
+
+**v0.41.0 = the Corridor Concierge: the suggestion engine now knows the road, the clock, the weather and the crew — and every card says why.** Horizons 1–3 of the suggestion-engine brainstorm ship together (road personality, enforced daily detour budget, trip DNA, crew seeds, story arcs, slack prompts, asymmetric detours, opening-hours scoring, fuel-corridor advisories), the Google-only provider directive lands, and the store + AI-drawer sweep empties the issue tracker (15/15).
 
 ### Added
 - **Every suggestion says why.** Cards show a reason line built from the leg, detour and nearest city.
@@ -59,6 +54,11 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - **Trip DNA no longer re-reads localStorage once per card.** The DNA note on each suggestion card rebuilt the whole taste vector (localStorage read + JSON parse) inside the row renderer, so a 30-card corridor hit the log 30 times per render. Rows now reuse the single vector already memoized in `nearbyOpts`.
 - **"Also nearby" alternatives are computed once, not per row.** Detour distance walks the anchor list and was being recomputed for every candidate on every card — an O(rows × candidates × anchors) cost inside the render loop. Candidates are now grouped once per render (by purpose and by category) with their detour pre-measured; each row only ranks its own family.
 - **Longitude deltas are normalised when computing bearing.** `normalizeLngDelta` wraps a 179°E → 179°W step to 0.4° instead of 359.6°. This is documentation rather than a fix: `sin`/`cos` are 2π-periodic, so the previous formula was already correct (measured difference ≈1e-15 rad), but the intent is now explicit and covered by a test.
+- **Store write-through sweep (#53–#57).** `moveStopBetweenDays` commits once (double commit removed); `updateTrip` persists first and commits only on success; `setStopStatus` caches its trip lookup; persistence failures toast ("Could not save changes.") instead of silently dropping the change; every stop mutation follows one documented `persistTripField`-then-commit contract. Pinned by `tests/store-sweep.test.ts` + `tests/store-robustness.test.ts`.
+- **AI drawer hardening (#58–#60, #63, #66, #67).** Input and Send disable while thinking (no duplicate questions during the 650 ms window); the drawer animates via a CSS class instead of inline display toggling; focus moves in after the animation completes and returns to the trigger on close; the FAB hides while the drawer is open; `answerQuestion` runs in try/catch with a graceful reply so the drawer can never wedge the app.
+- **Trip-tab sanitization is cast-free (#62).** `sanitizeTab` routes through an `isTabKey` runtime type guard over the TABS table, so an arbitrary hash segment can never be narrowed into an invalid tab.
+- **Haptic diagnostics for the Android investigation (#71).** `[HAPTIC]` dev logging reports `vibrate` availability and type (guarded behind `import.meta.env.DEV` + `typeof navigator`), and touch drag logs long-press activation — closing the issue's diagnostic steps 1–2.
+- **The AI quick-prompt rail scrolls consistently (#61).** Theme-token `scrollbar-color` with a transparent track plus `-webkit-overflow-scrolling: touch` for iOS momentum.
 
 ## [0.40.1] — 2026-09-06
 

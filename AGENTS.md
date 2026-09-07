@@ -34,11 +34,12 @@ Key locations:
 
 ## 1.1 Current project status (as of Sep 7, 2026)
 
-**Version:** v0.40.1 on `test` branch (latest release: Sep 6, 2026)
+**Version:** v0.41.0 on `test` branch (this release: Sep 7, 2026)
 
 **State:** Stabilization complete, UI audit all 32 findings fixed. The Corridor Concierge suggestion-engine brainstorm is FULLY shipped (Horizons 1–3, 16/16 incl. asymmetry, hours scoring, fuel corridors, trip DNA) — see ROADMAP's 🧭 table. `npm run verify` gate: tsc clean + 453 tests + production build.
 
 **Recent major releases:**
+- **v0.41.0** — Corridor Concierge: H3 suggestion engine (road personality, enforced detour budget, trip DNA, crew seeds, story arcs, slack prompts), asymmetric detours + hours scoring + fuel advisories, Google-only provider directive, store + AI-drawer sweep (issues 15/15 closed)
 - **[Unreleased] on test** — H3 Concierge merge (PR #73) + review fixes + engine brainstorm completions + issue sweep (tracker emptied: 15/15 closed)
 - **v0.40.1** — Sliding glider on all pill navigation, accessibility fixes (ARIA roles, focus rings, contrast), dead code removal
 - **v0.40.0** — Hard-surface pass: full UI audit (32 findings), lucide icon consistency, numeric typography (tabular digits), a11y structure, one grammar across the workspace
