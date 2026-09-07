@@ -531,12 +531,28 @@ export function assignSegmentHits(
 }
 
 /**
+ * Categories that are genuine sights — the See & do column and sight pins
+ * show ONLY these. Everything else (food, cafes, hotels, fuel, rest areas) is
+ * an errand, not an attraction: a dhaba must never render as "Sightseeing".
+ */
+export const SIGHT_CATEGORIES = new Set([
+  'sightseeing', 'nature', 'beach', 'temple', 'museum', 'adventure', 'event', 'shopping', 'travel',
+])
+
+/** true when a hit's category is a real sight (See & do worthiness). */
+export function isSightCategory(cat?: string): boolean {
+  return cat != null && SIGHT_CATEGORIES.has(cat)
+}
+
+/**
  * Unassigned corridor hits become See & do entries: the halt planner only
  * makes fuel/meal/rest/stretch/overnight segments, so without this the
  * sightseeing column is empty by construction. Each leftover gets a synthetic
  * 'sight' segment at its road position (callers run annotateSegmentHits over
  * the combined list for city/leg stamps). Capped — a long corridor yields
- * hundreds of candidates.
+ * hundreds of candidates. SIGHT-WORTHY HITS ONLY: rejected need-based places
+ * (restaurants that lost their meal segment, hotels, pumps) are dropped, not
+ * re-labelled as sights.
  */
 export function leftoverAsSight(
   candidates: PlaceHit[],
@@ -554,6 +570,7 @@ export function leftoverAsSight(
     if (out.length >= cap) break
     if (used.has(h.id as string)) continue
     if (h.isPopulatedPlace) continue // towns are not sights — cities already anchor segments
+    if (!isSightCategory(h.category)) continue // dhabas/hotels/pumps are not sights
     const pos = kmFromStartForHit(h, anchors, { routePolyline: opts.routePolyline ?? undefined })
     if (pos == null) continue
     out.push({

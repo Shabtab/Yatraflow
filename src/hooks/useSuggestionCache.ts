@@ -16,9 +16,11 @@ const CACHE_TTL_MS = 1000 * 60 * 60 * 4 // 4 hours
 /**
  * Cache schema/provider version. Bumped with the 2026-09-07 Google-only
  * directive (Wikipedia/Mappls results must not survive the provider switch) —
- * a bump invalidates every previously persisted cache in one shot.
+ * a bump invalidates every previously persisted cache in one shot. Bumped
+ * again the same day: Google hits now carry real categories (was: purpose
+ * strings), so cached 'meal'/'fuel'/'overnight' categories are junk.
  */
-const CACHE_VERSION = 2
+const CACHE_VERSION = 3
 
 /**
  * A cached map plan is reusable only when the detour scope AND the anchor

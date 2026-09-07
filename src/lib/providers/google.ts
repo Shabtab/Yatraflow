@@ -291,6 +291,47 @@ export interface AlongRouteArgs {
  * deduped across queries. `routeTotalKm` is only present for Search-Along-Route
  * (routingSummaries legs → real road detour); point searches pass null.
  */
+/**
+ * Map Google's machine place type → the app's category taxonomy. The category
+ * must describe WHAT THE PLACE IS, not the query that found it — queries are
+ * purpose-driven ("highway dhabas"), so a dhaba's category must be 'food',
+ * never the purpose string 'meal'. PURPOSE_FIT scores categories; a 'meal'
+ * category scores 0 and gets rejected by the purpose-fit gate from its own
+ * segment, dumping real restaurants into the leftover sight pass.
+ */
+const GOOGLE_TYPE_TO_CATEGORY: Record<string, string> = {
+  tourist_attraction: 'sightseeing',
+  aquarium: 'sightseeing', zoo: 'sightseeing', amusement_park: 'sightseeing',
+  museum: 'museum', art_gallery: 'museum', cultural_center: 'museum',
+  hindu_temple: 'temple', mosque: 'temple', church: 'temple', synagogue: 'temple',
+  place_of_worship: 'temple', gurudwara: 'temple',
+  park: 'nature', natural_feature: 'nature', botanical_garden: 'nature',
+  beach: 'beach',
+  hiking_area: 'adventure', campground: 'adventure',
+  restaurant: 'food', cafe: 'cafe', coffee_shop: 'cafe', bar: 'food',
+  bakery: 'food', meal_takeaway: 'food', food: 'food',
+  hotel: 'hotel', motel: 'hotel', lodge: 'hotel', guest_house: 'hotel',
+  hostel: 'hotel', bed_and_breakfast: 'hotel', resort: 'hotel', lodging: 'hotel',
+  gas_station: 'transport-hub', fuel: 'transport-hub',
+  ev_charging_station: 'transport-hub', charging_station: 'transport-hub',
+  shopping_mall: 'shopping', store: 'shopping', market: 'shopping',
+  train_station: 'travel', transit_station: 'travel', airport: 'travel',
+}
+
+/** Category from Google's primaryType (or types), else the query's category hint. */
+function categoryForGooglePlace(
+  p: GooglePlace,
+  fallback: string,
+): string {
+  const primary = p.primaryType ? GOOGLE_TYPE_TO_CATEGORY[p.primaryType] : undefined
+  if (primary) return primary
+  for (const t of p.types ?? []) {
+    const mapped = GOOGLE_TYPE_TO_CATEGORY[t]
+    if (mapped) return mapped
+  }
+  return fallback
+}
+
 function hitsFromResponses(
   responses: { places?: GooglePlace[]; routingSummaries?: RoutingSummary[] }[],
   queries: { textQuery: string; cat: string; includedType?: string }[],
@@ -336,7 +377,10 @@ function hitsFromResponses(
         placeId: p.id,
         source: 'google',
         fromGoogleAlongRoute: routeTotalKm != null,
-        category: queries[qi].cat,
+        // real category from the place's machine type — NEVER the purpose
+        // string that built the query ('meal'/'fuel'/'overnight' are purposes,
+        // not categories; they score 0 in PURPOSE_FIT)
+        category: categoryForGooglePlace(p, queries[qi].cat),
         ...hoursFrom(p),
         ...(p.rating != null && Number.isFinite(p.rating) ? { rating: p.rating } : {}),
         ...(p.userRatingCount != null && Number.isFinite(p.userRatingCount) ? { ratingCount: p.userRatingCount } : {}),
