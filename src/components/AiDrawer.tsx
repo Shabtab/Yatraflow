@@ -29,7 +29,7 @@ export function AiDrawer({ trip, open, onOpen, onClose }: { trip: Trip; open: bo
   useEffect(() => {
     if (!open) return
     const prev = document.activeElement as HTMLElement | null
-    inputRef.current?.focus({ preventScroll: true })
+    setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 300)
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') { e.stopPropagation(); onClose(); return }
       if (e.key !== 'Tab') return
@@ -49,7 +49,7 @@ export function AiDrawer({ trip, open, onOpen, onClose }: { trip: Trip; open: bo
       window.removeEventListener('keydown', onKey, true)
       if (prev?.isConnected) prev.focus()
     }
-  }, [open, onClose])
+  }, [open, onClose, inputRef])
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: scrollBehavior() })
@@ -76,10 +76,10 @@ export function AiDrawer({ trip, open, onOpen, onClose }: { trip: Trip; open: bo
 
   return (
     <>
-      {!open && (
+      {!open && !thinking && (
         <button className="ai-fab" onClick={onOpen} aria-label="Open AI travel companion"><Sparkles size={20} aria-hidden /></button>
       )}
-      <div ref={drawerRef} className="ai-drawer" style={{ display: open ? 'flex' : 'none' }} role="dialog" aria-modal="true" aria-label="AI travel companion">
+      <div ref={drawerRef} className={`ai-drawer ${open ? 'open' : ''}`} role="dialog" aria-modal="true" aria-label="AI travel companion">
         <div className="ai-head">
           <span style={{ display: 'inline-flex' }}><Sparkles size={20} aria-hidden /></span>
           <div>
@@ -117,6 +117,7 @@ export function AiDrawer({ trip, open, onOpen, onClose }: { trip: Trip; open: bo
             aria-label="Ask the travel companion"
             value={input}
             onChange={e => setInput(e.target.value)}
+            disabled={thinking}
           />
           <button className="btn btn-primary" type="submit" disabled={!input.trim() || thinking}>Send</button>
         </form>

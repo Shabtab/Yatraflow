@@ -48,6 +48,7 @@ and date), per the AGENTS §6 same-edit rule. Detail lives in
 - [x] **v0.23.0** — publish write-through fix, hydration error logging, **UI audit 32/32 complete** (6 batches)
 - [x] **v0.25.0** — Calm Travel Intelligence redesign (M0–M7), user-driven halt planner, contrib integration
 - [x] **[Unreleased]** — demo-seed revert + one-off DB prune, master-roadmap consolidation, Sep 2026 comprehensive review
+- [x] **v0.41.0** — Corridor Concierge (H1–H3 complete): road personality, enforced detour budget, trip DNA + crew seeds, story arcs, slack prompts, asymmetric detours, hours scoring, fuel advisories; Google-only provider directive; store + AI-drawer sweep (issues 15/15)
 
 ### Remaining — in release order (details in the tracks below)
 - [x] **v0.32.0** — Stabilization completion: M0 leftovers (broken `pub:` route, router ready-gate for deep links / invite flash / loading-vs-empty) + M2 remainders (Profile save validation, demo-copy honesty, heading outline) + M1 leftovers (focus-ring gaps, touch targets, stagger freeze)
@@ -242,18 +243,22 @@ writes (1h — pairs naturally with M3).
 
 | Idea | Horizon | Note / effort |
 |---|---|---|
-| Road-projected hit positions (snap to OSRM polyline) | 1 | fixes haversine drift on ghat routes · 2–3 h |
-| Two-pass segment assignment (swap-improvement) | 1 | kills greedy starvation · ~1 h |
-| Itinerary + geo-fuzzy dedupe of candidates | 1 | no re-suggesting planned/adjacent places · 2 h |
-| Reason strings on suggestion cards ("why this") | 1 | data already in SegmentHit · 1–2 h |
-| Journey-clock segments (meals land at meal times) | 2 | needs schedule-engine join · 3–4 h |
-| Crew-aware fatigue cadence (style/travellers multipliers) | 2 | constants → derived · 2 h |
-| Weather-joined ranking (rain → indoor picks) | 2 | forecast layer exists · 2 h |
-| Time-based detour cost + on-way asymmetry | 2 | mode-speed conversion · 2 h |
-| Road personality (rest before the ghats) | 3 | OSRM curvature classification · 4–6 h |
-| Detour budget per day | 3 | finite honest menu · 3 h |
-| Trip DNA (learns the crew's picks) | 3 | acceptance history → preference vector · 6–8 h |
-| Crew-seeded corridor suggestions + story arcs + slack prompts | 3 | group-input ↔ engine bridge · 4–6 h |
+| Road-projected hit positions (snap to OSRM polyline) | 1 | ✅ shipped (v0.40.x) |
+| Two-pass segment assignment (swap-improvement) | 1 | ✅ shipped |
+| Itinerary + geo-fuzzy dedupe of candidates | 1 | ✅ shipped |
+| Reason strings on suggestion cards ("why this") | 1 | ✅ shipped |
+| Journey-clock segments (meals land at meal times) | 2 | ✅ shipped |
+| Crew-aware fatigue cadence (style/travellers multipliers) | 2 | ✅ shipped |
+| Weather-joined ranking (rain → indoor picks) | 2 | ✅ shipped |
+| Time-based detour cost + on-way asymmetry | 2 | ✅ shipped — asymmetric detour: on-the-way hits ≈ 0, off-road pays the spur (doubled by scorers) |
+| Ratings in Google mode | 2 | ✅ shipped |
+| Road personality (rest before the ghats) | 3 | ✅ shipped (city-crawl verdict fixed to a day-level check; ghat wins) |
+| Detour budget per day | 3 | ✅ shipped — see-&-do list enforced; need halts stay uncounted by design |
+| Trip DNA (learns the crew's picks) | 3 | ✅ shipped — category mix, detour tolerance + **stop length** dims, **cross-trip device learning** (they keep picking waterfall→waterfalls nudged on later trips). Remaining (schema-gated): cross-device persistence via Supabase needs a `user_dna` table + RLS — ride M6/M7 infra, not the pure engine. |
+| Crew-seeded corridor suggestions + story arcs + slack prompts | 3 | ✅ shipped |
+| Fuel before long no-fuel corridors (road-personality trigger) | 3 | ✅ shipped — a fuel stop crossing a long gap to the next scheduled refuel warns "fill the tank" (cadence-gap advisory); a live POI-density scan remains a future nicety |
+| Opening hours enter suggestion scoring | 2 | ✅ shipped — hits closed at the segment's arrival clock are degraded (via `etaMinutes`); open-at-arrival untouched |
+| On-way detour asymmetry (destination on the way costs ~0 return) | 2 | ✅ shipped — see "Time-based detour cost" |
 
 ### 💰 Budget ideas (web research, Sep 6 2026 — sources: YNAB/envelope patterns, budgeting-app UX guides)
 

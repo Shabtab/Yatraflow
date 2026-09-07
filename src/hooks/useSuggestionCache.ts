@@ -13,9 +13,30 @@ export interface SuggestionCache {
 }
 
 const CACHE_TTL_MS = 1000 * 60 * 60 * 4 // 4 hours
+/**
+ * Cache schema/provider version. Bumped with the 2026-09-07 Google-only
+ * directive (Wikipedia/Mappls results must not survive the provider switch) —
+ * a bump invalidates every previously persisted cache in one shot. Bumped
+ * again the same day: Google hits now carry real categories (was: purpose
+ * strings), so cached 'meal'/'fuel'/'overnight' categories are junk.
+ */
+const CACHE_VERSION = 3
+
+/**
+ * A cached map plan is reusable only when the detour scope AND the anchor
+ * set match: editing stops moves anchors, so a scope-only check serves
+ * stale suggestions for the old route.
+ */
+export function isMapCacheFresh(
+  cached: SuggestionCache['map'],
+  scopeKm: number,
+  anchorsHash: string,
+): boolean {
+  return !!cached && cached.scopeKm === scopeKm && cached.anchorsHash === anchorsHash
+}
 
 function cacheKey(tripId: string) {
-  return `yatraflow_suggestions_${tripId}`
+  return `yatraflow_suggestions_v${CACHE_VERSION}_${tripId}`
 }
 
 function load(tripId: string): SuggestionCache {

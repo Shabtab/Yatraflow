@@ -6,6 +6,7 @@ import type { VehicleProfile } from '../../data/types'
 // and no env access live here — the corridor tests (tests/nearby.test.ts)
 // exercise this module directly.
 import { haversineKm } from '../geo'
+import type { DnaVector } from '../tripDna'
 
 export interface PlaceHit {
   id: number | string
@@ -92,7 +93,83 @@ export function detourKm(
 }
 
 /** Fallback door-to-door speed when the trip mode is unknown. Matches the engine default. */
-export const DEFAULT_SPEED_KMPH = 40
+export const DEFAULT_SPEED_KMH = 40
+
+/** On the route within this perpendicular distance is treated as "on the way" (no detour). */
+export const ON_ROUTE_SPUR_KM = 0.15
+
+/**
+ * Perpendicular (spur) distance from a hit to the route polyline, in km.
+ * A point on or beside the road reads ~0; a point off it reads the shortest
+ * distance to the road (out-and-back is handled by callers doubling it).
+ * Returns null when the hit or polyline can't be used.
+ */
+export function spurKm(
+  h: Pick<PlaceHit, 'latitude' | 'longitude'>,
+  routePolyline: { lat: number; lng: number }[],
+): number | null {
+  if (!Number.isFinite(h.latitude) || !Number.isFinite(h.longitude)) return null
+  const raw = routePolyline.filter(q => Number.isFinite(q.lat) && Number.isFinite(q.lng))
+  if (raw.length < 2) return null
+  const latRef = (h.latitude * Math.PI) / 180
+  const kx = 111.32 * Math.cos(latRef)
+  const ky = 111.32
+  const px = h.longitude * kx
+  const py = h.latitude * ky
+  let best = Infinity
+  for (let i = 0; i < raw.length - 1; i++) {
+    const ax = raw[i].lng * kx
+    const ay = raw[i].lat * ky
+    const bx = raw[i + 1].lng * kx
+    const by = raw[i + 1].lat * ky
+    const dx = bx - ax
+    const dy = by - ay
+    const len2 = dx * dx + dy * dy
+    let t = len2 > 0 ? ((px - ax) * dx + (py - ay) * dy) / len2 : 0
+    t = Math.min(1, Math.max(0, t))
+    const cx = ax + t * dx
+    const cy = ay + t * dy
+    const d = Math.hypot(px - cx, py - cy)
+    if (d < best) best = d
+  }
+  return best === Infinity ? null : best
+}
+
+/**
+ * Asymmetric detour: a destination ON the road is on-the-way (~0 detour —
+ * you pass it), a destination off the road pays a one-way spur (the caller
+ * doubles it to out-and-back). When no polyline is available it falls back to
+ * the straight-line-to-anchor measure. Google's real road detour always wins.
+ */
+export function asymmetricDetourKm(
+  h: Pick<PlaceHit, 'latitude' | 'longitude' | 'offRouteKm' | 'fromGoogleAlongRoute'>,
+  anchors: { lat: number; lng: number }[],
+  routePolyline?: { lat: number; lng: number }[] | null,
+): number | null {
+  if (h.offRouteKm != null && Number.isFinite(h.offRouteKm)) return h.offRouteKm
+  if (h.fromGoogleAlongRoute) return null // on the polyline, no real detour known
+  if (routePolyline && routePolyline.length >= 2) {
+    const spur = spurKm(h, routePolyline)
+    return spur == null ? null : spur
+  }
+  return detourKm(h, anchors)
+}
+
+/**
+ * Asymmetric detour in minutes at the trip's speed. On-the-way hits cost ~0;
+ * off-road hits are the spur (doubled by scorers). Falls back to the current
+ * symmetric minute math when there's no route geometry to measure against.
+ */
+export function asymmetricDetourMinutes(
+  h: Pick<PlaceHit, 'latitude' | 'longitude' | 'offRouteKm' | 'fromGoogleAlongRoute'>,
+  anchors: { lat: number; lng: number }[],
+  routePolyline?: { lat: number; lng: number }[] | null,
+  speedKmph?: number,
+): number {
+  const speed = speedKmph != null && Number.isFinite(speedKmph) && speedKmph > 0 ? speedKmph : DEFAULT_SPEED_KMH
+  const km = asymmetricDetourKm(h, anchors, routePolyline ?? undefined) ?? 0
+  return (km / speed) * 60
+}
 
 /**
  * Detour in minutes at the trip's door-to-door speed. Unknown detours
@@ -103,7 +180,7 @@ export function detourMinutes(
   anchors: { lat: number; lng: number }[],
   speedKmph?: number,
 ): number {
-  const speed = speedKmph != null && Number.isFinite(speedKmph) && speedKmph > 0 ? speedKmph : DEFAULT_SPEED_KMPH
+  const speed = speedKmph != null && Number.isFinite(speedKmph) && speedKmph > 0 ? speedKmph : DEFAULT_SPEED_KMH
   const km = detourKm(h, anchors) ?? 0
   return (km / speed) * 60
 }
@@ -213,6 +290,25 @@ export function anchorHash(anchors: { lat: number; lng: number }[]): string {
   return pts.join('|')
 }
 
+/** Stable hash string for route geometry — used as a cache key so that OSRM
+ * route resolution invalidates the suggestion cache when the road changes. */
+export function routeHash(geometry: [number, number][] | null): string {
+  if (!geometry || geometry.length === 0) return ''
+  // Use a sample of the geometry (first, middle, last points) to keep the hash
+  // short while still capturing significant route changes
+  const samples = [0, Math.floor(geometry.length / 2), geometry.length - 1]
+  const pts = samples
+    .filter(i => {
+      const pt = geometry[i]
+      return pt && pt.length >= 2 && Number.isFinite(pt[0]) && Number.isFinite(pt[1])
+    })
+    .map(i => {
+      const pt = geometry[i]!
+      return `${pt[1].toFixed(5)},${pt[0].toFixed(5)}`
+    })
+  return pts.join('|')
+}
+
 export interface NearbyOpts {
   /** include petrol pumps as pit stops (self-drive trips only, capped) */
   includeFuel?: boolean
@@ -259,6 +355,8 @@ export interface NearbyOpts {
   dayStartTimes?: string[]
   /** rain chance percent per day index for the weather join (null = no forecast). */
   dayRainPct?: (number | null)[]
+  /** trip preference vector — favoured categories win scoring ties. */
+  dnaVector?: DnaVector
 }
 
 /**
@@ -277,6 +375,8 @@ export function corridorAnchors(
   if (raw.length === 0) return []
   // drop consecutive duplicates (< 500 m) so legs are real
   const pts = raw.filter((p, i) => i === 0 || haversineKm(p.lat, p.lng, raw[i - 1].lat, raw[i - 1].lng) > 0.5)
+  // Guard C3: if all stops are within 500 m, dedupe leaves one point -> cum[1] undefined
+  if (pts.length < 2) return pts
   const cum = [0]
   for (let i = 1; i < pts.length; i++) {
     cum.push(cum[i - 1] + haversineKm(pts[i - 1].lat, pts[i - 1].lng, pts[i].lat, pts[i].lng) * 1000)
@@ -427,8 +527,8 @@ export function rankAndCap(
   homeFiltered.sort((a, b) =>
     poiTouristScore(b, anchors, radiusM, opts.categoryBias) - poiTouristScore(a, anchors, radiusM, opts.categoryBias))
   const deduped = dedupeCandidates(homeFiltered)
-  const catCap = Math.max(2, Math.ceil(count / 3))
-  const fuelCap = opts.includeFuel ? 2 : 0
+  const catCap = Math.max(3, Math.ceil(count / 3))
+  const fuelCap = opts.includeFuel ? 4 : 0
   const used = new Map<string, number>()
   const out: PlaceHit[] = []
   let fuelUsed = 0

@@ -1,21 +1,25 @@
-// ============ Trip workspace — Share tab ============
-// Mechanical extraction from src/pages/TripWorkspace.tsx (M3.4) — no behavior changes.
-// Includes SnapshotCard — ShareTab is its only consumer.
+// ============ Trip workspace ΓÇö Share tab ============
+// Mechanical extraction from src/pages/TripWorkspace.tsx (M3.4) ΓÇö no behavior changes.
+// Includes SnapshotCard ΓÇö ShareTab is its only consumer.
 import React, { useRef, useState } from 'react'
-import { Download, Link2, Lock, Upload } from 'lucide-react'
+import { CalendarDays, Download, Link2, Lock, Upload } from 'lucide-react'
 import type { Trip, PublishedItinerary } from '../../data/types'
 import { useDb, userById, setMemberRole, removeMember, restoreMember, publishItinerary, unpublishItinerary, duplicateTrip } from '../../store/store'
 import { encodeTripSnapshot, snapshotUrl, downloadTripJson } from '../../lib/snapshot'
+import { downloadTripIcs } from '../../lib/ics'
+import type { LegEstimate } from '../../lib/engine'
 import { Avatar, Chip, ConfirmDialog, CopyButton, Field, toast, undoToast } from '../../components/ui'
+import { PrintExport } from '../../components/PrintExport'
 import { TripSettingsForm } from './TripSettingsForm'
 import { timeAgo } from './shared'
 
 // ================= Snapshot (export / import / URL share) =================
 
-function SnapshotCard({ trip, me, onNavigate }: {
+function SnapshotCard({ trip, me, onNavigate, legCorrections }: {
   trip: Trip
   me: { id: string }
   onNavigate: (r: string) => void
+  legCorrections?: Record<string, LegEstimate>
 }) {
   const [link, setLink] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
@@ -25,7 +29,7 @@ function SnapshotCard({ trip, me, onNavigate }: {
     const url = snapshotUrl(trip, payload)
     setLink(url)
     navigator.clipboard?.writeText(url).catch(() => {})
-    toast('Snapshot link copied — anyone can open it, no account needed')
+    toast('Snapshot link copied ΓÇö anyone can open it, no account needed')
   }
 
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -35,7 +39,7 @@ function SnapshotCard({ trip, me, onNavigate }: {
       const imported = JSON.parse(await file.text()) as Trip
       if (!imported || !Array.isArray(imported.days)) throw new Error('bad shape')
       duplicateTrip(imported, me!.id)
-      toast(`Imported “${imported.name}” into your trips`)
+      toast(`Imported ΓÇ£${imported.name}ΓÇ¥ into your trips`)
       onNavigate('/trips')
     } catch {
       toast('That file is not a valid YatraFlow trip export', 'err')
@@ -45,14 +49,16 @@ function SnapshotCard({ trip, me, onNavigate }: {
 
   return (
     <div className="card">
-      <span className="share-intent share-intent--info">3 · Keep a record</span>
+      <span className="share-intent share-intent--info">3 ┬╖ Keep a record</span>
       <h3>Export & snapshot sharing</h3>
       <p className="hint-text" style={{ margin: '6px 0 12px' }}>
-        Take the whole plan anywhere — no server stores it. Snapshot links embed the trip in the URL itself.
+        Take the whole plan anywhere ΓÇö no server stores it. Snapshot links embed the trip in the URL itself.
       </p>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  <button className="btn btn-outline btn-sm" onClick={() => downloadTripJson(trip)}><Download size={13} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />Download JSON</button>
                   <button className="btn btn-outline btn-sm" onClick={() => fileRef.current?.click()}><Upload size={13} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />Import JSON</button>
+                  <button className="btn btn-outline btn-sm" onClick={() => downloadTripJson(trip)}><Download size={13} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />Download JSON</button>
+                  <PrintExport trip={trip} legCorrections={legCorrections} />
+                  <button className="btn btn-outline btn-sm" onClick={() => downloadTripIcs(trip, legCorrections)} title="One calendar event per day plus timed events for fixed commitments ΓÇö imports into Google/Apple/Outlook calendars"><CalendarDays size={13} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />Add to calendar</button>
                   <button className="btn btn-saffron btn-sm" onClick={makeLink}><Link2 size={13} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />Create snapshot link</button>
         <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={onFile} />
       </div>
@@ -69,13 +75,13 @@ function SnapshotCard({ trip, me, onNavigate }: {
 // ================= Publication editor (free/premium picker) =================
 
 const DEFAULT_TRAVEL_TIPS = ['Start ghat-section drives early.', 'Carry cash in hill towns.']
-const DEFAULT_WARNINGS = ['All costs are estimates based on typical prices — verify locally before booking.']
+const DEFAULT_WARNINGS = ['All costs are estimates based on typical prices ΓÇö verify locally before booking.']
 
 /** Per-day free/premium picker + pricing/CTA form for the public itinerary.
- *  Replaces the hardcoded freeDayIndexes [0] / ₹199 publish payload: the owner
+ *  Replaces the hardcoded freeDayIndexes [0] / Γé╣199 publish payload: the owner
  *  now chooses which days are the free preview, whether the itinerary is
- *  premium at all (empty/₹0 price = entirely free), and the reader-facing
- *  copy — pre-filled from the live publication when updating. */
+ *  premium at all (empty/Γé╣0 price = entirely free), and the reader-facing
+ *  copy ΓÇö pre-filled from the live publication when updating. */
 function PublicationForm({ trip, pub, isOwner, creatorId, onDone }: {
   trip: Trip
   pub: PublishedItinerary | undefined
@@ -99,7 +105,7 @@ function PublicationForm({ trip, pub, isOwner, creatorId, onDone }: {
 
   function toggleDay(index: number) {
     if (free.has(index) && free.size <= 1) {
-      setErr('At least one day must stay free — it is the preview readers see.')
+      setErr('At least one day must stay free ΓÇö it is the preview readers see.')
       return
     }
     setErr(null)
@@ -113,9 +119,9 @@ function PublicationForm({ trip, pub, isOwner, creatorId, onDone }: {
   function submit() {
     if (!Number.isFinite(priceNum) || priceNum < 0) { setErr('Price must be a number of rupees, 0 or more.'); return }
     // Price > 0 with every day free would publish a premium price over fully
-    // viewable content — a "Unlock Premium" CTA that unlocks nothing. Block it.
-    if (!entirelyFree && free.size >= trip.days.length) { setErr('Every day is free — clear the price or lock a day.'); return }
-    if (hasPremiumDay && !cta.trim()) { setErr('Premium days need a call-to-action — tell readers what they get when they unlock.'); return }
+    // viewable content ΓÇö a "Unlock Premium" CTA that unlocks nothing. Block it.
+    if (!entirelyFree && free.size >= trip.days.length) { setErr('Every day is free ΓÇö clear the price or lock a day.'); return }
+    if (hasPremiumDay && !cta.trim()) { setErr('Premium days need a call-to-action ΓÇö tell readers what they get when they unlock.'); return }
     setErr(null)
     publishItinerary({
       tripId: trip.id, creatorId,
@@ -142,34 +148,34 @@ function PublicationForm({ trip, pub, isOwner, creatorId, onDone }: {
         <input className="input" value={tagline} onChange={e => setTagline(e.target.value)} maxLength={140} />
       </Field>
       <div className="form-row">
-        <Field label="Premium price (₹)" hint="Leave empty or 0 for an entirely free itinerary.">
+        <Field label="Premium price (Γé╣)" hint="Leave empty or 0 for an entirely free itinerary.">
           <input className="input" type="number" min={0} inputMode="numeric" placeholder="e.g. 199"
             value={price} onChange={e => { setPrice(e.target.value); setErr(null) }} />
         </Field>
-        <Field label="Best season" hint="Optional — shown as practical guidance.">
-          <input className="input" value={bestSeason} onChange={e => setBestSeason(e.target.value)} placeholder="e.g. Sep–Mar" />
+        <Field label="Best season" hint="Optional ΓÇö shown as practical guidance.">
+          <input className="input" value={bestSeason} onChange={e => setBestSeason(e.target.value)} placeholder="e.g. SepΓÇôMar" />
         </Field>
       </div>
       <Field label="Travel tips" hint="One per line.">
         <textarea className="textarea" rows={3} value={tips} onChange={e => setTips(e.target.value)} />
       </Field>
-      <Field label="Subscriber call-to-action" hint={hasPremiumDay ? 'Required while any day is premium.' : 'Used on premium days — add one before charging.'}>
+      <Field label="Subscriber call-to-action" hint={hasPremiumDay ? 'Required while any day is premium.' : 'Used on premium days ΓÇö add one before charging.'}>
         <input className="input" value={cta} onChange={e => setCta(e.target.value)} placeholder="e.g. Full checklist + stay contacts." />
       </Field>
 
       <div style={{ margin: '10px 0 4px' }}>
         <b className="small">Free preview days</b>
-        {entirelyFree && <span className="small muted" style={{ marginLeft: 8 }}>Entirely free — every day is viewable.</span>}
+        {entirelyFree && <span className="small muted" style={{ marginLeft: 8 }}>Entirely free ΓÇö every day is viewable.</span>}
       </div>
       <div>
         {trip.days.map(d => {
           const isFree = entirelyFree || free.has(d.index)
           return (
             <div key={d.id} className="row-between" style={{ padding: '3px 0' }}>
-              <span className="small">Day {d.index + 1}{d.title ? ` — ${d.title}` : ''}</span>
+              <span className="small">Day {d.index + 1}{d.title ? ` ΓÇö ${d.title}` : ''}</span>
               <button type="button" className={`btn btn-sm ${isFree ? 'btn-outline' : 'btn-saffron'}`}
                 disabled={entirelyFree} aria-pressed={!isFree}
-                aria-label={`Day ${d.index + 1}${d.title ? ` — ${d.title}` : ''} lock`}
+                aria-label={`Day ${d.index + 1}${d.title ? ` ΓÇö ${d.title}` : ''} lock`}
                 onClick={() => toggleDay(d.index)}>
                 {isFree ? <>Free</> : <><Lock size={11} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />Premium</>}
               </button>
@@ -189,11 +195,12 @@ function PublicationForm({ trip, pub, isOwner, creatorId, onDone }: {
 
 // ================= Share tab =================
 
-export function ShareTab({ trip, me, editable, onNavigate }: {
+export function ShareTab({ trip, me, editable, onNavigate, legCorrections }: {
   trip: Trip
   me: { id: string; email: string }
   editable: boolean
   onNavigate: (route: string) => void
+  legCorrections?: Record<string, LegEstimate>
 }) {
   const db = useDb()
   const inviteLink = `${location.origin}${location.pathname}#/invite/${trip.id}`
@@ -215,7 +222,7 @@ export function ShareTab({ trip, me, editable, onNavigate }: {
     <div className="two-col">
       <div>
         <div className="card">
-          <span className="share-intent share-intent--teal">1 · Plan together</span>
+          <span className="share-intent share-intent--teal">1 ┬╖ Plan together</span>
           <h3>Invite collaborators</h3>
           <p className="hint-text" style={{ margin: '6px 0 12px' }}>Anyone with this link joins as an editor after logging in.</p>
           <div className="share-link-box"><code>{inviteLink}</code><CopyButton text={inviteLink} /></div>
@@ -246,14 +253,14 @@ export function ShareTab({ trip, me, editable, onNavigate }: {
         </div>
 
         <div className="card">
-          <span className="share-intent share-intent--saffron">2 · Share publicly</span>
+          <span className="share-intent share-intent--saffron">2 ┬╖ Share publicly</span>
           <h3>Publish as public itinerary</h3>
           <p className="hint-text" style={{ margin: '6px 0 12px' }}>
-            List this trip on Explore so anyone can discover and fork it. Choose which days are the free preview — the rest sit behind a premium placeholder (no real payments in this MVP).
+            List this trip on Explore so anyone can discover and fork it. Choose which days are the free preview ΓÇö the rest sit behind a premium placeholder (no real payments in this MVP).
           </p>
           {pub && (
             <div className="row-between" style={{ marginBottom: 10 }}>
-              <span className="small muted">Live on Explore · {pub.views} views · {pub.copies} forks</span>
+              <span className="small muted">Live on Explore ┬╖ {pub.views} views ┬╖ {pub.copies} forks</span>
               <button className="btn btn-outline btn-sm" onClick={() => onNavigate(`/pub/${pub.id}`)}>View public page</button>
             </div>
           )}
@@ -261,12 +268,12 @@ export function ShareTab({ trip, me, editable, onNavigate }: {
             onDone={wasPublished => toast(wasPublished ? 'Publication updated' : 'Published to Explore')} />
           {pub && (
             <button className="btn btn-ghost btn-sm" style={{ marginTop: 10 }}
-              onClick={() => { unpublishItinerary(trip.id); toast('Unpublished — removed from Explore') }}>Unpublish</button>
+              onClick={() => { unpublishItinerary(trip.id); toast('Unpublished ΓÇö removed from Explore') }}>Unpublish</button>
           )}
           {pubLink && <div className="share-link-box" style={{ marginTop: 10 }}><code>{pubLink}</code><CopyButton text={pubLink} label="Copy" /></div>}
         </div>
 
-        <SnapshotCard trip={trip} me={me} onNavigate={onNavigate} />
+        <SnapshotCard trip={trip} me={me} onNavigate={onNavigate} legCorrections={legCorrections} />
       </div>
 
       <div>

@@ -9,8 +9,18 @@ export function haptic(pattern: HapticPattern): void {
   try {
     if (typeof window === 'undefined' || typeof navigator === 'undefined') return
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    
+    // Diagnostic logging for vibration issues
+    if (import.meta.env.DEV) {
+      console.log('[HAPTIC] Pattern:', pattern, '| vibrate in navigator:', 'vibrate' in navigator, '| navigator.vibrate type:', typeof navigator.vibrate)
+    }
+    
     if ('vibrate' in navigator) navigator.vibrate(pattern)
-  } catch { /* unsupported — stay silent */ }
+  } catch (err) {
+    if (import.meta.env.DEV) {
+      console.error('[HAPTIC] Error:', err)
+    }
+  }
 }
 
 /** Named interaction patterns so call sites read as intent, not numbers. */

@@ -45,11 +45,16 @@ const TABS: [TabKey, string][] = [
 /** Legacy tab slugs that now redirect to the merged Group input tab. */
 const LEGACY_TAB_SLUGS = ['suggestions', 'decisions']
 
+/** Runtime type guard over the TABS table — no `as TabKey` cast anywhere. */
+function isTabKey(s: string | undefined): s is TabKey {
+  return typeof s === 'string' && TABS.some(([k]) => k === s)
+}
+
 /** URL tab segment → TabKey (F-21): junk falls back to Overview; the old
     `suggestions`/`decisions` slugs redirect to the merged `group` tab. */
 function sanitizeTab(s: string | undefined): TabKey {
   if (s && LEGACY_TAB_SLUGS.includes(s)) return 'group'
-  return TABS.some(([k]) => k === s) ? (s as TabKey) : 'overview'
+  return isTabKey(s) ? s : 'overview'
 }
 
 export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: string; initialTab?: string; onNavigate: (route: string) => void }) {
@@ -244,7 +249,7 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
       )}
       {tab === 'map' && (
         <React.Suspense fallback={<div className="container loading-block"><div className="spinner" />Loading map…</div>}>
-          <MapTab trip={effective} editable={editable} applyChange={applyChange} suggestionCache={suggestionCache} />
+          <MapTab trip={effective} editable={editable} applyChange={applyChange} suggestionCache={suggestionCache} crewSuggestions={db.suggestions.filter(s => s.tripId === trip.id)} />
         </React.Suspense>
       )}
       {tab === 'group' && <GroupInputTab trip={trip} editable={editable} me={me} />}

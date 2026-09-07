@@ -1,9 +1,11 @@
 // ============ Google Places quota guard (Phase B) ============
 // Per-SKU monthly event counters, persisted in localStorage. Soft-caps sit at
 // 80% of the verified India free allowances (report §3/§4 — Text Search Pro
-// 35k, Autocomplete/Place Details 70k per month), so the app silently falls
-// back to the free stack long before a paid event can ever fire. Counters key
-// by UTC month and roll over automatically.
+// 35k, Autocomplete/Place Details 70k per month). Since the 2026-09-07
+// Google-only directive, hitting a cap PAUSES that SKU's Google-mode surface
+// (surfaces show an explicit quota note) instead of silently falling back —
+// the free stack serves only when no key is configured. Counters key by UTC
+// month and roll over automatically.
 //
 // This is insurance, not a billing tool: the key is expected to be
 // HTTP-referrer-restricted to the deployment domain (Google Cloud console),

@@ -41,7 +41,7 @@ export function googleEnabled(): boolean {
 /** Thrown when the Phase-B soft cap says no more events for a SKU this month. */
 export class QuotaExhaustedError extends Error {
   constructor(sku: QuotaSku) {
-    super(`Google Places quota soft-cap reached for ${sku} — falling back to the free stack`)
+    super(`Google Places quota soft-cap reached for ${sku} — Google-mode suggestions stay paused until the counter rolls over (next UTC month). Remove the key to serve the free stack instead.`)
     this.name = 'QuotaExhaustedError'
   }
 }
@@ -196,6 +196,9 @@ interface GooglePlace {
   location?: { latitude?: number; longitude?: number }
   formattedAddress?: string
   primaryTypeDisplayName?: { text?: string }
+  /** machine place type, e.g. "tourist_attraction" — used for the sight gate */
+  primaryType?: string
+  types?: string[]
   regularOpeningHours?: { periods?: GooglePeriod[] }
   currentOpeningHours?: { periods?: GooglePeriod[] }
   rating?: number
@@ -224,12 +227,16 @@ interface RoutingSummary {
 // 2026-08-29: the latter shape 400s with INVALID_ARGUMENT). duration is
 // omitted — nothing consumes it.
 // Rating paths ride the same events — no extra SKU, mask-only change.
+// primaryType + types ride free too — the sightseeing gate needs the machine
+// type to enforce tourist_attraction-only results.
 export const NEARBY_FIELD_MASK = [
   'places.id',
   'places.displayName',
   'places.location',
   'places.formattedAddress',
   'places.primaryTypeDisplayName',
+  'places.primaryType',
+  'places.types',
   'places.regularOpeningHours',
   'places.currentOpeningHours',
   'places.rating',
@@ -237,13 +244,13 @@ export const NEARBY_FIELD_MASK = [
   'routingSummaries.legs.distanceMeters',
 ].join(',')
 
-const ALONG_ROUTE_QUERIES: { textQuery: string; cat: string }[] = [
-  { textQuery: 'tourist attractions', cat: 'sightseeing' },
+const ALONG_ROUTE_QUERIES: { textQuery: string; cat: string; includedType?: string }[] = [
+  { textQuery: 'tourist attractions', cat: 'sightseeing', includedType: 'tourist_attraction' },
   { textQuery: 'restaurants and cafes', cat: 'food' },
   { textQuery: 'hotels', cat: 'hotel' },
 ]
-// appended only for self-drive trips (includeFuel), capped at 2 by rankAndCap
-const FUEL_QUERY = { textQuery: 'petrol pumps', cat: 'transport-hub' }
+// appended only for self-drive trips (includeFuel), capped by rankAndCap
+const FUEL_QUERY: { textQuery: string; cat: string; includedType?: string } = { textQuery: 'petrol pumps', cat: 'transport-hub' }
 
 /** "HH:MM" strings from the first Google period; open-ended → 23:59. */
 function hoursFrom(p: GooglePlace): { openTime?: string; closeTime?: string } {
@@ -284,9 +291,50 @@ export interface AlongRouteArgs {
  * deduped across queries. `routeTotalKm` is only present for Search-Along-Route
  * (routingSummaries legs → real road detour); point searches pass null.
  */
+/**
+ * Map Google's machine place type → the app's category taxonomy. The category
+ * must describe WHAT THE PLACE IS, not the query that found it — queries are
+ * purpose-driven ("highway dhabas"), so a dhaba's category must be 'food',
+ * never the purpose string 'meal'. PURPOSE_FIT scores categories; a 'meal'
+ * category scores 0 and gets rejected by the purpose-fit gate from its own
+ * segment, dumping real restaurants into the leftover sight pass.
+ */
+const GOOGLE_TYPE_TO_CATEGORY: Record<string, string> = {
+  tourist_attraction: 'sightseeing',
+  aquarium: 'sightseeing', zoo: 'sightseeing', amusement_park: 'sightseeing',
+  museum: 'museum', art_gallery: 'museum', cultural_center: 'museum',
+  hindu_temple: 'temple', mosque: 'temple', church: 'temple', synagogue: 'temple',
+  place_of_worship: 'temple', gurudwara: 'temple',
+  park: 'nature', natural_feature: 'nature', botanical_garden: 'nature',
+  beach: 'beach',
+  hiking_area: 'adventure', campground: 'adventure',
+  restaurant: 'food', cafe: 'cafe', coffee_shop: 'cafe', bar: 'food',
+  bakery: 'food', meal_takeaway: 'food', food: 'food',
+  hotel: 'hotel', motel: 'hotel', lodge: 'hotel', guest_house: 'hotel',
+  hostel: 'hotel', bed_and_breakfast: 'hotel', resort: 'hotel', lodging: 'hotel',
+  gas_station: 'transport-hub', fuel: 'transport-hub',
+  ev_charging_station: 'transport-hub', charging_station: 'transport-hub',
+  shopping_mall: 'shopping', store: 'shopping', market: 'shopping',
+  train_station: 'travel', transit_station: 'travel', airport: 'travel',
+}
+
+/** Category from Google's primaryType (or types), else the query's category hint. */
+function categoryForGooglePlace(
+  p: GooglePlace,
+  fallback: string,
+): string {
+  const primary = p.primaryType ? GOOGLE_TYPE_TO_CATEGORY[p.primaryType] : undefined
+  if (primary) return primary
+  for (const t of p.types ?? []) {
+    const mapped = GOOGLE_TYPE_TO_CATEGORY[t]
+    if (mapped) return mapped
+  }
+  return fallback
+}
+
 function hitsFromResponses(
   responses: { places?: GooglePlace[]; routingSummaries?: RoutingSummary[] }[],
-  queries: { textQuery: string; cat: string }[],
+  queries: { textQuery: string; cat: string; includedType?: string }[],
   routeTotalKm: number | null | undefined,
 ): PlaceHit[] {
   const seen = new Set<string>()
@@ -296,6 +344,11 @@ function hitsFromResponses(
     for (let i = 0; i < places.length; i++) {
       const p = places[i]
       if (!p.id || !p.displayName?.text) continue
+      // type gate: when the query demanded a single place type (sightseeing →
+      // tourist_attraction), a hit whose primaryType AND types both miss it is
+      // a stray locality/neighborhood the text match dragged in — drop it.
+      const gate = queries[qi].includedType
+      if (gate && p.primaryType !== gate && !(p.types ?? []).includes(gate)) continue
       const lat = p.location?.latitude
       const lng = p.location?.longitude
       if (lat == null || lng == null) continue
@@ -324,7 +377,10 @@ function hitsFromResponses(
         placeId: p.id,
         source: 'google',
         fromGoogleAlongRoute: routeTotalKm != null,
-        category: queries[qi].cat,
+        // real category from the place's machine type — NEVER the purpose
+        // string that built the query ('meal'/'fuel'/'overnight' are purposes,
+        // not categories; they score 0 in PURPOSE_FIT)
+        category: categoryForGooglePlace(p, queries[qi].cat),
         ...hoursFrom(p),
         ...(p.rating != null && Number.isFinite(p.rating) ? { rating: p.rating } : {}),
         ...(p.userRatingCount != null && Number.isFinite(p.userRatingCount) ? { ratingCount: p.userRatingCount } : {}),
@@ -346,11 +402,12 @@ export async function googleNearbyAlongRoute(args: AlongRouteArgs): Promise<Plac
   // Build query list: static tourist set (backward compat) OR purpose-specific dynamic set
   const staticQueries = args.includeFuel ? [...ALONG_ROUTE_QUERIES, FUEL_QUERY] : ALONG_ROUTE_QUERIES
   const queries = args.purposes && args.purposes.length > 0
-    ? args.purposes.flatMap(p => queriesForPurpose(p).googleQueries.map(textQuery => ({ textQuery, cat: p })))
+    ? args.purposes.flatMap(p => queriesForPurpose(p).googleQueries.map(textQuery => ({ textQuery, cat: p, includedType: queriesForPurpose(p).includedType })))
     : staticQueries
   const responses = await Promise.all(queries.map(qv =>
     placesPost('/places:searchText', 'textSearchPro', {
       textQuery: qv.textQuery,
+      ...(qv.includedType ? { includedType: qv.includedType } : {}),
       searchAlongRouteParameters: { polyline: { encodedPolyline: encoded } },
       maxResultCount: 10,
       languageCode: 'en',
@@ -368,6 +425,8 @@ const POINT_FIELD_MASK = [
   'places.location',
   'places.formattedAddress',
   'places.primaryTypeDisplayName',
+  'places.primaryType',
+  'places.types',
   'places.regularOpeningHours',
   'places.currentOpeningHours',
 ].join(',')
@@ -393,6 +452,7 @@ export async function googleNearbyAtPoint(args: AtPointArgs): Promise<PlaceHit[]
   const responses = await Promise.all(queries.map(qv =>
     placesPost('/places:searchText', 'textSearchPro', {
       textQuery: qv.textQuery,
+      ...(qv.includedType ? { includedType: qv.includedType } : {}),
       locationBias: {
         circle: { center: { latitude: args.lat, longitude: args.lng }, radius: args.radiusM },
       },
@@ -402,4 +462,65 @@ export async function googleNearbyAtPoint(args: AtPointArgs): Promise<PlaceHit[]
     }, POINT_FIELD_MASK) as Promise<{ places?: GooglePlace[] }>,
   ))
   return hitsFromResponses(responses, queries, null)
+}
+
+// ============ 4. City/town anchor layer (Google mode) ============
+// Provider directive (2026-09-07): in Google mode EVERYTHING comes from
+// Google — POIs and the populated-place anchor layer. Text Search along the
+// route with locality/administrative types, no routingSummaries needed. The
+// free-stack searchCitiesAlong (Overpass + Wikipedia) stays as the keyless
+// mode only — its Wikipedia filter accepted Indian constituency articles.
+
+/** place types that mean "a real populated place" for the anchor layer */
+const CITY_TYPES = ['locality', 'administrative_area_level_3', 'administrative_area_level_2']
+
+export async function googleCitiesAlong(
+  anchors: { lat: number; lng: number }[],
+  radiusM = 35000,
+  count = 8,
+): Promise<PlaceHit[]> {
+  const capped = anchors.filter(a => Number.isFinite(a.lat) && Number.isFinite(a.lng)).slice(0, 6)
+  if (capped.length === 0) return []
+  const responses = await Promise.all(capped.map(a =>
+    placesPost('/places:searchText', 'textSearchPro', {
+      textQuery: 'towns and cities',
+      locationBias: {
+        circle: { center: { latitude: a.lat, longitude: a.lng }, radius: Math.min(radiusM, 50000) },
+      },
+      maxResultCount: 8,
+      languageCode: 'en',
+      regionCode: REGION_CODE,
+    }, POINT_FIELD_MASK) as Promise<{ places?: GooglePlace[] }>,
+  ))
+  const seen = new Set<string>()
+  const out: PlaceHit[] = []
+  for (const res of responses) {
+    for (const p of res.places ?? []) {
+      if (!p.id || !p.displayName?.text) continue
+      const key = normWords(p.displayName.text).join(' ')
+      if (!key || seen.has(key)) continue
+      // keep only real populated places — the anchor layer labels cards with
+      // "near <city>"; constituencies/blocks must never appear here
+      const t = p.types ?? []
+      const isCity = t.some(x => CITY_TYPES.includes(x)) || p.primaryType === 'locality'
+      if (!isCity) continue
+      const lat = p.location?.latitude
+      const lng = p.location?.longitude
+      if (lat == null || lng == null) continue
+      seen.add(key)
+      out.push({
+        id: `google_city_${p.id}`,
+        name: p.displayName.text,
+        latitude: lat,
+        longitude: lng,
+        kind: 'place',
+        description: p.primaryTypeDisplayName?.text ?? p.formattedAddress ?? undefined,
+        placeId: p.id,
+        source: 'google',
+        isPopulatedPlace: true,
+        category: 'rest',
+      })
+    }
+  }
+  return out.slice(0, count)
 }
