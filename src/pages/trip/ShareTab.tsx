@@ -6,16 +6,19 @@ import { Download, Link2, Lock, Upload } from 'lucide-react'
 import type { Trip, PublishedItinerary } from '../../data/types'
 import { useDb, userById, setMemberRole, removeMember, restoreMember, publishItinerary, unpublishItinerary, duplicateTrip } from '../../store/store'
 import { encodeTripSnapshot, snapshotUrl, downloadTripJson } from '../../lib/snapshot'
+import type { LegEstimate } from '../../lib/engine'
 import { Avatar, Chip, ConfirmDialog, CopyButton, Field, toast, undoToast } from '../../components/ui'
+import { PrintExport } from '../../components/PrintExport'
 import { TripSettingsForm } from './TripSettingsForm'
 import { timeAgo } from './shared'
 
 // ================= Snapshot (export / import / URL share) =================
 
-function SnapshotCard({ trip, me, onNavigate }: {
+function SnapshotCard({ trip, me, onNavigate, legCorrections }: {
   trip: Trip
   me: { id: string }
   onNavigate: (r: string) => void
+  legCorrections?: Record<string, LegEstimate>
 }) {
   const [link, setLink] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
@@ -51,8 +54,9 @@ function SnapshotCard({ trip, me, onNavigate }: {
         Take the whole plan anywhere — no server stores it. Snapshot links embed the trip in the URL itself.
       </p>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  <button className="btn btn-outline btn-sm" onClick={() => downloadTripJson(trip)}><Download size={13} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />Download JSON</button>
                   <button className="btn btn-outline btn-sm" onClick={() => fileRef.current?.click()}><Upload size={13} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />Import JSON</button>
+                  <button className="btn btn-outline btn-sm" onClick={() => downloadTripJson(trip)}><Download size={13} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />Download JSON</button>
+                  <PrintExport trip={trip} legCorrections={legCorrections} />
                   <button className="btn btn-saffron btn-sm" onClick={makeLink}><Link2 size={13} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />Create snapshot link</button>
         <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={onFile} />
       </div>
@@ -189,11 +193,12 @@ function PublicationForm({ trip, pub, isOwner, creatorId, onDone }: {
 
 // ================= Share tab =================
 
-export function ShareTab({ trip, me, editable, onNavigate }: {
+export function ShareTab({ trip, me, editable, onNavigate, legCorrections }: {
   trip: Trip
   me: { id: string; email: string }
   editable: boolean
   onNavigate: (route: string) => void
+  legCorrections?: Record<string, LegEstimate>
 }) {
   const db = useDb()
   const inviteLink = `${location.origin}${location.pathname}#/invite/${trip.id}`
@@ -266,7 +271,7 @@ export function ShareTab({ trip, me, editable, onNavigate }: {
           {pubLink && <div className="share-link-box" style={{ marginTop: 10 }}><code>{pubLink}</code><CopyButton text={pubLink} label="Copy" /></div>}
         </div>
 
-        <SnapshotCard trip={trip} me={me} onNavigate={onNavigate} />
+        <SnapshotCard trip={trip} me={me} onNavigate={onNavigate} legCorrections={legCorrections} />
       </div>
 
       <div>
