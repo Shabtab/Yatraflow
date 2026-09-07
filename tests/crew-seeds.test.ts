@@ -56,6 +56,8 @@ describe('crew seeds', () => {
     const v = buildDnaVector(crewSeedEvents(TRIP, seeds))
     expect(dnaBoostForHit({ category: 'waterfall' }, v)).toBeGreaterThan(0)
     expect(dnaBoostForHit({ category: 'museum' }, v)).toBe(0)
+    // seeds bias but never inflate the acceptance record (proposing ≠ going)
+    expect(v.accepts).toBe(0)
   })
 
   it('names the seed in the crew note', () => {

@@ -11,7 +11,7 @@
 // directly.
 
 import { haversineKm } from './geo'
-import { classifyRoadWindow, type RoadKind } from './roadPersonality'
+import { classifyRoadWindow, CITY_SPEED_KMH, CITY_CRAWL_WARNING, type RoadKind } from './roadPersonality'
 import { dnaBoostForHit, type DnaVector } from './tripDna'
 import { hmToMinutes } from './engine'
 import { HOME_ZONE_KM, kmFromStartForHit, detourKm, detourMinutes, dedupeCandidates, type HaltPurpose, type PlaceHit } from './providers/hits'
@@ -205,13 +205,24 @@ function annotateRoadPersonality(
     }
     if (idx.length < 2) continue
     const slice = idx.map(i => pts[i])
-    // window speed feeds the city-crawl branch: slow urban windows read city
-    const windowKm = Math.max(0, hi - lo)
-    const windowMin = totalKm > 0 ? (driveMinutes * windowKm) / totalKm : 0
-    const avgSpeedKmh = windowMin > 0 ? windowKm / (windowMin / 60) : undefined
-    const w = classifyRoadWindow(slice, avgSpeedKmh != null ? { avgSpeedKmh } : {})
-    s.roadPersonality = w.kind
-    s.roadWarning = w.warning
+    // Geometry classifies the window (highway / state-road / ghat). The
+    // day's AVERAGE speed is a day-level verdict, not a per-window one —
+    // deriving per-window speed from the km fraction cancels out to the day
+    // average, which used to mislabel every window on a slow day. So: ghat
+    // (geometry-true, urgent advice) always wins; the crawl verdict applies
+    // to non-ghat windows only when the whole day averages under city speed.
+    const dayAvgKmh = driveMinutes > 0 ? totalKm / (driveMinutes / 60) : undefined
+    const w = classifyRoadWindow(slice)
+    if (w.kind === 'ghat') {
+      s.roadPersonality = 'ghat'
+      s.roadWarning = w.warning
+    } else if (dayAvgKmh != null && Number.isFinite(dayAvgKmh) && dayAvgKmh < CITY_SPEED_KMH) {
+      s.roadPersonality = 'city'
+      s.roadWarning = CITY_CRAWL_WARNING
+    } else {
+      s.roadPersonality = w.kind
+      s.roadWarning = w.warning
+    }
   }
 }
 

@@ -23,7 +23,10 @@ const GHAT_SINUOSITY = 1.3
 const GHAT_TWIST_PER_KM = 0.5
 const HIGHWAY_SINUOSITY = 1.15
 const HIGHWAY_TWIST_PER_KM = 0.15
-const CITY_SPEED_KMH = 30
+/** Above this day-average km/h a non-ghat window is ordinary road; below it, crawl. */
+export const CITY_SPEED_KMH = 30
+/** Warning shown on city-crawl windows (exported so callers stay in sync). */
+export const CITY_CRAWL_WARNING = 'city crawl ahead — short hops, slow traffic'
 
 function distKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
   return haversineKm(a.lat, a.lng, b.lat, b.lng)

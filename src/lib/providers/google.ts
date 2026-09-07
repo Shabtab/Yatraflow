@@ -41,7 +41,7 @@ export function googleEnabled(): boolean {
 /** Thrown when the Phase-B soft cap says no more events for a SKU this month. */
 export class QuotaExhaustedError extends Error {
   constructor(sku: QuotaSku) {
-    super(`Google Places quota soft-cap reached for ${sku} — falling back to the free stack`)
+    super(`Google Places quota soft-cap reached for ${sku} — Google-mode suggestions stay paused until the counter rolls over (next UTC month). Remove the key to serve the free stack instead.`)
     this.name = 'QuotaExhaustedError'
   }
 }

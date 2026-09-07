@@ -7,7 +7,8 @@
 // capped, never throws).
 export interface DnaEvent {
   tripId: string
-  action: 'accept' | 'decline'
+  /** 'seed' = an open crew idea: bends affinity but is NOT a crew acceptance */
+  action: 'accept' | 'decline' | 'seed'
   category?: string
   detourMin?: number
 }
@@ -47,6 +48,10 @@ export function buildDnaVector(events: DnaEvent[], tripId?: string): DnaVector {
         detourSum += e.detourMin as number
         detourN += 1
       }
+    } else if (e.action === 'seed') {
+      // A proposed idea biases the corridor toward its kind but must not
+      // inflate the acceptance record — proposing ≠ the crew having gone.
+      if (cat) v.categoryAffinity[cat] = (v.categoryAffinity[cat] ?? 0) + 1
     } else {
       v.declines += 1
       if (cat) v.categoryAffinity[cat] = Math.max(0, (v.categoryAffinity[cat] ?? 0) - 1)
@@ -131,9 +136,9 @@ export function crewSeedsToPlannedStops(seeds: CrewSeed[]): { lat: number; lng: 
   return seeds.map(s => ({ lat: s.lat, lng: s.lng, name: s.name }))
 }
 
-/** Each seed counts as one accept — the corridor leans toward crew-proposed kinds. */
+/** Each seed biases its kind ('seed' action — affinity without accept credit). */
 export function crewSeedEvents(tripId: string, seeds: CrewSeed[]): DnaEvent[] {
-  return seeds.map(s => ({ tripId, action: 'accept' as const, category: s.category }))
+  return seeds.map(s => ({ tripId, action: 'seed' as const, category: s.category }))
 }
 
 /** "More like X" note when a hit matches a seed's kind. */

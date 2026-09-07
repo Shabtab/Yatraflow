@@ -29,6 +29,16 @@ describe('road personality', () => {
     expect(classifyRoadWindow(zigzagKm(40)).kind).toBe('ghat')
   })
 
+  it('lets a ghat window win over a slow day-average (no false city crawl)', async () => {
+    const { planRideSegments } = await import('../src/lib/ridePlan')
+    // A slow day (400 km in 20 h) on twisty geometry: the urgent, geometry-true
+    // advice is "switchbacks ahead", not the day-level "city crawl" verdict.
+    const segs = planRideSegments({ totalKm: 400, driveMinutes: 1200, roadGeometry: zigzagKm(40) })
+    expect(segs.length).toBeGreaterThan(0)
+    expect(segs.every(s => s.roadPersonality === 'ghat')).toBe(true)
+    expect(segs[0].roadWarning).toContain('switchback')
+  })
+
   it('returns no warning on highways, warns before ghats', () => {
     expect(classifyRoadWindow(straightKm(40)).warning).toBeNull()
     const w = classifyRoadWindow(zigzagKm(40)).warning

@@ -11,7 +11,8 @@ import { useTimeFormat, formatHMRange } from '../../lib/timefmt'
 import { Modal, Field, toast } from '../../components/ui'
 import { useSuggestionCache, isMapCacheFresh } from '../../hooks/useSuggestionCache'
 import { corridorAnchors, detourKm, detourMinutes, googleEnabled, planJourneyHalts, reasonForSegmentHit, type NearbyOpts } from '../../lib/geocode'
-import { dayDetourBudgetMin, budgetSharePct } from '../../lib/detourBudget'
+import { dayDetourBudgetMin, budgetSharePct, splitByDetourBudget } from '../../lib/detourBudget'
+import { quotaUsed, SOFT_CAPS } from '../../lib/providers/quota'
 import { buildDnaVector, loadDnaLog, recordDnaEvent, dnaNoteForHit, crewSeedsFromSuggestions, crewSeedsToPlannedStops, crewSeedEvents, crewNoteForHit } from '../../lib/tripDna'
 import { clusterStoryArcs } from '../../lib/storyArcs'
 import { visitMinutesForCategory } from '../../lib/slackPrompts'
@@ -263,6 +264,43 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
   const NEED_PURPOSES = new Set(['fuel', 'meal', 'food', 'rest', 'stretch', 'overnight', 'stay'])
   const needs = pois.filter(sh => sh.segment && NEED_PURPOSES.has(sh.segment.purpose))
   const seeAndDo = pois.filter(sh => sh.segment && !NEED_PURPOSES.has(sh.segment.purpose))
+  // Detour-budget enforcement (Horizon 3.2's "finite, honest menu"): the
+  // see-&-do list is the endless one — need halts are finite by construction,
+  // so the budget gates only sights. Per day: walk the journey-ordered sight
+  // hits, spend each one's detour minutes against that day's budget, and mark
+  // whatever no longer fits as HELD BACK — counted and shown as a line, never
+  // offered as an addable card.
+  const budgetHeldIds = new Set<string>()
+  let budgetHeldCount = 0
+  {
+    const speedK = MODE_SPEED[trip.transportMode] ?? 40
+    const byDay = new Map<number, SegmentHit[]>()
+    for (const sh of seeAndDo) {
+      if (!sh.hit || addedIds.has(sh.hit.id as string) || dismissedIds.has(sh.hit.id as string)) continue
+      const d = dayForKm(sh.hit.cumKm) ?? 0
+      const list = byDay.get(d) ?? []
+      list.push(sh)
+      byDay.set(d, list)
+    }
+    for (const [d, rows] of byDay) {
+      const budget = dayDetourBudgetMin({
+        travelStyle: trip.travelStyle,
+        plannedStops: (trip.days.find(x => x.index === d)?.stops ?? []).filter(s => s.status !== 'rejected').length,
+      })
+      const { deferred } = splitByDetourBudget(
+        rows.map(sh => ({ sh, detourMin: detourMinutes(sh.hit!, anchors, speedK) })),
+        budget,
+      )
+      for (const { sh } of deferred) {
+        budgetHeldIds.add(sh.hit!.id as string)
+        budgetHeldCount += 1
+      }
+    }
+  }
+  // Quota honesty (Google-only directive): when the textSearchPro soft cap is
+  // hit, every Google-mode corridor scan returns [] — say why instead of
+  // rendering an empty state that reads like "nothing around".
+  const quotaOut = googleEnabled() && quotaUsed('textSearchPro') >= SOFT_CAPS.textSearchPro
   // Story arcs: themed bundles from live, not-yet-added sights.
   const arcHits = seeAndDo.flatMap(sh => {
     const h = sh.hit
@@ -295,6 +333,15 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
     })
     const dnaNote = dnaNoteForHit(hit, buildDnaVector([...loadDnaLog(), ...crewSeedEvents(trip.id, crewSeeds)], trip.id))
       ?? crewNoteForHit(hit, crewSeeds)
+    // Over the day's detour budget: shown as a counted line, not an offer.
+    if (budgetHeldIds.has(hit.id as string)) {
+      return (
+        <div key={hit.id} className="poi-plan-row poi-plan-gap">
+          <span className={`ride-purpose ride-purpose-${sh.segment.purpose} ride-purpose-muted`}>{sh.segment.label}</span>
+          <span className="muted small">{hit.name} — held back: its ≈{Math.round(detourMin)} min detour exceeds what&apos;s left of Day {(dayForKm(hit.cumKm) ?? 0) + 1}&apos;s detour budget. Add it from the map pin if it is worth it.</span>
+        </div>
+      )
+    }
     return (
       <div key={hit.id} className="poi-plan-row">
         <div className="ride-spot-title">
@@ -365,9 +412,12 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
                     className="btn btn-ghost btn-sm"
                     title="Not interested — hide this and teach the engine"
                     onClick={() => {
-                      recordDnaEvent({ tripId: trip.id, action: 'decline', category: hit.category })
+                      recordDnaEvent({ tripId: trip.id, action: 'decline', category: hit.category, detourMin })
                       suggestionCache.clearMap()
                       setDnaTick(t => t + 1)
+                      // House rule: a cache clear must pair with a tick that is
+                      // IN the fetch effect's dep array, or nothing refills it.
+                      setRefreshTick(t => t + 1)
                       setDismissedIds(prev => new Set(prev).add(hit.id as string))
                     }}
                   >Not for us</button>
@@ -463,7 +513,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
                         for (const id of arc.hitIds) {
                           const m = arcHits.find(h => (h.id as string) === (id as string))
                           if (!m || addedIds.has(m.id as string)) continue
-                          recordDnaEvent({ tripId: trip.id, action: 'accept', category: m.category })
+                          recordDnaEvent({ tripId: trip.id, action: 'accept', category: m.category, detourMin: detourMinutes(m, anchors, MODE_SPEED[trip.transportMode] ?? 40) })
                           addPoiToDay(m, dayForKm(m.cumKm))
                           n += 1
                         }
@@ -480,9 +530,15 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
                   </div>
                 </div>
               ))}
+              {quotaOut && (
+                <p className="hint-text" role="status">⚠ Google search quota reached for this month — corridor suggestions are paused until the counter rolls over. Removing the key from settings serves the free stack instead.</p>
+              )}
               {seeAndDo.length === 0
                 ? <p className="muted small">Sightseeing &amp; detour stops will appear here along the corridor.</p>
                 : seeAndDo.map(renderPoi)}
+              {budgetHeldCount > 0 && (
+                <p className="hint-text">{budgetHeldCount} idea{budgetHeldCount === 1 ? '' : 's'} held back — beyond the day&apos;s detour budget. Add fewer stops, or raise the scope, and the engine will offer them again.</p>
+              )}
             </div>
           </div>
       </div>
@@ -503,7 +559,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
             <p className="hint-text">You can fine-tune duration, fees and timings in the Timeline afterwards.</p>
             <div style={{ display: 'flex', gap: 9, justifyContent: 'flex-end', marginTop: 8 }}>
               <button className="btn btn-outline" onClick={() => setPoiDraft(null)}>Cancel</button>
-              <button className="btn btn-primary" onClick={() => { recordDnaEvent({ tripId: trip.id, action: 'accept', category: poiDraft.hit.category }); suggestionCache.clearMap(); setDnaTick(t => t + 1); addPoiToDay(poiDraft.hit, pickDay); setPoiDraft(null) }}>
+              <button className="btn btn-primary" onClick={() => { recordDnaEvent({ tripId: trip.id, action: 'accept', category: poiDraft.hit.category, detourMin: detourMinutes(poiDraft.hit, anchors, MODE_SPEED[trip.transportMode] ?? 40) }); suggestionCache.clearMap(); setDnaTick(t => t + 1); addPoiToDay(poiDraft.hit, pickDay); setPoiDraft(null) }}>
                 Add to timeline
               </button>
             </div>

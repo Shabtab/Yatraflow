@@ -25,6 +25,7 @@ export { searchCitiesAlong } from './providers/free'
 export { planRideSegments, assignSegmentHits, leftoverAsSight, reasonForSegmentHit, reasonForHit, type SegmentHit, type RideSegment } from './ridePlan'
 
 import { hasCoords, rankAndCap, filterPlannedNearby, type NearbyOpts, type PlaceHit } from './providers/hits'
+import { haversineKm } from './geo'
 import {
   searchPlacesFree,
   searchNearbyPoisMultiFree,
@@ -96,14 +97,52 @@ export async function searchNearbyPois(lat: number, lng: number, radiusM = 10000
   return searchNearbyPoisMulti([{ lat, lng }], radiusM, count, opts)
 }
 
+/** routeCoords are [lng, lat] pairs (GeoJSON order). True when start ≈ end. */
+function isRoundTripRoute(route: [number, number][]): boolean {
+  const a = route[0]
+  const b = route[route.length - 1]
+  if (!a || !b || a.length < 2 || b.length < 2) return false
+  return haversineKm(a[1], a[0], b[1], b[0]) <= 5
+}
+
+/**
+ * Google-only round-trip supplement: point searches at the first few anchors.
+ * Sequential (not Promise.all) so one failing anchor doesn't kill the scan,
+ * and early-exits once the result count is met.
+ */
+async function googlePointScan(
+  anchors: { lat: number; lng: number }[],
+  radiusM: number,
+  count: number,
+): Promise<PlaceHit[]> {
+  const out: PlaceHit[] = []
+  const seen = new Set<string | number>()
+  for (const a of anchors.slice(0, 4)) {
+    try {
+      const hits = await googleNearbyAtPoint({ lat: a.lat, lng: a.lng, radiusM, count })
+      for (const h of hits) {
+        if (!h.id || seen.has(h.id)) continue
+        seen.add(h.id)
+        out.push(h)
+      }
+      if (out.length >= count) break
+    } catch { /* this anchor failed — try the next one */ }
+  }
+  return out
+}
+
 /**
  * Nearby ideas for the whole route. Google mode (key + OSRM geometry in
  * `opts.routeCoords`): Search-Along-Route — one Text Search Pro event per
  * category, opening hours and real road detours on every hit, ranked by the
  * same tourist engine. Single-anchor flows without route geometry (empty-day
  * chips) use a Google locationBias point search instead — same SKU, reported
- * hours, straight-line detour fallback. Any failure, empty result (round
- * trips), or quota trip falls back to the free stack.
+ * hours, straight-line detour fallback. Per the 2026-09-07 provider directive,
+ * Google mode NEVER falls back to the free stack — failures, quota trips and
+ * empty scans render an honest "no match"; the free stack is keyless-mode only.
+ * Round-trip routes (origin ≈ destination) get a point-search supplement, since
+ * Search-Along-Route legitimately returns nothing when the road never leaves
+ * the start area.
  */
 export async function searchNearbyPoisMulti(
   anchors: { lat: number; lng: number }[],
@@ -124,6 +163,15 @@ export async function searchNearbyPoisMulti(
         routeCoords: route, routeTotalKm: opts.routeTotalKm, count,
         includeFuel: opts.includeFuel, purposes: opts.purposes,
       })
+      if (hits.length > 0) return rankAndCap(hits, capped, radiusM, count, opts)
+      // Round-trip routes (origin ≈ destination) legitimately return zero
+      // Search-Along-Route results — the road never leaves the start area.
+      // Google-only directive stays intact: supplement with point searches at
+      // the first anchors rather than falling back to the free stack.
+      if (isRoundTripRoute(route)) {
+        const pointHits = await googlePointScan(capped, radiusM, count)
+        return rankAndCap(pointHits, capped, radiusM, count, opts)
+      }
       return rankAndCap(hits, capped, radiusM, count, opts)
     } catch { return [] as PlaceHit[] }
   } else if (googleEnabled()) {
