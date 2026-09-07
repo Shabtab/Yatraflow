@@ -536,6 +536,40 @@ export function tripById(id: ID): Trip | undefined {
   return cache.trips.find(t => t.id === id)
 }
 
+/**
+ * On-demand fetch of a trip the viewer may not be a member of — the public
+ * itinerary page and the invite gate both need OTHER people's trips, which the
+ * membership-scoped hydration deliberately keeps out of the cache. Reads the
+ * row directly (owner / member / `visibility='public'` — published trips are
+ * public); when `allowInvitePreview` is set, falls back to the
+ * `get_invite_trip` security-definer RPC so a private trip can still be
+ * previewed by whoever holds its invite link (the UUID is the capability).
+ * A fetched trip is merged into the cache so `tripById` finds it on the next
+ * render; it disappears again on the next hydration, which is fine — callers
+ * re-fetch. Returns null when nothing readable exists (RLS or a bad id).
+ */
+export async function fetchSharedTrip(tripId: ID, allowInvitePreview = false): Promise<Trip | null> {
+  const local = tripById(tripId)
+  if (local) return local
+  let row: TripRow | null = null
+  const { data, error } = await supabase.from('trips').select('*').eq('id', tripId).maybeSingle()
+  if (error) console.error('[yatraflow] shared trip fetch failed', error)
+  if (data) row = data as TripRow
+  if (!row && allowInvitePreview) {
+    const rpc = await supabase.rpc('get_invite_trip', { p_trip_id: tripId })
+    if (rpc.error) console.error('[yatraflow] invite preview fetch failed', rpc.error)
+    const rows = rpc.data as TripRow[] | null
+    if (Array.isArray(rows) && rows.length > 0) row = rows[0]
+  }
+  if (!row) return null
+  const trip = rowToTrip(row, [])
+  if (!cache.trips.some(t => t.id === trip.id)) {
+    cache.trips = [...cache.trips, trip]
+    commit()
+  }
+  return trip
+}
+
 export interface NewTripInput {
   name: string; startLocation: string; destinations: string[];
   startLocationCoords?: LatLngPoint;
@@ -1327,6 +1361,14 @@ export async function publishItinerary(pub: Omit<PublishedItinerary, 'id' | 'pub
         : cache.published.filter((_, i) => i !== idx)
       commit()
     }
+  } else {
+    markLocalWrite('published_itineraries', p.id)
+    // A published itinerary is a public page: flip the trip to visibility
+    // 'public' so RLS lets anonymous visitors and logged-in non-members read
+    // the trip body the public page renders (see fetchSharedTrip).
+    cache.trips = cache.trips.map(t => t.id === p.tripId ? { ...t, visibility: 'public' } : t)
+    commit()
+    fire('trips', supabase.from('trips').update({ visibility: 'public' }).eq('id', p.tripId))
   }
   return p
 }
@@ -1360,6 +1402,10 @@ export function unpublishItinerary(tripId: ID): void {
       }
     } else {
       markLocalWrite('published_itineraries', pub.id)
+      // Unpublished → the trip is private again (matches the publish-side flip).
+      cache.trips = cache.trips.map(t => t.id === tripId ? { ...t, visibility: 'private' } : t)
+      commit()
+      fire('trips', supabase.from('trips').update({ visibility: 'private' }).eq('id', tripId))
     }
   })()
 }

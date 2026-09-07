@@ -2,14 +2,14 @@
 // A shareable travel document, not the private workspace: destination-led hero,
 // creator attribution, "why this route works" story, a practical stat cluster,
 // and curated day highlights ahead of the detailed (and premium-gated) plan.
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Calendar, Camera, Car, Clock, Flag, GitFork, Heart, Link2, Lock, MapPin,
   Route, Sparkles, Ticket, TriangleAlert,
 } from 'lucide-react'
 import { MetaIcon } from '../components/icons'
 import type { Trip, PublishedItinerary } from '../data/types'
-import { useDb, currentUser, tripById, userById, registerPubView } from '../store/store'
+import { useDb, currentUser, tripById, userById, registerPubView, fetchSharedTrip } from '../store/store'
 import { forkPublication } from '../lib/forkPub'
 import { simulateDay, originOf, minutesToHM, formatInr, getAssumptions, computeTotals, isRoundTrip } from '../lib/engine'
 import { useTimeFormat, formatHM, formatHMRange } from '../lib/timefmt'
@@ -23,19 +23,41 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
   const timeFormat = useTimeFormat()
   const me = currentUser(db)
   const pub: PublishedItinerary | undefined = db.published.find(p => p.id === slug)
-  const trip: Trip | undefined = pub ? tripById(pub.tripId) : undefined
+  // The membership-scoped hydration keeps other people's trips out of the
+  // cache, so a public page's backing trip is usually NOT in `trips` — fetch
+  // it on demand (RLS lets anyone read published trips) instead of declaring
+  // "not found" for every anonymous visitor.
+  const cachedTrip = pub ? tripById(pub.tripId) : undefined
+  const [fetched, setFetched] = useState<Trip | null>(null)
+  const [miss, setMiss] = useState(false)
+  const trip: Trip | undefined = cachedTrip ?? fetched ?? undefined
   const { isSaved, toggleSaved } = useSavedPubs()
   const heroAuto = useDestinationCover(pub ? (pub.routeSummary.length ? pub.routeSummary : [pub.title]) : null)
   useEffect(() => {
     if (pub) registerPubView(pub.id)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!pub || cachedTrip || fetched || miss) return
+    let alive = true
+    // The RPC fallback makes the page render even before the one-off visibility
+    // backfill runs: the pub row exists, so this trip IS published — the same
+    // capability trust as the public URL itself.
+    void fetchSharedTrip(pub.tripId, true).then(t => {
+      if (!alive) return
+      if (t) setFetched(t)
+      else setMiss(true)
+    })
+    return () => { alive = false }
+  }, [pub, cachedTrip, fetched, miss])
 
   if (!pub || !trip) {
     return (
       <div className="container">
-        <EmptyState icon={<Link2 size={38} aria-hidden />} title="Itinerary not found"
-          body="This public page may have been unpublished."
-          action={<button className="btn btn-primary" onClick={() => onNavigate('/explore')}>Back to Explore</button>} />
+        {pub && !miss
+          ? <div className="container loading-block"><div className="spinner" />Loading itinerary…</div>
+          : <EmptyState icon={<Link2 size={38} aria-hidden />} title="Itinerary not found"
+              body="This public page may have been unpublished."
+              action={<button className="btn btn-primary" onClick={() => onNavigate('/explore')}>Back to Explore</button>} />}
       </div>
     )
   }

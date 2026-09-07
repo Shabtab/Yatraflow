@@ -84,8 +84,10 @@ describe('registerPubView only writes for the owning viewer (regression #4)', ()
     // fails. Stub `from()` so the upsert resolves clean and the published row
     // survives, which is the state this regression test needs.
     const upsert = vi.fn().mockResolvedValue({ error: null })
+    // publishItinerary also flips the trip to visibility='public' (fire('trips', …update))
+    const update = vi.fn(() => ({ eq: () => Promise.resolve({ error: null }) }))
     const fromSpy = vi.spyOn(supabase, 'from').mockImplementation(
-      () => ({ upsert }) as unknown as ReturnType<typeof supabase.from>,
+      () => ({ upsert, update }) as unknown as ReturnType<typeof supabase.from>,
     )
     try {
       const store = await import('../src/store/store')
@@ -117,8 +119,10 @@ describe('registerPubView only writes for the owning viewer (regression #4)', ()
 describe('registerPubView counts real visits only (v0.36)', () => {
   const publishAs = async (store: typeof import('../src/store/store'), creatorId: string) => {
     const upsert = vi.fn().mockResolvedValue({ error: null })
+    // publishItinerary also flips the trip to visibility='public' (fire('trips', …update))
+    const update = vi.fn(() => ({ eq: () => Promise.resolve({ error: null }) }))
     const fromSpy = vi.spyOn(supabase, 'from').mockImplementation(
-      () => ({ upsert }) as unknown as ReturnType<typeof supabase.from>,
+      () => ({ upsert, update }) as unknown as ReturnType<typeof supabase.from>,
     )
     const p = await store.publishItinerary({
       tripId: 't-views', creatorId, title: 'Kerala', tagline: 'x',
@@ -168,8 +172,10 @@ describe('unpublishItinerary owner gate + rollback (v0.36)', () => {
   const publishAs = async (creatorId: string) => {
     const store = await import('../src/store/store')
     const upsert = vi.fn().mockResolvedValue({ error: null })
+    // publishItinerary also flips the trip to visibility='public' (fire('trips', …update))
+    const update = vi.fn(() => ({ eq: () => Promise.resolve({ error: null }) }))
     const fromSpy = vi.spyOn(supabase, 'from').mockImplementation(
-      () => ({ upsert }) as unknown as ReturnType<typeof supabase.from>,
+      () => ({ upsert, update }) as unknown as ReturnType<typeof supabase.from>,
     )
     const p = await store.publishItinerary({
       tripId: 't-unpub', creatorId, title: 'Kerala', tagline: 'x',
