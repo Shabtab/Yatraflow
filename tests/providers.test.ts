@@ -206,7 +206,7 @@ describe('facade: searchNearbyPoisMulti (Search-Along-Route)', () => {
     expect(hits.some(h => h.name === 'Home Cafe')).toBe(false)
   })
 
-  it('falls back to the free stack when Google returns nothing (round-trip routes)', async () => {
+  it('with a key configured, Google failures yield an EMPTY list — never free-stack junk (provider directive)', async () => {
     vi.stubEnv('VITE_GOOGLE_MAPS_API_KEY', 'test-key')
     vi.stubGlobal('fetch', routeFetch([
       [/places:searchText/, EMPTY],
@@ -217,8 +217,10 @@ describe('facade: searchNearbyPoisMulti (Search-Along-Route)', () => {
     const hits = await searchNearbyPoisMulti([{ lat: 10.0, lng: 77.0 }], 20000, 10, {
       routeCoords: [[77.0, 10.0], [77.4, 10.5]],
     })
-    expect(hits.some(h => h.name === 'KFDC Falls')).toBe(true)
-    expect(hits.some(h => h.source === 'google')).toBe(false)
+    // Google mode: an empty scan renders the honest empty state. Wikipedia/
+    // Mappls/OSM (the stray "constituency"/"community block" sources) serve
+    // ONLY when no key is configured.
+    expect(hits.length).toBe(0)
   })
 
   it('counts Text Search Pro events against the quota guard', async () => {
@@ -267,7 +269,7 @@ describe('facade: searchNearbyPoisMulti (Search-Along-Route)', () => {
     expect(f.mock.calls.some(([u]) => String(u).includes('places:'))).toBe(false)
   })
 
-  it('single-anchor Google failure falls back to the free stack', async () => {
+  it('single-anchor Google failure yields an EMPTY list in Google mode (no free-stack fallback)', async () => {
     vi.stubEnv('VITE_GOOGLE_MAPS_API_KEY', 'test-key')
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       if (String(input).includes('places:searchText')) throw new Error('boom')
@@ -275,8 +277,9 @@ describe('facade: searchNearbyPoisMulti (Search-Along-Route)', () => {
       return new Response(JSON.stringify(EMPTY), { status: 200 })
     }))
     const hits = await searchNearbyPois(10.0, 77.0)
-    expect(hits.some(h => h.name === 'KFDC Falls')).toBe(true)
-    expect(hits.some(h => h.source === 'google')).toBe(false)
+    // provider directive: with a key, a failed Google call renders the
+    // honest empty state — never Overpass/Wikipedia/Mappls results
+    expect(hits.length).toBe(0)
   })
 
   it('sightseeing search asks Google for tourist_attraction only and drops other types', async () => {

@@ -26,7 +26,7 @@ import { stopKindOf, STOP_KIND_LABELS } from '../../lib/stopKind'
 import { Chip, Modal, EmptyState, toast, useReorder } from '../../components/ui'
 import { StopEditor, type StopFormValues } from '../../components/StopEditor'
 import { useSuggestionCache } from '../../hooks/useSuggestionCache'
-import { searchNearbyPois, searchNearbyPoisMulti, searchCitiesAlong, corridorAnchors, reasonForHit, filterPlannedNearby, detourMinutes } from '../../lib/geocode'
+import { searchNearbyPois, searchNearbyPoisMulti, searchCitiesAlong, corridorAnchors, reasonForHit, filterPlannedNearby, detourMinutes, googleEnabled, googleCitiesAlong } from '../../lib/geocode'
 import type { PlaceHit, SegmentHit } from '../../lib/geocode'
 import { kmFromStartForHit, type HaltPurpose } from '../../lib/providers/hits'
 import { segmentsFromPlan, assignSegmentHits, annotateSegmentHits, type HaltPlanItem } from '../../lib/ridePlan'
@@ -901,13 +901,18 @@ function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddPlanned
       const routePts = journey.points.map(p => ({ lat: p.lat, lng: p.lng }))
       const anchors = corridorAnchors(routePts, trip.startLocationCoords, 35000, 8)
       const purposes = [...new Set(plan.map(p => p.purpose))]
+      // Provider directive (2026-09-07): Google-only in Google mode — POIs and
+      // the city layer both come from Google; free stack only without a key.
       const [hits, cities] = await Promise.all([
         searchNearbyPoisMulti(anchors, 35000, 16, {
           purposes,
           includeFuel: trip.transportMode === 'car' || trip.transportMode === 'motorcycle',
           homeCenter: trip.startLocationCoords ?? null,
         }).catch(() => [] as PlaceHit[]),
-        searchCitiesAlong(anchors, 35000, 8).catch(() => [] as PlaceHit[]),
+        (googleEnabled()
+          ? googleCitiesAlong(anchors, 35000, 8)
+          : searchCitiesAlong(anchors, 35000, 8)
+        ).catch(() => [] as PlaceHit[]),
       ])
       const seen = new Set<string>()
       const candidates: PlaceHit[] = []

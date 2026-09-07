@@ -13,6 +13,12 @@ export interface SuggestionCache {
 }
 
 const CACHE_TTL_MS = 1000 * 60 * 60 * 4 // 4 hours
+/**
+ * Cache schema/provider version. Bumped with the 2026-09-07 Google-only
+ * directive (Wikipedia/Mappls results must not survive the provider switch) —
+ * a bump invalidates every previously persisted cache in one shot.
+ */
+const CACHE_VERSION = 2
 
 /**
  * A cached map plan is reusable only when the detour scope AND the anchor
@@ -28,7 +34,7 @@ export function isMapCacheFresh(
 }
 
 function cacheKey(tripId: string) {
-  return `yatraflow_suggestions_${tripId}`
+  return `yatraflow_suggestions_v${CACHE_VERSION}_${tripId}`
 }
 
 function load(tripId: string): SuggestionCache {

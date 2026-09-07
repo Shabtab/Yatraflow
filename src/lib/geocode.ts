@@ -20,6 +20,7 @@ export { mapplsEnabled, parseOpeningHours, fetchOpeningHours, type OpeningHours 
 export { HOME_ZONE_KM, corridorAnchors, detourKm, detourMinutes, filterPlannedNearby } from './providers/hits'
 export type { NearbyOpts, PlaceHit, PlannedStop } from './providers/hits'
 export { googleEnabled } from './providers/google'
+export { googleCitiesAlong } from './providers/google'
 export { searchCitiesAlong } from './providers/free'
 export { planRideSegments, assignSegmentHits, leftoverAsSight, reasonForSegmentHit, reasonForHit, type SegmentHit, type RideSegment } from './ridePlan'
 
@@ -37,6 +38,7 @@ import {
   googleNearbyAtPoint,
   googleResolveHitCoords,
 } from './providers/google'
+import { googleCitiesAlong } from './providers/google'
 import {
   planRideSegments, assignSegmentHits, annotateSegmentHits, cadenceForCrew, leftoverAsSight,
   type SegmentHit, type RideSegment,
@@ -112,24 +114,26 @@ export async function searchNearbyPoisMulti(
   const capped = anchors.filter(a => Number.isFinite(a.lat) && Number.isFinite(a.lng)).slice(0, 12)
   if (capped.length === 0) return []
   const route = opts.routeCoords ?? []
+  // Provider directive (2026-09-07): with a Google key configured, suggestions
+  // are Google-ONLY — no silent free-stack fallback on Google failure, quota
+  // exhaustion, or empty scans. A failed scan renders the honest "no match"
+  // state; Wikipedia/Mappls/OSM serve ONLY when no key is configured.
   if (googleEnabled() && route.length >= 2) {
     try {
       const hits = await googleNearbyAlongRoute({
         routeCoords: route, routeTotalKm: opts.routeTotalKm, count,
         includeFuel: opts.includeFuel, purposes: opts.purposes,
       })
-      if (hits.length > 0) return rankAndCap(hits, capped, radiusM, count, opts)
-      // round-trip routes (origin ≈ destination) can legitimately return
-      // zero along-route results → fall through to the free corridor search
-    } catch { /* quota or network → free stack */ }
+      return rankAndCap(hits, capped, radiusM, count, opts)
+    } catch { return [] as PlaceHit[] }
   } else if (googleEnabled()) {
     // single-anchor flows (empty-day chips): point search around the anchor
     try {
       const hits = await googleNearbyAtPoint({
         lat: capped[0].lat, lng: capped[0].lng, radiusM, count, includeFuel: opts.includeFuel,
       })
-      if (hits.length > 0) return rankAndCap(hits, capped, radiusM, count, opts)
-    } catch { /* quota or network → free stack */ }
+      return rankAndCap(hits, capped, radiusM, count, opts)
+    } catch { return [] as PlaceHit[] }
   }
   return searchNearbyPoisMultiFree(capped, radiusM, count, opts, opts.purposes)
 }
@@ -172,9 +176,14 @@ export async function planJourneyHalts(
   const purposes = [...new Set(segments.map(s => s.purpose))]
 
   // 2. Search with purpose-specific queries (merged into one call per provider)
+  //    Provider directive (2026-09-07): with a Google key, BOTH layers are
+  //    Google-only — POIs AND the city anchor layer. The free-stack city
+  //    search (Overpass+Wikipedia, source of stray "constituency" cards)
+  //    runs only in keyless mode.
+  const googleMode = googleEnabled()
   const [hits, cities] = await Promise.all([
     searchNearbyPoisMulti(anchors, radiusM, 16, { ...opts, purposes }).catch(() => [] as PlaceHit[]),
-    searchCitiesAlong(anchors, radiusM, 8).catch(() => [] as PlaceHit[]),
+    (googleMode ? googleCitiesAlong(anchors, radiusM, 8) : searchCitiesAlong(anchors, radiusM, 8)).catch(() => [] as PlaceHit[]),
   ])
   const seen = new Set<string>()
   const candidates: PlaceHit[] = []

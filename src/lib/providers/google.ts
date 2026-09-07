@@ -419,3 +419,64 @@ export async function googleNearbyAtPoint(args: AtPointArgs): Promise<PlaceHit[]
   ))
   return hitsFromResponses(responses, queries, null)
 }
+
+// ============ 4. City/town anchor layer (Google mode) ============
+// Provider directive (2026-09-07): in Google mode EVERYTHING comes from
+// Google — POIs and the populated-place anchor layer. Text Search along the
+// route with locality/administrative types, no routingSummaries needed. The
+// free-stack searchCitiesAlong (Overpass + Wikipedia) stays as the keyless
+// mode only — its Wikipedia filter accepted Indian constituency articles.
+
+/** place types that mean "a real populated place" for the anchor layer */
+const CITY_TYPES = ['locality', 'administrative_area_level_3', 'administrative_area_level_2']
+
+export async function googleCitiesAlong(
+  anchors: { lat: number; lng: number }[],
+  radiusM = 35000,
+  count = 8,
+): Promise<PlaceHit[]> {
+  const capped = anchors.filter(a => Number.isFinite(a.lat) && Number.isFinite(a.lng)).slice(0, 6)
+  if (capped.length === 0) return []
+  const responses = await Promise.all(capped.map(a =>
+    placesPost('/places:searchText', 'textSearchPro', {
+      textQuery: 'towns and cities',
+      locationBias: {
+        circle: { center: { latitude: a.lat, longitude: a.lng }, radius: Math.min(radiusM, 50000) },
+      },
+      maxResultCount: 8,
+      languageCode: 'en',
+      regionCode: REGION_CODE,
+    }, POINT_FIELD_MASK) as Promise<{ places?: GooglePlace[] }>,
+  ))
+  const seen = new Set<string>()
+  const out: PlaceHit[] = []
+  for (const res of responses) {
+    for (const p of res.places ?? []) {
+      if (!p.id || !p.displayName?.text) continue
+      const key = normWords(p.displayName.text).join(' ')
+      if (!key || seen.has(key)) continue
+      // keep only real populated places — the anchor layer labels cards with
+      // "near <city>"; constituencies/blocks must never appear here
+      const t = p.types ?? []
+      const isCity = t.some(x => CITY_TYPES.includes(x)) || p.primaryType === 'locality'
+      if (!isCity) continue
+      const lat = p.location?.latitude
+      const lng = p.location?.longitude
+      if (lat == null || lng == null) continue
+      seen.add(key)
+      out.push({
+        id: `google_city_${p.id}`,
+        name: p.displayName.text,
+        latitude: lat,
+        longitude: lng,
+        kind: 'place',
+        description: p.primaryTypeDisplayName?.text ?? p.formattedAddress ?? undefined,
+        placeId: p.id,
+        source: 'google',
+        isPopulatedPlace: true,
+        category: 'rest',
+      })
+    }
+  }
+  return out.slice(0, count)
+}
