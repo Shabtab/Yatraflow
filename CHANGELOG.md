@@ -52,6 +52,9 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - **See & do admits sights only.** Leftover pass now filters to real sight categories (sightseeing, nature, beach, temple, museum, adventure, event, shopping, travel) — restaurants, dhabas, hotels and pumps that lost their segment no longer re-appear as "Sightseeing".
 - **Google hits carry real categories, not purpose strings.** A dhaba from the meal query is now `food` not `meal` (via primaryType mapping), so it passes the purpose-fit gate for its own segment instead of being rejected and dumped into See & do.
 - **Stale suggestion caches are invalidated.** Cache key versioned to v3; pre-directive Wikipedia / mislabeled-category caches automatically miss.
+- **Trip DNA no longer re-reads localStorage once per card.** The DNA note on each suggestion card rebuilt the whole taste vector (localStorage read + JSON parse) inside the row renderer, so a 30-card corridor hit the log 30 times per render. Rows now reuse the single vector already memoized in `nearbyOpts`.
+- **"Also nearby" alternatives are computed once, not per row.** Detour distance walks the anchor list and was being recomputed for every candidate on every card — an O(rows × candidates × anchors) cost inside the render loop. Candidates are now grouped once per render (by purpose and by category) with their detour pre-measured; each row only ranks its own family.
+- **Longitude deltas are normalised when computing bearing.** `normalizeLngDelta` wraps a 179°E → 179°W step to 0.4° instead of 359.6°. This is documentation rather than a fix: `sin`/`cos` are 2π-periodic, so the previous formula was already correct (measured difference ≈1e-15 rad), but the intent is now explicit and covered by a test.
 
 ## [0.40.1] — 2026-09-06
 

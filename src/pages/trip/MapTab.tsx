@@ -22,6 +22,12 @@ import { fetchDailyWeather, forecastAvailable, isoAddDays } from '../../lib/weat
 // MapLibre is heavy (~1MB) — load it only when the Map tab is actually opened.
 const TripMap = React.lazy(() => import('../../components/TripMap').then(m => ({ default: m.TripMap })))
 
+/**
+ * Purposes that are finite by construction — their halts are needs, not sights.
+ * Module scope: this is a constant, so it must not be rebuilt on every render.
+ */
+const NEED_PURPOSES = new Set(['fuel', 'meal', 'food', 'rest', 'stretch', 'overnight', 'stay'])
+
 // ================= Map tab =================
 
 /** Wikipedia thumbnail URLs are hotlink-friendly but huge; ask for a small one. */
@@ -261,7 +267,6 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
   // (fuel/food/rest/stretch/overnight/stay) on the LEFT in teal-amber, and
   // see-&-do / sightseeing + detours on the RIGHT in scenic purple — so the
   // map tab needs no scrolling to reach either kind (§6.10 CTI tone coding).
-  const NEED_PURPOSES = new Set(['fuel', 'meal', 'food', 'rest', 'stretch', 'overnight', 'stay'])
   const needs = pois.filter(sh => sh.segment && NEED_PURPOSES.has(sh.segment.purpose))
   const seeAndDo = pois.filter(sh => sh.segment && !NEED_PURPOSES.has(sh.segment.purpose))
   // Detour-budget enforcement (Horizon 3.2's "finite, honest menu"): the
@@ -309,6 +314,34 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
   })
   const arcs = clusterStoryArcs(arcHits)
 
+  /**
+   * "Also nearby" candidates, pre-grouped once per render instead of per row.
+   * Detour distance is the expensive part (it walks the anchor list), so it is
+   * computed once per hit here; rows only rank the already-filtered pool.
+   */
+  const altPool = useMemo(() => {
+    type AltEntry = { h: PlaceHit; dKm: number | null }
+    const all: AltEntry[] = []
+    const byPurpose = new Map<string, AltEntry[]>()
+    const byCategory = new Map<string, AltEntry[]>()
+    const push = (map: Map<string, AltEntry[]>, key: string, e: AltEntry) => {
+      const list = map.get(key)
+      if (list) list.push(e)
+      else map.set(key, [e])
+    }
+    for (const r of pois) {
+      const h = r.hit
+      if (!h) continue
+      const id = h.id as string
+      if (dismissedIds.has(id) || addedIds.has(id) || existingNames.has(h.name.toLowerCase())) continue
+      const e: AltEntry = { h, dKm: detourKm(h, anchors) }
+      all.push(e)
+      if (h.haltPurpose) push(byPurpose, h.haltPurpose, e)
+      if (h.category) push(byCategory, h.category, e)
+    }
+    return { all, byPurpose, byCategory }
+  }, [pois, dismissedIds, addedIds, existingNames, anchors])
+
   /** One corridor-suggestion row (gap or hit). Shared by both split columns. */
   function renderPoi(sh: SegmentHit) {
     const hit = sh.hit
@@ -331,7 +364,9 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
       travelStyle: trip.travelStyle,
       plannedStops: (hitDay?.stops ?? []).filter(s => s.status !== 'rejected').length,
     })
-    const dnaNote = dnaNoteForHit(hit, buildDnaVector([...loadDnaLog(), ...crewSeedEvents(trip.id, crewSeeds)], trip.id))
+    // Trip DNA is already built once per render in nearbyOpts (it reads and
+    // parses the localStorage log) — never rebuild it per row.
+    const dnaNote = (nearbyOpts.dnaVector ? dnaNoteForHit(hit, nearbyOpts.dnaVector) : null)
       ?? crewNoteForHit(hit, crewSeeds)
     // Over the day's detour budget: shown as a counted line, not an offer.
     if (budgetHeldIds.has(hit.id as string)) {
@@ -367,19 +402,21 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
         )}
         {/* Closest alternatives for this halt: next 2 by road position + detour */}
         {(() => {
-          const alts = pois
-            .filter(r => r.hit && r.hit.id !== hit.id && !dismissedIds.has(r.hit!.id as string) && !addedIds.has(r.hit!.id as string) && !existingNames.has(r.hit!.name.toLowerCase()))
-            .map(r => r.hit!)
-            // keep same family: need halts prefer same purpose, sights accept any sight
-            .filter(h => {
-              if (NEED_PURPOSES.has(sh.segment.purpose)) return h.haltPurpose === sh.segment.purpose || h.category === hit.category
+          // keep same family: need halts prefer same purpose, sights accept any sight
+          const family = NEED_PURPOSES.has(sh.segment.purpose)
+            ? [...(altPool.byPurpose.get(sh.segment.purpose) ?? []), ...(altPool.byCategory.get(hit.category ?? '') ?? [])]
+            : altPool.all
+          const seen = new Set<string>()
+          const alts = family
+            .filter(e => {
+              const id = e.h.id as string
+              if (id === hit.id || seen.has(id)) return false
+              seen.add(id)
               return true
             })
-            .map(h => {
-              const dKm = detourKm(h, anchors)
-              const pos = h.cumKm ?? sh.segment.targetKm
-              const dist = Math.abs(pos - sh.segment.targetKm) + (dKm ?? 0) * 2
-              return { h, dist, dKm }
+            .map(e => {
+              const pos = e.h.cumKm ?? sh.segment.targetKm
+              return { h: e.h, dKm: e.dKm, dist: Math.abs(pos - sh.segment.targetKm) + (e.dKm ?? 0) * 2 }
             })
             .sort((a, b) => a.dist - b.dist)
             .slice(0, 2)

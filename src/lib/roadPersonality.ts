@@ -32,9 +32,20 @@ function distKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }
   return haversineKm(a.lat, a.lng, b.lat, b.lng)
 }
 
+/**
+ * Shortest signed longitude difference in degrees, wrapped to [-180, 180).
+ * The bearing formula below is trig-periodic, so it was already correct for a
+ * 179°E → 179°W step (measured difference vs raw: ~1e-15 rad, i.e. float
+ * noise). This just states the short-way-round intent explicitly and keeps the
+ * radian argument small — it is documentation, not a bug fix.
+ */
+export function normalizeLngDelta(deg: number): number {
+  return ((deg + 540) % 360) - 180
+}
+
 function bearing(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
   const toRad = (d: number) => (d * Math.PI) / 180
-  const dLng = toRad(b.lng - a.lng)
+  const dLng = toRad(normalizeLngDelta(b.lng - a.lng))
   const lat1 = toRad(a.lat)
   const lat2 = toRad(b.lat)
   const y = Math.sin(dLng) * Math.cos(lat2)

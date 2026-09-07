@@ -2,7 +2,7 @@
 // A straight corridor reads highway; a zigzag corridor reads ghat switchback.
 // classifyRoadWindow must separate them from geometry alone.
 import { describe, it, expect } from 'vitest'
-import { classifyRoadWindow } from '../src/lib/roadPersonality'
+import { classifyRoadWindow, normalizeLngDelta } from '../src/lib/roadPersonality'
 
 function straightKm(n: number): { lat: number; lng: number }[] {
   const pts: { lat: number; lng: number }[] = []
@@ -44,6 +44,28 @@ describe('road personality', () => {
     const w = classifyRoadWindow(zigzagKm(40)).warning
     expect(w).not.toBeNull()
     expect(w!).toContain('switchback')
+  })
+
+  it('keeps a straight road straight across the antimeridian', () => {
+    // Guard, not a bug fix: the bearing formula is trig-periodic, so a
+    // 179.8°E → 179.8°W step already reads as 0.4° rather than 359.6°.
+    // normalizeLngDelta states that assumption explicitly; if anyone swaps in
+    // a non-trig bearing, this is where a false "ghat" verdict would surface.
+    const kmToDeg = 1 / 111.32
+    const pts: { lat: number; lng: number }[] = []
+    for (let km = 0; km <= 40; km += 1) {
+      const lng = 179.8 + km * kmToDeg
+      pts.push({ lat: 0, lng: lng > 180 ? lng - 360 : lng })
+    }
+    const r = classifyRoadWindow(pts)
+    expect(r.twistPerKm).toBeLessThan(0.01)
+    expect(r.kind).toBe('highway')
+  })
+
+  it('normalizes longitude deltas to the short way round', () => {
+    expect(normalizeLngDelta(358)).toBeCloseTo(-2, 10)
+    expect(normalizeLngDelta(-358)).toBeCloseTo(2, 10)
+    expect(normalizeLngDelta(0.4)).toBeCloseTo(0.4, 10)
   })
 })
 
