@@ -36,9 +36,10 @@ Key locations:
 
 **Version:** v0.40.1 on `test` branch (latest release: Sep 6, 2026)
 
-**State:** Stabilization complete, UI audit all 32 findings fixed. The codebase is now on a clean release cadence with a robust `npm run verify` gate (tsc clean + 388 tests + production build).
+**State:** Stabilization complete, UI audit all 32 findings fixed. The Corridor Concierge suggestion-engine brainstorm is FULLY shipped (Horizons 1–3, 16/16 incl. asymmetry, hours scoring, fuel corridors, trip DNA) — see ROADMAP's 🧭 table. `npm run verify` gate: tsc clean + 453 tests + production build.
 
 **Recent major releases:**
+- **[Unreleased] on test** — H3 Concierge merge (PR #73) + review fixes + engine brainstorm completions + issue sweep (tracker emptied: 15/15 closed)
 - **v0.40.1** — Sliding glider on all pill navigation, accessibility fixes (ARIA roles, focus rings, contrast), dead code removal
 - **v0.40.0** — Hard-surface pass: full UI audit (32 findings), lucide icon consistency, numeric typography (tabular digits), a11y structure, one grammar across the workspace
 - **v0.38.0** — Creator hub: Overview + Earnings tabs (payouts ledger), projection view, M7 contract documentation
@@ -288,6 +289,14 @@ Hard rules (each learned the hard way — do not relearn them):
   3. `updateTrip` committed before persisting, so UI showed success but DB failed silently.
   
   Rule: call `persistTripField(tripId, mutator)` first, await its Promise, THEN `commit()`. The `persistTripField` now returns `Promise<void>` to enforce this order. If your mutation path doesn't call `persistTripField`, it will update the cache but vanish on refresh — the full verify gate (`tsc` + tests + `vite build`) stays green because nothing exercises write-through.
+
+- **A directive that reverses behavior must sweep its own strings in the same commit.** When the Google-only directive landed, `QuotaExhaustedError` still said *"falling back to the free stack"* and the quota-guard header still described the old fallback — the code had changed, its self-description lied. When reversing any behavior, grep for the OLD behavior's phrasing in error messages, comments, README, and ARCHITECTURE (this bit us once per surface: message, quota.ts header, geocode docstring).
+
+- **A derived input that algebraically cancels is a constant in disguise.** Road personality's "per-window speed" was `windowKm / (driveMinutes × windowKm / totalKm / 60)` — the `windowKm` cancels, leaving the day's average painted on every window, and the tests then codified the wrong semantics. When a derived value cancels to something coarser than its name implies, stop and either compute the real signal (per-leg durations from OSRM) or move the verdict to the level it actually measures (day-average → explicit day-level check, as now done for the city-crawl kind).
+
+- **A11y contrast claims get computed, not eyeballed.** Issue #64 claimed sub-AA tab contrast; the WCAG luminance math showed 7.53:1 dark / 4.86:1 light — not reproducible. Before accepting or "fixing" a contrast report, run the numbers on the actual token pair and surface (the issue's premise named the wrong variable). Close such issues WITH the measurement.
+
+- **`gh` batch loops in this shell exit 1 while partially succeeding.** A PowerShell `foreach` over `gh issue close` reported command failure with no visible output, yet had closed every item — the next retry only surfaced "! already closed". After any compound `gh` batch, re-derive state (`gh issue list`) before retrying; idempotent retries are safe, blind assumptions are not.
 - **`overflow-x: clip` silently clips BOTH axes — the pair rule.** Setting `overflow-x: clip; overflow-y: visible` makes `overflow-y` compute to `clip`, so absolutely-positioned blobs that bleed past an element's top/bottom (`top:-90px`/`bottom:-70px` atmosphere blurs) get hard-sliced into visible "seam" lines at the container edges, and right-side bleed (`right:-150px`) shows as a crop bar. To clip horizontal blowout you can't rely on section-level `overflow-x: clip`. Prefer `html { overflow-x: clip }` (a true clip that isn't a scroll container, so `position: sticky` nav keeps working) and leave the section overflow-free so soft blurs can bleed across section bounds onto a shared fixed canvas.
 - **`env(safe-area-inset-*)` is inert without `viewport-fit=cover`** — `.impact-sheet` shipped an `env(safe-area-inset-bottom)` padding that silently did nothing because `index.html`'s viewport meta lacked `viewport-fit=cover` (found while fixing UI-audit F-26, Sep 2026). Activating `cover` turns EVERY inset on at once, so audit all fixed/sticky layers (topnav, toast zone, fabs, drawers, `top:`/`scroll-padding` offsets derived from `--nav-h`) in the same change — adding them one at a time leaves half the UI under the home indicator.
 - **Section-restructure edits can silently swallow bullets** — an edit whose
