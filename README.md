@@ -90,14 +90,15 @@ A collaborative travel-planning web app, built India-first. Real multi-day itine
 
 ---
 
-## ✨ The v0.36–v0.37 rework, in plain words
+## ✨ The v0.38–v0.43 run, in plain words
 
-Two recent releases rebuilt the money and group sides of the app, and gave creators a home:
+The last stretch of releases gave the Map tab a brain, taught the plan to learn from you, and turned sharing into a superpower:
 
-- **The Budget tab answers "are we over?" in one glance.** Four tiles up top (per person, per day, remaining vs target, % spent), then a bar for every day of the trip so you can see *which* day is expensive — not just that the trip is. A day running hot turns amber with a one-line trim suggestion. Adding an expense is a single row at the very top — name, amount, done — and every line remembers **who paid**, so a card on the right tells the group exactly who owes whom, plus the shortest list of transfers that settles everything.
-- **Group ideas and decisions merged into one tab.** Stop ideas and group decisions used to live in two places; now they share one stream with simple filters. Anything waiting for *your* vote floats to the top (and into a sidebar digest), decision cards show the actual voters behind each option with a plain verdict — "tally leans Marari beach" — while editors keep the final call. The composer no longer guesses: you pick the real day, category and transport cost, and a suggestion without a place pins to your trip's start instead of a hardcoded Munnar. The constant "someone voted" pings are gone too — you hear when a question is raised and when it's settled.
-- **Every creator has a shareable page.** `#/creator/:id` shows a creator's bio, social links, lifetime views and forks, and everything they've published — reachable from any Explore card, any public itinerary ("More from X"), or Profile. Your publications list became a small dashboard: views and forks per itinerary, one-click edit, and if you change a trip after publishing, a "page behind itinerary" flag nudges you to sync it.
-- **Quiet consistency fixes** — dropdowns finally match the text fields they sit beside (the open list takes the app's colors too), every filter has a proper empty state with a way out, and Explore sorts by newest as well as popularity.
+- **The Map tab now thinks like a road-trip co-pilot.** Long drives are split into fatigue-spaced segments — stretch ~every 150 km, lunch ~every 300 (auto-slid into the 11:30–14:30 window), fuel on your tank's rhythm for self-drive trips, and a real city to sleep in every ~550 km — each matched to the best actual place on your route, with sightseeing suggestions flowing alongside (that column was quietly broken until v0.43 fixed the pipe that fed it). Hover a suggestion to see it glow on the map; hover a pin to find its card. New stops insert in road order — add something between two confirmed stops and the plan reads A → B → C.
+- **The engine learns you.** Accepting or declining an idea teaches Trip DNA, which biases future suggestions across all your trips. Big crews and relaxed styles get earlier breaks; packed itineraries push further. Rainy days hand the spotlight to museums and cafes; ghat sections and city crawls earn their own warnings.
+- **Leave with the plan, any way you like.** The Share tab (a clean tabbed page now) exports a calendar file — one event per day plus timed events for hotels, trains and fixed commitments — prints the whole plan as A4 day cards straight from the browser's print dialog (a real offline PDF, zero dependencies), and keeps the snapshot links and JSON exports.
+- **Creators got a hub.** Publications live in an Overview + Earnings surface: lifetime views, forks, live pages, a payouts-ledger shape waiting for the premium launch, and a clearly-labelled projection of what priced pages could earn.
+- **Quiet reliability work throughout** — every trip edit now writes through to the database before the UI celebrates, failed saves say so instead of silently vanishing on refresh, and a corrupted-merge incident (v0.43) was repaired byte-for-byte.
 
 <details>
 <summary><b>See the full tour of features</b></summary>
