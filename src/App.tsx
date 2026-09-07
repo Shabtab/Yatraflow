@@ -24,6 +24,8 @@ const CreateTripPage = lazy(() => import('./pages/CreateTrip').then(m => ({ defa
 const PublicItineraryPage = lazy(() => import('./pages/PublicItinerary').then(m => ({ default: m.PublicItineraryPage })))
 const ProfilePage = lazy(() => import('./pages/Profile').then(m => ({ default: m.ProfilePage })))
 const CreatorPage = lazy(() => import('./pages/CreatorPage').then(m => ({ default: m.CreatorPage })))
+// Gated route: only shown in the nav when the account has creator mode on.
+const CreatorHubPage = lazy(() => import('./pages/CreatorHubPage').then(m => ({ default: m.CreatorHubPage })))
 
 /** Suspense fallback for the lazy routes — the same loading block the ready-gate shows. */
 const lazyRouteFallback = <div className="container loading-block"><div className="spinner" />Loading…</div>
@@ -168,7 +170,7 @@ export default function App() {
     location.hash = to
   }
 
-  // route shapes: /, /auth, /trips, /new, /trip/:id, /explore, /pub/:slug, /creator/:id, /invite/:tripId, /share/<payload>, /profile
+  // route shapes: /, /auth, /trips, /new, /trip/:id, /explore, /pub/:slug, /creator/:id, /creator-hub, /invite/:tripId, /share/<payload>, /profile
   // Query strings (e.g. /auth?mode=signup) ride on parts[0]; strip them so the
   // segment still matches the switch. Pages read their own params from location.hash.
   const parts = route.split('/').filter(Boolean).map(s => s.split('?')[0])
@@ -225,6 +227,9 @@ export default function App() {
       case 'profile':
         page = <Suspense fallback={lazyRouteFallback}><ProfilePage onNavigate={navigate} /></Suspense>
         break
+      case 'creator-hub':
+        page = <Suspense fallback={lazyRouteFallback}><CreatorHubPage onNavigate={navigate} /></Suspense>
+        break
       default:
         page = <LandingPage onNavigate={navigate} />
     }
@@ -257,6 +262,9 @@ export default function App() {
               <a className={`nav-link ${route === '/new' ? 'active' : ''}`} data-pill-key="/new" href="#/new">Plan a trip</a>
             </>}
             <a className={`nav-link ${route === '/explore' ? 'active' : ''}`} data-pill-key="/explore" href="#/explore">Explore</a>
+            {me?.profile.isCreator && (
+              <a className={`nav-link ${route === '/creator-hub' ? 'active' : ''}`} data-pill-key="/creator-hub" href="#/creator-hub">Creator hub</a>
+            )}
           </PillNav>
         <div className="nav-right">
           {/* CTI control tray: icon controls live in one soft pill. Auth
@@ -344,6 +352,7 @@ export default function App() {
           </>
           }
           <a className={`nav-link ${route === '/explore' ? 'active' : ''}`} href="#/explore"><Compass size={15} aria-hidden style={{ verticalAlign: '-2px', marginRight: 6 }} />Explore</a>
+          {me?.profile.isCreator && <a className={`nav-link ${route === '/creator-hub' ? 'active' : ''}`} href="#/creator-hub"><Sparkles size={15} aria-hidden style={{ verticalAlign: '-2px', marginRight: 6 }} />Creator hub</a>}
           {me && <a className={`nav-link ${route === '/profile' ? 'active' : ''}`} href="#/profile"><Settings size={15} aria-hidden style={{ verticalAlign: '-2px', marginRight: 6 }} />Profile & settings</a>}
         </div>
       )}
