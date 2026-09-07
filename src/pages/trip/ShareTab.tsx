@@ -58,7 +58,7 @@ function SnapshotCard({ trip, me, onNavigate }: {
       </div>
       {link && (
         <div className="share-link-box" style={{ marginTop: 10 }}>
-          <code style={{ wordBreak: 'break-all' }}>{link}</code>
+          <code style={{ wordBreak: 'break-all' }} title={link}>{link}</code>
           <CopyButton text={link} label="Copy" />
         </div>
       )}
@@ -187,7 +187,20 @@ function PublicationForm({ trip, pub, isOwner, creatorId, onDone }: {
   )
 }
 
-// ================= Share tab =================
+// ================= Share tab (tabbed) =================
+// Reworked from the original .two-col grid into an ARIA tablist so each share
+// concern (plan together / publish / keep a record / settings) gets its own
+// focused surface instead of competing for space in a 340px sidebar. The
+// Danger zone is re-homed under "Plan together" (matches the approved variant).
+// Heading order is corrected (page h1 → panel h2 → card h3) via sr-only h2s.
+
+const SHARE_TABS = [
+  { id: 'plan', label: '1 · Plan together' },
+  { id: 'publish', label: '2 · Share publicly' },
+  { id: 'record', label: '3 · Keep a record' },
+  { id: 'settings', label: 'Trip settings' },
+] as const
+type ShareTabId = (typeof SHARE_TABS)[number]['id']
 
 export function ShareTab({ trip, me, editable, onNavigate }: {
   trip: Trip
@@ -200,7 +213,23 @@ export function ShareTab({ trip, me, editable, onNavigate }: {
   const pub = db.published.find(p => p.tripId === trip.id)
   const pubLink = pub ? `${location.origin}${location.pathname}#/pub/${pub.id}` : ''
   const isOwner = (trip.members ?? []).some(m => m.userId === me.id && m.role === 'owner')
+  const [tab, setTab] = useState<ShareTabId>('plan')
+  const tabRefs = useRef<(HTMLButtonElement | null)[]>([])
   const [pendingRemove, setPendingRemove] = useState<NonNullable<Trip['members']>[number] | null>(null)
+  const [pendingUnpublish, setPendingUnpublish] = useState(false)
+
+  // Roving tabindex + arrow/Home/End navigation with automatic activation.
+  function onTabKey(e: React.KeyboardEvent, idx: number) {
+    let next = idx
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = (idx + 1) % SHARE_TABS.length
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = (idx - 1 + SHARE_TABS.length) % SHARE_TABS.length
+    else if (e.key === 'Home') next = 0
+    else if (e.key === 'End') next = SHARE_TABS.length - 1
+    else return
+    e.preventDefault()
+    setTab(SHARE_TABS[next].id)
+    tabRefs.current[next]?.focus()
+  }
 
   function confirmRemoveMember() {
     if (!pendingRemove) return
@@ -209,16 +238,37 @@ export function ShareTab({ trip, me, editable, onNavigate }: {
       restoreMember(trip.id, pendingRemove)
       toast('Member restored')
     })
+    setPendingRemove(null)
+  }
+
+  function confirmUnpublish() {
+    unpublishItinerary(trip.id)
+    setPendingUnpublish(false)
+    toast('Unpublished — removed from Explore')
   }
 
   return (
-    <div className="two-col">
-      <div>
+    <div className="share-tabbed">
+      <div className="share-tablist" role="tablist" aria-label="Share and trip options">
+        {SHARE_TABS.map((t, i) => (
+          <button key={t.id} ref={el => { tabRefs.current[i] = el }} type="button" role="tab"
+            id={`share-tab-${t.id}`} aria-selected={tab === t.id} aria-controls={`share-panel-${t.id}`}
+            tabIndex={tab === t.id ? 0 : -1} onClick={() => setTab(t.id)} onKeyDown={e => onTabKey(e, i)}
+            className={`share-tab${tab === t.id ? ' is-active' : ''}`}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ---- Plan together ---- */}
+      <section role="tabpanel" id="share-panel-plan" aria-labelledby="share-tab-plan"
+        className="share-panel" hidden={tab !== 'plan'}>
+        <h2 className="sr-only">Plan together</h2>
         <div className="card">
           <span className="share-intent share-intent--teal">1 · Plan together</span>
           <h3>Invite collaborators</h3>
           <p className="hint-text" style={{ margin: '6px 0 12px' }}>Anyone with this link joins as an editor after logging in.</p>
-          <div className="share-link-box"><code>{inviteLink}</code><CopyButton text={inviteLink} /></div>
+          <div className="share-link-box"><code title={inviteLink}>{inviteLink}</code><CopyButton text={inviteLink} /></div>
           <hr className="divider" />
           <h3>Members & roles</h3>
           <div style={{ marginTop: 10 }}>
@@ -245,6 +295,24 @@ export function ShareTab({ trip, me, editable, onNavigate }: {
           </div>
         </div>
 
+        {isOwner && (trip.members ?? []).length > 1 && (
+          <div className="card">
+            <h3>Danger zone</h3>
+            <p className="hint-text" style={{ margin: '6px 0' }}>Removing someone revokes their access immediately.</p>
+            {(trip.members ?? []).filter(m => m.role !== 'owner').map(m => (
+              <div key={m.userId} className="row-between" style={{ padding: '5px 0' }}>
+                <span className="small">{userById(m.userId)?.profile.name}</span>
+                <button className="btn btn-danger btn-sm" onClick={() => setPendingRemove(m)}>Remove</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* ---- Share publicly ---- */}
+      <section role="tabpanel" id="share-panel-publish" aria-labelledby="share-tab-publish"
+        className="share-panel" hidden={tab !== 'publish'}>
+        <h2 className="sr-only">Share publicly</h2>
         <div className="card">
           <span className="share-intent share-intent--saffron">2 · Share publicly</span>
           <h3>Publish as public itinerary</h3>
@@ -260,34 +328,29 @@ export function ShareTab({ trip, me, editable, onNavigate }: {
           <PublicationForm trip={trip} pub={pub} isOwner={isOwner} creatorId={me.id}
             onDone={wasPublished => toast(wasPublished ? 'Publication updated' : 'Published to Explore')} />
           {pub && (
-            <button className="btn btn-ghost btn-sm" style={{ marginTop: 10 }}
-              onClick={() => { unpublishItinerary(trip.id); toast('Unpublished — removed from Explore') }}>Unpublish</button>
+            <button className="btn btn-ghost btn-sm" style={{ marginTop: 10 }} onClick={() => setPendingUnpublish(true)}>Unpublish</button>
           )}
-          {pubLink && <div className="share-link-box" style={{ marginTop: 10 }}><code>{pubLink}</code><CopyButton text={pubLink} label="Copy" /></div>}
+          {pubLink && <div className="share-link-box" style={{ marginTop: 10 }}><code title={pubLink}>{pubLink}</code><CopyButton text={pubLink} label="Copy" /></div>}
         </div>
+      </section>
 
+      {/* ---- Keep a record ---- */}
+      <section role="tabpanel" id="share-panel-record" aria-labelledby="share-tab-record"
+        className="share-panel" hidden={tab !== 'record'}>
+        <h2 className="sr-only">Keep a record</h2>
         <SnapshotCard trip={trip} me={me} onNavigate={onNavigate} />
-      </div>
+      </section>
 
-      <div>
+      {/* ---- Trip settings ---- */}
+      <section role="tabpanel" id="share-panel-settings" aria-labelledby="share-tab-settings"
+        className="share-panel" hidden={tab !== 'settings'}>
+        <h2 className="sr-only">Trip settings</h2>
         <div className="card">
           <h3>Trip settings</h3>
           <hr className="divider" />
           <TripSettingsForm trip={trip} editable={editable} />
         </div>
-        {isOwner && (trip.members ?? []).length > 1 && (
-          <div className="card">
-            <h3>Danger zone</h3>
-            <p className="hint-text" style={{ margin: '6px 0' }}>Removing someone revokes their access immediately.</p>
-            {(trip.members ?? []).filter(m => m.role !== 'owner').map(m => (
-              <div key={m.userId} className="row-between" style={{ padding: '5px 0' }}>
-                <span className="small">{userById(m.userId)?.profile.name}</span>
-                <button className="btn btn-danger btn-sm" onClick={() => setPendingRemove(m)}>Remove</button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      </section>
 
       <ConfirmDialog
         open={!!pendingRemove}
@@ -297,6 +360,14 @@ export function ShareTab({ trip, me, editable, onNavigate }: {
         danger
         onConfirm={confirmRemoveMember}
         onClose={() => setPendingRemove(null)}
+      />
+      <ConfirmDialog
+        open={pendingUnpublish}
+        title="Unpublish this itinerary?"
+        body="It will be removed from Explore immediately. You can publish it again anytime from this tab."
+        confirmLabel="Unpublish"
+        onConfirm={confirmUnpublish}
+        onClose={() => setPendingUnpublish(false)}
       />
     </div>
   )
