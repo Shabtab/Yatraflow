@@ -29,11 +29,12 @@ function smallThumb(url: string): string {
 }
 
 function googleMapsUrl(hit: PlaceHit): string {
-  // Actual Place link when Google gave us a place_id, not a text search
+  // Real Place page when Google gave us a place_id (reviews, hours, directions)
   if (hit.placeId) return `https://www.google.com/maps/place/?q=place_id:${encodeURIComponent(hit.placeId)}`
+  // Free-stack hits have no place_id — Google's documented pin URL by coords
+  // (hand-building /place/<name>/@lat,lng broke on encoded names)
   if (Number.isFinite(hit.latitude) && Number.isFinite(hit.longitude)) {
-    const name = hit.name ? `${encodeURIComponent(hit.name)}/` : ''
-    return `https://www.google.com/maps/place/${name}@${hit.latitude},${hit.longitude},14z`
+    return `https://www.google.com/maps/search/?api=1&query=${hit.latitude},${hit.longitude}`
   }
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(hit.name)}`
 }

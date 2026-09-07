@@ -196,6 +196,9 @@ interface GooglePlace {
   location?: { latitude?: number; longitude?: number }
   formattedAddress?: string
   primaryTypeDisplayName?: { text?: string }
+  /** machine place type, e.g. "tourist_attraction" — used for the sight gate */
+  primaryType?: string
+  types?: string[]
   regularOpeningHours?: { periods?: GooglePeriod[] }
   currentOpeningHours?: { periods?: GooglePeriod[] }
   rating?: number
@@ -224,12 +227,16 @@ interface RoutingSummary {
 // 2026-08-29: the latter shape 400s with INVALID_ARGUMENT). duration is
 // omitted — nothing consumes it.
 // Rating paths ride the same events — no extra SKU, mask-only change.
+// primaryType + types ride free too — the sightseeing gate needs the machine
+// type to enforce tourist_attraction-only results.
 export const NEARBY_FIELD_MASK = [
   'places.id',
   'places.displayName',
   'places.location',
   'places.formattedAddress',
   'places.primaryTypeDisplayName',
+  'places.primaryType',
+  'places.types',
   'places.regularOpeningHours',
   'places.currentOpeningHours',
   'places.rating',
@@ -237,13 +244,13 @@ export const NEARBY_FIELD_MASK = [
   'routingSummaries.legs.distanceMeters',
 ].join(',')
 
-const ALONG_ROUTE_QUERIES: { textQuery: string; cat: string }[] = [
-  { textQuery: 'tourist attractions', cat: 'sightseeing' },
+const ALONG_ROUTE_QUERIES: { textQuery: string; cat: string; includedType?: string }[] = [
+  { textQuery: 'tourist attractions', cat: 'sightseeing', includedType: 'tourist_attraction' },
   { textQuery: 'restaurants and cafes', cat: 'food' },
   { textQuery: 'hotels', cat: 'hotel' },
 ]
-// appended only for self-drive trips (includeFuel), capped at 2 by rankAndCap
-const FUEL_QUERY = { textQuery: 'petrol pumps', cat: 'transport-hub' }
+// appended only for self-drive trips (includeFuel), capped by rankAndCap
+const FUEL_QUERY: { textQuery: string; cat: string; includedType?: string } = { textQuery: 'petrol pumps', cat: 'transport-hub' }
 
 /** "HH:MM" strings from the first Google period; open-ended → 23:59. */
 function hoursFrom(p: GooglePlace): { openTime?: string; closeTime?: string } {
@@ -286,7 +293,7 @@ export interface AlongRouteArgs {
  */
 function hitsFromResponses(
   responses: { places?: GooglePlace[]; routingSummaries?: RoutingSummary[] }[],
-  queries: { textQuery: string; cat: string }[],
+  queries: { textQuery: string; cat: string; includedType?: string }[],
   routeTotalKm: number | null | undefined,
 ): PlaceHit[] {
   const seen = new Set<string>()
@@ -296,6 +303,11 @@ function hitsFromResponses(
     for (let i = 0; i < places.length; i++) {
       const p = places[i]
       if (!p.id || !p.displayName?.text) continue
+      // type gate: when the query demanded a single place type (sightseeing →
+      // tourist_attraction), a hit whose primaryType AND types both miss it is
+      // a stray locality/neighborhood the text match dragged in — drop it.
+      const gate = queries[qi].includedType
+      if (gate && p.primaryType !== gate && !(p.types ?? []).includes(gate)) continue
       const lat = p.location?.latitude
       const lng = p.location?.longitude
       if (lat == null || lng == null) continue
@@ -346,11 +358,12 @@ export async function googleNearbyAlongRoute(args: AlongRouteArgs): Promise<Plac
   // Build query list: static tourist set (backward compat) OR purpose-specific dynamic set
   const staticQueries = args.includeFuel ? [...ALONG_ROUTE_QUERIES, FUEL_QUERY] : ALONG_ROUTE_QUERIES
   const queries = args.purposes && args.purposes.length > 0
-    ? args.purposes.flatMap(p => queriesForPurpose(p).googleQueries.map(textQuery => ({ textQuery, cat: p })))
+    ? args.purposes.flatMap(p => queriesForPurpose(p).googleQueries.map(textQuery => ({ textQuery, cat: p, includedType: queriesForPurpose(p).includedType })))
     : staticQueries
   const responses = await Promise.all(queries.map(qv =>
     placesPost('/places:searchText', 'textSearchPro', {
       textQuery: qv.textQuery,
+      ...(qv.includedType ? { includedType: qv.includedType } : {}),
       searchAlongRouteParameters: { polyline: { encodedPolyline: encoded } },
       maxResultCount: 10,
       languageCode: 'en',
@@ -368,6 +381,8 @@ const POINT_FIELD_MASK = [
   'places.location',
   'places.formattedAddress',
   'places.primaryTypeDisplayName',
+  'places.primaryType',
+  'places.types',
   'places.regularOpeningHours',
   'places.currentOpeningHours',
 ].join(',')
@@ -393,6 +408,7 @@ export async function googleNearbyAtPoint(args: AtPointArgs): Promise<PlaceHit[]
   const responses = await Promise.all(queries.map(qv =>
     placesPost('/places:searchText', 'textSearchPro', {
       textQuery: qv.textQuery,
+      ...(qv.includedType ? { includedType: qv.includedType } : {}),
       locationBias: {
         circle: { center: { latitude: args.lat, longitude: args.lng }, radius: args.radiusM },
       },

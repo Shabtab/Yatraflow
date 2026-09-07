@@ -177,8 +177,8 @@ describe('facade: searchNearbyPoisMulti (Search-Along-Route)', () => {
     const f = routeFetch([
       [/places:searchText/, {
         places: [
-          { id: 'P1', displayName: { text: 'Echo Point' }, location: { latitude: 10.15, longitude: 77.15 }, primaryTypeDisplayName: { text: 'Tourist attraction' }, regularOpeningHours: { periods: [{ open: { hour: 9, minute: 0 }, close: { hour: 18, minute: 0 } }] } },
-          { id: 'P2', displayName: { text: 'Home Cafe' }, location: { latitude: HOME.lat, longitude: HOME.lng }, primaryTypeDisplayName: { text: 'Cafe' }, currentOpeningHours: { periods: [{ open: { hour: 8, minute: 30 }, close: { hour: 22, minute: 0 } }] } },
+          { id: 'P1', displayName: { text: 'Echo Point' }, location: { latitude: 10.15, longitude: 77.15 }, primaryType: 'tourist_attraction', types: ['tourist_attraction', 'point_of_interest'], primaryTypeDisplayName: { text: 'Tourist attraction' }, regularOpeningHours: { periods: [{ open: { hour: 9, minute: 0 }, close: { hour: 18, minute: 0 } }] } },
+          { id: 'P2', displayName: { text: 'Home Cafe' }, location: { latitude: HOME.lat, longitude: HOME.lng }, primaryType: 'cafe', types: ['cafe', 'food', 'point_of_interest'], primaryTypeDisplayName: { text: 'Cafe' }, currentOpeningHours: { periods: [{ open: { hour: 8, minute: 30 }, close: { hour: 22, minute: 0 } }] } },
         ],
         routingSummaries: [
           // live-verified legs shape: [0] = route origin → place, [1] = place → route destination
@@ -238,7 +238,7 @@ describe('facade: searchNearbyPoisMulti (Search-Along-Route)', () => {
     const f = routeFetch([
       [/places:searchText/, {
         places: [
-          { id: 'P9', displayName: { text: 'Spice Garden' }, location: { latitude: 10.05, longitude: 77.05 }, primaryTypeDisplayName: { text: 'Tourist attraction' }, currentOpeningHours: { periods: [{ open: { hour: 9, minute: 30 }, close: { hour: 17, minute: 0 } }] } },
+          { id: 'P9', displayName: { text: 'Spice Garden' }, location: { latitude: 10.05, longitude: 77.05 }, primaryType: 'tourist_attraction', types: ['tourist_attraction', 'point_of_interest'], primaryTypeDisplayName: { text: 'Tourist attraction' }, currentOpeningHours: { periods: [{ open: { hour: 9, minute: 30 }, close: { hour: 17, minute: 0 } }] } },
         ],
       }],
     ])
@@ -277,5 +277,26 @@ describe('facade: searchNearbyPoisMulti (Search-Along-Route)', () => {
     const hits = await searchNearbyPois(10.0, 77.0)
     expect(hits.some(h => h.name === 'KFDC Falls')).toBe(true)
     expect(hits.some(h => h.source === 'google')).toBe(false)
+  })
+
+  it('sightseeing search asks Google for tourist_attraction only and drops other types', async () => {
+    vi.stubEnv('VITE_GOOGLE_MAPS_API_KEY', 'test-key')
+    const f = routeFetch([
+      [/places:searchText/, {
+        places: [
+          { id: 'TA1', displayName: { text: 'Echo Point' }, location: { latitude: 10.15, longitude: 77.15 }, primaryType: 'tourist_attraction', types: ['tourist_attraction', 'point_of_interest'], primaryTypeDisplayName: { text: 'Tourist attraction' } },
+          { id: 'LOC1', displayName: { text: 'Community Block' }, location: { latitude: 10.16, longitude: 77.16 }, primaryType: 'locality', types: ['locality', 'political'], primaryTypeDisplayName: { text: 'Locality' } },
+        ],
+        routingSummaries: [],
+      }],
+    ])
+    vi.stubGlobal('fetch', f)
+    const hits = await searchNearbyPoisMulti([{ lat: 10.0, lng: 77.0 }], 20000, 10, {
+      routeCoords: [[77.0, 10.0], [77.4, 10.5]],
+      purposes: ['sight'],
+    })
+    // sightseeing results are strictly tourist_attraction — locality hits are dropped
+    expect(hits.some(h => h.name === 'Echo Point')).toBe(true)
+    expect(hits.some(h => h.name === 'Community Block')).toBe(false)
   })
 })
