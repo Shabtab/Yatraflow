@@ -387,6 +387,23 @@ Hard rules (each learned the hard way — do not relearn them):
   so byte-diffs against it need `\r` stripped too). Also: this shell mangles
   backslashes inside heredocs/`node -e` — write the script to a file (Write
   tool), run it, delete it.
+- **Never round-trip file bytes through a PowerShell pipeline** (`git show X:file
+  | Out-File` or `>`). The decode-then-re-encode step mojibakes every non-ASCII
+  character (em-dash → `ΓÇö`, § → `┬º`) and the damage ships green: tsc, vitest
+  and vite all pass on valid-but-corrupted CSS/TSX — only a byte-level check
+  (python counting `\xe2\x80\x94` vs the mojibake sequence) catches it. Materialize
+  git blobs with `git checkout <ref> -- <path>` / `git restore --source`, or read
+  them byte-exact via python `subprocess`. Unquoted backticks in shell command
+  strings suffer the same fate: a BEL (`\x07`) landed in committed CHANGELOG
+  prose where the letter "a" should be (Sep 2026) — that is how `\u0007pplyChange`
+  happened.
+- **Porting a feature from a stale branch by copying its whole file silently
+  reverts everything the base gained since the fork.** The calendar-export merge
+  overwrote the tabbed ShareTab (PR #74's refactor) and deleted the
+  `.ai-drawer:not(.open)` close rule that way — and nobody noticed because the
+  verify gate has no UI assertions. Before taking a branch's version of a file,
+  diff it against the merge base (`git diff <merge-base> <branch> -- <file>`)
+  and port only the intended hunks.
 
 - **Heavy DOM-snapshot/image libraries stay out of the main chunk.** `html-to-image`
   is lazy-imported inside `billCapture.ts`'s share handler: static import measured the

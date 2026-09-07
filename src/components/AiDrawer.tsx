@@ -81,12 +81,12 @@ export function AiDrawer({ trip, open, onOpen, onClose }: { trip: Trip; open: bo
       )}
       <div ref={drawerRef} className={`ai-drawer ${open ? 'open' : ''}`} role="dialog" aria-modal="true" aria-label="AI travel companion">
         <div className="ai-head">
-          <span style={{ display: 'inline-flex' }}><Sparkles size={20} aria-hidden /></span>
+          <span className="ai-head-icon"><Sparkles size={19} aria-hidden /></span>
           <div>
-            <b style={{ fontFamily: 'var(--font-display)' }}>YatraFlow Companion</b>
-            <div className="small muted">Grounded in this trip’s data · estimates only</div>
+            <b>YatraFlow Companion</b>
+            <div className="ai-head-sub">Grounded in this trip’s data · estimates only</div>
           </div>
-          <button className="icon-btn" style={{ marginLeft: 'auto' }} onClick={onClose} aria-label="Close assistant"><X size={16} aria-hidden /></button>
+          <button className="icon-btn" onClick={onClose} aria-label="Close assistant"><X size={16} aria-hidden /></button>
         </div>
 
         <div className="ai-msgs" ref={scrollRef} role="log" aria-live="polite">
