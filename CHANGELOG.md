@@ -19,6 +19,9 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - **Crew ideas steer the corridor.** Open group-input proposals suppress duplicate suggestions near them and bias picks toward proposed kinds ("more like Arjun waterfall").
 - **Sights bundle into themed days.** Forts, temples, beaches and more cluster into story arcs with one-tap "add all".
 - **Leftover time speaks up.** The Timeline shows the day's slack with one nearby pick that fits, addable in one tap.
+- **Suggestion pins are now colour-coded.** Hotel, food, fuel and sight pins each get their own colour and CatIcon instead of one yellow pulse, and hard-coded gold gradients are gone.
+- **Each halt shows its runners-up.** Every card renders "Also nearby" with the 2 closest same-family alternatives (by |cumKm−target|+weight×detour) with one-tap Add.
+- **Every suggestion links to Google Maps.** Cards carry a real Place link (place_id) when Google gave one, otherwise a pin-by-coords search URL.
 ### Fixed
 - **Suggestion positions are road-true on routes with geometry.** `kmFromStartForHit` now snaps hits onto the OSRM polyline when provided, so switchback roads report road km instead of straight-line km. Falls back to anchors when no geometry exists.
 - **Smarter halt assignment.** Segment assignment now runs an improvement sweep after the greedy pass, so an early segment no longer steals a hit that fits a later segment better.
@@ -28,6 +31,12 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - **Detours scored in minutes.** The same off-route distance costs slow modes more.
 - **Scout triage fixes.** Map cache now keys on anchors as well as scope (edited stops re-search); detour budgets use the hit's own day, not the whole trip; accepts/declines bust the cache and re-score immediately; crawl-speed windows read as city crawls; visit-minute tables unified.
 - **Fuel halts never take colleges.** Need-based purposes (fuel, meal, overnight) now reject zero-fit hits, leaving an honest gap instead of a wrong-kind match.
+- **Sightseeing shows only real tourist attractions.** Google's `tourist_attraction` type gate (server + client) drops generic localities and Wikipedia junk like "Community Block" / constituency / panchayat articles.
+- **City layer is Google-only when a key is configured.** The free-stack Overpass+Wikipedia city search (source of stray constituency cards) runs only in keyless mode; Google's locality anchor layer replaces it.
+- **With a key, failures never fall back to free-stack junk.** Empty/failed Google scans render the honest empty state instead of Wikipedia/Mappls overflow.
+- **See & do admits sights only.** Leftover pass now filters to real sight categories (sightseeing, nature, beach, temple, museum, adventure, event, shopping, travel) — restaurants, dhabas, hotels and pumps that lost their segment no longer re-appear as "Sightseeing".
+- **Google hits carry real categories, not purpose strings.** A dhaba from the meal query is now `food` not `meal` (via primaryType mapping), so it passes the purpose-fit gate for its own segment instead of being rejected and dumped into See & do.
+- **Stale suggestion caches are invalidated.** Cache key versioned to v3; pre-directive Wikipedia / mislabeled-category caches automatically miss.
 
 ## [0.40.1] — 2026-09-06
 
