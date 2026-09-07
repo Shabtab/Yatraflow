@@ -307,6 +307,38 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
         {dnaNote && (
           <div className="poi-desc small">♥ {dnaNote}</div>
         )}
+        {/* Closest alternatives for this halt: next 2 by road position + detour */}
+        {(() => {
+          const alts = pois
+            .filter(r => r.hit && r.hit.id !== hit.id && !dismissedIds.has(r.hit!.id as string) && !addedIds.has(r.hit!.id as string) && !existingNames.has(r.hit!.name.toLowerCase()))
+            .map(r => r.hit!)
+            // keep same family: need halts prefer same purpose, sights accept any sight
+            .filter(h => {
+              if (NEED_PURPOSES.has(sh.segment.purpose)) return h.haltPurpose === sh.segment.purpose || h.category === hit.category
+              return true
+            })
+            .map(h => {
+              const dKm = detourKm(h, anchors)
+              const pos = h.cumKm ?? sh.segment.targetKm
+              const dist = Math.abs(pos - sh.segment.targetKm) + (dKm ?? 0) * 2
+              return { h, dist, dKm }
+            })
+            .sort((a, b) => a.dist - b.dist)
+            .slice(0, 2)
+          if (alts.length === 0) return null
+          return (
+            <div className="poi-desc small muted" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginTop: 4 }}>
+              <span>Also nearby:</span>
+              {alts.map(({ h, dKm }) => (
+                <span key={h.id as string} style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+                  <button className="chip chip-sm" onClick={() => openAddModal(h)} title={h.name} style={{ maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {h.name}{dKm != null ? ` · ${dKm.toFixed(1)} km off` : ''}
+                  </button>
+                </span>
+              ))}
+            </div>
+          )
+        })()}
         {hit.description && <div className="poi-desc small muted">{hit.description}</div>}
         {(hit.openTime || hit.closeTime) && (
           <div className="poi-desc small muted"><MetaIcon icon={ Clock } tone="time" />{formatHMRange(hit.openTime, hit.closeTime, timeFormat)} (reported)</div>

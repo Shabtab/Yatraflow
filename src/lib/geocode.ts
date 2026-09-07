@@ -106,7 +106,7 @@ export async function searchNearbyPois(lat: number, lng: number, radiusM = 10000
 export async function searchNearbyPoisMulti(
   anchors: { lat: number; lng: number }[],
   radiusM = 10000,
-  count = 10,
+  count = 16,
   opts: NearbyOpts = {},
 ): Promise<PlaceHit[]> {
   const capped = anchors.filter(a => Number.isFinite(a.lat) && Number.isFinite(a.lng)).slice(0, 12)

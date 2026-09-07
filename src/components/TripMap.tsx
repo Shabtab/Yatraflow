@@ -353,6 +353,27 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
     return DAY_COLORS[i % DAY_COLORS.length]
   }
 
+  // Category-coloured idea pins: each suggestion type gets its own hue so the
+  // map reads at a glance (hotel≠food≠fuel≠sight). Falls back to amber.
+  const IDEA_PIN_COLORS: Record<string, string> = {
+    hotel: '#06B6D4',
+    food: '#EF4444',
+    rest: '#F97316',
+    'transport-hub': '#F59E0B',
+    temple: '#8B5CF6',
+    beach: '#0EA5E9',
+    nature: '#22C55E',
+    museum: '#6366F1',
+    shopping: '#EC4899',
+    adventure: '#F97316',
+    event: '#A855F7',
+    travel: '#14B8A6',
+    sightseeing: '#EAB308',
+  }
+  function ideaPinColor(cat?: string): string {
+    return IDEA_PIN_COLORS[cat ?? ''] ?? '#F59E2D'
+  }
+
   // Real road geometry from OSRM. In "all days" mode a single connected chain —
   // the stops in timeline order — is drawn as one main line. In single-day mode
   // each day gets its own coloured line. Falls back to straight lines.
@@ -610,7 +631,7 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
                 <MarkerTooltip>Home — return drive ends here ({trip.startLocation})</MarkerTooltip>
               </MapMarker>
             )}
-            {/* nearby idea markers — gold, dashed, with a quick-add button */}
+            {/* nearby idea markers — category-coloured, dashed, with quick-add */}
             {visiblePois.map(hit => (
               <MapMarker key={`nearby_${hit.id}`} longitude={hit.longitude} latitude={hit.latitude}>
                 <MarkerContent>
@@ -618,13 +639,14 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
                     {onAddNearby ? (
                       <button
                         className="yf-map-pin yf-map-pin-idea"
+                        style={{ background: ideaPinColor(hit.category) } as React.CSSProperties}
                         onClick={() => onAddNearby(hit)}
                         aria-label={`Add ${hit.name} to the trip`}
                       >
-                        +
+                        <CatIcon category={hit.category} size={14} />
                       </button>
                     ) : (
-                      <span className="yf-map-pin yf-map-pin-idea" aria-label={hit.name}><Lightbulb size={13} aria-hidden /></span>
+                      <span className="yf-map-pin yf-map-pin-idea" style={{ background: ideaPinColor(hit.category) } as React.CSSProperties} aria-label={hit.name}><CatIcon category={hit.category} size={13} /></span>
                     )}
                   </span>
                 </MarkerContent>

@@ -543,7 +543,7 @@ export function leftoverAsSight(
   assigned: SegmentHit[],
   anchors: { lat: number; lng: number }[],
   opts: AssignOpts = {},
-  cap = 8,
+  cap = 12,
 ): SegmentHit[] {
   const used = new Set<string>()
   for (const r of assigned) {
