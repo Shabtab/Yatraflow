@@ -14,7 +14,7 @@ import { haversineKm } from './geo'
 import { classifyRoadWindow, CITY_SPEED_KMH, CITY_CRAWL_WARNING, type RoadKind } from './roadPersonality'
 import { dnaBoostForHit, type DnaVector } from './tripDna'
 import { hmToMinutes } from './engine'
-import { HOME_ZONE_KM, kmFromStartForHit, detourKm, detourMinutes, dedupeCandidates, type HaltPurpose, type PlaceHit } from './providers/hits'
+import { HOME_ZONE_KM, kmFromStartForHit, detourKm, detourMinutes, asymmetricDetourMinutes, dedupeCandidates, type HaltPurpose, type PlaceHit } from './providers/hits'
 
 // ---- Fatigue cadence (named constants — later settings can expose them) ----
 /** ≈2 h at 70–80 km/h — stretch, hydrate, bio-break. */
@@ -367,7 +367,42 @@ function etaAt(km: number, dayStarts: number[], dayStartTimes: string[] | undefi
   // windows by cumulative-km fraction and classify each. Geometry-free plans
   // keep segments untagged; hints stay untouched (warnings render separately).
   annotateRoadPersonality(segments, input.roadGeometry, total, drive)
+  // Phase E — fuel-corridor advisory: a fuel stop about to cross a long gap to
+  // the next scheduled refuel warns "fill the tank" (only when fuel is planned).
+  if (includeFuel && input.vehicleRangeKm && input.vehicleRangeKm > 0) {
+    fuelGapWarnings(segments, Math.max(100, input.vehicleRangeKm * 0.85), cap)
+  }
   return segments
+}
+
+/**
+ * Fuel-corridor advisory (Horizon 3): warn about a stretch with no planned
+ * refuel stop. For each fuel segment, the distance to the next fuel segment or
+ * the trip's end is compared against the vehicle's safe stride. When that gap
+ * exceeds the stride (you'd be stranded before the next planned stop), the
+ * fuel segment earns a "fill the tank" warning. Pure and geometry-free.
+ */
+export function fuelGapWarnings(
+  segments: RideSegment[],
+  fuelStrideKm: number,
+  capKm: number,
+): void {
+  if (!(fuelStrideKm > 0) || segments.length === 0) return
+  const fuelIdx = segments.map(s => s.purpose === 'fuel')
+  for (let i = 0; i < segments.length; i++) {
+    if (segments[i].purpose !== 'fuel') continue
+    // next fuel segment or the journey end (no planned refuel beyond here)
+    let nextKm = capKm
+    for (let j = i + 1; j < segments.length; j++) {
+      if (segments[j].purpose === 'fuel') { nextKm = segments[j].targetKm; break }
+    }
+    const gap = Math.max(0, nextKm - segments[i].targetKm)
+    if (gap > fuelStrideKm * 1.4) {
+      segments[i].roadWarning = (segments[i].roadWarning ?? '')
+        ? `${segments[i].roadWarning} · no scheduled fuel for ~${Math.round(gap)} km — fill the tank`
+        : `No scheduled fuel for ~${Math.round(gap)} km — fill the tank here`
+    }
+  }
 }
 
 /** A user-entered halt in the manual planner: stop at `km` along the route for `minutes`, serving `purpose`. */
@@ -444,6 +479,34 @@ function weatherAdjustedFit(h: PlaceHit, purpose: HaltPurpose, rainy: boolean): 
   if (WEATHER_SHELTERED.has(cat)) return Math.min(3, base + 1)
   return base
 }
+
+/**
+ * Opening-hours fit: a hit whose reported hours don't contain the segment's
+ * arrival clock is degraded. Known hours + no arrival clock (or vice versa)
+ * leave the hit untouched. Penalty is minutes a trip would "walk a shut
+ * door" away from the ideal — scaled so a full locked-out place is about as
+ * bad as a 10 km off-road detour (matches the ×2 minute weight).
+ */
+export function hoursFitAdj(
+  h: Pick<PlaceHit, 'openTime' | 'closeTime'>,
+  etaMinutes: number | null | undefined,
+): number {
+  const eta = etaMinutes
+  if (eta == null || !Number.isFinite(eta)) return 0
+  const open = h.openTime ? hmToMinutes(h.openTime) : null
+  const close = h.closeTime ? hmToMinutes(h.closeTime) : null
+  if (open == null || close == null) return 0
+  // Normal-day hours (open < close): early or late arrival earns a penalty.
+  if (close >= open) {
+    if (eta < open) return Math.round((open - eta) / 15) * 2 + 1   // arrived before it opens
+    if (eta > close) return Math.round((eta - close) / 15) * 2 + 1 // arrived after it closed
+    return 0
+  }
+  // Overnight place (open > close, e.g. 20:00–06:00): closed during the day's
+  // middle; only late-evening starts line up.
+  const closed = eta >= close && eta < open
+  return closed ? 6 : 0
+}
 export function scoreHitForSegment(
   h: PlaceHit,
   seg: RideSegment,
@@ -465,9 +528,15 @@ export function scoreHitForSegment(
   // Detour scores in minutes at the trip's speed, not flat km: the same
   // off-route distance costs a slow mode more. ×2 keeps the old weight at
   // the 60 km/h reference (10 km = 10 min = 20 points, as before).
+  // Asymmetric when route geometry is known: on-the-way hits cost ~0 detour,
+  // off-road spurs pay the round trip — so a place you literally pass is not
+  // penalized as a "detour".
+  const detour = asymmetricDetourMinutes(h, anchors, opts.routePolyline ?? undefined, opts.speedKmph) * 2
+  // Opening-hours fit: a hit closed when you'd arrive is degraded.
+  const hours = hoursFitAdj(h, seg.etaMinutes)
   // Trip DNA bends ties only: favoured categories shave up to 3 points.
   const dna = opts.dnaVector ? dnaBoostForHit(h, opts.dnaVector) : 0
-  return distPenalty + detourMinutes(h, anchors, opts.speedKmph) * 2 + (3 - fit) * 4 - dna
+  return distPenalty + detour + hours + (3 - fit) * 4 - dna
 }
 
 /**

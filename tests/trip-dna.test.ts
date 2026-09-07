@@ -2,9 +2,10 @@
 // The engine remembers accepted/declined suggestions per trip, builds a small
 // preference vector, and reranks + explains new candidates by similarity.
 import { describe, it, expect } from 'vitest'
-import { buildDnaVector, dnaBoostForHit, dnaNoteForHit, type DnaEvent } from '../src/lib/tripDna'
+import { buildDnaVector, buildDnaVectorAcrossTrips, dnaBoostForHit, dnaNoteForHit, type DnaEvent } from '../src/lib/tripDna'
 
 const TRIP = 'trip-1'
+const TRIP2 = 'trip-2'
 
 function accept(category: string, n = 1): DnaEvent[] {
   return Array.from({ length: n }, () => ({ tripId: TRIP, action: 'accept' as const, category }))
@@ -65,5 +66,37 @@ describe('trip DNA', () => {
     expect(sOther).not.toBeNull()
     expect(sFav!).toBeLessThan(sOther!)
     expect(sPlain!).toBeGreaterThan(sFav!)
+  })
+
+  it('learns stop-length preference from accepted visit minutes', () => {
+    const events: DnaEvent[] = [
+      { tripId: TRIP, action: 'accept', category: 'waterfall', visitMin: 60 },
+      { tripId: TRIP, action: 'accept', category: 'museum', visitMin: 120 },
+    ]
+    const v = buildDnaVector(events)
+    expect(v.avgVisitMin).toBeCloseTo(90, 3)
+    expect(v.avgDetourMin).toBeNull() // no detour signal recorded yet
+  })
+
+  it('learns across trips (no tripId scope) so a past hire nudges later ones', () => {
+    const events: DnaEvent[] = [
+      { tripId: TRIP, action: 'accept', category: 'waterfall', visitMin: 60 },
+      { tripId: TRIP2, action: 'accept', category: 'waterfall' },
+      { tripId: TRIP2, action: 'accept', category: 'beach' },
+    ]
+    const v = buildDnaVectorAcrossTrips(events)
+    // both trips' waterfall accepts count toward the cross-trip affinity
+    expect(v.categoryAffinity['waterfall']).toBe(2)
+    expect(dnaBoostForHit({ category: 'waterfall' }, v)).toBeGreaterThan(0)
+  })
+
+  it('keeps a per-trip vector isolated from a different trip', () => {
+    const events: DnaEvent[] = [
+      { tripId: TRIP, action: 'accept', category: 'waterfall' },
+      { tripId: TRIP2, action: 'accept', category: 'waterfall', visitMin: 90 },
+    ]
+    const v = buildDnaVector(events, TRIP)
+    expect(v.categoryAffinity['waterfall']).toBe(1) // only trip-1's
+    expect(v.avgVisitMin).toBeNull() // the visitMin was on trip-2
   })
 })

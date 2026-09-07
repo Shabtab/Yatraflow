@@ -93,7 +93,83 @@ export function detourKm(
 }
 
 /** Fallback door-to-door speed when the trip mode is unknown. Matches the engine default. */
-export const DEFAULT_SPEED_KMPH = 40
+export const DEFAULT_SPEED_KMH = 40
+
+/** On the route within this perpendicular distance is treated as "on the way" (no detour). */
+export const ON_ROUTE_SPUR_KM = 0.15
+
+/**
+ * Perpendicular (spur) distance from a hit to the route polyline, in km.
+ * A point on or beside the road reads ~0; a point off it reads the shortest
+ * distance to the road (out-and-back is handled by callers doubling it).
+ * Returns null when the hit or polyline can't be used.
+ */
+export function spurKm(
+  h: Pick<PlaceHit, 'latitude' | 'longitude'>,
+  routePolyline: { lat: number; lng: number }[],
+): number | null {
+  if (!Number.isFinite(h.latitude) || !Number.isFinite(h.longitude)) return null
+  const raw = routePolyline.filter(q => Number.isFinite(q.lat) && Number.isFinite(q.lng))
+  if (raw.length < 2) return null
+  const latRef = (h.latitude * Math.PI) / 180
+  const kx = 111.32 * Math.cos(latRef)
+  const ky = 111.32
+  const px = h.longitude * kx
+  const py = h.latitude * ky
+  let best = Infinity
+  for (let i = 0; i < raw.length - 1; i++) {
+    const ax = raw[i].lng * kx
+    const ay = raw[i].lat * ky
+    const bx = raw[i + 1].lng * kx
+    const by = raw[i + 1].lat * ky
+    const dx = bx - ax
+    const dy = by - ay
+    const len2 = dx * dx + dy * dy
+    let t = len2 > 0 ? ((px - ax) * dx + (py - ay) * dy) / len2 : 0
+    t = Math.min(1, Math.max(0, t))
+    const cx = ax + t * dx
+    const cy = ay + t * dy
+    const d = Math.hypot(px - cx, py - cy)
+    if (d < best) best = d
+  }
+  return best === Infinity ? null : best
+}
+
+/**
+ * Asymmetric detour: a destination ON the road is on-the-way (~0 detour —
+ * you pass it), a destination off the road pays a one-way spur (the caller
+ * doubles it to out-and-back). When no polyline is available it falls back to
+ * the straight-line-to-anchor measure. Google's real road detour always wins.
+ */
+export function asymmetricDetourKm(
+  h: Pick<PlaceHit, 'latitude' | 'longitude' | 'offRouteKm' | 'fromGoogleAlongRoute'>,
+  anchors: { lat: number; lng: number }[],
+  routePolyline?: { lat: number; lng: number }[] | null,
+): number | null {
+  if (h.offRouteKm != null && Number.isFinite(h.offRouteKm)) return h.offRouteKm
+  if (h.fromGoogleAlongRoute) return null // on the polyline, no real detour known
+  if (routePolyline && routePolyline.length >= 2) {
+    const spur = spurKm(h, routePolyline)
+    return spur == null ? null : spur
+  }
+  return detourKm(h, anchors)
+}
+
+/**
+ * Asymmetric detour in minutes at the trip's speed. On-the-way hits cost ~0;
+ * off-road hits are the spur (doubled by scorers). Falls back to the current
+ * symmetric minute math when there's no route geometry to measure against.
+ */
+export function asymmetricDetourMinutes(
+  h: Pick<PlaceHit, 'latitude' | 'longitude' | 'offRouteKm' | 'fromGoogleAlongRoute'>,
+  anchors: { lat: number; lng: number }[],
+  routePolyline?: { lat: number; lng: number }[] | null,
+  speedKmph?: number,
+): number {
+  const speed = speedKmph != null && Number.isFinite(speedKmph) && speedKmph > 0 ? speedKmph : DEFAULT_SPEED_KMH
+  const km = asymmetricDetourKm(h, anchors, routePolyline ?? undefined) ?? 0
+  return (km / speed) * 60
+}
 
 /**
  * Detour in minutes at the trip's door-to-door speed. Unknown detours
@@ -104,7 +180,7 @@ export function detourMinutes(
   anchors: { lat: number; lng: number }[],
   speedKmph?: number,
 ): number {
-  const speed = speedKmph != null && Number.isFinite(speedKmph) && speedKmph > 0 ? speedKmph : DEFAULT_SPEED_KMPH
+  const speed = speedKmph != null && Number.isFinite(speedKmph) && speedKmph > 0 ? speedKmph : DEFAULT_SPEED_KMH
   const km = detourKm(h, anchors) ?? 0
   return (km / speed) * 60
 }

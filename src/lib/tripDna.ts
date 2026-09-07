@@ -11,6 +11,8 @@ export interface DnaEvent {
   action: 'accept' | 'decline' | 'seed'
   category?: string
   detourMin?: number
+  /** predicted visit length for the stop (stop-length preference learning) */
+  visitMin?: number
 }
 
 export interface DnaVector {
@@ -20,6 +22,8 @@ export interface DnaVector {
   categoryAffinity: Record<string, number>
   /** mean detour of accepted picks in minutes, null when none recorded */
   avgDetourMin: number | null
+  /** mean visit length of accepted picks in minutes, null when none recorded */
+  avgVisitMin: number | null
 }
 
 /** Affinity streak that earns a "you've picked N…" note on cards. */
@@ -35,9 +39,11 @@ function normCat(category: string | undefined): string | null {
 
 /** Fold events into a preference vector. Optionally scoped to one trip. */
 export function buildDnaVector(events: DnaEvent[], tripId?: string): DnaVector {
-  const v: DnaVector = { accepts: 0, declines: 0, categoryAffinity: {}, avgDetourMin: null }
+  const v: DnaVector = { accepts: 0, declines: 0, categoryAffinity: {}, avgDetourMin: null, avgVisitMin: null }
   let detourSum = 0
   let detourN = 0
+  let visitSum = 0
+  let visitN = 0
   for (const e of events) {
     if (tripId != null && e.tripId !== tripId) continue
     const cat = normCat(e.category)
@@ -47,6 +53,10 @@ export function buildDnaVector(events: DnaEvent[], tripId?: string): DnaVector {
       if (Number.isFinite(e.detourMin) && (e.detourMin as number) >= 0) {
         detourSum += e.detourMin as number
         detourN += 1
+      }
+      if (Number.isFinite(e.visitMin) && (e.visitMin as number) >= 0) {
+        visitSum += e.visitMin as number
+        visitN += 1
       }
     } else if (e.action === 'seed') {
       // A proposed idea biases the corridor toward its kind but must not
@@ -58,7 +68,21 @@ export function buildDnaVector(events: DnaEvent[], tripId?: string): DnaVector {
     }
   }
   if (detourN > 0) v.avgDetourMin = detourSum / detourN
+  if (visitN > 0) v.avgVisitMin = visitSum / visitN
   return v
+}
+
+/**
+ * Build the preference vector for EVERY trip on the device (no tripId scope).
+ * This is the "across a user's trips" learning — a hire of a waterfall in one
+ * trip gently biases corridor ties in later trips. Returns an empty vector's
+ * twin when the log is empty.
+ */
+export function buildDnaVectorAcrossTrips(
+  events: DnaEvent[],
+  seedEvents: DnaEvent[] = [],
+): DnaVector {
+  return buildDnaVector([...events, ...seedEvents])
 }
 
 /** Similarity boost in score points (subtract from the segment score). */
@@ -97,7 +121,7 @@ export function loadDnaLog(): DnaEvent[] {
     return parsed.filter(
       (e): e is DnaEvent =>
         !!e && typeof e === 'object' && typeof (e as DnaEvent).tripId === 'string' &&
-        ((e as DnaEvent).action === 'accept' || (e as DnaEvent).action === 'decline'),
+        ((e as DnaEvent).action === 'accept' || (e as DnaEvent).action === 'decline' || (e as DnaEvent).action === 'seed'),
     )
   } catch {
     return []

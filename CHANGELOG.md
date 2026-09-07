@@ -33,6 +33,10 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - **Quota trips say so.** When the Google text-search soft cap is hit, the Map tab shows an explicit quota note instead of an empty state that reads like "nothing around".
 - **Each halt shows its runners-up.** Every card renders "Also nearby" with the 2 closest same-family alternatives (by |cumKm−target|+weight×detour) with one-tap Add.
 - **Every suggestion links to Google Maps.** Cards carry a real Place link (place_id) when Google gave one, otherwise a pin-by-coords search URL.
+- **Detours are now asymmetric.** A destination ON the route is on-the-way (~0 detour — you pass it); a stop off the road pays the spur, doubled to an out-and-back. No more charging a "detour" for a place you literally drive by.
+- **Opening hours enter the score.** A hit closed when your day's clock would arrive is degraded, so a restaurant that's shut by 5 pm stops winning the lunch segment.
+- **Fuel corridors warn "fill the tank."** A fuel stop about to cross a long gap to the next scheduled refuel (or the journey end) says so, instead of assuming a pump is always ahead.
+- **Trip DNA keeps learning you.** The preference vector now tracks stop length and learns across ALL your trips on the device — a hire of a waterfall on one journey gently nudges waterfall picks on a later one.
 ### Fixed
 - **Road personality no longer mislabels every window on a slow day.** The per-window speed fed to the city-crawl check was mathematically the whole day's average (the km fraction cancelled out), so a slow hill day read "city crawl" on all its windows — including genuine switchbacks. Ghat classification is now geometry-true and always wins; the crawl verdict is an explicit day-level check applied to non-ghat windows only.
 - **"Not for us" refills the suggestion list.** The decline handler cleared the suggestion cache but only bumped a tick that the fetch effect doesn't watch, so the freed slot stayed empty until an unrelated change. Cache clears now pair with the refresh tick (house rule).

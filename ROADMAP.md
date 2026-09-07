@@ -249,15 +249,15 @@ writes (1h — pairs naturally with M3).
 | Journey-clock segments (meals land at meal times) | 2 | ✅ shipped |
 | Crew-aware fatigue cadence (style/travellers multipliers) | 2 | ✅ shipped |
 | Weather-joined ranking (rain → indoor picks) | 2 | ✅ shipped |
-| Time-based detour cost + on-way asymmetry | 2 | ✅ shipped (on-way asymmetry still open — return cost assumed symmetric) |
+| Time-based detour cost + on-way asymmetry | 2 | ✅ shipped — asymmetric detour: on-the-way hits ≈ 0, off-road pays the spur (doubled by scorers) |
 | Ratings in Google mode | 2 | ✅ shipped |
 | Road personality (rest before the ghats) | 3 | ✅ shipped (city-crawl verdict fixed to a day-level check; ghat wins) |
 | Detour budget per day | 3 | ✅ shipped — see-&-do list enforced; need halts stay uncounted by design |
-| Trip DNA (learns the crew's picks) | 3 | ⚠️ partial — category mix + detour tolerance live; **stop-length and budget-class dims, cross-device persistence (Supabase), and cross-trip learning remain** · 4–6 h |
+| Trip DNA (learns the crew's picks) | 3 | ✅ shipped — category mix, detour tolerance + **stop length** dims, **cross-trip device learning** (they keep picking waterfall→waterfalls nudged on later trips). Remaining (schema-gated): cross-device persistence via Supabase needs a `user_dna` table + RLS — ride M6/M7 infra, not the pure engine. |
 | Crew-seeded corridor suggestions + story arcs + slack prompts | 3 | ✅ shipped |
-| Fuel before long no-fuel corridors (road-personality trigger) | 3 | deferred — needs a "fuel density" scan of the corridor POIs · 3–4 h |
-| Opening hours enter suggestion scoring | 2 | deferred — hours are fetched (Google mode) but never scored; a hit closed at arrival can still win a segment · 2–3 h |
-| On-way detour asymmetry (destination on the way costs ~0 return) | 2 | deferred — time-detours shipped, symmetric return cost remains · 2 h |
+| Fuel before long no-fuel corridors (road-personality trigger) | 3 | ✅ shipped — a fuel stop crossing a long gap to the next scheduled refuel warns "fill the tank" (cadence-gap advisory); a live POI-density scan remains a future nicety |
+| Opening hours enter suggestion scoring | 2 | ✅ shipped — hits closed at the segment's arrival clock are degraded (via `etaMinutes`); open-at-arrival untouched |
+| On-way detour asymmetry (destination on the way costs ~0 return) | 2 | ✅ shipped — see "Time-based detour cost" |
 
 ### 💰 Budget ideas (web research, Sep 6 2026 — sources: YNAB/envelope patterns, budgeting-app UX guides)
 

@@ -10,10 +10,10 @@ import { getAssumptions, buildJourney, minutesToHM, computeCategoryBias, MODE_SP
 import { useTimeFormat, formatHMRange } from '../../lib/timefmt'
 import { Modal, Field, toast } from '../../components/ui'
 import { useSuggestionCache, isMapCacheFresh } from '../../hooks/useSuggestionCache'
-import { corridorAnchors, detourKm, detourMinutes, googleEnabled, planJourneyHalts, reasonForSegmentHit, type NearbyOpts } from '../../lib/geocode'
+import { corridorAnchors, detourKm, detourMinutes, asymmetricDetourMinutes, googleEnabled, planJourneyHalts, reasonForSegmentHit, type NearbyOpts } from '../../lib/geocode'
 import { dayDetourBudgetMin, budgetSharePct, splitByDetourBudget } from '../../lib/detourBudget'
 import { quotaUsed, SOFT_CAPS } from '../../lib/providers/quota'
-import { buildDnaVector, loadDnaLog, recordDnaEvent, dnaNoteForHit, crewSeedsFromSuggestions, crewSeedsToPlannedStops, crewSeedEvents, crewNoteForHit } from '../../lib/tripDna'
+import { buildDnaVectorAcrossTrips, loadDnaLog, recordDnaEvent, dnaNoteForHit, crewSeedsFromSuggestions, crewSeedsToPlannedStops, crewSeedEvents, crewNoteForHit } from '../../lib/tripDna'
 import { clusterStoryArcs } from '../../lib/storyArcs'
 import { visitMinutesForCategory } from '../../lib/slackPrompts'
 import type { PlaceHit, SegmentHit } from '../../lib/geocode'
@@ -172,11 +172,22 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
     return () => { cancelled = true }
   }, [trip])
 
+  // Route polyline in {lat,lng} form (from the OSRM route geometry) — feeds the
+  // asymmetric detour measure so on-the-way hits cost ~0 and spurs pay round trip.
+  const routePolyline = useMemo<{ lat: number; lng: number }[] | null>(() => {
+    if (!routeGeometry) return null
+    const pts = routeGeometry
+      .filter(c => Number.isFinite(c[0]) && Number.isFinite(c[1]))
+      .map(c => ({ lat: c[1], lng: c[0] }))
+    return pts.length >= 2 ? pts : null
+  }, [routeGeometry])
+
   // Crew seeds: open group-input ideas suppress near-duplicates and bias the
   // corridor toward crew-proposed kinds.
   const crewSeeds = useMemo(() => crewSeedsFromSuggestions(crewSuggestions ?? []), [crewSuggestions])
 
   const nearbyOpts: NearbyOpts = useMemo(() => ({
+
     includeFuel: trip.transportMode === 'car' || trip.transportMode === 'motorcycle',
     homeCenter: trip.startLocationCoords ?? null,
     // fill what the itinerary lacks, demote what it already covers
@@ -187,9 +198,11 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
     travellers: trip.travellers,
     travelStyle: trip.travelStyle,
     speedKmph: MODE_SPEED[trip.transportMode] ?? 40,
-    // Trip DNA: the crew's past picks bias scoring ties toward favoured kinds.
+    // Trip DNA: EVERY trip on the device leans corridor ties toward kinds the
+    // user keeps picking (cross-trip learning) — scoped per-trip would forget a
+    // waterfall hire on a past journey.
     // dnaTick re-reads the log after every accept/decline on this tab.
-    dnaVector: buildDnaVector([...loadDnaLog(), ...crewSeedEvents(trip.id, crewSeeds)], trip.id),
+    dnaVector: buildDnaVectorAcrossTrips(loadDnaLog(), crewSeedEvents(trip.id, crewSeeds)),
     plannedStops: [
       ...trip.days.flatMap(d => d.stops)
         .filter(s => s.status !== 'rejected' && Number.isFinite(s.lat) && Number.isFinite(s.lng))
@@ -293,7 +306,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
         plannedStops: (trip.days.find(x => x.index === d)?.stops ?? []).filter(s => s.status !== 'rejected').length,
       })
       const { deferred } = splitByDetourBudget(
-        rows.map(sh => ({ sh, detourMin: detourMinutes(sh.hit!, anchors, speedK) })),
+        rows.map(sh => ({ sh, detourMin: asymmetricDetourMinutes(sh.hit!, anchors, routePolyline ?? null, speedK) })),
         budget,
       )
       for (const { sh } of deferred) {
@@ -357,7 +370,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
     }
     const added = addedIds.has(hit.id as string) || existingNames.has(hit.name.toLowerCase())
     const offRoute = detourKm(hit, anchors)
-    const detourMin = detourMinutes(hit, anchors, MODE_SPEED[trip.transportMode] ?? 40)
+    const detourMin = asymmetricDetourMinutes(hit, anchors, routePolyline ?? null, MODE_SPEED[trip.transportMode] ?? 40)
     // per-day budget: the hit's own day sets the density, not the whole trip
     const hitDay = trip.days.find(d => d.index === dayForKm(hit.cumKm))
     const dayBudget = dayDetourBudgetMin({
@@ -550,7 +563,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
                         for (const id of arc.hitIds) {
                           const m = arcHits.find(h => (h.id as string) === (id as string))
                           if (!m || addedIds.has(m.id as string)) continue
-                          recordDnaEvent({ tripId: trip.id, action: 'accept', category: m.category, detourMin: detourMinutes(m, anchors, MODE_SPEED[trip.transportMode] ?? 40) })
+                          recordDnaEvent({ tripId: trip.id, action: 'accept', category: m.category, detourMin: asymmetricDetourMinutes(m, anchors, routePolyline ?? null, MODE_SPEED[trip.transportMode] ?? 40), visitMin: visitMinutesForCategory(m.category) })
                           addPoiToDay(m, dayForKm(m.cumKm))
                           n += 1
                         }
@@ -596,7 +609,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
             <p className="hint-text">You can fine-tune duration, fees and timings in the Timeline afterwards.</p>
             <div style={{ display: 'flex', gap: 9, justifyContent: 'flex-end', marginTop: 8 }}>
               <button className="btn btn-outline" onClick={() => setPoiDraft(null)}>Cancel</button>
-              <button className="btn btn-primary" onClick={() => { recordDnaEvent({ tripId: trip.id, action: 'accept', category: poiDraft.hit.category, detourMin: detourMinutes(poiDraft.hit, anchors, MODE_SPEED[trip.transportMode] ?? 40) }); suggestionCache.clearMap(); setDnaTick(t => t + 1); addPoiToDay(poiDraft.hit, pickDay); setPoiDraft(null) }}>
+              <button className="btn btn-primary" onClick={() => { recordDnaEvent({ tripId: trip.id, action: 'accept', category: poiDraft.hit.category, detourMin: asymmetricDetourMinutes(poiDraft.hit, anchors, routePolyline ?? null, MODE_SPEED[trip.transportMode] ?? 40), visitMin: visitMinutesForCategory(poiDraft.hit.category) }); suggestionCache.clearMap(); setDnaTick(t => t + 1); addPoiToDay(poiDraft.hit, pickDay); setPoiDraft(null) }}>
                 Add to timeline
               </button>
             </div>
