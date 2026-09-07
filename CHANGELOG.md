@@ -251,7 +251,6 @@ magic numbers, with zero visual change.** Details in the per-commit bodies.
 - **README rebuilt and repo metadata polished.** The README gets a centered masthead with shields-style badges (Demo · Latest Release · Stars · Forks), a hero mockup, short scannable feature bullets, and all long technical dives relocated behind links into `docs/`. The GitHub About panel now carries a description, homepage link and topics. `[0.26.0]` was rewritten human-readable (lead sentence + one-line-per-idea bullets) and a duplicated `## [0.11.5]` section was merged.
 - **Bug-hunt triage (#36) split into actionable issues.** The 20-finding audit was re-verified against the current tree: Plan Bench (#37) closed as shipped in 0.26.0; delete-cascade, demo-seed revert and related fixes confirmed done; the remaining findings now live as standalone issues (#43–#49, plus #38–#40) and are queued in the ROADMAP backlog pool.
 
-
 ## [0.26.0] — 2026-09-04
 
 **Plan Bench, Homepage 2.0, and a big reliability sweep.**
