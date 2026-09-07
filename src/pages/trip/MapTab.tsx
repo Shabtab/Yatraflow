@@ -1,7 +1,7 @@
 // ============ Trip workspace — Map tab ============
 // Mechanical extraction from src/pages/TripWorkspace.tsx (M3.4) — no behavior changes.
 import React, { useEffect, useMemo, useState } from 'react'
-import { CircleCheck, Clock, Fuel, Lightbulb, MapPin, RotateCcw } from 'lucide-react'
+import { CircleCheck, Clock, ExternalLink, Fuel, Lightbulb, MapPin, RotateCcw } from 'lucide-react'
 import { MetaIcon } from '../../components/icons'
 import type { Trip, ItineraryStop } from '../../data/types'
 import type { ImpactResult } from '../../lib/impact'
@@ -26,6 +26,16 @@ const TripMap = React.lazy(() => import('../../components/TripMap').then(m => ({
 /** Wikipedia thumbnail URLs are hotlink-friendly but huge; ask for a small one. */
 function smallThumb(url: string): string {
   return url.replace(/\/(\d+)px-/, '/120px-')
+}
+
+function googleMapsUrl(hit: PlaceHit): string {
+  // Actual Place link when Google gave us a place_id, not a text search
+  if (hit.placeId) return `https://www.google.com/maps/place/?q=place_id:${encodeURIComponent(hit.placeId)}`
+  if (Number.isFinite(hit.latitude) && Number.isFinite(hit.longitude)) {
+    const name = hit.name ? `${encodeURIComponent(hit.name)}/` : ''
+    return `https://www.google.com/maps/place/${name}@${hit.latitude},${hit.longitude},14z`
+  }
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(hit.name)}`
 }
 
 /** Detour-scope presets for nearby suggestions (km off the route). */
@@ -360,6 +370,10 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
                       setDismissedIds(prev => new Set(prev).add(hit.id as string))
                     }}
                   >Not for us</button>
+                  {' '}
+                  <a href={googleMapsUrl(hit)} target="_blank" rel="noopener noreferrer" className="btn btn-ghost btn-sm" title="Open in Google Maps">
+                    <ExternalLink size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />Maps
+                  </a>
                 </>
           )}
         </div>
