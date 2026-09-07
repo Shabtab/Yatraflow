@@ -3457,8 +3457,8 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
    v0.36 — Budget + Group input redesigns
    ============================================================ */
 
-/* ---- Budget: metric strip ---- */
-.metric-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+/* ---- Budget: metric strip (5 tiles since the safe-to-spend pacing tile) ---- */
+.metric-strip { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 16px; }
 .metric-bad { color: var(--danger); }
 .metric-good { color: var(--ok); }
 
@@ -3557,6 +3557,7 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
 .opt-row .opt-cost { text-align: right; }
 
 /* ---- v0.36 responsive ---- */
+@media (max-width: 1400px) { .metric-strip { grid-template-columns: repeat(3, 1fr); } }
 @media (max-width: 1100px) { .metric-strip { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 700px) {
   .daybar-row { grid-template-columns: 44px 1fr; }
@@ -3719,4 +3720,14 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
   .pr-expenses { break-inside: avoid; page-break-inside: avoid; }
   .pr-trip { break-inside: avoid; }
   @page { size: A4; margin: 12mm; }
+}
+
+/* ============ My Trips toolbar (search / style chips / when / sort) ============ */
+.trips-toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.trips-toolbar .trips-search { flex: 1 1 240px; min-width: 200px; }
+.trips-toolbar .select { width: auto; min-width: 130px; flex: 0 1 auto; }
+@media (max-width: 720px) {
+  .trips-toolbar { align-items: stretch; }
+  .trips-toolbar .trips-search { flex-basis: 100%; }
+  .trips-toolbar .explore-chips { order: 3; flex-basis: 100%; }
 }

@@ -689,6 +689,46 @@ export function scoreWarnings(warnings: ScheduleWarning[]): HealthResult {
   return { score, band, warnings }
 }
 
+// ---------------- Safe-to-spend (budget pacing) ----------------
+
+/** Trip days not yet over as of `now` (today counts). Before the trip starts
+ *  = all days; mid-trip = today + the rest; after it ends = 0. Dirty
+ *  startDate/endDate strings clamp to the full-day count rather than NaN. */
+export function daysRemaining(trip: Pick<Trip, 'days' | 'startDate' | 'endDate'>, now: Date = new Date()): number {
+  const total = trip.days.length
+  const start = new Date(`${trip.startDate}T00:00:00`)
+  const end = new Date(`${trip.endDate}T23:59:59`)
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return total
+  if (now.getTime() > end.getTime()) return 0
+  if (now.getTime() < start.getTime()) return total
+  // days from today (inclusive) to the end date: floor + 1 — a partial day
+  // still counts as a full remaining day (you can still spend today).
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const ms = end.getTime() - todayStart.getTime()
+  return Math.max(1, Math.min(total, Math.floor(ms / 86400000) + 1))
+}
+
+/** The pacing number the Budget tab surfaces: how much the group can still
+ *  spend per remaining day without blowing the target. Null when no target
+ *  is set (budgetPerPersonInr 0) — "set a budget" is the honest answer then,
+ *  not a fake infinity. */
+export function safeToSpendPerDay(
+  trip: Pick<Trip, 'days' | 'startDate' | 'endDate' | 'budgetPerPersonInr' | 'travellers'>,
+  spentInr: number,
+  now: Date = new Date(),
+): { perDayInr: number; perPersonPerDayInr: number; daysLeft: number } | null {
+  const target = trip.budgetPerPersonInr * trip.travellers
+  if (!(target > 0)) return null
+  const daysLeft = daysRemaining(trip, now)
+  const remaining = target - spentInr
+  const perDay = daysLeft > 0 ? remaining / daysLeft : remaining
+  return {
+    perDayInr: Number.isFinite(perDay) ? perDay : 0,
+    perPersonPerDayInr: (Number.isFinite(perDay) ? perDay : 0) / Math.max(1, trip.travellers),
+    daysLeft,
+  }
+}
+
 export function countHotelNights(trip: Trip): number {
   const hotels = new Set<string>()
   trip.days.forEach(d => d.stops.forEach(s => { if (s.category === 'hotel') hotels.add(s.locationName) }))
