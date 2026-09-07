@@ -9,7 +9,7 @@
 // which stays on plain "HH:MM" minutes.
 
 import type { Trip, ItineraryStop } from '../data/types'
-import { simulateDay, originOf, computeTotals, hmToMinutes, getAssumptions, type LegEstimate, type DaySchedule } from './engine'
+import { simulateDay, originOf, computeTotals, getAssumptions, type LegEstimate, type DaySchedule } from './engine'
 
 export interface PrintStop {
   title: string
@@ -170,7 +170,7 @@ export function buildPrintModel(
       label: e.label, category: e.category,
       amountInr: fin(e.amountInr), perPerson: e.perPerson === true, dayIndex: e.dayIndex,
     })),
-    assumptionsLine: `~₹${Math.round(A.inrPerKm ?? 8)}/km · ${A.avgSpeedKmph} km/h avg · ${hmToMinutes(A.dayEnd) - hmToMinutes(A.dayStart) >= 0 ? '' : ''}${A.dayStart}–${A.dayEnd} planning window`.replace('  ', ' '),
+    assumptionsLine: `Estimates at ~₹${Math.round(A.inrPerKm ?? 8)}/km · ${A.avgSpeedKmph} km/h avg · ${A.dayStart}–${A.dayEnd} planning window`,
     printedAt: (opts.now ?? new Date()).toISOString(),
   }
 }
