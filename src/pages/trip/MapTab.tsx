@@ -560,11 +560,13 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
                       className="btn btn-primary btn-sm"
                       onClick={() => {
                         let n = 0
+                        const toAdd: { hit: PlaceHit; dayIndex: number }[] = []
                         for (const id of arc.hitIds) {
                           const m = arcHits.find(h => (h.id as string) === (id as string))
                           if (!m || addedIds.has(m.id as string)) continue
                           recordDnaEvent({ tripId: trip.id, action: 'accept', category: m.category, detourMin: asymmetricDetourMinutes(m, anchors, routePolyline ?? null, MODE_SPEED[trip.transportMode] ?? 40), visitMin: visitMinutesForCategory(m.category) })
-                          addPoiToDay(m, dayForKm(m.cumKm))
+                          const mDay = dayForKm(m.cumKm)
+                          toAdd.push({ hit: m, dayIndex: mDay })
                           n += 1
                         }
                         suggestionCache.clearMap()
