@@ -1453,7 +1453,7 @@ a.btn { text-decoration: none; }
 .ai-bubble.bot { align-self: flex-start; background: var(--bg-soft); color: var(--text); border-bottom-left-radius: 5px; }
 .ai-assumption { margin-top: 9px; font-size: 11.8px; color: var(--text-3); border-top: 1px dashed var(--line); padding-top: 7px; }
 .ai-quick { padding: 10px 14px; border-top: 1px solid var(--line); }
-.ai-quick-scroll { display: flex; gap: 7px; overflow-x: auto; padding-bottom: 5px; scrollbar-width: thin; }
+.ai-quick-scroll { display: flex; gap: 7px; overflow-x: auto; padding-bottom: 5px; scrollbar-width: thin; scrollbar-color: var(--text-3) transparent; -webkit-overflow-scrolling: touch; }
 .ai-input-row { display: flex; gap: 8px; padding: 12px 14px; border-top: 1px solid var(--line); }
 .typing-dots { display: inline-flex; gap: 4px; padding: 4px 2px; }
 .typing-dots span { width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); animation: blink 1.2s infinite; }
