@@ -10,7 +10,7 @@ import { getAssumptions, buildJourney, minutesToHM, computeCategoryBias, MODE_SP
 import { useTimeFormat, formatHMRange } from '../../lib/timefmt'
 import { Modal, Field, toast } from '../../components/ui'
 import { useSuggestionCache, isMapCacheFresh } from '../../hooks/useSuggestionCache'
-import { corridorAnchors, detourKm, detourMinutes, asymmetricDetourMinutes, googleEnabled, planJourneyHalts, reasonForSegmentHit, type NearbyOpts } from '../../lib/geocode'
+import { corridorAnchors, detourKm, detourMinutes, asymmetricDetourMinutes, googleEnabled, planJourneyHalts, reasonForSegmentHit, type NearbyOpts, routeHash } from '../../lib/geocode'
 import { dayDetourBudgetMin, budgetSharePct, splitByDetourBudget } from '../../lib/detourBudget'
 import { quotaUsed, SOFT_CAPS } from '../../lib/providers/quota'
 import { buildDnaVectorAcrossTrips, loadDnaLog, recordDnaEvent, dnaNoteForHit, crewSeedsFromSuggestions, crewSeedsToPlannedStops, crewSeedEvents, crewNoteForHit } from '../../lib/tripDna'
@@ -217,7 +217,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
   useEffect(() => {
     if (anchors.length === 0) return
     const cached = suggestionCache.cache.map
-    const hash = anchorHash(anchors)
+    const hash = anchorHash(anchors) + '|' + routeHash(routeGeometry)
     // Persisted results always win: returning to this tab, editing the trip, or
     // OSRM resolving after mount must NOT silently re-run the expensive corridor
     // search. Only ↻ Refresh, a detour-scope change, new anchors, or an empty
@@ -570,7 +570,40 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
                           n += 1
                         }
                         suggestionCache.clearMap()
-                        setDnaTick(t => t + 1)
+                        // Batch apply all stops in a single change
+                        if (n > 0) {
+                          applyChange(draft => {
+                            const byDay = new Map<number, { hit: PlaceHit }[]>()
+                            for (const item of toAdd) {
+                              const list = byDay.get(item.dayIndex) ?? []
+                              list.push(item)
+                              byDay.set(item.dayIndex, list)
+                            }
+                            for (const [dayIndex, items] of byDay) {
+                              const day = draft.days.find(d => d.index === dayIndex)!
+                              for (const { hit } of items) {
+                                day.stops.push({
+                                  id: 'pending_' + Math.random().toString(36).slice(2),
+                                  title: hit.name,
+                                  category: (hit.category as ItineraryStop['category']) ?? 'sightseeing',
+                                  locationName: hit.description ?? hit.name,
+                                  lat: hit.latitude,
+                                  lng: hit.longitude,
+                                  description: hit.description ?? '',
+                                  notes: hit.haltPurpose ? 'Added from the ride plan' : 'Added from nearby suggestions',
+                                  visitMinutes: poiVisitMinutes(hit.category),
+                                  openTime: hit.openTime ?? '', closeTime: hit.closeTime ?? '',
+                                  entryFeeInrPerPerson: 0,
+                                  transportCostInrTotal: 0,
+                                  priority: 'nice-to-have',
+                                  sourceUrl: '',
+                                  status: 'suggested',
+                                  orderInDay: day.stops.length + 1,
+                                } as unknown as ItineraryStop)
+                              }
+                            }
+                          }, 'add', toAdd[0].dayIndex)
+                        }
                         setAddedIds(prev => {
                           const next = new Set(prev)
                           for (const id of arc.hitIds) next.add(id as string)

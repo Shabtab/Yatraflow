@@ -290,6 +290,25 @@ export function anchorHash(anchors: { lat: number; lng: number }[]): string {
   return pts.join('|')
 }
 
+/** Stable hash string for route geometry — used as a cache key so that OSRM
+ * route resolution invalidates the suggestion cache when the road changes. */
+export function routeHash(geometry: [number, number][] | null): string {
+  if (!geometry || geometry.length === 0) return ''
+  // Use a sample of the geometry (first, middle, last points) to keep the hash
+  // short while still capturing significant route changes
+  const samples = [0, Math.floor(geometry.length / 2), geometry.length - 1]
+  const pts = samples
+    .filter(i => {
+      const pt = geometry[i]
+      return pt && pt.length >= 2 && Number.isFinite(pt[0]) && Number.isFinite(pt[1])
+    })
+    .map(i => {
+      const pt = geometry[i]!
+      return `${pt[1].toFixed(5)},${pt[0].toFixed(5)}`
+    })
+  return pts.join('|')
+}
+
 export interface NearbyOpts {
   /** include petrol pumps as pit stops (self-drive trips only, capped) */
   includeFuel?: boolean

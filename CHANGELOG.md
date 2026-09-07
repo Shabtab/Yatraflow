@@ -5,8 +5,12 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 ## [Unreleased]
 
 ### Fixed
+- **C1: "Add all" button now batch-applies all stops in a single trip mutation** — previously collected stops were only updating UI state without persisting to the database. Now uses `applyChange` to batch-add all selected stops, with write-through and the same optimistic UI pattern as the per-stop "Add to timeline" action.
 - **C3: Guard corridorAnchors when all stops are within 500m** (pts.length < 2) prevents cum[1] undefined crash on degenerate routes.
 - **C4: Detour budget now enforced from actual itinerary stops** instead of skipping added/dismissed suggestions.
+
+### Changed
+- **Suggestion cache now invalidates when route geometry changes** — added `routeHash` function to include OSRM road geometry in the cache key. When OSRM resolves the route after mount and the road changes, the suggestion cache now correctly expires instead of showing stale corridor suggestions based on the previous route.
 
 ## [0.41.1] — 2026-09-07
 
