@@ -1,10 +1,10 @@
 /* ============ YatraFlow Design System ============ */
 /* Token architecture (3 layers, per ui-ux-pro-max-skill design-system ref):
- *   1. PRIMITIVES  — raw palette values (brand + neutral ramp)
- *   2. SEMANTICS   — purpose aliases (--color-*) mapped from primitives; carry
+ *   1. PRIMITIVES  ΓÇö raw palette values (brand + neutral ramp)
+ *   2. SEMANTICS   ΓÇö purpose aliases (--color-*) mapped from primitives; carry
  *                    hover/active/foreground so interactive states stay consistent
- *   3. COMPONENTS  — consume semantics only (see DESIGN_TOKENS.md state matrix)
- * Existing flat names (--teal, --saffron, …) are KEPT as legacy aliases so the
+ *   3. COMPONENTS  ΓÇö consume semantics only (see DESIGN_TOKENS.md state matrix)
+ * Existing flat names (--teal, --saffron, ΓÇª) are KEPT as legacy aliases so the
  * ~200 existing references keep working; new code should use --color-*.
  */
 :root {
@@ -34,7 +34,7 @@
   --gray-900: #0B2545;
 
   /* ---- 1b. PRIMITIVES: Calm Travel Intelligence palette (design refresh;
-        docs/redesign/YATRAFLOW_DESIGN_DIRECTION.md §4.1) ---- */
+        docs/redesign/YATRAFLOW_DESIGN_DIRECTION.md ┬º4.1) ---- */
   --yf-navy: #123F49;          /* header bands, dark cards, AI anchor surfaces */
   --yf-teal-600: #0D8D82;      /* CTI primary */
   --yf-teal-700: #0C716D;      /* CTI primary hover/pressed */
@@ -47,7 +47,7 @@
   --yf-coral-100: #FFF0EC;
   --yf-purple: #897ABB;        /* scenic / creative discovery */
   --yf-purple-100: #F0EAFA;
-  /* Expense-category bar colors (Budget tab "Where the money goes") — one
+  /* Expense-category bar colors (Budget tab "Where the money goes") ΓÇö one
      hue per spend category, reused by the per-line icon chips. */
   --cat-transport: #897ABB;
   --cat-accommodation: #0D8D82;
@@ -66,17 +66,17 @@
   --yf-border: #DCE7E1;
   --yf-text-muted: #637B7D;
   --yf-glass: rgba(255, 255, 255, 0.58);        /* level-2 overlay (map/board panels) */
-  --yf-nav-glass: rgba(255, 255, 255, 0.58);    /* nav pill — user-decided (AGENTS rule 9) */
+  --yf-nav-glass: rgba(255, 255, 255, 0.58);    /* nav pill ΓÇö user-decided (AGENTS rule 9) */
   --yf-glass-border: rgba(255, 255, 255, 0.65);
   --yf-glass-sheen: rgba(255, 255, 255, 0.35);  /* top-edge highlight on glass panels */
   /* backdrop blur ladder (value-identical mappings): sm = small frosts over
      imagery (chips), md = panel frost (map legend/chips), lg = deep frost
      (pillbars, dropdown triggers). Heavier recipes (12/14/18px) stay
-     component-local — each belongs to exactly one surface family. */
+     component-local ΓÇö each belongs to exactly one surface family. */
   --yf-blur-sm: 4px;
   --yf-blur-md: 6px;
   --yf-blur-lg: 8px;
-  /* ---- z-index ladder (M4.4) — every fixed/absolute layer maps to a rung;
+  /* ---- z-index ladder (M4.4) ΓÇö every fixed/absolute layer maps to a rung;
      values are the historical literals so no stacking outcome changes ---- */
   --z-under: 0;         /* decorative layers behind content (blobs, motifs, board-map canvas, pub-hero photo) */
   --z-content: 1;       /* page content above in-card decor (hero-split, pub-hero-inner, itin-cover-route) */
@@ -88,13 +88,13 @@
   --z-nav-glass: 60;    /* floating glass chrome: topnav, user-menu, loc-dropdown/loc-empty, bench-dock.
                            Ties at 60 resolve by DOM order exactly as before: the user-menu is a portaled
                            fixed panel (paints after the sticky nav); the others never share its space. */
-  --z-map-expanded: 70; /* expanded map shell — must sit BELOW the dialogs it can spawn (AGENTS ladder) */
-  --z-ai-fab: 70;       /* ties with --z-map-expanded on purpose — DOM order decides, unchanged */
+  --z-map-expanded: 70; /* expanded map shell ΓÇö must sit BELOW the dialogs it can spawn (AGENTS ladder) */
+  --z-ai-fab: 70;       /* ties with --z-map-expanded on purpose ΓÇö DOM order decides, unchanged */
   --z-notif: 80;        /* notification popover */
   --z-drawer: 90;       /* ai-drawer (opens over everything up to modals) */
   --z-modal: 100;       /* modal overlay */
   --z-toast: 200;       /* toast zone */
-  --z-impact: 210;      /* impact sheet + its top strip — deliberately ABOVE toasts (recent fix) */
+  --z-impact: 210;      /* impact sheet + its top strip ΓÇö deliberately ABOVE toasts (recent fix) */
 
   /* ---- motion (subtle & premium): one easing family, three speeds ---- */
   --ease-out: cubic-bezier(.22, .61, .36, 1);
@@ -103,7 +103,7 @@
   --t-med: 300ms;
   --t-slow: 440ms;
 
-  /* Brand teal glow for selected/primary pill states — one triplet, not three. */
+  /* Brand teal glow for selected/primary pill states ΓÇö one triplet, not three. */
   --shadow-glow-teal: 0 2px 10px rgba(13, 141, 130, .35);
 
   /* ---- 2. SEMANTICS (light) ---- */
@@ -139,7 +139,7 @@
   --warn: var(--warn-600);
   --warn-soft: #FBF1DD;
   --info-soft: #E8EEF6;
-  --shadow-navy-rgb: 11, 37, 69;  /* shared shadow/shade navy — keep alphas on the consumers */
+  --shadow-navy-rgb: 11, 37, 69;  /* shared shadow/shade navy ΓÇö keep alphas on the consumers */
   --shadow: 0 1px 2px rgba(var(--shadow-navy-rgb),.05), 0 8px 28px rgba(var(--shadow-navy-rgb),.08);
   --shadow-sm: 0 1px 2px rgba(var(--shadow-navy-rgb),.07);
   --shadow-soft: 0 2px 6px rgba(16,46,75,.04), 0 16px 40px rgba(16,46,75,.10);  /* CTI diffuse depth */
@@ -245,15 +245,15 @@
 }
 
 /* ---- Calm Travel Intelligence utilities (design refresh M1) ---- */
-/* Level-1 atmospheric canvas (doc §4.2): Landing, Explore, Public Itinerary,
-   workspace outer shell. Two soft gradient blobs over the mist→cream→peach ramp. */
+/* Level-1 atmospheric canvas (doc ┬º4.2): Landing, Explore, Public Itinerary,
+   workspace outer shell. Two soft gradient blobs over the mistΓåÆcreamΓåÆpeach ramp. */
 .atmos {
   background:
     radial-gradient(circle at 18% 12%, var(--yf-atmos-mint), transparent 32%),
     radial-gradient(circle at 88% 28%, var(--yf-atmos-peach), transparent 30%),
     linear-gradient(135deg, var(--yf-mist) 0%, var(--yf-cream) 52%, var(--yf-peach) 100%);
 }
-/* Level-2 expressive overlay (doc §3.3): translucent nav, map panels, hero
+/* Level-2 expressive overlay (doc ┬º3.3): translucent nav, map panels, hero
    support cards. Content that must be read/edited stays on --color-card.
    Dialled up for the glass-first look: deep blur + saturation + a top sheen. */
 .glass {
@@ -269,11 +269,11 @@
 /* Root-level horizontal clip. The hero/bench atmosphere blobs and the full-bleed
    destination ticker deliberately paint past the 100vw edge for a soft diffused
    glow. `clip` (unlike `hidden`) prunes that overflow to a clean page width
-   WITHOUT becoming a scroll container — so no horizontal scrollbar appears AND
+   WITHOUT becoming a scroll container ΓÇö so no horizontal scrollbar appears AND
    the floating `position: sticky` topnav keeps working. */
 html { overflow-x: clip; }
 
-/* ---------- Overview Bento briefing (CTI §6.2) ---------- */
+/* ---------- Overview Bento briefing (CTI ┬º6.2) ---------- */
 /* Large-radius, softly-shadowed cards; the briefing reads as tiles, not a form. */
 .bento .card, .bento .stat-tile { border-radius: var(--radius-lg); box-shadow: var(--shadow-soft); }
 
@@ -298,11 +298,11 @@ html { overflow-x: clip; }
 .health-rec:hover { filter: brightness(.97); }
 .health-rec:focus-visible { outline: none; box-shadow: var(--ring); }
 
-/* Route snapshot dark card (mockup) — same rich treatment as the landing hero:
+/* Route snapshot dark card (mockup) ΓÇö same rich treatment as the landing hero:
    navy gradient + faint cartographic grid + ambient saffron/coral glows.
    .card.route-snap (0,2,0) on purpose: `.card`'s `background: var(--card)`
    shorthand is declared LATER in this file and would otherwise strip the
-   gradient — light theme rendered a cream card under light-on-light SVG labels. */
+   gradient ΓÇö light theme rendered a cream card under light-on-light SVG labels. */
 .card.route-snap {
   position: relative; overflow: hidden;
   background: linear-gradient(150deg, var(--yf-navy), var(--gray-900) 88%);
@@ -366,7 +366,7 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
 
 .app-shell { min-height: 100vh; display: flex; flex-direction: column; }
 .container { width: 100%; max-width: 1180px; margin: 0 auto; padding: 0 20px;
-  /* the Board tab widens the canvas to 1680px — glide it (both directions) */
+  /* the Board tab widens the canvas to 1680px ΓÇö glide it (both directions) */
   transition: max-width var(--t-slow) var(--ease-out); }
 
 /* ---------- Top navigation ---------- */
@@ -376,7 +376,7 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
      strip the way the user asked. It keeps the CTI floating-pill look. */
   position: sticky; top: 12px; z-index: var(--z-nav-glass);
   /* CTI nav language: a floating pill detached from the viewport edges,
-     not a full-bleed bar — the page atmosphere shows around it. */
+     not a full-bleed bar ΓÇö the page atmosphere shows around it. */
   width: min(1180px, calc(100% - 28px));
   margin: 12px auto 0;
   background: var(--yf-nav-glass);
@@ -391,7 +391,7 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
 .brand { display: flex; align-items: center; gap: 9px; font-family: var(--font-display); font-weight: 800; font-size: 19px; color: var(--text); cursor: pointer; background:none;border:none;padding:0; }
 .brand svg { flex: 0 0 auto; }
 .nav-links { margin-left: 10px; }
-/* PillNav: one sliding "glider" pill behind the active item — switching reads
+/* PillNav: one sliding "glider" pill behind the active item ΓÇö switching reads
    as one continuous motion instead of two backgrounds cross-fading. */
 .pill-nav { position: relative; display: flex; gap: 2px; }
 .pill-nav > * { position: relative; z-index: 1; }
@@ -403,7 +403,7 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
   pointer-events: none;
 }
 [data-theme='dark'] .pill-glider { background: var(--teal); }
-/* inside a pill nav the glider paints the active background — the items don't */
+/* inside a pill nav the glider paints the active background ΓÇö the items don't */
 .pill-nav .nav-link.active, .pill-nav .tab-btn.active,
 .pill-nav .clickable-chip.on-teal,
 .pill-nav .nav-link.active:hover, .pill-nav .tab-btn.active:hover,
@@ -478,7 +478,7 @@ a.btn { text-decoration: none; }
   border-color: var(--teal); box-shadow: 0 0 0 3px color-mix(in srgb, var(--teal) 18%, transparent);
 }
 .textarea { resize: vertical; min-height: 74px; }
-/* Dropdown (select) — the exact .input surface; the only tell is the chevron.
+/* Dropdown (select) ΓÇö the exact .input surface; the only tell is the chevron.
    (Was a glass pill with its own background/weight, which read as a different
    component family next to text inputs in the same form.) */
 .select {
@@ -496,7 +496,7 @@ a.btn { text-decoration: none; }
 /* Theme the native popup rows (Chromium/Edge honour this; the system highlight
    stays but stops clashing with the palette). */
 .select option { background: var(--card); color: var(--text); }
-/* The chevron is baked into a background-image, so it can't follow a token —
+/* The chevron is baked into a background-image, so it can't follow a token ΓÇö
    re-declare it for dark mode or it lands ~1.8:1 on the dark pill. */
 [data-theme='dark'] .select {
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1.5 1.5L6 6l4.5-4.5' fill='none' stroke='%238FA0B5' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/></svg>");
@@ -519,7 +519,7 @@ a.btn { text-decoration: none; }
 .chip-teal { background: var(--teal-soft); color: var(--teal-deep); }
 .chip-outline { background: var(--card); color: var(--text-2); border-color: var(--line); }
 .chip-saffron { background: var(--saffron-soft); color: var(--warn); }
-/* AA contrast: warn-600 reads 3.48:1 on the saffron tint — light theme gets a
+/* AA contrast: warn-600 reads 3.48:1 on the saffron tint ΓÇö light theme gets a
    deeper amber (dark theme's #D99A2B on #3A2C15 already passes). */
 :root:not([data-theme='dark']) .chip-saffron { color: #8F5B06; }
 .chip-danger { background: var(--danger-soft); color: var(--danger); }
@@ -532,7 +532,7 @@ a.btn { text-decoration: none; }
 .clickable-chip.on-saffron { border-color: var(--saffron); background: var(--saffron-soft); color: var(--warn); }
 .clickable-chip:hover { transform: translateY(-1px); }
 .chip-row { display: flex; flex-wrap: wrap; gap: 7px; }
-/* Segmented pill filter bar (Decisions etc.) — glass capsule with a sliding
+/* Segmented pill filter bar (Decisions etc.) ΓÇö glass capsule with a sliding
    active state, per the CTI pill design language. */
 .filter-pillbar {
   display: inline-flex; gap: 2px; padding: 4px; flex-wrap: wrap;
@@ -564,7 +564,7 @@ a.btn { text-decoration: none; }
   box-shadow: var(--shadow-sm);
   color: var(--text-2);
 }
-/* (explore-chips selected-state overrides removed — chips use the global .on-teal) */
+/* (explore-chips selected-state overrides removed ΓÇö chips use the global .on-teal) */
 .explore-chips .clickable-chip.chip-saffron {
   background: var(--saffron); color: #fff; border-color: transparent;
 }
@@ -588,7 +588,7 @@ a.btn { text-decoration: none; }
 .warn-list { display: flex; flex-direction: column; gap: 9px; }
 
 /* ---------- Timeline ---------- */
-/* M4: the day is a near-opaque soft card (doc §6.3 — readability before transparency). */
+/* M4: the day is a near-opaque soft card (doc ┬º6.3 ΓÇö readability before transparency). */
 .day-section {
   margin-bottom: 22px;
   background: var(--card);
@@ -685,7 +685,7 @@ a.btn { text-decoration: none; }
 }
 
 /* Auto travel anchors (trip start/end, route waypoints) render as a compact
-   "travelling" strip — the drive itself (times, duration, distance, cost),
+   "travelling" strip ΓÇö the drive itself (times, duration, distance, cost),
    not a fake stop/activity card with nothing in it. */
 .travel-anchor {
   display: flex; flex-direction: column; gap: 3px;
@@ -822,7 +822,7 @@ a.btn { text-decoration: none; }
 .chip-btn:hover { border-color: var(--teal); color: var(--teal-deep); background: var(--teal-soft); }
 
 /* ---------- M4: trip-total strip, day-jump rail, stop-kind markers ---------- */
-/* Sticky glass strip mirroring the floating pill nav — the trip's totals stay
+/* Sticky glass strip mirroring the floating pill nav ΓÇö the trip's totals stay
    in view while scrolling long timelines. */
 .tl-total-strip {
   position: sticky;
@@ -857,7 +857,7 @@ a.btn { text-decoration: none; }
 .day-rail-chip:hover { border-color: var(--teal); color: var(--teal-deep); background: var(--teal-soft); }
 .day-rail-chip.warn { background: var(--yf-amber-100); border-color: transparent; color: var(--warn); font-weight: 700; }
 .day-rail-chip.warn:hover { background: var(--saffron-soft); color: var(--warn); }
-/* Warning state inside the affected day's header (doc §6.3). */
+/* Warning state inside the affected day's header (doc ┬º6.3). */
 .day-warn-pill {
   align-self: flex-start;
   border-radius: 12px; padding: 6px 12px;
@@ -866,6 +866,19 @@ a.btn { text-decoration: none; }
   max-width: 340px;
 }
 .day-warn-pill.sev-high { background: var(--yf-coral-100); color: var(--danger); }
+/* Per-day cost + dwell chips in the day header ΓÇö quiet metadata pills that
+   mirror the stop-kind tag treatment (soft tint, no border) so they read as
+   engine-derived context, not actions. */
+.day-cost-chip, .day-dwell-chip {
+  align-self: flex-start;
+  border-radius: 999px; padding: 4px 11px;
+  font-size: 11.5px; font-weight: 700; line-height: 1.5;
+  white-space: nowrap;
+  color: var(--text-2); background: var(--bg-soft);
+}
+.day-cost-chip { color: var(--teal-deep); background: var(--teal-soft); }
+[data-theme='dark'] .day-cost-chip { color: var(--teal); }
+@media (max-width: 720px) { .day-dwell-chip { display: none; } }
 /* Stop-kind markers: a coloured spine on the card + a small type tag.
    Tag text stays --text-2 on soft tinted backgrounds so both themes keep
    AA contrast; the spine carries the hue. */
@@ -890,11 +903,11 @@ a.btn { text-decoration: none; }
 .stop-kind-tag.kind-activity { background: var(--yf-purple-100); }
 .stop-kind-tag.kind-viewpoint { background: var(--teal-soft); }
 
-/* ---------- Board — spatial group coordination (CTI §6.4) ---------- */
+/* ---------- Board ΓÇö spatial group coordination (CTI ┬º6.4) ---------- */
 /* Pinned route map with day columns floating over it. The floats live inside
    .board (a stacking context of its own), so nothing here fights the app's
    fixed-overlay ladder: map, columns and panels all layer below modals (100) /
-   impact sheet (90) / notifications (80) — the impact preview opened by a card
+   impact sheet (90) / notifications (80) ΓÇö the impact preview opened by a card
    drop still lands on top of everything. */
 .board-head { margin-bottom: 14px; }
 /* ---- Board tab canvas: the kanban wants the whole viewport. The default page
@@ -903,7 +916,7 @@ a.btn { text-decoration: none; }
    On the Board tab the container widens, the trip band compacts (members row
    lives on Overview/Share), and the board claims what's left of the viewport. */
 .container--board { max-width: 1680px; }
-/* Map tab runs a 3-column rail layout — widen the shell so the map keeps its
+/* Map tab runs a 3-column rail layout ΓÇö widen the shell so the map keeps its
    full size and the two idea rails fit beside it. */
 .container--map { max-width: 1760px; }
 .container--board .trip-head-card { padding: 13px 20px; }
@@ -917,10 +930,10 @@ a.btn { text-decoration: none; }
 .container--board .board-head h2 { font-size: 19px; margin: 0 0 2px; }
 .board {
   position: relative; /* a wide 640px letterbox squeezed tall routes into a thin squiggle
-     band — give the pinned map real vertical room (CTI mockup). 292px = compact
+     band ΓÇö give the pinned map real vertical room (CTI mockup). 292px = compact
      board-tab chrome (nav pill + band + tabs + board head) above it. The board is a
      FLOOR, not a cap: it grows with column content so cards never need internal
-     scrollbars — the map backdrop stretches with it. */
+     scrollbars ΓÇö the map backdrop stretches with it. */
   height: auto;
   min-height: clamp(540px, calc(100vh - 292px), 1200px);
   min-height: clamp(540px, calc(100dvh - 292px), 1200px); overflow: hidden;
@@ -929,13 +942,13 @@ a.btn { text-decoration: none; }
   box-shadow: var(--shadow-soft);
   background: var(--yf-mist);
   /* The map is an absolute backdrop; the top bar and columns sit in normal
-     flow above it, so no floating panel can ever overlap a column — at any
+     flow above it, so no floating panel can ever overlap a column ΓÇö at any
      width, and even if the top bar wraps on narrower screens. */
   display: flex; flex-direction: column;
 }
 .board-map { position: absolute; inset: 0; z-index: var(--z-under); }
 /* Cream wash so the real map recedes behind the columns like the mockup's
-   calm sage backdrop — pointer-events pass through, map stays interactive. */
+   calm sage backdrop ΓÇö pointer-events pass through, map stays interactive. */
 .board-map::after {
   content: ''; position: absolute; inset: 0; pointer-events: none;
   background: color-mix(in srgb, var(--yf-mist) 45%, transparent);
@@ -948,7 +961,7 @@ a.btn { text-decoration: none; }
   margin: 14px 16px 4px;
 }
 /* Compact corner pair (mockup): small equal glass cards in the board's top
-   corners — most of the map stays visible between and above them. They use the
+   corners ΓÇö most of the map stays visible between and above them. They use the
    shared .glass treatment (deep blur + sheen) so the map visibly reads through. */
 .board-info, .board-pulse {
   -webkit-backdrop-filter: blur(18px) saturate(1.2);
@@ -984,7 +997,7 @@ a.btn { text-decoration: none; }
 .board-col {
   /* Fill the row: columns share the spare width (capped so a 3-day trip doesn't
      stretch into billboards); long trips fall back to the min-width scroll.
-     Height fits the column's own content — no internal scrollbar in realistic
+     Height fits the column's own content ΓÇö no internal scrollbar in realistic
      days; the board floor grows with the tallest column. 760px cap is a safety
      net so a monster day scrolls internally instead of stretching the page. */
   flex: 1 1 264px; min-width: 250px; max-width: 424px;
@@ -997,7 +1010,7 @@ a.btn { text-decoration: none; }
 }
 .board-col--focused { outline: 2px solid var(--yf-teal-600); outline-offset: -2px; }
 /* Compact header per the board mockup: "Day N" + stops chip on one row, the
-   day title as a one-line ellipsised subtitle, warning pill on its own row —
+   day title as a one-line ellipsised subtitle, warning pill on its own row ΓÇö
    so long titles can never wrap the header into a jumble. */
 .board-col-head {
   display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 2px 10px;
@@ -1022,7 +1035,7 @@ a.btn { text-decoration: none; }
 }
 .board-stop { padding: 7px 10px 7px 13px; box-shadow: var(--shadow-soft); }
 /* Kind-tinted cards (mockup): the whole card washes with its kind colour, not
-   just the spine — soft gradient + tinted border; the spine stays saturated. */
+   just the spine ΓÇö soft gradient + tinted border; the spine stays saturated. */
 .board-stop.stop-card {
   border-color: color-mix(in srgb, var(--kind-c, var(--line)) 25%, var(--line));
   background: linear-gradient(to right,
@@ -1030,7 +1043,7 @@ a.btn { text-decoration: none; }
     color-mix(in srgb, var(--kind-c, var(--line)) 4%, var(--card)) 55%,
     var(--card) 100%);
 }
-/* Mockup card anatomy: accent bar (from kind-*) → kicker → title → one meta line. */
+/* Mockup card anatomy: accent bar (from kind-*) ΓåÆ kicker ΓåÆ title ΓåÆ one meta line. */
 .board-stop-kicker {
   display: block; font-size: 9.5px; font-weight: 800; letter-spacing: .08em;
   text-transform: uppercase; color: var(--text-3);
@@ -1054,7 +1067,7 @@ a.btn { text-decoration: none; }
 .board-col-zone.foreign-over { border-color: var(--teal); background: var(--teal-soft); }
 .board-col-zone.foreign-over b { color: var(--teal-deep); }
 
-/* ---------- M6: Budget / Decisions / Share / Suggestions hierarchy (CTI §6.6–6.9) ---------- */
+/* ---------- M6: Budget / Decisions / Share / Suggestions hierarchy (CTI ┬º6.6ΓÇô6.9) ---------- */
 .budget-hero {
   background: linear-gradient(120deg, #143f4c, #112c4c);
   color: #fff; border-radius: var(--radius-lg); padding: 18px 20px;
@@ -1115,7 +1128,7 @@ a.btn { text-decoration: none; }
 .vehicle-profile-form .form-row:last-child { margin-bottom: 0; }
 
 /* ---------- Tabs ---------- */
-/* Same floating glass pill as the top nav — the workspace's own section nav. */
+/* Same floating glass pill as the top nav ΓÇö the workspace's own section nav. */
 .tabbar {
   padding: 4px; border-radius: 999px; overflow-x: auto; scrollbar-width: none;
   background: var(--yf-nav-glass); border: 1px solid var(--yf-glass-border);
@@ -1134,7 +1147,7 @@ a.btn { text-decoration: none; }
 .tab-btn.active { color: var(--teal-deep); }
 [data-theme='dark'] .tab-btn.active .tab-count { background: rgba(255, 255, 255, .14); color: #06251f; }
 .tab-count { background: var(--teal-soft); color: var(--teal-deep); font-size: 11px; font-weight: 750; border-radius: 999px; padding: 1px 7px; }
-/* Editable day title — a real button (keyboard-reachable rename), styled as
+/* Editable day title ΓÇö a real button (keyboard-reachable rename), styled as
    the heading it replaces. */
 .day-title-btn { border: none; background: none; padding: 0; cursor: pointer;
   font: inherit; font-weight: 700; color: var(--text); border-radius: 6px; text-align: left; }
@@ -1185,10 +1198,10 @@ a.btn { text-decoration: none; }
 
 /* ---------- Auth ---------- */
 .auth-card { width: 100%; max-width: 430px; }
-/* Dark inputs otherwise sit nearly flush with the card surface — lift them. */
+/* Dark inputs otherwise sit nearly flush with the card surface ΓÇö lift them. */
 [data-theme='dark'] .auth-card .input { background: rgba(255, 255, 255, .06); }
 
-/* ---------- Hero (landing) — split layout per CTI homepage mockup ---------- */
+/* ---------- Hero (landing) ΓÇö split layout per CTI homepage mockup ---------- */
 /* The hero itself is transparent: the atmospheric ramp lives on the page-level
    .landing-canvas (fixed attachment), so no hard gradient edge can appear at
    the hero/bench boundary or behind the floating nav pill. */
@@ -1199,7 +1212,7 @@ a.btn { text-decoration: none; }
 .hero-copy .hero-sub { margin-left: 0; }
 .hero-copy .hero-ctas { justify-content: flex-start; }
 .hero-adventure {
-  /* forced-dark in both themes — the bottom stop must be a literal
+  /* forced-dark in both themes ΓÇö the bottom stop must be a literal
      (--gray-900 flips near-white in dark mode) */
   background: linear-gradient(150deg, var(--yf-navy), #0c1e35 88%);
   color: #fff; border-radius: var(--radius-lg); padding: 22px;
@@ -1224,7 +1237,7 @@ a.btn { text-decoration: none; }
 .ha-warn span { display: block; font-weight: 500; font-size: 11px; opacity: .8; }
 .ha-sync { background: var(--yf-teal-100); color: #0C4A42; border-radius: 10px; padding: 8px 11px; font-size: 12px; font-weight: 700; }
 .ha-sync span { display: block; font-weight: 500; font-size: 11px; opacity: .75; }
-/* Dark mirrors — the light literals above sit on tokens that flip to near-black
+/* Dark mirrors ΓÇö the light literals above sit on tokens that flip to near-black
    in dark mode, leaving dark-on-dark ghost text (UI audit contrast finding). */
 [data-theme='dark'] .ha-warn { background: #3B2B12; color: #FFD9A0; }
 [data-theme='dark'] .ha-warn span { opacity: .85; }
@@ -1254,7 +1267,7 @@ a.btn { text-decoration: none; }
 .step-card h3 { font-size: 15px; }
 .step-card p { margin-top: 5px; line-height: 1.55; }
 
-/* Demo CTA band — a forced-dark surface in BOTH themes: its gradient stops
+/* Demo CTA band ΓÇö a forced-dark surface in BOTH themes: its gradient stops
    must be literals, not theme-flipping tokens (--gray-900 turns near-white in
    dark mode and stranded the white text). Same rule as .budget-hero. */
 .cta-band {
@@ -1285,11 +1298,11 @@ a.btn { text-decoration: none; }
 .itin-cover-fallback { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 44px; opacity: .9; }
 .itin-cover .chip { position: absolute; top: 11px; left: 11px; background: rgba(255,255,255,.92); color: var(--text); -webkit-backdrop-filter: blur(var(--yf-blur-sm)); backdrop-filter: blur(var(--yf-blur-sm)); }
 .itin-body { padding: 15px 17px 17px; display: flex; flex-direction: column; gap: 9px; flex: 1; }
-/* Trip names can be long — cap at two lines so card grids stay aligned. */
+/* Trip names can be long ΓÇö cap at two lines so card grids stay aligned. */
 .itin-body .card-title {
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
-/* Card titles are heading-level h2 for outline correctness — sized as the h3
+/* Card titles are heading-level h2 for outline correctness ΓÇö sized as the h3
    they replace so the grids don't shift. */
 .card-title { font-size: 16px; font-weight: 700; }
 .itin-meta { display: flex; flex-wrap: wrap; gap: 4px 13px; font-size: 12.5px; color: var(--text-3); font-weight: 600; }
@@ -1306,20 +1319,20 @@ a.btn { text-decoration: none; }
 
 /* ---------- Map (demo SVG) ---------- */
 .map-frame { position: relative; width: 100%; height: 480px; min-height: 320px; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--line); background: var(--card); }
-/* MapLibre canvas must inherit the wrapper's height — a bare `height: 100%`
+/* MapLibre canvas must inherit the wrapper's height ΓÇö a bare `height: 100%`
    on the map with no explicit height on .map-frame collapses the map to the
    height of the control strip above it. The rules below pin every canvas/container
    layer to fill the absolute-positioned .yf-maplibre wrapper. */
 .yf-maplibre { position: absolute; inset: 0; width: 100%; height: 100%; }
 .yf-maplibre .maplibregl-map { position: absolute; inset: 0; width: 100%; height: 100%; }
 .yf-maplibre .maplibregl-canvas { width: 100% !important; height: 100% !important; }
-/* Basemap attribution — legally required credit (OSM/OpenMapTiles), so keep it,
-   but keep it unobtrusive: compact mode collapses it into the ⓘ button and this
+/* Basemap attribution ΓÇö legally required credit (OSM/OpenMapTiles), so keep it,
+   but keep it unobtrusive: compact mode collapses it into the Γôÿ button and this
    shrinks the expanded strip. Never remove the control itself. */
 .maplibregl-ctrl-attrib { font-size: 10px; }
 .maplibregl-ctrl-attrib.maplibregl-compact-show { background: rgba(255,255,255,.8); }
 [data-theme='dark'] .maplibregl-ctrl-attrib.maplibregl-compact-show { background: rgba(22,35,58,.8); }
-/* Filter pills live in a static toolbar ABOVE the canvas — they used to be an
+/* Filter pills live in a static toolbar ABOVE the canvas ΓÇö they used to be an
    absolute overlay (top-left, z-index 5) that covered the map itself. The row
    wraps on desktop and scrolls horizontally on mobile (media query below). */
 .map-toolbar { margin-bottom: 8px; }
@@ -1337,18 +1350,18 @@ a.btn { text-decoration: none; }
 [data-theme='dark'] .map-day-chip { background: rgba(22,35,58,.72); color: var(--text); }
 [data-theme='dark'] .map-day-chip:hover { background: rgba(22,35,58,.95); }
 [data-theme='dark'] .map-day-chip.on { background: var(--teal); color: #06251f; border-color: var(--teal); box-shadow: 0 2px 12px rgba(13,141,130,.4); }
-/* Map key: hidden behind a small ⓘ chip by default (it used to blanket the
+/* Map key: hidden behind a small Γôÿ chip by default (it used to blanket the
    bottom-right corner); the body card reopens above the same corner. */
 .map-legend { position: absolute; right: 12px; bottom: 12px; z-index: var(--z-frost); display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
 .map-legend-toggle { border: 1.5px solid rgba(255,255,255,.5); background: rgba(255,255,255,.85); -webkit-backdrop-filter: blur(var(--yf-blur-md)); backdrop-filter: blur(var(--yf-blur-md)); color: var(--text); border-radius: 999px; font-size: 12px; font-weight: 700; padding: 5px 12px; white-space: nowrap; }
 .map-legend-body { background: rgba(255,255,255,.92); -webkit-backdrop-filter: blur(var(--yf-blur-md)); backdrop-filter: blur(var(--yf-blur-md)); border-radius: 12px; padding: 8px 12px; font-size: 11.5px; color: var(--text-2); font-weight: 600; max-width: min(440px, 78vw); }
 [data-theme='dark'] .map-legend-toggle { background: rgba(22,35,58,.88); color: var(--text); }
 [data-theme='dark'] .map-legend-body { background: rgba(22,35,58,.92); }
-/* Expand mode — the map shell breaks out into a fixed overlay so the canvas
+/* Expand mode ΓÇö the map shell breaks out into a fixed overlay so the canvas
    gets the viewport. Sits BELOW the modal (100), impact sheet (90) and
    notifications (80) so dialogs opened from the expanded map still layer on
    top; mapcn's ResizeObserver re-fits the canvas on the size change. Escape
-   or the ⤡ Collapse chip reverts. */
+   or the Γñí Collapse chip reverts. */
 .map-shell--expanded {
   position: fixed; inset: 10px; z-index: var(--z-map-expanded);
   background: var(--bg); padding: 2px;
@@ -1367,7 +1380,7 @@ a.btn { text-decoration: none; }
   to { opacity: 0; transform: scale(.94); }
 }
 .map-shell--expanded .map-frame { flex: 1 1 auto; height: auto; min-height: 0; }
-/* Nearby-idea category filter chips — same pill as day chips, with the
+/* Nearby-idea category filter chips ΓÇö same pill as day chips, with the
    category icon inline and a small count. "on" = category visible. */
 .map-idea-chip { display: inline-flex; align-items: center; gap: 5px; }
 .map-idea-chip .yf-idea-chip-ico { opacity: .85; flex: 0 0 auto; }
@@ -1406,7 +1419,7 @@ a.btn { text-decoration: none; }
   height: 100%; border-radius: 99px; transition: width .4s ease;
   position: relative; overflow: hidden;
 }
-/* A calm, smooth sheen sweeping across each budget bar — a single compositor
+/* A calm, smooth sheen sweeping across each budget bar ΓÇö a single compositor
    transform slide, never a repaint. Reduced-motion users get a static bar. */
 .budget-bar-fill::after {
   content: ''; position: absolute; top: 0; bottom: 0; width: 42%;
@@ -1442,9 +1455,6 @@ a.btn { text-decoration: none; }
   /* Edge-to-edge: keep content clear of the landscape home-indicator edge. */
   padding-right: env(safe-area-inset-right);
 }
-.ai-drawer:not(.open) {
-  display: none;
-}
 @keyframes drawerIn { from { transform: translateX(40px); opacity: 0; } to { transform: none; opacity: 1; } }
 .ai-head { display: flex; align-items: center; gap: 10px; padding: 15px 17px; border-bottom: 1px solid var(--line); }
 .ai-msgs { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 17px; display: flex; flex-direction: column; gap: 13px; }
@@ -1453,7 +1463,7 @@ a.btn { text-decoration: none; }
 .ai-bubble.bot { align-self: flex-start; background: var(--bg-soft); color: var(--text); border-bottom-left-radius: 5px; }
 .ai-assumption { margin-top: 9px; font-size: 11.8px; color: var(--text-3); border-top: 1px dashed var(--line); padding-top: 7px; }
 .ai-quick { padding: 10px 14px; border-top: 1px solid var(--line); }
-.ai-quick-scroll { display: flex; gap: 7px; overflow-x: auto; padding-bottom: 5px; scrollbar-width: thin; scrollbar-color: var(--text-3) transparent; -webkit-overflow-scrolling: touch; }
+.ai-quick-scroll { display: flex; gap: 7px; overflow-x: auto; padding-bottom: 5px; scrollbar-width: thin; }
 .ai-input-row { display: flex; gap: 8px; padding: 12px 14px; border-top: 1px solid var(--line); }
 .typing-dots { display: inline-flex; gap: 4px; padding: 4px 2px; }
 .typing-dots span { width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); animation: blink 1.2s infinite; }
@@ -1480,7 +1490,7 @@ a.btn { text-decoration: none; }
 .resolve-btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
 
 /* ---------- Public page ---------- */
-/* ---------- M7: public itinerary editorial hero (§6.11, editorial mockup) ---------- */
+/* ---------- M7: public itinerary editorial hero (┬º6.11, editorial mockup) ---------- */
 .pub-hero {
   position: relative; color: #fff; overflow: hidden;
   padding: 96px 0 132px; /* room for the floating practical-bit card */
@@ -1507,7 +1517,7 @@ a.btn { text-decoration: none; }
 }
 .pub-hero-story { font-size: clamp(15px, 1.6vw, 18px); color: #e2f1ef; max-width: 640px; margin: 12px 0 0; line-height: 1.6; }
 .pub-hero-byline { font-size: 12.5px; font-weight: 800; letter-spacing: .08em; color: #cfe8e4; margin: 14px 0 0; }
-/* "The practical bit" — evidence card floating over the hero's right edge */
+/* "The practical bit" ΓÇö evidence card floating over the hero's right edge */
 .pub-hero-stats {
   position: absolute; z-index: var(--z-raised); right: max(20px, calc((100% - 1180px) / 2 + 20px)); bottom: -66px;
   width: 300px; border-radius: var(--radius-lg); padding: 15px 18px;
@@ -1518,10 +1528,10 @@ a.btn { text-decoration: none; }
 .pub-stats-sub { display: block; font-size: 12px; color: #5c7172; }
 .pub-stats-divider { border: none; border-top: 1px solid #e2e7df; margin: 10px 0 8px; }
 .pub-stats-row { display: grid; gap: 4px; font-size: 12px; color: #607778; }
-/* Locked premium overlay (public itinerary) — single merged rule. The old pair
+/* Locked premium overlay (public itinerary) ΓÇö single merged rule. The old pair
    declared `position: absolute; inset: 0` here and `position: relative` later in
    the file; the later `relative` won the cascade, so this keeps `relative` (the
-   overlay renders in flow). `z-index: 5` is retained — the overlay must stack
+   overlay renders in flow). `z-index: 5` is retained ΓÇö the overlay must stack
    above sibling stop-cards. `inset: 0` was dropped: a zero offset is a no-op on
    `position: relative`. */
 .locked-overlay {
@@ -1623,7 +1633,7 @@ a.btn { text-decoration: none; }
   box-shadow: var(--shadow-soft);
   min-width: 220px; z-index: var(--z-nav-glass); overflow: hidden; }
 /* Glass is translucent, so mid-gray text that reads fine on solid cards goes
-   muddy here — lift panel text one step (email/empty-state use .muted). */
+   muddy here ΓÇö lift panel text one step (email/empty-state use .muted). */
 .user-menu .muted, .notif-pop .muted { color: var(--text-2); }
 .user-menu-item { display: block; width: 100%; text-align: left; background: none; border: none;
   cursor: pointer; padding: 11px 15px; font-size: 13.5px; font-weight: 600; color: var(--text); }
@@ -1679,7 +1689,7 @@ a.btn { text-decoration: none; }
   object-fit: cover; opacity: .42; z-index: var(--z-under);
 }
 
-/* Locked premium CTA (public itinerary) — rule merged into .locked-overlay above */
+/* Locked premium CTA (public itinerary) ΓÇö rule merged into .locked-overlay above */
 .locked-cta { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
   justify-content: center; text-align: center; gap: 6px; background: rgba(250,247,242,.55); -webkit-backdrop-filter: blur(1.5px); backdrop-filter: blur(1.5px); padding: 16px; }
 [data-theme='dark'] .locked-cta { background: rgba(11,20,35,.55); }
@@ -1716,7 +1726,7 @@ a.btn { text-decoration: none; }
 
 /* Teardrop place-pins: day colour fills the drop, the category emoji is the
    main glyph and the timeline number rides as a small corner badge. The drop
-   is a rounded square rotated -45°; everything inside is counter-rotated. */
+   is a rounded square rotated -45┬░; everything inside is counter-rotated. */
 .yf-map-tear {
   position: relative;
   width: 34px; height: 34px;
@@ -1828,7 +1838,7 @@ a.btn { text-decoration: none; }
   padding: 13px 14px; border-radius: 10px; font-size: 15px; text-align: left;
 }
 
-/* Drag feedback is NOT touch-only — desktop HTML5 drag drives .is-dragging
+/* Drag feedback is NOT touch-only ΓÇö desktop HTML5 drag drives .is-dragging
    too. These lived inside the <=720px block, so desktop drags never got the
    wiggle or the dashed empty slot. */
 .tl.is-dragging .tl-row:not(.dragging):not(.drag-over):not(.foreign-over) {
@@ -1840,7 +1850,7 @@ a.btn { text-decoration: none; }
   75% { transform: rotate(-.5deg); }
 }
 .tl.is-dragging .tl-row { will-change: transform; }
-/* The carried row's original becomes an empty dashed slot — the browser's
+/* The carried row's original becomes an empty dashed slot ΓÇö the browser's
    drag ghost stays the only floating copy (no double-ghost). */
 .tl-row.dragging { opacity: .45; border: 1.5px dashed var(--teal); box-shadow: none; }
 .tl-row.dragging > * { visibility: hidden; }
@@ -1928,7 +1938,7 @@ main:focus { outline: none; }
 /* screen-reader-only utility (F-04 status lines) */
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 
-/* Smooth focus visibility for keyboard users — one shared teal ring for every
+/* Smooth focus visibility for keyboard users ΓÇö one shared teal ring for every
    interactive control (UI audit F-12; state matrix in DESIGN_TOKENS.md).
    .skip-link is pre-wired for the F-08 skip link; .yf-map-pin gets an extra
    outline-offset below so the ring clears the map tiles. */
@@ -1974,6 +1984,7 @@ main:focus { outline: none; }
 
 /* ---- Nearby POI suggestions (Map tab) ---- */
 .yf-map-pin-idea {
+  background: linear-gradient(135deg, #FBBF3C, #F59E2D);
   border-style: dashed;
   font-size: 14px;
   animation: yf-idea-pulse 2.2s ease-in-out infinite;
@@ -1984,7 +1995,7 @@ main:focus { outline: none; }
   50% { box-shadow: 0 2px 4px rgba(var(--shadow-navy-rgb),.28), 0 0 0 9px rgba(245,158,45,0); }
 }
 /* Honour the OS reduce-motion setting globally (UI audit F-17): collapse all
-   animations and transitions to a single frame instead of guarding each one —
+   animations and transitions to a single frame instead of guarding each one ΓÇö
    spinners/typing dots freeze, hover lifts become instant, sheets appear
    without sliding. */
 @media (prefers-reduced-motion: reduce) {
@@ -1992,7 +2003,7 @@ main:focus { outline: none; }
     animation-duration: .01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: .01ms !important;
-    /* Staggered entrances (rise-d1..d5) delay the START — freeze those too. */
+    /* Staggered entrances (rise-d1..d5) delay the START ΓÇö freeze those too. */
     transition-delay: 0s !important;
   }
   /* keep the idea-pin visible but static (it already keeps its dashed gold style) */
@@ -2024,7 +2035,7 @@ main:focus { outline: none; }
 .btn-teal:hover { background: var(--teal-deep, #0e7a72); }
 
 /* ---------- Halt spot rows (unified travel panel) ---------- */
-/* Formatted 12h/24h preview under native <input type="time"> fields — the
+/* Formatted 12h/24h preview under native <input type="time"> fields ΓÇö the
    browser controls the input's own display format, so we echo the app pref. */
 .time-preview { margin-top: 3px; font-variant-numeric: tabular-nums; }
 .ride-spot {
@@ -2046,7 +2057,7 @@ main:focus { outline: none; }
 .hp-pin { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
 .hp-pin input { accent-color: var(--teal); }
 
-/* Ride-plan purpose chips — colour-coded stop type on suggested halt cards */
+/* Ride-plan purpose chips ΓÇö colour-coded stop type on suggested halt cards */
 .ride-purpose {
   display: inline-flex; align-items: center;
   font-size: 10.5px; font-weight: 800; letter-spacing: .3px; text-transform: uppercase;
@@ -2073,7 +2084,7 @@ main:focus { outline: none; }
 .poi-plan-row .poi-thumb { width: 34px; height: 34px; border-radius: 8px; }
 [data-theme='dark'] .ride-purpose-overnight { background: #fff; color: #06251f; }
 
-/* Map-tab corridor suggestions — two curated columns (§6.10 tone coding):
+/* Map-tab corridor suggestions ΓÇö two curated columns (┬º6.10 tone coding):
    need-based halts (fuel/food/rest/stretch/overnight) LEFT in teal, and
    see-&-do / detours / scenic stops RIGHT in scenic purple. The tinted
    wash makes each lane read as its own category at a glance while the
@@ -2114,11 +2125,11 @@ main:focus { outline: none; }
 .poi-col--needs .poi-col-head b { color: var(--teal-deep); }
 .poi-col--see .poi-col-head b { color: #5540B8; }
 [data-theme='dark'] .poi-col--see .poi-col-head b { color: #B4A5FF; }
-/* tint the purpose chips inside their lane — sightseeing reads scenic purple */
+/* tint the purpose chips inside their lane ΓÇö sightseeing reads scenic purple */
 .poi-col--see .ride-purpose-sight { background: color-mix(in srgb, #7C5CFC 16%, transparent); color: #5540B8; }
 [data-theme='dark'] .poi-col--see .ride-purpose-sight { color: #B4A5FF; }
 
-/* Map-tab ideas grid — need rail LEFT, map CENTER, see-&-do rail RIGHT, so both
+/* Map-tab ideas grid ΓÇö need rail LEFT, map CENTER, see-&-do rail RIGHT, so both
    suggestion lanes sit beside the map with no page scroll between them. Rails
    scroll internally; on mobile everything stacks with the map first. */
 .map-ideas-grid {
@@ -2141,15 +2152,15 @@ main:focus { outline: none; }
   .map-ideas-grid .poi-col { max-height: none; }
 }
 
-/* ---------- Motion system (subtle & premium, CTI §9) ----------
+/* ---------- Motion system (subtle & premium, CTI ┬º9) ----------
    One easing family + three speeds (--ease-out / --t-fast|med|slow). Only
-   transform and opacity animate — compositor-friendly, no layout thrash.
+   transform and opacity animate ΓÇö compositor-friendly, no layout thrash.
    The global prefers-reduced-motion block above freezes all of this. */
 @keyframes panelIn {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: none; }
 }
-/* page-change entrance: slow, gentle rise — no jerk between hash routes */
+/* page-change entrance: slow, gentle rise ΓÇö no jerk between hash routes */
 @keyframes routeIn {
   from { opacity: 0; transform: translateY(18px); }
   to { opacity: 1; transform: none; }
@@ -2170,12 +2181,12 @@ main:focus { outline: none; }
 .board-stop:hover { transform: translateY(-1px); }
 
 /* ---- Map-focus ("peek") mode: columns glide ~90% off the board's bottom
-   edge — a 48px sliver of each stays visible while the map owns the board —
+   edge ΓÇö a 48px sliver of each stays visible while the map owns the board ΓÇö
    and slide back with a staggered settle. transform-only: compositor run. */
 .board-col { transition: transform 500ms var(--ease-out); }
 .board--mapfocus .board-col { transform: translateY(88%); } /* 12% sliver keeps a readable card edge */
-/* staggered choreography: slide-off cascades left→right, return settles in
-   reverse — both directions read as one satisfying wave */
+/* staggered choreography: slide-off cascades leftΓåÆright, return settles in
+   reverse ΓÇö both directions read as one satisfying wave */
 .board-col:nth-child(2), .board--mapfocus .board-col:nth-child(2) { transition-delay: 40ms; }
 .board-col:nth-child(3), .board--mapfocus .board-col:nth-child(3) { transition-delay: 80ms; }
 .board-col:nth-child(4), .board--mapfocus .board-col:nth-child(4) { transition-delay: 120ms; }
@@ -2190,10 +2201,10 @@ main:focus { outline: none; }
    pass in BoardView provides the up/down motion). No CSS wiggle here on
    purpose: an infinite keyframe transform on the same cards fights the WAAPI
    FLIP animations frame-by-frame (jitter + broken native drag). The original
-   of the carried card becomes an empty dashed slot — the browser's drag ghost
+   of the carried card becomes an empty dashed slot ΓÇö the browser's drag ghost
    is then the only "copy", killing the double-ghost effect. */
 .board-col-stops.is-dragging .board-stop { will-change: transform; }
-/* Insertion marker — a slim teal line that glides between cards to show where
+/* Insertion marker ΓÇö a slim teal line that glides between cards to show where
    the carried card will land; the cards themselves never move during a drag.
    transform-only movement on a 3px element = pure compositor, zero churn. */
 .board-col-stops { position: relative; }
@@ -2212,7 +2223,7 @@ main:focus { outline: none; }
   border: 1.5px dashed var(--teal);
 }
 .board-stop.dragging .stop-main { visibility: hidden; }
-/* Kanban cards are drag surfaces — text selection has no use here and a
+/* Kanban cards are drag surfaces ΓÇö text selection has no use here and a
    failed/late drag gesture must never fall back to painting blue over
    the whole board. */
 .board-cols { user-select: none; -webkit-user-select: none; }
@@ -2231,24 +2242,24 @@ main:focus { outline: none; }
 }
 .btn:active, .tab-btn:active { transform: scale(.97); }
 
-/* Theme cross-fade: light↔dark glides instead of snapping. */
+/* Theme cross-fade: lightΓåödark glides instead of snapping. */
 body, .topnav, .glass, .board, .board-col, .modal, .toast {
   transition: background-color var(--t-slow) var(--ease-out), color var(--t-slow) var(--ease-out), border-color var(--t-slow) var(--ease-out);
 }
-/* the trip band also compacts on the Board tab — include padding in its glide */
+/* the trip band also compacts on the Board tab ΓÇö include padding in its glide */
 .trip-head-card {
   transition: background-color var(--t-slow) var(--ease-out), color var(--t-slow) var(--ease-out),
     border-color var(--t-slow) var(--ease-out), padding var(--t-med) var(--ease-out);
 }
 
-/* Route-level entrance: every main page change (My trips ↔ Explore ↔ a trip)
+/* Route-level entrance: every main page change (My trips Γåö Explore Γåö a trip)
    replays the same gentle fade+rise as workspace tab switches. */
 .route-panel { animation: routeIn .55s cubic-bezier(.22, 1, .36, 1) backwards; }
 
 /* Drag-and-drop feedback: the carried card's original becomes a dashed slot
    (above), while any valid drop target breathes a teal ring so the landing
    zone is unmistakable on both the HTML5 and touch paths. The ring is a
-   scaling ::after — transform+opacity only, compositor-friendly (a pulsing
+   scaling ::after ΓÇö transform+opacity only, compositor-friendly (a pulsing
    box-shadow repaints every frame and stutters on big lists). */
 @keyframes dropPulse {
   0%, 100% { transform: scale(1); opacity: .9; }
@@ -2291,7 +2302,7 @@ body, .topnav, .glass, .board, .board-col, .modal, .toast {
 }
 .fork-btn:hover { filter: brightness(1.05); }
 /* One press scale (.97, matching .btn) and one hover lift (-2px cards, -1px
-   chips) across every clickable control — no more three languages. */
+   chips) across every clickable control ΓÇö no more three languages. */
 .icon-btn:active, .move-btn:active, .vote-btn:active, .clickable-chip:active,
 .chip-btn:active, .map-day-chip:active, .map-legend-toggle:active, .tab-btn:active { transform: scale(.97); }
 .save-heart:hover { transform: scale(1.08); }
@@ -2315,10 +2326,10 @@ body, .topnav, .glass, .board, .board-col, .modal, .toast {
 /* ---- Theme radiate via View Transitions (driven from App.tsx) ----
    The real UI of the incoming theme is revealed by a clip-path circle anchored
    at the theme-toggle button (--vt-x/--vt-y/--vt-r, set before the transition
-   starts). Classes select direction: vt-radiate-out = dark→light (the new view
-   radiates from the icon), vt-radiate-in = light→dark (the old view collapses
+   starts). Classes select direction: vt-radiate-out = darkΓåÆlight (the new view
+   radiates from the icon), vt-radiate-in = lightΓåÆdark (the old view collapses
    into the icon). While the transition runs, vt-active suppresses
-   backdrop-filter everywhere — Chromium renders glass inside VT snapshots
+   backdrop-filter everywhere ΓÇö Chromium renders glass inside VT snapshots
    without its backdrop, which otherwise turns the whole page into a gray veil.
    Reduced-motion users skip the whole JS path (instant swap). */
 ::view-transition-old(root),
@@ -2335,11 +2346,11 @@ html.vt-active :where(*) {
   to { clip-path: circle(var(--vt-r, 120vmax) at var(--vt-x, 50%) var(--vt-y, 50%)); }
 }
 :root.vt-radiate-in::view-transition-old(root) {
-  /* light→dark: start slow, accelerate home (mirror of the bloom) */
+  /* lightΓåÆdark: start slow, accelerate home (mirror of the bloom) */
   animation: vt-radiate-in 680ms cubic-bezier(.55, 0, .85, .36) both;
 }
 /* Collapse direction needs the OLD snapshot painted on top of the new one
-   (UA default stacks new above old) — otherwise the imploding light is
+   (UA default stacks new above old) ΓÇö otherwise the imploding light is
    hidden beneath the already-dark new view and nothing animates. */
 :root.vt-radiate-in::view-transition-old(root) { z-index: 2; }
 :root.vt-radiate-in::view-transition-new(root) { z-index: 1; }
@@ -2368,7 +2379,7 @@ html.vt-active :where(*) {
 .day-highlight-meta { font-size: 12.5px; color: var(--text-3); }
 .pub-footer-line { text-align: center; color: var(--text-3); font-size: 13px; padding: 26px 0 12px; }
 
-/* ---------- M7: Explore editorial treatment (§6.10) ---------- */
+/* ---------- M7: Explore editorial treatment (┬º6.10) ---------- */
 .explore-hero {
   color: #fff; padding: 52px 0 44px;
   background: linear-gradient(160deg, var(--yf-navy) 0%, #0d4b56 58%, #0b3844 100%);
@@ -2423,7 +2434,7 @@ html.vt-active :where(*) {
 [data-theme='dark'] .save-heart { background: rgba(20, 32, 46, .85); color: #e58875; }
 .itin-card { position: relative; }
 
-/* ---------- Plan Bench (issue #37) — homepage cost calculator ---------- */
+/* ---------- Plan Bench (issue #37) ΓÇö homepage cost calculator ---------- */
 .plan-bench {
   padding-top: 14px; scroll-margin-top: 76px;
   --bench-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', 'Roboto Mono', Consolas, monospace;
@@ -2444,7 +2455,7 @@ html.vt-active :where(*) {
 .bench-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: start; }
 .bench-eyebrow { font-size: 11px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: var(--text-3); }
 .bench-block-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
-/* crew size / trip length heads — value rides the eyebrow row at label scale
+/* crew size / trip length heads ΓÇö value rides the eyebrow row at label scale
    so the two blocks in the pair align with Getting There / Stay Style above */
 .bench-block-value {
   font-size: 13px; font-weight: 750; color: var(--text);
@@ -2464,7 +2475,7 @@ html.vt-active :where(*) {
 }
 .bench-toggle.on { border-color: var(--yf-teal-600); background: var(--yf-teal-100); color: var(--yf-teal-700); }
 
-/* range sliders — filled track + brand thumb (webkit first per lightningcss) */
+/* range sliders ΓÇö filled track + brand thumb (webkit first per lightningcss) */
 .yf-range {
   -webkit-appearance: none; appearance: none;
   width: 100%; height: 28px; background: transparent; cursor: pointer;
@@ -2493,7 +2504,7 @@ html.vt-active :where(*) {
 }
 .yf-range:hover::-moz-range-thumb { transform: scale(1.12); }
 
-/* quick-route preset chips — wrapping chip group, selected = dark filled */
+/* quick-route preset chips ΓÇö wrapping chip group, selected = dark filled */
 .bench-chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
 .bench-preset-chip {
   display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
@@ -2518,7 +2529,7 @@ html.vt-active :where(*) {
 .bench-derived { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: 12px; color: var(--text-2); }
 .bench-derived-cost { font-weight: 750; color: var(--yf-teal-700); font-variant-numeric: tabular-nums; font-family: var(--bench-mono); }
 
-/* getting there: 2×2 mode grid, speed badge, selected = filled */
+/* getting there: 2├ù2 mode grid, speed badge, selected = filled */
 .bench-mode-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 .bench-mode-btn {
   display: flex; align-items: center; gap: 7px; min-width: 0; cursor: pointer;
@@ -2570,7 +2581,7 @@ html.vt-active :where(*) {
 .bench-crew-btn.on { border-color: var(--yf-teal-600); background: var(--yf-teal-600); color: #fff; }
 .bench-crew-emoji { font-size: 15px; line-height: 1; }
 
-/* receipt v3 — theme-aware bill: torn bottom edge, stamp, barcode, mono numerals.
+/* receipt v3 ΓÇö theme-aware bill: torn bottom edge, stamp, barcode, mono numerals.
    Light theme = cream paper with ink text; dark theme = navy till-roll. Every
    receipt surface/text pair reads from these scoped props so the two themes
    cannot drift out of contrast. */
@@ -2578,7 +2589,7 @@ html.vt-active :where(*) {
   --receipt-ink: var(--text);
   --receipt-ink-soft: var(--text-2);
   --receipt-ink-faint: var(--text-3);
-  --receipt-accent: var(--yf-teal-700);  /* teal-600 read 4.08:1 on paper — under AA for the 11px kicker */
+  --receipt-accent: var(--yf-teal-700);  /* teal-600 read 4.08:1 on paper ΓÇö under AA for the 11px kicker */
   --receipt-line: var(--line);
   --receipt-barcode: rgba(13, 43, 38, .5);
   --receipt-fatigue-bg: var(--card-soft);
@@ -2616,7 +2627,7 @@ html.vt-active :where(*) {
     radial-gradient(120% 70% at 0% 100%, rgba(15, 158, 144, .2), transparent 55%),
     linear-gradient(165deg, var(--yf-navy), #0A222B 82%);
 }
-/* capture override — the shared PNG always ships the dark till-roll look.
+/* capture override ΓÇö the shared PNG always ships the dark till-roll look.
    Mirrors the dark-theme block above but scoped to the receipt node itself,
    so lib/billCapture.ts can force it for one frame without touching the
    user's theme (also pins --bg/--line for the perforation dots). */
@@ -2644,7 +2655,7 @@ html.vt-active :where(*) {
   font-size: 11px; font-weight: 800; letter-spacing: .18em;
   opacity: .68; pointer-events: none; user-select: none;
 }
-/* barcode strip — pure CSS, decorative */
+/* barcode strip ΓÇö pure CSS, decorative */
 .bench-barcode {
   position: absolute; top: 14px; right: 14px; width: 68px; height: 22px;
   color: var(--receipt-barcode); pointer-events: none;
@@ -2656,7 +2667,7 @@ html.vt-active :where(*) {
 .bench-receipt-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 2px 10px; padding-right: 92px; }
 .bench-receipt-kicker { font-size: 11px; font-weight: 800; letter-spacing: .14em; color: var(--receipt-accent); white-space: nowrap; text-transform: uppercase; }
 .bench-receipt-date { font-size: 11px; color: var(--receipt-ink-faint); white-space: nowrap; }
-/* crew + transport meta row — right under the kicker: who and how, at a
+/* crew + transport meta row ΓÇö right under the kicker: who and how, at a
    glance. More prominent than a footnote, quieter than the per-head hero. */
 .bench-meta-row {
   display: flex; align-items: center; justify-content: center; gap: 7px;
@@ -2671,7 +2682,7 @@ html.vt-active :where(*) {
   display: block; font-size: clamp(30px, 4.5vw, 42px); font-weight: 800; color: var(--receipt-ink);
   font-variant-numeric: tabular-nums; font-family: var(--bench-mono);
 }
-/* per-head is the hero figure on the v2 receipt — saffron, unit rides baseline */
+/* per-head is the hero figure on the v2 receipt ΓÇö saffron, unit rides baseline */
 .bench-total-perhead { color: var(--receipt-hero); display: flex; justify-content: center; align-items: baseline; gap: 7px; flex-wrap: wrap; }
 .bench-perhead-unit { font-size: 15px; font-weight: 700; color: var(--receipt-ink-soft); letter-spacing: .02em; }
 .bench-total-sub { display: block; font-size: 13px; color: var(--receipt-ink-soft); margin-top: 4px; font-variant-numeric: tabular-nums; }
@@ -2718,11 +2729,11 @@ html.vt-active :where(*) {
 .bench-receipt-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
 .bench-receipt-actions .chip { cursor: pointer; font-size: 12px; font-weight: 650; }
 .bench-receipt-actions .chip:disabled { opacity: .65; cursor: default; }
-/* Capture frame: the share-image snapshot must not include the busy chip —
+/* Capture frame: the share-image snapshot must not include the busy chip ΓÇö
    the actions row is hidden (visibility keeps the layout stable) while the
    receipt renders its capture-safe form. */
 .bench-receipt.bench-capturing .bench-receipt-actions { visibility: hidden; }
-/* html-to-image clones the node and copies computed styles — any surviving
+/* html-to-image clones the node and copies computed styles ΓÇö any surviving
    transition re-runs in the clone, capturing the fatigue needle mid-sweep and
    the gauge arc near-empty. Freeze every transition in the capture frame. */
 .bench-receipt.bench-capturing *,
@@ -2730,9 +2741,9 @@ html.vt-active :where(*) {
 .bench-receipt.bench-capturing *::after { transition: none !important; }
 .bench-fineprint { font-size: 11px; color: var(--receipt-ink-faint); text-align: center; margin: 0; line-height: 1.5; }
 
-/* ---------- Plan Bench 3.0 — motion system (transform/opacity only) ---------- */
+/* ---------- Plan Bench 3.0 ΓÇö motion system (transform/opacity only) ---------- */
 
-/* identity badge — the tool finally wears its name */
+/* identity badge ΓÇö the tool finally wears its name */
 .bench-badge {
   display: flex; align-items: center; gap: 8px; width: fit-content;
   margin: 0; padding: 7px 16px; border-radius: 999px;
@@ -2765,7 +2776,7 @@ html.vt-active :where(*) {
 .bench-sub { text-align: center; max-width: 560px; margin: 0 auto 18px; }
 
 /* drifting atmosphere blobs behind the section */
-/* No overflow on the section itself — the blobs blur freely across the section
+/* No overflow on the section itself ΓÇö the blobs blur freely across the section
    bounds onto the shared fixed canvas, so there is no hard clipped edge (the
    "bench seam"). Beware the pair rule: even `overflow-x: clip` alone makes the
    OTHER axis compute to clip too, which slices the blobs' top/bottom bleed
@@ -2805,7 +2816,7 @@ html.vt-active :where(*) {
 @keyframes bench-rise { from { opacity: 0; transform: translateY(16px); } }
 @keyframes bench-receipt-in { from { opacity: 0; transform: translateY(26px) rotate(-1.4deg); } }
 
-/* odometer money figures — per-digit vertical strips */
+/* odometer money figures ΓÇö per-digit vertical strips */
 .odo { display: inline-flex; line-height: 1; vertical-align: baseline; }
 .odo-char { display: inline-block; height: 1em; line-height: 1; }
 .odo-digit {
@@ -2840,7 +2851,7 @@ html.vt-active :where(*) {
   .bench-gauge-needle { transition: transform .7s cubic-bezier(.22, 1.35, .36, 1); }
 }
 
-/* stamp thud — hidden until the section lives, restamps on preset apply */
+/* stamp thud ΓÇö hidden until the section lives, restamps on preset apply */
 .bench-stamp { opacity: 0; }
 .bench-live .bench-stamp { animation: bench-stamp-in .5s cubic-bezier(.2, 2, .4, 1) .6s both; }
 @keyframes bench-stamp-in {
@@ -2869,12 +2880,12 @@ html.vt-active :where(*) {
 }
 @keyframes dice-roll { 0% { transform: rotate(0) scale(1); } 60% { transform: rotate(300deg) scale(1.25); } 100% { transform: rotate(360deg) scale(1); } }
 .bench-surprise:disabled { opacity: .65; cursor: default; }
-/* Surprise sits beside the preset chips as a tertiary action — outline with an
+/* Surprise sits beside the preset chips as a tertiary action ΓÇö outline with an
    amber accent instead of a filled pill that out-shouts its neighbours. */
 .bench-surprise { border-color: var(--yf-amber); color: var(--warn); }
 .bench-surprise .bench-dice { color: var(--yf-amber); }
 
-/* copy celebration — confetti + copied tint */
+/* copy celebration ΓÇö confetti + copied tint */
 .bench-receipt-actions { position: relative; }
 .chip-copied { border-color: var(--yf-teal-600) !important; color: var(--yf-teal-700) !important; }
 .bench-confetti { position: absolute; left: 50%; top: 0; pointer-events: none; }
@@ -2903,7 +2914,7 @@ html.vt-active :where(*) {
   80%, 100% { transform: translateX(330%) skewX(-18deg); }
 }
 
-/* hero CTA — boarding-pass ticket: stub + tear line + flight code */
+/* hero CTA ΓÇö boarding-pass ticket: stub + tear line + flight code */
 .hero-bench-cta {
   position: relative; display: flex; align-items: stretch; width: min(100%, 460px);
   margin-top: 14px; padding: 0; border: none; border-radius: var(--radius); cursor: pointer;
@@ -2964,7 +2975,7 @@ html.vt-active :where(*) {
 
 /* ---------- Living atmosphere: one continuous page canvas ---------- */
 /* The whole landing page sits on a single fixed-attachment atmospheric ramp:
-   the mint→cream→peach gradient never scrolls or restarts per section, so the
+   the mintΓåÆcreamΓåÆpeach gradient never scrolls or restarts per section, so the
    topnav area, hero and bench read as one seamless surface (no white band
    above the nav pill, no hard edge where the hero section ends). */
 .landing-canvas {
@@ -2988,21 +2999,21 @@ html.vt-active :where(*) {
 .rise-d3 { animation-delay: .21s; } .rise-d4 { animation-delay: .28s; }
 .rise-d5 { animation-delay: .35s; }
 
-/* ---------- RouteSquiggle: draw → flow → pop → traveller (calm timeline) ---------- */
-/* Smooth programmatic scrolling everywhere (bench CTA, route changes) — reduced
+/* ---------- RouteSquiggle: draw ΓåÆ flow ΓåÆ pop ΓåÆ traveller (calm timeline) ---------- */
+/* Smooth programmatic scrolling everywhere (bench CTA, route changes) ΓÇö reduced
    motion users keep instant jumps. */
 @media (prefers-reduced-motion: no-preference) {
   html { scroll-behavior: smooth; }
 }
 /* Scenario cycle is 8s; everything below is choreographed inside it:
-   0.3–2.3s road draws · 1.6s+ badges pop · 2.3–7.5s dot glides · 7.0–8.0s crossfade */
+   0.3ΓÇô2.3s road draws ┬╖ 1.6s+ badges pop ┬╖ 2.3ΓÇô7.5s dot glides ┬╖ 7.0ΓÇô8.0s crossfade */
 .rs-road {
   stroke-dasharray: 1; stroke-dashoffset: 1;
   animation: rs-draw 2s cubic-bezier(.45, .05, .35, 1) .3s forwards;
 }
 @keyframes rs-draw { to { stroke-dashoffset: 0; } }
 /* centreline flow: offset shifts by 7+9=16 per dash cycle; -160 = 10 cycles.
-   Delayed to begin as the road finishes drawing — flow never outruns the draw. */
+   Delayed to begin as the road finishes drawing ΓÇö flow never outruns the draw. */
 .rs-dash { animation: rs-flow 4.5s linear infinite 1.9s; }
 @keyframes rs-flow { to { stroke-dashoffset: -160; } }
 /* per-scenario live figures: staggered rise-in on every trip switch */
@@ -3023,7 +3034,7 @@ html.vt-active :where(*) {
 
 /* ---------- One-screen bench: controls + receipt share the viewport ---------- */
 /* Height = viewport minus the floating nav (and its gap), so scrolling to the
-   bench fits the ENTIRE calculator on screen — nothing cropped below the fold. */
+   bench fits the ENTIRE calculator on screen ΓÇö nothing cropped below the fold. */
 .plan-bench { scroll-margin-top: calc(var(--nav-h, 64px) + 8px); }
 @media (min-width: 721px) {
   .plan-bench {
@@ -3093,11 +3104,11 @@ html.vt-active :where(*) {
 }
 /* ============================================================
    Homepage "wow" pass (build 2):
-   live destination ticker · multi-trip route carousel crossfade ·
-   glass glowing CTAs · scroll-reveal choreography · travel SVG motifs
+   live destination ticker ┬╖ multi-trip route carousel crossfade ┬╖
+   glass glowing CTAs ┬╖ scroll-reveal choreography ┬╖ travel SVG motifs
    ============================================================ */
 
-/* ---------- Infinite destination ticker (hero → Plan Bench band) ---------- */
+/* ---------- Infinite destination ticker (hero ΓåÆ Plan Bench band) ---------- */
 .dest-ticker {
   position: relative; overflow: hidden; padding: 18px 0;
   border-top: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
@@ -3124,12 +3135,12 @@ html.vt-active :where(*) {
 /* offbeat items get a purple tag tint to separate "common" from "offbeat" */
 .t-off { color: var(--yf-purple); background: color-mix(in srgb, var(--yf-purple) 12%, transparent); }
 /* AA contrast on the 10px tags: light-theme lavender reads 3.31:1 on its own
-   tint — deeper violet for light (dark's #A99BD6 passes). Dark theme's teal tag
+   tint ΓÇö deeper violet for light (dark's #A99BD6 passes). Dark theme's teal tag
    (#1E9D92, 3.83:1) gets a brighter mint-teal instead. */
 :root:not([data-theme='dark']) .ticker-item .t-off { color: #6F60A6; }
 [data-theme='dark'] .ticker-item .t-tag { color: #26B3A6; }
 
-/* ---------- RouteSquiggle → multi-trip scenario carousel ---------- */
+/* ---------- RouteSquiggle ΓåÆ multi-trip scenario carousel ---------- */
 .rs-shell { position: relative; margin: 14px 0 4px; }
 .rs-svg { width: 100%; height: auto; display: block; }
 .rs-layer { opacity: 0; }
@@ -3151,7 +3162,7 @@ html.vt-active :where(*) {
 .rs-caption-name { font-weight: 800; font-size: 13.5px; color: #fff; }
 .rs-caption-meta { font-size: 11px; opacity: .66; color: #fff; letter-spacing: .01em; }
 /* caption is remounted with the scenario (key=cap-idx), so it fades in exactly
-   when the new road starts drawing — no independent loop to drift out of sync */
+   when the new road starts drawing ΓÇö no independent loop to drift out of sync */
 @media (prefers-reduced-motion: no-preference) {
   .rs-caption-name { animation: rs-cap-in .8s cubic-bezier(.22, 1, .36, 1) both; }
   .rs-caption-meta { animation: rs-cap-in .8s cubic-bezier(.22, 1, .36, 1) .12s both; }
@@ -3160,7 +3171,7 @@ html.vt-active :where(*) {
   0% { opacity: 0; transform: translateY(6px); }
   100% { opacity: 1; transform: translateY(0); }
 }
-/* ---------- Rich, solid CTAs (hero) — colour must not be washed by glass ---------- */
+/* ---------- Rich, solid CTAs (hero) ΓÇö colour must not be washed by glass ---------- */
 .hero .btn-lg {
   position: relative; overflow: hidden; letter-spacing: .01em;
 }
@@ -3173,14 +3184,14 @@ html.vt-active :where(*) {
 }
 .hero .btn-saffron {
   background: linear-gradient(120deg, #F8B14E, #EE8F33);
-  /* same AA ink as the base saffron variant — white on light saffron was ~1.9:1 */
+  /* same AA ink as the base saffron variant ΓÇö white on light saffron was ~1.9:1 */
   color: var(--color-accent-foreground); border-color: rgba(255,255,255,.3);
   box-shadow: 0 10px 26px rgba(243,170,61,.44), inset 0 1px 0 rgba(255,255,255,.3);
 }
 [data-theme='dark'] .hero .btn-primary,
 [data-theme='dark'] .hero .btn-saffron { border-color: rgba(255,255,255,.2); }
 @media (prefers-reduced-motion: no-preference) {
-  /* soft breathing outer glow — box-shadow only, transform-free */
+  /* soft breathing outer glow ΓÇö box-shadow only, transform-free */
   .hero .btn-primary { animation: glow-breathe-teal 3.2s ease-in-out infinite; }
   .hero .btn-saffron { animation: glow-breathe-saffron 3.2s ease-in-out infinite; }
   /* keyboard focus must win over the breathing glow (focus ring, not glow) */
@@ -3260,12 +3271,12 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
 }
 
 /* ============================================================
-   Narrow-viewport blocks — consolidated at end of file (M4.2)
+   Narrow-viewport blocks ΓÇö consolidated at end of file (M4.2)
    ------------------------------------------------------------
    Every @media (max-width: ...) block used to be scattered through
    the file, and a few contradicted each other (.map-day-chip was
    sized in two different 720px blocks). They are now grouped here,
-   wide -> narrow. Cascade notes (position matters — media queries
+   wide -> narrow. Cascade notes (position matters ΓÇö media queries
    add no specificity):
    - Each rule below sits LATER in the file than (or in the same spot
      relative to) the unmedia'd base rules it must beat; a per-selector
@@ -3295,7 +3306,7 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
 
 /* ---- <=480px: narrow phones ---- */
 /* Narrow phones: brand + tray + Log in + Sign up free overflow ~390px
-   viewports and clipped the signup CTA off the edge — tighten instead. */
+   viewports and clipped the signup CTA off the edge ΓÇö tighten instead. */
 @media (max-width: 480px) {
   .bench-pair { grid-template-columns: 1fr; }
   .topnav .container.topnav-inner { padding: 0 8px 0 14px; gap: 8px; }
@@ -3334,7 +3345,7 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
   /* workspace: mobile nav button, form controls, map & stop cards */
   .mobile-nav-btn { display: inline-flex; }
   /* iOS Safari zooms the viewport when an input with font-size < 16px gains
-     focus — bump form controls to 16px to stop the page jumping. */
+     focus ΓÇö bump form controls to 16px to stop the page jumping. */
   input, select, textarea { font-size: 16px; }
   /* Map: viewport-relative height so it doesn't eat the whole screen, but
      never collapses below a usable canvas. */
@@ -3360,7 +3371,7 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
   .tab-btn { padding: 12px 15px; }
   .vote-btn { width: 44px; height: 38px; min-width: 40px; min-height: 40px; }
   .day-badge { width: 40px; height: 40px; }
-  /* M4: a sticky trip-total strip would eat the small viewport — flatten it. */
+  /* M4: a sticky trip-total strip would eat the small viewport ΓÇö flatten it. */
   .tl-total-strip { position: static; }
   .day-rail-chip { padding: 9px 14px; }
   .day-section { padding: 14px 14px 10px; }
@@ -3379,7 +3390,7 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
   .icon-btn { min-width: 40px; min-height: 40px; }
   .loc-dropdown { max-height: 240px; }
 
-  /* Board stacks instead of overlaying — the map becomes a fixed landscape
+  /* Board stacks instead of overlaying ΓÇö the map becomes a fixed landscape
      block, the info/pulse cards stack above it, and the day columns scroll
      below in normal flow (nothing fights the small viewport). */
   .board-head { flex-direction: column; align-items: flex-start; gap: 8px; }
@@ -3395,7 +3406,7 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
   .board-info { max-width: none; }
   .board-pulse { width: 100%; }
   /* column-direction topbar: the desktop equal-size flex basis would become a
-     560px height here — stack panels at natural size instead */
+     560px height here ΓÇö stack panels at natural size instead */
   .board-topbar .board-info, .board-topbar .board-pulse { flex: 0 0 auto; }
   .board-cols { position: static; inset: auto; margin-top: 4px; padding-bottom: 10px; }
   .board-col { flex: 0 0 264px; height: auto; min-height: 0; }
@@ -3443,11 +3454,11 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
 }
 
 /* ============================================================
-   v0.36 — Budget + Group input redesigns
+   v0.36 ΓÇö Budget + Group input redesigns
    ============================================================ */
 
-/* ---- Budget: metric strip ---- */
-.metric-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+/* ---- Budget: metric strip (5 tiles since the safe-to-spend pacing tile) ---- */
+.metric-strip { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 16px; }
 .metric-bad { color: var(--danger); }
 .metric-good { color: var(--ok); }
 
@@ -3457,7 +3468,7 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
 .daybar-label { font-weight: 700; color: var(--text-2); white-space: nowrap; }
 .daybar-track { position: relative; height: 12px; background: var(--bg-soft); border-radius: 99px; }
 .daybar-fill { height: 100%; border-radius: 99px; transition: width 300ms cubic-bezier(0.2, 0, 0, 1); }
-/* the daily-average tick — amber line crossing every bar */
+/* the daily-average tick ΓÇö amber line crossing every bar */
 .daybar-avg { position: absolute; top: -3px; bottom: -3px; width: 2px; border-radius: 1px; background: var(--saffron-600); }
 .daybar-meta { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.3; font-variant-numeric: tabular-nums; }
 .daybar-meta .muted { font-size: 11.5px; }
@@ -3491,7 +3502,7 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
 .budget-hero-action.warn { background: rgba(214, 83, 77, 0.22); color: #ffb3ae; }
 .budget-hero-action.ok { background: rgba(124, 225, 207, 0.16); color: #9fe8dc; }
 
-/* ---- Budget: who paid · who owes ---- */
+/* ---- Budget: who paid ┬╖ who owes ---- */
 .balances { display: flex; flex-direction: column; }
 .balance-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px dashed var(--line); font-size: 13.5px; }
 .balance-row:last-child { border-bottom: none; }
@@ -3546,6 +3557,7 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
 .opt-row .opt-cost { text-align: right; }
 
 /* ---- v0.36 responsive ---- */
+@media (max-width: 1400px) { .metric-strip { grid-template-columns: repeat(3, 1fr); } }
 @media (max-width: 1100px) { .metric-strip { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 700px) {
   .daybar-row { grid-template-columns: 44px 1fr; }
@@ -3559,10 +3571,10 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
 .stop-meta span { display: inline-flex; align-items: center; gap: 4px; }
 
 /* ============================================================
-   v0.37 — Creator page + dashboard
+   v0.37 ΓÇö Creator page + dashboard
    ============================================================ */
 
-/* ---- Public creator hero (#/creator/:id) — mirrors the Explore hero band ---- */
+/* ---- Public creator hero (#/creator/:id) ΓÇö mirrors the Explore hero band ---- */
 .creator-hero {
   color: #fff; padding: 40px 0 34px;
   background: linear-gradient(160deg, var(--yf-navy) 0%, #0d4b56 58%, #0b3844 100%);
@@ -3584,7 +3596,7 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
 .creator-hero-meta { color: #d9efeb; font-size: 13px; margin: 4px 0 0; }
 .creator-hero-bio { color: #c5e1dc; font-size: 14.5px; line-height: 1.55; margin: 8px 0 0; max-width: 560px; }
 .creator-hero-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-/* the hero is navy in BOTH themes — outline/ghost buttons need light text */
+/* the hero is navy in BOTH themes ΓÇö outline/ghost buttons need light text */
 .creator-hero-actions .btn-outline { border-color: rgba(255, 255, 255, .4); color: #fff; background: rgba(255, 255, 255, .08); }
 .creator-hero-actions .btn-outline:hover { background: rgba(255, 255, 255, .16); }
 .creator-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
@@ -3606,7 +3618,7 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
 }
 
 /* ============================================================
-   v0.38 — Creator hub (Profile · My publications: Overview | Earnings)
+   v0.38 ΓÇö Creator hub (Profile ┬╖ My publications: Overview | Earnings)
    ============================================================ */
 
 /* mini KPI tiles inside the 340px profile column */
@@ -3631,52 +3643,91 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
   .pub-kpis .stat-tile.wide { grid-column: span 2; }
 }
 
-/* ---- Semantic meta-icon tints (v0.40) — colour-coded icons app-wide ---- */
+/* ---- Semantic meta-icon tints (v0.40) ΓÇö colour-coded icons app-wide ---- */
 .mi-money { color: var(--yf-saffron); }
 .mi-time { color: var(--yf-teal-600); }
 .mi-place { color: var(--yf-purple); }
 .mi-ticket { color: var(--ok-500); }
 [data-theme='dark'] .mi-time { color: var(--teal-600); }
 
-/* ============ Share tab (tabbed layout) ============ */
-/* Replaces the cramped .two-col grid: each share concern gets its own surface
-   behind an ARIA tablist. Tokens are theme-aware so this works in dark mode. */
-.share-tabbed { margin-top: 4px; }
-.share-tablist {
-  display: flex;
-  gap: 2px;
-  border-bottom: 1px solid var(--line);
-  margin-bottom: 18px;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: thin;
+/* ============ Printable day cards (offline PDF export) ============ */
+/* The sheet renders in the DOM at all times (so print sees it without a
+   React round-trip) but is clipped away on screen. Under @media print the
+   whole app is hidden and ONLY the sheet shows. Colors are forced on ΓÇö the
+   teal accents are what make the cards readable on paper.
+   Width is deliberately UNSET: @page owns the paper. A fixed 210mm here
+   overflowed the printable area (210 - 2├ù12mm margins) and cropped the
+   right edge of every card in the printed output. */
+.pr-sheet-portal {
+  position: absolute; left: -99999px; top: 0;
+  max-width: 190mm;
 }
-.share-tab {
-  appearance: none;
-  -webkit-appearance: none;
-  border: 0;
-  background: transparent;
-  font: inherit;
-  font-weight: 600;
-  font-size: 14px;
-  color: var(--text-3);
-  padding: 11px 14px;
-  cursor: pointer;
-  white-space: nowrap;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-  border-radius: 8px 8px 0 0;
-  transition: color var(--t-fast) var(--ease-out), border-color var(--t-fast) var(--ease-out);
+
+/* Same type system as the app ΓÇö Sora headings, Inter body ΓÇö so the printed
+   cards read as YatraFlow. system-ui fallbacks cover offline printing where
+   the Google-Fonts files aren't cached. */
+.pr-sheet { font: 10.5pt/1.5 var(--font-body); color: #1a2433; }
+.pr-sheet h1, .pr-sheet h2 { font-family: var(--font-display); letter-spacing: -0.01em; }
+.pr-sheet h1 { font-size: 17pt; margin: 0 0 2pt; }
+.pr-sheet h2 { font-size: 12.5pt; margin: 0; }
+.pr-trip { border-bottom: 2.5pt solid var(--teal-600); padding-bottom: 8pt; margin-bottom: 10pt; }
+.pr-trip-meta { margin: 1pt 0; font-size: 10pt; color: #445; }
+
+.pr-day { border: 1pt solid #b9c6d2; border-radius: 6pt; padding: 8pt 10pt; margin-bottom: 9pt; }
+.pr-day-head { border-bottom: 0.75pt solid #d6dee8; padding-bottom: 4pt; margin-bottom: 5pt; }
+.pr-day-route { font-size: 10.5pt; font-weight: 700; margin-right: 8pt; }
+.pr-day-meta { font-size: 9.5pt; color: #445; }
+
+.pr-stop { padding: 2.5pt 0; border-bottom: 0.5pt dotted #ccd6e0; }
+.pr-stop-title { font-weight: 700; }
+.pr-stop-meta { font-size: 9.5pt; color: #445; margin-left: 8pt; }
+.pr-badge { font-size: 8.5pt; font-weight: 700; margin-left: 4pt; padding: 0 3pt; border-radius: 3pt; }
+.pr-badge--ok { color: #0a7d55; border: 0.75pt solid #0a7d55; }
+.pr-badge--warn { color: #a35a00; border: 0.75pt solid #a35a00; }
+
+.pr-leg { padding: 2pt 0 2pt 10pt; font-size: 9.5pt; color: #57677a; font-style: italic; }
+.pr-leg-route { font-style: italic; }
+.pr-leg-meta { margin-left: 6pt; }
+
+.pr-warns { margin: 3pt 0 0; padding-left: 14pt; font-size: 9.5pt; color: #8a4a00; }
+.pr-warns li { margin: 0; }
+
+.pr-expenses h2 { margin-bottom: 4pt; }
+.pr-expenses table { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
+.pr-expenses td { border-top: 0.5pt solid #d6dee8; padding: 2pt 4pt; }
+.pr-num { text-align: right; white-space: nowrap; }
+
+.pr-foot { display: flex; justify-content: space-between; gap: 12pt;
+  border-top: 0.75pt solid #b9c6d2; margin-top: 8pt; padding-top: 4pt;
+  font-size: 8.5pt; color: #67788c; }
+
+/* On-screen preview inside the modal: the same sheet, scaled into a scrollable page. */
+.pr-preview { max-height: 55vh; overflow: auto; border: 1px solid var(--line); border-radius: 12px;
+  background: #fff; padding: 18px 22px; }
+.pr-preview .pr-sheet { transform: scale(0.82); transform-origin: top left; width: 122%; }
+[data-theme='dark'] .pr-preview { background: #e9edf3; }
+
+/* ---- print: show only the sheet ---- */
+@media print {
+  /* hide the whole app; the portal sheet is a sibling overlay, so it survives */
+  body > #root { display: none !important; }
+  .pr-sheet-portal {
+    position: static !important; left: auto !important;
+    overflow: visible !important; max-width: none !important;
+  }
+  .pr-sheet { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .pr-day { break-inside: avoid; page-break-inside: avoid; }
+  .pr-expenses { break-inside: avoid; page-break-inside: avoid; }
+  .pr-trip { break-inside: avoid; }
+  @page { size: A4; margin: 12mm; }
 }
-.share-tab:hover { color: var(--text-2); }
-.share-tab.is-active {
-  color: var(--color-primary);
-  border-bottom-color: var(--color-primary);
+
+/* ============ My Trips toolbar (search / style chips / when / sort) ============ */
+.trips-toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.trips-toolbar .trips-search { flex: 1 1 240px; min-width: 200px; }
+.trips-toolbar .select { width: auto; min-width: 130px; flex: 0 1 auto; }
+@media (max-width: 720px) {
+  .trips-toolbar { align-items: stretch; }
+  .trips-toolbar .trips-search { flex-basis: 100%; }
+  .trips-toolbar .explore-chips { order: 3; flex-basis: 100%; }
 }
-.share-tab:focus-visible {
-  outline: none;
-  box-shadow: var(--ring);
-}
-.share-panel { display: block; }
-/* Guard: keep [hidden] authoritative so inactive panels leave the a11y tree. */
-.share-panel[hidden] { display: none; }
