@@ -221,7 +221,11 @@ export async function planJourneyHalts(
     ...cadenceForCrew(opts.travellers, opts.travelStyle),
   })
   if (segments.length === 0) return []
-  const purposes = [...new Set(segments.map(s => s.purpose))]
+  // See & do is fed by leftovers of the corridor scan (leftoverAsSight), so the
+  // scan itself must ask for sights — the planner never makes 'sight' segments,
+  // and without this the sightseeing column (and its map pins) is empty by
+  // construction: every query would be food/fuel/hotel text searches.
+  const purposes = [...new Set([...segments.map(s => s.purpose), 'sight' as const])]
 
   // 2. Search with purpose-specific queries (merged into one call per provider)
   //    Provider directive (2026-09-07): with a Google key, BOTH layers are
