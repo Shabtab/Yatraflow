@@ -5,6 +5,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 ## [Unreleased]
 
 ### Added
+- **Per-day cost + time-at-stops chips on the timeline's day headers.** Each day header now shows a quiet `≈ ₹X` chip (that day's slice of `computeTotals().byDay` — leg fuel/fare plus its day-attributed costs and entry fees, priced with the same assumptions as the trip budget) and a `Xh Ym at stops` chip (the day's dwell from `simulateDay`), both hidden while the day is collapsed so a folded header stays calm. The time-packedness bar already lived on the header (`day-progress`); this surfaces the remaining engine intelligence in the same place you edit. (Built on the v0.36 `byDay` attribution rather than a separate day-cost helper.)
 - **Every suggestion says why.** Cards show a reason line built from the leg, detour and nearest city.
 - **Smarter cadence for your crew.** Relaxed trips and big groups get earlier breaks, packed trips push further.
 - **Lunch lands at lunchtime.** Meal halts slide into 11:30-14:30 based on the day's start time.

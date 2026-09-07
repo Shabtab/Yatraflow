@@ -866,6 +866,19 @@ a.btn { text-decoration: none; }
   max-width: 340px;
 }
 .day-warn-pill.sev-high { background: var(--yf-coral-100); color: var(--danger); }
+/* Per-day cost + dwell chips in the day header — quiet metadata pills that
+   mirror the stop-kind tag treatment (soft tint, no border) so they read as
+   engine-derived context, not actions. */
+.day-cost-chip, .day-dwell-chip {
+  align-self: flex-start;
+  border-radius: 999px; padding: 4px 11px;
+  font-size: 11.5px; font-weight: 700; line-height: 1.5;
+  white-space: nowrap;
+  color: var(--text-2); background: var(--bg-soft);
+}
+.day-cost-chip { color: var(--teal-deep); background: var(--teal-soft); }
+[data-theme='dark'] .day-cost-chip { color: var(--teal); }
+@media (max-width: 720px) { .day-dwell-chip { display: none; } }
 /* Stop-kind markers: a coloured spine on the card + a small type tag.
    Tag text stays --text-2 on soft tinted backgrounds so both themes keep
    AA contrast; the spine carries the hue. */
