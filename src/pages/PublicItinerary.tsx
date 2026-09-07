@@ -50,6 +50,48 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
     return () => { alive = false }
   }, [pub, cachedTrip, fetched, miss])
 
+  // ---- practical evidence, computed from the real trip (no schema fields).
+  // Every hook lives ABOVE the early return: the on-demand fetch means the
+  // first render can legitimately lack the trip, and hooks after a
+  // conditional return crash React (#310 "rendered more hooks") the moment
+  // the fetch resolves.
+  const totals = useMemo(() => (trip ? computeTotals(trip) : null), [trip])
+  const orderedDays = useMemo(
+    () => (trip ? [...trip.days].sort((a, b) => a.index - b.index) : []),
+    [trip],
+  )
+  const routePoints = useMemo(() => {
+    if (!trip) return undefined
+    const pts: Array<{ lat: number; lng: number; day: number }> = []
+    if (trip.startLocationCoords) pts.push({ lat: trip.startLocationCoords.lat, lng: trip.startLocationCoords.lng, day: 0 })
+    for (const day of orderedDays) {
+      for (const s of [...day.stops].sort((a, b) => a.orderInDay - b.orderInDay)) {
+        if (s.status !== 'rejected' && Number.isFinite(s.lat) && Number.isFinite(s.lng)) {
+          pts.push({ lat: s.lat, lng: s.lng, day: day.index })
+        }
+      }
+    }
+    return pts.length >= 2 ? pts : undefined
+  }, [trip, orderedDays])
+
+  // Curated highlights: the three meatiest days, back in trip order.
+  const highlights = useMemo(() => {
+    if (!trip) return []
+    const scored = orderedDays.map(day => {
+      const stops = [...day.stops].filter(s => s.status !== 'rejected').sort((a, b) => a.orderInDay - b.orderInDay)
+      const sim = simulateDay(day, trip, originOf(trip, day.index), day.index)
+      const lead = stops.find(s => s.auto !== true) ?? stops[0]
+      return {
+        day,
+        stops,
+        score: stops.length + (sim.totalDistanceKm > 1 ? 1 : 0),
+        kind: lead ? stopKindOf(lead) : 'drive' as const,
+        meta: `${stops.length} stop${stops.length === 1 ? '' : 's'} · ~${minutesToHM(sim.totalTravelMinutes)} travel${sim.totalDistanceKm > 1 ? ` · ${sim.totalDistanceKm.toFixed(0)} km` : ''}`,
+      }
+    })
+    return [...scored].sort((a, b) => b.score - a.score).slice(0, 3).sort((a, b) => a.day.index - b.day.index)
+  }, [trip, orderedDays])
+
   if (!pub || !trip) {
     return (
       <div className="container">
@@ -61,6 +103,12 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
       </div>
     )
   }
+  // Past the gate every memo is fully computed — narrowed aliases keep the
+  // rest of the body honest without re-checking `trip` everywhere.
+  const totalsN = totals!
+  const orderedDaysN = orderedDays
+  const routePointsN = routePoints
+  const highlightsN = highlights
 
   const creator = userById(pub.creatorId)
   const shareLink = `${location.origin}${location.pathname}#/pub/${pub.id}`
@@ -78,38 +126,8 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
     toast(nowSaved ? 'Saved to this browser.' : 'Removed from saved itineraries.')
   }
 
-  // ---- practical evidence, computed from the real trip (no schema fields) ----
-  const totals = useMemo(() => computeTotals(trip), [trip])
-  const orderedDays = useMemo(() => [...trip.days].sort((a, b) => a.index - b.index), [trip])
-  const routePoints = useMemo(() => {
-    const pts: Array<{ lat: number; lng: number; day: number }> = []
-    if (trip.startLocationCoords) pts.push({ lat: trip.startLocationCoords.lat, lng: trip.startLocationCoords.lng, day: 0 })
-    for (const day of orderedDays) {
-      for (const s of [...day.stops].sort((a, b) => a.orderInDay - b.orderInDay)) {
-        if (s.status !== 'rejected' && Number.isFinite(s.lat) && Number.isFinite(s.lng)) {
-          pts.push({ lat: s.lat, lng: s.lng, day: day.index })
-        }
-      }
-    }
-    return pts.length >= 2 ? pts : undefined
-  }, [trip])
-
-  // Curated highlights: the three meatiest days, back in trip order.
-  const highlights = useMemo(() => {
-    const scored = orderedDays.map(day => {
-      const stops = [...day.stops].filter(s => s.status !== 'rejected').sort((a, b) => a.orderInDay - b.orderInDay)
-      const sim = simulateDay(day, trip, originOf(trip, day.index), day.index)
-      const lead = stops.find(s => s.auto !== true) ?? stops[0]
-      return {
-        day,
-        stops,
-        score: stops.length + (sim.totalDistanceKm > 1 ? 1 : 0),
-        kind: lead ? stopKindOf(lead) : 'drive' as const,
-        meta: `${stops.length} stop${stops.length === 1 ? '' : 's'} · ~${minutesToHM(sim.totalTravelMinutes)} travel${sim.totalDistanceKm > 1 ? ` · ${sim.totalDistanceKm.toFixed(0)} km` : ''}`,
-      }
-    })
-    return [...scored].sort((a, b) => b.score - a.score).slice(0, 3).sort((a, b) => a.day.index - b.day.index)
-  }, [trip])
+  // (totals/orderedDaysN/routePointsN/highlightsN are computed by the guarded
+  //  hooks above the gate — totalsN/orderedDaysN/routePointsN/highlightsN.)
 
   return (
     <div>
@@ -141,8 +159,8 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
           <hr className="pub-stats-divider" />
           <div className="pub-stats-row">
             <span><MetaIcon icon={ MapPin } tone="place" />{pub.routeSummary.length} place{pub.routeSummary.length === 1 ? '' : 's'}</span>
-            <span><Route size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />{totals.totalDistanceKm.toFixed(0)} km</span>
-            <span><MetaIcon icon={ Clock } tone="time" />{minutesToHM(totals.totalTravelMinutes)} on the road</span>
+            <span><Route size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />{totalsN.totalDistanceKm.toFixed(0)} km</span>
+            <span><MetaIcon icon={ Clock } tone="time" />{minutesToHM(totalsN.totalTravelMinutes)} on the road</span>
             <span><MetaIcon icon={ Calendar } tone="time" />{pub.durationDays} days</span>
           </div>
         </aside>
@@ -176,7 +194,7 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
                 </>
               )}
               <p className="editorial-body">
-                Built around {minutesToHM(totals.totalTravelMinutes)} of real road time across {pub.durationDays} days —
+                Built around {minutesToHM(totalsN.totalTravelMinutes)} of real road time across {pub.durationDays} days —
                 pacing, breaks and costs are all in the plan below.
               </p>
             </div>
@@ -187,19 +205,19 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
                 startLabel={trip.startLocation}
                 endLabel={trip.destinations[trip.destinations.length - 1]}
                 roundTripNote={isRoundTrip(trip) ? `↩ returns to ${trip.startLocation}` : undefined}
-                points={routePoints}
+                points={routePointsN}
               />
               <div className="route-glance-list">{pub.routeSummary.join(' · ')}</div>
-              <span className="route-glance-meta">{pub.durationDays} days · {totals.totalDistanceKm.toFixed(0)} km · {totals.stopCount} stops</span>
+              <span className="route-glance-meta">{pub.durationDays} days · {totalsN.totalDistanceKm.toFixed(0)} km · {totalsN.stopCount} stops</span>
             </aside>
           </div>
 
-          {highlights.length > 0 && (
-            <div className="pub-highlights">
+          {highlightsN.length > 0 && (
+            <div className="pub-highlightsN">
               <span className="editorial-kicker">TRIP HIGHLIGHTS</span>
               <h2 className="editorial-title">The rhythm of {pub.durationDays} days</h2>
               <div className="day-highlight-row">
-                {highlights.map(h => (
+                {highlightsN.map(h => (
                   <div key={h.day.id} className="day-highlight-card">
                     <div className="day-highlight-top">
                       <span className="editorial-kicker">DAY {String(h.day.index + 1).padStart(2, '0')} · {STOP_KIND_LABELS[h.kind].toUpperCase()}</span>
