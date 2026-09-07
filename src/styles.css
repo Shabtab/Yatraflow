@@ -1974,7 +1974,6 @@ main:focus { outline: none; }
 
 /* ---- Nearby POI suggestions (Map tab) ---- */
 .yf-map-pin-idea {
-  background: linear-gradient(135deg, #FBBF3C, #F59E2D);
   border-style: dashed;
   font-size: 14px;
   animation: yf-idea-pulse 2.2s ease-in-out infinite;

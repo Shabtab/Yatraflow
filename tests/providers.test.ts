@@ -177,8 +177,8 @@ describe('facade: searchNearbyPoisMulti (Search-Along-Route)', () => {
     const f = routeFetch([
       [/places:searchText/, {
         places: [
-          { id: 'P1', displayName: { text: 'Echo Point' }, location: { latitude: 10.15, longitude: 77.15 }, primaryTypeDisplayName: { text: 'Tourist attraction' }, regularOpeningHours: { periods: [{ open: { hour: 9, minute: 0 }, close: { hour: 18, minute: 0 } }] } },
-          { id: 'P2', displayName: { text: 'Home Cafe' }, location: { latitude: HOME.lat, longitude: HOME.lng }, primaryTypeDisplayName: { text: 'Cafe' }, currentOpeningHours: { periods: [{ open: { hour: 8, minute: 30 }, close: { hour: 22, minute: 0 } }] } },
+          { id: 'P1', displayName: { text: 'Echo Point' }, location: { latitude: 10.15, longitude: 77.15 }, primaryType: 'tourist_attraction', types: ['tourist_attraction', 'point_of_interest'], primaryTypeDisplayName: { text: 'Tourist attraction' }, regularOpeningHours: { periods: [{ open: { hour: 9, minute: 0 }, close: { hour: 18, minute: 0 } }] } },
+          { id: 'P2', displayName: { text: 'Home Cafe' }, location: { latitude: HOME.lat, longitude: HOME.lng }, primaryType: 'cafe', types: ['cafe', 'food', 'point_of_interest'], primaryTypeDisplayName: { text: 'Cafe' }, currentOpeningHours: { periods: [{ open: { hour: 8, minute: 30 }, close: { hour: 22, minute: 0 } }] } },
         ],
         routingSummaries: [
           // live-verified legs shape: [0] = route origin → place, [1] = place → route destination
@@ -206,7 +206,7 @@ describe('facade: searchNearbyPoisMulti (Search-Along-Route)', () => {
     expect(hits.some(h => h.name === 'Home Cafe')).toBe(false)
   })
 
-  it('falls back to the free stack when Google returns nothing (round-trip routes)', async () => {
+  it('with a key configured, Google failures yield an EMPTY list — never free-stack junk (provider directive)', async () => {
     vi.stubEnv('VITE_GOOGLE_MAPS_API_KEY', 'test-key')
     vi.stubGlobal('fetch', routeFetch([
       [/places:searchText/, EMPTY],
@@ -217,8 +217,10 @@ describe('facade: searchNearbyPoisMulti (Search-Along-Route)', () => {
     const hits = await searchNearbyPoisMulti([{ lat: 10.0, lng: 77.0 }], 20000, 10, {
       routeCoords: [[77.0, 10.0], [77.4, 10.5]],
     })
-    expect(hits.some(h => h.name === 'KFDC Falls')).toBe(true)
-    expect(hits.some(h => h.source === 'google')).toBe(false)
+    // Google mode: an empty scan renders the honest empty state. Wikipedia/
+    // Mappls/OSM (the stray "constituency"/"community block" sources) serve
+    // ONLY when no key is configured.
+    expect(hits.length).toBe(0)
   })
 
   it('counts Text Search Pro events against the quota guard', async () => {
@@ -238,7 +240,7 @@ describe('facade: searchNearbyPoisMulti (Search-Along-Route)', () => {
     const f = routeFetch([
       [/places:searchText/, {
         places: [
-          { id: 'P9', displayName: { text: 'Spice Garden' }, location: { latitude: 10.05, longitude: 77.05 }, primaryTypeDisplayName: { text: 'Tourist attraction' }, currentOpeningHours: { periods: [{ open: { hour: 9, minute: 30 }, close: { hour: 17, minute: 0 } }] } },
+          { id: 'P9', displayName: { text: 'Spice Garden' }, location: { latitude: 10.05, longitude: 77.05 }, primaryType: 'tourist_attraction', types: ['tourist_attraction', 'point_of_interest'], primaryTypeDisplayName: { text: 'Tourist attraction' }, currentOpeningHours: { periods: [{ open: { hour: 9, minute: 30 }, close: { hour: 17, minute: 0 } }] } },
         ],
       }],
     ])
@@ -267,7 +269,7 @@ describe('facade: searchNearbyPoisMulti (Search-Along-Route)', () => {
     expect(f.mock.calls.some(([u]) => String(u).includes('places:'))).toBe(false)
   })
 
-  it('single-anchor Google failure falls back to the free stack', async () => {
+  it('single-anchor Google failure yields an EMPTY list in Google mode (no free-stack fallback)', async () => {
     vi.stubEnv('VITE_GOOGLE_MAPS_API_KEY', 'test-key')
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       if (String(input).includes('places:searchText')) throw new Error('boom')
@@ -275,7 +277,29 @@ describe('facade: searchNearbyPoisMulti (Search-Along-Route)', () => {
       return new Response(JSON.stringify(EMPTY), { status: 200 })
     }))
     const hits = await searchNearbyPois(10.0, 77.0)
-    expect(hits.some(h => h.name === 'KFDC Falls')).toBe(true)
-    expect(hits.some(h => h.source === 'google')).toBe(false)
+    // provider directive: with a key, a failed Google call renders the
+    // honest empty state — never Overpass/Wikipedia/Mappls results
+    expect(hits.length).toBe(0)
+  })
+
+  it('sightseeing search asks Google for tourist_attraction only and drops other types', async () => {
+    vi.stubEnv('VITE_GOOGLE_MAPS_API_KEY', 'test-key')
+    const f = routeFetch([
+      [/places:searchText/, {
+        places: [
+          { id: 'TA1', displayName: { text: 'Echo Point' }, location: { latitude: 10.15, longitude: 77.15 }, primaryType: 'tourist_attraction', types: ['tourist_attraction', 'point_of_interest'], primaryTypeDisplayName: { text: 'Tourist attraction' } },
+          { id: 'LOC1', displayName: { text: 'Community Block' }, location: { latitude: 10.16, longitude: 77.16 }, primaryType: 'locality', types: ['locality', 'political'], primaryTypeDisplayName: { text: 'Locality' } },
+        ],
+        routingSummaries: [],
+      }],
+    ])
+    vi.stubGlobal('fetch', f)
+    const hits = await searchNearbyPoisMulti([{ lat: 10.0, lng: 77.0 }], 20000, 10, {
+      routeCoords: [[77.0, 10.0], [77.4, 10.5]],
+      purposes: ['sight'],
+    })
+    // sightseeing results are strictly tourist_attraction — locality hits are dropped
+    expect(hits.some(h => h.name === 'Echo Point')).toBe(true)
+    expect(hits.some(h => h.name === 'Community Block')).toBe(false)
   })
 })

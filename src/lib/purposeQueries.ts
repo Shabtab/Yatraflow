@@ -16,6 +16,12 @@ export interface PurposeQuerySet {
   overpassSelectors: string[]
   /** Category bias used by rankAndCap. */
   categoryBias: string[]
+  /**
+   * Google Places `includedType` — when set, the search request asks for this
+   * place type ONLY (server-side filter), and the client drops any hit whose
+   * primaryType/types miss it (belt-and-braces against stray results).
+   */
+  includedType?: string
 }
 
 // ---- core query tables ----
@@ -45,9 +51,14 @@ const HOTEL_QUERIES: PurposeQuerySet = {
 }
 
 const SIGHT_QUERIES: PurposeQuerySet = {
-  googleQueries: ['tourist attractions', 'places to visit'],
+  // single strict query — Google's tourist_attraction place type, gated
+  // server-side via includedType and re-checked client-side on the hit's
+  // primaryType/types. "places to visit" returned localities ("Community
+  // Block") — dropped.
+  googleQueries: ['tourist attractions'],
   overpassSelectors: ['tourism=attraction', 'tourism=viewpoint', 'historic=monument'],
   categoryBias: ['sightseeing'],
+  includedType: 'tourist_attraction',
 }
 
 function fuelQueries(fuelType?: FuelType): PurposeQuerySet {

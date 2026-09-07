@@ -22,14 +22,36 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - **See & do fills with real sights.** Unassigned corridor hits surface as sightseeing entries instead of leaving the column empty.
 - **Map tab runs side rails.** Need-based halts left, map center, see & do right, with a widened shell so the map keeps full size. Stacks map-first below 1500px.
 - **Every idea gets a map marker.** Coord-less hits resolve in the background and pop in; unresolvable ones stay panel-only.
-
+- **Roads get a personality.** Each leg classifies from route geometry — highway, state road, ghat switchback, city crawl — and cards warn before technical stretches.
+- **Detours get a daily budget.** Each day earns detour minutes from crew style and day density; the see-&-do list enforces it — over-budget ideas are held back with an honest count, not offered as addable cards.
+- **The engine remembers your picks.** Accepts and "not for us" dismissals build a per-trip taste vector; favoured kinds win scoring ties and cards note the streak.
+- **Crew ideas steer the corridor.** Open group-input proposals suppress duplicate suggestions near them and bias picks toward proposed kinds ("more like Arjun waterfall").
+- **Sights bundle into themed days.** Forts, temples, beaches and more cluster into story arcs with one-tap "add all".
+- **Leftover time speaks up.** The Timeline shows the day's slack with one nearby pick that fits, addable in one tap.
+- **Suggestion pins are now colour-coded.** Hotel, food, fuel and sight pins each get their own colour and CatIcon instead of one yellow pulse, and hard-coded gold gradients are gone.
+- **Round-trip routes get suggestions again.** Loops (origin ≈ destination) legitimately return zero Search-Along-Route results; Google mode now supplements with point searches at the corridor anchors instead of rendering nothing.
+- **Quota trips say so.** When the Google text-search soft cap is hit, the Map tab shows an explicit quota note instead of an empty state that reads like "nothing around".
+- **Each halt shows its runners-up.** Every card renders "Also nearby" with the 2 closest same-family alternatives (by |cumKm−target|+weight×detour) with one-tap Add.
+- **Every suggestion links to Google Maps.** Cards carry a real Place link (place_id) when Google gave one, otherwise a pin-by-coords search URL.
 ### Fixed
+- **Road personality no longer mislabels every window on a slow day.** The per-window speed fed to the city-crawl check was mathematically the whole day's average (the km fraction cancelled out), so a slow hill day read "city crawl" on all its windows — including genuine switchbacks. Ghat classification is now geometry-true and always wins; the crawl verdict is an explicit day-level check applied to non-ghat windows only.
+- **"Not for us" refills the suggestion list.** The decline handler cleared the suggestion cache but only bumped a tick that the fetch effect doesn't watch, so the freed slot stayed empty until an unrelated change. Cache clears now pair with the refresh tick (house rule).
+- **Trip DNA learns detour tolerance.** Accept/decline events now carry the hit's detour minutes, so the vector's average-detour signal actually populates instead of staying null forever.
+- **Proposing an idea no longer counts as having gone.** Crew seeds bias the corridor toward their kind (unchanged) but emit a distinct `seed` event that doesn't inflate the crew's acceptance record.
 - **Suggestion positions are road-true on routes with geometry.** `kmFromStartForHit` now snaps hits onto the OSRM polyline when provided, so switchback roads report road km instead of straight-line km. Falls back to anchors when no geometry exists.
 - **Smarter halt assignment.** Segment assignment now runs an improvement sweep after the greedy pass, so an early segment no longer steals a hit that fits a later segment better.
 - **No more duplicate or already-planned suggestions.** Near-duplicate places collapse into one, and candidates near an existing stop are dropped.
 - **Planned stops never resurface as suggestions.** The itinerary filter is now wired into halt planning on both tabs.
 - **Empty plans are never cached.** A first search running before the route resolves no longer persists [] until Refresh.
 - **Detours scored in minutes.** The same off-route distance costs slow modes more.
+- **Scout triage fixes.** Map cache now keys on anchors as well as scope (edited stops re-search); detour budgets use the hit's own day, not the whole trip; accepts/declines bust the cache and re-score immediately; crawl-speed windows read as city crawls; visit-minute tables unified.
+- **Fuel halts never take colleges.** Need-based purposes (fuel, meal, overnight) now reject zero-fit hits, leaving an honest gap instead of a wrong-kind match.
+- **Sightseeing shows only real tourist attractions.** Google's `tourist_attraction` type gate (server + client) drops generic localities and Wikipedia junk like "Community Block" / constituency / panchayat articles.
+- **City layer is Google-only when a key is configured.** The free-stack Overpass+Wikipedia city search (source of stray constituency cards) runs only in keyless mode; Google's locality anchor layer replaces it.
+- **With a key, failures never fall back to free-stack junk.** Empty/failed Google scans render the honest empty state instead of Wikipedia/Mappls overflow.
+- **See & do admits sights only.** Leftover pass now filters to real sight categories (sightseeing, nature, beach, temple, museum, adventure, event, shopping, travel) — restaurants, dhabas, hotels and pumps that lost their segment no longer re-appear as "Sightseeing".
+- **Google hits carry real categories, not purpose strings.** A dhaba from the meal query is now `food` not `meal` (via primaryType mapping), so it passes the purpose-fit gate for its own segment instead of being rejected and dumped into See & do.
+- **Stale suggestion caches are invalidated.** Cache key versioned to v3; pre-directive Wikipedia / mislabeled-category caches automatically miss.
 
 ## [0.40.1] — 2026-09-06
 

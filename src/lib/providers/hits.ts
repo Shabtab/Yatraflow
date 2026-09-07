@@ -6,6 +6,7 @@ import type { VehicleProfile } from '../../data/types'
 // and no env access live here — the corridor tests (tests/nearby.test.ts)
 // exercise this module directly.
 import { haversineKm } from '../geo'
+import type { DnaVector } from '../tripDna'
 
 export interface PlaceHit {
   id: number | string
@@ -259,6 +260,8 @@ export interface NearbyOpts {
   dayStartTimes?: string[]
   /** rain chance percent per day index for the weather join (null = no forecast). */
   dayRainPct?: (number | null)[]
+  /** trip preference vector — favoured categories win scoring ties. */
+  dnaVector?: DnaVector
 }
 
 /**
@@ -427,8 +430,8 @@ export function rankAndCap(
   homeFiltered.sort((a, b) =>
     poiTouristScore(b, anchors, radiusM, opts.categoryBias) - poiTouristScore(a, anchors, radiusM, opts.categoryBias))
   const deduped = dedupeCandidates(homeFiltered)
-  const catCap = Math.max(2, Math.ceil(count / 3))
-  const fuelCap = opts.includeFuel ? 2 : 0
+  const catCap = Math.max(3, Math.ceil(count / 3))
+  const fuelCap = opts.includeFuel ? 4 : 0
   const used = new Map<string, number>()
   const out: PlaceHit[] = []
   let fuelUsed = 0

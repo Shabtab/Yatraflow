@@ -306,9 +306,11 @@ async function searchNearbyOverpass(anchors: { lat: number; lng: number }[], rad
 }
 
 // Wikipedia geosearch covers attractions well, but returns ANY geo-located
-// article — villages, railway stations, districts. Drop the obvious non-places.
+// article — villages, railway stations, districts, community development
+// blocks (Indian admin units with their own Wikipedia pages and coordinates).
+// Drop the obvious non-places.
 const WIKI_JUNK =
-  /village|\btown\b|\bcity\b|municipality|settlement|hamlet|suburb|census|railway|station|district|tehsil|taluk|taluka|mandal|highway|\broad\b|bridge|canal|airport|constituency/
+  /village|\btown\b|\bcity\b|municipality|settlement|hamlet|suburb|census|railway|station|district|tehsil|taluk|taluka|mandal|highway|\broad\b|bridge|canal|airport|constituency|community development block|\bblock\b|\bpanchayat\b/
 
 async function searchNearbyWikipedia(anchors: { lat: number; lng: number }[], radiusM: number, count: number): Promise<PlaceHit[]> {
   const per = Math.max(3, Math.ceil((count * 2) / anchors.length))

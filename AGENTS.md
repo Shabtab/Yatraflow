@@ -23,7 +23,7 @@ Key locations:
 - `src/App.tsx` — app shell: hash routes, nav (hamburger ≤720px), theme, notifications
 - `src/store/store.ts` — data layer (`useSyncExternalStore`) over Supabase
 - `src/lib/engine.ts` — pure planning engine (schedule, budget, breaks, warnings)
-- `src/lib/geocode.ts` — provider facade: Google-first (opt-in key), free-stack fallback
+- `src/lib/geocode.ts` — provider facade: Google-only suggestions when a key is configured, free stack as the keyless mode (see §5 directive)
 - `src/lib/providers/` — `google.ts`, `free.ts` (OSM/Wikipedia/Mappls), shared hits logic
 - `src/lib/timefmt.ts` — 12h/24h clock preference + formatters (default 12h)
 - `src/lib/uiPrefs.ts` — per-day collapse persistence (localStorage)
@@ -31,6 +31,39 @@ Key locations:
 - `src/pages/TripWorkspace.tsx` — the big one: tabs (timeline, map, budget, share…)
 - `tests/` — vitest in **node env (no DOM)** — test pure logic, not DOM
 - CHANGELOG.md — Keep-a-Changelog-style; versions are pre-1.0 milestones
+
+## 1.1 Current project status (as of Sep 7, 2026)
+
+**Version:** v0.40.1 on `test` branch (latest release: Sep 6, 2026)
+
+**State:** Stabilization complete, UI audit all 32 findings fixed. The codebase is now on a clean release cadence with a robust `npm run verify` gate (tsc clean + 388 tests + production build).
+
+**Recent major releases:**
+- **v0.40.1** — Sliding glider on all pill navigation, accessibility fixes (ARIA roles, focus rings, contrast), dead code removal
+- **v0.40.0** — Hard-surface pass: full UI audit (32 findings), lucide icon consistency, numeric typography (tabular digits), a11y structure, one grammar across the workspace
+- **v0.38.0** — Creator hub: Overview + Earnings tabs (payouts ledger), projection view, M7 contract documentation
+- **v0.37.0** — Creator bios + newest sorting, select dropdown theming
+- **v0.36.0** — Impact Preview improvements (time delta includes dwell), expense categories with `--cat-*` tokens, per-vote decision pings
+- **v0.35.0** — Publish editor (preview/price/CTA), fork premium gate, creator mode, sourcemaps
+- **v0.31.0** — M0–M7 Calm Travel Intelligence redesign shipped (user-driven halt planner, 3-layer tokens, OpenFreeMap basemap, touch drag-and-drop)
+
+**Current branch:** `test` (synced with `origin/test`)
+
+**In-flight:**
+- AGENTS.md updates for this session (haptics logging, AI drawer fixes, store write-through patterns)
+- No open PRs or feature branches pending merge
+
+**What's next (ROADMAP.md):**
+- M8: Creator monetization (payouts ledger + fee model)
+- M9: Creator analytics (funnels, statements, revenue attribution)
+- M10: Budget improvements (envelopes, alerts, recurring templates)
+- Strategic track: Together (real-time sync, social features), Premium (payments, bookings), 1.0 (stabilization, polish)
+
+**Key conventions:**
+- `npm run verify` gate before every push
+- Releases on `redesign/calm-travel-intelligence`, then PR to `test`, `main` only with explicit user confirmation (AGENTS §1)
+- Every push ships CHANGELOG.md entry + version bump
+- `tsc -b --clean` first in verify to catch incremental cache issues
 
 ## 2. Workflow rules (non-negotiable, user-mandated)
 
@@ -59,6 +92,7 @@ Key locations:
    re-grep the tracker table, and treat any prior "committed ✅" summary as a
    hypothesis until the commit hash exists. Never re-report status from
    memory; re-derive it from the repo.
+ 6a. **Async operations need input guards.** The AI drawer's `ask()` function had no protection against rapid re-submission during its 650ms processing delay — users could trigger duplicate questions. Fix: `disabled={thinking}` on input and button. When adding async paths (API calls, simulated latency, data processing), always disable user inputs to prevent race conditions, duplicate requests, or state inconsistency. The guard should match the visual feedback state (spinner, disabled button, etc.).
 7. **When asking the user to review/test locally, always hand them the exact
    URL — never make them find or start the server.** Check if the dev server
    is up (probe `http://localhost:5173`); if not, start `npm run dev`
@@ -239,6 +273,21 @@ Hard rules (each learned the hard way — do not relearn them):
   (`tests/providers.test.ts` has the pattern); `vi.stubEnv` for API keys.
 - **View Transitions + theme radiate (Sep 2026): VT is usable on glass-heavy pages ONLY with `backdrop-filter` suppressed during the transition** — Chromium renders glass inside VT snapshots without its backdrop, so any glass layer (`--yf-glass: rgba(255,255,255,.58)`) turns the captured page into a flat gray veil (page-dependent: "perfect" on Landing, broken on #/trips). Shipped pattern in `toggleTheme` (App.tsx): set `--vt-x/--vt-y/--vt-r` on `<html>`, add a direction class (`vt-radiate-out` = dark→light, new view expands; `vt-radiate-in` = light→dark, old view collapses — and it needs old z-index 2 / new 1, since UA stacks new on top) plus `vt-active` (`html.vt-active :where(*) { backdrop-filter: none !important }`) BEFORE `startViewTransition`; the clip-path animation lives in CSS keyframes with `fill: both` (first-frame-correct, end-state held), classes removed on `vt.finished`. A DOM-overlay radiate was tried and rejected (flat color, not the real UI). Don't re-learn these the hard way.
 - **A full-page View-Transition FREEZES every CSS animation for its duration — skip it on animation-heavy pages.** The landing route runs continuous motion (atmosphere blobs, route draw, ticker, odometer); toggling theme there made the whole scenery visibly pause ~700 ms while the DOM snapshot played, and on mobile the eruption point read as off-target. Fix (Sep 2026): `toggleTheme` early-returns to an **instant swap on `route === '/'`** (radiate kept for calmer in-app pages). When adding any VT elsewhere, gate it off routes dominated by looping animation or the "pause" reads as a frozen tab.
+
+- **Diagnostic logging should be guard-claused.** Haptics logging (`haptics.ts`) showed `[HAPTIC]` entries even on iOS where `navigator.vibrate` doesn't exist — misleading noise. Guard `import.meta.env.DEV` logging behind `typeof navigator !== 'undefined'` so logs only appear when the API actually exists. Corollary: test environments that mock `window`/`navigator` must include `vibrate` (even as a no-op) to avoid console spam.
+
+- **AI assistant input must disable while thinking.** `AiDrawer.tsx` had the input enabled during `thinking` state, allowing duplicate questions while the bot was already processing — the simulated 650ms latency made this easy to trigger. The fix: `disabled={thinking}` on the input and submit button. When adding async operations that take >200ms, always disable user inputs to prevent race conditions or duplicate requests.
+
+- **Drawer animations need a class-based toggle.** `AiDrawer.tsx` originally animated via inline style transitions; switching to a `.open` class on the container (`<div className={`ai-drawer ${open ? 'open' : ''}`}>) fixed the animation state reset on re-render. Rule: always use CSS classes for enter/exit animations, never inline styles — React re-renders can reset inline styles mid-animation. The `.ai-drawer:not(.open) { display: none }` pattern is also cleaner than `style={{ display: open ? 'flex' : 'none' }}`.
+
+- **FAB should hide while assistant is open.** `AiDrawer.tsx` kept the `ai-fab` visible behind the drawer, cluttering the UI. Fix: `{!open && !thinking && <button className="ai-fab" ... />}` — only show when drawer is closed AND not processing. Rule: when a panel overlays a floating action button, hide the FAB while the panel is open OR while the panel is in an intermediate state (thinking, loading, saving).
+
+- **Every trip-data mutation must write through BEFORE committing.** The store fixes (Sep 2026) revealed three bugs:
+  1. `setStopStatus` performed redundant lookups before committing, risking stale data.
+  2. `moveStopBetweenDays` committed twice — once in `updateStop`, once explicitly — which bypassed the single-patch guarantee.
+  3. `updateTrip` committed before persisting, so UI showed success but DB failed silently.
+  
+  Rule: call `persistTripField(tripId, mutator)` first, await its Promise, THEN `commit()`. The `persistTripField` now returns `Promise<void>` to enforce this order. If your mutation path doesn't call `persistTripField`, it will update the cache but vanish on refresh — the full verify gate (`tsc` + tests + `vite build`) stays green because nothing exercises write-through.
 - **`overflow-x: clip` silently clips BOTH axes — the pair rule.** Setting `overflow-x: clip; overflow-y: visible` makes `overflow-y` compute to `clip`, so absolutely-positioned blobs that bleed past an element's top/bottom (`top:-90px`/`bottom:-70px` atmosphere blurs) get hard-sliced into visible "seam" lines at the container edges, and right-side bleed (`right:-150px`) shows as a crop bar. To clip horizontal blowout you can't rely on section-level `overflow-x: clip`. Prefer `html { overflow-x: clip }` (a true clip that isn't a scroll container, so `position: sticky` nav keeps working) and leave the section overflow-free so soft blurs can bleed across section bounds onto a shared fixed canvas.
 - **`env(safe-area-inset-*)` is inert without `viewport-fit=cover`** — `.impact-sheet` shipped an `env(safe-area-inset-bottom)` padding that silently did nothing because `index.html`'s viewport meta lacked `viewport-fit=cover` (found while fixing UI-audit F-26, Sep 2026). Activating `cover` turns EVERY inset on at once, so audit all fixed/sticky layers (topnav, toast zone, fabs, drawers, `top:`/`scroll-padding` offsets derived from `--nav-h`) in the same change — adding them one at a time leaves half the UI under the home indicator.
 - **Section-restructure edits can silently swallow bullets** — an edit whose
@@ -353,12 +402,19 @@ Hard rules (each learned the hard way — do not relearn them):
 ## 5. External services
 
 Supabase (auth/data) · Vercel (auto-deploy from `main`) · Google Places
-(opt-in key, quota-guarded, always falls back to the free stack) · OSRM ·
+(opt-in key, quota-guarded) · OSRM ·
 Open-Meteo · Mappls · **OpenFreeMap** (basemap tiles — keyless, no request
 limits, commercial-OK; its TileJSON carries the required attribution, see §4). Live probe for
 Google: `scripts/verify-google-places.mjs`.
-When touching provider code, keep the facade contract: Google failure or
-absent key must silently fall back to the free stack.
+**Provider directive (Sep 2026, PR #73): with a Google key configured, the
+suggestion pipeline is Google-ONLY** — POIs and city anchors both come from
+Google; Google failure, quota exhaustion or empty scans render an honest "no
+match"/quota note, they do NOT silently fall back. The free stack
+(Overpass/Wikipedia/Mappls) serves ONLY keyless mode. Round-trip routes
+(origin ≈ destination) get a Google point-search supplement instead of the
+along-route scan. Geocoding (search box) still degrades Google → free; don't
+reintroduce a silent fallback into the suggestion path, and update surfaces
+that claim it still exists (this section, README, ARCHITECTURE).
 
 Applying `supabase/schema.sql` DDL: the Dashboard SQL editor can run inside a
 **read-only transaction** — DDL like `ALTER PUBLICATION` then fails with

@@ -186,7 +186,7 @@ Every map/data service is **free and keyless** unless the row says otherwise —
 | Weather | [Open-Meteo](https://open-meteo.com) | Free, keyless, CC-BY 4.0 |
 | Geocoding / POIs | Open-Meteo, Wikipedia geosearch, [Overpass (OSM)](https://overpass-api.de) | Free / ODbL |
 | Place autocomplete (opt-in) | [Mappls](https://about.mappls.com/api/) when `VITE_MAPPLS_KEY` is set | Free India dev tier, key required |
-| Places & Routes (opt-in) | [Google Maps Platform](https://mapsplatform.google.com) when `VITE_GOOGLE_MAPS_API_KEY` is set | Needs billing; client-side quota guard caps each SKU at 80% of free allowance |
+| Places & Routes (opt-in) | [Google Maps Platform](https://mapsplatform.google.com) when `VITE_GOOGLE_MAPS_API_KEY` is set | Needs billing; client-side quota guard caps each SKU at 80% of free allowance. With a key, suggestions are Google-only (no free-stack fallback); without one, the free stack serves. |
 
 MapLibre renders the required OSM/OpenMapTiles credit in every map corner.
 
