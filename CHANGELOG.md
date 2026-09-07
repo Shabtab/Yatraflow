@@ -4,7 +4,11 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
-## [0.41.0] — 2026-09-07
+### Fixed
+- **C3: Guard corridorAnchors when all stops are within 500m** (pts.length < 2) prevents cum[1] undefined crash on degenerate routes.
+- **C4: Detour budget now enforced from actual itinerary stops** instead of skipping added/dismissed suggestions.
+
+## [0.41.1] — 2026-09-07
 
 **v0.41.0 = the Corridor Concierge: the suggestion engine now knows the road, the clock, the weather and the crew — and every card says why.** Horizons 1–3 of the suggestion-engine brainstorm ship together (road personality, enforced daily detour budget, trip DNA, crew seeds, story arcs, slack prompts, asymmetric detours, opening-hours scoring, fuel-corridor advisories), the Google-only provider directive lands, and the store + AI-drawer sweep empties the issue tracker (15/15).
 
