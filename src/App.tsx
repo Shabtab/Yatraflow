@@ -7,7 +7,7 @@ import {
   Settings, Sparkles, Sun, Tent, X,
 } from 'lucide-react'
 import type { Trip } from './data/types'
-import { useDb, currentUser, useUsers, useNotifications, useSessionUserId, logout, markAllNotificationsRead, tripById, joinViaInvite, duplicateTrip, init, useStoreReady } from './store/store'
+import { useDb, currentUser, useUsers, useNotifications, useSessionUserId, logout, markAllNotificationsRead, tripById, joinViaInvite, duplicateTrip, init, useStoreReady, fetchSharedTrip } from './store/store'
 import { Avatar, BrandMark, ToastZone, useClickOutside, toast } from './components/ui'
 import { PillNav } from './components/PillNav'
 import { decodeTripSnapshot } from './lib/snapshot'
@@ -437,30 +437,57 @@ function SharedTripPage({ payload, onNavigate }: { payload: string; onNavigate: 
 function InviteGate({ tripId, onNavigate }: { tripId: string; onNavigate: (r: string) => void }) {
   const db = useDb()
   const me = currentUser(db)
-  const trip = tripById(tripId)
+  // The invited trip is (by definition) not the viewer's yet, so the
+  // membership-scoped hydration never loaded it — fetch it on demand. The
+  // RPC fallback covers private trips: holding the link (the trip's UUID)
+  // is the capability to preview it.
+  const cachedTrip = tripById(tripId)
+  const [fetched, setFetched] = useState<Trip | null>(null)
+  const [miss, setMiss] = useState(false)
+  const trip = cachedTrip ?? fetched ?? undefined
   // Keep the latest navigate callback in a ref so we don't re-fire the effect
   // (and re-join / re-arm the timer) on every parent re-render.
   const navigateRef = useRef(onNavigate)
   useEffect(() => { navigateRef.current = onNavigate })
 
   useEffect(() => {
+    if (cachedTrip || fetched || miss) return
+    let alive = true
+    void fetchSharedTrip(tripId, true).then(t => {
+      if (!alive) return
+      if (t) setFetched(t)
+      else setMiss(true)
+    })
+    return () => { alive = false }
+  }, [cachedTrip, fetched, miss, tripId])
+
+  useEffect(() => {
     if (!me || !trip) return
-    joinViaInvite(tripId, me.id)
-    const t = setTimeout(() => navigateRef.current(`/trip/${tripId}`), 400)
-    return () => clearTimeout(t)
+    // Ensure the trip is in the cache before joining AND before navigating —
+    // a sign-in hydration can have replaced the cache after our first fetch,
+    // and joinViaInvite + the workspace both read tripById.
+    let alive = true
+    void fetchSharedTrip(tripId, true).then(t => {
+      if (!alive || !t) return
+      joinViaInvite(tripId, me.id)
+      navigateRef.current(`/trip/${tripId}`)
+    })
+    return () => { alive = false }
     // Depend on the users/trip objects, not a mount-only []: the store hydrates
     // them asynchronously after init(), so a one-shot effect ran before they
     // existed and the invite never auto-joined.
   }, [me, trip, tripId])
 
   if (!trip) {
-    return (
+    return miss ? (
       <div className="container empty-state">
         <div className="big"><Link2 size={38} aria-hidden /></div>
         <h1 style={{ fontSize: 26 }}>This invite link is broken</h1>
         <p className="muted">Ask the trip organiser for a fresh link from the trip’s Share tab.</p>
         <button className="btn btn-primary" style={{ marginTop: 14 }} onClick={() => onNavigate('/')}>Go home</button>
       </div>
+    ) : (
+      <div className="container loading-block"><div className="spinner" />Opening invite…</div>
     )
   }
 
