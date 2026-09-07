@@ -1,7 +1,7 @@
 // ============ Trip workspace — Map tab ============
 // Mechanical extraction from src/pages/TripWorkspace.tsx (M3.4) — no behavior changes.
-import React, { useEffect, useMemo, useState } from 'react'
-import { CircleCheck, Clock, ExternalLink, Fuel, Lightbulb, MapPin, RotateCcw } from 'lucide-react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { CircleCheck, Clock, ExternalLink, Fuel, Lightbulb, MapPin, RotateCcw, Sparkles } from 'lucide-react'
 import { MetaIcon } from '../../components/icons'
 import type { Trip, ItineraryStop } from '../../data/types'
 import type { ImpactResult } from '../../lib/impact'
@@ -16,8 +16,9 @@ import { quotaUsed, SOFT_CAPS } from '../../lib/providers/quota'
 import { buildDnaVectorAcrossTrips, loadDnaLog, recordDnaEvent, dnaNoteForHit, crewSeedsFromSuggestions, crewSeedsToPlannedStops, crewSeedEvents, crewNoteForHit } from '../../lib/tripDna'
 import { clusterStoryArcs } from '../../lib/storyArcs'
 import { visitMinutesForCategory } from '../../lib/slackPrompts'
+import { prefersReducedMotion } from '../../lib/motion'
 import type { PlaceHit, SegmentHit } from '../../lib/geocode'
-import { anchorHash } from '../../lib/providers/hits'
+import { anchorHash, projectOntoPolyline } from '../../lib/providers/hits'
 import { fetchDailyWeather, forecastAvailable, isoAddDays } from '../../lib/weather'
 // MapLibre is heavy (~1MB) — load it only when the Map tab is actually opened.
 const TripMap = React.lazy(() => import('../../components/TripMap').then(m => ({ default: m.TripMap })))
@@ -27,6 +28,41 @@ const TripMap = React.lazy(() => import('../../components/TripMap').then(m => ({
  * Module scope: this is a constant, so it must not be rebuilt on every render.
  */
 const NEED_PURPOSES = new Set(['fuel', 'meal', 'food', 'rest', 'stretch', 'overnight', 'stay'])
+
+// ---- Engine guide: a subtle rotating roll-out of what the suggestion engine ----
+// ---- does, so its intelligence is discoverable without a docs trip.          ----
+const ENGINE_TIPS = [
+  'Breaks are spaced for fatigue — stretch every ~150 km, lunch every ~300, tuned to your crew size and travel style.',
+  'Lunch slides itself into the 11:30–14:30 window based on when each driving day starts.',
+  'Self-drive trips get fuel halts on your tank’s rhythm — no “next pump in 300 km” surprises.',
+  'Cross-day drives end at a real city — an overnight stop lands every ~550 km of driving.',
+  'Every idea is checked against your detour budget — packed days see fewer, closer options.',
+  'The engine learns: accepting or declining an idea nudges what future trips suggest (Trip DNA).',
+  'Rainy day ahead? Exposed sights step aside for museums, cafes and other sheltered picks.',
+  'Ghat sections and slow city crawls are detected from the real road shape — and warned about.',
+  'Story arcs bundle nearby sights into one-tap themed detours — temples, waterfalls, viewpoints.',
+  'Hover a card to spot it on the map; hover a pin to find its card. Adds always insert in road order.',
+]
+
+function EngineTips() {
+  const [tip, setTip] = useState(0)
+  useEffect(() => {
+    if (prefersReducedMotion()) return
+    const t = setInterval(() => setTip(i => (i + 1) % ENGINE_TIPS.length), 7000)
+    return () => clearInterval(t)
+  }, [])
+  return (
+    <div className="engine-tips">
+      <span className="engine-tips-ico"><Sparkles size={12} aria-hidden /></span>
+      <span key={tip} className="engine-tips-text" role="status">{ENGINE_TIPS[tip]}</span>
+      <span className="engine-tips-dots" aria-hidden="true">
+        {ENGINE_TIPS.map((_, i) => (
+          <button key={i} type="button" tabIndex={-1} className={`engine-tips-dot${i === tip ? ' on' : ''}`} onClick={() => setTip(i)} />
+        ))}
+      </span>
+    </div>
+  )
+}
 
 // ================= Map tab =================
 
@@ -86,6 +122,11 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
   // pending "add from map / nearby" — pick a day, then confirm
   const [poiDraft, setPoiDraft] = useState<{ hit: PlaceHit } | null>(null)
   const [pickDay, setPickDay] = useState<number>(0)
+  // cross-highlighting: the suggestion currently hovered/selected in EITHER the
+  // side panels or the map. Panel hover/click sets it (map flies to the pin);
+  // map hover/click sets it (panel row highlights and scrolls into view).
+  const [activeHitId, setActiveHitId] = useState<string | number | null>(null)
+  const listRef = useRef<HTMLDivElement | null>(null)
 
   const existingNames = useMemo(() => {
     const names = new Set<string>()
@@ -217,7 +258,13 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
   useEffect(() => {
     if (anchors.length === 0) return
     const cached = suggestionCache.cache.map
-    const hash = anchorHash(anchors) + '|' + routeHash(routeGeometry)
+    // The hash covers everything that changes WHAT the search should return:
+    // anchors (route shape), OSRM geometry (Google along-route), detour scope,
+    // and the crew cadence inputs — travel style (relaxed/packed segment
+    // spacing) and transport mode (fuel on/off). Style/mode changes are
+    // explicit user controls, so they bust the cache and re-search in
+    // real time instead of serving results tuned for the old settings.
+    const hash = anchorHash(anchors) + '|' + routeHash(routeGeometry) + '|' + trip.travelStyle + '|' + trip.transportMode
     // Persisted results always win: returning to this tab, editing the trip, or
     // OSRM resolving after mount must NOT silently re-run the expensive corridor
     // search. Only ↻ Refresh, a detour-scope change, new anchors, or an empty
@@ -242,10 +289,25 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
     return () => { cancelled = true }
   }, [anchors, nearbyOpts, scopeKm, planKm, wholeTrip.min, trip.days.length, refreshTick]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // When the activation came from the map (pin hover/click), bring the matching
+  // panel row into view so the two surfaces visibly point at the same place.
+  useEffect(() => {
+    if (activeHitId == null) return
+    const row = listRef.current?.querySelector(`[data-hit-id="${activeHitId}"]`)
+    row?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [activeHitId])
+
+  /** Along-route km for any point on the current route (null off-polyline). */
+  function routeKmOf(lat: number, lng: number): number | null {
+    if (!routePolyline) return null
+    const snap = projectOntoPolyline({ latitude: lat, longitude: lng }, routePolyline)
+    return snap?.km ?? null
+  }
+
   function addPoiToDay(hit: PlaceHit, dayIndex: number) {
     applyChange(draft => {
       const day = draft.days.find(d => d.index === dayIndex)!
-      day.stops.push({
+      const newStop = {
         id: 'pending_' + Math.random().toString(36).slice(2),
         title: hit.name,
         category: (hit.category as ItineraryStop['category']) ?? 'sightseeing',
@@ -263,7 +325,23 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
         sourceUrl: '',
         status: 'suggested',
         orderInDay: day.stops.length + 1,
-      } as unknown as ItineraryStop)
+      } as unknown as ItineraryStop
+      // Route-ordered insertion: a new stop lands BETWEEN its road neighbours,
+      // not at the end — adding B after A and C are confirmed yields A→B→C.
+      const newKm = routeKmOf(hit.latitude, hit.longitude)
+      let at = day.stops.length
+      if (newKm != null) {
+        at = day.stops.findIndex(s => {
+          const km = routeKmOf(s.lat, s.lng)
+          return km != null && km > newKm
+        })
+        if (at === -1) at = day.stops.length
+        day.stops.splice(at, 0, newStop)
+        // renumber so the Timeline's orderInDay sort matches road order
+        day.stops.forEach((s, i) => { s.orderInDay = i + 1 })
+      } else {
+        day.stops.push(newStop)
+      }
     }, 'add', dayIndex)
     setAddedIds(prev => new Set(prev).add(hit.id as string))
     toast(`“${hit.name}” added to Day ${dayIndex + 1}`)
@@ -391,7 +469,13 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
       )
     }
     return (
-      <div key={hit.id} className="poi-plan-row">
+      <div
+        key={hit.id}
+        data-hit-id={hit.id}
+        className={`poi-plan-row${activeHitId === hit.id ? ' poi-plan-row--active' : ''}`}
+        onMouseEnter={() => setActiveHitId(hit.id as string | number)}
+        onMouseLeave={() => setActiveHitId(prev => (prev === hit.id ? null : prev))}
+      >
         <div className="ride-spot-title">
           <span className={`ride-purpose ride-purpose-${sh.segment.purpose}`}>{sh.segment.label}</span>
           {hit.thumb && <img className="poi-thumb" src={smallThumb(hit.thumb)} alt="" loading="lazy" />}
@@ -522,7 +606,8 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
           <p className="muted small">Not enough driving distance yet for a fatigue plan — add a longer route (90+ km) in the Timeline and segmented stop suggestions will appear here.</p>
         )}
       </div>
-      <div className="map-ideas-grid">
+      <div className="map-ideas-grid" ref={listRef}>
+        <EngineTips />
         <div className="poi-col poi-col--needs">
             <div className="poi-col-head">
               <span className="poi-col-head-ico"><Fuel size={13} aria-hidden /></span>
@@ -538,7 +623,13 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
             </div>
           </div>
           <div className="map-ideas-map">
-            <TripMap trip={trip} nearbyPois={pois.flatMap(p => p.hit ? [p.hit] : [])} onAddNearby={editable ? (hit) => openAddModal(hit) : undefined} />
+            <TripMap
+              trip={trip}
+              nearbyPois={pois.flatMap(p => p.hit ? [p.hit] : [])}
+              onAddNearby={editable ? (hit) => openAddModal(hit) : undefined}
+              activeHitId={activeHitId}
+              onActivateHit={setActiveHitId}
+            />
           </div>
           <div className="poi-col poi-col--see">
             <div className="poi-col-head">
@@ -570,7 +661,8 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
                           n += 1
                         }
                         suggestionCache.clearMap()
-                        // Batch apply all stops in a single change
+                        // Batch apply all stops in a single change — each one
+                        // inserted at its road position (same rule as single adds)
                         if (n > 0) {
                           applyChange(draft => {
                             const byDay = new Map<number, { hit: PlaceHit }[]>()
@@ -581,8 +673,13 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
                             }
                             for (const [dayIndex, items] of byDay) {
                               const day = draft.days.find(d => d.index === dayIndex)!
-                              for (const { hit } of items) {
-                                day.stops.push({
+                              // new stops sorted by road position so sequential
+                              // splices land in journey order
+                              const sorted = [...items].sort((a, b) =>
+                                (routeKmOf(a.hit.latitude, a.hit.longitude) ?? Infinity) -
+                                (routeKmOf(b.hit.latitude, b.hit.longitude) ?? Infinity))
+                              for (const { hit } of sorted) {
+                                const stop = {
                                   id: 'pending_' + Math.random().toString(36).slice(2),
                                   title: hit.name,
                                   category: (hit.category as ItineraryStop['category']) ?? 'sightseeing',
@@ -599,8 +696,19 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
                                   sourceUrl: '',
                                   status: 'suggested',
                                   orderInDay: day.stops.length + 1,
-                                } as unknown as ItineraryStop)
+                                } as unknown as ItineraryStop
+                                const km = routeKmOf(hit.latitude, hit.longitude)
+                                let at = -1
+                                if (km != null) {
+                                  at = day.stops.findIndex(s => {
+                                    const skm = routeKmOf(s.lat, s.lng)
+                                    return skm != null && skm > km
+                                  })
+                                }
+                                if (at === -1) day.stops.push(stop)
+                                else day.stops.splice(at, 0, stop)
                               }
+                              day.stops.forEach((s, i) => { s.orderInDay = i + 1 })
                             }
                           }, 'add', toAdd[0].dayIndex)
                         }

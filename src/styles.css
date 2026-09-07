@@ -2178,6 +2178,58 @@ main:focus { outline: none; }
 .poi-plan-gap { border-style: dashed; opacity: .85; }
 .poi-plan-row .poi-desc { -webkit-line-clamp: unset; -webkit-box-orient: unset; overflow: visible; }
 .poi-plan-row .poi-thumb { width: 34px; height: 34px; border-radius: 8px; }
+
+/* ---- Cross-highlight (panel ↔ map): the suggestion hovered or selected on
+   one surface lights up on the other, so a card answers "where is this?" and
+   a pin answers "which card is this?" ---- */
+.poi-plan-row--active {
+  border-color: var(--teal);
+  background: var(--teal-soft);
+  box-shadow: var(--shadow-glow-teal);
+}
+[data-theme='dark'] .poi-plan-row--active { background: rgba(13, 141, 130, .16); }
+
+/* map idea pin: active state — steady (pulse paused), teal focus ring, lifted */
+.yf-map-pin-idea--active {
+  animation: none;
+  border-style: solid;
+  box-shadow: 0 0 0 2px var(--card), 0 0 0 5px var(--teal);
+  transform: scale(1.15);
+}
+/* idea marker layout: pin + quick-add chip stacked as one unit */
+.yf-map-idea { position: relative; display: inline-flex; flex-direction: column; align-items: center; gap: 3px; }
+.yf-map-pin-idea { cursor: pointer; }
+.yf-map-idea-add {
+  width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid #fff;
+  background: var(--teal-deep); color: #fff;
+  font-size: 13px; font-weight: 700; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer; box-shadow: 0 2px 6px rgba(var(--shadow-navy-rgb), .35);
+  padding: 0;
+}
+.yf-map-idea-add:hover { background: var(--teal-700); transform: scale(1.1); }
+
+/* ---- Engine tips: a subtle rotating guide to what the suggestion engine ----
+   ---- does, so the intelligence is discoverable from the Map tab itself. ---- */
+.engine-tips {
+  grid-column: 1 / -1;
+  display: flex; align-items: center; gap: 9px;
+  padding: 8px 13px; border-radius: 999px;
+  border: 1px solid var(--yf-purple-100);
+  background: var(--yf-purple-100);
+  font-size: 12.3px; color: var(--text-2);
+}
+[data-theme='dark'] .engine-tips { border-color: rgba(137, 122, 187, .35); background: rgba(137, 122, 187, .14); }
+.engine-tips-ico { color: var(--yf-purple); display: inline-flex; flex-shrink: 0; }
+.engine-tips-text { flex: 1; min-width: 0; animation: engineTipIn var(--t-med) var(--ease-out); }
+@keyframes engineTipIn { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+.engine-tips-dots { display: inline-flex; gap: 4px; flex-shrink: 0; }
+.engine-tips-dot {
+  width: 6px; height: 6px; border-radius: 50%; border: none; padding: 0;
+  background: color-mix(in srgb, var(--yf-purple) 30%, transparent); cursor: pointer;
+}
+.engine-tips-dot.on { background: var(--yf-purple); }
+@media (max-width: 720px) { .engine-tips-dots { display: none; } }
 [data-theme='dark'] .ride-purpose-overnight { background: #fff; color: #06251f; }
 
 /* Map-tab corridor suggestions — two curated columns (§6.10 tone coding):

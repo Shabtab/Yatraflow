@@ -7,6 +7,8 @@ interface ImportMetaEnv {
   readonly VITE_GOOGLE_MAPS_API_KEY: string
   /** Optional — Mappls place search key. */
   readonly VITE_MAPPLS_KEY: string
+  /** Optional — set to "on" to mount the AI travel companion (locked for the premium milestone). */
+  readonly VITE_AI_COMPANION: string
 }
 
 interface ImportMeta {

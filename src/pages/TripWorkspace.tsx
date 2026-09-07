@@ -20,6 +20,7 @@ import { useSuggestionCache } from '../hooks/useSuggestionCache'
 // is lazily imported inside MapTab.
 const BoardView = React.lazy(() => import('../components/BoardView').then(m => ({ default: m.BoardView })))
 import { AiDrawer } from '../components/AiDrawer'
+import { AI_COMPANION_ENABLED } from '../lib/featureFlags'
 import { useDestinationCover } from '../hooks/useDestinationCover'
 import { pickTripQueryCandidates } from '../lib/tripThumb'
 import { OverviewTab } from './trip/OverviewTab'
@@ -257,7 +258,11 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
       {tab === 'share' && <ShareTab trip={trip} me={me} editable={editable} onNavigate={onNavigate} legCorrections={legCorrections} />}
       </div>
 
-      <AiDrawer trip={trip} open={aiOpen} onOpen={() => setAiOpen(true)} onClose={() => setAiOpen(false)} />
+      {/* AI companion: locked for the premium milestone (M8) — the feature is
+          complete but unmounted unless VITE_AI_COMPANION=on. See featureFlags. */}
+      {AI_COMPANION_ENABLED && (
+        <AiDrawer trip={trip} open={aiOpen} onOpen={() => setAiOpen(true)} onClose={() => setAiOpen(false)} />
+      )}
     </div>
   )
 }

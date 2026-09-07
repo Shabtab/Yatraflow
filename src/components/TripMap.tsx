@@ -135,7 +135,7 @@ function catIcon(cat: string | undefined): React.ReactNode {
   )
 }
 
-export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusDay, showToolbar = true }: {
+export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusDay, showToolbar = true, activeHitId = null, onActivateHit }: {
   trip: Trip
   onOpenStop?: (stopId: string) => void
   /** potential POIs to show as gold "idea" markers */
@@ -150,6 +150,11 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
       backdrop there, so the chips peeked out from behind the Board's info card.
       The Board provides the equivalents (column-click focus + 🎯 Fit route). */
   showToolbar?: boolean
+  /** the suggestion currently highlighted in the side panel — its pin glows and
+      the camera eases to it, so a card hover answers "where is this?" */
+  activeHitId?: string | number | null
+  /** pin hover/click raises the activation so the panel row highlights + scrolls into view */
+  onActivateHit?: (id: string | number | null) => void
 }) {
   const [dayFilter, setDayFilter] = useState<number | 'all'>('all')
   // Board drives the day filter through the prop; the map's own chips keep working
@@ -332,6 +337,20 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
     }
     requestAnimationFrame(run)
   }, [pointsKey, mapLoaded]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Panel → map highlight: when a suggestion card is hovered/selected in the
+  // side panels, glide the camera to its pin so the user sees where it is.
+  useEffect(() => {
+    if (activeHitId == null || !mapLoaded || !mapRef.current) return
+    const hit = nearbyPois.find(h => h.id === activeHitId)
+    if (!hit || !hasCoords(hit)) return
+    const m = mapRef.current
+    m.easeTo({
+      center: [hit.longitude, hit.latitude],
+      zoom: Math.max(m.getZoom(), 7),
+      duration: prefersReducedMotion() ? 0 : 500,
+    })
+  }, [activeHitId, mapLoaded]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function fitToTrip() {
     const m = mapRef.current
@@ -631,30 +650,42 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
                 <MarkerTooltip>Home — return drive ends here ({trip.startLocation})</MarkerTooltip>
               </MapMarker>
             )}
-            {/* nearby idea markers — category-coloured, dashed, with quick-add */}
-            {visiblePois.map(hit => (
-              <MapMarker key={`nearby_${hit.id}`} longitude={hit.longitude} latitude={hit.latitude}>
-                <MarkerContent>
-                  <span className="yf-map-idea" title={`${hit.name}${onAddNearby ? ' — click to add' : ''}`}>
-                    {onAddNearby ? (
-                      <button
-                        className="yf-map-pin yf-map-pin-idea"
+            {/* nearby idea markers — category-coloured, dashed, with quick-add.
+                Pin click/hover = select: the panel row highlights and scrolls
+                into view; adding moved to the explicit + chip beside the pin. */}
+            {visiblePois.map(hit => {
+              const active = activeHitId != null && activeHitId === hit.id
+              return (
+                <MapMarker key={`nearby_${hit.id}`} longitude={hit.longitude} latitude={hit.latitude}>
+                  <MarkerContent>
+                    <span className="yf-map-idea" title={`${hit.name} — click to locate in the suggestions panel`}>
+                      <span
+                        className={`yf-map-pin yf-map-pin-idea${active ? ' yf-map-pin-idea--active' : ''}`}
                         style={{ background: ideaPinColor(hit.category) } as React.CSSProperties}
-                        onClick={() => onAddNearby(hit)}
-                        aria-label={`Add ${hit.name} to the trip`}
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`Locate ${hit.name} in the suggestions panel`}
+                        onClick={() => onActivateHit?.(hit.id as string | number)}
+                        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onActivateHit?.(hit.id as string | number) } }}
                       >
                         <CatIcon category={hit.category} size={14} />
-                      </button>
-                    ) : (
-                      <span className="yf-map-pin yf-map-pin-idea" style={{ background: ideaPinColor(hit.category) } as React.CSSProperties} aria-label={hit.name}><CatIcon category={hit.category} size={13} /></span>
-                    )}
-                  </span>
-                </MarkerContent>
-                <MarkerTooltip>
-                  <Lightbulb size={11} aria-hidden style={{ verticalAlign: '-1px', marginRight: 3 }} />{hit.name}{hit.haltPurpose ? ` · ${hit.haltPurpose === 'overnight' ? 'overnight option' : hit.haltPurpose}` : ''}{hit.cumKm != null ? ` · ~${hit.cumKm} km in` : ''}{hit.nearestCity ? ` · near ${hit.nearestCity}` : ''}
-                </MarkerTooltip>
-              </MapMarker>
-            ))}
+                      </span>
+                      {onAddNearby && (
+                        <button
+                          className="yf-map-idea-add"
+                          onClick={e => { e.stopPropagation(); onAddNearby(hit) }}
+                          aria-label={`Add ${hit.name} to the trip`}
+                          title={`Add ${hit.name} to the trip`}
+                        >+</button>
+                      )}
+                    </span>
+                  </MarkerContent>
+                  <MarkerTooltip>
+                    <Lightbulb size={11} aria-hidden style={{ verticalAlign: '-1px', marginRight: 3 }} />{hit.name}{hit.haltPurpose ? ` · ${hit.haltPurpose === 'overnight' ? 'overnight option' : hit.haltPurpose}` : ''}{hit.cumKm != null ? ` · ~${hit.cumKm} km in` : ''}{hit.nearestCity ? ` · near ${hit.nearestCity}` : ''}
+                  </MarkerTooltip>
+                </MapMarker>
+              )
+            })}
           </MapLibreMap>
         )}
 
