@@ -589,6 +589,55 @@ export interface NewTripInput {
   coverImageUrl?: string;
 }
 
+// ---------------- Trip dates & day-count reconciliation ----------------
+
+/** Reconcile a trip's `days` array to a new date range: lengthening appends
+ *  empty days at the end; shortening drops trailing EMPTY days only. Days
+ *  holding stops — or referenced by a fixed commitment — are never silently
+ *  deleted; the returned error names the first blocked day so the UI can
+ *  tell the user to clear it first. Indexes are re-sequenced after any
+ *  change. Pure: no store access, node-testable. */
+export function reconcileDays(
+  days: ItineraryDay[],
+  newStartDate: string,
+  newEndDate: string,
+  protectedDayIndexes: Set<number> = new Set(),
+): { days: ItineraryDay[]; error?: string } {
+  const start = new Date(`${newStartDate}T00:00:00`)
+  const end = new Date(`${newEndDate}T00:00:00`)
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return { days, error: 'Dates are not valid.' }
+  }
+  if (end < start) {
+    return { days, error: 'The end date must be on or after the start date.' }
+  }
+  const target = Math.round((end.getTime() - start.getTime()) / 86400000) + 1
+  let next = structuredClone(days)
+
+  if (target < next.length) {
+    // Only trailing FREE days may be dropped — a day with stops or a fixed
+    // commitment is load-bearing and the user must move those first.
+    const loadBearing = (d: ItineraryDay) => d.stops.length > 0 || protectedDayIndexes.has(d.index)
+    let last = next.length
+    while (last > target && !loadBearing(next[last - 1])) last--
+    if (last > target) {
+      const blocked = next.slice(target).find(loadBearing)
+      return {
+        days,
+        error: `Day ${(blocked?.index ?? target) + 1} still has stops or a fixed commitment — move or delete them before shortening the trip.`,
+      }
+    }
+    next = next.slice(0, last)
+  } else if (target > next.length) {
+    while (next.length < target) {
+      next.push({ id: uid('day'), index: next.length, stops: [] })
+    }
+  }
+
+  next.forEach((d, i) => { d.index = i })
+  return { days: next }
+}
+
 export function createTrip(ownerId: ID, input: NewTripInput, seedStops?: ItineraryStop[][]): Trip {
   const dayCount = Math.max(1, diffDays(input.startDate, input.endDate))
   const days: ItineraryDay[] = Array.from({ length: dayCount }, (_, i) => ({
@@ -939,11 +988,24 @@ export function restoreExpense(tripId: ID, expense: Expense, index: number): voi
 export function updateTrip(id: ID, patchFields: Partial<Trip>): void {
   const t = tripById(id)
   if (!t) return
-  // Persist first, then commit only on success. This avoids UI/DB mismatch if
-  // the DB write fails.
-  void persistTripField(id, t).then(() => {
-    mutateTrip(id, draft => Object.assign(draft, patchFields, { updatedAt: Date.now() }), { touch: false })
-  })
+  // Date changes resize the day grid — reconcile BEFORE assigning so the
+  // persisted row and the cache carry the same days. Shrinks that would drop
+  // a day holding stops are rejected with the reason surfaced as a toast.
+  if (patchFields.startDate || patchFields.endDate) {
+    const newStart = patchFields.startDate ?? t.startDate
+    const newEnd = patchFields.endDate ?? t.endDate
+    const protectedIdx = new Set(t.fixedCommitments.map(c => c.dayIndex))
+    const rec = reconcileDays(t.days, newStart, newEnd, protectedIdx)
+    if (rec.error) { toast(rec.error, 'err'); return }
+    patchFields = { ...patchFields, days: rec.days }
+  }
+  // Mutate the cache FIRST, then persist the draft that already contains the
+  // patch. The previous order persisted the pre-patch snapshot and only
+  // applied the edit in memory — settings edits (cover, title, budget…)
+  // silently vanished on reload unless a later unrelated write happened to
+  // persist the trip.
+  const draft = mutateTrip(id, d => Object.assign(d, patchFields, { updatedAt: Date.now() }), { touch: false })
+  if (draft) void persistTripField(id, draft)
 }
 
 async function persistTripField(id: ID, t: Trip): Promise<void> {

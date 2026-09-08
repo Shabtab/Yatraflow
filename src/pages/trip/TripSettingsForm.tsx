@@ -14,6 +14,7 @@ export function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boo
   const [f, setF] = useState({
     name: trip.name, startLocation: trip.startLocation,
     destinations: [...trip.destinations],
+    startDate: trip.startDate, endDate: trip.endDate,
     travellers: trip.travellers, budget: trip.budgetPerPersonInr,
     transportMode: trip.transportMode, travelStyle: trip.travelStyle,
     fuelEconomy: trip.fuelEconomyKmL?.toString() ?? '',
@@ -24,6 +25,14 @@ export function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boo
     capacity: trip.vehicleProfile?.capacity?.toString() ?? '',
     vehicleEconomy: trip.vehicleProfile?.economy?.toString() ?? '',
   })
+  const [dateErr, setDateErr] = useState<string | null>(null)
+  // The day grid follows the date range — show what the picker will do to it.
+  const dayDelta = (() => {
+    const s = new Date(`${f.startDate}T00:00:00`), e = new Date(`${f.endDate}T00:00:00`)
+    if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime()) || e < s) return null
+    const target = Math.round((e.getTime() - s.getTime()) / 86400000) + 1
+    return target - trip.days.length
+  })()
   const [startCoords, setStartCoords] = useState<LatLngPoint | null>(trip.startLocationCoords ?? null)
   const [destCoords, setDestCoords] = useState<(LatLngPoint | null)[]>(trip.destinationCoords ?? [])
   const [destInput, setDestInput] = useState('')
@@ -48,6 +57,19 @@ export function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boo
         </p>
       </Field>
       <Field label="Trip name"><input className="input" disabled={!editable} value={f.name} onChange={e => setF(x => ({ ...x, name: e.target.value }))} /></Field>
+      <div className="form-row">
+        <Field label="Start date">
+          <input type="date" className="input" disabled={!editable} value={f.startDate}
+            aria-invalid={!!dateErr}
+            onChange={e => { setF(x => ({ ...x, startDate: e.target.value })); setDateErr(null) }} />
+        </Field>
+        <Field label="End date" hint={dayDelta === null ? undefined : dayDelta === 0 ? 'Day count unchanged' : dayDelta > 0 ? `Adds ${dayDelta} empty day${dayDelta !== 1 ? 's' : ''} at the end` : `Drops ${-dayDelta} empty trailing day${dayDelta !== -1 ? 's' : ''} (days with stops are kept)`}>
+          <input type="date" className="input" disabled={!editable} value={f.endDate}
+            aria-invalid={!!dateErr}
+            onChange={e => { setF(x => ({ ...x, endDate: e.target.value })); setDateErr(null) }} />
+        </Field>
+      </div>
+      {dateErr && <p className="err-text" role="alert">{dateErr}</p>}
       <div className="form-row">
         <Field label="Starting location">
           <LocationInput
@@ -169,9 +191,15 @@ export function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boo
       )}
       {editable && (
         <button className="btn btn-primary btn-sm" onClick={() => {
+          // Dates drive the day grid — validate the pair here for an inline
+          // message (updateTrip re-checks and toasts on reconcile failures).
+          const s = new Date(`${f.startDate}T00:00:00`), e = new Date(`${f.endDate}T00:00:00`)
+          if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) { setDateErr('Pick both a start and an end date.'); return }
+          if (e < s) { setDateErr('The end date must be on or after the start date.'); return }
           updateTrip(trip.id, {
             name: f.name, startLocation: f.startLocation,
             startLocationCoords: startCoords ?? undefined,
+            startDate: f.startDate, endDate: f.endDate,
             destinations: f.destinations.map(s => s.trim()).filter(Boolean),
             destinationCoords: destCoords,
             travellers: Math.max(1, f.travellers),
@@ -187,6 +215,7 @@ export function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boo
               economy: Number(f.vehicleEconomy) || 15,
             } : undefined,
           })
+          setDateErr(null)
           toast('Trip settings updated')
         }}>Save settings</button>
       )}
