@@ -404,7 +404,7 @@ const DaySection = React.memo(function DaySection({ day, trip, editable, onAdd, 
   editable: boolean
   legCorrections?: Record<string, LegEstimate>
   suggestionCache: ReturnType<typeof useSuggestionCache>
-  /** this day's slice of computeTotals().byDay ΓÇö transport + expenses + entry fees */
+  /** this day's slice of computeTotals().byDay — transport + expenses + entry fees */
   dayTotals?: { dayIndex: number; expensesInr: number; transportInr: number; totalInr: number; stops: number; distanceKm: number }
   onAdd: (dayIndex: number) => void
   onEdit: (stopId: string) => void
@@ -574,13 +574,13 @@ const DaySection = React.memo(function DaySection({ day, trip, editable, onAdd, 
         {!collapsed && dayTotals != null && dayTotals.totalInr > 0 && (
           <span
             className="day-cost-chip"
-            title={`Γëê ${formatInr(dayTotals.transportInr)} travel ┬╖ ${formatInr(dayTotals.expensesInr)} day costs (incl. entry fees)`}
+            title={`≈ ${formatInr(dayTotals.transportInr)} travel · ${formatInr(dayTotals.expensesInr)} day costs (incl. entry fees)`}
           >
-            Γëê {formatInr(dayTotals.totalInr)}
+            ≈ {formatInr(dayTotals.totalInr)}
           </span>
         )}
         {!collapsed && sim.dwellMinutes > 0 && (
-          <span className="day-dwell-chip" title="Time at the stops (visits + buffers) ΓÇö driving time is in the summary line">
+          <span className="day-dwell-chip" title="Time at the stops (visits + buffers) — driving time is in the summary line">
             {minutesToHM(sim.dwellMinutes)} at stops
           </span>
         )}
