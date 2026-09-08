@@ -14,10 +14,11 @@ import { updateTrip, setStopStatus } from '../../store/store'
 import {
   computeTotals, simulateDay, originOf, getAssumptions, coLocates, minutesToHM, hmToMinutes, formatInr,
   predecessorOf, nextAfter, collectWarnings, buildJourney, addMinutesToClock, FUEL_PRICE_INR_PER_L,
-  computeCategoryBias,
+  computeCategoryBias, optimizeDayOrder,
 } from '../../lib/engine'
 import { MODE_SPEED } from '../../lib/engine'
 import type { LegEstimate, ScheduleWarning, Journey } from '../../lib/engine'
+import type { OptimizeDayResult } from '../../lib/engine'
 import type { ImpactResult } from '../../lib/impact'
 import { loadDayCollapsed, saveDayCollapsed } from '../../lib/uiPrefs'
 import { openExternal } from '../../lib/native'
@@ -136,6 +137,21 @@ export function TimelineTab({ trip, editable, applyChange, legCorrections, sugge
       arr.splice(toIdx, 0, moved)
       arr.forEach((s, i) => { s.orderInDay = i + 1 })
       day.stops = arr
+    }, 'reorder', dayIndex)
+  }, [applyChange])
+
+  /** Optimise-day commit: replace a day's stop order wholesale (ids), keeping
+   *  every stop — the reorder goes through the same impact-preview gate as a
+   *  manual drag. */
+  const handleReorderDay = useCallback((dayIndex: number, orderedIds: string[]) => {
+    applyChange(draft => {
+      const day = draft.days.find(d => d.index === dayIndex)!
+      const byId = new Map(day.stops.map(s => [s.id, s]))
+      const reordered = orderedIds.map(id => byId.get(id)!).filter(Boolean)
+      // any stop the optimizer left out (safety net) rides at the end
+      const rest = day.stops.filter(s => !orderedIds.includes(s.id))
+      day.stops = [...reordered, ...rest]
+      day.stops.forEach((s, i) => { s.orderInDay = i + 1 })
     }, 'reorder', dayIndex)
   }, [applyChange])
 
@@ -294,6 +310,7 @@ export function TimelineTab({ trip, editable, applyChange, legCorrections, sugge
           onEdit={handleEdit}
           onDelete={handleDelete}
           onMoveWithinDay={handleMoveWithinDay}
+          onReorderDay={handleReorderDay}
           onMoveBetweenDays={setMoveModalStop}
           onMoveStopIn={handleMoveStopInto}
           onRenameDay={handleRenameDay}
@@ -381,7 +398,7 @@ function ClampedText({ children, className }: { children: React.ReactNode; class
 // commit (the shell's useDb feeds the tab counts), but with stable props each
 // DaySection now bails out unless ITS day/trip data actually changed (M3.1 made
 // trip references immutable, so `day`/`trip` are stable between commits).
-const DaySection = React.memo(function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithinDay, onMoveBetweenDays, onMoveStopIn, onRenameDay, onCopyDay, onAddQuickStop, onSetDayStart, onAddPlannedHalts, warnings, onStatus, legCorrections, suggestionCache, dayTotals }: {
+const DaySection = React.memo(function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithinDay, onReorderDay, onMoveBetweenDays, onMoveStopIn, onRenameDay, onCopyDay, onAddQuickStop, onSetDayStart, onAddPlannedHalts, warnings, onStatus, legCorrections, suggestionCache, dayTotals }: {
   day: Trip['days'][number]
   trip: Trip
   editable: boolean
@@ -393,6 +410,8 @@ const DaySection = React.memo(function DaySection({ day, trip, editable, onAdd, 
   onEdit: (stopId: string) => void
   onDelete: (stopId: string, dayIndex: number) => void
   onMoveWithinDay: (from: number, to: number, dayIndex: number) => void
+  /** optimise-day commit: wholesale reorder by stop ids (impact-preview gated) */
+  onReorderDay: (dayIndex: number, orderedIds: string[]) => void
   onMoveBetweenDays: (stop: ItineraryStop) => void
   /** cross-day drag landed on this day: insert the stop at `position` */
   onMoveStopIn: (stopId: string, fromDayIndex: number, toDayIndex: number, position: number) => void
@@ -418,6 +437,14 @@ const DaySection = React.memo(function DaySection({ day, trip, editable, onAdd, 
   const isStayDay = journey.points.length <= 1 && journey.distanceKm < 0.5
   const A = getAssumptions(trip)
   const ordered = [...day.stops].sort((a, b) => a.orderInDay - b.orderInDay)
+  // ---- Optimize day order (anti-crisscross) ----
+  // Preview is computed from the CURRENT day snapshot (pure engine call); the
+  // apply goes through applyChange so the impact preview guards the commit.
+  const [optPreview, setOptPreview] = useState<OptimizeDayResult | null>(null)
+  const optResult = useMemo(
+    () => optimizeDayOrder(originOf(trip, day.index), [...day.stops].sort((a, b) => a.orderInDay - b.orderInDay)),
+    [trip, day],
+  )
   const { dndHandlers, dayDropHandlers, dragging, over, foreignOver, moveUp, moveDown } = useReorder(
     ordered,
     (f, t) => onMoveWithinDay(f, t, day.index),
@@ -565,6 +592,13 @@ const DaySection = React.memo(function DaySection({ day, trip, editable, onAdd, 
         {ordered.filter(s => s.status !== 'rejected').length >= 2 && <DaySpark stops={ordered.filter(s => s.status !== 'rejected')} />}
         {editable && (
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            {optResult.changed && !isStayDay && (
+              <button
+                className="btn btn-outline btn-sm"
+                onClick={() => setOptPreview(optResult)}
+                title={`Reorder this day's stops to cut crisscrossing — saves ~${Math.round(optResult.beforeKm - optResult.afterKm)} km of travel`}
+              ><RouteIcon size={13} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />Optimise{optResult.beforeKm - optResult.afterKm > 0 ? ` (−${Math.round(optResult.beforeKm - optResult.afterKm)} km)` : ''}</button>
+            )}
             <button
               className="btn btn-outline btn-sm"
               disabled={ordered.length === 0 || day.index + 1 >= trip.days.length}
@@ -768,6 +802,51 @@ const DaySection = React.memo(function DaySection({ day, trip, editable, onAdd, 
         )}
       </div>
       </>}
+
+      {/* Optimize-day preview: the before/after is straight-line distance math
+          from the pure engine helper; committing goes through the same
+          impact-preview gate as a manual drag (onReorderDay → applyChange). */}
+      <Modal
+        open={!!optPreview}
+        onClose={() => setOptPreview(null)}
+        title={`Optimise Day ${day.index + 1}`}
+      >
+        {optPreview && <>
+          <p className="hint-text" style={{ margin: '0 0 12px' }}>
+            Reorders the day's stops into the shortest route from where you start the day — grouping nearby sights,
+            food and activities so you spend less time in transit. Anchors (your base and the day's destination)
+            stay put; you can still drag anything afterwards.
+          </p>
+          <div className="opt-delta">
+            <div className="opt-delta-cell">
+              <div className="k">Travel distance</div>
+              <div className="v">{Math.round(optPreview.beforeKm)} km → <b>{Math.round(optPreview.afterKm)} km</b></div>
+              <div className="save">−{Math.round(optPreview.beforeKm - optPreview.afterKm)} km</div>
+            </div>
+            <div className="opt-delta-cell">
+              <div className="k">Est. driving time</div>
+              <div className="v">{minutesToHM(Math.round(optPreview.beforeKm / (A.avgSpeedKmph || 40) * 60))} → <b>{minutesToHM(Math.round(optPreview.afterKm / (A.avgSpeedKmph || 40) * 60))}</b></div>
+              <div className="save">−{Math.round((optPreview.beforeKm - optPreview.afterKm) / (A.avgSpeedKmph || 40) * 60)} min</div>
+            </div>
+          </div>
+          <div className="opt-order-list" aria-label="New stop order">
+            {optPreview.stops.filter(s => s.status !== 'rejected').map((s, i) => (
+              <div key={s.id} className="opt-order-row">
+                <span className="opt-order-n num">{i + 1}</span>
+                <span>{s.title}{s.auto ? ' (anchor)' : ''}</span>
+              </div>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+            <button className="btn btn-primary btn-sm" onClick={() => {
+              onReorderDay(day.index, optPreview.stops.map(s => s.id))
+              toast(`Day ${day.index + 1} optimised — saved ~${Math.round(optPreview.beforeKm - optPreview.afterKm)} km of crisscrossing`)
+              setOptPreview(null)
+            }}>Apply new order</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => setOptPreview(null)}>Not now</button>
+          </div>
+        </>}
+      </Modal>
     </div>
   )
 })

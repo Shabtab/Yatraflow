@@ -798,6 +798,119 @@ export function firstFixedPoint(trip: Trip): { lat: number; lng: number } {
   return { lat: 9.9312, lng: 76.2673 } // Kochi fallback
 }
 
+// ---------------- Day route optimization ----------------
+
+/** Route length (km) of one day's stop sequence from a wake-up origin —
+ *  straight-line haversine sum. Used to compare orderings; the displayed
+ *  km/time always come from the real simulation afterwards. */
+export function dayRouteKm(origin: { lat: number; lng: number }, stops: ItineraryStop[]): number {
+  let km = 0
+  let pos = origin
+  for (const s of stops) {
+    km += haversineKm(pos.lat, pos.lng, s.lat, s.lng)
+    pos = s
+  }
+  return km
+}
+
+export interface OptimizeDayResult {
+  /** the re-ordered stops (new array; input untouched). Same order when the
+   *  day was already optimal or has <3 movable stops. */
+  stops: ItineraryStop[]
+  /** route km before → after, for the "saves ~X km" toast */
+  beforeKm: number
+  afterKm: number
+  /** false when there was nothing to improve (≤2 movable stops, or already optimal) */
+  changed: boolean
+}
+
+/** Reorder a day's MOVABLE stops to minimise crisscrossing: greedy
+ *  nearest-neighbour from the day's wake-up origin, then a full 2-opt
+ *  improvement sweep. Auto anchors (start/destination/continuation
+ *  waypoints, `auto: true`) are pinned to the front and back of the day —
+ *  the engine builds the journey around them, so moving them would rewrite
+ *  the route's endpoints rather than tidy the middle. Rejected stops ride
+ *  along untouched. Open-hours constraints are honoured as a tie-break only:
+ *  a stop's openTime is compared when two candidates are near-equal, so the
+ *  optimizer never produces an ordering that needlessly waits for a closed
+ *  door, but hard time windows are left to the user — days are short and
+ *  the impact preview will flag impossible clocks. Pure: node-testable. */
+export function optimizeDayOrder(
+  origin: { lat: number; lng: number },
+  stops: ItineraryStop[],
+): OptimizeDayResult {
+  const sorted = [...stops].sort((a, b) => a.orderInDay - b.orderInDay)
+  const active = sorted.filter(s => s.status !== 'rejected')
+  const anchors = active.filter(s => s.auto === true)
+  // The optimizer only understands anchors at the head/tail of the day. A
+  // mid-day auto anchor (an unusual shape — e.g. a manually-moved continuation
+  // waypoint) would fall outside the pinned model and get lost, so those days
+  // are left untouched rather than guessed at.
+  const anchorIdx = anchors.map(a => active.findIndex(s => s.id === a.id))
+  const midAnchor = anchors.some((a, i) => anchorIdx[i] !== 0 && anchorIdx[i] !== active.length - 1)
+  const head = anchors.length > 0 && anchorIdx[0] === 0 ? anchors[0] : undefined
+  const tail = anchors.length > (head ? 1 : 0) && anchorIdx[anchorIdx.length - 1] === active.length - 1
+    ? anchors[anchors.length - 1] : undefined
+  // movable = non-auto, non-rejected; rejected ride along after the actives
+  const movable = active.filter(s => s.auto !== true)
+  const beforeKm = dayRouteKm(origin, active)
+
+  if (movable.length < 3 || midAnchor) {
+    return { stops: sorted, beforeKm, afterKm: beforeKm, changed: false }
+  }
+
+  // Greedy nearest-neighbour with the open-time tie-break (earlier opening
+  // first when two candidates sit within ~800 m of each other).
+  const remaining = [...movable]
+  const order: ItineraryStop[] = []
+  let pos = head ?? origin
+  const opensAt = (s: ItineraryStop) => (s.openTime && /^\d{2}:\d{2}$/.test(s.openTime) ? hmToMinutes(s.openTime) : Infinity)
+  while (remaining.length > 0) {
+    let bestIdx = 0
+    for (let i = 1; i < remaining.length; i++) {
+      const km = haversineKm(pos.lat, pos.lng, remaining[i].lat, remaining[i].lng)
+      const kmBest = haversineKm(pos.lat, pos.lng, remaining[bestIdx].lat, remaining[bestIdx].lng)
+      const nearTie = Math.abs(km - kmBest) < 0.8
+      if (km < kmBest || (nearTie && opensAt(remaining[i]) < opensAt(remaining[bestIdx]))) bestIdx = i
+    }
+    const [chosen] = remaining.splice(bestIdx, 1)
+    order.push(chosen)
+    pos = chosen
+  }
+
+  // 2-opt: reverse any segment whose swap shortens the route. Anchors stay
+  // fixed (head prefix / tail suffix), so only the movable middle is rewired.
+  const withAnchors = head ? [head, ...order] : order
+  if (tail) withAnchors.push(tail)
+  let route = withAnchors
+  const kmOf = (r: ItineraryStop[]) => dayRouteKm(head ? origin : origin, r.filter(s => s.status !== 'rejected'))
+  let improved = true
+  while (improved) {
+    improved = false
+    const start = head ? 1 : 0
+    const end = tail ? route.length - 1 : route.length
+    for (let i = start; i < end - 1; i++) {
+      for (let j = i + 2; j < end; j++) {
+        const cand = [...route]
+        // reverse route[i..j]
+        const seg = cand.slice(i, j + 1).reverse()
+        cand.splice(i, seg.length, ...seg)
+        if (kmOf(cand) < kmOf(route) - 1e-9) { route = cand; improved = true }
+      }
+    }
+  }
+
+  const afterKm = kmOf(route)
+  const changed = afterKm < beforeKm - 1e-9
+  // Re-merge: rejected stops ride along AFTER the actives — the engine and
+  // the timeline skip them entirely, so only their slot needs to stay stable
+  // (they surface at the day's end if un-rejected later). No stop is dropped.
+  const rejected = sorted.filter(s => s.status === 'rejected')
+  const finalStops = [...route, ...rejected]
+  finalStops.forEach((s, i) => { s.orderInDay = i + 1 })
+  return { stops: finalStops, beforeKm, afterKm, changed }
+}
+
 /** Last active stop across the trip's days — the turnaround point of the route. */
 export function lastActiveStopPoint(trip: Trip): { lat: number; lng: number } | null {
   for (let d = trip.days.length - 1; d >= 0; d--) {

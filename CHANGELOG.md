@@ -13,6 +13,12 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 > record still exists in `git log`, not here. Archived release notes live in
 > [`docs/history/`](docs/history/).
 
+## [Unreleased]
+
+### Added
+
+- **"Optimise day" — the anti-crisscross reorder** (Timeline, per-day header). Days with 3+ movable stops whose current order wastes travel show an `Optimise (−X km)` button: it opens a before/after preview (travel distance, estimated driving time at the trip's average speed, and the full new stop order) and commits through the same impact-preview gate as a manual drag. Under the hood, a new pure `optimizeDayOrder` engine helper runs greedy nearest-neighbour from the day's wake-up origin (where the previous day's journey ended — `originOf`, not a naive first-stop guess) followed by a full 2-opt improvement sweep, with an open-time tie-break so two near-equal candidates pick the earlier-opening door. Auto anchors (your base and the day's destination/continuation waypoints) stay pinned first/last — the engine builds the journey around them; a mid-day auto anchor (an unusual shape) refuses to optimize rather than risk dropping it, and rejected stops ride along untouched. 8 node tests pin the behaviours (crisscross collapse, unchanged days, anchor pinning + mid-anchor refusal, no-op <3 stops, rejected survival, never-worse guarantee, open-time tie-break). The per-leg travel chips between stops (km, minutes, cost — OSRM-corrected) and the mapped route this builds on already existed.
+
 ## [0.50.2] - 2026-09-11
 
 **The Android app drops the website's top bar entirely.** The floating topnav was website chrome — wrong inside the installed app. The signed-in shell now hides it completely; its controls relocate to the Profile page (a bottom-nav destination): theme toggle under Appearance, the in-app notifications list with Mark all read, and the account actions (Creator hub, Send feedback, Log out). Theme state is shared via a new `src/lib/theme.ts` hook so the web topnav toggle and the Profile card can't drift. The topnav — and the web — are byte-identical; it stays for signed-out users as the login entry. Pinned by a new `mobile-shell.test.ts` invariant. `versionCode 11 / 0.11-native`.
