@@ -430,6 +430,17 @@ Hard rules (each learned the hard way — do not relearn them):
   `node -e "console.log(Object.keys(require('lucide-react')).filter(n => /x/i.test(n)))"`
   before writing the import.
 
+- **A squash-merge can silently DROP files, and nothing in the gate catches it.**
+  PR #75's squash carried the calendar/print/ShareTab files but silently omitted
+  `src/pages/TripsList.tsx` — My Trips reverted to a bare list for a release, the
+  contributor had to file a restore PR (#80), and the earlier session summary even
+  claimed the feature "was already merged" without file-level proof. The gate stays
+  green (nothing exercises an absent feature). Rules: after merging external work,
+  diff the PR's `--name-only` list against what actually landed (`git show <merge> --stat`
+  / grep for a marker from each claimed feature) before writing any summary; and when
+  a contributor's PR says "this was dropped", believe them enough to verify — grep for
+  the feature's symbols (`useMemo`, a state key) in the current tree, not in memory.
+
 - **A casing audit needs `-CaseSensitive` and must grep the enum definitions, not the
   literals.** Two traps cost a false alarm and a near-miss in the same session: (1)
   PowerShell's `Select-String` is case-insensitive by default, so `label="[a-z]` happily
