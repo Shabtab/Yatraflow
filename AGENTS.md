@@ -36,7 +36,7 @@ Key locations:
 
 **Version:** v0.44.0 on `test` and `main` (this release: Sep 8, 2026)
 
-**State:** Stabilization complete, UI audit all 32 findings fixed. The Corridor Concierge suggestion-engine brainstorm is FULLY shipped (Horizons 1–3, 16/16 incl. asymmetry, hours scoring, fuel corridors, trip DNA) — see ROADMAP's 🧭 table. v0.44.0 added the budget pacing tile ("Safe to spend / day") and the per-day cost + dwell chips on timeline headers, made open tabs survive deploys (stale-chunk auto-reload), and restored public itinerary pages + invite links for non-members (`fetchSharedTrip` + `get_invite_trip` RPC). v0.43.0 fixed the structural reason See & do was empty (the corridor scan never asked for sights), added panel↔map cross-highlighting and route-ordered stop insertion, and locked the AI companion behind `VITE_AI_COMPANION=on` for the M8 premium milestone. Branch model simplified: only `main` (production, Vercel) and `test` (integration) exist. `npm run verify` gate: tsc clean + 477 tests + production build.
+**State:** Stabilization complete, UI audit all 32 findings fixed. The Corridor Concierge suggestion-engine brainstorm is FULLY shipped (Horizons 1–3, 16/16 incl. asymmetry, hours scoring, fuel corridors, trip DNA) — see ROADMAP's 🧭 table. v0.44.0 added the budget pacing tile ("Safe to spend / day") and the per-day cost + dwell chips on timeline headers, made open tabs survive deploys (stale-chunk auto-reload), and restored public itinerary pages + invite links for non-members (`fetchSharedTrip` + `get_invite_trip` RPC). v0.43.0 fixed the structural reason See & do was empty (the corridor scan never asked for sights), added panel↔map cross-highlighting and route-ordered stop insertion, and locked the AI companion behind `VITE_AI_COMPANION=on` for the M8 premium milestone. Branch model simplified: only `main` (production, Vercel) and `test` (integration) exist. `npm run verify` gate: tsc clean + 495 tests + production build.
 
 **Recent major releases:**
 - **v0.44.0** — Budget pacing tile ("Safe to spend / day", via new pure `daysRemaining` / `safeToSpendPerDay` helpers), per-day cost + dwell chips on timeline day headers, stale-chunk auto-reload so already-open tabs survive a deploy, and `fetchSharedTrip` + the `get_invite_trip` RPC restoring public itinerary pages and invite links for non-members
@@ -452,6 +452,32 @@ Hard rules (each learned the hard way — do not relearn them):
   the explicit `value=` when prettifying option labels. And prefer consolidating the
   per-file copies of a formatter (`cap` had 7, `labelCat` 4 with drifting behaviour) into
   one `lib/labels.ts` over fixing sites one by one.
+- **A light-mode-passing colour can fail dark mode, because the teal scale INVERTS.**
+  `--yf-teal-600`/`-700` are ordered dark→light in light theme (#0D8D82 → #0C716D) but
+  bright→dim in dark theme (#2BB8AC → #1E9D92). So `#fff` on teal-600 measured 4.08:1 light /
+  **2.46:1 dark**, and teal-700-on-teal-100 measured 5.14:1 light / **4.08:1 dark** — the
+  bench's four selected states all failed at least one theme while looking intentional.
+  Always compute BOTH themes from the token values (AGENTS: contrast is computed, not
+  eyeballed), and fix the shared class rather than the surface: the same `.bench-*` classes now
+  render on the landing hero and in Trip settings. The dark fix reuses the project's own answer
+  for saturated fills — near-black ink `#06251f` on bright teal (6.62:1), exactly what
+  `[data-theme='dark'] .pill-nav … .on-teal` already does.
+
+- **Merging external work that also edits CHANGELOG can produce TWO `## [Unreleased]`
+  sections — invisible to the entire gate.** PR #80's squash carried its own `[Unreleased]`
+  while the working tree already had one, leaving a duplicate header (and a duplicate
+  `### Fixed`) that tsc/tests/build all pass on. The release-cut keys off the **first**
+  `[Unreleased]`, so the next version bump would have silently dropped half the entries.
+  After any merge touching CHANGELOG: `Select-String -Pattern '^## |^### '` and confirm the
+  counts are 1/1/1 before committing.
+
+- **Changing approach mid-task orphans both the code AND the changelog text you already
+  wrote.** Trip settings went from "extract compact primitives" to "reuse the bench's own
+  classes"; that left `SettingsGroup`/`CountStepper`/`OptionTiles` as dead exports
+  (`noUnusedLocals: false` never flags them) and a committed CHANGELOG bullet naming
+  primitives that no longer exist. On any approach change: re-grep for every symbol you
+  introduced in this session and re-read your own changelog prose against the final code.
+
 
 ## 5. External services
 

@@ -746,102 +746,40 @@ export function BrandMark({ size = 26 }: { size?: number }) {
 }
 
 // ============ Settings-form primitives (the Plan Bench control idiom) ============
-// Workspace settings forms borrow the bench's compact controls — icon tiles,
-// count steppers, slider dials — implemented once here so forms stay consistent
-// and the bench styles stay scoped to the landing hero. All interactive targets
-// are ≥40px so the rows survive touch (AGENTS §4).
+// Workspace settings forms borrow the bench's compact controls — slider dials
+// with drag bubbles, sticky action bars — implemented once here so forms stay
+// consistent. The controls reuse the bench's own global classes for fidelity.
 
-/** A titled, spaced section of a settings form. Groups separate by space
- *  (24px between groups vs 10px inside — the 2× grouping rule), never by
- *  separator lines. */
-export function SettingsGroup({ icon, title, hint, children }: {
-  icon?: React.ReactNode
-  title: string
-  hint?: string
-  children: React.ReactNode
-}) {
-  return (
-    <section className="ts-group">
-      <div className="ts-group-head">
-        {icon && <span className="ts-group-icon" aria-hidden="true">{icon}</span>}
-        <div className="ts-group-headtext">
-          <h3 className="ts-group-title">{title}</h3>
-          {hint && <p className="ts-group-hint">{hint}</p>}
-        </div>
-      </div>
-      {children}
-    </section>
-  )
-}
-
-/** Count picker: one button per value, selected = filled. */
-export function CountStepper({ value, min = 1, max = 8, ariaLabel, disabled, onChange }: {
-  value: number
-  min?: number
-  max?: number
-  ariaLabel: string
-  disabled?: boolean
-  onChange: (v: number) => void
-}) {
-  return (
-    <div className="ts-stepper" role="group" aria-label={ariaLabel}>
-      {Array.from({ length: Math.max(0, max - min + 1) }, (_, i) => min + i).map(n => (
-        <button key={n} type="button" className={`ts-stepper-btn${value === n ? ' on' : ''}`}
-          aria-pressed={value === n} disabled={disabled} onClick={() => onChange(n)}>
-          {n}
-        </button>
-      ))}
-    </div>
-  )
-}
-
-/** Slider with a live formatted readout and optional end labels. Builds on the
- *  shared .yf-range track (--fill), exactly like the bench dials. */
-export function RangeDial({ value, min, max, step, fmt, ends, ariaLabel, disabled, onChange }: {
+/** Slider dial with a value bubble while dragging — ports the bench's
+ *  BenchRange onto the shared .yf-range track (--fill). The caller renders the
+ *  big readout (bench-block-value) and end labels (bench-scale-ends). */
+export function RangeDial({ value, min, max, step, fmt, ariaLabel, disabled, onChange }: {
   value: number
   min: number
   max: number
   step: number
   fmt: (v: number) => string
-  ends?: [string, string]
   ariaLabel: string
   disabled?: boolean
   onChange: (v: number) => void
 }) {
+  const [dragging, setDragging] = useState(false)
   const fill = ((value - min) / (max - min)) * 100
+  const bubbleLeft = Math.min(90, Math.max(10, fill))
   return (
-    <div className="ts-dial">
-      <div className="ts-dial-value">{fmt(value)}</div>
+    <div className="bench-slider">
+      {dragging && (
+        <span className="bench-bubble" style={{ left: `${bubbleLeft}%` }} aria-hidden="true">
+          {fmt(value)}
+        </span>
+      )}
       <input type="range" className="yf-range" min={min} max={max} step={step} value={value}
         style={{ '--fill': `${fill}%` } as React.CSSProperties}
         aria-label={ariaLabel} aria-valuetext={fmt(value)} disabled={disabled}
+        onPointerDown={() => setDragging(true)}
+        onPointerUp={() => setDragging(false)}
+        onPointerCancel={() => setDragging(false)}
         onChange={e => onChange(Number(e.target.value))} />
-      {ends && (
-        <div className="ts-dial-ends" aria-hidden="true"><span>{ends[0]}</span><span>{ends[1]}</span></div>
-      )}
-    </div>
-  )
-}
-
-/** Icon-tile grid for small closed sets (transport modes): icon + name plus an
- *  optional meta badge (the bench shows average speed). Selected = filled. */
-export function OptionTiles<T extends string>({ value, options, ariaLabel, disabled, onChange }: {
-  value: T
-  options: ReadonlyArray<{ value: T; label: string; icon?: React.ReactNode; meta?: string }>
-  ariaLabel: string
-  disabled?: boolean
-  onChange: (v: T) => void
-}) {
-  return (
-    <div className="ts-tiles" role="group" aria-label={ariaLabel}>
-      {options.map(o => (
-        <button key={o.value} type="button" className={`ts-tile${value === o.value ? ' on' : ''}`}
-          aria-pressed={value === o.value} disabled={disabled} onClick={() => onChange(o.value)}>
-          {o.icon && <span className="ts-tile-icon" aria-hidden="true">{o.icon}</span>}
-          <span className="ts-tile-name">{o.label}</span>
-          {o.meta && <span className="ts-tile-meta" aria-hidden="true">{o.meta}</span>}
-        </button>
-      ))}
     </div>
   )
 }

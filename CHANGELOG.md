@@ -5,18 +5,34 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 ## [Unreleased]
 
 ### Added
+- **Trip settings is now the Plan Bench, inside your trip.** The Share tab's settings
+  panel was a flat stack of twelve look-alike fields with Save parked below the fold. It
+  now speaks the landing calculator's own control language — the same classes at the same
+  proportions, nothing re-invented: eyebrow-headed blocks carrying a big live value, the
+  transport-mode icon grid (icon, name, ≈speed), the 1–12 travellers crew buttons, slider
+  dials with drag bubbles for budget and fuel, and the pill rail for travel style. A sticky
+  **settings bill** on the right mirrors every choice as you make it — the group budget
+  (₹ × head-count, live), what the date range will do to the day grid, and whether costs run
+  on fuel or per-km fares — so the outcome is readable *before* saving rather than after.
+  Below 980px the receipt drops under the controls; Save rides a sticky, safe-area-aware bar
+  spanning both columns. Two shared primitives came out of it (`RangeDial`, `StickyFormBar`
+  in `ui.tsx`); everything else is the bench's own CSS, so the two surfaces can no longer
+  drift apart. The publish editor keeps the matching density: neutralised field margins, a
+  2-column free-preview day grid, inline styles replaced by tokens.
 - **Trip dates are finally editable after creation — and the day grid follows them.** Trip settings (Share tab) gains Start/End date pickers. Lengthening the range appends empty days at the end; shortening drops trailing *empty* days only — a day holding stops or a fixed commitment is load-bearing and blocks the shrink with a toast naming the day ("Day 4 still has stops — move or delete them before shortening"), rather than silently deleting a user's plan. Indexes re-sequence after any change. The End-date field's live hint shows what the save will do ("Adds 2 empty days at the end" / "Drops 1 empty trailing day"). New pure `reconcileDays` helper in the store (11 node tests: grow/shrink, load-bearing stops and commitments, invalid and inverted dates, 1-day ranges).
 - **My Trips search, filters and sort (restored).** The upstream squash-merge of the on-the-road PR carried the calendar/print exports but silently dropped this file, so My Trips had reverted to a bare recently-edited list. Restored from the fork's `feat/on-the-road` branch: a search box (name, start/destination, and every stop title), travel-style chips with counts (Explore's pattern), a When filter (upcoming & live / past / drafts — date-bucketed on the trip's end date so an in-progress trip counts as upcoming; dirty dates count as drafts), and sort by recently-edited / name / longest / budget low→high / high→low. Filtering to nothing shows its own "no trips match" empty state with a clear action, distinct from the no-trips onboarding. Local view state only (a private page — no URL sync, unlike Explore's shareable filters).
 
 ### Fixed
 - **`updateTrip` persisted the pre-patch trip, not the edit.** The settings save path persisted the *current* trip row and only then applied the patch to the in-memory cache — so every Trip-settings edit (name, budget, cover, day titles…) reached the database only if a *later, unrelated* write happened to persist the trip again; otherwise it silently vanished on reload. Found while wiring the date fields: the flow now mutates the cache first and persists the draft that already contains the patch, pinned by a write-through test asserting the DB payload carries the *new* budget.
-
-## [Unreleased]
-
-### Added
-- **Trip settings and the publish editor, rebuilt on the Plan Bench's controls — now compact.** The Share tab's Trip settings panel was a flat stack of twelve look-alike fields with the save button parked below the fold; the publish editor stacked full-width fields the same way. Both now use the compact control idiom the landing calculator introduced, extracted into shared primitives (`SettingsGroup`, `CountStepper`, `RangeDial`, `OptionTiles`, `StickyFormBar` in `ui.tsx`) so the bench styles stay scoped to the landing hero. Transport mode is an icon-tile grid (mode icon, name, ≈speed badge), travel style is a wrapping pill rail riding the shared `PillNav` glider, travellers is a tap-stepper, budget/person is a slider with a live formatted readout (0–₹3L, ₹500 steps), and Save floats in a sticky, safe-area-aware bar that follows you down the form. The publish editor gets the same density: neutralised field margins, a 2-column free-preview day grid, inline styles replaced by tokens. Everything still writes the exact same enum values the engine and suggestion cache key on.
-
-### Fixed
+- **The bench's selected controls failed AA contrast in *both* themes.** The saturated
+  selected states (`.bench-mode-btn.on`, `.bench-crew-btn.on`) painted white on teal-600:
+  4.08:1 in light and 2.46:1 in dark against the 4.5:1 floor. The pale-tinted ones
+  (`.bench-toggle.on`, `.bench-stay-row.on`) passed light at 5.14:1 but fell to 4.08:1 in
+  dark, because teal-700 *is* the bright shade there. Fixed at the source rather than
+  per-surface, since the same classes now render on the landing hero and in Trip settings:
+  light fills step down to teal-700 (5.84:1), and a dark-theme override flips the saturated
+  fills to the near-black ink the pill-nav glider already uses (#06251f on #2BB8AC = 6.62:1)
+  and the tinted ones to teal-600 (5.55:1). Every ratio computed from the token values.
 - **Pill navigation is readable in light mode.** Inside a `PillNav` the active chip's background is painted by the glider — pale teal in light mode — but the chip inherited `#fff` ink from its selected style: white on near-white, ~1.2:1. The Creator Hub and Group Input filter pills were the visible casualties. The active chip now carries deep-teal ink on the pale glider (5.05:1); dark mode keeps its saturated glider with dark ink. The new settings tiles/stepper were switched to the same tinted-selected pattern after computing their filled style at 4.1:1 (light) and 2.6:1 (dark) — both failing AA.
 - **Per-day cost bars got the sheen.** The "Where the money goes" category bars sweep a calm light gradient; the per-day bars above them were the only budget bars without it (a bare width transition only). Both now share the same `barSheen` sweep; the global reduced-motion guard freezes it as before.
 - **Every enum the UI renders is now sentence-cased.** Trip Settings' transport-mode and travel-style dropdowns showed raw machine values — "car", "food-focused" — because the form never ran any label formatter; the Plan Bench masked its raw values with CSS `text-transform` but carried the same debt. The root cause was systemic: **thirteen** private copies of the same three formatters had drifted apart (StopEditor's replaced only the *first* hyphen, rendering "Transport-hub"). They collapse into one `lib/labels.ts` (`cap`, `titleCase`, `statusLabel`), with tests pinning the exact wording. The Trip Settings fix also had to add the missing `value=` attributes — without them an `<option>`'s value is its *text*, so capitalising the label alone would have written "Car" into `trip.transportMode` and corrupted the data model.

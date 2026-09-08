@@ -353,8 +353,6 @@ export function ShareTab({ trip, me, editable, onNavigate, legCorrections }: {
         className="share-panel" hidden={tab !== 'settings'}>
         <h2 className="sr-only">Trip settings</h2>
         <div className="card">
-          <h3>Trip settings</h3>
-          <hr className="divider" />
           <TripSettingsForm trip={trip} editable={editable} />
         </div>
       </section>
