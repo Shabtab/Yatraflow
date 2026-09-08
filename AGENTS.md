@@ -32,13 +32,15 @@ Key locations:
 - `tests/` — vitest in **node env (no DOM)** — test pure logic, not DOM
 - CHANGELOG.md — Keep-a-Changelog-style; versions are pre-1.0 milestones
 
-## 1.1 Current project status (as of Sep 7, 2026)
+## 1.1 Current project status (as of Sep 8, 2026)
 
-**Version:** v0.43.0 on `test` and `main` (this release: Sep 7, 2026)
+**Version:** v0.44.0 on `test` and `main` (this release: Sep 8, 2026)
 
-**State:** Stabilization complete, UI audit all 32 findings fixed. The Corridor Concierge suggestion-engine brainstorm is FULLY shipped (Horizons 1–3, 16/16 incl. asymmetry, hours scoring, fuel corridors, trip DNA) — see ROADMAP's 🧭 table. v0.43.0 fixed the structural reason See & do was empty (the corridor scan never asked for sights), added panel↔map cross-highlighting and route-ordered stop insertion, re-tuned suggestions in real time on travel-style/mode change, and locked the AI companion behind `VITE_AI_COMPANION=on` for the M8 premium milestone. Branch model simplified: only `main` (production, Vercel) and `test` (integration) exist. `npm run verify` gate: tsc clean + 453 tests + production build.
+**State:** Stabilization complete, UI audit all 32 findings fixed. The Corridor Concierge suggestion-engine brainstorm is FULLY shipped (Horizons 1–3, 16/16 incl. asymmetry, hours scoring, fuel corridors, trip DNA) — see ROADMAP's 🧭 table. v0.44.0 added the budget pacing tile ("Safe to spend / day") and the per-day cost + dwell chips on timeline headers, made open tabs survive deploys (stale-chunk auto-reload), and restored public itinerary pages + invite links for non-members (`fetchSharedTrip` + `get_invite_trip` RPC). v0.43.0 fixed the structural reason See & do was empty (the corridor scan never asked for sights), added panel↔map cross-highlighting and route-ordered stop insertion, and locked the AI companion behind `VITE_AI_COMPANION=on` for the M8 premium milestone. Branch model simplified: only `main` (production, Vercel) and `test` (integration) exist. `npm run verify` gate: tsc clean + 477 tests + production build.
 
 **Recent major releases:**
+- **v0.44.0** — Budget pacing tile ("Safe to spend / day", via new pure `daysRemaining` / `safeToSpendPerDay` helpers), per-day cost + dwell chips on timeline day headers, stale-chunk auto-reload so already-open tabs survive a deploy, and `fetchSharedTrip` + the `get_invite_trip` RPC restoring public itinerary pages and invite links for non-members
+
 - **v0.43.0** — Suggestion-engine fixes: sights in the corridor scan (See & do fed), panel↔map cross-highlighting, route-ordered additions (A→B→C), engine-tips roll-out, realtime style/mode re-tune, AI companion locked for premium; plus the encoding-corruption repair of the bad calendar-export merge (styles.css/ShareTab.tsx restored, tabbed Share page re-applied) and the AI drawer close-fix + CTI redesign
 - **v0.42.0** — C1–C5 Hy4 audit P0 fixes: 'Add all' batch write-through, routeHash cache invalidation, degenerate-route guard, detour budget from actual stops
 - **v0.41.0** — Corridor Concierge: H3 suggestion engine (road personality, enforced detour budget, trip DNA, crew seeds, story arcs, slack prompts), asymmetric detours + hours scoring + fuel advisories, Google-only provider directive, store + AI-drawer sweep (issues 15/15 closed)
@@ -53,8 +55,8 @@ Key locations:
 **Current branch:** `test` (synced with `origin/test`)
 
 **In-flight:**
-- AGENTS.md updates for this session (haptics logging, AI drawer fixes, store write-through patterns)
-- No open PRs or feature branches pending merge
+- v0.44.0 shipped to `main` (Sep 8, 2026) — nothing pending merge
+- No open PRs or feature branches; only `main` + `test` exist, and the `shabtab` fork remote is removed (re-add with `git remote add shabtab https://github.com/Shabtab/Yatraflow.git` to check contrib progress)
 
 **What's next (ROADMAP.md):**
 - M8: Creator monetization (payouts ledger + fee model)
