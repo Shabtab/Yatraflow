@@ -82,6 +82,23 @@ export function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boo
 
   return (
     <div className="ts-form">
+      {/* Travel style — the trip navbar's exact look, at the top of the form and
+          full width so all ten styles sit in one row like the workspace tab bar:
+          same .tabbar glass bar, same .tab-btn pills, same sliding glider. */}
+      <div className="bench-block">
+        <span className="bench-eyebrow">Travel style</span>
+        <PillNav className="tabbar" role="group" aria-label="Travel style" activeKey={f.travelStyle}>
+          {TRAVEL_STYLES.map(s => (
+            <button key={s} type="button" data-pill-key={s} disabled={!editable}
+              aria-pressed={f.travelStyle === s}
+              className={`tab-btn${f.travelStyle === s ? ' active' : ''}`}
+              onClick={() => setF(x => ({ ...x, travelStyle: s }))}>
+              {cap(s)}
+            </button>
+          ))}
+        </PillNav>
+        <p className="bench-hint">The engine tunes break cadence — relaxed stops sooner, packed pushes further.</p>
+      </div>
       <div className="ts-layout">
         <div className="ts-controls">
 
@@ -210,22 +227,6 @@ export function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boo
               ))}
             </div>
             <p className="bench-hint">Car and motorcycle switch cost math to fuel: distance ÷ economy × pump price.</p>
-          </div>
-
-          {/* Travel style — the same glass pill nav as everywhere else */}
-          <div className="bench-block">
-            <span className="bench-eyebrow">Travel style</span>
-            <PillNav className="filter-pillbar" role="group" aria-label="Travel style" activeKey={f.travelStyle}>
-              {TRAVEL_STYLES.map(s => (
-                <button key={s} type="button" data-pill-key={s} disabled={!editable}
-                  aria-pressed={f.travelStyle === s}
-                  className={`clickable-chip chip${f.travelStyle === s ? ' on-teal' : ''}`}
-                  onClick={() => setF(x => ({ ...x, travelStyle: s }))}>
-                  {cap(s)}
-                </button>
-              ))}
-            </PillNav>
-            <p className="bench-hint">The engine tunes break cadence — relaxed stops sooner, packed pushes further.</p>
           </div>
 
           {/* Fuel + vehicle — only for self-drive modes */}

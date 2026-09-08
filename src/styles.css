@@ -3880,6 +3880,10 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
   grid-template-columns: minmax(0, 1.55fr) minmax(300px, .95fr);
 }
 .ts-controls { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+/* The travel-style rail reuses the workspace tab bar verbatim (.tabbar + .tab-btn);
+   inside a form its 20px bottom margin and enabled-looking disabled state are wrong. */
+.ts-form .tabbar { margin-bottom: 0; }
+.ts-form .tab-btn:disabled { opacity: .55; cursor: not-allowed; }
 .ts-receiptcol {
   position: sticky;
   top: calc(var(--nav-h) + 18px + env(safe-area-inset-top));
