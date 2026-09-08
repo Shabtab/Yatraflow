@@ -3,6 +3,14 @@
 All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions are pre-1.0 MVP milestones.
 
 
+## [Unreleased]
+
+### Added
+- **Trip settings, rebuilt on the Plan Bench's controls.** The Share tab's Trip settings panel was a flat stack of twelve look-alike fields with the save button parked below the fold. It is now four space-separated groups — Identity · Route · People & money · Getting around — using the compact control idiom the landing calculator introduced, extracted into shared primitives (`SettingsGroup`, `CountStepper`, `RangeDial`, `OptionTiles`, `StickyFormBar` in `ui.tsx`) so the bench styles stay scoped to the landing hero. Transport mode is an icon-tile grid (mode icon, name, ≈speed badge), travel style is a wrapping pill rail riding the shared `PillNav` glider, travellers is a tap-stepper, budget/person is a slider with a live formatted readout (0–₹3L, ₹500 steps), and Save floats in a sticky, safe-area-aware bar that follows you down the form. Everything still writes the exact same enum values the engine and suggestion cache key on.
+
+### Fixed
+- **Every enum the UI renders is now sentence-cased.** Trip Settings' transport-mode and travel-style dropdowns showed raw machine values — "car", "food-focused" — because the form never ran any label formatter; the Plan Bench masked its raw values with CSS `text-transform` but carried the same debt. The root cause was systemic: **thirteen** private copies of the same three formatters had drifted apart (StopEditor's replaced only the *first* hyphen, rendering "Transport-hub"). They collapse into one `lib/labels.ts` (`cap`, `titleCase`, `statusLabel`), with tests pinning the exact wording. The Trip Settings fix also had to add the missing `value=` attributes — without them an `<option>`'s value is its *text*, so capitalising the label alone would have written "Car" into `trip.transportMode` and corrupted the data model.
+
 ## [0.44.0] — 2026-09-08
 
 **The numbers you actually ask mid-trip, answered where you're planning.** The Budget tab now says what is still safe to spend today, timeline day headers show what each day costs and how long you'll be at its stops — and three reliability fixes make already-open tabs survive a deploy while public itinerary pages and invite links finally work for people who aren't members yet.

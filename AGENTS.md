@@ -430,6 +430,18 @@ Hard rules (each learned the hard way — do not relearn them):
   `node -e "console.log(Object.keys(require('lucide-react')).filter(n => /x/i.test(n)))"`
   before writing the import.
 
+- **A casing audit needs `-CaseSensitive` and must grep the enum definitions, not the
+  literals.** Two traps cost a false alarm and a near-miss in the same session: (1)
+  PowerShell's `Select-String` is case-insensitive by default, so `label="[a-z]` happily
+  matched `label="Menu"` and reported ~85 phantom offenders; (2) raw-enum renders
+  (`{TRANSPORT_MODES.map(m => <option>{m}</option>)}`) are invisible to string-literal
+  greps — the lowercase lives in `types.ts`, not the JSX. Audit the enum arrays and find
+  their render sites. Related: an `<option>` without `value=` derives its value from its
+  *text*, so capitalising the label alone writes "Car" into the data model — always add
+  the explicit `value=` when prettifying option labels. And prefer consolidating the
+  per-file copies of a formatter (`cap` had 7, `labelCat` 4 with drifting behaviour) into
+  one `lib/labels.ts` over fixing sites one by one.
+
 ## 5. External services
 
 Supabase (auth/data) · Vercel (auto-deploy from `main`) · Google Places
