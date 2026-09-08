@@ -5,6 +5,7 @@ import { TRAVEL_STYLES } from '../data/types'
 import { useDb, currentUser, updateProfile, tripsForUser } from '../store/store'
 import { Avatar, Chip, Field, toast } from '../components/ui'
 import { useTimeFormat, setTimeFormat, formatHM, type TimeFormat } from '../lib/timefmt'
+import { cap } from '../lib/labels'
 
 export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void }) {
   const db = useDb()
@@ -127,5 +128,3 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
     </div>
   )
 }
-
-function cap(s: string): string { return s[0].toUpperCase() + s.slice(1) }

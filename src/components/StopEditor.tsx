@@ -9,6 +9,7 @@ import type { PlaceHit } from './LocationInput'
 import { fetchOpeningHours } from '../lib/geocode'
 import { roadLegBetween } from '../lib/routing'
 import { getAssumptions, hmToMinutes, addMinutesToClock, formatInr } from '../lib/engine'
+import { titleCase, statusLabel } from '../lib/labels'
 import { useTimeFormat, formatHM } from '../lib/timefmt'
 
 export interface StopFormValues {
@@ -175,7 +176,7 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel,
           </Field>
           <Field label="Category">
             <select className="select" value={v.category} onChange={e => set('category', e.target.value as StopCategory)}>
-              {STOP_CATEGORIES.map(c => <option key={c} value={c}>{labelCat(c)}</option>)}
+              {STOP_CATEGORIES.map(c => <option key={c} value={c}>{titleCase(c)}</option>)}
             </select>
           </Field>
         </div>
@@ -279,7 +280,7 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel,
           </Field>
           <Field label="Status">
             <select className="select" value={v.status} onChange={e => set('status', e.target.value as StopStatus)}>
-              {STOP_STATUSES.map(s => <option key={s} value={s}>{labelStatus(s)}</option>)}
+              {STOP_STATUSES.map(s => <option key={s} value={s}>{statusLabel(s)}</option>)}
             </select>
           </Field>
         </div>
@@ -310,10 +311,3 @@ function normalize(v?: Partial<StopFormValues>): StopFormValues {
 const HOURS_CATEGORIES = new Set<string>(['temple', 'museum', 'food', 'hotel', 'adventure', 'shopping', 'event'])
 
 const DEFAULT_LATLNG = { lat: 10.0889, lng: 77.0595 } // Munnar default until geocoding exists
-
-function labelCat(c: StopCategory): string {
-  return c.replace('-', ' ').replace(/\b\w/g, m => m.toUpperCase())
-}
-function labelStatus(s: StopStatus): string {
-  return s === 'needs-booking' ? 'Needs booking' : s[0].toUpperCase() + s.slice(1)
-}

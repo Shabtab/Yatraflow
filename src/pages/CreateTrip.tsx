@@ -8,6 +8,7 @@ import { FUEL_PRICE_INR_PER_L, isFuelEconomyMode, parseFuelEconomyKmL, parseFuel
 import { fetchTripThumbUrl } from '../lib/tripThumb'
 import { Field, Chip, toast } from '../components/ui'
 import { useTimeFormat, formatHM } from '../lib/timefmt'
+import { cap } from '../lib/labels'
 import { readBenchPrefill } from '../lib/planBench'
 import { LocationInput } from '../components/LocationInput'
 import type { PlaceHit } from '../components/LocationInput'
@@ -351,5 +352,3 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
     </div>
   )
 }
-
-function cap(s: string): string { return s[0].toUpperCase() + s.slice(1) }

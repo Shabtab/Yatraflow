@@ -15,6 +15,7 @@ import {
   TrainFront, UtensilsCrossed, User, Users,
 } from 'lucide-react'
 import { formatInr, MODE_SPEED, MODE_COST_PER_KM } from '../lib/engine'
+import { cap } from '../lib/labels'
 import {
   BENCH_MODES, BENCH_DEFAULTS, BENCH_PRESETS, STAY_STYLES,
   STAY_RATE_PER_NIGHT, MEALS_PER_HEAD_DAY,
@@ -429,7 +430,7 @@ export function PlanBench() {
                     aria-pressed={input.mode === m}
                     onClick={() => { haptic(HAPTIC.select); patch({ mode: m }) }}>
                     {modeIcon(m)}
-                    <span className="bench-mode-name">{m === 'motorcycle' ? 'Bike' : m}</span>
+                    <span className="bench-mode-name">{m === 'motorcycle' ? 'Bike' : cap(m)}</span>
                     <span className="bench-mode-speed" aria-hidden="true">{MODE_SPEED[m] ?? 40}</span>
                   </button>
                 ))}
@@ -443,7 +444,7 @@ export function PlanBench() {
                   <button key={s} type="button" className={`bench-stay-row${input.stay === s ? ' on' : ''}`}
                     aria-pressed={input.stay === s}
                     onClick={() => { haptic(HAPTIC.select); patch({ stay: s }) }}>
-                    <span className="bench-stay-name">{s}</span>
+                    <span className="bench-stay-name">{cap(s)}</span>
                     <span className="bench-stay-rate">₹{STAY_RATE_PER_NIGHT[s]}/room</span>
                   </button>
                 ))}

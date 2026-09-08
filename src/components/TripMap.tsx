@@ -9,6 +9,7 @@ import { resolveHitCoords } from '../lib/geocode'
 import { hasCoords, mappablePois } from '../lib/providers/hits'
 import { routePath } from '../lib/routing'
 import { getAssumptions, isRoundTrip } from '../lib/engine'
+import { titleCase } from '../lib/labels'
 import { loadFlag, saveFlag } from '../lib/uiPrefs'
 import type { MapRef } from './mapcn/map'
 import { CatIcon } from './icons'
@@ -105,9 +106,6 @@ function dedupeConsecutive(coords: [number, number][]): [number, number][] {
 }
 
 /** "transport-hub" → "Transport Hub" for chip labels. */
-function labelCat(c: string): string {
-  return c.replace(/-/g, ' ').replace(/\b\w/g, m => m.toUpperCase())
-}
 
 /** Clean monochrome stroke icon per stop category — Lucide-style paths, no dep. */
 function catIcon(cat: string | undefined): React.ReactNode {
@@ -494,10 +492,10 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
                   className={`map-day-chip map-idea-chip ${hiddenIdeaCats.has(cat) ? '' : 'on'}`}
                   aria-pressed={!hiddenIdeaCats.has(cat)}
                   onClick={() => toggleIdeaCat(cat)}
-                  title={hiddenIdeaCats.has(cat) ? `Show ${count} ${labelCat(cat).toLowerCase()} idea${count === 1 ? '' : 's'}` : `Hide ${labelCat(cat).toLowerCase()} ideas`}
+                  title={hiddenIdeaCats.has(cat) ? `Show ${count} ${titleCase(cat).toLowerCase()} idea${count === 1 ? '' : 's'}` : `Hide ${titleCase(cat).toLowerCase()} ideas`}
                 >
                   <CatIcon category={cat} size={13} className="yf-idea-chip-ico" />
-                  {labelCat(cat)}
+                  {titleCase(cat)}
                   <span className="yf-idea-chip-count">{count}</span>
                 </button>
               ))}

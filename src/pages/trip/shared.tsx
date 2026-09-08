@@ -1,7 +1,7 @@
 // ============ Pieces shared by several trip-workspace tabs ============
 // Mechanical extraction from src/pages/TripWorkspace.tsx (M3.4) — no behavior changes.
 
-export function cap(s: string): string { return s[0].toUpperCase() + s.slice(1) }
+export { cap } from '../../lib/labels'
 export function timeAgo(ts: number): string {
   const s = Math.round((Date.now() - ts) / 1000)
   if (s < 60) return 'just now'

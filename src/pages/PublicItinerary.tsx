@@ -12,6 +12,7 @@ import type { Trip, PublishedItinerary } from '../data/types'
 import { useDb, currentUser, tripById, userById, registerPubView, fetchSharedTrip } from '../store/store'
 import { forkPublication } from '../lib/forkPub'
 import { simulateDay, originOf, minutesToHM, formatInr, getAssumptions, computeTotals, isRoundTrip } from '../lib/engine'
+import { cap, titleCase } from '../lib/labels'
 import { useTimeFormat, formatHM, formatHMRange } from '../lib/timefmt'
 import { stopKindOf, STOP_KIND_LABELS } from '../lib/stopKind'
 import { useSavedPubs } from '../lib/savedPubs'
@@ -329,7 +330,7 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
                           <div className="stop-main">
                             <div className="stop-toprow">
                               <span className="stop-title">{s.title}</span>
-                              <Chip tone="info">{labelCat(s.category)}</Chip>
+                              <Chip tone="info">{titleCase(s.category)}</Chip>
                               {s.openTime && <span className="small muted"><MetaIcon icon={ Clock } tone="time" />{formatHMRange(s.openTime, s.closeTime, timeFormat)}</span>}
                             </div>
                             <div className="stop-meta">
@@ -408,6 +409,3 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
     </div>
   )
 }
-
-function cap(s: string): string { return s[0].toUpperCase() + s.slice(1) }
-function labelCat(c: string): string { return c.replace(/-/g, ' ').replace(/\b\w/g, m => m.toUpperCase()) }

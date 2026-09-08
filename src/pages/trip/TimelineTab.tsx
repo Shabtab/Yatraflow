@@ -23,6 +23,7 @@ import { loadDayCollapsed, saveDayCollapsed } from '../../lib/uiPrefs'
 import { useTimeFormat, formatHM, formatHMRange } from '../../lib/timefmt'
 import { scrollBehavior } from '../../lib/motion'
 import { stopKindOf, STOP_KIND_LABELS } from '../../lib/stopKind'
+import { statusLabel } from '../../lib/labels'
 import { Chip, Modal, EmptyState, toast, useReorder } from '../../components/ui'
 import { StopEditor, type StopFormValues } from '../../components/StopEditor'
 import { useSuggestionCache } from '../../hooks/useSuggestionCache'
@@ -680,7 +681,7 @@ const DaySection = React.memo(function DaySection({ day, trip, editable, onAdd, 
               <div className="stop-main">
                 <div className="stop-toprow">
                   <span className="stop-title">{s.title}</span>
-                  <Chip tone={statusTone(s.status)}>{labelStatusText(s.status)}</Chip>
+                  <Chip tone={statusTone(s.status)}>{statusLabel(s.status)}</Chip>
                   <span className={`stop-kind-tag kind-${kind}`}>{STOP_KIND_LABELS[kind]}</span>
                   {s.priority === 'must-do' && <Chip tone="danger">Must do</Chip>}
                   {s.priority === 'optional' && <Chip tone="saffron">Optional</Chip>}
@@ -1285,9 +1286,6 @@ function MoveStopModal({ stop, trip, onClose, onMove }: {
 
 function statusTone(s: string): 'teal' | 'saffron' | 'danger' | 'ok' | 'info' {
   return s === 'confirmed' ? 'teal' : s === 'needs-booking' ? 'saffron' : s === 'rejected' ? 'danger' : 'info'
-}
-function labelStatusText(s: string): string {
-  return s === 'needs-booking' ? 'Needs booking' : s[0].toUpperCase() + s.slice(1)
 }
 
 function dayIndexOfStop(trip: Trip, stopId: string): number {

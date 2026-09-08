@@ -18,6 +18,7 @@ import {
   currentUser, userById, useDb,
 } from '../../store/store'
 import { computeTotals, getAssumptions, formatInr, isRoundTrip, safeToSpendPerDay } from '../../lib/engine'
+import { titleCase } from '../../lib/labels'
 import { Avatar, Chip, Field, StatTile, toast, undoToast } from '../../components/ui'
 
 // ================= Budget tab =================
@@ -35,7 +36,6 @@ const CAT_META: Record<ExpenseCategory, { icon: LucideIcon; color: string }> = {
   'emergency-buffer': { icon: LifeBuoy, color: 'var(--cat-emergency-buffer)' },
 }
 
-function labelCat(c: string): string { return c.replace(/-/g, ' ').replace(/\b\w/g, m => m.toUpperCase()) }
 
 /** −₹6,168 with a real minus sign — formatInr alone renders "₹-6,168". */
 function fmtNeg(n: number): string { return `−${formatInr(-n)}` }
@@ -91,7 +91,7 @@ function ExpenseFormFields({ trip, members, form, setForm }: {
       <div className="form-row">
         <Field label="Category">
           <select className="select" value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value as ExpenseCategory }))}>
-            {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{labelCat(c)}</option>)}
+            {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{titleCase(c)}</option>)}
           </select>
         </Field>
         <Field label="Paid by">
@@ -239,7 +239,7 @@ export function BudgetTab({ trip, totals, editable }: { trip: Trip; totals: Retu
                       <span className="cat-chip" style={{ background: `color-mix(in srgb, ${meta.color} 15%, transparent)` }}>
                         <Icon size={13} style={{ color: meta.color }} aria-hidden />
                       </span>
-                      {labelCat(c)}
+                      {titleCase(c)}
                     </span>
                     <div className="budget-bar-track">
                       <div className="budget-bar-fill" style={{ width: `${(v / maxCat) * 100}%`, background: meta.color }} />

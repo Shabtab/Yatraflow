@@ -9,6 +9,7 @@ import type { User } from '../data/types'
 import { computeHealth, formatInr } from '../lib/engine'
 import { useSavedPubs } from '../lib/savedPubs'
 import { forkPublication } from '../lib/forkPub'
+import { cap } from '../lib/labels'
 import { Avatar, Chip, EmptyState, toast } from '../components/ui'
 import { PubCard } from '../components/PubCard'
 
@@ -231,7 +232,6 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
   )
 }
 
-function cap(s: string): string { return s[0].toUpperCase() + s.slice(1) }
 function userOf(users: User[], id: string): User | undefined {
   return users.find(u => u.id === id)
 }

@@ -6,6 +6,7 @@ import { Calendar, Camera, GitFork, Heart, MapPin, Sparkles, TvMinimalPlay, Wall
 import { MetaIcon } from './icons'
 import type { PublishedItinerary, User } from '../data/types'
 import { formatInr } from '../lib/engine'
+import { cap } from '../lib/labels'
 import { Avatar, Chip } from './ui'
 import { CoverThumb } from './CoverThumb'
 
@@ -63,5 +64,3 @@ export function PubCard({ pub, creator, saved, onFork, onToggleSave }: {
     </div>
   )
 }
-
-function cap(s: string): string { return s[0].toUpperCase() + s.slice(1) }

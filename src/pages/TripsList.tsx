@@ -4,6 +4,7 @@ import { Clock, Compass, Plus, Rocket, Trash2, Wallet } from 'lucide-react'
 import { MetaIcon } from '../components/icons'
 import { useTrips, useUsers, useSessionUserId, tripsForUser, deleteTrip, restoreTrip, addDemoTrips } from '../store/store'
 import { computeTotals, formatInrShort } from '../lib/engine'
+import { cap } from '../lib/labels'
 import { Avatar, Chip, EmptyState, toast, undoToast, ConfirmDialog } from '../components/ui'
 import { CoverThumb } from '../components/CoverThumb'
 import type { Trip, User } from '../data/types'
@@ -110,7 +111,6 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
   )
 }
 
-function cap(s: string): string { return s[0].toUpperCase() + s.slice(1) }
 function userOf(users: User[], id: string): User | undefined {
   return users.find(u => u.id === id)
 }

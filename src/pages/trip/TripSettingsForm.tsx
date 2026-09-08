@@ -6,6 +6,7 @@ import type { Trip, LatLngPoint } from '../../data/types'
 import { TRANSPORT_MODES, TRAVEL_STYLES } from '../../data/types'
 import { updateTrip } from '../../store/store'
 import { FUEL_PRICE_INR_PER_L, isFuelEconomyMode, parseFuelEconomyKmL, isImplausibleFuelEconomy, parseFuelPricePerL } from '../../lib/engine'
+import { cap } from '../../lib/labels'
 import { Chip, Field, toast } from '../../components/ui'
 import { LocationInput } from '../../components/LocationInput'
 import { CoverImagePicker } from '../../components/CoverImagePicker'
@@ -103,12 +104,12 @@ export function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boo
       <div className="form-row">
         <Field label="Transport mode">
           <select className="select" disabled={!editable} value={f.transportMode} onChange={e => setF(x => ({ ...x, transportMode: e.target.value as never }))}>
-            {TRANSPORT_MODES.map(m => <option key={m}>{m}</option>)}
+            {TRANSPORT_MODES.map(m => <option key={m} value={m}>{cap(m)}</option>)}
           </select>
         </Field>
         <Field label="Travel style">
           <select className="select" disabled={!editable} value={f.travelStyle} onChange={e => setF(x => ({ ...x, travelStyle: e.target.value as never }))}>
-            {TRAVEL_STYLES.map(s => <option key={s}>{s}</option>)}
+            {TRAVEL_STYLES.map(s => <option key={s} value={s}>{cap(s)}</option>)}
           </select>
         </Field>
       </div>
