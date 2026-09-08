@@ -288,7 +288,7 @@ export function TimelineTab({ trip, editable, applyChange, legCorrections, sugge
       )}
 
       {days.map(day => (
-        <DaySection key={day.id} day={day} trip={trip} editable={editable} legCorrections={legCorrections} suggestionCache={suggestionCache}
+        <DaySection key={day.id} day={day} trip={trip} editable={editable} legCorrections={legCorrections} suggestionCache={suggestionCache} dayTotals={totals.byDay[Math.min(day.index, totals.byDay.length - 1)]}
           onAdd={handleAdd}
           onEdit={handleEdit}
           onDelete={handleDelete}
@@ -380,12 +380,14 @@ function ClampedText({ children, className }: { children: React.ReactNode; class
 // commit (the shell's useDb feeds the tab counts), but with stable props each
 // DaySection now bails out unless ITS day/trip data actually changed (M3.1 made
 // trip references immutable, so `day`/`trip` are stable between commits).
-const DaySection = React.memo(function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithinDay, onMoveBetweenDays, onMoveStopIn, onRenameDay, onCopyDay, onAddQuickStop, onSetDayStart, onAddPlannedHalts, warnings, onStatus, legCorrections, suggestionCache }: {
+const DaySection = React.memo(function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithinDay, onMoveBetweenDays, onMoveStopIn, onRenameDay, onCopyDay, onAddQuickStop, onSetDayStart, onAddPlannedHalts, warnings, onStatus, legCorrections, suggestionCache, dayTotals }: {
   day: Trip['days'][number]
   trip: Trip
   editable: boolean
   legCorrections?: Record<string, LegEstimate>
   suggestionCache: ReturnType<typeof useSuggestionCache>
+  /** this day's slice of computeTotals().byDay ΓÇö transport + expenses + entry fees */
+  dayTotals?: { dayIndex: number; expensesInr: number; transportInr: number; totalInr: number; stops: number; distanceKm: number }
   onAdd: (dayIndex: number) => void
   onEdit: (stopId: string) => void
   onDelete: (stopId: string, dayIndex: number) => void
@@ -537,6 +539,23 @@ const DaySection = React.memo(function DaySection({ day, trip, editable, onAdd, 
           </div>
           {!collapsed && <DayWeatherChip trip={trip} dayIndex={day.index} />}
         </div>
+        {/* Per-day cost + time-at-stops: intelligence the engine already
+            computes (computeTotals().byDay + simulateDay dwell), surfaced where
+            the plan is edited. Hidden while collapsed so a folded day's header
+            stays calm. */}
+        {!collapsed && dayTotals != null && dayTotals.totalInr > 0 && (
+          <span
+            className="day-cost-chip"
+            title={`Γëê ${formatInr(dayTotals.transportInr)} travel ┬╖ ${formatInr(dayTotals.expensesInr)} day costs (incl. entry fees)`}
+          >
+            Γëê {formatInr(dayTotals.totalInr)}
+          </span>
+        )}
+        {!collapsed && sim.dwellMinutes > 0 && (
+          <span className="day-dwell-chip" title="Time at the stops (visits + buffers) ΓÇö driving time is in the summary line">
+            {minutesToHM(sim.dwellMinutes)} at stops
+          </span>
+        )}
         {sev !== 'ok' && (
           <span className={`day-warn-pill sev-${sev}`} title={warnings.map(w => w.title).join('\n')}>
             <TriangleAlert size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />{warnings[0].title.replace(/^Day \d+:\s*/, '')}{warnings.length > 1 ? ` +${warnings.length - 1}` : ''}

@@ -3605,8 +3605,8 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
    v0.36 — Budget + Group input redesigns
    ============================================================ */
 
-/* ---- Budget: metric strip ---- */
-.metric-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+/* ---- Budget: metric strip (5 tiles since the safe-to-spend pacing tile) ---- */
+.metric-strip { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 16px; }
 .metric-bad { color: var(--danger); }
 .metric-good { color: var(--ok); }
 
@@ -3705,6 +3705,7 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
 .opt-row .opt-cost { text-align: right; }
 
 /* ---- v0.36 responsive ---- */
+@media (max-width: 1400px) { .metric-strip { grid-template-columns: repeat(3, 1fr); } }
 @media (max-width: 1100px) { .metric-strip { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 700px) {
   .daybar-row { grid-template-columns: 44px 1fr; }

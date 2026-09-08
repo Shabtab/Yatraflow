@@ -17,7 +17,7 @@ import {
   addExpense, deleteExpense, restoreExpense, updateExpense,
   currentUser, userById, useDb,
 } from '../../store/store'
-import { computeTotals, getAssumptions, formatInr, isRoundTrip } from '../../lib/engine'
+import { computeTotals, getAssumptions, formatInr, isRoundTrip, safeToSpendPerDay } from '../../lib/engine'
 import { Avatar, Chip, Field, StatTile, toast, undoToast } from '../../components/ui'
 
 // ================= Budget tab =================
@@ -127,6 +127,10 @@ export function BudgetTab({ trip, totals, editable }: { trip: Trip; totals: Retu
   const pctUsed = Math.min(150, Math.round((totals.totalCostInr / Math.max(1, groupTarget)) * 100))
   const perPersonDeltaPct = Math.round(((totals.costPerPersonInr - trip.budgetPerPersonInr) / Math.max(1, trip.budgetPerPersonInr)) * 100)
   const A = getAssumptions(trip)
+  // Pacing: how much the group can still spend per day without blowing the
+  // target. Null when no budget is set — the tile then asks for one instead
+  // of inventing a number.
+  const pacing = safeToSpendPerDay(trip, totals.totalCostInr)
 
   // Per-day bars: over the daily average by >15% = amber, with one nudge.
   const days = totals.byDay
@@ -172,6 +176,14 @@ export function BudgetTab({ trip, totals, editable }: { trip: Trip; totals: Retu
           sub={<>group target {formatInr(groupTarget)}</>} />
         <StatTile label="Spent of target" value={`${pctUsed}%`}
           sub={<>{formatInr(totals.totalCostInr)} of {formatInr(groupTarget)}</>} />
+        {pacing ? (
+          <StatTile label="Safe to spend / day"
+            value={<span className={pacing.perDayInr < 0 ? 'metric-bad' : ''}>{formatInr(pacing.perDayInr)}</span>}
+            sub={<>{formatInr(pacing.perPersonPerDayInr)} per person · {pacing.daysLeft === 0 ? 'trip over' : `${pacing.daysLeft} day${pacing.daysLeft !== 1 ? 's' : ''} left`}</>} />
+        ) : (
+          <StatTile label="Safe to spend / day" value="—"
+            sub={<>set a per-person target in Trip settings to see pacing</>} />
+        )}
       </div>
 
       {/* Capture bar sits above everything — an expense should take one
