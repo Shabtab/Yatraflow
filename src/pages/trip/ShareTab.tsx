@@ -143,7 +143,7 @@ function PublicationForm({ trip, pub, isOwner, creatorId, onDone }: {
   }
 
   return (
-    <div>
+    <div className="ts-form">
       <Field label="Tagline" hint="One line that sells the route on Explore and the public page.">
         <input className="input" value={tagline} onChange={e => setTagline(e.target.value)} maxLength={140} />
       </Field>
@@ -163,15 +163,15 @@ function PublicationForm({ trip, pub, isOwner, creatorId, onDone }: {
         <input className="input" value={cta} onChange={e => setCta(e.target.value)} placeholder="e.g. Full checklist + stay contacts." />
       </Field>
 
-      <div style={{ margin: '10px 0 4px' }}>
-        <b className="small">Free preview days</b>
-        {entirelyFree && <span className="small muted" style={{ marginLeft: 8 }}>Entirely free — every day is viewable.</span>}
+      <div className="ts-subhead">
+        <b>Free preview days</b>
+        {entirelyFree && <span className="small muted">Entirely free — every day is viewable.</span>}
       </div>
-      <div>
+      <div className="ts-dayrows">
         {trip.days.map(d => {
           const isFree = entirelyFree || free.has(d.index)
           return (
-            <div key={d.id} className="row-between" style={{ padding: '3px 0' }}>
+            <div key={d.id} className="row-between">
               <span className="small">Day {d.index + 1}{d.title ? ` — ${d.title}` : ''}</span>
               <button type="button" className={`btn btn-sm ${isFree ? 'btn-outline' : 'btn-saffron'}`}
                 disabled={entirelyFree} aria-pressed={!isFree}
@@ -184,11 +184,11 @@ function PublicationForm({ trip, pub, isOwner, creatorId, onDone }: {
         })}
       </div>
 
-      {err && <p className="err-text" style={{ marginTop: 8 }} role="alert">{err}</p>}
-      <button className="btn btn-saffron" style={{ marginTop: 12 }} disabled={!isOwner} onClick={submit}>
+      {err && <p className="err-text ts-warn-note" role="alert">{err}</p>}
+      <button className="btn btn-saffron" disabled={!isOwner} onClick={submit}>
         {pub ? 'Update publication' : 'Publish to Explore'}
       </button>
-      {!isOwner && <p className="hint-text" style={{ marginTop: 8 }}>Only the trip owner can publish.</p>}
+      {!isOwner && <p className="hint-text ts-note">Only the trip owner can publish.</p>}
     </div>
   )
 }
