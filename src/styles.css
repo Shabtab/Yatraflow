@@ -3916,3 +3916,13 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
   .ts-savebar { justify-content: stretch; }
   .ts-savebar .btn { flex: 1; }
 }
+
+/* ============ My Trips toolbar (search / style chips / when / sort) ============ */
+.trips-toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 18px; }
+.trips-toolbar .trips-search { flex: 1 1 240px; min-width: 200px; }
+.trips-toolbar .select { width: auto; min-width: 130px; flex: 0 1 auto; }
+@media (max-width: 720px) {
+  .trips-toolbar { align-items: stretch; }
+  .trips-toolbar .trips-search { flex-basis: 100%; }
+  .trips-toolbar .explore-chips { order: 3; flex-basis: 100%; margin-bottom: 0; }
+}
