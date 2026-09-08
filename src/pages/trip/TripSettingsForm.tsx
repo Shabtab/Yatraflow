@@ -1,15 +1,26 @@
 // ============ Trip workspace — trip settings form (Share tab) ============
 // Mechanical extraction from src/pages/TripWorkspace.tsx (M3.4) — no behavior changes.
-import { useState } from 'react'
-import { ChevronDown, ChevronUp, TriangleAlert, X } from 'lucide-react'
-import type { Trip, LatLngPoint } from '../../data/types'
+import { useState, type ReactNode } from 'react'
+import {
+  Bike, Bus, Car, CarTaxiFront, ChevronDown, ChevronUp, Image as ImageIcon, MapPin,
+  Plane, Route as RouteIcon, Shuffle, TrainFront, TriangleAlert, Users, X,
+} from 'lucide-react'
+import type { Trip, LatLngPoint, TransportMode } from '../../data/types'
 import { TRANSPORT_MODES, TRAVEL_STYLES } from '../../data/types'
 import { updateTrip } from '../../store/store'
-import { FUEL_PRICE_INR_PER_L, isFuelEconomyMode, parseFuelEconomyKmL, isImplausibleFuelEconomy, parseFuelPricePerL } from '../../lib/engine'
+import { FUEL_PRICE_INR_PER_L, MODE_SPEED, formatInr, isFuelEconomyMode, parseFuelEconomyKmL, isImplausibleFuelEconomy, parseFuelPricePerL } from '../../lib/engine'
 import { cap } from '../../lib/labels'
-import { Chip, Field, toast } from '../../components/ui'
+import { Chip, CountStepper, Field, OptionTiles, RangeDial, SettingsGroup, StickyFormBar, toast } from '../../components/ui'
+import { PillNav } from '../../components/PillNav'
 import { LocationInput } from '../../components/LocationInput'
 import { CoverImagePicker } from '../../components/CoverImagePicker'
+
+/** Icon per transport mode — mirrors the bench's mode tiles. */
+const MODE_ICON: Record<TransportMode, ReactNode> = {
+  car: <Car size={15} />, motorcycle: <Bike size={15} />, train: <TrainFront size={15} />,
+  bus: <Bus size={15} />, flight: <Plane size={15} />, taxi: <CarTaxiFront size={15} />,
+  mixed: <Shuffle size={15} />,
+}
 
 export function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boolean }) {
   const [f, setF] = useState({
@@ -41,15 +52,16 @@ export function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boo
   }
 
   return (
-    <div>
-      <Field label="Cover image">
-        <CoverImagePicker trip={trip} editable={editable} />
-        <p className="hint-text" style={{ marginTop: 6 }}>
-          Pick a popular photo of your destination, paste your own image URL, or leave it to the emoji.
-        </p>
-      </Field>
-      <Field label="Trip name"><input className="input" disabled={!editable} value={f.name} onChange={e => setF(x => ({ ...x, name: e.target.value }))} /></Field>
-      <div className="form-row">
+    <div className="ts-form">
+      <SettingsGroup icon={<ImageIcon size={15} />} title="Identity">
+        <Field label="Trip name"><input className="input" disabled={!editable} value={f.name} onChange={e => setF(x => ({ ...x, name: e.target.value }))} /></Field>
+        <Field label="Cover image">
+          <CoverImagePicker trip={trip} editable={editable} />
+          <p className="hint-text">Pick a popular photo of your destination, paste your own image URL, or leave it to the emoji.</p>
+        </Field>
+      </SettingsGroup>
+
+      <SettingsGroup icon={<RouteIcon size={15} />} title="Route">
         <Field label="Starting location">
           <LocationInput
             value={f.startLocation}
@@ -58,7 +70,6 @@ export function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boo
             placeholder="Search a city…"
           />
         </Field>
-      </div>
       <Field label={`Destinations (${f.destinations.length})`} hint="Search to add — arrows reorder the route">
         <LocationInput
           value={destInput}
@@ -97,29 +108,49 @@ export function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boo
           </div>
         )}
       </Field>
-      <div className="form-row">
-        <Field label="Travellers"><input type="number" min={1} className="input" disabled={!editable} value={f.travellers} onChange={e => setF(x => ({ ...x, travellers: Number(e.target.value) }))} /></Field>
-        <Field label="Budget/person (₹)"><input type="number" min={0} className="input" disabled={!editable} value={f.budget} onChange={e => setF(x => ({ ...x, budget: Number(e.target.value) }))} /></Field>
-      </div>
-      <div className="form-row">
+      </SettingsGroup>
+
+      <SettingsGroup icon={<Users size={15} />} title="People & money">
+        <Field label="Travellers">
+          <CountStepper value={Math.min(12, Math.max(1, f.travellers))} min={1} max={12}
+            ariaLabel="Number of travellers" disabled={!editable}
+            onChange={v => setF(x => ({ ...x, travellers: v }))} />
+        </Field>
+        <Field label="Budget per person (₹)" hint="What one person can spend across the whole trip — the Budget tab's pacing tile reads this.">
+          <RangeDial value={Math.min(300000, Math.max(0, f.budget))} min={0} max={300000} step={500}
+            fmt={v => formatInr(v)} ends={['₹0', '₹3L']} ariaLabel="Budget per person in rupees"
+            disabled={!editable} onChange={v => setF(x => ({ ...x, budget: v }))} />
+        </Field>
+      </SettingsGroup>
+
+      <SettingsGroup icon={<Car size={15} />} title="Getting around"
+        hint="Mode and style tune the suggestion engine — relaxed trips stop sooner than packed ones.">
         <Field label="Transport mode">
-          <select className="select" disabled={!editable} value={f.transportMode} onChange={e => setF(x => ({ ...x, transportMode: e.target.value as never }))}>
-            {TRANSPORT_MODES.map(m => <option key={m} value={m}>{cap(m)}</option>)}
-          </select>
+          <OptionTiles value={f.transportMode} disabled={!editable} ariaLabel="Transport mode"
+            onChange={v => setF(x => ({ ...x, transportMode: v }))}
+            options={TRANSPORT_MODES.map(m => ({ value: m, label: cap(m), icon: MODE_ICON[m], meta: `≈${MODE_SPEED[m] ?? 40} km/h` }))} />
         </Field>
-        <Field label="Travel style">
-          <select className="select" disabled={!editable} value={f.travelStyle} onChange={e => setF(x => ({ ...x, travelStyle: e.target.value as never }))}>
-            {TRAVEL_STYLES.map(s => <option key={s} value={s}>{cap(s)}</option>)}
-          </select>
-        </Field>
-      </div>
+        <div className="ts-stylefield">
+          <span className="ts-fieldlabel">Travel style</span>
+          <PillNav className="ts-stylebar" role="group" aria-label="Travel style" activeKey={f.travelStyle}>
+            {TRAVEL_STYLES.map(s => (
+              <button key={s} type="button" data-pill-key={s} disabled={!editable}
+                aria-pressed={f.travelStyle === s}
+                className={`chip clickable-chip${f.travelStyle === s ? ' on-teal' : ''}`}
+                onClick={() => setF(x => ({ ...x, travelStyle: s }))}>
+                {cap(s)}
+              </button>
+            ))}
+          </PillNav>
+        </div>
       {isFuelEconomyMode(f.transportMode) && (
+        <>
         <div className="form-row">
           <Field label="Fuel economy (km per litre)" hint="Optional — transport cost becomes route distance ÷ economy × price per litre instead of the default ₹/km rate.">
             <input type="number" min={2} max={80} step={0.1} className="input" disabled={!editable} value={f.fuelEconomy}
               onChange={e => setF(x => ({ ...x, fuelEconomy: e.target.value }))} placeholder="e.g. 18" />
             {isImplausibleFuelEconomy(f.transportMode, parseFuelEconomyKmL(f.fuelEconomy)) && (
-              <p className="hint-text" style={{ marginTop: 5, color: 'var(--warn-600)' }}>
+              <p className="hint-text ts-warn-note">
                 <TriangleAlert size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />Unusual for a {f.transportMode} — most do far better. Double-check the value (km per litre).
               </p>
             )}
@@ -129,16 +160,12 @@ export function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boo
               onChange={e => setF(x => ({ ...x, fuelPrice: e.target.value }))} placeholder="e.g. 105.5" />
           </Field>
         </div>
-      )}
-      {isFuelEconomyMode(f.transportMode) && (
-        <div className="chip-row" style={{ margin: '4px 0 12px' }}>
+        <div className="chip-row">
           <Chip active={f.roundTrip} aria-pressed={f.roundTrip} onClick={editable ? () => setF(x => ({ ...x, roundTrip: !x.roundTrip })) : undefined}>
             Round trip — return to start
           </Chip>
         </div>
-      )}
-      {isFuelEconomyMode(f.transportMode) && (
-        <div className="vehicle-profile-form" style={{ margin: '4px 0 16px' }}>
+        <div className="vehicle-profile-form">
           <div className="form-row">
             <Field label="Vehicle type">
               <select className="select" disabled={!editable} value={f.vehicleType} onChange={e => setF(x => ({ ...x, vehicleType: e.target.value as never }))}>
@@ -167,9 +194,12 @@ export function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boo
             </Field>
           </div>
         </div>
+        </>
       )}
-      {editable && (
-        <button className="btn btn-primary btn-sm" onClick={() => {
+      </SettingsGroup>
+
+      <StickyFormBar show={editable}>
+        <button className="btn btn-primary" onClick={() => {
           updateTrip(trip.id, {
             name: f.name, startLocation: f.startLocation,
             startLocationCoords: startCoords ?? undefined,
@@ -190,7 +220,7 @@ export function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boo
           })
           toast('Trip settings updated')
         }}>Save settings</button>
-      )}
+      </StickyFormBar>
     </div>
   )
 }

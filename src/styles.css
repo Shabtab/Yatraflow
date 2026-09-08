@@ -2055,7 +2055,7 @@ main:focus { outline: none; }
 .yf-range:focus-visible, .bench-mode-btn:focus-visible, .bench-stay-row:focus-visible,
 .hero-bench-cta:focus-visible,
 .bench-toggle:focus-visible, .bench-preset-chip:focus-visible,
-.bench-crew-btn:focus-visible,
+.bench-crew-btn:focus-visible, .ts-tile:focus-visible, .ts-stepper-btn:focus-visible,
 .bench-receipt-actions .chip:focus-visible, .bench-surprise:focus-visible {
   outline: none;
   box-shadow: var(--ring);
@@ -3840,3 +3840,79 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
 .share-panel { display: block; }
 /* Guard: keep [hidden] authoritative so inactive panels leave the a11y tree. */
 .share-panel[hidden] { display: none; }
+
+/* ============ Trip settings form (Plan Bench idiom, workspace-safe) ============
+   Groups separate by space (24px between vs 10px inside — the 2× rule), not
+   separator lines. Controls reuse the shared tokens; the save bar floats so
+   the primary action never parks below the fold. */
+.ts-group { display: flex; flex-direction: column; gap: 10px; }
+.ts-group + .ts-group { margin-top: 24px; }
+.ts-group-head { display: flex; align-items: center; gap: 9px; }
+.ts-group-icon {
+  display: grid; place-items: center; width: 30px; height: 30px; flex: none;
+  border-radius: 9px; background: var(--teal-soft); color: var(--teal-deep);
+}
+[data-theme='dark'] .ts-group-icon { color: var(--yf-teal-600); }
+.ts-group-headtext { min-width: 0; }
+.ts-group-title { margin: 0; font-size: 13.5px; font-weight: 800; letter-spacing: .01em; color: var(--text); }
+.ts-group-hint { margin: 1px 0 0; font-size: 12px; color: var(--text-3); }
+
+/* transport mode tiles — icon + name + speed badge, selected = filled */
+.ts-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; }
+.ts-tile {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  min-height: 62px; padding: 9px 8px; cursor: pointer; font: inherit;
+  border: 1.5px solid var(--line); border-radius: 12px; background: var(--card); color: var(--text-2);
+  transition: border-color .12s var(--ease-out), background .12s var(--ease-out), color .12s var(--ease-out), transform .12s var(--ease-out);
+}
+.ts-tile:hover { transform: translateY(-1px); border-color: var(--yf-teal-600); }
+.ts-tile.on { border-color: var(--yf-teal-600); background: var(--yf-teal-600); color: #fff; }
+.ts-tile:disabled { opacity: .55; cursor: not-allowed; transform: none; }
+.ts-tile-icon { display: grid; place-items: center; }
+.ts-tile.on .ts-tile-icon { color: #fff; }
+.ts-tile-name { font-size: 12px; font-weight: 700; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ts-tile-meta {
+  font-size: 10.5px; font-weight: 700; font-variant-numeric: tabular-nums;
+  padding: 1px 7px; border-radius: 999px; background: var(--bg-soft); color: var(--text-2);
+}
+.ts-tile.on .ts-tile-meta { background: rgba(255, 255, 255, .22); color: #fff; }
+
+/* count stepper — every target ≥40px for touch */
+.ts-stepper { display: flex; flex-wrap: wrap; gap: 6px; }
+.ts-stepper-btn {
+  min-width: 40px; height: 40px; padding: 0 8px; border-radius: 11px; cursor: pointer; font: inherit;
+  font-size: 12.5px; font-weight: 700; font-variant-numeric: tabular-nums;
+  border: 1.5px solid var(--line); background: var(--card); color: var(--text-2);
+  transition: transform .12s var(--ease-out), border-color .12s var(--ease-out), background .12s var(--ease-out), color .12s var(--ease-out);
+}
+.ts-stepper-btn:hover { transform: translateY(-1px); }
+.ts-stepper-btn.on { border-color: var(--yf-teal-600); background: var(--yf-teal-600); color: #fff; }
+.ts-stepper-btn:disabled { opacity: .55; cursor: not-allowed; transform: none; }
+
+/* slider dial — live readout over the shared .yf-range track */
+.ts-dial { display: flex; flex-direction: column; gap: 2px; }
+.ts-dial-value { font-size: 17px; font-weight: 800; color: var(--text); font-variant-numeric: tabular-nums; }
+.ts-dial-ends { display: flex; justify-content: space-between; font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); }
+
+/* travel style — wrapping pill rail on the shared glider */
+.ts-stylefield { display: flex; flex-direction: column; gap: 8px; }
+.ts-fieldlabel { font-size: 12.5px; font-weight: 700; color: var(--text-2); }
+.ts-stylebar { flex-wrap: wrap; row-gap: 6px; }
+.ts-stylebar .chip:disabled { opacity: .55; cursor: not-allowed; }
+
+/* warning note (implausible fuel economy) — replaces an inline style */
+.ts-warn-note { margin: 5px 0 0; color: var(--warn-600); }
+
+/* sticky save bar — safe-area aware (viewport-fit=cover is on) */
+.ts-savebar {
+  position: sticky; bottom: 0; z-index: 5;
+  display: flex; justify-content: flex-end; align-items: center; gap: 10px;
+  margin-top: 24px; padding: 10px 0 calc(10px + env(safe-area-inset-bottom));
+  background: var(--bg); border-top: 1px solid var(--line);
+}
+
+@media (max-width: 720px) {
+  .ts-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ts-savebar { justify-content: stretch; }
+  .ts-savebar .btn { flex: 1; }
+}
