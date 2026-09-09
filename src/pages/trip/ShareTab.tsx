@@ -1,10 +1,10 @@
 // ============ Trip workspace — Share tab ============
 // Mechanical extraction from src/pages/TripWorkspace.tsx (M3.4) — no behavior changes.
 // Includes SnapshotCard — ShareTab is its only consumer.
-import React, { useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { CalendarDays, Download, Link2, Lock, Upload } from 'lucide-react'
 import type { Trip, PublishedItinerary } from '../../data/types'
-import { useDb, userById, setMemberRole, removeMember, restoreMember, publishItinerary, unpublishItinerary, duplicateTrip } from '../../store/store'
+import { useDb, userById, setMemberRole, removeMember, restoreMember, publishItinerary, unpublishItinerary, duplicateTrip, ensureInviteCode } from '../../store/store'
 import { encodeTripSnapshot, snapshotUrl, downloadTripJson } from '../../lib/snapshot'
 import { downloadTripIcs } from '../../lib/ics'
 import type { LegEstimate } from '../../lib/engine'
@@ -143,7 +143,7 @@ function PublicationForm({ trip, pub, isOwner, creatorId, onDone }: {
   }
 
   return (
-    <div>
+    <div className="ts-form">
       <Field label="Tagline" hint="One line that sells the route on Explore and the public page.">
         <input className="input" value={tagline} onChange={e => setTagline(e.target.value)} maxLength={140} />
       </Field>
@@ -163,15 +163,15 @@ function PublicationForm({ trip, pub, isOwner, creatorId, onDone }: {
         <input className="input" value={cta} onChange={e => setCta(e.target.value)} placeholder="e.g. Full checklist + stay contacts." />
       </Field>
 
-      <div style={{ margin: '10px 0 4px' }}>
-        <b className="small">Free preview days</b>
-        {entirelyFree && <span className="small muted" style={{ marginLeft: 8 }}>Entirely free — every day is viewable.</span>}
+      <div className="ts-subhead">
+        <b>Free preview days</b>
+        {entirelyFree && <span className="small muted">Entirely free — every day is viewable.</span>}
       </div>
-      <div>
+      <div className="ts-dayrows">
         {trip.days.map(d => {
           const isFree = entirelyFree || free.has(d.index)
           return (
-            <div key={d.id} className="row-between" style={{ padding: '3px 0' }}>
+            <div key={d.id} className="row-between">
               <span className="small">Day {d.index + 1}{d.title ? ` — ${d.title}` : ''}</span>
               <button type="button" className={`btn btn-sm ${isFree ? 'btn-outline' : 'btn-saffron'}`}
                 disabled={entirelyFree} aria-pressed={!isFree}
@@ -184,11 +184,11 @@ function PublicationForm({ trip, pub, isOwner, creatorId, onDone }: {
         })}
       </div>
 
-      {err && <p className="err-text" style={{ marginTop: 8 }} role="alert">{err}</p>}
-      <button className="btn btn-saffron" style={{ marginTop: 12 }} disabled={!isOwner} onClick={submit}>
+      {err && <p className="err-text ts-warn-note" role="alert">{err}</p>}
+      <button className="btn btn-saffron" disabled={!isOwner} onClick={submit}>
         {pub ? 'Update publication' : 'Publish to Explore'}
       </button>
-      {!isOwner && <p className="hint-text" style={{ marginTop: 8 }}>Only the trip owner can publish.</p>}
+      {!isOwner && <p className="hint-text ts-note">Only the trip owner can publish.</p>}
     </div>
   )
 }
@@ -216,7 +216,21 @@ export function ShareTab({ trip, me, editable, onNavigate, legCorrections }: {
   legCorrections?: Record<string, LegEstimate>
 }) {
   const db = useDb()
-  const inviteLink = `${location.origin}${location.pathname}#/invite/${trip.id}`
+  // Short invite code link (#/join/GOA-K7QF): minted lazily on first share —
+  // codes are meaningfully readable instead of a 36-char UUID. Falls back to
+  // the legacy UUID link only while minting is impossible (no DB column yet).
+  const [inviteCode, setInviteCode] = useState<string | null>(trip.inviteCode ?? null)
+  useEffect(() => {
+    if (inviteCode) return
+    let alive = true
+    void ensureInviteCode(trip.id).then(code => {
+      if (alive && code) setInviteCode(code)
+    })
+    return () => { alive = false }
+  }, [trip.id, inviteCode])
+  const inviteLink = inviteCode
+    ? `${location.origin}${location.pathname}#/join/${inviteCode}`
+    : `${location.origin}${location.pathname}#/invite/${trip.id}`
   const pub = db.published.find(p => p.tripId === trip.id)
   const pubLink = pub ? `${location.origin}${location.pathname}#/pub/${pub.id}` : ''
   const isOwner = (trip.members ?? []).some(m => m.userId === me.id && m.role === 'owner')
@@ -275,6 +289,15 @@ export function ShareTab({ trip, me, editable, onNavigate, legCorrections }: {
           <span className="share-intent share-intent--teal">1 · Plan together</span>
           <h3>Invite collaborators</h3>
           <p className="hint-text" style={{ margin: '6px 0 12px' }}>Anyone with this link joins as an editor after logging in.</p>
+          {inviteCode && (
+            <div className="invite-code-row" style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
+              <div className="invite-code-chip">
+                <code className="invite-code-text" aria-label={`Trip code ${inviteCode}`}>{inviteCode}</code>
+                <CopyButton text={inviteCode} />
+              </div>
+              <span className="small muted">read it out loud — friends type it on the home screen</span>
+            </div>
+          )}
           <div className="share-link-box"><code title={inviteLink}>{inviteLink}</code><CopyButton text={inviteLink} /></div>
           <hr className="divider" />
           <h3>Members & roles</h3>
@@ -353,8 +376,6 @@ export function ShareTab({ trip, me, editable, onNavigate, legCorrections }: {
         className="share-panel" hidden={tab !== 'settings'}>
         <h2 className="sr-only">Trip settings</h2>
         <div className="card">
-          <h3>Trip settings</h3>
-          <hr className="divider" />
           <TripSettingsForm trip={trip} editable={editable} />
         </div>
       </section>

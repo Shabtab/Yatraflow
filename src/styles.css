@@ -408,7 +408,11 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
 .pill-nav .clickable-chip.on-teal,
 .pill-nav .nav-link.active:hover, .pill-nav .tab-btn.active:hover,
 .pill-nav .clickable-chip.on-teal:hover { background: transparent; }
-/* dark glass gliders want dark ink on the active label */
+/* Ink on the glider: light mode paints a PALE teal glider, so the active chip
+   keeps deep-teal ink — it would otherwise inherit #fff from .on-teal and
+   vanish against the pale background (1.2:1). Dark mode paints a saturated
+   glider and wants dark ink (kept from the original fix). */
+.pill-nav .clickable-chip.on-teal { color: var(--yf-teal-700); }
 [data-theme='dark'] .pill-nav .nav-link.active, [data-theme='dark'] .pill-nav .tab-btn.active,
 [data-theme='dark'] .pill-nav .clickable-chip.on-teal { color: #06251f; }
 .auth-tabs { margin: 18px 0; }
@@ -1696,6 +1700,10 @@ a.btn { text-decoration: none; }
 .role-select:hover { border-color: var(--teal); }
 .share-link-box { display: flex; gap: 8px; align-items: center; background: var(--bg-soft); border-radius: var(--radius-sm); padding: 9px 12px; font-size: 13px; overflow: hidden; }
 .share-link-box code { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; font-size: 12px; }
+/* Invite code chip: the short "GOA-K7QF" code, styled like a boarding-pass
+   stub — big, letter-spaced, with a copy button right next to it. */
+.invite-code-chip { display: inline-flex; gap: 10px; align-items: center; background: var(--bg-soft); border: 1px dashed var(--teal); border-radius: var(--radius-sm); padding: 8px 12px; }
+.invite-code-text { font-size: 17px; font-weight: 700; letter-spacing: 0.12em; }
 .footer { border-top: 1px solid var(--line); padding: 26px 0 34px; margin-top: 50px; color: var(--text-3); font-size: 13px; }
 
 /* ---------- App shell / nav extras ---------- */
@@ -2055,7 +2063,7 @@ main:focus { outline: none; }
 .yf-range:focus-visible, .bench-mode-btn:focus-visible, .bench-stay-row:focus-visible,
 .hero-bench-cta:focus-visible,
 .bench-toggle:focus-visible, .bench-preset-chip:focus-visible,
-.bench-crew-btn:focus-visible, .ts-tile:focus-visible, .ts-stepper-btn:focus-visible,
+.bench-crew-btn:focus-visible,
 .bench-receipt-actions .chip:focus-visible, .bench-surprise:focus-visible {
   outline: none;
   box-shadow: var(--ring);
@@ -2686,7 +2694,7 @@ html.vt-active :where(*) {
   transition: border-color .12s var(--ease-out), background .12s var(--ease-out), color .12s var(--ease-out), transform .12s var(--ease-out);
 }
 .bench-mode-btn:hover { transform: translateY(-1px); border-color: var(--yf-teal-600); }
-.bench-mode-btn.on { border-color: var(--yf-teal-600); background: var(--yf-teal-600); color: #fff; }
+.bench-mode-btn.on { border-color: var(--yf-teal-700); background: var(--yf-teal-700); color: #fff; }
 .bench-mode-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bench-mode-speed {
   margin-left: auto; flex-shrink: 0; font-size: 10.5px; font-weight: 800;
@@ -2726,7 +2734,20 @@ html.vt-active :where(*) {
   transition: transform .12s var(--ease-out), border-color .12s var(--ease-out), background .12s var(--ease-out);
 }
 .bench-crew-btn:hover { transform: translateY(-1px); }
-.bench-crew-btn.on { border-color: var(--yf-teal-600); background: var(--yf-teal-600); color: #fff; }
+.bench-crew-btn.on { border-color: var(--yf-teal-700); background: var(--yf-teal-700); color: #fff; }
+/* Dark theme: teal-700 is the BRIGHT shade here (#1E9D92), so white ink on a
+   saturated fill drops to 3.3:1. Use the near-black ink the pill-nav glider
+   already uses (#06251f) — 6.6:1 on #2BB8AC. The pale-tinted `.on` states flip
+   teal-700 text to teal-600 (4.1:1 -> 5.6:1 on #12332F). Light theme passes as
+   authored: #fff on teal-700 = 5.8:1, teal-700 on teal-100 = 5.1:1. */
+[data-theme='dark'] .bench-mode-btn.on,
+[data-theme='dark'] .bench-crew-btn.on {
+  border-color: var(--yf-teal-600); background: var(--yf-teal-600); color: #06251f;
+}
+[data-theme='dark'] .bench-mode-btn.on .bench-mode-speed { background: rgba(6, 37, 31, .22); color: #06251f; }
+[data-theme='dark'] .bench-toggle.on,
+[data-theme='dark'] .bench-stay-row.on,
+[data-theme='dark'] .bench-stay-row.on .bench-stay-rate { color: var(--yf-teal-600); }
 .bench-crew-emoji { font-size: 15px; line-height: 1; }
 
 /* receipt v3 — theme-aware bill: torn bottom edge, stamp, barcode, mono numerals.
@@ -3615,7 +3636,17 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
 .daybar-row { display: grid; grid-template-columns: 52px 1fr auto; gap: 10px; align-items: center; font-size: 13.5px; }
 .daybar-label { font-weight: 700; color: var(--text-2); white-space: nowrap; }
 .daybar-track { position: relative; height: 12px; background: var(--bg-soft); border-radius: 99px; }
-.daybar-fill { height: 100%; border-radius: 99px; transition: width 300ms cubic-bezier(0.2, 0, 0, 1); }
+.daybar-fill {
+  height: 100%; border-radius: 99px; transition: width 300ms cubic-bezier(0.2, 0, 0, 1);
+  position: relative; overflow: hidden;
+}
+/* Same calm sheen the category bars wear (barSheen) — the per-day bars were the
+   only budget bars without it. The global reduced-motion block freezes it. */
+.daybar-fill::after {
+  content: ''; position: absolute; top: 0; bottom: 0; width: 42%;
+  background: linear-gradient(105deg, transparent, rgba(255,255,255,.45), transparent);
+  animation: barSheen 2.6s var(--ease-out) infinite;
+}
 /* the daily-average tick — amber line crossing every bar */
 .daybar-avg { position: absolute; top: -3px; bottom: -3px; width: 2px; border-radius: 1px; background: var(--saffron-600); }
 .daybar-meta { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.3; font-variant-numeric: tabular-nums; }
@@ -3841,78 +3872,58 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
 /* Guard: keep [hidden] authoritative so inactive panels leave the a11y tree. */
 .share-panel[hidden] { display: none; }
 
-/* ============ Trip settings form (Plan Bench idiom, workspace-safe) ============
-   Groups separate by space (24px between vs 10px inside — the 2× rule), not
-   separator lines. Controls reuse the shared tokens; the save bar floats so
-   the primary action never parks below the fold. */
-.ts-group { display: flex; flex-direction: column; gap: 10px; }
-.ts-group + .ts-group { margin-top: 24px; }
-.ts-group-head { display: flex; align-items: center; gap: 9px; }
-.ts-group-icon {
-  display: grid; place-items: center; width: 30px; height: 30px; flex: none;
-  border-radius: 9px; background: var(--teal-soft); color: var(--teal-deep);
+/* Trip settings (Share tab) — Plan Bench fidelity. The controls reuse the bench's
+   own classes (blocks, eyebrow, mode grid, crew buttons, slider dials, receipt) at
+   their exact homepage proportions, so the workspace and the landing speak one
+   language; only the two-column layout and the sticky live preview are
+   settings-specific. Do not add size overrides here — tune the bench classes. */
+.ts-form { display: flex; flex-direction: column; gap: 12px; }
+.ts-form .field { margin-bottom: 0; }
+.ts-layout {
+  display: grid; align-items: start; gap: 22px;
+  grid-template-columns: minmax(0, 1.55fr) minmax(300px, .95fr);
 }
-[data-theme='dark'] .ts-group-icon { color: var(--yf-teal-600); }
-.ts-group-headtext { min-width: 0; }
-.ts-group-title { margin: 0; font-size: 13.5px; font-weight: 800; letter-spacing: .01em; color: var(--text); }
-.ts-group-hint { margin: 1px 0 0; font-size: 12px; color: var(--text-3); }
-
-/* transport mode tiles — icon + name + speed badge, selected = filled */
-.ts-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; }
-.ts-tile {
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
-  min-height: 62px; padding: 9px 8px; cursor: pointer; font: inherit;
-  border: 1.5px solid var(--line); border-radius: 12px; background: var(--card); color: var(--text-2);
-  transition: border-color .12s var(--ease-out), background .12s var(--ease-out), color .12s var(--ease-out), transform .12s var(--ease-out);
+.ts-controls { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+/* The travel-style rail reuses the workspace tab bar verbatim (.tabbar + .tab-btn);
+   inside a form its 20px bottom margin and enabled-looking disabled state are wrong. */
+.ts-form .tabbar { margin-bottom: 0; }
+.ts-form .tab-btn:disabled { opacity: .55; cursor: not-allowed; }
+.ts-receiptcol {
+  position: sticky;
+  top: calc(var(--nav-h) + 18px + env(safe-area-inset-top));
+  min-width: 0;
 }
-.ts-tile:hover { transform: translateY(-1px); border-color: var(--yf-teal-600); }
-.ts-tile.on { border-color: var(--yf-teal-600); background: var(--yf-teal-600); color: #fff; }
-.ts-tile:disabled { opacity: .55; cursor: not-allowed; transform: none; }
-.ts-tile-icon { display: grid; place-items: center; }
-.ts-tile.on .ts-tile-icon { color: #fff; }
-.ts-tile-name { font-size: 12px; font-weight: 700; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ts-tile-meta {
-  font-size: 10.5px; font-weight: 700; font-variant-numeric: tabular-nums;
-  padding: 1px 7px; border-radius: 999px; background: var(--bg-soft); color: var(--text-2);
+.ts-receipt-name {
+  margin: 2px 0 10px; font-size: 16px; font-weight: 800; letter-spacing: -.015em;
+  color: var(--text); overflow-wrap: anywhere;
 }
-.ts-tile.on .ts-tile-meta { background: rgba(255, 255, 255, .22); color: #fff; }
-
-/* count stepper — every target ≥40px for touch */
-.ts-stepper { display: flex; flex-wrap: wrap; gap: 6px; }
-.ts-stepper-btn {
-  min-width: 40px; height: 40px; padding: 0 8px; border-radius: 11px; cursor: pointer; font: inherit;
-  font-size: 12.5px; font-weight: 700; font-variant-numeric: tabular-nums;
-  border: 1.5px solid var(--line); background: var(--card); color: var(--text-2);
-  transition: transform .12s var(--ease-out), border-color .12s var(--ease-out), background .12s var(--ease-out), color .12s var(--ease-out);
+/* Below the workspace's two-pane width the receipt follows the controls instead of
+   floating beside them (sticky would fight the stacked scroll). */
+@media (max-width: 980px) {
+  .ts-layout { grid-template-columns: minmax(0, 1fr); gap: 18px; }
+  .ts-receiptcol { position: static; }
 }
-.ts-stepper-btn:hover { transform: translateY(-1px); }
-.ts-stepper-btn.on { border-color: var(--yf-teal-600); background: var(--yf-teal-600); color: #fff; }
-.ts-stepper-btn:disabled { opacity: .55; cursor: not-allowed; transform: none; }
-
-/* slider dial — live readout over the shared .yf-range track */
-.ts-dial { display: flex; flex-direction: column; gap: 2px; }
-.ts-dial-value { font-size: 17px; font-weight: 800; color: var(--text); font-variant-numeric: tabular-nums; }
-.ts-dial-ends { display: flex; justify-content: space-between; font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); }
-
-/* travel style — wrapping pill rail on the shared glider */
-.ts-stylefield { display: flex; flex-direction: column; gap: 8px; }
-.ts-fieldlabel { font-size: 12.5px; font-weight: 700; color: var(--text-2); }
-.ts-stylebar { flex-wrap: wrap; row-gap: 6px; }
-.ts-stylebar .chip:disabled { opacity: .55; cursor: not-allowed; }
 
 /* warning note (implausible fuel economy) — replaces an inline style */
 .ts-warn-note { margin: 5px 0 0; color: var(--warn-600); }
+
+/* share/publish editor compaction: subhead + 2-col free-preview day grid */
+.ts-subhead { display: flex; align-items: baseline; gap: 8px; margin: 2px 0; font-size: 12.5px; font-weight: 800; color: var(--text); }
+.ts-subhead .muted { font-weight: 500; }
+.ts-dayrows { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 20px; }
+.ts-dayrows .row-between { padding: 3px 0; }
+.ts-note { margin: 0; }
 
 /* sticky save bar — safe-area aware (viewport-fit=cover is on) */
 .ts-savebar {
   position: sticky; bottom: 0; z-index: 5;
   display: flex; justify-content: flex-end; align-items: center; gap: 10px;
-  margin-top: 24px; padding: 10px 0 calc(10px + env(safe-area-inset-bottom));
+  margin-top: 16px; padding: 8px 0 calc(8px + env(safe-area-inset-bottom));
   background: var(--bg); border-top: 1px solid var(--line);
 }
 
 @media (max-width: 720px) {
-  .ts-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ts-dayrows { grid-template-columns: 1fr; }
   .ts-savebar { justify-content: stretch; }
   .ts-savebar .btn { flex: 1; }
 }
