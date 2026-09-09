@@ -41,7 +41,7 @@ A collaborative travel-planning web app, built India-first. Real multi-day itine
 
 #### 📍 Plan
 
-- **Create trips** — start + ordered destinations (real place autocomplete), dates, crew size, transport mode, budget and travel style
+- **Create trips** — start + ordered destinations (real place autocomplete), dates, crew size, transport mode (six everyday modes incl. car rental and local trains), budget and travel style. The "Trip Ticket" starter prices your rough bill on demand and seeds the timeline with a starting outline
 - **Day-by-day timeline** — reorder / move stops between days, opening hours, priorities, route sparklines, collapsible headers
 - **One journey per day, however far you drive** — a real arrival clock, travelling strips for pure-travel legs, halts on any driving day, suggested real stop spots along the route
 - **Leg-aware insertion** — picking a place auto-fills road distance, travel time and fuel cost

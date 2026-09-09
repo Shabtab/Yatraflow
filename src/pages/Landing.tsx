@@ -4,9 +4,16 @@ import { ArrowDown, ArrowRight, MapPin, Plane, Rocket, Route, Users, Zap } from 
 import { RouteSquiggle } from '../components/ui'
 import { PlanBench } from '../components/PlanBench'
 import { scrollBehavior } from '../lib/motion'
+import { useDb, currentUser } from '../store/store'
 
 export function LandingPage({ onNavigate }: { onNavigate: (r: string) => void }) {
   useReveal()
+  const db = useDb()
+  const me = currentUser(db)
+  // Flow-aware hero CTA (Trip Ticket flow, Sep 2026): signed-in visitors go
+  // straight to the create-trip page (route /new); everyone else funnels
+  // through signup and lands back on it via the auth page's `next` param.
+  const startPlanningHref = me ? '#/new' : '#/auth?mode=signup&next=%2Fnew'
   return (
     <div>
       {/* ---------- Hero (split layout, per CTI homepage mockup) ---------- */}
@@ -30,7 +37,7 @@ export function LandingPage({ onNavigate }: { onNavigate: (r: string) => void })
               and keep your whole crew on the same page.
             </p>
             <div className="hero-ctas hero-rise rise-d3">
-              <a className="btn btn-primary btn-lg" href="#/auth?mode=signup">Start planning free <ArrowRight size={16} aria-hidden style={{ verticalAlign: '-3px', marginLeft: 4 }} /></a>
+              <a className="btn btn-primary btn-lg" href={startPlanningHref}>Start planning free <ArrowRight size={16} aria-hidden style={{ verticalAlign: '-3px', marginLeft: 4 }} /></a>
               <a className="btn btn-saffron btn-lg" href="#/explore">Explore itineraries</a>
             </div>
             {/* Boarding-pass entry: travel-themed ticket that "issues" a pass to
