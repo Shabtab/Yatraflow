@@ -234,6 +234,14 @@ export default function App() {
       case 'creator-hub':
         page = <Suspense fallback={lazyRouteFallback}><CreatorHubPage onNavigate={navigate} /></Suspense>
         break
+      case 'auth':
+        // A logged-in user landing on /auth (e.g. right after the invite
+        // round-trip's login submit) used to fall to `default:` → Landing,
+        // and AuthPage — whose me-effect performs the post-login redirect —
+        // never mounted, stranding the user on the landing page with the
+        // invite lost. Mount it; the effect sends them on to `next` (or /trips).
+        page = <Suspense fallback={lazyRouteFallback}><AuthPage onNavigate={navigate} /></Suspense>
+        break
       default:
         page = <LandingPage onNavigate={navigate} />
     }

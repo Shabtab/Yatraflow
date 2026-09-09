@@ -222,6 +222,19 @@ export function init(): void {
   initialized = true
 
   const hydrate = async (userId: string | null) => {
+    // Same-user dedupe FIRST, generation bump second. The old order bumped
+    // hydrateGen for EVERY call — so the load-time double-fire (getSession +
+    // onAuthStateChange INITIAL_SESSION, both with the SAME user) marked the
+    // first hydrate's patch stale (`gen !== hydrateGen`) while the second call
+    // merely awaited the first's promise and returned. Net effect: the data
+    // was fetched (all 200s) but NOBODY patched it into the cache — the app
+    // rendered logged-out on every refresh with a perfectly valid token.
+    // hydrateGen still guards real account switches (sign-out / switch):
+    // those change userId, so they never hit the dedupe branch.
+    if (userId && activeHydrate && activeHydrate.userId === userId) {
+      await activeHydrate.promise
+      return
+    }
     const gen = ++hydrateGen
 
     if (!userId) {
@@ -256,13 +269,8 @@ export function init(): void {
       try { await anonPromise } finally { if (activeHydrate?.userId === null) activeHydrate = null }
       return
     }
-    // Serialize: a redundant hydrate for the same user (the load-time getSession
-    // + onAuthStateChange double-fire) waits for the in-flight one instead of
-    // clobbering its seed writes with a fresh `patch({ trips })`.
-    if (activeHydrate && activeHydrate.userId === userId) {
-      await activeHydrate.promise
-      return
-    }
+    // The same-user dedupe already ran at the top of hydrate(); reaching here
+    // means this user has no in-flight hydrate, so start one.
     const promise = hydrateFromSupabase(userId, gen)
     activeHydrate = { userId, promise }
     try { await promise } finally {

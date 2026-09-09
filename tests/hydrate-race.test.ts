@@ -201,4 +201,35 @@ describe('hydration isolation across sign-out and account switch (#45)', () => {
     expect(db.sessionUserId).toBe('userA')
     expect(db.trips.map(t => t.id)).toEqual(['tripA'])
   })
+
+  it('hydrates when getSession and onAuthStateChange double-fire for the SAME user', async () => {
+    // The refresh-logout bug: on app load BOTH getSession() and
+    // onAuthStateChange (INITIAL_SESSION) fire hydrate for the SAME user.
+    // The second call used to bump hydrateGen before deduping onto the
+    // first call's promise — the first hydrate's patch was then dropped as
+    // "stale" (gen superseded) while the second call only awaited it and
+    // never patched. Data fetched, nobody wrote it: the app rendered
+    // logged-out on every refresh with a perfectly valid token.
+    const store = await freshStore()
+
+    state.tables = rowsFor('tripA', 'userA')
+    state.activeUser = 'userA'
+    const releaseA = gated('userA')
+
+    state.sessionUser = 'userA'
+    store.init()
+    state.resolveSession!()            // getSession → hydrate('userA'), gen 1
+    await flush()
+    // The double-fire: INITIAL_SESSION for the same user, mid-hydration.
+    state.authHandler!('INITIAL_SESSION', { user: { id: 'userA' } })
+    await flush()
+
+    releaseA()                          // queries resolve — someone must patch
+    await flush()
+
+    const db = store.getSnapshot()
+    expect(db.sessionUserId).toBe('userA')
+    expect(db.trips.map(t => t.id)).toEqual(['tripA'])
+    expect(store.tripsForUser('userA')).toHaveLength(1)
+  })
 })
