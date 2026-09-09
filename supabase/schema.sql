@@ -8,6 +8,11 @@
 
 -- ---------- profiles ----------
 -- One row per Supabase auth user, created by the trigger below.
+-- `is_disabled` is the masteradmin soft-ban (see 20260909_masteradmin.sql):
+-- disabled accounts hit RESTRICTIVE deny policies on every table and the app
+-- signs them back out with an explanation. There is deliberately NO is_admin
+-- column — the admin role lives in the JWT app_metadata (Option B), so it can
+-- never be self-granted through the "profiles update self" policy.
 create table if not exists public.profiles (
   id           uuid primary key references auth.users (id) on delete cascade,
   email        text not null,
@@ -19,6 +24,7 @@ create table if not exists public.profiles (
   is_creator   boolean not null default false,
   creator_bio  text,
   social_links jsonb,
+  is_disabled  boolean not null default false,
   created_at   bigint not null default extract(epoch from now()) * 1000
 );
 -- ---------- trips ----------
@@ -159,6 +165,17 @@ create table if not exists public.published_itineraries (
   copies                      integer not null default 0
 );
 
+-- ---------- admin_audit (append-only log of every admin action) ----------
+create table if not exists public.admin_audit (
+  id          uuid primary key default gen_random_uuid(),
+  actor_id    uuid not null references public.profiles (id) on delete cascade,
+  action      text not null,
+  target_type text,
+  target_id   text,
+  detail      jsonb not null default '{}'::jsonb,
+  at          bigint not null default (extract(epoch from now()) * 1000)::bigint
+);
+
 -- ============================================================
 -- Indexes (cheap, help the membership lookups in RLS)
 -- ============================================================
@@ -236,6 +253,38 @@ create trigger on_auth_user_created
   for each row execute function public.handle_new_user();
 
 -- ============================================================
+-- Masteradmin (v0.45.0) — full-control console for two humans.
+-- Role lives in the JWT app_metadata (Option B): no is_admin column exists
+-- on purpose (it would be self-grantable via "profiles update self").
+-- Grant: update auth.users set raw_app_meta_data =
+--   raw_app_meta_data || '{"role":"masteradmin"}'::jsonb
+--   where email in ('hasnaina955@gmail.com', 'shabtab@outlook.com');
+-- (Auth lowercases emails: match 'shabtab@outlook.com'. Sign out/in after.)
+-- Full migration (policies + RPCs + audit): migrations/20260909_masteradmin.sql
+-- ============================================================
+create or replace function public.is_admin()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce((auth.jwt() -> 'app_metadata' ->> 'role') = 'masteradmin', false);
+$$;
+
+create or replace function public.is_disabled()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.profiles p where p.id = auth.uid() and p.is_disabled
+  );
+$$;
+
+-- ============================================================
 -- Row Level Security — the real authorization boundary.
 -- ============================================================
 alter table public.profiles enable row level security;
@@ -246,6 +295,41 @@ alter table public.decisions enable row level security;
 alter table public.activity enable row level security;
 alter table public.notifications enable row level security;
 alter table public.published_itineraries enable row level security;
+alter table public.admin_audit enable row level security;
+
+-- ---------- admin deny (RESTRICTIVE — the only policies that take access
+-- AWAY; disabled accounts read/write nothing until re-enabled) ----------
+create policy "deny disabled" on public.profiles as restrictive for all to authenticated using (not public.is_disabled());
+create policy "deny disabled" on public.trips as restrictive for all to authenticated using (not public.is_disabled());
+create policy "deny disabled" on public.trip_members as restrictive for all to authenticated using (not public.is_disabled());
+create policy "deny disabled" on public.suggestions as restrictive for all to authenticated using (not public.is_disabled());
+create policy "deny disabled" on public.decisions as restrictive for all to authenticated using (not public.is_disabled());
+create policy "deny disabled" on public.activity as restrictive for all to authenticated using (not public.is_disabled());
+create policy "deny disabled" on public.notifications as restrictive for all to authenticated using (not public.is_disabled());
+create policy "deny disabled" on public.published_itineraries as restrictive for all to authenticated using (not public.is_disabled());
+
+-- ---------- admin read bypass (SELECT everywhere) ----------
+create policy "admin read" on public.profiles for select to authenticated using (public.is_admin());
+create policy "admin read" on public.trips for select to authenticated using (public.is_admin());
+create policy "admin read" on public.trip_members for select to authenticated using (public.is_admin());
+create policy "admin read" on public.suggestions for select to authenticated using (public.is_admin());
+create policy "admin read" on public.decisions for select to authenticated using (public.is_admin());
+create policy "admin read" on public.activity for select to authenticated using (public.is_admin());
+create policy "admin read" on public.notifications for select to authenticated using (public.is_admin());
+create policy "admin read" on public.published_itineraries for select to authenticated using (public.is_admin());
+create policy "admin audit read" on public.admin_audit for select to authenticated using (public.is_admin());
+
+-- ---------- admin write bypass (escape hatch for the workspace UI; the
+-- console buttons use the audited RPCs in migrations/20260909_masteradmin.sql
+-- §5 instead). Covers every app table EXCEPT notifications (recipient-scoped
+-- inbox) and admin_audit (append-only via RPCs, no direct writes at all).
+create policy "admin write" on public.profiles for all to authenticated using (public.is_admin()) with check (public.is_admin());
+create policy "admin write" on public.trips for all to authenticated using (public.is_admin()) with check (public.is_admin());
+create policy "admin write" on public.trip_members for all to authenticated using (public.is_admin()) with check (public.is_admin());
+create policy "admin write" on public.suggestions for all to authenticated using (public.is_admin()) with check (public.is_admin());
+create policy "admin write" on public.decisions for all to authenticated using (public.is_admin()) with check (public.is_admin());
+create policy "admin write" on public.activity for all to authenticated using (public.is_admin()) with check (public.is_admin());
+create policy "admin write" on public.published_itineraries for all to authenticated using (public.is_admin()) with check (public.is_admin());
 
 -- ---------- profiles ----------
 create policy "profiles read" on public.profiles
@@ -362,6 +446,7 @@ alter publication supabase_realtime add table public.activity;
 alter publication supabase_realtime add table public.notifications;
 alter publication supabase_realtime add table public.published_itineraries;
 alter publication supabase_realtime add table public.profiles;  -- profile cards live-update (names/avatars are public app-wide)
+alter publication supabase_realtime add table public.admin_audit;  -- masteradmin console Audit tab reads live
 
 -- ============================================================
 -- RPC for published itinerary stats (bypasses RLS)

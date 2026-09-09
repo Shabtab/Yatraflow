@@ -62,6 +62,8 @@ export interface UserProfile {
   isCreator: boolean
   creatorBio?: string
   socialLinks?: { youtube?: string; instagram?: string }
+  /** masteradmin console: true when the account is disabled (see admin_set_disabled RPC) */
+  isDisabled?: boolean
 }
 
 export interface User {

@@ -4,48 +4,17 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+## [0.46.0] — 2026-09-09
+
+**The masteradmin console: command over the whole app, from one unlinked route.** `#/admin` — typed, never linked — gives the two administrators a god-view over every user, trip, invite, publication and audit row, with every destructive action behind an audited, role-rechecking RPC and an append-only audit log. Shipped alongside PR #81's v0.45.0 create-flow release on the same day; the backend migration was applied and verified live before the PR opened.
+### Added
+- **A masteradmin console (`#/admin`) gives you command over the whole app.** A new private route (never linked from any nav — admins type it; non-admins fall through to the landing page) surfaces seven tabs driven by the JWT `app_metadata` role, not a database column: **Overview** KPI tiles (users, trips, private/public split, published count, Explore views/forks, open suggestions/decisions, avg crew per trip, 7d activity with the prior week, creators, disabled), **Users** (searchable directory with owned-trip counts, creator/disabled/you chips, make/unmake creator, and a reversible disable that signs the account back out — v1's "delete", hard deletion deferred), **Trips** (every trip, owner, crew, visibility, date, plus make-private/make-public and a type-to-confirm permanent delete that keeps an audit snapshot), **Invites & sharing** (30-day member-join velocity over the member slice), **Content** (the published catalog with an admin unpublish), **Analytics** (activation, collaboration, publish and view→fork funnels plus a 12-week signup/trip growth table), and an **Audit log** showing every admin action with who, what, when and the target. Every destructive button calls an audited `SECURITY DEFINER` RPC and renders through the plain existing cards/tables — no new component system.
+- **The masteradmin role is a JWT claim, not a self-grantable column.** The role lives in `auth.users.raw_app_meta_data` (`{"role":"masteradmin"}`), so RLS reads it via `auth.jwt()` and there is deliberately no `is_admin` boolean on `profiles` — a column would be promotable through the "profiles update self" policy. Administrators hydrate the **entire** app (all trips, all collab slices, the audit log); everyone else keeps the membership-scoped cache. Under the hood: `is_admin()` + `is_disabled()` RLS helpers, RESTRICTIVE deny policies on every table for disabled accounts, permissive admin read/write bypass policies, an append-only `admin_audit` table, and six audited RPCs (`admin_set_disabled`, `admin_set_creator`, `admin_set_trip_visibility`, `admin_remove_member`, `admin_unpublish`, `admin_delete_trip`) — each re-checks the role inside, refuses self-harm / last-admin removal, and writes the audit row in the same transaction before the effect. Grant/revoke are SQL one-liners in `supabase/migrations/20260909_masteradmin.sql` (hasnaina955@gmail.com + shabtab@outlook.com documented there; sign out/in to mint the new JWT).
+
 ## [0.45.0] — 2026-09-09
 
 **The create flow gets its ticket, invites get their codes, and trip settings get the bench.** Creating a trip becomes the Trip Ticket — a live boarding-pass starter that prints its rough bill on demand and seeds your timeline; invites shrink to trip-shaped codes with a join flow that actually completes; and Trip settings is rebuilt on the Plan Bench's own controls with editable dates that reconcile the day grid. My Trips gets its search/filter/sort back, car rental joins the transport modes, and two reliability fixes land: the pre-patch `updateTrip` persistence bug and the auth-refresh logout race.
 ### Added
-- **Create trip is now the "Trip Ticket" — a bento-compact starter that prints its bill on demand and seeds your timeline.** The last pre-redesign page joins the Calm Travel Intelligence language: bench-style blocks (Route with a numbered dashed route line, Dates, Crew & transport, Budget & style, Trip cover, Pinned plans) assemble a live boarding-pass ticket on the right — cover, title, route summary, dates, crew, budget — with no money on it. The rough bill stays hidden until the traveller presses **Print my bill**: a minimal printer slot unrolls a textured-paper receipt (torn bottom edge, per-line formulas, gentle wind sway that respects `prefers-reduced-motion`) carrying the bench-honest breakdown — transport ÷ mileage × pump price, stay via rooms × style tier, food per head per day, and the ≈ per-head total labelled a "rough take". A **↔ Return stops** switch pre-fills an editable custom return leg (the bill stops double-counting the roads when a loop is plotted); fuel fields (mileage / pump price / tank with the ≈ km-per-tank note) mirror the Plan Bench; crew gets 1–10 chips plus a custom entry; travel style is a scrollable pill carousel with an honest explainer of what each style tunes later (halt cadence, detour slack, AI planner tone). Under 900px the ticket collapses into a fixed frosted dock that carries the same print-then-create flow. On **Create trip**, the route's geocoded destinations seed a rough timeline outline — confirmed must-do sightseeing stops spread across the days (custom return stops fill the tail; the final destination stays store-anchored, never double-pinned) — so the workspace opens with a starting plan to modify, not empty days, and the create→overview hop rides a `startViewTransition` cross-fade. Landing's "Start planning free" is flow-aware: signed-in visitors go straight to `#/new`, everyone else funnels through signup with `next=%2Fnew`.
-- **Car rental joins the transport modes.** `rental` slots in after `car` across the engine tables (≈42 km/h, blended ₹7.5/km), joins the fuel-economy family (self-drive burns fuel, so mileage/price/tank fields and the round-trip toggle apply, with a ₹/day rent field on the create page), and gets its icon in Trip settings' mode grid. Taxi and mixed remain available later in Trip settings; the create page's tile grid shows the six everyday choices.
-- **Trip Ticket refinement pass.** The Dates block swaps its two raw date inputs for a single range calendar (first click sets the start, second the end, hover previews the span, month navigation, Escape/outside-click closes). A **Local** toggle inside the train tile bills suburban/unreserved fares at ₹0.45/km instead of express ₹1.6/km (estimate-only in v1, flagged in the bill's formula line). The open location dropdown and calendar no longer paint under the block below (the entrance animation's stacking contexts were swallowing them). Mode tiles let their hint text wrap instead of cropping; the travel-style carousel wraps to show all ten styles on desktop (scroll strip below 720px) and the explainer now states plainly what each style tunes — pace, detour slack, bill stay tier, AI planner leanings. The bill print animation feeds out in mechanical `steps()` increments with a slot warm-up blink instead of a quick ease. A printed bill can be **discarded** to edit and reprint, and the printer slot + paper are theme-aware — dark mode prints on warm charcoal paper rather than glaring cream.
-- **Invite links are short codes now — and the join actually works.** The invite
-  URL was the trip's raw UUID: 36 random characters that meant nothing to the
-  person reading it. The Share tab now mints a trip-shaped code — `GOABEACHWE-K7QF`,
-  head from the trip name, 4-char unambiguous tail (no 0/O/1/I/5/S so it survives
-  being read out over a call) — and the invite link becomes `#/join/<code>`.
-  The code sits in its own boarding-pass-stub chip with a copy button, the full
-  link stays below it, and the landing page gains a "Have a trip code?" entry box
-  so a friend who only got the code (not the link) can type it on the home screen.
-  Codes are minted lazily on first share and persisted to a new unique
-  `trips.invite_code` column (`supabase/migrations/20260909_invite_codes.sql`
-  also backfills a code for every existing trip and adds a security-definer
-  `get_trip_by_invite_code` lookup RPC — the code is the capability, same trust
-  model as the old UUID link). Old `#/invite/<uuid>` links keep working forever.
-  **The join flow was broken at three points, all fixed:**
-  1. *The login round-trip dropped the invite.* The gate's Log in button went to
-     plain `/auth`, and AuthPage's post-login redirect hard-navigated to My Trips —
-     so the trip never joined and never appeared in the list. The gate now parks
-     the invite in the URL and bounces through `/auth?next=/join/<code>`; AuthPage
-     honours the `next` param (validated as a same-app route — the param is
-     attacker-controllable input and must not bounce the user off-site) and drops
-     the user back on the invite, which then joins and opens the trip.
-  2. *Already-logged-in users can get a silent dead spinner.* If the on-demand
-     trip fetch hiccuped, the gate gave up with no retry and no message — a
-     permanent "Joining…" spinner. The gate now resolves its trip into local state
-     (immune to cache evictions), reports a broken link honestly, shows a toast
-     on join success ("You're on Goa Beach Week — happy planning!") or failure,
-     and a member re-clicking the link just opens the trip instead of re-joining.
-  3. *The join's side effects fired before the join itself.* `joinViaInvite`
-     wrote the activity log and the owner's notification *before* the
-     `trip_members` row — both are RLS-gated on `is_editor()`, which is false
-     until the membership exists, so every join logged console errors while the
-     side effects silently never landed (and the fire-and-forget insert could
-     fail invisibly too). The membership row is now written first and awaited;
-     only a confirmed write optimistically adds the member to the cache, so the
-     trip shows up in My Trips immediately — and honestly doesn't on failure.
 - **Trip settings is now the Plan Bench, inside your trip.** The Share tab's settings
   panel was a flat stack of twelve look-alike fields with Save parked below the fold. It
   now speaks the landing calculator's own control language — the same classes at the same
