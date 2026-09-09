@@ -32,11 +32,11 @@ Key locations:
 - `tests/` — vitest in **node env (no DOM)** — test pure logic, not DOM
 - CHANGELOG.md — Keep-a-Changelog-style; versions are pre-1.0 milestones
 
-## 1.1 Current project status (as of Sep 8, 2026)
+## 1.1 Current project status (as of Sep 9, 2026)
 
-**Version:** v0.44.0 on `test` and `main` (this release: Sep 8, 2026)
+**Version:** v0.46.0 on `redesign/masteradmin-v045` (feature branch; not yet on `test`/`main`).
 
-**State:** Stabilization complete, UI audit all 32 findings fixed. The Corridor Concierge suggestion-engine brainstorm is FULLY shipped (Horizons 1–3, 16/16 incl. asymmetry, hours scoring, fuel corridors, trip DNA) — see ROADMAP's 🧭 table. v0.44.0 added the budget pacing tile ("Safe to spend / day") and the per-day cost + dwell chips on timeline headers, made open tabs survive deploys (stale-chunk auto-reload), and restored public itinerary pages + invite links for non-members (`fetchSharedTrip` + `get_invite_trip` RPC). v0.43.0 fixed the structural reason See & do was empty (the corridor scan never asked for sights), added panel↔map cross-highlighting and route-ordered stop insertion, and locked the AI companion behind `VITE_AI_COMPANION=on` for the M8 premium milestone. Branch model simplified: only `main` (production, Vercel) and `test` (integration) exist. `npm run verify` gate: tsc clean + 495 tests + production build.
+**State:** Stabilization complete, UI audit all 32 findings fixed. The Corridor Concierge suggestion-engine brainstorm is FULLY shipped (Horizons 1–3, 16/16 incl. asymmetry, hours scoring, fuel corridors, trip DNA) — see ROADMAP's 🧭 table. v0.46.0 adds the **masteradmin console** (`#/admin`): a JWT-`app_metadata`-gated god-view over every user, trip, invite, publication and audit row, with audited destructive RPCs (disable/re-enable accounts, creator badge, visibility flips, member removal, unpublish, type-to-confirm trip delete) and an append-only `admin_audit` log — see the migration's grant one-liners to mint the two admin JWTs. v0.44.0 added the budget pacing tile and restored public itinerary pages + invite links for non-members. Branch model simplified: only `main` (production, Vercel) and `test` (integration) exist. `npm run verify` gate: tsc clean + 504 tests + production build.
 
 **Recent major releases:**
 - **v0.44.0** — Budget pacing tile ("Safe to spend / day", via new pure `daysRemaining` / `safeToSpendPerDay` helpers), per-day cost + dwell chips on timeline day headers, stale-chunk auto-reload so already-open tabs survive a deploy, and `fetchSharedTrip` + the `get_invite_trip` RPC restoring public itinerary pages and invite links for non-members

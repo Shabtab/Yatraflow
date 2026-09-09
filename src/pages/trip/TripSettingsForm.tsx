@@ -6,7 +6,7 @@
 import { useState, type ReactNode } from 'react'
 import {
   Bike, Bus, Car, CarTaxiFront, ChevronDown, ChevronUp,
-  Plane, Shuffle, TrainFront, TriangleAlert, X,
+  KeyRound, Plane, Shuffle, TrainFront, TriangleAlert, X,
 } from 'lucide-react'
 import type { Trip, LatLngPoint, TransportMode } from '../../data/types'
 import { TRANSPORT_MODES, TRAVEL_STYLES } from '../../data/types'
@@ -20,7 +20,7 @@ import { CoverImagePicker } from '../../components/CoverImagePicker'
 
 /** Icon per transport mode — mirrors the bench's mode tiles. */
 const MODE_ICON: Record<TransportMode, ReactNode> = {
-  car: <Car size={15} />, motorcycle: <Bike size={15} />, train: <TrainFront size={15} />,
+  car: <Car size={15} />, rental: <KeyRound size={15} />, motorcycle: <Bike size={15} />, train: <TrainFront size={15} />,
   bus: <Bus size={15} />, flight: <Plane size={15} />, taxi: <CarTaxiFront size={15} />,
   mixed: <Shuffle size={15} />,
 }

@@ -4,7 +4,7 @@
 
 export type ID = string
 
-export const TRANSPORT_MODES = ['car', 'motorcycle', 'train', 'bus', 'flight', 'taxi', 'mixed'] as const
+export const TRANSPORT_MODES = ['car', 'rental', 'motorcycle', 'train', 'bus', 'flight', 'taxi', 'mixed'] as const
 export type TransportMode = (typeof TRANSPORT_MODES)[number]
 
 export const TRAVEL_STYLES = [
@@ -62,6 +62,8 @@ export interface UserProfile {
   isCreator: boolean
   creatorBio?: string
   socialLinks?: { youtube?: string; instagram?: string }
+  /** masteradmin console: true when the account is disabled (see admin_set_disabled RPC) */
+  isDisabled?: boolean
 }
 
 export interface User {

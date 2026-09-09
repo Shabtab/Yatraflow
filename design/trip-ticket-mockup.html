@@ -1,0 +1,704 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Trip Ticket v2 — CreateTrip redesign mockup (bento-compact)</title>
+<style>
+  /* ============ Tokens (mirrors DESIGN_TOKENS.md / CTI layer) ============ */
+  :root, [data-theme="light"] {
+    --canvas: #F8F7EF;
+    --card: #FFFFFF;
+    --line: #DCE7E1;
+    --text: #0B2545;
+    --muted: #637B7D;
+    --teal: #0D8D82;
+    --teal-deep: #0C716D;
+    --teal-soft: #E5F4EE;
+    --teal-soft-line: rgba(13,141,130,.35);
+    --saffron: #F3AA3D;
+    --saffron-fg: #3A2506;
+    --navy: #123F49;
+    --navy-2: #0E3540;
+    --ticket-text: #F2F7F5;
+    --ticket-muted: rgba(242,247,245,.66);
+    --ticket-line: rgba(255,255,255,.16);
+    --atmos-mint: rgba(124,225,207,.20);
+    --atmos-peach: rgba(255,179,107,.16);
+    --shadow: 0 10px 26px rgba(18,63,73,.08), 0 2px 5px rgba(18,63,73,.05);
+    --ring: 0 0 0 3px rgba(13,141,130,.35);
+  }
+  [data-theme="dark"] {
+    --canvas: #0C1420;
+    --card: #16233A;
+    --line: #27395A;
+    --text: #ECF1F8;
+    --muted: #8FA0B5;
+    --teal: #2BB8AC;
+    --teal-deep: #1E9D92;
+    --teal-soft: #12332F;
+    --teal-soft-line: rgba(43,184,172,.4);
+    --saffron: #F5A94A;
+    --saffron-fg: #2A1C05;
+    --navy: #0F2A33;
+    --navy-2: #0B2028;
+    --ticket-text: #ECF5F2;
+    --ticket-muted: rgba(236,245,242,.62);
+    --ticket-line: rgba(255,255,255,.14);
+    --atmos-mint: rgba(43,184,172,.10);
+    --atmos-peach: rgba(245,169,74,.08);
+    --shadow: 0 12px 30px rgba(0,0,0,.35), 0 2px 6px rgba(0,0,0,.25);
+    --ring: 0 0 0 3px rgba(43,184,172,.45);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    font-family: ui-sans-serif, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: var(--canvas); color: var(--text);
+    min-height: 100vh; line-height: 1.45;
+    background-image:
+      radial-gradient(560px 420px at 8% -4%, var(--atmos-mint), transparent 70%),
+      radial-gradient(640px 480px at 96% 104%, var(--atmos-peach), transparent 70%);
+    background-attachment: fixed;
+  }
+  .mono { font-family: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; }
+  button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+  button:focus-visible, input:focus-visible { outline: none; box-shadow: var(--ring); }
+  svg { display: block; }
+  .hidden { display: none !important; }
+
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 28px 24px 56px; }
+
+  /* ============ Header ============ */
+  .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
+  .eyebrow { font-size: 10.5px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--teal); }
+  h1 { margin: 4px 0 0; font-size: 28px; letter-spacing: -0.02em; line-height: 1.1; }
+  .sub { margin: 6px 0 0; color: var(--muted); font-size: 13.5px; }
+  .theme-btn {
+    display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 13px;
+    border: 1px solid var(--line); border-radius: 999px; background: var(--card);
+    font-size: 12.5px; font-weight: 600; box-shadow: var(--shadow);
+  }
+  .theme-btn[aria-pressed="true"] { border-color: var(--teal); color: var(--teal); background: var(--teal-soft); }
+
+  /* ============ Layout ============ */
+  .layout { display: grid; grid-template-columns: minmax(0,1fr) 360px; gap: 22px; align-items: start; }
+  .blocks { display: grid; grid-template-columns: repeat(12, 1fr); gap: 12px; }
+  .span7 { grid-column: span 7; } .span5 { grid-column: span 5; } .span12 { grid-column: span 12; }
+
+  /* ============ Bench blocks (compact) ============ */
+  .block {
+    background: var(--card); border: 1px solid var(--line); border-radius: 20px;
+    padding: 14px 16px; box-shadow: var(--shadow); min-width: 0;
+  }
+  .block-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+  .block-head-l { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+  .block-value { font-size: 12.5px; font-weight: 700; color: var(--teal); white-space: nowrap; }
+
+  /* Route line */
+  .route { position: relative; margin: 0 0 10px 2px; }
+  .route::before { content: ""; position: absolute; left: 13px; top: 16px; bottom: 16px; border-left: 2px dashed var(--teal-soft-line); }
+  .route-row { position: relative; display: flex; align-items: center; gap: 10px; padding: 4px 0; }
+  .route-dot {
+    width: 26px; height: 26px; border-radius: 999px; flex: none;
+    display: grid; place-items: center; font-size: 11px; font-weight: 800;
+    background: var(--teal); color: #fff; z-index: 1;
+    box-shadow: 0 0 0 4px var(--card);
+  }
+  .route-row.start .route-dot { background: var(--navy); }
+  [data-theme="dark"] .route-row.start .route-dot { background: #1E4E5C; }
+  .route-name { font-weight: 650; font-size: 13.5px; }
+  .route-tag { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  .route-acts { margin-left: auto; display: inline-flex; gap: 2px; }
+  .route-btn {
+    width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center;
+    color: var(--muted); border: 1px solid transparent; font-size: 11px;
+  }
+  .route-btn:hover { background: var(--teal-soft); color: var(--teal); border-color: var(--teal-soft-line); }
+  .dest-add { display: flex; gap: 8px; }
+  .input {
+    width: 100%; height: 40px; padding: 0 12px; font: inherit; font-size: 13.5px;
+    color: var(--text); background: var(--card); border: 1px solid var(--line); border-radius: 11px;
+  }
+  .input::placeholder { color: var(--muted); }
+
+  /* Return journey section */
+  .return-head { display: flex; align-items: center; gap: 8px; margin: 10px 0 8px; padding-top: 12px; border-top: 1px dashed var(--line); }
+  .return-note { font-size: 11px; color: var(--muted); }
+  .route--return::before { opacity: .45; }
+  .route--return .route-dot {
+    background: var(--card); color: var(--teal); border: 1.5px solid var(--teal);
+  }
+  .route--return .route-row.start .route-dot { color: var(--navy); border-color: var(--navy); }
+  [data-theme="dark"] .route--return .route-row.start .route-dot { color: #7FD1C6; border-color: #7FD1C6; }
+
+  /* Switch */
+  .switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 12px; font-weight: 650; color: var(--muted); }
+  .switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+  .switch-track { width: 34px; height: 20px; border-radius: 999px; background: var(--line); position: relative; transition: .18s; flex: none; }
+  .switch-track::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 999px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.25); transition: .18s; }
+  .switch input:checked + .switch-track { background: var(--teal); }
+  .switch input:checked + .switch-track::after { transform: translateX(14px); }
+  .switch input:focus-visible + .switch-track { box-shadow: var(--ring); }
+  .switch input:checked ~ .switch-label { color: var(--teal); }
+
+  /* DATES */
+  .date-grid { display: grid; gap: 8px; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 11px;
+    border-radius: 999px; background: var(--teal-soft); border: 1px solid var(--teal-soft-line);
+    color: var(--teal-deep); font-size: 12px; font-weight: 700; white-space: nowrap; justify-self: start;
+  }
+  [data-theme="dark"] .pill { color: var(--teal); }
+
+  /* Crew + transport */
+  .crew-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .crew-btn {
+    min-width: 36px; height: 36px; border-radius: 999px; border: 1px solid var(--line);
+    display: grid; place-items: center; font-weight: 700; font-size: 13px; background: var(--card); padding: 0 8px;
+  }
+  .crew-btn:hover { border-color: var(--teal-soft-line); background: var(--teal-soft); }
+  .crew-btn.on { background: var(--teal); border-color: var(--teal); color: #fff; }
+  .crew-custom .input { width: 78px; height: 36px; }
+  .mode-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .mode-btn {
+    display: flex; align-items: center; gap: 9px; padding: 9px 10px; border-radius: 13px;
+    border: 1px solid var(--line); background: var(--card); text-align: left; min-width: 0;
+  }
+  .mode-btn:hover { border-color: var(--teal-soft-line); background: var(--teal-soft); }
+  .mode-btn .ic { font-size: 17px; width: 24px; text-align: center; flex: none; }
+  .mode-btn .nm { font-weight: 700; font-size: 12.5px; line-height: 1.2; white-space: nowrap; }
+  .mode-btn .hint { display: block; font-size: 11px; color: var(--muted); font-weight: 500; white-space: nowrap; }
+  .mode-btn.on { background: var(--teal); border-color: var(--teal); color: #fff; box-shadow: 0 5px 14px rgba(13,141,130,.28); }
+  .mode-btn.on .hint { color: rgba(255,255,255,.8); }
+  .transport-pair { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1.5fr); gap: 16px; align-items: start; }
+  .group-lab { display: block; font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-bottom: 7px; }
+
+  /* Fuel / rental aux fields (bench-faithful) */
+  .aux-row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--line); }
+  .mini-field { display: grid; gap: 4px; }
+  .mini-lab { font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  .unit-input { position: relative; display: flex; align-items: center; }
+  .unit-input .input { width: 112px; height: 36px; padding-right: 46px; font-size: 13px; font-weight: 650; }
+  .unit-input .unit { position: absolute; right: 10px; font-size: 11px; color: var(--muted); pointer-events: none; }
+  .range-note { margin-left: auto; font-size: 11.5px; color: var(--muted); padding-bottom: 9px; }
+  .range-note b { color: var(--teal); }
+
+  /* Budget + style */
+  .budget-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .budget-input { max-width: 150px; font-weight: 700; height: 36px; }
+  .chip {
+    height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line);
+    background: var(--card); font-size: 12.5px; font-weight: 650; display: inline-flex; align-items: center; gap: 5px;
+  }
+  .chip:hover { border-color: var(--teal-soft-line); background: var(--teal-soft); }
+  .chip.on { background: var(--teal-soft); border-color: var(--teal); color: var(--teal-deep); }
+  [data-theme="dark"] .chip.on { color: var(--teal); }
+  .style-row { display: flex; gap: 6px; flex-wrap: wrap; }
+
+  /* Pinned plans */
+  .pin-row {
+    display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: 12px;
+    background: var(--teal-soft); border: 1px solid var(--teal-soft-line); font-size: 12.5px; min-width: 0;
+  }
+  .pin-row b { font-weight: 700; }
+  .pin-row .when { color: var(--muted); font-size: 11.5px; }
+  .pin-row .pin-txt { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pin-x { margin-left: auto; flex: none; width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; color: var(--muted); }
+  .pin-x:hover { color: #D6534D; background: rgba(214,83,77,.1); }
+
+  /* ============ The Trip Ticket ============ */
+  .ticket-col { position: sticky; top: 20px; }
+  .ticket {
+    position: relative; background: linear-gradient(168deg, var(--navy), var(--navy-2));
+    color: var(--ticket-text); border-radius: 22px; box-shadow: 0 20px 44px rgba(10,32,40,.35);
+    overflow: hidden;
+  }
+  .ticket::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: radial-gradient(420px 200px at 85% -10%, rgba(255,255,255,.08), transparent 60%);
+  }
+  .tk-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px 0; }
+  .tk-brand { font-size: 10.5px; font-weight: 800; letter-spacing: .18em; text-transform: uppercase; opacity: .85; }
+  .tk-kind { font-size: 10px; font-weight: 700; letter-spacing: .14em; color: var(--saffron); text-transform: uppercase; }
+  .tk-cover { position: relative; margin: 12px 18px 0; height: 96px; border-radius: 12px; overflow: hidden;
+    background: linear-gradient(135deg, #2E6B5E, #1C4A44 55%, #123F49); }
+  .tk-cover .scenery { position: absolute; inset: 0; }
+  .tk-cover .emoji-chip {
+    position: absolute; right: 9px; bottom: 9px; width: 31px; height: 31px; border-radius: 9px;
+    display: grid; place-items: center; font-size: 15px; background: rgba(255,255,255,.16);
+    border: 1px solid rgba(255,255,255,.25); backdrop-filter: blur(6px);
+  }
+  .tk-body { padding: 14px 18px 0; }
+  .tk-title { font-size: 19px; font-weight: 750; letter-spacing: -0.01em; line-height: 1.15; }
+  .tk-route { margin-top: 8px; font-size: 12px; color: var(--ticket-muted); letter-spacing: .01em; }
+  .tk-route b { color: var(--ticket-text); font-weight: 650; }
+  .tk-return { display: inline-block; margin-left: 6px; padding: 1px 8px; border: 1px solid var(--ticket-line); border-radius: 999px; font-size: 10px; color: var(--ticket-muted); vertical-align: 1px; }
+  .tk-rows { margin: 12px 0 0; display: grid; gap: 8px; }
+  .tk-row { display: flex; align-items: center; gap: 9px; font-size: 12.5px; }
+  .tk-row .ic { width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center;
+    background: rgba(255,255,255,.08); border: 1px solid var(--ticket-line); font-size: 11.5px; flex: none; }
+  .tk-row .lab { color: var(--ticket-muted); }
+  .tk-row b { font-weight: 650; }
+  .tear { position: relative; margin: 16px 0 0; border-top: 2px dashed var(--ticket-line); }
+  .tear::before, .tear::after {
+    content: ""; position: absolute; top: -10px; width: 20px; height: 20px; border-radius: 999px;
+    background: var(--canvas);
+  }
+  .tear::before { left: -10px; } .tear::after { right: -10px; }
+  .tk-stub { padding: 12px 18px 18px; }
+  .tk-estimate { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+  .tk-estimate .amt { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; }
+  .tk-estimate .per { font-size: 11.5px; color: var(--ticket-muted); font-weight: 600; }
+  .tk-estimate-note { display: flex; align-items: center; gap: 6px; margin-top: 3px; font-size: 11px; color: var(--ticket-muted); }
+  .tk-ready { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px;
+    font-size: 11.5px; font-weight: 700; color: #7CE1CF; }
+  .tk-ready .dot { width: 6px; height: 6px; border-radius: 999px; background: #7CE1CF; box-shadow: 0 0 0 3px rgba(124,225,207,.18); }
+  .tk-cta {
+    margin-top: 12px; width: 100%; height: 46px; border-radius: 13px;
+    background: var(--saffron); color: var(--saffron-fg); font-weight: 750; font-size: 14.5px;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    box-shadow: 0 9px 22px rgba(243,170,61,.35);
+  }
+  .tk-cta:hover { filter: brightness(1.04); }
+  .tk-cancel { margin-top: 9px; width: 100%; text-align: center; font-size: 12.5px; color: var(--ticket-muted); }
+  .tk-cancel:hover { color: var(--ticket-text); }
+  .tk-fine { margin-top: 11px; font-size: 10.5px; line-height: 1.5; color: var(--ticket-muted); }
+
+  /* ============ Mobile dock ============ */
+  .dock { display: none; }
+
+  /* ============ Entrance stagger (refined-minimal motion register) ============ */
+  @media (prefers-reduced-motion: no-preference) {
+    .block, .ticket { opacity: 0; transform: translateY(10px); animation: rise .5s cubic-bezier(.22,1,.36,1) forwards; }
+    .block:nth-child(1) { animation-delay: .04s } .block:nth-child(2) { animation-delay: .1s }
+    .block:nth-child(3) { animation-delay: .16s } .block:nth-child(4) { animation-delay: .22s }
+    .block:nth-child(5) { animation-delay: .28s } .ticket { animation-delay: .24s }
+    @keyframes rise { to { opacity: 1; transform: none; } }
+  }
+
+  .mock-note { margin-top: 24px; text-align: center; font-size: 11.5px; color: var(--muted); }
+
+  /* Narrow-desktop fit (natural, no-JS fallback): stack the bento pairs */
+  @media (min-width: 681px) and (max-width: 900px) {
+    .wrap { padding: 24px 16px 56px; }
+    .layout { grid-template-columns: minmax(0,1fr) 300px; gap: 14px; }
+    .blocks { gap: 10px; }
+    body:not(.shrink) .span7, body:not(.shrink) .span5 { grid-column: 1 / -1; }
+    body:not(.shrink) .transport-pair { grid-template-columns: 1fr; }
+    body:not(.shrink) .mode-grid { grid-template-columns: 1fr 1fr; }
+    body:not(.shrink) .mode-btn .hint { white-space: normal; }
+  }
+
+  /* Scaled desktop canvas (preview aid): below 940px the panel previews the
+     TRUE 1180px desktop bento, scaled to fit. Mockup-only — never implement. */
+  body.shrink { overflow-x: hidden; }
+  body.shrink .wrap { width: 1180px; transform-origin: top left; }
+
+  /* ============ Responsive ============ */
+  @media (max-width: 680px) {
+    .span7, .span5, .span12 { grid-column: 1 / -1; }
+    .input { height: 44px; }
+    .crew-btn { min-width: 40px; height: 40px; }
+    .crew-custom .input { height: 40px; }
+    .route-btn { width: 36px; height: 36px; }
+    .mode-grid { grid-template-columns: 1fr 1fr; }
+    .mode-btn .hint { white-space: normal; }
+    .transport-pair { grid-template-columns: 1fr; }
+    .unit-input .input { width: 100%; }
+    .ticket-col { display: none; }
+    .dock {
+      display: flex; position: fixed; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom));
+      z-index: 50; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 20px;
+      background: color-mix(in srgb, var(--card) 82%, transparent);
+      border: 1px solid var(--line);
+      -webkit-backdrop-filter: blur(16px) saturate(1.2); backdrop-filter: blur(16px) saturate(1.2);
+      box-shadow: 0 18px 40px rgba(10,32,40,.28);
+    }
+    .dock-thumb { width: 44px; height: 44px; border-radius: 12px; flex: none;
+      background: linear-gradient(135deg, #2E6B5E, #123F49); display: grid; place-items: center; font-size: 19px; }
+    .dock-meta { min-width: 0; }
+    .dock-meta b { display: block; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .dock-meta span { font-size: 12px; color: var(--muted); }
+    .dock-cta { margin-left: auto; flex: none; height: 46px; padding: 0 18px; border-radius: 13px;
+      background: var(--saffron); color: var(--saffron-fg); font-weight: 750; font-size: 14px;
+      box-shadow: 0 8px 20px rgba(243,170,61,.35); }
+    body { padding-bottom: 96px; }
+  }
+
+  /* Preview-mode overrides (mockup convenience only) */
+  body.force-desktop .layout { grid-template-columns: minmax(0,1fr) 340px !important; }
+  body.force-desktop .ticket-col { display: block !important; }
+  body.force-desktop .dock { display: none !important; }
+  body.force-mobile { padding-bottom: 96px; }
+  body.force-mobile .layout { grid-template-columns: 1fr !important; }
+  body.force-mobile .ticket-col { display: none !important; }
+  body.force-mobile .dock { display: flex !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="page-head">
+    <div>
+      <div class="eyebrow">Start something</div>
+      <h1>Plan a new trip</h1>
+      <p class="sub">Fill the blocks — your ticket prints itself on the right.</p>
+    </div>
+    <div style="display:flex; gap:8px; align-items:center; flex:none;">
+      <button class="theme-btn" id="viewDesktop" type="button" aria-pressed="true">🖥 Desktop</button>
+      <button class="theme-btn" id="viewMobile" type="button" aria-pressed="false">📱 Mobile</button>
+      <button class="theme-btn" id="themeBtn" type="button">◐ Theme</button>
+    </div>
+  </div>
+
+  <div class="layout">
+
+    <!-- ============ LEFT: bento blocks ============ -->
+    <section class="blocks" aria-label="Trip details">
+
+      <!-- ROUTE (7) -->
+      <div class="block span7">
+        <div class="block-head">
+          <div class="block-head-l">
+            <span class="eyebrow">Route</span>
+            <span class="block-value">4 stops · ≈ 306 km</span>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="returnToggle" />
+            <span class="switch-track" aria-hidden="true"></span>
+            <span class="switch-label">↔ Return stops</span>
+          </label>
+        </div>
+
+        <div class="route">
+          <div class="route-row start">
+            <span class="route-dot">★</span>
+            <span class="route-name">Kochi</span> <span class="route-tag">start</span>
+          </div>
+          <div class="route-row">
+            <span class="route-dot">1</span>
+            <span class="route-name">Munnar</span>
+            <span class="route-acts">
+              <button class="route-btn" type="button" aria-label="Move Munnar later">▼</button>
+              <button class="route-btn" type="button" aria-label="Remove Munnar">✕</button>
+            </span>
+          </div>
+          <div class="route-row">
+            <span class="route-dot">2</span>
+            <span class="route-name">Thekkady</span>
+            <span class="route-acts">
+              <button class="route-btn" type="button" aria-label="Move Thekkady earlier">▲</button>
+              <button class="route-btn" type="button" aria-label="Move Thekkady later">▼</button>
+              <button class="route-btn" type="button" aria-label="Remove Thekkady">✕</button>
+            </span>
+          </div>
+          <div class="route-row">
+            <span class="route-dot">3</span>
+            <span class="route-name">Alleppey</span>
+            <span class="route-acts">
+              <button class="route-btn" type="button" aria-label="Move Alleppey earlier">▲</button>
+              <button class="route-btn" type="button" aria-label="Remove Alleppey">✕</button>
+            </span>
+          </div>
+        </div>
+        <div class="dest-add">
+          <input class="input" type="text" placeholder="Add another destination…  e.g. Varkala" aria-label="Add another destination" />
+        </div>
+
+        <!-- Return journey (toggleable) -->
+        <div id="returnSection" class="hidden" aria-label="Return journey stops">
+          <div class="return-head">
+            <span class="eyebrow">Return</span>
+            <span class="return-note">auto-filled with the reverse route — edit freely</span>
+          </div>
+          <div class="route route--return">
+            <div class="route-row start">
+              <span class="route-dot">↩</span>
+              <span class="route-name">Kochi</span> <span class="route-tag">back home</span>
+            </div>
+            <div class="route-row">
+              <span class="route-dot">1</span>
+              <span class="route-name">Alleppey</span>
+              <span class="route-acts">
+                <button class="route-btn" type="button" aria-label="Move Alleppey later on return">▼</button>
+                <button class="route-btn" type="button" aria-label="Remove Alleppey from return">✕</button>
+              </span>
+            </div>
+            <div class="route-row">
+              <span class="route-dot">2</span>
+              <span class="route-name">Varkala</span>
+              <span class="route-acts">
+                <button class="route-btn" type="button" aria-label="Move Varkala earlier on return">▲</button>
+                <button class="route-btn" type="button" aria-label="Move Varkala later on return">▼</button>
+                <button class="route-btn" type="button" aria-label="Remove Varkala from return">✕</button>
+              </span>
+            </div>
+          </div>
+          <div class="dest-add">
+            <input class="input" type="text" placeholder="Add a return stop…  e.g. Guruvayur" aria-label="Add a return stop" />
+          </div>
+        </div>
+      </div>
+
+      <!-- DATES (5) -->
+      <div class="block span5">
+        <div class="block-head">
+          <span class="eyebrow">Dates</span>
+        </div>
+        <div class="date-grid">
+          <input class="input" type="text" value="12 Sep 2026" aria-label="Start date" />
+          <input class="input" type="text" value="18 Sep 2026" aria-label="End date" />
+          <span class="pill">🗓️ 6 days · 5 nights</span>
+        </div>
+      </div>
+
+      <!-- CREW & TRANSPORT (12) -->
+      <div class="block span12">
+        <div class="block-head">
+          <div class="block-head-l">
+            <span class="eyebrow">Crew &amp; transport</span>
+            <span class="block-value">4 travellers · by car</span>
+          </div>
+        </div>
+        <div class="transport-pair">
+          <div>
+            <span class="group-lab">Crew size</span>
+            <div class="crew-row" role="group" aria-label="Crew size" id="crewGroup">
+              <button class="crew-btn" type="button" aria-pressed="false">1</button>
+              <button class="crew-btn" type="button" aria-pressed="false">2</button>
+              <button class="crew-btn" type="button" aria-pressed="false">3</button>
+              <button class="crew-btn on" type="button" aria-pressed="true">4</button>
+              <button class="crew-btn" type="button" aria-pressed="false">5</button>
+              <button class="crew-btn" type="button" aria-pressed="false">6</button>
+              <button class="crew-btn" type="button" aria-pressed="false">8</button>
+              <button class="crew-btn" type="button" aria-pressed="false">10</button>
+              <button class="crew-btn" type="button" aria-pressed="false" data-custom>Custom…</button>
+              <span class="crew-custom hidden" id="crewCustom">
+                <input class="input mono" type="text" inputmode="numeric" value="9" aria-label="Custom crew size" />
+              </span>
+            </div>
+          </div>
+          <div>
+            <span class="group-lab">Transport mode</span>
+            <div class="mode-grid" role="group" aria-label="Transport mode" id="modeGroup">
+              <button class="mode-btn on" type="button" aria-pressed="true" data-aux="fuel">
+                <span class="ic">🚗</span>
+                <span><span class="nm">Car</span><span class="hint">your fuel · ≈45 km/h</span></span>
+              </button>
+              <button class="mode-btn" type="button" aria-pressed="false" data-aux="fuel">
+                <span class="ic">🏍️</span>
+                <span><span class="nm">Bike</span><span class="hint">your fuel · ≈40 km/h</span></span>
+              </button>
+              <button class="mode-btn" type="button" aria-pressed="false" data-aux="rental">
+                <span class="ic">🔑</span>
+                <span><span class="nm">Car rental</span><span class="hint">self-drive · ₹/day</span></span>
+              </button>
+              <button class="mode-btn" type="button" aria-pressed="false" data-aux="">
+                <span class="ic">🚌</span>
+                <span><span class="nm">Bus</span><span class="hint">× ₹1.4/km fare</span></span>
+              </button>
+              <button class="mode-btn" type="button" aria-pressed="false" data-aux="">
+                <span class="ic">🚆</span>
+                <span><span class="nm">Train</span><span class="hint">× ₹0.9/km fare</span></span>
+              </button>
+              <button class="mode-btn" type="button" aria-pressed="false" data-aux="">
+                <span class="ic">✈️</span>
+                <span><span class="nm">Flight</span><span class="hint">× ₹3.1/km + fees</span></span>
+              </button>
+            </div>
+
+            <!-- Fuel block: mirrors the Plan Bench (mileage / pump price / tank) -->
+            <div class="aux-row" id="fuelBlock">
+              <div class="mini-field">
+                <span class="mini-lab">Mileage</span>
+                <span class="unit-input"><input class="input mono" type="text" inputmode="decimal" value="15" aria-label="Mileage in kilometres per litre" /><span class="unit">km/L</span></span>
+              </div>
+              <div class="mini-field">
+                <span class="mini-lab">Fuel price</span>
+                <span class="unit-input"><input class="input mono" type="text" inputmode="decimal" value="105" aria-label="Fuel price in rupees per litre" /><span class="unit">₹/L</span></span>
+              </div>
+              <div class="mini-field">
+                <span class="mini-lab">Tank</span>
+                <span class="unit-input"><input class="input mono" type="text" inputmode="decimal" value="45" aria-label="Tank capacity in litres" /><span class="unit">L</span></span>
+              </div>
+              <span class="range-note">≈ <b class="mono">675 km</b> per tank</span>
+            </div>
+
+            <!-- Rental block -->
+            <div class="aux-row hidden" id="rentalBlock">
+              <div class="mini-field">
+                <span class="mini-lab">Rent</span>
+                <span class="unit-input"><input class="input mono" type="text" inputmode="decimal" value="1800" aria-label="Rental rate in rupees per day" /><span class="unit">₹/day</span></span>
+              </div>
+              <span class="range-note">+ fuel · unlimited-km assumption</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- BUDGET & STYLE (7) -->
+      <div class="block span7">
+        <div class="block-head">
+          <span class="eyebrow">Budget &amp; style</span>
+        </div>
+        <div class="budget-row">
+          <input class="input budget-input mono" type="text" value="₹ 15,000" aria-label="Budget per person in rupees" />
+          <button class="chip" type="button" aria-pressed="false">₹10k</button>
+          <button class="chip on" type="button" aria-pressed="true">₹15k</button>
+          <button class="chip" type="button" aria-pressed="false">₹25k</button>
+        </div>
+        <div class="style-row" role="group" aria-label="Travel style">
+          <button class="chip" type="button" aria-pressed="false">🌿 Relaxed</button>
+          <button class="chip on" type="button" aria-pressed="true">⚖️ Balanced</button>
+          <button class="chip" type="button" aria-pressed="false">🔥 Packed</button>
+        </div>
+      </div>
+
+      <!-- PINNED PLANS (5) -->
+      <div class="block span5">
+        <div class="block-head">
+          <span class="eyebrow">Pinned plans <span style="opacity:.55; font-weight:500;">(optional)</span></span>
+        </div>
+        <div class="pin-row">
+          <span>🚆</span>
+          <div class="pin-txt"><b>Train 12626</b> <span class="when">· Day 2 · 6:00 PM</span></div>
+          <button class="pin-x" type="button" aria-label="Remove Train 12626">✕</button>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ============ RIGHT: the Trip Ticket ============ -->
+    <aside class="ticket-col" aria-label="Trip ticket preview">
+      <div class="ticket">
+        <div class="tk-head">
+          <span class="tk-brand">Yatraflow</span>
+          <span class="tk-kind">Trip ticket</span>
+        </div>
+        <div class="tk-cover">
+          <svg class="scenery" viewBox="0 0 340 96" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+            <defs>
+              <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#7FC9BC"/><stop offset="1" stop-color="#2E6B5E"/>
+              </linearGradient>
+            </defs>
+            <rect width="340" height="96" fill="url(#sky)"/>
+            <path d="M0 70 L60 28 L110 70 Z" fill="#1C4A44" opacity=".8"/>
+            <path d="M70 76 L150 18 L230 76 Z" fill="#163F3A" opacity=".9"/>
+            <path d="M180 74 L250 32 L330 74 Z" fill="#1C4A44" opacity=".75"/>
+            <ellipse cx="70" cy="92" rx="120" ry="24" fill="#123F49"/>
+            <ellipse cx="290" cy="94" rx="130" ry="22" fill="#0E3540"/>
+          </svg>
+          <span class="emoji-chip">🏖️</span>
+        </div>
+        <div class="tk-body">
+          <div class="tk-title">Kerala monsoon escape</div>
+          <div class="tk-route"><b>Kochi</b> → Munnar → Thekkady → <b>Alleppey</b><span id="tkReturn" class="tk-return hidden">↔ custom return</span></div>
+          <div class="tk-rows">
+            <div class="tk-row"><span class="ic">🗓️</span><span class="lab">12 – 18 Sep</span><b>· 6 days · 5 nights</b></div>
+            <div class="tk-row"><span class="ic">👥</span><span class="lab">4 travellers</span><b>· by car</b></div>
+            <div class="tk-row"><span class="ic">⛽</span><span class="lab">15 km/L</span><b>· ₹105/L · 45 L tank</b></div>
+            <div class="tk-row"><span class="ic">👛</span><span class="lab">Budget</span><b class="mono">₹15,000 / person</b></div>
+          </div>
+        </div>
+        <div class="tear" aria-hidden="true"></div>
+        <div class="tk-stub">
+          <div class="tk-estimate">
+            <div>
+              <div class="amt mono">≈ ₹18,400</div>
+              <div class="tk-estimate-note">ⓘ rough take — refined once your route resolves</div>
+            </div>
+            <span class="per">/ head</span>
+          </div>
+          <div class="tk-ready"><span class="dot"></span>Ready to plan</div>
+          <button class="tk-cta" type="button">Create trip →</button>
+          <button class="tk-cancel" type="button">Cancel</button>
+          <p class="tk-fine">Estimate uses bench math on your geocoded route · excludes tolls, parking &amp; entry fees · you can change everything later.</p>
+        </div>
+      </div>
+    </aside>
+
+  </div>
+
+  <!-- ============ MOBILE dock (≤680px) ============ -->
+  <div class="dock" role="region" aria-label="Trip ticket dock">
+    <div class="dock-thumb">🏖️</div>
+    <div class="dock-meta">
+      <b>Kerala monsoon escape</b>
+      <span>6d · 5n · 4 travellers · <span class="mono" style="color:var(--teal); font-weight:700;">≈ ₹18,400/head</span></span>
+    </div>
+    <button class="dock-cta" type="button">Create trip →</button>
+  </div>
+
+  <p class="mock-note">Trip Ticket v2 · bento-compact · static design mockup, not wired to the app · Desktop / Mobile / Theme toggles are preview aids</p>
+</div>
+
+<script>
+  // Theme toggle (cosmetic — mirrors the app's data-theme switch)
+  const btn = document.getElementById('themeBtn')
+  btn.addEventListener('click', () => {
+    const html = document.documentElement
+    const next = html.dataset.theme === 'light' ? 'dark' : 'light'
+    html.dataset.theme = next
+  })
+
+  // Preview mode (mockup convenience): simulate desktop / mobile layouts
+  const vD = document.getElementById('viewDesktop')
+  const vM = document.getElementById('viewMobile')
+  function setView(mode) {
+    document.body.classList.toggle('force-desktop', mode === 'desktop')
+    document.body.classList.toggle('force-mobile', mode === 'mobile')
+    vD.setAttribute('aria-pressed', String(mode === 'desktop'))
+    vM.setAttribute('aria-pressed', String(mode === 'mobile'))
+    fitScale()
+  }
+  vD.addEventListener('click', () => setView('desktop'))
+  vM.addEventListener('click', () => setView('mobile'))
+
+  // Scaled desktop canvas (preview aid): narrow panels show the real 1180px
+  // desktop bento scaled to fit. Mockup-only — never implement.
+  const BASE_W = 1180
+  function fitScale() {
+    const wrap = document.querySelector('.wrap')
+    const w = document.documentElement.clientWidth
+    const on = w < 940 && w > 680 && !document.body.classList.contains('force-mobile')
+    document.body.classList.toggle('shrink', on)
+    wrap.style.transform = on ? `scale(${Math.max(0.45, (w - 6) / BASE_W)})` : ''
+  }
+  window.addEventListener('resize', fitScale)
+  fitScale()
+
+  // Chip / crew / mode single-select per group (cosmetic only)
+  document.querySelectorAll('[role="group"]').forEach(group => {
+    group.addEventListener('click', e => {
+      const b = e.target.closest('button[aria-pressed]')
+      if (!b) return
+      group.querySelectorAll('button[aria-pressed]').forEach(x => {
+        x.classList.toggle('on', x === b)
+        x.setAttribute('aria-pressed', String(x === b))
+      })
+      // Crew "Custom…" reveals the manual entry
+      if (group.id === 'crewGroup') {
+        document.getElementById('crewCustom').classList.toggle('hidden', !b.hasAttribute('data-custom'))
+      }
+      // Mode selection swaps the aux block: fuel (bench-faithful) / rental / none
+      if (group.id === 'modeGroup') {
+        const aux = b.dataset.aux || ''
+        document.getElementById('fuelBlock').classList.toggle('hidden', aux !== 'fuel')
+        document.getElementById('rentalBlock').classList.toggle('hidden', aux !== 'rental')
+      }
+    })
+  })
+
+  // Return-journey toggle: reveals the return line + ticket note
+  const returnToggle = document.getElementById('returnToggle')
+  returnToggle.addEventListener('change', () => {
+    const on = returnToggle.checked
+    document.getElementById('returnSection').classList.toggle('hidden', !on)
+    document.getElementById('tkReturn').classList.toggle('hidden', !on)
+  })
+</script>
+</body>
+</html>

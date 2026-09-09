@@ -26,6 +26,9 @@ const ProfilePage = lazy(() => import('./pages/Profile').then(m => ({ default: m
 const CreatorPage = lazy(() => import('./pages/CreatorPage').then(m => ({ default: m.CreatorPage })))
 // Gated route: only shown in the nav when the account has creator mode on.
 const CreatorHubPage = lazy(() => import('./pages/CreatorHubPage').then(m => ({ default: m.CreatorHubPage })))
+// Masteradmin console: JWT app_metadata role only (never linked anywhere —
+// admins type #/admin; non-admins fall through to landing inside the page).
+const AdminPage = lazy(() => import('./pages/AdminPage').then(m => ({ default: m.AdminPage })))
 
 /** Suspense fallback for the lazy routes — the same loading block the ready-gate shows. */
 const lazyRouteFallback = <div className="container loading-block"><div className="spinner" />Loading…</div>
@@ -170,7 +173,7 @@ export default function App() {
     location.hash = to
   }
 
-  // route shapes: /, /auth, /trips, /new, /trip/:id, /explore, /pub/:slug, /creator/:id, /creator-hub, /join/:code, /invite/:tripId (legacy), /share/<payload>, /profile
+  // route shapes: /, /auth, /trips, /new, /trip/:id, /explore, /pub/:slug, /creator/:id, /creator-hub, /join/:code, /invite/:tripId (legacy), /admin, /share/<payload>, /profile
   // Query strings (e.g. /auth?mode=signup) ride on parts[0]; strip them so the
   // segment still matches the switch. Pages read their own params from location.hash.
   const parts = route.split('/').filter(Boolean).map(s => s.split('?')[0])
@@ -241,6 +244,12 @@ export default function App() {
         // never mounted, stranding the user on the landing page with the
         // invite lost. Mount it; the effect sends them on to `next` (or /trips).
         page = <Suspense fallback={lazyRouteFallback}><AuthPage onNavigate={navigate} /></Suspense>
+        break
+      // Masteradmin console — intentionally unlinked (no nav pill anywhere):
+      // admins type #/admin; AdminPage itself falls through to Landing for
+      // non-admins (the JWT role is the gate, the route existing is not).
+      case 'admin':
+        page = <Suspense fallback={lazyRouteFallback}><AdminPage onNavigate={navigate} /></Suspense>
         break
       default:
         page = <LandingPage onNavigate={navigate} />

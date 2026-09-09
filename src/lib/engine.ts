@@ -22,11 +22,11 @@ export interface EngineAssumptions {
 /** Average door-to-door speed per mode (km/h) — shared by the scheduling
  *  engine and the Landing page's Plan Bench (issue #37). */
 export const MODE_SPEED: Record<string, number> = {
-  car: 42, motorcycle: 44, taxi: 38, bus: 34, train: 55, flight: 320, mixed: 45,
+  car: 42, rental: 42, motorcycle: 44, taxi: 38, bus: 34, train: 55, flight: 320, mixed: 45,
 }
 /** Blended all-in ₹/km rate per mode when no fuel economy is stated. */
 export const MODE_COST_PER_KM: Record<string, number> = {
-  car: 9, motorcycle: 4.5, taxi: 16, bus: 2.2, train: 1.6, flight: 6.5, mixed: 8,
+  car: 9, rental: 7.5, motorcycle: 4.5, taxi: 16, bus: 2.2, train: 1.6, flight: 6.5, mixed: 8,
 }
 
 /**
@@ -37,7 +37,7 @@ export const MODE_COST_PER_KM: Record<string, number> = {
 export const FUEL_PRICE_INR_PER_L = 105
 
 /** Modes where the vehicle's own fuel economy meaningfully sets the ₹/km rate. */
-const FUEL_ECONOMY_MODES = new Set<string>(['car', 'motorcycle'])
+const FUEL_ECONOMY_MODES = new Set<string>(['car', 'rental', 'motorcycle'])
 
 /** True when the trip mode benefits from a user-stated fuel economy. */
 export function isFuelEconomyMode(mode: string): boolean {
@@ -55,7 +55,7 @@ export function parseFuelEconomyKmL(raw: string | number | undefined | null): nu
 }
 
 /** Soft plausibility bands (hard acceptance stays 2–80) — used to nudge, never to block. */
-const PLAUSIBLE_KM_PER_L: Record<string, [number, number]> = { car: [8, 35], motorcycle: [12, 75] }
+const PLAUSIBLE_KM_PER_L: Record<string, [number, number]> = { car: [8, 35], rental: [8, 35], motorcycle: [12, 75] }
 
 /** True when a stated economy is outside the typical band for the mode — a nudge, not a veto. */
 export function isImplausibleFuelEconomy(mode: string, economy: number | undefined): boolean {
