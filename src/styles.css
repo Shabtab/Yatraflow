@@ -1700,6 +1700,10 @@ a.btn { text-decoration: none; }
 .role-select:hover { border-color: var(--teal); }
 .share-link-box { display: flex; gap: 8px; align-items: center; background: var(--bg-soft); border-radius: var(--radius-sm); padding: 9px 12px; font-size: 13px; overflow: hidden; }
 .share-link-box code { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; font-size: 12px; }
+/* Invite code chip: the short "GOA-K7QF" code, styled like a boarding-pass
+   stub — big, letter-spaced, with a copy button right next to it. */
+.invite-code-chip { display: inline-flex; gap: 10px; align-items: center; background: var(--bg-soft); border: 1px dashed var(--teal); border-radius: var(--radius-sm); padding: 8px 12px; }
+.invite-code-text { font-size: 17px; font-weight: 700; letter-spacing: 0.12em; }
 .footer { border-top: 1px solid var(--line); padding: 26px 0 34px; margin-top: 50px; color: var(--text-3); font-size: 13px; }
 
 /* ---------- App shell / nav extras ---------- */

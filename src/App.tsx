@@ -7,7 +7,7 @@ import {
   Settings, Sparkles, Sun, Tent, X,
 } from 'lucide-react'
 import type { Trip } from './data/types'
-import { useDb, currentUser, useUsers, useNotifications, useSessionUserId, logout, markAllNotificationsRead, tripById, joinViaInvite, duplicateTrip, init, useStoreReady, fetchSharedTrip } from './store/store'
+import { useDb, currentUser, useUsers, useNotifications, useSessionUserId, logout, markAllNotificationsRead, tripById, joinViaInvite, duplicateTrip, init, useStoreReady, fetchSharedTrip, fetchTripByInviteCode } from './store/store'
 import { Avatar, BrandMark, ToastZone, useClickOutside, toast } from './components/ui'
 import { PillNav } from './components/PillNav'
 import { decodeTripSnapshot } from './lib/snapshot'
@@ -170,7 +170,7 @@ export default function App() {
     location.hash = to
   }
 
-  // route shapes: /, /auth, /trips, /new, /trip/:id, /explore, /pub/:slug, /creator/:id, /creator-hub, /invite/:tripId, /share/<payload>, /profile
+  // route shapes: /, /auth, /trips, /new, /trip/:id, /explore, /pub/:slug, /creator/:id, /creator-hub, /join/:code, /invite/:tripId (legacy), /share/<payload>, /profile
   // Query strings (e.g. /auth?mode=signup) ride on parts[0]; strip them so the
   // segment still matches the switch. Pages read their own params from location.hash.
   const parts = route.split('/').filter(Boolean).map(s => s.split('?')[0])
@@ -191,8 +191,12 @@ export default function App() {
     page = <div className="container loading-block"><div className="spinner" />Loading…</div>
   } else if (parts[0] === 'share' && parts[1]) {
     page = <SharedTripPage payload={parts[1]} onNavigate={navigate} />
+  } else if (parts[0] === 'join' && parts[1]) {
+    page = <InviteGate codeOrTripId={parts[1]} onNavigate={navigate} />
   } else if (parts[0] === 'invite' && parts[1]) {
-    page = <InviteGate tripId={parts[1]} onNavigate={navigate} />
+    // Legacy UUID links (#/invite/<tripId>) from before invite codes shipped.
+    // Keep working: the gate accepts a raw trip id too.
+    page = <InviteGate codeOrTripId={parts[1]} onNavigate={navigate} />
   } else if (!me) {
     // public pages stay accessible logged-out; everything else funnels to auth/landing
     if (parts[0] === 'pub' && parts[1]) page = <Suspense fallback={lazyRouteFallback}><PublicItineraryPage slug={parts[1]} onNavigate={navigate} /></Suspense>
@@ -433,53 +437,85 @@ function SharedTripPage({ payload, onNavigate }: { payload: string; onNavigate: 
   )
 }
 
-/** Invite links land here: requires login, then joins the trip and opens it. */
-function InviteGate({ tripId, onNavigate }: { tripId: string; onNavigate: (r: string) => void }) {
+/**
+ * Invite links land here: resolve the code, require login, then join the trip
+ * and open it. Accepts a short invite code ("GOA-K7QF", #/join/<code>) or a
+ * legacy raw trip UUID (#/invite/<tripId>).
+ *
+ * The auth round-trip is the load-bearing part: the gate parked the invite in
+ * `location.hash` and navigated to /auth with a `next` param. AuthPage sends
+ * the user back here after login, so the join effect re-fires on the SAME
+ * invite instead of dead-ending at My Trips.
+ */
+function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavigate: (r: string) => void }) {
   const db = useDb()
   const me = currentUser(db)
   // The invited trip is (by definition) not the viewer's yet, so the
   // membership-scoped hydration never loaded it — fetch it on demand. The
   // RPC fallback covers private trips: holding the link (the trip's UUID)
   // is the capability to preview it.
-  const cachedTrip = tripById(tripId)
-  const [fetched, setFetched] = useState<Trip | null>(null)
-  const [miss, setMiss] = useState(false)
-  const trip = cachedTrip ?? fetched ?? undefined
-  // Keep the latest navigate callback in a ref so we don't re-fire the effect
-  // (and re-join / re-arm the timer) on every parent re-render.
+  const [trip, setTrip] = useState<Trip | null>(null)
+  const [status, setStatus] = useState<'loading' | 'broken' | 'joining'>('loading')
+  // Keep the latest navigate callback in a ref so we don't re-fire effects
+  // on every parent re-render.
   const navigateRef = useRef(onNavigate)
   useEffect(() => { navigateRef.current = onNavigate })
 
+  // Resolve the code/UUID to a trip, once per link target. A hydration can
+  // evict the fetched trip from the cache (fetchSharedTrip merges it, the
+  // next full hydrate may drop it), so `trip` lives in local state, not the
+  // cache — the gate must survive re-hydrations without refetching.
+  // decodeURIComponent first: the landing page's code box navigates with
+  // encodeURIComponent, and a code typed with a space would otherwise arrive
+  // as a %20 inside the segment.
   useEffect(() => {
-    if (cachedTrip || fetched || miss) return
     let alive = true
-    void fetchSharedTrip(tripId, true).then(t => {
+    const target = (() => { try { return decodeURIComponent(codeOrTripId) } catch { return codeOrTripId } })()
+    const resolve = UUID_RE.test(target)
+      ? fetchSharedTrip(target, true)
+      : fetchTripByInviteCode(target)
+    void resolve.then(t => {
       if (!alive) return
-      if (t) setFetched(t)
-      else setMiss(true)
+      if (t) setTrip(t)
+      else setStatus('broken')
     })
     return () => { alive = false }
-  }, [cachedTrip, fetched, miss, tripId])
+  }, [codeOrTripId])
 
+  // Logged in + trip resolved → join once, then open the trip. The join is
+  // awaited: joinViaInvite writes the membership row before its side effects,
+  // and only a confirmed member should be navigated into the workspace.
+  const joinedRef = useRef(false)
   useEffect(() => {
-    if (!me || !trip) return
-    // Ensure the trip is in the cache before joining AND before navigating —
-    // a sign-in hydration can have replaced the cache after our first fetch,
-    // and joinViaInvite + the workspace both read tripById.
-    let alive = true
-    void fetchSharedTrip(tripId, true).then(t => {
-      if (!alive || !t) return
-      joinViaInvite(tripId, me.id)
-      navigateRef.current(`/trip/${tripId}`)
-    })
-    return () => { alive = false }
-    // Depend on the users/trip objects, not a mount-only []: the store hydrates
-    // them asynchronously after init(), so a one-shot effect ran before they
+    if (!me || !trip || joinedRef.current) return
+    // A member re-clicking the link just opens the trip — no re-join toast.
+    // The cached copy carries the viewer's membership; a fresh RPC fetch may
+    // not, so prefer the cache's memberful view for this check.
+    const cached = tripById(trip.id)
+    if ((cached ?? trip).members?.some(m => m.userId === me.id)) {
+      joinedRef.current = true
+      navigateRef.current(`/trip/${trip.id}`)
+      return
+    }
+    joinedRef.current = true // StrictMode double-fire guard
+    void (async () => {
+      setStatus('joining')
+      // Ensure the trip is in the cache before joining — a sign-in hydration
+      // can have replaced the cache after our first fetch, and joinViaInvite
+      // reads tripById.
+      await fetchSharedTrip(trip.id, true)
+      const ok = await joinViaInvite(trip.id, me.id)
+      if (ok) toast(`You're on “${trip.name}” — happy planning!`)
+      else toast('Could not join — the link may be old. Ask for a fresh one.', 'err')
+      navigateRef.current(`/trip/${trip.id}`)
+    })()
+    // Depend on me/trip objects, not a mount-only []: the store hydrates them
+    // asynchronously after init(), so a one-shot effect ran before they
     // existed and the invite never auto-joined.
-  }, [me, trip, tripId])
+  }, [me, trip])
 
-  if (!trip) {
-    return miss ? (
+  if (status === 'broken' || !trip) {
+    return status === 'broken' ? (
       <div className="container empty-state">
         <div className="big"><Link2 size={38} aria-hidden /></div>
         <h1 style={{ fontSize: 26 }}>This invite link is broken</h1>
@@ -492,20 +528,31 @@ function InviteGate({ tripId, onNavigate }: { tripId: string; onNavigate: (r: st
   }
 
   if (!me) {
+    // Park the invite in the URL and bounce through auth with a next param —
+    // the old buttons went to plain /auth, and AuthPage's post-login redirect
+    // to /trips dropped the invite entirely: users logged in, landed on My
+    // Trips, and the trip never appeared.
+    const inviteRoute = UUID_RE.test(codeOrTripId) ? `/invite/${codeOrTripId}` : `/join/${codeOrTripId}`
     return (
       <div className="container empty-state">
         <div className="big"><Mail size={38} aria-hidden /></div>
         <h1 style={{ fontSize: 26 }}>You’ve been invited to “{trip.name}”</h1>
         <p className="muted">Log in or create a free account to join the planning crew.</p>
         <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 14 }}>
-          <button className="btn btn-outline" onClick={() => onNavigate('/auth')}>Log in</button>
-          <button className="btn btn-primary" onClick={() => onNavigate('/auth?mode=signup')}>Create account</button>
+          <button className="btn btn-outline" onClick={() => onNavigate(`/auth?next=${encodeURIComponent(inviteRoute)}`)}>Log in</button>
+          <button className="btn btn-primary" onClick={() => onNavigate(`/auth?mode=signup&next=${encodeURIComponent(inviteRoute)}`)}>Create account</button>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="container loading-block"><div className="spinner" />Joining “{trip.name}”…</div>
+    <div className="container loading-block">
+      <div className="spinner" />
+      {status === 'joining' ? `Joining “${trip.name}”…` : 'Opening invite…'}
+    </div>
   )
 }
+
+/** Raw trip UUIDs (legacy #/invite/<id> links) vs short invite codes. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i

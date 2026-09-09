@@ -52,6 +52,21 @@ export function LandingPage({ onNavigate }: { onNavigate: (r: string) => void })
               </span>
             </button>
             <p className="small muted hero-rise rise-d5" style={{ marginTop: 16 }}>No card needed · Free forever · Your planning data is yours</p>
+            {/* Invite-code entry: friends who got a code (not a link) land here
+                and type it in — routes to #/join/<code>, which previews the trip
+                and asks for login only if needed. */}
+            <form className="hero-rise rise-d5 invite-entry" style={{ display: 'flex', gap: 8, marginTop: 10, maxWidth: 360 }}
+              onSubmit={e => {
+                e.preventDefault()
+                const code = new FormData(e.currentTarget).get('invite-code')
+                if (typeof code === 'string' && code.trim()) onNavigate(`/join/${encodeURIComponent(code.trim())}`)
+              }}>
+              <label className="sr-only" htmlFor="invite-code-input">Trip invite code</label>
+              <input id="invite-code-input" className="input" name="invite-code"
+                placeholder="Have a trip code? GOA-K7QF" autoComplete="off"
+                style={{ textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: 'var(--mono, monospace)' }} />
+              <button type="submit" className="btn btn-outline">Join</button>
+            </form>
           </div>
 
           {/* Adventure preview card (dark navy, animated multi-trip route, mockup) */}

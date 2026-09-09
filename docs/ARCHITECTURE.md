@@ -197,7 +197,8 @@ No router library. [`App.tsx`](../src/App.tsx) parses `location.hash` into a rou
 | `/pub/:slug` | Published itinerary |
 | `/explore` | Public gallery |
 | `/profile` | Profile |
-| `/invite/:id` | Join-trip flow |
+| `/join/:code` | Join-trip flow via short invite code |
+| `/invite/:id` | Join-trip flow (legacy UUID links, still honoured) |
 
 Navigation is a plain `onNavigate(route)` callback that sets `location.hash`. Hash routing means zero server config on any static host.
 

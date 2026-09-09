@@ -46,18 +46,24 @@ create table if not exists public.trips (
   expenses                  jsonb not null default '[]'::jsonb,
   cover_emoji               text not null default '🧭',
   cover_image_url           text,
+  invite_code               text,
   visibility                text not null default 'private'
                               check (visibility in ('private', 'public')),
   created_at                bigint not null default extract(epoch from now()) * 1000,
   updated_at                bigint not null default extract(epoch from now()) * 1000
 );
 
--- Pre-existing installs: add the fuel/round-trip/cover-image columns without
--- touching data (idempotent — safe to re-run).
+-- Pre-existing installs: add the fuel/round-trip/cover-image/invite-code
+-- columns without touching data (idempotent — safe to re-run).
 alter table public.trips add column if not exists fuel_economy_km_per_l numeric;
 alter table public.trips add column if not exists fuel_price_per_l numeric;
 alter table public.trips add column if not exists round_trip boolean;
 alter table public.trips add column if not exists cover_image_url text;
+alter table public.trips add column if not exists invite_code text;
+
+-- Invite codes are unique when present (app mints one per trip).
+create unique index if not exists idx_trips_invite_code
+  on public.trips (invite_code) where invite_code is not null;
 
 -- ---------- trip_members ----------
 create table if not exists public.trip_members (
@@ -375,3 +381,24 @@ end;
 $$ language plpgsql security definer;
 
 grant execute on function public.bump_published_stats(text, text) to anon, authenticated;
+
+-- ============================================================
+-- Invite-code lookup (see migrations/20260909_invite_codes.sql)
+-- ============================================================
+-- The code is the capability — same trust model as get_invite_trip: a
+-- private trip must be previewable by whoever holds its invite code, and RLS
+-- cannot know the request came from a #/join/<code> link. SECURITY DEFINER
+-- bypasses the trips read policy; case-insensitive because users type codes
+-- casually.
+create or replace function public.get_trip_by_invite_code(p_code text)
+returns setof public.trips
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select t.* from public.trips t
+  where upper(t.invite_code) = upper(trim(p_code));
+$$;
+
+grant execute on function public.get_trip_by_invite_code(text) to anon, authenticated;

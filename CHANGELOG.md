@@ -5,6 +5,41 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 ## [Unreleased]
 
 ### Added
+- **Invite links are short codes now — and the join actually works.** The invite
+  URL was the trip's raw UUID: 36 random characters that meant nothing to the
+  person reading it. The Share tab now mints a trip-shaped code — `GOABEACHWE-K7QF`,
+  head from the trip name, 4-char unambiguous tail (no 0/O/1/I/5/S so it survives
+  being read out over a call) — and the invite link becomes `#/join/<code>`.
+  The code sits in its own boarding-pass-stub chip with a copy button, the full
+  link stays below it, and the landing page gains a "Have a trip code?" entry box
+  so a friend who only got the code (not the link) can type it on the home screen.
+  Codes are minted lazily on first share and persisted to a new unique
+  `trips.invite_code` column (`supabase/migrations/20260909_invite_codes.sql`
+  also backfills a code for every existing trip and adds a security-definer
+  `get_trip_by_invite_code` lookup RPC — the code is the capability, same trust
+  model as the old UUID link). Old `#/invite/<uuid>` links keep working forever.
+  **The join flow was broken at three points, all fixed:**
+  1. *The login round-trip dropped the invite.* The gate's Log in button went to
+     plain `/auth`, and AuthPage's post-login redirect hard-navigated to My Trips —
+     so the trip never joined and never appeared in the list. The gate now parks
+     the invite in the URL and bounces through `/auth?next=/join/<code>`; AuthPage
+     honours the `next` param (validated as a same-app route — the param is
+     attacker-controllable input and must not bounce the user off-site) and drops
+     the user back on the invite, which then joins and opens the trip.
+  2. *Already-logged-in users can get a silent dead spinner.* If the on-demand
+     trip fetch hiccuped, the gate gave up with no retry and no message — a
+     permanent "Joining…" spinner. The gate now resolves its trip into local state
+     (immune to cache evictions), reports a broken link honestly, shows a toast
+     on join success ("You're on Goa Beach Week — happy planning!") or failure,
+     and a member re-clicking the link just opens the trip instead of re-joining.
+  3. *The join's side effects fired before the join itself.* `joinViaInvite`
+     wrote the activity log and the owner's notification *before* the
+     `trip_members` row — both are RLS-gated on `is_editor()`, which is false
+     until the membership exists, so every join logged console errors while the
+     side effects silently never landed (and the fire-and-forget insert could
+     fail invisibly too). The membership row is now written first and awaited;
+     only a confirmed write optimistically adds the member to the cache, so the
+     trip shows up in My Trips immediately — and honestly doesn't on failure.
 - **Trip settings is now the Plan Bench, inside your trip.** The Share tab's settings
   panel was a flat stack of twelve look-alike fields with Save parked below the fold. It
   now speaks the landing calculator's own control language — the same classes at the same

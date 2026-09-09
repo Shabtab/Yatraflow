@@ -7,6 +7,19 @@ import { isSupabaseConfigured } from '../lib/supabase'
 import { MISSING_BACKEND_MESSAGE } from '../lib/authErrors'
 import { Field } from '../components/ui'
 
+/** Post-login destination: the `next` param when the auth page was entered
+ *  from a deep link (an invite), else My Trips. The param is
+ *  attacker-controllable input, so it is validated as a same-app hash route:
+ *  must start with a single "/" and contain only path characters — no
+ *  scheme ("https:"), no protocol-relative "//host", no query injection. */
+function nextRoute(): string {
+  const raw = new URLSearchParams(location.hash.split('?')[1] ?? '').get('next')
+  if (!raw) return '/trips'
+  const decoded = (() => { try { return decodeURIComponent(raw) } catch { return raw } })()
+  if (!/^\/[a-z0-9\-/]*$/i.test(decoded) || decoded.includes('//')) return '/trips'
+  return decoded
+}
+
 export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
   const db = useDb()
   const me = currentUser(db)
@@ -19,7 +32,7 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    if (me) onNavigate('/trips') // already logged in
+    if (me) onNavigate(nextRoute()) // already logged in — back to where the link pointed
   }, [me]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function submit(e: React.FormEvent) {
