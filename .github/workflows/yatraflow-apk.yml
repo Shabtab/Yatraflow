@@ -4,7 +4,7 @@ name: Android APK
 # Android toolchain. Runs on pushes to the Capacitor branch and on demand.
 on:
   push:
-    branches: ['feat/capacitor-android', 'apk-branch-test']
+    branches: ['feat/capacitor-android']
   workflow_dispatch:
 
 permissions:
