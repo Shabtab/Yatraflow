@@ -1,24 +1,29 @@
 // ============ Native app-shell wiring (Capacitor) ============
 // Everything the app needs only when it runs inside the Android shell:
-// status-bar theming, splash dismissal and the Android back button.
+// system-bar theming, splash dismissal and the Android back button.
 // Off-device every function is a no-op, so the web app ships exactly the
 // same code and never touches a plugin.
 
 import { App } from '@capacitor/app'
+import { SystemBars, SystemBarsStyle } from '@capacitor/core'
 import { SplashScreen } from '@capacitor/splash-screen'
-import { StatusBar, Style } from '@capacitor/status-bar'
 import { isAndroid, isNative } from './native'
 
-const LIGHT_BG = '#FAF7F2'
-const DARK_BG = '#0C1420'
-
-/** Match the status bar to the app theme (same colors as the theme-color metas). */
+/**
+ * Match the system bars to the app theme (same colors as the theme-color
+ * metas). SystemBars styles BOTH bars at once and, unlike the StatusBar
+ * plugin, doesn't fight Android 15's edge-to-edge: the WebView stays
+ * full-bleed behind translucent bars and the core runtime injects correct
+ * `--safe-area-inset-*` values (env() alone reads as 0 on Android WebView),
+ * which the CSS consumes as a fallback chain.
+ */
 export async function setNativeTheme(dark: boolean): Promise<void> {
-  if (!isAndroid) return
+  if (!isNative) return
   try {
-    // Light theme needs dark icons (light text would vanish on the cream bar)
-    await StatusBar.setStyle({ style: dark ? Style.Dark : Style.Light })
-    await StatusBar.setBackgroundColor({ color: dark ? DARK_BG : LIGHT_BG })
+    // SystemBarsStyle.Dark = light bar content for a dark background — the
+    // right choice for the dark navy app theme; Light = dark content for
+    // the cream theme. One call styles status + navigation bars together.
+    await SystemBars.setStyle({ style: dark ? SystemBarsStyle.Dark : SystemBarsStyle.Light })
   } catch { /* not in the shell / plugin unavailable — nothing to do */ }
 }
 
@@ -34,8 +39,8 @@ export async function hideSplash(): Promise<void> {
 // this handler the back button would kill the activity. We map it onto the
 // app's own UX:
 //   1. an open drawer/popover closes first (one entry per layer),
-//   2. else the hash router goes back until it hits the entry page,
-//   3. at the entry page a second press exits (the classic confirm pattern).
+//   2. else the hash router walks the WebView history back,
+//   3. at the first entry a second press exits (the classic confirm pattern).
 //
 // `registerAndroidBack` is idempotent — call it once from the shell; it
 // routes each press through the callbacks the shell keeps current.
