@@ -4,7 +4,7 @@
 
 export type ID = string
 
-export const TRANSPORT_MODES = ['car', 'motorcycle', 'train', 'bus', 'flight', 'taxi', 'mixed'] as const
+export const TRANSPORT_MODES = ['car', 'rental', 'motorcycle', 'train', 'bus', 'flight', 'taxi', 'mixed'] as const
 export type TransportMode = (typeof TRANSPORT_MODES)[number]
 
 export const TRAVEL_STYLES = [
@@ -62,6 +62,8 @@ export interface UserProfile {
   isCreator: boolean
   creatorBio?: string
   socialLinks?: { youtube?: string; instagram?: string }
+  /** masteradmin console: true when the account is disabled (see admin_set_disabled RPC) */
+  isDisabled?: boolean
 }
 
 export interface User {
@@ -196,6 +198,12 @@ export interface Trip {
    */
   inviteCode?: string
   visibility: 'private' | 'public'
+  /**
+   * Soft-delete tombstone (ms epoch). Null/undefined = live. A trashed trip is
+   * hidden from normal reads by the `trips read hide trashed` RLS policy and
+   * survives 30 days before the `purge_trashed_trips()` sweep hard-deletes it.
+   */
+  deletedAt?: number | null
   createdAt: number
   updatedAt: number
 }

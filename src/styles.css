@@ -4094,3 +4094,350 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
   .itin-card { border-radius: var(--radius-sm); }
   .itin-card:hover { transform: none; }
 }
+
+/* ============ Trip Starter — CreateTrip "Trip Ticket" (Sep 2026) ============ */
+/* Bento-compact form blocks on the left, a live boarding-pass ticket on the
+   right; the rough bill prints out of a minimal printer slot on demand. All
+   colours ride the CTI tokens so both themes mirror for free; the ticket's
+   navy paper uses --yf-navy directly. */
+
+.trip-starter { padding-top: 26px; }
+.ts-head { margin-bottom: 18px; }
+.ts-head .eyebrow { margin: 0 0 2px; }
+.ts-head h1 { margin: 0; font-size: 28px; letter-spacing: -0.02em; }
+.ts-head .small { margin: 6px 0 0; font-size: 13.5px; }
+
+.ts-layout { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 22px; align-items: start; }
+.ts-blocks { display: grid; grid-template-columns: repeat(12, 1fr); gap: 12px; min-width: 0; }
+.ts-block {
+  background: var(--yf-surface); border: 1px solid var(--yf-border); border-radius: 20px;
+  padding: 14px 16px 16px; box-shadow: 0 10px 26px rgba(18, 63, 73, 0.07), 0 2px 5px rgba(18, 63, 73, 0.05);
+  min-width: 0; position: relative;
+}
+/* The entrance animation (transform, fill: forwards) pins each block into its
+   own stacking context, so a later block paints OVER the open location
+   dropdown / calendar popover inside an earlier one. Elevate the block that
+   owns the open popover above its siblings. */
+.ts-block:has(.loc-dropdown), .ts-block:has(.cal-pop) { z-index: 2; }
+[data-theme='dark'] .ts-block { box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35), 0 2px 6px rgba(0, 0, 0, 0.25); }
+.span7 { grid-column: span 7; }
+.span5 { grid-column: span 5; }
+.span12 { grid-column: span 12; }
+.ts-block-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.ts-block-head .eyebrow { margin: 0; }
+.ts-block-value { margin-left: auto; font-size: 12.5px; font-weight: 700; color: var(--yf-teal-700); white-space: nowrap; }
+[data-theme='dark'] .ts-block-value { color: var(--yf-teal-600); }
+
+.ts-block .field { margin-bottom: 10px; }
+.ts-block .field:last-child { margin-bottom: 0; }
+.form-row { display: flex; gap: 10px; align-items: flex-start; }
+.form-row .field { flex: 1; min-width: 0; }
+
+/* Return-stops switch (on/off configuration → role="switch" is honest here) */
+.ts-switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 12px; font-weight: 650; color: var(--yf-text-muted); }
+.ts-switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+.ts-switch-track { width: 34px; height: 20px; border-radius: 999px; background: var(--yf-border); position: relative; transition: background var(--t-fast) var(--ease-out); flex: none; }
+.ts-switch-track::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 999px; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25); transition: transform var(--t-fast) var(--ease-out); }
+.ts-switch input:checked + .ts-switch-track { background: var(--yf-teal-600); }
+.ts-switch input:checked + .ts-switch-track::after { transform: translateX(14px); }
+.ts-switch input:focus-visible + .ts-switch-track { box-shadow: var(--ring); }
+.ts-switch input:checked ~ .ts-switch-label { color: var(--yf-teal-700); }
+[data-theme='dark'] .ts-switch input:checked ~ .ts-switch-label { color: var(--yf-teal-600); }
+
+/* Route line: dashed spine + numbered dots; the start dot wears the navy */
+.route-line { position: relative; margin: 4px 0 10px 2px; }
+.route-line::before { content: ""; position: absolute; left: 12px; top: 16px; bottom: 16px; border-left: 2px dashed color-mix(in srgb, var(--yf-teal-600) 38%, transparent); }
+.route-row { position: relative; display: flex; align-items: center; gap: 10px; padding: 4px 0; }
+.route-dot {
+  width: 26px; height: 26px; border-radius: 999px; flex: none; z-index: 1;
+  display: grid; place-items: center; font-size: 11px; font-weight: 800;
+  background: var(--yf-teal-600); color: #fff; box-shadow: 0 0 0 4px var(--yf-surface);
+}
+.route-row--start .route-dot, .route-line > .route-row:first-child .route-dot { background: var(--yf-navy); }
+.route-name { font-weight: 650; font-size: 13.5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.route-tag { font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--yf-text-muted); flex: none; }
+.route-acts { margin-left: auto; display: inline-flex; gap: 2px; flex: none; }
+.route-btn {
+  width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center;
+  color: var(--yf-text-muted); border: 1px solid transparent; background: none; padding: 0;
+}
+.route-btn:hover:not(:disabled) { background: var(--yf-teal-100); color: var(--yf-teal-700); border-color: color-mix(in srgb, var(--yf-teal-600) 35%, transparent); }
+.route-btn:disabled { cursor: default; }
+.return-section { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--yf-border); }
+.return-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.return-head .eyebrow { margin: 0; }
+.return-note { font-size: 11px; color: var(--yf-text-muted); }
+.route-line--return::before { opacity: 0.45; }
+.route-line--return .route-dot { background: var(--yf-surface); color: var(--yf-teal-700); border: 1.5px solid var(--yf-teal-600); }
+.route-line--return .route-row:first-child .route-dot { color: var(--yf-navy); border-color: var(--yf-navy); }
+[data-theme='dark'] .route-line--return .route-dot { color: var(--yf-teal-600); }
+
+/* Dates pill */
+.trip-starter .pill {
+  display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 11px;
+  border-radius: 999px; background: var(--yf-teal-100); border: 1px solid color-mix(in srgb, var(--yf-teal-600) 35%, transparent);
+  color: var(--yf-teal-700); font-size: 12px; font-weight: 700; white-space: nowrap;
+}
+[data-theme='dark'] .trip-starter .pill { color: var(--yf-teal-600); }
+
+/* Crew & transport: mode tiles | fuel stack | crew circles */
+.ct-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.85fr) minmax(0, 0.85fr); gap: 18px; align-items: start; }
+.group-lab { display: block; font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--yf-text-muted); margin-bottom: 7px; }
+.mode-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.mode-btn {
+  display: flex; align-items: center; gap: 9px; padding: 9px 10px; border-radius: 13px; min-height: 48px;
+  border: 1px solid var(--yf-border); background: var(--yf-surface); text-align: left; min-width: 0; color: inherit;
+}
+.mode-btn:hover { border-color: color-mix(in srgb, var(--yf-teal-600) 45%, transparent); background: var(--yf-teal-100); }
+.mode-btn .nm { display: block; font-weight: 700; font-size: 12.5px; line-height: 1.2; white-space: nowrap; }
+.mode-btn .hint { display: block; font-size: 10.5px; line-height: 1.3; color: var(--yf-text-muted); font-weight: 500; }
+.mode-btn.on { background: var(--yf-teal-600); border-color: var(--yf-teal-600); color: #fff; box-shadow: var(--shadow-glow-teal); }
+.mode-btn.on .hint { color: rgba(255, 255, 255, 0.8); }
+/* Train tile hosts the inline local-fare switch — the wrapper is the grid
+   cell; the switch is a sibling of the select button, not a nested control.
+   It docks bottom-right and the button reserves the row, so the tile text
+   keeps its full width (the tiles are far too narrow for a corner overlay). */
+.mode-tile { position: relative; min-width: 0; }
+.mode-tile .mode-btn { width: 100%; height: 100%; }
+.mode-tile:has(.mode-local-switch) .mode-btn { padding-bottom: 34px; }
+.mode-local-switch {
+  position: absolute; bottom: 5px; right: 6px; gap: 4px; font-size: 9.5px;
+  background: var(--yf-surface); border: 1px solid var(--yf-border); border-radius: 999px;
+  padding: 2px 6px 2px 4px; box-shadow: 0 1px 4px rgba(18, 63, 73, 0.14);
+}
+.mode-local-switch .ts-switch-track { width: 24px; height: 14px; }
+.mode-local-switch .ts-switch-track::after { width: 10px; height: 10px; }
+.mode-local-switch input:checked + .ts-switch-track::after { transform: translateX(10px); }
+.mode-local-switch input:checked ~ .ts-switch-label { color: var(--yf-teal-700); }
+[data-theme='dark'] .mode-local-switch input:checked ~ .ts-switch-label { color: var(--yf-teal-600); }
+.fuel-stack { display: grid; gap: 8px; align-content: start; }
+.mini-field { display: grid; gap: 4px; }
+.mini-lab { font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--yf-text-muted); }
+.unit-input { position: relative; display: flex; align-items: center; }
+.unit-input .input { width: 100%; height: 36px; padding-right: 48px; font-size: 13px; font-weight: 650; }
+.unit-input .unit { position: absolute; right: 10px; font-size: 11px; color: var(--yf-text-muted); pointer-events: none; }
+.crew-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.crew-btn {
+  min-width: 36px; height: 36px; border-radius: 999px; border: 1px solid var(--yf-border);
+  display: grid; place-items: center; font-weight: 700; font-size: 13px; background: var(--yf-surface); color: inherit; padding: 0 8px;
+}
+.crew-btn:hover { border-color: color-mix(in srgb, var(--yf-teal-600) 45%, transparent); background: var(--yf-teal-100); }
+.crew-btn.on { background: var(--yf-teal-600); border-color: var(--yf-teal-600); color: #fff; }
+.crew-btn--custom { border-radius: 999px; font-size: 12px; }
+.crew-custom { margin-top: 8px; max-width: 140px; }
+
+/* Quick budget chips (raw buttons — .chip base is global; state here) */
+.quick-budget { display: flex; gap: 6px; flex-wrap: wrap; padding-top: 24px; }
+.quick-budget .chip { height: 36px; border-radius: 999px; border: 1px solid var(--yf-border); background: var(--yf-surface); font-weight: 650; }
+.quick-budget .chip:hover { border-color: color-mix(in srgb, var(--yf-teal-600) 45%, transparent); background: var(--yf-teal-100); }
+.quick-budget .chip.on { background: var(--yf-teal-100); border-color: var(--yf-teal-600); color: var(--yf-teal-700); }
+[data-theme='dark'] .quick-budget .chip.on { color: var(--yf-teal-600); }
+
+/* Style carousel: all styles visible on desktop (wraps, glider tracks rows);
+   ≤720px falls back to the horizontal scroll-snap strip. The tab bar class
+   it reuses paints a glass stadium around the rail — right for a single-row
+   tab bar, but once the pills wrap it reads as one giant blob, so the create
+   page strips the container chrome and lets the glider carry the state. */
+.style-carousel {
+  width: 100%; overflow-x: auto; scrollbar-width: none;
+  background: none; border: none; box-shadow: none; padding: 0; border-radius: 14px; margin-bottom: 2px;
+}
+.style-carousel::-webkit-scrollbar { display: none; }
+.style-carousel .tab-btn { white-space: nowrap; flex: none; }
+.style-copy { min-height: 2.4em; margin-top: 8px; }
+@media (min-width: 721px) {
+  .style-carousel { flex-wrap: wrap; overflow: visible; row-gap: 2px; }
+}
+
+/* Single range calendar (replaces the two raw date inputs) */
+.cal-wrap { position: relative; }
+.cal-trigger { position: relative; display: flex; align-items: center; gap: 8px; text-align: left; cursor: pointer; }
+.cal-trigger > span:first-of-type { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-trigger .muted { color: var(--yf-text-muted); font-weight: 500; }
+.cal-trigger .cal-caret { position: absolute; right: 10px; color: var(--yf-text-muted); flex: none; }
+.cal-pop {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: var(--z-nav-glass);
+  width: min(278px, 100%); padding: 10px 12px 12px; border-radius: 14px;
+  background: var(--yf-glass); border: 1px solid var(--yf-glass-border);
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  box-shadow: var(--shadow-soft);
+}
+.cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; font-size: 13px; font-weight: 700; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.cal-wd { text-align: center; font-size: 9.5px; font-weight: 700; letter-spacing: .06em; color: var(--yf-text-muted); padding: 3px 0 4px; }
+.cal-day {
+  height: 32px; border-radius: 9px; border: none; background: none; cursor: pointer;
+  font: inherit; font-size: 12px; font-weight: 600; color: var(--text); display: grid; place-items: center; padding: 0;
+}
+.cal-day:hover { background: var(--yf-teal-100); }
+.cal-day.in-range { background: var(--yf-teal-100); border-radius: 0; color: var(--yf-teal-700); }
+[data-theme='dark'] .cal-day.in-range { color: var(--yf-teal-600); }
+.cal-day.edge { background: var(--yf-teal-600); color: #fff; border-radius: 9px; }
+.cal-day.today { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--yf-teal-600) 55%, transparent); }
+.cal-hint { margin: 8px 0 0; font-size: 11px; color: var(--yf-text-muted); text-align: center; }
+
+/* ============ The Trip Ticket (right rail) ============ */
+.ts-rail { position: sticky; top: calc(var(--nav-h, 64px) + 16px); }
+.ticket {
+  position: relative; border-radius: 22px; overflow: hidden;
+  background: linear-gradient(168deg, var(--yf-navy), color-mix(in srgb, var(--yf-navy) 78%, #04191F));
+  color: #F2F7F5; box-shadow: 0 20px 44px rgba(10, 32, 40, 0.35);
+}
+.ticket::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(420px 200px at 85% -10%, rgba(255, 255, 255, 0.08), transparent 60%); }
+.tk-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px 0; }
+.tk-brand { font-size: 10.5px; font-weight: 800; letter-spacing: 0.18em; text-transform: uppercase; opacity: 0.85; }
+.tk-kind { font-size: 10px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--yf-saffron); }
+.tk-cover { position: relative; margin: 12px 18px 0; height: 96px; border-radius: 12px; overflow: hidden; background: color-mix(in srgb, var(--yf-navy) 70%, #2E6B5E); }
+.tk-cover .tk-scenery { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.tk-cover .emoji-chip {
+  position: absolute; right: 9px; bottom: 9px; width: 31px; height: 31px; border-radius: 9px;
+  display: grid; place-items: center; font-size: 15px; background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+}
+.tk-body { padding: 14px 18px 0; }
+.tk-title { font-size: 19px; font-weight: 750; letter-spacing: -0.01em; line-height: 1.15; overflow-wrap: anywhere; }
+.tk-route { margin: 8px 0 0; font-size: 12px; color: rgba(242, 247, 245, 0.66); }
+.tk-return-chip { display: inline-block; margin-left: 6px; padding: 1px 8px; border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 999px; font-size: 10px; }
+.tk-rows { margin: 12px 0 0; display: grid; gap: 8px; }
+.tk-row { display: flex; align-items: center; gap: 9px; font-size: 12.5px; min-width: 0; }
+.tk-row .ic { width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.16); font-size: 11.5px; flex: none; }
+.tk-row .lab { color: rgba(242, 247, 245, 0.66); flex: none; }
+.tk-row b { font-weight: 650; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tear { position: relative; margin: 16px 0 0; border-top: 2px dashed rgba(255, 255, 255, 0.18); }
+.tear::before, .tear::after { content: ""; position: absolute; top: -10px; width: 20px; height: 20px; border-radius: 999px; background: var(--yf-cream); }
+.tear::before { left: -10px; }
+.tear::after { right: -10px; }
+.tk-stub { padding: 12px 18px 18px; }
+
+/* Hidden bill → printer slot → textured paper */
+.tk-print-btn {
+  width: 100%; height: 46px; border-radius: 13px; display: flex; align-items: center; justify-content: center; gap: 8px;
+  background: rgba(255, 255, 255, 0.1); border: 1px dashed rgba(255, 255, 255, 0.38);
+  color: #F2F7F5; font-weight: 700; font-size: 14px; cursor: pointer;
+}
+.tk-print-btn:hover { background: rgba(255, 255, 255, 0.18); border-style: solid; }
+.tk-fine { margin: 10px 0 0; font-size: 11px; line-height: 1.5; color: rgba(242, 247, 245, 0.6); }
+.tk-cancel { margin-top: 9px; width: 100%; text-align: center; font-size: 12.5px; color: rgba(242, 247, 245, 0.6); background: none; border: none; cursor: pointer; padding: 4px; }
+.tk-cancel:hover { color: #F2F7F5; }
+.tk-subrow { display: flex; justify-content: center; gap: 18px; margin-top: 9px; }
+.tk-subrow .tk-cancel { margin-top: 0; width: auto; }
+
+.bill-printer { position: relative; }
+.bill-slot {
+  width: 72%; height: 12px; margin: 0 auto -3px; border-radius: 7px;
+  background: rgba(0, 0, 0, 0.38); box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.5), 0 1px 0 rgba(255, 255, 255, 0.08);
+  display: flex; align-items: center; justify-content: center;
+}
+.bill-slot span { width: 46%; height: 3px; border-radius: 2px; background: rgba(0, 0, 0, 0.55); }
+.bill-reveal {
+  background: #FBF7EC; color: #3A3020; border-radius: 0 0 10px 10px;
+  padding: 12px 14px 16px; box-shadow: 0 14px 30px rgba(0, 0, 0, 0.35);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 5px), 96% 100%, 92% calc(100% - 4px), 88% 100%, 84% calc(100% - 4px), 80% 100%, 76% calc(100% - 5px), 72% 100%, 68% calc(100% - 4px), 64% 100%, 60% calc(100% - 4px), 56% 100%, 52% calc(100% - 5px), 48% 100%, 44% calc(100% - 4px), 40% 100%, 36% calc(100% - 4px), 32% 100%, 28% calc(100% - 5px), 24% 100%, 20% calc(100% - 4px), 16% 100%, 12% calc(100% - 4px), 8% 100%, 4% calc(100% - 5px), 0 100%);
+  background-image:
+    repeating-linear-gradient(0deg, rgba(120, 100, 60, 0.045) 0 1px, transparent 1px 3px),
+    repeating-linear-gradient(90deg, rgba(120, 100, 60, 0.03) 0 1px, transparent 1px 4px);
+}
+.bill-brand { margin: 0 0 8px; font-size: 9.5px; font-weight: 800; letter-spacing: 0.16em; color: #8A7A58; text-align: center; }
+.bill-row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: 12px; padding: 3px 0; }
+.bill-row span { color: #6B5E42; }
+.bill-row b { font-weight: 700; }
+.bill-formula { margin: 0 0 4px; font-size: 10px; color: #9A8C6C; font-style: italic; }
+.bill-total { margin-top: 6px; padding-top: 7px; border-top: 1px dashed #C9BC9C; font-size: 13px; }
+.bill-perhead { display: flex; align-items: baseline; justify-content: space-between; margin-top: 4px; }
+.bill-perhead .mono { font-size: 21px; font-weight: 800; letter-spacing: -0.02em; color: #2E4A3A; }
+.bill-perhead .per { font-size: 11px; color: #6B5E42; font-weight: 600; }
+.bill-note { margin: 8px 0 0; font-size: 9.5px; line-height: 1.5; color: #9A8C6C; }
+.tk-cta {
+  margin-top: 12px; width: 100%; height: 46px; border-radius: 13px; border: none; cursor: pointer;
+  background: var(--yf-saffron); color: #3A2506; font-weight: 750; font-size: 14.5px;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  box-shadow: 0 9px 22px rgba(243, 170, 61, 0.35);
+}
+.tk-cta:hover { filter: brightness(1.05); }
+
+/* Bill print animation: a 0.45s slot warm-up (the slot light blinks twice),
+   then the paper feeds out in small mechanical increments — clip-path and
+   translate share the same steps() timing so the reveal and the feed jitter
+   in lockstep like real printer rollers. Sway starts once the sheet is out.
+   translate and rotate are independent CSS properties, so keyframes never fight. */
+@media (prefers-reduced-motion: no-preference) {
+  .bill-reveal { animation: bill-reveal 2.5s steps(28, end) 0.45s both; }
+  .bill-paper-sway { animation: bill-drop 2.5s steps(28, end) 0.45s both, bill-sway 5.4s ease-in-out 2.95s infinite; }
+  .bill-slot span { animation: bill-slot-live 1.4s steps(2, jump-none) 2; }
+  @keyframes bill-reveal { from { clip-path: inset(0 0 100% 0); } to { clip-path: inset(0 0 -9px 0); } }
+  @keyframes bill-drop { from { translate: 0 -18px; } to { translate: 0 0; } }
+  @keyframes bill-sway { 0%, 100% { rotate: 0deg; } 25% { rotate: 0.55deg; } 75% { rotate: -0.55deg; } }
+  @keyframes bill-slot-live { 50% { opacity: 0.2; } }
+}
+
+/* Theme-aware printer + paper: the ticket stays navy in both themes, but the
+   slot hardware and the printed sheet follow the app theme — dark mode prints
+   on warm charcoal paper instead of glaring cream. */
+[data-theme='dark'] .bill-slot {
+  background: rgba(0, 0, 0, 0.52);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.7), 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+[data-theme='dark'] .bill-reveal {
+  background-color: #241F19;
+  color: #E6DCC0;
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.55);
+  background-image:
+    repeating-linear-gradient(0deg, rgba(206, 180, 124, 0.05) 0 1px, transparent 1px 3px),
+    repeating-linear-gradient(90deg, rgba(206, 180, 124, 0.035) 0 1px, transparent 1px 4px);
+}
+[data-theme='dark'] .bill-brand { color: #A68F66; }
+[data-theme='dark'] .bill-row span { color: #BCAE8C; }
+[data-theme='dark'] .bill-formula { color: #998B6D; }
+[data-theme='dark'] .bill-total { border-top-color: #4E4433; }
+[data-theme='dark'] .bill-perhead .mono { color: #93D3AC; }
+[data-theme='dark'] .bill-perhead .per { color: #BCAE8C; }
+[data-theme='dark'] .bill-note { color: #998B6D; }
+
+/* Trip Ticket entrance + bento stagger (transform/opacity only) */
+@media (prefers-reduced-motion: no-preference) {
+  .ts-block, .ticket { opacity: 0; transform: translateY(10px); animation: ts-rise 0.5s var(--ease-out) forwards; }
+  .ts-blocks > .ts-block:nth-child(1) { animation-delay: 0.04s; }
+  .ts-blocks > .ts-block:nth-child(2) { animation-delay: 0.1s; }
+  .ts-blocks > .ts-block:nth-child(3) { animation-delay: 0.16s; }
+  .ts-blocks > .ts-block:nth-child(4) { animation-delay: 0.22s; }
+  .ts-blocks > .ts-block:nth-child(5) { animation-delay: 0.28s; }
+  .ts-blocks > .ts-block:nth-child(6) { animation-delay: 0.34s; }
+  .ticket { animation-delay: 0.24s; }
+  @keyframes ts-rise { to { opacity: 1; transform: none; } }
+}
+
+/* ============ Mobile dock (≤900px): ticket collapses into a fixed glass bar ============ */
+.trip-dock { display: none; }
+@media (max-width: 900px) {
+  .ts-layout { grid-template-columns: 1fr; }
+  .ts-rail { display: none; }
+  .span7, .span5 { grid-column: 1 / -1; }
+  .ct-grid { grid-template-columns: 1fr; }
+  .trip-starter { padding-bottom: 118px; }
+  .trip-dock {
+    display: flex; position: fixed; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom));
+    z-index: var(--z-dock); align-items: center; gap: 12px; padding: 12px 14px; border-radius: 20px;
+    background: color-mix(in srgb, var(--yf-surface) 82%, transparent); border: 1px solid var(--yf-border);
+    -webkit-backdrop-filter: blur(16px) saturate(1.2); backdrop-filter: blur(16px) saturate(1.2);
+    box-shadow: 0 18px 40px rgba(10, 32, 40, 0.28);
+  }
+  .dock-thumb { width: 44px; height: 44px; border-radius: 12px; flex: none; display: grid; place-items: center; font-size: 19px; background: var(--yf-teal-100); }
+  .dock-meta { min-width: 0; }
+  .dock-meta b { display: block; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dock-meta span { font-size: 12px; color: var(--yf-text-muted); }
+  .dock-amt { color: var(--yf-teal-700); font-weight: 700; }
+  [data-theme='dark'] .dock-amt { color: var(--yf-teal-600); }
+  .dock-cta {
+    margin-left: auto; flex: none; height: 46px; padding: 0 16px; border-radius: 13px; border: none; cursor: pointer;
+    background: var(--yf-saffron); color: #3A2506; font-weight: 750; font-size: 14px;
+    display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 8px 20px rgba(243, 170, 61, 0.35);
+  }
+}
+@media (max-width: 720px) {
+  .trip-starter { padding-top: 18px; }
+  .route-btn { width: 36px; height: 36px; }
+  .crew-btn { min-width: 40px; height: 40px; }
+  .mode-grid { grid-template-columns: 1fr 1fr; }
+  .trip-dock { left: 10px; right: 10px; }
+}

@@ -19,6 +19,8 @@ export interface TripRow {
   cover_image_url?: string | null;
   /** present only after the invite-code migration (see supabase/schema.sql) */
   invite_code?: string | null; visibility: 'private' | 'public';
+  /** present only after the trip-trash migration (20260910_trip_trash.sql) */
+  deleted_at?: string | null;
   created_at: number; updated_at: number;
 }
 
@@ -35,13 +37,13 @@ export function rowToTrip(row: TripRow, members: TripMember[]): Trip {
     travelStyle: row.travel_style as Trip['travelStyle'], fixedCommitments: row.fixed_commitments ?? [],
     days: row.days ?? [], expenses: row.expenses ?? [], coverEmoji: row.cover_emoji,
     coverImageUrl: row.cover_image_url ?? undefined, inviteCode: row.invite_code ?? undefined,
-    visibility: row.visibility,
+    visibility: row.visibility, deletedAt: row.deleted_at != null ? new Date(row.deleted_at).getTime() : undefined,
     createdAt: row.created_at, updatedAt: row.updated_at, members,
   }
 }
 
 export interface OptionalColumnsProbe {
-  economy: boolean; price: boolean; roundTrip: boolean; cover: boolean; inviteCode: boolean
+  economy: boolean; price: boolean; roundTrip: boolean; cover: boolean; inviteCode: boolean; deleted: boolean
 }
 
 /**
@@ -65,6 +67,7 @@ export function tripToRow(trip: Trip, ownerId: string, cols?: OptionalColumnsPro
   if (cols?.roundTrip) row.round_trip = trip.roundTrip ?? null
   if (cols?.cover) row.cover_image_url = trip.coverImageUrl ?? null
   if (cols?.inviteCode) row.invite_code = trip.inviteCode ?? null
+  if (cols?.deleted) row.deleted_at = trip.deletedAt != null ? new Date(trip.deletedAt).toISOString() : null
   return row
 }
 

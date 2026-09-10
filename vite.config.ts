@@ -1,5 +1,10 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
+import { readFileSync } from 'node:fs'
+
+/** Single source of truth for the app version (feedback mailto bodies) —
+ *  read from package.json at config time, inlined via the define below. */
+const APP_VERSION = (JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf-8')) as { version: string }).version
 
 /**
  * Fail a *deployment* build that would otherwise ship an app whose login can
@@ -36,6 +41,11 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react()],
     base: './',
+    define: {
+      // Inlined at build time from package.json — consumed by the feedback
+      // mailto so bug reports carry the exact shipped version.
+      __APP_VERSION__: JSON.stringify(APP_VERSION),
+    },
     build: {
       // Ship sourcemaps so Lighthouse's "unused JavaScript" attribution and
       // production stack traces map back to source instead of minified bundles.

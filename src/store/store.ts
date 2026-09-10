@@ -21,17 +21,21 @@ import { makeInviteCode, normalizeInviteCode } from '../lib/inviteCode'
 import { suggestionToRow, decisionToRow, activityToRow, notificationToRow, publishedToRow } from '../lib/restoreRows'
 import { reduceSlice, applyMemberChange, isRecentLocalWrite } from '../lib/realtimeCore'
 import { MISSING_BACKEND_MESSAGE, describeAuthFailure } from '../lib/authErrors'
+import { adminFromSession, clearAdminCache, isAdminCached } from '../lib/adminSession'
 import type { RealtimeChannel, RealtimePostgresChangesPayload } from '@supabase/supabase-js'
 
 // In-memory cache — the synchronous snapshot the UI reads. No localStorage.
 interface DB {
   users: User[]               // profiles mirror (for names/avatars in the UI)
   trips: Trip[]
+  /** Soft-deleted trips, fetched on demand from the get_trashed_trips RPC. */
+  trashedTrips: Trip[]
   suggestions: StopSuggestion[]
   decisions: TripDecision[]
   activity: ActivityEntry[]
   notifications: Notification[]
   published: PublishedItinerary[]
+  adminAudit: AdminAuditEntry[]
   sessionUserId: ID | null
   /** True once the first hydrate of this session has settled (success OR
    *  failure). Until then, "empty" is a lie — pages must show loading. */
@@ -39,8 +43,8 @@ interface DB {
 }
 
 let cache: DB = {
-  users: [], trips: [], suggestions: [], decisions: [],
-  activity: [], notifications: [], published: [], sessionUserId: null,
+  users: [], trips: [], trashedTrips: [], suggestions: [], decisions: [],
+  activity: [], notifications: [], published: [], adminAudit: [], sessionUserId: null,
   ready: false,
 }
 
@@ -74,6 +78,10 @@ export function useTrips(): Trip[] {
   return useSyncExternalStore(subscribe, () => cache.trips)
 }
 
+export function useTrashedTrips(): Trip[] {
+  return useSyncExternalStore(subscribe, () => cache.trashedTrips)
+}
+
 export function usePublished(): PublishedItinerary[] {
   return useSyncExternalStore(subscribe, () => cache.published)
 }
@@ -88,6 +96,73 @@ export function useNotifications(): Notification[] {
 
 export function useSessionUserId(): ID | null {
   return useSyncExternalStore(subscribe, () => cache.sessionUserId)
+}
+
+/** Synchronous read of the session's admin flag (true only after the first
+ *  successful hydrate fetched the JWT role). Gates the #/admin route. */
+export function useIsAdmin(): boolean {
+  return useSyncExternalStore(subscribe, isAdminCached)
+}
+
+/** Admin audit entries (the audit-log tab's rows). Hydrated for admins only. */
+export interface AdminAuditEntry {
+  id: string
+  actorId: string
+  action: string
+  targetType: string | null
+  targetId: string | null
+  detail: Record<string, unknown>
+  at: number
+}
+
+export function useAdminAudit(): AdminAuditEntry[] {
+  return useSyncExternalStore(subscribe, () => cache.adminAudit)
+}
+
+interface AuditRowShape {
+  id: string; actor_id: string; action: string;
+  target_type: string | null; target_id: string | null;
+  detail: Record<string, unknown> | null; at: number
+}
+
+/** Minimal shape of the Supabase PostgREST query builder for admin_audit —
+ *  kept narrow so the hydrate-race mock (which lacks order/limit) still fits. */
+type AuditBuilder = {
+  order: (col: string, opts: { ascending: boolean }) => AuditBuilder
+  limit: (n: number) => Promise<{ data: unknown; error: unknown }>
+}
+
+/** Newest-first admin_audit rows. Degrades gracefully when the query builder
+ *  lacks order()/limit() (the hydrate-race mock) — production PostgREST gets
+ *  order+limit, anything else falls back to a plain select. */
+async function fetchAdminAuditRows(): Promise<{ data: unknown; error: unknown }> {
+  try {
+    const base = supabase.from('admin_audit').select('*') as unknown as Partial<AuditBuilder> & PromiseLike<{ data: unknown; error: unknown }>
+    const ordered = typeof base.order === 'function' ? base.order('at', { ascending: false }) : base
+    const limited = typeof ordered.limit === 'function'
+      ? await ordered.limit(200)
+      : await (ordered as PromiseLike<{ data: unknown; error: unknown }>)
+    return (limited ?? { data: [], error: null }) as { data: unknown; error: unknown }
+  } catch (e) {
+    return { data: [], error: e }
+  }
+}
+
+function auditRowsToEntries(data: unknown): AdminAuditEntry[] {
+  return mapOrSkip((data ?? []) as Record<string, unknown>[], r =>
+    adminAuditRowToEntry(r as unknown as AuditRowShape))
+}
+
+export function adminAuditRowToEntry(r: {
+  id: string; actor_id: string; action: string;
+  target_type: string | null; target_id: string | null;
+  detail: Record<string, unknown> | null; at: number
+}): AdminAuditEntry {
+  return {
+    id: r.id, actorId: r.actor_id, action: r.action,
+    targetType: r.target_type, targetId: r.target_id,
+    detail: r.detail ?? {}, at: r.at,
+  }
 }
 
 /** Immutable trip update: the mutator edits a CLONE that replaces the cached
@@ -126,6 +201,8 @@ interface ProfileRow {
   id: string; email: string; name: string; avatar_url?: string; home_city?: string;
   languages: string[]; travel_styles: string[]; is_creator: boolean; creator_bio?: string;
   social_links?: { youtube?: string; instagram?: string }; created_at: number;
+  /** present only after the masteradmin migration (see 20260909_masteradmin.sql) */
+  is_disabled?: boolean;
 }
 
 /** Shape of a trip_members row as stored in Postgres (snake_case). */
@@ -141,6 +218,7 @@ function rowToUser(row: unknown): User {
       name: r.name, avatarUrl: r.avatar_url, homeCity: r.home_city,
       languages: r.languages ?? ['en'], travelStyles: (r.travel_styles ?? ['balanced']) as User['profile']['travelStyles'],
       isCreator: r.is_creator, creatorBio: r.creator_bio, socialLinks: r.social_links,
+      isDisabled: r.is_disabled ?? false,
     },
   }
 }
@@ -194,7 +272,33 @@ export async function signup(name: string, email: string, password: string): Pro
 
 export async function logout(): Promise<void> {
   await supabase.auth.signOut()
+  clearAdminCache()
   // onAuthStateChange handler clears the cache.
+}
+
+/** A disabled account can still complete Auth (Supabase has no soft-delete),
+ *  but the RESTRICTIVE "deny disabled" policies make every table read as
+ *  denied. Signing in successfully and then staring at empty catalogs would
+ *  read as "my data got deleted", so hydrate checks the flag right after the
+ *  session resolves and signs the account straight back out with a message. */
+export async function enforceDisabledCheck(): Promise<boolean> {
+  try {
+    // No extra auth round-trip here: hydrate() awaits this inside Promise.all
+    // territory, and an unmocked getUser() hangs the mocked tests. The
+    // in-hand cache already carries the flag (rowToUser maps is_disabled).
+    const me = cache.sessionUserId ? cache.users.find(u => u.id === cache.sessionUserId) : undefined
+    if (me?.profile.isDisabled === true) {
+      await supabase.auth.signOut()
+      clearAdminCache()
+      toast('This account has been disabled. Contact support if you think this is a mistake.', 'err')
+      return true
+    }
+    return false
+  } catch {
+    // A failed check must never lock a legitimate user out: the RESTRICTIVE
+    // policies are the real enforcement, this is only the friendly message.
+    return false
+  }
 }
 
 // ---------------- Init / hydration ----------------
@@ -220,6 +324,18 @@ let hydrateGen = 0
 export function init(): void {
   if (initialized) return
   initialized = true
+  // P4: debounced trip writes must not eat the last edit when the page goes
+  // away — flush every pending write the moment the tab hides or starts to
+  // unload (pagehide covers tab close / navigation; visibilitychange covers
+  // app-switch on mobile, where the trailing timer may never fire again).
+  // Guarded: the test suite runs under node (no DOM), where `document` and the
+  // `addEventListener` global do not exist — init() must not throw there.
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') _flushTripWrites()
+    })
+  }
+  if (typeof addEventListener !== 'undefined') addEventListener('pagehide', _flushTripWrites)
 
   const hydrate = async (userId: string | null) => {
     // Same-user dedupe FIRST, generation bump second. The old order bumped
@@ -238,6 +354,7 @@ export function init(): void {
     const gen = ++hydrateGen
 
     if (!userId) {
+      clearAdminCache()
       // Anonymous user: fetch global catalogs (published itineraries + profiles) but skip user-specific data.
       // Explore needs published itineraries to work for logged-out users.
       // Serialized like the signed-in path: getSession + onAuthStateChange both
@@ -257,11 +374,11 @@ export function init(): void {
         // The catalog has no backing trips in this cache — an empty valid-set
         // made dedupePublished discard EVERY row as an "orphan". The rows' own
         // tripIds are the valid set for the public gallery.
-        patch({ users, trips: [], suggestions: [], decisions: [], activity: [], notifications: [], published: dedupePublished(pubRows, new Set(pubRows.map(r => r.tripId))), sessionUserId: null, ready: true })
+        patch({ users, trips: [], suggestions: [], decisions: [], activity: [], notifications: [], published: dedupePublished(pubRows, new Set(pubRows.map(r => r.tripId))), adminAudit: [], sessionUserId: null, ready: true })
         commit()
       } catch (e) {
         console.error('[yatraflow] anonymous hydration failed', e)
-        patch({ users: [], trips: [], suggestions: [], decisions: [], activity: [], notifications: [], published: [], sessionUserId: null, ready: true })
+        patch({ users: [], trips: [], suggestions: [], decisions: [], activity: [], notifications: [], published: [], adminAudit: [], sessionUserId: null, ready: true })
         commit()
       }
       })()
@@ -284,8 +401,12 @@ export function init(): void {
     if (gen === hydrateGen && cache.sessionUserId === userId) connectRealtime(userId)
   }
 
-  supabase.auth.getSession().then(({ data }) => { void hydrate(data.session?.user?.id ?? null) })
+  supabase.auth.getSession().then(({ data }) => {
+    adminFromSession(data.session ?? null)
+    void hydrate(data.session?.user?.id ?? null)
+  })
   supabase.auth.onAuthStateChange((_event, session) => {
+    adminFromSession(session ?? null)
     void hydrate(session?.user?.id ?? null)
   })
 }
@@ -325,6 +446,13 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
       supabase.from('published_itineraries').select('*'),
       supabase.from('trip_members').select('*').eq('user_id', userId),
     ])
+    // The admin flag rode in on the session object (adminFromSession in
+    // init(), before hydrate runs): admins hydrate the whole app (all trips,
+    // all collab slices, the audit log); everyone else keeps the membership
+    // scope that keeps "My Trips" theirs. A new commit wakes useIsAdmin() so
+    // the #/admin gate flips without a reload.
+    const admin = isAdminCached()
+    commit()
     // Tables whose select failed. Hydration continues with whatever did load —
     // aborting would throw away good rows over one bad table — but the user gets
     // told at the end. Before this, a denied table rendered as an empty app with
@@ -337,16 +465,52 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     const memberTripIds = myRows.map(m => m.trip_id)
     const myTripIds = [...new Set(memberTripIds)]
 
-    // Stage 2 - only the user's own trips + their collaboration data. PostgREST
-    // rejects `id=in.<empty>` so when the user has no trips yet, we record empty
-    // slices and the demo seed below still runs.
+    // Stage 2 - the user's own trips + their collaboration data (PostgREST
+    // rejects `id=in.<empty>`, so with no trips yet we record empty slices
+    // and the demo seed below still runs). Admins skip the membership scope
+    // entirely: the "admin read" RLS bypass lets these unfiltered selects see
+    // every row, and the extra slices (all members, audit log) feed the
+    // console. Notifications stay recipient-scoped even for admins — there is
+    // deliberately no "admin read" policy on that table's intent; the bypass
+    // policy exists but the console never renders other people's inboxes.
     let trips: TripRow[] = []
     const members: MemberRow[] = []
     let suggestions: StopSuggestion[] = []
     let decisions: TripDecision[] = []
     let activity: ActivityEntry[] = []
     let notifications: Notification[] = []
-    if (myTripIds.length > 0) {
+    let adminAudit: AdminAuditEntry[] = []
+    if (admin) {
+      // The mock builder in tests/hydrate-race.test.ts has no order()/limit()
+      // chainables, and production PostgREST needs limit() AFTER order() —
+      // so audit reads go through a tiny helper that degrades gracefully.
+      const [tripsRes, memRes, sugRes, decRes, actRes, notRes, auditRes] = await Promise.all([
+        supabase.from('trips').select('*'),
+        supabase.from('trip_members').select('*'),
+        supabase.from('suggestions').select('*'),
+        supabase.from('decisions').select('*'),
+        supabase.from('activity').select('*'),
+        supabase.from('notifications').select('*').eq('user_id', userId),
+        fetchAdminAuditRows(),
+      ])
+      for (const [name, res] of [
+        ['trips', tripsRes], ['members', memRes], ['suggestions', sugRes],
+        ['decisions', decRes], ['activity', actRes], ['notifications', notRes],
+        ['audit', auditRes],
+      ] as const) {
+        if (res.error) {
+          console.error(`[yatraflow] hydrate ${name} failed`, res.error)
+          partial.push(name)
+        }
+      }
+      trips = (tripsRes.data ?? []) as TripRow[]
+      members.push(...((memRes.data ?? []) as MemberRow[]))
+      suggestions = mapOrSkip((sugRes.data ?? []), rowToSuggestion)
+      decisions = mapOrSkip((decRes.data ?? []), rowToDecision)
+      activity = mapOrSkip((actRes.data ?? []), rowToActivity)
+      notifications = mapOrSkip((notRes.data ?? []), rowToNotification)
+      adminAudit = auditRowsToEntries(auditRes.data)
+    } else if (myTripIds.length > 0) {
       const [tripsRes, memRes, sugRes, decRes, actRes, notRes] = await Promise.all([
         supabase.from('trips').select('*').in('id', myTripIds),
         supabase.from('trip_members').select('*').in('trip_id', myTripIds),
@@ -417,6 +581,7 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
       decisions,
       activity,
       notifications,
+      adminAudit,
       // De-dupe / drop orphan published rows left by earlier buggy seeds (the
       // publishItinerary path mints a fresh id each call - many rows per tripId).
       published: dedupePublished(pubRows, new Set([...tripList, ...catalogTrips].map(t => t.id))),
@@ -429,8 +594,10 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     // has been superseded cannot toast about an account the user already left.
     if (partial.length > 0) toast(`Some data didn't load (${partial.join(', ')}) - refresh to try again.`, 'err')
 
-    // First-time users get the demo trips seeded into their account.
-    if (tripList.length === 0 && seedIfEmpty) await seedDemoFor(userId, gen)
+    // First-time users get the demo trips seeded into their account. Admins
+    // skip the seed: their "empty" is a real empty app, and seeding 10 demo
+    // trips into an admin account would pollute the console's totals.
+    if (tripList.length === 0 && seedIfEmpty && !admin) await seedDemoFor(userId, gen)
   } catch (e) {
     console.error('[yatraflow] hydration failed', e)
     toast('Could not load your data - check your connection.')
@@ -795,18 +962,19 @@ let optionalColumnsProbe: Promise<OptionalColumnsProbe> | null = null
 let optionalColumnsWarned = false
 
 function tripsHaveOptionalColumns(): Promise<OptionalColumnsProbe> {
-  if (!isSupabaseConfigured) return Promise.resolve({ economy: false, price: false, roundTrip: false, cover: false, inviteCode: false })
+  if (!isSupabaseConfigured) return Promise.resolve({ economy: false, price: false, roundTrip: false, cover: false, inviteCode: false, deleted: false })
   if (!optionalColumnsProbe) optionalColumnsProbe = probeOptionalColumns()
   return optionalColumnsProbe
 }
 
 async function probeOptionalColumns(): Promise<OptionalColumnsProbe> {
-  const [economy, price, roundTrip, cover, inviteCode] = await Promise.all([
+  const [economy, price, roundTrip, cover, inviteCode, deleted] = await Promise.all([
     probeOptionalColumn('fuel_economy_km_per_l'),
     probeOptionalColumn('fuel_price_per_l'),
     probeOptionalColumn('round_trip'),
     probeOptionalColumn('cover_image_url'),
     probeOptionalColumn('invite_code'),
+    probeOptionalColumn('deleted_at'),
   ])
   if (!economy || !price || !roundTrip) {
     if (!optionalColumnsWarned) {
@@ -814,7 +982,7 @@ async function probeOptionalColumns(): Promise<OptionalColumnsProbe> {
       optionalColumnsWarned = true
     }
   }
-  return { economy, price, roundTrip, cover, inviteCode }
+  return { economy, price, roundTrip, cover, inviteCode, deleted }
 }
 
 /** Probe one optional column. True = present (or transient error, treated optimistically). */
@@ -936,7 +1104,186 @@ export function duplicateTripPublic(source: Trip, ownerId: ID, freeDayIndexes: n
   return copy
 }
 
+// ============ Masteradmin console actions ============
+// Every destructive console button funnels through an audited SECURITY DEFINER
+// RPC (see supabase/migrations/20260909_masteradmin.sql §5). The pattern
+// matches the rest of the store: optimistic cache update + commit() for an
+// instant UI, then the RPC; on failure, roll the cache back and toast. The
+// audit tab refreshes from the server after each action (the audit write
+// happened server-side in the same transaction as the effect).
+
+function requireAdmin(): boolean {
+  if (!isAdminCached()) {
+    toast('Admin only — this action needs a masteradmin session.', 'err')
+    return false
+  }
+  return true
+}
+
+async function refreshAdminAudit(): Promise<void> {
+  try {
+    const { data, error } = await fetchAdminAuditRows()
+    if (error) throw error
+    patch({ adminAudit: auditRowsToEntries(data) })
+    commit()
+  } catch (e) {
+    console.error('[yatraflow] audit refresh failed', e)
+  }
+}
+
+function rpcErrorMessage(e: unknown): string {
+  const msg = (e as { message?: unknown })?.message
+  if (typeof msg === 'string' && msg.trim()) return msg.trim()
+  return 'Admin action failed.'
+}
+
+/** Disable (or re-enable) any account. The RPC refuses self-disable. */
+export async function adminSetDisabled(userId: ID, disabled: boolean): Promise<boolean> {
+  if (!requireAdmin()) return false
+  const prev = cache.users
+  patch({
+    users: prev.map(u => u.id === userId
+      ? { ...u, profile: { ...u.profile, isDisabled: disabled } }
+      : u),
+  })
+  commit()
+  const { error } = await supabase.rpc('admin_set_disabled', { p_user_id: userId, p_disabled: disabled })
+  if (error) {
+    console.error('[yatraflow] admin_set_disabled failed', error)
+    patch({ users: prev })
+    commit()
+    toast(rpcErrorMessage(error), 'err')
+    return false
+  }
+  toast(disabled ? 'Account disabled.' : 'Account re-enabled.')
+  void refreshAdminAudit()
+  return true
+}
+
+/** Toggle the creator badge on any profile. */
+export async function adminSetCreator(userId: ID, isCreator: boolean): Promise<boolean> {
+  if (!requireAdmin()) return false
+  const prev = cache.users
+  patch({
+    users: prev.map(u => u.id === userId
+      ? { ...u, profile: { ...u.profile, isCreator } }
+      : u),
+  })
+  commit()
+  const { error } = await supabase.rpc('admin_set_creator', { p_user_id: userId, p_is_creator: isCreator })
+  if (error) {
+    console.error('[yatraflow] admin_set_creator failed', error)
+    patch({ users: prev })
+    commit()
+    toast(rpcErrorMessage(error), 'err')
+    return false
+  }
+  toast(isCreator ? 'Creator badge granted.' : 'Creator badge removed.')
+  void refreshAdminAudit()
+  return true
+}
+
+/** Flip any trip's visibility. */
+export async function adminSetTripVisibility(tripId: ID, visibility: 'private' | 'public'): Promise<boolean> {
+  if (!requireAdmin()) return false
+  const prev = cache.trips
+  patch({
+    trips: prev.map(t => t.id === tripId ? { ...t, visibility, updatedAt: Date.now() } : t),
+  })
+  commit()
+  const { error } = await supabase.rpc('admin_set_trip_visibility', { p_trip_id: tripId, p_visibility: visibility })
+  if (error) {
+    console.error('[yatraflow] admin_set_trip_visibility failed', error)
+    patch({ trips: prev })
+    commit()
+    toast(rpcErrorMessage(error), 'err')
+    return false
+  }
+  toast(`Trip is now ${visibility}.`)
+  void refreshAdminAudit()
+  return true
+}
+
+/** Remove any member from any trip (revokes invites, kicks collaborators). */
+export async function adminRemoveMember(tripId: ID, userId: ID): Promise<boolean> {
+  if (!requireAdmin()) return false
+  const trip = cache.trips.find(t => t.id === tripId)
+  if (!trip) { toast('Trip not in cache.', 'err'); return false }
+  const prevMembers = trip.members ?? []
+  patch({
+    trips: cache.trips.map(t => t.id === tripId
+      ? { ...t, members: prevMembers.filter(m => m.userId !== userId), updatedAt: Date.now() }
+      : t),
+  })
+  commit()
+  const { error } = await supabase.rpc('admin_remove_member', { p_trip_id: tripId, p_user_id: userId })
+  if (error) {
+    console.error('[yatraflow] admin_remove_member failed', error)
+    patch({ trips: cache.trips.map(t => t.id === tripId ? { ...t, members: prevMembers } : t) })
+    commit()
+    toast(rpcErrorMessage(error), 'err')
+    return false
+  }
+  toast('Member removed.')
+  void refreshAdminAudit()
+  return true
+}
+
+/** Unpublish any itinerary (admin variant — the owner path is creator-scoped). */
+export async function adminUnpublish(tripId: ID): Promise<boolean> {
+  if (!requireAdmin()) return false
+  const prevPubs = cache.published
+  const prevTrips = cache.trips
+  patch({
+    published: prevPubs.filter(p => p.tripId !== tripId),
+    trips: prevTrips.map(t => t.id === tripId ? { ...t, visibility: 'private' as const, updatedAt: Date.now() } : t),
+  })
+  commit()
+  const { error } = await supabase.rpc('admin_unpublish', { p_trip_id: tripId })
+  if (error) {
+    console.error('[yatraflow] admin_unpublish failed', error)
+    patch({ published: prevPubs, trips: prevTrips })
+    commit()
+    toast(rpcErrorMessage(error), 'err')
+    return false
+  }
+  toast('Publication removed.')
+  void refreshAdminAudit()
+  return true
+}
+
+/** Delete any trip. No undo — the console confirms by typing the trip name. */
+export async function adminDeleteTrip(tripId: ID): Promise<boolean> {
+  if (!requireAdmin()) return false
+  const prevTrips = cache.trips
+  const prevPubs = cache.published
+  const prevSug = cache.suggestions
+  const prevDec = cache.decisions
+  const prevAct = cache.activity
+  patch({
+    trips: prevTrips.filter(t => t.id !== tripId),
+    published: prevPubs.filter(p => p.tripId !== tripId),
+    suggestions: prevSug.filter(s => s.tripId !== tripId),
+    decisions: prevDec.filter(d => d.tripId !== tripId),
+    activity: prevAct.filter(a => a.tripId !== tripId),
+  })
+  commit()
+  const { error } = await supabase.rpc('admin_delete_trip', { p_trip_id: tripId })
+  if (error) {
+    console.error('[yatraflow] admin_delete_trip failed', error)
+    patch({ trips: prevTrips, published: prevPubs, suggestions: prevSug, decisions: prevDec, activity: prevAct })
+    commit()
+    toast(rpcErrorMessage(error), 'err')
+    return false
+  }
+  toast('Trip deleted.')
+  void refreshAdminAudit()
+  return true
+}
+
 // ---------------- Trip deletion + undo ----------------
+
+
 
 /** What `delete from public.trips` takes with it. Six tables cascade off a trip
  *  (supabase/schema.sql), and the itinerary is NOT one of them — `days` and
@@ -1058,6 +1405,84 @@ async function restoreTripData(trip: Trip, snap: TripSnapshot | null): Promise<v
   }
 }
 
+// ---------------- Trash + 30-day purge (soft-delete) ----------------
+// "Delete" is a soft-delete: the trip leaves the live cache immediately and its
+// `deleted_at` tombstone is stamped, so the `trips read hide trashed` RLS policy
+// hides it from every future read while the row survives 30 days for restore.
+// Hard delete (with its collab cascade) remains as "delete forever" from the
+// Trash view. Every path is probe-gated on the `deleted` column so an
+// un-migrated/test database keeps the old hard-delete behaviour.
+
+/** Move a trip to trash. Optimistic: removes from the live list, then stamps the
+ *  tombstone; a failed write puts the trip back. */
+export function trashTrip(trip: Trip): void {
+  if (!cache.trips.some(t => t.id === trip.id)) return
+  cache.trips = cache.trips.filter(t => t.id !== trip.id)
+  commit()
+  void tripsHaveOptionalColumns().then(cols => {
+    if (!cols.deleted) {
+      void supabase.from('trips').delete().eq('id', trip.id).then(({ error }) => {
+        if (error) { cache.trips = [...cache.trips, trip]; commit() }
+      })
+      return
+    }
+    markLocalWrite('trips', trip.id)
+    void supabase.from('trips').update({ deleted_at: new Date().toISOString() }).eq('id', trip.id).then(({ error }) => {
+      if (error) {
+        cache.trips = [...cache.trips, trip]
+        commit()
+        toast('Could not move to trash.')
+      }
+    })
+  })
+}
+
+/** Undo a trash *within the session* (the delete toast): put the trip back and
+ *  clear the tombstone. The Trash view's restore after a reload goes through
+ *  restoreTrashedTripById. */
+export function restoreTrashedTrip(trip: Trip): void {
+  if (!cache.trips.some(t => t.id === trip.id)) {
+    cache.trips = [...cache.trips, { ...trip, deletedAt: undefined }]
+    commit()
+  }
+  void tripsHaveOptionalColumns().then(cols => {
+    if (!cols.deleted) return
+    markLocalWrite('trips', trip.id)
+    void supabase.from('trips').update({ deleted_at: null }).eq('id', trip.id).then(({ error }) => {
+      if (error) toast('Could not restore that trip.')
+    })
+  })
+}
+
+/** Fetch the current user's trashed trips (owner-scoped SECURITY DEFINER RPC). */
+export async function fetchTrashedTrips(): Promise<void> {
+  if (!isSupabaseConfigured || !cache.sessionUserId) return
+  const { data, error } = await supabase.rpc('get_trashed_trips')
+  if (error) { console.error('[yatraflow] trashed trips fetch failed', error); return }
+  cache.trashedTrips = mapOrSkip((data ?? []) as unknown[], r => rowToTrip(r as TripRow, []))
+  commit()
+}
+
+/** Restore a trashed trip from the Trash view (after reload): SECURITY DEFINER
+ *  RPC, then pull the now-live trip back into the cache so it appears at once. */
+export async function restoreTrashedTripById(id: ID): Promise<boolean> {
+  const { error } = await supabase.rpc('restore_trashed_trip', { p_trip_id: id })
+  if (error) { toast('Could not restore that trip.'); return false }
+  cache.trashedTrips = cache.trashedTrips.filter(t => t.id !== id)
+  commit()
+  await fetchTripIntoCache(id)
+  return true
+}
+
+/** Delete a trashed trip forever. Hard delete; the cascade sweeps the collab layer. */
+export async function permanentlyDeleteTrip(id: ID): Promise<boolean> {
+  const { error } = await supabase.rpc('purge_trashed_trip', { p_trip_id: id })
+  if (error) { toast('Could not delete that trip.'); return false }
+  cache.trashedTrips = cache.trashedTrips.filter(t => t.id !== id)
+  commit()
+  return true
+}
+
 /** Put a removed member back — powers Undo on member removal. */
 export function restoreMember(tripId: ID, member: TripMember): void {
   const t = tripById(tripId)
@@ -1097,12 +1522,60 @@ export function updateTrip(id: ID, patchFields: Partial<Trip>): void {
   if (draft) void persistTripField(id, draft)
 }
 
-async function persistTripField(id: ID, t: Trip): Promise<void> {
+// ---- Debounced trip writes (P4) ----
+// Bursty mutations — a drag-reorder firing reorderStop per move, settings
+// keystrokes, undo/redo chains — each used to issue its own row UPDATE. A
+// trailing-edge coalescer per trip id turns a burst into ONE write whose
+// snapshot is always the freshest cache state (read at fire time, not call
+// time). Deletes and member changes stay immediate (only persistTripField
+// debounces); the pagehide/visibilitychange hooks in init() flush pending
+// writes when the tab hides or closes so the trailing timer can't eat the
+// last edit.
+let TRIP_WRITE_DEBOUNCE_MS = 600
+const pendingTripWrites = new Map<ID, { timer: ReturnType<typeof setTimeout> }>()
+
+/** Test hook — 0 disables the debounce: writes issue immediately, as before. */
+export function _setTripWriteDebounceMs(ms: number): void {
+  TRIP_WRITE_DEBOUNCE_MS = ms
+}
+
+/** Fire every pending debounced trip write right now. Best-effort — errors
+ *  surface through persistTripFieldNow's toast, never through the event. */
+export function _flushTripWrites(): void {
+  if (pendingTripWrites.size === 0) return
+  for (const id of [...pendingTripWrites.keys()]) {
+    const pending = pendingTripWrites.get(id)
+    if (!pending) continue
+    clearTimeout(pending.timer)
+    pendingTripWrites.delete(id)
+    void persistTripFieldNow(id, tripById(id))
+  }
+}
+
+/** The real row UPDATE — exactly the old persistTripField body. */
+async function persistTripFieldNow(id: ID, t: Trip | undefined): Promise<void> {
+  if (!t) return
   const owner = t.members?.find(m => m.role === 'owner')
   const cols = await tripsHaveOptionalColumns()
   const { error } = await supabase.from('trips').update(tripToRow(t, owner?.userId ?? id, cols)).eq('id', id)
   markLocalWrite('trips', id)
   if (error) toast('Could not save changes.')
+}
+
+function persistTripField(id: ID, t: Trip): void {
+  if (TRIP_WRITE_DEBOUNCE_MS <= 0) {
+    void persistTripFieldNow(id, t)
+    return
+  }
+  const prev = pendingTripWrites.get(id)
+  if (prev) clearTimeout(prev.timer)
+  const timer = setTimeout(() => {
+    pendingTripWrites.delete(id)
+    // Read the trip again at fire time: the pending snapshot may be several
+    // edits stale by now, and the cache always holds the newest state.
+    void persistTripFieldNow(id, tripById(id) ?? t)
+  }, TRIP_WRITE_DEBOUNCE_MS)
+  pendingTripWrites.set(id, { timer })
 }
 
 // ---------------- Members & collaboration ----------------
@@ -1121,6 +1594,13 @@ export function roleOf(trip: Trip, userId: ID | null): TripMember['role'] | null
 
 export function canEdit(role: TripMember['role'] | null): boolean {
   return role === 'owner' || role === 'editor'
+}
+
+/** Masteradmins can open any workspace (the RLS bypass) — but the per-trip
+ *  permission UI still needs a "yes". Admin-as-editor lets an admin act as an
+ *  escape hatch on broken trips without rewriting every canEdit call site. */
+export function canEditAdmin(role: TripMember['role'] | null): boolean {
+  return canEdit(role) || isAdminCached()
 }
 
 export function setMemberRole(tripId: ID, userId: ID, role: TripMember['role']): void {

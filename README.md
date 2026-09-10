@@ -41,7 +41,7 @@ A collaborative travel-planning web app, built India-first. Real multi-day itine
 
 #### 📍 Plan
 
-- **Create trips** — start + ordered destinations (real place autocomplete), dates, crew size, transport mode, budget and travel style
+- **Create trips** — start + ordered destinations (real place autocomplete), dates, crew size, transport mode (six everyday modes incl. car rental and local trains), budget and travel style. The "Trip Ticket" starter prices your rough bill on demand and seeds the timeline with a starting outline
 - **Day-by-day timeline** — reorder / move stops between days, opening hours, priorities, route sparklines, collapsible headers
 - **One journey per day, however far you drive** — a real arrival clock, travelling strips for pure-travel legs, halts on any driving day, suggested real stop spots along the route
 - **Leg-aware insertion** — picking a place auto-fills road distance, travel time and fuel cost
@@ -100,6 +100,16 @@ The last stretch of releases gave the Map tab a brain, taught the plan to learn 
 - **Creators got a hub.** Publications live in an Overview + Earnings surface: lifetime views, forks, live pages, a payouts-ledger shape waiting for the premium launch, and a clearly-labelled projection of what priced pages could earn.
 - **The money and the clock, where you're editing.** The Budget tab answers "what can we still spend today?" with a Safe-to-spend-per-day tile that counts the remaining days honestly (today included, a finished trip at zero) and goes red on overspend — or asks you to set a target instead of inventing a number. Timeline day headers carry two quiet chips: what the day costs (travel vs entries in the tooltip) and how long you'll be at its stops.
 - **Quiet reliability work throughout** — every trip edit now writes through to the database before the UI celebrates, failed saves say so instead of silently vanishing on refresh, an already-open tab reloads itself into a fresh deploy instead of crashing on a stale chunk, public itinerary pages and invite links work for people who aren't members yet, and a corrupted-merge incident (v0.43) was repaired byte-for-byte.
+
+## ✨ The v0.45–v0.47 run, in plain words
+
+- **The create flow got a ticket, invites got codes.** Creating a trip is a Trip Ticket — a live boarding-pass starter that prices your rough bill on demand and seeds the timeline. Invites shrank to short trip-shaped codes (`GOABEACHWE-K7QF`) typed on the home screen, with a join flow that actually completes.
+- **Operators got a console.** A masteradmin route (`#/admin`, never linked) gives the two admins a god-view over every user, trip, invite, publication and audit row, with every destructive action behind an audited, role-rechecking RPC.
+- **Deletes are now reversible.** Deleting a trip moves it to a Trash instead of erasing it — restore within 30 days from a new Trash view in My Trips, or delete it forever. A soft-delete tombstone + restrictive RLS policy keep trashed trips invisible to everyone else, and a scheduled purge sweeps anything older than a month.
+- **The app writes faster.** Bursts of edits (drag-reordering, settings keystrokes, undo/redo) coalesce into a single database write per trip, flushed the moment you switch tabs or close the page.
+- **The Map tab grew a search box and cross-links.** Search any place right on the map and add it in one tap; click a stop pin to jump straight into the Timeline or Board.
+- **Decisions got grounded.** Open decision cards show where the trip stands (road time, cost, health) plus a deterministic, data-grounded "(offline)" recommendation.
+- **A backlog of small wins.** Browser push notifications (Profile opt-in, background-tab only), a "Send feedback" link that pre-fills the app version, and Explore pagination with "Load more".
 
 <details>
 <summary><b>See the full tour of features</b></summary>

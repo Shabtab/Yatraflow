@@ -6,6 +6,10 @@ import {
   Bell, Compass, Import, Inbox, Luggage, Link2, Mail, Menu, Moon, Plus,
   Settings, Sparkles, Sun, Tent, X,
 } from 'lucide-react'
+import {
+  browserNotifEnabled, browserNotifPermission, fireBrowserNotification,
+  shouldBrowserNotify,
+} from './lib/browserNotifications'
 import type { Trip } from './data/types'
 import { useDb, currentUser, useUsers, useNotifications, useSessionUserId, logout, markAllNotificationsRead, tripById, joinViaInvite, duplicateTrip, init, resumeSync, useStoreReady, fetchSharedTrip, fetchTripByInviteCode } from './store/store'
 import { Avatar, BrandMark, ToastZone, useClickOutside, toast } from './components/ui'
@@ -29,12 +33,24 @@ const ProfilePage = lazy(() => import('./pages/Profile').then(m => ({ default: m
 const CreatorPage = lazy(() => import('./pages/CreatorPage').then(m => ({ default: m.CreatorPage })))
 // Gated route: only shown in the nav when the account has creator mode on.
 const CreatorHubPage = lazy(() => import('./pages/CreatorHubPage').then(m => ({ default: m.CreatorHubPage })))
+// Masteradmin console: JWT app_metadata role only (never linked anywhere —
+// admins type #/admin; non-admins fall through to landing inside the page).
+const AdminPage = lazy(() => import('./pages/AdminPage').then(m => ({ default: m.AdminPage })))
 
 /** Suspense fallback for the lazy routes — the same loading block the ready-gate shows. */
 const lazyRouteFallback = <div className="container loading-block"><div className="spinner" />Loading…</div>
 
 function currentRoute(): string {
   return location.hash.replace(/^#/, '') || '/'
+}
+
+/** Feedback mailto: pre-fills the app version + current route so a report is
+ *  reproducible without the reporter doing any work. Reuses the same support
+ *  address the password-reset flow already uses. */
+function feedbackHref(): string {
+  const subject = encodeURIComponent(`YatraFlow feedback (v${__APP_VERSION__})`)
+  const body = encodeURIComponent(`Page: ${currentRoute()}\nApp version: ${__APP_VERSION__}\n\nWhat worked, what broke, what you wish existed:\n\n`)
+  return `mailto:support@yatraflow.app?subject=${subject}&body=${body}`
 }
 
 export default function App() {
@@ -200,7 +216,7 @@ export default function App() {
     location.hash = to
   }
 
-  // route shapes: /, /auth, /trips, /new, /trip/:id, /explore, /pub/:slug, /creator/:id, /creator-hub, /join/:code, /invite/:tripId (legacy), /share/<payload>, /profile
+  // route shapes: /, /auth, /trips, /new, /trip/:id, /explore, /pub/:slug, /creator/:id, /creator-hub, /join/:code, /invite/:tripId (legacy), /admin, /share/<payload>, /profile
   // Query strings (e.g. /auth?mode=signup) ride on parts[0]; strip them so the
   // segment still matches the switch. Pages read their own params from location.hash.
   const parts = route.split('/').filter(Boolean).map(s => s.split('?')[0])
@@ -278,6 +294,12 @@ export default function App() {
         // invite lost. Mount it; the effect sends them on to `next` (or /trips).
         page = <Suspense fallback={lazyRouteFallback}><AuthPage onNavigate={navigate} /></Suspense>
         break
+      // Masteradmin console — intentionally unlinked (no nav pill anywhere):
+      // admins type #/admin; AdminPage itself falls through to Landing for
+      // non-admins (the JWT role is the gate, the route existing is not).
+      case 'admin':
+        page = <Suspense fallback={lazyRouteFallback}><AdminPage onNavigate={navigate} /></Suspense>
+        break
       default:
         page = <LandingPage onNavigate={navigate} />
     }
@@ -292,6 +314,38 @@ export default function App() {
     [notifications, sessionUserId],
   )
   const unread = notifs.filter(n => !n.read).length
+
+  // ---- Browser push (local Notification API, no service worker) ----
+  // In-app bell is the source of truth; this effect mirrors NEW unread rows
+  // for the session user to the OS level when the tab is in the background.
+  // Guards: user opted in (Profile toggle) + permission granted + per-id
+  // dedupe + read-flag + unfocused tab. Own local writes land in the slice
+  // too, but they arrive while the tab is focused, so shouldBrowserNotify()
+  // already filters them — no echo-suppression map needed here.
+  const seenNotifIds = useRef<Set<string>>(new Set())
+  // A fresh login must not replay the whole inbox as OS pings: seed the seen
+  // set with whatever is already in the slice on first run / account switch.
+  const notifSeedUser = useRef<string | null>(null)
+  useEffect(() => {
+    if (!sessionUserId) { notifSeedUser.current = null; return }
+    if (notifSeedUser.current !== sessionUserId) {
+      notifSeedUser.current = sessionUserId
+      seenNotifIds.current = new Set(notifs.map(n => n.id))
+      return
+    }
+    if (!browserNotifEnabled()) return
+    if (browserNotifPermission() !== 'granted') return
+    for (const n of notifs) {
+      if (shouldBrowserNotify(n, sessionUserId, seenNotifIds.current, document.hasFocus())) {
+        seenNotifIds.current.add(n.id)
+        fireBrowserNotification('YatraFlow', n.text)
+      } else {
+        // Read elsewhere / already seen: record so a later unread flip of the
+        // same row can't re-ping.
+        seenNotifIds.current.add(n.id)
+      }
+    }
+  }, [notifs, sessionUserId])
 
   return (
     <div className="app-shell">
@@ -375,6 +429,7 @@ export default function App() {
                   </div>
                   <button className="user-menu-item" onClick={() => { setMenuOpen(false); navigate('/profile') }}>Profile & settings</button>
                   <button className="user-menu-item" onClick={() => { setMenuOpen(false); navigate('/explore') }}>Explore itineraries</button>
+                  <a className="user-menu-item" href={feedbackHref()} onClick={() => setMenuOpen(false)}><Mail size={14} aria-hidden style={{ verticalAlign: '-2px', marginRight: 6 }} />Send feedback</a>
                   <button className="user-menu-item danger" onClick={() => { logout(); setMenuOpen(false); navigate('/') }}>Log out</button>
                 </div>,
                 document.body

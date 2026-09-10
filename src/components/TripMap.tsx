@@ -194,7 +194,7 @@ function catIcon(cat: string | undefined): React.ReactNode {
   )
 }
 
-export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusDay, showToolbar = true, activeHitId = null, onActivateHit }: {
+export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusDay, showToolbar = true, activeHitId = null, onActivateHit, onOpenInTimeline, onOpenInBoard }: {
   trip: Trip
   onOpenStop?: (stopId: string) => void
   /** potential POIs to show as gold "idea" markers */
@@ -214,6 +214,9 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
   activeHitId?: string | number | null
   /** pin hover/click raises the activation so the panel row highlights + scrolls into view */
   onActivateHit?: (id: string | number | null) => void
+  /** stop-pin click offers a jump to the Timeline/Board tabs (Map tab §6.5) */
+  onOpenInTimeline?: (stopId: string) => void
+  onOpenInBoard?: (stopId: string) => void
 }) {
   const [dayFilter, setDayFilter] = useState<number | 'all'>('all')
   // Board drives the day filter through the prop; the map's own chips keep working
@@ -242,6 +245,9 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
   // overlay so the canvas gets the viewport. Transient by design: Escape or
   // the same chip (now "⤡ Collapse") reverts it; nothing is persisted.
   const [expanded, setExpanded] = useState(false)
+  // Selected stop (stop-pin click) — powers the compact cross-link popup that
+  // jumps to the Timeline/Board tabs. Null = no popup.
+  const [selectedStop, setSelectedStop] = useState<{ id: string; title: string; dayIndex: number } | null>(null)
   // Collapse plays a short scale-down first (mapCollapse) so expand/collapse
   // both glide; the class is transient and the timer is cleared on unmount.
   const [closing, setClosing] = useState(false)
@@ -694,7 +700,7 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
                       <button
                         className={`yf-map-pin yf-map-tear${p.status === 'maybe' ? ' yf-map-maybe' : ''}`}
                         style={{ '--pin-color': colorForDay(p.dayIndex) } as React.CSSProperties}
-                        onClick={() => onOpenStop?.(p.id)}
+                        onClick={() => { onOpenStop?.(p.id); if (onOpenInTimeline || onOpenInBoard) setSelectedStop({ id: p.id, title: p.title, dayIndex: p.dayIndex }) }}
                         aria-label={`Stop ${num}: ${p.title}`}
                         title={p.title}
                       >
@@ -755,6 +761,20 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
               )
             })}
           </MapLibreMap>
+        )}
+
+        {selectedStop && (onOpenInTimeline || onOpenInBoard) && (
+          <div className="yf-stop-jump" role="dialog" aria-label={`Selected stop: ${selectedStop.title}`}
+            style={{ position: 'absolute', left: '50%', bottom: 14, transform: 'translateX(-50%)', zIndex: 5, display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-soft)', maxWidth: 'calc(100% - 24px)' }}>
+            <span className="small" style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 200 }}>{selectedStop.title}</span>
+            {onOpenInTimeline && (
+              <button className="btn btn-sm btn-primary" onClick={() => { onOpenInTimeline(selectedStop.id); setSelectedStop(null) }}>Open in Timeline</button>
+            )}
+            {onOpenInBoard && (
+              <button className="btn btn-sm btn-outline" onClick={() => { onOpenInBoard(selectedStop.id); setSelectedStop(null) }}>Open in Board</button>
+            )}
+            <button className="icon-btn" onClick={() => setSelectedStop(null)} aria-label="Close" style={{ flex: '0 0 auto' }}><X size={14} aria-hidden /></button>
+          </div>
         )}
 
         <div className="map-legend">

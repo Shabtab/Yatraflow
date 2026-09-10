@@ -6,9 +6,9 @@
 // gains real Day/Category pickers, a visible transport-cost field and
 // decision context, and per-filter empty states each get an exit.
 // The underlying data model (two tables) and store actions are unchanged.
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
-import { Car, Clock, Lightbulb, MapPin, Plus, Scale, Ticket, X } from 'lucide-react'
+import { Car, Clock, Lightbulb, MapPin, Plus, Scale, Sparkles, Ticket, X } from 'lucide-react'
 import { PillNav } from '../../components/PillNav'
 import type { StopCategory, StopSuggestion, Trip, TripDecision } from '../../data/types'
 import { STOP_CATEGORIES } from '../../data/types'
@@ -18,6 +18,7 @@ import {
   activityFor,
 } from '../../store/store'
 import { formatInr, minutesToHM } from '../../lib/engine'
+import { decisionContext, contextLine, recommendForDecision } from '../../lib/decisionGuide'
 import { Avatar, Chip, EmptyState, Field, toast } from '../../components/ui'
 import { LocationInput } from '../../components/LocationInput'
 import { timeAgo } from './shared'
@@ -130,7 +131,7 @@ export function GroupInputTab({ trip, editable, me }: {
             ? <SuggestionCard key={item.sg.id} sg={item.sg} trip={trip} me={me} editable={editable} memberCount={memberCount}
                 needsMe={suggestionNeedsMe(item.sg)} />
             : <DecisionCard key={item.d.id} d={item.d} me={me} editable={editable}
-                needsMe={decisionNeedsMe(item.d)} />
+                needsMe={decisionNeedsMe(item.d)} trip={trip} />
           )}
 
           <div className="card">
@@ -281,16 +282,22 @@ function CommentForm({ onSubmit }: { onSubmit: (text: string) => void }) {
 
 // ================= Decision card =================
 
-function DecisionCard({ d, me, editable, needsMe }: {
+function DecisionCard({ d, me, editable, needsMe, trip }: {
   d: TripDecision
   me: { id: string }
   editable: boolean
   needsMe: boolean
+  trip: Trip
 }) {
   const tally = d.options.map(o => Object.values(d.votesByUserId).filter(v => v === o.id).length)
   const totalVotes = tally.reduce((s, t) => s + t, 0)
   const leadingIdx = totalVotes > 0 ? tally.indexOf(Math.max(...tally)) : -1
   const votersOf = (optionId: string) => Object.entries(d.votesByUserId).filter(([, o]) => o === optionId).map(([u]) => u)
+  // Grounded trip context + offline recommendation (§6.8): the deterministic
+  // guide, using the same engine data the Overview shows. Recomputed when the
+  // trip or decision changes (a new vote can flip the tie-break).
+  const ctx = useMemo(() => decisionContext(trip), [trip])
+  const rec = useMemo(() => recommendForDecision(trip, d, ctx), [trip, d, ctx])
 
   return (
     <div id={`gi-item-${d.id}`} className={`card${needsMe ? ' gi-needs-you' : ''}`} style={{ marginBottom: 14 }}>
@@ -327,6 +334,17 @@ function DecisionCard({ d, me, editable, needsMe }: {
           )
         })}
       </div>
+      {d.status === 'open' && (
+        <div className="gi-guide" style={{ marginTop: 10 }}>
+          <p className="small muted" style={{ margin: 0 }}>📋 {contextLine(ctx)}</p>
+          {rec && (
+            <p className="small" style={{ margin: '4px 0 0' }}>
+              <Sparkles size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />
+              <b>{rec.label}</b> — {rec.reason} <span className="chip chip-sm chip-info" style={{ marginLeft: 4 }}>offline</span>
+            </p>
+          )}
+        </div>
+      )}
       {d.status === 'open' && totalVotes > 0 && (
         <p className="small muted verdict-line">
           Tally leans <b>{d.options[leadingIdx]?.label}</b>{needsMe ? ' — your vote could flip it' : ' — editors resolve'}.

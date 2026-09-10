@@ -50,7 +50,11 @@ vi.mock('../src/lib/supabase', () => {
   }
 })
 
-import { duplicateTrip, addStop, tripById, moveStopBetweenDays, updateStop } from '../src/store/store'
+import { duplicateTrip, addStop, tripById, moveStopBetweenDays, updateStop, _setTripWriteDebounceMs } from '../src/store/store'
+
+// The production 600ms trailing debounce would delay writes past flush()
+// (setTimeout 0). Zero it here; coalescing is covered in store-debounce.test.ts.
+_setTripWriteDebounceMs(0)
 
 const keralaTrip = seedData.trips[0]
 const ownerId = 'owner-test'

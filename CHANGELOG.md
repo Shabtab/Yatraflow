@@ -30,41 +30,43 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 ## [Unreleased]
 
 ### Added
-- **Invite links are short codes now — and the join actually works.** The invite
-  URL was the trip's raw UUID: 36 random characters that meant nothing to the
-  person reading it. The Share tab now mints a trip-shaped code — `GOABEACHWE-K7QF`,
-  head from the trip name, 4-char unambiguous tail (no 0/O/1/I/5/S so it survives
-  being read out over a call) — and the invite link becomes `#/join/<code>`.
-  The code sits in its own boarding-pass-stub chip with a copy button, the full
-  link stays below it, and the landing page gains a "Have a trip code?" entry box
-  so a friend who only got the code (not the link) can type it on the home screen.
-  Codes are minted lazily on first share and persisted to a new unique
-  `trips.invite_code` column (`supabase/migrations/20260909_invite_codes.sql`
-  also backfills a code for every existing trip and adds a security-definer
-  `get_trip_by_invite_code` lookup RPC — the code is the capability, same trust
-  model as the old UUID link). Old `#/invite/<uuid>` links keep working forever.
-  **The join flow was broken at three points, all fixed:**
-  1. *The login round-trip dropped the invite.* The gate's Log in button went to
-     plain `/auth`, and AuthPage's post-login redirect hard-navigated to My Trips —
-     so the trip never joined and never appeared in the list. The gate now parks
-     the invite in the URL and bounces through `/auth?next=/join/<code>`; AuthPage
-     honours the `next` param (validated as a same-app route — the param is
-     attacker-controllable input and must not bounce the user off-site) and drops
-     the user back on the invite, which then joins and opens the trip.
-  2. *Already-logged-in users can get a silent dead spinner.* If the on-demand
-     trip fetch hiccuped, the gate gave up with no retry and no message — a
-     permanent "Joining…" spinner. The gate now resolves its trip into local state
-     (immune to cache evictions), reports a broken link honestly, shows a toast
-     on join success ("You're on Goa Beach Week — happy planning!") or failure,
-     and a member re-clicking the link just opens the trip instead of re-joining.
-  3. *The join's side effects fired before the join itself.* `joinViaInvite`
-     wrote the activity log and the owner's notification *before* the
-     `trip_members` row — both are RLS-gated on `is_editor()`, which is false
-     until the membership exists, so every join logged console errors while the
-     side effects silently never landed (and the fire-and-forget insert could
-     fail invisibly too). The membership row is now written first and awaited;
-     only a confirmed write optimistically adds the member to the cache, so the
-     trip shows up in My Trips immediately — and honestly doesn't on failure.
+- **Execution playbook for the invites & onboarding milestone (M9).** A new
+  `docs/PLAN-INVITES-ONBOARDING.md` guide turns the approved plan into an
+  executor-ready playbook: one unified `platform_invites` entity shipped as R1
+  creator invites → R2 referral → R3 invite-only gate, with phase-by-phase
+  implementation steps (migration + RLS + RPCs, `src/lib/accessCode.ts`, the
+  `#/access/<code>` gate, the masteradmin Invites-tab rebuild, creator
+  onboarding flush, tests) and per-phase acceptance criteria. ROADMAP picks up
+  an M9 strategic-track section plus an idea-pool pointer; docs/README indexes
+  the new plan.
+
+## [0.47.0] — 2026-09-10
+
+**A cleanup-and-polish release: deletes become reversible, the app writes faster, and the whole backlog of small wins lands at once.**
+
+### Added
+- **Browser push notifications (local Notification API, no service worker).** Profile & settings gains a Notifications card with an explicit opt-in toggle: enabling it requests OS permission *in the click* (browsers ignore prompts outside a user gesture) and stores `yatraflow_browser_notif=1`. From then on, new unread in-app rows for the session user also fire an OS-level ping — but only when the tab is in the background (`document.hasFocus()` guard, so a focused tab never double-announces via bell + OS), only once per notification id (per-session seen-set, seeded at login so the existing inbox never replays), and never for rows already marked read. New pure `src/lib/browserNotifications.ts` (13 node tests: flag round-trip, support/permission guards, prompt gating, dedupe vs read-flag vs focus matrix); wiring is a small `useEffect` in `App.tsx` off the existing subscribed notifications slice.
+- **A "Send feedback" link** in the account menu and the landing footer. It opens a `mailto:` to `support@yatraflow.app` (the same address the password-reset flow already uses) pre-filled with the app version and current route — the version is inlined at build time from `package.json` via a new `__APP_VERSION__` Vite `define`, so a report is reproducible without the reporter typing a word. Closes the P4 "feedback button" pool item.
+- **Explore itineraries pagination.** The community grid renders 12 cards at a time with a "Load more · N more" button instead of dumping the whole catalog; the window resets to the first page whenever a filter/sort changes (but not on a live realtime insert, so a new publication doesn't yank you back to the top). Closes the P4 "Explore pagination" pool item.
+- **In-map place search (CTI §6.5).** The Map tab's "Nearby ideas" card gains a free-text search box over the same provider facade (`searchPlaces` — Google when keyed, the free stack otherwise), with the top 5 results listed inline and a "+ Add" that drops the place into the existing pick-a-day flow. Closes the "In-map place search" deferral.
+- **Map popup → Timeline/Board cross-links (CTI §6.5).** Clicking a stop pin now raises a compact popup over the map offering "Open in Timeline" and "Open in Board", jumping straight to those tabs — the "compact selected-stop popup with direct navigation" the design doc asked for. Closes the "Map popup cross-links" deferral.
+- **Per-decision trip context + offline recommendation (CTI §6.8).** Open decision cards now show a grounded one-liner ("Xh Ym on the road · ₹Z total · health 82/100") and a deterministic, data-grounded recommendation — the option with the smallest declared cost, then time, else the leading vote — labelled "(offline)". New pure `src/lib/decisionGuide.ts` (7 node tests) so the recommendation is testable and honest; M5's configurable LLM assistant will layer on top. Closes the "Per-decision impact panel + grounded assistant" deferral.
+- **Trip trash + 30-day purge (soft-delete).** "Delete" now moves a trip to the trash instead of hard-deleting: the row's `deleted_at` tombstone is stamped and a restrictive RLS policy hides it from normal reads, so it survives 30 days for restore before a `purge_trashed_trips()` sweep hard-deletes it. My Trips gains a **Trash** view (populated from a new `get_trashed_trips()` RPC) with per-trip **Restore** and **Delete forever** (`restore_trashed_trip` / `purge_trashed_trip` RPCs). Two migrations ship the backend (`20260910_trip_trash.sql` — column + policy + bulk purge; `20260910_trip_trash_rpc.sql` — per-user RPCs); the client paths are probe-gated on the `deleted_at` column so un-migrated/test databases keep the old hard-delete behaviour.
+
+### Changed
+- **Bursty trip edits now write to Supabase once instead of once per keystroke.** `persistTripField` coalesces rapid edits to the same trip (drag-reorder, settings keystrokes, undo/redo chains) into a single trailing 600 ms row UPDATE whose snapshot is always the freshest cache state; deletes and member changes stay immediate. Pending writes flush on `visibilitychange(hidden)`/`pagehide` (guarded — the node test env has no DOM) and via an exported `_flushTripWrites()`. A `_setTripWriteDebounceMs(0)` test hook restores immediate writes for the existing write-through suite, and a new `tests/store-debounce.test.ts` pins the coalescing + flush behaviour (3 tests). Closes the P4 "debounced store writes" pool item.
+
+## [0.46.0] — 2026-09-09
+
+**The masteradmin console: command over the whole app, from one unlinked route.** `#/admin` — typed, never linked — gives the two administrators a god-view over every user, trip, invite, publication and audit row, with every destructive action behind an audited, role-rechecking RPC and an append-only audit log. Shipped alongside PR #81's v0.45.0 create-flow release on the same day; the backend migration was applied and verified live before the PR opened.
+### Added
+- **A masteradmin console (`#/admin`) gives you command over the whole app.** A new private route (never linked from any nav — admins type it; non-admins fall through to the landing page) surfaces seven tabs driven by the JWT `app_metadata` role, not a database column: **Overview** KPI tiles (users, trips, private/public split, published count, Explore views/forks, open suggestions/decisions, avg crew per trip, 7d activity with the prior week, creators, disabled), **Users** (searchable directory with owned-trip counts, creator/disabled/you chips, make/unmake creator, and a reversible disable that signs the account back out — v1's "delete", hard deletion deferred), **Trips** (every trip, owner, crew, visibility, date, plus make-private/make-public and a type-to-confirm permanent delete that keeps an audit snapshot), **Invites & sharing** (30-day member-join velocity over the member slice), **Content** (the published catalog with an admin unpublish), **Analytics** (activation, collaboration, publish and view→fork funnels plus a 12-week signup/trip growth table), and an **Audit log** showing every admin action with who, what, when and the target. Every destructive button calls an audited `SECURITY DEFINER` RPC and renders through the plain existing cards/tables — no new component system.
+- **The masteradmin role is a JWT claim, not a self-grantable column.** The role lives in `auth.users.raw_app_meta_data` (`{"role":"masteradmin"}`), so RLS reads it via `auth.jwt()` and there is deliberately no `is_admin` boolean on `profiles` — a column would be promotable through the "profiles update self" policy. Administrators hydrate the **entire** app (all trips, all collab slices, the audit log); everyone else keeps the membership-scoped cache. Under the hood: `is_admin()` + `is_disabled()` RLS helpers, RESTRICTIVE deny policies on every table for disabled accounts, permissive admin read/write bypass policies, an append-only `admin_audit` table, and six audited RPCs (`admin_set_disabled`, `admin_set_creator`, `admin_set_trip_visibility`, `admin_remove_member`, `admin_unpublish`, `admin_delete_trip`) — each re-checks the role inside, refuses self-harm / last-admin removal, and writes the audit row in the same transaction before the effect. Grant/revoke are SQL one-liners in `supabase/migrations/20260909_masteradmin.sql` (hasnaina955@gmail.com + shabtab@outlook.com documented there; sign out/in to mint the new JWT).
+
+## [0.45.0] — 2026-09-09
+
+**The create flow gets its ticket, invites get their codes, and trip settings get the bench.** Creating a trip becomes the Trip Ticket — a live boarding-pass starter that prints its rough bill on demand and seeds your timeline; invites shrink to trip-shaped codes with a join flow that actually completes; and Trip settings is rebuilt on the Plan Bench's own controls with editable dates that reconcile the day grid. My Trips gets its search/filter/sort back, car rental joins the transport modes, and two reliability fixes land: the pre-patch `updateTrip` persistence bug and the auth-refresh logout race.
+### Added
 - **Trip settings is now the Plan Bench, inside your trip.** The Share tab's settings
   panel was a flat stack of twelve look-alike fields with Save parked below the fold. It
   now speaks the landing calculator's own control language — the same classes at the same
