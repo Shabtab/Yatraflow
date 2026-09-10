@@ -1144,7 +1144,7 @@ a.btn { text-decoration: none; }
 .tab-btn:hover { color: var(--text); background: var(--bg-soft); }
 [data-theme='dark'] .tab-btn:hover { background: rgba(255, 255, 255, .06); }
 .tab-btn.active { color: var(--teal-deep); }
-[data-theme='dark'] .tab-btn.active .tab-count { background: rgba(255, 255, 255, .14); color: #06251f; }
+
 .tab-count { background: var(--teal-soft); color: var(--teal-deep); font-size: 11px; font-weight: 700; border-radius: 999px; padding: 1px 7px; }
 /* Editable day title — a real button (keyboard-reachable rename), styled as
    the heading it replaces. */
@@ -1612,7 +1612,7 @@ a.btn { text-decoration: none; }
   line-height: 1.12; max-width: 720px; margin: 0;
 }
 .pub-hero-story { font-size: clamp(15px, 1.6vw, 18px); color: #e2f1ef; max-width: 640px; margin: 12px 0 0; line-height: 1.6; }
-.pub-hero-byline { font-size: 12.5px; font-weight: 800; letter-spacing: .08em; color: #cfe8e4; margin: 14px 0 0; }
+.pub-hero-byline { font-size: 12.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: #cfe8e4; margin: 14px 0 0; }
 /* "The practical bit" — evidence card floating over the hero's right edge */
 .pub-hero-stats {
   position: absolute; z-index: var(--z-raised); right: max(20px, calc((100% - 1180px) / 2 + 20px)); bottom: -66px;
@@ -3343,7 +3343,7 @@ html.vt-active :where(*) {
 /* solid brand gradients (the old translucent glass face washed the colour out);
    depth comes from the glow shadow instead of transparency */
 .hero .btn-primary {
-  background: linear-gradient(120deg, #0F9E90, #0B7A70);
+  background: linear-gradient(120deg, #0D8D82, #0C716D);
   color: #fff; border-color: rgba(255,255,255,.28);
   box-shadow: 0 10px 26px rgba(13,141,130,.42), inset 0 1px 0 rgba(255,255,255,.28);
 }
@@ -4259,7 +4259,7 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
     z-index: var(--z-dock); align-items: center; gap: 12px; padding: 12px 14px; border-radius: var(--radius);
     background: var(--yf-glass); border: 1px solid var(--yf-glass-border);
     -webkit-backdrop-filter: blur(var(--yf-blur-nav)) saturate(1.2); backdrop-filter: blur(var(--yf-blur-nav)) saturate(1.2);
-    box-shadow: var(--shadow-soft);
+    box-shadow: inset 0 1px 0 var(--yf-glass-sheen), 0 18px 40px rgba(var(--shadow-navy-rgb), .28);
   }
   .dock-thumb { width: 44px; height: 44px; border-radius: 12px; flex: none; display: grid; place-items: center; font-size: 19px; background: var(--yf-teal-100); }
   .dock-meta { min-width: 0; }
@@ -4300,7 +4300,7 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
   .stop-kind-tag, .board-pulse .pulse-label, .budget-hero-label, .share-intent, .impact-cell .k,
   .ha-kicker, .ha-stats span, .hbc-code span, .hbc-sub, .loc-kind, .weather-day, .ride-purpose,
   .bench-eyebrow, .bench-scale-ends, .bench-receipt-kicker, .bench-total-label, .bench-badge,
-  .ticker-item .t-ico, .creator-badge, .pub-ledger th, .route-tag, .group-lab, .mini-lab,
+  .ticker-item .t-tag, .board-stop-kicker, .tk-brand, .tk-kind, .creator-badge, .pub-ledger th, .route-tag, .group-lab, .mini-lab,
   .compare-table th, .toast-action, .editorial-kicker, .pub-stats-label,
   .route-glance .route-glance-label, .stat-label {
     font-size: var(--kicker-size);
@@ -4310,4 +4310,10 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
   }
   /* Decorative stamps keep caps visually, but via CSS, not typed text. */
   .bench-stamp { text-transform: uppercase; letter-spacing: .14em; }
+}
+
+/* Mobile touch-target floor: the remaining sub-40px controls (review round 2). */
+@media (max-width: 720px) {
+  .day-rail-chip, .map-day-chip, .map-legend-toggle, .chip-btn { min-height: 40px; }
+  .route-btn { min-width: 40px; min-height: 40px; }
 }

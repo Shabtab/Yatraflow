@@ -432,7 +432,7 @@ function SuggestionComposerForm({ trip, me }: {
         <Field label="Visit minutes"><input type="number" className="input" min={15} step={5} value={form.visitMinutes} onChange={e => setForm(f => ({ ...f, visitMinutes: Number(e.target.value) }))} /></Field>
         <Field label="Entry fee ₹/person"><input type="number" className="input" min={0} value={form.entryFee} onChange={e => setForm(f => ({ ...f, entryFee: Number(e.target.value) }))} /></Field>
       </div>
-      <Field label="Transport ₹ (total, to get there and back)" hint="Feeds the Budget tab's per-day bars when accepted.">
+      <Field label="Transport ₹ (total, to get there and back)" hint="Feeds the Budget tab’s per-day bars when accepted.">
         <input type="number" className="input" min={0} value={form.transportCost} onChange={e => setForm(f => ({ ...f, transportCost: Number(e.target.value) }))} />
       </Field>
       <Field label="Why it’s worth it"><textarea className="textarea" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} /></Field>

@@ -139,7 +139,7 @@ Error / loading / empty must never impersonate each other (folds in the old
   `.vote-btn` sized differently in two blocks) back toward the single-block
   convention. (All max-width blocks grouped at EOF, one 720px block; cascade
   preserved via per-selector audit + declaration-multiset diff.)
-- [x] Glass tokens: four blur tiers (`--yf-blur-nav` 18 / `-panel` 14 / `-chip` 8 / `-scrim` 3px, every surface mapped);
+- [x] Glass tokens: four blur tiers (`--yf-blur-nav` 18 / `-panel` 14 / `-chip` 8 / `-scrim` 3px, every surface mapped; locked-CTA 1.5px scrim excepted);
   raw-rgba glass stragglers: none migratable — every literal matching a
   `--yf-glass*` value is deliberately theme-invariant (dark flips to .08),
   documented in `f646b45`; saturate normalized to 1.2. z-index: full 15-rung

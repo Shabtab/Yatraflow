@@ -258,7 +258,7 @@ function EarningsTab({ myPubs, view, onView }: {
           {projection.unpricedCount > 0 && (
             <div className="hub-note">
               <b>{projection.unpricedCount} free publication{projection.unpricedCount === 1 ? '' : 's'} not shown.</b>{' '}
-              Fully free itineraries don't project — set a premium price on their Share tab to see them here.
+              Fully free itineraries don’t project — set a premium price on their Share tab to see them here.
             </div>
           )}
         </>

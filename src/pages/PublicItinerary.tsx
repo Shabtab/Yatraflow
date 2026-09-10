@@ -148,7 +148,7 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
           <h1 className="pub-hero-title">{pub.title}</h1>
           <p className="pub-hero-story">{pub.tagline}</p>
           <p className="pub-hero-byline">
-            BY {creator?.profile.name ?? 'a YatraFlow traveller'} · {pub.durationDays} DAYS · {trip.travellers} TRAVELLERS · {cap(trip.transportMode)}
+            By {creator?.profile.name ?? 'a YatraFlow traveller'} · {pub.durationDays} days · {trip.travellers} travellers · {cap(trip.transportMode)}
             {creator?.profile.isCreator && <> · <Sparkles size={11} aria-hidden style={{ verticalAlign: '-1px', margin: '0 2px' }} />Verified creator</>}
           </p>
         </div>

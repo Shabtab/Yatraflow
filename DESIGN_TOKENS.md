@@ -167,8 +167,8 @@ One ladder replaces the eight blur values previously scattered across components
 | Scrim | `--yf-blur-scrim` | 3px | modal and locked overlays |
 
 Text-bearing overlays (map legend body) keep a near-opaque `--yf-surface` with a
-glass border: readability before transparency. The public-hero photo and locked-CTA scrims keep
-their gentler 1.5px frost by design.
+glass border: readability before transparency. The locked-CTA scrim keeps
+its gentler 1.5px frost by design.
 
 ### One green
 
@@ -192,6 +192,6 @@ already resolved to `#2BB8AC` in both families, so nothing there changes.
 
 ### Radii
 
-All card/popover radii now use `--radius-sm` (12), `--radius` (18) or
-`--radius-lg` (24); pills use 999px. The mobile trip dock, sticky totals strip
+Card and popover radii touched by the consistency pass use `--radius-sm` (12), `--radius` (18) or
+`--radius-lg` (24); pills use 999px. A handful of one-off card radii (9-14px) remain, staged for the spacing sweep. The mobile trip dock, sticky totals strip
 and board corner cards moved from 16/20 to `--radius`.
