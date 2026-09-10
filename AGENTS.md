@@ -123,6 +123,21 @@ Key locations:
    confirmation — never push to `main`, `test`, or any other branch as part of
    the implementation step. This prevents unauthorized code from reaching a
    shared branch and keeps the user in control of what ships.
+9. **Never bulk-rewrite `CHANGELOG.md` with a script, heredoc or shell
+   interpolation — edit it with editor primitives only.** This failure mode has
+   already hit twice. In `adf5f66` (*"chore: v0.42.0 — changelog cleanup"*) a
+   bulk rewrite truncated the file from **830 lines to 21**, discarding the
+   entire pre-`0.42.0` record, and while rewriting ate the leading byte out of
+   code spans — `` `applyChange` `` committed as `` `pplyChange` ``,
+   `` `routeHash` `` as `` `outeHash` ``. The `[0.43.0]` entry records an
+   earlier instance of the same class (*"a BEL character where an 'a' should
+   be"*). A byte-eating rewrite in the one file that records the project's
+   history destroys the evidence you would need to notice it happened.
+   The truncated record was recovered on 2026-09-11 as
+   `docs/history/CHANGELOG-through-0.41.1.md`; the rule and the archive's
+   rationale are documented in `docs/history/README.md`.
+   Corollary: **destructive edits to documentation get their own commit**, so
+   the diff is reviewable in isolation and a revert is surgical.
 
 
 ## 3. Verification before every push

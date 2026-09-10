@@ -2,11 +2,31 @@
 
 All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions are pre-1.0 MVP milestones.
 
+> **Two version lines, cut from the same commits.** `X.Y.Z` headings are the **web app**
+> (semver, mirrored in `package.json`, deployed by Vercel from `main`). The `-native` suffix
+> is the **Android shell's** own numbering (`versionCode`/`versionName` in
+> `android/app/build.gradle`, surfaced in Settings → Apps), which does **not** interleave
+> with web semver — so `0.7.0-native` is newer than `0.48.0` despite the smaller number.
+> Entries below are ordered newest-first by date, not by version number.
+>
+> **History note.** Entries before `0.42.0` were removed in `adf5f66` (Sep 7, 2026) — that
+> record still exists in `git log`, not here. Archived release notes live in
+> [`docs/history/`](docs/history/).
+
+## [Unreleased]
+
+_(empty — unreleased work accumulates here before each cut.)_
+
 ## [0.7.0-native] — 2026-09-11 (`v0.7.0-native` — APK attached to the GitHub release)
 
 **The web app is now an installable Android app.** Capacitor 8 wraps the Vite build in a native shell (`app.yatraflow.mobile`), CI builds a signed APK on every push to main and every `v*` tag, and every capability the WebView does badly — clipboard, share sheets, geolocation, vibration, external links, system bars, the back button — is routed through a real native plugin instead. The web app runs the exact same code and never touches a plugin: every native path is behind a platform check with the browser API as fallback. Signed-in users on a phone get a task-first app home instead of the marketing landing.
 
+_History note (2026-09-11): a stub for the pre-`0.42.0` record is deliberate and tracked in
+`docs/history/README.md`. Do not bulk-rewrite this file with a script — that path has eaten
+leading bytes out of code spans twice (see `adf5f66` and the `[0.43.0]` repair note below)._
+
 ### Added
+
 - **A native bridge with one job: make the app's web-API calls work on-device.** `lib/native.ts` centralises clipboard (`nativeCopyText`), image clipboard (`nativeCopyImage` — the plugin takes a full data URL, the browser path takes a `ClipboardItem`), text and file share (`nativeShareText`, `nativeShareImage` — the Share plugin only accepts `file://` URLs, so the trip-bill PNG is written to the cache dir via the Filesystem plugin before the native sheet sees it), one-shot and streaming location (`nativeLocate`, `nativeWatch`) and external-URL opening (`openExternal`). Every helper no-ops or falls back on the web, so the same bundle ships to both platforms. Call sites migrated: CopyButton, the Share tab's snapshot link, Plan Bench's copy-text and bill-image share chain, and the map's locate button.
 - **App-shell wiring (`lib/appShell.ts`): splash, system bars, Android back.** The launch splash hides when the store's ready-gate flips (2.5s worst-case cap), so it never lingers behind a loading block. System-bar styling rides Capacitor 8's core `SystemBars` API — one call styles status + navigation bars, and it replaces the separate `@capacitor/status-bar` plugin the scaffold started with (one dependency lighter). The Android back button maps to the app's own UX: open overlays close first, then the WebView history walks back, and at the first entry a second press within 2s exits.
 - **"Locate me" — a live GPS layer on the trip map.** A toggle chip by the map key starts a continuous position watch: the user renders as a pulsing blue dot, the camera follows the latest fix until *they* pan away (self-initiated `movestart` releases the follow; the layer's own `easeTo` never counts as a pan), and toggling off stops the watch entirely so GPS burns nothing idle. On-device the stream is the plugin's fused provider behind the system permission dialog; on the web it's the plain browser watch. A denied permission turns the dot red. One-shot locate on the map controls was migrated to the same bridge.
@@ -25,8 +45,9 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - **Notifications stalled while backgrounded.** Android freezes the WebView when backgrounded; Supabase's realtime websocket dies without an event, so anything that happened while away never arrived until a manual refresh. `resumeSync()` (full re-hydrate + realtime re-subscribe, bypassing hydrate's same-user dedupe with a fresh generation) now runs on Capacitor's `appStateChange → active`. Anonymous and mid-auth-switch sessions correctly skip it.
 - **Two CI traps worth recording.** (1) `gradlew` lost its executable bit in the Windows checkout — `Permission denied` on the Linux runner; fixed with `git update-index --chmod=+x` plus a defensive `chmod` in the workflow. (2) Storing the keystore secret: `gh secret set` was fed the **raw binary** PKCS12 — an invalid-UTF-8 secret makes GitHub's job-creation die instantly (`startup_failure`, zero jobs, no logs to read), which killed every build until a bisect with secret-free workflow variants isolated it. The secret is ASCII base64 now; secrets ride via step `env:` rather than inline `${{ }}` interpolation as defense in depth.
 
-### Infrastructure
-- `android/` scaffold (Capacitor 8, compileSdk 36, minSdk 24), `capacitor.config.ts` with `SystemBars.insetsHandling: 'css'`, manifest permissions for coarse/fine location (locate-me) and vibrate (haptics). Seven native plugins: app, clipboard, filesystem, geolocation, haptics, share, splash-screen. Keys never enter the repo; the keystore file itself is gitignored.
+### Added
+
+- **The Android shell scaffold and its seven native plugins.** `android/` (Capacitor 8, compileSdk 36, minSdk 24) and `capacitor.config.ts` with `SystemBars.insetsHandling: 'css'`; manifest permissions for coarse/fine location (locate-me) and vibrate (haptics). Seven plugins: app, clipboard, filesystem, geolocation, haptics, share, splash-screen. Keys never enter the repo; the keystore file itself is gitignored.
 
 ## [0.48.0] — 2026-09-11
 
@@ -125,8 +146,6 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
   with it. It now uses the same `var()` → `env()` → `0px` chain as every other
   call site.
 
-## [Unreleased]
-
 ## [0.47.0] — 2026-09-10
 
 **A cleanup-and-polish release: deletes become reversible, the app writes faster, and the whole backlog of small wins lands at once.**
@@ -212,7 +231,6 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 ### Changed
 - **Travel style and transport mode now re-tune suggestions immediately.** Both settings change the plan — relaxed drives get a 120/260 km cadence vs packed 180/300, and fuel stops only make sense for self-drive — but the suggestion cache ignored them, so switching style kept serving suggestions tuned for the old setting until you hit ↻ Refresh. The cache key now includes both, so changing them re-searches straight away (an explicit user action, so it doesn't violate the expensive-search persistence rule).
 - **The AI companion is locked, not deleted.** The drawer, its trip-grounded answers and the FAB are fully implemented but unmounted behind a `VITE_AI_COMPANION=on` flag (`lib/featureFlags.ts`) while the premium milestone (M8) decides its paywall shape. Nothing was removed — flip the flag for local preview.
-- **Version bumped to 0.43.0.**
 
 ### Fixed
 - **The AI drawer closes again — and looks like YatraFlow.** A merge had deleted the drawer's display-when-closed rule, so the panel rendered permanently open on every trip page, with its long quick-prompt labels wrapping into tall ovals inside the pill radius. The close rule is restored, and the panel is redesigned onto the CTI design language: navy→teal gradient header with a glass icon badge, brand-teal user bubbles (white on `--teal-deep`, 5.2:1 AA), bordered bot bubbles, single-line quick-prompt pills on a horizontal scroll rail, a teal-gradient FAB with the brand glow, and a safe-area-aware input row.
@@ -230,7 +248,16 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - **C3: Guard corridorAnchors when all stops are within 500m** (pts.length < 2) prevents cum[1] undefined crash on degenerate routes.
 - **C4: Detour budget now enforced from actual itinerary stops** instead of skipping added/dismissed suggestions.
 
-### Changed
-- **Version bumped to 0.42.0**
 
+<!-- Link references. Only tags that exist on the remote are linked; untagged releases
+     fall back to a friendly commit-range compare so no heading 404s. -->
 
+[Unreleased]: https://github.com/hasnaina955/Yatraflow/compare/v0.48.0...HEAD
+[0.7.0-native]: https://github.com/hasnaina955/Yatraflow/releases/tag/v0.7.0-native
+[0.48.0]: https://github.com/hasnaina955/Yatraflow/compare/v0.47.0...v0.48.0
+[0.47.0]: https://github.com/hasnaina955/Yatraflow/compare/v0.46.0...v0.47.0
+[0.46.0]: https://github.com/hasnaina955/Yatraflow/compare/v0.45.0...v0.46.0
+[0.45.0]: https://github.com/hasnaina955/Yatraflow/compare/v0.44.0...v0.45.0
+[0.44.0]: https://github.com/hasnaina955/Yatraflow/compare/v0.43.0...v0.44.0
+[0.43.0]: https://github.com/hasnaina955/Yatraflow/compare/v0.42.0...v0.43.0
+[0.42.0]: https://github.com/hasnaina955/Yatraflow/releases
