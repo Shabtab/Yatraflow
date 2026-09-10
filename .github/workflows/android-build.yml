@@ -34,13 +34,21 @@ jobs:
 
       # The anon key is public by design (RLS is the real auth boundary) and
       # the bundle needs it at compile time, but it doesn't belong in the repo
-      # — repo secrets inject it (and the map keys) at build time only.
+      # — repo secrets inject it (and the map keys) at build time only. All
+      # secrets ride via step env: GitHub's startup validation rejects
+      # workflows that interpolate secret VALUES (long JWTs, base64 blobs)
+      # directly into run: scripts with an instant startup_failure.
       - name: Write web build env
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_MAPPLS_KEY: ${{ secrets.VITE_MAPPLS_KEY }}
+          VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}
         run: |
-          printf 'VITE_SUPABASE_URL=%s\n' "${{ secrets.VITE_SUPABASE_URL }}" >> .env.production
-          printf 'VITE_SUPABASE_ANON_KEY=%s\n' "${{ secrets.VITE_SUPABASE_ANON_KEY }}" >> .env.production
-          printf 'VITE_MAPPLS_KEY=%s\n' "${{ secrets.VITE_MAPPLS_KEY }}" >> .env.production
-          printf 'VITE_GOOGLE_MAPS_API_KEY=%s\n' "${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}" >> .env.production
+          printf 'VITE_SUPABASE_URL=%s\n' "$VITE_SUPABASE_URL" >> .env.production
+          printf 'VITE_SUPABASE_ANON_KEY=%s\n' "$VITE_SUPABASE_ANON_KEY" >> .env.production
+          printf 'VITE_MAPPLS_KEY=%s\n' "$VITE_MAPPLS_KEY" >> .env.production
+          printf 'VITE_GOOGLE_MAPS_API_KEY=%s\n' "$VITE_GOOGLE_MAPS_API_KEY" >> .env.production
 
       - name: Build web bundle
         run: npm run build
