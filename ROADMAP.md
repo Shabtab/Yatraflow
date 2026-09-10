@@ -208,7 +208,7 @@ get a row here again.
 *From the #36 bug-hunt triage (Sep 2026 — **all 10 findings closed and fixed**; see CHANGELOG for the per-issue landing):*
 (nothing remaining — #38, #39, #40, #43, #44, #45, #46, #47, #48, #49 all landed; the audit comment on #36 already did the triage and the survivors were spun out as closed issues.)
 
-*Old P4 nice-to-haves:* ~~Explore pagination~~ ✅ shipped (12-per-page + Load more) · ~~undo for more operations~~ ✅ already covered — trip/member/expense/stop deletes all have Undo · ~~feedback button~~ ✅ shipped (`mailto:` with version+route) · trash + 30-day purge (**DDL written** — `20260910_trip_trash.sql`; client soft-delete wiring pending its live application) · ~~debounced store writes~~ ✅ shipped (600ms trailing coalescer + pagehide flush).
+*Old P4 nice-to-haves:* ~~Explore pagination~~ ✅ shipped (12-per-page + Load more) · ~~undo for more operations~~ ✅ already covered — trip/member/expense/stop deletes all have Undo · ~~feedback button~~ ✅ shipped (`mailto:` with version+route) · ~~trash + 30-day purge~~ ✅ shipped (soft-delete + Trash view + purge RPCs) · ~~debounced store writes~~ ✅ shipped (600ms trailing coalescer + pagehide flush).
 
 ---
 
@@ -221,7 +221,7 @@ get a row here again.
 | Full Profile field editing | homeCity/languages/socialLinks UI exists partially |
 | Browser push notifications | ✅ shipped (v0.47.0) — local Notification API; Profile opt-in, dedupe vs read flag, background-tab only |
 | Route polylines on the map | routing.ts returns geometry; map renders markers only |
-| Trash + 30-day purge | soft-delete layer before hard deletes |
+| Trash + 30-day purge | ✅ shipped — soft-delete + Trash view + 30-day purge (`20260910_trip_trash{,_rpc}.sql`) |
 | Explore pagination | ✅ shipped (unreleased) — 12-per-page grid + Load more |
 
 ### 🧭 Suggestion-engine ideas (Sep 6 2026 deep brainstorm → [docs/SUGGESTION_ENGINE_BRAINSTORM.md](docs/SUGGESTION_ENGINE_BRAINSTORM.md))

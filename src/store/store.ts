@@ -28,6 +28,8 @@ import type { RealtimeChannel, RealtimePostgresChangesPayload } from '@supabase/
 interface DB {
   users: User[]               // profiles mirror (for names/avatars in the UI)
   trips: Trip[]
+  /** Soft-deleted trips, fetched on demand from the get_trashed_trips RPC. */
+  trashedTrips: Trip[]
   suggestions: StopSuggestion[]
   decisions: TripDecision[]
   activity: ActivityEntry[]
@@ -41,7 +43,7 @@ interface DB {
 }
 
 let cache: DB = {
-  users: [], trips: [], suggestions: [], decisions: [],
+  users: [], trips: [], trashedTrips: [], suggestions: [], decisions: [],
   activity: [], notifications: [], published: [], adminAudit: [], sessionUserId: null,
   ready: false,
 }
@@ -74,6 +76,10 @@ export function useStoreReady(): boolean {
 
 export function useTrips(): Trip[] {
   return useSyncExternalStore(subscribe, () => cache.trips)
+}
+
+export function useTrashedTrips(): Trip[] {
+  return useSyncExternalStore(subscribe, () => cache.trashedTrips)
 }
 
 export function usePublished(): PublishedItinerary[] {
@@ -935,18 +941,19 @@ let optionalColumnsProbe: Promise<OptionalColumnsProbe> | null = null
 let optionalColumnsWarned = false
 
 function tripsHaveOptionalColumns(): Promise<OptionalColumnsProbe> {
-  if (!isSupabaseConfigured) return Promise.resolve({ economy: false, price: false, roundTrip: false, cover: false, inviteCode: false })
+  if (!isSupabaseConfigured) return Promise.resolve({ economy: false, price: false, roundTrip: false, cover: false, inviteCode: false, deleted: false })
   if (!optionalColumnsProbe) optionalColumnsProbe = probeOptionalColumns()
   return optionalColumnsProbe
 }
 
 async function probeOptionalColumns(): Promise<OptionalColumnsProbe> {
-  const [economy, price, roundTrip, cover, inviteCode] = await Promise.all([
+  const [economy, price, roundTrip, cover, inviteCode, deleted] = await Promise.all([
     probeOptionalColumn('fuel_economy_km_per_l'),
     probeOptionalColumn('fuel_price_per_l'),
     probeOptionalColumn('round_trip'),
     probeOptionalColumn('cover_image_url'),
     probeOptionalColumn('invite_code'),
+    probeOptionalColumn('deleted_at'),
   ])
   if (!economy || !price || !roundTrip) {
     if (!optionalColumnsWarned) {
@@ -954,7 +961,7 @@ async function probeOptionalColumns(): Promise<OptionalColumnsProbe> {
       optionalColumnsWarned = true
     }
   }
-  return { economy, price, roundTrip, cover, inviteCode }
+  return { economy, price, roundTrip, cover, inviteCode, deleted }
 }
 
 /** Probe one optional column. True = present (or transient error, treated optimistically). */
@@ -1375,6 +1382,84 @@ async function restoreTripData(trip: Trip, snap: TripSnapshot | null): Promise<v
   if (failed.some(([t]) => t === 'published link')) {
     toast('Trip restored, but its public link could not be restored - republish it from the trip.')
   }
+}
+
+// ---------------- Trash + 30-day purge (soft-delete) ----------------
+// "Delete" is a soft-delete: the trip leaves the live cache immediately and its
+// `deleted_at` tombstone is stamped, so the `trips read hide trashed` RLS policy
+// hides it from every future read while the row survives 30 days for restore.
+// Hard delete (with its collab cascade) remains as "delete forever" from the
+// Trash view. Every path is probe-gated on the `deleted` column so an
+// un-migrated/test database keeps the old hard-delete behaviour.
+
+/** Move a trip to trash. Optimistic: removes from the live list, then stamps the
+ *  tombstone; a failed write puts the trip back. */
+export function trashTrip(trip: Trip): void {
+  if (!cache.trips.some(t => t.id === trip.id)) return
+  cache.trips = cache.trips.filter(t => t.id !== trip.id)
+  commit()
+  void tripsHaveOptionalColumns().then(cols => {
+    if (!cols.deleted) {
+      void supabase.from('trips').delete().eq('id', trip.id).then(({ error }) => {
+        if (error) { cache.trips = [...cache.trips, trip]; commit() }
+      })
+      return
+    }
+    markLocalWrite('trips', trip.id)
+    void supabase.from('trips').update({ deleted_at: new Date().toISOString() }).eq('id', trip.id).then(({ error }) => {
+      if (error) {
+        cache.trips = [...cache.trips, trip]
+        commit()
+        toast('Could not move to trash.')
+      }
+    })
+  })
+}
+
+/** Undo a trash *within the session* (the delete toast): put the trip back and
+ *  clear the tombstone. The Trash view's restore after a reload goes through
+ *  restoreTrashedTripById. */
+export function restoreTrashedTrip(trip: Trip): void {
+  if (!cache.trips.some(t => t.id === trip.id)) {
+    cache.trips = [...cache.trips, { ...trip, deletedAt: undefined }]
+    commit()
+  }
+  void tripsHaveOptionalColumns().then(cols => {
+    if (!cols.deleted) return
+    markLocalWrite('trips', trip.id)
+    void supabase.from('trips').update({ deleted_at: null }).eq('id', trip.id).then(({ error }) => {
+      if (error) toast('Could not restore that trip.')
+    })
+  })
+}
+
+/** Fetch the current user's trashed trips (owner-scoped SECURITY DEFINER RPC). */
+export async function fetchTrashedTrips(): Promise<void> {
+  if (!isSupabaseConfigured || !cache.sessionUserId) return
+  const { data, error } = await supabase.rpc('get_trashed_trips')
+  if (error) { console.error('[yatraflow] trashed trips fetch failed', error); return }
+  cache.trashedTrips = mapOrSkip((data ?? []) as unknown[], r => rowToTrip(r as TripRow, []))
+  commit()
+}
+
+/** Restore a trashed trip from the Trash view (after reload): SECURITY DEFINER
+ *  RPC, then pull the now-live trip back into the cache so it appears at once. */
+export async function restoreTrashedTripById(id: ID): Promise<boolean> {
+  const { error } = await supabase.rpc('restore_trashed_trip', { p_trip_id: id })
+  if (error) { toast('Could not restore that trip.'); return false }
+  cache.trashedTrips = cache.trashedTrips.filter(t => t.id !== id)
+  commit()
+  await fetchTripIntoCache(id)
+  return true
+}
+
+/** Delete a trashed trip forever. Hard delete; the cascade sweeps the collab layer. */
+export async function permanentlyDeleteTrip(id: ID): Promise<boolean> {
+  const { error } = await supabase.rpc('purge_trashed_trip', { p_trip_id: id })
+  if (error) { toast('Could not delete that trip.'); return false }
+  cache.trashedTrips = cache.trashedTrips.filter(t => t.id !== id)
+  commit()
+  return true
 }
 
 /** Put a removed member back — powers Undo on member removal. */
