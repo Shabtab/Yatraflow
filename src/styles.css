@@ -4413,7 +4413,7 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
   .ct-grid { grid-template-columns: 1fr; }
   .trip-starter { padding-bottom: 118px; }
   .trip-dock {
-    display: flex; position: fixed; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom));
+    display: flex; position: fixed; left: 12px; right: 12px; bottom: calc(12px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
     z-index: var(--z-dock); align-items: center; gap: 12px; padding: 12px 14px; border-radius: var(--radius);
     background: var(--yf-glass); border: 1px solid var(--yf-glass-border);
     -webkit-backdrop-filter: blur(var(--yf-blur-nav)) saturate(1.2); backdrop-filter: blur(var(--yf-blur-nav)) saturate(1.2);
