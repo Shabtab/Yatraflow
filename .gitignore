@@ -23,3 +23,4 @@ vitest_out.txt
 
 # local APK downloads from CI artifacts
 *.apk
+android/app/yatraflow-debug.p12
