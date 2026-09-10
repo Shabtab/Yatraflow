@@ -1,0 +1,166 @@
+// Mobile / Android-shell UX invariants (native-shell pass).
+// Static source checks: they read the shipped files as text, so a regression
+// in any of these shell-only rules fails CI without a device, an emulator or a
+// browser. The recurring theme is website parity — every bottom-chrome rule
+// here exists to prove the web build renders exactly what it rendered before.
+import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
+
+const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
+const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')
+const manifest = readFileSync(new URL('../android/app/src/main/AndroidManifest.xml', import.meta.url), 'utf8')
+
+const source = (rel: string) => readFileSync(new URL('../' + rel, import.meta.url), 'utf8')
+
+/** Every declaration block in `cssText` whose selector is exactly `selector`. */
+function rules(cssText: string, selector: string): string[] {
+  const out: string[] = []
+  let from = 0
+  for (;;) {
+    const at = cssText.indexOf(selector + ' {', from)
+    if (at === -1) return out
+    let depth = 0
+    let end = at
+    for (let i = cssText.indexOf('{', at); i < cssText.length; i++) {
+      if (cssText[i] === '{') depth++
+      else if (cssText[i] === '}' && --depth === 0) { end = i + 1; break }
+    }
+    if (end <= at) return out
+    out.push(cssText.slice(at, end))
+    from = end
+  }
+}
+
+// 1 ---------------------------------------------------------------------------
+
+describe('bottom navigation is a shell-only primary nav', () => {
+  const nav = source('src/components/BottomNav.tsx')
+
+  it('ships exactly the four destinations, in order', () => {
+    const routes = [...nav.matchAll(/to:\s*'([^']+)'/g)].map(m => m[1])
+    expect(routes).toEqual(['/', '/trips', '/explore', '/profile'])
+  })
+
+  it('uses real buttons and marks the current page for assistive tech', () => {
+    expect(nav).toContain('<button')
+    expect(nav).toContain('type="button"')
+    expect(nav).toContain("aria-current={active ? 'page' : undefined}")
+    expect(nav).toContain('role="navigation"')
+    expect(nav).toContain('aria-label="Primary"')
+  })
+
+  it('keeps the trip workspace under My trips and leaves other routes unlit', () => {
+    expect(nav).toContain("path.startsWith('/trip/')")
+    expect(nav).toContain('return null')
+  })
+
+  it('mounts only behind the native gate in App.tsx', () => {
+    expect(app).toContain("import { BottomNav } from './components/BottomNav'")
+    expect(app).toContain('{isNative && me && <BottomNav route={route} onNavigate={navigate} />}')
+  })
+
+  it('hides the redundant floating pill but keeps the hamburger overflow', () => {
+    expect(css).toContain('html.native-shell .nav-links { display: none; }')
+    expect(app).toContain('className="mobile-nav-btn"')
+    // the tray keeps every destination the pill carried
+    for (const dest of ['#/trips', '#/new', '#/explore', '#/creator-hub', '#/profile']) {
+      expect(app, `${dest} must stay reachable`).toContain(dest)
+    }
+  })
+})
+
+// 2 ---------------------------------------------------------------------------
+
+describe('safe-area fallback chain', () => {
+  it('never reads env(safe-area-*) bare', () => {
+    // Strip the canonical chain; anything env(safe-area-*) still standing is a
+    // consumer that skipped it (env() reads 0 on Android WebViews).
+    const stripped = css.replace(
+      /var\(--safe-area-inset-(top|right|bottom|left),\s*env\(safe-area-inset-\1,\s*0px\)\)/g,
+      'SAFE',
+    )
+    const bare = [...stripped.matchAll(/env\(safe-area[^)]*\)/g)].map(m => m[0])
+    expect(bare, `bare env() reads: ${bare.join('; ')}`).toEqual([])
+  })
+
+  it('routes the shared bottom token through that same chain', () => {
+    expect(css).toContain('--safe-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));')
+  })
+})
+
+// 3 ---------------------------------------------------------------------------
+
+describe('bottom chrome offset', () => {
+  it('keeps the shell offset inert on the web', () => {
+    // Exactly two definitions: the :root default the website resolves, and the
+    // shell's. A third (or a reordering) would let a shell value leak out.
+    const defs = [...css.matchAll(/--shell-nav-h:\s*([^;]+);/g)].map(m => m[1].trim())
+    expect(defs, 'web default 0px, shell 58px').toEqual(['0px', '58px'])
+    expect(rules(css, 'html.native-shell').join('\n')).toContain('--shell-nav-h: 58px;')
+    expect(css).toContain('--bottom-ui-offset: calc(var(--shell-nav-h) + var(--safe-bottom));')
+  })
+
+  const lifted: Array<[string, string]> = [
+    ['.app-shell', 'padding-bottom: var(--bottom-ui-offset)'],
+    ['.toast-zone', 'bottom: calc(18px + var(--bottom-ui-offset))'],
+    ['.ai-fab', 'bottom: calc(18px + var(--bottom-ui-offset))'],
+    ['.bench-dock', 'bottom: calc(12px + var(--bottom-ui-offset))'],
+    ['.ts-savebar', 'padding: 8px 0 calc(8px + var(--bottom-ui-offset))'],
+    ['.trip-dock', 'bottom: calc(12px + var(--bottom-ui-offset))'],
+  ]
+
+  it.each(lifted)('%s clears the bottom nav and the gesture bar', (selector, decl) => {
+    expect(rules(css, selector).join('\n')).toContain(decl)
+  })
+
+  it('leaves the true-bottom overlays on the raw inset', () => {
+    // These paint ABOVE the nav (--z-modal / --z-impact / --z-drawer /
+    // --z-map-expanded all beat --z-nav-glass), so they own the real bottom
+    // edge and must not be pushed up by the shell's nav.
+    for (const sel of ['.modal', '.modal-overlay', '.impact-sheet', '.ai-drawer', '.ai-input-row', '.map-shell--expanded']) {
+      expect(rules(css, sel).join('\n'), `${sel} owns the bottom edge`).not.toContain('--bottom-ui-offset')
+    }
+  })
+
+  it('sizes the nav itself to exactly one offset', () => {
+    const nav = rules(css, '.bottom-nav').join('\n')
+    expect(nav).toContain('height: calc(var(--shell-nav-h) + var(--safe-bottom))')
+    expect(nav).toContain('padding-bottom: var(--safe-bottom)')
+    expect(nav).toContain('z-index: var(--z-nav-glass)')
+  })
+})
+
+// 4 ---------------------------------------------------------------------------
+
+describe('inline map gestures', () => {
+  const mapcn = source('src/components/mapcn/map.tsx')
+  const tripMap = source('src/components/TripMap.tsx')
+
+  it('opts every embed into cooperative gestures on touch devices only', () => {
+    expect(mapcn).toContain('cooperativeGestures: prefersCooperativeGestures()')
+    expect(mapcn).toContain('"(pointer: coarse)"')
+    // The default must be declared BEFORE the caller's props, so an embed can
+    // still opt out at construction.
+    const from = mapcn.indexOf('new MapLibreGL.Map({')
+    const init = mapcn.slice(from, mapcn.indexOf('});', from))
+    expect(init.indexOf('cooperativeGestures:')).toBeGreaterThan(-1)
+    expect(init.indexOf('cooperativeGestures:')).toBeLessThan(init.indexOf('...props,'))
+  })
+
+  it('hands the gestures back when the map goes fullscreen', () => {
+    expect(tripMap).toContain('<CooperativeGestures enabled={!expanded} />')
+    expect(tripMap).toContain('map.cooperativeGestures.enable()')
+    expect(tripMap).toContain('map.cooperativeGestures.disable()')
+  })
+})
+
+// 5 ---------------------------------------------------------------------------
+
+describe('soft keyboard resizes the WebView', () => {
+  it('pins adjustResize on MainActivity instead of the platform default', () => {
+    expect(manifest).toContain('android:windowSoftInputMode="adjustResize"')
+    // The attribute form, not the word — the manifest's own comment about the
+    // default heuristic must not satisfy (or break) this check.
+    expect(manifest).not.toContain('android:windowSoftInputMode="adjustUnspecified"')
+  })
+})
