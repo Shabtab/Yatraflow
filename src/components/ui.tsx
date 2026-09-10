@@ -2,6 +2,7 @@
 import React, { useEffect, useId, useRef, useState } from 'react'
 import { Check, Copy, Map as MapIcon, TriangleAlert, Users, X } from 'lucide-react'
 import { formatInr } from '../lib/engine'
+import { nativeCopyText } from '../lib/native'
 import { registerTouchDnd, touchPressAbort, touchPressStart, encodeDropKey, isInteractiveTarget } from '../lib/touchDnd'
 
 export function Avatar({ user, size = 'sm' }: { user?: { profile: { name: string; avatarUrl?: string } }; size?: 'sm' | 'lg' }) {
@@ -574,7 +575,7 @@ export function CopyButton({ text, label = 'Copy link', onCopied }: { text: stri
     <button
       className={`btn btn-sm ${done ? 'btn-outline' : 'btn-primary'}`}
       onClick={() => {
-        navigator.clipboard?.writeText(text).catch(() => {})
+        void nativeCopyText(text)
         setDone(true)
         toast('Copied to clipboard')
         setTimeout(() => setDone(false), 1800)

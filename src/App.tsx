@@ -12,6 +12,7 @@ import { Avatar, BrandMark, ToastZone, useClickOutside, toast } from './componen
 import { PillNav } from './components/PillNav'
 import { decodeTripSnapshot } from './lib/snapshot'
 import { scrollBehavior } from './lib/motion'
+import { hideSplash, registerAndroidBack, setNativeTheme } from './lib/appShell'
 import { LandingPage } from './pages/Landing'
 // Route-level code splitting: only the landing page stays in the main chunk (it
 // is the app's front door and reads no store data); every other route —
@@ -84,7 +85,24 @@ export default function App() {
     // OS preference, not to this in-app switch.
     document.querySelectorAll('meta[name="theme-color"]').forEach(m =>
       m.setAttribute('content', dark ? '#0C1420' : '#FAF7F2'))
+    // In the Android shell the same swap paints the real status bar.
+    setNativeTheme(dark)
   }, [dark])
+
+  // Native shell boot: hide the launch splash once the store has hydrated
+  // (the same ready-gate below flips) or after 2.5s worst case, and own the
+  // Android back button (overlays close first, then hash history, then exit).
+  useEffect(() => { void hideSplash() }, [])
+  useEffect(() => {
+    const off = registerAndroidBack({
+      closeOverlay: () => {
+        const hadAny = mobileNav || notifOpen || menuOpen
+        setMobileNav(false); setNotifOpen(false); setMenuOpen(false)
+        return hadAny
+      },
+    })
+    return off
+  }, [mobileNav, notifOpen, menuOpen])
 
   // Theme radiate via View Transitions — the real UI morphs in both themes.
   // Two hard-won rules make this flawless:
@@ -186,6 +204,12 @@ export default function App() {
   // exactly what the post-gate frame would be, instead of a spinner that
   // swaps to the full page (the landing load shift, Lighthouse CLS 0.997).
   const ready = useStoreReady()
+  // Splash hides on the same ready flip (or 2.5s worst case) so the launch
+  // image never lingers behind the loading block.
+  useEffect(() => {
+    if (!ready) { const t = setTimeout(() => void hideSplash(), 2500); return () => clearTimeout(t) }
+    void hideSplash()
+  }, [ready])
   const bareRoute = parts[0] === undefined || parts[0] === ''
   if (!ready && parts[0] !== 'auth' && parts[0] !== 'share' && !bareRoute) {
     page = <div className="container loading-block"><div className="spinner" />Loading…</div>
