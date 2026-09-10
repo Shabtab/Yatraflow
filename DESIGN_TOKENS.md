@@ -195,3 +195,30 @@ already resolved to `#2BB8AC` in both families, so nothing there changes.
 Card and popover radii touched by the consistency pass use `--radius-sm` (12), `--radius` (18) or
 `--radius-lg` (24); pills use 999px. A handful of one-off card radii (9-14px) remain, staged for the spacing sweep. The mobile trip dock, sticky totals strip
 and board corner cards moved from 16/20 to `--radius`.
+
+### Bottom chrome (native shell)
+
+One offset every page-level bottom layer clears: the shell's own bottom
+navigation row plus the device's gesture bar. Outside `html.native-shell` the
+shell term is `0px`, so both the offset and every consumer of it collapse to
+exactly the gesture-bar inset the web resolved before this family existed —
+which is what makes the website provably unaffected.
+
+| Token | Web | Native shell | Use |
+|------|-------|------|-----|
+| `--safe-bottom` | gesture-bar inset | gesture-bar inset | the `var(--safe-area-inset-bottom, env(…, 0px))` chain, named once |
+| `--shell-nav-h` | `0px` | `58px` | height of the shell's bottom navigation row |
+| `--bottom-ui-offset` | `calc(0px + --safe-bottom)` | `calc(58px + --safe-bottom)` | bottom offset for page-level fixed/sticky chrome |
+
+Consumers (a `bottom` or `padding-bottom`): `.app-shell`, `.toast-zone`,
+`.ai-fab`, `.bench-dock`, `.ts-savebar`, `.trip-dock`, plus the shell's
+`scroll-padding-bottom`. The overlays that intentionally own the true bottom
+edge — `.modal` / `.modal-overlay`, `.impact-sheet`, `.ai-drawer` /
+`.ai-input-row`, `.map-shell--expanded` — keep the raw inset and are deliberately
+NOT lifted: they paint above the nav (`--z-modal` 100, `--z-impact` 210,
+`--z-drawer` 90, `--z-map-expanded` 70 all beat `--z-nav-glass` 60).
+
+The bar itself is `height: calc(var(--shell-nav-h) + var(--safe-bottom))` with
+`padding-bottom: var(--safe-bottom)`. `box-sizing` is border-box, so
+padding-only would eat into the 58px row and drop the items under Material's
+48dp tap floor.

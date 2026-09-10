@@ -27,6 +27,7 @@ import {
   MarkerTooltip,
   MapRoute,
   MapControls,
+  prefersCooperativeGestures,
   useMap,
 } from './mapcn/map'
 
@@ -155,6 +156,36 @@ function RouteArrows({ coordinates, dark }: { coordinates: [number, number][]; d
 // minimal structural typing so we don't need to import maplibre-gl directly here
 declare module './mapcn/map' {}
 type GeoJSONSourceLike = { setData(d: unknown): void }
+
+/**
+ * Gesture mode follows the layout AND the device. An inline map is embedded in
+ * a scrolling page, so on a coarse pointer it keeps MapLibre's cooperative
+ * gestures (one finger scrolls the page, two fingers pan — see the mapcn
+ * default); the expanded overlay owns the whole viewport, so it hands back
+ * normal one-finger pan/zoom. The option is read once at construction, hence
+ * the runtime switch through MapLibre's own handler — enable()/disable() add
+ * and remove the two-finger hint overlay and are idempotent, so re-running this
+ * effect (StrictMode included) is safe.
+ *
+ * The device gate is the SAME predicate the constructor calls
+ * (`prefersCooperativeGestures`, exported by mapcn), never the layout alone:
+ * with the handler enabled, `ScrollZoomHandler.wheel()` bails before zooming
+ * unless ctrl/meta is held, and the two-finger hint is injected into the canvas
+ * container — so calling enable() on a fine pointer would take plain wheel-zoom
+ * away from a mouse desktop. When the predicate is false this effect therefore
+ * touches nothing: the constructed state is already the right one, and disable()
+ * is not needed either (there is nothing to undo).
+ */
+function CooperativeGestures({ enabled }: { enabled: boolean }) {
+  const { map, isLoaded } = useMap()
+  useEffect(() => {
+    if (!map || !isLoaded) return
+    if (!prefersCooperativeGestures()) return
+    if (enabled) map.cooperativeGestures.enable()
+    else map.cooperativeGestures.disable()
+  }, [map, isLoaded, enabled])
+  return null
+}
 
 /** Drop consecutive duplicate points (shared endpoints between legs). */
 function dedupeConsecutive(coords: [number, number][]): [number, number][] {
@@ -599,6 +630,9 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
             zoom={5}
           >
             <MapControls position="top-right" showFullscreen />
+            {/* Inline on a coarse pointer: one finger scrolls the page.
+                Expanded (or a mouse): normal gestures. */}
+            <CooperativeGestures enabled={!expanded} />
             {/* Live location layer — mounted always, self-gating on `liveOn`. */}
             <LiveLocationLayer active={liveOn} />
             {/* In All-days view a single connected main line from the trip start
