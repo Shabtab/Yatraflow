@@ -71,13 +71,13 @@ jobs:
 
       - name: Rename APK with version
         run: |
-          VERSION=$(grep -oP 'versionName "\K[^"]+' android/app/build.gradle)
+          VERSION=$(sed -n 's/.*versionName "\([^"]*\)".*/\1/p' android/app/build.gradle | head -1)
           cp android/app/build/outputs/apk/debug/app-debug.apk "YatraFlow-v${VERSION}.apk"
           echo "version=$VERSION" >> "$GITHUB_ENV"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: yatraflow-v${{ env.version }}
+          name: YatraFlow-v${{ env.version }}
           path: YatraFlow-v${{ env.version }}.apk
           retention-days: 14
