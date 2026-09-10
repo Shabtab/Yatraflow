@@ -4,6 +4,9 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Added
+- **Browser push notifications (local Notification API, no service worker).** Profile & settings gains a Notifications card with an explicit opt-in toggle: enabling it requests OS permission *in the click* (browsers ignore prompts outside a user gesture) and stores `yatraflow_browser_notif=1`. From then on, new unread in-app rows for the session user also fire an OS-level ping — but only when the tab is in the background (`document.hasFocus()` guard, so a focused tab never double-announces via bell + OS), only once per notification id (per-session seen-set, seeded at login so the existing inbox never replays), and never for rows already marked read. New pure `src/lib/browserNotifications.ts` (13 node tests: flag round-trip, support/permission guards, prompt gating, dedupe vs read-flag vs focus matrix); wiring is a small `useEffect` in `App.tsx` off the existing subscribed notifications slice.
+
 ## [0.46.0] — 2026-09-09
 
 **The masteradmin console: command over the whole app, from one unlinked route.** `#/admin` — typed, never linked — gives the two administrators a god-view over every user, trip, invite, publication and audit row, with every destructive action behind an audited, role-rechecking RPC and an append-only audit log. Shipped alongside PR #81's v0.45.0 create-flow release on the same day; the backend migration was applied and verified live before the PR opened.

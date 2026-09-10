@@ -6,6 +6,10 @@ import {
   Bell, Compass, Import, Inbox, Luggage, Link2, Mail, Menu, Moon, Plus,
   Settings, Sparkles, Sun, Tent, X,
 } from 'lucide-react'
+import {
+  browserNotifEnabled, browserNotifPermission, fireBrowserNotification,
+  shouldBrowserNotify,
+} from './lib/browserNotifications'
 import type { Trip } from './data/types'
 import { useDb, currentUser, useUsers, useNotifications, useSessionUserId, logout, markAllNotificationsRead, tripById, joinViaInvite, duplicateTrip, init, useStoreReady, fetchSharedTrip, fetchTripByInviteCode } from './store/store'
 import { Avatar, BrandMark, ToastZone, useClickOutside, toast } from './components/ui'
@@ -265,6 +269,38 @@ export default function App() {
     [notifications, sessionUserId],
   )
   const unread = notifs.filter(n => !n.read).length
+
+  // ---- Browser push (local Notification API, no service worker) ----
+  // In-app bell is the source of truth; this effect mirrors NEW unread rows
+  // for the session user to the OS level when the tab is in the background.
+  // Guards: user opted in (Profile toggle) + permission granted + per-id
+  // dedupe + read-flag + unfocused tab. Own local writes land in the slice
+  // too, but they arrive while the tab is focused, so shouldBrowserNotify()
+  // already filters them — no echo-suppression map needed here.
+  const seenNotifIds = useRef<Set<string>>(new Set())
+  // A fresh login must not replay the whole inbox as OS pings: seed the seen
+  // set with whatever is already in the slice on first run / account switch.
+  const notifSeedUser = useRef<string | null>(null)
+  useEffect(() => {
+    if (!sessionUserId) { notifSeedUser.current = null; return }
+    if (notifSeedUser.current !== sessionUserId) {
+      notifSeedUser.current = sessionUserId
+      seenNotifIds.current = new Set(notifs.map(n => n.id))
+      return
+    }
+    if (!browserNotifEnabled()) return
+    if (browserNotifPermission() !== 'granted') return
+    for (const n of notifs) {
+      if (shouldBrowserNotify(n, sessionUserId, seenNotifIds.current, document.hasFocus())) {
+        seenNotifIds.current.add(n.id)
+        fireBrowserNotification('YatraFlow', n.text)
+      } else {
+        // Read elsewhere / already seen: record so a later unread flip of the
+        // same row can't re-ping.
+        seenNotifIds.current.add(n.id)
+      }
+    }
+  }, [notifs, sessionUserId])
 
   return (
     <div className="app-shell">

@@ -195,12 +195,7 @@ get a row here again.
 
 ## Backlog pool (pull into any milestone with slack)
 
-*From the old P2 polish list:*
-| Item | Note | Effort |
-|---|---|---|
-| Browser push notifications | plumbing exists in `realtimeCore.ts`; permission on login, dedupe vs read flag | 1 h |
-
-*(Cleared from this pool: Profile field editing shipped with `homeCity`, `languages`, `travelStyles` toggle, and `isCreator` on the Profile page; route polylines ship on the trip map via `MapRoute` + `routePath`. Both landed across the v0.45.0 work — see CHANGELOG.)*
+*(Cleared from this pool: Profile field editing shipped with `homeCity`, `languages`, `travelStyles` toggle, and `isCreator` on the Profile page; route polylines ship on the trip map via `MapRoute` + `routePath`; browser push notifications ship via the local Notification API — Profile opt-in, per-id dedupe, read-flag respect, background-tab only. All three landed across the v0.45.0–Unreleased work — see CHANGELOG.)*
 
 *From the CTI alignment deferrals ([docs/redesign/ALIGNMENT.md](docs/redesign/ALIGNMENT.md)) — must enter this pool in the same commit they're deferred:*
 | Item | Note |
@@ -224,7 +219,7 @@ get a row here again.
 | Decision comments | needs a `comments` JSON column on decisions (schema migration) |
 | Premium purchase state | entitlements + unlock flow — folds into M7 payments |
 | Full Profile field editing | homeCity/languages/socialLinks UI exists partially |
-| Browser push notifications | plumbing exists in realtimeCore; permission on login |
+| Browser push notifications | ✅ shipped (v0.47.0) — local Notification API; Profile opt-in, dedupe vs read flag, background-tab only |
 | Route polylines on the map | routing.ts returns geometry; map renders markers only |
 | Trash + 30-day purge | soft-delete layer before hard deletes |
 | Explore pagination | grows with the catalog |
