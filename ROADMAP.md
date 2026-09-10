@@ -15,11 +15,11 @@ user confirmation before any push. Feature work reaches `test` **via pull
 request** (never a direct push); `main` merges stay explicitly user-gated
 (AGENTS rule 1).
 
-**Snapshot (2026-09-10):** v0.46.0 on `main` + `test` (`origin/main` = `fbad40d`).
-The M0–M5 version labels below decoupled from reality when v0.26–v0.46 shipped
+**Snapshot (2026-09-10):** v0.47.0 on `test` (`origin/main` = `fbad40d`, still v0.46.0 until `test` is merged).
+The M0–M5 version labels below decoupled from reality when v0.26–v0.47 shipped
 different content (Plan Bench redesign, v0.27 interface pass, the #43–#52 store
 sweep, the Corridor Concierge engine, the masteradmin console) — the ledger
-tracks **content**, not those labels. Current version: **0.46.0** → next up:
+tracks **content**, not those labels. Current version: **0.47.0** → next up:
 **M5 — AI companion** (the only unbuilt open-issue work).
 
 ---
