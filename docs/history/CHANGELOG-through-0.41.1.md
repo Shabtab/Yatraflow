@@ -32,7 +32,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - **The engine learns the crew.** Accepts, "not for us" declines, and crew-proposed group ideas build a trip DNA — favoured kinds, detour tolerance, stop length — that bends future scoring ties, across all your trips on the device. Cards explain the streak ("you've picked 3 waterfall stops", "more like Arjun's waterfall"); themed story arcs bundle matching sights into a one-tap day; and the Timeline's slack prompt surfaces one nearby pick that fits the time you have left.
 - **With a Google key, everything is Google.** POIs and city anchors both come from Google Places (real road detours, reported opening hours, ratings, strict `tourist_attraction` gating so "Community Block" never poses as a sight); a failed or empty scan renders the honest empty state instead of silently falling back to free-stack junk. The Overpass/Wikipedia/Mappls free stack serves keyless mode only.
 
-Full design record: [docs/SUGGESTION_ENGINE_BRAINSTORM.md](docs/SUGGESTION_ENGINE_BRAINSTORM.md); the categorized detail follows.
+Full design record: [docs/SUGGESTION_ENGINE_BRAINSTORM.md](../SUGGESTION_ENGINE_BRAINSTORM.md); the categorized detail follows.
 
 ### Added
 - **Every suggestion says why.** Cards show a reason line built from the leg, detour and nearest city.

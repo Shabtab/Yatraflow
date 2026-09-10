@@ -202,20 +202,20 @@ get a row here again.
 
 ## Backlog pool (pull into any milestone with slack)
 
-*(Cleared from this pool: Profile field editing shipped with `homeCity`, `languages`, `travelStyles` toggle, and `isCreator` on the Profile page; route polylines ship on the trip map via `MapRoute` + `routePath`; browser push notifications ship via the local Notification API — Profile opt-in, per-id dedupe, read-flag respect, background-tab only. All three landed across the v0.45.0–Unreleased work — see CHANGELOG.)*
+*(Cleared from this pool: Profile field editing shipped with `homeCity`, `languages`, `travelStyles` toggle, and `isCreator` on the Profile page; route polylines ship on the trip map via `MapRoute` + `routePath`; browser push notifications ship via the local Notification API — Profile opt-in, per-id dedupe, read-flag respect, background-tab only. All three landed in **v0.47.0** — see CHANGELOG.)*
 
 *From the CTI alignment deferrals ([docs/redesign/ALIGNMENT.md](docs/redesign/ALIGNMENT.md)) — must enter this pool in the same commit they're deferred:*
 | Item | Note |
 |---|---|
-| In-map place search | ✅ shipped (unreleased) — Map-tab free-text search over `searchPlaces`, inline results with + Add |
-| Map popup → Board/Timeline cross-links | ✅ shipped (unreleased) — stop-pin popup with "Open in Timeline"/"Open in Board" |
-| Per-decision route/budget impact panel + grounded assistant | ✅ shipped (unreleased) — decision cards show trip context + deterministic offline recommendation (`decisionGuide.ts`) |
-| Suggestions "why it fits" route-position copy | ✅ shipped (unreleased) — `reasonForSegmentHit` already renders position, distance/time-since-last-stop, detour + detour-budget share on every suggestion card |
+| In-map place search | ✅ shipped in **v0.47.0** — Map-tab free-text search over `searchPlaces`, inline results with + Add |
+| Map popup → Board/Timeline cross-links | ✅ shipped in **v0.47.0** — stop-pin popup with "Open in Timeline"/"Open in Board" |
+| Per-decision route/budget impact panel + grounded assistant | ✅ shipped in **v0.47.0** — decision cards show trip context + deterministic offline recommendation (`decisionGuide.ts`) |
+| Suggestions "why it fits" route-position copy | ✅ shipped in **v0.47.0** — `reasonForSegmentHit` already renders position, distance/time-since-last-stop, detour + detour-budget share on every suggestion card |
 
 *From the #36 bug-hunt triage (Sep 2026 — **all 10 findings closed and fixed**; see CHANGELOG for the per-issue landing):*
 (nothing remaining — #38, #39, #40, #43, #44, #45, #46, #47, #48, #49 all landed; the audit comment on #36 already did the triage and the survivors were spun out as closed issues.)
 
-*Old P4 nice-to-haves:* ~~Explore pagination~~ ✅ shipped (12-per-page + Load more) · ~~undo for more operations~~ ✅ already covered — trip/member/expense/stop deletes all have Undo · ~~feedback button~~ ✅ shipped (`mailto:` with version+route) · ~~trash + 30-day purge~~ ✅ shipped (soft-delete + Trash view + purge RPCs) · ~~debounced store writes~~ ✅ shipped (600ms trailing coalescer + pagehide flush).
+*Old P4 nice-to-haves:* ~~Explore pagination~~ ✅ shipped in **v0.47.0** (12-per-page + Load more) · ~~undo for more operations~~ ✅ already covered — trip/member/expense/stop deletes all have Undo · ~~feedback button~~ ✅ shipped in **v0.47.0** (`mailto:` with version+route) · ~~trash + 30-day purge~~ ✅ shipped in **v0.47.0** (soft-delete + Trash view + purge RPCs) · ~~debounced store writes~~ ✅ shipped in **v0.47.0** (600ms trailing coalescer + pagehide flush).
 
 ---
 
@@ -225,11 +225,11 @@ get a row here again.
 |---|---|
 | Decision comments | needs a `comments` JSON column on decisions (schema migration) |
 | Premium purchase state | entitlements + unlock flow — folds into M7 payments |
-| Full Profile field editing | homeCity/languages/socialLinks UI exists partially |
+| Full Profile field editing | ✅ shipped (v0.47.0) — `homeCity` / `languages` / `travelStyles` / `socialLinks` all editable on Profile |
 | Browser push notifications | ✅ shipped (v0.47.0) — local Notification API; Profile opt-in, dedupe vs read flag, background-tab only |
-| Route polylines on the map | routing.ts returns geometry; map renders markers only |
-| Trash + 30-day purge | ✅ shipped — soft-delete + Trash view + 30-day purge (`20260910_trip_trash{,_rpc}.sql`) |
-| Explore pagination | ✅ shipped (unreleased) — 12-per-page grid + Load more |
+| Route polylines on the map | ✅ shipped (v0.47.0) — `MapRoute` + `routePath` render OSRM geometry on the trip map |
+| Trash + 30-day purge | ✅ shipped (v0.47.0) — soft-delete + Trash view + 30-day purge (`20260910_trip_trash{,_rpc}.sql`) |
+| Explore pagination | ✅ shipped (v0.47.0) — 12-per-page grid + Load more |
 | Waitlist / invites (M9) | creator invites → referral → invite-only gate — full exec plan in [`docs/PLAN-INVITES-ONBOARDING.md`](docs/PLAN-INVITES-ONBOARDING.md) |
 
 ### 🧭 Suggestion-engine ideas (Sep 6 2026 deep brainstorm → [docs/SUGGESTION_ENGINE_BRAINSTORM.md](docs/SUGGESTION_ENGINE_BRAINSTORM.md))

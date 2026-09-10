@@ -34,9 +34,16 @@ Key locations:
 
 ## 1.1 Current project status (as of Sep 10, 2026)
 
-**Version:** v0.47.0 shipped — the cleanup-and-polish release (trip trash + 30-day purge, debounced trip writes, browser push notifications, in-map place search, popup → Timeline/Board cross-links, grounded offline decision guide, feedback link, Explore pagination) plus the M9 invites playbook. Promoted to `main` via the `test` → `main` PR carrying this docs refresh. Working tree tracks `test` and is fully synced (`0/0` vs origin).
+**Version:** v0.48.0 shipped — the consistency-and-shell release (design system collapsed to one green + one kicker recipe + four blur tiers, Android bottom navigation, cooperative map gestures, keyboard resize) on top of v0.47.0's cleanup-and-polish (trip trash + 30-day purge, debounced trip writes, browser push notifications, in-map place search, popup → Timeline/Board cross-links, grounded offline decision guide, feedback link, Explore pagination). `main` and `test` are both at `dfdd2d0` (mirrored — see the branch note below).
 
-**State:** Stabilization complete, UI audit all 32 findings fixed; the Corridor Concierge suggestion-engine brainstorm is FULLY shipped (Horizons 1–3, 16/16 incl. asymmetry, hours scoring, fuel corridors, trip DNA) — see ROADMAP's 🧭 table. v0.47.0's soft-delete backend is applied live (probe-verified: `trips.deleted_at` exists on the production project; the `get_trashed_trips` RPC is present with authenticated-only EXECUTE — the anon call returns `42501 permission denied`, not PGRST202). Branch model stays two-branch: `main` (production, Vercel) and `test` (integration). `npm run verify` gate: tsc clean + **572 tests** (69 files) + production build.
+**State:** Stabilization complete, UI audit all 32 findings fixed; the Corridor Concierge suggestion-engine brainstorm is FULLY shipped (Horizons 1–3, 16/16 incl. asymmetry, hours scoring, fuel corridors, trip DNA) — see ROADMAP's 🧭 table. v0.47.0's soft-delete backend is applied live (probe-verified: `trips.deleted_at` exists on the production project; the `get_trashed_trips` RPC is present with authenticated-only EXECUTE — the anon call returns `42501 permission denied`, not PGRST202). Branch model stays two-branch: `main` (production, Vercel) and `test` (integration). `npm run verify` gate: tsc clean + **616 tests** (71 files) + production build.
+
+> **`test` had drifted 49 commits behind `main`** (found 2026-09-11: `test` was a plain ancestor with zero unique commits, missing the whole Android shell and v0.45–v0.48). Both branches were resynced to `dfdd2d0`. Because the promotion pattern is `feature → test → main`, a fix pushed to a stale `test` lands on a tree that cannot be built. **Check before pushing to `test`:**
+> ```bash
+> git merge-base --is-ancestor origin/test origin/main && echo "test is BEHIND main - resync first"
+> git rev-list --count origin/main..origin/test   # non-zero = test has unique work
+> ```
+
 
 **Recent major releases:**
 - **v0.47.0** — Cleanup-and-polish: trip trash (soft-delete tombstone + restrictive RLS + Trash view with Restore/Delete-forever RPCs, probe-gated on `deleted_at`), debounced trip writes (600 ms coalescing, flush on page hide), browser push notifications (Notification API opt-in, focus/read dedupe), in-map place search, map popup → Timeline/Board cross-links, grounded per-decision offline recommendation (`lib/decisionGuide.ts`), feedback mailto link, Explore pagination; plus `docs/PLAN-INVITES-ONBOARDING.md` (M9 playbook)
@@ -55,13 +62,14 @@ Key locations:
 - **v0.35.0** — Publish editor (preview/price/CTA), fork premium gate, creator mode, sourcemaps
 - **v0.31.0** — M0–M7 Calm Travel Intelligence redesign shipped (user-driven halt planner, 3-layer tokens, OpenFreeMap basemap, touch drag-and-drop)
 
-**Current branch:** `test` (integration) — synced with origin (`0/0`); after the promotion PR merges, `origin/main` + `origin/test` both carry v0.47.0.
+**Current branch:** `test` is the integration branch, but as of 2026-09-11 it is **synced to `main`** (both at `dfdd2d0`, `0/0` vs origin each) — the two-branch model had drifted 49 commits and was resynced. Re-check before each push (see the branch note in the State paragraph above).
 
 **In-flight:**
-- Promotion PR `test` → `main` (v0.47.0 + docs): created and merged this session with the user's explicit go-ahead; nothing else pending
+- Nothing pending — v0.48.0 and the v0.7.0-native APK are both shipped
 - Untracked working-tree noise: `.freebuff/` (tool-generated, not repo) — harmless, do not commit
-- Release tags lag reality: `git tag` stops at v0.44.0 while `package.json` is 0.47.0 — v0.45–v0.47 shipped untagged; backfill on the next release cut if wanted (tags need an explicit remote push)
+- Release tags lag reality: `git tag` stops at `v0.44.0` while `package.json` is `0.48.0` — v0.42.0 and v0.45–v0.48 shipped untagged; backfill on the next release cut if wanted (tags need an explicit remote push)
 - The `shabtab` fork remote is removed (re-add with `git remote add shabtab https://github.com/Shabtab/Yatraflow.git` to check contrib progress)
+- **`docs/history/` now holds archived records** (pre-0.42.0 changelog + the v0.23.0 CTI plan). Do not bulk-rewrite `CHANGELOG.md` (rule 9 below)
 
 **What's next (ROADMAP.md):**
 - **M5 — AI companion** (the only open issues #22 → #20, both CLOSED as audit findings but the fix is unbuilt): user-configurable OpenAI-compatible LLM endpoint (`src/lib/aiProvider.ts`), real answers with the deterministic `lib/ai.ts` router kept as offline fallback + an "(LLM)/(offline)" badge. `#22` (~2h) blocks `#20` (~3h)
