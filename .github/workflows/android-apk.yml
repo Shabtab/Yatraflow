@@ -1,14 +1,7 @@
 name: Android APK
 
 # Builds the debug APK in CI so the app can ship to a phone without any local
-# Android toolchain (the dev machine that owns this branch has no Java/Android
-# SDK). Runs on pushes to the Capacitor branch and on demand from any branch.
-#
-# The APK is signed with a STABLE key (DEBUG_KEYSTORE secret): GitHub runners
-# generate a fresh debug keystore per run, so every artifact had a different
-# signature and Android silently refused to install updates over a previous
-# build ("app not installed" / nothing visibly changing). One fixed key makes
-# every build updatable by the next.
+# Android toolchain. Runs on pushes to the Capacitor branch and on demand.
 on:
   push:
     branches: ['feat/capacitor-android']
@@ -58,10 +51,9 @@ jobs:
       # Materialize the stable signing key where app/build.gradle expects it
       # (app/yatraflow-debug.p12), then build. The secret never touches the repo.
       - name: Write stable debug keystore
-        run: |
-          printf '%s' "${{ secrets.DEBUG_KEYSTORE }}" | base64 --decode > android/app/yatraflow-debug.p12
+        run: printf '%s' "${{ secrets.DEBUG_KEYSTORE }}" | base64 --decode > android/app/yatraflow-debug.p12
 
-      - name: Build debug APK
+      - name: Build signed debug APK
         working-directory: android
         # chmod for checkouts where the executable bit was lost (Windows devs);
         # a no-op when git already carries 755.
@@ -69,15 +61,9 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
 
-      - name: Rename APK with version
-        run: |
-          VERSION=$(sed -n 's/.*versionName "\([^"]*\)".*/\1/p' android/app/build.gradle | head -1)
-          cp android/app/build/outputs/apk/debug/app-debug.apk "YatraFlow-v${VERSION}.apk"
-          echo "version=$VERSION" >> "$GITHUB_ENV"
-
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: YatraFlow-v${{ env.version }}
-          path: YatraFlow-v${{ env.version }}.apk
+          name: YatraFlow-v0.6-native
+          path: android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 14
