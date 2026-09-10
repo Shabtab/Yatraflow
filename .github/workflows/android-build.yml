@@ -49,9 +49,15 @@ jobs:
         run: npx cap sync android
 
       # Materialize the stable signing key where app/build.gradle expects it
-      # (app/yatraflow-debug.p12), then build. The secret never touches the repo.
+      # (app/yatraflow-debug.p12), then build. The keystore secret rides via
+      # step env — interpolating the large base64 blob directly into run:
+      # made GitHub's runner fail the whole workflow at startup (instant
+      # startup_failure, zero jobs created). The short VITE_* values above
+      # are fine inline.
       - name: Write stable debug keystore
-        run: printf '%s' "${{ secrets.DEBUG_KEYSTORE }}" | base64 --decode > android/app/yatraflow-debug.p12
+        env:
+          DEBUG_KEYSTORE: ${{ secrets.DEBUG_KEYSTORE }}
+        run: printf '%s' "$DEBUG_KEYSTORE" | base64 --decode > android/app/yatraflow-debug.p12
 
       - name: Build signed debug APK
         working-directory: android
