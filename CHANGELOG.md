@@ -28,7 +28,9 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 ### Infrastructure
 - `android/` scaffold (Capacitor 8, compileSdk 36, minSdk 24), `capacitor.config.ts` with `SystemBars.insetsHandling: 'css'`, manifest permissions for coarse/fine location (locate-me) and vibrate (haptics). Seven native plugins: app, clipboard, filesystem, geolocation, haptics, share, splash-screen. Keys never enter the repo; the keystore file itself is gitignored.
 
-## [Unreleased]
+## [0.48.0] — 2026-09-11
+
+**A consistency-and-shell release: the design system collapses to one green, one kicker recipe and four blur tiers, and the Android shell gains a real bottom navigation bar — with map gestures that stop fighting the page scroll and a keyboard that resizes the WebView.**
 
 ### Added
 - **Execution playbook for the invites & onboarding milestone (M9).** A new
@@ -71,10 +73,11 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - **Design-system consistency pass: fonts, casing, glass and colour.** One green
   (CTI teal `#0D8D82`) now drives primary buttons, focus rings and form
   accents. Glass blur is unified into four tiers (chrome 18 / panel 14 / chip 8 /
-  scrim 3) with every translucent surface mapped to one. Radii snap to the token
-  set (8/12/18/24). Mobile row actions rise to 40px. Every micro-label shares one
-  recipe (10.5px / 700 / .06em, uppercase via CSS). Type- and spacing-token
-  scales join the existing token ladder.
+  scrim 3) with every translucent surface mapped to one. Card and popover radii
+  touched by the pass snap to the token set (12/18/24), and a handful of one-off
+  card radii remain, staged with the spacing sweep. Mobile row actions rise to
+  40px. Every micro-label shares one recipe (10.5px / 700 / .06em, uppercase via
+  CSS). Type- and spacing-token scales join the existing token ladder.
 - **The shell navigates from the bottom, so the floating pill steps aside.** The
   `.nav-links` pill is hidden under `html.native-shell` — a class gate, not the
   ≤720px width gate, because the shell also ships to tablets and landscape — and
@@ -88,13 +91,17 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ### Fixed
 
-- **Off-scale font weights rendered as faux bold.** The stylesheet declared
-  weights 550/650/750 and Inter 800; the font link loaded none of them, so the
-  browser synthesised those weights across buttons, chips and labels. Inter 800
-  is now loaded and every declared weight rounds to 500/600/700/800.
-- **Literal ALL-CAPS strings** in PublicItinerary, Explore, PlanBench,
-  TripSettingsForm and TimelineTab are retyped in sentence case; the uppercase
-  look is now produced by CSS `text-transform`, not by typed capitals.
+- **Off-scale font weights flattened the hierarchy, and the declarations lied
+  about it.** The stylesheet declared 550 (×3), 650 (×20), 750 (×11) and Inter
+  800; the font link loaded none of them — but CSS font matching resolves an
+  unloaded weight to the nearest real face (550→600, 650→700, 750→700,
+  Inter-800→700), so **nothing rendered as browser-synthesised faux bold**. The
+  real defect was a flattened hierarchy and declarations that lied about it.
+  Inter now loads 400–800 and every declared weight rounds to a loaded face.
+- **Literal ALL-CAPS strings** are retyped in sentence case across the app
+  (public itinerary, Explore, trips list, Plan Bench, trip settings, timeline),
+  and the uppercase look now comes from CSS `text-transform`, which also stops
+  screen readers spelling the words out.
 - Casing and typography nits: "Trip board", "Master admin", "Explore
   itineraries", capitalised helper sentences, typographic apostrophes.
 - **An inline map no longer swallows the page scroll.** A one-finger drag that
@@ -110,6 +117,15 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
   heuristic, which picks pan-or-resize per window; `MainActivity` now pins
   `adjustResize` so the layout reflows deterministically and a focused field is
   never left behind the keyboard.
+- **The Create-trip dock was the last fixed surface reading `env()` directly.**
+  `.trip-dock` — the fixed bar carrying **Print bill** and the primary
+  **Create trip** CTA — was the one fixed/sticky call site still reading
+  `env(safe-area-inset-bottom)` directly, a value Android WebViews report as
+  `0`, so the bar sat under the gesture navigation bar and took its primary CTA
+  with it. It now uses the same `var()` → `env()` → `0px` chain as every other
+  call site.
+
+## [Unreleased]
 
 ## [0.47.0] — 2026-09-10
 
