@@ -12,12 +12,14 @@
 // html-to-image is lazy-imported on first click so the landing main chunk
 // never carries the library.
 //
-// Share chain (shareBillImage): Web Share API with the PNG file when the
-// platform allows it → clipboard image when ClipboardItem supports
-// image/png → plain download as the last resort. Every failure throws so
-// the caller can toast (and suggest "Copy bill as text").
+// Share chain (shareBillImage): in the app shell the Capacitor Share plugin
+// (file written to cache, native sheet) → on the web, Web Share API with the
+// PNG file when the platform allows it → clipboard image when ClipboardItem
+// supports image/png → plain download as the last resort. Every failure
+// throws so the caller can toast (and suggest "Copy bill as text").
 
-const PNG_NAME = 'yatraflow-bill.png'
+import { nativeShareImage } from './native'
+
 const CAPTURE_DARK_CLASS = 'capture-dark'
 const PIXEL_RATIO = 2.5
 
@@ -51,40 +53,8 @@ export type BillShareResult = 'shared' | 'copied' | 'downloaded'
 export async function shareBillImage(receipt: HTMLElement | null): Promise<BillShareResult> {
   if (!receipt) throw new Error('receipt not mounted')
   const blob = await receiptPngBlob(receipt)
-  const file = new File([blob], PNG_NAME, { type: 'image/png' })
-
-  // 1) native share sheet (mobile / platforms that expose it)
-  const nav = navigator as Navigator & { canShare?: (data: ShareData) => boolean }
-  if (typeof nav.share === 'function' && nav.canShare?.({ files: [file] })) {
-    try {
-      await nav.share({ files: [file], title: 'YatraFlow trip estimate' })
-      return 'shared'
-    } catch (err) {
-      // AbortError = user dismissed the sheet — not a failure to report
-      if (err instanceof DOMException && err.name === 'AbortError') throw err
-      // otherwise fall through to clipboard / download
-    }
-  }
-
-  // 2) clipboard image (Chromium/Safari ClipboardItem with png support)
-  try {
-    if (typeof ClipboardItem === 'function' && navigator.clipboard?.write) {
-      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
-      return 'copied'
-    }
-  } catch { /* permission denied / unsupported — fall through to download */ }
-
-  // 3) last resort: download via an object URL
-  const url = URL.createObjectURL(blob)
-  try {
-    const a = document.createElement('a')
-    a.href = url
-    a.download = PNG_NAME
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    return 'downloaded'
-  } finally {
-    URL.revokeObjectURL(url)
-  }
+  const result = await nativeShareImage(blob, 'YatraFlow trip estimate')
+  // A dismissed sheet is the caller's AbortError case, same as before.
+  if (result === 'dismissed') throw new DOMException('share dismissed', 'AbortError')
+  return result
 }

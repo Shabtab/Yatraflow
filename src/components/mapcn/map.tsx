@@ -21,6 +21,7 @@ import { createPortal } from "react-dom";
 import { X, Minus, Plus, Locate, Maximize, Loader2 } from "lucide-react";
 
 import { cn } from "./cn";
+import { nativeLocate } from "../../lib/native";
 
 if (typeof window !== "undefined" && !MapLibreGL.getWorkerUrl()) {
   MapLibreGL.setWorkerUrl(
@@ -916,31 +917,27 @@ function MapControls({
     map?.resetNorthPitch({ duration: 300 });
   }, [map]);
 
-  const handleLocate = useCallback(() => {
-    if (!("geolocation" in navigator)) return;
+  const handleLocate = useCallback(async () => {
+    // nativeLocate routes through the Capacitor Geolocation plugin inside the
+    // app shell (which shows the system permission dialog) and the plain
+    // browser API on the web. Resolves null on any failure/dismissal.
+    const pos = await nativeLocate();
+    if (!pos) {
+      setWaitingForLocation(false);
+      return;
+    }
     setWaitingForLocation(true);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const coords = {
-          longitude: pos.coords.longitude,
-          latitude: pos.coords.latitude,
-        };
-        map?.flyTo({
-          center: [coords.longitude, coords.latitude],
-          zoom: 14,
-          duration: 1500,
-        });
-        onLocate?.(coords);
-        setWaitingForLocation(false);
-      },
-      (error) => {
-        console.error("Error getting location:", error);
-        setWaitingForLocation(false);
-      },
-      // Without a timeout the spec default is Infinity: a dismissed permission
-      // prompt would leave the button disabled forever.
-      { timeout: 10000 },
-    );
+    const coords = {
+      longitude: pos.coords.longitude,
+      latitude: pos.coords.latitude,
+    };
+    map?.flyTo({
+      center: [coords.longitude, coords.latitude],
+      zoom: 14,
+      duration: 1500,
+    });
+    onLocate?.(coords);
+    setWaitingForLocation(false);
   }, [map, onLocate]);
 
   const handleFullscreen = useCallback(() => {

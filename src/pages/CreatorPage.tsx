@@ -6,6 +6,7 @@ import { useMemo } from 'react'
 import { Camera, Compass, Eye, GitFork, Link2, MapPin, Sparkles, TvMinimalPlay } from 'lucide-react'
 import { useDb, useSessionUserId, usePublished, userById } from '../store/store'
 import { forkPublication } from '../lib/forkPub'
+import { openExternal } from '../lib/native'
 import { useSavedPubs } from '../lib/savedPubs'
 import { Avatar, CopyButton, EmptyState } from '../components/ui'
 import { PubCard } from '../components/PubCard'
@@ -57,7 +58,7 @@ export function CreatorPage({ creatorId, onNavigate }: { creatorId: string; onNa
           </div>
           <div className="creator-hero-actions">
             {links.map(({ key, href, label, Icon }) => (
-              <a key={key} className="btn btn-outline btn-sm" href={href} target="_blank" rel="noreferrer noopener" aria-label={label}>
+              <a key={key} className="btn btn-outline btn-sm" href={href} target="_blank" rel="noreferrer noopener" aria-label={label} onClick={e => { e.preventDefault(); openExternal(href) }}>
                 <Icon size={14} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />{key === 'youtube' ? 'YouTube' : 'Instagram'}
               </a>
             ))}

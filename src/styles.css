@@ -248,6 +248,14 @@
     radial-gradient(circle at 88% 28%, var(--yf-atmos-peach), transparent 30%),
     linear-gradient(135deg, var(--yf-mist) 0%, var(--yf-cream) 52%, var(--yf-peach) 100%);
 }
+/* Native shell: the nav pill is 58%-opaque glass, and the peach radial
+   (88% x / 28% y) sits exactly behind the logo area — on a small screen it
+   reads as a yellow smudge bleeding through the nav, not the soft wash it
+   paints on desktop. Flat cream ramp under the app UI; the web keeps the
+   full atmosphere. */
+html.native-shell .atmos {
+  background: linear-gradient(135deg, var(--yf-mist) 0%, var(--yf-cream) 52%, var(--yf-peach) 100%);
+}
 /* Level-2 expressive overlay (doc §3.3): translucent nav, map panels, hero
    support cards. Content that must be read/edited stays on --color-card.
    Dialled up for the glass-first look: deep blur + saturation + a top sheen. */
@@ -257,6 +265,57 @@
   -webkit-backdrop-filter: blur(var(--yf-blur-nav)) saturate(1.2);
   backdrop-filter: blur(var(--yf-blur-nav)) saturate(1.2);
   box-shadow: inset 0 1px 0 var(--yf-glass-sheen);
+}
+
+/* ---------- Mobile / native-shell performance budget ----------
+   The landing page runs layered backdrop-blur glass, two 340–380px blobs
+   blurred at 70–80px, an infinite ticker, a dash-animated SVG road and the
+   odometer — all cheap on a desktop GPU, a jank farm in a phone WebView
+   (observed on the Android app: the homepage lagged badly). Phones report
+   a coarse pointer, so that's the gate; the class targets the packaged app
+   specifically and overrides anything the media query loosens. */
+@media (pointer: coarse) {
+  /* Halve the blur radius: the glass keeps its frosted identity, the
+     compositor keeps its frame time. Every surface that hardcodes an
+     oversized blur (18px tabbar, 14px strips, 12px glass-soft) comes down
+     to the same 8px budget in one sweep — spelled var(--yf-blur-chip) so
+     the reduced budget still routes through the design-system blur tiers. */
+  .topnav,
+  .glass,
+  .tabbar,
+  .glass-soft,
+  .filter-pillbar,
+  .explore-chips .clickable-chip,
+  .tl-total-strip,
+  .board-info, .board-pulse {
+    -webkit-backdrop-filter: blur(var(--yf-blur-chip)) saturate(1.1);
+    backdrop-filter: blur(var(--yf-blur-chip)) saturate(1.1);
+  }
+  /* Frozen atmosphere: drifting 80px-blurred blobs repaint large layers
+     every frame; as static washes they cost one paint. */
+  .hero-blob-a, .hero-blob-b,
+  .bench-blob-a, .bench-blob-b { animation: none; }
+  /* The continuous ticker is a second infinite compositor loop. */
+  .ticker-track { animation: none; }
+}
+/* The native shell is a phone WebView even when a mouse is attached via
+   desktop mode — apply the same budget there, unconditionally.
+   (.native-shell is <html>; the descendant selectors stay simple.) */
+html.native-shell .topnav,
+html.native-shell .glass {
+  -webkit-backdrop-filter: blur(var(--yf-blur-chip)) saturate(1.1);
+  backdrop-filter: blur(var(--yf-blur-chip)) saturate(1.1);
+}
+html.native-shell .hero-blob-a, html.native-shell .hero-blob-b,
+html.native-shell .bench-blob-a, html.native-shell .bench-blob-b { animation: none; }
+html.native-shell .ticker-track { animation: none; }
+/* App-bar solidity: a near-opaque pill reads as an Android top bar; any
+   background tint that survives the reduced blur can't bleed through. */
+html.native-shell .topnav {
+  background: var(--app-bar, rgba(250, 247, 242, 0.92));
+}
+html.native-shell[data-theme='dark'] .topnav {
+  background: var(--app-bar-dark, rgba(12, 20, 32, 0.92));
 }
 
 * { box-sizing: border-box; }
@@ -337,6 +396,14 @@ html {
      (12px top gap + nav height + breathing room). */
   scroll-padding-top: calc(12px + var(--nav-h) + 16px);
 }
+/* Native app feel: pages scroll with a finger, so the WebView's chunky
+   desktop scrollbar (a thick bar hugging the right edge) is pure chrome —
+   Android apps never draw one on the page itself. Web keeps it. The class
+   lives on <html> itself (main.tsx), so selectors start there. */
+html.native-shell, html.native-shell body {
+  scrollbar-width: none;
+}
+html.native-shell ::-webkit-scrollbar { width: 0; height: 0; display: none; }
 body {
   margin: 0;
   background: var(--bg);
@@ -359,7 +426,11 @@ a { color: var(--teal-deep); text-decoration: none; }
 button { font-family: var(--font-body); cursor: pointer; color: inherit; }
 input, select, textarea { font-family: var(--font-body); font-size: 14.5px; color: var(--text); }
 
-.app-shell { min-height: 100vh; display: flex; flex-direction: column; }
+.app-shell { min-height: 100vh; display: flex; flex-direction: column;
+  /* Edge-to-edge (Android 15, iPhone): the gesture bar overlays the last
+     row otherwise. The injected --safe-area-inset-bottom is real on native,
+     env() covers notched browsers, 0px on plain desktop. */
+  padding-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)); }
 .container { width: 100%; max-width: 1180px; margin: 0 auto; padding: 0 20px;
   /* the Board tab widens the canvas to 1680px — glide it (both directions) */
   transition: max-width var(--t-slow) var(--ease-out); }
@@ -369,11 +440,11 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
   /* Float on scroll: sticky pins the pill to the top of the viewport once the
      page scrolls, so the glass pill nav "follows" alongside the trip-total
      strip the way the user asked. It keeps the CTI floating-pill look. */
-  position: sticky; top: 12px; z-index: var(--z-nav-glass);
+  position: sticky; top: calc(12px + var(--safe-area-inset-top, env(safe-area-inset-top, 0px))); z-index: var(--z-nav-glass);
   /* CTI nav language: a floating pill detached from the viewport edges,
      not a full-bleed bar — the page atmosphere shows around it. */
   width: min(1180px, calc(100% - 28px));
-  margin: 12px auto 0;
+  margin: calc(12px + var(--safe-area-inset-top, env(safe-area-inset-top, 0px))) auto 0;
   background: var(--yf-nav-glass);
   -webkit-backdrop-filter: blur(var(--yf-blur-nav)) saturate(1.2);
   backdrop-filter: blur(var(--yf-blur-nav)) saturate(1.2);
@@ -454,6 +525,25 @@ a.btn { text-decoration: none; }
   border: none; background: none; color: var(--text-2); font-size: 17px;
 }
 .icon-btn:hover { background: var(--bg-soft); color: var(--text); }
+
+/* ---------- Android touch-target budget (48dp) ----------
+   Material requires a 48dp minimum hit area; our compact controls (.btn-sm
+   ~33px, .icon-btn 40px, chips ~28px) undercut it. On coarse pointers the
+   VISUALS stay identical — only the hit area grows, via negative-margin
+   pseudo-extensions that draw nothing and block nothing nearby (they sit
+   under siblings, never over them, because they're only 4-8px past the
+   edge and the surrounding layout has real gaps). */
+@media (pointer: coarse) {
+  .btn, .icon-btn, .chip, .clickable-chip, .toast-action, .tab-btn,
+  .map-legend-toggle, .nav-link, .filter-pillbar .clickable-chip {
+    position: relative;
+  }
+  .btn::after, .icon-btn::after, .chip::after, .clickable-chip::after,
+  .toast-action::after, .tab-btn::after, .map-legend-toggle::after,
+  .nav-link::after {
+    content: ''; position: absolute; inset: -6px; border-radius: inherit;
+  }
+}
 
 /* ---------- Cards ---------- */
 .card {
@@ -825,7 +915,7 @@ a.btn { text-decoration: none; }
    in view while scrolling long timelines. */
 .tl-total-strip {
   position: sticky;
-  top: calc(12px + var(--nav-h) + 10px + env(safe-area-inset-top));
+  top: calc(12px + var(--nav-h) + 10px + var(--safe-area-inset-top, env(safe-area-inset-top, 0px)));
   z-index: var(--z-strip);
   display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px;
   background: var(--yf-glass);
@@ -1095,7 +1185,7 @@ a.btn { text-decoration: none; }
      Keep / Remove decision controls on the sheet while it is open. */
   z-index: var(--z-impact);
   background: rgba(0,0,0,0.35);
-  padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+  padding: 10px 12px calc(10px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
   display: flex; justify-content: center;
 }
 .impact-panel {
@@ -1174,7 +1264,7 @@ a.btn { text-decoration: none; }
   .modal { border-radius: var(--radius-lg); }
 }
 .modal-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; gap: 10px; }
-.toast-zone { position: fixed; bottom: calc(18px + env(safe-area-inset-bottom)); left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; z-index: var(--z-toast); pointer-events: none; padding: 0 14px; }
+.toast-zone { position: fixed; bottom: calc(18px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))); left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; z-index: var(--z-toast); pointer-events: none; padding: 0 14px; }
 .toast {
   pointer-events: auto; background: var(--text); color: var(--bg);
   padding: 11px 20px; border-radius: 999px; font-size: 13.5px; font-weight: 600;
@@ -1256,6 +1346,13 @@ a.btn { text-decoration: none; }
 
 /* Steps */
 .steps-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; }
+/* Below-the-fold landing sections skip layout/paint entirely until the
+   scroll approaches (content-visibility). The size estimate keeps the
+   scrollbar honest — measured ~600px per section. Big win on first paint
+   in the phone WebView, invisible on desktop. */
+.cta-band { content-visibility: auto; contain-intrinsic-size: auto 620px; }
+.feature-strip { content-visibility: auto; contain-intrinsic-size: auto 300px; }
+.steps-grid { content-visibility: auto; contain-intrinsic-size: auto 340px; }
 .step-card { position: relative; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 21px 19px 19px; box-shadow: var(--shadow-sm); }
 .step-num {
   display: inline-flex; align-items: center; justify-content: center;
@@ -1357,6 +1454,33 @@ a.btn { text-decoration: none; }
 .map-legend-body { background: var(--yf-surface); border: 1px solid var(--yf-glass-border); -webkit-backdrop-filter: blur(var(--yf-blur-chip)); backdrop-filter: blur(var(--yf-blur-chip)); border-radius: 12px; padding: 8px 12px; font-size: 11.5px; color: var(--text-2); font-weight: 600; max-width: min(440px, 78vw); }
 [data-theme='dark'] .map-legend-toggle { background: var(--yf-glass); color: var(--text); }
 [data-theme='dark'] .map-legend-body { background: rgba(22,35,58,.92); }
+/* "Locate me" chip — the live-location toggle. ON state reads as the blue
+   location-teal pair every maps app uses; the chip itself stays in the
+   legend's glass language. */
+.map-legend-toggle.map-live-on {
+  background: var(--teal-deep, #0E7A72); color: #fff; border-color: transparent;
+}
+[data-theme='dark'] .map-legend-toggle.map-live-on { background: var(--teal, #0D8D82); color: #06251f; }
+/* The live user dot: a solid core inside a soft pulse ring (animations
+   frozen under prefers-reduced-motion and in the coarse-pointer budget via
+   the no-preference gate). Blue = "you", distinct from every trip color. */
+.yf-live-dot { position: relative; width: 22px; height: 22px; display: grid; place-items: center; }
+.yf-live-core {
+  width: 12px; height: 12px; border-radius: 50%;
+  background: #2A6FDB; border: 2.5px solid #fff;
+  box-shadow: 0 1px 4px rgba(10, 30, 60, .45);
+}
+.yf-live-pulse {
+  position: absolute; inset: 0; border-radius: 50%;
+  background: rgba(42, 111, 219, .28);
+  animation: yf-live-ping 1.8s cubic-bezier(.215,.61,.355,1) infinite;
+}
+.yf-live-dot--denied .yf-live-core { background: #C93B3B; }
+@keyframes yf-live-ping {
+  0% { transform: scale(.45); opacity: .9; }
+  80%, 100% { transform: scale(1.25); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) { .yf-live-pulse { animation: none; opacity: .5; } }
 /* Expand mode — the map shell breaks out into a fixed overlay so the canvas
    gets the viewport. Sits BELOW the modal (100), impact sheet (90) and
    notifications (80) so dialogs opened from the expanded map still layer on
@@ -1509,8 +1633,8 @@ a.btn { text-decoration: none; }
 /* ---------- AI panel ---------- */
 .ai-fab {
   position: fixed;
-  right: calc(18px + env(safe-area-inset-right));
-  bottom: calc(18px + env(safe-area-inset-bottom));
+  right: calc(18px + var(--safe-area-inset-right, env(safe-area-inset-right, 0px)));
+  bottom: calc(18px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
   z-index: var(--z-ai-fab);
   width: 56px; height: 56px; border-radius: 50%; border: none;
   background: linear-gradient(135deg, var(--yf-teal-600), var(--yf-navy));
@@ -1525,7 +1649,7 @@ a.btn { text-decoration: none; }
   border-left: 1px solid var(--line); box-shadow: -12px 0 40px rgba(var(--shadow-navy-rgb),.14);
   display: flex; flex-direction: column; animation: drawerIn var(--t-med) var(--ease-out);
   /* Edge-to-edge: keep content clear of the landscape home-indicator edge. */
-  padding-right: env(safe-area-inset-right);
+  padding-right: var(--safe-area-inset-right, env(safe-area-inset-right, 0px));
 }
 .ai-drawer:not(.open) {
   display: none;
@@ -1560,7 +1684,7 @@ a.btn { text-decoration: none; }
   flex: 0 0 auto; white-space: nowrap;
   padding: 7px 14px; font-size: 12.5px; line-height: 1.4;
 }
-.ai-input-row { display: flex; gap: 8px; padding: 12px 14px; border-top: 1px solid var(--line); padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
+.ai-input-row { display: flex; gap: 8px; padding: 12px 14px; border-top: 1px solid var(--line); padding-bottom: calc(12px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))); }
 .typing-dots { display: inline-flex; gap: 4px; padding: 4px 2px; }
 .typing-dots span { width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); animation: blink 1.2s infinite; }
 .typing-dots span:nth-child(2) { animation-delay: .2s; } .typing-dots span:nth-child(3) { animation-delay: .4s; }
@@ -1928,7 +2052,7 @@ a.btn { text-decoration: none; }
   font-size: 18px; line-height: 1; color: var(--text);
 }
 .mobile-menu {
-  position: fixed; top: calc(var(--nav-h) + 22px + env(safe-area-inset-top)); left: 0; right: 0; z-index: var(--z-dock);
+  position: fixed; top: calc(var(--nav-h) + 22px + var(--safe-area-inset-top, env(safe-area-inset-top, 0px))); left: 0; right: 0; z-index: var(--z-dock);
   background: var(--card); border-bottom: 1px solid var(--line);
   box-shadow: var(--shadow); padding: 8px 14px 14px;
   display: flex; flex-direction: column; gap: 2px;
@@ -3230,7 +3354,7 @@ html.vt-active :where(*) {
 /* ---------- Mobile bill dock: the total follows the user while tuning ---------- */
 .bench-dock {
   position: fixed; left: 12px; right: 12px;
-  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(12px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
   z-index: var(--z-nav-glass); /* below --z-notif / --z-drawer / --z-modal / --z-toast / --z-impact */
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   background: var(--surface, #fff); border: 1px solid var(--line, #dce7e1);
@@ -3540,7 +3664,13 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
   .tl-total-strip { position: static; }
   .day-rail-chip { padding: 9px 14px; }
   .day-section { padding: 14px 14px 10px; }
-  .modal { padding: 18px 16px 22px; max-height: 92vh; border-radius: 16px 16px 0 0; }
+  .modal {
+    padding: 18px 16px 22px; max-height: 92vh; border-radius: 16px 16px 0 0;
+    /* Edge-to-edge: bottom sheets must stop short of the gesture bar, and
+       their internal scroll ends above it. */
+    padding-bottom: calc(22px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
+    max-height: calc(92vh - var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
+  }
   /* Long-press drag & drop: the row must not text-select or pop the OS
      callout while the hold timer runs; a pressing row reads as "grabbed". */
   .tl-row { -webkit-user-select: none; -webkit-touch-callout: none; user-select: none; }
@@ -3886,7 +4016,7 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
 .ts-form .tab-btn:disabled { opacity: .55; cursor: not-allowed; }
 .ts-receiptcol {
   position: sticky;
-  top: calc(var(--nav-h) + 18px + env(safe-area-inset-top));
+  top: calc(var(--nav-h) + 18px + var(--safe-area-inset-top, env(safe-area-inset-top, 0px)));
   min-width: 0;
 }
 .ts-receipt-name {
@@ -3914,7 +4044,7 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
 .ts-savebar {
   position: sticky; bottom: 0; z-index: 5;
   display: flex; justify-content: flex-end; align-items: center; gap: 10px;
-  margin-top: 16px; padding: 8px 0 calc(8px + env(safe-area-inset-bottom));
+  margin-top: 16px; padding: 8px 0 calc(8px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
   background: var(--bg); border-top: 1px solid var(--line);
 }
 
@@ -3928,10 +4058,38 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
 .trips-toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 18px; }
 .trips-toolbar .trips-search { flex: 1 1 240px; min-width: 200px; }
 .trips-toolbar .select { width: auto; min-width: 130px; flex: 0 1 auto; }
+
+/* ============ My Trips — phone layout (Android app + mobile web) ============
+   The overview is the app's home screen after login; on a phone the desktop
+   header (title + two wide buttons in one row) cramps into a squeeze, the
+   toolbar wraps mid-row and the 290px cards ride the edges. Reworked as a
+   vertical page-header stack with a full-width primary CTA — the Android
+   pattern — and single-column cards with comfortable gutters. */
 @media (max-width: 720px) {
   .trips-toolbar { align-items: stretch; }
   .trips-toolbar .trips-search { flex-basis: 100%; }
   .trips-toolbar .explore-chips { order: 3; flex-basis: 100%; margin-bottom: 0; }
+  /* selects split one row so their labels stay readable at ~160px each */
+  .trips-toolbar .select { flex: 1 1 45%; min-width: 0; }
+}
+
+/* the page header itself is inline-styled in TripsList.tsx, so target it
+   structurally: container > first .row-between on the trips page */
+.trips-page .row-between:first-child { flex-wrap: wrap; gap: 12px; }
+@media (max-width: 720px) {
+  .trips-page { padding-top: 8px !important; }
+  .trips-page .row-between:first-child > div:first-child { flex: 1 1 100%; }
+  .trips-page .row-between:first-child > div:last-child {
+    display: flex; width: 100%;
+  }
+  /* primary CTA owns the row; demo-trips becomes a quiet secondary */
+  .trips-page .row-between:first-child .btn { flex: 1; }
+  .trips-page .row-between:first-child .btn-outline { flex: 0 0 auto; padding: 10px 13px; }
+  .trips-page .row-between:first-child .btn-outline span { display: none; }
+  /* cards: single column, softer radius, no hover-lift (touch has no hover) */
+  .explore-grid { grid-template-columns: 1fr; gap: 12px; }
+  .itin-card { border-radius: var(--radius-sm); }
+  .itin-card:hover { transform: none; }
 }
 
 /* ============ Trip Starter — CreateTrip "Trip Ticket" (Sep 2026) ============ */
@@ -4281,7 +4439,94 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
   .trip-dock { left: 10px; right: 10px; }
 }
 
+/* ============ Native app home (shell only — pages/NativeHome.tsx) ============
+   One column, large touch rows, no marketing scenery: the installed app's
+   front screen reads as an app, not a website. Scoped under html.native-shell
+   so none of this can leak onto the web. */
+
+.app-home { max-width: 640px; margin: 0 auto; padding: 20px 16px 32px; }
+
+.app-home-hero {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  margin: 6px 0 18px;
+}
+.app-home-hello h1 { font-size: 24px; margin: 0; letter-spacing: -.01em; }
+.app-home-hello p { margin-top: 4px; }
+.app-home-avatar-row { display: flex; align-items: center; gap: 12px; }
+.app-home-bell {
+  position: relative; display: grid; place-items: center;
+  width: 44px; height: 44px; border-radius: 50%;
+  border: 1px solid var(--line); background: var(--card); color: var(--text-2);
+}
+.app-home-bell-count {
+  position: absolute; top: -4px; right: -4px;
+  min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px;
+  background: var(--danger-500); color: #fff;
+  font-size: 11px; font-weight: 800; line-height: 18px; text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Quick actions: the primary CTA is unmistakable; Explore is the quiet second. */
+.app-home-actions { display: grid; grid-template-columns: 2fr 1fr; gap: 10px; margin-bottom: 26px; }
+.app-home-action {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+  min-height: 88px; border-radius: var(--radius); border: 1px solid var(--line);
+  background: var(--card); color: var(--text); font-weight: 700; font-size: 14px;
+  box-shadow: var(--shadow-sm);
+}
+.app-home-action:active { transform: scale(.98); }
+.app-home-action--primary { background: var(--teal-deep, var(--teal)); color: #fff; border-color: transparent; }
+[data-theme='dark'] .app-home-action--primary { background: var(--teal); color: #06251f; }
+
+.app-home-section {
+  font-size: 13px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--text-2); margin: 0 0 10px;
+}
+
+/* Trip rows: 56px-tall list rows with a 44px thumb — Material list grammar. */
+.app-home-trips { display: flex; flex-direction: column; gap: 4px; }
+.app-home-trip {
+  display: flex; align-items: center; gap: 14px; width: 100%;
+  padding: 8px 10px; border-radius: var(--radius-sm);
+  background: none; border: none; text-align: left; color: inherit;
+}
+.app-home-trip:active { background: var(--bg-soft, rgba(0,0,0,.04)); }
+.app-home-trip-thumb {
+  flex: 0 0 44px; height: 44px; border-radius: 12px;
+  display: grid; place-items: center; font-size: 22px;
+  background: var(--teal-soft, #E7F4F1); color: var(--teal-deep, var(--teal));
+}
+.app-home-trip-thumb.is-live { background: var(--teal); color: #fff; }
+.app-home-trip-body { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.app-home-trip-name {
+  font-weight: 700; font-size: 15px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.app-home-trip-meta {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12.5px; color: var(--text-2); font-variant-numeric: tabular-nums;
+}
+/* The live-now marker: a steady teal dot (no pulse — motion budget). */
+.app-home-live-dot {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--teal); display: inline-block;
+  margin-right: 2px;
+}
+
+.app-home-more {
+  width: 100%; margin-top: 8px; padding: 12px;
+  border-radius: var(--radius-sm); border: 1px dashed var(--line);
+  background: none; color: var(--text-2); font-weight: 700; font-size: 14px;
+}
+
+.app-home-empty {
+  display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center;
+  padding: 40px 20px; border-radius: var(--radius); border: 1px dashed var(--line);
+  color: var(--text-2); margin-top: 10px;
+}
+.app-home-empty p { margin: 0; }
+
 /* ============ v0.48 design-system consistency pass ============ */
+/* ---------- Ordering: this design-system layer is deliberately the LAST section in the file. It is the global override layer (one kicker recipe, one set of blur tiers, the <=720px touch-target floor), so it must win the cascade over every earlier block — including the page-scoped .app-home rules above. New sections belong above it. ---------- */
 /* Token scales (type + spacing) - additive, existing values still resolve. */
 :root {
   --text-2xs: 10.5px; --text-xs: 11px; --text-sm: 12.5px; --text-base: 14px;

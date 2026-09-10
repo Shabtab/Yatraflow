@@ -10,6 +10,8 @@ import { hasCoords, mappablePois } from '../lib/providers/hits'
 import { routePath } from '../lib/routing'
 import { getAssumptions, isRoundTrip } from '../lib/engine'
 import { titleCase } from '../lib/labels'
+import { haptic } from '../lib/haptics'
+import { nativeWatch } from '../lib/native'
 import { loadFlag, saveFlag } from '../lib/uiPrefs'
 import type { MapRef } from './mapcn/map'
 import { CatIcon } from './icons'
@@ -34,6 +36,65 @@ const DAY_COLORS = ['#0D8D82', '#F59E2D', '#7C5CFC', '#E2557B', '#2D9CDB', '#6BB
 // The old CARTO Voyager / dark-matter and Esri World Imagery style URLs that
 // used to live here were dead code (never referenced) and carried a licensing
 // exposure, so they are gone as of issue #23 — there is no satellite layer.
+
+/**
+ * Live location: "show me on the map" as a persistent, toggleable layer —
+ * the standard Android maps pattern. While on, the user renders as a
+ * pulsing blue dot and the camera follows the latest fix (until the user
+ * pans away themselves). The watch is driven by the native plugin inside
+ * the app (system permission dialog + fused provider) or the browser watch
+ * on the web. Toggling off stops the watch entirely — no idle GPS burn.
+ */
+function LiveLocationLayer({ active }: { active: boolean }) {
+  const { map, isLoaded } = useMap()
+  const [fix, setFix] = useState<GeolocationPosition | null>(null)
+  const [denied, setDenied] = useState(false)
+  // Camera follow is released the first time the user pans/pinches the map
+  // themselves; our own easeTo (below) flips this true around its call so
+  // the movestart it triggers isn't misread as a user pan.
+  const userPanned = useRef(false)
+  const selfMove = useRef(false)
+
+  useEffect(() => {
+    if (!active) { setFix(null); setDenied(false); return }
+    userPanned.current = false
+    const handle = nativeWatch(pos => {
+      if (!pos) { setDenied(true); return }
+      setDenied(false)
+      setFix(pos)
+    })
+    const onMoveStart = () => { if (!selfMove.current) userPanned.current = true }
+    map?.on('movestart', onMoveStart)
+    return () => {
+      handle.stop()
+      map?.off('movestart', onMoveStart)
+    }
+  }, [active, map])
+
+  useEffect(() => {
+    if (!isLoaded || !map || !fix) return
+    const center: [number, number] = [fix.coords.longitude, fix.coords.latitude]
+    if (!userPanned.current) {
+      selfMove.current = true
+      map.easeTo({ center, zoom: Math.max(map.getZoom(), 14), duration: 600 })
+      // movestart fires synchronously-ish inside easeTo setup; release on
+      // the next frame so subsequent user pans still count.
+      requestAnimationFrame(() => { selfMove.current = false })
+    }
+  }, [isLoaded, map, fix])
+
+  if (!active || !fix) return null
+  return (
+    <MapMarker longitude={fix.coords.longitude} latitude={fix.coords.latitude}>
+      <MarkerContent>
+        <span className={`yf-live-dot${denied ? ' yf-live-dot--denied' : ''}`} aria-label="Your live location" role="img">
+          <span className="yf-live-pulse" />
+          <span className="yf-live-core" />
+        </span>
+      </MarkerContent>
+    </MapMarker>
+  )
+}
 
 /**
  * Direction chevrons along the route — a symbol layer fed by the same line
@@ -164,6 +225,13 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
     if (focusDay !== undefined) setDayFilter(focusDay)
   }, [focusDay])
   const [showReturn, setShowReturn] = useState(true)
+  // Live location ("show me on the map") — off by default so GPS stays cold
+  // until the user asks for it; the toggle chip sits by the map key.
+  const [liveOn, setLiveOn] = useState(false)
+  const toggleLive = () => {
+    haptic(liveOn ? 'toggle' : 'select')
+    setLiveOn(v => !v)
+  }
   // Map key (legend) visibility — hidden by default so it stops covering the
   // bottom-right of the map; the choice persists per browser via uiPrefs.
   const [legendOpen, setLegendOpen] = useState(() => loadFlag('map_legend_open', false))
@@ -531,6 +599,8 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
             zoom={5}
           >
             <MapControls position="top-right" showFullscreen />
+            {/* Live location layer — mounted always, self-gating on `liveOn`. */}
+            <LiveLocationLayer active={liveOn} />
             {/* In All-days view a single connected main line from the trip start
                 through every stop to the end; in single-day view, coloured lines.
                 Both get a contrasting casing underneath (road-map halo) and
@@ -708,6 +778,15 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
         )}
 
         <div className="map-legend">
+          <button
+            className={`map-legend-toggle${liveOn ? ' map-live-on' : ''}`}
+            onClick={toggleLive}
+            aria-pressed={liveOn}
+            title={liveOn ? 'Stop showing my live location' : 'Show my live location on the map'}
+            aria-label={liveOn ? 'Stop showing my live location' : 'Show my live location on the map'}
+          >
+            <LocateFixed size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />{liveOn ? 'Live on' : 'Locate me'}
+          </button>
           <button
             className="map-legend-toggle"
             onClick={toggleLegend}

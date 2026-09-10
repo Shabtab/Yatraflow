@@ -7,6 +7,7 @@ import { MetaIcon } from './icons'
 import type { PublishedItinerary, User } from '../data/types'
 import { formatInr } from '../lib/engine'
 import { cap } from '../lib/labels'
+import { openExternal } from '../lib/native'
 import { Avatar, Chip } from './ui'
 import { CoverThumb } from './CoverThumb'
 
@@ -53,10 +54,10 @@ export function PubCard({ pub, creator, saved, onFork, onToggleSave }: {
           <span className="small muted" style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{creator.profile.creatorBio}</span>
           <span style={{ display: 'inline-flex', gap: 6, flexShrink: 0 }}>
             {creator.profile.socialLinks?.youtube && (
-              <a href={creator.profile.socialLinks.youtube} target="_blank" rel="noreferrer noopener" aria-label={`${creator.profile.name} on YouTube`} className="muted"><TvMinimalPlay size={14} aria-hidden /></a>
+              <a href={creator.profile.socialLinks.youtube} target="_blank" rel="noreferrer noopener" aria-label={`${creator.profile.name} on YouTube`} className="muted" onClick={e => { e.preventDefault(); openExternal(creator.profile.socialLinks!.youtube!) }}><TvMinimalPlay size={14} aria-hidden /></a>
             )}
             {creator.profile.socialLinks?.instagram && (
-              <a href={creator.profile.socialLinks.instagram} target="_blank" rel="noreferrer noopener" aria-label={`${creator.profile.name} on Instagram`} className="muted"><Camera size={14} aria-hidden /></a>
+              <a href={creator.profile.socialLinks.instagram} target="_blank" rel="noreferrer noopener" aria-label={`${creator.profile.name} on Instagram`} className="muted" onClick={e => { e.preventDefault(); openExternal(creator.profile.socialLinks!.instagram!) }}><Camera size={14} aria-hidden /></a>
             )}
           </span>
         </div>

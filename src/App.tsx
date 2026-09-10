@@ -11,12 +11,16 @@ import {
   shouldBrowserNotify,
 } from './lib/browserNotifications'
 import type { Trip } from './data/types'
-import { useDb, currentUser, useUsers, useNotifications, useSessionUserId, logout, markAllNotificationsRead, tripById, joinViaInvite, duplicateTrip, init, useStoreReady, fetchSharedTrip, fetchTripByInviteCode } from './store/store'
+import { useDb, currentUser, useUsers, useNotifications, useSessionUserId, logout, markAllNotificationsRead, tripById, joinViaInvite, duplicateTrip, init, resumeSync, useStoreReady, fetchSharedTrip, fetchTripByInviteCode } from './store/store'
 import { Avatar, BrandMark, ToastZone, useClickOutside, toast } from './components/ui'
 import { PillNav } from './components/PillNav'
 import { decodeTripSnapshot } from './lib/snapshot'
 import { scrollBehavior } from './lib/motion'
+import { App as CapApp } from '@capacitor/app'
+import { isNative } from './lib/native'
+import { hideSplash, registerAndroidBack, setNativeTheme } from './lib/appShell'
 import { LandingPage } from './pages/Landing'
+import { NativeHomePage } from './pages/NativeHome'
 // Route-level code splitting: only the landing page stays in the main chunk (it
 // is the app's front door and reads no store data); every other route —
 // including the workspace and its map/editor subtree — loads on first visit.
@@ -100,7 +104,34 @@ export default function App() {
     // OS preference, not to this in-app switch.
     document.querySelectorAll('meta[name="theme-color"]').forEach(m =>
       m.setAttribute('content', dark ? '#0C1420' : '#FAF7F2'))
+    // In the Android shell the same swap paints the real status bar.
+    setNativeTheme(dark)
   }, [dark])
+
+  // Native shell boot: hide the launch splash once the store has hydrated
+  // (the same ready-gate below flips) or after 2.5s worst case, and own the
+  // Android back button (overlays close first, then hash history, then exit).
+  useEffect(() => { void hideSplash() }, [])
+  // Foreground resume: the OS froze the WebView while backgrounded, so the
+  // realtime socket is dead without an event. One full re-hydrate refetches
+  // notifications/trips and re-subscribes. Web needs nothing like this.
+  useEffect(() => {
+    if (!isNative) return
+    const handle = CapApp.addListener('appStateChange', ({ isActive }) => {
+      if (isActive) { void resumeSync().catch(() => {}) }
+    })
+    return () => { handle.then(h => h.remove()).catch(() => {}) }
+  }, [])
+  useEffect(() => {
+    const off = registerAndroidBack({
+      closeOverlay: () => {
+        const hadAny = mobileNav || notifOpen || menuOpen
+        setMobileNav(false); setNotifOpen(false); setMenuOpen(false)
+        return hadAny
+      },
+    })
+    return off
+  }, [mobileNav, notifOpen, menuOpen])
 
   // Theme radiate via View Transitions — the real UI morphs in both themes.
   // Two hard-won rules make this flawless:
@@ -202,6 +233,12 @@ export default function App() {
   // exactly what the post-gate frame would be, instead of a spinner that
   // swaps to the full page (the landing load shift, Lighthouse CLS 0.997).
   const ready = useStoreReady()
+  // Splash hides on the same ready flip (or 2.5s worst case) so the launch
+  // image never lingers behind the loading block.
+  useEffect(() => {
+    if (!ready) { const t = setTimeout(() => void hideSplash(), 2500); return () => clearTimeout(t) }
+    void hideSplash()
+  }, [ready])
   const bareRoute = parts[0] === undefined || parts[0] === ''
   if (!ready && parts[0] !== 'auth' && parts[0] !== 'share' && !bareRoute) {
     page = <div className="container loading-block"><div className="spinner" />Loading…</div>
@@ -224,7 +261,13 @@ export default function App() {
     switch (parts[0]) {
       case undefined:
       case '':
-        page = <LandingPage onNavigate={navigate} />
+        // In the installed app the marketing landing is the wrong front
+        // door — a signed-in user wants their trips, not a sales pitch.
+        // The shell gets a task-first home; the website keeps the landing
+        // (SEO, first-time visitors, the Plan Bench calculator).
+        page = isNative && me
+          ? <NativeHomePage me={me} onNavigate={navigate} />
+          : <LandingPage onNavigate={navigate} />
         break
       case 'trips':
         page = <Suspense fallback={lazyRouteFallback}><TripsListPage onNavigate={navigate} /></Suspense>

@@ -15,6 +15,7 @@ import {
   TrainFront, UtensilsCrossed, User, Users,
 } from 'lucide-react'
 import { formatInr, MODE_SPEED, MODE_COST_PER_KM } from '../lib/engine'
+import { nativeCopyText } from '../lib/native'
 import { cap } from '../lib/labels'
 import {
   BENCH_MODES, BENCH_DEFAULTS, BENCH_PRESETS, STAY_STYLES,
@@ -135,13 +136,11 @@ function modeIcon(m: BenchMode, size = 15): React.ReactNode {
 
 const CONFETTI_COLORS = ['#2f9e8f', '#F3AA3D', '#e05656', '#7c5cff', '#2f9e8f']
 
-/** Clipboard with a legacy fallback — async Clipboard API first, then the
- *  near-universal execCommand path for restricted/embedded contexts. */
+/** Clipboard with a legacy fallback — native plugin first (in the app shell),
+ *  then the async Clipboard API, then the near-universal execCommand path for
+ *  restricted/embedded contexts. */
 async function copyText(text: string): Promise<boolean> {
-  try {
-    await navigator.clipboard.writeText(text)
-    return true
-  } catch { /* permission denied / unavailable — try the legacy path */ }
+  if (await nativeCopyText(text)) return true
   try {
     const ta = document.createElement('textarea')
     ta.value = text
