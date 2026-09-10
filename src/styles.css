@@ -253,6 +253,14 @@
     radial-gradient(circle at 88% 28%, var(--yf-atmos-peach), transparent 30%),
     linear-gradient(135deg, var(--yf-mist) 0%, var(--yf-cream) 52%, var(--yf-peach) 100%);
 }
+/* Native shell: the nav pill is 58%-opaque glass, and the peach radial
+   (88% x / 28% y) sits exactly behind the logo area — on a small screen it
+   reads as a yellow smudge bleeding through the nav, not the soft wash it
+   paints on desktop. Flat cream ramp under the app UI; the web keeps the
+   full atmosphere. */
+html.native-shell .atmos {
+  background: linear-gradient(135deg, var(--yf-mist) 0%, var(--yf-cream) 52%, var(--yf-peach) 100%);
+}
 /* Level-2 expressive overlay (doc §3.3): translucent nav, map panels, hero
    support cards. Content that must be read/edited stays on --color-card.
    Dialled up for the glass-first look: deep blur + saturation + a top sheen. */
@@ -273,9 +281,17 @@
    specifically and overrides anything the media query loosens. */
 @media (pointer: coarse) {
   /* Halve the blur radius: the glass keeps its frosted identity, the
-     compositor keeps its frame time. */
+     compositor keeps its frame time. Every surface that hardcodes an
+     oversized blur (18px tabbar, 14px strips, 12px glass-soft) comes down
+     to the same 8px budget in one sweep. */
   .topnav,
-  .glass {
+  .glass,
+  .tabbar,
+  .glass-soft,
+  .filter-pillbar,
+  .explore-chips .clickable-chip,
+  .tl-total-strip,
+  .board-info, .board-pulse {
     -webkit-backdrop-filter: blur(8px) saturate(1.1);
     backdrop-filter: blur(8px) saturate(1.1);
   }
@@ -287,15 +303,24 @@
   .ticker-track { animation: none; }
 }
 /* The native shell is a phone WebView even when a mouse is attached via
-   desktop mode — apply the same budget there, unconditionally. */
-.native-shell .topnav,
-.native-shell .glass {
+   desktop mode — apply the same budget there, unconditionally.
+   (.native-shell is <html>; the descendant selectors stay simple.) */
+html.native-shell .topnav,
+html.native-shell .glass {
   -webkit-backdrop-filter: blur(8px) saturate(1.1);
   backdrop-filter: blur(8px) saturate(1.1);
 }
-.native-shell .hero-blob-a, .native-shell .hero-blob-b,
-.native-shell .bench-blob-a, .native-shell .bench-blob-b { animation: none; }
-.native-shell .ticker-track { animation: none; }
+html.native-shell .hero-blob-a, html.native-shell .hero-blob-b,
+html.native-shell .bench-blob-a, html.native-shell .bench-blob-b { animation: none; }
+html.native-shell .ticker-track { animation: none; }
+/* App-bar solidity: a near-opaque pill reads as an Android top bar; any
+   background tint that survives the reduced blur can't bleed through. */
+html.native-shell .topnav {
+  background: var(--app-bar, rgba(250, 247, 242, 0.92));
+}
+html.native-shell[data-theme='dark'] .topnav {
+  background: var(--app-bar-dark, rgba(12, 20, 32, 0.92));
+}
 
 * { box-sizing: border-box; }
 
@@ -375,6 +400,14 @@ html {
      (12px top gap + nav height + breathing room). */
   scroll-padding-top: calc(12px + var(--nav-h) + 16px);
 }
+/* Native app feel: pages scroll with a finger, so the WebView's chunky
+   desktop scrollbar (a thick bar hugging the right edge) is pure chrome —
+   Android apps never draw one on the page itself. Web keeps it. The class
+   lives on <html> itself (main.tsx), so selectors start there. */
+html.native-shell, html.native-shell body {
+  scrollbar-width: none;
+}
+html.native-shell ::-webkit-scrollbar { width: 0; height: 0; display: none; }
 body {
   margin: 0;
   background: var(--bg);
@@ -1298,6 +1331,13 @@ a.btn { text-decoration: none; }
 
 /* Steps */
 .steps-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; }
+/* Below-the-fold landing sections skip layout/paint entirely until the
+   scroll approaches (content-visibility). The size estimate keeps the
+   scrollbar honest — measured ~600px per section. Big win on first paint
+   in the phone WebView, invisible on desktop. */
+.cta-band { content-visibility: auto; contain-intrinsic-size: auto 620px; }
+.feature-strip { content-visibility: auto; contain-intrinsic-size: auto 300px; }
+.steps-grid { content-visibility: auto; contain-intrinsic-size: auto 340px; }
 .step-card { position: relative; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 21px 19px 19px; box-shadow: var(--shadow-sm); }
 .step-num {
   display: inline-flex; align-items: center; justify-content: center;
@@ -3969,8 +4009,36 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
 .trips-toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 18px; }
 .trips-toolbar .trips-search { flex: 1 1 240px; min-width: 200px; }
 .trips-toolbar .select { width: auto; min-width: 130px; flex: 0 1 auto; }
+
+/* ============ My Trips — phone layout (Android app + mobile web) ============
+   The overview is the app's home screen after login; on a phone the desktop
+   header (title + two wide buttons in one row) cramps into a squeeze, the
+   toolbar wraps mid-row and the 290px cards ride the edges. Reworked as a
+   vertical page-header stack with a full-width primary CTA — the Android
+   pattern — and single-column cards with comfortable gutters. */
 @media (max-width: 720px) {
   .trips-toolbar { align-items: stretch; }
   .trips-toolbar .trips-search { flex-basis: 100%; }
   .trips-toolbar .explore-chips { order: 3; flex-basis: 100%; margin-bottom: 0; }
+  /* selects split one row so their labels stay readable at ~160px each */
+  .trips-toolbar .select { flex: 1 1 45%; min-width: 0; }
+}
+
+/* the page header itself is inline-styled in TripsList.tsx, so target it
+   structurally: container > first .row-between on the trips page */
+.trips-page .row-between:first-child { flex-wrap: wrap; gap: 12px; }
+@media (max-width: 720px) {
+  .trips-page { padding-top: 8px !important; }
+  .trips-page .row-between:first-child > div:first-child { flex: 1 1 100%; }
+  .trips-page .row-between:first-child > div:last-child {
+    display: flex; width: 100%;
+  }
+  /* primary CTA owns the row; demo-trips becomes a quiet secondary */
+  .trips-page .row-between:first-child .btn { flex: 1; }
+  .trips-page .row-between:first-child .btn-outline { flex: 0 0 auto; padding: 10px 13px; }
+  .trips-page .row-between:first-child .btn-outline span { display: none; }
+  /* cards: single column, softer radius, no hover-lift (touch has no hover) */
+  .explore-grid { grid-template-columns: 1fr; gap: 12px; }
+  .itin-card { border-radius: var(--radius-sm); }
+  .itin-card:hover { transform: none; }
 }

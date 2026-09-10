@@ -20,6 +20,7 @@ import { MODE_SPEED } from '../../lib/engine'
 import type { LegEstimate, ScheduleWarning, Journey } from '../../lib/engine'
 import type { ImpactResult } from '../../lib/impact'
 import { loadDayCollapsed, saveDayCollapsed } from '../../lib/uiPrefs'
+import { openExternal } from '../../lib/native'
 import { useTimeFormat, formatHM, formatHMRange } from '../../lib/timefmt'
 import { scrollBehavior } from '../../lib/motion'
 import { stopKindOf, STOP_KIND_LABELS } from '../../lib/stopKind'
@@ -699,7 +700,7 @@ const DaySection = React.memo(function DaySection({ day, trip, editable, onAdd, 
                 </div>
                 {s.description && <ClampedText className="stop-desc">{s.description}</ClampedText>}
                 {s.notes && <ClampedText className="stop-desc muted"><PenLine size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />{s.notes}</ClampedText>}
-                {s.sourceUrl && <a href={s.sourceUrl} target="_blank" rel="noreferrer" className="small">Source <ExternalLink size={11} aria-hidden style={{ verticalAlign: '-2px', marginLeft: 2 }} /></a>}
+                {s.sourceUrl && <a href={s.sourceUrl} target="_blank" rel="noreferrer" className="small" onClick={e => { e.preventDefault(); openExternal(s.sourceUrl!) }}>Source <ExternalLink size={11} aria-hidden style={{ verticalAlign: '-2px', marginLeft: 2 }} /></a>}
               </div>
               {editable && (
                 <div className="stop-actions">

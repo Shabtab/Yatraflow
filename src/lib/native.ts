@@ -122,6 +122,18 @@ export async function nativeShareImage(
 }
 
 /**
+ * Open a URL outside the app. Inside the Android shell an anchor with
+ * target="_blank" goes nowhere (WebViews create no new window and no
+ * navigation happens), but window.open() routes through the WebViewClient,
+ * whose shouldOverrideUrlLoading fires an ACTION_VIEW intent for any
+ * off-origin URL — Google Maps opens in the real app/browser. On the web
+ * this is a normal window.open, same tab behavior preserved.
+ */
+export function openExternal(url: string): void {
+  window.open(url, '_blank', 'noopener,noreferrer')
+}
+
+/**
  * One-shot device location. On device the plugin triggers the system
  * permission dialog (which the WebView's plain getCurrentPosition never
  * does inside Capacitor) and reads the fused provider. Web keeps the

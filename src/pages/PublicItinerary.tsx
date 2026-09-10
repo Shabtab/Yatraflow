@@ -8,6 +8,7 @@ import {
   Route, Sparkles, Ticket, TriangleAlert,
 } from 'lucide-react'
 import { MetaIcon } from '../components/icons'
+import { openExternal } from '../lib/native'
 import type { Trip, PublishedItinerary } from '../data/types'
 import { useDb, currentUser, tripById, userById, registerPubView, fetchSharedTrip } from '../store/store'
 import { forkPublication } from '../lib/forkPub'
@@ -246,8 +247,8 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
               </div>
               {creator?.profile.socialLinks && (
                 <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-                  {creator.profile.socialLinks.youtube && <a className="chip chip-info" href={creator.profile.socialLinks.youtube} target="_blank" rel="noreferrer">▶ YouTube</a>}
-                  {creator.profile.socialLinks.instagram && <a className="chip chip-info" href={creator.profile.socialLinks.instagram} target="_blank" rel="noreferrer"><Camera size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />Instagram</a>}
+                  {creator.profile.socialLinks.youtube && <a className="chip chip-info" href={creator.profile.socialLinks.youtube} target="_blank" rel="noreferrer" onClick={e => { e.preventDefault(); openExternal(creator.profile.socialLinks!.youtube!) }}>▶ YouTube</a>}
+                  {creator.profile.socialLinks.instagram && <a className="chip chip-info" href={creator.profile.socialLinks.instagram} target="_blank" rel="noreferrer" onClick={e => { e.preventDefault(); openExternal(creator.profile.socialLinks!.instagram!) }}><Camera size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />Instagram</a>}
                 </div>
               )}
               {creator && (

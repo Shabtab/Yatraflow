@@ -10,6 +10,7 @@ import { getAssumptions, buildJourney, minutesToHM, computeCategoryBias, MODE_SP
 import { useTimeFormat, formatHMRange } from '../../lib/timefmt'
 import { Modal, Field, toast } from '../../components/ui'
 import { useSuggestionCache, isMapCacheFresh } from '../../hooks/useSuggestionCache'
+import { openExternal } from '../../lib/native'
 import { corridorAnchors, detourKm, detourMinutes, asymmetricDetourMinutes, googleEnabled, planJourneyHalts, reasonForSegmentHit, type NearbyOpts, routeHash } from '../../lib/geocode'
 import { dayDetourBudgetMin, budgetSharePct, splitByDetourBudget } from '../../lib/detourBudget'
 import { quotaUsed, SOFT_CAPS } from '../../lib/providers/quota'
@@ -556,7 +557,14 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
                     }}
                   >Not for us</button>
                   {' '}
-                  <a href={googleMapsUrl(hit)} target="_blank" rel="noopener noreferrer" className="btn btn-ghost btn-sm" title="Open in Google Maps">
+                  <a
+                    href={googleMapsUrl(hit)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn btn-ghost btn-sm"
+                    title="Open in Google Maps"
+                    onClick={e => { e.preventDefault(); openExternal(googleMapsUrl(hit)) }}
+                  >
                     <ExternalLink size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />Maps
                   </a>
                 </>
