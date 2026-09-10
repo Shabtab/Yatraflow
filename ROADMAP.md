@@ -173,6 +173,13 @@ gateway account. Deliberately after M6's test-suite groundwork.
 Offline-first (IndexedDB + service worker/PWA, ~4–6h), i18n (EN + HI, ~6–8h),
 then the 1.0 release.
 
+### M9 — Invites & onboarding (exec plan: docs/PLAN-INVITES-ONBOARDING.md)
+Creator invites (admins mint YF-… member/creator codes with audit + gate) →
+referral (R2) → invite-only gate (R3, flagged). R1 ships creator invites and a
+clean-slate creator onboarding (no demo seed + badge granted). Three releases on
+one `platform_invites` entity — detailed execution guide in
+[`docs/PLAN-INVITES-ONBOARDING.md`](docs/PLAN-INVITES-ONBOARDING.md).
+
 ---
 
 ## 🟣 UI-audit remediation — COMPLETE (32/32)
@@ -223,6 +230,7 @@ get a row here again.
 | Route polylines on the map | routing.ts returns geometry; map renders markers only |
 | Trash + 30-day purge | ✅ shipped — soft-delete + Trash view + 30-day purge (`20260910_trip_trash{,_rpc}.sql`) |
 | Explore pagination | ✅ shipped (unreleased) — 12-per-page grid + Load more |
+| Waitlist / invites (M9) | creator invites → referral → invite-only gate — full exec plan in [`docs/PLAN-INVITES-ONBOARDING.md`](docs/PLAN-INVITES-ONBOARDING.md) |
 
 ### 🧭 Suggestion-engine ideas (Sep 6 2026 deep brainstorm → [docs/SUGGESTION_ENGINE_BRAINSTORM.md](docs/SUGGESTION_ENGINE_BRAINSTORM.md))
 

@@ -2,6 +2,19 @@
 
 All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions are pre-1.0 MVP milestones.
 
+## [Unreleased]
+
+### Added
+- **Execution playbook for the invites & onboarding milestone (M9).** A new
+  `docs/PLAN-INVITES-ONBOARDING.md` guide turns the approved plan into an
+  executor-ready playbook: one unified `platform_invites` entity shipped as R1
+  creator invites → R2 referral → R3 invite-only gate, with phase-by-phase
+  implementation steps (migration + RLS + RPCs, `src/lib/accessCode.ts`, the
+  `#/access/<code>` gate, the masteradmin Invites-tab rebuild, creator
+  onboarding flush, tests) and per-phase acceptance criteria. ROADMAP picks up
+  an M9 strategic-track section plus an idea-pool pointer; docs/README indexes
+  the new plan.
+
 ## [0.47.0] — 2026-09-10
 
 **A cleanup-and-polish release: deletes become reversible, the app writes faster, and the whole backlog of small wins lands at once.**
