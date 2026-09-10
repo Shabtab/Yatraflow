@@ -200,15 +200,15 @@ get a row here again.
 *From the CTI alignment deferrals ([docs/redesign/ALIGNMENT.md](docs/redesign/ALIGNMENT.md)) — must enter this pool in the same commit they're deferred:*
 | Item | Note |
 |---|---|
-| In-map place search | design doc §6.5 remainder |
-| Map popup → Board/Timeline cross-links | §6.5 remainder |
-| Per-decision route/budget impact panel + grounded assistant | §6.8 — needs engine data |
+| In-map place search | ✅ shipped (unreleased) — Map-tab free-text search over `searchPlaces`, inline results with + Add |
+| Map popup → Board/Timeline cross-links | ✅ shipped (unreleased) — stop-pin popup with "Open in Timeline"/"Open in Board" |
+| Per-decision route/budget impact panel + grounded assistant | ✅ shipped (unreleased) — decision cards show trip context + deterministic offline recommendation (`decisionGuide.ts`) |
 | Suggestions "why it fits" route-position copy | ✅ shipped (unreleased) — `reasonForSegmentHit` already renders position, distance/time-since-last-stop, detour + detour-budget share on every suggestion card |
 
 *From the #36 bug-hunt triage (Sep 2026 — **all 10 findings closed and fixed**; see CHANGELOG for the per-issue landing):*
 (nothing remaining — #38, #39, #40, #43, #44, #45, #46, #47, #48, #49 all landed; the audit comment on #36 already did the triage and the survivors were spun out as closed issues.)
 
-*Old P4 nice-to-haves:* ~~Explore pagination~~ ✅ shipped (12-per-page + Load more) · ~~undo for more operations~~ ✅ already covered — trip/member/expense/stop deletes all have Undo · ~~feedback button~~ ✅ shipped (`mailto:` with version+route) · trash + 30-day purge (1.5h) · ~~debounced store writes~~ ✅ shipped (600ms trailing coalescer + pagehide flush). **Remaining here: trash + 30-day purge.**
+*Old P4 nice-to-haves:* ~~Explore pagination~~ ✅ shipped (12-per-page + Load more) · ~~undo for more operations~~ ✅ already covered — trip/member/expense/stop deletes all have Undo · ~~feedback button~~ ✅ shipped (`mailto:` with version+route) · trash + 30-day purge (**DDL written** — `20260910_trip_trash.sql`; client soft-delete wiring pending its live application) · ~~debounced store writes~~ ✅ shipped (600ms trailing coalescer + pagehide flush).
 
 ---
 
