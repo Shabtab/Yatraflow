@@ -20,3 +20,6 @@ docs/diagrams/*.html
 # local build/verify output dumps
 tsc_out.txt
 vitest_out.txt
+
+# local APK downloads from CI artifacts
+*.apk
