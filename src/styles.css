@@ -4441,3 +4441,89 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
   .mode-grid { grid-template-columns: 1fr 1fr; }
   .trip-dock { left: 10px; right: 10px; }
 }
+
+/* ============ Native app home (shell only — pages/NativeHome.tsx) ============
+   One column, large touch rows, no marketing scenery: the installed app's
+   front screen reads as an app, not a website. Scoped under html.native-shell
+   so none of this can leak onto the web. */
+
+.app-home { max-width: 640px; margin: 0 auto; padding: 20px 16px 32px; }
+
+.app-home-hero {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  margin: 6px 0 18px;
+}
+.app-home-hello h1 { font-size: 24px; margin: 0; letter-spacing: -.01em; }
+.app-home-hello p { margin-top: 4px; }
+.app-home-avatar-row { display: flex; align-items: center; gap: 12px; }
+.app-home-bell {
+  position: relative; display: grid; place-items: center;
+  width: 44px; height: 44px; border-radius: 50%;
+  border: 1px solid var(--line); background: var(--card); color: var(--text-2);
+}
+.app-home-bell-count {
+  position: absolute; top: -4px; right: -4px;
+  min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px;
+  background: var(--danger-500); color: #fff;
+  font-size: 11px; font-weight: 800; line-height: 18px; text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Quick actions: the primary CTA is unmistakable; Explore is the quiet second. */
+.app-home-actions { display: grid; grid-template-columns: 2fr 1fr; gap: 10px; margin-bottom: 26px; }
+.app-home-action {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+  min-height: 88px; border-radius: var(--radius); border: 1px solid var(--line);
+  background: var(--card); color: var(--text); font-weight: 700; font-size: 14px;
+  box-shadow: var(--shadow-sm);
+}
+.app-home-action:active { transform: scale(.98); }
+.app-home-action--primary { background: var(--teal-deep, var(--teal)); color: #fff; border-color: transparent; }
+[data-theme='dark'] .app-home-action--primary { background: var(--teal); color: #06251f; }
+
+.app-home-section {
+  font-size: 13px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--text-2); margin: 0 0 10px;
+}
+
+/* Trip rows: 56px-tall list rows with a 44px thumb — Material list grammar. */
+.app-home-trips { display: flex; flex-direction: column; gap: 4px; }
+.app-home-trip {
+  display: flex; align-items: center; gap: 14px; width: 100%;
+  padding: 8px 10px; border-radius: var(--radius-sm);
+  background: none; border: none; text-align: left; color: inherit;
+}
+.app-home-trip:active { background: var(--bg-soft, rgba(0,0,0,.04)); }
+.app-home-trip-thumb {
+  flex: 0 0 44px; height: 44px; border-radius: 12px;
+  display: grid; place-items: center; font-size: 22px;
+  background: var(--teal-soft, #E7F4F1); color: var(--teal-deep, var(--teal));
+}
+.app-home-trip-thumb.is-live { background: var(--teal); color: #fff; }
+.app-home-trip-body { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.app-home-trip-name {
+  font-weight: 700; font-size: 15px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.app-home-trip-meta {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12.5px; color: var(--text-2); font-variant-numeric: tabular-nums;
+}
+/* The live-now marker: a steady teal dot (no pulse — motion budget). */
+.app-home-live-dot {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--teal); display: inline-block;
+  margin-right: 2px;
+}
+
+.app-home-more {
+  width: 100%; margin-top: 8px; padding: 12px;
+  border-radius: var(--radius-sm); border: 1px dashed var(--line);
+  background: none; color: var(--text-2); font-weight: 700; font-size: 14px;
+}
+
+.app-home-empty {
+  display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center;
+  padding: 40px 20px; border-radius: var(--radius); border: 1px dashed var(--line);
+  color: var(--text-2); margin-top: 10px;
+}
+.app-home-empty p { margin: 0; }

@@ -20,6 +20,7 @@ import { App as CapApp } from '@capacitor/app'
 import { isNative } from './lib/native'
 import { hideSplash, registerAndroidBack, setNativeTheme } from './lib/appShell'
 import { LandingPage } from './pages/Landing'
+import { NativeHomePage } from './pages/NativeHome'
 // Route-level code splitting: only the landing page stays in the main chunk (it
 // is the app's front door and reads no store data); every other route —
 // including the workspace and its map/editor subtree — loads on first visit.
@@ -260,7 +261,13 @@ export default function App() {
     switch (parts[0]) {
       case undefined:
       case '':
-        page = <LandingPage onNavigate={navigate} />
+        // In the installed app the marketing landing is the wrong front
+        // door — a signed-in user wants their trips, not a sales pitch.
+        // The shell gets a task-first home; the website keeps the landing
+        // (SEO, first-time visitors, the Plan Bench calculator).
+        page = isNative && me
+          ? <NativeHomePage me={me} onNavigate={navigate} />
+          : <LandingPage onNavigate={navigate} />
         break
       case 'trips':
         page = <Suspense fallback={lazyRouteFallback}><TripsListPage onNavigate={navigate} /></Suspense>

@@ -1,10 +1,14 @@
 name: Android APK
 
-# Builds the debug APK in CI so the app can ship to a phone without any local
-# Android toolchain. Runs on pushes to the Capacitor branch and on demand.
+# Builds the signed APK in CI so the app can ship to a phone without any local
+# Android toolchain. The Capacitor work now lives on main (the native layer is
+# fully platform-gated, so the web app is untouched by it): every push to main
+# rebuilds the APK, and cutting a release tag (v*) publishes a versioned
+# artifact — the APK release cadence is decoupled from web deploys.
 on:
   push:
-    branches: ['feat/capacitor-android']
+    branches: ['main', 'feat/capacitor-android']
+    tags: ['v*']
   workflow_dispatch:
 
 permissions:
@@ -75,10 +79,22 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
 
+      - name: Version the artifact
+        # Tag builds name themselves (YatraFlow-v0.7.0); branch builds fall
+        # back to the gradle versionName plus the short SHA so consecutive
+        # main pushes are still distinguishable.
+        run: |
+          if [ -n "${GITHUB_REF_NAME#v}" ] && [[ "$GITHUB_REF_NAME" == v* ]]; then
+            echo "apkname=YatraFlow-${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
+          else
+            V=$(sed -n 's/.*versionName "\([^"]*\)".*/\1/p' android/app/build.gradle | head -1)
+            echo "apkname=YatraFlow-v${V}+${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+          fi
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: YatraFlow-v0.6-native
+          name: ${{ env.apkname }}
           path: android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 14
 
