@@ -10,7 +10,7 @@ import { getAssumptions, buildJourney, minutesToHM, computeCategoryBias, MODE_SP
 import { useTimeFormat, formatHMRange } from '../../lib/timefmt'
 import { Modal, Field, toast } from '../../components/ui'
 import { useSuggestionCache, isMapCacheFresh } from '../../hooks/useSuggestionCache'
-import { corridorAnchors, detourKm, detourMinutes, asymmetricDetourMinutes, googleEnabled, planJourneyHalts, reasonForSegmentHit, type NearbyOpts, routeHash } from '../../lib/geocode'
+import { corridorAnchors, detourKm, detourMinutes, asymmetricDetourMinutes, googleEnabled, planJourneyHalts, reasonForSegmentHit, searchPlaces, type NearbyOpts, routeHash } from '../../lib/geocode'
 import { dayDetourBudgetMin, budgetSharePct, splitByDetourBudget } from '../../lib/detourBudget'
 import { quotaUsed, SOFT_CAPS } from '../../lib/providers/quota'
 import { buildDnaVectorAcrossTrips, loadDnaLog, recordDnaEvent, dnaNoteForHit, crewSeedsFromSuggestions, crewSeedsToPlannedStops, crewSeedEvents, crewNoteForHit } from '../../lib/tripDna'
@@ -89,12 +89,14 @@ const SCOPE_STORAGE_KEY = 'yf_nearby_scope_km'
 /** Sensible visit durations per suggestion category (tourist pacing). */
 const poiVisitMinutes = visitMinutesForCategory
 
-export function MapTab({ trip, editable, applyChange, suggestionCache, crewSuggestions }: {
+export function MapTab({ trip, editable, applyChange, suggestionCache, crewSuggestions, onOpenTimeline, onOpenBoard }: {
   trip: Trip
   editable: boolean
   applyChange: (mutator: (d: Trip) => void, kind: ImpactResult['kind'], dayIndex: number) => void
   suggestionCache: ReturnType<typeof useSuggestionCache>
   crewSuggestions?: { status: string; title: string; category?: string; lat: number; lng: number }[]
+  onOpenTimeline?: (stopId: string) => void
+  onOpenBoard?: () => void
 }) {
   const [pois, setPois] = useState<SegmentHit[]>([])
   const timeFormat = useTimeFormat()
@@ -126,6 +128,11 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
   // side panels or the map. Panel hover/click sets it (map flies to the pin);
   // map hover/click sets it (panel row highlights and scrolls into view).
   const [activeHitId, setActiveHitId] = useState<string | number | null>(null)
+  // In-map place search (§6.5): a free-text query over the provider facade,
+  // plus the results to add straight from the Map tab.
+  const [searchQ, setSearchQ] = useState('')
+  const [searchResults, setSearchResults] = useState<PlaceHit[]>([])
+  const [searching, setSearching] = useState(false)
   const listRef = useRef<HTMLDivElement | null>(null)
 
   const existingNames = useMemo(() => {
@@ -350,6 +357,21 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
   function openAddModal(hit: PlaceHit) {
     setPickDay(dayForKm(hit.cumKm))
     setPoiDraft({ hit })
+  }
+
+  async function onSearch(e: React.FormEvent) {
+    e.preventDefault()
+    if (searchQ.trim().length < 2) return
+    setSearching(true)
+    try {
+      const hits = await searchPlaces(searchQ)
+      setSearchResults(hits)
+      if (hits.length === 0) toast('No places found for that search.')
+    } catch {
+      toast('Search failed — try again.', 'err')
+    } finally {
+      setSearching(false)
+    }
   }
 
   const dayOptions = trip.days.map(d => ({ index: d.index }))
@@ -586,6 +608,26 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
         <p className="hint-text" style={{ margin: '4px 0 6px' }}>
           Live data from {googleEnabled() ? 'Google Places' : 'OpenStreetMap, Wikipedia & Mappls'}: lunch ~ every 300 km, stretch & fuel breaks in between, and for long trips an overnight stop in a key city at the end of each day’s drive. Never around your starting point.
         </p>
+        <form className="row-between" style={{ gap: 8, marginBottom: 8 }} onSubmit={onSearch}>
+          <input className="input" value={searchQ} onChange={e => setSearchQ(e.target.value)}
+            placeholder="Search anything to add — a trek, a homestay, a petrol pump…"
+            aria-label="Search places to add to the trip" style={{ flex: 1 }} />
+          <button className="btn btn-outline btn-sm" type="submit" disabled={searching} style={{ flex: '0 0 auto' }}>
+            {searching ? 'Searching…' : 'Search'}
+          </button>
+        </form>
+        {searchResults.length > 0 && (
+          <div className="map-search-results" style={{ marginBottom: 10 }}>
+            {searchResults.slice(0, 5).map(h => (
+              <div key={h.id as string} className="row-between" style={{ padding: '5px 2px', borderBottom: '1px solid var(--line)' }}>
+                <span className="small" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {h.name}{h.nearestCity ? ` · ${h.nearestCity}` : ''}{h.description ? ` — ${h.description}` : ''}
+                </span>
+                {editable && <button className="btn btn-primary btn-sm" type="button" style={{ flex: '0 0 auto', marginLeft: 8 }} onClick={() => openAddModal(h)}>+ Add</button>}
+              </div>
+            ))}
+          </div>
+        )}
         <div className="row-between" style={{ gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
           <label className="small" style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 230 }}>
             <span className="muted" style={{ whiteSpace: 'nowrap' }}>Detour scope</span>
@@ -629,6 +671,8 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
               onAddNearby={editable ? (hit) => openAddModal(hit) : undefined}
               activeHitId={activeHitId}
               onActivateHit={setActiveHitId}
+              onOpenInTimeline={onOpenTimeline}
+              onOpenInBoard={onOpenBoard ? () => onOpenBoard() : undefined}
             />
           </div>
           <div className="poi-col poi-col--see">

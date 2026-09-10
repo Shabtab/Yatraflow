@@ -130,8 +130,9 @@ export function LandingPage({ onNavigate }: { onNavigate: (r: string) => void })
         </div>
       </section>
 
-      <footer className="footer" style={{ justifyContent: 'center' }}>
-        YatraFlow · Plan real trips, together.
+      <footer className="footer" style={{ justifyContent: 'center', gap: 12 }}>
+        <span>YatraFlow · Plan real trips, together.</span>
+        <a className="footer-link" href={`mailto:support@yatraflow.app?subject=${encodeURIComponent(`YatraFlow feedback (v${__APP_VERSION__})`)}&body=${encodeURIComponent(`Page: /\nApp version: ${__APP_VERSION__}\n\nWhat worked, what broke, what you wish existed:\n\n`)}`}>Send feedback</a>
       </footer>
       </div>
     </div>

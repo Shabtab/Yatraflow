@@ -1,8 +1,8 @@
 // ============ My trips ============
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Clock, Compass, Plus, Rocket, Trash2, Wallet } from 'lucide-react'
 import { MetaIcon } from '../components/icons'
-import { useTrips, useUsers, useSessionUserId, tripsForUser, deleteTrip, restoreTrip, addDemoTrips } from '../store/store'
+import { useTrips, useTrashedTrips, useUsers, useSessionUserId, tripsForUser, trashTrip, restoreTrashedTrip, restoreTrashedTripById, permanentlyDeleteTrip, fetchTrashedTrips, addDemoTrips } from '../store/store'
 import { computeTotals, formatInrShort } from '../lib/engine'
 import { cap } from '../lib/labels'
 import { Avatar, Chip, EmptyState, toast, undoToast, ConfirmDialog } from '../components/ui'
@@ -31,6 +31,14 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
   const users = useUsers()
   const meId = useSessionUserId()
   const [pendingDelete, setPendingDelete] = useState<Trip | null>(null)
+  const [view, setView] = useState<'trips' | 'trash'>('trips')
+  const trashed = useTrashedTrips()
+
+  // The Trash view is populated on demand from the owner-scoped RPC (the
+  // restrictive RLS policy hides trashed trips from normal hydration).
+  useEffect(() => {
+    if (view === 'trash') void fetchTrashedTrips()
+  }, [view])
 
   // ---- Search / filter / sort (local view state — no URL sync needed on a
   // private page, unlike Explore's shareable links) ----
@@ -78,10 +86,9 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
   function confirmDelete() {
     if (!pendingDelete) return
     const doomed = pendingDelete
-    const idx = allTrips.findIndex(t => t.id === doomed.id)
-    deleteTrip(doomed.id)
-    undoToast(`Deleted “${doomed.name}”`, () => {
-      restoreTrip(doomed, idx)
+    trashTrip(doomed)
+    undoToast(`Moved “${doomed.name}” to trash`, () => {
+      restoreTrashedTrip(doomed)
       toast(`Restored “${doomed.name}”`)
     })
   }
@@ -93,13 +100,41 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
           <h1>My trips</h1>
           <p className="muted small">Everything you’re planning or collaborating on.</p>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <button className={`btn btn-outline${view === 'trash' ? ' on-teal' : ''}`} aria-pressed={view === 'trash'} onClick={() => setView(v => v === 'trash' ? 'trips' : 'trash')}><Trash2 size={15} aria-hidden style={{ verticalAlign: '-2px', marginRight: 5 }} />Trash</button>
           <button className="btn btn-outline" onClick={addDemoTrips} title="Adds 3 sample trips — Kerala, Goa & Rajasthan — to your account"><Rocket size={15} aria-hidden style={{ verticalAlign: '-2px', marginRight: 5 }} />Load demo trips</button>
           <button className="btn btn-primary" onClick={() => onNavigate('/new')}><Plus size={15} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />Plan a new trip</button>
         </div>
       </div>
 
-      {trips.length === 0 && !hasFilters ? (
+      {view === 'trash' && (
+        <div className="card" style={{ marginBottom: 18 }}>
+          <div className="row-between">
+            <h3 style={{ margin: 0 }}>Trash {trashed.length > 0 && <span className="small muted">({trashed.length})</span>}</h3>
+            <span className="small muted">Deleted trips stay for 30 days, then they're gone for good.</span>
+          </div>
+          <hr className="divider" />
+          {trashed.length === 0 ? (
+            <EmptyState icon={<Trash2 size={38} aria-hidden />} title="Trash is empty"
+              body="Trips you delete will show up here so you can restore them within 30 days." />
+          ) : (
+            trashed.map(t => (
+              <div key={t.id} className="row-between" style={{ padding: '10px 0', borderBottom: '1px solid var(--line)' }}>
+                <div>
+                  <b>{t.name}</b>
+                  <div className="small muted">{t.startLocation} → {t.destinations[t.destinations.length - 1] ?? t.startLocation} · {t.days.length} days</div>
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button className="btn btn-outline btn-sm" onClick={() => { void restoreTrashedTripById(t.id).then(ok => { if (ok) toast(`Restored “${t.name}”`) }) }}>Restore</button>
+                  <button className="btn btn-danger btn-sm" onClick={() => { void permanentlyDeleteTrip(t.id).then(ok => { if (ok) toast('Deleted forever') }) }}>Delete forever</button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
+      {view !== 'trash' && (trips.length === 0 && !hasFilters ? (
         <EmptyState
           icon={<Compass size={38} aria-hidden />}
           title="No trips yet"
@@ -198,7 +233,7 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
           </div>
           )}
         </>
-      )}
+      ))}
 
       <ConfirmDialog
         open={!!pendingDelete}

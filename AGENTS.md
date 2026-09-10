@@ -32,13 +32,16 @@ Key locations:
 - `tests/` — vitest in **node env (no DOM)** — test pure logic, not DOM
 - CHANGELOG.md — Keep-a-Changelog-style; versions are pre-1.0 milestones
 
-## 1.1 Current project status (as of Sep 9, 2026)
+## 1.1 Current project status (as of Sep 10, 2026)
 
-**Version:** v0.46.0 on `redesign/masteradmin-v045` (feature branch; not yet on `test`/`main`).
+**Version:** v0.47.0 shipped — the cleanup-and-polish release (trip trash + 30-day purge, debounced trip writes, browser push notifications, in-map place search, popup → Timeline/Board cross-links, grounded offline decision guide, feedback link, Explore pagination) plus the M9 invites playbook. Promoted to `main` via the `test` → `main` PR carrying this docs refresh. Working tree tracks `test` and is fully synced (`0/0` vs origin).
 
-**State:** Stabilization complete, UI audit all 32 findings fixed. The Corridor Concierge suggestion-engine brainstorm is FULLY shipped (Horizons 1–3, 16/16 incl. asymmetry, hours scoring, fuel corridors, trip DNA) — see ROADMAP's 🧭 table. v0.46.0 adds the **masteradmin console** (`#/admin`): a JWT-`app_metadata`-gated god-view over every user, trip, invite, publication and audit row, with audited destructive RPCs (disable/re-enable accounts, creator badge, visibility flips, member removal, unpublish, type-to-confirm trip delete) and an append-only `admin_audit` log — see the migration's grant one-liners to mint the two admin JWTs. v0.44.0 added the budget pacing tile and restored public itinerary pages + invite links for non-members. Branch model simplified: only `main` (production, Vercel) and `test` (integration) exist. `npm run verify` gate: tsc clean + 504 tests + production build.
+**State:** Stabilization complete, UI audit all 32 findings fixed; the Corridor Concierge suggestion-engine brainstorm is FULLY shipped (Horizons 1–3, 16/16 incl. asymmetry, hours scoring, fuel corridors, trip DNA) — see ROADMAP's 🧭 table. v0.47.0's soft-delete backend is applied live (probe-verified: `trips.deleted_at` exists on the production project; the `get_trashed_trips` RPC is present with authenticated-only EXECUTE — the anon call returns `42501 permission denied`, not PGRST202). Branch model stays two-branch: `main` (production, Vercel) and `test` (integration). `npm run verify` gate: tsc clean + **572 tests** (69 files) + production build.
 
 **Recent major releases:**
+- **v0.47.0** — Cleanup-and-polish: trip trash (soft-delete tombstone + restrictive RLS + Trash view with Restore/Delete-forever RPCs, probe-gated on `deleted_at`), debounced trip writes (600 ms coalescing, flush on page hide), browser push notifications (Notification API opt-in, focus/read dedupe), in-map place search, map popup → Timeline/Board cross-links, grounded per-decision offline recommendation (`lib/decisionGuide.ts`), feedback mailto link, Explore pagination; plus `docs/PLAN-INVITES-ONBOARDING.md` (M9 playbook)
+- **v0.46.0** — Masteradmin console (`#/admin`): JWT-`app_metadata`-gated god-view over users/trips/invites/content/analytics/audit, audited `SECURITY DEFINER` RPCs, append-only `admin_audit` log, RESTRICTIVE deny-on-disabled RLS, six audited RPCs (`admin_set_disabled`/`_creator`/`_trip_visibility`/`_remove_member`/`_unpublish`/`_delete_trip`); migration applied live
+- **v0.45.0** — Create flow gets its ticket: Trip Ticket bento starter (bill print, outline seeding), invite short trip codes + fixed join flow, car rental mode + local-train fares, range calendar, Plan Bench trip settings + editable dates, My Trips search/filter/sort restore, auth-refresh logout fix
 - **v0.44.0** — Budget pacing tile ("Safe to spend / day", via new pure `daysRemaining` / `safeToSpendPerDay` helpers), per-day cost + dwell chips on timeline day headers, stale-chunk auto-reload so already-open tabs survive a deploy, and `fetchSharedTrip` + the `get_invite_trip` RPC restoring public itinerary pages and invite links for non-members
 
 - **v0.43.0** — Suggestion-engine fixes: sights in the corridor scan (See & do fed), panel↔map cross-highlighting, route-ordered additions (A→B→C), engine-tips roll-out, realtime style/mode re-tune, AI companion locked for premium; plus the encoding-corruption repair of the bad calendar-export merge (styles.css/ShareTab.tsx restored, tabbed Share page re-applied) and the AI drawer close-fix + CTI redesign
@@ -52,21 +55,25 @@ Key locations:
 - **v0.35.0** — Publish editor (preview/price/CTA), fork premium gate, creator mode, sourcemaps
 - **v0.31.0** — M0–M7 Calm Travel Intelligence redesign shipped (user-driven halt planner, 3-layer tokens, OpenFreeMap basemap, touch drag-and-drop)
 
-**Current branch:** `test` (synced with `origin/test`)
+**Current branch:** `test` (integration) — synced with origin (`0/0`); after the promotion PR merges, `origin/main` + `origin/test` both carry v0.47.0.
 
 **In-flight:**
-- v0.44.0 shipped to `main` (Sep 8, 2026) — nothing pending merge
-- No open PRs or feature branches; only `main` + `test` exist, and the `shabtab` fork remote is removed (re-add with `git remote add shabtab https://github.com/Shabtab/Yatraflow.git` to check contrib progress)
+- Promotion PR `test` → `main` (v0.47.0 + docs): created and merged this session with the user's explicit go-ahead; nothing else pending
+- Untracked working-tree noise: `.freebuff/` (tool-generated, not repo) — harmless, do not commit
+- Release tags lag reality: `git tag` stops at v0.44.0 while `package.json` is 0.47.0 — v0.45–v0.47 shipped untagged; backfill on the next release cut if wanted (tags need an explicit remote push)
+- The `shabtab` fork remote is removed (re-add with `git remote add shabtab https://github.com/Shabtab/Yatraflow.git` to check contrib progress)
 
 **What's next (ROADMAP.md):**
-- M8: Creator monetization (payouts ledger + fee model)
-- M9: Creator analytics (funnels, statements, revenue attribution)
-- M10: Budget improvements (envelopes, alerts, recurring templates)
-- Strategic track: Together (real-time sync, social features), Premium (payments, bookings), 1.0 (stabilization, polish)
+- **M5 — AI companion** (the only open issues #22 → #20, both CLOSED as audit findings but the fix is unbuilt): user-configurable OpenAI-compatible LLM endpoint (`src/lib/aiProvider.ts`), real answers with the deterministic `lib/ai.ts` router kept as offline fallback + an "(LLM)/(offline)" badge. `#22` (~2h) blocks `#20` (~3h)
+- **M9 — Invites & onboarding**: executor playbook shipped at `docs/PLAN-INVITES-ONBOARDING.md` — unified `platform_invites` entity phased R1 creator invites → R2 referral → R3 invite-only gate, `lib/accessCode.ts`, the `#/access/<code>` gate, masteradmin Invites-tab rebuild, creator onboarding flush
+- **M6 — Together**: Supabase integration/RLS test suite (opt-in `VITE_RUN_INTEGRATION`), live co-editing depth, split-expense refinement
+- **M7 — Premium**: gateway (Razorpay), entitlements, unlock flow
+- **M8 → 1.0**: offline-first/PWA, i18n (EN + HI), the 1.0 cut — this is where the built-but-flagged `AI_COMPANION_ENABLED` (`VITE_AI_COMPANION=on`) gets unmounted for the premium perk
+- Backlog pool worth pulling: budget envelopes + overspend alerts + recurring templates (ROADMAP 💰 table), creator-hub post-M7 items, and the M9 track above; the `#36` bug-hunt triage rows and the profile-fields/route-polylines pool items have all landed
 
 **Key conventions:**
 - `npm run verify` gate before every push
-- Releases on `redesign/calm-travel-intelligence`, then PR to `test`, `main` only with explicit user confirmation (AGENTS §1)
+- Releases ship on a feature branch → PR to `test`; promoting a release to `main` is its own PR (`test` → `main`) — full `npm run verify` gate green locally on `test`, status docs refreshed, and only with the user's explicit confirmation (AGENTS §2.1/§2.8)
 - Every push ships CHANGELOG.md entry + version bump
 - `tsc -b --clean` first in verify to catch incremental cache issues
 
@@ -478,6 +485,9 @@ Hard rules (each learned the hard way — do not relearn them):
   primitives that no longer exist. On any approach change: re-grep for every symbol you
   introduced in this session and re-read your own changelog prose against the final code.
 
+
+- **Vendored ripgrep can be missing in the desktop environment — `code_search` fails with ENOENT (`rg.exe` not found).** Don't retry it; fall back to `grep -n` / `awk` in the shell, which answer the same question.
+- **Release tags are not automatic — they were skipped after v0.44.0.** `git tag` stopped at v0.44.0 while `package.json` climbed to 0.47.0 and nothing in the gate reads tags, so nobody noticed. Verify tag state with `git tag --sort=-creatordate | head` when a release claims to be tagged; backfilling needs an explicit tag push to the remote.
 
 ## 5. External services
 

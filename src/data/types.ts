@@ -198,6 +198,12 @@ export interface Trip {
    */
   inviteCode?: string
   visibility: 'private' | 'public'
+  /**
+   * Soft-delete tombstone (ms epoch). Null/undefined = live. A trashed trip is
+   * hidden from normal reads by the `trips read hide trashed` RLS policy and
+   * survives 30 days before the `purge_trashed_trips()` sweep hard-deletes it.
+   */
+  deletedAt?: number | null
   createdAt: number
   updatedAt: number
 }

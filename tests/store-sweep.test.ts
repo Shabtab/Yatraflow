@@ -166,6 +166,7 @@ const mkSuggestion = () =>
 async function freshStore() {
   vi.resetModules()
   const store = await import('../src/store/store')
+  store._setTripWriteDebounceMs(0)
   const db = store.getSnapshot() as any
   db.trips.push(mkTrip())
   db.suggestions.push(mkSuggestion())
@@ -192,6 +193,7 @@ const verbs = (store: any) => store.activityFor('trip-1').map((a: any) => a.verb
 async function liveStore() {
   vi.resetModules()
   const store = await import('../src/store/store')
+  store._setTripWriteDebounceMs(0)
   store.init()
   await tick(); await tick()
   return store

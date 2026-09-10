@@ -1,10 +1,15 @@
 // ============ Profile & settings ============
 import { useEffect, useState } from 'react'
+import { Bell } from 'lucide-react'
 import { TravelStyle } from '../data/types'
 import { TRAVEL_STYLES } from '../data/types'
 import { useDb, currentUser, updateProfile, tripsForUser } from '../store/store'
 import { Avatar, Chip, Field, toast } from '../components/ui'
 import { useTimeFormat, setTimeFormat, formatHM, type TimeFormat } from '../lib/timefmt'
+import {
+  browserNotifEnabled, setBrowserNotifEnabled, browserNotifSupported,
+  browserNotifPermission, requestBrowserNotifPermission,
+} from '../lib/browserNotifications'
 import { cap } from '../lib/labels'
 
 export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void }) {
@@ -19,6 +24,12 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
     languages: (me?.profile.languages ?? ['en']).join(', '),
   }))
   const [nameErr, setNameErr] = useState<string | null>(null)
+  // Browser push opt-in (local Notification API — no server, no background
+  // delivery; pings only while the app is open in a background tab).
+  const [notifApi] = useState(() => browserNotifSupported())
+  const [notifOn, setNotifOn] = useState(() => browserNotifEnabled())
+  const [notifPerm, setNotifPerm] = useState<NotificationPermission | 'unsupported'>(() => browserNotifPermission())
+  useEffect(() => { setNotifPerm(browserNotifPermission()) }, [notifOn])
   // Not logged in: route to auth instead of rendering a blank page.
   const loggedIn = Boolean(me)
   useEffect(() => { if (!loggedIn) onNavigate('/auth') })
@@ -114,6 +125,48 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
               toast('Profile saved')
             }}>Save profile</button>
             <button className="btn btn-ghost btn-sm" style={{ marginLeft: 10 }} onClick={() => onNavigate('/trips')}>← Back to my trips</button>
+          </div>
+
+          <div className="card" style={{ marginTop: 16 }}>
+            <h3>Notifications</h3>
+            <p className="hint-text" style={{ margin: '6px 0 12px' }}>
+              Get an OS-level ping when a collaborator writes to you — even with
+              YatraFlow in a background tab. The in-app bell always works; this
+              just mirrors it to the system.
+            </p>
+            {!notifApi ? (
+              <p className="hint-text">This browser doesn’t support notifications.</p>
+            ) : notifPerm === 'denied' ? (
+              <p className="hint-text">Notifications are blocked for this site — allow them in your browser’s site settings to turn this on.</p>
+            ) : (
+              <div className="row-between" style={{ gap: 10 }}>
+                <span className="small" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Bell size={14} aria-hidden /> Browser notifications
+                </span>
+                <button
+                  className={`btn btn-sm ${notifOn && notifPerm === 'granted' ? 'btn-primary' : 'btn-outline'}`}
+                  aria-pressed={notifOn && notifPerm === 'granted'}
+                  onClick={async () => {
+                    // requestPermission MUST run in the click handler — browsers
+                    // ignore it outside a user gesture.
+                    if (!notifOn) {
+                      const perm = await requestBrowserNotifPermission()
+                      setNotifPerm(perm)
+                      if (perm !== 'granted') { toast('Browser notifications need permission to ping you.', 'err'); return }
+                      setBrowserNotifEnabled(true)
+                      setNotifOn(true)
+                      toast('Browser notifications on — we’ll ping you from background tabs.')
+                    } else {
+                      setBrowserNotifEnabled(false)
+                      setNotifOn(false)
+                      toast('Browser notifications off.')
+                    }
+                  }}
+                >
+                  {notifOn && notifPerm === 'granted' ? 'On' : 'Off'}
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="card" style={{ marginTop: 16 }}>

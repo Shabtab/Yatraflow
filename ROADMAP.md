@@ -8,18 +8,19 @@ tracker, and the Sep 2026 comprehensive review (CSS / React / UX audits).
 Living document — reviewed each session, updated as items land. Done items
 move to [CHANGELOG.md](CHANGELOG.md); this file only tracks what's ahead.
 
-**Release protocol:** every milestone below ships as a **release on
-`redesign/calm-travel-intelligence`** — version bump (`package.json` +
-lockfile), CHANGELOG entry, README update when feature-worthy, `npm run verify`
-green, both themes QA'd, user confirmation before any push. When **all
-milestones** are done, the branch progresses to `test` **via pull request**
-(never a direct push). `main` merges stay explicitly user-gated (AGENTS rule 1).
+**Release protocol:** every milestone below ships as a **release on a feature
+branch off `test`** — version bump (`package.json` + lockfile), CHANGELOG entry,
+README update when feature-worthy, `npm run verify` green, both themes QA'd,
+user confirmation before any push. Feature work reaches `test` **via pull
+request** (never a direct push); `main` merges stay explicitly user-gated
+(AGENTS rule 1).
 
-**Snapshot (2026-09-05):** v0.31.0 on `main`. The M0–M5 version labels below
-decoupled from reality when v0.26–v0.31 shipped different content (Plan Bench
-redesign, v0.27 interface pass, the #43–#52 store sweep) — the ledger tracks
-**content**, not those labels. Current version: **0.31.0** → in flight:
-**v0.32.0 (stabilization completion)** on local `redesign/stabilization-v032`.
+**Snapshot (2026-09-10):** v0.47.0 on `test` (`origin/main` = `fbad40d`, still v0.46.0 until `test` is merged).
+The M0–M5 version labels below decoupled from reality when v0.26–v0.47 shipped
+different content (Plan Bench redesign, v0.27 interface pass, the #43–#52 store
+sweep, the Corridor Concierge engine, the masteradmin console) — the ledger
+tracks **content**, not those labels. Current version: **0.47.0** → next up:
+**M5 — AI companion** (the only unbuilt open-issue work).
 
 ---
 
@@ -172,6 +173,13 @@ gateway account. Deliberately after M6's test-suite groundwork.
 Offline-first (IndexedDB + service worker/PWA, ~4–6h), i18n (EN + HI, ~6–8h),
 then the 1.0 release.
 
+### M9 — Invites & onboarding (exec plan: docs/PLAN-INVITES-ONBOARDING.md)
+Creator invites (admins mint YF-… member/creator codes with audit + gate) →
+referral (R2) → invite-only gate (R3, flagged). R1 ships creator invites and a
+clean-slate creator onboarding (no demo seed + badge granted). Three releases on
+one `platform_invites` entity — detailed execution guide in
+[`docs/PLAN-INVITES-ONBOARDING.md`](docs/PLAN-INVITES-ONBOARDING.md).
+
 ---
 
 ## 🟣 UI-audit remediation — COMPLETE (32/32)
@@ -194,38 +202,20 @@ get a row here again.
 
 ## Backlog pool (pull into any milestone with slack)
 
-*From the old P2 polish list:*
-| Item | Note | Effort |
-|---|---|---|
-| Profile: surface all UserProfile fields | `homeCity`, `travelStyles`, `languages`, `socialLinks`, `creatorBio`, `isCreator` exist but aren't editable | 1.5 h |
-| Route polylines on the map | `routing.ts` already returns geometry; `TripMap` renders markers only | 1 h |
-| Browser push notifications | plumbing exists in `realtimeCore.ts`; permission on login, dedupe vs read flag | 1 h |
+*(Cleared from this pool: Profile field editing shipped with `homeCity`, `languages`, `travelStyles` toggle, and `isCreator` on the Profile page; route polylines ship on the trip map via `MapRoute` + `routePath`; browser push notifications ship via the local Notification API — Profile opt-in, per-id dedupe, read-flag respect, background-tab only. All three landed across the v0.45.0–Unreleased work — see CHANGELOG.)*
 
 *From the CTI alignment deferrals ([docs/redesign/ALIGNMENT.md](docs/redesign/ALIGNMENT.md)) — must enter this pool in the same commit they're deferred:*
 | Item | Note |
 |---|---|
-| In-map place search | design doc §6.5 remainder |
-| Map popup → Board/Timeline cross-links | §6.5 remainder |
-| Per-decision route/budget impact panel + grounded assistant | §6.8 — needs engine data |
-| Suggestions "why it fits" route-position copy | §6.6 remainder |
+| In-map place search | ✅ shipped (unreleased) — Map-tab free-text search over `searchPlaces`, inline results with + Add |
+| Map popup → Board/Timeline cross-links | ✅ shipped (unreleased) — stop-pin popup with "Open in Timeline"/"Open in Board" |
+| Per-decision route/budget impact panel + grounded assistant | ✅ shipped (unreleased) — decision cards show trip context + deterministic offline recommendation (`decisionGuide.ts`) |
+| Suggestions "why it fits" route-position copy | ✅ shipped (unreleased) — `reasonForSegmentHit` already renders position, distance/time-since-last-stop, detour + detour-budget share on every suggestion card |
 
-*From the #36 bug-hunt triage (Sep 2026 — findings re-verified against code; see the audit comment on #36):*
-| Issue | Item | Effort |
-|---|---|---|
-| #45 | Logout doesn't await in-flight hydrate → post-logout cache patch | 30 min |
-| #44 | `applyRealtimeEvent` unwrapped — one bad payload kills the subscription | 30 min |
-| #43 | Undo after delete restores a skeleton (cascade wipes children) | 1.5 h |
-| #39 | `console.info` in hydration leaks trip UUIDs to every console | 5 min |
-| #40 | Repeated `console.warn` for missing optional columns | 5 min |
-| #46 | Minor sweep: moveStop persist-on-early-return, vote activity text, hydration guards | 1.5 h |
-| #47 | Notification dedupe gap + `markAllNotificationsRead` race | 1 h |
-| #48 | Pub view/copy counts need a `SECURITY DEFINER` RPC (RLS blocks anon writes) | 2 h |
-| #49 | Housekeeping: `recentLocalWrites` cap, ownerId UUID guard | 30 min |
-| #38 | `mapOrSkip` typing (mappers → `unknown` + guards) | 1 h |
+*From the #36 bug-hunt triage (Sep 2026 — **all 10 findings closed and fixed**; see CHANGELOG for the per-issue landing):*
+(nothing remaining — #38, #39, #40, #43, #44, #45, #46, #47, #48, #49 all landed; the audit comment on #36 already did the triage and the survivors were spun out as closed issues.)
 
-*Old P4 nice-to-haves:* Explore pagination (2h) · undo for more operations
-(2h) · feedback button (1h) · trash + 30-day purge (1.5h) · debounced store
-writes (1h — pairs naturally with M3).
+*Old P4 nice-to-haves:* ~~Explore pagination~~ ✅ shipped (12-per-page + Load more) · ~~undo for more operations~~ ✅ already covered — trip/member/expense/stop deletes all have Undo · ~~feedback button~~ ✅ shipped (`mailto:` with version+route) · ~~trash + 30-day purge~~ ✅ shipped (soft-delete + Trash view + purge RPCs) · ~~debounced store writes~~ ✅ shipped (600ms trailing coalescer + pagehide flush).
 
 ---
 
@@ -236,10 +226,11 @@ writes (1h — pairs naturally with M3).
 | Decision comments | needs a `comments` JSON column on decisions (schema migration) |
 | Premium purchase state | entitlements + unlock flow — folds into M7 payments |
 | Full Profile field editing | homeCity/languages/socialLinks UI exists partially |
-| Browser push notifications | plumbing exists in realtimeCore; permission on login |
+| Browser push notifications | ✅ shipped (v0.47.0) — local Notification API; Profile opt-in, dedupe vs read flag, background-tab only |
 | Route polylines on the map | routing.ts returns geometry; map renders markers only |
-| Trash + 30-day purge | soft-delete layer before hard deletes |
-| Explore pagination | grows with the catalog |
+| Trash + 30-day purge | ✅ shipped — soft-delete + Trash view + 30-day purge (`20260910_trip_trash{,_rpc}.sql`) |
+| Explore pagination | ✅ shipped (unreleased) — 12-per-page grid + Load more |
+| Waitlist / invites (M9) | creator invites → referral → invite-only gate — full exec plan in [`docs/PLAN-INVITES-ONBOARDING.md`](docs/PLAN-INVITES-ONBOARDING.md) |
 
 ### 🧭 Suggestion-engine ideas (Sep 6 2026 deep brainstorm → [docs/SUGGESTION_ENGINE_BRAINSTORM.md](docs/SUGGESTION_ENGINE_BRAINSTORM.md))
 

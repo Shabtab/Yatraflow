@@ -13,6 +13,7 @@ Start here. The codebase is documented across the files below — read the ones 
 | [`CONTRIBUTING.md`](../CONTRIBUTING.md) | Setup + ground rules for contributors. |
 | [`AGENTS.md`](../AGENTS.md) | Operating manual for AI coding agents (Cline/Hermes). **Read fully before automating any change here.** Includes the documentation protocol (§6). |
 | [`ROADMAP.md`](../ROADMAP.md) | **Single plan of record**: stabilization + strategic milestone tracks, UI-audit tracker, backlog pool. |
+| [`PLAN-INVITES-ONBOARDING.md`](PLAN-INVITES-ONBOARDING.md) | Execution playbook for the M9 invites & onboarding milestone (creator invites → referral → invite-only gate). The *how* under ROADMAP's *what/when*. |
 | [`history/implementation-plan-v0.23.0-cti.md`](history/implementation-plan-v0.23.0-cti.md) | ⚠️ HISTORICAL decision record — the executed v0.23.0 + CTI redesign plan (all milestones shipped). |
 | [`REPORT-2026-08-29-nearby-rework-and-google-maps.md`](REPORT-2026-08-29-nearby-rework-and-google-maps.md) | ⚠️ HISTORICAL design record (shipped in 0.17.0). Decision log, not live guidance. |
 
