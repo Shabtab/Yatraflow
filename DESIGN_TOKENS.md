@@ -167,8 +167,8 @@ One ladder replaces the eight blur values previously scattered across components
 | Scrim | `--yf-blur-scrim` | 3px | modal and locked overlays |
 
 Text-bearing overlays (map legend body) keep a near-opaque `--yf-surface` with a
-glass border: readability before transparency. The public-hero photo scrim keeps
-its gentler 1.5px frost by design.
+glass border: readability before transparency. The public-hero photo and locked-CTA scrims keep
+their gentler 1.5px frost by design.
 
 ### One green
 

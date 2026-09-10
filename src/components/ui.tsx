@@ -539,7 +539,7 @@ export function RouteSnapshot({ count, startLabel, endLabel, roundTripNote, poin
         <text x={W - 6} y="18" textAnchor="end" fontSize="12.5" fontWeight="800" fill="#EAF6F2">{short(endLabel)}</text>
       )}
       {roundTripNote && (
-        <text x={W - 6} y={H - 6} textAnchor="end" fontSize="11" fontWeight="650" fill="#A9CFC7">{roundTripNote}</text>
+        <text x={W - 6} y={H - 6} textAnchor="end" fontSize="11" fontWeight="600" fill="#A9CFC7">{roundTripNote}</text>
       )}
     </svg>
   )
@@ -739,7 +739,7 @@ export function BrandMark({ size = 26 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 100 100" aria-hidden="true">
       <circle cx="50" cy="50" r="46" fill="#0B2545" />
-      <path d="M28 62 L44 34 L56 52 L64 40 L76 62 Z" fill="#149A90" />
+      <path d="M28 62 L44 34 L56 52 L64 40 L76 62 Z" fill="#0D8D82" />
       <circle cx="66" cy="30" r="7" fill="#F59E2D" />
     </svg>
   )

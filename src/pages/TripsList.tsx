@@ -143,7 +143,7 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
             <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
               <button className="btn btn-primary" onClick={() => onNavigate('/new')}>Plan your first trip</button>
               <button className="btn btn-outline" onClick={addDemoTrips}><Rocket size={15} aria-hidden style={{ verticalAlign: '-2px', marginRight: 5 }} />Load demo trips</button>
-              <button className="btn btn-outline" onClick={() => onNavigate('/explore')}>Browse Explore</button>
+              <button className="btn btn-outline" onClick={() => onNavigate('/explore')}>Explore itineraries</button>
             </div>
           }
         />

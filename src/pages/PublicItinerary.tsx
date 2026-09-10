@@ -140,7 +140,7 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
         <div className="pub-hero-bg" aria-hidden="true" />
         <div className="container pub-hero-inner">
           <button className="btn btn-sm btn-ghost pub-hero-back" onClick={() => onNavigate('/explore')}>← Explore</button>
-          <span className="pub-hero-badge">{cap(pub.travelStyle).toUpperCase()} ITINERARY</span>
+          <span className="pub-hero-badge">{cap(pub.travelStyle)} itinerary</span>
           <p className="pub-hero-kicker">
             {trip.startLocation} → {trip.destinations.join(' → ')}
             {isRoundTrip(trip) && <> → {trip.startLocation}</>}
@@ -221,7 +221,7 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
                 {highlightsN.map(h => (
                   <div key={h.day.id} className="day-highlight-card">
                     <div className="day-highlight-top">
-                      <span className="editorial-kicker">DAY {String(h.day.index + 1).padStart(2, '0')} · {STOP_KIND_LABELS[h.kind].toUpperCase()}</span>
+                      <span className="editorial-kicker">Day {String(h.day.index + 1).padStart(2, '0')} · {STOP_KIND_LABELS[h.kind].toUpperCase()}</span>
                       <span className={`stop-kind-tag kind-${h.kind}`}>{STOP_KIND_LABELS[h.kind]}</span>
                     </div>
                     <b className="day-highlight-title">{h.day.title ?? `Day ${h.day.index + 1}`}</b>

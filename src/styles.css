@@ -69,13 +69,8 @@
   --yf-nav-glass: rgba(255, 255, 255, 0.58);    /* nav pill — user-decided (AGENTS rule 9) */
   --yf-glass-border: rgba(255, 255, 255, 0.65);
   --yf-glass-sheen: rgba(255, 255, 255, 0.35);  /* top-edge highlight on glass panels */
-  /* backdrop blur ladder (value-identical mappings): sm = small frosts over
-     imagery (chips), md = panel frost (map legend/chips), lg = deep frost
-     (pillbars, dropdown triggers). Heavier recipes (12/14/18px) stay
-     component-local — each belongs to exactly one surface family. */
-  --yf-blur-sm: 4px;
-  --yf-blur-md: 6px;
-  --yf-blur-lg: 8px;
+  /* backdrop blur tiers live in the v0.48 block at the end of this file:
+     --yf-blur-nav / -panel / -chip / -scrim. */
   /* ---- z-index ladder (M4.4) — every fixed/absolute layer maps to a rung;
      values are the historical literals so no stacking outcome changes ---- */
   --z-under: 0;         /* decorative layers behind content (blobs, motifs, board-map canvas, pub-hero photo) */
@@ -1121,7 +1116,7 @@ a.btn { text-decoration: none; }
 .impact-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 9px; margin-bottom: 12px; }
 .impact-cell { background: var(--bg-soft); border-radius: 10px; padding: 9px 12px; }
 .impact-cell .k { font-size: 11px; font-weight: 700; color: var(--text-3); text-transform: uppercase; letter-spacing: .04em; }
-.impact-cell .v { font-weight: 700; font-size: 14.5px; margin-top: 1px; font-family: var(--font-display); font-variant-numeric: tabular-nums; }
+.impact-cell .v { font-weight: 800; font-size: 14.5px; margin-top: 1px; font-family: var(--font-display); font-variant-numeric: tabular-nums; }
 .delta-pos { color: var(--danger); } .delta-neg { color: var(--ok); } .delta-zero { color: var(--text-2); }
 .assumptions { font-size: 12px; color: var(--text-3); background: var(--bg-soft); padding: 9px 12px; border-radius: 10px; line-height: 1.6; }
 .impact-actions { display: flex; gap: 8px; margin-top: 13px; flex-wrap: wrap; }
@@ -1607,7 +1602,7 @@ a.btn { text-decoration: none; }
 }
 .pub-hero-inner { position: relative; z-index: var(--z-content); }
 .pub-hero-back { color: #dff0ec; border-color: rgba(255,255,255,.25); margin-bottom: 14px; }
-.pub-hero-badge {
+.pub-hero-badge { text-transform: uppercase;
   display: inline-block; font-size: 11px; font-weight: 800; letter-spacing: .1em;
   background: #fff7e6; color: #8e5b21; border-radius: 999px; padding: 5px 12px; margin-bottom: 14px;
 }
@@ -1886,7 +1881,7 @@ a.btn { text-decoration: none; }
 .yf-map-flag {
   width: 32px; height: 32px; border-radius: 999px;
   font-size: 16px; cursor: default;
-  background: linear-gradient(135deg, #0e7c66, #149A90);
+  background: linear-gradient(135deg, #0C716D, #0D8D82);
   border: 3px solid #fff;
   box-shadow:
     0 2px 4px rgba(var(--shadow-navy-rgb),.28),
@@ -1960,7 +1955,7 @@ a.btn { text-decoration: none; }
 .tl-row.dragging { opacity: .45; border: 1.5px dashed var(--teal); box-shadow: none; }
 .tl-row.dragging > * { visibility: hidden; }
 .tl-row.dragging { min-height: 44px; }
-.loc-option.hl { background: color-mix(in srgb, var(--accent, #149A90) 14%, transparent); }
+.loc-option.hl { background: color-mix(in srgb, var(--accent, #0D8D82) 14%, transparent); }
 .loc-pin { flex: none; font-size: 13px; }
 .loc-name { font-weight: 600; white-space: nowrap; }
 .loc-region { font-size: 12px; opacity: .65; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1969,7 +1964,7 @@ a.btn { text-decoration: none; }
   width: 15px; height: 15px;
   margin-top: -7.5px;
   border: 2px solid var(--line);
-  border-top-color: var(--accent, #149A90);
+  border-top-color: var(--accent, #0D8D82);
   border-radius: 50%;
   animation: locspin .7s linear infinite;
   pointer-events: none;
