@@ -184,7 +184,7 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
         {featured && (
           <div className="featured-card" key={featured.id}>
             <div className="featured-body">
-              <span className="editorial-kicker featured-kicker"><Star size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />FEATURED ITINERARY</span>
+              <span className="editorial-kicker featured-kicker"><Star size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />Featured itinerary</span>
               <h2><a className="featured-title-link" href={`#/pub/${featured.id}`}>{featured.title}</a></h2>
               <p className="featured-tagline">{featured.tagline}</p>
               <p className="featured-credibility">

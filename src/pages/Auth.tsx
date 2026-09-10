@@ -93,7 +93,7 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
           {mode === 'login' && (
             <p className="hint-text" style={{ margin: '10px 0 0', textAlign: 'center' }}>
               Forgot your password? Password resets open the Supabase console —{' '}
-              <a href="mailto:support@yatraflow.app?subject=Reset%20my%20YatraFlow%20password">mail support and we'll reset it</a>.
+              <a href="mailto:support@yatraflow.app?subject=Reset%20my%20YatraFlow%20password">mail support and we’ll reset it</a>.
             </p>
           )}
         </form>

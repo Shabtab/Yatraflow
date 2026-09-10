@@ -79,7 +79,7 @@ export function CreatorPage({ creatorId, onNavigate }: { creatorId: string; onNa
           !creator.profile.isCreator ? (
             <EmptyState icon={<Compass size={38} aria-hidden />} title="No creator page here yet"
               body={`${creator.profile.name} hasn't enabled creator mode or published an itinerary.`}
-              action={<button className="btn btn-primary" onClick={() => onNavigate('/explore')}>Browse Explore</button>} />
+              action={<button className="btn btn-primary" onClick={() => onNavigate('/explore')}>Explore itineraries</button>} />
           ) : (
             <EmptyState icon={<MapPin size={38} aria-hidden />} title="No itineraries published yet"
               body="When they publish a trip to Explore, it will appear here." />

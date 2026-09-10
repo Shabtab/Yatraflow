@@ -500,7 +500,7 @@ export function PlanBench() {
         <div className={`bench-receipt card${tearing ? ' tearing' : ''}${capturing ? ' bench-capturing' : ''}`} ref={receiptRef}
           onMouseMove={onTiltMove} onMouseLeave={onTiltEnd}>
           <span className="bench-barcode" aria-hidden="true" />
-          <span className="bench-stamp" key={stampKey} aria-hidden="true">ESTIMATE</span>
+          <span className="bench-stamp" key={stampKey} aria-hidden="true">Estimate</span>
           <div className="bench-receipt-head">
             <span className="bench-receipt-kicker">The Honest Bill</span>
             <span className="bench-receipt-date">{issued}</span>

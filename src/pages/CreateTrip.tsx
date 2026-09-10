@@ -501,7 +501,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
               <div className="return-section" aria-label="Return journey stops">
                 <div className="return-head">
                   <span className="eyebrow">Return</span>
-                  <span className="return-note">auto-filled with the reverse route — edit freely</span>
+                  <span className="return-note">Auto-filled with the reverse route — edit freely</span>
                 </div>
                 <RouteLeg stops={returnStops} offset={outbound.length} returnLeg />
                 <LocationInput

@@ -301,7 +301,7 @@ function DemoButtons({ onNavigate }: { onNavigate: (r: string) => void }) {
 }
 
 function BrandHint() {
-  return <span className="small cta-hint">demo trips are added to your account automatically on first sign-in</span>
+  return <span className="small cta-hint">Demo trips are added to your account automatically on first sign-in</span>
 }
 
 function Step({ cls, n, title, body }: { cls?: string; n: number; title: string; body: string }) {

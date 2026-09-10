@@ -182,7 +182,7 @@ export function BudgetTab({ trip, totals, editable }: { trip: Trip; totals: Retu
             sub={<>{formatInr(pacing.perPersonPerDayInr)} per person · {pacing.daysLeft === 0 ? 'trip over' : `${pacing.daysLeft} day${pacing.daysLeft !== 1 ? 's' : ''} left`}</>} />
         ) : (
           <StatTile label="Safe to spend / day" value="—"
-            sub={<>set a per-person target in Trip settings to see pacing</>} />
+            sub={<>Set a per-person target in Trip settings to see pacing</>} />
         )}
       </div>
 

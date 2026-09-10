@@ -40,7 +40,7 @@ export function AdminPage({ onNavigate }: { onNavigate: (r: string) => void }) {
 
   return (
     <div className="container form-page">
-      <h1>Masteradmin</h1>
+      <h1>Master admin</h1>
       <p className="muted small" style={{ marginBottom: 16 }}>Full-control console — every destructive action is audit-logged.</p>
       <PillNav className="filter-pillbar" role="tablist" aria-label="Admin sections" activeKey={tab}>
         {([
