@@ -142,6 +142,17 @@
   --radius-sm: 12px;
   --radius-lg: 24px;   /* CTI large bento cards */
   --nav-h: 62px;
+  /* ---- bottom chrome (mobile / native shell) ----
+     One offset every fixed/sticky bottom layer clears: the shell's own
+     navigation row (--shell-nav-h, 0px on the web so both the offset and any
+     consumer of it collapse to exactly the old gesture-bar inset) plus the
+     device's bottom safe area. Consume --bottom-ui-offset, never the raw
+     inset, so a new bottom layer can't forget the nav sitting on top of it.
+     Overlays that intentionally own the true bottom edge (modals, the impact
+     sheet, the AI drawer, the expanded map) keep the raw inset. */
+  --safe-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+  --shell-nav-h: 0px;
+  --bottom-ui-offset: calc(var(--shell-nav-h) + var(--safe-bottom));
   --font-display: 'Sora', 'Inter', system-ui, sans-serif;
   --font-body: 'Inter', system-ui, -apple-system, sans-serif;
 }
@@ -282,6 +293,7 @@ html.native-shell .atmos {
      the reduced budget still routes through the design-system blur tiers. */
   .topnav,
   .glass,
+  .bottom-nav,
   .tabbar,
   .glass-soft,
   .filter-pillbar,
@@ -302,7 +314,8 @@ html.native-shell .atmos {
    desktop mode — apply the same budget there, unconditionally.
    (.native-shell is <html>; the descendant selectors stay simple.) */
 html.native-shell .topnav,
-html.native-shell .glass {
+html.native-shell .glass,
+html.native-shell .bottom-nav {
   -webkit-backdrop-filter: blur(var(--yf-blur-chip)) saturate(1.1);
   backdrop-filter: blur(var(--yf-blur-chip)) saturate(1.1);
 }
@@ -315,6 +328,15 @@ html.native-shell .topnav {
   background: var(--app-bar, rgba(250, 247, 242, 0.92));
 }
 html.native-shell[data-theme='dark'] .topnav {
+  background: var(--app-bar-dark, rgba(12, 20, 32, 0.92));
+}
+/* The bottom navigation is the same chrome as the top bar and reads the same
+   way: content scrolls under it, so 58% glass would smear the row behind it.
+   Same near-opaque pair, opposite edge. */
+html.native-shell .bottom-nav {
+  background: var(--app-bar, rgba(250, 247, 242, 0.92));
+}
+html.native-shell[data-theme='dark'] .bottom-nav {
   background: var(--app-bar-dark, rgba(12, 20, 32, 0.92));
 }
 
@@ -428,9 +450,10 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
 
 .app-shell { min-height: 100vh; display: flex; flex-direction: column;
   /* Edge-to-edge (Android 15, iPhone): the gesture bar overlays the last
-     row otherwise. The injected --safe-area-inset-bottom is real on native,
-     env() covers notched browsers, 0px on plain desktop. */
-  padding-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)); }
+     row otherwise — and in the shell the bottom navigation sits on top of
+     that. --bottom-ui-offset is exactly the gesture-bar inset on the web,
+     so this line is unchanged there. */
+  padding-bottom: var(--bottom-ui-offset); }
 .container { width: 100%; max-width: 1180px; margin: 0 auto; padding: 0 20px;
   /* the Board tab widens the canvas to 1680px — glide it (both directions) */
   transition: max-width var(--t-slow) var(--ease-out); }
@@ -1264,7 +1287,7 @@ a.btn { text-decoration: none; }
   .modal { border-radius: var(--radius-lg); }
 }
 .modal-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; gap: 10px; }
-.toast-zone { position: fixed; bottom: calc(18px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))); left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; z-index: var(--z-toast); pointer-events: none; padding: 0 14px; }
+.toast-zone { position: fixed; bottom: calc(18px + var(--bottom-ui-offset)); left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; z-index: var(--z-toast); pointer-events: none; padding: 0 14px; }
 .toast {
   pointer-events: auto; background: var(--text); color: var(--bg);
   padding: 11px 20px; border-radius: 999px; font-size: 13.5px; font-weight: 600;
@@ -1634,7 +1657,7 @@ a.btn { text-decoration: none; }
 .ai-fab {
   position: fixed;
   right: calc(18px + var(--safe-area-inset-right, env(safe-area-inset-right, 0px)));
-  bottom: calc(18px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
+  bottom: calc(18px + var(--bottom-ui-offset));
   z-index: var(--z-ai-fab);
   width: 56px; height: 56px; border-radius: 50%; border: none;
   background: linear-gradient(135deg, var(--yf-teal-600), var(--yf-navy));
@@ -2170,7 +2193,7 @@ main:focus { outline: none; }
 .btn:focus-visible, .icon-btn:focus-visible,
 .theme-toggle:focus-visible, .avatar-btn:focus-visible, .user-menu-item:focus-visible,
 .nav-link:focus-visible, .tab-btn:focus-visible, .brand:focus-visible,
-.mobile-nav-btn:focus-visible,
+.mobile-nav-btn:focus-visible, .bottom-nav-item:focus-visible,
 .day-collapse:focus-visible, .move-btn:focus-visible, .vote-btn:focus-visible,
 .chip-btn:focus-visible, .clickable-chip:focus-visible, .toast-action:focus-visible,
 .day-rail-chip:focus-visible,
@@ -3354,7 +3377,7 @@ html.vt-active :where(*) {
 /* ---------- Mobile bill dock: the total follows the user while tuning ---------- */
 .bench-dock {
   position: fixed; left: 12px; right: 12px;
-  bottom: calc(12px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
+  bottom: calc(12px + var(--bottom-ui-offset));
   z-index: var(--z-nav-glass); /* below --z-notif / --z-drawer / --z-modal / --z-toast / --z-impact */
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   background: var(--surface, #fff); border: 1px solid var(--line, #dce7e1);
@@ -4040,11 +4063,11 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
 .ts-dayrows .row-between { padding: 3px 0; }
 .ts-note { margin: 0; }
 
-/* sticky save bar — safe-area aware (viewport-fit=cover is on) */
+/* sticky save bar — bottom-ui-offset aware (nav + gesture bar; viewport-fit=cover is on) */
 .ts-savebar {
   position: sticky; bottom: 0; z-index: 5;
   display: flex; justify-content: flex-end; align-items: center; gap: 10px;
-  margin-top: 16px; padding: 8px 0 calc(8px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
+  margin-top: 16px; padding: 8px 0 calc(8px + var(--bottom-ui-offset));
   background: var(--bg); border-top: 1px solid var(--line);
 }
 
@@ -4413,7 +4436,7 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
   .ct-grid { grid-template-columns: 1fr; }
   .trip-starter { padding-bottom: 118px; }
   .trip-dock {
-    display: flex; position: fixed; left: 12px; right: 12px; bottom: calc(12px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
+    display: flex; position: fixed; left: 12px; right: 12px; bottom: calc(12px + var(--bottom-ui-offset));
     z-index: var(--z-dock); align-items: center; gap: 12px; padding: 12px 14px; border-radius: var(--radius);
     background: var(--yf-glass); border: 1px solid var(--yf-glass-border);
     -webkit-backdrop-filter: blur(var(--yf-blur-nav)) saturate(1.2); backdrop-filter: blur(var(--yf-blur-nav)) saturate(1.2);
@@ -4479,7 +4502,6 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
 [data-theme='dark'] .app-home-action--primary { background: var(--teal); color: #06251f; }
 
 .app-home-section {
-  font-size: 13px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
   color: var(--text-2); margin: 0 0 10px;
 }
 
@@ -4525,6 +4547,54 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
 }
 .app-home-empty p { margin: 0; }
 
+/* ============ Bottom navigation (native shell only — components/BottomNav.tsx) ============
+   The installed app's primary navigation: four Material destinations in a
+   fixed bar at the thumb, replacing the floating pill — but deliberately NOT
+   the hamburger tray, which stays the overflow for Plan a trip / Creator hub
+   / Log out. Website parity: the component is React-gated on isNative in
+   App.tsx, and every rule here either sits under html.native-shell or reads
+   --shell-nav-h, which is 0px outside it. */
+
+/* The pill nav is redundant beside a real bottom bar. Narrow viewports
+   already hide it (<=720px); the shell also ships to tablets, so gate the
+   class rather than the width. */
+html.native-shell .nav-links { display: none; }
+
+/* --shell-nav-h is the bar's own row height, so --bottom-ui-offset (row +
+   gesture bar) is exactly its total height and every page-level bottom
+   consumer clears it. scroll-padding-bottom keeps focus and scroll-into-view
+   landings clear of the bar too. Web: 0px, so both are inert. */
+html.native-shell {
+  --shell-nav-h: 58px;
+  scroll-padding-bottom: calc(var(--bottom-ui-offset) + 12px);
+}
+
+.bottom-nav {
+  position: fixed; left: 0; right: 0; bottom: 0;
+  /* 58px of row + the gesture bar. box-sizing is border-box, so padding-bottom
+     would otherwise eat into the row — 24px on an Android 15 gesture inset
+     leaves 34px, under the 48px floor. Add it to the height instead. */
+  height: calc(var(--shell-nav-h) + var(--safe-bottom));
+  padding-bottom: var(--safe-bottom);
+  z-index: var(--z-nav-glass); /* above --z-dock; below the overlays that own the bottom edge */
+  display: grid; grid-template-columns: repeat(4, 1fr); align-items: stretch;
+  background: var(--yf-nav-glass);
+  border-top: 1px solid var(--yf-glass-border);
+  -webkit-backdrop-filter: blur(var(--yf-blur-nav)) saturate(1.2);
+  backdrop-filter: blur(var(--yf-blur-nav)) saturate(1.2);
+}
+.bottom-nav-item {
+  /* Icon over an 11px label, four equal columns. min-height states the
+     Material 48px floor instead of leaving it implied by --shell-nav-h. */
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  min-height: 48px; padding: 0; border: none; background: none;
+  color: var(--text-3);
+}
+.bottom-nav-item:active { background: var(--bg-soft, rgba(0, 0, 0, .04)); }
+/* Same active ink as .tab-btn.active; --teal-deep re-points in dark mode. */
+.bottom-nav-item.active { color: var(--teal-deep); }
+.bottom-nav-label { font-size: var(--text-xs); font-weight: 600; line-height: 1.2; }
+
 /* ============ v0.48 design-system consistency pass ============ */
 /* ---------- Ordering: this design-system layer is deliberately the LAST section in the file. It is the global override layer (one kicker recipe, one set of blur tiers, the <=720px touch-target floor), so it must win the cascade over every earlier block — including the page-scoped .app-home rules above. New sections belong above it. ---------- */
 /* Token scales (type + spacing) - additive, existing values still resolve. */
@@ -4547,7 +4617,7 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
   .bench-eyebrow, .bench-scale-ends, .bench-receipt-kicker, .bench-total-label, .bench-badge,
   .ticker-item .t-tag, .board-stop-kicker, .tk-brand, .tk-kind, .creator-badge, .pub-ledger th, .route-tag, .group-lab, .mini-lab,
   .compare-table th, .toast-action, .editorial-kicker, .pub-stats-label,
-  .route-glance .route-glance-label, .stat-label {
+  .route-glance .route-glance-label, .stat-label, .app-home-section {
     font-size: var(--kicker-size);
     font-weight: var(--kicker-weight);
     letter-spacing: var(--kicker-tracking);

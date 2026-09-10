@@ -13,6 +13,7 @@ import {
 import type { Trip } from './data/types'
 import { useDb, currentUser, useUsers, useNotifications, useSessionUserId, logout, markAllNotificationsRead, tripById, joinViaInvite, duplicateTrip, init, resumeSync, useStoreReady, fetchSharedTrip, fetchTripByInviteCode } from './store/store'
 import { Avatar, BrandMark, ToastZone, useClickOutside, toast } from './components/ui'
+import { BottomNav } from './components/BottomNav'
 import { PillNav } from './components/PillNav'
 import { decodeTripSnapshot } from './lib/snapshot'
 import { scrollBehavior } from './lib/motion'
@@ -479,6 +480,14 @@ export default function App() {
           <span className="small muted">All costs are transparent estimates · No bookings, no payments — planning only</span>
         </div>
       </footer>
+
+      {/* The shell's primary navigation — same platform gate as the shell home
+          above (isNative && me), so the website never renders it. It replaces
+          the floating pill (hidden in the shell via CSS) but deliberately NOT
+          the hamburger tray, which keeps Plan a trip / Creator hub / Log out.
+          A plain bar, not an overlay: registerAndroidBack above still closes
+          only the real overlays, so back walks history while this is mounted. */}
+      {isNative && me && <BottomNav route={route} onNavigate={navigate} />}
 
       <ToastZone />
     </div>
