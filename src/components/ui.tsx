@@ -2,6 +2,8 @@
 import React, { useEffect, useId, useRef, useState } from 'react'
 import { Check, Copy, Map as MapIcon, TriangleAlert, Users, X } from 'lucide-react'
 import { formatInr } from '../lib/engine'
+import { nativeCopyText } from '../lib/native'
+import { haptic } from '../lib/haptics'
 import { registerTouchDnd, touchPressAbort, touchPressStart, encodeDropKey, isInteractiveTarget } from '../lib/touchDnd'
 
 export function Avatar({ user, size = 'sm' }: { user?: { profile: { name: string; avatarUrl?: string } }; size?: 'sm' | 'lg' }) {
@@ -98,7 +100,7 @@ export function ConfirmDialog({ open, title, body, confirmLabel = 'Confirm', can
       <div className="confirm-actions">
         <button
           className={`btn btn-sm ${danger ? 'btn-danger' : 'btn-primary'}`}
-          onClick={() => { onConfirm(); onClose() }}
+          onClick={() => { haptic('heavy'); onConfirm(); onClose() }}
         >{confirmLabel}</button>
         <button className="btn btn-outline btn-sm" onClick={onClose}>{cancelLabel}</button>
       </div>
@@ -153,6 +155,8 @@ export function Field(props: {
 /** Simple toast system. */
 let pushToastFn: ((msg: string, kind?: 'ok' | 'err', action?: { label: string; run: () => void }) => void) | null = null
 export function toast(msg: string, kind: 'ok' | 'err' = 'ok') {
+  // Haptic echo of the outcome: successes buzz short, errors buzz hard.
+  haptic(kind === 'err' ? 'warn' : 'success')
   pushToastFn?.(msg, kind)
 }
 /** Toast with an Undo button — for destructive actions that can be reversed. */
@@ -574,7 +578,7 @@ export function CopyButton({ text, label = 'Copy link', onCopied }: { text: stri
     <button
       className={`btn btn-sm ${done ? 'btn-outline' : 'btn-primary'}`}
       onClick={() => {
-        navigator.clipboard?.writeText(text).catch(() => {})
+        void nativeCopyText(text)
         setDone(true)
         toast('Copied to clipboard')
         setTimeout(() => setDone(false), 1800)

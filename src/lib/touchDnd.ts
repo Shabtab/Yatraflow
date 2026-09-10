@@ -10,6 +10,8 @@
 // events to whichever list instance is under the finger; React integrates via
 // the instance callbacks registered by useReorder.
 
+import { haptic } from './haptics'
+
 export const LONG_PRESS_MS = 350
 export const MOVE_CANCEL_PX = 12
 /** viewport edge zones that auto-scroll while dragging */
@@ -146,11 +148,9 @@ function activate() {
   element.classList.remove('yf-pressing')
   active = { srcId, srcIdx, payload, target: null, lastX: startX, lastY: startY, raf: 0 }
   pending = null
-  // Diagnostic logging
-  if (import.meta.env.DEV) {
-    console.log('[TOUCH_DND] Long-press activated, triggering vibration')
-  }
-  try { navigator.vibrate?.(20) } catch { /* haptics are best-effort */ }
+  // Drag-pickup buzz — the strongest feedback in the app (Android reorder
+  // patterns do the same). Plugin-backed inside the app, vibrate on the web.
+  haptic('heavy')
   instances.get(srcId)?.onOwnDragStart(srcIdx)
   active.raf = window.requestAnimationFrame(frame)
   hitTest(active.lastX, active.lastY)

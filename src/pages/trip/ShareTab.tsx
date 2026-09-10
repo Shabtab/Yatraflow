@@ -7,6 +7,7 @@ import type { Trip, PublishedItinerary } from '../../data/types'
 import { useDb, userById, setMemberRole, removeMember, restoreMember, publishItinerary, unpublishItinerary, duplicateTrip, ensureInviteCode } from '../../store/store'
 import { encodeTripSnapshot, snapshotUrl, downloadTripJson } from '../../lib/snapshot'
 import { downloadTripIcs } from '../../lib/ics'
+import { nativeCopyText } from '../../lib/native'
 import type { LegEstimate } from '../../lib/engine'
 import { Avatar, Chip, ConfirmDialog, CopyButton, Field, toast, undoToast } from '../../components/ui'
 import { PrintExport } from '../../components/PrintExport'
@@ -28,7 +29,7 @@ function SnapshotCard({ trip, me, onNavigate, legCorrections }: {
     const payload = await encodeTripSnapshot(trip)
     const url = snapshotUrl(trip, payload)
     setLink(url)
-    navigator.clipboard?.writeText(url).catch(() => {})
+    void nativeCopyText(url)
     toast('Snapshot link copied — anyone can open it, no account needed')
   }
 

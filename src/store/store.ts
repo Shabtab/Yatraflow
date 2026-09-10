@@ -411,6 +411,27 @@ export function init(): void {
   })
 }
 
+/** App-resume rehydration for the native shell. Android backgrounds the
+ *  whole WebView (process kept, timers frozen, sockets dead); Supabase's
+ *  realtime websocket silently drops without an event, so notifications and
+ *  collaborator edits that happened while backgrounded never arrive — the
+ *  appShell calls this on Capacitor's appStateChange → active. A full
+ *  hydrate refetches everything, which also re-subscribes realtime. */
+export async function resumeSync(): Promise<void> {
+  const { data } = await supabase.auth.getSession()
+  const userId = data.session?.user?.id ?? null
+  // Only the signed-in-and-hydrated case: an anonymous session or a mid
+  // auth-switch needs nothing (their next auth event re-hydrates).
+  if (!userId || userId !== cache.sessionUserId) return
+  // Full refetch (notifications, trips, the lot). hydrate's same-user
+  // dedupe would SKIP a plain hydrate() call — so go around it with a
+  // fresh generation, exactly what a resume wants.
+  const gen = ++hydrateGen
+  activeHydrate = null
+  await hydrateFromSupabase(userId, gen, false)
+  if (gen === hydrateGen && cache.sessionUserId === userId) connectRealtime(userId)
+}
+
 async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = true): Promise<void> {
   try {
     // Stage 1 - global catalogs + the user's memberships. Explore reads the curated

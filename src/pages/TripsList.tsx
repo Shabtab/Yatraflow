@@ -94,7 +94,7 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
   }
 
   return (
-    <div className="container" style={{ paddingTop: 26 }}>
+    <div className="container trips-page" style={{ paddingTop: 26 }}>
       <div className="row-between" style={{ marginBottom: 18 }}>
         <div>
           <h1>My trips</h1>
@@ -102,7 +102,7 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <button className={`btn btn-outline${view === 'trash' ? ' on-teal' : ''}`} aria-pressed={view === 'trash'} onClick={() => setView(v => v === 'trash' ? 'trips' : 'trash')}><Trash2 size={15} aria-hidden style={{ verticalAlign: '-2px', marginRight: 5 }} />Trash</button>
-          <button className="btn btn-outline" onClick={addDemoTrips} title="Adds 3 sample trips — Kerala, Goa & Rajasthan — to your account"><Rocket size={15} aria-hidden style={{ verticalAlign: '-2px', marginRight: 5 }} />Load demo trips</button>
+          <button className="btn btn-outline" onClick={addDemoTrips} title="Adds 3 sample trips — Kerala, Goa & Rajasthan — to your account"><Rocket size={15} aria-hidden style={{ verticalAlign: '-2px', marginRight: 5 }} /><span>Load demo trips</span></button>
           <button className="btn btn-primary" onClick={() => onNavigate('/new')}><Plus size={15} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />Plan a new trip</button>
         </div>
       </div>
