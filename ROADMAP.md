@@ -198,9 +198,9 @@ get a row here again.
 *From the old P2 polish list:*
 | Item | Note | Effort |
 |---|---|---|
-| Profile: surface all UserProfile fields | `homeCity`, `travelStyles`, `languages`, `socialLinks`, `creatorBio`, `isCreator` exist but aren't editable | 1.5 h |
-| Route polylines on the map | `routing.ts` already returns geometry; `TripMap` renders markers only | 1 h |
 | Browser push notifications | plumbing exists in `realtimeCore.ts`; permission on login, dedupe vs read flag | 1 h |
+
+*(Cleared from this pool: Profile field editing shipped with `homeCity`, `languages`, `travelStyles` toggle, and `isCreator` on the Profile page; route polylines ship on the trip map via `MapRoute` + `routePath`. Both landed across the v0.45.0 work — see CHANGELOG.)*
 
 *From the CTI alignment deferrals ([docs/redesign/ALIGNMENT.md](docs/redesign/ALIGNMENT.md)) — must enter this pool in the same commit they're deferred:*
 | Item | Note |
@@ -210,23 +210,10 @@ get a row here again.
 | Per-decision route/budget impact panel + grounded assistant | §6.8 — needs engine data |
 | Suggestions "why it fits" route-position copy | §6.6 remainder |
 
-*From the #36 bug-hunt triage (Sep 2026 — findings re-verified against code; see the audit comment on #36):*
-| Issue | Item | Effort |
-|---|---|---|
-| #45 | Logout doesn't await in-flight hydrate → post-logout cache patch | 30 min |
-| #44 | `applyRealtimeEvent` unwrapped — one bad payload kills the subscription | 30 min |
-| #43 | Undo after delete restores a skeleton (cascade wipes children) | 1.5 h |
-| #39 | `console.info` in hydration leaks trip UUIDs to every console | 5 min |
-| #40 | Repeated `console.warn` for missing optional columns | 5 min |
-| #46 | Minor sweep: moveStop persist-on-early-return, vote activity text, hydration guards | 1.5 h |
-| #47 | Notification dedupe gap + `markAllNotificationsRead` race | 1 h |
-| #48 | Pub view/copy counts need a `SECURITY DEFINER` RPC (RLS blocks anon writes) | 2 h |
-| #49 | Housekeeping: `recentLocalWrites` cap, ownerId UUID guard | 30 min |
-| #38 | `mapOrSkip` typing (mappers → `unknown` + guards) | 1 h |
+*From the #36 bug-hunt triage (Sep 2026 — **all 10 findings closed and fixed**; see CHANGELOG for the per-issue landing):*
+(nothing remaining — #38, #39, #40, #43, #44, #45, #46, #47, #48, #49 all landed; the audit comment on #36 already did the triage and the survivors were spun out as closed issues.)
 
-*Old P4 nice-to-haves:* Explore pagination (2h) · undo for more operations
-(2h) · feedback button (1h) · trash + 30-day purge (1.5h) · debounced store
-writes (1h — pairs naturally with M3).
+*Old P4 nice-to-haves:* Explore pagination (2h) · undo for more operations (2h) · feedback button (1h) · trash + 30-day purge (1.5h) · debounced store writes (1h — pairs naturally with M3).
 
 ---
 
