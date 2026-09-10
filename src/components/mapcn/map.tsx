@@ -29,6 +29,17 @@ if (typeof window !== "undefined" && !MapLibreGL.getWorkerUrl()) {
   );
 }
 
+// Cooperative gestures (MapLibre's own built-in): one finger drags the PAGE,
+// two fingers pan the map, and MapLibre draws its "use two fingers" hint. A
+// touch-sized embed is exactly where a map otherwise swallows the scroll the
+// page needs, so the pointer type is the gate — a mouse-driven desktop keeps
+// plain wheel-zoom and one-finger drags, byte-for-byte as before. Read once at
+// construction: this is a property of the device, not of the session.
+function prefersCooperativeGestures(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.matchMedia?.("(pointer: coarse)").matches ?? false;
+}
+
 // Basemaps — OpenFreeMap (https://openfreemap.org): OpenMapTiles-schema vector
 // tiles, served keyless, using styles forked from the same open-source lineage
 // CARTO's dark-matter / positron styles came from — so the look is effectively
@@ -315,6 +326,12 @@ const Map = forwardRef<MapRef, MapProps>(function Map(
       attributionControl: {
         compact: true,
       },
+      // Every embed inherits the cooperative default above. A fullscreen embed
+      // hands the gestures back at runtime through `map.cooperativeGestures`
+      // (TripMap's expand toggle) — there is no page scroll left to protect
+      // once the map owns the viewport. Callers can still override this at
+      // construction: `...props` wins over the default below.
+      cooperativeGestures: prefersCooperativeGestures(),
       ...props,
       ...viewport,
     });

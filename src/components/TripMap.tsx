@@ -156,6 +156,26 @@ function RouteArrows({ coordinates, dark }: { coordinates: [number, number][]; d
 declare module './mapcn/map' {}
 type GeoJSONSourceLike = { setData(d: unknown): void }
 
+/**
+ * Gesture mode follows the layout, not the device. An inline map is embedded
+ * in a scrolling page, so it keeps MapLibre's cooperative gestures (one finger
+ * scrolls the page, two fingers pan — on touch devices; see the mapcn default);
+ * the expanded overlay owns the whole viewport, so it hands back normal
+ * one-finger pan/zoom. The option is read once at construction, hence the
+ * runtime switch through MapLibre's own handler — enable()/disable() add and
+ * remove the two-finger hint overlay and are idempotent, so re-running this
+ * effect (StrictMode included) is safe.
+ */
+function CooperativeGestures({ enabled }: { enabled: boolean }) {
+  const { map, isLoaded } = useMap()
+  useEffect(() => {
+    if (!map || !isLoaded) return
+    if (enabled) map.cooperativeGestures.enable()
+    else map.cooperativeGestures.disable()
+  }, [map, isLoaded, enabled])
+  return null
+}
+
 /** Drop consecutive duplicate points (shared endpoints between legs). */
 function dedupeConsecutive(coords: [number, number][]): [number, number][] {
   const out: [number, number][] = []
@@ -599,6 +619,8 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
             zoom={5}
           >
             <MapControls position="top-right" showFullscreen />
+            {/* Inline: one finger scrolls the page. Expanded: normal gestures. */}
+            <CooperativeGestures enabled={!expanded} />
             {/* Live location layer — mounted always, self-gating on `liveOn`. */}
             <LiveLocationLayer active={liveOn} />
             {/* In All-days view a single connected main line from the trip start
