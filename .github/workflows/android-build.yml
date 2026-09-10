@@ -1,10 +1,10 @@
 name: Android APK
 
-# Same as android-build.yml but WITHOUT any ${{ secrets.* }} or keystore step:
-# bisects whether the startup failure is caused by the secret expressions.
+# Builds the debug APK in CI so the app can ship to a phone without any local
+# Android toolchain. Runs on pushes to the Capacitor branch and on demand.
 on:
   push:
-    branches: ['apk-branch-test']
+    branches: ['feat/capacitor-android', 'apk-branch-test']
   workflow_dispatch:
 
 permissions:
@@ -23,6 +23,7 @@ jobs:
           node-version: 22
           cache: npm
 
+      # Capacitor 8 targets compileSdk 36 / AGP 8.9+, which needs JDK 21.
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -31,14 +32,45 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # The anon key is public by design (RLS is the real auth boundary) and
+      # the bundle needs it at compile time, but it doesn't belong in the repo
+      # — repo secrets inject it (and the map keys) at build time only. All
+      # secrets ride via step env: GitHub's startup validation rejects
+      # workflows that interpolate secret VALUES (long JWTs, base64 blobs)
+      # directly into run: scripts with an instant startup_failure.
+      - name: Write web build env
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_MAPPLS_KEY: ${{ secrets.VITE_MAPPLS_KEY }}
+          VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}
+        run: |
+          printf 'VITE_SUPABASE_URL=%s\n' "$VITE_SUPABASE_URL" >> .env.production
+          printf 'VITE_SUPABASE_ANON_KEY=%s\n' "$VITE_SUPABASE_ANON_KEY" >> .env.production
+          printf 'VITE_MAPPLS_KEY=%s\n' "$VITE_MAPPLS_KEY" >> .env.production
+          printf 'VITE_GOOGLE_MAPS_API_KEY=%s\n' "$VITE_GOOGLE_MAPS_API_KEY" >> .env.production
+
       - name: Build web bundle
         run: npm run build
 
       - name: Sync web assets + plugins to Android
         run: npx cap sync android
 
-      - name: Build debug APK
+      # Materialize the stable signing key where app/build.gradle expects it
+      # (app/yatraflow-debug.p12), then build. The keystore secret rides via
+      # step env — interpolating the large base64 blob directly into run:
+      # made GitHub's runner fail the whole workflow at startup (instant
+      # startup_failure, zero jobs created). The short VITE_* values above
+      # are fine inline.
+      - name: Write stable debug keystore
+        env:
+          DEBUG_KEYSTORE: ${{ secrets.DEBUG_KEYSTORE }}
+        run: printf '%s' "$DEBUG_KEYSTORE" | base64 --decode > android/app/yatraflow-debug.p12
+
+      - name: Build signed debug APK
         working-directory: android
+        # chmod for checkouts where the executable bit was lost (Windows devs);
+        # a no-op when git already carries 755.
         run: |
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
@@ -46,8 +78,7 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: YatraFlow-bisect1
+          name: YatraFlow-v0.6-native
           path: android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 14
 
-# trigger
