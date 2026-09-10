@@ -1,5 +1,8 @@
 name: Probe
-on: [workflow_dispatch]
+on:
+  workflow_dispatch:
+  push:
+    branches: ["probe-test"]
 jobs:
   ping:
     runs-on: ubuntu-latest
