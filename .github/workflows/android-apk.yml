@@ -33,6 +33,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # The anon key is public by design (RLS is the real auth boundary) and
+      # the bundle needs it at compile time, but it doesn't belong in the repo
+      # — repo secrets inject it (and the map keys) at build time only.
+      - name: Write web build env
+        run: |
+          printf 'VITE_SUPABASE_URL=%s\n' "${{ secrets.VITE_SUPABASE_URL }}" >> .env.production
+          printf 'VITE_SUPABASE_ANON_KEY=%s\n' "${{ secrets.VITE_SUPABASE_ANON_KEY }}" >> .env.production
+          printf 'VITE_MAPPLS_KEY=%s\n' "${{ secrets.VITE_MAPPLS_KEY }}" >> .env.production
+          printf 'VITE_GOOGLE_MAPS_API_KEY=%s\n' "${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}" >> .env.production
+
       - name: Build web bundle
         run: npm run build
 
