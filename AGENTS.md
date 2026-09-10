@@ -32,13 +32,15 @@ Key locations:
 - `tests/` — vitest in **node env (no DOM)** — test pure logic, not DOM
 - CHANGELOG.md — Keep-a-Changelog-style; versions are pre-1.0 milestones
 
-## 1.1 Current project status (as of Sep 9, 2026)
+## 1.1 Current project status (as of Sep 10, 2026)
 
-**Version:** v0.46.0 on `redesign/masteradmin-v045` (feature branch; not yet on `test`/`main`).
+**Version:** v0.46.0 shipped — PR #82 (masteradmin console) + PR #81 (Trip Ticket) are **merged into `test` and `main`** (`origin/main` = `fbad40d`, `origin/test` = `a9e5961`). Working tree tracks `redesign/masteradmin-v045` and is fully synced (`0/0` vs origin); nothing is pending merge.
 
-**State:** Stabilization complete, UI audit all 32 findings fixed. The Corridor Concierge suggestion-engine brainstorm is FULLY shipped (Horizons 1–3, 16/16 incl. asymmetry, hours scoring, fuel corridors, trip DNA) — see ROADMAP's 🧭 table. v0.46.0 adds the **masteradmin console** (`#/admin`): a JWT-`app_metadata`-gated god-view over every user, trip, invite, publication and audit row, with audited destructive RPCs (disable/re-enable accounts, creator badge, visibility flips, member removal, unpublish, type-to-confirm trip delete) and an append-only `admin_audit` log — see the migration's grant one-liners to mint the two admin JWTs. v0.44.0 added the budget pacing tile and restored public itinerary pages + invite links for non-members. Branch model simplified: only `main` (production, Vercel) and `test` (integration) exist. `npm run verify` gate: tsc clean + 504 tests + production build.
+**State:** Stabilization complete, UI audit all 32 findings fixed. The Corridor Concierge suggestion-engine brainstorm is FULLY shipped (Horizons 1–3, 16/16 incl. asymmetry, hours scoring, fuel corridors, trip DNA) — see ROADMAP's 🧭 table. v0.46.0 adds the **masteradmin console** (`#/admin`): a JWT-`app_metadata`-gated god-view over every user, trip, invite, publication and audit row, with audited destructive RPCs (disable/re-enable accounts, creator badge, visibility flips, member removal, unpublish, type-to-confirm trip delete) and an append-only `admin_audit` log — the migration is applied live; mint the two admin JWTs with its grant one-liners. v0.45.0 added the Trip Ticket create flow, invite short codes and Plan Bench trip settings. Branch model simplified: only `main` (production, Vercel) and `test` (integration) exist. `npm run verify` gate: tsc clean + **549 tests** + production build.
 
 **Recent major releases:**
+- **v0.46.0** — Masteradmin console (`#/admin`): JWT-`app_metadata`-gated god-view over users/trips/invites/content/analytics/audit, audited `SECURITY DEFINER` RPCs, append-only `admin_audit` log, RESTRICTIVE deny-on-disabled RLS, six audited RPCs (`admin_set_disabled`/`_creator`/`_trip_visibility`/`_remove_member`/`_unpublish`/`_delete_trip`); migration applied live
+- **v0.45.0** — Create flow gets its ticket: Trip Ticket bento starter (bill print, outline seeding), invite short trip codes + fixed join flow, car rental mode + local-train fares, range calendar, Plan Bench trip settings + editable dates, My Trips search/filter/sort restore, auth-refresh logout fix
 - **v0.44.0** — Budget pacing tile ("Safe to spend / day", via new pure `daysRemaining` / `safeToSpendPerDay` helpers), per-day cost + dwell chips on timeline day headers, stale-chunk auto-reload so already-open tabs survive a deploy, and `fetchSharedTrip` + the `get_invite_trip` RPC restoring public itinerary pages and invite links for non-members
 
 - **v0.43.0** — Suggestion-engine fixes: sights in the corridor scan (See & do fed), panel↔map cross-highlighting, route-ordered additions (A→B→C), engine-tips roll-out, realtime style/mode re-tune, AI companion locked for premium; plus the encoding-corruption repair of the bad calendar-export merge (styles.css/ShareTab.tsx restored, tabbed Share page re-applied) and the AI drawer close-fix + CTI redesign
@@ -52,21 +54,24 @@ Key locations:
 - **v0.35.0** — Publish editor (preview/price/CTA), fork premium gate, creator mode, sourcemaps
 - **v0.31.0** — M0–M7 Calm Travel Intelligence redesign shipped (user-driven halt planner, 3-layer tokens, OpenFreeMap basemap, touch drag-and-drop)
 
-**Current branch:** `test` (synced with `origin/test`)
+**Current branch:** `redesign/masteradmin-v045` (synced with origin, `0/0`) — its PR #82 is already merged; `origin/main` + `origin/test` carry v0.46.0.
 
 **In-flight:**
-- v0.44.0 shipped to `main` (Sep 8, 2026) — nothing pending merge
-- No open PRs or feature branches; only `main` + `test` exist, and the `shabtab` fork remote is removed (re-add with `git remote add shabtab https://github.com/Shabtab/Yatraflow.git` to check contrib progress)
+- Nothing pending merge. `origin/main` = `fbad40d`, `origin/test` = `a9e5961`; both contain PR #81 + #82
+- Untracked working-tree noise: `.freebuff/` (tool-generated, not repo) — harmless, do not commit
+- Stale remote branch `origin/feat/settings-bench-fidelity` is already an ancestor of `main` (`exit=0`) — safe to delete on the remote
+- The `shabtab` fork remote is removed (re-add with `git remote add shabtab https://github.com/Shabtab/Yatraflow.git` to check contrib progress)
 
 **What's next (ROADMAP.md):**
-- M8: Creator monetization (payouts ledger + fee model)
-- M9: Creator analytics (funnels, statements, revenue attribution)
-- M10: Budget improvements (envelopes, alerts, recurring templates)
-- Strategic track: Together (real-time sync, social features), Premium (payments, bookings), 1.0 (stabilization, polish)
+- **M5 — AI companion** (the only open issues #22 → #20, both CLOSED as audit findings but the fix is unbuilt): user-configurable OpenAI-compatible LLM endpoint (`src/lib/aiProvider.ts`), real answers with the deterministic `lib/ai.ts` router kept as offline fallback + an "(LLM)/(offline)" badge. `#22` (~2h) blocks `#20` (~3h)
+- **M6 — Together**: Supabase integration/RLS test suite (opt-in `VITE_RUN_INTEGRATION`), live co-editing depth, split-expense refinement
+- **M7 — Premium**: gateway (Razorpay), entitlements, unlock flow
+- **M8 → 1.0**: offline-first/PWA, i18n (EN + HI), the 1.0 cut — this is where the built-but-flagged `AI_COMPANION_ENABLED` (`VITE_AI_COMPANION=on`) gets unmounted for the premium perk
+- Backlog pool worth pulling: budget envelopes + overspend alerts + recurring templates (ROADMAP 💰 table), creator-hub post-M7 items, and the `#36` bug-hunt triage rows (#43–#49; several already fixed)
 
 **Key conventions:**
 - `npm run verify` gate before every push
-- Releases on `redesign/calm-travel-intelligence`, then PR to `test`, `main` only with explicit user confirmation (AGENTS §1)
+- Releases ship on a feature branch (e.g. `redesign/masteradmin-v045`) → PR to `test` → `main` only with explicit user confirmation (AGENTS §1)
 - Every push ships CHANGELOG.md entry + version bump
 - `tsc -b --clean` first in verify to catch incremental cache issues
 

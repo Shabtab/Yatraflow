@@ -8,18 +8,19 @@ tracker, and the Sep 2026 comprehensive review (CSS / React / UX audits).
 Living document — reviewed each session, updated as items land. Done items
 move to [CHANGELOG.md](CHANGELOG.md); this file only tracks what's ahead.
 
-**Release protocol:** every milestone below ships as a **release on
-`redesign/calm-travel-intelligence`** — version bump (`package.json` +
-lockfile), CHANGELOG entry, README update when feature-worthy, `npm run verify`
-green, both themes QA'd, user confirmation before any push. When **all
-milestones** are done, the branch progresses to `test` **via pull request**
-(never a direct push). `main` merges stay explicitly user-gated (AGENTS rule 1).
+**Release protocol:** every milestone below ships as a **release on a feature
+branch off `test`** — version bump (`package.json` + lockfile), CHANGELOG entry,
+README update when feature-worthy, `npm run verify` green, both themes QA'd,
+user confirmation before any push. Feature work reaches `test` **via pull
+request** (never a direct push); `main` merges stay explicitly user-gated
+(AGENTS rule 1).
 
-**Snapshot (2026-09-05):** v0.31.0 on `main`. The M0–M5 version labels below
-decoupled from reality when v0.26–v0.31 shipped different content (Plan Bench
-redesign, v0.27 interface pass, the #43–#52 store sweep) — the ledger tracks
-**content**, not those labels. Current version: **0.31.0** → in flight:
-**v0.32.0 (stabilization completion)** on local `redesign/stabilization-v032`.
+**Snapshot (2026-09-10):** v0.46.0 on `main` + `test` (`origin/main` = `fbad40d`).
+The M0–M5 version labels below decoupled from reality when v0.26–v0.46 shipped
+different content (Plan Bench redesign, v0.27 interface pass, the #43–#52 store
+sweep, the Corridor Concierge engine, the masteradmin console) — the ledger
+tracks **content**, not those labels. Current version: **0.46.0** → next up:
+**M5 — AI companion** (the only unbuilt open-issue work).
 
 ---
 
