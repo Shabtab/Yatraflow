@@ -7,11 +7,13 @@ import {
   Settings, Sparkles, Sun, Tent, X,
 } from 'lucide-react'
 import type { Trip } from './data/types'
-import { useDb, currentUser, useUsers, useNotifications, useSessionUserId, logout, markAllNotificationsRead, tripById, joinViaInvite, duplicateTrip, init, useStoreReady, fetchSharedTrip, fetchTripByInviteCode } from './store/store'
+import { useDb, currentUser, useUsers, useNotifications, useSessionUserId, logout, markAllNotificationsRead, tripById, joinViaInvite, duplicateTrip, init, resumeSync, useStoreReady, fetchSharedTrip, fetchTripByInviteCode } from './store/store'
 import { Avatar, BrandMark, ToastZone, useClickOutside, toast } from './components/ui'
 import { PillNav } from './components/PillNav'
 import { decodeTripSnapshot } from './lib/snapshot'
 import { scrollBehavior } from './lib/motion'
+import { App as CapApp } from '@capacitor/app'
+import { isNative } from './lib/native'
 import { hideSplash, registerAndroidBack, setNativeTheme } from './lib/appShell'
 import { LandingPage } from './pages/Landing'
 // Route-level code splitting: only the landing page stays in the main chunk (it
@@ -93,6 +95,16 @@ export default function App() {
   // (the same ready-gate below flips) or after 2.5s worst case, and own the
   // Android back button (overlays close first, then hash history, then exit).
   useEffect(() => { void hideSplash() }, [])
+  // Foreground resume: the OS froze the WebView while backgrounded, so the
+  // realtime socket is dead without an event. One full re-hydrate refetches
+  // notifications/trips and re-subscribes. Web needs nothing like this.
+  useEffect(() => {
+    if (!isNative) return
+    const handle = CapApp.addListener('appStateChange', ({ isActive }) => {
+      if (isActive) { void resumeSync().catch(() => {}) }
+    })
+    return () => { handle.then(h => h.remove()).catch(() => {}) }
+  }, [])
   useEffect(() => {
     const off = registerAndroidBack({
       closeOverlay: () => {

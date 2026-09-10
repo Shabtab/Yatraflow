@@ -159,6 +159,41 @@ export async function nativeLocate(): Promise<GeolocationPosition | null> {
   })
 }
 
+/** Handle returned by nativeWatch — call to stop the stream and clean up. */
+export type WatchHandle = { stop: () => void }
+
+/**
+ * Continuous position stream for the live map dot. Native uses the plugin's
+ * watchPosition (fused provider, system permission dialog); web uses the
+ * browser watch. Errors surface through the same onFix(null) contract.
+ */
+export function nativeWatch(
+  onFix: (pos: GeolocationPosition | null) => void,
+): WatchHandle {
+  if (isNative) {
+    let callbackId: string | null = null
+    void Geolocation.watchPosition(
+      { enableHighAccuracy: true, timeout: 15_000 },
+      (pos, err) => {
+        if (err) { onFix(null); return }
+        if (pos) onFix(toGeolocationPosition(pos))
+      },
+    ).then(id => { callbackId = id }).catch(() => onFix(null))
+    return {
+      stop: () => {
+        if (callbackId) void Geolocation.clearWatch({ id: callbackId }).catch(() => {})
+      },
+    }
+  }
+  if (!('geolocation' in navigator)) return { stop: () => {} }
+  const wid = navigator.geolocation.watchPosition(
+    p => onFix(p),
+    () => onFix(null),
+    { enableHighAccuracy: true, timeout: 15_000, maximumAge: 5_000 },
+  )
+  return { stop: () => navigator.geolocation.clearWatch(wid) }
+}
+
 // ---------- helpers ----------
 
 /** Adapt the plugin's Position to the browser GeolocationPosition shape. */
