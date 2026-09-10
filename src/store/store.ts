@@ -318,6 +318,18 @@ let hydrateGen = 0
 export function init(): void {
   if (initialized) return
   initialized = true
+  // P4: debounced trip writes must not eat the last edit when the page goes
+  // away — flush every pending write the moment the tab hides or starts to
+  // unload (pagehide covers tab close / navigation; visibilitychange covers
+  // app-switch on mobile, where the trailing timer may never fire again).
+  // Guarded: the test suite runs under node (no DOM), where `document` and the
+  // `addEventListener` global do not exist — init() must not throw there.
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') _flushTripWrites()
+    })
+  }
+  if (typeof addEventListener !== 'undefined') addEventListener('pagehide', _flushTripWrites)
 
   const hydrate = async (userId: string | null) => {
     // Same-user dedupe FIRST, generation bump second. The old order bumped
@@ -1404,12 +1416,60 @@ export function updateTrip(id: ID, patchFields: Partial<Trip>): void {
   if (draft) void persistTripField(id, draft)
 }
 
-async function persistTripField(id: ID, t: Trip): Promise<void> {
+// ---- Debounced trip writes (P4) ----
+// Bursty mutations — a drag-reorder firing reorderStop per move, settings
+// keystrokes, undo/redo chains — each used to issue its own row UPDATE. A
+// trailing-edge coalescer per trip id turns a burst into ONE write whose
+// snapshot is always the freshest cache state (read at fire time, not call
+// time). Deletes and member changes stay immediate (only persistTripField
+// debounces); the pagehide/visibilitychange hooks in init() flush pending
+// writes when the tab hides or closes so the trailing timer can't eat the
+// last edit.
+let TRIP_WRITE_DEBOUNCE_MS = 600
+const pendingTripWrites = new Map<ID, { timer: ReturnType<typeof setTimeout> }>()
+
+/** Test hook — 0 disables the debounce: writes issue immediately, as before. */
+export function _setTripWriteDebounceMs(ms: number): void {
+  TRIP_WRITE_DEBOUNCE_MS = ms
+}
+
+/** Fire every pending debounced trip write right now. Best-effort — errors
+ *  surface through persistTripFieldNow's toast, never through the event. */
+export function _flushTripWrites(): void {
+  if (pendingTripWrites.size === 0) return
+  for (const id of [...pendingTripWrites.keys()]) {
+    const pending = pendingTripWrites.get(id)
+    if (!pending) continue
+    clearTimeout(pending.timer)
+    pendingTripWrites.delete(id)
+    void persistTripFieldNow(id, tripById(id))
+  }
+}
+
+/** The real row UPDATE — exactly the old persistTripField body. */
+async function persistTripFieldNow(id: ID, t: Trip | undefined): Promise<void> {
+  if (!t) return
   const owner = t.members?.find(m => m.role === 'owner')
   const cols = await tripsHaveOptionalColumns()
   const { error } = await supabase.from('trips').update(tripToRow(t, owner?.userId ?? id, cols)).eq('id', id)
   markLocalWrite('trips', id)
   if (error) toast('Could not save changes.')
+}
+
+function persistTripField(id: ID, t: Trip): void {
+  if (TRIP_WRITE_DEBOUNCE_MS <= 0) {
+    void persistTripFieldNow(id, t)
+    return
+  }
+  const prev = pendingTripWrites.get(id)
+  if (prev) clearTimeout(prev.timer)
+  const timer = setTimeout(() => {
+    pendingTripWrites.delete(id)
+    // Read the trip again at fire time: the pending snapshot may be several
+    // edits stale by now, and the cache always holds the newest state.
+    void persistTripFieldNow(id, tripById(id) ?? t)
+  }, TRIP_WRITE_DEBOUNCE_MS)
+  pendingTripWrites.set(id, { timer })
 }
 
 // ---------------- Members & collaboration ----------------

@@ -128,9 +128,12 @@ vi.mock('../src/lib/supabase', () => {
 })
 
 describe('updateTrip date handling', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     state.tripRow = null
     state.updates.length = 0
+    // updateTrip persists through persistTripField; zero the 600ms debounce so
+    // the write lands before this test's setTimeout(0) flush helper.
+    ;(await import('../src/store/store'))._setTripWriteDebounceMs(0)
   })
 
   async function seedTripFromRow() {

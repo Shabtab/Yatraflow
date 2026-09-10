@@ -41,6 +41,15 @@ function currentRoute(): string {
   return location.hash.replace(/^#/, '') || '/'
 }
 
+/** Feedback mailto: pre-fills the app version + current route so a report is
+ *  reproducible without the reporter doing any work. Reuses the same support
+ *  address the password-reset flow already uses. */
+function feedbackHref(): string {
+  const subject = encodeURIComponent(`YatraFlow feedback (v${__APP_VERSION__})`)
+  const body = encodeURIComponent(`Page: ${currentRoute()}\nApp version: ${__APP_VERSION__}\n\nWhat worked, what broke, what you wish existed:\n\n`)
+  return `mailto:support@yatraflow.app?subject=${subject}&body=${body}`
+}
+
 export default function App() {
   // Slice subscriptions: the shell re-renders only when profiles, the session
   // or notifications change — a trip edit no longer re-renders the entire
@@ -384,6 +393,7 @@ export default function App() {
                   </div>
                   <button className="user-menu-item" onClick={() => { setMenuOpen(false); navigate('/profile') }}>Profile & settings</button>
                   <button className="user-menu-item" onClick={() => { setMenuOpen(false); navigate('/explore') }}>Explore itineraries</button>
+                  <a className="user-menu-item" href={feedbackHref()} onClick={() => setMenuOpen(false)}><Mail size={14} aria-hidden style={{ verticalAlign: '-2px', marginRight: 6 }} />Send feedback</a>
                   <button className="user-menu-item danger" onClick={() => { logout(); setMenuOpen(false); navigate('/') }}>Log out</button>
                 </div>,
                 document.body

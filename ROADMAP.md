@@ -203,12 +203,12 @@ get a row here again.
 | In-map place search | design doc §6.5 remainder |
 | Map popup → Board/Timeline cross-links | §6.5 remainder |
 | Per-decision route/budget impact panel + grounded assistant | §6.8 — needs engine data |
-| Suggestions "why it fits" route-position copy | §6.6 remainder |
+| Suggestions "why it fits" route-position copy | ✅ shipped (unreleased) — `reasonForSegmentHit` already renders position, distance/time-since-last-stop, detour + detour-budget share on every suggestion card |
 
 *From the #36 bug-hunt triage (Sep 2026 — **all 10 findings closed and fixed**; see CHANGELOG for the per-issue landing):*
 (nothing remaining — #38, #39, #40, #43, #44, #45, #46, #47, #48, #49 all landed; the audit comment on #36 already did the triage and the survivors were spun out as closed issues.)
 
-*Old P4 nice-to-haves:* Explore pagination (2h) · undo for more operations (2h) · feedback button (1h) · trash + 30-day purge (1.5h) · debounced store writes (1h — pairs naturally with M3).
+*Old P4 nice-to-haves:* ~~Explore pagination~~ ✅ shipped (12-per-page + Load more) · ~~undo for more operations~~ ✅ already covered — trip/member/expense/stop deletes all have Undo · ~~feedback button~~ ✅ shipped (`mailto:` with version+route) · trash + 30-day purge (1.5h) · ~~debounced store writes~~ ✅ shipped (600ms trailing coalescer + pagehide flush). **Remaining here: trash + 30-day purge.**
 
 ---
 
@@ -222,7 +222,7 @@ get a row here again.
 | Browser push notifications | ✅ shipped (v0.47.0) — local Notification API; Profile opt-in, dedupe vs read flag, background-tab only |
 | Route polylines on the map | routing.ts returns geometry; map renders markers only |
 | Trash + 30-day purge | soft-delete layer before hard deletes |
-| Explore pagination | grows with the catalog |
+| Explore pagination | ✅ shipped (unreleased) — 12-per-page grid + Load more |
 
 ### 🧭 Suggestion-engine ideas (Sep 6 2026 deep brainstorm → [docs/SUGGESTION_ENGINE_BRAINSTORM.md](docs/SUGGESTION_ENGINE_BRAINSTORM.md))
 

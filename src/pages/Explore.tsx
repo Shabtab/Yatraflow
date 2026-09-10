@@ -1,5 +1,5 @@
 // ============ Explore public itineraries — discover, trust and fork (CTI §6.10) ============
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Calendar, Compass, Eye, GitFork, Heart, MapPin, Search, Sparkles, Star, Wallet, X,
 } from 'lucide-react'
@@ -15,6 +15,8 @@ import { PubCard } from '../components/PubCard'
 
 type SortKey = 'popular' | 'newest' | 'budget-asc' | 'budget-desc' | 'duration'
 const STYLES = ['relaxed', 'balanced', 'packed', 'adventure', 'luxury', 'budget', 'family', 'spiritual', 'food-focused', 'creator'] as const
+/** P4: the grid renders one page at a time; "Load more" grows the window. */
+const PAGE_SIZE = 12
 
 export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void }) {
   // Slice subscriptions: Explore re-renders when the published catalog,
@@ -36,6 +38,12 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
   const [duration, setDuration] = useState<'all' | 'short' | 'medium' | 'long'>(d0 === 'short' || d0 === 'medium' || d0 === 'long' ? d0 : 'all')
   // ♡ Saved — device-local favourites (localStorage), not part of the schema
   const [savedOnly, setSavedOnly] = useState(false)
+  // P4 pagination: show the first page; "Load more" widens the window. Reset
+  // to the first page whenever the result set's shape changes (filter/sort
+  // edits), but NOT when `published` updates live (realtime insert) — a new
+  // row appearing shouldn't yank the user back to the top.
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
+  useEffect(() => { setVisibleCount(PAGE_SIZE) }, [q, style, maxBudget, duration, savedOnly, sortKey])
 
   /** Write the current filters back into the hash query (F-22). replaceState —
       filter fiddling shouldn't spam history or retrigger App's scroll-reset. */
@@ -220,12 +228,22 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
             />
           )
         ) : (
-          <div className="explore-grid">
-            {pubs.map(p => (
-              <PubCard key={p.id} pub={p} creator={userOf(users, p.creatorId)} saved={isSaved(p.id)}
-                onFork={() => forkTrip(p.id)} onToggleSave={() => toggleHeart(p.id)} />
-            ))}
-          </div>
+          <>
+            <div className="explore-grid">
+              {pubs.slice(0, visibleCount).map(p => (
+                <PubCard key={p.id} pub={p} creator={userOf(users, p.creatorId)} saved={isSaved(p.id)}
+                  onFork={() => forkTrip(p.id)} onToggleSave={() => toggleHeart(p.id)} />
+              ))}
+            </div>
+            {pubs.length > visibleCount && (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: '16px 0 34px' }}>
+                <button className="btn btn-outline" onClick={() => setVisibleCount(c => c + PAGE_SIZE)}
+                  aria-label={`Load more itineraries — ${pubs.length - visibleCount} remaining`}>
+                  Load more · {pubs.length - visibleCount} more
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
