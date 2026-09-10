@@ -29,13 +29,24 @@ if (typeof window !== "undefined" && !MapLibreGL.getWorkerUrl()) {
   );
 }
 
-// Cooperative gestures (MapLibre's own built-in): one finger drags the PAGE,
-// two fingers pan the map, and MapLibre draws its "use two fingers" hint. A
-// touch-sized embed is exactly where a map otherwise swallows the scroll the
-// page needs, so the pointer type is the gate — a mouse-driven desktop keeps
-// plain wheel-zoom and one-finger drags, byte-for-byte as before. Read once at
-// construction: this is a property of the device, not of the session.
-function prefersCooperativeGestures(): boolean {
+// Cooperative gestures (MapLibre's own built-in): on a touch device one finger
+// drags the PAGE, two fingers pan the map, and MapLibre draws its "use two
+// fingers" hint — exactly what an embedded map needs, since the canvas would
+// otherwise swallow the scroll the page needs. The pointer type is the gate, so
+// a mouse-driven desktop resolves `false` — the value MapLibre itself defaults
+// to — and keeps plain wheel-zoom. (MapLibre gates the wheel zoom and the touch
+// pan on this handler; the mouse drag-pan path never consults it, so mouse
+// dragging is unaffected either way.)
+//
+// Exported because the constructor below is not the only writer: MapLibre reads
+// the option once at construction, so TripMap's expand toggle re-asserts it at
+// runtime through `map.cooperativeGestures.enable()`. Both writers call THIS
+// predicate, so they cannot drift apart. Skipping it at runtime is not a style
+// nit: with the handler enabled, `ScrollZoomHandler.wheel()` returns before
+// zooming unless ctrl/meta is held (`_shouldBePrevented`), and `enable()` also
+// injects the hint screen into the canvas container — on a mouse desktop that
+// silently removes plain wheel-zoom.
+export function prefersCooperativeGestures(): boolean {
   if (typeof window === "undefined") return false;
   return window.matchMedia?.("(pointer: coarse)").matches ?? false;
 }
@@ -326,11 +337,13 @@ const Map = forwardRef<MapRef, MapProps>(function Map(
       attributionControl: {
         compact: true,
       },
-      // Every embed inherits the cooperative default above. A fullscreen embed
-      // hands the gestures back at runtime through `map.cooperativeGestures`
-      // (TripMap's expand toggle) — there is no page scroll left to protect
-      // once the map owns the viewport. Callers can still override this at
-      // construction: `...props` wins over the default below.
+      // Every embed inherits the cooperative default above, and the same
+      // predicate gates the runtime switch: a fullscreen embed hands the
+      // gestures back through `map.cooperativeGestures` (TripMap's expand
+      // toggle) only where the pointer resolved this to true — there is no page
+      // scroll left to protect once the map owns the viewport, and a fine
+      // pointer never had them on. Callers can still override at construction:
+      // `...props` wins over the default below.
       cooperativeGestures: prefersCooperativeGestures(),
       ...props,
       ...viewport,
@@ -383,6 +396,33 @@ const Map = forwardRef<MapRef, MapProps>(function Map(
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // MapLibre's own FullscreenControl pauses cooperative gestures while the map
+  // owns the screen and restores them on exit (`_handleFullscreenChange`). We
+  // ship our own fullscreen button in MapControls below, so that sync would
+  // never run here — mirror it, gated on the same predicate as the constructor
+  // so a fine pointer's handler is never touched at all.
+  useEffect(() => {
+    if (!mapInstance || !prefersCooperativeGestures()) return;
+
+    // Restore only what we paused, and only once: an unrelated fullscreenchange
+    // (another element entering/leaving) must never re-enable the handler after
+    // the app turned it off.
+    let wasEnabled = false;
+    const onFullscreenChange = () => {
+      if (document.fullscreenElement === mapInstance.getContainer()) {
+        wasEnabled = mapInstance.cooperativeGestures.isEnabled();
+        mapInstance.cooperativeGestures.disable();
+      } else if (wasEnabled) {
+        wasEnabled = false;
+        mapInstance.cooperativeGestures.enable();
+      }
+    };
+
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () =>
+      document.removeEventListener("fullscreenchange", onFullscreenChange);
+  }, [mapInstance]);
 
   // Sync controlled viewport to map
   useEffect(() => {

@@ -136,7 +136,50 @@ describe('inline map gestures', () => {
   const mapcn = source('src/components/mapcn/map.tsx')
   const tripMap = source('src/components/TripMap.tsx')
 
+  /**
+   * The shipped body of CooperativeGestures' effect, brace-matched out of the
+   * file. It is still read as text — but the unit under test here is the ORDER
+   * of the guard, and only running the real statements can show that a fine
+   * pointer never reaches MapLibre's handler.
+   */
+  function cooperativeEffectBody(): string {
+    const fn = tripMap.indexOf('function CooperativeGestures(')
+    const open = tripMap.indexOf('useEffect(() => {', fn)
+    expect(fn, 'CooperativeGestures is mounted').toBeGreaterThan(-1)
+    expect(open, 'it switches through an effect').toBeGreaterThan(-1)
+    let depth = 0
+    for (let i = tripMap.indexOf('{', open); i < tripMap.length; i++) {
+      if (tripMap[i] === '{') depth++
+      else if (tripMap[i] === '}' && --depth === 0) {
+        return tripMap.slice(tripMap.indexOf('{', open) + 1, i)
+      }
+    }
+    throw new Error('CooperativeGestures: unbalanced effect body')
+  }
+
+  /** Run that body against a stub map and record every handler call it makes. */
+  function runSwitch(opts: { coarse: boolean; enabled: boolean }): string[] {
+    const calls: string[] = []
+    const map = {
+      cooperativeGestures: {
+        enable: () => calls.push('enable'),
+        disable: () => calls.push('disable'),
+      },
+    }
+    try {
+      new Function(
+        'map', 'isLoaded', 'enabled', 'prefersCooperativeGestures',
+        cooperativeEffectBody(),
+      )(map, true, opts.enabled, () => opts.coarse)
+    } catch (e) {
+      throw new Error(`could not execute the shipped effect body verbatim: ${String(e)}`)
+    }
+    return calls
+  }
+
   it('opts every embed into cooperative gestures on touch devices only', () => {
+    // One exported predicate, called by the construction default...
+    expect(mapcn).toContain('export function prefersCooperativeGestures(): boolean')
     expect(mapcn).toContain('cooperativeGestures: prefersCooperativeGestures()')
     expect(mapcn).toContain('"(pointer: coarse)"')
     // The default must be declared BEFORE the caller's props, so an embed can
@@ -147,10 +190,31 @@ describe('inline map gestures', () => {
     expect(init.indexOf('cooperativeGestures:')).toBeLessThan(init.indexOf('...props,'))
   })
 
-  it('hands the gestures back when the map goes fullscreen', () => {
+  it('switches through that same predicate and never enables it on a fine pointer', () => {
+    // ...and by the runtime switch, which imports that exact symbol rather than
+    // re-deriving the pointer query — so the two paths cannot drift apart.
+    expect(tripMap).toMatch(
+      /import\s*\{[^}]*\bprefersCooperativeGestures\b[^}]*\}\s*from\s*'\.\/mapcn\/map'/,
+    )
+    expect(tripMap).not.toContain('(pointer: coarse)')
+
+    // The inline-vs-expanded split still holds, on a coarse pointer: inline
+    // keeps the two-finger mode, the expanded overlay hands gestures back.
     expect(tripMap).toContain('<CooperativeGestures enabled={!expanded} />')
-    expect(tripMap).toContain('map.cooperativeGestures.enable()')
-    expect(tripMap).toContain('map.cooperativeGestures.disable()')
+    expect(runSwitch({ coarse: true, enabled: true })).toEqual(['enable'])
+    expect(runSwitch({ coarse: true, enabled: false })).toEqual(['disable'])
+
+    // A fine pointer reaches neither call. enable() would block plain
+    // wheel-zoom and paint the two-finger hint over a mouse desktop, and
+    // disable() has nothing to undo — the constructed state is already right.
+    expect(runSwitch({ coarse: false, enabled: true })).toEqual([])
+    expect(runSwitch({ coarse: false, enabled: false })).toEqual([])
+    const body = cooperativeEffectBody()
+    const gate = body.indexOf('prefersCooperativeGestures()')
+    expect(gate, 'the fine-pointer gate must exist').toBeGreaterThan(-1)
+    expect(gate, 'and must precede the first handler call').toBeLessThan(
+      body.indexOf('map.cooperativeGestures'),
+    )
   })
 })
 
