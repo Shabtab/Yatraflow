@@ -89,7 +89,7 @@ export function PrintExport({ trip, legCorrections }: { trip: Trip; legCorrectio
 
       <Modal open={open} onClose={() => setOpen(false)} title="Print day cards / offline PDF">
         <p className="hint-text" style={{ margin: '0 0 12px' }}>
-          A road-friendly copy of the plan — every day as a card with clocks, drives and stops. Use your browser's
+          A road-friendly copy of the plan — every day as a card with clocks, drives and stops. Use your browser’s
           print dialog and pick <b>Save as PDF</b> to keep it on your phone for no-signal stretches.
         </p>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>

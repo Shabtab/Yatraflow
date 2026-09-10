@@ -501,7 +501,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
               <div className="return-section" aria-label="Return journey stops">
                 <div className="return-head">
                   <span className="eyebrow">Return</span>
-                  <span className="return-note">auto-filled with the reverse route — edit freely</span>
+                  <span className="return-note">Auto-filled with the reverse route — edit freely</span>
                 </div>
                 <RouteLeg stops={returnStops} offset={outbound.length} returnLeg />
                 <LocationInput
@@ -710,7 +710,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
                       const q = last || f.startLocation.trim() || f.name.trim()
                       const u = q ? await fetchTripThumbUrl(q) : null
                       patchFields({ coverImageUrl: u ?? '' })
-                      if (!u) toast("Couldn't find a photo for that destination — paste an image URL instead.", 'err')
+                      if (!u) toast("Couldn’t find a photo for that destination — paste an image URL instead.", 'err')
                     } finally { setBusyCover(false) }
                   }}>
                   {busyCover ? 'Finding photo…' : f.coverImageUrl ? 'Refresh destination photo' : 'Use destination photo'}

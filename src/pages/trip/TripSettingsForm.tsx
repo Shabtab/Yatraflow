@@ -208,7 +208,7 @@ export function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boo
                 fmt={v => formatInr(v)} ariaLabel="Budget per person in rupees"
                 disabled={!editable} onChange={v => setF(x => ({ ...x, budget: v }))} />
               <div className="bench-scale-ends" aria-hidden="true"><span>₹0</span><span>₹3L</span></div>
-              <p className="bench-hint">The Budget tab's pacing tile reads this target.</p>
+              <p className="bench-hint">The Budget tab’s pacing tile reads this target.</p>
             </div>
           </div>
 
@@ -296,7 +296,7 @@ export function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boo
         <aside className="ts-receiptcol" aria-label="Live preview of these settings">
           <div className="bench-receipt card">
             <span className="bench-barcode" aria-hidden="true" />
-            <span className="bench-stamp" aria-hidden="true">PREVIEW</span>
+            <span className="bench-stamp" aria-hidden="true">Preview</span>
             <div className="bench-receipt-head">
               <span className="bench-receipt-kicker">Trip settings bill</span>
               <span className="bench-receipt-date">{f.startDate && f.endDate ? `${f.startDate} → ${f.endDate}` : 'Dates not set'}</span>

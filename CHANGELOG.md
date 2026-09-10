@@ -41,6 +41,28 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
   an M9 strategic-track section plus an idea-pool pointer; docs/README indexes
   the new plan.
 
+### Changed
+
+- **Design-system consistency pass: fonts, casing, glass and colour.** One green
+  (CTI teal `#0D8D82`) now drives primary buttons, focus rings and form
+  accents. Glass blur is unified into four tiers (chrome 18 / panel 14 / chip 8 /
+  scrim 3) with every translucent surface mapped to one. Radii snap to the token
+  set (8/12/18/24). Mobile row actions rise to 40px. Every micro-label shares one
+  recipe (10.5px / 700 / .06em, uppercase via CSS). Type- and spacing-token
+  scales join the existing token ladder.
+
+### Fixed
+
+- **Off-scale font weights rendered as faux bold.** The stylesheet declared
+  weights 550/650/750 and Inter 800; the font link loaded none of them, so the
+  browser synthesised those weights across buttons, chips and labels. Inter 800
+  is now loaded and every declared weight rounds to 500/600/700/800.
+- **Literal ALL-CAPS strings** in PublicItinerary, Explore, PlanBench,
+  TripSettingsForm and TimelineTab are retyped in sentence case; the uppercase
+  look is now produced by CSS `text-transform`, not by typed capitals.
+- Casing and typography nits: "Trip board", "Master admin", "Explore
+  itineraries", capitalised helper sentences, typographic apostrophes.
+
 ## [0.47.0] — 2026-09-10
 
 **A cleanup-and-polish release: deletes become reversible, the app writes faster, and the whole backlog of small wins lands at once.**

@@ -141,7 +141,7 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
         <div className="pub-hero-bg" aria-hidden="true" />
         <div className="container pub-hero-inner">
           <button className="btn btn-sm btn-ghost pub-hero-back" onClick={() => onNavigate('/explore')}>← Explore</button>
-          <span className="pub-hero-badge">{cap(pub.travelStyle).toUpperCase()} ITINERARY</span>
+          <span className="pub-hero-badge">{cap(pub.travelStyle)} itinerary</span>
           <p className="pub-hero-kicker">
             {trip.startLocation} → {trip.destinations.join(' → ')}
             {isRoundTrip(trip) && <> → {trip.startLocation}</>}
@@ -149,13 +149,13 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
           <h1 className="pub-hero-title">{pub.title}</h1>
           <p className="pub-hero-story">{pub.tagline}</p>
           <p className="pub-hero-byline">
-            BY {creator?.profile.name ?? 'a YatraFlow traveller'} · {pub.durationDays} DAYS · {trip.travellers} TRAVELLERS · {cap(trip.transportMode)}
-            {creator?.profile.isCreator && <> · <Sparkles size={11} aria-hidden style={{ verticalAlign: '-1px', margin: '0 2px' }} />VERIFIED CREATOR</>}
+            By {creator?.profile.name ?? 'a YatraFlow traveller'} · {pub.durationDays} days · {trip.travellers} travellers · {cap(trip.transportMode)}
+            {creator?.profile.isCreator && <> · <Sparkles size={11} aria-hidden style={{ verticalAlign: '-1px', margin: '0 2px' }} />Verified creator</>}
           </p>
         </div>
         {/* "The practical bit" — the evidence cluster, floating over the hero */}
         <aside className="pub-hero-stats">
-          <span className="pub-stats-label">THE PRACTICAL BIT</span>
+          <span className="pub-stats-label">The practical bit</span>
           <b className="pub-stats-figure">{formatInr(pub.estimatedBudgetPerPersonInr)}</b>
           <span className="pub-stats-sub">estimated per traveller</span>
           <hr className="pub-stats-divider" />
@@ -184,7 +184,7 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
 
           <div className="two-col pub-editorial">
             <div>
-              <span className="editorial-kicker">THE JOURNEY</span>
+              <span className="editorial-kicker">The journey</span>
               <h2 className="editorial-title">Why this route works</h2>
               <p className="editorial-body">{pub.tagline}</p>
               {pub.travelTips.length > 0 && (
@@ -201,7 +201,7 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
               </p>
             </div>
             <aside className="card route-snap route-glance">
-              <span className="route-glance-label">THE ROUTE AT A GLANCE</span>
+              <span className="route-glance-label">The route at a glance</span>
               <RouteSnapshot
                 count={trip.days.length}
                 startLabel={trip.startLocation}
@@ -216,13 +216,13 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
 
           {highlightsN.length > 0 && (
             <div className="pub-highlightsN">
-              <span className="editorial-kicker">TRIP HIGHLIGHTS</span>
+              <span className="editorial-kicker">Trip highlights</span>
               <h2 className="editorial-title">The rhythm of {pub.durationDays} days</h2>
               <div className="day-highlight-row">
                 {highlightsN.map(h => (
                   <div key={h.day.id} className="day-highlight-card">
                     <div className="day-highlight-top">
-                      <span className="editorial-kicker">DAY {String(h.day.index + 1).padStart(2, '0')} · {STOP_KIND_LABELS[h.kind].toUpperCase()}</span>
+                      <span className="editorial-kicker">Day {String(h.day.index + 1).padStart(2, '0')} · {STOP_KIND_LABELS[h.kind].toUpperCase()}</span>
                       <span className={`stop-kind-tag kind-${h.kind}`}>{STOP_KIND_LABELS[h.kind]}</span>
                     </div>
                     <b className="day-highlight-title">{h.day.title ?? `Day ${h.day.index + 1}`}</b>
@@ -267,7 +267,7 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
               return (
                 <div key={day.id} className="day-section" style={{ position: 'relative', overflow: 'hidden' }}>
                   <div className="day-header">
-                    <div className="day-badge"><small>DAY</small><b>{day.index + 1}</b></div>
+                    <div className="day-badge"><small>Day</small><b>{day.index + 1}</b></div>
                     <div>
                       <h2>{day.title ?? `Day ${day.index + 1}`}</h2>
                       <div className="small muted">

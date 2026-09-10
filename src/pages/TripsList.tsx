@@ -111,7 +111,7 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
         <div className="card" style={{ marginBottom: 18 }}>
           <div className="row-between">
             <h3 style={{ margin: 0 }}>Trash {trashed.length > 0 && <span className="small muted">({trashed.length})</span>}</h3>
-            <span className="small muted">Deleted trips stay for 30 days, then they're gone for good.</span>
+            <span className="small muted">Deleted trips stay for 30 days, then they’re gone for good.</span>
           </div>
           <hr className="divider" />
           {trashed.length === 0 ? (
@@ -143,7 +143,7 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
             <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
               <button className="btn btn-primary" onClick={() => onNavigate('/new')}>Plan your first trip</button>
               <button className="btn btn-outline" onClick={addDemoTrips}><Rocket size={15} aria-hidden style={{ verticalAlign: '-2px', marginRight: 5 }} />Load demo trips</button>
-              <button className="btn btn-outline" onClick={() => onNavigate('/explore')}>Browse Explore</button>
+              <button className="btn btn-outline" onClick={() => onNavigate('/explore')}>Explore itineraries</button>
             </div>
           }
         />

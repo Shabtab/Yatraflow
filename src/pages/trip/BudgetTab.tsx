@@ -182,7 +182,7 @@ export function BudgetTab({ trip, totals, editable }: { trip: Trip; totals: Retu
             sub={<>{formatInr(pacing.perPersonPerDayInr)} per person · {pacing.daysLeft === 0 ? 'trip over' : `${pacing.daysLeft} day${pacing.daysLeft !== 1 ? 's' : ''} left`}</>} />
         ) : (
           <StatTile label="Safe to spend / day" value="—"
-            sub={<>set a per-person target in Trip settings to see pacing</>} />
+            sub={<>Set a per-person target in Trip settings to see pacing</>} />
         )}
       </div>
 
@@ -195,7 +195,7 @@ export function BudgetTab({ trip, totals, editable }: { trip: Trip; totals: Retu
           <div className="card">
             <h3>Cost per day</h3>
             <p className="hint-text" style={{ margin: '4px 0 14px' }}>
-              Day expenses + that day's drive{avg > 0 && <> · <span className="avg-key" aria-hidden /> tick = daily average ({formatInr(avg)})</>}
+              Day expenses + that day’s drive{avg > 0 && <> · <span className="avg-key" aria-hidden /> tick = daily average ({formatInr(avg)})</>}
             </p>
             <div className="daybars">
               {days.map(d => {

@@ -611,7 +611,7 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
       // reads tripById.
       await fetchSharedTrip(trip.id, true)
       const ok = await joinViaInvite(trip.id, me.id)
-      if (ok) toast(`You're on “${trip.name}” — happy planning!`)
+      if (ok) toast(`You’re on “${trip.name}” — happy planning!`)
       else toast('Could not join — the link may be old. Ask for a fresh one.', 'err')
       navigateRef.current(`/trip/${trip.id}`)
     })()

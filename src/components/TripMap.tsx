@@ -30,7 +30,7 @@ import {
   useMap,
 } from './mapcn/map'
 
-const DAY_COLORS = ['#149A90', '#F59E2D', '#7C5CFC', '#E2557B', '#2D9CDB', '#6BBF59', '#B7791F']
+const DAY_COLORS = ['#0D8D82', '#F59E2D', '#7C5CFC', '#E2557B', '#2D9CDB', '#6BBF59', '#B7791F']
 
 // Basemaps come from the mapcn <Map> default (OpenFreeMap — see mapcn/map.tsx).
 // The old CARTO Voyager / dark-matter and Esri World Imagery style URLs that

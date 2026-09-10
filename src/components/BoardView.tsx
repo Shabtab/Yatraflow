@@ -100,7 +100,7 @@ export function BoardView({ trip, editable, applyChange, health, totals, onOpenO
       {/* ---- slim board header (above the map board, normal flow) ---- */}
       <div className="row-between board-head">
         <div>
-          <h2>Trip Board</h2>
+          <h2>Trip board</h2>
           <p className="muted small">Arrange flexible stops across days while keeping the real route in view.</p>
         </div>
         {editable && (

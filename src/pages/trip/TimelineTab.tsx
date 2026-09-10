@@ -493,7 +493,7 @@ const DaySection = React.memo(function DaySection({ day, trip, editable, onAdd, 
         <button className="day-collapse" onClick={toggleCollapsed} aria-expanded={!collapsed} aria-label={`Day ${day.index + 1} stops`}>
           {collapsed ? '▸' : '▾'}
         </button>
-        <div className="day-badge"><small>DAY</small><b>{day.index + 1}</b></div>
+        <div className="day-badge"><small>Day</small><b>{day.index + 1}</b></div>
         <div style={{ flex: 1, minWidth: 160 }}>
           {editingTitle ? (
             <input

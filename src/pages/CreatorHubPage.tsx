@@ -80,7 +80,7 @@ export function CreatorHubPage({ onNavigate }: { onNavigate: (r: string) => void
             <div className="row-between">
               <h3>My publications</h3>
               {myPubs.length > 0 && (
-                <a className="small" href={`#/creator/${me.id}`} style={{ fontWeight: 650 }}>
+                <a className="small" href={`#/creator/${me.id}`} style={{ fontWeight: 600 }}>
                   <ExternalLink size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />View public page
                 </a>
               )}
@@ -258,7 +258,7 @@ function EarningsTab({ myPubs, view, onView }: {
           {projection.unpricedCount > 0 && (
             <div className="hub-note">
               <b>{projection.unpricedCount} free publication{projection.unpricedCount === 1 ? '' : 's'} not shown.</b>{' '}
-              Fully free itineraries don't project — set a premium price on their Share tab to see them here.
+              Fully free itineraries don’t project — set a premium price on their Share tab to see them here.
             </div>
           )}
         </>

@@ -40,7 +40,7 @@ where the direction doc says so. Every token is mirrored in
 | `--yf-surface` | `#FFFFFF` | `#16233A` | readable cards |
 | `--yf-border` | `#DCE7E1` | `#27395A` | soft boundaries |
 | `--yf-text-muted` | `#637B7D` | `#8FA0B5` | secondary text |
-| `--yf-glass` / `--yf-glass-border` | `rgba(255,255,255,.72)` / `rgba(255,255,255,.65)` | `rgba(16,27,43,.72)` / `rgba(255,255,255,.14)` | level-2 overlays |
+| `--yf-glass` / `--yf-glass-border` | `rgba(255,255,255,.58)` / `rgba(255,255,255,.65)` | `rgba(16,27,43,.58)` / `rgba(255,255,255,.14)` | level-2 overlays |
 
 (`--yf-ink`, `--yf-mint` and `--yf-surface-muted` were removed in v0.30.0 —
 defined but never referenced by any component.)
@@ -81,7 +81,7 @@ popup stops clashing.
 
 | Token | Light | Dark |
 |------|-------|------|
-| `--teal-500` (primary) | `#149A90` | `#2BB8AC` |
+| `--teal-500` (primary) | `#0D8D82` | `#2BB8AC` |
 | `--teal-600` (primary hover) | `#0E7A72` | `#35C9BC` |
 | `--teal-700` (primary active) | `#0B6B63` | `#1E9D92` |
 | `--saffron-500` (accent) | `#F59E2D` | `#F5A94A` |
@@ -152,3 +152,46 @@ popup stops clashing.
 - All interactive elements share one `--ring` focus token — keyboard users get a
   consistent, visible focus indication in both themes.
 - Touch targets on mobile are ≥40px per the `@media (max-width:720px)` block.
+
+## v0.48 consistency pass
+
+### Glass blur tiers
+
+One ladder replaces the eight blur values previously scattered across components:
+
+| Tier | Token | Value | Used by |
+|------|-------|-------|---------|
+| Chrome | `--yf-blur-nav` | 18px + `saturate(1.2)` | top nav, tab bar, user menu, notifications, board corner cards, mobile trip dock, segmented filter capsule |
+| Panel | `--yf-blur-panel` | 14px + `saturate(1.15)` | sticky totals strip, location dropdown, calendar pop, `glass-soft` |
+| Chip | `--yf-blur-chip` | 8px | map day chips, map legend, explore chips, hero search, role select, cover chips |
+| Scrim | `--yf-blur-scrim` | 3px | modal and locked overlays |
+
+Text-bearing overlays (map legend body) keep a near-opaque `--yf-surface` with a
+glass border: readability before transparency. The locked-CTA scrim keeps
+its gentler 1.5px frost by design.
+
+### One green
+
+`--teal-500` is now `#0D8D82` (the CTI primary), so primary buttons, focus rings,
+form accents and selected states all resolve to a single green. The dark theme
+already resolved to `#2BB8AC` in both families, so nothing there changes.
+
+### Typography policy
+
+- **Weights:** only 500/600/700/800. The font link loads Inter 400-800
+  (800 added) and Sora 600-800. Never declare a weight the link does not load -
+  the browser fakes it with synthetic bold.
+- **Micro-labels ("kickers"):** one recipe - 10.5px / 700 / `.06em` / uppercase,
+  applied with CSS `text-transform`. Never type capitals in components.
+- **Type scale:** `--text-2xs` 10.5 · `--text-xs` 11 · `--text-sm` 12.5 ·
+  `--text-base` 14 · `--text-md` 15.5 · `--text-lg` 17 · `--text-xl` 20 ·
+  `--text-2xl` 24 (px). Kicker tokens: `--kicker-size`, `--kicker-weight`,
+  `--kicker-tracking`.
+- **Spacing scale:** `--s-1` 4 · `--s-2` 6 · `--s-3` 8 · `--s-4` 12 ·
+  `--s-5` 16 · `--s-6` 20 · `--s-8` 24 (px).
+
+### Radii
+
+Card and popover radii touched by the consistency pass use `--radius-sm` (12), `--radius` (18) or
+`--radius-lg` (24); pills use 999px. A handful of one-off card radii (9-14px) remain, staged for the spacing sweep. The mobile trip dock, sticky totals strip
+and board corner cards moved from 16/20 to `--radius`.
