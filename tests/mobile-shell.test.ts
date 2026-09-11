@@ -218,6 +218,30 @@ describe('inline map gestures', () => {
   })
 })
 
+// 6 ---------------------------------------------------------------------------
+
+describe('the shell never renders the marketing landing', () => {
+  it('keeps the hydration ready-gate covering the bare route inside the shell', () => {
+    // The web paints its landing instantly while the store hydrates (the
+    // !bareRoute exclusion); the installed app must show the loading block
+    // instead, so a signed-in user never flashes the website's home — logo
+    // bar and all — before their app home arrives. Regression: the gate used
+    // to exclude the bare route unconditionally, so every launch flashed the
+    // marketing landing for as long as hydration took past the splash.
+    expect(app).toContain('(!bareRoute || isNative)')
+  })
+
+  it('falls an unknown deep link back to the app home in the shell, not the landing', () => {
+    // The route switch's default is the LAST "default:" in the file — every
+    // lazy import above also writes `.then(m => ({ default: … }))`.
+    const at = app.lastIndexOf('default:')
+    expect(at).toBeGreaterThan(-1)
+    const body = app.slice(at, at + 500)
+    expect(body).toContain('isNative && me')
+    expect(body).toContain('<NativeHomePage')
+  })
+})
+
 // 5 ---------------------------------------------------------------------------
 
 describe('soft keyboard resizes the WebView', () => {

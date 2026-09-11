@@ -118,6 +118,10 @@ The last stretch of releases gave the Map tab a brain, taught the plan to learn 
 - **The keyboard no longer covers the field you're typing in** — the Android shell reflows instead of letting the keyboard float over the layout.
 - **One green, one kicker, four blur tiers.** The design system collapsed primary buttons, focus rings and form accents onto a single teal, everything translucent onto four named blur tiers, and every micro-label onto one recipe — retyped out of literal ALL-CAPS so screen readers stop spelling words out. The stylesheet had also been declaring font weights the font never loaded.
 
+## ✨ The v0.50.1 run, in plain words
+
+- **The app stopped flashing the website on launch.** Opening the installed app used to show the marketing home — top bar and all — while your session restored, then jump into the app home. Now it goes splash → loading → app home; the website's landing only appears for signed-out users, where it doubles as the login page.
+
 ## ✨ The v0.50.0 run, in plain words
 
 - **Every trip edit sticks now.** Reordering, arrow moves, drag-and-drop, deletes and cross-day moves used to toast "Change saved" and then silently revert — the save path rebuilt the day grid from the pre-edit plan on every Keep. That defect is fixed and pinned by regression tests; verified live in Board and Timeline, surviving reload.

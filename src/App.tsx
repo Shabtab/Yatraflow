@@ -245,7 +245,14 @@ export default function App() {
     void hideSplash()
   }, [ready])
   const bareRoute = parts[0] === undefined || parts[0] === ''
-  if (!ready && parts[0] !== 'auth' && parts[0] !== 'share' && !bareRoute) {
+  // The web paints its landing instantly while the store hydrates (no spinner
+  // in front of the marketing home). The shell never shows that page — not
+  // even as a flash before hydration completes: a signed-in user opening the
+  // app must see the loading block (under the splash), then their app home —
+  // never the website's home. That ready-gate exclusion used to be
+  // unconditional, so every launch flashed the marketing landing + its
+  // website chrome before NativeHome arrived.
+  if (!ready && parts[0] !== 'auth' && parts[0] !== 'share' && (!bareRoute || isNative)) {
     page = <div className="container loading-block"><div className="spinner" />Loading…</div>
   } else if (parts[0] === 'share' && parts[1]) {
     page = <SharedTripPage payload={parts[1]} onNavigate={navigate} />
@@ -313,7 +320,11 @@ export default function App() {
         page = <Suspense fallback={lazyRouteFallback}><AdminPage onNavigate={navigate} /></Suspense>
         break
       default:
-        page = <LandingPage onNavigate={navigate} />
+        // Shell parity: an unknown deep link in the installed app must not
+        // drop a signed-in user onto the marketing landing (website chrome
+        // reads as "the app came back as a website"). The bottom nav's Home
+        // is the honest fallback; the web keeps the landing for its SEO job.
+        page = isNative && me ? <NativeHomePage me={me} onNavigate={navigate} /> : <LandingPage onNavigate={navigate} />
     }
   }
 
