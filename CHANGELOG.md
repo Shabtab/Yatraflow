@@ -13,6 +13,15 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 > record still exists in `git log`, not here. Archived release notes live in
 > [`docs/history/`](docs/history/).
 
+## [0.50.0] - 2026-09-11
+
+**Every trip edit finally sticks — the "Change saved but nothing changed" defect is dead.** `updateTrip()` treated *every* full-trip save from the impact-preview flow as a date change (a full `Trip` always carries truthy `startDate`/`endDate`), rebuilt the day grid from the *pre-edit* cached days, and overwrote the proposed reorder/delete/move in both the cache and the persisted row — while still toasting "Change saved". The day grid now reconciles only when the dates actually changed, and reconciles the *incoming* days, so reorders, arrow moves, drag-and-drop, deletes and cross-day moves all persist in real time and survive reload. Pinned by two regression tests that fail on the old code and pass with the fix.
+
+### Fixed
+
+- **Trip edits (reorder / arrows / drag-and-drop / delete / cross-day move) no longer silently discard themselves on Keep.** `updateTrip` in `src/store/store.ts` gated day-grid reconciliation on `patchFields.startDate || patchFields.endDate` — always truthy for the full-Trip `pending.proposed` that `keepPending()` / `moveToAnotherDay()` pass — then ran `reconcileDays(t.days, …)` over the *old* days and assigned the result back over the proposal. The fix compares resolved dates against the cached trip and skips reconciliation entirely when unchanged; when dates did change it reconciles `patchFields.days ?? t.days`. `tests/reconcile-days.test.ts` gains two regression tests (full-Trip reorder keeps the new order in cache + persisted payload; full-Trip delete keeps the deletion).
+- **Board delete, in-place edit and tab order from v0.49.0 verified live on this release** (Board cards carry delete + edit, tab rail is Overview → Board → Map → Timeline).
+
 ## [0.49.0] - 2026-09-11
 
 **The Board becomes a first-class editor, drag-reorder becomes trustworthy, and the entire open-issue backlog closes.** The Board tab can now add, edit and delete stops in place (sharing one stop-form implementation with the Timeline instead of a drifting copy) and moves to the front of the tab rail; the realtime echo-suppression guard is armed at commit time so a collaborator's stale echo can no longer revert an accepted reorder — the third and final symptom of that family; and all eight open issues close in one pass: two P1 data-integrity fixes (demo trips no longer seed into real accounts on a flaky connection; "Delete forever" finally confirms), five accessibility repairs (the unread badge and five warn-on-tint labels now pass WCAG AA, the cover-URL field is labelled, the notifications panel stops silently truncating at 12), a single APG tablist contract across all four tab surfaces, and Profile drops its empty desktop gutter.

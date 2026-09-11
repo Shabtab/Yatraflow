@@ -1517,11 +1517,21 @@ export function updateTrip(id: ID, patchFields: Partial<Trip>): void {
   // Date changes resize the day grid — reconcile BEFORE assigning so the
   // persisted row and the cache carry the same days. Shrinks that would drop
   // a day holding stops are rejected with the reason surfaced as a toast.
-  if (patchFields.startDate || patchFields.endDate) {
-    const newStart = patchFields.startDate ?? t.startDate
-    const newEnd = patchFields.endDate ?? t.endDate
+  // NOTE: callers pass either a partial patch (settings form) OR a full Trip
+  // (TripWorkspace keepPending/moveToAnotherDay via pending.proposed). Only
+  // reconcile when the dates ACTUALLY changed, and reconcile the incoming
+  // days (patchFields.days ?? t.days) — reconciling t.days unconditionally
+  // used to silently discard every reorder/delete/move, because a full Trip
+  // always carries truthy startDate/endDate and rec.days (built from the OLD
+  // days) overwrote the proposed days. That was the "Change saved but nothing
+  // sticks" bug: cache + DB both received the pre-edit days.
+  const newStart = patchFields.startDate ?? t.startDate
+  const newEnd = patchFields.endDate ?? t.endDate
+  const datesChanged = newStart !== t.startDate || newEnd !== t.endDate
+  if (datesChanged) {
     const protectedIdx = new Set(t.fixedCommitments.map(c => c.dayIndex))
-    const rec = reconcileDays(t.days, newStart, newEnd, protectedIdx)
+    const baseDays = patchFields.days ?? t.days
+    const rec = reconcileDays(baseDays, newStart, newEnd, protectedIdx)
     if (rec.error) { toast(rec.error, 'err'); return }
     patchFields = { ...patchFields, days: rec.days }
   }
