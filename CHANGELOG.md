@@ -13,7 +13,9 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 > record still exists in `git log`, not here. Archived release notes live in
 > [`docs/history/`](docs/history/).
 
-## [Unreleased]
+## [0.49.0] - 2026-09-11
+
+**The Board becomes a first-class editor, drag-reorder becomes trustworthy, and the entire open-issue backlog closes.** The Board tab can now add, edit and delete stops in place (sharing one stop-form implementation with the Timeline instead of a drifting copy) and moves to the front of the tab rail; the realtime echo-suppression guard is armed at commit time so a collaborator's stale echo can no longer revert an accepted reorder — the third and final symptom of that family; and all eight open issues close in one pass: two P1 data-integrity fixes (demo trips no longer seed into real accounts on a flaky connection; "Delete forever" finally confirms), five accessibility repairs (the unread badge and five warn-on-tint labels now pass WCAG AA, the cover-URL field is labelled, the notifications panel stops silently truncating at 12), a single APG tablist contract across all four tab surfaces, and Profile drops its empty desktop gutter.
 
 ### Added
 
