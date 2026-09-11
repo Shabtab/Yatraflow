@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { TriangleAlert } from 'lucide-react'
 import { PillNav } from '../components/PillNav'
+import { useTablist } from '../hooks/useTablist'
 import { useDb, currentUser, login, signup } from '../store/store'
 import { isSupabaseConfigured } from '../lib/supabase'
 import { MISSING_BACKEND_MESSAGE } from '../lib/authErrors'
@@ -19,6 +20,8 @@ function nextRoute(): string {
   if (!/^\/[a-z0-9\-/]*$/i.test(decoded) || decoded.includes('//')) return '/trips'
   return decoded
 }
+
+const AUTH_MODES = ['login', 'signup'] as const
 
 export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
   const db = useDb()
@@ -56,6 +59,12 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
     // session is actually visible to the app.
   }
 
+  // #87: this was a role="tablist" whose children were aria-pressed buttons —
+  // a spec mismatch. Now proper tabs: role="tab", aria-selected, roving
+  // tabindex, arrow/Home/End. The form is one panel whose label follows the
+  // active tab (the fields differ only by the name row).
+  const { refs, tabProps } = useTablist(AUTH_MODES, mode, m => { setMode(m); setError(null) })
+
   return (
     <div className="auth-wrap">
       <div className="card auth-card">
@@ -65,8 +74,12 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
         </p>
 
         <PillNav className="tabbar auth-tabs" role="tablist" aria-label="Login or sign up" activeKey={mode}>
-          <button className="tab-btn" data-pill-key="login" aria-pressed={mode === 'login'} onClick={() => { setMode('login'); setError(null) }}>Log in</button>
-          <button className="tab-btn" data-pill-key="signup" aria-pressed={mode === 'signup'} onClick={() => { setMode('signup'); setError(null) }}>Sign up</button>
+          <button ref={refs(0)} className="tab-btn" type="button" role="tab" id="auth-tab-login" data-pill-key="login"
+            aria-selected={mode === 'login'} aria-controls="auth-panel"
+            onClick={() => { setMode('login'); setError(null) }} {...tabProps('login', 0)}>Log in</button>
+          <button ref={refs(1)} className="tab-btn" type="button" role="tab" id="auth-tab-signup" data-pill-key="signup"
+            aria-selected={mode === 'signup'} aria-controls="auth-panel"
+            onClick={() => { setMode('signup'); setError(null) }} {...tabProps('signup', 1)}>Sign up</button>
         </PillNav>
 
         {/* Say so up front: a build with no Supabase project compiled in can
@@ -78,7 +91,7 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
           </div>
         )}
 
-        <form onSubmit={submit}>
+        <form onSubmit={submit} id="auth-panel" role="tabpanel" aria-labelledby={mode === 'login' ? 'auth-tab-login' : 'auth-tab-signup'}>
           {mode === 'signup' && (
             <Field label="Your name"><input className="input" name="name" autoComplete="name" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Meera Nair" /></Field>
           )}

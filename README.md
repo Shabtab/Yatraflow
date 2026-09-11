@@ -118,6 +118,12 @@ The last stretch of releases gave the Map tab a brain, taught the plan to learn 
 - **The keyboard no longer covers the field you're typing in** — the Android shell reflows instead of letting the keyboard float over the layout.
 - **One green, one kicker, four blur tiers.** The design system collapsed primary buttons, focus rings and form accents onto a single teal, everything translucent onto four named blur tiers, and every micro-label onto one recipe — retyped out of literal ALL-CAPS so screen readers stop spelling words out. The stylesheet had also been declaring font weights the font never loaded.
 
+## ✨ The v0.49.0 run, in plain words
+
+- **The Board is now a full editing surface.** Add, edit and delete stops without leaving it — deletes route through the same impact-preview confirmation as the Timeline, and both views share one stop-form implementation so they can't drift apart again. It also moved to the front of the tab rail: Overview → Board → Map → Timeline.
+- **Drag-reorder actually sticks now.** Three separate realtime bugs used to let a collaborator's stale update snap your accepted reorder back — the last one surviving two prior fixes. All three are closed, with regression tests.
+- **The whole open-issue backlog closed.** Demo trips can no longer pollute a real account on a flaky connection; "Delete forever" asks first; the notification badge and five warning labels now pass WCAG contrast; screen readers get a real name on the cover-image field, a full notification list, one consistent keyboard tablist across every tab surface, and a Profile page without a phantom empty column.
+
 <details>
 <summary><b>See the full tour of features</b></summary>
 

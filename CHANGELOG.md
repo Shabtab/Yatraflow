@@ -13,10 +13,71 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 > record still exists in `git log`, not here. Archived release notes live in
 > [`docs/history/`](docs/history/).
 
-## [Unreleased]
+## [0.49.0] - 2026-09-11
+
+**The Board becomes a first-class editor, drag-reorder becomes trustworthy, and the entire open-issue backlog closes.** The Board tab can now add, edit and delete stops in place (sharing one stop-form implementation with the Timeline instead of a drifting copy) and moves to the front of the tab rail; the realtime echo-suppression guard is armed at commit time so a collaborator's stale echo can no longer revert an accepted reorder — the third and final symptom of that family; and all eight open issues close in one pass: two P1 data-integrity fixes (demo trips no longer seed into real accounts on a flaky connection; "Delete forever" finally confirms), five accessibility repairs (the unread badge and five warn-on-tint labels now pass WCAG AA, the cover-URL field is labelled, the notifications panel stops silently truncating at 12), a single APG tablist contract across all four tab surfaces, and Profile drops its empty desktop gutter.
+
+### Added
+
+- **The Board can now add, edit and delete stops without leaving the view.** The
+  board had up/down reorder and a move-to-day modal but no way to delete a stop, no
+  way to edit one, and its only "+ Add a stop" button navigated away to the Timeline.
+  All three now happen in place: a delete button on each card routes through the same
+  impact-preview flow as the Timeline's (so Keep/Remove remains the confirmation step),
+  the card title opens the shared stop editor, and each day column's dashed foot zone
+  is a click-to-add button while keeping its drag-drop role. The add/edit plumbing
+  (`initialValues` / `legContextFor` / `dayIndexOfStop`) moved from TimelineTab's
+  private scope into `lib/stopForm.ts` so both views share one implementation instead
+  of drifting — the same drift that already made their rejected-stop handling disagree.
+
+### Changed
+
+- **Tab order is now Overview → Board → Map → Timeline.** The Board — the
+  rearrange/edit/delete surface with the route visible — is the first stop after
+  Overview; the Timeline becomes the deliberate, information-dense view you open when
+  you need timings and legs, rather than the default editing surface. Deep links are
+  unaffected (tabs are addressed by slug, not position).
 
 ### Fixed
 
+- **Board and Timeline drag-reorder no longer reverts after you accept the change.**
+  `persistTripFieldNow` (and the trip INSERT path, `persistTrip`) recorded its
+  realtime echo-suppression stamp *after* awaiting the row write, so the guard only
+  covered the moment the write **resolved** — the whole server round trip was
+  unguarded. An echo that arrived in that hole was read as a collaborator's edit and
+  replaced the freshly reordered `days` with the stale server row, so an accepted
+  reorder visibly snapped back. The stamp is now taken *before* the await. This also
+  fixes the reported cross-day drag, which failed for the same reason: a cross-day
+  drag routes through the identical persist → realtime path.
+
+- **Reorder no longer reverts from an echo that lands *during* the debounce window.**
+  The previous fix armed the echo-suppression stamp only inside `persistTripFieldNow`,
+  i.e. when the debounced row write fired ~600 ms *after* you clicked Keep. A
+  `postgres_changes` echo that arrived in that 600 ms gap — before any write was even
+  issued — found no stamp and was therefore *not* suppressed, so it reverted the
+  optimistic reorder in the cache and the trailing debounced write then persisted the
+  reverted (stale) order. The stamp is now also taken synchronously inside
+  `persistTripField`, at the moment the change is committed, so the guard spans the
+  whole commit → write → echo span. This is the residual symptom that survived the
+  first fix on the live preview. (A negative-control test fires a stale echo during the
+  gap and fails on the old code.)
+
+- **Timeline reorder now drops where you put it.** `useReorder`'s card-level drop
+  passed the *hovered card's index* straight to `onMove`, with no adjustment for the
+  dragged item's removal shift. Dragging **downward** therefore landed one slot too
+  far — dropping a card onto its immediate neighbour moved it when the pointer was
+  aimed at a no-op, and dropping onto the last card overshot the end. Upward drags
+  were unaffected, which is why the bug read as intermittent. A drop now resolves the
+  hovered card to an insertion slot, using which half of the card the cursor is over.
+
+- **#94 (P1): a flaky connection can no longer seed demo trips into a real account.** `hydrateFromSupabase` trusted "the trip list came back empty" even when the membership or trips query had *errored* — so a sign-in on a bad connection could write ten fake trips alongside the user's real ones (right after telling them "some data didn't load"). The seed condition now consults a `tripCountUnknown` flag set by any query whose failure could fake an empty account; a genuinely new account (clean reads, zero trips) still seeds exactly as before. Three regression tests in `store-sweep.test.ts`: the membership-fail and trips-fail cases block the seed, the clean-empty control still seeds.
+- **#89 (P1): "Delete forever" in the Trash is confirmed now.** It was the app's only irreversible, protection-free action — one click destroyed the trip, its votes, decisions, activity and publication with no dialog and no undo (every other destructive path confirms first; trashing even offers undo). It now opens a dedicated `ConfirmDialog` whose copy states plainly that this cannot be undone.
+- **#90: the unread badge is readable.** White on saffron measured 2.14:1 (light) / 1.97:1 (dark). Same lightness-not-hue fix as the selected chips: dark ink (`#06251F`) on the identical bright fill — 7.6:1 / 8.3:1.
+- **#85: the same `--warn`-on-tint failure was fixed at the source once and never propagated.** Five sibling surfaces (`.day-warn-pill`, `.day-rail-chip.warn`, `.share-intent--saffron`, `.stop-num.cat-food`, `.gi-stat.hot b`) measured 3.48–3.69:1 in light theme; all five now share the `.chip-saffron` precedent's deeper amber (`#8F5B06`, 5.1–5.4:1) in one light-theme-only rule. `.day-warn-pill.sev-high` (danger on coral, 4.54:1) is excluded — it already passes.
+- **#88: the cover-image URL field is labelled for screen readers.** It sits two levels below `Field` (a custom URL box inside a picker div), outside `Field`'s direct-child label wiring, so SR users heard "edit text, blank". Explicit `aria-label="Cover image URL"` with a comment naming the constraint.
+- **#84: the notifications panel is no longer silently lossy.** It capped at 12 items with no path to older ones — the badge could count 27 while 12 were reachable. Past-12 accounts now get a "Show all N notifications" disclosure row inside the popover (the full list is already in the store, so this is pure disclosure); the list resets to the recent view when the popover closes, and the expanded view caps its height to the viewport.
+- **#86: the Profile page stopped reserving an empty 340px column.** Its whole body is one column inside a `1fr 340px` grid — at desktop widths the right track sat empty and the page read as half-finished. Now a single readable column (`.profile-col`, max-width 720px) instead of the gutter.
+- **#87: one ARIA tablist, not four dialects.** Only ShareTab implemented the APG contract; `Auth` declared `role="tablist"` over `aria-pressed` buttons (spec mismatch), `AdminPage` used `aria-pressed` on real tabs, and the workspace tab bar had `aria-selected` but left every tab in the tab order with dead arrow keys. ShareTab's exact behavior (roving tabindex + Arrow/Home/End with automatic activation) is now the shared `hooks/useTablist.ts` primitive, applied to all four surfaces; the three panels got their `role="tabpanel"` + `aria-labelledby` links too.
 - **`.env.example` now exists — the documented first step works again.** The README's
   Getting-started block and the runtime hint in `src/lib/supabase.ts` both told contributors
   to `cp .env.example .env.local`, but the file had never been committed, so the first command

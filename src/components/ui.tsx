@@ -684,7 +684,16 @@ export function useReorder<T extends { id: string }>(
       if (isForeign(e)) {
         const p = e.dataTransfer.getData('application/x-yf-stop')
         if (p) options?.onForeignDrop?.(p, idx)
-      } else if (dragIdx !== null && dragIdx !== idx) onMove(dragIdx, idx)
+      } else if (dragIdx !== null && dragIdx !== idx) {
+        // Resolve the hovered card to an insertion slot. `slot` is an index into
+        // the list BEFORE the dragged item is lifted out, so any slot past the
+        // dragged index shifts down by one once it is removed.
+        const r = e.currentTarget.getBoundingClientRect()
+        const afterHalf = e.clientY > r.top + r.height / 2
+        let slot = afterHalf ? idx + 1 : idx
+        if (slot > dragIdx) slot -= 1
+        if (slot !== dragIdx) onMove(dragIdx, slot)
+      }
       setDragIdx(null); setOverIdx(null); setForeignOver(null)
     },
     onDragEnd: () => { setDragIdx(null); setOverIdx(null); setForeignOver(null) },

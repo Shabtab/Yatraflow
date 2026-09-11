@@ -716,7 +716,10 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
                   {busyCover ? 'Finding photo…' : f.coverImageUrl ? 'Refresh destination photo' : 'Use destination photo'}
                 </button>
                 <div className="cover-picker-custom">
-                  <input className="input" placeholder="Paste an image URL…" value={f.coverImageUrl}
+                  {/* #88: nested two levels below Field, so Field's label wiring
+                      (direct-control-child only) can't reach it — the accessible
+                      name is set explicitly instead. */}
+                  <input className="input" placeholder="Paste an image URL…" aria-label="Cover image URL" value={f.coverImageUrl}
                     onChange={e => patchFields({ coverImageUrl: e.target.value })} />
                 </div>
               </div>

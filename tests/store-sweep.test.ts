@@ -345,6 +345,39 @@ describe('#36-18 — a partial hydrate says so', () => {
     expect(store.getSnapshot().trips.map((t: any) => t.id)).toContain('trip-1')
   })
 
+  it('#94 — never seeds demo trips when the trip count could not be read', async () => {
+    // The user HAS a real trip, but the membership read fails: myTripIds ends
+    // up empty and the trip list reads as []. Before the #94 guard the seed
+    // condition trusted that zero and wrote demo trips next to the real ones
+    // — the flaky-connection data-pollution bug.
+    account()
+    tableErrors = { trip_members: { message: 'permission denied for table trip_members' } }
+
+    await liveStore()
+    await settle()
+
+    const tripInserts = state.writes.filter(w => w.table === 'trips' && w.method === 'insert')
+    expect(tripInserts, 'seeded demo trips into an account whose reads failed').toHaveLength(0)
+    // The honest failure toast still fired (memberships named).
+    expect(toasts().some(m => m.includes('memberships'))).toBe(true)
+  })
+
+  it('#94 — control: a genuinely empty account still gets the seed', async () => {
+    // The guard must not break the feature it guards: clean reads + zero
+    // trips = first-time user = seed proceeds. (The recursion test above
+    // proves the seed itself lands; this proves the flag never fires on a
+    // clean path.)
+    memberRowsForUser = []
+    tripRowsForHydrate = []
+    memberRows = []
+
+    await liveStore()
+    await settle()
+
+    const tripInserts = state.writes.filter(w => w.table === 'trips' && w.method === 'insert')
+    expect(tripInserts.length, 'clean empty account was not seeded').toBeGreaterThan(0)
+  })
+
   it('stays quiet on a clean hydrate', async () => {
     account()
     await liveStore()

@@ -6,7 +6,7 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowLeft, ChevronDown, ChevronUp, LocateFixed, Map as MapIcon, MoveHorizontal,
-  Plus, TriangleAlert,
+  Plus, Trash2, TriangleAlert,
 } from 'lucide-react'
 import { prefersReducedMotion } from '../lib/motion'
 import type { Trip, ItineraryStop } from '../data/types'
@@ -15,18 +15,23 @@ import type { ScheduleWarning } from '../lib/engine'
 import type { ImpactResult } from '../lib/impact'
 import { useTimeFormat, formatHM } from '../lib/timefmt'
 import { stopKindOf, STOP_KIND_LABELS } from '../lib/stopKind'
+import { stopInitialValues, stopLegContext, stopEditorKey, stopDayIndex, type StopEditorTarget } from '../lib/stopForm'
 import { useDb } from '../store/store'
 import { useReorder, Modal } from './ui'
 import { TripMap } from './TripMap'
+import { StopEditor, type StopFormValues } from './StopEditor'
 
-export function BoardView({ trip, editable, applyChange, health, totals, onOpenOverview, onOpenTimeline }: {
+export function BoardView({ trip, editable, applyChange, health, totals, onOpenOverview }: {
   trip: Trip
   editable: boolean
   applyChange: (mutator: (d: Trip) => void, kind: ImpactResult['kind'], dayIndex: number) => void
   health: ReturnType<typeof computeHealth>
   totals: ReturnType<typeof computeTotals>
   onOpenOverview: () => void
-  onOpenTimeline: () => void
+  /** Kept for API compatibility: the board no longer navigates away to add a
+      stop — StopEditor opens in place. TripWorkspace still passes it; a future
+      pass can drop it from both ends. */
+  onOpenTimeline?: () => void
 }) {
   const db = useDb()
   const days = useMemo(() => [...trip.days].sort((a, b) => a.index - b.index), [trip])
@@ -94,6 +99,43 @@ export function BoardView({ trip, editable, applyChange, health, totals, onOpenO
     }, 'move-day', toDayIndex)
   }
 
+  /** Same delete shape as the Timeline's handleDelete — routes through the
+      impact preview, so Keep/Remove acts as the confirmation step. */
+  function handleDelete(stopId: string, dayIndex: number) {
+    applyChange(draft => {
+      for (const day of draft.days) day.stops = day.stops.filter(s => s.id !== stopId)
+    }, 'remove', dayIndex)
+  }
+
+  /** Add/edit stop editor, opened from the header button or a day column's
+      add-zone. Same form, same save path as the Timeline's. */
+  const [editorTarget, setEditorTarget] = useState<StopEditorTarget>(null)
+  function handleSave(v: StopFormValues) {
+    if (!editorTarget) return
+    const { legFromSource: _drop, ...legFields } = v
+    if (editorTarget.mode === 'add') {
+      const dayIndex = editorTarget.dayIndex
+      applyChange(draft => {
+        const day = draft.days.find(d => d.index === dayIndex)
+        if (!day) return
+        day.stops.push({
+          ...(legFields as unknown as ItineraryStop),
+          id: 'pending_' + Math.random().toString(36).slice(2),
+          orderInDay: day.stops.length + 1,
+        })
+      }, 'add', dayIndex)
+    } else {
+      const stopId = editorTarget.stopId
+      applyChange(draft => {
+        for (const day of draft.days) {
+          const s = day.stops.find(x => x.id === stopId)
+          if (s) { Object.assign(s, legFields); break }
+        }
+      }, 'edit', stopDayIndex(trip, stopId))
+    }
+    setEditorTarget(null)
+  }
+
   function fitToTrip() { setFocusedDay('all') }
   return (
     <div className={`board-tab${mapFocus ? ' board--mapfocus' : ''}`}>
@@ -112,7 +154,9 @@ export function BoardView({ trip, editable, applyChange, health, totals, onOpenO
                 ? <><ArrowLeft size={13} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />Back to cards</>
                 : <><MapIcon size={13} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />View map</>}
             </button>
-            <button className="btn btn-primary btn-sm" onClick={onOpenTimeline}><Plus size={13} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />Add a stop</button>
+            <button className="btn btn-primary btn-sm" onClick={() => setEditorTarget({ mode: 'add', dayIndex: focusedDay === 'all' ? 0 : focusedDay })}>
+              <Plus size={13} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />Add a stop
+            </button>
           </div>
         )}
       </div>
@@ -165,14 +209,30 @@ export function BoardView({ trip, editable, applyChange, health, totals, onOpenO
               focused={focusedDay === day.index}
               onToggleFocus={(focus) => setFocusedDay(focus ? day.index : focusedDay === day.index ? 'all' : day.index)}
               onMoveStopIn={handleMoveStopInto}
-              onReorder={reorderWithinDay} />
+              onReorder={reorderWithinDay}
+              onDelete={handleDelete}
+              onAdd={() => setEditorTarget({ mode: 'add', dayIndex: day.index })}
+              onEdit={(stopId) => setEditorTarget({ mode: 'edit', stopId })} />
           ))}
         </div>
       </div>
+
+      {/* Add/edit stop, without leaving the board. Same form as the Timeline's —
+          StopEditor owns its own modal chrome; the shared stopForm helpers give
+          it the same prefill and leg context. */}
+      <StopEditor
+        open={!!editorTarget}
+        onClose={() => setEditorTarget(null)}
+        initial={stopInitialValues(editorTarget, trip)}
+        resetKey={stopEditorKey(editorTarget)}
+        onSave={handleSave}
+        dayLabel={editorTarget?.mode === 'add' ? `Day ${editorTarget.dayIndex + 1}` : undefined}
+        legContext={stopLegContext(editorTarget, trip)}
+      />
     </div>
   )
 }
-function BoardColumn({ day, allDays, editable, warnings, focused, onToggleFocus, onMoveStopIn, onReorder }: {
+function BoardColumn({ day, allDays, editable, warnings, focused, onToggleFocus, onMoveStopIn, onReorder, onDelete, onAdd, onEdit }: {
   day: Trip['days'][number]
   allDays: Trip['days']
   editable: boolean
@@ -181,6 +241,9 @@ function BoardColumn({ day, allDays, editable, warnings, focused, onToggleFocus,
   onToggleFocus: (focus: boolean) => void
   onMoveStopIn: (stopId: string, fromDay: number, toDay: number, position: number) => void
   onReorder: (dayIndex: number, fromIdx: number, toIdx: number) => void
+  onDelete: (stopId: string, dayIndex: number) => void
+  onAdd: () => void
+  onEdit: (stopId: string) => void
 }) {
   const timeFormat = useTimeFormat()
   // Keyboard/touch alternative to dragging: ▲▼ reorders within the day, the
@@ -326,7 +389,14 @@ function BoardColumn({ day, allDays, editable, warnings, focused, onToggleFocus,
               {...(editable ? dndHandlers(i) : {})}>
               <div className="stop-main">
                 <span className="board-stop-kicker">{s.departTime ? `${formatHM(s.departTime, timeFormat)} · ` : ''}{STOP_KIND_LABELS[kind]}</span>
-                <span className="stop-title">{s.title}</span>
+                {editable ? (
+                  <button type="button" className="board-stop-title-btn" onClick={() => onEdit(s.id)}
+                    title={`Edit ${s.title}`} aria-label={`Edit ${s.title}`}>
+                    <span className="stop-title">{s.title}</span>
+                  </button>
+                ) : (
+                  <span className="stop-title">{s.title}</span>
+                )}
                 {meta && <span className="board-stop-meta">{meta}</span>}
               </div>
               {editable && (
@@ -347,23 +417,31 @@ function BoardColumn({ day, allDays, editable, warnings, focused, onToggleFocus,
                       <MoveHorizontal size={12} aria-hidden />
                     </button>
                   )}
+                  <button type="button" className="move-btn move-btn--danger"
+                    onClick={() => onDelete(s.id, day.index)}
+                    title={`Delete ${s.title} — you'll see the impact first`}
+                    aria-label={`Delete ${s.title}`}>
+                    <Trash2 size={12} aria-hidden />
+                  </button>
                 </div>
               )}
             </div>
           )
         })}
-        <div className={`board-col-zone${foreignOver === ordered.length && dragging === null && editable ? ' foreign-over' : ''}`}
-          {...(editable ? dayDropHandlers(ordered.length) : {})}
-          role="note">
-          {editable ? (
-            <>
-              <b><Plus size={13} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />Add or drop a stop</b>
-              <span className="small">Impact preview before saving</span>
-            </>
-          ) : (
+        {editable ? (
+          <button type="button" className={`board-col-zone board-col-zone--add${foreignOver === ordered.length && dragging === null ? ' foreign-over' : ''}`}
+            {...dayDropHandlers(ordered.length)}
+            onClick={onAdd}
+            title={`Add a stop to Day ${day.index + 1}`}
+            aria-label={`Add a stop to Day ${day.index + 1}`}>
+            <b><Plus size={13} aria-hidden style={{ verticalAlign: '-2px', marginRight: 3 }} />Add or drop a stop</b>
+            <span className="small">Impact preview before saving</span>
+          </button>
+        ) : (
+          <div className="board-col-zone" role="note">
             <span className="small">Day {day.index + 1}</span>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       {moveStop && (

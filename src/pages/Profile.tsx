@@ -45,7 +45,10 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
       <h1>Profile & settings</h1>
       <p className="muted small" style={{ marginBottom: 20 }}>{tripCount} trip{tripCount !== 1 ? 's' : ''} · {me.email}</p>
 
-      <div className="two-col" style={{ alignItems: 'start' }}>
+      {/* #86: this page's content is a single column — the .two-col grid left
+          a 340px empty gutter at desktop widths. A readable single column
+          instead (max-width keeps line lengths sane on wide screens). */}
+      <div className="profile-col">
         <div>
           <div className="card">
             <h3>Your details</h3>

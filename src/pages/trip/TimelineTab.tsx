@@ -27,6 +27,7 @@ import { stopKindOf, STOP_KIND_LABELS } from '../../lib/stopKind'
 import { statusLabel } from '../../lib/labels'
 import { Chip, Modal, EmptyState, toast, useReorder } from '../../components/ui'
 import { StopEditor, type StopFormValues } from '../../components/StopEditor'
+import { stopInitialValues, stopLegContext, stopEditorKey, stopDayIndex, type StopEditorTarget } from '../../lib/stopForm'
 import { useSuggestionCache } from '../../hooks/useSuggestionCache'
 import { searchNearbyPois, searchNearbyPoisMulti, searchCitiesAlong, corridorAnchors, reasonForHit, filterPlannedNearby, detourMinutes, googleEnabled, googleCitiesAlong } from '../../lib/geocode'
 import type { PlaceHit, SegmentHit } from '../../lib/geocode'
@@ -80,9 +81,7 @@ export function TimelineTab({ trip, editable, applyChange, legCorrections, sugge
   /** M5: the doc's §6.3 "Open in Board" bridge — Board now exists. */
   onOpenBoard?: () => void
 }) {
-  const [editorState, setEditorState] = useState<
-    { mode: 'add'; dayIndex: number } | { mode: 'edit'; stopId: string } | null
-  >(null)
+  const [editorState, setEditorState] = useState<StopEditorTarget>(null)
   const [moveModalStop, setMoveModalStop] = useState<ItineraryStop | null>(null)
 
   // Sorted once per trip change — a stable array of stable day references so
@@ -116,7 +115,7 @@ export function TimelineTab({ trip, editable, applyChange, legCorrections, sugge
           const s = day.stops.find(x => x.id === stopId)
           if (s) { Object.assign(s, legFields); break }
         }
-      }, 'edit', dayIndexOfStop(trip, stopId))
+      }, 'edit', stopDayIndex(trip, stopId))
     }
     setEditorState(null)
   }
@@ -310,11 +309,11 @@ export function TimelineTab({ trip, editable, applyChange, legCorrections, sugge
       <StopEditor
         open={!!editorState}
         onClose={() => setEditorState(null)}
-        initial={initialValues(editorState, trip)}
-        resetKey={editorState ? (editorState.mode === 'edit' ? editorState.stopId : `add-${editorState.dayIndex}`) : ''}
+        initial={stopInitialValues(editorState, trip)}
+        resetKey={stopEditorKey(editorState)}
         onSave={handleSave}
         dayLabel={editorState?.mode === 'add' ? `Day ${editorState.dayIndex + 1}` : undefined}
-        legContext={legContextFor(editorState, trip)}
+        legContext={stopLegContext(editorState, trip)}
       />
 
       <MoveStopModal
@@ -335,7 +334,7 @@ export function TimelineTab({ trip, editable, applyChange, legCorrections, sugge
               moved.orderInDay = target.stops.length + 1
               target.stops.push(moved)
             }
-          }, 'move-day', moveModalStop ? dayIndexOfStop(trip, stopId) : 0)
+          }, 'move-day', moveModalStop ? stopDayIndex(trip, stopId) : 0)
           setMoveModalStop(null)
         }}
       />
@@ -1287,50 +1286,4 @@ function MoveStopModal({ stop, trip, onClose, onMove }: {
 
 function statusTone(s: string): 'teal' | 'saffron' | 'danger' | 'ok' | 'info' {
   return s === 'confirmed' ? 'teal' : s === 'needs-booking' ? 'saffron' : s === 'rejected' ? 'danger' : 'info'
-}
-
-function dayIndexOfStop(trip: Trip, stopId: string): number {
-  for (const d of trip.days) if (d.stops.some(s => s.id === stopId)) return d.index
-  return 0
-}
-function initialValues(state: { mode: 'add'; dayIndex: number } | { mode: 'edit'; stopId: string } | null, trip: Trip): Partial<StopFormValues> | undefined {
-  if (!state) return undefined
-  if (state.mode === 'edit') {
-    for (const d of trip.days) {
-      const s = d.stops.find(x => x.id === state.stopId)
-      if (s) {
-        return {
-          ...s,
-          description: s.description ?? '',
-          notes: s.notes ?? '',
-          openTime: s.openTime ?? '',
-          closeTime: s.closeTime ?? '',
-          departTime: s.departTime ?? '',
-          arrivalTime: s.arrivalTime ?? '',
-          legDistanceKm: s.legDistanceKm ?? 0,
-          legTravelMinutes: s.legTravelMinutes ?? 0,
-        }
-      }
-    }
-  }
-  return undefined
-}
-
-/** Leg context for the add-stop flow: where you're coming from and where you're headed next. */
-function legContextFor(state: { mode: 'add'; dayIndex: number } | { mode: 'edit'; stopId: string } | null, trip: Trip) {
-  if (!state || state.mode !== 'add') return undefined
-  const pred = predecessorOf(trip, state.dayIndex)
-  if (!pred) return undefined
-  const nxt = nextAfter(trip, state.dayIndex)
-  // Don't advertise "headed next to X" when you're already standing in X.
-  const next = nxt && !coLocates(pred.point, nxt.point) ? nxt : undefined
-  return {
-    fromName: pred.name,
-    fromPoint: pred.point,
-    nextName: next?.name,
-    dayStart: getAssumptions(trip).dayStart,
-    transportMode: trip.transportMode,
-    fuelEconomyKmL: trip.fuelEconomyKmL,
-    fuelPricePerL: trip.fuelPricePerL,
-  }
 }
