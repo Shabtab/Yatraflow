@@ -285,87 +285,84 @@ get a row here again.
 | 6 | URL state (tabs, Explore filters) + copy (F-21, F-22, F-31, F-32) | ✅ |
 
 ---
+## Idea bank
 
-## Backlog pool (pull into any milestone with slack)
+**Everything not yet built, in one place.** Consolidates the former Backlog pool, Idea pool,
+Suggestion-engine / Budget / Creator-hub idea tables (2026-09-11). If an idea is open, it is
+here and nowhere else; if it shipped, it is a one-line entry in the record at the foot — never
+a row in a table above.
 
-**Audited 2026-09-11.** This pool and the two idea pools below had accumulated 26 rows marked
-"✅ shipped" — work that had already landed, sitting in sections whose purpose is to list work
-*ahead*. Those rows moved to the shipped record at the foot of each table. What follows is
-genuinely open.
+**How to use it.** Pick from **Tier 1** when a milestone has slack. **Tier 2** items are real
+but gated on a named dependency — do not start them early. When an item ships, delete its row
+here and add it to the shipped record, in the same commit that lands it.
 
-*From the CTI alignment deferrals ([docs/redesign/ALIGNMENT.md](docs/redesign/ALIGNMENT.md)) —
-must enter this pool in the same commit they're deferred:*
+### Tier 1 — ready to pick up (small, unblocked)
 
-**All four CTI deferrals have shipped** (v0.47.0): in-map place search, map popup →
-Board/Timeline cross-links, per-decision route/budget impact panel + grounded assistant, and
-suggestions "why it fits" route-position copy. Nothing open from this source.
+| # | Idea | Area | Effort | Note |
+|---|---|---|---|---|
+| I-1 | CSV export of expense lines | budget | 1 h | Client-side blob download from `trip.expenses`. |
+| I-2 | Safe-to-spend per day | budget | 1–2 h | `remaining ÷ days left` next to the per-day bars — v0.36 already attributes everything, so this is one derived tile. Pattern: per-day allowance trend. |
+| I-3 | Week-over-week spending insight | budget | 2 h | "Days 1–3 ran 18% hotter than days 4–5" — derived entirely from the existing `byDay` engine data. |
+| I-4 | Recurring expense templates | budget | 2 h | One-click re-add of past lines ("Fuel top-up ₹3,000") from an expense-history chip row. |
+| I-5 | Overspending alerts | budget | 2 h | Threshold notification when a day/category crosses its cap — plumbing already exists in `realtimeCore`. |
+| I-6 | Category envelopes | budget | 3–4 h | Per-category cap (₹) with progress state on the "Where the money goes" bars + a cap editor on the category row. Pattern: YNAB. |
+| I-7 | Settlement reminders + mark paid | budget | 3 h | Balances card gains "mark settled" + a nudge; needs the payer model to persist *who acknowledged*. **Adjacent to M6.** |
+| I-8 | Decision comments | collaboration | schema | Needs a `comments` JSON column on decisions (migration). |
+| I-9 | Monthly statements / invoice export | creator | 2–3 h | Downloadable per-month earnings summary, client-side from the payouts table. **Post-M7.** |
 
-*From the #36 bug-hunt triage (Sep 2026):* nothing remaining — all 10 findings landed; see the
-CHANGELOG for the per-issue landing. (#38–#49 all closed; the survivors were spun out as issues
-and are listed under [Open issues](#open-issues).)
+### Tier 2 — blocked on a named dependency
 
-*Old P4 nice-to-haves:* nothing open. All five landed in v0.47.0 (Explore pagination, undo
-coverage, feedback button, trash + 30-day purge, debounced store writes).
+| # | Idea | Blocked on | Note |
+|---|---|---|---|
+| I-10 | Payout-schedule card | M7 | "Next payout: Friday · clears ₹X once payments live" — the Earnings tab's `Next payout —` tile grows a date + threshold explainer. |
+| I-11 | Gross vs net split | M7 | Ledger rows already carry the columns; M7 adds the fee model + a gross/net toggle. |
+| I-12 | Per-publication revenue attribution | M7 | Sale rows join on `pub_id`; Overview rows gain an "earned" figure. |
+| I-13 | Price history | M7 (schema) | `premiumPriceInr` is overwritten on publish; correct books need a per-sale price snapshot or price-history rows. |
+| I-14 | Tiered platform fee | M7 (decision) | Fee % drops above a lifetime-earnings threshold — a pricing decision, surfaced in the fee column. Pattern: X's 90%-tier model. |
+| I-15 | Payout method + KYC management | M7 (schema) | Bank/UPI + legal name + PAN on profiles — M7's biggest schema lift. |
+| I-16 | Unlock conversion funnel | M7, then events | Views → premium unlocks per publication; needs entitlement events from M7 first. |
+| I-17 | Cross-device Trip DNA persistence | M6/M7 infra | The engine is **done** (category mix, detour tolerance, stop-length dims, cross-trip device learning). What remains is persistence: a `user_dna` table + RLS so the profile survives a device change. Deliberately parked on infrastructure, not an engine gap. |
 
----
+### Tier 3 — milestone-shaped, tracked as tracks (not ideas)
 
-## Idea pool (Sep 6 brainstorm — unprioritized, pull into any milestone)
+These are not loose ideas but full tracks with their own sections above — listed here only so
+the bank is a complete index of unbuilt work:
 
-| Idea | Note |
-|---|---|
-| Decision comments | needs a `comments` JSON column on decisions (schema migration) |
-| Premium purchase state | entitlements + unlock flow — folds into M7 payments |
-| Waitlist / invites (M9) | creator invites → referral → invite-only gate — full exec plan in [`docs/PLAN-INVITES-ONBOARDING.md`](docs/PLAN-INVITES-ONBOARDING.md) |
-
-*(Shipped from this pool, all v0.47.0: full Profile field editing — `homeCity` / `languages` /
-`travelStyles` / `socialLinks`; browser push notifications — local Notification API, opt-in,
-dedupe vs read flag, background-tab only; route polylines on the map — `MapRoute` + `routePath`
-render OSRM geometry; trash + 30-day purge — soft-delete + Trash view + purge RPCs
-(`20260910_trip_trash{,_rpc}.sql`); Explore pagination — 12-per-page grid + Load more.)*
-
-### 🧭 Suggestion-engine ideas (Sep 6 2026 deep brainstorm → [docs/SUGGESTION_ENGINE_BRAINSTORM.md](docs/SUGGESTION_ENGINE_BRAINSTORM.md))
-
-**Everything in this brainstorm has shipped** — all 16 items, culminating in the Corridor
-Concierge engine (v0.41.0). Nothing open. The one schema-gated remainder is called out below,
-because it is the only thing a future reader could mistake for unfinished:
-
-| Idea | Note |
-|---|---|
-| Cross-device Trip DNA persistence | The engine itself is done (category mix, detour tolerance, stop length, cross-trip device learning). What remains is **persistence**: `user_dna` table + RLS so the profile survives a device change. Deliberately parked on M6/M7 infra — it is not a gap in the engine. |
-
-*(Shipped from this brainstorm: road-projected hit positions, two-pass segment assignment,
-geo-fuzzy candidate dedupe, reason strings on cards, journey-clock segments, crew-aware fatigue
-cadence, weather-joined ranking, time-based detour cost + on-way asymmetry, ratings in Google
-mode, road personality, per-day detour budget, Trip DNA learning, crew-seeded corridor
-suggestions + story arcs + slack prompts, fuel-before-long-corridors advisory, opening hours in
-suggestion scoring.)*
-
-### 💰 Budget ideas (web research, Sep 6 2026 — sources: YNAB/envelope patterns, budgeting-app UX guides)
-
-| Idea | Pattern source | Note / effort |
+| Track | Where | State |
 |---|---|---|
-| Safe-to-spend per day | per-day allowance trend | `remaining ÷ days left` next to the per-day bars — v0.36's bars already attribute everything; this is one derived tile. 1–2 h |
-| Category envelopes | YNAB | per-category cap (₹) with progress state on the "Where the money goes" bars; cap editor on the category row. 3–4 h |
-| Overspending alerts | budget-app alert patterns | threshold notification when a day/category crosses its cap (plumbing exists in realtimeCore). 2 h |
-| Recurring expense templates | expense-tracker patterns | one-click re-add of past lines ("Fuel top-up ₹3,000") from an expense history chip row. 2 h |
-| Week-over-week spending insight | spending-insights dashboards | "Days 1–3 ran 18% hotter than days 4–5" — derived entirely from the existing byDay engine data. 2 h |
-| Settlement reminders + mark paid | Splitwise | balances card gains "mark settled" + a nudge; needs the payer model to persist who acknowledged (M6 adjacency). 3 h |
-| CSV export of expense lines | finance-app staple | client-side blob download from `trip.expenses`. 1 h |
+| M5 — AI companion | [Strategic track](#m5--ai-companion-issues-22--20-the-next-feature-to-build) | Next up; issues #22 → #20 |
+| M6 — Together | [Strategic track](#m6--together-collaboration-depth) | RLS test suite, co-editing |
+| M7 — Premium | [Strategic track](#m7--premium-monetization) | Blocked: needs a gateway account |
+| M9 — Invites & onboarding | [`docs/PLAN-INVITES-ONBOARDING.md`](docs/PLAN-INVITES-ONBOARDING.md) | R1 → R2 → R3; exec plan written |
+| M8 → 1.0 | [Strategic track](#m8--10-enablers--the-10-cut) | Offline-first PWA, i18n EN+HI |
 
-### 🟣 Creator hub ideas (web research, Sep 6 2026 — sources: Gumroad payouts, Twitch payout history, Patreon earnings, X creator dashboard)
+### Shipped from these sources — record, not backlog
 
-| Idea | Pattern source | Note / effort |
-|---|---|---|
-| Payout-schedule card | Gumroad/Twitch | "Next payout: Friday · clears ₹X once payments live" — the Earnings tab's `Next payout —` tile grows a date + threshold explainer with M7. 2 h (with M7) |
-| Gross vs net split | Patreon | ledger rows already carry the columns; M7 adds the fee model + a gross/net toggle. — (M7) |
-| Per-publication revenue attribution | Gumroad | sale rows join on `pub_id`; the Overview rows gain a "earned" figure. — (M7) |
-| Price history | accounting need | `premiumPriceInr` is overwritten on publish; M7 needs a per-sale price snapshot (or price-history rows) for correct books. schema (M7) |
-| Unlock conversion funnel | creator-analytics pattern | views → premium unlocks per publication; needs entitlement events from M7 first. — (post-M7) |
-| Monthly statements / invoice export | Gumroad | downloadable per-month earnings summary (client-side from the payouts table). 2–3 h (post-M7) |
-| Tiered platform fee | X's 90%-tier model | fee % drops above a lifetime-earnings threshold — a M7 pricing decision, surfaced in the fee column. — (M7 decision) |
-| Payout method + KYC management | Gumroad payout settings | bank/UPI + legal name + PAN on profiles — M7's biggest schema lift. — (M7) |
+Kept as one line each so the origin is traceable without re-listing the work as open.
 
-*(Done from this pool: decision cost-impact editor + context field, v0.36.0; Explore creator bios + newest sorting, v0.35.0 + v0.37.0; creator hub Overview + Earnings pre-shape with projection view, v0.38.0.)*
+- **Suggestion-engine brainstorm (16/16)** — all shipped, culminating in the Corridor Concierge
+  engine (v0.41.0). Source: [`docs/SUGGESTION_ENGINE_BRAINSTORM.md`](docs/SUGGESTION_ENGINE_BRAINSTORM.md).
+  Road-projected hit positions · two-pass segment assignment · geo-fuzzy candidate dedupe ·
+  reason strings on cards · journey-clock segments · crew-aware fatigue cadence ·
+  weather-joined ranking · time-based detour cost + on-way asymmetry · ratings in Google mode ·
+  road personality · per-day detour budget · Trip DNA learning · crew-seeded corridor
+  suggestions + story arcs + slack prompts · fuel-before-long-corridors advisory · opening hours
+  in scoring.
+- **CTI alignment deferrals (4/4)** — v0.47.0. Source:
+  [`docs/redesign/ALIGNMENT.md`](docs/redesign/ALIGNMENT.md). In-map place search · map popup →
+  Board/Timeline cross-links · per-decision route/budget impact panel + grounded assistant
+  (`decisionGuide.ts`) · suggestions "why it fits" route-position copy (`reasonForSegmentHit`).
+- **Old P4 nice-to-haves (5/5)** — v0.47.0. Explore pagination (12/page + Load more) · undo
+  coverage (trip/member/expense/stop deletes) · feedback button (`mailto:` with version+route) ·
+  trash + 30-day purge · debounced store writes (600 ms trailing coalescer + pagehide flush).
+- **Profile & explore pool (5/5)** — v0.47.0. Source: the former "Idea pool" table. Full Profile field editing (`homeCity` / `languages` /
+  `travelStyles` / `socialLinks`) · browser push notifications · route polylines on the map ·
+  trash + 30-day purge · Explore pagination.
+- **Creator hub (3)** — decision cost-impact editor + context field (v0.36.0) · Explore creator
+  bios + newest sorting (v0.35.0 + v0.37.0) · creator hub Overview + Earnings pre-shape with
+  projection view (v0.38.0).
+- **#36 bug-hunt triage (10/10)** — all landed; the survivors were spun out as issues, now in
+  [Open issues](#open-issues).
 
 ## Historical plans (executed — kept for the record, not live guidance)
 
@@ -375,7 +372,7 @@ suggestion scoring.)*
   — shipped in 0.17.0.
 - The old phased plan (AI/Together/Premium/1.0) is preserved as the strategic
   track above; the old P0–P4 lettered sections are merged into M0–M4 and the
-  pool.
+  idea bank.
 
 ---
 

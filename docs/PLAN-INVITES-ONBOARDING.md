@@ -626,9 +626,10 @@ The two ROADMAP edits shipping with this doc are **already in the working tree**
    one `platform_invites` entity — detailed execution guide in
    [`docs/PLAN-INVITES-ONBOARDING.md`](docs/PLAN-INVITES-ONBOARDING.md).
    ```
-2. **Idea-pool pointer** — a `Waitlist / invites (M9)` row right after the
-   Explore-pagination row, linking this doc. A fresh reader therefore finds the
-   execution playbook from both the strategic track *and* the idea pool.
+2. **Idea-bank index row** — an `M9 — Invites & onboarding` row in the ROADMAP's **Idea bank
+   → Tier 3** table (added 2026-09-11; this replaced the old "Idea pool" section, which was
+   consolidated away), linking this doc. A fresh reader therefore finds the execution playbook
+   from both the strategic track *and* the idea bank.
 
 And `docs/README.md` got a new index row linking this playbook. None of the three
 target files needs a second manual edit — verify the current state with

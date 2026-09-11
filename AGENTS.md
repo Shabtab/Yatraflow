@@ -77,7 +77,7 @@ Key locations:
 - **M6 — Together**: Supabase integration/RLS test suite (opt-in `VITE_RUN_INTEGRATION`), live co-editing depth, split-expense refinement
 - **M7 — Premium**: gateway (Razorpay), entitlements, unlock flow
 - **M8 → 1.0**: offline-first/PWA, i18n (EN + HI), the 1.0 cut — this is where the built-but-flagged `AI_COMPANION_ENABLED` (`VITE_AI_COMPANION=on`) gets unmounted for the premium perk
-- Backlog pool worth pulling: budget envelopes + overspend alerts + recurring templates (ROADMAP 💰 table), creator-hub post-M7 items, and the M9 track above; the `#36` bug-hunt triage rows and the profile-fields/route-polylines pool items have all landed
+- Idea bank worth pulling (ROADMAP `## Idea bank` → Tier 1/Tier 2): budget envelopes + overspend alerts + recurring templates, creator-hub post-M7 items, premium/billing shapes, and the M9 track above; the `#36` bug-hunt triage rows and the profile-fields/route-polylines items have all landed (see the bank's "Shipped from these sources" record)
 
 **Key conventions:**
 - `npm run verify` gate before every push
@@ -588,7 +588,8 @@ by orphan check** (Sep 2026): the reported "802 orphan rows" turned out to be
 ## 6. Documentation protocol
 
 - **`ROADMAP.md` is the single plan of record** (milestone/release structure:
-  stabilization + strategic tracks, backlog pool). New plans/phases merge into
+  stabilization + strategic tracks, and the `## Idea bank` — every unbuilt idea,
+  tiered by readiness). New plans/phases merge into
   it — don't open competing plan files. Executed plans get archived to
   `docs/history/` with a `⚠️ HISTORICAL` banner and their status line flipped
   (a plan saying "in execution" while every milestone is ✅ cost a re-read to
@@ -597,9 +598,11 @@ by orphan check** (Sep 2026): the reported "802 orphan rows" turned out to be
   table read 32/32 ✅ while the "Progress" line said 16/32 for two releases —
   any counter derived from ticked rows must be recomputed in the commit that
   ticks them.
-- **Deferrals must land in the roadmap pool the same commit they're deferred**
+- **Deferrals must land in the ROADMAP's `## Idea bank` the same commit
+  they're deferred** — Tier 1 if small and unblocked, Tier 2 if it names a
+  dependency, Tier 3 as a track row if it's milestone-shaped.
   (ALIGNMENT/plan docs saying "deliberately deferred" is not enough — the item
-  disappears otherwise).
+  disappears otherwise.)
 - **Keep-a-Changelog with a lead sentence.** CHANGELOG entries: first bold
   sentence = user-visible outcome; detail after; deep technical dives belong
   in `docs/` or the commit body, not a 300-word bullet. Categories stay
