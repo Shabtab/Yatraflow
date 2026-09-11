@@ -19,6 +19,8 @@ import { decodeTripSnapshot } from './lib/snapshot'
 import { scrollBehavior } from './lib/motion'
 import { App as CapApp } from '@capacitor/app'
 import { isNative } from './lib/native'
+import { feedbackHref } from './lib/feedback'
+import { setTheme, useTheme } from './lib/theme'
 import { hideSplash, registerAndroidBack, setNativeTheme } from './lib/appShell'
 import { LandingPage } from './pages/Landing'
 import { NativeHomePage } from './pages/NativeHome'
@@ -46,14 +48,6 @@ function currentRoute(): string {
   return location.hash.replace(/^#/, '') || '/'
 }
 
-/** Feedback mailto: pre-fills the app version + current route so a report is
- *  reproducible without the reporter doing any work. Reuses the same support
- *  address the password-reset flow already uses. */
-function feedbackHref(): string {
-  const subject = encodeURIComponent(`YatraFlow feedback (v${__APP_VERSION__})`)
-  const body = encodeURIComponent(`Page: ${currentRoute()}\nApp version: ${__APP_VERSION__}\n\nWhat worked, what broke, what you wish existed:\n\n`)
-  return `mailto:support@yatraflow.app?subject=${subject}&body=${body}`
-}
 
 export default function App() {
   // Slice subscriptions: the shell re-renders only when profiles, the session
@@ -65,7 +59,10 @@ export default function App() {
   // Same semantics as currentUser(): the profile whose id matches sessionUserId.
   const me = useMemo(() => users.find(u => u.id === sessionUserId) ?? null, [users, sessionUserId])
   const [route, setRoute] = useState(currentRoute)
-  const [dark, setDark] = useState(() => localStorage.getItem('yatraflow_theme') === 'dark')
+  // Theme is shared (src/lib/theme.ts) so the web topnav toggle and the
+  // Profile card in the Android shell stay in sync — setTheme applies the
+  // DOM + persistence + status bar and notifies both render trees.
+  const dark = useTheme()
   const [notifOpen, setNotifOpen] = useState(false)
   // #84: the panel capped at 12 with no way to reach older items — silently
   // lossy. "Show all" expands the list in place; it resets when the popover
@@ -101,17 +98,18 @@ export default function App() {
   // every route falls through to the landing page. Idempotent inside the store.
   useEffect(() => { init() }, [])
 
+  // Apply the persisted theme to the document on first paint (the HTML ships
+  // without data-theme). Changes go through setTheme(); this only seeds the
+  // initial value so the app never flashes the wrong theme on boot.
   useEffect(() => {
-    document.documentElement.dataset.theme = dark ? 'dark' : 'light'
-    localStorage.setItem('yatraflow_theme', dark ? 'dark' : 'light')
-    // Keep the browser chrome (address bar) in step with the explicit toggle —
-    // the two media-scoped <meta name="theme-color"> tags only react to the
-    // OS preference, not to this in-app switch.
-    document.querySelectorAll('meta[name="theme-color"]').forEach(m =>
-      m.setAttribute('content', dark ? '#0C1420' : '#FAF7F2'))
-    // In the Android shell the same swap paints the real status bar.
-    setNativeTheme(dark)
-  }, [dark])
+    const root = document.documentElement
+    if (root.dataset.theme !== (dark ? 'dark' : 'light')) {
+      root.dataset.theme = dark ? 'dark' : 'light'
+      document.querySelectorAll('meta[name="theme-color"]').forEach(m =>
+        m.setAttribute('content', dark ? '#0C1420' : '#FAF7F2'))
+      void setNativeTheme(dark)
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Native shell boot: hide the launch splash once the store has hydrated
   // (the same ready-gate below flips) or after 2.5s worst case, and own the
@@ -159,7 +157,7 @@ export default function App() {
   function toggleTheme(e: MouseEvent<HTMLButtonElement>) {
     // Landing page: skip View Transition entirely to avoid freezing continuous CSS animations
     if (route === '/' || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      setDark(d => !d); return
+      setTheme(!dark); return
     }
     const rect = e.currentTarget.getBoundingClientRect()
     const x = rect.left + rect.width / 2
@@ -178,9 +176,9 @@ export default function App() {
     }
     if (!doc.startViewTransition) { // old browsers: skip straight to the swap
       root.classList.remove('vt-radiate-out', 'vt-radiate-in', 'vt-active')
-      setDark(d => !d); return
+      setTheme(!dark); return
     }
-    const vt = doc.startViewTransition(() => setDark(d => !d))
+    const vt = doc.startViewTransition(() => setTheme(!dark))
     vt.finished.finally(() => {
       root.classList.remove('vt-radiate-out', 'vt-radiate-in', 'vt-active')
       root.style.removeProperty('--vt-x'); root.style.removeProperty('--vt-y'); root.style.removeProperty('--vt-r')
@@ -375,6 +373,11 @@ export default function App() {
       {/* Skip link (F-08): href="#main" would fight the hash router, so we
           preventDefault and focus <main> programmatically instead. */}
       <a className="skip-link" href="#main" onClick={e => { e.preventDefault(); document.getElementById('main')?.focus() }}>Skip to main content</a>
+      {/* The topnav is the website's chrome. The signed-in Android shell hides
+          it entirely — its controls (theme, notifications, account, feedback,
+          creator hub, logout) relocate to the Profile page, reachable from the
+          bottom nav. Signed-out users (login entry) and the web keep it. */}
+      {(!isNative || !me) && (
       <nav className="topnav">
         <div className="container topnav-inner">
           <a className="brand" href="#/" aria-label="YatraFlow home">
@@ -477,8 +480,9 @@ export default function App() {
         </div>
       </div>
       </nav>
+      )}
 
-      {mobileNav && (
+      {mobileNav && !isNative && (
         <div className="mobile-menu" id="mobile-menu" onClick={() => setMobileNav(false)}>
           {me && <>
             <a className={`nav-link ${route === '/trips' ? 'active' : ''}`} href="#/trips"><Tent size={15} aria-hidden style={{ verticalAlign: '-2px', marginRight: 6 }} />My trips</a>
