@@ -584,6 +584,15 @@ by orphan check** (Sep 2026): the reported "802 orphan rows" turned out to be
   sentence = user-visible outcome; detail after; deep technical dives belong
   in `docs/` or the commit body, not a 300-word bullet. Categories stay
   Added/Changed/Fixed/Removed per release.
+- **Version headings use a hyphen separator: `## [X.Y.Z] - YYYY-MM-DD`.** Not an
+  em-dash. Keep a Changelog specifies `-`, and the em-dash variant had drifted
+  into all nine headings before being normalised (Sep 2026). The one
+  deliberate exception is `[0.7.0-native]`, whose trailing parenthetical is the
+  author's own annotation for the native release (`a2fc4fa`) — leave it alone.
+  A release banner states its scope **once**: if the entry has a `### Fixed`
+  list, the banner summarises and does not restate every bullet (the `[0.42.0]`
+  banner shipped stating its content three times and claiming a C5 that never
+  existed — see `docs/history/README.md`).
 - **`docs/README.md` is the doc index** — every new doc gets a row there
   (Diátaxis flavor: tutorials / how-to / reference / explanation — tag the
   row with which it is). Root stays lean: README, AGENTS, CONTRIBUTING,
