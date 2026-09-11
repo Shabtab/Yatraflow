@@ -77,7 +77,7 @@ Key locations:
 - **M6 — Together**: Supabase integration/RLS test suite (opt-in `VITE_RUN_INTEGRATION`), live co-editing depth, split-expense refinement
 - **M7 — Premium**: gateway (Razorpay), entitlements, unlock flow
 - **M8 → 1.0**: offline-first/PWA, i18n (EN + HI), the 1.0 cut — this is where the built-but-flagged `AI_COMPANION_ENABLED` (`VITE_AI_COMPANION=on`) gets unmounted for the premium perk
-- Backlog pool worth pulling: budget envelopes + overspend alerts + recurring templates (ROADMAP 💰 table), creator-hub post-M7 items, and the M9 track above; the `#36` bug-hunt triage rows and the profile-fields/route-polylines pool items have all landed
+- Idea bank worth pulling (ROADMAP `## Idea bank` → Tier 1/Tier 2): budget envelopes + overspend alerts + recurring templates, creator-hub post-M7 items, premium/billing shapes, and the M9 track above; the `#36` bug-hunt triage rows and the profile-fields/route-polylines items have all landed (see the bank's "Shipped from these sources" record)
 
 **Key conventions:**
 - `npm run verify` gate before every push
@@ -251,6 +251,26 @@ Hard rules (each learned the hard way — do not relearn them):
   assigned in one entry is empty in the next, so multi-step probes silently
   return nothing and look like failures. Put a dependent pipeline in a single
   command string, with `try/finally` whenever it touches real files.
+
+### 3.1 What CI actually runs, per destination
+
+Neither workflow has a `paths` filter, so **docs-only changes still run the full
+gate**. What runs depends on *where* you push, and the two destinations are not
+the same job:
+
+| Destination | `ci.yml` (tsc + vitest + build) | `yatraflow-apk.yml` (Android APK) |
+| --- | --- | --- |
+| push to `test` | yes | **no** |
+| push to `main` | yes | **yes** |
+| push to `redesign/**` | yes | **no** |
+| PR into `main` | yes | **no** |
+| `v*` tag | — | yes (publishes the artifact) |
+
+The APK workflow triggers on `push` to `main`, `feat/capacitor-android` and `v*`
+tags — **not on pull requests**. So a PR into `main` costs one `ci.yml` run plus
+Vercel, while the merge itself is what burns an Android build. Verify with
+`gh pr checks <n>` rather than reasoning from the YAML; the check list names the
+workflow that actually fired.
 
 ## 4. Code conventions & pitfalls
 
@@ -568,7 +588,8 @@ by orphan check** (Sep 2026): the reported "802 orphan rows" turned out to be
 ## 6. Documentation protocol
 
 - **`ROADMAP.md` is the single plan of record** (milestone/release structure:
-  stabilization + strategic tracks, backlog pool). New plans/phases merge into
+  stabilization + strategic tracks, and the `## Idea bank` — every unbuilt idea,
+  tiered by readiness). New plans/phases merge into
   it — don't open competing plan files. Executed plans get archived to
   `docs/history/` with a `⚠️ HISTORICAL` banner and their status line flipped
   (a plan saying "in execution" while every milestone is ✅ cost a re-read to
@@ -577,13 +598,32 @@ by orphan check** (Sep 2026): the reported "802 orphan rows" turned out to be
   table read 32/32 ✅ while the "Progress" line said 16/32 for two releases —
   any counter derived from ticked rows must be recomputed in the commit that
   ticks them.
-- **Deferrals must land in the roadmap pool the same commit they're deferred**
+- **Deferrals must land in the ROADMAP's `## Idea bank` the same commit
+  they're deferred** — Tier 1 if small and unblocked, Tier 2 if it names a
+  dependency, Tier 3 as a track row if it's milestone-shaped.
   (ALIGNMENT/plan docs saying "deliberately deferred" is not enough — the item
-  disappears otherwise).
+  disappears otherwise.)
+- **A roadmap/idea row is a claim about code, not a fact — verify it against
+  `src/` before acting on it.** Consolidating rows (moving text between
+  sections) preserves whatever is wrong with them. Sep 2026: the idea bank
+  inherited a Sep-6 brainstorm table in which "Safe-to-spend per day" was
+  still listed as unbuilt, though `engine.ts` had shipped it — and the README
+  had described it correctly the whole time. The two files disagreed and the
+  roadmap was the one that was wrong. Budget for a source check whenever you
+  touch, quote, or pick up a row.
 - **Keep-a-Changelog with a lead sentence.** CHANGELOG entries: first bold
   sentence = user-visible outcome; detail after; deep technical dives belong
   in `docs/` or the commit body, not a 300-word bullet. Categories stay
   Added/Changed/Fixed/Removed per release.
+- **Version headings use a hyphen separator: `## [X.Y.Z] - YYYY-MM-DD`.** Not an
+  em-dash. Keep a Changelog specifies `-`, and the em-dash variant had drifted
+  into all nine headings before being normalised (Sep 2026). The one
+  deliberate exception is `[0.7.0-native]`, whose trailing parenthetical is the
+  author's own annotation for the native release (`a2fc4fa`) — leave it alone.
+  A release banner states its scope **once**: if the entry has a `### Fixed`
+  list, the banner summarises and does not restate every bullet (the `[0.42.0]`
+  banner shipped stating its content three times and claiming a C5 that never
+  existed — see `docs/history/README.md`).
 - **`docs/README.md` is the doc index** — every new doc gets a row there
   (Diátaxis flavor: tutorials / how-to / reference / explanation — tag the
   row with which it is). Root stays lean: README, AGENTS, CONTRIBUTING,

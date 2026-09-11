@@ -12,7 +12,7 @@ Start here. The codebase is documented across the files below — read the ones 
 | [`UI_AUDIT.md`](UI_AUDIT.md) | Full UI audit (2026-09-01, v0.22.0): 32 findings vs the Vercel Web Interface Guidelines — file:line references, severity, and an example fix for every finding, plus a 6-batch fix roadmap. |
 | [`CONTRIBUTING.md`](../CONTRIBUTING.md) | Setup + ground rules for contributors. |
 | [`AGENTS.md`](../AGENTS.md) | Operating manual for AI coding agents (Cline/Hermes). **Read fully before automating any change here.** Includes the documentation protocol (§6). |
-| [`ROADMAP.md`](../ROADMAP.md) | **Single plan of record**: stabilization + strategic milestone tracks, UI-audit tracker, backlog pool. |
+| [`ROADMAP.md`](../ROADMAP.md) | **Single plan of record**: open issues, stabilization + strategic milestone tracks, UI-audit tracker, and the **idea bank** (all unbuilt ideas, tiered by readiness). |
 | [`PLAN-INVITES-ONBOARDING.md`](PLAN-INVITES-ONBOARDING.md) | Execution playbook for the M9 invites & onboarding milestone (creator invites → referral → invite-only gate). The *how* under ROADMAP's *what/when*. |
 | [`history/implementation-plan-v0.23.0-cti.md`](history/implementation-plan-v0.23.0-cti.md) | ⚠️ HISTORICAL decision record — the executed v0.23.0 + CTI redesign plan (all milestones shipped). |
 | [`history/CHANGELOG-through-0.41.1.md`](history/CHANGELOG-through-0.41.1.md) | ⚠️ HISTORICAL archive — releases `0.1.0`–`0.41.1`, recovered after the v0.42.0 cleanup truncated the live changelog. See [`history/README.md`](history/README.md). |

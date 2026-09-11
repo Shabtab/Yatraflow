@@ -30,3 +30,15 @@ That path has eaten the leading byte out of code spans twice in this repo:
 
 A byte-eating rewrite in the file that records the project's history destroys the evidence
 you would need to notice it happened. Edit `CHANGELOG.md` with editor primitives only.
+
+## Resolved: the "C5" question (2026-09-11)
+
+The live `[0.42.0]` entry's banner used to claim **"C1-C5: Hy4 audit P0 fixes"**, but the
+entry only ever described C1, C2, C3 and C4 — there was no C5 anywhere in the file, the
+recovered archive, or the commit history. Asked to resolve it, the project owner's answer
+was to drop it: the banner now reads **C1–C4** and no C5 item is tracked.
+
+**This was a claim with no work behind it**, which is why it could not be resolved by
+reading the repo — only by asking. Recorded here so a future reader who finds an old
+reference to "C1-C5" knows it was a banner overstating its entry, not a lost fix.
+
