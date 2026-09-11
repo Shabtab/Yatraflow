@@ -567,6 +567,33 @@ export function dayRoadPolyline(
   return out.length >= 2 ? out : null
 }
 
+/**
+ * Road-vs-chord scale of a journey: corrected leg distances (OSRM/Google)
+ * summed over the SAME consecutive point pairs as the haversine chord sum.
+ * The optimise-day objective is haversine (pairwise road km between arbitrary
+ * stops would need N² route calls), but the numbers it shows must speak the
+ * road km the travel panel displays — multiply chord figures by this ratio.
+ * Returns 1 (no rescale) while corrections are absent or degenerate.
+ */
+export function roadScaleRatio(
+  points: JourneyPoint[],
+  corrections?: Record<string, LegEstimate>,
+): number {
+  if (!corrections || points.length < 2) return 1
+  let chord = 0
+  let road = 0
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i]
+    const b = points[i + 1]
+    const c = haversineKm(a.lat, a.lng, b.lat, b.lng)
+    chord += c
+    road += corrections[legKey(a, b)]?.distanceKm ?? c
+  }
+  if (chord <= 0) return 1
+  const r = road / chord
+  return Number.isFinite(r) && r > 0 ? r : 1
+}
+
 export interface StopLegEstimate extends LegEstimate {
   /** fuel/fare cost for the leg at the trip mode's ₹/km rate */
   costInr: number

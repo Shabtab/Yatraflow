@@ -14,7 +14,7 @@ import { updateTrip, setStopStatus } from '../../store/store'
 import {
   computeTotals, simulateDay, originOf, getAssumptions, coLocates, minutesToHM, hmToMinutes, formatInr,
   predecessorOf, nextAfter, collectWarnings, buildJourney, addMinutesToClock, FUEL_PRICE_INR_PER_L,
-  computeCategoryBias, optimizeDayOrder, dayRoadPolyline,
+  computeCategoryBias, optimizeDayOrder, dayRoadPolyline, roadScaleRatio,
 } from '../../lib/engine'
 import { MODE_SPEED } from '../../lib/engine'
 import type { LegEstimate, ScheduleWarning, Journey } from '../../lib/engine'
@@ -30,7 +30,7 @@ import { Chip, Modal, EmptyState, toast, useReorder } from '../../components/ui'
 import { StopEditor, type StopFormValues } from '../../components/StopEditor'
 import { stopInitialValues, stopLegContext, stopEditorKey, stopDayIndex, type StopEditorTarget } from '../../lib/stopForm'
 import { useSuggestionCache } from '../../hooks/useSuggestionCache'
-import { searchNearbyPois, searchNearbyPoisMulti, searchCitiesAlong, corridorAnchors, reasonForHit, filterPlannedNearby, detourMinutes, googleEnabled, googleCitiesAlong } from '../../lib/geocode'
+import { searchNearbyPois, searchNearbyPoisMulti, searchCitiesAlong, corridorAnchors, reasonForHit, filterPlannedNearby, asymmetricDetourMinutes, googleEnabled, googleCitiesAlong } from '../../lib/geocode'
 import type { PlaceHit, SegmentHit } from '../../lib/geocode'
 import { kmFromStartForHit, type HaltPurpose } from '../../lib/providers/hits'
 import { segmentsFromPlan, assignSegmentHits, annotateSegmentHits, type HaltPlanItem } from '../../lib/ridePlan'
@@ -449,6 +449,11 @@ const DaySection = React.memo(function DaySection({ day, trip, editable, onAdd, 
     () => optimizeDayOrder(originOf(trip, day.index), [...day.stops].sort((a, b) => a.orderInDay - b.orderInDay)),
     [trip, day],
   )
+  // The optimizer's objective is straight-line (pairwise road km between
+  // arbitrary stops would need N² route calls), but the numbers it SHOWS must
+  // speak the road km the travel panel displays — rescale by the day's
+  // road-vs-chord ratio from the corrected legs (1 = no road data yet).
+  const roadRatio = useMemo(() => roadScaleRatio(journey.points, legCorrections), [journey, legCorrections])
   const { dndHandlers, dayDropHandlers, dragging, over, foreignOver, moveUp, moveDown } = useReorder(
     ordered,
     (f, t) => onMoveWithinDay(f, t, day.index),
@@ -600,8 +605,8 @@ const DaySection = React.memo(function DaySection({ day, trip, editable, onAdd, 
               <button
                 className="btn btn-outline btn-sm"
                 onClick={() => setOptPreview(optResult)}
-                title={`Reorder this day's stops to cut crisscrossing — saves ~${Math.round(optResult.beforeKm - optResult.afterKm)} km of travel`}
-              ><RouteIcon size={13} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />Optimise{optResult.beforeKm - optResult.afterKm > 0 ? ` (−${Math.round(optResult.beforeKm - optResult.afterKm)} km)` : ''}</button>
+                title={`Reorder this day's stops to cut crisscrossing — saves ~${Math.round((optResult.beforeKm - optResult.afterKm) * roadRatio)} km of travel`}
+              ><RouteIcon size={13} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />Optimise{optResult.beforeKm - optResult.afterKm > 0 ? ` (−${Math.round((optResult.beforeKm - optResult.afterKm) * roadRatio)} km)` : ''}</button>
             )}
             <button
               className="btn btn-outline btn-sm"
@@ -824,13 +829,13 @@ const DaySection = React.memo(function DaySection({ day, trip, editable, onAdd, 
           <div className="opt-delta">
             <div className="opt-delta-cell">
               <div className="k">Travel distance</div>
-              <div className="v">{Math.round(optPreview.beforeKm)} km → <b>{Math.round(optPreview.afterKm)} km</b></div>
-              <div className="save">−{Math.round(optPreview.beforeKm - optPreview.afterKm)} km</div>
+              <div className="v">{Math.round(optPreview.beforeKm * roadRatio)} km → <b>{Math.round(optPreview.afterKm * roadRatio)} km</b></div>
+              <div className="save">−{Math.round((optPreview.beforeKm - optPreview.afterKm) * roadRatio)} km</div>
             </div>
             <div className="opt-delta-cell">
               <div className="k">Est. driving time</div>
-              <div className="v">{minutesToHM(Math.round(optPreview.beforeKm / (A.avgSpeedKmph || 40) * 60))} → <b>{minutesToHM(Math.round(optPreview.afterKm / (A.avgSpeedKmph || 40) * 60))}</b></div>
-              <div className="save">−{Math.round((optPreview.beforeKm - optPreview.afterKm) / (A.avgSpeedKmph || 40) * 60)} min</div>
+              <div className="v">{minutesToHM(Math.round(optPreview.beforeKm * roadRatio / (A.avgSpeedKmph || 40) * 60))} → <b>{minutesToHM(Math.round(optPreview.afterKm * roadRatio / (A.avgSpeedKmph || 40) * 60))}</b></div>
+              <div className="save">−{Math.round((optPreview.beforeKm - optPreview.afterKm) * roadRatio / (A.avgSpeedKmph || 40) * 60)} min</div>
             </div>
           </div>
           <div className="opt-order-list" aria-label="New stop order">
@@ -844,7 +849,7 @@ const DaySection = React.memo(function DaySection({ day, trip, editable, onAdd, 
           <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
             <button className="btn btn-primary btn-sm" onClick={() => {
               onReorderDay(day.index, optPreview.stops.map(s => s.id))
-              toast(`Day ${day.index + 1} optimised — saved ~${Math.round(optPreview.beforeKm - optPreview.afterKm)} km of crisscrossing`)
+              toast(`Day ${day.index + 1} optimised — saved ~${Math.round((optPreview.beforeKm - optPreview.afterKm) * roadRatio)} km of crisscrossing`)
               setOptPreview(null)
             }}>Apply new order</button>
             <button className="btn btn-ghost btn-sm" onClick={() => setOptPreview(null)}>Not now</button>
@@ -1013,7 +1018,10 @@ function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddPlanned
     setResolving(true)
     try {
       const routePts = journey.points.map(p => ({ lat: p.lat, lng: p.lng }))
-      const anchors = corridorAnchors(routePts, trip.startLocationCoords, 35000, 8)
+      // Sample the search anchors along the ROAD polyline when routing has
+      // resolved — chord anchors sit off the highway on curvy rides and bias
+      // which POIs the scan finds. Home-zone exclusion still applies inside.
+      const anchors = corridorAnchors(roadPolyline ?? routePts, trip.startLocationCoords, 35000, 8)
       const purposes = [...new Set(plan.map(p => p.purpose))]
       // Provider directive (2026-09-07): Google-only in Google mode — POIs and
       // the city layer both come from Google; free stack only without a key.
@@ -1022,6 +1030,11 @@ function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddPlanned
           purposes,
           includeFuel: trip.transportMode === 'car' || trip.transportMode === 'motorcycle',
           homeCenter: trip.startLocationCoords ?? null,
+          // Google mode: scan as one road-true Search-Along-Route request, with
+          // routingSummary detours measured against the day's road km — the
+          // same treatment the Map tab's corridor gets. Free mode ignores these.
+          routeCoords: roadPolyline ? roadPolyline.map(p => [p.lng, p.lat] as [number, number]) : null,
+          routeTotalKm: journey.distanceKm || null,
         }).catch(() => [] as PlaceHit[]),
         (googleEnabled()
           ? googleCitiesAlong(anchors, 35000, 8)
@@ -1043,11 +1056,13 @@ function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddPlanned
         .filter(s => s.status !== 'rejected' && Number.isFinite(s.lat) && Number.isFinite(s.lng))
         .map(s => ({ lat: s.lat, lng: s.lng, name: s.title }))
       const unplanned = planned.length > 0 ? filterPlannedNearby(candidates, planned) : candidates
-      // refresh the slack pool: cheapest-detour unplanned hits (cap 12)
+      // refresh the slack pool: cheapest-detour unplanned hits (cap 12) —
+      // detours measured asymmetrically against the road polyline when
+      // available (on-the-way hits cost ~0), matching the Map tab.
       const speed = MODE_SPEED[trip.transportMode] ?? 40
       setSlackPool(
         unplanned
-          .map(h => ({ hit: h, detourMin: detourMinutes(h, anchors, speed) }))
+          .map(h => ({ hit: h, detourMin: asymmetricDetourMinutes(h, anchors, roadPolyline, speed) }))
           .filter(o => Number.isFinite(o.detourMin) && o.detourMin >= 0)
           .sort((a, b) => a.detourMin - b.detourMin)
           .slice(0, 12),

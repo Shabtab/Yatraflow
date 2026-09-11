@@ -8,7 +8,7 @@
 // mirrored return-drive legs, null fallback without geometry, on-road
 // placement at road-true km, and road-true km projection for hits.
 import { describe, it, expect } from 'vitest'
-import { dayRoadPolyline, legKey } from '../src/lib/engine'
+import { dayRoadPolyline, legKey, roadScaleRatio } from '../src/lib/engine'
 import type { JourneyPoint, LegEstimate } from '../src/lib/engine'
 import { pointAtKm } from '../src/lib/geo'
 import { kmFromStartForHit } from '../src/lib/providers/hits'
@@ -88,5 +88,20 @@ describe('kmFromStartForHit with the road polyline', () => {
     const km = kmFromStartForHit({ latitude: 0.45, longitude: 0 }, CHAIN.map(p => ({ lat: p.lat, lng: p.lng })), { routePolyline: road })
     expect(km).not.toBeNull()
     expect(Math.abs(km! - ROAD_KM_NORTH)).toBeLessThan(1)
+  })
+})
+
+describe('roadScaleRatio', () => {
+  it('returns the road-vs-chord ratio over the same point pairs', () => {
+    // Road 117 km (corrected leg) vs ~83.5 km chord start→end ≈ 1.40.
+    const r = roadScaleRatio(CHAIN, correctionsWith(L_ROAD))
+    expect(r).toBeGreaterThan(1.3)
+    expect(r).toBeLessThan(1.5)
+  })
+
+  it('is 1 without corrections, without a covering leg, or for a degenerate span', () => {
+    expect(roadScaleRatio(CHAIN, undefined)).toBe(1)
+    expect(roadScaleRatio(CHAIN, {})).toBe(1) // legs fall back to haversine ⇒ ratio 1
+    expect(roadScaleRatio([START] as unknown as JourneyPoint[], correctionsWith(L_ROAD))).toBe(1)
   })
 })

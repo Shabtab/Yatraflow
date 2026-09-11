@@ -142,8 +142,19 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
     return names
   }, [trip])
 
+  // OSRM road geometry of the whole route — feeds Google Search-Along-Route
+  // (the report's killer feature); the free stack ignores it. TripMap draws
+  // the same legs independently, so this is one extra free OSRM call per route.
+  const [routeGeometry, setRouteGeometry] = useState<[number, number][] | null>(null)
+  const [routeTotalKm, setRouteTotalKm] = useState<number | null>(null)
+  // Road-true whole-trip wheel time and per-day road km, sliced from the same
+  // legs — the journey sums are haversine estimates and undercount curvy roads.
+  const [routeTotalMin, setRouteTotalMin] = useState<number | null>(null)
+  const [dayRoadKm, setDayRoadKm] = useState<number[] | null>(null)
+
   // whole-trip wheel distance & time (journey sums) — the plan budget for the
-  // fatigue math; OSRM's road total wins when it's available (more accurate).
+  // fatigue math. OSRM's road totals win when resolved (same legs the map
+  // draws); the journey sums are the haversine estimate fallback.
   const wholeTrip = useMemo(() => {
     let km = 0
     let min = 0
@@ -152,16 +163,19 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
       km += j.distanceKm
       min += j.driveMinutes
     }
-    return { km, min }
-  }, [trip])
+    return { km: routeTotalKm ?? km, min: routeTotalMin ?? min }
+  }, [trip, routeTotalKm, routeTotalMin])
 
   /** Which day's cumulative drive covers a given along-route km (for pick-a-day defaults). */
-  function dayForKm(km: number | undefined): number {
+  const dayForKm = (km: number | null | undefined): number => {
     if (km == null) return trip.days[0]?.index ?? 0
+    // Road-true per-day km from the routing legs when resolved — chord-scale
+    // day sums undercount curvy roads and attribute the km to the wrong day.
+    const perDay = dayRoadKm ?? trip.days.map(d => buildJourney(trip, d).distanceKm)
     let covered = 0
-    for (const d of trip.days) {
-      covered += buildJourney(trip, d).distanceKm
-      if (km <= covered) return d.index
+    for (let i = 0; i < trip.days.length; i++) {
+      covered += perDay[i]
+      if (km <= covered) return trip.days[i].index
     }
     return trip.days[trip.days.length - 1]?.index ?? 0
   }
@@ -176,11 +190,6 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
     return corridorAnchors(pts, trip.startLocationCoords ?? null, scopeKm * 1000)
   }, [trip, scopeKm])
 
-  // OSRM road geometry of the whole route — feeds Google Search-Along-Route
-  // (the report's killer feature); the free stack ignores it. TripMap draws
-  // the same legs independently, so this is one extra free OSRM call per route.
-  const [routeGeometry, setRouteGeometry] = useState<[number, number][] | null>(null)
-  const [routeTotalKm, setRouteTotalKm] = useState<number | null>(null)
   // Per-day rain chance for the weather join — best-effort, null until loaded.
   const [dayRainPct, setDayRainPct] = useState<(number | null)[] | null>(null)
   useEffect(() => {
@@ -204,11 +213,15 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
   const planKm = routeTotalKm && routeTotalKm >= 90 ? routeTotalKm : wholeTrip.km
   useEffect(() => {
     let cancelled = false
-    const pts = [
-      ...(trip.startLocationCoords ? [trip.startLocationCoords] : []),
-      ...trip.days.flatMap(d => d.stops).filter(s => s.status !== 'rejected').map(s => ({ lat: s.lat, lng: s.lng })),
-    ]
-    if (pts.length < 2) { setRouteGeometry(null); setRouteTotalKm(null); return }
+    const pts: { lat: number; lng: number }[] = []
+    // Parallel to pts: the day each point's leg ARRIVAL belongs to (null for
+    // the start). A chain leg is ridden on the day of its destination — the
+    // drive to day d+1's first stop happens on day d+1's morning.
+    const ptDay: (number | null)[] = []
+    if (trip.startLocationCoords) { pts.push(trip.startLocationCoords); ptDay.push(null) }
+    trip.days.forEach(d => d.stops.filter(s => s.status !== 'rejected')
+      .forEach(s => { pts.push({ lat: s.lat, lng: s.lng }); ptDay.push(d.index) }))
+    if (pts.length < 2) { setRouteGeometry(null); setRouteTotalKm(null); setRouteTotalMin(null); setDayRoadKm(null); return }
     routePath(pts, getAssumptions(trip))
       .then(legs => {
         if (cancelled) return
@@ -216,8 +229,15 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
         // Google's routingSummaries legs are origin→place and place→destination,
         // so the real detour per hit is (leg0 + leg1) − this total.
         setRouteTotalKm(legs.reduce((sum, l) => sum + l.distanceKm, 0))
+        setRouteTotalMin(legs.reduce((sum, l) => sum + l.durationMinutes, 0))
+        const perDay = new Map<number, number>()
+        legs.forEach((l, i) => {
+          const day = ptDay[i + 1]
+          if (day != null) perDay.set(day, (perDay.get(day) ?? 0) + l.distanceKm)
+        })
+        setDayRoadKm(trip.days.map(d => perDay.get(d.index) ?? 0))
       })
-      .catch(() => { if (!cancelled) { setRouteGeometry(null); setRouteTotalKm(null) } })
+      .catch(() => { if (!cancelled) { setRouteGeometry(null); setRouteTotalKm(null); setRouteTotalMin(null); setDayRoadKm(null) } })
     return () => { cancelled = true }
   }, [trip])
 
