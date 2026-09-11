@@ -11,6 +11,11 @@ tsconfig.tsbuildinfo
 
 .vercel
 .env*
+# ...but the committed template is the one exception — see the `!.` line below.
+# Without it the `.env*` glob swallows .env.example, and both the README's
+# `cp .env.example .env.local` and the runtime hint in src/lib/supabase.ts
+# would point at a file that can never exist.
+!.env.example
 supabase/.temp/
 dev_server_run.log
 dev_server_err.log

@@ -15,7 +15,28 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
-_(empty — unreleased work accumulates here before each cut.)_
+### Fixed
+
+- **`.env.example` now exists — the documented first step works again.** The README's
+  Getting-started block and the runtime hint in `src/lib/supabase.ts` both told contributors
+  to `cp .env.example .env.local`, but the file had never been committed, so the first command
+  a new contributor runs failed. Adding it needed a `.gitignore` change too: the bare `.env*`
+  rule swallowed the template (and would have swallowed it forever, silently). A
+  `!.env.example` negation now tracks the template while `.env`, `.env.local`,
+  `.env.production` and `.env.*.local` stay ignored — verified with `git check-ignore`.
+  The template documents all six `VITE_*` variables the app reads (two required, four
+  optional with their fallbacks), and ships `https://YOUR-PROJECT.supabase.co` as its
+  placeholder on purpose: `isRealSupabaseUrl()` already rejects anything containing
+  `YOUR-PROJECT`, so an unedited copy fails loudly instead of silently.
+
+### Changed
+
+- **README corrections from a full source audit.** A v0.48.0 section was added (the release
+  narrative had stopped one release short, leaving the newest work invisible while two older
+  runs had sections of their own); the "Hotel/flight booking — placeholder buttons only"
+  constraint was reworded because no booking UI exists (stops carry a *needs booking* flag);
+  `AdminPage.tsx`, `CreatorHubPage.tsx` and `NativeHome.tsx` were added to the project-
+  structure map, which had omitted three files that each own a feature the README describes.
 
 ## [0.7.0-native] - 2026-09-11 (`v0.7.0-native` — APK attached to the GitHub release)
 
