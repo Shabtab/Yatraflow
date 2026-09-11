@@ -1,16 +1,34 @@
 // ============ Profile & settings ============
-import { useEffect, useState } from 'react'
-import { Bell } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Bell, LogOut, Mail, Moon, Sparkles, Sun } from 'lucide-react'
 import { TravelStyle } from '../data/types'
 import { TRAVEL_STYLES } from '../data/types'
-import { useDb, currentUser, updateProfile, tripsForUser } from '../store/store'
+import {
+  useDb, currentUser, updateProfile, tripsForUser, logout, notificationsFor, markAllNotificationsRead,
+} from '../store/store'
 import { Avatar, Chip, Field, toast } from '../components/ui'
 import { useTimeFormat, setTimeFormat, formatHM, type TimeFormat } from '../lib/timefmt'
+import { isNative } from '../lib/native'
+import { feedbackHref } from '../lib/feedback'
+import { setTheme, useTheme } from '../lib/theme'
 import {
   browserNotifEnabled, setBrowserNotifEnabled, browserNotifSupported,
   browserNotifPermission, requestBrowserNotifPermission,
 } from '../lib/browserNotifications'
 import { cap } from '../lib/labels'
+
+/** Compact relative timestamp for the notifications list ("3m ago"). */
+function formatTimeAgo(ms: number): string {
+  const s = Math.round((Date.now() - ms) / 1000)
+  if (s < 60) return `${s}s ago`
+  const m = Math.round(s / 60)
+  if (m < 60) return `${m}m ago`
+  const h = Math.round(m / 60)
+  if (h < 24) return `${h}h ago`
+  const d = Math.round(h / 24)
+  if (d < 7) return `${d}d ago`
+  return new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+}
 
 export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void }) {
   const db = useDb()
@@ -39,6 +57,11 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
     const has = me!.profile.travelStyles.includes(s)
     updateProfile({ travelStyles: has ? me!.profile.travelStyles.filter(x => x !== s) : [...me!.profile.travelStyles, s] })
   }
+
+  // Shell-only relocated controls (the signed-in app hides the website
+  // topnav): theme toggle, in-app notifications, account actions.
+  const dark = useTheme()
+  const notifs = useMemo(() => notificationsFor(me.id), [me])
 
   return (
     <div className="container form-page">
@@ -179,6 +202,62 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
               estimates — always verify prices before travelling.
             </p>
           </div>
+
+          {/* The signed-in Android shell hides the website topnav, so its
+              controls relocate here — Profile is a bottom-nav destination. Each
+              card is shell-only; the web keeps the topnav. */}
+          {isNative && <>
+            <div className="card" style={{ marginTop: 16 }}>
+              <h3>Appearance</h3>
+              <p className="hint-text" style={{ margin: '6px 0 12px' }}>Light or dark — your choice sticks across trips.</p>
+              <button
+                className={`btn btn-sm ${dark ? 'btn-primary' : 'btn-outline'}`}
+                aria-pressed={dark}
+                onClick={() => setTheme(!dark)}
+              >
+                {dark ? <><Sun size={14} aria-hidden style={{ verticalAlign: '-2px', marginRight: 6 }} />Light mode</> : <><Moon size={14} aria-hidden style={{ verticalAlign: '-2px', marginRight: 6 }} />Dark mode</>}
+              </button>
+            </div>
+
+            <div className="card" style={{ marginTop: 16 }}>
+              <div className="row-between" style={{ marginBottom: 8 }}>
+                <h3 style={{ margin: 0 }}>Notifications</h3>
+                {notifs.length > 0 && notifs.some(n => !n.read) && (
+                  <button className="btn btn-ghost btn-sm" onClick={() => markAllNotificationsRead(me.id)}>Mark all read</button>
+                )}
+              </div>
+              {notifs.length === 0 ? (
+                <p className="hint-text" style={{ marginTop: 0 }}>No notifications yet — collaborators writing to you will show up here.</p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {notifs.slice(0, 8).map(n => (
+                    <div key={n.id} className="row-between" style={{ fontSize: 13, padding: '6px 0', borderBottom: '1px solid var(--line)' }}>
+                      <span style={{ opacity: n.read ? 0.6 : 1 }}>{n.text}</span>
+                      <span className="muted small" style={{ flex: '0 0 auto', marginLeft: 8 }}>{formatTimeAgo(n.at)}</span>
+                    </div>
+                  ))}
+                  {notifs.length > 8 && <span className="muted small">+{notifs.length - 8} older</span>}
+                </div>
+              )}
+            </div>
+
+            <div className="card" style={{ marginTop: 16 }}>
+              <h3>Account</h3>
+              {me.profile.isCreator && (
+                <button className="btn btn-outline btn-sm" style={{ marginBottom: 8 }} onClick={() => onNavigate('/creator-hub')}>
+                  <Sparkles size={14} aria-hidden style={{ verticalAlign: '-2px', marginRight: 6 }} />Creator hub
+                </button>
+              )}
+              <div>
+                <a className="btn btn-outline btn-sm" href={feedbackHref()} style={{ marginBottom: 8 }}>
+                  <Mail size={14} aria-hidden style={{ verticalAlign: '-2px', marginRight: 6 }} />Send feedback
+                </a>
+              </div>
+              <button className="btn btn-danger btn-sm" onClick={() => { logout(); onNavigate('/') }}>
+                <LogOut size={14} aria-hidden style={{ verticalAlign: '-2px', marginRight: 6 }} />Log out
+              </button>
+            </div>
+          </>}
         </div>
       </div>
     </div>

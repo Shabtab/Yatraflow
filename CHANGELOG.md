@@ -13,6 +13,16 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 > record still exists in `git log`, not here. Archived release notes live in
 > [`docs/history/`](docs/history/).
 
+## [0.50.2] - 2026-09-11
+
+**The Android app drops the website's top bar entirely.** The floating topnav was website chrome — wrong inside the installed app. The signed-in shell now hides it completely; its controls relocate to the Profile page (a bottom-nav destination): theme toggle under Appearance, the in-app notifications list with Mark all read, and the account actions (Creator hub, Send feedback, Log out). Theme state is shared via a new `src/lib/theme.ts` hook so the web topnav toggle and the Profile card can't drift. The topnav — and the web — are byte-identical; it stays for signed-out users as the login entry. Pinned by a new `mobile-shell.test.ts` invariant. `versionCode 11 / 0.11-native`.
+
+### Changed
+
+- **The top bar is gone from the signed-in Android app.** `App.tsx` gates the topnav behind `(!isNative || !me)`; signed-out users and the web keep it.
+- **Controls relocated to Profile.** Appearance (dark/light), in-app notifications (list + mark-all-read), and account (Creator hub / Send feedback / Log out).
+- **Theme is shared.** New `useTheme()`/`setTheme()` in `src/lib/theme.ts` keep the web toggle and the Profile card in sync and paint the Android status bar.
+
 ## [0.50.1] - 2026-09-11
 
 **The installed app no longer flashes the marketing website on launch.** The hydration ready-gate excluded the bare route unconditionally — a web-first choice (the landing paints instantly instead of a spinner) that backfired in the shell: every app launch rendered the website's home — its chrome and all — for as long as hydration took past the splash, before flipping to the app home. In the shell the loading block now covers the bare route, and an unknown deep link falls back to the app home instead of the landing. The web is byte-identical.

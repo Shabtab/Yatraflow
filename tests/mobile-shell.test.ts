@@ -59,6 +59,20 @@ describe('bottom navigation is a shell-only primary nav', () => {
     expect(app).toContain('{isNative && me && <BottomNav route={route} onNavigate={navigate} />}')
   })
 
+  it('hides the website top bar for the signed-in shell', () => {
+    // The signed-in app drops the floating topnav entirely — its controls
+    // (theme, notifications, account) relocate to the Profile page. The
+    // topnav stays for signed-out users (login entry) and the web.
+    expect(app).toContain('(!isNative || !me) &&')
+    // And the relocated controls actually landed in Profile:
+    const profile = source('src/pages/Profile.tsx')
+    expect(profile).toContain('Appearance')
+    expect(profile).toContain('setTheme(!dark)')
+    expect(profile).toContain('notificationsFor(me.id)')
+    expect(profile).toContain('feedbackHref()')
+    expect(profile).toContain('logout()')
+  })
+
   it('hides the redundant floating pill but keeps the hamburger overflow', () => {
     expect(css).toContain('html.native-shell .nav-links { display: none; }')
     expect(app).toContain('className="mobile-nav-btn"')
