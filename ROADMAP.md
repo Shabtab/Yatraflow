@@ -15,12 +15,60 @@ user confirmation before any push. Feature work reaches `test` **via pull
 request** (never a direct push); `main` merges stay explicitly user-gated
 (AGENTS rule 1).
 
-**Snapshot (2026-09-11):** `origin/main` is now v0.48.0 (PRs #91 and #92 merged); `test` still trails at v0.47.0.
-The M0–M5 version labels below decoupled from reality when v0.26–v0.47 shipped
-different content (Plan Bench redesign, v0.27 interface pass, the #43–#52 store
-sweep, the Corridor Concierge engine, the masteradmin console) — the ledger
-tracks **content**, not those labels. Current version: **0.48.0** → next up:
-**M5 — AI companion** (the only unbuilt open-issue work).
+**Snapshot (2026-09-11, verified against the repo):** `origin/main` and `test` are both at
+v0.48.0 — `test` no longer trails. Several docs commits sit ahead of `main` on `test`, pending
+PR #93. Current version: **0.48.0**.
+
+**Live open work is tracked in two places, and this file must agree with both:**
+
+1. **The issue queue** — see [Open issues](#open-issues) below for the current list, which is
+   derived from the GitHub API rather than recalled. Seven issues are open (#84–#90); M5 is
+   **not** the only outstanding work, as earlier revisions of this file claimed.
+2. **The milestone tracks** — M5 → M9, plus the 1.0 cut. These are *planning* tracks: they are
+   directions of travel, not release numbers.
+
+**Read the version labels with care.** The `M` tracks were authored before v0.26–v0.48 existed
+and shipped entirely different content (Plan Bench redesign, the v0.27 interface pass, the
+#43–#52 store sweep, the Corridor Concierge engine, the masteradmin console). Those version
+numbers are now **consumed** — `v0.32.0` in particular shipped "Stabilization completion", not
+M6. The `vX.Y.Z` in each M-heading is therefore **historical intent only and is not a booking**;
+the ledger tracks content, and only the ledger's version numbers are real. Where a heading's
+number collides with a shipped release, the ledger wins.
+
+---
+
+## Open issues
+
+Verified 2026-09-11 against the GitHub API. **Seven open issues, all with priority labels** —
+this section exists because an earlier revision of this file asserted M5 was "the only open
+issues" while none of these seven appeared anywhere in it.
+
+| # | Priority | Area | Issue |
+|---|---|---|---|
+| #89 | **P1** | bug, a11y | Trash "Delete forever" has no confirmation or undo |
+| #84 | P2 | bug, a11y | Notifications list capped at 12 with no way to reach older items |
+| #85 | P2 | a11y | `warn` text on saffron/amber tints fails WCAG AA in light theme (5 surfaces) |
+| #87 | P2 | a11y | ARIA tablist semantics implemented inconsistently across 3 surfaces |
+| #88 | P2 | a11y | Create-trip cover image URL input is unlabelled |
+| #90 | P2 | a11y | Notification badge fails WCAG contrast (white on saffron ~2:1) |
+| #86 | P3 | ui | Profile page has an empty 340px right column (single child in two-col grid) |
+
+**#89 is the one to look at first.** It is the only P1: `TripsList.tsx:129` calls
+`permanentlyDeleteTrip` straight from an `onClick` with no confirm dialog and no undo, so a
+single stray tap in the Trash view destroys a trip irreversibly. The label scheme
+([AGENTS.md](AGENTS.md) §2) defines P1 as "real correctness or user-visible bug with a
+workaround — fix this milestone"; an irreversible one-tap delete is arguably P0-grade
+(data loss) and deserves a re-triage against the written definitions rather than by gut.
+
+The five a11y issues (#84, #85, #87, #88, #90) plus #86 are all narrow, low-risk surfaces —
+good candidates to sweep as one batch rather than one release each.
+
+**Defect found while auditing this file — not yet filed:** the M0 seed guard below was never
+implemented (see the M0 entry). `store.ts:600` seeds demo trips whenever `tripList` is empty,
+with no check on whether the trips query *failed*; `partial` is built up but consulted only for
+a toast at line 595. A flaky-connection sign-in therefore injects demo trips into a real
+account — the accumulation trap M0 warned about. This is a code fix on an auth path and is
+**deliberately not bundled into a docs pass**; it belongs in its own issue and commit.
 
 ---
 
@@ -54,83 +102,93 @@ and date), per the AGENTS §6 same-edit rule. Detail lives in
 ### Remaining — in release order (details in the tracks below)
 - [x] **v0.45.0** — Create-flow + invites + settings release (PR #81 + merged test work): Trip Ticket bento starter (bill print, outline seeding), car rental mode + local-train fares, range calendar, invite short codes + join-flow fixes, auth-refresh fix, Plan Bench trip settings + editable dates, My Trips search/filter/sort restore (branch `feat/create-trip-ticket`)
 - [x] **v0.46.0** — Masteradmin console (PR #82): JWT-`app_metadata`-gated `#/admin` god-view (users/trips/invites/content/analytics/audit), audited SECURITY DEFINER RPCs, append-only `admin_audit` log, RESTRICTIVE deny policies for disabled accounts (branch `redesign/masteradmin-v045`, migration applied live)
-- [x] **v0.32.0** — Stabilization completion: M0 leftovers (broken `pub:` route, router ready-gate for deep links / invite flash / loading-vs-empty) + M2 remainders (Profile save validation, demo-copy honesty, heading outline) + M1 leftovers (focus-ring gaps, touch targets, stagger freeze)
+- [x] **v0.32.0** — Stabilization completion: M0 leftovers (broken `pub:` route, router ready-gate for deep links / invite flash / loading-vs-empty) + M2 remainders (Profile save validation, demo-copy honesty, heading outline) + M1 leftovers (focus-ring gaps, touch targets, stagger freeze). **Note:** this is the row that consumed the `v0.32.0` number also claimed by M6's heading; the M0 **seed guard** was *not* part of it (see M0).
 - [x] **v0.36.0** — Budget + Group-input deep redesign: metric strip, per-day cost bars, payer balances + settlement, quick-add + in-place expense editing, who-voted tallies + needs-you digest, real composer pickers; `bump_published_stats` uuid→text fix, view dedupe, unpublish owner gate (branch `redesign/budget-group`)
 - [x] **v0.37.0** — Creator release: public creator page `#/creator/:id`, publications manager with stats/edit/unpublish + stale-page nudge (`refreshed_at` migration), Explore newest sort, shared PubCard/forkPublication paths (local branch `redesign/creator-page` until pushed)
 - [x] **v0.38.0** — Creator hub: My publications splits into Overview (lifetime KPIs + manager rows) | Earnings (Gumroad-shaped payouts ledger, honestly empty + labeled projection view via `projectEarnings`); M7 earnings contract documented in ARCHITECTURE (local branch `redesign/creator-hub`)
 - [x] **v0.39.0** — Hard-surface pass (full skills-based review, ~70 findings): 5 HIGH fixes (Landing dark-mode bands, AA hero CTA, StopEditor phantom token, CreateTrip `--accent`, ₹₹ double-symbol), one lucide icon language workspace-wide, global tabular-nums utility, tabpanel/aria-pressed/focus-ring/hit-target a11y, one card-header + chip + fork-CTA grammar, dead code purge (local branch `redesign/hard-surface`)
 - [x] **M3** — Performance architecture: store immutability → slice selectors → DaySection memo → workspace split into pages/trip/* + weather dedup + lazy routes (in [Unreleased], local branch redesign/perf-architecture)
 - [x] **M4** — Design-system hygiene: dead CSS purge, mobile-block consolidation, glass/z-index tokens (in [Unreleased], local branch redesign/perf-architecture; raw-rgba glass stragglers intentionally NOT migrated — see commit `f646b45`)
-- [ ] **M5** — AI companion: user-configurable LLM endpoint (#22 → #20) — the only open issues
+- [ ] **M0 defect** — seed guard: skip demo seeding when hydration had query errors (`store.ts:600`, detail in [Open issues](#open-issues))
+- [ ] **M5** — AI companion: user-configurable LLM endpoint (#22 → #20) — the only milestone that **has** open issues behind it (not the only open work; see [Open issues](#open-issues))
 - [ ] **M6** — Together: integration test suite, live co-editing depth, split expenses
 - [ ] **M7** — Premium: payment gateway, entitlements, unlock flow
 - [ ] **1.0 (M8)** — offline-first/PWA, i18n (EN+HI), the 1.0 cut → then PR to `test`
 
 ---
 
-## Stabilization track (from the Sep 2026 review — before new features)
+## Stabilization track — COMPLETE (M0–M4 landed; see the ledger)
 
-### M0 — v0.26.0 "Trust & navigation" (P0 bugs, ~half a day)
-Small diffs, outsized trust impact. Cut the pending `[Unreleased]`
-(demo-seed revert) together with these:
-- **"View public page" is a broken route** — `TripWorkspace.tsx` emits
-  `pub:<id>`, the router splits on `/` → lands on Landing. Publishers can
-  never reach their own published page.
-- **Failed hydration fakes an empty state and re-seeds demo data** —
-  `store.ts` logs query errors then seeds on `tripList.length === 0`: a
-  network failure injects duplicate demo trips (the exact accumulation trap
-  from the Sep DB prune — AGENTS §5). Skip seeding when any query errored;
-  surface a retry banner.
-- **Invite links flash "broken" on cold load** — `InviteGate` shows the error
-  whenever `trip` is undefined, which it is until hydration finishes.
-- **Deep-link reload lands on Landing first** — mid-hydration `me === null`
-  funnels `#/trip/...` to Landing; on failure the user is stranded.
-- **Silent delete failure** — `deleteTrip`'s Supabase error restores the row
-  with no toast (the undo has expired), so the delete "doesn't work".
-- Housekeeping: fix the stale UI-audit progress line (done in this rewrite).
+**Status note (2026-09-11 audit).** This track shipped across v0.26.0–v0.39.0 and the
+`redesign/*` branches; the ledger above carries the release rows. The bullets below are kept as
+the **record of what was fixed** — they were written as a live to-do list and are now the
+historical description, so read them in past tense. **One item was never implemented** and is
+called out inline.
 
-### M1 — v0.27.0 "Theme integrity & mobile" (dark mode + touch, ~1 day)
-- **White-on-light-teal in dark mode** — `.vote-btn.on`, `.btn-teal`,
-  `.step-num` keep `#fff` text while `--teal` flips light (~2.3:1). Sibling
-  rules already use `#06251f`; these were missed. Also `.ha-sync` is
-  dark-on-dark.
-- **iOS zoom-on-focus** — the 16px mobile bump loses specificity to
-  `.role-select` (12.5px) and two 13px time/number inputs.
-- **Touch targets <40px** — `.theme-toggle` 36px, `.avatar-btn` 26px,
-  `.dest-chip` delete ~18px, `.toast-action`, `.board-fit`, filter chips, etc.
-- **Focus-ring gaps** — ~10 interactive controls missing from the shared
-  `:focus-visible` list (`.clamp-toggle`, `.board-fit`, `.save-heart`,
-  `.dest-chip button`, `.role-select`, bare inputs…).
-- Reduced-motion gap: `transition-delay` stagger survives the global freeze.
+### M0 — "Trust & navigation" (P0 bugs)
+Small diffs, outsized trust impact. Five of six items landed in the v0.26.0/v0.32.0
+stabilization releases; **the seed guard did not** (see the ⚠️ below):
+- ✅ **"View public page" was a broken route** — `TripWorkspace.tsx` emitted `pub:<id>`, the
+  router splits on `/` → landed on Landing, so publishers could never reach their own published
+  page. Fixed.
+- ⚠️ **Failed hydration fakes an empty state and re-seeds demo data — NOT DONE.** `store.ts`
+  logs query errors, then seeds on `tripList.length === 0`, so a network failure injects
+  duplicate demo trips (the accumulation trap from the Sep DB prune — AGENTS §5). The **retry
+  banner** half shipped (`partial` → toast at `store.ts:595`), but the **"skip seeding when any
+  query errored"** half never did: `store.ts:600` still seeds without consulting `partial`.
+  This is the audit's headline defect — tracked as a live item, not a closed one. See
+  "Defect found while auditing this file" above.
+- ✅ **Invite links flashed "broken" on cold load** — `InviteGate` showed the error whenever
+  `trip` was undefined, which it is until hydration finishes. Fixed via the router ready-gate.
+- ✅ **Deep-link reload landed on Landing first** — mid-hydration `me === null` funnelled
+  `#/trip/...` to Landing; on failure the user was stranded. Fixed (router ready-gate).
+- ✅ **Silent delete failure** — `deleteTrip`'s Supabase error restored the row with no toast
+  (the undo had expired), so the delete "didn't work". Fixed.
+- ✅ Housekeeping: stale UI-audit progress line.
 
-### M2 — v0.28.0 "State honesty & UX" (~1 day)
-Error / loading / empty must never impersonate each other (folds in the old
-"loading skeleton on first boot" item):
-- Loading vs empty distinction on My Trips + Explore ("No trips yet" /
-  "Nothing matches" render before or without data).
-- Profile save: inline validation + disabled-while-saving (match CreateTrip).
-- AI drawer: Escape + focus trap + focus restore (reuse Modal logic); nav
-  popovers restore trigger focus on close.
-- Keyboard: day-rename clickable `<h3>` → real button; heading hierarchy
-  (h1→h3 skips in 5 tabs; SharedTrip/Invite pages lack h1).
-- Landing "demo mode" copy over-promises (no anonymous demo; seed inserts
-  trips only) — rewrite copy to match reality.
-- Dead "Book a planning consultation" button; "places" vs "stops" terminology.
+### M1 — "Theme integrity & mobile" (dark mode + touch)
+All verified fixed in the v0.27.0 interface pass (spot-checked 2026-09-11: `.theme-toggle` is
+now 40×40, `.avatar-btn` carries `min-width/min-height: 40px`):
+- ✅ **White-on-light-teal in dark mode** — `.vote-btn.on`, `.btn-teal`, `.step-num` kept `#fff`
+  text while `--teal` flips light (~2.3:1). Sibling rules already used `#06251f`; these were
+  missed. Also `.ha-sync` was dark-on-dark.
+- ✅ **iOS zoom-on-focus** — the 16px mobile bump lost specificity to `.role-select` (12.5px)
+  and two 13px time/number inputs.
+- ✅ **Touch targets <40px** — `.theme-toggle` was 36px, `.avatar-btn` 26px, `.dest-chip` delete
+  ~18px, plus `.toast-action`, `.board-fit`, filter chips.
+- ✅ **Focus-ring gaps** — ~10 interactive controls were missing from the shared
+  `:focus-visible` list (`.clamp-toggle`, `.board-fit`, `.save-heart`, `.dest-chip button`,
+  `.role-select`, bare inputs…).
+- ✅ Reduced-motion gap: `transition-delay` stagger survived the global freeze.
 
-### M3 — v0.29.0 "Performance architecture" (~2 days, sequence inside matters)
-1. **Store immutability first** — `Object.assign`/`push` in-place mutations
-   make every `useMemo([trip])` stale-prone; it works today by accident.
-2. **Slice-level selectors** — `useDb()` returns the whole cache and every
-   `commit()` re-renders every subscriber (realtime activity pings re-render
-   the whole workspace, re-running `simulateDay` per day).
-3. **Memoize the hot path** — `React.memo(DaySection)` + handler `useCallback`s.
-4. **Split `TripWorkspace.tsx`** (2,932 lines, 8 tabs) into `pages/trip/*` —
-   natural boundary: each tab shares only `applyChange`/`pending`.
-5. Fetch dedup: `DayWeatherChip` N-per-day weather calls vs Overview forecast;
-   `ClampedText` doubles the DOM per stop; route-level `React.lazy` for
-   Auth/Profile/CreateTrip/PublicItinerary.
+### M2 — "State honesty & UX"
+All verified fixed (spot-checked 2026-09-11: the AI drawer has the Escape + focus-trap
+contract, and the day title renders as a real `<button className="day-title-btn">` with an
+`aria-label` when editable, `<h3>` only when read-only):
+- ✅ Loading vs empty distinction on My Trips + Explore ("No trips yet" / "Nothing matches"
+  rendered before or without data).
+- ✅ Profile save: inline validation + disabled-while-saving (matches CreateTrip).
+- ✅ AI drawer: Escape + focus trap + focus restore; nav popovers restore trigger focus on close.
+- ✅ Keyboard: day-rename clickable `<h3>` → real button; heading hierarchy (h1→h3 skips in
+  5 tabs; SharedTrip/Invite pages lacked h1).
+- ✅ Landing "demo mode" copy over-promised (no anonymous demo; seed inserts trips only) —
+  rewritten to match reality.
+- ✅ Dead "Book a planning consultation" button; "places" vs "stops" terminology.
 
-### M4 — v0.30.0 "Design-system hygiene" (~1 day, CSS-only batch) — DONE (in [Unreleased], local branch redesign/perf-architecture)
+### M3 — "Performance architecture"
+All five landed; the split is confirmed by `DaySection` now living in `pages/trip/TimelineTab.tsx`
+alongside its siblings rather than in a 2,932-line `TripWorkspace.tsx`:
+1. ✅ **Store immutability** — `Object.assign`/`push` in-place mutations made every
+   `useMemo([trip])` stale-prone; it worked by accident.
+2. ✅ **Slice-level selectors** — `useDb()` returned the whole cache and every `commit()`
+   re-rendered every subscriber (realtime activity pings re-rendered the whole workspace,
+   re-running `simulateDay` per day).
+3. ✅ **Memoized hot path** — `React.memo(DaySection)` + handler `useCallback`s.
+4. ✅ **Split `TripWorkspace.tsx`** (2,932 lines, 8 tabs) into `pages/trip/*`.
+5. ✅ Fetch dedup: `DayWeatherChip` per-day weather calls vs Overview forecast; `ClampedText`
+   DOM doubling; route-level `React.lazy` for Auth/Profile/CreateTrip/PublicItinerary.
+
+### M4 — "Design-system hygiene" (CSS-only batch) — DONE (in [Unreleased], branch redesign/perf-architecture)
 - [x] Purge ~100+ lines dead CSS (hero-preview block, `.route-flow`, `.filter-bar`,
   duplicates, contradictory `.locked-overlay` pair) — template-literal-safe
   recheck first. (Net −80 lines; 30+ zero-usage rules + dead selector
@@ -153,23 +211,31 @@ Error / loading / empty must never impersonate each other (folds in the old
 
 ## Strategic track (user-directed phases, renumbered after stabilization)
 
-### M5 — v0.31.0 "AI companion" (old Phase 1 — issues #22 → #20, ~5h)
+**On the `vX.Y.Z` in these headings (2026-09-11 audit).** These numbers were assigned when the
+track was planned and have since been **consumed by other releases** — e.g. `v0.32.0` is
+recorded in the ledger as "Stabilization completion", not M6. They are retained only to show
+intended grouping, and are **not** bookings. Do not infer "next release" from them; the next
+version is whatever the ledger says is unshipped, and today that is `0.48.0` + 1.
+
+### M5 — "AI companion" (issues #22 → #20; the next feature to build)
 User-configurable OpenAI-compatible endpoint (Profile settings,
 `src/lib/aiProvider.ts`), real LLM answers with the deterministic router kept
 as offline fallback + "(LLM)/(offline)" badge. #22 (~2h) blocks #20 (~3h).
+This is the **only milestone with open issues behind it** — which is not the same as being
+"the only open work": see [Open issues](#open-issues) for the seven a11y/bug items.
 
-### M6 — v0.32.0 "Together" (old Phase 2 — collaboration depth)
+### M6 — "Together" (collaboration depth)
 Supabase integration/RLS test suite first (opt-in `VITE_RUN_INTEGRATION`,
 ~3h — old item #10), then live multi-user editing sync. Split-expense
 settlement groundwork (payer tagging + balances card) shipped in v0.36.0;
 M6 adds the multi-currency-free refinement and co-editing depth on top.
 
-### M7 — v0.33.0 "Premium" (old Phase 3 — monetization)
+### M7 — "Premium" (monetization)
 Gateway integration (Razorpay fits INR), order/entitlement tables + webhook,
 purchase state, unlock flow replacing placeholder toasts. Needs an external
 gateway account. Deliberately after M6's test-suite groundwork.
 
-### M8 — 1.0 enablers (old Phase 4) → the 1.0 cut
+### M8 — 1.0 enablers → the 1.0 cut
 Offline-first (IndexedDB + service worker/PWA, ~4–6h), i18n (EN + HI, ~6–8h),
 then the 1.0 release.
 
@@ -202,20 +268,24 @@ get a row here again.
 
 ## Backlog pool (pull into any milestone with slack)
 
-*(Cleared from this pool: Profile field editing shipped with `homeCity`, `languages`, `travelStyles` toggle, and `isCreator` on the Profile page; route polylines ship on the trip map via `MapRoute` + `routePath`; browser push notifications ship via the local Notification API — Profile opt-in, per-id dedupe, read-flag respect, background-tab only. All three landed in **v0.47.0** — see CHANGELOG.)*
+**Audited 2026-09-11.** This pool and the two idea pools below had accumulated 26 rows marked
+"✅ shipped" — work that had already landed, sitting in sections whose purpose is to list work
+*ahead*. Those rows moved to the shipped record at the foot of each table. What follows is
+genuinely open.
 
-*From the CTI alignment deferrals ([docs/redesign/ALIGNMENT.md](docs/redesign/ALIGNMENT.md)) — must enter this pool in the same commit they're deferred:*
-| Item | Note |
-|---|---|
-| In-map place search | ✅ shipped in **v0.47.0** — Map-tab free-text search over `searchPlaces`, inline results with + Add |
-| Map popup → Board/Timeline cross-links | ✅ shipped in **v0.47.0** — stop-pin popup with "Open in Timeline"/"Open in Board" |
-| Per-decision route/budget impact panel + grounded assistant | ✅ shipped in **v0.47.0** — decision cards show trip context + deterministic offline recommendation (`decisionGuide.ts`) |
-| Suggestions "why it fits" route-position copy | ✅ shipped in **v0.47.0** — `reasonForSegmentHit` already renders position, distance/time-since-last-stop, detour + detour-budget share on every suggestion card |
+*From the CTI alignment deferrals ([docs/redesign/ALIGNMENT.md](docs/redesign/ALIGNMENT.md)) —
+must enter this pool in the same commit they're deferred:*
 
-*From the #36 bug-hunt triage (Sep 2026 — **all 10 findings closed and fixed**; see CHANGELOG for the per-issue landing):*
-(nothing remaining — #38, #39, #40, #43, #44, #45, #46, #47, #48, #49 all landed; the audit comment on #36 already did the triage and the survivors were spun out as closed issues.)
+**All four CTI deferrals have shipped** (v0.47.0): in-map place search, map popup →
+Board/Timeline cross-links, per-decision route/budget impact panel + grounded assistant, and
+suggestions "why it fits" route-position copy. Nothing open from this source.
 
-*Old P4 nice-to-haves:* ~~Explore pagination~~ ✅ shipped in **v0.47.0** (12-per-page + Load more) · ~~undo for more operations~~ ✅ already covered — trip/member/expense/stop deletes all have Undo · ~~feedback button~~ ✅ shipped in **v0.47.0** (`mailto:` with version+route) · ~~trash + 30-day purge~~ ✅ shipped in **v0.47.0** (soft-delete + Trash view + purge RPCs) · ~~debounced store writes~~ ✅ shipped in **v0.47.0** (600ms trailing coalescer + pagehide flush).
+*From the #36 bug-hunt triage (Sep 2026):* nothing remaining — all 10 findings landed; see the
+CHANGELOG for the per-issue landing. (#38–#49 all closed; the survivors were spun out as issues
+and are listed under [Open issues](#open-issues).)
+
+*Old P4 nice-to-haves:* nothing open. All five landed in v0.47.0 (Explore pagination, undo
+coverage, feedback button, trash + 30-day purge, debounced store writes).
 
 ---
 
@@ -225,33 +295,30 @@ get a row here again.
 |---|---|
 | Decision comments | needs a `comments` JSON column on decisions (schema migration) |
 | Premium purchase state | entitlements + unlock flow — folds into M7 payments |
-| Full Profile field editing | ✅ shipped (v0.47.0) — `homeCity` / `languages` / `travelStyles` / `socialLinks` all editable on Profile |
-| Browser push notifications | ✅ shipped (v0.47.0) — local Notification API; Profile opt-in, dedupe vs read flag, background-tab only |
-| Route polylines on the map | ✅ shipped (v0.47.0) — `MapRoute` + `routePath` render OSRM geometry on the trip map |
-| Trash + 30-day purge | ✅ shipped (v0.47.0) — soft-delete + Trash view + 30-day purge (`20260910_trip_trash{,_rpc}.sql`) |
-| Explore pagination | ✅ shipped (v0.47.0) — 12-per-page grid + Load more |
 | Waitlist / invites (M9) | creator invites → referral → invite-only gate — full exec plan in [`docs/PLAN-INVITES-ONBOARDING.md`](docs/PLAN-INVITES-ONBOARDING.md) |
+
+*(Shipped from this pool, all v0.47.0: full Profile field editing — `homeCity` / `languages` /
+`travelStyles` / `socialLinks`; browser push notifications — local Notification API, opt-in,
+dedupe vs read flag, background-tab only; route polylines on the map — `MapRoute` + `routePath`
+render OSRM geometry; trash + 30-day purge — soft-delete + Trash view + purge RPCs
+(`20260910_trip_trash{,_rpc}.sql`); Explore pagination — 12-per-page grid + Load more.)*
 
 ### 🧭 Suggestion-engine ideas (Sep 6 2026 deep brainstorm → [docs/SUGGESTION_ENGINE_BRAINSTORM.md](docs/SUGGESTION_ENGINE_BRAINSTORM.md))
 
-| Idea | Horizon | Note / effort |
-|---|---|---|
-| Road-projected hit positions (snap to OSRM polyline) | 1 | ✅ shipped (v0.40.x) |
-| Two-pass segment assignment (swap-improvement) | 1 | ✅ shipped |
-| Itinerary + geo-fuzzy dedupe of candidates | 1 | ✅ shipped |
-| Reason strings on suggestion cards ("why this") | 1 | ✅ shipped |
-| Journey-clock segments (meals land at meal times) | 2 | ✅ shipped |
-| Crew-aware fatigue cadence (style/travellers multipliers) | 2 | ✅ shipped |
-| Weather-joined ranking (rain → indoor picks) | 2 | ✅ shipped |
-| Time-based detour cost + on-way asymmetry | 2 | ✅ shipped — asymmetric detour: on-the-way hits ≈ 0, off-road pays the spur (doubled by scorers) |
-| Ratings in Google mode | 2 | ✅ shipped |
-| Road personality (rest before the ghats) | 3 | ✅ shipped (city-crawl verdict fixed to a day-level check; ghat wins) |
-| Detour budget per day | 3 | ✅ shipped — see-&-do list enforced; need halts stay uncounted by design |
-| Trip DNA (learns the crew's picks) | 3 | ✅ shipped — category mix, detour tolerance + **stop length** dims, **cross-trip device learning** (they keep picking waterfall→waterfalls nudged on later trips). Remaining (schema-gated): cross-device persistence via Supabase needs a `user_dna` table + RLS — ride M6/M7 infra, not the pure engine. |
-| Crew-seeded corridor suggestions + story arcs + slack prompts | 3 | ✅ shipped |
-| Fuel before long no-fuel corridors (road-personality trigger) | 3 | ✅ shipped — a fuel stop crossing a long gap to the next scheduled refuel warns "fill the tank" (cadence-gap advisory); a live POI-density scan remains a future nicety |
-| Opening hours enter suggestion scoring | 2 | ✅ shipped — hits closed at the segment's arrival clock are degraded (via `etaMinutes`); open-at-arrival untouched |
-| On-way detour asymmetry (destination on the way costs ~0 return) | 2 | ✅ shipped — see "Time-based detour cost" |
+**Everything in this brainstorm has shipped** — all 16 items, culminating in the Corridor
+Concierge engine (v0.41.0). Nothing open. The one schema-gated remainder is called out below,
+because it is the only thing a future reader could mistake for unfinished:
+
+| Idea | Note |
+|---|---|
+| Cross-device Trip DNA persistence | The engine itself is done (category mix, detour tolerance, stop length, cross-trip device learning). What remains is **persistence**: `user_dna` table + RLS so the profile survives a device change. Deliberately parked on M6/M7 infra — it is not a gap in the engine. |
+
+*(Shipped from this brainstorm: road-projected hit positions, two-pass segment assignment,
+geo-fuzzy candidate dedupe, reason strings on cards, journey-clock segments, crew-aware fatigue
+cadence, weather-joined ranking, time-based detour cost + on-way asymmetry, ratings in Google
+mode, road personality, per-day detour budget, Trip DNA learning, crew-seeded corridor
+suggestions + story arcs + slack prompts, fuel-before-long-corridors advisory, opening hours in
+suggestion scoring.)*
 
 ### 💰 Budget ideas (web research, Sep 6 2026 — sources: YNAB/envelope patterns, budgeting-app UX guides)
 
