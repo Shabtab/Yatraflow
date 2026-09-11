@@ -252,6 +252,26 @@ Hard rules (each learned the hard way — do not relearn them):
   return nothing and look like failures. Put a dependent pipeline in a single
   command string, with `try/finally` whenever it touches real files.
 
+### 3.1 What CI actually runs, per destination
+
+Neither workflow has a `paths` filter, so **docs-only changes still run the full
+gate**. What runs depends on *where* you push, and the two destinations are not
+the same job:
+
+| Destination | `ci.yml` (tsc + vitest + build) | `yatraflow-apk.yml` (Android APK) |
+| --- | --- | --- |
+| push to `test` | yes | **no** |
+| push to `main` | yes | **yes** |
+| push to `redesign/**` | yes | **no** |
+| PR into `main` | yes | **no** |
+| `v*` tag | — | yes (publishes the artifact) |
+
+The APK workflow triggers on `push` to `main`, `feat/capacitor-android` and `v*`
+tags — **not on pull requests**. So a PR into `main` costs one `ci.yml` run plus
+Vercel, while the merge itself is what burns an Android build. Verify with
+`gh pr checks <n>` rather than reasoning from the YAML; the check list names the
+workflow that actually fired.
+
 ## 4. Code conventions & pitfalls
 
 - **Data model**: times are always stored as 24h `"HH:MM"` strings. Format at
