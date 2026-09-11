@@ -603,6 +603,14 @@ by orphan check** (Sep 2026): the reported "802 orphan rows" turned out to be
   dependency, Tier 3 as a track row if it's milestone-shaped.
   (ALIGNMENT/plan docs saying "deliberately deferred" is not enough — the item
   disappears otherwise.)
+- **A roadmap/idea row is a claim about code, not a fact — verify it against
+  `src/` before acting on it.** Consolidating rows (moving text between
+  sections) preserves whatever is wrong with them. Sep 2026: the idea bank
+  inherited a Sep-6 brainstorm table in which "Safe-to-spend per day" was
+  still listed as unbuilt, though `engine.ts` had shipped it — and the README
+  had described it correctly the whole time. The two files disagreed and the
+  roadmap was the one that was wrong. Budget for a source check whenever you
+  touch, quote, or pick up a row.
 - **Keep-a-Changelog with a lead sentence.** CHANGELOG entries: first bold
   sentence = user-visible outcome; detail after; deep technical dives belong
   in `docs/` or the commit body, not a 300-word bullet. Categories stay

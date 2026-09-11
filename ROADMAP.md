@@ -296,32 +296,38 @@ a row in a table above.
 but gated on a named dependency — do not start them early. When an item ships, delete its row
 here and add it to the shipped record, in the same commit that lands it.
 
+**A row is a claim, not a fact.** These rows arrived from brainstorm tables written on
+2026-09-06 and were carried forward during the 2026-09-11 consolidation without being
+re-checked against source — by which point v0.47.0 had quietly shipped at least one of them
+(Safe-to-spend, which the README described accurately while this file still listed it as
+unbuilt). **Before picking up a row, and before quoting one in a plan, confirm it against
+`src/` first.** Pruning on ship is not enough; the drift happens *before* anyone notices.
+
 ### Tier 1 — ready to pick up (small, unblocked)
 
 | # | Idea | Area | Effort | Note |
 |---|---|---|---|---|
 | I-1 | CSV export of expense lines | budget | 1 h | Client-side blob download from `trip.expenses`. |
-| I-2 | Safe-to-spend per day | budget | 1–2 h | `remaining ÷ days left` next to the per-day bars — v0.36 already attributes everything, so this is one derived tile. Pattern: per-day allowance trend. |
-| I-3 | Week-over-week spending insight | budget | 2 h | "Days 1–3 ran 18% hotter than days 4–5" — derived entirely from the existing `byDay` engine data. |
-| I-4 | Recurring expense templates | budget | 2 h | One-click re-add of past lines ("Fuel top-up ₹3,000") from an expense-history chip row. |
-| I-5 | Overspending alerts | budget | 2 h | Threshold notification when a day/category crosses its cap — plumbing already exists in `realtimeCore`. |
-| I-6 | Category envelopes | budget | 3–4 h | Per-category cap (₹) with progress state on the "Where the money goes" bars + a cap editor on the category row. Pattern: YNAB. |
-| I-7 | Settlement reminders + mark paid | budget | 3 h | Balances card gains "mark settled" + a nudge; needs the payer model to persist *who acknowledged*. **Adjacent to M6.** |
-| I-8 | Decision comments | collaboration | schema | Needs a `comments` JSON column on decisions (migration). |
-| I-9 | Monthly statements / invoice export | creator | 2–3 h | Downloadable per-month earnings summary, client-side from the payouts table. **Post-M7.** |
+| I-2 | Week-over-week spending insight | budget | 2 h | "Days 1–3 ran 18% hotter than days 4–5" — derived entirely from the existing `byDay` engine data. |
+| I-3 | Recurring expense templates | budget | 2 h | One-click re-add of past lines ("Fuel top-up ₹3,000") from an expense-history chip row. |
+| I-4 | Overspending alerts | budget | 2 h | Threshold notification when a day/category crosses its cap — plumbing already exists in `realtimeCore`. |
+| I-5 | Category envelopes | budget | 3–4 h | Per-category cap (₹) with progress state on the "Where the money goes" bars + a cap editor on the category row. Pattern: YNAB. |
+| I-6 | Settlement acknowledgement + reminder | budget | 2 h | Balances card gains a "mark settled" flag and a nudge. The settlement *engine* already runs (`BudgetTab.tsx:363`) and `Expense.paidBy` already drives balances — only the acknowledgement state and its reminder are missing. **Adjacent to M6.** |
+| I-7 | Decision comments | collaboration | schema | Needs a `comments` JSON column on decisions (migration) — `StopSuggestion` has one, `TripDecision` does not (`types.ts:226` vs `:244`). |
+| I-8 | Monthly statements / invoice export | creator | 2–3 h | Downloadable per-month earnings summary, client-side from the payouts table. **Post-M7.** |
 
 ### Tier 2 — blocked on a named dependency
 
 | # | Idea | Blocked on | Note |
 |---|---|---|---|
-| I-10 | Payout-schedule card | M7 | "Next payout: Friday · clears ₹X once payments live" — the Earnings tab's `Next payout —` tile grows a date + threshold explainer. |
-| I-11 | Gross vs net split | M7 | Ledger rows already carry the columns; M7 adds the fee model + a gross/net toggle. |
-| I-12 | Per-publication revenue attribution | M7 | Sale rows join on `pub_id`; Overview rows gain an "earned" figure. |
-| I-13 | Price history | M7 (schema) | `premiumPriceInr` is overwritten on publish; correct books need a per-sale price snapshot or price-history rows. |
-| I-14 | Tiered platform fee | M7 (decision) | Fee % drops above a lifetime-earnings threshold — a pricing decision, surfaced in the fee column. Pattern: X's 90%-tier model. |
-| I-15 | Payout method + KYC management | M7 (schema) | Bank/UPI + legal name + PAN on profiles — M7's biggest schema lift. |
-| I-16 | Unlock conversion funnel | M7, then events | Views → premium unlocks per publication; needs entitlement events from M7 first. |
-| I-17 | Cross-device Trip DNA persistence | M6/M7 infra | The engine is **done** (category mix, detour tolerance, stop-length dims, cross-trip device learning). What remains is persistence: a `user_dna` table + RLS so the profile survives a device change. Deliberately parked on infrastructure, not an engine gap. |
+| I-9 | Payout-schedule card | M7 | "Next payout: Friday · clears ₹X once payments live" — the Earnings tab's `Next payout —` tile grows a date + threshold explainer. |
+| I-10 | Gross vs net split | M7 | Ledger rows already carry the columns; M7 adds the fee model + a gross/net toggle. |
+| I-11 | Per-publication revenue attribution | M7 | Sale rows join on `pub_id`; Overview rows gain an "earned" figure. |
+| I-12 | Price history | M7 (schema) | `premiumPriceInr` is overwritten on publish; correct books need a per-sale price snapshot or price-history rows. |
+| I-13 | Tiered platform fee | M7 (decision) | Fee % drops above a lifetime-earnings threshold — a pricing decision, surfaced in the fee column. Pattern: X's 90%-tier model. |
+| I-14 | Payout method + KYC management | M7 (schema) | Bank/UPI + legal name + PAN on profiles — M7's biggest schema lift. |
+| I-15 | Unlock conversion funnel | M7, then events | Views → premium unlocks per publication; needs entitlement events from M7 first. |
+| I-16 | Cross-device Trip DNA persistence | M6/M7 infra | The engine is **done** (category mix, detour tolerance, stop-length dims, cross-trip device learning). What remains is persistence: a `user_dna` table + RLS so the profile survives a device change. Deliberately parked on infrastructure, not an engine gap. |
 
 ### Tier 3 — milestone-shaped, tracked as tracks (not ideas)
 
@@ -361,6 +367,12 @@ Kept as one line each so the origin is traceable without re-listing the work as 
 - **Creator hub (3)** — decision cost-impact editor + context field (v0.36.0) · Explore creator
   bios + newest sorting (v0.35.0 + v0.37.0) · creator hub Overview + Earnings pre-shape with
   projection view (v0.38.0).
+- **Budget pool (2/2)** — v0.47.0, verified against source 2026-09-11. **Safe-to-spend per
+  day** (`engine.ts:715` `safeToSpendPerDay` + `daysRemaining`, rendered as a `StatTile` at
+  `BudgetTab.tsx:180`; counts today, clamps a finished trip to zero, returns null rather than a
+  fake number when no target is set) · **greedy fewest-transfers settlement**
+  (`BudgetTab.tsx:395`, surfaced at `:363`). Both were still listed as unbuilt in the Sep-6
+  brainstorm table; the README had described the first correctly all along.
 - **#36 bug-hunt triage (10/10)** — all landed; the survivors were spun out as issues, now in
   [Open issues](#open-issues).
 

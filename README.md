@@ -111,6 +111,13 @@ The last stretch of releases gave the Map tab a brain, taught the plan to learn 
 - **Decisions got grounded.** Open decision cards show where the trip stands (road time, cost, health) plus a deterministic, data-grounded "(offline)" recommendation.
 - **A backlog of small wins.** Browser push notifications (Profile opt-in, background-tab only), a "Send feedback" link that pre-fills the app version, and Explore pagination with "Load more".
 
+## ✨ The v0.48.0 run, in plain words
+
+- **The Android app got a real bottom navigation bar.** Installed, the shell now has four destinations — Home, My trips, Explore, Profile — in a fixed bar above the gesture area, with a 48px tap target each and the active one marked for screen readers. The website never renders a byte of it. Every page-level bottom layer (toasts, the trip dock, the AI button, settings save bar) now clears it through one shared offset, so nothing hides under the bar any more.
+- **The map stopped fighting the page.** A one-finger drag that started on the trip map used to pan the map and leave the page stuck; on touch, one finger now scrolls the page and two fingers pan the map (MapLibre shows its own hint). The fullscreen map keeps normal gestures — there is no page left to protect.
+- **The keyboard no longer covers the field you're typing in** — the Android shell reflows instead of letting the keyboard float over the layout.
+- **One green, one kicker, four blur tiers.** The design system collapsed primary buttons, focus rings and form accents onto a single teal, everything translucent onto four named blur tiers, and every micro-label onto one recipe — retyped out of literal ALL-CAPS so screen readers stop spelling words out. The stylesheet had also been declaring font weights the font never loaded.
+
 <details>
 <summary><b>See the full tour of features</b></summary>
 
@@ -118,7 +125,7 @@ The last stretch of releases gave the Map tab a brain, taught the plan to learn 
 
 The depth below ships in the app today — it is condensed here to keep the front door scannable.
 
-- **Fuel-accurate costs** — car/bike trips state fuel economy (km/L)and optionally local pump price (default ₹105/L national average); legs are priced as `distance ÷ economy × price`, and the return to start is included by default (toggleable).
+- **Fuel-accurate costs** — car/bike trips state fuel economy (km/L) and optionally local pump price (default ₹105/L national average); legs are priced as `distance ÷ economy × price`, and the return to start is included by default (toggleable).
 - **Travel stops act as real halts** — pure-travel legs render as travelling strips; stay days show "Based in …"; the drive home appears only on the return day, never double-counted.
 - **Fatigue-aware stop planner** — splits long drives into stretch / meal / fuel / overnight segments and matches each to the best real place by purpose (night halts anchored on key cities; vehicle-profile aware for fuel range, EV/CNG queries).
 - **Opening hours auto-fill** from OSM Overpass where relevant (POIs, temples, food, hotels), context-aware.
@@ -180,7 +187,8 @@ src/
 │                      # routing.ts · snapshot.ts · weather.ts
 ├── components/        # ui.tsx · StopEditor.tsx · TripMap.tsx · ImpactPreview.tsx · PubCard.tsx · mapcn/
 └── pages/             # Landing · Auth · TripsList · CreateTrip · TripWorkspace · Explore
-                       # PublicItinerary · CreatorPage · Profile + trip/ (one file per workspace tab)
+                       # PublicItinerary · CreatorPage · CreatorHubPage · Profile · AdminPage
+                       # NativeHome + trip/ (one file per workspace tab)
 ```
 
 Deep dives: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (data model, engine math, store), [DESIGN_TOKENS.md](DESIGN_TOKENS.md) (design tokens), [docs/README.md](docs/README.md) (full index).
@@ -214,8 +222,8 @@ Static hosting is enough. The repo auto-deploys to **Vercel** on every push to `
 
 ## 📌 MVP constraints (intentional)
 
-- ❌ Hotel/flight **booking** — placeholder buttons only ("no payments in this MVP")
-- ❌ **Payments** — no gateway integration
+- ❌ Hotel/flight **booking** — out of scope. Stops can be flagged *needs booking*, and you add your own confirmations as timed events, but the app never books or links to a booking flow
+- ❌ **Payments** — no gateway integration (the premium **Unlock** buttons are labelled placeholders)
 - ❌ **Live traffic/prices** — all estimates are transparent formulas with stated assumptions
 - ❌ INR is the default and only currency
 
