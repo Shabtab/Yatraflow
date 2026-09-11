@@ -1019,9 +1019,10 @@ function publishedHaveRefreshedAt(): Promise<boolean> {
 }
 
 async function persistTrip(trip: Trip, ownerId: ID) {
+  // Claim the echo window before the await — see persistTripFieldNow.
+  markLocalWrite('trips', trip.id)
   const cols = await tripsHaveOptionalColumns()
   const { error } = await supabase.from('trips').insert(tripToRow(trip, ownerId, cols))
-  markLocalWrite('trips', trip.id)
   if (error) { toast('Could not save trip.'); return }
   const { error: mErr } = await supabase.from('trip_members').insert(
     (trip.members ?? []).map(m => ({ trip_id: trip.id, user_id: m.userId, role: m.role, joined_at: m.joinedAt }))
@@ -1555,10 +1556,15 @@ export function _flushTripWrites(): void {
 /** The real row UPDATE — exactly the old persistTripField body. */
 async function persistTripFieldNow(id: ID, t: Trip | undefined): Promise<void> {
   if (!t) return
+  // Claim the echo window BEFORE awaiting: the guard must be in place from the
+  // moment the write is in flight, not from the moment it resolves. Recording
+  // it after the await left a hole the width of the whole round trip — an echo
+  // that arrived first was treated as a collaborator's edit and clobbered the
+  // optimistic reorder the user had just accepted. (Board/Timeline reorder bug.)
+  markLocalWrite('trips', id)
   const owner = t.members?.find(m => m.role === 'owner')
   const cols = await tripsHaveOptionalColumns()
   const { error } = await supabase.from('trips').update(tripToRow(t, owner?.userId ?? id, cols)).eq('id', id)
-  markLocalWrite('trips', id)
   if (error) toast('Could not save changes.')
 }
 
@@ -2149,6 +2155,15 @@ function markLocalWrite(table: string, id: string): void {
 
 function echoWindowEh(table: string, id: string): boolean {
   return isRecentLocalWrite(recentLocalWrites, table, id, Date.now())
+}
+
+/** Test hook — clear the echo-window ledger so a test can isolate the window
+ *  armed by the write it is actually exercising. The ledger is a module
+ *  singleton, so without this every earlier write in the same test file keeps
+ *  its window open (2s is longer than a test) and masks the behaviour under
+ *  test — which is exactly how the reorder bug first hid. */
+export function _clearRecentLocalWrites(): void {
+  recentLocalWrites.clear()
 }
 
 /** Realtime payloads come off the wire, so they are not ours to trust. An

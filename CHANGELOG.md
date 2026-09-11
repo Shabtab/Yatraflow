@@ -17,6 +17,24 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ### Fixed
 
+- **Board and Timeline drag-reorder no longer reverts after you accept the change.**
+  `persistTripFieldNow` (and the trip INSERT path, `persistTrip`) recorded its
+  realtime echo-suppression stamp *after* awaiting the row write, so the guard only
+  covered the moment the write **resolved** — the whole server round trip was
+  unguarded. An echo that arrived in that hole was read as a collaborator's edit and
+  replaced the freshly reordered `days` with the stale server row, so an accepted
+  reorder visibly snapped back. The stamp is now taken *before* the await. This also
+  fixes the reported cross-day drag, which failed for the same reason: a cross-day
+  drag routes through the identical persist → realtime path.
+
+- **Timeline reorder now drops where you put it.** `useReorder`'s card-level drop
+  passed the *hovered card's index* straight to `onMove`, with no adjustment for the
+  dragged item's removal shift. Dragging **downward** therefore landed one slot too
+  far — dropping a card onto its immediate neighbour moved it when the pointer was
+  aimed at a no-op, and dropping onto the last card overshot the end. Upward drags
+  were unaffected, which is why the bug read as intermittent. A drop now resolves the
+  hovered card to an insertion slot, using which half of the card the cursor is over.
+
 - **`.env.example` now exists — the documented first step works again.** The README's
   Getting-started block and the runtime hint in `src/lib/supabase.ts` both told contributors
   to `cp .env.example .env.local`, but the file had never been committed, so the first command
