@@ -785,6 +785,30 @@ a.btn { text-decoration: none; }
 }
 .move-btn:hover:not(:disabled) { background: var(--bg-soft); color: var(--text); }
 .move-btn:disabled { opacity: .3; cursor: default; }
+/* Delete on a board card: the same 22×24 tap target as its siblings, but the
+   hover/active tint reads as destructive so it can't be mistaken for reorder.
+   The click is not the end of the story — it routes through the impact
+   preview, whose Keep/Remove is the real confirmation step. */
+.move-btn--danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger, #C93B3B) 14%, transparent);
+  color: var(--danger, #C93B3B);
+}
+.move-btn--danger:active:not(:disabled) { color: var(--danger, #C93B3B); }
+/* The stop title on an editable board card doubles as the edit affordance —
+   styled as text until hovered, so the card still reads as a card, not a row
+   of buttons. */
+.board-stop-title-btn {
+  border: none; background: none; padding: 0; text-align: inherit; color: inherit;
+  font: inherit; cursor: pointer; display: block; width: 100%;
+  border-radius: 6px;
+}
+.board-stop-title-btn .stop-title { display: inline-block; max-width: 100%; }
+.board-stop-title-btn:hover .stop-title, .board-stop-title-btn:focus-visible .stop-title {
+  text-decoration: underline dotted;
+  text-decoration-color: color-mix(in srgb, var(--text-3) 60%, transparent);
+  text-underline-offset: 3px;
+}
+.board-stop-title-btn:focus-visible { outline: 2px solid var(--focus, var(--teal)); outline-offset: 1px; }
 .travel-leg {
   display: flex; align-items: center; gap: 9px;
   margin: 3px 0 3px 0; padding: 2px 0 2px 0;
@@ -1178,6 +1202,15 @@ a.btn { text-decoration: none; }
 .board-col-zone b { font-size: 12px; color: var(--teal-deep); }
 .board-col-zone.foreign-over { border-color: var(--teal); background: var(--teal-soft); }
 .board-col-zone.foreign-over b { color: var(--teal-deep); }
+/* Editable zone is now a real button (click = add a stop to this day) while
+   still signalling the drop target it always was — drag events fire on
+   buttons as well as divs, so the same handlers ride on the button. Inherit
+   the dash-border look; add the press feedback a button promises. */
+button.board-col-zone--add { cursor: pointer; font: inherit; width: 100%; }
+button.board-col-zone--add b { font-weight: 600; }
+button.board-col-zone--add:hover { border-color: var(--teal); background: color-mix(in srgb, var(--teal-soft, #e6f4f2) 60%, transparent); }
+button.board-col-zone--add:focus-visible { outline: 2px solid var(--focus, var(--teal)); outline-offset: 2px; }
+button.board-col-zone--add:active { transform: translateY(1px); }
 
 /* ---------- M6: Budget / Decisions / Share / Suggestions hierarchy (CTI §6.6–6.9) ---------- */
 .budget-hero {

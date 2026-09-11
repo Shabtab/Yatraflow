@@ -35,9 +35,9 @@ type TabKey = 'overview' | 'timeline' | 'board' | 'map' | 'group' | 'budget' | '
 
 const TABS: [TabKey, string][] = [
   ['overview', 'Overview'],
-  ['timeline', 'Timeline'],
   ['board', 'Board'],
   ['map', 'Map'],
+  ['timeline', 'Timeline'],
   ['group', 'Group input'],
   ['budget', 'Budget'],
   ['share', 'Share'],

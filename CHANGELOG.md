@@ -15,6 +15,27 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Added
+
+- **The Board can now add, edit and delete stops without leaving the view.** The
+  board had up/down reorder and a move-to-day modal but no way to delete a stop, no
+  way to edit one, and its only "+ Add a stop" button navigated away to the Timeline.
+  All three now happen in place: a delete button on each card routes through the same
+  impact-preview flow as the Timeline's (so Keep/Remove remains the confirmation step),
+  the card title opens the shared stop editor, and each day column's dashed foot zone
+  is a click-to-add button while keeping its drag-drop role. The add/edit plumbing
+  (`initialValues` / `legContextFor` / `dayIndexOfStop`) moved from TimelineTab's
+  private scope into `lib/stopForm.ts` so both views share one implementation instead
+  of drifting — the same drift that already made their rejected-stop handling disagree.
+
+### Changed
+
+- **Tab order is now Overview → Board → Map → Timeline.** The Board — the
+  rearrange/edit/delete surface with the route visible — is the first stop after
+  Overview; the Timeline becomes the deliberate, information-dense view you open when
+  you need timings and legs, rather than the default editing surface. Deep links are
+  unaffected (tabs are addressed by slug, not position).
+
 ### Fixed
 
 - **Board and Timeline drag-reorder no longer reverts after you accept the change.**
