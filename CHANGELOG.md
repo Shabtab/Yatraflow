@@ -13,6 +13,15 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 > record still exists in `git log`, not here. Archived release notes live in
 > [`docs/history/`](docs/history/).
 
+## [0.50.1] - 2026-09-11
+
+**The installed app no longer flashes the marketing website on launch.** The hydration ready-gate excluded the bare route unconditionally — a web-first choice (the landing paints instantly instead of a spinner) that backfired in the shell: every app launch rendered the website's home — its chrome and all — for as long as hydration took past the splash, before flipping to the app home. In the shell the loading block now covers the bare route, and an unknown deep link falls back to the app home instead of the landing. The web is byte-identical.
+
+### Fixed
+
+- **No more website flash at app launch (shell).** `App.tsx`'s ready-gate now covers the bare route when `isNative`: a signed-in user opening the app sees splash → loading → app home, never the marketing landing. Signed-out users still get the landing (it is the login entry).
+- **Unknown deep links in the shell fall back to the app home**, not the marketing landing — same parity rule, pinned by two new static invariants in `mobile-shell.test.ts`. Android `versionCode 10 / 0.10-native` so phones update cleanly over 0.9-native.
+
 ## [0.50.0] - 2026-09-11
 
 **Every trip edit finally sticks — the "Change saved but nothing changed" defect is dead.** `updateTrip()` treated *every* full-trip save from the impact-preview flow as a date change (a full `Trip` always carries truthy `startDate`/`endDate`), rebuilt the day grid from the *pre-edit* cached days, and overwrote the proposed reorder/delete/move in both the cache and the persisted row — while still toasting "Change saved". The day grid now reconciles only when the dates actually changed, and reconciles the *incoming* days, so reorders, arrow moves, drag-and-drop, deletes and cross-day moves all persist in real time and survive reload. Pinned by two regression tests that fail on the old code and pass with the fix.
