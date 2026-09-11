@@ -439,7 +439,12 @@ workflow that actually fired.
   (TS1005) one line below the edit — and a second edit anchored on a nearby
   comment duplicated a `const` instead of moving it. After any multi-part
   restructuring edit in this repo, run `npx tsc -b` immediately and diff-review
-  before continuing (M3.3, Sep 2026).
+  before continuing (M3.3, Sep 2026). Variant (halt-planner fix, Sep 2026):
+  replacing "line + trailing newline" with the same line *without* the newline
+  merges the NEXT line into it — and since two statements on one line is valid
+  TS, **tsc stays green on the merge**; only re-reading the edited region
+  catches it. Anchor `old_string`/`new_string` pairs so line endings can't
+  shift: include the following line in both, or end neither with a newline.
 
 - **`src/styles.css` is CRLF on disk — Node one-off scripts must handle `\r`.**
   Bulk CSS edits via `node` scripts split on `\n`, so every line carries a

@@ -139,6 +139,10 @@ export function addMinutesToClock(startMin: number, mins: number): string {
 export interface LegEstimate {
   distanceKm: number
   durationMinutes: number
+  /** Road geometry for this leg as [lng, lat][], present only when the estimate
+   *  came from a routing provider (Google Routes / OSRM). The haversine
+   *  fallback has no road shape — consumers must treat it as optional. */
+  geometry?: [number, number][]
 }
 
 /** Canonical key for a leg between two points (used by the OSRM refinement layer). */
@@ -525,6 +529,42 @@ export function buildJourney(
     halts,
     endsAtStart: coLocates(lastPoint, home),
   }
+}
+
+/**
+ * The day's ride as ONE continuous road polyline, assembled from the per-leg
+ * geometry the routing layer (Google Routes / OSRM) already fetched for the
+ * distance corrections. Km accumulated along this polyline match the road km
+ * the travel panel displays (same source), so a halt planned "after 120 km"
+ * lands 120 road-km in — ON the road the map draws — instead of on the
+ * straight-line chord between stops, which on curvy highways sits far off the
+ * actual road. Returns null when any leg of the chain has no road geometry
+ * (offline estimate fallback); callers then fall back to the stop chain.
+ */
+export function dayRoadPolyline(
+  points: JourneyPoint[],
+  corrections?: Record<string, LegEstimate>,
+): { lat: number; lng: number }[] | null {
+  if (!corrections || points.length < 2) return null
+  const out: { lat: number; lng: number }[] = []
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i]
+    const b = points[i + 1]
+    const geo = corrections[legKey(a, b)]?.geometry
+    if (!geo || geo.length < 2) return null
+    let seg = geo.map(([lng, lat]) => ({ lat, lng }))
+    // The corrections map also carries mirrored legs for return drives, whose
+    // stored geometry runs opposite to this leg's actual direction — orient
+    // the segment so the concatenated polyline follows the ride start→end.
+    if (haversineKm(seg[0].lat, seg[0].lng, b.lat, b.lng) < haversineKm(seg[0].lat, seg[0].lng, a.lat, a.lng)) {
+      seg = [...seg].reverse()
+    }
+    // drop the junction duplicate (the previous leg ends where this one starts)
+    const last = out[out.length - 1]
+    if (last && haversineKm(last.lat, last.lng, seg[0].lat, seg[0].lng) < 0.02) seg = seg.slice(1)
+    out.push(...seg)
+  }
+  return out.length >= 2 ? out : null
 }
 
 export interface StopLegEstimate extends LegEstimate {

@@ -14,7 +14,7 @@ import { updateTrip, setStopStatus } from '../../store/store'
 import {
   computeTotals, simulateDay, originOf, getAssumptions, coLocates, minutesToHM, hmToMinutes, formatInr,
   predecessorOf, nextAfter, collectWarnings, buildJourney, addMinutesToClock, FUEL_PRICE_INR_PER_L,
-  computeCategoryBias, optimizeDayOrder,
+  computeCategoryBias, optimizeDayOrder, dayRoadPolyline,
 } from '../../lib/engine'
 import { MODE_SPEED } from '../../lib/engine'
 import type { LegEstimate, ScheduleWarning, Journey } from '../../lib/engine'
@@ -243,15 +243,19 @@ export function TimelineTab({ trip, editable, applyChange, legCorrections, sugge
     if (halts.length === 0) return
     applyChange(draft => {
       const day = draft.days.find(d => d.index === dayIndex)!
-      const j = buildJourney(draft, day) // existing stop → km lookup
-      const posOf = (p: { lat: number; lng: number }) => kmFromStartForHit({ latitude: p.lat, longitude: p.lng }, j.points) ?? 0
+      const j = buildJourney(draft, day, legCorrections) // existing stop → km lookup
+      // Position stops on the day's ROAD polyline when the routing layer has
+      // resolved one — the halt planner's km are road km, so ordering against
+      // the straight-line chord would slot the halt at the wrong place.
+      const road = dayRoadPolyline(j.points, legCorrections)
+      const posOf = (p: { lat: number; lng: number }) => kmFromStartForHit({ latitude: p.lat, longitude: p.lng }, road ?? j.points) ?? 0
       const merged = [
         ...day.stops.map(s => ({ km: posOf(s), s: structuredClone(s) })),
         ...halts.map(h => ({ km: h.km, s: { ...h.stop, id: 'pending_' + Math.random().toString(36).slice(2), orderInDay: 0 } })),
       ].sort((a, b) => a.km - b.km)
       day.stops = merged.map((m, i) => ({ ...m.s, orderInDay: i + 1 }))
     }, 'add', dayIndex)
-  }, [applyChange])
+  }, [applyChange, legCorrections])
 
   const handleStatus = useCallback((stop: ItineraryStop, status: ItineraryStop['status']) => {
     // Status flips are lightweight group signals — applied directly.
@@ -633,7 +637,7 @@ const DaySection = React.memo(function DaySection({ day, trip, editable, onAdd, 
         </div>
       ))}
 
-      <TravelPanel trip={trip} day={day} editable={editable} journey={journey} suggestionCache={suggestionCache}
+      <TravelPanel trip={trip} day={day} editable={editable} journey={journey} suggestionCache={suggestionCache} legCorrections={legCorrections}
         onSetDayStart={onSetDayStart} onAddPlannedHalts={onAddPlannedHalts} />
 
       {ordered.length === 0 && (<>
@@ -891,11 +895,12 @@ function modeLabelMode(m: string): string {
  * route corridor. Replaces the old split where long rides got a completely
  * different "LongRidePanel" with its own ride-style options.
  */
-function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddPlannedHalts, suggestionCache }: {
+function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddPlannedHalts, suggestionCache, legCorrections }: {
   trip: Trip
   day: Trip['days'][number]
   editable: boolean
   journey: Journey
+  legCorrections?: Record<string, LegEstimate>
   onSetDayStart: (dayIndex: number, time: string) => void
   onAddPlannedHalts: (dayIndex: number, halts: { km: number; stop: Omit<ItineraryStop, 'id' | 'orderInDay'> }[]) => void
   suggestionCache: ReturnType<typeof useSuggestionCache>
@@ -903,6 +908,16 @@ function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddPlanned
   const A = getAssumptions(trip)
   const timeFormat = useTimeFormat()
   const { cache: sugCache, setHaltCache } = suggestionCache
+
+  // The day's ride as one continuous ROAD polyline (assembled from the routing
+  // provider's per-leg geometry). Planned halts are placed along it, so a halt
+  // "after N km" lands N road-km in — on the road the map draws. Null while
+  // the routing layer hasn't resolved (offline estimate) — placement then
+  // falls back to the straight-line stop chain.
+  const roadPolyline = useMemo(
+    () => dayRoadPolyline(journey.points, legCorrections),
+    [journey, legCorrections],
+  )
 
   // ---- Halt planner ----
   // The plan is user-authored: WHERE along the ride (km) and HOW LONG (minutes),
@@ -1038,7 +1053,7 @@ function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddPlanned
           .slice(0, 12),
       )
       const assigned = annotateSegmentHits(
-        assignSegmentHits(unplanned, segments, anchors, { homeCenter: trip.startLocationCoords ?? null, routePolyline: routePts.length >= 2 ? routePts : null, speedKmph: MODE_SPEED[trip.transportMode] ?? 40 }),
+        assignSegmentHits(unplanned, segments, anchors, { homeCenter: trip.startLocationCoords ?? null, routePolyline: roadPolyline ?? (routePts.length >= 2 ? routePts : null), speedKmph: MODE_SPEED[trip.transportMode] ?? 40 }),
         candidates,
       )
       const hitById = new Map<string, PlaceHit | null>()
@@ -1059,9 +1074,12 @@ function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddPlanned
       purpose === 'meal' ? 'Meal break' : purpose === 'fuel' ? 'Fuel stop' : purpose === 'overnight' ? 'Overnight stay' : 'Break — tea & stretch'
     const halts = plan.map(item => {
       const useSpot = item.pin && item.hit
+      // Unpinned halts sit ON the road at the requested road-km: interpolate
+      // along the routing provider's geometry when it has resolved, so the
+      // point rides the actual highway rather than the stop-to-stop chord.
       const pt = useSpot
         ? { lat: item.hit!.latitude, lng: item.hit!.longitude }
-        : (pointAtKm(journey.points, item.km) ?? journey.points[0])
+        : (pointAtKm(roadPolyline ?? journey.points, item.km) ?? journey.points[0])
       const cat: ItineraryStop['category'] =
         item.purpose === 'meal' ? 'food' : item.purpose === 'fuel' ? 'transport-hub' : item.purpose === 'overnight' ? 'hotel' : 'rest'
       return {
@@ -1232,7 +1250,7 @@ function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddPlanned
                 className="btn btn-outline btn-sm"
                 onClick={() => {
                   const h = slackPickHit
-                  const km = kmFromStartForHit({ latitude: h.latitude, longitude: h.longitude }, journey.points) ?? 0
+                  const km = kmFromStartForHit({ latitude: h.latitude, longitude: h.longitude }, roadPolyline ?? journey.points) ?? 0
                   onAddPlannedHalts(day.index, [{
                     km,
                     stop: {
