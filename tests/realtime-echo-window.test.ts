@@ -97,7 +97,7 @@ vi.mock('../src/lib/supabase', () => {
   }
 })
 
-import { duplicateTrip, updateStop, tripById, connectRealtime, _flushTripWrites, _clearRecentLocalWrites } from '../src/store/store'
+import { duplicateTrip, updateStop, tripById, connectRealtime, _flushTripWrites, _clearRecentLocalWrites, _setTripWriteDebounceMs } from '../src/store/store'
 
 const keralaTrip = seedData.trips[0]
 
@@ -178,5 +178,63 @@ describe('the echo guard is armed before the write is awaited', () => {
     expect(arm, 'persistTripFieldNow must call markLocalWrite').toBeGreaterThan(-1)
     expect(write, 'persistTripFieldNow must perform a row update').toBeGreaterThan(-1)
     expect(arm, 'the echo guard must be armed BEFORE the row update is issued').toBeLessThan(write)
+  })
+})
+
+// ============ The commit-time arm closes the debounce-gap hole ============
+// The 2s echo window must be armed the moment the change is committed — inside
+// persistTripField, synchronously — not only when the debounced row write
+// fires ~600ms later (persistTripFieldNow). If it is armed only at write-fire,
+// a postgres_changes echo that lands in that 600ms gap is NOT suppressed: it
+// reverts the optimistic reorder in the cache, and the debounced write then
+// persists the reverted (stale) order. This is the production symptom the user
+// reported — "dialog shows the right order, reverts right after Keep".
+describe('the echo window is armed at commit time (debounce-gap hole)', () => {
+  it('a stale echo landing DURING the debounce gap does not revert the reorder', async () => {
+    const trip = duplicateTrip(keralaTrip, 'owner-test')
+    // Creating the trip performs a write of its own, which arms an echo window.
+    // Clear the ledger so the ONLY window in play is the reorder's.
+    await new Promise(r => setTimeout(r, 0))
+    _clearRecentLocalWrites()
+
+    connectRealtime('owner-test')
+    expect(state.handlers['trips'], 'realtime handler must be registered').toBeTruthy()
+
+    // Exercise the real production debounce so the 600ms gap is real.
+    _setTripWriteDebounceMs(600)
+
+    const before = orderOf(trip.id)
+    const staleEcho = rowOf(trip.id) // carries the ORIGINAL order
+
+    // Commit the reorder. With the fix, persistTripField arms the echo window
+    // HERE — synchronously, at commit time. Without the fix, nothing arms the
+    // window until the debounced write fires ~600ms later.
+    updateStop(trip.id, before[0], { orderInDay: 999 })
+    const afterLocal = orderOf(trip.id)
+    expect(afterLocal, 'the local reorder must have taken effect').not.toEqual(before)
+    expect(afterLocal[afterLocal.length - 1]).toBe(before[0])
+
+    // Hold the eventual debounced write open so it never resolves under us.
+    state.holdUpdates = true
+
+    // Deliver the stale echo DURING the debounce gap, before the timer fires.
+    await new Promise(r => setTimeout(r, 50))
+    expect(state.inFlight.length, 'no write should be in flight yet (debounce gap)').toBe(0)
+    state.handlers['trips']({ eventType: 'UPDATE', new: staleEcho, old: { id: trip.id } })
+
+    expect(
+      orderOf(trip.id),
+      'the reorder must survive an echo that lands during the debounce gap',
+    ).toEqual(afterLocal)
+
+    // Let the debounce fire; the write now holds open (holdUpdates).
+    await new Promise(r => setTimeout(r, 800))
+    await new Promise(r => setTimeout(r, 0))
+    expect(state.inFlight.length, 'the debounced row UPDATE must now be in flight').toBeGreaterThan(0)
+    expect(orderOf(trip.id), 'order must still hold after the write fires').toEqual(afterLocal)
+
+    state.inFlight.forEach(release => release())
+    await new Promise(r => setTimeout(r, 0))
+    expect(orderOf(trip.id), 'order must hold once the write resolves').toEqual(afterLocal)
   })
 })

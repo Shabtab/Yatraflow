@@ -48,6 +48,18 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
   fixes the reported cross-day drag, which failed for the same reason: a cross-day
   drag routes through the identical persist → realtime path.
 
+- **Reorder no longer reverts from an echo that lands *during* the debounce window.**
+  The previous fix armed the echo-suppression stamp only inside `persistTripFieldNow`,
+  i.e. when the debounced row write fired ~600 ms *after* you clicked Keep. A
+  `postgres_changes` echo that arrived in that 600 ms gap — before any write was even
+  issued — found no stamp and was therefore *not* suppressed, so it reverted the
+  optimistic reorder in the cache and the trailing debounced write then persisted the
+  reverted (stale) order. The stamp is now also taken synchronously inside
+  `persistTripField`, at the moment the change is committed, so the guard spans the
+  whole commit → write → echo span. This is the residual symptom that survived the
+  first fix on the live preview. (A negative-control test fires a stale echo during the
+  gap and fails on the old code.)
+
 - **Timeline reorder now drops where you put it.** `useReorder`'s card-level drop
   passed the *hovered card's index* straight to `onMove`, with no adjustment for the
   dragged item's removal shift. Dragging **downward** therefore landed one slot too

@@ -1569,6 +1569,12 @@ async function persistTripFieldNow(id: ID, t: Trip | undefined): Promise<void> {
 }
 
 function persistTripField(id: ID, t: Trip): void {
+  // Claim the echo window the moment the change is committed (synchronously,
+  // here), not only when the debounced row write fires ~600ms later. The guard
+  // then spans the whole commit→write→echo span; an echo that lands after the
+  // debounce but before the server round trip finishes is still suppressed.
+  // (Re-arm happens again inside persistTripFieldNow at fire time.)
+  markLocalWrite('trips', id)
   if (TRIP_WRITE_DEBOUNCE_MS <= 0) {
     void persistTripFieldNow(id, t)
     return
