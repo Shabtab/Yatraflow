@@ -139,6 +139,10 @@ export function addMinutesToClock(startMin: number, mins: number): string {
 export interface LegEstimate {
   distanceKm: number
   durationMinutes: number
+  /** Road geometry for this leg as [lng, lat][], present only when the estimate
+   *  came from a routing provider (Google Routes / OSRM). The haversine
+   *  fallback has no road shape — consumers must treat it as optional. */
+  geometry?: [number, number][]
 }
 
 /** Canonical key for a leg between two points (used by the OSRM refinement layer). */
@@ -527,6 +531,69 @@ export function buildJourney(
   }
 }
 
+/**
+ * The day's ride as ONE continuous road polyline, assembled from the per-leg
+ * geometry the routing layer (Google Routes / OSRM) already fetched for the
+ * distance corrections. Km accumulated along this polyline match the road km
+ * the travel panel displays (same source), so a halt planned "after 120 km"
+ * lands 120 road-km in — ON the road the map draws — instead of on the
+ * straight-line chord between stops, which on curvy highways sits far off the
+ * actual road. Returns null when any leg of the chain has no road geometry
+ * (offline estimate fallback); callers then fall back to the stop chain.
+ */
+export function dayRoadPolyline(
+  points: JourneyPoint[],
+  corrections?: Record<string, LegEstimate>,
+): { lat: number; lng: number }[] | null {
+  if (!corrections || points.length < 2) return null
+  const out: { lat: number; lng: number }[] = []
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i]
+    const b = points[i + 1]
+    const geo = corrections[legKey(a, b)]?.geometry
+    if (!geo || geo.length < 2) return null
+    let seg = geo.map(([lng, lat]) => ({ lat, lng }))
+    // The corrections map also carries mirrored legs for return drives, whose
+    // stored geometry runs opposite to this leg's actual direction — orient
+    // the segment so the concatenated polyline follows the ride start→end.
+    if (haversineKm(seg[0].lat, seg[0].lng, b.lat, b.lng) < haversineKm(seg[0].lat, seg[0].lng, a.lat, a.lng)) {
+      seg = [...seg].reverse()
+    }
+    // drop the junction duplicate (the previous leg ends where this one starts)
+    const last = out[out.length - 1]
+    if (last && haversineKm(last.lat, last.lng, seg[0].lat, seg[0].lng) < 0.02) seg = seg.slice(1)
+    out.push(...seg)
+  }
+  return out.length >= 2 ? out : null
+}
+
+/**
+ * Road-vs-chord scale of a journey: corrected leg distances (OSRM/Google)
+ * summed over the SAME consecutive point pairs as the haversine chord sum.
+ * The optimise-day objective is haversine (pairwise road km between arbitrary
+ * stops would need N² route calls), but the numbers it shows must speak the
+ * road km the travel panel displays — multiply chord figures by this ratio.
+ * Returns 1 (no rescale) while corrections are absent or degenerate.
+ */
+export function roadScaleRatio(
+  points: JourneyPoint[],
+  corrections?: Record<string, LegEstimate>,
+): number {
+  if (!corrections || points.length < 2) return 1
+  let chord = 0
+  let road = 0
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i]
+    const b = points[i + 1]
+    const c = haversineKm(a.lat, a.lng, b.lat, b.lng)
+    chord += c
+    road += corrections[legKey(a, b)]?.distanceKm ?? c
+  }
+  if (chord <= 0) return 1
+  const r = road / chord
+  return Number.isFinite(r) && r > 0 ? r : 1
+}
+
 export interface StopLegEstimate extends LegEstimate {
   /** fuel/fare cost for the leg at the trip mode's ₹/km rate */
   costInr: number
@@ -701,7 +768,7 @@ export function daysRemaining(trip: Pick<Trip, 'days' | 'startDate' | 'endDate'>
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return total
   if (now.getTime() > end.getTime()) return 0
   if (now.getTime() < start.getTime()) return total
-  // days from today (inclusive) to the end date: floor + 1 ΓÇö a partial day
+  // days from today (inclusive) to the end date: floor + 1 — a partial day
   // still counts as a full remaining day (you can still spend today).
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
   const ms = end.getTime() - todayStart.getTime()
@@ -710,7 +777,7 @@ export function daysRemaining(trip: Pick<Trip, 'days' | 'startDate' | 'endDate'>
 
 /** The pacing number the Budget tab surfaces: how much the group can still
  *  spend per remaining day without blowing the target. Null when no target
- *  is set (budgetPerPersonInr 0) ΓÇö "set a budget" is the honest answer then,
+ *  is set (budgetPerPersonInr 0) — "set a budget" is the honest answer then,
  *  not a fake infinity. */
 export function safeToSpendPerDay(
   trip: Pick<Trip, 'days' | 'startDate' | 'endDate' | 'budgetPerPersonInr' | 'travellers'>,
@@ -796,6 +863,119 @@ export function firstFixedPoint(trip: Trip): { lat: number; lng: number } {
     if (first) return { lat: first.lat, lng: first.lng }
   }
   return { lat: 9.9312, lng: 76.2673 } // Kochi fallback
+}
+
+// ---------------- Day route optimization ----------------
+
+/** Route length (km) of one day's stop sequence from a wake-up origin —
+ *  straight-line haversine sum. Used to compare orderings; the displayed
+ *  km/time always come from the real simulation afterwards. */
+export function dayRouteKm(origin: { lat: number; lng: number }, stops: ItineraryStop[]): number {
+  let km = 0
+  let pos = origin
+  for (const s of stops) {
+    km += haversineKm(pos.lat, pos.lng, s.lat, s.lng)
+    pos = s
+  }
+  return km
+}
+
+export interface OptimizeDayResult {
+  /** the re-ordered stops (new array; input untouched). Same order when the
+   *  day was already optimal or has <3 movable stops. */
+  stops: ItineraryStop[]
+  /** route km before → after, for the "saves ~X km" toast */
+  beforeKm: number
+  afterKm: number
+  /** false when there was nothing to improve (≤2 movable stops, or already optimal) */
+  changed: boolean
+}
+
+/** Reorder a day's MOVABLE stops to minimise crisscrossing: greedy
+ *  nearest-neighbour from the day's wake-up origin, then a full 2-opt
+ *  improvement sweep. Auto anchors (start/destination/continuation
+ *  waypoints, `auto: true`) are pinned to the front and back of the day —
+ *  the engine builds the journey around them, so moving them would rewrite
+ *  the route's endpoints rather than tidy the middle. Rejected stops ride
+ *  along untouched. Open-hours constraints are honoured as a tie-break only:
+ *  a stop's openTime is compared when two candidates are near-equal, so the
+ *  optimizer never produces an ordering that needlessly waits for a closed
+ *  door, but hard time windows are left to the user — days are short and
+ *  the impact preview will flag impossible clocks. Pure: node-testable. */
+export function optimizeDayOrder(
+  origin: { lat: number; lng: number },
+  stops: ItineraryStop[],
+): OptimizeDayResult {
+  const sorted = [...stops].sort((a, b) => a.orderInDay - b.orderInDay)
+  const active = sorted.filter(s => s.status !== 'rejected')
+  const anchors = active.filter(s => s.auto === true)
+  // The optimizer only understands anchors at the head/tail of the day. A
+  // mid-day auto anchor (an unusual shape — e.g. a manually-moved continuation
+  // waypoint) would fall outside the pinned model and get lost, so those days
+  // are left untouched rather than guessed at.
+  const anchorIdx = anchors.map(a => active.findIndex(s => s.id === a.id))
+  const midAnchor = anchors.some((a, i) => anchorIdx[i] !== 0 && anchorIdx[i] !== active.length - 1)
+  const head = anchors.length > 0 && anchorIdx[0] === 0 ? anchors[0] : undefined
+  const tail = anchors.length > (head ? 1 : 0) && anchorIdx[anchorIdx.length - 1] === active.length - 1
+    ? anchors[anchors.length - 1] : undefined
+  // movable = non-auto, non-rejected; rejected ride along after the actives
+  const movable = active.filter(s => s.auto !== true)
+  const beforeKm = dayRouteKm(origin, active)
+
+  if (movable.length < 3 || midAnchor) {
+    return { stops: sorted, beforeKm, afterKm: beforeKm, changed: false }
+  }
+
+  // Greedy nearest-neighbour with the open-time tie-break (earlier opening
+  // first when two candidates sit within ~800 m of each other).
+  const remaining = [...movable]
+  const order: ItineraryStop[] = []
+  let pos = head ?? origin
+  const opensAt = (s: ItineraryStop) => (s.openTime && /^\d{2}:\d{2}$/.test(s.openTime) ? hmToMinutes(s.openTime) : Infinity)
+  while (remaining.length > 0) {
+    let bestIdx = 0
+    for (let i = 1; i < remaining.length; i++) {
+      const km = haversineKm(pos.lat, pos.lng, remaining[i].lat, remaining[i].lng)
+      const kmBest = haversineKm(pos.lat, pos.lng, remaining[bestIdx].lat, remaining[bestIdx].lng)
+      const nearTie = Math.abs(km - kmBest) < 0.8
+      if (km < kmBest || (nearTie && opensAt(remaining[i]) < opensAt(remaining[bestIdx]))) bestIdx = i
+    }
+    const [chosen] = remaining.splice(bestIdx, 1)
+    order.push(chosen)
+    pos = chosen
+  }
+
+  // 2-opt: reverse any segment whose swap shortens the route. Anchors stay
+  // fixed (head prefix / tail suffix), so only the movable middle is rewired.
+  const withAnchors = head ? [head, ...order] : order
+  if (tail) withAnchors.push(tail)
+  let route = withAnchors
+  const kmOf = (r: ItineraryStop[]) => dayRouteKm(head ? origin : origin, r.filter(s => s.status !== 'rejected'))
+  let improved = true
+  while (improved) {
+    improved = false
+    const start = head ? 1 : 0
+    const end = tail ? route.length - 1 : route.length
+    for (let i = start; i < end - 1; i++) {
+      for (let j = i + 2; j < end; j++) {
+        const cand = [...route]
+        // reverse route[i..j]
+        const seg = cand.slice(i, j + 1).reverse()
+        cand.splice(i, seg.length, ...seg)
+        if (kmOf(cand) < kmOf(route) - 1e-9) { route = cand; improved = true }
+      }
+    }
+  }
+
+  const afterKm = kmOf(route)
+  const changed = afterKm < beforeKm - 1e-9
+  // Re-merge: rejected stops ride along AFTER the actives — the engine and
+  // the timeline skip them entirely, so only their slot needs to stay stable
+  // (they surface at the day's end if un-rejected later). No stop is dropped.
+  const rejected = sorted.filter(s => s.status === 'rejected')
+  const finalStops = [...route, ...rejected]
+  finalStops.forEach((s, i) => { s.orderInDay = i + 1 })
+  return { stops: finalStops, beforeKm, afterKm, changed }
 }
 
 /** Last active stop across the trip's days — the turnaround point of the route. */

@@ -320,7 +320,10 @@ function useTripCorrections(trip: Trip | null | undefined): Record<string, LegEs
         if (cancelled) return
         const map: Record<string, LegEstimate> = {}
         for (let i = 0; i < legs.length; i++) {
-          const est = { distanceKm: legs[i].distanceKm, durationMinutes: legs[i].durationMinutes }
+          // geometry rides along: the halt planner assembles the day's road
+          // polyline from these legs so "halt after N km" lands on the road
+          // the map draws, not on the straight chord between stops.
+          const est: LegEstimate = { distanceKm: legs[i].distanceKm, durationMinutes: legs[i].durationMinutes, geometry: legs[i].geometry }
           map[legKey(chain[i], chain[i + 1])] = est
           // Store the mirrored leg too: the return drive runs the same road in
           // the opposite direction (e.g. Siliguri → home through a halt), and a

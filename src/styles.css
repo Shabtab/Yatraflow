@@ -4687,3 +4687,16 @@ html.native-shell {
   .day-rail-chip, .map-day-chip, .map-legend-toggle, .chip-btn { min-height: 40px; }
   .route-btn { min-width: 40px; min-height: 40px; }
 }
+
+/* ============ Optimise-day preview (anti-crisscross reorder) ============ */
+.opt-delta { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+.opt-delta-cell { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: var(--bg-soft); }
+.opt-delta-cell .k { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-2); margin-bottom: 4px; }
+.opt-delta-cell .v { font-size: 15px; font-weight: 700; }
+.opt-delta-cell .v b { color: var(--teal-600); }
+.opt-delta-cell .save { margin-top: 3px; font-size: 12px; font-weight: 700; color: var(--ok-500); }
+.opt-order-list { display: flex; flex-direction: column; gap: 4px; max-height: 240px; overflow: auto; border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; }
+.opt-order-row { display: flex; gap: 10px; align-items: baseline; font-size: 13px; padding: 2px 0; }
+.opt-order-n { display: inline-flex; width: 20px; height: 20px; border-radius: 999px; background: var(--teal-soft); color: var(--teal-600); font-size: 11px; font-weight: 800; align-items: center; justify-content: center; flex: none; }
+[data-theme='dark'] .opt-order-n { color: var(--teal); }
+@media (max-width: 720px) { .opt-delta { grid-template-columns: 1fr; } }

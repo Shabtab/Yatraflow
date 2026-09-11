@@ -156,6 +156,11 @@ Use `npm run verify` — it runs the full gate:
 `tsc -b --clean` → fresh typecheck → full test suite → production build.
 
 Hard rules (each learned the hard way — do not relearn them):
+- **After syncing a large remote update, run `npm install` before `npm run verify`.**
+  The Capacitor Android shell added `@capacitor/*` dependencies that a pre-shell
+  `node_modules` lacks; the first verify then fails with ~15 confusing
+  `Cannot find package '@capacitor/core'` test errors that look like code
+  breakage but are only stale dependencies (Sep 2026).
 - **Bare commands only.** NEVER verify with `cmd /c "... & echo %ERRORLEVEL%"`.
   `cmd` expands `%ERRORLEVEL%` **at parse time, before the commands run**, so it
   echoes a stale exit code and masks real failures. This caused repeated
@@ -328,6 +333,7 @@ workflow that actually fired.
 - `dev.log` is untracked local clutter — ignore it, never commit it. (It **did** get committed in `f09aaf9` when a bulk `git add` in this shared working copy swept it up — and the commit was pushed, so removing it needed a follow-up untrack commit. Stage explicit paths only; never `git add -A` / `git add .` here.)
 - Test style: pure logic only, node env; mock `fetch` with route tables
   (`tests/providers.test.ts` has the pattern); `vi.stubEnv` for API keys.
+- **`tests/design-system.test.ts` pins every declared `font-weight:` to a face the font link actually loads — the canonical ramp is 400/500/600/700/800 only.** The consistency pass ships Inter/Sora as static faces, so a variable-font interpolation weight (650/750 appeared in the Optimize-day preview) fails verify with `declared but not loaded`. When styling new UI, reach for the canonical weights; rebase replays of older branches are where off-ramp weights sneak back in (Sep 2026).
 - **View Transitions + theme radiate (Sep 2026): VT is usable on glass-heavy pages ONLY with `backdrop-filter` suppressed during the transition** — Chromium renders glass inside VT snapshots without its backdrop, so any glass layer (`--yf-glass: rgba(255,255,255,.58)`) turns the captured page into a flat gray veil (page-dependent: "perfect" on Landing, broken on #/trips). Shipped pattern in `toggleTheme` (App.tsx): set `--vt-x/--vt-y/--vt-r` on `<html>`, add a direction class (`vt-radiate-out` = dark→light, new view expands; `vt-radiate-in` = light→dark, old view collapses — and it needs old z-index 2 / new 1, since UA stacks new on top) plus `vt-active` (`html.vt-active :where(*) { backdrop-filter: none !important }`) BEFORE `startViewTransition`; the clip-path animation lives in CSS keyframes with `fill: both` (first-frame-correct, end-state held), classes removed on `vt.finished`. A DOM-overlay radiate was tried and rejected (flat color, not the real UI). Don't re-learn these the hard way.
 - **A full-page View-Transition FREEZES every CSS animation for its duration — skip it on animation-heavy pages.** The landing route runs continuous motion (atmosphere blobs, route draw, ticker, odometer); toggling theme there made the whole scenery visibly pause ~700 ms while the DOM snapshot played, and on mobile the eruption point read as off-target. Fix (Sep 2026): `toggleTheme` early-returns to an **instant swap on `route === '/'`** (radiate kept for calmer in-app pages). When adding any VT elsewhere, gate it off routes dominated by looping animation or the "pause" reads as a frozen tab.
 
@@ -433,7 +439,12 @@ workflow that actually fired.
   (TS1005) one line below the edit — and a second edit anchored on a nearby
   comment duplicated a `const` instead of moving it. After any multi-part
   restructuring edit in this repo, run `npx tsc -b` immediately and diff-review
-  before continuing (M3.3, Sep 2026).
+  before continuing (M3.3, Sep 2026). Variant (halt-planner fix, Sep 2026):
+  replacing "line + trailing newline" with the same line *without* the newline
+  merges the NEXT line into it — and since two statements on one line is valid
+  TS, **tsc stays green on the merge**; only re-reading the edited region
+  catches it. Anchor `old_string`/`new_string` pairs so line endings can't
+  shift: include the following line in both, or end neither with a newline.
 
 - **`src/styles.css` is CRLF on disk — Node one-off scripts must handle `\r`.**
   Bulk CSS edits via `node` scripts split on `\n`, so every line carries a

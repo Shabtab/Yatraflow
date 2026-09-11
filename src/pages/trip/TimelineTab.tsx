@@ -14,10 +14,11 @@ import { updateTrip, setStopStatus } from '../../store/store'
 import {
   computeTotals, simulateDay, originOf, getAssumptions, coLocates, minutesToHM, hmToMinutes, formatInr,
   predecessorOf, nextAfter, collectWarnings, buildJourney, addMinutesToClock, FUEL_PRICE_INR_PER_L,
-  computeCategoryBias,
+  computeCategoryBias, optimizeDayOrder, dayRoadPolyline, roadScaleRatio,
 } from '../../lib/engine'
 import { MODE_SPEED } from '../../lib/engine'
 import type { LegEstimate, ScheduleWarning, Journey } from '../../lib/engine'
+import type { OptimizeDayResult } from '../../lib/engine'
 import type { ImpactResult } from '../../lib/impact'
 import { loadDayCollapsed, saveDayCollapsed } from '../../lib/uiPrefs'
 import { openExternal } from '../../lib/native'
@@ -29,11 +30,12 @@ import { Chip, Modal, EmptyState, toast, useReorder } from '../../components/ui'
 import { StopEditor, type StopFormValues } from '../../components/StopEditor'
 import { stopInitialValues, stopLegContext, stopEditorKey, stopDayIndex, type StopEditorTarget } from '../../lib/stopForm'
 import { useSuggestionCache } from '../../hooks/useSuggestionCache'
-import { searchNearbyPois, searchNearbyPoisMulti, searchCitiesAlong, corridorAnchors, reasonForHit, filterPlannedNearby, detourMinutes, googleEnabled, googleCitiesAlong } from '../../lib/geocode'
+import { searchNearbyPois, searchNearbyPoisMulti, searchCitiesAlong, corridorAnchors, reasonForHit, filterPlannedNearby, asymmetricDetourMinutes, googleEnabled, googleCitiesAlong } from '../../lib/geocode'
 import type { PlaceHit, SegmentHit } from '../../lib/geocode'
 import { kmFromStartForHit, type HaltPurpose } from '../../lib/providers/hits'
 import { segmentsFromPlan, assignSegmentHits, annotateSegmentHits, type HaltPlanItem } from '../../lib/ridePlan'
 import { daySlackMin, slackPrompt, pickSlackHit, visitMinutesForCategory } from '../../lib/slackPrompts'
+import { googleMapsDirectionsUrl } from '../../lib/externalMaps'
 import { pointAtKm } from '../../lib/geo'
 import type { LucideIcon } from 'lucide-react'
 import { MetaIcon } from '../../components/icons'
@@ -139,6 +141,21 @@ export function TimelineTab({ trip, editable, applyChange, legCorrections, sugge
     }, 'reorder', dayIndex)
   }, [applyChange])
 
+  /** Optimise-day commit: replace a day's stop order wholesale (ids), keeping
+   *  every stop — the reorder goes through the same impact-preview gate as a
+   *  manual drag. */
+  const handleReorderDay = useCallback((dayIndex: number, orderedIds: string[]) => {
+    applyChange(draft => {
+      const day = draft.days.find(d => d.index === dayIndex)!
+      const byId = new Map(day.stops.map(s => [s.id, s]))
+      const reordered = orderedIds.map(id => byId.get(id)!).filter(Boolean)
+      // any stop the optimizer left out (safety net) rides at the end
+      const rest = day.stops.filter(s => !orderedIds.includes(s.id))
+      day.stops = [...reordered, ...rest]
+      day.stops.forEach((s, i) => { s.orderInDay = i + 1 })
+    }, 'reorder', dayIndex)
+  }, [applyChange])
+
   /** Cross-day drag: lift a stop out of its day and insert it at `position` of `toDayIndex`. */
   const handleMoveStopInto = useCallback((stopId: string, fromDayIndex: number, toDayIndex: number, position: number) => {
     applyChange(draft => {
@@ -227,15 +244,19 @@ export function TimelineTab({ trip, editable, applyChange, legCorrections, sugge
     if (halts.length === 0) return
     applyChange(draft => {
       const day = draft.days.find(d => d.index === dayIndex)!
-      const j = buildJourney(draft, day) // existing stop → km lookup
-      const posOf = (p: { lat: number; lng: number }) => kmFromStartForHit({ latitude: p.lat, longitude: p.lng }, j.points) ?? 0
+      const j = buildJourney(draft, day, legCorrections) // existing stop → km lookup
+      // Position stops on the day's ROAD polyline when the routing layer has
+      // resolved one — the halt planner's km are road km, so ordering against
+      // the straight-line chord would slot the halt at the wrong place.
+      const road = dayRoadPolyline(j.points, legCorrections)
+      const posOf = (p: { lat: number; lng: number }) => kmFromStartForHit({ latitude: p.lat, longitude: p.lng }, road ?? j.points) ?? 0
       const merged = [
         ...day.stops.map(s => ({ km: posOf(s), s: structuredClone(s) })),
         ...halts.map(h => ({ km: h.km, s: { ...h.stop, id: 'pending_' + Math.random().toString(36).slice(2), orderInDay: 0 } })),
       ].sort((a, b) => a.km - b.km)
       day.stops = merged.map((m, i) => ({ ...m.s, orderInDay: i + 1 }))
     }, 'add', dayIndex)
-  }, [applyChange])
+  }, [applyChange, legCorrections])
 
   const handleStatus = useCallback((stop: ItineraryStop, status: ItineraryStop['status']) => {
     // Status flips are lightweight group signals — applied directly.
@@ -294,6 +315,7 @@ export function TimelineTab({ trip, editable, applyChange, legCorrections, sugge
           onEdit={handleEdit}
           onDelete={handleDelete}
           onMoveWithinDay={handleMoveWithinDay}
+          onReorderDay={handleReorderDay}
           onMoveBetweenDays={setMoveModalStop}
           onMoveStopIn={handleMoveStopInto}
           onRenameDay={handleRenameDay}
@@ -381,18 +403,20 @@ function ClampedText({ children, className }: { children: React.ReactNode; class
 // commit (the shell's useDb feeds the tab counts), but with stable props each
 // DaySection now bails out unless ITS day/trip data actually changed (M3.1 made
 // trip references immutable, so `day`/`trip` are stable between commits).
-const DaySection = React.memo(function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithinDay, onMoveBetweenDays, onMoveStopIn, onRenameDay, onCopyDay, onAddQuickStop, onSetDayStart, onAddPlannedHalts, warnings, onStatus, legCorrections, suggestionCache, dayTotals }: {
+const DaySection = React.memo(function DaySection({ day, trip, editable, onAdd, onEdit, onDelete, onMoveWithinDay, onReorderDay, onMoveBetweenDays, onMoveStopIn, onRenameDay, onCopyDay, onAddQuickStop, onSetDayStart, onAddPlannedHalts, warnings, onStatus, legCorrections, suggestionCache, dayTotals }: {
   day: Trip['days'][number]
   trip: Trip
   editable: boolean
   legCorrections?: Record<string, LegEstimate>
   suggestionCache: ReturnType<typeof useSuggestionCache>
-  /** this day's slice of computeTotals().byDay ΓÇö transport + expenses + entry fees */
+  /** this day's slice of computeTotals().byDay — transport + expenses + entry fees */
   dayTotals?: { dayIndex: number; expensesInr: number; transportInr: number; totalInr: number; stops: number; distanceKm: number }
   onAdd: (dayIndex: number) => void
   onEdit: (stopId: string) => void
   onDelete: (stopId: string, dayIndex: number) => void
   onMoveWithinDay: (from: number, to: number, dayIndex: number) => void
+  /** optimise-day commit: wholesale reorder by stop ids (impact-preview gated) */
+  onReorderDay: (dayIndex: number, orderedIds: string[]) => void
   onMoveBetweenDays: (stop: ItineraryStop) => void
   /** cross-day drag landed on this day: insert the stop at `position` */
   onMoveStopIn: (stopId: string, fromDayIndex: number, toDayIndex: number, position: number) => void
@@ -418,6 +442,19 @@ const DaySection = React.memo(function DaySection({ day, trip, editable, onAdd, 
   const isStayDay = journey.points.length <= 1 && journey.distanceKm < 0.5
   const A = getAssumptions(trip)
   const ordered = [...day.stops].sort((a, b) => a.orderInDay - b.orderInDay)
+  // ---- Optimize day order (anti-crisscross) ----
+  // Preview is computed from the CURRENT day snapshot (pure engine call); the
+  // apply goes through applyChange so the impact preview guards the commit.
+  const [optPreview, setOptPreview] = useState<OptimizeDayResult | null>(null)
+  const optResult = useMemo(
+    () => optimizeDayOrder(originOf(trip, day.index), [...day.stops].sort((a, b) => a.orderInDay - b.orderInDay)),
+    [trip, day],
+  )
+  // The optimizer's objective is straight-line (pairwise road km between
+  // arbitrary stops would need N² route calls), but the numbers it SHOWS must
+  // speak the road km the travel panel displays — rescale by the day's
+  // road-vs-chord ratio from the corrected legs (1 = no road data yet).
+  const roadRatio = useMemo(() => roadScaleRatio(journey.points, legCorrections), [journey, legCorrections])
   const { dndHandlers, dayDropHandlers, dragging, over, foreignOver, moveUp, moveDown } = useReorder(
     ordered,
     (f, t) => onMoveWithinDay(f, t, day.index),
@@ -547,13 +584,13 @@ const DaySection = React.memo(function DaySection({ day, trip, editable, onAdd, 
         {!collapsed && dayTotals != null && dayTotals.totalInr > 0 && (
           <span
             className="day-cost-chip"
-            title={`Γëê ${formatInr(dayTotals.transportInr)} travel ┬╖ ${formatInr(dayTotals.expensesInr)} day costs (incl. entry fees)`}
+            title={`≈ ${formatInr(dayTotals.transportInr)} travel · ${formatInr(dayTotals.expensesInr)} day costs (incl. entry fees)`}
           >
-            Γëê {formatInr(dayTotals.totalInr)}
+            ≈ {formatInr(dayTotals.totalInr)}
           </span>
         )}
         {!collapsed && sim.dwellMinutes > 0 && (
-          <span className="day-dwell-chip" title="Time at the stops (visits + buffers) ΓÇö driving time is in the summary line">
+          <span className="day-dwell-chip" title="Time at the stops (visits + buffers) — driving time is in the summary line">
             {minutesToHM(sim.dwellMinutes)} at stops
           </span>
         )}
@@ -565,6 +602,13 @@ const DaySection = React.memo(function DaySection({ day, trip, editable, onAdd, 
         {ordered.filter(s => s.status !== 'rejected').length >= 2 && <DaySpark stops={ordered.filter(s => s.status !== 'rejected')} />}
         {editable && (
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            {optResult.changed && !isStayDay && (
+              <button
+                className="btn btn-outline btn-sm"
+                onClick={() => setOptPreview(optResult)}
+                title={`Reorder this day's stops to cut crisscrossing — saves ~${Math.round((optResult.beforeKm - optResult.afterKm) * roadRatio)} km of travel`}
+              ><RouteIcon size={13} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />Optimise{optResult.beforeKm - optResult.afterKm > 0 ? ` (−${Math.round((optResult.beforeKm - optResult.afterKm) * roadRatio)} km)` : ''}</button>
+            )}
             <button
               className="btn btn-outline btn-sm"
               disabled={ordered.length === 0 || day.index + 1 >= trip.days.length}
@@ -599,7 +643,7 @@ const DaySection = React.memo(function DaySection({ day, trip, editable, onAdd, 
         </div>
       ))}
 
-      <TravelPanel trip={trip} day={day} editable={editable} journey={journey} suggestionCache={suggestionCache}
+      <TravelPanel trip={trip} day={day} editable={editable} journey={journey} suggestionCache={suggestionCache} legCorrections={legCorrections}
         onSetDayStart={onSetDayStart} onAddPlannedHalts={onAddPlannedHalts} />
 
       {ordered.length === 0 && (<>
@@ -768,6 +812,51 @@ const DaySection = React.memo(function DaySection({ day, trip, editable, onAdd, 
         )}
       </div>
       </>}
+
+      {/* Optimize-day preview: the before/after is straight-line distance math
+          from the pure engine helper; committing goes through the same
+          impact-preview gate as a manual drag (onReorderDay → applyChange). */}
+      <Modal
+        open={!!optPreview}
+        onClose={() => setOptPreview(null)}
+        title={`Optimise Day ${day.index + 1}`}
+      >
+        {optPreview && <>
+          <p className="hint-text" style={{ margin: '0 0 12px' }}>
+            Reorders the day's stops into the shortest route from where you start the day — grouping nearby sights,
+            food and activities so you spend less time in transit. Anchors (your base and the day's destination)
+            stay put; you can still drag anything afterwards.
+          </p>
+          <div className="opt-delta">
+            <div className="opt-delta-cell">
+              <div className="k">Travel distance</div>
+              <div className="v">{Math.round(optPreview.beforeKm * roadRatio)} km → <b>{Math.round(optPreview.afterKm * roadRatio)} km</b></div>
+              <div className="save">−{Math.round((optPreview.beforeKm - optPreview.afterKm) * roadRatio)} km</div>
+            </div>
+            <div className="opt-delta-cell">
+              <div className="k">Est. driving time</div>
+              <div className="v">{minutesToHM(Math.round(optPreview.beforeKm * roadRatio / (A.avgSpeedKmph || 40) * 60))} → <b>{minutesToHM(Math.round(optPreview.afterKm * roadRatio / (A.avgSpeedKmph || 40) * 60))}</b></div>
+              <div className="save">−{Math.round((optPreview.beforeKm - optPreview.afterKm) * roadRatio / (A.avgSpeedKmph || 40) * 60)} min</div>
+            </div>
+          </div>
+          <div className="opt-order-list" aria-label="New stop order">
+            {optPreview.stops.filter(s => s.status !== 'rejected').map((s, i) => (
+              <div key={s.id} className="opt-order-row">
+                <span className="opt-order-n num">{i + 1}</span>
+                <span>{s.title}{s.auto ? ' (anchor)' : ''}</span>
+              </div>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+            <button className="btn btn-primary btn-sm" onClick={() => {
+              onReorderDay(day.index, optPreview.stops.map(s => s.id))
+              toast(`Day ${day.index + 1} optimised — saved ~${Math.round((optPreview.beforeKm - optPreview.afterKm) * roadRatio)} km of crisscrossing`)
+              setOptPreview(null)
+            }}>Apply new order</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => setOptPreview(null)}>Not now</button>
+          </div>
+        </>}
+      </Modal>
     </div>
   )
 })
@@ -812,11 +901,12 @@ function modeLabelMode(m: string): string {
  * route corridor. Replaces the old split where long rides got a completely
  * different "LongRidePanel" with its own ride-style options.
  */
-function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddPlannedHalts, suggestionCache }: {
+function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddPlannedHalts, suggestionCache, legCorrections }: {
   trip: Trip
   day: Trip['days'][number]
   editable: boolean
   journey: Journey
+  legCorrections?: Record<string, LegEstimate>
   onSetDayStart: (dayIndex: number, time: string) => void
   onAddPlannedHalts: (dayIndex: number, halts: { km: number; stop: Omit<ItineraryStop, 'id' | 'orderInDay'> }[]) => void
   suggestionCache: ReturnType<typeof useSuggestionCache>
@@ -824,6 +914,16 @@ function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddPlanned
   const A = getAssumptions(trip)
   const timeFormat = useTimeFormat()
   const { cache: sugCache, setHaltCache } = suggestionCache
+
+  // The day's ride as one continuous ROAD polyline (assembled from the routing
+  // provider's per-leg geometry). Planned halts are placed along it, so a halt
+  // "after N km" lands N road-km in — on the road the map draws. Null while
+  // the routing layer hasn't resolved (offline estimate) — placement then
+  // falls back to the straight-line stop chain.
+  const roadPolyline = useMemo(
+    () => dayRoadPolyline(journey.points, legCorrections),
+    [journey, legCorrections],
+  )
 
   // ---- Halt planner ----
   // The plan is user-authored: WHERE along the ride (km) and HOW LONG (minutes),
@@ -919,7 +1019,10 @@ function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddPlanned
     setResolving(true)
     try {
       const routePts = journey.points.map(p => ({ lat: p.lat, lng: p.lng }))
-      const anchors = corridorAnchors(routePts, trip.startLocationCoords, 35000, 8)
+      // Sample the search anchors along the ROAD polyline when routing has
+      // resolved — chord anchors sit off the highway on curvy rides and bias
+      // which POIs the scan finds. Home-zone exclusion still applies inside.
+      const anchors = corridorAnchors(roadPolyline ?? routePts, trip.startLocationCoords, 35000, 8)
       const purposes = [...new Set(plan.map(p => p.purpose))]
       // Provider directive (2026-09-07): Google-only in Google mode — POIs and
       // the city layer both come from Google; free stack only without a key.
@@ -928,6 +1031,11 @@ function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddPlanned
           purposes,
           includeFuel: trip.transportMode === 'car' || trip.transportMode === 'motorcycle',
           homeCenter: trip.startLocationCoords ?? null,
+          // Google mode: scan as one road-true Search-Along-Route request, with
+          // routingSummary detours measured against the day's road km — the
+          // same treatment the Map tab's corridor gets. Free mode ignores these.
+          routeCoords: roadPolyline ? roadPolyline.map(p => [p.lng, p.lat] as [number, number]) : null,
+          routeTotalKm: journey.distanceKm || null,
         }).catch(() => [] as PlaceHit[]),
         (googleEnabled()
           ? googleCitiesAlong(anchors, 35000, 8)
@@ -949,17 +1057,19 @@ function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddPlanned
         .filter(s => s.status !== 'rejected' && Number.isFinite(s.lat) && Number.isFinite(s.lng))
         .map(s => ({ lat: s.lat, lng: s.lng, name: s.title }))
       const unplanned = planned.length > 0 ? filterPlannedNearby(candidates, planned) : candidates
-      // refresh the slack pool: cheapest-detour unplanned hits (cap 12)
+      // refresh the slack pool: cheapest-detour unplanned hits (cap 12) —
+      // detours measured asymmetrically against the road polyline when
+      // available (on-the-way hits cost ~0), matching the Map tab.
       const speed = MODE_SPEED[trip.transportMode] ?? 40
       setSlackPool(
         unplanned
-          .map(h => ({ hit: h, detourMin: detourMinutes(h, anchors, speed) }))
+          .map(h => ({ hit: h, detourMin: asymmetricDetourMinutes(h, anchors, roadPolyline, speed) }))
           .filter(o => Number.isFinite(o.detourMin) && o.detourMin >= 0)
           .sort((a, b) => a.detourMin - b.detourMin)
           .slice(0, 12),
       )
       const assigned = annotateSegmentHits(
-        assignSegmentHits(unplanned, segments, anchors, { homeCenter: trip.startLocationCoords ?? null, routePolyline: routePts.length >= 2 ? routePts : null, speedKmph: MODE_SPEED[trip.transportMode] ?? 40 }),
+        assignSegmentHits(unplanned, segments, anchors, { homeCenter: trip.startLocationCoords ?? null, routePolyline: roadPolyline ?? (routePts.length >= 2 ? routePts : null), speedKmph: MODE_SPEED[trip.transportMode] ?? 40 }),
         candidates,
       )
       const hitById = new Map<string, PlaceHit | null>()
@@ -980,9 +1090,12 @@ function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddPlanned
       purpose === 'meal' ? 'Meal break' : purpose === 'fuel' ? 'Fuel stop' : purpose === 'overnight' ? 'Overnight stay' : 'Break — tea & stretch'
     const halts = plan.map(item => {
       const useSpot = item.pin && item.hit
+      // Unpinned halts sit ON the road at the requested road-km: interpolate
+      // along the routing provider's geometry when it has resolved, so the
+      // point rides the actual highway rather than the stop-to-stop chord.
       const pt = useSpot
         ? { lat: item.hit!.latitude, lng: item.hit!.longitude }
-        : (pointAtKm(journey.points, item.km) ?? journey.points[0])
+        : (pointAtKm(roadPolyline ?? journey.points, item.km) ?? journey.points[0])
       const cat: ItineraryStop['category'] =
         item.purpose === 'meal' ? 'food' : item.purpose === 'fuel' ? 'transport-hub' : item.purpose === 'overnight' ? 'hotel' : 'rest'
       return {
@@ -1007,6 +1120,15 @@ function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddPlanned
     ? `Return drive · back to ${journey.endTitle}`
     : `Travelling · ${journey.startTitle} → ${journey.endTitle}`
 
+  // Hand the day's ride to the traveller's own Google Maps for turn-by-turn
+  // directions — the panel describes the ride, the app doesn't navigate it.
+  // journey.points carries the synthesized legs (outbound continuation, ride
+  // home), so anchor-only days get a full origin → destination URL too.
+  const directionsUrl = useMemo(
+    () => googleMapsDirectionsUrl(journey.points.map(p => ({ lat: p.lat, lng: p.lng }))),
+    [journey],
+  )
+
   // Slack prompt: leftover day window plus the cheapest fitting nearby pick.
   // Recomputes live, so any itinerary change refreshes the nudge.
   const slackMin = daySlackMin({
@@ -1030,6 +1152,16 @@ function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddPlanned
           {modeLabelMode(trip.transportMode)} · {journey.distanceKm.toFixed(0)} km · {minutesToHM(journey.driveMinutes)} wheel time
           {journey.halts.length > 0 && ` · ${journey.halts.length} halt${journey.halts.length !== 1 ? 's' : ''}`}
         </div>
+        {directionsUrl && (
+          <button
+            className="btn btn-ghost btn-sm"
+            style={{ marginLeft: 'auto', flex: 'none' }}
+            onClick={() => openExternal(directionsUrl)}
+            title="Open this ride with turn-by-turn directions in Google Maps"
+          >
+            <ExternalLink size={13} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />Directions
+          </button>
+        )}
       </div>
 
       <div className="travel-panel-stats">
@@ -1153,7 +1285,7 @@ function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddPlanned
                 className="btn btn-outline btn-sm"
                 onClick={() => {
                   const h = slackPickHit
-                  const km = kmFromStartForHit({ latitude: h.latitude, longitude: h.longitude }, journey.points) ?? 0
+                  const km = kmFromStartForHit({ latitude: h.latitude, longitude: h.longitude }, roadPolyline ?? journey.points) ?? 0
                   onAddPlannedHalts(day.index, [{
                     km,
                     stop: {

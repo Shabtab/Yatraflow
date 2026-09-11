@@ -8,7 +8,9 @@ import type { PlaceHit } from '../lib/geocode'
 import { resolveHitCoords } from '../lib/geocode'
 import { hasCoords, mappablePois } from '../lib/providers/hits'
 import { routePath } from '../lib/routing'
-import { getAssumptions, isRoundTrip } from '../lib/engine'
+import { buildJourney, getAssumptions, isRoundTrip } from '../lib/engine'
+import { googleMapsDirectionsUrl } from '../lib/externalMaps'
+import { openExternal } from '../lib/native'
 import { titleCase } from '../lib/labels'
 import { haptic } from '../lib/haptics'
 import { nativeWatch } from '../lib/native'
@@ -16,7 +18,7 @@ import { loadFlag, saveFlag } from '../lib/uiPrefs'
 import type { MapRef } from './mapcn/map'
 import { CatIcon } from './icons'
 import {
-  Flag, Home, Info, Lightbulb, LocateFixed, Map as MapIcon, PlaneTakeoff,
+  Flag, Home, Info, Lightbulb, LocateFixed, Map as MapIcon, Navigation, PlaneTakeoff,
   RotateCcw, TriangleAlert, X,
 } from 'lucide-react'
 import { prefersReducedMotion } from '../lib/motion'
@@ -390,6 +392,31 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
     [daysToPlot],
   )
 
+  // A day's ride as the ENGINE plans it: origin → stops → synthesized
+  // destination (an outbound continuation, or the final day's ride home).
+  // Day routes must follow this, not raw stored stops — an anchor-only day's
+  // ride (Day 1 outbound from the start anchor, the last day's drive back to
+  // home) exists only in the synthesis, and drawing stored stops alone left
+  // those days with no route on the map at all. Null = no drive (stay day).
+  const dayRoutePoints = useMemo(() => {
+    const out: Record<string, { lat: number; lng: number }[] | null> = {}
+    for (const d of trip.days) {
+      const j = buildJourney(trip, d)
+      if (!(j.distanceKm >= 0.5 || j.driveMinutes > 0)) { out[String(d.index)] = null; continue }
+      const pts = j.points
+        .map(p => ({ lat: p.lat, lng: p.lng }))
+        .filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng))
+      out[String(d.index)] = pts.length >= 2 ? pts : null
+    }
+    return out
+  }, [trip])
+  const dayRoutesKey = useMemo(
+    () => Object.entries(dayRoutePoints)
+      .map(([k, v]) => `${k}:${(v ?? []).map(p => `${p.lat.toFixed(5)},${p.lng.toFixed(5)}`).join('>')}`)
+      .join('|'),
+    [dayRoutePoints],
+  )
+
   // The map mounts lazily inside a Suspense boundary, so mapRef may be null on
   // the first render(s). Poll until the instance exists, then attach to its real
   // 'load' event (checking isStyleLoaded in case it already fired) so mapLoaded
@@ -550,20 +577,28 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
         if (!cancelled) setGeom(next)
       } else {
         const next: Record<string, [number, number][]> = {}
-        for (const d of daysToPlot) {
-          const dpts = d.stops.map(s => ({ lat: s.lat, lng: s.lng }))
-          if (dpts.length < 2) continue
+        for (const d of trip.days) {
+          const ride = dayRoutePoints[String(d.index)]
+          if (!ride || ride.length < 2) continue
           try {
-            const legs = await routePath(dpts, getAssumptions(trip))
+            const legs = await routePath(ride, getAssumptions(trip))
             const coords = legs.flatMap(l => l.geometry)
             if (!cancelled && coords.length > 1) next[String(d.index)] = dedupeConsecutive(coords)
-          } catch { /* keep straight line */ }
+          } catch { /* straight-line fallback below */ }
         }
         if (!cancelled) setGeom(next)
       }
     })()
     return () => { cancelled = true }
-  }, [chainKey, dayFilter, returnLeg]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [chainKey, dayRoutesKey, dayFilter, returnLeg]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Turn-by-turn directions for the selected day's ride in the traveller's own
+  // Google Maps — the in-app map plots the route but doesn't navigate. Hidden
+  // on "All days" and on stay days (no ride to hand off).
+  const dayDirectionsUrl = useMemo(
+    () => (dayFilter === 'all' ? null : googleMapsDirectionsUrl(dayRoutePoints[String(dayFilter)] ?? [])),
+    [dayFilter, dayRoutePoints],
+  )
 
   return (
     <div className={`map-shell${expanded ? ' map-shell--expanded' : ''}${closing ? ' map-shell--closing' : ''}`}>
@@ -585,6 +620,15 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
               title="Show or hide the drive back home"
             >
               <RotateCcw size={13} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />Return home
+            </button>
+          )}
+          {dayDirectionsUrl && (
+            <button
+              className="map-day-chip"
+              onClick={() => openExternal(dayDirectionsUrl)}
+              title="Open this day's ride with turn-by-turn directions in Google Maps"
+            >
+              <Navigation size={13} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />Directions
             </button>
           )}
           {/* Nearby-idea category filters — hide/show the gold idea markers by
@@ -657,10 +701,13 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
                 </>
               )
             })() : (
-              daysToPlot.map(d => {
-                const coords = geom[String(d.index)]?.length
-                  ? geom[String(d.index)]
-                  : d.stops.map(s => [s.lng, s.lat] as [number, number])
+              trip.days
+                .filter(d => dayRoutePoints[String(d.index)])
+                .map(d => {
+                  const ride = dayRoutePoints[String(d.index)]!
+                  const coords = geom[String(d.index)]?.length
+                    ? geom[String(d.index)]
+                    : ride.map(p => [p.lng, p.lat] as [number, number])
                 return (
                   <Fragment key={`day-${d.index}`}>
                     <MapRoute
