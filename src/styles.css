@@ -634,6 +634,14 @@ a.btn { text-decoration: none; }
 /* AA contrast: warn-600 reads 3.48:1 on the saffron tint — light theme gets a
    deeper amber (dark theme's #D99A2B on #3A2C15 already passes). */
 :root:not([data-theme='dark']) .chip-saffron { color: #8F5B06; }
+/* #85: the same --warn-on-tint pair shipped unfixed on five sibling surfaces
+   (3.48–3.69:1 in light; all pass in dark). One block propagates the chip's
+   deep-amber ink to every one of them — contrast by lightness, not hue. */
+:root:not([data-theme='dark']) .day-warn-pill:not(.sev-high),
+:root:not([data-theme='dark']) .day-rail-chip.warn,
+:root:not([data-theme='dark']) .share-intent--saffron,
+:root:not([data-theme='dark']) .stop-num.cat-food,
+:root:not([data-theme='dark']) .gi-stat.hot b { color: #8F5B06; }
 .chip-danger { background: var(--danger-soft); color: var(--danger); }
 .chip-ok { background: var(--ok-soft); color: var(--ok); }
 .chip-info { background: var(--info-soft); color: var(--text-2); }
@@ -1760,6 +1768,15 @@ button.board-col-zone--add:active { transform: translateY(1px); }
 .notif-item:hover { background: var(--bg-soft); }
 .notif-item:last-child { border-bottom: none; }
 .notif-item.unread { background: var(--teal-soft); }
+/* #84: the disclosure row under the capped list — full-width, quiet, and
+   separated from the last item by the same dashed rhythm. */
+.notif-showall {
+  display: block; width: 100%; padding: 10px 14px; text-align: center;
+  border: none; border-top: 1px dashed var(--line); background: none;
+  color: var(--teal-deep); font-weight: 700; font-size: 12.5px; cursor: pointer;
+}
+.notif-showall:hover { background: var(--bg-soft); }
+[data-theme='dark'] .notif-showall { color: var(--teal); }
 
 /* ---------- Decisions ---------- */
 .decision-option-row { display: flex; align-items: center; gap: 9px; padding: 7px 0; font-size: 13.5px; }
@@ -1920,7 +1937,10 @@ button.board-col-zone--add:active { transform: translateY(1px); }
 .user-menu-item:hover { background: var(--bg-soft); color: var(--text); }
 .user-menu-item.danger { color: var(--danger-600); }
 [data-theme='dark'] .user-menu-item.danger { color: var(--danger-500); }
-.notif-badge { position: absolute; top: -4px; right: -4px; background: var(--saffron); color: #fff;
+/* #90: white on saffron measured 2.14:1 (light) / 1.97:1 (dark) — both fail.
+   Dark ink on the same bright fill (5.5:1+) fixes both themes in one rule;
+   same lightness-not-hue move as .clickable-chip.on-teal. */
+.notif-badge { position: absolute; top: -4px; right: -4px; background: var(--saffron); color: #06251F;
   border-radius: 99px; font-size: 10px; font-weight: 800; min-width: 17px; height: 17px; line-height: 17px; }
 
 /* ---------- Footer ---------- */
@@ -1929,6 +1949,8 @@ button.board-col-zone--add:active { transform: translateY(1px); }
 /* ---------- Pages ---------- */
 .auth-wrap { display: flex; justify-content: center; padding: 54px 18px; }
 .form-page { max-width: 1080px; padding-top: 26px; padding-bottom: 30px; }
+/* #86: Profile's single-column content — readable measure, no empty grid gutter. */
+.profile-col { max-width: 720px; }
 .explore-filters { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 .explore-filters .input, .explore-filters .select { width: auto; min-width: 140px; flex: 0 1 auto; }
 .trip-card-hit { all: unset; cursor: pointer; display: block; border-radius: 8px; }

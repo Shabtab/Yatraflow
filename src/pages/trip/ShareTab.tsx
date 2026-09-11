@@ -8,6 +8,7 @@ import { useDb, userById, setMemberRole, removeMember, restoreMember, publishIti
 import { encodeTripSnapshot, snapshotUrl, downloadTripJson } from '../../lib/snapshot'
 import { downloadTripIcs } from '../../lib/ics'
 import { nativeCopyText } from '../../lib/native'
+import { useTablist } from '../../hooks/useTablist'
 import type { LegEstimate } from '../../lib/engine'
 import { Avatar, Chip, ConfirmDialog, CopyButton, Field, toast, undoToast } from '../../components/ui'
 import { PrintExport } from '../../components/PrintExport'
@@ -208,6 +209,7 @@ const SHARE_TABS = [
   { id: 'settings', label: 'Trip settings' },
 ] as const
 type ShareTabId = (typeof SHARE_TABS)[number]['id']
+const SHARE_TAB_IDS = SHARE_TABS.map(t => t.id)
 
 export function ShareTab({ trip, me, editable, onNavigate, legCorrections }: {
   trip: Trip
@@ -236,22 +238,13 @@ export function ShareTab({ trip, me, editable, onNavigate, legCorrections }: {
   const pubLink = pub ? `${location.origin}${location.pathname}#/pub/${pub.id}` : ''
   const isOwner = (trip.members ?? []).some(m => m.userId === me.id && m.role === 'owner')
   const [tab, setTab] = useState<ShareTabId>('plan')
-  const tabRefs = useRef<(HTMLButtonElement | null)[]>([])
   const [pendingRemove, setPendingRemove] = useState<NonNullable<Trip['members']>[number] | null>(null)
   const [pendingUnpublish, setPendingUnpublish] = useState(false)
 
-  // Roving tabindex + arrow/Home/End navigation with automatic activation.
-  function onTabKey(e: React.KeyboardEvent, idx: number) {
-    let next = idx
-    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = (idx + 1) % SHARE_TABS.length
-    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = (idx - 1 + SHARE_TABS.length) % SHARE_TABS.length
-    else if (e.key === 'Home') next = 0
-    else if (e.key === 'End') next = SHARE_TABS.length - 1
-    else return
-    e.preventDefault()
-    setTab(SHARE_TABS[next].id)
-    tabRefs.current[next]?.focus()
-  }
+  // #87: this implementation was extracted verbatim into the shared
+  // useTablist hook so Auth, Admin and the workspace tab bar follow the
+  // same APG contract — kept as the reference.
+  const { refs: tabRefs, tabProps } = useTablist(SHARE_TAB_IDS, tab, setTab)
 
   function confirmRemoveMember() {
     if (!pendingRemove) return
@@ -273,9 +266,9 @@ export function ShareTab({ trip, me, editable, onNavigate, legCorrections }: {
     <div className="share-tabbed">
       <div className="share-tablist" role="tablist" aria-label="Share and trip options">
         {SHARE_TABS.map((t, i) => (
-          <button key={t.id} ref={el => { tabRefs.current[i] = el }} type="button" role="tab"
+          <button key={t.id} ref={tabRefs(i)} type="button" role="tab"
             id={`share-tab-${t.id}`} aria-selected={tab === t.id} aria-controls={`share-panel-${t.id}`}
-            tabIndex={tab === t.id ? 0 : -1} onClick={() => setTab(t.id)} onKeyDown={e => onTabKey(e, i)}
+            onClick={() => setTab(t.id)} {...tabProps(t.id, i)}
             className={`share-tab${tab === t.id ? ' is-active' : ''}`}>
             {t.label}
           </button>

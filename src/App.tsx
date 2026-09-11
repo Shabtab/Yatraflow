@@ -67,6 +67,10 @@ export default function App() {
   const [route, setRoute] = useState(currentRoute)
   const [dark, setDark] = useState(() => localStorage.getItem('yatraflow_theme') === 'dark')
   const [notifOpen, setNotifOpen] = useState(false)
+  // #84: the panel capped at 12 with no way to reach older items — silently
+  // lossy. "Show all" expands the list in place; it resets when the popover
+  // closes so the bell always opens on the recent view.
+  const [notifShowAll, setNotifShowAll] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [mobileNav, setMobileNav] = useState(false)
   const [notifRef, notifPopRef] = useClickOutside(() => setNotifOpen(false))
@@ -196,7 +200,7 @@ export default function App() {
   const prevNotifOpen = useRef(false)
   const prevMenuOpen = useRef(false)
   useEffect(() => {
-    if (prevNotifOpen.current && !notifOpen) notifRef.current?.focus({ preventScroll: true })
+    if (prevNotifOpen.current && !notifOpen) { notifRef.current?.focus({ preventScroll: true }); setNotifShowAll(false) }
     prevNotifOpen.current = notifOpen
     if (prevMenuOpen.current && !menuOpen) menuRef.current?.focus({ preventScroll: true })
     prevMenuOpen.current = menuOpen
@@ -405,19 +409,27 @@ export default function App() {
                     <b>Notifications</b>
                     {unread > 0 && <button className="btn btn-ghost btn-sm" onClick={() => markAllNotificationsRead(me.id)}>Mark all read</button>}
                   </div>
-                  <div style={{ maxHeight: 320, overflowY: 'auto', overscrollBehavior: 'contain' }}>
+                  <div style={{ maxHeight: notifShowAll ? 'min(60vh, calc(100vh - 150px))' : 320, overflowY: 'auto', overscrollBehavior: 'contain' }}>
                     {notifs.length === 0 && (
                       <p className="muted small" style={{ padding: 16, display: 'flex', alignItems: 'center', gap: 6 }}>
                         <Inbox size={14} aria-hidden />You’re all caught up
                       </p>
                     )}
-                    {notifs.slice(0, 12).map(n => (
+                    {(notifShowAll ? notifs : notifs.slice(0, 12)).map(n => (
                       <div key={n.id} className={`notif-item ${n.read ? '' : 'unread'}`}>
                         <span>{n.text}</span>
                         {n.tripId && <button className="btn btn-ghost btn-sm" onClick={() => { setNotifOpen(false); navigate(`/trip/${n.tripId}`) }}>View →</button>}
                       </div>
                     ))}
                   </div>
+                  {/* #84: the old panel truncated at 12 with no recovery path.
+                      Honest count + in-place expansion; the list is already
+                      fully loaded in the store, so this is pure disclosure. */}
+                  {notifs.length > 12 && (
+                    <button className="notif-showall" onClick={() => setNotifShowAll(v => !v)}>
+                      {notifShowAll ? 'Show recent only' : `Show all ${notifs.length} notifications`}
+                    </button>
+                  )}
                 </div>,
                 document.body
               )}

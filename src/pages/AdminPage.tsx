@@ -8,6 +8,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Eye, EyeOff, GitFork, ShieldAlert, Trash2, Users } from 'lucide-react'
 import { PillNav } from '../components/PillNav'
+import { useTablist } from '../hooks/useTablist'
 import { Avatar, Chip, ConfirmDialog, EmptyState, Modal, toast } from '../components/ui'
 import {
   useDb, useIsAdmin, useAdminAudit, useSessionUserId, currentUser,
@@ -22,11 +23,20 @@ import type { Trip, User } from '../data/types'
 
 type AdminTab = 'overview' | 'users' | 'trips' | 'invites' | 'content' | 'analytics' | 'audit'
 
+const ADMIN_TABS: [AdminTab, string][] = [
+  ['overview', 'Overview'], ['users', 'Users'], ['trips', 'Trips'],
+  ['invites', 'Invites'], ['content', 'Content'],
+  ['analytics', 'Analytics'], ['audit', 'Audit log'],
+]
+const ADMIN_TAB_IDS = ADMIN_TABS.map(([k]) => k)
+
 export function AdminPage({ onNavigate }: { onNavigate: (r: string) => void }) {
   const isAdmin = useIsAdmin()
   const readyGate = useDb().ready
   const [tab, setTab] = useState<AdminTab>('overview')
   const loggedIn = Boolean(useSessionUserId())
+  // #87: roving tabindex + arrow keys for the section tablist.
+  const { refs: tabRefs, tabProps } = useTablist(ADMIN_TAB_IDS, tab, setTab)
 
   useEffect(() => { if (!loggedIn) onNavigate('/auth') }, [loggedIn, onNavigate])
   // Gate AFTER the first hydrate settles: the admin flag rides the JWT fetch
@@ -42,18 +52,17 @@ export function AdminPage({ onNavigate }: { onNavigate: (r: string) => void }) {
     <div className="container form-page">
       <h1>Master admin</h1>
       <p className="muted small" style={{ marginBottom: 16 }}>Full-control console — every destructive action is audit-logged.</p>
+      {/* #87: role="tab" children with aria-pressed and no keyboard contract —
+          now the shared useTablist primitive (roving tabindex + arrows). */}
       <PillNav className="filter-pillbar" role="tablist" aria-label="Admin sections" activeKey={tab}>
-        {([
-          ['overview', 'Overview'], ['users', 'Users'], ['trips', 'Trips'],
-          ['invites', 'Invites'], ['content', 'Content'],
-          ['analytics', 'Analytics'], ['audit', 'Audit log'],
-        ] as [AdminTab, string][]).map(([k, label]) => (
-          <button key={k} type="button" data-pill-key={k}
+        {ADMIN_TABS.map(([k, label], i) => (
+          <button key={k} ref={tabRefs(i)} type="button" data-pill-key={k}
             className={`clickable-chip chip${tab === k ? ' on-teal' : ''}`}
-            onClick={() => setTab(k)} aria-pressed={tab === k} role="tab">{label}</button>
+            onClick={() => setTab(k)} role="tab" id={`admin-tab-${k}`}
+            aria-selected={tab === k} aria-controls="admin-panel" {...tabProps(k, i)}>{label}</button>
         ))}
       </PillNav>
-      <div style={{ marginTop: 18 }}>
+      <div style={{ marginTop: 18 }} id="admin-panel" role="tabpanel" aria-labelledby={`admin-tab-${tab}`}>
         {tab === 'overview' && <OverviewTab />}
         {tab === 'users' && <UsersTab />}
         {tab === 'trips' && <TripsTab onNavigate={onNavigate} />}
