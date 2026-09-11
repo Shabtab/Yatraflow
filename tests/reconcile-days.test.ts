@@ -214,6 +214,85 @@ describe('updateTrip date handling', () => {
     expect(tripById(trip.id)!.days).toHaveLength(4)
     expect(state.updates.length).toBe(0)
   })
+
+  it('a full-Trip patch with UNCHANGED dates keeps the incoming days (reorder/delete/move regression)', async () => {
+    // TripWorkspace keepPending/moveToAnotherDay pass pending.proposed — a full
+    // Trip object whose startDate/endDate are always truthy. The old
+    // `if (patchFields.startDate || patchFields.endDate)` guard treated that as
+    // a date change and reconciled the OLD days over the proposed ones, so
+    // every reorder/delete/move "saved" the pre-edit plan. The fix: reconcile
+    // only when the dates actually changed.
+    const { updateTrip, tripById } = await import('../src/store/store')
+    const days = mkDays(2, [2, 0]).map((d, i) => ({
+      ...d,
+      stops: d.stops.map((s, j) => ({
+        ...s, id: `mv-${i}-${j}`, title: `stop-${i}-${j}`, category: 'sightseeing',
+        locationName: 'X', lat: 10, lng: 76, visitMinutes: 30,
+        entryFeeInrPerPerson: 0, transportCostInrTotal: 0,
+        priority: 'must-do', status: 'confirmed', orderInDay: j + 1,
+      })) as ItineraryDay['stops'],
+    }))
+    state.tripRow = {
+      id: '44444444-4444-4444-8444-44444444444E', owner_id: 'u-owner', name: 'Reorder trip',
+      start_location: 'Kochi', start_location_coords: null, destinations: ['Munnar'],
+      destination_coords: null, start_date: '2026-10-01', end_date: '2026-10-02', travellers: 2,
+      transport_mode: 'car', budget_per_person_inr: 5000, travel_style: 'balanced',
+      fixed_commitments: [], days, expenses: [], cover_emoji: '🧭', visibility: 'public',
+      created_at: 1, updated_at: 1,
+    }
+    const trip = await seedTripFromRow()
+    const before = tripById(trip.id)!
+    expect(before.days[0].stops).toHaveLength(2)
+
+    // Simulate the Timeline/Board reorder mutator: swap the two stops' order,
+    // then pass the whole proposed trip — exactly what keepPending does.
+    const proposed = structuredClone(before) as typeof before
+    const [a, b] = proposed.days[0].stops
+    proposed.days[0].stops = [
+      { ...b, orderInDay: 1 },
+      { ...a, orderInDay: 2 },
+    ]
+    updateTrip(trip.id, proposed)
+    await new Promise(r => setTimeout(r, 20))
+
+    const after = tripById(trip.id)!
+    expect(after.days[0].stops.map(s => s.id)).toEqual([b.id, a.id])
+    const write = state.updates.find(u => Array.isArray((u.payload as any)?.days))
+    expect(write).toBeDefined()
+    expect((write!.payload as any).days[0].stops.map((s: any) => s.id)).toEqual([b.id, a.id])
+  })
+
+  it('a full-Trip delete patch with UNCHANGED dates keeps the deletion', async () => {
+    const { updateTrip, tripById } = await import('../src/store/store')
+    const days = mkDays(1, [2]).map(d => ({
+      ...d,
+      stops: d.stops.map((s, j) => ({
+        ...s, id: `del-${j}`, title: `stop-${j}`, category: 'sightseeing',
+        locationName: 'X', lat: 10, lng: 76, visitMinutes: 30,
+        entryFeeInrPerPerson: 0, transportCostInrTotal: 0,
+        priority: 'must-do', status: 'confirmed', orderInDay: j + 1,
+      })) as ItineraryDay['stops'],
+    }))
+    state.tripRow = {
+      id: '44444444-4444-4444-8444-44444444444F', owner_id: 'u-owner', name: 'Delete trip',
+      start_location: 'Kochi', start_location_coords: null, destinations: ['Munnar'],
+      destination_coords: null, start_date: '2026-10-01', end_date: '2026-10-01', travellers: 2,
+      transport_mode: 'car', budget_per_person_inr: 5000, travel_style: 'balanced',
+      fixed_commitments: [], days, expenses: [], cover_emoji: '🧭', visibility: 'public',
+      created_at: 1, updated_at: 1,
+    }
+    const trip = await seedTripFromRow()
+
+    const proposed = structuredClone(tripById(trip.id)!) as typeof trip
+    proposed.days[0].stops = proposed.days[0].stops.filter(s => s.id !== 'del-0')
+    updateTrip(trip.id, proposed)
+    await new Promise(r => setTimeout(r, 20))
+
+    expect(tripById(trip.id)!.days[0].stops.map(s => s.id)).toEqual(['del-1'])
+    const write = state.updates.find(u => Array.isArray((u.payload as any)?.days))
+    expect(write).toBeDefined()
+    expect((write!.payload as any).days[0].stops.map((s: any) => s.id)).toEqual(['del-1'])
+  })
 })
 
 // pure import at the bottom so the vi.mock registers before the store loads
