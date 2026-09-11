@@ -31,6 +31,11 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
   const users = useUsers()
   const meId = useSessionUserId()
   const [pendingDelete, setPendingDelete] = useState<Trip | null>(null)
+  // #89: "Delete forever" from the trash was the app's only unprotected
+  // irreversible action — one click nuked the trip, votes, decisions, activity
+  // and publication with no confirm and no undo. Now it opens a dedicated
+  // confirm whose copy says plainly that this one cannot be undone.
+  const [pendingPurge, setPendingPurge] = useState<Trip | null>(null)
   const [view, setView] = useState<'trips' | 'trash'>('trips')
   const trashed = useTrashedTrips()
 
@@ -126,7 +131,7 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
                 </div>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <button className="btn btn-outline btn-sm" onClick={() => { void restoreTrashedTripById(t.id).then(ok => { if (ok) toast(`Restored “${t.name}”`) }) }}>Restore</button>
-                  <button className="btn btn-danger btn-sm" onClick={() => { void permanentlyDeleteTrip(t.id).then(ok => { if (ok) toast('Deleted forever') }) }}>Delete forever</button>
+                  <button className="btn btn-danger btn-sm" onClick={() => setPendingPurge(t)}>Delete forever</button>
                 </div>
               </div>
             ))
@@ -243,6 +248,20 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
         danger
         onConfirm={confirmDelete}
         onClose={() => setPendingDelete(null)}
+      />
+
+      <ConfirmDialog
+        open={!!pendingPurge}
+        title={`Delete “${pendingPurge?.name ?? ''}” forever?`}
+        body="This is permanent: the trip, its votes, decisions and history are destroyed and cannot be recovered or undone."
+        confirmLabel="Delete forever"
+        danger
+        onConfirm={() => {
+          const doomed = pendingPurge
+          if (!doomed) return
+          void permanentlyDeleteTrip(doomed.id).then(ok => { if (ok) toast(`“${doomed.name}” is gone for good`) })
+        }}
+        onClose={() => setPendingPurge(null)}
       />
     </div>
   )

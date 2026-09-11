@@ -458,9 +458,15 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     // told at the end. Before this, a denied table rendered as an empty app with
     // nothing on screen saying why, which read as "my trips got deleted". #36-18.
     const partial: string[] = []
+    // #94: `partial.length === 0` is the ONLY thing that makes a zero-trip
+    // list trustworthy as "this user has no trips". When the queries that
+    // count trips error, a real account can read as empty — and the demo
+    // seed below then writes 10 fake trips into it. Set whenever any query
+    // that determines the user's trip count failed.
+    let tripCountUnknown = false
     if (profRes.error) { console.error('[yatraflow] hydrate profiles failed', profRes.error); partial.push('profiles') }
     const profiles = (profRes.data ?? []) as ProfileRow[]
-    if (myMembershipsRes.error) { console.error('[yatraflow] hydrate memberships failed', myMembershipsRes.error); partial.push('memberships') }
+    if (myMembershipsRes.error) { console.error('[yatraflow] hydrate memberships failed', myMembershipsRes.error); partial.push('memberships'); tripCountUnknown = true }
     const myRows = (myMembershipsRes.data ?? []) as MemberRow[]
     const memberTripIds = myRows.map(m => m.trip_id)
     const myTripIds = [...new Set(memberTripIds)]
@@ -503,6 +509,7 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
           partial.push(name)
         }
       }
+      if (tripsRes.error || memRes.error) tripCountUnknown = true
       trips = (tripsRes.data ?? []) as TripRow[]
       members.push(...((memRes.data ?? []) as MemberRow[]))
       suggestions = mapOrSkip((sugRes.data ?? []), rowToSuggestion)
@@ -531,6 +538,7 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
           partial.push(name)
         }
       }
+      if (tripsRes.error || memRes.error) tripCountUnknown = true
       trips = (tripsRes.data ?? []) as TripRow[]
       members.push(...((memRes.data ?? []) as MemberRow[]))
       suggestions = mapOrSkip((sugRes.data ?? []), rowToSuggestion)
@@ -597,7 +605,10 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     // First-time users get the demo trips seeded into their account. Admins
     // skip the seed: their "empty" is a real empty app, and seeding 10 demo
     // trips into an admin account would pollute the console's totals.
-    if (tripList.length === 0 && seedIfEmpty && !admin) await seedDemoFor(userId, gen)
+    // #94: a failed memberships/trips query also reads as "zero trips" — for a
+    // real account on a flaky connection that meant writing 10 fake trips next
+    // to the user's actual ones. Only seed when the trip count is trustworthy.
+    if (tripList.length === 0 && seedIfEmpty && !admin && !tripCountUnknown) await seedDemoFor(userId, gen)
   } catch (e) {
     console.error('[yatraflow] hydration failed', e)
     toast('Could not load your data - check your connection.')

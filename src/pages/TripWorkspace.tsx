@@ -15,6 +15,7 @@ import { scrollBehavior } from '../lib/motion'
 import { Avatar, toast } from '../components/ui'
 import { ImpactPreviewPanel } from '../components/ImpactPreview'
 import { useSuggestionCache } from '../hooks/useSuggestionCache'
+import { useTablist } from '../hooks/useTablist'
 // Board also embeds TripMap (so it pulls the same lazy map chunk) — load the whole
 // view lazily so the Board tab never adds app-start cost either. TripMap itself
 // is lazily imported inside MapTab.
@@ -42,6 +43,7 @@ const TABS: [TabKey, string][] = [
   ['budget', 'Budget'],
   ['share', 'Share'],
 ]
+const TAB_IDS = TABS.map(([k]) => k)
 
 /** Legacy tab slugs that now redirect to the merged Group input tab. */
 const LEGACY_TAB_SLUGS = ['suggestions', 'decisions']
@@ -85,6 +87,10 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
     else seg.push(t)
     history.replaceState(null, '', `#/${seg.join('/')}`)
   }
+  // #87: the tab bar had role="tab" + aria-selected but every tab stayed in
+  // the tab order and arrows did nothing — now the shared roving-tabindex
+  // primitive (Tab lands on the active tab only; arrows/Home/End move it).
+  const { refs: tabRefs, tabProps } = useTablist(TAB_IDS, tab, setTab)
   const [aiOpen, setAiOpen] = useState(false)
 
   const role = me && trip ? roleOf(trip, me.id) : null
@@ -214,14 +220,14 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
 
       {/* ---------- Tabs ---------- */}
       <PillNav className="tabbar" role="tablist" aria-label="Trip sections" activeKey={tab}>
-        {TABS.map(([key, label]) => {
+        {TABS.map(([key, label], i) => {
           const count = key === 'group'
             ? db.suggestions.filter(s => s.tripId === trip.id && s.status === 'open').length
               + db.decisions.filter(d => d.tripId === trip.id && d.status === 'open').length
             : undefined
           return (
-            <button key={key} role="tab" id={`tab-${key}`} data-pill-key={key} aria-selected={tab === key}
-              aria-controls={`panel-${key}`}
+            <button key={key} ref={tabRefs(i)} role="tab" id={`tab-${key}`} data-pill-key={key} aria-selected={tab === key}
+              aria-controls={`panel-${key}`} {...tabProps(key, i)}
               className={`tab-btn ${tab === key ? 'active' : ''}`} onClick={() => setTab(key)}>
               {label}{count ? <span className="tab-count">{count}</span> : null}
             </button>
