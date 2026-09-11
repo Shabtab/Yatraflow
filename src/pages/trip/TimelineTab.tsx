@@ -35,6 +35,7 @@ import type { PlaceHit, SegmentHit } from '../../lib/geocode'
 import { kmFromStartForHit, type HaltPurpose } from '../../lib/providers/hits'
 import { segmentsFromPlan, assignSegmentHits, annotateSegmentHits, type HaltPlanItem } from '../../lib/ridePlan'
 import { daySlackMin, slackPrompt, pickSlackHit, visitMinutesForCategory } from '../../lib/slackPrompts'
+import { googleMapsDirectionsUrl } from '../../lib/externalMaps'
 import { pointAtKm } from '../../lib/geo'
 import type { LucideIcon } from 'lucide-react'
 import { MetaIcon } from '../../components/icons'
@@ -1119,6 +1120,15 @@ function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddPlanned
     ? `Return drive · back to ${journey.endTitle}`
     : `Travelling · ${journey.startTitle} → ${journey.endTitle}`
 
+  // Hand the day's ride to the traveller's own Google Maps for turn-by-turn
+  // directions — the panel describes the ride, the app doesn't navigate it.
+  // journey.points carries the synthesized legs (outbound continuation, ride
+  // home), so anchor-only days get a full origin → destination URL too.
+  const directionsUrl = useMemo(
+    () => googleMapsDirectionsUrl(journey.points.map(p => ({ lat: p.lat, lng: p.lng }))),
+    [journey],
+  )
+
   // Slack prompt: leftover day window plus the cheapest fitting nearby pick.
   // Recomputes live, so any itinerary change refreshes the nudge.
   const slackMin = daySlackMin({
@@ -1142,6 +1152,16 @@ function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAddPlanned
           {modeLabelMode(trip.transportMode)} · {journey.distanceKm.toFixed(0)} km · {minutesToHM(journey.driveMinutes)} wheel time
           {journey.halts.length > 0 && ` · ${journey.halts.length} halt${journey.halts.length !== 1 ? 's' : ''}`}
         </div>
+        {directionsUrl && (
+          <button
+            className="btn btn-ghost btn-sm"
+            style={{ marginLeft: 'auto', flex: 'none' }}
+            onClick={() => openExternal(directionsUrl)}
+            title="Open this ride with turn-by-turn directions in Google Maps"
+          >
+            <ExternalLink size={13} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />Directions
+          </button>
+        )}
       </div>
 
       <div className="travel-panel-stats">
