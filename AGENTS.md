@@ -607,6 +607,13 @@ Hard rules (each learned the hard way — do not relearn them):
   announces. And when the suite is green but the gate is red, read the log for the
   `built in …` line — its absence is the only thing that distinguishes "the typecheck
   ran and passed" from "the typecheck never happened".
+  That trap has a second mouth, hit the very next commit: a JSX **opening tag's
+  attribute list is not a place for children either.** Inserting a `{/* … */}` and
+  a `{cond && (…)}` after an element's `options={…}` line put them *between
+  attributes* and produced `TS1005 '…' expected` twice — again with the suite green
+  (2438 passed) and only the build's `tsc` complaining. When a scripted edit targets
+  JSX, anchor on the element's closing token (`/>`, or the container's open tag) and
+  insert there; "the line after the last attribute" is inside the tag.
 - **`tsc -b --clean` first** in any session before trusting a typecheck —
   incremental build caches pass code that clean builds reject.
 - **But `--clean` DIRTIES, it does not typecheck — and in `verify` the real

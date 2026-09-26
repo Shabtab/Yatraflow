@@ -40,3 +40,14 @@ export function scopeValueText(km: number): string {
 export function voteStatusId(slotKey: string): string {
   return `slot-vote-${slotKey.replace(/[^A-Za-z0-9_-]/g, '-')}`
 }
+
+/** A9 — the add modal preselects the day a hit's along-route km falls in. A hit
+ *  with no road position cannot be placed, so the fallback to the first day is a
+ *  GUESS: it was preselected in silence, with the reasoning living only in a code
+ *  comment the user never sees. Say it in the modal instead, and stop saying it
+ *  the moment the user picks a day themselves. */
+export function pickDayCaveat(dayIndex: number, derivedFromRoute: boolean): string | null {
+  if (derivedFromRoute) return null
+  return `This place has no position on the route, so Day ${dayIndex + 1} is a guess — pick the day you want.`
+}
+
