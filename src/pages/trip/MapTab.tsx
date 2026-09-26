@@ -21,6 +21,7 @@ import { corridorAnchors, detourKm, asymmetricDetourKm, asymmetricDetourMinutes,
 import { useResolvePick } from '../../components/ResolvePickDialog'
 import { deriveClockMilestones } from '../../lib/clockOverlay'
 import { railKeyAction } from '../../lib/railKeys'
+import { candidatesAnnouncement, fillLabel, scopeValueText, searchAnnouncement, voteStatusId } from '../../lib/railA11y'
 
 /** How many search hits the rail shows before "Show all" (#333 A1). The listbox
  *  grammar needs the same page size the rows are rendered with, so it lives here
@@ -1986,13 +1987,17 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
             })}
           </div>
         )}
+        {/* #333 A5: the result count sat in a static aria-label; this says it aloud
+            when it changes. Always mounted — a region that mounts with its text is silent. */}
+        <span className="sr-only" role="status" aria-live="polite">{searchResults.length > 0 ? searchAnnouncement(searchQ, searchResults.length, showAllResults ? searchResults.length : SEARCH_PAGE) : ''}</span>
         {searchResults.length > 5 && (
           <button type="button" className="btn btn-outline btn-sm" style={{ marginBottom: 10 }} onClick={() => setShowAllResults(v => !v)}>
             {showAllResults ? 'Show top 5' : `Show all ${searchResults.length}`}
           </button>
         )}
         <div className="row-between" style={{ gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
-          <label className="small" style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 230 }}>
+              <datalist id="scope-km-ticks">{SCOPE_KM_STEPS.map((km, i) => <option key={km} value={i} label={`${km} km`} />)}</datalist>
+          <label className="small" style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 150 }}>
             <span className="muted" style={{ whiteSpace: 'nowrap' }}>Detour scope</span>
             <input
               type="range"
@@ -2004,6 +2009,8 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
               onChange={e => changeScope(Number(e.target.value))}
               style={{ flex: 1 }}
               aria-label="How far from the route to search suggestions"
+            aria-valuetext={scopeValueText(scopeKm)}
+            list="scope-km-ticks"
             />
             <b style={{ whiteSpace: 'nowrap', minWidth: 46, textAlign: 'right' }}>{scopeKm} km</b>
           </label>
@@ -2245,6 +2252,13 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
               </div>
             ) : (
               <div className={'slots-list' + (slotsPeek ? ' is-peek' : '')} id="slots-list">
+              {/* #333 A5: the slot's candidates had no live region, so a screen-reader
+                  user opening a part heard nothing about what was in reach. Mounted even
+                  when a part opens: it starts empty by design, and a region that MOUNTS already carrying its text is never announced. */}
+              <span className="sr-only" role="status" aria-live="polite">{(() => {
+                const open = activeDaySlots.find(s => s.key === openSlotKey)
+                return open ? candidatesAnnouncement(open.label, slotCands(open).length) : ''
+              })()}</span>
                 {activeDaySlots.map(slot => {
                   const isOpen = openSlotKey === slot.key
                   // `urgencyMin` is window-end minus ETA, so it goes NEGATIVE
@@ -2267,6 +2281,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
                             type="button"
                             className="day-slot-top"
                             aria-expanded={slot.vote ? undefined : isOpen}
+                            aria-describedby={slot.vote ? voteStatusId(slot.key) : undefined}
                             onClick={() => {
                               if (slot.vote) { onOpenGroupInput?.(); return }
                               setOpenSlotKey(prev => (prev === slot.key ? null : slot.key))
@@ -2320,7 +2335,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
                             </div>
                           )}
                           {slot.vote ? (
-                            <div className="day-slot-vote">
+                            <div className="day-slot-vote" id={voteStatusId(slot.key)}>
                               <span className="chip chip-sm">{slot.vote.voters > 0
                                 ? `Voting · ${slot.vote.votesCast} of ${slot.vote.voters}`
                                 // #335: the denominator is members now, and a trip with no
@@ -2416,6 +2431,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
                                 className="day-slot-fill"
                                 disabled={addingAny}
                                 onClick={() => { void fillSlot(slot, c.hit) }}
+                              aria-label={fillLabel(c.hit.name, slot.label)}
                               >Fill</button>
                             </div>
                           ))}

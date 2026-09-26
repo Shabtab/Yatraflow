@@ -1,0 +1,42 @@
+// ============ Rail announcements, names and associations (pure) ============
+// #333 A2/A5/A6/A8. Four of the rail's accessibility gaps are strings: what a live
+// region says when a result list arrives, what a "Fill" button is called, what the
+// scope slider is worth, and what id a vote status answers to. They live here so
+// they can be asserted without a DOM, and so the component cannot quietly disagree
+// with the sentence a screen reader is given.
+
+/** A5 — search results arriving. The count lived in a static `aria-label`, which a
+ *  screen reader reads only if you go looking for it; a live region says it. */
+export function searchAnnouncement(q: string, count: number, shown: number): string {
+  const query = q.trim()
+  if (count === 0) return `No results for ${query || 'that search'}.`
+  const rest = shown < count ? `, showing the closest ${shown}` : ''
+  return `${count} result${count === 1 ? '' : 's'} for ${query || 'that search'}${rest}.`
+}
+
+/** A5 — a slot's candidates arriving (the second list the issue named). */
+export function candidatesAnnouncement(slotLabel: string, count: number): string {
+  if (count === 0) return `No candidates in reach for ${slotLabel}.`
+  return `${count} candidate${count === 1 ? '' : 's'} for ${slotLabel}.`
+}
+
+/** A2 — the row's action is a button labelled "Fill", so a keyboard user who
+ *  reached it was told nothing about WHICH place they were about to fill the slot
+ *  with: the name sat in a sibling span that the button does not own. */
+export function fillLabel(place: string, slotLabel: string): string {
+  return `Fill ${slotLabel} with ${place}`
+}
+
+/** A8 — the slider's value lived in the <b> beside it. `aria-valuetext` is how the
+ *  control states its own value, in words, at the step it is actually on. */
+export function scopeValueText(km: number): string {
+  return `${km} km from the route`
+}
+
+/** A6 — the vote status sits in its own element beside the toggle, so the toggle
+ *  has to point at it. Sanitized because an id with a quote, colon or space in it
+ *  either fails to resolve or is tokenized by `aria-describedby` into several
+ *  ids that match nothing — and slot keys are not guaranteed to be tame. */
+export function voteStatusId(slotKey: string): string {
+  return `slot-vote-${slotKey.replace(/[^A-Za-z0-9_-]/g, '-')}`
+}
