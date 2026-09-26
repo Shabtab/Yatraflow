@@ -152,6 +152,34 @@ export interface MeasureOpts {
 export const ROAD_RETRY_DELAY_MS = 2000
 
 /**
+ * Did this chain resolve? A rate-limited OSRM does not throw — `routePath`
+ * degrades to all-estimate haversine legs internally — so a chain counts as a
+ * road only when at least ONE leg came from a real provider. Returns the legs
+ * to use, or null for "unresolved". ONE copy of that rule: both measurement
+ * paths below apply it, and so does every surface that grades a line it draws
+ * (#188's rule, made shareable in #370).
+ */
+export function resolvedLegs(legs: RoadLeg[]): RoadLeg[] | null {
+  return legs.some(l => l.source !== 'estimate') ? legs : null
+}
+
+/** What a surface may claim about a line it is drawing (#370). */
+export type RouteGrade = 'measured' | 'rough'
+
+/**
+ * Grade a line a surface is ABOUT to draw, from the measured geometry it should
+ * have come from: real road geometry is `measured`; the straight-line chord
+ * fallback a surface falls back to when nothing has resolved — or while a
+ * shared measurement is still pending — is `rough`, and must never wear the
+ * same paint as a road. Takes the MEASURED geometry (not the drawn
+ * coordinates), so "no measurement yet" and "measurement failed" grade the
+ * same way: both are honest guesses.
+ */
+export function routeDrawGrade(geometry: [number, number][] | null | undefined): RouteGrade {
+  return geometry && geometry.length > 1 ? 'measured' : 'rough'
+}
+
+/**
  * Measure ONE day's synthesized ride (the Map tab's day-filter line) with the
  * same contract as the whole-trip chain: one attempt, one retry after a
  * transient failure, and an all-estimate result counts as unresolved — a
@@ -169,10 +197,7 @@ export async function measureDayRide(
   const measure = opts.measure ?? ((pts, asm) => routePath(pts, asm, signal))
   const sleep = opts.sleep ?? ((ms: number) => new Promise<void>(r => setTimeout(r, ms)))
   const retryDelayMs = opts.retryDelayMs ?? ROAD_RETRY_DELAY_MS
-  const attempt = async (): Promise<RoadLeg[] | null> => {
-    const legs = await measure(points, assumptions)
-    return legs.some(l => l.source !== 'estimate') ? legs : null
-  }
+  const attempt = async (): Promise<RoadLeg[] | null> => resolvedLegs(await measure(points, assumptions))
   const first = await attempt().catch(() => null)
   if (first) return { ok: true, legs: first }
   if (signal?.aborted) return { ok: false }
@@ -212,10 +237,7 @@ export async function measureRoadChain(
   const measure = opts.measure ?? ((pts, asm) => routePath(pts, asm, signal))
   const sleep = opts.sleep ?? ((ms: number) => new Promise<void>(r => setTimeout(r, ms)))
   const retryDelayMs = opts.retryDelayMs ?? ROAD_RETRY_DELAY_MS
-  const attempt = async (): Promise<RoadLeg[] | null> => {
-    const legs = await measure(points, assumptions)
-    return legs.some(l => l.source !== 'estimate') ? legs : null
-  }
+  const attempt = async (): Promise<RoadLeg[] | null> => resolvedLegs(await measure(points, assumptions))
   const first = await attempt().catch(() => null)
   if (first) return { ok: true, legs: first }
   if (signal?.aborted) return { ok: false }

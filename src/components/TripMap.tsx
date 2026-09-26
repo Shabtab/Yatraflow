@@ -8,7 +8,7 @@ import type { Trip } from '../data/types'
 import type { PlaceHit } from '../lib/geocode'
 import { resolveHitCoords } from '../lib/geocode'
 import { hasCoords, mappablePois, projectOntoPolyline } from '../lib/providers/hits'
-import { buildRoadChain, measureDayRide } from '../lib/tripRoad'
+import { buildRoadChain, measureDayRide, roadChainSig, routeDrawGrade } from '../lib/tripRoad'
 import { buildJourney, getAssumptions, isRoundTrip } from '../lib/engine'
 import { clockHM, type ClockMilestone } from '../lib/clockOverlay'
 import { pointAtKm } from '../lib/geo'
@@ -55,6 +55,14 @@ function VisiblePulse({ children, ...props }: ComponentProps<'span'>) {
 }
 
 const DAY_COLORS = ['#0D8D82', '#F59E2D', '#7C5CFC', '#E2557B', '#2D9CDB', '#6BBF59', '#B03A2E'] // #B7791F sat 1.6° from #F59E2D (two orange days); brick clears it by 28°
+
+// #370: a line that is NOT a measured road is drawn dashed and in the --warn
+// ink the detour spur already uses (read at paint time, with this file's hex
+// fallback). Same treatment on every surface, so an unresolved measurement can
+// never wear road paint — and the dash plus the missing chevrons say so without
+// a word, which matters because this component cannot tell "still measuring"
+// from "the measurement failed" (its host owns the status and says it).
+const ROUGH_DASH: [number, number] = [2, 2]
 
 // How long the map's ready gate waits for the style's 'load' event before
 // opening anyway (see the mapLoaded effect). The fit behind that gate is a
@@ -919,9 +927,20 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
   // revisiting a day chip redraws from cache instead of re-measuring (#polylines).
   // A ref, not state: cache validity never drives rendering on its own.
   const dayGeomCache = useRef<Record<string, { key: string; coords: [number, number][] }>>({})
+  // ONE chain identity (#370): the workspace's own geometry-only signature
+  // (`roadChainSig` — start + every stop + the drive home + the destination
+  // tail + mode), not a private stops-only hash. The same trip had two cache
+  // keys: this one missed a start-point or destination change that the
+  // measurement it gates did depend on.
   const chainKey = useMemo(
-    () => allPoints.map(p => `${p.lat.toFixed(5)},${p.lng.toFixed(5)}`).join('>'),
-    [allPoints],
+    () => roadChainSig(trip),
+    [trip.startLocationCoords, trip.days, trip.destinationCoords, trip.roundTrip, trip.transportMode],
+  )
+  // The map's “cannot vouch for this” ink — the --warn token the spur layer
+  // resolves at paint time (#153), read here for the rough-route line (#370).
+  const warnInk = useMemo(
+    () => getComputedStyle(document.documentElement).getPropertyValue('--warn').trim() || '#B47207',
+    [theme],
   )
   // straight-line fallback geometry for the sequential path (all mode)
   const allStraight = useMemo(
@@ -1189,6 +1208,10 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
             {dayFilter === 'all' ? (() => {
               const coords = geom.all?.length ? geom.all : allStraight
               const dark = theme === 'dark'
+              // #370: grade what is DRAWN. The chord fallback wears the rough
+              // paint and loses its chevrons, so "no road resolved" cannot read
+              // as a road while the numbers beside it are haversine estimates.
+              const rough = routeDrawGrade(geom.all) === 'rough'
               return (
                 <>
                   <MapRoute
@@ -1199,8 +1222,8 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
                     opacity={dark ? 0.6 : 0.75}
                     interactive={false}
                   />
-                  <MapRoute coordinates={coords} color={dark ? '#2A6FDB' : '#0B2545'} width={4.5} opacity={0.95} />
-                  <RouteArrows coordinates={coords} dark={dark} />
+                  <MapRoute coordinates={coords} color={rough ? warnInk : dark ? '#2A6FDB' : '#0B2545'} width={rough ? 3.5 : 4.5} opacity={rough ? 0.9 : 0.95} dashArray={rough ? ROUGH_DASH : undefined} />
+                  {!rough && <RouteArrows coordinates={coords} dark={dark} />}
                 </>
               )
             })() : (
@@ -1217,6 +1240,9 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
                   const coords = geom[String(d.index)]?.length
                     ? geom[String(d.index)]
                     : ride.map(p => [p.lng, p.lat] as [number, number])
+                // #370: this day's ride is honest when measured, and says so
+                // when it is not — the chords wear the rough paint.
+                const rough = routeDrawGrade(geom[String(d.index)]) === 'rough'
                 return (
                   <Fragment key={`day-${d.index}`}>
                     <MapRoute
@@ -1229,11 +1255,12 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
                     />
                     <MapRoute
                       coordinates={coords}
-                      color={colorForDay(d.index)}
-                      width={4}
-                      opacity={0.95}
+                      color={rough ? warnInk : colorForDay(d.index)}
+                      width={rough ? 3.5 : 4}
+                      opacity={rough ? 0.9 : 0.95}
+                      dashArray={rough ? ROUGH_DASH : undefined}
                     />
-                    <RouteArrows coordinates={coords} dark={theme === 'dark'} />
+                    {!rough && <RouteArrows coordinates={coords} dark={theme === 'dark'} />}
                   </Fragment>
                 )
               })
@@ -1243,6 +1270,7 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
             {dayFilter === 'all' && returnLeg && showReturn && (() => {
               const rCoords = geom.return?.length ? geom.return : returnStraight!
               const dark = theme === 'dark'
+              const rough = routeDrawGrade(geom.return) === 'rough'
               return (
                 <>
                   <MapRoute
@@ -1256,12 +1284,12 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
                   <MapRoute
                     id="yf-return-line"
                     coordinates={rCoords}
-                    color={dark ? '#94A3B8' : '#64748B'}
+                    color={rough ? warnInk : dark ? '#94A3B8' : '#64748B'}
                     width={3.5}
                     opacity={0.95}
-                    dashArray={[1.8, 1.6]}
+                    dashArray={rough ? ROUGH_DASH : [1.8, 1.6]}
                   />
-                  <RouteArrows coordinates={rCoords} dark={dark} />
+                  {!rough && <RouteArrows coordinates={rCoords} dark={dark} />}
                 </>
               )
             })()}

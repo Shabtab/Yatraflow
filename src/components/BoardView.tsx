@@ -15,8 +15,9 @@ import {
 } from '../lib/stopOrder'
 import { InlineIcon, KindIcon } from './icons'
 import type { Trip, ItineraryStop } from '../data/types'
-import { computeTotals, computeHealth, collectWarnings, minutesToHM, formatInr, buildJourney, dayRoadPolyline } from '../lib/engine'
+import { computeTotals, computeHealth, collectWarnings, minutesToHM, formatInr, buildJourney, dayRoadPolyline, isRoadMeasuredMode } from '../lib/engine'
 import type { ScheduleWarning, LegEstimate } from '../lib/engine'
+import { mapReturnGeometryFromLegs, mapRoadViewFromLegs, type TripRoadView } from '../lib/tripRoad'
 import type { ImpactResult } from '../lib/impact'
 import { useTimeFormat, formatHM } from '../lib/timefmt'
 import { stopKindOf, STOP_KIND_LABELS } from '../lib/stopKind'
@@ -42,7 +43,7 @@ const NO_WARNINGS: ScheduleWarning[] = []
  *  re-render it (#372). */
 const MemoTripMap = React.memo(TripMap)
 
-export function BoardView({ trip, editable, applyChange, health, totals, onOpenOverview, legCorrections, previewOpen }: {
+export function BoardView({ trip, editable, applyChange, health, totals, onOpenOverview, legCorrections, previewOpen, road }: {
   trip: Trip
   editable: boolean
   /** The 4th argument is the follow-up a staged change runs once the user KEEPS
@@ -58,6 +59,11 @@ export function BoardView({ trip, editable, applyChange, health, totals, onOpenO
    *  (#334); the one direct writer on this surface — the stop status flip —
    *  refuses with the shared message, exactly like the Timeline's. */
   previewOpen?: boolean
+  /** The workspace's ONE road measurement (#188/#370). The board's map draws
+   *  the SAME line as the Map tab — start leg, every stop, the drive home and
+   *  the destination tail — instead of self-measuring a shorter stops-only road
+   *  while its own figures come from the full chain. */
+  road?: TripRoadView
   /** Kept for API compatibility: the board no longer navigates away to add a
       stop — StopEditor opens in place. TripWorkspace still passes it; a future
       pass can drop it from both ends. */
@@ -104,6 +110,27 @@ export function BoardView({ trip, editable, applyChange, health, totals, onOpenO
   /** Board adds run through the ONE “already added” predicate (#345/#372) —
    *  the identity the rail, the tray, the slots and the map pins already use. */
   const identity = useMemo(() => placeIdentity(trip), [trip])
+
+  // #370: the Board draws the workspace's chain through the SAME two derivations
+  // the Map tab uses — `mapRoadViewFromLegs` for the outbound line (plus a
+  // one-way destination tail) and `mapReturnGeometryFromLegs` for the drive home
+  // — so one trip cannot have two roads: the Board's line used to stop at its
+  // stops while its own numbers described the full chain. Self-measurement stays
+  // off: the workspace is the single measurement (#188/#323), and what the two
+  // surfaces draw is graded identically (`routeDrawGrade` in TripMap).
+  const roadView = useMemo(
+    () => mapRoadViewFromLegs(road?.chain ?? null, road?.legs ?? null, trip.days.map(d => d.index)),
+    [road, trip.days],
+  )
+  const mapReturnGeometry = useMemo(
+    () => mapReturnGeometryFromLegs(road?.chain ?? null, road?.legs ?? null),
+    [road],
+  )
+  /** The road did not resolve AND this trip is actually driven: the map's line
+   *  is graded rough, and the board's budget/health figures are haversine
+   *  estimates — said out loud here rather than left to be discovered (#370).
+   *  Conducted modes (train/flight/bus) are excluded: no road was ever theirs. */
+  const roadUnmeasured = !!trip.transportMode && isRoadMeasuredMode(trip.transportMode) && road?.status === 'failed'
 
   /** Cross-day move — the shared stopOrder rule, and every Board mutation
       previews. The drag passes its own insertion slot; the move dialog passes
@@ -235,7 +262,9 @@ export function BoardView({ trip, editable, applyChange, health, totals, onOpenO
       <div className="board">
         {/* pinned route map — the existing component, no second map system (§8 guardrail) */}
         <div className="board-map">
-          <MemoTripMap trip={trip} focusDay={focusedDay} showToolbar={false} />
+          <MemoTripMap trip={trip} focusDay={focusedDay} showToolbar={false}
+            mainRouteGeometry={roadView.geometry} returnRouteGeometry={mapReturnGeometry}
+            allowSelfMeasurement={false} />
         </div>
 
         {/* floating info card (normal-flow top bar above the columns; the map still
@@ -246,6 +275,11 @@ export function BoardView({ trip, editable, applyChange, health, totals, onOpenO
             <span className="small muted" style={{ display: 'block', marginTop: 3 }}>
               Drag a stop to another day — its impact previews before saving. Click a column to focus its route.
             </span>
+            {roadUnmeasured && (
+              <span className="small" style={{ display: 'block', marginTop: 3 }}>
+                <InlineIcon icon={TriangleAlert} size={12} gap={3} />Road not measured — the map's line and this board's figures are estimates.
+              </span>
+            )}
             <button type="button" className="board-fit" onClick={fitToTrip}><InlineIcon icon={LocateFixed} size={13} gap={4} />Fit route</button>
           </div>
 
