@@ -2914,6 +2914,8 @@ main:has(.auth-wrap) .route-panel { flex: 1; display: flex; flex-direction: colu
 .yf-maplibre { position: absolute; inset: 0; }
 .yf-map-pin {
   display: flex; align-items: center; justify-content: center;
+  /* #333 A10: the hit area below is positioned against this box. */
+  position: relative;
   width: 30px; height: 30px; border-radius: 999px;
   border: 3px solid #fff; color: #fff;
   font-size: 13px; font-weight: 800; font-family: inherit;
@@ -7874,4 +7876,22 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
      a `colSpan={2}` label that shifts every index by one. */
   .pub-ledger .col-opt { display: none; }
   .pub-ledger .col-wide { max-width: 18ch; overflow-wrap: anywhere; }
+}
+/* #333 A10: the map's own shapes are what a thumb actually aims at, and the pin
+   (30px) and the tear (34px) both sat under the 40px coarse-pointer floor. Neither
+   can simply grow: the pin is a flex circle inside MapLibre's marker wrapper and the
+   tear is a rotated square, so a min-width/height would move the map rather than the
+   target. They get an invisible hit area instead — the pseudo-element idiom this rail
+   already uses elsewhere: the pin's ::before, and the tear's ::before because its
+   ::after already draws the teardrop's tail and must not be stretched.
+   .yf-map-flag is deliberately left out: it carries cursor: default and no handler,
+   and a floor exists to make a TARGET reachable — enlarging something that cannot be
+   tapped would only lie about what is interactive. */
+@media (pointer: coarse) {
+  .yf-map-pin::before,
+  .yf-map-tear::before {
+    content: '';
+    position: absolute;
+    inset: -8px;
+  }
 }
