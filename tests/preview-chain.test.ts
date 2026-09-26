@@ -85,8 +85,8 @@ describe('the surfaces that must not race a preview (#334)', () => {
 
   it('the map popup delete and every expense write refuse while a preview is open', () => {
     const ws = readFileSync(new URL('../src/pages/TripWorkspace.tsx', import.meta.url), 'utf8')
-    // all four surfaces are told: timeline, group input, map, budget
-    expect(ws.match(/previewOpen=\{!!pending\}/g) ?? []).toHaveLength(4)
+    // all five surfaces are told: timeline, board, group input, map, budget
+    expect(ws.match(/previewOpen=\{!!pending\}/g) ?? []).toHaveLength(5)
 
     const map = readFileSync(new URL('../src/pages/trip/MapTab.tsx', import.meta.url), 'utf8')
     // The popup delete is the map's one live direct writer — the fill/undo
@@ -106,6 +106,15 @@ describe('the surfaces that must not race a preview (#334)', () => {
     expect(guards).toHaveLength(3) // rename, ride start AND status flip — all write the committed row
     // One spelling of the refusal, shared with the group tab (no drifting twins).
     expect(src).toMatch(/import \{ PREVIEW_BUSY \} from '\.\.\/\.\.\/lib\/previewChain'/)
+  })
+
+  it('the Board’s status flip refuses while a preview is open — its edits chain instead', () => {
+    // The Board stages every edit through applyChange, which CHAINS onto the
+    // open preview (#334) rather than being disabled. Its one live direct
+    // writer is the status flip, and that one refuses like the Timeline's.
+    const board = readFileSync(new URL('../src/components/BoardView.tsx', import.meta.url), 'utf8')
+    expect(board).toMatch(/import \{ PREVIEW_BUSY \} from '\.\.\/lib\/previewChain'/)
+    expect(board).toMatch(/if \(previewOpen\) \{ toast\(PREVIEW_BUSY, 'err'\); return \}[\s\S]{0,200}?setStopStatus\(trip\.id, status, stop\.id\)/)
   })
 
   it('accepting a suggestion and resolving a decision wait for the preview', () => {

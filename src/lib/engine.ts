@@ -1396,7 +1396,12 @@ export function computeTotals(trip: Trip, legCorrections?: Record<string, LegEst
   }
 }
 
+/** Rupees with Indian grouping, finite-guarded (#369): one NaN or undefined
+ *  money field used to render “₹NaN” on every surface that printed it — the
+ *  same family as the totals' `num0` coercion (#343), fixed at the formatter so
+ *  no caller has to remember. A missing value reads “—”, never “₹0”. */
 export function formatInr(n: number): string {
+  if (!Number.isFinite(n)) return '—'
   return '₹' + Math.round(n).toLocaleString('en-IN')
 }
 
