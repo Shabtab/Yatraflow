@@ -579,6 +579,17 @@ Hard rules (each learned the hard way — do not relearn them):
   taught to resolve a new constant, and prose must not impersonate the code it
   describes. It is also a good sign — a guard that fires on its own documentation
   is a guard that is genuinely reading the file.
+- **A JSX ternary branch holds exactly ONE expression, so a live region inserted as
+  a "sibling" before it breaks the parse (learned 2026-09-26, #333 A5).** The slot
+  list renders as `{slotsPeek ? (…) : (<div className="slots-list">…)}`, and dropping
+  a `<span role="status">` in front of that div made two siblings in a single branch:
+  the suite stayed green (**2436 passed**) while `npm run verify` failed in its LAST
+  step — the `tsc -b` inside `build` — with `TS1005 ')' expected` at the div plus
+  three cascading brace errors far below it. Put such a region INSIDE the container,
+  which is also the better behaviour: it mounts empty and the text CHANGE is what
+  announces. And when the suite is green but the gate is red, read the log for the
+  `built in …` line — its absence is the only thing that distinguishes "the typecheck
+  ran and passed" from "the typecheck never happened".
 - **`tsc -b --clean` first** in any session before trusting a typecheck —
   incremental build caches pass code that clean builds reject.
 - **But `--clean` DIRTIES, it does not typecheck — and in `verify` the real

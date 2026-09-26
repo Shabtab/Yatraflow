@@ -44,6 +44,17 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
   beyond the detour budget used to be dimmed to 60% opacity, which washed out text already near the
   contrast floor and made that row's own Add buttons read as disabled while they were still pressable;
   it now carries a visible "beyond your detour scope" chip saying the same thing at full contrast (#333).
+- **The map rail's result lists speak up, and its controls name what they act on.** Two lists arrived in
+  silence: searching announced nothing about what came back, and opening a part in the day plan
+  announced nothing about what was in reach — the count sat in a static `aria-label`, which a screen
+  reader only reads if you go looking for it. Both announce now, through one small pure layer that
+  states each sentence once (`lib/railA11y`) and is tested without a DOM. A candidate row's action was
+  a button labelled only "Fill", so the name of the place lived in a sibling span the button did not
+  own; the place is part of the button's name now. The detour-scope slider states its own value
+  (`aria-valuetext`, in kilometres, at the step it is actually on), carries tick marks for its six
+  steps, and no longer squeezes its thumb against the label at 360px. And a part that has a crew vote
+  routing to Group input points at the vote status beside it, instead of leaving that status
+  unassociated (#333).
 - **Reordering a day could move where the next morning started.** The optimiser pinned a night's base only when the tail stop was a hotel or a rest — but the engine derives the next day's wake-up point from whatever the day's LAST stored stop is, so a food-tailed evening (dinner where you ended up) let it slide — the reported case moved the next morning's start about 16 km. A day's stored tail is now pinned whenever a later day wakes up from it, and a property test asserts the next day's origin is unchanged rather than trusting the shape.
 - **Applying an optimise over an edit that landed meanwhile is no longer silent.** The preview was a snapshot taken when the dialog opened, so a drag or an edit made while it was up was discarded without notice when Apply was pressed. Apply now re-derives from the day as it is, refuses and refreshes when the order no longer matches what was reviewed, and says when there is nothing left to improve.
 - **Opening-hours conflicts could vanish on a hydrated stop.** The preview's own check read `visitMinutes` raw, so a row without one compared `NaN` against its closing time and reported nothing. A missing dwell now counts as zero minutes, the same way the engine treats it.
