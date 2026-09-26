@@ -459,6 +459,30 @@ Key locations:
    dialog now road-orders through the same `moveStopToDay` the Timeline's dialog
    uses. Pinned in `tests/stop-order.test.ts` (the active-list describe plus a
    Board source assertion).
+ 6s. **A label and its colour must come from the same value — and a count's
+   NOUN is part of its meaning (learned 2026-09-26, the Board wave).** Two ways
+   one surface contradicted itself in the same panel. (1) The Board printed the
+   engine's BAND word (`Unrealistic`) and coloured it with its own score cuts
+   (`≥70 ok | ≥40 mid`), so a 45-point trip wore the alarm word in reassuring
+   mid-blue — at 70–84 and 55–69 it happened to agree, which is luck, not
+   correctness. Style from the SAME value the text came from, and when two
+   surfaces already map that value, lift the mapping into a shared module
+   (`lib/healthBand.ts`) instead of copying it. (2) The pulse counted DAYS
+   (`Object.keys(dayWarnings).length`) while the copy said “route days
+   overloaded” — a wrong unit that stayed invisible for exactly the case its
+   author had in mind, and read as an alarm for a day whose only issue was a
+   late lunch. Count the thing you name, and reserve an alarm word for the state
+   that earns it (here: a CATEGORY test — density / fatigue / travel — never a
+   severity test). Companions from the same pass: a shared formatter is the
+   right home for a finite guard (`formatInr(NaN)` → `—`, one fix for every
+   caller, and “—” is not “₹0”); and a `React.memo` pass is really a
+   PROP-IDENTITY pass — one fresh literal in the props defeats it, so hoist the
+   shared empty value, `useCallback` every handler, and pass a column's own
+   index INTO a stable callback rather than closing over it in an inline arrow.
+   Take the before/after by COUNT, not by feel: a temporary dev-only render
+   counter plus a driven localhost session showed one editor-open re-rendering
+   0 columns with the memo and all 12 without (3 columns × the dev
+   double-render) — then remove the counter before committing.
  7. **When asking the user to review/test locally, always hand them the exact
    URL — never make them find or start the server.** Check if the dev server
    is up (probe `http://localhost:5173`); if not, start `npm run dev`

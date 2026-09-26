@@ -8,6 +8,7 @@ import { CircleCheck, CloudSun, Droplets, Lightbulb, Pin, Siren, TriangleAlert }
 import type { Trip } from '../../data/types'
 import { useDb, userById, activityFor } from '../../store/store'
 import { computeHealth, computeTotals, formatInr, minutesToHM, countHotelNights, isRoundTrip } from '../../lib/engine'
+import { healthBandClass, healthBandTone } from '../../lib/healthBand'
 import { useTimeFormat, formatHM } from '../../lib/timefmt'
 import { fetchDailyWeather, forecastAvailable, wmoInfo } from '../../lib/weather'
 import type { DayWeather } from '../../lib/weather'
@@ -69,15 +70,15 @@ export function OverviewTab({ trip, onOpenTimeline, onOpenMap, onInvite, health,
         <div className="card">
           <div className="row-between card-head">
             <h3>Trip health</h3>
-            <Chip tone={health.band === 'Comfortable' ? 'ok' : health.band === 'Manageable' ? 'teal' : health.band === 'Tight' ? 'saffron' : 'danger'}>
+            <Chip tone={healthBandTone(health.band)}>
               {health.band}
             </Chip>
           </div>
           <div className="health-big">
-            <div className={`health-num-big ${health.band === 'Tight' ? 'mid' : health.band === 'Comfortable' || health.band === 'Manageable' ? 'ok' : 'bad'}`}>{health.score}</div>
+            <div className={`health-num-big ${healthBandClass(health.band)}`}>{health.score}</div>
             <div style={{ flex: 1, minWidth: 200 }}>
               <div className="health-bar">
-                <i className={health.band === 'Tight' ? 'mid' : health.band === 'Comfortable' || health.band === 'Manageable' ? 'ok' : 'bad'} style={{ width: `${health.score}%` }} />
+                <i className={healthBandClass(health.band)} style={{ width: `${health.score}%` }} />
               </div>
               <ul className="health-reasons">
                 {health.warnings.length === 0

@@ -1443,6 +1443,10 @@ a.btn { text-decoration: none; }
   max-width: 340px;
 }
 .day-warn-pill.sev-high { background: var(--yf-coral-100); color: var(--ink-coral); }
+/* Low-severity days read QUIET: the warning is worth counting, not an alarm.
+   Without this the base amber tint made “Day 3: route backtracking” as loud as
+   an over-packed day (#369). */
+.day-warn-pill.sev-low { background: var(--bg-soft); color: var(--text-2); }
 /* Per-day cost + dwell chips in the day header — quiet metadata pills that
    mirror the stop-kind tag treatment (soft tint, no border) so they read as
    engine-derived context, not actions. */
