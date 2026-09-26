@@ -28,6 +28,13 @@ export function stopsInOrder(day: ItineraryDay): ItineraryStop[] {
   return [...day.stops].sort((a, b) => a.orderInDay - b.orderInDay)
 }
 
+/** A day's NON-REJECTED stops in display order — the list a surface that HIDES
+ *  rejected rows (the Board) actually indexes into. The Timeline renders every
+ *  stop, so it keeps using `stopsInOrder` directly. */
+export function activeStopsInOrder(day: ItineraryDay): ItineraryStop[] {
+  return stopsInOrder(day).filter(s => s.status !== 'rejected')
+}
+
 /** The position an add appends with. The contiguous count + 1 is only free
  *  once the day has been renumbered — that pairing is what makes the add's
  *  `length + 1` assumption true (see `renumberDay` below and #337). */
@@ -86,22 +93,52 @@ export function removeStopFromDay(trip: Pick<Trip, 'days'>, stopId: string): { s
   return null
 }
 
-/** Reorder within one day, carrying the store sibling's three guards: clamp
- *  out-of-range indices (an OOB splice would insert `undefined` into the day
- *  and crash the simulator later — "bug #5"), treat from === to as a no-op,
- *  and refuse a missing stop. Returns whether anything moved. */
-export function moveStopWithinDay(day: ItineraryDay, fromIdx: number, toIdx: number): boolean {
-  const arr = stopsInOrder(day)
-  const len = arr.length
+/** Shared core of both reorders below: clamp out-of-range indices (an OOB
+ *  splice would insert `undefined` into the day and crash the simulator later —
+ *  "bug #5"), treat from === to as a no-op, and refuse a missing stop. Returns
+ *  whether the list changed. */
+function spliceMove(list: ItineraryStop[], fromIdx: number, toIdx: number): boolean {
+  const len = list.length
   if (len === 0) return false
   const from = Math.max(0, Math.min(Math.trunc(fromIdx), len - 1))
   const to = Math.max(0, Math.min(Math.trunc(toIdx), len))
   if (from === to) return false
-  const [moved] = arr.splice(from, 1)
+  const [moved] = list.splice(from, 1)
   if (!moved) return false
-  arr.splice(to, 0, moved)
+  list.splice(to, 0, moved)
+  return true
+}
+
+/** Reorder within one day, with indices into the FULL stop list — what the
+ *  Timeline (which renders every stop) shows. The whole day is renumbered
+ *  1..n. Returns whether anything moved. */
+export function moveStopWithinDay(day: ItineraryDay, fromIdx: number, toIdx: number): boolean {
+  const arr = stopsInOrder(day)
+  if (!spliceMove(arr, fromIdx, toIdx)) return false
   arr.forEach((s, i) => { s.orderInDay = i + 1 })
   day.stops = arr
+  return true
+}
+
+/** Reorder within one day, with indices into the ACTIVE list — the stops a
+ *  surface that HIDES rejected rows actually shows (the Board). Rejected stops
+ *  keep their slots; the WHOLE day is renumbered 1..n either way, because
+ *  splicing only the visible list (the Board's old private remap) left hidden
+ *  stops holding their old numbers — two stops could claim one position and the
+ *  hidden one resurfaced mispositioned on the Timeline (#371). */
+export function moveActiveStopWithinDay(day: ItineraryDay, fromIdx: number, toIdx: number): boolean {
+  const active = activeStopsInOrder(day)
+  if (!spliceMove(active, fromIdx, toIdx)) return false
+  const rebuilt: ItineraryStop[] = []
+  for (const s of stopsInOrder(day)) {
+    if (s.status === 'rejected') rebuilt.push(s)
+    else {
+      const next = active.shift()
+      if (next) rebuilt.push(next)
+    }
+  }
+  rebuilt.forEach((s, i) => { s.orderInDay = i + 1 })
+  day.stops = rebuilt
   return true
 }
 

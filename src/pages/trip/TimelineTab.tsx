@@ -165,7 +165,8 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
 
   /** Optimise-day commit: replace a day's stop order wholesale (ids), keeping
    *  every stop — the reorder goes through the same impact-preview gate as a
-   *  manual drag. */
+   *  manual drag. It is a FULL-array rewrite that renumbers 1..n, so it has no
+   *  from/to splice to make — the same invariant as lib/stopOrder's helpers. */
   const handleReorderDay = useCallback((dayIndex: number, orderedIds: string[]) => {
     applyChange(draft => {
       const day = draft.days.find(d => d.index === dayIndex)!

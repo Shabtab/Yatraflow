@@ -442,6 +442,23 @@ Key locations:
    same membership question, that is one predicate with one normalization
    contract (trim/lowercase/collapse + provider key join) — and the exit path
    (discard) needs the inverse of the entry path (stage) in the SAME change.
+ 6r. **A display filter is not a mutation scope — hidden rows still own the state
+   other surfaces render, and one gesture must place a stop the same way on every
+   surface (learned 2026-09-26, #371).** The Board's reorder spliced only the
+   non-rejected cards it shows and remapped orders onto those survivors, so a
+   hidden rejected stop kept its old `orderInDay`: two stops could claim one
+   position, and the hidden one resurfaced mispositioned on the Timeline, which
+   renders every stop. The rule lives in `lib/stopOrder.ts` in an ACTIVE-list
+   form (`moveActiveStopWithinDay`): splice the visible list, then rebuild and
+   renumber the WHOLE day, hidden rows keeping their slots. When a surface
+   mutates a FILTERED view of a collection, either run the mutation on the full
+   list and map the view onto it, or renumber everything the filter excluded —
+   never leave excluded entries holding their old numbers. Companion from the
+   same issue: the Board's move dialog appended to the target day while its drag
+   inserted positionally, so one gesture produced two different plans; the
+   dialog now road-orders through the same `moveStopToDay` the Timeline's dialog
+   uses. Pinned in `tests/stop-order.test.ts` (the active-list describe plus a
+   Board source assertion).
  7. **When asking the user to review/test locally, always hand them the exact
    URL — never make them find or start the server.** Check if the dev server
    is up (probe `http://localhost:5173`); if not, start `npm run dev`

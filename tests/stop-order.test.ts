@@ -10,14 +10,16 @@
 // sibling has.
 //
 // Every writer now calls src/lib/stopOrder.ts, so the rules are pinned here —
-// plus three narrow source assertions that bind the Timeline's page handlers to
-// the helpers (the handlers themselves need a DOM the node-env suite does not
-// have; a UI bug of exactly this class is what shipped).
+// plus narrow source assertions that bind the page handlers (Timeline and
+// Board) to the helpers: the handlers themselves need a DOM the node-env suite
+// does not have, and a UI bug of exactly this class is what shipped (#337,
+// #371).
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import {
-  dayHoldingStop, hasStopNamed, moveStopToDay, moveStopWithinDay, nextOrderInDay,
-  pendingStopId, removeStopFromDay, renumberDay, roadOrderInsertionIndex, stopById, stopsInOrder,
+  activeStopsInOrder, dayHoldingStop, hasStopNamed, moveActiveStopWithinDay, moveStopToDay,
+  moveStopWithinDay, nextOrderInDay, pendingStopId, removeStopFromDay, renumberDay,
+  roadOrderInsertionIndex, stopById, stopsInOrder,
 } from '../src/lib/stopOrder'
 import type { ItineraryDay, ItineraryStop } from '../src/data/types'
 
@@ -127,6 +129,48 @@ describe('moveStopWithinDay — the store sibling’s three guards', () => {
   })
 })
 
+describe('moveActiveStopWithinDay — the Board’s hidden-row reorder (#371)', () => {
+  it('reorders the visible stops and renumbers the WHOLE day, rejected included', () => {
+    const d = day(0, [stop('a', 1), stop('h', 2, { status: 'rejected' }), stop('b', 3)])
+    // active = [a, b]; the Board drops b at slot 0
+    expect(moveActiveStopWithinDay(d, 1, 0)).toBe(true)
+    // the hidden stop keeps its slot; the visible pair swaps around it
+    expect(d.stops.map(s => s.id)).toEqual(['b', 'h', 'a'])
+    expect(orders(d)).toEqual([1, 2, 3])
+  })
+
+  it('never leaves two stops claiming one position (the old filtered remap did)', () => {
+    // The Board spliced only the visible list and remapped the survivors, so a
+    // hidden stop kept its old number: with c moved to the front, two stops
+    // ended up sharing a position and the hidden one resurfaced mispositioned
+    // on the Timeline.
+    const d = day(0, [stop('a', 1), stop('h', 2, { status: 'rejected' }), stop('b', 3), stop('c', 4)])
+    expect(moveActiveStopWithinDay(d, 2, 0)).toBe(true)
+    expect(d.stops.map(s => s.id)).toEqual(['c', 'h', 'a', 'b'])
+    expect(orders(d)).toEqual([1, 2, 3, 4])
+    expect(new Set(orders(d)).size).toBe(4)
+  })
+
+  it('carries the same guards: from === to no-op, OOB clamps, all-rejected refuses', () => {
+    const d = day(0, [stop('a', 1), stop('h', 2, { status: 'rejected' })])
+    expect(moveActiveStopWithinDay(d, 0, 0)).toBe(false)
+    expect(orders(d)).toEqual([1, 2])
+    // A day that is only rejected stops has nothing to reorder.
+    expect(moveActiveStopWithinDay(day(1, [stop('x', 1, { status: 'rejected' })]), 0, 1)).toBe(false)
+    // OOB splices insert `undefined` (bug #5) — clamp instead.
+    const multi = day(2, [stop('a', 1), stop('b', 2), stop('c', 3)])
+    expect(moveActiveStopWithinDay(multi, 99, 0)).toBe(true)
+    expect(multi.stops.map(s => s.id)).toEqual(['c', 'a', 'b'])
+    expect(multi.stops.every(Boolean)).toBe(true)
+    expect(orders(multi)).toEqual([1, 2, 3])
+  })
+
+  it('activeStopsInOrder is the Board’s display list: rejected excluded, order ascending', () => {
+    const d = day(0, [stop('c', 3), stop('h', 2, { status: 'rejected' }), stop('a', 1)])
+    expect(activeStopsInOrder(d).map(s => s.id)).toEqual(['a', 'c'])
+  })
+})
+
 describe('moveStopToDay — cross-day move', () => {
   it('REFUSES a missing destination and leaves the source untouched (#339)', () => {
     // The old Timeline handler spliced the source FIRST, then found no target
@@ -224,6 +268,7 @@ const page = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf
 const timeline = page('../src/pages/trip/TimelineTab.tsx')
 const daySection = page('../src/pages/trip/timeline/DaySection.tsx')
 const mapTab = page('../src/pages/trip/MapTab.tsx')
+const board = page('../src/components/BoardView.tsx')
 
 describe('the writers use the shared implementation', () => {
   it('the Timeline deletes, reorders and moves through lib/stopOrder', () => {
@@ -232,6 +277,19 @@ describe('the writers use the shared implementation', () => {
     expect(timeline).toMatch(/moveStopWithinDay\(day, fromIdx, toIdx\)/)
     expect(timeline).toMatch(/moveStopToDay\(draft\.days, stopId, toDayIndex, position\)/)
     expect(timeline).toMatch(/moveStopToDay\(draft\.days, stopId, toDay, null, kmOf\)/)
+  })
+
+  it('the Board reorders and moves through the same module (#371)', () => {
+    // The Board's own filtered remap was the bug: it spliced only the cards it
+    // shows and left hidden (rejected) stops at their old numbers. Both paths
+    // now call lib/stopOrder, and the move dialog passes no slot so the shared
+    // helper road-orders instead of appending.
+    expect(board).toMatch(/from '\.\.\/lib\/stopOrder'/)
+    expect(board).toMatch(/moveActiveStopWithinDay\(day, fromIdx, toIdx\)/)
+    expect(board).toMatch(/moveStopToDay\(draft\.days, stopId, toDayIndex, position, kmOf\)/)
+    expect(board).not.toMatch(/orderMap/)
+    expect(board).toMatch(/onMoveStopIn\(moveStop\.id, day\.index, d\.index, null\)/)
+    expect(board).toMatch(/activeStopsInOrder\(d\)\.length/)
   })
 
   it('a Timeline delete leaves an Undo that restores the captured stop', () => {

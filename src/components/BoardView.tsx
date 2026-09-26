@@ -9,30 +9,34 @@ import {
   Plus, Trash2, TriangleAlert,
 } from 'lucide-react'
 import { prefersReducedMotion } from '../lib/motion'
-import { nextOrderInDay, pendingStopId } from '../lib/stopOrder'
+import { activeStopsInOrder, moveActiveStopWithinDay, moveStopToDay, nextOrderInDay, pendingStopId } from '../lib/stopOrder'
 import { InlineIcon, KindIcon } from './icons'
 import type { Trip, ItineraryStop } from '../data/types'
-import { computeTotals, computeHealth, collectWarnings, minutesToHM, formatInr } from '../lib/engine'
-import type { ScheduleWarning } from '../lib/engine'
+import { computeTotals, computeHealth, collectWarnings, minutesToHM, formatInr, buildJourney, dayRoadPolyline } from '../lib/engine'
+import type { ScheduleWarning, LegEstimate } from '../lib/engine'
 import type { ImpactResult } from '../lib/impact'
 import { useTimeFormat, formatHM } from '../lib/timefmt'
 import { stopKindOf, STOP_KIND_LABELS } from '../lib/stopKind'
 import { stopInitialValues, stopLegContext, stopEditorKey, stopDayIndex, type StopEditorTarget } from '../lib/stopForm'
 import { useDb } from '../store/store'
-import { useReorder, Modal } from './ui'
+import { useReorder, Modal, toast } from './ui'
+import { kmFromStartForHit } from '../lib/providers/hits'
 import { glideOffsetPx, insertionIndexFor, rowLayoutBoxes, cancelRowSettle, cancelListSettles, settleRow } from '../lib/touchDnd'
 import { TripMap } from './TripMap'
 import { StopEditor, type StopFormValues } from './StopEditor'
 import { useStopConflict } from './useStopConflict'
 import { RemoteEditBanner } from './RemoteEditBanner'
 
-export function BoardView({ trip, editable, applyChange, health, totals, onOpenOverview }: {
+export function BoardView({ trip, editable, applyChange, health, totals, onOpenOverview, legCorrections }: {
   trip: Trip
   editable: boolean
   applyChange: (mutator: (d: Trip) => void, kind: ImpactResult['kind'], dayIndex: number) => void
   health: ReturnType<typeof computeHealth>
   totals: ReturnType<typeof computeTotals>
   onOpenOverview: () => void
+  /** The workspace's road measurement — the move dialog inserts by ROAD order
+   *  with it, the same chain the Timeline's dialog uses. */
+  legCorrections?: Record<string, LegEstimate>
   /** Kept for API compatibility: the board no longer navigates away to add a
       stop — StopEditor opens in place. TripWorkspace still passes it; a future
       pass can drop it from both ends. */
@@ -53,18 +57,14 @@ export function BoardView({ trip, editable, applyChange, health, totals, onOpenO
     return () => window.removeEventListener('keydown', onKey)
   }, [mapFocus])
 
-  /** Same-day reorder from a board column — same mutation shape as the
-      Timeline's handleMoveWithinDay, so both views stay byte-identical. */
+  /** Same-day reorder from a board column — the shared stopOrder rule the
+      Timeline's drag uses, in its ACTIVE-list form: the Board hides rejected
+      cards, and the helper still renumbers every stop on the day, so a hidden
+      one cannot keep a stale or duplicated number (#371). */
   function reorderWithinDay(dayIndex: number, fromIdx: number, toIdx: number) {
     applyChange(draft => {
       const day = draft.days.find(d => d.index === dayIndex)
-      if (!day) return
-      const arr = [...day.stops].filter(s => s.status !== 'rejected').sort((a, b) => a.orderInDay - b.orderInDay)
-      const [moved] = arr.splice(fromIdx, 1)
-      if (!moved) return
-      arr.splice(toIdx, 0, moved)
-      const orderMap = new Map(arr.map((s, i) => [s.id, i + 1]))
-      for (const s of day.stops) { const n = orderMap.get(s.id); if (n) s.orderInDay = n }
+      if (day) moveActiveStopWithinDay(day, fromIdx, toIdx)
     }, 'reorder', dayIndex)
   }
 
@@ -82,25 +82,26 @@ export function BoardView({ trip, editable, applyChange, health, totals, onOpenO
   const openDecisions = db.decisions.filter(d => d.tripId === trip.id && d.status === 'open').length
   const optionalExpenses = trip.expenses.filter(e => e.optional).length
 
-  /** Same cross-day move helper as the Timeline — every Board mutation previews. */
-  function handleMoveStopInto(stopId: string, fromDayIndex: number, toDayIndex: number, position: number) {
+  /** Cross-day move — the shared stopOrder rule, and every Board mutation
+      previews. The drag passes its own insertion slot; the move dialog passes
+      none, so the stop lands by ROAD order instead of being appended — the
+      same rule the Timeline's dialog follows. A day that has since vanished
+      refuses with a message, never a silent drop. */
+  function handleMoveStopInto(stopId: string, _fromDayIndex: number, toDayIndex: number, position: number | null) {
+    if (!trip.days.some(d => d.index === toDayIndex)) {
+      toast(`Day ${toDayIndex + 1} is no longer on this trip — the stop stayed on its day.`, 'err')
+      return
+    }
     applyChange(draft => {
-      let moved: ItineraryStop | undefined
-      for (const d of draft.days) {
-        const idx = d.stops.findIndex(s => s.id === stopId)
-        if (idx >= 0) {
-          [moved] = d.stops.splice(idx, 1)
-          d.stops.forEach((s, j) => { s.orderInDay = j + 1 })
-          break
-        }
+      let kmOf: ((s: ItineraryStop) => number | null) | undefined
+      if (position == null) {
+        const target = draft.days.find(d => d.index === toDayIndex)
+        if (!target) return
+        const journey = buildJourney(draft, target, legCorrections)
+        const road = dayRoadPolyline(journey.points, legCorrections) ?? journey.points
+        kmOf = (s) => kmFromStartForHit({ latitude: s.lat, longitude: s.lng }, road)
       }
-      const target = draft.days.find(d => d.index === toDayIndex)
-      if (moved && target) {
-        const pos = Math.max(0, Math.min(position, target.stops.length))
-        moved.orderInDay = pos + 1
-        target.stops.splice(pos, 0, moved)
-        target.stops.forEach((s, j) => { s.orderInDay = j + 1 })
-      }
+      moveStopToDay(draft.days, stopId, toDayIndex, position, kmOf)
     }, 'move-day', toDayIndex)
   }
 
@@ -259,7 +260,7 @@ function BoardColumn({ day, allDays, editable, warnings, focused, onToggleFocus,
   warnings: ScheduleWarning[]
   focused: boolean
   onToggleFocus: (focus: boolean) => void
-  onMoveStopIn: (stopId: string, fromDay: number, toDay: number, position: number) => void
+  onMoveStopIn: (stopId: string, fromDay: number, toDay: number, position: number | null) => void
   onReorder: (dayIndex: number, fromIdx: number, toIdx: number) => void
   onDelete: (stopId: string, dayIndex: number) => void
   onAdd: () => void
@@ -269,10 +270,7 @@ function BoardColumn({ day, allDays, editable, warnings, focused, onToggleFocus,
   // Keyboard/touch alternative to dragging: ▲▼ reorders within the day, the
   // ↔ button opens a move-to-day modal (UI audit: Board was drag-only).
   const [moveStop, setMoveStop] = useState<ItineraryStop | null>(null)
-  const ordered = useMemo(
-    () => [...day.stops].filter(s => s.status !== 'rejected').sort((a, b) => a.orderInDay - b.orderInDay),
-    [day],
-  )
+  const ordered = useMemo(() => activeStopsInOrder(day), [day])
   const stopsRef = useRef<HTMLDivElement>(null)
   // Liquid drag pattern (bencho-style, Timeline parity): the DOM order NEVER
   // changes mid-drag. The carried card is pinned to the pointer by the engine
@@ -351,7 +349,7 @@ function BoardColumn({ day, allDays, editable, warnings, focused, onToggleFocus,
   const sev = warnings.some(w => w.severity === 'high') ? 'high'
     : warnings.some(w => w.severity === 'medium') ? 'medium' : undefined
   const topWarn = warnings[0]
-  const totalStops = day.stops.filter(s => s.status !== 'rejected').length
+  const totalStops = ordered.length
 
   // FLIP slot-in: when this column's card arrangement changes (same-day drag
   // reorder, or a card slotting in from another day), every card animates from
@@ -479,14 +477,19 @@ function BoardColumn({ day, allDays, editable, warnings, focused, onToggleFocus,
 
       {moveStop && (
         <Modal open title={`Move “${moveStop.title}” to…`} onClose={() => setMoveStop(null)}>
-          <p className="small muted" style={{ margin: '0 0 12px' }}>It lands at the end of the chosen day — reorder from there.</p>
+          <p className="small muted" style={{ margin: '0 0 12px' }}>It lands where the day's route says it belongs, not at the end.</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {allDays.filter(d => d.index !== day.index).map(d => (
-              <button key={d.id} type="button" className="btn btn-outline" style={{ width: '100%', justifyContent: 'flex-start' }}
-                onClick={() => { onMoveStopIn(moveStop.id, day.index, d.index, d.stops.length); setMoveStop(null) }}>
-                Day {d.index + 1}{d.title ? ` — ${d.title}` : ''} · {d.stops.length} stop{d.stops.length === 1 ? '' : 's'}
-              </button>
-            ))}
+            {allDays.filter(d => d.index !== day.index).map(d => {
+              // Count what the column header counts: rejected stops are hidden
+              // on the Board and must not inflate the day's size here (#371).
+              const count = activeStopsInOrder(d).length
+              return (
+                <button key={d.id} type="button" className="btn btn-outline" style={{ width: '100%', justifyContent: 'flex-start' }}
+                  onClick={() => { onMoveStopIn(moveStop.id, day.index, d.index, null); setMoveStop(null) }}>
+                  Day {d.index + 1}{d.title ? ` — ${d.title}` : ''} · {count} stop{count === 1 ? '' : 's'}
+                </button>
+              )
+            })}
           </div>
         </Modal>
       )}
