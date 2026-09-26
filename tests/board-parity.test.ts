@@ -69,7 +69,9 @@ describe('#372 — a Board mutation is guarded like its siblings', () => {
   it('memoizes the column and the embedded map, with no inline literal in the props', () => {
     expect(board).toMatch(/const BoardColumn = React\.memo\(function BoardColumn/)
     expect(board).toMatch(/const MemoTripMap = React\.memo\(TripMap\)/)
-    expect(board).toMatch(/<MemoTripMap trip=\{trip\} focusDay=\{focusedDay\} showToolbar=\{false\} \/>/)
+    // …rendered with the same props it always took (the road geometry it now
+    // also receives is asserted in tests/trip-road.test.ts, #370)
+    expect(board).toMatch(/<MemoTripMap trip=\{trip\} focusDay=\{focusedDay\} showToolbar=\{false\}/)
     // one shared empty array — `?? []` in a prop position would re-render the column
     expect(board).toMatch(/const NO_WARNINGS: ScheduleWarning\[\] = \[\]/)
     expect(board).toMatch(/warn\.byDay\.get\(day\.index\) \?\? NO_WARNINGS/)
