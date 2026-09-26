@@ -44,8 +44,10 @@ vi.mock('../src/lib/supabase', () => {
 
 import {
   addDecision, voteOnDecision, resolveDecision, addStop, deleteStop, restoreStop,
+  addSuggestion, acceptSuggestionIntoTimeline,
   duplicateTrip, tripById, getSnapshot, _setTripWriteDebounceMs,
 } from '../src/store/store'
+import type { StopSuggestion } from '../src/data/types'
 
 _setTripWriteDebounceMs(0)
 
@@ -139,7 +141,7 @@ describe('resolveDecision lands the winning place on the timeline', () => {
     expect(getSnapshot().decisions.find(x => x.id === d.id)!.status).toBe('resolved')
   })
 
-  it('dayIndex clamps to the trip\u2019s actual day range', () => {
+  it('a dayIndex that names no day is NOT clamped onto the last day (#336)', () => {
     const copy = singleTrip()
     getSnapshot().sessionUserId = ownerId
     addDecision(copy.id, {
@@ -150,8 +152,25 @@ describe('resolveDecision lands the winning place on the timeline', () => {
     const d = getSnapshot().decisions[getSnapshot().decisions.length - 1]
     resolveDecision(d.id, d.options[0].id)
     const trip = tripById(copy.id)!
-    const lastDay = trip.days[trip.days.length - 1]
-    expect(lastDay.stops.some(s => s.title === PLACE.title)).toBe(true)
+    // The old behaviour clamped to the LAST day: a plan nobody voted on.
+    expect(trip.days.some(day => day.stops.some(s => s.title === PLACE.title))).toBe(false)
+    // The decision itself still resolves — only the silent landing is refused.
+    expect(getSnapshot().decisions.find(x => x.id === d.id)!.status).toBe('resolved')
+  })
+
+  it('a place with no day at all never lands on Day 1 (#336)', () => {
+    const copy = singleTrip()
+    getSnapshot().sessionUserId = ownerId
+    const place = { ...PLACE } as Record<string, unknown>
+    delete place.dayIndex
+    addDecision(copy.id, {
+      question: 'Should we add it?',
+      context: 'Shortlisted from the Map rail',
+      options: [{ id: 'tmp_0', label: PLACE.title, place: place as unknown as typeof PLACE }],
+    })
+    const d = getSnapshot().decisions[getSnapshot().decisions.length - 1]
+    resolveDecision(d.id, d.options[0].id)
+    expect(tripById(copy.id)!.days.some(day => day.stops.some(s => s.title === PLACE.title))).toBe(false)
   })
 
   it('the landed stop persists to the trips table (write-through)', async () => {
@@ -201,5 +220,96 @@ describe('delete-from-map: deleteStop + restoreStop', () => {
     const before = tripById(copy.id)!.days[0].stops.length
     expect(() => deleteStop(copy.id, 'no-such-stop')).not.toThrow()
     expect(tripById(copy.id)!.days[0].stops.length).toBe(before)
+  })
+})
+
+// ============ #336 — resolve/accept are one-shot and never double a place ============
+// Resolving a vote used to bypass every guard a manual add carries: a
+// double-click ran the landing branch twice (each addStop minted a fresh stop
+// id) and an out-of-range day was clamped to the last day. Accepting a
+// suggestion had the same hole plus a crash when its day no longer existed.
+// These pin the store-level contract the buttons rely on.
+describe('#336 — resolve and accept are one-shot', () => {
+  it('a double resolve adds the winner exactly once', () => {
+    const copy = singleTrip()
+    const before = tripById(copy.id)!.days[0].stops.length
+    const d = raisePlaceDecision(copy.id)
+    voteOnDecision(d.id, d.options[0].id)
+    resolveDecision(d.id, d.options[0].id)
+    resolveDecision(d.id, d.options[0].id) // the double-click
+    expect(tripById(copy.id)!.days[0].stops.length).toBe(before + 1)
+  })
+
+  it('resolving an already-resolved decision is a no-op, including the option', () => {
+    const copy = singleTrip()
+    const d = raisePlaceDecision(copy.id)
+    resolveDecision(d.id, d.options[0].id)
+    const stops = tripById(copy.id)!.days[0].stops.length
+    // A stale UI (or a second click) naming the OTHER option must not
+    // re-resolve the decision or land the other place.
+    resolveDecision(d.id, d.options[1].id)
+    const live = getSnapshot().decisions.find(x => x.id === d.id)!
+    expect(live.resolvedOptionId).toBe(d.options[0].id)
+    expect(tripById(copy.id)!.days[0].stops.length).toBe(stops)
+    expect(tripById(copy.id)!.days[0].stops.some(s => s.title === 'Other place 1')).toBe(false)
+  })
+
+  it('a vote for a place already on the trip does not double it', () => {
+    const copy = singleTrip()
+    getSnapshot().sessionUserId = ownerId
+    addStop(copy.id, 0, {
+      title: PLACE.title, category: 'food', locationName: PLACE.locationName,
+      lat: PLACE.lat, lng: PLACE.lng, visitMinutes: 45,
+      entryFeeInrPerPerson: 0, transportCostInrTotal: 0, priority: 'nice-to-have', status: 'confirmed',
+    })
+    const d = raisePlaceDecision(copy.id)
+    resolveDecision(d.id, d.options[0].id)
+    expect(tripById(copy.id)!.days[0].stops.filter(s => s.title === PLACE.title)).toHaveLength(1)
+    // The decision still resolves — only the duplicate stop is refused.
+    expect(getSnapshot().decisions.find(x => x.id === d.id)!.status).toBe('resolved')
+  })
+
+  function raiseSuggestion(tripId: string, over: Partial<Omit<StopSuggestion, 'id' | 'votes' | 'comments' | 'status' | 'createdAt' | 'tripId'>> = {}) {
+    getSnapshot().sessionUserId = ownerId
+    addSuggestion(tripId, {
+      dayIndex: 0, proposedBy: ownerId, title: 'Suggestion Cafe', category: 'food',
+      locationName: 'Somewhere', lat: 10.1, lng: 76.7, description: '', visitMinutes: 30,
+      estimatedEntryFeeInr: 0, estimatedTransportInr: 0,
+      ...over,
+    })
+    const all = getSnapshot().suggestions
+    return all[all.length - 1]
+  }
+
+  it('accepting a suggestion twice adds one stop', () => {
+    const copy = singleTrip()
+    const sg = raiseSuggestion(copy.id)
+    acceptSuggestionIntoTimeline(copy.id, sg.id)
+    acceptSuggestionIntoTimeline(copy.id, sg.id) // the double-tap
+    expect(tripById(copy.id)!.days[0].stops.filter(s => s.title === 'Suggestion Cafe')).toHaveLength(1)
+    expect(getSnapshot().suggestions.find(x => x.id === sg.id)!.status).toBe('accepted')
+  })
+
+  it('a suggestion for a day that no longer exists is refused, not crashed', () => {
+    const copy = singleTrip()
+    const sg = raiseSuggestion(copy.id, { dayIndex: 42 })
+    expect(() => acceptSuggestionIntoTimeline(copy.id, sg.id)).not.toThrow()
+    expect(tripById(copy.id)!.days.some(day => day.stops.some(s => s.title === 'Suggestion Cafe'))).toBe(false)
+    // It stays open so the user can still act on it elsewhere.
+    expect(getSnapshot().suggestions.find(x => x.id === sg.id)!.status).toBe('open')
+  })
+
+  it('accepting a suggestion whose place is already on the plan does not double it', () => {
+    const copy = singleTrip()
+    getSnapshot().sessionUserId = ownerId
+    addStop(copy.id, 0, {
+      title: 'Suggestion Cafe', category: 'food', locationName: 'Somewhere',
+      lat: 10.1, lng: 76.7, visitMinutes: 30,
+      entryFeeInrPerPerson: 0, transportCostInrTotal: 0, priority: 'nice-to-have', status: 'confirmed',
+    })
+    const sg = raiseSuggestion(copy.id)
+    acceptSuggestionIntoTimeline(copy.id, sg.id)
+    expect(tripById(copy.id)!.days[0].stops.filter(s => s.title === 'Suggestion Cafe')).toHaveLength(1)
+    expect(getSnapshot().suggestions.find(x => x.id === sg.id)!.status).toBe('accepted')
   })
 })

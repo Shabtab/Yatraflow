@@ -296,8 +296,11 @@ export interface DecisionPlacePayload {
   visitMinutes: number
   openTime?: string
   closeTime?: string
-  /** day the planner suggested it for, clamped at resolution time */
-  dayIndex: number
+  /** The day the planner suggested this place for. ABSENT when the planner
+   *  could not place it on the route (no along-route measurement) — the
+   *  resolution then refuses to guess a day instead of landing it on Day 1
+   *  (#336). Matched by day INDEX at resolution time, never clamped. */
+  dayIndex?: number
 }
 
 export interface DecisionOption {

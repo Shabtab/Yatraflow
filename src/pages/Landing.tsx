@@ -5,6 +5,7 @@ import { ArrowDown, ArrowRight, Clock, MapPin, Plane, Route, TriangleAlert, User
 import { RouteSquiggle, useInView, usePageVisible } from '../components/ui'
 import { PlanBench } from '../components/PlanBench'
 import { scrollBehavior } from '../lib/motion'
+import { CREATE_ROUTE, CREATE_PATH } from '../lib/routes'
 import { useReveal } from '../hooks/useReveal'
 import { useDb, currentUser } from '../store/store'
 
@@ -13,9 +14,10 @@ export function LandingPage({ onNavigate }: { onNavigate: (r: string) => void })
   const db = useDb()
   const me = currentUser(db)
   // Flow-aware hero CTA (Trip Ticket flow, Sep 2026): signed-in visitors go
-  // straight to the create-trip page (route /new); everyone else funnels
-  // through signup and lands back on it via the auth page's `next` param.
-  const startPlanningHref = me ? '#/new' : '#/auth?mode=signup&next=%2Fnew'
+  // straight to the create-trip page; everyone else funnels through signup and
+  // lands back on it via the auth page's `next` param — both forms read from
+  // lib/routes now, so this CTA cannot drift from the route the router matches.
+  const startPlanningHref = me ? CREATE_ROUTE : `#/auth?mode=signup&next=${encodeURIComponent(CREATE_PATH)}`
   // One label per action (review finding 8): the hero CTA funnels signed-out
   // visitors through signup AND lands them in the create-trip flow (the
   // `next` param), so it says what it does rather than reusing the chrome

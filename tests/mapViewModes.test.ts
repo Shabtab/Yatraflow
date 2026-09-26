@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   applyViewModeOnMap,
+  HERO_3D_CAMERA,
   HILLSHADE_LAYER,
   MAP_VIEW_MODES,
   MAP_VIEW_MODE_META,
@@ -8,6 +9,7 @@ import {
   YF_DEM_SOURCE_ID,
   YF_HILLSHADE_LAYER_ID,
   heroBearingForRoute,
+  heroCameraMove,
   isWaterishLayerId,
   parseMapViewMode,
   resolveHillshadeBeforeId,
@@ -239,5 +241,48 @@ describe('heroBearingForRoute — the dynamic 3D hero camera', () => {
     expect(heroBearingForRoute(undefined)).toBeNull()
     expect(heroBearingForRoute([{ lat: 20, lng: 72 }])).toBeNull()
     expect(heroBearingForRoute([{ lat: 20, lng: 72 }, { lat: 20.00001, lng: 72.00001 }])).toBeNull()
+  })
+})
+
+describe('heroCameraMove (#332 R1)', () => {
+  it('2d → 3d enters with the road\'s own bearing', () => {
+    expect(heroCameraMove('3d', '2d', 42, null)).toEqual({ move: 'enter', bearing: 42 })
+  })
+
+  it('terrain → 3d is an entry too, not a flatten', () => {
+    expect(heroCameraMove('3d', 'terrain', 90, null)).toEqual({ move: 'enter', bearing: 90 })
+  })
+
+  it('a bearing that arrives AFTER 3d opened re-aims the camera', () => {
+    // The bug this rule exists for: OSRM resolved late, the fallback bearing had
+    // already been eased, and the edge trigger alone left the camera stuck on it.
+    const geometryLess = heroCameraMove('3d', '3d', null, null)
+    expect(geometryLess.move).toBe('re-aim')
+    expect(geometryLess.bearing).toBe(HERO_3D_CAMERA.bearing)
+    expect(heroCameraMove('3d', '3d', 42, HERO_3D_CAMERA.bearing)).toEqual({ move: 're-aim', bearing: 42 })
+  })
+
+  it('an unchanged bearing is a no-op — this is what stops the camera grinding', () => {
+    expect(heroCameraMove('3d', '3d', 42, 42).move).toBe('none')
+    expect(heroCameraMove('2d', '2d', null, null).move).toBe('none')
+    expect(heroCameraMove('terrain', 'terrain', 42, 42).move).toBe('none')
+  })
+
+  it('leaving 3d flattens, from any other mode', () => {
+    expect(heroCameraMove('2d', '3d', 42, 42).move).toBe('flatten')
+    expect(heroCameraMove('terrain', '3d', 42, 42).move).toBe('flatten')
+  })
+
+  it('a geometry-less trip keeps the prototype fallback, then re-aims off it', () => {
+    const entered = heroCameraMove('3d', '2d', null, null)
+    expect(entered.bearing).toBe(HERO_3D_CAMERA.bearing)
+    expect(heroCameraMove('3d', '3d', 187, entered.bearing)).toEqual({ move: 're-aim', bearing: 187 })
+  })
+
+  it('re-aim reports the bearing only — the caller must not re-pitch', () => {
+    // Pinned as a contract: `re-aim` exists so a late resolve does not pitch the
+    // camera out from under someone already looking at the 3d view. The move name
+    // is the whole signal; there is no "re-aim with pitch" state.
+    expect(heroCameraMove('3d', '3d', 12, 300).move).toBe('re-aim')
   })
 })

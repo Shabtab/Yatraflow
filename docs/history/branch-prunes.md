@@ -347,3 +347,34 @@ every branch whose PR is open — `fix/hub-recovery-path` (#439), `fix/fixture-t
 `feat/resolve-pick-prompt` (#430), `cline/ftq10q0f` (#322). The closeout record for the waves
 themselves, including the four rendered checks that were never driven, is
 [`wave-0-1-closeout.md`](wave-0-1-closeout.md).
+
+## 2026-09-25 — the v0.67.0 promotion: 5 refs
+
+The promote branch was deleted at its merge, gated the same way as every sweep above: verified an
+ancestor of `origin/main` immediately before deletion, no open PR, head SHA recorded first. `test`
+was `73c7e0e` and `main` `af373cc` when the gate ran.
+
+| Branch | Head SHA | Owning PR |
+|---|---|---|
+| `promote/v0.67.0` | `ee132c4644c596a9a9b32360162ef02e1b931ffd` | #446 |
+| `docs/post-promotion-v0.67.0` | `3586ff058862e416c327f23bd99f0c11b0976e5c` | #447 |
+
+**The four branches the sweep above held back because their PRs were open had all merged by the
+time this one ran, and each passed the same gate** — every head a recorded ancestor of
+`origin/main`, no open PR. Remote heads went **11 → 7**.
+
+| Branch | Head SHA | Owning PR |
+|---|---|---|
+| `fix/hub-recovery-path` | `2a71c6352bf95e63f81d2209cdd75889f08189e5` | #439 |
+| `fix/fixture-tooling` | `1975f487a25c54a35aa2c2a03828b893b7c03307` | #440 |
+| `cline/ftq10q0f` | `b3d0ef9a56007a8aef57bc752e9cb8e93a4d8130` | #322 |
+| `feat/resolve-pick-prompt` | `80cea7727682cd44c22a943470042586d8ac1c35` | #430 |
+
+Two of those heads are not the branch's original commit: `fix/hub-recovery-path` and
+`fix/fixture-tooling` were each updated onto `test` before their PRs could merge (both conflicted
+on `CHANGELOG.md`, and neither had ever run CI), so what is recorded here is the merge-commit tip
+that actually landed. Recovery is still through `refs/pull/<n>/head`, as always.
+
+Kept, unchanged: `refactor/brand-seam` and `explore/landing-hero-local` (no PR has ever existed, so
+the branch is the only copy), `feat/share-preview-og` (closed as superseded), and the two `cline`
+heads that fail the ancestor gate (`g9wfhxqs`, `n478z8sr`).

@@ -4,7 +4,7 @@
 // first/last, mid-day anchors are refused (never dropped), <3 movable is a
 // no-op, rejected stops survive the reorder.
 import { describe, it, expect } from 'vitest'
-import { optimizeDayOrder, dayRouteKm, originOf } from '../src/lib/engine'
+import { optimizeDayOrder, dayRouteKm, originOf, measuredLegCount, optimiseKmLabel, legKey } from '../src/lib/engine'
 import type { ItineraryStop, Trip } from '../src/data/types'
 
 let seq = 0
@@ -28,7 +28,9 @@ describe('optimizeDayOrder', () => {
     const far1 = stop(10.000, 10.300), near1 = stop(10.000, 10.100), far2 = stop(10.000, 10.250), near2 = stop(10.000, 10.150)
     const zigzag = [far1, near1, far2, near2] as ItineraryStop[]
     zigzag.forEach((s, i) => { s.orderInDay = i + 1 })
-    const res = optimizeDayOrder(origin, zigzag)
+    // The last day of a trip: nothing derives from its tail, so the whole day
+    // is the sweep's to reorder.
+    const res = optimizeDayOrder(origin, zigzag, { hasNextDay: false })
     expect(res.changed).toBe(true)
     expect(res.afterKm).toBeLessThan(res.beforeKm)
     // the optimal sweep visits them in km order from the origin
@@ -65,7 +67,7 @@ describe('optimizeDayOrder', () => {
     ] as ItineraryStop[]
     input.forEach((s, i) => { s.orderInDay = i + 1 })
     const before = input.map(s => ({ id: s.id, orderInDay: s.orderInDay }))
-    const res = optimizeDayOrder(origin, input)
+    const res = optimizeDayOrder(origin, input, { hasNextDay: false })
     expect(res.changed).toBe(true)
     expect(input.map(s => ({ id: s.id, orderInDay: s.orderInDay }))).toEqual(before)
   })
@@ -109,7 +111,7 @@ describe('optimizeDayOrder', () => {
     const a = stop(10.000, 10.100), b = stop(10.000, 10.400), c = stop(10.000, 10.200)
     const day = [rej, a, b, c] as ItineraryStop[]
     day.forEach((s, i) => { s.orderInDay = i + 1 })
-    const res = optimizeDayOrder(origin, day)
+    const res = optimizeDayOrder(origin, day, { hasNextDay: false })
     expect(res.stops.map(s => s.id)).toContain(rej.id)
     const rejIdx = res.stops.findIndex(s => s.id === rej.id)
     // rejected ride at the end (engine skips them wherever they sit)
@@ -144,19 +146,51 @@ describe('optimizeDayOrder', () => {
     expect(res.stops.map(s => s.id)).toEqual([a.id, b.id, c.id, base.id])
   })
 
-  it('pins the base by its category, not by its distance — the same stop as a sight moves', () => {
-    // Negative control: identical geometry, but the tail stop is not somewhere
-    // you sleep, so it is a normal stop and the sweep is free to move it.
+  it('a sightseeing tail is free on the trip’s LAST day, where nothing derives from it', () => {
     const a = stop(10.000, 10.100, { title: 'Sight A' })
     const b = stop(10.000, 10.200, { title: 'Sight B' })
     const c = stop(10.000, 10.300, { title: 'Sight C' })
     const evening = stop(10.000, 10.150, { title: 'Evening stop' })
     const day = [c, a, b, evening] as ItineraryStop[]
     day.forEach((s, i) => { s.orderInDay = i + 1 })
-    const res = optimizeDayOrder(origin, day)
+    const res = optimizeDayOrder(origin, day, { hasNextDay: false })
     const ids = res.stops.map(s => s.id)
     expect(ids[ids.length - 1]).not.toBe(evening.id)
     expect(ids).toHaveLength(4)
+  })
+
+  it('pins ANY stored tail when a later day wakes up from it — not just a bed (#341)', () => {
+    // The reported shape: a food-tailed evening ("dinner in Candolim") is what
+    // `dayEndPosition` hands the next morning. Pinning only hotel/rest stops
+    // let the optimiser move tomorrow's start point up to ~16 km.
+    const dinner = stop(10.000, 10.150, { category: 'food', title: 'Dinner in Candolim' })
+    const day1 = [
+      stop(10.000, 10.300, { title: 'D1 far' }),
+      stop(10.000, 10.100, { title: 'D1 near' }),
+      stop(10.000, 10.200, { title: 'D1 mid' }),
+      dinner,
+    ] as ItineraryStop[]
+    day1.forEach((s, i) => { s.orderInDay = i + 1 })
+    const day2 = [stop(10.400, 10.400, { title: 'D2 somewhere' })] as ItineraryStop[]
+    const trip = {
+      id: 't1', name: 'T', startLocation: 'A', destinations: ['B'],
+      startLocationCoords: { lat: 10, lng: 10 },
+      startDate: '2026-09-01', endDate: '2026-09-02', travellers: 2,
+      transportMode: 'car', budgetPerPersonInr: 10000, travelStyle: 'balanced',
+      fixedCommitments: [], expenses: [], coverEmoji: '🚗', visibility: 'private',
+      createdAt: 0, updatedAt: 0,
+      days: [
+        { index: 0, title: 'Day 1', stops: day1 },
+        { index: 1, title: 'Day 2', stops: day2 },
+      ],
+    } as unknown as Trip
+    const wakeUpBefore = originOf(trip, 1)
+    const res = optimizeDayOrder(originOf(trip, 0), day1, { hasNextDay: true })
+    const optimised = { ...trip, days: [{ ...trip.days[0], stops: res.stops }, trip.days[1]] } as Trip
+    // The property the fix exists for, asserted directly: the optimiser may
+    // tidy the day, it may NOT move where tomorrow starts.
+    expect(originOf(optimised, 1)).toEqual(wakeUpBefore)
+    expect(res.stops[res.stops.length - 1].id).toBe(dinner.id)
   })
 
   it('optimising a day does not move the next day\u2019s wake-up point', () => {
@@ -197,6 +231,23 @@ describe('optimizeDayOrder', () => {
     expect(originOf(optimised, 1)).toEqual(wakeUpBefore)
   })
 
+  it('labels an unmeasured estimate as one (#341)', () => {
+    // Nothing measured → the dialog must say the number is an estimate, not
+    // print chord km as road km behind a scale factor of 1.
+    expect(optimiseKmLabel(12.4, 1, 0)).toBe('~12 km (est.)')
+    // Measured road → the number stands on its own.
+    expect(optimiseKmLabel(12.4, 1.25, 3)).toBe('16 km')
+    // The signal itself: how many of the day's legs carry a road estimate.
+    const a = { lat: 10, lng: 10 }, b = { lat: 10.1, lng: 10.2 }, c = { lat: 10.2, lng: 10.4 }
+    expect(measuredLegCount([a, b, c], undefined)).toBe(0)
+    expect(measuredLegCount([a, b, c], {})).toBe(0)
+    expect(measuredLegCount([a, b, c], { [legKey(a, b)]: { distanceKm: 20, durationMinutes: 40 } })).toBe(1)
+    expect(measuredLegCount([a, b, c], {
+      [legKey(a, b)]: { distanceKm: 20, durationMinutes: 40 },
+      [legKey(b, c)]: { distanceKm: 18, durationMinutes: 36 },
+    })).toBe(2)
+  })
+
   it('open time breaks near-ties: the earlier-opening stop is picked first', () => {
     // two candidates equidistant from origin; one opens at 09:00, other 17:00
     const early = stop(10.000, 10.100, { openTime: '09:00', title: 'Early' })
@@ -204,7 +255,7 @@ describe('optimizeDayOrder', () => {
     const others = [stop(10.000, 10.200), stop(10.000, 10.300)] as ItineraryStop[]
     const day = [others[0], others[1], late, early] as ItineraryStop[]
     day.forEach((s, i) => { s.orderInDay = i + 1 })
-    const res = optimizeDayOrder(origin, day)
+    const res = optimizeDayOrder(origin, day, { hasNextDay: false })
     const first = res.stops[0]
     expect(first.id).toBe(early.id)
   })

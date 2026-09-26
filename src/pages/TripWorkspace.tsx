@@ -28,7 +28,13 @@ import { useDestinationCover } from '../hooks/useDestinationCover'
 import { pickTripQueryCandidates } from '../lib/tripThumb'
 import { OverviewTab } from './trip/OverviewTab'
 import { TimelineTab } from './trip/TimelineTab'
-import { MapTab, MapTabSkeleton } from './trip/MapTab'
+import { MapTabSkeleton } from './trip/MapTabSkeleton'
+// #332 R4: the Map TAB is lazy, not just the renderer inside it. MapTab statically
+// imports the whole suggestion stack (geocode, engine, daySlots, tripDna,
+// storyArcs, slackPrompts…), so a static import here put all of it in the
+// workspace chunk whether or not the tab was ever opened. The skeleton stays a
+// static, dependency-free module so the Suspense fallback cannot suspend itself.
+const MapTab = React.lazy(() => import('./trip/MapTab').then(m => ({ default: m.MapTab })))
 import { GroupInputTab } from './trip/GroupInputTab'
 import { BudgetTab } from './trip/BudgetTab'
 import { ShareTab } from './trip/ShareTab'
@@ -132,6 +138,11 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
   // ONE road measurement for the whole workspace (#188): the engine's leg
   // corrections and the Map tab's road view come from the same chain.
   const { corrections: legCorrections, road } = useTripRoad(trip)
+  // #342: the preview must measure with the SAME road data the timeline
+  // renders, but `applyChange`'s identity is a memo prop for DaySection — so
+  // the corrections are read through a ref instead of entering its deps.
+  const legCorrRef = useRef(legCorrections)
+  legCorrRef.current = legCorrections
 
   // Auto (Wikipedia) destination photo for the workspace header cover badge.
   // Walk all candidates (last stop → earlier stops → start city) so a single
@@ -175,7 +186,7 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
     // COMBINED delta, which is what Keep will actually write.
     const staged = pendingRef.current
     const proposed = stagedChange(trip, staged?.proposed ?? null, mutator)
-    const result = computeImpact(trip, proposed, kind, dayIndex)
+    const result = computeImpact(trip, proposed, kind, dayIndex, legCorrRef.current)
     // The baseline is recorded only when a NEW preview starts: a chain keeps
     // the original, so a direct write that landed mid-preview still reads stale.
     if (!staged) baseRef.current = trip
@@ -351,7 +362,7 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
       {tab === 'timeline' && <TimelineTab key={effective.id} trip={effective} editable={editable} applyChange={applyChange} previewOpen={!!pending} legCorrections={legCorrections} suggestionCache={suggestionCache} onOpenBoard={() => setTab('board')} focusDay={timelineFocusDay} onFocusConsumed={clearTimelineFocusDay} />}
       {tab === 'board' && (
         <React.Suspense fallback={<div className="container loading-block"><div className="spinner" />Loading board…</div>}>
-          <BoardView trip={effective} editable={editable} applyChange={applyChange} health={health} totals={totals}
+          <BoardView trip={effective} editable={editable} applyChange={applyChange} health={health} totals={totals} legCorrections={legCorrections} previewOpen={!!pending} road={road}
             onOpenOverview={() => setTab('overview')} onOpenTimeline={() => setTab('timeline')} />
         </React.Suspense>
       )}
@@ -428,12 +439,18 @@ function useTripRoad(trip: Trip | null | undefined): {
       return
     }
     let cancelled = false
+    // #325: two layers, two jobs. The flag guards `setState`; the controller stops
+    // the network work. Without the abort the whole OSRM chain (and its parallel
+    // per-leg fallbacks) ran to completion behind the flag — burning quota on a
+    // trip the user had already left. And because a trip switch unmounts nothing
+    // here, a late result could still land on the next trip's view.
+    const controller = new AbortController()
     setState({ status: 'pending', legs: null })
-    measureRoadChain(chain.points, getAssumptions(trip)).then(outcome => {
+    measureRoadChain(chain.points, getAssumptions(trip), { signal: controller.signal }).then(outcome => {
       if (cancelled) return
       setState(outcome.ok ? { status: 'ok', legs: outcome.legs } : { status: 'failed', legs: null })
     })
-    return () => { cancelled = true }
+    return () => { cancelled = true; controller.abort() }
     // chain reflects chainSig; trip is read for assumptions only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chainSig, chain, attempt])

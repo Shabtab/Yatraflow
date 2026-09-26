@@ -14,10 +14,10 @@ import {
 } from 'lucide-react'
 import type { Trip, ItineraryStop } from '../../../data/types'
 import {
-  simulateDay, originOf, getAssumptions, coLocates, minutesToHM, hmToMinutes, formatInr,
-  predecessorOf, nextAfter, buildJourney, 
-  computeCategoryBias, optimizeDayOrder, roadScaleRatio,
+  minutesToHM, hmToMinutes, formatInr,
+  computeCategoryBias, optimizeDayOrder, roadScaleRatio, measuredLegCount, optimiseKmLabel,
 } from '../../../lib/engine'
+import { sameDaySectionProps, type DayCardFacts, type DayTotals } from '../../../lib/dayCards'
 import type { LegEstimate, ScheduleWarning, OptimizeDayResult } from '../../../lib/engine'
 import { routeChain, stayDaySummary, dwellSegments, visibleStops } from '../../../lib/daySummary'
 import { isDriveDay } from '../../../lib/ridePlan'
@@ -32,25 +32,34 @@ import { useSuggestionCache } from '../../../hooks/useSuggestionCache'
 import { searchNearbyPois } from '../../../lib/geocode'
 import type { PlaceHit } from '../../../lib/geocode'
 import { InlineIcon, MetaIcon } from '../../../components/icons'
-import { fetchDailyWeather, forecastAvailable, isoAddDays, wmoInfo } from '../../../lib/weather'
+import { fetchDailyWeather, forecastAvailable, isoAddDays, weatherAnchor, wmoInfo } from '../../../lib/weather'
 import type { DayWeather } from '../../../lib/weather'
 import { TravelPanel } from './TravelPanel'
 import { DaySpark } from './DaySpark'
 
 /** Compact forecast chip for a single trip day (Timeline day headers). */
-function DayWeatherChip({ trip, dayIndex }: { trip: Trip; dayIndex: number }) {
+function DayWeatherChip({ day, startDate }: { day: Trip['days'][number]; startDate: string }) {
   const [w, setW] = useState<DayWeather | null>(null)
-  const date = isoAddDays(trip.startDate, dayIndex)
+  const date = isoAddDays(startDate, day.index)
+  // #340: the chip asks about THIS day's own anchor, and the effect depends on
+  // the resolved coordinates instead of suppressing exhaustive-deps — a moved
+  // stop or a new city re-fetches, and a day with no anchor has no chip at all
+  // rather than another city's weather.
+  const anchor = useMemo(() => weatherAnchor(day), [day])
+  const lat = anchor?.lat
+  const lng = anchor?.lng
   useEffect(() => {
-    if (!forecastAvailable(trip.startDate)) return
+    // Gate on THIS day's date, not the trip's start: a 15-day window that opens
+    // on day 1 still leaves day 12 beyond the forecast, and Open-Meteo answers
+    // that with a 400 rather than a forecast (#340). No chip is the honest
+    // answer — the same rule as "no anchor, no chip".
+    if (lat == null || lng == null || !forecastAvailable(date)) { setW(null); return }
     let cancelled = false
-    fetchDailyWeather(
-      trip.days.flatMap(d => d.stops)[0]?.lat ?? 10.5,
-      trip.days.flatMap(d => d.stops)[0]?.lng ?? 76.5,
-      date, 1,
-    ).then(res => { if (!cancelled) setW(res[date] ?? null) }).catch(() => {})
+    fetchDailyWeather(lat, lng, date, 1)
+      .then(res => { if (!cancelled) setW(res[date] ?? null) })
+      .catch(() => {})
     return () => { cancelled = true }
-  }, [date]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [lat, lng, date])
   if (!w) return null
   const info = wmoInfo(w.code)
   return (
@@ -165,11 +174,22 @@ function SmoothCollapse({ open, children, fallbackFocus }: { open: boolean; chil
 
 // React.memo on the timeline hot path: TimelineTab re-renders on every store
 // commit (the shell's useDb feeds the tab counts), but with stable props each
-// DaySection now bails out unless ITS day/trip data actually changed (M3.1 made
-// trip references immutable, so `day`/`trip` are stable between commits).
-export const DaySection = React.memo(function DaySection({ day, trip, editable, open, onToggleOpen, onAdd, onEdit, onDelete, onMoveWithinDay, onReorderDay, onMoveBetweenDays, onMoveStopIn, onRenameDay, onCopyDay, onAddQuickStop, onSetDayStart, onAddPlannedHalts, warnings, onStatus, legCorrections, suggestionCache, dayTotals }: {
+// DaySection bails out unless ITS day data actually changed (M3.1 made trip
+// references immutable, so `day` is stable between commits).
+//
+// #347: that memo used to be defeated by `trip` itself — a new object on every
+// save — so one stop edit re-rendered every day and each day re-ran the engine
+// math for itself. The trip-wide slice this card reads now arrives pre-resolved
+// in `facts` (lib/dayCards.ts), and `trip` is handed over ONLY to the open day
+// (whose travel panel searches against the whole itinerary). A closed card
+// therefore cannot read the trip at all: `trip` is optional, so a `trip.x` on
+// the collapsed path is a compile error rather than a stale render.
+export const DaySection = React.memo(function DaySection({ day, trip, facts, editable, open, onToggleOpen, onAdd, onEdit, onDelete, onMoveWithinDay, onReorderDay, onMoveBetweenDays, onMoveStopIn, onRenameDay, onCopyDay, onAddQuickStop, onSetDayStart, onAddPlannedHalts, warnings, onStatus, legCorrections, suggestionCache, dayTotals }: {
   day: Trip['days'][number]
-  trip: Trip
+  /** fresh ONLY for the open day — everything else comes from `facts` */
+  trip?: Trip
+  /** the trip-wide slice this card reads, resolved once per trip change */
+  facts: DayCardFacts
   editable: boolean
   /** accordion state, owned by TimelineTab (one open day per trip) */
   open: boolean
@@ -177,7 +197,7 @@ export const DaySection = React.memo(function DaySection({ day, trip, editable, 
   legCorrections?: Record<string, LegEstimate>
   suggestionCache: ReturnType<typeof useSuggestionCache>
   /** this day's slice of computeTotals().byDay — transport + expenses + entry fees */
-  dayTotals?: { dayIndex: number; expensesInr: number; transportInr: number; totalInr: number; stops: number; distanceKm: number }
+  dayTotals?: DayTotals
   onAdd: (dayIndex: number) => void
   onEdit: (stopId: string) => void
   onDelete: (stopId: string, dayIndex: number) => void
@@ -197,10 +217,17 @@ export const DaySection = React.memo(function DaySection({ day, trip, editable, 
   warnings: ScheduleWarning[]
   onStatus: (stop: ItineraryStop, status: ItineraryStop['status']) => void
 }) {
-  const sim = simulateDay(day, trip, originOf(trip, day.index), day.index, legCorrections)
   // One unified journey per day — start → halts/visits → destination with an
   // arrival clock — regardless of distance. This is the single travel system.
-  const journey = useMemo(() => buildJourney(trip, day, legCorrections), [trip, day, legCorrections])
+  const sim = facts.sim
+  const journey = facts.journey
+  // The body keeps rendering through the collapse animation (SmoothCollapse
+  // unmounts it a beat after the class flip), while `trip` only arrives for the
+  // OPEN day. Hold the last one we were given so a fading body never loses its
+  // travel panel mid-animation — and a never-opened card never gets one at all.
+  const lastTrip = useRef(trip)
+  if (trip) lastTrip.current = trip
+  const bodyTrip = trip ?? lastTrip.current
   const visitCount = journey.points.filter(p => p.kind === 'visit').length
   // A stay day: the journey never leaves its base — no chain, no synthesized
   // destination. Intermediate days of a round trip parked at the destination.
@@ -215,22 +242,39 @@ export const DaySection = React.memo(function DaySection({ day, trip, editable, 
     // Same floor as the planner (#134): 90 km OR 2 h wheel — the planner gives
     // an 80 km / 3 h ghat day a real segment, so the header must call it a drive.
     : isDriveDay(journey.distanceKm, journey.driveMinutes) ? 'DRIVE' : 'MIXED'
-  const A = getAssumptions(trip)
+  const A = facts.assumptions
   const ordered = useMemo(() => [...day.stops].sort((a, b) => a.orderInDay - b.orderInDay), [day.stops])
   // ---- Optimize day order (anti-crisscross) ----
   // Preview is computed from the CURRENT day snapshot (pure engine call; the
   // helper clones its inputs, so the render-phase memo can't touch the store);
   // the apply goes through applyChange so the impact preview guards the commit.
   const [optPreview, setOptPreview] = useState<OptimizeDayResult | null>(null)
+  // #341: whether a LATER day wakes up from this one's tail decides whether the
+  // optimiser may touch the last stop at all. The surface owns that fact; the
+  // engine takes it as an argument.
+  const hasNextDay = facts.hasNextDay
+  const optOrigin = facts.origin
+  // The optimiser reads exactly two things — where the day starts (itself
+  // derived from the earlier days' endpoints) and this day's ordered stops — so
+  // the memo is keyed on that signature instead of on `trip`. The O(n²) sweep
+  // used to re-run on every unrelated store commit; the signature changes only
+  // when an input really did (#341).
+  const optKey = `${day.index}|${hasNextDay ? 1 : 0}|${optOrigin.lat.toFixed(5)},${optOrigin.lng.toFixed(5)}|${ordered.map(s => `${s.id}:${s.lat.toFixed(5)},${s.lng.toFixed(5)}:${s.orderInDay}:${s.status}:${s.auto ? 1 : 0}:${s.category}`).join('|')}`
   const optResult = useMemo(
-    () => optimizeDayOrder(originOf(trip, day.index), ordered),
-    [trip, day, ordered],
+    () => optimizeDayOrder(optOrigin, ordered, { hasNextDay }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- optKey IS the read set
+    [optKey],
   )
   // The optimizer's objective is straight-line (pairwise road km between
   // arbitrary stops would need N² route calls), but the numbers it SHOWS must
   // speak the road km the travel panel displays — rescale by the day's
-  // road-vs-chord ratio from the corrected legs (1 = no road data yet).
+  // road-vs-chord ratio from the corrected legs. With NO measured leg that ratio
+  // is 1, so the display was presenting chord km as road km with no qualifier;
+  // the labels below say which number it is (#341).
   const roadRatio = useMemo(() => roadScaleRatio(journey.points, legCorrections), [journey, legCorrections])
+  const roadLegs = useMemo(() => measuredLegCount(journey.points, legCorrections), [journey, legCorrections])
+  /** A distance label that never dresses chord math as a measured road km. */
+  const kmLabel = (km: number) => optimiseKmLabel(km, roadRatio, roadLegs)
   // --- Liquid drag (bencho-style, BoardView parity): the DOM order NEVER
   // changes mid-drag. The carried row is pinned to the pointer by the engine
   // (lib/touchDnd.ts) and its skin warps with the throw; rows between the
@@ -349,7 +393,7 @@ export const DaySection = React.memo(function DaySection({ day, trip, editable, 
     prevRects.current = now
   }, [ordered, listId])
   useLayoutEffect(() => () => cancelListSettles(listId), [listId])
-  const commitmentsToday = trip.fixedCommitments.filter(fc => fc.dayIndex === day.index)
+  const commitmentsToday = facts.commitments
 
   // --- Collapsed-by-default accordion (docs/TIMELINE-PLAN.md Phase 1) ---
   // Collapse state lives in TimelineTab (one open day per trip, persisted via
@@ -364,37 +408,35 @@ export const DaySection = React.memo(function DaySection({ day, trip, editable, 
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState(day.title ?? '')
   const [nearby, setNearby] = useState<PlaceHit[]>([])
-  const nextAnchor = useMemo(() => nextAfter(trip, day.index), [trip]) // eslint-disable-line react-hooks/exhaustive-deps
+  const nextAnchor = facts.nextAnchor
   // "Continue to X" only makes sense while X is still ahead of you. The day
   // wakes up where the previous day's JOURNEY ended — when that IS the next
   // anchor (you arrived at the trip's destination on day 1, so every later
   // unplanned day is parked there), the chip would offer a drive to where
   // you already stand. Suppress it; nearby-idea chips are unaffected.
-  const alreadyAtNext = useMemo(
-    () => !!nextAnchor && coLocates(originOf(trip, day.index), nextAnchor.point),
-    [trip, nextAnchor], // eslint-disable-line react-hooks/exhaustive-deps
-  )
+  const alreadyAtNext = facts.alreadyAtNext
 
-  // anchor suggestions on where you'd arrive from; only for unplanned days
+  // anchor suggestions on where you'd arrive from; only for unplanned days —
+  // and only while the day is OPEN, since the chips live in the body and `trip`
+  // is handed to the open day alone (#347). A collapsed empty day used to search
+  // the corridor for chips nobody could see.
   useEffect(() => {
-    if (!editable || ordered.length > 0) { setNearby([]); return }
+    if (!editable || !open || !trip || ordered.length > 0) { setNearby([]); return }
     let cancelled = false
-    const anchor = predecessorOf(trip, day.index)?.point ?? trip.startLocationCoords
+    const anchor = facts.prevPoint ?? facts.homeCenter
     if (!anchor) return
     searchNearbyPois(anchor.lat, anchor.lng, 10000, 6, {
-      includeFuel: trip.transportMode === 'car' || trip.transportMode === 'motorcycle',
-      homeCenter: trip.startLocationCoords ?? null,
+      includeFuel: facts.assumptions.mode === 'car' || facts.assumptions.mode === 'motorcycle',
+      homeCenter: facts.homeCenter,
       categoryBias: computeCategoryBias(trip),
     })
       .then(hits => { if (!cancelled) setNearby(hits.slice(0, 3)) })
       .catch(() => { /* suggestions are best-effort */ })
     return () => { cancelled = true }
-    // #213 Phase 3: deps include trip fields the effect actually reads
-    // (transportMode gates fuel, startLocationCoords is the anchor fallback,
-    // and computeCategoryBias reads travelStyle). Without these, a transport-
-    // mode or style change kept the old mode-tuned chips visible until a stop
-    // mutation re-derives the array.
-  }, [editable, ordered.length, trip.transportMode, trip.startLocationCoords?.lat, trip.startLocationCoords?.lng, trip.travelStyle])
+    // #213 Phase 3 + #347: depend on the values the effect actually reads — the
+    // resolved anchor and home center from `facts`, the mode that gates fuel,
+    // and the open flag that decides whether a body exists to show them in.
+  }, [editable, open, trip, ordered.length, facts.prevPoint, facts.homeCenter, facts.assumptions.mode])
 
   // day progress: how much of the realistic window (start–20:00) the plan consumes
   const dayStartHM = day.startTime ?? A.dayStart
@@ -502,13 +544,17 @@ export const DaySection = React.memo(function DaySection({ day, trip, editable, 
           <div className={`day-progress ${collapsed ? 'compact' : ''}`} title={`${Math.round(used * 100)}% of the ${formatHM(dayStartHM, timeFormat)}–${formatHM(A.dayEnd, timeFormat)} window`}>
             <div className={`day-progress-fill sev-${sev}`} style={{ width: `${Math.round(used * 100)}%` }} />
           </div>
-          {!collapsed && <DayWeatherChip trip={trip} dayIndex={day.index} />}
+          {!collapsed && <DayWeatherChip day={day} startDate={facts.startDate} />}
         </div>
         {/* Per-day cost + time-at-stops: intelligence the engine already
             computes (computeTotals().byDay + simulateDay dwell), surfaced where
             the plan is edited. Hidden while collapsed so a folded day's header
             stays calm. */}
-        {!collapsed && dayTotals != null && dayTotals.totalInr > 0 && (
+        {/* The chip renders only for the day it BELONGS to (matched by index):
+            a lookup that finds no bucket shows nothing, never another day's
+            total under this header (#338 — the old positional clamp showed the
+            last day's money on a day with a skipped index). */}
+        {!collapsed && dayTotals != null && dayTotals.dayIndex === day.index && dayTotals.totalInr > 0 && (
           <span
             className="day-cost-chip"
             title={`≈ ${formatInr(dayTotals.transportInr)} travel · ${formatInr(dayTotals.expensesInr)} day costs (incl. entry fees)`}
@@ -536,12 +582,23 @@ export const DaySection = React.memo(function DaySection({ day, trip, editable, 
               <button
                 className="btn btn-outline btn-sm"
                 onClick={() => setOptPreview(optResult)}
-                title={`Reorder this day's stops to cut crisscrossing — saves ~${Math.round((optResult.beforeKm - optResult.afterKm) * roadRatio)} km of travel`}
-              ><InlineIcon icon={RouteIcon} size={13} gap={4} />Optimise{optResult.beforeKm - optResult.afterKm > 0 ? ` (−${Math.round((optResult.beforeKm - optResult.afterKm) * roadRatio)} km)` : ''}</button>
+                title={`Reorder this day's stops to cut crisscrossing — saves ${kmLabel(optResult.beforeKm - optResult.afterKm)} of travel${roadLegs === 0 ? ' (straight-line estimate: the road has not been measured yet)' : ''}`}
+              ><InlineIcon icon={RouteIcon} size={13} gap={4} />Optimise{optResult.beforeKm - optResult.afterKm > 0 ? ` (−${roadLegs === 0 ? '~' : ''}${Math.round((optResult.beforeKm - optResult.afterKm) * roadRatio)} km)` : ''}</button>
+            )}
+            {/* #341: a day the optimiser refuses for a reason the user can act
+                on says so, instead of hiding the button as if nothing existed.
+                The tooltip needs the wrapper span — a disabled button fires no
+                pointer events, so its own title would never show. */}
+            {!optResult.changed && optResult.blocked === 'mid-anchor' && !isStayDay && (
+              <span title="The order is fixed by your manually placed waypoints — the optimiser only rewires the middle of a day, and one of those sits mid-day." style={{ display: 'inline-flex' }}>
+                <button className="btn btn-outline btn-sm" disabled aria-disabled="true">
+                  <InlineIcon icon={RouteIcon} size={13} gap={4} />Optimise
+                </button>
+              </span>
             )}
             <button
               className="btn btn-outline btn-sm"
-              disabled={ordered.length === 0 || day.index + 1 >= trip.days.length}
+              disabled={ordered.length === 0 || !facts.hasNextDay}
               onClick={() => onCopyDay(day.index)}
               title={ordered.length ? `Copy these stops to Day ${day.index + 2}` : 'Nothing to copy yet'}
             ><InlineIcon icon={Copy} size={13} gap={4} />Copy</button>
@@ -573,8 +630,8 @@ export const DaySection = React.memo(function DaySection({ day, trip, editable, 
         </div>
       ))}
 
-      <TravelPanel trip={trip} day={day} editable={editable} journey={journey} suggestionCache={suggestionCache} legCorrections={legCorrections}
-        onSetDayStart={onSetDayStart} onAddPlannedHalts={onAddPlannedHalts} />
+      {bodyTrip && <TravelPanel trip={bodyTrip} day={day} editable={editable} journey={journey} suggestionCache={suggestionCache} legCorrections={legCorrections}
+        onSetDayStart={onSetDayStart} onAddPlannedHalts={onAddPlannedHalts} />}
 
       {ordered.length === 0 && (<>
         <EmptyState icon={<CloudSun size={38} aria-hidden />} title="Nothing planned yet" body="Add your first stop for this day — or drag one here from another day."
@@ -667,8 +724,12 @@ export const DaySection = React.memo(function DaySection({ day, trip, editable, 
                   <span><MetaIcon icon={ MapPin } tone="place" />{s.locationName}</span>
                   <span><MetaIcon icon={ Clock } tone="time" />{minutesToHM(s.visitMinutes)}</span>
                   {s.openTime && <span><MetaIcon icon={ Clock } tone="time" />{formatHMRange(s.openTime, s.closeTime, timeFormat)}</span>}
-                  <span><MetaIcon icon={ Ticket } tone="ticket" />₹{s.entryFeeInrPerPerson}/person</span>
-                  <span><MetaIcon icon={ Car } tone="money" />₹{s.transportCostInrTotal} transport</span>
+                  {/* Money fields are finite-guarded, not defaulted (#343): an
+                      absent/non-finite fee renders NO segment ("₹undefined"
+                      told the user a lie, and a forced ₹0 invents a free
+                      ticket). A stored 0 is a real 0 and still renders. */}
+                  {Number.isFinite(s.entryFeeInrPerPerson) && <span><MetaIcon icon={ Ticket } tone="ticket" />₹{s.entryFeeInrPerPerson}/person</span>}
+                  {Number.isFinite(s.transportCostInrTotal) && <span><MetaIcon icon={ Car } tone="money" />₹{s.transportCostInrTotal} transport</span>}
                   {s.departTime && s.arrivalTime && (
                     <span><MetaIcon icon={ Clock } tone="time" />dep {formatHM(s.departTime, timeFormat)} · arr {formatHM(s.arrivalTime, timeFormat)}{s.legDistanceKm ? ` · ${s.legDistanceKm.toFixed(0)} km` : ''}</span>
                   )}
@@ -758,19 +819,27 @@ export const DaySection = React.memo(function DaySection({ day, trip, editable, 
         {optPreview && <>
           <p className="hint-text" style={{ margin: '0 0 12px' }}>
             Reorders the day's stops into the shortest route from where you start the day — grouping nearby sights,
-            food and activities so you spend less time in transit. Anchors (your base and the day's destination)
-            stay put; you can still drag anything afterwards.
+            food and activities so you spend less time in transit. Anchors (your base, the day's destination and
+            wherever the next day starts from) stay put; you can still drag anything afterwards.
           </p>
+          {/* #341: with no measured leg the numbers below are straight-line
+              math scaled by 1 — they must say so rather than read as road km. */}
+          {roadLegs === 0 && (
+            <p className="hint-text" style={{ margin: '0 0 12px' }}>
+              These are straight-line estimates — the road for this trip has not been measured yet. Drive times
+              after Keep come from the road itself.
+            </p>
+          )}
           <div className="opt-delta">
             <div className="opt-delta-cell">
               <div className="k">Travel distance</div>
-              <div className="v">{Math.round(optPreview.beforeKm * roadRatio)} km → <b>{Math.round(optPreview.afterKm * roadRatio)} km</b></div>
-              <div className="save">−{Math.round((optPreview.beforeKm - optPreview.afterKm) * roadRatio)} km</div>
+              <div className="v">{kmLabel(optPreview.beforeKm)} → <b>{kmLabel(optPreview.afterKm)}</b></div>
+              <div className="save">−{kmLabel(optPreview.beforeKm - optPreview.afterKm)}</div>
             </div>
             <div className="opt-delta-cell">
               <div className="k">Est. driving time</div>
-              <div className="v">{minutesToHM(Math.round(optPreview.beforeKm * roadRatio / (A.avgSpeedKmph || 40) * 60))} → <b>{minutesToHM(Math.round(optPreview.afterKm * roadRatio / (A.avgSpeedKmph || 40) * 60))}</b></div>
-              <div className="save">−{Math.round((optPreview.beforeKm - optPreview.afterKm) * roadRatio / (A.avgSpeedKmph || 40) * 60)} min</div>
+              <div className="v">{roadLegs === 0 ? '~' : ''}{minutesToHM(Math.round(optPreview.beforeKm * roadRatio / (A.avgSpeedKmph || 40) * 60))} → <b>{roadLegs === 0 ? '~' : ''}{minutesToHM(Math.round(optPreview.afterKm * roadRatio / (A.avgSpeedKmph || 40) * 60))}</b></div>
+              <div className="save">−{roadLegs === 0 ? '~' : ''}{Math.round((optPreview.beforeKm - optPreview.afterKm) * roadRatio / (A.avgSpeedKmph || 40) * 60)} min</div>
             </div>
           </div>
           <div className="opt-order-list" aria-label="New stop order">
@@ -783,8 +852,23 @@ export const DaySection = React.memo(function DaySection({ day, trip, editable, 
           </div>
           <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
             <button className="btn btn-primary btn-sm" onClick={() => {
+              // #341: re-derive from the day as it is NOW. A drag or an edit
+              // that landed while this dialog was open used to be discarded
+              // silently — last write wins over a snapshot nobody re-checked.
+              const fresh = optimizeDayOrder(optOrigin, ordered, { hasNextDay })
+              const idsOf = (r: OptimizeDayResult) => r.stops.filter(s => s.status !== 'rejected').map(s => s.id).join('|')
+              if (!fresh.changed) {
+                setOptPreview(null)
+                toast(`Day ${day.index + 1} already matches its shortest order — nothing to apply.`)
+                return
+              }
+              if (idsOf(fresh) !== idsOf(optPreview)) {
+                setOptPreview(fresh)
+                toast('The day changed while you were reviewing — here is the new order.', 'err')
+                return
+              }
               onReorderDay(day.index, optPreview.stops.map(s => s.id))
-              toast(`Day ${day.index + 1} optimised — saved ~${Math.round((optPreview.beforeKm - optPreview.afterKm) * roadRatio)} km of crisscrossing`)
+              toast(`Day ${day.index + 1} optimised — saved ${kmLabel(optPreview.beforeKm - optPreview.afterKm)} of crisscrossing`)
               setOptPreview(null)
             }}>Apply new order</button>
             <button className="btn btn-ghost btn-sm" onClick={() => setOptPreview(null)}>Not now</button>
@@ -793,7 +877,11 @@ export const DaySection = React.memo(function DaySection({ day, trip, editable, 
       </Modal>
     </div>
   )
-})
+// `day` is compared by CONTENT: the store hands every merged/echoed row fresh
+// day objects with identical content, and the shallow default re-rendered every
+// card on every commit for that alone (#347). Every other prop stays identity-
+// compared, and the comparator is exhaustive by construction.
+}, sameDaySectionProps)
 
 /** One-click "continue the route" waypoint for an empty day. */
 function nextWaypointStop(a: { name: string; point: { lat: number; lng: number } }): Omit<ItineraryStop, 'id' | 'orderInDay'> {

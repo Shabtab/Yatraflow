@@ -350,6 +350,15 @@ describe('formatting', () => {
     expect(formatInr(14250)).toBe('₹14,250')
     expect(formatInr(150000)).toBe('₹1,50,000')
   })
+  it('never prints ₹NaN for a field that arrived broken (#369)', () => {
+    // One hand-edited money field used to render “₹NaN” wherever it was shown
+    // — the Board's trip pulse included. A missing value reads “—”, never ₹0,
+    // because “free” is a claim and “unknown” is the truth.
+    expect(formatInr(NaN)).toBe('—')
+    expect(formatInr(Infinity)).toBe('—')
+    expect(formatInr(undefined as unknown as number)).toBe('—')
+    expect(formatInr(0)).toBe('₹0')
+  })
 })
 
 // ============ Route-day overlays (multi-day drives) ============

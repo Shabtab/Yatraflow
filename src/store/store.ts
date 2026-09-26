@@ -28,6 +28,7 @@ import { makeInviteCode, normalizeInviteCode } from '../lib/inviteCode'
 import { suggestionToRow, decisionToRow, activityToRow, notificationToRow, publishedToRow } from '../lib/restoreRows'
 import { reduceSlice, applyMemberChange, isRecentLocalWrite, isStaleServerRow } from '../lib/realtimeCore'
 import { MISSING_BACKEND_MESSAGE, describeAuthFailure } from '../lib/authErrors'
+import { hasStopNamed, nextOrderInDay, renumberDay } from '../lib/stopOrder'
 import { adminFromSession, clearAdminCache, isAdminCached } from '../lib/adminSession'
 import type { RealtimeChannel, RealtimePostgresChangesPayload, SupabaseClient } from '@supabase/supabase-js'
 
@@ -2188,9 +2189,9 @@ export function userName(id: ID): string {
 export function addStop(tripId: ID, dayIndex: number, stop: Omit<ItineraryStop, 'id' | 'orderInDay'>): ItineraryStop {
   const draft = mutateTrip(tripId, d => {
     const day = d.days.find(x => x.index === dayIndex)!
-    const s: ItineraryStop = { ...stop, id: uid('st'), orderInDay: day.stops.length + 1 }
+    const s: ItineraryStop = { ...stop, id: uid('st'), orderInDay: nextOrderInDay(day) }
     day.stops.push(s)
-    renumber(day)
+    renumberDay(day)
   }, { log: `added “${stop.title}”`, target: `Day ${dayIndex + 1}` })
   if (!draft) throw new Error(`addStop: trip ${tripId} not found`)
   // Persist the trip so the new stop survives a reload — the manual add flow
@@ -2222,7 +2223,7 @@ export function deleteStop(tripId: ID, stopId: ID): void {
   mutateTrip(tripId, draft => {
     const day = draft.days.find(d => d.index === dayIdx)!
     day.stops = day.stops.filter(x => x.id !== stopId)
-    renumber(day)
+    renumberDay(day)
   }, { log: `removed a stop`, target: `Day ${dayIdx + 1}` })
   void persistTripField(tripId, tripById(tripId)!)
 }
@@ -2242,7 +2243,7 @@ export function restoreStop(tripId: ID, stop: ItineraryStop, dayIndex: number): 
     const at = dDay.stops.findIndex(s => s.orderInDay >= stop.orderInDay)
     if (at === -1) dDay.stops.push(stop)
     else dDay.stops.splice(at, 0, stop)
-    renumber(dDay)
+    renumberDay(dDay)
   }, { log: `restored “${stop.title}”`, target: `Day ${dayIndex + 1}` })
   void persistTripField(tripId, tripById(tripId)!)
 }
@@ -2287,7 +2288,7 @@ export function moveStopBetweenDays(tripId: ID, stopId: ID, toDayIndex: number, 
     let fromDraft: ItineraryDay | undefined
     for (const day of draft.days) {
       const idx = day.stops.findIndex(s => s.id === stopId)
-      if (idx >= 0) { [movedDraft] = day.stops.splice(idx, 1); renumber(day); fromDraft = day; break }
+      if (idx >= 0) { [movedDraft] = day.stops.splice(idx, 1); renumberDay(day); fromDraft = day; break }
     }
     const dTarget = draft.days.find(d => d.index === toDayIndex)
     if (movedDraft && dTarget) {
@@ -2296,10 +2297,10 @@ export function moveStopBetweenDays(tripId: ID, stopId: ID, toDayIndex: number, 
       const at = Math.max(0, Math.min(position ?? dTarget.stops.length, dTarget.stops.length))
       movedDraft.orderInDay = at + 1
       dTarget.stops.splice(at, 0, movedDraft)
-      renumber(dTarget)
+      renumberDay(dTarget)
     } else if (movedDraft && fromDraft) {
       fromDraft.stops.push(movedDraft)
-      renumber(fromDraft)
+      renumberDay(fromDraft)
     }
   }, opts)
   // Write through like every sibling mutator (reorderStop, setStopStatus) —
@@ -2326,9 +2327,9 @@ export function setStopStatus(tripId: ID, status: ItineraryStop['status'], stopI
   void persistTripField(tripId, tripById(tripId)!)
 }
 
-function renumber(day: ItineraryDay): void {
-  ;[...day.stops].sort((a, b) => a.orderInDay - b.orderInDay).forEach((s, i) => { s.orderInDay = i + 1 })
-}
+// The per-day 1..n invariant lives in lib/stopOrder (renumberDay) so every
+// writer — the store's stop mutators, the Timeline's handlers, the Map's fill —
+// shares one implementation of the numbering the spec pins (#337).
 
 // ---------------- Expenses ----------------
 
@@ -2480,6 +2481,28 @@ export function acceptSuggestionIntoTimeline(tripId: ID, suggestionId: ID): void
   const sg = cache.suggestions.find(x => x.id === suggestionId)
   const trip = tripById(tripId)
   if (!sg || !trip) return
+  // Idempotence (#336): an accepted/declined suggestion is DONE. A double-tap
+  // used to run this twice and mint a twin stop — addStop mints a fresh uid
+  // per call — so the guard lands before the write, mirroring voteOnDecision.
+  // A row with NO status is not spent (older hydrated rows predate the column
+  // being always present), so only a real terminal value refuses.
+  if (sg.status && sg.status !== 'open') return
+  // Dedupe by title, the same test the Map's picker applies: if the plan
+  // already holds this place, accept the suggestion (its row is spent) but do
+  // not double the stop.
+  if (hasStopNamed(trip, sg.title)) {
+    cache.suggestions = cache.suggestions.map(x => x.id === suggestionId ? { ...x, status: 'accepted' as const } : x)
+    commit()
+    fire('suggestions', supabase.from('suggestions').update({ status: 'accepted' }).eq('id', suggestionId))
+    toast(`“${sg.title}” is already on your timeline.`)
+    return
+  }
+  // The suggested day must exist: a stale dayIndex used to crash addStop's
+  // non-null day assertion mid-click. Say so instead of failing silently.
+  if (!trip.days.some(d => d.index === sg.dayIndex)) {
+    toast(`“${sg.title}” was suggested for Day ${sg.dayIndex + 1}, which is not on this trip — add it from the Map tab.`, 'err')
+    return
+  }
   addStop(tripId, sg.dayIndex, {
     title: sg.title, category: sg.category, locationName: sg.locationName, lat: sg.lat, lng: sg.lng,
     description: sg.description, visitMinutes: sg.visitMinutes,
@@ -2553,6 +2576,12 @@ export function voteOnDecision(decisionId: ID, optionId: ID): void {
 export function resolveDecision(decisionId: ID, optionId: ID): void {
   const dIdx = cache.decisions.findIndex(x => x.id === decisionId)
   if (dIdx < 0) return
+  // Idempotence (#336): a decision resolves ONCE. A double-tap used to stamp
+  // the status again AND run the landing branch twice, adding the winner twice
+  // (each addStop minted a new stop id). voteOnDecision already guards this —
+  // and like there, a row with no status is not yet resolved (older rows).
+  const status = cache.decisions[dIdx].status
+  if (status && status !== 'open') return
   const d = structuredClone(cache.decisions[dIdx])
   d.status = 'resolved'; d.resolvedOptionId = optionId; d.resolvedAt = Date.now()
   cache.decisions = [...cache.decisions.slice(0, dIdx), d, ...cache.decisions.slice(dIdx + 1)]
@@ -2571,31 +2600,48 @@ export function resolveDecision(decisionId: ID, optionId: ID): void {
   // (Board + Timeline read the trip; the Map rail filters by stop name) and
   // the suggestion rows it beats drop out via the same name check.
   if (winning?.place && trip) {
-    const dayIndex = Math.min(Math.max(0, winning.place.dayIndex), trip.days.length - 1)
-    // A slot poll's option id carries the part it was raised for
-    // (slot:<key>:<placeId>), so the landed stop says which part it fills -
-    // the day plan reads that part as filled the moment the vote resolves (P4).
-    const slotKey = /^slot:([a-z]+):/.exec(String(winning.id))?.[1]
-    addStop(d.tripId, dayIndex, {
-      title: winning.place.title,
-      category: winning.place.category,
-      locationName: winning.place.locationName,
-      lat: winning.place.lat,
-      lng: winning.place.lng,
-      description: winning.place.description,
-      visitMinutes: winning.place.visitMinutes,
-      ...(winning.place.openTime ? { openTime: winning.place.openTime } : {}),
-      ...(winning.place.closeTime ? { closeTime: winning.place.closeTime } : {}),
-      entryFeeInrPerPerson: 0,
-      transportCostInrTotal: 0,
-      priority: 'nice-to-have',
-      notes: `Chosen by group vote — “${d.question}”`,
-      // The part this vote was raised for, as DATA. It used to be appended to
-      // `notes` as prose, which made a user-editable, printed field the only
-      // record of a derived state: tidying the note un-planned the day.
-      ...(slotKey ? { slotKey } : {}),
-      status: 'confirmed',
-    })
+    const placeDay = winning.place.dayIndex
+    // The destination day is matched by INDEX and never clamped (#336). The old
+    // `min(max(0, dayIndex), days.length - 1)` quietly re-attributed a vote to
+    // the LAST day when the day it was raised for had been deleted (and to Day
+    // 1 whenever the position was unknown), which is a plan nobody voted on.
+    const target = typeof placeDay === 'number' && Number.isFinite(placeDay)
+      ? trip.days.find(dd => dd.index === placeDay)
+      : undefined
+    if (!target) {
+      toast(placeDay == null
+        ? `“${winning.place.title}” won the vote, but its day was never set — add it from the Map tab.`
+        : `“${winning.place.title}” won the vote, but Day ${placeDay + 1} is no longer on this trip — add it from the Map tab.`, 'err')
+    } else if (hasStopNamed(trip, winning.place.title)) {
+      // The plan already holds this place (someone added it by hand, or another
+      // poll landed it): resolving must not double it.
+      toast(`“${winning.place.title}” won the vote — it is already on your timeline.`)
+    } else {
+      // A slot poll's option id carries the part it was raised for
+      // (slot:<key>:<placeId>), so the landed stop says which part it fills -
+      // the day plan reads that part as filled the moment the vote resolves (P4).
+      const slotKey = /^slot:([a-z]+):/.exec(String(winning.id))?.[1]
+      addStop(d.tripId, target.index, {
+        title: winning.place.title,
+        category: winning.place.category,
+        locationName: winning.place.locationName,
+        lat: winning.place.lat,
+        lng: winning.place.lng,
+        description: winning.place.description,
+        visitMinutes: winning.place.visitMinutes,
+        ...(winning.place.openTime ? { openTime: winning.place.openTime } : {}),
+        ...(winning.place.closeTime ? { closeTime: winning.place.closeTime } : {}),
+        entryFeeInrPerPerson: 0,
+        transportCostInrTotal: 0,
+        priority: 'nice-to-have',
+        notes: `Chosen by group vote — “${d.question}”`,
+        // The part this vote was raised for, as DATA. It used to be appended to
+        // `notes` as prose, which made a user-editable, printed field the only
+        // record of a derived state: tidying the note un-planned the day.
+        ...(slotKey ? { slotKey } : {}),
+        status: 'confirmed',
+      })
+    }
   }
   commit()
   fire('decisions', supabase.from('decisions').update({ status: 'resolved', resolved_option_id: optionId, resolved_at: d.resolvedAt }).eq('id', decisionId))

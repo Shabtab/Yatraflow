@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { boundsOf } from '../src/lib/mapFit'
+import { FIT_ROAD_SAMPLES, allViewFitPoints, boundsOf } from '../src/lib/mapFit'
 import { seedData } from '../src/data/seed'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -102,5 +102,73 @@ describe('the seeded Mehrangarh sits on the fort', () => {
     expect(fort!.lat).toBeLessThanOrEqual(26.2999)
     expect(fort!.lng).toBeGreaterThanOrEqual(73.0160)
     expect(fort!.lng).toBeLessThanOrEqual(73.0201)
+  })
+})
+
+describe('allViewFitPoints — the all-days fit frames the whole line (#330)', () => {
+  // Reported: in the full-trip view the camera zoomed to the saved STOPS while the
+  // LINE was longer than them, so the trip-start leg, the destination tail and any
+  // road bowing around a ghat sat outside the box — the beginning or end of the
+  // route started off-screen and had to be panned to.
+  const STOPS = [{ lat: 26.2980, lng: 73.0184 }, { lat: 26.2935, lng: 73.0270 }]
+  const START = { lat: 26.759, lng: 75.808 }   // Chowki Dhani — the trip's start
+  const HOME = { lat: 26.9124, lng: 75.7873 }  // Jaipur — the drive home
+  const TAIL = { lat: 25.2, lng: 72.9 }        // the destination beyond the last stop
+
+  it('includes the trip start, which the stop-only set never had', () => {
+    const b = boundsOf(allViewFitPoints({ stops: STOPS, chainPoints: [START, ...STOPS, HOME] }))!
+    expect(b[1][0]).toBeGreaterThanOrEqual(START.lng)
+    expect(b[0][1]).toBeLessThanOrEqual(START.lat)
+  })
+
+  it('includes the destination tail endpoint — drawn, but not a stop', () => {
+    const chain = [START, ...STOPS, HOME]
+    const without = boundsOf(allViewFitPoints({ stops: STOPS, chainPoints: chain }))!
+    const withTail = boundsOf(allViewFitPoints({ stops: STOPS, chainPoints: [...chain, TAIL] }))!
+    // the tail is ~120 km south-west of every stop, so it must widen the box
+    expect(withTail[0][1]).toBeLessThan(without[0][1])
+    expect(withTail[0][0]).toBeLessThan(without[0][0])
+  })
+
+  it('frames a road that bows outside the chain box (the old unmeasured claim)', () => {
+    // A ghat/lake reroute: the chain is a straight line, the drawn road swings
+    // ~0.3° south of it. The old comment asserted the polyline stays "well inside
+    // the 70px padding" — nobody had measured it, and it is not true here.
+    const chain = [{ lat: 18.5, lng: 73.8 }, { lat: 18.5, lng: 73.95 }]
+    const bowed: [number, number][] = [[73.8, 18.5], [73.85, 18.2], [73.9, 18.2], [73.95, 18.5]]
+    const chainOnly = boundsOf(allViewFitPoints({ stops: [], chainPoints: chain }))!
+    const withRoad = boundsOf(allViewFitPoints({ stops: [], chainPoints: chain, roadGeometry: bowed }))!
+    // The flat chain has a zero lat span, so boundsOf pads it by 0.08 (its own
+    // rule, pinned elsewhere) — the point here is that the ROAD wins once it is in.
+    expect(chainOnly[0][1]).toBeCloseTo(18.5 - 0.08, 3)
+    expect(withRoad[0][1]).toBeLessThanOrEqual(18.2)
+  })
+
+  it('decimates the road but always keeps its last vertex', () => {
+    const road: [number, number][] = Array.from({ length: 1000 }, (_, i) => [73 + i / 10000, 18 + i / 10000])
+    const pts = allViewFitPoints({ stops: [], roadGeometry: road })
+    expect(pts.length).toBeLessThanOrEqual(FIT_ROAD_SAMPLES + 2)
+    const last = pts[pts.length - 1]
+    expect(last.lng).toBe(road[road.length - 1][0])
+    expect(last.lat).toBe(road[road.length - 1][1])
+  })
+
+  it('honours a smaller budget, tolerates absent inputs, ignores a one-vertex road', () => {
+    const road: [number, number][] = Array.from({ length: 100 }, (_, i) => [73 + i / 1000, 18])
+    expect(allViewFitPoints({ stops: STOPS, roadGeometry: road, samples: 4 }).length)
+      .toBeLessThanOrEqual(STOPS.length + 5)
+    expect(allViewFitPoints({ stops: STOPS })).toHaveLength(STOPS.length)
+    expect(allViewFitPoints({ stops: STOPS, chainPoints: null, roadGeometry: null })).toHaveLength(STOPS.length)
+    expect(allViewFitPoints({ stops: STOPS, roadGeometry: [[73, 18]] })).toHaveLength(STOPS.length)
+  })
+
+  it('the all-days branch really feeds the fit from the chain and the drawn road', () => {
+    // Source invariant: a builder is only worth having if the view calls it, and
+    // the day branch must keep fitting its own journey chain (the Jodhpur
+    // regression pinned above).
+    expect(tripMapSrc).toMatch(/allViewFitPoints\(\{/)
+    expect(tripMapSrc).toMatch(/chainPoints: trip \? buildRoadChain\(trip\)\.points : null/)
+    expect(tripMapSrc).toMatch(/roadGeometry: geom\.all/)
+    expect(tripMapSrc).toMatch(/dayRoutePoints\[String\(dayFilter\)\]/)
   })
 })

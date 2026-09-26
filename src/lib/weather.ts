@@ -118,6 +118,30 @@ export function forecastAvailable(startDate: string): boolean {
   return diffDays <= 15
 }
 
+/**
+ * WHERE a day's forecast is for: the day's own first placed stop with finite
+ * coordinates (#340). The chip used to ask about the trip's very first stop for
+ * every day — Day 4 in the mountains showed the beach city's sun — and the
+ * `?? 10.5, 76.5` fallback behind it invented a city rather than admitting the
+ * day had no anchor.
+ *
+ * Returns null when the day has none: a transit day, or a day whose stops never
+ * geocoded. The chip then renders nothing — an honest absence beats another
+ * city's weather. Rejected stops are skipped (they are not visited) and the
+ * first stop WINS over a centroid: averaging cities across a long day puts the
+ * forecast in the sea between them (the same reason the corridor scan does not
+ * blend anchors).
+ */
+export function weatherAnchor(day: { stops: Array<{ lat: number; lng: number; status?: string; orderInDay: number }> }): { lat: number; lng: number } | null {
+  const placed = [...day.stops]
+    .filter(s => s.status !== 'rejected')
+    .sort((a, b) => a.orderInDay - b.orderInDay)
+  for (const s of placed) {
+    if (Number.isFinite(s.lat) && Number.isFinite(s.lng)) return { lat: s.lat, lng: s.lng }
+  }
+  return null
+}
+
 export function isoAddDays(iso: string, days: number): string {
   const d = new Date(iso + 'T00:00')
   d.setDate(d.getDate() + days)

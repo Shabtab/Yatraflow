@@ -27,6 +27,7 @@ import {
 } from '../lib/planBench'
 import type { StayStyle } from '../data/types'
 import { shareBillImage } from '../lib/billCapture'
+import { CREATE_ROUTE } from '../lib/routes'
 import { toast, useMedia, usePageVisible, Odometer } from './ui'
 import { haptic, HAPTIC } from '../lib/haptics'
 
@@ -293,11 +294,11 @@ export function PlanBench() {
   function handleCta() {
     haptic(HAPTIC.select)
     stashBenchPrefill(bill, input)
-    // '#/new' is the Create Trip route (App.tsx `case 'new'`). This used to
-    // point at '#/create', which no route handles - the router's `default:`
-    // sent the visitor back to the landing page, so the CTA looked inert and
-    // the stashed prefill was never read.
-    window.location.hash = '#/new'
+    // The Create Trip route comes from lib/routes so the CTA and the router cannot
+    // disagree. This line once read '#/create', which no route handles - the
+    // router's `default:` sent the visitor back to the landing page, so the CTA
+    // looked inert and the stashed prefill was never read (#398).
+    window.location.hash = CREATE_ROUTE
   }
 
   // Pointer-follow tilt - desktop pointers only, never reduced-motion.

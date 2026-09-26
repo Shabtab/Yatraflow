@@ -128,7 +128,9 @@ export function buildPrintModel(
       rows.push({ kind: 'leg', leg: { fromTitle: lastLeg.fromTitle, toTitle: lastLeg.toTitle, distanceKm: fin(lastLeg.distanceKm), durationMinutes: fin(lastLeg.durationMinutes) } })
     }
 
-    const dayTot = totals.byDay[Math.min(day.index, totals.byDay.length - 1)]
+    // The day's bucket is found by INDEX, like the Timeline's chip (#338): a
+    // positional clamp printed another day's cost on a skipped-index day.
+    const dayTot = totals.byDay.find(b => b.dayIndex === day.index)
     const startTitle = sim.legs[0]?.fromTitle ?? trip.startLocation
     const endTitle = sim.legs.length > 1 ? lastLeg?.toTitle : startTitle
     return {

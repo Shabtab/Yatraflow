@@ -21,6 +21,7 @@ import { PillNav } from './components/PillNav'
 import { decodeTripSnapshot } from './lib/snapshot'
 import { scrollBehavior } from './lib/motion'
 import { pageTitle, routeParts } from './lib/pageTitle'
+import { CREATE_SEGMENT, CREATE_PATH, CREATE_ROUTE } from './lib/routes'
 import { syncPublicAddress } from './lib/shareUrl'
 import { appLink } from './lib/appLink'
 import { App as CapApp } from '@capacitor/app'
@@ -320,7 +321,7 @@ export default function App() {
       case 'trips':
         page = <Suspense fallback={lazyRouteFallback}><TripsListPage onNavigate={navigate} /></Suspense>
         break
-      case 'new':
+      case CREATE_SEGMENT:
         page = <Suspense fallback={lazyRouteFallback}><CreateTripPage onNavigate={navigate} /></Suspense>
         break
       case 'created':
@@ -434,7 +435,7 @@ export default function App() {
           <PillNav activeKey={route} className="nav-links" aria-label="Primary">
             {me && <>
               <a className={`nav-link ${route === '/trips' ? 'active' : ''}`} data-pill-key="/trips" {...appLink('#/trips')}>My trips</a>
-              <a className={`nav-link ${route === '/new' ? 'active' : ''}`} data-pill-key="/new" {...appLink('#/new')}>Plan a trip</a>
+              <a className={`nav-link ${route === CREATE_PATH ? 'active' : ''}`} data-pill-key={CREATE_PATH} {...appLink(CREATE_ROUTE)}>Plan a trip</a>
             </>}
             <a className={`nav-link ${route === '/explore' ? 'active' : ''}`} data-pill-key="/explore" {...appLink('#/explore')}>Explore</a>
             {me?.profile.isCreator && (
@@ -548,7 +549,7 @@ export default function App() {
           {!me && <a className="nav-link" {...appLink('#/auth')}>Log in</a>}
           {me && <>
             <a className={`nav-link ${route === '/trips' ? 'active' : ''}`} {...appLink('#/trips')}><InlineIcon icon={Tent} size={15} gap={6} />My trips</a>
-            <a className={`nav-link ${route === '/new' ? 'active' : ''}`} {...appLink('#/new')}><InlineIcon icon={Plus} size={15} gap={6} />Plan a trip</a>
+            <a className={`nav-link ${route === CREATE_PATH ? 'active' : ''}`} {...appLink(CREATE_ROUTE)}><InlineIcon icon={Plus} size={15} gap={6} />Plan a trip</a>
           </>
           }
           <a className={`nav-link ${route === '/explore' ? 'active' : ''}`} {...appLink('#/explore')}><InlineIcon icon={Compass} size={15} gap={6} />Explore</a>

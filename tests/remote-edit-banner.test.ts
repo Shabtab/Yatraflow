@@ -44,7 +44,9 @@ describe('source invariants — the banner is wired on BOTH editor surfaces', ()
     // every open path must go through openEditorTarget (which snapshots);
     // a raw setEditorTarget({mode:'edit'...}) would skip the snapshot
     expect(board).not.toMatch(/setEditorTarget\(\{\s*mode: 'edit'/)
-    expect(board).toMatch(/onEdit=\{\(stopId\) => openEditorTarget\(\{ mode: 'edit', stopId \}\)\}/)
+    // A stable useCallback (#372's memo pass), still routed through the opener.
+    expect(board).toMatch(/const handleEdit = useCallback\(\(stopId: string\) => openEditorTarget\(\{ mode: 'edit', stopId \}\), \[openEditorTarget\]\)/)
+    expect(board).toMatch(/onEdit=\{handleEdit\}/)
   })
 
   it('StopEditor still renders the banner above the form', () => {

@@ -5,9 +5,14 @@
 // here exists to prove the web build renders exactly what it rendered before.
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
+import { CREATE_PATH, CREATE_ROUTE } from '../src/lib/routes'
 
 const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
 const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')
+/** `app` with the route constants spelled out — the create route is an imported
+ *  constant since #398, and the reachability checks below look for the
+ *  destinations themselves. */
+const appResolved = app.split('CREATE_ROUTE').join(CREATE_ROUTE).split('CREATE_PATH').join(CREATE_PATH)
 const manifest = readFileSync(new URL('../android/app/src/main/AndroidManifest.xml', import.meta.url), 'utf8')
 
 const source = (rel: string) => readFileSync(new URL('../' + rel, import.meta.url), 'utf8')
@@ -83,7 +88,7 @@ describe('bottom navigation is a shell-only primary nav', () => {
     expect(app).toMatch(/\{!isNative && \(\s*<button\s+className="mobile-nav-btn"/)
     // the tray keeps every destination the pill carried
     for (const dest of ['#/trips', '#/new', '#/explore', '#/creator-hub', '#/profile']) {
-      expect(app, `${dest} must stay reachable`).toContain(dest)
+      expect(appResolved, `${dest} must stay reachable`).toContain(dest)
     }
   })
 })

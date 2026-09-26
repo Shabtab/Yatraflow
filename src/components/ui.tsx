@@ -192,6 +192,11 @@ export function Field(props: {
 
 /** Simple toast system. */
 let pushToastFn: ((msg: string, kind?: 'ok' | 'err', action?: { label: string; run: () => void }) => void) | null = null
+/** Monotonic per-session toast id. It only has to be unique within this list
+ *  (a React key plus the timer map's key), so a counter is both cheaper and
+ *  honest — the old `Date.now() + Math.random()` blend was the last weak
+ *  generator in the app that had nothing to do with secrecy (#267's family). */
+let toastSeq = 0
 export function toast(msg: string, kind: 'ok' | 'err' = 'ok') {
   // Haptic echo of the outcome: successes buzz short, errors buzz hard.
   haptic(kind === 'err' ? 'warn' : 'success')
@@ -230,7 +235,7 @@ export function ToastZone() {
       setToasts(t => t.filter(x => x.id !== id))
     }
     pushToastFn = (msg, kind = 'ok', action) => {
-      const id = Date.now() + Math.random()
+      const id = ++toastSeq
       setToasts(t => [...t, { id, msg, kind, action }])
       const ms = action ? TOAST_DWELL_UNDO : TOAST_DWELL
       const rec = { id, remaining: ms, startedAt: Date.now(), handle: 0 }

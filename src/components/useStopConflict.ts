@@ -10,7 +10,7 @@
 // a remote (or another-surface) edit. The comparison is canonical (jsonb
 // reorders object keys on the wire; a naive stringify compare would
 // phantom-flag every hydration).
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import type { Trip } from '../data/types'
 import { stopWasRemotelyEdited } from '../lib/realtimeCore'
 import { currentUser, userById, useDb } from '../store/store'
@@ -35,15 +35,23 @@ export function useStopConflict(trip: Trip, editorState: StopEditorTarget) {
   /** Bump to force the editor form to re-seed from the live stop (take-theirs). */
   const [takeTheirsTick, setTakeTheirsTick] = useState(0)
 
+  // The snapshot reads the LIVE trip, but through a latest-value ref rather than
+  // a dependency: `trip.days` is a new array on every write, and the consumers
+  // of `openEditor` (`openEditorState` → the Timeline's onAdd/onEdit) are props
+  // on every day card — a changing identity there re-rendered the whole
+  // Timeline on each edit (#347). Behaviour is identical: the ref always holds
+  // the current trip when the editor opens.
+  const tripRef = useRef(trip)
+  tripRef.current = trip
   const openEditor = useCallback((next: StopEditorTarget, setState: (n: StopEditorTarget) => void) => {
     if (next?.mode === 'edit') {
-      for (const d of trip.days) {
+      for (const d of tripRef.current.days) {
         const s = d.stops.find(x => x.id === next.stopId)
         if (s) { setConflictSnapshot({ stopId: s.id, mine: { ...s } }); break }
       }
     }
     setState(next)
-  }, [trip.days])
+  }, [])
 
   const liveStop = editorState?.mode === 'edit'
     ? trip.days.flatMap(d => d.stops).find(x => x.id === editorState.stopId)

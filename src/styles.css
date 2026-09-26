@@ -1443,6 +1443,10 @@ a.btn { text-decoration: none; }
   max-width: 340px;
 }
 .day-warn-pill.sev-high { background: var(--yf-coral-100); color: var(--ink-coral); }
+/* Low-severity days read QUIET: the warning is worth counting, not an alarm.
+   Without this the base amber tint made “Day 3: route backtracking” as loud as
+   an over-packed day (#369). */
+.day-warn-pill.sev-low { background: var(--bg-soft); color: var(--text-2); }
 /* Per-day cost + dwell chips in the day header — quiet metadata pills that
    mirror the stop-kind tag treatment (soft tint, no border) so they read as
    engine-derived context, not actions. */
@@ -1502,9 +1506,11 @@ a.btn { text-decoration: none; }
 /* ---------- Board — spatial group coordination (CTI §6.4) ---------- */
 /* Pinned route map with day columns floating over it. The floats live inside
    .board (a stacking context of its own), so nothing here fights the app's
-   fixed-overlay ladder: map, columns and panels all layer below modals (100) /
-   impact sheet (90) / notifications (80) — the impact preview opened by a card
-   drop still lands on top of everything. */
+   fixed-overlay ladder: map, columns and panels all layer below modals (--z-modal
+   100) / the impact sheet (--z-impact 210 — deliberately above toasts) /
+   notifications (--z-notif 80) — the impact preview opened by a card drop still
+   lands on top of everything. Read the numbers from the ladder tokens at the top
+   of this file, not from this sentence. */
 .board-head { margin-bottom: 14px; }
 /* ---- Board tab canvas: the kanban wants the whole viewport. The default page
    container caps at 1180px and the trip band + tabs eat ~440px of height, which
@@ -2315,10 +2321,11 @@ a.creator-line:focus-visible { outline: 2px solid var(--teal); outline-offset: 2
 }
 @media (prefers-reduced-motion: reduce) { .yf-live-pulse { animation: none; opacity: .5; } .map-shell--expanded, .map-shell--closing { animation: none; } .map-legend-body { animation: none; } }
 /* Expand mode — the map shell breaks out into a fixed overlay so the canvas
-   gets the viewport. Sits BELOW the modal (100), impact sheet (90) and
-   notifications (80) so dialogs opened from the expanded map still layer on
-   top; mapcn's ResizeObserver re-fits the canvas on the size change. Escape
-   or the ⤡ Collapse chip reverts. */
+   gets the viewport. Sits BELOW the modal (--z-modal 100) and the impact sheet
+   (--z-impact 210, deliberately above toasts) so dialogs opened from the expanded
+   map still layer on top, and above notifications (--z-notif 80); mapcn's
+   ResizeObserver re-fits the canvas on the size change. Escape or the ⤡ Collapse
+   chip reverts. */
 .map-shell--expanded {
   position: fixed; inset: 10px; z-index: var(--z-map-expanded);
   background: var(--bg); padding: 2px;
@@ -2907,6 +2914,8 @@ main:has(.auth-wrap) .route-panel { flex: 1; display: flex; flex-direction: colu
 .yf-maplibre { position: absolute; inset: 0; }
 .yf-map-pin {
   display: flex; align-items: center; justify-content: center;
+  /* #333 A10: the hit area below is positioned against this box. */
+  position: relative;
   width: 30px; height: 30px; border-radius: 999px;
   border: 3px solid #fff; color: #fff;
   font-size: 13px; font-weight: 800; font-family: inherit;
@@ -7867,4 +7876,22 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
      a `colSpan={2}` label that shifts every index by one. */
   .pub-ledger .col-opt { display: none; }
   .pub-ledger .col-wide { max-width: 18ch; overflow-wrap: anywhere; }
+}
+/* #333 A10: the map's own shapes are what a thumb actually aims at, and the pin
+   (30px) and the tear (34px) both sat under the 40px coarse-pointer floor. Neither
+   can simply grow: the pin is a flex circle inside MapLibre's marker wrapper and the
+   tear is a rotated square, so a min-width/height would move the map rather than the
+   target. They get an invisible hit area instead — the pseudo-element idiom this rail
+   already uses elsewhere: the pin's ::before, and the tear's ::before because its
+   ::after already draws the teardrop's tail and must not be stretched.
+   .yf-map-flag is deliberately left out: it carries cursor: default and no handler,
+   and a floor exists to make a TARGET reachable — enlarging something that cannot be
+   tapped would only lie about what is interactive. */
+@media (pointer: coarse) {
+  .yf-map-pin::before,
+  .yf-map-tear::before {
+    content: '';
+    position: absolute;
+    inset: -8px;
+  }
 }

@@ -590,20 +590,6 @@ function MapMarker({
       draggable,
     }).setLngLat([longitude, latitude]);
 
-    const handleClick = (e: MouseEvent) => callbacksRef.current.onClick?.(e);
-    const handleMouseEnter = (e: MouseEvent) =>
-      callbacksRef.current.onMouseEnter?.(e);
-    const handleMouseLeave = (e: MouseEvent) =>
-      callbacksRef.current.onMouseLeave?.(e);
-
-    markerInstance.getElement()?.addEventListener("click", handleClick);
-    markerInstance
-      .getElement()
-      ?.addEventListener("mouseenter", handleMouseEnter);
-    markerInstance
-      .getElement()
-      ?.addEventListener("mouseleave", handleMouseLeave);
-
     const handleDragStart = () => {
       const lngLat = markerInstance.getLngLat();
       callbacksRef.current.onDragStart?.({ lng: lngLat.lng, lat: lngLat.lat });
@@ -638,6 +624,36 @@ function MapMarker({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map]);
 
+  // #332 R3: the DOM listeners live in an effect with a real cleanup. They used to
+  // be attached inside the memo above, which runs once and detaches nothing — so
+  // every unmounted marker left three listeners on a detached element, and nothing
+  // in the component's lifecycle said when they went away. The drag handlers stay
+  // on the marker instance: the effect above removes that instance wholesale, so
+  // there is nothing there to detach. Handlers read through `callbacksRef` on
+  // purpose — that indirection is what keeps them from closing over stale props,
+  // so do not inline the callbacks into the effect.
+  useEffect(() => {
+    const el = marker.getElement();
+    if (!el) return;
+    const handleClick = (e: MouseEvent) => callbacksRef.current.onClick?.(e);
+    const handleMouseEnter = (e: MouseEvent) =>
+      callbacksRef.current.onMouseEnter?.(e);
+    const handleMouseLeave = (e: MouseEvent) =>
+      callbacksRef.current.onMouseLeave?.(e);
+    el.addEventListener("click", handleClick);
+    el.addEventListener("mouseenter", handleMouseEnter);
+    el.addEventListener("mouseleave", handleMouseLeave);
+    return () => {
+      el.removeEventListener("click", handleClick);
+      el.removeEventListener("mouseenter", handleMouseEnter);
+      el.removeEventListener("mouseleave", handleMouseLeave);
+    };
+  }, [marker]);
+
+  // Frozen at construction ON PURPOSE, so the next reader does not "fix" it back:
+  // `anchor` (like the element itself) has no MapLibre setter and never changes
+  // after mount in this app. The sync effect below deliberately covers lngLat,
+  // draggable, offset, rotation, rotationAlignment and pitchAlignment only.
   const { offset, rotation, rotationAlignment, pitchAlignment } = markerOptions;
 
   useEffect(() => {

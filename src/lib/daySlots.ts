@@ -40,6 +40,7 @@ import { haversineKm } from './geo'
 import { buildJourney, MODE_SPEED } from './engine'
 import type { SlotKind } from './haltFit'
 import type { ItineraryStop, TransportMode, Trip, TripDecision } from '../data/types'
+import { isAlreadyAdded, normalizePlaceName, type PlaceIdentity } from './placeIdentity'
 
 /** How close to its window end an empty slot reads as urgent ("closes 14:30"). */
 export const SLOT_URGENCY_MIN = 20
@@ -142,6 +143,11 @@ export interface DaySlotsDeps {
   plannedStops?: number
   /** lowercase titles of stops already on the trip - such hits never re-candidate */
   existingNames?: ReadonlySet<string>
+  /** #345: the one identity predicate's facts. When supplied it REPLACES the
+   *  name-only check below, so a slot can no longer offer a place that was
+   *  just dismissed, staged or (with `placeId`) already on the plan under a
+   *  slightly different spelling. */
+  identity?: PlaceIdentity
   /** the corridor scan's leftover pool (MapTab's altPool.all) */
   altPool?: PlaceHit[]
   /** max candidates rendered inside one slot (default 3) */
@@ -463,7 +469,8 @@ function candidatesFor(
     if (!sh.hit) continue
     const id = String(sh.hit.id)
     if (seen.has(id)) continue
-    if (deps.existingNames?.has(sh.hit.name.toLowerCase())) continue
+    if (deps.identity ? isAlreadyAdded(sh.hit, deps.identity)
+      : deps.existingNames?.has(normalizePlaceName(sh.hit.name))) continue
     seen.add(id)
     rows.push({ hit: sh.hit, score: sh.score })
   }

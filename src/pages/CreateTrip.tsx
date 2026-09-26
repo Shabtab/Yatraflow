@@ -26,6 +26,7 @@ import { regionFor, regionBand, nationalBand, experienceTier, anchorNote } from 
 import { createFunnelOn } from '../lib/featureFlags'
 import { createReadiness, readinessFromDraft, readinessLine } from '../lib/createReadiness'
 import { saveDraft, loadDraft, clearDraft, draftIsWorthKeeping, draftAgeLabel, type StoredDraft } from '../lib/createDraft'
+import { unpickedStopErrors } from '../lib/createSubmit'
 import { addCrewEntry, type CrewEntry } from '../lib/crewInvite'
 import { stashHandoff } from '../lib/createHandoff'
 import { routeIq, routeIqLine, type RoutePoint } from '../lib/routeIq'
@@ -549,6 +550,10 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
     if (!bill.perHead) { toast('Add a date range and at least one geocoded stop to price the trip.', 'err'); return }
     haptic(HAPTIC.success)
     setBillPrinted(true)
+    // #379: focus follows the reveal. Without this the bill appears below the fold
+    // and a keyboard user is left standing where they were, with nothing to show for
+    // the press. rAF because the region does not exist until this render lands.
+    requestAnimationFrame(() => billRef.current?.focus())
   }
 
   function navigateWithTransition(route: string) {
@@ -578,7 +583,15 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
   /** The summary's field prefixes - which control resolves each error key. */
   const ERR_LABELS: Record<string, string> = {
     name: 'Trip name', startLocation: 'Starting location', destinations: 'Destinations',
+    returnStops: 'Return stops',
     startDate: 'Start date', endDate: 'End date', travellers: 'Travellers', budgetPerPersonInr: 'Budget',
+  }
+
+  /** Error keys whose control is a LocationInput. It owns its own <input>, so
+   *  F-15 focus reaches it by the id we hand it rather than a ref (#375). */
+  const FIELD_DOM_IDS: Record<string, string> = {
+    destinations: 'ct-dest-input',
+    returnStops: 'ct-return-input',
   }
 
   async function submit(e: React.FormEvent) {
@@ -587,7 +600,15 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
     const next: Record<string, string> = {}
     if (!f.name.trim()) next.name = 'Name your trip.'
     if (!f.startLocation.trim()) next.startLocation = 'Where does the journey start?'
-    if (dests.length === 0) next.destinations = 'Add at least one destination.'
+    // #375: text typed into an add-stop field but never picked used to vanish
+    // here — the stop count looked fine and the place the user typed was simply
+    // absent from the trip. Say so instead, on the field that holds the text.
+    // The unpicked message wins over the bare "add a destination" one: it names
+    // the text the user can see in the box, which is the more useful sentence.
+    const unpicked = unpickedStopErrors({ dest: destInput, ret: returnInput, returnOpen: returnCount > 0 })
+    if (unpicked.destinations) next.destinations = unpicked.destinations
+    else if (dests.length === 0) next.destinations = 'Add at least one destination.'
+    if (unpicked.returnStops) next.returnStops = unpicked.returnStops
     if (!f.startDate) next.startDate = 'Pick a start date.'
     if (!f.endDate) next.endDate = 'Pick an end date.'
     else if (f.startDate && new Date(f.endDate) < new Date(f.startDate)) next.endDate = 'End date must be after the start date.'
@@ -602,9 +623,12 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
       // F-15: move focus to the first invalid field so keyboard / screen-reader
       // users don't have to hunt for what failed. LocationInput fields don't
       // register a ref — fall back to focusing that field's own error message.
-      const first = Object.keys(next).find(k => fieldRefs.current[k])
-      if (first) {
+      const first = Object.keys(next).find(k => fieldRefs.current[k] || FIELD_DOM_IDS[k])
+      if (first && fieldRefs.current[first]) {
         fieldRefs.current[first]!.focus()
+      } else if (first) {
+        // A LocationInput owns its <input>: reach it by id (#375).
+        document.getElementById(FIELD_DOM_IDS[first])?.focus()
       } else {
         const firstErr = document.querySelector<HTMLElement>('.err-text')
         if (firstErr) { firstErr.setAttribute('tabindex', '-1'); firstErr.focus() }
@@ -890,6 +914,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
 
               <div className="ct-q-field ct-add-stop">
                 <LocationInput
+                  id="ct-dest-input"
                   value={destInput}
                   onChange={setDestInput}
                   errorId={errs.destinations ? 'ct-dest-err' : undefined}
@@ -897,6 +922,17 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
                   onPick={p => addDest({ name: p.name + (p.admin1 ? `, ${p.admin1}` : ''), lat: p.latitude, lng: p.longitude }, false)}
                   placeholder={dests.length === 0 ? 'Type a place to add your first stop - e.g. Munnar' : 'Type a place to add the next stop'}
                 />
+                {/* #375: the escape hatch that keeps the new block honest. A place
+                    the providers do not know can still become a real stop — chosen
+                    on purpose, with no coordinates, which `DestDraft` already
+                    allows. Without this the block would trap the text it refuses
+                    to drop. */}
+                {destInput.trim() !== '' && (
+                  <button type="button" className="btn btn-sm btn-ghost"
+                    onClick={() => { haptic(HAPTIC.tick); addDest({ name: destInput.trim() }, false) }}>
+                    Add without a map pin
+                  </button>
+                )}
               </div>
 
               {createFunnelOn('iq') && iq && (
@@ -963,11 +999,21 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
                     })}
                   </div>
                   <LocationInput
+                    id="ct-return-input"
                     value={returnInput}
                     onChange={setReturnInput}
+                    errorId={errs.returnStops ? 'ct-return-err' : undefined}
+                    error={errs.returnStops}
                     onPick={p => addDest({ name: p.name + (p.admin1 ? `, ${p.admin1}` : ''), lat: p.latitude, lng: p.longitude }, true)}
                     placeholder="Add a return stop.  e.g. Guruvayur"
                   />
+                  {errs.returnStops && <p className="err-text" id="ct-return-err" role="status" aria-live="polite">{errs.returnStops}</p>}
+                  {returnInput.trim() !== '' && (
+                    <button type="button" className="btn btn-sm btn-ghost"
+                      onClick={() => { haptic(HAPTIC.tick); addDest({ name: returnInput.trim() }, true) }}>
+                      Add without a map pin
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -1038,7 +1084,15 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
               <div className="ct-q-field">
                 <span className="ct-lbl">Party size</span>
                 <div className="ct-party">
-                  <span className="ct-step" role="group" aria-label="Party size">
+                  {/* #379: the travellers error has to land on something a person can
+                      see. The number input that used to take that focus sits inside
+                      `.sr-only`, so a sighted keyboard user was sent nowhere. The
+                      stepper is the control people actually touch, so the stepper is
+                      the target — and the range travels with it, since `min`/`max`
+                      live on the input nobody can see. */}
+                  <span className="ct-step" role="group" ref={el => (fieldRefs.current.travellers = el)}
+                    tabIndex={-1} aria-label={`Party size, ${CREW_MIN} to ${CREW_MAX} travellers`}
+                    aria-describedby={errs.travellers ? 'ct-travellers-err' : undefined}>
                     <button type="button" aria-label="One fewer traveller"
                       onClick={() => { haptic(HAPTIC.tick); patchFields({ travellers: clampCrew(f.travellers - 1) }) }}>&minus;</button>
                     <b aria-live="polite">{f.travellers}</b>
@@ -1051,10 +1105,18 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
                   </button>
                   <span className="sr-only">{f.travellers} traveller{f.travellers !== 1 ? 's' : ''} on {cap(f.transportMode)}</span>
                 </div>
+                {/* #379: rendered once, visibly, and pointed at by both the group and
+                    the hidden input — the input used to render its own copy of this
+                    message inside `.sr-only`, so a screen reader heard the failure
+                    twice and saw it nowhere. */}
+                {errs.travellers && <p className="err-text" id="ct-travellers-err" role="status" aria-live="polite">{errs.travellers}</p>}
+                {/* The value channel for AT that needs a real input to type into —
+                    deliberately no longer where the error lands. */}
                 <div className="sr-only">
-                  <Field label="Travellers" error={errs.travellers}>
-                    <input className="input mono" type="number" min={CREW_MIN} max={CREW_MAX} ref={el => (fieldRefs.current.travellers = el)}
-                      aria-invalid={!!errs.travellers} value={f.travellers}
+                  <Field label="Travellers">
+                    <input className="input mono" type="number" min={CREW_MIN} max={CREW_MAX}
+                      value={f.travellers} aria-invalid={!!errs.travellers}
+                      aria-describedby={errs.travellers ? 'ct-travellers-err' : undefined}
                       onChange={e => patchFields({ travellers: clampCrew(Number(e.target.value)) })} />
                   </Field>
                 </div>
@@ -1459,7 +1521,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
             </div>
               {billPrinted && (
                 <>
-                  <div className="bill-printer" role="region" aria-label="Rough trip bill" ref={billRef}>
+                  <div className="bill-printer" role="region" aria-label="Rough trip bill" ref={billRef} tabIndex={-1}>
                     <div className="bill-slot" aria-hidden="true"><span></span></div>
                     <div className="bill-reveal">
                       <div className="bill-paper bill-paper-sway">

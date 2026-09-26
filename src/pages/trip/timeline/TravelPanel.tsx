@@ -138,7 +138,10 @@ export function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAdd
 
   // Live schedule preview for the planned (not yet added) halts: each one adds
   // its duration plus the engine's per-stop buffer to the day's end clock.
-  const planMinutes = plan.reduce((a, p) => a + p.minutes, 0)
+  // Finite-guarded (#343): a stored halt with a missing/NaN minutes value used
+  // to turn the arrival preview into `NaNh NaNm` — the same class of hole the
+  // visitMinutes guard closed in the engine.
+  const planMinutes = plan.reduce((a, p) => a + (Number.isFinite(p.minutes) ? p.minutes : 0), 0)
   const planBuffer = plan.length * A.bufferMinutesPerStop
   const arrivalPreview = formatHM(
     addMinutesToClock(startMin, journey.driveMinutes + journey.dwellMinutes + planMinutes + planBuffer),

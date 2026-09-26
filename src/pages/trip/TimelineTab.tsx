@@ -7,7 +7,7 @@
 // Mechanical extraction from src/pages/TripWorkspace.tsx (M3.4) — no behavior changes.
 // Includes DaySection, DayWeatherChip, TravelPanel, HaltPlanRow, DaySpark,
 // MoveStopModal and ClampedText — the whole timeline hot path.
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { InlineIcon } from '../../components/icons'
 import {
   
@@ -15,17 +15,17 @@ import {
   PenLine,   TriangleAlert, 
 } from 'lucide-react'
 import type { Trip, ItineraryStop } from '../../data/types'
-import { updateTrip, setStopStatus, useDb, currentUser, userById } from '../../store/store'
+import { updateTrip, setStopStatus, restoreStop, useDb, currentUser, userById } from '../../store/store'
 import {
   computeTotals, minutesToHM, formatInr,
-  collectWarnings, buildJourney, dayRoadPolyline,
+  collectWarnings, buildJourney, dayRoadPolyline, groupWarnings,
 } from '../../lib/engine'
 import type { LegEstimate, ScheduleWarning } from '../../lib/engine'
 import type { ImpactResult } from '../../lib/impact'
 import { loadOpenDay, saveOpenDay } from '../../lib/uiPrefs'
 import { accordionNext } from '../../lib/daySummary'
 import { scrollBehavior } from '../../lib/motion'
-import { toast } from '../../components/ui'
+import { toast, undoToast } from '../../components/ui'
 import { StopEditor, type StopFormValues } from '../../components/StopEditor'
 import { RemoteEditBanner } from '../../components/RemoteEditBanner'
 import { useStopConflict } from '../../components/useStopConflict'
@@ -33,9 +33,11 @@ import { stopInitialValues, stopLegContext, stopEditorKey, stopDayIndex, type St
 import { useSuggestionCache } from '../../hooks/useSuggestionCache'
 import { PREVIEW_BUSY } from '../../lib/previewChain'
 import { kmFromStartForHit } from '../../lib/providers/hits'
+import { moveStopToDay, moveStopWithinDay, nextOrderInDay, pendingStopId, removeStopFromDay, stopById } from '../../lib/stopOrder'
 import { useTimelineMode, type TimelineMode } from './timeline/useTimelineMode'
 import { PillNav } from '../../components/PillNav'
 import { DaySection } from './timeline/DaySection'
+import { buildDayCards, reuseDayTotals, reuseWarningGroups, type DayCards, type DayTotals } from '../../lib/dayCards'
 import { MoveStopModal } from './timeline/MoveStopModal'
 
 /** Shared empty array so the memoized DaySections' `warnings` prop keeps a
@@ -46,7 +48,9 @@ const NO_WARNINGS: ScheduleWarning[] = []
 export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorrections, suggestionCache, onOpenBoard, focusDay, onFocusConsumed }: {
   trip: Trip
   editable: boolean
-  applyChange: (mutator: (d: Trip) => void, kind: ImpactResult['kind'], dayIndex: number) => void
+  /** `onKept` runs only when the user keeps the staged change — the hook the
+   *  Undo toasts hang off (the day plan's Fill uses the same one). */
+  applyChange: (mutator: (d: Trip) => void, kind: ImpactResult['kind'], dayIndex: number, onKept?: () => void) => void
   /** true while the workspace has a staged change — day rename / ride start
    *  write the committed row directly, so they must not race a preview (#334). */
   previewOpen?: boolean
@@ -102,6 +106,13 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
     })
   }, [trip.id])
 
+  // #347: the handlers below close over `applyChange` and `trip` — both
+  // re-created on every trip change — so their identities flipped on every edit
+  // and handed every day card a brand-new prop set. This latest-value ref keeps
+  // the IDENTITIES stable while each body still runs against the current pair.
+  const latest = useRef({ applyChange, trip })
+  latest.current = { applyChange, trip }
+
   // M3.3: every DaySection prop below must keep a stable identity between
   // commits that don't touch the trip, or the React.memo on DaySection never
   // bites (an unrelated store commit re-renders TimelineTab via the tab counts).
@@ -121,8 +132,8 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
         const day = draft.days.find(d => d.index === dayIndex)!
         day.stops.push({
           ...(legFields as unknown as ItineraryStop),
-          id: 'pending_' + Math.random().toString(36).slice(2),
-          orderInDay: day.stops.length + 1,
+          id: pendingStopId(),
+          orderInDay: nextOrderInDay(day),
         })
       }, 'add', dayIndex)
     } else {
@@ -137,30 +148,36 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
     setEditorState(null)
   }
 
-  // Deletions go through the impact-preview flow, whose Keep / Remove buttons
-  // already act as the confirmation + undo step for this destructive action.
+  // Deletions go through the impact-preview flow (Keep / Remove confirm the
+  // destructive step) AND leave a way back (#337): the stop, its day and its
+  // old order are captured before staging, and the Undo toast restores it —
+  // the same deal the map pin's delete offers. The shared helper renumbers the
+  // survivors, so the next add cannot mint a duplicate order.
   const handleDelete = useCallback((stopId: string, dayIndex: number) => {
+    const { applyChange, trip } = latest.current
+    const victim = stopById(trip, stopId)
     applyChange(draft => {
-      for (const day of draft.days) day.stops = day.stops.filter(s => s.id !== stopId)
-    }, 'remove', dayIndex)
-  }, [applyChange])
+      removeStopFromDay(draft, stopId)
+    }, 'remove', dayIndex, victim
+      ? () => undoToast(`“${victim.title}” removed from Day ${dayIndex + 1}`, () => restoreStop(trip.id, victim, dayIndex))
+      : undefined)
+  }, [])
 
   const handleMoveWithinDay = useCallback((fromIdx: number, toIdx: number, dayIndex: number) => {
-    applyChange(draft => {
-      const day = draft.days.find(d => d.index === dayIndex)!
-      const arr = [...day.stops].sort((a, b) => a.orderInDay - b.orderInDay)
-      const [moved] = arr.splice(fromIdx, 1)
-      arr.splice(toIdx, 0, moved)
-      arr.forEach((s, i) => { s.orderInDay = i + 1 })
-      day.stops = arr
+    latest.current.applyChange(draft => {
+      const day = draft.days.find(d => d.index === dayIndex)
+      // The shared helper carries the store sibling's guards — clamp (an OOB
+      // splice inserts `undefined`), from===to no-op, missing stop (#337).
+      if (day) moveStopWithinDay(day, fromIdx, toIdx)
     }, 'reorder', dayIndex)
-  }, [applyChange])
+  }, [])
 
   /** Optimise-day commit: replace a day's stop order wholesale (ids), keeping
    *  every stop — the reorder goes through the same impact-preview gate as a
-   *  manual drag. */
+   *  manual drag. It is a FULL-array rewrite that renumbers 1..n, so it has no
+   *  from/to splice to make — the same invariant as lib/stopOrder's helpers. */
   const handleReorderDay = useCallback((dayIndex: number, orderedIds: string[]) => {
-    applyChange(draft => {
+    latest.current.applyChange(draft => {
       const day = draft.days.find(d => d.index === dayIndex)!
       const byId = new Map(day.stops.map(s => [s.id, s]))
       const reordered = orderedIds.map(id => byId.get(id)!).filter(Boolean)
@@ -169,42 +186,60 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
       day.stops = [...reordered, ...rest]
       day.stops.forEach((s, i) => { s.orderInDay = i + 1 })
     }, 'reorder', dayIndex)
-  }, [applyChange])
+  }, [])
 
   /** Cross-day drag: lift a stop out of its day and insert it at `position` of `toDayIndex`. */
-  const handleMoveStopInto = useCallback((stopId: string, fromDayIndex: number, toDayIndex: number, position: number) => {
-    applyChange(draft => {
-      let moved: ItineraryStop | undefined
-      for (const d of draft.days) {
-        const idx = d.stops.findIndex(s => s.id === stopId)
-        if (idx >= 0) {
-          [moved] = d.stops.splice(idx, 1)
-          d.stops.forEach((s, j) => { s.orderInDay = j + 1 })
-          break
-        }
-      }
-      const target = draft.days.find(d => d.index === toDayIndex)
-      if (moved && target) {
-        const pos = Math.max(0, Math.min(position, target.stops.length))
-        moved.orderInDay = pos + 1
-        target.stops.splice(pos, 0, moved)
-        target.stops.forEach((s, j) => { s.orderInDay = j + 1 })
-      }
-    }, 'move-day', toDayIndex)
-  }, [applyChange])
-
-  // warnings grouped by day index — powers the per-day progress-bar colour
-  const dayWarnings = useMemo(() => {
-    const map: Record<number, ScheduleWarning[]> = {}
-    for (const w of collectWarnings(trip)) {
-      const m = /^Day (\d+):/.exec(w.title)
-      if (m) { const di = Number(m[1]) - 1; (map[di] ??= []).push(w) }
+  const handleMoveStopInto = useCallback((stopId: string, _fromDayIndex: number, toDayIndex: number, position: number) => {
+    const { applyChange, trip } = latest.current
+    // Resolve the destination BEFORE staging (#339): the old handler spliced
+    // the source first and, when the target day no longer existed, dropped the
+    // stop on the floor — a silent delete with no recovery. Abort instead.
+    if (!trip.days.some(d => d.index === toDayIndex)) {
+      toast(`Day ${toDayIndex + 1} is no longer on this trip — the stop stayed on its day.`, 'err')
+      return
     }
-    return map
+    applyChange(draft => {
+      moveStopToDay(draft.days, stopId, toDayIndex, position)
+    }, 'move-day', toDayIndex)
+  }, [])
+
+  // Warnings grouped by the day they belong to — powers the per-day
+  // progress-bar colour, the day pills and the trip-wide block. Identity comes
+  // from the engine's `dayIndex`, never from parsing `title` (a display
+  // string): the old regex misfiled every warning with no “Day N:” prefix
+  // (opening hours lead with a stop title) and silently DROPPED the trip-wide
+  // accommodation one (#402).
+  const warningsCache = useRef<Map<number, ScheduleWarning[]> | null>(null)
+  const { dayWarnings, tripWideWarnings, warnDayCount } = useMemo(() => {
+    const { byDay, tripWide } = groupWarnings(collectWarnings(trip))
+    // #347: `groupWarnings` mints a fresh array for every warned day on every
+    // trip change — content-equal, ref-different, which re-rendered those days.
+    // NO_WARNINGS above only ever saved the days with nothing to warn about.
+    const stable = reuseWarningGroups(warningsCache.current, byDay)
+    warningsCache.current = stable
+    return { dayWarnings: stable, tripWideWarnings: tripWide, warnDayCount: byDay.size }
   }, [trip])
-  const warnDayCount = Object.keys(dayWarnings).length
   // M4: sticky trip-total strip (doc §6.3) — same engine numbers as Overview.
   const totals = useMemo(() => computeTotals(trip, legCorrections), [trip, legCorrections])
+  // computeTotals().byDay mints a fresh object per day on any change, and that
+  // object is a day card's cost chip — its identity has to survive (#347).
+  const totalsCache = useRef<Map<number, DayTotals> | null>(null)
+  const totalsByDay = useMemo(() => {
+    const stable = reuseDayTotals(totalsCache.current, totals.byDay ?? [])
+    totalsCache.current = stable
+    return stable
+  }, [totals])
+
+  // #347: every day's trip-wide slice, resolved ONCE per trip change and reused
+  // per day while that day's own inputs are unchanged — so one stop edit
+  // re-renders that card (plus, deliberately, the open one, whose travel panel
+  // searches against the whole itinerary) instead of all of them.
+  const cardsCache = useRef<DayCards | null>(null)
+  const cards = useMemo(() => {
+    const next = buildDayCards(trip, days, legCorrections, cardsCache.current)
+    cardsCache.current = next
+    return next
+  }, [trip, days, legCorrections])
 
   /** Day-jump rail: open the day (accordion) and scroll a long timeline
    *  straight to its card. */
@@ -243,13 +278,14 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
     // #334: this writes the committed row directly, so while a preview is open
     // it would race the staged change in either order and one edit would fall.
     if (previewOpen) { toast(PREVIEW_BUSY, 'err'); return }
+    const { trip } = latest.current
     updateTrip(trip.id, { days: trip.days.map(d => d.index === dayIndex ? { ...d, title: title.trim() || undefined } : d) })
     toast('Day renamed')
-  }, [trip, previewOpen])
+  }, [previewOpen])
 
   /** Duplicate this day's stops onto the next day (base-camp style planning). */
   const handleCopyDay = useCallback((dayIndex: number) => {
-    applyChange(draft => {
+    latest.current.applyChange(draft => {
       const src = draft.days.find(d => d.index === dayIndex)
       const dst = draft.days.find(d => d.index === dayIndex + 1)
       if (!src || !dst) return
@@ -257,35 +293,36 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
       for (const s of sorted) {
         dst.stops.push({
           ...structuredClone(s),
-          id: 'pending_' + Math.random().toString(36).slice(2),
-          orderInDay: dst.stops.length + 1,
+          id: pendingStopId(),
+          orderInDay: nextOrderInDay(dst),
         })
       }
     }, 'add', dayIndex + 1)
-  }, [applyChange])
+  }, [])
 
   /** One-click add from the empty-day suggestions (route continuation / nearby POI). */
   const handleAddQuickStop = useCallback((dayIndex: number, stop: Omit<ItineraryStop, 'id' | 'orderInDay'>) => {
-    applyChange(draft => {
+    latest.current.applyChange(draft => {
       const day = draft.days.find(d => d.index === dayIndex)!
-      day.stops.push({ ...stop, id: 'pending_' + Math.random().toString(36).slice(2), orderInDay: day.stops.length + 1 })
+      day.stops.push({ ...stop, id: pendingStopId(), orderInDay: nextOrderInDay(day) })
     }, 'add', dayIndex)
-  }, [applyChange])
+  }, [])
 
   /** Ride start time for a day — a lightweight plan field, applied directly (like rename). */
   const handleSetDayStart = useCallback((dayIndex: number, time: string) => {
     // #334: direct write, same race as the rename — blocked while previewing.
     if (previewOpen) { toast(PREVIEW_BUSY, 'err'); return }
+    const { trip } = latest.current
     updateTrip(trip.id, { days: trip.days.map(d => d.index === dayIndex ? { ...d, startTime: time || undefined } : d) })
     toast(time ? `Day ${dayIndex + 1} now starts ${time}` : 'Ride start reset to the default')
-  }, [trip, previewOpen])
+  }, [previewOpen])
 
   /** Insert a batch of long-ride break halts, each at a user-chosen km point, ordered by
       distance along the route so the arrival clock and map reflect true stop order. Impact
       preview applies the whole-day change. */
   const handleAddPlannedHalts = useCallback((dayIndex: number, halts: { km: number; stop: Omit<ItineraryStop, 'id' | 'orderInDay'> }[]) => {
     if (halts.length === 0) return
-    applyChange(draft => {
+    latest.current.applyChange(draft => {
       const day = draft.days.find(d => d.index === dayIndex)!
       const j = buildJourney(draft, day, legCorrections) // existing stop → km lookup
       // Position stops on the day's ROAD polyline when the routing layer has
@@ -295,11 +332,11 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
       const posOf = (p: { lat: number; lng: number }) => kmFromStartForHit({ latitude: p.lat, longitude: p.lng }, road ?? j.points) ?? 0
       const merged = [
         ...day.stops.map(s => ({ km: posOf(s), s: structuredClone(s) })),
-        ...halts.map(h => ({ km: h.km, s: { ...h.stop, id: 'pending_' + Math.random().toString(36).slice(2), orderInDay: 0 } })),
+        ...halts.map(h => ({ km: h.km, s: { ...h.stop, id: pendingStopId(), orderInDay: 0 } })),
       ].sort((a, b) => a.km - b.km)
       day.stops = merged.map((m, i) => ({ ...m.s, orderInDay: i + 1 }))
     }, 'add', dayIndex)
-  }, [applyChange, legCorrections])
+  }, [legCorrections])
 
   const handleStatus = useCallback((stop: ItineraryStop, status: ItineraryStop['status']) => {
     // Status flips are lightweight group signals — applied directly to the
@@ -370,14 +407,34 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
         {warnDayCount > 0 && (
           <span className="tl-total-warn"><InlineIcon icon={TriangleAlert} size={12} gap={3} />{warnDayCount} day{warnDayCount !== 1 ? 's' : ''} need{warnDayCount === 1 ? 's' : ''} attention</span>
         )}
+        {tripWideWarnings.length > 0 && (
+          <span className="tl-total-warn"><InlineIcon icon={TriangleAlert} size={12} gap={3} />{tripWideWarnings.length} trip-wide warning{tripWideWarnings.length !== 1 ? 's' : ''}</span>
+        )}
       </div>
+
+      {/* Trip-wide warnings have no day card to live in, so they get their own
+          block right after the totals — before it, the regex grouping dropped
+          them from this tab entirely (#402). */}
+      {tripWideWarnings.length > 0 && (
+        <div className="warn-list" style={{ marginTop: 10 }} role="note" aria-label="Trip-wide warnings">
+          {tripWideWarnings.map(w => (
+            <div key={w.code + w.title} className={`warn-item ${w.severity === 'high' ? 'sev-high' : w.severity === 'low' ? 'sev-low' : ''}`}>
+              <span className="warn-icon"><TriangleAlert size={13} aria-hidden /></span>
+              <div>
+                <div className="warn-title">{w.title}</div>
+                <div className="warn-fix">{w.fix}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {days.length >= 4 && (
         <div className="day-rail" role="navigation" aria-label="Jump to day">
           <span className="day-rail-label">Jump to day</span>
           <div className="day-rail-chips">
             {days.map(d => {
-              const hasWarn = (dayWarnings[d.index] ?? []).length > 0
+              const hasWarn = (dayWarnings.get(d.index)?.length ?? 0) > 0
               return (
                 <button key={d.id} type="button" className={`day-rail-chip ${hasWarn ? 'warn' : ''}`} onClick={() => jumpToDay(d.index)}>
                   Day {d.index + 1}{hasWarn && <InlineIcon icon={TriangleAlert} size={11} gap={0} vAlign="-1px" style={{ marginLeft: 3 }} />}
@@ -389,7 +446,7 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
       )}
 
       {days.map(day => (
-        <DaySection key={day.id} day={day} trip={trip} editable={planEditable} open={openDayIndex === day.index} onToggleOpen={toggleDay} legCorrections={legCorrections} suggestionCache={suggestionCache} dayTotals={totals.byDay[Math.min(day.index, totals.byDay.length - 1)]}
+        <DaySection key={day.id} day={day} trip={openDayIndex === day.index ? trip : undefined} facts={cards.byDay.get(day.index)!} editable={planEditable} open={openDayIndex === day.index} onToggleOpen={toggleDay} legCorrections={legCorrections} suggestionCache={suggestionCache} dayTotals={totalsByDay.get(day.index)}
           onAdd={handleAdd}
           onEdit={handleEdit}
           onDelete={handleDelete}
@@ -402,7 +459,7 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
           onAddQuickStop={handleAddQuickStop}
           onSetDayStart={handleSetDayStart}
           onAddPlannedHalts={handleAddPlannedHalts}
-          warnings={dayWarnings[day.index] ?? NO_WARNINGS}
+          warnings={dayWarnings.get(day.index) ?? NO_WARNINGS}
           onStatus={handleStatus}
         />
       ))}
@@ -431,18 +488,26 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
         onMove={(toDay) => {
           if (!moveModalStop) return
           const stopId = moveModalStop.id
+          // The modal's chips come from the live trip, but a day deleted in
+          // another tab can still be clicked — abort rather than lose the stop.
+          if (!trip.days.some(d => d.index === toDay)) {
+            toast(`Day ${toDay + 1} is no longer on this trip — the stop stayed on its day.`, 'err')
+            setMoveModalStop(null)
+            return
+          }
           applyChange(draft => {
-            let moved: ItineraryStop | undefined
-            for (const d of draft.days) {
-              const idx = d.stops.findIndex(s => s.id === stopId)
-              if (idx >= 0) { [moved] = d.stops.splice(idx, 1); break }
-            }
             const target = draft.days.find(d => d.index === toDay)
-            if (moved && target) {
-              moved.orderInDay = target.stops.length + 1
-              target.stops.push(moved)
-            }
-          }, 'move-day', moveModalStop ? stopDayIndex(trip, stopId) : 0)
+            if (!target) return
+            // Road order, not append (#339): the modal has no drop slot, so it
+            // used to push the stop to the end while a drag inserts it
+            // positionally — same gesture, two different plans. Splice it in
+            // where the day's road says it belongs (the Map's add-to-day rule);
+            // an unknown position appends rather than being dropped.
+            const journey = buildJourney(draft, target, legCorrections)
+            const road = dayRoadPolyline(journey.points, legCorrections) ?? journey.points
+            const kmOf = (s: ItineraryStop) => kmFromStartForHit({ latitude: s.lat, longitude: s.lng }, road)
+            moveStopToDay(draft.days, stopId, toDay, null, kmOf)
+          }, 'move-day', toDay)
           setMoveModalStop(null)
         }}
       />

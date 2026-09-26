@@ -93,6 +93,15 @@ A collaborative travel-planning web app, built India-first. Real multi-day itine
 
 _Release highlights, newest first — the full record lives in [CHANGELOG.md](CHANGELOG.md)._
 
+## ✨ The v0.67–v0.68 run, in plain words
+
+- **One edit now costs one render.** Renaming a day used to re-run the engine's day math for every day on the Timeline; it now re-derives that day and no other. The Board's columns and its embedded map memoize the same way, the Map tab's suggestion stack loads only when the tab opens (the workspace bundle drops from 264 KB to 206 KB, measured), and switching trips aborts the road measurement you left behind instead of finishing it on the next trip.
+- **The Board stopped disagreeing with the rest of the app.** Its mini-map draws the same road the Map tab measured — and while no road has resolved, the line is a dashed amber estimate that says so rather than wearing road paint. Its health dial takes its colour from the same band its word comes from, its pulse reads the engine's own warnings (counting what it names, trip-wide ones included), and a missing amount prints “—” instead of “₹NaN”.
+- **Your plan holds its shape.** Stops stay numbered 1..n through delete, undo, drag and day-moves — including the ones a surface hides; per-day money follows the day's own number, so a skipped day no longer shows a neighbour's total; the optimiser cannot move tomorrow's wake-up point, and applying it over an edit that landed meanwhile refuses rather than silently discarding your drag.
+- **The map rail speaks, and works from the keyboard.** Search results are a real listbox — arrows move the highlight, Enter and Space pin, Escape clears — and both the results and the day plan announce what arrived. The pins gained a thumb-sized hit area, the add modal says when its day is only a guess, and an unmeasured distance is labelled “(est.)” instead of posing as road kilometres.
+- **The create flow keeps what you type.** A stop typed but never picked is no longer thrown away at submit — the form stops, names it, and offers “Add without a map pin” — and the Plan Bench's “Start planning” hand-off is pinned to the one create-route definition, so a route rename cannot strand it again.
+- **And from v0.67:** the public wire stopped over-sharing — no invite code rides along on an anonymous read of a published plan, and a viewer who has not bought one receives no budget breakdown. Unpublishing keeps the row, so a buyer keeps the access they paid for, and the pruner that deletes traffic history became an operator-only action.
+
 ## ✨ The v0.66 release, in plain words
 
 - **The creator hub became an operating picture.** It used to open on your settings; it now opens on how your work is doing — one ruled strip of lifetime figures, then a recorded-traffic trend (visits, forks and unlocks over 7, 30 or 90 days) drawn from the *same* derivation the table beneath it reads, so the chart and the rows can never describe different windows. Below that, one row per publication carries its funnel and its actions, and the creator profile moved into a disclosure at the foot of the page where it no longer owns the fold.

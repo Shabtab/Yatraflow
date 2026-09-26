@@ -10,6 +10,7 @@ import {
 } from '../src/lib/providers/quota'
 import type { QuotaSku } from '../src/lib/providers/quota'
 import { detourKm, searchNearbyPois, searchNearbyPoisMulti, searchPlaces, resolveHitCoords, type PlaceHit } from '../src/lib/geocode'
+import { hasCoords } from '../src/lib/providers/hits'
 
 describe('encodePolyline', () => {
   it('encodes [lng,lat] points with the canonical Google algorithm', () => {
@@ -326,5 +327,43 @@ describe('facade: searchNearbyPoisMulti (Search-Along-Route)', () => {
     // sightseeing results are strictly tourist_attraction — locality hits are dropped
     expect(hits.some(h => h.name === 'Echo Point')).toBe(true)
     expect(hits.some(h => h.name === 'Community Block')).toBe(false)
+  })
+})
+
+// #375's second half, which is the twin of the map input's #326: the pick guard
+// has to be provider-agnostic. It used to fire only for hits carrying an
+// `eLoc`/`placeId` to resolve through, so an id-less (0, 0) hit sailed past it
+// and counted as a real stop — the trip then measured its whole journey through
+// the ocean. `hasCoords` is the shared predicate every pick path asks first.
+describe('hasCoords — the either-zero pick guard', () => {
+  function hit(over: Partial<PlaceHit>): PlaceHit {
+    return { id: 'h1', name: 'Somewhere', latitude: 10, longitude: 76, kind: 'place', ...over }
+  }
+
+  it('accepts a hit the map can actually pin', () => {
+    expect(hasCoords(hit({}))).toBe(true)
+  })
+
+  it('refuses either coordinate being zero, whichever side it is on', () => {
+    expect(hasCoords(hit({ latitude: 0, longitude: 76 }))).toBe(false)
+    expect(hasCoords(hit({ latitude: 10, longitude: 0 }))).toBe(false)
+    expect(hasCoords(hit({ latitude: 0, longitude: 0 }))).toBe(false)
+  })
+
+  it('refuses an unpinnable hit even when it carries provider ids', () => {
+    expect(hasCoords(hit({ latitude: 0, longitude: 0, eLoc: 'abc123' }))).toBe(false)
+    expect(hasCoords(hit({ latitude: 0, longitude: 0, placeId: 'ChIJxyz' }))).toBe(false)
+  })
+
+  it('refuses a hit with no ids at all — the precondition the guard used to demand', () => {
+    const bare = hit({ latitude: 0, longitude: 0 })
+    expect(bare.eLoc).toBeUndefined()
+    expect(bare.placeId).toBeUndefined()
+    expect(hasCoords(bare)).toBe(false)
+  })
+
+  it('refuses non-finite coordinates', () => {
+    expect(hasCoords(hit({ latitude: Number.NaN, longitude: 76 }))).toBe(false)
+    expect(hasCoords(hit({ latitude: 10, longitude: Number.POSITIVE_INFINITY }))).toBe(false)
   })
 })

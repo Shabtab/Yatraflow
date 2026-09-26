@@ -148,3 +148,40 @@ export function applyViewModeOnMap(map: MapLike, mode: MapViewMode): void {
   if (map.getLayer(YF_HILLSHADE_LAYER_ID)) map.removeLayer(YF_HILLSHADE_LAYER_ID)
   map.setTerrain({ source: YF_DEM_SOURCE_ID, exaggeration: HERO_3D_EXAGGERATION })
 }
+
+/** The four things the hero camera can be asked to do — see `heroCameraMove`. */
+export type HeroCameraMove = 'enter' | 're-aim' | 'flatten' | 'none'
+
+/**
+ * Decide what the hero camera does on this render, as a pure function so the
+ * rule that matters is testable without a map instance (#332 R1).
+ *
+ * The bug this exists to prevent: the effect fired on the 2d→3d EDGE only, while
+ * `heroBearing` derives from the drawn geometry — so entering 3D before OSRM
+ * resolved left the camera at `HERO_3D_CAMERA`'s prototype bearing and it never
+ * corrected when the real road arrived. Depending on the bearing VALUE (not on
+ * every render) is what lets a late resolve re-aim without the camera grinding:
+ *
+ * - `enter`   — the 2d→3d edge: pitch AND the hero bearing.
+ * - `re-aim`  — already in 3D and the bearing value changed: bearing ONLY, so the
+ *               pitch the user is looking at does not jump under them.
+ * - `flatten` — left 3D: pitch and bearing back to flat.
+ * - `none`    — nothing changed; easing here is exactly the grind to avoid.
+ *
+ * `prevBearing` is the value last eased to (null before the first 3D entry), so
+ * a geometry-less trip easing the fallback then receiving real geometry reads as
+ * `re-aim` — which is the whole point.
+ */
+export function heroCameraMove(
+  mode: MapViewMode,
+  prevMode: MapViewMode,
+  bearing: number | null | undefined,
+  prevBearing: number | null,
+): { move: HeroCameraMove; bearing: number } {
+  const heroBearing = bearing ?? HERO_3D_CAMERA.bearing
+  if (mode === '3d') {
+    if (prevMode !== '3d') return { move: 'enter', bearing: heroBearing }
+    return { move: prevBearing === heroBearing ? 'none' : 're-aim', bearing: heroBearing }
+  }
+  return { move: prevMode === '3d' ? 'flatten' : 'none', bearing: heroBearing }
+}

@@ -4,9 +4,12 @@
 // The `User` objects here are only used to pre-fill profile fields for the
 // reseeded demo owner; passwords are handled by Supabase Auth, not stored here.
 import type { Trip, PublishedItinerary, StopSuggestion, TripDecision, ActivityEntry, Notification, UserProfile } from './types'
+import { randomToken } from '../lib/randomId'
 
-export const uid = (prefix: string): string =>
-  `${prefix}_${Math.random().toString(36).slice(2, 9)}${Date.now().toString(36).slice(-4)}`
+/** A client-minted row id. The platform CSPRNG, not `Math.random` (#267's
+ *  lesson): the shape (`<prefix>_<token>`) is what callers and tests pin, and
+ *  the token's source is what the static analyzer reads. */
+export const uid = (prefix: string): string => `${prefix}_${randomToken(6)}`
 
 // ---------------- Profile templates ----------------
 // With real Supabase auth these are only used to pre-fill the profile of the
