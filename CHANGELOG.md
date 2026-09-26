@@ -15,6 +15,28 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+## [0.68.0] - 2026-09-26
+
+The audit's third wave, one day after the first two: the workspace's own surfaces — the
+Timeline, the Board, the Map tab and the create flow — take the pass the public wire took
+yesterday, and the theme running under it is that one edit now costs one render. Renaming
+a day re-derives that day and no other, a Board interaction re-renders no columns it does
+not own, the Map tab's suggestion stack loads on demand instead of riding the workspace
+bundle (264 KB → 206 KB, measured), and switching trips aborts the road measurement it
+left behind instead of letting it finish. The honesty half is about surfaces agreeing
+with each other and with the engine: the Board's mini-map draws the same road the Map tab
+measured — and a dashed amber estimate, named as one, when there is no road to draw — its
+health dial takes its colour from the band word it prints, its pulse reads the engine's
+own warning identity instead of parsing titles, and per-day money follows the day's own
+index, so a skipped day number can no longer show a neighbour's total. A day's stops stay
+numbered 1..n through delete, undo, drag and day-moves, the optimiser can neither move
+tomorrow's wake-up point nor apply over an edit that landed meanwhile, and an unmeasured
+distance says "(est.)" instead of wearing road kilometres. The map rail's results are a
+keyboard-operable listbox that announces what came back, the pins are big enough for a
+thumb, and the create flow keeps the stop text you typed instead of dropping it at
+submit — with the Plan Bench's hand-off pinned to the one create-route definition so a
+rename can never strand it again. No migrations: a code-only release.
+
 ### Added
 
 - **The Board can set a stop's status, and a delete offers Undo.** The Board wrote every edit through the same impact preview as the Timeline but stopped there: a stop's status could only be changed by leaving for the Timeline, and a delete had no way back — the confirmation step stood in for an undo. Status now flips from the stop's own action row (confirmed ⇄ maybe, the same lightweight crew signal the Timeline sends: written straight through rather than staged, and refused while a preview is open for the same reason), deleting offers the Undo the Timeline and the map already offer — restoring the stop to the day and position it came from — and every board edit carries the follow-up hook its sibling surfaces have (#372).
