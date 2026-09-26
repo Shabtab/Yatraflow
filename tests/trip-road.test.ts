@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import {
   buildRoadChain, measureRoadChain, correctionsFromLegs, mapRoadViewFromLegs,
-  mapReturnGeometryFromLegs,
+  mapReturnGeometryFromLegs, resolvedLegs, routeDrawGrade, roadChainSig,
   type RoadChain,
 } from '../src/lib/tripRoad'
 import { clearRouteCacheForTests } from '../src/lib/routing'
@@ -14,6 +14,9 @@ import type { RoadLeg } from '../src/lib/routing'
 import { getAssumptions } from '../src/lib/engine'
 
 const P = (lat: number, lng: number) => ({ lat, lng })
+
+/** Source text of a file under src/, for the binding checks below. */
+const readSrc = (p: string) => readFileSync(new URL(p, import.meta.url), 'utf8').replace(/\r\n/g, '\n')
 
 /** A minimal trip shape for the chain builder (only the picked fields matter). */
 function tripOf(opts: {
@@ -366,5 +369,76 @@ describe('derivations from the one measurement', () => {    const chain: RoadCha
     expect(mapRoadViewFromLegs(null, null, [0]).geometry).toBeNull()
     expect(mapRoadViewFromLegs(chain, [], [0]).totalKm).toBeNull()
     expect(mapRoadViewFromLegs(chain, null, [0]).dayRoadKm).toBeNull()
+  })
+})
+
+// ============ Grading what is drawn (#370) ============
+// The Board's mini-map drew a stops-only road while its numbers described the
+// full chain, and when the measurement failed it painted straight chords with
+// the same paint as a road. One shared rule now grades a line from the measured
+// geometry it should have come from, and one shared rule decides whether a
+// chain resolved at all.
+describe('routeDrawGrade / resolvedLegs (#370)', () => {
+  it('only real road geometry grades as measured', () => {
+    expect(routeDrawGrade([[77, 10], [77.1, 10.1]])).toBe('measured')
+    // no measurement (failed, or still pending) and a single point are both
+    // honest guesses — the chord fallback must never wear road paint
+    expect(routeDrawGrade(null)).toBe('rough')
+    expect(routeDrawGrade(undefined)).toBe('rough')
+    expect(routeDrawGrade([])).toBe('rough')
+    expect(routeDrawGrade([[77, 10]])).toBe('rough')
+  })
+
+  it('an all-estimate chain is unresolved; one real leg makes it a road', () => {
+    const chords = [leg(5, 6), leg(7, 8)].map(l => ({ ...l, source: 'estimate' as const }))
+    expect(resolvedLegs(chords)).toBeNull()
+    expect(resolvedLegs([chords[0], leg(100, 120)])).not.toBeNull()
+    expect(resolvedLegs([])).toBeNull()
+  })
+
+  it('both measurement paths speak the one rule (no private copies)', () => {
+    const tripRoad = readSrc('../src/lib/tripRoad.ts')
+    const uses = tripRoad.match(/resolvedLegs\(/g) ?? []
+    // the definition + measureDayRide + measureRoadChain
+    expect(uses.length).toBe(3)
+    // …and the rule itself lives in exactly one body (the two measurement
+    // paths used to carry byte-identical private copies)
+    const bodies = tripRoad.match(/legs\.some\(l => l\.source !== 'estimate'\)/g) ?? []
+    expect(bodies.length).toBe(1)
+  })
+})
+
+describe('the Board draws the workspace road, graded (#370)', () => {
+  it('the Board renders the same two derivations the Map tab uses', () => {
+    const board = readSrc('../src/components/BoardView.tsx')
+    expect(board).toMatch(/mapRoadViewFromLegs\(road\?\.chain \?\? null, road\?\.legs \?\? null, trip\.days\.map\(d => d\.index\)\)/)
+    expect(board).toMatch(/mapReturnGeometryFromLegs\(road\?\.chain \?\? null, road\?\.legs \?\? null\)/)
+    expect(board).toMatch(/<MemoTripMap trip=\{trip\} focusDay=\{focusedDay\} showToolbar=\{false\}[\s\S]{0,120}mainRouteGeometry=\{roadView\.geometry\} returnRouteGeometry=\{mapReturnGeometry\}[\s\S]{0,80}allowSelfMeasurement=\{false\}/)
+    // the board no longer measures a road of its own
+    expect(board).not.toMatch(/routePath\s*\(/)
+  })
+
+  it('the workspace hands the board its one measurement', () => {
+    const workspace = readSrc('../src/pages/TripWorkspace.tsx')
+    expect(workspace).toMatch(/<BoardView trip=\{effective\}[\s\S]{0,220}road=\{road\}/)
+  })
+
+  it('the measurement outcome reaches the board, gated to driven trips', () => {
+    const board = readSrc('../src/components/BoardView.tsx')
+    expect(board).toMatch(/road\?\.status === 'failed'/)
+    expect(board).toMatch(/isRoadMeasuredMode\(trip\.transportMode\)/)
+    expect(board).toMatch(/Road not measured/)
+  })
+
+  it('the map grades every line it draws and shares the chain signature', () => {
+    const tripMap = readSrc('../src/components/TripMap.tsx')
+    expect(tripMap).toMatch(/import \{[^}]*roadChainSig[^}]*routeDrawGrade[^}]*\} from '\.\.\/lib\/tripRoad'/)
+    // ONE chain identity: the workspace's superset signature, not a private
+    // stops-only hash ("same trip, two cache keys" was the bug)
+    expect(tripMap).toMatch(/roadChainSig\(trip\)/)
+    expect(tripMap).not.toMatch(/allPoints\.map\(p => `\$\{p\.lat\.toFixed\(5\)\}/)
+    // all three drawn lines grade: main, the selected day, the drive home
+    const grades = tripMap.match(/routeDrawGrade\(geom/g) ?? []
+    expect(grades.length).toBe(3)
   })
 })

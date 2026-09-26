@@ -483,6 +483,34 @@ Key locations:
    counter plus a driven localhost session showed one editor-open re-rendering
    0 columns with the memo and all 12 without (3 columns × the dev
    double-render) — then remove the counter before committing.
+ 6t. **A drawing is a claim about the same measurement the numbers came from —
+   and a failure must not wear the mark of success (learned 2026-09-26, #370).**
+   The Board's mini-map measured a road of its own over the stops alone, while
+   its budget/health/arrival figures came from the workspace's fuller chain
+   (start leg + stops + drive home + one-way destination tail), so one trip drew
+   two different roads under two sets of numbers describing only one of them —
+   and when nothing resolved, the chord fallback was painted with the same
+   casing, colour and chevrons as a measured road. Three rules: (1) a surface
+   that DRAWS a measurement must derive it from the same source the surfaces
+   that PRINT it use — here the workspace's one chain, through the same helper
+   (`mapRoadViewFromLegs`) — never a private shorter one; (2) grade what you draw
+   from the MEASURED geometry it should have come from, not from the coordinates
+   in hand (they always exist), and grade failures and "still measuring" the same
+   way — with a distinct treatment (`routeDrawGrade` in `lib/tripRoad.ts`), so no
+   surface can paint a guess as a road; put the WORDS on the surface that knows
+   `road.status` (this component cannot tell failed from pending, so it says
+   nothing); (3) when one identity is already derived in a lib (`roadChainSig`),
+   use it — a private stops-only cache key missed a moved start point. Two
+   techniques worth reusing: **a shared renderer's honesty fix lands on every
+   host** (grading inside `TripMap` gave the Map tab's own chord fallback the
+   same treatment, without touching lane A's file), and **a driven check can read
+   the props two surfaces actually passed**: React keeps them on the DOM node's
+   fiber (`Object.keys(el).find(k => k.startsWith('__reactFiber$'))`, walk
+   `.return` to the component, `.child`/`.sibling` for the lines below it), which
+   proved Board-line == Map-line as identical 2,146-point arrays, and — with
+   `window.fetch` stubbed to reject the routing host and a trip switch to force a
+   fresh measurement — that the failed state paints dashed amber and no
+   chevrons. Restore the stub when done.
  7. **When asking the user to review/test locally, always hand them the exact
    URL — never make them find or start the server.** Check if the dev server
    is up (probe `http://localhost:5173`); if not, start `npm run dev`
