@@ -27,6 +27,23 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ### Fixed
 
+- **The map rail's search results are a real list you can drive from the keyboard.** The rows were
+  announced as static text — `listitem` carrying `aria-selected`, which is not a selectable list — and
+  only Enter did anything, only when the row itself held focus. So Space scrolled the page away from
+  the place it was about to pin, and no key moved between results. The list is now a listbox of options
+  with one roving tab stop: the arrow keys move the highlight and take focus with it (down from the
+  search box lands on the first row, up lands on the last), Enter and Space both pin, Escape clears,
+  and every other key is left alone so typing and paging still work. Hovering a row also stops moving
+  the list: scrolling the active row into view now happens for keyboard and focus only, so reading
+  nearby results with a mouse no longer fights your own scroll position (#333).
+- **The engine tip strip no longer pretends to be a control, and an out-of-scope result no longer fades.**
+  The tip dots were clickable buttons sitting inside an `aria-hidden` container at 8px wide and hidden
+  below 720px: reachable by mouse, unreachable by keyboard, and below the touch floor. The strip rotates
+  on its own and screen readers already get a static summary rather than the seven-second churn, so the
+  dots are progress indicators now and nothing focusable hides inside `aria-hidden`. A search result
+  beyond the detour budget used to be dimmed to 60% opacity, which washed out text already near the
+  contrast floor and made that row's own Add buttons read as disabled while they were still pressable;
+  it now carries a visible "beyond your detour scope" chip saying the same thing at full contrast (#333).
 - **Reordering a day could move where the next morning started.** The optimiser pinned a night's base only when the tail stop was a hotel or a rest — but the engine derives the next day's wake-up point from whatever the day's LAST stored stop is, so a food-tailed evening (dinner where you ended up) let it slide — the reported case moved the next morning's start about 16 km. A day's stored tail is now pinned whenever a later day wakes up from it, and a property test asserts the next day's origin is unchanged rather than trusting the shape.
 - **Applying an optimise over an edit that landed meanwhile is no longer silent.** The preview was a snapshot taken when the dialog opened, so a drag or an edit made while it was up was discarded without notice when Apply was pressed. Apply now re-derives from the day as it is, refuses and refreshes when the order no longer matches what was reviewed, and says when there is nothing left to improve.
 - **Opening-hours conflicts could vanish on a hydrated stop.** The preview's own check read `visitMinutes` raw, so a row without one compared `NaN` against its closing time and reported nothing. A missing dwell now counts as zero minutes, the same way the engine treats it.

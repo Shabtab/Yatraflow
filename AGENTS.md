@@ -568,6 +568,17 @@ Hard rules (each learned the hard way — do not relearn them):
   captured output** — always pass an argument (`echo '---'` / `Write-Host "…"`).
   The terminal looks stuck and shell-integration reports the command as still
   running (cost debugging time fetching `gh issue view` bodies, Aug 2026).
+- **A source-scanning guard greps the whole file, so a COMMENT about the thing it
+  guards will trip it (learned 2026-09-26, #333 A4).** The rail's "no control may
+  opt out of the tab order" assertion (`not.toMatch(/tabIndex=\{-1\}/)`) went red on
+  its own fix, because the comment explaining the removal quoted the literal it had
+  just deleted. Fix it by spelling the literal out of the prose ("a -1 tabIndex",
+  "buttons with onClick") — never by weakening the guard: a blanket check that no
+  control opts out of the tab order is worth more than the sentence it costs. Same
+  family as the literal-grep rules above, from the other side: a guard must be
+  taught to resolve a new constant, and prose must not impersonate the code it
+  describes. It is also a good sign — a guard that fires on its own documentation
+  is a guard that is genuinely reading the file.
 - **`tsc -b --clean` first** in any session before trusting a typecheck —
   incremental build caches pass code that clean builds reject.
 - **But `--clean` DIRTIES, it does not typecheck — and in `verify` the real
