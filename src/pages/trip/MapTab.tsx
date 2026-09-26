@@ -21,7 +21,7 @@ import { corridorAnchors, detourKm, asymmetricDetourKm, asymmetricDetourMinutes,
 import { useResolvePick } from '../../components/ResolvePickDialog'
 import { deriveClockMilestones } from '../../lib/clockOverlay'
 import { railKeyAction } from '../../lib/railKeys'
-import { candidatesAnnouncement, fillLabel, scopeValueText, searchAnnouncement, voteStatusId } from '../../lib/railA11y'
+import { candidatesAnnouncement, fillLabel, pickDayCaveat, scopeValueText, searchAnnouncement, voteStatusId } from '../../lib/railA11y'
 
 /** How many search hits the rail shows before "Show all" (#333 A1). The listbox
  *  grammar needs the same page size the rows are rendered with, so it lives here
@@ -239,6 +239,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
   // pending "add from map / nearby" — pick a day, then confirm
   const [poiDraft, setPoiDraft] = useState<{ hit: PlaceHit } | null>(null)
   const [pickDay, setPickDay] = useState<number>(0)
+  const [pickDayGuessed, setPickDayGuessed] = useState(false)
   // cross-highlighting: the suggestion currently hovered/selected in EITHER the
   // side panels or the map. Panel hover/click sets it (map flies to the pin);
   // map hover/click sets it (panel row highlights and scrolls into view).
@@ -1215,7 +1216,13 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
     // hit's own ride-plan cumKm (corridor pins). An unknown position can't
     // preselect honestly, so fall back to the first day — the picker is
     // user-adjustable, so nothing is attributed silently.
-    setPickDay(dayForKm(kmOverride ?? hit.cumKm) ?? 0)
+    const derivedDay = dayForKm(kmOverride ?? hit.cumKm)
+    setPickDay(derivedDay ?? 0)
+    // #333 A9: an unknown position still cannot preselect honestly — but the
+    // fallback to Day 1 used to happen in silence, with the reasoning living
+    // only in this comment. The modal discloses the guess now, and it stops
+    // being a guess the moment the user picks a day themselves.
+    setPickDayGuessed(derivedDay == null)
     setPoiDraft({ hit })
   }
 
@@ -2664,9 +2671,14 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
             <Field label="Add to which day?">
               <Select
                 value={String(pickDay)}
-                onChange={v => setPickDay(Number(v))}
+                onChange={v => { setPickDay(Number(v)); setPickDayGuessed(false) }}
                 options={dayOptions.map(d => ({ value: String(d.index), label: `Day ${d.index + 1}` }))}
               />
+                {/* #333 A9: said out loud, beside the control it qualifies. The Select
+                    component forwards no extra props, so this cannot ride on describedby. */}
+                {pickDayCaveat(pickDay, !pickDayGuessed) && (
+                  <p className="hint-text" role="status">{pickDayCaveat(pickDay, !pickDayGuessed)}</p>
+                )}
             </Field>
             <p className="hint-text">You can fine-tune duration, fees and timings in the Timeline afterwards.</p>
             <div style={{ display: 'flex', gap: 9, justifyContent: 'flex-end', marginTop: 8 }}>

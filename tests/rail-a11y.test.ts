@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url'
 import {
   candidatesAnnouncement,
   fillLabel,
+  pickDayCaveat,
   scopeValueText,
   searchAnnouncement,
   voteStatusId,
@@ -66,6 +67,17 @@ describe('scopeValueText (A8) and voteStatusId (A6)', () => {
     expect(voteStatusId('a b')).not.toContain(' ')
     expect(voteStatusId('x"y')).not.toContain('"')
   })
+  it('A9: says the add modal\'s day is a guess, and only when it is one', () => {
+    // The fallback to Day 1 was preselected in silence; the reasoning lived in a
+    // code comment the user never sees.
+    expect(pickDayCaveat(0, false)).toBe(
+      'This place has no position on the route, so Day 1 is a guess — pick the day you want.',
+    )
+    expect(pickDayCaveat(2, false)).toContain('Day 3')
+    expect(pickDayCaveat(0, false)).toContain('guess')
+    // Placed from the route: nothing to disclose.
+    expect(pickDayCaveat(3, true)).toBeNull()
+  })
 })
 
 describe('MapTab wires those sentences into the DOM', () => {
@@ -96,5 +108,13 @@ describe('MapTab wires those sentences into the DOM', () => {
     expect(mapTabSrc).toMatch(/aria-describedby=\{[^}]*voteStatusId\(/)
     expect(mapTabSrc).toMatch(/id=\{voteStatusId\(/)
     expect(mapTabSrc).toMatch(/className="day-slot-vote" id=\{voteStatusId\(/)
+  })
+
+  it('A9: the add modal discloses a guessed day, and drops the guess on choice', () => {
+    expect(mapTabSrc).toMatch(/pickDayCaveat\(/)
+    expect(mapTabSrc).toMatch(/setPickDayGuessed\(/)
+    // Choosing a day ends the guess: the caveat must not outlive the choice it
+    // was warning about.
+    expect(mapTabSrc).toMatch(/setPickDay\(Number\(v\)\); setPickDayGuessed\(false\)/)
   })
 })

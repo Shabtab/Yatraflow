@@ -55,6 +55,10 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
   steps, and no longer squeezes its thumb against the label at 360px. And a part that has a crew vote
   routing to Group input points at the vote status beside it, instead of leaving that status
   unassociated (#333).
+- **The add modal says when its day is only a guess.** Adding a place with no position on the route fell
+  back to Day 1 in silence — the reasoning lived in a code comment the user never sees, so the picker
+  looked like it had attributed the place to a day deliberately. It says so now, beside the day picker,
+  and stops saying it the moment the day is chosen by hand (#333).
 - **Reordering a day could move where the next morning started.** The optimiser pinned a night's base only when the tail stop was a hotel or a rest — but the engine derives the next day's wake-up point from whatever the day's LAST stored stop is, so a food-tailed evening (dinner where you ended up) let it slide — the reported case moved the next morning's start about 16 km. A day's stored tail is now pinned whenever a later day wakes up from it, and a property test asserts the next day's origin is unchanged rather than trusting the shape.
 - **Applying an optimise over an edit that landed meanwhile is no longer silent.** The preview was a snapshot taken when the dialog opened, so a drag or an edit made while it was up was discarded without notice when Apply was pressed. Apply now re-derives from the day as it is, refuses and refreshes when the order no longer matches what was reviewed, and says when there is nothing left to improve.
 - **Opening-hours conflicts could vanish on a hydrated stop.** The preview's own check read `visitMinutes` raw, so a row without one compared `NaN` against its closing time and reported nothing. A missing dwell now counts as zero minutes, the same way the engine treats it.
