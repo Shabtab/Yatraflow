@@ -511,6 +511,34 @@ Key locations:
    `window.fetch` stubbed to reject the routing host and a trip switch to force a
    fresh measurement — that the failed state paints dashed amber and no
    chevrons. Restore the stub when done.
+ 6u. **Identity is not content — a store echo mints fresh objects, so a memo
+   must compare content where identity is guaranteed to churn (learned
+   2026-09-26, the Timeline wave #340/#347).** The Timeline's day cards were
+   memoized and still re-rendered every day on every edit. Two different causes,
+   both worth carrying forward:
+   (1) **Every read of the trip came from the trip OBJECT.** `useMemo(…, [trip])`
+   on a clone-per-save store is a memo that never hits, so a day card re-derived
+   its own journey, schedule and origin on every unrelated keystroke. Resolve the
+   trip-wide slice a card reads ONCE per trip change (`lib/dayCards.ts`), keyed on
+   the EXACT inputs the engine reads, hand the same object back while the key
+   holds, and make the prop the card reads optional (`trip?: Trip`) so a closed
+   card cannot read the trip at all — a `trip.x` on that path is then a compile
+   error instead of a stale render.
+   (2) **The store hands every merged/echoed row fresh day objects with identical
+   content.** So even with the facts reused, the memo's shallow default saw a
+   "changed" `day` and re-rendered every card — a counter alone cannot tell
+   "memo worked" from "re-rendered with identical props", which is why the
+   instrumentation must record WHICH prop changed and in which parent commit.
+   Compare `day` by CONTENT and exhaustively (`JSON.stringify` over the day, or
+   any full compare) — never a hand-written field list, which goes stale the day
+   someone adds a field. Two companions: the comparator must be exhaustive BY
+   CONSTRUCTION (iterate the props object's key set and compare everything but
+   the one key you special-case — a hand-written prop list skips a new prop
+   silently), and a handler that closes over the churning value re-renders the
+   tree just as surely (`useStopConflict`'s `openEditor` depended on `trip.days`,
+   flipping `onAdd`/`onEdit` on every save — read the live value through a
+   latest-value ref and keep the dep list empty). Measured, after both: renaming
+   one day re-rendered that card and **0** of the others.
  7. **When asking the user to review/test locally, always hand them the exact
    URL — never make them find or start the server.** Check if the dev server
    is up (probe `http://localhost:5173`); if not, start `npm run dev`
