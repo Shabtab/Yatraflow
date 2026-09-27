@@ -1503,6 +1503,8 @@ that shape: the check names a file, a human runs it, the next run flips to `ok`
   `node -e "console.log(Object.keys(require('lucide-react')).filter(n => /x/i.test(n)))"`
   before writing the import.
 
+- **Jakarta 400 is the faded body, not a contrast failure — and one icon stroke does not fit all sizes (learned 2026-09-27).** The Inter→Jakarta switch left every unweighted line at 400, which reads washed out at 12–15px in `--text-2`/`--text-3` while measuring 5–16:1 (all AA) — so the contrast gate stays green and only a rendered specimen shows it. The base weight is 500 now (`body`, Sora headers untouched). Same session: one global 1.5 icon stroke fills dense glyphs in at ≤12px in dark ink (Sparkles, Lock, kind kickers) — the shared wrappers (InlineIcon/MetaIcon/KindIcon) carry `.ic-sm` at 12px and under through the `--icon-stroke-sm` (1.25) token, 11px glyphs were raised to 12, and direct 12px glyphs to 13. When judging type or glyphs, render the specimen — the gate cannot see either.
+
 - **A squash-merge can silently DROP files, and nothing in the gate catches it.**
   PR #75's squash carried the calendar/print/ShareTab files but silently omitted
   `src/pages/TripsList.tsx` — My Trips reverted to a bare list for a release, the

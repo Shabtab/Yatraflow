@@ -17,6 +17,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ### Fixed
 
+- **Body and secondary text now set in Jakarta 500 instead of 400, and the smallest icons render a rung larger with a lighter stroke.** The Inter-to-Jakarta switch left every unweighted line at 400, which reads faded at body and secondary sizes even though every pair passes AA — the base weight is 500 now, with the explicit 600/700/800 declarations untouched. Separately, the six 11px glyphs move to 12px, the fourteen direct 12px glyphs move to 13px, and the shared inline wrappers (InlineIcon, MetaIcon, KindIcon) drop dense ≤12px glyphs to a 1.25 stroke through the new `--icon-stroke-sm` token, so Sparkles, Lock and the kind kickers stop filling in.
 - A failed road measurement can now be retried from the surfaces that say it failed: the Board's estimate note and the Map tab's travel-day banner each carry a Retry button (the workspace's measurement already re-ran on demand since #188 — no surface consumed it). While the re-measure is in flight the honest state stays up instead of blinking away — the note reads "Measuring the road…" and the banner holds open with "the estimates hold until it resolves" — and both clear only when the road actually resolves.
 
 ## [0.68.0] - 2026-09-26

@@ -384,7 +384,7 @@ function InvitesTab() {
                           aria-label={`Remove ${u?.profile.name ?? 'member'} from ${t.name}`}
                           disabled={busy}
                           onClick={() => u && setConfirmKick({ trip: t, user: u })}>
-                          <ShieldAlert size={12} aria-hidden />
+                          <ShieldAlert size={13} aria-hidden />
                         </button>
                       </span>
                     )

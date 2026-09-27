@@ -551,7 +551,7 @@ const BoardColumn = React.memo(function BoardColumn({ day, allDays, editable, wa
               {...(editable ? dndHandlers(i) : {})}>
               <div className={`board-stop stop-card kind-${kind} status-${s.status} ${foreignOver === i && dragging === null ? 'foreign-over' : ''}`}>
                 <div className="stop-main">
-                  <span className="board-stop-kicker">{s.departTime ? `${formatHM(s.departTime, timeFormat)} · ` : ''}<KindIcon kind={kind} size={11} />{STOP_KIND_LABELS[kind]}</span>
+                  <span className="board-stop-kicker">{s.departTime ? `${formatHM(s.departTime, timeFormat)} · ` : ''}<KindIcon kind={kind} size={12} />{STOP_KIND_LABELS[kind]}</span>
                   {editable ? (
                     <button type="button" className="board-stop-title-btn" onClick={() => onEdit(s.id)}
                       title={`Edit ${s.title}`} aria-label={`Edit ${s.title}`}>
@@ -567,17 +567,17 @@ const BoardColumn = React.memo(function BoardColumn({ day, allDays, editable, wa
                     <div className="move-btns">
                       <button type="button" className="move-btn" disabled={i === 0}
                         onClick={() => onReorder(day.index, i, i - 1)} aria-label={`Move ${s.title} up`}>
-                        <ChevronUp size={12} aria-hidden />
+                        <ChevronUp size={13} aria-hidden />
                       </button>
                       <button type="button" className="move-btn" disabled={i === ordered.length - 1}
                         onClick={() => onReorder(day.index, i, i + 1)} aria-label={`Move ${s.title} down`}>
-                        <ChevronDown size={12} aria-hidden />
+                        <ChevronDown size={13} aria-hidden />
                       </button>
                     </div>
                     {allDays.length > 1 && (
                       <button type="button" className="move-btn" onClick={() => setMoveStop(s)}
                         title="Move to another day" aria-label={`Move ${s.title} to another day`}>
-                        <MoveHorizontal size={12} aria-hidden />
+                        <MoveHorizontal size={13} aria-hidden />
                       </button>
                     )}
                     {/* Status rides the same lightweight group signal the
@@ -586,17 +586,17 @@ const BoardColumn = React.memo(function BoardColumn({ day, allDays, editable, wa
                     {s.status === 'confirmed'
                       ? <button type="button" className="move-btn" onClick={() => onStatus(s, 'maybe')}
                         title={`Mark ${s.title} maybe`} aria-label={`Mark ${s.title} maybe`}>
-                        <CircleHelp size={12} aria-hidden />
+                        <CircleHelp size={13} aria-hidden />
                       </button>
                       : <button type="button" className="move-btn" onClick={() => onStatus(s, 'confirmed')}
                         title={`Mark ${s.title} confirmed`} aria-label={`Mark ${s.title} confirmed`}>
-                        <CircleCheck size={12} aria-hidden />
+                        <CircleCheck size={13} aria-hidden />
                       </button>}
                     <button type="button" className="move-btn move-btn--danger"
                       onClick={() => onDelete(s.id, day.index)}
                       title={`Delete ${s.title} — you'll see the impact first; Undo is offered after Keep`}
                       aria-label={`Delete ${s.title}`}>
-                      <Trash2 size={12} aria-hidden />
+                      <Trash2 size={13} aria-hidden />
                     </button>
                   </div>
                 )}

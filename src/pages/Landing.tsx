@@ -140,7 +140,7 @@ export function LandingPage({ onNavigate }: { onNavigate: (r: string) => void })
                 product's own dialog sitting on the dark photo in both themes. */}
             <div className="feature-preview">
               <div className="feature-preview-head">
-                <Zap size={12} aria-hidden />
+                <Zap size={13} aria-hidden />
                 <span>Impact preview</span>
                 <span className="fp-chip">+1 warning</span>
               </div>
