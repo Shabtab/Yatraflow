@@ -48,6 +48,13 @@ interface DB {
   /** True once the first hydrate of this session has settled (success OR
    *  failure). Until then, "empty" is a lie — pages must show loading. */
   ready: boolean
+  /** Which slices the last hydrate read SUCCESSFULLY, and which it failed
+   *  (#364). `ready` above answers "has the hydrate settled", which is not the
+   *  same question: a hydrate can settle with these two slices broken, and a
+   *  page reading only `ready` would then render a failed read as a genuine
+   *  empty gallery. The names are the ones the hydrate already collects in its
+   *  local `partial` array — this is that array, published. */
+  sliceReads: Record<string, 'ok' | 'failed'>
   /** When the rows on screen came from the offline snapshot (PWA phase 2),
    *  the moment that snapshot was taken; null when they came from the network.
    *  Drives the offline banner's "showing your saved plan from HH:MM" and is
@@ -58,7 +65,7 @@ interface DB {
 let cache: DB = {
   users: [], trips: [], trashedTrips: [], suggestions: [], decisions: [],
   activity: [], notifications: [], published: [], adminAudit: [], sessionUserId: null,
-  ready: false, cachedAt: null,
+  ready: false, sliceReads: {}, cachedAt: null,
 }
 
 const listeners = new Set<() => void>()
@@ -205,6 +212,70 @@ function commit() {
 
 function patch(next: Partial<DB>) {
   cache = { ...cache, ...next }
+}
+
+/** The slices a page can ask about by name, and what the last hydrate made of
+ *  each. These are the two the creator and gallery pages read, and they are the
+ *  two a partial hydrate most often breaks — both are wide reads that a dropped
+ *  connection takes out while the session reads fine.
+ *
+ *  The VALUES are the exact strings the hydrate pushes into `partial`, read off
+ *  it rather than renamed here: the published slice is pushed as
+ *  'suggested itineraries', not 'published'. A mapping that invented its own
+ *  names would report a real failure as a success, which is the one mistake
+ *  this whole change exists to prevent. */
+export const READ_SLICES = ['profiles', 'suggested itineraries'] as const
+export type ReadSlice = typeof READ_SLICES[number]
+
+/** Turn the hydrate's `partial` list into a per-slice verdict.
+ *
+ *  Everything the run asked for and did not name in `partial` succeeded. That
+ *  inference is why this is built here rather than at each call site: a page
+ *  reporting "unknown" for a slice the hydrate never asked about would be
+ *  inventing a failure, and one reporting "ok" for a slice the hydrate skipped
+ *  would be inventing a success. */
+export function sliceReadReport(partial: readonly string[]): Record<string, 'ok' | 'failed'> {
+  const failed = new Set(partial)
+  const report: Record<string, 'ok' | 'failed'> = {}
+  for (const slice of READ_SLICES) report[slice] = failed.has(slice) ? 'failed' : 'ok'
+  return report
+}
+
+/**
+ * Re-read just the PUBLIC slices, for a page whose Retry must actually re-issue
+ * the request rather than re-render the same empty array (#364).
+ *
+ * A full `hydrate` is the wrong tool here for two reasons: it needs a session
+ * (these pages work logged-out), and it would refetch the signed-in user's whole
+ * account to fix a gallery. This re-reads the same two tables the hydrate reads,
+ * writes the same `sliceReads` verdict so the page's state machine moves on its
+ * own, and — importantly — replaces the rows ONLY on success, so a second failed
+ * retry cannot wipe good rows a previous hydrate managed to load.
+ *
+ * Never throws: the verdict is the report, and a caller renders from it.
+ */
+export async function rereadPublicSlices(): Promise<void> {
+  // A throw is as much a failure as an error response, and must report as one
+  // rather than leaving the page's previous verdict standing.
+  let failed: string[] = [...READ_SLICES]
+  try {
+    const [profRes, pubRes] = await Promise.all([
+      supabase.from('profiles').select('*'),
+      supabase.from('published_itineraries').select('*'),
+    ])
+    failed = []
+    if (profRes.error) { console.error('[yatraflow] re-read profiles failed', profRes.error); failed.push('profiles') }
+    if (pubRes.error) { console.error('[yatraflow] re-read published failed', pubRes.error); failed.push('suggested itineraries') }
+    // Replace-on-success only, per slice. A retry that fails must not also wipe
+    // the rows a previous hydrate managed to load — "still broken" and "now
+    // empty as well" are different states, and only one of them is a regression.
+    if (!profRes.error) patch({ users: mapOrSkip((profRes.data ?? []), rowToUser) })
+    if (!pubRes.error) patch({ published: dedupePublished(mapOrSkip((pubRes.data ?? []), rowToPublished)) })
+  } catch (e) {
+    console.error('[yatraflow] public slice re-read failed', e)
+  }
+  patch({ sliceReads: sliceReadReport(failed) })
+  commit()
 }
 
 // ---------------- Supabase row <-> domain mapping ----------------
@@ -690,6 +761,14 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     // as an empty one. Deliberately after the staleness check above, so a run that
     // has been superseded cannot toast about an account the user already left.
     if (partial.length > 0) toast(`Some data didn't load (${partial.join(', ')}) - refresh to try again.`, 'err')
+
+    // #364: the SAME list, published rather than toasted. A toast is a claim about
+    // one moment; a page that renders later has no way to tell an empty gallery
+    // from a broken read, and that is how a valid creator came to read "Creator
+    // not found" over a dropped connection. Anything named in `partial` failed;
+    // everything else this run asked for was read. The names are the ones the
+    // hydrate already uses, so a page can ask about the slice it renders.
+    patch({ sliceReads: sliceReadReport(partial) })
 
     // First-time users get the demo trips seeded into their account. Admins
     // skip the seed: their "empty" is a real empty app, and seeding 10 demo
