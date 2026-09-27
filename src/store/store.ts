@@ -18,6 +18,7 @@ import type { LatLngPoint } from '../data/types'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { toast } from '../components/ui'
 import { isMissingColumnError, rowToTrip, tripToRow, type OptionalColumnsProbe, type TripRow } from '../lib/tripRow'
+import { amountRefusal, amountVerdict } from '../lib/expenseAmount'
 import { attachDnaAccount, detachDnaAccount } from '../lib/tripDna'
 import { clearSnapshot, loadSnapshot, saveSnapshot } from '../lib/offlineCache'
 import {
@@ -1927,6 +1928,10 @@ export function restoreMember(tripId: ID, member: TripMember): void {
 export function restoreExpense(tripId: ID, expense: Expense, index: number): void {
   const t = tripById(tripId)
   if (!t || t.expenses.some(x => x.id === expense.id)) return
+  // #382: Undo replays a captured line, and a line the writers would refuse
+  // today must not come back through the back door. One rule, everywhere.
+  const v = amountVerdict(expense.amountInr)
+  if (!v.ok) { toast(amountRefusal(expense.amountInr)!, 'err'); return }
   mutateTrip(tripId, draft => { draft.expenses.splice(Math.min(index, draft.expenses.length), 0, expense) }, { touch: false })
   void persistTripField(tripId, tripById(tripId)!)
 }
@@ -2336,6 +2341,11 @@ export function setStopStatus(tripId: ID, status: ItineraryStop['status'], stopI
 export function addExpense(tripId: ID, e: Omit<Expense, 'id'>): void {
   const t = tripById(tripId)
   if (!t) return
+  // #382: the writer refuses what the form refuses. An amount that is not a
+  // finite number of rupees above zero poisons every figure the Budget tab
+  // shows, and the row is durable — one bad line survives reloads and syncs.
+  const v = amountVerdict(e.amountInr)
+  if (!v.ok) { toast(amountRefusal(e.amountInr)!, 'err'); return }
   mutateTrip(tripId, draft => { draft.expenses.push({ optional: false, ...e, id: uid('ex') }) }, { touch: false })
   void persistTripField(tripId, tripById(tripId)!)
 }
@@ -2352,6 +2362,13 @@ export function deleteExpense(tripId: ID, expenseId: ID): void {
 export function updateExpense(tripId: ID, expenseId: ID, patch: Partial<Omit<Expense, 'id'>>): void {
   const t = tripById(tripId)
   if (!t || !t.expenses.some(x => x.id === expenseId)) return
+  // #382: an edit is a write too — the pencil affordance used to put any
+  // number on the row it was handed. A patch that does not carry an amount
+  // changes nothing about the line's money and passes through untouched.
+  if (patch.amountInr !== undefined) {
+    const v = amountVerdict(patch.amountInr)
+    if (!v.ok) { toast(amountRefusal(patch.amountInr)!, 'err'); return }
+  }
   mutateTrip(tripId, draft => {
     draft.expenses = draft.expenses.map(x => x.id === expenseId ? { ...x, ...patch } : x)
   }, { touch: false })
