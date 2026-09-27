@@ -41,13 +41,34 @@ export interface PurchaseRow {
    *  still the buyer's (the database ties the two together for life), so the
    *  row is kept and rendered as "no longer listed" rather than dropped. */
   listed: boolean
+  /** The row's own facts could not be read as money: the amount is absent or
+   *  not a finite number. The plan is STILL listed and still the buyer's — only
+   *  the money is unreadable, so the row is flagged instead of dropped (silently
+   *  dropping a purchase is worse than admitting its price is unknown) and it is
+   *  EXCLUDED from `totalPaidInr`, because `0` would be a claim that nothing was
+   *  paid for a plan this buyer demonstrably bought. */
+  amountReadable: boolean
+  /** The grant date could not be read as a date. `grantedAt` is then NaN and
+   *  the row renders "date unknown" — "Invalid Date" is a developer string
+   *  leaking into a receipt. Orthogonal to `amountReadable`. */
+  dateReadable: boolean
 }
 
 export interface PurchaseShelf {
   rows: PurchaseRow[]
   /** Sum of what was actually paid — the buyer-side mirror of the creator's
-   *  earnings ledger, and never the publications' current prices. */
+   *  earnings ledger, and never the publications' current prices.
+   *
+   *  Sums ONLY the rows whose amount could be read (see `amountReadable`), and
+   *  a `null`/non-finite amount never reaches the accumulator as `0` — that
+   *  would be a claim about what was paid, and it would understate the total
+   *  without a word. When any row is unreadable, `totalReadable` is false and
+   *  the header says so instead of printing a smaller, confident-looking sum. */
   totalPaidInr: number
+  /** True when every row's amount was readable, so `totalPaidInr` is the whole
+   *  truth. False when at least one row was flagged — the number is then a
+   *  floor, and the UI must not present it as the total. */
+  totalReadable: boolean
   updatedCount: number
 }
 
@@ -71,6 +92,13 @@ export function buildPurchaseShelf(
     if (seen.has(e.pubId)) continue
     seen.add(e.pubId)
     const pub = pubById.get(e.pubId)
+    // A stored amount is a CLAIM about money, so it is checked rather than
+    // cast: `null`, a string, NaN and Infinity are all "could not be read",
+    // and none of them may become 0 (a claim) or NaN (a poison). The value is
+    // kept as-is for a readable row and coerced to 0 for a flagged one — where
+    // it is excluded from the sum below, so 0 never reaches the total.
+    const amountReadable = typeof e.amountPaidInr === 'number' && Number.isFinite(e.amountPaidInr)
+    const dateReadable = typeof e.grantedAt === 'number' && Number.isFinite(e.grantedAt)
     rows.push({
       pubId: e.pubId,
       entitlementId: e.id,
@@ -78,7 +106,7 @@ export function buildPurchaseShelf(
       coverImageUrl: pub?.coverImageUrl,
       creatorId: pub?.creatorId ?? '',
       creatorName: pub ? nameById.get(pub.creatorId) : undefined,
-      amountPaidInr: e.amountPaidInr,
+      amountPaidInr: amountReadable ? e.amountPaidInr : 0,
       grantedAt: e.grantedAt,
       durationDays: pub?.durationDays ?? 0,
       places: pub?.routeSummary.length ?? 0,
@@ -89,13 +117,17 @@ export function buildPurchaseShelf(
       updatedSince: Boolean(pub?.refreshedAt && pub.refreshedAt > e.grantedAt),
       refreshedAt: pub?.refreshedAt,
       listed: Boolean(pub),
+      amountReadable,
+      dateReadable,
     })
   }
 
   rows.sort((a, b) => b.grantedAt - a.grantedAt || a.title.localeCompare(b.title))
+  const totalPaidInr = rows.reduce((sum, r) => sum + (r.amountReadable ? r.amountPaidInr : 0), 0)
   return {
     rows,
-    totalPaidInr: rows.reduce((sum, r) => sum + r.amountPaidInr, 0),
+    totalPaidInr,
+    totalReadable: rows.every(r => r.amountReadable),
     updatedCount: rows.filter(r => r.updatedSince).length,
   }
 }
