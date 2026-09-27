@@ -355,9 +355,25 @@ export async function signup(name: string, email: string, password: string): Pro
 }
 
 export async function logout(): Promise<void> {
+  // #393: the sign-out INSTANT used to render the departing account's rows
+  // until the async auth event's hydrate(null) landed — Account A's trips (and
+  // their Trash) still on screen while signed out, for a frame or a round
+  // trip. A synchronous minimal clear makes the app render logged-out
+  // immediately; the auth event then loads the anonymous catalogs, and the
+  // generation guard keeps a late hydrate from re-patching the old user back
+  // in (issue #45).
+  const departing = cache.sessionUserId
+  patch({ trips: [], trashedTrips: [], suggestions: [], decisions: [], activity: [], notifications: [], published: [], adminAudit: [], sessionUserId: null, ready: true, cachedAt: null })
+  commit()
+  // hydrate(null) skips the snapshot/write cleanup when sessionUserId is
+  // already null — which it now always is by this point — so the departing
+  // account's snapshot and unsynced writes are cleared HERE. Their edits are
+  // theirs alone: the next person on this device must never be the one whose
+  // session "syncs" them.
+  if (departing) { void clearSnapshot(departing); void clearWritesFor(departing) }
   await supabase.auth.signOut()
   clearAdminCache()
-  // onAuthStateChange handler clears the cache.
+  // onAuthStateChange handler loads the anonymous catalogs.
 }
 
 /** A disabled account can still complete Auth (Supabase has no soft-delete),
@@ -471,11 +487,11 @@ export function init(): void {
         const pubRows = mapOrSkip((pubRes.data ?? []), rowToPublished)
         if (profRes.error) { console.error('[yatraflow] hydrate profiles failed', profRes.error) }
         if (pubRes.error) { console.error('[yatraflow] hydrate published failed', pubRes.error) }
-        patch({ users, trips: [], suggestions: [], decisions: [], activity: [], notifications: [], published: dedupePublished(pubRows), adminAudit: [], sessionUserId: null, ready: true, cachedAt: null })
+        patch({ users, trips: [], trashedTrips: [], suggestions: [], decisions: [], activity: [], notifications: [], published: dedupePublished(pubRows), adminAudit: [], sessionUserId: null, ready: true, cachedAt: null })
         commit()
       } catch (e) {
         console.error('[yatraflow] anonymous hydration failed', e)
-        patch({ users: [], trips: [], suggestions: [], decisions: [], activity: [], notifications: [], published: [], adminAudit: [], sessionUserId: null, ready: true, cachedAt: null })
+        patch({ users: [], trips: [], trashedTrips: [], suggestions: [], decisions: [], activity: [], notifications: [], published: [], adminAudit: [], sessionUserId: null, ready: true, cachedAt: null })
         commit()
       }
       })()
@@ -513,6 +529,16 @@ export function init(): void {
     try { await promise } finally {
       if (activeHydrate?.userId === userId) activeHydrate = null
     }
+    // #393: the friendly disabled-account sign-out, finally wired to the
+    // lifecycle it was written for. The function had no callers at all, so a
+    // disabled account completed Auth, stared at the RLS-emptied catalogs and
+    // read that as "my data got deleted". It reads the IN-HAND cache, so it
+    // runs HERE — where the cache this hydrate patched belongs to this
+    // account — which also covers a login: every sign-in resolves through this
+    // same path. The generation guard keeps a superseded hydrate from signing
+    // out whoever is signed in now. Fail-open by design: the RESTRICTIVE
+    // policies are the real enforcement, this is only the message.
+    if (gen === hydrateGen && cache.sessionUserId === userId) await enforceDisabledCheck()
     // First settle of this session flips the app-wide loading gate, whatever
     // the outcome — pages stop showing "loading" and may show real empties.
     if (!cache.ready) { patch({ ready: true }); commit() }
@@ -592,7 +618,7 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     // #94: `partial.length === 0` is the ONLY thing that makes a zero-trip
     // list trustworthy as "this user has no trips". When the queries that
     // count trips error, a real account can read as empty — and the demo
-    // seed below then writes 10 fake trips into it. Set whenever any query
+    // seed below then writes the 3 demo trips into it. Set whenever any query
     // that determines the user's trip count failed.
     let tripCountUnknown = false
     // Set when the trips/memberships reads failed: the patch below must then
@@ -771,10 +797,10 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     patch({ sliceReads: sliceReadReport(partial) })
 
     // First-time users get the demo trips seeded into their account. Admins
-    // skip the seed: their "empty" is a real empty app, and seeding 10 demo
+    // skip the seed: their "empty" is a real empty app, and seeding the 3 demo
     // trips into an admin account would pollute the console's totals.
     // #94: a failed memberships/trips query also reads as "zero trips" — for a
-    // real account on a flaky connection that meant writing 10 fake trips next
+    // real account on a flaky connection that meant writing 3 fake trips next
     // to the user's actual ones. Only seed when the trip count is trustworthy.
     if (tripList.length === 0 && seedIfEmpty && !admin && !tripCountUnknown) await seedDemoFor(userId, gen)
   } catch (e) {
@@ -2094,7 +2120,13 @@ async function persistTripFieldNow(id: ID, t: Trip | undefined): Promise<void> {
   // entry holding the newest snapshot - the same coalescing the in-memory map
   // above performs. capturedAt is the send time (up to one debounce window
   // after the edit itself); it only steers the conflict NOTICE, never the write.
-  await queueWrite({ tripId: id, ownerId: owner?.userId ?? id, capturedAt: Date.now(), attempts: 0, trip: t })
+  // #393: the queue entry is stamped with the EDITOR, not the trip's owner.
+  // Replay only sends entries whose stamp matches the live session, and a
+  // sign-out only clears this account's entries — so an editor editing
+  // somebody else's trip used to queue under the OWNER's id: never replayed,
+  // never cleared by their own sign-out, silently doomed. The row write below
+  // still targets the trip's own owner.
+  await queueWrite({ tripId: id, ownerId: cache.sessionUserId ?? owner?.userId ?? id, capturedAt: Date.now(), attempts: 0, trip: t })
   const cols = await tripsHaveOptionalColumns()
   const { error } = await supabase.from('trips').update(tripToRow(t, owner?.userId ?? id, cols)).eq('id', id)
   if (error) {

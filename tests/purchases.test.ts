@@ -9,7 +9,7 @@
 // still owns it.
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { buildPurchaseShelf, purchaseShareable, unlockRevealStats } from '../src/lib/purchases'
+import { buildPurchaseShelf, purchaseShareable, unlockRevealStats, findBuyerCopy, normalizeCopyTitle } from '../src/lib/purchases'
 import { computeTotals } from '../src/lib/engine'
 import { seedData } from '../src/data/seed'
 import type { Entitlement } from '../src/lib/payments'
@@ -397,5 +397,110 @@ describe('#406 — the shelf surfaces the flag instead of printing the number', 
     expect(mapping).toContain('amount_paid_inr')
     // A Number() coercion here would disagree with the shelf's own rule.
     expect(mapping).not.toContain('Number(row.amount_paid_inr')
+  })
+})
+
+// ============ #405 — a withdrawn plan must not lead to a dead page ============
+// Unpublishing DELETES the publication row, so `/pub/<id>` can never load again.
+// The shelf's "Open the plan" button rendered unconditionally, which made the
+// ONLY action on an unlisted row a link to nothing — on precisely the row whose
+// copy promises the buyer their access is unaffected. The buyer's real copy is
+// the trip they forked, and this is what finds it.
+describe('#405 — the copy resolver finds the buyer\'s own trip, or admits it cannot', () => {
+  const trip = (overrides: Partial<Trip> = {}): Trip =>
+    ({ ...structuredClone(seedData.trips[0]!), ...overrides }) as Trip
+
+  function withdrawnRow(overrides: Partial<ReturnType<typeof buildPurchaseShelf>['rows'][0]> = {}) {
+    // No publication in the cache — that is what "withdrawn" means here.
+    const shelf = buildPurchaseShelf([entitlement()], [], [])
+    return { ...shelf.rows[0]!, ...overrides }
+  }
+
+  it('finds the copy exactly when the publication still names its itinerary', () => {
+    const listed = buildPurchaseShelf([entitlement()], [pub()], []).rows[0]!
+    const mine = trip({ id: listed.tripId, name: 'Spiti Valley Circuit' })
+    const found = findBuyerCopy(listed, [mine, trip({ id: 'other', name: 'Something else' })])
+    expect(found).toEqual({ tripId: listed.tripId, title: 'Spiti Valley Circuit', exact: true })
+  })
+
+  it('falls back to the title for a withdrawn row, and says the match is a guess', () => {
+    // A withdrawn row has no tripId at all, so the title is the only evidence —
+    // and the UI must not present a heuristic as a fact.
+    const row = withdrawnRow({ title: 'Spiti Valley Circuit' })
+    expect(row.tripId).toBe('')
+    const found = findBuyerCopy(row, [trip({ id: 'copy_1', name: 'Spiti Valley Circuit (copy)' })])
+    expect(found).toEqual({ tripId: 'copy_1', title: 'Spiti Valley Circuit (copy)', exact: false })
+  })
+
+  it('ignores case, punctuation and a trailing copy marker', () => {
+    expect(normalizeCopyTitle('Spiti Valley Circuit (copy)')).toBe('spiti valley circuit')
+    expect(normalizeCopyTitle('  Kerala  Hills & Backwaters ')).toBe('kerala hills backwaters')
+    expect(normalizeCopyTitle('Goa — Coast')).toBe(normalizeCopyTitle('goa coast'))
+  })
+
+  it('refuses to choose between two copies of the same plan', () => {
+    // Ambiguity is the same as absence: a link to one of two is a coin flip, and
+    // a wrong link navigates a buyer into somebody else's trip.
+    const row = withdrawnRow({ title: 'Spiti Valley Circuit' })
+    const trips = [
+      trip({ id: 'copy_a', name: 'Spiti Valley Circuit (copy)' }),
+      trip({ id: 'copy_b', name: 'Spiti Valley Circuit' }),
+    ]
+    expect(findBuyerCopy(row, trips)).toBeNull()
+  })
+
+  it('returns nothing when the buyer has no matching trip at all', () => {
+    const row = withdrawnRow({ title: 'Spiti Valley Circuit' })
+    expect(findBuyerCopy(row, [trip({ id: 'x', name: 'Ladakh' })])).toBeNull()
+    expect(findBuyerCopy(row, [])).toBeNull()
+  })
+
+  it('never matches an unrelated plan on a shared word', () => {
+    // Substring matching is how a resolver starts sending buyers to the wrong
+    // trip; only the whole normalised title counts.
+    const row = withdrawnRow({ title: 'Spiti Valley Circuit' })
+    expect(findBuyerCopy(row, [trip({ id: 'y', name: 'Spiti Valley Circuit Extra Days' })])).toBeNull()
+  })
+
+  it('prefers the exact itinerary over a same-titled fork', () => {
+    const listed = buildPurchaseShelf([entitlement()], [pub({ tripId: 'trip_real' })], []).rows[0]!
+    const found = findBuyerCopy(listed, [
+      trip({ id: 'trip_old', name: 'Spiti Valley Circuit' }),
+      trip({ id: 'trip_real', name: 'Spiti Valley Circuit' }),
+    ])
+    expect(found!.tripId).toBe('trip_real')
+    expect(found!.exact).toBe(true)
+  })
+})
+
+// The page is node-env untestable, so the render half is pinned by source: the
+// dead `/pub/` link must be gone from the unlisted path, and a guess labelled.
+describe('#405 — the shelf never offers a link that cannot load', () => {
+  const pageSrc = readFileSync(new URL('../src/pages/Purchases.tsx', import.meta.url), 'utf8')
+
+  it('offers the public page only while the publication is listed', () => {
+    // Matched on the GUARD and the destination separately rather than one span
+    // across them: the two sit on different lines, and a regex that has to
+    // cross the braces in between is a regex that will break on a reformat.
+    const guarded = pageSrc.match(/\{row\.listed && \(([\s\S]{0,400}?)\)\}/)
+    expect(guarded, 'the /pub/ button is no longer behind a row.listed guard').not.toBeNull()
+    expect(guarded![1]).toContain('`/pub/${row.pubId}`')
+    // And the share/fork buttons are guarded the same way (asserted below), so
+    // `row.listed` here is a real gate rather than a stray token.
+  })
+
+  it('labels a title-matched copy as a guess', () => {
+    expect(pageSrc).toContain('we think this is it')
+  })
+
+  it('says so when no copy can be found, rather than implying one exists', () => {
+    expect(pageSrc).toContain('could not find your copy')
+  })
+
+  it('keeps sharing gated on the publication, and forking with it', () => {
+    // Both were already correct (#405's step 2) — pinned so a fix here cannot
+    // quietly re-open either.
+    expect(pageSrc).toMatch(/\{purchaseShareable\(row\) && \(/)
+    expect(pageSrc).toMatch(/\{row\.listed && <button className="btn btn-ghost" onClick=\{\(\) => fork\(row\.pubId\)\}/)
   })
 })
