@@ -204,6 +204,10 @@
      renders at, 2 reads as clip-art. One token, consumed by the .lucide base
      rule near the type rules, so a denser surface can step it deliberately. */
   --icon-stroke: 1.5;
+  /* Small-glyph step: at 12px and under in dark ink a 1.5 stroke fills dense
+     glyphs in (Sparkles, Lock, kind kickers read as blobs), so the shared
+     inline wrappers drop to 1.25 through .ic-sm below. */
+  --icon-stroke-sm: 1.25;
   /* ---- Landing display scale + macro-whitespace ----
      The marketing page is the one surface that is deliberately editorial rather
      than app-scale: its headline is the largest type on the site and its
@@ -533,6 +537,10 @@ body {
   color: var(--text);
   font-family: var(--font-body);
   font-size: 15px;
+  /* Jakarta 400 reads faded at body and secondary sizes (the Inter it
+     replaced carried more ink at the same weight), so the unweighted base
+     is 500; explicit 600/700/800 declarations are untouched. */
+  font-weight: 500;
   line-height: 1.55;
   /* Drops the double-tap-zoom delay on rapid taps (pan + pinch still allowed).
      touchDnd's touchstart/touchmove preventDefault still vetoes browser
@@ -565,6 +573,9 @@ input, select, textarea { font-family: var(--font-body); font-size: 14.5px; colo
    tests/design-system.test.ts ("icon stroke weight is a token, not a library
    default") so it cannot silently drift back to the stock weight. */
 .lucide { stroke-width: var(--icon-stroke); }
+/* Small inline glyphs (InlineIcon/MetaIcon/KindIcon at 12px and under) render
+   through this class from the shared wrappers in components/icons.tsx. */
+.lucide.ic-sm { stroke-width: var(--icon-stroke-sm); }
 
 .app-shell { min-height: 100vh; display: flex; flex-direction: column;
   /* Edge-to-edge (Android 15, iPhone): the gesture bar overlays the last
