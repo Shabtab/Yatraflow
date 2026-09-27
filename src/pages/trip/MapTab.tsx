@@ -32,6 +32,8 @@ import {
   NEED_PURPOSES, SEE_VISIBLE, SCOPE_KM_STEPS, SCOPE_STORAGE_KEY,
   googleMapsUrl, newStopId, poiVisitMinutes, smallThumb,
 } from './map/pageHelpers'
+import { hitCostLabels, slotPinsFor } from './map/railLabels'
+import { alternativesFor as pickAlternatives, sightRowChips } from './map/sightRows'
 
 /** How many search hits the rail shows before "Show all" (#333 A1). The listbox
  *  grammar needs the same page size the rows are rendered with, so it lives here
@@ -41,7 +43,7 @@ import { isSightCategory, roadProfileFromLegs, loopProfile } from '../../lib/rid
 import { QuotaExhaustedError } from '../../lib/providers/google'
 import { isElectric } from '../../lib/vehicleProfile'
 import { planInputsHash } from '../../hooks/useSuggestionCache'
-import { railReasonChips, type RailChip } from '../../lib/railReasons'
+import type { RailChip } from '../../lib/railReasons'
 import { daySlots, dayShape, tripDayAttribution, tripReadiness, SLOT_URGENCY_MIN, type DaySlot, type DaySlotKind, type DaySlotsDeps } from '../../lib/daySlots'
 import { discardedStagedIds, isAlreadyAdded, normalizePlaceName, tripPresence, type PlaceIdentity } from '../../lib/placeIdentity'
 import { addDecision, deleteStop, restoreStop } from '../../store/store'
@@ -1364,39 +1366,21 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
    *  The budget is the hit's OWN day's, the same one `chipsFor` and the rail
    *  read: charging every hit against Day 1's stop count made the popup and the
    *  card disagree about the same place. */
-  const hitCosts = useMemo(() => {
-    const m: Record<string, string> = {}
-    // One budget per day, not one per hit - the lookup is cheap, the repetition
-    // across every hit on the map was not.
-    const budgetByDay = new Map<number, number>()
-    const budgetFor = (dayIndex: number): number => {
-      const cached = budgetByDay.get(dayIndex)
-      if (cached != null) return cached
-      const budget = dayDetourBudgetMin({
-        travelStyle: trip.travelStyle,
-        plannedStops: (trip.days.find(d => d.index === dayIndex)?.stops ?? []).filter(x => x.status !== 'rejected').length,
-      })
-      budgetByDay.set(dayIndex, budget)
-      return budget
-    }
-    for (const sh of pois) {
-      if (!sh.hit) continue
-      const dMin = hitEngine.get(String(sh.hit.id))?.detourMin ?? null
-      const eta = sh.segment.etaMinutes
-      const bits: string[] = []
-      if (eta != null && Number.isFinite(eta) && dMin != null) bits.push(`arrive ${clockHM(Math.round(eta + dMin))}`)
-      bits.push(dMin == null ? 'position unknown' : dMin > 0.5 ? `+${Math.round(dMin)} min` : 'on route')
-      if (dMin != null && dMin > 0.5) {
-        const budget = budgetFor(dayForKm(sh.hit.cumKm) ?? 0)
-        if (budget > 0) {
-          const share = budgetSharePct(dMin, budget)
-          if (share > 0) bits.push(`${share}% of the day's detour budget`)
-        }
-      }
-      m[String(sh.hit.id)] = bits.join(' · ')
-    }
-    return m
-  }, [pois, hitEngine, trip.travelStyle, trip.days, dayAttribution])
+  const hitCosts = useMemo(() => hitCostLabels({
+    // #420 slice 4: the label assembly (and the per-day budget cache) lives in
+    // ./map/railLabels with its tests; this only supplies the trip-aware inputs.
+    hits: pois.flatMap(sh => (sh.hit ? [{
+      id: String(sh.hit.id),
+      cumKm: sh.hit.cumKm,
+      detourMin: hitEngine.get(String(sh.hit.id))?.detourMin ?? null,
+      etaMinutes: sh.segment.etaMinutes,
+    }] : [])),
+    dayForKm,
+    detourBudgetMin: dayIndex => dayDetourBudgetMin({
+      travelStyle: trip.travelStyle,
+      plannedStops: (trip.days.find(d => d.index === dayIndex)?.stops ?? []).filter(x => x.status !== 'rejected').length,
+    }),
+  }), [pois, hitEngine, trip.travelStyle, trip.days, dayForKm])
   const detourMinFor = (hit: PlaceHit): number | null =>
     hitEngine.get(String(hit.id))?.detourMin
       ?? asymmetricDetourMinutes(hit, anchors, routePolyline ?? null, MODE_SPEED[trip.transportMode] ?? 40)
@@ -1747,18 +1731,9 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
   )
   /** P5.3: the selected day's empty parts as hollow amber pins - their top
    *  candidate's real position, with P5.2's cost line in the tooltip. */
-  const slotPins = useMemo(() => activeDaySlots
-    .filter(s => s.state === 'empty' && s.candidates.length > 0)
-    .map(s => {
-      const c = s.candidates[0]
-      const bits = [
-        c.arriveLabel ? `arrive ${c.arriveLabel}` : null,
-        c.detourMin == null ? 'position unknown' : c.detourMin > 0.5 ? `+${Math.round(c.detourMin)} min` : 'on route',
-        c.budgetSharePct > 0 ? `${c.budgetSharePct}% of the day's detour budget` : null,
-      ].filter(Boolean)
-      return { key: s.key, label: s.label, name: c.hit.name, meta: bits.join(' · '), hit: c.hit }
-    }),
-  [activeDaySlots])
+  // #420 slice 4: the pin's label is the same sentence a corridor row prints, from
+  // the same helper — the two used to assemble it separately.
+  const slotPins = useMemo(() => slotPinsFor(activeDaySlots), [activeDaySlots])
   /** The rail's meter copy: the mockup's wording, honest per day. The count is
    *  over `required` (engine-managed parts excluded) — the work the crew owns. */
   function activeReadinessLabel() {
@@ -1783,49 +1758,27 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
 
   /** Closest alternatives for a halt: next 2 by road position plus detour. */
   function alternativesFor(sh: SegmentHit, hit: PlaceHit): Array<{ h: PlaceHit; dKm: number | null }> {
-    // keep same family: need halts prefer same purpose, sights accept any sight
-    const family = NEED_PURPOSES.has(sh.segment.purpose)
-      ? [...(altPool.byPurpose.get(sh.segment.purpose) ?? []), ...(altPool.byCategory.get(hit.category ?? '') ?? [])]
-      : altPool.all
-    const seen = new Set<string>()
-    return family
-      .filter(e => {
-        const id = e.h.id as string
-        if (id === hit.id || seen.has(id)) return false
-        seen.add(id)
-        return true
-      })
-      .map(e => {
-        const pos = e.h.cumKm ?? sh.segment.targetKm
-        return { h: e.h, dKm: e.dKm, dist: Math.abs(pos - sh.segment.targetKm) + (e.dKm ?? 0) * 2 }
-      })
-      .sort((a, b) => a.dist - b.dist)
-      .slice(0, 2)
-      .map(e => ({ h: e.h, dKm: e.dKm ?? null }))
+    // #420 slice 5: the family/ranking rule lives in ./map/sightRows with its tests;
+    // this only names the halt and hands over the pool.
+    return pickAlternatives({
+      purpose: sh.segment.purpose,
+      targetKm: sh.segment.targetKm,
+      hit,
+      pool: altPool,
+    })
   }
 
   /** Reason chips for one suggestion, shared by the card and the rail filter. */
   function chipsFor(sh: SegmentHit, hit: PlaceHit): RailChip[] {
+    // #420 slice 5: the chips themselves (including the #163 rounding predicate) come
+    // from ./map/sightRows; the trip-aware numbers are resolved here.
     const detourMin = detourMinFor(hit)
     const hitDay = trip.days.find(d => d.index === dayForKm(hit.cumKm))
     const dayBudget = dayDetourBudgetMin({
       travelStyle: trip.travelStyle,
       plannedStops: (hitDay?.stops ?? []).filter(s => s.status !== 'rejected').length,
     })
-    return railReasonChips({
-      purpose: sh.segment.purpose,
-      etaMinutes: sh.segment.etaMinutes ?? null,
-      minutesFromPrev: sh.segment.minutesFromPrev,
-      isFirstSegment: sh.segment.index === 0,
-      detourMinutes: detourMin ?? 0,
-      budgetSharePct: detourMin != null && detourMin > 0.5 ? budgetSharePct(detourMin, dayBudget) : detourMin == null ? 100 : null,
-      // #163: same predicate as the fact strip (round-half-up display math),
-      // so a budget-exact halt can't be 'fine' on the card and 'held back' on
-      // the rail — or flip between them on a display-rounding nudge.
-      overBudget: detourMin == null || Math.round(detourMin) > dayBudget,
-      rating: hit.rating,
-      ratingCount: hit.ratingCount,
-    })
+    return sightRowChips({ segment: sh.segment, hit, detourMin, dayBudget })
   }
 
   /** A corridor halt the engine found no place for. The only row still rendered
