@@ -2042,6 +2042,15 @@ type MapClusterLayerProps<
     coordinates: [number, number],
     pointCount: number,
   ) => void;
+  /** Draw the unclustered points as GL circles (default: true). Set false when
+   *  the caller draws its own DOM markers for them, so a point never appears
+   *  twice — once as a circle, once as a marker. */
+  unclusteredVisible?: boolean;
+  /** Report the `properties.id`s currently inside a cluster, so a caller that
+   *  keeps DOM markers can hide exactly the points the badges already stand for.
+   *  Fires on pan/zoom and when the source loads; an unchanged membership is not
+   *  reported twice. Pass a stable callback — a new identity re-subscribes. */
+  onClustersChange?: (ids: Set<string>) => void;
 };
 
 const DEFAULT_CLUSTER_COLORS: [string, string, string] = [
@@ -2050,6 +2059,12 @@ const DEFAULT_CLUSTER_COLORS: [string, string, string] = [
   "#1e3a8a",
 ];
 const DEFAULT_CLUSTER_THRESHOLDS: [number, number] = [100, 750];
+
+/** How many members of one cluster are asked for when reporting membership.
+ *  Supercluster reads a falsy limit as 10, so this must be a real number; it is
+ *  deliberately far above any caller's point count, because a member left out of
+ *  the report would keep its own marker drawn on top of the badge. */
+const CLUSTER_LEAVES_LIMIT = Number.MAX_SAFE_INTEGER;
 
 function MapClusterLayer<
   P extends GeoJSON.GeoJsonProperties = GeoJSON.GeoJsonProperties,
@@ -2062,6 +2077,8 @@ function MapClusterLayer<
   pointColor = "#3b82f6",
   onPointClick,
   onClusterClick,
+  unclusteredVisible = true,
+  onClustersChange,
 }: MapClusterLayerProps<P>) {
   const { map, isLoaded } = useMap();
   const id = useId();
@@ -2128,7 +2145,12 @@ function MapClusterLayer<
       filter: ["has", "point_count"],
       layout: {
         "text-field": "{point_count_abbreviated}",
-        "text-font": ["Open Sans Semibold"],
+        // Noto Sans, because that is what the basemap's own glyph host serves:
+        // MapLibre draws NO text for a fontstack it cannot fetch, so a badge on an
+        // unserved font is a bare circle with no count. Measured against
+        // tiles.openfreemap.org/fonts — "Open Sans Semibold" 404, "Noto Sans
+        // Bold" 200. Pinned by tests/map-cluster.test.ts.
+        "text-font": ["Noto Sans Bold"],
         "text-size": 12,
       },
       paint: {
@@ -2136,19 +2158,25 @@ function MapClusterLayer<
       },
     });
 
-    // Add unclustered point layer
-    map.addLayer({
-      id: unclusteredLayerId,
-      type: "circle",
-      source: sourceId,
-      filter: ["!", ["has", "point_count"]],
-      paint: {
-        "circle-color": pointColor,
-        "circle-radius": 5,
-        "circle-stroke-width": 2,
-        "circle-stroke-color": "#fff",
-      },
-    });
+    // Add unclustered point layer — skipped for a caller that draws its own DOM
+    // markers for them (the #417 case: the markers carry tooltips, roles and
+    // keyboard activation, which a GL circle cannot). The click/cursor handlers
+    // below stay registered either way: a handler for a layer that does not exist
+    // simply never fires.
+    if (unclusteredVisible) {
+      map.addLayer({
+        id: unclusteredLayerId,
+        type: "circle",
+        source: sourceId,
+        filter: ["!", ["has", "point_count"]],
+        paint: {
+          "circle-color": pointColor,
+          "circle-radius": 5,
+          "circle-stroke-width": 2,
+          "circle-stroke-color": "#fff",
+        },
+      });
+    }
 
     return () => {
       try {
@@ -2163,7 +2191,7 @@ function MapClusterLayer<
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoaded, map, sourceId]);
+  }, [isLoaded, map, sourceId, unclusteredVisible]);
 
   // Update source data when data prop changes (only for non-URL data)
   useEffect(() => {
@@ -2174,6 +2202,80 @@ function MapClusterLayer<
       source.setData(data);
     }
   }, [isLoaded, map, data, sourceId]);
+
+  // Report which point ids the map is currently drawing inside a cluster.
+  //
+  // This reads the source rather than recomputing the geometry: supercluster
+  // already decided, and `getClusterLeaves` is the only way to learn which points
+  // a badge stands for. It fires on pan/zoom, once the source has loaded, and
+  // again on `idle` as a safety net for a load that arrives without either — with
+  // a repeat of the same membership suppressed, so a caller may `setState` from
+  // it without a render loop.
+  useEffect(() => {
+    if (!isLoaded || !map || !onClustersChange) return;
+    let last = "";
+    let cancelled = false;
+
+    const report = () => {
+      const source = map.getSource(sourceId) as
+        | MapLibreGL.GeoJSONSource
+        | undefined;
+      if (!source) return;
+
+      const clusterIds = new Set<number>();
+      for (const feature of map.querySourceFeatures(sourceId)) {
+        const properties = feature.properties as {
+          cluster_id?: unknown;
+        } | null;
+        const clusterId = properties?.cluster_id;
+        if (typeof clusterId === "number") clusterIds.add(clusterId);
+      }
+
+      if (clusterIds.size === 0) {
+        if (last !== "") {
+          last = "";
+          onClustersChange(new Set<string>());
+        }
+        return;
+      }
+
+      void Promise.all(
+        [...clusterIds].map((clusterId) =>
+          source
+            .getClusterLeaves(clusterId, CLUSTER_LEAVES_LIMIT, 0)
+            .catch(() => [] as GeoJSON.Feature[]),
+        ),
+      ).then((groups) => {
+        if (cancelled) return;
+        const ids = new Set<string>();
+        for (const leaves of groups) {
+          for (const leaf of leaves) {
+            const leafId = (leaf.properties as { id?: unknown } | null)?.id;
+            if (leafId != null) ids.add(String(leafId));
+          }
+        }
+        const signature = [...ids].sort().join(",");
+        if (signature === last) return;
+        last = signature;
+        onClustersChange(ids);
+      });
+    };
+
+    const handleSourceData = (event: MapLibreGL.MapSourceDataEvent) => {
+      if (event.sourceId === sourceId && event.isSourceLoaded) report();
+    };
+
+    report();
+    map.on("moveend", report);
+    map.on("idle", report);
+    map.on("sourcedata", handleSourceData);
+    return () => {
+      cancelled = true;
+      map.off("moveend", report);
+      map.off("idle", report);
+      map.off("sourcedata", handleSourceData);
+    };
+  }, [isLoaded, map, sourceId, onClustersChange]);
 
   // Update layer styles when props change
   useEffect(() => {
