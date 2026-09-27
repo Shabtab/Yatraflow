@@ -29,10 +29,12 @@ describe('cover upload rules', () => {
   it('refuses a non-image, an unlisted image type and an oversized original', () => {
     expect(coverFileError({ type: 'application/pdf', size: 1024 })).toMatch(/JPEG, PNG or WebP/)
     expect(coverFileError({ type: 'image/gif', size: 1024 })).toMatch(/JPEG, PNG or WebP/)
-    // The refusal names the real weight, so the creator knows what to pick.
+    // The refusal names the real weight, so the creator knows what to pick —
+    // and the limit it names is the one actually enforced, derived from the
+    // constant rather than written out beside it (#360).
     const big = coverFileError({ type: 'image/jpeg', size: 12 * 1024 * 1024 })
     expect(big).toContain('12.0 MB')
-    expect(big).toContain('8 MB')
+    expect(big).toContain(`under ${COVER_MAX_INPUT_BYTES / (1024 * 1024)} MB`)
   })
 
   it('caps the input at the boundary it reports', () => {
@@ -349,5 +351,57 @@ describe('the bucket and the uploader agree on what an upload may be', () => {
     // Delete is what keeps storage proportional to publications rather than to
     // uploads ever made — without it every replacement leaks its predecessor.
     expect(BUCKET_SQL).toMatch(/for delete to authenticated/)
+  })
+
+  // The client's cap is not a boundary — the bucket's is — so the two must not
+  // drift apart silently. They had: the client allowed 8 MB against the
+  // bucket's 5 MB, so the picker accepted originals the storage layer would
+  // never have been handed (it is sent the DOWNSIZED ~78 KB file, not the
+  // original). The bucket's own limit was already pinned here; what was missing
+  // was the link between the two numbers, so a future migration bump could move
+  // one without the other. The limit is now READ OUT of the migration rather
+  // than restated, which is what makes that drift impossible (#360).
+  it('accepts exactly what the bucket accepts, never more', () => {
+    // Equality, not merely "smaller": a client cap well under the bucket's would
+    // refuse photos the bucket would have taken, which is the same mismatch in
+    // reverse.
+    const declared = BUCKET_SQL.match(/true,\s*(\d+),\s*array\[/)
+    expect(declared, 'the bucket row no longer declares its size limit').not.toBeNull()
+    expect(COVER_MAX_INPUT_BYTES).toBe(Number(declared![1]))
+  })
+
+  it('accepts a photo at the cap and refuses one a byte over it', () => {
+    // The boundary itself, so a future edit to the comparison cannot pass by
+    // accident on one side of it.
+    expect(coverFileError({ type: 'image/jpeg', size: COVER_MAX_INPUT_BYTES })).toBeNull()
+    expect(coverFileError({ type: 'image/jpeg', size: COVER_MAX_INPUT_BYTES + 1 })).not.toBeNull()
+  })
+
+  it('states the real limit in the refusal, rather than a stale one', () => {
+    // The sentence used to hardcode "under 8 MB" beside a 5 MB constant. It is
+    // derived now, so the two cannot disagree.
+    const message = coverFileError({ type: 'image/jpeg', size: COVER_MAX_INPUT_BYTES + 1024 })!
+    expect(message).toContain('under 5 MB')
+    expect(message).not.toContain('8 MB')
+  })
+
+  it('refuses a photo the bucket could not take, not one it could', () => {
+    // Worth being precise about, because the report's premise was that a 5–8 MB
+    // photo "passes the app's check then fails at upload" — and the UPLOADED
+    // bytes are never the original. `uploadCover` downscales to 1200px /
+    // quality 0.82 BEFORE calling the bucket, which measures ~78 KB, so a large
+    // original never reaches the 5 MB limit and the 8 MB client cap was never
+    // the cause of a bucket rejection. What the cap genuinely decided was which
+    // originals the creator was allowed to pick at all: a 7 MB photo was decoded
+    // and shrunk in the browser to produce a 78 KB file, which is minutes of
+    // work on a phone for bytes that were then discarded. Aligning the two is
+    // still right — a client cap above a server limit is a lie either way — but
+    // the honest justification is refusing work whose result is thrown away, not
+    // fixing a failed upload.
+    //
+    // 6 MB: over the bucket's 5 MB, under the old 8 MB client cap.
+    expect(coverFileError({ type: 'image/jpeg', size: 6 * 1024 * 1024 })).not.toBeNull()
+    // 4 MB is under both limits, and is the ordinary modern phone photo.
+    expect(coverFileError({ type: 'image/jpeg', size: 4 * 1024 * 1024 })).toBeNull()
   })
 })

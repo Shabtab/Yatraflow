@@ -96,14 +96,19 @@ describe('vote payload composition (a placeholder pick cannot reach a decision)'
 
 describe('MapTab vote writers (source tripwire to the composed contract)', () => {
   const src = readFileSync(new URL('../src/pages/trip/MapTab.tsx', import.meta.url), 'utf8')
+  // #420 slice 2 moved the shortlist writers into their own hook. A tripwire that
+  // kept reading MapTab would have gone on passing while guarding nothing, so it
+  // follows the code: `raiseSlotVote` is still the page's, `raiseShortlistVote` is
+  // the hook's, and both are held to the same composed contract.
+  const shortlistSrc = readFileSync(new URL('../src/pages/trip/map/useShortlist.ts', import.meta.url), 'utf8')
 
   /** The body of `function <name>` … up to the next top-level function. */
-  const fnBody = (name: string): string => {
+  const fnBody = (source: string, name: string): string => {
     const marker = `function ${name}`
-    const start = src.indexOf(marker)
+    const start = source.indexOf(marker)
     expect(start, `${marker} not found`).toBeGreaterThan(-1)
-    const next = src.slice(start + 1).search(/\n {2}(async )?function /)
-    return next === -1 ? src.slice(start) : src.slice(start, start + 1 + next)
+    const next = source.slice(start + 1).search(/\n {2}(async )?function /)
+    return next === -1 ? source.slice(start) : source.slice(start, start + 1 + next)
   }
 
   it('every pick enters through the shared resolve-or-prompt guard', () => {
@@ -115,12 +120,16 @@ describe('MapTab vote writers (source tripwire to the composed contract)', () =>
     expect(src).not.toMatch(/(?<!require)resolveHitCoords\(/)
     expect(src).not.toMatch(/requireHitCoords\(/)
     expect(src).toMatch(/resolvePick\(/)
+    // the extracted shortlist writers did not grow a resolver of their own
+    expect(shortlistSrc).not.toMatch(/(?<!require)resolveHitCoords\(/)
+    expect(shortlistSrc).not.toMatch(/requireHitCoords\(/)
+    expect(shortlistSrc).toMatch(/resolvePick\(/)
     // …and the dialog the guard opens is actually mounted.
     expect(src).toMatch(/\{resolvePickDialog\}/)
   })
 
   it('raiseSlotVote resolves every candidate before writing, gates, and pins the payload', () => {
-    const body = fnBody('raiseSlotVote')
+    const body = fnBody(src, 'raiseSlotVote')
     expect(body).toMatch(/resolvePick\(c\.hit\)/)               // resolve-or-prompt at the boundary
     expect(body).toMatch(/usable\.length < 2/)                  // a vote needs ≥2 pinnable places
     expect(body).toMatch(/was not created/)                     // refusal is said out loud
@@ -130,7 +139,7 @@ describe('MapTab vote writers (source tripwire to the composed contract)', () =>
   })
 
   it('raiseShortlistVote resolves every pick before writing, gates, and pins the payload', () => {
-    const body = fnBody('raiseShortlistVote')
+    const body = fnBody(shortlistSrc, 'raiseShortlistVote')
     expect(body).toMatch(/resolvePick\(h\)/)
     expect(body).toMatch(/usable\.length === 0/)                // nothing pinnable, no vote
     expect(body).toMatch(/was not created/)

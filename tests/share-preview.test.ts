@@ -598,7 +598,13 @@ describe('publishing requires a cover the handler will actually use', () => {
   })
 
   it('publishes the trip cover as the publication cover, still sized by the picker', () => {
-    expect(form).toMatch(/coverImageUrl: trip\.coverImageUrl/)
+    // The cover still comes from the trip (never re-derived or dropped), but it
+    // is published as the value the rules above VALIDATED — the trimmed one.
+    // Storing the raw field shipped a space-padded URL that this handler's
+    // `^https://\S+$` test rejects, so the link previewed as the brand card
+    // while the form said it was fine (#388/#360).
+    expect(form).toMatch(/coverImageUrl: cover,/)
+    expect(form).not.toMatch(/coverImageUrl: trip\.coverImageUrl,/)
     // The picker sizes on the way in, which is what keeps a stored cover from
     // being a multi-megabyte original in the first place.
     expect(read('../src/components/CoverImagePicker.tsx')).toMatch(/coverImageUrl: url \? sizedCoverUrl\(url\)/)
