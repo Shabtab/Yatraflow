@@ -119,9 +119,11 @@ describe('the surfaces that must not race a preview (#334)', () => {
 
   it('accepting a suggestion and resolving a decision wait for the preview', () => {
     const src = readFileSync(new URL('../src/pages/trip/GroupInputTab.tsx', import.meta.url), 'utf8')
-    // ONE refusal helper, spoken by exactly the two crew-signal writers (the
-    // definition takes a typed parameter, so it is not among these two).
-    expect(src.match(/refuseWhilePreviewing\(previewOpen\)/g) ?? []).toHaveLength(2)
+    // ONE refusal helper, spoken by EVERY crew-signal writer — resolve, accept
+    // and decline all write the committed row, so all three refuse while a
+    // preview holds a staged proposal (the definition takes a typed parameter,
+    // so it is not among these three).
+    expect(src.match(/refuseWhilePreviewing\(previewOpen\)/g) ?? []).toHaveLength(3)
     expect(src).toMatch(/function refuseWhilePreviewing\(previewOpen: boolean \| undefined\): boolean \{/)
     expect(src).toMatch(/toast\(PREVIEW_BUSY, 'err'\)/)
     // …and the workspace actually tells the tab that a preview is open.
