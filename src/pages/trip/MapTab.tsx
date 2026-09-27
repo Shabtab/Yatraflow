@@ -2,7 +2,7 @@
 // Mechanical extraction from src/pages/TripWorkspace.tsx (M3.4) — no behavior changes.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { InlineIcon } from '../../components/icons'
-import { BedDouble, ChevronDown, CircleCheck, Coffee, ExternalLink, Fuel, Lightbulb, MapPin, Pause, Plus, RotateCcw, Sparkles, Star, Utensils } from 'lucide-react'
+import { BedDouble, ChevronDown, CircleCheck, Coffee, ExternalLink, Fuel, Lightbulb, MapPin, Pause, Plus, RefreshCw, RotateCcw, Sparkles, Star, Utensils } from 'lucide-react'
 import { uid } from '../../data/seed'
 import type { Trip, ItineraryStop, TripDecision } from '../../data/types'
 import type { ImpactResult } from '../../lib/impact'
@@ -337,6 +337,20 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
   // matters most), the Day Planner still speaks, from the haversine estimate,
   // flagged as rough.
   const routeFailed = road?.status === 'failed'
+  // #road-retry: this banner is the one surface that says the road failed, so it
+  // also owns the retry. A ref latches the failure while the re-measure is in
+  // flight — status flips to 'pending' the moment Retry is clicked, and a gate
+  // keyed on `failed` alone would drop the banner mid-retry: the honest state
+  // would vanish exactly when the user asked for another attempt. Latched in
+  // RENDER (not an effect) so a same-tick flip never reads stale. A resolved
+  // measurement clears it; a chain rebuild clears it too — after a route edit
+  // the old verdict is stale and the new chain measures on its own, so the
+  // latched failure must not pin a dead banner up.
+  const roadFailedEverRef = useRef(false)
+  if (road?.status === 'failed') roadFailedEverRef.current = true
+  if (road?.status === 'ok') roadFailedEverRef.current = false
+  const roadRetryUnderway = roadFailedEverRef.current && road?.status === 'pending'
+  const roadNeedsRetry = routeFailed || !!roadRetryUnderway
   // The terrain profile (#124): the clock and the split convert time↔km
   // through the REAL mix of the road just measured, instead of one blended
   // rate that placed lunch and the night halt too far along a ghat day and
@@ -2042,12 +2056,17 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
             <span className="small muted">{clockVerdict.reason}</span>
           </div>
         )}
-        {(routeTotalKm != null || routeFailed) && splitVerdict && clockVerdict.verdict === 'ok' && travelDayNeed > trip.days.length && (
+        {(routeTotalKm != null || roadNeedsRetry) && splitVerdict && clockVerdict.verdict === 'ok' && travelDayNeed > trip.days.length && (
           <div className="dayplanner-banner" role="status">
             <b>This drive needs {travelDayNeed} travel days{tripIsRoundTrip ? ' - there and back' : ''}.</b>
             <span className="small muted">
-              {routeTotalKm == null && 'Rough estimate - the road measurement did not resolve. '}≈{Math.round(splitVerdict.perDay)} km a day keeps wheel time ≈{minutesToHM(splitVerdict.maxDailyWheelMin)} - the honest cap for {(trip.travelStyle ?? 'balanced')} pace.
+              {routeFailed && 'Rough estimate - the road measurement did not resolve. '}≈{Math.round(splitVerdict.perDay)} km a day keeps wheel time ≈{minutesToHM(splitVerdict.maxDailyWheelMin)} - the honest cap for {(trip.travelStyle ?? 'balanced')} pace.
             </span>
+            {roadRetryUnderway && (
+              <span className="small muted">
+                <InlineIcon icon={RefreshCw} size={12} gap={3} />Measuring the road again — the estimates hold until it resolves.
+              </span>
+            )}
             {!splitDeclined ? (
               <div className="row" style={{ gap: 8 }}>
                 <button className="btn btn-primary btn-sm" onClick={applySplitDays}>
@@ -2059,6 +2078,12 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
               <span className="small dayplanner-red">
                 Keeping {trip.days.length} day{trip.days.length !== 1 ? 's' : ''}: ≈{minutesToHM(wholeTrip.min * loopFactor)} behind the wheel in a single stretch is past the honest cap - the fatigue verdict stays red.
               </span>
+            )}
+            {roadNeedsRetry && road && !roadRetryUnderway && (
+              <button className="btn btn-outline btn-sm" onClick={road.retry}
+                title="Ask the routing provider again — the first tries may have been rate-limited">
+                <InlineIcon icon={RefreshCw} size={12} gap={3} />Retry road measurement
+              </button>
             )}
             {drizzleDay >= 0 && dayRainPct && (
               <span className="small muted">☁ {Math.round(dayRainPct[drizzleDay]!)}% rain chance on day {drizzleDay + 1} - {travelDayNeed !== 1 ? travelDayNeed : 'one'} day{travelDayNeed !== 1 ? 's' : ''} planned stays, but pack a buffer for one more.</span>

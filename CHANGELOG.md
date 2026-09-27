@@ -15,6 +15,10 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Fixed
+
+- A failed road measurement can now be retried from the surfaces that say it failed: the Board's estimate note and the Map tab's travel-day banner each carry a Retry button (the workspace's measurement already re-ran on demand since #188 — no surface consumed it). While the re-measure is in flight the honest state stays up instead of blinking away — the note reads "Measuring the road…" and the banner holds open with "the estimates hold until it resolves" — and both clear only when the road actually resolves.
+
 ## [0.68.0] - 2026-09-26
 
 The audit's third wave, one day after the first two: the workspace's own surfaces — the
