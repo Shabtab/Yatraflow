@@ -15,6 +15,23 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+## [0.69.0] - 2026-09-27
+
+The audit's P1 wave is closed, and the map learned to search. Every P1 the day's sweep filed is
+fixed: an expense amount is one rule everywhere and refuses negative, infinite and NaN rupees on
+every path (#382), the session lifecycle keeps what the store already promised (#393), Group Input's
+crew signals claim their row before they write (#394), renaming the start city stops measuring the
+old city (#410), the publish button no longer claims success before it has one (#388), one
+unreadable purchase can no longer rewrite the shelf total (#406), creator and Explore pages say a
+read failed instead of looking empty (#364), and a withdrawn plan no longer leaves a button that
+goes nowhere (#405). The map gained its own search — find a place anywhere on the route, then say
+where it goes — and dense suggestion pins collapse into count badges instead of piling up; the
+Timeline gained an all-days review mode and inline insertion between two stops. Underneath, the Map
+tab started coming apart into modules that carry their own tests. This cut also records what the
+mid-day promotion took to production ahead of it: the retriable road measurement, the Jakarta 500
+body weight and the Timeline/day-plan honesty pass (#344, #346). No migrations in this batch: code
+and docs only.
+
 ### Added
 
 - **The Timeline reads as one continuous plan when you want the whole trip in front of you.** A view switch beside Plan/Inspect offers *One day* (the accordion) and *All days*, and the choice is stored per trip beside the day you were last in — switching to all-days never reads or writes that saved day, so going back to One day returns you to exactly the day you left. In review every day is open and its header follows you down the page under the floating nav until the next day's card pushes it out, so a plan's evening → night → next-morning boundary reads in one scroll; the per-day disclosure control is not offered there (the mode owns openness), and the trip-total strip hands its sticky rung to the day header. Provider-backed extras stay bounded: the weather chip and the empty-day ideas load only for days near the viewport, while stop rows, clocks, warnings and money come from the already-resolved trip for every day. Editing, drag-and-drop, reordering and impact previews behave exactly as they do in One day, and switching views changes no trip data.
