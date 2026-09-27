@@ -24,6 +24,8 @@ import { SHEET_TABS, sheetAppliesAt, sheetHiddenClass, sheetTabMove, type SheetT
 import { mapScopeNote } from '../../lib/railA11y'
 import { railKeyAction } from '../../lib/railKeys'
 import { candidatesAnnouncement, fillLabel, pickDayCaveat, scopeValueText, searchAnnouncement, voteStatusId } from '../../lib/railA11y'
+import { MapOmnibar } from './MapOmnibar'
+import { placementOptions, type PlacementOption } from './mapPlacement'
 
 /** How many search hits the rail shows before "Show all" (#333 A1). The listbox
  *  grammar needs the same page size the rows are rendered with, so it lives here
@@ -283,6 +285,13 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
   const [searching, setSearching] = useState(false)
   // "show all N" — the rail lists 5 by default; this unfolds the rest.
   const [showAllResults, setShowAllResults] = useState(false)
+  // #418: the map's OWN search — its query, its rows, and the hit the user picked
+  // from them. The pick is deliberately its own state rather than `activeHitId`:
+  // the rail's rows move that one on hover, so keying the placement step off it
+  // would let the omnibar inherit the context of whatever rail was last active.
+  const [omniQ, setOmniQ] = useState('')
+  const [omniResults, setOmniResults] = useState<{ h: PlaceHit; km: number | null; off: number | null }[]>([])
+  const [omniPicked, setOmniPicked] = useState<{ h: PlaceHit; km: number | null; off: number | null } | null>(null)
   const listRef = useRef<HTMLDivElement | null>(null)
   const searchListRef = useRef<HTMLDivElement | null>(null)
   // Monotonic search token: a slow earlier query must never clobber the rows of
@@ -307,15 +316,25 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
   const mapPois = useMemo(() => {
     const corridor = pois.flatMap(p => (p.hit ? [p.hit] : []))
     const seen = new Set(corridor.map(h => h.id))
-    return [...corridor, ...searchResults.map(r => r.h).filter(h => !seen.has(h.id))]
-  }, [pois, searchResults])
+    return [
+      ...corridor,
+      ...searchResults.map(r => r.h).filter(h => !seen.has(h.id)),
+      // #418: an omnibar hit is a discovery like any other — it draws the same
+      // selectable marker, so the map never hides a place the user just found.
+      ...omniResults.map(r => r.h).filter(h => !seen.has(h.id) && !searchResults.some(s => s.h.id === h.id)),
+    ]
+  }, [pois, searchResults, omniResults])
 
-  // The subset of map pins that came from THIS search — the map draws them as
+  // The subset of map pins that came from a search — the map draws them as
   // distinct selectable markers (solid teal, not the dashed gold ideas), and
-  // they vanish with the results list when the search bar clears.
+  // they vanish with the results list when the search bar clears. Both searches
+  // feed it: a row found in either box is a search result on the map.
   const searchHitIds = useMemo(
-    () => new Set<string | number>(searchResults.map(r => r.h.id)),
-    [searchResults],
+    () => new Set<string | number>([
+      ...searchResults.map(r => r.h.id),
+      ...omniResults.map(r => r.h.id),
+    ]),
+    [searchResults, omniResults],
   )
 
   // #345: ONE identity answers "is this already mine?" for every rail, slot,
@@ -1382,10 +1401,14 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
     } finally { setAddingAny(false) }
   }
 
-  async function onSearch(e: React.FormEvent) {
-    e.preventDefault()
-    const q = searchQ.trim()
-    if (q.length < 2) return
+  /** #418: ONE route-aware search, shared by the rail's corridor box and the map
+   *  omnibar — same query, same ranking, same quota and abort discipline — so the
+   *  two surfaces cannot disagree about what a search found or what it cost. The
+   *  caller decides where the rows live; `null` means a newer search superseded
+   *  this one (or it failed), so a caller never renders stale rows. */
+  async function runRouteSearch(raw: string): Promise<Array<{ h: PlaceHit; km: number | null; off: number | null }> | null> {
+    const q = raw.trim()
+    if (q.length < 2) return null
     // Claim this as the latest search; a slower earlier query that resolves
     // later is ignored so it can never overwrite the newer rows.
     const mySeq = ++searchSeq.current
@@ -1403,7 +1426,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
       // spatial signal — without it Google IP-biases results to wherever the
       // user is typing from, not the corridor they're planning.
       const hits = await searchPlacesText(q, { routeCoords: routeGeometry, anchors, signal: controller.signal })
-      if (mySeq !== searchSeq.current) return // a newer search superseded this one
+      if (mySeq !== searchSeq.current) return null // a newer search superseded this one
       // Trip/route/map aware (user ask): "coffee on my route", not coffee
       // everywhere in India. Each hit is projected onto this trip's road and
       // ranked by detour (then road position); anything beyond the current
@@ -1419,20 +1442,39 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
           const bo = b.off == null ? Number.POSITIVE_INFINITY : b.off
           return ao - bo || (a.km == null ? Number.POSITIVE_INFINITY : a.km) - (b.km == null ? Number.POSITIVE_INFINITY : b.km)
         })
-      setShowAllResults(false)
-      setSearchResults(ranked)
       const onScope = ranked.filter(en => en.off != null && en.off <= scopeKm)
       if (hits.length === 0) toast('No places found for that search.')
       else if (onScope.length === 0) toast(`Nothing for “${q}” within your ${scopeKm} km detour scope - widen the detour-scope slider to see them.`)
+      return ranked
     } catch (err) {
-      if (mySeq !== searchSeq.current || controller.signal.aborted) return
+      if (mySeq !== searchSeq.current || controller.signal.aborted) return null
       if (err instanceof QuotaExhaustedError) { setSearchQuotaOut(true); toast('Google Places 80% safety pause reached - search resumes next UTC month. Remove the key in Settings and reload to use the free stack.', 'err') } else {
         toast('Search failed - try again.', 'err')
       }
+      return null
     } finally {
       // Only the newest search owns the spinner; a superseded one leaves the
       // newer request's "searching" state untouched.
       if (mySeq === searchSeq.current) setSearching(false)
+    }
+  }
+
+  async function onSearch(e: React.FormEvent) {
+    e.preventDefault()
+    const ranked = await runRouteSearch(searchQ)
+    if (ranked) {
+      setShowAllResults(false)
+      setSearchResults(ranked)
+    }
+  }
+
+  /** #418: the omnibar's own submit. Its rows live in their own state so the
+   *  rail's list is not silently replaced by a search made on the map. */
+  async function onOmniSearch() {
+    const ranked = await runRouteSearch(omniQ)
+    if (ranked) {
+      setOmniResults(ranked)
+      setOmniPicked(null)
     }
   }
 
@@ -1728,6 +1770,45 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
     () => daySlots(activeDayIndex, { ...daySlotDeps, dayStops: activeDayStops }),
     [activeDayIndex, daySlotDeps, activeDayStops, daySlotSig],
   )
+
+  // #418: the omnibar's choices for the place it just found. The list itself is
+  // pure (`mapPlacement.ts` decides what may be filed where, and why not); this
+  // only hands it the facts, so the same rules are unit-testable without a DOM.
+  const omniPlacement = useMemo<PlacementOption[]>(
+    () => placementOptions({
+      hit: omniPicked?.h ?? null,
+      dayIndex: activeDayIndex,
+      dayLabel: trip.days.find(d => d.index === activeDayIndex)?.title ?? null,
+      km: omniPicked?.km ?? null,
+      // The parts this place's own category could serve on the day the rail is
+      // planning — the same helper the corridor rows already file through.
+      filingOptions: omniPicked ? filingOptionsFor(omniPicked.h) : [],
+      alreadyAdded: omniPicked ? isAlreadyAdded(omniPicked.h, identity) : false,
+      shortlisted: omniPicked ? shortlist.some(h => h.id === omniPicked.h.id) : false,
+      shortlistCount: trayShortlist.length,
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- filingOptionsFor reads
+    // the active day's slots, which are derived from the inputs listed here.
+    [omniPicked, activeDayIndex, trip.days, activeDaySlots, shortlist, trayShortlist, identity],
+  )
+
+  /** #418: every placement routes into a path that already existed and nothing is
+   *  re-implemented here — a day opens the stop editor (which asks for the day and
+   *  owns the write), a part fills through the same manual-candidate path the rail
+   *  uses, the shortlist collects without touching the plan, and the vote is the
+   *  tray's own decision. Nothing happens until the user clicks one. */
+  function placeOmnibarHit(option: PlacementOption) {
+    const picked = omniPicked
+    if (!picked) return
+    if (option.kind === 'day') { openAddModal(picked.h, picked.km); return }
+    if (option.kind === 'slot') {
+      const slot = activeDaySlots.find(s => s.key === option.slotKey)
+      if (slot) addManualCandidate(slot, picked.h)
+      return
+    }
+    if (option.kind === 'shortlist') { toggleShortlist(picked.h); return }
+    if (option.kind === 'vote') { void raiseShortlistVote(); return }
+  }
   /** Counted off the very slots the rail renders, not re-derived: a second
    *  `daySlots` call here was a whole extra derivation of the same day, and a
    *  meter that could in principle disagree with the list beside it. */
@@ -2543,6 +2624,34 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
             )}
           </div>
           <div className="map-ideas-map">
+            {/* #418: the map's own search, above the canvas and outside both rails.
+                Discovery here is route-aware (the shared runner), and filing is an
+                explicit choice — this surface writes nothing on its own. */}
+            <MapOmnibar
+              query={omniQ}
+              onQueryChange={q => {
+                setOmniQ(q)
+                // Same discipline as the rail's box: stale rows from a previous
+                // query must not sit under the new one while typing.
+                if (omniResults.length > 0) setOmniResults([])
+                if (omniPicked) setOmniPicked(null)
+              }}
+              onSubmit={onOmniSearch}
+              busy={searching}
+              quotaOut={searchQuotaOut}
+              results={omniResults}
+              selectedId={omniPicked?.h.id ?? null}
+              placement={omniPlacement}
+              scopeKm={scopeKm}
+              onSelect={id => {
+                const row = omniResults.find(r => r.h.id === id) ?? null
+                setOmniPicked(row)
+                // …and the map agrees about which pin is being decided.
+                setActiveHitId(id)
+              }}
+              onClear={() => { setOmniQ(''); setOmniResults([]); setOmniPicked(null) }}
+              onPlace={placeOmnibarHit}
+            />
             <TripMap
               trip={trip}
               nearbyPois={mapPois}
