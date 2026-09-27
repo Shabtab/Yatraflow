@@ -20,6 +20,7 @@ import { openExternal } from '../../lib/native'
 import { corridorAnchors, detourKm, asymmetricDetourKm, asymmetricDetourMinutes, googleEnabled, planJourneyHalts, reasonForSegmentHit, searchPlacesText, searchNearbyPoisMulti, kmFromStartForHit, planDriveDays, planTravelClock, rainFactorFor, directionalKm, alongRouteKmOf, DEFER_START, type NearbyOpts, type PlaceHit, type TravelClockVerdict, routeHash } from '../../lib/geocode'
 import { useResolvePick } from '../../components/ResolvePickDialog'
 import { deriveClockMilestones } from '../../lib/clockOverlay'
+import { mapScopeNote } from '../../lib/railA11y'
 import { railKeyAction } from '../../lib/railKeys'
 import { candidatesAnnouncement, fillLabel, pickDayCaveat, scopeValueText, searchAnnouncement, voteStatusId } from '../../lib/railA11y'
 
@@ -258,6 +259,9 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
   // the room. Session state on purpose - a layout whim should not persist.
   const [folded, setFolded] = useState<{ needs: boolean; see: boolean }>({ needs: false, see: false })
   // P2: the day the plan rail reads. Day 1 by default; the strip's chips switch it.
+  // #416: what the map is showing, as far as the rail has been TOLD.
+  // null = not reported yet, which must stay silent rather than guess.
+  const [mapFilter, setMapFilter] = useState<number | 'all' | null>(null)
   const [activeDayIndex, setActiveDayIndex] = useState(0)
   // In-map place search (§6.5): a free-text query over the provider facade,
   // plus the results to add straight from the Map tab.
@@ -2284,6 +2288,9 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
               </div>
             ) : (
               <div className={'slots-list' + (slotsPeek ? ' is-peek' : '')} id="slots-list">
+              {mapScopeNote(mapFilter, activeDayIndex) && (
+                <p className="hint-text" role="status">{mapScopeNote(mapFilter, activeDayIndex)}</p>
+              )}
               {/* #333 A5: the slot's candidates had no live region, so a screen-reader
                   user opening a part heard nothing about what was in reach. Mounted even
                   when a part opens: it starts empty by design, and a region that MOUNTS already carrying its text is never announced. */}
@@ -2497,6 +2504,9 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
               focusDay={activeDayIndex}
               tripReadinessRows={tripReadinessRows}
               onDayFilterChange={day => {
+      // #416: the map reports its own scope, including 'all' — the rail records it
+      // so it can say when the two disagree (it cannot plan a whole trip itself).
+      setMapFilter(day)
                 // The rail always plans exactly one day, so the map's "All days"
                 // leaves it where it is; a day chip moves the rail onto that day.
                 if (typeof day === 'number') setActiveDayIndex(day)
