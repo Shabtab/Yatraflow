@@ -15,6 +15,10 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Added
+
+- **The map has its own search: find a place anywhere on the route, then say where it goes.** Discovery and filing used to be coupled differently on every surface — the corridor box ranked by detour, a slot's box filled that part, each rail kept its own list — so a place found on the map could only be filed the way whichever rail was last active happened to file things. A search now sits on the map itself, above the canvas and outside both rails: it searches the same route-aware way the corridor box does (one shared runner, so the ranking, the detour scope, the quota pause and the out-of-order guard cannot drift apart), draws its hits as the same selectable teal pins, and then asks *where* — a day (through the stop editor that already discloses a guessed day), one of the day's empty parts the place's own category can serve, the shortlist, or a crew vote once the shortlist holds two places to compare. Every choice says what it will do, every disabled one says why, and nothing is filed until one is clicked: a hit whose position has not resolved, or one already in the trip, is offered no path at all.
+
 ### Fixed
 
 - **Body and secondary text now set in Jakarta 500 instead of 400, and the smallest icons render a rung larger with a lighter stroke.** The Inter-to-Jakarta switch left every unweighted line at 400, which reads faded at body and secondary sizes even though every pair passes AA — the base weight is 500 now, with the explicit 600/700/800 declarations untouched. Separately, the six 11px glyphs move to 12px, the fourteen direct 12px glyphs move to 13px, and the shared inline wrappers (InlineIcon, MetaIcon, KindIcon) drop dense ≤12px glyphs to a 1.25 stroke through the new `--icon-stroke-sm` token, so Sparkles, Lock and the kind kickers stop filling in.
