@@ -28,6 +28,13 @@ interface Props {
   errorId?: string
 }
 
+/** The text a pick puts in the box. Exported so a caller that must remember
+ *  WHICH label a pin belongs to (Settings' start pin, #410) speaks the same
+ *  formula this component types — a private copy would drift from the box. */
+export function pickLabel(hit: PlaceHit): string {
+  return hit.name + (hit.kind === 'place' && hit.admin1 ? `, ${hit.admin1}` : '')
+}
+
 export function LocationInput({ value, onChange, onPick, placeholder, error, errorId, autoFocus, indiaOnly = true, id, disabled }: Props) {
   const [hits, setHits] = useState<PlaceHit[]>([])
   const [open, setOpen] = useState(false)
@@ -90,7 +97,7 @@ export function LocationInput({ value, onChange, onPick, placeholder, error, err
         hit = resolved
       } finally { setResolving(false) }
     }
-    onChange(hit.name + (hit.kind === 'place' && hit.admin1 ? `, ${hit.admin1}` : ''))
+    onChange(pickLabel(hit))
     onPick?.(hit)
     setOpen(false)
     setHits([])
