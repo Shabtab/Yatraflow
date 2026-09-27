@@ -81,7 +81,7 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel,
    *  stand down so the prompt is the only layer that answers. */
   const pinPrompting = useRef(false)
   const onModalClose = React.useCallback(() => { if (!pinPrompting.current) onClose() }, [onClose])
-  const [v, setV] = useState<StopFormValues>(normalize(initial))
+  const [v, setV] = useState<StopFormValues>(normalizeStopForm(initial))
   const [errs, setErrs] = useState<Record<string, string>>({})
   /** first-invalid focus targets (F-15) — plain inputs register here */
   const fieldRefs = useRef<Record<string, HTMLElement | null>>({})
@@ -105,7 +105,7 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel,
 
   // re-init when opening for a different stop
   const [lastKey, setLastKey] = useState(resetKey)
-  if (open && lastKey !== resetKey) { setLastKey(resetKey); setV(normalize(initial)); setErrs({}); setHoursState('idle'); setLegState('idle') }
+  if (open && lastKey !== resetKey) { setLastKey(resetKey); setV(normalizeStopForm(initial)); setErrs({}); setHoursState('idle'); setLegState('idle') }
 
   /** assumptions for the travel-leg preview (null when no leg context) */
   const legAssumptions = legContext
@@ -390,7 +390,10 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel,
   )
 }
 
-function normalize(v?: Partial<StopFormValues>): StopFormValues {
+/** The blank form every add starts from — exported so the Timeline's quick
+ *  add (#422) seeds itself with the SAME defaults the full editor does, instead
+ *  of growing a second copy of them. */
+export function normalizeStopForm(v?: Partial<StopFormValues>): StopFormValues {
   return {
     title: '', category: 'sightseeing', locationName: '',
     lat: DEFAULT_LATLNG.lat, lng: DEFAULT_LATLNG.lng,

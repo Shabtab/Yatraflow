@@ -586,6 +586,31 @@ Key locations:
    re-enables its button reads as completion — toast, and exempt the
    search's OWN final write from its toast via a flag, or the completion
    toasts itself.
+ 6x. **A lazy gate's proof is what MOUNTS, not what unmounts — and a
+   "never calls X" tripwire must read code, never prose (learned 2026-09-27,
+   the #421/#422 wave).** Review mode had to keep provider fetches off days
+   that are merely visible, so the shell hands a day its live `trip` (which
+   is what mounts a TravelPanel) only when the day is near the viewport.
+   Two mechanics worth keeping:
+   (1) the gate is on FIRST mount only — the day card holds the last trip it
+   was given (`lastTrip.current`) so its body can keep rendering through the
+   collapse animation, which means an off-screen day keeps the panel it
+   already mounted. That is the right behaviour (no flicker, no re-fetch),
+   but it changes what evidence you need: prove the gate with `chip: false`
+   → `panel: true` transitions as days enter and leave the viewport, not by
+   expecting off-screen days to empty out;
+   (2) a negative assertion against raw source matches the module's own
+   COMMENTS — `expect(quick).not.toMatch(/applyChange|updateTrip/)` failed
+   on a file whose header documents that it deliberately never writes, and
+   the fix is the one the Math.random tripwire already used: strip `//`,
+   `*` and `/*` lines first, so the assertion judges code (which is what
+   "this module never writes" actually claims).
+   Companion trap for any CSS this repo adds: the spacing ratchet keys on
+   `property: value`, so a new rule matching an ALREADY-FROZEN pair
+   (`padding: 10px` is in the baseline) is free, while a new pair is a
+   build failure — check `tests/design-system-baseline.json`'s
+   `offLadderSpacing` before choosing values, and prefer the ladder
+   (2/4/6/8/12/14/16/20/22/24) or the `--space-*` tokens outright.
  7. **When asking the user to review/test locally, always hand them the exact
    URL — never make them find or start the server.** Check if the dev server
    is up (probe `http://localhost:5173`); if not, start `npm run dev`

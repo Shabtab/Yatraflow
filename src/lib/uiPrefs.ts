@@ -119,6 +119,37 @@ export function saveOpenDay(tripId: string, dayIndex: number): void {
   }
 }
 
+// ---- Review-all-days view (Timeline, #421) ----
+// The Timeline's other axis: not "what may I do" (that is the global Plan/
+// Inspect flag in useTimelineMode) but "which days are rendered". Stored per
+// trip, exactly like the open day above, because the two are siblings — leaving
+// review mode returns you to the accordion you left, and this choice never
+// writes `yatraflow_open_day`. Parsed with the flat-boolean helper (same
+// guards), so junk degrades to OFF — today's behaviour.
+const REVIEW_ALL_KEY = 'yatraflow_review_all'
+
+/** Is this trip being read in all-days review mode? Missing/garbage = no. */
+export function loadReviewAll(tripId: string): boolean {
+  if (typeof localStorage === 'undefined') return false
+  try {
+    return parseDayCollapseMap(localStorage.getItem(REVIEW_ALL_KEY))[tripId] ?? false
+  } catch {
+    return false
+  }
+}
+
+/** Persist the trip's view choice. Silent no-op when storage is unavailable. */
+export function saveReviewAll(tripId: string, on: boolean): void {
+  if (typeof localStorage === 'undefined') return
+  try {
+    const map = parseDayCollapseMap(localStorage.getItem(REVIEW_ALL_KEY))
+    map[tripId] = on
+    localStorage.setItem(REVIEW_ALL_KEY, JSON.stringify(map))
+  } catch {
+    // Private mode / quota exceeded — persistence is best-effort by design.
+  }
+}
+
 // Same map-of-booleans pattern, for long-ride hint dismissal (user chose
 // "not needed" for a given day's halt suggestions; restorable).
 const RIDE_HINTS_KEY = 'yatraflow_ride_hints_hidden'

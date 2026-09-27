@@ -916,7 +916,8 @@ a.btn { text-decoration: none; }
    .tabbar's exact glass capsule, so every rail animates and reads the same.
    The active state is painted solely by the sliding glider (PillNav). */
 .filter-pillbar,
-.mode-pillbar {
+.mode-pillbar,
+.view-pillbar {
   display: inline-flex; gap: 2px; padding: 4px; flex-wrap: wrap;
   background: var(--yf-nav-glass); border: 1px solid var(--yf-glass-border);
   -webkit-backdrop-filter: blur(var(--yf-blur-nav)) saturate(1.2); backdrop-filter: blur(var(--yf-blur-nav)) saturate(1.2);
@@ -1483,6 +1484,58 @@ a.btn { text-decoration: none; }
 .day-cost-chip { color: var(--teal-deep); background: var(--teal-soft); }
 [data-theme='dark'] .day-cost-chip { color: var(--teal); }
 @media (max-width: 720px) { .day-dwell-chip { display: none; } }
+
+/* ---------- Review mode: every day open, one continuous scroll (#421) ---------- */
+/* Orientation comes from the day-jump rail, which is sticky here and marks the
+   day at the top of the viewport — NOT from the day header: measured at 390 /
+   900 / 1440 px, a header carrying the day's clocks, chips, warnings and its
+   own actions is 193–309 px tall, and a control panel stuck to the viewport
+   costs a fifth of a phone's screen to say one word. So the header stays in
+   flow, continuity carries the boundaries, and the compact rail (one row, the
+   mode's own navigation) takes the sticky rung from the trip-total strip. */
+.tl-root-review .tl-total-strip { position: static; }
+.tl-root-review .day-rail {
+  position: sticky;
+  top: calc(12px + var(--nav-h) + 10px + var(--safe-area-inset-top, env(safe-area-inset-top, 0px)));
+  /* above the day cards, below a carried row (.tl-row.is-carried is 6) */
+  z-index: 2;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 8px 12px;
+  box-shadow: var(--shadow-soft);
+}
+/* Which day you are in: the chip whose card has scrolled past the sticky line.
+   One marker, not a second colour for "warn" — the warn tint is the day's own
+   state and stays readable next to it. */
+.day-rail-chip[aria-current='true'] {
+  border-color: var(--teal);
+  background: var(--teal-soft);
+  color: var(--teal-deep);
+  font-weight: 800;
+}
+
+/* ---------- Between-stop insertion (#422) ---------- */
+/* The control belongs to the leg between two stops and is revealed on hover
+   and on keyboard focus; it stays visible on touch, where there is no hover to
+   reveal it (a hover-only control is unreachable there). */
+.tl-leg-cell { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.tl-leg-cell .travel-leg { flex: 1; min-width: 0; }
+.leg-insert {
+  display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto;
+  border: 1px dashed var(--line); background: var(--card-soft); color: var(--text-2);
+  border-radius: 999px; padding: 4px 10px; font-size: 12px; font-weight: 700; cursor: pointer;
+  opacity: 0; pointer-events: none;
+  transition: opacity var(--motion-fast) var(--ease-out), border-color var(--t-fast) var(--ease-out), color var(--t-fast) var(--ease-out), background var(--t-fast) var(--ease-out);
+}
+.tl-legrow:hover .leg-insert, .tl-legrow:focus-within .leg-insert { opacity: 1; pointer-events: auto; }
+.leg-insert:hover { border-color: var(--teal); color: var(--teal-deep); background: var(--teal-soft); }
+@media (hover: none), (pointer: coarse) {
+  .leg-insert { opacity: 1; pointer-events: auto; min-height: 40px; padding: 0 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .leg-insert { transition: none; }
+}
 /* Stop-kind markers: a coloured spine on the card + a small type tag.
    Tag text stays --text-2 on soft tinted backgrounds so both themes keep
    AA contrast; the spine carries the hue. */
