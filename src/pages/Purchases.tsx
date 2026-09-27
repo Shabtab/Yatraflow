@@ -25,8 +25,11 @@ import { Chip, EmptyState, toast } from '../components/ui'
 import { formatInr } from '../lib/engine'
 import type { Entitlement } from '../lib/payments'
 
-/** "12 Sep 2026" — the same en-IN shape the plan bench and the print view use. */
-function boughtOn(ms: number): string {
+/** "12 Sep 2026" — the same en-IN shape the plan bench and the print view use.
+ *  A grant date that could not be read says so: "Invalid Date" is a developer
+ *  string leaking into a receipt, and a wrong date is worse than an absent one. */
+function boughtOn(ms: number, readable: boolean): string {
+  if (!readable) return 'date unknown'
   return new Date(ms).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
@@ -99,9 +102,21 @@ export function PurchasesPage({ onNavigate }: { onNavigate: (r: string) => void 
         <>
           <p className="purchases-sum">
             <b>{shelf.rows.length}</b> {shelf.rows.length === 1 ? 'plan' : 'plans'} ·{' '}
-            <b>{formatInr(shelf.totalPaidInr)}</b> paid
+            {shelf.totalReadable ? (
+              <><b>{formatInr(shelf.totalPaidInr)}</b> paid</>
+            ) : (
+              // A partial sum printed as the total is the same lie as a wrong
+              // one: it reads as complete. Say the figure is incomplete instead.
+              <>at least <b>{formatInr(shelf.totalPaidInr)}</b> paid</>
+            )}
             {shelf.updatedCount > 0 && <> · <b>{shelf.updatedCount}</b> updated since you bought {shelf.updatedCount === 1 ? 'it' : 'them'}</>}
           </p>
+          {!shelf.totalReadable && (
+            <p className="hint-text">
+              One or more purchases could not be read back, so this total is a floor rather than the
+              whole amount. Your plans are unaffected — the price is just not showing.
+            </p>
+          )}
 
           <div className="purchase-list">
             {shelf.rows.map(row => (
@@ -113,12 +128,16 @@ export function PurchasesPage({ onNavigate }: { onNavigate: (r: string) => void 
                   <h2 className="purchase-name">{row.title}</h2>
                   <p className="purchase-by">
                     {row.creatorName ? <>by <b>{row.creatorName}</b></> : <>creator no longer listed</>}
-                    {' · '}bought {boughtOn(row.grantedAt)}
+                    {' · '}bought {boughtOn(row.grantedAt, row.dateReadable)}
                   </p>
                   <div className="purchase-meta">
                     {row.durationDays > 0 && <Chip>{row.durationDays} days</Chip>}
                     {row.places > 0 && <Chip>{row.places} places</Chip>}
-                    <Chip tone="saffron">{formatInr(row.amountPaidInr)} paid</Chip>
+                    {row.amountReadable
+                      ? <Chip tone="saffron">{formatInr(row.amountPaidInr)} paid</Chip>
+                      // "₹0 paid" would be a claim that this plan was free. It
+                      // was not — the price simply could not be read.
+                      : <Chip tone="saffron">price unavailable</Chip>}
                     {row.updatedSince && row.refreshedAt && (
                       <Chip tone="info">Updated {updatedIn(row.refreshedAt)}</Chip>
                     )}
