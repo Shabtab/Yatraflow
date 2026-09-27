@@ -19,6 +19,7 @@ import {
   currentUser, userById, useDb,
 } from '../../store/store'
 import { computeTotals, getAssumptions, formatInr, isRoundTrip, safeToSpendPerDay } from '../../lib/engine'
+import { amountRefusal } from '../../lib/expenseAmount'
 import { computeBalances, settleBalances, fairSharePerHead, linesTotal, openTaggedLines } from '../../lib/settlement'
 import { loadFlag, saveFlag } from '../../lib/uiPrefs'
 import { titleCase } from '../../lib/labels'
@@ -55,8 +56,13 @@ function stateFromExpense(e: Expense): FormState {
 
 function validateForm(form: FormState): string | null {
   if (!form.label.trim()) return 'Give the expense a name.'
-  if (!Number(form.amount)) return 'Enter an amount.'
-  return null
+  if (!form.amount.trim()) return 'Enter an amount.'
+  // #382: blank-and-falsy used to be the WHOLE gate, so '-5', '1e3' and
+  // 'Infinity' walked into the store — and the native min= on the input is
+  // bypassable by typing anyway. One rule now, the same one the store, the
+  // codec and the importer speak (lib/expenseAmount): a finite number of
+  // rupees above zero, or the sentence that says why not.
+  return amountRefusal(Number(form.amount))
 }
 
 function patchOf(form: FormState): Omit<Expense, 'id'> {
@@ -223,7 +229,9 @@ export function BudgetTab({ trip, totals, editable, previewOpen }: {
             sub={<>{formatInr(pacing.perPersonPerDayInr)} per person · {pacing.daysLeft === 0 ? 'trip over' : `${pacing.daysLeft} day${pacing.daysLeft !== 1 ? 's' : ''} left`}</>} />
         ) : (
           <StatTile label="Safe to spend / day" value="—"
-            sub={<>Set a per-person target in Trip settings to see pacing</>} />
+            sub={<>{Number.isFinite(totals.totalCostInr)
+              ? 'Set a per-person target in Trip settings to see pacing'
+              : 'Pacing needs a readable spend figure — fix or remove the line that broke it'}</>} />
         )}
       </div>
 

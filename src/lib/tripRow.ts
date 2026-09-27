@@ -3,6 +3,7 @@
 // missing-column detection are unit-testable in the node test environment.
 import type { Trip, ItineraryDay, TripMember, Expense, FixedCommitment, LatLngPoint } from '../data/types'
 import { normalizeVehicleProfile } from './vehicleProfile'
+import { allowedAmount } from './expenseAmount'
 
 export interface TripRow {
   id: string; owner_id: string; name: string; start_location: string;
@@ -60,6 +61,17 @@ export function rowToTrip(row: TripRow, members: TripMember[]): Trip {
   // vehicleProfile: vocabulary/range check via normalizeVehicleProfile. Any
   // junk field drops the whole profile; the engine's mode default kicks in.
   const vehicleProfile = normalizeVehicleProfile(row.vehicle_profile)
+  // #382: a hydrate drops what the writers refuse. A row persisted by the old
+  // code — or hand-edited in the dashboard — can carry a non-finite, negative
+  // or zero amount, and it would flow into the totals, the settlement math and
+  // the pacing figure. The rule is the importer's own (lib/expenseAmount), one
+  // rule for every path; the drop is said in the console because a hydrate has
+  // no toast surface to say it on.
+  const expenses = (row.expenses ?? []).filter(e => {
+    if (allowedAmount(e.amountInr) !== null) return true
+    console.warn(`tripRow: dropped expense "${e.label}" — amount ${String(e.amountInr)} is not a finite number of rupees above zero`)
+    return false
+  })
   return {
     id: row.id, name: row.name, startLocation: row.start_location, startLocationCoords: row.start_location_coords ?? undefined,
     destinations: row.destinations ?? [],
@@ -77,7 +89,7 @@ export function rowToTrip(row: TripRow, members: TripMember[]): Trip {
     hasVulnerable,
     driveAfterDinnerMin,
     vehicleProfile,
-    days: row.days ?? [], expenses: row.expenses ?? [], coverEmoji: row.cover_emoji,
+    days: row.days ?? [], expenses, coverEmoji: row.cover_emoji,
     coverImageUrl: row.cover_image_url ?? undefined, inviteCode: row.invite_code ?? undefined,
     visibility: row.visibility, deletedAt: row.deleted_at != null ? new Date(row.deleted_at).getTime() : undefined,
     createdAt: row.created_at, updatedAt: row.updated_at, members,

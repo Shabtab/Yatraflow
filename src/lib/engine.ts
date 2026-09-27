@@ -912,6 +912,12 @@ export function safeToSpendPerDay(
   spentInr: number,
   now: Date = new Date(),
 ): { perDayInr: number; perPersonPerDayInr: number; daysLeft: number } | null {
+  // #382: an unreadable spend figure is not a small one. The old guard mapped a
+  // non-finite perDay to 0, so the one case that most needed saying — this
+  // cannot be measured — read as a reassuring ₹0 a day. Return the tile's
+  // honest "no number" instead; a huge-but-finite blowout is still a number and
+  // still prints, however alarming.
+  if (!Number.isFinite(spentInr)) return null
   const target = trip.budgetPerPersonInr * trip.travellers
   if (!(target > 0)) return null
   const daysLeft = daysRemaining(trip, now)
@@ -1406,8 +1412,11 @@ export function formatInr(n: number): string {
 }
 
 /** Compact rupees for card tiles — ₹1.2L / ₹5k — tabular-safe rounding.
- *  (TripsList used to carry a private divergent copy of this.) */
+ *  (TripsList used to carry a private divergent copy of this.) The non-finite
+ *  guard is formatInr's own (#369): a NaN falls through every comparison here
+ *  and would print as a compact "₹NaN". */
 export function formatInrShort(n: number): string {
+  if (!Number.isFinite(n)) return '—'
   if (n >= 100000) return `₹${(n / 100000).toFixed(1)}L`
   if (n >= 1000) return `₹${Math.round(n / 1000)}k`
   return `₹${Math.round(n)}`
