@@ -16,13 +16,17 @@ import type { Trip } from '../src/data/types'
 import {
   MUTATION_PHASES,
   PHASE_MEANING,
+  RECOVERY_MEANING,
   blocksDirectWrite,
   refuseWhileStaged,
   removeStopWithUndo,
   removalMessage,
   MUTATION_RECOVERY,
   DIRECT_WRITE_ALLOWLIST,
+  nonDestructiveStoreWrites,
+  supersededPaths,
   type ApplyChange,
+  type MutationRecovery,
 } from '../src/lib/mutationLifecycle'
 
 function tripFixture(): Trip {
@@ -151,15 +155,52 @@ describe('removeStopWithUndo — the one destructive-stop path', () => {
   })
 })
 
+describe('the declared recovery table covers the store (source)', () => {
+  it('classifies every destructive store write — nothing may go undeclared', () => {
+    // The audit for "every destructive action has Undo or a confirmation" is only
+    // true while it keeps being asked: a new `deleteX()` in the store must land in
+    // one of exactly three buckets, and choosing which one is a decision someone
+    // has to make in review.
+    const store = readFileSync('src/store/store.ts', 'utf8').replace(/\r\n/g, '\n')
+    const names = [...store.matchAll(/^export (?:async )?function (\w+)/gm)].map(m => m[1])
+    const destructive = names.filter(n => /^(delete|remove|purge|trash|clear|decline|unpublish|admin)/.test(n))
+    expect(destructive.length).toBeGreaterThan(5) // the scan found the store, not an empty file
+
+    const declared = new Set(MUTATION_RECOVERY.map(r => r.storeCall).filter(Boolean) as string[])
+    const excused = new Set<string>()
+    for (const fn of nonDestructiveStoreWrites()) excused.add(fn.name)
+    for (const fn of supersededPaths()) excused.add(fn.name)
+
+    const undeclared = destructive.filter(n => !declared.has(n) && !excused.has(n))
+    expect(undeclared).toEqual([])
+
+    // …and the table may not name a function the store does not export.
+    const ghosts = [...declared].filter(n => !names.includes(n))
+    expect(ghosts).toEqual([])
+  })
+})
+
 describe('the declared recovery table', () => {
   it('declares a recovery for every destructive action, with no placeholders', () => {
     const seen = new Set<string>()
+    const recoveries = Object.keys(RECOVERY_MEANING) as MutationRecovery[]
+    expect(recoveries.sort()).toEqual(['confirm', 'marker', 'regenerated', 'undo'])
     for (const row of MUTATION_RECOVERY) {
       expect(seen.has(row.action)).toBe(false) // ids are the join key — unique
       seen.add(row.action)
-      expect(['undo', 'confirm', 'marker']).toContain(row.recovery)
+      expect(recoveries).toContain(row.recovery)
       expect(row.surfaces.length).toBeGreaterThan(0)
       expect(row.why.length).toBeGreaterThan(40)
+      // Every recovery value has to mean something a reader can act on.
+      expect(RECOVERY_MEANING[row.recovery].length).toBeGreaterThan(20)
+    }
+  })
+
+  it('never leans on "regenerated" for something that is merely gone', () => {
+    // `regenerated` is the only escape from "restore or ask first", so it carries
+    // the burden of proof: such a row must say what re-derives the thing.
+    for (const row of MUTATION_RECOVERY.filter(r => r.recovery === 'regenerated')) {
+      expect(row.why, `${row.action} must name what re-derives it`).toMatch(/re-deriv|re-plan|re-scan|recompute/i)
     }
   })
 

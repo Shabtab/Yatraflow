@@ -7,7 +7,10 @@
 // Same defensive contract as createDraft: injectable store, never throws,
 // anything unrecognised reads as null.
 
-export const HANDOFF_KEY = '***'
+// The key was the literal `'***'` — a real localStorage key written outside this
+// app's namespace, which is why a namespace-scoped "clear saved data" would have
+// left it behind. Same shape as createDraft's `yf.createDraft.v1` now.
+export const HANDOFF_KEY = 'yf.createHandoff.v1'
 
 export interface HandoffCrew {
   name: string

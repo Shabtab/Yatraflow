@@ -649,6 +649,38 @@ Key locations:
    object is truthy), which would have refused a write for no reason — the
    footnote to §6t/§6u: "total" and "correct for the real inputs" are
    different claims.
+ 6z. **A clear/reset control is only as real as the keys it removes, and a
+   "way back" table must be greppable in BOTH directions (learned 2026-09-28,
+   the #424 recovery audit).** Auditing "every destructive action has Undo or a
+   confirmation" started by finding this repo's most destructive button — the
+   crash screen's "Reset app data & reload" — removing `yatraflow_db_v1`, a
+   localStorage key **nothing in the tree writes**. It had been a real key back
+   when the app kept a localStorage database; the app moved to Supabase and the
+   line stayed, so the control cleared nothing while promising a reset, in the
+   primary style, on one click. Four mechanics, all reusable:
+   (1) before believing any reset/clear/wipe promise, **grep the literal key
+   across `src`** — a key with exactly one occurrence (the removal itself) is a
+   no-op with a safeguard's appearance. The fix is a module that KNOWS what local
+   app data is (`lib/localData.ts`) plus a source test that every
+   `localStorage.*Item` key and every `*KEY*` constant is either inside the app's
+   namespace or a NAME handed to the pref helpers (which add the prefix) — that
+   second rule is what caught a real key being the literal `'***'`;
+   (2) an audit needs its own anti-rot mechanism or it is a one-off: enumerate
+   the destructive-named STORE exports and require each to be declared in the
+   recovery table, excused as non-destructive with a reason, or recorded as
+   superseded — and check the other direction too (a table row naming a function
+   the store no longer exports must fail). Interrogate the failures, don't just
+   count them: 16 exports matched, and one was a pre-trash hard delete nothing
+   calls;
+   (3) if the vocabulary has an escape hatch, pin its burden of proof. A fourth
+   recovery value (`regenerated`) exists for removals whose old value would now
+   be FALSE (halt pins voided by moving the endpoints), and its test requires the
+   row to name what re-derives the thing — without that, it becomes the silent
+   catch-all the table exists to prevent;
+   (4) a destructive action with no way back is not always dramatic — a tray's
+   "Clear" and a settings "Clear" that discarded a pasted API key were both small
+   and both real, and an Undo toast is the cheap correct answer for work the user
+   assembled. Ask of every removal: can they get it back, and if not, did we ask?
  7. **When asking the user to review/test locally, always hand them the exact
    URL — never make them find or start the server.** Check if the dev server
    is up (probe `http://localhost:5173`); if not, start `npm run dev`

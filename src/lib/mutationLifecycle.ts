@@ -89,11 +89,24 @@ export type ApplyChange = (
 
 /** How a destructive action gives the user a way back. `undo` = a toast with
  *  Undo (and, where it applies, restored order/day), `confirm` = an explicit
- *  are-you-sure step because Undo cannot honestly restore it, `marker` = the
- *  row survives and is restorable, so "gone" would be a lie.
+ *  are-you-sure step because Undo cannot honestly restore it, `marker` = the row
+ *  survives and is restorable, so "gone" would be a lie, `regenerated` = the
+ *  thing removed describes facts that no longer exist and is rebuilt from the new
+ *  ones, so restoring the old value would be restoring a falsehood.
  *
- *  There is deliberately no fourth option: "nothing" is not a recovery. */
-export type MutationRecovery = 'undo' | 'confirm' | 'marker'
+ *  The fourth value is not a bucket for "we did not bother": a row may only use
+ *  it if it names what re-derives the thing (pinned by a test), because otherwise
+ *  it is exactly the silent catch-all this table exists to prevent. */
+export type MutationRecovery = 'undo' | 'confirm' | 'marker' | 'regenerated'
+
+/** What each recovery promises, in one line — so "is this recoverable?" has an
+ *  answer per value rather than per surface, and the vocabulary is data. */
+export const RECOVERY_MEANING: Record<MutationRecovery, string> = {
+  undo: 'A toast carries Undo: the removed thing comes back where it was.',
+  confirm: 'The action asks first, because Undo could not honestly cover it.',
+  marker: 'Nothing is destroyed — the row survives with its new state visible.',
+  regenerated: 'Rebuilt from the new facts; the removed value would now be false.',
+}
 
 export interface DestructiveAction {
   /** Stable id for the action, `<noun>.<verb>` — the kind of thing, not the
@@ -104,6 +117,10 @@ export interface DestructiveAction {
   surfaces: readonly string[]
   /** Why this recovery is the honest one. */
   why: string
+  /** The store function this action reaches, when it has one. The audit test
+   *  reads these to prove every destructive export in `store.ts` is classified:
+   *  declared here, excused as non-destructive, or recorded as superseded. */
+  storeCall?: string
 }
 
 /** Every destructive action this app performs, and its declared way back.
@@ -120,30 +137,53 @@ export const MUTATION_RECOVERY: readonly DestructiveAction[] = [
   {
     action: 'stop.remove-from-fill',
     recovery: 'undo',
+    storeCall: 'deleteStop',
     surfaces: ['Map day plan (Fill, Fill the day)'],
     why: 'This removal is itself the Undo of an add, and it runs after the preview has closed — the compensation for stopping at a place that turned out to be wrong.',
   },
   {
+    action: 'shortlist.clear',
+    recovery: 'undo',
+    surfaces: ['Map shortlist tray'],
+    why: 'Emptying the tray throws away places collected one at a time, so it leaves an Undo that puts the collection back whole.',
+  },
+  {
+    action: 'settings.clear-local',
+    recovery: 'confirm',
+    surfaces: ['Crash screen'],
+    why: 'Clears everything this browser saved — preferences, caches and the offline copy — so it asks first, and it no longer removes a key nothing writes.',
+  },
+  {
+    action: 'ai-config.clear',
+    recovery: 'undo',
+    surfaces: ['Profile · companion endpoint', 'Profile · Jev router'],
+    why: 'A saved endpoint carries a key the user pasted in from elsewhere, not one they can retype from memory, so the clear leaves an Undo.',
+  },
+  {
     action: 'expense.remove',
     recovery: 'undo',
+    storeCall: 'deleteExpense',
     surfaces: ['Budget expense row'],
     why: 'Writes straight to the row (a cost entry is not a schedule change) and offers Undo.',
   },
   {
     action: 'member.remove',
     recovery: 'undo',
+    storeCall: 'removeMember',
     surfaces: ['Share crew list'],
     why: 'Undo re-adds the member; the toast names who left, since a member list is not always on screen.',
   },
   {
     action: 'trip.trash',
     recovery: 'undo',
+    storeCall: 'trashTrip',
     surfaces: ['My Trips'],
     why: 'Soft delete — the trip survives in Trash, and Undo restores it immediately.',
   },
   {
     action: 'trip.purge',
     recovery: 'confirm',
+    storeCall: 'permanentlyDeleteTrip',
     surfaces: ['Trash'],
     why: 'Permanent by definition; Undo cannot bring a purged row back, so it asks first.',
   },
@@ -154,12 +194,98 @@ export const MUTATION_RECOVERY: readonly DestructiveAction[] = [
     why: 'Moving a pinned rest changes where the night lands; Undo puts the pin back at the kilometre it came from.',
   },
   {
+    action: 'halts.clear-on-reshape',
+    recovery: 'regenerated',
+    surfaces: ['Map day plan (endpoints edited)'],
+    why: 'A halt pin is a promise about a specific road; when the endpoints move the plan is re-derived from the new road, so putting the old pins back would restore a claim that is no longer true — the toast says they were cleared.',
+  },
+  {
+    action: 'suggestion-cache.rescan',
+    recovery: 'regenerated',
+    surfaces: ['Map day plan (Refresh, endpoints edited)'],
+    why: 'The scan cache is a spend, not a document: clearing it makes the corridor re-scan and the rows re-derive from the results, which is the refresh the user asked for.',
+  },
+  {
+    action: 'suggestion.decline',
+    recovery: 'marker',
+    storeCall: 'declineSuggestion',
+    surfaces: ['Group input suggestion row'],
+    why: 'The suggestion is not destroyed: its row survives with the declined status the whole crew can see, which is the record of the decision.',
+  },
+  {
     action: 'publication.unpublish',
     recovery: 'marker',
+    storeCall: 'unpublishItinerary',
     surfaces: ['Creator hub publication row'],
     why: 'Not a delete: the row survives with an unpublished marker so buyers keep what they paid for, and republishing is the way back.',
   },
+  {
+    action: 'creator.disable-mode',
+    recovery: 'confirm',
+    surfaces: ['Creator hub profile'],
+    why: 'Disabling the badge is confirmed and reversible; the publications stay live, which the dialog says before the button.',
+  },
+  {
+    action: 'admin.user-disable',
+    recovery: 'confirm',
+    storeCall: 'adminSetDisabled',
+    surfaces: ['Masteradmin · users'],
+    why: 'Disabling an account is confirmed in the console; re-enabling is the way back and needs no confirmation of its own.',
+  },
+  {
+    action: 'admin.user-delete',
+    recovery: 'confirm',
+    storeCall: 'adminDeleteUser',
+    surfaces: ['Masteradmin · users'],
+    why: 'Type-the-email confirmation, because the RPC is permanent and only an audit snapshot remains.',
+  },
+  {
+    action: 'admin.trip-delete',
+    recovery: 'confirm',
+    storeCall: 'adminDeleteTrip',
+    surfaces: ['Masteradmin · trips'],
+    why: 'Type-the-trip-name confirmation: the FK cascades go with it and the audit log keeps the snapshot.',
+  },
+  {
+    action: 'admin.member-remove',
+    recovery: 'confirm',
+    storeCall: 'adminRemoveMember',
+    surfaces: ['Masteradmin · trip members'],
+    why: 'Removing someone from a trip someone else owns is confirmed in the console.',
+  },
+  {
+    action: 'admin.unpublish',
+    recovery: 'confirm',
+    storeCall: 'adminUnpublish',
+    surfaces: ['Masteradmin · publications'],
+    why: 'The console confirms it, and it leaves the same soft marker the creator-side unpublish leaves — buyers keep what they paid for.',
+  },
 ] as const
+
+/** Store exports the destructive-name scan finds that deliberately destroy
+ *  nothing. Declaring them is the point: the audit's rule is "every destructive
+ *  write is classified", and "this one is not destructive, because…" is a
+ *  classification — not an omission. */
+export function nonDestructiveStoreWrites(): readonly { name: string; why: string }[] {
+  return [
+    { name: 'adminAuditRowToEntry', why: 'Maps an audit row into the console entry shape; reads only.' },
+    { name: 'adminSetCreator', why: 'Grants the creator badge — a grant, not a removal, and reversible.' },
+    { name: 'adminSetTripVisibility', why: 'Changes who can see a trip, not whether it exists; setting it back is the way back.' },
+    { name: 'unpublishedTripIds', why: 'A reader: which of a creator\'s trips carry the unpublished marker.' },
+  ]
+}
+
+/** Destructive writes that are SUPERSEDED: no surface reaches them, and leaving
+ *  them unclassified would let a future caller mistake one for the product path.
+ *  Each entry is a recorded removal, not an accepted state. */
+export function supersededPaths(): readonly { name: string; why: string }[] {
+  return [
+    {
+      name: 'deleteTrip',
+      why: 'The pre-trash hard delete. `trashTrip` replaced it (v0.47.0) and nothing in the app calls this — only tests/undo-trip.test.ts does, along with the snapshot machinery (restoreTrip, snapshotTrip, lastDeletedTrip) that exists to undo it. Delete the cluster and that suite together; until then no new caller may reach for it, because it would skip the trash window entirely.',
+    },
+  ]
+}
 
 /** Files allowed to write a stop removal straight to the store, with the reason.
  *  Everything else must go through `removeStopWithUndo` (which only STAGES, so it
