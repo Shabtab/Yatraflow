@@ -5,8 +5,8 @@
 // Timeline, so nothing persists without its consequence visible first.
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
-  ArrowLeft, ChevronDown, ChevronUp, CircleCheck, CircleHelp, LocateFixed, Map as MapIcon,
-  MoveHorizontal, Plus, Trash2, TriangleAlert,
+  ArrowLeft, ChevronDown, ChevronUp, CircleCheck, CircleHelp, Loader2, LocateFixed, Map as MapIcon,
+  MoveHorizontal, Plus, RefreshCw, Trash2, TriangleAlert,
 } from 'lucide-react'
 import { prefersReducedMotion } from '../lib/motion'
 import {
@@ -126,11 +126,19 @@ export function BoardView({ trip, editable, applyChange, health, totals, onOpenO
     () => mapReturnGeometryFromLegs(road?.chain ?? null, road?.legs ?? null),
     [road],
   )
-  /** The road did not resolve AND this trip is actually driven: the map's line
-   *  is graded rough, and the board's budget/health figures are haversine
-   *  estimates — said out loud here rather than left to be discovered (#370).
-   *  Conducted modes (train/flight/bus) are excluded: no road was ever theirs. */
-  const roadUnmeasured = !!trip.transportMode && isRoadMeasuredMode(trip.transportMode) && road?.status === 'failed'
+  /** The road did not resolve (or is being re-measured after a failed attempt)
+   *  AND this trip is actually driven: the map's line is graded rough, and the
+   *  board's budget/health figures are haversine estimates — said out loud here
+   *  rather than left to be discovered (#370). Conducted modes (train/flight/
+   *  bus) are excluded: no road was ever theirs. The retry note stays up while
+   *  a manual retry is in flight: a gate keyed on `failed` alone would blink
+   *  the honest note off the moment the retry flipped status to pending, and
+   *  nothing else on this surface says the figures are estimates.
+   *  (#road-retry: the measurement offers a retry — it existed on the road
+   *  view since #188 but no surface consumed it.) */
+  const roadUnmeasured = !!trip.transportMode && isRoadMeasuredMode(trip.transportMode)
+    && (road?.status === 'failed' || road?.status === 'pending')
+  const roadRetrying = road?.status === 'pending'
 
   /** Cross-day move — the shared stopOrder rule, and every Board mutation
       previews. The drag passes its own insertion slot; the move dialog passes
@@ -277,8 +285,18 @@ export function BoardView({ trip, editable, applyChange, health, totals, onOpenO
             </span>
             {roadUnmeasured && (
               <span className="small" style={{ display: 'block', marginTop: 3 }}>
-                <InlineIcon icon={TriangleAlert} size={12} gap={3} />Road not measured — the map's line and this board's figures are estimates.
+                <InlineIcon icon={TriangleAlert} size={12} gap={3} />
+                {roadRetrying
+                  ? 'Measuring the road… — until it resolves, the line and figures stay estimates.'
+                  : 'Road not measured — the map\'s line and this board\'s figures are estimates.'}
               </span>
+            )}
+            {roadUnmeasured && !roadRetrying && road && (
+              <button type="button" className="btn btn-outline btn-sm" style={{ marginTop: 4 }}
+                onClick={road.retry}
+                title="Ask the routing provider again — the first tries may have been rate-limited">
+                <InlineIcon icon={RefreshCw} size={12} gap={4} />Retry road measurement
+              </button>
             )}
             <button type="button" className="board-fit" onClick={fitToTrip}><InlineIcon icon={LocateFixed} size={13} gap={4} />Fit route</button>
           </div>

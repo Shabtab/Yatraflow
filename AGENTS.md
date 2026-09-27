@@ -539,6 +539,33 @@ Key locations:
    flipping `onAdd`/`onEdit` on every save — read the live value through a
    latest-value ref and keep the dep list empty). Measured, after both: renaming
    one day re-rendered that card and **0** of the others.
+ 6v. **A gate keyed on the failure it just reported cannot see the retry it
+   offers — an in-flight re-attempt is a THIRD state, not the absence of the
+   failure (learned 2026-09-26, the road-retry wave).** `TripRoadView.retry`
+   existed at the source since #188; when a surface finally grew the Retry
+   button, both of its failure gates were keyed on `status === 'failed'` alone —
+   so the moment the retry flipped the status to `pending`, the honest note (or
+   the banner) vanished, taking its own "these figures are estimates" warning
+   with it exactly when the user had asked for another attempt. Three rules:
+   (1) an affordance on a failed state must keep that state's honest rendering
+   up through its own in-flight — gate on `failed OR pending` (Board's note) or
+   latch the failure in a ref that clears on a resolve (MapTab's banner, whose
+   gate also needs the failure to survive `pending`); latch in RENDER, not in
+   an effect, so a same-tick flip never reads stale, and clear it on `ok` AND on
+   a chain rebuild (a stale latched failure must not pin a dead banner after a
+   route edit — the new chain measures on its own).
+   (2) the in-flight must be SAID, not implied: "Measuring…" copy plus a
+   disabled/hidden control (§6a's input-guard family — a retry button that
+   stays clickable mid-flight double-fires the counter, which is harmless here
+   but is the reflex to avoid everywhere).
+   (3) a driven check of a "failed → resolved" cycle must respect what the
+   session cache can do: `lib/routing.ts`'s module-level `legCache` keeps
+   resolved legs for the whole session (estimate legs are deliberately never
+   cached), so a fetch stub that rejects the OSRM host yields a full failure
+   only on a COLD chain — a warm chain still resolves from cached real legs
+   (a partial real corridor is legitimately `ok`, #188's rule), and `failed`
+   must be watched at ~2s granularity (the internal backoff is 2s and the
+   in-flight state lasts about that long).
  7. **When asking the user to review/test locally, always hand them the exact
    URL — never make them find or start the server.** Check if the dev server
    is up (probe `http://localhost:5173`); if not, start `npm run dev`
