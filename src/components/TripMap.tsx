@@ -2,7 +2,7 @@
 // Real slippy-map rendering via mapcn (MapLibre GL): OpenFreeMap basemaps that follow
 // light/dark theme, numbered stop markers in timeline order, and a polyline
 // connecting each day's stops. Distances/durations still come from the engine.
-import { useMemo, useState, useEffect, useRef, Fragment, type ComponentProps } from 'react'
+import { useMemo, useState, useEffect, useRef, useCallback, Fragment, type ComponentProps } from 'react'
 import { useInView, usePageVisible } from './ui'
 import type { Trip } from '../data/types'
 import type { PlaceHit } from '../lib/geocode'
@@ -16,6 +16,7 @@ import { useTimeFormat, formatHM } from '../lib/timefmt'
 import { extraJourneyMarkers } from '../lib/journeyMarkers'
 import { allViewFitPoints, boundsOf, type LatLng } from '../lib/mapFit'
 import { coincidentPinOffsets } from '../lib/pinOffsets'
+import { clusterCandidates, clusterFeatureCollection, clusterSummary, splitByCluster } from '../lib/mapCluster'
 import { googleMapsDirectionsUrl } from '../lib/externalMaps'
 import { openExternal } from '../lib/native'
 import { titleCase } from '../lib/labels'
@@ -40,6 +41,7 @@ import {
   MarkerContent,
   MarkerTooltip,
   MapRoute,
+  MapClusterLayer,
   MapControls,
   prefersCooperativeGestures,
   useMap,
@@ -63,6 +65,20 @@ const DAY_COLORS = ['#0D8D82', '#F59E2D', '#7C5CFC', '#E2557B', '#2D9CDB', '#6BB
 // a word, which matters because this component cannot tell "still measuring"
 // from "the measurement failed" (its host owns the status and says it).
 const ROUGH_DASH: [number, number] = [2, 2]
+
+// #417: the suggestion family's cluster badge. The planning teal family, because a
+// badge is a group of IDEAS rather than a stop — the numbered stop pins and the
+// ambers keep their own colours, so the badge reads as a different kind of thing at
+// a glance. Thresholds step at 10 and 30 (MapLibre's own default of 100/750 would
+// leave every real group at the smallest size), and the badge is drawn on the
+// basemap rather than on an app surface, so it carries literal ink like the rest of
+// this file's map paint. That ink is chosen for the COMPOSITED pair: the circle is
+// painted at 0.85 (MapClusterLayer), so on the light basemap the land shows through
+// the white count — the plain planning teal #0E7A72 measures 5.19:1 alone but only
+// 3.97:1 over positron's land, under AA for a 12px glyph. These three composite to
+// 4.69 / 6.51 / 7.44:1 there, pinned by tests/map-cluster.test.ts.
+const IDEA_CLUSTER_COLORS: [string, string, string] = ['#0B6B63', '#0F4C4C', '#123F49']
+const IDEA_CLUSTER_THRESHOLDS: [number, number] = [10, 30]
 
 // How long the map's ready gate waits for the style's 'load' event before
 // opening anyway (see the mapLoaded effect). The fit behind that gate is a
@@ -631,6 +647,31 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
    *  this the slot pin landed exactly on the idea pin — two markers, one
    *  coordinate, an ambiguous click target. */
   const slotPinIds = useMemo(() => new Set(slotPins.map(p => String(p.hit.id))), [slotPins])
+  // #417: which suggestion pins the map is currently drawing as cluster badges.
+  // The layer reports the member ids it read from its own source; every pin NOT
+  // in that set keeps its DOM marker, and a pin the user is working with is never
+  // offered to the clusterer at all (the rules live in lib/mapCluster).
+  const [clusteredIds, setClusteredIds] = useState<ReadonlySet<string>>(() => new Set<string>())
+  // Stable identity matters: a new callback re-subscribes the layer's reporting
+  // effect and re-reports on every render.
+  const onClustersChange = useCallback((ids: Set<string>) => { setClusteredIds(ids) }, [])
+  const clusterPins = useMemo(
+    () => clusterCandidates(
+      visiblePois.filter(h => !slotPinIds.has(String(h.id))),
+      { activeId: activeHitId, searchIds: searchHitIds },
+    ),
+    [visiblePois, slotPinIds, activeHitId, searchHitIds],
+  )
+  const clusterData = useMemo(() => clusterFeatureCollection(clusterPins), [clusterPins])
+  const { individual: individualClusterPins } = useMemo(
+    () => splitByCluster(clusterPins, clusteredIds),
+    [clusterPins, clusteredIds],
+  )
+  const individualPinIds = useMemo(
+    () => new Set(individualClusterPins.map(c => c.id)),
+    [individualClusterPins],
+  )
+  const clusterNote = clusterSummary(clusterPins.length - individualClusterPins.length)
   function toggleIdeaCat(cat: string) {
     setHiddenIdeaCats(prev => {
       const next = new Set(prev)
@@ -1305,6 +1346,17 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
                 <SuggestionDistanceLayer places={nearbyPois} road={geom.all ?? null} />
               </>
             )}
+            {/* #417: the suggestion family the map groups. `unclusteredVisible`
+                false because every pin the map did NOT group keeps its own DOM
+                marker below — tooltip, role, keyboard activation and all — so a
+                GL circle for it would be a second, dead copy. */}
+            <MapClusterLayer
+              data={clusterData}
+              clusterColors={IDEA_CLUSTER_COLORS}
+              clusterThresholds={IDEA_CLUSTER_THRESHOLDS}
+              unclusteredVisible={false}
+              onClustersChange={onClustersChange}
+            />
             {/* P5.3: the day's empty parts stand on the map - hollow amber pins at
                 their top candidate's real position (placeholder hits resolve via
                 the same coord-fix pass as the ideas), the cost line in the tooltip. */}
@@ -1425,6 +1477,12 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
               // it carries more (the part it would fill, plus the cost line) and
               // its tap opens the plan, so it is the one that stays.
               if (slotPinIds.has(String(hit.id))) return null
+              // #417: the map is drawing this pin inside a cluster badge. It has
+              // no DOM node of its own right now; it comes back the moment the
+              // badge is expanded (zoom in), and the badge's count says how many
+              // are there. Confirmed stops are never filtered — they are their own
+              // family and stay individually tappable at every zoom.
+              if (!individualPinIds.has(String(hit.id))) return null
               const active = activeHitId != null && activeHitId === hit.id
               // A current search hit reads differently from a corridor idea:
               // solid teal, no attention pulse, "Search result" affordance. Its
@@ -1508,11 +1566,19 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
               {dayFilter === 'all'
                 ? <>main line = whole route{returnLeg ? ' · dashed = drive back home' : ''} · </>
                 : <>colours = day · </>}
-              pin icon = stop type · number = timeline order · dashed pin = "maybe" · plane/flag pins = start & final destination · plane/flag pins on a single day = that day's start and end where no stop is pinned · gold bulb markers = nearby ideas{onAddNearby ? ' (+ to add)' : ''}{ideaCats.length > 0 ? ' · chips filter ideas by type' : ''} · click a pin for details · hollow amber pin = an unplanned part · tap to open it
+              pin icon = stop type · number = timeline order · dashed pin = "maybe" · plane/flag pins = start & final destination · plane/flag pins on a single day = that day's start and end where no stop is pinned · gold bulb markers = nearby ideas{onAddNearby ? ' (+ to add)' : ''}{ideaCats.length > 0 ? ' · chips filter ideas by type' : ''} · a teal count badge groups nearby ideas — zoom in to open one · click a pin for details · hollow amber pin = an unplanned part · tap to open it
             </div>
           )}
         </div>
       </div>
+      {/* #417: the badges are drawn on the canvas, which the accessibility tree
+          cannot see — so the grouped count is said in words here, or a keyboard
+          or screen-reader user simply loses those suggestions at overview zoom. */}
+      {clusterNote && (
+        <p className="hint-text" role="status" style={{ marginTop: 8 }}>
+          <InlineIcon icon={Lightbulb} size={12} gap={3} />{clusterNote}
+        </p>
+      )}
       <p className="hint-text" style={{ marginTop: 8 }}>
         <InlineIcon icon={TriangleAlert} size={12} gap={3} />Route lines follow real roads (© OSRM/OpenStreetMap) when available; distances/durations in the plan are real-road estimates for ground travel, falling back to transparent haversine assumptions when offline/other modes - no live traffic data.
       </p>
