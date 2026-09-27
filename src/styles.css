@@ -7906,3 +7906,20 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
     inset: -8px;
   }
 }
+/* ---- #415: the narrow-band planning sheet -------------------------------------
+   The two rules below are deliberately NOT inside a media query. The band is
+   decided in JS (`sheetAppliesAt` in lib/mapSheet, wired in MapTab) because this
+   file must keep exactly ONE narrow-band block (`max-width: 1278px`) -- the #156 reset
+   `tests/stage2-p1.test.ts` pins -- and the design-system ratchet is keyed on line
+   numbers, so new rules folded into that block mid-file would force a re-baseline
+   of findings that did not change. `is-sheet-hidden` is therefore only ever applied
+   when the sheet applies, which makes the hide rule safe as written: a class that
+   never appears cannot hide a desktop column. The switcher's chips keep the 40px
+   touch floor. Nothing here animates -- the switch is a display change -- so there
+   is no reduced-motion opt-out to make. */
+.map-ideas-sheet-tabs {
+  display: flex; align-items: center; gap: 8px;
+  margin: 10px 0 2px;
+}
+.map-ideas-sheet-tabs .chip { min-height: 40px; }
+.map-ideas-grid .poi-col.is-sheet-hidden { display: none; }

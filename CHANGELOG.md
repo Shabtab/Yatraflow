@@ -57,6 +57,15 @@ rename can never strand it again. No migrations: a code-only release.
 
 ### Fixed
 
+- **The Map tab's rails no longer stack out of reach on a narrow screen.** Below the three-column
+  breakpoint the map and both planning rails collapsed into one column, so comparing a pin with a
+  candidate meant scrolling up to the map and back down to the rail for every option. The rails are now
+  one sheet showing a single rail at a time behind a one-line switcher, with the map keeping the top of
+  the stack and the rail you are not reading the one that is out of the way. The desktop three-column
+  layout is untouched: whether the sheet is in play is decided by the measured viewport width rather
+  than by a stylesheet breakpoint, so a rail can never be hidden at desktop width, and a width that has
+  not been measured yet renders the desktop layout instead of guessing. The switcher's chips keep the
+  40px touch floor, and switching is a display change with no animation to opt out of (#415).
 - **The Map tab says so when the map and the rail are planning different scopes.** The map's own day
   chips include “All days”, but that choice never reached the rail, which always plans exactly one day —
   so the map could show the whole trip while the rail quietly planned Day 3, with nothing on screen
