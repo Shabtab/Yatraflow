@@ -18,6 +18,10 @@ import type { PublishedItinerary, Trip, User } from '../data/types'
 /** One owned publication, as the shelf needs it. */
 export interface PurchaseRow {
   pubId: string
+  /** The publication's own itinerary. Empty when the publication row is gone
+   *  from the cache (unpublished), which is exactly when a copy has to be found
+   *  by title instead — see `findBuyerCopy`. */
+  tripId: string
   /** The entitlement itself — the buyer's title deed, and the capability that
    *  unlocks the buyer-framed share card. Owner-only RLS keeps it readable to
    *  this buyer alone, so the shelf is the right place to hold it. */
@@ -101,6 +105,10 @@ export function buildPurchaseShelf(
     const dateReadable = typeof e.grantedAt === 'number' && Number.isFinite(e.grantedAt)
     rows.push({
       pubId: e.pubId,
+      // Empty for a withdrawn plan: the publication row is what carried it, and
+      // an unlisted row has none. That is not a loss — it is what makes the
+      // title fallback the honest path rather than a guess dressed as a fact.
+      tripId: pub?.tripId ?? '',
       entitlementId: e.id,
       title: pub?.title || 'A plan you own',
       coverImageUrl: pub?.coverImageUrl,
@@ -141,6 +149,49 @@ export function buildPurchaseShelf(
  *  exist. */
 export function purchaseShareable(row: PurchaseRow): boolean {
   return row.listed
+}
+
+/** How sure a match is. `exact` is the publication's own itinerary, which a copy
+ *  forked from it carries; `guess` came from a title comparison and MUST be
+ *  labelled as such by the caller — a confident wrong link is worse than an
+ *  honest one. */
+export interface CopyMatch { tripId: string; title: string; exact: boolean }
+
+/** The comparable core of a plan's name: case, punctuation, spacing and a
+ *  trailing "(copy)" marker are not identity. Exported so the node suite can pin
+ *  the matcher directly — `tests/` has no DOM, and this is pure. */
+export function normalizeCopyTitle(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/\s*\(copy\)\s*$/i, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+}
+
+/** The buyer's own copy of a withdrawn plan, or null when none can be identified.
+ *
+ *  Unpublishing DELETES the publication row, so the shelf's only button — "Open
+ *  the plan" — led to a page that can never load, on exactly the rows whose copy
+ *  says their access is unaffected. The copy itself is real: forking copies the
+ *  plan into the buyer's trips and that trip keeps working after the original is
+ *  withdrawn. This points at it, and returns null rather than guessing when the
+ *  evidence is thin — a missing button is recoverable, a wrong link is a
+ *  navigation to somebody else's trip. */
+export function findBuyerCopy(row: PurchaseRow, trips: Trip[]): CopyMatch | null {
+  // The publication's own itinerary, when the buyer kept that row. This is the
+  // only exact answer available today.
+  if (row.tripId) {
+    const direct = trips.find(t => t.id === row.tripId)
+    if (direct) return { tripId: direct.id, title: direct.name, exact: true }
+  }
+  // Otherwise the title. A withdrawn row has no `tripId` to compare, so this is
+  // a heuristic — reported as `exact: false` so the UI can say "we think".
+  const wanted = normalizeCopyTitle(row.title)
+  if (!wanted) return null
+  const byTitle = trips.filter(t => normalizeCopyTitle(t.name) === wanted)
+  // Ambiguous is the same as absent: two candidates means no link is honest.
+  if (byTitle.length !== 1) return null
+  return { tripId: byTitle[0]!.id, title: byTitle[0]!.name, exact: false }
 }
 
 export interface RevealStats {
