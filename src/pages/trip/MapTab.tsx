@@ -26,6 +26,8 @@ import { railKeyAction } from '../../lib/railKeys'
 import { candidatesAnnouncement, fillLabel, pickDayCaveat, scopeValueText, searchAnnouncement, voteStatusId } from '../../lib/railA11y'
 import { MapOmnibar } from './MapOmnibar'
 import { placementOptions, type PlacementOption } from './mapPlacement'
+import { ShortlistTray } from './map/ShortlistTray'
+import { orderByRoad } from './map/roadOrder'
 
 /** How many search hits the rail shows before "Show all" (#333 A1). The listbox
  *  grammar needs the same page size the rows are rendered with, so it lives here
@@ -1298,9 +1300,9 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
     if (addingAny || trayShortlist.length === 0) return
     setAddingAny(true)
     try {
-      const ordered = [...trayShortlist].sort((a, b) =>
-        (routeKmOf(a.latitude, a.longitude) ?? Infinity) - (routeKmOf(b.latitude, b.longitude) ?? Infinity),
-      )
+      // #420 slice 1: the ordering rule lives in map/roadOrder.ts now, with its
+      // own tests — same comparator, including its NaN-keeps-order subtlety.
+      const ordered = orderByRoad(trayShortlist, routeKmOf)
       const resolved = await Promise.all(ordered.map(async hit => ({ hit, pinned: await resolvePick(hit) })))
       const usable = resolved.filter((x): x is { hit: PlaceHit; pinned: PlaceHit } => !!x.pinned)
       if (usable.length === 0) {
@@ -2846,17 +2848,15 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
           </div>
       </div>
       {/* Shortlist tray: the rail collects, the tray decides. Sticky so it stays
-          reachable while the rails scroll. */}
-      {trayShortlist.length > 0 && (
-        <div className="poi-tray" role="region" aria-label="Shortlisted stops">
-          <span className="poi-tray-n">{trayShortlist.length} shortlisted</span>
-          <span className="poi-tray-actions">
-            <button className="btn btn-primary btn-sm" type="button" disabled={addingAny} onClick={() => void addShortlisted()}>Add all</button>
-            <button className="btn btn-ghost btn-sm" type="button" disabled={addingAny} onClick={() => void raiseShortlistVote()}>Send to a vote</button>
-            <button className="btn btn-ghost btn-sm" type="button" onClick={() => setShortlist([])}>Clear</button>
-          </span>
-        </div>
-      )}
+          reachable while the rails scroll. #420 slice 1 moved the markup into
+          map/ShortlistTray.tsx; the actions below stay here until slice 2. */}
+      <ShortlistTray
+        count={trayShortlist.length}
+        busy={addingAny}
+        onAddAll={() => void addShortlisted()}
+        onVote={() => void raiseShortlistVote()}
+        onClear={() => setShortlist([])}
+      />
       {/* pick-a-day modal for adding a suggested POI — explicit confirm */}
       <Modal open={!!poiDraft} onClose={() => setPoiDraft(null)} title={`Add “${poiDraft?.hit.name ?? ''}”`}>
         {poiDraft && (
