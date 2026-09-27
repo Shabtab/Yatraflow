@@ -1457,8 +1457,8 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
                     </VisiblePulse>
                   </MarkerContent>
                   <MarkerTooltip>
-                    {isSearchHit && <><InlineIcon icon={Search} size={11} gap={3} vAlign="-1px" />Search result: </>}
-                    {!isSearchHit && <InlineIcon icon={Lightbulb} size={11} gap={3} vAlign="-1px" />}
+                    {isSearchHit && <><InlineIcon icon={Search} size={12} gap={3} vAlign="-1px" />Search result: </>}
+                    {!isSearchHit && <InlineIcon icon={Lightbulb} size={12} gap={3} vAlign="-1px" />}
                     {hit.name}{hit.haltPurpose ? `, ${hit.haltPurpose === 'overnight' ? 'overnight option' : hit.haltPurpose}` : ''}{hit.cumKm != null ? `, ~${hit.cumKm} km in` : ''}{hit.nearestCity ? `, near ${hit.nearestCity}` : ''}{hitCosts?.[String(hit.id)] ? `, ${hitCosts[String(hit.id)]}` : ''}
                   </MarkerTooltip>
                 </MapMarker>

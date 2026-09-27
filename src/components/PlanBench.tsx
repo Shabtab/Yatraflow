@@ -369,7 +369,7 @@ export function PlanBench() {
                 const active = input.km === p.km && input.mode === p.mode && input.nights === p.nights && input.crew === p.crew && input.roundTrip === p.roundTrip
                 return (
                   <button key={p.label} type="button" className={`bench-preset-chip${active ? ' on' : ''}`} aria-pressed={active} onClick={() => applyPreset(p)}>
-                    {active && <Check size={12} aria-hidden />} {p.label} · {p.km} km · {shortInr(presetPerHead.get(p.label) ?? 0)}/head
+                    {active && <Check size={13} aria-hidden />} {p.label} · {p.km} km · {shortInr(presetPerHead.get(p.label) ?? 0)}/head
                   </button>
                 )
               })}

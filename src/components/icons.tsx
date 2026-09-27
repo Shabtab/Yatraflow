@@ -58,7 +58,7 @@ export function wmoIcon(code: number): LucideIcon {
 export type MetaTone = 'money' | 'time' | 'place' | 'ticket'
 
 export function MetaIcon({ icon: Icon, tone, size = 12 }: { icon: LucideIcon; tone: MetaTone; size?: number }) {
-  return <Icon size={size} aria-hidden className={`mi mi-${tone}`} />
+  return <Icon size={size} aria-hidden className={`mi mi-${tone}${size <= 12 ? ' ic-sm' : ''}`} />
 }
 
 // ---- InlineIcon: the one rule for icons sitting inside a line of text ----
@@ -77,10 +77,11 @@ export function InlineIcon({ icon: Icon, size = 13, gap = 4, className, style, f
   style?: CSSProperties
   /** Heart-style outline/fill toggles pass straight through. */
   fill?: string
-  /** baseline nudge; -1px is the 11px-glyph house style */
+  /** baseline nudge; -1px is the 12px-glyph house style */
   vAlign?: string
 }): ReactNode {
-  return <Icon size={size} aria-hidden fill={fill} className={className}
+  return <Icon size={size} aria-hidden fill={fill}
+    className={[size <= 12 ? 'ic-sm' : '', className].filter(Boolean).join(' ') || undefined}
     style={{ verticalAlign: vAlign, marginRight: gap, ...style }} />
 }
 
@@ -125,5 +126,6 @@ export function KindIcon({ kind, size = 13, style, className }: {
   kind: string; size?: number; style?: CSSProperties; className?: string
 }): ReactNode {
   const Icon = KIND_ICONS[kind] ?? Camera
-  return <Icon size={size} aria-hidden style={style} className={className} />
+  return <Icon size={size} aria-hidden style={style}
+    className={[size <= 12 ? 'ic-sm' : '', className].filter(Boolean).join(' ') || undefined} />
 }

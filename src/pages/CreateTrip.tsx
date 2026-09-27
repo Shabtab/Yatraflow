@@ -907,7 +907,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
                   )
                 })}
                 <button type="button" className="ct-dadd" onClick={() => focusAddStop()}>
-                  <Plus size={12} aria-hidden /> Add a stop
+                  <Plus size={13} aria-hidden /> Add a stop
                 </button>
               </div>
               {errs.destinations && <p className="err-text" id="ct-dest-err" role="status" aria-live="polite">{errs.destinations}</p>}
@@ -1407,7 +1407,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
                       <div className="warn-title">{x.title}</div>
                       <div className="warn-fix">Day {x.dayIndex + 1} at {formatHM(x.time, timeFormat)}</div>
                     </div>
-                    <button type="button" className="icon-btn" aria-label={`Remove ${x.title}`} onClick={() => setCommitments(l => l.filter((_, j) => j !== i))}><X size={12} aria-hidden /></button>
+                    <button type="button" className="icon-btn" aria-label={`Remove ${x.title}`} onClick={() => setCommitments(l => l.filter((_, j) => j !== i))}><X size={13} aria-hidden /></button>
                   </div>
                 ))}
               </div>
@@ -1456,12 +1456,12 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
                 {returnCount > 0 && <span className="tk-return-chip">↔ custom return</span>}
               </p>
               <div className="tk-rows">
-                <div className="tk-row"><span className="ic"><Calendar size={12} aria-hidden /></span><b>{dateLabel}</b></div>
+                <div className="tk-row"><span className="ic"><Calendar size={13} aria-hidden /></span><b>{dateLabel}</b></div>
                 <div className="tk-row"><span className="ic">{modeIcon(f.transportMode, 12)}</span><span className="lab">{f.travellers} traveller{f.travellers !== 1 ? 's' : ''}</span><b>· {cap(f.transportMode)}{f.transportMode === 'train' && f.localTrain ? ' · local' : ''}</b></div>
                 {fuelMode && (f.fuelEconomy || f.fuelPrice || f.tankL) && (
-                  <div className="tk-row"><span className="ic"><Fuel size={12} aria-hidden /></span><span className="lab">{f.fuelEconomy ? `${f.fuelEconomy} km/L` : null}{f.fuelPrice && f.fuelEconomy ? ' · ' : ''}{f.fuelPrice ? `₹${f.fuelPrice}/L` : null}{f.tankL && f.fuelEconomy ? ` · ${f.tankL} L tank` : ''}</span></div>
+                  <div className="tk-row"><span className="ic"><Fuel size={13} aria-hidden /></span><span className="lab">{f.fuelEconomy ? `${f.fuelEconomy} km/L` : null}{f.fuelPrice && f.fuelEconomy ? ' · ' : ''}{f.fuelPrice ? `₹${f.fuelPrice}/L` : null}{f.tankL && f.fuelEconomy ? ` · ${f.tankL} L tank` : ''}</span></div>
                 )}
-                <div className="tk-row"><span className="ic"><Wallet size={12} aria-hidden /></span><span className="lab">Budget</span><b className="mono">₹{f.budgetPerPersonInr.toLocaleString('en-IN')} / person</b></div>
+                <div className="tk-row"><span className="ic"><Wallet size={13} aria-hidden /></span><span className="lab">Budget</span><b className="mono">₹{f.budgetPerPersonInr.toLocaleString('en-IN')} / person</b></div>
               </div>
             </div>
             <div className="tear" aria-hidden="true"></div>
