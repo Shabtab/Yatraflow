@@ -5,17 +5,27 @@
 import { useMemo } from 'react'
 import { InlineIcon } from '../components/icons'
 import { Camera, Compass, Eye, GitFork, Link2, MapPin, Sparkles, TvMinimalPlay } from 'lucide-react'
-import { useSessionUserId, usePublished, userById } from '../store/store'
+import { useSessionUserId, usePublished, userById, useDb, rereadPublicSlices } from '../store/store'
 import { forkPublication } from '../lib/forkPub'
 import { openExternal } from '../lib/native'
 import { useSavedPubs } from '../lib/savedPubs'
 import { Avatar, CopyButton, EmptyState } from '../components/ui'
 import { PubCard } from '../components/PubCard'
+import { sliceState, emptyCopyFor, figureOrUnavailable } from '../lib/readState'
 
 export function CreatorPage({ creatorId, onNavigate }: { creatorId: string; onNavigate: (r: string) => void }) {
   const me = useSessionUserId()
   const published = usePublished()
+  const { sliceReads } = useDb()
   const { isSaved, toggleSaved } = useSavedPubs()
+
+  // #364: a failed profiles read used to land here as "Creator not found" —
+  // the same friendly copy a wrong link gets. Three states, and the failure is
+  // checked FIRST so it can never be mistaken for an absent creator.
+  const profileRead = sliceState(sliceReads, 'profiles')
+  const pubsRead = sliceState(sliceReads, 'suggested itineraries')
+  // Retry re-issues the read; it does not merely re-render the same empty array.
+  const retry = () => { void rereadPublicSlices() }
 
   const creator = userById(creatorId)
   const pubs = useMemo(
@@ -26,6 +36,20 @@ export function CreatorPage({ creatorId, onNavigate }: { creatorId: string; onNa
   const totalForks = pubs.reduce((s, p) => s + p.copies, 0)
 
   if (!creator) {
+    // A broken read is not an absent creator. The distinction is the whole bug.
+    if (profileRead !== 'ready') {
+      const copy = emptyCopyFor(profileRead, 'this creator', retry)
+      return (
+        <div className="container">
+          {profileRead === 'reading' ? (
+            <div className="loading-block"><div className="spinner" />{copy.title}</div>
+          ) : (
+            <EmptyState icon={<Link2 size={38} aria-hidden />} title={copy.title} body={copy.body}
+              action={<button className="btn btn-primary" onClick={retry}>Try again</button>} />
+          )}
+        </div>
+      )
+    }
     return (
       <div className="container">
         <EmptyState icon={<Link2 size={38} aria-hidden />} title="Creator not found"
@@ -71,14 +95,32 @@ export function CreatorPage({ creatorId, onNavigate }: { creatorId: string; onNa
         {pubs.length > 0 && (
           <div className="creator-stats" role="group" aria-label="Creator track record">
             <div className="stat-tile"><div className="stat-label">Itineraries</div><div className="stat-value">{pubs.length}</div></div>
-            <div className="stat-tile"><div className="stat-label">Total views</div><div className="stat-value"><InlineIcon icon={Eye} size={15} gap={5} vAlign="-1px" />{totalViews}</div></div>
-            <div className="stat-tile"><div className="stat-label">Total forks</div><div className="stat-value"><InlineIcon icon={GitFork} size={15} gap={5} vAlign="-1px" />{totalForks}</div></div>
+            <div className="stat-tile"><div className="stat-label">Total views</div><div className="stat-value">
+              {figureOrUnavailable(totalViews, pubsRead) === null
+                ? <span className="muted">unavailable</span>
+                : <><InlineIcon icon={Eye} size={15} gap={5} vAlign="-1px" />{totalViews}</>}
+            </div></div>
+            <div className="stat-tile"><div className="stat-label">Total forks</div><div className="stat-value">
+              {figureOrUnavailable(totalForks, pubsRead) === null
+                ? <span className="muted">unavailable</span>
+                : <><InlineIcon icon={GitFork} size={15} gap={5} vAlign="-1px" />{totalForks}</>}
+            </div></div>
           </div>
         )}
 
         <h2 style={{ marginBottom: 12 }}>Publications</h2>
 
-        {pubs.length === 0 ? (
+        {pubsRead !== 'ready' ? (
+          // Loading and failed both sit here, and both are checked BEFORE the
+          // empty copy — which is the ordering whose absence caused the bug.
+          pubsRead === 'reading' ? (
+            <div className="loading-block"><div className="spinner" />Loading publications…</div>
+          ) : (
+            <EmptyState icon={<MapPin size={38} aria-hidden />} title={emptyCopyFor(pubsRead, 'publications', retry).title}
+              body={emptyCopyFor(pubsRead, 'publications', retry).body}
+              action={<button className="btn btn-primary" onClick={retry}>Try again</button>} />
+          )
+        ) : pubs.length === 0 ? (
           !creator.profile.isCreator ? (
             <EmptyState icon={<Compass size={38} aria-hidden />} title="No creator page here yet"
               body={`${creator.profile.name} hasn’t enabled creator mode or published an itinerary.`}

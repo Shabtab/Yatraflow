@@ -4,10 +4,11 @@ import {
   Calendar, Compass, Eye, GitFork, Heart, MapPin, Search, Sparkles, Star, Wallet, X,
 } from 'lucide-react'
 import { InlineIcon, MetaIcon } from '../components/icons'
-import { usePublished, useUsers, useTrips, useSessionUserId } from '../store/store'
+import { usePublished, useUsers, useTrips, useSessionUserId, useDb, rereadPublicSlices } from '../store/store'
 import type { PublishedItinerary, User } from '../data/types'
 import { computeHealth, formatInr } from '../lib/engine'
 import { useSavedPubs } from '../lib/savedPubs'
+import { sliceState, emptyCopyFor } from '../lib/readState'
 import { forkPublication } from '../lib/forkPub'
 import { cap } from '../lib/labels'
 import { Avatar, Chip, EmptyState, toast } from '../components/ui'
@@ -64,6 +65,11 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
   const users = useUsers()
   const trips = useTrips()
   const me = useSessionUserId()
+  // #364: the catalog's own read state, so "the community has published nothing"
+  // is never printed over a read that failed. See the empty branch below.
+  const { sliceReads } = useDb()
+  const pubsRead = sliceState(sliceReads, 'suggested itineraries')
+  const retryCatalog = () => { void rereadPublicSlices() }
   const { saved, isSaved, toggleSaved } = useSavedPubs()
   // F-22: filters + sort live in the hash query (#/explore?q=goa&sort=budget-asc)
   // so they survive a refresh and can be shared; sortKey finally gets a control.
@@ -298,7 +304,19 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
           </div>
         )}
 
-        {pubs.length === 0 ? (
+        {pubsRead !== 'ready' ? (
+          /* #364: a failed catalog read used to render "just getting started" —
+             copy that tells a visitor the community is empty when the truth is
+             that we could not read it. The failed branch is checked FIRST, and
+             the retry re-issues the read rather than re-rendering nothing. */
+          pubsRead === 'reading' ? (
+            <div className="loading-block"><div className="spinner" />Loading the catalog…</div>
+          ) : (
+            <EmptyState icon={<Compass size={38} aria-hidden />} title={emptyCopyFor(pubsRead, 'catalog', retryCatalog).title}
+              body={emptyCopyFor(pubsRead, 'catalog', retryCatalog).body}
+              action={<button className="btn btn-primary" onClick={retryCatalog}>Try again</button>} />
+          )
+        ) : pubs.length === 0 ? (
           filtersActive ? (
             <EmptyState icon={<Search size={38} aria-hidden />} title="Nothing matches those filters"
               body="Try widening the budget or clearing a filter." />
