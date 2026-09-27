@@ -334,7 +334,7 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
           <p className="pub-hero-story">{pub.tagline}</p>
           <p className="pub-hero-byline">
             By {creator?.profile.name ?? 'a YatraFlow traveller'} · {pub.durationDays} days · {trip.travellers} travellers · {cap(trip.transportMode)}
-            {creator?.profile.isCreator && <> · <InlineIcon icon={Sparkles} size={11} gap={2} vAlign="-1px" style={{ marginLeft: 2 }} />Creator</>}
+            {creator?.profile.isCreator && <> · <InlineIcon icon={Sparkles} size={12} gap={2} vAlign="-1px" style={{ marginLeft: 2 }} />Creator</>}
           </p>
         </div>
         {/* "The practical bit" — the evidence cluster, floating over the hero */}
@@ -478,7 +478,7 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
                           : `${stops.length} stops · ~${minutesToHM(sim.totalTravelMinutes)} travel`}
                       </div>
                     </div>
-                    {!isFree && <Chip tone="saffron"><InlineIcon icon={Lock} size={11} gap={3} vAlign="-1px" />Premium</Chip>}
+                    {!isFree && <Chip tone="saffron"><InlineIcon icon={Lock} size={12} gap={3} vAlign="-1px" />Premium</Chip>}
                   </div>
 
                   {(isFree || unlocked) ? (

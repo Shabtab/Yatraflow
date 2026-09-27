@@ -19,6 +19,14 @@ export const PURPOSE_FIT: Record<string, Partial<Record<HaltPurpose, number>>> =
 /** Fit for a category the table does not name. */
 export const DEFAULT_FIT: Partial<Record<HaltPurpose, number>> = { stretch: 1, rest: 1, sight: 2 }
 
+/** The ONE purpose-fit floor shared by the corridor scorer, the slot rail's
+ *  pool and its segment leads (#344). A need-purpose place (meal/fuel/
+ *  overnight) is admissible at fit >= 1 — the scorer's own rule, so a cafe IS
+ *  a meal when nothing better exists. The slot pool used to demand 2 while
+ *  the scorer admitted 1 and segment leads passed ungated: the same hit was
+ *  rejected from the pool and displayed as a segment lead at once. */
+export const MIN_PURPOSE_FIT = 1
+
 /** The four kinds of part the day plan names, and the engine purposes each one
  *  covers. `stretch` covers `rest` too — `draftForSegment` routes both to the
  *  one stretch slot, so a recovery break is a stretch accept. */
@@ -50,7 +58,9 @@ export type SlotKind = keyof typeof SLOT_KIND_PURPOSES
  * rail can actually offer.
  */
 export const SLOT_KIND_CATEGORIES: Record<SlotKind, string[]> = (() => {
-  const GATE = 2
+  // Same floor the pool and the scorer share (#344) — the hint counts picks
+  // that CAN exist, and a fit-1 cafe can now exist as a meal.
+  const GATE = MIN_PURPOSE_FIT
   const out: Record<SlotKind, string[]> = { meal: [], fuel: [], overnight: [], stretch: [] }
   for (const cat of Object.keys(PURPOSE_FIT)) {
     for (const kind of Object.keys(out) as SlotKind[]) {

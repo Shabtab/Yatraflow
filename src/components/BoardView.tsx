@@ -5,8 +5,8 @@
 // Timeline, so nothing persists without its consequence visible first.
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
-  ArrowLeft, ChevronDown, ChevronUp, CircleCheck, CircleHelp, LocateFixed, Map as MapIcon,
-  MoveHorizontal, Plus, Trash2, TriangleAlert,
+  ArrowLeft, ChevronDown, ChevronUp, CircleCheck, CircleHelp, Loader2, LocateFixed, Map as MapIcon,
+  MoveHorizontal, Plus, RefreshCw, Trash2, TriangleAlert,
 } from 'lucide-react'
 import { prefersReducedMotion } from '../lib/motion'
 import {
@@ -126,11 +126,19 @@ export function BoardView({ trip, editable, applyChange, health, totals, onOpenO
     () => mapReturnGeometryFromLegs(road?.chain ?? null, road?.legs ?? null),
     [road],
   )
-  /** The road did not resolve AND this trip is actually driven: the map's line
-   *  is graded rough, and the board's budget/health figures are haversine
-   *  estimates — said out loud here rather than left to be discovered (#370).
-   *  Conducted modes (train/flight/bus) are excluded: no road was ever theirs. */
-  const roadUnmeasured = !!trip.transportMode && isRoadMeasuredMode(trip.transportMode) && road?.status === 'failed'
+  /** The road did not resolve (or is being re-measured after a failed attempt)
+   *  AND this trip is actually driven: the map's line is graded rough, and the
+   *  board's budget/health figures are haversine estimates — said out loud here
+   *  rather than left to be discovered (#370). Conducted modes (train/flight/
+   *  bus) are excluded: no road was ever theirs. The retry note stays up while
+   *  a manual retry is in flight: a gate keyed on `failed` alone would blink
+   *  the honest note off the moment the retry flipped status to pending, and
+   *  nothing else on this surface says the figures are estimates.
+   *  (#road-retry: the measurement offers a retry — it existed on the road
+   *  view since #188 but no surface consumed it.) */
+  const roadUnmeasured = !!trip.transportMode && isRoadMeasuredMode(trip.transportMode)
+    && (road?.status === 'failed' || road?.status === 'pending')
+  const roadRetrying = road?.status === 'pending'
 
   /** Cross-day move — the shared stopOrder rule, and every Board mutation
       previews. The drag passes its own insertion slot; the move dialog passes
@@ -277,8 +285,18 @@ export function BoardView({ trip, editable, applyChange, health, totals, onOpenO
             </span>
             {roadUnmeasured && (
               <span className="small" style={{ display: 'block', marginTop: 3 }}>
-                <InlineIcon icon={TriangleAlert} size={12} gap={3} />Road not measured — the map's line and this board's figures are estimates.
+                <InlineIcon icon={TriangleAlert} size={12} gap={3} />
+                {roadRetrying
+                  ? 'Measuring the road… — until it resolves, the line and figures stay estimates.'
+                  : 'Road not measured — the map\'s line and this board\'s figures are estimates.'}
               </span>
+            )}
+            {roadUnmeasured && !roadRetrying && road && (
+              <button type="button" className="btn btn-outline btn-sm" style={{ marginTop: 4 }}
+                onClick={road.retry}
+                title="Ask the routing provider again — the first tries may have been rate-limited">
+                <InlineIcon icon={RefreshCw} size={12} gap={4} />Retry road measurement
+              </button>
             )}
             <button type="button" className="board-fit" onClick={fitToTrip}><InlineIcon icon={LocateFixed} size={13} gap={4} />Fit route</button>
           </div>
@@ -533,7 +551,7 @@ const BoardColumn = React.memo(function BoardColumn({ day, allDays, editable, wa
               {...(editable ? dndHandlers(i) : {})}>
               <div className={`board-stop stop-card kind-${kind} status-${s.status} ${foreignOver === i && dragging === null ? 'foreign-over' : ''}`}>
                 <div className="stop-main">
-                  <span className="board-stop-kicker">{s.departTime ? `${formatHM(s.departTime, timeFormat)} · ` : ''}<KindIcon kind={kind} size={11} />{STOP_KIND_LABELS[kind]}</span>
+                  <span className="board-stop-kicker">{s.departTime ? `${formatHM(s.departTime, timeFormat)} · ` : ''}<KindIcon kind={kind} size={12} />{STOP_KIND_LABELS[kind]}</span>
                   {editable ? (
                     <button type="button" className="board-stop-title-btn" onClick={() => onEdit(s.id)}
                       title={`Edit ${s.title}`} aria-label={`Edit ${s.title}`}>
@@ -549,17 +567,17 @@ const BoardColumn = React.memo(function BoardColumn({ day, allDays, editable, wa
                     <div className="move-btns">
                       <button type="button" className="move-btn" disabled={i === 0}
                         onClick={() => onReorder(day.index, i, i - 1)} aria-label={`Move ${s.title} up`}>
-                        <ChevronUp size={12} aria-hidden />
+                        <ChevronUp size={13} aria-hidden />
                       </button>
                       <button type="button" className="move-btn" disabled={i === ordered.length - 1}
                         onClick={() => onReorder(day.index, i, i + 1)} aria-label={`Move ${s.title} down`}>
-                        <ChevronDown size={12} aria-hidden />
+                        <ChevronDown size={13} aria-hidden />
                       </button>
                     </div>
                     {allDays.length > 1 && (
                       <button type="button" className="move-btn" onClick={() => setMoveStop(s)}
                         title="Move to another day" aria-label={`Move ${s.title} to another day`}>
-                        <MoveHorizontal size={12} aria-hidden />
+                        <MoveHorizontal size={13} aria-hidden />
                       </button>
                     )}
                     {/* Status rides the same lightweight group signal the
@@ -568,17 +586,17 @@ const BoardColumn = React.memo(function BoardColumn({ day, allDays, editable, wa
                     {s.status === 'confirmed'
                       ? <button type="button" className="move-btn" onClick={() => onStatus(s, 'maybe')}
                         title={`Mark ${s.title} maybe`} aria-label={`Mark ${s.title} maybe`}>
-                        <CircleHelp size={12} aria-hidden />
+                        <CircleHelp size={13} aria-hidden />
                       </button>
                       : <button type="button" className="move-btn" onClick={() => onStatus(s, 'confirmed')}
                         title={`Mark ${s.title} confirmed`} aria-label={`Mark ${s.title} confirmed`}>
-                        <CircleCheck size={12} aria-hidden />
+                        <CircleCheck size={13} aria-hidden />
                       </button>}
                     <button type="button" className="move-btn move-btn--danger"
                       onClick={() => onDelete(s.id, day.index)}
                       title={`Delete ${s.title} — you'll see the impact first; Undo is offered after Keep`}
                       aria-label={`Delete ${s.title}`}>
-                      <Trash2 size={12} aria-hidden />
+                      <Trash2 size={13} aria-hidden />
                     </button>
                   </div>
                 )}

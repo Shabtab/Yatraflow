@@ -280,7 +280,7 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
                 Why featured: {featured.copies >= 1
                   ? <><InlineIcon icon={GitFork} size={12} gap={2} style={{ marginLeft: 2 }} /> {featured.copies} fork{featured.copies === 1 ? '' : 's'} — the most-forked plan here</>
                   : <><InlineIcon icon={Eye} size={12} gap={2} style={{ marginLeft: 2 }} /> {featured.views} views</>}
-                {featuredHealth !== undefined && <> · trip health {featuredHealth}/100</>} — by {userOf(users, featured.creatorId)?.profile.name ?? 'a YatraFlow traveller'}{userOf(users, featured.creatorId)?.profile.isCreator && <InlineIcon icon={Sparkles} size={11} gap={0} vAlign="-1px" style={{ marginLeft: 2 }} />}.
+                {featuredHealth !== undefined && <> · trip health {featuredHealth}/100</>} — by {userOf(users, featured.creatorId)?.profile.name ?? 'a YatraFlow traveller'}{userOf(users, featured.creatorId)?.profile.isCreator && <InlineIcon icon={Sparkles} size={12} gap={0} vAlign="-1px" style={{ marginLeft: 2 }} />}.
               </p>
               <div className="featured-meta">
                 <span><MetaIcon icon={ Calendar } tone="time" />{featured.durationDays} days</span>

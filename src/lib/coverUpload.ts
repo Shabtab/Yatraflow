@@ -22,20 +22,36 @@ export const COVER_BUCKET = 'covers'
  *  for) and to the width the OG card declares, so a picked cover and an
  *  uploaded one are the same weight class. */
 export const COVER_MAX_EDGE = 1200
-/** Refuse before decoding. A phone JPEG is 3-8 MB, and re-encoding it in the
- *  browser to upload 200 KB is work the creator waits on for nothing. */
-export const COVER_MAX_INPUT_BYTES = 8 * 1024 * 1024
+/** What the bucket will actually accept: `file_size_limit = 5242880` in
+ *  20260919_covers_bucket.sql. The client is not a boundary, so this constant
+ *  exists to refuse early with a sentence a creator can act on — which is why
+ *  it must never sit ABOVE the real limit, and why the two are pinned to each
+ *  other by `tests/cover-upload.test.ts` (read out of the migration, not
+ *  restated).
+ *
+ *  It was 8 MB. Note what that cap actually decided: `uploadCover` downscales
+ *  to 1200px / quality 0.82 BEFORE calling the bucket, so the uploaded object
+ *  measures ~78 KB and a large original never reaches the 5 MB limit at all.
+ *  The cap therefore never caused an upload failure — it decided which
+ *  originals a creator could pick, and a 7 MB phone photo was decoded and
+ *  shrunk in the browser to produce bytes that were then discarded. Lowering it
+ *  to the bucket's limit refuses that work up front instead of paying for it. */
+export const COVER_MAX_INPUT_BYTES = 5 * 1024 * 1024
 /** Accepted input types. Everything is re-encoded to JPEG on the way out. */
 export const COVER_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 export const COVER_JPEG_QUALITY = 0.82
 /** The only extension we ever write, since we always re-encode. */
 export const COVER_EXT = 'jpg'
 
-/** Why a picked file cannot be used, in the creator's words. null = accepted. */
+/** Why a picked file cannot be used, in the creator's words. null = accepted.
+ *
+ *  The size in the sentence is derived from the constant rather than written
+ *  out, because a hardcoded "8 MB" beside a 5 MB limit is exactly the drift
+ *  that produced the original mismatch. */
 export function coverFileError(file: { type: string; size: number }): string | null {
   if (!COVER_TYPES.includes(file.type)) return 'Covers must be a JPEG, PNG or WebP image.'
   if (file.size > COVER_MAX_INPUT_BYTES) {
-    return `That image is ${(file.size / (1024 * 1024)).toFixed(1)} MB — please pick one under 8 MB.`
+    return `That image is ${(file.size / (1024 * 1024)).toFixed(1)} MB — please pick one under ${COVER_MAX_INPUT_BYTES / (1024 * 1024)} MB.`
   }
   return null
 }

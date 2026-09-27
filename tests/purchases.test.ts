@@ -156,7 +156,11 @@ describe('the purchase shelf', () => {
   })
 
   it('is empty, not broken, for a signed-out visitor', () => {
-    expect(buildPurchaseShelf([], [pub()], [])).toEqual({ rows: [], totalPaidInr: 0, updatedCount: 0 })
+    // An empty shelf has nothing unreadable in it, so the total is the whole
+    // truth — `totalReadable` is true, not vacuously false.
+    expect(buildPurchaseShelf([], [pub()], [])).toEqual({
+      rows: [], totalPaidInr: 0, totalReadable: true, updatedCount: 0,
+    })
   })
 })
 
@@ -252,5 +256,146 @@ describe('I-21 — a purchase carries the entitlement its card is verified again
     const withdrawn = buildPurchaseShelf([entitlement()], [], [])
     expect(purchaseShareable(listed.rows[0]!)).toBe(true)
     expect(purchaseShareable(withdrawn.rows[0]!)).toBe(false)
+  })
+})
+
+// ============ #406 — one malformed row must not rewrite the whole shelf ============
+// A stored amount is a CLAIM about money, so it is checked rather than cast. The
+// three ways it used to lie all read as "correct" numbers: a NaN poisons the sum
+// (the header loses its total), a `null` becomes 0 through `0 + null === 0` (a
+// silent undercount with no symptom at all), and a bad date string prints the
+// literal "Invalid Date" on a receipt.
+describe('#406 — a row whose money cannot be read is flagged, never silently total', () => {
+  it('keeps the total finite and correct when one amount is NaN', () => {
+    const shelf = buildPurchaseShelf(
+      [
+        entitlement({ pubId: 'pub_a', id: 'ent_1', amountPaidInr: 500 }),
+        entitlement({ pubId: 'pub_b', id: 'ent_2', amountPaidInr: NaN, grantedAt: 1_750_000_100_000 }),
+      ],
+      [pub({ id: 'pub_a' }), pub({ id: 'pub_b' })],
+      [],
+    )
+    // The pre-fix reduce turned this into NaN, which the header printed as the
+    // whole shelf's total.
+    expect(Number.isFinite(shelf.totalPaidInr)).toBe(true)
+    expect(shelf.totalPaidInr).toBe(500)
+  })
+
+  it('excludes an unreadable amount from the total instead of counting it as zero', () => {
+    // `0 + null === 0` is the quiet failure: the total stayed a plausible
+    // number and simply understated what the buyer paid.
+    const shelf = buildPurchaseShelf(
+      [
+        entitlement({ pubId: 'pub_a', id: 'ent_1', amountPaidInr: 500 }),
+        entitlement({
+          pubId: 'pub_b', id: 'ent_2',
+          amountPaidInr: null as unknown as number,
+          grantedAt: 1_750_000_100_000,
+        }),
+      ],
+      [pub({ id: 'pub_a' }), pub({ id: 'pub_b' })],
+      [],
+    )
+    expect(shelf.totalPaidInr).toBe(500)
+  })
+
+  it('says the total is incomplete rather than printing a confident smaller one', () => {
+    const good = buildPurchaseShelf([entitlement()], [pub()], [])
+    const poisoned = buildPurchaseShelf(
+      [
+        entitlement({ pubId: 'pub_a', id: 'ent_1', amountPaidInr: 500 }),
+        entitlement({ pubId: 'pub_b', id: 'ent_2', amountPaidInr: NaN, grantedAt: 1_750_000_100_000 }),
+      ],
+      [pub({ id: 'pub_a' }), pub({ id: 'pub_b' })],
+      [],
+    )
+    expect(good.totalReadable).toBe(true)
+    expect(poisoned.totalReadable).toBe(false)
+  })
+
+  it('keeps the malformed purchase on the shelf and flags it', () => {
+    // Dropping the row would hide a plan the buyer demonstrably paid for —
+    // worse than admitting its price is unknown.
+    const shelf = buildPurchaseShelf(
+      [entitlement({ pubId: 'pub_b', id: 'ent_2', amountPaidInr: NaN })],
+      [pub({ id: 'pub_b' })],
+      [],
+    )
+    expect(shelf.rows).toHaveLength(1)
+    expect(shelf.rows[0]!.amountReadable).toBe(false)
+    expect(shelf.rows[0]!.amountPaidInr).toBe(0)
+  })
+
+  it('flags an unreadable grant date without disturbing the amount', () => {
+    const shelf = buildPurchaseShelf(
+      [entitlement({ amountPaidInr: 500, grantedAt: NaN })],
+      [pub()],
+      [],
+    )
+    expect(shelf.rows[0]!.dateReadable).toBe(false)
+    expect(shelf.rows[0]!.amountReadable).toBe(true)
+    expect(shelf.totalPaidInr).toBe(500)
+  })
+
+  it('treats a non-numeric stored amount as unreadable, not as a number', () => {
+    // PostgREST hands back whatever is in the column; a string is not a number
+    // even though `as number` claims it is.
+    const shelf = buildPurchaseShelf(
+      [entitlement({ amountPaidInr: '500' as unknown as number })],
+      [pub()],
+      [],
+    )
+    expect(shelf.rows[0]!.amountReadable).toBe(false)
+    expect(shelf.totalPaidInr).toBe(0)
+  })
+
+  it('flags a malformed UNLISTED row without resurrecting or dropping it', () => {
+    // The two behaviours compose: a row can be both unreadable and withdrawn.
+    const shelf = buildPurchaseShelf(
+      [entitlement({ amountPaidInr: NaN, grantedAt: 1_750_000_000_000 })],
+      [],
+      [],
+    )
+    expect(shelf.rows).toHaveLength(1)
+    expect(shelf.rows[0]!.listed).toBe(false)
+    expect(shelf.rows[0]!.amountReadable).toBe(false)
+    expect(purchaseShareable(shelf.rows[0]!)).toBe(false)
+  })
+})
+
+// The pure cases above pin the arithmetic; these pin the two surfaces that
+// could still tell the user a confident wrong thing. Source guards, because
+// `tests/` is node-env with no DOM (AGENTS §4).
+describe('#406 — the shelf surfaces the flag instead of printing the number', () => {
+  const pageSrc = readFileSync(new URL('../src/pages/Purchases.tsx', import.meta.url), 'utf8')
+
+  it('gates the header total on readability, and never drops the explanation', () => {
+    expect(pageSrc).toContain('shelf.totalReadable')
+    // The partial figure is a floor, so the copy has to say so.
+    expect(pageSrc).toContain('at least')
+  })
+
+  it('never renders the price chip for an unreadable amount', () => {
+    // A `formatInr(0)` chip would claim the plan was free.
+    expect(pageSrc).toContain('price unavailable')
+  })
+
+  it('says the date is unknown rather than printing an invalid one', () => {
+    expect(pageSrc).toContain('date unknown')
+  })
+
+  it('passes the row flag into the date renderer, so a bad date cannot slip past it', () => {
+    // The signature alone is not enough — the call site must pass the flag.
+    expect(pageSrc).toContain('boughtOn(row.grantedAt, row.dateReadable)')
+  })
+
+  it('coerces the shelf read at its mapping boundary rather than casting the sum', () => {
+    // The two layers must agree: unlock.ts hands over the raw reading and
+    // purchases.ts decides what is readable, so no third place re-casts it.
+    const unlockSrc = readFileSync(new URL('../src/lib/unlock.ts', import.meta.url), 'utf8')
+    const mapping = unlockSrc.slice(unlockSrc.indexOf('export async function fetchMyPurchases'))
+    expect(mapping).toContain('amount_paid_inr')
+    // A Number() coercion here would disagree with the shelf's own rule.
+    expect(mapping).not.toContain('Number(row.amount_paid_inr')
   })
 })
