@@ -33,6 +33,7 @@ import {
   googleMapsUrl, newStopId, poiVisitMinutes, smallThumb,
 } from './map/pageHelpers'
 import { hitCostLabels, slotPinsFor } from './map/railLabels'
+import { alternativesFor as pickAlternatives, sightRowChips } from './map/sightRows'
 
 /** How many search hits the rail shows before "Show all" (#333 A1). The listbox
  *  grammar needs the same page size the rows are rendered with, so it lives here
@@ -42,7 +43,7 @@ import { isSightCategory, roadProfileFromLegs, loopProfile } from '../../lib/rid
 import { QuotaExhaustedError } from '../../lib/providers/google'
 import { isElectric } from '../../lib/vehicleProfile'
 import { planInputsHash } from '../../hooks/useSuggestionCache'
-import { railReasonChips, type RailChip } from '../../lib/railReasons'
+import type { RailChip } from '../../lib/railReasons'
 import { daySlots, dayShape, tripDayAttribution, tripReadiness, SLOT_URGENCY_MIN, type DaySlot, type DaySlotKind, type DaySlotsDeps } from '../../lib/daySlots'
 import { discardedStagedIds, isAlreadyAdded, normalizePlaceName, tripPresence, type PlaceIdentity } from '../../lib/placeIdentity'
 import { addDecision, deleteStop, restoreStop } from '../../store/store'
@@ -1757,49 +1758,27 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
 
   /** Closest alternatives for a halt: next 2 by road position plus detour. */
   function alternativesFor(sh: SegmentHit, hit: PlaceHit): Array<{ h: PlaceHit; dKm: number | null }> {
-    // keep same family: need halts prefer same purpose, sights accept any sight
-    const family = NEED_PURPOSES.has(sh.segment.purpose)
-      ? [...(altPool.byPurpose.get(sh.segment.purpose) ?? []), ...(altPool.byCategory.get(hit.category ?? '') ?? [])]
-      : altPool.all
-    const seen = new Set<string>()
-    return family
-      .filter(e => {
-        const id = e.h.id as string
-        if (id === hit.id || seen.has(id)) return false
-        seen.add(id)
-        return true
-      })
-      .map(e => {
-        const pos = e.h.cumKm ?? sh.segment.targetKm
-        return { h: e.h, dKm: e.dKm, dist: Math.abs(pos - sh.segment.targetKm) + (e.dKm ?? 0) * 2 }
-      })
-      .sort((a, b) => a.dist - b.dist)
-      .slice(0, 2)
-      .map(e => ({ h: e.h, dKm: e.dKm ?? null }))
+    // #420 slice 5: the family/ranking rule lives in ./map/sightRows with its tests;
+    // this only names the halt and hands over the pool.
+    return pickAlternatives({
+      purpose: sh.segment.purpose,
+      targetKm: sh.segment.targetKm,
+      hit,
+      pool: altPool,
+    })
   }
 
   /** Reason chips for one suggestion, shared by the card and the rail filter. */
   function chipsFor(sh: SegmentHit, hit: PlaceHit): RailChip[] {
+    // #420 slice 5: the chips themselves (including the #163 rounding predicate) come
+    // from ./map/sightRows; the trip-aware numbers are resolved here.
     const detourMin = detourMinFor(hit)
     const hitDay = trip.days.find(d => d.index === dayForKm(hit.cumKm))
     const dayBudget = dayDetourBudgetMin({
       travelStyle: trip.travelStyle,
       plannedStops: (hitDay?.stops ?? []).filter(s => s.status !== 'rejected').length,
     })
-    return railReasonChips({
-      purpose: sh.segment.purpose,
-      etaMinutes: sh.segment.etaMinutes ?? null,
-      minutesFromPrev: sh.segment.minutesFromPrev,
-      isFirstSegment: sh.segment.index === 0,
-      detourMinutes: detourMin ?? 0,
-      budgetSharePct: detourMin != null && detourMin > 0.5 ? budgetSharePct(detourMin, dayBudget) : detourMin == null ? 100 : null,
-      // #163: same predicate as the fact strip (round-half-up display math),
-      // so a budget-exact halt can't be 'fine' on the card and 'held back' on
-      // the rail — or flip between them on a display-rounding nudge.
-      overBudget: detourMin == null || Math.round(detourMin) > dayBudget,
-      rating: hit.rating,
-      ratingCount: hit.ratingCount,
-    })
+    return sightRowChips({ segment: sh.segment, hit, detourMin, dayBudget })
   }
 
   /** A corridor halt the engine found no place for. The only row still rendered
