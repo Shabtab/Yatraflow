@@ -51,3 +51,22 @@ export function pickDayCaveat(dayIndex: number, derivedFromRoute: boolean): stri
   return `This place has no position on the route, so Day ${dayIndex + 1} is a guess — pick the day you want.`
 }
 
+
+/**
+ * #416: the map and the rail can plan different scopes. The map's own chips
+ * include "All days" while the rail always plans exactly one day, and nothing
+ * said so — the map's choice simply did not reach the rail.
+ *
+ * The sentence is deliberately one-sided. It names both scopes and points at the
+ * control (the map's day chips) rather than offering a trip-wide rail, because
+ * the rail's slots are per-day by construction: fuel, meal and overnight halts
+ * are scheduled inside a driving day, so a "whole trip" rail would have to invent
+ * a scope the data does not have.
+ *
+ * `null` means MapTab has not been told what the map is showing yet — the rail
+ * must say nothing rather than assert a mismatch nobody reported.
+ */
+export function mapScopeNote(mapFilter: number | 'all' | null, dayIndex: number): string | null {
+  if (mapFilter !== 'all') return null
+  return `The map is showing all days; this rail plans Day ${dayIndex + 1}. Use the map's day chips to match them.`
+}
