@@ -15,9 +15,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { InlineIcon } from '../components/icons'
 import { ArrowLeft, Share2, ShoppingBag } from 'lucide-react'
-import { usePublished, useUsers, useSessionUserId } from '../store/store'
+import { usePublished, useUsers, useSessionUserId, useTrips } from '../store/store'
 import { fetchMyPurchases } from '../lib/unlock'
-import { buildPurchaseShelf, purchaseShareable } from '../lib/purchases'
+import { buildPurchaseShelf, purchaseShareable, findBuyerCopy } from '../lib/purchases'
 import { sharePurchase } from '../lib/purchaseShare'
 import { forkPublication } from '../lib/forkPub'
 import { CoverThumb } from '../components/CoverThumb'
@@ -42,6 +42,9 @@ export function PurchasesPage({ onNavigate }: { onNavigate: (r: string) => void 
   const pubs = usePublished()
   const users = useUsers()
   const meId = useSessionUserId()
+  // The buyer's own trips, so a withdrawn plan can point at the copy they
+  // forked instead of at a page that no longer exists (#405).
+  const trips = useTrips()
   const [entitlements, setEntitlements] = useState<Entitlement[] | null>(null)
   const [failed, setFailed] = useState(false)
   const [attempt, setAttempt] = useState(0)
@@ -119,7 +122,14 @@ export function PurchasesPage({ onNavigate }: { onNavigate: (r: string) => void 
           )}
 
           <div className="purchase-list">
-            {shelf.rows.map(row => (
+            {shelf.rows.map(row => {
+              // Only a WITHDRAWN plan needs a copy resolved: while the
+              // publication is listed its own page is the better destination.
+              // Resolving for every row would also mean a listed plan could be
+              // shadowed by an old fork, which is the wrong answer to a
+              // different question.
+              const copy = row.listed ? null : findBuyerCopy(row, trips)
+              return (
               <article className="purchase-row" key={row.pubId}>
                 <div className="purchase-thumb">
                   <CoverThumb variant="short" explicitUrl={row.coverImageUrl} trip={{ name: row.title }} emoji="🧭" />
@@ -144,11 +154,29 @@ export function PurchasesPage({ onNavigate }: { onNavigate: (r: string) => void 
                   </div>
                   {!row.listed && (
                     <p className="hint-text">
-                      This plan is not listed publicly any more — your access and your copy are unaffected.
+                      This plan is not listed publicly any more. Your access is unaffected
+                      {copy
+                        ? <> — your own copy is the trip you forked, and it still works.</>
+                        : <> — but we could not find your copy in My trips, so there is nothing here to open.</>}
                     </p>
                   )}
                   <div className="purchase-actions">
-                    <button className="btn btn-primary" onClick={() => onNavigate(`/pub/${row.pubId}`)}>Open the plan</button>
+                    {/* A withdrawn publication's page can never load: unpublishing
+                        DELETES the row, and `/pub/<id>` reads the catalogue. So the
+                        link is offered ONLY while the plan is listed — otherwise the
+                        one button on an unlisted row is dead by construction, on
+                        exactly the row promising the buyer is unaffected (#405). The
+                        copy is the honest destination instead. */}
+                    {row.listed && (
+                      <button className="btn btn-primary" onClick={() => onNavigate(`/pub/${row.pubId}`)}>Open the plan</button>
+                    )}
+                    {copy && (
+                      // A title match is a guess, and says so. A confident wrong
+                      // link is worse than an uncertain right one.
+                      <button className="btn btn-primary" onClick={() => onNavigate(`/trip/${copy.tripId}`)}>
+                        {copy.exact ? 'Open your copy' : 'Open your copy (we think this is it)'}
+                      </button>
+                    )}
                     {row.listed && <button className="btn btn-ghost" onClick={() => fork(row.pubId)}>Fork into my trips</button>}
                     {/* ROADMAP I-21: the buyer's own card. Offered only while the
                         publication still exists — a withdrawn plan's link
@@ -162,7 +190,8 @@ export function PurchasesPage({ onNavigate }: { onNavigate: (r: string) => void 
                   </div>
                 </div>
               </article>
-            ))}
+              )
+            })}
           </div>
           <p className="hint-text purchases-foot">
             Forking copies a plan into your own trips with your dates — it stays yours even if the original
