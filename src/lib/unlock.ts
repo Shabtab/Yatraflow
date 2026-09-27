@@ -102,6 +102,12 @@ export async function fetchMyPurchases(userId: string | null): Promise<Entitleme
     console.error('[yatraflow] purchases read failed', error)
     throw error
   }
+  // Coerced at the MAPPING boundary, not cast: the shelf is the one surface
+  // that adds these amounts together, so a single unreadable value would
+  // otherwise poison the buyer's total (NaN) or quietly understate it
+  // (`0 + null === 0`). `buildPurchaseShelf` flags the row from what it finds
+  // here, so this returns the raw reading and lets that layer decide what is
+  // readable — the two must not disagree about the same row.
   return (Array.isArray(data) ? data : []).map((row: Record<string, unknown>) => ({
     id: row.id as string,
     userId: (row.user_id as string | null) ?? null,
