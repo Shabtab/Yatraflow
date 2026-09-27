@@ -19,7 +19,7 @@ import { useSuggestionCache, isMapCacheFresh } from '../../hooks/useSuggestionCa
 import { openExternal } from '../../lib/native'
 import { corridorAnchors, detourKm, asymmetricDetourKm, asymmetricDetourMinutes, googleEnabled, planJourneyHalts, reasonForSegmentHit, searchPlacesText, searchNearbyPoisMulti, kmFromStartForHit, planDriveDays, planTravelClock, rainFactorFor, directionalKm, alongRouteKmOf, DEFER_START, type NearbyOpts, type PlaceHit, type TravelClockVerdict, routeHash } from '../../lib/geocode'
 import { useResolvePick } from '../../components/ResolvePickDialog'
-import { deriveClockMilestones } from '../../lib/clockOverlay'
+import { clockHM, deriveClockMilestones } from '../../lib/clockOverlay'
 import { SHEET_TABS, sheetAppliesAt, sheetHiddenClass, sheetTabMove, type SheetTabKey } from '../../lib/mapSheet'
 import { mapScopeNote } from '../../lib/railA11y'
 import { railKeyAction } from '../../lib/railKeys'
@@ -28,6 +28,10 @@ import { MapOmnibar } from './MapOmnibar'
 import { placementOptions, type PlacementOption } from './mapPlacement'
 import { ShortlistTray } from './map/ShortlistTray'
 import { useShortlist } from './map/useShortlist'
+import {
+  NEED_PURPOSES, SEE_VISIBLE, SCOPE_KM_STEPS, SCOPE_STORAGE_KEY,
+  googleMapsUrl, newStopId, poiVisitMinutes, smallThumb,
+} from './map/pageHelpers'
 
 /** How many search hits the rail shows before "Show all" (#333 A1). The listbox
  *  grammar needs the same page size the rows are rendered with, so it lives here
@@ -53,20 +57,10 @@ import { fetchDailyWeather, forecastAvailable, isoAddDays, todayISO } from '../.
 // MapLibre is heavy (~1MB) — load it only when the Map tab is actually opened.
 const TripMap = React.lazy(() => import('../../components/TripMap').then(m => ({ default: m.TripMap })))
 
-/** minutes-since-midnight → "HH:MM" for formatHM (minutesToHM is duration-styled). */
-function clockHM(mins: number): string {
-  const m = ((Math.round(mins) % 1440) + 1440) % 1440
-  return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
-}
-
-/**
- * Purposes that are finite by construction — their halts are needs, not sights.
- * Module scope: this is a constant, so it must not be rebuilt on every render.
- */
-const NEED_PURPOSES = new Set(['fuel', 'meal', 'food', 'rest', 'stretch', 'overnight', 'stay'])
-
-/** See-rail cards shown before the rest fold behind one expander. */
-const SEE_VISIBLE = 4
+// #420 slice 3: the page's module-level constants and pure helpers live in
+// ./map/pageHelpers now, where they have direct tests. `clockHM` is NOT among them
+// — the page carried a byte-identical copy of lib/clockOverlay's (which is tested),
+// so the copy is gone and the lib one is imported below.
 
 // ---- Engine guide: a subtle rotating roll-out of what the suggestion engine ----
 // ---- does, so its intelligence is discoverable without a docs trip.          ----
@@ -124,41 +118,6 @@ function EngineTips() {
 }
 
 // ================= Map tab =================
-
-/** Wikipedia thumbnail URLs are hotlink-friendly but huge; ask for a small one.
- *  #177: only Wikimedia thumb URLs carry a /<w>px- size segment — rewriting a
- *  path segment that merely LOOKS like a size on any other host mangles it. */
-function smallThumb(url: string): string {
-  if (!/upload\.wikimedia\.org/.test(url)) return url
-  return url.replace(/\/(\d+)px-/, '/120px-')
-}
-
-function googleMapsUrl(hit: PlaceHit): string {
-  // Real Place page when Google gave us a place_id (reviews, hours, directions)
-  if (hit.placeId) return `https://www.google.com/maps/place/?q=place_id:${encodeURIComponent(hit.placeId)}`
-  // Free-stack hits have no place_id — Google's documented pin URL by coords
-  // (hand-building /place/<name>/@lat,lng broke on encoded names)
-  if (Number.isFinite(hit.latitude) && Number.isFinite(hit.longitude)) {
-    return `https://www.google.com/maps/search/?api=1&query=${hit.latitude},${hit.longitude}`
-  }
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(hit.name)}`
-}
-
-/** A locally minted stop id. Platform CSPRNG, never `Math.random` (#267's
- *  presence-key lesson): a temporary handle is still a handle, and three
- *  different add paths had drifted onto two different generators. */
-function newStopId(): string {
-  const rnd = new Uint32Array(2)
-  crypto.getRandomValues(rnd)
-  return `pending_${rnd[0].toString(36)}${rnd[1].toString(36)}`
-}
-
-/** Detour-scope presets for nearby suggestions (km off the route). */
-const SCOPE_KM_STEPS = [10, 20, 30, 50, 80, 100]
-const SCOPE_STORAGE_KEY = 'nearby_scope_km'
-
-/** Sensible visit durations per suggestion category (tourist pacing). */
-const poiVisitMinutes = visitMinutesForCategory
 
 // MapTabSkeleton moved to ./MapTabSkeleton (#332 R4) — it is this module's
 // Suspense fallback, so importing it from here re-created the static edge the

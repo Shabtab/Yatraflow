@@ -22,6 +22,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 ### Changed
 
 - **The Map tab's shortlist is a module of its own.** The tray's markup, the comparator behind its "Add all", and the collection with both of its writers moved out of the page into `pages/trip/map/` — the writers as a hook whose complete input list is now written down, so "what does the shortlist actually touch?" has an answer a reviewer can read instead of infer. The rule is directly tested, including the two behaviours that were only ever implicit: a place the route cannot position sorts last rather than first, and two of them keep the order they were collected in. Behaviour is unchanged (#420).
+- **The Map tab's own helpers left the page, and one of them was a duplicate.** The small-thumbnail rewrite, the Google Maps link builder, the stop-id minter, the scope presets and the need/sight constants now live in `pages/trip/map/pageHelpers.ts` with direct tests — the three functions among them had none, because the only way to reach them was to render a 2,700-line page. `clockHM` is gone from the page entirely: it already existed in `lib/clockOverlay.ts` with its own tests, byte for byte, so the copy was deleted and the tested one imported. Behaviour is unchanged (#420).
 
 ### Fixed
 
