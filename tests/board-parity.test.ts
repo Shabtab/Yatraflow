@@ -41,18 +41,18 @@ describe('#369 — the pulse and the pills read the engine, not a regex', () => 
 })
 
 describe('#372 — a Board mutation is guarded like its siblings', () => {
-  it('accepts the keep-follow-up and leaves an Undo after a delete', () => {
+  it('accepts the keep-follow-up and deletes through the ONE destructive-stop path', () => {
     expect(board).toMatch(/applyChange: \(mutator: \(d: Trip\) => void, kind: ImpactResult\['kind'\], dayIndex: number, onKept\?: \(\) => void\) => void/)
-    expect(board).toMatch(/const victim = stopById\(trip, stopId\)/)
-    expect(board).toMatch(/undoToast\(`“[^`]*” removed from Day \$\{dayIndex \+ 1\}`/)
-    expect(board).toMatch(/restoreStop\(trip\.id, victim, dayIndex\)/)
-    // delete goes through the shared rule, which closes the numbering gap
-    expect(board).toMatch(/removeStopFromDay\(draft, stopId\)/)
+    // #424: the capture → stage → Undo sequence is no longer the Board's own. It
+    // calls the composer the Timeline's day row and the map pin call too, so the
+    // same delete cannot recover differently depending on where it was clicked.
+    expect(board).toMatch(/removeStopWithUndo\(\{ trip, stopId, dayIndex, applyChange \}\)/)
+    expect(board).not.toMatch(/removeStopFromDay|restoreStop|undoToast/)
   })
 
   it('offers the status flip and refuses it while a preview is open', () => {
-    expect(board).toMatch(/import \{ PREVIEW_BUSY \} from '\.\.\/lib\/previewChain'/)
-    expect(board).toMatch(/if \(previewOpen\) \{ toast\(PREVIEW_BUSY, 'err'\); return \}/)
+    expect(board).toMatch(/import \{ refuseWhileStaged, removeStopWithUndo \} from '\.\.\/lib\/mutationLifecycle'/)
+    expect(board).toMatch(/if \(refuseWhileStaged\(previewOpen\)\) return/)
     expect(board).toMatch(/setStopStatus\(trip\.id, status, stop\.id\)/)
     expect(board).toMatch(/onStatus\(s, 'maybe'\)/)
     expect(board).toMatch(/onStatus\(s, 'confirmed'\)/)

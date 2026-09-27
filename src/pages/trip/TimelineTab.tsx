@@ -15,7 +15,7 @@ import {
   PenLine,   TriangleAlert, 
 } from 'lucide-react'
 import type { Trip, ItineraryStop } from '../../data/types'
-import { updateTrip, setStopStatus, restoreStop, useDb, currentUser, userById } from '../../store/store'
+import { updateTrip, setStopStatus, useDb, currentUser, userById } from '../../store/store'
 import {
   computeTotals, minutesToHM, formatInr,
   collectWarnings, buildJourney, dayRoadPolyline, groupWarnings,
@@ -25,15 +25,15 @@ import type { ImpactResult } from '../../lib/impact'
 import { loadOpenDay, loadReviewAll, saveOpenDay, saveReviewAll } from '../../lib/uiPrefs'
 import { accordionNext } from '../../lib/daySummary'
 import { scrollBehavior } from '../../lib/motion'
-import { toast, undoToast } from '../../components/ui'
+import { toast } from '../../components/ui'
 import { StopEditor, type StopFormValues } from '../../components/StopEditor'
 import { RemoteEditBanner } from '../../components/RemoteEditBanner'
 import { useStopConflict } from '../../components/useStopConflict'
 import { stopInitialValues, stopLegContext, stopEditorKey, stopDayIndex, type StopEditorTarget } from '../../lib/stopForm'
 import { useSuggestionCache } from '../../hooks/useSuggestionCache'
-import { PREVIEW_BUSY } from '../../lib/previewChain'
+import { refuseWhileStaged, removeStopWithUndo } from '../../lib/mutationLifecycle'
 import { kmFromStartForHit } from '../../lib/providers/hits'
-import { insertStopAt, moveStopToDay, moveStopWithinDay, nextOrderInDay, pendingStopId, removeStopFromDay, stopById, stopsInOrder } from '../../lib/stopOrder'
+import { insertStopAt, moveStopToDay, moveStopWithinDay, nextOrderInDay, pendingStopId, stopById, stopsInOrder } from '../../lib/stopOrder'
 import { useTimelineMode, type TimelineMode } from './timeline/useTimelineMode'
 import { PillNav } from '../../components/PillNav'
 import { DaySection } from './timeline/DaySection'
@@ -209,18 +209,13 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
   }
 
   // Deletions go through the impact-preview flow (Keep / Remove confirm the
-  // destructive step) AND leave a way back (#337): the stop, its day and its
-  // old order are captured before staging, and the Undo toast restores it —
-  // the same deal the map pin's delete offers. The shared helper renumbers the
-  // survivors, so the next add cannot mint a duplicate order.
+  // destructive step) AND leave a way back (#337). Since #424 this is not the
+  // Timeline's own sequence: `removeStopWithUndo` is THE destructive-stop path,
+  // shared with the Board card and the map pin, so the same delete cannot offer
+  // different recovery depending on where it was clicked.
   const handleDelete = useCallback((stopId: string, dayIndex: number) => {
     const { applyChange, trip } = latest.current
-    const victim = stopById(trip, stopId)
-    applyChange(draft => {
-      removeStopFromDay(draft, stopId)
-    }, 'remove', dayIndex, victim
-      ? () => undoToast(`“${victim.title}” removed from Day ${dayIndex + 1}`, () => restoreStop(trip.id, victim, dayIndex))
-      : undefined)
+    removeStopWithUndo({ trip, stopId, dayIndex, applyChange })
   }, [])
 
   const handleMoveWithinDay = useCallback((fromIdx: number, toIdx: number, dayIndex: number) => {
@@ -421,7 +416,7 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
   const handleRenameDay = useCallback((dayIndex: number, title: string) => {
     // #334: this writes the committed row directly, so while a preview is open
     // it would race the staged change in either order and one edit would fall.
-    if (previewOpen) { toast(PREVIEW_BUSY, 'err'); return }
+    if (refuseWhileStaged(previewOpen)) return
     const { trip } = latest.current
     updateTrip(trip.id, { days: trip.days.map(d => d.index === dayIndex ? { ...d, title: title.trim() || undefined } : d) })
     toast('Day renamed')
@@ -455,7 +450,7 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
   /** Ride start time for a day — a lightweight plan field, applied directly (like rename). */
   const handleSetDayStart = useCallback((dayIndex: number, time: string) => {
     // #334: direct write, same race as the rename — blocked while previewing.
-    if (previewOpen) { toast(PREVIEW_BUSY, 'err'); return }
+    if (refuseWhileStaged(previewOpen)) return
     const { trip } = latest.current
     updateTrip(trip.id, { days: trip.days.map(d => d.index === dayIndex ? { ...d, startTime: time || undefined } : d) })
     toast(time ? `Day ${dayIndex + 1} now starts ${time}` : 'Ride start reset to the default')
@@ -487,7 +482,7 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
     // committed row, so #334 refuses them while a preview is open: the flip
     // would land on the cache, and Keep would then write the proposal the
     // preview was built from, silently reverting it.
-    if (previewOpen) { toast(PREVIEW_BUSY, 'err'); return }
+    if (refuseWhileStaged(previewOpen)) return
     setStopStatus(trip.id, status, stop.id)
     toast(`“${stop.title}” marked ${status === 'needs-booking' ? 'needs booking' : status}`)
   }, [trip.id, previewOpen])

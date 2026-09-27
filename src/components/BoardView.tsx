@@ -11,7 +11,7 @@ import {
 import { prefersReducedMotion } from '../lib/motion'
 import {
   activeStopsInOrder, moveActiveStopWithinDay, moveStopToDay, nextOrderInDay,
-  pendingStopId, removeStopFromDay, stopById,
+  pendingStopId, stopById,
 } from '../lib/stopOrder'
 import { InlineIcon, KindIcon } from './icons'
 import type { Trip, ItineraryStop } from '../data/types'
@@ -22,9 +22,9 @@ import type { ImpactResult } from '../lib/impact'
 import { useTimeFormat, formatHM } from '../lib/timefmt'
 import { stopKindOf, STOP_KIND_LABELS } from '../lib/stopKind'
 import { stopInitialValues, stopLegContext, stopEditorKey, stopDayIndex, type StopEditorTarget } from '../lib/stopForm'
-import { restoreStop, setStopStatus, useDb } from '../store/store'
-import { useReorder, Modal, toast, undoToast } from './ui'
-import { PREVIEW_BUSY } from '../lib/previewChain'
+import { setStopStatus, useDb } from '../store/store'
+import { useReorder, Modal, toast } from './ui'
+import { refuseWhileStaged, removeStopWithUndo } from '../lib/mutationLifecycle'
 import { healthBandClass } from '../lib/healthBand'
 import { warningDigest, warningLines, worstSeverity } from '../lib/warningDigest'
 import { isAlreadyAdded, placeIdentity } from '../lib/placeIdentity'
@@ -163,18 +163,13 @@ export function BoardView({ trip, editable, applyChange, health, totals, onOpenO
     }, 'move-day', toDayIndex)
   }, [applyChange, trip.days, legCorrections])
 
-  /** Same delete shape as the Timeline's handleDelete — routes through the
-      impact preview, so Keep/Remove acts as the confirmation step — and the
-      Keep moment leaves an Undo that puts the captured stop back where it was
-      (#337/#372). The stop object is captured BEFORE staging: the cache drops
-      it the moment Keep writes. */
+  /** The same destructive-stop path as the Timeline's handleDelete (#424):
+      `removeStopWithUndo` stages the removal so Keep/Remove is the confirmation
+      step, and the Keep moment leaves an Undo that puts the captured stop back
+      where it was — the stop is captured BEFORE staging, since the cache drops
+      it the moment Keep writes (#337/#372). */
   const handleDelete = useCallback((stopId: string, dayIndex: number) => {
-    const victim = stopById(trip, stopId)
-    applyChange(draft => {
-      removeStopFromDay(draft, stopId)
-    }, 'remove', dayIndex, victim
-      ? () => undoToast(`“${victim.title}” removed from Day ${dayIndex + 1}`, () => restoreStop(trip.id, victim, dayIndex))
-      : undefined)
+    removeStopWithUndo({ trip, stopId, dayIndex, applyChange })
   }, [applyChange, trip])
 
   /** Status flips are the same lightweight GROUP signal the Timeline offers —
@@ -183,7 +178,7 @@ export function BoardView({ trip, editable, applyChange, health, totals, onOpenO
    *  cache, and Keep would then write the proposal the preview was built from,
    *  silently reverting it. Documented here because it is deliberate. */
   const handleStatus = useCallback((stop: ItineraryStop, status: ItineraryStop['status']) => {
-    if (previewOpen) { toast(PREVIEW_BUSY, 'err'); return }
+    if (refuseWhileStaged(previewOpen)) return
     setStopStatus(trip.id, status, stop.id)
     toast(`“${stop.title}” marked ${status === 'needs-booking' ? 'needs booking' : status}`)
   }, [trip.id, previewOpen])

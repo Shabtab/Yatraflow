@@ -611,6 +611,44 @@ Key locations:
    build failure — check `tests/design-system-baseline.json`'s
    `offLadderSpacing` before choosing values, and prefer the ladder
    (2/4/6/8/12/14/16/20/22/24) or the `--space-*` tokens outright.
+ 6y. **A contract that converged by copy-paste has not converged — and
+   `undoToast` REGISTERS its undo, so a test that calls the capture callback
+   proves nothing about the restore (learned 2026-09-28, lane S / #424).**
+   Three surfaces had the same delete-and-undo sequence, five more had the
+   same refusal sentence pasted in, and a sixth had re-invented it as a local
+   helper — so "the same action behaves the same way everywhere" was true by
+   coincidence of copies, and the next surface inherited nothing. Worse, the
+   cost of that shape is invisible: the copies were all correct. The fix is a
+   module whose HOME is the rule (`lib/mutationLifecycle`), and this is what
+   made it worth doing:
+   (1) promote the SEQUENCE, not just the sentence — the composer takes
+   `{ trip, stopId, dayIndex, applyChange }` and owns capture → stage →
+   Undo, so a surface cannot keep the staging and improvise the recovery;
+   (2) pin the convergence with SOURCE invariants, because a shared helper
+   nobody is forced to call is a suggestion: "`removeStopFromDay(` appears in
+   exactly two files", "`PREVIEW_BUSY` in exactly two", "each surface passes
+   the same four keys, and a variant fails". Those tests are what stop the
+   next surface, and they failed 4/5/7-files-wide against the pre-fix tree
+   (§6h — run them stashed, and check the failure MESSAGES, not just the
+   count);
+   (3) when a table declares recovery, make it greppable in both directions:
+   the allow-list of files that may write directly must (a) cover everything
+   that does and (b) each name a file that really contains the call — the
+   first draft's entry claimed the composer wrote directly, and the second
+   half of the check caught it;
+   (4) the toast trap, which cost the most time: `undoToast(msg, run)` only
+   RAISES the toast — `run` is the Undo button's click. So the callback the
+   workspace hands to `applyChange` is "a toast appeared", and a store test
+   that invokes it and asserts the row came back asserts a no-op. Capture the
+   pair (`vi.mock` the ui module with `importOriginal`, wrap `undoToast`) and
+   have the test CLICK it — that is the only version of the test that can
+   fail on a broken restore, and it is what lets the file keep the undo
+   assertion at all;
+   (5) a behavioural predicate must handle the shapes callers actually hold:
+   `blocksDirectWrite` read an empty `Set` of staged ids as `true` (every
+   object is truthy), which would have refused a write for no reason — the
+   footnote to §6t/§6u: "total" and "correct for the real inputs" are
+   different claims.
  7. **When asking the user to review/test locally, always hand them the exact
    URL — never make them find or start the server.** Check if the dev server
    is up (probe `http://localhost:5173`); if not, start `npm run dev`
