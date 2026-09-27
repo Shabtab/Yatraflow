@@ -105,22 +105,52 @@ export function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAdd
   // Hydrate the persisted plan + resolved spots so tab switches don't lose work.
   // Only rehydrates while the plan is empty, so in-flight edits are never
   // clobbered by this component's own cache write coming back around.
+  // #346: keyed on trip id + day index + a tick that moves ONLY on cache
+  // writes — not on `day` (a fresh clone on every store commit) nor on the
+  // sugCache object (new identity per write) — so unrelated saves no longer
+  // re-run this at all. The id regenerates from a POSITIONAL index over the
+  // SAME sorted order commitPlan caches, so pre/post-reload ids cannot flip.
+  const [haltCacheTick, setHaltCacheTick] = useState(0)
+  const haltCacheRef = useRef(sugCache.halts)
+  const dayIndexRef = useRef(day.index)
+  const dayIdRef = useRef(trip.id)
+  dayIndexRef.current = day.index
+  dayIdRef.current = trip.id
+  // Latest-value refs for resolveSpots' two passes: the re-anchor pass must
+  // read the road, journey and plan AS THEY ARE NOW, not as the closure's
+  // first pass captured them (#346's stale-chords fix).
+  const roadPolylineRef = useRef(roadPolyline)
+  roadPolylineRef.current = roadPolyline
+  const journeyRef = useRef(journey)
+  journeyRef.current = journey
+  const planRef = useRef(plan)
+  planRef.current = plan
   useEffect(() => {
-    const cached = sugCache.halts[day.index]
+    const cached = haltCacheRef.current[dayIndexRef.current]
     setPlan(prev => {
       if (prev.length > 0) return prev
       if (!cached) return []
-      return (cached.plan ?? []).map((p, i) => ({
-        id: `pl-${day.index}-${i}-${p.km}-${p.minutes}`,
+      // commitPlan sorts by km before caching, so cache order IS canonical;
+      // re-derive the sort here (stable, same comparator) instead of trusting
+      // the stored array's order, which older versions left unsorted.
+      const stored = (cached.plan ?? []).map((p, i) => ({ p, i }))
+        .sort((a, b) => a.p.km - b.p.km)
+      return stored.map(({ p, i }, pos) => ({
+        id: `pl-${dayIndexRef.current}-${pos}-${p.km}-${p.minutes}`,
         km: p.km, minutes: p.minutes, purpose: p.purpose,
         hit: cached.segments[i]?.hit ?? null,
-        // Opt-in: a planned halt sits on the route unless the user explicitly
-        // chooses the real place found near it.
-        pin: false,
+        // The tick is the user's "use the real spot" choice — persisted with
+        // the plan since #346. Read defensively: payloads cached before the
+        // field existed hydrate unpinned, exactly as they always behaved.
+        pin: p.pin === true,
       }))
     })
-    if (cached) setSearched(true)
-  }, [day, sugCache])
+  }, [haltCacheTick, day.index, trip.id])
+  // A completed search is what makes "searched" true — the hydrate effect no
+  // longer sets it (#346: it fired on unrelated commits, so appending a halt
+  // to a searched plan re-marked searched and the honest-empty hint could
+  // never appear). resolveSpots sets it on success AND on a resolved failure
+  // (the search ran; the empty-hint stays honest either way).
 
   // No real drive — no travelling card at all. Stay days (parked at the base
   // with no chain) and local days (visits around one place) render nothing
@@ -148,15 +178,25 @@ export function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAdd
     timeFormat,
   )
 
-  /** Persist the plan (and its best spots) so it survives tab switches. */
+  /** Persist the plan (and its best spots) so it survives tab switches.
+   *  Cancels any in-flight spot search — but SAYS so (#346): the button
+   *  re-enabling silently used to read as the search finishing. The search's
+   *  OWN final write (its commitPlan inside resolveSpots) is exempt: it is
+   *  the completion, not a supersede. */
+  let searchCommitting = false
   function commitPlan(next: HaltPlanDraft[]) {
-    ++spotRequest.current
-    setResolving(false)
+    if (resolving && !searchCommitting) {
+      ++spotRequest.current
+      setResolving(false)
+      toast('Plan changed — the spot search was restarted. Press search again when ready.')
+    }
     setPlan(next)
     const sorted = [...next].sort((a, b) => a.km - b.km)
     const segments = segmentsFromPlan(sorted, journey.distanceKm || 0, journey.driveMinutes)
     const hits: SegmentHit[] = segments.map((seg, i) => ({ segment: seg, hit: sorted[i]?.hit ?? null, score: 0 }))
-    setHaltCache(day.index, hits, sorted.map(s => ({ km: s.km, minutes: s.minutes, purpose: s.purpose })))
+    setHaltCache(day.index, hits, sorted.map(s => ({ km: s.km, minutes: s.minutes, purpose: s.purpose, pin: s.pin })))
+    setHaltCacheTick(t => t + 1)
+    searchCommitting = false
   }
 
   function addPlanHalt() {
@@ -180,19 +220,34 @@ export function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAdd
    * Find a real spot near each planned km point (restaurant / fuel / hotel,
    * matched to the halt's purpose) along the day's corridor. Runs only on this
    * explicit action — never on derived-state churn.
+   *
+   * #346: geometry revalidation. Anchors and detours are captured from the
+   * road polyline at call start; if the polyline re-forms mid-flight (OSRM
+   * landing after the user pressed search, or an edit re-deriving the day),
+   * one re-anchor pass runs against the FRESH shape instead of resolving on
+   * stale chords. The final commitPlan runs with `resolving` still true but
+   * is exempt from the supersede toast via the inFlight flag below — it IS
+   * the search's own write, not a user edit cancelling it.
    */
   async function resolveSpots() {
     if (!editable || plan.length === 0) return
     const request = ++spotRequest.current
     const ownsRequest = () => request === spotRequest.current
     setResolving(true)
-    try {
-      const routePts = journey.points.map(p => ({ lat: p.lat, lng: p.lng }))
+    let inFlight = true
+    const geometrySig = (pts: { lat: number; lng: number }[] | null): string =>
+      (pts ?? []).map(p => `${p.lat.toFixed(4)},${p.lng.toFixed(4)}`).join('|')
+    const startSig = geometrySig(roadPolylineRef.current)
+    const runPass = async (): Promise<void> => {
+      const roadNow = roadPolylineRef.current
+      const routePts = journeyRef.current.points.map(p => ({ lat: p.lat, lng: p.lng }))
       // Sample the search anchors along the ROAD polyline when routing has
       // resolved — chord anchors sit off the highway on curvy rides and bias
       // which POIs the scan finds. Home-zone exclusion still applies inside.
-      const anchors = corridorAnchors(roadPolyline ?? routePts, trip.startLocationCoords, 35000, 8)
-      const purposes = [...new Set(plan.map(p => p.purpose))]
+      const anchors = corridorAnchors(roadNow ?? routePts, trip.startLocationCoords, 35000, 8)
+      const planNow = planRef.current
+      const journeyNow = journeyRef.current
+      const purposes = [...new Set(planNow.map(p => p.purpose))]
       // Provider directive (2026-09-07): Google-only in Google mode — POIs and
       // the city layer both come from Google; free stack only without a key.
       const [hits, cities] = await Promise.all([
@@ -203,7 +258,7 @@ export function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAdd
           // Google mode: scan as one road-true Search-Along-Route request;
           // detours are measured geometrically against this polyline. Free
           // mode ignores it.
-          routeCoords: roadPolyline ? roadPolyline.map(p => [p.lng, p.lat] as [number, number]) : null,
+          routeCoords: roadNow ? roadNow.map(p => [p.lng, p.lat] as [number, number]) : null,
         }).catch(() => [] as PlaceHit[]),
         (googleEnabled()
           ? googleCitiesAlong(anchors, 35000, 8)
@@ -220,8 +275,8 @@ export function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAdd
         seen.add(key)
         candidates.push(h)
       }
-      const sorted = [...plan].sort((a, b) => a.km - b.km)
-      const segments = segmentsFromPlan(sorted, journey.distanceKm || 0, journey.driveMinutes)
+      const sorted = [...planNow].sort((a, b) => a.km - b.km)
+      const segments = segmentsFromPlan(sorted, journeyNow.distanceKm || 0, journeyNow.driveMinutes)
       const planned = trip.days.flatMap(d => d.stops)
         .filter(s => s.status !== 'rejected' && Number.isFinite(s.lat) && Number.isFinite(s.lng))
         .map(s => ({ lat: s.lat, lng: s.lng, name: s.title }))
@@ -232,25 +287,37 @@ export function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAdd
       const speed = MODE_SPEED[trip.transportMode] ?? 40
       setSlackPool(
         unplanned
-          .map(h => ({ hit: h, detourMin: asymmetricDetourMinutes(h, anchors, roadPolyline, speed) }))
+          .map(h => ({ hit: h, detourMin: asymmetricDetourMinutes(h, anchors, roadNow, speed) }))
           .filter((o): o is { hit: PlaceHit; detourMin: number } => o.detourMin != null && Number.isFinite(o.detourMin) && o.detourMin >= 0)
           .sort((a, b) => a.detourMin - b.detourMin)
           .slice(0, 12),
       )
       const assigned = annotateSegmentHits(
-        assignSegmentHits(unplanned, segments, anchors, { homeCenter: trip.startLocationCoords ?? null, routePolyline: roadPolyline ?? (routePts.length >= 2 ? routePts : null), speedKmph: MODE_SPEED[trip.transportMode] ?? 40 }),
+        assignSegmentHits(unplanned, segments, anchors, { homeCenter: trip.startLocationCoords ?? null, routePolyline: roadNow ?? (routePts.length >= 2 ? routePts : null), speedKmph: MODE_SPEED[trip.transportMode] ?? 40 }),
         candidates,
       )
       const hitById = new Map<string, PlaceHit | null>()
       sorted.forEach((item, i) => hitById.set(item.id, assigned[i]?.hit ?? null))
       setSearched(true)
-      commitPlan(plan.map(item => ({ ...item, hit: hitById.get(item.id) ?? null })))
+      // The search's own write: exempt from the supersede toast.
+      searchCommitting = true
+      commitPlan(planNow.map(item => ({ ...item, hit: hitById.get(item.id) ?? null })))
+    }
+    try {
+      await runPass()
+      // The road re-formed under the search: one re-anchor pass on the fresh
+      // shape. (A supersede — a user edit — bumps spotRequest and this skip
+      // holds; only this request still owning the flight re-runs.)
+      if (ownsRequest() && geometrySig(roadPolylineRef.current) !== startSig) {
+        await runPass()
+      }
     } catch {
       if (ownsRequest()) {
         toast('Could not find spots for your halts.', 'err')
         setSearched(true)
       }
     } finally {
+      inFlight = false
       if (ownsRequest()) setResolving(false)
     }
   }

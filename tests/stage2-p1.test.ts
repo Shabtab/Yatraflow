@@ -127,20 +127,37 @@ describe('Stage 2 P1 regressions', () => {
     const setHaltCache = vi.fn()
     const setResolving = vi.fn()
     const setSearched = vi.fn()
+    const setHaltCacheTick = vi.fn()
+    const toast = vi.fn()
+    const roadPolylineRef = { current: null }
+    const planRef = { current: [{ id: 'halt', km: 50, minutes: 20, purpose: 'meal', hit: null, pin: false }] }
+    const journeyRef = { current: { points: [{ lat: 10, lng: 76 }], distanceKm: 100, driveMinutes: 120 } }
     const bindings = {
-      spotRequest, setPlan, setHaltCache, setResolving, setSearched,
-      journey: { points: [{ lat: 10, lng: 76 }], distanceKm: 100, driveMinutes: 120 },
-      day: { index: 0 }, segmentsFromPlan: () => [],
+      spotRequest, setPlan, setHaltCache, setResolving, setSearched, setHaltCacheTick,
+      journey: journeyRef.current, day: { index: 0 }, segmentsFromPlan: () => [],
+      // #346: commitPlan reads the in-flight state. The harness extracts each
+      // function separately, so the component's shared per-render closure is
+      // simulated by binding the scenario's state statically.
+      resolving: false, searchCommitting: false,
     }
-    const commitPlan = handler(travel, 'commitPlan', bindings)
+    // The scenario: a search IS in flight when the user commits a plan edit.
+    const commitPlan = handler(travel, 'commitPlan', { ...bindings, resolving: true, toast })
     const resolve = handler(travel, 'resolveSpots', {
-      ...bindings, editable: true, plan: [{ id: 'halt', km: 50, minutes: 20, purpose: 'meal' }],
-      roadPolyline: null, trip: { transportMode: 'car' }, corridorAnchors: () => [],
+      ...bindings, editable: true, plan: planRef.current,
+      roadPolylineRef, planRef, journeyRef,
+      trip: { transportMode: 'car', startLocationCoords: null, days: [] }, corridorAnchors: () => [],
       searchNearbyPoisMulti: () => spots.promise, googleEnabled: () => false,
-      searchCitiesAlong: async () => [], commitPlan, toast: vi.fn(),
+      searchCitiesAlong: async () => [], commitPlan, toast, filterPlannedNearby: (c: unknown[]) => c,
+      assignSegmentHits: () => [], annotateSegmentHits: (h: unknown[]) => h,
+      setSlackPool: vi.fn(), MODE_SPEED: { car: 40 }, asymmetricDetourMinutes: () => null,
     })
     const work = resolve()
+    // The user removes all halts BEFORE the search resolves: the supersede is
+    // loud (#346), the plan is written empty, and the search's own late write
+    // is then dropped by the bump rather than landing over the user's edit.
     commitPlan([])
+    expect(toast).toHaveBeenCalledWith('Plan changed — the spot search was restarted. Press search again when ready.')
+    ++spotRequest.current // the cancel the bump causes
     spots.resolve([])
     await work
     expect(setPlan).toHaveBeenCalledExactlyOnceWith([])

@@ -940,10 +940,11 @@ describe('the engine’s own category table (haltFit)', () => {
     expect(SLOT_KIND_CATEGORIES.fuel).toContain('transport-hub')
     expect(SLOT_KIND_CATEGORIES.overnight).toContain('hotel')
     expect(SLOT_KIND_CATEGORIES.stretch).toContain('cafe')
-    // `cafe` has meal fit 1 against `candidatesFor`'s pool gate of 2, so the
-    // engine can never offer one as a meal — the hand-written list this
-    // replaced included it anyway and the hint counted picks that cannot exist.
-    expect(SLOT_KIND_CATEGORIES.meal).not.toContain('cafe')
+    // #344: the pool gate is the ONE shared floor (MIN_PURPOSE_FIT = 1), so
+    // `cafe` (meal fit 1) is now admissible exactly when the scorer admits
+    // it — the old gate-2 here disagreed with the scorer's fit-1 rule and
+    // made the hint count a pick the pool would have refused (or vice versa).
+    expect(SLOT_KIND_CATEGORIES.meal).toContain('cafe')
     // `rest` is the category both providers tag a TOWN with, and the
     // populated-place bonus makes it meal/fuel/overnight-capable. It appears
     // under more than one kind — which is why a DNA event records its own

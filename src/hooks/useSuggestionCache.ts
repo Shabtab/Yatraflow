@@ -27,8 +27,12 @@ const CACHE_TTL_MS = 1000 * 60 * 60 * 4 // 4 hours
  * Bumped to 5 on 2026-09-25 (#331): the map plan hash now also covers day
  * start/weather inputs, accepted halt pins, DNA preferences and speed, and the
  * light fraction pool shares the same TTL. The shape bump evicts old entries.
+ *
+ * Bumped to 6 on 2026-09-27 (#346): the halt-plan cache carries `pin` per
+ * item (the user's "use the real spot" tick used to be session-only), so old
+ * payloads evict rather than hydrate into the new shape.
  */
-const CACHE_VERSION = 5
+const CACHE_VERSION = 6
 
 /**
  * Build the cache key from every input the corridor search reads. Kept here

@@ -31,7 +31,11 @@ export function budgetSharePct(spendMin: number, budgetMin: number): number {
 /**
  * Split journey-ordered items into within-budget and deferred. Zero-detour
  * items (on-route) never spend and always stay; anything that would push
- * cumulative spend past the budget is deferred. Garbage detours count as 0.
+ * cumulative spend past the budget is deferred, INCLUDING unknown/garbage
+ * detours (#327): they are charged the full budget so a broken-geometry hit
+ * can never ride for free — the deferral is the honest "wait for manual
+ * review". (An earlier revision cost them 0 here, which was the leak #327
+ * closed; the comment still said so until #344 swept it.)
  */
 export function splitByDetourBudget<T extends { detourMin: number | null }>(
   items: T[],
@@ -41,8 +45,12 @@ export function splitByDetourBudget<T extends { detourMin: number | null }>(
   const deferred: T[] = []
   let spent = 0
   for (const item of items) {
-    const unknown = item.detourMin == null
-    const cost = unknown ? budgetMin : typeof item.detourMin === 'number' && Number.isFinite(item.detourMin) ? Math.max(0, item.detourMin) : budgetMin
+    // Unknown covers null/undefined AND non-finite numbers (#344): a NaN
+    // detour must not price as affordable on a technicality — 0 + budget
+    // > budget is false, so the old NaN path landed WITHIN on a full-budget
+    // charge. Unknown-cost waits for manual review, per #327's rule.
+    const unknown = item.detourMin == null || (typeof item.detourMin === 'number' && !Number.isFinite(item.detourMin))
+    const cost = unknown ? budgetMin : Math.max(0, item.detourMin as number)
     if (unknown || spent + cost > budgetMin) {
       deferred.push(item)
       continue

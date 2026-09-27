@@ -144,9 +144,13 @@ describe('slot pattern hints (plan P7.2)', () => {
   it('legacy events still read through the engine category list', () => {
     const legacy = [ev('accept', 'food', 5), ev('accept', 'food', 5), ev('accept', 'rest', 5)]
     expect(slotPatternHint(legacy, 'meal')).toBe('you usually accept about +5 min for these')
-    // ...and a category the engine cannot offer for the kind stays silent.
-    const cafeOnly = [ev('accept', 'cafe', 5), ev('accept', 'cafe', 5), ev('accept', 'cafe', 5)]
-    expect(slotPatternHint(cafeOnly, 'meal')).toBeNull()
+    // #344 aligned the pool gate with the scorer's floor (MIN_PURPOSE_FIT),
+    // so a cafe (meal fit 1) is now OFFERABLE as a meal and the hint speaks
+    // for it — the old null here was the gate-2 disagreement this wave fixed.
+    // A category the engine genuinely cannot offer for the kind stays silent:
+    // a museum has no meal fit at all.
+    const museumOnly = [ev('accept', 'museum', 5), ev('accept', 'museum', 5), ev('accept', 'museum', 5)]
+    expect(slotPatternHint(museumOnly, 'meal')).toBeNull()
   })
 })
 
