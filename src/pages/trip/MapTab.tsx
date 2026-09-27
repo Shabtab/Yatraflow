@@ -967,12 +967,14 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
           .findIndex(x => x.segment.index === slot.segment?.index)
         if (ordinals >= 0) saveHaltPin(trip.id, ordinals, slot.segment?.targetKm ?? 0)
       }
-      suggestionCache.clearMap()
-      setRefreshTick(t => t + 1)
+      // #346: no clearMap/refreshTick here — a fill hides its row LOCALLY
+      // (identity/addedIds carry the id; stopSig re-derives the slots). The
+      // DNA accept above stays the one legitimate engine re-plan input. The
+      // old forced re-search billed a full scan and flashed the spinner for
+      // every fill.
       undoToast(`"${hit.name}" fills ${slot.label} on Day ${dayIdx + 1}`, () => {
         deleteStop(trip.id, stopId)
-        suggestionCache.clearMap()
-        setRefreshTick(t => t + 1)
+        setDnaTick(t => t + 1)
       })
     })
       setOpenSlotKey(null)
@@ -1058,9 +1060,9 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
         for (const { slot, hit } of ordered) {
           recordDnaEvent({ tripId: trip.id, action: 'accept', haltKind: slot.kind, category: hit.category, detourMin: asymmetricDetourMinutes(hit, anchors, routePolyline ?? null, MODE_SPEED[trip.transportMode] ?? 40) ?? undefined, visitMin: visitMinutesForCategory(hit.category) })
         }
-        suggestionCache.clearMap()
+        // #346: the batch fill re-plans through DNA only — the rows hide
+        // locally (identity/addedIds), so no forced re-search or spinner.
         setDnaTick(t => t + 1)
-        setRefreshTick(t => t + 1)
         setOpenSlotKey(null)
         const n = ordered.length
         const left = targets.length - ordered.length
@@ -1071,8 +1073,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
             // renumbers the day, so the stops that were already there come back
             // to 1..n in their original sequence.
             for (const id of newIds) deleteStop(trip.id, id)
-            suggestionCache.clearMap()
-            setRefreshTick(t => t + 1)
+            setDnaTick(t => t + 1)
             toast('The planned fills were pulled back')
           },
         )
@@ -1319,8 +1320,10 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
     if (previewOpen) { toast(PREVIEW_BUSY, 'err'); return }
     const stop = trip.days.find(d => d.stops.some(s => s.id === stopId))?.stops.find(s => s.id === stopId)
     deleteStop(trip.id, stopId)
-    suggestionCache.clearMap()
-    setRefreshTick(t => t + 1)
+    // #346: the row for this stop drops out through the local re-derivation
+    // (stopSig → slots, identity/altPool → pool cards). The corridor plan is
+    // still true — deleting one planned stop does not unplan the road — so
+    // no forced re-search fires and no spinner flashes.
     if (stop) {
       undoToast(`Removed “${meta.title}” from the trip`, () => restoreStop(trip.id, stop, meta.dayIndex))
     } else {
@@ -1679,6 +1682,17 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
     altPool: altPool.all.map(e => e.h),
     decisions,
     memberCount: (trip.members ?? []).length,
+    // #344: the slot re-scores its pool with the same extras the corridor
+    // ranked by — DNA (per-trip learning + crew seeds) and the home point —
+    // and reads the session add/dismiss bags so a just-added or just-
+    // dismissed hit leaves the open slot with the pool cards. plannedStops
+    // is derived per day inside candidatesFor from `dayStops` (a single
+    // shared count here would charge every day the ACTIVE day's density,
+    // including tripReadiness's matrix).
+    dnaVector: buildDnaVectorAcrossTrips(loadDnaLog(), crewSeedEvents(trip.id, crewSeeds)),
+    homeCenter: trip.startLocationCoords ?? null,
+    addedIds,
+    dismissedIds,
     // The shared attribution object - the same shape the Overview matrix feeds
     // its own deps, so the two surfaces cannot attribute a halt to two days.
     dayOfSegment: dayAttribution.dayOfSegment,
@@ -1687,7 +1701,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
     // own road-km span (the same road-true km dayForKm trusts).
     fillSkeleton: true,
     daySpanKm: dayAttribution.daySpanKm,
-  }), [pois, anchors, routePolyline, trip.transportMode, trip.travelStyle, existingNames, identity, altPool, dayAttribution, decisions, trip.travellers])
+  }), [pois, anchors, routePolyline, trip.transportMode, trip.travelStyle, existingNames, identity, altPool, dayAttribution, decisions, trip.travellers, trip.startLocationCoords, crewSeeds, dnaTick, addedIds, dismissedIds])
   /** This day's stops - one lookup, shared by the slots, the shape and the fills. */
   const activeDayStops = useMemo(
     () => trip.days.find(d => d.index === activeDayIndex)?.stops ?? [],
@@ -2352,8 +2366,10 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
                                       .findIndex(x => x.segment.index === segIdx)
                                     if (ords < 0) { setDriftDismissed(prev => new Set(prev).add(segIdx)); return }
                                     clearHaltPin(trip.id, ords)
-                                    suggestionCache.clearMap()
-                                    setRefreshTick(t => t + 1)
+                                    // #346: haltPins is inside mapInputsHash, so the plan
+                                    // re-derives through the hash — the extra forced re-search
+                                    // (spinner flash) is gone.
+                                    setDnaTick(t => t + 1)
                                     undoToast('Moved the pinned rest to its new spot', () => saveHaltPin(trip.id, ords, drift.fromKm))
                                   }}
                                 >Move here</button>
@@ -2569,7 +2585,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
                           if (mDay == null) continue // no road position — cannot attribute to a day
                           toAdd.push({ hit: m, dayIndex: mDay })
                         }
-                        suggestionCache.clearMap()
+                        // #346: rows hide locally (setAddedIds below) — no forced re-search.
                         // Resolve placeholder coords BEFORE writing — both
                         // providers emit (0,0) "resolve on pick" placeholders
                         // and a raw write pins the journey to Null Island
@@ -2708,7 +2724,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
             <p className="hint-text">You can fine-tune duration, fees and timings in the Timeline afterwards.</p>
             <div style={{ display: 'flex', gap: 9, justifyContent: 'flex-end', marginTop: 8 }}>
               <button className="btn btn-outline" onClick={() => setPoiDraft(null)}>Cancel</button>
-              <button className="btn btn-primary" onClick={() => { recordDnaEvent({ tripId: trip.id, action: 'accept', haltKind: poiDraft.hit.haltPurpose, category: poiDraft.hit.category, detourMin: asymmetricDetourMinutes(poiDraft.hit, anchors, routePolyline ?? null, MODE_SPEED[trip.transportMode] ?? 40) ?? undefined, visitMin: visitMinutesForCategory(poiDraft.hit.category) }); suggestionCache.clearMap(); setDnaTick(t => t + 1); addPoiToDay(poiDraft.hit, pickDay); setPoiDraft(null) }}>
+              <button className="btn btn-primary" onClick={() => { recordDnaEvent({ tripId: trip.id, action: 'accept', haltKind: poiDraft.hit.haltPurpose, category: poiDraft.hit.category, detourMin: asymmetricDetourMinutes(poiDraft.hit, anchors, routePolyline ?? null, MODE_SPEED[trip.transportMode] ?? 40) ?? undefined, visitMin: visitMinutesForCategory(poiDraft.hit.category) }); setDnaTick(t => t + 1); addPoiToDay(poiDraft.hit, pickDay); setPoiDraft(null) }}>
                 Add to timeline
               </button>
             </div>

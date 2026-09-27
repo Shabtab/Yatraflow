@@ -566,6 +566,26 @@ Key locations:
    (a partial real corridor is legitimately `ok`, #188's rule), and `failed`
    must be watched at ~2s granularity (the internal backoff is 2s and the
    in-flight state lasts about that long).
+ 6w. **A cached derived list and its live re-derivation must agree on the
+   input BASE, or the two surfaces that read them contradict each other
+   (learned 2026-09-27, the #344/#346 wave).** The slot rail budgeted an
+   empty-day 45-minute detour budget because the `plannedStops` dep it
+   documented was passed by NOBODY, while the see-&-do rail subtracted per
+   stop — the same day, two verdicts, on screen at once. Three mechanics:
+   (1) when a per-day fact can be DERIVED from data the function already
+   receives (`dayStops`), derive it beside the use — a caller-passed prop
+   invited the bug by existing unused, and a single shared count would have
+   poisoned `tripReadiness`'s other days with the ACTIVE day's density;
+   (2) a "preference" must never re-order a SPENDING walk — stay-proximity
+   used to sort meal candidates before the budget was spent, so a stay-close
+   off-route place ate the budget ahead of the on-route engine-best; rank by
+   the score everything else uses and apply the preference as a labeled
+   tie-break (bonus seconds within a window) plus an honest label ("straight
+   line" where every detour elsewhere speaks road minutes);
+   (3) a supersede must be LOUD: a cancelled in-flight search that only
+   re-enables its button reads as completion — toast, and exempt the
+   search's OWN final write from its toast via a flag, or the completion
+   toasts itself.
  7. **When asking the user to review/test locally, always hand them the exact
    URL — never make them find or start the server.** Check if the dev server
    is up (probe `http://localhost:5173`); if not, start `npm run dev`

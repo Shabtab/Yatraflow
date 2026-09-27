@@ -30,11 +30,14 @@ import {
   fitScoreForPurpose,
   reasonForSegmentHit,
   scoreHitForSegment,
+  type AssignOpts,
   type RideSegment,
   type SegmentHit,
 } from './ridePlan'
 import { budgetSharePct, dayDetourBudgetMin } from './detourBudget'
 import { asymmetricDetourMinutes, detourKm, type HaltPurpose, type PlaceHit } from './providers/hits'
+import { MIN_PURPOSE_FIT } from './haltFit'
+import { type DnaVector } from './tripDna'
 import { clockHM } from './clockOverlay'
 import { haversineKm } from './geo'
 import { buildJourney, MODE_SPEED } from './engine'
@@ -139,7 +142,12 @@ export interface DaySlotsDeps {
   routePolyline?: { lat: number; lng: number }[] | null
   transportMode?: TransportMode | null
   travelStyle?: string | null
-  /** planned-stop count feeding that day's detour budget (MapTab's own input) */
+  /** planned-stop count feeding that day's detour budget. Kept as an explicit
+   *  override for callers that already computed it (MapTab's hit-cost chips);
+   *  `candidatesFor` derives the per-day count from `dayStops` when absent, so
+   *  slot and rail budget from the same base even where this is not passed
+   *  (#344 — it used to be passed nowhere, and the slot always budgeted the
+   *  empty-day 45 while the rail's chips subtracted per stop). */
   plannedStops?: number
   /** lowercase titles of stops already on the trip - such hits never re-candidate */
   existingNames?: ReadonlySet<string>
@@ -161,6 +169,21 @@ export interface DaySlotsDeps {
    *  (it can name people who are not crew) and is gone rather than kept as a
    *  second reading. */
   memberCount?: number
+  /** Trip preference vector — the corridor scan ranked with it, so the slot's
+   *  re-score of the same pool must too, or the slot order diverges from the
+   *  rail order for the same hit (#344). */
+  dnaVector?: DnaVector
+  /** The trip's home point — the scorer's home-zone filter and DNA live in the
+   *  same AssignOpts bag; one without the other half a verdict. */
+  homeCenter?: { lat: number; lng: number } | null
+  /** Hit ids added this session (MapTab's addedIds) — such hits never
+   *  re-candidate, matching the pool cards' own filter (#344: the seg-hit
+   *  loop used to check only names, so a just-added or just-dismissed hit
+   *  lingered in the open slot while the pool had dropped it). Optional; the
+   *  `identity` predicate carries both bags when supplied. */
+  addedIds?: ReadonlySet<string>
+  /** Hit ids dismissed this session (MapTab's dismissedIds) — see addedIds. */
+  dismissedIds?: ReadonlySet<string>
   /** Day attribution override (the caller's own dayForKm over road-true
    *  per-day km): receives a journey segment, returns the trip day index it
    *  belongs to. When given, day slicing follows IT, not the dayEnd flags -
@@ -263,6 +286,14 @@ function draftForSegment(seg: RideSegment): SlotDraft | null {
 }
 
 /** The engine's window for a slot - the constants ridePlan owns, never re-declared. */
+/** Stay-proximity preference (#344): within this straight-line km of the
+ *  day's hotel, a meal candidate earns this many score-seconds as a TIE-BREAK
+ *  — never a re-sort ahead of the engine-best (the old haversine-first rank
+ *  spent the budget on stay-close/off-route places while the rail flagged
+ *  them over-budget). The reason string states its straight-line metric. */
+const STAY_BONUS_KM = 2
+const STAY_BONUS_SEC = 60
+
 function windowFor(draft: SlotDraft): [number, number] | null {
   if (draft.key === 'breakfast') return BREAKFAST_WINDOW
   if (draft.key === 'lunch') return LUNCH_WINDOW
@@ -446,11 +477,16 @@ function synthSegment(draft: SlotDraft, seg: RideSegment | null): RideSegment {
 
 /**
  * Candidates for an empty slot. The segment's own engine-scored hit leads;
- * the corridor pool (altPool) is scored with the engine's own scorer. Pool
- * gating stays honest: meals accept food-grade places or real towns, fuel
- * wants fuel-grade places, stretch wants break-grade ones (fit >= 2), and a
- * stay needs hotel-grade or town-grade. The day's detour budget culls the
- * tail exactly as the see-&-do rail spends its budget.
+ * the corridor pool (altPool) is scored with the engine's own scorer. Gating
+ * is ONE shared floor (`MIN_PURPOSE_FIT`) across the pool, the scorer's own
+ * need-purpose gate and the segment leads — the same hit can no longer be
+ * rejected from the pool while being displayed as a lead (#344). The pool is
+ * re-scored with the same inputs the corridor used (route polyline, speed,
+ * DNA vector, home centre), so slot order cannot diverge from rail order.
+ * Ranking is the ENGINE score; the day's detour budget is spent in that
+ * order. Stay-proximity is a labeled tie-break only — it never re-sorts
+ * before the budget, so a stay-close/off-route pick can no longer eat the
+ * budget ahead of the on-route engine-best (#344's "good options starved").
  */
 function candidatesFor(
   draft: SlotDraft,
@@ -462,6 +498,18 @@ function candidatesFor(
   const win = windowFor(draft)
   const speed = speedFor(deps.transportMode)
   const purpose = purposeFor(draft.kind)
+  const synth = synthSegment(draft, seg)
+  // The budget base is THIS day's active stops, derived beside the budget
+  // itself so slot and rail cannot disagree about the day's density (#344:
+  // the prop existed, was documented, and was passed by nobody).
+  const plannedStops = deps.plannedStops
+    ?? deps.dayStops.filter(s => s.status !== 'rejected').length
+  const scoreOpts: AssignOpts = {
+    routePolyline: deps.routePolyline ?? undefined,
+    speedKmph: speed,
+    ...(deps.dnaVector ? { dnaVector: deps.dnaVector } : {}),
+    ...(deps.homeCenter ? { homeCenter: deps.homeCenter } : {}),
+  }
   const seen = new Set<string>()
   const rows: Array<{ hit: PlaceHit; score: number }> = []
 
@@ -471,6 +519,12 @@ function candidatesFor(
     if (seen.has(id)) continue
     if (deps.identity ? isAlreadyAdded(sh.hit, deps.identity)
       : deps.existingNames?.has(normalizePlaceName(sh.hit.name))) continue
+    // Just-added and just-dismissed hits leave the slot the same way they
+    // leave the pool card (#344) — the identity predicate carries them, so
+    // use it when present and the session bags when not.
+    if (deps.identity
+      ? (deps.identity.added.has(id) || deps.identity.dismissed.has(id))
+      : (deps.addedIds?.has(id) || deps.dismissedIds?.has(id))) continue
     seen.add(id)
     rows.push({ hit: sh.hit, score: sh.score })
   }
@@ -479,37 +533,38 @@ function candidatesFor(
     const id = String(h.id)
     if (seen.has(id)) continue
     if (deps.existingNames?.has(h.name.toLowerCase())) continue
-    // Pool gating: meals take food-grade places or real towns, fuel wants
-    // fuel-grade, stretch break-grade, stays hotel/town-grade (fit >= 2).
-    if (fitScoreForPurpose(h, purpose) < 2) continue
-    const score = scoreHitForSegment(h, synthSegment(draft, seg), deps.anchors, {
-      routePolyline: deps.routePolyline ?? undefined,
-      speedKmph: speed,
-    })
+    if (deps.identity?.added.has(id) || deps.identity?.dismissed.has(id)) continue
+    if (deps.addedIds?.has(id) || deps.dismissedIds?.has(id)) continue
+    // Pool gating = the ONE shared floor (the scorer's own need-purpose rule;
+    // wrong-kind places still cannot fill a slot, and the populated-place
+    // bonus means real towns stay admissible).
+    if (fitScoreForPurpose(h, purpose) < MIN_PURPOSE_FIT) continue
+    const score = scoreHitForSegment(h, synth, deps.anchors, scoreOpts)
     if (score == null) continue
     seen.add(id)
     rows.push({ hit: h, score })
   }
 
-  // Coupled re-ranking (plan P3.4): once the day has a stay, its meals rank
-  // by proximity to that stay - the engine score separates the ties.
+  // Stay-proximity (#344): a preference, not a rank. Kept OUT of the sort —
+  // the engine score orders the budget walk — and applied as a labeled
+  // tie-break (bonus seconds ahead of the next row within BONUS_WINDOW_SEC)
+  // plus the honest "km from your stay" reason, which states its
+  // straight-line metric where every detour elsewhere speaks road minutes.
   const stay = deps.dayStops.find(s => s.status !== 'rejected' && s.category === 'hotel'
     && Number.isFinite(s.lat) && Number.isFinite(s.lng))
   const nearStay = draft.kind === 'meal' && stay ? stay : null
   const stayKmOf = (h: PlaceHit): number | null =>
     nearStay ? haversineKm(h.latitude, h.longitude, nearStay.lat, nearStay.lng) : null
-  rows.sort((a, b) => {
-    if (nearStay) {
-      const da = stayKmOf(a.hit)
-      const db = stayKmOf(b.hit)
-      if (da != null && db != null && da !== db) return da - db
-    }
-    return a.score - b.score
-  })
+  const stayBonusSec = (h: PlaceHit): number => {
+    if (!nearStay) return 0
+    const km = stayKmOf(h)
+    return km != null && km <= STAY_BONUS_KM ? STAY_BONUS_SEC : 0
+  }
+  rows.sort((a, b) => (a.score - stayBonusSec(a.hit)) - (b.score - stayBonusSec(b.hit)))
 
   const budget = dayDetourBudgetMin({
     travelStyle: deps.travelStyle ?? undefined,
-    plannedStops: deps.plannedStops,
+    plannedStops,
   })
   const out: SlotCandidate[] = []
   let spent = 0
@@ -520,6 +575,10 @@ function candidatesFor(
     // Unknown position is never free or auto-kept: the candidate needs a
     // measured road position before it can consume the day's finite budget.
     if (dMin == null) continue
+    // Non-finite detours are DEFERRED, not spent at 0 (#344): a broken
+    // geometry must not price as free and auto-keep. (detourBudget's splitter
+    // makes the same call on the rail side since #327.)
+    if (!Number.isFinite(dMin)) continue
     if (spent + dMin > budget) continue
     spent += dMin
     const eta = seg && minute(seg.etaMinutes) ? (seg.etaMinutes as number) : null
@@ -536,10 +595,10 @@ function candidatesFor(
       inWindow,
       score: row.score,
       reason: [
-        reasonForSegmentHit({ segment: synthSegment(draft, seg), hit: row.hit, score: row.score }, dKm),
+        reasonForSegmentHit({ segment: synth, hit: row.hit, score: row.score }, dKm),
         (() => {
           const km = stayKmOf(row.hit)
-          return km != null && km <= 2 ? `${km.toFixed(1)} km from your stay` : null
+          return km != null && km <= STAY_BONUS_KM ? `${km.toFixed(1)} km from your stay (straight line)` : null
         })(),
       ].filter((x): x is string => !!x).join(' \u00b7 '),
     })

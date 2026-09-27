@@ -1280,6 +1280,12 @@ export interface HaltPlanItem {
   km: number
   minutes: number
   purpose: HaltPurpose
+  /** The user chose the real spot over the generic on-route break. Carried in
+   *  the halt cache since #346 — it used to live only in component state, so
+   *  every tab switch silently dropped the ticks. Hydration reads it
+   *  defensively (`pin === true`), so payloads cached before the field
+   *  existed hydrate unpinned, as they always behaved. */
+  pin?: boolean
 }
 
 /**
