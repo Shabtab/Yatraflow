@@ -94,6 +94,12 @@ function PublicationForm({ trip, pub, live = true, isOwner, creatorId, onDone }:
   const [tips, setTips] = useState(pub ? pub.travelTips.join('\n') : DEFAULT_TRAVEL_TIPS.join('\n'))
   const [cta, setCta] = useState(pub?.subscriberCta ?? '')
   const [err, setErr] = useState<string | null>(null)
+  // A publish is a network write, and this button was the only publish control
+  // in the app without a busy state (#388). Two clicks fired two upserts, two
+  // `refreshedAt` stamps and two toasts — the duplicate was only prevented by
+  // accidental id-reuse in the store, which is not a guard. The cover picker's
+  // `busy` is the pattern this copies.
+  const [busy, setBusy] = useState(false)
 
   const priceNum = price.trim() === '' ? 0 : Number(price)
   const entirelyFree = price.trim() === '' || priceNum === 0
@@ -113,7 +119,12 @@ function PublicationForm({ trip, pub, live = true, isOwner, creatorId, onDone }:
     })
   }
 
-  function submit() {
+  async function submit() {
+    // Guard first, and by STATE rather than by the button: a click that arrives
+    // while a write is in flight is dropped, so a double-click cannot become two
+    // publishes (AGENTS §2.6a — every async path needs an input guard, and the
+    // guard must match the visual feedback state).
+    if (busy) return
     // The publication's cover IS the link preview: api/i.js serves it as
     // og:image/twitter:image, and it is copied from the trip here. Publishing
     // without one — or with a URL the handler's `^https://\S+$` test rejects —
@@ -131,25 +142,50 @@ function PublicationForm({ trip, pub, live = true, isOwner, creatorId, onDone }:
     // Price > 0 with every day free would publish a premium price over fully
     // viewable content — a "Unlock Premium" CTA that unlocks nothing. Block it.
     if (!entirelyFree && free.size >= trip.days.length) { setErr('Every day is free — clear the price or lock a day.'); return }
+    // The ≥1-free-day rule lived ONLY in the toggle guard above, so it was
+    // enforced by interaction rather than at the point of writing: a `free` set
+    // that arrived empty (a publication hydrated with `freeDayIndexes: []`)
+    // slipped past `toggleDay` entirely and published a premium plan with zero
+    // free days — `0 >= trip.days.length` is false, and the day buttons render
+    // `disabled` because every day reads as free. Re-assert every invariant the
+    // writer depends on here; the toggle guard stays as the friendly version.
+    if (!entirelyFree && free.size < 1) { setErr('At least one day must stay free — it is the preview readers see.'); return }
     if (hasPremiumDay && !cta.trim()) { setErr('Premium days need a call-to-action — tell readers what they get when they unlock.'); return }
     setErr(null)
-    publishItinerary({
-      tripId: trip.id, creatorId,
-      title: trip.name,
-      coverImageUrl: trip.coverImageUrl,
-      tagline: tagline.trim() || defaultTagline,
-      routeSummary: [trip.startLocation, ...trip.destinations],
-      durationDays: trip.days.length,
-      estimatedBudgetPerPersonInr: trip.budgetPerPersonInr,
-      travelStyle: trip.travelStyle,
-      bestSeason: bestSeason.trim() || undefined,
-      travelTips: tips.split('\n').map(s => s.trim()).filter(Boolean),
-      warningsAndAssumptions: DEFAULT_WARNINGS,
-      freeDayIndexes: entirelyFree ? allIndexes : [...free],
-      premiumPriceInr: entirelyFree ? undefined : priceNum,
-      subscriberCta: cta.trim() || undefined,
-    })
-    onDone(Boolean(pub) && live)
+    setBusy(true)
+    try {
+      // AWAITED (#388). The old call was fire-and-forget, so `onDone` — and
+      // with it the "Published to Explore" toast — fired while the write was
+      // still in flight; a later failure then rolled back under a success
+      // message. The toast is now a statement about a resolved outcome.
+      await publishItinerary({
+        tripId: trip.id, creatorId,
+        title: trip.name,
+        // The TRIMMED value the rule above validated, not the raw field. The
+        // handler's `^https://\S+$` test never trims, so storing the padded
+        // original shipped a link that previewed as the brand card (#360).
+        coverImageUrl: cover,
+        tagline: tagline.trim() || defaultTagline,
+        routeSummary: [trip.startLocation, ...trip.destinations],
+        durationDays: trip.days.length,
+        estimatedBudgetPerPersonInr: trip.budgetPerPersonInr,
+        travelStyle: trip.travelStyle,
+        bestSeason: bestSeason.trim() || undefined,
+        travelTips: tips.split('\n').map(s => s.trim()).filter(Boolean),
+        warningsAndAssumptions: DEFAULT_WARNINGS,
+        freeDayIndexes: entirelyFree ? allIndexes : [...free],
+        premiumPriceInr: entirelyFree ? undefined : priceNum,
+        subscriberCta: cta.trim() || undefined,
+      })
+      onDone(Boolean(pub) && live)
+    } catch {
+      // The store already toasts its own failure and rolls the cache back; this
+      // keeps the form honest about the fact that nothing was published, rather
+      // than leaving the last validation error standing as if it were the reason.
+      setErr('Could not save the publication — nothing was published. Try again.')
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
@@ -166,7 +202,7 @@ function PublicationForm({ trip, pub, live = true, isOwner, creatorId, onDone }:
         </p>
       )}
       <Field label="Tagline" hint="One line that sells the route on Explore and the public page.">
-        <input className="input" value={tagline} onChange={e => setTagline(e.target.value)} maxLength={140} />
+        <input className="input" value={tagline} onChange={e => { setTagline(e.target.value); setErr(null) }} maxLength={140} />
       </Field>
       <div className="form-row">
         <Field label="Premium price (₹)" hint={priceNum > 0
@@ -184,14 +220,14 @@ function PublicationForm({ trip, pub, live = true, isOwner, creatorId, onDone }:
             value={price} onChange={e => { setPrice(e.target.value); setErr(null) }} />
         </Field>
         <Field label="Best season" hint="Optional — shown as practical guidance.">
-          <input className="input" value={bestSeason} onChange={e => setBestSeason(e.target.value)} placeholder="e.g. Sep–Mar" />
+          <input className="input" value={bestSeason} onChange={e => { setBestSeason(e.target.value); setErr(null) }} placeholder="e.g. Sep–Mar" />
         </Field>
       </div>
       <Field label="Travel tips" hint="One per line.">
-        <textarea className="textarea" rows={3} value={tips} onChange={e => setTips(e.target.value)} />
+        <textarea className="textarea" rows={3} value={tips} onChange={e => { setTips(e.target.value); setErr(null) }} />
       </Field>
       <Field label="Subscriber call-to-action" hint={hasPremiumDay ? 'Required while any day is premium.' : 'Used on premium days — add one before charging.'}>
-        <input className="input" value={cta} onChange={e => setCta(e.target.value)} placeholder="e.g. Full checklist + stay contacts." />
+        <input className="input" value={cta} onChange={e => { setCta(e.target.value); setErr(null) }} placeholder="e.g. Full checklist + stay contacts." />
       </Field>
 
       <div className="ts-subhead">
@@ -216,8 +252,8 @@ function PublicationForm({ trip, pub, live = true, isOwner, creatorId, onDone }:
       </div>
 
       {err && <p className="err-text ts-warn-note" role="alert">{err}</p>}
-      <button className="btn btn-saffron" disabled={!isOwner} onClick={submit}>
-        {pub && live ? 'Update publication' : 'Publish to Explore'}
+      <button className="btn btn-saffron" disabled={!isOwner || busy} onClick={() => void submit()}>
+        {busy ? 'Publishing…' : pub && live ? 'Update publication' : 'Publish to Explore'}
       </button>
       {!isOwner && <p className="hint-text ts-note">Only the trip owner can publish.</p>}
     </div>
