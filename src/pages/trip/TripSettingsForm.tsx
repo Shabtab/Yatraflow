@@ -20,12 +20,21 @@ import { Field, RangeDial, StickyFormBar, toast } from '../../components/ui'
 import { Select } from '../../components/Select'
 import { DateRangeCalendar } from '../../components/DateRangeCalendar'
 import { PillNav } from '../../components/PillNav'
-import { LocationInput } from '../../components/LocationInput'
+import { LocationInput, pickLabel } from '../../components/LocationInput'
+import type { StartPin } from '../../lib/startPin'
+import { coordsForText, pinMatchesText } from '../../lib/startPin'
 import { CoverImagePicker } from '../../components/CoverImagePicker'
 
 /** The allowance the "drive after dinner" toggle turns on when a trip has none
  *  (#122's dhaba case: dinner at X, two more hours to Y). */
 const DEFAULT_DRIVE_AFTER_DINNER_MIN = 120
+
+/** #410: the two things the form says when the start's text and its pin stop
+ *  agreeing — one for the edit that dropped the pin, one for the pair a save
+ *  refused to persist. "Unpinned" is not an error: the trip still plans, and
+ *  the existing degraders measure it honestly without a position. */
+const START_UNPINNED = 'The start pin is off — the text now names a different city. Pick the city to pin it on the map again.'
+const START_DROPPED = 'The stored start pin named a different city, so it was not saved. Pick the city to pin it.'
 
 /** Icon per transport mode — the ONE map lives in components/icons (modeIcon);
  *  this file used to keep a private copy that drifted from the bench's. */
@@ -66,7 +75,11 @@ export function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boo
     const target = Math.round((e.getTime() - s.getTime()) / 86400000) + 1
     return target - trip.days.length
   })()
-  const [startCoords, setStartCoords] = useState<LatLngPoint | null>(trip.startLocationCoords ?? null)
+  const [startPin, setStartPin] = useState<StartPin | null>(
+    trip.startLocationCoords ? { coords: trip.startLocationCoords, label: trip.startLocation } : null,
+  )
+  /** #410: soft notice under the start field — the pin is off, and why. */
+  const [startNotice, setStartNotice] = useState('')
   const [destCoords, setDestCoords] = useState<(LatLngPoint | null)[]>(trip.destinationCoords ?? [])
   const [destInput, setDestInput] = useState('')
 
@@ -183,11 +196,26 @@ export function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boo
             <Field label="Starting location">
               <LocationInput
                 value={f.startLocation}
-                onChange={v => setF(x => ({ ...x, startLocation: v }))}
-                onPick={p => setStartCoords({ lat: p.latitude, lng: p.longitude })}
+                onChange={v => {
+                  setF(x => ({ ...x, startLocation: v }))
+                  // #410: the pin belongs to the text it was picked for. An
+                  // edit that names a different city DROPS the pin — keeping
+                  // the old coordinates here is how a renamed trip silently
+                  // keeps measuring the city it no longer names. A pick
+                  // restores it instantly, below.
+                  if (startPin && !pinMatchesText(startPin, v)) {
+                    setStartPin(null)
+                    setStartNotice(START_UNPINNED)
+                  }
+                }}
+                onPick={p => {
+                  setStartPin({ coords: { lat: p.latitude, lng: p.longitude }, label: pickLabel(p) })
+                  setStartNotice('')
+                }}
                 placeholder="Search a city…"
                 disabled={!editable}
               />
+              {startNotice && <p className="hint-text" role="status" style={{ marginTop: 6 }}>{startNotice}</p>}
             </Field>
             <Field label={`Destinations (${f.destinations.length})`} hint="Search to add — arrows reorder the route">
               <LocationInput
@@ -447,9 +475,17 @@ export function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boo
           if (e < s) { setDateErr('The end date must be on or after the start date.'); return }
           // updateTrip toasts the rejection itself (e.g. a shrink blocked by a
           // day holding stops) and returns false — no success toast then.
+          // #410 backstop: never persist a pair whose text and pin disagree,
+          // whatever produced it. The interactive path drops the pin at edit
+          // time (above); this catches a state the form did not create — and a
+          // legacy row saved by the old code, which the pin's own label cannot
+          // reveal. The trip saves unpositioned rather than measuring the
+          // wrong city under the right name.
+          const startCoordsToSave = coordsForText(startPin, f.startLocation)
+          if (startPin && !startCoordsToSave) setStartNotice(START_DROPPED)
           const saved = updateTrip(trip.id, {
             name: f.name, startLocation: f.startLocation,
-            startLocationCoords: startCoords ?? undefined,
+            startLocationCoords: startCoordsToSave ?? undefined,
             startDate: f.startDate, endDate: f.endDate,
             destinations: f.destinations.map(s => s.trim()).filter(Boolean),
             destinationCoords: destCoords,
