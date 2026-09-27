@@ -27,7 +27,7 @@ import { candidatesAnnouncement, fillLabel, pickDayCaveat, scopeValueText, searc
 import { MapOmnibar } from './MapOmnibar'
 import { placementOptions, type PlacementOption } from './mapPlacement'
 import { ShortlistTray } from './map/ShortlistTray'
-import { orderByRoad } from './map/roadOrder'
+import { useShortlist } from './map/useShortlist'
 
 /** How many search hits the rail shows before "Show all" (#333 A1). The listbox
  *  grammar needs the same page size the rows are rendered with, so it lives here
@@ -255,8 +255,9 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
   // hover and focus still peek, and leaving falls back to the pin.
   const [pinnedHitId, setPinnedHitId] = useState<string | number | null>(null)
   // Shortlist: the rail collects picks before anything lands in the plan, so the
-  // group can vote on them. The tray under the grid owns the actions.
-  const [shortlist, setShortlist] = useState<PlaceHit[]>([])
+  // group can vote on them. The tray under the grid owns the actions. The whole
+  // feature (collection, filter, both writers) lives in map/useShortlist.ts since
+  // #420 slice 2; the hook is called below, after the helpers it needs.
   // One reason chip can narrow the rail, so "where are the lunch options?" is a
   // tap instead of a scroll.
   const [chipFilter, setChipFilter] = useState<string | null>(null)
@@ -1279,76 +1280,6 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
     setPoiDraft({ hit })
   }
 
-  /** Shortlisting never edits the plan; it collects for the tray to act on. */
-  function toggleShortlist(hit: PlaceHit) {
-    setShortlist(prev => {
-      if (prev.some(h => h.id === hit.id)) return prev.filter(h => h.id !== hit.id)
-      // #179: membership systems must not fight — already-added (Timeline or
-      // map) and dismissed hits can't re-enter the tray from any path.
-      if (isAlreadyAdded(hit, identity)) return prev
-      return [...prev, hit]
-    })
-  }
-  // #179: the tray re-validates at render — a hit shortlisted and THEN added
-  // on the Timeline (or dismissed) must not sit in the tray as a stale
-  // double-add waiting to happen. Derived, so every action below sees the
-  // same clean list.
-  const trayShortlist = useMemo(() => shortlist.filter(h => !isAlreadyAdded(h, identity)),
-    [shortlist, identity])
-
-  async function addShortlisted() {
-    if (addingAny || trayShortlist.length === 0) return
-    setAddingAny(true)
-    try {
-      // #420 slice 1: the ordering rule lives in map/roadOrder.ts now, with its
-      // own tests — same comparator, including its NaN-keeps-order subtlety.
-      const ordered = orderByRoad(trayShortlist, routeKmOf)
-      const resolved = await Promise.all(ordered.map(async hit => ({ hit, pinned: await resolvePick(hit) })))
-      const usable = resolved.filter((x): x is { hit: PlaceHit; pinned: PlaceHit } => !!x.pinned)
-      if (usable.length === 0) {
-        toast('Nothing could be pinned from the shortlist - try another place.')
-        return
-      }
-      applyChange(draft => {
-        for (const { hit, pinned } of usable) {
-          const dayIndex = dayForKm(hit.cumKm) ?? 0
-          const day = draft.days.find(d => d.index === dayIndex)
-          if (!day) continue
-          const stop = {
-            id: newStopId(), title: hit.name,
-            category: (hit.category as ItineraryStop['category']) ?? 'sightseeing',
-            locationName: hit.description ?? hit.name, placeId: pinned.placeId,
-            lat: pinned.latitude, lng: pinned.longitude, description: hit.description ?? '',
-            notes: 'Added from shortlist', visitMinutes: poiVisitMinutes(hit.category),
-            openTime: hit.openTime ?? '', closeTime: hit.closeTime ?? '',
-            entryFeeInrPerPerson: 0, transportCostInrTotal: 0, priority: 'nice-to-have',
-            sourceUrl: '', status: 'suggested', orderInDay: day.stops.length + 1,
-          } as unknown as ItineraryStop
-          const newKm = routeKmOf(pinned.latitude, pinned.longitude)
-          let at = day.stops.length
-          if (newKm != null) {
-            at = day.stops.findIndex(s => {
-              const km = routeKmOf(s.lat, s.lng)
-              return km != null && km > newKm
-            })
-            if (at === -1) at = day.stops.length
-          }
-          day.stops.splice(at, 0, stop)
-          day.stops.forEach((s, i) => { s.orderInDay = i + 1 })
-        }
-      }, 'add', -1)
-      setAddedIds(prev => {
-        const next = new Set(prev)
-        for (const { hit } of usable) next.add(hit.id as string)
-        return next
-      })
-      setShortlist([])
-      toast(`${usable.length} shortlist stop${usable.length === 1 ? '' : 's'} added in road order`)
-    } finally {
-      setAddingAny(false)
-    }
-  }
-
   /** Delete straight from the map pin's popup — with Undo (restoreStop puts
    *  the stop back on its day at its old order). The stop object must be
    *  captured BEFORE the delete, since the cache drops it immediately. */
@@ -1367,40 +1298,6 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
     } else {
       toast(`Removed “${meta.title}” from the trip`)
     }
-  }
-
-  /** Turn the shortlist into an open group decision, reusing the poll shape.
-   *  Each option carries the place it stands for, so RESOLVING the decision
-   *  lands the winner on the timeline as a confirmed stop (store's
-   *  resolveDecision reads the payload) — shortlist → vote → resolved →
-   *  on the board, timeline and map, with the rail's row dropping out. */
-  async function raiseShortlistVote() {
-    if (trayShortlist.length === 0 || addingAny) return
-    setAddingAny(true)
-    try {
-      const resolved = await Promise.all(trayShortlist.map(async h => ({ h, pinned: await resolvePick(h) })))
-      const usable = resolved.filter((x): x is { h: PlaceHit; pinned: PlaceHit } => !!x.pinned)
-      if (usable.length === 0) { toast('Those places could not be pinned on the map - the vote was not created.'); return }
-      addDecision(trip.id, {
-        question: usable.length === 1 ? `Should we add "${usable[0].h.name}"?` : 'Which of these should we add?',
-        context: 'Shortlisted from the Map rail',
-        options: usable.map(({ h, pinned }) => ({
-          id: String(h.id), label: h.name, timeImpactMin: detourMinFor(h) == null ? undefined : Math.round(detourMinFor(h)!) || undefined,
-          place: {
-            title: h.name, category: (h.category as ItineraryStop['category']) ?? 'sightseeing',
-            locationName: h.description ?? h.name, lat: pinned.latitude, lng: pinned.longitude,
-            description: h.description, visitMinutes: poiVisitMinutes(h.category),
-            ...(h.openTime ? { openTime: h.openTime } : {}), ...(h.closeTime ? { closeTime: h.closeTime } : {}),
-            // Unknown route position: leave the day ABSENT (not Day 1 —
-            // #336). Resolution then says it cannot place the winner instead
-            // of dropping it on a day nobody chose.
-            dayIndex: dayForKm(h.cumKm) ?? undefined,
-          },
-        })),
-      })
-      toast('Decision posted for the group - resolving it adds the winner to the plan')
-      setShortlist([])
-    } finally { setAddingAny(false) }
   }
 
   /** #418: ONE route-aware search, shared by the rail's corridor box and the map
@@ -1544,6 +1441,28 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
   const detourMinFor = (hit: PlaceHit): number | null =>
     hitEngine.get(String(hit.id))?.detourMin
       ?? asymmetricDetourMinutes(hit, anchors, routePolyline ?? null, MODE_SPEED[trip.transportMode] ?? 40)
+
+  // #420 slice 2: the shortlist feature lives in its own hook now — the collection,
+  // the shared "already mine?" filter, and both batch writers. Called here rather
+  // than at the top because it composes with `detourMinFor` (and `dayForKm`,
+  // `identity`), and a hook below an early return is the crash AGENTS §6e names —
+  // this component has none, so the position is safe and the order is stable.
+  const {
+    shortlist, trayShortlist, isShortlisted, toggleShortlist, addShortlisted, raiseShortlistVote, clearShortlist,
+  } = useShortlist({
+    tripId: trip.id,
+    identity,
+    resolvePick,
+    applyChange,
+    setAddedIds,
+    newStopId,
+    dayForKm,
+    poiVisitMinutes,
+    routeKmOf,
+    detourMinFor,
+    busy: addingAny,
+    setBusy: setAddingAny,
+  })
   // the number printed on its card.
   // A resolved group vote lands its winner on the timeline; those stops then
   // drop out of the see-&-do rail entirely (count included), same as the
@@ -1666,11 +1585,11 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
         {!added && editable && (
           <button
             className="chip chip-sm"
-            aria-pressed={trayShortlist.some(h => h.id === hit.id)}
+            aria-pressed={isShortlisted(hit)}
             title="Collect for the shortlist tray - the rail collects, the tray decides"
             onClick={() => toggleShortlist(hit)}
           >
-            {trayShortlist.some(h => h.id === hit.id) ? 'Shortlisted' : 'Shortlist'}
+            {isShortlisted(hit) ? 'Shortlisted' : 'Shortlist'}
           </button>
         )}
         {alts.length > 0 && alts.map(({ h, dKm }) => (
@@ -2855,7 +2774,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
         busy={addingAny}
         onAddAll={() => void addShortlisted()}
         onVote={() => void raiseShortlistVote()}
-        onClear={() => setShortlist([])}
+        onClear={clearShortlist}
       />
       {/* pick-a-day modal for adding a suggested POI — explicit confirm */}
       <Modal open={!!poiDraft} onClose={() => setPoiDraft(null)} title={`Add “${poiDraft?.hit.name ?? ''}”`}>

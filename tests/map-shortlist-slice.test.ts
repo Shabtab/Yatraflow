@@ -14,6 +14,7 @@ import { orderByRoad } from '../src/pages/trip/map/roadOrder'
 
 const mapTab = readFileSync(new URL('../src/pages/trip/MapTab.tsx', import.meta.url), 'utf8')
 const tray = readFileSync(new URL('../src/pages/trip/map/ShortlistTray.tsx', import.meta.url), 'utf8')
+const hook = readFileSync(new URL('../src/pages/trip/map/useShortlist.ts', import.meta.url), 'utf8')
 
 const place = (id: string, latitude: number, longitude: number) => ({ id, latitude, longitude })
 
@@ -65,13 +66,41 @@ describe('#420 — slice 1 wiring', () => {
   })
 
   it('the page uses the extracted ordering rule rather than its own sort', () => {
-    expect(mapTab).toContain('orderByRoad(trayShortlist, routeKmOf)')
+    expect(mapTab).toContain('useShortlist({')
+    expect(hook).toContain('orderByRoad(trayShortlist, routeKmOf)')
     expect(mapTab).not.toMatch(/\[\.\.\.trayShortlist\]\.sort\(/)
   })
 
-  it('the vote writer stays where its tripwire reads it', () => {
-    // Moving it is slice 2's job, together with re-pointing that guard.
-    expect(mapTab).toContain('async function raiseShortlistVote()')
-    expect(mapTab).toContain('async function addShortlisted()')
+  it('the writers moved to the hook, and the page holds only the wiring', () => {
+    // Slice 2: the page keeps no copy of the feature. The vote tripwire in
+    // tests/vote-path-composition.test.ts follows the code to this file.
+    expect(mapTab).not.toContain('async function raiseShortlistVote()')
+    expect(mapTab).not.toContain('async function addShortlisted()')
+    expect(mapTab).not.toMatch(/useState<PlaceHit\[\]>\(\[\]\)/)
+    expect(hook).toContain('async function raiseShortlistVote()')
+    expect(hook).toContain('async function addShortlisted()')
+    expect(hook).toContain('export function useShortlist(')
+  })
+
+  it('the hook composes the shared membership predicate instead of re-deriving it', () => {
+    // The trap this slice nearly shipped: `isAlreadyAdded` also matches provider
+    // keys and normalized names, so a hand-rolled id/dismissed check would have
+    // been a second membership rule — the bug #345 was about.
+    expect(hook).toContain('isAlreadyAdded(')
+    expect(hook).toContain("from '../../../lib/placeIdentity'")
+    expect(hook).not.toMatch(/identity\.(added|dismissed)\.has\(/)
+  })
+
+  it('the page still passes the hook the helpers it composes with', () => {
+    const call = mapTab.slice(mapTab.indexOf('useShortlist({'), mapTab.indexOf('})', mapTab.indexOf('useShortlist({')))
+    for (const dep of ['tripId: trip.id', 'identity', 'resolvePick', 'applyChange', 'setAddedIds', 'newStopId', 'dayForKm', 'poiVisitMinutes', 'routeKmOf', 'detourMinFor', 'busy: addingAny', 'setBusy: setAddingAny']) {
+      expect(call, `the hook lost its ${dep} input`).toContain(dep)
+    }
+  })
+
+  it('the tray is still wired to the hook, not to a local copy', () => {
+    expect(mapTab).toMatch(/onAddAll=\{\(\) => void addShortlisted\(\)\}/)
+    expect(mapTab).toMatch(/onVote=\{\(\) => void raiseShortlistVote\(\)\}/)
+    expect(mapTab).toMatch(/onClear=\{clearShortlist\}/)
   })
 })

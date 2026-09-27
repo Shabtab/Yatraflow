@@ -21,7 +21,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ### Changed
 
-- **The Map tab's shortlist tray is its own module, and so is the road-order rule behind its "Add all".** The tray's markup and the comparator that decides which collected place lands where moved out of the page into `pages/trip/map/`, where the rule is covered by direct unit tests — including the two cases that were only ever implicit: a place the route cannot position sorts last rather than first, and two of them keep the order they were collected in. Behaviour is unchanged (#420).
+- **The Map tab's shortlist is a module of its own.** The tray's markup, the comparator behind its "Add all", and the collection with both of its writers moved out of the page into `pages/trip/map/` — the writers as a hook whose complete input list is now written down, so "what does the shortlist actually touch?" has an answer a reviewer can read instead of infer. The rule is directly tested, including the two behaviours that were only ever implicit: a place the route cannot position sorts last rather than first, and two of them keep the order they were collected in. Behaviour is unchanged (#420).
 
 ### Fixed
 
