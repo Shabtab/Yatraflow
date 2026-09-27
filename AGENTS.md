@@ -597,6 +597,16 @@ Key locations:
    start a fresh server if it comes back empty; the `localhost:54321` fallback
    string is in every bundle, so it discriminates nothing. (Found 2026-09-17:
    the long-running 5173 server had no Supabase project compiled in at all.)
+
+   **A signed-in browser is bound to an ORIGIN, not to a person or a machine
+   (learned 2026-09-27).** A Supabase session lives in the origin's storage, so
+   every dev-server port is its own world: a profile signed in on another clone's
+   server (or on production) still reads **"Log in"** on *this* tree's port, and a
+   browser check of a signed-in surface therefore needs the sign-in performed on
+   the port that serves the tree under test. Ask for that explicitly instead of
+   assuming the profile carries a session — and prove it before driving the check,
+   because the signed-out app renders the marketing landing at a protected hash
+   route rather than an error, which reads like the feature under test is missing.
 8. **Build locally first; confirm the target branch before every push.** A feature
    or fix is always implemented and verified (`npm run verify`) on the current
    local branch before any push is even discussed. When the work is ready, tell
