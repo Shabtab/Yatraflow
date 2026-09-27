@@ -2,7 +2,7 @@
 // Node env: no localStorage. That's deliberate — the pure parser is what we
 // assert on; the storage wrappers degrade to no-ops when storage is missing.
 import { describe, it, expect, afterEach } from 'vitest'
-import { dayCollapseKey, parseDayCollapseMap, loadDayCollapsed, saveDayCollapsed, parseOpenDayMap, loadOpenDay, saveOpenDay, NO_OPEN_DAY, loadFlag, saveFlag, loadPref, savePref } from '../src/lib/uiPrefs'
+import { dayCollapseKey, parseDayCollapseMap, loadDayCollapsed, saveDayCollapsed, parseOpenDayMap, loadOpenDay, saveOpenDay, NO_OPEN_DAY, loadReviewAll, saveReviewAll, loadFlag, saveFlag, loadPref, savePref } from '../src/lib/uiPrefs'
 
 describe('dayCollapseKey', () => {
   it('namespaces by trip id and day index', () => {
@@ -202,5 +202,63 @@ describe('loadPref / savePref — guarded string prefs (#181)', () => {
     g.localStorage = undefined as unknown as Storage
     expect(loadPref('anything', 'fb')).toBe('fb')
     expect(() => savePref('anything', 'x')).not.toThrow()
+  })
+})
+
+// ---- Review-all-days view (#421) ----
+// The Timeline's view choice is the sibling of the open day: per trip, and it
+// must never touch the accordion's own preference — leaving review returns you
+// to the day you were in.
+describe('review-all-days view (#421)', () => {
+  const g = globalThis as unknown as { localStorage: Storage }
+  const prev = globalThis.localStorage
+  afterEach(() => { g.localStorage = prev })
+
+  function stub(): Map<string, string> {
+    const store = new Map<string, string>()
+    g.localStorage = {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => { store.set(k, v) },
+      removeItem: (k: string) => { store.delete(k) },
+      clear: () => store.clear(),
+      key: () => null,
+      get length() { return store.size },
+    } as Storage
+    return store
+  }
+
+  it('degrades to off without localStorage (node)', () => {
+    g.localStorage = undefined as unknown as Storage
+    expect(loadReviewAll('tripX')).toBe(false)
+    expect(() => saveReviewAll('tripX', true)).not.toThrow()
+  })
+
+  it('writes then reads back per trip, isolating trips', () => {
+    stub()
+    expect(loadReviewAll('tripX')).toBe(false)
+    saveReviewAll('tripX', true)
+    expect(loadReviewAll('tripX')).toBe(true)
+    saveReviewAll('tripY', true)
+    saveReviewAll('tripX', false)
+    expect(loadReviewAll('tripX')).toBe(false)
+    expect(loadReviewAll('tripY')).toBe(true)
+  })
+
+  it('degrades to off on corrupted storage instead of throwing', () => {
+    const store = stub()
+    store.set('yatraflow_review_all', '{oops')
+    expect(loadReviewAll('tripX')).toBe(false)
+  })
+
+  it('never disturbs the trip’s saved open day', () => {
+    const store = stub()
+    saveOpenDay('tripX', 2)
+    saveReviewAll('tripX', true)
+    expect(loadOpenDay('tripX')).toBe(2) // what review returns you to
+    saveReviewAll('tripX', false)
+    expect(loadOpenDay('tripX')).toBe(2)
+    expect(store.get('yatraflow_open_day')).toBe('{"tripX":2}')
+    // and the two prefs live under different keys, so neither can clobber the other
+    expect(store.has('yatraflow_review_all')).toBe(true)
   })
 })

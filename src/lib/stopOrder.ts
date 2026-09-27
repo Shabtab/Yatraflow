@@ -28,6 +28,57 @@ export function stopsInOrder(day: ItineraryDay): ItineraryStop[] {
   return [...day.stops].sort((a, b) => a.orderInDay - b.orderInDay)
 }
 
+/**
+ * Insert a stop at a CHOSEN slot, then close the numbering 1..n.
+ *
+ * The slot is what the user picked (the Timeline's between-stop control hands
+ * the index of the row the new stop goes before), so it is used as given — the
+ * positional insert a drag drop and the Map's slot fill already rely on. The
+ * `[1,3]`-after-a-delete shape is why a positional writer must renumber: a
+ * naive splice into a gapped day leaves two stops claiming one position (#337).
+ * An out-of-range slot clamps (append) rather than dropping the stop.
+ */
+export function insertStopAt(day: ItineraryDay, stop: ItineraryStop, position: number): number {
+  const ordered = stopsInOrder(day)
+  const at = Math.max(0, Math.min(Math.trunc(position), ordered.length))
+  ordered.splice(at, 0, stop)
+  ordered.forEach((s, i) => { s.orderInDay = i + 1 })
+  day.stops = ordered
+  return at
+}
+
+/**
+ * The slot a quick insertion takes, derived from the two stops it lands
+ * between — by ID, resolved at click time rather than trusting a render index
+ * that may have shifted under the pointer. Three cases, all real:
+ *
+ *  - before the first stop (`afterId` is the stop it precedes) → that stop's
+ *    own index, so a day whose first row is an auto anchor still inserts ahead
+ *    of the first real stop;
+ *  - between two stops → the index of the LATER one;
+ *  - after the last stop (no `afterId`) → one past its predecessor, or the end
+ *    of the day when there is no predecessor either (an empty day).
+ *
+ * An id the day no longer holds falls through to the next case instead of
+ * resolving to a wrong slot — the honest failure is "append", never "insert
+ * somewhere unexpected".
+ */
+export function insertionSlotBetween(
+  ordered: ItineraryStop[],
+  beforeId: string | null,
+  afterId: string | null,
+): number {
+  if (afterId != null) {
+    const at = ordered.findIndex(s => s.id === afterId)
+    if (at >= 0) return at
+  }
+  if (beforeId != null) {
+    const at = ordered.findIndex(s => s.id === beforeId)
+    if (at >= 0) return at + 1
+  }
+  return ordered.length
+}
+
 /** A day's NON-REJECTED stops in display order — the list a surface that HIDES
  *  rejected rows (the Board) actually indexes into. The Timeline renders every
  *  stop, so it keeps using `stopsInOrder` directly. */

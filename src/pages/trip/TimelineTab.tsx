@@ -22,7 +22,7 @@ import {
 } from '../../lib/engine'
 import type { LegEstimate, ScheduleWarning } from '../../lib/engine'
 import type { ImpactResult } from '../../lib/impact'
-import { loadOpenDay, saveOpenDay } from '../../lib/uiPrefs'
+import { loadOpenDay, loadReviewAll, saveOpenDay, saveReviewAll } from '../../lib/uiPrefs'
 import { accordionNext } from '../../lib/daySummary'
 import { scrollBehavior } from '../../lib/motion'
 import { toast, undoToast } from '../../components/ui'
@@ -33,11 +33,13 @@ import { stopInitialValues, stopLegContext, stopEditorKey, stopDayIndex, type St
 import { useSuggestionCache } from '../../hooks/useSuggestionCache'
 import { PREVIEW_BUSY } from '../../lib/previewChain'
 import { kmFromStartForHit } from '../../lib/providers/hits'
-import { moveStopToDay, moveStopWithinDay, nextOrderInDay, pendingStopId, removeStopFromDay, stopById } from '../../lib/stopOrder'
+import { insertStopAt, moveStopToDay, moveStopWithinDay, nextOrderInDay, pendingStopId, removeStopFromDay, stopById, stopsInOrder } from '../../lib/stopOrder'
 import { useTimelineMode, type TimelineMode } from './timeline/useTimelineMode'
 import { PillNav } from '../../components/PillNav'
 import { DaySection } from './timeline/DaySection'
 import { buildDayCards, reuseDayTotals, reuseWarningGroups, type DayCards, type DayTotals } from '../../lib/dayCards'
+import { insertionWhere } from '../../lib/labels'
+import { QuickAddStop, type QuickAddTarget } from './timeline/QuickAddStop'
 import { MoveStopModal } from './timeline/MoveStopModal'
 
 /** Shared empty array so the memoized DaySections' `warnings` prop keeps a
@@ -68,6 +70,12 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
 }) {
   const [editorState, setEditorState] = useState<StopEditorTarget>(null)
   const [moveModalStop, setMoveModalStop] = useState<ItineraryStop | null>(null)
+  // #422: the leg's insertion control (which day, which slot) and the draft
+  // "More details…" carries into the full editor. The seed is keyed by the
+  // editor target's own reset key, so a stale draft can never seed an unrelated
+  // add (a plain "+ Add" has a different key and ignores it).
+  const [quickAdd, setQuickAdd] = useState<QuickAddTarget | null>(null)
+  const [editorSeed, setEditorSeed] = useState<{ key: string; values: Partial<StopFormValues> } | null>(null)
 
   // ---- M6 B3 · remote-edit conflict surfacing (shared hook — BoardView uses
   // the same one, so both surfaces of the SAME StopEditor modal banner alike) ----
@@ -86,25 +94,41 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
   // LIFTED here so the summary rows + jump rail can drive it; the old per-day
   // collapsed map is retired (per-day booleans can't express accordion).
   const [openDayIndex, setOpenDayIndex] = useState(() => loadOpenDay(trip.id))
+  // #421's other axis: WHICH days are rendered, per trip — the sibling of the
+  // open day above (Plan/Inspect is the global axis: what you may do). Review
+  // never reads nor writes the saved open day, so the accordion you left is the
+  // accordion you return to when the switch goes back to One day.
+  const [reviewAll, setReviewAll] = useState(() => loadReviewAll(trip.id))
+  const setReview = useCallback((on: boolean) => {
+    setReviewAll(on)
+    saveReviewAll(trip.id, on)
+  }, [trip.id, reviewAll])
   // (TripWorkspace keys this component by trip id, so a trip switch remounts
   // it and this init re-reads the right trip — no reset effect needed.)
   // Persisted inside the updater: React may re-run updaters in dev StrictMode,
   // but saveOpenDay is idempotent so the write stays correct.
   const toggleDay = useCallback((dayIndex: number) => {
+    // Review mode owns openness — every day is already open, and a per-day
+    // override there would be a third openness state with nothing to persist
+    // (the header's chevron is not rendered either).
+    if (reviewAll) return
     setOpenDayIndex(prev => {
       const next = accordionNext(prev, dayIndex)
       saveOpenDay(trip.id, next)
       return next
     })
-  }, [trip.id])
+  }, [trip.id, reviewAll])
   /** Open without toggling (jump rail, + Add here) — no-op when already open. */
   const openDay = useCallback((dayIndex: number) => {
+    // No-op in review: the day is already on screen, and opening it would
+    // write the accordion pref the mode promised not to touch.
+    if (reviewAll) return
     setOpenDayIndex(prev => {
       if (prev === dayIndex) return prev
       saveOpenDay(trip.id, dayIndex)
       return dayIndex
     })
-  }, [trip.id])
+  }, [trip.id, reviewAll])
 
   // #347: the handlers below close over `applyChange` and `trip` — both
   // re-created on every trip change — so their identities flipped on every edit
@@ -112,6 +136,47 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
   // the IDENTITIES stable while each body still runs against the current pair.
   const latest = useRef({ applyChange, trip })
   latest.current = { applyChange, trip }
+
+  /** THE add commit (#422): ONE write path for a new stop, whether it came from
+   *  the inspector editor or the leg's quick add. `position` is the slot the
+   *  user picked (the row the stop goes before); absent means append, which is
+   *  what the header's + and the day's own "+ Add stop" have always meant. The
+   *  insert renumbers the day 1..n, so a later add cannot mint a duplicate
+   *  order (#337) — and #424's lifecycle rewrite has one call site to move.
+   *  `announce` runs only when the change is KEPT, so it can never claim a stop
+   *  the user discarded at the impact sheet. */
+  const commitNewStop = useCallback((dayIndex: number, position: number | undefined, values: StopFormValues, announce?: string) => {
+    const { legFromSource: _drop, ...fields } = values
+    latest.current.applyChange(draft => {
+      const day = draft.days.find(d => d.index === dayIndex)
+      if (!day) return
+      insertStopAt(day, { ...(fields as unknown as ItineraryStop), id: pendingStopId(), orderInDay: 0 }, position ?? day.stops.length)
+    }, 'add', dayIndex, announce ? () => toast(announce) : undefined)
+  }, [])
+
+  /** #422: the leg's insertion control — remember the slot it was opened on. */
+  const handleInsertHere = useCallback((dayIndex: number, slot: number) => {
+    setQuickAdd({ dayIndex, slot })
+  }, [])
+
+  /** The quick add's commit — the SAME add path the editor's add branch uses,
+   *  with the slot the control was opened on, and an announcement that fires only
+   *  once the stop is actually kept. */
+  const handleQuickAdd = useCallback((dayIndex: number, slot: number, values: StopFormValues) => {
+    setQuickAdd(null)
+    const { trip } = latest.current
+    const day = trip.days.find(d => d.index === dayIndex)
+    const ordered = day ? stopsInOrder(day) : []
+    const where = insertionWhere(ordered[slot - 1]?.title, ordered[slot]?.title)
+    commitNewStop(dayIndex, slot, values, `“${values.title}” inserted ${where} on Day ${dayIndex + 1}`)
+  }, [commitNewStop])
+
+  /** "More details…": the same draft, the same slot, in the full editor. */
+  const handleQuickAddMore = useCallback((dayIndex: number, slot: number, values: StopFormValues) => {
+    setQuickAdd(null)
+    setEditorSeed({ key: stopEditorKey({ mode: 'add', dayIndex, position: slot }), values })
+    openEditorState({ mode: 'add', dayIndex, position: slot })
+  }, [openEditorState])
 
   // M3.3: every DaySection prop below must keep a stable identity between
   // commits that don't touch the trip, or the React.memo on DaySection never
@@ -127,15 +192,9 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
     // legFromSource is display-only - never persist it onto the stop
     const { legFromSource: _drop, ...legFields } = v
     if (editorState.mode === 'add') {
-      const dayIndex = editorState.dayIndex
-      applyChange(draft => {
-        const day = draft.days.find(d => d.index === dayIndex)!
-        day.stops.push({
-          ...(legFields as unknown as ItineraryStop),
-          id: pendingStopId(),
-          orderInDay: nextOrderInDay(day),
-        })
-      }, 'add', dayIndex)
+      // The slot rides on the target (#422): the leg's control knew where the
+      // stop belongs, and "More details…" carries the same slot here.
+      commitNewStop(editorState.dayIndex, editorState.position, v)
     } else {
       const stopId = editorState.stopId
       applyChange(draft => {
@@ -146,6 +205,7 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
       }, 'edit', stopDayIndex(trip, stopId))
     }
     setEditorState(null)
+    setEditorSeed(null)
   }
 
   // Deletions go through the impact-preview flow (Keep / Remove confirm the
@@ -241,9 +301,93 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
     return next
   }, [trip, days, legCorrections])
 
+  // ---- Review mode's viewport gate (#421) ----
+  // In review every day is open, so without a gate the first render would hand
+  // every card a live trip (which is what mounts its travel panel) and fire one
+  // weather fetch + one nearby search per day — exactly the pitfall #421 names:
+  // provider data must not be fetched for days merely because they are visible.
+  // ONE observer over the day cards, with a generous rootMargin so a day warms
+  // just before it arrives. The flag decides provider-backed extras only — what
+  // a day shows from its own resolved facts is never gated by it.
+  const [visibleDays, setVisibleDays] = useState<ReadonlySet<number>>(() => new Set<number>())
+  const dayIndexSig = days.map(d => d.index).join(',')
+  useEffect(() => {
+    if (!reviewAll || typeof IntersectionObserver === 'undefined') {
+      setVisibleDays(prev => (prev.size ? new Set<number>() : prev))
+      return
+    }
+    const nodes: Array<[HTMLElement, number]> = []
+    for (const part of dayIndexSig.split(',')) {
+      if (!part) continue
+      const idx = Number(part)
+      const el = document.getElementById(`day-card-${idx}`)
+      if (el) nodes.push([el, idx])
+    }
+    if (nodes.length === 0) return
+    const indexOf = new Map<HTMLElement, number>(nodes)
+    const observer = new IntersectionObserver(entries => {
+      setVisibleDays(prev => {
+        let next: Set<number> | null = null
+        for (const e of entries) {
+          const idx = indexOf.get(e.target as HTMLElement)
+          if (idx == null || e.isIntersecting === prev.has(idx)) continue
+          if (!next) next = new Set(prev)
+          if (e.isIntersecting) next.add(idx)
+          else next.delete(idx)
+        }
+        return next ?? prev
+      })
+    }, { rootMargin: '600px 0px' })
+    for (const [el] of nodes) observer.observe(el)
+    return () => observer.disconnect()
+  }, [reviewAll, dayIndexSig])
+
+  // Which day the rail marks as you read (#421). The rail is the mode's own
+  // orientation — the day whose card has scrolled past the sticky line — and it
+  // exists so the DAY HEADER can stay in flow: measured, a header carrying the
+  // day's clocks, chips, warnings and actions is 193–309px tall, which is a
+  // control panel, not a label to stick to the viewport.
+  const [currentDay, setCurrentDay] = useState<number | null>(null)
+  useEffect(() => {
+    if (!reviewAll) { setCurrentDay(null); return }
+    const line = 12 + 62 + 10 // the rail's own sticky offset (nav + gap)
+    let raf = 0
+    const measure = () => {
+      raf = 0
+      let best: number | null = null
+      for (const part of dayIndexSig.split(',')) {
+        if (!part) continue
+        const idx = Number(part)
+        const el = document.getElementById(`day-card-${idx}`)
+        if (!el) continue
+        if (el.getBoundingClientRect().top - line <= 1) best = idx
+      }
+      setCurrentDay(best)
+    }
+    const onScroll = () => { if (!raf) raf = requestAnimationFrame(measure) }
+    measure()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    window.addEventListener('resize', onScroll)
+    return () => {
+      window.removeEventListener('scroll', onScroll)
+      window.removeEventListener('resize', onScroll)
+      if (raf) cancelAnimationFrame(raf)
+    }
+  }, [reviewAll, dayIndexSig])
+
+  /** Where the header's generic "+ Add stop" lands: the day you are in (the
+   *  accordion), or — in review, where no single day is "the" day — the first
+   *  day actually on screen. Day 1 is the last resort, as it always was. */
+  const addTargetDay = reviewAll
+    ? (visibleDays.size ? Math.min(...visibleDays) : 0)
+    : (openDayIndex >= 0 ? openDayIndex : 0)
+
   /** Day-jump rail: open the day (accordion) and scroll a long timeline
    *  straight to its card. */
   function jumpToDay(dayIndex: number) {
+    // In review the day is already open: this is pure scroll navigation and
+    // openDay is a no-op, so the rail stays meaningful without writing the
+    // accordion pref the mode promised not to touch.
     openDay(dayIndex)
     const el = document.getElementById(`day-card-${dayIndex}`)
     if (!el) return
@@ -360,7 +504,7 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
   }
 
   return (
-    <div>
+    <div className={reviewAll ? 'tl-root-review' : undefined}>
       <div className="row-between" style={{ marginBottom: 16 }}>
         <div className="tl-head-copy">
           <h2>Day-by-day timeline</h2>
@@ -370,31 +514,54 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
             ? 'Drag stops to reorder within a day — or drop them onto another day to move them there. On touch devices: press and hold a stop, then drag it. Every change shows its impact before saving.'
             : 'Read-only study view — clocks, costs and risks without the edit handles. Switch to Plan mode to make changes.'}</p>
         </div>
-        {editable && (
-          <div className="row tl-head-tools" style={{ gap: 8 }}>
-            {onOpenBoard && (
-              <button className="btn btn-outline btn-sm" onClick={onOpenBoard} title="Arrange stops across days with the route in view">Open in Board →</button>
-            )}
-            {/* Same mechanic and surface as the workspace tab rail: a glass
-                capsule whose glider paints the active side (PillNav + tab-btn),
-                so switching modes animates exactly like Board→Map→Timeline. */}
-            <PillNav className="mode-pillbar" role="group" aria-label="Timeline mode" activeKey={mode}>
-              <button type="button" data-pill-key="plan" className={`tab-btn${mode === 'plan' ? ' active' : ''}`}
-                onClick={() => changeMode('plan')} aria-pressed={mode === 'plan'}>
-                <PenLine size={14} aria-hidden />Plan
-              </button>
-              <button type="button" data-pill-key="inspect" className={`tab-btn${mode === 'inspect' ? ' active' : ''}`}
-                onClick={() => changeMode('inspect')} aria-pressed={mode === 'inspect'}>
-                <Eye size={14} aria-hidden />Inspect
-              </button>
-            </PillNav>
-            {/* Stays rendered in both modes (disabled + dimmed in Inspect) so
-                toggling never reflows the header — that reflow was the jerk. */}
-            <button className="btn btn-primary btn-sm" disabled={mode !== 'plan'}
-              title={mode !== 'plan' ? 'Switch to Plan mode to edit' : undefined}
-              onClick={() => openEditorState({ mode: 'add', dayIndex: 0 })}>+ Add stop</button>
-          </div>
-        )}
+        {/* The tools row renders for read-only viewers too (#421): the view
+            switch is a reading aid, so gating it on being an editor would hide
+            it exactly where reviewing matters most. */}
+        <div className="row tl-head-tools" style={{ gap: 8 }}>
+          {editable && (
+          <>
+          {onOpenBoard && (
+            <button className="btn btn-outline btn-sm" onClick={onOpenBoard} title="Arrange stops across days with the route in view">Open in Board →</button>
+          )}
+          {/* Same mechanic and surface as the workspace tab rail: a glass
+              capsule whose glider paints the active side (PillNav + tab-btn),
+              so switching modes animates exactly like Board→Map→Timeline. */}
+          <PillNav className="mode-pillbar" role="group" aria-label="Timeline mode" activeKey={mode}>
+            <button type="button" data-pill-key="plan" className={`tab-btn${mode === 'plan' ? ' active' : ''}`}
+              onClick={() => changeMode('plan')} aria-pressed={mode === 'plan'}>
+              <PenLine size={14} aria-hidden />Plan
+            </button>
+            <button type="button" data-pill-key="inspect" className={`tab-btn${mode === 'inspect' ? ' active' : ''}`}
+              onClick={() => changeMode('inspect')} aria-pressed={mode === 'inspect'}>
+              <Eye size={14} aria-hidden />Inspect
+            </button>
+          </PillNav>
+          </>
+          )}
+          {/* Which days are rendered (#421) — per trip, saved beside the trip's
+              own view prefs. Two pillbars on purpose: Plan/Inspect answers "what
+              may I do" (a global capability), this answers "which days am I
+              looking at", and folding the two together would take editing away
+              from the reviewer who just spotted something to fix. */}
+          <PillNav className="view-pillbar" role="group" aria-label="Days shown" activeKey={reviewAll ? 'all' : 'one'}>
+            <button type="button" data-pill-key="one" className={`tab-btn${reviewAll ? '' : ' active'}`}
+              onClick={() => setReview(false)} aria-pressed={!reviewAll}
+              title="One day at a time — the accordion, and the day you were last in">One day</button>
+            <button type="button" data-pill-key="all" className={`tab-btn${reviewAll ? ' active' : ''}`}
+              onClick={() => setReview(true)} aria-pressed={reviewAll}
+              title="Every day expanded in order, each day's header following you down">All days</button>
+
+          </PillNav>
+          {editable && (
+          <>
+          {/* Stays rendered in both modes (disabled + dimmed in Inspect) so
+              toggling never reflows the header — that reflow was the jerk. */}
+          <button className="btn btn-primary btn-sm" disabled={mode !== 'plan'}
+            title={mode !== 'plan' ? 'Switch to Plan mode to edit' : undefined}
+            onClick={() => openEditorState({ mode: 'add', dayIndex: addTargetDay })}>+ Add stop</button>
+          </>
+          )}
+        </div>
       </div>
 
       <div className="tl-total-strip">
@@ -429,14 +596,19 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
         </div>
       )}
 
-      {days.length >= 4 && (
+      {/* #421: in review the rail is the mode's navigation, so it appears for
+          any trip length — and it marks the day you are in as you scroll. */}
+      {(days.length >= 4 || reviewAll) && (
         <div className="day-rail" role="navigation" aria-label="Jump to day">
           <span className="day-rail-label">Jump to day</span>
           <div className="day-rail-chips">
             {days.map(d => {
               const hasWarn = (dayWarnings.get(d.index)?.length ?? 0) > 0
+              const current = reviewAll && currentDay === d.index
               return (
-                <button key={d.id} type="button" className={`day-rail-chip ${hasWarn ? 'warn' : ''}`} onClick={() => jumpToDay(d.index)}>
+                <button key={d.id} type="button" className={`day-rail-chip ${hasWarn ? 'warn' : ''}`}
+                  aria-current={current ? 'true' : undefined}
+                  onClick={() => jumpToDay(d.index)}>
                   Day {d.index + 1}{hasWarn && <InlineIcon icon={TriangleAlert} size={11} gap={0} vAlign="-1px" style={{ marginLeft: 3 }} />}
                 </button>
               )
@@ -446,7 +618,7 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
       )}
 
       {days.map(day => (
-        <DaySection key={day.id} day={day} trip={openDayIndex === day.index ? trip : undefined} facts={cards.byDay.get(day.index)!} editable={planEditable} open={openDayIndex === day.index} onToggleOpen={toggleDay} legCorrections={legCorrections} suggestionCache={suggestionCache} dayTotals={totalsByDay.get(day.index)}
+        <DaySection key={day.id} day={day} trip={openDayIndex === day.index || (reviewAll && visibleDays.has(day.index)) ? trip : undefined} facts={cards.byDay.get(day.index)!} editable={planEditable} open={reviewAll || openDayIndex === day.index} reviewMode={reviewAll} inView={!reviewAll || visibleDays.has(day.index)} onToggleOpen={toggleDay} onInsertHere={handleInsertHere} legCorrections={legCorrections} suggestionCache={suggestionCache} dayTotals={totalsByDay.get(day.index)}
           onAdd={handleAdd}
           onEdit={handleEdit}
           onDelete={handleDelete}
@@ -466,8 +638,8 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
 
       <StopEditor
         open={!!editorState}
-        onClose={() => { setEditorState(null); conflictState.clearConflict() }}
-        initial={stopInitialValues(editorState, trip)}
+        onClose={() => { setEditorState(null); setEditorSeed(null); conflictState.clearConflict() }}
+        initial={editorSeed && editorSeed.key === stopEditorKey(editorState) ? editorSeed.values : stopInitialValues(editorState, trip)}
         resetKey={stopEditorKey(editorState) + (conflictState.takeTheirsTick ? `:theirs-${conflictState.takeTheirsTick}` : '')}
         onSave={handleSave}
         dayLabel={editorState?.mode === 'add' ? `Day ${editorState.dayIndex + 1}` : undefined}
@@ -479,6 +651,17 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
             onTakeTheirs={conflictState.takeTheirs}
           />
         ) : undefined}
+      />
+
+      {/* #422: the leg's insertion control opens this lightweight first step;
+          "More details…" continues into the StopEditor above with the same day
+          and slot. Both committers are the same add path. */}
+      <QuickAddStop
+        target={quickAdd}
+        trip={trip}
+        onClose={() => setQuickAdd(null)}
+        onAdd={handleQuickAdd}
+        onMore={handleQuickAddMore}
       />
 
       <MoveStopModal

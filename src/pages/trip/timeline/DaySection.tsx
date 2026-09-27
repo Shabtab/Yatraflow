@@ -20,6 +20,8 @@ import {
 import { sameDaySectionProps, type DayCardFacts, type DayTotals } from '../../../lib/dayCards'
 import type { LegEstimate, ScheduleWarning, OptimizeDayResult } from '../../../lib/engine'
 import { routeChain, stayDaySummary, dwellSegments, visibleStops } from '../../../lib/daySummary'
+import { insertionSlotBetween } from '../../../lib/stopOrder'
+import { insertionWhere } from '../../../lib/labels'
 import { isDriveDay } from '../../../lib/ridePlan'
 import { openExternal } from '../../../lib/native'
 import { useTimeFormat, formatHM, formatHMRange } from '../../../lib/timefmt'
@@ -184,16 +186,27 @@ function SmoothCollapse({ open, children, fallbackFocus }: { open: boolean; chil
 // (whose travel panel searches against the whole itinerary). A closed card
 // therefore cannot read the trip at all: `trip` is optional, so a `trip.x` on
 // the collapsed path is a compile error rather than a stale render.
-export const DaySection = React.memo(function DaySection({ day, trip, facts, editable, open, onToggleOpen, onAdd, onEdit, onDelete, onMoveWithinDay, onReorderDay, onMoveBetweenDays, onMoveStopIn, onRenameDay, onCopyDay, onAddQuickStop, onSetDayStart, onAddPlannedHalts, warnings, onStatus, legCorrections, suggestionCache, dayTotals }: {
+export const DaySection = React.memo(function DaySection({ day, trip, facts, editable, open, reviewMode, inView, onToggleOpen, onInsertHere, onAdd, onEdit, onDelete, onMoveWithinDay, onReorderDay, onMoveBetweenDays, onMoveStopIn, onRenameDay, onCopyDay, onAddQuickStop, onSetDayStart, onAddPlannedHalts, warnings, onStatus, legCorrections, suggestionCache, dayTotals }: {
   day: Trip['days'][number]
   /** fresh ONLY for the open day — everything else comes from `facts` */
   trip?: Trip
   /** the trip-wide slice this card reads, resolved once per trip change */
   facts: DayCardFacts
   editable: boolean
-  /** accordion state, owned by TimelineTab (one open day per trip) */
+  /** accordion state (false in review mode, where every day is open) */
   open: boolean
+  /** #421 all-days review: the mode owns openness — no per-day disclosure, the
+   *  header becomes the sticky label for its day */
+  reviewMode: boolean
+  /** #421: is this card near the viewport? The provider-backed extras (weather
+   *  chip, nearby search) and the live-trip hand-off gate on it in review mode,
+   *  so scrolling a ten-day plan does not fire ten fetches at once. Always true
+   *  outside review, which is exactly the previous behaviour. */
+  inView: boolean
   onToggleOpen: (dayIndex: number) => void
+  /** #422: insert a stop between two existing ones — the leg's own control hands
+   *  over the slot it was opened on (resolved from the neighbouring row ids) */
+  onInsertHere: (dayIndex: number, slot: number) => void
   legCorrections?: Record<string, LegEstimate>
   suggestionCache: ReturnType<typeof useSuggestionCache>
   /** this day's slice of computeTotals().byDay — transport + expenses + entry fees */
@@ -421,7 +434,7 @@ export const DaySection = React.memo(function DaySection({ day, trip, facts, edi
   // is handed to the open day alone (#347). A collapsed empty day used to search
   // the corridor for chips nobody could see.
   useEffect(() => {
-    if (!editable || !open || !trip || ordered.length > 0) { setNearby([]); return }
+    if (!editable || !open || !trip || ordered.length > 0 || (reviewMode && !inView)) { setNearby([]); return }
     let cancelled = false
     const anchor = facts.prevPoint ?? facts.homeCenter
     if (!anchor) return
@@ -436,7 +449,7 @@ export const DaySection = React.memo(function DaySection({ day, trip, facts, edi
     // #213 Phase 3 + #347: depend on the values the effect actually reads — the
     // resolved anchor and home center from `facts`, the mode that gates fuel,
     // and the open flag that decides whether a body exists to show them in.
-  }, [editable, open, trip, ordered.length, facts.prevPoint, facts.homeCenter, facts.assumptions.mode])
+  }, [editable, open, trip, ordered.length, reviewMode, inView, facts.prevPoint, facts.homeCenter, facts.assumptions.mode])
 
   // day progress: how much of the realistic window (start–20:00) the plan consumes
   const dayStartHM = day.startTime ?? A.dayStart
@@ -465,13 +478,19 @@ export const DaySection = React.memo(function DaySection({ day, trip, facts, edi
   const chainStops = visibleStops(day).filter(s => !s.auto)
 
   return (
-    <div className={`day-section${collapsed ? ' day-closed' : ''}${collapsed && isStayDay ? ' day-stay-collapsed' : ''}${dragging !== null ? ' drag-live' : ''}`} id={`day-card-${day.index}`}>
+    <div className={`day-section${collapsed ? ' day-closed' : ''}${collapsed && isStayDay ? ' day-stay-collapsed' : ''}${dragging !== null ? ' drag-live' : ''}${reviewMode ? ' day-review' : ''}`} id={`day-card-${day.index}`}>
       <div className={`day-header${foreignOver === ordered.length && dragging === null ? ' foreign-over' : ''}`} {...(editable ? dayDropHandlers(ordered.length) : {})}>
         {/* Stable name + state attribute (UI audit F-09); the collapsible body
             is a fragment of siblings, so there's no single aria-controls id. */}
+        {/* Review mode owns openness, so there is nothing to expand or collapse
+            here — the header itself becomes the sticky label for its day (#421),
+            and hiding the control is the honest affordance (a disabled chevron
+            would promise an interaction that has no meaning). */}
+        {!reviewMode && (
         <button ref={collapseRef} className="day-collapse" onClick={onCollapseClick} aria-expanded={!collapsed} aria-label={`Day ${day.index + 1} stops`}>
           <ChevronDown size={16} aria-hidden className="day-collapse-icon" />
         </button>
+        )}
         <div className="day-badge"><small>Day</small><b>{day.index + 1}</b></div>
         <div style={{ flex: 1, minWidth: 160 }}>
           <div className="day-title-row">
@@ -544,7 +563,9 @@ export const DaySection = React.memo(function DaySection({ day, trip, facts, edi
           <div className={`day-progress ${collapsed ? 'compact' : ''}`} title={`${Math.round(used * 100)}% of the ${formatHM(dayStartHM, timeFormat)}–${formatHM(A.dayEnd, timeFormat)} window`}>
             <div className={`day-progress-fill sev-${sev}`} style={{ width: `${Math.round(used * 100)}%` }} />
           </div>
-          {!collapsed && <DayWeatherChip day={day} startDate={facts.startDate} />}
+          {/* #421: in review this is a provider call per day — it waits until
+              the day is actually near the viewport (outside review, unchanged). */}
+          {!collapsed && (!reviewMode || inView) && <DayWeatherChip day={day} startDate={facts.startDate} />}
         </div>
         {/* Per-day cost + time-at-stops: intelligence the engine already
             computes (computeTotals().byDay + simulateDay dwell), surfaced where
@@ -761,8 +782,25 @@ export const DaySection = React.memo(function DaySection({ day, trip, facts, edi
                 return (
                   <div className="tl-legrow" {...(editable ? dayDropHandlers(i + 1) : {})}>
                     <div className="tl-gutter tl-gutter-leg"><span className="tl-line tl-line-leg" /></div>
-                    <div className={`travel-leg ${foreignOver === i + 1 && dragging === null ? 'foreign-over' : ''}`}>
-                      <MetaIcon icon={ Car } tone="money" />~{leg.distanceKm.toFixed(0)} km · ~{Math.round(leg.durationMinutes)} min from {leg.fromTitle.replace(/ \((start|end)\)$/, '')} · est ₹{Math.round(leg.distanceKm * (A.inrPerKm ?? 8))} ({A.mode})
+                    <div className="tl-leg-cell">
+                      <div className={`travel-leg ${foreignOver === i + 1 && dragging === null ? 'foreign-over' : ''}`}>
+                        <MetaIcon icon={ Car } tone="money" />~{leg.distanceKm.toFixed(0)} km · ~{Math.round(leg.durationMinutes)} min from {leg.fromTitle.replace(/ \((start|end)\)$/, '')} · est ₹{Math.round(leg.distanceKm * (A.inrPerKm ?? 8))} ({A.mode})
+                      </div>
+                      {/* #422: the insertion control belongs to the leg BETWEEN
+                          two stops, and it hands over the slot it sits in —
+                          resolved from the two neighbouring row ids at click
+                          time, so a shifted list cannot insert two rows away.
+                          Revealed on hover and on keyboard focus; always visible
+                          on touch (a hover-only control is unreachable there). */}
+                      {editable && (
+                        <button
+                          type="button"
+                          className="leg-insert"
+                          onClick={() => onInsertHere(day.index, insertionSlotBetween(ordered, ordered[i]?.id ?? null, ordered[i + 1]?.id ?? null))}
+                          aria-label={`Insert a stop on Day ${day.index + 1} ${insertionWhere(ordered[i]?.title, ordered[i + 1]?.title)}`}
+                          title="Insert a stop here"
+                        ><Plus size={13} aria-hidden /><span className="leg-insert-label">Insert</span></button>
+                      )}
                     </div>
                   </div>
                 )
