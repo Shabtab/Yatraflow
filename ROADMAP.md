@@ -21,7 +21,7 @@ Current version: **0.70.0** — cut on `test` on 2026-09-28 (the honesty-and-rec
 **Live open work is tracked in two places, and this file must agree with both:**
 
 1. **The issue queue** — see [Open issues](#open-issues) below for the current list, which is
-   derived from the GitHub API rather than recalled. **45 issues are open** (2026-09-28,
+   derived from the GitHub API rather than recalled. **47 issues are open** (2026-09-28,
    `gh issue list --state open` — 14 P1, 48 P2, 13 P3, and an empty P0 shelf): the audit plan's
    P1–P3 remainder, the #226–#234 launch-readiness criteria filed from
    [`docs/PLAN-LAUNCH-AND-DISTRIBUTION.md`](docs/PLAN-LAUNCH-AND-DISTRIBUTION.md), and the
@@ -47,7 +47,7 @@ number collides with a shipped release, the ledger wins.
 
 ## Open issues
 
-Re-derived from the GitHub API 2026-09-26 (`gh issue list --state open`) — **45 issues are open**
+Re-derived from the GitHub API 2026-09-28 (`gh issue list --state open`) — **47 issues are open**
 (14 P1, 48 P2, 13 P3; P0 empty). The table below tracks the two named sets: the
 **launch-readiness criteria** (#227–#234), filed from
 [`docs/PLAN-LAUNCH-AND-DISTRIBUTION.md`](docs/PLAN-LAUNCH-AND-DISTRIBUTION.md) and its
