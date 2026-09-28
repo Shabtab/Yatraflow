@@ -35,6 +35,9 @@ import {
 import { hitCostLabels, slotPinsFor } from './map/railLabels'
 import { alternativesFor as pickAlternatives, sightRowChips } from './map/sightRows'
 import { filingOptionsFor, manualCandidateFor, mergeSlotCandidates, slotFileRefusal } from './map/slotFiling'
+import {
+  dayWeatherJoin, drizzleDayIndex, journeyKmFrom, routePolylineFrom, weatherAnchorFrom, weatherFetchRefusal,
+} from './map/weatherGeometry'
 
 /** How many search hits the rail shows before "Show all" (#333 A1). The listbox
  *  grammar needs the same page size the rows are rendered with, so it lives here
@@ -420,35 +423,31 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
   // in the cap multiplier. Same loading lifecycle as the rain array.
   const [dayWeatherCode, setDayWeatherCode] = useState<(number | null)[] | null>(null)
   useEffect(() => {
-    const stops = trip.days.flatMap(d => d.stops).filter(s => s.status !== 'rejected' && Number.isFinite(s.lat) && Number.isFinite(s.lng))
-    if (stops.length === 0 || !forecastAvailable(trip.startDate)) { setDayRainPct(null); setDayWeatherCode(null); return }
-    let cancelled = false
-    const anchor = {
-      lat: stops.reduce((a, s) => a + s.lat, 0) / stops.length,
-      lng: stops.reduce((a, s) => a + s.lng, 0) / stops.length,
+    // #420 slice 6: which stops the forecast may be centred on, and whether it may
+    // be fetched at all, are rules with their own tests now (map/weatherGeometry).
+    const stops = trip.days.flatMap(d => d.stops)
+    const anchor = weatherAnchorFrom(stops)
+    if (!anchor || weatherFetchRefusal({ stops, startDate: trip.startDate, forecastAvailable })) {
+      setDayRainPct(null); setDayWeatherCode(null); return
     }
+    let cancelled = false
     fetchDailyWeather(anchor.lat, anchor.lng, trip.startDate, trip.days.length || 1)
       .then(w => {
         if (cancelled) return
-        setDayRainPct(trip.days.map((_, i) => w[isoAddDays(trip.startDate, i)]?.rainChancePct ?? null))
-        setDayWeatherCode(trip.days.map((_, i) => w[isoAddDays(trip.startDate, i)]?.code ?? null))
+        const join = dayWeatherJoin({ dayCount: trip.days.length, startDate: trip.startDate, byDate: w, isoAddDays })
+        setDayRainPct(join.rainPct)
+        setDayWeatherCode(join.codes)
       })
       .catch(() => { if (!cancelled) { setDayRainPct(null); setDayWeatherCode(null) } })
     return () => { cancelled = true }
   }, [trip])
-  // OSRM's road total (when resolved) is the most accurate journey budget for
-  // the fatigue math; until then use the journey-summed estimate.
-  const planKm = routeTotalKm && routeTotalKm >= 90 ? routeTotalKm : wholeTrip.km
+  // OSRM's road total (when resolved AND worth trusting) is the most accurate
+  // journey budget for the fatigue math; otherwise the journey-summed estimate.
+  const planKm = journeyKmFrom(routeTotalKm, wholeTrip.km)
 
   // Route polyline in {lat,lng} form (from the OSRM route geometry) — feeds the
   // asymmetric detour measure so on-the-way hits cost ~0 and spurs pay round trip.
-  const routePolyline = useMemo<{ lat: number; lng: number }[] | null>(() => {
-    if (!routeGeometry) return null
-    const pts = routeGeometry
-      .filter(c => Number.isFinite(c[0]) && Number.isFinite(c[1]))
-      .map(c => ({ lat: c[1], lng: c[0] }))
-    return pts.length >= 2 ? pts : null
-  }, [routeGeometry])
+  const routePolyline = useMemo(() => routePolylineFrom(routeGeometry), [routeGeometry])
 
   // #polylines: the Return-home toggle is a DIRECTION filter, not a drawing
   // switch. On (default): the corridor reads the loop — km labels wrap past the
@@ -624,10 +623,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
   // #141: drizzle-grade rain (a 40%+ chance whose WMO code says drizzle or
   // light rain) damps the cap gently — the note keeps it a "slow day", never
   // a verdict flip; storms damp fully and the split banner flips honestly.
-  const drizzleDay = dayRainPct?.findIndex((p, i) => {
-    const c = dayWeatherCode?.[i]
-    return p != null && p >= 40 && c != null && c >= 51 && c <= 63
-  }) ?? -1
+  const drizzleDay = drizzleDayIndex(dayRainPct, dayWeatherCode)
   // The split wants more days than planned: propose applying it. Declining is
   // respected — with the honest red fatigue verdict stated, never hidden.
   const [splitDeclined, setSplitDeclined] = useState(false)
