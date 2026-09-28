@@ -134,11 +134,16 @@ function SlotGlyph({ kind, label }: { kind: DaySlotKind; label: string }) {
   const G = label === 'Breakfast' ? Coffee : KIND_GLYPH[kind]
   return G ? <InlineIcon icon={G} size={12} /> : null
 }
-export function MapTab({ trip, editable, applyChange, suggestionCache, crewSuggestions, decisions, road, onOpenTimeline, onOpenBoard, onOpenDay, onOpenGroupInput, previewOpen }: {
+export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsHash, crewSuggestions, decisions, road, onOpenTimeline, onOpenBoard, onOpenDay, onOpenGroupInput, previewOpen }: {
   trip: Trip
   editable: boolean
   applyChange: (mutator: (d: Trip) => void, kind: ImpactResult['kind'], dayIndex: number, onKept?: () => void) => void
   suggestionCache: ReturnType<typeof useSuggestionCache>
+  /** #404: the Map publishes the freshness it scanned under, so the Overview's
+   *  slot matrix can qualify stale numbers instead of printing them as current.
+   *  The hash cannot be recomputed outside this component — it reads the OSRM
+   *  geometry and the weather join, both of which are this tab's state. */
+  onInputsHash?: (inputsHash: string, scopeKm: number) => void
   crewSuggestions?: { status: string; title: string; category?: string; lat: number; lng: number }[]
   /** #188: the workspace's ONE road measurement — the Map tab no longer measures. */
   road: TripRoadView
@@ -684,6 +689,24 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
     roundTrip: trip.roundTrip,
     vehicleProfile: trip.vehicleProfile,
   }), [anchors, routeGeometry, trip, scopeKm, dayRainPct, dayWeatherCode, crewSeeds, dnaTick])
+
+  // #404: the Overview's slot matrix gates on the SAME freshness this tab's cache
+  // was written with — `isMapCacheFresh(cache.map, scopeKm, mapInputsHash)` — and
+  // it cannot recompute the hash: `routeHash(routeGeometry)` needs the measured
+  // road, and the rain/code arrays are this tab's state. A partial hash computed
+  // workspace-side would never equal this one, so its comparison would report
+  // "stale" forever — worse than today's silence. Publishing the pair is the fix.
+  // The ref makes the call idempotent per VALUE: a parent re-rendering with a
+  // fresh callback identity must not be re-notified, or the two tabs ping-pong
+  // state at each other.
+  const publishedInputsRef = useRef('')
+  useEffect(() => {
+    if (!onInputsHash) return
+    const key = `${mapInputsHash}|${scopeKm}`
+    if (publishedInputsRef.current === key) return
+    publishedInputsRef.current = key
+    onInputsHash(mapInputsHash, scopeKm)
+  }, [mapInputsHash, scopeKm, onInputsHash])
 
   // Fraction fallback pool (P1-C): below the fatigue floor the planner is
   // honestly silent, but the strip must never read as "nothing around" —
