@@ -16,14 +16,15 @@ import { EXPENSE_CATEGORIES } from '../../data/types'
 import {
   addExpense, deleteExpense, restoreExpense, updateExpense,
   markExpenseSettled, markExpenseUnsettled,
-  currentUser, userById, useDb,
+  currentUser, userById, useDb, canEdit, roleOf, resumeSync,
 } from '../../store/store'
 import { computeTotals, getAssumptions, formatInr, isRoundTrip, safeToSpendPerDay } from '../../lib/engine'
 import { amountRefusal } from '../../lib/expenseAmount'
+import { sliceState, emptyCopyFor } from '../../lib/readState'
 import { computeBalances, settleBalances, fairSharePerHead, linesTotal, openTaggedLines } from '../../lib/settlement'
 import { loadFlag, saveFlag } from '../../lib/uiPrefs'
 import { titleCase } from '../../lib/labels'
-import { Avatar, Chip, Field, StatTile, toast, undoToast, useInView, usePageVisible } from '../../components/ui'
+import { Avatar, Chip, Field, StatTile, toast, undoToast, useInView, usePageVisible, EmptyState } from '../../components/ui'
 import { refuseWhileStaged } from '../../lib/mutationLifecycle'
 
 // ================= Budget tab =================
@@ -159,15 +160,26 @@ export function BudgetTab({ trip, totals, editable, previewOpen }: {
   const members = trip.members ?? []
   const [editingId, setEditingId] = useState<ID | null>(null)
   const [watchOptional, setWatchOptional] = useState<boolean>(() => loadFlag('optional_watch', false))
-  // M6 B4 — settle-up: the id currently being toggled (AGENTS 6a: async
-  // write-through needs its input guard matching the visual state).
-  const [busySettleId, setBusySettleId] = useState<ID | null>(null)
 
   const groupTarget = trip.budgetPerPersonInr * trip.travellers
   const remaining = groupTarget - totals.totalCostInr
   const pctUsed = Math.min(150, Math.round((totals.totalCostInr / Math.max(1, groupTarget)) * 100))
   const perPersonDeltaPct = Math.round(((totals.costPerPersonInr - trip.budgetPerPersonInr) / Math.max(1, trip.budgetPerPersonInr)) * 100)
   const A = getAssumptions(trip)
+  // #383: the expense ledger's read status. There is no `expenses` slice —
+  // expenses ride inside the trips row — so the TRIPS slice is the ledger's
+  // verdict, per-slice and never the global `ready` (a global ready is exactly
+  // what let a failed read print the friendly empty copy). Saying it here saves
+  // the next reader the hunt through the hydrate.
+  const expensesRead = sliceState(db.sliceReads, 'trips')
+  // Retry re-issues the read (the same full re-hydrate the app-resume path
+  // runs — fresh generation, replace-on-success verdict), it does not merely
+  // re-render the rows already in the cache.
+  const retryExpenses = () => { void resumeSync() }
+  // #384: settle/reopen is owner/editor only — the store enforces it (the
+  // real guard), and the affordance matches so a viewer never sees a control
+  // whose write would be refused.
+  const canSettle = !!me?.id && canEdit(roleOf(trip, me.id))
   // Pacing: how much the group can still spend per day without blowing the
   // target. Null when no budget is set — the tile then asks for one instead
   // of inventing a number.
@@ -307,12 +319,27 @@ export function BudgetTab({ trip, totals, editable, previewOpen }: {
 
           <div className="card">
             <div className="row-between">
-              <h3>Expense lines · {trip.expenses.length}</h3>
+              <h3>Expense lines{expensesRead === 'ready' && trip.expenses.length > 0 ? ` · ${trip.expenses.length}` : ''}</h3>
             </div>
             <hr className="divider" />
-            {trip.expenses.length === 0
-              ? <p className="muted small">No expense lines yet — add the big ones first (stay, fuel, food).</p>
-              : (
+            {/* #383: the three states, in the order that makes the bug
+                impossible — the failure branch first (it is the only one that
+                offers a way back), then loading, and only then the genuine
+                empty copy. Branching data-only on a slice that can fail is
+                what printed the friendly empty copy over a dropped connection. */}
+            {expensesRead !== 'ready' ? (
+              expensesRead === 'failed' ? (() => {
+                const copy = emptyCopyFor('failed', 'expenses', retryExpenses)
+                return (
+                  <EmptyState title={copy.title} body={copy.body}
+                    action={<button className="btn btn-primary" onClick={retryExpenses}>Try again</button>} />
+                )
+              })() : (
+                <div className="loading-block"><div className="spinner" />Loading expenses…</div>
+              )
+            ) : trip.expenses.length === 0 ? (
+              <p className="muted small">No expense lines yet — add the big ones first (stay, fuel, food).</p>
+            ) : (
                 <table className="compare-table expense-table" tabIndex={0} aria-label="Expense lines">
                   <thead><tr><th>Line</th><th>Paid by</th><th className="num">Amount</th><th><span className="sr-only">Actions</span></th></tr></thead>
                   <tbody>
@@ -393,7 +420,21 @@ export function BudgetTab({ trip, totals, editable, previewOpen }: {
           {trip.travellers >= 2 && (
             <div className="card" style={{ marginTop: 14 }}>
               <h3>Who paid · who owes</h3>
-              {members.length < 2
+              {/* #383: the balances read the same list the ledger does — one
+                  status, both consumers. A failed read must not print as a
+                  settled-up crew or an empty split. */}
+              {expensesRead !== 'ready' && (
+                expensesRead === 'failed' ? (() => {
+                  const copy = emptyCopyFor('failed', 'expense lines', retryExpenses)
+                  return (
+                    <EmptyState title={copy.title} body={copy.body}
+                      action={<button className="btn btn-primary btn-sm" onClick={retryExpenses}>Try again</button>} />
+                  )
+                })() : (
+                  <div className="loading-block"><div className="spinner" />Loading expense lines…</div>
+                )
+              )}
+              {expensesRead === 'ready' && (members.length < 2
                 ? <p className="hint-text" style={{ margin: '6px 0 0' }}>{tagged && <>Fair share is {formatInr(fairShare)} each. </>}Invite your crew from the Share tab, then tag who paid on expense lines — who owes whom shows up here.</p>
                 : <>
                     <p className="hint-text" style={{ margin: '6px 0 10px' }}>
@@ -427,7 +468,7 @@ export function BudgetTab({ trip, totals, editable, previewOpen }: {
                             <b>{formatInr(openPayableTotal)}</b> across {openPayable.length} tagged line{openPayable.length !== 1 ? 's' : ''} still to square up — mark each settled as the money moves.
                           </p>
                         )}
-                        {editable && openExpenses.length > 0 && (
+                        {canSettle && openExpenses.length > 0 && (
                           <div className="settled-strip" style={{ marginTop: 12 }}>
                             <span className="hint-text" style={{ margin: 0 }}>
                               <b>Settle up:</b> mark a line squared up — it leaves the balances and moves to the settled history below.
@@ -441,17 +482,15 @@ export function BudgetTab({ trip, totals, editable, previewOpen }: {
                                     type="button"
                                     className="btn btn-sm settled-btn"
                                     aria-label={`Mark ${e.label} settled`}
-                                    disabled={busySettleId === e.id}
                                     onClick={() => {
                                       if (refuseWhileStaged(previewOpen)) return
                                       if (!me?.id) return
-                                      setBusySettleId(e.id)
-                                      try {
-                                        markExpenseSettled(trip.id, e.id, me.id)
-                                        toast(`Marked “${e.label}” settled`)
-                                      } finally {
-                                        setBusySettleId(null)
-                                      }
+                                      // #384: the store re-checks the role — this
+                                      // is the affordance, not the guard. The
+                                      // handler stays synchronous, so there is
+                                      // no busy state to keep honest.
+                                      markExpenseSettled(trip.id, e.id, me.id)
+                                      toast(`Marked “${e.label}” settled`)
                                     }}
                                   >Mark settled</button>
                                 </div>
@@ -467,21 +506,19 @@ export function BudgetTab({ trip, totals, editable, previewOpen }: {
                                 <div key={e.id} className="settled-row is-done">
                                   <span className="settled-label">{e.label}</span>
                                   <span className="num muted small">{formatInr(e.amountInr * (e.perPerson ? trip.travellers : 1))}</span>
-                                  {editable && (
+                                  {canSettle && (
                                     <button
                                       type="button"
                                       className="icon-btn"
                                       aria-label={`Reopen ${e.label}`}
-                                      disabled={busySettleId === e.id}
                                       onClick={() => {
                                         if (refuseWhileStaged(previewOpen)) return
-                                        setBusySettleId(e.id)
-                                        try {
-                                          markExpenseUnsettled(trip.id, e.id)
-                                          toast(`Reopened “${e.label}”`)
-                                        } finally {
-                                          setBusySettleId(null)
-                                        }
+                                        // #384: the reopen path now requires the
+                                        // session too — the hole the settle path
+                                        // already closed.
+                                        if (!me?.id) return
+                                        markExpenseUnsettled(trip.id, e.id, me.id)
+                                        toast(`Reopened “${e.label}”`)
                                       }}
                                     ><RotateCcw size={14} /></button>
                                   )}
@@ -492,7 +529,7 @@ export function BudgetTab({ trip, totals, editable, previewOpen }: {
                         )}
                       </>
                     )}
-                  </>}
+                  </>)}
             </div>
           )}
 

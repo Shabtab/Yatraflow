@@ -15,6 +15,10 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Fixed
+
+- **A failed read is said, not smoothed over — on the Budget tab, and by the store that feeds it.** The tab branched on the array, so a dropped connection printed the friendly "no expense lines yet" copy while real expenses sat unread; the toast faded and the lie stayed. The store's hydrate already knew which slices failed and published nothing, so no page could tell the two apart. The hydrate now publishes a per-slice verdict covering the slices each run actually asked for — a slice nobody read stays unread rather than being reported read — and the ledger and the balances card both read the trips slice (expenses ride inside it; there is no slice of their own) through the same three states the creator and gallery pages already speak: "couldn't load" with a retry that re-issues the read, then a loading state, and only then the genuine empty copy. Settling, meanwhile, carried a comment claiming viewers were refused with no check behind it: marking a line settled and reopening one are now owner/editor only in the store itself — the same verdict the trips update policy enforces server-side — with both paths requiring a signed-in session, the affordance gated to match, and the vestigial busy guard around the synchronous handler removed (#383's Budget surface — the My Trips and Trash surfaces are their own change — and #384).
+
 ## [0.69.0] - 2026-09-27
 
 The audit's P1 wave is closed, and the map learned to search. Every P1 the day's sweep filed is
