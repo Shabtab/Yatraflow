@@ -397,7 +397,7 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
       {/* AI companion: locked for the premium milestone (M8) — the feature is
           complete but unmounted unless VITE_AI_COMPANION=on. See featureFlags. */}
       {AI_COMPANION_ENABLED && (
-        <AiDrawer trip={trip} open={aiOpen} onOpen={() => setAiOpen(true)} onClose={() => setAiOpen(false)} />
+        <AiDrawer key={trip.id} trip={trip} open={aiOpen} onOpen={() => setAiOpen(true)} onClose={() => setAiOpen(false)} />
       )}
     </div>
   )
