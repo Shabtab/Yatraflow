@@ -322,8 +322,14 @@ describe('#349 — the fork asks the wire and the entitlement, never the cache',
     expect(fn).toMatch(/const src = wireRow \?\? tripById\(pub\.tripId\)/)
     expect(fn).not.toMatch(/tripById\(pub\.tripId\) \?\? await fetchPublicTrip/)
     // A negative presentation flag is never trusted; only a positive skips the
-    // entitlement read.
-    expect(fn).toMatch(/unlockedPresentationOnly === true\s*\n?\s*\|\| hasUnlock\(await fetchMyEntitlements\(meId\)/)
+    // entitlement read. #359 made that read REJECT, so the `||` short-circuit
+    // became an explicit branch — a rejection must not escape (a buyer who
+    // could not be checked could not fork their own plan) and must not be read
+    // as entitled (which would hand paid content to a stranger).
+    expect(fn).toMatch(/let entitled = unlockedPresentationOnly === true/)
+    expect(fn).toMatch(/if \(!entitled && meId\)/)
+    expect(fn).toMatch(/hasUnlock\(await fetchMyEntitlements\(meId\), meId, pub\.id, pub\.creatorId\)/)
+    expect(fn).toMatch(/\} catch \{\s*entitled = false\s*\}/)
     // The re-stub stays the default and the public persist path stays the one
     // that drops locked-day expenses. #352 added the money flag to the re-stub
     // and made the persist path the default for every fork the server did not

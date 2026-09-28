@@ -9,6 +9,16 @@ import { describe, expect, it } from 'vitest'
 // into a serverless bundle).
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8')
+/** Code only, comments stripped. This file's page explains the entitlement gate
+ *  at length and names the same strings the assertions use, so a raw-source
+ *  match would be satisfiable by a sentence describing the fix rather than by
+ *  the fix (the trap `tests/purchase-share-card.test.ts` documents). */
+const codeOf = (source: string): string =>
+  source
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .split('\n')
+    .filter(line => !/^\s*(\/\/|--)/.test(line))
+    .join('\n')
 
 // One exported function's OWN source, up to the next top-level export. A check
 // about a function must not be bent by whatever is later added beside it: the
@@ -114,6 +124,79 @@ describe('the public page wires the real unlock flow', () => {
     expect(hub).toContain('onRetry')
   })
 
+  it('a failed entitlement read shows an error and Retry, and NEVER a price CTA (#359)', () => {
+    // The direction that mattered. The read now rejects, and a rejection used to
+    // be a silent `[]` — which the page spent as "you own nothing". A paying
+    // buyer on a flaky connection therefore saw locked days and an
+    // "Unlock full plan · ₹499" button for a plan they had already paid for.
+    //
+    // The two halves are independent and both are asserted: the content stays
+    // LOCKED (a fix that unlocked on error would be a paywall breach) and the UI
+    // gets LOUD (a fix that errored silently is this bug again).
+    const code = codeOf(page)
+    // 1. Three states, derived in the order the hub's ledger uses.
+    expect(code).toMatch(/const entitlementRead: 'ready' \| 'reading' \| 'failed'/)
+    expect(code).toContain('entitlementsError')
+    expect(code).toContain('entitlementsReading')
+    expect(code).toContain('entitlementsRetry')
+    // 2. The price CTA is gated on a read that ANSWERED. A logged-out visitor
+    //    has nothing to check, so the gate opens for them.
+    expect(code).toMatch(/const mayShowPriceCta = !meId \|\| entitlementRead === 'ready'/)
+    // 3. Every one of the two price buttons sits behind that gate — the day-card
+    //    one and the sticky-sidebar one. A single unguarded site is enough to
+    //    re-open the bug, and a guard that only covers the obvious one is the
+    //    shape this failed in.
+    const priceButtons = code.match(/\{price !== undefined[^}]*<button className="btn btn-saffron/g) ?? []
+    expect(priceButtons).toHaveLength(2)
+    for (const b of priceButtons) expect(b).toContain('mayShowPriceCta')
+    // 4. The failure is SAYABLE, with a way to ask again, and offers no price.
+    expect(code).toContain("Couldn&apos;t check your access.")
+    expect(code).toContain('Checking your access…')
+    expect(code).toContain('role="alert"')
+    expect(code).toMatch(/onRetry=\{retryEntitlements\}/)
+    // 5. The read is BOUNDED, so "Checking your access…" always resolves into a
+    //    figure or into a failure that offers Retry.
+    expect(code).toContain('ENTITLEMENT_READ_TIMEOUT_MS')
+    expect(code).toContain("'TimeoutError'")
+  })
+
+  it('the gate FAILS CLOSED — a failed read never widens what is shown', () => {
+    // The other direction of the same fix, and the one a careless implementation
+    // gets wrong: `entitlements` is left untouched by a failed refresh, and
+    // `unlocked` is still derived from it alone. So a buyer keeps the access they
+    // already proved, and nobody else gains any.
+    const code = codeOf(page)
+    // The catch sets the error flag and NOTHING else — it does not clear the
+    // list, so a refresh that fails cannot take away access already on screen.
+    expect(code).toMatch(/\.catch\(\(\) => \{ if \(alive\) setEntitlementsError\(true\) \}\)/)
+    // `unlocked` is still `hasUnlock(entitlements, …)` — the failure flag is
+    // routed to the UI, never into the unlock decision.
+    expect(code).toMatch(/const unlocked = hasUnlock\(entitlements, meId/)
+    // And the paywall itself is untouched: this is a presentation gate, the wire
+    // still decides what content exists.
+    expect(code).toContain('forkPublication(pub!, me?.id ?? null, onNavigate, unlocked)')
+  })
+
+  it('the purchase re-read cannot become an unhandled rejection (#359)', () => {
+    // The read rejects now, so the post-purchase refresh needs both arms. A
+    // missing catch here is not a style question: it is an unhandled promise
+    // rejection in the buyer's browser, on the exact moment they paid.
+    const code = codeOf(page)
+    const onUnlocked = code.slice(code.indexOf('onUnlocked:'), code.indexOf('}).then('))
+    expect(onUnlocked).toContain('fetchMyEntitlements(meId)')
+    expect(onUnlocked).toContain('.catch(')
+    expect(onUnlocked).toContain('setEntitlementsError(true)')
+  })
+
+  it('the fork treats a failed entitlement read as NOT entitled, never as entitled', () => {
+    // The third caller, and the one with the sharpest edge: a rejection that
+    // escapes would stop a buyer forking their own plan, and one read as
+    // entitlement would hand paid content to a stranger. Conservative, either way
+    // the fork only NARROWS — the wire already decided what exists.
+    const fork = read('../src/lib/forkPub.ts')
+    expect(fork).toMatch(/\} catch \{\s*entitled = false\s*\}/)
+  })
+
   it('the fork re-stubs locked days before persisting (defense-in-depth on the P0)', () => {
     const fork = read('../src/lib/forkPub.ts')
     // The fork reads through the paywall RPC (or the owner's own cache) and
@@ -184,7 +267,19 @@ describe('the unlock library degrades honestly', () => {
     expect(source).toContain('scriptPromise = null // allow a retry on the next click')
   })
 
-  it('never treats a missing entitlements table as an error surface', () => {
-    expect(read('../src/lib/unlock.ts')).toMatch(/catch \(e\) \{\s*console\.error\('\[yatraflow\] entitlements read failed', e\)\s*return \[\]\s*\}/)
+  it('rejects a failed entitlement read instead of degrading to none', () => {
+    // #359. This used to be the OPPOSITE pin — it asserted the catch-to-`[]`,
+    // on the reasoning that a dropped connection must not break the public page.
+    // But the page spends the difference: a buyer whose read failed saw locked
+    // days and an "Unlock full plan · ₹499" button for a plan they had already
+    // paid for. An empty list is only honest evidence once a read SUCCEEDED
+    // with zero rows, so the read now rejects like every other reader here.
+    const source = read('../src/lib/unlock.ts')
+    const fn = fnSource(source, 'fetchMyEntitlements')
+    expect(fn).toContain('throw error')
+    expect(fn).not.toMatch(/catch[^}]*return \[\]/)
+    // A logged-out visitor is still an empty list — there is nothing to read,
+    // and that is not a failure.
+    expect(fn).toMatch(/if \(!userId\) return \[\]/)
   })
 })

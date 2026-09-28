@@ -96,8 +96,21 @@ export async function forkPublication(pub: PublishedItinerary, meId: string | nu
   // about anything.
   const src = wireRow ?? tripById(pub.tripId)
   if (!src) { toast('Couldn’t load that itinerary — it may be unpublished now, or the connection dropped.', 'err'); return false }
-  const entitled = unlockedPresentationOnly === true
-    || hasUnlock(await fetchMyEntitlements(meId), meId, pub.id, pub.creatorId)
+  // #359 — the entitlement read REJECTS on a failed read, so a rejection is
+  // caught HERE and answered as the CONSERVATIVE answer: not entitled. The fork
+  // then takes the re-stubbed locked path, which is the direction that withholds
+  // rather than leaks — the wire already decided what content exists, and this
+  // second gate can only narrow. Letting the rejection escape would abort the
+  // whole fork (a buyer who could not be checked could not fork their own plan);
+  // treating it as "entitled" would hand paid content to a stranger.
+  let entitled = unlockedPresentationOnly === true
+  if (!entitled && meId) {
+    try {
+      entitled = hasUnlock(await fetchMyEntitlements(meId), meId, pub.id, pub.creatorId)
+    } catch {
+      entitled = false
+    }
+  }
   // Fail closed: any doubt (no wire row, a wire row the server stubbed, no
   // entitlement) forks the locked shape. Nothing a client can say widens this —
   // the wire already decided what content exists.

@@ -259,8 +259,13 @@ export function describePreLog(f: Pick<PubFunnel, 'preLogViews' | 'preLogForks' 
   if (f.preLogViews > 0) bits.push(`${f.preLogViews.toLocaleString('en-IN')} visit${f.preLogViews === 1 ? '' : 's'}`)
   if (f.preLogForks > 0) bits.push(`${f.preLogForks.toLocaleString('en-IN')} fork${f.preLogForks === 1 ? '' : 's'}`)
   const counts = bits.join(' and ')
+  // QUALIFIED, not changed. The page's own note dates the log from the GLOBAL
+  // earliest day while each row's dates its own, and the two sat side by side
+  // looking like a contradiction — but they answer different questions (has any
+  // of my plans been recorded since X / has THIS one). The clause names which,
+  // so a reader can hold both at once. The pinned per-pub date is unchanged.
   const since = f.recordingSinceDay
-    ? ` — recording began ${new Date(`${f.recordingSinceDay}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}`
+    ? ` — this plan's recording began ${new Date(`${f.recordingSinceDay}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}`
     : ''
   return `${counts} of the all-time counts predate the event log${since}.`
 }
@@ -290,6 +295,51 @@ export function formatPct(pct: number): string {
   if (!(pct > 0)) return '0%'
   const rounded = pct >= 10 ? pct.toFixed(0) : pct.toFixed(1)
   return `${rounded.replace(/\.0$/, '')}%`
+}
+
+/**
+ * The track both marks on a funnel row are drawn against — ONE scale, so the
+ * bar can never contradict the number beside it.
+ *
+ * The inversion is the reason this exists. A fork rate above 100% is a real,
+ * pinned, named fact (rule 2: Explore's card forks a plan without opening it),
+ * so the RATE must not be clamped — but the BAR was, at `min(100, …)`. At 140%
+ * that drew a full-width bar indistinguishable from a 100% one and pushed the
+ * unlock mark to `calc(100% + 3px)`, i.e. off its own track. A capped bar beside
+ * an uncapped number hides the very fact the number is telling.
+ *
+ * So the track is scaled instead: when the fork rate exceeds 100%, the scale is
+ * the largest rate on the row, which places the fork mark at 100% (full — it IS
+ * the largest) and the unlock mark proportionally below it, both on-track. When
+ * nothing exceeds 100% the scale is 100, which is the old behaviour exactly.
+ *
+ * Pure and shared, so the two marks cannot be laid out against different
+ * denominators — the one way this drawing could disagree with itself. Rates are
+ * never altered here, only the track they are measured against.
+ */
+export function funnelBarScale(input: {
+  forkRatePct: number
+  unlockRatePct: number
+  /** 0 while the unlock stage is not ready; it must not raise the scale. */
+  hasUnlock?: boolean
+}): number {
+  const rates = [input.forkRatePct, input.hasUnlock === false ? 0 : input.unlockRatePct]
+    .filter(r => Number.isFinite(r) && r > 0)
+  return Math.max(100, ...rates)
+}
+
+/** A mark's position on a `funnelBarScale` track, as a CSS percentage string.
+ *  Clamped to the track so a negative or absurd rate cannot push a mark
+ *  off-track in the other direction, which is what the old bar did at 140%. */
+export function funnelBarPos(ratePct: number, scale: number): string {
+  const safe = Number.isFinite(scale) && scale > 0 ? scale : 100
+  // A non-finite rate must not survive the arithmetic: `NaN / 100` is NaN, and
+  // `Math.min(100, Math.max(0, NaN))` is NaN — which renders as an invalid
+  // `calc()` and drops the mark entirely. Coerced at the one boundary that
+  // builds the string.
+  const rate = Number.isFinite(ratePct) ? ratePct : 0
+  const pos = Math.min(100, Math.max(0, (rate / safe) * 100))
+  return `${pos.toFixed(2)}%`
 }
 
 /** One day of the trend: the three steps, bucketed to the UTC day they

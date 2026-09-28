@@ -312,6 +312,11 @@ function AiProviderCard() {
   const [testing, setTesting] = useState(false)
   const [result, setResult] = useState<string | null>(null)
   const saved = loadAiProviderConfig()
+  const testAbort = useRef<AbortController | null>(null)
+
+  useEffect(() => () => {
+    testAbort.current?.abort()
+  }, [])
 
   const set = (patch: Partial<AiProviderConfig>) => setCfg(c => ({ ...c, ...patch }))
 
@@ -322,13 +327,25 @@ function AiProviderCard() {
     const key = cfg.apiKey.trim() || loadAiProviderConfig()?.apiKey || ''
     const err = saveAiProviderConfig({ ...cfg, apiKey: key })
     if (err) { setResult(err); return }
+    testAbort.current?.abort()
+    const abort = new AbortController()
+    testAbort.current = abort
     setTesting(true)
     setResult('')
-    const failure = await testAiProviderConnection(loadAiProviderConfig()!)
-    setTesting(false)
-    setResult(failure
-      ? `Saved, but the endpoint did not answer: ${failure} Until it connects, answers fall back to the offline router.`
-      : 'Connected — the companion will answer with this model.')
+    try {
+      const failure = await testAiProviderConnection(loadAiProviderConfig()!, testAbort.current.signal)
+      if (abort.signal.aborted) return
+      setResult(failure
+        ? `Saved, but the endpoint did not answer: ${failure} Until it connects, answers fall back to the offline router.`
+        : 'Connected — the companion will answer with this model.')
+    } catch {
+      if (abort.signal.aborted) return
+      setResult('Could not reach the endpoint.')
+    } finally {
+      if (!abort.signal.aborted) {
+        setTesting(false)
+      }
+    }
   }
 
   function onClear() {
@@ -401,18 +418,35 @@ function JevCard() {
   const [testing, setTesting] = useState(false)
   const [result, setResult] = useState<string | null>(null)
   const saved = loadJevConfig()
+  const testAbort = useRef<AbortController | null>(null)
+
+  useEffect(() => () => {
+    testAbort.current?.abort()
+  }, [])
 
   async function onTest() {
     if (testing) return
     const err = saveJevConfig(cfg)
     if (err) { setResult(err); return }
+    testAbort.current?.abort()
+    const abort = new AbortController()
+    testAbort.current = abort
     setTesting(true)
     setResult('')
-    const failure = await testJevConnection(loadJevConfig()!)
-    setTesting(false)
-    setResult(failure
-      ? `Saved, but the endpoint did not answer: ${failure} Until it connects, answers fall back to the LLM or the offline router.`
-      : 'Connected — companion answers route through Jev.')
+    try {
+      const failure = await testJevConnection(loadJevConfig()!, testAbort.current.signal)
+      if (abort.signal.aborted) return
+      setResult(failure
+        ? `Saved, but the endpoint did not answer: ${failure} Until it connects, answers fall back to the LLM or the offline router.`
+        : 'Connected — companion answers route through Jev.')
+    } catch {
+      if (abort.signal.aborted) return
+      setResult('Could not reach the endpoint.')
+    } finally {
+      if (!abort.signal.aborted) {
+        setTesting(false)
+      }
+    }
   }
 
   function onClear() {

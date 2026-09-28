@@ -21,6 +21,7 @@ export function AiDrawer({ trip, open, onOpen, onClose }: { trip: Trip; open: bo
     id: 1, role: 'bot',
     text: `Hi! I’m your YatraFlow companion. I can see “${trip.name}” — ${trip.days.length} days, ${trip.destinations.join(' → ')}. Ask me to lighten a day, check timings against a fixed commitment, find savings or plan for rain.`,
   }])
+  const msgIdRef = useRef(1)
   const [input, setInput] = useState('')
   const [thinking, setThinking] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -51,7 +52,7 @@ export function AiDrawer({ trip, open, onOpen, onClose }: { trip: Trip; open: bo
       const root = drawerRef.current
       if (!root) return
       const focusables = Array.from(
-        root.querySelectorAll<HTMLElement>('button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])'),
+        root.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])'),
       )
       if (!focusables.length) return
       const first = focusables[0]
@@ -85,7 +86,8 @@ export function AiDrawer({ trip, open, onOpen, onClose }: { trip: Trip; open: bo
 
   function ask(q: string) {
     if (!q.trim() || thinking) return
-    setMsgs(m => [...m, { id: Date.now(), role: 'user', text: q }])
+    const userMsgId = ++msgIdRef.current
+    setMsgs(m => [...m, { id: userMsgId, role: 'user', text: q }])
     setInput('')
     setThinking(true)
     // A short minimum-latency so an instant offline answer still feels like an
@@ -94,12 +96,12 @@ export function AiDrawer({ trip, open, onOpen, onClose }: { trip: Trip; open: bo
       askAbort.current = new AbortController()
       askCompanion(trip, q, askAbort.current.signal)
         .then(reply => {
-          setMsgs(m => [...m, { id: Date.now() + 1, role: 'bot', text: reply.text, assumptions: reply.assumptions, source: reply.source }])
+          setMsgs(m => [...m, { id: ++msgIdRef.current, role: 'bot', text: reply.text, assumptions: reply.assumptions, source: reply.source }])
         })
         .catch(() => {
           // askCompanion already falls back internally; this only guards an
           // unexpected rejection so the composer can never stay disabled.
-          setMsgs(m => [...m, { id: Date.now() + 1, role: 'bot', text: 'Something went wrong analysing the plan. Try rephrasing that.', source: 'offline' }])
+          setMsgs(m => [...m, { id: ++msgIdRef.current, role: 'bot', text: 'Something went wrong analysing the plan. Try rephrasing that.', source: 'offline' }])
         })
         .finally(() => setThinking(false))
     }, 250)
@@ -107,7 +109,7 @@ export function AiDrawer({ trip, open, onOpen, onClose }: { trip: Trip; open: bo
 
   return (
     <>
-      {!open && (
+      {!open && !thinking && (
         <button className="ai-fab" onClick={onOpen} aria-label="Open AI travel companion"><Sparkles size={20} aria-hidden /></button>
       )}
       <div ref={drawerRef} className={`ai-drawer ${open ? 'open' : ''}`} role="dialog" aria-modal="true" aria-label="AI travel companion">
@@ -143,7 +145,7 @@ export function AiDrawer({ trip, open, onOpen, onClose }: { trip: Trip; open: bo
         <div className="ai-quick">
           <div className="ai-quick-scroll">
             {quickPrompts().map(p => (
-              <Chip key={p} onClick={() => ask(p)}>{p}</Chip>
+              <Chip key={p} disabled={thinking} onClick={() => ask(p)}>{p}</Chip>
             ))}
           </div>
         </div>
@@ -155,6 +157,7 @@ export function AiDrawer({ trip, open, onOpen, onClose }: { trip: Trip; open: bo
             placeholder="Ask about this trip…"
             aria-label="Ask the travel companion"
             value={input}
+            disabled={thinking}
             onChange={e => setInput(e.target.value)}
           />
           <button className="btn btn-primary" type="submit" disabled={!input.trim() || thinking}>Send</button>

@@ -16,9 +16,9 @@ export function Avatar({ user, size = 'sm' }: { user?: { profile: { name: string
   return <span className={cls}>{initials}</span>
 }
 
-export function Chip({ children, tone, onClick, active, 'aria-pressed': ariaPressed }: { children: React.ReactNode; tone?: 'teal' | 'saffron' | 'danger' | 'ok' | 'info'; onClick?: () => void; active?: boolean; 'aria-pressed'?: boolean }) {
+export function Chip({ children, tone, onClick, active, disabled, 'aria-pressed': ariaPressed }: { children: React.ReactNode; tone?: 'teal' | 'saffron' | 'danger' | 'ok' | 'info'; onClick?: () => void; active?: boolean; disabled?: boolean; 'aria-pressed'?: boolean }) {
   if (onClick) {
-    return <button type="button" aria-pressed={ariaPressed} className={`clickable-chip ${tone === 'teal' ? 'on-teal' : tone === 'saffron' ? 'on-saffron' : ''} ${active ? 'on-teal' : ''}`} onClick={onClick}>{children}</button>
+    return <button type="button" aria-pressed={ariaPressed} disabled={disabled} className={`clickable-chip ${tone === 'teal' ? 'on-teal' : tone === 'saffron' ? 'on-saffron' : ''} ${active ? 'on-teal' : ''}`} onClick={onClick}>{children}</button>
   }
   const cls = tone ? `chip chip-${tone}` : 'chip'
   return <span className={cls}>{children}</span>
