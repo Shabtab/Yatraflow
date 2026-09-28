@@ -89,23 +89,31 @@ describe('the surfaces that must not race a preview (#334)', () => {
     expect(ws.match(/previewOpen=\{!!pending\}/g) ?? []).toHaveLength(5)
 
     const map = readFileSync(new URL('../src/pages/trip/MapTab.tsx', import.meta.url), 'utf8')
-    // The popup delete is the map's one live direct writer — the fill/undo
-    // deleteStops run inside onKept, after Keep has already closed the preview.
-    expect(map).toMatch(/function removeStopFromMap\(stopId: string[\s\S]*?if \(previewOpen\) \{ toast\(PREVIEW_BUSY, 'err'\); return \}[\s\S]*?deleteStop\(trip\.id, stopId\)/)
+    // #424: the popup delete USED to be the map's one live direct writer, and so
+    // had to refuse while a preview was open — which made the same delete behave
+    // differently from the Timeline's and the Board's. It now stages through the
+    // shared lifecycle like they do, so it neither writes the row nor refuses:
+    // it CHAINS. (The fill/undo deleteStops still run inside onKept, after Keep
+    // has closed the preview, and are declared as stop.remove-from-fill.)
+    expect(map).toMatch(/function removeStopFromMap\(stopId: string[\s\S]*?removeStopWithUndo\(\{ trip, stopId, dayIndex: meta\.dayIndex, applyChange \}\)/)
+    expect(map).not.toMatch(/import \{ PREVIEW_BUSY \}/)
 
     const budget = readFileSync(new URL('../src/pages/trip/BudgetTab.tsx', import.meta.url), 'utf8')
     // delete, mark settled, reopen, quick-add, inline edit — five direct writers
-    expect(budget.match(/if \(previewOpen\) \{ toast\(PREVIEW_BUSY, 'err'\); return \}/g) ?? []).toHaveLength(5)
+    expect(budget.match(/if \(refuseWhileStaged\(previewOpen\)\) return/g) ?? []).toHaveLength(5)
     // …and both inline writers are told, so the typed line survives the refusal
     expect(budget.match(/previewOpen=\{previewOpen\}/g) ?? []).toHaveLength(2)
   })
 
   it('day rename, ride start and status flips are refused while a preview is open', () => {
     const src = readFileSync(new URL('../src/pages/trip/TimelineTab.tsx', import.meta.url), 'utf8')
-    const guards = src.match(/if \(previewOpen\) \{ toast\(PREVIEW_BUSY, 'err'\); return \}/g) ?? []
+    const guards = src.match(/if \(refuseWhileStaged\(previewOpen\)\) return/g) ?? []
     expect(guards).toHaveLength(3) // rename, ride start AND status flip — all write the committed row
-    // One spelling of the refusal, shared with the group tab (no drifting twins).
-    expect(src).toMatch(/import \{ PREVIEW_BUSY \} from '\.\.\/\.\.\/lib\/previewChain'/)
+    // One spelling of the refusal AND one home for it: since #424 the surfaces
+    // import the rule from lib/mutationLifecycle instead of pasting the message,
+    // so a drift has nowhere to hide.
+    expect(src).toMatch(/import \{ refuseWhileStaged, removeStopWithUndo \} from '\.\.\/\.\.\/lib\/mutationLifecycle'/)
+    expect(src).not.toMatch(/PREVIEW_BUSY/)
   })
 
   it('the Board’s status flip refuses while a preview is open — its edits chain instead', () => {
@@ -113,8 +121,8 @@ describe('the surfaces that must not race a preview (#334)', () => {
     // open preview (#334) rather than being disabled. Its one live direct
     // writer is the status flip, and that one refuses like the Timeline's.
     const board = readFileSync(new URL('../src/components/BoardView.tsx', import.meta.url), 'utf8')
-    expect(board).toMatch(/import \{ PREVIEW_BUSY \} from '\.\.\/lib\/previewChain'/)
-    expect(board).toMatch(/if \(previewOpen\) \{ toast\(PREVIEW_BUSY, 'err'\); return \}[\s\S]{0,200}?setStopStatus\(trip\.id, status, stop\.id\)/)
+    expect(board).toMatch(/import \{ refuseWhileStaged, removeStopWithUndo \} from '\.\.\/lib\/mutationLifecycle'/)
+    expect(board).toMatch(/if \(refuseWhileStaged\(previewOpen\)\) return[\s\S]{0,200}?setStopStatus\(trip\.id, status, stop\.id\)/)
   })
 
   it('accepting a suggestion and resolving a decision wait for the preview', () => {
@@ -123,9 +131,11 @@ describe('the surfaces that must not race a preview (#334)', () => {
     // and decline all write the committed row, so all three refuse while a
     // preview holds a staged proposal (the definition takes a typed parameter,
     // so it is not among these three).
-    expect(src.match(/refuseWhilePreviewing\(previewOpen\)/g) ?? []).toHaveLength(3)
-    expect(src).toMatch(/function refuseWhilePreviewing\(previewOpen: boolean \| undefined\): boolean \{/)
-    expect(src).toMatch(/toast\(PREVIEW_BUSY, 'err'\)/)
+    expect(src.match(/refuseWhileStaged\(previewOpen\)/g) ?? []).toHaveLength(3)
+    // #424: this surface's own helper went into the shared lifecycle — its rule,
+    // its wording and its six call sites are one contract now, not a copy.
+    expect(src).toMatch(/import \{ refuseWhileStaged \} from '\.\.\/\.\.\/lib\/mutationLifecycle'/)
+    expect(src).not.toMatch(/refuseWhilePreviewing|PREVIEW_BUSY/)
     // …and the workspace actually tells the tab that a preview is open.
     const ws = readFileSync(new URL('../src/pages/TripWorkspace.tsx', import.meta.url), 'utf8')
     expect(ws).toMatch(/<GroupInputTab trip=\{effective\} editable=\{editable\} me=\{me\} previewOpen=\{!!pending\} \/>/)

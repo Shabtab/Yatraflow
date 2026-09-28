@@ -7,7 +7,7 @@ import { TRAVEL_STYLES } from '../data/types'
 import {
   useDb, currentUser, updateProfile, tripsForUser, logout, notificationsFor, markAllNotificationsRead,
 } from '../store/store'
-import { Avatar, Chip, Field, toast } from '../components/ui'
+import { Avatar, Chip, Field, toast, undoToast } from '../components/ui'
 import { useTimeFormat, setTimeFormat, formatHM, type TimeFormat } from '../lib/timefmt'
 import { isNative } from '../lib/native'
 import { feedbackHref } from '../lib/feedback'
@@ -333,9 +333,18 @@ function AiProviderCard() {
 
   function onClear() {
     if (testing) return
+    // A saved endpoint is a secret the user pasted in from somewhere else — not
+    // something they can retype from memory — so clearing it offers the same
+    // Undo the app's other destructive actions do (#424).
+    const previous = cfg
     clearAiProviderConfig()
     setCfg({ baseUrl: '', apiKey: '', model: '' })
     setResult('Cleared — the companion answers offline (deterministic) again.')
+    undoToast('Saved endpoint cleared', () => {
+      saveAiProviderConfig(previous)
+      setCfg(previous)
+      setResult('Restored the endpoint you had saved.')
+    })
   }
 
   return (
@@ -408,9 +417,17 @@ function JevCard() {
 
   function onClear() {
     if (testing) return
+    // Same deal as the endpoint above: the key came from elsewhere, so the clear
+    // is undoable rather than final (#424).
+    const previous = cfg
     clearJevConfig()
     setCfg({ baseUrl: '', apiKey: '' })
     setResult('Cleared — companion answers come from the LLM or offline router again.')
+    undoToast('Saved router cleared', () => {
+      saveJevConfig(previous)
+      setCfg(previous)
+      setResult('Restored the router you had saved.')
+    })
   }
 
   return (

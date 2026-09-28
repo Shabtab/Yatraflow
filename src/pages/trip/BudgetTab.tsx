@@ -24,7 +24,7 @@ import { computeBalances, settleBalances, fairSharePerHead, linesTotal, openTagg
 import { loadFlag, saveFlag } from '../../lib/uiPrefs'
 import { titleCase } from '../../lib/labels'
 import { Avatar, Chip, Field, StatTile, toast, undoToast, useInView, usePageVisible } from '../../components/ui'
-import { PREVIEW_BUSY } from '../../lib/previewChain'
+import { refuseWhileStaged } from '../../lib/mutationLifecycle'
 
 // ================= Budget tab =================
 
@@ -348,7 +348,7 @@ export function BudgetTab({ trip, totals, editable, previewOpen }: {
                               <button className="icon-btn" aria-label={`Delete ${e.label}`} onClick={() => {
                                 // #334: a direct write while a preview is open would
                                 // make Keep refuse (stale base) — refuse it here instead.
-                                if (previewOpen) { toast(PREVIEW_BUSY, 'err'); return }
+                                if (refuseWhileStaged(previewOpen)) return
                                 const idx = trip.expenses.findIndex(x => x.id === e.id)
                                 deleteExpense(trip.id, e.id)
                                 undoToast(`Removed “${e.label}”`, () => {
@@ -443,7 +443,7 @@ export function BudgetTab({ trip, totals, editable, previewOpen }: {
                                     aria-label={`Mark ${e.label} settled`}
                                     disabled={busySettleId === e.id}
                                     onClick={() => {
-                                      if (previewOpen) { toast(PREVIEW_BUSY, 'err'); return }
+                                      if (refuseWhileStaged(previewOpen)) return
                                       if (!me?.id) return
                                       setBusySettleId(e.id)
                                       try {
@@ -474,7 +474,7 @@ export function BudgetTab({ trip, totals, editable, previewOpen }: {
                                       aria-label={`Reopen ${e.label}`}
                                       disabled={busySettleId === e.id}
                                       onClick={() => {
-                                        if (previewOpen) { toast(PREVIEW_BUSY, 'err'); return }
+                                        if (refuseWhileStaged(previewOpen)) return
                                         setBusySettleId(e.id)
                                         try {
                                           markExpenseUnsettled(trip.id, e.id)
@@ -551,7 +551,7 @@ function QuickAdd({ trip, members, meId, topline, previewOpen }: { trip: Trip; m
   function submit(e: FormEvent) {
     e.preventDefault()
     // Refused BEFORE validation so the typed line survives for the retry.
-    if (previewOpen) { toast(PREVIEW_BUSY, 'err'); return }
+    if (refuseWhileStaged(previewOpen)) return
     const problem = validateForm(form)
     if (problem) { toast(problem, 'err'); return }
     addExpense(trip.id, patchOf(form))
@@ -591,7 +591,7 @@ function ExpenseEditor({ trip, members, expense, onDone, previewOpen }: {
     e.preventDefault()
     // Refused before the save (and before onDone) so the editor stays open
     // with the edits intact for the retry (#334).
-    if (previewOpen) { toast(PREVIEW_BUSY, 'err'); return }
+    if (refuseWhileStaged(previewOpen)) return
     const problem = validateForm(form)
     if (problem) { toast(problem, 'err'); return }
     updateExpense(trip.id, expense.id, patchOf(form))

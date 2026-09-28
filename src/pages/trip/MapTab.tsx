@@ -6,7 +6,7 @@ import { BedDouble, ChevronDown, CircleCheck, Coffee, ExternalLink, Fuel, Lightb
 import { uid } from '../../data/seed'
 import type { Trip, ItineraryStop, TripDecision } from '../../data/types'
 import type { ImpactResult } from '../../lib/impact'
-import { PREVIEW_BUSY } from '../../lib/previewChain'
+import { removeStopWithUndo } from '../../lib/mutationLifecycle'
 import { mapRoadViewFromLegs, mapReturnGeometryFromLegs, outboundLegs, type TripRoadView } from '../../lib/tripRoad'
 import { buildJourney, minutesToHM, fmtDur, computeCategoryBias, MODE_SPEED, isRoundTrip } from '../../lib/engine'
 import { useTimeFormat, formatHM, formatHMRange } from '../../lib/timefmt'
@@ -46,7 +46,7 @@ import { planInputsHash } from '../../hooks/useSuggestionCache'
 import type { RailChip } from '../../lib/railReasons'
 import { daySlots, dayShape, tripDayAttribution, tripReadiness, SLOT_URGENCY_MIN, type DaySlot, type DaySlotKind, type DaySlotsDeps } from '../../lib/daySlots'
 import { discardedStagedIds, isAlreadyAdded, normalizePlaceName, tripPresence, type PlaceIdentity } from '../../lib/placeIdentity'
-import { addDecision, deleteStop, restoreStop } from '../../store/store'
+import { addDecision, deleteStop } from '../../store/store'
 import { dayDetourBudgetMin, budgetSharePct, splitByDetourBudget } from '../../lib/detourBudget'
 import { anyQuotaExhausted } from '../../lib/providers/quota'
 import { buildDnaVectorAcrossTrips, loadDnaLog, recordDnaEvent, dnaNoteForHit, slotPatternHint, crewSeedsFromSuggestions, crewSeedsToPlannedStops, crewSeedEvents, crewNoteForHit } from '../../lib/tripDna'
@@ -1241,24 +1241,25 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
     setPoiDraft({ hit })
   }
 
-  /** Delete straight from the map pin's popup — with Undo (restoreStop puts
-   *  the stop back on its day at its old order). The stop object must be
-   *  captured BEFORE the delete, since the cache drops it immediately. */
+  /** Delete straight from the map pin's popup. Since #424 this is THE
+   *  destructive-stop path, shared with the Timeline's day row and the Board's
+   *  card: the removal is staged as an impact preview (so Keep/Remove is the
+   *  confirmation) and the Keep moment leaves an Undo that restores the stop on
+   *  its day at its old order. It used to write the cache directly and refuse
+   *  while a preview was open, which is precisely the divergence the shared path
+   *  removes — the same delete now behaves the same way wherever it is clicked,
+   *  and it chains onto an open preview instead of declining to act.
+   *
+   *  `meta.title` stays part of this popup's contract (it labels the pin), but
+   *  the toast is built from the row's own title, because that is the object the
+   *  Undo restores.
+   *
+   *  The stop's row still drops out through the local re-derivation once the
+   *  write lands (#346: stopSig → slots, identity/altPool → pool cards). The
+   *  corridor plan is still true — deleting one planned stop does not unplan the
+   *  road — so no forced re-search fires and no spinner flashes. */
   function removeStopFromMap(stopId: string, meta: { title: string; dayIndex: number }) {
-    // #334: this writes the committed row while the sheet may be showing a
-    // staged change — refuse rather than strand the preview as stale.
-    if (previewOpen) { toast(PREVIEW_BUSY, 'err'); return }
-    const stop = trip.days.find(d => d.stops.some(s => s.id === stopId))?.stops.find(s => s.id === stopId)
-    deleteStop(trip.id, stopId)
-    // #346: the row for this stop drops out through the local re-derivation
-    // (stopSig → slots, identity/altPool → pool cards). The corridor plan is
-    // still true — deleting one planned stop does not unplan the road — so
-    // no forced re-search fires and no spinner flashes.
-    if (stop) {
-      undoToast(`Removed “${meta.title}” from the trip`, () => restoreStop(trip.id, stop, meta.dayIndex))
-    } else {
-      toast(`Removed “${meta.title}” from the trip`)
-    }
+    removeStopWithUndo({ trip, stopId, dayIndex: meta.dayIndex, applyChange })
   }
 
   /** #418: ONE route-aware search, shared by the rail's corridor box and the map
