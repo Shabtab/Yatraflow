@@ -58,36 +58,46 @@ export function loadRazorpay(): Promise<boolean> {
 }
 
 /** The buyer's entitlement rows, via the anon client (RLS limits to own
- *  rows). A missing table, a failed read or a logged-out visitor all read
- *  as "no entitlements" — the honest pre-purchase state. */
+ *  rows).
+ *
+ *  REJECTS on a failed read, exactly like `fetchMyPurchases` below — and the
+ *  reason is the same one that function carries. This one used to catch and
+ *  return `[]`, on the grounds that a dropped connection must not break the
+ *  public page. But "no entitlements" and "I could not read your entitlements"
+ *  are different truths, and on the page that spends them the second one used
+ *  to render as the first: a BUYER whose read failed saw locked days and an
+ *  Unlock button for a plan they had already paid for. An empty list is only
+ *  honest evidence once a read has actually succeeded with zero rows.
+ *
+ *  A logged-out visitor still gets `[]` — there is nothing to read, and that is
+ *  not a failure. Every caller owns the error state; none of them may treat a
+ *  rejection as a non-owner. */
 export async function fetchMyEntitlements(userId: string | null): Promise<Entitlement[]> {
   if (!userId) return []
-  try {
-    const { data, error } = await supabase
-      .from('entitlements')
-      .select(ENTITLEMENT_COLUMNS)
-      .eq('user_id', userId)
-    if (error) throw error
-    // The epoch-ms fields arrive as ISO strings; shape them for the type.
-    return (Array.isArray(data) ? data : []).map((row: Record<string, unknown>) => ({
-      id: row.id as string,
-      userId: (row.user_id as string | null) ?? null,
-      pubId: row.pub_id as string,
-      orderId: row.order_id as string,
-      amountPaidInr: row.amount_paid_inr as number,
-      grantedAt: new Date(row.granted_at as string).getTime(),
-    }))
-  } catch (e) {
-    console.error('[yatraflow] entitlements read failed', e)
-    return []
+  const { data, error } = await supabase
+    .from('entitlements')
+    .select(ENTITLEMENT_COLUMNS)
+    .eq('user_id', userId)
+  if (error) {
+    console.error('[yatraflow] entitlements read failed', error)
+    throw error
   }
+  // The epoch-ms fields arrive as ISO strings; shape them for the type.
+  return (Array.isArray(data) ? data : []).map((row: Record<string, unknown>) => ({
+    id: row.id as string,
+    userId: (row.user_id as string | null) ?? null,
+    pubId: row.pub_id as string,
+    orderId: row.order_id as string,
+    amountPaidInr: row.amount_paid_inr as number,
+    grantedAt: new Date(row.granted_at as string).getTime(),
+  }))
 }
 
 /** The buyer's entitlement rows for the SHELF (I-20), where a failed read and
  *  an empty shelf are different truths.
  *
- *  `fetchMyEntitlements` above deliberately degrades to []: on the public
- *  itinerary a dropped connection must not break the page, and "no
+ *  `fetchMyEntitlements` above is the same contract for the same reason: on the
+ *  public itinerary a dropped connection must not break the page, and "no
  *  entitlements" is the honest pre-purchase state there. On a shelf whose whole
  *  job is to say what you own, that same degradation would tell a paying
  *  customer they own nothing — so this one REJECTS (after logging), exactly
