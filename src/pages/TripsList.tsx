@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Clock, Compass, Plus, Rocket, ShoppingBag, Trash2, Wallet } from 'lucide-react'
 import { InlineIcon, MetaIcon } from '../components/icons'
-import { useTrips, useTrashedTrips, useUsers, useSessionUserId, tripsForUser, trashTrip, restoreTrashedTrip, restoreTrashedTripById, permanentlyDeleteTrip, fetchTrashedTrips, addDemoTrips } from '../store/store'
+import { useTrips, useTrashedTrips, useUsers, useSessionUserId, useSliceReads, useTrashLoaded, useTrashFailed, tripsForUser, trashTrip, restoreTrashedTrip, restoreTrashedTripById, permanentlyDeleteTrip, fetchTrashedTrips, rereadTrips, addDemoTrips } from '../store/store'
 import { computeTotals, formatInrShort } from '../lib/engine'
 import { cap } from '../lib/labels'
 import { Avatar, Chip, EmptyState, toast, undoToast, ConfirmDialog } from '../components/ui'
@@ -12,6 +12,7 @@ import { readinessFromDraft } from '../lib/createReadiness'
 import { createFunnelOn } from '../lib/featureFlags'
 import { CoverThumb } from '../components/CoverThumb'
 import { ImportTripButton } from '../components/ImportTripButton'
+import { sliceState, emptyCopyFor, readState } from '../lib/readState'
 import type { Trip, User } from '../data/types'
 import { TRAVEL_STYLES } from '../data/types'
 
@@ -43,11 +44,37 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
   const [pendingPurge, setPendingPurge] = useState<Trip | null>(null)
   const [view, setView] = useState<'trips' | 'trash'>('trips')
   const trashed = useTrashedTrips()
+  // #383/#387: per-slice read verdicts, so a failed read never renders the
+  // genuine-empty copy. My Trips rides the hydrate's `trips` slice; the bin
+  // rides its own on-demand fetch bits (it is never hydrated).
+  const sliceReads = useSliceReads()
+  const tripsRead = sliceState(sliceReads, 'trips')
+  const retryTrips = () => { void rereadTrips() }
+  const trashLoaded = useTrashLoaded()
+  const trashFailed = useTrashFailed()
+  const trashRead = readState({ settled: trashLoaded || trashFailed, failed: trashFailed, read: trashLoaded && !trashFailed })
+  const retryTrash = () => { void fetchTrashedTrips() }
 
   // The Trash view is populated on demand from the owner-scoped RPC (the
   // restrictive RLS policy hides trashed trips from normal hydration).
   useEffect(() => {
     if (view === 'trash') void fetchTrashedTrips()
+  }, [view])
+
+  // #387: the bin fetched once on entry and never again — a trash or restore
+  // while resident went stale, and concurrent-device trashes never appeared.
+  // Re-issue the RPC on window/tab focus while resident. The fetch itself
+  // gates on configured + signed-in, so this never spams an anon RPC.
+  useEffect(() => {
+    if (view !== 'trash') return
+    const refetch = () => { void fetchTrashedTrips() }
+    const onVisible = () => { if (document.visibilityState === 'visible') void fetchTrashedTrips() }
+    window.addEventListener('focus', refetch)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.removeEventListener('focus', refetch)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
   }, [view])
 
   // ---- Search / filter / sort (local view state — no URL sync needed on a
@@ -140,7 +167,18 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
             <span className="small muted">Deleted trips stay for 30 days, then they’re gone for good.</span>
           </div>
           <hr className="divider" />
-          {trashed.length === 0 ? (
+          {trashRead !== 'ready' ? (
+            // #387: a failed bin fetch used to render the genuine-empty copy.
+            // The failed branch is checked first, and its Retry re-issues the
+            // RPC rather than re-rendering the same empty bin.
+            trashRead === 'reading' ? (
+              <div className="loading-block"><div className="spinner" />{emptyCopyFor(trashRead, 'trash', retryTrash).title}</div>
+            ) : (
+              <EmptyState icon={<Trash2 size={38} aria-hidden />} title={emptyCopyFor(trashRead, 'trash', retryTrash).title}
+                body={emptyCopyFor(trashRead, 'trash', retryTrash).body}
+                action={<button className="btn btn-primary" onClick={retryTrash}>Try again</button>} />
+            )
+          ) : trashed.length === 0 ? (
             <EmptyState icon={<Trash2 size={38} aria-hidden />} title="Trash is empty"
               body="Trips you delete will show up here so you can restore them within 30 days." />
           ) : (
@@ -175,7 +213,21 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
         </div>
       )}
 
-      {view !== 'trash' && (trips.length === 0 && !hasFilters ? (
+      {view !== 'trash' && (tripsRead !== 'ready' ? (
+        // #383: a failed trips read used to render the genuine-empty copy with
+        // no error branch. The failed branch precedes loading precedes empty,
+        // and its Retry re-issues the hydrate rather than re-rendering.
+        tripsRead === 'reading' ? (
+          <div className="loading-block"><div className="spinner" />{emptyCopyFor(tripsRead, 'trips', retryTrips).title}</div>
+        ) : (
+          <EmptyState
+            icon={<Compass size={38} aria-hidden />}
+            title={emptyCopyFor(tripsRead, 'trips', retryTrips).title}
+            body={emptyCopyFor(tripsRead, 'trips', retryTrips).body}
+            action={<button className="btn btn-primary" onClick={retryTrips}>Try again</button>}
+          />
+        )
+      ) : trips.length === 0 && !hasFilters ? (
         <EmptyState
           icon={<Compass size={38} aria-hidden />}
           title="No trips yet"

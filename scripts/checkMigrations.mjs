@@ -217,6 +217,14 @@ export const NO_PROBE_SURFACE = {
     // definition and asserts #350/#351 survive alongside #352/#353.
     reason: 'redefines `get_public_trip` — the function exists before and after, so presence answers nothing; the body is pinned by tests/public-trip-fail-closed.test.ts and its behaviour by the RLS contract suite',
   },
+  '20260929_trash_purge_audit.sql': {
+    // Redefines `purge_trashed_trip` to log the user-triggered purge (#387):
+    // the function exists before and after, so presence answers nothing about
+    // whether the audit INSERT is in the body a fresh apply leaves behind.
+    // Pinned by tests/trips-trash-honest-failure.test.ts (audit INSERT, owner
+    // + tombstone predicates, unchanged grants, scheduled sweep untouched).
+    reason: 'redefines `purge_trashed_trip` — the function exists before and after, so presence answers nothing; the audit body is pinned by tests/trips-trash-honest-failure.test.ts',
+  },
 }
 
 /** The plan: one entry per migration file, with its probes and the reason none
