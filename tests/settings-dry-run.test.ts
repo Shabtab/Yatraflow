@@ -68,7 +68,7 @@ const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf
 import { readFileSync } from 'node:fs'
 // The predicate and the seed factory live on the form; the store import chain
 // rides the same mock the session-lifecycle harness uses.
-import { settingsDryRun, formFromTrip } from '../src/pages/trip/TripSettingsForm'
+import { settingsDryRun, settingsAreDirty, formFromTrip } from '../src/pages/trip/TripSettingsForm'
 import { zipDests, splitDests, renameDest } from '../src/lib/destPairs'
 import { parseCapacityL, parseVehicleEconomy } from '../src/lib/vehicleProfile'
 import { reconcileDays } from '../src/store/store'
@@ -286,6 +286,97 @@ describe('#408/#412/#414 — the form and its neighbours are wired as pinned', (
     expect(isHaltCacheFresh({ inputsHash: 'a' }, 'a')).toBe(true)
     expect(isHaltCacheFresh({ inputsHash: 'a' }, 'b')).toBe(false)
     expect(isHaltCacheFresh(null, 'a')).toBe(false)
+  })
+})
+
+// ================= #413 — the bar is disabled until a click would write =================
+
+describe('#413 — the dirty compare is over the saved field set, by value', () => {
+  /** The untouched draft's route pairs — a test that passes [] against a trip
+   *  with destinations is testing a CLEARED route, and the bar is right to
+   *  read that dirty. */
+  const routeOf = (t: Trip) => zipDests(t.destinations, t.destinationCoords)
+
+  it('an identical draft is not dirty — the bar stays disabled', () => {
+    const trip = trip4()
+    const f = formFromTrip(trip)
+    const run = settingsDryRun(f, routeOf(trip), null, trip)
+    expect(run.ok).toBe(true)
+    if (!run.ok) return
+    expect(settingsAreDirty(run.patch, trip)).toBe(false)
+  })
+
+  it('one field changed is dirty — and reverting it makes it clean again', () => {
+    const trip = trip4()
+    const base = formFromTrip(trip)
+    const changed = { ...base, name: 'A new name' }
+    const dirtyRun = settingsDryRun(changed, routeOf(trip), null, trip)
+    if (!dirtyRun.ok) throw new Error('dry run should pass')
+    expect(settingsAreDirty(dirtyRun.patch, trip)).toBe(true)
+    // revert
+    const cleanRun = settingsDryRun(base, routeOf(trip), null, trip)
+    if (!cleanRun.ok) throw new Error('dry run should pass')
+    expect(settingsAreDirty(cleanRun.patch, trip)).toBe(false)
+  })
+
+  it('array fields compare by value — fresh arrays every render still read clean', () => {
+    const trip = trip4()
+    trip.destinations = ['Kochi', 'Munnar']
+    trip.destinationCoords = [{ lat: 9.9, lng: 76.3 }, null]
+    // Two SEPARATE array instances with the same content: the reference
+    // compare this replaces would call it dirty for ever.
+    const run = settingsDryRun(formFromTrip(trip), zipDests([...trip.destinations], [...trip.destinationCoords]), null, trip)
+    if (!run.ok) throw new Error('dry run should pass')
+    expect(settingsAreDirty(run.patch, trip)).toBe(false)
+    // And a real content change IS dirty.
+    const moved = settingsDryRun(formFromTrip(trip), zipDests(['Munnar', 'Kochi'], [null, { lat: 9.9, lng: 76.3 }]), null, trip)
+    if (!moved.ok) throw new Error('dry run should pass')
+    expect(settingsAreDirty(moved.patch, trip)).toBe(true)
+  })
+
+  it('the dinner allowance compares STORED values — 60-vs-120 is a change', () => {
+    const trip = trip4()
+    trip.driveAfterDinnerMin = 60
+    const f = { ...formFromTrip(trip), driveAfterDinner: true }
+    // Toggle on, stored 60: the save writes 60 back — nothing changed.
+    const clean = settingsDryRun(f, routeOf(trip), null, trip)
+    if (!clean.ok) throw new Error('dry run should pass')
+    expect(clean.patch.driveAfterDinnerMin).toBe(60)
+    expect(settingsAreDirty(clean.patch, trip)).toBe(false)
+    // Toggle OFF with 60 stored: the save CLEARS it — that is a change even
+    // though the control just says "off".
+    const off = settingsDryRun({ ...formFromTrip(trip), driveAfterDinner: false }, routeOf(trip), null, trip)
+    if (!off.ok) throw new Error('dry run should pass')
+    expect(off.patch.driveAfterDinnerMin).toBeUndefined()
+    expect(settingsAreDirty(off.patch, trip)).toBe(true)
+    // Toggle on with nothing stored: the 120 default WOULD be written.
+    const fresh = trip4()
+    const on = settingsDryRun({ ...formFromTrip(fresh), driveAfterDinner: true }, routeOf(fresh), null, fresh)
+    if (!on.ok) throw new Error('dry run should pass')
+    expect(on.patch.driveAfterDinnerMin).toBe(120)
+    expect(settingsAreDirty(on.patch, fresh)).toBe(true)
+  })
+
+  it('a null stored coord and an undefined patch coord are the same "not set"', () => {
+    const trip = trip4()
+    trip.startLocationCoords = null
+    const run = settingsDryRun(formFromTrip(trip), routeOf(trip), null, trip)
+    if (!run.ok) throw new Error('dry run should pass')
+    expect(run.patch.startLocationCoords).toBeUndefined()
+    expect(settingsAreDirty(run.patch, trip)).toBe(false)
+  })
+
+  it('the bar renders for viewers, disabled, with the reason said', () => {
+    const form = read('../src/pages/trip/TripSettingsForm.tsx')
+    // Never a vanished bar: the show-gate is unconditional on this surface.
+    expect(form).toMatch(/<StickyFormBar show>/)
+    expect(form).not.toMatch(/<StickyFormBar show=\{editable\}>/)
+    // Disabled exactly when a click would not write.
+    expect(form).toMatch(/const canSave = dry\.ok && settingsAreDirty\(dry\.patch, trip\)/)
+    expect(form).toMatch(/disabled=\{!canSave\}/)
+    // The permissioned line for viewers.
+    expect(form).toMatch(/Only editors can change trip settings/)
+    expect(form).toMatch(/\{!editable && \(/)
   })
 })
 

@@ -201,9 +201,54 @@ export function settingsDryRun(
   }
 }
 
+/**
+ * #413: would this save change anything? The Save bar stays disabled until
+ * it would — a no-change click used to rewrite the trip, bump updatedAt,
+ * sync, toast success and ping collaborators for nothing.
+ *
+ * The compare runs over the SAVED field set: the patch a save would write,
+ * against the patch the UNTOUCHED draft would write, one field at a time,
+ * by VALUE — never the control states. The baseline is the untouched draft,
+ * not the row, because a row missing a normalizable field (stayStyle,
+ * roundTrip) would make EVERY draft read dirty on open while the save would
+ * write back exactly what the form already shows. A toggle that reads "on"
+ * can hold a stored 60-minute allowance the save would write back as 120:
+ * nothing visible moved, and it is a real change. Arrays compare
+ * element-wise (fresh arrays every render would otherwise never compare
+ * equal — the polarity trap).
+ */
+export function settingsBaselinePatch(trip: Trip): Partial<Trip> {
+  const pin = trip.startLocationCoords ? { coords: trip.startLocationCoords, label: trip.startLocation } : null
+  const run = settingsDryRun(formFromTrip(trip), zipDests(trip.destinations, trip.destinationCoords), pin, trip)
+  return run.ok ? run.patch : {}
+}
+
+export function settingsAreDirty(patch: Partial<Trip>, trip: Trip): boolean {
+  const base = settingsBaselinePatch(trip)
+  return (Object.keys(patch) as (keyof Trip)[])
+    .some(k => !sameSavedValue(patch[k], base[k]))
+}
+
+/** null and undefined are the same "not set" — the row writes nulls where the
+ *  write mapping writes undefined, and calling that a change pins the bar
+ *  open for ever. */
+function sameSavedValue(a: unknown, b: unknown): boolean {
+  if (a == null && b == null) return true
+  if (a === b) return true
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return a.length === b.length && a.every((v, i) => sameSavedValue(v, b[i]))
+  }
+  if (a && b && typeof a === 'object' && typeof b === 'object') {
+    const ka = Object.keys(a as Record<string, unknown>)
+    const kb = Object.keys(b as Record<string, unknown>)
+    return ka.length === kb.length && ka.every(k =>
+      sameSavedValue((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]))
+  }
+  return false
+}
+
 /** #408: the days a refused shrink is waiting on, each one a jump to its
- *  timeline day. Without a workspace to jump from, the days still get named. */
-function BlockedDayLinks({ blocked, onOpenDay }: { blocked?: number[]; onOpenDay?: (dayIndex: number) => void }) {
+ *  timeline day. Without a workspace to jump from, the days still get named. */function BlockedDayLinks({ blocked, onOpenDay }: { blocked?: number[]; onOpenDay?: (dayIndex: number) => void }) {
   if (!blocked || blocked.length === 0) return null
   return (
     <span className="ts-blocked-days">
@@ -301,6 +346,9 @@ export function TripSettingsForm({ trip, editable, onOpenDay }: {
   // once per render, never stored, so the receipt and the write can never
   // disagree about what this form would do.
   const dry = settingsDryRun(f, dests, startPin, trip)
+  // #413: the bar is enabled exactly when a click would WRITE — a clean
+  // draft is disabled ("No changes"), and a refusal pending is disabled too.
+  const canSave = dry.ok && settingsAreDirty(dry.patch, trip)
 
   // Derived values the bench-style blocks and the live receipt read from.
   // #213 Phase 5: clampCrew, not Math.min(12,…) — the old clamp misrepresented a
@@ -739,8 +787,17 @@ export function TripSettingsForm({ trip, editable, onOpenDay }: {
         </aside>
       </div>
 
-      <StickyFormBar show={editable}>
-        <button className="btn btn-primary" onClick={() => {
+      <StickyFormBar show>
+        {/* #413: a viewer used to get a vanished bar under disabled inputs —
+            permissioned read as broken. The bar renders for everyone; a
+            viewer gets it disabled with the reason said out loud. */}
+        {!editable && (
+          <span className="ts-savebar-note hint-text" role="status">
+            <InlineIcon icon={TriangleAlert} size={12} gap={3} />Only editors can change trip settings — ask an editor on this trip, or duplicate it to edit your own copy.
+          </span>
+        )}
+        <button className="btn btn-primary" disabled={!canSave}
+          title={canSave ? undefined : dry.ok ? 'No changes' : dry.reason} onClick={() => {
           // #408: the Preview and this button run the SAME dry run. A refusal
           // is already rendered inline (and in the receipt) — clicking Save on
           // a refused form is a no-op, never a toast that fades.
