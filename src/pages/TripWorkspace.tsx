@@ -372,7 +372,7 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
         </React.Suspense>
       )}
       {tab === 'group' && <GroupInputTab trip={effective} editable={editable} me={me} previewOpen={!!pending} />}
-      {tab === 'budget' && <BudgetTab trip={effective} totals={totals} editable={editable} previewOpen={!!pending} />}
+      {tab === 'budget' && <BudgetTab trip={effective} totals={totals} editable={editable} previewOpen={!!pending} onOpenSettings={() => setTab('settings')} />}
       {tab === 'share' && <ShareTab trip={trip} me={me} editable={editable} onNavigate={onNavigate} legCorrections={legCorrections} />}
       {/* key=trip.id: TripSettingsForm holds local draft state in useState
            seeded from the trip at mount and never re-syncs, so without the key

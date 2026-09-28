@@ -33,7 +33,7 @@ import { stopInitialValues, stopLegContext, stopEditorKey, stopDayIndex, type St
 import { useSuggestionCache } from '../../hooks/useSuggestionCache'
 import { refuseWhileStaged, removeStopWithUndo } from '../../lib/mutationLifecycle'
 import { kmFromStartForHit } from '../../lib/providers/hits'
-import { insertStopAt, moveStopToDay, moveStopWithinDay, nextOrderInDay, pendingStopId, stopById, stopsInOrder } from '../../lib/stopOrder'
+import { insertStopAt, moveStopToDay, moveStopWithinDay, nextOrderInDay, pendingStopId, stopsInOrder } from '../../lib/stopOrder'
 import { useTimelineMode, type TimelineMode } from './timeline/useTimelineMode'
 import { PillNav } from '../../components/PillNav'
 import { DaySection } from './timeline/DaySection'
