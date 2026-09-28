@@ -120,6 +120,12 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
 
   const hasFilters = q !== '' || style !== 'all' || when !== 'all' || sortKey !== 'recent'
 
+  // #385: ONE reset for both "Clear filters" buttons. The toolbar ghost reset
+  // all four fields while the empty-state action reset three and left
+  // `sortKey`, so a sort-only empty was unfixable by its own button. The
+  // toolbar's set is the superset — adopt it once, call it twice.
+  function clearFilters() { setQ(''); setStyle('all'); setWhen('all'); setSortKey('recent') }
+
   // P4 - the unfinished trip shows up where people look for their trips. It is
   // not a trip yet, so it is not a row among them: one card, above the grid.
   const draft = useMemo(() => {
@@ -155,7 +161,7 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
           </button>
           <button className={`btn btn-outline${view === 'trash' ? ' on-teal' : ''}`} aria-pressed={view === 'trash'} onClick={() => setView(v => v === 'trash' ? 'trips' : 'trash')}><InlineIcon icon={Trash2} size={15} gap={5} />Trash</button>
           <ImportTripButton ownerId={meId} onNavigate={onNavigate} />
-          <button className="btn btn-outline" onClick={addDemoTrips} aria-label="Load demo trips" title="Adds 3 sample trips — Kerala, Goa & Rajasthan — to your account"><InlineIcon icon={Rocket} size={15} gap={5} /><span>Load demo trips</span></button>
+          <button className="btn btn-outline" onClick={addDemoTrips} aria-label="Load demo trips" title="Adds 3 sample trips — Kerala, Goa & Rajasthan — to your account" disabled={tripsRead === 'failed'}><InlineIcon icon={Rocket} size={15} gap={5} /><span>Load demo trips</span></button>
           <button className="btn btn-primary" onClick={() => onNavigate('/new')}><InlineIcon icon={Plus} size={15} gap={4} />Plan a new trip</button>
         </div>
       </div>
@@ -275,7 +281,7 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
             {/* "Clear filters" (review finding 4): the empty state's action said
                 "Clear filters" while this ghost button said "Clear" — the same
                 reset under two names, both once visible in one frame. */}
-            <button className="btn btn-ghost btn-sm" style={{ visibility: hasFilters ? 'visible' : 'hidden' }} onClick={() => { setQ(''); setStyle('all'); setWhen('all'); setSortKey('recent') }}>Clear filters</button>
+            <button className="btn btn-ghost btn-sm" style={{ visibility: hasFilters ? 'visible' : 'hidden' }} onClick={clearFilters}>Clear filters</button>
           </div>
 
           <p className="sr-only" role="status">{trips.length} {trips.length === 1 ? 'trip matches' : 'trips match'}</p>
@@ -285,7 +291,7 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
               icon={<Compass size={38} aria-hidden />}
               title="No trips match those filters"
               body="Try a different search or clear the filters to see all your trips."
-              action={<button className="btn btn-outline" onClick={() => { setQ(''); setStyle('all'); setWhen('all') }}>Clear filters</button>}
+              action={<button className="btn btn-outline" onClick={clearFilters}>Clear filters</button>}
             />
           ) : (
           <div className="explore-grid">
