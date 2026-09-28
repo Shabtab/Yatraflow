@@ -137,7 +137,7 @@ function ExpenseFormFields({ trip, members, form, setForm }: {
  *  only — nothing in the trip changes when it's crossed. */
 const OPTIONAL_WATCH_PCT = 20
 
-export function BudgetTab({ trip, totals, editable, previewOpen }: {
+export function BudgetTab({ trip, totals, editable, previewOpen, onOpenSettings }: {
   trip: Trip
   totals: ReturnType<typeof computeTotals>
   editable: boolean
@@ -145,6 +145,10 @@ export function BudgetTab({ trip, totals, editable, previewOpen }: {
    *  below writes the committed row directly, so each refuses instead of
    *  landing under the preview (#334, same policy as the timeline's). */
   previewOpen?: boolean
+  /** Opens the workspace's Settings tab, where the per-person target lives.
+   *  Optional: a Budget tab rendered outside the workspace still gets the
+   *  textual prompt for a missing target, just without the link. */
+  onOpenSettings?: () => void
 }) {
   const visible = usePageVisible()
   const dayBarsRef = useRef<HTMLDivElement>(null)
@@ -162,6 +166,10 @@ export function BudgetTab({ trip, totals, editable, previewOpen }: {
   const [watchOptional, setWatchOptional] = useState<boolean>(() => loadFlag('optional_watch', false))
 
   const groupTarget = trip.budgetPerPersonInr * trip.travellers
+  // #381: a zero target is a degenerate state, not an overspend. Gate every
+  // target-relative surface on this so a budget-less trip is asked for a
+  // budget instead of lectured with a red −₹total and a ₹0 "target".
+  const hasTarget = groupTarget > 0
   const remaining = groupTarget - totals.totalCostInr
   const pctUsed = Math.min(150, Math.round((totals.totalCostInr / Math.max(1, groupTarget)) * 100))
   const perPersonDeltaPct = Math.round(((totals.costPerPersonInr - trip.budgetPerPersonInr) / Math.max(1, trip.budgetPerPersonInr)) * 100)
@@ -180,9 +188,13 @@ export function BudgetTab({ trip, totals, editable, previewOpen }: {
   // real guard), and the affordance matches so a viewer never sees a control
   // whose write would be refused.
   const canSettle = !!me?.id && canEdit(roleOf(trip, me.id))
-  // Pacing: how much the group can still spend per day without blowing the
-  // target. Null when no budget is set — the tile then asks for one instead
-  // of inventing a number.
+  // Pacing: the dial's ESTIMATE headroom — how much room the plan still has
+  // per remaining day without blowing the group target. Settled payments are
+  // deliberately not fed in (#381, decided 2026-09-25: relabel, don't re-plumb
+  // the ledger into the dial), so the tile names its basis instead of implying
+  // cash. Null when no budget is set — the tile then asks for one instead of
+  // inventing a number. With zero days left the figure is the whole remaining
+  // lump, so the tile branches to a lump label rather than a daily one.
   const pacing = safeToSpendPerDay(trip, totals.totalCostInr)
 
   // Per-day bars: over the daily average by >15% = amber, with one nudge.
@@ -226,23 +238,37 @@ export function BudgetTab({ trip, totals, editable, previewOpen }: {
     <div>
       <div className="metric-strip" role="group" aria-label="Budget at a glance">
         <StatTile label="Per person" value={formatInr(totals.costPerPersonInr)}
-          sub={<>target {formatInr(trip.budgetPerPersonInr)}{' '}
-            {perPersonDeltaPct !== 0 && <b className={perPersonDeltaPct > 0 ? 'metric-bad' : 'metric-good'}>{perPersonDeltaPct > 0 ? '+' : '−'}{Math.abs(perPersonDeltaPct)}%</b>}</>} />
+          sub={<>{hasTarget ? (<>target {formatInr(trip.budgetPerPersonInr)}{' '}
+            {perPersonDeltaPct !== 0 && <b className={perPersonDeltaPct > 0 ? 'metric-bad' : 'metric-good'}>{perPersonDeltaPct > 0 ? '+' : '−'}{Math.abs(perPersonDeltaPct)}%</b>}</>) : 'no per-person target yet'}</>} />
         <StatTile label="Per day" value={formatInr(totals.costPerDayInr)}
           sub={<>across {trip.days.length} {trip.days.length === 1 ? 'day' : 'days'}</>} />
-        <StatTile label="Remaining vs target"
-          value={<span className={remaining < 0 ? 'metric-bad' : 'metric-good'}>{remaining < 0 ? fmtNeg(remaining) : formatInr(remaining)}</span>}
-          sub={<>group target {formatInr(groupTarget)}</>} />
-        <StatTile label="Spent of target" value={`${pctUsed}%`}
-          sub={<>{formatInr(totals.totalCostInr)} of {formatInr(groupTarget)}</>} />
-        {pacing ? (
-          <StatTile label="Safe to spend / day"
-            value={<span className={pacing.perDayInr < 0 ? 'metric-bad' : ''}>{formatInr(pacing.perDayInr)}</span>}
-            sub={<>{formatInr(pacing.perPersonPerDayInr)} per person · {pacing.daysLeft === 0 ? 'trip over' : `${pacing.daysLeft} day${pacing.daysLeft !== 1 ? 's' : ''} left`}</>} />
+        {hasTarget ? (
+          <StatTile label="Remaining vs target"
+            value={<span className={remaining < 0 ? 'metric-bad' : 'metric-good'}>{remaining < 0 ? fmtNeg(remaining) : formatInr(remaining)}</span>}
+            sub={<>group target {formatInr(groupTarget)}</>} />
         ) : (
-          <StatTile label="Safe to spend / day" value="—"
+          <StatTile label="Remaining vs target" value="—" sub="no group target set" />
+        )}
+        {hasTarget ? (
+          <StatTile label="Estimate vs target" value={`${pctUsed}%`}
+            sub={<>{formatInr(totals.totalCostInr)} of {formatInr(groupTarget)}</>} />
+        ) : (
+          <StatTile label="Estimate vs target" value="—" sub="set a per-person target to measure" />
+        )}
+        {pacing ? (
+          pacing.daysLeft === 0 ? (
+            <StatTile label="Budget headroom"
+              value={<span className={pacing.perDayInr < 0 ? 'metric-bad' : ''}>{pacing.perDayInr < 0 ? <>{formatInr(-pacing.perDayInr)} over</> : <>{formatInr(pacing.perDayInr)} left</>}</span>}
+              sub="trip over · the whole lump, not a daily rate" />
+          ) : (
+            <StatTile label="Budget headroom / day"
+              value={<span className={pacing.perDayInr < 0 ? 'metric-bad' : ''}>{formatInr(pacing.perDayInr)}</span>}
+              sub={<>{formatInr(pacing.perPersonPerDayInr)} per person · {pacing.daysLeft} day{pacing.daysLeft !== 1 ? 's' : ''} left · of the estimate</>} />
+          )
+        ) : (
+          <StatTile label="Budget headroom / day" value="—"
             sub={<>{Number.isFinite(totals.totalCostInr)
-              ? 'Set a per-person target in Trip settings to see pacing'
+              ? 'Set a per-person target to start pacing'
               : 'Pacing needs a readable spend figure — fix or remove the line that broke it'}</>} />
         )}
       </div>
@@ -398,23 +424,40 @@ export function BudgetTab({ trip, totals, editable, previewOpen }: {
         </div>
 
         <div>
+          {/* #381: a zero target used to read as a red −₹total under a "₹0 group
+              target", with a Trim action that trimmed toward nothing. The hero
+              now renders only against a real target; otherwise the planning
+              estimate shows beside the ask, and pacing waits for a number to
+              pace against. */}
           <div className="budget-hero" ref={heroRef} data-motion-paused={!visible || !heroInView}>
-            <span className="budget-hero-label">Group budget</span>
-            <div className="budget-hero-num">{formatInr(totals.totalCostInr)}</div>
-            <div className="budget-hero-sub">
-              {remaining < 0
-                ? <><b>{formatInr(-remaining)} over</b> the {formatInr(groupTarget)} group target · {formatInr(totals.costPerPersonInr)}/person · {formatInr(totals.costPerDayInr)}/day</>
-                : <><b>{formatInr(remaining)} under</b> the {formatInr(groupTarget)} group target · {formatInr(totals.costPerPersonInr)}/person · {formatInr(totals.costPerDayInr)}/day</>}
-            </div>
-            <div className="budget-bar-track" style={{ marginTop: 10 }}>
-              <div className="budget-bar-fill" style={{ width: `${Math.min(100, pctUsed)}%`, background: pctUsed > 100 ? 'var(--coral)' : pctUsed > 85 ? 'var(--saffron)' : 'var(--teal)' }} />
-            </div>
-            <div className="budget-hero-pct">
-              {pctUsed}% of group budget{pctUsed > 100 ? ' — over budget' : pctUsed > 85 ? ' — getting close' : ''}
-            </div>
-            {remaining < 0
-              ? <span className="budget-hero-action warn">Trim {formatInr(-remaining)} to hit target</span>
-              : <span className="budget-hero-action ok">{formatInr(remaining)} headroom — room for one more stop</span>}
+            {hasTarget ? (
+              <>
+                <span className="budget-hero-label">Group budget</span>
+                <div className="budget-hero-num">{formatInr(totals.totalCostInr)}</div>
+                <div className="budget-hero-sub">
+                  {remaining < 0
+                    ? <><b>{formatInr(-remaining)} over</b> the {formatInr(groupTarget)} group target · {formatInr(totals.costPerPersonInr)}/person · {formatInr(totals.costPerDayInr)}/day</>
+                    : <><b>{formatInr(remaining)} under</b> the {formatInr(groupTarget)} group target · {formatInr(totals.costPerPersonInr)}/person · {formatInr(totals.costPerDayInr)}/day</>}
+                </div>
+                <div className="budget-bar-track" style={{ marginTop: 10 }}>
+                  <div className="budget-bar-fill" style={{ width: `${Math.min(100, pctUsed)}%`, background: pctUsed > 100 ? 'var(--coral)' : pctUsed > 85 ? 'var(--saffron)' : 'var(--teal)' }} />
+                </div>
+                <div className="budget-hero-pct">
+                  {pctUsed}% of group budget{pctUsed > 100 ? ' — over budget' : pctUsed > 85 ? ' — getting close' : ''}
+                </div>
+                {remaining < 0
+                  ? <span className="budget-hero-action warn">Trim {formatInr(-remaining)} to hit target</span>
+                  : <span className="budget-hero-action ok">{formatInr(remaining)} headroom — room for one more stop</span>}
+              </>
+            ) : (
+              <>
+                <span className="budget-hero-label">Estimate so far</span>
+                <div className="budget-hero-num">{formatInr(totals.totalCostInr)}</div>
+                <div className="budget-hero-sub">
+                  Set a per-person target to start pacing{onOpenSettings && <> · <button className="link-btn teal" onClick={onOpenSettings}>Open Trip settings →</button></>}
+                </div>
+              </>
+            )}
           </div>
 
           {trip.travellers >= 2 && (
