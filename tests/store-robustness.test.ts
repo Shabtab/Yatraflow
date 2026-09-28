@@ -93,9 +93,13 @@ describe('registerPubView only writes for the owning viewer (regression #4)', ()
       const store = await import('../src/store/store')
       const pub: Omit<PublishedItinerary, 'id' | 'publishedAt' | 'views' | 'copies'> = {
         tripId: 't-pub', creatorId: 'owner-real', title: 'Kerala', tagline: 'x',
+        // #354 — the writer enforces the publish rules now, so this fixture
+        // needs a cover and a free day to be a valid publication at all. The
+        // assertion below is about the view counter, not about the rules.
+        coverImageUrl: 'https://images.example.test/kerala.jpg',
         routeSummary: ['Kochi'], durationDays: 3, estimatedBudgetPerPersonInr: 5000,
         travelStyle: 'balanced', bestSeason: 'winter', travelTips: [],
-        warningsAndAssumptions: [], freeDayIndexes: [],
+        warningsAndAssumptions: [], freeDayIndexes: [0],
       }
       const p = await store.publishItinerary(pub)
       const before = p.views
@@ -126,9 +130,16 @@ describe('registerPubView counts real visits only (v0.36)', () => {
     )
     const p = await store.publishItinerary({
       tripId: 't-views', creatorId, title: 'Kerala', tagline: 'x',
+      // #354 — the writer now enforces the publish rules, so a fixture that
+      // published a COVERLESS row is no longer a valid publication. These tests
+      // are about view counting, not about the rules, so the fixture is made a
+      // valid one rather than the rules being relaxed: the cover literal is the
+      // handler's own, and `freeDayIndexes: [0]` satisfies the ≥1-free-day rule
+      // an entirely-free publication is exempt from.
+      coverImageUrl: 'https://images.example.test/kerala.jpg',
       routeSummary: ['Kochi'], durationDays: 3, estimatedBudgetPerPersonInr: 5000,
       travelStyle: 'balanced', bestSeason: 'winter', travelTips: [],
-      warningsAndAssumptions: [], freeDayIndexes: [],
+      warningsAndAssumptions: [], freeDayIndexes: [0],
     })
     return { p, fromSpy }
   }
@@ -179,9 +190,13 @@ describe('unpublishItinerary owner gate + rollback (v0.36)', () => {
     )
     const p = await store.publishItinerary({
       tripId: 't-unpub', creatorId, title: 'Kerala', tagline: 'x',
+      // #354 — same as the fixture above: the writer enforces the publish rules
+      // now, so this one carries a cover and a free day. These tests are about
+      // the unpublish owner gate and the delete rollback, not about the rules.
+      coverImageUrl: 'https://images.example.test/kerala.jpg',
       routeSummary: ['Kochi'], durationDays: 3, estimatedBudgetPerPersonInr: 5000,
       travelStyle: 'balanced', bestSeason: 'winter', travelTips: [],
-      warningsAndAssumptions: [], freeDayIndexes: [],
+      warningsAndAssumptions: [], freeDayIndexes: [0],
     })
     return { store, p, fromSpy }
   }

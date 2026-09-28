@@ -580,21 +580,35 @@ describe('public share source wiring', () => {
 // http:// URL the preview silently refuses.
 describe('publishing requires a cover the handler will actually use', () => {
   const form = read('../src/pages/trip/ShareTab.tsx')
+  /** #354 — the six rules moved into a lib module so `publishItinerary` enforces
+   *  the same ones the form does. The pins below follow the RULE rather than
+   *  the file it used to be written in, and this test is also what keeps the
+   *  three call sites of the cover literal pinned to one another. */
+  const rules = read('../src/lib/publishRules.ts')
+  const picker = read('../src/components/CoverImagePicker.tsx')
 
   it('offers the trip cover picker inside the publish form', () => {
     expect(form).toMatch(/import \{ CoverImagePicker \} from '\.\.\/\.\.\/components\/CoverImagePicker'/)
-    expect(form).toMatch(/<CoverImagePicker trip=\{trip\} editable=\{isOwner\} \/>/)
+    // The picker takes the form's cover message now (#389) — two of the six
+    // rules are about this control and it used to be able to say nothing.
+    expect(form).toMatch(/<CoverImagePicker trip=\{trip\} editable=\{isOwner\} error=\{errs\.cover \?\? null\} \/>/)
   })
 
   it('refuses to publish without a cover', () => {
     expect(form).toMatch(/const cover = trip\.coverImageUrl\?\.trim\(\)/)
-    expect(form).toMatch(/if \(!cover\) \{ setErr\('Add a cover photo/)
+    // The refusal itself is the shared derivation, and the writer calls it too.
+    expect(rules).toMatch(/if \(!coverImageUrl\) errs\.cover = 'Add a cover photo/)
+    expect(form).toMatch(/publishValidation\(\{/)
   })
 
   it('validates the cover with the same rule the handler applies', () => {
+    // THREE call sites now, and the handler still cannot import client code, so
+    // the pin is by LITERAL rather than by sharing (#390 added the picker as a
+    // third site; #354 moved the first two into `lib/publishRules`).
     const rule = String.raw`/^https:\/\/\S+$/`
     expect(read('../api/i.js')).toContain(rule)
-    expect(form).toContain(rule)
+    expect(rules).toContain(rule)
+    expect(picker).toContain(rule)
   })
 
   it('publishes the trip cover as the publication cover, still sized by the picker', () => {

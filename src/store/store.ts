@@ -26,6 +26,7 @@ import {
   clearWritesFor, dropWrite, pendingWrites, queueWrite, replayVerdict, shouldRetry,
 } from '../lib/writeQueue'
 import { ownSuggestedCover, unclaimedCovers } from '../lib/coverUpload'
+import { publishValidation, PUBLISH_FIELD_ORDER, PublishRejected } from '../lib/publishRules'
 import { makeInviteCode, normalizeInviteCode } from '../lib/inviteCode'
 import { suggestionToRow, decisionToRow, activityToRow, notificationToRow, publishedToRow } from '../lib/restoreRows'
 import { reduceSlice, applyMemberChange, isRecentLocalWrite, isStaleServerRow } from '../lib/realtimeCore'
@@ -2390,16 +2391,55 @@ export function canEditAdmin(role: TripMember['role'] | null): boolean {
   return canEdit(role) || isAdminCached()
 }
 
+/**
+ * Change a member's role, and roll the cache back if the write is refused.
+ *
+ * #391 — this was a `mutateTrip` + `fire(...)` with neither a rollback nor a
+ * toast, so a role change the server refused looked exactly like one that
+ * landed and then reverted on the next hydrate. The undo window that
+ * `removeMember` gets does not apply here (there is nothing to undo), so the
+ * rollback is the only safety net this path has and it was missing.
+ *
+ * The directions matter: the cache is restored on failure (the UI must not
+ * claim a role the server refused) and the failure is LOUD, because a quiet
+ * one is indistinguishable from success. A quiet SUCCESS is fine here.
+ *
+ * `mutateTrip` with `touch: false` is kept, so the role change does not bump
+ * the trip's `updatedAt` and re-arm the "page behind itinerary" nudge for a
+ * change no itinerary content saw.
+ */
 export function setMemberRole(tripId: ID, userId: ID, role: TripMember['role']): void {
   const t = tripById(tripId)
   const m = t?.members?.find(x => x.userId === userId)
-  if (t && m) {
-    mutateTrip(tripId, draft => {
-      const dm = draft.members?.find(x => x.userId === userId)
-      if (dm) dm.role = role
-    }, { touch: false })
-    fire('trip_members', supabase.from('trip_members').update({ role }).eq('trip_id', tripId).eq('user_id', userId))
-  }
+  if (!t || !m || m.role === role) return
+  const previousRole = m.role
+  mutateTrip(tripId, draft => {
+    const dm = draft.members?.find(x => x.userId === userId)
+    if (dm) dm.role = role
+  }, { touch: false })
+  void Promise.resolve(
+    supabase.from('trip_members').update({ role }).eq('trip_id', tripId).eq('user_id', userId),
+  ).then(
+    res => {
+      if (!res?.error) return
+      console.error('[yatraflow] trip_members write failed', res.error)
+      mutateTrip(tripId, draft => {
+        const dm = draft.members?.find(x => x.userId === userId)
+        if (dm) dm.role = previousRole
+      }, { touch: false })
+      commit()
+      toast(`Couldn't change that role — it has been put back. (${res.error.message ?? 'write refused'})`, 'err')
+    },
+    err => {
+      console.error('[yatraflow] trip_members write rejected', err)
+      mutateTrip(tripId, draft => {
+        const dm = draft.members?.find(x => x.userId === userId)
+        if (dm) dm.role = previousRole
+      }, { touch: false })
+      commit()
+      toast('Couldn’t change that role — check your connection.', 'err')
+    },
+  )
 }
 
 /**
@@ -2429,13 +2469,49 @@ export async function joinViaInvite(tripId: ID, userId: ID, role: TripMember['ro
   return true
 }
 
+/**
+ * Remove a member, and put them back if the write is refused.
+ *
+ * #391 — the row was filtered out of the cache and the delete fired with no
+ * error handling, so a refused delete looked like a successful one and the
+ * member came back on the next hydrate with no message. The 7s `undoToast`
+ * covers INTENT-regret ("I did not mean to"); this covers WRITE-FAILURE. They
+ * are different failures and both paths are wanted — the undo restores through
+ * `restoreMember`, and this restores the exact row the cache held, including
+ * its `joinedAt`, so a failed delete does not quietly re-order the crew.
+ */
 export function removeMember(tripId: ID, userId: ID): void {
   const t = tripById(tripId)
   if (!t) return
   const before = t.members ?? []
+  const removed = before.find(m => m.userId === userId)
+  if (!removed) return
   t.members = before.filter(m => m.userId !== userId)
   commit()
-  fire('trip_members', supabase.from('trip_members').delete().eq('trip_id', tripId).eq('user_id', userId))
+  // The rollback is the cache's OWN list, captured before the filter — not a
+  // re-read of the server, which is exactly the thing that just refused us.
+  const restore = () => {
+    const current = cache.trips.find(x => x.id === tripId)
+    if (!current) return
+    if (current.members?.some(m => m.userId === userId)) return // already back
+    current.members = [...(current.members ?? []), removed]
+    commit()
+  }
+  void Promise.resolve(
+    supabase.from('trip_members').delete().eq('trip_id', tripId).eq('user_id', userId),
+  ).then(
+    res => {
+      if (!res?.error) return
+      console.error('[yatraflow] trip_members write failed', res.error)
+      restore()
+      toast(`Couldn't remove that traveller — they're still on the trip. (${res.error.message ?? 'write refused'})`, 'err')
+    },
+    err => {
+      console.error('[yatraflow] trip_members write rejected', err)
+      restore()
+      toast('Couldn’t remove that traveller — check your connection.', 'err')
+    },
+  )
 }
 
 export function userName(id: ID): string {
@@ -2931,6 +3007,39 @@ export function resolveDecision(decisionId: ID, optionId: ID): void {
 // ---------------- Publishing ----------------
 
 export async function publishItinerary(pub: Omit<PublishedItinerary, 'id' | 'publishedAt' | 'views' | 'copies'>): Promise<PublishedItinerary> {
+  // #354 — THE WRITER ENFORCES THE RULES, not just the form that calls it.
+  // Every publish rule used to live only in `PublicationForm`, so this function
+  // enforced none of them and the database had no backstop either. Any direct
+  // caller — a future surface, a console, a test, the admin path — could write a
+  // row the paywall would price but the preview shows fully (price > 0 with
+  // every day free: a paid unlock that reveals what the reader can already see),
+  // a ₹999999 row that 503s at checkout with no visible cause, or a coverless
+  // one whose link silently previews as the brand card.
+  //
+  // The check is the FORM's own `publishValidation` from `lib/publishRules` —
+  // the SAME module the form reads, so the refusal and the form's message are
+  // LITERALLY the same string and cannot drift. That is the whole reason the
+  // rules are a module rather than a function in the page: two copies of six
+  // rules is how this class of bug starts. A pure function of six scalars and a
+  // string map, so the store depends on the RULES and not on the page.
+  const entirelyFree = pub.premiumPriceInr == null
+  const violations = publishValidation({
+    coverImageUrl: pub.coverImageUrl?.trim(),
+    priceNum: pub.premiumPriceInr ?? 0,
+    entirelyFree,
+    freeDayCount: pub.freeDayIndexes.length,
+    totalDays: pub.durationDays,
+    cta: (pub.subscriberCta ?? '').trim(),
+    hasPremiumDay: !entirelyFree && pub.freeDayIndexes.length < pub.durationDays,
+  })
+  if (Object.keys(violations).length) {
+    // A REFUSAL, not a partial write: nothing is committed, nothing is rolled
+    // back, because nothing was touched. The form catches this and shows the
+    // message on the field it belongs to (which is why the map is keyed by
+    // field rather than concatenated here).
+    const first = PUBLISH_FIELD_ORDER.find(k => k in violations)!
+    throw new PublishRejected(violations[first] ?? 'This publication is not ready to publish.', first, violations)
+  }
   // Reuse the existing published row's id for the same trip so re-publishing
   // UPDATES it instead of minting a brand-new row. Previously every call used
   // a fresh uid('pub'), so the upsert created a duplicate row each time and
@@ -2955,30 +3064,40 @@ export async function publishItinerary(pub: Omit<PublishedItinerary, 'id' | 'pub
   }
   const existingIdx = cache.published.findIndex(x => x.tripId === p.tripId)
   const previous = existingIdx >= 0 ? cache.published[existingIdx] : undefined
+  // #361 — OWN THE COVER BEFORE THE FIRST COMMIT, not after. The old order
+  // committed the optimistic publication carrying the THIRD-PARTY
+  // (Wikimedia) URL, then awaited `ownSuggestedCover`, then committed the owned
+  // one — so anything reading the cache in that window (a share link copied
+  // mid-publish, a preview fetched in the gap) served Wikimedia at exactly the
+  // moment the feature exists to stop that. Resolving first makes the
+  // third-party URL durably unpublishable on the success path.
+  //
+  // It cannot block a publish: `ownSuggestedCover` never throws and never
+  // rejects, and its worst case is the original URL plus a `pending` flag the
+  // post-hydrate sweep retries. So the bounded fallback the old comment claimed
+  // is preserved, and it is now VISIBLE rather than silent.
+  const owned = await ownSuggestedCover(p.creatorId, p.coverImageUrl)
+  const ownedUrl = owned.owned && owned.url ? owned.url : undefined
+  if (ownedUrl) p.coverImageUrl = ownedUrl
+  // The trip's cover is what the publication copies, so a trip whose cover is
+  // still the suggestion is the reason this keeps happening: capture it BEFORE
+  // any write so a failure can put it back (#361's atomic rollback). Its
+  // VISIBILITY is captured for the same reason (#354's refused flip) — both
+  // rollbacks must restore the same "before" picture, or the trip is left in a
+  // state nobody chose.
+  const tripBefore = cache.trips.find(t => t.id === p.tripId)
+  const tripCoverBefore = tripBefore?.coverImageUrl
+  const tripVisibilityBefore = tripBefore?.visibility ?? 'private'
   cache.published = existingIdx >= 0
     ? [...cache.published.slice(0, existingIdx), p, ...cache.published.slice(existingIdx + 1)]
     : [...cache.published, p]
   commit()
-  // Take ownership of an auto-suggested cover BEFORE the row is written, so the
-  // stored og:image never points at someone else's host. Wikimedia serves only
-  // the thumbnail buckets it has generated, and one live publication carried a
-  // 587 KB image at the width we ask for — 98% of the 600 KB ceiling WhatsApp
-  // documents. Our own re-encode of the same photo measured 78 KB, so this
-  // fixes the third-party dependency and the size together.
-  //
-  // Deliberately after the optimistic commit: the UI shows the publication at
-  // once and the copy happens behind it. A failure keeps the third-party URL,
-  // which is what publishing did before, so this can never block a publish.
-  const owned = await ownSuggestedCover(p.creatorId, p.coverImageUrl)
-  if (owned.owned && owned.url) {
-    p.coverImageUrl = owned.url
-    cache.published = cache.published.map(x => (x.id === p.id ? { ...x, coverImageUrl: owned.url } : x))
-    commit()
+  if (ownedUrl) {
     // Put the owned URL on the TRIP too. Publishing copies the trip's cover, so
     // without this every re-publish would re-copy the same suggestion and mint
     // another object — and the trip's own card would keep loading from
     // Wikimedia, leaving the dependency in place on the app side.
-    updateTrip(p.tripId, { coverImageUrl: owned.url })
+    updateTrip(p.tripId, { coverImageUrl: ownedUrl })
   }
   // The Supabase row is the ONLY persistence for a publication — if this
   // upsert is rejected, the optimistic cache write makes it look published
@@ -3011,14 +3130,47 @@ export async function publishItinerary(pub: Omit<PublishedItinerary, 'id' | 'pub
         : cache.published.filter((_, i) => i !== idx)
       commit()
     }
+    // #361 — ATOMIC ROLLBACK: the trip's cover was written too, so the
+    // publication going back is not enough. Restoring only the publication left
+    // the trip card on the owned cover and the publication on the old one, and
+    // after a fix-and-republish cycle the two showed different pictures. Both
+    // writes go back together, or the publish is half-undone.
+    //
+    // `updateTrip` is the same debounced coalescing path the forward write used
+    // (600ms trailing, snapshot semantics) — going around it would put the
+    // restore in a different queue and let the coalesced snapshot win.
+    if (ownedUrl && tripCoverBefore !== ownedUrl) {
+      updateTrip(p.tripId, { coverImageUrl: tripCoverBefore })
+    }
   } else {
     markLocalWrite('published_itineraries', p.id)
     // A published itinerary is a public page: flip the trip to visibility
     // 'public' so RLS lets anonymous visitors and logged-in non-members read
     // the trip body the public page renders (see fetchSharedTrip).
-    cache.trips = cache.trips.map(t => t.id === p.tripId ? { ...t, visibility: 'public' } : t)
-    commit()
-    fire('trips', supabase.from('trips').update({ visibility: 'public' }).eq('id', p.tripId))
+    //
+    // #354 — AWAITED, and rolled back on refusal. This used to be
+    // `fire(...)`, so a rejected flip left the CACHE saying public while
+    // `get_public_trip` (which requires `visibility = 'public'`) served nothing:
+    // a live Explore card pointing at a dead public page, with nothing said.
+    // Awaiting is the fix; the rollback is what stops a refused flip from
+    // becoming that split state, and the toast is what stops it being silent.
+    const { error: flipError } = await supabase
+      .from('trips').update({ visibility: 'public' }).eq('id', p.tripId)
+    if (flipError) {
+      console.error('[yatraflow] publish visibility flip failed', flipError)
+      // Put the trip's own visibility back — the value captured BEFORE this
+      // publish, not a hardcoded 'private': it may have been 'link', and a guess
+      // would either narrow a shared trip or widen a private one. Captured at
+      // the top of the function, beside the cover, so the two rollbacks restore
+      // the same "before" picture.
+      cache.trips = cache.trips.map(t => t.id === p.tripId ? { ...t, visibility: tripVisibilityBefore } : t)
+      commit()
+      toast('Published to Explore, but the public page could not be opened — check your connection and republish. (' + flipError.message + ')', 'err')
+    } else {
+      markLocalWrite('trips', p.tripId)
+      cache.trips = cache.trips.map(t => t.id === p.tripId ? { ...t, visibility: 'public' } : t)
+      commit()
+    }
   }
   return p
 }

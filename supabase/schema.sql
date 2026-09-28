@@ -202,7 +202,33 @@ create table if not exists public.published_itineraries (
   -- see migrations/20260906_published_refreshed_at.sql
   refreshed_at                bigint,
   views                       integer not null default 0,
-  copies                      integer not null default 0
+  copies                      integer not null default 0,
+  -- #354: the publish rules, as a DATABASE backstop. The client enforces the
+  -- same six in `lib/publishRules.publishValidation` (and `publishItinerary`
+  -- calls it), but a rule enforced only by the process that would break is a
+  -- suggestion. Each mirrors the migration of the same name
+  -- (20260929_published_itineraries_publish_rules.sql), which adds them NOT
+  -- VALID so legacy rows are grandfathered — a fresh instance has no legacy, so
+  -- here they are plain: every row written is a new one and must satisfy them.
+  -- The null cover branch is the same rule's grandfathering, kept so a fresh
+  -- schema and a migrated one accept the SAME set of rows.
+  constraint published_itineraries_cover_https
+    check (cover_image_url is null or (cover_image_url ~ '^https://\S+$')),
+  constraint published_itineraries_price_in_range
+    check (premium_price_inr is null or (premium_price_inr >= 0 and premium_price_inr <= 100000)),
+  -- A priced plan must withhold at least one day, or the Unlock CTA reveals
+  -- nothing. `jsonb_typeof` guards the poisoned-scalar column (#352) instead of
+  -- trusting the shape.
+  constraint published_itineraries_priced_withholds_a_day
+    check (
+      premium_price_inr is null
+      or premium_price_inr = 0
+      or (
+        free_day_indexes is null
+        or jsonb_typeof(free_day_indexes) <> 'array'
+        or jsonb_array_length(free_day_indexes) >= 1
+      )
+    )
 );
 
 -- ---------- pub_events (dated funnel steps: see migrations/20260921_pub_funnel_events.sql)
