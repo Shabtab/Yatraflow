@@ -11,7 +11,7 @@ import { PillNav } from '../components/PillNav'
 import { useTablist } from '../hooks/useTablist'
 import { Avatar, Chip, ConfirmDialog, EmptyState, Modal } from '../components/ui'
 import {
-  useDb, useIsAdmin, useAdminAudit, useSessionUserId,
+  useDb, useIsAdmin, useAdminAudit, useAdminAuditFailed, useSessionUserId, refreshAdminAuditNow,
   adminSetDisabled, adminSetCreator, adminSetTripVisibility,
   adminRemoveMember, adminUnpublish, adminDeleteTrip, adminDeleteUser,
 } from '../store/store'
@@ -53,7 +53,14 @@ export function AdminPage({ onNavigate }: { onNavigate: (r: string) => void }) {
   return (
     <div className="container form-page">
       <h1>Master admin</h1>
-      <p className="muted small" style={{ marginBottom: 16 }}>Full-control console — every destructive action is audit-logged.</p>
+      <p className="muted small" style={{ marginBottom: 16 }}>
+        Full-control console — every destructive action is audit-logged.
+        {/* #367: the hatch boundary, said where admins will see it. Direct
+            writes through the workspace's own UI are the documented escape
+            hatch (admin FOR ALL policies) and only the console's RPC actions
+            land in the audit log. */}
+        Actions taken here are logged. Actions taken through the regular workspace are not.
+      </p>
       {/* #87: role="tab" children with aria-pressed and no keyboard contract —
           now the shared useTablist primitive (roving tabindex + arrows). */}
       <PillNav className="filter-pillbar" role="tablist" aria-label="Admin sections" activeKey={tab}>
@@ -635,10 +642,31 @@ function AnalyticsTab() {
 
 function AuditTab() {
   const audit = useAdminAudit()
+  const auditFailed = useAdminAuditFailed()
   const db = useDb()
   const actorName = (id: string) => db.users.find(u => u.id === id)?.profile.name ?? id.slice(0, 8)
+  // #367: focus-poll — the realtime channel carries live rows, but a socket
+  // gap (laptop sleep) is replayed for trips only, so returning to the tab
+  // re-reads. A failed read surfaces a Retry instead of the friendly empty
+  // copy: an empty log and a broken read must not render identically.
+  useEffect(() => {
+    void refreshAdminAuditNow()
+    const onVisible = () => { if (document.visibilityState === 'visible') void refreshAdminAuditNow() }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [])
   return (
     <div>
+      {auditFailed && (
+        <div className="warn-item sev-mid" role="status" style={{ marginBottom: 12 }}>
+          <span className="warn-icon"><ShieldAlert size={13} aria-hidden /></span>
+          <div style={{ flex: 1 }}>
+            <div className="warn-title">The audit log couldn't be read.</div>
+            <div className="warn-fix">Rows shown below may be out of date — nothing was lost.</div>
+          </div>
+          <button type="button" className="btn btn-outline" onClick={() => void refreshAdminAuditNow()}>Retry</button>
+        </div>
+      )}
       {audit.length === 0 ? (
         <EmptyState icon={<ShieldAlert size={38} aria-hidden />} title="No admin actions yet"
           body="Every disable, visibility flip, removal, unpublish and delete lands here with who did it and when." />

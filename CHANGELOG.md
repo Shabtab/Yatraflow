@@ -1,5 +1,13 @@
 ## [Unreleased]
 
+### Changed
+
+- The admin console's audit log is live: a second admin's actions now appear the moment they land (the realtime channel carries the audit table, the tab re-reads on focus), a failed audit read shows a Retry instead of the friendly empty copy, and the console header states the audit boundary — actions taken through the regular workspace are not logged (#367). Deleting a user who was only a member of a crew trip no longer makes the whole trip vanish from the admin's own view mid-session; just the membership row goes, matching what the database actually does (#367).
+
+### Security
+
+- The admin console's RPCs are no longer reachable by anonymous callers at the grant level. Every admin RPC shipped `grant execute … to authenticated` with no revoke, and the database's default function ACL grants everyone — so a future RPC that forgot its internal admin check would have been world-callable. One grants-only migration revokes `public` and `anon` on all eight while keeping the console's own grant; the RLS contract suite now probes the live role list for all of them and asserts the audit log stays append-only and admin-gated (#366).
+
 ### Fixed
 
 - **The trip's health band is one colour, everywhere it is printed.** The band name, the big number, the health bar and the Board's pulse band were four renderings of one fact, and they disagreed: the number and the bar read a three-bucket scale (Tight, Comfortable-or-Manageable, else) while the chip beside them read a four-way tone — so a 70–84 trip printed the word "Manageable" in Comfortable-green, and the middle band had no identity at all where the numbers live. The mapping is one four-way function now, and the number/bar class is derived from the same call as the chip's tone, so the two cannot drift apart again. The colours are named in the palette's own vocabulary (teal, saffron, danger) rather than a second ok/mid/bad scale that only ever meant "not quite ok" (#400).

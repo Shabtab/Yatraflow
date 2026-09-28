@@ -225,6 +225,13 @@ export const NO_PROBE_SURFACE = {
     // + tombstone predicates, unchanged grants, scheduled sweep untouched).
     reason: 'redefines `purge_trashed_trip` — the function exists before and after, so presence answers nothing; the audit body is pinned by tests/trips-trash-honest-failure.test.ts',
   },
+  '20260929_admin_rpc_grant_lockdown.sql': {
+    // Grants only (#366): the admin RPCs are re-granted, not created, so
+    // presence answers nothing about who can REACH them. The live role list is
+    // asserted by the RLS contract suite (aclexplode against all eight admin
+    // RPCs) and the migration's own shape by tests/admin-rpc-grants.test.ts.
+    reason: 'grants only — the admin RPCs are re-granted rather than created, so presence answers nothing; the live role list is asserted by the RLS contract suite and the migration shape by tests/admin-rpc-grants.test.ts',
+  },
 }
 
 /** The plan: one entry per migration file, with its probes and the reason none
