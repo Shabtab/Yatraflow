@@ -225,7 +225,13 @@ function patch(next: Partial<DB>) {
  *  it rather than renamed here: the published slice is pushed as
  *  'suggested itineraries', not 'published'. A mapping that invented its own
  *  names would report a real failure as a success, which is the one mistake
- *  this whole change exists to prevent. */
+ *  this whole change exists to prevent.
+ *
+ *  This list is the PUBLIC set — what the logged-out re-read
+ *  (`rereadPublicSlices`) asks for. The signed-in hydrate names many more
+ *  slices ('trips', 'members', …, 'audit') and passes ITS OWN asked set to
+ *  `sliceReadReport`, because a report that marked a slice 'ok' without having
+ *  read it would be inventing a success — the mirror of the mistake above. */
 export const READ_SLICES = ['profiles', 'suggested itineraries'] as const
 export type ReadSlice = typeof READ_SLICES[number]
 
@@ -235,11 +241,16 @@ export type ReadSlice = typeof READ_SLICES[number]
  *  inference is why this is built here rather than at each call site: a page
  *  reporting "unknown" for a slice the hydrate never asked about would be
  *  inventing a failure, and one reporting "ok" for a slice the hydrate skipped
- *  would be inventing a success. */
-export function sliceReadReport(partial: readonly string[]): Record<string, 'ok' | 'failed'> {
+ *  would be inventing a success.
+ *
+ *  `asked` is the set of slices THIS run actually read — the hydrate's full
+ *  signed-in set, the public re-read's two, never a global constant — so a
+ *  slice nobody read stays unreported (an unreported read is an unread one,
+ *  which `sliceState` renders as 'reading') rather than silently 'ok'. */
+export function sliceReadReport(partial: readonly string[], asked: readonly string[] = READ_SLICES): Record<string, 'ok' | 'failed'> {
   const failed = new Set(partial)
   const report: Record<string, 'ok' | 'failed'> = {}
-  for (const slice of READ_SLICES) report[slice] = failed.has(slice) ? 'failed' : 'ok'
+  for (const slice of asked) report[slice] = failed.has(slice) ? 'failed' : 'ok'
   return report
 }
 
@@ -796,7 +807,15 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     // not found" over a dropped connection. Anything named in `partial` failed;
     // everything else this run asked for was read. The names are the ones the
     // hydrate already uses, so a page can ask about the slice it renders.
-    patch({ sliceReads: sliceReadReport(partial) })
+    //
+    // #383: `asked` mirrors what THIS run actually read, so a slice the run
+    // never touched (the trip-scoped six on an account with no trips yet, the
+    // audit log for a non-admin) stays unreported — an unreported read is an
+    // unread one — instead of being reported 'ok' without ever being read.
+    const askedSlices: string[] = ['profiles', 'memberships', 'suggested itineraries']
+    if (admin || myTripIds.length > 0) askedSlices.push('trips', 'members', 'suggestions', 'decisions', 'activity', 'notifications')
+    if (admin) askedSlices.push('audit')
+    patch({ sliceReads: sliceReadReport(partial, askedSlices) })
 
     // First-time users get the demo trips seeded into their account. Admins
     // skip the seed: their "empty" is a real empty app, and seeding the 3 demo
@@ -2500,10 +2519,18 @@ export function updateExpense(tripId: ID, expenseId: ID, patch: Partial<Omit<Exp
 /** M6 B4 — mark an expense line settled ("this one's sorted, stop counting
  *  it"). Records who + when for the activity entry and the balances card.
  *  Crew members with an editor role; viewer/commenter roles get a silent
- *  no-op here, mirroring the rest of the mutation surface's gating. */
+ *  no-op here, mirroring the rest of the mutation surface's gating.
+ *
+ *  #384: the no-op above was a comment with no code behind it for months —
+ *  the check now exists, and it is the house rule the rest of the mutation
+ *  surface speaks: `canEdit(roleOf(trip, by))` — owner/editor only, the same
+ *  verdict the trips UPDATE RLS policy (`is_editor`) enforces server-side, so
+ *  the client never promises what the DB refuses. A null `by` is a null role,
+ *  so a session-less caller is refused by the same gate. */
 export function markExpenseSettled(tripId: ID, expenseId: ID, by: ID): void {
   const t = tripById(tripId)
   if (!t || !t.expenses.some(x => x.id === expenseId)) return
+  if (!canEdit(roleOf(t, by))) return
   const expense = t.expenses.find(x => x.id === expenseId)
   if (!expense || expense.settled) return
   const label = expense.label
@@ -2513,10 +2540,13 @@ export function markExpenseSettled(tripId: ID, expenseId: ID, by: ID): void {
   void persistTripField(tripId, tripById(tripId)!)
 }
 
-/** M6 B4 — the undo: reopen a settled line. */
-export function markExpenseUnsettled(tripId: ID, expenseId: ID): void {
+/** M6 B4 — the undo: reopen a settled line. #384: the same owner/editor gate
+ *  as the settle it undoes — a reopen is a write, and `by` is required so a
+ *  session-less caller is refused rather than silently reopening the ledger. */
+export function markExpenseUnsettled(tripId: ID, expenseId: ID, by: ID | null): void {
   const t = tripById(tripId)
   if (!t) return
+  if (!canEdit(roleOf(t, by))) return
   const expense = t.expenses.find(x => x.id === expenseId)
   if (!expense?.settled) return
   const label = expense.label

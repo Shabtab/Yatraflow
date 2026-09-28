@@ -3,7 +3,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import {
-  projectEarnings, deriveActualSales, deriveLedgerRead, payoutStatus, payoutPeriods, revenuePeriods, nextPayoutRun,
+  projectEarnings, deriveActualSales, deriveLedgerRead, payoutStatus, payoutPeriods, payoutPeriodStatus, payoutWalk, revenuePeriods, nextPayoutRun,
   feeForSliceInr, platformFeeInr, netOfFeeInr, attributeFeesInr,
   PLATFORM_FEE_TIERS, PAYOUT_MINIMUM_INR, PAYOUT_WEEKDAY,
 } from '../src/lib/earnings'
@@ -237,9 +237,15 @@ describe('the hub reads the ledger as written (I-9/I-10/I-13)', () => {
   })
 
   it('keeps the payout schedule on the actual ledger, never on a projection', () => {
-    expect(hub).toMatch(/payoutStatus\(actual\?\.netInr \?\? 0, now\)/)
-    expect(hub).toMatch(/payoutPeriods\(actual\?\.rows \?\? \[\], now\)/)
+    // #348 — the header reads the WALK's end state, not the ledger's net. Given
+    // the raw net it would ask the minimum of the total while the run table asked
+    // it of each period alone, which is how the two could disagree on one page.
+    expect(hub).toMatch(/const walk = payoutWalk\(actual\?\.rows \?\? \[\], now\)/)
+    expect(hub).toMatch(/payoutStatus\(walk\.balanceInr, now\)/)
+    expect(hub).toMatch(/const payoutRuns = walk\.periods/)
     expect(hub).toMatch(/\{view === 'actual' && \(/)
+    // …and it must not keep a second derivation behind it.
+    expect(hub).not.toMatch(/payoutStatus\(actual\?\.netInr/)
   })
 
   it('states the fee rule wherever it explains a figure', () => {
@@ -273,7 +279,10 @@ describe('the hub reads the ledger as written (I-9/I-10/I-13)', () => {
       lib.indexOf('/**\n * Group sales into the payout runs'),
     )
     expect(status.length).toBeGreaterThan(0)
-    expect(status).toContain("'Owed — not disbursed'")
+    // The wording is now a template, because a run that cleared ON A CARRY must
+    // name what it sent (#348) — but the sentence and the one forbidden word
+    // are unchanged, and those are what this pins.
+    expect(status).toContain('Owed — not disbursed')
     expect(status).not.toMatch(/paid/i)
     expect(hub).toMatch(/payoutPeriodStatus\(p\)/)
     expect(hub).toMatch(/<th>Status<\/th>/)
@@ -355,6 +364,149 @@ describe('the payout runs ledger (I-9)', () => {
 
   it('has no runs to show for a creator with no sales', () => {
     expect(payoutPeriods([], monday)).toEqual([])
+  })
+})
+
+// ---- #348: the carry the copy always claimed and the code never did -------
+// "Under ₹500 — rolls over" was a per-period verdict computed with no reference
+// to any other period, so two ₹300 weeks read that sentence forever while the
+// header above them offered a payout on their ₹600 sum. These pin the carry, and
+// — the part that actually mattered — that the header and the rows are now ONE
+// derivation rather than two rules that shared a constant.
+describe('payout periods actually roll over (#348)', () => {
+  const monday = new Date(2026, 8, 21, 9, 0, 0).getTime()
+  const week = (n: number) => monday + n * 7 * 86_400_000
+  const now = week(8)
+
+  /** One run per week, holding `netInr` EXACTLY.
+   *
+   *  Built as `SaleRow`s rather than through `deriveActualSales` on purpose: a
+   *  ₹300 sale nets ₹255 after the 15% tier, so a helper taking "nets" as gross
+   *  amounts would silently test a different ladder than it reads as. The fee
+   *  attribution is `buildSalesLedger`'s job and is pinned by its own tests —
+   *  what is under test here is the CARRY, so the input states its own nets. */
+  const runsOf = (...nets: number[]) => payoutWalk(
+    nets.map((netInr, i) => ({
+      pubId: 'p', title: 'P', amountPaidInr: netInr, feeInr: 0, netInr, grantedAt: week(i),
+    })),
+    now,
+  )
+
+  it('carries an under-minimum run into the next one instead of dropping it', () => {
+    // The reported case: two ₹300 weeks. Old code cleared nothing on either row
+    // and told both they rolled over; the carry makes the second clear ₹600.
+    const { periods, balanceInr } = runsOf(300, 300)
+    const [newest, older] = periods
+    expect(older).toMatchObject({ netInr: 300, carriedInInr: 0, cumulativeInr: 300, clearsInr: 0, belowMinimum: true })
+    expect(newest).toMatchObject({ netInr: 300, carriedInInr: 300, cumulativeInr: 600, clearsInr: 600, belowMinimum: false })
+    // And the balance the header reads is the walk's own end state: the second
+    // run SENT its ₹600, so nothing is open.
+    expect(balanceInr).toBe(0)
+  })
+
+  it('accumulates across as many runs as it takes', () => {
+    // [300, 100, 100] — the second and third are each under the floor alone,
+    // so only a real carry can make the third reach ₹500.
+    const { periods, balanceInr } = runsOf(300, 100, 100)
+    const [third, second, first] = periods
+    expect(first).toMatchObject({ carriedInInr: 0, cumulativeInr: 300, clearsInr: 0 })
+    expect(second).toMatchObject({ carriedInInr: 300, cumulativeInr: 400, clearsInr: 0 })
+    expect(third).toMatchObject({ carriedInInr: 400, cumulativeInr: 500, clearsInr: 500 })
+    expect(balanceInr).toBe(0)
+  })
+
+  it('leaves a first-clear run carrying nothing, and leaves the next one open', () => {
+    // [600] clears immediately (carry 0) and [600, 300] ends OPEN at ₹300 —
+    // the walk's end carry, which is the header's number.
+    const one = runsOf(600)
+    expect(one.periods[0]).toMatchObject({ carriedInInr: 0, cumulativeInr: 600, clearsInr: 600, belowMinimum: false })
+    expect(one.balanceInr).toBe(0)
+
+    const two = runsOf(600, 300)
+    expect(two.periods[0]).toMatchObject({ carriedInInr: 0, cumulativeInr: 300, clearsInr: 0, belowMinimum: true })
+    expect(two.balanceInr).toBe(300)
+  })
+
+  it('gives the header and the rows ONE derivation, not two rules', () => {
+    // The defect was not arithmetic, it was that the header and the table each
+    // applied the minimum to a DIFFERENT aggregate — so a header could offer a
+    // payout the table showed no run clearing. Asserted as a property over
+    // several ledgers rather than on one fixture:
+    //   * the balance the header judges IS the walk's end state, and
+    //   * a header payout exists only when some run cleared, or the open
+    //     balance has since reached the floor on its own.
+    for (const nets of [[300, 300], [300, 100, 100], [600], [600, 300], [149, 149, 149], [300, 300, 300]]) {
+      const label = `net ladder ${JSON.stringify(nets)}`
+      const { periods, balanceInr } = runsOf(...nets)
+      const last = periods[0]! // newest-first, so index 0 is the walk's LAST step
+      expect(balanceInr, label).toBe(last.clearsInr > 0 ? 0 : last.cumulativeInr)
+
+      const header = payoutStatus(balanceInr, now)
+      // The precise claim: the header never offers money the walk does not hold.
+      expect(header.clearsInr, label).toBeLessThanOrEqual(balanceInr)
+      // …and the walk, not a second sum, is what says so. On the reported
+      // ladder the OLD code cleared nothing and the header still offered ₹600.
+      if (nets.join() === '300,300') {
+        expect(periods.some(p => p.clearsInr > 0), label).toBe(true)
+        expect(header.clearsInr, label).toBe(0) // it was sent, so nothing is open
+      }
+    }
+  })
+
+  it('keeps the run rows summing to the ledger — the carry did not re-derive a fee', () => {
+    const led = deriveActualSales([
+      ent({ id: 'a', amountPaidInr: 199, grantedAt: week(0) }),
+      ent({ id: 'b', amountPaidInr: 25_000, grantedAt: week(1) }),
+      ent({ id: 'c', amountPaidInr: 499, grantedAt: week(2) }),
+    ], [])
+    const { periods, balanceInr } = payoutWalk(led.rows, now)
+    const sum = (pick: (p: ReturnType<typeof payoutPeriods>[number]) => number) =>
+      periods.reduce((s, p) => s + pick(p), 0)
+    expect(sum(p => p.grossInr)).toBe(led.grossInr)
+    expect(sum(p => p.feeInr)).toBe(led.feeInr)
+    expect(sum(p => p.netInr)).toBe(led.netInr)
+    expect(sum(p => p.salesCount)).toBe(led.rows.length)
+    // CONSERVATION, which is the property the carry could have broken: the money
+    // that cleared plus the money still open is the ledger's net, exactly. A
+    // carry is a restatement of the same rupees across rows, never an addition
+    // to them — so summing both sides is the honest check, and the two are only
+    // separable because a run that sends resets the carry to zero.
+    const cleared = sum(p => p.clearsInr)
+    expect(cleared + balanceInr).toBe(led.netInr)
+  })
+
+  it('walks OLDEST first, whatever order the sales arrive in', () => {
+    // The carry only runs one direction, so the order is established by sorting
+    // on the run date rather than inherited from the input. `buildSalesLedger`
+    // hands back rows NEWEST first (it sorts for display), so this is the shape
+    // the hub actually passes — the walk must not read it backwards.
+    const led = deriveActualSales([
+      ent({ id: 'early', amountPaidInr: 300, grantedAt: week(0) }),
+      ent({ id: 'late', amountPaidInr: 300, grantedAt: week(1) }),
+    ], [])
+    // `buildSalesLedger` hands back rows NEWEST first (it sorts for display), so
+    // this is the order the hub actually passes — the walk must not read it
+    // backwards, and a `SaleRow` carries no id to sort by besides its date.
+    expect(led.rows[0]!.grantedAt).toBe(week(1))
+    const { periods } = payoutWalk(led.rows, now)
+    // ₹255 + ₹255 crosses the ₹500 floor on the SECOND run only if the walk ran
+    // oldest→newest. Read backwards, the older run would carry 0, the newer
+    // would start from nothing, and NEITHER would clear — which is exactly the
+    // reported bug, in the shape this fix has to rule out.
+    expect(periods[1]!.carriedInInr, 'the OLDER run has nothing to carry in').toBe(0)
+    expect(periods[0]!.carriedInInr, 'the NEWER run took the older one with it').toBeGreaterThan(0)
+    expect(periods[0]!.clearsInr).toBeGreaterThanOrEqual(PAYOUT_MINIMUM_INR)
+  })
+
+  it('names the roll-in in the status cell, because the Net column cannot', () => {
+    // A row that sends ₹600 while its own Net reads ₹300 is the fix working.
+    // Without the clause it reads as an arithmetic error rather than a carry.
+    const { periods } = runsOf(300, 300)
+    expect(payoutPeriodStatus(periods[0]!)).toContain('rolled in')
+    // A row with no carry keeps the old wording exactly — the pinned sentence.
+    const plain = runsOf(600).periods[0]!
+    expect(payoutPeriodStatus(plain)).toBe('Owed — not disbursed')
+    expect(payoutPeriodStatus(plain)).not.toMatch(/paid/i)
   })
 })
 

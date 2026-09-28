@@ -140,9 +140,17 @@ export function nextPayoutRun(ms: number): number {
  * The schedule this ledger is built around — NOT an automated disbursement.
  * See the file header: no payout rail exists, so callers must not present this
  * as money in transit.
+ *
+ * `balanceInr` is the OPEN BALANCE, which `payoutWalk` is what computes — not
+ * the raw net. It used to take `netInr` directly and ask the minimum of the
+ * total, while the run table asked it of each period alone; two ₹300 weeks
+ * therefore cleared nothing in the table while the header offered a payout on
+ * their ₹600 sum, on one page, at once. Passing the walk's own end state makes
+ * that disagreement unrepresentable rather than merely unlikely: the header
+ * reads the same arithmetic the rows do, in the same order.
  */
-export function payoutStatus(netInr: number, now: number): PayoutStatus {
-  const balance = Math.max(0, Math.round(netInr))
+export function payoutStatus(balanceInr: number, now: number): PayoutStatus {
+  const balance = Math.max(0, Math.round(balanceInr))
   return {
     dueAt: nextPayoutRun(now),
     clearsInr: balance >= PAYOUT_MINIMUM_INR ? balance : 0,
@@ -159,8 +167,15 @@ export interface PayoutPeriod {
   grossInr: number
   feeInr: number
   netInr: number
-  /** What that run would actually send — 0 when the period is under the
-   *  minimum and therefore rides into a later one. */
+  /** What rode in from every earlier run that was itself under the minimum —
+   *  the rollover the old per-period test never looked at. 0 on the first such
+   *  run, and 0 again on any run that cleared (a run that sends resets the
+   *  carry, so the next one starts from nothing). */
+  carriedInInr: number
+  /** carriedInInr + netInr — the balance this run is judged against. */
+  cumulativeInr: number
+  /** What that run would actually send — 0 when the cumulative balance is under
+   *  the minimum and therefore rides into a later one. */
   clearsInr: number
   /** The date has passed. NOT "paid": nothing disburses, so a past run is
    *  money owed, and the UI has to say which of the two it means. */
@@ -176,8 +191,19 @@ export interface PayoutPeriod {
  * creator and not money it sent.
  */
 export function payoutPeriodStatus(period: PayoutPeriod): string {
-  if (period.belowMinimum) return `Under ₹${PAYOUT_MINIMUM_INR.toLocaleString('en-IN')} — rolls over`
-  if (period.past) return 'Owed — not disbursed'
+  // A row that cleared ON A CARRY sent more than its own week earned, and the
+  // old "Owed — not disbursed" hid that entirely: two ₹300 weeks used to read
+  // "rolls over" on both rows while their combined ₹600 was the header's offer.
+  // The carry is named here because the Net column still shows only this run's
+  // own net — without it, "Owed ₹600" beside "Net ₹300" reads as an error.
+  if (period.belowMinimum) {
+    const carried = period.carriedInInr > 0 ? ` (with ₹${period.carriedInInr.toLocaleString('en-IN')} rolled in)` : ''
+    return `Under ₹${PAYOUT_MINIMUM_INR.toLocaleString('en-IN')} — rolls over${carried}`
+  }
+  if (period.past) {
+    const cleared = period.carriedInInr > 0 ? ` ₹${period.clearsInr.toLocaleString('en-IN')} including ₹${period.carriedInInr.toLocaleString('en-IN')} rolled in` : ''
+    return `Owed — not disbursed${cleared}`
+  }
   return 'Scheduled'
 }
 
@@ -188,13 +214,51 @@ export function payoutPeriodStatus(period: PayoutPeriod): string {
  * lifetime-ladder attribution, and re-deriving a fee per period would charge the
  * 15% tier again for every run. Period totals are sums of those rows, so the
  * periods add up to the ledger exactly.
+ *
+ * This is `payoutWalk(...).periods`; the rollover is not optional. It used to
+ * judge each period ALONE, which is how a run table could say "rolls over" on
+ * every row forever while the header above it offered a payout on the same
+ * money's total.
  */
 export function payoutPeriods(rows: SaleRow[], now: number): PayoutPeriod[] {
+  return payoutWalk(rows, now).periods
+}
+
+/**
+ * The run table AND the open balance, from ONE walk.
+ *
+ * The carry is the whole point: a run under the ₹500 minimum does not vanish, it
+ * rides into the next one, so runs are judged OLDEST FIRST against a running
+ * balance. A run whose cumulative total reaches the minimum sends that whole
+ * total — and resets the carry, because that money is gone; a run that does not
+ * hands its entire cumulative balance forward. Two ₹300 weeks therefore clear
+ * ₹600 on the second, which is what the header always claimed and the
+ * per-period test could never see.
+ *
+ * The header reads `balanceInr` from HERE rather than from the ledger's net, so
+ * the "next payout" figure and the run rows cannot disagree BY CONSTRUCTION —
+ * that is the reason this is one function and not two. The old pair shared the
+ * minimum and asked two different questions of it, which is exactly the shape
+ * that let one page contradict itself.
+ *
+ * Integer rupees only: the rows' own `netInr` are whole rupees (`buildSalesLedger`
+ * rounds each fee to the rupee), so the carried balance cannot drift by a
+ * fraction between two renders of the same ledger.
+ */
+export interface PayoutWalk {
+  /** Newest run first, exactly as the history table reads it. */
+  periods: PayoutPeriod[]
+  /** What is open right now — what `payoutStatus` judges the minimum against. */
+  balanceInr: number
+}
+
+export function payoutWalk(rows: SaleRow[], now: number): PayoutWalk {
   const byRun = new Map<number, PayoutPeriod>()
   for (const row of rows) {
     const dueAt = nextPayoutRun(row.grantedAt)
     const period = byRun.get(dueAt) ?? {
-      dueAt, salesCount: 0, grossInr: 0, feeInr: 0, netInr: 0, clearsInr: 0, past: false, belowMinimum: false,
+      dueAt, salesCount: 0, grossInr: 0, feeInr: 0, netInr: 0,
+      carriedInInr: 0, cumulativeInr: 0, clearsInr: 0, past: false, belowMinimum: false,
     }
     period.salesCount += 1
     period.grossInr += row.amountPaidInr
@@ -202,14 +266,38 @@ export function payoutPeriods(rows: SaleRow[], now: number): PayoutPeriod[] {
     period.netInr += row.netInr
     byRun.set(dueAt, period)
   }
-  return [...byRun.values()]
-    .map(p => ({
-      ...p,
-      past: p.dueAt <= now,
-      belowMinimum: p.netInr < PAYOUT_MINIMUM_INR,
-      clearsInr: p.netInr >= PAYOUT_MINIMUM_INR ? p.netInr : 0,
-    }))
+
+  // Oldest first, because the carry runs in exactly one direction: a run hands
+  // its balance to a LATER one and never to an earlier one. `byRun` happens to
+  // be in first-sale order, which is NOT the same thing once a later sale lands
+  // in an earlier run — so the order is established, not assumed.
+  let carry = 0
+  const periods = [...byRun.values()]
+    .sort((a, b) => a.dueAt - b.dueAt)
+    .map(p => {
+      const carriedInInr = carry
+      const cumulativeInr = carriedInInr + p.netInr
+      const clears = cumulativeInr >= PAYOUT_MINIMUM_INR ? cumulativeInr : 0
+      // A run that sends empties the carry; one that does not hands its whole
+      // cumulative balance on. `max(0, …)` because a negative net (a
+      // refund-shaped row) must not carry a negative balance into a later run
+      // and shrink it.
+      carry = clears > 0 ? 0 : Math.max(0, cumulativeInr)
+      return {
+        ...p,
+        carriedInInr,
+        cumulativeInr,
+        clearsInr: clears,
+        belowMinimum: clears === 0 && cumulativeInr > 0,
+        past: p.dueAt <= now,
+      }
+    })
     .sort((a, b) => b.dueAt - a.dueAt)
+
+  // The open balance IS the carry the walk ended on. Reading it off the walk —
+  // rather than re-summing the rows with a second rule — is what makes the
+  // header and the table one derivation; the re-sum is the bug this replaced.
+  return { periods, balanceInr: carry }
 }
 
 /**
