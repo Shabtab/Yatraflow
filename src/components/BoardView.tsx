@@ -11,7 +11,7 @@ import {
 import { prefersReducedMotion } from '../lib/motion'
 import {
   activeStopsInOrder, moveActiveStopWithinDay, moveStopToDay, nextOrderInDay,
-  pendingStopId, stopById,
+  pendingStopId,
 } from '../lib/stopOrder'
 import { InlineIcon, KindIcon } from './icons'
 import type { Trip, ItineraryStop } from '../data/types'
