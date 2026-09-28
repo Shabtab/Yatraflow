@@ -10,6 +10,7 @@ import { useDb, userById, activityFor } from '../../store/store'
 import { computeHealth, computeTotals, formatInr, minutesToHM, countHotelNights, isRoundTrip } from '../../lib/engine'
 import { healthBandClass, healthBandTone } from '../../lib/healthBand'
 import { overviewRoutePoints, routeWeatherAnchor } from '../../lib/overviewTruth'
+import { rankWarnings, warningKey, maxWarningSeverity, severityLead } from '../../lib/overviewWarnings'
 import { useTimeFormat, formatHM } from '../../lib/timefmt'
 import { fetchDailyWeather, forecastAvailable, wmoInfo } from '../../lib/weather'
 import type { DayWeather } from '../../lib/weather'
@@ -50,11 +51,14 @@ export function OverviewTab({ trip, onOpenTimeline, onOpenMap, onInvite, health,
   // route honest to draw — the card below says so rather than falling back to
   // the shared component's illustrative curve, which wore real day badges.
   const routePoints = useMemo(() => overviewRoutePoints(trip), [trip])
-  // Bento briefing (CTI §6.2): lead with the most consequential issues.
-  const severityRank = { high: 0, medium: 1, low: 2 } as const
-  const priorityActions = [...health.warnings]
-    .sort((a, b) => severityRank[a.severity] - severityRank[b.severity])
-    .slice(0, 3)
+  // Bento briefing (CTI §6.2): lead with the most consequential issues. Both
+  // "top 3" lists read the one shared rank (#401) — an unlabeled disagreement
+  // between them was the bug, so neither list sorts on its own anymore.
+  const rankedWarnings = rankWarnings(health.warnings)
+  const priorityActions = rankedWarnings.slice(0, 3)
+  // The count chip is toned by the severest warning present: an all-low trip
+  // must not wear the alarm saffron. Medium and high both merit review.
+  const countTone = maxWarningSeverity(health.warnings) === 'low' ? 'chip' : 'chip chip-saffron'
 
   return (
     <div className="two-col bento">
@@ -80,8 +84,8 @@ export function OverviewTab({ trip, onOpenTimeline, onOpenMap, onInvite, health,
               <ul className="health-reasons">
                 {health.warnings.length === 0
                   ? <li>No schedule issues detected — buffers look healthy.</li>
-                  : health.warnings.slice(0, 3).map(w => (
-                    <li key={w.code + w.title}>{w.severity === 'high'
+                  : rankedWarnings.slice(0, 3).map(w => (
+                    <li key={warningKey(w)}><span className="sr-only">{severityLead(w.severity)} </span>{w.severity === 'high'
                       ? <><InlineIcon icon={Siren} size={12} gap={3} /></>
                       : w.severity === 'medium'
                       ? <><InlineIcon icon={TriangleAlert} size={12} gap={3} /></>
@@ -105,17 +109,17 @@ export function OverviewTab({ trip, onOpenTimeline, onOpenMap, onInvite, health,
         <div className="card">
           <div className="row-between card-head">
             <h3>Priority actions</h3>
-            {health.warnings.length > 0 && <span className="chip chip-saffron">{health.warnings.length} warning{health.warnings.length !== 1 ? 's' : ''} to review</span>}
+            {health.warnings.length > 0 && <span className={countTone}>{health.warnings.length} warning{health.warnings.length !== 1 ? 's' : ''} to review</span>}
           </div>
           {priorityActions.length === 0 ? (
             <p className="muted small">Nothing needs fixing right now — the plan flows.</p>
           ) : (
             <div className="warn-list">
               {priorityActions.map(w => (
-                <div key={w.code + w.title} className={`warn-item ${w.severity === 'high' ? 'sev-high' : w.severity === 'low' ? 'sev-low' : ''}`}>
+                <div key={warningKey(w)} className={`warn-item ${w.severity === 'high' ? 'sev-high' : w.severity === 'low' ? 'sev-low' : ''}`}>
                   <span className="warn-icon">{w.severity === 'high' ? <Siren size={13} aria-hidden /> : w.severity === 'medium' ? <TriangleAlert size={13} aria-hidden /> : <Lightbulb size={13} aria-hidden />}</span>
                   <div>
-                    <div className="warn-title">{w.title}</div>
+                    <div className="warn-title"><span className="sr-only">{severityLead(w.severity)} </span>{w.title}</div>
                     <div className="warn-fix"><InlineIcon icon={CircleCheck} size={12} gap={3} />{w.fix}</div>
                   </div>
                 </div>
