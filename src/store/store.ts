@@ -11,13 +11,14 @@ import { useSyncExternalStore } from 'react'
 import type {
   User, Trip, StopSuggestion, TripDecision, ActivityEntry, Notification,
   PublishedItinerary, ID, ItineraryStop, ItineraryDay, TripMember, Expense, FixedCommitment,
-  NewDecisionOption,
+  NewDecisionOption, VehicleProfile,
 } from '../data/types'
 import { seedData, uid } from '../data/seed'
 import type { LatLngPoint } from '../data/types'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { toast } from '../components/ui'
 import { isMissingColumnError, rowToTrip, tripToRow, type OptionalColumnsProbe, type TripRow } from '../lib/tripRow'
+import { dayCountForRange } from '../lib/dayCount'
 import { amountRefusal, amountVerdict } from '../lib/expenseAmount'
 import { attachDnaAccount, detachDnaAccount } from '../lib/tripDna'
 import { clearSnapshot, loadSnapshot, saveSnapshot } from '../lib/offlineCache'
@@ -1222,6 +1223,12 @@ export interface NewTripInput {
   fuelPricePerL?: number;
   /** true when the self-drive route also drives back to its start (default for car/motorcycle) */
   roundTrip?: boolean;
+  /** #377 — the create form's stated vehicle inputs. Persisted so Settings
+   *  opens showing what the user typed instead of the mode defaults. */
+  vehicleProfile?: VehicleProfile;
+  tankL?: number;
+  rentPerDayInr?: number;
+  localTrain?: boolean;
   travelStyle: Trip['travelStyle'];
   /** Stay budget tier — the separate pricing dial. Set at create time from the
    *  Budget preference bar, so a new trip never depends on the legacy style. */
@@ -1393,13 +1400,13 @@ let optionalColumnsProbe: Promise<OptionalColumnsProbe> | null = null
 let optionalColumnsWarned = false
 
 function tripsHaveOptionalColumns(): Promise<OptionalColumnsProbe> {
-  if (!isSupabaseConfigured) return Promise.resolve({ economy: false, price: false, roundTrip: false, cover: false, inviteCode: false, deleted: false, stayStyle: false, driverCount: false, hasVulnerable: false, driveAfterDinner: false, vehicleProfile: false })
+  if (!isSupabaseConfigured) return Promise.resolve({ economy: false, price: false, roundTrip: false, cover: false, inviteCode: false, deleted: false, stayStyle: false, driverCount: false, hasVulnerable: false, driveAfterDinner: false, vehicleProfile: false, tankL: false, rentPerDayInr: false, localTrain: false })
   if (!optionalColumnsProbe) optionalColumnsProbe = probeOptionalColumns()
   return optionalColumnsProbe
 }
 
 async function probeOptionalColumns(): Promise<OptionalColumnsProbe> {
-  const [economy, price, roundTrip, cover, inviteCode, deleted, stayStyle, driverCount, hasVulnerable, driveAfterDinner, vehicleProfile] = await Promise.all([
+  const [economy, price, roundTrip, cover, inviteCode, deleted, stayStyle, driverCount, hasVulnerable, driveAfterDinner, vehicleProfile, tankL, rentPerDayInr, localTrain] = await Promise.all([
     probeOptionalColumn('fuel_economy_km_per_l'),
     probeOptionalColumn('fuel_price_per_l'),
     probeOptionalColumn('round_trip'),
@@ -1412,6 +1419,10 @@ async function probeOptionalColumns(): Promise<OptionalColumnsProbe> {
     probeOptionalColumn('has_vulnerable'),
     probeOptionalColumn('drive_after_dinner_min'),
     probeOptionalColumn('vehicle_profile'),
+    // 20260928_trip_vehicle_estimates.sql — the create form's vehicle inputs
+    probeOptionalColumn('tank_l'),
+    probeOptionalColumn('rent_per_day_inr'),
+    probeOptionalColumn('local_train'),
   ])
   if (!economy || !price || !roundTrip) {
     if (!optionalColumnsWarned) {
@@ -1419,7 +1430,7 @@ async function probeOptionalColumns(): Promise<OptionalColumnsProbe> {
       optionalColumnsWarned = true
     }
   }
-  return { economy, price, roundTrip, cover, inviteCode, deleted, stayStyle, driverCount, hasVulnerable, driveAfterDinner, vehicleProfile }
+  return { economy, price, roundTrip, cover, inviteCode, deleted, stayStyle, driverCount, hasVulnerable, driveAfterDinner, vehicleProfile, tankL, rentPerDayInr, localTrain }
 }
 
 /** Probe one optional column. True = present (or transient error, treated optimistically). */
@@ -3568,7 +3579,10 @@ const uuid = (): string =>
     : `${Date.now().toString(16).padStart(12, '0')}-${Math.random().toString(16).slice(2, 6)}-4${Math.random().toString(16).slice(2, 5)}-a${Math.random().toString(16).slice(2, 5)}-${Math.random().toString(16).slice(2, 14).padEnd(12, '0')}`
 
 function diffDays(a: string, b: string): number {
-  return Math.max(1, Math.round((new Date(b).getTime() - new Date(a).getTime()) / 86400000) + 1)
+  // The creation guarantee, applied visibly at the store's boundary (#376):
+  // a trip always has at least one day, even when the dates are missing,
+  // garbage or inverted. The shared helper itself answers 0 honestly.
+  return Math.max(1, dayCountForRange(a, b))
 }
 
 export const supabaseReady = isSupabaseConfigured

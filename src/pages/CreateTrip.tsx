@@ -20,7 +20,8 @@ import { FUEL_PRICE_INR_PER_L, DEFAULT_FUEL_ECONOMY_KML, isFuelEconomyMode, pars
 import { planDriveDays, isSelfDrivenMode } from '../lib/ridePlan'
 import { CREW_CHIPS, CREW_MAX, CREW_MIN, clampCrew } from '../lib/crew'
 import { InlineIcon, modeIcon, MODE_ICONS } from '../components/icons'
-import { estimateTripStarter, buildOutlineSeedStops } from '../lib/tripStarter'
+import { estimateTripStarter, buildOutlineSeedStops, vehicleProfileFor } from '../lib/tripStarter'
+import { sanitizeTankL, sanitizeRentPerDayInr } from '../lib/tripRow'
 import { TRIP_TEMPLATES, applyTemplate, templateFromRange, fmtBand } from '../lib/tripTemplates'
 import { regionFor, regionBand, nationalBand, experienceTier, anchorNote } from '../lib/budgetBenchmarks'
 import { createFunnelOn } from '../lib/featureFlags'
@@ -228,8 +229,6 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
     billRef.current?.scrollIntoView({ behavior: scrollBehavior(), block: 'nearest' })
   }, [billPrinted])
 
-  const dayCount = f.startDate && f.endDate ? Math.round((new Date(f.endDate).getTime() - new Date(f.startDate).getTime()) / 86400000) + 1 : 0
-
   const orderedPoints = useMemo(
     () => [startCoords, ...dests.map(d => (d.lat != null && d.lng != null ? { lat: d.lat, lng: d.lng } : null))],
     [startCoords, dests],
@@ -250,6 +249,12 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
     // this bill and the settings page could disagree about the same room.
     stayStyle: f.stayStyle,
   }), [f.startDate, f.endDate, f.travellers, f.transportMode, f.localTrain, f.roundTrip, f.fuelEconomy, f.fuelPrice, f.tankL, f.rentPerDay, f.stayStyle, orderedPoints, returnCount, fuelMode, tankNum, rentNum])
+
+  // The ONE day count (#376): the dock, the ticket's date label, the
+  // commitments row and the outline seed all read the bill's value, so a bad
+  // date range cannot split-brain two surfaces into different answers.
+  // 0 means "Pick your dates" on every one of them.
+  const dayCount = bill.days
 
   // P3 - what is left, said plainly. Mirrors submit()'s own rules, so it can
   // never claim ready when submit would refuse (see createReadiness tests).
@@ -669,7 +674,18 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
       transportMode: f.transportMode,
       fuelEconomyKmL: fuelMode ? parseFuelEconomyKmL(f.fuelEconomy) : undefined,
       fuelPricePerL: fuelMode ? parseFuelPricePerL(f.fuelPrice) : undefined,
-      roundTrip: fuelMode ? f.roundTrip : undefined,
+      // #377: the flag rides along for EVERY mode — non-fuel round trips used
+      // to drop it here and Settings then described a different trip. The
+      // engine keeps its own narrow isRoundTrip (fuel modes only) until its
+      // consumers are audited deliberately.
+      roundTrip: f.roundTrip,
+      // #377 — the vehicle inputs the form was told, persisted at last (they
+      // used to be bill-only and dropped on the floor here). Junk never
+      // reaches the row: the same sanitizers the writer uses decide.
+      vehicleProfile: vehicleProfileFor({ mode: f.transportMode, tankL: tankNum, economyKmL: parseFuelEconomyKmL(f.fuelEconomy) }),
+      tankL: Number.isFinite(tankNum) && tankNum > 0 ? (sanitizeTankL(tankNum) ?? undefined) : undefined,
+      rentPerDayInr: Number.isFinite(rentNum) && rentNum > 0 ? (sanitizeRentPerDayInr(rentNum) ?? undefined) : undefined,
+      localTrain: f.transportMode === 'train' ? f.localTrain : undefined,
       budgetPerPersonInr: f.budgetPerPersonInr,
       travelStyle: f.travelStyle,
       stayStyle: f.stayStyle,
@@ -754,7 +770,9 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
 
   const ticketTitle = f.name.trim() || 'Your next trip'
   const ticketRoute = `${f.startLocation.trim() || 'Start'} → ${outbound.length ? outbound.map(d => d.name.split(',')[0]).join(' → ') : '…'}`
-  const dateLabel = f.startDate && f.endDate
+  // Gate on the VALUE, not on the strings: garbage or inverted dates carry
+  // strings but no span, and must say "Pick your dates" exactly like the dock.
+  const dateLabel = bill.days > 0
     ? `${fmtDay(f.startDate)} – ${fmtDay(f.endDate)} · ${bill.days} day${bill.days !== 1 ? 's' : ''} · ${bill.nights} night${bill.nights !== 1 ? 's' : ''}`
     : 'Pick your dates'
 
@@ -1551,7 +1569,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
         <div className="dock-meta">
           <b>{ticketTitle}</b>
           <span>
-            {dayCount > 0 ? `${dayCount}d · ${Math.max(0, dayCount - 1)}n · ${f.travellers} travellers` : 'Pick your dates'}
+            {bill.days > 0 ? `${bill.days}d · ${bill.nights}n · ${f.travellers} travellers` : 'Pick your dates'}
             {billPrinted && bill.perHead != null && <> · <span className="mono dock-amt">{'≈ '}<Money v={bill.perHead} animate={!reduced} />{'/head'}</span></>}
           </span>
           {createFunnelOn('readiness') && <span className="dock-ready">{readinessLine(readiness)}</span>}

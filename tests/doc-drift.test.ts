@@ -10,8 +10,9 @@
 //
 // HOW IT WORKS, and why it fails CLOSED:
 //
-//   1. DISCOVERY. Every line of every live doc is scanned for an absence cue
-//      ("does not exist", "unbuilt", "not wired", "still to come"…).
+//   1. DISCOVERY. Every line of every live doc — and of live SOURCE copy,
+//      because user-facing strings make claims too — is scanned for an absence
+//      cue ("does not exist", "unbuilt", "not wired", "no payments"…).
 //   2. EVERY HIT MUST BE REGISTERED, with a reason it is still true today. A
 //      new sentence fails the build until someone either fixes it or writes down
 //      why it is true — which is the whole point: the M7 drift was not a wrong
@@ -22,6 +23,10 @@
 //      table" fails the moment a payouts migration lands.
 //   4. A REGISTERED CLAIM THAT NO LONGER MATCHES ANY LINE ALSO FAILS, so the
 //      registry cannot rot into a list of sentences nobody wrote any more.
+//   5. A CLAIM MAY CARRY `requires` — the INVERSE polarity. A live sentence
+//      naming shipped work ("…paid itinerary unlocks") stays true only while
+//      that evidence exists; if it disappears, the gate fails and the copy
+//      must be rewritten with it (#392's second half).
 //
 // MAINTAINING IT: reword a registered sentence → update its `contains` in the
 // same commit. Ship the thing → delete the entry and fix the doc. Neither is
@@ -34,6 +39,7 @@
 // carrying a date, which is asserted below.
 import { describe, expect, it } from 'vitest'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8')
 
@@ -49,6 +55,16 @@ const LIVE = [
   '../docs/MOTION-TOKENS.md',
   '../docs/commercial/PLAN-MONETISATION.md',
 ]
+
+/**
+ * Live SOURCE copy: user-facing strings make claims too, and the app footer
+ * denied the shipped payments rail for weeks with nothing scanning it (#392).
+ * Same machinery as the docs — a line here is a claim like any other. The
+ * registered App.tsx claim below doubles as proof this list is scanned: drop
+ * the file from here and its claim stops matching a hit, failing the
+ * stale-registry test.
+ */
+const SOURCE_COPY = ['../src/App.tsx']
 
 /**
  * Dated snapshots: exempt, because their claims are about their date. Each must
@@ -81,6 +97,10 @@ const CUES = [
   // three plan items "did not ship" hours before #303 shipped them, and no cue here
   // could see the claim. Zero live-doc hits on the day this line was added.
   'did not ship', 'never shipped', 'has not shipped', 'not yet shipped',
+  // The product-scope denials. 'no bookings' / 'no payments' claim the product
+  // does not do something; the footer said "no payments" for weeks after the
+  // v0.61.0 money rail shipped (#392). Live source copy is scanned too.
+  'no bookings', 'no payments',
 ]
 
 /** Repo evidence that would make a claim false. `paths` takes a file or a
@@ -97,8 +117,15 @@ interface Claim {
   contains: string
   /** Why this is still true today. A reader should be able to check it. */
   why: string
-  /** Optional: what shipping the thing would look like in the repo. */
+  /** Counter-evidence: what shipping the thing would look like in the repo.
+   *  A hit means the claim is a lie (the claim says absent; the marker shows
+   *  present). */
   marker?: Marker
+  /** The inverse polarity: repo evidence that must KEEP existing for the
+   *  sentence to stay true. A live sentence naming shipped work goes stale
+   *  when the thing disappears — the next monetization change must fail the
+   *  gate instead of drifting the copy (#392). */
+  requires?: Marker
 }
 
 // ---- The markers -----------------------------------------------------------
@@ -116,6 +143,15 @@ const KYC_FIELDS: Marker = {
   what: 'payout-account or KYC fields (bank / UPI / PAN) on profiles',
   paths: ['../supabase/schema.sql', '../supabase/migrations/*.sql'],
   contains: /\b(upi_id|bank_account|pan_number|ifsc_code)\b/i,
+}
+
+/** The money rail (v0.61.0). The shell footer and AGENTS both name paid
+ *  itinerary unlocks; `requires`-watching this keeps them honest when the
+ *  rail changes shape. */
+const PAYMENTS_RAIL: Marker = {
+  what: 'the paid-unlock rail (premiumPriceInr / purchase_orders)',
+  paths: ['../src/types.ts', '../src/lib/payments.ts', '../supabase/schema.sql', '../supabase/migrations/*.sql'],
+  contains: /\bpremiumPriceInr\b|\bpurchase_orders\b/,
 }
 
 // ---- The registry ----------------------------------------------------------
@@ -205,6 +241,18 @@ const CLAIMS: Claim[] = [
     contains: 'still listed as unbuilt, though',
     why: 'Past tense, in the record of a Sep-6 table that had mis-filed a shipped engine helper.',
   },
+  {
+    file: '../src/App.tsx',
+    contains: 'No bookings — planning plus paid itinerary unlocks',
+    why: "The shell footer's honest scope line (#392): bookings do not exist (a true absence), and paid itinerary unlocks DO (v0.61.0) — the sentence names both halves. The requires-marker is the fix's second half: the day the rail's evidence disappears, this copy overstates the product and the gate says so.",
+    requires: PAYMENTS_RAIL,
+  },
+  {
+    file: '../AGENTS.md',
+    contains: 'No bookings — planning plus paid itinerary unlocks',
+    why: 'The project description states the same scope as the footer (the #392 sibling sweep swept both) — same two halves, same requires-marker.',
+    requires: PAYMENTS_RAIL,
+  },
 ]
 
 // ---- The scan --------------------------------------------------------------
@@ -213,7 +261,7 @@ interface Hit { file: string; line: number; text: string; cue: string }
 
 function scan(): Hit[] {
   const hits: Hit[] = []
-  for (const file of LIVE) {
+  for (const file of [...LIVE, ...SOURCE_COPY]) {
     read(file).split(/\r?\n/).forEach((text, i) => {
       const low = text.toLowerCase()
       const cue = CUES.find(c => low.includes(c))
@@ -251,12 +299,13 @@ function contradiction(marker: Marker): string | null {
 describe('doc drift — a live doc cannot claim something the repo already has', () => {
   it('scans real files (a scan of nothing would pass silently)', () => {
     expect(LIVE.length).toBeGreaterThan(4)
-    for (const file of LIVE) expect(existsSync(new URL(file, import.meta.url)), `${file} is missing`).toBe(true)
+    expect(SOURCE_COPY.length).toBeGreaterThan(0)
+    for (const file of [...LIVE, ...SOURCE_COPY]) expect(existsSync(new URL(file, import.meta.url)), `${file} is missing`).toBe(true)
     // And the cues actually fire somewhere, or this checker is inert.
     expect(hits.length).toBeGreaterThan(0)
   })
 
-  it('accounts for every absence claim in a live doc', () => {
+  it('accounts for every absence claim in live docs and source copy', () => {
     const unregistered = hits.filter(
       h => !CLAIMS.some(c => c.file === h.file && h.text.includes(c.contains)),
     )
@@ -277,28 +326,35 @@ describe('doc drift — a live doc cannot claim something the repo already has',
 
   it('fails when a registered claim is contradicted by the code', () => {
     // The half that catches drift on its own: these claims name evidence that
-    // would make them false, and the build goes red the moment it appears.
+    // would make them false, and the build goes red the moment it appears —
+    // or, for a `requires` claim, the moment it disappears.
     const broken = CLAIMS
-      .map(c => ({ c, at: c.marker ? contradiction(c.marker) : null }))
-      .filter(({ c, at }) => at !== null && c.marker)
-      .map(({ c, at }) => `${c.file} says "${c.contains}" but ${c.marker!.what} now exists (${at})`)
+      .flatMap(c => [
+        ...(c.marker ? [{ c, at: contradiction(c.marker), gone: false }] : []),
+        ...(c.requires ? [{ c, at: contradiction(c.requires), gone: true }] : []),
+      ])
+      .filter(({ at, gone }) => (gone ? at === null : at !== null))
+      .map(({ c, at, gone }) => (gone
+        ? `${c.file} says "${c.contains}" but ${c.requires!.what} is no longer in the repo — the sentence overstates the product`
+        : `${c.file} says "${c.contains}" but ${c.marker!.what} now exists (${at})`))
     expect(broken).toEqual([])
   })
 
   it('makes every marker watch something real (a glob that expands to nothing cannot fire)', () => {
     for (const claim of CLAIMS) {
-      if (!claim.marker) continue
-      const paths = markerPaths(claim.marker)
-      expect(paths.length, `${claim.marker.what} expands to no files`).toBeGreaterThan(0)
-      // A PLAIN path is allowed to be absent: that absence is exactly what the
-      // doc claims, and the marker fires the day the file appears. A GLOB is
-      // not — one matching nothing would never fire, so it would guard a claim
-      // while watching nothing at all.
-      if (claim.marker.paths.some(p => p.includes('*'))) {
-        expect(
-          paths.some(p => existsSync(new URL(p, import.meta.url))),
-          `${claim.marker.what} watches a glob that matches only missing paths`,
-        ).toBe(true)
+      for (const marker of [claim.marker, claim.requires].filter((m): m is Marker => m !== undefined)) {
+        const paths = markerPaths(marker)
+        expect(paths.length, `${marker.what} expands to no files`).toBeGreaterThan(0)
+        // A PLAIN path is allowed to be absent: that absence is exactly what the
+        // doc claims, and the marker fires the day the file appears. A GLOB is
+        // not — one matching nothing would never fire, so it would guard a claim
+        // while watching nothing at all.
+        if (marker.paths.some(p => p.includes('*'))) {
+          expect(
+            paths.some(p => existsSync(new URL(p, import.meta.url))),
+            `${marker.what} watches a glob that matches only missing paths`,
+          ).toBe(true)
+        }
       }
     }
   })
@@ -313,6 +369,18 @@ describe('doc drift — a live doc cannot claim something the repo already has',
       .toBe('../supabase/schema.sql')
     expect(contradiction({ what: 'synthetic', paths: ['../supabase/schema.sql'], contains: /create table[^;]{0,80}\bpayouts\b/i }))
       .toBeNull()
+  })
+
+  it('the payments requirement is armed (a sentence naming paid unlocks cannot outlive the rail)', () => {
+    // `requires` polarity in the real world: evidence FOUND means the
+    // registered footer/AGENTS sentences stand. The day this returns null,
+    // the rail changed shape and the copy naming it must be rewritten in the
+    // same commit — that is the next monetization change failing here instead
+    // of drifting the copy (#392).
+    expect(
+      contradiction(PAYMENTS_RAIL),
+      'PAYMENTS_RAIL finds no evidence — rewrite the footer/AGENTS sentences that name paid itinerary unlocks (and this marker) in the same commit',
+    ).not.toBeNull()
   })
 
   it('grants a snapshot exemption only to a file that still carries its date', () => {
@@ -330,5 +398,51 @@ describe('doc drift — a live doc cannot claim something the repo already has',
   it('keeps the archive out of the scan on purpose', () => {
     for (const file of LIVE) expect(file).not.toContain('docs/history/')
     for (const file of SNAPSHOTS) expect(file).not.toContain('docs/history/')
+  })
+})
+
+// ---- The sibling sweep (#392): source copy may not deny what the product does ----
+
+/** The denial phrasings — a product-scope claim that something money-shaped
+ *  does not exist. "Free to plan, no card needed" is deliberately NOT one:
+ *  that stays true and is verified-still-true copy. */
+const DENIALS = /\bno\s+payments?\b|\bno\s+checkout\b|never\s+charges|\bplanning\s+only\b/i
+
+/** Every .ts/.tsx under `src/`, walked the boring way (paths relative to this
+ *  file, so `read` and the failure messages agree). */
+function sourceFiles(dir: string): string[] {
+  const out: string[] = []
+  for (const e of readdirSync(new URL(dir, import.meta.url), { withFileTypes: true })) {
+    if (e.isDirectory()) out.push(...sourceFiles(`${dir}${e.name}/`))
+    else if (/\.(ts|tsx)$/.test(e.name)) out.push(`${dir}${e.name}`)
+  }
+  return out
+}
+
+describe('live source copy does not deny the shipped money rail', () => {
+  it('the denial phrasings match real denials, and not the verified-still-true neighbours', () => {
+    // Teeth for the sweep itself: a regex that matches nothing would pass
+    // silently forever, and one that is too wide would force rewording copy
+    // the product still earns.
+    expect(DENIALS.test('All costs are transparent estimates. No bookings, no payments, planning only.')).toBe(true)
+    expect(DENIALS.test('Free to plan, no card needed')).toBe(false)
+  })
+
+  it('has no denial phrasing anywhere in src/ (the reversal-sweeps-its-own-strings rule)', async () => {
+    // The footer's "no payments" was the only hit when #392 was filed, and it
+    // survived weeks past the v0.61.0 rail. Docs are policed by the
+    // cue+registry machinery above instead, because a doc may QUOTE a stale
+    // phrase with a reason — the AGENTS learning entries do exactly that.
+    // The reads run in parallel on purpose: this box charges ~12ms per sync
+    // read (AV), which alone timed the walk out under full-suite load.
+    const files = sourceFiles('../src/')
+    const texts = await Promise.all(files.map(f => readFile(new URL(f, import.meta.url), 'utf8')))
+    const found: string[] = []
+    files.forEach((file, i) => {
+      texts[i]!.split(/\r?\n/).forEach((text, j) => {
+        if (DENIALS.test(text)) found.push(`${file}:${j + 1} ${text.trim().slice(0, 100)}`)
+      })
+    })
+    expect(found).toEqual([])
   })
 })
