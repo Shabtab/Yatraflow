@@ -888,7 +888,9 @@ export function scoreWarnings(warnings: ScheduleWarning[]): HealthResult {
 
 /** Trip days not yet over as of `now` (today counts). Before the trip starts
  *  = all days; mid-trip = today + the rest; after it ends = 0. Dirty
- *  startDate/endDate strings clamp to the full-day count rather than NaN. */
+ *  startDate/endDate strings clamp to the full-day count rather than NaN.
+ *  A 0 return means the trip is over — a caller dividing by it must treat the
+ *  remaining figure as one lump, not a daily rate (#381). */
 export function daysRemaining(trip: Pick<Trip, 'days' | 'startDate' | 'endDate'>, now: Date = new Date()): number {
   const total = trip.days.length
   const start = new Date(`${trip.startDate}T00:00:00`)
@@ -906,7 +908,14 @@ export function daysRemaining(trip: Pick<Trip, 'days' | 'startDate' | 'endDate'>
 /** The pacing number the Budget tab surfaces: how much the group can still
  *  spend per remaining day without blowing the target. Null when no target
  *  is set (budgetPerPersonInr 0) — "set a budget" is the honest answer then,
- *  not a fake infinity. */
+ *  not a fake infinity.
+ *
+ *  #381 (product decision 2026-09-25): this is ESTIMATE headroom, not cash.
+ *  It reads the planning estimate only — settled payments are deliberately
+ *  not plumbed in — so the tab's copy names the basis instead of implying
+ *  money that moved. When the trip is over (`daysLeft === 0`) the returned
+ *  figure is the WHOLE remaining lump, not a daily rate; callers must label
+ *  it as a lump there. */
 export function safeToSpendPerDay(
   trip: Pick<Trip, 'days' | 'startDate' | 'endDate' | 'budgetPerPersonInr' | 'travellers'>,
   spentInr: number,
