@@ -18,6 +18,7 @@ import type { LatLngPoint } from '../data/types'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { toast } from '../components/ui'
 import { isMissingColumnError, rowToTrip, tripToRow, type OptionalColumnsProbe, type TripRow } from '../lib/tripRow'
+import { amountRefusal, amountVerdict } from '../lib/expenseAmount'
 import { attachDnaAccount, detachDnaAccount } from '../lib/tripDna'
 import { clearSnapshot, loadSnapshot, saveSnapshot } from '../lib/offlineCache'
 import {
@@ -48,6 +49,13 @@ interface DB {
   /** True once the first hydrate of this session has settled (success OR
    *  failure). Until then, "empty" is a lie — pages must show loading. */
   ready: boolean
+  /** Which slices the last hydrate read SUCCESSFULLY, and which it failed
+   *  (#364). `ready` above answers "has the hydrate settled", which is not the
+   *  same question: a hydrate can settle with these two slices broken, and a
+   *  page reading only `ready` would then render a failed read as a genuine
+   *  empty gallery. The names are the ones the hydrate already collects in its
+   *  local `partial` array — this is that array, published. */
+  sliceReads: Record<string, 'ok' | 'failed'>
   /** When the rows on screen came from the offline snapshot (PWA phase 2),
    *  the moment that snapshot was taken; null when they came from the network.
    *  Drives the offline banner's "showing your saved plan from HH:MM" and is
@@ -58,7 +66,7 @@ interface DB {
 let cache: DB = {
   users: [], trips: [], trashedTrips: [], suggestions: [], decisions: [],
   activity: [], notifications: [], published: [], adminAudit: [], sessionUserId: null,
-  ready: false, cachedAt: null,
+  ready: false, sliceReads: {}, cachedAt: null,
 }
 
 const listeners = new Set<() => void>()
@@ -207,6 +215,70 @@ function patch(next: Partial<DB>) {
   cache = { ...cache, ...next }
 }
 
+/** The slices a page can ask about by name, and what the last hydrate made of
+ *  each. These are the two the creator and gallery pages read, and they are the
+ *  two a partial hydrate most often breaks — both are wide reads that a dropped
+ *  connection takes out while the session reads fine.
+ *
+ *  The VALUES are the exact strings the hydrate pushes into `partial`, read off
+ *  it rather than renamed here: the published slice is pushed as
+ *  'suggested itineraries', not 'published'. A mapping that invented its own
+ *  names would report a real failure as a success, which is the one mistake
+ *  this whole change exists to prevent. */
+export const READ_SLICES = ['profiles', 'suggested itineraries'] as const
+export type ReadSlice = typeof READ_SLICES[number]
+
+/** Turn the hydrate's `partial` list into a per-slice verdict.
+ *
+ *  Everything the run asked for and did not name in `partial` succeeded. That
+ *  inference is why this is built here rather than at each call site: a page
+ *  reporting "unknown" for a slice the hydrate never asked about would be
+ *  inventing a failure, and one reporting "ok" for a slice the hydrate skipped
+ *  would be inventing a success. */
+export function sliceReadReport(partial: readonly string[]): Record<string, 'ok' | 'failed'> {
+  const failed = new Set(partial)
+  const report: Record<string, 'ok' | 'failed'> = {}
+  for (const slice of READ_SLICES) report[slice] = failed.has(slice) ? 'failed' : 'ok'
+  return report
+}
+
+/**
+ * Re-read just the PUBLIC slices, for a page whose Retry must actually re-issue
+ * the request rather than re-render the same empty array (#364).
+ *
+ * A full `hydrate` is the wrong tool here for two reasons: it needs a session
+ * (these pages work logged-out), and it would refetch the signed-in user's whole
+ * account to fix a gallery. This re-reads the same two tables the hydrate reads,
+ * writes the same `sliceReads` verdict so the page's state machine moves on its
+ * own, and — importantly — replaces the rows ONLY on success, so a second failed
+ * retry cannot wipe good rows a previous hydrate managed to load.
+ *
+ * Never throws: the verdict is the report, and a caller renders from it.
+ */
+export async function rereadPublicSlices(): Promise<void> {
+  // A throw is as much a failure as an error response, and must report as one
+  // rather than leaving the page's previous verdict standing.
+  let failed: string[] = [...READ_SLICES]
+  try {
+    const [profRes, pubRes] = await Promise.all([
+      supabase.from('profiles').select('*'),
+      supabase.from('published_itineraries').select('*'),
+    ])
+    failed = []
+    if (profRes.error) { console.error('[yatraflow] re-read profiles failed', profRes.error); failed.push('profiles') }
+    if (pubRes.error) { console.error('[yatraflow] re-read published failed', pubRes.error); failed.push('suggested itineraries') }
+    // Replace-on-success only, per slice. A retry that fails must not also wipe
+    // the rows a previous hydrate managed to load — "still broken" and "now
+    // empty as well" are different states, and only one of them is a regression.
+    if (!profRes.error) patch({ users: mapOrSkip((profRes.data ?? []), rowToUser) })
+    if (!pubRes.error) patch({ published: dedupePublished(mapOrSkip((pubRes.data ?? []), rowToPublished)) })
+  } catch (e) {
+    console.error('[yatraflow] public slice re-read failed', e)
+  }
+  patch({ sliceReads: sliceReadReport(failed) })
+  commit()
+}
+
 // ---------------- Supabase row <-> domain mapping ----------------
 // rowToTrip / tripToRow live in src/lib/tripRow.ts (pure, unit-tested).
 
@@ -284,9 +356,25 @@ export async function signup(name: string, email: string, password: string): Pro
 }
 
 export async function logout(): Promise<void> {
+  // #393: the sign-out INSTANT used to render the departing account's rows
+  // until the async auth event's hydrate(null) landed — Account A's trips (and
+  // their Trash) still on screen while signed out, for a frame or a round
+  // trip. A synchronous minimal clear makes the app render logged-out
+  // immediately; the auth event then loads the anonymous catalogs, and the
+  // generation guard keeps a late hydrate from re-patching the old user back
+  // in (issue #45).
+  const departing = cache.sessionUserId
+  patch({ trips: [], trashedTrips: [], suggestions: [], decisions: [], activity: [], notifications: [], published: [], adminAudit: [], sessionUserId: null, ready: true, cachedAt: null })
+  commit()
+  // hydrate(null) skips the snapshot/write cleanup when sessionUserId is
+  // already null — which it now always is by this point — so the departing
+  // account's snapshot and unsynced writes are cleared HERE. Their edits are
+  // theirs alone: the next person on this device must never be the one whose
+  // session "syncs" them.
+  if (departing) { void clearSnapshot(departing); void clearWritesFor(departing) }
   await supabase.auth.signOut()
   clearAdminCache()
-  // onAuthStateChange handler clears the cache.
+  // onAuthStateChange handler loads the anonymous catalogs.
 }
 
 /** A disabled account can still complete Auth (Supabase has no soft-delete),
@@ -400,11 +488,11 @@ export function init(): void {
         const pubRows = mapOrSkip((pubRes.data ?? []), rowToPublished)
         if (profRes.error) { console.error('[yatraflow] hydrate profiles failed', profRes.error) }
         if (pubRes.error) { console.error('[yatraflow] hydrate published failed', pubRes.error) }
-        patch({ users, trips: [], suggestions: [], decisions: [], activity: [], notifications: [], published: dedupePublished(pubRows), adminAudit: [], sessionUserId: null, ready: true, cachedAt: null })
+        patch({ users, trips: [], trashedTrips: [], suggestions: [], decisions: [], activity: [], notifications: [], published: dedupePublished(pubRows), adminAudit: [], sessionUserId: null, ready: true, cachedAt: null })
         commit()
       } catch (e) {
         console.error('[yatraflow] anonymous hydration failed', e)
-        patch({ users: [], trips: [], suggestions: [], decisions: [], activity: [], notifications: [], published: [], adminAudit: [], sessionUserId: null, ready: true, cachedAt: null })
+        patch({ users: [], trips: [], trashedTrips: [], suggestions: [], decisions: [], activity: [], notifications: [], published: [], adminAudit: [], sessionUserId: null, ready: true, cachedAt: null })
         commit()
       }
       })()
@@ -442,6 +530,16 @@ export function init(): void {
     try { await promise } finally {
       if (activeHydrate?.userId === userId) activeHydrate = null
     }
+    // #393: the friendly disabled-account sign-out, finally wired to the
+    // lifecycle it was written for. The function had no callers at all, so a
+    // disabled account completed Auth, stared at the RLS-emptied catalogs and
+    // read that as "my data got deleted". It reads the IN-HAND cache, so it
+    // runs HERE — where the cache this hydrate patched belongs to this
+    // account — which also covers a login: every sign-in resolves through this
+    // same path. The generation guard keeps a superseded hydrate from signing
+    // out whoever is signed in now. Fail-open by design: the RESTRICTIVE
+    // policies are the real enforcement, this is only the message.
+    if (gen === hydrateGen && cache.sessionUserId === userId) await enforceDisabledCheck()
     // First settle of this session flips the app-wide loading gate, whatever
     // the outcome — pages stop showing "loading" and may show real empties.
     if (!cache.ready) { patch({ ready: true }); commit() }
@@ -521,7 +619,7 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     // #94: `partial.length === 0` is the ONLY thing that makes a zero-trip
     // list trustworthy as "this user has no trips". When the queries that
     // count trips error, a real account can read as empty — and the demo
-    // seed below then writes 10 fake trips into it. Set whenever any query
+    // seed below then writes the 3 demo trips into it. Set whenever any query
     // that determines the user's trip count failed.
     let tripCountUnknown = false
     // Set when the trips/memberships reads failed: the patch below must then
@@ -691,11 +789,19 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     // has been superseded cannot toast about an account the user already left.
     if (partial.length > 0) toast(`Some data didn't load (${partial.join(', ')}) - refresh to try again.`, 'err')
 
+    // #364: the SAME list, published rather than toasted. A toast is a claim about
+    // one moment; a page that renders later has no way to tell an empty gallery
+    // from a broken read, and that is how a valid creator came to read "Creator
+    // not found" over a dropped connection. Anything named in `partial` failed;
+    // everything else this run asked for was read. The names are the ones the
+    // hydrate already uses, so a page can ask about the slice it renders.
+    patch({ sliceReads: sliceReadReport(partial) })
+
     // First-time users get the demo trips seeded into their account. Admins
-    // skip the seed: their "empty" is a real empty app, and seeding 10 demo
+    // skip the seed: their "empty" is a real empty app, and seeding the 3 demo
     // trips into an admin account would pollute the console's totals.
     // #94: a failed memberships/trips query also reads as "zero trips" — for a
-    // real account on a flaky connection that meant writing 10 fake trips next
+    // real account on a flaky connection that meant writing 3 fake trips next
     // to the user's actual ones. Only seed when the trip count is trustworthy.
     if (tripList.length === 0 && seedIfEmpty && !admin && !tripCountUnknown) await seedDemoFor(userId, gen)
   } catch (e) {
@@ -1927,6 +2033,10 @@ export function restoreMember(tripId: ID, member: TripMember): void {
 export function restoreExpense(tripId: ID, expense: Expense, index: number): void {
   const t = tripById(tripId)
   if (!t || t.expenses.some(x => x.id === expense.id)) return
+  // #382: Undo replays a captured line, and a line the writers would refuse
+  // today must not come back through the back door. One rule, everywhere.
+  const v = amountVerdict(expense.amountInr)
+  if (!v.ok) { toast(amountRefusal(expense.amountInr)!, 'err'); return }
   mutateTrip(tripId, draft => { draft.expenses.splice(Math.min(index, draft.expenses.length), 0, expense) }, { touch: false })
   void persistTripField(tripId, tripById(tripId)!)
 }
@@ -2015,7 +2125,13 @@ async function persistTripFieldNow(id: ID, t: Trip | undefined): Promise<void> {
   // entry holding the newest snapshot - the same coalescing the in-memory map
   // above performs. capturedAt is the send time (up to one debounce window
   // after the edit itself); it only steers the conflict NOTICE, never the write.
-  await queueWrite({ tripId: id, ownerId: owner?.userId ?? id, capturedAt: Date.now(), attempts: 0, trip: t })
+  // #393: the queue entry is stamped with the EDITOR, not the trip's owner.
+  // Replay only sends entries whose stamp matches the live session, and a
+  // sign-out only clears this account's entries — so an editor editing
+  // somebody else's trip used to queue under the OWNER's id: never replayed,
+  // never cleared by their own sign-out, silently doomed. The row write below
+  // still targets the trip's own owner.
+  await queueWrite({ tripId: id, ownerId: cache.sessionUserId ?? owner?.userId ?? id, capturedAt: Date.now(), attempts: 0, trip: t })
   const cols = await tripsHaveOptionalColumns()
   const { error } = await supabase.from('trips').update(tripToRow(t, owner?.userId ?? id, cols)).eq('id', id)
   if (error) {
@@ -2336,6 +2452,11 @@ export function setStopStatus(tripId: ID, status: ItineraryStop['status'], stopI
 export function addExpense(tripId: ID, e: Omit<Expense, 'id'>): void {
   const t = tripById(tripId)
   if (!t) return
+  // #382: the writer refuses what the form refuses. An amount that is not a
+  // finite number of rupees above zero poisons every figure the Budget tab
+  // shows, and the row is durable — one bad line survives reloads and syncs.
+  const v = amountVerdict(e.amountInr)
+  if (!v.ok) { toast(amountRefusal(e.amountInr)!, 'err'); return }
   mutateTrip(tripId, draft => { draft.expenses.push({ optional: false, ...e, id: uid('ex') }) }, { touch: false })
   void persistTripField(tripId, tripById(tripId)!)
 }
@@ -2352,6 +2473,13 @@ export function deleteExpense(tripId: ID, expenseId: ID): void {
 export function updateExpense(tripId: ID, expenseId: ID, patch: Partial<Omit<Expense, 'id'>>): void {
   const t = tripById(tripId)
   if (!t || !t.expenses.some(x => x.id === expenseId)) return
+  // #382: an edit is a write too — the pencil affordance used to put any
+  // number on the row it was handed. A patch that does not carry an amount
+  // changes nothing about the line's money and passes through untouched.
+  if (patch.amountInr !== undefined) {
+    const v = amountVerdict(patch.amountInr)
+    if (!v.ok) { toast(amountRefusal(patch.amountInr)!, 'err'); return }
+  }
   mutateTrip(tripId, draft => {
     draft.expenses = draft.expenses.map(x => x.id === expenseId ? { ...x, ...patch } : x)
   }, { touch: false })

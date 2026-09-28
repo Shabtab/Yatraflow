@@ -9,9 +9,12 @@ import type { Trip } from '../data/types'
 import { predecessorOf, nextAfter, coLocates, getAssumptions } from './engine'
 import type { StopFormValues, LegContext } from '../components/StopEditor'
 
-/** Which stop the editor is open for — a new one on `dayIndex`, or an existing `stopId`. */
+/** Which stop the editor is open for — a new one on `dayIndex`, or an existing `stopId`.
+ *  A new one may carry the insertion `position` the user picked (#422): the
+ *  Timeline's between-stop control knows the slot, so the full editor opens on
+ *  that slot instead of appending and asking for a later reorder. Absent = append. */
 export type StopEditorTarget =
-  | { mode: 'add'; dayIndex: number }
+  | { mode: 'add'; dayIndex: number; position?: number }
   | { mode: 'edit'; stopId: string }
   | null
 
@@ -67,10 +70,13 @@ export function stopLegContext(state: StopEditorTarget, trip: Trip): LegContext 
   }
 }
 
-/** Stable identity for the editor's reset key — flips the form when the target changes. */
+/** Stable identity for the editor's reset key — flips the form when the target
+ *  changes. The insertion slot is part of that identity: moving from "insert
+ *  between A and B" to "add at the end of the day" is a different target, and
+ *  the form must re-seed rather than keep the earlier slot's copy. */
 export function stopEditorKey(state: StopEditorTarget): string {
   if (!state) return ''
-  return state.mode === 'edit' ? state.stopId : `add-${state.dayIndex}`
+  return state.mode === 'edit' ? state.stopId : `add-${state.dayIndex}-${state.position ?? 'end'}`
 }
 
 /** Which day index a stop belongs to (0 if not found — the engine's convention). */

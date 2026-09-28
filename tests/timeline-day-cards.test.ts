@@ -23,7 +23,11 @@ describe('TimelineTab hands each day its facts (#347)', () => {
   })
 
   it('hands a live trip to the OPEN day only — a closed card cannot read one', () => {
-    expect(tab).toMatch(/trip=\{openDayIndex === day\.index \? trip : undefined\}/)
+    // #421 extends the same rule instead of breaking it: in review every day is
+    // open, so the live trip goes to the days actually on screen (at most a card
+    // or two), which is what keeps the memo biting and the provider calls bounded.
+    expect(tab).toMatch(/trip=\{openDayIndex === day\.index \|\| \(reviewAll && visibleDays\.has\(day\.index\)\) \? trip : undefined\}/)
+    expect(tab).toMatch(/open=\{reviewAll \|\| openDayIndex === day\.index\}/)
   })
 
   it('keeps the money and warning props reference-stable across commits', () => {

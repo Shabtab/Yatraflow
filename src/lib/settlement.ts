@@ -22,6 +22,7 @@
 //  - A payer who is not a member (stale row, removed crew member) credits
 //    nobody: balances are computed over members only.
 import type { Expense, ID, User } from '../data/types'
+import { allowedAmount } from './expenseAmount'
 
 export interface BalanceRow {
   id: ID
@@ -44,9 +45,15 @@ export function fairSharePerHead(travellers: number, totalCostInr: number): numb
   return totalCostInr / Math.max(1, travellers)
 }
 
-/** One line's credited amount: a per-person line covers the whole head count. */
+/** One line's credited amount: a per-person line covers the whole head count.
+ *  #382: an amount the store would refuse counts as zero here rather than
+ *  poisoning every balance — the rule is the writers' own
+ *  (lib/expenseAmount), so the settlement math and the Budget tab can never
+ *  disagree about what a line is worth. */
 function lineAmount(e: Expense, heads: number): number {
-  return e.perPerson ? e.amountInr * heads : e.amountInr
+  const amount = allowedAmount(e.amountInr)
+  if (amount === null) return 0
+  return e.perPerson ? amount * heads : amount
 }
 
 /** Total of a set of lines, with per-person amounts expanded. No policy of its

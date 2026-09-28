@@ -18,7 +18,7 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import {
   activeStopsInOrder, dayHoldingStop, hasStopNamed, moveActiveStopWithinDay, moveStopToDay,
-  moveStopWithinDay, nextOrderInDay, pendingStopId, removeStopFromDay, renumberDay,
+  insertionSlotBetween, insertStopAt, moveStopWithinDay, nextOrderInDay, pendingStopId, removeStopFromDay, renumberDay,
   roadOrderInsertionIndex, stopById, stopsInOrder,
 } from '../src/lib/stopOrder'
 import type { ItineraryDay, ItineraryStop } from '../src/data/types'
@@ -62,6 +62,66 @@ describe('renumberDay — the invariant writer', () => {
     renumberDay(d)
     expect(orders(d)).toEqual([1, 2, 3])
     expect(new Set(ids(d)).size).toBe(3)
+  })
+})
+
+// #422: the between-stop insertion. Its slot is chosen by the user, so the
+// writer has to honour the POSITION rather than append — and on a day that has
+// already been edited ($337's [1,3] shape), a positional insert must renumber or
+// the insert mints the duplicate the invariant exists to prevent.
+describe('insertStopAt — the positional add (#422)', () => {
+  it('lands between two stops at the chosen slot, numbered 1..n', () => {
+    const d = day(0, [stop('a', 1), stop('c', 2)])
+    insertStopAt(d, stop('b', 99), 1)
+    expect(ids(d)).toEqual(['a', 'b', 'c'])
+    expect(orders(d)).toEqual([1, 2, 3])
+  })
+
+  it('inserts before the first stop and after the last', () => {
+    const d = day(0, [stop('b', 1)])
+    insertStopAt(d, stop('a', 99), 0)
+    insertStopAt(d, stop('c', 99), 2)
+    expect(ids(d)).toEqual(['a', 'b', 'c'])
+    expect(orders(d)).toEqual([1, 2, 3])
+  })
+
+  it('closes a gapped day instead of inheriting the gap', () => {
+    // a delete left [1,3] (the pre-renumber shape #337 shipped)
+    const d = day(0, [stop('a', 1), stop('c', 3)])
+    insertStopAt(d, stop('b', 99), 1)
+    expect(orders(d)).toEqual([1, 2, 3])
+  })
+
+  it('clamps an out-of-range slot to an append rather than dropping the stop', () => {
+    const d = day(0, [stop('a', 1)])
+    insertStopAt(d, stop('b', 99), 9)
+    insertStopAt(d, stop('c', 99), -3)
+    expect(ids(d)).toEqual(['c', 'a', 'b'])
+    expect(orders(d)).toEqual([1, 2, 3])
+  })
+})
+
+describe('insertionSlotBetween — before first, between, after last (#422)', () => {
+  const row = (id: string) => stop(id, 1)
+
+  it('resolves the slot from the row the new stop goes before', () => {
+    const rows = [row('a'), row('b'), row('c')]
+    expect(insertionSlotBetween(rows, 'a', 'b')).toBe(1) // between
+    expect(insertionSlotBetween(rows, null, 'a')).toBe(0) // before the first
+    expect(insertionSlotBetween(rows, 'c', null)).toBe(3) // after the last
+  })
+
+  it('still lands correctly when the first row is an auto anchor', () => {
+    // the trip-start anchor is row 0; "before the first stop" is slot 1
+    const rows = [stop('start', 1, { auto: true }), row('a')]
+    expect(insertionSlotBetween(rows, 'start', 'a')).toBe(1)
+  })
+
+  it('falls back to the predecessor, then to the end, when an id is gone', () => {
+    const rows = [row('a'), row('b')]
+    expect(insertionSlotBetween(rows, 'a', 'ghost')).toBe(1)
+    expect(insertionSlotBetween(rows, 'ghost', 'ghost')).toBe(2)
+    expect(insertionSlotBetween([], null, null)).toBe(0)
   })
 })
 

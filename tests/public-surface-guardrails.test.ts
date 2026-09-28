@@ -52,8 +52,11 @@ describe('the gallery explains its own vocabulary', () => {
     expect(explore).toMatch(/gridPubs\.slice\(0, visibleCount\)/)
     expect(explore).toMatch(/gridPubs\.length > visibleCount/)
     // …while the empty state stays keyed on the full match list: a lone match
-    // that IS the featured card must not read as "nothing matches".
-    expect(explore).toMatch(/\{pubs\.length === 0 \? \(/)
+    // that IS the featured card must not read as "nothing matches". The ternary
+    // now reads `pubs.length === 0` after a read-state guard (#364 — a failed
+    // catalog read must not print "just getting started"), so the assertion
+    // pins the CONDITION rather than the exact opening of the expression.
+    expect(explore).toMatch(/pubs\.length === 0 \?/)
   })
 
   it('claims "outside your filters" only when the featured pick really is', () => {

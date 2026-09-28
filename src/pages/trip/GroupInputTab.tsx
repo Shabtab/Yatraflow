@@ -6,7 +6,7 @@
 // gains real Day/Category pickers, a visible transport-cost field and
 // decision context, and per-filter empty states each get an exit.
 // The underlying data model (two tables) and store actions are unchanged.
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { InlineIcon } from '../../components/icons'
 import { scrollBehavior } from '../../lib/motion'
 import type { FormEvent } from 'react'
@@ -24,6 +24,8 @@ import { formatInr, minutesToHM } from '../../lib/engine'
 import { decisionContext, contextLine, recommendForDecision } from '../../lib/decisionGuide'
 import { Avatar, Chip, EmptyState, Field, toast } from '../../components/ui'
 import { PREVIEW_BUSY } from '../../lib/previewChain'
+import type { BusyClaim } from '../../lib/busyClaim'
+import { isClaimed, takeClaim } from '../../lib/busyClaim'
 import { LocationInput } from '../../components/LocationInput'
 import { cap, timeAgo } from './shared'
 
@@ -56,6 +58,26 @@ function refuseWhilePreviewing(previewOpen: boolean | undefined): boolean {
   if (!previewOpen) return false
   toast(PREVIEW_BUSY, 'err')
   return true
+}
+
+/** #394: one busy claim per crew-signal row. The claim is read through a ref
+ *  because a state closure can still hold the pre-claim render when a fast
+ *  second click lands before React re-renders — the ref makes the refusal
+ *  synchronous, the state only paints it. The claim is never released here:
+ *  the store write spends the row inside the same handler, the buttons that
+ *  carried it unmount with the row, and nothing is left waiting on a network
+ *  tail (see lib/busyClaim for why releasing on one would be a bug). */
+function useBusyClaim(key: string): { busy: boolean; claim: () => boolean } {
+  const claimsRef = useRef<BusyClaim>(new Set())
+  const [claims, setClaims] = useState<BusyClaim>(() => new Set())
+  const claim = useCallback(() => {
+    const taken = takeClaim(claimsRef.current, key)
+    if (!taken.claimed) return false
+    claimsRef.current = taken.claims
+    setClaims(taken.claims)
+    return true
+  }, [key])
+  return { busy: isClaimed(claims, key), claim }
 }
 
 export function GroupInputTab({ trip, editable, me, previewOpen }: {
@@ -240,6 +262,7 @@ function SuggestionCard({ sg, trip, me, editable, memberCount, needsMe, previewO
   const myVote = sg.votes.find(v => v.userId === me.id)?.value
   const consensusPct = memberCount ? Math.round((ups / memberCount) * 100) : 0
   const author = userById(sg.proposedBy)
+  const { busy, claim } = useBusyClaim(sg.id)
   return (
     <div id={`gi-item-${sg.id}`} tabIndex={-1} className={`card gi-item${needsMe ? ' gi-needs-you' : ''}`} style={{ marginBottom: 14 }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 14 }}>
@@ -279,12 +302,18 @@ function SuggestionCard({ sg, trip, me, editable, memberCount, needsMe, previewO
 
         {editable && sg.status === 'open' && (
           <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginTop: 11 }}>
-            <button className="btn btn-primary btn-sm" onClick={() => {
+            <button className="btn btn-primary btn-sm" disabled={busy} aria-busy={busy} onClick={() => {
               if (refuseWhilePreviewing(previewOpen)) return
+              if (!claim()) return
               acceptSuggestionIntoTimeline(trip.id, sg.id)
               toast('Added to timeline')
             }}>Add to timeline</button>
-            <button className="btn btn-danger btn-sm" onClick={() => { declineSuggestion(trip.id, sg.id); toast('Suggestion declined') }}>Decline</button>
+            <button className="btn btn-danger btn-sm" disabled={busy} aria-busy={busy} onClick={() => {
+              if (refuseWhilePreviewing(previewOpen)) return
+              if (!claim()) return
+              declineSuggestion(trip.id, sg.id)
+              toast('Suggestion declined')
+            }}>Decline</button>
           </div>
         )}
 
@@ -338,6 +367,7 @@ function DecisionCard({ d, me, editable, needsMe, trip, previewOpen }: {
   // trip or decision changes (a new vote can flip the tie-break).
   const ctx = useMemo(() => decisionContext(trip), [trip])
   const rec = useMemo(() => recommendForDecision(trip, d, ctx), [trip, d, ctx])
+  const { busy, claim } = useBusyClaim(d.id)
 
   return (
     <div id={`gi-item-${d.id}`} tabIndex={-1} className={`card gi-item${needsMe ? ' gi-needs-you' : ''}`} style={{ marginBottom: 14 }}>
@@ -397,9 +427,10 @@ function DecisionCard({ d, me, editable, needsMe, trip, previewOpen }: {
       {editable && d.status === 'open' && (
         <div className="resolve-btns">
           {d.options.map((o, i) => (
-            <button key={o.id} className={`btn btn-sm ${i === leadingIdx ? 'btn-primary' : 'btn-outline'}`}
+            <button key={o.id} className={`btn btn-sm ${i === leadingIdx ? 'btn-primary' : 'btn-outline'}`} disabled={busy} aria-busy={busy}
               onClick={() => {
                 if (refuseWhilePreviewing(previewOpen)) return
+                if (!claim()) return
                 resolveDecision(d.id, o.id)
                 toast('Decision resolved')
               }}>
