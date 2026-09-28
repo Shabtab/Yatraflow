@@ -15,6 +15,10 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Fixed
+
+- **The app footer no longer denies the payments the product has** (#392). It claimed "no bookings, no payments, planning only" for weeks after paid itinerary unlocks shipped in v0.61.0; it now reads "No bookings — planning plus paid itinerary unlocks", and the project description states the same scope. The drift gate now scans live source copy alongside docs, and the footer's sentence is registered with a payments marker — so the next change to the money rail fails the gate instead of letting the copy drift again — with a sweep test keeping denial phrasing out of `src/`.
+
 ## [0.69.0] - 2026-09-27
 
 The audit's P1 wave is closed, and the map learned to search. Every P1 the day's sweep filed is
