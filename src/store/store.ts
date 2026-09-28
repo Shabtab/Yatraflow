@@ -56,6 +56,13 @@ interface DB {
    *  empty gallery. The names are the ones the hydrate already collects in its
    *  local `partial` array — this is that array, published. */
   sliceReads: Record<string, 'ok' | 'failed'>
+  /** Trash-bin read status (#387). The bin is fetched on demand from
+   *  `get_trashed_trips`, never via hydrate, so it cannot ride `sliceReads`:
+   *  a failed bin read and an empty bin rendered identically until these two
+   *  bits existed. `loaded` flips on the first successful fetch; `failed`
+   *  flips on any failed one (replace-on-success keeps the last good rows). */
+  trashLoaded: boolean
+  trashFailed: boolean
   /** When the rows on screen came from the offline snapshot (PWA phase 2),
    *  the moment that snapshot was taken; null when they came from the network.
    *  Drives the offline banner's "showing your saved plan from HH:MM" and is
@@ -66,7 +73,7 @@ interface DB {
 let cache: DB = {
   users: [], trips: [], trashedTrips: [], suggestions: [], decisions: [],
   activity: [], notifications: [], published: [], adminAudit: [], sessionUserId: null,
-  ready: false, sliceReads: {}, cachedAt: null,
+  ready: false, sliceReads: {}, trashLoaded: false, trashFailed: false, cachedAt: null,
 }
 
 const listeners = new Set<() => void>()
@@ -101,6 +108,24 @@ export function useTrips(): Trip[] {
 
 export function useTrashedTrips(): Trip[] {
   return useSyncExternalStore(subscribe, () => cache.trashedTrips)
+}
+
+/** Trash-bin read verdict (#387): `loaded` flips on the first successful
+ *  `get_trashed_trips`, `failed` on any failed one. The page derives its three
+ *  states from the pair (failed outranks; unloaded-unfailed is reading), so a
+ *  failed bin read can never render the genuine-empty copy. */
+export function useTrashLoaded(): boolean {
+  return useSyncExternalStore(subscribe, () => cache.trashLoaded)
+}
+
+export function useTrashFailed(): boolean {
+  return useSyncExternalStore(subscribe, () => cache.trashFailed)
+}
+
+/** Per-slice hydrate verdicts (#364, #383). Narrow so My Trips re-renders only
+ *  when the verdicts move, not on every unrelated store commit. */
+export function useSliceReads(): Record<string, 'ok' | 'failed'> {
+  return useSyncExternalStore(subscribe, () => cache.sliceReads)
 }
 
 export function usePublished(): PublishedItinerary[] {
@@ -216,9 +241,10 @@ function patch(next: Partial<DB>) {
 }
 
 /** The slices a page can ask about by name, and what the last hydrate made of
- *  each. These are the two the creator and gallery pages read, and they are the
- *  two a partial hydrate most often breaks — both are wide reads that a dropped
- *  connection takes out while the session reads fine.
+ *  each. Creator and gallery read `profiles` + `suggested itineraries` (#364);
+ *  My Trips reads `trips` (#383) — the same `partial` list the hydrate already
+ *  collects, published. Both are wide reads a dropped connection takes out
+ *  while the session reads fine.
  *
  *  The VALUES are the exact strings the hydrate pushes into `partial`, read off
  *  it rather than renamed here: the published slice is pushed as
@@ -226,12 +252,19 @@ function patch(next: Partial<DB>) {
  *  names would report a real failure as a success, which is the one mistake
  *  this whole change exists to prevent.
  *
- *  This list is the PUBLIC set — what the logged-out re-read
- *  (`rereadPublicSlices`) asks for. The signed-in hydrate names many more
- *  slices ('trips', 'members', …, 'audit') and passes ITS OWN asked set to
- *  `sliceReadReport`, because a report that marked a slice 'ok' without having
- *  read it would be inventing a success — the mirror of the mistake above. */
-export const READ_SLICES = ['profiles', 'suggested itineraries'] as const
+ *  This list is what a caller that names no set of its own is assumed to have
+ *  read: the logged-out re-read's two public slices, plus `trips`, which only a
+ *  signed-in hydrate touches. `rereadPublicSlices` patches exactly two keys
+ *  (`sliceReadReport(failed)` then an explicit two-key merge), so it can never
+ *  invent a trips verdict; the signed-in hydrate passes ITS OWN asked set,
+ *  because a report that marked a slice 'ok' without having read it would be
+ *  inventing a success — the mirror of the mistake above.
+ *
+ *  Trash is deliberately NOT here: the bin is fetched on demand from
+ *  `get_trashed_trips`, never via hydrate, so it rides `trashLoaded` /
+ *  `trashFailed` instead (adding it here would make `rereadPublicSlices`
+ *  invent a verdict for a read it never issued). */
+export const READ_SLICES = ['trips', 'profiles', 'suggested itineraries'] as const
 export type ReadSlice = typeof READ_SLICES[number]
 
 /** Turn the hydrate's `partial` list into a per-slice verdict.
@@ -269,7 +302,12 @@ export function sliceReadReport(partial: readonly string[], asked: readonly stri
 export async function rereadPublicSlices(): Promise<void> {
   // A throw is as much a failure as an error response, and must report as one
   // rather than leaving the page's previous verdict standing.
-  let failed: string[] = [...READ_SLICES]
+  // NOTE (#383): this re-read never touches the trips tables, so it must never
+  // invent a trips verdict either — `sliceReadReport` covers every READ_SLICE,
+  // and overwriting with it would mark trips ok/failed on evidence this read
+  // never collected. Only the two public slices move; `trips` is preserved.
+  const PUBLIC_SLICES = ['profiles', 'suggested itineraries'] as const
+  let failed: string[] = [...PUBLIC_SLICES]
   try {
     const [profRes, pubRes] = await Promise.all([
       supabase.from('profiles').select('*'),
@@ -286,8 +324,29 @@ export async function rereadPublicSlices(): Promise<void> {
   } catch (e) {
     console.error('[yatraflow] public slice re-read failed', e)
   }
-  patch({ sliceReads: sliceReadReport(failed) })
+  const report = sliceReadReport(failed)
+  patch({ sliceReads: { ...cache.sliceReads, profiles: report.profiles, 'suggested itineraries': report['suggested itineraries'] } })
   commit()
+}
+
+/**
+ * Re-issue the trips read for My Trips' Retry (#383). A full hydrate is the
+ * right tool here (unlike #364's public re-read): the page is signed-in-only,
+ * and the trips verdict depends on memberships + trips + members together —
+ * re-reading one table cannot answer "is this empty list trustworthy".
+ *
+ * `seedIfEmpty: false` is load-bearing: a retry must never seed (same gate as
+ * auto-seed — a broken read must show the error branch, not demo rows).
+ * Never throws: the verdict is the report, and the page renders from it.
+ */
+export async function rereadTrips(): Promise<void> {
+  const userId = cache.sessionUserId
+  if (!userId) return
+  try {
+    await hydrateFromSupabase(userId, hydrateGen, false)
+  } catch (e) {
+    console.error('[yatraflow] trips re-read failed', e)
+  }
 }
 
 // ---------------- Supabase row <-> domain mapping ----------------
@@ -375,7 +434,7 @@ export async function logout(): Promise<void> {
   // generation guard keeps a late hydrate from re-patching the old user back
   // in (issue #45).
   const departing = cache.sessionUserId
-  patch({ trips: [], trashedTrips: [], suggestions: [], decisions: [], activity: [], notifications: [], published: [], adminAudit: [], sessionUserId: null, ready: true, cachedAt: null })
+  patch({ trips: [], trashedTrips: [], trashLoaded: false, trashFailed: false, suggestions: [], decisions: [], activity: [], notifications: [], published: [], adminAudit: [], sessionUserId: null, ready: true, cachedAt: null })
   commit()
   // hydrate(null) skips the snapshot/write cleanup when sessionUserId is
   // already null — which it now always is by this point — so the departing
@@ -499,11 +558,11 @@ export function init(): void {
         const pubRows = mapOrSkip((pubRes.data ?? []), rowToPublished)
         if (profRes.error) { console.error('[yatraflow] hydrate profiles failed', profRes.error) }
         if (pubRes.error) { console.error('[yatraflow] hydrate published failed', pubRes.error) }
-        patch({ users, trips: [], trashedTrips: [], suggestions: [], decisions: [], activity: [], notifications: [], published: dedupePublished(pubRows), adminAudit: [], sessionUserId: null, ready: true, cachedAt: null })
+        patch({ users, trips: [], trashedTrips: [], trashLoaded: false, trashFailed: false, suggestions: [], decisions: [], activity: [], notifications: [], published: dedupePublished(pubRows), adminAudit: [], sessionUserId: null, ready: true, cachedAt: null })
         commit()
       } catch (e) {
         console.error('[yatraflow] anonymous hydration failed', e)
-        patch({ users: [], trips: [], trashedTrips: [], suggestions: [], decisions: [], activity: [], notifications: [], published: [], adminAudit: [], sessionUserId: null, ready: true, cachedAt: null })
+        patch({ users: [], trips: [], trashedTrips: [], trashLoaded: false, trashFailed: false, suggestions: [], decisions: [], activity: [], notifications: [], published: [], adminAudit: [], sessionUserId: null, ready: true, cachedAt: null })
         commit()
       }
       })()
@@ -733,6 +792,14 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
 
     const pubRows = mapOrSkip((pubRes.data ?? []), rowToPublished)
     if (pubRes.error) { console.error('[yatraflow] hydrate published failed', pubRes.error); partial.push('suggested itineraries') }
+
+    // #383: the trips slice is only trustworthy when the trip count is. A
+    // memberships failure (stage 1) or a members failure without a trips
+    // failure (stage 2) leaves `partial` naming everything EXCEPT 'trips', so
+    // `sliceState(sliceReads, 'trips')` would report ok over an untrustworthy
+    // empty list — the exact lie #383 owns. Name it, so the page's failed
+    // branch (not its empty copy) renders and the demo seed stays blocked.
+    if ((tripCountUnknown || tripsReadFailed) && !partial.includes('trips')) partial.push('trips')
 
     // Stale run — a sign-out or account switch bumped hydrateGen while these
     // queries were in flight. Writing now would leak the previous account's rows
@@ -1977,6 +2044,10 @@ export function trashTrip(trip: Trip): void {
     if (!cols.deleted) {
       void supabase.from('trips').delete().eq('id', trip.id).then(({ error }) => {
         if (error) { cache.trips = [...cache.trips, trip]; commit() }
+        // #387: the bin never refreshed in place — re-issue the RPC after every
+        // resolution so a resident Trash view moves on its own. Failure surfaces
+        // through the bin's own error branch, not stale data.
+        void fetchTrashedTrips()
       })
       return
     }
@@ -1987,6 +2058,7 @@ export function trashTrip(trip: Trip): void {
         commit()
         toast('Could not move to trash.')
       }
+      void fetchTrashedTrips()
     })
   })
 }
@@ -2004,39 +2076,76 @@ export function restoreTrashedTrip(trip: Trip): void {
     markLocalWrite('trips', trip.id)
     void supabase.from('trips').update({ deleted_at: null }).eq('id', trip.id).then(({ error }) => {
       if (error) toast('Could not restore that trip.')
+      // #387: session-undo resolves while a Trash view may be resident — same
+      // refetch contract as the RPC restore, success and failure both.
+      void fetchTrashedTrips()
     })
   })
 }
 
-/** Fetch the current user's trashed trips (owner-scoped SECURITY DEFINER RPC). */
+/** Fetch the current user's trashed trips (owner-scoped SECURITY DEFINER RPC).
+ *
+ *  #387: the failure used to stop at a `console.error`, so the view rendered
+ *  its genuine-empty copy over a broken read. The verdict is now published
+ *  (`trashLoaded` / `trashFailed`, replace-on-success only) so the page can
+ *  offer its error branch with a Retry that re-issues this same RPC. A throw
+ *  reports the same way an error response does — the page's previous verdict
+ *  must not stand through either. The unconfigured/unsigned early return is a
+ *  gate, not dead code: a focus-refetch that ignored it would spam an anon RPC
+ *  on every tab focus. */
 export async function fetchTrashedTrips(): Promise<void> {
   if (!isSupabaseConfigured || !cache.sessionUserId) return
-  const { data, error } = await supabase.rpc('get_trashed_trips')
-  if (error) { console.error('[yatraflow] trashed trips fetch failed', error); return }
-  cache.trashedTrips = mapOrSkip((data ?? []) as unknown[], r => rowToTrip(r as TripRow, []))
-  // Trashed rows are server-applied too — a restored trip's guard must not
-  // compare a fresh remote UPDATE against a nonexistent ledger entry.
-  for (const t of cache.trashedTrips) recordServerTripTimestamp(t.id, t.updatedAt)
-  commit()
+  try {
+    const { data, error } = await supabase.rpc('get_trashed_trips')
+    if (error) {
+      console.error('[yatraflow] trashed trips fetch failed', error)
+      patch({ trashFailed: true })
+      commit()
+      return
+    }
+    cache.trashedTrips = mapOrSkip((data ?? []) as unknown[], r => rowToTrip(r as TripRow, []))
+    // Trashed rows are server-applied too — a restored trip's guard must not
+    // compare a fresh remote UPDATE against a nonexistent ledger entry.
+    for (const t of cache.trashedTrips) recordServerTripTimestamp(t.id, t.updatedAt)
+    patch({ trashLoaded: true, trashFailed: false })
+    commit()
+  } catch (e) {
+    console.error('[yatraflow] trashed trips fetch failed', e)
+    patch({ trashFailed: true })
+    commit()
+  }
 }
 
 /** Restore a trashed trip from the Trash view (after reload): SECURITY DEFINER
- *  RPC, then pull the now-live trip back into the cache so it appears at once. */
+ *  RPC, then pull the now-live row back into the cache so it appears at once. */
 export async function restoreTrashedTripById(id: ID): Promise<boolean> {
   const { error } = await supabase.rpc('restore_trashed_trip', { p_trip_id: id })
-  if (error) { toast('Could not restore that trip.'); return false }
+  if (error) {
+    toast('Could not restore that trip.')
+    // #387: a failed restore must leave the error branch, not stale bin data.
+    void fetchTrashedTrips()
+    return false
+  }
   cache.trashedTrips = cache.trashedTrips.filter(t => t.id !== id)
   commit()
   await fetchTripIntoCache(id)
+  // #387: success refetches too — concurrent-device trashes appear, and the bin
+  // confirms the restore instead of trusting the optimistic filter above.
+  void fetchTrashedTrips()
   return true
 }
 
 /** Delete a trashed trip forever. Hard delete; the cascade sweeps the collab layer. */
 export async function permanentlyDeleteTrip(id: ID): Promise<boolean> {
   const { error } = await supabase.rpc('purge_trashed_trip', { p_trip_id: id })
-  if (error) { toast('Could not delete that trip.'); return false }
+  if (error) {
+    toast('Could not delete that trip.')
+    void fetchTrashedTrips()
+    return false
+  }
   cache.trashedTrips = cache.trashedTrips.filter(t => t.id !== id)
   commit()
+  void fetchTrashedTrips()
   return true
 }
 
