@@ -180,14 +180,20 @@ describe('#354 — the database refuses the same rows the client does', () => {
   it('is idempotent — re-running adds nothing twice', () => {
     // `drop constraint if exists` before each add, or a second run errors on a
     // duplicate constraint name and a re-applied migration looks like a failure.
+    //
+    // Counted with `split`, NOT `new RegExp(name)`: the names are literals, so a
+    // dynamically-built pattern buys nothing and reads as a pattern-injection
+    // finding to the SAST pass (and to a reviewer). A plain substring count of a
+    // fixed string is the honest instrument for "how many times does this appear".
+    const count = (haystack: string, needle: string) => haystack.split(needle).length - 1
     const names = ['published_itineraries_cover_https', 'published_itineraries_price_in_range', 'published_itineraries_priced_withholds_a_day']
     for (const n of names) {
-      const drops = MIGRATION.match(new RegExp(`drop constraint if exists ${n}`, 'g')) ?? []
-      const adds = MIGRATION.match(new RegExp(`add constraint ${n}`, 'g')) ?? []
-      expect(drops, `${n} has no drop guard`).toHaveLength(1)
-      expect(adds, `${n} is not added`).toHaveLength(1)
+      const drop = `drop constraint if exists ${n}`
+      const add = `add constraint ${n}`
+      expect(count(MIGRATION, drop), `${n} has no drop guard`).toBe(1)
+      expect(count(MIGRATION, add), `${n} is not added`).toBe(1)
       // …and the drop comes FIRST, which is the whole of idempotency here.
-      expect(MIGRATION.indexOf(`drop constraint if exists ${n}`)).toBeLessThan(MIGRATION.indexOf(`add constraint ${n}`))
+      expect(MIGRATION.indexOf(drop)).toBeLessThan(MIGRATION.indexOf(add))
     }
   })
 
