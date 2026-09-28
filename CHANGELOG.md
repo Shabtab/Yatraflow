@@ -15,6 +15,10 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Changed
+
+- **Filing a found place into a day's part is one rule now.** Which empty parts a search result may be filed into, what a manual candidate is, how manual picks merge with the engine's, and when a filing is refused each lived as a closure inside the Map tab, where the only way to review it was to read a 2,723-line page. They are `pages/trip/map/slotFiling.ts` now, with direct tests: the category mapping (food/cafe/rest → a meal, transport-hub → fuel, hotel → a stay, anything else offers no filing action at all), the no-cap rule that once dropped dinner — now pinned against its return, a manual candidate whose unknowable fields stay null and whose unmeasured detour reads as the whole day's budget rather than as free, the merge that keeps one place from appearing twice in one rail under two different names, and the two refusals with their copy in exactly one place. Behaviour is unchanged (#420).
+
 ### Fixed
 
 - **The Budget tab's pacing figure now says what it measures.** Once a trip was over, the tile printed the whole remaining lump under a per-day label — one number pretending to be a daily rate — and a trip with no per-person target was lectured as overspent: a red negative remainder, an "over the ₹0 group target" hero and a Trim action that trimmed toward nothing. The dial reads the planning estimate (settled payments deliberately do not reach it), so the copy now names that basis instead of implying cash: the daily tile states it is estimate headroom, a trip with no days left renders the lump under a lump label rather than the per-day headline, and every target-relative surface — the strip's remainder and percentage tiles, the hero's bar and action — renders only against a target that exists. A budget-less trip is asked for one instead, with a link to the Trip settings tab where the target lives (#381).
