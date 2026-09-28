@@ -19,14 +19,20 @@ const ALL_EIGHT = [
   'admin_delete_user', 'admin_revenue',
 ] as const
 
-/** Every `revoke all on function public.<name>(...) from <roles>` in a file. */
+/** Every `revoke all on function public.<sig> from <roles>;` in a file — one
+ *  literal (Codacy's non-literal-RegExp rule), capturing the full signature so
+ *  the per-RPC filter below also pins the ARGUMENT TYPES the lockdown names. */
+const REVOKE = /revoke all on function public\.([a-z_]+)\(([^)]*)\) from ([a-z_,\s]+);/g
 const revokesFor = (source: string, name: string) =>
-  [...codeOf(source).matchAll(new RegExp(`revoke all on function public\\.${name}\\([^)]*\\) from ([a-z_,\\s]+);`, 'g'))]
-    .map(m => m[1].split(',').map(r => r.trim().toLowerCase()))
-/** Every `grant execute on function public.<name>(...) to <roles>` in a file. */
+  [...codeOf(source).matchAll(REVOKE)]
+    .filter(m => m[1] === name)
+    .map(m => m[3].split(',').map(r => r.trim().toLowerCase()))
+/** Every `grant execute on function public.<sig> to <roles>;` — same shape. */
+const GRANT = /grant execute on function public\.([a-z_]+)\(([^)]*)\) to ([a-z_,\s]+);/g
 const grantsFor = (source: string, name: string) =>
-  [...codeOf(source).matchAll(new RegExp(`grant execute on function public\\.${name}\\([^)]*\\) to ([a-z_,\\s]+);`, 'g'))]
-    .map(m => m[1].split(',').map(r => r.trim().toLowerCase()))
+  [...codeOf(source).matchAll(GRANT)]
+    .filter(m => m[1] === name)
+    .map(m => m[3].split(',').map(r => r.trim().toLowerCase()))
 
 describe('#366 — the admin grant lockdown', () => {
   const lockdown = read(`../supabase/migrations/${LOCKDOWN}`)

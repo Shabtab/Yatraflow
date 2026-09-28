@@ -50,13 +50,20 @@ const auditBefore = (body: string, effect: RegExp) => {
 describe('admin RPC house rule (all six, 20260909_masteradmin.sql)', () => {
   const sql = read(MASTER)
 
+  // One literal (Codacy's non-literal-RegExp rule): captures the function
+  // name so the it.each filter below stays exact — and the assertion now also
+  // pins that a grant line exists for a real public.<name>(...) signature.
+  const GRANT = /grant execute on function public\.([a-z_]+)\([^)]*\) to authenticated/g
+  const grantsAuthenticated = (source: string, name: string) =>
+    [...source.matchAll(GRANT)].some(m => m[1] === name)
+
   it.each([
     'admin_set_disabled', 'admin_set_creator', 'admin_set_trip_visibility',
     'admin_remove_member', 'admin_unpublish', 'admin_delete_trip',
   ])('%s: security definer, granted to authenticated, is_admin() inside', (name) => {
     const body = fnBody(sql, name)
     expect(body).toContain('security definer')
-    expect(sql).toMatch(new RegExp(`grant execute on function public\\.${name}\\([^)]*\\) to authenticated`))
+    expect(grantsAuthenticated(sql, name)).toBe(true)
     expect(body).toMatch(/if not public\.is_admin\(\) then\s+raise exception 'admin only';/)
   })
 
