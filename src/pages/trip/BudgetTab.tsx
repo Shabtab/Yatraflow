@@ -16,15 +16,16 @@ import { EXPENSE_CATEGORIES } from '../../data/types'
 import {
   addExpense, deleteExpense, restoreExpense, updateExpense,
   markExpenseSettled, markExpenseUnsettled,
-  currentUser, userById, useDb,
+  currentUser, userById, useDb, canEdit, roleOf, resumeSync,
 } from '../../store/store'
 import { computeTotals, getAssumptions, formatInr, isRoundTrip, safeToSpendPerDay } from '../../lib/engine'
 import { amountRefusal } from '../../lib/expenseAmount'
+import { sliceState, emptyCopyFor } from '../../lib/readState'
 import { computeBalances, settleBalances, fairSharePerHead, linesTotal, openTaggedLines } from '../../lib/settlement'
 import { loadFlag, saveFlag } from '../../lib/uiPrefs'
 import { titleCase } from '../../lib/labels'
-import { Avatar, Chip, Field, StatTile, toast, undoToast, useInView, usePageVisible } from '../../components/ui'
-import { PREVIEW_BUSY } from '../../lib/previewChain'
+import { Avatar, Chip, Field, StatTile, toast, undoToast, useInView, usePageVisible, EmptyState } from '../../components/ui'
+import { refuseWhileStaged } from '../../lib/mutationLifecycle'
 
 // ================= Budget tab =================
 
@@ -136,7 +137,7 @@ function ExpenseFormFields({ trip, members, form, setForm }: {
  *  only — nothing in the trip changes when it's crossed. */
 const OPTIONAL_WATCH_PCT = 20
 
-export function BudgetTab({ trip, totals, editable, previewOpen }: {
+export function BudgetTab({ trip, totals, editable, previewOpen, onOpenSettings }: {
   trip: Trip
   totals: ReturnType<typeof computeTotals>
   editable: boolean
@@ -144,6 +145,10 @@ export function BudgetTab({ trip, totals, editable, previewOpen }: {
    *  below writes the committed row directly, so each refuses instead of
    *  landing under the preview (#334, same policy as the timeline's). */
   previewOpen?: boolean
+  /** Opens the workspace's Settings tab, where the per-person target lives.
+   *  Optional: a Budget tab rendered outside the workspace still gets the
+   *  textual prompt for a missing target, just without the link. */
+  onOpenSettings?: () => void
 }) {
   const visible = usePageVisible()
   const dayBarsRef = useRef<HTMLDivElement>(null)
@@ -159,18 +164,37 @@ export function BudgetTab({ trip, totals, editable, previewOpen }: {
   const members = trip.members ?? []
   const [editingId, setEditingId] = useState<ID | null>(null)
   const [watchOptional, setWatchOptional] = useState<boolean>(() => loadFlag('optional_watch', false))
-  // M6 B4 — settle-up: the id currently being toggled (AGENTS 6a: async
-  // write-through needs its input guard matching the visual state).
-  const [busySettleId, setBusySettleId] = useState<ID | null>(null)
 
   const groupTarget = trip.budgetPerPersonInr * trip.travellers
+  // #381: a zero target is a degenerate state, not an overspend. Gate every
+  // target-relative surface on this so a budget-less trip is asked for a
+  // budget instead of lectured with a red −₹total and a ₹0 "target".
+  const hasTarget = groupTarget > 0
   const remaining = groupTarget - totals.totalCostInr
   const pctUsed = Math.min(150, Math.round((totals.totalCostInr / Math.max(1, groupTarget)) * 100))
   const perPersonDeltaPct = Math.round(((totals.costPerPersonInr - trip.budgetPerPersonInr) / Math.max(1, trip.budgetPerPersonInr)) * 100)
   const A = getAssumptions(trip)
-  // Pacing: how much the group can still spend per day without blowing the
-  // target. Null when no budget is set — the tile then asks for one instead
-  // of inventing a number.
+  // #383: the expense ledger's read status. There is no `expenses` slice —
+  // expenses ride inside the trips row — so the TRIPS slice is the ledger's
+  // verdict, per-slice and never the global `ready` (a global ready is exactly
+  // what let a failed read print the friendly empty copy). Saying it here saves
+  // the next reader the hunt through the hydrate.
+  const expensesRead = sliceState(db.sliceReads, 'trips')
+  // Retry re-issues the read (the same full re-hydrate the app-resume path
+  // runs — fresh generation, replace-on-success verdict), it does not merely
+  // re-render the rows already in the cache.
+  const retryExpenses = () => { void resumeSync() }
+  // #384: settle/reopen is owner/editor only — the store enforces it (the
+  // real guard), and the affordance matches so a viewer never sees a control
+  // whose write would be refused.
+  const canSettle = !!me?.id && canEdit(roleOf(trip, me.id))
+  // Pacing: the dial's ESTIMATE headroom — how much room the plan still has
+  // per remaining day without blowing the group target. Settled payments are
+  // deliberately not fed in (#381, decided 2026-09-25: relabel, don't re-plumb
+  // the ledger into the dial), so the tile names its basis instead of implying
+  // cash. Null when no budget is set — the tile then asks for one instead of
+  // inventing a number. With zero days left the figure is the whole remaining
+  // lump, so the tile branches to a lump label rather than a daily one.
   const pacing = safeToSpendPerDay(trip, totals.totalCostInr)
 
   // Per-day bars: over the daily average by >15% = amber, with one nudge.
@@ -214,23 +238,37 @@ export function BudgetTab({ trip, totals, editable, previewOpen }: {
     <div>
       <div className="metric-strip" role="group" aria-label="Budget at a glance">
         <StatTile label="Per person" value={formatInr(totals.costPerPersonInr)}
-          sub={<>target {formatInr(trip.budgetPerPersonInr)}{' '}
-            {perPersonDeltaPct !== 0 && <b className={perPersonDeltaPct > 0 ? 'metric-bad' : 'metric-good'}>{perPersonDeltaPct > 0 ? '+' : '−'}{Math.abs(perPersonDeltaPct)}%</b>}</>} />
+          sub={<>{hasTarget ? (<>target {formatInr(trip.budgetPerPersonInr)}{' '}
+            {perPersonDeltaPct !== 0 && <b className={perPersonDeltaPct > 0 ? 'metric-bad' : 'metric-good'}>{perPersonDeltaPct > 0 ? '+' : '−'}{Math.abs(perPersonDeltaPct)}%</b>}</>) : 'no per-person target yet'}</>} />
         <StatTile label="Per day" value={formatInr(totals.costPerDayInr)}
           sub={<>across {trip.days.length} {trip.days.length === 1 ? 'day' : 'days'}</>} />
-        <StatTile label="Remaining vs target"
-          value={<span className={remaining < 0 ? 'metric-bad' : 'metric-good'}>{remaining < 0 ? fmtNeg(remaining) : formatInr(remaining)}</span>}
-          sub={<>group target {formatInr(groupTarget)}</>} />
-        <StatTile label="Spent of target" value={`${pctUsed}%`}
-          sub={<>{formatInr(totals.totalCostInr)} of {formatInr(groupTarget)}</>} />
-        {pacing ? (
-          <StatTile label="Safe to spend / day"
-            value={<span className={pacing.perDayInr < 0 ? 'metric-bad' : ''}>{formatInr(pacing.perDayInr)}</span>}
-            sub={<>{formatInr(pacing.perPersonPerDayInr)} per person · {pacing.daysLeft === 0 ? 'trip over' : `${pacing.daysLeft} day${pacing.daysLeft !== 1 ? 's' : ''} left`}</>} />
+        {hasTarget ? (
+          <StatTile label="Remaining vs target"
+            value={<span className={remaining < 0 ? 'metric-bad' : 'metric-good'}>{remaining < 0 ? fmtNeg(remaining) : formatInr(remaining)}</span>}
+            sub={<>group target {formatInr(groupTarget)}</>} />
         ) : (
-          <StatTile label="Safe to spend / day" value="—"
+          <StatTile label="Remaining vs target" value="—" sub="no group target set" />
+        )}
+        {hasTarget ? (
+          <StatTile label="Estimate vs target" value={`${pctUsed}%`}
+            sub={<>{formatInr(totals.totalCostInr)} of {formatInr(groupTarget)}</>} />
+        ) : (
+          <StatTile label="Estimate vs target" value="—" sub="set a per-person target to measure" />
+        )}
+        {pacing ? (
+          pacing.daysLeft === 0 ? (
+            <StatTile label="Budget headroom"
+              value={<span className={pacing.perDayInr < 0 ? 'metric-bad' : ''}>{pacing.perDayInr < 0 ? <>{formatInr(-pacing.perDayInr)} over</> : <>{formatInr(pacing.perDayInr)} left</>}</span>}
+              sub="trip over · the whole lump, not a daily rate" />
+          ) : (
+            <StatTile label="Budget headroom / day"
+              value={<span className={pacing.perDayInr < 0 ? 'metric-bad' : ''}>{formatInr(pacing.perDayInr)}</span>}
+              sub={<>{formatInr(pacing.perPersonPerDayInr)} per person · {pacing.daysLeft} day{pacing.daysLeft !== 1 ? 's' : ''} left · of the estimate</>} />
+          )
+        ) : (
+          <StatTile label="Budget headroom / day" value="—"
             sub={<>{Number.isFinite(totals.totalCostInr)
-              ? 'Set a per-person target in Trip settings to see pacing'
+              ? 'Set a per-person target to start pacing'
               : 'Pacing needs a readable spend figure — fix or remove the line that broke it'}</>} />
         )}
       </div>
@@ -307,12 +345,27 @@ export function BudgetTab({ trip, totals, editable, previewOpen }: {
 
           <div className="card">
             <div className="row-between">
-              <h3>Expense lines · {trip.expenses.length}</h3>
+              <h3>Expense lines{expensesRead === 'ready' && trip.expenses.length > 0 ? ` · ${trip.expenses.length}` : ''}</h3>
             </div>
             <hr className="divider" />
-            {trip.expenses.length === 0
-              ? <p className="muted small">No expense lines yet — add the big ones first (stay, fuel, food).</p>
-              : (
+            {/* #383: the three states, in the order that makes the bug
+                impossible — the failure branch first (it is the only one that
+                offers a way back), then loading, and only then the genuine
+                empty copy. Branching data-only on a slice that can fail is
+                what printed the friendly empty copy over a dropped connection. */}
+            {expensesRead !== 'ready' ? (
+              expensesRead === 'failed' ? (() => {
+                const copy = emptyCopyFor('failed', 'expenses', retryExpenses)
+                return (
+                  <EmptyState title={copy.title} body={copy.body}
+                    action={<button className="btn btn-primary" onClick={retryExpenses}>Try again</button>} />
+                )
+              })() : (
+                <div className="loading-block"><div className="spinner" />Loading expenses…</div>
+              )
+            ) : trip.expenses.length === 0 ? (
+              <p className="muted small">No expense lines yet — add the big ones first (stay, fuel, food).</p>
+            ) : (
                 <table className="compare-table expense-table" tabIndex={0} aria-label="Expense lines">
                   <thead><tr><th>Line</th><th>Paid by</th><th className="num">Amount</th><th><span className="sr-only">Actions</span></th></tr></thead>
                   <tbody>
@@ -348,7 +401,7 @@ export function BudgetTab({ trip, totals, editable, previewOpen }: {
                               <button className="icon-btn" aria-label={`Delete ${e.label}`} onClick={() => {
                                 // #334: a direct write while a preview is open would
                                 // make Keep refuse (stale base) — refuse it here instead.
-                                if (previewOpen) { toast(PREVIEW_BUSY, 'err'); return }
+                                if (refuseWhileStaged(previewOpen)) return
                                 const idx = trip.expenses.findIndex(x => x.id === e.id)
                                 deleteExpense(trip.id, e.id)
                                 undoToast(`Removed “${e.label}”`, () => {
@@ -371,29 +424,60 @@ export function BudgetTab({ trip, totals, editable, previewOpen }: {
         </div>
 
         <div>
+          {/* #381: a zero target used to read as a red −₹total under a "₹0 group
+              target", with a Trim action that trimmed toward nothing. The hero
+              now renders only against a real target; otherwise the planning
+              estimate shows beside the ask, and pacing waits for a number to
+              pace against. */}
           <div className="budget-hero" ref={heroRef} data-motion-paused={!visible || !heroInView}>
-            <span className="budget-hero-label">Group budget</span>
-            <div className="budget-hero-num">{formatInr(totals.totalCostInr)}</div>
-            <div className="budget-hero-sub">
-              {remaining < 0
-                ? <><b>{formatInr(-remaining)} over</b> the {formatInr(groupTarget)} group target · {formatInr(totals.costPerPersonInr)}/person · {formatInr(totals.costPerDayInr)}/day</>
-                : <><b>{formatInr(remaining)} under</b> the {formatInr(groupTarget)} group target · {formatInr(totals.costPerPersonInr)}/person · {formatInr(totals.costPerDayInr)}/day</>}
-            </div>
-            <div className="budget-bar-track" style={{ marginTop: 10 }}>
-              <div className="budget-bar-fill" style={{ width: `${Math.min(100, pctUsed)}%`, background: pctUsed > 100 ? 'var(--coral)' : pctUsed > 85 ? 'var(--saffron)' : 'var(--teal)' }} />
-            </div>
-            <div className="budget-hero-pct">
-              {pctUsed}% of group budget{pctUsed > 100 ? ' — over budget' : pctUsed > 85 ? ' — getting close' : ''}
-            </div>
-            {remaining < 0
-              ? <span className="budget-hero-action warn">Trim {formatInr(-remaining)} to hit target</span>
-              : <span className="budget-hero-action ok">{formatInr(remaining)} headroom — room for one more stop</span>}
+            {hasTarget ? (
+              <>
+                <span className="budget-hero-label">Group budget</span>
+                <div className="budget-hero-num">{formatInr(totals.totalCostInr)}</div>
+                <div className="budget-hero-sub">
+                  {remaining < 0
+                    ? <><b>{formatInr(-remaining)} over</b> the {formatInr(groupTarget)} group target · {formatInr(totals.costPerPersonInr)}/person · {formatInr(totals.costPerDayInr)}/day</>
+                    : <><b>{formatInr(remaining)} under</b> the {formatInr(groupTarget)} group target · {formatInr(totals.costPerPersonInr)}/person · {formatInr(totals.costPerDayInr)}/day</>}
+                </div>
+                <div className="budget-bar-track" style={{ marginTop: 10 }}>
+                  <div className="budget-bar-fill" style={{ width: `${Math.min(100, pctUsed)}%`, background: pctUsed > 100 ? 'var(--coral)' : pctUsed > 85 ? 'var(--saffron)' : 'var(--teal)' }} />
+                </div>
+                <div className="budget-hero-pct">
+                  {pctUsed}% of group budget{pctUsed > 100 ? ' — over budget' : pctUsed > 85 ? ' — getting close' : ''}
+                </div>
+                {remaining < 0
+                  ? <span className="budget-hero-action warn">Trim {formatInr(-remaining)} to hit target</span>
+                  : <span className="budget-hero-action ok">{formatInr(remaining)} headroom — room for one more stop</span>}
+              </>
+            ) : (
+              <>
+                <span className="budget-hero-label">Estimate so far</span>
+                <div className="budget-hero-num">{formatInr(totals.totalCostInr)}</div>
+                <div className="budget-hero-sub">
+                  Set a per-person target to start pacing{onOpenSettings && <> · <button className="link-btn teal" onClick={onOpenSettings}>Open Trip settings →</button></>}
+                </div>
+              </>
+            )}
           </div>
 
           {trip.travellers >= 2 && (
             <div className="card" style={{ marginTop: 14 }}>
               <h3>Who paid · who owes</h3>
-              {members.length < 2
+              {/* #383: the balances read the same list the ledger does — one
+                  status, both consumers. A failed read must not print as a
+                  settled-up crew or an empty split. */}
+              {expensesRead !== 'ready' && (
+                expensesRead === 'failed' ? (() => {
+                  const copy = emptyCopyFor('failed', 'expense lines', retryExpenses)
+                  return (
+                    <EmptyState title={copy.title} body={copy.body}
+                      action={<button className="btn btn-primary btn-sm" onClick={retryExpenses}>Try again</button>} />
+                  )
+                })() : (
+                  <div className="loading-block"><div className="spinner" />Loading expense lines…</div>
+                )
+              )}
+              {expensesRead === 'ready' && (members.length < 2
                 ? <p className="hint-text" style={{ margin: '6px 0 0' }}>{tagged && <>Fair share is {formatInr(fairShare)} each. </>}Invite your crew from the Share tab, then tag who paid on expense lines — who owes whom shows up here.</p>
                 : <>
                     <p className="hint-text" style={{ margin: '6px 0 10px' }}>
@@ -427,7 +511,7 @@ export function BudgetTab({ trip, totals, editable, previewOpen }: {
                             <b>{formatInr(openPayableTotal)}</b> across {openPayable.length} tagged line{openPayable.length !== 1 ? 's' : ''} still to square up — mark each settled as the money moves.
                           </p>
                         )}
-                        {editable && openExpenses.length > 0 && (
+                        {canSettle && openExpenses.length > 0 && (
                           <div className="settled-strip" style={{ marginTop: 12 }}>
                             <span className="hint-text" style={{ margin: 0 }}>
                               <b>Settle up:</b> mark a line squared up — it leaves the balances and moves to the settled history below.
@@ -441,17 +525,15 @@ export function BudgetTab({ trip, totals, editable, previewOpen }: {
                                     type="button"
                                     className="btn btn-sm settled-btn"
                                     aria-label={`Mark ${e.label} settled`}
-                                    disabled={busySettleId === e.id}
                                     onClick={() => {
-                                      if (previewOpen) { toast(PREVIEW_BUSY, 'err'); return }
+                                      if (refuseWhileStaged(previewOpen)) return
                                       if (!me?.id) return
-                                      setBusySettleId(e.id)
-                                      try {
-                                        markExpenseSettled(trip.id, e.id, me.id)
-                                        toast(`Marked “${e.label}” settled`)
-                                      } finally {
-                                        setBusySettleId(null)
-                                      }
+                                      // #384: the store re-checks the role — this
+                                      // is the affordance, not the guard. The
+                                      // handler stays synchronous, so there is
+                                      // no busy state to keep honest.
+                                      markExpenseSettled(trip.id, e.id, me.id)
+                                      toast(`Marked “${e.label}” settled`)
                                     }}
                                   >Mark settled</button>
                                 </div>
@@ -467,21 +549,19 @@ export function BudgetTab({ trip, totals, editable, previewOpen }: {
                                 <div key={e.id} className="settled-row is-done">
                                   <span className="settled-label">{e.label}</span>
                                   <span className="num muted small">{formatInr(e.amountInr * (e.perPerson ? trip.travellers : 1))}</span>
-                                  {editable && (
+                                  {canSettle && (
                                     <button
                                       type="button"
                                       className="icon-btn"
                                       aria-label={`Reopen ${e.label}`}
-                                      disabled={busySettleId === e.id}
                                       onClick={() => {
-                                        if (previewOpen) { toast(PREVIEW_BUSY, 'err'); return }
-                                        setBusySettleId(e.id)
-                                        try {
-                                          markExpenseUnsettled(trip.id, e.id)
-                                          toast(`Reopened “${e.label}”`)
-                                        } finally {
-                                          setBusySettleId(null)
-                                        }
+                                        if (refuseWhileStaged(previewOpen)) return
+                                        // #384: the reopen path now requires the
+                                        // session too — the hole the settle path
+                                        // already closed.
+                                        if (!me?.id) return
+                                        markExpenseUnsettled(trip.id, e.id, me.id)
+                                        toast(`Reopened “${e.label}”`)
                                       }}
                                     ><RotateCcw size={14} /></button>
                                   )}
@@ -492,7 +572,7 @@ export function BudgetTab({ trip, totals, editable, previewOpen }: {
                         )}
                       </>
                     )}
-                  </>}
+                  </>)}
             </div>
           )}
 
@@ -551,7 +631,7 @@ function QuickAdd({ trip, members, meId, topline, previewOpen }: { trip: Trip; m
   function submit(e: FormEvent) {
     e.preventDefault()
     // Refused BEFORE validation so the typed line survives for the retry.
-    if (previewOpen) { toast(PREVIEW_BUSY, 'err'); return }
+    if (refuseWhileStaged(previewOpen)) return
     const problem = validateForm(form)
     if (problem) { toast(problem, 'err'); return }
     addExpense(trip.id, patchOf(form))
@@ -591,7 +671,7 @@ function ExpenseEditor({ trip, members, expense, onDone, previewOpen }: {
     e.preventDefault()
     // Refused before the save (and before onDone) so the editor stays open
     // with the edits intact for the retry (#334).
-    if (previewOpen) { toast(PREVIEW_BUSY, 'err'); return }
+    if (refuseWhileStaged(previewOpen)) return
     const problem = validateForm(form)
     if (problem) { toast(problem, 'err'); return }
     updateExpense(trip.id, expense.id, patchOf(form))

@@ -81,26 +81,29 @@ function freshRealtimeLedgers(): void {
 }
 
 describe('B4 · markExpenseSettled', () => {
+  // #384: settling is owner/editor only (decided 2026-09-25) — these pins
+  // exercise the write-through AS the owner the copy carries. The role gate
+  // itself is pinned in tests/budget-read-status.test.ts.
   it('writes the settled flag through to the trips row', async () => {
     const trip = singleTrip()
     await flush()
     calls.length = 0
     addExpense(trip.id, { label: 'Fuel bluff', category: 'transport', amountInr: 2000 })
-    markExpenseSettled(trip.id, tripById(trip.id)!.expenses.at(-1)!.id, 'u-settler')
+    markExpenseSettled(trip.id, tripById(trip.id)!.expenses.at(-1)!.id, ownerId)
     await flush()
     expect(tripsUpdates().length).toBeGreaterThan(0)
     const last = tripsUpdates().at(-1)!.payload as { expenses: Array<{ settled?: { by: string; at: number } }> }
-    expect(last.expenses.some(e => e.settled?.by === 'u-settler')).toBe(true)
+    expect(last.expenses.some(e => e.settled?.by === ownerId)).toBe(true)
   })
 
   it('records the settle in the activity feed', async () => {
     const trip = singleTrip()
     // The activity entry (and its write) is gated on a signed-in session.
-    getSnapshot().sessionUserId = 'u-settler'
+    getSnapshot().sessionUserId = ownerId
     addExpense(trip.id, { label: 'Tolls', category: 'tolls-parking', amountInr: 350 })
     const id = tripById(trip.id)!.expenses.at(-1)!.id
     calls.length = 0
-    markExpenseSettled(trip.id, id, 'u-settler')
+    markExpenseSettled(trip.id, id, ownerId)
     await flush()
     const activityRows = calls.filter(c => c.table === 'activity' && c.method === 'insert')
     expect(activityRows.length).toBeGreaterThan(0)
@@ -111,10 +114,10 @@ describe('B4 · markExpenseSettled', () => {
     await flush()
     addExpense(trip.id, { label: 'Snacks', category: 'food', amountInr: 120 })
     const id = tripById(trip.id)!.expenses.at(-1)!.id
-    markExpenseSettled(trip.id, id, 'u-settler')
+    markExpenseSettled(trip.id, id, ownerId)
     await flush()
     calls.length = 0
-    markExpenseSettled(trip.id, id, 'u-settler')
+    markExpenseSettled(trip.id, id, ownerId)
     await flush()
     expect(tripsUpdates()).toHaveLength(0)
   })
@@ -124,10 +127,10 @@ describe('B4 · markExpenseSettled', () => {
     await flush()
     addExpense(trip.id, { label: 'Parking', category: 'tolls-parking', amountInr: 80 })
     const id = tripById(trip.id)!.expenses.at(-1)!.id
-    markExpenseSettled(trip.id, id, 'u-settler')
+    markExpenseSettled(trip.id, id, ownerId)
     await flush()
     calls.length = 0
-    markExpenseUnsettled(trip.id, id)
+    markExpenseUnsettled(trip.id, id, ownerId)
     await flush()
     expect(tripsUpdates().length).toBeGreaterThan(0)
     const last = tripsUpdates().at(-1)!.payload as { expenses: Array<{ settled?: unknown }> }
@@ -139,7 +142,7 @@ describe('B4 · markExpenseSettled', () => {
     await flush()
     calls.length = 0
     markExpenseSettled('nope', 'nope', 'u1')
-    markExpenseUnsettled('nope', 'nope')
+    markExpenseUnsettled('nope', 'nope', null)
     await flush()
     expect(tripsUpdates()).toHaveLength(0)
   })

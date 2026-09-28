@@ -2,7 +2,7 @@
 // A shareable travel document, not the private workspace: destination-led hero,
 // creator attribution, "why this route works" story, a practical stat cluster,
 // and curated day highlights ahead of the detailed (and premium-gated) plan.
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Calendar, Camera, Car, Clock, Flag, GitFork, Heart, Link2, Lock, MapPin,
   Route, Sparkles, Ticket, TriangleAlert,
@@ -30,6 +30,40 @@ import { sizedCoverUrl } from '../lib/tripThumb'
 import { useDestinationCover } from '../hooks/useDestinationCover'
 import { Avatar, Chip, EmptyState, toast, CopyButton, RouteSnapshot } from '../components/ui'
 
+/** How long the buyer's entitlement read may take before the page stops
+ *  waiting and says so. Mirrors the hub's ledger timeout: far longer than the
+ *  select takes, far shorter than a buyer's patience. */
+const ENTITLEMENT_READ_TIMEOUT_MS = 10_000
+
+/**
+ * What the locked gate shows while it does not know whether this viewer owns
+ * the plan — and, on a FAILED read, the way back.
+ *
+ * The two states are different sentences on purpose. 'reading' is quiet: it is
+ * a normal moment and an error there would cry wolf on every slow connection.
+ * 'failed' is loud and offers Retry, because the alternative this replaced was
+ * worse than silence — a price button on a plan the reader may already own.
+ *
+ * It renders NO price in either state. A CTA is a claim about ownership, and
+ * ownership is exactly what could not be established.
+ */
+function UnlockCheckState({ read, onRetry, centered }: {
+  read: 'ready' | 'reading' | 'failed'
+  onRetry: () => void
+  centered?: boolean
+}) {
+  if (read === 'reading') {
+    return <p className="small muted" style={{ marginTop: 8, textAlign: centered ? 'center' : undefined }}>Checking your access…</p>
+  }
+  return (
+    <div className="hub-note is-failure" role="alert" style={{ marginTop: 8, textAlign: centered ? 'center' : undefined }}>
+      <b>Couldn&apos;t check your access.</b> We couldn&apos;t read what you own, so this plan stays locked
+      rather than guess. If you have already paid for it, try again — nothing is charged twice.
+      <button className="btn btn-outline btn-sm hub-note-action" onClick={onRetry}>Retry</button>
+    </div>
+  )
+}
+
 export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavigate: (r: string) => void }) {
   const db = useDb()
   const timeFormat = useTimeFormat()
@@ -54,6 +88,18 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
   // boolean so a second publication on the same mounted page cannot inherit the
   // first one's read.
   const [entitlementsReadFor, setEntitlementsReadFor] = useState<string | null>(null)
+  // #359 — the read's OUTCOME, which is a third fact and not a derivable one.
+  // A failed read used to be caught into `[]`, so a paying buyer on a flaky
+  // connection saw locked days and an "Unlock full plan · ₹499" button for a
+  // plan they already owned. These two flags make the failure SAYABLE, which is
+  // what the copy and the CTA gate on: the content stays locked (fail CLOSED)
+  // while the page fails LOUD.
+  const [entitlementsError, setEntitlementsError] = useState(false)
+  const [entitlementsRetry, setEntitlementsRetry] = useState(0)
+  // An attempt in flight, DERIVED from the retry/settled pair rather than
+  // stored: storing it would need a setState in the effect body.
+  const [entitlementsSettled, setEntitlementsSettled] = useState(-1)
+  const entitlementsReading = entitlementsRetry !== entitlementsSettled
   const [buying, setBuying] = useState(false)
   // The itinerary the unlock moment is showing, held separately from `fetched`:
   // it is only ever the copy the server served AFTER the entitlement existed
@@ -84,13 +130,30 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
   useEffect(() => {
     if (!pub) return
     let alive = true
-    void fetchMyEntitlements(meId).then(rows => {
-      if (!alive) return
-      setEntitlements(rows)
-      setEntitlementsReadFor(pub.id)
-    })
-    return () => { alive = false }
-  }, [pub?.id, meId])
+    const attempt = entitlementsRetry
+    // Bounded, for the same reason the hub's reads are: "Checking your access…"
+    // is an unfalsifiable claim unless every attempt resolves into a figure or
+    // into a failure that still offers a way to ask again. The reason is
+    // load-bearing — `unlock.ts` tells a cancellation from a timeout by it.
+    const ac = new AbortController()
+    const timer = setTimeout(
+      () => ac.abort(new DOMException('the entitlements read timed out', 'TimeoutError')),
+      ENTITLEMENT_READ_TIMEOUT_MS,
+    )
+    // REJECTS now, so this needs both arms. A success clears the failure flag;
+    // a failure sets it WITHOUT clearing the entitlements, so a refresh that
+    // could not be replaced keeps the access it already proved.
+    void fetchMyEntitlements(meId)
+      .then(rows => {
+        if (!alive) return
+        setEntitlements(rows)
+        setEntitlementsReadFor(pub.id)
+        setEntitlementsError(false)
+      })
+      .catch(() => { if (alive) setEntitlementsError(true) })
+      .finally(() => { clearTimeout(timer); if (alive) setEntitlementsSettled(attempt) })
+    return () => { alive = false; clearTimeout(timer); ac.abort() }
+  }, [pub?.id, meId, entitlementsRetry])
   // ---- The creator's own glance (I-22 follow-up): the page's creator reads
   // how THIS link converts without opening the hub. Same RPC, same derivation
   // and same window rule as the hub (buildPubFunnels + funnelGlance), so a
@@ -205,6 +268,29 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
   const unlocked = hasUnlock(entitlements, meId, pub?.id ?? '', pub?.creatorId ?? '')
   /** The entitlement read has landed FOR THIS publication. */
   const entitlementsRead = !!pub && entitlementsReadFor === pub.id
+  // #359 — which of the three truths the gate is looking at. Ordered the way
+  // `deriveLedgerRead` orders the hub's, and for the same reasons: a read that
+  // already proved access stays 'ready' through a failed refresh, an in-flight
+  // attempt is 'reading' so Retry cannot render as a dead button, and 'failed'
+  // is reachable only when there is nothing to show and nothing in flight.
+  //
+  // The price CTA is gated on this, and that is the whole point: 'failed' must
+  // never render "Unlock full plan · ₹499" over a read that might have found the
+  // buyer's own entitlement. Fail CLOSED on the content, fail LOUD in the UI.
+  const entitlementRead: 'ready' | 'reading' | 'failed' = entitlementsRead
+    ? 'ready'
+    : entitlementsReading
+      ? 'reading'
+      : entitlementsError
+        ? 'failed'
+        : 'reading'
+  /** A logged-out visitor has nothing to check, so the CTA is honest for them. */
+  const mayShowPriceCta = !meId || entitlementRead === 'ready'
+  // #359 — asking again is a NEW question, so it takes a new attempt number; the
+  // derived `entitlementsReading` flips true on its own and the button's own
+  // label says "Checking…" rather than re-rendering the alert it was pressed
+  // against (a dead button, per the hub's retry rule).
+  const retryEntitlements = useCallback(() => { setEntitlementsRetry(n => n + 1) }, [])
 
   // ---- Soft-unpublish (#350). The row survives — that is what keeps buyers
   // whole — but the page is no longer public. The creator and anyone holding an
@@ -285,7 +371,14 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
       pubId: pub!.id,
       title: pub!.title,
       onUnlocked: () => {
-        void fetchMyEntitlements(meId).then(rows => setEntitlements(rows))
+        // #359 — this read REJECTS now, so a failure here must not be a
+        // rejection nobody catches. It is routed through the same error flag the
+        // first read uses, which is the honest outcome: the purchase succeeded
+        // (the wire now serves real days) but the buyer's own shelf could not be
+        // re-read, so the page says so rather than showing a stale access list.
+        void fetchMyEntitlements(meId)
+          .then(rows => { setEntitlements(rows); setEntitlementsError(false) })
+          .catch(() => { setEntitlementsError(true) })
       },
     }).then(async outcome => {
       // Both a completed purchase and a 409 mean the days are readable now (the
@@ -494,7 +587,12 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
                         <div className="locked-cta">
                           <b><InlineIcon icon={Lock} size={13} gap={4} />{stops.length} more stops on this day</b>
                           <p className="small">Stay contacts, timings and the budget breakdown are in the full plan.</p>
-                          {price !== undefined && <button className="btn btn-saffron" disabled={buying} onClick={unlockThis}>{buying ? 'Opening payments…' : <>Unlock full plan · {formatInr(price)}</>}</button>}
+                          {/* #359 — the price CTA is a CLAIM about what this viewer
+                              does not own, so it may only render on a read that
+                              actually answered. Over a failed read it would be a
+                              price tag on a plan the buyer already paid for. */}
+                          {price !== undefined && mayShowPriceCta && <button className="btn btn-saffron" disabled={buying} onClick={unlockThis}>{buying ? 'Opening payments…' : <>Unlock full plan · {formatInr(price)}</>}</button>}
+                          {price !== undefined && !mayShowPriceCta && <UnlockCheckState read={entitlementRead} onRetry={retryEntitlements} />}
                         </div>
                       </div>
                     </>
@@ -541,10 +639,16 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
                 <button className="btn fork-btn btn-lg" style={{ width: '100%' }} onClick={copyThis}>
                   <InlineIcon icon={GitFork} size={15} gap={5} />{me ? 'Fork this trip' : 'Log in to fork'}
                 </button>
-                {price !== undefined && !unlocked && <button className="btn btn-saffron btn-lg" style={{ width: '100%', marginTop: 10 }}
+                {price !== undefined && !unlocked && mayShowPriceCta && <button className="btn btn-saffron btn-lg" style={{ width: '100%', marginTop: 10 }}
                   disabled={buying} onClick={unlockThis}>
                   <InlineIcon icon={Lock} size={15} gap={5} />{buying ? 'Opening payments…' : <>Unlock full plan · {formatInr(price)}</>}
                 </button>}
+                {/* #359 — the failed/in-flight read replaces the price button
+                    rather than sitting under it. Both placements are covered,
+                    because one is in a day card and one in the sticky sidebar:
+                    a buyer must not meet "Unlock for ₹499" for their own plan
+                    in either. */}
+                {price !== undefined && !unlocked && !mayShowPriceCta && <UnlockCheckState read={entitlementRead} onRetry={retryEntitlements} centered />}
                 {price !== undefined && unlocked && <p className="hint-text" style={{ textAlign: 'center', marginTop: 10 }}>
                   ✓ Full plan unlocked — forking carries every day as a real, editable plan.
                 </p>}

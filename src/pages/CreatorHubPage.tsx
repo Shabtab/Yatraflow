@@ -22,12 +22,12 @@ import { TrendChart, type UnlockRead } from '../components/TrendChart'
 import type { PublishedItinerary } from '../data/types'
 import { useDb, currentUser, updateProfile, unpublishItinerary, tripById } from '../store/store'
 import {
-  projectEarnings, deriveActualSales, deriveLedgerRead, payoutStatus, payoutPeriods, payoutPeriodStatus,
+  projectEarnings, deriveActualSales, deriveLedgerRead, payoutStatus, payoutWalk, payoutPeriodStatus,
   PAYOUT_MINIMUM_INR, PLATFORM_FEE_SUMMARY, type ActualSales,
 } from '../lib/earnings'
 import { fetchCreatorSales, fetchCreatorFunnel, type FunnelDailyRow } from '../lib/unlock'
 import {
-  buildDailySeries, buildPubFunnels, describePreLog, formatPct, FUNNEL_WINDOWS,
+  buildDailySeries, buildPubFunnels, describePreLog, formatPct, funnelBarPos, funnelBarScale, FUNNEL_WINDOWS,
   type FunnelSale, type FunnelWindowDays, type PubFunnel,
 } from '../lib/pubFunnel'
 import { formatInr } from '../lib/engine'
@@ -439,12 +439,26 @@ function FunnelLine({ f, funnelRead, unlockRead = 'ready', windowLabel }: { f: P
           the traffic you had, the marks are what survived each step, and the
           gap between them keeps them from reading as one stripe. (The earlier
           version overlaid all three at the same origin, which looked like a
-          three-colour bar and said nothing the figures hadn't.) */}
+          three-colour bar and said nothing the figures hadn't.)
+          #358 — BOTH marks are laid out against ONE scale, `funnelBarScale`. The
+          bar used to be `min(100, …)`, so a 140% fork rate drew a full-width bar
+          identical to a 100% one and put the unlock mark at `calc(100% + 3px)` —
+          off its own track. The rate is deliberately NOT clamped (a fork needs
+          no visit: Explore's card forks a plan without opening it), so the TRACK
+          scales to the row's largest rate and both marks stay on it. The
+          inversion stays visible in the bar, not only in the sentence above. */}
       <span className="hub-lead-bar" aria-hidden="true">
-        <i style={{ inlineSize: `${Math.min(100, Math.max(0, f.forkRatePct))}%` }} />
-        {unlockRead === 'ready' && (
-          <i className="is-unlock" style={{ insetInlineStart: `calc(${Math.min(100, Math.max(0, f.forkRatePct))}% + 3px)`, inlineSize: `${Math.min(100, Math.max(0, f.unlockRatePct))}%` }} />
-        )}
+        {(() => {
+          const scale = funnelBarScale({ forkRatePct: f.forkRatePct, unlockRatePct: f.unlockRatePct, hasUnlock: unlockRead === 'ready' })
+          return (
+            <>
+              <i style={{ inlineSize: funnelBarPos(f.forkRatePct, scale) }} />
+              {unlockRead === 'ready' && (
+                <i className="is-unlock" style={{ insetInlineStart: `calc(${funnelBarPos(f.forkRatePct, scale)} + 3px)`, inlineSize: `max(0%, calc(${funnelBarPos(f.unlockRatePct, scale)} - ${funnelBarPos(f.forkRatePct, scale)}))` }} />
+              )}
+            </>
+          )
+        })()}
       </span>
       {preLog && <span className="pf-prelog muted">{preLog}</span>}
       {lifetime}
@@ -630,7 +644,12 @@ export function HubOverview({ myPubs, onUnpublish, onNavigate, daily, dailyAt, s
                       ? `Couldn't refresh — showing the log read at ${formatHM(readAtHM(dailyAt), timeFmt)}.`
                       : 'Recorded traffic could not be read just now — the trend is unchanged on the server.'
                     : recordingSince
-                      ? `Chart shows recorded days only; the log begins ${new Date(`${recordingSince}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}.`
+                      // #358 — QUALIFIED. This is the GLOBAL earliest day across
+                      // every publication, while each row's own pre-log line
+                      // dates ITS plan — and the two sat side by side looking
+                      // like a contradiction. Naming the scope is enough; the
+                      // dates themselves are both true.
+                      ? `Chart shows recorded days only; your log begins ${new Date(`${recordingSince}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} — the earliest of your plans.`
                       : 'Nothing recorded yet — the trend starts with the first visit.'}
               </span>
               {funnelError && <button className="btn btn-outline btn-sm" onClick={handleRetryFunnel} disabled={funnelReading}>{funnelReading ? 'Retrying…' : 'Retry'}</button>}
@@ -788,10 +807,14 @@ export function EarningsTab({ myPubs, sales, salesError, salesAt, salesReading, 
   // pure, and a payout date that moves under the reader is its own kind of lie.
   const [now, refreshClock] = useStableNow()
   const handleRetry = useCallback(() => { refreshClock(); onRetry() }, [refreshClock, onRetry])
-  const payout = payoutStatus(actual?.netInr ?? 0, now)
   // Same rows, same fees, grouped by the run each sale would land in — so this
-  // table adds up to the ledger above it rather than re-deriving the ladder.
-  const payoutRuns = payoutPeriods(actual?.rows ?? [], now)
+  // table adds up to the ledger above it rather than re-deriving the ladder. It
+  // is ONE walk, and the header reads its end state: the run rows used to judge
+  // each period alone while `payoutStatus` judged the total, so a header could
+  // offer a payout that no row would ever clear. #348.
+  const walk = payoutWalk(actual?.rows ?? [], now)
+  const payout = payoutStatus(walk.balanceInr, now)
+  const payoutRuns = walk.periods
   return (
     <>
       {view === 'projection' ? (
@@ -1007,7 +1030,13 @@ export function EarningsTab({ myPubs, sales, salesError, salesAt, salesReading, 
               <>
                 <h3 className="hub-subhead">Payout runs</h3>
                 <table className={`compare-table pub-ledger${basisClass} ledger-runs`} tabIndex={0} aria-label="Payout runs">
-                  <thead><tr><th>Run</th><th className="num">Sales</th><th className="num col-opt">Gross</th><th className="num col-opt">Fee</th><th className="num">Net</th><th>Status</th></tr></thead>
+                  {/* The rollover is a COLUMN, not a sentence: a run that sends
+                      ₹600 while its own Net reads ₹300 is the whole point of
+                      #348, and burying that in the Status cell made the table
+                      look like an arithmetic error. `col-opt` on the optional
+                      column keeps it in the mobile policy's drop set — the roll-in
+                      is context, and Clears is the figure a run exists for. */}
+                  <thead><tr><th>Run</th><th className="num">Sales</th><th className="num col-opt">Gross</th><th className="num col-opt">Fee</th><th className="num">Net</th><th className="num col-opt">Rolled in</th><th className="num">Clears</th><th>Status</th></tr></thead>
                   <tbody>
                     {payoutRuns.map(p => (
                       <tr key={p.dueAt}>
@@ -1016,6 +1045,8 @@ export function EarningsTab({ myPubs, sales, salesError, salesAt, salesReading, 
                         <td className="num col-opt">{formatInr(p.grossInr)}</td>
                         <td className="num col-opt">{formatInr(p.feeInr)}</td>
                         <td className="num">{formatInr(p.netInr)}</td>
+                        <td className="num col-opt">{p.carriedInInr > 0 ? formatInr(p.carriedInInr) : '—'}</td>
+                        <td className="num">{p.clearsInr > 0 ? formatInr(p.clearsInr) : '—'}</td>
                         <td>{payoutPeriodStatus(p)}</td>
                       </tr>
                     ))}
@@ -1023,8 +1054,10 @@ export function EarningsTab({ myPubs, sales, salesError, salesAt, salesReading, 
                 </table>
                 <p className="hint-text" style={{ marginTop: 8 }}>
                   Each run covers the sales made since the previous one, and a sale lands on the Friday after it
-                  was bought. Nothing here has been disbursed: a past run is money owed rather than money sent,
-                  and a balance under {formatInr(PAYOUT_MINIMUM_INR)} rolls into the next run instead of clearing.
+                  was bought. A run under {formatInr(PAYOUT_MINIMUM_INR)} does not clear: it rolls into the next
+                  one and is shown there as <b>Rolled in</b>, so a run's <b>Clears</b> is that run's own net plus
+                  everything it took with it. Nothing here has been disbursed — a past run is money owed rather
+                  than money sent.
                 </p>
               </>
             )}

@@ -329,11 +329,16 @@ const timeline = page('../src/pages/trip/TimelineTab.tsx')
 const daySection = page('../src/pages/trip/timeline/DaySection.tsx')
 const mapTab = page('../src/pages/trip/MapTab.tsx')
 const board = page('../src/components/BoardView.tsx')
+const lifecycle = page('../src/lib/mutationLifecycle.ts')
 
 describe('the writers use the shared implementation', () => {
   it('the Timeline deletes, reorders and moves through lib/stopOrder', () => {
     expect(timeline).toMatch(/from '\.\.\/\.\.\/lib\/stopOrder'/)
-    expect(timeline).toMatch(/removeStopFromDay\(draft, stopId\)/)
+    // The delete delegates to the shared lifecycle (#424), which is what calls
+    // removeStopFromDay — the Timeline no longer splices a removal itself.
+    expect(timeline).toMatch(/removeStopWithUndo\(\{ trip, stopId, dayIndex, applyChange \}\)/)
+    expect(timeline).not.toMatch(/removeStopFromDay/)
+    expect(lifecycle).toMatch(/removeStopFromDay\(draft, stopId\)/)
     expect(timeline).toMatch(/moveStopWithinDay\(day, fromIdx, toIdx\)/)
     expect(timeline).toMatch(/moveStopToDay\(draft\.days, stopId, toDayIndex, position\)/)
     expect(timeline).toMatch(/moveStopToDay\(draft\.days, stopId, toDay, null, kmOf\)/)
@@ -353,8 +358,13 @@ describe('the writers use the shared implementation', () => {
   })
 
   it('a Timeline delete leaves an Undo that restores the captured stop', () => {
-    expect(timeline).toMatch(/undoToast\(`“[^`]*” removed from Day \$\{dayIndex \+ 1\}`/)
-    expect(timeline).toMatch(/restoreStop\(trip\.id, victim, dayIndex\)/)
+    // #424: the capture → stage → Undo sequence has ONE home now, so the pin, the
+    // day row and the Board card cannot drift apart again. The Timeline's part is
+    // to call it; the lifecycle owns the Undo, and names the day it restores to.
+    expect(timeline).toMatch(/removeStopWithUndo\(\{ trip, stopId, dayIndex, applyChange \}\)/)
+    expect(timeline).not.toMatch(/restoreStop|undoToast/)
+    expect(lifecycle).toMatch(/undoToast\(removalMessage\(victim\.title, dayIndex\)/)
+    expect(lifecycle).toMatch(/restoreStop\(trip\.id, victim, dayIndex\)/)
   })
 
   it('no positional byDay clamp is left on the timeline surfaces', () => {

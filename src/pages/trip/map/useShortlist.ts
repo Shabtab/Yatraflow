@@ -22,7 +22,7 @@ import type { PlaceHit } from '../../../lib/geocode'
 import { isAlreadyAdded, type PlaceIdentity } from '../../../lib/placeIdentity'
 import type { Trip, ItineraryStop } from '../../../data/types'
 import type { ImpactResult } from '../../../lib/impact'
-import { toast } from '../../../components/ui'
+import { toast, undoToast } from '../../../components/ui'
 import { addDecision } from '../../../store/store'
 import { orderByRoad } from './roadOrder'
 
@@ -180,6 +180,15 @@ export function useShortlist({
     toggleShortlist,
     addShortlisted,
     raiseShortlistVote,
-    clearShortlist: () => setShortlist([]),
+    /** Emptying the tray throws away places the user collected one at a time, so
+     *  it leaves the same way back the rest of the app's destructive actions do:
+     *  an Undo that puts the collection back whole (#424 — a destructive action
+     *  with no recovery is the gap this closes, however small the collection). */
+    clearShortlist: () => {
+      if (shortlist.length === 0) return
+      const previous = shortlist
+      setShortlist([])
+      undoToast(`Cleared ${previous.length} shortlisted place${previous.length === 1 ? '' : 's'}`, () => setShortlist(previous))
+    },
   }
 }

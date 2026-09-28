@@ -6,7 +6,7 @@ import { BedDouble, ChevronDown, CircleCheck, Coffee, ExternalLink, Fuel, Lightb
 import { uid } from '../../data/seed'
 import type { Trip, ItineraryStop, TripDecision } from '../../data/types'
 import type { ImpactResult } from '../../lib/impact'
-import { PREVIEW_BUSY } from '../../lib/previewChain'
+import { removeStopWithUndo } from '../../lib/mutationLifecycle'
 import { mapRoadViewFromLegs, mapReturnGeometryFromLegs, outboundLegs, type TripRoadView } from '../../lib/tripRoad'
 import { buildJourney, minutesToHM, fmtDur, computeCategoryBias, MODE_SPEED, isRoundTrip } from '../../lib/engine'
 import { useTimeFormat, formatHM, formatHMRange } from '../../lib/timefmt'
@@ -34,6 +34,7 @@ import {
 } from './map/pageHelpers'
 import { hitCostLabels, slotPinsFor } from './map/railLabels'
 import { alternativesFor as pickAlternatives, sightRowChips } from './map/sightRows'
+import { filingOptionsFor, manualCandidateFor, mergeSlotCandidates, slotFileRefusal } from './map/slotFiling'
 
 /** How many search hits the rail shows before "Show all" (#333 A1). The listbox
  *  grammar needs the same page size the rows are rendered with, so it lives here
@@ -46,7 +47,7 @@ import { planInputsHash } from '../../hooks/useSuggestionCache'
 import type { RailChip } from '../../lib/railReasons'
 import { daySlots, dayShape, tripDayAttribution, tripReadiness, SLOT_URGENCY_MIN, type DaySlot, type DaySlotKind, type DaySlotsDeps } from '../../lib/daySlots'
 import { discardedStagedIds, isAlreadyAdded, normalizePlaceName, tripPresence, type PlaceIdentity } from '../../lib/placeIdentity'
-import { addDecision, deleteStop, restoreStop } from '../../store/store'
+import { addDecision, deleteStop } from '../../store/store'
 import { dayDetourBudgetMin, budgetSharePct, splitByDetourBudget } from '../../lib/detourBudget'
 import { anyQuotaExhausted } from '../../lib/providers/quota'
 import { buildDnaVectorAcrossTrips, loadDnaLog, recordDnaEvent, dnaNoteForHit, slotPatternHint, crewSeedsFromSuggestions, crewSeedsToPlannedStops, crewSeedEvents, crewNoteForHit } from '../../lib/tripDna'
@@ -1119,47 +1120,26 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
    *  (food -> meals, transport-hub -> fuel, hotel -> stay), so the search box
    *  covers every category-claimable part rather than meals alone.
    *
-   *  A note on `rest`: it is the category both providers tag a POPULATED PLACE
-   *  with (towns; restaurants are `food`), and `fitScoreForPurpose` treats a
-   *  populated place as meal-capable - so it files as a meal, which is right. */
-  function filingOptionsFor(h: PlaceHit): Array<{ key: string; label: string; noun: string }> {
-    const cat = String(h.category ?? '')
-    const kinds: DaySlotKind[] =
-      cat === 'food' || cat === 'cafe' || cat === 'rest' ? ['meal']
-        : cat === 'transport-hub' ? ['fuel']
-          : cat === 'hotel' ? ['overnight']
-            : []
-    if (kinds.length === 0) return []
-    // No cap. `activeDaySlots` is in rail order (breakfast, lunch, dinner), so
-    // the old `slice(0, 2)` always dropped the LAST meal - dinner, the one most
-    // often away from the hotel and most worth sourcing.
-    return activeDaySlots
-      .filter(s => s.state === 'empty' && kinds.includes(s.kind))
-      .map(s => ({ key: s.key, label: `Add as ${s.label}`, noun: s.label.toLowerCase() }))
-  }
+   *  #420 slice 5: the mapping, the no-cap rule and the copy live in
+   *  ./map/slotFiling now, with their tests; this only supplies the day's slots. */
+  const filingOptionsForPicked = (h: PlaceHit) => filingOptionsFor(h, activeDaySlots)
 
   /** A search pick filed into a slot: real detour math from the SAME helpers
    *  the engine uses (asymmetric against the drawn road + the day's real
-   *  budget), unknown fields honestly null — no fabricated arrival time — and
-   *  provenance carried in the reason line. */
+   *  budget). #420 slice 5: the candidate SHAPE — unknown fields honestly null,
+   *  no fabricated arrival time, provenance in the reason line — lives in
+   *  ./map/slotFiling with its tests; this only supplies the math. */
   function makeManualCandidate(h: PlaceHit) {
-    const budget = dayDetourBudgetMin({
-      travelStyle: trip.travelStyle,
-      plannedStops: (trip.days.find(d => d.index === activeDayIndex)?.stops ?? []).filter(x => x.status !== 'rejected').length,
-    })
-    const dMin = asymmetricDetourMinutes(h, anchors, routePolyline ?? null, MODE_SPEED[trip.transportMode] ?? 40)
-    return {
+    return manualCandidateFor({
       hit: h,
-      detourMin: dMin,
+      detourMin: asymmetricDetourMinutes(h, anchors, routePolyline ?? null, MODE_SPEED[trip.transportMode] ?? 40),
       detourKm: asymmetricDetourKm(h, anchors, routePolyline),
-      budgetSharePct: dMin == null ? 100 : budgetSharePct(dMin, budget),
-      posKm: null,
-      arriveMin: null,
-      arriveLabel: null,
-      inWindow: false,
-      score: Number.MAX_SAFE_INTEGER,
-      reason: 'added from this slot’s search',
-    }
+      budgetMin: dayDetourBudgetMin({
+        travelStyle: trip.travelStyle,
+        plannedStops: (trip.days.find(d => d.index === activeDayIndex)?.stops ?? []).filter(x => x.status !== 'rejected').length,
+      }),
+      sharePct: budgetSharePct,
+    })
   }
 
   /** Engine candidates plus this slot's own search picks — manual ones first
@@ -1169,8 +1149,10 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
     const manual = (slotManual[slot.key] ?? [])
       .filter(h => !isAlreadyAdded(h, identity))
       .map(makeManualCandidate)
-    const manualIds = new Set(manual.map(m => m.hit.id))
-    return [...manual, ...slot.candidates.filter(c => !manualIds.has(c.hit.id))]
+    // #420 slice 5: manual picks first, then the engine's minus their ids — the
+    // merge rule lives in ./map/slotFiling so it cannot drift from the refusal
+    // that reads the same two lists.
+    return mergeSlotCandidates(manual, slot.candidates)
   }
 
   /** The mockup's headline interaction: find inside the open part. Mirrors
@@ -1207,12 +1189,17 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
   /** File a found place into THIS slot as a candidate (never straight into the
    *  plan — Fill stays the second, explicit act) under the #179 guards. */
   function addManualCandidate(slot: DaySlot, h: PlaceHit) {
-    if (isAlreadyAdded(h, identity)) {
-      toast(`"${h.name}" is already on the plan or was dismissed.`)
-      return
-    }
-    if ((slotManual[slot.key] ?? []).some(x => x.id === h.id) || slot.candidates.some(c => c.hit.id === h.id)) {
-      toast(`"${h.name}" is already a candidate for the ${slot.label.toLowerCase()} slot.`)
+    // #420 slice 5: the two refusals (and their copy) live in ./map/slotFiling,
+    // checked in the order the user meets them.
+    const refusal = slotFileRefusal({
+      hit: h,
+      slotLabel: slot.label,
+      manual: slotManual[slot.key] ?? [],
+      candidates: slot.candidates,
+      isAdded: x => isAlreadyAdded(x, identity),
+    })
+    if (refusal) {
+      toast(refusal.message)
       return
     }
     setSlotManual(prev => ({ ...prev, [slot.key]: [h, ...(prev[slot.key] ?? [])] }))
@@ -1241,24 +1228,25 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
     setPoiDraft({ hit })
   }
 
-  /** Delete straight from the map pin's popup — with Undo (restoreStop puts
-   *  the stop back on its day at its old order). The stop object must be
-   *  captured BEFORE the delete, since the cache drops it immediately. */
+  /** Delete straight from the map pin's popup. Since #424 this is THE
+   *  destructive-stop path, shared with the Timeline's day row and the Board's
+   *  card: the removal is staged as an impact preview (so Keep/Remove is the
+   *  confirmation) and the Keep moment leaves an Undo that restores the stop on
+   *  its day at its old order. It used to write the cache directly and refuse
+   *  while a preview was open, which is precisely the divergence the shared path
+   *  removes — the same delete now behaves the same way wherever it is clicked,
+   *  and it chains onto an open preview instead of declining to act.
+   *
+   *  `meta.title` stays part of this popup's contract (it labels the pin), but
+   *  the toast is built from the row's own title, because that is the object the
+   *  Undo restores.
+   *
+   *  The stop's row still drops out through the local re-derivation once the
+   *  write lands (#346: stopSig → slots, identity/altPool → pool cards). The
+   *  corridor plan is still true — deleting one planned stop does not unplan the
+   *  road — so no forced re-search fires and no spinner flashes. */
   function removeStopFromMap(stopId: string, meta: { title: string; dayIndex: number }) {
-    // #334: this writes the committed row while the sheet may be showing a
-    // staged change — refuse rather than strand the preview as stale.
-    if (previewOpen) { toast(PREVIEW_BUSY, 'err'); return }
-    const stop = trip.days.find(d => d.stops.some(s => s.id === stopId))?.stops.find(s => s.id === stopId)
-    deleteStop(trip.id, stopId)
-    // #346: the row for this stop drops out through the local re-derivation
-    // (stopSig → slots, identity/altPool → pool cards). The corridor plan is
-    // still true — deleting one planned stop does not unplan the road — so
-    // no forced re-search fires and no spinner flashes.
-    if (stop) {
-      undoToast(`Removed “${meta.title}” from the trip`, () => restoreStop(trip.id, stop, meta.dayIndex))
-    } else {
-      toast(`Removed “${meta.title}” from the trip`)
-    }
+    removeStopWithUndo({ trip, stopId, dayIndex: meta.dayIndex, applyChange })
   }
 
   /** #418: ONE route-aware search, shared by the rail's corridor box and the map
@@ -1646,7 +1634,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
       km: omniPicked?.km ?? null,
       // The parts this place's own category could serve on the day the rail is
       // planning — the same helper the corridor rows already file through.
-      filingOptions: omniPicked ? filingOptionsFor(omniPicked.h) : [],
+      filingOptions: omniPicked ? filingOptionsForPicked(omniPicked.h) : [],
       alreadyAdded: omniPicked ? isAlreadyAdded(omniPicked.h, identity) : false,
       shortlisted: omniPicked ? shortlist.some(h => h.id === omniPicked.h.id) : false,
       shortlistCount: trayShortlist.length,
@@ -1930,7 +1918,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, crewSugge
                     </span>
                   ) : (
                     <span style={{ display: 'flex', gap: 4, flex: '0 0 auto', alignItems: 'center', marginLeft: 8 }}>
-                      {filingOptionsFor(h).map(o => (
+                      {filingOptionsForPicked(h).map(o => (
                         <button
                           key={o.key}
                           type="button"

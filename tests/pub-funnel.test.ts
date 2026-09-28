@@ -14,7 +14,7 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import {
-  buildPubFunnels, conversionPct, describePreLog, formatPct, funnelGlance, funnelWindowStart, utcDayKey, utcDayStart,
+  buildPubFunnels, conversionPct, describePreLog, formatPct, funnelBarPos, funnelBarScale, funnelGlance, funnelWindowStart, utcDayKey, utcDayStart,
   FUNNEL_WINDOWS, type FunnelDailyRow, type FunnelPub, type FunnelSale,
 } from '../src/lib/pubFunnel'
 // The fixture's traffic plan. A PURE module rather than the CLI script itself:
@@ -148,6 +148,112 @@ describe('the stages and their conversions', () => {
   it('flags an ordinary funnel as NOT exceeding', () => {
     const [f] = build({ daily: [row('pub_1', 0, 100, 40)] })
     expect(f.forksExceedViews).toBe(false)
+  })
+})
+
+// ---- #358: the bar must not contradict the number beside it ----------------
+// The rate above 100% is deliberate and pinned. The BAR, however, was clamped at
+// `min(100, …)`, so a 140% row drew a full-width bar indistinguishable from a
+// 100% one and pushed the unlock mark to `calc(100% + 3px)` — off its own track.
+// These pin the fix on the scale rather than on the markup, because the markup
+// is where the cap used to hide.
+describe('the funnel bar is drawn on a scale that fits the number (#358)', () => {
+  it('leaves an ordinary funnel on the same 0-100 track it always had', () => {
+    expect(funnelBarScale({ forkRatePct: 40, unlockRatePct: 25 })).toBe(100)
+    expect(funnelBarPos(40, 100)).toBe('40.00%')
+    expect(funnelBarPos(25, 100)).toBe('25.00%')
+  })
+
+  it('scales the TRACK, never the rate, when forks exceed visits', () => {
+    // 10 views / 14 forks = 140%, and a 20% unlock rate (2 unlocks / 10 forks).
+    // The scale becomes 140 — the largest rate on the row — so the fork mark
+    // lands at 100% (it IS the maximum) and the unlock mark stays proportionately
+    // below it. Both on-track, and the inversion still visible.
+    const scale = funnelBarScale({ forkRatePct: 140, unlockRatePct: 20 })
+    expect(scale).toBe(140)
+    expect(funnelBarPos(140, scale)).toBe('100.00%')
+    expect(funnelBarPos(20, scale)).toBe('14.29%')
+    // The decisive property: nothing lands beyond the track. The old bar put the
+    // unlock mark at `calc(100% + 3px)` here.
+    for (const rate of [140, 20]) {
+      expect(parseFloat(funnelBarPos(rate, scale))).toBeLessThanOrEqual(100)
+      expect(parseFloat(funnelBarPos(rate, scale))).toBeGreaterThanOrEqual(0)
+    }
+  })
+
+  it('lets the UNLOCK rate set the scale too, when it is the larger', () => {
+    // The scale is the row's maximum, not just the fork rate's — a 10% fork rate
+    // with a 250% unlock-of-forks rate must not draw the second mark off-track.
+    const scale = funnelBarScale({ forkRatePct: 10, unlockRatePct: 250 })
+    expect(scale).toBe(250)
+    expect(parseFloat(funnelBarPos(250, scale))).toBeLessThanOrEqual(100)
+  })
+
+  it('never lets an unread unlock stage raise the scale', () => {
+    // While the sales ledger is unread the unlock rate is 0 BY SUBSTITUTION, not
+    // a measurement — it must not stretch the track for a number nobody read.
+    expect(funnelBarScale({ forkRatePct: 40, unlockRatePct: 0, hasUnlock: false })).toBe(100)
+  })
+
+  it('keeps a degenerate row on the track instead of dividing by zero', () => {
+    expect(funnelBarScale({ forkRatePct: 0, unlockRatePct: 0 })).toBe(100)
+    expect(funnelBarPos(0, 0)).toBe('0.00%')
+    // A negative or non-finite rate cannot throw the mark off the far end.
+    expect(funnelBarPos(-5, 100)).toBe('0.00%')
+    expect(funnelBarPos(Number.NaN, 100)).toBe('0.00%')
+  })
+
+  it('the hub draws both marks through the shared helper, with no clamp of its own', () => {
+    // The guard that matters: the page must not keep a private `Math.min(100, …)`
+    // beside a shared helper. Either the bar uses the scale or it does not.
+    const hub = codeOf(read('../src/pages/CreatorHubPage.tsx'))
+    expect(hub).toContain('funnelBarScale({ forkRatePct: f.forkRatePct, unlockRatePct: f.unlockRatePct')
+    expect(hub).toContain('funnelBarPos(f.forkRatePct, scale)')
+    expect(hub).toContain('funnelBarPos(f.unlockRatePct, scale)')
+    // And the old cap is gone from the bar entirely.
+    expect(hub).not.toMatch(/Math\.min\(100, Math\.max\(0, f\.(fork|unlock)RatePct\)\)/)
+  })
+
+  it('the rate itself is still NOT clamped — the bar followed the number, not the reverse', () => {
+    // The counter-instance. If a future change "fixes" this by capping the rate,
+    // the product fact the module documents disappears — so the unclamped value
+    // is asserted here, at the same altitude as the bar fix.
+    expect(conversionPct(10, 14)).toBe(140)
+    const [f] = build({ daily: [row('pub_1', 0, 10, 14)] })
+    expect(f.forkRatePct).toBe(140)
+    expect(f.forksExceedViews).toBe(true)
+  })
+})
+
+// ---- #358: the two "recording began" dates are both true --------------------
+// The page dates the log from the GLOBAL earliest day and each row from its own
+// publication's earliest. Both were true and the two sat side by side, so the
+// labels are QUALIFIED rather than reconciled — the dates are different
+// questions, and the fix is to name which is which.
+describe('the two recording dates name their scope (#358)', () => {
+  const NOW = Date.UTC(2026, 8, 21, 12)
+  const row = (day: string) => ({ pubId: 'p1', day, views: 1, forks: 0 })
+
+  it('a row says which PLAN its date belongs to', () => {
+    const f = buildPubFunnels({
+      daily: [row(utcDayKey(NOW)), row(utcDayKey(NOW - 20 * DAY))],
+      sales: [], days: 7, now: NOW,
+      pubs: [{ id: 'p1', title: 'P', priceInr: 199, lifetimeViews: 9, lifetimeForks: 3 }],
+    })[0]
+    const line = describePreLog(f)!
+    expect(line).toContain("this plan's recording began")
+    // The DATE itself is untouched — the pinned per-pub value still renders
+    // (21 Sep minus 20 days), and the day the row is windowed on never reaches
+    // the reader.
+    expect(line).toContain('1 Sept 2026')
+    expect(line).not.toContain('21 Sept 2026')
+  })
+
+  it('the page says its date is the earliest of the whole account', () => {
+    const hub = read('../src/pages/CreatorHubPage.tsx')
+    expect(hub).toContain('the earliest of your plans')
+    // …and it is still derived from the global minimum, unchanged.
+    expect(hub).toMatch(/daily\.reduce\(\(min, r\) => \(r\.day < min \? r\.day : min\), daily\[0\]\.day\)/)
   })
 })
 

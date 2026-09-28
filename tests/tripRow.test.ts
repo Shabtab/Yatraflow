@@ -1,7 +1,7 @@
 // ============ trips row serialization + missing-column detection ============
 // Pure helpers from src/lib/tripRow.ts (node env, no DOM/supabase needed).
 import { describe, it, expect } from 'vitest'
-import { rowToTrip, tripToRow, isMissingColumnError } from '../src/lib/tripRow'
+import { rowToTrip, tripToRow, isMissingColumnError, sanitizeTankL, sanitizeRentPerDayInr } from '../src/lib/tripRow'
 import { seedData } from '../src/data/seed'
 import type { Trip, TripMember } from '../src/data/types'
 import { readFileSync, readdirSync } from 'node:fs'
@@ -26,6 +26,7 @@ const ALL_COLUMNS = {
   economy: true, price: true, roundTrip: true, cover: true,
   inviteCode: true, deleted: true, stayStyle: true,
   driverCount: true, hasVulnerable: true, driveAfterDinner: true, vehicleProfile: true,
+  tankL: true, rentPerDayInr: true, localTrain: true,
 }
 
 /** The bare fixture — no optional fields set. */
@@ -216,6 +217,78 @@ describe('party + vehicle preferences are persisted (20260915_trip_party_prefs.s
   })
 })
 
+describe('the create-time vehicle estimates are persisted (20260928_trip_vehicle_estimates.sql)', () => {
+  it('tank_l: writes the tank, NULL for junk, omits when the probe is false', () => {
+    const t = { ...baseTrip(), tankL: 60 }
+    expect(tripToRow(t, 'owner-1', ALL_COLUMNS).tank_l).toBe(60)
+    // The sanitizer is the one rule: 5..300 L, everything else NULL.
+    expect(tripToRow({ ...t, tankL: 4 }, 'owner-1', ALL_COLUMNS).tank_l).toBeNull()
+    expect(tripToRow({ ...t, tankL: 301 }, 'owner-1', ALL_COLUMNS).tank_l).toBeNull()
+    expect(tripToRow({ ...t, tankL: NaN }, 'owner-1', ALL_COLUMNS).tank_l).toBeNull()
+    expect(tripToRow(t, 'owner-1', { ...ALL_COLUMNS, tankL: false })).not.toHaveProperty('tank_l')
+  })
+
+  it('rent_per_day_inr: writes the rate, NULL for junk, omits when the probe is false', () => {
+    const t = { ...baseTrip(), rentPerDayInr: 1800 }
+    expect(tripToRow(t, 'owner-1', ALL_COLUMNS).rent_per_day_inr).toBe(1800)
+    expect(tripToRow({ ...t, rentPerDayInr: -1 }, 'owner-1', ALL_COLUMNS).rent_per_day_inr).toBeNull()
+    expect(tripToRow({ ...t, rentPerDayInr: 100001 }, 'owner-1', ALL_COLUMNS).rent_per_day_inr).toBeNull()
+    expect(tripToRow({ ...t, rentPerDayInr: 0 }, 'owner-1', ALL_COLUMNS).rent_per_day_inr).toBe(0) // 0 is legitimate
+    expect(tripToRow(t, 'owner-1', { ...ALL_COLUMNS, rentPerDayInr: false })).not.toHaveProperty('rent_per_day_inr')
+  })
+
+  it('local_train: writes the flag, NULL for non-booleans, omits when the probe is false', () => {
+    const t = { ...baseTrip(), localTrain: true }
+    expect(tripToRow(t, 'owner-1', ALL_COLUMNS).local_train).toBe(true)
+    expect(tripToRow({ ...t, localTrain: false }, 'owner-1', ALL_COLUMNS).local_train).toBe(false)
+    expect(tripToRow({ ...t, localTrain: 'yes' as never }, 'owner-1', ALL_COLUMNS).local_train).toBeNull()
+    expect(tripToRow(t, 'owner-1', { ...ALL_COLUMNS, localTrain: false })).not.toHaveProperty('local_train')
+  })
+
+  it('all four vehicle inputs survive the row round trip', () => {
+    const t = {
+      ...baseTrip(),
+      vehicleProfile: { vehicleType: 'car' as const, fuelType: 'diesel' as const, capacity: 60, economy: 21 },
+      tankL: 60, rentPerDayInr: 1800, localTrain: false, roundTrip: false,
+    }
+    const back = rowToTrip(tripToRow(t, 'owner-1', ALL_COLUMNS), MEMBERS)
+    expect(back.vehicleProfile).toEqual(t.vehicleProfile)
+    expect(back.tankL).toBe(60)
+    expect(back.rentPerDayInr).toBe(1800)
+    expect(back.localTrain).toBe(false)
+    expect(back.roundTrip).toBe(false)
+  })
+
+  it('reads back undefined on a pre-migration row, so the engine keeps its defaults', () => {
+    const t = baseTrip()
+    const row = tripToRow(t, 'owner-1', ALL_COLUMNS)
+    const back = rowToTrip({ ...row, tank_l: null, rent_per_day_inr: null, local_train: null, created_at: t.createdAt, updated_at: t.updatedAt }, MEMBERS)
+    expect(back.tankL).toBeUndefined()
+    expect(back.rentPerDayInr).toBeUndefined()
+    expect(back.localTrain).toBeUndefined()
+  })
+
+  it('row-side junk degrades too (a hand-edited row cannot price nonsense)', () => {
+    const t = baseTrip()
+    const row = tripToRow(t, 'owner-1', ALL_COLUMNS)
+    const back = rowToTrip({ ...row, tank_l: 5000, rent_per_day_inr: -50, local_train: 'true' as never, created_at: t.createdAt, updated_at: t.updatedAt }, MEMBERS)
+    expect(back.tankL).toBeUndefined()
+    expect(back.rentPerDayInr).toBeUndefined()
+    expect(back.localTrain).toBeUndefined()
+  })
+
+  it('the sanitizers are the pinned bounds (tank 5..300, rent 0..100000)', () => {
+    expect(sanitizeTankL(5)).toBe(5)
+    expect(sanitizeTankL(300)).toBe(300)
+    expect(sanitizeTankL(4.99)).toBeNull()
+    expect(sanitizeTankL(undefined)).toBeNull()
+    expect(sanitizeRentPerDayInr(0)).toBe(0)
+    expect(sanitizeRentPerDayInr(100000)).toBe(100000)
+    expect(sanitizeRentPerDayInr(Infinity)).toBeNull()
+    expect(sanitizeRentPerDayInr(null)).toBeNull()
+  })
+})
+
 // ============ every probed optional column has a migration ============
 // The store probes for an optional column before writing it, and a probe that
 // comes back false makes the write silently vanish: `tripToRow` omits the field
@@ -259,6 +332,11 @@ describe('the optional-column probe and the migrations agree', () => {
     expect(cols.length).toBeGreaterThanOrEqual(11)
     expect(cols).toContain('cover_image_url')
     expect(cols).toContain('deleted_at')
+    // #377's trio — named so a rename of one fails here rather than silently
+    // dropping it out of the probe↔migration pin below.
+    expect(cols).toContain('tank_l')
+    expect(cols).toContain('rent_per_day_inr')
+    expect(cols).toContain('local_train')
   })
 
   it('has a migration creating every column it probes', () => {

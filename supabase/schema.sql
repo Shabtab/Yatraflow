@@ -54,6 +54,10 @@ create table if not exists public.trips (
   has_vulnerable            boolean,
   drive_after_dinner_min    int,
   vehicle_profile           jsonb,
+  -- 20260928_trip_vehicle_estimates.sql — see the migration for the sanitizers
+  tank_l                    numeric,
+  rent_per_day_inr          numeric,
+  local_train               boolean,
   fixed_commitments         jsonb not null default '[]'::jsonb,
   days                      jsonb not null default '[]'::jsonb,
   expenses                  jsonb not null default '[]'::jsonb,
@@ -78,6 +82,9 @@ alter table public.trips add column if not exists driver_count int;
 alter table public.trips add column if not exists has_vulnerable boolean;
 alter table public.trips add column if not exists drive_after_dinner_min int;
 alter table public.trips add column if not exists vehicle_profile jsonb;
+alter table public.trips add column if not exists tank_l numeric;
+alter table public.trips add column if not exists rent_per_day_inr numeric;
+alter table public.trips add column if not exists local_train boolean;
 
 -- Invite codes are unique when present (app mints one per trip).
 create unique index if not exists idx_trips_invite_code

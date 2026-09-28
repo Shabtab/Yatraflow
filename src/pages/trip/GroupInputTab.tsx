@@ -23,7 +23,7 @@ import {
 import { formatInr, minutesToHM } from '../../lib/engine'
 import { decisionContext, contextLine, recommendForDecision } from '../../lib/decisionGuide'
 import { Avatar, Chip, EmptyState, Field, toast } from '../../components/ui'
-import { PREVIEW_BUSY } from '../../lib/previewChain'
+import { refuseWhileStaged } from '../../lib/mutationLifecycle'
 import type { BusyClaim } from '../../lib/busyClaim'
 import { isClaimed, takeClaim } from '../../lib/busyClaim'
 import { LocationInput } from '../../components/LocationInput'
@@ -49,16 +49,13 @@ const EMPTY_COPY: Record<Filter, { icon: 'idea' | 'question'; title: string; bod
 function itemId(i: GroupItem): string { return i.kind === 'idea' ? i.sg.id : i.d.id }
 function itemTitle(i: GroupItem): string { return i.kind === 'idea' ? i.sg.title : i.d.question }
 
-/** #334: accepting a suggestion and resolving a decision are written straight to
- *  the cache (`addStop` / `decisions`), never staged into an open preview — a
- *  crew signal must not end up inside one person's unkept proposal, where the
- *  group cannot see it and Keep could silently revert it. So while a preview is
- *  open they refuse, in the same words the timeline's direct writers use. */
-function refuseWhilePreviewing(previewOpen: boolean | undefined): boolean {
-  if (!previewOpen) return false
-  toast(PREVIEW_BUSY, 'err')
-  return true
-}
+// #334: accepting a suggestion and resolving a decision are written straight to
+// the cache (`addStop` / `decisions`), never staged into an open preview — a crew
+// signal must not end up inside one person's unkept proposal, where the group
+// cannot see it and Keep could silently revert it. So while a preview is open
+// they refuse. The rule and its wording now live in the shared lifecycle
+// (`refuseWhileStaged`), which is where this surface's own local copy went after
+// #424 — one refusal, one sentence, six surfaces.
 
 /** #394: one busy claim per crew-signal row. The claim is read through a ref
  *  because a state closure can still hold the pre-claim render when a fast
@@ -303,13 +300,13 @@ function SuggestionCard({ sg, trip, me, editable, memberCount, needsMe, previewO
         {editable && sg.status === 'open' && (
           <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginTop: 11 }}>
             <button className="btn btn-primary btn-sm" disabled={busy} aria-busy={busy} onClick={() => {
-              if (refuseWhilePreviewing(previewOpen)) return
+              if (refuseWhileStaged(previewOpen)) return
               if (!claim()) return
               acceptSuggestionIntoTimeline(trip.id, sg.id)
               toast('Added to timeline')
             }}>Add to timeline</button>
             <button className="btn btn-danger btn-sm" disabled={busy} aria-busy={busy} onClick={() => {
-              if (refuseWhilePreviewing(previewOpen)) return
+              if (refuseWhileStaged(previewOpen)) return
               if (!claim()) return
               declineSuggestion(trip.id, sg.id)
               toast('Suggestion declined')
@@ -429,7 +426,7 @@ function DecisionCard({ d, me, editable, needsMe, trip, previewOpen }: {
           {d.options.map((o, i) => (
             <button key={o.id} className={`btn btn-sm ${i === leadingIdx ? 'btn-primary' : 'btn-outline'}`} disabled={busy} aria-busy={busy}
               onClick={() => {
-                if (refuseWhilePreviewing(previewOpen)) return
+                if (refuseWhileStaged(previewOpen)) return
                 if (!claim()) return
                 resolveDecision(d.id, o.id)
                 toast('Decision resolved')

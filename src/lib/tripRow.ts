@@ -24,6 +24,10 @@ export interface TripRow {
   drive_after_dinner_min?: number | null;
   /** JSONB: vocabulary-validated by normalizeVehicleProfile on read. */
   vehicle_profile?: unknown | null;
+  /** present only after the vehicle-estimates migration (20260928_trip_vehicle_estimates.sql) */
+  tank_l?: number | null;
+  rent_per_day_inr?: number | null;
+  local_train?: boolean | null;
   days: ItineraryDay[]; expenses: Expense[]; cover_emoji: string;
   /** present only after the cover-image migration (see supabase/schema.sql) */
   cover_image_url?: string | null;
@@ -40,6 +44,26 @@ export interface TripRow {
  *  / dinner-ends-day defaults. */
 const DRIVER_COUNT_VALUES = new Set([2, 3])
 const DRIVE_AFTER_DINNER_MAX_MIN = 480 // 8 h post-dinner is the trip's cap
+
+/** #377 sanity bounds for the create form's vehicle estimates — the same
+ *  drop-the-junk rule as the party sanitizers above. A row that skipped them
+ *  (hand-edited, legacy) degrades to NULL and the engine falls back to its
+ *  defaults instead of pricing nonsense. Tank: 5..300 L — under 5 is a typo
+ *  and 300 is the estimate's own cap (the "≈ N km per tank" note never bills
+ *  more). Rent: 0..100000 ₹/day — 0 is legitimate (a free upgrade), a lakh a
+ *  day is not. */
+const TANK_L_MIN = 5
+const TANK_L_MAX = 300
+const RENT_PER_DAY_MIN_INR = 0
+const RENT_PER_DAY_MAX_INR = 100000
+
+export function sanitizeTankL(v: number | undefined | null): number | null {
+  return typeof v === 'number' && Number.isFinite(v) && v >= TANK_L_MIN && v <= TANK_L_MAX ? v : null
+}
+
+export function sanitizeRentPerDayInr(v: number | undefined | null): number | null {
+  return typeof v === 'number' && Number.isFinite(v) && v >= RENT_PER_DAY_MIN_INR && v <= RENT_PER_DAY_MAX_INR ? v : null
+}
 
 export function rowToTrip(row: TripRow, members: TripMember[]): Trip {
   // driverCount: NULL means "1 driver" (the legacy default). Anything outside
@@ -61,6 +85,12 @@ export function rowToTrip(row: TripRow, members: TripMember[]): Trip {
   // vehicleProfile: vocabulary/range check via normalizeVehicleProfile. Any
   // junk field drops the whole profile; the engine's mode default kicks in.
   const vehicleProfile = normalizeVehicleProfile(row.vehicle_profile)
+  // #377 vehicle estimates: the writers' sanitizers, restated as read guards —
+  // a hand-edited row that skipped the write path still degrades instead of
+  // carrying a negative rent into the totals.
+  const tankL = sanitizeTankL(row.tank_l)
+  const rentPerDayInr = sanitizeRentPerDayInr(row.rent_per_day_inr)
+  const localTrain = typeof row.local_train === 'boolean' ? row.local_train : undefined
   // #382: a hydrate drops what the writers refuse. A row persisted by the old
   // code — or hand-edited in the dashboard — can carry a non-finite, negative
   // or zero amount, and it would flow into the totals, the settlement math and
@@ -89,6 +119,9 @@ export function rowToTrip(row: TripRow, members: TripMember[]): Trip {
     hasVulnerable,
     driveAfterDinnerMin,
     vehicleProfile,
+    tankL: tankL ?? undefined,
+    rentPerDayInr: rentPerDayInr ?? undefined,
+    localTrain,
     days: row.days ?? [], expenses, coverEmoji: row.cover_emoji,
     coverImageUrl: row.cover_image_url ?? undefined, inviteCode: row.invite_code ?? undefined,
     visibility: row.visibility, deletedAt: row.deleted_at != null ? new Date(row.deleted_at).getTime() : undefined,
@@ -105,6 +138,10 @@ export interface OptionalColumnsProbe {
   hasVulnerable: boolean
   driveAfterDinner: boolean
   vehicleProfile: boolean
+  /** the create-time vehicle estimates (20260928_trip_vehicle_estimates.sql) */
+  tankL: boolean
+  rentPerDayInr: boolean
+  localTrain: boolean
 }
 
 /**
@@ -137,6 +174,9 @@ export function tripToRow(trip: Trip, ownerId: string, cols?: OptionalColumnsPro
   if (cols?.hasVulnerable) row.has_vulnerable = trip.hasVulnerable === true
   if (cols?.driveAfterDinner) row.drive_after_dinner_min = trip.driveAfterDinnerMin ?? null
   if (cols?.vehicleProfile) row.vehicle_profile = trip.vehicleProfile ?? null
+  if (cols?.tankL) row.tank_l = sanitizeTankL(trip.tankL)
+  if (cols?.rentPerDayInr) row.rent_per_day_inr = sanitizeRentPerDayInr(trip.rentPerDayInr)
+  if (cols?.localTrain) row.local_train = typeof trip.localTrain === 'boolean' ? trip.localTrain : null
   return row
 }
 
