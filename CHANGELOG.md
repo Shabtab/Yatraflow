@@ -1,19 +1,24 @@
-# Changelog
-
-All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions are pre-1.0 MVP milestones.
-
-> **Two version lines, cut from the same commits.** `X.Y.Z` headings are the **web app**
-> (semver, mirrored in `package.json`, deployed by Vercel from `main`). The `-native` suffix
-> is the **Android shell's** own numbering (`versionCode`/`versionName` in
-> `android/app/build.gradle`, surfaced in Settings → Apps), which does **not** interleave
-> with web semver — so `0.7.0-native` is newer than `0.48.0` despite the smaller number.
-> Entries below are ordered newest-first by date, not by version number.
->
-> **History note.** Entries before `0.42.0` were removed in `adf5f66` (Sep 7, 2026) — that
-> record still exists in `git log`, not here. Archived release notes live in
-> [`docs/history/`](docs/history/).
-
 ## [Unreleased]
+
+## [0.70.0] - 2026-09-28
+
+The failed reads are spoken, and every removal has a written way back. This release is the honesty
+pass over what the app claimed to have read: the Budget tab, My Trips and Trash say a read failed
+instead of printing the friendly empty copy, the pacing tile names the estimate it measures rather
+than implying cash, and the settle gate is the owner/editor rule it always claimed to be (#381,
+#383, #384, #387). The creator's payout runs roll over and its header cannot disagree with the
+table, a buyer's access check no longer turns an unreadable entitlement into a sales pitch, and the
+funnel bar stops hiding the number it sits beside (#348, #358, #359). The create flow counts its
+days one way and keeps the vehicle inputs you typed (#376, #377), the footer stops denying the
+payments the product has (#392), the AI companion guards its inputs while it thinks (#396, #397),
+the map's search-to-slot filing rules left the page for a module with tests (#420), and every
+destructive action the store exports is declared with its way back — one staged/kept/undone
+contract, Undo on Keep, and a confirmation before a permanent purge (#424). Two migrations, both
+applied live before the cut.
+
+### Added
+
+- **Every destructive action's way back is written down, and the stop-removal path is one path by construction.** Deleting a stop can only be composed in a single place, the shared refusal is the only copy of its wording, and the few places that legitimately write a removal straight to the store are named with their reason; a test reads the tree and fails on the next surface that reaches around the contract, or on a new deletion that declares no recovery at all. Keep offers Undo, a permanent purge asks first, and a withdrawn publication keeps the row so buyers stay whole — that table is now part of the contract rather than a habit (#424). The audit behind it covers **every destructive write the store exports**: each one is declared with its recovery, excused as non-destructive with a reason, or recorded as superseded, and the test reads the store for it — so a new `deleteX()` has to be classified before it can merge, and a table that names a function the store no longer has fails too.
 
 ### Changed
 
@@ -47,9 +52,7 @@ mid-day promotion took to production ahead of it: the retriable road measurement
 body weight and the Timeline/day-plan honesty pass (#344, #346). No migrations in this batch: code
 and docs only.
 
-### Added
 
-- **Every destructive action's way back is written down, and the stop-removal path is one path by construction.** Deleting a stop can only be composed in a single place, the shared refusal is the only copy of its wording, and the few places that legitimately write a removal straight to the store are named with their reason; a test reads the tree and fails on the next surface that reaches around the contract, or on a new deletion that declares no recovery at all. Keep offers Undo, a permanent purge asks first, and a withdrawn publication keeps the row so buyers stay whole — that table is now part of the contract rather than a habit (#424). The audit behind it covers **every destructive write the store exports**: each one is declared with its recovery, excused as non-destructive with a reason, or recorded as superseded, and the test reads the store for it — so a new `deleteX()` has to be classified before it can merge, and a table that names a function the store no longer has fails too.
 - **The Timeline reads as one continuous plan when you want the whole trip in front of you.** A view switch beside Plan/Inspect offers *One day* (the accordion) and *All days*, and the choice is stored per trip beside the day you were last in — switching to all-days never reads or writes that saved day, so going back to One day returns you to exactly the day you left. In review every day is open and its header follows you down the page under the floating nav until the next day's card pushes it out, so a plan's evening → night → next-morning boundary reads in one scroll; the per-day disclosure control is not offered there (the mode owns openness), and the trip-total strip hands its sticky rung to the day header. Provider-backed extras stay bounded: the weather chip and the empty-day ideas load only for days near the viewport, while stop rows, clocks, warnings and money come from the already-resolved trip for every day. Editing, drag-and-drop, reordering and impact previews behave exactly as they do in One day, and switching views changes no trip data.
 - **A stop can be inserted between two existing stops without leaving the timeline.** Every leg between consecutive stops carries an Insert control — revealed on hover and on keyboard focus, always visible on touch — which opens a lightweight quick add already positioned at that slot: name, place, category and dwell, with the position announced before anything is typed ("between “Anjuna Flea Market” and “Basilica of Bom Jesus” on Day 2") and "More details…" handing the same draft to the full editor at the same day and slot. The stop commits through the same impact-previewed add path every other addition uses and lands at the chosen slot with the day renumbered 1..n, so a later add cannot mint a duplicate position — and a location that was never pinned still goes through the coordinate prompt rather than being written at a placeholder. The header's "+ Add stop" now targets the day you are in (the first day on screen in all-days mode) instead of always Day 1.
 - **The map has its own search: find a place anywhere on the route, then say where it goes.** Discovery and filing used to be coupled differently on every surface — the corridor box ranked by detour, a slot's box filled that part, each rail kept its own list — so a place found on the map could only be filed the way whichever rail was last active happened to file things. A search now sits on the map itself, above the canvas and outside both rails: it searches the same route-aware way the corridor box does (one shared runner, so the ranking, the detour scope, the quota pause and the out-of-order guard cannot drift apart), draws its hits as the same selectable teal pins, and then asks *where* — a day (through the stop editor that already discloses a guessed day), one of the day's empty parts the place's own category can serve, the shortlist, or a crew vote once the shortlist holds two places to compare. Every choice says what it will do, every disabled one says why, and nothing is filed until one is clicked: a hit whose position has not resolved, or one already in the trip, is offered no path at all.
