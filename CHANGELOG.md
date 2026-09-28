@@ -15,6 +15,9 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+- **AI companion and profile connection hygiene (#396, #397).** The companion drawer composer input and quick-prompt chips disable while thinking (`disabled={thinking}`), avoiding duplicate submissions and skipping focus in dialog Tab navigation; the FAB floating action button hides while the companion is thinking or open (`!open && !thinking`); message identifiers use a monotonic counter instead of `Date.now()`; and `TripWorkspace` keys `AiDrawer` by `trip.id` so switching trips resets the transcript and timer cleanly. Profile endpoint connectivity tests for both the custom LLM provider and the Jev intent router carry an `AbortController` signal, abort in-flight probes on component unmount or re-test, and suppress late toasts when cancelled.
+
+
 ## [0.69.0] - 2026-09-27
 
 The audit's P1 wave is closed, and the map learned to search. Every P1 the day's sweep filed is

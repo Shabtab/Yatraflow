@@ -175,6 +175,31 @@ describe('wiring tripwires (source-level, CRLF-tolerant)', () => {
     expect(provider).toContain('mergeSignal(')
     expect(provider).not.toMatch(/AbortSignal\.any\(/)
   })
+
+  it('#396: drawer input and chips disable while thinking, FAB hides while thinking, and msg ids use a counter', () => {
+    // Live input + chips while thinking: #396
+    expect(drawer).toMatch(/<input[^>]*disabled=\{thinking\}/)
+    expect(drawer).toMatch(/<Chip[^>]*disabled=\{thinking\}/)
+    // FAB hides while thinking: AGENTS §10 and #396
+    expect(drawer).toMatch(/!open\s*&&\s*!thinking/)
+    // Monotonic counter for msg IDs, not Date.now() collisions:
+    expect(drawer).not.toContain('Date.now()')
+    expect(drawer).toContain('msgIdRef')
+  })
+
+  it('#396: TripWorkspace keys AiDrawer by trip.id to reset transcript across trips', () => {
+    const ws = readFileSync('src/pages/TripWorkspace.tsx', 'utf8')
+    expect(ws).toMatch(/<AiDrawer\s+key=\{trip\.id\}/)
+  })
+
+  it('#397: Profile connection tests use AbortController signal and cancel on unmount/re-test', () => {
+    const profile = readFileSync('src/pages/Profile.tsx', 'utf8')
+    // Both cards must pass signal to their connection test
+    expect(profile).toContain('testAiProviderConnection(loadAiProviderConfig()!, testAbort.current.signal)')
+    expect(profile).toContain('testJevConnection(loadJevConfig()!, testAbort.current.signal)')
+    // Abort on unmount/cleanup
+    expect(profile).toMatch(/testAbort\.current\?\.abort\(\)/)
+  })
 })
 
 describe('testAiProviderConnection maps failures to honest messages', () => {
@@ -185,3 +210,4 @@ describe('testAiProviderConnection maps failures to honest messages', () => {
     expect(typeof out === 'string' || out === null).toBe(true)
   })
 })
+
