@@ -7,6 +7,7 @@
 // so the ticket's rough take and the bench's honest bill tell one story.
 
 import { haversineKm } from './geo'
+import { dayCountForRange } from './dayCount'
 import { MODE_COST_PER_KM, isFuelEconomyMode, parseFuelEconomyKmL, parseFuelPricePerL } from './engine'
 import { STAY_RATE_PER_NIGHT, MEALS_PER_HEAD_DAY } from './planBench'
 import { uid } from '../data/seed'
@@ -75,10 +76,10 @@ function chainKm(pts: (LatLngPoint | null)[], from: number, to: number): number 
 
 /** The whole rough bill in one pure pass — every line carries its formula. */
 export function estimateTripStarter(input: StarterTripInput): StarterBill {
-  const start = new Date(input.startDate).getTime()
-  const end = new Date(input.endDate).getTime()
-  const validDates = Number.isFinite(start) && Number.isFinite(end) && end >= start
-  const days = validDates ? Math.round((end - start) / 86400000) + 1 : 0
+  // The one day count (#376): local-midnight parse, 0 on bad dates — the same
+  // value the store builds from, with the store's ≥1 guarantee at its own
+  // boundary instead of here.
+  const days = dayCountForRange(input.startDate, input.endDate)
   const nights = Math.max(0, days - 1)
 
   const crew = finitePos(input.travellers) ? Math.round(input.travellers) : 1

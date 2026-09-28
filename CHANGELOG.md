@@ -17,6 +17,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ### Fixed
 
+- **One day count, everywhere (#376).** The create form, the trip ticket's bill and the store each computed the trip length separately and could disagree about the same bad date range — the ticket could print "0 days" while the store still built a trip — and each parsed dates as UTC midnight, a day off from local time on IST evenings. All three now read one local-midnight helper: the dock and the ticket answer identically ("Pick your dates" for any range they cannot count), the store keeps its "a trip always has at least one day" guarantee visibly at its own boundary, and a source test keeps a second copy of the day-span math from coming back.
 - **The app footer no longer denies the payments the product has** (#392). It claimed "no bookings, no payments, planning only" for weeks after paid itinerary unlocks shipped in v0.61.0; it now reads "No bookings — planning plus paid itinerary unlocks", and the project description states the same scope. The drift gate now scans live source copy alongside docs, and the footer's sentence is registered with a payments marker — so the next change to the money rail fails the gate instead of letting the copy drift again — with a sweep test keeping denial phrasing out of `src/`.
 
 ## [0.69.0] - 2026-09-27

@@ -18,6 +18,7 @@ import type { LatLngPoint } from '../data/types'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { toast } from '../components/ui'
 import { isMissingColumnError, rowToTrip, tripToRow, type OptionalColumnsProbe, type TripRow } from '../lib/tripRow'
+import { dayCountForRange } from '../lib/dayCount'
 import { amountRefusal, amountVerdict } from '../lib/expenseAmount'
 import { attachDnaAccount, detachDnaAccount } from '../lib/tripDna'
 import { clearSnapshot, loadSnapshot, saveSnapshot } from '../lib/offlineCache'
@@ -3429,7 +3430,10 @@ const uuid = (): string =>
     : `${Date.now().toString(16).padStart(12, '0')}-${Math.random().toString(16).slice(2, 6)}-4${Math.random().toString(16).slice(2, 5)}-a${Math.random().toString(16).slice(2, 5)}-${Math.random().toString(16).slice(2, 14).padEnd(12, '0')}`
 
 function diffDays(a: string, b: string): number {
-  return Math.max(1, Math.round((new Date(b).getTime() - new Date(a).getTime()) / 86400000) + 1)
+  // The creation guarantee, applied visibly at the store's boundary (#376):
+  // a trip always has at least one day, even when the dates are missing,
+  // garbage or inverted. The shared helper itself answers 0 honestly.
+  return Math.max(1, dayCountForRange(a, b))
 }
 
 export const supabaseReady = isSupabaseConfigured

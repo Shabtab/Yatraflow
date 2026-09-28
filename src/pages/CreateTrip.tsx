@@ -228,8 +228,6 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
     billRef.current?.scrollIntoView({ behavior: scrollBehavior(), block: 'nearest' })
   }, [billPrinted])
 
-  const dayCount = f.startDate && f.endDate ? Math.round((new Date(f.endDate).getTime() - new Date(f.startDate).getTime()) / 86400000) + 1 : 0
-
   const orderedPoints = useMemo(
     () => [startCoords, ...dests.map(d => (d.lat != null && d.lng != null ? { lat: d.lat, lng: d.lng } : null))],
     [startCoords, dests],
@@ -250,6 +248,12 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
     // this bill and the settings page could disagree about the same room.
     stayStyle: f.stayStyle,
   }), [f.startDate, f.endDate, f.travellers, f.transportMode, f.localTrain, f.roundTrip, f.fuelEconomy, f.fuelPrice, f.tankL, f.rentPerDay, f.stayStyle, orderedPoints, returnCount, fuelMode, tankNum, rentNum])
+
+  // The ONE day count (#376): the dock, the ticket's date label, the
+  // commitments row and the outline seed all read the bill's value, so a bad
+  // date range cannot split-brain two surfaces into different answers.
+  // 0 means "Pick your dates" on every one of them.
+  const dayCount = bill.days
 
   // P3 - what is left, said plainly. Mirrors submit()'s own rules, so it can
   // never claim ready when submit would refuse (see createReadiness tests).
@@ -754,7 +758,9 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
 
   const ticketTitle = f.name.trim() || 'Your next trip'
   const ticketRoute = `${f.startLocation.trim() || 'Start'} → ${outbound.length ? outbound.map(d => d.name.split(',')[0]).join(' → ') : '…'}`
-  const dateLabel = f.startDate && f.endDate
+  // Gate on the VALUE, not on the strings: garbage or inverted dates carry
+  // strings but no span, and must say "Pick your dates" exactly like the dock.
+  const dateLabel = bill.days > 0
     ? `${fmtDay(f.startDate)} – ${fmtDay(f.endDate)} · ${bill.days} day${bill.days !== 1 ? 's' : ''} · ${bill.nights} night${bill.nights !== 1 ? 's' : ''}`
     : 'Pick your dates'
 
@@ -1551,7 +1557,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
         <div className="dock-meta">
           <b>{ticketTitle}</b>
           <span>
-            {dayCount > 0 ? `${dayCount}d · ${Math.max(0, dayCount - 1)}n · ${f.travellers} travellers` : 'Pick your dates'}
+            {bill.days > 0 ? `${bill.days}d · ${bill.nights}n · ${f.travellers} travellers` : 'Pick your dates'}
             {billPrinted && bill.perHead != null && <> · <span className="mono dock-amt">{'≈ '}<Money v={bill.perHead} animate={!reduced} />{'/head'}</span></>}
           </span>
           {createFunnelOn('readiness') && <span className="dock-ready">{readinessLine(readiness)}</span>}
