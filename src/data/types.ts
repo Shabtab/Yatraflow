@@ -210,6 +210,13 @@ export interface Trip {
   roundTrip?: boolean
   /** Optional vehicle profile for accurate fuel/charging stop cadence. */
   vehicleProfile?: VehicleProfile
+  /** #377 — the create form's stated vehicle inputs, persisted at last (they
+   *  used to be bill-only and dropped at submit). tankL is the tank/battery
+   *  capacity behind the "≈ N km per tank" note; rentPerDayInr is the rental
+   *  car's daily rate; localTrain prices train trips at suburban fares. */
+  tankL?: number
+  rentPerDayInr?: number
+  localTrain?: boolean
   budgetPerPersonInr: number
   travelStyle: TravelStyle
   /**

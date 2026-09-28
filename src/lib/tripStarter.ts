@@ -10,8 +10,10 @@ import { haversineKm } from './geo'
 import { dayCountForRange } from './dayCount'
 import { MODE_COST_PER_KM, isFuelEconomyMode, parseFuelEconomyKmL, parseFuelPricePerL } from './engine'
 import { STAY_RATE_PER_NIGHT, MEALS_PER_HEAD_DAY } from './planBench'
+import { defaultVehicleProfile, normalizeVehicleProfile } from './vehicleProfile'
+import { sanitizeTankL } from './tripRow'
 import { uid } from '../data/seed'
-import type { ItineraryStop, LatLngPoint, TransportMode, StayStyle } from '../data/types'
+import type { ItineraryStop, LatLngPoint, TransportMode, StayStyle, VehicleProfile } from '../data/types'
 
 /** Straight-line chains underestimate real roads — the bench-style detour factor. */
 export const ROAD_FACTOR = 1.25
@@ -72,6 +74,29 @@ function chainKm(pts: (LatLngPoint | null)[], from: number, to: number): number 
     prev = p
   }
   return sum
+}
+
+/** #377: the create form's stated vehicle details, as the profile Settings
+ *  opens with. The form has no vehicle-type/fuel-type dial — those ride the
+ *  transport mode's own default — while the tank and the mileage the user
+ *  typed become the profile's capacity and economy, so Settings shows what
+ *  was typed instead of the mode default ("set the tank → open Settings →
+ *  gone"). Nothing stated → no profile: the mode default stays the live
+ *  fallback, exactly today's behaviour. The tank bound is the persistence
+ *  sanitizer's, so a value the row would refuse is never proposed here. */
+export function vehicleProfileFor(input: { mode: TransportMode; tankL?: number; economyKmL?: number }): VehicleProfile | undefined {
+  const base = defaultVehicleProfile(input.mode)
+  const tank = sanitizeTankL(input.tankL)
+  const eco = typeof input.economyKmL === 'number' && Number.isFinite(input.economyKmL)
+    && input.economyKmL >= 1 && input.economyKmL <= 100
+    ? input.economyKmL
+    : undefined
+  if (tank === null && eco === undefined) return undefined
+  return normalizeVehicleProfile({
+    ...base,
+    capacity: tank ?? base.capacity,
+    economy: eco ?? base.economy,
+  })
 }
 
 /** The whole rough bill in one pure pass — every line carries its formula. */

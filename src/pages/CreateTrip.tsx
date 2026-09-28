@@ -20,7 +20,8 @@ import { FUEL_PRICE_INR_PER_L, DEFAULT_FUEL_ECONOMY_KML, isFuelEconomyMode, pars
 import { planDriveDays, isSelfDrivenMode } from '../lib/ridePlan'
 import { CREW_CHIPS, CREW_MAX, CREW_MIN, clampCrew } from '../lib/crew'
 import { InlineIcon, modeIcon, MODE_ICONS } from '../components/icons'
-import { estimateTripStarter, buildOutlineSeedStops } from '../lib/tripStarter'
+import { estimateTripStarter, buildOutlineSeedStops, vehicleProfileFor } from '../lib/tripStarter'
+import { sanitizeTankL, sanitizeRentPerDayInr } from '../lib/tripRow'
 import { TRIP_TEMPLATES, applyTemplate, templateFromRange, fmtBand } from '../lib/tripTemplates'
 import { regionFor, regionBand, nationalBand, experienceTier, anchorNote } from '../lib/budgetBenchmarks'
 import { createFunnelOn } from '../lib/featureFlags'
@@ -673,7 +674,18 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
       transportMode: f.transportMode,
       fuelEconomyKmL: fuelMode ? parseFuelEconomyKmL(f.fuelEconomy) : undefined,
       fuelPricePerL: fuelMode ? parseFuelPricePerL(f.fuelPrice) : undefined,
-      roundTrip: fuelMode ? f.roundTrip : undefined,
+      // #377: the flag rides along for EVERY mode — non-fuel round trips used
+      // to drop it here and Settings then described a different trip. The
+      // engine keeps its own narrow isRoundTrip (fuel modes only) until its
+      // consumers are audited deliberately.
+      roundTrip: f.roundTrip,
+      // #377 — the vehicle inputs the form was told, persisted at last (they
+      // used to be bill-only and dropped on the floor here). Junk never
+      // reaches the row: the same sanitizers the writer uses decide.
+      vehicleProfile: vehicleProfileFor({ mode: f.transportMode, tankL: tankNum, economyKmL: parseFuelEconomyKmL(f.fuelEconomy) }),
+      tankL: Number.isFinite(tankNum) && tankNum > 0 ? (sanitizeTankL(tankNum) ?? undefined) : undefined,
+      rentPerDayInr: Number.isFinite(rentNum) && rentNum > 0 ? (sanitizeRentPerDayInr(rentNum) ?? undefined) : undefined,
+      localTrain: f.transportMode === 'train' ? f.localTrain : undefined,
       budgetPerPersonInr: f.budgetPerPersonInr,
       travelStyle: f.travelStyle,
       stayStyle: f.stayStyle,
