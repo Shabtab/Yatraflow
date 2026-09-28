@@ -13,6 +13,36 @@ const FUEL_TYPES: readonly FuelType[] = ['petrol', 'diesel', 'electric', 'cng']
 const CAPACITY_BOUNDS = { min: 0.5, max: 500 } // 0.5 L/kWh is silly, 500 is a fuel tanker
 const ECONOMY_BOUNDS = { min: 1, max: 100 } // 1 km/L is below any car; 100 km/L is a hypermiler
 
+/** #412's ACCEPTANCE band for the form's capacity box (1-300 L/kWh). Wider
+ *  than normalizeVehicleProfile's tolerance on purpose: a stated 200 L is
+ *  refused by the form before it can become a stored profile, so the pedant
+ *  path never meets the normalized one. Blank means "use the default" and is
+ *  the caller's business, not this function's. */
+export const CAPACITY_FORM_BOUNDS = { min: 1, max: 300 }
+/** #412's acceptance band for the form's economy box (2-80 km/L-or-kWh). */
+export const ECONOMY_FORM_BOUNDS = { min: 2, max: 80 }
+
+/**
+ * Parse a stated capacity. Returns undefined ONLY for a blank/whitespace box
+ * (the caller substitutes the vehicle's default). A non-blank value that is
+ * not a number, or is outside 1-300, ALSO returns undefined — and the caller
+ * distinguishes the two cases by checking the raw string itself, because the
+ * difference is the whole fix: blank → default, unparseable → refuse the save
+ * with an inline error (never clear the stored value).
+ */
+export function parseCapacityL(raw: string): number | undefined {
+  const n = Number(raw.trim())
+  const { min, max } = CAPACITY_FORM_BOUNDS
+  return raw.trim() !== '' && Number.isFinite(n) && n >= min && n <= max ? n : undefined
+}
+
+/** Same contract as parseCapacityL, 2-80 km/L or km/kWh. */
+export function parseVehicleEconomy(raw: string): number | undefined {
+  const n = Number(raw.trim())
+  const { min, max } = ECONOMY_FORM_BOUNDS
+  return raw.trim() !== '' && Number.isFinite(n) && n >= min && n <= max ? n : undefined
+}
+
 export interface ResolvedRange {
   /** capacity × economy — total theoretical range */
   rangeKm: number

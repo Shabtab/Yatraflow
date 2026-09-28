@@ -3,19 +3,20 @@
 // blocks, big-value heads, mode grid, crew buttons, slider dials with drag
 // bubbles) and a live "settings bill" receipt on the right mirrors every choice
 // before it is saved. The sticky save bar spans both columns.
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
-  ChevronDown, ChevronUp, TriangleAlert, X,
+  ChevronDown, ChevronUp, Pencil, TriangleAlert, X,
 } from 'lucide-react'
-import type { Trip, LatLngPoint, TransportMode } from '../../data/types'
+import type { Trip, TransportMode } from '../../data/types'
 import { TRANSPORT_MODES, TRAVEL_STYLES, STAY_STYLES } from '../../data/types'
-import { updateTrip } from '../../store/store'
+import { updateTrip, reconcileDays } from '../../store/store'
 import { FUEL_PRICE_INR_PER_L, DEFAULT_FUEL_ECONOMY_KML, MODE_SPEED, formatInr, isFuelEconomyMode, parseFuelEconomyKmL, isImplausibleFuelEconomy, parseFuelPricePerL } from '../../lib/engine'
 import { cap } from '../../lib/labels'
 import { InlineIcon, modeIcon } from '../../components/icons'
 import { isSelfDrivenMode } from '../../lib/ridePlan'
 import { CREW_CHIPS, CREW_MAX, CREW_MIN, clampCrew } from '../../lib/crew'
-import { defaultVehicleProfile } from '../../lib/vehicleProfile'
+import { defaultVehicleProfile, parseCapacityL, parseVehicleEconomy } from '../../lib/vehicleProfile'
+import { zipDests, splitDests, renameDest, type DestPair } from '../../lib/destPairs'
 import { Field, RangeDial, StickyFormBar, toast } from '../../components/ui'
 import { Select } from '../../components/Select'
 import { DateRangeCalendar } from '../../components/DateRangeCalendar'
@@ -24,6 +25,7 @@ import { LocationInput, pickLabel } from '../../components/LocationInput'
 import type { StartPin } from '../../lib/startPin'
 import { coordsForText, pinMatchesText } from '../../lib/startPin'
 import { CoverImagePicker } from '../../components/CoverImagePicker'
+import { RemoteEditBanner } from '../../components/RemoteEditBanner'
 
 /** The allowance the "drive after dinner" toggle turns on when a trip has none
  *  (#122's dhaba case: dinner at X, two more hours to Y). */
@@ -39,10 +41,35 @@ const START_DROPPED = 'The stored start pin named a different city, so it was no
 /** Icon per transport mode — the ONE map lives in components/icons (modeIcon);
  *  this file used to keep a private copy that drifted from the bench's. */
 
-export function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boolean }) {
-  const [f, setF] = useState({
+/** The form's editable field set. `destinations` lives in the pair array
+ *  beside it (#411) — this shape is the scalar fields only. */
+export interface SettingsFormState {
+  name: string
+  startLocation: string
+  startDate: string
+  endDate: string
+  travellers: number
+  budget: number
+  transportMode: TransportMode
+  travelStyle: Trip['travelStyle']
+  stayStyle: 'budget' | 'comfort' | 'luxury'
+  fuelEconomy: string
+  fuelPrice: string
+  roundTrip: boolean
+  vehicleType: string
+  fuelType: string
+  capacity: string
+  vehicleEconomy: string
+  driverCount: number | undefined
+  hasVulnerable: boolean | undefined
+  driveAfterDinner: boolean
+}
+
+/** Seed the scalar field set from a trip row. One factory, used by mount and
+ *  by #414's take-theirs reseed, so a reload can never drift from the open. */
+export function formFromTrip(trip: Trip): SettingsFormState {
+  return {
     name: trip.name, startLocation: trip.startLocation,
-    destinations: [...trip.destinations],
     startDate: trip.startDate, endDate: trip.endDate,
     travellers: trip.travellers, budget: trip.budgetPerPersonInr,
     transportMode: trip.transportMode, travelStyle: trip.travelStyle,
@@ -66,8 +93,151 @@ export function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boo
     driverCount: trip.driverCount,
     hasVulnerable: trip.hasVulnerable,
     driveAfterDinner: (trip.driveAfterDinnerMin ?? 0) > 0,
-  })
-  const [dateErr, setDateErr] = useState<string | null>(null)
+  }
+}
+
+export type SettingsDryRun =
+  | { ok: true; patch: Partial<Trip>; startCoordsDropped: boolean }
+  | { ok: false; reason: string; blocked?: number[] }
+
+/**
+ * #408: ONE predicate, run by the live Preview AND the Save button, so the
+ * preview is never a guess and a refusal is never a surprise. It answers
+ * "would this save be accepted, and if not, why" BEFORE any write touches the
+ * store — the reason is rendered inline (and under the blocking days, which
+ * link to their timeline day) instead of living in a toast that fades.
+ *
+ * Every check here is a check updateTrip re-runs server-side of the form;
+ * running it twice is the point — the UI's copy of the verdict is derived,
+ * never stored, so the two cannot drift apart.
+ */
+export function settingsDryRun(
+  f: SettingsFormState,
+  dests: readonly DestPair[],
+  startPin: StartPin | null,
+  trip: Trip,
+): SettingsDryRun {
+  const s = new Date(`${f.startDate}T00:00:00`), e = new Date(`${f.endDate}T00:00:00`)
+  if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) {
+    return { ok: false, reason: 'Pick both a start and an end date.' }
+  }
+  if (e < s) {
+    return { ok: false, reason: 'The end date must be on or after the start date.' }
+  }
+  const fuel = isFuelEconomyMode(f.transportMode)
+  // #412: a non-blank out-of-range capacity/economy REFUSES the save with the
+  // reason. Clearing the stored value (200 km/L parsing to undefined and the
+  // save writing undefined) was worse than the refusal — a refusal is visible.
+  if (fuel) {
+    if (f.capacity.trim() !== '' && parseCapacityL(f.capacity) === undefined) {
+      return {
+        ok: false,
+        reason: `Tank or battery capacity must be 1-300 ${f.fuelType === 'electric' ? 'kWh' : 'L'} — clear the box to use the vehicle default.`,
+      }
+    }
+    if (f.vehicleEconomy.trim() !== '' && parseVehicleEconomy(f.vehicleEconomy) === undefined) {
+      return {
+        ok: false,
+        reason: 'Economy must be 2-80 km/L (km/kWh for an EV) — clear the box to use the vehicle default.',
+      }
+    }
+  }
+  // Reconcile the DRAFT dates against the trip's real days — the same pure
+  // check updateTrip makes, but here the refusal can carry the blocking day
+  // indexes so each one links straight to its timeline day.
+  const datesChanged = f.startDate !== trip.startDate || f.endDate !== trip.endDate
+  if (datesChanged) {
+    const protectedIdx = new Set(trip.fixedCommitments.map(c => c.dayIndex))
+    const rec = reconcileDays(trip.days, f.startDate, f.endDate, protectedIdx)
+    if (rec.error) return { ok: false, reason: rec.error, blocked: rec.blocked }
+  }
+  const selfDriven = isSelfDrivenMode(f.transportMode)
+  const { destinations, destinationCoords } = splitDests(dests)
+  // #410 backstop (now inside the shared predicate, so the preview shows it
+  // too): never persist a pair whose text and pin disagree, whatever produced
+  // it. The trip saves unpositioned rather than measuring the wrong city.
+  const startCoordsToSave = coordsForText(startPin, f.startLocation)
+  return {
+    ok: true,
+    startCoordsDropped: !!startPin && !startCoordsToSave,
+    patch: {
+      name: f.name, startLocation: f.startLocation,
+      startLocationCoords: startCoordsToSave ?? undefined,
+      startDate: f.startDate, endDate: f.endDate,
+      // #411: the ONE pair array splits into the row's two arrays exactly
+      // here — the save mapping is the only writer of either.
+      destinations, destinationCoords,
+      travellers: clampCrew(f.travellers),
+      // The party dials only exist for self-drive modes (the block above is
+      // gated on the same predicate), so a conducted trip never carries
+      // them — and switching to one clears what a previous mode set.
+      driverCount: selfDriven ? f.driverCount : undefined,
+      hasVulnerable: selfDriven ? f.hasVulnerable : undefined,
+      // #213 Phase 5: only write the 120-minute default when the toggle is
+      // being turned ON. A trip stored with a custom allowance (say 60)
+      // used to be silently rewritten to 120 by any unrelated save.
+      driveAfterDinnerMin: !selfDriven
+        ? undefined
+        : f.driveAfterDinner
+          ? (trip.driveAfterDinnerMin ?? DEFAULT_DRIVE_AFTER_DINNER_MIN)
+          : undefined,
+      budgetPerPersonInr: Math.max(0, f.budget),
+      transportMode: f.transportMode, travelStyle: f.travelStyle,
+      stayStyle: f.stayStyle,
+      fuelEconomyKmL: fuel ? parseFuelEconomyKmL(f.fuelEconomy) : undefined,
+      fuelPricePerL: fuel ? parseFuelPricePerL(f.fuelPrice) : undefined,
+      roundTrip: fuel ? f.roundTrip : undefined,
+      // #213 Phase 6: the fallbacks come from the CHOSEN vehicle's own
+      // profile, not hardcoded car numbers. `Number('45') || 45` used to
+      // write a 45 L / 15 km-L car onto a motorcycle (12 / 40) or an EV
+      // (50 kWh / 6) whenever the fields were left blank.
+      vehicleProfile: fuel ? {
+        vehicleType: f.vehicleType as 'car' | 'motorcycle' | 'ev',
+        fuelType: f.fuelType as 'petrol' | 'diesel' | 'electric' | 'cng',
+        capacity: parseCapacityL(f.capacity) ?? defaultVehicleProfile(f.vehicleType).capacity,
+        economy: parseVehicleEconomy(f.vehicleEconomy) ?? defaultVehicleProfile(f.vehicleType).economy,
+      } : undefined,
+    },
+  }
+}
+
+/** #408: the days a refused shrink is waiting on, each one a jump to its
+ *  timeline day. Without a workspace to jump from, the days still get named. */
+function BlockedDayLinks({ blocked, onOpenDay }: { blocked?: number[]; onOpenDay?: (dayIndex: number) => void }) {
+  if (!blocked || blocked.length === 0) return null
+  return (
+    <span className="ts-blocked-days">
+      {(onOpenDay
+        ? blocked.map(i => (
+            <button key={i} type="button" className="link-btn teal btn-sm"
+              onClick={() => onOpenDay(i)}>Day {i + 1} →</button>
+          ))
+        : blocked.map(i => <span key={i} className="muted small">Day {i + 1}</span>)
+      )}
+    </span>
+  )
+}
+
+export function TripSettingsForm({ trip, editable, onOpenDay }: {
+  trip: Trip
+  editable: boolean
+  /** #408: jump to a timeline day — the workspace plumbs the same focus
+   *  mechanism the Map tab's day links use. Optional: the form renders the
+   *  blocking days as plain text when no workspace is wired up. */
+  onOpenDay?: (dayIndex: number) => void
+}) {
+  const [f, setF] = useState(() => formFromTrip(trip))
+  /** #414: when the trip row moves under the open draft (a crew member saved
+   *  while this form was open), the banner offers keep-mine / take-theirs.
+   *  `openedAtRef` is the updatedAt the draft was born against; our OWN save
+   *  rebases it through `ownSaveRef` so it never fires on ourselves. */
+  const openedAtRef = useRef(trip.updatedAt)
+  const ownSaveRef = useRef(false)
+  const [remoteAt, setRemoteAt] = useState<number | null>(null)
+  useEffect(() => {
+    if (ownSaveRef.current) { ownSaveRef.current = false; openedAtRef.current = trip.updatedAt; return }
+    if (trip.updatedAt > openedAtRef.current) setRemoteAt(trip.updatedAt)
+  }, [trip.updatedAt])
   // The day grid follows the date range — show what the picker will do to it.
   const dayDelta = (() => {
     const s = new Date(`${f.startDate}T00:00:00`), e = new Date(`${f.endDate}T00:00:00`)
@@ -80,19 +250,57 @@ export function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boo
   )
   /** #410: soft notice under the start field — the pin is off, and why. */
   const [startNotice, setStartNotice] = useState('')
-  const [destCoords, setDestCoords] = useState<(LatLngPoint | null)[]>(trip.destinationCoords ?? [])
+  /** #411: the route tail as ONE array of {name, lat?, lng?} pairs — the
+   *  form's single source of truth. The row's parallel arrays exist only at
+   *  the boundary (zip on open, split on save), so a rename or a remove can
+   *  no longer slide names out from under their pins. */
+  const [dests, setDests] = useState<DestPair[]>(() => zipDests(trip.destinations, trip.destinationCoords))
   const [destInput, setDestInput] = useState('')
+  /** #411: rename-in-place. The chip edits its own name; coords and position
+   *  are untouched by construction (renameDest rebuilds nothing). */
+  const [renamingDest, setRenamingDest] = useState<number | null>(null)
+  const [renameDraft, setRenameDraft] = useState('')
 
-  function addDest(name: string, coords: LatLngPoint | null) {
+  function addDest(name: string, coords: { lat: number; lng: number } | null) {
     const clean = name.trim()
     if (!clean) return
-    if (f.destinations.some(d => d.toLowerCase() === clean.toLowerCase())) {
+    if (dests.some(d => d.name.toLowerCase() === clean.toLowerCase())) {
       toast('Already on the route.', 'err'); return
     }
-    setF(x => ({ ...x, destinations: [...x.destinations, clean] }))
-    setDestCoords(list => [...list, coords])
+    setDests(list => [...list, coords ? { name: clean, lat: coords.lat, lng: coords.lng } : { name: clean }])
     setDestInput('')
   }
+
+  /** Swap with a neighbour — on the PAIRS, so a pin travels with its name. */
+  function moveDest(i: number, dir: -1 | 1) {
+    setDests(list => {
+      const j = i + dir
+      if (j < 0 || j >= list.length) return list
+      const next = [...list]; const tmp = next[i]; next[i] = next[j]; next[j] = tmp
+      return next
+    })
+  }
+
+  function commitRename(i: number) {
+    setDests(list => renameDest(list, i, renameDraft.trim() || list[i]?.name || ''))
+    setRenamingDest(null)
+    setRenameDraft('')
+  }
+
+  /** #414 "take theirs": rebuild the whole draft from the row as it stands. */
+  function reseedFrom(t: Trip) {
+    setF(formFromTrip(t))
+    setDests(zipDests(t.destinations, t.destinationCoords))
+    setStartPin(t.startLocationCoords ? { coords: t.startLocationCoords, label: t.startLocation } : null)
+    setStartNotice(''); setDestInput(''); setRenamingDest(null); setRenameDraft('')
+    openedAtRef.current = t.updatedAt
+    setRemoteAt(null)
+  }
+
+  // #408: the Preview and the Save button read the SAME dry run — computed
+  // once per render, never stored, so the receipt and the write can never
+  // disagree about what this form would do.
+  const dry = settingsDryRun(f, dests, startPin, trip)
 
   // Derived values the bench-style blocks and the live receipt read from.
   // #213 Phase 5: clampCrew, not Math.min(12,…) — the old clamp misrepresented a
@@ -127,6 +335,18 @@ export function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boo
 
   return (
     <div className="ts-form">
+      {/* #414: a crew member saved while this form sat open. The banner
+          offers the same two verbs the stop editor uses — keep my draft, or
+          take theirs and rebuild from the row as it stands. Non-blocking,
+          role=status: it must not steal focus mid-edit. */}
+      {remoteAt !== null && (
+        <RemoteEditBanner
+          noun="trip settings"
+          byName=""
+          onKeepMine={() => { openedAtRef.current = trip.updatedAt; setRemoteAt(null) }}
+          onTakeTheirs={() => reseedFrom(trip)}
+        />
+      )}
       {/* Two dials, two bars. These used to share one block with the style bar on
           top and the price bar tucked underneath it, so the second read as a
           sub-option of the first. Budget preference asks what the bed costs;
@@ -188,11 +408,20 @@ export function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boo
             <DateRangeCalendar
               start={f.startDate} end={f.endDate}
               disabled={!editable}
-              error={dateErr ?? undefined}
+              error={dry.ok ? undefined : dry.reason}
               hint={dayDeltaLabel}
-              onChange={({ startDate, endDate }) => { setF(x => ({ ...x, startDate, endDate })); setDateErr(null) }}
+              onChange={({ startDate, endDate }) => { setF(x => ({ ...x, startDate, endDate })) }}
             />
-            {dateErr && <p className="err-text ts-warn-note" role="alert">{dateErr}</p>}
+            {/* #408: the refusal lives here, inline, where the dates are —
+                with the blocking days linked to their timeline day. It is
+                derived from the shared dry run, so the receipt above/beside
+                and this line can never disagree. */}
+            {!dry.ok && (
+              <div className="ts-save-refusal" role="alert">
+                <p className="err-text ts-warn-note"><InlineIcon icon={TriangleAlert} size={12} gap={3} />{dry.reason}</p>
+                <BlockedDayLinks blocked={dry.blocked} onOpenDay={onOpenDay} />
+              </div>
+            )}
             <Field label="Starting location">
               <LocationInput
                 value={f.startLocation}
@@ -217,39 +446,49 @@ export function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boo
               />
               {startNotice && <p className="hint-text" role="status" style={{ marginTop: 6 }}>{startNotice}</p>}
             </Field>
-            <Field label={`Destinations (${f.destinations.length})`} hint="Search to add — arrows reorder the route">
+            <Field label={`Destinations (${dests.length})`} hint="Search to add — arrows reorder the route">
               <LocationInput
                 value={destInput}
                 onChange={setDestInput}
                 onPick={p => addDest(p.name + (p.admin1 ? `, ${p.admin1}` : ''), { lat: p.latitude, lng: p.longitude })}
-                placeholder={f.destinations.length ? 'Add another destination…' : 'Add your first destination…'}
+                placeholder={dests.length ? 'Add another destination…' : 'Add your first destination…'}
                 disabled={!editable}
               />
-              {f.destinations.length > 0 && (
+              {dests.length > 0 && (
                 <div className="dest-chips">
-                  {f.destinations.map((d, i) => (
-                    <span key={`${d}-${i}`} className="dest-chip">
-                      <span className="dest-order">{i + 1}</span>{d}
-                      <button type="button" aria-label={`Move ${d} earlier`} disabled={!editable || i === 0}
-                        onClick={() => setF(x => {
-                          const list = [...x.destinations]; if (i === 0) return x
-                          ;[list[i - 1], list[i]] = [list[i], list[i - 1]]
-                          const dc = [...destCoords]; [dc[i - 1], dc[i]] = [dc[i], dc[i - 1]]; setDestCoords(dc)
-                          return { ...x, destinations: list }
-                        })} style={{ opacity: i === 0 ? .25 : undefined }}><ChevronUp size={12} aria-hidden /></button>
-                      <button type="button" aria-label={`Move ${d} later`} disabled={!editable || i === f.destinations.length - 1}
-                        onClick={() => setF(x => {
-                          const list = [...x.destinations]; if (i >= list.length - 1) return x
-                          ;[list[i + 1], list[i]] = [list[i], list[i + 1]]
-                          const dc = [...destCoords]; [dc[i + 1], dc[i]] = [dc[i], dc[i + 1]]; setDestCoords(dc)
-                          return { ...x, destinations: list }
-                        })} style={{ opacity: i === f.destinations.length - 1 ? .25 : undefined }}><ChevronDown size={12} aria-hidden /></button>
+                  {dests.map((d, i) => (
+                    <span key={`${d.name}-${i}`} className="dest-chip" title={d.lat != null && d.lng != null ? 'Pinned to this map location' : undefined}>
+                      <span className="dest-order">{i + 1}</span>
+                      {renamingDest === i ? (
+                        <input
+                          className="input input--compact"
+                          aria-label={`Rename ${d.name}`}
+                          autoFocus
+                          value={renameDraft}
+                          onChange={e => setRenameDraft(e.target.value)}
+                          onBlur={() => commitRename(i)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') commitRename(i)
+                            if (e.key === 'Escape') { setRenamingDest(null); setRenameDraft('') }
+                          }}
+                        />
+                      ) : (
+                        <>
+                          {d.name}
+                          {d.lat != null && d.lng != null && <span className="dest-pin" aria-hidden>📍</span>}
+                          {editable && (
+                            <button type="button" aria-label={`Rename ${d.name}`}
+                              onClick={() => { setRenamingDest(i); setRenameDraft(d.name) }}><Pencil size={12} aria-hidden /></button>
+                          )}
+                        </>
+                      )}
+                      <button type="button" aria-label={`Move ${d.name} earlier`} disabled={!editable || i === 0}
+                        onClick={() => moveDest(i, -1)} style={{ opacity: i === 0 ? .25 : undefined }}><ChevronUp size={12} aria-hidden /></button>
+                      <button type="button" aria-label={`Move ${d.name} later`} disabled={!editable || i === dests.length - 1}
+                        onClick={() => moveDest(i, 1)} style={{ opacity: i === dests.length - 1 ? .25 : undefined }}><ChevronDown size={12} aria-hidden /></button>
                       {editable && (
-                        <button type="button" aria-label={`Remove ${d}`}
-                          onClick={() => {
-                            setF(x => ({ ...x, destinations: x.destinations.filter((_, j) => j !== i) }))
-                            setDestCoords(list => list.filter((_, j) => j !== i))
-                          }}><X size={12} aria-hidden /></button>
+                        <button type="button" aria-label={`Remove ${d.name}`}
+                          onClick={() => setDests(list => list.filter((_, j) => j !== i))}><X size={12} aria-hidden /></button>
                       )}
                     </span>
                   ))}
@@ -352,7 +591,26 @@ export function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boo
               {TRANSPORT_MODES.map(m => (
                 <button key={m} type="button" className={`bench-mode-btn${f.transportMode === m ? ' on' : ''}`}
                   aria-pressed={f.transportMode === m} disabled={!editable}
-                  onClick={() => setF(x => ({ ...x, transportMode: m }))}>
+                  onClick={() => {
+                    // #412: the vehicle fields are READ against the mode's own
+                    // default profile. Switching car → motorcycle used to leave
+                    // the previous vehicle's capacity/economy sitting in the
+                    // boxes, so the dial re-read 45 L / 15 km-L on a bike — and
+                    // a save then priced the bike trip with car numbers. The
+                    // mode carries its profile defaults in with it. ('ev' is a
+                    // vehicle TYPE, not a transport mode — an EV trip is
+                    // car-mode with the electric profile picked below.)
+                    const vt = m === 'motorcycle' ? 'motorcycle' : 'car'
+                    const d = defaultVehicleProfile(vt)
+                    const ft = m === 'motorcycle'
+                      ? 'petrol'
+                      : f.fuelType === 'electric' || f.fuelType === 'cng' ? 'petrol' : f.fuelType
+                    setF(x => ({
+                      ...x, transportMode: m,
+                      vehicleType: vt, fuelType: ft,
+                      capacity: String(d.capacity), vehicleEconomy: String(d.economy),
+                    }))
+                  }}>
                   {modeIcon(m)}
                   <span className="bench-mode-name">{cap(m)}</span>
                   <span className="bench-mode-speed" aria-hidden="true">{MODE_SPEED[m] ?? 40}</span>
@@ -425,6 +683,21 @@ export function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boo
 
         {/* Live settings bill — mirrors every choice before Save */}
         <aside className="ts-receiptcol" aria-label="Live preview of these settings">
+          {/* #408: the preview shows what WOULD happen — including a save that
+              would be refused. A "Preview" that hides the refusal is a guess,
+              not a preview; the reason and the blocking days (linked to their
+              timeline day) sit at the top of the receipt, from the same dry
+              run the Save button runs. */}
+          {!dry.ok && (
+            <div className="bench-receipt card ts-receipt-refusal" role="status">
+              <span className="bench-stamp" aria-hidden="true">Would be refused</span>
+              <div className="bench-receipt-head">
+                <span className="bench-receipt-kicker">Save preview</span>
+              </div>
+              <p className="err-text ts-warn-note" style={{ marginTop: 8 }}>{dry.reason}</p>
+              <BlockedDayLinks blocked={dry.blocked} onOpenDay={onOpenDay} />
+            </div>
+          )}
           <div className="bench-receipt card">
             <span className="bench-barcode" aria-hidden="true" />
             <span className="bench-stamp" aria-hidden="true">Preview</span>
@@ -468,60 +741,15 @@ export function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boo
 
       <StickyFormBar show={editable}>
         <button className="btn btn-primary" onClick={() => {
-          // Dates drive the day grid — validate the pair here for an inline
-          // message (updateTrip re-checks and toasts on reconcile failures).
-          const s = new Date(`${f.startDate}T00:00:00`), e = new Date(`${f.endDate}T00:00:00`)
-          if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) { setDateErr('Pick both a start and an end date.'); return }
-          if (e < s) { setDateErr('The end date must be on or after the start date.'); return }
-          // updateTrip toasts the rejection itself (e.g. a shrink blocked by a
-          // day holding stops) and returns false — no success toast then.
-          // #410 backstop: never persist a pair whose text and pin disagree,
-          // whatever produced it. The interactive path drops the pin at edit
-          // time (above); this catches a state the form did not create — and a
-          // legacy row saved by the old code, which the pin's own label cannot
-          // reveal. The trip saves unpositioned rather than measuring the
-          // wrong city under the right name.
-          const startCoordsToSave = coordsForText(startPin, f.startLocation)
-          if (startPin && !startCoordsToSave) setStartNotice(START_DROPPED)
-          const saved = updateTrip(trip.id, {
-            name: f.name, startLocation: f.startLocation,
-            startLocationCoords: startCoordsToSave ?? undefined,
-            startDate: f.startDate, endDate: f.endDate,
-            destinations: f.destinations.map(s => s.trim()).filter(Boolean),
-            destinationCoords: destCoords,
-            travellers: clampCrew(f.travellers),
-            // The party dials only exist for self-drive modes (the block above is
-            // gated on the same predicate), so a conducted trip never carries
-            // them — and switching to one clears what a previous mode set.
-            driverCount: selfDriven ? f.driverCount : undefined,
-            hasVulnerable: selfDriven ? f.hasVulnerable : undefined,
-            // #213 Phase 5: only write the 120-minute default when the toggle is
-            // being turned ON. A trip stored with a custom allowance (say 60)
-            // used to be silently rewritten to 120 by any unrelated save.
-            driveAfterDinnerMin: !selfDriven
-              ? undefined
-              : f.driveAfterDinner
-                ? (trip.driveAfterDinnerMin ?? DEFAULT_DRIVE_AFTER_DINNER_MIN)
-                : undefined,
-            budgetPerPersonInr: Math.max(0, f.budget),
-            transportMode: f.transportMode, travelStyle: f.travelStyle,
-            stayStyle: f.stayStyle,
-            fuelEconomyKmL: isFuelEconomyMode(f.transportMode) ? parseFuelEconomyKmL(f.fuelEconomy) : undefined,
-            fuelPricePerL: isFuelEconomyMode(f.transportMode) ? parseFuelPricePerL(f.fuelPrice) : undefined,
-            roundTrip: isFuelEconomyMode(f.transportMode) ? f.roundTrip : undefined,
-            // #213 Phase 6: the fallbacks come from the CHOSEN vehicle's own
-            // profile, not hardcoded car numbers. `Number('45') || 45` used to
-            // write a 45 L / 15 km-L car onto a motorcycle (12 / 40) or an EV
-            // (50 kWh / 6) whenever the fields were left blank.
-            vehicleProfile: isFuelEconomyMode(f.transportMode) ? {
-              vehicleType: f.vehicleType as 'car' | 'motorcycle' | 'ev',
-              fuelType: f.fuelType as 'petrol' | 'diesel' | 'electric' | 'cng',
-              capacity: Number(f.capacity) || defaultVehicleProfile(f.vehicleType).capacity,
-              economy: Number(f.vehicleEconomy) || defaultVehicleProfile(f.vehicleType).economy,
-            } : undefined,
-          })
-          if (saved) {
-            setDateErr(null)
+          // #408: the Preview and this button run the SAME dry run. A refusal
+          // is already rendered inline (and in the receipt) — clicking Save on
+          // a refused form is a no-op, never a toast that fades.
+          if (!dry.ok) return
+          if (dry.startCoordsDropped) setStartNotice(START_DROPPED)
+          if (updateTrip(trip.id, dry.patch)) {
+            // Our own save moves updatedAt — rebase the remote-edit watch so
+            // the banner cannot fire on ourselves (#414).
+            ownSaveRef.current = true
             toast('Trip settings updated')
           }
         }}>Save settings</button>

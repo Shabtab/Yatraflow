@@ -1245,14 +1245,16 @@ export interface NewTripInput {
  *  empty days at the end; shortening drops trailing EMPTY days only. Days
  *  holding stops — or referenced by a fixed commitment — are never silently
  *  deleted; the returned error names the first blocked day so the UI can
- *  tell the user to clear it first. Indexes are re-sequenced after any
- *  change. Pure: no store access, node-testable. */
+ *  tell the user to clear it first, and `blocked` carries EVERY load-bearing
+ *  day index that stands in the way (#408: the settings form links each one
+ *  straight to its timeline day instead of naming just the first). Indexes
+ *  are re-sequenced after any change. Pure: no store access, node-testable. */
 export function reconcileDays(
   days: ItineraryDay[],
   newStartDate: string,
   newEndDate: string,
   protectedDayIndexes: Set<number> = new Set(),
-): { days: ItineraryDay[]; error?: string } {
+): { days: ItineraryDay[]; error?: string; blocked?: number[] } {
   const start = new Date(`${newStartDate}T00:00:00`)
   const end = new Date(`${newEndDate}T00:00:00`)
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
@@ -1271,10 +1273,11 @@ export function reconcileDays(
     let last = next.length
     while (last > target && !loadBearing(next[last - 1])) last--
     if (last > target) {
-      const blocked = next.slice(target).find(loadBearing)
+      const blocked = next.slice(target).filter(loadBearing)
       return {
         days,
-        error: `Day ${(blocked?.index ?? target) + 1} still has stops or a fixed commitment — move or delete them before shortening the trip.`,
+        error: `Day ${(blocked[0]?.index ?? target) + 1} still has stops or a fixed commitment — move or delete them before shortening the trip.`,
+        blocked: blocked.map(d => d.index),
       }
     }
     next = next.slice(0, last)

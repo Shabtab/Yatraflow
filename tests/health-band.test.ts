@@ -148,9 +148,15 @@ describe('#400 — every band the mapper emits has a colour rule', () => {
     // The re-baseline proof. "Before" is re-derived from git rather than copied,
     // so this cannot rot into a list that describes an old tree. Skips when there
     // is no git context (a shallow export): the rules above still hold.
+    //
+    // The baseline is the v0.70.0 tag, NOT origin/test: #504 (which carries this
+    // change) has merged, so origin/test now IS the after-state and deriving
+    // "before" from it measured the pinned change against itself. A tag is a
+    // pinned pre-change tree; this is the one place the ref matters, and the tag
+    // is the one that says what the vocabulary was before.
     let before: string[]
     try {
-      before = healthSelectors(execSync('git show origin/test:src/styles.css', { encoding: 'utf8' }))
+      before = healthSelectors(execSync('git show v0.70.0:src/styles.css', { encoding: 'utf8' }))
     } catch {
       return
     }
