@@ -15,6 +15,10 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Fixed
+
+- **My Trips and Trash say when a read failed instead of looking empty.** A dropped connection used to render "No trips yet" and "Trash is empty" over reads that never succeeded, with no way back. Both surfaces now distinguish loading from failed from genuinely empty: a failed trips read and a failed bin read each print an error with a Retry that re-issues the read, while genuine empties keep their current copy. The bin also refreshes in place — on window/tab focus while resident and after every trash, restore and purge resolution, success and failure both — so a just-trashed trip appears without leaving the view. Purging a trip ("Delete forever") now writes an `admin_audit` row with the actor, the trip name/id and its child counts; the scheduled 30-day sweep is untouched. Requires applying `supabase/migrations/20260929_trash_purge_audit.sql` (#383, #387).
+
 ## [0.69.0] - 2026-09-27
 
 The audit's P1 wave is closed, and the map learned to search. Every P1 the day's sweep filed is
