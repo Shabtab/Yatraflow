@@ -449,13 +449,24 @@ html { overflow-x: clip; }
 .health-big { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
 .health-num-big { font-size: 54px; font-weight: 800; font-family: var(--font-display); line-height: 1; font-variant-numeric: tabular-nums; }
 .health-num-big.ok { color: var(--ok); }
-.health-num-big.mid { color: var(--warn-600); }
-.health-num-big.bad { color: var(--yf-coral); }
+/* #400: the band's FOUR-WAY palette, so the number agrees with the chip beside
+   it. `teal` is the missing middle band — before this a 70–84 trip printed
+   "Manageable" in Comfortable-green because the number read a 3-bucket class
+   while the chip read a 4-way tone. The `ink-teal` family, not the raw brand
+   teal, so 54px text keeps AA on both themes.
+   These four REPLACE the old `.mid`/`.bad` pair: `healthBandClass` no longer
+   emits either name, so keeping them would be a rule nothing can reach. */
+.health-num-big.teal { color: var(--ink-teal); }
+.health-num-big.saffron { color: var(--ink-amber); }
+.health-num-big.danger { color: var(--yf-coral); }
 .health-bar { height: 8px; border-radius: 999px; background: var(--yf-amber-100); overflow: hidden; }
 .health-bar > i { display: block; height: 100%; border-radius: 999px; transition: width var(--t-slow) var(--ease-out); }
 .health-bar > i.ok { background: var(--ok); }
-.health-bar > i.mid { background: var(--warn-600); }
-.health-bar > i.bad { background: var(--yf-coral); }
+/* The bar is a FILL, not text — it takes the band hue at full strength, the
+   same move `.clickable-chip.on-teal` makes. */
+.health-bar > i.teal { background: var(--teal); }
+.health-bar > i.saffron { background: var(--saffron); }
+.health-bar > i.danger { background: var(--yf-coral); }
 .health-reasons { list-style: none; margin: 9px 0 0; padding: 0; display: grid; gap: 3px; font-size: 13px; color: var(--text-2); }
 .health-rec {
   display: block; width: 100%; margin-top: 12px;
@@ -1645,10 +1656,14 @@ a.btn { text-decoration: none; }
 .board-pulse-row .health-num-big { font-size: 28px; }
 .board-pulse-band { font-size: 12px; font-weight: 700; }
 .board-pulse-band.ok { color: var(--ink-ok); }
-.board-pulse-band.mid { color: var(--ink-amber); }
-.board-pulse-band.bad { color: var(--yf-coral); }
+/* #400: the band word now arrives as a FOUR-way class, so the pulse's own band
+   label needs the classes that used to be folded away. Same inks the big
+   number uses, so the number and the word cannot disagree here either. */
+.board-pulse-band.teal { color: var(--ink-teal); }
+.board-pulse-band.saffron { color: var(--ink-amber); }
+.board-pulse-band.danger { color: var(--yf-coral); }
 /* 12px text on glass: coral reads 3.83 — light gets the deep red (6.43); dark passes as authored. */
-:root:not([data-theme='dark']) .board-pulse-band.bad { color: var(--danger-600); }
+:root:not([data-theme='dark']) .board-pulse-band.danger { color: var(--danger-600); }
 .board-pulse .health-bar { margin-top: 5px; }
 .board-pulse-lines { display: grid; gap: 3px; margin-top: 8px; font-size: 12px; color: var(--text-2); }
 .board-pulse-link {

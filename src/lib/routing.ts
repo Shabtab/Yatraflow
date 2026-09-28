@@ -101,13 +101,37 @@ function requestSignal(signal: AbortSignal | undefined): AbortSignal {
  * checked HERE — before they may reach a cache key or a request URL (a
  * malformed or out-of-range coordinate refuses the measurement and the
  * caller falls back to the estimate path, exactly like a network failure).
+ *
+ * #403: exported, and STRENGTHENED. The Overview's route snapshot and its
+ * weather centroid each re-implemented a weaker version of this test
+ * (`Number.isFinite` alone) and therefore accepted the provider's `(0,0)`
+ * placeholder — finite, in range, and not a place on Earth. It stretched the
+ * snapshot across the Atlantic and moved the weather centroid halfway to Null
+ * Island, where the fetch SUCCEEDED for the wrong ocean, which is worse than
+ * failing.
+ *
+ * The zero-axis rule is NOT new to the repo: `hasCoords` (providers/hits.ts) has
+ * rejected a zero latitude OR longitude for every provider pick since the
+ * Null-Island incident of 2026-09-14, and `itinerarySpec.ts` names the exact
+ * string a hydration row carries. What was missing was that this boundary — the
+ * one that guards the ROAD — never asked the question, so a `(0,0)` that reached
+ * the store by any other path still measured a drive through the ocean. One
+ * predicate, imported by all three surfaces, is the only way they can agree on
+ * what a coordinate is; a caller cannot be trusted to re-derive it.
+ *
+ * A genuine point on the equator or the prime meridian (lat 0 / lng 0 with the
+ * other axis real) is still valid — that is a real place, and #326's
+ * either-zero rule is deliberately about the PAIR, not each axis alone.
  */
-function coordValid(p: LatLng): { lat: number; lng: number } | null {
+export function coordValid(p: LatLng): { lat: number; lng: number } | null {
   // typeof-first: Number() coercion would accept '12.9' (a malformed row) and
   // — far worse — turn null into 0, the Null-Island sentinel (#151's guard).
   if (typeof p.lat !== 'number' || typeof p.lng !== 'number') return null
   if (!Number.isFinite(p.lat) || !Number.isFinite(p.lng)) return null
   if (p.lat < -90 || p.lat > 90 || p.lng < -180 || p.lng > 180) return null
+  // The Null-Island placeholder, which no provider has ever returned as a real
+  // result: a trip measured through it is an ocean round-trip (#326, #151).
+  if (p.lat === 0 && p.lng === 0) return null
   return { lat: p.lat, lng: p.lng }
 }
 
