@@ -138,6 +138,9 @@ describe('Stage 2 P1 regressions', () => {
       // #346: commitPlan reads the in-flight state. The harness extracts each
       // function separately, so the component's shared per-render closure is
       // simulated by binding the scenario's state statically.
+      // #414: the halt stamp rides along the same way — the plan-inputs hash
+      // the entry is checked against on read.
+      haltInputsHash: 'hash-0', setHaltStale: vi.fn(),
       resolving: false, searchCommitting: false,
     }
     // The scenario: a search IS in flight when the user commits a plan edit.
@@ -161,7 +164,9 @@ describe('Stage 2 P1 regressions', () => {
     spots.resolve([])
     await work
     expect(setPlan).toHaveBeenCalledExactlyOnceWith([])
-    expect(setHaltCache).toHaveBeenCalledExactlyOnceWith(0, [], [])
+    // #414: the empty plan is written WITH its stamp — a cached entry with no
+    // hash to check is exactly the stale-plan hole this closes.
+    expect(setHaltCache).toHaveBeenCalledExactlyOnceWith(0, [], [], 'hash-0')
     expect(setSearched).not.toHaveBeenCalled()
     expect(setResolving.mock.calls).toEqual([[true], [false]])
     expect(travel).toContain('return () => { ++spotRequest.current }')

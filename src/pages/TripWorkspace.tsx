@@ -150,7 +150,11 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
   const tripCoverAuto = useDestinationCover(trip ? pickTripQueryCandidates(trip) : null)
 
   // Suggestion cache: persists across tab switches, invalidated by anchor changes.
-  const suggestionCache = useSuggestionCache(tripId)
+  // #414: the day count prunes zombie halt keys — tail keys naming day indexes
+  // the grid no longer has after a shrink. While the trip is still loading
+  // there is no grid to compare against, so pruning waits (Infinity never
+  // outranks a real key); the count lands the moment the trip does.
+  const suggestionCache = useSuggestionCache(tripId, trip ? trip.days.length : Number.POSITIVE_INFINITY)
 
   // Pending change: a proposed plan held until the user keeps or discards it.
   const [pending, setPending] = useState<PendingChange | null>(null)
@@ -378,7 +382,7 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
            seeded from the trip at mount and never re-syncs, so without the key
            a quick trip-switch keeps the previous trip's draft visible until a
            reload (#213). */}
-      {tab === 'settings' && <TripSettingsForm key={trip.id} trip={trip} editable={editable} />}
+      {tab === 'settings' && <TripSettingsForm key={trip.id} trip={trip} editable={editable} onOpenDay={(dayIndex) => { setTimelineFocusDay(dayIndex); setTab('timeline') }} />}
       </div>
 
       {/* The impact sheet is position:fixed, so it paints in the same place either
