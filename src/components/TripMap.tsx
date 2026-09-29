@@ -504,9 +504,17 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
   // `onDayFilterChange`, so the two selectors agree whichever one was touched.
   // The effect stays out of that loop: it sets state directly and never calls
   // back, and React bails on an identical value.
+  // #425 PR 2: an inbound prop value is validated against THIS trip's days
+  // before it can move the filter — a stale or foreign value reads as 'all'
+  // (the clock walk numbers its own drive days), never another day's route.
   useEffect(() => {
-    if (focusDay !== undefined) setDayFilter(focusDay)
-  }, [focusDay])
+    if (focusDay === undefined) return
+    if (focusDay !== 'all' && !trip.days.some(d => d.index === focusDay)) {
+      setDayFilter('all')
+      return
+    }
+    setDayFilter(focusDay)
+  }, [focusDay, trip.days])
   const [showReturn, setShowReturn] = useState(true)
   // The clock overlay's visibility — on by default when a surface supplies
   // it; the choice persists per browser via uiPrefs, like the map key.

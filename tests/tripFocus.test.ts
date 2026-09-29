@@ -5,6 +5,8 @@ import {
   sameFocus,
   canFocusDay,
   focusDayRequest,
+  dayFromFocus,
+  focusForDay,
   type TripFocus,
 } from '../src/lib/tripFocus'
 
@@ -84,6 +86,37 @@ describe('sameFocus', () => {
   it('empty is never equal to anything, not even itself', () => {
     expect(sameFocus(null, null)).toBe(false)
     expect(sameFocus(undefined, base)).toBe(false)
+  })
+})
+
+describe('dayFromFocus (the filter axis derived from focus)', () => {
+  it('a day focus yields that day', () => {
+    expect(dayFromFocus({ tripId: TRIP_A, dayIndex: 1 }, TRIP_A)).toBe(1)
+  })
+
+  it('empty, day-less, and foreign trip focus all read as all', () => {
+    expect(dayFromFocus(null, TRIP_A)).toBe('all')
+    expect(dayFromFocus(undefined, TRIP_A)).toBe('all')
+    expect(dayFromFocus({ tripId: TRIP_A, dayIndex: null }, TRIP_A)).toBe('all')
+    // focus never leaks across trips: another trip's day is not ours
+    expect(dayFromFocus({ tripId: TRIP_B, dayIndex: 0 }, TRIP_A)).toBe('all')
+  })
+})
+
+describe('focusForDay (raise a full focus from a day axis)', () => {
+  it('builds a validated-shape focus for the day', () => {
+    expect(focusForDay(TRIP_A, 1)).toEqual({ tripId: TRIP_A, dayIndex: 1, stopId: undefined, legKey: undefined, hitId: undefined })
+  })
+
+  it('null clears the day axis', () => {
+    expect(focusForDay(TRIP_A, null).dayIndex).toBeNull()
+    expect(dayFromFocus(focusForDay(TRIP_A, null), TRIP_A)).toBe('all')
+  })
+
+  it('round-trips with dayFromFocus', () => {
+    const f = focusForDay(TRIP_A, 0)
+    expect(dayFromFocus(f, TRIP_A)).toBe(0)
+    expect(dayFromFocus(f, TRIP_B)).toBe('all')
   })
 })
 
