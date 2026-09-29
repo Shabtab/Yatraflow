@@ -1,9 +1,33 @@
+# Changelog
+
+All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions are pre-1.0 MVP milestones.
+
+> **Two version lines, cut from the same commits.** `X.Y.Z` headings are the **web app**
+> (semver, mirrored in `package.json`, deployed by Vercel from `main`). The `-native` suffix
+> is the **Android shell's** own numbering (`versionCode`/`versionName` in
+> `android/app/build.gradle`, surfaced in Settings → Apps), which does **not** interleave
+> with web semver — so `0.7.0-native` is newer than `0.48.0` despite the smaller number.
+> Entries below are ordered newest-first by date, not by version number.
+>
+> **History note.** Entries before `0.42.0` were removed in `adf5f66` (Sep 7, 2026) — that
+> record still exists in `git log`, not here. Archived release notes live in
+> [`docs/history/`](docs/history/).
+
 ## [Unreleased]
 
 ### Fixed
 
 
 - **The Overview's day matrix knows when its corridor scan went stale (#404).** It gates on the freshness the Map tab publishes for the scan it wrote: a changed-settings scan renders a stale qualifier with a Refresh path to the Map tab instead of numbers for the old plan, and a never-mounted Map reads as unverified rather than fresh.
+- **A shared link and its own page now show the same cover (#360's legacy half).** A publication from before covers were required stores no cover, so the page rendered a live destination photo in its hero while every crawler was served the generic brand card — a disagreement that lasted as long as the row lived. The owner-side cover sweep now also converges those rows: it resolves the same suggestion the hero uses (the publication's own route summary, then its title), takes ownership of it through the existing upload path, and stores it in the same row the preview handler reads — so the unfurl and the page converge on one owned, resized image. The sweep stays silent, sequential and never throws; a row whose owner never signs in again behaves exactly as it does today, and that population only shrinks, because every new publication must store a cover. The handler itself is untouched: it still reads only the stored column, and the two sides agree because they read the one URL.
+- **A receipt date no longer changes with where you open it.** Purchase dates were rendered in the reader's own timezone, so a grant at 23:30 UTC was "yesterday" in India and "today" in the US — the same receipt carrying two dates depending on the device. A purchase date is a fact about the account rather than about the reader, so it is now stated in UTC, and the "updated" month label with it. Day granularity is unchanged; only the timezone stopped moving.
+- **A plan you bought that has since been taken down no longer wears a photo its creator never chose.** With no stored cover, the shelf looked one up from the purchase's *title* — and a title is not a destination, so "Spiti Valley Circuit" could resolve to a plausible, confident-looking photo nobody picked for that plan. A withdrawn row now shows the neutral placeholder; a plan that is still listed keeps the lookup, because there its own public page shows the same photo and the two agree.
+- **The shelf no longer promises things a withdrawn plan cannot show.** Its opening line offered "what is inside" while a taken-down plan's length and places are read from a publication row that no longer exists, so those chips simply vanish. The line now says what is always true, and explains the exception only when the shelf actually holds a taken-down plan — its receipt and your access are unaffected, and the plan's contents live in the copy you forked.
+- **Sharing what you bought cannot fire twice.** The share button awaited the system share sheet with no guard, so a double-tap opened two. It now disables while its own sheet is open and says it is opening (#409).
+- **An ordinary phone photo now uploads as a cover instead of being refused for its size (#360).** The picker measured a picked file against the bucket's own 5 MB limit, so a 6 MB photo was rejected in the browser — even though the upload path re-encodes every cover to 1200px and roughly 78 KB before it reaches storage, which means the file that was refused was never the file that would have been sent. The two limits are two jobs now: the picker refuses only what a browser cannot decode (12 MB, and the sentence it prints names that number), while the bucket's limit is checked against the re-encoded blob inside the upload itself, which names both numbers if it ever has to refuse.
+
+### Added
+
 - The create funnel learns where planners stall (#428): every step of the create flow — landing on /new, picking a template, the readiness checklist turning green, resuming or discarding a draft, adding crew, submitting, sending the moment-after invite, and a best-effort abandoned beacon — lands as one dated event row, mirroring the publication funnel's event log. The log is anonymous until sign-in (the session's earlier rows adopt the account on the next hydrate) and carries counts, slugs and enums only — crew names, phone numbers, trip names and budget figures can't enter it by construction, and a test feeds the nastiest realistic state through the sanitizer to keep that true. The admin Analytics tab reads the last 30 days: per-event counts, started → submitted conversion, template picks and the top abandonment stage (said to be directional — mobile kills page-hide beacons). No lifetime counters: the dated log is the only source, and aggregates derive at read. One migration: the table, its RLS (own inserts for signed-in users, no-user-attachment inserts for anonymous visitors, admin-only reads) and a service-role-only 90-day retention pruner — it must be applied before the dashboard reads anything. The event write path is silent and best-effort by design: analytics never blocks a submit.
 
 ## [0.71.0] - 2026-09-29
