@@ -495,5 +495,68 @@ begin
   end if;
 end $$;
 
+do $$
+begin
+  -- #366. The admin console's RPCs must never be anon-reachable at the GRANT
+  -- level. The in-function is_admin() is what authorizes; the grant is only
+  -- reachability — and the default function ACL is EXECUTE-to-PUBLIC, so a
+  -- bare `grant … to authenticated` leaves anon reachable and one forgotten
+  -- is_admin() away from a world-callable admin action. All eight admin RPCs
+  -- (the six console actions + delete_user + revenue) are probed the same way
+  -- prune_pub_events is above: aclexplode against the effective ACL, with the
+  -- default-ACL NULL meaning PUBLIC and asserted explicitly.
+  if exists (
+    select 1 from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    cross join lateral aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) e
+    where n.nspname = 'public'
+      and p.proname in (
+        'admin_set_disabled', 'admin_set_creator', 'admin_set_trip_visibility',
+        'admin_remove_member', 'admin_unpublish', 'admin_delete_trip',
+        'admin_delete_user', 'admin_revenue')
+      and (e.grantee = 0 or e.grantee = (select oid from pg_roles where rolname = 'anon'))
+  ) then
+    raise exception 'admin RPCs must never be granted to anon or PUBLIC — the in-function is_admin() is the guard, the grant must not be the reachability; apply 20260929_admin_rpc_grant_lockdown.sql';
+  end if;
+
+  -- The intentional grants stay asserted-PRESENT so nobody "hardens" them into
+  -- breakage: is_admin()/is_disabled() answer false for anon by design and the
+  -- client calls them. Counted positively — BOTH functions must still carry an
+  -- anon grant, or the lockdown over-reached.
+  if (select count(distinct p.proname) from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    cross join lateral aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) e
+    join pg_roles r on r.oid = e.grantee
+    where n.nspname = 'public' and p.proname in ('is_admin', 'is_disabled')
+      and r.rolname = 'anon'
+  ) < 2 then
+    raise exception 'is_admin()/is_disabled() must keep their anon grants — they answer false for anon by design and client code calls them';
+  end if;
+end $$;
+
+do $$
+begin
+  -- #366, second half: the audit log's read surface. admin_audit is
+  -- append-only evidence — every admin action lands here with who did it — so
+  -- a policy that let any authenticated account UPDATE or DELETE a row would
+  -- let an admin rewrite their own trail. Read must exist for the console and
+  -- be admin-gated; write paths must be INSERT-only.
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'admin_audit'
+      and cmd in ('SELECT', 'ALL')
+      and qual like '%is_admin()%'
+  ) then
+    raise exception 'admin_audit needs an admin-gated read policy (is_admin() in the qual)';
+  end if;
+  if exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'admin_audit'
+      and cmd in ('UPDATE', 'DELETE', 'ALL')
+  ) then
+    raise exception 'admin_audit is append-only: no UPDATE/DELETE/ALL policy may exist for any role';
+  end if;
+end $$;
+
 -- ------------------------------------------------------------------------ done
 select 'rls contract: all crew-facing policies verified' as result;

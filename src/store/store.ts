@@ -69,12 +69,18 @@ interface DB {
    *  Drives the offline banner's "showing your saved plan from HH:MM" and is
    *  set by the cache boot below, cleared by every network hydrate. */
   cachedAt: number | null
+  /** The audit tab's own read status (#367). A failed refresh used to be
+   *  console-only, which made staleness invisible — an admin watching the tab
+   *  could not tell "no actions" from "the read broke". Flips on any failed
+   *  `refreshAdminAudit`; cleared on the next success (the tab renders a
+   *  retry, mirroring the trash bin's honest-failure shape). */
+  adminAuditFailed: boolean
 }
 
 let cache: DB = {
   users: [], trips: [], trashedTrips: [], suggestions: [], decisions: [],
   activity: [], notifications: [], published: [], adminAudit: [], sessionUserId: null,
-  ready: false, sliceReads: {}, trashLoaded: false, trashFailed: false, cachedAt: null,
+  ready: false, sliceReads: {}, trashLoaded: false, trashFailed: false, cachedAt: null, adminAuditFailed: false,
 }
 
 const listeners = new Set<() => void>()
@@ -164,6 +170,11 @@ export interface AdminAuditEntry {
 
 export function useAdminAudit(): AdminAuditEntry[] {
   return useSyncExternalStore(subscribe, () => cache.adminAudit)
+}
+
+/** The audit read's own status (#367) — the tab renders a retry on true. */
+export function useAdminAuditFailed(): boolean {
+  return useSyncExternalStore(subscribe, () => cache.adminAuditFailed)
 }
 
 interface AuditRowShape {
@@ -435,7 +446,7 @@ export async function logout(): Promise<void> {
   // generation guard keeps a late hydrate from re-patching the old user back
   // in (issue #45).
   const departing = cache.sessionUserId
-  patch({ trips: [], trashedTrips: [], trashLoaded: false, trashFailed: false, suggestions: [], decisions: [], activity: [], notifications: [], published: [], adminAudit: [], sessionUserId: null, ready: true, cachedAt: null })
+  patch({ trips: [], trashedTrips: [], trashLoaded: false, trashFailed: false, suggestions: [], decisions: [], activity: [], notifications: [], published: [], adminAudit: [], adminAuditFailed: false, sessionUserId: null, ready: true, cachedAt: null })
   commit()
   // hydrate(null) skips the snapshot/write cleanup when sessionUserId is
   // already null — which it now always is by this point — so the departing
@@ -559,11 +570,11 @@ export function init(): void {
         const pubRows = mapOrSkip((pubRes.data ?? []), rowToPublished)
         if (profRes.error) { console.error('[yatraflow] hydrate profiles failed', profRes.error) }
         if (pubRes.error) { console.error('[yatraflow] hydrate published failed', pubRes.error) }
-        patch({ users, trips: [], trashedTrips: [], trashLoaded: false, trashFailed: false, suggestions: [], decisions: [], activity: [], notifications: [], published: dedupePublished(pubRows), adminAudit: [], sessionUserId: null, ready: true, cachedAt: null })
+        patch({ users, trips: [], trashedTrips: [], trashLoaded: false, trashFailed: false, suggestions: [], decisions: [], activity: [], notifications: [], published: dedupePublished(pubRows), adminAudit: [], adminAuditFailed: false, sessionUserId: null, ready: true, cachedAt: null })
         commit()
       } catch (e) {
         console.error('[yatraflow] anonymous hydration failed', e)
-        patch({ users: [], trips: [], trashedTrips: [], trashLoaded: false, trashFailed: false, suggestions: [], decisions: [], activity: [], notifications: [], published: [], adminAudit: [], sessionUserId: null, ready: true, cachedAt: null })
+        patch({ users: [], trips: [], trashedTrips: [], trashLoaded: false, trashFailed: false, suggestions: [], decisions: [], activity: [], notifications: [], published: [], adminAudit: [], adminAuditFailed: false, sessionUserId: null, ready: true, cachedAt: null })
         commit()
       }
       })()
@@ -1725,14 +1736,27 @@ function requireAdmin(): boolean {
   return true
 }
 
+/** Re-read the audit log on demand (#367) — the Audit tab's Retry affordance
+ *  and the tab-focus poll both land here, so a stale or failed read has one
+ *  recovery path. Admin-scoped: a non-admin call is a no-op. */
+export async function refreshAdminAuditNow(): Promise<void> {
+  if (!isAdminCached()) return
+  await refreshAdminAudit()
+}
+
 async function refreshAdminAudit(): Promise<void> {
   try {
     const { data, error } = await fetchAdminAuditRows()
     if (error) throw error
-    patch({ adminAudit: auditRowsToEntries(data) })
+    patch({ adminAudit: auditRowsToEntries(data), adminAuditFailed: false })
     commit()
   } catch (e) {
+    // #367: surfaced, not swallowed — the tab shows a retry, because a failed
+    // read rendered as "No admin actions yet" is a lie about the log, not an
+    // empty log.
     console.error('[yatraflow] audit refresh failed', e)
+    patch({ adminAuditFailed: true })
+    commit()
   }
 }
 
@@ -1904,8 +1928,10 @@ export async function adminDeleteTrip(tripId: ID): Promise<boolean> {
  *
  *  The optimistic patch mirrors exactly that blast radius: the user row, the
  *  owned trips with their children, the collab rows they authored ANYWHERE,
- *  their notifications, and the publications (force only). Restored wholesale
- *  on RPC error, same as adminDeleteTrip. */
+ *  their notifications, and the publications (force only). A trip the target
+ *  was only a member of loses just the membership row — the trip itself stays
+ *  for the remaining crew (#367). Restored wholesale on RPC error, same as
+ *  adminDeleteTrip. */
 export async function adminDeleteUser(userId: ID, force = false): Promise<boolean> {
   if (!requireAdmin()) return false
   const prevUsers = cache.users
@@ -1921,7 +1947,16 @@ export async function adminDeleteUser(userId: ID, force = false): Promise<boolea
   const isOwnedTrip = (tripId: ID) => ownedTripIds.has(tripId)
   patch({
     users: prevUsers.filter(u => u.id !== userId),
-    trips: prevTrips.filter(t => !isOwnedTrip(t.id) && !(t.members ?? []).some(m => m.userId === userId)),
+    // #367: the DB cascade deletes OWNED trips and takes their children; a
+    // trip the target was only a MEMBER of survives for the remaining crew —
+    // so the optimistic patch evicts only the membership row there, not the
+    // whole trip. Evicting it alarmed the admin mid-session with a trip the
+    // crew still owns (it healed on the next hydrate; the patch was the lie).
+    trips: prevTrips.map(t => {
+      if (isOwnedTrip(t.id)) return null
+      if (!(t.members ?? []).some(m => m.userId === userId)) return t
+      return { ...t, members: (t.members ?? []).filter(m => m.userId !== userId) }
+    }).filter((t): t is Trip => t !== null),
     published: prevPubs.filter(p => p.creatorId !== userId && !isOwnedTrip(p.tripId)),
     suggestions: prevSug.filter(s => s.proposedBy !== userId && !isOwnedTrip(s.tripId)),
     decisions: prevDec.filter(d => d.raisedBy !== userId && !isOwnedTrip(d.tripId)),
@@ -3382,6 +3417,12 @@ export function connectRealtime(_userId: string): void {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, p => dispatchRealtimeEvent('notifications', p))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, p => dispatchRealtimeEvent('profiles', p))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'published_itineraries' }, p => dispatchRealtimeEvent('published_itineraries', p))
+      // #367: the audit log goes live for admins. The publication already
+      // carries admin_audit (20260909_masteradmin.sql); subscribing here ends
+      // the poll-only staleness where a second admin's actions were invisible
+      // until a manual refresh. The RLS read policy is admin-gated, so a
+      // non-admin's subscription simply never receives rows — no flag needed.
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'admin_audit' }, p => dispatchRealtimeEvent('admin_audit', p))
       .subscribe(status => {
         // Reconnect resync: postgres_changes is NOT replayed across a socket
         // gap — after a laptop sleep / network switch the channel rejoins and
@@ -3541,6 +3582,16 @@ function applyRealtimeEvent(table: string, payload: RealtimePostgresChangesPaylo
     case 'published_itineraries':
       cache.published = reduceSlice(cache.published, event, row ? rowToPublished(row) : undefined, oldRow?.id)
       break
+    case 'admin_audit': {
+      // #367: a new audit row lands live. INSERT-only by contract (append-only
+      // log, no UPDATE/DELETE policy), and always prepended — the tab renders
+      // newest-first. Only meaningful for admins: the read policy withholds
+      // the rows from everyone else, so a non-admin never gets here with data.
+      if (event === 'INSERT' && row && isAdminCached()) {
+        cache.adminAudit = [adminAuditRowToEntry(row as unknown as AuditRowShape), ...cache.adminAudit]
+      }
+      break
+    }
     default:
       return
   }

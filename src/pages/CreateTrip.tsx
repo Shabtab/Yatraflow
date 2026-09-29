@@ -28,6 +28,7 @@ import { createFunnelOn } from '../lib/featureFlags'
 import { createReadiness, readinessFromDraft, readinessLine } from '../lib/createReadiness'
 import { saveDraft, loadDraft, clearDraft, draftIsWorthKeeping, draftAgeLabel, type StoredDraft } from '../lib/createDraft'
 import { unpickedStopErrors } from '../lib/createSubmit'
+import { fuelFallbackNotice, revalidateCommitments, commitmentMoveMessage, composerRowError, ticketFuelSegments } from '../lib/createHonesty'
 import { addCrewEntry, type CrewEntry } from '../lib/crewInvite'
 import { stashHandoff } from '../lib/createHandoff'
 import { routeIq, routeIqLine, type RoutePoint } from '../lib/routeIq'
@@ -235,6 +236,9 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
   )
   const tankNum = Number(f.tankL)
   const rentNum = Number(f.rentPerDay)
+  // #378: the bill prices self-drive fuel only when BOTH numbers parse — say
+  // so, with the blended rate named, instead of silently billing it.
+  const fuelNotice = fuelMode ? fuelFallbackNotice(f.transportMode, f.fuelEconomy, f.fuelPrice) : null
   const bill = useMemo(() => estimateTripStarter({
     startDate: f.startDate, endDate: f.endDate,
     travellers: f.travellers, mode: f.transportMode,
@@ -255,6 +259,23 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
   // date range cannot split-brain two surfaces into different answers.
   // 0 means "Pick your dates" on every one of them.
   const dayCount = bill.days
+  // #378: pinned plans were indexed against the day count at add time and
+  // never re-checked — a shortened trip left rows pointing at days that no
+  // longer exist. One revalidation, HERE on the day-count change, so the
+  // calendar, a template and the day-out shapes all behave identically (the
+  // issue's "centralize on the dayCount change, not the widget"). Clamp keeps
+  // what was typed and the toast names the move; nothing is silent either way.
+  const lastSeenDays = useRef<number | null>(null)
+  useEffect(() => {
+    const prev = lastSeenDays.current
+    lastSeenDays.current = dayCount
+    if (prev == null || prev === dayCount) return
+    setCommitments(list => {
+      const { kept, movedCount } = revalidateCommitments(list, dayCount)
+      if (movedCount > 0) toast(commitmentMoveMessage(movedCount))
+      return kept
+    })
+  }, [dayCount])
 
   // P3 - what is left, said plainly. Mirrors submit()'s own rules, so it can
   // never claim ready when submit would refuse (see createReadiness tests).
@@ -590,6 +611,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
     name: 'Trip name', startLocation: 'Starting location', destinations: 'Destinations',
     returnStops: 'Return stops',
     startDate: 'Start date', endDate: 'End date', travellers: 'Travellers', budgetPerPersonInr: 'Budget',
+    composerRow: 'Pinned plan row',
   }
 
   /** Error keys whose control is a LocationInput. It owns its own <input>, so
@@ -597,6 +619,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
   const FIELD_DOM_IDS: Record<string, string> = {
     destinations: 'ct-dest-input',
     returnStops: 'ct-return-input',
+    composerRow: 'ct-composer-input',
   }
 
   async function submit(e: React.FormEvent) {
@@ -614,6 +637,11 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
     if (unpicked.destinations) next.destinations = unpicked.destinations
     else if (dests.length === 0) next.destinations = 'Add at least one destination.'
     if (unpicked.returnStops) next.returnStops = unpicked.returnStops
+    // #378: a plan typed into the composer row but never "Add"ed used to be
+    // dropped at submit without a word — the same honesty hole as unpicked
+    // stop text (#375), same answer: block with the text named, never discard.
+    const composer = composerRowError(c.title)
+    if (composer) next.composerRow = composer
     if (!f.startDate) next.startDate = 'Pick a start date.'
     if (!f.endDate) next.endDate = 'Pick an end date.'
     else if (f.startDate && new Date(f.endDate) < new Date(f.startDate)) next.endDate = 'End date must be after the start date.'
@@ -1196,6 +1224,9 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
                     {isImplausibleFuelEconomy(f.transportMode, parseFuelEconomyKmL(f.fuelEconomy)) && (
                       <p className="hint-text"><InlineIcon icon={TriangleAlert} size={12} gap={3} />Unusual for a {f.transportMode === 'rental' ? 'rented car' : f.transportMode} — double-check the value.</p>
                     )}
+                    {fuelNotice && (
+                      <p className="hint-text" role="status"><InlineIcon icon={TriangleAlert} size={12} gap={3} />{fuelNotice}</p>
+                    )}
                     <label className="mini-field">
                       <span className="mini-lab">Fuel price</span>
                       <span className="unit-input">
@@ -1431,7 +1462,10 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
               </div>
             )}
             <div className="form-row commitment-row">
-              <Field label="What"><input className="input" value={c.title} onChange={e => setC(x => ({ ...x, title: e.target.value }))} placeholder="e.g. Houseboat boarding" /></Field>
+              <Field label="What">
+                <input id="ct-composer-input" className="input" value={c.title} onChange={e => setC(x => ({ ...x, title: e.target.value }))} placeholder="e.g. Houseboat boarding" aria-invalid={!!errs.composerRow} aria-describedby={errs.composerRow ? 'ct-composer-err' : undefined} />
+                {errs.composerRow && <p className="err-text" id="ct-composer-err" role="status" aria-live="polite">{errs.composerRow}</p>}
+              </Field>
               <Field label="Type">
                 <Select value={c.type} onChange={val => setC(x => ({ ...x, type: val as FixedCommitment['type'] }))}
                   options={[
@@ -1476,8 +1510,8 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
               <div className="tk-rows">
                 <div className="tk-row"><span className="ic"><Calendar size={13} aria-hidden /></span><b>{dateLabel}</b></div>
                 <div className="tk-row"><span className="ic">{modeIcon(f.transportMode, 12)}</span><span className="lab">{f.travellers} traveller{f.travellers !== 1 ? 's' : ''}</span><b>· {cap(f.transportMode)}{f.transportMode === 'train' && f.localTrain ? ' · local' : ''}</b></div>
-                {fuelMode && (f.fuelEconomy || f.fuelPrice || f.tankL) && (
-                  <div className="tk-row"><span className="ic"><Fuel size={13} aria-hidden /></span><span className="lab">{f.fuelEconomy ? `${f.fuelEconomy} km/L` : null}{f.fuelPrice && f.fuelEconomy ? ' · ' : ''}{f.fuelPrice ? `₹${f.fuelPrice}/L` : null}{f.tankL && f.fuelEconomy ? ` · ${f.tankL} L tank` : ''}</span></div>
+                {fuelMode && ticketFuelSegments(f.fuelEconomy, f.fuelPrice, f.tankL).length > 0 && (
+                  <div className="tk-row"><span className="ic"><Fuel size={13} aria-hidden /></span><span className="lab">{ticketFuelSegments(f.fuelEconomy, f.fuelPrice, f.tankL).join(' · ')}</span></div>
                 )}
                 <div className="tk-row"><span className="ic"><Wallet size={13} aria-hidden /></span><span className="lab">Budget</span><b className="mono">₹{f.budgetPerPersonInr.toLocaleString('en-IN')} / person</b></div>
               </div>
