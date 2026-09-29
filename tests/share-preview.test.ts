@@ -771,3 +771,51 @@ describe('the shared link carries its route in (#230)', () => {
     expect(res.body).toContain(`location.replace("/#/pub/${publication.id}")`)
   })
 })
+
+// F3 (#227) — the send unit for "one published link to a WhatsApp group".
+describe('sending a publication on WhatsApp', () => {
+  it('builds a click-to-chat address whose message survives the encoding', async () => {
+    // The message carries a URL: spaces and query separators must not be
+    // eaten, or the chat box opens with half an address.
+    const { whatsAppSendUrl } = await import('../src/lib/whatsAppShare')
+    expect(whatsAppSendUrl('The "Kerala 10d" plan — see it here: https://app.test/i/a?x=1&y=2'))
+      .toBe('https://wa.me/?text=' +
+        encodeURIComponent('The "Kerala 10d" plan — see it here: https://app.test/i/a?x=1&y=2'))
+    expect(whatsAppSendUrl('a b')).toBe('https://wa.me/?text=a%20b')
+  })
+
+  it('carries one honest sentence with the plan name and the link', async () => {
+    const { publicationShareMessage } = await import(shareUrlPath)
+    const url = 'https://app.example.test/i/kerala-trip_1'
+    const message = publicationShareMessage('Kerala 10d', url)
+    expect(message).toBe(`The "Kerala 10d" trip plan on YatraFlow — see it here: ${url}`)
+    // One sentence of prose before the link (the URL's own dots are not
+    // punctuation), and no claim the sender has not made.
+    const prose = message.split(url)[0]
+    expect(prose).not.toMatch(/[.!?]\s+\S/)
+    expect(message).not.toMatch(/₹|INR|price|free/)
+  })
+
+  it('the send module never reads a window handle', async () => {
+    // §6e: window.open(..., 'noopener') always returns null; the moment-after
+    // screen's "Send invite" read that as popup-blocked and never once opened
+    // WhatsApp. The send is fire-and-forget through the house opener, and the
+    // clipboard is the honest fallback, not a guess about the popup.
+    const source = read('../src/lib/whatsAppShare.ts')
+    expect(source).toMatch(/openExternal\(whatsAppSendUrl\(text\)\)/)
+    expect(source).not.toMatch(/window\.open/)
+    expect(source).toMatch(/nativeShareText\(/)
+    expect(source).toMatch(/nativeCopyText\(/)
+  })
+
+  it('the public page offers the send with an in-flight guard', () => {
+    const source = readFileSync(new URL('../src/pages/PublicItinerary.tsx', import.meta.url), 'utf8')
+    expect(source).toMatch(/import \{ sharePublicationOnWhatsApp \} from '\.\.\/lib\/whatsAppShare'/)
+    // §6a: the async path is disabled while it runs — the #409 shelf pattern.
+    expect(source).toMatch(/const \[sendingWhatsApp, setSendingWhatsApp\] = useState\(false\)/)
+    expect(source).toMatch(/if \(sendingWhatsApp \|\| !pub\) return/)
+    expect(source).toMatch(/disabled=\{sendingWhatsApp\}/)
+    // The address comes from the shared resolver, never a second origin rule.
+    expect(source).toMatch(/currentPublicShareUrl\(pub\.id\)/)
+  })
+})

@@ -19,7 +19,7 @@
 // degrades to "no entitlements", which is exactly the pre-M7 behavior.
 
 import { supabase } from './supabase'
-import { ENTITLEMENT_COLUMNS, type Entitlement } from './payments'
+import { ENTITLEMENT_COLUMNS, ORDER_COLUMNS, type Entitlement, type OrderStatus, type PurchaseOrder } from './payments'
 import type { PlatformSale } from './adminStats'
 import { toast } from '../components/ui'
 
@@ -125,6 +125,45 @@ export async function fetchMyPurchases(userId: string | null): Promise<Entitleme
     orderId: row.order_id as string,
     amountPaidInr: row.amount_paid_inr as number,
     grantedAt: new Date(row.granted_at as string).getTime(),
+  }))
+}
+
+/** The buyer's purchase ORDERS — where the MONEY state lives (#407).
+ *
+ *  The sibling of `fetchMyPurchases`, and it exists for one specific reason:
+ *  `entitlements` records the GRANT, and a refund DELETES that row, so the orders
+ *  are the only surviving record of a purchase whose money came back. Without
+ *  them a refunded purchase renders as nothing at all — the buyer's receipt is
+ *  gone and a plan they demonstrably paid for disappears from their shelf
+ *  silently, which is worse than any wrong chip could be.
+ *
+ *  REJECTS on a failed read (after logging), exactly like `fetchMyPurchases`:
+ *  "no orders" and "could not read your orders" are different truths, and on a
+ *  shelf whose whole job is to state what you own, the second must never render
+ *  as the first.
+ *
+ *  Owner-only RLS (`user_id = auth.uid()`) keeps this to the buyer's own rows,
+ *  so no join or filter beyond the user id is needed. */
+export async function fetchMyOrders(userId: string | null): Promise<PurchaseOrder[]> {
+  if (!userId) return []
+  const { data, error } = await supabase
+    .from('purchase_orders')
+    .select(ORDER_COLUMNS)
+    .eq('user_id', userId)
+  if (error) {
+    console.error('[yatraflow] orders read failed', error)
+    throw error
+  }
+  return (Array.isArray(data) ? data : []).map((row: Record<string, unknown>) => ({
+    id: row.id as string,
+    userId: (row.user_id as string | null) ?? null,
+    pubId: row.pub_id as string,
+    amountInr: row.amount_inr as number,
+    status: row.status as OrderStatus,
+    createdAt: new Date(row.created_at as string).getTime(),
+    // Null before the gateway captures the money — never `new Date(null)`, which
+    // is 1970 and would render as a real date.
+    paidAt: row.paid_at ? new Date(row.paid_at as string).getTime() : null,
   }))
 }
 

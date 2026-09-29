@@ -152,3 +152,14 @@ export function withShareRef(url: string, ref: ShareSource | null | undefined): 
   if (qAt >= 0 && new URLSearchParams(base.slice(qAt + 1)).has('ref')) return url
   return `${base}${qAt >= 0 ? '&' : '?'}ref=${encodeURIComponent(ref)}${tail}`
 }
+
+/**
+ * What anyone sends when they pass a published plan on (F3 · #227): the
+ * WhatsApp message beside the link. One sentence in the same register as the
+ * buyer's — the plan's name, where it lives, the link — and no claim the
+ * sender has not made. The card at the other end does the selling; this
+ * sentence only has to be honest.
+ */
+export function publicationShareMessage(title: string, url: string): string {
+  return `The "${title}" trip plan on YatraFlow — see it here: ${url}`
+}

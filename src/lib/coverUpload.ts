@@ -219,6 +219,18 @@ export function coverlessPublications<T extends { creatorId?: string; coverImage
   return pubs.filter(p => p.creatorId === userId && !p.coverImageUrl)
 }
 
+/** The queries a destination cover is resolved FROM, in order: the itinerary's
+ *  own route summary, then its title (what a route-less publication has).
+ *
+ *  One definition, because two surfaces have to agree on the answer. The public
+ *  page renders these candidates as its hero, and the sweep stores whichever one
+ *  resolves — the whole point being that the picture a crawler receives is the
+ *  picture the page was already showing. Written out twice, the two can answer
+ *  differently, which is the disagreement #360 was about, one level up. */
+export function coverCandidates(pub: { routeSummary?: string[] | null; title: string }): string[] {
+  return pub.routeSummary?.length ? pub.routeSummary : [pub.title]
+}
+
 export async function downscaleCover(file: Blob): Promise<Blob> {
   if (typeof createImageBitmap !== 'function') throw new Error('This browser cannot resize images.')
   const bitmap = await createImageBitmap(file)

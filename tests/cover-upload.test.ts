@@ -217,10 +217,27 @@ describe('#360 — the publications whose hero and crawler card disagree', () =>
     // The sweep's second work-list, resolving the HERO's own candidates
     // (routeSummary, then title) — not a different query a crawler would not see.
     expect(store).toMatch(/for \(const pub of coverlessPublications\(cache\.published, userId\)\)/)
-    expect(store).toMatch(/const candidates = pub\.routeSummary\?\.length \? pub\.routeSummary : \[pub\.title\]/)
-    expect(store).toMatch(/await fetchFirstAvailableThumb\(candidates\)/)
+    expect(store).toMatch(/await fetchFirstAvailableThumb\(coverCandidates\(pub\)\)/)
     // It reuses the existing own-and-store machinery, row persisted first.
     expect(store).toMatch(/update\(\{ cover_image_url: owned\.url \}\)/)
+  })
+
+  it('both surfaces derive the candidates from ONE definition', () => {
+    // This used to be two copies — inline in the page's hero, and written out
+    // again in the sweep — which is how the two drift apart a second time: change
+    // the order in one and the stored cover stops being the picture the page
+    // renders, which is the whole disagreement #360 was about. So the rule is
+    // pinned as a single home plus no re-derivation at either call site.
+    const lib = readFileSync(new URL('../src/lib/coverUpload.ts', import.meta.url), 'utf8')
+    const page = readFileSync(new URL('../src/pages/PublicItinerary.tsx', import.meta.url), 'utf8')
+    const store = readFileSync(new URL('../src/store/store.ts', import.meta.url), 'utf8')
+    expect(lib.match(/export function coverCandidates\b/g)).toHaveLength(1)
+    expect(page).toContain('useDestinationCover(pub ? coverCandidates(pub) : null)')
+    expect(store).toContain('fetchFirstAvailableThumb(coverCandidates(pub))')
+    for (const [name, source] of [['the page', page], ['the sweep', store]] as const) {
+      expect(source, `${name} derives the candidates itself again`)
+        .not.toMatch(/routeSummary\??\.length \?/)
+    }
   })
 
   it('the handler still reads only the stored column — both sides read the one URL', () => {
