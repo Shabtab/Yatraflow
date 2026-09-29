@@ -33,6 +33,14 @@
 //      computed straight and `forksExceedViews` names the case for the UI to
 //      explain rather than the arithmetic to hide.
 //
+//      #363 — both stages are now counted in the SAME unit: one per browser
+//      session each (`yf-viewed-<id>` / `yf-forked-<id>` in the store). Fork
+//      clicks used to be raw while visits were session-deduped, so the rate
+//      divided two different kinds of count and called the result a conversion.
+//      They are like-unit now, which is why the UI may say "of visit-sessions"
+//      without qualifying further — and why a future asymmetry would have to be
+//      introduced deliberately rather than by accident.
+//
 // WHAT IT WILL NOT DO: invent a stage. There is no "unlock started" or
 // "paywall seen" event to read, so this funnel begins at a visit and ends at a
 // sale; nothing here guesses at the drop-off in between.

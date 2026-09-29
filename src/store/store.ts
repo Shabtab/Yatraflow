@@ -3207,41 +3207,120 @@ export function unpublishedTripIds(userId: ID): ID[] {
   return mine.filter(t => !cache.published.some(p => p.tripId === t.id && !p.unpublishedAt)).map(t => t.id)
 }
 
+/** The `sessionStorage` key that dedupes one counter for one publication for one
+ *  session.
+ *
+ *  Views and forks get their OWN key, and that is the #363 fix: opening a plan
+ *  and taking a copy of it are two things a reader may legitimately do in one
+ *  visit, so sharing a key would make the second invisible. Forks used to have
+ *  no key at all — every fork click was a raw event — while views were deduped,
+ *  which is why a fork rate computed from the two could exceed 100% with no
+ *  explanation. */
+function pubCounterKey(kind: 'views' | 'copies', id: ID): string {
+  return kind === 'views' ? `yf-viewed-${id}` : `yf-forked-${id}`
+}
+
+/** Has this step already been counted this session? Marks it if not.
+ *
+ *  Storage being unavailable (private mode, a hardened browser) is NOT a reason
+ *  to record nothing — it falls through and counts, which is the behaviour the
+ *  view counter already had. */
+function claimPubCounter(key: string): boolean {
+  try {
+    if (sessionStorage.getItem(key)) return false
+    sessionStorage.setItem(key, '1')
+  } catch { /* storage unavailable — count it */ }
+  return true
+}
+
+/** Release the session mark so a LATER attempt can count.
+ *
+ *  Called only when the write failed: the claim above is what makes a bump
+ *  once-per-session, and a bump that never reached the server did not happen,
+ *  so holding its mark would silently drop the reader's one chance to be
+ *  counted. */
+function releasePubCounter(key: string): void {
+  try { sessionStorage.removeItem(key) } catch { /* nothing to do */ }
+}
+
+/**
+ * Bump one of a publication's lifetime counters, and take the bump back if the
+ * server refuses it.
+ *
+ *  #363 — both counters used to be cache `+1` + `commit()` followed by a
+ *  fire-and-forget RPC whose failure was merely logged. So a failed bump left a
+ *  PERMANENT phantom on the client: `views`/`copies` drive Explore's sort
+ *  (`views + copies * 5`) and its featured pick, so an offline reader silently
+ *  re-ordered the catalog and could keep a card featured — and the dated
+ *  `pub_events` row is written only on SERVER success, so the counter and the
+ *  log drifted apart in exactly the case the migration's "one write path" was
+ *  written to prevent.
+ *
+ *  The optimistic bump STAYS (the UI should feel immediate, and this is a
+ *  counter, not money). What is new is the failure arm: decrement, commit, and
+ *  release the session claim. `commit()` only notifies subscribers — it persists
+ *  nothing — so rolling the cache back cannot itself write.
+ *
+ *  The issue offered "await where the UX allows, OR reconcile on the next read —
+ *  implement ONE". This is the third, explicitly-permitted minimum: never let a
+ *  FAILED bump keep its +1. It is the smallest change that removes the permanent
+ *  skew, and it needs no reconciliation pass because the value it leaves behind
+ *  is the server's own.
+ */
+function bumpPubCounter(id: ID, kind: 'views' | 'copies'): void {
+  const p = cache.published.find(x => x.id === id)
+  if (!p) return
+  // The creator's own visit/fork does not count: they are checking their own
+  // work, not being converted by it. Both stages use the same exclusion, or the
+  // funnel's two halves disagree about who a reader is.
+  if (cache.sessionUserId && p.creatorId === cache.sessionUserId) return
+  const key = pubCounterKey(kind, id)
+  if (!claimPubCounter(key)) return
+  cache.published = cache.published.map(x => x.id === id ? { ...x, [kind]: x[kind] + 1 } : x)
+  commit()
+  // Use RPC function that bypasses RLS - anyone can increment counters now.
+  // The same call records the dated funnel event server-side, which is why the
+  // failure arm below matters: the counter and the log must not drift.
+  const undo = () => {
+    // Decrement rather than restoring a captured snapshot: a snapshot would
+    // discard any OTHER legitimate movement of the same field that happened
+    // while this write was in flight, and the floor keeps a double-failure from
+    // driving the counter negative.
+    cache.published = cache.published.map(x => x.id === id ? { ...x, [kind]: Math.max(0, x[kind] - 1) } : x)
+    commit()
+    releasePubCounter(key)
+  }
+  void Promise.resolve(supabase.rpc('bump_published_stats', { p_id: id, p_kind: kind })).then(
+    res => {
+      if (!res?.error) return
+      console.error(`[yatraflow] ${kind} bump failed`, res.error)
+      undo()
+    },
+    err => {
+      console.error(`[yatraflow] ${kind} bump rejected`, err)
+      undo()
+    },
+  )
+}
+
 /** One view per itinerary per browser session, and the creator's own visits
  *  don't count — before this, every refresh and every self-check inflated the
  *  Explore counter. (sessionStorage survives route changes within the tab but
  *  resets on a genuinely new visit, which is the granularity views want.) */
 export function registerPubView(id: ID): void {
-  const p = cache.published.find(x => x.id === id)
-  if (!p) return
-  if (cache.sessionUserId && p.creatorId === cache.sessionUserId) return
-  try {
-    const key = `yf-viewed-${id}`
-    if (sessionStorage.getItem(key)) return
-    sessionStorage.setItem(key, '1')
-  } catch { /* storage unavailable (private mode) — count the view */ }
-  cache.published = cache.published.map(x => x.id === id ? { ...x, views: x.views + 1 } : x)
-  commit()
-  // Use RPC function that bypasses RLS - anyone can increment counters now.
-  fire('published_itineraries', supabase.rpc('bump_published_stats', { p_id: id, p_kind: 'views' }))
+  bumpPubCounter(id, 'views')
 }
 
+/** One FORK per itinerary per browser session, and the creator's own forks
+ *  don't count.
+ *
+ *  #363 — the view counter had a session guard and this one did not, so the
+ *  funnel divided session-deduped visits by raw fork clicks: unlike units
+ *  presented as a conversion rate. Explore's card can fork a plan repeatedly in
+ *  one visit, and each click was a fresh event. The guard makes the two stages
+ *  count the same kind of thing. */
 export function registerPubCopy(id: ID): void {
-  const p = cache.published.find(x => x.id === id)
-  if (!p) return
-  // Same exclusion as the view counter above, and for the same reason: a
-  // creator forking their OWN plan is testing it, not being converted by it.
-  // Without this the funnel's fork stage counted a step its view stage had
-  // already refused to count, so the two stages disagreed about who a reader
-  // is — and a fork rate over that is not a conversion rate.
-  if (cache.sessionUserId && p.creatorId === cache.sessionUserId) return
-  cache.published = cache.published.map(x => x.id === id ? { ...x, copies: x.copies + 1 } : x)
-  commit()
-  // Use RPC function that bypasses RLS - anyone can increment counters now.
-  // The same call also records the dated funnel event (see
-  // supabase/migrations/20260921_pub_funnel_events.sql), so the lifetime
-  // counter and the funnel log cannot drift.
-  fire('published_itineraries', supabase.rpc('bump_published_stats', { p_id: id, p_kind: 'copies' }))
+  bumpPubCounter(id, 'copies')
 }
 
 // ---------------- Feed & notifications ----------------
