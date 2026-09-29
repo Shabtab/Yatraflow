@@ -50,7 +50,15 @@ skills-lock.json
 .commandcode/
 .freebuff/
 .cache/
+.dsh/
 PRODUCT.md
+
+# Lane handoff notes (`HANDOFF-DSH-LANE-A-MAP.md` and its siblings). They are
+# clone-local coordination documents between agent sessions: they name absolute
+# Windows paths and the working tree they were written against, which must never
+# be tracked in a public repo, and each clone keeps its own. Anchored to the root
+# so a future `docs/handoff-*.md` stays committable.
+/HANDOFF-*.md
 
 # The Verdent agent's PR-body scratch file — same class a third time. It held a
 # whole PR body (10 KB of prose), and every branch that used the tool rewrote
