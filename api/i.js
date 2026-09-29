@@ -1,4 +1,9 @@
-const DEFAULT_ORIGIN = 'https://yatraflow-blond.vercel.app'
+// #362: the one canonical-origin resolver — shared with the sitemap and the
+// creator card so the handlers can never disagree about where they live. A
+// sibling api module, not client code: the dependency rule below is about the
+// bundler, and this compiles with the function.
+import { resolveOrigin } from './_origin.js'
+
 const DEFAULT_TITLE = 'YatraFlow — Plan real trips, together'
 const DEFAULT_DESCRIPTION = 'Plan realistic India trips together. See the time, distance and cost impact of every stop.'
 const ID_RE = /^[A-Za-z0-9_-]{1,64}$/
@@ -68,10 +73,43 @@ async function ownsPublication(url, key, entitlement, id) {
   }
 }
 
+/**
+ * A card for a publication that does not exist (#362's hygiene item: the old
+ * one emitted canonical and og:url for the very id that 404'd). Noindex and
+ * no canonical — a shared typo must never be indexed under its own address —
+ * and it lands the visitor on Explore rather than a dead end.
+ */
+function renderNotFound() {
+  const origin = resolveOrigin()
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="robots" content="noindex" />
+<title>Itinerary not found — YatraFlow</title>
+<meta name="description" content="This itinerary could not be found. Explore published itineraries on YatraFlow." />
+<meta property="og:site_name" content="YatraFlow" />
+<meta property="og:title" content="Itinerary not found — YatraFlow" />
+<meta property="og:description" content="This itinerary could not be found. Explore published itineraries on YatraFlow." />
+<meta property="og:image" content="${escapeHtml(`${origin}/og-default.png`)}" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Itinerary not found — YatraFlow" />
+<meta name="twitter:description" content="This itinerary could not be found. Explore published itineraries on YatraFlow." />
+<meta name="twitter:image" content="${escapeHtml(`${origin}/og-default.png`)}" />
+<script>location.replace(${JSON.stringify('/#/explore')})</script>
+</head>
+<body><p>Opening <a href="/#/explore">Explore</a>…</p></body>
+</html>`
+}
+
 function renderPublication(publication, id, buyer = null) {
-  const origin = (process.env.PUBLIC_ORIGIN ||
-    (process.env.VERCEL_PROJECT_PRODUCTION_URL && `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`) ||
-    DEFAULT_ORIGIN).replace(/\/+$/, '')
+  // A row the database could not read is a 404-without-canonical card, never
+  // the brand card under the id it failed to find (#362).
+  if (!publication) return renderNotFound()
+  const origin = resolveOrigin()
   const title = publication?.title
     ? (buyer ? `I bought ${publication.title} — YatraFlow` : `${publication.title} — YatraFlow`)
     : DEFAULT_TITLE
@@ -139,7 +177,12 @@ export default async function handler(req, res) {
     return res.status(405).end()
   }
   const id = req.query?.id
-  if (typeof id !== 'string' || !ID_RE.test(id)) return res.status(400).end()
+  if (typeof id !== 'string' || !ID_RE.test(id)) {
+    // Two different failures, two different answers (#362): a bare `/i/` —
+    // the rewrite forwards it without a query — is a missing page, so 404
+    // rather than the app shell; a malformed id is a bad request.
+    return res.status(id ? 400 : 404).end()
+  }
   // A malformed `buyer` is IGNORED rather than rejected: a garbled parameter
   // must still preview as the publication, never as a dead link. Nothing is
   // rendered from it until the RPC above confirms it.

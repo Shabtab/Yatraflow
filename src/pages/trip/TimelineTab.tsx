@@ -39,6 +39,7 @@ import { PillNav } from '../../components/PillNav'
 import { DaySection } from './timeline/DaySection'
 import { buildDayCards, reuseDayTotals, reuseWarningGroups, type DayCards, type DayTotals } from '../../lib/dayCards'
 import { insertionWhere } from '../../lib/labels'
+import { canFocusDay } from '../../lib/tripFocus'
 import { QuickAddStop, type QuickAddTarget } from './timeline/QuickAddStop'
 import { MoveStopModal } from './timeline/MoveStopModal'
 
@@ -403,7 +404,10 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
   // DaySection matches would collapse the whole accordion and scroll nowhere.
   useEffect(() => {
     if (focusDay == null || !Number.isFinite(focusDay)) return
-    if (!trip.days.some(d => d.index === focusDay)) {
+    // #425 PR 1: the consume gate is the shared contract's validator (same
+    // rule the workspace applies when RAISING the request — a value no day
+    // matches is refused, never clamped, and still consumed).
+    if (!canFocusDay({ dayIndex: focusDay }, trip)) {
       onFocusConsumed?.()
       return
     }
