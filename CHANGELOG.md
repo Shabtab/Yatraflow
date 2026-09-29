@@ -1,3 +1,18 @@
+# Changelog
+
+All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions are pre-1.0 MVP milestones.
+
+> **Two version lines, cut from the same commits.** `X.Y.Z` headings are the **web app**
+> (semver, mirrored in `package.json`, deployed by Vercel from `main`). The `-native` suffix
+> is the **Android shell's** own numbering (`versionCode`/`versionName` in
+> `android/app/build.gradle`, surfaced in Settings → Apps), which does **not** interleave
+> with web semver — so `0.7.0-native` is newer than `0.48.0` despite the smaller number.
+> Entries below are ordered newest-first by date, not by version number.
+>
+> **History note.** Entries before `0.42.0` were removed in `adf5f66` (Sep 7, 2026) — that
+> record still exists in `git log`, not here. Archived release notes live in
+> [`docs/history/`](docs/history/).
+
 ## [Unreleased]
 
 ### Fixed
