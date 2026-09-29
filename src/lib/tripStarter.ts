@@ -8,7 +8,11 @@
 
 import { haversineKm } from './geo'
 import { dayCountForRange } from './dayCount'
-import { MODE_COST_PER_KM, isFuelEconomyMode, parseFuelEconomyKmL, parseFuelPricePerL } from './engine'
+import {
+  MODE_COST_PER_KM,
+  parseFuelEconomyKmL,
+  resolveTransportPricing,
+} from './engine'
 import { STAY_RATE_PER_NIGHT, MEALS_PER_HEAD_DAY } from './planBench'
 import { defaultVehicleProfile, normalizeVehicleProfile } from './vehicleProfile'
 import { sanitizeTankL } from './tripRow'
@@ -17,10 +21,6 @@ import type { ItineraryStop, LatLngPoint, TransportMode, StayStyle, VehicleProfi
 
 /** Straight-line chains underestimate real roads — the bench-style detour factor. */
 export const ROAD_FACTOR = 1.25
-
-/** Suburban / unreserved ("local") train fares run a fraction of express
- *  ₹1.6/km — all-India suburban averages land near ₹0.45/km. */
-export const LOCAL_TRAIN_COST_PER_KM = 0.45
 
 export interface StarterTripInput {
   startDate: string
@@ -37,7 +37,8 @@ export interface StarterTripInput {
   inrPerL?: string | number | null
   /** Tank/battery capacity for the "≈ N km per tank" note — estimate-only in v1. */
   tankL?: number
-  /** Rental car rate — estimate-only in v1 (persisted trips bill the blended ₹/km). */
+  /** Rental car rate — billed one rent-day per itinerary day on top of the
+   *  per-km table, by BOTH the estimate below and persisted billing (#521). */
   rentPerDay?: number
   /** Train mode only: bill suburban/unreserved fares instead of express ₹1.6/km. */
   localTrain?: boolean
@@ -131,22 +132,29 @@ export function estimateTripStarter(input: StarterTripInput): StarterBill {
   let transportCost: number | null = null
   let transportFormula = ''
   if (roadKm != null) {
-    const economy = parseFuelEconomyKmL(input.kmPerL)
-    const price = parseFuelPricePerL(input.inrPerL)
-    if (isFuelEconomyMode(input.mode) && economy && price) {
-      const inrPerKm = Math.round((price / economy) * 100) / 100
+    // #521: the SAME pricing the persisted bill resolves — rate, suburban
+    // flag and rent all come from resolveTransportPricing, so the estimate
+    // that sells the trip and the Budget tab cannot disagree on the basis.
+    const pricing = resolveTransportPricing({
+      transportMode: input.mode,
+      fuelEconomyKmL: input.kmPerL,
+      fuelPricePerL: input.inrPerL,
+      rentPerDayInr: input.rentPerDay,
+      localTrain: input.localTrain,
+    })
+    if (pricing.kmPerLiter && pricing.fuelPricePerL) {
+      const inrPerKm = pricing.inrPerKm ?? MODE_COST_PER_KM[input.mode] ?? MODE_COST_PER_KM.car
       transportCost = Math.round(roadKm * inrPerKm)
-      transportFormula = `${roadKm} km ÷ ${economy} km/L × ₹${price}/L`
+      transportFormula = `${roadKm} km ÷ ${pricing.kmPerLiter} km/L × ₹${pricing.fuelPricePerL}/L`
     } else {
-      const local = input.mode === 'train' && input.localTrain === true
-      const rate = local ? LOCAL_TRAIN_COST_PER_KM : (MODE_COST_PER_KM[input.mode] ?? MODE_COST_PER_KM.car)
+      const rate = pricing.inrPerKm ?? MODE_COST_PER_KM[input.mode] ?? MODE_COST_PER_KM.car
       transportCost = Math.round(roadKm * rate)
-      transportFormula = local ? `${roadKm} km × ₹${rate}/km (local train)` : `${roadKm} km × ₹${rate}/km`
+      transportFormula = pricing.localTrain ? `${roadKm} km × ₹${rate}/km (local train)` : `${roadKm} km × ₹${rate}/km`
     }
-    if (input.mode === 'rental' && finitePos(input.rentPerDay)) {
-      const rent = Math.round(input.rentPerDay) * days
+    if (pricing.rentPerDayInr) {
+      const rent = pricing.rentPerDayInr * days
       transportCost = (transportCost ?? 0) + rent
-      transportFormula += ` + ₹${Math.round(input.rentPerDay)} × ${days}d rent`
+      transportFormula += ` + ₹${pricing.rentPerDayInr} × ${days}d rent`
     }
   }
 
