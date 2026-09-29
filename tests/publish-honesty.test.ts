@@ -31,6 +31,11 @@ const codeOf = (source: string) => source
   .join('\n')
 
 const shareTab = codeOf(src('../src/pages/trip/ShareTab.tsx'))
+/** #354 — the six publish rules, which now live in a lib module so the WRITER
+ *  can enforce the same ones the form does. Comment-stripped for the same
+ *  reason `shareTab` is: a guard that can be satisfied by prose describing the
+ *  rule proves nothing about the rule. */
+const rules = codeOf(src('../src/lib/publishRules.ts'))
 
 /** One function's own text: from its signature to the next top-level one. */
 function fnBody(source: string, signature: string): string {
@@ -96,16 +101,21 @@ describe('#388 — every invariant the writer depends on is re-asserted at submi
   it('re-checks the free-day rule instead of trusting the toggle guard', () => {
     // The exact hole: an empty `free` set never reaches `toggleDay`, and
     // `0 >= trip.days.length` is false, so nothing else caught it.
-    const submit = fnBody(shareTab, 'async function submit()')
-    expect(submit).toMatch(/free\.size < 1/)
-    expect(submit).toContain('At least one day must stay free')
+    //
+    // #354/#389 — the check MOVED out of the form into `lib/publishRules`, so
+    // `publishItinerary` enforces it too and not only the form. The pin follows
+    // the rule rather than the file it used to live in; asserting the message
+    // where it now lives is what keeps the two copies from drifting.
+    expect(rules).toMatch(/freeDayCount < 1/)
+    expect(rules).toContain('At least one day must stay free')
+    // …and the form really does call that derivation rather than keeping its own.
+    expect(shareTab).toContain('publishValidation({')
   })
 
   it('does not let an entirely-free plan be blocked by the free-day rule', () => {
     // `entirelyFree` publishes every day as free, which satisfies the rule by
     // construction — asserting it unconditionally would refuse a free plan.
-    const submit = fnBody(shareTab, 'async function submit()')
-    expect(submit).toMatch(/!entirelyFree && free\.size < 1/)
+    expect(rules).toMatch(/!entirelyFree && freeDayCount < 1/)
   })
 
   it('still writes the publication BEFORE onDone can report it', () => {
@@ -122,12 +132,25 @@ describe('#388 — a stale error never sits beside a field the user just fixed',
   it('clears the error on every field edit, not only on price', () => {
     // Price already did this; the tagline, season, tips and CTA did not, so a
     // message about a field the creator had already corrected kept standing.
-    const setters = ['setTagline(', 'setBestSeason(', 'setTips(', 'setCta(', 'setPrice(']
-    for (const setter of setters) {
+    //
+    // #389 — the single `err` became a FIELD-KEYED map, so "clears the error" is
+    // now per-field. A field with no rule of its own clears the whole-form
+    // failure (`saveErr`, the write-failure banner); a field that HAS a rule
+    // clears only its own key, so correcting the price does not silently wipe a
+    // still-true complaint about the call-to-action. Both halves are asserted,
+    // because the second is the part a blanket `setErr(null)` would break.
+    for (const setter of ['setTagline(', 'setBestSeason(', 'setTips(']) {
       const idx = shareTab.indexOf(setter)
       expect(idx, `${setter} not found`).toBeGreaterThan(-1)
       const line = shareTab.slice(idx, shareTab.indexOf('\n', idx))
-      expect(line, `${setter} does not clear the error`).toContain('setErr(null)')
+      expect(line, `${setter} does not clear the write-failure notice`).toContain('setSaveErr(null)')
+    }
+    // The two fields that own a rule clear exactly their own key.
+    for (const [setter, field] of [['setPrice(', 'price'], ['setCta(', 'cta']] as const) {
+      const idx = shareTab.indexOf(setter)
+      expect(idx, `${setter} not found`).toBeGreaterThan(-1)
+      const line = shareTab.slice(idx, shareTab.indexOf('\n', idx))
+      expect(line, `${setter} must clear only its own field's message`).toContain(`clearErr('${field}')`)
     }
   })
 })

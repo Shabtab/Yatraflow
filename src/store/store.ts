@@ -26,6 +26,7 @@ import {
   clearWritesFor, dropWrite, pendingWrites, queueWrite, replayVerdict, shouldRetry,
 } from '../lib/writeQueue'
 import { ownSuggestedCover, unclaimedCovers } from '../lib/coverUpload'
+import { publishValidation, PUBLISH_FIELD_ORDER, PublishRejected } from '../lib/publishRules'
 import { makeInviteCode, normalizeInviteCode } from '../lib/inviteCode'
 import { suggestionToRow, decisionToRow, activityToRow, notificationToRow, publishedToRow } from '../lib/restoreRows'
 import { reduceSlice, applyMemberChange, isRecentLocalWrite, isStaleServerRow } from '../lib/realtimeCore'
@@ -69,12 +70,18 @@ interface DB {
    *  Drives the offline banner's "showing your saved plan from HH:MM" and is
    *  set by the cache boot below, cleared by every network hydrate. */
   cachedAt: number | null
+  /** The audit tab's own read status (#367). A failed refresh used to be
+   *  console-only, which made staleness invisible — an admin watching the tab
+   *  could not tell "no actions" from "the read broke". Flips on any failed
+   *  `refreshAdminAudit`; cleared on the next success (the tab renders a
+   *  retry, mirroring the trash bin's honest-failure shape). */
+  adminAuditFailed: boolean
 }
 
 let cache: DB = {
   users: [], trips: [], trashedTrips: [], suggestions: [], decisions: [],
   activity: [], notifications: [], published: [], adminAudit: [], sessionUserId: null,
-  ready: false, sliceReads: {}, trashLoaded: false, trashFailed: false, cachedAt: null,
+  ready: false, sliceReads: {}, trashLoaded: false, trashFailed: false, cachedAt: null, adminAuditFailed: false,
 }
 
 const listeners = new Set<() => void>()
@@ -164,6 +171,11 @@ export interface AdminAuditEntry {
 
 export function useAdminAudit(): AdminAuditEntry[] {
   return useSyncExternalStore(subscribe, () => cache.adminAudit)
+}
+
+/** The audit read's own status (#367) — the tab renders a retry on true. */
+export function useAdminAuditFailed(): boolean {
+  return useSyncExternalStore(subscribe, () => cache.adminAuditFailed)
 }
 
 interface AuditRowShape {
@@ -435,7 +447,7 @@ export async function logout(): Promise<void> {
   // generation guard keeps a late hydrate from re-patching the old user back
   // in (issue #45).
   const departing = cache.sessionUserId
-  patch({ trips: [], trashedTrips: [], trashLoaded: false, trashFailed: false, suggestions: [], decisions: [], activity: [], notifications: [], published: [], adminAudit: [], sessionUserId: null, ready: true, cachedAt: null })
+  patch({ trips: [], trashedTrips: [], trashLoaded: false, trashFailed: false, suggestions: [], decisions: [], activity: [], notifications: [], published: [], adminAudit: [], adminAuditFailed: false, sessionUserId: null, ready: true, cachedAt: null })
   commit()
   // hydrate(null) skips the snapshot/write cleanup when sessionUserId is
   // already null — which it now always is by this point — so the departing
@@ -559,11 +571,11 @@ export function init(): void {
         const pubRows = mapOrSkip((pubRes.data ?? []), rowToPublished)
         if (profRes.error) { console.error('[yatraflow] hydrate profiles failed', profRes.error) }
         if (pubRes.error) { console.error('[yatraflow] hydrate published failed', pubRes.error) }
-        patch({ users, trips: [], trashedTrips: [], trashLoaded: false, trashFailed: false, suggestions: [], decisions: [], activity: [], notifications: [], published: dedupePublished(pubRows), adminAudit: [], sessionUserId: null, ready: true, cachedAt: null })
+        patch({ users, trips: [], trashedTrips: [], trashLoaded: false, trashFailed: false, suggestions: [], decisions: [], activity: [], notifications: [], published: dedupePublished(pubRows), adminAudit: [], adminAuditFailed: false, sessionUserId: null, ready: true, cachedAt: null })
         commit()
       } catch (e) {
         console.error('[yatraflow] anonymous hydration failed', e)
-        patch({ users: [], trips: [], trashedTrips: [], trashLoaded: false, trashFailed: false, suggestions: [], decisions: [], activity: [], notifications: [], published: [], adminAudit: [], sessionUserId: null, ready: true, cachedAt: null })
+        patch({ users: [], trips: [], trashedTrips: [], trashLoaded: false, trashFailed: false, suggestions: [], decisions: [], activity: [], notifications: [], published: [], adminAudit: [], adminAuditFailed: false, sessionUserId: null, ready: true, cachedAt: null })
         commit()
       }
       })()
@@ -938,12 +950,44 @@ async function seedDemoFor(userId: string, gen: number = hydrateGen): Promise<vo
 
 // ---------------- Seeding demo trips ----------------
 
-/** Manually load the demo trips into the current account (My Trips button). */
-/** Manually load the demo trips into the current account (My Trips button). */
+/** The shipped demo set's names — the re-seed signature (#386). Seeded rows
+ *  persist under regenerated uuids with no marker column, so the names the
+ *  seed ships are the dedupe key: they survive reloads and later sessions. */
+const DEMO_SEED_NAMES = new Set(seedData.trips.map(t => t.name))
+
+/** Re-entrancy guard: impatient clicks while a seed is in flight must not mint
+ *  a second library before the first one's rows come back. */
+let demoSeedInFlight = false
+
+/** Manually load the demo trips into the current account (My Trips button).
+ *  Both wirings (header + empty state) call this one guarded function, so no
+ *  per-site logic can drift. */
 export function addDemoTrips(): void {
-  if (!cache.sessionUserId) return
+  const userId = cache.sessionUserId
+  if (!userId) return
+  // Same gate as auto-seed: a broken trips read must show the error branch
+  // (with its Retry), never demo rows seeded on top of it. `trips` is marked
+  // failed exactly when the trip count is untrustworthy, so this is the same
+  // condition under a different name.
+  if (cache.sliceReads['trips'] === 'failed') {
+    toast('Your trips could not be loaded — try again once they are back.', 'err')
+    return
+  }
+  // Dedupe: a library already holding the seed's names was seeded before.
+  if (tripsForUser(userId).some(t => DEMO_SEED_NAMES.has(t.name))) {
+    toast('Demo trips are already in your library')
+    return
+  }
+  if (demoSeedInFlight) {
+    toast('Demo trips are on their way…')
+    return
+  }
+  demoSeedInFlight = true
   toast('Adding demo trips…')
-  void seedDemoFor(cache.sessionUserId).then(() => toast('Demo trips added'))
+  void seedDemoFor(userId).then(
+    () => toast('Demo trips added'),
+    (e) => console.error('[yatraflow] demo seed failed', e),
+  ).finally(() => { demoSeedInFlight = false })
 }
 
 // ---------------- Row mappers for collaboration tables ----------------
@@ -1245,14 +1289,16 @@ export interface NewTripInput {
  *  empty days at the end; shortening drops trailing EMPTY days only. Days
  *  holding stops — or referenced by a fixed commitment — are never silently
  *  deleted; the returned error names the first blocked day so the UI can
- *  tell the user to clear it first. Indexes are re-sequenced after any
- *  change. Pure: no store access, node-testable. */
+ *  tell the user to clear it first, and `blocked` carries EVERY load-bearing
+ *  day index that stands in the way (#408: the settings form links each one
+ *  straight to its timeline day instead of naming just the first). Indexes
+ *  are re-sequenced after any change. Pure: no store access, node-testable. */
 export function reconcileDays(
   days: ItineraryDay[],
   newStartDate: string,
   newEndDate: string,
   protectedDayIndexes: Set<number> = new Set(),
-): { days: ItineraryDay[]; error?: string } {
+): { days: ItineraryDay[]; error?: string; blocked?: number[] } {
   const start = new Date(`${newStartDate}T00:00:00`)
   const end = new Date(`${newEndDate}T00:00:00`)
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
@@ -1271,10 +1317,11 @@ export function reconcileDays(
     let last = next.length
     while (last > target && !loadBearing(next[last - 1])) last--
     if (last > target) {
-      const blocked = next.slice(target).find(loadBearing)
+      const blocked = next.slice(target).filter(loadBearing)
       return {
         days,
-        error: `Day ${(blocked?.index ?? target) + 1} still has stops or a fixed commitment — move or delete them before shortening the trip.`,
+        error: `Day ${(blocked[0]?.index ?? target) + 1} still has stops or a fixed commitment — move or delete them before shortening the trip.`,
+        blocked: blocked.map(d => d.index),
       }
     }
     next = next.slice(0, last)
@@ -1690,14 +1737,27 @@ function requireAdmin(): boolean {
   return true
 }
 
+/** Re-read the audit log on demand (#367) — the Audit tab's Retry affordance
+ *  and the tab-focus poll both land here, so a stale or failed read has one
+ *  recovery path. Admin-scoped: a non-admin call is a no-op. */
+export async function refreshAdminAuditNow(): Promise<void> {
+  if (!isAdminCached()) return
+  await refreshAdminAudit()
+}
+
 async function refreshAdminAudit(): Promise<void> {
   try {
     const { data, error } = await fetchAdminAuditRows()
     if (error) throw error
-    patch({ adminAudit: auditRowsToEntries(data) })
+    patch({ adminAudit: auditRowsToEntries(data), adminAuditFailed: false })
     commit()
   } catch (e) {
+    // #367: surfaced, not swallowed — the tab shows a retry, because a failed
+    // read rendered as "No admin actions yet" is a lie about the log, not an
+    // empty log.
     console.error('[yatraflow] audit refresh failed', e)
+    patch({ adminAuditFailed: true })
+    commit()
   }
 }
 
@@ -1869,8 +1929,10 @@ export async function adminDeleteTrip(tripId: ID): Promise<boolean> {
  *
  *  The optimistic patch mirrors exactly that blast radius: the user row, the
  *  owned trips with their children, the collab rows they authored ANYWHERE,
- *  their notifications, and the publications (force only). Restored wholesale
- *  on RPC error, same as adminDeleteTrip. */
+ *  their notifications, and the publications (force only). A trip the target
+ *  was only a member of loses just the membership row — the trip itself stays
+ *  for the remaining crew (#367). Restored wholesale on RPC error, same as
+ *  adminDeleteTrip. */
 export async function adminDeleteUser(userId: ID, force = false): Promise<boolean> {
   if (!requireAdmin()) return false
   const prevUsers = cache.users
@@ -1886,7 +1948,16 @@ export async function adminDeleteUser(userId: ID, force = false): Promise<boolea
   const isOwnedTrip = (tripId: ID) => ownedTripIds.has(tripId)
   patch({
     users: prevUsers.filter(u => u.id !== userId),
-    trips: prevTrips.filter(t => !isOwnedTrip(t.id) && !(t.members ?? []).some(m => m.userId === userId)),
+    // #367: the DB cascade deletes OWNED trips and takes their children; a
+    // trip the target was only a MEMBER of survives for the remaining crew —
+    // so the optimistic patch evicts only the membership row there, not the
+    // whole trip. Evicting it alarmed the admin mid-session with a trip the
+    // crew still owns (it healed on the next hydrate; the patch was the lie).
+    trips: prevTrips.map(t => {
+      if (isOwnedTrip(t.id)) return null
+      if (!(t.members ?? []).some(m => m.userId === userId)) return t
+      return { ...t, members: (t.members ?? []).filter(m => m.userId !== userId) }
+    }).filter((t): t is Trip => t !== null),
     published: prevPubs.filter(p => p.creatorId !== userId && !isOwnedTrip(p.tripId)),
     suggestions: prevSug.filter(s => s.proposedBy !== userId && !isOwnedTrip(s.tripId)),
     decisions: prevDec.filter(d => d.raisedBy !== userId && !isOwnedTrip(d.tripId)),
@@ -2387,16 +2458,55 @@ export function canEditAdmin(role: TripMember['role'] | null): boolean {
   return canEdit(role) || isAdminCached()
 }
 
+/**
+ * Change a member's role, and roll the cache back if the write is refused.
+ *
+ * #391 — this was a `mutateTrip` + `fire(...)` with neither a rollback nor a
+ * toast, so a role change the server refused looked exactly like one that
+ * landed and then reverted on the next hydrate. The undo window that
+ * `removeMember` gets does not apply here (there is nothing to undo), so the
+ * rollback is the only safety net this path has and it was missing.
+ *
+ * The directions matter: the cache is restored on failure (the UI must not
+ * claim a role the server refused) and the failure is LOUD, because a quiet
+ * one is indistinguishable from success. A quiet SUCCESS is fine here.
+ *
+ * `mutateTrip` with `touch: false` is kept, so the role change does not bump
+ * the trip's `updatedAt` and re-arm the "page behind itinerary" nudge for a
+ * change no itinerary content saw.
+ */
 export function setMemberRole(tripId: ID, userId: ID, role: TripMember['role']): void {
   const t = tripById(tripId)
   const m = t?.members?.find(x => x.userId === userId)
-  if (t && m) {
-    mutateTrip(tripId, draft => {
-      const dm = draft.members?.find(x => x.userId === userId)
-      if (dm) dm.role = role
-    }, { touch: false })
-    fire('trip_members', supabase.from('trip_members').update({ role }).eq('trip_id', tripId).eq('user_id', userId))
-  }
+  if (!t || !m || m.role === role) return
+  const previousRole = m.role
+  mutateTrip(tripId, draft => {
+    const dm = draft.members?.find(x => x.userId === userId)
+    if (dm) dm.role = role
+  }, { touch: false })
+  void Promise.resolve(
+    supabase.from('trip_members').update({ role }).eq('trip_id', tripId).eq('user_id', userId),
+  ).then(
+    res => {
+      if (!res?.error) return
+      console.error('[yatraflow] trip_members write failed', res.error)
+      mutateTrip(tripId, draft => {
+        const dm = draft.members?.find(x => x.userId === userId)
+        if (dm) dm.role = previousRole
+      }, { touch: false })
+      commit()
+      toast(`Couldn't change that role — it has been put back. (${res.error.message ?? 'write refused'})`, 'err')
+    },
+    err => {
+      console.error('[yatraflow] trip_members write rejected', err)
+      mutateTrip(tripId, draft => {
+        const dm = draft.members?.find(x => x.userId === userId)
+        if (dm) dm.role = previousRole
+      }, { touch: false })
+      commit()
+      toast('Couldn’t change that role — check your connection.', 'err')
+    },
+  )
 }
 
 /**
@@ -2426,13 +2536,49 @@ export async function joinViaInvite(tripId: ID, userId: ID, role: TripMember['ro
   return true
 }
 
+/**
+ * Remove a member, and put them back if the write is refused.
+ *
+ * #391 — the row was filtered out of the cache and the delete fired with no
+ * error handling, so a refused delete looked like a successful one and the
+ * member came back on the next hydrate with no message. The 7s `undoToast`
+ * covers INTENT-regret ("I did not mean to"); this covers WRITE-FAILURE. They
+ * are different failures and both paths are wanted — the undo restores through
+ * `restoreMember`, and this restores the exact row the cache held, including
+ * its `joinedAt`, so a failed delete does not quietly re-order the crew.
+ */
 export function removeMember(tripId: ID, userId: ID): void {
   const t = tripById(tripId)
   if (!t) return
   const before = t.members ?? []
+  const removed = before.find(m => m.userId === userId)
+  if (!removed) return
   t.members = before.filter(m => m.userId !== userId)
   commit()
-  fire('trip_members', supabase.from('trip_members').delete().eq('trip_id', tripId).eq('user_id', userId))
+  // The rollback is the cache's OWN list, captured before the filter — not a
+  // re-read of the server, which is exactly the thing that just refused us.
+  const restore = () => {
+    const current = cache.trips.find(x => x.id === tripId)
+    if (!current) return
+    if (current.members?.some(m => m.userId === userId)) return // already back
+    current.members = [...(current.members ?? []), removed]
+    commit()
+  }
+  void Promise.resolve(
+    supabase.from('trip_members').delete().eq('trip_id', tripId).eq('user_id', userId),
+  ).then(
+    res => {
+      if (!res?.error) return
+      console.error('[yatraflow] trip_members write failed', res.error)
+      restore()
+      toast(`Couldn't remove that traveller — they're still on the trip. (${res.error.message ?? 'write refused'})`, 'err')
+    },
+    err => {
+      console.error('[yatraflow] trip_members write rejected', err)
+      restore()
+      toast('Couldn’t remove that traveller — check your connection.', 'err')
+    },
+  )
 }
 
 export function userName(id: ID): string {
@@ -2928,6 +3074,39 @@ export function resolveDecision(decisionId: ID, optionId: ID): void {
 // ---------------- Publishing ----------------
 
 export async function publishItinerary(pub: Omit<PublishedItinerary, 'id' | 'publishedAt' | 'views' | 'copies'>): Promise<PublishedItinerary> {
+  // #354 — THE WRITER ENFORCES THE RULES, not just the form that calls it.
+  // Every publish rule used to live only in `PublicationForm`, so this function
+  // enforced none of them and the database had no backstop either. Any direct
+  // caller — a future surface, a console, a test, the admin path — could write a
+  // row the paywall would price but the preview shows fully (price > 0 with
+  // every day free: a paid unlock that reveals what the reader can already see),
+  // a ₹999999 row that 503s at checkout with no visible cause, or a coverless
+  // one whose link silently previews as the brand card.
+  //
+  // The check is the FORM's own `publishValidation` from `lib/publishRules` —
+  // the SAME module the form reads, so the refusal and the form's message are
+  // LITERALLY the same string and cannot drift. That is the whole reason the
+  // rules are a module rather than a function in the page: two copies of six
+  // rules is how this class of bug starts. A pure function of six scalars and a
+  // string map, so the store depends on the RULES and not on the page.
+  const entirelyFree = pub.premiumPriceInr == null
+  const violations = publishValidation({
+    coverImageUrl: pub.coverImageUrl?.trim(),
+    priceNum: pub.premiumPriceInr ?? 0,
+    entirelyFree,
+    freeDayCount: pub.freeDayIndexes.length,
+    totalDays: pub.durationDays,
+    cta: (pub.subscriberCta ?? '').trim(),
+    hasPremiumDay: !entirelyFree && pub.freeDayIndexes.length < pub.durationDays,
+  })
+  if (Object.keys(violations).length) {
+    // A REFUSAL, not a partial write: nothing is committed, nothing is rolled
+    // back, because nothing was touched. The form catches this and shows the
+    // message on the field it belongs to (which is why the map is keyed by
+    // field rather than concatenated here).
+    const first = PUBLISH_FIELD_ORDER.find(k => k in violations)!
+    throw new PublishRejected(violations[first] ?? 'This publication is not ready to publish.', first, violations)
+  }
   // Reuse the existing published row's id for the same trip so re-publishing
   // UPDATES it instead of minting a brand-new row. Previously every call used
   // a fresh uid('pub'), so the upsert created a duplicate row each time and
@@ -2952,30 +3131,40 @@ export async function publishItinerary(pub: Omit<PublishedItinerary, 'id' | 'pub
   }
   const existingIdx = cache.published.findIndex(x => x.tripId === p.tripId)
   const previous = existingIdx >= 0 ? cache.published[existingIdx] : undefined
+  // #361 — OWN THE COVER BEFORE THE FIRST COMMIT, not after. The old order
+  // committed the optimistic publication carrying the THIRD-PARTY
+  // (Wikimedia) URL, then awaited `ownSuggestedCover`, then committed the owned
+  // one — so anything reading the cache in that window (a share link copied
+  // mid-publish, a preview fetched in the gap) served Wikimedia at exactly the
+  // moment the feature exists to stop that. Resolving first makes the
+  // third-party URL durably unpublishable on the success path.
+  //
+  // It cannot block a publish: `ownSuggestedCover` never throws and never
+  // rejects, and its worst case is the original URL plus a `pending` flag the
+  // post-hydrate sweep retries. So the bounded fallback the old comment claimed
+  // is preserved, and it is now VISIBLE rather than silent.
+  const owned = await ownSuggestedCover(p.creatorId, p.coverImageUrl)
+  const ownedUrl = owned.owned && owned.url ? owned.url : undefined
+  if (ownedUrl) p.coverImageUrl = ownedUrl
+  // The trip's cover is what the publication copies, so a trip whose cover is
+  // still the suggestion is the reason this keeps happening: capture it BEFORE
+  // any write so a failure can put it back (#361's atomic rollback). Its
+  // VISIBILITY is captured for the same reason (#354's refused flip) — both
+  // rollbacks must restore the same "before" picture, or the trip is left in a
+  // state nobody chose.
+  const tripBefore = cache.trips.find(t => t.id === p.tripId)
+  const tripCoverBefore = tripBefore?.coverImageUrl
+  const tripVisibilityBefore = tripBefore?.visibility ?? 'private'
   cache.published = existingIdx >= 0
     ? [...cache.published.slice(0, existingIdx), p, ...cache.published.slice(existingIdx + 1)]
     : [...cache.published, p]
   commit()
-  // Take ownership of an auto-suggested cover BEFORE the row is written, so the
-  // stored og:image never points at someone else's host. Wikimedia serves only
-  // the thumbnail buckets it has generated, and one live publication carried a
-  // 587 KB image at the width we ask for — 98% of the 600 KB ceiling WhatsApp
-  // documents. Our own re-encode of the same photo measured 78 KB, so this
-  // fixes the third-party dependency and the size together.
-  //
-  // Deliberately after the optimistic commit: the UI shows the publication at
-  // once and the copy happens behind it. A failure keeps the third-party URL,
-  // which is what publishing did before, so this can never block a publish.
-  const owned = await ownSuggestedCover(p.creatorId, p.coverImageUrl)
-  if (owned.owned && owned.url) {
-    p.coverImageUrl = owned.url
-    cache.published = cache.published.map(x => (x.id === p.id ? { ...x, coverImageUrl: owned.url } : x))
-    commit()
+  if (ownedUrl) {
     // Put the owned URL on the TRIP too. Publishing copies the trip's cover, so
     // without this every re-publish would re-copy the same suggestion and mint
     // another object — and the trip's own card would keep loading from
     // Wikimedia, leaving the dependency in place on the app side.
-    updateTrip(p.tripId, { coverImageUrl: owned.url })
+    updateTrip(p.tripId, { coverImageUrl: ownedUrl })
   }
   // The Supabase row is the ONLY persistence for a publication — if this
   // upsert is rejected, the optimistic cache write makes it look published
@@ -3008,14 +3197,47 @@ export async function publishItinerary(pub: Omit<PublishedItinerary, 'id' | 'pub
         : cache.published.filter((_, i) => i !== idx)
       commit()
     }
+    // #361 — ATOMIC ROLLBACK: the trip's cover was written too, so the
+    // publication going back is not enough. Restoring only the publication left
+    // the trip card on the owned cover and the publication on the old one, and
+    // after a fix-and-republish cycle the two showed different pictures. Both
+    // writes go back together, or the publish is half-undone.
+    //
+    // `updateTrip` is the same debounced coalescing path the forward write used
+    // (600ms trailing, snapshot semantics) — going around it would put the
+    // restore in a different queue and let the coalesced snapshot win.
+    if (ownedUrl && tripCoverBefore !== ownedUrl) {
+      updateTrip(p.tripId, { coverImageUrl: tripCoverBefore })
+    }
   } else {
     markLocalWrite('published_itineraries', p.id)
     // A published itinerary is a public page: flip the trip to visibility
     // 'public' so RLS lets anonymous visitors and logged-in non-members read
     // the trip body the public page renders (see fetchSharedTrip).
-    cache.trips = cache.trips.map(t => t.id === p.tripId ? { ...t, visibility: 'public' } : t)
-    commit()
-    fire('trips', supabase.from('trips').update({ visibility: 'public' }).eq('id', p.tripId))
+    //
+    // #354 — AWAITED, and rolled back on refusal. This used to be
+    // `fire(...)`, so a rejected flip left the CACHE saying public while
+    // `get_public_trip` (which requires `visibility = 'public'`) served nothing:
+    // a live Explore card pointing at a dead public page, with nothing said.
+    // Awaiting is the fix; the rollback is what stops a refused flip from
+    // becoming that split state, and the toast is what stops it being silent.
+    const { error: flipError } = await supabase
+      .from('trips').update({ visibility: 'public' }).eq('id', p.tripId)
+    if (flipError) {
+      console.error('[yatraflow] publish visibility flip failed', flipError)
+      // Put the trip's own visibility back — the value captured BEFORE this
+      // publish, not a hardcoded 'private': it may have been 'link', and a guess
+      // would either narrow a shared trip or widen a private one. Captured at
+      // the top of the function, beside the cover, so the two rollbacks restore
+      // the same "before" picture.
+      cache.trips = cache.trips.map(t => t.id === p.tripId ? { ...t, visibility: tripVisibilityBefore } : t)
+      commit()
+      toast('Published to Explore, but the public page could not be opened — check your connection and republish. (' + flipError.message + ')', 'err')
+    } else {
+      markLocalWrite('trips', p.tripId)
+      cache.trips = cache.trips.map(t => t.id === p.tripId ? { ...t, visibility: 'public' } : t)
+      commit()
+    }
   }
   return p
 }
@@ -3172,41 +3394,120 @@ export function unpublishedTripIds(userId: ID): ID[] {
   return mine.filter(t => !cache.published.some(p => p.tripId === t.id && !p.unpublishedAt)).map(t => t.id)
 }
 
+/** The `sessionStorage` key that dedupes one counter for one publication for one
+ *  session.
+ *
+ *  Views and forks get their OWN key, and that is the #363 fix: opening a plan
+ *  and taking a copy of it are two things a reader may legitimately do in one
+ *  visit, so sharing a key would make the second invisible. Forks used to have
+ *  no key at all — every fork click was a raw event — while views were deduped,
+ *  which is why a fork rate computed from the two could exceed 100% with no
+ *  explanation. */
+function pubCounterKey(kind: 'views' | 'copies', id: ID): string {
+  return kind === 'views' ? `yf-viewed-${id}` : `yf-forked-${id}`
+}
+
+/** Has this step already been counted this session? Marks it if not.
+ *
+ *  Storage being unavailable (private mode, a hardened browser) is NOT a reason
+ *  to record nothing — it falls through and counts, which is the behaviour the
+ *  view counter already had. */
+function claimPubCounter(key: string): boolean {
+  try {
+    if (sessionStorage.getItem(key)) return false
+    sessionStorage.setItem(key, '1')
+  } catch { /* storage unavailable — count it */ }
+  return true
+}
+
+/** Release the session mark so a LATER attempt can count.
+ *
+ *  Called only when the write failed: the claim above is what makes a bump
+ *  once-per-session, and a bump that never reached the server did not happen,
+ *  so holding its mark would silently drop the reader's one chance to be
+ *  counted. */
+function releasePubCounter(key: string): void {
+  try { sessionStorage.removeItem(key) } catch { /* nothing to do */ }
+}
+
+/**
+ * Bump one of a publication's lifetime counters, and take the bump back if the
+ * server refuses it.
+ *
+ *  #363 — both counters used to be cache `+1` + `commit()` followed by a
+ *  fire-and-forget RPC whose failure was merely logged. So a failed bump left a
+ *  PERMANENT phantom on the client: `views`/`copies` drive Explore's sort
+ *  (`views + copies * 5`) and its featured pick, so an offline reader silently
+ *  re-ordered the catalog and could keep a card featured — and the dated
+ *  `pub_events` row is written only on SERVER success, so the counter and the
+ *  log drifted apart in exactly the case the migration's "one write path" was
+ *  written to prevent.
+ *
+ *  The optimistic bump STAYS (the UI should feel immediate, and this is a
+ *  counter, not money). What is new is the failure arm: decrement, commit, and
+ *  release the session claim. `commit()` only notifies subscribers — it persists
+ *  nothing — so rolling the cache back cannot itself write.
+ *
+ *  The issue offered "await where the UX allows, OR reconcile on the next read —
+ *  implement ONE". This is the third, explicitly-permitted minimum: never let a
+ *  FAILED bump keep its +1. It is the smallest change that removes the permanent
+ *  skew, and it needs no reconciliation pass because the value it leaves behind
+ *  is the server's own.
+ */
+function bumpPubCounter(id: ID, kind: 'views' | 'copies'): void {
+  const p = cache.published.find(x => x.id === id)
+  if (!p) return
+  // The creator's own visit/fork does not count: they are checking their own
+  // work, not being converted by it. Both stages use the same exclusion, or the
+  // funnel's two halves disagree about who a reader is.
+  if (cache.sessionUserId && p.creatorId === cache.sessionUserId) return
+  const key = pubCounterKey(kind, id)
+  if (!claimPubCounter(key)) return
+  cache.published = cache.published.map(x => x.id === id ? { ...x, [kind]: x[kind] + 1 } : x)
+  commit()
+  // Use RPC function that bypasses RLS - anyone can increment counters now.
+  // The same call records the dated funnel event server-side, which is why the
+  // failure arm below matters: the counter and the log must not drift.
+  const undo = () => {
+    // Decrement rather than restoring a captured snapshot: a snapshot would
+    // discard any OTHER legitimate movement of the same field that happened
+    // while this write was in flight, and the floor keeps a double-failure from
+    // driving the counter negative.
+    cache.published = cache.published.map(x => x.id === id ? { ...x, [kind]: Math.max(0, x[kind] - 1) } : x)
+    commit()
+    releasePubCounter(key)
+  }
+  void Promise.resolve(supabase.rpc('bump_published_stats', { p_id: id, p_kind: kind })).then(
+    res => {
+      if (!res?.error) return
+      console.error(`[yatraflow] ${kind} bump failed`, res.error)
+      undo()
+    },
+    err => {
+      console.error(`[yatraflow] ${kind} bump rejected`, err)
+      undo()
+    },
+  )
+}
+
 /** One view per itinerary per browser session, and the creator's own visits
  *  don't count — before this, every refresh and every self-check inflated the
  *  Explore counter. (sessionStorage survives route changes within the tab but
  *  resets on a genuinely new visit, which is the granularity views want.) */
 export function registerPubView(id: ID): void {
-  const p = cache.published.find(x => x.id === id)
-  if (!p) return
-  if (cache.sessionUserId && p.creatorId === cache.sessionUserId) return
-  try {
-    const key = `yf-viewed-${id}`
-    if (sessionStorage.getItem(key)) return
-    sessionStorage.setItem(key, '1')
-  } catch { /* storage unavailable (private mode) — count the view */ }
-  cache.published = cache.published.map(x => x.id === id ? { ...x, views: x.views + 1 } : x)
-  commit()
-  // Use RPC function that bypasses RLS - anyone can increment counters now.
-  fire('published_itineraries', supabase.rpc('bump_published_stats', { p_id: id, p_kind: 'views' }))
+  bumpPubCounter(id, 'views')
 }
 
+/** One FORK per itinerary per browser session, and the creator's own forks
+ *  don't count.
+ *
+ *  #363 — the view counter had a session guard and this one did not, so the
+ *  funnel divided session-deduped visits by raw fork clicks: unlike units
+ *  presented as a conversion rate. Explore's card can fork a plan repeatedly in
+ *  one visit, and each click was a fresh event. The guard makes the two stages
+ *  count the same kind of thing. */
 export function registerPubCopy(id: ID): void {
-  const p = cache.published.find(x => x.id === id)
-  if (!p) return
-  // Same exclusion as the view counter above, and for the same reason: a
-  // creator forking their OWN plan is testing it, not being converted by it.
-  // Without this the funnel's fork stage counted a step its view stage had
-  // already refused to count, so the two stages disagreed about who a reader
-  // is — and a fork rate over that is not a conversion rate.
-  if (cache.sessionUserId && p.creatorId === cache.sessionUserId) return
-  cache.published = cache.published.map(x => x.id === id ? { ...x, copies: x.copies + 1 } : x)
-  commit()
-  // Use RPC function that bypasses RLS - anyone can increment counters now.
-  // The same call also records the dated funnel event (see
-  // supabase/migrations/20260921_pub_funnel_events.sql), so the lifetime
-  // counter and the funnel log cannot drift.
-  fire('published_itineraries', supabase.rpc('bump_published_stats', { p_id: id, p_kind: 'copies' }))
+  bumpPubCounter(id, 'copies')
 }
 
 // ---------------- Feed & notifications ----------------
@@ -3347,6 +3648,12 @@ export function connectRealtime(_userId: string): void {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, p => dispatchRealtimeEvent('notifications', p))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, p => dispatchRealtimeEvent('profiles', p))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'published_itineraries' }, p => dispatchRealtimeEvent('published_itineraries', p))
+      // #367: the audit log goes live for admins. The publication already
+      // carries admin_audit (20260909_masteradmin.sql); subscribing here ends
+      // the poll-only staleness where a second admin's actions were invisible
+      // until a manual refresh. The RLS read policy is admin-gated, so a
+      // non-admin's subscription simply never receives rows — no flag needed.
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'admin_audit' }, p => dispatchRealtimeEvent('admin_audit', p))
       .subscribe(status => {
         // Reconnect resync: postgres_changes is NOT replayed across a socket
         // gap — after a laptop sleep / network switch the channel rejoins and
@@ -3506,6 +3813,16 @@ function applyRealtimeEvent(table: string, payload: RealtimePostgresChangesPaylo
     case 'published_itineraries':
       cache.published = reduceSlice(cache.published, event, row ? rowToPublished(row) : undefined, oldRow?.id)
       break
+    case 'admin_audit': {
+      // #367: a new audit row lands live. INSERT-only by contract (append-only
+      // log, no UPDATE/DELETE policy), and always prepended — the tab renders
+      // newest-first. Only meaningful for admins: the read policy withholds
+      // the rows from everyone else, so a non-admin never gets here with data.
+      if (event === 'INSERT' && row && isAdminCached()) {
+        cache.adminAudit = [adminAuditRowToEntry(row as unknown as AuditRowShape), ...cache.adminAudit]
+      }
+      break
+    }
     default:
       return
   }

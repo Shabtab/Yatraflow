@@ -9,6 +9,8 @@ import type { Trip } from '../../data/types'
 import { useDb, userById, activityFor } from '../../store/store'
 import { computeHealth, computeTotals, formatInr, minutesToHM, countHotelNights, isRoundTrip } from '../../lib/engine'
 import { healthBandClass, healthBandTone } from '../../lib/healthBand'
+import { overviewRoutePoints, routeWeatherAnchor } from '../../lib/overviewTruth'
+import { rankWarnings, warningKey, maxWarningSeverity, severityLead } from '../../lib/overviewWarnings'
 import { useTimeFormat, formatHM } from '../../lib/timefmt'
 import { fetchDailyWeather, forecastAvailable, wmoInfo } from '../../lib/weather'
 import type { DayWeather } from '../../lib/weather'
@@ -39,25 +41,24 @@ export function OverviewTab({ trip, onOpenTimeline, onOpenMap, onInvite, health,
   const nextCommitment = [...trip.fixedCommitments]
     .sort((a, b) => a.dayIndex - b.dayIndex || a.time.localeCompare(b.time))[0]
   const crew = trip.members ?? []
-  // Real-geometry snapshot: ordered stop coordinates (rejected stops excluded),
-  // each tagged with its day index so badges land on each day's first stop.
-  const routePoints = useMemo(() => {
-    const pts: Array<{ lat: number; lng: number; day: number }> = []
-    if (trip.startLocationCoords) pts.push({ lat: trip.startLocationCoords.lat, lng: trip.startLocationCoords.lng, day: 0 })
-    for (const day of [...trip.days].sort((a, b) => a.index - b.index)) {
-      for (const s of [...day.stops].sort((a, b) => a.orderInDay - b.orderInDay)) {
-        if (s.status !== 'rejected' && Number.isFinite(s.lat) && Number.isFinite(s.lng)) {
-          pts.push({ lat: s.lat, lng: s.lng, day: day.index })
-        }
-      }
-    }
-    return pts.length >= 2 ? pts : undefined
-  }, [trip.days, trip.startLocationCoords])
-  // Bento briefing (CTI §6.2): lead with the most consequential issues.
-  const severityRank = { high: 0, medium: 1, low: 2 } as const
-  const priorityActions = [...health.warnings]
-    .sort((a, b) => severityRank[a.severity] - severityRank[b.severity])
-    .slice(0, 3)
+  // Real-geometry snapshot, read from the ONE road chain (#403). This used to
+  // be a second walk over `startLocationCoords` + the stops, which meant the
+  // Overview drew a different road from the Map: `buildRoadChain` also appends
+  // the round-trip return leg and the trailing destination, so a round trip
+  // rendered OPEN here and as a closed loop there. The chain is also filtered
+  // through the coord-validity boundary, so a `(0,0)` placeholder stop can no
+  // longer stretch the snapshot across the Atlantic. `[]` means there is no
+  // route honest to draw — the card below says so rather than falling back to
+  // the shared component's illustrative curve, which wore real day badges.
+  const routePoints = useMemo(() => overviewRoutePoints(trip), [trip])
+  // Bento briefing (CTI §6.2): lead with the most consequential issues. Both
+  // "top 3" lists read the one shared rank (#401) — an unlabeled disagreement
+  // between them was the bug, so neither list sorts on its own anymore.
+  const rankedWarnings = rankWarnings(health.warnings)
+  const priorityActions = rankedWarnings.slice(0, 3)
+  // The count chip is toned by the severest warning present: an all-low trip
+  // must not wear the alarm saffron. Medium and high both merit review.
+  const countTone = maxWarningSeverity(health.warnings) === 'low' ? 'chip' : 'chip chip-saffron'
 
   return (
     <div className="two-col bento">
@@ -83,8 +84,8 @@ export function OverviewTab({ trip, onOpenTimeline, onOpenMap, onInvite, health,
               <ul className="health-reasons">
                 {health.warnings.length === 0
                   ? <li>No schedule issues detected — buffers look healthy.</li>
-                  : health.warnings.slice(0, 3).map(w => (
-                    <li key={w.code + w.title}>{w.severity === 'high'
+                  : rankedWarnings.slice(0, 3).map(w => (
+                    <li key={warningKey(w)}><span className="sr-only">{severityLead(w.severity)} </span>{w.severity === 'high'
                       ? <><InlineIcon icon={Siren} size={12} gap={3} /></>
                       : w.severity === 'medium'
                       ? <><InlineIcon icon={TriangleAlert} size={12} gap={3} /></>
@@ -108,17 +109,17 @@ export function OverviewTab({ trip, onOpenTimeline, onOpenMap, onInvite, health,
         <div className="card">
           <div className="row-between card-head">
             <h3>Priority actions</h3>
-            {health.warnings.length > 0 && <span className="chip chip-saffron">{health.warnings.length} warning{health.warnings.length !== 1 ? 's' : ''} to review</span>}
+            {health.warnings.length > 0 && <span className={countTone}>{health.warnings.length} warning{health.warnings.length !== 1 ? 's' : ''} to review</span>}
           </div>
           {priorityActions.length === 0 ? (
             <p className="muted small">Nothing needs fixing right now — the plan flows.</p>
           ) : (
             <div className="warn-list">
               {priorityActions.map(w => (
-                <div key={w.code + w.title} className={`warn-item ${w.severity === 'high' ? 'sev-high' : w.severity === 'low' ? 'sev-low' : ''}`}>
+                <div key={warningKey(w)} className={`warn-item ${w.severity === 'high' ? 'sev-high' : w.severity === 'low' ? 'sev-low' : ''}`}>
                   <span className="warn-icon">{w.severity === 'high' ? <Siren size={13} aria-hidden /> : w.severity === 'medium' ? <TriangleAlert size={13} aria-hidden /> : <Lightbulb size={13} aria-hidden />}</span>
                   <div>
-                    <div className="warn-title">{w.title}</div>
+                    <div className="warn-title"><span className="sr-only">{severityLead(w.severity)} </span>{w.title}</div>
                     <div className="warn-fix"><InlineIcon icon={CircleCheck} size={12} gap={3} />{w.fix}</div>
                   </div>
                 </div>
@@ -135,13 +136,29 @@ export function OverviewTab({ trip, onOpenTimeline, onOpenMap, onInvite, health,
       <div>
         <div className="card route-snap">
           <h3>Route snapshot</h3>
-          <RouteSnapshot
-            count={trip.days.length}
-            startLabel={trip.startLocation}
-            endLabel={trip.destinations[trip.destinations.length - 1]}
-            roundTripNote={isRoundTrip(trip) ? `↩ returns to ${trip.startLocation}` : undefined}
-            points={routePoints}
-          />
+          {/* #403: `RouteSnapshot`'s fallback is an ILLUSTRATIVE curve, so handing
+              it nothing drew a mockup road wearing this trip's real day badges —
+              a route for a trip that has none. `points` is `[]` when fewer than
+              two coordinates are valid, and the honest absence is rendered here
+              in the Overview's own branch rather than by changing the shared
+              component (PublicItinerary is its second caller). */}
+          {/* `RouteSnapshot` takes a non-null `day` badge index. The chain's start,
+              return leg and destination tail carry `null` because no day owns them;
+              `?? 0` restores exactly the old badge placement (the start used to be
+              pushed as day 0), and the component's own dedupe means those later
+              points add no second badge. */}
+          {routePoints.length >= 2
+            ? <RouteSnapshot
+                count={trip.days.length}
+                startLabel={trip.startLocation}
+                endLabel={trip.destinations[trip.destinations.length - 1]}
+                roundTripNote={isRoundTrip(trip) ? `↩ returns to ${trip.startLocation}` : undefined}
+                points={routePoints.map(p => ({ lat: p.lat, lng: p.lng, day: p.day ?? 0 }))}
+              />
+            : <p className="muted small" style={{ margin: 0 }}>
+                No route to draw yet — this plan needs at least two places with confirmed
+                coordinates. Add a stop, or pin the ones that are missing, and the shape appears here.
+              </p>}
           <p style={{ margin: '4px 0 0', fontSize: 12.5, opacity: .85, lineHeight: 1.6 }}>
             <b>{trip.startLocation}</b>
             {trip.destinations.map((d, i) => <span key={i}> → {d}</span>)}
@@ -215,14 +232,13 @@ function WeatherCard({ trip }: { trip: Trip }) {
   const [byDate, setByDate] = useState<Record<string, DayWeather>>({})
   const [state, setState] = useState<'loading' | 'ready' | 'unavailable'>('loading')
 
-  const anchor = useMemo(() => {
-    const stops = trip.days.flatMap(d => d.stops).filter(s => s.status !== 'rejected')
-    if (stops.length === 0) return null
-    return {
-      lat: stops.reduce((a, s) => a + s.lat, 0) / stops.length,
-      lng: stops.reduce((a, s) => a + s.lng, 0) / stops.length,
-    }
-  }, [trip])
+  // #403: the anchor is the centroid of the trip's VALID, non-rejected stops.
+  // It used to average every non-rejected stop with no validity check, so ONE
+  // `(0,0)` placeholder moved the centroid halfway to Null Island — and the
+  // forecast fetch then SUCCEEDED for the wrong ocean under the heading
+  // "Weather along the route", which is worse than showing nothing. No valid
+  // stop is now null, and the card hides rather than inventing a city.
+  const anchor = useMemo(() => routeWeatherAnchor(trip), [trip])
 
   useEffect(() => {
     if (!anchor || !forecastAvailable(trip.startDate)) { setState('unavailable'); return }

@@ -445,17 +445,32 @@ describe('the client writes through one path', () => {
   it('excludes the creator\'s own fork, exactly as the view counter does', () => {
     // Both stages have to agree about who a reader is; the fork stage used to
     // count the creator testing their own plan while the view stage refused it.
+    //
+    // #363 — the two counters became ONE shared path (`bumpPubCounter`), so the
+    // exclusion moved into that helper and the two exports delegate to it. The
+    // invariant is unchanged, and it is now structural rather than duplicated:
+    // the rule exists once, so the two stages cannot disagree about it at all.
+    const shared = store.slice(store.indexOf('function bumpPubCounter'), store.indexOf('export function registerPubView'))
+    expect(shared).toMatch(/p\.creatorId === cache\.sessionUserId\) return/)
+    // …and both exports really do route through the one helper, or the rule
+    // above guards a path nothing uses.
     const viewFn = store.slice(store.indexOf('export function registerPubView'), store.indexOf('export function registerPubCopy'))
-    const copyFn = store.slice(store.indexOf('export function registerPubCopy'), store.indexOf('export function registerPubCopy') + 1200)
-    expect(viewFn).toMatch(/p\.creatorId === cache\.sessionUserId\) return/)
-    expect(copyFn).toMatch(/p\.creatorId === cache\.sessionUserId\) return/)
+    const copyFn = store.slice(store.indexOf('export function registerPubCopy'), store.indexOf('export function registerPubCopy') + 400)
+    expect(viewFn).toContain("bumpPubCounter(id, 'views')")
+    expect(copyFn).toContain("bumpPubCounter(id, 'copies')")
   })
 
   it('sends both stages through the same RPC, so the counters and the log cannot drift', () => {
+    // #363 made this literally true: there is ONE call site, parameterised by
+    // kind, where there used to be two identical ones that could drift apart.
+    // The count is therefore the STRONGER assertion now — a second call site
+    // would mean a second path, which is what this test exists to prevent.
     const rpcCalls = store.match(/bump_published_stats/g) ?? []
-    expect(rpcCalls).toHaveLength(2)
-    expect(store).toMatch(/supabase\.rpc\('bump_published_stats', \{ p_id: id, p_kind: 'views' \}\)/)
-    expect(store).toMatch(/supabase\.rpc\('bump_published_stats', \{ p_id: id, p_kind: 'copies' \}\)/)
+    expect(rpcCalls).toHaveLength(1)
+    expect(store).toMatch(/supabase\.rpc\('bump_published_stats', \{ p_id: id, p_kind: kind \}\)/)
+    // That BOTH kinds really reach it is proved by running them, not by reading
+    // the source: tests/pub-counters.test.ts asserts one bump per action, each
+    // with its own `p_kind`.
   })
 })
 

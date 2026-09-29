@@ -3,19 +3,22 @@
 // blocks, big-value heads, mode grid, crew buttons, slider dials with drag
 // bubbles) and a live "settings bill" receipt on the right mirrors every choice
 // before it is saved. The sticky save bar spans both columns.
-import { useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  ChevronDown, ChevronUp, TriangleAlert, X,
+  ChevronDown, ChevronUp, MapPin, Pencil, Sparkles, TriangleAlert, X,
 } from 'lucide-react'
-import type { Trip, LatLngPoint, TransportMode } from '../../data/types'
+import type { Trip, TransportMode } from '../../data/types'
 import { TRANSPORT_MODES, TRAVEL_STYLES, STAY_STYLES } from '../../data/types'
-import { updateTrip } from '../../store/store'
-import { FUEL_PRICE_INR_PER_L, DEFAULT_FUEL_ECONOMY_KML, MODE_SPEED, formatInr, isFuelEconomyMode, parseFuelEconomyKmL, isImplausibleFuelEconomy, parseFuelPricePerL } from '../../lib/engine'
+import { updateTrip, reconcileDays } from '../../store/store'
+import { FUEL_PRICE_INR_PER_L, DEFAULT_FUEL_ECONOMY_KML, MODE_SPEED, computeHealth, formatInr, isFuelEconomyMode, parseFuelEconomyKmL, isImplausibleFuelEconomy, parseFuelPricePerL } from '../../lib/engine'
+import { healthBandClass, healthBandTone } from '../../lib/healthBand'
+import { STAY_RATE_PER_NIGHT } from '../../lib/rates'
 import { cap } from '../../lib/labels'
 import { InlineIcon, modeIcon } from '../../components/icons'
 import { isSelfDrivenMode } from '../../lib/ridePlan'
 import { CREW_CHIPS, CREW_MAX, CREW_MIN, clampCrew } from '../../lib/crew'
-import { defaultVehicleProfile } from '../../lib/vehicleProfile'
+import { defaultVehicleProfile, parseCapacityL, parseVehicleEconomy } from '../../lib/vehicleProfile'
+import { zipDests, splitDests, renameDest, type DestPair } from '../../lib/destPairs'
 import { Field, RangeDial, StickyFormBar, toast } from '../../components/ui'
 import { Select } from '../../components/Select'
 import { DateRangeCalendar } from '../../components/DateRangeCalendar'
@@ -24,6 +27,7 @@ import { LocationInput, pickLabel } from '../../components/LocationInput'
 import type { StartPin } from '../../lib/startPin'
 import { coordsForText, pinMatchesText } from '../../lib/startPin'
 import { CoverImagePicker } from '../../components/CoverImagePicker'
+import { RemoteEditBanner } from '../../components/RemoteEditBanner'
 
 /** The allowance the "drive after dinner" toggle turns on when a trip has none
  *  (#122's dhaba case: dinner at X, two more hours to Y). */
@@ -39,10 +43,35 @@ const START_DROPPED = 'The stored start pin named a different city, so it was no
 /** Icon per transport mode — the ONE map lives in components/icons (modeIcon);
  *  this file used to keep a private copy that drifted from the bench's. */
 
-export function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boolean }) {
-  const [f, setF] = useState({
+/** The form's editable field set. `destinations` lives in the pair array
+ *  beside it (#411) — this shape is the scalar fields only. */
+export interface SettingsFormState {
+  name: string
+  startLocation: string
+  startDate: string
+  endDate: string
+  travellers: number
+  budget: number
+  transportMode: TransportMode
+  travelStyle: Trip['travelStyle']
+  stayStyle: 'budget' | 'comfort' | 'luxury'
+  fuelEconomy: string
+  fuelPrice: string
+  roundTrip: boolean
+  vehicleType: string
+  fuelType: string
+  capacity: string
+  vehicleEconomy: string
+  driverCount: number | undefined
+  hasVulnerable: boolean | undefined
+  driveAfterDinner: boolean
+}
+
+/** Seed the scalar field set from a trip row. One factory, used by mount and
+ *  by #414's take-theirs reseed, so a reload can never drift from the open. */
+export function formFromTrip(trip: Trip): SettingsFormState {
+  return {
     name: trip.name, startLocation: trip.startLocation,
-    destinations: [...trip.destinations],
     startDate: trip.startDate, endDate: trip.endDate,
     travellers: trip.travellers, budget: trip.budgetPerPersonInr,
     transportMode: trip.transportMode, travelStyle: trip.travelStyle,
@@ -66,8 +95,196 @@ export function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boo
     driverCount: trip.driverCount,
     hasVulnerable: trip.hasVulnerable,
     driveAfterDinner: (trip.driveAfterDinnerMin ?? 0) > 0,
-  })
-  const [dateErr, setDateErr] = useState<string | null>(null)
+  }
+}
+
+export type SettingsDryRun =
+  | { ok: true; patch: Partial<Trip>; startCoordsDropped: boolean }
+  | { ok: false; reason: string; blocked?: number[] }
+
+/**
+ * #408: ONE predicate, run by the live Preview AND the Save button, so the
+ * preview is never a guess and a refusal is never a surprise. It answers
+ * "would this save be accepted, and if not, why" BEFORE any write touches the
+ * store — the reason is rendered inline (and under the blocking days, which
+ * link to their timeline day) instead of living in a toast that fades.
+ *
+ * Every check here is a check updateTrip re-runs server-side of the form;
+ * running it twice is the point — the UI's copy of the verdict is derived,
+ * never stored, so the two cannot drift apart.
+ */
+export function settingsDryRun(
+  f: SettingsFormState,
+  dests: readonly DestPair[],
+  startPin: StartPin | null,
+  trip: Trip,
+): SettingsDryRun {
+  const s = new Date(`${f.startDate}T00:00:00`), e = new Date(`${f.endDate}T00:00:00`)
+  if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) {
+    return { ok: false, reason: 'Pick both a start and an end date.' }
+  }
+  if (e < s) {
+    return { ok: false, reason: 'The end date must be on or after the start date.' }
+  }
+  const fuel = isFuelEconomyMode(f.transportMode)
+  // #412: a non-blank out-of-range capacity/economy REFUSES the save with the
+  // reason. Clearing the stored value (200 km/L parsing to undefined and the
+  // save writing undefined) was worse than the refusal — a refusal is visible.
+  if (fuel) {
+    if (f.capacity.trim() !== '' && parseCapacityL(f.capacity) === undefined) {
+      return {
+        ok: false,
+        reason: `Tank or battery capacity must be 1-300 ${f.fuelType === 'electric' ? 'kWh' : 'L'} — clear the box to use the vehicle default.`,
+      }
+    }
+    if (f.vehicleEconomy.trim() !== '' && parseVehicleEconomy(f.vehicleEconomy) === undefined) {
+      return {
+        ok: false,
+        reason: 'Economy must be 2-80 km/L (km/kWh for an EV) — clear the box to use the vehicle default.',
+      }
+    }
+  }
+  // Reconcile the DRAFT dates against the trip's real days — the same pure
+  // check updateTrip makes, but here the refusal can carry the blocking day
+  // indexes so each one links straight to its timeline day.
+  const datesChanged = f.startDate !== trip.startDate || f.endDate !== trip.endDate
+  if (datesChanged) {
+    const protectedIdx = new Set(trip.fixedCommitments.map(c => c.dayIndex))
+    const rec = reconcileDays(trip.days, f.startDate, f.endDate, protectedIdx)
+    if (rec.error) return { ok: false, reason: rec.error, blocked: rec.blocked }
+  }
+  const selfDriven = isSelfDrivenMode(f.transportMode)
+  const { destinations, destinationCoords } = splitDests(dests)
+  // #410 backstop (now inside the shared predicate, so the preview shows it
+  // too): never persist a pair whose text and pin disagree, whatever produced
+  // it. The trip saves unpositioned rather than measuring the wrong city.
+  const startCoordsToSave = coordsForText(startPin, f.startLocation)
+  return {
+    ok: true,
+    startCoordsDropped: !!startPin && !startCoordsToSave,
+    patch: {
+      name: f.name, startLocation: f.startLocation,
+      startLocationCoords: startCoordsToSave ?? undefined,
+      startDate: f.startDate, endDate: f.endDate,
+      // #411: the ONE pair array splits into the row's two arrays exactly
+      // here — the save mapping is the only writer of either.
+      destinations, destinationCoords,
+      travellers: clampCrew(f.travellers),
+      // The party dials only exist for self-drive modes (the block above is
+      // gated on the same predicate), so a conducted trip never carries
+      // them — and switching to one clears what a previous mode set.
+      driverCount: selfDriven ? f.driverCount : undefined,
+      hasVulnerable: selfDriven ? f.hasVulnerable : undefined,
+      // #213 Phase 5: only write the 120-minute default when the toggle is
+      // being turned ON. A trip stored with a custom allowance (say 60)
+      // used to be silently rewritten to 120 by any unrelated save.
+      driveAfterDinnerMin: !selfDriven
+        ? undefined
+        : f.driveAfterDinner
+          ? (trip.driveAfterDinnerMin ?? DEFAULT_DRIVE_AFTER_DINNER_MIN)
+          : undefined,
+      budgetPerPersonInr: Math.max(0, f.budget),
+      transportMode: f.transportMode, travelStyle: f.travelStyle,
+      stayStyle: f.stayStyle,
+      fuelEconomyKmL: fuel ? parseFuelEconomyKmL(f.fuelEconomy) : undefined,
+      fuelPricePerL: fuel ? parseFuelPricePerL(f.fuelPrice) : undefined,
+      roundTrip: fuel ? f.roundTrip : undefined,
+      // #213 Phase 6: the fallbacks come from the CHOSEN vehicle's own
+      // profile, not hardcoded car numbers. `Number('45') || 45` used to
+      // write a 45 L / 15 km-L car onto a motorcycle (12 / 40) or an EV
+      // (50 kWh / 6) whenever the fields were left blank.
+      vehicleProfile: fuel ? {
+        vehicleType: f.vehicleType as 'car' | 'motorcycle' | 'ev',
+        fuelType: f.fuelType as 'petrol' | 'diesel' | 'electric' | 'cng',
+        capacity: parseCapacityL(f.capacity) ?? defaultVehicleProfile(f.vehicleType).capacity,
+        economy: parseVehicleEconomy(f.vehicleEconomy) ?? defaultVehicleProfile(f.vehicleType).economy,
+      } : undefined,
+    },
+  }
+}
+
+/**
+ * #413: would this save change anything? The Save bar stays disabled until
+ * it would — a no-change click used to rewrite the trip, bump updatedAt,
+ * sync, toast success and ping collaborators for nothing.
+ *
+ * The compare runs over the SAVED field set: the patch a save would write,
+ * against the patch the UNTOUCHED draft would write, one field at a time,
+ * by VALUE — never the control states. The baseline is the untouched draft,
+ * not the row, because a row missing a normalizable field (stayStyle,
+ * roundTrip) would make EVERY draft read dirty on open while the save would
+ * write back exactly what the form already shows. A toggle that reads "on"
+ * can hold a stored 60-minute allowance the save would write back as 120:
+ * nothing visible moved, and it is a real change. Arrays compare
+ * element-wise (fresh arrays every render would otherwise never compare
+ * equal — the polarity trap).
+ */
+export function settingsBaselinePatch(trip: Trip): Partial<Trip> {
+  const pin = trip.startLocationCoords ? { coords: trip.startLocationCoords, label: trip.startLocation } : null
+  const run = settingsDryRun(formFromTrip(trip), zipDests(trip.destinations, trip.destinationCoords), pin, trip)
+  return run.ok ? run.patch : {}
+}
+
+export function settingsAreDirty(patch: Partial<Trip>, trip: Trip): boolean {
+  const base = settingsBaselinePatch(trip)
+  return (Object.keys(patch) as (keyof Trip)[])
+    .some(k => !sameSavedValue(patch[k], base[k]))
+}
+
+/** null and undefined are the same "not set" — the row writes nulls where the
+ *  write mapping writes undefined, and calling that a change pins the bar
+ *  open for ever. */
+function sameSavedValue(a: unknown, b: unknown): boolean {
+  if (a == null && b == null) return true
+  if (a === b) return true
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return a.length === b.length && a.every((v, i) => sameSavedValue(v, b[i]))
+  }
+  if (a && b && typeof a === 'object' && typeof b === 'object') {
+    const ka = Object.keys(a as Record<string, unknown>)
+    const kb = Object.keys(b as Record<string, unknown>)
+    return ka.length === kb.length && ka.every(k =>
+      sameSavedValue((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]))
+  }
+  return false
+}
+
+/** #408: the days a refused shrink is waiting on, each one a jump to its
+ *  timeline day. Without a workspace to jump from, the days still get named. */function BlockedDayLinks({ blocked, onOpenDay }: { blocked?: number[]; onOpenDay?: (dayIndex: number) => void }) {
+  if (!blocked || blocked.length === 0) return null
+  return (
+    <span className="ts-blocked-days">
+      {(onOpenDay
+        ? blocked.map(i => (
+            <button key={i} type="button" className="link-btn teal btn-sm"
+              onClick={() => onOpenDay(i)}>Day {i + 1} →</button>
+          ))
+        : blocked.map(i => <span key={i} className="muted small">Day {i + 1}</span>)
+      )}
+    </span>
+  )
+}
+
+export function TripSettingsForm({ trip, editable, onOpenDay }: {
+  trip: Trip
+  editable: boolean
+  /** #408: jump to a timeline day — the workspace plumbs the same focus
+   *  mechanism the Map tab's day links use. Optional: the form renders the
+   *  blocking days as plain text when no workspace is wired up. */
+  onOpenDay?: (dayIndex: number) => void
+}) {
+  const [f, setF] = useState(() => formFromTrip(trip))
+  /** #414: when the trip row moves under the open draft (a crew member saved
+   *  while this form was open), the banner offers keep-mine / take-theirs.
+   *  `openedAtRef` is the updatedAt the draft was born against; our OWN save
+   *  rebases it through `ownSaveRef` so it never fires on ourselves. */
+  const openedAtRef = useRef(trip.updatedAt)
+  const ownSaveRef = useRef(false)
+  const [remoteAt, setRemoteAt] = useState<number | null>(null)
+  useEffect(() => {
+    if (ownSaveRef.current) { ownSaveRef.current = false; openedAtRef.current = trip.updatedAt; return }
+    if (trip.updatedAt > openedAtRef.current) setRemoteAt(trip.updatedAt)
+  }, [trip.updatedAt])
   // The day grid follows the date range — show what the picker will do to it.
   const dayDelta = (() => {
     const s = new Date(`${f.startDate}T00:00:00`), e = new Date(`${f.endDate}T00:00:00`)
@@ -80,19 +297,63 @@ export function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boo
   )
   /** #410: soft notice under the start field — the pin is off, and why. */
   const [startNotice, setStartNotice] = useState('')
-  const [destCoords, setDestCoords] = useState<(LatLngPoint | null)[]>(trip.destinationCoords ?? [])
+  /** #411: the route tail as ONE array of {name, lat?, lng?} pairs — the
+   *  form's single source of truth. The row's parallel arrays exist only at
+   *  the boundary (zip on open, split on save), so a rename or a remove can
+   *  no longer slide names out from under their pins. */
+  const [dests, setDests] = useState<DestPair[]>(() => zipDests(trip.destinations, trip.destinationCoords))
   const [destInput, setDestInput] = useState('')
+  /** #411: rename-in-place. The chip edits its own name; coords and position
+   *  are untouched by construction (renameDest rebuilds nothing). */
+  const [renamingDest, setRenamingDest] = useState<number | null>(null)
+  const [renameDraft, setRenameDraft] = useState('')
+  /** V2: the hero's rename-and-cover disclosure. Presentation only — the
+   *  name Field and CoverImagePicker below write the same draft. */
+  const [identityOpen, setIdentityOpen] = useState(false)
 
-  function addDest(name: string, coords: LatLngPoint | null) {
+  function addDest(name: string, coords: { lat: number; lng: number } | null) {
     const clean = name.trim()
     if (!clean) return
-    if (f.destinations.some(d => d.toLowerCase() === clean.toLowerCase())) {
+    if (dests.some(d => d.name.toLowerCase() === clean.toLowerCase())) {
       toast('Already on the route.', 'err'); return
     }
-    setF(x => ({ ...x, destinations: [...x.destinations, clean] }))
-    setDestCoords(list => [...list, coords])
+    setDests(list => [...list, coords ? { name: clean, lat: coords.lat, lng: coords.lng } : { name: clean }])
     setDestInput('')
   }
+
+  /** Swap with a neighbour — on the PAIRS, so a pin travels with its name. */
+  function moveDest(i: number, dir: -1 | 1) {
+    setDests(list => {
+      const j = i + dir
+      if (j < 0 || j >= list.length) return list
+      const next = [...list]; const tmp = next[i]; next[i] = next[j]; next[j] = tmp
+      return next
+    })
+  }
+
+  function commitRename(i: number) {
+    setDests(list => renameDest(list, i, renameDraft.trim() || list[i]?.name || ''))
+    setRenamingDest(null)
+    setRenameDraft('')
+  }
+
+  /** #414 "take theirs": rebuild the whole draft from the row as it stands. */
+  function reseedFrom(t: Trip) {
+    setF(formFromTrip(t))
+    setDests(zipDests(t.destinations, t.destinationCoords))
+    setStartPin(t.startLocationCoords ? { coords: t.startLocationCoords, label: t.startLocation } : null)
+    setStartNotice(''); setDestInput(''); setRenamingDest(null); setRenameDraft('')
+    openedAtRef.current = t.updatedAt
+    setRemoteAt(null)
+  }
+
+  // #408: the Preview and the Save button read the SAME dry run — computed
+  // once per render, never stored, so the receipt and the write can never
+  // disagree about what this form would do.
+  const dry = settingsDryRun(f, dests, startPin, trip)
+  // #413: the bar is enabled exactly when a click would WRITE — a clean
+  // draft is disabled ("No changes"), and a refusal pending is disabled too.
+  const canSave = dry.ok && settingsAreDirty(dry.patch, trip)
 
   // Derived values the bench-style blocks and the live receipt read from.
   // #213 Phase 5: clampCrew, not Math.min(12,…) — the old clamp misrepresented a
@@ -124,52 +385,68 @@ export function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boo
   // (engine.ts `economy && price`); with the price set and no mileage the ₹/L
   // is silently unused. Say so instead of letting the bill read the blended rate.
   const priceIgnored = priceSet && !ecoSet
+  // V2 derived values: the road string for the hero, the stopped-day count
+  // for the day meter, and the engine's read over the trip AS DRAFTED (the
+  // draft party/mode/dates ride on a shallow trip copy; days follow only
+  // after save — the meter says what the grid will become).
+  const road = [f.startLocation, ...dests.map(d => d.name)].filter(Boolean).join(' → ')
+  const daysWithStops = trip.days.filter(d => d.stops.some(s => s.status !== 'rejected')).length
+  const engineRead = useMemo(() => {
+    const drafted: Trip = {
+      ...trip,
+      travellers,
+      budgetPerPersonInr: clampedBudget,
+      transportMode: f.transportMode,
+      travelStyle: f.travelStyle,
+      startDate: f.startDate, endDate: f.endDate,
+    }
+    return computeHealth(drafted)
+  }, [trip, travellers, clampedBudget, f.transportMode, f.travelStyle, f.startDate, f.endDate])
+  const topWarning = engineRead.warnings[0]
 
   return (
-    <div className="ts-form">
-      {/* Two dials, two bars. These used to share one block with the style bar on
-          top and the price bar tucked underneath it, so the second read as a
-          sub-option of the first. Budget preference asks what the bed costs;
-          Travel style asks how the trip moves and what it suggests. Neither
-          touches the other, and the bars now say so. */}
-      <div className="bench-block">
-        <span className="bench-eyebrow">Budget preference</span>
-        <PillNav className="tabbar" role="group" aria-label="Budget preference" activeKey={f.stayStyle}>
-          {STAY_STYLES.map(s => (
-            <button key={s} type="button" data-pill-key={s} disabled={!editable}
-              aria-pressed={f.stayStyle === s}
-              className={`tab-btn${f.stayStyle === s ? ' active' : ''}`}
-              onClick={() => setF(x => ({ ...x, stayStyle: s }))}>
-              {cap(s)}
+    <div className="ts-form tsx-form">
+      {/* #414: a crew member saved while this form sat open. The banner
+          offers the same two verbs the stop editor uses — keep my draft, or
+          take theirs and rebuild from the row as it stands. Non-blocking,
+          role=status: it must not steal focus mid-edit. */}
+      {remoteAt !== null && (
+        <RemoteEditBanner
+          noun="trip settings"
+          byName=""
+          onKeepMine={() => { openedAtRef.current = trip.updatedAt; setRemoteAt(null) }}
+          onTakeTheirs={() => reseedFrom(trip)}
+        />
+      )}
+      {/* ---------- the hero: the trip at a glance ---------- */}
+      <section className="tsx-hero" aria-label="This trip at a glance">
+        <div className="tsx-hero-top">
+          <span className="tsx-hero-cover" aria-hidden="true" />
+          <div className="tsx-hero-id">
+            <h2 className="tsx-hero-name">{f.name || 'Untitled trip'}</h2>
+            <p className="tsx-hero-sub">
+              <b>{road}</b>
+              {' '}· {f.startDate && f.endDate ? `${f.startDate} → ${f.endDate}` : 'dates not set'} · {travellers} travelling
+            </p>
+          </div>
+          {editable && (
+            <button type="button" className="tsx-hero-edit" aria-expanded={identityOpen} onClick={() => setIdentityOpen(o => !o)}>
+              <Sparkles size={13} aria-hidden />Rename &amp; cover
             </button>
-          ))}
-        </PillNav>
-        <p className="bench-hint">Prices the bed: ₹1,200 / ₹3,200 / ₹8,000 per room per night (2 guests per room). Shows up honestly on the Budget tab when you have hotel stops.</p>
-      </div>
+          )}
+        </div>
+        <div className="tsx-hero-stats">
+          <div className="tsx-stat"><span className="tsx-stat-k">Group budget</span><span className="tsx-stat-v">{formatInr(clampedBudget * travellers)}<small>{formatInr(clampedBudget)} / head</small></span></div>
+          <div className="tsx-stat"><span className="tsx-stat-k">Days</span><span className="tsx-stat-v">{dayCount}<small>{daysWithStops} with stops</small></span></div>
+          <div className="tsx-stat"><span className="tsx-stat-k">Machine</span><span className="tsx-stat-v">{cap(f.transportMode)}<small>{MODE_SPEED[f.transportMode] ?? 40} km/h avg</small></span></div>
+          <div className="tsx-stat"><span className="tsx-stat-k">Wheel</span><span className="tsx-stat-v">{(f.driverCount ?? 1) === 1 ? '1 driver' : `${f.driverCount} drivers`}<small>{f.hasVulnerable ? 'infants / seniors' : 'everyone adult'}</small></span></div>
+        </div>
+      </section>
 
-      {/* Travel style — the trip navbar's exact look, full width so all ten
-          styles sit in one row like the workspace tab bar: same .tabbar glass
-          bar, same .tab-btn pills, same sliding glider. */}
-      <div className="bench-block">
-        <span className="bench-eyebrow">Travel style</span>
-        <PillNav className="tabbar" role="group" aria-label="Travel style" activeKey={f.travelStyle}>
-          {TRAVEL_STYLES.map(s => (
-            <button key={s} type="button" data-pill-key={s} disabled={!editable}
-              aria-pressed={f.travelStyle === s}
-              className={`tab-btn${f.travelStyle === s ? ' active' : ''}`}
-              onClick={() => setF(x => ({ ...x, travelStyle: s }))}>
-              {cap(s)}
-            </button>
-          ))}
-        </PillNav>
-        <p className="bench-hint">Tunes stop frequency and the kind of places suggested — relaxed stops sooner, packed pushes further. It never touches pricing.</p>
-      </div>
-      <div className="ts-layout">
-        <div className="ts-controls">
-
-          {/* Identity */}
-          <div className="bench-block">
-            <span className="bench-eyebrow">Identity</span>
+      {editable && identityOpen && (
+        <section className="tsx-card tsx-card--identity" aria-label="Trip name and cover">
+          <h3 className="tsx-q" style={{ fontSize: 15 }}>Rename &amp; cover</h3>
+          <div className="bench-pair">
             <Field label="Trip name">
               <input className="input" disabled={!editable} value={f.name} onChange={e => setF(x => ({ ...x, name: e.target.value }))} />
             </Field>
@@ -178,253 +455,224 @@ export function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boo
               <p className="hint-text">Pick a popular photo of your destination, paste your own image URL, or leave it to the emoji.</p>
             </Field>
           </div>
+          <p className="hint-text">The cover is what a shared itinerary previews with.</p>
+        </section>
+      )}
 
-          {/* Route + dates */}
-          <div className="bench-block">
-            <div className="bench-block-head">
-              <span className="bench-eyebrow">Route & dates</span>
-              <span className="bench-block-value">{dayCount} day{dayCount === 1 ? '' : 's'}</span>
-            </div>
-            <DateRangeCalendar
-              start={f.startDate} end={f.endDate}
-              disabled={!editable}
-              error={dateErr ?? undefined}
-              hint={dayDeltaLabel}
-              onChange={({ startDate, endDate }) => { setF(x => ({ ...x, startDate, endDate })); setDateErr(null) }}
-            />
-            {dateErr && <p className="err-text ts-warn-note" role="alert">{dateErr}</p>}
-            <Field label="Starting location">
-              <LocationInput
-                value={f.startLocation}
-                onChange={v => {
-                  setF(x => ({ ...x, startLocation: v }))
-                  // #410: the pin belongs to the text it was picked for. An
-                  // edit that names a different city DROPS the pin — keeping
-                  // the old coordinates here is how a renamed trip silently
-                  // keeps measuring the city it no longer names. A pick
-                  // restores it instantly, below.
-                  if (startPin && !pinMatchesText(startPin, v)) {
-                    setStartPin(null)
-                    setStartNotice(START_UNPINNED)
-                  }
-                }}
-                onPick={p => {
-                  setStartPin({ coords: { lat: p.latitude, lng: p.longitude }, label: pickLabel(p) })
-                  setStartNotice('')
-                }}
-                placeholder="Search a city…"
-                disabled={!editable}
-              />
-              {startNotice && <p className="hint-text" role="status" style={{ marginTop: 6 }}>{startNotice}</p>}
-            </Field>
-            <Field label={`Destinations (${f.destinations.length})`} hint="Search to add — arrows reorder the route">
-              <LocationInput
-                value={destInput}
-                onChange={setDestInput}
-                onPick={p => addDest(p.name + (p.admin1 ? `, ${p.admin1}` : ''), { lat: p.latitude, lng: p.longitude })}
-                placeholder={f.destinations.length ? 'Add another destination…' : 'Add your first destination…'}
-                disabled={!editable}
-              />
-              {f.destinations.length > 0 && (
-                <div className="dest-chips">
-                  {f.destinations.map((d, i) => (
-                    <span key={`${d}-${i}`} className="dest-chip">
-                      <span className="dest-order">{i + 1}</span>{d}
-                      <button type="button" aria-label={`Move ${d} earlier`} disabled={!editable || i === 0}
-                        onClick={() => setF(x => {
-                          const list = [...x.destinations]; if (i === 0) return x
-                          ;[list[i - 1], list[i]] = [list[i], list[i - 1]]
-                          const dc = [...destCoords]; [dc[i - 1], dc[i]] = [dc[i], dc[i - 1]]; setDestCoords(dc)
-                          return { ...x, destinations: list }
-                        })} style={{ opacity: i === 0 ? .25 : undefined }}><ChevronUp size={12} aria-hidden /></button>
-                      <button type="button" aria-label={`Move ${d} later`} disabled={!editable || i === f.destinations.length - 1}
-                        onClick={() => setF(x => {
-                          const list = [...x.destinations]; if (i >= list.length - 1) return x
-                          ;[list[i + 1], list[i]] = [list[i], list[i + 1]]
-                          const dc = [...destCoords]; [dc[i + 1], dc[i]] = [dc[i], dc[i + 1]]; setDestCoords(dc)
-                          return { ...x, destinations: list }
-                        })} style={{ opacity: i === f.destinations.length - 1 ? .25 : undefined }}><ChevronDown size={12} aria-hidden /></button>
+      <div className="tsx-band">
+        <div className="tsx-band-main">
+
+          {/* ---------- Q1 · the road & the days ---------- */}
+          <section className="tsx-card" aria-label="Where does it go, and for how many days">
+            <header className="tsx-head">
+              <span className="tsx-no" aria-hidden="true">01</span>
+              <h3 className="tsx-q">Where does it go, and for how many days?</h3>
+              <span className="tsx-ans">{dayCount} day{dayCount === 1 ? '' : 's'} · {dests.length} stop{dests.length === 1 ? '' : 's'} en route</span>
+              <p className="tsx-a">The road is the trip&apos;s spine — every other tab measures along it. Arrows reorder, × removes, search adds. The day grid follows the dates.</p>
+            </header>
+            {/* #411: the strip renders the pair array — rename edits the chip
+                in place, the pin travels with its name by construction. */}
+            <div className="tsx-route" role="group" aria-label="The route">
+              <span className="tsx-node tsx-node--start"><MapPin size={13} aria-hidden />{f.startLocation || 'Set a start'}</span>
+              {dests.map((d, i) => (
+                <Fragment key={`${d.name}-${i}`}>
+                  <span className="tsx-road" aria-hidden="true" />
+                  <span className="tsx-node">
+                    <span className="tsx-node-ord" aria-hidden="true">{i + 1}</span>
+                    {renamingDest === i ? (
+                      <input
+                        className="input input--compact"
+                        aria-label={`Rename ${d.name}`}
+                        autoFocus
+                        value={renameDraft}
+                        onChange={e => setRenameDraft(e.target.value)}
+                        onBlur={() => commitRename(i)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') commitRename(i)
+                          if (e.key === 'Escape') { setRenamingDest(null); setRenameDraft('') }
+                        }}
+                      />
+                    ) : (
+                      <>
+                        {d.name}
+                        {d.lat != null && d.lng != null && <span className="dest-pin" aria-hidden>📍</span>}
+                        {editable && (
+                          <button type="button" aria-label={`Rename ${d.name}`}
+                            onClick={() => { setRenamingDest(i); setRenameDraft(d.name) }}><Pencil size={13} aria-hidden /></button>
+                        )}
+                      </>
+                    )}
+                    <span className="tsx-node-tools">
+                      <button type="button" aria-label={`Move ${d.name} earlier`} disabled={!editable || i === 0}
+                        onClick={() => moveDest(i, -1)} style={{ opacity: i === 0 ? .25 : undefined }}><ChevronUp size={13} aria-hidden /></button>
+                      <button type="button" aria-label={`Move ${d.name} later`} disabled={!editable || i === dests.length - 1}
+                        onClick={() => moveDest(i, 1)} style={{ opacity: i === dests.length - 1 ? .25 : undefined }}><ChevronDown size={13} aria-hidden /></button>
                       {editable && (
-                        <button type="button" aria-label={`Remove ${d}`}
-                          onClick={() => {
-                            setF(x => ({ ...x, destinations: x.destinations.filter((_, j) => j !== i) }))
-                            setDestCoords(list => list.filter((_, j) => j !== i))
-                          }}><X size={12} aria-hidden /></button>
+                        <button type="button" aria-label={`Remove ${d.name}`}
+                          onClick={() => setDests(list => list.filter((_, j) => j !== i))}><X size={13} aria-hidden /></button>
                       )}
                     </span>
+                  </span>
+                </Fragment>
+              ))}
+              <span className="tsx-road" aria-hidden="true" />
+            </div>
+            <div className="bench-pair">
+              <Field label="Starting location">
+                <LocationInput
+                  value={f.startLocation}
+                  onChange={v => {
+                    setF(x => ({ ...x, startLocation: v }))
+                    // #410: the pin belongs to the text it was picked for. An
+                    // edit that names a different city DROPS the pin — keeping
+                    // the old coordinates here is how a renamed trip silently
+                    // keeps measuring the city it no longer names. A pick
+                    // restores it instantly, below.
+                    if (startPin && !pinMatchesText(startPin, v)) {
+                      setStartPin(null)
+                      setStartNotice(START_UNPINNED)
+                    }
+                  }}
+                  onPick={p => {
+                    setStartPin({ coords: { lat: p.latitude, lng: p.longitude }, label: pickLabel(p) })
+                    setStartNotice('')
+                  }}
+                  placeholder="Search a city…"
+                  disabled={!editable}
+                />
+                {startNotice && <p className="hint-text" role="status" style={{ marginTop: 6 }}>{startNotice}</p>}
+              </Field>
+              <Field label={`Destinations (${dests.length})`} hint="Search to add — arrows reorder the route">
+                <LocationInput
+                  value={destInput}
+                  onChange={setDestInput}
+                  onPick={p => addDest(p.name + (p.admin1 ? `, ${p.admin1}` : ''), { lat: p.latitude, lng: p.longitude })}
+                  placeholder={dests.length ? 'Add another destination…' : 'Add your first destination…'}
+                  disabled={!editable}
+                />
+              </Field>
+            </div>
+            <div className="tsx-when">
+              <DateRangeCalendar
+                label="Trip dates"
+                start={f.startDate} end={f.endDate}
+                disabled={!editable}
+                error={dry.ok ? undefined : dry.reason}
+                hint={dayDeltaLabel}
+                onChange={({ startDate, endDate }) => { setF(x => ({ ...x, startDate, endDate })) }}
+              />
+              <div>
+                <span className="label" style={{ display: 'block', marginBottom: 6 }}>Day grid</span>
+                <div className="tsx-dm-track" role="img" aria-label={`${daysWithStops} of ${dayCount} days carry stops`}>
+                  <i className="tsx-dm-fill" style={{ width: `${dayCount ? Math.round((daysWithStops / dayCount) * 100) : 0}%` }} />
+                </div>
+                <p className="tsx-dm-note"><b>{daysWithStops} of {dayCount}</b> days carry stops{dayDelta && dayDelta > 0 ? ` · ${dayDelta} empty at the tail` : ''}</p>
+              </div>
+            </div>
+            {/* #408: the refusal lives here, inline, where the dates are —
+                with the blocking days linked to their timeline day. It is
+                derived from the shared dry run, so the receipt above/beside
+                and this line can never disagree. */}
+            {!dry.ok && (
+              <div className="ts-save-refusal" role="alert">
+                <p className="err-text ts-warn-note"><InlineIcon icon={TriangleAlert} size={12} gap={3} />{dry.reason}</p>
+                <BlockedDayLinks blocked={dry.blocked} onOpenDay={onOpenDay} />
+              </div>
+            )}
+            <footer className="tsx-settled">
+              <span className="tsx-fact"><span className="tsx-fact-k">Road</span><b>{road}</b></span>
+              <span className="tsx-fact"><span className="tsx-fact-k">Days</span><b>{dayCount}</b></span>
+              <span className="tsx-fact"><span className="tsx-fact-k">Days with stops</span><b>{daysWithStops} of {dayCount}</b></span>
+            </footer>
+          </section>
+
+          {/* ---------- Q2 · the party & the money ---------- */}
+          <section className="tsx-card" aria-label="Who is going, and how do they split the money">
+            <header className="tsx-head">
+              <span className="tsx-no" aria-hidden="true">02</span>
+              <h3 className="tsx-q">Who is going, and how do they split the money?</h3>
+              <span className="tsx-ans">{travellers} {travellers === 1 ? 'person' : 'people'} · {formatInr(clampedBudget * travellers)} group</span>
+              <p className="tsx-a">Rooms and per-head splits follow the headcount. Budget preference prices the bed; it never touches the road.</p>
+            </header>
+            <div className="bench-pair">
+              <div className="bench-block">
+                <div className="bench-block-head">
+                  <span className="bench-eyebrow">Travellers</span>
+                  <span className="bench-block-value">{travellers}</span>
+                </div>
+                <div className="bench-crew" role="group" aria-label="Number of travellers">
+                  {CREW_CHIPS.map(n => (
+                    <button key={n} type="button" className={`bench-crew-btn${travellers === n ? ' on' : ''}`}
+                      aria-pressed={travellers === n} disabled={!editable}
+                      onClick={() => setF(x => ({ ...x, travellers: n }))}>
+                      {n}
+                    </button>
                   ))}
                 </div>
-              )}
-            </Field>
-          </div>
-
-          {/* Crew + budget — bench pair */}
-          <div className="bench-pair">
-            <div className="bench-block">
-              <div className="bench-block-head">
-                <span className="bench-eyebrow">Travellers</span>
-                <span className="bench-block-value">{travellers}</span>
+                {/* A party bigger than the chips needs a way in — Create Trip has
+                    the same field, so the two surfaces accept the same range. */}
+                <div className="bench-line" style={{ marginTop: 8 }}>
+                  <label className="bench-hint" htmlFor="ts-crew-custom">More than 10? </label>
+                  <input id="ts-crew-custom" className="input mono" type="number" inputMode="numeric"
+                    min={CREW_MIN} max={CREW_MAX} disabled={!editable} value={f.travellers}
+                    style={{ maxWidth: 96 }}
+                    onChange={e => setF(x => ({ ...x, travellers: clampCrew(Number(e.target.value)) }))} />
+                  <span className="bench-hint">up to {CREW_MAX}</span>
+                </div>
+                <p className="bench-hint">Rooms and per-head splits follow this count.</p>
               </div>
-              <div className="bench-crew" role="group" aria-label="Number of travellers">
-                {CREW_CHIPS.map(n => (
-                  <button key={n} type="button" className={`bench-crew-btn${travellers === n ? ' on' : ''}`}
-                    aria-pressed={travellers === n} disabled={!editable}
-                    onClick={() => setF(x => ({ ...x, travellers: n }))}>
-                    {n}
+              <div className="bench-block">
+                <div className="bench-block-head">
+                  <span className="bench-eyebrow">Budget / person</span>
+                  <span className="bench-block-value">{formatInr(clampedBudget)}</span>
+                </div>
+                <RangeDial value={clampedBudget} min={0} max={300000} step={500}
+                  fmt={v => formatInr(v)} ariaLabel="Budget per person in rupees"
+                  disabled={!editable} onChange={v => setF(x => ({ ...x, budget: v }))} />
+                <div className="bench-scale-ends" aria-hidden="true"><span>₹0</span><span>₹3L</span></div>
+                <p className="bench-hint">The Budget tab’s pacing tile reads this target.</p>
+              </div>
+            </div>
+            <div className="bench-block">
+              <span className="bench-eyebrow">Budget preference</span>
+              <PillNav className="tabbar" role="group" aria-label="Budget preference" activeKey={f.stayStyle}>
+                {STAY_STYLES.map(s => (
+                  <button key={s} type="button" data-pill-key={s} disabled={!editable}
+                    aria-pressed={f.stayStyle === s}
+                    className={`tab-btn${f.stayStyle === s ? ' active' : ''}`}
+                    onClick={() => setF(x => ({ ...x, stayStyle: s }))}>
+                    {cap(s)}
                   </button>
                 ))}
-              </div>
-              {/* A party bigger than the chips needs a way in — Create Trip has
-                  the same field, so the two surfaces accept the same range. */}
-              <div className="bench-line" style={{ marginTop: 8 }}>
-                <label className="bench-hint" htmlFor="ts-crew-custom">More than 10? </label>
-                <input id="ts-crew-custom" className="input mono" type="number" inputMode="numeric"
-                  min={CREW_MIN} max={CREW_MAX} disabled={!editable} value={f.travellers}
-                  style={{ maxWidth: 96 }}
-                  onChange={e => setF(x => ({ ...x, travellers: clampCrew(Number(e.target.value)) }))} />
-                <span className="bench-hint">up to {CREW_MAX}</span>
-              </div>
-              <p className="bench-hint">Rooms and per-head splits follow this count.</p>
+              </PillNav>
+              <p className="bench-hint">Prices the bed: ₹1,200 / ₹3,200 / ₹8,000 per room per night (2 guests per room). Shows up honestly on the Budget tab when you have hotel stops.</p>
             </div>
-            <div className="bench-block">
-              <div className="bench-block-head">
-                <span className="bench-eyebrow">Budget / person</span>
-                <span className="bench-block-value">{formatInr(clampedBudget)}</span>
-              </div>
-              <RangeDial value={clampedBudget} min={0} max={300000} step={500}
-                fmt={v => formatInr(v)} ariaLabel="Budget per person in rupees"
-                disabled={!editable} onChange={v => setF(x => ({ ...x, budget: v }))} />
-              <div className="bench-scale-ends" aria-hidden="true"><span>₹0</span><span>₹3L</span></div>
-              <p className="bench-hint">The Budget tab’s pacing tile reads this target.</p>
-            </div>
-          </div>
-
-          {/* Who's driving — party + dinner pace (#142). Same three inputs the
-              Create-trip flow asks for; until now an existing trip could not
-              change them, so the split verdict and the clock walk were frozen
-              at whatever the trip was created with. #213 Phase 5: gated on the
-              ENGINE's own `isSelfDrivenMode` (car/rental/motorcycle/mixed) so the
-              two surfaces agree and no dial is shown for a mode that ignores it
-              (train/bus/flight/taxi have nobody at the wheel to fatigue). */}
-          {selfDriven && (
-            <div className="bench-block">
-              <div className="bench-block-head">
-                <span className="bench-eyebrow">Who&apos;s driving</span>
-                <span className="bench-block-value">
-                  {(f.driverCount ?? 1) === 1 ? 'One driver' : `${f.driverCount} drivers`}
-                </span>
-              </div>
-              <div className="bench-line" role="group" aria-label="Drivers sharing the wheel">
-                {[1, 2, 3].map(n => (
-                  <button key={n} type="button" className={`bench-crew-btn${(f.driverCount ?? 1) === n ? ' on' : ''}`}
-                    aria-pressed={(f.driverCount ?? 1) === n} disabled={!editable}
-                    title={n === 1 ? 'One driver — the honest solo cap' : `${n} drivers rotate — the day earns real hours`}
-                    onClick={() => setF(x => ({ ...x, driverCount: n === 1 ? undefined : n }))}>
-                    {n}
-                  </button>
-                ))}
-                <span className="bench-hint">Rotating drivers buy hours; one driver keeps the solo cap.</span>
-              </div>
-              <div className="bench-line" role="group" aria-label="Who is aboard">
-                <button type="button" className={`bench-crew-btn${!f.hasVulnerable ? ' on' : ''}`}
-                  aria-pressed={!f.hasVulnerable} disabled={!editable}
-                  title="Everyone adult — full-length driving days"
-                  onClick={() => setF(x => ({ ...x, hasVulnerable: undefined }))}>Everyone adult</button>
-                <button type="button" className={`bench-crew-btn${f.hasVulnerable ? ' on' : ''}`}
-                  aria-pressed={!!f.hasVulnerable} disabled={!editable}
-                  title="Infants or seniors aboard — shorter days, earlier dinner"
-                  onClick={() => setF(x => ({ ...x, hasVulnerable: true }))}>Infants / seniors</button>
-              </div>
-              <div className="bench-line" role="group" aria-label="Dinner and driving">
-                <button type="button" className={`bench-crew-btn${f.driveAfterDinner ? ' on' : ''}`}
-                  aria-pressed={f.driveAfterDinner} disabled={!editable}
-                  title="Halt for dinner, then keep going within the allowance and the night end"
-                  onClick={() => setF(x => ({ ...x, driveAfterDinner: !f.driveAfterDinner }))}>Drive after dinner</button>
-              </div>
-              <p className="bench-hint">The split verdict and the travel clock re-derive from these — meals, halts and the honest daily cap all move.</p>
-            </div>
-          )}
-
-          {/* Transport mode — bench mode grid */}
-          <div className="bench-block bench-mode-block">
-            <span className="bench-eyebrow">How you travel</span>
-            <div className="bench-mode-grid" role="group" aria-label="Transport mode">
-              {TRANSPORT_MODES.map(m => (
-                <button key={m} type="button" className={`bench-mode-btn${f.transportMode === m ? ' on' : ''}`}
-                  aria-pressed={f.transportMode === m} disabled={!editable}
-                  onClick={() => setF(x => ({ ...x, transportMode: m }))}>
-                  {modeIcon(m)}
-                  <span className="bench-mode-name">{cap(m)}</span>
-                  <span className="bench-mode-speed" aria-hidden="true">{MODE_SPEED[m] ?? 40}</span>
-                </button>
-              ))}
-            </div>
-            <p className="bench-hint">Car and motorcycle switch cost math to fuel: distance ÷ economy × pump price.</p>
-          </div>
-
-          {/* Fuel + vehicle — only for self-drive modes */}
-          {fuelMode && (
-            <>
-              <div className="bench-block bench-fuel-pair">
-                <div className="bench-fuel-col">
-                  <span className="bench-eyebrow">Your mileage</span>
-                  <span className="bench-fuel-value">{ecoSet ? `${ecoNum} km/L` : 'Not set'}</span>
-                  <RangeDial value={ecoVal} min={2} max={80} step={0.5}
-                    fmt={v => `${v} km/L`} ariaLabel="Fuel economy in kilometres per litre"
-                    disabled={!editable} onChange={v => setF(x => ({ ...x, fuelEconomy: String(v) }))} />
-                </div>
-                <div className="bench-fuel-col">
-                  <span className="bench-eyebrow">Fuel price</span>
-                  <span className="bench-fuel-value">{priceSet ? `₹${priceNum}/L` : `₹${FUEL_PRICE_INR_PER_L}/L default`}</span>
-                  <RangeDial value={priceVal} min={50} max={250} step={0.5}
-                    fmt={v => `₹${v}/L`} ariaLabel="Fuel price in rupees per litre"
-                    disabled={!editable} onChange={v => setF(x => ({ ...x, fuelPrice: String(v) }))} />
-                </div>
-              </div>
-              {isImplausibleFuelEconomy(f.transportMode, ecoSet ? ecoNum : undefined) && (
-                <p className="hint-text ts-warn-note">
-                  <InlineIcon icon={TriangleAlert} size={12} gap={3} />Unusual for a {f.transportMode} — most do far better. Double-check the mileage.
-                </p>
-              )}
-              {priceIgnored && (
-                <p className="hint-text ts-warn-note">
-                  <InlineIcon icon={TriangleAlert} size={12} gap={3} />Your fuel price is unused until you set a mileage — the bill is pricing the blended {cap(f.transportMode)} rate instead.
-                </p>
-              )}
-              <button type="button" className={`bench-toggle${f.roundTrip ? ' on' : ''}`}
-                aria-pressed={f.roundTrip} disabled={!editable}
-                aria-label={`Round trip${f.roundTrip ? ' — the return to start is included in transport costs' : ' — off, one-way costs only'}`}
-                onClick={() => setF(x => ({ ...x, roundTrip: !x.roundTrip }))}>
-                Round trip{f.roundTrip ? ' — return included' : ''}
-              </button>
-              <div className="vehicle-profile-form">
-                <div className="form-row">
-                  <Field label="Vehicle type">
-                    <Select disabled={!editable} value={f.vehicleType} onChange={v => setF(x => ({ ...x, vehicleType: v as never }))}
-                      options={[{ value: 'car', label: 'Car' }, { value: 'motorcycle', label: 'Motorcycle' }, { value: 'ev', label: 'Electric (EV)' }]} />
-                  </Field>
-                  <Field label="Fuel / energy">
-                    <Select disabled={!editable} value={f.fuelType} onChange={v => setF(x => ({ ...x, fuelType: v as never }))}
-                      options={[{ value: 'petrol', label: 'Petrol' }, { value: 'diesel', label: 'Diesel' }, { value: 'electric', label: 'Electric' }, { value: 'cng', label: 'CNG' }]} />
-                  </Field>
-                </div>
-                <div className="form-row">
-                  <Field label={f.fuelType === 'electric' ? 'Battery (kWh)' : 'Tank capacity (L)'} hint={f.fuelType === 'electric' ? 'e.g. 50' : 'e.g. 45'}>
-                    <input type="number" min={1} max={300} step={0.5} className="input" disabled={!editable} value={f.capacity}
-                      onChange={e => setF(x => ({ ...x, capacity: e.target.value }))} placeholder={f.fuelType === 'electric' ? '50' : '45'} />
-                  </Field>
-                  <Field label={f.fuelType === 'electric' ? 'Efficiency (km / kWh)' : 'Economy (km / L)'} hint={f.fuelType === 'electric' ? 'e.g. 6' : 'e.g. 15'}>
-                    <input type="number" min={1} max={200} step={0.1} className="input" disabled={!editable} value={f.vehicleEconomy}
-                      onChange={e => setF(x => ({ ...x, vehicleEconomy: e.target.value }))} placeholder={f.fuelType === 'electric' ? '6' : '15'} />
-                  </Field>
-                </div>
-              </div>
-            </>
-          )}
+            <footer className="tsx-settled">
+              <span className="tsx-fact"><span className="tsx-fact-k">Party</span><b>{travellers} travelling</b></span>
+              <span className="tsx-fact"><span className="tsx-fact-k">Per head</span><b>{formatInr(clampedBudget)}</b></span>
+              <span className="tsx-fact"><span className="tsx-fact-k">Group</span><b>{formatInr(clampedBudget * travellers)}</b></span>
+              <span className="tsx-fact"><span className="tsx-fact-k">Bed</span><b>{formatInr(STAY_RATE_PER_NIGHT[f.stayStyle])} / night</b></span>
+            </footer>
+          </section>
         </div>
 
-        {/* Live settings bill — mirrors every choice before Save */}
-        <aside className="ts-receiptcol" aria-label="Live preview of these settings">
+        {/* ---------- the bill + the engine's read ---------- */}
+        <aside className="tsx-aside" aria-label="Live preview of these settings">
+          {/* #408: the preview shows what WOULD happen — including a save that
+              would be refused. A "Preview" that hides the refusal is a guess,
+              not a preview; the reason and the blocking days (linked to their
+              timeline day) sit at the top of the receipt, from the same dry
+              run the Save button runs. */}
+          {!dry.ok && (
+            <div className="bench-receipt card ts-receipt-refusal" role="status">
+              <span className="bench-stamp" aria-hidden="true">Would be refused</span>
+              <div className="bench-receipt-head">
+                <span className="bench-receipt-kicker">Save preview</span>
+              </div>
+              <p className="err-text ts-warn-note" style={{ marginTop: 8 }}>{dry.reason}</p>
+              <BlockedDayLinks blocked={dry.blocked} onOpenDay={onOpenDay} />
+            </div>
+          )}
           <div className="bench-receipt card">
             <span className="bench-barcode" aria-hidden="true" />
             <span className="bench-stamp" aria-hidden="true">Preview</span>
@@ -463,65 +711,227 @@ export function TripSettingsForm({ trip, editable }: { trip: Trip; editable: boo
               Saving applies these settings to everyone on the trip · budgets, pacing and cost math recompute from mode, economy and dates
             </p>
           </div>
+
+          {/* the engine's read — the space under the bill, recomputed from
+              this form as you type. Band word, number and bar derive from one
+              call (lib/healthBand), so they cannot drift apart. */}
+          <div className="tsx-read" aria-label="The engine's read of these settings">
+            <div className="tsx-read-head">
+              <span className="tsx-read-kicker">The engine&apos;s read</span>
+              <span className={`chip chip-${healthBandTone(engineRead.band)}`}>{engineRead.band}</span>
+            </div>
+            <div className="health-big" style={{ gap: 14 }}>
+              <div className={`health-num-big ${healthBandClass(engineRead.band)}`} style={{ fontSize: 38 }}>{engineRead.score}</div>
+              <div className="health-bar" style={{ flex: 1 }}><i className={healthBandClass(engineRead.band)} style={{ width: `${engineRead.score}%` }} /></div>
+            </div>
+            <ul className="health-reasons" style={{ margin: 0 }}>
+              {topWarning
+                ? <li><b>{topWarning.title}.</b> {topWarning.detail}</li>
+                : <li>No warnings — the plan reads clean against the engine&apos;s assumptions.</li>}
+              {engineRead.warnings.length > 1 && <li className="muted">+{engineRead.warnings.length - 1} more on the Overview tab.</li>}
+            </ul>
+            <div className="tsx-read-facts">
+              <span className="tsx-fact"><span className="tsx-fact-k">Days with stops</span><b>{daysWithStops} of {dayCount}</b></span>
+              <span className="tsx-fact"><span className="tsx-fact-k">Avg speed</span><b>{MODE_SPEED[f.transportMode] ?? 40} km/h</b></span>
+              <span className={`tsx-fact${!dry.ok ? ' tsx-fact--warn' : ''}`}>
+                <span className="tsx-fact-k">Day grid on save</span>
+                <b>{dayDelta === null ? '—' : dayDelta === 0 ? 'unchanged' : dayDelta > 0 ? `+${dayDelta} empty` : `${dayDelta} cut`}</b>
+              </span>
+            </div>
+            <p className="tsx-read-note">Recomputed from this form as you type. The day grid itself follows the save.</p>
+          </div>
         </aside>
       </div>
 
-      <StickyFormBar show={editable}>
-        <button className="btn btn-primary" onClick={() => {
-          // Dates drive the day grid — validate the pair here for an inline
-          // message (updateTrip re-checks and toasts on reconcile failures).
-          const s = new Date(`${f.startDate}T00:00:00`), e = new Date(`${f.endDate}T00:00:00`)
-          if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) { setDateErr('Pick both a start and an end date.'); return }
-          if (e < s) { setDateErr('The end date must be on or after the start date.'); return }
-          // updateTrip toasts the rejection itself (e.g. a shrink blocked by a
-          // day holding stops) and returns false — no success toast then.
-          // #410 backstop: never persist a pair whose text and pin disagree,
-          // whatever produced it. The interactive path drops the pin at edit
-          // time (above); this catches a state the form did not create — and a
-          // legacy row saved by the old code, which the pin's own label cannot
-          // reveal. The trip saves unpositioned rather than measuring the
-          // wrong city under the right name.
-          const startCoordsToSave = coordsForText(startPin, f.startLocation)
-          if (startPin && !startCoordsToSave) setStartNotice(START_DROPPED)
-          const saved = updateTrip(trip.id, {
-            name: f.name, startLocation: f.startLocation,
-            startLocationCoords: startCoordsToSave ?? undefined,
-            startDate: f.startDate, endDate: f.endDate,
-            destinations: f.destinations.map(s => s.trim()).filter(Boolean),
-            destinationCoords: destCoords,
-            travellers: clampCrew(f.travellers),
-            // The party dials only exist for self-drive modes (the block above is
-            // gated on the same predicate), so a conducted trip never carries
-            // them — and switching to one clears what a previous mode set.
-            driverCount: selfDriven ? f.driverCount : undefined,
-            hasVulnerable: selfDriven ? f.hasVulnerable : undefined,
-            // #213 Phase 5: only write the 120-minute default when the toggle is
-            // being turned ON. A trip stored with a custom allowance (say 60)
-            // used to be silently rewritten to 120 by any unrelated save.
-            driveAfterDinnerMin: !selfDriven
-              ? undefined
-              : f.driveAfterDinner
-                ? (trip.driveAfterDinnerMin ?? DEFAULT_DRIVE_AFTER_DINNER_MIN)
-                : undefined,
-            budgetPerPersonInr: Math.max(0, f.budget),
-            transportMode: f.transportMode, travelStyle: f.travelStyle,
-            stayStyle: f.stayStyle,
-            fuelEconomyKmL: isFuelEconomyMode(f.transportMode) ? parseFuelEconomyKmL(f.fuelEconomy) : undefined,
-            fuelPricePerL: isFuelEconomyMode(f.transportMode) ? parseFuelPricePerL(f.fuelPrice) : undefined,
-            roundTrip: isFuelEconomyMode(f.transportMode) ? f.roundTrip : undefined,
-            // #213 Phase 6: the fallbacks come from the CHOSEN vehicle's own
-            // profile, not hardcoded car numbers. `Number('45') || 45` used to
-            // write a 45 L / 15 km-L car onto a motorcycle (12 / 40) or an EV
-            // (50 kWh / 6) whenever the fields were left blank.
-            vehicleProfile: isFuelEconomyMode(f.transportMode) ? {
-              vehicleType: f.vehicleType as 'car' | 'motorcycle' | 'ev',
-              fuelType: f.fuelType as 'petrol' | 'diesel' | 'electric' | 'cng',
-              capacity: Number(f.capacity) || defaultVehicleProfile(f.vehicleType).capacity,
-              economy: Number(f.vehicleEconomy) || defaultVehicleProfile(f.vehicleType).economy,
-            } : undefined,
-          })
-          if (saved) {
-            setDateErr(null)
+      {/* ---------- Q3 · the machine ---------- */}
+      <section className="tsx-card tsx-card--machine" aria-label="What moves you, and who is behind the wheel">
+        <header className="tsx-head">
+          <span className="tsx-no" aria-hidden="true">03</span>
+          <h3 className="tsx-q">What moves you, and who is behind the wheel?</h3>
+          <span className="tsx-ans">{cap(f.transportMode)} · {(f.driverCount ?? 1) === 1 ? '1 driver' : `${f.driverCount} drivers`} · {fuelMode ? 'fuel math' : 'fare math'}</span>
+          <p className="tsx-a">The mode decides the cost math (fuel for car, rental and motorcycle; fares otherwise) and which dials exist below. Travel style tunes stop frequency and suggestions — it never touches pricing.</p>
+        </header>
+        {/* Transport mode — bench mode grid */}
+        <div className="bench-block bench-mode-block">
+          <span className="bench-eyebrow">How you travel</span>
+          <div className="bench-mode-grid" role="group" aria-label="Transport mode">
+            {TRANSPORT_MODES.map(m => (
+              <button key={m} type="button" className={`bench-mode-btn${f.transportMode === m ? ' on' : ''}`}
+                aria-pressed={f.transportMode === m} disabled={!editable}
+                onClick={() => {
+                  // #412: the vehicle fields are READ against the mode's own
+                  // default profile. Switching car → motorcycle used to leave
+                  // the previous vehicle's capacity/economy sitting in the
+                  // boxes, so the dial re-read 45 L / 15 km-L on a bike — and
+                  // a save then priced the bike trip with car numbers. The
+                  // mode carries its profile defaults in with it. ('ev' is a
+                  // vehicle TYPE, not a transport mode — an EV trip is
+                  // car-mode with the electric profile picked below.)
+                  const vt = m === 'motorcycle' ? 'motorcycle' : 'car'
+                  const d = defaultVehicleProfile(vt)
+                  const ft = m === 'motorcycle'
+                    ? 'petrol'
+                    : f.fuelType === 'electric' || f.fuelType === 'cng' ? 'petrol' : f.fuelType
+                  setF(x => ({
+                    ...x, transportMode: m,
+                    vehicleType: vt, fuelType: ft,
+                    capacity: String(d.capacity), vehicleEconomy: String(d.economy),
+                  }))
+                }}>
+                {modeIcon(m)}
+                <span className="bench-mode-name">{cap(m)}</span>
+                <span className="bench-mode-speed" aria-hidden="true">{MODE_SPEED[m] ?? 40}</span>
+              </button>
+            ))}
+          </div>
+          <p className="bench-hint">Car and motorcycle switch cost math to fuel: distance ÷ economy × pump price.</p>
+        </div>
+        {/* Who's driving — party + dinner pace (#142). Same three inputs the
+            Create-trip flow asks for; until now an existing trip could not
+            change them, so the split verdict and the clock walk were frozen
+            at whatever the trip was created with. #213 Phase 5: gated on the
+            ENGINE's own `isSelfDrivenMode` (car/rental/motorcycle/mixed) so the
+            two surfaces agree and no dial is shown for a mode that ignores it
+            (train/bus/flight/taxi have nobody at the wheel to fatigue). */}
+        {selfDriven && (
+          <div className="bench-block">
+            <div className="bench-block-head">
+              <span className="bench-eyebrow">Who&apos;s driving</span>
+              <span className="bench-block-value">
+                {(f.driverCount ?? 1) === 1 ? 'One driver' : `${f.driverCount} drivers`}
+              </span>
+            </div>
+            <div className="bench-line" role="group" aria-label="Drivers sharing the wheel">
+              {[1, 2, 3].map(n => (
+                <button key={n} type="button" className={`bench-crew-btn${(f.driverCount ?? 1) === n ? ' on' : ''}`}
+                  aria-pressed={(f.driverCount ?? 1) === n} disabled={!editable}
+                  title={n === 1 ? 'One driver — the honest solo cap' : `${n} drivers rotate — the day earns real hours`}
+                  onClick={() => setF(x => ({ ...x, driverCount: n === 1 ? undefined : n }))}>
+                  {n}
+                </button>
+              ))}
+              <span className="bench-hint">Rotating drivers buy hours; one driver keeps the solo cap.</span>
+            </div>
+            <div className="bench-line" role="group" aria-label="Who is aboard">
+              <button type="button" className={`bench-crew-btn${!f.hasVulnerable ? ' on' : ''}`}
+                aria-pressed={!f.hasVulnerable} disabled={!editable}
+                title="Everyone adult — full-length driving days"
+                onClick={() => setF(x => ({ ...x, hasVulnerable: undefined }))}>Everyone adult</button>
+              <button type="button" className={`bench-crew-btn${f.hasVulnerable ? ' on' : ''}`}
+                aria-pressed={!!f.hasVulnerable} disabled={!editable}
+                title="Infants or seniors aboard — shorter days, earlier dinner"
+                onClick={() => setF(x => ({ ...x, hasVulnerable: true }))}>Infants / seniors</button>
+            </div>
+            <div className="bench-line" role="group" aria-label="Dinner and driving">
+              <button type="button" className={`bench-crew-btn${f.driveAfterDinner ? ' on' : ''}`}
+                aria-pressed={f.driveAfterDinner} disabled={!editable}
+                title="Halt for dinner, then keep going within the allowance and the night end"
+                onClick={() => setF(x => ({ ...x, driveAfterDinner: !f.driveAfterDinner }))}>Drive after dinner</button>
+            </div>
+            <p className="bench-hint">The split verdict and the travel clock re-derive from these — meals, halts and the honest daily cap all move.</p>
+          </div>
+        )}
+        <div className="bench-block">
+          <span className="bench-eyebrow">Travel style</span>
+          <PillNav className="tabbar" role="group" aria-label="Travel style" activeKey={f.travelStyle}>
+            {TRAVEL_STYLES.map(s => (
+              <button key={s} type="button" data-pill-key={s} disabled={!editable}
+                aria-pressed={f.travelStyle === s}
+                className={`tab-btn${f.travelStyle === s ? ' active' : ''}`}
+                onClick={() => setF(x => ({ ...x, travelStyle: s }))}>
+                {cap(s)}
+              </button>
+            ))}
+          </PillNav>
+          <p className="bench-hint">Tunes stop frequency and the kind of places suggested — relaxed stops sooner, packed pushes further. It never touches pricing.</p>
+        </div>
+        {/* Fuel + vehicle — only for self-drive modes */}
+        {fuelMode && (
+          <>
+            <div className="bench-block bench-fuel-pair">
+              <div className="bench-fuel-col">
+                <span className="bench-eyebrow">Your mileage</span>
+                <span className="bench-fuel-value">{ecoSet ? `${ecoNum} km/L` : 'Not set'}</span>
+                <RangeDial value={ecoVal} min={2} max={80} step={0.5}
+                  fmt={v => `${v} km/L`} ariaLabel="Fuel economy in kilometres per litre"
+                  disabled={!editable} onChange={v => setF(x => ({ ...x, fuelEconomy: String(v) }))} />
+              </div>
+              <div className="bench-fuel-col">
+                <span className="bench-eyebrow">Fuel price</span>
+                <span className="bench-fuel-value">{priceSet ? `₹${priceNum}/L` : `₹${FUEL_PRICE_INR_PER_L}/L default`}</span>
+                <RangeDial value={priceVal} min={50} max={250} step={0.5}
+                  fmt={v => `₹${v}/L`} ariaLabel="Fuel price in rupees per litre"
+                  disabled={!editable} onChange={v => setF(x => ({ ...x, fuelPrice: String(v) }))} />
+              </div>
+            </div>
+            {isImplausibleFuelEconomy(f.transportMode, ecoSet ? ecoNum : undefined) && (
+              <p className="hint-text ts-warn-note">
+                <InlineIcon icon={TriangleAlert} size={12} gap={3} />Unusual for a {f.transportMode} — most do far better. Double-check the mileage.
+              </p>
+            )}
+            {priceIgnored && (
+              <p className="hint-text ts-warn-note">
+                <InlineIcon icon={TriangleAlert} size={12} gap={3} />Your fuel price is unused until you set a mileage — the bill is pricing the blended {cap(f.transportMode)} rate instead.
+              </p>
+            )}
+            <button type="button" className={`bench-toggle${f.roundTrip ? ' on' : ''}`}
+              aria-pressed={f.roundTrip} disabled={!editable}
+              aria-label={`Round trip${f.roundTrip ? ' — the return to start is included in transport costs' : ' — off, one-way costs only'}`}
+              onClick={() => setF(x => ({ ...x, roundTrip: !x.roundTrip }))}>
+              Round trip{f.roundTrip ? ' — return included' : ''}
+            </button>
+            <div className="vehicle-profile-form">
+              <div className="form-row">
+                <Field label="Vehicle type">
+                  <Select disabled={!editable} value={f.vehicleType} onChange={v => setF(x => ({ ...x, vehicleType: v as never }))}
+                    options={[{ value: 'car', label: 'Car' }, { value: 'motorcycle', label: 'Motorcycle' }, { value: 'ev', label: 'Electric (EV)' }]} />
+                </Field>
+                <Field label="Fuel / energy">
+                  <Select disabled={!editable} value={f.fuelType} onChange={v => setF(x => ({ ...x, fuelType: v as never }))}
+                    options={[{ value: 'petrol', label: 'Petrol' }, { value: 'diesel', label: 'Diesel' }, { value: 'electric', label: 'Electric' }, { value: 'cng', label: 'CNG' }]} />
+                </Field>
+              </div>
+              <div className="form-row">
+                <Field label={f.fuelType === 'electric' ? 'Battery (kWh)' : 'Tank capacity (L)'} hint={f.fuelType === 'electric' ? 'e.g. 50' : 'e.g. 45'}>
+                  <input type="number" min={1} max={300} step={0.5} className="input" disabled={!editable} value={f.capacity}
+                    onChange={e => setF(x => ({ ...x, capacity: e.target.value }))} placeholder={f.fuelType === 'electric' ? '50' : '45'} />
+                </Field>
+                <Field label={f.fuelType === 'electric' ? 'Efficiency (km / kWh)' : 'Economy (km / L)'} hint={f.fuelType === 'electric' ? 'e.g. 6' : 'e.g. 15'}>
+                  <input type="number" min={1} max={200} step={0.1} className="input" disabled={!editable} value={f.vehicleEconomy}
+                    onChange={e => setF(x => ({ ...x, vehicleEconomy: e.target.value }))} placeholder={f.fuelType === 'electric' ? '6' : '15'} />
+                </Field>
+              </div>
+            </div>
+          </>
+        )}
+        <footer className="tsx-settled">
+          <span className="tsx-fact"><span className="tsx-fact-k">Mode</span><b>{cap(f.transportMode)}</b></span>
+          <span className="tsx-fact"><span className="tsx-fact-k">Avg speed</span><b>{MODE_SPEED[f.transportMode] ?? 40} km/h</b></span>
+          <span className="tsx-fact"><span className="tsx-fact-k">Cost math</span><b>{fuelMode ? 'Fuel' : 'Fares'}</b></span>
+          <span className="tsx-fact"><span className="tsx-fact-k">Return</span><b>{fuelMode ? (f.roundTrip ? 'included' : 'one way') : '—'}</b></span>
+        </footer>
+      </section>
+
+      <StickyFormBar show>
+        {/* #413: a viewer used to get a vanished bar under disabled inputs —
+            permissioned read as broken. The bar renders for everyone; a
+            viewer gets it disabled with the reason said out loud. */}
+        {!editable && (
+          <span className="ts-savebar-note hint-text" role="status">
+            <InlineIcon icon={TriangleAlert} size={12} gap={3} />Only editors can change trip settings — ask an editor on this trip, or duplicate it to edit your own copy.
+          </span>
+        )}
+        <button className="btn btn-primary" disabled={!canSave}
+          title={canSave ? undefined : dry.ok ? 'No changes' : dry.reason} onClick={() => {
+          // #408: the Preview and this button run the SAME dry run. A refusal
+          // is already rendered inline (and in the receipt) — clicking Save on
+          // a refused form is a no-op, never a toast that fades.
+          if (!dry.ok) return
+          if (dry.startCoordsDropped) setStartNotice(START_DROPPED)
+          if (updateTrip(trip.id, dry.patch)) {
+            // Our own save moves updatedAt — rebase the remote-edit watch so
+            // the banner cannot fire on ourselves (#414).
+            ownSaveRef.current = true
             toast('Trip settings updated')
           }
         }}>Save settings</button>

@@ -449,13 +449,24 @@ html { overflow-x: clip; }
 .health-big { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
 .health-num-big { font-size: 54px; font-weight: 800; font-family: var(--font-display); line-height: 1; font-variant-numeric: tabular-nums; }
 .health-num-big.ok { color: var(--ok); }
-.health-num-big.mid { color: var(--warn-600); }
-.health-num-big.bad { color: var(--yf-coral); }
+/* #400: the band's FOUR-WAY palette, so the number agrees with the chip beside
+   it. `teal` is the missing middle band — before this a 70–84 trip printed
+   "Manageable" in Comfortable-green because the number read a 3-bucket class
+   while the chip read a 4-way tone. The `ink-teal` family, not the raw brand
+   teal, so 54px text keeps AA on both themes.
+   These four REPLACE the old `.mid`/`.bad` pair: `healthBandClass` no longer
+   emits either name, so keeping them would be a rule nothing can reach. */
+.health-num-big.teal { color: var(--ink-teal); }
+.health-num-big.saffron { color: var(--ink-amber); }
+.health-num-big.danger { color: var(--yf-coral); }
 .health-bar { height: 8px; border-radius: 999px; background: var(--yf-amber-100); overflow: hidden; }
 .health-bar > i { display: block; height: 100%; border-radius: 999px; transition: width var(--t-slow) var(--ease-out); }
 .health-bar > i.ok { background: var(--ok); }
-.health-bar > i.mid { background: var(--warn-600); }
-.health-bar > i.bad { background: var(--yf-coral); }
+/* The bar is a FILL, not text — it takes the band hue at full strength, the
+   same move `.clickable-chip.on-teal` makes. */
+.health-bar > i.teal { background: var(--teal); }
+.health-bar > i.saffron { background: var(--saffron); }
+.health-bar > i.danger { background: var(--yf-coral); }
 .health-reasons { list-style: none; margin: 9px 0 0; padding: 0; display: grid; gap: 3px; font-size: 13px; color: var(--text-2); }
 .health-rec {
   display: block; width: 100%; margin-top: 12px;
@@ -1645,10 +1656,14 @@ a.btn { text-decoration: none; }
 .board-pulse-row .health-num-big { font-size: 28px; }
 .board-pulse-band { font-size: 12px; font-weight: 700; }
 .board-pulse-band.ok { color: var(--ink-ok); }
-.board-pulse-band.mid { color: var(--ink-amber); }
-.board-pulse-band.bad { color: var(--yf-coral); }
+/* #400: the band word now arrives as a FOUR-way class, so the pulse's own band
+   label needs the classes that used to be folded away. Same inks the big
+   number uses, so the number and the word cannot disagree here either. */
+.board-pulse-band.teal { color: var(--ink-teal); }
+.board-pulse-band.saffron { color: var(--ink-amber); }
+.board-pulse-band.danger { color: var(--yf-coral); }
 /* 12px text on glass: coral reads 3.83 — light gets the deep red (6.43); dark passes as authored. */
-:root:not([data-theme='dark']) .board-pulse-band.bad { color: var(--danger-600); }
+:root:not([data-theme='dark']) .board-pulse-band.danger { color: var(--danger-600); }
 .board-pulse .health-bar { margin-top: 5px; }
 .board-pulse-lines { display: grid; gap: 3px; margin-top: 8px; font-size: 12px; color: var(--text-2); }
 .board-pulse-link {
@@ -7976,3 +7991,234 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 }
 .map-ideas-sheet-tabs .chip { min-height: 40px; }
 .map-ideas-grid .poi-col.is-sheet-hidden { display: none; }
+/* ============================================================
+   V2 Trip settings - the surface (append-only block).
+   Structure: TripSettingsForm.tsx V2. Tokens: the app's own.
+   Namespaced tsx- so nothing collides with existing selectors;
+   no selector below is declared twice (duplicate gate).
+   ============================================================ */
+
+/* ---- the settings canvas rhythm ---- */
+.tsx-form { display: flex; flex-direction: column; gap: 20px; }
+
+/* ---- the hero: the trip at a glance ---- */
+.tsx-hero {
+  position: relative; overflow: hidden;
+  border-radius: var(--radius);
+  background:
+    radial-gradient(120% 130% at 100% 0%, var(--yf-atmos-peach), transparent 52%),
+    radial-gradient(120% 130% at 0% 100%, var(--yf-atmos-mint), transparent 52%),
+    var(--yf-navy);
+  color: #EAF4F1;
+  padding: 22px 24px 20px;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.tsx-hero-top { display: flex; align-items: flex-start; gap: 14px; min-width: 0; }
+.tsx-hero-cover {
+  width: 86px; height: 60px; border-radius: 12px; flex: none;
+  border: 1px solid rgba(255,255,255,.25);
+  background:
+    radial-gradient(80% 90% at 30% 20%, rgba(124,225,207,.4), transparent 60%),
+    radial-gradient(90% 100% at 80% 80%, rgba(255,179,107,.35), transparent 55%),
+    linear-gradient(150deg, #123F49, #0B2545);
+}
+.tsx-hero-id { min-width: 0; }
+.tsx-hero-name {
+  font-family: var(--font-display);
+  font-size: clamp(19px, 2.4vw, 24px); font-weight: 800; letter-spacing: -.015em; line-height: 1.15;
+  margin: 0; color: #fff; overflow-wrap: anywhere;
+}
+.tsx-hero-sub { margin: 4px 0 0; font-size: 12.5px; color: rgba(234,244,241,.75); overflow-wrap: anywhere; }
+.tsx-hero-sub b { color: #fff; font-weight: 700; }
+.tsx-hero-stats {
+  display: flex; flex-wrap: wrap; gap: 10px 26px;
+  padding-top: 14px; border-top: 1px solid rgba(255,255,255,.16);
+}
+.tsx-stat { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.tsx-stat-k {
+  font-size: 11px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase;
+  color: rgba(234,244,241,.6);
+}
+.tsx-stat-v {
+  font-family: var(--bench-mono, monospace); font-variant-numeric: tabular-nums;
+  font-size: 17px; font-weight: 700; color: #fff;
+}
+.tsx-stat-v small { font-size: 11.5px; font-weight: 600; color: rgba(234,244,241,.75); margin-left: 4px; }
+[data-theme='dark'] .tsx-hero-cover { border-color: rgba(255,255,255,.18); }
+
+/* ---- the band: cards left, bill + engine read right ---- */
+.tsx-band { display: grid; grid-template-columns: minmax(0, 1.9fr) minmax(300px, 1fr); gap: 20px; align-items: start; }
+.tsx-band-main { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.tsx-aside { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+
+/* ---- question cards ---- */
+.tsx-card {
+  position: relative;
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 20px 22px 18px;
+  display: flex; flex-direction: column; gap: 14px;
+  min-width: 0;
+  box-shadow: var(--shadow-sm);
+}
+.tsx-head {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  gap: 2px 14px;
+  align-items: start;
+}
+.tsx-no {
+  grid-row: 1 / span 2;
+  width: 34px; height: 34px; border-radius: 11px;
+  display: grid; place-items: center;
+  background: var(--teal-soft); color: var(--teal-deep);
+  font-family: var(--bench-mono, monospace); font-size: 13px; font-weight: 700;
+}
+.tsx-q {
+  margin: 0; align-self: center;
+  font-family: var(--font-display);
+  font-size: 16.5px; font-weight: 700; letter-spacing: -.012em; line-height: 1.25;
+  color: var(--text);
+}
+.tsx-ans {
+  justify-self: end; align-self: center;
+  display: inline-flex; align-items: baseline; gap: 6px;
+  font-family: var(--bench-mono, monospace); font-variant-numeric: tabular-nums;
+  font-size: 12.5px; font-weight: 700; color: var(--teal-deep);
+  padding: 4px 11px; border-radius: 999px;
+  background: var(--teal-soft);
+  white-space: nowrap;
+}
+.tsx-a {
+  grid-column: 2 / 3;
+  margin: 1px 0 0;
+  font-size: 13px; line-height: 1.5; color: var(--text-3);
+  max-width: 62ch;
+}
+.tsx-a b { color: var(--text-2); font-weight: 700; }
+
+/* the settled-facts row closes each card with its own answers */
+.tsx-settled {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--line);
+}
+.tsx-fact {
+  display: inline-flex; align-items: baseline; gap: 7px;
+  border: 1px solid var(--line); border-radius: 999px;
+  background: var(--bg);
+  padding: 5px 12px 5px 11px;
+  font-size: 12px; color: var(--text-2);
+  min-width: 0;
+}
+.tsx-fact-k {
+  font-size: 11px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--text-3); flex: none;
+}
+.tsx-fact b { font-family: var(--bench-mono, monospace); font-variant-numeric: tabular-nums; font-weight: 700; color: var(--text); overflow-wrap: anywhere; }
+.tsx-fact--warn { border-color: color-mix(in srgb, var(--saffron-600) 40%, var(--line)); background: var(--yf-amber-100); }
+.tsx-fact--warn b { color: var(--ink-amber); }
+
+/* ---- the road ---- */
+.tsx-route {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 14px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+}
+.tsx-node {
+  display: inline-flex; align-items: center; gap: 8px;
+  border: 1px solid var(--line); background: var(--card); border-radius: 999px;
+  padding: 7px 13px; font-size: 13px; font-weight: 600; color: var(--text);
+  box-shadow: var(--shadow-sm); min-width: 0;
+}
+.tsx-node-ord {
+  width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--teal-soft); color: var(--teal-deep); font-size: 11px; font-weight: 800; flex: none;
+}
+.tsx-node--start { border-style: dashed; color: var(--text-2); }
+.tsx-node-tools { display: inline-flex; gap: 2px; margin-left: 2px; }
+.tsx-node-tools button {
+  width: 22px; height: 22px; border-radius: 6px; border: none; background: none;
+  color: var(--text-3); cursor: pointer; display: grid; place-items: center; padding: 0;
+}
+.tsx-node-tools button:hover:not(:disabled) { background: var(--bg-soft); color: var(--text); }
+.tsx-node-tools button:focus-visible { outline: none; box-shadow: var(--ring); }
+.tsx-node-tools button:disabled { opacity: .3; cursor: not-allowed; }
+.tsx-road {
+  flex: none; width: 26px; height: 2px; border-radius: 1px;
+  background: linear-gradient(90deg, var(--line), var(--text-3));
+  position: relative;
+}
+.tsx-road::after {
+  content: ''; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: 4px; height: 4px; border-radius: 50%; background: var(--text-3);
+}
+
+/* ---- calendar + day meter ---- */
+.tsx-when { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(220px, 1fr); gap: 20px; align-items: start; }
+.tsx-dm-track { height: 8px; border-radius: 99px; background: var(--bg-soft); overflow: hidden; display: block; }
+.tsx-dm-fill { display: block; height: 100%; border-radius: 99px; background: var(--yf-teal-600); }
+.tsx-dm-note { font-size: 12px; color: var(--text-3); margin: 8px 0 0; font-variant-numeric: tabular-nums; }
+.tsx-dm-note b { color: var(--text-2); }
+
+/* ---- the early clamp ---- */
+.tsx-clamp {
+  border: 1px solid color-mix(in srgb, var(--saffron-600) 40%, var(--line));
+  border-radius: var(--radius-sm);
+  background: var(--yf-amber-100);
+  padding: 13px 15px;
+  display: flex; gap: 11px; align-items: flex-start;
+}
+.tsx-clamp-ico { flex: none; width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; background: rgba(143,91,6,.12); color: var(--ink-amber); }
+.tsx-clamp-body { min-width: 0; }
+.tsx-clamp-t { font-size: 13.5px; font-weight: 800; color: var(--text); margin: 0; }
+.tsx-clamp-d { font-size: 12.5px; color: var(--text-2); line-height: 1.5; margin: 3px 0 0; }
+.tsx-clamp-d b { color: var(--text); }
+
+/* ---- the engine's read (under the bill) ---- */
+.tsx-read {
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 16px 18px 14px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.tsx-read-head { display: flex; align-items: center; gap: 10px; }
+.tsx-read-kicker {
+  font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--text-3);
+}
+.tsx-read-facts { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 12px; border-top: 1px dashed var(--line); }
+.tsx-read-note { font-size: 11px; color: var(--text-3); margin: 0; line-height: 1.5; }
+
+/* ---- the save bar's copy block ---- */
+.tsx-rail-copy { display: flex; flex-direction: column; gap: 1px; min-width: 0; margin-right: auto; }
+.tsx-rail-copy b { font-size: 13px; color: var(--text); }
+.tsx-rail-s { font-size: 12px; color: var(--text-3); }
+
+/* ---- narrow widths ---- */
+@media (max-width: 1020px) {
+  .tsx-band { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 760px) {
+  .tsx-when { grid-template-columns: minmax(0, 1fr); }
+  .tsx-hero { padding: 18px 16px 16px; }
+  .tsx-hero-stats { gap: 8px 18px; }
+  .tsx-card { border-radius: var(--radius-sm); padding: 16px 16px 15px; }
+  .tsx-head { grid-template-columns: 30px minmax(0, 1fr); }
+  .tsx-ans { grid-column: 2; grid-row: 2; justify-self: start; margin-top: 6px; }
+  .tsx-a { display: none; }
+  .tsx-no { width: 30px; height: 30px; border-radius: 9px; }
+  .tsx-q { font-size: 15px; }
+}
+.tsx-hero-edit {
+  display: inline-flex; align-items: center; gap: 6px; flex: none;
+  border: 1px solid rgba(255,255,255,.35); border-radius: 999px;
+  background: rgba(255,255,255,.1); color: #fff;
+  font-size: 12px; font-weight: 700; padding: 7px 13px; cursor: pointer;
+  transition: background var(--t-fast) var(--ease-out);
+}
+.tsx-hero-edit:hover { background: rgba(255,255,255,.18); }
+.tsx-hero-edit:focus-visible { outline: none; box-shadow: var(--ring); }
+.tsx-hero-edit[aria-expanded='true'] { background: rgba(255,255,255,.2); }
+.tsx-card--identity .bench-pair { align-items: start; }
+.tsx-card--identity .cover-picker-preview { height: 72px; }

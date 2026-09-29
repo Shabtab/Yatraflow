@@ -1,7 +1,7 @@
 // ============ Trip workspace — Share tab ============
 // Mechanical extraction from src/pages/TripWorkspace.tsx (M3.4) — no behavior changes.
 // Includes SnapshotCard — ShareTab is its only consumer.
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { InlineIcon } from '../../components/icons'
 import { CalendarDays, Download, Link2, Lock } from 'lucide-react'
 import type { Trip, PublishedItinerary } from '../../data/types'
@@ -15,7 +15,10 @@ import { nativeCopyText } from '../../lib/native'
 import { useTablist } from '../../hooks/useTablist'
 import { formatInr, type LegEstimate } from '../../lib/engine'
 import { netOfFeeInr, PLATFORM_FEE_SUMMARY } from '../../lib/earnings'
-import { Avatar, Chip, ConfirmDialog, CopyButton, Field, toast, undoToast } from '../../components/ui'
+import {
+  publishValidation, PUBLISH_FIELD_ORDER, PUBLISH_FIELD_LABELS, PublishRejected, type PublishField,
+} from '../../lib/publishRules'
+import { Avatar, Chip, ConfirmDialog, CopyButton, Field, FormErrorSummary, toast, undoToast } from '../../components/ui'
 import { PrintExport } from '../../components/PrintExport'
 import { cap, timeAgo } from './shared'
 
@@ -31,13 +34,31 @@ function SnapshotCard({ trip, me, onNavigate, legCorrections, publication }: {
   publication?: Record<string, unknown>
 }) {
   const [link, setLink] = useState('')
+  // #391 — the encode is async and can reject (`CompressionStream` is
+  // unavailable in some browsers, and a large trip can exceed the URL budget),
+  // so this used to leave a button that did nothing at all: no link, no message,
+  // no sign anything happened. `busy` also stops a rapid second click from
+  // racing the first into a stale link (AGENTS §6a's input-guard rule).
+  const [busy, setBusy] = useState(false)
 
   async function makeLink() {
-    const payload = await encodeTripSnapshot(trip)
-    const url = snapshotUrl(trip, payload)
-    setLink(url)
-    void nativeCopyText(url)
-    toast('Snapshot link copied — anyone can open it, no account needed')
+    if (busy) return
+    setBusy(true)
+    try {
+      const payload = await encodeTripSnapshot(trip)
+      const url = snapshotUrl(trip, payload)
+      setLink(url)
+      void nativeCopyText(url)
+      toast('Snapshot link copied — anyone can open it, no account needed')
+    } catch (e) {
+      console.error('[yatraflow] snapshot encode failed', e)
+      // The raw failure names CompressionStream or a URL-length error; neither
+      // is anything a reader can act on, so the message says what to do instead
+      // and the cause stays in the console.
+      toast('Couldn’t build a snapshot link for this trip — the plan may be too large for a URL. Download the JSON instead.', 'err')
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
@@ -52,7 +73,9 @@ function SnapshotCard({ trip, me, onNavigate, legCorrections, publication }: {
                   <button className="btn btn-outline btn-sm" onClick={() => downloadTripJson(trip, publication)}><InlineIcon icon={Download} size={13} gap={4} />Download JSON</button>
                   <PrintExport trip={trip} legCorrections={legCorrections} />
                   <button className="btn btn-outline btn-sm" onClick={() => downloadTripIcs(trip, legCorrections)} title="One calendar event per day plus timed events for fixed commitments — imports into Google/Apple/Outlook calendars"><InlineIcon icon={CalendarDays} size={13} gap={4} />Add to calendar</button>
-                  <button className="btn btn-saffron btn-sm" onClick={makeLink}><InlineIcon icon={Link2} size={13} gap={4} />Create snapshot link</button>
+                   <button className="btn btn-saffron btn-sm" onClick={makeLink} disabled={busy} aria-busy={busy}>
+                     <InlineIcon icon={Link2} size={13} gap={4} />{busy ? 'Building…' : 'Create snapshot link'}
+                   </button>
       </div>
       {link && (
         <div className="share-link-box" style={{ marginTop: 10 }}>
@@ -68,6 +91,13 @@ function SnapshotCard({ trip, me, onNavigate, legCorrections, publication }: {
 
 const DEFAULT_TRAVEL_TIPS = ['Start ghat-section drives early.', 'Carry cash in hill towns.']
 const DEFAULT_WARNINGS = ['All costs are estimates based on typical prices — verify locally before booking.']
+
+// The publish rules, the price ceiling, the field order and the refusal type all
+// live in `lib/publishRules` (#354) because `publishItinerary` enforces the same
+// ones — see that module for why one derivation beats two copies. This form is
+// the surface that RENDERS them: it maps each field key to a control, a focus
+// target and a polite message, and the summary turns the first key into the one
+// assertive announcement.
 
 /** Per-day free/premium picker + pricing/CTA form for the public itinerary.
  *  Replaces the hardcoded freeDayIndexes [0] / ₹199 publish payload: the owner
@@ -93,7 +123,18 @@ function PublicationForm({ trip, pub, live = true, isOwner, creatorId, onDone }:
   const [bestSeason, setBestSeason] = useState(pub?.bestSeason ?? '')
   const [tips, setTips] = useState(pub ? pub.travelTips.join('\n') : DEFAULT_TRAVEL_TIPS.join('\n'))
   const [cta, setCta] = useState(pub?.subscriberCta ?? '')
-  const [err, setErr] = useState<string | null>(null)
+  // #389 — F-15, ported from CreateTrip rather than invented a second time.
+  // The form had ONE `err: string` driving ONE `role="alert"` banner at the
+  // bottom: a screen-reader user heard "Premium days need a call-to-action" and
+  // a sighted user had to work out which of six fields it meant, with focus
+  // left on the submit button. Six rules, four fields — so `errs` is keyed by
+  // FIELD and the summary reads its first key. `saveErr` is deliberately NOT in
+  // that map: a failed WRITE is not a field's fault, and pointing at the price
+  // box for it would be a lie.
+  const [errs, setErrs] = useState<Record<string, string>>({})
+  const [saveErr, setSaveErr] = useState<string | null>(null)
+  /** first-invalid focus targets (F-15) — plain inputs and the day picker only */
+  const fieldRefs = useRef<Record<string, HTMLElement | null>>({})
   // A publish is a network write, and this button was the only publish control
   // in the app without a busy state (#388). Two clicks fired two upserts, two
   // `refreshedAt` stamps and two toasts — the duplicate was only prevented by
@@ -106,12 +147,30 @@ function PublicationForm({ trip, pub, live = true, isOwner, creatorId, onDone }:
   const allIndexes = trip.days.map(d => d.index)
   const hasPremiumDay = !entirelyFree && free.size < trip.days.length
 
+  /** #389 — one field's edit clears that field's message and nothing else, so
+   *  fixing the price does not wipe a still-true complaint about the CTA. */
+  const clearErr = (field: string) => setErrs(prev => {
+    if (!(field in prev)) return prev
+    const next = { ...prev }
+    delete next[field]
+    return next
+  })
+
   function toggleDay(index: number) {
     if (free.has(index) && free.size <= 1) {
-      setErr('At least one day must stay free — it is the preview readers see.')
+      // Tagged to the DAY PICKER, which is the control the message is about —
+      // and it used to be a form-wide `err` the reader could not locate.
+      setErrs(prev => ({ ...prev, freeDays: 'At least one day must stay free — it is the preview readers see.' }))
       return
     }
-    setErr(null)
+    setErrs(prev => {
+      const next = { ...prev }
+      // Both free-day rules are decided by the count this toggle changes, so
+      // fixing the count legitimately clears both.
+      delete next.freeDays
+      delete next.allFree
+      return next
+    })
     setFree(prev => {
       const next = new Set(prev)
       if (next.has(index)) next.delete(index); else next.add(index)
@@ -131,27 +190,37 @@ function PublicationForm({ trip, pub, live = true, isOwner, creatorId, onDone }:
     // ships a link that silently previews as the brand card instead of this
     // trip, which is the one thing a creator cannot see from inside the app.
     const cover = trip.coverImageUrl?.trim()
-    if (!cover) { setErr('Add a cover photo — it is the picture your share link previews with.'); return }
-    if (!/^https:\/\/\S+$/.test(cover)) { setErr('The cover must be an https image URL — link previews ignore anything else.'); return }
-    if (!Number.isFinite(priceNum) || priceNum < 0) { setErr('Price must be a number of rupees, 0 or more.'); return }
-    // The purchase_orders table caps amount_inr at 100000 (the gateway's
-    // sensible test-mode ceiling) — a publication priced above it would 503
-    // at checkout with no visible cause. Fail here, at the source.
-    if (!entirelyFree && priceNum > 100000) { setErr('The maximum premium price is ₹1,00,000.'); return }
-    if (!Number.isInteger(priceNum)) { setErr('Price must be a whole number of rupees.'); return }
-    // Price > 0 with every day free would publish a premium price over fully
-    // viewable content — a "Unlock Premium" CTA that unlocks nothing. Block it.
-    if (!entirelyFree && free.size >= trip.days.length) { setErr('Every day is free — clear the price or lock a day.'); return }
-    // The ≥1-free-day rule lived ONLY in the toggle guard above, so it was
-    // enforced by interaction rather than at the point of writing: a `free` set
-    // that arrived empty (a publication hydrated with `freeDayIndexes: []`)
-    // slipped past `toggleDay` entirely and published a premium plan with zero
-    // free days — `0 >= trip.days.length` is false, and the day buttons render
-    // `disabled` because every day reads as free. Re-assert every invariant the
-    // writer depends on here; the toggle guard stays as the friendly version.
-    if (!entirelyFree && free.size < 1) { setErr('At least one day must stay free — it is the preview readers see.'); return }
-    if (hasPremiumDay && !cta.trim()) { setErr('Premium days need a call-to-action — tell readers what they get when they unlock.'); return }
-    setErr(null)
+    // #354 — these six rules are no longer the FORM's alone: `publishItinerary`
+    // now refuses the same set, so a direct store caller cannot publish a row
+    // the paywall would price but the preview shows fully. The MESSAGES live in
+    // `publishValidation` (below) and this form renders whatever it returns, so
+    // there is one message per rule rather than two that can drift — and the
+    // writer's refusal and this form's are literally the same string.
+    const next = publishValidation({
+      coverImageUrl: cover,
+      priceNum, entirelyFree,
+      freeDayCount: free.size,
+      totalDays: trip.days.length,
+      cta: cta.trim(),
+      hasPremiumDay,
+    })
+    setErrs(next)
+    setSaveErr(null)
+    if (Object.keys(next).length) {
+      // F-15: move focus to the FIRST invalid field in the order the checks run
+      // below, so a keyboard user is taken to the topmost thing needing a fix
+      // rather than left on the submit button. A field with no focusable element
+      // of its own falls back to its own message, made focusable for the
+      // occasion — which is why the `.err-text` fallback exists at all.
+      const first = PUBLISH_FIELD_ORDER.find(k => k in next)
+      const target = first ? fieldRefs.current[first] : null
+      if (target) target.focus()
+      else {
+        const firstErr = document.querySelector<HTMLElement>('.err-text')
+        if (firstErr) { firstErr.setAttribute('tabindex', '-1'); firstErr.focus() }
+      }
+      return
+    }
     setBusy(true)
     try {
       // AWAITED (#388). The old call was fire-and-forget, so `onDone` — and
@@ -178,11 +247,29 @@ function PublicationForm({ trip, pub, live = true, isOwner, creatorId, onDone }:
         subscriberCta: cta.trim() || undefined,
       })
       onDone(Boolean(pub) && live)
-    } catch {
+    } catch (e) {
+      // #354/#389 — a REFUSAL is not a failed write. The writer raises it before
+      // touching anything, so the form's own messages go back on their fields and
+      // focus moves to the first of them; no banner, because nothing went wrong
+      // and nothing was lost. A genuine write failure keeps the assertive banner,
+      // since the reader does need to know the publication did not happen.
+      if (e instanceof PublishRejected) {
+        setErrs(e.errors)
+        const first = PUBLISH_FIELD_ORDER.find(k => k in e.errors)
+        const target = first ? fieldRefs.current[first] : null
+        if (target) target.focus()
+        else {
+          const firstErr = document.querySelector<HTMLElement>('.err-text')
+          if (firstErr) { firstErr.setAttribute('tabindex', '-1'); firstErr.focus() }
+        }
+        return
+      }
       // The store already toasts its own failure and rolls the cache back; this
       // keeps the form honest about the fact that nothing was published, rather
       // than leaving the last validation error standing as if it were the reason.
-      setErr('Could not save the publication — nothing was published. Try again.')
+      // `saveErr`, not `errs`: a write that failed is not a field's fault, and
+      // pointing at the price box for a dropped connection would be a lie.
+      setSaveErr('Could not save the publication — nothing was published. Try again.')
     } finally {
       setBusy(false)
     }
@@ -190,22 +277,40 @@ function PublicationForm({ trip, pub, live = true, isOwner, creatorId, onDone }:
 
   return (
     <div className="ts-form">
+      {/* #389 — the ONE assertive announcement for this form, naming the FIELD
+          as well as the complaint. The messages below stay polite, so a
+          three-field failure interrupts once rather than three times (the
+          CreateTrip F-15 split, not a new system). Mounted at the top of the
+          form so it is not below the fold of a long publication editor. */}
+      <FormErrorSummary errors={errs} labels={PUBLISH_FIELD_LABELS} />
       <div className="ts-subhead">
         <b>Cover photo</b>
         <span className="small muted">Required — this is the picture every shared link previews with.</span>
       </div>
-      <CoverImagePicker trip={trip} editable={isOwner} />
+      {/* Two of the six rules are about this control, and it took no `error`
+          prop — so a refused publish said "add a cover photo" with nothing
+          marked on the control it was talking about. The wrapper carries the
+          focus target: the picker is a group of buttons, and its own message
+          node is the focusable fallback. */}
+      <div ref={el => (fieldRefs.current.cover = el)} tabIndex={-1}
+        aria-invalid={errs.cover ? true : undefined}
+        aria-describedby={errs.cover ? 'pub-cover-err' : undefined}>
+        <CoverImagePicker trip={trip} editable={isOwner} error={errs.cover ?? null} />
+      </div>
       {!trip.coverImageUrl && (
         <p className="hint-text ts-note">
           That preview is a suggestion the app found — nothing is saved yet, and a link cannot show it.
           Use it or paste your own; publishing needs a saved cover.
         </p>
       )}
+      {/* The picker's own message wins over the form's, so this is a fallback:
+          it only shows when the picker has nothing of its own to say. */}
+      {errs.cover && <p className="err-text" id="pub-cover-err" role="status" aria-live="polite">{errs.cover}</p>}
       <Field label="Tagline" hint="One line that sells the route on Explore and the public page.">
-        <input className="input" value={tagline} onChange={e => { setTagline(e.target.value); setErr(null) }} maxLength={140} />
+        <input className="input" value={tagline} onChange={e => { setTagline(e.target.value); setSaveErr(null) }} maxLength={140} />
       </Field>
       <div className="form-row">
-        <Field label="Premium price (₹)" hint={priceNum > 0
+        <Field label="Premium price (₹)" error={errs.price} hint={priceNum > 0
           // The floor, not the rate: the ladder charges 15% up to ₹25,000 of
           // LIFETIME gross and 10% after, so a price seen on its own can only
           // honestly promise the least a creator keeps. Pricing is the moment
@@ -217,24 +322,33 @@ function PublicationForm({ trip, pub, live = true, isOwner, creatorId, onDone }:
           ? `At ${formatInr(priceNum)} a sale nets you at least ${formatInr(Math.floor(netOfFeeInr(priceNum)))} — the platform fee is ${PLATFORM_FEE_SUMMARY}.`
           : 'Leave empty or 0 for an entirely free itinerary.'}>
           <input className="input" type="number" min={0} inputMode="numeric" placeholder="e.g. 199"
-            value={price} onChange={e => { setPrice(e.target.value); setErr(null) }} />
+            ref={el => (fieldRefs.current.price = el)}
+            value={price} onChange={e => { setPrice(e.target.value); clearErr('price'); setSaveErr(null) }} />
         </Field>
         <Field label="Best season" hint="Optional — shown as practical guidance.">
-          <input className="input" value={bestSeason} onChange={e => { setBestSeason(e.target.value); setErr(null) }} placeholder="e.g. Sep–Mar" />
+          <input className="input" value={bestSeason} onChange={e => { setBestSeason(e.target.value); setSaveErr(null) }} placeholder="e.g. Sep–Mar" />
         </Field>
       </div>
       <Field label="Travel tips" hint="One per line.">
-        <textarea className="textarea" rows={3} value={tips} onChange={e => { setTips(e.target.value); setErr(null) }} />
+        <textarea className="textarea" rows={3} value={tips} onChange={e => { setTips(e.target.value); setSaveErr(null) }} />
       </Field>
-      <Field label="Subscriber call-to-action" hint={hasPremiumDay ? 'Required while any day is premium.' : 'Used on premium days — add one before charging.'}>
-        <input className="input" value={cta} onChange={e => { setCta(e.target.value); setErr(null) }} placeholder="e.g. Full checklist + stay contacts." />
+      <Field label="Subscriber call-to-action" error={errs.cta} hint={hasPremiumDay ? 'Required while any day is premium.' : 'Used on premium days — add one before charging.'}>
+        <input className="input" value={cta} ref={el => (fieldRefs.current.cta = el)}
+          onChange={e => { setCta(e.target.value); clearErr('cta'); setSaveErr(null) }} placeholder="e.g. Full checklist + stay contacts." />
       </Field>
 
       <div className="ts-subhead">
         <b>Free preview days</b>
         {entirelyFree && <span className="small muted">Entirely free — every day is viewable.</span>}
       </div>
-      <div className="ts-dayrows">
+      {/* The day picker's focus target: the group, not one button — moving focus
+          to an arbitrary day would be worse than moving it to the group that
+          owns the choice. `tabIndex={-1}` is the a11y-sanctioned way to make a
+          non-interactive group focusable for exactly this. */}
+      <div className="ts-dayrows" ref={el => (fieldRefs.current.freeDays = el)} tabIndex={-1}
+        role="group" aria-label="Free preview days"
+        aria-invalid={errs.freeDays ? true : undefined}
+        aria-describedby={errs.freeDays ? 'pub-free-err' : undefined}>
         {trip.days.map(d => {
           const isFree = entirelyFree || free.has(d.index)
           return (
@@ -250,8 +364,15 @@ function PublicationForm({ trip, pub, live = true, isOwner, creatorId, onDone }:
           )
         })}
       </div>
+      {/* Field-tied, so POLITE — the summary above owns the one assertive beat. */}
+      {errs.freeDays && <p className="err-text" id="pub-free-err" role="status" aria-live="polite">{errs.freeDays}</p>}
 
-      {err && <p className="err-text ts-warn-note" role="alert">{err}</p>}
+      {/* #389 — the ONE assertive banner stays, and it stays the SUMMARY. It is
+          the failed-WRITE case only now: a validation failure speaks through
+          FormErrorSummary plus the field messages, so this line is no longer the
+          only way to hear about six different rules, which is what made it
+          useless for locating one. */}
+      {saveErr && <p className="err-text ts-warn-note" role="alert">{saveErr}</p>}
       <button className="btn btn-saffron" disabled={!isOwner || busy} onClick={() => void submit()}>
         {busy ? 'Publishing…' : pub && live ? 'Update publication' : 'Publish to Explore'}
       </button>

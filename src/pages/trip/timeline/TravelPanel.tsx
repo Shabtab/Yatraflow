@@ -25,12 +25,14 @@ import { useTimeFormat, formatHM } from '../../../lib/timefmt'
 import { toast } from '../../../components/ui'
 import { Select } from '../../../components/Select'
 import { useSuggestionCache } from '../../../hooks/useSuggestionCache'
-import { searchNearbyPoisMulti, searchCitiesAlong, corridorAnchors, reasonForHit, filterPlannedNearby, asymmetricDetourMinutes, googleEnabled, googleCitiesAlong } from '../../../lib/geocode'
+import { searchNearbyPoisMulti, searchCitiesAlong, corridorAnchors, reasonForHit, filterPlannedNearby, asymmetricDetourMinutes, googleEnabled, googleCitiesAlong, anchorHash, routeHash } from '../../../lib/geocode'
 import type { PlaceHit, SegmentHit } from '../../../lib/geocode'
 import { kmFromStartForHit, type HaltPurpose } from '../../../lib/providers/hits'
 import { segmentsFromPlan, assignSegmentHits, annotateSegmentHits, type HaltPlanItem } from '../../../lib/ridePlan'
 import { daySlackMin, slackPrompt, pickSlackHit, visitMinutesForCategory } from '../../../lib/slackPrompts'
 import { pointAtKm } from '../../../lib/geo'
+import { loadHaltPinsForTrip } from '../../../lib/uiPrefs'
+import { planInputsHash, isHaltCacheFresh } from '../../../hooks/useSuggestionCache'
 import type { LucideIcon } from 'lucide-react'
 import { InlineIcon, MetaIcon } from '../../../components/icons'
 import { cap } from '../shared'
@@ -87,6 +89,35 @@ export function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAdd
   // near that km (empty until 🔎 is pressed); `pin` picks the real spot over a
   // generic break stop pinned at the route km.
   const [plan, setPlan] = useState<HaltPlanDraft[]>([])
+  // #414: a cached plan survives only the inputs it was authored against. The
+  // stamp is the SAME planInputsHash the Map freshness gate uses, over the
+  // inputs the ride itself reads — the trip's party/fuel/budget/vehicle/dates
+  // plus the day's own start and the accepted halt pins. (The Map's hash adds
+  // map-only inputs — scope, weather, DNA vector — which move its suggestion
+  // copy, not where a km point sits; those stay on the map side. One hash
+  // FUNCTION, never a second one.)
+  const haltInputsHash = useMemo(() => planInputsHash({
+    anchorsHash: anchorHash(journey.points),
+    routeHash: routeHash(roadPolyline ? roadPolyline.map(p => [p.lng, p.lat] as [number, number]) : null),
+    travelStyle: trip.travelStyle,
+    transportMode: trip.transportMode,
+    scopeKm: 0,
+    travellers: trip.travellers,
+    driverCount: trip.driverCount,
+    hasVulnerable: trip.hasVulnerable,
+    driveAfterDinnerMin: trip.driveAfterDinnerMin,
+    dayStartTimes: [day.startTime ?? '08:30'],
+    haltPins: loadHaltPinsForTrip(trip.id),
+    speedKmph: MODE_SPEED[trip.transportMode] ?? 40,
+    budgetPerPersonInr: trip.budgetPerPersonInr,
+    fuelEconomyKmL: trip.fuelEconomyKmL,
+    fuelPricePerL: trip.fuelPricePerL,
+    roundTrip: trip.roundTrip,
+    vehicleProfile: trip.vehicleProfile,
+  }), [journey.points, roadPolyline, trip, day.startTime])
+  // Set when a persisted plan was DROPPED for staleness — the note says so out
+  // loud instead of the halts silently disappearing (#414's "party changed").
+  const [haltStale, setHaltStale] = useState(false)
   const [draftKm, setDraftKm] = useState(100)
   const [draftMin, setDraftMin] = useState(20)
   const [draftPurpose, setDraftPurpose] = useState<HaltPurpose>('meal')
@@ -130,6 +161,12 @@ export function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAdd
     setPlan(prev => {
       if (prev.length > 0) return prev
       if (!cached) return []
+      // #414: the stamp must match the ride as it stands NOW. A plan tuned
+      // against a 3-day bus trip is not served against a 4-day private car —
+      // the tuned list is dropped (a re-search finds fresh spots) and the
+      // panel says why rather than presenting foreign km points as current.
+      if (!isHaltCacheFresh(cached, haltInputsHash)) { setHaltStale(true); return [] }
+      setHaltStale(false)
       // commitPlan sorts by km before caching, so cache order IS canonical;
       // re-derive the sort here (stable, same comparator) instead of trusting
       // the stored array's order, which older versions left unsorted.
@@ -145,7 +182,7 @@ export function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAdd
         pin: p.pin === true,
       }))
     })
-  }, [haltCacheTick, day.index, trip.id])
+  }, [haltCacheTick, day.index, trip.id, haltInputsHash])
   // A completed search is what makes "searched" true — the hydrate effect no
   // longer sets it (#346: it fired on unrelated commits, so appending a halt
   // to a searched plan re-marked searched and the honest-empty hint could
@@ -194,8 +231,9 @@ export function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAdd
     const sorted = [...next].sort((a, b) => a.km - b.km)
     const segments = segmentsFromPlan(sorted, journey.distanceKm || 0, journey.driveMinutes)
     const hits: SegmentHit[] = segments.map((seg, i) => ({ segment: seg, hit: sorted[i]?.hit ?? null, score: 0 }))
-    setHaltCache(day.index, hits, sorted.map(s => ({ km: s.km, minutes: s.minutes, purpose: s.purpose, pin: s.pin })))
+    setHaltCache(day.index, hits, sorted.map(s => ({ km: s.km, minutes: s.minutes, purpose: s.purpose, pin: s.pin })), haltInputsHash)
     setHaltCacheTick(t => t + 1)
+    setHaltStale(false)
     searchCommitting = false
   }
 
@@ -452,6 +490,11 @@ export function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAdd
       {editable && (
         <div className="travel-panel-add halt-planner" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
           <div className="small muted"><MetaIcon icon={ MapPin } tone="place" />Halt planner — you pick where along the ride and for how long. Halts sit on the route itself; tick a found spot to detour there instead.</div>
+          {haltStale && (
+            <div className="hint-text ts-warn-note">
+              <InlineIcon icon={TriangleAlert} size={12} gap={3} />Party, fuel, budget or the plan itself changed since these halts were tuned — the saved plan was dropped. Review the km points below, then search for spots again.
+            </div>
+          )}
           <div className="halt-planner-inputs">
             <label className="hp-field">
               <span className="tps-label">after</span>

@@ -45,7 +45,10 @@ vi.mock('../src/lib/supabase', () => {
   }
 })
 
-const TABLES = ['trips', 'trip_members', 'suggestions', 'decisions', 'activity', 'notifications', 'profiles', 'published_itineraries']
+// #367: admin_audit joined the channel (live audit log for admins) — its
+// handler ignores every event type but INSERT and is admin-gated, same
+// containment contract as the rest.
+const TABLES = ['trips', 'trip_members', 'suggestions', 'decisions', 'activity', 'notifications', 'profiles', 'published_itineraries', 'admin_audit']
 
 const validSuggestionInsert = {
   eventType: 'INSERT',

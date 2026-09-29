@@ -3,7 +3,7 @@
 // Hydration never refetches — only explicit user actions (↻ Refresh, the
 // detour-scope slider, 📍 Suggest) re-run the expensive corridor searches.
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { SegmentHit, HaltPlanItem } from '../lib/ridePlan'
 import type { PlaceHit } from '../lib/providers/hits'
 import type { VehicleProfile } from '../data/types'
@@ -13,7 +13,7 @@ export interface SuggestionCache {
   /** fraction fallback pool cached under the same map TTL */
   fraction: { hits: PlaceHit[]; inputsHash: string; scopeKm: number; ts: number } | null
   /** per-day manual halt planner: the user's {km, minutes, purpose} list + best real spots */
-  halts: Record<number, { segments: SegmentHit[]; plan: HaltPlanItem[]; ts: number }>
+  halts: Record<number, { segments: SegmentHit[]; plan: HaltPlanItem[]; inputsHash: string; ts: number }>
 }
 
 const CACHE_TTL_MS = 1000 * 60 * 60 * 4 // 4 hours
@@ -31,8 +31,14 @@ const CACHE_TTL_MS = 1000 * 60 * 60 * 4 // 4 hours
  * Bumped to 6 on 2026-09-27 (#346): the halt-plan cache carries `pin` per
  * item (the user's "use the real spot" tick used to be session-only), so old
  * payloads evict rather than hydrate into the new shape.
+ *
+ * Bumped to 7 on 2026-09-29 (#414): halt entries carry `inputsHash` — the
+ * planInputsHash the entry was authored against. A halt plan tuned for a
+ * 3-day bus trip used to be served verbatim against a 4-day private car,
+ * because nothing recorded what the km points meant. Un-stamped v6 payloads
+ * evict with the version bump rather than hydrating as "always fresh".
  */
-const CACHE_VERSION = 6
+const CACHE_VERSION = 7
 
 /**
  * Build the cache key from every input the corridor search reads. Kept here
@@ -103,7 +109,38 @@ function cacheKey(tripId: string) {
   return `yatraflow_suggestions_v${CACHE_VERSION}_${tripId}`
 }
 
-function load(tripId: string): SuggestionCache {
+/**
+ * A cached halt plan is reusable only when it was authored against the same
+ * plan inputs the ride reads now (#414). The stamp is the SAME
+ * `planInputsHash` the Map freshness gate uses — one hash, never two.
+ */
+export function isHaltCacheFresh(
+  cached: { inputsHash: string } | null,
+  inputsHash: string,
+): boolean {
+  return !!cached && cached.inputsHash === inputsHash
+}
+
+/**
+ * Drop halt keys that name a day index the trip no longer has (#414). Keys
+ * are POSITIONAL day indexes, so a shortened grid leaves tail keys pointing
+ * at days that were never re-used — the old zombie behaviour served Day 4's
+ * halts on Day 2. The hook owns the keys, so this runs on every shrink path
+ * by construction (settings save, a direct reconcile caller, a reload).
+ */
+export function pruneHaltKeys(
+  halts: SuggestionCache['halts'] | undefined,
+  dayCount: number,
+): SuggestionCache['halts'] {
+  if (!halts) return {}
+  const next: SuggestionCache['halts'] = {}
+  for (const [k, v] of Object.entries(halts)) {
+    if (Number(k) < dayCount) next[Number(k)] = v
+  }
+  return next
+}
+
+function load(tripId: string, dayCount: number): SuggestionCache {
   try {
     const raw = localStorage.getItem(cacheKey(tripId))
     if (!raw) return { map: null, fraction: null, halts: {} }
@@ -116,7 +153,7 @@ function load(tripId: string): SuggestionCache {
     }
     const map = parsed.map && (now - parsed.map.ts < CACHE_TTL_MS) ? parsed.map : null
     const fraction = parsed.fraction && (now - parsed.fraction.ts < CACHE_TTL_MS) ? parsed.fraction : null
-    return { map, fraction, halts }
+    return { map, fraction, halts: pruneHaltKeys(halts, dayCount) }
   } catch {
     return { map: null, fraction: null, halts: {} }
   }
@@ -128,8 +165,22 @@ function save(tripId: string, cache: SuggestionCache) {
   } catch { /* quota or private mode — silently drop */ }
 }
 
-export function useSuggestionCache(tripId: string) {
-  const [cache, setCache] = useState<SuggestionCache>(() => load(tripId))
+export function useSuggestionCache(tripId: string, dayCount: number) {
+  const [cache, setCache] = useState<SuggestionCache>(() => load(tripId, dayCount))
+
+  // #414: any shrink of the day grid (settings save, a direct reconcile
+  // caller, a remote edit) prunes the tail keys here — one eviction point the
+  // hook owns, rather than a prune sprinkled at every caller, so no new
+  // caller can reintroduce zombie days.
+  useEffect(() => {
+    setCache(prev => {
+      const halts = pruneHaltKeys(prev.halts, dayCount)
+      if (Object.keys(halts).length === Object.keys(prev.halts).length) return prev
+      const next: SuggestionCache = { ...prev, halts }
+      save(tripId, next)
+      return next
+    })
+  }, [tripId, dayCount])
 
   const setMapCache = useCallback((segments: SegmentHit[], inputsHash: string, scopeKm: number) => {
     setCache(prev => {
@@ -142,11 +193,11 @@ export function useSuggestionCache(tripId: string) {
     })
   }, [tripId])
 
-  const setHaltCache = useCallback((dayIndex: number, segments: SegmentHit[], plan: HaltPlanItem[]) => {
+  const setHaltCache = useCallback((dayIndex: number, segments: SegmentHit[], plan: HaltPlanItem[], inputsHash: string) => {
     setCache(prev => {
       const next: SuggestionCache = {
         ...prev,
-        halts: { ...prev.halts, [dayIndex]: { segments, plan, ts: Date.now() } },
+        halts: { ...prev.halts, [dayIndex]: { segments, plan, inputsHash, ts: Date.now() } },
       }
       save(tripId, next)
       return next
