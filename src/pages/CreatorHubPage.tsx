@@ -424,7 +424,11 @@ function FunnelLine({ f, funnelRead, unlockRead = 'ready', windowLabel }: { f: P
             the selected window in their head. */}
         <span className="hub-lead-window">in {windowLabel}</span>
         <span className="hub-lead-step hub-lead-visits"><b className="hub-lead-n">{f.views}</b> {unit(f.views, 'visit')}</span>
-        <span className="hub-lead-step hub-lead-forks"><b className="hub-lead-n">{f.forks}</b> {unit(f.forks, 'fork')} <span className="hub-lead-rate">{formatPct(f.forkRatePct)} of visits</span></span>
+        {/* #363 — the denominator is named: both stages are one-per-browser-
+            session (the store dedupes views and forks the same way), so "of
+            visits" alone left the unit to be guessed and made a fork rate over
+            two different kinds of count read as a conversion. */}
+        <span className="hub-lead-step hub-lead-forks"><b className="hub-lead-n">{f.forks}</b> {unit(f.forks, 'fork')} <span className="hub-lead-rate">{formatPct(f.forkRatePct)} of visit-sessions</span></span>
         {/* Unlocks come from the sales ledger, so an unread ledger leaves this
             stage UNKNOWN. Printing 0 here would say "nobody bought" — the same
             conflation the branches above avoid for the log as a whole. */}

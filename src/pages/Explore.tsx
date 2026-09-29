@@ -94,6 +94,12 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
     return () => window.removeEventListener('hashchange', onHash)
   }, [])
   // ♡ Saved — device-local favourites (localStorage), not part of the schema
+  // (#395). Deliberately NOT synced into the URL, unlike every other filter on
+  // this page: the hash is shareable, so a `savedOnly` in it would hand the next
+  // person an address that reads "showing only what I have saved" — an empty
+  // catalog on their device — when what they were sent was a catalogue. The
+  // other filters describe the ITINERARIES (which anyone can see); this one
+  // describes the READER, and that is the line the URL must not cross.
   const [savedOnly, setSavedOnly] = useState(false)
   // P4 pagination: show the first page; "Load more" widens the window. Reset
   // to the first page whenever the result set's shape changes (filter/sort
@@ -272,11 +278,26 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
         </div>
 
         {/* Screen-reader-only result count — filter changes reflow the grid
-            silently otherwise (UI audit F-04) */}
-        <p className="sr-only" role="status">{pubs.length} {pubs.length === 1 ? 'itinerary matches' : 'itineraries match'}</p>
+            silently otherwise (UI audit F-04).
+            #395 — and it is a claim about the CATALOG, so it may only be made
+            once the catalog was READ: "0 itineraries match" over a failed read
+            is the same conflation as the empty copy below, in one line, and it
+            is the one a screen-reader user would hear with no visible cue to
+            contradict it. It announces the read's own state instead. */}
+        <p className="sr-only" role="status">
+          {pubsRead === 'ready'
+            ? `${pubs.length} ${pubs.length === 1 ? 'itinerary matches' : 'itineraries match'}`
+            : pubsRead === 'reading' ? 'Loading the catalog' : 'The catalog could not be loaded'}
+        </p>
 
-        {/* ---- Featured itinerary: credibility explained (§6.10) ---- */}
-        {featured && (
+        {/* ---- Featured itinerary: credibility explained (§6.10) ----
+            #395 — gated on the READ, not only on a featured plan existing. A
+            failed re-read KEEPS the rows it already had (a dropped connection
+            must not discard a catalog the reader was already looking at), so
+            `featured` can be truthy while the grid below is saying it could not
+            load the catalog — one card contradicting the sentence right under
+            it. The read's state owns the whole surface until Retry settles it. */}
+        {pubsRead === 'ready' && featured && (
           <div className="featured-card" key={featured.id}>
             <div className="featured-body">
               <span className="editorial-kicker featured-kicker"><InlineIcon icon={Star} size={12} gap={3} />Featured itinerary{featuredOutsideFilters && <> · outside your filters</>}</span>

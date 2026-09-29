@@ -89,6 +89,12 @@ describe('registerPubView only writes for the owning viewer (regression #4)', ()
     const fromSpy = vi.spyOn(supabase, 'from').mockImplementation(
       () => ({ upsert, update }) as unknown as ReturnType<typeof supabase.from>,
     )
+    // #363 — `registerPubView` no longer fires and forgets: a bump whose RPC
+    // fails is now rolled back, and against the placeholder URL it always
+    // fails, so the increment this test asserts would be undone a tick later.
+    // Stub the bump to SUCCEED, which is the state the assertion is about (the
+    // rollback path has its own tests in tests/pub-counters.test.ts).
+    const rpcSpy = vi.spyOn(supabase, 'rpc').mockResolvedValue({ data: null, error: null } as never)
     try {
       const store = await import('../src/store/store')
       const pub: Omit<PublishedItinerary, 'id' | 'publishedAt' | 'views' | 'copies'> = {
@@ -113,6 +119,7 @@ describe('registerPubView only writes for the owning viewer (regression #4)', ()
       // (the assert that no doomed write fired is implicit: the function now
       //  branches on ownership, so a non-owner triggers no supabase.update)
     } finally {
+      rpcSpy.mockRestore()
       fromSpy.mockRestore()
     }
   })
