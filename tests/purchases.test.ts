@@ -400,6 +400,75 @@ describe('#406 — the shelf surfaces the flag instead of printing the number', 
   })
 })
 
+// ============ #409 — the shelf stops overclaiming ============
+// Five small papercuts, one theme: money-adjacent rendering that states more
+// than it can support. Source guards for the page; the date invariant is proved
+// directly, because the formatter is page-private and the PROPERTY is what
+// matters (the same instant must not be two dates).
+describe('#409 — the shelf stops overclaiming', () => {
+  const pageSrc = readFileSync(new URL('../src/pages/Purchases.tsx', import.meta.url), 'utf8')
+
+  it('formats the receipt date in UTC, so it cannot move with the reader', () => {
+    // The pin is on the option that decides it. `toLocaleDateString` alone reads
+    // the BROWSER's zone, which is the bug: a grant at 23:30 UTC was "yesterday"
+    // in IST and "today" in the US — the same receipt, two dates.
+    expect(pageSrc).toMatch(/timeZone: 'UTC'/)
+    // Both formatters, not just the visible one: a month label that flips
+    // between readers is the same defect one unit up.
+    const bought = pageSrc.slice(pageSrc.indexOf('function boughtOn'), pageSrc.indexOf('function updatedIn'))
+    const updated = pageSrc.slice(pageSrc.indexOf('function updatedIn'), pageSrc.indexOf('export function PurchasesPage'))
+    expect(bought).toContain("timeZone: 'UTC'")
+    expect(updated).toContain("timeZone: 'UTC'")
+  })
+
+  it('proves why that pin is needed: without it, one instant is two dates', () => {
+    // 12 Sep 2026, 23:30 UTC — the case the issue names. Asserted as an
+    // INEQUALITY rather than against literal strings, so this does not depend on
+    // ICU's month spelling: what matters is that the two zones disagree.
+    const lateUtc = Date.UTC(2026, 8, 12, 23, 30)
+    const fmt = (timeZone: string) =>
+      new Date(lateUtc).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone })
+    expect(fmt('UTC')).not.toBe(fmt('Asia/Kolkata'))
+    // …and the pinned reading is stable no matter which zone the test box is in.
+    expect(fmt('UTC')).toBe(fmt('UTC'))
+  })
+
+  it('gives a withdrawn row NO auto cover, only the neutral fallback', () => {
+    // `CoverThumb` resolves a missing cover through the trip's query candidates,
+    // which for this caller degrades to the purchase TITLE — and a title is not
+    // a destination, so it yields a plausible photo the creator never chose.
+    expect(pageSrc).toContain('trip={row.listed ? { name: row.title } : null}')
+  })
+
+  it('holds the share button busy while its sheet is open', () => {
+    // `sharePurchase` awaits the native sheet, so a double-tap opened two.
+    // The same in-flight rule the unlock buttons follow.
+    expect(pageSrc).toContain('const [sharingId, setSharingId] = useState<string | null>(null)')
+    expect(pageSrc).toContain('if (sharingId) return')
+    expect(pageSrc).toContain('disabled={sharingId !== null}')
+    expect(pageSrc).toContain("sharingId === row.pubId ? 'Opening…' : 'Share what you bought'")
+  })
+
+  it('qualifies its lede only when the shelf actually holds a withdrawn plan', () => {
+    // The lede promised "what is inside" while a withdrawn row's shape chips are
+    // absent (its publication row is gone, so durationDays/places read 0). The
+    // caveat is conditional: a permanent sentence about a case most shelves never
+    // have would be its own small dishonesty.
+    expect(pageSrc).toContain('shelf.rows.some(r => !r.listed)')
+    expect(pageSrc).toContain('keeps its receipt and your access')
+    // …and the promise that IS always true stays true.
+    expect(pageSrc).toContain('the shape of the plan')
+  })
+
+  it('says the fork fallback is race-only rather than pretending it cannot happen', () => {
+    // The branch is unreachable except by a render→click race, and a comment that
+    // says so is the difference between a deliberate guard and dead code.
+    const forkFn = pageSrc.slice(pageSrc.indexOf('function fork('), pageSrc.indexOf('/** Share one row'))
+    expect(forkFn).toContain('render→click race')
+    expect(forkFn).toContain('no longer listed')
+  })
+})
+
 // ============ #405 — a withdrawn plan must not lead to a dead page ============
 // Unpublishing DELETES the publication row, so `/pub/<id>` can never load again.
 // The shelf's "Open the plan" button rendered unconditionally, which made the

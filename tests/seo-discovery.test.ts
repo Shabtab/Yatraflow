@@ -362,6 +362,23 @@ describe('creator card handler in node', () => {
     expect(res.body).toContain('New to YatraFlow')
   })
 
+  it('escapes profile-controlled text instead of emitting raw markup', async () => {
+    // The behavioural pin for what Codacy's taint rules gesture at in
+    // api/c.js (see .codacy.yml): the name and bio are the only user data the
+    // card renders, and they go through the escaper. This asserts the EMITTED
+    // document, which is what actually matters and is narrower than the pattern
+    // that cannot see the escape call — the same argument the sitemap's origin
+    // escaping pin makes.
+    fetchMock.mockReset()
+    fetchMock.mockResolvedValueOnce(creatorProfileResponse('<script>alert(1)</script> & "friends"', 'bio with <b>markup</b> & \'quotes\''))
+    fetchMock.mockResolvedValueOnce(countResponse(2))
+    const res = await runCreator()
+    expect(res.statusCode).toBe(200)
+    expect(res.body).toContain('&lt;script&gt;alert(1)&lt;/script&gt; &amp; &quot;friends&quot;')
+    expect(res.body).toContain('bio with &lt;b&gt;markup&lt;/b&gt; &amp; &#39;quotes&#39;')
+    expect(res.body).not.toContain('<script>alert(1)</script>')
+  })
+
   it('answers 404 — a card, not a blank — for an unknown creator', async () => {
     fetchMock.mockReset()
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify([]), { status: 200 }))
