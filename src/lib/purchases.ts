@@ -12,7 +12,7 @@
 // cannot tell you what you paid or when.
 
 import { computeTotals } from './engine'
-import type { Entitlement } from './payments'
+import { isRefunded, orderMoneyAt, type Entitlement, type PurchaseOrder } from './payments'
 import type { PublishedItinerary, Trip, User } from '../data/types'
 
 /** One owned publication, as the shelf needs it. */
@@ -56,6 +56,15 @@ export interface PurchaseRow {
    *  the row renders "date unknown" — "Invalid Date" is a developer string
    *  leaking into a receipt. Orthogonal to `amountReadable`. */
   dateReadable: boolean
+  /** #407 — the money was captured and later given back, so this row is a
+   *  RECEIPT and not a claim of access. Read from the ORDER's money state, the
+   *  only row that survives a refund (the entitlement is deleted).
+   *
+   *  ORTHOGONAL to `listed`: a refunded plan can still be published, and a
+   *  withdrawn plan can still be owned. The two chips render independently —
+   *  conflating them would tell a refunded buyer their access ended because the
+   *  creator unpublished, which is a different story with different next steps. */
+  refunded: boolean
 }
 
 export interface PurchaseShelf {
@@ -74,18 +83,80 @@ export interface PurchaseShelf {
    *  floor, and the UI must not present it as the total. */
   totalReadable: boolean
   updatedCount: number
+  /** #407 — how many rows are receipts for money that came back. Named
+   *  separately because `totalPaidInr` EXCLUDES them: that figure is what the
+   *  buyer currently holds, and a refunded purchase is not held. Without this
+   *  count the header would have to be silently short, which is the shape of
+   *  dishonesty the rest of this file exists to avoid. */
+  refundedCount: number
 }
 
-/** The buyer's shelf, newest purchase first. */
+/** The buyer's shelf, newest purchase first.
+ *
+ *  Two sources, and they answer different questions (#407): `entitlements` is
+ *  the GRANT (what you may open), `purchase_orders` is the MONEY (what you paid,
+ *  and whether it came back). A refund deletes the entitlement and leaves the
+ *  order `failed`, so a shelf reading only entitlements loses the purchase
+ *  entirely — which is what this parameter exists to fix. `orders` is optional
+ *  so the pre-#407 call shape still type-checks, but a caller that omits it
+ *  simply cannot see refunds. */
 export function buildPurchaseShelf(
   entitlements: Entitlement[],
   pubs: PublishedItinerary[],
   users: User[],
+  orders: PurchaseOrder[] = [],
 ): PurchaseShelf {
   const pubById = new Map(pubs.map(p => [p.id, p]))
   const nameById = new Map(users.map(u => [u.id, u.profile?.name || undefined]))
+  // The money state, by the ORDER it belongs to. An entitlement carries its
+  // `orderId`, so a surviving grant can still be recognised as refunded if the
+  // delete ever raced or failed — defence in depth for the same truth.
+  const orderById = new Map(orders.map(o => [o.id, o]))
   const seen = new Set<string>()
   const rows: PurchaseRow[] = []
+
+  /** The shared shape of one row. `amountClaim` and `moneyAt` come from
+   *  whichever source knows them: the entitlement for a live grant, the order
+   *  for a receipt. */
+  const rowFor = (input: {
+    pubId: string
+    entitlementId: string
+    amountClaim: unknown
+    moneyAt: unknown
+    refunded: boolean
+  }): PurchaseRow => {
+    const pub = pubById.get(input.pubId)
+    // A stored amount is a CLAIM about money, so it is checked rather than cast:
+    // `null`, a string, NaN and Infinity are all "could not be read", and none of
+    // them may become 0 (a claim) or NaN (a poison).
+    const amountReadable = typeof input.amountClaim === 'number' && Number.isFinite(input.amountClaim)
+    const dateReadable = typeof input.moneyAt === 'number' && Number.isFinite(input.moneyAt)
+    return {
+      pubId: input.pubId,
+      // Empty for a withdrawn plan: the publication row is what carried it, and
+      // an unlisted row has none.
+      tripId: pub?.tripId ?? '',
+      entitlementId: input.entitlementId,
+      title: pub?.title || 'A plan you own',
+      coverImageUrl: pub?.coverImageUrl,
+      creatorId: pub?.creatorId ?? '',
+      creatorName: pub ? nameById.get(pub.creatorId) : undefined,
+      amountPaidInr: amountReadable ? (input.amountClaim as number) : 0,
+      grantedAt: dateReadable ? (input.moneyAt as number) : Number.NaN,
+      durationDays: pub?.durationDays ?? 0,
+      places: pub?.routeSummary.length ?? 0,
+      // `refreshed_at` is when the creator last synced the page with its
+      // itinerary. Rows published before v0.37 have none and fall back to
+      // `published_at`, which is always at or before the purchase — so an absent
+      // value must read as "not updated", never as "updated".
+      updatedSince: Boolean(pub?.refreshedAt && pub.refreshedAt > (input.moneyAt as number)),
+      refreshedAt: pub?.refreshedAt,
+      listed: Boolean(pub),
+      amountReadable,
+      dateReadable,
+      refunded: input.refunded,
+    }
+  }
 
   // Oldest first, so the de-duplication below keeps the purchase that actually
   // started the ownership. One entitlement per (user, publication) is a
@@ -95,48 +166,46 @@ export function buildPurchaseShelf(
   for (const e of [...entitlements].sort((a, b) => a.grantedAt - b.grantedAt)) {
     if (seen.has(e.pubId)) continue
     seen.add(e.pubId)
-    const pub = pubById.get(e.pubId)
-    // A stored amount is a CLAIM about money, so it is checked rather than
-    // cast: `null`, a string, NaN and Infinity are all "could not be read",
-    // and none of them may become 0 (a claim) or NaN (a poison). The value is
-    // kept as-is for a readable row and coerced to 0 for a flagged one — where
-    // it is excluded from the sum below, so 0 never reaches the total.
-    const amountReadable = typeof e.amountPaidInr === 'number' && Number.isFinite(e.amountPaidInr)
-    const dateReadable = typeof e.grantedAt === 'number' && Number.isFinite(e.grantedAt)
-    rows.push({
+    rows.push(rowFor({
       pubId: e.pubId,
-      // Empty for a withdrawn plan: the publication row is what carried it, and
-      // an unlisted row has none. That is not a loss — it is what makes the
-      // title fallback the honest path rather than a guess dressed as a fact.
-      tripId: pub?.tripId ?? '',
       entitlementId: e.id,
-      title: pub?.title || 'A plan you own',
-      coverImageUrl: pub?.coverImageUrl,
-      creatorId: pub?.creatorId ?? '',
-      creatorName: pub ? nameById.get(pub.creatorId) : undefined,
-      amountPaidInr: amountReadable ? e.amountPaidInr : 0,
-      grantedAt: e.grantedAt,
-      durationDays: pub?.durationDays ?? 0,
-      places: pub?.routeSummary.length ?? 0,
-      // `refreshed_at` is when the creator last synced the page with its
-      // itinerary. Rows published before v0.37 have none and fall back to
-      // `published_at`, which is always at or before the purchase — so an
-      // absent value must read as "not updated", never as "updated".
-      updatedSince: Boolean(pub?.refreshedAt && pub.refreshedAt > e.grantedAt),
-      refreshedAt: pub?.refreshedAt,
-      listed: Boolean(pub),
-      amountReadable,
-      dateReadable,
-    })
+      amountClaim: e.amountPaidInr,
+      moneyAt: e.grantedAt,
+      refunded: isRefunded(orderById.get(e.orderId) ?? { status: 'paid' }),
+    }))
+  }
+
+  // #407 — THEN the receipts: a refunded order whose entitlement is gone is a
+  // purchase the shelf would otherwise not show at all. Keyed by publication like
+  // the loop above, so a row whose grant survived is not printed twice.
+  for (const o of [...orders].sort((a, b) => orderMoneyAt(a) - orderMoneyAt(b))) {
+    if (!isRefunded(o)) continue
+    if (seen.has(o.pubId)) continue
+    seen.add(o.pubId)
+    rows.push(rowFor({
+      pubId: o.pubId,
+      // No grant exists, so there is no entitlement to name. The ORDER id is the
+      // honest identifier: it is what the receipt is a receipt FOR.
+      entitlementId: o.id,
+      amountClaim: o.amountInr,
+      moneyAt: orderMoneyAt(o),
+      refunded: true,
+    }))
   }
 
   rows.sort((a, b) => b.grantedAt - a.grantedAt || a.title.localeCompare(b.title))
-  const totalPaidInr = rows.reduce((sum, r) => sum + (r.amountReadable ? r.amountPaidInr : 0), 0)
+  // The TOTAL and the update count are about what the buyer HOLDS, so refunded
+  // receipts are excluded from both: their money came back, and a plan they
+  // cannot open has no update to be told about. `refundedCount` below is what
+  // keeps that exclusion visible instead of silent.
+  const liveRows = rows.filter(r => !r.refunded)
+  const totalPaidInr = liveRows.reduce((sum, r) => sum + (r.amountReadable ? r.amountPaidInr : 0), 0)
   return {
     rows,
     totalPaidInr,
-    totalReadable: rows.every(r => r.amountReadable),
-    updatedCount: rows.filter(r => r.updatedSince).length,
+    totalReadable: liveRows.every(r => r.amountReadable),
+    updatedCount: liveRows.filter(r => r.updatedSince).length,
+    refundedCount: rows.filter(r => r.refunded).length,
   }
 }
 
@@ -146,9 +215,14 @@ export function buildPurchaseShelf(
  *  publication row — so the link for a withdrawn plan previews as nothing, and
  *  offering it would hand somebody a dead link to post. The buyer's own access
  *  and their copy are untouched by this: only the public card needs the row to
- *  exist. */
+ *  exist.
+ *
+ *  #407 adds the second reason a row cannot be shared: a REFUNDED purchase has
+ *  no access left to advertise. The share card is a claim about what you bought
+ *  — posting one for a plan whose money went back would be the same overclaim as
+ *  the "₹500 paid" chip was, in a place other people can see. */
 export function purchaseShareable(row: PurchaseRow): boolean {
-  return row.listed
+  return row.listed && !row.refunded
 }
 
 /** How sure a match is. `exact` is the publication's own itinerary, which a copy
