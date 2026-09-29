@@ -18,6 +18,13 @@ export interface EngineAssumptions {
   fuelPricePerL?: number
   /** true when fuelPricePerL came from the user rather than the indicative default */
   fuelPriceIsUserSet?: boolean
+  /** rental mode only: the trip's stated per-day rate, billed one rent-day per
+   *  itinerary day ON TOP of the per-km table — the same stacking the create
+   *  estimate has always done (#521). Absent unless finite and positive. */
+  rentPerDayInr?: number
+  /** train mode only: true when the trip prices suburban fares instead of the
+   *  express blended rate (#521). */
+  localTrain?: boolean
 }
 
 /** Average door-to-door speed per mode (km/h) — shared by the scheduling
@@ -97,38 +104,91 @@ export function parseFuelPricePerL(raw: string | number | undefined | null): num
   return Number.isFinite(n) && n >= 50 && n <= 250 ? n : undefined
 }
 
-/** Default planning assumptions shown to users wherever we estimate. */
-export function getAssumptions(trip: Pick<Trip, 'transportMode' | 'fuelEconomyKmL' | 'fuelPricePerL'>): EngineAssumptions {
+/** Suburban/unreserved train fare (₹/km) for trips that state `localTrain` —
+ *  0.45 against the express blended 1.6. Lives here (not tripStarter) so the
+ *  create estimate and persisted billing read one rate (#521). */
+export const LOCAL_TRAIN_COST_PER_KM = 0.45
+
+/** The transport price basis both billing paths speak: the create estimate
+ *  AND persisted-trip billing resolve through this, so a rental/train trip
+ *  costs the same before and after creation (#521). The per-field decisions
+ *  live here, not at each call site (the #382 one-amount rule). */
+export interface TransportPricing {
+  inrPerKm?: number
+  kmPerLiter?: number
+  fuelPricePerL?: number
+  fuelPriceIsUserSet?: boolean
+  /** rental mode only, rounded whole rupees; undefined unless finite and > 0 */
+  rentPerDayInr?: number
+  /** true only for train mode with the suburban flag stated */
+  localTrain: boolean
+}
+
+/** Input the pricing resolver reads — Trip's fields plus the create form's
+ *  raw values (economy/price arrive unparsed there, rent may be null). */
+export interface TransportPricingInput {
+  transportMode: Trip['transportMode']
+  fuelEconomyKmL?: string | number | null
+  fuelPricePerL?: string | number | null
+  rentPerDayInr?: number | null
+  localTrain?: boolean
+}
+
+export function resolveTransportPricing(trip: TransportPricingInput): TransportPricing {
   const mode = trip.transportMode
-  const base: EngineAssumptions = {
+  // A stated fuel economy beats the blended ₹/km table for self-drive modes:
+  // litres burned = distance ÷ economy, so ₹/km = price-per-litre ÷ economy.
+  // Validate through parseFuelEconomyKmL so impossible values fall back to
+  // the table instead of producing a wildly wrong estimate.
+  const economy = parseFuelEconomyKmL(trip.fuelEconomyKmL)
+  let inrPerKm: number | undefined
+  let kmPerLiter: number | undefined
+  let fuelPricePerL: number | undefined
+  let fuelPriceIsUserSet: boolean | undefined
+  if (economy && economy > 0 && FUEL_ECONOMY_MODES.has(mode)) {
+    const userPrice = parseFuelPricePerL(trip.fuelPricePerL)
+    const price = userPrice ?? FUEL_PRICE_INR_PER_L
+    kmPerLiter = economy
+    fuelPricePerL = price
+    fuelPriceIsUserSet = userPrice != null
+    inrPerKm = Math.round((price / economy) * 100) / 100
+  } else if (mode === 'train' && trip.localTrain === true) {
+    inrPerKm = LOCAL_TRAIN_COST_PER_KM
+  } else {
+    inrPerKm = MODE_COST_PER_KM[mode]
+  }
+  // Rental stacks: the per-day rate rides ON TOP of the per-km table, exactly
+  // like the create estimate — and only for rental mode, so a stale value on
+  // a mode-switched trip cannot leak into another mode's bill.
+  const rentRaw = trip.rentPerDayInr
+  const rentPerDayInr = mode === 'rental'
+    && typeof rentRaw === 'number' && Number.isFinite(rentRaw) && rentRaw > 0
+    ? Math.round(rentRaw)
+    : undefined
+  return {
+    inrPerKm, kmPerLiter, fuelPricePerL, fuelPriceIsUserSet, rentPerDayInr,
+    localTrain: mode === 'train' && trip.localTrain === true,
+  }
+}
+
+/** Default planning assumptions shown to users wherever we estimate. */
+export function getAssumptions(trip: Pick<Trip, 'transportMode' | 'fuelEconomyKmL' | 'fuelPricePerL' | 'rentPerDayInr' | 'localTrain'>): EngineAssumptions {
+  const mode = trip.transportMode
+  const p = resolveTransportPricing(trip)
+  return {
     mode,
     avgSpeedKmph: MODE_SPEED[mode] ?? 40,
     bufferMinutesPerStop: 15,
     mealBreakMinutes: 60,
     dayStart: '08:30',
     dayEnd: '20:00',
-    inrPerKm: MODE_COST_PER_KM[mode],
+    inrPerKm: p.inrPerKm,
+    kmPerLiter: p.kmPerLiter,
+    fuelPricePerL: p.fuelPricePerL,
+    fuelPriceIsUserSet: p.fuelPriceIsUserSet,
+    rentPerDayInr: p.rentPerDayInr,
+    localTrain: p.localTrain,
   }
-  // A stated fuel economy beats the blended ₹/km table for self-drive modes:
-  // litres burned = distance ÷ economy, so ₹/km = price-per-litre ÷ economy.
-  // The price itself is the user's local pump price when stated, else the
-  // indicative national average.
-  // Validate through parseFuelEconomyKmL so impossible values (e.g. 1 km/L or
-  // 500 km/L) are rejected and we fall back to the blended ₹/km table instead
-  // of producing a wildly wrong fuel cost / round-trip estimate.
-  const economy = parseFuelEconomyKmL(trip.fuelEconomyKmL)
-  if (economy && economy > 0 && FUEL_ECONOMY_MODES.has(mode)) {
-    const userPrice = parseFuelPricePerL(trip.fuelPricePerL)
-    const price = userPrice ?? FUEL_PRICE_INR_PER_L
-    return {
-      ...base,
-      kmPerLiter: economy,
-      fuelPricePerL: price,
-      fuelPriceIsUserSet: userPrice != null,
-      inrPerKm: Math.round((price / economy) * 100) / 100,
-    }
-  }
-  return base
 }
 
 export function minutesToHM(mins: number): string {
@@ -553,7 +613,11 @@ export function buildJourney(
     driveMinutes,
     dwellMinutes,
     totalMinutes: driveMinutes + dwellMinutes,
-    transportCostInr: points.reduce((a, p) => a + (p.legIn ? p.legIn.distanceKm * (A.inrPerKm ?? 8) : 0), 0),
+    // Rental stacks here too: one rent-day on the day's own bill, so the
+    // Timeline chip and the Budget bucket read the same number (#521 — the
+    // two-verdicts trap: computeTotals adds the identical term below).
+    transportCostInr: points.reduce((a, p) => a + (p.legIn ? p.legIn.distanceKm * (A.inrPerKm ?? 8) : 0), 0)
+      + (A.rentPerDayInr ?? 0),
     fuelLitres: A.kmPerLiter ? distanceKm / A.kmPerLiter : null,
     fuelPricePerL: A.fuelPricePerL ?? null,
     points,
@@ -656,7 +720,7 @@ export interface StopLegEstimate extends LegEstimate {
 export function estimateLeg(
   from: { lat: number; lng: number },
   to: { lat: number; lng: number },
-  trip: Pick<Trip, 'transportMode' | 'fuelEconomyKmL' | 'fuelPricePerL'>,
+  trip: Pick<Trip, 'transportMode' | 'fuelEconomyKmL' | 'fuelPricePerL' | 'rentPerDayInr' | 'localTrain'>,
 ): StopLegEstimate {
   const A = getAssumptions(trip)
   const est = legBetween(from, to, A)
@@ -1264,7 +1328,9 @@ function num0(x: unknown): number {
 export function computeTotals(trip: Trip, legCorrections?: Record<string, LegEstimate>): TripTotals {
   const A = getAssumptions(trip)
   let travelMinutes = 0, distanceKm = 0, stopCount = 0
-  let transportKmCost = 0
+  // Per-km fuel/fare AND the rental per-day stack — one transport number, so
+  // the name says what it holds (#521; it used to be km-only).
+  let transportCost = 0
   let journeyReturnsHome = false
   // Travellers scales every per-person line; a missing/zero count reads as one
   // rather than poisoning the sums with NaN.
@@ -1295,9 +1361,16 @@ export function computeTotals(trip: Trip, legCorrections?: Record<string, LegEst
     // per-leg fuel/fare cost derived from distance
     sim.legs.forEach(l => {
       const legCost = l.distanceKm * (A.inrPerKm ?? 8)
-      transportKmCost += legCost
+      transportCost += legCost
       if (bucket) bucket.transportInr += legCost
     })
+    // Rental billing (#521): one rent-day on each itinerary day's bucket —
+    // the identical term the journey above carries, so Timeline and Budget
+    // cannot disagree. byDay is keyed by day INDEX (never position, #338).
+    if (bucket && A.rentPerDayInr) {
+      bucket.transportInr += A.rentPerDayInr
+      transportCost += A.rentPerDayInr
+    }
     if (sim.endsAtStart) journeyReturnsHome = true
   })
 
@@ -1314,7 +1387,7 @@ export function computeTotals(trip: Trip, legCorrections?: Record<string, LegEst
       distanceKm += ret.distanceKm
       travelMinutes += ret.durationMinutes
       const retCost = ret.distanceKm * (A.inrPerKm ?? 8)
-      transportKmCost += retCost
+      transportCost += retCost
       // The drive home happens at the end of the trip — charge the LAST day by
       // its index, not its array position (the two differ on an unsorted or
       // sparse trip).
@@ -1384,11 +1457,11 @@ export function computeTotals(trip: Trip, legCorrections?: Record<string, LegEst
       lodgingByDay.set(d.index, (lodgingByDay.get(d.index) ?? 0) + perBaseShare)
     }
   }))
-  sum += entryFromStops + transportKmCost + lodgingInr
+  sum += entryFromStops + transportCost + lodgingInr
   byCategory['entry-fees'] = (byCategory['entry-fees'] ?? 0) + entryFromStops
-  byCategory['transport'] = (byCategory['transport'] ?? 0) + transportKmCost
+  byCategory['transport'] = (byCategory['transport'] ?? 0) + transportCost
   byCategory['accommodation'] = (byCategory['accommodation'] ?? 0) + lodgingInr
-  essential += entryFromStops + transportKmCost + lodgingInr
+  essential += entryFromStops + transportCost + lodgingInr
   for (const bd of byDay) bd.totalInr = bd.expensesInr + bd.transportInr + (entryByDay.get(bd.dayIndex) ?? 0) + (lodgingByDay.get(bd.dayIndex) ?? 0)
 
   return {

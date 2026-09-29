@@ -213,7 +213,9 @@ export interface Trip {
   /** #377 — the create form's stated vehicle inputs, persisted at last (they
    *  used to be bill-only and dropped at submit). tankL is the tank/battery
    *  capacity behind the "≈ N km per tank" note; rentPerDayInr is the rental
-   *  car's daily rate; localTrain prices train trips at suburban fares. */
+   *  car's daily rate, billed one rent-day per itinerary day ON TOP of the
+   *  per-km table by both the create estimate and persisted billing (#521);
+   *  localTrain prices train trips at suburban fares on both paths too. */
   tankL?: number
   rentPerDayInr?: number
   localTrain?: boolean
