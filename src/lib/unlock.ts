@@ -267,6 +267,35 @@ export async function fetchCreatorFunnel(opts: { days?: number; signal?: AbortSi
  * the console. The creator IS a payee, and it is what lets the console charge
  * the fee ladder per creator rather than once over the platform total.
  */
+/**
+ * #230 — share attribution, one row per route in ('direct' for the nulls).
+ * Derived at read by the admin_share_attribution RPC (log-only Stage 0 shape),
+ * and rejects rather than degrading to [] — the same empty-vs-error rule as
+ * the revenue read, because a failed read must render Retry, never a friendly
+ * zero that reads as "no shares".
+ */
+export interface ShareAttributionRow {
+  source: string
+  views: number
+  forks: number
+  lastAt: number | null
+}
+
+export async function fetchAdminShareAttribution(days = 90): Promise<ShareAttributionRow[]> {
+  const { data, error } = await supabase
+    .rpc('admin_share_attribution', { p_days: days })
+  if (error) {
+    console.error('[yatraflow] admin share-attribution read failed', error)
+    throw error
+  }
+  return (Array.isArray(data) ? data : []).map((row: Record<string, unknown>) => ({
+    source: String(row.source ?? 'direct'),
+    views: Number(row.views ?? 0),
+    forks: Number(row.forks ?? 0),
+    lastAt: row.last_at ? new Date(row.last_at as string).getTime() : null,
+  }))
+}
+
 export async function fetchAdminRevenue(limit = 1000): Promise<PlatformSale[]> {
   const { data, error } = await supabase
     .rpc('admin_revenue', { p_limit: limit })

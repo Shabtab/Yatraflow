@@ -536,6 +536,39 @@ end $$;
 
 do $$
 begin
+  -- #230: admin_share_attribution is the console's share-attribution read —
+  -- same door rule as the eight above, asserted by name because it ships in
+  -- its own migration (20260929_pub_events_share_source.sql) rather than the
+  -- lockdown file. Both halves matter: never anon/PUBLIC, AND still granted to
+  -- the console's own audience — a function with no grants at all would pass a
+  -- denial-only check while the tab is quietly broken.
+  if exists (
+    select 1
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    cross join lateral aclexplode(coalesce(p.proacl, acldefault('f', p.pronowner))) e
+    where n.nspname = 'public'
+      and p.proname = 'admin_share_attribution'
+      and (e.grantee = 0 or e.grantee = (select oid from pg_roles where rolname = 'anon'))
+  ) then
+    raise exception 'admin_share_attribution must never be granted to anon or PUBLIC — apply 20260929_pub_events_share_source.sql';
+  end if;
+  if not exists (
+    select 1
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    cross join lateral aclexplode(coalesce(p.proacl, acldefault('f', p.pronowner))) e
+    join pg_roles r on r.oid = e.grantee
+    where n.nspname = 'public'
+      and p.proname = 'admin_share_attribution'
+      and r.rolname = 'authenticated'
+  ) then
+    raise exception 'admin_share_attribution must stay granted to authenticated — the console calls it';
+  end if;
+end $$;
+
+do $$
+begin
   -- #366, second half: the audit log's read surface. admin_audit is
   -- append-only evidence — every admin action lands here with who did it — so
   -- a policy that let any authenticated account UPDATE or DELETE a row would

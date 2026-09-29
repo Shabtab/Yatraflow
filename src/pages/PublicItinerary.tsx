@@ -24,7 +24,7 @@ import { fetchMyEntitlements, fetchCreatorSales, fetchCreatorFunnel, purchaseUnl
 import { UnlockReveal } from '../components/UnlockReveal'
 import { hasUnlock } from '../lib/payments'
 import { buildPubFunnels, describePreLog, funnelGlance, type FunnelSale } from '../lib/pubFunnel'
-import { currentPublicShareUrl } from '../lib/shareUrl'
+import { currentPublicShareUrl, shareRefFromSearch, withShareRef } from '../lib/shareUrl'
 import { sharePublicationOnWhatsApp } from '../lib/whatsAppShare'
 import { appLink } from '../lib/appLink'
 import { pageTitle } from '../lib/pageTitle'
@@ -124,7 +124,10 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
   // crawler has to end up with the picture this hero is already showing.
   const heroAuto = useDestinationCover(pub ? coverCandidates(pub) : null)
   useEffect(() => {
-    if (pub) registerPubView(pub.id)
+    // #230 — the view carries its route in: the `ref` the shared link brought
+    // (query, so it survives the redirect and address promotion), or null for a
+    // visitor who arrived some other way — which is recorded as "direct".
+    if (pub) registerPubView(pub.id, shareRefFromSearch(window.location.search))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
   // This page owns the publication record, so it is the only place that can put
   // the itinerary's own name in the tab. App titles every other route; for
@@ -353,7 +356,10 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
   // fix holds the raw Wikimedia upload (a live publication shipped 1,305 KB as
   // its hero). Sized at render, so existing rows are fixed without a backfill.
   const heroSrc = pub.coverImageUrl ? sizedCoverUrl(pub.coverImageUrl) : heroAuto
-  const shareLink = currentPublicShareUrl(pub.id)
+  // #230 — what leaves through the copy button names the button it left
+  // through. Display and copy are the same string: the code box shows exactly
+  // what lands on the clipboard.
+  const shareLink = withShareRef(currentPublicShareUrl(pub.id), 'copy')
   // F3 (#227): send this plan to a WhatsApp group. The sheet first (a phone
   // lists WhatsApp directly), click-to-chat otherwise — the fallback chain
   // lives in the helper; this holds the in-flight guard so a double-tap
@@ -379,7 +385,7 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
     // stubs — forkPublication re-stubs from whatever arrived, so the fork can
     // never contain more than the server showed. The `unlocked` flag here is
     // presentation-only now; the wire already decided.
-    void forkPublication(pub!, me?.id ?? null, onNavigate, unlocked)
+    void forkPublication(pub!, me?.id ?? null, onNavigate, unlocked, shareRefFromSearch(window.location.search))
   }
 
   function unlockThis() {

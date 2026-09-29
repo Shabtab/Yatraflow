@@ -77,7 +77,9 @@ describe('I-21 — the claim is the server’s to make', () => {
   it('renders it from the gate’s verdict, never from the query string', () => {
     expect(handler).toMatch(/if \(publication && buyer && url && key && \(await ownsPublication/)
     expect(handler).toMatch(/verifiedBuyer = buyer/)
-    expect(handler).toMatch(/renderPublication\(publication, id, verifiedBuyer\)/)
+    // #230 added the ref as a fourth argument — the gate's verdict still rides
+    // the same call, and the pin follows the call site.
+    expect(handler).toMatch(/renderPublication\(publication, id, verifiedBuyer, ref\)/)
   })
 
   it('fails closed and silently when the gate cannot answer', () => {

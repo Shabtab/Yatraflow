@@ -18,6 +18,7 @@ import type { LatLngPoint } from '../data/types'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { toast } from '../components/ui'
 import { isMissingColumnError, rowToTrip, tripToRow, type OptionalColumnsProbe, type TripRow } from '../lib/tripRow'
+import type { ShareSource } from '../lib/shareUrl'
 import { dayCountForRange } from '../lib/dayCount'
 import { amountRefusal, amountVerdict } from '../lib/expenseAmount'
 import { attachDnaAccount, detachDnaAccount } from '../lib/tripDna'
@@ -1453,13 +1454,13 @@ let optionalColumnsProbe: Promise<OptionalColumnsProbe> | null = null
 let optionalColumnsWarned = false
 
 function tripsHaveOptionalColumns(): Promise<OptionalColumnsProbe> {
-  if (!isSupabaseConfigured) return Promise.resolve({ economy: false, price: false, roundTrip: false, cover: false, inviteCode: false, deleted: false, stayStyle: false, driverCount: false, hasVulnerable: false, driveAfterDinner: false, vehicleProfile: false, tankL: false, rentPerDayInr: false, localTrain: false })
+  if (!isSupabaseConfigured) return Promise.resolve({ economy: false, price: false, roundTrip: false, cover: false, inviteCode: false, deleted: false, stayStyle: false, driverCount: false, hasVulnerable: false, driveAfterDinner: false, vehicleProfile: false, tankL: false, rentPerDayInr: false, localTrain: false, ref: false })
   if (!optionalColumnsProbe) optionalColumnsProbe = probeOptionalColumns()
   return optionalColumnsProbe
 }
 
 async function probeOptionalColumns(): Promise<OptionalColumnsProbe> {
-  const [economy, price, roundTrip, cover, inviteCode, deleted, stayStyle, driverCount, hasVulnerable, driveAfterDinner, vehicleProfile, tankL, rentPerDayInr, localTrain] = await Promise.all([
+  const [economy, price, roundTrip, cover, inviteCode, deleted, stayStyle, driverCount, hasVulnerable, driveAfterDinner, vehicleProfile, tankL, rentPerDayInr, localTrain, ref] = await Promise.all([
     probeOptionalColumn('fuel_economy_km_per_l'),
     probeOptionalColumn('fuel_price_per_l'),
     probeOptionalColumn('round_trip'),
@@ -1476,6 +1477,8 @@ async function probeOptionalColumns(): Promise<OptionalColumnsProbe> {
     probeOptionalColumn('tank_l'),
     probeOptionalColumn('rent_per_day_inr'),
     probeOptionalColumn('local_train'),
+    // 20260929_pub_events_share_source.sql — share attribution
+    probeOptionalColumn('ref'),
   ])
   if (!economy || !price || !roundTrip) {
     if (!optionalColumnsWarned) {
@@ -1483,7 +1486,7 @@ async function probeOptionalColumns(): Promise<OptionalColumnsProbe> {
       optionalColumnsWarned = true
     }
   }
-  return { economy, price, roundTrip, cover, inviteCode, deleted, stayStyle, driverCount, hasVulnerable, driveAfterDinner, vehicleProfile, tankL, rentPerDayInr, localTrain }
+  return { economy, price, roundTrip, cover, inviteCode, deleted, stayStyle, driverCount, hasVulnerable, driveAfterDinner, vehicleProfile, tankL, rentPerDayInr, localTrain, ref }
 }
 
 /** Probe one optional column. True = present (or transient error, treated optimistically). */
@@ -1617,7 +1620,7 @@ const LOCKED_STOP_DESCRIPTION = 'Locked — the full plan is on the original iti
  *  entry/transport costs and open/close times are zeroed, and the stop is
  *  marked confirmed. Expenses tagged with a locked `dayIndex` and fixed
  *  commitments on locked days are dropped (trip-level expenses stay). */
-function buildTripCopy(source: Trip, ownerId: ID, opts: { makePublic?: boolean; freeDayIndexes?: number[]; keepName?: boolean }): Trip {
+function buildTripCopy(source: Trip, ownerId: ID, opts: { makePublic?: boolean; freeDayIndexes?: number[]; keepName?: boolean; ref?: ShareSource | null }): Trip {
   const free = opts.freeDayIndexes ? new Set(opts.freeDayIndexes) : null
   const copy: Trip = structuredClone(source)
   copy.id = uuid()
@@ -1631,6 +1634,9 @@ function buildTripCopy(source: Trip, ownerId: ID, opts: { makePublic?: boolean; 
   copy.createdAt = Date.now(); copy.updatedAt = Date.now()
   copy.inviteCode = undefined
   copy.deletedAt = undefined
+  // #230 — the fork's own acquisition stamp, never the source trip's. A copy
+  // of a copy starts a NEW attribution chain at whatever surface forked it.
+  copy.ref = opts.ref ?? undefined
   if (free) {
     copy.days = copy.days.map(d => ({
       ...d,
@@ -1709,8 +1715,8 @@ export function importTrip(source: Trip, ownerId: ID): Trip {
 /** Duplicate that reports whether the rows actually landed, so the caller can
  *  toast the truth instead of a success the next reload will disprove. On
  *  failure the cache copy is retracted. */
-export async function duplicateTripPersisted(source: Trip, ownerId: ID, makePublic?: boolean): Promise<{ trip: Trip; persisted: boolean }> {
-  const copy = buildTripCopy(source, ownerId, { makePublic })
+export async function duplicateTripPersisted(source: Trip, ownerId: ID, makePublic?: boolean, ref?: ShareSource | null): Promise<{ trip: Trip; persisted: boolean }> {
+  const copy = buildTripCopy(source, ownerId, { makePublic, ref })
   admitTripCopy(copy)
   const persisted = await persistTrip(copy, ownerId)
   if (!persisted) retractTripCopy(copy)
@@ -1719,8 +1725,8 @@ export async function duplicateTripPersisted(source: Trip, ownerId: ID, makePubl
 
 /** Fork a PUBLISHED itinerary while respecting its premium gate — the
  *  `freeDayIndexes` variant of `duplicateTripPersisted`. */
-export async function duplicateTripPublicPersisted(source: Trip, ownerId: ID, freeDayIndexes: number[]): Promise<{ trip: Trip; persisted: boolean }> {
-  const copy = buildTripCopy(source, ownerId, { freeDayIndexes })
+export async function duplicateTripPublicPersisted(source: Trip, ownerId: ID, freeDayIndexes: number[], ref?: ShareSource | null): Promise<{ trip: Trip; persisted: boolean }> {
+  const copy = buildTripCopy(source, ownerId, { freeDayIndexes, ref })
   admitTripCopy(copy)
   const persisted = await persistTrip(copy, ownerId)
   if (!persisted) retractTripCopy(copy)
@@ -3497,7 +3503,7 @@ function releasePubCounter(key: string): void {
  *  skew, and it needs no reconciliation pass because the value it leaves behind
  *  is the server's own.
  */
-function bumpPubCounter(id: ID, kind: 'views' | 'copies'): void {
+function bumpPubCounter(id: ID, kind: 'views' | 'copies', source?: ShareSource | null): void {
   const p = cache.published.find(x => x.id === id)
   if (!p) return
   // The creator's own visit/fork does not count: they are checking their own
@@ -3520,7 +3526,10 @@ function bumpPubCounter(id: ID, kind: 'views' | 'copies'): void {
     commit()
     releasePubCounter(key)
   }
-  void Promise.resolve(supabase.rpc('bump_published_stats', { p_id: id, p_kind: kind })).then(
+  // `p_source` is the link's ref (or the in-app surface) that produced this
+  // step — #230's attribution. `null` is the honest "direct" answer; the RPC
+  // stores it on the event row, never on the counter.
+  void Promise.resolve(supabase.rpc('bump_published_stats', { p_id: id, p_kind: kind, p_source: source ?? null })).then(
     res => {
       if (!res?.error) return
       console.error(`[yatraflow] ${kind} bump failed`, res.error)
@@ -3537,8 +3546,8 @@ function bumpPubCounter(id: ID, kind: 'views' | 'copies'): void {
  *  don't count — before this, every refresh and every self-check inflated the
  *  Explore counter. (sessionStorage survives route changes within the tab but
  *  resets on a genuinely new visit, which is the granularity views want.) */
-export function registerPubView(id: ID): void {
-  bumpPubCounter(id, 'views')
+export function registerPubView(id: ID, source?: ShareSource | null): void {
+  bumpPubCounter(id, 'views', source)
 }
 
 /** One FORK per itinerary per browser session, and the creator's own forks
@@ -3549,8 +3558,8 @@ export function registerPubView(id: ID): void {
  *  presented as a conversion rate. Explore's card can fork a plan repeatedly in
  *  one visit, and each click was a fresh event. The guard makes the two stages
  *  count the same kind of thing. */
-export function registerPubCopy(id: ID): void {
-  bumpPubCounter(id, 'copies')
+export function registerPubCopy(id: ID, source?: ShareSource | null): void {
+  bumpPubCounter(id, 'copies', source)
 }
 
 // ---------------- Feed & notifications ----------------
