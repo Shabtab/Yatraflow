@@ -1,3 +1,12 @@
+## [Unreleased]
+
+### Fixed
+
+- **A receipt date no longer changes with where you open it.** Purchase dates were rendered in the reader's own timezone, so a grant at 23:30 UTC was "yesterday" in India and "today" in the US — the same receipt carrying two dates depending on the device. A purchase date is a fact about the account rather than about the reader, so it is now stated in UTC, and the "updated" month label with it. Day granularity is unchanged; only the timezone stopped moving.
+- **A plan you bought that has since been taken down no longer wears a photo its creator never chose.** With no stored cover, the shelf looked one up from the purchase's *title* — and a title is not a destination, so "Spiti Valley Circuit" could resolve to a plausible, confident-looking photo nobody picked for that plan. A withdrawn row now shows the neutral placeholder; a plan that is still listed keeps the lookup, because there its own public page shows the same photo and the two agree.
+- **The shelf no longer promises things a withdrawn plan cannot show.** Its opening line offered "what is inside" while a taken-down plan's length and places are read from a publication row that no longer exists, so those chips simply vanish. The line now says what is always true, and explains the exception only when the shelf actually holds a taken-down plan — its receipt and your access are unaffected, and the plan's contents live in the copy you forked.
+- **Sharing what you bought cannot fire twice.** The share button awaited the system share sheet with no guard, so a double-tap opened two. It now disables while its own sheet is open and says it is opening (#409).
+
 ## [0.71.0] - 2026-09-29
 
 The publish rules move to the writer with a database backstop, and the surfaces stop lying about reads, counts and money. A publication that breaks any of six rules is refused by the write itself — with grandfathered CHECK constraints behind it — and each refusal lands on its field with the cursor; counters count like units and take back failed bumps; failed reads say so with a retry instead of printing empty catalogs, ledgers and shelves; one unreadable purchase no longer rewrites the shelf; session, budget, settings and group-input waves close their P1s; the Overview reads one health band in one colour from engine truth; and Trip settings asks four questions instead of stacking twelve blocks. Two migrations, both applied live before the cut.
