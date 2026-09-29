@@ -41,6 +41,7 @@ import { ShareTab } from './trip/ShareTab'
 import { TripSettingsForm } from './trip/TripSettingsForm'
 import { cap } from './trip/shared'
 import { roadChainSig } from '../lib/tripRoad'
+import { normalizeFocus, canFocusDay, focusDayRequest, dayFromFocus, focusForDay, type TripFocus } from '../lib/tripFocus'
 import { keepIsStale, stagedChange } from '../lib/previewChain'
 
 /** A staged change: the proposed shape, its impact against the committed trip,
@@ -192,6 +193,22 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
   // workspace component is not keyed by trip id.
   const [timelineFocusDay, setTimelineFocusDay] = useState<number | null>(null)
   const clearTimelineFocusDay = useCallback(() => setTimelineFocusDay(null), [])
+  // #425 PR 1: the shared focus contract lives in lib/tripFocus. The workspace
+  // owns the CURRENT focus for the surfaces it hosts; raising a day focus
+  // validates the request against THIS trip before it can open anything
+  // (a stale/foreign value reads as nothing — the clock walk numbers its own
+  // drive days, and this component outlives trips).
+  const [focus, setFocus] = useState<TripFocus | null>(null)
+  const setFocusedDay = useCallback((dayIndex: number) => {
+    if (!trip) return
+    if (!canFocusDay(focusDayRequest(dayIndex), trip)) return
+    setFocus(normalizeFocus({ tripId: trip.id, dayIndex }))
+  }, [trip])
+  // #425 PR 2: the surfaces' day axis IS this focus — one selection, derived
+  // where it is read. A foreign trip's focus (browser back/forward across
+  // trips) reads as 'all', never as another trip's day. `setFocus` is also
+  // the clear path: focusForDay(id, null) is the 'all' state.
+  const sharedDay = trip ? dayFromFocus(focus, trip.id) : 'all'
 
   // Stable identity for applyChange (useCallback over the trip reference): it
   // flows into TimelineTab → DaySection props, and an unstable identity would
@@ -381,12 +398,13 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
       {tab === 'board' && (
         <React.Suspense fallback={<div className="container loading-block"><div className="spinner" />Loading board…</div>}>
           <BoardView trip={effective} editable={editable} applyChange={applyChange} health={health} totals={totals} legCorrections={legCorrections} previewOpen={!!pending} road={road}
-            onOpenOverview={() => setTab('overview')} onOpenTimeline={() => setTab('timeline')} />
+            onOpenOverview={() => setTab('overview')} onOpenTimeline={() => setTab('timeline')}
+            dayFocus={sharedDay} onDayFocusChange={(day) => setFocus(focusForDay(trip!.id, day === 'all' ? null : day))} />
         </React.Suspense>
       )}
       {tab === 'map' && (
         <React.Suspense fallback={<MapTabSkeleton />}>
-          <MapTab trip={effective} editable={editable} applyChange={applyChange} suggestionCache={suggestionCache} onInputsHash={publishMapInputs} crewSuggestions={db.suggestions.filter(s => s.tripId === trip.id)} decisions={db.decisions.filter(d => d.tripId === trip.id)} road={road} onOpenTimeline={() => setTab('timeline')} onOpenBoard={() => setTab('board')} onOpenDay={(dayIndex) => { setTimelineFocusDay(dayIndex); setTab('timeline') }} onOpenGroupInput={() => setTab('group')} previewOpen={!!pending} />
+          <MapTab trip={effective} editable={editable} applyChange={applyChange} suggestionCache={suggestionCache} onInputsHash={publishMapInputs} crewSuggestions={db.suggestions.filter(s => s.tripId === trip.id)} decisions={db.decisions.filter(d => d.tripId === trip.id)} road={road} onOpenTimeline={() => setTab('timeline')} onOpenBoard={() => setTab('board')} onOpenDay={(dayIndex) => { setFocusedDay(dayIndex); setFocus(focusForDay(trip!.id, dayIndex)); setTimelineFocusDay(dayIndex); setTab('timeline') }} onOpenGroupInput={() => setTab('group')} previewOpen={!!pending} dayFocus={sharedDay} onDayFocusChange={(day) => { setFocus(focusForDay(trip!.id, day === 'all' ? null : day)); if (day !== 'all') setTimelineFocusDay(day) }} />
         </React.Suspense>
       )}
       {tab === 'group' && <GroupInputTab trip={effective} editable={editable} me={me} previewOpen={!!pending} />}
@@ -396,7 +414,7 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
            seeded from the trip at mount and never re-syncs, so without the key
            a quick trip-switch keeps the previous trip's draft visible until a
            reload (#213). */}
-      {tab === 'settings' && <TripSettingsForm key={trip.id} trip={trip} editable={editable} onOpenDay={(dayIndex) => { setTimelineFocusDay(dayIndex); setTab('timeline') }} />}
+      {tab === 'settings' && <TripSettingsForm key={trip.id} trip={trip} editable={editable} onOpenDay={(dayIndex) => { setFocusedDay(dayIndex); setFocus(focusForDay(trip!.id, dayIndex)); setTimelineFocusDay(dayIndex); setTab('timeline') }} />}
       </div>
 
       {/* The impact sheet is position:fixed, so it paints in the same place either

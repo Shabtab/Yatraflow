@@ -439,7 +439,9 @@ describe('Phase 3 signal lifecycle (source invariants)', () => {
 
   it('the timeline validates the focus signal against its own days and consumes it', () => {
     const src = read('../src/pages/trip/TimelineTab.tsx')
-    expect(src).toContain('trip.days.some(d => d.index === focusDay)')
+    // #425 PR 1: validation goes through the shared contract's day validator
+    // (the same rule the workspace applies when raising the request).
+    expect(src).toContain('canFocusDay({ dayIndex: focusDay }, trip)')
     expect(src).toContain('onFocusConsumed?.()')
   })
 

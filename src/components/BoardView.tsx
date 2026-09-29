@@ -43,7 +43,7 @@ const NO_WARNINGS: ScheduleWarning[] = []
  *  re-render it (#372). */
 const MemoTripMap = React.memo(TripMap)
 
-export function BoardView({ trip, editable, applyChange, health, totals, onOpenOverview, legCorrections, previewOpen, road }: {
+export function BoardView({ trip, editable, applyChange, health, totals, onOpenOverview, legCorrections, previewOpen, road, dayFocus, onDayFocusChange }: {
   trip: Trip
   editable: boolean
   /** The 4th argument is the follow-up a staged change runs once the user KEEPS
@@ -68,11 +68,26 @@ export function BoardView({ trip, editable, applyChange, health, totals, onOpenO
       stop — StopEditor opens in place. TripWorkspace still passes it; a future
       pass can drop it from both ends. */
   onOpenTimeline?: () => void
+  /** #425 PR 2: the shared day-focus axis — the SAME selection the workspace
+      hands the Map tab. `number` = that day's route + its column highlighted,
+      'all' = whole trip. Owned by the workspace; the board only reports. */
+  dayFocus?: number | 'all'
+  /** reports the board's day-axis choice (column click, fit-to-trip) back up. */
+  onDayFocusChange?: (day: number | 'all') => void
 }) {
   const db = useDb()
   const days = useMemo(() => [...trip.days].sort((a, b) => a.index - b.index), [trip])
-  // Column focus → the map shows just that day's route ('all' = whole trip).
-  const [focusedDay, setFocusedDay] = useState<number | 'all'>('all')
+  // #425 PR 2: the board no longer holds its own selection — the workspace's
+  // shared day-focus IS the column focus; the local state is a fallback so the
+  // component keeps working when a host has not adopted the axis yet. Writes
+  // go through BOTH: the fallback for the local reads, the report for the
+  // workspace so the Map tab and the Board agree whichever was touched.
+  const [localFocusDay, setLocalFocusDay] = useState<number | 'all'>('all')
+  const focusedDay = dayFocus ?? localFocusDay
+  const setFocusedDay = useCallback((day: number | 'all') => {
+    setLocalFocusDay(day)
+    onDayFocusChange?.(day)
+  }, [onDayFocusChange])
   // Map-focus ("peek") mode: columns slide ~90% off the bottom edge so the map
   // owns the board; a 48px sliver of each column stays visible (and Escape or
   // the same button brings everything back with a staggered settle). Transient.
@@ -200,8 +215,8 @@ export function BoardView({ trip, editable, applyChange, health, totals, onOpenO
   const handleAdd = useCallback((dayIndex: number) => openEditorTarget({ mode: 'add', dayIndex }), [openEditorTarget])
   const handleEdit = useCallback((stopId: string) => openEditorTarget({ mode: 'edit', stopId }), [openEditorTarget])
   const toggleDayFocus = useCallback((dayIndex: number) => {
-    setFocusedDay(prev => prev === dayIndex ? 'all' : dayIndex)
-  }, [])
+    setFocusedDay(focusedDay === dayIndex ? 'all' : dayIndex)
+  }, [focusedDay])
 
   const handleSave = useCallback((v: StopFormValues) => {
     if (!editorTarget) return

@@ -137,7 +137,7 @@ function SlotGlyph({ kind, label }: { kind: DaySlotKind; label: string }) {
   const G = label === 'Breakfast' ? Coffee : KIND_GLYPH[kind]
   return G ? <InlineIcon icon={G} size={12} /> : null
 }
-export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsHash, crewSuggestions, decisions, road, onOpenTimeline, onOpenBoard, onOpenDay, onOpenGroupInput, previewOpen }: {
+export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsHash, crewSuggestions, decisions, road, onOpenTimeline, onOpenBoard, onOpenDay, onOpenGroupInput, previewOpen, dayFocus, onDayFocusChange }: {
   trip: Trip
   editable: boolean
   applyChange: (mutator: (d: Trip) => void, kind: ImpactResult['kind'], dayIndex: number, onKept?: () => void) => void
@@ -163,6 +163,13 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
   previewOpen?: boolean
   /** This trip's decisions - an open one raised for a part shows as its vote. */
   decisions?: TripDecision[]
+  /** #425 PR 2: the shared day-focus axis (same value the Board's columns
+   *  read). The map's day-filter chips and the slots rail's day strip report
+   *  their choice through it, so the Board and this tab agree whichever was
+   *  touched. Optional — the tab keeps working when a host has not adopted it. */
+  dayFocus?: number | 'all'
+  /** reports the tab's day-axis choice back up to the workspace. */
+  onDayFocusChange?: (day: number | 'all') => void
 }) {
   const [pois, setPois] = useState<SegmentHit[]>([])
   const timeFormat = useTimeFormat()
@@ -2184,7 +2191,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
                     aria-pressed={d.index === activeDayIndex}
                     aria-label={`Day ${d.index + 1}: ${filled} of ${required} planned${auto > 0 ? `, ${auto} engine-managed` : ''}`}
                     className={'slots-daychip' + (d.index === activeDayIndex ? ' is-on' : '')}
-                    onClick={() => { setActiveDayIndex(d.index); setOpenSlotKey(null) }}
+                    onClick={() => { setActiveDayIndex(d.index); onDayFocusChange?.(d.index); setOpenSlotKey(null) }}
                   >
                     Day {d.index + 1} <span className="slots-daychip-rd">{filled}/{required}</span>
                     {dayRainPct?.[d.index] != null && dayRainPct[d.index]! >= 40 && (
@@ -2508,6 +2515,9 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
       setMapFilter(day)
                 // The rail always plans exactly one day, so the map's "All days"
                 // leaves it where it is; a day chip moves the rail onto that day.
+                // #425 PR 2: the same choice rides the shared day-focus axis, so
+                // the Board's columns and this rail agree whichever was touched.
+                if (typeof day === 'number') onDayFocusChange?.(day)
                 if (typeof day === 'number') setActiveDayIndex(day)
               }}
               slotPins={slotPins}
