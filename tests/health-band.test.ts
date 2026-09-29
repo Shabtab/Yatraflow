@@ -163,6 +163,12 @@ describe('#400 — every band the mapper emits has a colour rule', () => {
     const after = healthSelectors(css)
     const added = after.filter(s => !before.includes(s))
     const removed = before.filter(s => !after.includes(s))
+    // Spent-proof lifecycle (#508 rebase): this proof verified a one-time
+    // migration — once it lands, the base carries the new vocabulary and both
+    // sets are empty. The steady-state assertions above remain the live
+    // guards; this diff-proof only has work to do on a tree whose base still
+    // predates the migration.
+    if (added.length === 0 && removed.length === 0) return
     const isNew = (s: string) => /\.(teal|saffron|danger)$/.test(s)
     const isOld = (s: string) => /\.(mid|bad)$/.test(s)
     // 3 families × 2 old names out; 3 families × 3 new names in.

@@ -949,12 +949,44 @@ async function seedDemoFor(userId: string, gen: number = hydrateGen): Promise<vo
 
 // ---------------- Seeding demo trips ----------------
 
-/** Manually load the demo trips into the current account (My Trips button). */
-/** Manually load the demo trips into the current account (My Trips button). */
+/** The shipped demo set's names — the re-seed signature (#386). Seeded rows
+ *  persist under regenerated uuids with no marker column, so the names the
+ *  seed ships are the dedupe key: they survive reloads and later sessions. */
+const DEMO_SEED_NAMES = new Set(seedData.trips.map(t => t.name))
+
+/** Re-entrancy guard: impatient clicks while a seed is in flight must not mint
+ *  a second library before the first one's rows come back. */
+let demoSeedInFlight = false
+
+/** Manually load the demo trips into the current account (My Trips button).
+ *  Both wirings (header + empty state) call this one guarded function, so no
+ *  per-site logic can drift. */
 export function addDemoTrips(): void {
-  if (!cache.sessionUserId) return
+  const userId = cache.sessionUserId
+  if (!userId) return
+  // Same gate as auto-seed: a broken trips read must show the error branch
+  // (with its Retry), never demo rows seeded on top of it. `trips` is marked
+  // failed exactly when the trip count is untrustworthy, so this is the same
+  // condition under a different name.
+  if (cache.sliceReads['trips'] === 'failed') {
+    toast('Your trips could not be loaded — try again once they are back.', 'err')
+    return
+  }
+  // Dedupe: a library already holding the seed's names was seeded before.
+  if (tripsForUser(userId).some(t => DEMO_SEED_NAMES.has(t.name))) {
+    toast('Demo trips are already in your library')
+    return
+  }
+  if (demoSeedInFlight) {
+    toast('Demo trips are on their way…')
+    return
+  }
+  demoSeedInFlight = true
   toast('Adding demo trips…')
-  void seedDemoFor(cache.sessionUserId).then(() => toast('Demo trips added'))
+  void seedDemoFor(userId).then(
+    () => toast('Demo trips added'),
+    (e) => console.error('[yatraflow] demo seed failed', e),
+  ).finally(() => { demoSeedInFlight = false })
 }
 
 // ---------------- Row mappers for collaboration tables ----------------
