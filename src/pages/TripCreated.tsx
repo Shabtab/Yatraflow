@@ -21,6 +21,7 @@ import { fetchDailyWeather, forecastAvailable, isoAddDays } from '../lib/weather
 import { readHandoff, clearHandoff, billTotal } from '../lib/createHandoff'
 import { shareBillImage } from '../lib/billCapture'
 import { crewInviteMessage, PLANNER_ROLE_LINE, CREW_CHANNELS, inviteChannelUrl, channelNeedsPhone, telegramShareUrl, addCrewEntry, parseCrewEntry, type CrewChannel, type CrewEntry } from '../lib/crewInvite'
+import { recordCreateEvent } from '../lib/createEvents'
 import { nativeCopyText, nativeShareText } from '../lib/native'
 import { haptic, HAPTIC } from '../lib/haptics'
 import { toast } from '../components/ui'
@@ -254,6 +255,8 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
     const member = crew[index]
     if (channelNeedsPhone(channel) && !member.phone) return
     haptic(HAPTIC.select)
+    // #428: the channel enum only — never the recipient, never the message.
+    recordCreateEvent('moment_invite_sent', { channel }, { tripId: trip?.id })
     setStatuses(s => new Map(s).set(index, 'sent'))
     const text = inviteText()
     const url = inviteChannelUrl(channel, member.phone, text, joinUrl || (typeof location !== 'undefined' ? location.origin : ''))
@@ -289,6 +292,8 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
    *  the body there). Everything degrades to the copied link. */
   async function broadcastInvite(channel: CrewChannel) {
     haptic(HAPTIC.select)
+    // #428: the no-recipient variant — same channel enum, same PII rule.
+    recordCreateEvent('moment_invite_sent', { channel }, { tripId: trip?.id })
     const text = inviteText()
     const url = channel === 'whatsapp'
       ? `https://wa.me/?text=${encodeURIComponent(text)}`

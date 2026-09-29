@@ -20,6 +20,8 @@ import {
   platformRevenue, type PlatformRevenue, type PlatformSale,
 } from '../lib/adminStats'
 import { fetchAdminRevenue } from '../lib/unlock'
+import { fetchCreateFunnelEvents } from '../lib/createFunnelRead'
+import { deriveCreateFunnel } from '../lib/createEvents'
 import { formatInr } from '../lib/engine'
 import type { Trip, User } from '../data/types'
 
@@ -497,6 +499,27 @@ function AnalyticsTab() {
   const growth = useMemo(() => computeGrowthSeries(db.users, db.trips, 12), [db.users, db.trips])
   const [revenue, setRevenue] = useState<RevenueState>({ phase: 'loading' })
   const [attempt, setAttempt] = useState(0)
+  // #428: the create funnel's dated event log. Same empty-vs-error rule as the
+  // revenue read — a failed read renders a Retry, never a friendly zero.
+  const [cf, setCf] = useState<{ phase: 'loading' | 'ready' | 'error'; message?: string }>({ phase: 'loading' })
+  const [cfAttempt, setCfAttempt] = useState(0)
+  useEffect(() => {
+    let live = true
+    setCf({ phase: 'loading' })
+    fetchCreateFunnelEvents()
+      .then(rows => { if (live) { setCfRows(rows); setCf({ phase: 'ready' }) } })
+      .catch((err: unknown) => {
+        if (!live) return
+        const message = err instanceof Error ? err.message : String((err as { message?: string })?.message ?? err)
+        setCf({ phase: 'error', message })
+      })
+    return () => { live = false }
+  }, [cfAttempt])
+  const [cfRows, setCfRows] = useState<Parameters<typeof deriveCreateFunnel>[0]>([])
+  const cfStats = useMemo(
+    () => (cf.phase === 'ready' ? deriveCreateFunnel(cfRows) : null),
+    [cf, cfRows],
+  )
   const creatorName = (id: string) => db.users.find(u => u.id === id)?.profile.name ?? id.slice(0, 8)
   // The per-publication breakdown needs publication TITLES, and it can normally
   // have them: `published read` is open to everyone, and a soft-unpublished plan
@@ -636,6 +659,44 @@ function AnalyticsTab() {
           </p>
         </>
       ))}
+
+      <h2 style={{ marginTop: 18 }}>Create funnel — last 30 days</h2>
+      {cf.phase === 'loading' && <p className="hint-text">Reading the funnel log…</p>}
+      {cf.phase === 'error' && (
+        <>
+          <p className="hint-text">
+            The funnel log could not be read — {cf.message}. This tab shows nothing rather
+            than a zero it cannot vouch for.
+          </p>
+          <button type="button" className="btn btn-outline btn-sm" style={{ marginTop: 8 }} onClick={() => setCfAttempt(a => a + 1)}>
+            Retry
+          </button>
+        </>
+      )}
+      {cf.phase === 'ready' && cfStats && (
+        <>
+          <div className="creator-stats" role="group" aria-label="Create funnel">
+            <div className="stat-tile"><div className="stat-label">Started /new</div><div className="stat-value">{cfStats.counts.started}</div></div>
+            <div className="stat-tile"><div className="stat-label">Submitted</div><div className="stat-value">{cfStats.counts.submitted}</div></div>
+            <div className="stat-tile"><div className="stat-label">Started → submitted</div><div className="stat-value">{pct(cfStats.conversionPct)}</div></div>
+            <div className="stat-tile"><div className="stat-label">Drafts resumed</div><div className="stat-value">{cfStats.counts.draft_resumed}</div></div>
+          </div>
+          <table className="compare-table" tabIndex={0} aria-label="Create funnel events, last 30 days">
+            <thead><tr><th>Event</th><th className="num">Count</th></tr></thead>
+            <tbody>
+              {(Object.entries(cfStats.counts) as [string, number][]).filter(([, n]) => n > 0).map(([ev, n]) => (
+                <tr key={ev}><td className="small">{ev}</td><td className="num">{n}</td></tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="hint-text" style={{ marginTop: 8 }}>
+            Top abandonment stage: {cfStats.topAbandonStage ?? '—'}.
+            {cfStats.templates.length > 0 && ` Template picks: ${cfStats.templates.slice(0, 5).map(t => `${t.templateId} (${t.picks})`).join(', ')}.`}
+            {' '}The abandoned event is best-effort (mobile kills page beacons), so it is
+            directional — never read it as an exact denominator.
+          </p>
+        </>
+      )}
     </div>
   )
 }

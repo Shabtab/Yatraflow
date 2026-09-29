@@ -22,6 +22,7 @@ import { dayCountForRange } from '../lib/dayCount'
 import { amountRefusal, amountVerdict } from '../lib/expenseAmount'
 import { attachDnaAccount, detachDnaAccount } from '../lib/tripDna'
 import { clearSnapshot, loadSnapshot, saveSnapshot } from '../lib/offlineCache'
+import { backfillCreateFunnelSession } from '../lib/createEvents'
 import {
   clearWritesFor, dropWrite, pendingWrites, queueWrite, replayVerdict, shouldRetry,
 } from '../lib/writeQueue'
@@ -637,6 +638,10 @@ export function init(): void {
     // this device is still holding - e.g. a tab closed mid-debounce, or a
     // replay that raced the last offline period.
     if (gen === hydrateGen && cache.sessionUserId === userId) void replayQueuedWrites()
+    // #428: the funnel rows this browser session wrote pre-signup adopt the
+    // account — exactly one keyed UPDATE, fire-and-forget. Runs on every
+    // hydrate settle but the `is user_id null` filter makes it idempotent.
+    if (gen === hydrateGen && cache.sessionUserId === userId) backfillCreateFunnelSession(userId)
   }
 
   supabase.auth.getSession().then(({ data }) => {

@@ -245,6 +245,31 @@ create table if not exists public.pub_events (
 
 create index if not exists pub_events_pub_at_idx on public.pub_events (pub_id, at desc);
 
+-- ---------- create_funnel_events (dated create-funnel steps: see migrations/20260929_create_funnel_events.sql)
+-- One row per create-flow step. The dated log is the ONLY source — no lifetime
+-- counter columns (the #363 drift lesson); aggregates derive at read. `meta`
+-- carries counts, slugs and enums ONLY (PII rule — no free-text column exists
+-- in this table). Anonymous inserts carry user_id = null by policy; reads are
+-- admin-only; retention prunes at 90 days through a service_role-only function.
+create table if not exists public.create_funnel_events (
+  id         uuid primary key default gen_random_uuid(),
+  at         timestamptz not null default now(),
+  session_id text not null,
+  user_id    uuid references public.profiles (id) on delete set null,
+  event      text not null,
+  phase      text,
+  trip_id    uuid references public.trips (id) on delete set null,
+  meta       jsonb,
+  constraint create_funnel_events_event_check check (event in (
+    'started', 'template_picked', 'readiness_complete', 'draft_resumed',
+    'draft_discarded', 'crew_added', 'submitted', 'moment_invite_sent', 'abandoned'
+  ))
+);
+
+create index if not exists create_funnel_events_at_idx on public.create_funnel_events (at desc);
+create index if not exists create_funnel_events_event_at_idx on public.create_funnel_events (event, at);
+create index if not exists create_funnel_events_session_idx on public.create_funnel_events (session_id);
+
 -- ---------- admin_audit (append-only log of every admin action) ----------
 create table if not exists public.admin_audit (
   id          uuid primary key default gen_random_uuid(),
@@ -401,6 +426,7 @@ alter table public.activity enable row level security;
 alter table public.notifications enable row level security;
 alter table public.published_itineraries enable row level security;
 alter table public.pub_events enable row level security;
+alter table public.create_funnel_events enable row level security;
 alter table public.user_dna enable row level security;
 alter table public.admin_audit enable row level security;
 
@@ -416,6 +442,7 @@ create policy "deny disabled" on public.notifications as restrictive for all to 
 create policy "deny disabled" on public.user_dna as restrictive for all to authenticated using (not public.is_disabled());
 create policy "deny disabled" on public.published_itineraries as restrictive for all to authenticated using (not public.is_disabled());
 create policy "deny disabled" on public.pub_events as restrictive for all to authenticated using (not public.is_disabled());
+create policy "deny disabled" on public.create_funnel_events as restrictive for all to authenticated using (not public.is_disabled());
 
 -- ---------- admin read bypass (SELECT everywhere) ----------
 create policy "admin read" on public.profiles for select to authenticated using (public.is_admin());
@@ -582,6 +609,22 @@ create policy "pub_events read own publications" on public.pub_events
     select 1 from public.published_itineraries p
     where p.id = pub_id and p.creator_id = auth.uid()
   ));
+-- ---------- create_funnel_events ----------
+-- Insert own (authenticated) / anon-insert with no user attachment / admin-only
+-- read — see the migration for the abuse-bound reasoning. Append-only to every
+-- client role: the retention pruner (service_role) is the only deleter.
+create policy "create_funnel_events insert own" on public.create_funnel_events
+  for insert to authenticated
+  with check (user_id = auth.uid());
+
+create policy "create_funnel_events insert anon" on public.create_funnel_events
+  for insert to anon
+  with check (user_id is null);
+
+create policy "create_funnel_events admin read" on public.create_funnel_events
+  for select to authenticated
+  using (public.is_admin());
+
 -- ---------- user_dna ----------
 -- Owner-only on all four verbs: the DNA log is behavioural (what this person
 -- accepted and declined), never crew-visible, so there is no member/editor

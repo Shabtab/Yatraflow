@@ -30,6 +30,7 @@ import { saveDraft, loadDraft, clearDraft, draftIsWorthKeeping, draftAgeLabel, t
 import { unpickedStopErrors } from '../lib/createSubmit'
 import { fuelFallbackNotice, revalidateCommitments, commitmentMoveMessage, composerRowError, ticketFuelSegments } from '../lib/createHonesty'
 import { addCrewEntry, type CrewEntry } from '../lib/crewInvite'
+import { recordCreateEvent } from '../lib/createEvents'
 import { stashHandoff } from '../lib/createHandoff'
 import { routeIq, routeIqLine, type RoutePoint } from '../lib/routeIq'
 import { seasonNoteFor, monthOfIso } from '../lib/seasonality'
@@ -340,6 +341,23 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
     else { setDraftDecided(true) }
   }, [])
 
+  // #428 — the funnel's first event, once per page session. Fired after mount
+  // (the page exists), never blocking, never identifying.
+  const startedRef = useRef(false)
+  useEffect(() => {
+    if (startedRef.current) return
+    startedRef.current = true
+    recordCreateEvent('started')
+  }, [])
+  // #428 — readiness_complete: the FIRST time the checklist goes all-green in
+  // this session. One latch, so editing after ready does not re-fire it.
+  const readyRef = useRef(false)
+  useEffect(() => {
+    if (readyRef.current || !readiness.ready) return
+    readyRef.current = true
+    recordCreateEvent('readiness_complete')
+  }, [readiness.ready])
+
   useEffect(() => {
     if (!createFunnelOn('drafts') || !draftDecided) return
     const t = setTimeout(() => {
@@ -365,6 +383,8 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
     haptic(HAPTIC.tick)
     setCrew(next)
     setCrewInput('')
+    // #428: a COUNT went in — never a name or number.
+    recordCreateEvent('crew_added', { count: next.length })
   }
 
   /** P4: the percentage on the banner counts required things only, exactly like
@@ -377,6 +397,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
   function resumeDraft() {
     if (!draft) return
     haptic(HAPTIC.select)
+    recordCreateEvent('draft_resumed')
     setF(prev => ({ ...prev, ...(draft.form as Partial<typeof prev>) }))
     setDests(draft.dests)
     setReturnCount(draft.returnCount)
@@ -390,6 +411,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
 
   function discardDraft() {
     haptic(HAPTIC.toggle)
+    recordCreateEvent('draft_discarded')
     clearDraft()
     setDraft(null)
     setDraftDecided(true)
@@ -434,6 +456,9 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
    *  always lands on real coordinates so the bill computes immediately. */
   function pickTemplate(t: (typeof TRIP_TEMPLATES)[number]) {
     haptic(HAPTIC.select)
+    // #428: the platform-authored slug and the pick source — the template's
+    // own name/id, never what the user typed.
+    recordCreateEvent('template_picked', { source: 'template', templateId: t.id })
     const { fields, dests: tDests } = applyTemplate(t, {
       name: f.name, startLocation: f.startLocation, budgetTouched,
     })
@@ -455,6 +480,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
   function copyLastTrip() {
     if (!lastTrip) return
     haptic(HAPTIC.select)
+    recordCreateEvent('template_picked', { source: 'last' })
     patchFields({
       travellers: lastTrip.travellers,
       transportMode: lastTrip.transportMode,
@@ -729,6 +755,9 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
         setSaveError(SAVE_FAILED)
         return
       }
+      // #428: the submit step — counts and the mode enum only (the trip name,
+      // the destinations and the budget figure never enter the log).
+      recordCreateEvent('submitted', { days: bill.days, travellers: f.travellers, mode: f.transportMode }, { tripId: trip.id, userId: me.id })
       finishCreate(trip)
     } catch (err) {
       console.error('[yatraflow] create failed', err)

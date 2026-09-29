@@ -2,7 +2,9 @@
 
 ### Fixed
 
+
 - **The Overview's day matrix knows when its corridor scan went stale (#404).** It gates on the freshness the Map tab publishes for the scan it wrote: a changed-settings scan renders a stale qualifier with a Refresh path to the Map tab instead of numbers for the old plan, and a never-mounted Map reads as unverified rather than fresh.
+- The create funnel learns where planners stall (#428): every step of the create flow — landing on /new, picking a template, the readiness checklist turning green, resuming or discarding a draft, adding crew, submitting, sending the moment-after invite, and a best-effort abandoned beacon — lands as one dated event row, mirroring the publication funnel's event log. The log is anonymous until sign-in (the session's earlier rows adopt the account on the next hydrate) and carries counts, slugs and enums only — crew names, phone numbers, trip names and budget figures can't enter it by construction, and a test feeds the nastiest realistic state through the sanitizer to keep that true. The admin Analytics tab reads the last 30 days: per-event counts, started → submitted conversion, template picks and the top abandonment stage (said to be directional — mobile kills page-hide beacons). No lifetime counters: the dated log is the only source, and aggregates derive at read. One migration: the table, its RLS (own inserts for signed-in users, no-user-attachment inserts for anonymous visitors, admin-only reads) and a service-role-only 90-day retention pruner — it must be applied before the dashboard reads anything. The event write path is silent and best-effort by design: analytics never blocks a submit.
 
 ## [0.71.0] - 2026-09-29
 
