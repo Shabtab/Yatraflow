@@ -249,8 +249,8 @@ export interface Trip {
   inviteCode?: string
   visibility: 'private' | 'public'
   /**
-   * Share attribution (#230): how the owner ARRIVED — the shared link's `ref`
-   * (copy/buyer) or the in-app surface the fork happened on (explore/creator/
+   * Share attribution (#230, widened for F7 · #228): how the owner ARRIVED — the shared link's `ref`
+   * (copy/buyer/wa/community) or the in-app surface the fork happened on (explore/creator/
    * purchases). Null/undefined = direct. One of lib/shareUrl.ts's SHARE_SOURCES;
    * the trips.ref column carries the same vocabulary.
    */

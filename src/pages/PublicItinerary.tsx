@@ -368,6 +368,14 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
   // through. Display and copy are the same string: the code box shows exactly
   // what lands on the clipboard.
   const shareLink = withShareRef(currentPublicShareUrl(pub.id), 'copy')
+  // F7 (#228): the channel this visitor arrived through. A second hop inside
+  // the same community keeps the post's reference — a link that travelled
+  // through a community post does not forget where it came from — while a
+  // fresh arrival stamps the send unit's own channel. It rides the link,
+  // never the sentence. Vocabulary-checked: only a ShareSource survives the
+  // read, so an unknown ref falls back to the default rather than travelling
+  // onward.
+  const arrivalRef = shareRefFromSearch(location.search)
   // F3 (#227): send this plan to a WhatsApp group. The sheet first (a phone
   // lists WhatsApp directly), click-to-chat otherwise — the fallback chain
   // lives in the helper; this holds the in-flight guard so a double-tap
@@ -375,7 +383,7 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
   async function sendOnWhatsApp() {
     if (sendingWhatsApp || !pub) return
     setSendingWhatsApp(true)
-    try { await sharePublicationOnWhatsApp(pub) } finally { setSendingWhatsApp(false) }
+    try { await sharePublicationOnWhatsApp(pub, arrivalRef ?? 'wa') } finally { setSendingWhatsApp(false) }
   }
   // Undefined when the creator published the itinerary as entirely free —
   // the Unlock buttons below are hidden rather than inventing a ₹199 fallback.
