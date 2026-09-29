@@ -217,6 +217,20 @@ describe('share preview handler in node', () => {
     }
   })
 
+  it('a missing publication gets a noindex card with no canonical or og:url', async () => {
+    // #362's hygiene item: the 404 card used to advertise the very id it could
+    // not find — a canonical and an og:url for a page that does not exist. It
+    // now says "not found", noindexes, and carries no self-referential tags.
+    respond([])
+    const res = await runHandler()
+    expect(res.statusCode).toBe(404)
+    expect(res.body).toContain('<meta name="robots" content="noindex" />')
+    expect(res.body).toContain('Itinerary not found')
+    expect(res.body).not.toContain('rel="canonical"')
+    expect(res.body).not.toContain('og:url')
+    expect(res.body).not.toContain(`/i/${publication.id}`)
+  })
+
   it('HEAD returns the successful GET status and headers without a body', async () => {
     respond([publication])
     const get = await runHandler()
@@ -255,11 +269,23 @@ describe('share preview handler in node', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it.each(['', 'two words', 'x'.repeat(65), undefined])('rejects an invalid simple id (%s) without fetch', async id => {
+  it.each(['two words', 'x'.repeat(65)])('rejects a malformed id (%s) without fetch', async id => {
     const res = makeRes()
     const { default: handler } = await import(apiPath)
     await handler({ method: 'GET', query: { id } }, res)
     expect(res.statusCode).toBe(400)
+    expect(res.ended).toBe(true)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  // #362: a bare `/i/` — the rewrite forwards it without a query — is a
+  // missing page, not the app shell and not a bad request. An empty-string id
+  // is the same page asked for by hand.
+  it.each([undefined, ''])('answers 404 for the id-less publication path (%s)', async id => {
+    const res = makeRes()
+    const { default: handler } = await import(apiPath)
+    await handler({ method: 'GET', query: { id } }, res)
+    expect(res.statusCode).toBe(404)
     expect(res.ended).toBe(true)
     expect(fetchMock).not.toHaveBeenCalled()
   })
@@ -469,6 +495,29 @@ describe('public address bar', () => {
     expect(replaceState).toHaveBeenCalledExactlyOnceWith(state, '', '/i/new-trip#/pub/new-trip')
   })
 
+  it('drops a stale buyer credential when the promoted publication changes (#362)', async () => {
+    // `?buyer=` is minted for ONE publication's entitlement. The sync used to
+    // carry it across the switch, so the address bar advertised a capability
+    // for the publication just left behind — the handler fail-closes on it,
+    // but the address still lies. The query goes when the id changes.
+    const { state, replaceState } = await sync('https://app.example.test/i/old-trip?buyer=entitlement-1#/pub/new-trip')
+    expect(replaceState).toHaveBeenCalledExactlyOnceWith(state, '', '/i/new-trip#/pub/new-trip')
+  })
+
+  it('keeps the buyer credential when the publication does not change', async () => {
+    // A buyer refreshing their own link: the id is the same, the path is
+    // already canonical, so nothing is rewritten and the query stays.
+    const { replaceState } = await sync('https://app.example.test/i/kerala-trip_1?buyer=entitlement-1#/pub/kerala-trip_1')
+    expect(replaceState).not.toHaveBeenCalled()
+  })
+
+  it('keeps an unrelated query when promoting from the shell', async () => {
+    // Not every query belongs to a publication the visitor is leaving — a
+    // campaign parameter rides along exactly as before.
+    const { state, replaceState } = await sync('https://app.example.test/?campaign=share#/pub/kerala-trip_1')
+    expect(replaceState).toHaveBeenCalledExactlyOnceWith(state, '', '/i/kerala-trip_1?campaign=share#/pub/kerala-trip_1')
+  })
+
   it('normalizes restored hash routes on repeated Back/Forward calls', async () => {
     const { address, state, replaceState, syncPublicAddress } = await sync('https://app.example.test/i/kerala-trip_1#/pub/kerala-trip_1')
     address.hash = '#/explore'
@@ -571,6 +620,22 @@ describe('public share source wiring', () => {
     expect(source).toMatch(/currentPublicShareUrl\(\s*pub\.id\s*\)/)
     expect(source).not.toContain('${location.pathname}#/pub/')
   })
+
+  it('the creator page shares the server path, not the fragment (#362)', () => {
+    const source = read('../src/pages/CreatorPage.tsx')
+    expect(source).toMatch(/import \{ currentCreatorShareUrl \} from '\.\.\/lib\/shareUrl'/)
+    expect(source).toMatch(/currentCreatorShareUrl\(creatorId\)/)
+    // The fragment form never leaves the browser — it cannot be the shared link.
+    expect(source).not.toContain('${location.origin}/#/creator/')
+  })
+
+  it('creatorShareUrl mints the /c/<id> address, origin-aware and native-stable', async () => {
+    const { creatorShareUrl } = await import(shareUrlPath)
+    expect(creatorShareUrl('alice', 'https://app.example.test/', false))
+      .toBe('https://app.example.test/c/alice')
+    expect(creatorShareUrl('alice', 'capacitor://localhost', true))
+      .toBe('https://yatraflow-blond.vercel.app/c/alice')
+  })
 })
 
 // The cover is the one field whose absence is invisible from inside the app: a
@@ -638,7 +703,10 @@ describe('the production origin agrees everywhere it is written', () => {
     return match![1]!.replace(/\/+$/, '')
   }
 
-  const inHandler = constFrom(read('../api/i.js'), 'DEFAULT_ORIGIN')
+  // #362: the handlers' literal moved into api/_origin.js — the ONE resolver
+  // the publication card, the creator card and the sitemap read. The literal
+  // agreement is pinned from where it is now written.
+  const inHandler = constFrom(read('../api/_origin.js'), 'DEFAULT_ORIGIN')
   const inClient = constFrom(read('../src/lib/shareUrl.ts'), 'PUBLIC_ORIGIN')
   const shell = read('../index.html')
 

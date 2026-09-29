@@ -31,6 +31,14 @@
       "destination": "/api/i?id=:id"
     },
     {
+      "source": "/i/",
+      "destination": "/api/i"
+    },
+    {
+      "source": "/c/:id",
+      "destination": "/api/c?id=:id"
+    },
+    {
       "source": "/sitemap.xml",
       "destination": "/api/sitemap"
     },
