@@ -277,8 +277,9 @@ describe('#408/#412/#414 — the form and its neighbours are wired as pinned', (
     expect(panel).toMatch(/planInputsHash\(\{/)
     // The workspace hands the hook the day count — the single eviction point.
     expect(ws).toMatch(/useSuggestionCache\(tripId, trip \? trip\.days\.length : Number\.POSITIVE_INFINITY\)/)
-    // Settings can jump to a timeline day.
-    expect(ws).toMatch(/onOpenDay=\{\(dayIndex\) => \{ setTimelineFocusDay\(dayIndex\); setTab\('timeline'\) \}\}/)
+    // Settings can jump to a timeline day (#425: the raise is validated
+    // through the shared focus contract's setFocusedDay first).
+    expect(ws).toMatch(/onOpenDay=\{\(dayIndex\) => \{ setFocusedDay\(dayIndex\); setTimelineFocusDay\(dayIndex\); setTab\('timeline'\) \}\}/)
   })
 
   it('the pure helpers the guards above lean on', () => {

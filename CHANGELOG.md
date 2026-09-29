@@ -1,3 +1,9 @@
+## [Unreleased]
+
+### Added
+
+- A shared selection/focus contract for the trip surfaces, first of two slices (#425). Timeline, Map and Board each decide on their own what "selected" means today; this slice lands the one identity they will converge on — which trip, which day, optionally which stop / leg / suggestion — as a pure module. The map's halt label and the workspace's day hand-offs now raise and consume day focus through the same validator, so a request naming a day the trip does not have (the travel clock numbers its own drive days) is refused instead of opening a stranger day's accordion. Focus stays ephemeral UI state: never written into trip data, never persisted.
+
 ## [0.71.0] - 2026-09-29
 
 The publish rules move to the writer with a database backstop, and the surfaces stop lying about reads, counts and money. A publication that breaks any of six rules is refused by the write itself — with grandfathered CHECK constraints behind it — and each refusal lands on its field with the cursor; counters count like units and take back failed bumps; failed reads say so with a retry instead of printing empty catalogs, ledgers and shelves; one unreadable purchase no longer rewrites the shelf; session, budget, settings and group-input waves close their P1s; the Overview reads one health band in one colour from engine truth; and Trip settings asks four questions instead of stacking twelve blocks. Two migrations, both applied live before the cut.
