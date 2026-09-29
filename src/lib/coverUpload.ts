@@ -198,6 +198,25 @@ export function unclaimedCovers<T extends { creatorId?: string; coverImageUrl?: 
   return pubs.filter(p => p.creatorId === userId && isSuggestedCover(p.coverImageUrl))
 }
 
+/** Which of `pubs` are MINE and have no stored cover at all (#360).
+ *
+ *  A null `cover_image_url` predates the cover requirement: the page renders a
+ *  live Wikipedia suggestion in its hero while every crawler is served the
+ *  brand card — the disagreement this selector starts fixing. `unclaimedCovers`
+ *  cannot see these rows (`isSuggestedCover(null)` is false), so the owner-side
+ *  sweep ignored them and the split persisted for as long as the row lived.
+ *
+ *  Same ownership rule as `unclaimedCovers` — the bucket confines writes to
+ *  `<auth.uid()>/`, so only the creator can converge their own row. Pure and
+ *  derived from the data, so the sweep over collected rows finds nothing to do
+ *  and costs nothing. */
+export function coverlessPublications<T extends { creatorId?: string; coverImageUrl?: string | null }>(
+  pubs: T[], userId: string | undefined | null,
+): T[] {
+  if (!userId) return []
+  return pubs.filter(p => p.creatorId === userId && !p.coverImageUrl)
+}
+
 export async function downscaleCover(file: Blob): Promise<Blob> {
   if (typeof createImageBitmap !== 'function') throw new Error('This browser cannot resize images.')
   const bitmap = await createImageBitmap(file)

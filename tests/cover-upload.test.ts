@@ -2,8 +2,8 @@ import { readFileSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   COVER_COPY_TIMEOUT_MS, COVER_MAX_EDGE, COVER_MAX_INPUT_BYTES, COVER_TYPES,
-  apiFileTitle, coverFileError, coverObjectPath, coverRandomName, directFileUrlFromApi,
-  fitCoverSize, isSuggestedCover, ownSuggestedCover, unclaimedCovers,
+  apiFileTitle, coverFileError, coverObjectPath, coverRandomName, coverlessPublications,
+  directFileUrlFromApi, fitCoverSize, isSuggestedCover, ownSuggestedCover, unclaimedCovers,
 } from '../src/lib/coverUpload'
 import { wikimediaFileName } from '../src/lib/tripThumb'
 
@@ -161,6 +161,62 @@ describe('collecting the covers a publication still links to a third party', () 
     const collected = unclaimedCovers(pubs, MINE)
     const after = pubs.map(p => collected.some(c => c.id === p.id) ? { ...p, coverImageUrl: OUR_BUCKET_URL } : p)
     expect(unclaimedCovers(after, MINE)).toEqual([])
+  })
+})
+
+describe('#360 — the publications whose hero and crawler card disagree', () => {
+  // A pre-cover-requirement row stores NO cover: the public page renders a
+  // live Wikipedia suggestion in its hero while `api/i.js` serves the brand
+  // card to every crawler. `unclaimedCovers` is blind to those rows
+  // (`isSuggestedCover(null)` is false), so this second selector exists for
+  // the owner-side sweep to converge them: resolve the hero's own suggestion,
+  // own it, store it — then both sides read the same URL.
+  const pub = (id: string, creatorId: string, coverImageUrl?: string | null, routeSummary: string[] = ['Kochi', 'Munnar']) =>
+    ({ id, creatorId, coverImageUrl, routeSummary, title: id })
+  const MINE = 'uid-me'
+
+  it('selects my own coverless rows — null and empty alike', () => {
+    const nullCover = pub('p1', MINE, null)
+    const emptyCover = pub('p2', MINE, '')
+    expect(coverlessPublications([nullCover, emptyCover], MINE)).toEqual([nullCover, emptyCover])
+  })
+
+  it('leaves everyone else\'s rows and every row that already has a cover', () => {
+    const theirs = pub('p2', 'uid-other', null)
+    const owned = pub('p3', MINE, 'https://upload.wikimedia.org/wikipedia/commons/8/8f/Kochi_Skyline.jpg')
+    const pasted = pub('p4', MINE, 'https://images.example.test/cover.jpg')
+    expect(coverlessPublications([theirs, owned, pasted], MINE)).toEqual([])
+  })
+
+  it('has nothing to do without a session', () => {
+    expect(coverlessPublications([pub('p1', MINE, null)], undefined)).toEqual([])
+    expect(coverlessPublications([pub('p1', MINE, null)], null)).toEqual([])
+  })
+
+  it('is idempotent: once a row has a stored cover, it leaves the list', () => {
+    const pubs = [pub('p1', MINE, null)]
+    const after = pubs.map(p => ({ ...p, coverImageUrl: 'https://upload.wikimedia.org/wikipedia/commons/8/8f/Kochi_Skyline.jpg' }))
+    expect(coverlessPublications(after, MINE)).toEqual([])
+  })
+
+  it('the sweep actually covers the coverless list — the selector is not dead code', () => {
+    const store = readFileSync(new URL('../src/store/store.ts', import.meta.url), 'utf8')
+    // The sweep's second work-list, resolving the HERO's own candidates
+    // (routeSummary, then title) — not a different query a crawler would not see.
+    expect(store).toMatch(/for \(const pub of coverlessPublications\(cache\.published, userId\)\)/)
+    expect(store).toMatch(/const candidates = pub\.routeSummary\?\.length \? pub\.routeSummary : \[pub\.title\]/)
+    expect(store).toMatch(/await fetchFirstAvailableThumb\(candidates\)/)
+    // It reuses the existing own-and-store machinery, row persisted first.
+    expect(store).toMatch(/update\(\{ cover_image_url: owned\.url \}\)/)
+  })
+
+  it('the handler still reads only the stored column — both sides read the one URL', () => {
+    // The agreement is structural: api/i.js is untouched, so a row that has
+    // been converged serves its stored cover to crawler and hero alike, and a
+    // row that has not behaves exactly as it does today.
+    const handler = readFileSync(new URL('../api/i.js', import.meta.url), 'utf8')
+    expect(handler).toMatch(/publication\.cover_image_url/)
+    expect(handler).not.toMatch(/fetchFirstAvailableThumb|useDestinationCover/)
   })
 })
 

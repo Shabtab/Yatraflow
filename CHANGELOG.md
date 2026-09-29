@@ -3,6 +3,7 @@
 ### Fixed
 
 - **The Overview's day matrix knows when its corridor scan went stale (#404).** It gates on the freshness the Map tab publishes for the scan it wrote: a changed-settings scan renders a stale qualifier with a Refresh path to the Map tab instead of numbers for the old plan, and a never-mounted Map reads as unverified rather than fresh.
+- **A shared link and its own page now show the same cover (#360's legacy half).** A publication from before covers were required stores no cover, so the page rendered a live destination photo in its hero while every crawler was served the generic brand card — a disagreement that lasted as long as the row lived. The owner-side cover sweep now also converges those rows: it resolves the same suggestion the hero uses (the publication's own route summary, then its title), takes ownership of it through the existing upload path, and stores it in the same row the preview handler reads — so the unfurl and the page converge on one owned, resized image. The sweep stays silent, sequential and never throws; a row whose owner never signs in again behaves exactly as it does today, and that population only shrinks, because every new publication must store a cover. The handler itself is untouched: it still reads only the stored column, and the two sides agree because they read the one URL.
 
 ## [0.71.0] - 2026-09-29
 
