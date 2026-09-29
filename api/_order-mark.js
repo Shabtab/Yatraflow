@@ -29,8 +29,7 @@ import { supabaseServiceHeaders } from './_supabase-headers.js'
  *   treating every 2xx as a success.
  */
 export async function markOrderPaid(supabaseUrl, serviceKey, razorpayOrderId, paymentId, signal) {
-  const base = supabaseUrl.replace(/\/+$/, '')
-  const url = `${base}/rest/v1/purchase_orders` +
+  const url = `${supabaseUrl.replace(/\/+$/, '')}/rest/v1/purchase_orders` +
     `?razorpay_order_id=eq.${encodeURIComponent(razorpayOrderId)}&status=eq.pending`
   const response = await fetch(url, {
     method: 'PATCH',
@@ -52,12 +51,12 @@ export async function markOrderPaid(supabaseUrl, serviceKey, razorpayOrderId, pa
   // failure of THIS read throws, which is deliberate — "we could not tell" must
   // not be reported as a state, because the whole point is that every caller can
   // now tell.
-  return { marked: false, state: await readOrderState(base, serviceKey, razorpayOrderId, signal) }
+  return { marked: false, state: await readOrderState(supabaseUrl, serviceKey, razorpayOrderId, signal) }
 }
 
 /** What the order row says once a mark has failed to move it. */
-async function readOrderState(base, serviceKey, razorpayOrderId, signal) {
-  const url = `${base}/rest/v1/purchase_orders` +
+async function readOrderState(supabaseUrl, serviceKey, razorpayOrderId, signal) {
+  const url = `${supabaseUrl.replace(/\/+$/, '')}/rest/v1/purchase_orders` +
     `?razorpay_order_id=eq.${encodeURIComponent(razorpayOrderId)}&select=status&limit=1`
   const response = await fetch(url, { headers: supabaseServiceHeaders(serviceKey), signal })
   if (!response.ok) throw new Error(`order state read failed: ${response.status}`)
