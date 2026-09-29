@@ -1,5 +1,6 @@
 // ============ POST /api/payments-webhook — Razorpay crash recovery (M7) ======
 import { supabaseServiceHeaders, supabaseAnonHeaders } from './_supabase-headers.js'
+import { markOrderPaid } from './_order-mark.js'
 // Razorpay POSTs `payment.captured` here. This is the path that catches a
 // user who closes the tab between the gateway capturing the payment and the
 // browser's /api/payments-verify call landing: the webhook marks the order
@@ -48,21 +49,6 @@ function readRawBody(req) {
   })
 }
 
-async function markOrderPaid(supabaseUrl, serviceKey, razorpayOrderId, paymentId, signal) {
-  const url = `${supabaseUrl.replace(/\/+$/, '')}/rest/v1/purchase_orders` +
-    `?razorpay_order_id=eq.${encodeURIComponent(razorpayOrderId)}&status=eq.pending`
-  const response = await fetch(url, {
-    method: 'PATCH',
-    headers: supabaseServiceHeaders(serviceKey, {
-      'content-type': 'application/json',
-      prefer: 'return=minimal',
-    }),
-    body: JSON.stringify({ status: 'paid', razorpay_payment_id: paymentId, paid_at: new Date().toISOString() }),
-    signal,
-  })
-  if (!response.ok) throw new Error(`order mark-paid failed: ${response.status}`)
-}
-
 async function fetchOrderRow(supabaseUrl, serviceKey, razorpayOrderId, signal) {
   // status=eq.paid is the refund guard: a late or replayed `payment.captured`
   // after a refund must not re-grant — revoke_refunded_entitlement flips the
@@ -105,6 +91,17 @@ async function grantEntitlement(supabaseUrl, serviceKey, order, signal) {
   }
 }
 
+/** Revoke through the service-only RPC and REPORT what it said (#355).
+ *
+ *  `revoke_refunded_entitlement` returns a boolean that distinguishes a REAL
+ *  revoke from a no-op: `false` means no local order carries that id, so the
+ *  event was foreign or a test event. This used to be discarded — the caller
+ *  always answered `{ revoked: true }` — which is why a genuine revoke and a
+ *  passing stranger's refund looked identical in the logs.
+ *
+ *  `null` (rather than `false`) when the body is not a boolean: the RPC's
+ *  contract is `returns boolean`, so that means PostgREST did not answer as
+ *  documented, and claiming "unknown order" would be inventing a fact. */
 async function revokeEntitlement(supabaseUrl, serviceKey, razorpayOrderId, signal) {
   const response = await fetch(`${supabaseUrl.replace(/\/+$/, '')}/rest/v1/rpc/revoke_refunded_entitlement`, {
     method: 'POST',
@@ -115,6 +112,8 @@ async function revokeEntitlement(supabaseUrl, serviceKey, razorpayOrderId, signa
     signal,
   })
   if (!response.ok) throw new Error(`entitlement revoke failed: ${response.status}`)
+  const body = await response.json().catch(() => null)
+  return typeof body === 'boolean' ? body : null
 }
 
 export default async function handler(req, res) {
@@ -172,17 +171,33 @@ export default async function handler(req, res) {
   const signal = AbortSignal.timeout(8000)
   if (event.event === 'payment.refunded') {
     try {
-      await revokeEntitlement(supabaseUrl, serviceKey, orderId, signal)
-      // The RPC is a no-op (false) for unknown orders — a foreign/refund of a
-      // full order id we never recorded still acks, stopping the retry storm.
-      return json(res, 200, { ok: true, revoked: true })
+      const revoked = await revokeEntitlement(supabaseUrl, serviceKey, orderId, signal)
+      // Still a 200 for a no-op: an unknown order is a foreign or test event,
+      // and a retry storm over something we will never find helps nobody.
+      //
+      // What changed (#355) is that the response now SAYS which it was. The
+      // status stays 200 either way, so `outcome` is the only thing that
+      // separates a real revoke from noise in a log — which is exactly the
+      // question an operator reading these had no way to answer before.
+      return json(res, 200, {
+        ok: true,
+        revoked: revoked === true,
+        outcome: revoked === true ? 'revoked' : revoked === false ? 'unknown-order' : 'unreadable',
+      })
     } catch {
       return json(res, 500, { error: 'could not revoke the entitlement' })
     }
   }
 
   try {
-    await markOrderPaid(supabaseUrl, serviceKey, orderId, paymentId, signal)
+    const mark = await markOrderPaid(supabaseUrl, serviceKey, orderId, paymentId, signal)
+    // The paid-status filter below is the real refund guard, so a refunded order
+    // already falls out at the next line. Reporting the mark's own verdict just
+    // keeps the note from blaming "foreign, refunded, or test event" when we in
+    // fact know which one it is (#355).
+    if (mark.state === 'refunded') {
+      return json(res, 200, { ok: true, note: 'order was refunded — nothing to grant' })
+    }
     const order = await fetchOrderRow(supabaseUrl, serviceKey, orderId, signal)
     if (!order) return json(res, 200, { ok: true, note: 'no paid local order for this gateway order (foreign, refunded, or test event)' })
     await grantEntitlement(supabaseUrl, serviceKey, order, signal)

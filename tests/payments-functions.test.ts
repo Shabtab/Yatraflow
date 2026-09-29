@@ -224,7 +224,7 @@ describe('POST /api/checkout', () => {
         return jsonResponse([{ razorpay_order_id: 'order_PAID', amount_inr: 500, status: 'pending' }])
       }
       if (url === 'https://api.razorpay.com/v1/orders/order_PAID') return jsonResponse({ id: 'order_PAID', status: 'paid' })
-      if (url.includes('/rest/v1/purchase_orders') && (init.method) === 'PATCH') return jsonResponse(null)
+      if (url.includes('/rest/v1/purchase_orders') && (init.method) === 'PATCH') return jsonResponse([{ id: 'order-row', status: 'paid' }])
       if (url.includes('/rpc/claim_paid_order')) { grantCalls.push({ url, body: JSON.parse(String(init.body)) }); return jsonResponse('ent-uuid') }
       throw new Error(`unexpected fetch ${url}`)
     })
@@ -252,7 +252,7 @@ describe('POST /api/checkout', () => {
         return jsonResponse([{ razorpay_order_id: 'order_PAID', amount_inr: 500, status: 'pending' }])
       }
       if (url === 'https://api.razorpay.com/v1/orders/order_PAID') return jsonResponse({ id: 'order_PAID', status: 'paid' })
-      if (url.includes('/rest/v1/purchase_orders') && (init.method) === 'PATCH') return jsonResponse(null)
+      if (url.includes('/rest/v1/purchase_orders') && (init.method) === 'PATCH') return jsonResponse([{ id: 'order-row', status: 'paid' }])
       if (url.includes('/rpc/claim_paid_order')) return new Response('RPC refused', { status: 403 })
       throw new Error(`unexpected fetch ${url}`)
     })
@@ -290,7 +290,14 @@ describe('POST /api/checkout', () => {
     expect(fetchMock.mock.calls.filter(c => String(c[0]) === 'https://api.razorpay.com/v1/orders')).toHaveLength(0)
   })
 
-  it('mints a fresh order when the pending one is not payable at the gateway (attempted)', async () => {
+  it('RE-SERVES an attempted order instead of minting another — no orphan per retry (#355)', async () => {
+    // This pin used to assert the opposite ("mints a fresh order when the
+    // pending one is not payable at the gateway (attempted)"), and it was
+    // pinning the DEFECT: an order whose payment attempt started and did not
+    // complete is still PAYABLE at Razorpay — that is why 'attempted' is not a
+    // terminal status — so the old behaviour left a permanent pending row behind
+    // on every abandoned attempt, and put a second payable order in front of a
+    // buyer who may already have one.
     fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input)
       if (url.includes('/auth/v1/user')) return jsonResponse({ id: 'buyer-1' })
@@ -306,7 +313,35 @@ describe('POST /api/checkout', () => {
     })
     const res = await run({ pubId: 'kerala-trip_1' })
     expect(res.statusCode).toBe(200)
-    expect(JSON.parse(res.body).orderId).toBe('order_FRESH')
+    expect(JSON.parse(res.body).orderId).toBe('order_ATTEMPTED')
+    // The orphan-pile fix, stated as the absences it is: no second gateway order
+    // was created and no second row was written.
+    expect(fetchMock.mock.calls.filter(c => String(c[0]) === 'https://api.razorpay.com/v1/orders')).toHaveLength(0)
+    expect(fetchMock.mock.calls.filter(c => String(c[0]).includes('/rest/v1/purchase_orders') && (c[1] as RequestInit | undefined)?.method === 'POST')).toHaveLength(0)
+  })
+
+  it('REFUSES an unrecognised gateway status rather than minting or re-serving (#355)', async () => {
+    // The set of Razorpay order statuses is not ours to assume. Re-serving a row
+    // we cannot vouch for could hand the buyer an order the modal will not
+    // accept; minting could double-charge. Both are worse than saying so.
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/auth/v1/user')) return jsonResponse({ id: 'buyer-1' })
+      if (url.includes('/rest/v1/published_itineraries')) return jsonResponse([pubRow])
+      if (url.includes('/rest/v1/entitlements')) return jsonResponse([])
+      if (url.includes('/rest/v1/purchase_orders') && url.includes('select=razorpay_order_id')) {
+        return jsonResponse([{ razorpay_order_id: 'order_WEIRD', amount_inr: 500, status: 'pending' }])
+      }
+      if (url === 'https://api.razorpay.com/v1/orders/order_WEIRD') return jsonResponse({ id: 'order_WEIRD', status: 'expired' })
+      if (url === 'https://api.razorpay.com/v1/orders') return jsonResponse({ id: 'order_FRESH' })
+      if (url.includes('/rest/v1/purchase_orders')) return jsonResponse(null, 201)
+      throw new Error(`unexpected fetch ${url}`)
+    })
+    const res = await run({ pubId: 'kerala-trip_1' })
+    expect(res.statusCode).toBe(503)
+    expect(JSON.parse(res.body).error).toContain('never charged twice')
+    expect(fetchMock.mock.calls.filter(c => String(c[0]) === 'https://api.razorpay.com/v1/orders')).toHaveLength(0)
+    expect(fetchMock.mock.calls.filter(c => String(c[0]).includes('/rest/v1/purchase_orders') && (c[1] as RequestInit | undefined)?.method === 'POST')).toHaveLength(0)
   })
 
   it('an UNVERIFIABLE earlier attempt is a 503 that never mints — the double-charge window stays shut (M1)', async () => {
@@ -371,7 +406,13 @@ describe('POST /api/payments-verify', () => {
     fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input)
       if (url.includes('/auth/v1/user')) return jsonResponse({ id: 'buyer-1' })
-      if (url.includes('/rest/v1/purchase_orders')) return jsonResponse(null, ok ? 200 : 500)
+      // #355 — the mark asks for `return=representation` now, so a successful
+      // PATCH answers with the updated ROWS. A bare `null` (the old
+      // `return=minimal` contract) means "matched no rows", which is a different
+      // thing from success — see the empty-representation test below.
+      if (url.includes('/rest/v1/purchase_orders') && url.includes('status=eq.pending')) {
+        return jsonResponse(ok ? [{ id: 'order-row', status: 'paid' }] : null, ok ? 200 : 500)
+      }
       if (url.includes('/rest/v1/rpc/claim_paid_order')) return jsonResponse('ent-uuid')
       throw new Error(`unexpected fetch ${url}`)
     })
@@ -422,6 +463,49 @@ describe('POST /api/payments-verify', () => {
     expect(res.statusCode).toBe(401)
     expect(fetchMock).not.toHaveBeenCalled()
   })
+
+  it('REFUSES to grant when the mark reports the order was refunded (#355)', async () => {
+    // The one zero-row outcome that must not fall through: the money came back,
+    // the entitlement was deleted with it, and granting here would resurrect
+    // access a refund took away.
+    goodCallback.razorpay_signature = await hmacHex(`${goodCallback.razorpay_order_id}|${goodCallback.razorpay_payment_id}`, ENV.RAZORPAY_KEY_SECRET)
+    let claimCalls = 0
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/auth/v1/user')) return jsonResponse({ id: 'buyer-1' })
+      // The PATCH matched nothing — the row is no longer `pending`.
+      if (url.includes('/rest/v1/purchase_orders') && url.includes('status=eq.pending')) return jsonResponse([])
+      // …and the read-back says why: `failed`, i.e. refunded.
+      if (url.includes('/rest/v1/purchase_orders') && url.includes('select=status')) return jsonResponse([{ status: 'failed' }])
+      if (url.includes('/rpc/claim_paid_order')) { claimCalls++; return jsonResponse('ent-uuid') }
+      throw new Error(`unexpected fetch ${url}`)
+    })
+    const res = await run(goodCallback)
+    expect(res.statusCode).toBe(409)
+    expect(JSON.parse(res.body).error).toContain('refunded')
+    // The claim was never attempted: the refusal is the decision, not a hope.
+    expect(claimCalls).toBe(0)
+  })
+
+  it('still grants when the mark matched nothing because the row was ALREADY paid (#355)', async () => {
+    // The race the old `return=minimal` PATCH could not see: the webhook marked
+    // it between the read and the write, so zero rows match. Nothing may claim to
+    // have marked it, and the grant must STILL happen — refusing here would
+    // strand a buyer whose money moved, which is the exact failure this path
+    // exists to repair.
+    goodCallback.razorpay_signature = await hmacHex(`${goodCallback.razorpay_order_id}|${goodCallback.razorpay_payment_id}`, ENV.RAZORPAY_KEY_SECRET)
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/auth/v1/user')) return jsonResponse({ id: 'buyer-1' })
+      if (url.includes('/rest/v1/purchase_orders') && url.includes('status=eq.pending')) return jsonResponse([])
+      if (url.includes('/rest/v1/purchase_orders') && url.includes('select=status')) return jsonResponse([{ status: 'paid' }])
+      if (url.includes('/rpc/claim_paid_order')) return jsonResponse('ent-uuid')
+      throw new Error(`unexpected fetch ${url}`)
+    })
+    const res = await run(goodCallback)
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body)).toEqual({ ok: true })
+  })
 })
 
 describe('POST /api/payments-webhook', () => {
@@ -449,7 +533,7 @@ describe('POST /api/payments-webhook', () => {
   function stubGrantPath(order = { id: 'order-row-uuid', user_id: 'buyer-1', pub_id: 'kerala-trip_1', price_snapshot_inr: 500, status: 'paid' }) {
     fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input)
-      if (url.includes('/rest/v1/purchase_orders') && url.includes('status=eq.pending')) return jsonResponse(null, 200)
+      if (url.includes('/rest/v1/purchase_orders') && url.includes('status=eq.pending')) return jsonResponse([{ id: 'order-row', status: 'paid' }], 200)
       if (url.includes('/rest/v1/purchase_orders') && url.includes('select=')) return jsonResponse([order])
       if (url.includes('/rest/v1/entitlements')) return jsonResponse(null, 201)
       throw new Error(`unexpected fetch ${url}`)
@@ -501,7 +585,7 @@ describe('POST /api/payments-webhook', () => {
     const sig = await hmacHex(JSON.stringify(event), ENV.RAZORPAY_WEBHOOK_SECRET)
     fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input)
-      if (url.includes('/rest/v1/purchase_orders') && url.includes('status=eq.pending')) return jsonResponse(null, 200)
+      if (url.includes('/rest/v1/purchase_orders') && url.includes('status=eq.pending')) return jsonResponse([{ id: 'order-row', status: 'paid' }], 200)
       if (url.includes('/rest/v1/purchase_orders') && url.includes('status=eq.paid')) return jsonResponse([])
       throw new Error(`unexpected fetch ${url}`)
     })
@@ -516,7 +600,7 @@ describe('POST /api/payments-webhook', () => {
     const sig = await hmacHex(JSON.stringify(event), ENV.RAZORPAY_WEBHOOK_SECRET)
     fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input)
-      if (url.includes('/rest/v1/purchase_orders') && url.includes('status=eq.pending')) return jsonResponse(null, 200)
+      if (url.includes('/rest/v1/purchase_orders') && url.includes('status=eq.pending')) return jsonResponse([{ id: 'order-row', status: 'paid' }], 200)
       if (url.includes('/rest/v1/purchase_orders') && url.includes('select=')) return jsonResponse([])
       throw new Error('unexpected')
     })
@@ -566,5 +650,117 @@ describe('POST /api/payments-webhook', () => {
     expect(res.statusCode).toBe(200)
     expect(JSON.parse(res.body).ignored).toBe('refund.processed')
     expect(fetchMock.mock.calls.filter(c => String(c[0]).includes('/rpc/'))).toHaveLength(0)
+  })
+
+  it('reports a REAL revoke and a foreign refund differently, both as 200 (#355)', async () => {
+    // The whole point of the RPC's boolean: `false` means no local order carries
+    // that id, so the delivery was a foreign or test event. Both used to answer
+    // `{ revoked: true }`, which made the two indistinguishable in a log.
+    const refund = {
+      event: 'payment.refunded',
+      payload: { payment: { entity: { order_id: 'order_NOTOURS', id: 'pay_XYZ789' } } },
+    }
+    const sig = await hmacHex(JSON.stringify(refund), ENV.RAZORPAY_WEBHOOK_SECRET)
+    fetchMock.mockImplementation(async () => jsonResponse(false))
+    const res = await run(JSON.stringify(refund), sig)
+    // Still a 200 — a retry storm over an order we will never find helps nobody.
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body)).toMatchObject({ ok: true, revoked: false, outcome: 'unknown-order' })
+  })
+
+  it('says it could NOT tell when the revoke RPC answers something that is not a boolean (#355)', async () => {
+    // The RPC is `returns boolean`, so this is PostgREST not answering as
+    // documented. Reporting it as "unknown order" would invent a fact, and
+    // reporting it as revoked would be worse.
+    const refund = {
+      event: 'payment.refunded',
+      payload: { payment: { entity: { order_id: 'order_ABC123', id: 'pay_XYZ789' } } },
+    }
+    const sig = await hmacHex(JSON.stringify(refund), ENV.RAZORPAY_WEBHOOK_SECRET)
+    fetchMock.mockImplementation(async () => new Response('not json at all', { status: 200 }))
+    const res = await run(JSON.stringify(refund), sig)
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body)).toMatchObject({ ok: true, revoked: false, outcome: 'unreadable' })
+  })
+})
+
+describe('the mark-paid write is verifiable (#355)', () => {
+  const calls: Array<{ url: string; init: RequestInit }> = []
+  async function mark(responder: (url: string) => Response) {
+    calls.length = 0
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init: RequestInit = {}) => {
+      calls.push({ url: String(input), init })
+      return responder(String(input))
+    })
+    const { markOrderPaid } = await import('../api/_order-mark.js')
+    return markOrderPaid('https://database.example.test', 'service-key', 'order_ABC123', 'pay_XYZ789', undefined)
+  }
+
+  const PATCH = (rows: unknown) => new Response(JSON.stringify(rows), { status: 200 })
+
+  it('asks for the updated rows — the header that makes a zero-row match visible', () => {
+    // This is the load-bearing request-side half, and it is pinned separately
+    // from the response handling because no stubbed body can detect it: a mock
+    // decides what comes back regardless of what the header asked for. Reverting
+    // to `return=minimal` restores the exact blind spot the issue is about — an
+    // empty body and a successful update are both just a 200.
+    return mark(() => PATCH([{ id: 'order-row', status: 'paid' }])).then(() => {
+      const patch = calls.find(c => c.init.method === 'PATCH')
+      expect(patch, 'the mark is no longer a PATCH').toBeTruthy()
+      expect((patch!.init.headers as Record<string, string>).prefer).toContain('return=representation')
+    })
+  })
+
+  it('reports `marked` only when the representation carries the row', async () => {
+    const result = await mark(() => PATCH([{ id: 'order-row', status: 'paid' }]))
+    expect(result).toEqual({ marked: true, state: 'marked' })
+  })
+
+  it('never reports `marked` from a body with no rows, even on a 200', async () => {
+    // The semantics of `marked`, stated: an empty body is not evidence that THIS
+    // call moved anything — so it stays false and the state comes from the
+    // read-back instead. A body that cannot be read as rows at all (`''`) is the
+    // `return=minimal` shape, and must not be mistaken for a successful mark.
+    const result = await mark(url => (url.includes('status=eq.pending') ? new Response('', { status: 200 }) : PATCH([{ status: 'paid' }])))
+    expect(result).toEqual({ marked: false, state: 'already-paid' })
+  })
+
+  it('reads the row back when the PATCH matched nothing — it never assumes', async () => {
+    // The defect this file exists for: with `return=minimal` this case answered
+    // 2xx and every caller reported success. The empty array is the fact; the
+    // follow-up read is what turns it into a state.
+    const seen: string[] = []
+    const result = await mark(url => {
+      seen.push(url)
+      if (url.includes('status=eq.pending')) return PATCH([])
+      return PATCH([{ status: 'failed' }])
+    })
+    expect(result).toEqual({ marked: false, state: 'refunded' })
+    // It really did ask, rather than inferring from the empty response.
+    expect(seen.some(u => u.includes('select=status'))).toBe(true)
+  })
+
+  it('names every state the row can be in, and none of them is "marked"', async () => {
+    // A map, not a chain of ifs: if the read cannot be classified the test fails
+    // here rather than the caller silently treating an unknown as a no-op.
+    const cases: Array<[string, string]> = [
+      ['paid', 'already-paid'],
+      ['failed', 'refunded'],
+      ['pending', 'still-pending'],
+      ['', 'missing'],
+    ]
+    for (const [status, expected] of cases) {
+      const rows = status ? [{ status }] : []
+      const result = await mark(url => (url.includes('status=eq.pending') ? PATCH([]) : PATCH(rows)))
+      expect(result, `row status ${status || '(absent)'}`).toEqual({ marked: false, state: expected })
+    }
+  })
+
+  it('throws rather than reporting a state it could not read', async () => {
+    // "We could not tell" must never render as a state: every caller now acts on
+    // the difference, so an unreadable read has to be loud.
+    await expect(mark(url => (url.includes('status=eq.pending')
+      ? PATCH([])
+      : new Response('nope', { status: 500 })))).rejects.toThrow('order state read failed')
   })
 })

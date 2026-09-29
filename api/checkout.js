@@ -1,5 +1,6 @@
 // ============ POST /api/checkout — create a Razorpay order (M7) ============
 import { supabaseServiceHeaders, supabaseAnonHeaders } from './_supabase-headers.js'
+import { markOrderPaid } from './_order-mark.js'
 // The browser sends ONLY the publication id; the price is read server-side
 // from the published_itineraries row. A tampered request body cannot change
 // what is charged. The buyer is the caller's own Supabase JWT `sub` — never
@@ -117,24 +118,10 @@ async function fetchGatewayOrderStatus(keyId, keySecret, razorpayOrderId, signal
   return typeof order?.status === 'string' ? order.status : 'unknown'
 }
 
-/** Mark the local row paid and grant via the buyer-scoped RPC — the same
- *  tail the verify function runs. A failed claim (session gone, RPC refused)
- *  leaves the order marked paid; the webhook remains the second recovery. */
-async function markOrderPaid(supabaseUrl, serviceKey, razorpayOrderId, paymentId, signal) {
-  const url = `${supabaseUrl.replace(/\/+$/, '')}/rest/v1/purchase_orders` +
-    `?razorpay_order_id=eq.${encodeURIComponent(razorpayOrderId)}&status=eq.pending`
-  const response = await fetch(url, {
-    method: 'PATCH',
-    headers: supabaseServiceHeaders(serviceKey, {
-      'content-type': 'application/json',
-      prefer: 'return=minimal',
-    }),
-    body: JSON.stringify({ status: 'paid', razorpay_payment_id: paymentId, paid_at: new Date().toISOString() }),
-    signal,
-  })
-  if (!response.ok) throw new Error(`order mark-paid failed: ${response.status}`)
-}
-
+/** Grant via the buyer-scoped RPC — the same tail the verify function runs. The
+ *  mark itself lives in `_order-mark.js` (#355) because all three payment
+ *  functions perform it and it is subtle enough that three copies is three
+ *  chances to get the zero-row case wrong. */
 async function claimEntitlement(supabaseUrl, anonKey, token, razorpayOrderId, signal) {
   const response = await fetch(`${supabaseUrl.replace(/\/+$/, '')}/rest/v1/rpc/claim_paid_order`, {
     method: 'POST',
@@ -240,7 +227,16 @@ export default async function handler(req, res) {
         recovering = true // from here, any throw means money moved and we failed to finish
         if (latest.status === 'pending') {
           // A captured payment this flow never confirmed: mark it first.
-          await markOrderPaid(supabaseUrl, serviceKey, latest.razorpay_order_id, 'recovered-by-checkout', signal)
+          const mark = await markOrderPaid(supabaseUrl, serviceKey, latest.razorpay_order_id, 'recovered-by-checkout', signal)
+          // The gateway says paid but the row came back refunded: the two
+          // disagree, and the ROW is the one the entitlement was revoked against
+          // (#355). Granting here would resurrect access a refund deleted —
+          // refuse, and name the disagreement rather than assume either side.
+          if (mark.state === 'refunded') {
+            return json(res, 409, {
+              error: `your earlier payment on order ${latest.razorpay_order_id} was refunded — the plan is not unlocked; nothing further will be charged`,
+            })
+          }
         }
         const granted = await claimEntitlement(supabaseUrl, anonKey, token, latest.razorpay_order_id, signal)
         if (!granted) {
@@ -250,7 +246,18 @@ export default async function handler(req, res) {
         }
         return json(res, 409, { error: 'already unlocked — your earlier payment was confirmed just now; reload to see the full plan' })
       }
-      if (gatewayStatus === 'created') {
+      if (gatewayStatus === 'created' || gatewayStatus === 'attempted') {
+        // RE-SERVE this same order. `created` is still payable; `attempted` means
+        // an attempt started and did not complete, and Razorpay keeps such an
+        // order payable — which is exactly why 'attempted' is not a terminal
+        // status. Re-serving therefore cannot double-charge (one order, one
+        // payment, however many attempts), whereas minting a second order creates
+        // a second thing to be paid, and a buyer who completes both has paid
+        // twice for one unlock the claim grants once (#355).
+        //
+        // It also stops the orphan pile: every abandoned attempt used to leave a
+        // permanent pending row behind, because the retry minted a fresh order
+        // instead of reusing the one already sitting there.
         return json(res, 200, { orderId: latest.razorpay_order_id, keyId, amountPaise: price * 100, currency: 'INR' })
       }
       if (gatewayStatus === 'unknown') {
@@ -264,9 +271,14 @@ export default async function handler(req, res) {
           error: 'could not verify your earlier attempt — to make sure you are never charged twice, we stopped here; try again in a moment',
         })
       }
-      // 'attempted' (the gateway SPOKE: a payment started and did not
-      // complete) → fall through and mint a fresh order; the old row stays
-      // behind but the buyer is never blocked.
+      // A status the gateway named but this flow does not know (its set is not
+      // ours to assume). Re-serving it could hand the buyer an order the modal
+      // will not accept, and minting could double-charge, so the same rule as
+      // 'unknown' applies: stop, say why, and never guess (#355).
+      recovering = true
+      return json(res, 503, {
+        error: 'your earlier attempt is in a state we do not recognise — to make sure you are never charged twice, we stopped here; try again in a moment',
+      })
     }
     const receipt = `r${stable(pubId, 8)}${stable(userId, 4)}`
     const razorpayOrderId = await createRazorpayOrder(keyId, keySecret, price * 100, receipt, signal)
