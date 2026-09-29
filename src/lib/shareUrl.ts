@@ -92,3 +92,14 @@ export function currentBuyerShareUrl(pubId: string, entitlementId: string): stri
 export function purchaseShareMessage(title: string, url: string): string {
   return `I bought the "${title}" plan on YatraFlow — you can see it here: ${url}`
 }
+
+/**
+ * What anyone sends when they pass a published plan on (F3 · #227): the
+ * WhatsApp message beside the link. One sentence in the same register as the
+ * buyer's — the plan's name, where it lives, the link — and no claim the
+ * sender has not made. The card at the other end does the selling; this
+ * sentence only has to be honest.
+ */
+export function publicationShareMessage(title: string, url: string): string {
+  return `The "${title}" trip plan on YatraFlow — see it here: ${url}`
+}

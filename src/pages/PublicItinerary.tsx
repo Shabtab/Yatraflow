@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Calendar, Camera, Car, Clock, Flag, GitFork, Heart, Link2, Lock, MapPin,
-  Route, Sparkles, Ticket, TriangleAlert,
+  MessageCircle, Route, Sparkles, Ticket, TriangleAlert,
 } from 'lucide-react'
 import { InlineIcon, MetaIcon, modeIcon } from '../components/icons'
 import { openExternal } from '../lib/native'
@@ -25,6 +25,7 @@ import { UnlockReveal } from '../components/UnlockReveal'
 import { hasUnlock } from '../lib/payments'
 import { buildPubFunnels, describePreLog, funnelGlance, type FunnelSale } from '../lib/pubFunnel'
 import { currentPublicShareUrl } from '../lib/shareUrl'
+import { sharePublicationOnWhatsApp } from '../lib/whatsAppShare'
 import { appLink } from '../lib/appLink'
 import { pageTitle } from '../lib/pageTitle'
 import { sizedCoverUrl } from '../lib/tripThumb'
@@ -102,6 +103,10 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
   const [entitlementsSettled, setEntitlementsSettled] = useState(-1)
   const entitlementsReading = entitlementsRetry !== entitlementsSettled
   const [buying, setBuying] = useState(false)
+  // F3 (#227) — the WhatsApp send in flight, held so a double-tap cannot
+  // fire two sheets or open two chat tabs. The §6a guard on an async path:
+  // disabled while it runs, and the button says so.
+  const [sendingWhatsApp, setSendingWhatsApp] = useState(false)
   // The itinerary the unlock moment is showing, held separately from `fetched`:
   // it is only ever the copy the server served AFTER the entitlement existed
   // (see unlockThis), and it doubles as the reveal's open/closed state.
@@ -349,6 +354,15 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
   // its hero). Sized at render, so existing rows are fixed without a backfill.
   const heroSrc = pub.coverImageUrl ? sizedCoverUrl(pub.coverImageUrl) : heroAuto
   const shareLink = currentPublicShareUrl(pub.id)
+  // F3 (#227): send this plan to a WhatsApp group. The sheet first (a phone
+  // lists WhatsApp directly), click-to-chat otherwise — the fallback chain
+  // lives in the helper; this holds the in-flight guard so a double-tap
+  // cannot fire both. Nothing reads a window handle (§6e).
+  async function sendOnWhatsApp() {
+    if (sendingWhatsApp || !pub) return
+    setSendingWhatsApp(true)
+    try { await sharePublicationOnWhatsApp(pub) } finally { setSendingWhatsApp(false) }
+  }
   // Undefined when the creator published the itinerary as entirely free —
   // the Unlock buttons below are hidden rather than inventing a ₹199 fallback.
   const price = pub.premiumPriceInr
@@ -666,6 +680,15 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
                 {pub.subscriberCta && <p className="hint-text" style={{ textAlign: 'center', marginTop: 8 }}>{pub.subscriberCta}</p>}
                 <hr className="divider" />
                 <div className="share-link-box"><code>{shareLink}</code><CopyButton text={shareLink} label="Copy page link" /></div>
+          <div className="share-link-box">
+            <button className="btn btn-outline btn-sm" disabled={sendingWhatsApp}
+              onClick={() => void sendOnWhatsApp()}>
+              {sendingWhatsApp
+                ? <><span className="spinner" aria-hidden /> Opening WhatsApp…</>
+                : <><MessageCircle size={14} aria-hidden /> Send on WhatsApp</>}
+            </button>
+            <span className="hint-text">Opens the app with the link ready to paste</span>
+          </div>
                 {!me && <p className="hint-text" style={{ marginTop: 10 }}>You’ll need a free account to fork trips.</p>}
               </div>
             </div>
