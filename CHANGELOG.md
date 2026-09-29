@@ -1,3 +1,9 @@
+## [Unreleased]
+
+### Fixed
+
+- **The Overview's day matrix knows when its corridor scan went stale (#404).** It gates on the freshness the Map tab publishes for the scan it wrote: a changed-settings scan renders a stale qualifier with a Refresh path to the Map tab instead of numbers for the old plan, and a never-mounted Map reads as unverified rather than fresh.
+
 ## [0.71.0] - 2026-09-29
 
 The publish rules move to the writer with a database backstop, and the surfaces stop lying about reads, counts and money. A publication that breaks any of six rules is refused by the write itself — with grandfathered CHECK constraints behind it — and each refusal lands on its field with the cursor; counters count like units and take back failed bumps; failed reads say so with a retry instead of printing empty catalogs, ledgers and shelves; one unreadable purchase no longer rewrites the shelf; session, budget, settings and group-input waves close their P1s; the Overview reads one health band in one colour from engine truth; and Trip settings asks four questions instead of stacking twelve blocks. Two migrations, both applied live before the cut.

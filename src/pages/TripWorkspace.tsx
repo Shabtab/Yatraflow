@@ -156,6 +156,20 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
   // outranks a real key); the count lands the moment the trip does.
   const suggestionCache = useSuggestionCache(tripId, trip ? trip.days.length : Number.POSITIVE_INFINITY)
 
+  // Freshness the Map tab published for the scan it wrote (#404, lane A's
+  // `onInputsHash`). Held here so the Overview's matrix can gate on it. Cleared
+  // on trip switch like every other per-trip signal: this workspace outlives
+  // trips (it is not keyed by trip id), and a previous trip's hash compared
+  // against this trip's cache would brand the matrix stale forever.
+  const [mapInputs, setMapInputs] = useState<{ hash: string; scopeKm: number } | null>(null)
+  useEffect(() => { setMapInputs(null) }, [tripId])
+  // Stable identity so the Map's publish effect fires on hash/scope changes,
+  // never on our re-renders (their ref guard makes inline safe too; this is
+  // the calmer form — it cannot ping-pong even if that guard ever goes).
+  const publishMapInputs = useCallback((hash: string, scopeKm: number) => {
+    setMapInputs({ hash, scopeKm })
+  }, [])
+
   // Pending change: a proposed plan held until the user keeps or discards it.
   const [pending, setPending] = useState<PendingChange | null>(null)
   /** The staged change mirrored in a ref: (a) a mutation scheduled in the same
@@ -360,7 +374,7 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
       {/* The Overview matrix reads the SAME corridor halts and the SAME road
           measurement the Map tab does — taken from the suggestion cache, so it
           costs no fetch and the two surfaces cannot disagree about a day. */}
-      {tab === 'overview' && <OverviewTab trip={effective} editable={editable} onOpenDecisions={() => setTab('group')} onOpenTimeline={() => setTab('timeline')} onOpenMap={() => setTab('map')} onInvite={() => setTab('share')} health={health} totals={totals} road={road} corridorSegments={suggestionCache.cache.map?.segments} />}
+      {tab === 'overview' && <OverviewTab trip={effective} editable={editable} onOpenDecisions={() => setTab('group')} onOpenTimeline={() => setTab('timeline')} onOpenMap={() => setTab('map')} onInvite={() => setTab('share')} health={health} totals={totals} road={road} corridorSegments={suggestionCache.cache.map?.segments} mapInputs={mapInputs} mapCache={suggestionCache.cache.map} />}
       {/* key: the timeline holds per-trip view state (open-day accordion) —
           remount it when the workspace switches trips (e.g. browser back/forward). */}
       {tab === 'timeline' && <TimelineTab key={effective.id} trip={effective} editable={editable} applyChange={applyChange} previewOpen={!!pending} legCorrections={legCorrections} suggestionCache={suggestionCache} onOpenBoard={() => setTab('board')} focusDay={timelineFocusDay} onFocusConsumed={clearTimelineFocusDay} />}
@@ -372,7 +386,7 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
       )}
       {tab === 'map' && (
         <React.Suspense fallback={<MapTabSkeleton />}>
-          <MapTab trip={effective} editable={editable} applyChange={applyChange} suggestionCache={suggestionCache} crewSuggestions={db.suggestions.filter(s => s.tripId === trip.id)} decisions={db.decisions.filter(d => d.tripId === trip.id)} road={road} onOpenTimeline={() => setTab('timeline')} onOpenBoard={() => setTab('board')} onOpenDay={(dayIndex) => { setTimelineFocusDay(dayIndex); setTab('timeline') }} onOpenGroupInput={() => setTab('group')} previewOpen={!!pending} />
+          <MapTab trip={effective} editable={editable} applyChange={applyChange} suggestionCache={suggestionCache} onInputsHash={publishMapInputs} crewSuggestions={db.suggestions.filter(s => s.tripId === trip.id)} decisions={db.decisions.filter(d => d.tripId === trip.id)} road={road} onOpenTimeline={() => setTab('timeline')} onOpenBoard={() => setTab('board')} onOpenDay={(dayIndex) => { setTimelineFocusDay(dayIndex); setTab('timeline') }} onOpenGroupInput={() => setTab('group')} previewOpen={!!pending} />
         </React.Suspense>
       )}
       {tab === 'group' && <GroupInputTab trip={effective} editable={editable} me={me} previewOpen={!!pending} />}
