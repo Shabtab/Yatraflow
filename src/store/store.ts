@@ -25,7 +25,8 @@ import { clearSnapshot, loadSnapshot, saveSnapshot } from '../lib/offlineCache'
 import {
   clearWritesFor, dropWrite, pendingWrites, queueWrite, replayVerdict, shouldRetry,
 } from '../lib/writeQueue'
-import { ownSuggestedCover, unclaimedCovers } from '../lib/coverUpload'
+import { ownSuggestedCover, unclaimedCovers, coverlessPublications } from '../lib/coverUpload'
+import { fetchFirstAvailableThumb } from '../lib/tripThumb'
 import { publishValidation, PUBLISH_FIELD_ORDER, PublishRejected } from '../lib/publishRules'
 import { makeInviteCode, normalizeInviteCode } from '../lib/inviteCode'
 import { suggestionToRow, decisionToRow, activityToRow, notificationToRow, publishedToRow } from '../lib/restoreRows'
@@ -3248,20 +3249,31 @@ export async function publishItinerary(pub: Omit<PublishedItinerary, 'id' | 'pub
 let coverSweep: Promise<number> | null = null
 
 /** Take ownership of any of MY publications that still preview with a
- *  third-party image.
+ *  third-party image, and converge the ones that have no stored cover at all.
  *
  *  Publishing already copies an auto-suggested cover into our bucket, but that
  *  is a write-path fix, not a migration: rows published before it shipped still
  *  point at Wikimedia, and any publish whose copy failed — offline, a file the
  *  wiki could not resolve, the 8-second timeout — deliberately kept the
- *  third-party URL rather than fail the publish. Neither is visible in the app
- *  (the page renders the photo either way), and both leave a share card at the
- *  mercy of another host's uptime, terms and size.
+ *  third-party URL rather than fail the publish. A second, older population is
+ *  worse in a quieter way: rows from before the cover requirement store NO
+ *  cover, and the public hero then renders a live Wikipedia suggestion while
+ *  `api/i.js` serves the brand card to every crawler — the two disagree for as
+ *  long as the row lives (#360). Neither is visible in the app (the page
+ *  renders the photo either way), and both leave a share card at the mercy of
+ *  another host's uptime, terms and size.
  *
- *  This is the re-run for both. Idempotent by construction: the work list comes
- *  from the data (`unclaimedCovers`), so a second pass over collected rows finds
- *  nothing to do and costs nothing. Called after hydration for a signed-in user;
- *  safe to call at any time, from anywhere.
+ *  This is the re-run for both. Idempotent by construction: the work lists come
+ *  from the data (`unclaimedCovers`, `coverlessPublications`), so a second pass
+ *  over collected rows finds nothing to do and costs nothing. Called after
+ *  hydration for a signed-in user; safe to call at any time, from anywhere.
+ *
+ *  The null-cover list resolves the SAME suggestion the hero resolves — the
+ *  publication's own routeSummary, then its title, through the shared
+ *  `fetchFirstAvailableThumb` — so the stored cover is the photo the page
+ *  already shows rather than a different one. The handler is untouched: it
+ *  keeps reading the stored column, and a row that has not been converged
+ *  behaves exactly as it does today.
  *
  *  Only the creator can collect a publication's cover — the bucket confines
  *  writes to `<auth.uid()>/`, so another creator cannot take it and neither can
@@ -3304,6 +3316,28 @@ export async function collectUnclaimedCovers(): Promise<number> {
       if (tripById(pub.tripId)?.coverImageUrl === suggestion) {
         updateTrip(pub.tripId, { coverImageUrl: owned.url })
       }
+      collected++
+    }
+    // #360: the null-cover population. The suggestion is not stored anywhere —
+    // the hero computes it from the publication's own route summary, so this
+    // resolves the same candidates, once, and stores the owned copy. A row
+    // whose suggestion no longer resolves is left exactly as it is: the sweep
+    // never writes a cover it could not actually own.
+    for (const pub of coverlessPublications(cache.published, userId)) {
+      const candidates = pub.routeSummary?.length ? pub.routeSummary : [pub.title]
+      const suggestion = await fetchFirstAvailableThumb(candidates)
+      if (!suggestion) continue
+      const owned = await ownSuggestedCover(userId, suggestion)
+      if (!owned.owned || !owned.url) continue
+      const { error } = await supabase.from('published_itineraries')
+        .update({ cover_image_url: owned.url }).eq('id', pub.id)
+      if (error) {
+        console.error('[yatraflow] cover backfill failed', error)
+        continue
+      }
+      markLocalWrite('published_itineraries', pub.id)
+      cache.published = cache.published.map(x => (x.id === pub.id ? { ...x, coverImageUrl: owned.url } : x))
+      commit()
       collected++
     }
     return collected
