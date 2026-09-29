@@ -125,9 +125,16 @@ function trip(): Trip {
 /** The publish payload a creator's Share tab sends — no marker of its own. */
 const publishPayload = {
   tripId: TRIP, creatorId: CREATOR, title: 'Kerala, softly', tagline: 'A backwater week',
+  // #354 — the writer enforces the publish rules now, so this payload has to be
+  // a VALID publication for these tests to reach the behaviour they are about
+  // (the soft-unpublish marker). It is priced at ₹199, so it needs all three:
+  // a cover, at least one free day, and — because a premium day exists — a
+  // call-to-action. Every one of those is a real rule, not a test convenience.
+  coverImageUrl: 'https://images.example.test/kerala.jpg',
   routeSummary: ['Kochi', 'Alleppey'], durationDays: 5, estimatedBudgetPerPersonInr: 24000,
   travelStyle: 'balanced' as const, bestSeason: 'winter', travelTips: [],
   warningsAndAssumptions: [], freeDayIndexes: [0], premiumPriceInr: 199,
+  subscriberCta: 'The full backwater checklist, with stay contacts.',
 }
 
 /** A fresh module per case: the capability probe memoizes its promise (the
