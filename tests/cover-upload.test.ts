@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  COVER_COPY_TIMEOUT_MS, COVER_MAX_EDGE, COVER_MAX_INPUT_BYTES, COVER_TYPES,
+  COVER_COPY_TIMEOUT_MS, COVER_MAX_EDGE, COVER_MAX_INPUT_BYTES, COVER_MAX_PICK_BYTES, COVER_TYPES,
   apiFileTitle, coverFileError, coverObjectPath, coverRandomName, coverlessPublications,
   directFileUrlFromApi, fitCoverSize, isSuggestedCover, ownSuggestedCover, unclaimedCovers,
 } from '../src/lib/coverUpload'
@@ -26,20 +26,33 @@ describe('cover upload rules', () => {
     }
   })
 
-  it('refuses a non-image, an unlisted image type and an oversized original', () => {
+  it('refuses a non-image and an unlisted image type', () => {
     expect(coverFileError({ type: 'application/pdf', size: 1024 })).toMatch(/JPEG, PNG or WebP/)
     expect(coverFileError({ type: 'image/gif', size: 1024 })).toMatch(/JPEG, PNG or WebP/)
-    // The refusal names the real weight, so the creator knows what to pick —
-    // and the limit it names is the one actually enforced, derived from the
-    // constant rather than written out beside it (#360).
-    const big = coverFileError({ type: 'image/jpeg', size: 12 * 1024 * 1024 })
-    expect(big).toContain('12.0 MB')
-    expect(big).toContain(`under ${COVER_MAX_INPUT_BYTES / (1024 * 1024)} MB`)
   })
 
-  it('caps the input at the boundary it reports', () => {
-    expect(coverFileError({ type: 'image/jpeg', size: COVER_MAX_INPUT_BYTES })).toBeNull()
-    expect(coverFileError({ type: 'image/jpeg', size: COVER_MAX_INPUT_BYTES + 1 })).not.toBeNull()
+  it('refuses only what the browser cannot decode, naming the real weight', () => {
+    // The refusal names the weight that was picked, so the creator knows what to
+    // choose — and the ceiling it names is derived from the constant rather than
+    // written out beside it (#360).
+    const big = coverFileError({ type: 'image/jpeg', size: 20 * 1024 * 1024 })
+    expect(big).toContain('20.0 MB')
+    expect(big).toContain(`under ${COVER_MAX_PICK_BYTES / (1024 * 1024)} MB`)
+  })
+
+  it('caps the PICK at the boundary it reports', () => {
+    expect(coverFileError({ type: 'image/jpeg', size: COVER_MAX_PICK_BYTES })).toBeNull()
+    expect(coverFileError({ type: 'image/jpeg', size: COVER_MAX_PICK_BYTES + 1 })).not.toBeNull()
+  })
+
+  it('accepts a phone photo the bucket’s own limit would refuse (#360)', () => {
+    // The 5–8 MB phone photo is exactly the case this check used to reject. It
+    // is over `COVER_MAX_INPUT_BYTES` (the bucket's limit) and under the pick
+    // ceiling, which is the point of having two constants: `downscaleCover`
+    // turns it into ~78 KB, so the bucket never sees a file near its limit.
+    expect(coverFileError({ type: 'image/jpeg', size: 6 * 1024 * 1024 })).toBeNull()
+    expect(coverFileError({ type: 'image/jpeg', size: 8 * 1024 * 1024 })).toBeNull()
+    expect(COVER_MAX_PICK_BYTES).toBeGreaterThan(COVER_MAX_INPUT_BYTES)
   })
 
   it('fits the long edge to 1200px without ever upscaling', () => {
@@ -448,38 +461,50 @@ describe('the bucket and the uploader agree on what an upload may be', () => {
     expect(COVER_MAX_INPUT_BYTES).toBe(Number(declared![1]))
   })
 
-  it('accepts a photo at the cap and refuses one a byte over it', () => {
+  it('accepts a photo at the pick ceiling and refuses one a byte over it', () => {
     // The boundary itself, so a future edit to the comparison cannot pass by
     // accident on one side of it.
-    expect(coverFileError({ type: 'image/jpeg', size: COVER_MAX_INPUT_BYTES })).toBeNull()
-    expect(coverFileError({ type: 'image/jpeg', size: COVER_MAX_INPUT_BYTES + 1 })).not.toBeNull()
+    expect(coverFileError({ type: 'image/jpeg', size: COVER_MAX_PICK_BYTES })).toBeNull()
+    expect(coverFileError({ type: 'image/jpeg', size: COVER_MAX_PICK_BYTES + 1 })).not.toBeNull()
   })
 
-  it('states the real limit in the refusal, rather than a stale one', () => {
+  it('states the real ceiling in the refusal, rather than the bucket limit', () => {
     // The sentence used to hardcode "under 8 MB" beside a 5 MB constant. It is
-    // derived now, so the two cannot disagree.
-    const message = coverFileError({ type: 'image/jpeg', size: COVER_MAX_INPUT_BYTES + 1024 })!
-    expect(message).toContain('under 5 MB')
-    expect(message).not.toContain('8 MB')
+    // derived now, and it names the PICK ceiling — the bucket's limit is what
+    // the upload is measured against, not what a creator is allowed to choose.
+    const message = coverFileError({ type: 'image/jpeg', size: COVER_MAX_PICK_BYTES + 1024 })!
+    expect(message).toContain(`under ${COVER_MAX_PICK_BYTES / (1024 * 1024)} MB`)
+    expect(message).not.toContain(`under ${COVER_MAX_INPUT_BYTES / (1024 * 1024)} MB`)
   })
 
-  it('refuses a photo the bucket could not take, not one it could', () => {
-    // Worth being precise about, because the report's premise was that a 5–8 MB
-    // photo "passes the app's check then fails at upload" — and the UPLOADED
-    // bytes are never the original. `uploadCover` downscales to 1200px /
-    // quality 0.82 BEFORE calling the bucket, which measures ~78 KB, so a large
-    // original never reaches the 5 MB limit and the 8 MB client cap was never
-    // the cause of a bucket rejection. What the cap genuinely decided was which
-    // originals the creator was allowed to pick at all: a 7 MB photo was decoded
-    // and shrunk in the browser to produce a 78 KB file, which is minutes of
-    // work on a phone for bytes that were then discarded. Aligning the two is
-    // still right — a client cap above a server limit is a lie either way — but
-    // the honest justification is refusing work whose result is thrown away, not
-    // fixing a failed upload.
-    //
-    // 6 MB: over the bucket's 5 MB, under the old 8 MB client cap.
-    expect(coverFileError({ type: 'image/jpeg', size: 6 * 1024 * 1024 })).not.toBeNull()
-    // 4 MB is under both limits, and is the ordinary modern phone photo.
+  it('enforces the bucket’s limit on the UPLOADED bytes, after the resize', () => {
+    // Source-level, because the guard sits behind the canvas this node suite
+    // cannot reach. What matters is the order: the check must read the
+    // re-encoded blob, never the picked file — that is what makes a 6 MB photo
+    // acceptable here and still safe for the bucket.
+    const source = readFileSync(new URL('../src/lib/coverUpload.ts', import.meta.url), 'utf8')
+    const upload = source.slice(source.indexOf('export async function uploadCover'))
+    const body = upload.slice(0, upload.indexOf('\n}'))
+    const resizeAt = body.indexOf('await downscaleCover(file)')
+    const guardAt = body.indexOf('blob.size > COVER_MAX_INPUT_BYTES')
+    expect(resizeAt, 'uploadCover no longer resizes before uploading').toBeGreaterThan(-1)
+    expect(guardAt, 'the bucket limit is no longer checked against the resized blob').toBeGreaterThan(resizeAt)
+  })
+
+  it('accepts a 5–8 MB phone photo instead of refusing it (#360)', () => {
+    // The history of this one check, because it reversed once. The report's case
+    // was a 5–8 MB photo: the picker accepted it under an 8 MB client cap and
+    // the bucket then refused it at 5 MB with a bare "Upload failed". Aligning
+    // the client down to the bucket stopped the bare failure — and refused the
+    // photo outright, which is that work's own result discarded rather than
+    // uploaded. `uploadCover` downscales to 1200px / quality 0.82 BEFORE calling
+    // the bucket, which measures ~78 KB, so the UPLOAD was never the problem;
+    // the two constants now have two jobs. This pre-check refuses only what a
+    // browser cannot decode, and the bucket's limit is enforced on the
+    // re-encoded blob inside `uploadCover`.
+    expect(coverFileError({ type: 'image/jpeg', size: 6 * 1024 * 1024 })).toBeNull()
+    expect(coverFileError({ type: 'image/jpeg', size: 10 * 1024 * 1024 })).toBeNull()
+    // 4 MB, under both limits, stays the case that must never regress.
     expect(coverFileError({ type: 'image/jpeg', size: 4 * 1024 * 1024 })).toBeNull()
   })
 })
