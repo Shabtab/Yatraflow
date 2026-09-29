@@ -16,14 +16,14 @@ import { useEffect, useMemo, useState } from 'react'
 import { InlineIcon } from '../components/icons'
 import { ArrowLeft, Share2, ShoppingBag } from 'lucide-react'
 import { usePublished, useUsers, useSessionUserId, useTrips } from '../store/store'
-import { fetchMyPurchases } from '../lib/unlock'
+import { fetchMyOrders, fetchMyPurchases } from '../lib/unlock'
 import { buildPurchaseShelf, purchaseShareable, findBuyerCopy } from '../lib/purchases'
 import { sharePurchase } from '../lib/purchaseShare'
 import { forkPublication } from '../lib/forkPub'
 import { CoverThumb } from '../components/CoverThumb'
 import { Chip, EmptyState, toast } from '../components/ui'
 import { formatInr } from '../lib/engine'
-import type { Entitlement } from '../lib/payments'
+import type { Entitlement, PurchaseOrder } from '../lib/payments'
 
 /** "12 Sep 2026" — the same en-IN shape the plan bench and the print view use.
  *  A grant date that could not be read says so: "Invalid Date" is a developer
@@ -64,6 +64,11 @@ export function PurchasesPage({ onNavigate }: { onNavigate: (r: string) => void 
   // forked instead of at a page that no longer exists (#405).
   const trips = useTrips()
   const [entitlements, setEntitlements] = useState<Entitlement[] | null>(null)
+  /** #407 — the buyer's ORDERS: the money state, and the only row that survives
+   *  a refund (the entitlement is deleted). Read alongside the entitlements in
+   *  the same attempt, so the shelf can render a refunded purchase as a receipt
+   *  instead of losing it. */
+  const [orders, setOrders] = useState<PurchaseOrder[] | null>(null)
   const [failed, setFailed] = useState(false)
   const [attempt, setAttempt] = useState(0)
   /** #409 — which row's share is in flight. `sharePurchase` opens a sheet (and
@@ -73,17 +78,28 @@ export function PurchasesPage({ onNavigate }: { onNavigate: (r: string) => void 
   const [sharingId, setSharingId] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!meId) { setEntitlements([]); setFailed(false); return }
+    if (!meId) { setEntitlements([]); setOrders([]); setFailed(false); return }
     let alive = true
     setEntitlements(null)
+    setOrders(null)
     setFailed(false)
-    void fetchMyPurchases(meId)
-      .then(rows => { if (alive) setEntitlements(rows) })
-      .catch(() => { if (alive) { setFailed(true); setEntitlements([]) } })
+    // BOTH reads, one attempt, one error state (#407). They are two halves of one
+    // answer — what you own and what you paid — so a shelf built from one of them
+    // is not a partial shelf, it is a wrong one: entitlements alone lose every
+    // refunded purchase, and orders alone lose every grant. A failure of either
+    // is therefore a failure of the shelf, and `Promise.all` makes that the
+    // literal shape of the code rather than a rule someone has to remember.
+    void Promise.all([
+      fetchMyPurchases(meId).then(rows => { if (alive) setEntitlements(rows) }),
+      fetchMyOrders(meId).then(rows => { if (alive) setOrders(rows) }),
+    ]).catch(() => { if (alive) { setFailed(true); setEntitlements([]); setOrders([]) } })
     return () => { alive = false }
   }, [meId, attempt])
 
-  const shelf = useMemo(() => buildPurchaseShelf(entitlements ?? [], pubs, users), [entitlements, pubs, users])
+  const shelf = useMemo(
+    () => buildPurchaseShelf(entitlements ?? [], pubs, users, orders ?? []),
+    [entitlements, orders, pubs, users],
+  )
 
   function fork(rowPubId: string) {
     const pub = pubs.find(p => p.id === rowPubId)
@@ -142,7 +158,7 @@ export function PurchasesPage({ onNavigate }: { onNavigate: (r: string) => void 
           </p>
           <button className="btn btn-primary" onClick={() => setAttempt(n => n + 1)}>Try again</button>
         </div>
-      ) : entitlements === null ? (
+      ) : entitlements === null || orders === null ? (
         <div className="loading-block"><div className="spinner" />Loading your purchases…</div>
       ) : shelf.rows.length === 0 ? (
         <EmptyState icon={<ShoppingBag size={38} aria-hidden />} title="Nothing bought yet"
@@ -160,6 +176,11 @@ export function PurchasesPage({ onNavigate }: { onNavigate: (r: string) => void 
               <>at least <b>{formatInr(shelf.totalPaidInr)}</b> paid</>
             )}
             {shelf.updatedCount > 0 && <> · <b>{shelf.updatedCount}</b> updated since you bought {shelf.updatedCount === 1 ? 'it' : 'them'}</>}
+            {/* #407 — the total above EXCLUDES refunded purchases and the update
+                count excludes them too, so the exclusion is named here rather
+                than left for the reader to notice. A silently smaller number is
+                the same class of lie as a silently larger one. */}
+            {shelf.refundedCount > 0 && <> · <b>{shelf.refundedCount}</b> refunded</>}
           </p>
           {!shelf.totalReadable && (
             <p className="hint-text">
@@ -175,7 +196,11 @@ export function PurchasesPage({ onNavigate }: { onNavigate: (r: string) => void 
               // Resolving for every row would also mean a listed plan could be
               // shadowed by an old fork, which is the wrong answer to a
               // different question.
-              const copy = row.listed ? null : findBuyerCopy(row, trips)
+              //
+              // #407 — and a REFUNDED row resolves nothing at all: there is no
+              // access to point at, so offering "Open your copy" would advertise
+              // a plan the buyer's money was returned for.
+              const copy = row.listed || row.refunded ? null : findBuyerCopy(row, trips)
               return (
               <article className="purchase-row" key={row.pubId}>
                 <div className="purchase-thumb">
@@ -199,6 +224,12 @@ export function PurchasesPage({ onNavigate }: { onNavigate: (r: string) => void 
                     {' · '}bought {boughtOn(row.grantedAt, row.dateReadable)}
                   </p>
                   <div className="purchase-meta">
+                    {/* #407 — the money STATE, independent of the shape chips
+                        below. A refunded purchase keeps both of them when the
+                        publication is gone: `refunded` and `listed` are
+                        orthogonal, and rendering one would otherwise hide the
+                        other. */}
+                    {row.refunded && <Chip tone="info">Refunded</Chip>}
                     {row.durationDays > 0 && <Chip>{row.durationDays} days</Chip>}
                     {row.places > 0 && <Chip>{row.places} places</Chip>}
                     {row.amountReadable
@@ -210,7 +241,14 @@ export function PurchasesPage({ onNavigate }: { onNavigate: (r: string) => void 
                       <Chip tone="info">Updated {updatedIn(row.refreshedAt)}</Chip>
                     )}
                   </div>
-                  {!row.listed && (
+                  {row.refunded && (
+                    <p className="hint-text">
+                      The money for this plan was refunded, so the access it came with has ended. The
+                      receipt stays here — what you paid and when — because a refund is a change of
+                      access, not a reason to erase that you bought it.
+                    </p>
+                  )}
+                  {!row.refunded && !row.listed && (
                     <p className="hint-text">
                       This plan is not listed publicly any more. Your access is unaffected
                       {copy
@@ -224,8 +262,15 @@ export function PurchasesPage({ onNavigate }: { onNavigate: (r: string) => void 
                         link is offered ONLY while the plan is listed — otherwise the
                         one button on an unlisted row is dead by construction, on
                         exactly the row promising the buyer is unaffected (#405). The
-                        copy is the honest destination instead. */}
-                    {row.listed && (
+                        copy is the honest destination instead.
+
+                        #407 — and every access affordance is gated on the PLAN
+                        being openable at all, which a refunded purchase is not: the
+                        paywall already refuses it server-side, so an "Open the plan"
+                        button here would be a button whose only outcome is a locked
+                        page — the confusion this issue was filed about. The receipt
+                        above is what a refunded row is FOR. */}
+                    {row.listed && !row.refunded && (
                       <button className="btn btn-primary" onClick={() => onNavigate(`/pub/${row.pubId}`)}>Open the plan</button>
                     )}
                     {copy && (
@@ -235,11 +280,12 @@ export function PurchasesPage({ onNavigate }: { onNavigate: (r: string) => void 
                         {copy.exact ? 'Open your copy' : 'Open your copy (we think this is it)'}
                       </button>
                     )}
-                    {row.listed && <button className="btn btn-ghost" onClick={() => fork(row.pubId)}>Fork into my trips</button>}
+                    {row.listed && !row.refunded && <button className="btn btn-ghost" onClick={() => fork(row.pubId)}>Fork into my trips</button>}
                     {/* ROADMAP I-21: the buyer's own card. Offered only while the
                         publication still exists — a withdrawn plan's link
                         previews as nothing, and handing someone a dead link to
-                        post is worse than not offering it (purchaseShareable). */}
+                        post is worse than not offering it (purchaseShareable,
+                        which #407 also makes false for a refunded row). */}
                     {purchaseShareable(row) && (
                       <button className="btn btn-ghost" disabled={sharingId !== null}
                         onClick={() => void share(row)}>
