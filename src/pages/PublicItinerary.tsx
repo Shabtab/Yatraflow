@@ -13,7 +13,6 @@ import type { Trip, PublishedItinerary } from '../data/types'
 import type { Entitlement } from '../lib/payments'
 import { useDb, currentUser, tripById, userById, registerPubView, fetchPublicTrip } from '../store/store'
 import { forkPublication } from '../lib/forkPub'
-import { coverCandidates } from '../lib/coverUpload'
 import { describePreviewSplit } from '../lib/previewSplit'
 import { simulateDay, originOf, minutesToHM, formatInr, getAssumptions, computeTotals, isRoundTrip } from '../lib/engine'
 import { cap, titleCase } from '../lib/labels'
@@ -29,7 +28,6 @@ import { sharePublicationOnWhatsApp } from '../lib/whatsAppShare'
 import { appLink } from '../lib/appLink'
 import { pageTitle } from '../lib/pageTitle'
 import { sizedCoverUrl } from '../lib/tripThumb'
-import { useDestinationCover } from '../hooks/useDestinationCover'
 import { Avatar, Chip, EmptyState, toast, CopyButton, RouteSnapshot } from '../components/ui'
 
 /** How long the buyer's entitlement read may take before the page stops
@@ -119,10 +117,17 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
   // `fetched` here as well would be a second mechanism for one question.)
   const trip: Trip | undefined = cachedTrip ?? fetched ?? undefined
   const { isSaved, toggleSaved } = useSavedPubs()
-  // The candidates come from `coverCandidates`, shared with the owner-side sweep
-  // that stores a resolved cover for a publication that has none (#360): the
-  // crawler has to end up with the picture this hero is already showing.
-  const heroAuto = useDestinationCover(pub ? coverCandidates(pub) : null)
+  // #360 — there is deliberately NO live-suggestion fallback for the hero.
+  // It used to read the destination-cover hook over the shared candidates,
+  // which put a Wikipedia photo of a guessed destination on the page while
+  // `api/i.js` served `og-default.png` to every crawler — a
+  // pre-cover-requirement row showed a picture to a human and a generic card
+  // to an unfurl, indefinitely, and the picture was one the creator never
+  // chose. The rule the two sides obey is "the crawler and the hero never
+  // disagree", and the hero is the side that had to move. The photo comes
+  // back the honest way: the cover sweep writes an OWNED, resized suggestion
+  // into the row, after which `coverImageUrl` is set and both sides serve
+  // the same stored URL.
   useEffect(() => {
     // #230 — the view carries its route in: the `ref` the shared link brought
     // (query, so it survives the redirect and address promotion), or null for a
@@ -355,7 +360,10 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
   // The stored cover is not necessarily sized: a row written before the sizing
   // fix holds the raw Wikimedia upload (a live publication shipped 1,305 KB as
   // its hero). Sized at render, so existing rows are fixed without a backfill.
-  const heroSrc = pub.coverImageUrl ? sizedCoverUrl(pub.coverImageUrl) : heroAuto
+  // #360 — a row with NO stored cover renders the branded background, and that
+  // is the point rather than a gap: it is what `api/i.js` already serves such
+  // a row as its card, so the two agree. `undefined` rather than a suggestion.
+  const heroSrc = pub.coverImageUrl ? sizedCoverUrl(pub.coverImageUrl) : undefined
   // #230 — what leaves through the copy button names the button it left
   // through. Display and copy are the same string: the code box shows exactly
   // what lands on the clipboard.
