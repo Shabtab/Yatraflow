@@ -53,11 +53,27 @@ describe('#425 PR 1 — Timeline consumes through the shared validator', () => {
   })
 })
 
-describe('#425 PR 2 boundary — TripMap untouched in this PR', () => {
-  it('TripMap still uses its own day-filter prop, not the shared contract', () => {
-    // guards the two-PR split: when PR 2 adopts the contract, this is the
-    // line to flip deliberately.
+describe('#425 PR 2 — the map validates its inbound day filter', () => {
+  it('TripMap refuses a focusDay no day of THIS trip matches (reads as all)', () => {
+    // PR 2 flipped this boundary deliberately: the map's filter now honors
+    // the same validate-before-use rule as every other focus consumer.
     const map = codeOf('../src/components/TripMap.tsx')
-    expect(map).not.toMatch(/from '\.\.\/lib\/tripFocus'/)
+    expect(map).toMatch(/trip\.days\.some\(d => d\.index === focusDay\)/)
+  })
+
+  it('the workspace passes the ONE shared axis to Board and MapTab', () => {
+    const ws = codeOf('../src/pages/TripWorkspace.tsx')
+    expect(ws).toMatch(/dayFocus=\{sharedDay\}/)
+    expect((ws.match(/dayFocus=\{sharedDay\}/g) ?? []).length).toBe(2)
+    expect(ws).toMatch(/dayFromFocus\(focus, trip\.id\)/)
+  })
+
+  it('Board and MapTab hold no second selection when the axis is handed over', () => {
+    const board = codeOf('../src/components/BoardView.tsx')
+    expect(board).toMatch(/dayFocus \?\? localFocusDay/)
+    expect(board).toMatch(/onDayFocusChange\?\.\(day\)/)
+    const tab = codeOf('../src/pages/trip/MapTab.tsx')
+    expect(tab).toMatch(/onDayFocusChange\?\.\(d\.index\)/)
+    expect(tab).toMatch(/onDayFocusChange\?\.\(day\)/)
   })
 })

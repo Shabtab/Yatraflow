@@ -97,3 +97,22 @@ export function canFocusDay(
 export function focusDayRequest(dayIndex: number): FocusRequest {
   return { dayIndex }
 }
+
+/** The day a surface should show for this focus, or 'all' when the focus is
+ *  empty, foreign (another trip — focus never leaks across trips), or
+ *  day-less. Surfaces whose filter axis is `number | 'all'` derive from this
+ *  instead of holding a second selection state (#425). */
+export function dayFromFocus(
+  focus: TripFocus | null | undefined,
+  tripId: string,
+): number | 'all' {
+  if (!focus || focus.tripId !== tripId) return 'all'
+  return focus.dayIndex ?? 'all'
+}
+
+/** Raise a day focus as a full TripFocus for a trip — validated against the
+ *  trip's own days by the caller's gate (canFocusDay). A dayIndex of null
+ *  clears the day axis ('all'). */
+export function focusForDay(tripId: string, dayIndex: number | null): TripFocus {
+  return normalizeFocus({ tripId, dayIndex })
+}

@@ -28,6 +28,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 ### Added
 
 - A shared selection/focus contract for the trip surfaces, first of two slices (#425). Timeline, Map and Board each decide on their own what "selected" means today; this slice lands the one identity they will converge on — which trip, which day, optionally which stop / leg / suggestion — as a pure module. The map's halt label and the workspace's day hand-offs now raise and consume day focus through the same validator, so a request naming a day the trip does not have (the travel clock numbers its own drive days) is refused instead of opening a stranger day's accordion. Focus stays ephemeral UI state: never written into trip data, never persisted.
+- One day selection across the Board, the Map tab and the workspace, second slice of the shared focus contract (#425). Clicking a Board column now moves the Map tab's rail onto that day, and a day chip on the map rail highlights the Board's column — one axis held by the workspace and derived where it is read, instead of a selection per surface that could disagree. The map's day filter also validates what it is handed before showing a single day's route, so a stale value reads as the whole trip rather than another day's road.
 
 ## [0.71.0] - 2026-09-29
 

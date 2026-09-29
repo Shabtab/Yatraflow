@@ -414,6 +414,8 @@ describe('the Board draws the workspace road, graded (#370)', () => {
     expect(board).toMatch(/mapRoadViewFromLegs\(road\?\.chain \?\? null, road\?\.legs \?\? null, trip\.days\.map\(d => d\.index\)\)/)
     expect(board).toMatch(/mapReturnGeometryFromLegs\(road\?\.chain \?\? null, road\?\.legs \?\? null\)/)
     expect(board).toMatch(/<MemoTripMap trip=\{trip\} focusDay=\{focusedDay\} showToolbar=\{false\}[\s\S]{0,120}mainRouteGeometry=\{roadView\.geometry\} returnRouteGeometry=\{mapReturnGeometry\}[\s\S]{0,80}allowSelfMeasurement=\{false\}/)
+    // #425 PR 2: the focused day is the shared axis, not board-owned state
+    expect(board).toMatch(/const focusedDay = dayFocus \?\? localFocusDay/)
     // the board no longer measures a road of its own
     expect(board).not.toMatch(/routePath\s*\(/)
   })
