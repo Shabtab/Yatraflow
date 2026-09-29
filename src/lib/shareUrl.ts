@@ -92,3 +92,63 @@ export function currentBuyerShareUrl(pubId: string, entitlementId: string): stri
 export function purchaseShareMessage(title: string, url: string): string {
   return `I bought the "${title}" plan on YatraFlow — you can see it here: ${url}`
 }
+
+/**
+ * Share-attribution vocabulary (#230). One `ref` value per way a link can
+ * leave the building — or, for in-app forks with no link at all, per surface
+ * the fork happened on. `null` is the honest answer for a visitor who arrived
+ * some other way (typed/copied address, old link, shared by hand) and is
+ * rendered as "direct", never guessed.
+ *
+ * The list is pinned to the `pub_events.source` / `trips.ref` CHECK constraints
+ * in supabase/migrations/20260929_pub_events_share_source.sql — a test asserts
+ * the two lists agree, so a new value is added in both places or not at all.
+ */
+export const SHARE_SOURCES = ['copy', 'buyer', 'explore', 'creator', 'purchases'] as const
+export type ShareSource = typeof SHARE_SOURCES[number]
+
+/** How each route reads on the admin console. `direct` is the read-side name
+ *  for a NULL ref (the RPC's own coalesce), so it lives here and not in the
+ *  vocabulary — nothing mints a `direct` link. */
+export const SHARE_SOURCE_LABELS: Record<string, string> = {
+  copy: 'Copy link',
+  buyer: 'Buyer card',
+  explore: 'Explore',
+  creator: 'Creator page',
+  purchases: 'My purchases',
+  direct: 'Direct',
+}
+
+/** Is this `ref` one of ours? Hand-rolled params, no utm — an unknown value is
+ *  DROPPED rather than stored: the column holds a vocabulary, not free text
+ *  someone else's URL can fill. */
+export function shareRefFromSearch(search: string): ShareSource | null {
+  let raw: string | null = null
+  try {
+    // Tolerate a slice with the hash still attached: a caller handing over
+    // `?ref=copy#/pub/x` must not silently lose the ref to the fragment (a
+    // location.search never carries one, but a copied URL slice can).
+    raw = new URLSearchParams(search.split('#')[0]).get('ref')
+  } catch {
+    return null
+  }
+  return raw !== null && (SHARE_SOURCES as readonly string[]).includes(raw) ? (raw as ShareSource) : null
+}
+
+/** Stamp a share address with its `ref`, keeping any query it already carries
+ *  (`?buyer=`) and any hash after it. A `ref` is metadata about the LINK, so
+ *  it travels in the query — a fragment never reaches a crawler, a server
+ *  redirect, or the app's own `location.search`. */
+export function withShareRef(url: string, ref: ShareSource | null | undefined): string {
+  if (!ref || !(SHARE_SOURCES as readonly string[]).includes(ref)) return url
+  const hashAt = url.indexOf('#')
+  const base = hashAt >= 0 ? url.slice(0, hashAt) : url
+  const tail = hashAt >= 0 ? url.slice(hashAt) : ''
+  // Exactly one ref per link: one that is already there is the honest route in
+  // and stays. (Checked, never rebuilt — the existing query keeps its own
+  // bytes; re-encoding a `buyer` id through URLSearchParams would churn `%20`
+  // into `+` for no gain.)
+  const qAt = base.indexOf('?')
+  if (qAt >= 0 && new URLSearchParams(base.slice(qAt + 1)).has('ref')) return url
+  return `${base}${qAt >= 0 ? '&' : '?'}ref=${encodeURIComponent(ref)}${tail}`
+}

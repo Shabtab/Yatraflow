@@ -23,7 +23,7 @@ import { fetchMyEntitlements, fetchCreatorSales, fetchCreatorFunnel, purchaseUnl
 import { UnlockReveal } from '../components/UnlockReveal'
 import { hasUnlock } from '../lib/payments'
 import { buildPubFunnels, describePreLog, funnelGlance, type FunnelSale } from '../lib/pubFunnel'
-import { currentPublicShareUrl } from '../lib/shareUrl'
+import { currentPublicShareUrl, shareRefFromSearch, withShareRef } from '../lib/shareUrl'
 import { appLink } from '../lib/appLink'
 import { pageTitle } from '../lib/pageTitle'
 import { sizedCoverUrl } from '../lib/tripThumb'
@@ -115,7 +115,10 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
   const { isSaved, toggleSaved } = useSavedPubs()
   const heroAuto = useDestinationCover(pub ? (pub.routeSummary.length ? pub.routeSummary : [pub.title]) : null)
   useEffect(() => {
-    if (pub) registerPubView(pub.id)
+    // #230 — the view carries its route in: the `ref` the shared link brought
+    // (query, so it survives the redirect and address promotion), or null for a
+    // visitor who arrived some other way — which is recorded as "direct".
+    if (pub) registerPubView(pub.id, shareRefFromSearch(window.location.search))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
   // This page owns the publication record, so it is the only place that can put
   // the itinerary's own name in the tab. App titles every other route; for
@@ -344,7 +347,10 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
   // fix holds the raw Wikimedia upload (a live publication shipped 1,305 KB as
   // its hero). Sized at render, so existing rows are fixed without a backfill.
   const heroSrc = pub.coverImageUrl ? sizedCoverUrl(pub.coverImageUrl) : heroAuto
-  const shareLink = currentPublicShareUrl(pub.id)
+  // #230 — what leaves through the copy button names the button it left
+  // through. Display and copy are the same string: the code box shows exactly
+  // what lands on the clipboard.
+  const shareLink = withShareRef(currentPublicShareUrl(pub.id), 'copy')
   // Undefined when the creator published the itinerary as entirely free —
   // the Unlock buttons below are hidden rather than inventing a ₹199 fallback.
   const price = pub.premiumPriceInr
@@ -361,7 +367,7 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
     // stubs — forkPublication re-stubs from whatever arrived, so the fork can
     // never contain more than the server showed. The `unlocked` flag here is
     // presentation-only now; the wire already decided.
-    void forkPublication(pub!, me?.id ?? null, onNavigate, unlocked)
+    void forkPublication(pub!, me?.id ?? null, onNavigate, unlocked, shareRefFromSearch(window.location.search))
   }
 
   function unlockThis() {

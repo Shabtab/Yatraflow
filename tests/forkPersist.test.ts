@@ -165,3 +165,20 @@ describe('fork — the gate and its failure message are honest', () => {
     expect(state.inserts).toEqual([])
   })
 })
+
+describe('fork stamp (#230) — the copy carries its own route in', () => {
+  it('stamps the ref on the trip and on the row that goes to the database', async () => {
+    const { trip: copy } = await duplicateTripPersisted(structuredClone(base), 'forker-7', undefined, 'explore')
+    expect(copy.ref).toBe('explore')
+    const tripInsert = state.inserts.find(i => i.table === 'trips' && i.payload.id === copy.id)
+    expect(tripInsert).toBeDefined()
+    expect(tripInsert!.payload.ref).toBe('explore')
+  })
+
+  it('never inherits the SOURCE trip’s ref — a copy of a copy starts a new chain', async () => {
+    const source: Trip = { ...structuredClone(base), ref: 'buyer' }
+    const { trip: copy } = await duplicateTripPublicPersisted(source, 'forker-8', [0], undefined)
+    expect(copy.ref).toBeUndefined()
+    expect(state.inserts.find(i => i.table === 'trips')!.payload.ref).toBeNull()
+  })
+})

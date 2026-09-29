@@ -247,6 +247,13 @@ export interface Trip {
   inviteCode?: string
   visibility: 'private' | 'public'
   /**
+   * Share attribution (#230): how the owner ARRIVED — the shared link's `ref`
+   * (copy/buyer) or the in-app surface the fork happened on (explore/creator/
+   * purchases). Null/undefined = direct. One of lib/shareUrl.ts's SHARE_SOURCES;
+   * the trips.ref column carries the same vocabulary.
+   */
+  ref?: string
+  /**
    * Soft-delete tombstone (ms epoch). Null/undefined = live. A trashed trip is
    * hidden from normal reads by the `trips read hide trashed` RLS policy and
    * survives 30 days before the `purge_trashed_trips()` sweep hard-deletes it.
