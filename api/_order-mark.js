@@ -17,8 +17,18 @@
 // When it IS empty, the row is read back to learn what it says now — a follow-up
 // read, never an assumption.
 //
+// The project host is read from the environment HERE rather than taken as a
+// parameter, matching every other file in `api/`: a URL handed in is a URL that
+// could have come from anywhere, while this one is looked up.
+//
 // Kept dependency-free and Vercel-compatible like the other `api/_*.js` files.
 import { supabaseServiceHeaders } from './_supabase-headers.js'
+
+/** The configured project, normalized once. Every caller 503s before reaching
+ *  this when it is unset, so an empty string is a state the env check owns. */
+function projectBase() {
+  return (process.env.SUPABASE_URL ?? '').replace(/\/+$/, '')
+}
 
 /**
  * Mark an order paid, and report which of the outcomes actually happened.
@@ -28,8 +38,8 @@ import { supabaseServiceHeaders } from './_supabase-headers.js'
  *   row says when it did not, so a caller can act on the difference instead of
  *   treating every 2xx as a success.
  */
-export async function markOrderPaid(supabaseUrl, serviceKey, razorpayOrderId, paymentId, signal) {
-  const url = `${supabaseUrl.replace(/\/+$/, '')}/rest/v1/purchase_orders` +
+export async function markOrderPaid(serviceKey, razorpayOrderId, paymentId, signal) {
+  const url = `${projectBase()}/rest/v1/purchase_orders` +
     `?razorpay_order_id=eq.${encodeURIComponent(razorpayOrderId)}&status=eq.pending`
   const response = await fetch(url, {
     method: 'PATCH',
@@ -51,12 +61,12 @@ export async function markOrderPaid(supabaseUrl, serviceKey, razorpayOrderId, pa
   // failure of THIS read throws, which is deliberate — "we could not tell" must
   // not be reported as a state, because the whole point is that every caller can
   // now tell.
-  return { marked: false, state: await readOrderState(supabaseUrl, serviceKey, razorpayOrderId, signal) }
+  return { marked: false, state: await readOrderState(serviceKey, razorpayOrderId, signal) }
 }
 
 /** What the order row says once a mark has failed to move it. */
-async function readOrderState(supabaseUrl, serviceKey, razorpayOrderId, signal) {
-  const url = `${supabaseUrl.replace(/\/+$/, '')}/rest/v1/purchase_orders` +
+async function readOrderState(serviceKey, razorpayOrderId, signal) {
+  const url = `${projectBase()}/rest/v1/purchase_orders` +
     `?razorpay_order_id=eq.${encodeURIComponent(razorpayOrderId)}&select=status&limit=1`
   const response = await fetch(url, { headers: supabaseServiceHeaders(serviceKey), signal })
   if (!response.ok) throw new Error(`order state read failed: ${response.status}`)

@@ -693,7 +693,9 @@ describe('the mark-paid write is verifiable (#355)', () => {
       return responder(String(input))
     })
     const { markOrderPaid } = await import('../api/_order-mark.js')
-    return markOrderPaid('https://database.example.test', 'service-key', 'order_ABC123', 'pay_XYZ789', undefined)
+    // The host comes from the stubbed env (`ENV.SUPABASE_URL`), which is what the
+    // helper reads — the module looks its destination up rather than accepting it.
+    return markOrderPaid('service-key', 'order_ABC123', 'pay_XYZ789', undefined)
   }
 
   const PATCH = (rows: unknown) => new Response(JSON.stringify(rows), { status: 200 })

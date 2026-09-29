@@ -133,7 +133,7 @@ export default async function handler(req, res) {
     //    Every other non-marked state (`already-paid`, `still-pending`,
     //    `missing`) is left to the claim below, which is idempotent and refuses
     //    on its own terms — that is the existing, audited behaviour.
-    const mark = await markOrderPaid(supabaseUrl, serviceKey, orderId, paymentId, signal)
+    const mark = await markOrderPaid(serviceKey, orderId, paymentId, signal)
     if (mark.state === 'refunded') {
       return json(res, 409, {
         error: 'this payment was refunded, so there is nothing to unlock — the receipt is on your purchases page',

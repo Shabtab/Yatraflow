@@ -227,7 +227,7 @@ export default async function handler(req, res) {
         recovering = true // from here, any throw means money moved and we failed to finish
         if (latest.status === 'pending') {
           // A captured payment this flow never confirmed: mark it first.
-          const mark = await markOrderPaid(supabaseUrl, serviceKey, latest.razorpay_order_id, 'recovered-by-checkout', signal)
+          const mark = await markOrderPaid(serviceKey, latest.razorpay_order_id, 'recovered-by-checkout', signal)
           // The gateway says paid but the row came back refunded: the two
           // disagree, and the ROW is the one the entitlement was revoked against
           // (#355). Granting here would resurrect access a refund deleted —

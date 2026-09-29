@@ -190,7 +190,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const mark = await markOrderPaid(supabaseUrl, serviceKey, orderId, paymentId, signal)
+    const mark = await markOrderPaid(serviceKey, orderId, paymentId, signal)
     // The paid-status filter below is the real refund guard, so a refunded order
     // already falls out at the next line. Reporting the mark's own verdict just
     // keeps the note from blaming "foreign, refunded, or test event" when we in
