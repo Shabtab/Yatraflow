@@ -182,6 +182,23 @@ export const NO_PROBE_SURFACE = {
   '20260919_trip_touch_updated_at.sql': {
     reason: 'trigger only — needs a write to observe, and its table is probed by the migration that created it',
   },
+  '20260929_published_itineraries_publish_rules.sql': {
+    // A CHECK CONSTRAINT is the one migration shape whose absence is neither
+    // loud nor silent — it is simply absent, and every row written afterwards
+    // skips it. This check probes tables, columns and buckets, so it cannot see
+    // a constraint at all; the honest thing is to declare it rather than let the
+    // ratchet read "no probe surface" as an oversight.
+    //
+    // What makes it covered instead of unverified: the constraint is a BACKSTOP
+    // for a rule the client already enforces in two places
+    // (`lib/publishRules.publishValidation` is called by BOTH `publishItinerary`
+    // and the publish form), so the row shape is checked on every write from the
+    // app regardless. The database copy is defence in depth against a caller
+    // that bypasses the app entirely, which by definition is not a browser.
+    // Its text is pinned against `schema.sql` — the other way to build this
+    // database — by tests/publish-rules.test.ts.
+    reason: 'CHECK constraints only — the check probes tables/columns/buckets and cannot see a constraint, and the table is probed by the migration that created it; the RULE is enforced client-side by lib/publishRules.publishValidation (called by both publishItinerary and the publish form) and both copies are pinned against schema.sql by tests/publish-rules.test.ts',
+  },
   '20260925_decision_resolved_option_text.sql': {
     // A type change is the one shape presence cannot answer for: the derived
     // probe (`public.decisions.resolved_option_id`) reads PRESENT before the
@@ -224,6 +241,13 @@ export const NO_PROBE_SURFACE = {
     // Pinned by tests/trips-trash-honest-failure.test.ts (audit INSERT, owner
     // + tombstone predicates, unchanged grants, scheduled sweep untouched).
     reason: 'redefines `purge_trashed_trip` — the function exists before and after, so presence answers nothing; the audit body is pinned by tests/trips-trash-honest-failure.test.ts',
+  },
+  '20260929_admin_rpc_grant_lockdown.sql': {
+    // Grants only (#366): the admin RPCs are re-granted, not created, so
+    // presence answers nothing about who can REACH them. The live role list is
+    // asserted by the RLS contract suite (aclexplode against all eight admin
+    // RPCs) and the migration's own shape by tests/admin-rpc-grants.test.ts.
+    reason: 'grants only — the admin RPCs are re-granted rather than created, so presence answers nothing; the live role list is asserted by the RLS contract suite and the migration shape by tests/admin-rpc-grants.test.ts',
   },
 }
 

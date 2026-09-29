@@ -257,25 +257,47 @@ describe('publishing takes ownership of the suggestion it would otherwise link t
     expect(copyAt).toBeLessThan(upsertAt)
   })
 
-  it('runs after the optimistic commit, so the copy never delays the UI', () => {
-    const commitAt = STORE_SRC.indexOf('  commit()\n  // Take ownership of an auto-suggested cover')
+  it('runs BEFORE the optimistic commit, so the third-party URL is never committed (#361)', () => {
+    // This used to assert the OPPOSITE order — that the copy runs AFTER the
+    // commit "so it never delays the UI" — and that order WAS the bug: the
+    // publication was committed carrying the Wikimedia URL, so a share link
+    // copied in that window (or a preview fetched in it) served someone else's
+    // host at exactly the moment this feature exists to stop that.
+    //
+    // The intent that survives is "the copy must not BLOCK a publish", and that
+    // is now a property of `ownSuggestedCover` itself (it never throws, never
+    // rejects, and is bounded by `COVER_COPY_TIMEOUT_MS`) rather than of the
+    // ordering. The ordering guard below is therefore the one that matters:
+    // owning happens before the FIRST commit, so the committed row carries the
+    // owned URL or the original — never an intermediate.
     const copyAt = STORE_SRC.indexOf('await ownSuggestedCover(p.creatorId, p.coverImageUrl)')
-    expect(commitAt).toBeGreaterThan(-1)
-    expect(commitAt).toBeLessThan(copyAt)
+    const firstCommitAt = STORE_SRC.indexOf('commit()', STORE_SRC.indexOf('export async function publishItinerary'))
+    expect(copyAt).toBeGreaterThan(-1)
+    expect(firstCommitAt).toBeGreaterThan(-1)
+    expect(copyAt, 'owning must resolve before the publication is committed').toBeLessThan(firstCommitAt)
+    // …and the owned URL is what the row object holds, so the upsert below
+    // cannot write the suggestion.
+    expect(STORE_SRC).toMatch(/if \(ownedUrl\) p\.coverImageUrl = ownedUrl/)
   })
 
   it('writes the owned URL back to the trip, so re-publishing cannot re-copy it', () => {
     // Publishing copies `trip.coverImageUrl`. Without this the trip keeps the
     // Wikimedia URL, every Update publication mints another object, and the
-    // trip's own card keeps loading from Wikimedia.
-    expect(STORE_SRC).toMatch(/updateTrip\(p\.tripId, \{ coverImageUrl: owned\.url \}\)/)
+    // trip's own card keeps loading from Wikimedia. The variable is renamed
+    // (`ownedUrl` rather than `owned.url`) because the value is now resolved
+    // BEFORE the commit — the write itself is unchanged.
+    expect(STORE_SRC).toMatch(/updateTrip\(p\.tripId, \{ coverImageUrl: ownedUrl \}\)/)
   })
 
   it('publishes the fallback URL when the copy did not happen', () => {
     // The whole feature is an improvement, never a new failure mode: the upsert
     // must still receive a cover when `owned` is false.
     expect(STORE_SRC).toMatch(/cover_image_url: p\.coverImageUrl/)
-    expect(STORE_SRC).toMatch(/if \(owned\.owned && owned\.url\)/)
+    // The value is resolved to a local BEFORE the commit (#361), so the shape
+    // is a ternary rather than a second `if`. What this pins is unchanged: when
+    // the copy did NOT happen, `ownedUrl` is undefined and the upsert below still
+    // receives whatever cover the publication already had.
+    expect(STORE_SRC).toMatch(/const ownedUrl = owned\.owned && owned\.url \? owned\.url : undefined/)
   })
 })
 

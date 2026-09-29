@@ -26,3 +26,9 @@ export function isAdminCached(): boolean {
 export function clearAdminCache(): void {
   cachedIsAdmin = null
 }
+
+/** Test seam: the node suite has no JWT to derive the flag from. Production
+ *  paths always go through adminFromSession. */
+export function setAdminForTest(admin: boolean): void {
+  cachedIsAdmin = admin
+}
