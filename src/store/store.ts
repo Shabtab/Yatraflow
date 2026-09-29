@@ -26,7 +26,7 @@ import { backfillCreateFunnelSession } from '../lib/createEvents'
 import {
   clearWritesFor, dropWrite, pendingWrites, queueWrite, replayVerdict, shouldRetry,
 } from '../lib/writeQueue'
-import { ownSuggestedCover, unclaimedCovers, coverlessPublications } from '../lib/coverUpload'
+import { ownSuggestedCover, unclaimedCovers, coverCandidates, coverlessPublications } from '../lib/coverUpload'
 import { fetchFirstAvailableThumb } from '../lib/tripThumb'
 import { publishValidation, PUBLISH_FIELD_ORDER, PublishRejected } from '../lib/publishRules'
 import { makeInviteCode, normalizeInviteCode } from '../lib/inviteCode'
@@ -3328,9 +3328,13 @@ export async function collectUnclaimedCovers(): Promise<number> {
     // resolves the same candidates, once, and stores the owned copy. A row
     // whose suggestion no longer resolves is left exactly as it is: the sweep
     // never writes a cover it could not actually own.
+    //
+    // The candidate order comes from `coverCandidates`, shared with the hero
+    // itself. It used to be written out here as well, which meant the page and
+    // the sweep could answer "which photo is this publication's" differently —
+    // the same drift, one level up, that this sweep exists to remove.
     for (const pub of coverlessPublications(cache.published, userId)) {
-      const candidates = pub.routeSummary?.length ? pub.routeSummary : [pub.title]
-      const suggestion = await fetchFirstAvailableThumb(candidates)
+      const suggestion = await fetchFirstAvailableThumb(coverCandidates(pub))
       if (!suggestion) continue
       const owned = await ownSuggestedCover(userId, suggestion)
       if (!owned.owned || !owned.url) continue

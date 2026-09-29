@@ -13,6 +13,7 @@ import type { Trip, PublishedItinerary } from '../data/types'
 import type { Entitlement } from '../lib/payments'
 import { useDb, currentUser, tripById, userById, registerPubView, fetchPublicTrip } from '../store/store'
 import { forkPublication } from '../lib/forkPub'
+import { coverCandidates } from '../lib/coverUpload'
 import { describePreviewSplit } from '../lib/previewSplit'
 import { simulateDay, originOf, minutesToHM, formatInr, getAssumptions, computeTotals, isRoundTrip } from '../lib/engine'
 import { cap, titleCase } from '../lib/labels'
@@ -118,7 +119,10 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
   // `fetched` here as well would be a second mechanism for one question.)
   const trip: Trip | undefined = cachedTrip ?? fetched ?? undefined
   const { isSaved, toggleSaved } = useSavedPubs()
-  const heroAuto = useDestinationCover(pub ? (pub.routeSummary.length ? pub.routeSummary : [pub.title]) : null)
+  // The candidates come from `coverCandidates`, shared with the owner-side sweep
+  // that stores a resolved cover for a publication that has none (#360): the
+  // crawler has to end up with the picture this hero is already showing.
+  const heroAuto = useDestinationCover(pub ? coverCandidates(pub) : null)
   useEffect(() => {
     if (pub) registerPubView(pub.id)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps

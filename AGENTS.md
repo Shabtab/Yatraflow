@@ -148,6 +148,20 @@ Key locations:
    `git status -sb` and `git log origin/<branch>..<branch>`; reconcile
    foreign unpushed commits (reset/supersede **with user approval**) rather
    than shipping them.
+   **A diagnosis in the tracker is an invitation, so claim the work in the
+   same breath (learned 2026-09-29).** One lane re-verified #360, posted a
+   precise analysis on the issue — what had landed, what was left, which of
+   two options it recommended — and then started building that option. A
+   second lane read the comment, agreed with the recommendation, and built
+   the same fix; both were complete, tested and gated, and one had to be
+   closed as superseded. Neither agent did anything wrong: the comment said
+   *what* to do without saying *who*, and an unclaimed recommendation in a
+   shared tracker reads as an invitation. So end an analysis you intend to
+   implement with the claim ("taking this — branch `x` from `test`"), and
+   before starting an issue you have just analysed, run
+   `git ls-remote --heads origin | grep <issue-number>` — a lane-D branch
+   already existed for this one and one command would have shown it. The
+   cheap version of the same check: assign yourself the issue.
 5. **UI-audit remediation is tracked in `ROADMAP.md`** (🟣 section): tick a
    finding in the same commit that fixes it — batch status table only, prose
    goes to CHANGELOG. `docs/UI_AUDIT.md` is the per-finding reference
