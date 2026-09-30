@@ -25,6 +25,7 @@ import { fetchCreateFunnelEvents } from '../lib/createFunnelRead'
 import { deriveCreateFunnel } from '../lib/createEvents'
 import { formatInr } from '../lib/engine'
 import type { Trip, User } from '../data/types'
+import { appLink } from '../lib/appLink'
 
 type AdminTab = 'overview' | 'users' | 'trips' | 'invites' | 'content' | 'analytics' | 'audit'
 
@@ -302,7 +303,7 @@ function TripsTab() {
         <tbody>
           {trips.map(t => (
             <tr key={t.id}>
-              <td><a href={`#/trip/${t.id}`}>{t.name}</a><br /><span className="muted small">{t.days.length}d · {t.destinations.join(' → ') || t.startLocation}</span></td>
+              <td><a {...appLink(`/trip/${t.id}`)}>{t.name}</a><br /><span className="muted small">{t.days.length}d · {t.destinations.join(' → ') || t.startLocation}</span></td>
               <td className="small">{ownerOf(t)?.profile.name ?? '—'}<br /><span className="muted small">{ownerOf(t)?.email ?? ''}</span></td>
               <td className="num">{t.members?.length ?? 0}</td>
               <td><Chip tone={t.visibility === 'public' ? 'ok' : 'info'}>{t.visibility}</Chip></td>
@@ -380,7 +381,7 @@ function InvitesTab() {
         <tbody>
           {rows.map(({ trip: t, joins30d }) => (
             <tr key={t.id}>
-              <td><a href={`#/trip/${t.id}`}>{t.name}</a><br /><span className="muted small">{t.visibility}</span></td>
+              <td><a {...appLink(`/trip/${t.id}`)}>{t.name}</a><br /><span className="muted small">{t.visibility}</span></td>
               <td className="num">{joins30d}</td>
               <td className="num">{t.members?.length ?? 0}</td>
               <td>
@@ -450,7 +451,7 @@ function ContentTab() {
               const creator = db.users.find(u => u.id === p.creatorId)
               return (
                 <tr key={p.id}>
-                  <td><a href={`#/pub/${p.id}`}>{p.title}</a><br /><span className="muted small">{p.routeSummary.join(' → ')}</span></td>
+                  <td><a {...appLink(`/pub/${p.id}`)}>{p.title}</a><br /><span className="muted small">{p.routeSummary.join(' → ')}</span></td>
                   <td className="small">{creator?.profile.name ?? '—'}</td>
                   <td className="num">{p.views}</td>
                   <td className="num">{p.copies}</td>

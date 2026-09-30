@@ -15,6 +15,7 @@ import { ImportTripButton } from '../components/ImportTripButton'
 import { sliceState, emptyCopyFor, readState } from '../lib/readState'
 import type { Trip, User } from '../data/types'
 import { TRAVEL_STYLES } from '../data/types'
+import { appLink } from '../lib/appLink'
 
 type SortKey = 'recent' | 'name' | 'budget-asc' | 'budget-desc' | 'length-desc'
 type WhenKey = 'all' | 'upcoming' | 'past' | 'draft'
@@ -300,7 +301,7 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
               const others = (t.members ?? []).filter(m => m.userId !== meId)
               return (
                 <div key={t.id} className="card itin-card trip-enter" style={{ animationDelay: `calc(var(--stagger-step) * ${Math.min(i, 8)})` }}>
-                  <a className="trip-card-hit" href={`#/trip/${t.id}`}>
+                  <a className="trip-card-hit" {...appLink(`/trip/${t.id}`)}>
                     <CoverThumb
                       variant="short"
                       trip={t}

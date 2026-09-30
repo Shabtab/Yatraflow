@@ -16,6 +16,34 @@ export const CREATE_PATH = `/${CREATE_SEGMENT}`
 /** The hash form, for links, redirects and `location.hash = CREATE_ROUTE`. */
 export const CREATE_ROUTE = `#${CREATE_PATH}`
 
+/** Every first segment the router resolves (`App.tsx`'s pre-switch gates and
+ *  `switch`, including '' for the bare route). The legacy-hash bridge maps an
+ *  old `#/seg/…` bookmark onto `/{seg}/…` when — and only when — the head is
+ *  one of these, so a stale in-app address lands where the router actually
+ *  answers instead of the `default:`. Pinned against `App.tsx` itself by
+ *  `tests/route-integrity.test.ts` (table ⊆ handled), the same extraction that
+ *  polices `LEGACY_SCHEMES` — a router case renamed without updating this list
+ *  fails the gate rather than stranding the bookmark. `creator` keeps its own
+ *  case in the switch, so the bridge maps `#/creator/<id>` to `/creator/<id>`;
+ *  the crawler-facing card lives at `/c/<id>` and stays slice 3's reconciliation. */
+export const ROUTED_SEGMENTS: readonly string[] = [
+  'pub',
+  'trips',
+  'share',
+  'join',
+  'invite',
+  'creator',
+  'explore',
+  'auth',
+  CREATE_SEGMENT,
+  'created',
+  'trip',
+  'profile',
+  'purchases',
+  'creator-hub',
+  'admin',
+]
+
 // ============ Real paths, and the legacy hashes that must reach them (#426)
 //
 // Every screen in this app is addressed by a fragment today, which means every

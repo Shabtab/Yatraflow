@@ -67,7 +67,7 @@ function stripVersion(raw: Record<string, unknown>): Record<string, unknown> {
 
 export function snapshotUrl(trip: Trip, payload: string): string {
   void trip
-  return `${location.origin}/#/share/${payload}`
+  return `${location.origin}/share/${payload}`
 }
 
 // ---- decompression helper ----

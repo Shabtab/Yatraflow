@@ -586,7 +586,7 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
                   </div>
                 )}
                 {creator && (
-                  <a className="btn btn-outline btn-sm" style={{ marginTop: 12 }} {...appLink(`#/creator/${creator.id}`)}>
+                  <a className="btn btn-outline btn-sm" style={{ marginTop: 12 }} {...appLink(`/creator/${creator.id}`)}>
                     More from {creator.profile.name} →
                   </a>
                 )}

@@ -6,16 +6,17 @@ import { PillNav } from '../components/PillNav'
 import { useTablist } from '../hooks/useTablist'
 import { useDb, currentUser, login, signup } from '../store/store'
 import { isSupabaseConfigured } from '../lib/supabase'
+import { currentQuery } from '../lib/router'
 import { MISSING_BACKEND_MESSAGE } from '../lib/authErrors'
 import { Field } from '../components/ui'
 
 /** Post-login destination: the `next` param when the auth page was entered
  *  from a deep link (an invite), else My Trips. The param is
- *  attacker-controllable input, so it is validated as a same-app hash route:
+ *  attacker-controllable input, so it is validated as a same-app route:
  *  must start with a single "/" and contain only path characters — no
  *  scheme ("https:"), no protocol-relative "//host", no query injection. */
 function nextRoute(): string {
-  const raw = new URLSearchParams(location.hash.split('?')[1] ?? '').get('next')
+  const raw = currentQuery().get('next')
   if (!raw) return '/trips'
   const decoded = (() => { try { return decodeURIComponent(raw) } catch { return raw } })()
   if (!/^\/[a-z0-9\-/]*$/i.test(decoded) || decoded.includes('//')) return '/trips'
@@ -27,7 +28,7 @@ const AUTH_MODES = ['login', 'signup'] as const
 export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
   const db = useDb()
   const me = currentUser(db)
-  const [mode, setMode] = useState<'login' | 'signup'>(location.hash.includes('mode=signup') ? 'signup' : 'login')
+  const [mode, setMode] = useState<'login' | 'signup'>(currentQuery().get('mode') === 'signup' ? 'signup' : 'login')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')

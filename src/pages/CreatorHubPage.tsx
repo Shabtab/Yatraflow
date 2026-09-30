@@ -33,6 +33,7 @@ import {
 import { formatInr } from '../lib/engine'
 import { formatHM, useTimeFormat } from '../lib/timefmt'
 import { Chip, ConfirmDialog, Field, toast } from '../components/ui'
+import { appLink } from '../lib/appLink'
 
 /** Social links are stored raw and later emitted as an `href`, so a non-URL
  *  value becomes a live broken link. The inputs are `type="url"` but sit
@@ -209,7 +210,7 @@ export function CreatorHubPage({ onNavigate }: { onNavigate: (r: string) => void
           <p className="muted small">{me.email}</p>
         </div>
         {me.profile.isCreator && (
-          <a className="btn btn-outline btn-sm" href={`#/creator/${me.id}`}>
+          <a className="btn btn-outline btn-sm" {...appLink(`/creator/${me.id}`)}>
             <InlineIcon icon={ExternalLink} size={13} gap={5} />View public page
           </a>
         )}
@@ -692,7 +693,7 @@ export function HubOverview({ myPubs, onUnpublish, onNavigate, daily, dailyAt, s
                   return (
                     <div key={p.id} className="hub-lead-row">
                       <span className="hub-lead-title">
-                        <a href={`#/pub/${p.id}`}>{p.title}</a>
+                        <a {...appLink(`/pub/${p.id}`)}>{p.title}</a>
                         {unpublished && <Chip tone="info">Unpublished</Chip>}
                         {stale && <Chip tone="saffron">Page behind itinerary</Chip>}
                         {/* Where it goes and how long — not what it costs. The
