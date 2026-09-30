@@ -263,6 +263,17 @@ export const NO_PROBE_SURFACE = {
     // suite exercises end to end.
     reason: 'redefines `claim_paid_order` — the function exists before and after, so presence answers nothing; tests/claim-opaque.test.ts pins the newest body (one opaque exception, reasons only in `raise log`, grants unchanged) and the claim path is exercised by the RLS contract suite',
   },
+  '20260930_pub_events_share_source_allowlist.sql': {
+    // CHECK constraints only (widens pub_events.source / trips.ref from five
+    // values to seven for F7 · #228): the same shape as the publish-rules
+    // entry above — the check probes tables/columns/buckets and cannot see a
+    // constraint, and the columns are probed by the 20260929 migration that
+    // created them. What makes the widening covered instead of unverified is
+    // the three-way vocabulary pin in tests/share-attribution.test.ts, which
+    // reads the NEWEST constraint definition and asserts shareUrl.ts, api/i.js
+    // and schema.sql all agree with it.
+    reason: 'CHECK constraints only — widens the share-attribution vocabulary; the check cannot see a constraint and the columns are probed by the 20260929 migration; the new values are pinned against shareUrl.ts, api/i.js and schema.sql by tests/share-attribution.test.ts',
+  },
 }
 
 /** The plan: one entry per migration file, with its probes and the reason none

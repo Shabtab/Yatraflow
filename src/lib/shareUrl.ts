@@ -3,8 +3,16 @@ import { routeParts } from './pageTitle'
 
 const PUBLIC_ORIGIN = 'https://yatraflow-blond.vercel.app'
 
-export function publicShareUrl(pubId: string, origin: string, native = false): string {
-  return `${native ? PUBLIC_ORIGIN : origin.replace(/\/+$/, '')}/i/${encodeURIComponent(pubId)}`
+/** A link minted for one publication, optionally stamped with its route out
+ *  (F7 · #228 — the WhatsApp send stamps its own channel, `wa`). Absent means
+ *  the address is untouched — every existing caller keeps its exact output.
+ *  The ref is vocabulary-checked by withShareRef, so a non-vocabulary value
+ *  is dropped rather than smuggled through. */
+export function publicShareUrl(pubId: string, origin: string, native = false, ref?: ShareSource | null): string {
+  return withShareRef(
+    `${native ? PUBLIC_ORIGIN : origin.replace(/\/+$/, '')}/i/${encodeURIComponent(pubId)}`,
+    ref,
+  )
 }
 
 /** The creator page's SHARE address (#362): `/c/<creatorId>`, the server path
@@ -57,8 +65,8 @@ export function syncPublicAddress(): void {
   }
 }
 
-export function currentPublicShareUrl(pubId: string): string {
-  return publicShareUrl(pubId, location.origin, Capacitor.isNativePlatform())
+export function currentPublicShareUrl(pubId: string, ref?: ShareSource | null): string {
+  return publicShareUrl(pubId, location.origin, Capacitor.isNativePlatform(), ref)
 }
 
 export function currentCreatorShareUrl(creatorId: string): string {
@@ -94,17 +102,26 @@ export function purchaseShareMessage(title: string, url: string): string {
 }
 
 /**
- * Share-attribution vocabulary (#230). One `ref` value per way a link can
- * leave the building — or, for in-app forks with no link at all, per surface
- * the fork happened on. `null` is the honest answer for a visitor who arrived
- * some other way (typed/copied address, old link, shared by hand) and is
- * rendered as "direct", never guessed.
+ * Share-attribution vocabulary (#230, widened for F7 · #228). One `ref` value
+ * per way a link can leave the building — or, for in-app forks with no link
+ * at all, per surface the fork happened on. `null` is the honest answer for a
+ * visitor who arrived some other way (typed/copied address, old link, shared
+ * by hand) and is rendered as "direct", never guessed.
+ *
+ * F7's addition is two values, deliberately an allowlist and not free text:
+ * `wa` (the WhatsApp send stamps its own channel) and `community` (a
+ * distribution post outside the app — a subreddit, a group that is not
+ * WhatsApp — named as a category, never as somebody's sentence). A free-form
+ * slug would put a stranger's sentence into every share URL and, later, into
+ * an analytics read; the allowlist keeps a channel a category, not a message.
  *
  * The list is pinned to the `pub_events.source` / `trips.ref` CHECK constraints
- * in supabase/migrations/20260929_pub_events_share_source.sql — a test asserts
- * the two lists agree, so a new value is added in both places or not at all.
+ * in the NEWEST migration defining them (currently
+ * supabase/migrations/20260930_pub_events_share_source_allowlist.sql — the
+ * 20260929 file carries the original five) — a test asserts the lists agree,
+ * so a new value is added in all places or not at all.
  */
-export const SHARE_SOURCES = ['copy', 'buyer', 'explore', 'creator', 'purchases'] as const
+export const SHARE_SOURCES = ['copy', 'buyer', 'explore', 'creator', 'purchases', 'wa', 'community'] as const
 export type ShareSource = typeof SHARE_SOURCES[number]
 
 /** How each route reads on the admin console. `direct` is the read-side name
@@ -116,6 +133,8 @@ export const SHARE_SOURCE_LABELS: Record<string, string> = {
   explore: 'Explore',
   creator: 'Creator page',
   purchases: 'My purchases',
+  wa: 'WhatsApp',
+  community: 'Community post',
   direct: 'Direct',
 }
 
