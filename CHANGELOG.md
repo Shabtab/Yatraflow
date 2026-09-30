@@ -40,6 +40,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 ### Changed
 
 - "Which photo is this publication's" is one rule in one place. The public page's hero and the owner-side sweep that stores a cover for a publication that never had one resolve the same candidates in the same order — the route summary, then the title — and each used to spell that order out separately, which is how the page and a share card drift apart a second time. Both call sites now read `coverCandidates`, and a test fails if either starts deriving its own.
+- **The address migration has its table (#426, first slice).** Every shareable scheme an old link can carry — `pub`, `join`, `invite`, `share`, `creator` — now has one declared real path and the rule that maps a legacy hash onto it (`lib/routes`), with a test that fails if a scheme maps to a path nothing serves: the router itself, or a function of its own the way `/c/<id>` is answered by `api/c.js`. The ids and queries ride through untouched, so a link a crawler already saw is not re-encoded on the way. Nothing on a live surface reads the table yet — this is the part that has to be right before the router moves off hashes.
 
 ## [0.71.0] - 2026-09-29
 
