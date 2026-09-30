@@ -5,8 +5,11 @@
 //
 //   * ONE vocabulary across the THREE places that cannot import each other —
 //     src/lib/shareUrl.ts (the app), api/i.js (plain JS outside src) and the
-//     SQL CHECK constraints (the migration + schema.sql). A new ref value is
-//     added in all of them or not at all, and this file is what says so.
+//     SQL CHECK constraints (the NEWEST migration defining them + schema.sql).
+//     A new ref value is added in all of them or not at all, and this file is
+//     what says so. Newest-wins: #228 widened the list in a later file, so the
+//     CHECK pins read the last definition, not the first (the rail body pins
+//     below stay on the original file — the rail itself never changes).
 //   * The URL helpers: a ref rides the QUERY (a fragment never reaches a
 //     crawler, a redirect, or location.search), survives a hash, and is never
 //     duplicated or invented.
@@ -21,7 +24,7 @@
 // tests/pub-counters.test.ts; the fork's trip stamp runs in
 // tests/forkPersist.test.ts.
 import { describe, expect, it, vi } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { SHARE_SOURCES, SHARE_SOURCE_LABELS, shareRefFromSearch, withShareRef } from '../src/lib/shareUrl'
 import { tripToRow, rowToTrip, type OptionalColumnsProbe, type TripRow } from '../src/lib/tripRow'
 import type { Trip } from '../src/data/types'
@@ -45,6 +48,16 @@ function codeOf(source: string): string {
 const shareUrlSrc = read('../src/lib/shareUrl.ts')
 const handlerSrc = codeOf(read('../api/i.js'))
 const migrationSrc = codeOf(read('../supabase/migrations/20260929_pub_events_share_source.sql'))
+/** The newest migration defining the share-attribution CHECKs — the vocabulary
+ *  pin reads the last word. #228's allowlist widened the list in a later file;
+ *  pinning the original would fail the day the widening lands, which is the
+ *  pin doing its job, and pinning the newest keeps it green for the right
+ *  reason. */
+const checkDefiners = readdirSync(new URL('../supabase/migrations/', import.meta.url))
+  .filter((f) => f.endsWith('.sql'))
+  .filter((f) => codeOf(read(`../supabase/migrations/${f}`)).includes('pub_events_source_check'))
+  .sort()
+const checkSrc = codeOf(read(`../supabase/migrations/${checkDefiners[checkDefiners.length - 1]}`))
 const schemaSrc = codeOf(read('../supabase/schema.sql'))
 
 /** A captured `'a', 'b', 'c'` list → ['a','b','c']. */
@@ -68,8 +81,8 @@ describe('one vocabulary, three places that cannot import each other', () => {
   })
 
   it('the migration pins BOTH columns to the same list', () => {
-    const source = /check \(source is null or source in \(([^)]*)\)\)/.exec(migrationSrc)
-    const ref = /check \(ref is null or ref in \(([^)]*)\)\)/.exec(migrationSrc)
+    const source = /check \(source is null or source in \(([^)]*)\)\)/.exec(checkSrc)
+    const ref = /check \(ref is null or ref in \(([^)]*)\)\)/.exec(checkSrc)
     expect(source, 'pub_events.source CHECK exists').not.toBeNull()
     expect(ref, 'trips.ref CHECK exists').not.toBeNull()
     expect(csv(source![1])).toEqual(expected)
@@ -89,6 +102,28 @@ describe('one vocabulary, three places that cannot import each other', () => {
     for (const s of [...SHARE_SOURCES, 'direct']) {
       expect(SHARE_SOURCE_LABELS[s], `${s} is labelled`).toBeTruthy()
     }
+  })
+
+  it('the CHECK pin reads the last word, not the first', () => {
+    // Two files define the constraints; whichever sorts LAST is what a fresh
+    // in-order apply leaves behind, and that is the one the pin above read.
+    expect(checkDefiners).toEqual([
+      '20260929_pub_events_share_source.sql',
+      '20260930_pub_events_share_source_allowlist.sql',
+    ])
+  })
+
+  it('the widening migration cannot ship undeclared', () => {
+    // check:migrations probes tables, columns and buckets — never a CHECK
+    // constraint — so a constraint-only migration must be declared in
+    // NO_PROBE_SURFACE with a reason naming its coverage, or the ratchet
+    // fails it as undeclared.
+    const plan = read('../scripts/checkMigrations.mjs')
+    const at = plan.indexOf("'20260930_pub_events_share_source_allowlist.sql': {")
+    expect(at, 'the allowlist migration is not declared in NO_PROBE_SURFACE').toBeGreaterThan(-1)
+    const entry = plan.slice(at, plan.indexOf('\n  },', at))
+    expect(entry).toMatch(/CHECK constraints only/)
+    expect(entry).toContain('tests/share-attribution.test.ts')
   })
 })
 

@@ -11,9 +11,12 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // #230 — the share-attribution vocabulary. Mirrors SHARE_SOURCES in
 // src/lib/shareUrl.ts (this handler is plain JS outside src and cannot import
 // client code); tests/share-attribution.test.ts pins the two lists to each
-// other, and supabase/migrations/20260929_pub_events_share_source.sql pins the
-// same list into the CHECK constraints.
-const SHARE_SOURCES = ['copy', 'buyer', 'explore', 'creator', 'purchases']
+// other, and the NEWEST migration defining the CHECK constraints pins the
+// same list into the database (currently
+// supabase/migrations/20260930_pub_events_share_source_allowlist.sql —
+// `wa` (the WhatsApp send's own channel) and `community` (a distribution post
+// outside the app) joined the original five for F7 · #228).
+const SHARE_SOURCES = ['copy', 'buyer', 'explore', 'creator', 'purchases', 'wa', 'community']
 const COVER_WIDTH = 1200
 const WIKIMEDIA_PATH_RE = /^https:\/\/[^/]*wikimedia\.org\/wikipedia\/([^/]+)\/(.+)$/
 

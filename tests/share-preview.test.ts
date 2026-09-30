@@ -773,6 +773,83 @@ describe('the shared link carries its route in (#230)', () => {
 })
 
 // F3 (#227) — the send unit for "one published link to a WhatsApp group".
+
+// F7 (#228) — the channel a shared link travelled through, so a distribution
+// post can be measured. Option A: the channel is a vocabulary value, not a
+// free-form slug — `wa` (the WhatsApp send's own channel) and `community` (a
+// post outside the app). Anything else is dropped at every layer, which is
+// what keeps a stranger's sentence out of the analytics log.
+describe('a shared link carries its channel', () => {
+  it('reads an allowlisted channel — and drops anything that is not one', async () => {
+    const { shareRefFromSearch } = await import(shareUrlPath)
+    expect(shareRefFromSearch('?ref=wa')).toBe('wa')
+    expect(shareRefFromSearch('?ref=community')).toBe('community')
+    // A ref rides beside other parameters, not instead of them.
+    expect(shareRefFromSearch('?buyer=ent/1&ref=wa')).toBe('wa')
+    // Absent, empty, or not in the vocabulary: no reference rather than a
+    // free-text one. A community slug is a category the allowlist does not
+    // have, so it reads as direct — never stored, never forwarded.
+    expect(shareRefFromSearch('')).toBeNull()
+    expect(shareRefFromSearch('?ref=')).toBeNull()
+    expect(shareRefFromSearch('?ref=r-indiatravel')).toBeNull()
+    expect(shareRefFromSearch('?ref=WA')).toBeNull()
+    expect(shareRefFromSearch('?ref=<script>')).toBeNull()
+    expect(shareRefFromSearch('?ref=two words')).toBeNull()
+  })
+
+  it('appends the channel to the share address — and changes nothing without one', async () => {
+    const { publicShareUrl } = await import(shareUrlPath)
+    // The no-ref address is byte-identical to before: every existing caller
+    // and pin keeps its exact output.
+    expect(publicShareUrl('kerala-trip_1', 'https://app.example.test/', false))
+      .toBe('https://app.example.test/i/kerala-trip_1')
+    expect(publicShareUrl('kerala-trip_1', 'https://app.example.test/', false, 'wa'))
+      .toBe('https://app.example.test/i/kerala-trip_1?ref=wa')
+    expect(publicShareUrl('kerala-trip_1', 'https://app.example.test/', false, 'community'))
+      .toBe('https://app.example.test/i/kerala-trip_1?ref=community')
+    // A non-vocabulary ref is dropped, not smuggled through.
+    expect(publicShareUrl('kerala-trip_1', 'https://app.example.test/', false, 'r-indiatravel' as never))
+      .toBe('https://app.example.test/i/kerala-trip_1')
+    // Native keeps minting the production origin, with the ref.
+    expect(publicShareUrl('kerala-trip_1', 'capacitor://localhost', true, 'wa'))
+      .toBe('https://yatraflow-blond.vercel.app/i/kerala-trip_1?ref=wa')
+  })
+
+  it('the send stamps its own channel by default, and the message is unchanged', async () => {
+    // The owner's guard: one honest sentence, no new copy. The ref rides the
+    // link, so the register pin from #531 holds verbatim.
+    const { publicationShareMessage } = await import(shareUrlPath)
+    const refd = 'https://app.example.test/i/kerala-trip_1?ref=wa'
+    expect(publicationShareMessage('Kerala 10d', refd))
+      .toBe(`The "Kerala 10d" trip plan on YatraFlow — see it here: ${refd}`)
+    const source = read('../src/lib/whatsAppShare.ts')
+    expect(source).toMatch(/ref: ShareSource \| null = 'wa'/)
+  })
+
+  it('a second hop keeps the arrival channel instead of laundering it', () => {
+    const source = readFileSync(new URL('../src/pages/PublicItinerary.tsx', import.meta.url), 'utf8')
+    // The page reads the arrival ref and passes it to its own send: a link
+    // that travelled through a post keeps that post's reference.
+    expect(source).toMatch(/const arrivalRef = shareRefFromSearch\(location\.search\)/)
+    expect(source).toMatch(/sharePublicationOnWhatsApp\(pub, arrivalRef \?\? 'wa'\)/)
+  })
+
+  it('the reference survives the address sync while the publication does not change', async () => {
+    // #362's sync drops a stale BUYER credential when the promoted id changes;
+    // a channel reference belongs to the publication the visitor is standing
+    // on, so the same-id keep applies — the ref is still in the address after
+    // the sync runs.
+    const { syncPublicAddress } = await import(shareUrlPath)
+    const replaceState = vi.fn()
+    vi.stubGlobal('location', { protocol: 'https:', pathname: '/i/kerala-trip_1', search: '?ref=community', hash: '#/pub/kerala-trip_1' })
+    vi.stubGlobal('history', { state: null, replaceState })
+    syncPublicAddress()
+    // No rewrite at all: the path already names this publication, so the
+    // query — the channel — stays exactly where the visitor's address has it.
+    expect(replaceState).not.toHaveBeenCalled()
+    vi.unstubAllGlobals()
+  })
+})
 describe('sending a publication on WhatsApp', () => {
   it('builds a click-to-chat address whose message survives the encoding', async () => {
     // The message carries a URL: spaces and query separators must not be

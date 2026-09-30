@@ -18,7 +18,7 @@
 //     #409 shelf pattern); this module is async and never throws.
 
 import { nativeCopyText, nativeShareText, openExternal } from './native'
-import { currentPublicShareUrl, publicationShareMessage } from './shareUrl'
+import { currentPublicShareUrl, publicationShareMessage, type ShareSource } from './shareUrl'
 import { toast } from '../components/ui'
 
 /** WhatsApp's click-to-chat with the message pre-filled. Pure so the
@@ -30,9 +30,16 @@ export function whatsAppSendUrl(text: string): string {
 
 /** Offer the publication to a WhatsApp group. Resolves true when the link
  *  reached somewhere the visitor can paste it — the sheet, or the clipboard
- *  beside the click-to-chat tab. */
-export async function sharePublicationOnWhatsApp(pub: { id: string; title: string }): Promise<boolean> {
-  const url = currentPublicShareUrl(pub.id)
+ *  beside the click-to-chat tab.
+ *
+ *  `ref` is the channel this send counts for (F7 · #228): the send unit's own
+ *  channel by default, or the post's reference when the sharing visitor
+ *  arrived through one. It travels on the LINK, never in the sentence — the
+ *  message stays its one honest clause. Vocabulary-checked: only a
+ *  ShareSource reaches the address, so the stored log can never hold a
+ *  stranger's sentence. */
+export async function sharePublicationOnWhatsApp(pub: { id: string; title: string }, ref: ShareSource | null = 'wa'): Promise<boolean> {
+  const url = currentPublicShareUrl(pub.id, ref)
   const text = publicationShareMessage(pub.title, url)
   if (await nativeShareText({ text, title: pub.title, url }) === 'shared') return true
   // No sheet (most desktops): WhatsApp's click-to-chat with the same
