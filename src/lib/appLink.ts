@@ -1,12 +1,15 @@
 import { Capacitor } from '@capacitor/core'
 import type { MouseEvent } from 'react'
+import { navigate, routeHref } from './router'
 
-type AppHash = `#/${string}`
+type AppRoute = `/${string}`
 type LinkClick = Pick<MouseEvent, 'button' | 'altKey' | 'ctrlKey' | 'metaKey' | 'shiftKey' | 'defaultPrevented'>
 
-/** Web links must escape /i/<id>; native and file builds keep their document path. */
-export function appLinkHref(hash: AppHash, native = false, protocol = 'https:'): string {
-  return !native && /^https?:$/.test(protocol) ? `/${hash}` : hash
+/** Web links carry the real path itself (the address bar and the router read
+ *  the same pathname now, #426 slice 2); native and file builds keep the
+ *  fragment form, whose route lives in the hash until slice 4. */
+export function appLinkHref(route: AppRoute, native = false, protocol = 'https:'): string {
+  return routeHref(route, native, protocol)
 }
 
 export function shouldHandleAppLink(event: LinkClick, target = '', download = false): boolean {
@@ -15,14 +18,18 @@ export function shouldHandleAppLink(event: LinkClick, target = '', download = fa
     (!target || target === '_self') && !download
 }
 
-/** Spread onto a real anchor: browser-owned new tabs, hash-only same-tab navigation. */
-export function appLink(hash: AppHash) {
+/** Spread onto a real anchor: browser-owned new tabs, in-document navigation
+ *  for same-tab clicks. The preventDefault matters on the web — an anchor
+ *  whose href is a real path would otherwise be a FULL page load, dropping
+ *  the store, the session's scroll and the offline shell; navigation must
+ *  stay one pushState inside the running document. */
+export function appLink(route: AppRoute) {
   return {
-    href: appLinkHref(hash, Capacitor.isNativePlatform(), location.protocol),
+    href: appLinkHref(route, Capacitor.isNativePlatform(), location.protocol),
     onClick(event: MouseEvent<HTMLAnchorElement>) {
       if (!shouldHandleAppLink(event, event.currentTarget.target, event.currentTarget.hasAttribute('download'))) return
       event.preventDefault()
-      location.hash = hash
+      navigate(route)
     },
   }
 }

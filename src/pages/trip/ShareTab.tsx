@@ -418,8 +418,8 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
     return () => { alive = false }
   }, [trip.id, inviteCode])
   const inviteLink = inviteCode
-    ? `${location.origin}/#/join/${inviteCode}`
-    : `${location.origin}/#/invite/${trip.id}`
+    ? `${location.origin}/join/${inviteCode}`
+    : `${location.origin}/invite/${trip.id}`
   const pub = db.published.find(p => p.tripId === trip.id)
   // #350 — a soft-unpublished publication keeps its row (so buyers keep what
   // they paid for and the sales history stays whole) but it is NOT live. Every

@@ -11,6 +11,8 @@ import { computeHealth, computeTotals, getAssumptions, isRoadMeasuredMode } from
 import type { LegEstimate } from '../lib/engine'
 import { buildRoadChain, measureRoadChain, correctionsFromLegs, type RoadStatus, type TripRoadView } from '../lib/tripRoad'
 import { computeImpact, type ImpactResult } from '../lib/impact'
+import { routeParts } from '../lib/pageTitle'
+import { currentRoute, replaceRoute } from '../lib/router'
 import { scrollBehavior } from '../lib/motion'
 import { Avatar, toast } from '../components/ui'
 import { useTripPresence } from '../hooks/useTripPresence'
@@ -99,26 +101,26 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
   }, [trip, fetchMissed, tripId])
   const [tab, setTabState] = useState<TabKey>(() => sanitizeTab(initialTab))
   // Normalize a legacy slug in the URL once on mount so existing
-  // #/trip/<id>/suggestions|decisions links keep working but self-heal to `group`.
+  // /trip/<id>/suggestions|decisions links keep working but self-heal to `group`.
   useEffect(() => {
-    const seg = location.hash.replace(/^#/, '').split('/').filter(Boolean)
+    const seg = routeParts(currentRoute())
     if (seg[0] === 'trip' && LEGACY_TAB_SLUGS.includes(seg[2] ?? '')) {
       seg[2] = 'group'
-      history.replaceState(null, '', `#/${seg.join('/')}`)
+      replaceRoute('/' + seg.join('/'))
     }
   }, [])
-  /** F-21: the active tab rides the URL as #/trip/<id>/<tab> (no segment =
-      Overview). replaceState, not location.hash, so switching tabs writes no
-      extra history entry and doesn't trip App's scroll-reset; browser Back
-      still leaves the trip rather than cycling tabs — a tab is a view
-      preference, not a navigation step. */
+  /** F-21: the active tab rides the URL as /trip/<id>/<tab> (no segment =
+      Overview). replaceRoute, not navigate, so switching tabs writes no extra
+      history entry and doesn't trip App's scroll-reset; browser Back still
+      leaves the trip rather than cycling tabs — a tab is a view preference,
+      not a navigation step. */
   function setTab(t: TabKey) {
     setTabState(t)
-    const seg = location.hash.replace(/^#/, '').split('/').filter(Boolean)
+    const seg = routeParts(currentRoute())
     if (t === 'overview') seg.splice(2)
     else if (seg.length >= 3) seg[2] = t
     else seg.push(t)
-    history.replaceState(null, '', `#/${seg.join('/')}`)
+    replaceRoute('/' + seg.join('/'))
   }
   // #87: the tab bar had role="tab" + aria-selected but every tab stayed in
   // the tab order and arrows did nothing — now the shared roving-tabindex

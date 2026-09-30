@@ -10,6 +10,7 @@ import { cap } from '../lib/labels'
 import { openExternal } from '../lib/native'
 import { Avatar, Chip } from './ui'
 import { CoverThumb } from './CoverThumb'
+import { appLink } from '../lib/appLink'
 
 export function PubCard({ pub, creator, saved, onFork, onToggleSave, enterIndex, needsLogin }: {
   pub: PublishedItinerary
@@ -36,7 +37,7 @@ export function PubCard({ pub, creator, saved, onFork, onToggleSave, enterIndex,
       <div className="card itin-card">
         <button className="save-heart" aria-pressed={saved} aria-label={saved ? 'Remove from saved' : 'Save itinerary'}
           onClick={onToggleSave}><Heart size={13} aria-hidden fill={saved ? 'currentColor' : 'none'} /></button>
-        <a className="trip-card-hit" href={`#/pub/${pub.id}`}>
+        <a className="trip-card-hit" {...appLink(`/pub/${pub.id}`)}>
           <CoverThumb
             trip={{ name: pub.title, destinations: pub.routeSummary }}
             explicitUrl={pub.coverImageUrl}
@@ -58,7 +59,7 @@ export function PubCard({ pub, creator, saved, onFork, onToggleSave, enterIndex,
           </div>
         </a>
         <div className="row-between itin-meta">
-          <a className="creator-line" href={`#/creator/${pub.creatorId}`} aria-label={`View ${creator?.profile.name ?? 'creator'}'s page`}>
+          <a className="creator-line" {...appLink(`/creator/${pub.creatorId}`)} aria-label={`View ${creator?.profile.name ?? 'creator'}'s page`}>
             <Avatar user={creator} />{creator?.profile.name ?? 'Creator'}{creator?.profile.isCreator && <InlineIcon icon={Sparkles} size={12} gap={0} style={{ marginLeft: 2 }} />}
           </a>
           <button className="btn btn-primary btn-sm" onClick={onFork}>{needsLogin ? 'Log in to fork' : 'Fork this trip'}</button>

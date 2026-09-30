@@ -45,6 +45,10 @@
     {
       "source": "/mappls/:path*",
       "destination": "https://search.mappls.com/:path*"
+    },
+    {
+      "source": "/((?!api/|i/|c/|sitemap.xml|sw.js|manifest.webmanifest|robots.txt).*)",
+      "destination": "/index.html"
     }
   ]
 }

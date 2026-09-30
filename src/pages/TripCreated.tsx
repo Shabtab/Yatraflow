@@ -86,7 +86,7 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
   }, [trip?.id])
 
   const joinUrl = inviteCode
-    ? `${typeof location !== 'undefined' ? location.origin : ''}/#/join/${inviteCode}`
+    ? `${typeof location !== 'undefined' ? location.origin : ''}/join/${inviteCode}`
     : ''
 
   // conflicts: the engine's own collector, read once for this trip

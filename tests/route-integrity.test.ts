@@ -15,7 +15,8 @@
 // stays in place.
 import { describe, it, expect } from 'vitest'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
-import { CREATE_SEGMENT, CREATE_PATH, CREATE_ROUTE, LEGACY_SCHEMES, legacyRedirectPath } from '../src/lib/routes'
+import { CREATE_SEGMENT, CREATE_PATH, CREATE_ROUTE, LEGACY_SCHEMES, ROUTED_SEGMENTS, legacyRedirectPath } from '../src/lib/routes'
+import { legacyHashRoute } from '../src/lib/router'
 
 /** Strip comments so a route named in prose is never mistaken for a real link.
  *  Only whole-line `//` comments are removed, so `https://` survives. */
@@ -26,11 +27,14 @@ function stripComments(text: string): string {
 }
 
 /** The source with route constants spelled out, so a link written as
- *  `appLink(CREATE_ROUTE)` is scanned exactly like one written `'#/new'`. */
+ *  `appLink(CREATE_PATH)` is scanned exactly like one written `'/new'`. Since
+ *  #426 slice 2 the in-app links are `appLink('/seg…')` spreads — normalizing
+ *  the call name onto `navigate(` lets one regex see every link shape. */
 function expandRouteConstants(text: string): string {
   return stripComments(text)
     .split('CREATE_ROUTE').join(CREATE_ROUTE)
     .split('CREATE_PATH').join(CREATE_PATH)
+    .split('appLink(').join('navigate(')
 }
 
 const app = expandRouteConstants(readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8'))
@@ -53,8 +57,9 @@ const files = readdirSync(srcRoot, { recursive: true })
   .filter((f) => /\.tsx?$/.test(f))
   .map((f) => 'src/' + f.split('\\').join('/'))
 
-/** Every in-app destination in a file: `#/<slug>` literals and
- *  `navigate('/<slug>')` calls (including template-literal and constant forms). */
+/** Every in-app destination in a file: `#/<slug>` literals (the native shell
+ *  still speaks fragments), `navigate('/<slug>')` calls and `appLink('/<slug>')`
+ *  spreads — including template-literal and constant forms. */
 function targetsIn(text: string): string[] {
   const body = expandRouteConstants(text)
   return [
@@ -91,6 +96,45 @@ describe('route integrity', () => {
       [...orphans].map(([slug, where]) => `#/${slug} <- ${where.join(', ')}`),
       'hash targets with no matching case in App.tsx',
     ).toEqual([])
+  })
+})
+
+// #426, slice 2: the bridge that promotes old hash addresses onto the path the
+// router answers. It maps by IDENTITY onto ROUTED_SEGMENTS, so the pin is the
+// direction slice 1's table did not need: every segment the bridge will
+// promote must be a segment the router itself resolves — otherwise a stale
+// bookmark lands on the `default:` (the #398 failure, one hop removed).
+describe('legacy hash bridge (#426, slice 2)', () => {
+  it('promotes only segments the router actually handles', () => {
+    expect(ROUTED_SEGMENTS.length).toBeGreaterThan(8)
+    for (const segment of ROUTED_SEGMENTS) {
+      expect(
+        handled.has(segment),
+        `ROUTED_SEGMENTS names /${segment} but the router has no case for it`,
+      ).toBe(true)
+    }
+  })
+
+  it('keeps the segment list in step with the router it serves', () => {
+    // The router's own cases minus the bridge's exclusions. '' is the bare
+    // route; 'creator' keeps its switch case (the app page lives at
+    // /creator/<id> while /c/<id> stays the crawler card — see routes.ts).
+    for (const segment of ['trips', 'new', 'created', 'trip', 'explore', 'pub', 'creator', 'profile', 'purchases', 'creator-hub', 'admin', 'auth', 'join', 'invite', 'share']) {
+      expect(ROUTED_SEGMENTS, `/${segment} must be bridged`).toContain(segment)
+    }
+  })
+
+  it('maps the hashes the world still carries onto the path form', () => {
+    expect(legacyHashRoute('#/trip/abc123')).toBe('/trip/abc123')
+    expect(legacyHashRoute('#/trips')).toBe('/trips')
+    expect(legacyHashRoute('#/creator/u_9')).toBe('/creator/u_9')
+    expect(legacyHashRoute('#/join/GOA4X2')).toBe('/join/GOA4X2')
+    expect(legacyHashRoute('#/pub/kerala-trip_1?utm_source=x')).toBe('/pub/kerala-trip_1?utm_source=x')
+    expect(legacyHashRoute('#/auth?next=%2Fjoin%2Fx')).toBe('/auth?next=%2Fjoin%2Fx')
+    // A hash this app never routed is left alone, not invented into a path.
+    expect(legacyHashRoute('#/xyz/1')).toBeNull()
+    expect(legacyHashRoute('#/')).toBeNull()
+    expect(legacyHashRoute('')).toBeNull()
   })
 })
 

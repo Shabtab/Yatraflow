@@ -18,6 +18,7 @@ import { formatInr, MODE_SPEED, MODE_COST_PER_KM } from '../lib/engine'
 import { InlineIcon, modeIcon } from './icons'
 import { nativeCopyText } from '../lib/native'
 import { cap } from '../lib/labels'
+import { navigate } from '../lib/router'
 import {
   BENCH_MODES, BENCH_DEFAULTS, BENCH_PRESETS, STAY_STYLES,
   STAY_RATE_PER_NIGHT, MEALS_PER_HEAD_DAY,
@@ -27,7 +28,7 @@ import {
 } from '../lib/planBench'
 import type { StayStyle } from '../data/types'
 import { shareBillImage } from '../lib/billCapture'
-import { CREATE_ROUTE } from '../lib/routes'
+import { CREATE_PATH } from '../lib/routes'
 import { toast, useMedia, usePageVisible, Odometer } from './ui'
 import { haptic, HAPTIC } from '../lib/haptics'
 
@@ -298,7 +299,7 @@ export function PlanBench() {
     // disagree. This line once read '#/create', which no route handles - the
     // router's `default:` sent the visitor back to the landing page, so the CTA
     // looked inert and the stashed prefill was never read (#398).
-    window.location.hash = CREATE_ROUTE
+    navigate(CREATE_PATH)
   }
 
   // Pointer-follow tilt - desktop pointers only, never reduced-motion.

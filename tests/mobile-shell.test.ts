@@ -87,7 +87,8 @@ describe('bottom navigation is a shell-only primary nav', () => {
     expect(app).toContain('{mobileNav && !isNative && (')
     expect(app).toMatch(/\{!isNative && \(\s*<button\s+className="mobile-nav-btn"/)
     // the tray keeps every destination the pill carried
-    for (const dest of ['#/trips', '#/new', '#/explore', '#/creator-hub', '#/profile']) {
+    // Routes are paths now (#426 slice 2): the tray's appLink destinations.
+    for (const dest of ['/trips', '/new', '/explore', '/creator-hub', '/profile']) {
       expect(appResolved, `${dest} must stay reachable`).toContain(dest)
     }
   })

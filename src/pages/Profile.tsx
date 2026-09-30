@@ -25,6 +25,7 @@ import { AI_COMPANION_ENABLED } from '../lib/featureFlags'
 import { cap } from '../lib/labels'
 import { isIosSafari, isStandalone, onInstallAvailability, promptInstall } from '../lib/pwaInstall'
 import { scrollBehavior } from '../lib/motion'
+import { appLink } from '../lib/appLink'
 
 /** Compact relative timestamp for the notifications list ("3m ago"). */
 function formatTimeAgo(ms: number): string {
@@ -152,7 +153,7 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
             {me.profile.isCreator ? (
               <>
                 <button className="btn btn-primary btn-sm" onClick={() => onNavigate('/creator-hub')}>Open creator hub</button>
-                <a className="btn btn-outline btn-sm" style={{ marginLeft: 10 }} href={`#/creator/${me.id}`}>View public page</a>
+                <a className="btn btn-outline btn-sm" style={{ marginLeft: 10 }} {...appLink(`/creator/${me.id}`)}>View public page</a>
               </>
             ) : (
               <button className="btn btn-saffron" onClick={() => { updateProfile({ isCreator: true }); toast('Creator mode enabled — open the hub to add your bio and links.') }}>
