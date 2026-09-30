@@ -734,6 +734,44 @@ describe('the production origin agrees everywhere it is written', () => {
   })
 })
 
+describe('the shared link carries its route in (#230)', () => {
+  it('forwards a vocabulary ref in the redirect — query before hash', async () => {
+    respond([publication])
+    const res = await runHandler('GET', publication.id, { ref: 'copy' })
+    expect(res.statusCode).toBe(200)
+    // The redirect is where the ref survives the server hop: a fragment never
+    // reaches anything, so the app reads location.search.
+    expect(res.body).toContain(`location.replace("/?ref=copy#/pub/${publication.id}")`)
+    expect(res.body).toContain(`href="/?ref=copy#/pub/${publication.id}"`)
+  })
+
+  it('drops an unknown ref — the funnel log is a vocabulary, not free text', async () => {
+    respond([publication])
+    const res = await runHandler('GET', publication.id, { ref: 'bogus' })
+    expect(res.body).toContain(`location.replace("/#/pub/${publication.id}")`)
+    expect(res.body).not.toContain('ref=bogus')
+  })
+
+  it('keeps the buyer’s own metadata clean while the redirect carries the ref', async () => {
+    respondBuyerCard(true)
+    const res = await runHandler('GET', publication.id, { buyer: BUYER, ref: 'buyer' })
+    expect(res.body).toContain(`location.replace("/?ref=buyer#/pub/${publication.id}")`)
+    // The share card advertises the page, not the tracking: og:url keeps the
+    // buyer variant it already had and the canonical stays the publication.
+    const ogUrl = /<meta property="og:url" content="([^"]*)"/.exec(res.body)?.[1] ?? ''
+    expect(ogUrl).toContain(`?buyer=${BUYER}`)
+    expect(ogUrl).not.toContain('ref=')
+    const canonical = /<link rel="canonical" href="([^"]*)"/.exec(res.body)?.[1] ?? ''
+    expect(canonical).toBe(`${DEFAULT_ORIGIN}/i/${publication.id}`)
+  })
+
+  it('a no-ref request redirects exactly as before — direct is the default', async () => {
+    respond([publication])
+    const res = await runHandler('GET', publication.id)
+    expect(res.body).toContain(`location.replace("/#/pub/${publication.id}")`)
+  })
+})
+
 // F3 (#227) — the send unit for "one published link to a WhatsApp group".
 describe('sending a publication on WhatsApp', () => {
   it('builds a click-to-chat address whose message survives the encoding', async () => {

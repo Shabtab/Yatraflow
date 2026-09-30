@@ -33,6 +33,9 @@ export interface TripRow {
   cover_image_url?: string | null;
   /** present only after the invite-code migration (see supabase/schema.sql) */
   invite_code?: string | null; visibility: 'private' | 'public';
+  /** present only after the share-source migration (20260929_pub_events_share_source.sql) —
+   *  how this trip's owner ARRIVED: the shared link's ref, or the in-app surface */
+  ref?: string | null;
   /** present only after the trip-trash migration (20260910_trip_trash.sql) */
   deleted_at?: string | null;
   created_at: number; updated_at: number;
@@ -124,6 +127,7 @@ export function rowToTrip(row: TripRow, members: TripMember[]): Trip {
     localTrain,
     days: row.days ?? [], expenses, coverEmoji: row.cover_emoji,
     coverImageUrl: row.cover_image_url ?? undefined, inviteCode: row.invite_code ?? undefined,
+    ref: row.ref ?? undefined,
     visibility: row.visibility, deletedAt: row.deleted_at != null ? new Date(row.deleted_at).getTime() : undefined,
     createdAt: row.created_at, updatedAt: row.updated_at, members,
   }
@@ -142,6 +146,8 @@ export interface OptionalColumnsProbe {
   tankL: boolean
   rentPerDayInr: boolean
   localTrain: boolean
+  /** share attribution (20260929_pub_events_share_source.sql) */
+  ref: boolean
 }
 
 /**
@@ -177,6 +183,7 @@ export function tripToRow(trip: Trip, ownerId: string, cols?: OptionalColumnsPro
   if (cols?.tankL) row.tank_l = sanitizeTankL(trip.tankL)
   if (cols?.rentPerDayInr) row.rent_per_day_inr = sanitizeRentPerDayInr(trip.rentPerDayInr)
   if (cols?.localTrain) row.local_train = typeof trip.localTrain === 'boolean' ? trip.localTrain : null
+  if (cols?.ref) row.ref = trip.ref ?? null
   return row
 }
 

@@ -16,6 +16,16 @@
 > anti-list item 1 — "no payment-rail code until Stage 1's gate passes" — was overtaken by the
 > rail shipping ahead of that gate, which is a business decision this file recorded rather than
 > made; the i18n, acquisition and marketplace bans in that list still stand.
+>
+> **E3 decision (2026-09-29) — how the readings are kept.** Share attribution ships: shared
+> links carry a `ref`, the funnel log records it on every view and fork (and a fork stamps its
+> trip with it), and the admin console's Analytics tab reads the four rates, the raw counts and
+> a route-in breakdown. The readings themselves are **derived live at read and transcribed by
+> hand into the weekly release-log comment** — a manual weekly reading, deliberately kept out
+> of a snapshot table: the durable record is the event log (`pub_events`,
+> `create_funnel_events`), and a reading is a statement about that log, so it belongs beside
+> the decisions it informs. Stage 0 needs four weeks of accrual, not four tables. Revisit at
+> Stage 1's gate if the weekly transcription ever costs more than a table would.
 
 This is the **execution** plan — the when/what-done layer. The why/what lives in the
 source docs and is not repeated here:

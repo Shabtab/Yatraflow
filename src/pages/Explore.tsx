@@ -186,7 +186,7 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
   function forkTrip(slug: string) {
     const pub = published.find(p => p.id === slug)
     if (!pub) { toast('That itinerary is no longer available.', 'err'); return }
-    void forkPublication(pub, me, onNavigate)
+    void forkPublication(pub, me, onNavigate, undefined, 'explore')
   }
 
   function toggleHeart(id: string) {

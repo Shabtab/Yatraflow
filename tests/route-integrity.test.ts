@@ -14,8 +14,8 @@
 // matching a literal, so they keep seeing the route while the rename-proof form
 // stays in place.
 import { describe, it, expect } from 'vitest'
-import { readFileSync, readdirSync } from 'node:fs'
-import { CREATE_SEGMENT, CREATE_PATH, CREATE_ROUTE } from '../src/lib/routes'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { CREATE_SEGMENT, CREATE_PATH, CREATE_ROUTE, LEGACY_SCHEMES, legacyRedirectPath } from '../src/lib/routes'
 
 /** Strip comments so a route named in prose is never mistaken for a real link.
  *  Only whole-line `//` comments are removed, so `https://` survives. */
@@ -91,5 +91,53 @@ describe('route integrity', () => {
       [...orphans].map(([slug, where]) => `#/${slug} <- ${where.join(', ')}`),
       'hash targets with no matching case in App.tsx',
     ).toEqual([])
+  })
+})
+
+// #426, slice 1: the legacy hash → real path table that the router migration will
+// read. Deliberately behaviour-neutral — nothing on a live surface consults it
+// yet — so what is pinned here is only what would make the redirect WRONG rather
+// than merely unfinished: a scheme that maps to a path nothing serves, a scheme
+// silently dropped from the table, or an id/query mangled on the way through.
+describe('legacy hash → real path (#426)', () => {
+  it('maps each shareable scheme to a path something actually serves', () => {
+    for (const { scheme, segment } of LEGACY_SCHEMES) {
+      // Either the router resolves the segment today, or a serverless function
+      // answers that path: `/c/<id>` is the creator page's share address and has
+      // its own function (api/c.js), exactly as `/i/<id>` does for a publication.
+      // Anything else would redirect a live link onto the router's `default:` —
+      // the landing page — which is the #398 failure with a worse blast radius.
+      const servedInApp = handled.has(segment)
+      const servedByFunction = existsSync(new URL(`../api/${segment}.js`, import.meta.url))
+      expect(
+        servedInApp || servedByFunction,
+        `#/${scheme}/… maps to /${segment}/… but nothing serves it`,
+      ).toBe(true)
+    }
+  })
+
+  it('covers every scheme the issue names, and reads ids and queries through', () => {
+    expect(LEGACY_SCHEMES.map(s => s.scheme)).toEqual(['pub', 'join', 'invite', 'share', 'creator'])
+    expect(legacyRedirectPath('#/pub/pub_1cp2i9jq872')).toBe('/pub/pub_1cp2i9jq872')
+    expect(legacyRedirectPath('#/creator/u_9')).toBe('/c/u_9')
+    expect(legacyRedirectPath('#/join/GOA4X2')).toBe('/join/GOA4X2')
+    expect(legacyRedirectPath('#/invite/u_9')).toBe('/invite/u_9')
+    expect(legacyRedirectPath('#/share/t_7')).toBe('/share/t_7')
+    // The id rides through untouched: re-encoding here is how %2F becomes %252F
+    // on the second hop, and the query is part of the address a crawler saw.
+    expect(legacyRedirectPath('#/pub/abc%2Fdef')).toBe('/pub/abc%2Fdef')
+    expect(legacyRedirectPath('#/pub/abc?utm_source=whatsapp')).toBe('/pub/abc?utm_source=whatsapp')
+  })
+
+  it('leaves a non-legacy hash alone, and sends a bare scheme home', () => {
+    // Null, not a guess: a hash the table does not own stays the router's problem.
+    expect(legacyRedirectPath('#/trip/xyz')).toBeNull()
+    expect(legacyRedirectPath('#/explore')).toBeNull()
+    expect(legacyRedirectPath('#/')).toBeNull()
+    expect(legacyRedirectPath('')).toBeNull()
+    // A bare scheme names nothing, so it goes to the landing path rather than to
+    // a path with an empty id.
+    expect(legacyRedirectPath('#/pub')).toBe('/')
+    expect(legacyRedirectPath('#/pub/')).toBe('/')
   })
 })

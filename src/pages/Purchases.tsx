@@ -110,7 +110,7 @@ export function PurchasesPage({ onNavigate }: { onNavigate: (r: string) => void 
     // find cannot fail) turns a race into a crash, and the message says what the
     // reader would need to know rather than "something went wrong".
     if (!pub) { toast('That plan is no longer listed, so there is nothing to fork.', 'err'); return }
-    void forkPublication(pub, meId, onNavigate)
+    void forkPublication(pub, meId, onNavigate, undefined, 'purchases')
   }
 
   /** Share one row's card, with the row held busy until it resolves (#409). */

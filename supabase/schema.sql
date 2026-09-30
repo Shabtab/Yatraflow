@@ -64,6 +64,8 @@ create table if not exists public.trips (
   cover_emoji               text not null default '🧭',
   cover_image_url           text,
   invite_code               text,
+  -- 20260929_pub_events_share_source.sql — how the owner ARRIVED
+  ref                       text,
   visibility                text not null default 'private'
                               check (visibility in ('private', 'public')),
   created_at                bigint not null default extract(epoch from now()) * 1000,
@@ -85,6 +87,13 @@ alter table public.trips add column if not exists vehicle_profile jsonb;
 alter table public.trips add column if not exists tank_l numeric;
 alter table public.trips add column if not exists rent_per_day_inr numeric;
 alter table public.trips add column if not exists local_train boolean;
+alter table public.trips add column if not exists ref text;
+
+-- Share attribution: one vocabulary across pub_events.source and trips.ref
+-- (mirrors 20260929_pub_events_share_source.sql — idempotent, safe to re-run).
+alter table public.trips drop constraint if exists trips_ref_check;
+alter table public.trips add constraint trips_ref_check
+  check (ref is null or ref in ('copy', 'buyer', 'explore', 'creator', 'purchases'));
 
 -- Invite codes are unique when present (app mints one per trip).
 create unique index if not exists idx_trips_invite_code
@@ -235,13 +244,20 @@ create table if not exists public.published_itineraries (
 -- One row per view/fork. Written ONLY by bump_published_stats below (the same
 -- statement that moves the counter), so the lifetime counters and this log
 -- cannot drift. No user id, no IP — a step happened, never who took it.
+-- `source` (#230) is the step's route in — the shared link's ref or the in-app
+-- surface — vocabulary-checked below; NULL = direct.
 create table if not exists public.pub_events (
   id     bigint generated always as identity primary key,
   pub_id text not null references public.published_itineraries (id) on delete cascade,
   kind   text not null,
   at     timestamptz not null default now(),
+  source text,
   constraint pub_events_kind_check check (kind in ('view', 'fork'))
 );
+alter table public.pub_events add column if not exists source text;
+alter table public.pub_events drop constraint if exists pub_events_source_check;
+alter table public.pub_events add constraint pub_events_source_check
+  check (source is null or source in ('copy', 'buyer', 'explore', 'creator', 'purchases'));
 
 create index if not exists pub_events_pub_at_idx on public.pub_events (pub_id, at desc);
 
@@ -666,7 +682,12 @@ alter publication supabase_realtime add table public.admin_audit;  -- masteradmi
 -- lifetime counter and the funnel log cannot drift. The `not found` guard
 -- keeps an event from describing a step whose counter did not move, and keeps
 -- the anon-callable RPC from stuffing the log with arbitrary ids.
-create or replace function public.bump_published_stats(p_id text, p_kind text)
+-- #230: p_source is the step's route in (see migrations/20260929_pub_events_
+-- share_source.sql). The two-argument overload drops first, or a two-argument
+-- call matches both and Postgres answers "function is not unique".
+drop function if exists public.bump_published_stats(text, text);
+
+create or replace function public.bump_published_stats(p_id text, p_kind text, p_source text default null)
 returns void as $$
 declare
   v_kind text;
@@ -687,11 +708,11 @@ begin
     return;
   end if;
 
-  insert into public.pub_events (pub_id, kind) values (p_id, v_kind);
+  insert into public.pub_events (pub_id, kind, source) values (p_id, v_kind, p_source);
 end;
 $$ language plpgsql security definer set search_path = public;
 
-grant execute on function public.bump_published_stats(text, text) to anon, authenticated;
+grant execute on function public.bump_published_stats(text, text, text) to anon, authenticated;
 
 -- ============================================================
 -- Creator funnel read (see migrations/20260921_pub_funnel_events.sql)

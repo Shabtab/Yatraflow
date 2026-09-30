@@ -48,9 +48,9 @@ function fakeSessionStorage(): Map<string, string> {
 function stubClient(opts: { rpcError?: { message: string } | null; rpcRejects?: boolean } = {}) {
   const upsert = vi.fn().mockResolvedValue({ error: null })
   const update = vi.fn(() => ({ eq: () => Promise.resolve({ error: null }) }))
-  const bumps: Array<{ p_id: string; p_kind: string }> = []
+  const bumps: Array<{ p_id: string; p_kind: string; p_source: string | null }> = []
   const fromSpy = vi.spyOn(supabase, 'from').mockImplementation(() => ({ upsert, update }) as never)
-  const rpcSpy = vi.spyOn(supabase, 'rpc').mockImplementation(((fn: string, args: { p_id: string; p_kind: string }) => {
+  const rpcSpy = vi.spyOn(supabase, 'rpc').mockImplementation(((fn: string, args: { p_id: string; p_kind: string; p_source: string | null }) => {
     bumps.push(args)
     if (opts.rpcRejects) return Promise.reject(new Error('offline'))
     return Promise.resolve({ data: null, error: opts.rpcError ?? null })
@@ -87,7 +87,26 @@ describe('#363 — forks are counted once per session, like views', () => {
 
       expect(rowOf(store, p.id).copies).toBe(p.copies + 1)
       expect(bumps, 'three clicks must be one bump').toHaveLength(1)
-      expect(bumps[0]).toEqual({ p_id: p.id, p_kind: 'copies' })
+      // #230 — the bump carries the step's route in; a bare click has none.
+      expect(bumps[0]).toEqual({ p_id: p.id, p_kind: 'copies', p_source: null })
+    } finally { restore() }
+  })
+
+  it('threads the route in to the RPC — the funnel log records how the reader arrived', async () => {
+    const { bumps, restore } = stubClient()
+    fakeSessionStorage()
+    try {
+      const store = await import('../src/store/store')
+      const p = await store.publishItinerary(pubPayload('t-source', 'owner-1'))
+      ;(store.getSnapshot() as unknown as { sessionUserId: string }).sessionUserId = 'viewer-1'
+
+      store.registerPubView(p.id, 'copy')
+      store.registerPubCopy(p.id, 'explore')
+
+      expect(bumps.map(b => [b.p_kind, b.p_source]).sort()).toEqual([
+        ['copies', 'explore'],
+        ['views', 'copy'],
+      ])
     } finally { restore() }
   })
 
