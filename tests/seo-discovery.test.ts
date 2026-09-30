@@ -68,9 +68,11 @@ describe('robots.txt', () => {
     // id, nothing per-URL for a crawler to read. Blocking the crawl keeps the
     // tag-carrying cards (the sitemap's entries) as the only indexed surface;
     // a visitor is unaffected, robots binds crawlers and not people.
-    const robots = read('../public/robots.txt')
+    // Exact-line membership, not a built RegExp: the rules are literals and
+    // the guard must read them as bytes, the way a crawler does.
+    const rules = read('../public/robots.txt').split('\n').map(l => l.trim())
     for (const prefix of ['/pub/', '/creator/', '/trip/', '/join/', '/created/', '/share/']) {
-      expect(robots).toMatch(new RegExp('^Disallow: ' + prefix.replace('/', '\\/') + '$', 'm'))
+      expect(rules).toContain(`Disallow: ${prefix}`)
     }
   })
 
