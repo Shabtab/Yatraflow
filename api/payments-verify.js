@@ -1,5 +1,5 @@
 // ============ POST /api/payments-verify — confirm a checkout callback (M7) ===
-import { supabaseServiceHeaders, supabaseAnonHeaders } from './_supabase-headers.js'
+import { markOrderPaid } from './_order-mark.js'
 // Razorpay's checkout.js returns { razorpay_order_id, razorpay_payment_id,
 // razorpay_signature } to the browser; the browser forwards them here. The
 // HMAC signature is checked against RAZORPAY_KEY_SECRET, the order row is
@@ -54,21 +54,6 @@ function timingSafeEqualHex(a, b) {
   return diff === 0
 }
 
-async function markOrderPaid(supabaseUrl, serviceKey, razorpayOrderId, paymentId, signal) {
-  const url = `${supabaseUrl.replace(/\/+$/, '')}/rest/v1/purchase_orders` +
-    `?razorpay_order_id=eq.${encodeURIComponent(razorpayOrderId)}&status=eq.pending`
-  const response = await fetch(url, {
-    method: 'PATCH',
-    headers: supabaseServiceHeaders(serviceKey, {
-      'content-type': 'application/json',
-      prefer: 'return=minimal',
-    }),
-    body: JSON.stringify({ status: 'paid', razorpay_payment_id: paymentId, paid_at: new Date().toISOString() }),
-    signal,
-  })
-  if (!response.ok) throw new Error(`order mark-paid failed: ${response.status}`)
-}
-
 /** Grant through the SECURITY DEFINER RPC as the BUYER (the caller's own
  *  JWT), so the RPC's `user_id <> auth.uid()` guard holds. */
 async function claimEntitlement(supabaseUrl, anonKey, token, razorpayOrderId, signal) {
@@ -82,8 +67,10 @@ async function claimEntitlement(supabaseUrl, anonKey, token, razorpayOrderId, si
     body: JSON.stringify({ p_razorpay_order_id: razorpayOrderId }),
     signal,
   })
-  // 404-style P0002/P0004 surface as a non-2xx; a duplicate grant is fine
-  // (on conflict do nothing returns null) and reads as success.
+  // A duplicate grant is fine (`on conflict do nothing` returns NULL) and reads
+  // as success. A refusal is a non-2xx — and since #355 that refusal is ONE
+  // indistinguishable error for "no such order", "not yours" and "not paid", so
+  // nothing here may branch on the difference: there is none left to read.
   return response.ok
 }
 
@@ -140,7 +127,18 @@ export default async function handler(req, res) {
 
   try {
     // 2. Mark paid (service_role — the row is gateway state, not the user's).
-    await markOrderPaid(supabaseUrl, serviceKey, orderId, paymentId, signal)
+    //    The result is now readable (#355), and the one state that must NOT fall
+    //    through to the grant is `refunded`: the money came back, the entitlement
+    //    was deleted with it, and granting here would resurrect revoked access.
+    //    Every other non-marked state (`already-paid`, `still-pending`,
+    //    `missing`) is left to the claim below, which is idempotent and refuses
+    //    on its own terms — that is the existing, audited behaviour.
+    const mark = await markOrderPaid(serviceKey, orderId, paymentId, signal)
+    if (mark.state === 'refunded') {
+      return json(res, 409, {
+        error: 'this payment was refunded, so there is nothing to unlock — the receipt is on your purchases page',
+      })
+    }
     // 3. Grant via the buyer-scoped RPC.
     const granted = await claimEntitlement(supabaseUrl, anonKey, token, orderId, signal)
     if (!granted) return json(res, 503, { error: 'payment confirmed but the unlock could not be saved — support can restore it from the order' })

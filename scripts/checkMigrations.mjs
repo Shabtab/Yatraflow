@@ -249,6 +249,20 @@ export const NO_PROBE_SURFACE = {
     // RPCs) and the migration's own shape by tests/admin-rpc-grants.test.ts.
     reason: 'grants only — the admin RPCs are re-granted rather than created, so presence answers nothing; the live role list is asserted by the RLS contract suite and the migration shape by tests/admin-rpc-grants.test.ts',
   },
+  '20260929_claim_paid_order_opaque.sql': {
+    // Redefines `claim_paid_order` (#355): the function exists before and after,
+    // so no presence probe can tell the leaking body from the opaque one — and
+    // the difference is exactly what a probe cannot see, because the whole point
+    // is that the refusal carries NO distinguishing information. What an
+    // unapplied copy would cost is the three-way oracle coming back, so the fix
+    // is pinned at the source instead: tests/claim-opaque.test.ts reads the
+    // NEWEST definition and asserts one shared `raise exception` sentence, the
+    // three distinct reasons present ONLY as `raise log`, and no legible reason
+    // in the exception text — plus that the grant/revoke lines still name
+    // authenticated-only. The behaviour of the OLD body is what the RLS contract
+    // suite exercises end to end.
+    reason: 'redefines `claim_paid_order` — the function exists before and after, so presence answers nothing; tests/claim-opaque.test.ts pins the newest body (one opaque exception, reasons only in `raise log`, grants unchanged) and the claim path is exercised by the RLS contract suite',
+  },
   '20260930_pub_events_share_source_allowlist.sql': {
     // CHECK constraints only (widens pub_events.source / trips.ref from five
     // values to seven for F7 · #228): the same shape as the publish-rules
