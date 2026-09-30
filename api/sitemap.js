@@ -102,9 +102,12 @@ async function fetchPublicationRows(url, key) {
 }
 
 function renderSitemap(rows, creators, origin) {
-  // The shell is the only non-publication URL a crawler can address: the app
-  // routes on the hash, so `/#/explore` and friends are `/` to a crawler and
-  // cannot be listed separately.
+  // The listed URLs are the surfaces that carry content a crawler can read:
+  // the shell, the publication cards (`/i/<id>`) and the creator cards
+  // (`/c/<id>`), both server-rendered with their own tags. The app's real
+  // paths (`/pub/<id>`, `/explore`, ...) serve the client-rendered shell —
+  // nothing per-URL for a crawler — and robots.txt keeps them out of the
+  // index (#426 slice 3).
   const entries = [`  <url>\n    <loc>${escapeXml(`${origin}/`)}</loc>\n  </url>`]
   // Ordered by recency, not arrival: an updated classic belongs above a newer
   // row nobody has touched since it published.

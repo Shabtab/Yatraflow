@@ -108,9 +108,9 @@ function renderNotFound() {
 <meta name="twitter:title" content="Itinerary not found — YatraFlow" />
 <meta name="twitter:description" content="This itinerary could not be found. Explore published itineraries on YatraFlow." />
 <meta name="twitter:image" content="${escapeHtml(`${origin}/og-default.png`)}" />
-<script>location.replace(${JSON.stringify('/#/explore')})</script>
+<script>location.replace(${JSON.stringify('/explore')})</script>
 </head>
-<body><p>Opening <a href="/#/explore">Explore</a>…</p></body>
+<body><p>Opening <a href="/explore">Explore</a>…</p></body>
 </html>`
 }
 
@@ -148,12 +148,14 @@ function renderPublication(publication, id, buyer = null, ref = null) {
       '<meta property="og:image:height" content="630" />',
     ]),
   ].join('\n')
-  // #230 — the shared link's `ref` rides the QUERY, never the hash (a fragment
-  // never reaches anything) and never the canonical (the share card stays
-  // clean). The redirect forwards it so the app can read `location.search` and
-  // attribute the visit: `/?ref=…#/pub/…`. `ref` was sanitized at the handler —
-  // only vocabulary values arrive here.
-  const target = ref ? `/?ref=${encodeURIComponent(ref)}#/pub/${id}` : `/#/pub/${id}`
+  // #230 — the shared link's `ref` rides the QUERY and never the canonical
+  // (the share card stays clean). The redirect forwards it so the app can read
+  // `location.search` and attribute the visit. #426 slice 3: the target is the
+  // real path — the app routes on the pathname now, so a browser lands on
+  // `/pub/<id>` directly instead of a hash the boot bridge would have to
+  // promote. `ref` was sanitized at the handler — only vocabulary values
+  // arrive here.
+  const target = ref ? `/pub/${id}?ref=${encodeURIComponent(ref)}` : `/pub/${id}`
   const canonical = `${origin}/i/${id}`
   // The buyer's address is a variant of the same page with its own metadata, so
   // it advertises itself; the canonical link still points at the publication.
