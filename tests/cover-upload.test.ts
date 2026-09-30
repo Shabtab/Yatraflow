@@ -222,18 +222,18 @@ describe('#360 — the publications whose hero and crawler card disagree', () =>
     expect(store).toMatch(/update\(\{ cover_image_url: owned\.url \}\)/)
   })
 
-  it('both surfaces derive the candidates from ONE definition', () => {
-    // This used to be two copies — inline in the page's hero, and written out
-    // again in the sweep — which is how the two drift apart a second time: change
-    // the order in one and the stored cover stops being the picture the page
-    // renders, which is the whole disagreement #360 was about. So the rule is
-    // pinned as a single home plus no re-derivation at either call site.
+  it('the hero derives no live cover — only the sweep reads the one definition', () => {
+    // The agreement went one step further (#360 hero half): the page no
+    // longer resolves a live suggestion at all, so there is no second
+    // derivation that could drift from the sweep's. The rule is pinned as a
+    // single home plus readership in exactly one place: the sweep resolves
+    // through it, and the page holds no live-cover derivation of its own.
     const lib = readFileSync(new URL('../src/lib/coverUpload.ts', import.meta.url), 'utf8')
     const page = readFileSync(new URL('../src/pages/PublicItinerary.tsx', import.meta.url), 'utf8')
     const store = readFileSync(new URL('../src/store/store.ts', import.meta.url), 'utf8')
     expect(lib.match(/export function coverCandidates\b/g)).toHaveLength(1)
-    expect(page).toContain('useDestinationCover(pub ? coverCandidates(pub) : null)')
     expect(store).toContain('fetchFirstAvailableThumb(coverCandidates(pub))')
+    expect(page).not.toMatch(/useDestinationCover|heroAuto|coverCandidates/)
     for (const [name, source] of [['the page', page], ['the sweep', store]] as const) {
       expect(source, `${name} derives the candidates itself again`)
         .not.toMatch(/routeSummary\??\.length \?/)

@@ -8,6 +8,12 @@ const DEFAULT_TITLE = 'YatraFlow — Plan real trips, together'
 const DEFAULT_DESCRIPTION = 'Plan realistic India trips together. See the time, distance and cost impact of every stop.'
 const ID_RE = /^[A-Za-z0-9_-]{1,64}$/
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+// #230 — the share-attribution vocabulary. Mirrors SHARE_SOURCES in
+// src/lib/shareUrl.ts (this handler is plain JS outside src and cannot import
+// client code); tests/share-attribution.test.ts pins the two lists to each
+// other, and supabase/migrations/20260929_pub_events_share_source.sql pins the
+// same list into the CHECK constraints.
+const SHARE_SOURCES = ['copy', 'buyer', 'explore', 'creator', 'purchases']
 const COVER_WIDTH = 1200
 const WIKIMEDIA_PATH_RE = /^https:\/\/[^/]*wikimedia\.org\/wikipedia\/([^/]+)\/(.+)$/
 
@@ -105,7 +111,7 @@ function renderNotFound() {
 </html>`
 }
 
-function renderPublication(publication, id, buyer = null) {
+function renderPublication(publication, id, buyer = null, ref = null) {
   // A row the database could not read is a 404-without-canonical card, never
   // the brand card under the id it failed to find (#362).
   if (!publication) return renderNotFound()
@@ -139,7 +145,12 @@ function renderPublication(publication, id, buyer = null) {
       '<meta property="og:image:height" content="630" />',
     ]),
   ].join('\n')
-  const target = `/#/pub/${id}`
+  // #230 — the shared link's `ref` rides the QUERY, never the hash (a fragment
+  // never reaches anything) and never the canonical (the share card stays
+  // clean). The redirect forwards it so the app can read `location.search` and
+  // attribute the visit: `/?ref=…#/pub/…`. `ref` was sanitized at the handler —
+  // only vocabulary values arrive here.
+  const target = ref ? `/?ref=${encodeURIComponent(ref)}#/pub/${id}` : `/#/pub/${id}`
   const canonical = `${origin}/i/${id}`
   // The buyer's address is a variant of the same page with its own metadata, so
   // it advertises itself; the canonical link still points at the publication.
@@ -188,6 +199,12 @@ export default async function handler(req, res) {
   // rendered from it until the RPC above confirms it.
   const rawBuyer = req.query?.buyer
   const buyer = typeof rawBuyer === 'string' && UUID_RE.test(rawBuyer) ? rawBuyer : null
+  // A malformed `ref` is DROPPED, same as `buyer`: an unknown value must not
+  // reach the funnel log. This list mirrors src/lib/shareUrl.ts's SHARE_SOURCES
+  // (this function is plain JS outside src and cannot import client code —
+  // tests/share-attribution.test.ts pins the two lists to each other).
+  const rawRef = req.query?.ref
+  const ref = typeof rawRef === 'string' && SHARE_SOURCES.includes(rawRef) ? rawRef : null
 
   let publication = null
   let status = 503
@@ -222,5 +239,5 @@ export default async function handler(req, res) {
   }
 
   res.status(status)
-  return req.method === 'HEAD' ? res.end() : res.send(renderPublication(publication, id, verifiedBuyer))
+  return req.method === 'HEAD' ? res.end() : res.send(renderPublication(publication, id, verifiedBuyer, ref))
 }

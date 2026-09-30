@@ -15,7 +15,7 @@
 // previews exactly like a shared one.
 
 import { nativeCopyText, nativeShareText } from './native'
-import { currentBuyerShareUrl, purchaseShareMessage } from './shareUrl'
+import { currentBuyerShareUrl, purchaseShareMessage, withShareRef } from './shareUrl'
 import { toast } from '../components/ui'
 
 /** What sharing needs from a purchase. Deliberately not the whole
@@ -31,7 +31,9 @@ export interface ShareablePurchase {
  *  clipboard where no sheet exists (most desktops). Resolves true when the link
  *  actually went somewhere the buyer can paste it. */
 export async function sharePurchase(purchase: ShareablePurchase): Promise<boolean> {
-  const url = currentBuyerShareUrl(purchase.pubId, purchase.entitlementId)
+  // #230 — the buyer's card is its own attribution channel: whatever transport
+  // carries it (share sheet or clipboard), the link inside says `ref=buyer`.
+  const url = withShareRef(currentBuyerShareUrl(purchase.pubId, purchase.entitlementId), 'buyer')
   const text = purchaseShareMessage(purchase.title, url)
   // `nativeShareText` never throws: 'unavailable' covers a dismissed sheet on
   // some platforms as well as a browser without the API, so the clipboard
