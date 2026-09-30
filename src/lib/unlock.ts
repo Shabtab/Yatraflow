@@ -19,7 +19,7 @@
 // degrades to "no entitlements", which is exactly the pre-M7 behavior.
 
 import { supabase } from './supabase'
-import { ENTITLEMENT_COLUMNS, type Entitlement } from './payments'
+import { ENTITLEMENT_COLUMNS, ORDER_COLUMNS, type Entitlement, type OrderStatus, type PurchaseOrder } from './payments'
 import type { PlatformSale } from './adminStats'
 import { toast } from '../components/ui'
 
@@ -128,6 +128,45 @@ export async function fetchMyPurchases(userId: string | null): Promise<Entitleme
   }))
 }
 
+/** The buyer's purchase ORDERS — where the MONEY state lives (#407).
+ *
+ *  The sibling of `fetchMyPurchases`, and it exists for one specific reason:
+ *  `entitlements` records the GRANT, and a refund DELETES that row, so the orders
+ *  are the only surviving record of a purchase whose money came back. Without
+ *  them a refunded purchase renders as nothing at all — the buyer's receipt is
+ *  gone and a plan they demonstrably paid for disappears from their shelf
+ *  silently, which is worse than any wrong chip could be.
+ *
+ *  REJECTS on a failed read (after logging), exactly like `fetchMyPurchases`:
+ *  "no orders" and "could not read your orders" are different truths, and on a
+ *  shelf whose whole job is to state what you own, the second must never render
+ *  as the first.
+ *
+ *  Owner-only RLS (`user_id = auth.uid()`) keeps this to the buyer's own rows,
+ *  so no join or filter beyond the user id is needed. */
+export async function fetchMyOrders(userId: string | null): Promise<PurchaseOrder[]> {
+  if (!userId) return []
+  const { data, error } = await supabase
+    .from('purchase_orders')
+    .select(ORDER_COLUMNS)
+    .eq('user_id', userId)
+  if (error) {
+    console.error('[yatraflow] orders read failed', error)
+    throw error
+  }
+  return (Array.isArray(data) ? data : []).map((row: Record<string, unknown>) => ({
+    id: row.id as string,
+    userId: (row.user_id as string | null) ?? null,
+    pubId: row.pub_id as string,
+    amountInr: row.amount_inr as number,
+    status: row.status as OrderStatus,
+    createdAt: new Date(row.created_at as string).getTime(),
+    // Null before the gateway captures the money — never `new Date(null)`, which
+    // is 1970 and would render as a real date.
+    paidAt: row.paid_at ? new Date(row.paid_at as string).getTime() : null,
+  }))
+}
+
 /** The SALES of the logged-in creator's publications (I-11). Reads through
  *  the security-definer `get_creator_sales` RPC, scoped by the caller's own
  *  auth.uid() — the RLS-policy path could answer 200-with-zero-rows when the
@@ -228,6 +267,35 @@ export async function fetchCreatorFunnel(opts: { days?: number; signal?: AbortSi
  * the console. The creator IS a payee, and it is what lets the console charge
  * the fee ladder per creator rather than once over the platform total.
  */
+/**
+ * #230 — share attribution, one row per route in ('direct' for the nulls).
+ * Derived at read by the admin_share_attribution RPC (log-only Stage 0 shape),
+ * and rejects rather than degrading to [] — the same empty-vs-error rule as
+ * the revenue read, because a failed read must render Retry, never a friendly
+ * zero that reads as "no shares".
+ */
+export interface ShareAttributionRow {
+  source: string
+  views: number
+  forks: number
+  lastAt: number | null
+}
+
+export async function fetchAdminShareAttribution(days = 90): Promise<ShareAttributionRow[]> {
+  const { data, error } = await supabase
+    .rpc('admin_share_attribution', { p_days: days })
+  if (error) {
+    console.error('[yatraflow] admin share-attribution read failed', error)
+    throw error
+  }
+  return (Array.isArray(data) ? data : []).map((row: Record<string, unknown>) => ({
+    source: String(row.source ?? 'direct'),
+    views: Number(row.views ?? 0),
+    forks: Number(row.forks ?? 0),
+    lastAt: row.last_at ? new Date(row.last_at as string).getTime() : null,
+  }))
+}
+
 export async function fetchAdminRevenue(limit = 1000): Promise<PlatformSale[]> {
   const { data, error } = await supabase
     .rpc('admin_revenue', { p_limit: limit })

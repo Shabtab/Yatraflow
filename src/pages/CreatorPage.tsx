@@ -7,6 +7,7 @@ import { InlineIcon } from '../components/icons'
 import { Camera, Compass, Eye, GitFork, Link2, MapPin, Sparkles, TvMinimalPlay } from 'lucide-react'
 import { useSessionUserId, usePublished, userById, useDb, rereadPublicSlices } from '../store/store'
 import { forkPublication } from '../lib/forkPub'
+import { currentCreatorShareUrl } from '../lib/shareUrl'
 import { openExternal } from '../lib/native'
 import { useSavedPubs } from '../lib/savedPubs'
 import { Avatar, CopyButton, EmptyState } from '../components/ui'
@@ -62,7 +63,10 @@ export function CreatorPage({ creatorId, onNavigate }: { creatorId: string; onNa
   const links: { key: 'youtube' | 'instagram'; href: string; label: string; Icon: typeof Camera }[] = []
   if (creator.profile.socialLinks?.youtube) links.push({ key: 'youtube', href: creator.profile.socialLinks.youtube, label: `${creator.profile.name} on YouTube`, Icon: TvMinimalPlay })
   if (creator.profile.socialLinks?.instagram) links.push({ key: 'instagram', href: creator.profile.socialLinks.instagram, label: `${creator.profile.name} on Instagram`, Icon: Camera })
-  const shareLink = `${location.origin}/#/creator/${creatorId}`
+  // #362: the copied link is the SERVER path (`/c/<id>`), which carries the
+  // creator's own card to a link preview. The hash form never leaves the
+  // browser, so sharing it unfurled as the app shell.
+  const shareLink = currentCreatorShareUrl(creatorId)
 
   return (
     <div>
@@ -133,7 +137,7 @@ export function CreatorPage({ creatorId, onNavigate }: { creatorId: string; onNa
           <div className="explore-grid">
             {pubs.map(p => (
               <PubCard key={p.id} pub={p} creator={creator} saved={isSaved(p.id)}
-                onFork={() => { void forkPublication(p, me, onNavigate) }} needsLogin={!me}
+                onFork={() => { void forkPublication(p, me, onNavigate, undefined, 'creator') }} needsLogin={!me}
                 onToggleSave={() => toggleSaved(p.id)} />
             ))}
           </div>

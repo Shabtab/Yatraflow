@@ -170,6 +170,59 @@ export const ENTITLEMENT_COLUMNS = 'id,user_id,pub_id,order_id,amount_paid_inr,g
 
 export type OrderStatus = 'pending' | 'paid' | 'failed'
 
+/** The exact column list the migration defines for `purchase_orders` — the
+ *  single string every read of the table must select. Same contract as
+ *  `ENTITLEMENT_COLUMNS`, and for the same reason: a column that exists on only
+ *  one side of this list turns the read into a PostgREST 400 (and the silent-[]
+ *  degradation). Keep in sync with 20260918_payments_rail.sql. */
+export const ORDER_COLUMNS = 'id,user_id,pub_id,amount_inr,status,created_at,paid_at' as const
+
+/** One purchase order, as the buyer's shelf needs it (#407).
+ *
+ *  The ORDER is where the MONEY state lives, and it is the only row that
+ *  survives a refund: `revoke_refunded_entitlement` sets the order `failed` and
+ *  DELETES the entitlement row, so a shelf built from entitlements alone loses
+ *  the purchase completely — the buyer's receipt disappears and a plan they paid
+ *  for silently vanishes from "My purchases". */
+export interface PurchaseOrder {
+  id: string
+  /** Null when the buyer's account was hard-deleted (the books keep the sale). */
+  userId: string | null
+  pubId: string
+  /** Rupees charged — `amount_inr`, the gateway's own figure. */
+  amountInr: number
+  status: OrderStatus
+  /** Epoch ms the order was created. */
+  createdAt: number
+  /** Epoch ms the gateway captured the money; null before that. */
+  paidAt: number | null
+}
+
+/** Whether this order's money was captured and later given back.
+ *
+ *  `failed` is written by EXACTLY ONE function — `revoke_refunded_entitlement` —
+ *  and only `where status = 'paid'`, so a failed order is by construction one
+ *  that WAS paid. No other path writes it: a declined card leaves the order
+ *  `pending`, because the verify call that would mark it never runs. That is
+ *  what makes "failed ⇒ refunded" a fact about this schema rather than an
+ *  assumption, and it is why the shelf may read the status as the money state.
+ *
+ *  (`api/checkout.js` also consults this status when deciding whether an
+ *  existing order may be reused — it must not re-serve one that was refunded.) */
+export function isRefunded(order: Pick<PurchaseOrder, 'status'>): boolean {
+  return order.status === 'failed'
+}
+
+/** The date a purchase's receipt should carry: when the money moved.
+ *
+ *  `paid_at` for an order that was paid (which every refunded one was), falling
+ *  back to `created_at` for a row whose `paid_at` is somehow unset. Returning a
+ *  number rather than a string keeps the shelf's own "could not be read"
+ *  handling (`dateReadable`) in charge of how an unreadable date is described. */
+export function orderMoneyAt(order: Pick<PurchaseOrder, 'paidAt' | 'createdAt'>): number {
+  return order.paidAt ?? order.createdAt
+}
+
 /** The grant rule both server paths mirror, stated once: a PAID order grants
  *  exactly one entitlement keyed (userId, pubId); re-grants are no-ops (the
  *  unique index enforces it), and a FAILED or PENDING order grants nothing. */

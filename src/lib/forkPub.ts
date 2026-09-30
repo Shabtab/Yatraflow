@@ -2,6 +2,7 @@
 // and the creator page — one login gate, one premium rule, one toast) ============
 import type { PublishedItinerary, Trip } from '../data/types'
 import { tripById, duplicateTripPersisted, duplicateTripPublicPersisted, registerPubCopy, fetchPublicTrip } from '../store/store'
+import type { ShareSource } from './shareUrl'
 import { fetchMyEntitlements } from './unlock'
 import { hasUnlock } from './payments'
 import { toast } from '../components/ui'
@@ -84,7 +85,7 @@ export function wireWithheld(src: Trip, freeDayIndexes: number[]): boolean {
  *  A negative is never trusted, because the page's flag is `false` while that
  *  read is still in flight — which is exactly when a buyer who has just paid
  *  clicks Fork. */
-export async function forkPublication(pub: PublishedItinerary, meId: string | null, onNavigate: (r: string) => void, unlockedPresentationOnly?: boolean): Promise<boolean> {
+export async function forkPublication(pub: PublishedItinerary, meId: string | null, onNavigate: (r: string) => void, unlockedPresentationOnly?: boolean, source?: ShareSource | null): Promise<boolean> {
   if (!meId) { toast('Log in to fork this trip into your plans.'); onNavigate('/auth'); return false }
   // Read through the paywall RPC, not the raw table. A creator/buyer session
   // gets the real trip back from the same call a visitor makes — the server
@@ -129,14 +130,17 @@ export async function forkPublication(pub: PublishedItinerary, meId: string | nu
   // which is also correct for an all-free publication: it keeps trip-level
   // expenses and every free day, so nothing the viewer may have is lost
   // (buildTripCopy's filter keeps `e.dayIndex === undefined`).
+  // #230 — the same `source` stamps two places: the funnel event (through the
+  // counter RPC's p_source) and the forked trip's own `ref`, so a later
+  // conversion on that trip can still name the surface that brought its owner.
   const { persisted } = unlockedFork
-    ? await duplicateTripPersisted(safe, meId)
-    : await duplicateTripPublicPersisted(safe, meId, pub.freeDayIndexes)
+    ? await duplicateTripPersisted(safe, meId, undefined, source)
+    : await duplicateTripPublicPersisted(safe, meId, pub.freeDayIndexes, source)
   if (!persisted) {
     toast('Could not save the forked trip — check your connection and try again.', 'err')
     return false
   }
-  registerPubCopy(pub.id)
+  registerPubCopy(pub.id, source)
   toast(`“${pub.title}” forked to My trips ✈️`)
   onNavigate('/trips')
   return true

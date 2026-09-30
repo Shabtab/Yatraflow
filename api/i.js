@@ -1,8 +1,22 @@
-const DEFAULT_ORIGIN = 'https://yatraflow-blond.vercel.app'
+// #362: the one canonical-origin resolver — shared with the sitemap and the
+// creator card so the handlers can never disagree about where they live. A
+// sibling api module, not client code: the dependency rule below is about the
+// bundler, and this compiles with the function.
+import { resolveOrigin } from './_origin.js'
+
 const DEFAULT_TITLE = 'YatraFlow — Plan real trips, together'
 const DEFAULT_DESCRIPTION = 'Plan realistic India trips together. See the time, distance and cost impact of every stop.'
 const ID_RE = /^[A-Za-z0-9_-]{1,64}$/
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+// #230 — the share-attribution vocabulary. Mirrors SHARE_SOURCES in
+// src/lib/shareUrl.ts (this handler is plain JS outside src and cannot import
+// client code); tests/share-attribution.test.ts pins the two lists to each
+// other, and the NEWEST migration defining the CHECK constraints pins the
+// same list into the database (currently
+// supabase/migrations/20260930_pub_events_share_source_allowlist.sql —
+// `wa` (the WhatsApp send's own channel) and `community` (a distribution post
+// outside the app) joined the original five for F7 · #228).
+const SHARE_SOURCES = ['copy', 'buyer', 'explore', 'creator', 'purchases', 'wa', 'community']
 const COVER_WIDTH = 1200
 const WIKIMEDIA_PATH_RE = /^https:\/\/[^/]*wikimedia\.org\/wikipedia\/([^/]+)\/(.+)$/
 
@@ -68,10 +82,43 @@ async function ownsPublication(url, key, entitlement, id) {
   }
 }
 
-function renderPublication(publication, id, buyer = null) {
-  const origin = (process.env.PUBLIC_ORIGIN ||
-    (process.env.VERCEL_PROJECT_PRODUCTION_URL && `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`) ||
-    DEFAULT_ORIGIN).replace(/\/+$/, '')
+/**
+ * A card for a publication that does not exist (#362's hygiene item: the old
+ * one emitted canonical and og:url for the very id that 404'd). Noindex and
+ * no canonical — a shared typo must never be indexed under its own address —
+ * and it lands the visitor on Explore rather than a dead end.
+ */
+function renderNotFound() {
+  const origin = resolveOrigin()
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="robots" content="noindex" />
+<title>Itinerary not found — YatraFlow</title>
+<meta name="description" content="This itinerary could not be found. Explore published itineraries on YatraFlow." />
+<meta property="og:site_name" content="YatraFlow" />
+<meta property="og:title" content="Itinerary not found — YatraFlow" />
+<meta property="og:description" content="This itinerary could not be found. Explore published itineraries on YatraFlow." />
+<meta property="og:image" content="${escapeHtml(`${origin}/og-default.png`)}" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Itinerary not found — YatraFlow" />
+<meta name="twitter:description" content="This itinerary could not be found. Explore published itineraries on YatraFlow." />
+<meta name="twitter:image" content="${escapeHtml(`${origin}/og-default.png`)}" />
+<script>location.replace(${JSON.stringify('/explore')})</script>
+</head>
+<body><p>Opening <a href="/explore">Explore</a>…</p></body>
+</html>`
+}
+
+function renderPublication(publication, id, buyer = null, ref = null) {
+  // A row the database could not read is a 404-without-canonical card, never
+  // the brand card under the id it failed to find (#362).
+  if (!publication) return renderNotFound()
+  const origin = resolveOrigin()
   const title = publication?.title
     ? (buyer ? `I bought ${publication.title} — YatraFlow` : `${publication.title} — YatraFlow`)
     : DEFAULT_TITLE
@@ -101,7 +148,14 @@ function renderPublication(publication, id, buyer = null) {
       '<meta property="og:image:height" content="630" />',
     ]),
   ].join('\n')
-  const target = `/#/pub/${id}`
+  // #230 — the shared link's `ref` rides the QUERY and never the canonical
+  // (the share card stays clean). The redirect forwards it so the app can read
+  // `location.search` and attribute the visit. #426 slice 3: the target is the
+  // real path — the app routes on the pathname now, so a browser lands on
+  // `/pub/<id>` directly instead of a hash the boot bridge would have to
+  // promote. `ref` was sanitized at the handler — only vocabulary values
+  // arrive here.
+  const target = ref ? `/pub/${id}?ref=${encodeURIComponent(ref)}` : `/pub/${id}`
   const canonical = `${origin}/i/${id}`
   // The buyer's address is a variant of the same page with its own metadata, so
   // it advertises itself; the canonical link still points at the publication.
@@ -139,12 +193,23 @@ export default async function handler(req, res) {
     return res.status(405).end()
   }
   const id = req.query?.id
-  if (typeof id !== 'string' || !ID_RE.test(id)) return res.status(400).end()
+  if (typeof id !== 'string' || !ID_RE.test(id)) {
+    // Two different failures, two different answers (#362): a bare `/i/` —
+    // the rewrite forwards it without a query — is a missing page, so 404
+    // rather than the app shell; a malformed id is a bad request.
+    return res.status(id ? 400 : 404).end()
+  }
   // A malformed `buyer` is IGNORED rather than rejected: a garbled parameter
   // must still preview as the publication, never as a dead link. Nothing is
   // rendered from it until the RPC above confirms it.
   const rawBuyer = req.query?.buyer
   const buyer = typeof rawBuyer === 'string' && UUID_RE.test(rawBuyer) ? rawBuyer : null
+  // A malformed `ref` is DROPPED, same as `buyer`: an unknown value must not
+  // reach the funnel log. This list mirrors src/lib/shareUrl.ts's SHARE_SOURCES
+  // (this function is plain JS outside src and cannot import client code —
+  // tests/share-attribution.test.ts pins the two lists to each other).
+  const rawRef = req.query?.ref
+  const ref = typeof rawRef === 'string' && SHARE_SOURCES.includes(rawRef) ? rawRef : null
 
   let publication = null
   let status = 503
@@ -179,5 +244,5 @@ export default async function handler(req, res) {
   }
 
   res.status(status)
-  return req.method === 'HEAD' ? res.end() : res.send(renderPublication(publication, id, verifiedBuyer))
+  return req.method === 'HEAD' ? res.end() : res.send(renderPublication(publication, id, verifiedBuyer, ref))
 }

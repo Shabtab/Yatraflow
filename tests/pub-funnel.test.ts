@@ -343,45 +343,55 @@ describe('formatPct shows a decimal only when it carries information', () => {
 
 const migration = read('../supabase/migrations/20260921_pub_funnel_events.sql')
 const migrationCode = codeOf(migration)
+// #230 redefines bump_published_stats (its p_source parameter), and name order
+// decides which body a fresh in-order apply ends up running — so every
+// assertion about THE FUNCTION reads the LAST definition in the series, never
+// the file that first created it.
+const bumpMigration = read('../supabase/migrations/20260929_pub_events_share_source.sql')
+const bumpMigrationCode = codeOf(bumpMigration)
 const hubCode = read('../src/pages/CreatorHubPage.tsx')
 const publicCode = read('../src/pages/PublicItinerary.tsx')
 const schema = read('../supabase/schema.sql')
 
 describe('the log is written by the ONE function that moves the counter', () => {
   it('records the event in the same statement that bumps the counter', () => {
-    const fn = sqlFunction(migration, 'bump_published_stats')
+    const fn = sqlFunction(bumpMigration, 'bump_published_stats')
     expect(fn).toMatch(/update public\.published_itineraries set views = views \+ 1/)
     expect(fn).toMatch(/update public\.published_itineraries set copies = copies \+ 1/)
-    expect(fn).toMatch(/insert into public\.pub_events \(pub_id, kind\) values \(p_id, v_kind\)/)
+    // #230: the event row also records the step's route in (p_source).
+    expect(fn).toMatch(/insert into public\.pub_events \(pub_id, kind, source\) values \(p_id, v_kind, p_source\)/)
   })
 
   it('keeps the counter and the log consistent — no event without a counter bump', () => {
     // Without this guard an event could describe a step whose counter never
     // moved; with it, the anon-callable RPC also cannot stuff the log with
     // ids that do not exist.
-    const fn = sqlFunction(migration, 'bump_published_stats')
+    const fn = sqlFunction(bumpMigration, 'bump_published_stats')
     expect(fn).toMatch(/if not found then/)
     expect(fn.indexOf('if not found then')).toBeLessThan(fn.indexOf('insert into public.pub_events'))
   })
 
-  it('keeps its anon callers working: same name, same parameters, same grants', () => {
-    // Client bundles already call this. A rename or an added parameter would
-    // silently stop counting views and forks for every shipped install.
-    expect(migrationCode).toMatch(/function public\.bump_published_stats\(p_id text, p_kind text\)/)
-    expect(migrationCode).toMatch(/grant execute on function public\.bump_published_stats\(text, text\) to anon, authenticated/)
-    expect(migrationCode).toMatch(/p_kind = 'views'/)
-    expect(migrationCode).toMatch(/p_kind = 'copies'/)
+  it('keeps its anon callers working: same name, same first parameters, same grants', () => {
+    // Client bundles already call this with two arguments. #230's third
+    // parameter is DEFAULTED (and the old two-argument overload is dropped
+    // first, or a two-argument call matches both and Postgres answers
+    // "function is not unique"), so every shipped install keeps counting.
+    expect(bumpMigrationCode).toMatch(/function public\.bump_published_stats\(p_id text, p_kind text, p_source text default null\)/)
+    expect(bumpMigrationCode).toMatch(/drop function if exists public\.bump_published_stats\(text, text\);/)
+    expect(bumpMigrationCode).toMatch(/grant execute on function public\.bump_published_stats\(text, text, text\) to anon, authenticated/)
+    expect(bumpMigrationCode).toMatch(/p_kind = 'views'/)
+    expect(bumpMigrationCode).toMatch(/p_kind = 'copies'/)
   })
 
   it('is byte-identical to the canonical schema.sql copy', () => {
     // Two definitions under one name is how the trip-touch trigger diverged
     // (AGENTS: whichever ran last won, silently). A fresh instance built from
     // schema.sql and a migrated one must define the same function.
-    expect(sqlFunction(schema, 'bump_published_stats')).toBe(sqlFunction(migration, 'bump_published_stats'))
+    expect(sqlFunction(schema, 'bump_published_stats')).toBe(sqlFunction(bumpMigration, 'bump_published_stats'))
   })
 
   it('is a definer with a pinned search_path', () => {
-    const fn = sqlFunction(migration, 'bump_published_stats')
+    const fn = sqlFunction(bumpMigration, 'bump_published_stats')
     expect(fn).toMatch(/security definer/)
     expect(fn).toMatch(/set search_path = public/)
   })
@@ -456,8 +466,9 @@ describe('the client writes through one path', () => {
     // above guards a path nothing uses.
     const viewFn = store.slice(store.indexOf('export function registerPubView'), store.indexOf('export function registerPubCopy'))
     const copyFn = store.slice(store.indexOf('export function registerPubCopy'), store.indexOf('export function registerPubCopy') + 400)
-    expect(viewFn).toContain("bumpPubCounter(id, 'views')")
-    expect(copyFn).toContain("bumpPubCounter(id, 'copies')")
+    // #230 — both delegates also carry the step's route in.
+    expect(viewFn).toContain("bumpPubCounter(id, 'views', source)")
+    expect(copyFn).toContain("bumpPubCounter(id, 'copies', source)")
   })
 
   it('sends both stages through the same RPC, so the counters and the log cannot drift', () => {
@@ -467,7 +478,7 @@ describe('the client writes through one path', () => {
     // would mean a second path, which is what this test exists to prevent.
     const rpcCalls = store.match(/bump_published_stats/g) ?? []
     expect(rpcCalls).toHaveLength(1)
-    expect(store).toMatch(/supabase\.rpc\('bump_published_stats', \{ p_id: id, p_kind: kind \}\)/)
+    expect(store).toMatch(/supabase\.rpc\('bump_published_stats', \{ p_id: id, p_kind: kind, p_source: source \?\? null \}\)/)
     // That BOTH kinds really reach it is proved by running them, not by reading
     // the source: tests/pub-counters.test.ts asserts one bump per action, each
     // with its own `p_kind`.

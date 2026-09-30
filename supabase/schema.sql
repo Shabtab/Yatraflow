@@ -64,6 +64,8 @@ create table if not exists public.trips (
   cover_emoji               text not null default '🧭',
   cover_image_url           text,
   invite_code               text,
+  -- 20260929_pub_events_share_source.sql — how the owner ARRIVED
+  ref                       text,
   visibility                text not null default 'private'
                               check (visibility in ('private', 'public')),
   created_at                bigint not null default extract(epoch from now()) * 1000,
@@ -85,6 +87,13 @@ alter table public.trips add column if not exists vehicle_profile jsonb;
 alter table public.trips add column if not exists tank_l numeric;
 alter table public.trips add column if not exists rent_per_day_inr numeric;
 alter table public.trips add column if not exists local_train boolean;
+alter table public.trips add column if not exists ref text;
+
+-- Share attribution: one vocabulary across pub_events.source and trips.ref
+-- (mirrors 20260929_pub_events_share_source.sql — idempotent, safe to re-run).
+alter table public.trips drop constraint if exists trips_ref_check;
+alter table public.trips add constraint trips_ref_check
+  check (ref is null or ref in ('copy', 'buyer', 'explore', 'creator', 'purchases', 'wa', 'community'));
 
 -- Invite codes are unique when present (app mints one per trip).
 create unique index if not exists idx_trips_invite_code
@@ -235,15 +244,47 @@ create table if not exists public.published_itineraries (
 -- One row per view/fork. Written ONLY by bump_published_stats below (the same
 -- statement that moves the counter), so the lifetime counters and this log
 -- cannot drift. No user id, no IP — a step happened, never who took it.
+-- `source` (#230) is the step's route in — the shared link's ref or the in-app
+-- surface — vocabulary-checked below; NULL = direct.
 create table if not exists public.pub_events (
   id     bigint generated always as identity primary key,
   pub_id text not null references public.published_itineraries (id) on delete cascade,
   kind   text not null,
   at     timestamptz not null default now(),
+  source text,
   constraint pub_events_kind_check check (kind in ('view', 'fork'))
 );
+alter table public.pub_events add column if not exists source text;
+alter table public.pub_events drop constraint if exists pub_events_source_check;
+alter table public.pub_events add constraint pub_events_source_check
+  check (source is null or source in ('copy', 'buyer', 'explore', 'creator', 'purchases', 'wa', 'community'));
 
 create index if not exists pub_events_pub_at_idx on public.pub_events (pub_id, at desc);
+
+-- ---------- create_funnel_events (dated create-funnel steps: see migrations/20260929_create_funnel_events.sql)
+-- One row per create-flow step. The dated log is the ONLY source — no lifetime
+-- counter columns (the #363 drift lesson); aggregates derive at read. `meta`
+-- carries counts, slugs and enums ONLY (PII rule — no free-text column exists
+-- in this table). Anonymous inserts carry user_id = null by policy; reads are
+-- admin-only; retention prunes at 90 days through a service_role-only function.
+create table if not exists public.create_funnel_events (
+  id         uuid primary key default gen_random_uuid(),
+  at         timestamptz not null default now(),
+  session_id text not null,
+  user_id    uuid references public.profiles (id) on delete set null,
+  event      text not null,
+  phase      text,
+  trip_id    uuid references public.trips (id) on delete set null,
+  meta       jsonb,
+  constraint create_funnel_events_event_check check (event in (
+    'started', 'template_picked', 'readiness_complete', 'draft_resumed',
+    'draft_discarded', 'crew_added', 'submitted', 'moment_invite_sent', 'abandoned'
+  ))
+);
+
+create index if not exists create_funnel_events_at_idx on public.create_funnel_events (at desc);
+create index if not exists create_funnel_events_event_at_idx on public.create_funnel_events (event, at);
+create index if not exists create_funnel_events_session_idx on public.create_funnel_events (session_id);
 
 -- ---------- admin_audit (append-only log of every admin action) ----------
 create table if not exists public.admin_audit (
@@ -401,6 +442,7 @@ alter table public.activity enable row level security;
 alter table public.notifications enable row level security;
 alter table public.published_itineraries enable row level security;
 alter table public.pub_events enable row level security;
+alter table public.create_funnel_events enable row level security;
 alter table public.user_dna enable row level security;
 alter table public.admin_audit enable row level security;
 
@@ -416,6 +458,7 @@ create policy "deny disabled" on public.notifications as restrictive for all to 
 create policy "deny disabled" on public.user_dna as restrictive for all to authenticated using (not public.is_disabled());
 create policy "deny disabled" on public.published_itineraries as restrictive for all to authenticated using (not public.is_disabled());
 create policy "deny disabled" on public.pub_events as restrictive for all to authenticated using (not public.is_disabled());
+create policy "deny disabled" on public.create_funnel_events as restrictive for all to authenticated using (not public.is_disabled());
 
 -- ---------- admin read bypass (SELECT everywhere) ----------
 create policy "admin read" on public.profiles for select to authenticated using (public.is_admin());
@@ -582,6 +625,22 @@ create policy "pub_events read own publications" on public.pub_events
     select 1 from public.published_itineraries p
     where p.id = pub_id and p.creator_id = auth.uid()
   ));
+-- ---------- create_funnel_events ----------
+-- Insert own (authenticated) / anon-insert with no user attachment / admin-only
+-- read — see the migration for the abuse-bound reasoning. Append-only to every
+-- client role: the retention pruner (service_role) is the only deleter.
+create policy "create_funnel_events insert own" on public.create_funnel_events
+  for insert to authenticated
+  with check (user_id = auth.uid());
+
+create policy "create_funnel_events insert anon" on public.create_funnel_events
+  for insert to anon
+  with check (user_id is null);
+
+create policy "create_funnel_events admin read" on public.create_funnel_events
+  for select to authenticated
+  using (public.is_admin());
+
 -- ---------- user_dna ----------
 -- Owner-only on all four verbs: the DNA log is behavioural (what this person
 -- accepted and declined), never crew-visible, so there is no member/editor
@@ -623,7 +682,12 @@ alter publication supabase_realtime add table public.admin_audit;  -- masteradmi
 -- lifetime counter and the funnel log cannot drift. The `not found` guard
 -- keeps an event from describing a step whose counter did not move, and keeps
 -- the anon-callable RPC from stuffing the log with arbitrary ids.
-create or replace function public.bump_published_stats(p_id text, p_kind text)
+-- #230: p_source is the step's route in (see migrations/20260929_pub_events_
+-- share_source.sql). The two-argument overload drops first, or a two-argument
+-- call matches both and Postgres answers "function is not unique".
+drop function if exists public.bump_published_stats(text, text);
+
+create or replace function public.bump_published_stats(p_id text, p_kind text, p_source text default null)
 returns void as $$
 declare
   v_kind text;
@@ -644,11 +708,11 @@ begin
     return;
   end if;
 
-  insert into public.pub_events (pub_id, kind) values (p_id, v_kind);
+  insert into public.pub_events (pub_id, kind, source) values (p_id, v_kind, p_source);
 end;
 $$ language plpgsql security definer set search_path = public;
 
-grant execute on function public.bump_published_stats(text, text) to anon, authenticated;
+grant execute on function public.bump_published_stats(text, text, text) to anon, authenticated;
 
 -- ============================================================
 -- Creator funnel read (see migrations/20260921_pub_funnel_events.sql)

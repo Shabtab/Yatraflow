@@ -72,6 +72,8 @@ describe('#372 — a Board mutation is guarded like its siblings', () => {
     // …rendered with the same props it always took (the road geometry it now
     // also receives is asserted in tests/trip-road.test.ts, #370)
     expect(board).toMatch(/<MemoTripMap trip=\{trip\} focusDay=\{focusedDay\} showToolbar=\{false\}/)
+    // #425 PR 2: focusedDay IS the workspace's shared axis (local fallback only)
+    expect(board).toMatch(/const focusedDay = dayFocus \?\? localFocusDay/)
     // one shared empty array — `?? []` in a prop position would re-render the column
     expect(board).toMatch(/const NO_WARNINGS: ScheduleWarning\[\] = \[\]/)
     expect(board).toMatch(/warn\.byDay\.get\(day\.index\) \?\? NO_WARNINGS/)

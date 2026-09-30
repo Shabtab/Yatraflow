@@ -19,9 +19,13 @@ import {
   computeAdminOverview, computeGrowthSeries, computeFunnel, recentJoins,
   platformRevenue, type PlatformRevenue, type PlatformSale,
 } from '../lib/adminStats'
-import { fetchAdminRevenue } from '../lib/unlock'
+import { fetchAdminRevenue, fetchAdminShareAttribution, type ShareAttributionRow } from '../lib/unlock'
+import { SHARE_SOURCE_LABELS } from '../lib/shareUrl'
+import { fetchCreateFunnelEvents } from '../lib/createFunnelRead'
+import { deriveCreateFunnel } from '../lib/createEvents'
 import { formatInr } from '../lib/engine'
 import type { Trip, User } from '../data/types'
+import { appLink } from '../lib/appLink'
 
 type AdminTab = 'overview' | 'users' | 'trips' | 'invites' | 'content' | 'analytics' | 'audit'
 
@@ -299,7 +303,7 @@ function TripsTab() {
         <tbody>
           {trips.map(t => (
             <tr key={t.id}>
-              <td><a href={`#/trip/${t.id}`}>{t.name}</a><br /><span className="muted small">{t.days.length}d · {t.destinations.join(' → ') || t.startLocation}</span></td>
+              <td><a {...appLink(`/trip/${t.id}`)}>{t.name}</a><br /><span className="muted small">{t.days.length}d · {t.destinations.join(' → ') || t.startLocation}</span></td>
               <td className="small">{ownerOf(t)?.profile.name ?? '—'}<br /><span className="muted small">{ownerOf(t)?.email ?? ''}</span></td>
               <td className="num">{t.members?.length ?? 0}</td>
               <td><Chip tone={t.visibility === 'public' ? 'ok' : 'info'}>{t.visibility}</Chip></td>
@@ -377,7 +381,7 @@ function InvitesTab() {
         <tbody>
           {rows.map(({ trip: t, joins30d }) => (
             <tr key={t.id}>
-              <td><a href={`#/trip/${t.id}`}>{t.name}</a><br /><span className="muted small">{t.visibility}</span></td>
+              <td><a {...appLink(`/trip/${t.id}`)}>{t.name}</a><br /><span className="muted small">{t.visibility}</span></td>
               <td className="num">{joins30d}</td>
               <td className="num">{t.members?.length ?? 0}</td>
               <td>
@@ -447,7 +451,7 @@ function ContentTab() {
               const creator = db.users.find(u => u.id === p.creatorId)
               return (
                 <tr key={p.id}>
-                  <td><a href={`#/pub/${p.id}`}>{p.title}</a><br /><span className="muted small">{p.routeSummary.join(' → ')}</span></td>
+                  <td><a {...appLink(`/pub/${p.id}`)}>{p.title}</a><br /><span className="muted small">{p.routeSummary.join(' → ')}</span></td>
                   <td className="small">{creator?.profile.name ?? '—'}</td>
                   <td className="num">{p.views}</td>
                   <td className="num">{p.copies}</td>
@@ -497,6 +501,45 @@ function AnalyticsTab() {
   const growth = useMemo(() => computeGrowthSeries(db.users, db.trips, 12), [db.users, db.trips])
   const [revenue, setRevenue] = useState<RevenueState>({ phase: 'loading' })
   const [attempt, setAttempt] = useState(0)
+  // #230 — share attribution: how readers ARRIVED. pub_events is scoped by
+  // RLS to its creator (and now the admin RPC), so like revenue this is its
+  // own network read — with the same empty-vs-error rule: a failed read
+  // renders Retry, never a friendly zero that reads as "no shares".
+  const [attr, setAttr] = useState<{ phase: 'loading' | 'ready' | 'error'; rows?: ShareAttributionRow[]; message?: string }>({ phase: 'loading' })
+  const [attrAttempt, setAttrAttempt] = useState(0)
+  useEffect(() => {
+    let live = true
+    setAttr({ phase: 'loading' })
+    fetchAdminShareAttribution()
+      .then(rows => { if (live) setAttr({ phase: 'ready', rows }) })
+      .catch((err: unknown) => {
+        if (!live) return
+        const message = err instanceof Error ? err.message : String((err as { message?: string })?.message ?? err)
+        setAttr({ phase: 'error', message })
+      })
+    return () => { live = false }
+  }, [attrAttempt])
+  // #428: the create funnel's dated event log. Same empty-vs-error rule as the
+  // revenue read — a failed read renders a Retry, never a friendly zero.
+  const [cf, setCf] = useState<{ phase: 'loading' | 'ready' | 'error'; message?: string }>({ phase: 'loading' })
+  const [cfAttempt, setCfAttempt] = useState(0)
+  useEffect(() => {
+    let live = true
+    setCf({ phase: 'loading' })
+    fetchCreateFunnelEvents()
+      .then(rows => { if (live) { setCfRows(rows); setCf({ phase: 'ready' }) } })
+      .catch((err: unknown) => {
+        if (!live) return
+        const message = err instanceof Error ? err.message : String((err as { message?: string })?.message ?? err)
+        setCf({ phase: 'error', message })
+      })
+    return () => { live = false }
+  }, [cfAttempt])
+  const [cfRows, setCfRows] = useState<Parameters<typeof deriveCreateFunnel>[0]>([])
+  const cfStats = useMemo(
+    () => (cf.phase === 'ready' ? deriveCreateFunnel(cfRows) : null),
+    [cf, cfRows],
+  )
   const creatorName = (id: string) => db.users.find(u => u.id === id)?.profile.name ?? id.slice(0, 8)
   // The per-publication breakdown needs publication TITLES, and it can normally
   // have them: `published read` is open to everyone, and a soft-unpublished plan
@@ -541,6 +584,9 @@ function AnalyticsTab() {
         <div className="stat-tile"><div className="stat-label">Trips published</div><div className="stat-value">{pct(funnel.publishPct)}</div></div>
         <div className="stat-tile"><div className="stat-label">Explore views → forks</div><div className="stat-value">{pct(funnel.viewToCopyPct)}</div></div>
       </div>
+      <p className="hint-text" style={{ marginTop: 8 }}>
+        Raw: {db.published.reduce((s, p) => s + p.views, 0)} views · {db.published.reduce((s, p) => s + p.copies, 0)} forks.
+      </p>
       <h2 style={{ marginTop: 18 }}>Growth — last 12 weeks</h2>
       <table className="compare-table" tabIndex={0} aria-label="Growth — last 12 weeks">
         <thead><tr><th>Week of</th><th className="num">Signups</th><th className="num">Trips</th><th>Trend</th></tr></thead>
@@ -564,6 +610,49 @@ function AnalyticsTab() {
       <p className="hint-text" style={{ marginTop: 8 }}>
         Teal bar = signups, saffron = trips.
       </p>
+
+      <h2 style={{ marginTop: 18 }}>Share attribution — how readers arrived</h2>
+      {attr.phase === 'loading' && <p className="hint-text">Reading the funnel log…</p>}
+      {attr.phase === 'error' && (
+        <>
+          <p className="hint-text">
+            The funnel log could not be read — {attr.message}. This section shows nothing rather
+            than a zero it cannot vouch for.
+          </p>
+          <button type="button" className="btn btn-outline btn-sm" style={{ marginTop: 8 }} onClick={() => setAttrAttempt(a => a + 1)}>
+            Retry
+          </button>
+        </>
+      )}
+      {attr.phase === 'ready' && (attr.rows ?? []).length === 0 && (
+        <p className="hint-text">
+          No recorded traffic yet — this fills in from the first view of a shared link.
+        </p>
+      )}
+      {attr.phase === 'ready' && (attr.rows ?? []).length > 0 && (
+        <>
+          <table className="compare-table" tabIndex={0} aria-label="Share attribution — how readers arrived">
+            <thead><tr><th>Route in</th><th className="num">Views</th><th className="num">Forks</th><th className="num">View → fork</th><th>Last seen</th></tr></thead>
+            <tbody>
+              {(attr.rows ?? []).map(row => (
+                <tr key={row.source}>
+                  <td>{SHARE_SOURCE_LABELS[row.source] ?? row.source}</td>
+                  <td className="num">{row.views}</td>
+                  <td className="num">{row.forks}</td>
+                  <td className="num">{row.views === 0 ? '—' : pct((row.forks / row.views) * 100)}</td>
+                  <td className="small">{row.lastAt ? new Date(row.lastAt).toLocaleDateString() : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="hint-text" style={{ marginTop: 8 }}>
+            Route in = the ref a shared link carried, or the in-app surface that forked. Direct
+            is a visitor who arrived some other way. The two stages count the same kind of thing
+            (one view and one fork per browser session), so a rate above 100% is possible and
+            means a reader forked without a recorded visit.
+          </p>
+        </>
+      )}
 
       <h2 style={{ marginTop: 18 }}>Revenue</h2>
       {revenue.phase === 'loading' && <p className="hint-text">Reading the sales ledger…</p>}
@@ -636,6 +725,44 @@ function AnalyticsTab() {
           </p>
         </>
       ))}
+
+      <h2 style={{ marginTop: 18 }}>Create funnel — last 30 days</h2>
+      {cf.phase === 'loading' && <p className="hint-text">Reading the funnel log…</p>}
+      {cf.phase === 'error' && (
+        <>
+          <p className="hint-text">
+            The funnel log could not be read — {cf.message}. This tab shows nothing rather
+            than a zero it cannot vouch for.
+          </p>
+          <button type="button" className="btn btn-outline btn-sm" style={{ marginTop: 8 }} onClick={() => setCfAttempt(a => a + 1)}>
+            Retry
+          </button>
+        </>
+      )}
+      {cf.phase === 'ready' && cfStats && (
+        <>
+          <div className="creator-stats" role="group" aria-label="Create funnel">
+            <div className="stat-tile"><div className="stat-label">Started /new</div><div className="stat-value">{cfStats.counts.started}</div></div>
+            <div className="stat-tile"><div className="stat-label">Submitted</div><div className="stat-value">{cfStats.counts.submitted}</div></div>
+            <div className="stat-tile"><div className="stat-label">Started → submitted</div><div className="stat-value">{pct(cfStats.conversionPct)}</div></div>
+            <div className="stat-tile"><div className="stat-label">Drafts resumed</div><div className="stat-value">{cfStats.counts.draft_resumed}</div></div>
+          </div>
+          <table className="compare-table" tabIndex={0} aria-label="Create funnel events, last 30 days">
+            <thead><tr><th>Event</th><th className="num">Count</th></tr></thead>
+            <tbody>
+              {(Object.entries(cfStats.counts) as [string, number][]).filter(([, n]) => n > 0).map(([ev, n]) => (
+                <tr key={ev}><td className="small">{ev}</td><td className="num">{n}</td></tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="hint-text" style={{ marginTop: 8 }}>
+            Top abandonment stage: {cfStats.topAbandonStage ?? '—'}.
+            {cfStats.templates.length > 0 && ` Template picks: ${cfStats.templates.slice(0, 5).map(t => `${t.templateId} (${t.picks})`).join(', ')}.`}
+            {' '}The abandoned event is best-effort (mobile kills page beacons), so it is
+            directional — never read it as an exact denominator.
+          </p>
+        </>
+      )}
     </div>
   )
 }

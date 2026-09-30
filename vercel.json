@@ -31,12 +31,24 @@
       "destination": "/api/i?id=:id"
     },
     {
+      "source": "/i/",
+      "destination": "/api/i"
+    },
+    {
+      "source": "/c/:id",
+      "destination": "/api/c?id=:id"
+    },
+    {
       "source": "/sitemap.xml",
       "destination": "/api/sitemap"
     },
     {
       "source": "/mappls/:path*",
       "destination": "https://search.mappls.com/:path*"
+    },
+    {
+      "source": "/((?!api/|i/|c/|sitemap.xml|sw.js|manifest.webmanifest|robots.txt).*)",
+      "destination": "/index.html"
     }
   ]
 }

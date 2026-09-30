@@ -12,7 +12,7 @@ import { readFileSync } from 'node:fs'
 import { buildPurchaseShelf, purchaseShareable, unlockRevealStats, findBuyerCopy, normalizeCopyTitle } from '../src/lib/purchases'
 import { computeTotals } from '../src/lib/engine'
 import { seedData } from '../src/data/seed'
-import type { Entitlement } from '../src/lib/payments'
+import type { Entitlement, PurchaseOrder } from '../src/lib/payments'
 import type { PublishedItinerary, Trip, User } from '../src/data/types'
 
 const DAY = 86_400_000
@@ -158,8 +158,13 @@ describe('the purchase shelf', () => {
   it('is empty, not broken, for a signed-out visitor', () => {
     // An empty shelf has nothing unreadable in it, so the total is the whole
     // truth — `totalReadable` is true, not vacuously false.
+    //
+    // #407 added `refundedCount`, so this whole-object pin grew a key. That is
+    // the AGENTS §4 trap ("adding a field to a returned object breaks every
+    // `toEqual` on it") — the pin was never pinning a defect here, it was
+    // pinning the SHAPE, so the key is added rather than the assertion loosened.
     expect(buildPurchaseShelf([], [pub()], [])).toEqual({
-      rows: [], totalPaidInr: 0, totalReadable: true, updatedCount: 0,
+      rows: [], totalPaidInr: 0, totalReadable: true, updatedCount: 0, refundedCount: 0,
     })
   })
 })
@@ -400,6 +405,75 @@ describe('#406 — the shelf surfaces the flag instead of printing the number', 
   })
 })
 
+// ============ #409 — the shelf stops overclaiming ============
+// Five small papercuts, one theme: money-adjacent rendering that states more
+// than it can support. Source guards for the page; the date invariant is proved
+// directly, because the formatter is page-private and the PROPERTY is what
+// matters (the same instant must not be two dates).
+describe('#409 — the shelf stops overclaiming', () => {
+  const pageSrc = readFileSync(new URL('../src/pages/Purchases.tsx', import.meta.url), 'utf8')
+
+  it('formats the receipt date in UTC, so it cannot move with the reader', () => {
+    // The pin is on the option that decides it. `toLocaleDateString` alone reads
+    // the BROWSER's zone, which is the bug: a grant at 23:30 UTC was "yesterday"
+    // in IST and "today" in the US — the same receipt, two dates.
+    expect(pageSrc).toMatch(/timeZone: 'UTC'/)
+    // Both formatters, not just the visible one: a month label that flips
+    // between readers is the same defect one unit up.
+    const bought = pageSrc.slice(pageSrc.indexOf('function boughtOn'), pageSrc.indexOf('function updatedIn'))
+    const updated = pageSrc.slice(pageSrc.indexOf('function updatedIn'), pageSrc.indexOf('export function PurchasesPage'))
+    expect(bought).toContain("timeZone: 'UTC'")
+    expect(updated).toContain("timeZone: 'UTC'")
+  })
+
+  it('proves why that pin is needed: without it, one instant is two dates', () => {
+    // 12 Sep 2026, 23:30 UTC — the case the issue names. Asserted as an
+    // INEQUALITY rather than against literal strings, so this does not depend on
+    // ICU's month spelling: what matters is that the two zones disagree.
+    const lateUtc = Date.UTC(2026, 8, 12, 23, 30)
+    const fmt = (timeZone: string) =>
+      new Date(lateUtc).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone })
+    expect(fmt('UTC')).not.toBe(fmt('Asia/Kolkata'))
+    // …and the pinned reading is stable no matter which zone the test box is in.
+    expect(fmt('UTC')).toBe(fmt('UTC'))
+  })
+
+  it('gives a withdrawn row NO auto cover, only the neutral fallback', () => {
+    // `CoverThumb` resolves a missing cover through the trip's query candidates,
+    // which for this caller degrades to the purchase TITLE — and a title is not
+    // a destination, so it yields a plausible photo the creator never chose.
+    expect(pageSrc).toContain('trip={row.listed ? { name: row.title } : null}')
+  })
+
+  it('holds the share button busy while its sheet is open', () => {
+    // `sharePurchase` awaits the native sheet, so a double-tap opened two.
+    // The same in-flight rule the unlock buttons follow.
+    expect(pageSrc).toContain('const [sharingId, setSharingId] = useState<string | null>(null)')
+    expect(pageSrc).toContain('if (sharingId) return')
+    expect(pageSrc).toContain('disabled={sharingId !== null}')
+    expect(pageSrc).toContain("sharingId === row.pubId ? 'Opening…' : 'Share what you bought'")
+  })
+
+  it('qualifies its lede only when the shelf actually holds a withdrawn plan', () => {
+    // The lede promised "what is inside" while a withdrawn row's shape chips are
+    // absent (its publication row is gone, so durationDays/places read 0). The
+    // caveat is conditional: a permanent sentence about a case most shelves never
+    // have would be its own small dishonesty.
+    expect(pageSrc).toContain('shelf.rows.some(r => !r.listed)')
+    expect(pageSrc).toContain('keeps its receipt and your access')
+    // …and the promise that IS always true stays true.
+    expect(pageSrc).toContain('the shape of the plan')
+  })
+
+  it('says the fork fallback is race-only rather than pretending it cannot happen', () => {
+    // The branch is unreachable except by a render→click race, and a comment that
+    // says so is the difference between a deliberate guard and dead code.
+    const forkFn = pageSrc.slice(pageSrc.indexOf('function fork('), pageSrc.indexOf('/** Share one row'))
+    expect(forkFn).toContain('render→click race')
+    expect(forkFn).toContain('no longer listed')
+  })
+})
+
 // ============ #405 — a withdrawn plan must not lead to a dead page ============
 // Unpublishing DELETES the publication row, so `/pub/<id>` can never load again.
 // The shelf's "Open the plan" button rendered unconditionally, which made the
@@ -482,11 +556,17 @@ describe('#405 — the shelf never offers a link that cannot load', () => {
     // Matched on the GUARD and the destination separately rather than one span
     // across them: the two sit on different lines, and a regex that has to
     // cross the braces in between is a regex that will break on a reformat.
-    const guarded = pageSrc.match(/\{row\.listed && \(([\s\S]{0,400}?)\)\}/)
-    expect(guarded, 'the /pub/ button is no longer behind a row.listed guard').not.toBeNull()
+    //
+    // #407 — the guard gained a second condition (`!row.refunded`), because a
+    // listed-but-refunded plan is one the paywall will refuse: the button would
+    // open a locked page, which is the confusion #407 was filed about. The
+    // invariant this pin exists for is unchanged and now covers both reasons a
+    // row cannot be opened.
+    const guarded = pageSrc.match(/\{row\.listed && !row\.refunded && \(([\s\S]{0,400}?)\)\}/)
+    expect(guarded, 'the /pub/ button is no longer behind a listed-and-not-refunded guard').not.toBeNull()
     expect(guarded![1]).toContain('`/pub/${row.pubId}`')
     // And the share/fork buttons are guarded the same way (asserted below), so
-    // `row.listed` here is a real gate rather than a stray token.
+    // the guard here is a real gate rather than a stray token.
   })
 
   it('labels a title-matched copy as a guess', () => {
@@ -500,7 +580,158 @@ describe('#405 — the shelf never offers a link that cannot load', () => {
   it('keeps sharing gated on the publication, and forking with it', () => {
     // Both were already correct (#405's step 2) — pinned so a fix here cannot
     // quietly re-open either.
+    // #407 — the fork guard gained `!row.refunded` alongside the others, for the
+    // same reason the /pub/ button did: forking is an access affordance, and a
+    // refunded row has no access to fork into.
     expect(pageSrc).toMatch(/\{purchaseShareable\(row\) && \(/)
-    expect(pageSrc).toMatch(/\{row\.listed && <button className="btn btn-ghost" onClick=\{\(\) => fork\(row\.pubId\)\}/)
+    expect(pageSrc).toMatch(/\{row\.listed && !row\.refunded && <button className="btn btn-ghost" onClick=\{\(\) => fork\(row\.pubId\)\}/)
   })
 })
+
+// ============ #407 — a refunded purchase is a receipt, not a claim ============
+// The defect this file's fixtures now cover: a refund DELETES the entitlement
+// row (`revoke_refunded_entitlement`) and flips the ORDER to `failed`. A shelf
+// built from entitlements alone therefore loses the purchase completely — the
+// receipt vanishes and a plan the buyer demonstrably paid for disappears with no
+// explanation. The money state lives on the ORDER, which survives.
+describe('#407 — a refunded purchase renders as a receipt', () => {
+  const paid = 1_700_000_000_000
+  const order = (overrides: Partial<PurchaseOrder> = {}): PurchaseOrder => ({
+    id: 'ord_1',
+    userId: 'buyer_1',
+    pubId: 'pub_a',
+    amountInr: 500,
+    status: 'paid',
+    createdAt: paid,
+    paidAt: paid,
+    ...overrides,
+  })
+
+  it('shows a purchase whose grant is gone as a Refunded row, receipt intact', () => {
+    // The entitlement is deleted by the refund, so this row exists ONLY because
+    // the order was read. Its amount and date are the order's own figures.
+    const shelf = buildPurchaseShelf([], [pub()], [], [order({ status: 'failed' })])
+    expect(shelf.rows).toHaveLength(1)
+    expect(shelf.rows[0]).toMatchObject({
+      pubId: 'pub_a', refunded: true, amountPaidInr: 500, grantedAt: paid, amountReadable: true, dateReadable: true,
+    })
+    // The receipt's date is when the MONEY moved, not when the order was opened.
+    expect(shelf.rows[0]!.grantedAt).toBe(paid)
+  })
+
+  it('counts and totals only what the buyer still holds', () => {
+    // A refund means the money came back, so folding it into "₹X paid" would
+    // claim the buyer holds what they no longer do — while dropping the row
+    // entirely would erase the receipt. Both are wrong; the two figures are the
+    // honest split, and `refundedCount` is what keeps the exclusion visible.
+    const shelf = buildPurchaseShelf(
+      [entitlement({ pubId: 'pub_a', amountPaidInr: 199 })],
+      [pub({ id: 'pub_b', title: 'Goa Loop' })],
+      [],
+      [order({ pubId: 'pub_b', amountInr: 500, status: 'failed' })],
+    )
+    expect(shelf.rows).toHaveLength(2)
+    expect(shelf.totalPaidInr).toBe(199)   // the live grant only
+    expect(shelf.refundedCount).toBe(1)
+  })
+
+  it('keeps refunded and unlisted ORTHOGONAL — a row can be both', () => {
+    // Two different stories with different next steps: "the creator took it
+    // down" versus "your money was returned". Conflating them would tell a
+    // refunded buyer their access ended because of the creator.
+    const refundedListed = buildPurchaseShelf([], [pub()], [], [order({ status: 'failed' })])
+    expect(refundedListed.rows[0]).toMatchObject({ refunded: true, listed: true })
+
+    // No publication in the cache: withdrawn AND refunded.
+    const refundedWithdrawn = buildPurchaseShelf([], [], [], [order({ status: 'failed' })])
+    expect(refundedWithdrawn.rows[0]).toMatchObject({ refunded: true, listed: false })
+  })
+
+  it('offers no share and no access for a refunded row', () => {
+    const shelf = buildPurchaseShelf([], [pub()], [], [order({ status: 'failed' })])
+    // `purchaseShareable` is a PUBLIC claim about what you bought, so a refunded
+    // row must not offer it even while the publication is still listed.
+    expect(purchaseShareable(shelf.rows[0]!)).toBe(false)
+    // …while a listed, un-refunded row still may.
+    const live = buildPurchaseShelf([entitlement()], [pub()], [], [order({ status: 'paid' })])
+    expect(purchaseShareable(live.rows[0]!)).toBe(true)
+  })
+
+  it('recognises a refund even when the grant row survived', () => {
+    // Defence in depth for the same truth: if the entitlement delete ever raced
+    // or failed, the surviving grant is still recognised as refunded through the
+    // entitlement's own `orderId`.
+    const shelf = buildPurchaseShelf(
+      [entitlement({ orderId: 'ord_1', pubId: 'pub_a' })],
+      [pub()],
+      [],
+      [order({ id: 'ord_1', status: 'failed' })],
+    )
+    expect(shelf.rows).toHaveLength(1)
+    expect(shelf.rows[0]!.refunded).toBe(true)
+    expect(shelf.totalPaidInr).toBe(0)
+  })
+
+  it('does NOT turn a pending or declined order into a row', () => {
+    // `failed` is written by exactly one function and only `where status =
+    // 'paid'`, so a declined card stays `pending`. Neither may appear as a
+    // purchase — only a refund is a receipt for money that actually moved.
+    const shelf = buildPurchaseShelf([], [pub()], [], [
+      order({ id: 'ord_pending', status: 'pending', paidAt: null }),
+      order({ id: 'ord_paid', status: 'paid' }),
+    ])
+    expect(shelf.rows).toEqual([])
+    expect(shelf.refundedCount).toBe(0)
+  })
+
+  it('still flags an unreadable refund amount instead of printing zero', () => {
+    // The order's amount is a CLAIM about money like any other: a row whose
+    // amount cannot be read is flagged rather than rendered as ₹0 paid.
+    const shelf = buildPurchaseShelf([], [pub()], [], [order({ status: 'failed', amountInr: Number.NaN })])
+    expect(shelf.rows[0]).toMatchObject({ refunded: true, amountReadable: false, amountPaidInr: 0 })
+    expect(shelf.totalPaidInr).toBe(0)
+  })
+})
+
+describe('#407 — the shelf page renders the refund, and reads both sources', () => {
+  const pageSrc = readFileSync(new URL('../src/pages/Purchases.tsx', import.meta.url), 'utf8')
+
+  it('reads the orders alongside the entitlements, in ONE attempt', () => {
+    // A shelf built from one source is not a partial shelf, it is a wrong one:
+    // entitlements alone lose every refund, orders alone lose every grant. So
+    // both are read together and a failure of either is a failure of the shelf.
+    expect(pageSrc).toContain('fetchMyOrders(meId)')
+    expect(pageSrc).toMatch(/Promise\.all\(\[/)
+    expect(pageSrc).toContain('buildPurchaseShelf(entitlements ?? [], pubs, users, orders ?? [])')
+    // The loading gate needs BOTH, or a settled entitlement read renders an
+    // empty shelf while the orders are still in flight.
+    expect(pageSrc).toContain('entitlements === null || orders === null')
+  })
+
+  it('shows the Refunded chip and removes every access affordance', () => {
+    expect(pageSrc).toContain('<Chip tone="info">Refunded</Chip>')
+    expect(pageSrc).toContain('the access it came with has ended')
+    // Both access buttons carry the refund gate, and the share gate is derived
+    // from the row (`purchaseShareable`), which is pinned false above.
+    expect(pageSrc).toMatch(/\{row\.listed && !row\.refunded && \(/)
+    expect(pageSrc).toContain('{row.listed && !row.refunded && <button')
+    // The copy resolver is skipped for a refunded row rather than offering a
+    // link to access the buyer no longer has.
+    expect(pageSrc).toContain('const copy = row.listed || row.refunded ? null : findBuyerCopy(row, trips)')
+  })
+
+  it('names the refunded count, because the total excludes it', () => {
+    // A silently smaller total is the same class of lie as a silently larger
+    // one, so the exclusion is printed.
+    expect(pageSrc).toContain('shelf.refundedCount > 0')
+    expect(pageSrc).toContain('refunded</>')
+  })
+
+  it('keeps the withdrawn note for un-refunded rows only', () => {
+    // The two notes are mutually exclusive by construction: a refunded row says
+    // its money came back, an unlisted one says access is unaffected — and
+    // telling a refunded buyer the second would be false.
+    expect(pageSrc).toContain('!row.refunded && !row.listed && (')
+  })
+})
+

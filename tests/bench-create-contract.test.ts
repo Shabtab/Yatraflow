@@ -43,7 +43,8 @@ describe('#398 — one route, three forms, no literal', () => {
   })
 
   it('has the bench CTA and the router reading the same constant', () => {
-    expect(source('components/PlanBench.tsx')).toContain('window.location.hash = CREATE_ROUTE')
+    // #426 slice 2: the CTA navigates the path form (the router reads pathname).
+    expect(source('components/PlanBench.tsx')).toContain('navigate(CREATE_PATH)')
     expect(source('App.tsx')).toContain('case CREATE_SEGMENT:')
   })
 

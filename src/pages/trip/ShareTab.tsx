@@ -9,7 +9,7 @@ import { useDb, userById, setMemberRole, removeMember, restoreMember, publishIti
 import { encodeTripSnapshot, snapshotUrl, downloadTripJson } from '../../lib/snapshot'
 import { ImportTripButton } from '../../components/ImportTripButton'
 import { CoverImagePicker } from '../../components/CoverImagePicker'
-import { currentPublicShareUrl } from '../../lib/shareUrl'
+import { currentPublicShareUrl, withShareRef } from '../../lib/shareUrl'
 import { downloadTripIcs } from '../../lib/ics'
 import { nativeCopyText } from '../../lib/native'
 import { useTablist } from '../../hooks/useTablist'
@@ -418,8 +418,8 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
     return () => { alive = false }
   }, [trip.id, inviteCode])
   const inviteLink = inviteCode
-    ? `${location.origin}/#/join/${inviteCode}`
-    : `${location.origin}/#/invite/${trip.id}`
+    ? `${location.origin}/join/${inviteCode}`
+    : `${location.origin}/invite/${trip.id}`
   const pub = db.published.find(p => p.tripId === trip.id)
   // #350 — a soft-unpublished publication keeps its row (so buyers keep what
   // they paid for and the sales history stays whole) but it is NOT live. Every
@@ -427,7 +427,8 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
   // the public link, the Unpublish action. The form keeps `pub` as its prefill
   // either way — re-publishing should not mean retyping the tagline.
   const pubLive = !!pub && !pub.unpublishedAt
-  const pubLink = pubLive && pub ? currentPublicShareUrl(pub.id) : ''
+  // #230 — the copy button's link names the button it left through (`ref=copy`).
+  const pubLink = pubLive && pub ? withShareRef(currentPublicShareUrl(pub.id), 'copy') : ''
   const isOwner = (trip.members ?? []).some(m => m.userId === me.id && m.role === 'owner')
   const [tab, setTab] = useState<ShareTabId>('plan')
   const [pendingRemove, setPendingRemove] = useState<NonNullable<Trip['members']>[number] | null>(null)

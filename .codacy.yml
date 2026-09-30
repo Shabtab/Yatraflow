@@ -26,5 +26,30 @@
 # ("escapes XML metacharacters in the origin instead of emitting raw markup"),
 # which asserts the emitted document rather than the source text — narrower and
 # stronger than the pattern that cannot see the character class.
+#
+# `api/c.js` is excluded on the same terms, added only after Codacy actually
+# flagged the file (#362). Fourteen findings, all three classes already
+# understood in this repo:
+#
+#   x1  "Generic Object Injection Sink" (the `escapeHtml` lookup) — the identical
+#       five-character-class idiom `api/sitemap.js`'s exclusion documents above.
+#
+#   x8  "user data flows into manually-constructed HTML" (the card's title,
+#       description, canonical and og:url) — every one of those interpolations
+#       is `escapeHtml(...)`-wrapped; the rule does not recognise an escape
+#       helper as a sanitiser, which is the same objection the x1 note records.
+#       The invariant is pinned behaviourally by `tests/seo-discovery.test.ts`
+#       ("escapes profile-controlled text instead of emitting raw markup"),
+#       which asserts the emitted document.
+#
+#   x2  "user-controlled URLs passed to HTTP client libraries" (the two fetches)
+#       — the id reaches those URLs only through `ID_RE` (`[0-9a-f-]` alone) and
+#       `encodeURIComponent`, and the malformed-id cases are pinned to fail
+#       without a fetch by the same suite.
+#
+#   x1  "detected directly writing to a Response object from user-defined
+#       input" — the handler's entire job is to write the card it renders; the
+#       sitemap's equivalent note ("HTML passed in to entries.push") applies.
 exclude_paths:
   - "api/sitemap.js"
+  - "api/c.js"

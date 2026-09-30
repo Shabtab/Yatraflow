@@ -1,5 +1,6 @@
 // ============ Explore public itineraries — discover, trust and fork (CTI §6.10) ============
 import { useEffect, useMemo, useState } from 'react'
+import { currentQuery, onRouteChange, replaceRoute } from '../lib/router'
 import {
   Calendar, Compass, Eye, GitFork, Heart, MapPin, Search, Sparkles, Star, Wallet, X,
 } from 'lucide-react'
@@ -14,6 +15,7 @@ import { cap } from '../lib/labels'
 import { Avatar, Chip, EmptyState, toast } from '../components/ui'
 import { Select } from '../components/Select'
 import { PubCard } from '../components/PubCard'
+import { appLink } from '../lib/appLink'
 
 type SortKey = 'popular' | 'newest' | 'budget-asc' | 'budget-desc' | 'duration'
 const STYLES = ['relaxed', 'balanced', 'packed', 'adventure', 'luxury', 'budget', 'family', 'spiritual', 'food-focused', 'creator'] as const
@@ -41,12 +43,12 @@ export function livePubs(pubs: PublishedItinerary[]): PublishedItinerary[] {
   return pubs.filter(p => !p.unpublishedAt)
 }
 
-/** Filter + sort state encoded in the hash query (F-22). Read at mount and on
- *  every real navigation. Filter edits write the query with `replaceState`,
- *  which fires no `hashchange`, so this never fights the user's typing — it
- *  only runs when something actually navigates. */
-function filtersFromHash() {
-  const p = new URLSearchParams(location.hash.split('?')[1] ?? '')
+/** Filter + sort state encoded in the route's query (F-22). Read at mount and
+ *  on every real navigation. Filter edits write the query with `replaceRoute`,
+ *  which notifies no route change, so this never fights the user's typing —
+ *  it only runs when something actually navigates. */
+function filtersFromRoute() {
+  const p = currentQuery()
   const d = p.get('dur')
   const s = p.get('sort')
   return {
@@ -71,27 +73,24 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
   const pubsRead = sliceState(sliceReads, 'suggested itineraries')
   const retryCatalog = () => { void rereadPublicSlices() }
   const { saved, isSaved, toggleSaved } = useSavedPubs()
-  // F-22: filters + sort live in the hash query (#/explore?q=goa&sort=budget-asc)
+  // F-22: filters + sort live in the route's query (/explore?q=goa&sort=budget-asc)
   // so they survive a refresh and can be shared; sortKey finally gets a control.
-  const f0 = filtersFromHash()
+  const f0 = filtersFromRoute()
   const [sortKey, setSortKey] = useState<SortKey>(f0.sortKey)
   const [q, setQ] = useState(f0.q)
   const [style, setStyle] = useState(f0.style)
   const [maxBudget, setMaxBudget] = useState<number | ''>(f0.maxBudget)
   const [duration, setDuration] = useState<'all' | 'short' | 'medium' | 'long'>(f0.duration)
   // A navigation that drops the query — clicking "Explore" while filtered, or
-  // Back — lands on a clean URL, but `navigate` only sets `location.hash` and
-  // this page is already mounted, so the filters would survive and the view
-  // would disagree with the address bar and with whatever that URL is shared
-  // to. Re-seed on a real hash change; `syncUrl`'s replaceState fires none, so
-  // typing is untouched.
+  // Back — lands on a clean URL, but this page is already mounted, so the
+  // filters would survive and the view would disagree with the address bar and
+  // with whatever that URL is shared to. Re-seed on a real route change;
+  // `syncUrl`'s replaceState notifies none, so typing is untouched.
   useEffect(() => {
-    const onHash = () => {
-      const f = filtersFromHash()
+    return onRouteChange(() => {
+      const f = filtersFromRoute()
       setQ(f.q); setStyle(f.style); setMaxBudget(f.maxBudget); setDuration(f.duration); setSortKey(f.sortKey)
-    }
-    window.addEventListener('hashchange', onHash)
-    return () => window.removeEventListener('hashchange', onHash)
+    })
   }, [])
   // ♡ Saved — device-local favourites (localStorage), not part of the schema
   // (#395). Deliberately NOT synced into the URL, unlike every other filter on
@@ -114,7 +113,7 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
     const p = new URLSearchParams({ q, style, max: String(maxBudget), dur: duration, sort: sortKey, ...next })
     for (const [k, v] of [...p]) if (!v || v === 'all' || v === '0' || (k === 'sort' && v === 'popular')) p.delete(k)
     const qs = p.toString()
-    history.replaceState(null, '', `#/explore${qs ? '?' + qs : ''}`)
+    replaceRoute(`/explore${qs ? '?' + qs : ''}`)
   }
 
   const popularity = (p: { views: number; copies: number }) => p.views + p.copies * 5
@@ -186,7 +185,7 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
   function forkTrip(slug: string) {
     const pub = published.find(p => p.id === slug)
     if (!pub) { toast('That itinerary is no longer available.', 'err'); return }
-    void forkPublication(pub, me, onNavigate)
+    void forkPublication(pub, me, onNavigate, undefined, 'explore')
   }
 
   function toggleHeart(id: string) {
@@ -301,7 +300,7 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
           <div className="featured-card" key={featured.id}>
             <div className="featured-body">
               <span className="editorial-kicker featured-kicker"><InlineIcon icon={Star} size={12} gap={3} />Featured itinerary{featuredOutsideFilters && <> · outside your filters</>}</span>
-              <h2><a className="featured-title-link" href={`#/pub/${featured.id}`}>{featured.title}</a></h2>
+              <h2><a className="featured-title-link" {...appLink(`/pub/${featured.id}`)}>{featured.title}</a></h2>
               <p className="featured-tagline">{featured.tagline}</p>
               <p className="featured-credibility">
                 Why featured: {featured.copies >= 1

@@ -335,6 +335,6 @@ describe('#349 — the fork asks the wire and the entitlement, never the cache',
     // and made the persist path the default for every fork the server did not
     // hand over in full, so the branch no longer depends on `src.days`.
     expect(fn).toContain('restubLockedDays(src, pub.freeDayIndexes,')
-    expect(fn).toMatch(/duplicateTripPublicPersisted\(safe, meId, pub\.freeDayIndexes\)/)
+    expect(fn).toMatch(/duplicateTripPublicPersisted\(safe, meId, pub\.freeDayIndexes, source\)/)
   })
 })

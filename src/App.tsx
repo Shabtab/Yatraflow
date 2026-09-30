@@ -21,8 +21,8 @@ import { PillNav } from './components/PillNav'
 import { decodeTripSnapshot } from './lib/snapshot'
 import { scrollBehavior } from './lib/motion'
 import { pageTitle, routeParts } from './lib/pageTitle'
-import { CREATE_SEGMENT, CREATE_PATH, CREATE_ROUTE } from './lib/routes'
-import { syncPublicAddress } from './lib/shareUrl'
+import { CREATE_SEGMENT, CREATE_PATH } from './lib/routes'
+import { currentRoute, navigate as navigateRoute, onRouteChange, settleLegacyHash } from './lib/router'
 import { appLink } from './lib/appLink'
 import { App as CapApp } from '@capacitor/app'
 import { isNative } from './lib/native'
@@ -47,15 +47,11 @@ const CreatorPage = lazy(() => import('./pages/CreatorPage').then(m => ({ defaul
 // Gated route: only shown in the nav when the account has creator mode on.
 const CreatorHubPage = lazy(() => import('./pages/CreatorHubPage').then(m => ({ default: m.CreatorHubPage })))
 // Masteradmin console: JWT app_metadata role only (never linked anywhere -
-// admins type #/admin; non-admins fall through to landing inside the page).
+// admins type /admin; non-admins fall through to landing inside the page).
 const AdminPage = lazy(() => import('./pages/AdminPage').then(m => ({ default: m.AdminPage })))
 
 /** Suspense fallback for the lazy routes - the same loading block the ready-gate shows. */
 const lazyRouteFallback = <div className="container loading-block"><div className="spinner" />Loading…</div>
-
-function currentRoute(): string {
-  return location.hash.replace(/^#/, '') || '/'
-}
 
 
 export default function App() {
@@ -67,7 +63,11 @@ export default function App() {
   const notifications = useNotifications()
   // Same semantics as currentUser(): the profile whose id matches sessionUserId.
   const me = useMemo(() => users.find(u => u.id === sessionUserId) ?? null, [users, sessionUserId])
-  const [route, setRoute] = useState(currentRoute)
+  // The route lives in the address bar now (web): the initial state settles
+  // any legacy hash address first — a bookmark from the hash era, a card
+  // handler's `/#/pub/<id>` hand-off, a native share intent opened on web —
+  // so the first render already renders the promoted route.
+  const [route, setRoute] = useState(() => settleLegacyHash() ?? currentRoute())
   // Theme is shared (src/lib/theme.ts) so the web topnav toggle and the
   // Profile card in the Android shell stay in sync - setTheme applies the
   // DOM + persistence + status bar and notifies both render trees.
@@ -97,10 +97,14 @@ export default function App() {
   }
 
   useEffect(() => {
-    syncPublicAddress()
-    const onHash = () => { syncPublicAddress(); setRoute(currentRoute()); setMobileNav(false); window.scrollTo({ top: 0, behavior: scrollBehavior() }) }
-    window.addEventListener('hashchange', onHash)
-    return () => window.removeEventListener('hashchange', onHash)
+    // One subscription for every route change: this module's navigate (one
+    // pushState on the web), the browser's Back/Forward, and the native
+    // shell's hash changes — the seam lives in lib/router.
+    return onRouteChange(() => {
+      setRoute(currentRoute())
+      setMobileNav(false)
+      window.scrollTo({ top: 0, behavior: scrollBehavior() })
+    })
   }, [])
 
   // Boot the store once: subscribes to Supabase auth changes and hydrates the
@@ -227,12 +231,13 @@ export default function App() {
   }, [mobileNav, notifOpen, menuOpen])
 
   function navigate(to: string) {
-    location.hash = to
+    navigateRoute(to)
   }
 
   // route shapes: /, /auth, /trips, /new, /trip/:id, /explore, /pub/:slug, /creator/:id, /creator-hub, /join/:code, /invite/:tripId (legacy), /admin, /share/<payload>, /profile
   // Query strings (e.g. /auth?mode=signup) ride on parts[0]; strip them so the
-  // segment still matches the switch. Pages read their own params from location.hash.
+  // segment still matches the switch. Pages read their own params from the
+  // address via lib/router's currentQuery().
   const parts = routeParts(route)
 
   // One title per route. `index.html` carries a single static title, so every
@@ -360,7 +365,7 @@ export default function App() {
         page = <Suspense fallback={lazyRouteFallback}><AuthPage onNavigate={navigate} /></Suspense>
         break
       // Masteradmin console - intentionally unlinked (no nav pill anywhere):
-      // admins type #/admin; AdminPage itself falls through to Landing for
+      // admins type /admin; AdminPage itself falls through to Landing for
       // non-admins (the JWT role is the gate, the route existing is not).
       case 'admin':
         page = <Suspense fallback={lazyRouteFallback}><AdminPage onNavigate={navigate} /></Suspense>
@@ -428,18 +433,18 @@ export default function App() {
       {(!isNative || !me) && (
       <nav className="topnav" aria-label="Site header">
         <div className="container topnav-inner">
-          <a className="brand" {...appLink('#/')} aria-label="YatraFlow home">
+          <a className="brand" {...appLink('/')} aria-label="YatraFlow home">
             <BrandMark size={32} />
             <span>Yatra<b style={{ color: 'var(--teal)' }}>Flow</b></span>
           </a>
           <PillNav activeKey={route} className="nav-links" aria-label="Primary">
             {me && <>
-              <a className={`nav-link ${route === '/trips' ? 'active' : ''}`} data-pill-key="/trips" {...appLink('#/trips')}>My trips</a>
-              <a className={`nav-link ${route === CREATE_PATH ? 'active' : ''}`} data-pill-key={CREATE_PATH} {...appLink(CREATE_ROUTE)}>Plan a trip</a>
+              <a className={`nav-link ${route === '/trips' ? 'active' : ''}`} data-pill-key="/trips" {...appLink('/trips')}>My trips</a>
+              <a className={`nav-link ${route === CREATE_PATH ? 'active' : ''}`} data-pill-key={CREATE_PATH} {...appLink(CREATE_PATH)}>Plan a trip</a>
             </>}
-            <a className={`nav-link ${route === '/explore' ? 'active' : ''}`} data-pill-key="/explore" {...appLink('#/explore')}>Explore</a>
+            <a className={`nav-link ${route === '/explore' ? 'active' : ''}`} data-pill-key="/explore" {...appLink('/explore')}>Explore</a>
             {me?.profile.isCreator && (
-              <a className={`nav-link ${route === '/creator-hub' ? 'active' : ''}`} data-pill-key="/creator-hub" {...appLink('#/creator-hub')}>Creator hub</a>
+              <a className={`nav-link ${route === '/creator-hub' ? 'active' : ''}`} data-pill-key="/creator-hub" {...appLink('/creator-hub')}>Creator hub</a>
             )}
           </PillNav>
         <div className="nav-right">
@@ -531,8 +536,8 @@ export default function App() {
               "Log in". */}
           {!me && parts[0] !== 'auth' && (
             <>
-              <a className="btn btn-outline btn-sm" {...appLink('#/auth')}>Log in</a>
-              <a className="btn btn-primary btn-sm" {...appLink('#/auth?mode=signup')}>Start planning free</a>
+              <a className="btn btn-outline btn-sm" {...appLink('/auth')}>Log in</a>
+              <a className="btn btn-primary btn-sm" {...appLink('/auth?mode=signup')}>Start planning free</a>
             </>
           )}
         </div>
@@ -546,15 +551,15 @@ export default function App() {
               the reflow rung (≤350px) hides the chrome pair from .nav-right so
               the primary CTA fits 320px, and this tray keeps Log in reachable
               (review finding 1). */}
-          {!me && <a className="nav-link" {...appLink('#/auth')}>Log in</a>}
+          {!me && <a className="nav-link" {...appLink('/auth')}>Log in</a>}
           {me && <>
-            <a className={`nav-link ${route === '/trips' ? 'active' : ''}`} {...appLink('#/trips')}><InlineIcon icon={Tent} size={15} gap={6} />My trips</a>
-            <a className={`nav-link ${route === CREATE_PATH ? 'active' : ''}`} {...appLink(CREATE_ROUTE)}><InlineIcon icon={Plus} size={15} gap={6} />Plan a trip</a>
+            <a className={`nav-link ${route === '/trips' ? 'active' : ''}`} {...appLink('/trips')}><InlineIcon icon={Tent} size={15} gap={6} />My trips</a>
+            <a className={`nav-link ${route === CREATE_PATH ? 'active' : ''}`} {...appLink(CREATE_PATH)}><InlineIcon icon={Plus} size={15} gap={6} />Plan a trip</a>
           </>
           }
-          <a className={`nav-link ${route === '/explore' ? 'active' : ''}`} {...appLink('#/explore')}><InlineIcon icon={Compass} size={15} gap={6} />Explore</a>
-          {me?.profile.isCreator && <a className={`nav-link ${route === '/creator-hub' ? 'active' : ''}`} {...appLink('#/creator-hub')}><InlineIcon icon={Sparkles} size={15} gap={6} />Creator hub</a>}
-          {me && <a className={`nav-link ${route === '/profile' ? 'active' : ''}`} {...appLink('#/profile')}><InlineIcon icon={Settings} size={15} gap={6} />Profile & settings</a>}
+          <a className={`nav-link ${route === '/explore' ? 'active' : ''}`} {...appLink('/explore')}><InlineIcon icon={Compass} size={15} gap={6} />Explore</a>
+          {me?.profile.isCreator && <a className={`nav-link ${route === '/creator-hub' ? 'active' : ''}`} {...appLink('/creator-hub')}><InlineIcon icon={Sparkles} size={15} gap={6} />Creator hub</a>}
+          {me && <a className={`nav-link ${route === '/profile' ? 'active' : ''}`} {...appLink('/profile')}><InlineIcon icon={Settings} size={15} gap={6} />Profile & settings</a>}
         </div>
       )}
 

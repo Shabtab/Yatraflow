@@ -11,6 +11,7 @@ import { computeHealth, computeTotals, formatInr, minutesToHM, countHotelNights,
 import { healthBandClass, healthBandTone } from '../../lib/healthBand'
 import { overviewRoutePoints, routeWeatherAnchor } from '../../lib/overviewTruth'
 import { rankWarnings, warningKey, maxWarningSeverity, severityLead } from '../../lib/overviewWarnings'
+import { matrixFreshness } from '../../lib/matrixFreshness'
 import { useTimeFormat, formatHM } from '../../lib/timefmt'
 import { fetchDailyWeather, forecastAvailable, wmoInfo } from '../../lib/weather'
 import type { DayWeather } from '../../lib/weather'
@@ -20,7 +21,7 @@ import { InlineIcon, wmoIcon } from '../../components/icons'
 
 // ================= Overview =================
 
-export function OverviewTab({ trip, onOpenTimeline, onOpenMap, onInvite, health, totals, road, corridorSegments }: {
+export function OverviewTab({ trip, onOpenTimeline, onOpenMap, onInvite, health, totals, road, corridorSegments, mapInputs, mapCache }: {
   trip: Trip
   editable: boolean
   onOpenDecisions: () => void
@@ -34,6 +35,10 @@ export function OverviewTab({ trip, onOpenTimeline, onOpenMap, onInvite, health,
   road?: TripRoadView | null
   /** The corridor scan's segments, shared with the Map rail (from the cache). */
   corridorSegments?: SegmentHit[]
+  /** Freshness pair published by the Map tab (lane A) — null when never mounted. */
+  mapInputs?: { hash: string; scopeKm: number } | null
+  /** The cache entry the matrix reads (`suggestionCache.cache.map`). */
+  mapCache?: { scopeKm: number; inputsHash: string } | null
 }) {
   const db = useDb()
   const timeFormat = useTimeFormat()
@@ -170,7 +175,7 @@ export function OverviewTab({ trip, onOpenTimeline, onOpenMap, onInvite, health,
           </div>
         </div>
 
-        <SlotMatrix trip={trip} road={road} corridorSegments={corridorSegments} />
+        <SlotMatrix trip={trip} road={road} corridorSegments={corridorSegments} mapInputs={mapInputs} mapCache={mapCache} onRefreshMatrix={onOpenMap} />
 
         <div className="card">
           <div className="row-between card-head">
@@ -296,11 +301,19 @@ function WeatherCard({ trip }: { trip: Trip }) {
  *  with no engine segments those two of the six columns were decorative), and
  *  the day's `total` disagreed with the rail's for the same day. A second
  *  derivation of the same day is the bug, so there is no longer one. */
-function SlotMatrix({ trip, road, corridorSegments }: {
+function SlotMatrix({ trip, road, corridorSegments, mapInputs, mapCache, onRefreshMatrix }: {
   trip: Trip
   road?: TripRoadView | null
   /** The corridor scan's segments — the same array the Map rail reads. */
   corridorSegments?: SegmentHit[]
+  /** The freshness pair the Map tab published for the scan it wrote (lane A's
+   *  `onInputsHash`) — null when the tab never mounted this session, which is
+   *  UNKNOWN, never stale and never fresh. */
+  mapInputs?: { hash: string; scopeKm: number } | null
+  /** The cache entry the matrix reads (`suggestionCache.cache.map`). */
+  mapCache?: { scopeKm: number; inputsHash: string } | null
+  /** Switch to the Map tab (the stale qualifier's Refresh target). */
+  onRefreshMatrix?: () => void
 }) {
   const kinds: Array<{ key: 'breakfast' | 'lunch' | 'fuel' | 'stretch' | 'dinner' | 'stay'; label: string; name: string }> = [
     { key: 'breakfast', label: 'B', name: 'breakfast' },
@@ -311,7 +324,12 @@ function SlotMatrix({ trip, road, corridorSegments }: {
     { key: 'stay', label: 'N', name: 'the night' },
   ]
   const deps = useMemo<Omit<DaySlotsDeps, 'dayStops'>>(() => {
-    // Same helper, same inputs as the Map tab, so the attribution cannot differ.
+    // Same helper as the Map tab, over the same corridor segments — but NOT the
+    // same inputs: the Map passes real anchors, routePolyline, altPool and
+    // decisions, while the matrix passes none of those (lifting the Map's full
+    // dep set out is explicitly out of scope — lane A/E agreement). The
+    // freshness gate below is what keeps that asymmetry from printing stale
+    // numbers silently: same helper + same segments + same gate, or qualified.
     const dayRoadKm = mapRoadViewFromLegs(road?.chain ?? null, road?.legs ?? null, trip.days.map(d => d.index)).dayRoadKm
     const attribution = tripDayAttribution(trip, dayRoadKm)
     return {
@@ -334,6 +352,10 @@ function SlotMatrix({ trip, road, corridorSegments }: {
     [trip.days, deps],
   )
   const hasCorridor = (corridorSegments?.length ?? 0) > 0
+  // The matrix re-derives with today's settings over the scan the Map wrote —
+  // possibly under older settings. Unknown (Map never mounted) is qualified,
+  // never fresh; stale replaces the numbers, never annotates them.
+  const freshness = matrixFreshness({ hasCorridor, mapCache: mapCache ?? null, mapInputs: mapInputs ?? null })
   // S11: a day with no slots at all is the EMPTIEST day, and the old
   // `total > 0` filter dropped it — so the callout could never name the one day
   // that most needed naming.
@@ -343,7 +365,17 @@ function SlotMatrix({ trip, road, corridorSegments }: {
   return (
     <div className="card">
       <h3 className="card-head">What each day holds</h3>
-      <div className="slotmatrix" role="table" aria-label="Planned parts per day">
+      {freshness === 'stale' ? (
+        <>
+          <p className="muted small" style={{ margin: '6px 0 0' }}>
+            Stale: your settings changed since the Map tab&apos;s scan, so these numbers would describe the old
+            plan. Nothing is shown rather than something wrong.
+          </p>
+          <button className="link-btn teal" style={{ marginTop: 8 }} onClick={onRefreshMatrix}>Refresh on the Map tab →</button>
+        </>
+      ) : (
+        <>
+          <div className="slotmatrix" role="table" aria-label="Planned parts per day">
         <div className="slotmatrix-row slotmatrix-head" role="row">
           <span className="slotmatrix-day" role="columnheader"><span className="sr-only">Day</span></span>
           {kinds.map(k => (
@@ -388,6 +420,13 @@ function SlotMatrix({ trip, road, corridorSegments }: {
         Solid = planned, hollow = engine-managed, dot = still open.
         {thinnest ? ` Thinnest day: Day ${thinnest.index + 1}${thinnest.total === 0 ? ' (nothing planned yet)' : ` (${thinnest.filled} of ${thinnest.total})`}.` : ''}
       </p>
+          {freshness === 'unknown' && (
+            <p className="muted small" style={{ margin: '4px 0 0' }}>
+              Unverified: the Map tab hasn&apos;t published a scan this session, so this may predate your latest settings.
+            </p>
+          )}
+        </>
+      )}
       {!hasCorridor && (
         <p className="muted small" style={{ margin: '4px 0 0' }}>
           Partial: this trip&apos;s corridor hasn&apos;t been scanned yet, so the fuel and stretch breaks the engine

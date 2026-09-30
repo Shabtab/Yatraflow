@@ -57,6 +57,9 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
+const routerPath = '../src/lib/router'
+import { forceNativeRouting } from '../src/lib/router'
+
 describe('share preview handler in node', () => {
   it('renders publication-specific metadata and escapes benign ampersands and quotes', async () => {
     respond([publication])
@@ -76,8 +79,9 @@ describe('share preview handler in node', () => {
     }
     expect(res.body).toContain(`og:url" content="${canonical}"`)
     expect(res.body).toContain(`<link rel="canonical" href="${canonical}"`)
-    expect(res.body).toContain(`location.replace("/#/pub/${publication.id}")`)
-    expect(res.body).toContain(`href="/#/pub/${publication.id}"`)
+    // #426 slice 3: the browser lands on the app page's real path.
+    expect(res.body).toContain(`location.replace("/pub/${publication.id}")`)
+    expect(res.body).toContain(`href="/pub/${publication.id}"`)
     // No cover on this row, so the app's own asset has to carry the card.
     const fallback = 'https://yatraflow-blond.vercel.app/og-default.png'
     expect(res.body).toContain(`og:image" content="${fallback}"`)
@@ -217,6 +221,20 @@ describe('share preview handler in node', () => {
     }
   })
 
+  it('a missing publication gets a noindex card with no canonical or og:url', async () => {
+    // #362's hygiene item: the 404 card used to advertise the very id it could
+    // not find — a canonical and an og:url for a page that does not exist. It
+    // now says "not found", noindexes, and carries no self-referential tags.
+    respond([])
+    const res = await runHandler()
+    expect(res.statusCode).toBe(404)
+    expect(res.body).toContain('<meta name="robots" content="noindex" />')
+    expect(res.body).toContain('Itinerary not found')
+    expect(res.body).not.toContain('rel="canonical"')
+    expect(res.body).not.toContain('og:url')
+    expect(res.body).not.toContain(`/i/${publication.id}`)
+  })
+
   it('HEAD returns the successful GET status and headers without a body', async () => {
     respond([publication])
     const get = await runHandler()
@@ -255,11 +273,23 @@ describe('share preview handler in node', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it.each(['', 'two words', 'x'.repeat(65), undefined])('rejects an invalid simple id (%s) without fetch', async id => {
+  it.each(['two words', 'x'.repeat(65)])('rejects a malformed id (%s) without fetch', async id => {
     const res = makeRes()
     const { default: handler } = await import(apiPath)
     await handler({ method: 'GET', query: { id } }, res)
     expect(res.statusCode).toBe(400)
+    expect(res.ended).toBe(true)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  // #362: a bare `/i/` — the rewrite forwards it without a query — is a
+  // missing page, not the app shell and not a bad request. An empty-string id
+  // is the same page asked for by hand.
+  it.each([undefined, ''])('answers 404 for the id-less publication path (%s)', async id => {
+    const res = makeRes()
+    const { default: handler } = await import(apiPath)
+    await handler({ method: 'GET', query: { id } }, res)
+    expect(res.statusCode).toBe(404)
     expect(res.ended).toBe(true)
     expect(fetchMock).not.toHaveBeenCalled()
   })
@@ -437,123 +467,111 @@ describe('public share URLs', () => {
   })
 })
 
-describe('public address bar', () => {
-  async function sync(url: string) {
+describe('the legacy-hash bridge (#426 slice 2)', () => {
+  /** Settle an address the way App.tsx's first render does: the bridge reads
+   *  the stubbed location, rewrites history, and hands back the route. */
+  async function settle(url: string, native = false) {
+    forceNativeRouting(native)
     const address = new URL(url)
     const state = { restored: true }
     const replaceState = vi.fn()
     vi.stubGlobal('location', address)
     vi.stubGlobal('history', { state, replaceState })
-    const { syncPublicAddress } = await import(shareUrlPath)
-    syncPublicAddress()
-    return { address, state, replaceState, syncPublicAddress }
+    const { settleLegacyHash } = await import(routerPath)
+    const route = settleLegacyHash()
+    return { address, state, replaceState, route }
   }
+  beforeEach(() => forceNativeRouting(null))
+  afterEach(() => { forceNativeRouting(null); vi.unstubAllGlobals() })
 
-  it('makes a legacy hash link crawler-readable without changing the route or history state', async () => {
-    const { state, replaceState } = await sync('https://app.example.test/?campaign=share#/pub/kerala-trip_1')
-    expect(replaceState).toHaveBeenCalledExactlyOnceWith(state, '', '/i/kerala-trip_1?campaign=share#/pub/kerala-trip_1')
+  it('promotes a legacy hash link onto the app route before the first render', async () => {
+    const { state, replaceState, route } = await settle('https://app.example.test/?campaign=share#/pub/kerala-trip_1')
+    // replaceState, never pushState: one address under its modern name, so
+    // Back must not double up on the promotion.
+    expect(replaceState).toHaveBeenCalledExactlyOnceWith(state, '', '/pub/kerala-trip_1?campaign=share')
+    expect(route).toBe('/pub/kerala-trip_1?campaign=share')
   })
 
-  it('does not rewrite an already canonical browser address', async () => {
-    const { replaceState } = await sync('https://app.example.test/i/kerala-trip_1#/pub/kerala-trip_1')
-    expect(replaceState).not.toHaveBeenCalled()
+  it('maps by identity onto the route the router serves — creator is NOT /c (#426 slice 2)', async () => {
+    // `#/creator/<id>` becomes the page the router itself renders. Sending a
+    // browser to `/c/<id>` would hand it to api/c.js and back here in a loop;
+    // the crawler card keeps /c and the app page keeps /creator until slice 3.
+    const { replaceState, route } = await settle('https://app.example.test/#/creator/u_9')
+    expect(replaceState).toHaveBeenCalledExactlyOnceWith({ restored: true }, '', '/creator/u_9')
+    expect(route).toBe('/creator/u_9')
   })
 
-  it.each(['/explore', '/creator/alice', '/join/code', '/invite/trip', '/share/yf1_payload', '/auth?next=%2Ftrips', '/'])('clears the publication path when moving to %s', async route => {
-    const { state, replaceState } = await sync(`https://app.example.test/i/kerala-trip_1#${route}`)
-    expect(replaceState).toHaveBeenCalledExactlyOnceWith(state, '', `/#${route}`)
+  it('carries the query through untouched — the attribution fact survives', async () => {
+    const { route } = await settle('https://app.example.test/?ref=copy#/pub/kerala-trip_1')
+    expect(route).toBe('/pub/kerala-trip_1?ref=copy')
   })
 
-  it('aligns the pathname when switching publications', async () => {
-    const { state, replaceState } = await sync('https://app.example.test/i/old-trip#/pub/new-trip')
-    expect(replaceState).toHaveBeenCalledExactlyOnceWith(state, '', '/i/new-trip#/pub/new-trip')
+  it('lets a query in the hash override the URL query per key', async () => {
+    const { route } = await settle('https://app.example.test/?ref=copy#/pub/kerala-trip_1?ref=wa')
+    expect(route).toBe('/pub/kerala-trip_1?ref=wa')
   })
 
-  it('normalizes restored hash routes on repeated Back/Forward calls', async () => {
-    const { address, state, replaceState, syncPublicAddress } = await sync('https://app.example.test/i/kerala-trip_1#/pub/kerala-trip_1')
-    address.hash = '#/explore'
-    syncPublicAddress()
-    expect(replaceState).toHaveBeenLastCalledWith(state, '', '/#/explore')
-    address.pathname = '/'
-    address.hash = '#/pub/kerala-trip_1'
-    syncPublicAddress()
-    expect(replaceState).toHaveBeenLastCalledWith(state, '', '/i/kerala-trip_1#/pub/kerala-trip_1')
+  it('reads ids and paths through without re-encoding', async () => {
+    const { route } = await settle('https://app.example.test/#/pub/abc%2Fdef?utm_source=whatsapp')
+    expect(route).toBe('/pub/abc%2Fdef?utm_source=whatsapp')
   })
 
-  it.each(['#/pub/', '#/pub/two%20words', `#/pub/${'x'.repeat(65)}`, '#/explore'])('does not promote unsupported route %s', async hash => {
-    const { replaceState } = await sync(`https://app.example.test/${hash}`)
-    expect(replaceState).not.toHaveBeenCalled()
-  })
-
-  const publicationRoutes = [
-    '#/pub/kerala-trip_1/',
-    '#/pub/kerala-trip_1?utm_source=x',
-    '#//pub///kerala-trip_1//',
-    '#/pub?source=nav/kerala-trip_1?utm_source=x/',
-    '#/pub/kerala-trip_1/extra',
-  ]
-
-  it.each(publicationRoutes)('promotes the router-rendered publication for %s', async hash => {
-    const { state, replaceState } = await sync(`https://app.example.test/?campaign=share${hash}`)
-    expect(replaceState).toHaveBeenCalledExactlyOnceWith(state, '', `/i/kerala-trip_1?campaign=share${hash}`)
-  })
-
-  it.each(publicationRoutes)('never erases an already correct publication path for %s', async hash => {
-    const { replaceState } = await sync(`https://app.example.test/i/kerala-trip_1${hash}`)
-    expect(replaceState).not.toHaveBeenCalled()
-  })
-
-  it('promotes trailing segments ignored by the router', async () => {
-    const { state, replaceState } = await sync('https://app.example.test/#/pub/one/extra')
-    expect(replaceState).toHaveBeenCalledExactlyOnceWith(state, '', '/i/one#/pub/one/extra')
-  })
-
-  it.each(['a', 'A0_-', 'x'.repeat(64)])('accepts handler-allowed id %s in the pure path decision', async id => {
-    const { publicAddressPath } = await import(shareUrlPath)
-    expect(publicAddressPath(`#/pub/${id}?utm_source=x/`, '/')).toBe(`/i/${id}`)
-  })
-
-  it.each(['', 'two%20words', 'one.two', 'x'.repeat(65)])('does not promote handler-rejected id %s', async id => {
-    const { publicAddressPath } = await import(shareUrlPath)
-    expect(publicAddressPath(`#/pub/${id}`, '/')).toBe('/')
-    expect(publicAddressPath(`#/pub/${id}`, '/i/old')).toBe('/')
-  })
-
-  it.each(['#/explore', '#/pub/?source=x/one', '#/?source=x/pub/one', '#/public/one'])('uses router semantics rather than finding pub anywhere in %s', async hash => {
-    const { publicAddressPath } = await import(shareUrlPath)
-    expect(publicAddressPath(hash, '/i/old')).toBe('/')
-    expect(publicAddressPath(hash, '/other')).toBe('/other')
-  })
-
-  it.each(['file:///app/index.html#/pub/kerala-trip_1', 'capacitor://localhost/#/pub/kerala-trip_1'])('leaves non-web addresses unchanged: %s', async url => {
-    const { replaceState } = await sync(url)
-    expect(replaceState).not.toHaveBeenCalled()
-  })
-
-  it('leaves native https WebViews unchanged', async () => {
-    const { Capacitor } = await import('@capacitor/core')
-    const native = vi.spyOn(Capacitor, 'isNativePlatform').mockReturnValue(true)
-    try {
-      const { replaceState } = await sync('https://localhost/#/pub/kerala-trip_1')
-      expect(replaceState).not.toHaveBeenCalled()
-    } finally {
-      native.mockRestore()
+  it('promotes every routed segment, so old bookmarks keep working', async () => {
+    for (const hash of ['#/trips', '#/trip/abc123', '#/explore?q=goa', '#/auth?mode=signup', '#/join/GOA4X2', '#/profile']) {
+      const { route, replaceState } = await settle(`https://app.example.test/${hash}`)
+      expect(route, hash).toBe(hash.replace(/^#/, ''))
+      expect(replaceState).toHaveBeenCalledOnce()
     }
   })
 
-  it('keeps snapshot links rooted even while a publication path is present', async () => {
-    vi.stubGlobal('location', new URL('https://app.example.test/i/kerala-trip_1#/pub/kerala-trip_1'))
+  it('leaves a hash the router never answered alone', async () => {
+    for (const hash of ['#/xyz/1', '#/', '#', '#/not-a-segment']) {
+      const { replaceState, route } = await settle(`https://app.example.test/trips${hash}`)
+      expect(replaceState, hash).not.toHaveBeenCalled()
+      expect(route, hash).toBeNull()
+    }
+  })
+
+  it('is idempotent — a settled address has no hash left to settle', async () => {
+    const first = await settle('https://app.example.test/?ref=copy#/pub/kerala-trip_1')
+    expect(first.route).toBe('/pub/kerala-trip_1?ref=copy')
+    const second = await settle('https://app.example.test/pub/kerala-trip_1?ref=copy')
+    expect(second.route).toBeNull()
+    expect(second.replaceState).not.toHaveBeenCalled()
+  })
+
+  it('the shape of an id no longer gates the promotion', async () => {
+    // The old sync refused odd ids because it minted a CANONICAL crawler
+    // address (/i/<id>) and must not mint a lying one. The bridge promotes to
+    // the app's own path, which renders the page's honest not-found state —
+    // no crawler claim is made by an app-internal address.
+    const { route } = await settle('https://app.example.test/#/pub/two%20words')
+    expect(route).toBe('/pub/two%20words')
+  })
+
+  it('does nothing on the native shell — the shell stays on hash routing until slice 4', async () => {
+    const { replaceState, route } = await settle('https://localhost/index.html#/pub/kerala-trip_1', true)
+    expect(replaceState).not.toHaveBeenCalled()
+    expect(route).toBeNull()
+  })
+
+  it('snapshot links are rooted at the origin without a fragment', async () => {
+    vi.stubGlobal('location', new URL('https://app.example.test/pub/kerala-trip_1'))
     const { snapshotUrl } = await import('../src/lib/snapshot')
-    expect(snapshotUrl({} as Parameters<typeof snapshotUrl>[0], 'yf1_payload')).toBe('https://app.example.test/#/share/yf1_payload')
+    expect(snapshotUrl({} as Parameters<typeof snapshotUrl>[0], 'yf1_payload')).toBe('https://app.example.test/share/yf1_payload')
   })
 })
 
 describe('public share source wiring', () => {
-  it('synchronizes the address on mount and before rendering a hash navigation', () => {
+  it('settles the legacy hash before first render, then subscribes to route changes', () => {
     const source = read('../src/App.tsx')
-    expect(source).toMatch(/useEffect\(\(\) => \{\s*syncPublicAddress\(\)/)
-    expect(source).toMatch(/const onHash = \(\) => \{ syncPublicAddress\(\); setRoute\(currentRoute\(\)\)/)
-    expect(source).toContain("window.addEventListener('hashchange', onHash)")
+    // The boot bridge runs inside the route state's initializer, so the first
+    // render already renders the promoted route.
+    expect(source).toContain('settleLegacyHash() ?? currentRoute()')
+    // One subscription for pushState, popstate and the native shell's
+    // hashchange — the seam lives in lib/router.
+    expect(source).toMatch(/return onRouteChange\(\(\) => \{\s*setRoute\(currentRoute\(\)\)/)
+    expect(source).not.toContain('syncPublicAddress')
   })
 
   it.each(['../src/pages/CreatorPage.tsx', '../src/pages/trip/ShareTab.tsx', '../src/lib/snapshot.ts'])('%s does not inherit a publication pathname for hash links', path => {
@@ -565,11 +583,43 @@ describe('public share source wiring', () => {
     expect(config.rewrites).toContainEqual({ source: '/i/:id', destination: '/api/i?id=:id' })
   })
 
+  it('answers every other path with the app shell, after the explicit rewrites (#426)', () => {
+    // The router reads the pathname now, so a deep link must be SERVED the
+    // document or a hard refresh 404s. The catch-all has to come after the
+    // /i/, /c/, sitemap and mappls entries — first match wins — and the
+    // exclusions keep the functions, the worker and the robots file out of
+    // the shell's way (the issue's NEVER list).
+    const config = JSON.parse(read('../vercel.json'))
+    const sources = config.rewrites.map((r: { source: string }) => r.source)
+    const catchAll = config.rewrites.find((r: { source: string }) => r.source.startsWith('/(('))
+    expect(catchAll, 'no SPA fallback rewrite found').toBeTruthy()
+    expect(catchAll.destination).toBe('/index.html')
+    expect(sources.indexOf('/i/:id')).toBeLessThan(sources.indexOf(catchAll.source))
+    expect(sources.indexOf('/c/:id')).toBeLessThan(sources.indexOf(catchAll.source))
+    expect(catchAll.source).toContain('(?!api/')
+  })
+
   it.each(['../src/pages/PublicItinerary.tsx', '../src/pages/trip/ShareTab.tsx'])('%s calls currentPublicShareUrl for published links', path => {
     const source = read(path)
     expect(source).toMatch(/import\s*\{[^}]*\bcurrentPublicShareUrl\b[^}]*\}\s*from\s*['"][^'"]*\/lib\/shareUrl['"]/)
     expect(source).toMatch(/currentPublicShareUrl\(\s*pub\.id\s*\)/)
     expect(source).not.toContain('${location.pathname}#/pub/')
+  })
+
+  it('the creator page shares the server path, not the fragment (#362)', () => {
+    const source = read('../src/pages/CreatorPage.tsx')
+    expect(source).toMatch(/import \{ currentCreatorShareUrl \} from '\.\.\/lib\/shareUrl'/)
+    expect(source).toMatch(/currentCreatorShareUrl\(creatorId\)/)
+    // The fragment form never leaves the browser — it cannot be the shared link.
+    expect(source).not.toContain('${location.origin}/#/creator/')
+  })
+
+  it('creatorShareUrl mints the /c/<id> address, origin-aware and native-stable', async () => {
+    const { creatorShareUrl } = await import(shareUrlPath)
+    expect(creatorShareUrl('alice', 'https://app.example.test/', false))
+      .toBe('https://app.example.test/c/alice')
+    expect(creatorShareUrl('alice', 'capacitor://localhost', true))
+      .toBe('https://yatraflow-blond.vercel.app/c/alice')
   })
 })
 
@@ -638,7 +688,10 @@ describe('the production origin agrees everywhere it is written', () => {
     return match![1]!.replace(/\/+$/, '')
   }
 
-  const inHandler = constFrom(read('../api/i.js'), 'DEFAULT_ORIGIN')
+  // #362: the handlers' literal moved into api/_origin.js — the ONE resolver
+  // the publication card, the creator card and the sitemap read. The literal
+  // agreement is pinned from where it is now written.
+  const inHandler = constFrom(read('../api/_origin.js'), 'DEFAULT_ORIGIN')
   const inClient = constFrom(read('../src/lib/shareUrl.ts'), 'PUBLIC_ORIGIN')
   const shell = read('../index.html')
 
@@ -663,5 +716,162 @@ describe('the production origin agrees everywhere it is written', () => {
     const source = read('../src/lib/shareUrl.ts')
     expect(source).toContain('native ? PUBLIC_ORIGIN :')
     expect(source).toMatch(/Capacitor\.isNativePlatform\(\)/)
+  })
+})
+
+describe('the shared link carries its route in (#230)', () => {
+  it('forwards a vocabulary ref in the redirect as a plain query', async () => {
+    respond([publication])
+    const res = await runHandler('GET', publication.id, { ref: 'copy' })
+    expect(res.statusCode).toBe(200)
+    // The redirect is where the ref survives the server hop: the target is
+    // the app page's real path now (#426 slice 3) and the ref rides its query,
+    // so the page reads location.search exactly as it did in the hash era.
+    expect(res.body).toContain(`location.replace("/pub/${publication.id}?ref=copy")`)
+    expect(res.body).toContain(`href="/pub/${publication.id}?ref=copy"`)
+  })
+
+  it('drops an unknown ref — the funnel log is a vocabulary, not free text', async () => {
+    respond([publication])
+    const res = await runHandler('GET', publication.id, { ref: 'bogus' })
+    expect(res.body).toContain(`location.replace("/pub/${publication.id}")`)
+    expect(res.body).not.toContain('ref=bogus')
+  })
+
+  it('keeps the buyer’s own metadata clean while the redirect carries the ref', async () => {
+    respondBuyerCard(true)
+    const res = await runHandler('GET', publication.id, { buyer: BUYER, ref: 'buyer' })
+    expect(res.body).toContain(`location.replace("/pub/${publication.id}?ref=buyer")`)
+    // The share card advertises the page, not the tracking: og:url keeps the
+    // buyer variant it already had and the canonical stays the publication.
+    const ogUrl = /<meta property="og:url" content="([^"]*)"/.exec(res.body)?.[1] ?? ''
+    expect(ogUrl).toContain(`?buyer=${BUYER}`)
+    expect(ogUrl).not.toContain('ref=')
+    const canonical = /<link rel="canonical" href="([^"]*)"/.exec(res.body)?.[1] ?? ''
+    expect(canonical).toBe(`${DEFAULT_ORIGIN}/i/${publication.id}`)
+  })
+
+  it('a no-ref request redirects exactly as before — direct is the default', async () => {
+    respond([publication])
+    const res = await runHandler('GET', publication.id)
+    expect(res.body).toContain(`location.replace("/pub/${publication.id}")`)
+  })
+})
+
+// F3 (#227) — the send unit for "one published link to a WhatsApp group".
+
+// F7 (#228) — the channel a shared link travelled through, so a distribution
+// post can be measured. Option A: the channel is a vocabulary value, not a
+// free-form slug — `wa` (the WhatsApp send's own channel) and `community` (a
+// post outside the app). Anything else is dropped at every layer, which is
+// what keeps a stranger's sentence out of the analytics log.
+describe('a shared link carries its channel', () => {
+  it('reads an allowlisted channel — and drops anything that is not one', async () => {
+    const { shareRefFromSearch } = await import(shareUrlPath)
+    expect(shareRefFromSearch('?ref=wa')).toBe('wa')
+    expect(shareRefFromSearch('?ref=community')).toBe('community')
+    // A ref rides beside other parameters, not instead of them.
+    expect(shareRefFromSearch('?buyer=ent/1&ref=wa')).toBe('wa')
+    // Absent, empty, or not in the vocabulary: no reference rather than a
+    // free-text one. A community slug is a category the allowlist does not
+    // have, so it reads as direct — never stored, never forwarded.
+    expect(shareRefFromSearch('')).toBeNull()
+    expect(shareRefFromSearch('?ref=')).toBeNull()
+    expect(shareRefFromSearch('?ref=r-indiatravel')).toBeNull()
+    expect(shareRefFromSearch('?ref=WA')).toBeNull()
+    expect(shareRefFromSearch('?ref=<script>')).toBeNull()
+    expect(shareRefFromSearch('?ref=two words')).toBeNull()
+  })
+
+  it('appends the channel to the share address — and changes nothing without one', async () => {
+    const { publicShareUrl } = await import(shareUrlPath)
+    // The no-ref address is byte-identical to before: every existing caller
+    // and pin keeps its exact output.
+    expect(publicShareUrl('kerala-trip_1', 'https://app.example.test/', false))
+      .toBe('https://app.example.test/i/kerala-trip_1')
+    expect(publicShareUrl('kerala-trip_1', 'https://app.example.test/', false, 'wa'))
+      .toBe('https://app.example.test/i/kerala-trip_1?ref=wa')
+    expect(publicShareUrl('kerala-trip_1', 'https://app.example.test/', false, 'community'))
+      .toBe('https://app.example.test/i/kerala-trip_1?ref=community')
+    // A non-vocabulary ref is dropped, not smuggled through.
+    expect(publicShareUrl('kerala-trip_1', 'https://app.example.test/', false, 'r-indiatravel' as never))
+      .toBe('https://app.example.test/i/kerala-trip_1')
+    // Native keeps minting the production origin, with the ref.
+    expect(publicShareUrl('kerala-trip_1', 'capacitor://localhost', true, 'wa'))
+      .toBe('https://yatraflow-blond.vercel.app/i/kerala-trip_1?ref=wa')
+  })
+
+  it('the send stamps its own channel by default, and the message is unchanged', async () => {
+    // The owner's guard: one honest sentence, no new copy. The ref rides the
+    // link, so the register pin from #531 holds verbatim.
+    const { publicationShareMessage } = await import(shareUrlPath)
+    const refd = 'https://app.example.test/i/kerala-trip_1?ref=wa'
+    expect(publicationShareMessage('Kerala 10d', refd))
+      .toBe(`The "Kerala 10d" trip plan on YatraFlow — see it here: ${refd}`)
+    const source = read('../src/lib/whatsAppShare.ts')
+    expect(source).toMatch(/ref: ShareSource \| null = 'wa'/)
+  })
+
+  it('a second hop keeps the arrival channel instead of laundering it', () => {
+    const source = readFileSync(new URL('../src/pages/PublicItinerary.tsx', import.meta.url), 'utf8')
+    // The page reads the arrival ref and passes it to its own send: a link
+    // that travelled through a post keeps that post's reference.
+    expect(source).toMatch(/const arrivalRef = shareRefFromSearch\(location\.search\)/)
+    expect(source).toMatch(/sharePublicationOnWhatsApp\(pub, arrivalRef \?\? 'wa'\)/)
+  })
+
+  it('no address-bar rewrite remains that could drop an arrival channel', () => {
+    // The sync that used to rewrite the address behind a publication page is
+    // retired (#426 slice 2): the route IS the pathname now, so nothing
+    // rewrites the query behind the page's back and the ref a link arrived
+    // with survives by construction. The one writer left is the boot bridge,
+    // and its query ride-through is pinned in the bridge describe above.
+    expect(read('../src/lib/shareUrl.ts')).not.toContain('syncPublicAddress')
+  })
+})
+describe('sending a publication on WhatsApp', () => {
+  it('builds a click-to-chat address whose message survives the encoding', async () => {
+    // The message carries a URL: spaces and query separators must not be
+    // eaten, or the chat box opens with half an address.
+    const { whatsAppSendUrl } = await import('../src/lib/whatsAppShare')
+    expect(whatsAppSendUrl('The "Kerala 10d" plan — see it here: https://app.test/i/a?x=1&y=2'))
+      .toBe('https://wa.me/?text=' +
+        encodeURIComponent('The "Kerala 10d" plan — see it here: https://app.test/i/a?x=1&y=2'))
+    expect(whatsAppSendUrl('a b')).toBe('https://wa.me/?text=a%20b')
+  })
+
+  it('carries one honest sentence with the plan name and the link', async () => {
+    const { publicationShareMessage } = await import(shareUrlPath)
+    const url = 'https://app.example.test/i/kerala-trip_1'
+    const message = publicationShareMessage('Kerala 10d', url)
+    expect(message).toBe(`The "Kerala 10d" trip plan on YatraFlow — see it here: ${url}`)
+    // One sentence of prose before the link (the URL's own dots are not
+    // punctuation), and no claim the sender has not made.
+    const prose = message.split(url)[0]
+    expect(prose).not.toMatch(/[.!?]\s+\S/)
+    expect(message).not.toMatch(/₹|INR|price|free/)
+  })
+
+  it('the send module never reads a window handle', async () => {
+    // §6e: window.open(..., 'noopener') always returns null; the moment-after
+    // screen's "Send invite" read that as popup-blocked and never once opened
+    // WhatsApp. The send is fire-and-forget through the house opener, and the
+    // clipboard is the honest fallback, not a guess about the popup.
+    const source = read('../src/lib/whatsAppShare.ts')
+    expect(source).toMatch(/openExternal\(whatsAppSendUrl\(text\)\)/)
+    expect(source).not.toMatch(/window\.open/)
+    expect(source).toMatch(/nativeShareText\(/)
+    expect(source).toMatch(/nativeCopyText\(/)
+  })
+
+  it('the public page offers the send with an in-flight guard', () => {
+    const source = readFileSync(new URL('../src/pages/PublicItinerary.tsx', import.meta.url), 'utf8')
+    expect(source).toMatch(/import \{ sharePublicationOnWhatsApp \} from '\.\.\/lib\/whatsAppShare'/)
+    // §6a: the async path is disabled while it runs — the #409 shelf pattern.
+    expect(source).toMatch(/const \[sendingWhatsApp, setSendingWhatsApp\] = useState\(false\)/)
+    expect(source).toMatch(/if \(sendingWhatsApp \|\| !pub\) return/)
+    expect(source).toMatch(/disabled=\{sendingWhatsApp\}/)
+    // The address comes from the shared resolver, never a second origin rule.
+    expect(source).toMatch(/currentPublicShareUrl\(pub\.id\)/)
   })
 })

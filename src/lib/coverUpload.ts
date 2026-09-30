@@ -23,20 +23,22 @@ export const COVER_BUCKET = 'covers'
  *  uploaded one are the same weight class. */
 export const COVER_MAX_EDGE = 1200
 /** What the bucket will actually accept: `file_size_limit = 5242880` in
- *  20260919_covers_bucket.sql. The client is not a boundary, so this constant
- *  exists to refuse early with a sentence a creator can act on — which is why
- *  it must never sit ABOVE the real limit, and why the two are pinned to each
- *  other by `tests/cover-upload.test.ts` (read out of the migration, not
- *  restated).
- *
- *  It was 8 MB. Note what that cap actually decided: `uploadCover` downscales
- *  to 1200px / quality 0.82 BEFORE calling the bucket, so the uploaded object
- *  measures ~78 KB and a large original never reaches the 5 MB limit at all.
- *  The cap therefore never caused an upload failure — it decided which
- *  originals a creator could pick, and a 7 MB phone photo was decoded and
- *  shrunk in the browser to produce bytes that were then discarded. Lowering it
- *  to the bucket's limit refuses that work up front instead of paying for it. */
+ *  20260919_covers_bucket.sql. This is the limit on what we UPLOAD, and the
+ *  pipeline re-encodes to 1200px / quality 0.82 before the bucket sees it
+ *  (~78 KB out of a 6 MB original), so it is enforced there — after the resize,
+ *  in `uploadCover` — and not against the picked file. The client is not a
+ *  boundary; the constant exists so a failure arrives as a sentence a creator
+ *  can act on, and the two are pinned to each other by
+ *  `tests/cover-upload.test.ts` (read out of the migration, not restated). */
 export const COVER_MAX_INPUT_BYTES = 5 * 1024 * 1024
+/** The largest PICKED file we will decode and re-encode. Deliberately a
+ *  different job from the bucket's limit above: a 5–8 MB phone photo is over
+ *  that limit and accepted here, because `downscaleCover` turns it into ~78 KB
+ *  that fits. This ceiling is about the browser, not the bucket — a 12 MP
+ *  phone photo measures 4–6 MB and a 48 MP one 10–15 MB, so 12 MB admits every
+ *  camera the app supports, while a larger file is a decode-memory risk on a
+ *  mid-range Android and is refused with the number named. */
+export const COVER_MAX_PICK_BYTES = 12 * 1024 * 1024
 /** Accepted input types. Everything is re-encoded to JPEG on the way out. */
 export const COVER_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 export const COVER_JPEG_QUALITY = 0.82
@@ -50,8 +52,8 @@ export const COVER_EXT = 'jpg'
  *  that produced the original mismatch. */
 export function coverFileError(file: { type: string; size: number }): string | null {
   if (!COVER_TYPES.includes(file.type)) return 'Covers must be a JPEG, PNG or WebP image.'
-  if (file.size > COVER_MAX_INPUT_BYTES) {
-    return `That image is ${(file.size / (1024 * 1024)).toFixed(1)} MB — please pick one under ${COVER_MAX_INPUT_BYTES / (1024 * 1024)} MB.`
+  if (file.size > COVER_MAX_PICK_BYTES) {
+    return `That image is ${(file.size / (1024 * 1024)).toFixed(1)} MB — too large to resize here. Please pick one under ${COVER_MAX_PICK_BYTES / (1024 * 1024)} MB.`
   }
   return null
 }
@@ -198,6 +200,37 @@ export function unclaimedCovers<T extends { creatorId?: string; coverImageUrl?: 
   return pubs.filter(p => p.creatorId === userId && isSuggestedCover(p.coverImageUrl))
 }
 
+/** Which of `pubs` are MINE and have no stored cover at all (#360).
+ *
+ *  A null `cover_image_url` predates the cover requirement: the page renders a
+ *  live Wikipedia suggestion in its hero while every crawler is served the
+ *  brand card — the disagreement this selector starts fixing. `unclaimedCovers`
+ *  cannot see these rows (`isSuggestedCover(null)` is false), so the owner-side
+ *  sweep ignored them and the split persisted for as long as the row lived.
+ *
+ *  Same ownership rule as `unclaimedCovers` — the bucket confines writes to
+ *  `<auth.uid()>/`, so only the creator can converge their own row. Pure and
+ *  derived from the data, so the sweep over collected rows finds nothing to do
+ *  and costs nothing. */
+export function coverlessPublications<T extends { creatorId?: string; coverImageUrl?: string | null }>(
+  pubs: T[], userId: string | undefined | null,
+): T[] {
+  if (!userId) return []
+  return pubs.filter(p => p.creatorId === userId && !p.coverImageUrl)
+}
+
+/** The queries a destination cover is resolved FROM, in order: the itinerary's
+ *  own route summary, then its title (what a route-less publication has).
+ *
+ *  One definition, because two surfaces have to agree on the answer. The public
+ *  page renders these candidates as its hero, and the sweep stores whichever one
+ *  resolves — the whole point being that the picture a crawler receives is the
+ *  picture the page was already showing. Written out twice, the two can answer
+ *  differently, which is the disagreement #360 was about, one level up. */
+export function coverCandidates(pub: { routeSummary?: string[] | null; title: string }): string[] {
+  return pub.routeSummary?.length ? pub.routeSummary : [pub.title]
+}
+
 export async function downscaleCover(file: Blob): Promise<Blob> {
   if (typeof createImageBitmap !== 'function') throw new Error('This browser cannot resize images.')
   const bitmap = await createImageBitmap(file)
@@ -247,6 +280,16 @@ export async function uploadCover(
     blob = await downscaleCover(file)
   } catch (e) {
     return { error: e instanceof Error ? e.message : 'Could not read that image.' }
+  }
+  // The bucket's limit governs what is UPLOADED, which is this re-encoded blob
+  // and not the file that was picked: a 6 MB phone photo arrives here at ~78 KB.
+  // This guard is the case where the resize could not get under the limit (an
+  // already-optimised 1200px PNG, say), and it says so with both numbers rather
+  // than letting the bucket refuse with a bare message.
+  if (blob.size > COVER_MAX_INPUT_BYTES) {
+    return {
+      error: `That image is still ${(blob.size / (1024 * 1024)).toFixed(1)} MB after resizing — over the ${COVER_MAX_INPUT_BYTES / (1024 * 1024)} MB the server accepts. Try a smaller one.`,
+    }
   }
   const { error } = await supabase.storage.from(COVER_BUCKET).upload(path, blob, {
     contentType: 'image/jpeg',
