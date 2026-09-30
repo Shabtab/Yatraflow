@@ -1,18 +1,33 @@
 # YatraFlow — https://yatraflow-blond.vercel.app
 #
-# The app routes on the URL hash, so every in-app screen (`/#/explore`,
-# `/#/trips`, `/#/pub/<id>`, …) is served by `/` and is not a separately
-# addressable URL to a crawler. The only distinct server-rendered URLs are the
-# published itineraries at `/i/<id>` — those are what the sitemap lists.
+# The app routes on real paths now (#426): every screen is separately
+# addressable. The pages a crawler can actually READ — title, description,
+# Open Graph tags, server-rendered — are the share cards: published
+# itineraries at `/i/<id>` and creator pages at `/c/<id>`. Those are what the
+# sitemap lists. Every other route serves the app shell, which renders its
+# content client-side and has nothing per-URL for a crawler to read.
 
 User-agent: *
 Allow: /
 
-# The endpoint `/i/<id>` rewrites to. Crawling it directly would put every
-# itinerary at a second URL.
+# The endpoints `/i/<id>` and `/c/<id>` rewrite to. Crawling them directly
+# would put every card at a second URL.
 Disallow: /api/
 
 # Keyless map/search proxy — an upstream API, not content.
 Disallow: /mappls/
+
+# The app's own routes behind the cards. Each of these prefixes serves the one
+# shell for an unbounded set of ids (`/pub/<id>`, `/join/<code>`, …), so a
+# crawler that followed a card's redirect here would index a duplicate of the
+# shell per id and learn nothing per page. A visitor is unaffected: robots
+# binds crawlers, not people, and the cards' redirects still hand browsers
+# straight through.
+Disallow: /pub/
+Disallow: /creator/
+Disallow: /trip/
+Disallow: /join/
+Disallow: /created/
+Disallow: /share/
 
 Sitemap: https://yatraflow-blond.vercel.app/sitemap.xml

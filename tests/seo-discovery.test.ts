@@ -63,6 +63,19 @@ describe('robots.txt', () => {
     expect(robots).toMatch(/^Sitemap: https:\/\/yatraflow-blond\.vercel\.app\/sitemap\.xml$/m)
   })
 
+  it('keeps the app-shell id-bearing paths out of the index (#426 slice 3)', () => {
+    // The real paths serve the client-rendered shell — one shell per unbounded
+    // id, nothing per-URL for a crawler to read. Blocking the crawl keeps the
+    // tag-carrying cards (the sitemap's entries) as the only indexed surface;
+    // a visitor is unaffected, robots binds crawlers and not people.
+    // Exact-line membership, not a built RegExp: the rules are literals and
+    // the guard must read them as bytes, the way a crawler does.
+    const rules = read('../public/robots.txt').split('\n').map(l => l.trim())
+    for (const prefix of ['/pub/', '/creator/', '/trip/', '/join/', '/created/', '/share/']) {
+      expect(rules).toContain(`Disallow: ${prefix}`)
+    }
+  })
+
   it('does not try to disallow hash routes, which a crawler never sends', () => {
     // A fragment is not part of the request, so `Disallow: /#/trips` would be
     // inert. Guard against the rule being added later by someone who assumes
@@ -333,7 +346,8 @@ describe('creator card handler in node', () => {
     expect(res.body).toContain('<title>Asha Menon on YatraFlow</title>')
     expect(res.body).toContain('Slow travel across the Western Ghats')
     expect(res.body).toContain('3 published itineraries')
-    expect(res.body).toContain(`location.replace("/#/creator/${CREATOR_ID}")`)
+    // #426 slice 3: the hand-off targets the app page's real path.
+    expect(res.body).toContain(`location.replace("/creator/${CREATOR_ID}")`)
     expect(res.body).toContain(`<link rel="canonical" href="https://yatraflow-blond.vercel.app/c/${CREATOR_ID}"`)
     expect(res.body).toContain('og:url" content="https://yatraflow-blond.vercel.app/c/')
     // The count is the exact-count HEAD, not the profile rows.

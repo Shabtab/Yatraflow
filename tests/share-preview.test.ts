@@ -79,8 +79,9 @@ describe('share preview handler in node', () => {
     }
     expect(res.body).toContain(`og:url" content="${canonical}"`)
     expect(res.body).toContain(`<link rel="canonical" href="${canonical}"`)
-    expect(res.body).toContain(`location.replace("/#/pub/${publication.id}")`)
-    expect(res.body).toContain(`href="/#/pub/${publication.id}"`)
+    // #426 slice 3: the browser lands on the app page's real path.
+    expect(res.body).toContain(`location.replace("/pub/${publication.id}")`)
+    expect(res.body).toContain(`href="/pub/${publication.id}"`)
     // No cover on this row, so the app's own asset has to carry the card.
     const fallback = 'https://yatraflow-blond.vercel.app/og-default.png'
     expect(res.body).toContain(`og:image" content="${fallback}"`)
@@ -719,27 +720,28 @@ describe('the production origin agrees everywhere it is written', () => {
 })
 
 describe('the shared link carries its route in (#230)', () => {
-  it('forwards a vocabulary ref in the redirect — query before hash', async () => {
+  it('forwards a vocabulary ref in the redirect as a plain query', async () => {
     respond([publication])
     const res = await runHandler('GET', publication.id, { ref: 'copy' })
     expect(res.statusCode).toBe(200)
-    // The redirect is where the ref survives the server hop: a fragment never
-    // reaches anything, so the app reads location.search.
-    expect(res.body).toContain(`location.replace("/?ref=copy#/pub/${publication.id}")`)
-    expect(res.body).toContain(`href="/?ref=copy#/pub/${publication.id}"`)
+    // The redirect is where the ref survives the server hop: the target is
+    // the app page's real path now (#426 slice 3) and the ref rides its query,
+    // so the page reads location.search exactly as it did in the hash era.
+    expect(res.body).toContain(`location.replace("/pub/${publication.id}?ref=copy")`)
+    expect(res.body).toContain(`href="/pub/${publication.id}?ref=copy"`)
   })
 
   it('drops an unknown ref — the funnel log is a vocabulary, not free text', async () => {
     respond([publication])
     const res = await runHandler('GET', publication.id, { ref: 'bogus' })
-    expect(res.body).toContain(`location.replace("/#/pub/${publication.id}")`)
+    expect(res.body).toContain(`location.replace("/pub/${publication.id}")`)
     expect(res.body).not.toContain('ref=bogus')
   })
 
   it('keeps the buyer’s own metadata clean while the redirect carries the ref', async () => {
     respondBuyerCard(true)
     const res = await runHandler('GET', publication.id, { buyer: BUYER, ref: 'buyer' })
-    expect(res.body).toContain(`location.replace("/?ref=buyer#/pub/${publication.id}")`)
+    expect(res.body).toContain(`location.replace("/pub/${publication.id}?ref=buyer")`)
     // The share card advertises the page, not the tracking: og:url keeps the
     // buyer variant it already had and the canonical stays the publication.
     const ogUrl = /<meta property="og:url" content="([^"]*)"/.exec(res.body)?.[1] ?? ''
@@ -752,7 +754,7 @@ describe('the shared link carries its route in (#230)', () => {
   it('a no-ref request redirects exactly as before — direct is the default', async () => {
     respond([publication])
     const res = await runHandler('GET', publication.id)
-    expect(res.body).toContain(`location.replace("/#/pub/${publication.id}")`)
+    expect(res.body).toContain(`location.replace("/pub/${publication.id}")`)
   })
 })
 

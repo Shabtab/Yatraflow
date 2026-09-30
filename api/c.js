@@ -38,9 +38,9 @@ function renderCreator(profile, id, publicationCount) {
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <meta name="robots" content="noindex" />
 <title>${escapeHtml(DEFAULT_TITLE)}</title>
-<script>location.replace(${JSON.stringify('/#/explore')})</script>
+<script>location.replace(${JSON.stringify('/explore')})</script>
 </head>
-<body><p>Opening <a href="/#/explore">Explore</a>…</p></body>
+<body><p>Opening <a href="/explore">Explore</a>…</p></body>
 </html>`
   }
   const bio = typeof profile.creator_bio === 'string' && profile.creator_bio.trim() ? profile.creator_bio.trim() : null
@@ -54,7 +54,8 @@ function renderCreator(profile, id, publicationCount) {
   // creator has anything to look at.
   const description = [bio, published].filter(Boolean).join(' · ')
   const canonical = `${origin}/c/${id}`
-  const target = `/#/creator/${id}`
+  // #426 slice 3: the browser lands on the app page's real path directly.
+  const target = `/creator/${id}`
   return `<!doctype html>
 <html lang="en">
 <head>
