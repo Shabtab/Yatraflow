@@ -1978,7 +1978,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
         )}
         {/* #333 A5: the result count sat in a static aria-label; this says it aloud
             when it changes. Always mounted — a region that mounts with its text is silent. */}
-        <span className="sr-only" role="status" aria-live="polite">{searchResults.length > 0 ? searchAnnouncement(searchQ, searchResults.length, showAllResults ? searchResults.length : SEARCH_PAGE) : ''}</span>
+        <span className="sr-only" role="status" aria-live="polite">{searchAnnouncement(searchQ, searchResults.length, showAllResults ? searchResults.length : SEARCH_PAGE)}</span>
         {searchResults.length > 5 && (
           <button type="button" className="btn btn-outline btn-sm" style={{ marginBottom: 10 }} onClick={() => setShowAllResults(v => !v)}>
             {showAllResults ? 'Show top 5' : `Show all ${searchResults.length}`}
