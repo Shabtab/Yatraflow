@@ -19,6 +19,8 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 - **The Map tab's Nearby-ideas rail no longer latches into a permanent "searching…" when the route's real geometry arrives mid-scan.** The corridor scan's cleanup cancelled a superseded run without releasing the loading flag it owned, so when the refreshed route matched the persisted suggestion cache the rail never learned the scan was over — and Refresh plus the detour-scope slider stayed disabled until a full reload. The cleanup now releases the flag; only a run actually in flight keeps the rail busy. (#544)
 - **The map's search live region stays silent until a search actually runs.** An untouched, empty box announced "No results for that search." to screen readers on first paint — idle and a genuinely empty result set were indistinguishable, and the two surfaces disagreed: one region announced at idle, the other never announced a real failure. The announcement helper now treats an empty query as idle (silence), and both call sites use it unguarded — so a real zero-result search is announced on both surfaces for the first time. (#545)
+- **The "Show on map" label keeps one line at phone width.** Inside the nowrap, horizontally scrolling day-filter rail the label was the only flex child allowed to shrink, so it absorbed the whole width deficit and wrapped one word per line ("SHOW / ON / MAP" at 390px, pushing the day chips out of position). It now refuses to shrink or wrap — one rule on the shared class also covers the suggestion rail's "Plan this day" sibling, which was the same failure one word-length away. (#546)
+
 
 
 
