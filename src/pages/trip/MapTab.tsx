@@ -793,7 +793,16 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
         if (err instanceof QuotaExhaustedError) { setCorridorQuotaOut(true); setPois([]) }
       })
       .finally(() => { if (!cancelled) setLoadingPois(false) })
-    return () => { cancelled = true; controller.abort() }
+    return () => {
+      cancelled = true
+      controller.abort()
+      // #544: the cancelled run was the flag's owner, so the cleanup releases
+      // it. The re-run re-raises it only when it truly starts a new scan; a
+      // fresh-cache early return must not inherit a phantom in-flight flag —
+      // that latch read as a permanent "searching…" and disabled Refresh and
+      // the detour-scope slider until a full reload.
+      setLoadingPois(false)
+    }
   }, [anchors, nearbyOpts, scopeKm, mapInputsHash, planKm, wholeTrip.min, travelDayNeed, clockVerdict.verdict, refreshTick, splitVerdict?.driveDayCount]) // eslint-disable-line react-hooks/exhaustive-deps -- splitVerdict is read for derivedMultiDay; wholeTrip covers the geometry changes
 
   // When the activation came from the map (pin hover/click), bring the matching
