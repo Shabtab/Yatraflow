@@ -18,6 +18,11 @@ import {
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const mapTabSrc = readFileSync(join(root, 'src', 'pages', 'trip', 'MapTab.tsx'), 'utf8')
+const omniSrc = readFileSync(join(root, 'src', 'pages', 'trip', 'MapOmnibar.tsx'), 'utf8')
+// Comment-stripped copies for negative assertions — a guard judges code, not
+// prose (§6x).
+const mapTabCode = mapTabSrc.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+const omniCode = omniSrc.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
 
 describe('searchAnnouncement (A5)', () => {
   it('counts the results and names the query', () => {
@@ -30,11 +35,12 @@ describe('searchAnnouncement (A5)', () => {
     expect(searchAnnouncement('hampi', 0, 0)).toBe('No results for hampi.')
   })
 
-  it('degrades honestly on an empty query instead of announcing an empty string', () => {
-    // The search box clears its results on edit, so a zero-length query reaches
-    // here legitimately — the announcement must still be a sentence.
-    expect(searchAnnouncement('   ', 0, 0)).toBe('No results for that search.')
-    expect(searchAnnouncement('', 2, 2)).toBe('2 results for that search.')
+  it('stays silent while the box is idle — an empty query is not a failed search (#545)', () => {
+    // Idle and zero-results must differ: announcing "No results" for a search
+    // that was never run is a false negative on first paint.
+    expect(searchAnnouncement('', 0, 0)).toBe('')
+    expect(searchAnnouncement('   ', 0, 0)).toBe('')
+    expect(searchAnnouncement('', 2, 2)).toBe('')
   })
 })
 
@@ -86,6 +92,16 @@ describe('MapTab wires those sentences into the DOM', () => {
     expect(mapTabSrc).toMatch(/candidatesAnnouncement\(/)
     // a polite live region, not a static label the user has to go find
     expect(mapTabSrc).toMatch(/role="status"[^>]*aria-live="polite"|aria-live="polite"[^>]*role="status"/)
+  })
+
+  it('#545: both search regions call unguarded — the helper owns the idle rule', () => {
+    // A results-length ternary at the call site suppressed the failed-search
+    // sentence on one surface while the other announced at idle. Unguarded
+    // calls mean a genuine zero-result search now speaks on both.
+    expect(mapTabSrc).toMatch(/aria-live="polite">\{searchAnnouncement\(searchQ/)
+    expect(omniSrc).toMatch(/aria-live="polite">\s*\{searchAnnouncement\(query/)
+    expect(mapTabCode).not.toMatch(/length > 0 \? searchAnnouncement/)
+    expect(omniCode).not.toMatch(/length > 0 \? searchAnnouncement/)
   })
 
   it('A2: the Fill button carries the place name', () => {
