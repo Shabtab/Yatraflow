@@ -14,7 +14,7 @@ import type { Entitlement } from '../lib/payments'
 import { useDb, currentUser, tripById, userById, registerPubView, fetchPublicTrip } from '../store/store'
 import { forkPublication } from '../lib/forkPub'
 import { describePreviewSplit } from '../lib/previewSplit'
-import { simulateDay, originOf, minutesToHM, formatInr, getAssumptions, computeTotals, isRoundTrip } from '../lib/engine'
+import { simulateDay, scheduleRowsById, originOf, minutesToHM, formatInr, getAssumptions, computeTotals, isRoundTrip } from '../lib/engine'
 import { cap, titleCase } from '../lib/labels'
 import { useTimeFormat, formatHM, formatHMRange } from '../lib/timefmt'
 import { stopKindOf, STOP_KIND_LABELS } from '../lib/stopKind'
@@ -766,6 +766,10 @@ function DayStops({ stops, sim, assumptions, timeFormat, stayDay, mode }: {
   /** the trip's transport mode — the travelling strip's glyph follows it. */
   mode: string
 }) {
+  // #555: the schedule keyed by stop id — sim's legs are INTO legs (legIn of
+  // each active stop) and its arrays are per-active-stop, so the strip below
+  // reads this row's own facts instead of a neighbour's position.
+  const simRows = scheduleRowsById(sim)
   return (
     <>
       {stops.map((s, i) => {
@@ -786,9 +790,15 @@ function DayStops({ stops, sim, assumptions, timeFormat, stayDay, mode }: {
               </div>
             )
           }
-          const inbound = i > 0 ? sim.legs[i - 1] : null
-          const dep = inbound ? (sim.departures[i - 1] ?? '--:--') : (sim.departures[i] ?? '--:--')
-          const arr = sim.arrivalTimes[i] ?? dep
+          // The drive that brought you TO this anchor: its own inbound leg
+          // (the old read handed the strip the leg into the row above — one
+          // drive stale). Departure is the previous row's clock, arrival this
+          // row's — both id-keyed so nothing shifts when a row is skipped.
+          const row = simRows.get(s.id)
+          const prevRow = i > 0 ? simRows.get(stops[i - 1].id) : null
+          const inbound = i > 0 ? row?.legIn ?? null : null
+          const dep = inbound ? (prevRow?.depart ?? '--:--') : (row?.depart ?? '--:--')
+          const arr = row?.arrive ?? dep
           const cost = inbound ? Math.round(inbound.distanceKm * (assumptions.inrPerKm ?? 8)) : 0
           const depHM = dep !== '--:--' ? formatHM(dep, timeFormat) : dep
           const arrHM = arr !== '--:--' ? formatHM(arr, timeFormat) : arr

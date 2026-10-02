@@ -990,6 +990,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
               <div className="ct-q-field ct-add-stop">
                 <LocationInput
                   id="ct-dest-input"
+                  ariaLabel="Add a stop to the trip"
                   value={destInput}
                   onChange={setDestInput}
                   errorId={errs.destinations ? 'ct-dest-err' : undefined}
@@ -1075,6 +1076,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
                   </div>
                   <LocationInput
                     id="ct-return-input"
+                    ariaLabel="Add a return stop to the trip"
                     value={returnInput}
                     onChange={setReturnInput}
                     errorId={errs.returnStops ? 'ct-return-err' : undefined}
