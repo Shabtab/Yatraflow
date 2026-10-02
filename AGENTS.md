@@ -696,6 +696,26 @@ Key locations:
    "Clear" and a settings "Clear" that discarded a pasted API key were both small
    and both real, and an Undo toast is the cheap correct answer for work the user
    assembled. Ask of every removal: can they get it back, and if not, did we ask?
+ 6aa. **`simulateDay`'s legs are INTO-legs and its arrays are per-ACTIVE-stop —
+   a surface looks rows up by stop id, never by render index (learned
+   2026-10-02, #555).** `sim.legs[k]` is the drive that brought you TO
+   `activeStops[k]` (`legs[0]` is the day's opening drive), and
+   `arrivalTimes[k]`/`departures[k]` are that row's clocks — but every rendered
+   list (DaySection's `ordered`, PublicItinerary's `stops`) can also carry
+   rejected stops the simulator skips, so a positional read shifts at the first
+   rejected row. Two surfaces had the model backwards in opposite directions:
+   the Timeline's gap under row k showed `legs[k]` (the leg into the row ABOVE
+   the gap) and the public strip showed `legs[i - 1]` (one leg stale the other
+   way), and one rejected stop moved every clock below it onto the wrong row.
+   The vocabulary is printModel's: a leg row renders the INTO-leg of the row it
+   leads (`legs[0]` unshifted at the top; the gap under row k carries the leg
+   into row k+1), and every clock/leg read goes through `scheduleRowsById(sim)`
+   (engine.ts). Positional reads over `sim`'s arrays are only safe where both
+   sides come from the same filtered list in the same order (the engine's own
+   `activeStops[i]`-paired reads). Pinned in tests/timeline-leg-rows.test.ts —
+   and mind the pin split: pure-helper tests cannot police component call
+   sites, so the two surfaces carry source pins too (the timeline-quick-add
+   pattern); stashing just the components fails exactly those.
  7. **When asking the user to review/test locally, always hand them the exact
    URL — never make them find or start the server.** Check if the dev server
    is up (probe `http://localhost:5173`); if not, start `npm run dev`
