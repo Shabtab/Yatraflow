@@ -15,6 +15,10 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Changed
+
+- **The agent operating manual is split into three files, so a session reads the part it needs.** `AGENTS.md` was 1,920 lines — the workflow rules, the verification gate, every code pitfall and a hand-maintained status block all loaded on every turn regardless of the task. It is now 407 lines of workflow rules and pointers, with the conventions and pitfalls in `CODING_STANDARDS.md` (indexed by what you are changing: payments, effects and deps arrays, maps, flags and env), the gate and CI detail in `docs/AGENTS-VERIFICATION.md`, and the status block replaced by the commands that derive it. Every rule keeps its number, so a reference to any of them still resolves.
+
 ## [0.72.0] - 2026-10-01
 
 The addresses leave the URL’s fragment, and the money rail stops guessing. Every screen is a real
