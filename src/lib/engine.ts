@@ -313,6 +313,33 @@ export function simulateDay(
   }
 }
 
+/** One rendered row's schedule facts, keyed by stop id. */
+export interface StopScheduleRow {
+  /** clock the traveller arrives at this stop */
+  arrive: string
+  /** clock the traveller leaves this stop */
+  depart: string
+  /** the drive that brought the traveller TO this stop (an into-leg) */
+  legIn: ScheduledLeg
+}
+
+/**
+ * The one accessor for DaySchedule's parallel arrays (#555). They are aligned
+ * per ACTIVE stop: `legs[k]` is the leg that brought you INTO `activeStops[k]`
+ * (`legs[0]` is the day's opening drive) and `arrivalTimes[k]`/`departures[k]`
+ * are that row's clocks. Rendered lists also carry rejected stops the
+ * simulator skips, so a positional read shifts at the first rejected row and
+ * shows one stop's times/leg under another. Look rows up by stop id — this map
+ * is the accessor printModel's lookup mirrors.
+ */
+export function scheduleRowsById(sim: DaySchedule): Map<string, StopScheduleRow> {
+  const byId = new Map<string, StopScheduleRow>()
+  sim.activeStops.forEach((s, k) => {
+    byId.set(s.id, { arrive: sim.arrivalTimes[k], depart: sim.departures[k], legIn: sim.legs[k] })
+  })
+  return byId
+}
+
 // ---------------- Leg-aware stop insertion ----------------
 
 /** Where you'd be coming from / heading to when inserting a stop on a day. */
