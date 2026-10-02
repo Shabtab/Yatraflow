@@ -8,6 +8,7 @@
 // boundary now performs automatically (once, guarded against reload loops).
 import { Component } from 'react'
 import type { ErrorInfo, ReactNode } from 'react'
+import { TriangleAlert } from 'lucide-react'
 import { clearLocalAppData, LOCAL_DATA_NOTE } from '../lib/localData'
 
 const RELOAD_FLAG = 'yf-chunk-reload'
@@ -61,7 +62,7 @@ export class ErrorBoundary extends Component<Props, State> {
       const staleChunk = isStaleChunkError(this.state.error)
       return (
         <div className="container empty-state" style={{ paddingTop: 80 }}>
-          <div className="big">⚠️</div>
+          <div className="big"><TriangleAlert size={38} aria-hidden /></div>
           <h2>{staleChunk ? 'YatraFlow was just updated' : 'Something went wrong'}</h2>
           <p className="muted small" style={{ maxWidth: 480, margin: '8px auto' }}>
             {staleChunk

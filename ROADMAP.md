@@ -424,6 +424,8 @@ get a row here again.
 | 5 | Form hygiene (F-13–F-16) | ✅ |
 | 6 | URL state (tabs, Explore filters) + copy (F-21, F-22, F-31, F-32) | ✅ |
 | 7 | Impeccable whole-app refinement pass (2026-09-18) — mobile topnav, timeline reorder, `.two-col` overflow, create-trip calendar occlusion, light-theme contrast, board peek transition, reduced-motion delays, keyboard focus for the ledgers, viewer affordances, role/casing leaks, profile save feedback. Snapshot `.impeccable/critique/2026-09-17T17-42-23Z__src-app-tsx.md` closed; narrative in the CHANGELOG | ✅ |
+| 8 | Independent whole-app accessibility re-audit (2026-10-02) — `LocationInput` gains an `ariaLabel` so the create-trip stop and return-stop boxes announce a name instead of a bare combobox; the cover URL and Print's confirmed badge stop depending on a placeholder or a lone glyph. Contrast, reduced-motion, touch targets, icon set and form labelling were all re-measured; no contrast or motion defect survived verification | ✅ |
+| 9 | UI rule gate + review checklist (2026-10-02) — `npm run check:ui` enforces the three mechanical design rules that carry no false positives (no `transition: all`, no raw `z-index` ≥999, no blocked pinch-zoom), and `docs/UI-REVIEW-CHECKLIST.md` records the chart-type verdicts plus the rules this repo deliberately deviates from. The other ~20 candidate rules were measured and excluded with counts, because a gate that fires on correct code gets ignored | ✅ |
 
 ---
 ## Idea bank
