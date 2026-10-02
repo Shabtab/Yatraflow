@@ -74,7 +74,7 @@ export function Modal({ open, onClose, title, children, initialFocus, variant = 
       window.removeEventListener('keydown', onKey)
       document.body.style.overflow = prevOverflow
       clearTimeout(t)
-      previouslyFocused?.isConnected && previouslyFocused.focus()
+      if (previouslyFocused?.isConnected) previouslyFocused.focus()
     }
   }, [open, onClose, initialFocus])
   if (!open) return null
@@ -564,7 +564,7 @@ export function RouteSnapshot({ count, startLabel, endLabel, roundTripNote, poin
 
   // ---- real-geometry path ----
   let realPath: string | null = null
-  let dayAnchors: Array<{ day: number; x: number; y: number }> = []
+  const dayAnchors: Array<{ day: number; x: number; y: number }> = []
   if (points && points.length >= 2) {
     const lats = points.map(p => p.lat), lngs = points.map(p => p.lng)
     const minLat = Math.min(...lats), maxLat = Math.max(...lats)

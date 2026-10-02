@@ -24,6 +24,41 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - **`npm run check:ui` — a gate for the mechanical design rules.** It enforces the three that can be decided with no false positives: no `transition: all`, no raw `z-index` at or above 999, and no blocked pinch-zoom in the viewport meta. Each finding names the file, the line, the offending source and why it matters. The remaining candidate rules were measured against this codebase and deliberately left out — `scale()` on hover has 9 sites that are all correct, emoji-as-icons has 403 codepoints that are mostly the weather map and user-chosen trip content, and blanket line-height normalisation would be ~25 false findings. A gate that fires on correct code gets ignored, so the exclusions are recorded in the script itself rather than quietly dropped. Pass `--json` for machine output.
 - **`docs/UI-REVIEW-CHECKLIST.md` — the review notes worth keeping.** It records the chart-type verdict for every surface that draws data (all correct, nothing to change), the five-point pre-flight for new UI, the rules this codebase deliberately deviates from, and the three ways a generic checklist reports defects that do not exist.
 
+### Changed
+
+- **Split the agent operating manual into three files.** `AGENTS.md` was 1,920 lines. Every
+  turn loaded all of it, whatever the task. The workflow rules, the verification gate, the code
+  pitfalls and the status block shared one file. `AGENTS.md` is now 407 lines of rules and
+  pointers. The conventions and pitfalls are in `CODING_STANDARDS.md`, indexed by what you
+  change. The gate and CI detail are in `docs/AGENTS-VERIFICATION.md`. The status block is
+  replaced by the commands that derive it. Each rule keeps its number, so every reference in
+  the repo still resolves.
+- **Agents now write new prose in Simplified Technical English (ASD-STE100).** New
+  documentation, new rules, changelog entries and chat explanations follow one instruction per
+  sentence, a 20 word limit, and a plain vocabulary. Run `npm run lint:ste` to check the lines
+  you changed. Existing text is unchanged.
+- **A hook below an early return in Profile no longer crashes the page on a full
+  reload.** The theme hook and the notifications memo sat under `if (!me) return
+  null`. React reported a hook count mismatch as soon as the store hydrated after
+  mount. Both hooks now sit above the guard.
+- **ESLint now runs as a ratchet.** `npm run lint` reported 148 errors, so it
+  could not gate a push. `npm run lint:ratchet` compares each file against
+  `eslint-baseline.json` and fails only when a count rises. The baseline starts
+  at 144 errors, which is four fewer than the day before. Fixing an error lowers
+  the ceiling in the same commit.
+- **The lint ratchet now runs in the gate.** `npm run verify` runs it after the
+  typecheck and before the tests, so a regression fails in about 25 seconds
+  instead of after the whole suite. CI runs the same command, and its job
+  timeout rises from 15 to 20 minutes to cover the extra step.
+- **`npm run clean:env` reports and clears the NODE_ENV trap.** Some shells set
+  `NODE_ENV=production`. npm reads that as `--omit=dev`, so `npm install`
+  reports success and skips every devDependency. The failure appears later as
+  `'tsc' is not recognized`. The new script reports the state, and its `--exec`
+  mode runs any command with the variable cleared.
+- **The lint baseline is pinned to LF line endings.** `tests/lint-ratchet.test.ts`
+  demands a byte-identical rewrite of `eslint-baseline.json`, which a CRLF checkout
+  breaks on Windows; a `.gitattributes` rule now pins it to LF on every platform.
+
 ### Fixed
 
 - **The create-trip stop boxes now announce what they are.** Adding a stop and adding a return stop were the only two controls on the journey's most-used screen that reached a screen reader as a bare "combobox, edit text" — no name, because they sit outside the `Field` that labels every other control in the funnel. Both are named now, and `LocationInput` carries an optional accessible name for any future unwrapped use.

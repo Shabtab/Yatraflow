@@ -91,4 +91,21 @@ describe('ci.yml — the gate reaches the branches work integrates through', () 
     expect(workflow).toMatch(/npm run verify/)
     expect(packageJson.scripts?.verify).toBeTruthy()
   })
+
+  it('the gate itself runs the lint ratchet', () => {
+    // The ratchet is the check that caught a rules-of-hooks crash hiding behind
+    // 148 unlinted errors (AGENTS.md §2 rule 14). A ratchet nobody runs is the
+    // same defect as an unrun check, so this pins the script name inside
+    // `verify` itself.
+    expect(packageJson.scripts?.verify).toMatch(/lint:ratchet/)
+  })
+
+  it('gives the gate enough time to include lint', () => {
+    // eslint over src/ adds ~15-25s. A 15 minute ceiling was tuned before the
+    // ratchet joined; the check name and the timeout both carry it now.
+    const minutes = Number(/timeout-minutes:\s*(\d+)/.exec(workflow)?.[1])
+    expect(Number.isFinite(minutes)).toBe(true)
+    expect(minutes).toBeGreaterThanOrEqual(20)
+    expect(workflow).toMatch(/lint ratchet/)
+  })
 })

@@ -1,10 +1,16 @@
 name: CI
 
 # Issue #21 — this repo previously had no automated gate: the full verification
-# (`tsc -b --clean` -> tests -> production build, see AGENTS.md "Verification
-# before every push") only ever ran locally/manually, which is how a
-# deploy-breaking CSS error (#14) reached main unnoticed. This workflow enforces
-# the SAME gate on every PR into a shared branch and on every push to one.
+# (`tsc -b --clean` -> lint ratchet -> tests -> production build, see
+# AGENTS.md "Verification before every push") only ever ran locally/manually,
+# which is how a deploy-breaking CSS error (#14) reached main unnoticed. This
+# workflow enforces the SAME gate on every PR into a shared branch and on every
+# push to one.
+#
+# The lint ratchet (AGENTS.md §2 rule 14) joined the gate after it caught a
+# rules-of-hooks crash that 148 unlinted errors had been hiding. It compares
+# each file against eslint-baseline.json and fails only when a count rises, so
+# it cannot block work on the existing debt.
 #
 # `test` belongs in the PR trigger for the same reason `main` does: it is where
 # feature work integrates, so while only `main` was listed it was the one
@@ -25,9 +31,9 @@ permissions:
 
 jobs:
   verify:
-    name: Verify (tsc --clean + tests + build)
+    name: Verify (tsc --clean + lint ratchet + tests + build)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
