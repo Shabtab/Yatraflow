@@ -225,11 +225,39 @@ that notices the drift.
    PR into `test`, verify with `gh issue view` and close the referenced issues
    yourself — the tracker must mirror reality, not the keyword's promise.
    **Automation (same day):** `.github/workflows/issue-autoclose.yml` mirrors
-   the tracker on every PR merged into `test` (keyword grammar in
-   `scripts/pr-auto-close.mjs`, pinned by `tests/pr-auto-close.test.ts`) and
-   leaves a landing comment on each issue it closes. Still verify after a
-   merge, and close by hand when that job is red — the rule is the mirror, not
-   the mechanism.
+    the tracker on every PR merged into `test` (keyword grammar in
+    `scripts/pr-auto-close.mjs`, pinned by `tests/pr-auto-close.test.ts`) and
+    leaves a landing comment on each issue it closes. Still verify after a
+    merge, and close by hand when that job is red — the rule is the mirror, not
+    the mechanism.
+
+13. **Write new prose in Simplified Technical English (ASD-STE100) — this
+    covers new documentation, new rules, changelog entries, and how an agent
+    explains a problem, a fix or a design in chat (user-mandated 2026-10-02).**
+    Use these rules for the prose you write from now on:
+
+    - Put one instruction in each sentence.
+    - Keep each sentence under 20 words.
+    - Use plain words. Do not use a technical term when a plain word works.
+    - Do not start a step with a gerund. Write "Check the value." Do not
+      write "Checking the value."
+    - Address the reader as "you".
+    - Use the active voice. Name the actor.
+    - Use "must" and "must not" for a rule. Do not use "should".
+    - Do not put a bullet list inside a sentence.
+
+    These rules do not change the text that is already in this repo. The
+    existing pitfall rules stay as they are. They exist to explain a failure
+    in full. A new rule uses the list above.
+
+    **Check the new prose before you commit:**
+
+    ```bash
+    npm run lint:ste        # checks only the files you changed
+    ```
+
+    See [`CODING_STANDARDS.md`](CODING_STANDARDS.md) §2 for the full
+    vocabulary and the exceptions.
 
 
    **A migration the USER must run is handed over as complete SQL, in the chat,

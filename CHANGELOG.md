@@ -17,7 +17,17 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ### Changed
 
-- **The agent operating manual is split into three files, so a session reads the part it needs.** `AGENTS.md` was 1,920 lines — the workflow rules, the verification gate, every code pitfall and a hand-maintained status block all loaded on every turn regardless of the task. It is now 407 lines of workflow rules and pointers, with the conventions and pitfalls in `CODING_STANDARDS.md` (indexed by what you are changing: payments, effects and deps arrays, maps, flags and env), the gate and CI detail in `docs/AGENTS-VERIFICATION.md`, and the status block replaced by the commands that derive it. Every rule keeps its number, so a reference to any of them still resolves.
+- **Split the agent operating manual into three files.** `AGENTS.md` was 1,920 lines. Every
+  turn loaded all of it, whatever the task. The workflow rules, the verification gate, the code
+  pitfalls and the status block shared one file. `AGENTS.md` is now 407 lines of rules and
+  pointers. The conventions and pitfalls are in `CODING_STANDARDS.md`, indexed by what you
+  change. The gate and CI detail are in `docs/AGENTS-VERIFICATION.md`. The status block is
+  replaced by the commands that derive it. Each rule keeps its number, so every reference in
+  the repo still resolves.
+- **Agents now write new prose in Simplified Technical English (ASD-STE100).** New
+  documentation, new rules, changelog entries and chat explanations follow one instruction per
+  sentence, a 20 word limit, and a plain vocabulary. Run `npm run lint:ste` to check the lines
+  you changed. Existing text is unchanged.
 
 ## [0.72.0] - 2026-10-01
 
