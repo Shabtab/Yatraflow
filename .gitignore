@@ -31,11 +31,17 @@ vitest_out.txt
 android/app/yatraflow-debug.p12
 dev-5174.log
 
-# local agent skills (project-local installs). `.claude/` itself stays
-# un-ignored so committed editor config remains possible.
-.agents/
+# Agent skills ARE shared now — `.agents/skills/` and its version pin are
+# tracked so every clone gets the same skills at a known version (reinstall
+# with `npx skills add <owner/repo> --skill <name> --yes`). Two things stay
+# ignored: `.claude/skills/` holds ABSOLUTE symlinks into this machine's
+# checkout (`triage -> /c/Users/<you>/…`), so committing one breaks every
+# other clone; and `.agents/`'s own tooling state, if any, is machine-local.
+# `.claude/` itself stays un-ignored so committed editor config remains
+# possible.
 .claude/skills/
-skills-lock.json
+.agents/*
+!.agents/skills/
 
 # Agent-tool working directories and generated briefs — regenerateable output,
 # never repo content, and never worth a conflict between two branches.
