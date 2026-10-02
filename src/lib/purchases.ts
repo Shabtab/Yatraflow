@@ -41,10 +41,20 @@ export interface PurchaseRow {
   /** The creator has re-published since this purchase. */
   updatedSince: boolean
   refreshedAt?: number
-  /** False when the publication row is not in the cache. The entitlement is
-   *  still the buyer's (the database ties the two together for life), so the
-   *  row is kept and rendered as "no longer listed" rather than dropped. */
-  listed: boolean
+  /** #570 — the publication row is in the cache. The entitlement is still the
+   *  buyer's (the database ties the two together for life), so the row is kept
+   *  and rendered rather than dropped. PRESENCE ONLY: since #350 a withdrawn
+   *  publication's row survives, so this says nothing about whether the plan is
+   *  still on sale — that is `onSale`. Gates "Open the plan" and "Fork", which
+   *  work through a withdrawal for a buyer (get_public_trip serves entitled
+   *  holders). */
+  rowExists: boolean
+  /** #570 — the two facts #350 separated. True when the row exists AND has not
+   *  been soft-unpublished (`unpublished_at` is null). Gates only what needs a
+   *  LIVE plan: the share card and the cover auto-lookup. Never the buyer's own
+   *  access — gating that on "still on sale" would break the one working path
+   *  to a plan they paid for. */
+  onSale: boolean
   /** The row's own facts could not be read as money: the amount is absent or
    *  not a finite number. The plan is STILL listed and still the buyer's — only
    *  the money is unreadable, so the row is flagged instead of dropped (silently
@@ -60,8 +70,8 @@ export interface PurchaseRow {
    *  RECEIPT and not a claim of access. Read from the ORDER's money state, the
    *  only row that survives a refund (the entitlement is deleted).
    *
-   *  ORTHOGONAL to `listed`: a refunded plan can still be published, and a
-   *  withdrawn plan can still be owned. The two chips render independently —
+   *  ORTHOGONAL to `onSale`/`rowExists`: a refunded plan can still be on sale,
+   *  and a withdrawn plan can still be owned. The two chips render independently —
    *  conflating them would tell a refunded buyer their access ended because the
    *  creator unpublished, which is a different story with different next steps. */
   refunded: boolean
@@ -151,7 +161,8 @@ export function buildPurchaseShelf(
       // value must read as "not updated", never as "updated".
       updatedSince: Boolean(pub?.refreshedAt && pub.refreshedAt > (input.moneyAt as number)),
       refreshedAt: pub?.refreshedAt,
-      listed: Boolean(pub),
+      rowExists: Boolean(pub),
+      onSale: pub ? !pub.unpublishedAt : false,
       amountReadable,
       dateReadable,
       refunded: input.refunded,
@@ -211,18 +222,20 @@ export function buildPurchaseShelf(
 
 /** Whether this purchase can be offered for sharing at all (ROADMAP I-21).
  *
- *  A buyer's card resolves through `/i/<pubId>`, and unpublishing DELETES the
- *  publication row — so the link for a withdrawn plan previews as nothing, and
- *  offering it would hand somebody a dead link to post. The buyer's own access
- *  and their copy are untouched by this: only the public card needs the row to
- *  exist.
+ *  A buyer's card resolves through `/i/<pubId>`, and the recipient lands on the
+ *  plan's PUBLIC page — which a withdrawn plan no longer serves to strangers
+ *  (#350: the row survives so the buyer keeps their access, but everyone else
+ *  is turned away). Offering the card would hand somebody a link that previews
+ *  as a live plan and then refuses them — a card that sells what the recipient
+ *  cannot see. The buyer's own access and their copy are untouched: only the
+ *  public card needs the plan to still be on sale.
  *
  *  #407 adds the second reason a row cannot be shared: a REFUNDED purchase has
  *  no access left to advertise. The share card is a claim about what you bought
  *  — posting one for a plan whose money went back would be the same overclaim as
  *  the "₹500 paid" chip was, in a place other people can see. */
 export function purchaseShareable(row: PurchaseRow): boolean {
-  return row.listed && !row.refunded
+  return row.onSale && !row.refunded
 }
 
 /** How sure a match is. `exact` is the publication's own itinerary, which a copy

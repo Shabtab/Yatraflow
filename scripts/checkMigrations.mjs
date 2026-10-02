@@ -274,6 +274,30 @@ export const NO_PROBE_SURFACE = {
     // and schema.sql all agree with it.
     reason: 'CHECK constraints only — widens the share-attribution vocabulary; the check cannot see a constraint and the columns are probed by the 20260929 migration; the new values are pinned against shareUrl.ts, api/i.js and schema.sql by tests/share-attribution.test.ts',
   },
+  '20261002_claim_paid_order_marker_guard.sql': {
+    // Redefines `claim_paid_order` again (#560): the soft-unpublish gate joins
+    // the opaque refusal — a withdrawn publication refuses orders created
+    // after its stamp, with the in-flight carve-out for buyers already paying.
+    // Presence answers nothing (the function exists before and after) and the
+    // whole point is again that the refusal carries NO distinguishing
+    // information, so the body is pinned at the source: tests/claim-opaque.test.ts
+    // reads the NEWEST definition and asserts the single shared `raise
+    // exception` sentence survives the new gate (§6k — the newest body must
+    // carry #355's opacity forward verbatim).
+    reason: 'redefines `claim_paid_order` with the soft-unpublish gate — the function exists before and after, so presence answers nothing; the body is pinned by tests/claim-opaque.test.ts',
+  },
+  '20261002_trash_purge_publication_guard.sql': {
+    // Redefines `get_public_trip`, `purge_trashed_trip` and `purge_trashed_trips()`
+    // (#566): trash becomes a withdraw (a trashed trip keeps serving its
+    // creator and buyers) and both purge paths refuse a trip whose publication
+    // row exists (entitlements, orders and the creator's sales ledger cascade
+    // off it). Presence answers nothing for any of the three. The bodies are
+    // pinned at the source: tests/public-trip-fail-closed.test.ts (the newest
+    // get_public_trip body, carrying #350/#351/#352/#353 forward),
+    // tests/purge-publication-guard.test.ts (both purge guards + grants) and
+    // tests/trips-trash-honest-failure.test.ts (the client half).
+    reason: 'redefines `get_public_trip`, `purge_trashed_trip` and `purge_trashed_trips()` — the functions exist before and after, so presence answers nothing; the bodies are pinned by tests/public-trip-fail-closed.test.ts and tests/purge-publication-guard.test.ts',
+  },
 }
 
 /** The plan: one entry per migration file, with its probes and the reason none

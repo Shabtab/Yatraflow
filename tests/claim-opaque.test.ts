@@ -25,7 +25,8 @@ const codeOf = (source: string) => source
   .replace(/--[^\n]*/g, ' ')
   .replace(/(^|\n)[^\S\n]*\/\/[^\n]*/g, '$1')
 
-const NEWEST = '20260929_claim_paid_order_opaque.sql'
+const NEWEST = '20261002_claim_paid_order_marker_guard.sql'
+const PREVIOUS = '20260929_claim_paid_order_opaque.sql'
 const OLDEST = '20260918_payments_rail.sql'
 
 /** The `$$`-delimited body of a named function, comments stripped. Located by
@@ -131,9 +132,43 @@ describe('#355 — the grant itself is untouched', () => {
       .filter(f => f.endsWith('.sql'))
       .filter(f => codeOf(read(`../supabase/migrations/${f}`)).includes('create or replace function public.claim_paid_order('))
       .sort()
-    // Two files define it; whichever sorts LAST is what a fresh in-order apply
-    // leaves behind, and that is the one every assertion above read.
-    expect(definers).toEqual([OLDEST, NEWEST])
+    // Three files define it; whichever sorts LAST is what a fresh in-order
+    // apply leaves behind, and that is the one every assertion above read
+    // (§6k — name order decides, so the newest body must carry every earlier
+    // guard forward, which is what the tests above and below pin).
+    expect(definers).toEqual([OLDEST, PREVIOUS, NEWEST])
+  })
+})
+
+// ============ #560 — the marker gate joins the opaque class ============
+// The third redefinition adds the soft-unpublish gate: a withdrawn publication
+// refuses orders created AFTER its `unpublished_at` stamp, while a buyer
+// mid-payment at the moment of the unpublish still claims (stranding a charge
+// is worse than the bug). The refusal joins the SAME opaque sentence — a
+// withdrawn-publication oracle is the same oracle #355 closed — which is why
+// this is pinned here rather than in a file of its own.
+describe('#560 — the marker gate refuses opaquely, with an in-flight carve-out', () => {
+  it('reads the marker through the ORDER, and compares with the carve-out', () => {
+    const fn = body()
+    expect(fn).toMatch(/select p\.unpublished_at into v_unpublished/)
+    // The type story: ms-epoch bigint marker vs timestamptz order, converted
+    // at the comparison — and `>`, not `>=`, so the boundary instant (the
+    // stamp's own millisecond) belongs to the buyer.
+    expect(fn).toMatch(/\(extract\(epoch from v_order\.created_at\) \* 1000\)::bigint > v_unpublished/)
+  })
+
+  it('refuses only a WITHDRAWN publication — never one still on sale', () => {
+    const fn = body()
+    expect(fn).toMatch(/if v_unpublished is not null\s+and \(extract\(epoch from v_order\.created_at\)/)
+  })
+
+  it('keeps the refusal count at ONE sentence for all four gates', () => {
+    // The marker refusal must not mint a second distinguishable answer: no
+    // matter which gate stops the claim, the caller reads 'claim refused'.
+    const fn = body()
+    expect((fn.match(/raise exception/g) ?? []).length).toBe(1)
+    expect(exceptionText(fn)).toBe('claim refused')
+    expect(fn).toContain("raise log 'claim_paid_order refused")
   })
 })
 

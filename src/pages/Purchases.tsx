@@ -129,18 +129,25 @@ export function PurchasesPage({ onNavigate }: { onNavigate: (r: string) => void 
       </div>
 
       <h1 className="purchases-title">My purchases</h1>
-      {/* #409 — the lede promised three things and, on a withdrawn row, showed
-          one: "what is inside" is read from the publication row, which a
-          withdrawn plan no longer has, so its shape chips are simply absent.
-          The base sentence stays (it is true for everything listed) and the
-          caveat appears ONLY when this shelf actually holds a withdrawn plan —
-          a permanent sentence about a case most shelves never have would be its
-          own small dishonesty. */}
+      {/* #409 — the lede promised three things and, on a row whose publication
+          row is GONE, showed one: "what is inside" is read from the publication
+          row, so its shape chips are simply absent. The base sentence stays (it
+          is true for everything listed) and the caveats appear ONLY when this
+          shelf actually holds the case they describe — a permanent sentence
+          about a case most shelves never have would be its own small
+          dishonesty. #570 splits the case in two: a plan taken OFF SALE still
+          has its row (and its chips) and still opens from here, so the old
+          single caveat would have claimed its details were "not repeated here"
+          while they are printed right below. Refunded rows say their own piece
+          per row, so neither caveat speaks for them. */}
       <p className="hint-text purchases-lede">
         Plans you unlocked, kept here for good — with what you paid, the shape of the plan, and any update
         from the person who made them.
-        {shelf.rows.some(r => !r.listed) && (
-          <> A plan that has been taken down keeps its receipt and your access; its length, places and cover
+        {shelf.rows.some(r => !r.onSale && !r.refunded) && (
+          <> A plan taken off sale keeps its receipt and your access — it still opens from here.</>
+        )}
+        {shelf.rows.some(r => !r.rowExists && !r.refunded) && (
+          <> A plan whose catalogue entry is gone keeps its receipt and your access; its length, places and cover
           live in the copy you forked, which is why they are not repeated here.</>
         )}
       </p>
@@ -191,31 +198,34 @@ export function PurchasesPage({ onNavigate }: { onNavigate: (r: string) => void 
 
           <div className="purchase-list">
             {shelf.rows.map(row => {
-              // Only a WITHDRAWN plan needs a copy resolved: while the
-              // publication is listed its own page is the better destination.
-              // Resolving for every row would also mean a listed plan could be
-              // shadowed by an old fork, which is the wrong answer to a
-              // different question.
+              // Only a plan whose catalogue entry is GONE needs a copy resolved:
+              // a withdrawn plan's own page still works for its buyer (#350 —
+              // get_public_trip serves entitled holders), so the fork is a
+              // fallback for pre-#350 rows whose publication really was deleted,
+              // not a requirement. Resolving for every row would also mean a
+              // live plan could be shadowed by an old fork, which is the wrong
+              // answer to a different question.
               //
               // #407 — and a REFUNDED row resolves nothing at all: there is no
               // access to point at, so offering "Open your copy" would advertise
               // a plan the buyer's money was returned for.
-              const copy = row.listed || row.refunded ? null : findBuyerCopy(row, trips)
+              const copy = row.rowExists || row.refunded ? null : findBuyerCopy(row, trips)
               return (
               <article className="purchase-row" key={row.pubId}>
                 <div className="purchase-thumb">
-                  {/* #409 — a withdrawn row gets NO auto lookup. `CoverThumb`
-                      resolves a missing cover through `pickTripQueryCandidates`,
-                      which for this caller degrades to the purchase TITLE, and a
-                      title is not a destination: "Spiti Valley Circuit" resolves
-                      to a plausible photo the creator never chose, presented in
-                      the authoritative cover slot. A neutral emoji is the honest
-                      fallback for a plan whose publication is gone — there is no
-                      destination left to look up. A LISTED row keeps the lookup,
+                  {/* #409 — a row that is not on sale gets NO auto lookup.
+                      `CoverThumb` resolves a missing cover through
+                      `pickTripQueryCandidates`, which for this caller degrades to
+                      the purchase TITLE, and a title is not a destination:
+                      "Spiti Valley Circuit" resolves to a plausible photo the
+                      creator never chose, presented in the authoritative cover
+                      slot. A neutral emoji is the honest fallback for a plan
+                      taken off sale (#570 — its own page no longer shows any
+                      photo to agree with). A row still ON SALE keeps the lookup,
                       because there its own public page shows the same photo and
                       the two agree. */}
                   <CoverThumb variant="short" explicitUrl={row.coverImageUrl}
-                    trip={row.listed ? { name: row.title } : null} emoji="🧭" />
+                    trip={row.onSale ? { name: row.title } : null} emoji="🧭" />
                 </div>
                 <div className="purchase-body">
                   <h2 className="purchase-name">{row.title}</h2>
@@ -248,29 +258,38 @@ export function PurchasesPage({ onNavigate }: { onNavigate: (r: string) => void 
                       access, not a reason to erase that you bought it.
                     </p>
                   )}
-                  {!row.refunded && !row.listed && (
+                  {/* #570 — fires for BOTH faces of "not on sale": the row
+                      surviving a withdrawal (#350 — the plan is still readable
+                      from here) and the row being gone entirely (pre-#350, where
+                      the forked copy is the fallback). Before the marker split
+                      this could not fire for a withdrawn plan at all — the one
+                      thing the buyer most needed to know. */}
+                  {!row.refunded && !row.onSale && (
                     <p className="hint-text">
                       This plan is not listed publicly any more. Your access is unaffected
-                      {copy
-                        ? <> — your own copy is the trip you forked, and it still works.</>
-                        : <> — but we could not find your copy in My trips, so there is nothing here to open.</>}
+                      {row.rowExists
+                        ? <> — it still opens from here, any time.</>
+                        : copy
+                          ? <> — your own copy is the trip you forked, and it still works.</>
+                          : <> — but we could not find your copy in My trips, so there is nothing here to open.</>}
                     </p>
                   )}
                   <div className="purchase-actions">
-                    {/* A withdrawn publication's page can never load: unpublishing
-                        DELETES the row, and `/pub/<id>` reads the catalogue. So the
-                        link is offered ONLY while the plan is listed — otherwise the
-                        one button on an unlisted row is dead by construction, on
-                        exactly the row promising the buyer is unaffected (#405). The
-                        copy is the honest destination instead.
+                    {/* The link is offered while the publication ROW exists —
+                        `/pub/<id>` reads the row, and since #350 a withdrawn row
+                        still serves its buyer (get_public_trip + the page's
+                        `unlocked` gate), so "Open the plan" is the buyer's working
+                        path through a withdrawal, not a dead button. Gating it on
+                        "still on sale" would break exactly the access the shelf
+                        promises is unaffected (#570).
 
-                        #407 — and every access affordance is gated on the PLAN
-                        being openable at all, which a refunded purchase is not: the
-                        paywall already refuses it server-side, so an "Open the plan"
-                        button here would be a button whose only outcome is a locked
-                        page — the confusion this issue was filed about. The receipt
-                        above is what a refunded row is FOR. */}
-                    {row.listed && !row.refunded && (
+                        #407 — every access affordance is gated on the PLAN being
+                        openable at all, which a refunded purchase is not: the
+                        paywall already refuses it server-side, so an "Open the
+                        plan" button here would be a button whose only outcome is a
+                        locked page. The receipt above is what a refunded row is
+                        FOR. */}
+                    {row.rowExists && !row.refunded && (
                       <button className="btn btn-primary" onClick={() => onNavigate(`/pub/${row.pubId}`)}>Open the plan</button>
                     )}
                     {copy && (
@@ -280,12 +299,13 @@ export function PurchasesPage({ onNavigate }: { onNavigate: (r: string) => void 
                         {copy.exact ? 'Open your copy' : 'Open your copy (we think this is it)'}
                       </button>
                     )}
-                    {row.listed && !row.refunded && <button className="btn btn-ghost" onClick={() => fork(row.pubId)}>Fork into my trips</button>}
+                    {row.rowExists && !row.refunded && <button className="btn btn-ghost" onClick={() => fork(row.pubId)}>Fork into my trips</button>}
                     {/* ROADMAP I-21: the buyer's own card. Offered only while the
-                        publication still exists — a withdrawn plan's link
-                        previews as nothing, and handing someone a dead link to
-                        post is worse than not offering it (purchaseShareable,
-                        which #407 also makes false for a refunded row). */}
+                        plan is still ON SALE — a withdrawn plan's link previews as
+                        a live card whose recipient is then refused the page (#350),
+                        and handing someone that link is worse than not offering it
+                        (purchaseShareable, which #407 also makes false for a
+                        refunded row). */}
                     {purchaseShareable(row) && (
                       <button className="btn btn-ghost" disabled={sharingId !== null}
                         onClick={() => void share(row)}>

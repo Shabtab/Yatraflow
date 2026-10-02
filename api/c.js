@@ -135,7 +135,10 @@ export default async function handler(req, res) {
   // ("New to YatraFlow") rather than taking the page down with it.
   try {
     const countResponse = await fetch(
-      `${url.replace(/\/+$/, '')}/rest/v1/published_itineraries?creator_id=eq.${encodeURIComponent(id)}&select=id&limit=1`,
+      // unpublished_at=is.null: the count is live publications, not rows —
+      // a soft-unpublished row survives (#350) and must not count, or the
+      // card disagrees with Explore about how many plans exist.
+      `${url.replace(/\/+$/, '')}/rest/v1/published_itineraries?creator_id=eq.${encodeURIComponent(id)}&unpublished_at=is.null&select=id&limit=1`,
       {
         method: 'HEAD',
         headers: {

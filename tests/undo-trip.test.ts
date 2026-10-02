@@ -88,7 +88,7 @@ function flush(): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, 0))
 }
 
-async function freshStoreWith(seed = true) {
+async function freshStoreWith(seed = true, withPub = false) {
   vi.resetModules()
   const store = await import('../src/store/store')
   if (seed) {
@@ -98,7 +98,11 @@ async function freshStoreWith(seed = true) {
     db.decisions.push(decision)
     db.activity.push(activity)
     db.notifications.push(notification)
-    db.published.push(published)
+    // #566 — the publication is seeded only where the test is ABOUT it: a
+    // published trip is now refused outright by deleteTrip (the refusal test
+    // below), so seeding it everywhere would have turned every mechanics test
+    // into a no-op.
+    if (withPub) db.published.push(published)
   }
   return store
 }
@@ -125,7 +129,7 @@ describe('undo after trip delete (#43)', () => {
     expect(row.owner_id).not.toBe('priya')
   })
 
-  it('restores votes, decisions, activity, notifications and the public link', async () => {
+  it('restores votes, decisions, activity and notifications', async () => {
     const store = await freshStoreWith()
     const trip = store.getSnapshot().trips[0]
 
@@ -137,9 +141,29 @@ describe('undo after trip delete (#43)', () => {
     expect((writesTo('decisions', 'insert')[0].payload as { id: string }[])[0].id).toBe('dc-1')
     expect((writesTo('activity', 'insert')[0].payload as { id: string }[])[0].id).toBe('ac-1')
     expect((writesTo('notifications', 'insert')[0].payload as { id: string }[])[0].id).toBe('nt-1')
-    // Upsert, and by slug, so the existing share link keeps resolving.
-    expect(writesTo('published_itineraries', 'upsert')).toHaveLength(1)
-    expect((writesTo('published_itineraries', 'upsert')[0].payload as { id: string }[])[0]).toMatchObject({ id: 'kerala-4-days', views: 17 })
+    // The public-link upsert this test used to assert is now unreachable BY
+    // DESIGN (#566): deleteTrip refuses a published trip before it snapshots,
+    // because the undo can restore the publication row but NOT the buyers'
+    // entitlements and orders that cascade off it — a delete+undo of a
+    // published trip would be a confiscation with a restored logo on top. The
+    // upsert stays in restoreTripData as belt and braces; the refusal below is
+    // the behaviour that matters.
+  })
+
+  it('refuses to delete a published trip — undo cannot restore buyers\' grants', async () => {
+    // #566: the trip row cascades `published_itineraries`, and the pub row
+    // cascades `entitlements`/`purchase_orders`/`pub_events`. Nothing that
+    // hard-deletes a trip may carry that chain — the same rule the purge RPCs
+    // now enforce server-side, so no client path is the back door around it.
+    const store = await freshStoreWith(true, true)
+
+    store.deleteTrip('trip-1')
+    await flush()
+
+    expect(store.getSnapshot().trips).toHaveLength(1)
+    expect(store.getSnapshot().published).toHaveLength(1)
+    expect(writesTo('trips', 'delete')).toHaveLength(0)
+    expect(writesTo('published_itineraries')).toHaveLength(0)
   })
 
   it('writes the trip before its children, because RLS gates them on membership', async () => {

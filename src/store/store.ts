@@ -2044,6 +2044,17 @@ function snapshotTrip(trip: Trip, index: number): TripSnapshot {
 export function deleteTrip(id: ID): void {
   const idx = cache.trips.findIndex(t => t.id === id)
   if (idx < 0) return
+  // #566 — a direct hard DELETE cascades `published_itineraries` (trip_id) and
+  // with it `entitlements`, `purchase_orders` and `pub_events` (pub_id): buyers
+  // lose what they paid for and the creator's sales ledger is erased. A marker
+  // stamp cannot help here — the row it would stamp dies with the trip. The
+  // purge RPC refuses the same trip for the same reason, so this legacy path
+  // (nothing calls it since the trash landed; kept for the undo suite) refuses
+  // too rather than being the one back door around the guard.
+  if (cache.published.some(p => p.tripId === id)) {
+    toast('A published trip cannot be deleted — its publication and its buyers’ records stay with it. Move it to trash instead.', 'err')
+    return
+  }
   const removed = cache.trips[idx]
   lastDeletedTrip = snapshotTrip(removed, idx)
   cache.trips = cache.trips.filter(t => t.id !== id)
@@ -2132,10 +2143,38 @@ async function restoreTripData(trip: Trip, snap: TripSnapshot | null): Promise<v
  *  tombstone; a failed write puts the trip back. */
 export function trashTrip(trip: Trip): void {
   if (!cache.trips.some(t => t.id === trip.id)) return
+  // #566 — trash is a WITHDRAW, never a revoke. A trip whose publication is
+  // still on sale must stop selling WITH it: Explore, the sitemap, the share
+  // card and checkout all read `unpublished_at is null`, so a tombstone alone
+  // leaves the removed trip's plan selling from a page its owner just took
+  // down. The stamp is OWNER-written — `published write` RLS is
+  // `auth.uid() = creator_id` while `trips update` is `is_editor`, so an editor
+  // cannot write it (deliberately no trigger: withdrawing the sale is the
+  // creator's action, not a side effect of a tombstone). An editor asked to
+  // trash a still-selling trip is REFUSED outright rather than half-served.
+  const pubs = cache.published.filter(p => p.tripId === trip.id)
+  const onSale = pubs.filter(p => !p.unpublishedAt)
+  if (onSale.length) {
+    const me = cache.sessionUserId
+    if (!me || onSale.some(p => p.creatorId !== me)) {
+      toast('Only the trip owner can trash a published trip — its public page has to stop selling with it.', 'err')
+      return
+    }
+  }
   cache.trips = cache.trips.filter(t => t.id !== trip.id)
   commit()
-  void tripsHaveOptionalColumns().then(cols => {
+  void tripsHaveOptionalColumns().then(async cols => {
     if (!cols.deleted) {
+      // Legacy hard delete (a database without the trash column):
+      // `published_itineraries` cascades off the trip and the money rows
+      // cascade off the publication — a published trip here would be a
+      // confiscation, so it is refused like the purge RPC refuses it.
+      if (pubs.length) {
+        cache.trips = [...cache.trips, trip]
+        commit()
+        toast('This database has no trash column — a published trip cannot be deleted here without destroying its buyers’ records.', 'err')
+        return
+      }
       void supabase.from('trips').delete().eq('id', trip.id).then(({ error }) => {
         if (error) { cache.trips = [...cache.trips, trip]; commit() }
         // #387: the bin never refreshed in place — re-issue the RPC after every
@@ -2145,10 +2184,35 @@ export function trashTrip(trip: Trip): void {
       })
       return
     }
+    // #566 — withdraw FIRST, tombstone second: if the plan cannot stop
+    // selling, the trip stays where it is rather than half-moving. The marker
+    // is stamped optimistically and rolled back together with the trip if the
+    // tombstone write fails. Probe-gated: without the column (a pre-#350
+    // database) there is no marker vocabulary to speak, and the readers that
+    // would need it cannot run there either.
+    const prevPubs = cache.published
+    let stamp: number | null = null
+    if (onSale.length && (await publishedHaveUnpublishedAt())) {
+      const s = Date.now()
+      stamp = s
+      cache.published = cache.published.map(p => (onSale.some(o => o.id === p.id) ? { ...p, unpublishedAt: s } : p))
+      commit()
+      const { error: stampError } = await supabase.from('published_itineraries')
+        .update({ unpublished_at: s }).in('id', onSale.map(p => p.id))
+      if (stampError) {
+        cache.published = prevPubs
+        cache.trips = [...cache.trips, trip]
+        commit()
+        toast('Could not stop the plan from selling — the trip was not moved to trash.', 'err')
+        return
+      }
+      for (const p of onSale) markLocalWrite('published_itineraries', p.id)
+    }
     markLocalWrite('trips', trip.id)
     void supabase.from('trips').update({ deleted_at: new Date().toISOString() }).eq('id', trip.id).then(({ error }) => {
       if (error) {
         cache.trips = [...cache.trips, trip]
+        if (stamp !== null) cache.published = prevPubs
         commit()
         toast('Could not move to trash.')
       }
@@ -2229,11 +2293,18 @@ export async function restoreTrashedTripById(id: ID): Promise<boolean> {
   return true
 }
 
-/** Delete a trashed trip forever. Hard delete; the cascade sweeps the collab layer. */
+/** Delete a trashed trip forever. Hard delete; the cascade sweeps the collab layer.
+ *
+ *  #566 — the purge REFUSES a trip whose publication row exists: entitlements,
+ *  purchase_orders and pub_events all cascade off that row, so the delete would
+ *  confiscate what buyers paid for and erase the creator's own sales ledger.
+ *  The refusal is a SENTENCE from the RPC, not a code — it is surfaced verbatim
+ *  so the owner learns why the trip stays in the trash instead of a shrug. */
 export async function permanentlyDeleteTrip(id: ID): Promise<boolean> {
   const { error } = await supabase.rpc('purge_trashed_trip', { p_trip_id: id })
   if (error) {
-    toast('Could not delete that trip.')
+    const msg = typeof error.message === 'string' && error.message.trim() ? error.message.trim() : ''
+    toast(msg || 'Could not delete that trip.')
     void fetchTrashedTrips()
     return false
   }

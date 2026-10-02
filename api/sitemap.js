@@ -60,6 +60,12 @@ function recencyOf(row) {
 function pageQuery(cursor) {
   const params = [
     'select=id,refreshed_at,published_at,creator_id',
+    // Marker filter (#350's vocabulary): a soft-unpublished row survives with
+    // unpublished_at set, so "missing row" can no longer mean "not listed".
+    // Query-side, never post-fetch — the pagination trusts body.length < PAGE
+    // and a cursor built from the last raw row, so dropping rows after the
+    // fetch would desynchronize page boundaries.
+    'unpublished_at=is.null',
     'order=published_at.desc,id.desc',
     `limit=${PAGE}`,
   ]

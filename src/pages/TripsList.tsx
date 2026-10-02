@@ -342,7 +342,7 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
       <ConfirmDialog
         open={!!pendingDelete}
         title={`Delete “${pendingDelete?.name ?? ''}”?`}
-        body="This removes the trip from your workspace. You’ll get a short window to undo from the toast."
+        body="This removes the trip from your workspace. You’ll get a short window to undo from the toast. If it was published, its public page stops selling and stays readable for you and everyone who already unlocked it."
         confirmLabel="Delete trip"
         danger
         onConfirm={confirmDelete}
@@ -352,7 +352,7 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
       <ConfirmDialog
         open={!!pendingPurge}
         title={`Delete “${pendingPurge?.name ?? ''}” forever?`}
-        body="This is permanent: the trip, its votes, decisions and history are destroyed and cannot be recovered or undone."
+        body="This is permanent: the trip, its votes, decisions and history are destroyed and cannot be recovered or undone. A trip that was ever published is never destroyed here — its publication and its buyers’ records stay with it, and the public page keeps working for everyone who unlocked it."
         confirmLabel="Delete forever"
         danger
         onConfirm={() => {

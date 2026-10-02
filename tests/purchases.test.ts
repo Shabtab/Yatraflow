@@ -71,7 +71,8 @@ describe('the purchase shelf', () => {
       creatorName: 'Dheeraj',
       durationDays: 6,
       places: 3,
-      listed: true,
+      rowExists: true,
+      onSale: true,
     })
   })
 
@@ -133,7 +134,7 @@ describe('the purchase shelf', () => {
     // the buyer they never bought the plan.
     const shelf = buildPurchaseShelf([entitlement({ pubId: 'pub_gone' })], [pub()], [])
     expect(shelf.rows).toHaveLength(1)
-    expect(shelf.rows[0]).toMatchObject({ pubId: 'pub_gone', listed: false, title: 'A plan you own' })
+    expect(shelf.rows[0]).toMatchObject({ pubId: 'pub_gone', rowExists: false, onSale: false, title: 'A plan you own' })
     expect(shelf.rows[0].creatorName).toBeUndefined()
     expect(shelf.totalPaidInr).toBe(500)
   })
@@ -254,13 +255,19 @@ describe('I-21 — a purchase carries the entitlement its card is verified again
     expect(shelf.rows[0]!.entitlementId).toBe('ent_9')
   })
 
-  it('offers sharing only while the publication still resolves', () => {
-    // Unpublishing DELETES the row, so `/i/<id>` 404s and the shared link would
-    // preview as nothing at all — the buyer's own access is unaffected.
-    const listed = buildPurchaseShelf([entitlement()], [pub()], [])
-    const withdrawn = buildPurchaseShelf([entitlement()], [], [])
-    expect(purchaseShareable(listed.rows[0]!)).toBe(true)
+  it('offers sharing only while the plan is still on sale', () => {
+    // #350 split the two facts this test used to conflate: a withdrawn
+    // publication's row SURVIVES (stamped `unpublished_at`), and the buyer's
+    // access survives with it — but the shared card's recipient lands on the
+    // public page, which turns non-buyers away once the marker is set. So all
+    // that sharing needs is "on sale": a live row, a withdrawn-but-present row,
+    // and a row whose publication is gone are three different things.
+    const onSale = buildPurchaseShelf([entitlement()], [pub()], [])
+    const withdrawn = buildPurchaseShelf([entitlement()], [pub({ unpublishedAt: 1_700_000_000_001 })], [])
+    const gone = buildPurchaseShelf([entitlement()], [], [])
+    expect(purchaseShareable(onSale.rows[0]!)).toBe(true)
     expect(purchaseShareable(withdrawn.rows[0]!)).toBe(false)
+    expect(purchaseShareable(gone.rows[0]!)).toBe(false)
   })
 })
 
@@ -362,7 +369,8 @@ describe('#406 — a row whose money cannot be read is flagged, never silently t
       [],
     )
     expect(shelf.rows).toHaveLength(1)
-    expect(shelf.rows[0]!.listed).toBe(false)
+    expect(shelf.rows[0]!.rowExists).toBe(false)
+    expect(shelf.rows[0]!.onSale).toBe(false)
     expect(shelf.rows[0]!.amountReadable).toBe(false)
     expect(purchaseShareable(shelf.rows[0]!)).toBe(false)
   })
@@ -438,11 +446,12 @@ describe('#409 — the shelf stops overclaiming', () => {
     expect(fmt('UTC')).toBe(fmt('UTC'))
   })
 
-  it('gives a withdrawn row NO auto cover, only the neutral fallback', () => {
+  it('gives a row that is not on sale NO auto cover, only the neutral fallback', () => {
     // `CoverThumb` resolves a missing cover through the trip's query candidates,
     // which for this caller degrades to the purchase TITLE — and a title is not
     // a destination, so it yields a plausible photo the creator never chose.
-    expect(pageSrc).toContain('trip={row.listed ? { name: row.title } : null}')
+    // #570: the gate is `onSale`, the fact #350 separated from row presence.
+    expect(pageSrc).toContain('trip={row.onSale ? { name: row.title } : null}')
   })
 
   it('holds the share button busy while its sheet is open', () => {
@@ -454,12 +463,16 @@ describe('#409 — the shelf stops overclaiming', () => {
     expect(pageSrc).toContain("sharingId === row.pubId ? 'Opening…' : 'Share what you bought'")
   })
 
-  it('qualifies its lede only when the shelf actually holds a withdrawn plan', () => {
-    // The lede promised "what is inside" while a withdrawn row's shape chips are
-    // absent (its publication row is gone, so durationDays/places read 0). The
-    // caveat is conditional: a permanent sentence about a case most shelves never
-    // have would be its own small dishonesty.
-    expect(pageSrc).toContain('shelf.rows.some(r => !r.listed)')
+  it('qualifies its lede only for the cases the caveats actually describe', () => {
+    // The lede promised "what is inside" while a row whose publication is GONE
+    // has no shape chips to show (durationDays/places read 0). #570 splits the
+    // caveats by their truth condition: a plan taken OFF SALE still has its row
+    // and its chips and still opens from here, while the chips-absent
+    // explanation belongs only to rows whose catalogue entry is gone. Both are
+    // conditional: a permanent sentence about a case most shelves never have
+    // would be its own small dishonesty.
+    expect(pageSrc).toContain('shelf.rows.some(r => !r.onSale && !r.refunded)')
+    expect(pageSrc).toContain('shelf.rows.some(r => !r.rowExists && !r.refunded)')
     expect(pageSrc).toContain('keeps its receipt and your access')
     // …and the promise that IS always true stays true.
     expect(pageSrc).toContain('the shape of the plan')
@@ -475,11 +488,13 @@ describe('#409 — the shelf stops overclaiming', () => {
 })
 
 // ============ #405 — a withdrawn plan must not lead to a dead page ============
-// Unpublishing DELETES the publication row, so `/pub/<id>` can never load again.
-// The shelf's "Open the plan" button rendered unconditionally, which made the
-// ONLY action on an unlisted row a link to nothing — on precisely the row whose
-// copy promises the buyer their access is unaffected. The buyer's real copy is
-// the trip they forked, and this is what finds it.
+// When this was written, unpublishing DELETED the publication row, so
+// `/pub/<id>` could never load again and the "Open the plan" button on such a
+// row was a link to nothing — on precisely the row whose copy promises the
+// buyer their access is unaffected. The buyer's real copy is the trip they
+// forked, and this is what finds it. (#350 later kept the row and served its
+// buyers through the withdrawal — see the #570 pins below for what that means
+// for the buttons.)
 describe('#405 — the copy resolver finds the buyer\'s own trip, or admits it cannot', () => {
   const trip = (overrides: Partial<Trip> = {}): Trip =>
     ({ ...structuredClone(seedData.trips[0]!), ...overrides }) as Trip
@@ -552,18 +567,20 @@ describe('#405 — the copy resolver finds the buyer\'s own trip, or admits it c
 describe('#405 — the shelf never offers a link that cannot load', () => {
   const pageSrc = readFileSync(new URL('../src/pages/Purchases.tsx', import.meta.url), 'utf8')
 
-  it('offers the public page only while the publication is listed', () => {
+  it('offers the public page only while the publication row exists', () => {
     // Matched on the GUARD and the destination separately rather than one span
     // across them: the two sit on different lines, and a regex that has to
     // cross the braces in between is a regex that will break on a reformat.
     //
     // #407 — the guard gained a second condition (`!row.refunded`), because a
     // listed-but-refunded plan is one the paywall will refuse: the button would
-    // open a locked page, which is the confusion #407 was filed about. The
-    // invariant this pin exists for is unchanged and now covers both reasons a
-    // row cannot be opened.
-    const guarded = pageSrc.match(/\{row\.listed && !row\.refunded && \(([\s\S]{0,400}?)\)\}/)
-    expect(guarded, 'the /pub/ button is no longer behind a listed-and-not-refunded guard').not.toBeNull()
+    // open a locked page, which is the confusion #407 was filed about.
+    //
+    // #570 — the gate is `rowExists`, deliberately NOT `onSale`: since #350 a
+    // withdrawn row still serves its buyer, and this button is that buyer's one
+    // working path to the plan they paid for.
+    const guarded = pageSrc.match(/\{row\.rowExists && !row\.refunded && \(([\s\S]{0,400}?)\)\}/)
+    expect(guarded, 'the /pub/ button is no longer behind a rowExists-and-not-refunded guard').not.toBeNull()
     expect(guarded![1]).toContain('`/pub/${row.pubId}`')
     // And the share/fork buttons are guarded the same way (asserted below), so
     // the guard here is a real gate rather than a stray token.
@@ -584,7 +601,7 @@ describe('#405 — the shelf never offers a link that cannot load', () => {
     // same reason the /pub/ button did: forking is an access affordance, and a
     // refunded row has no access to fork into.
     expect(pageSrc).toMatch(/\{purchaseShareable\(row\) && \(/)
-    expect(pageSrc).toMatch(/\{row\.listed && !row\.refunded && <button className="btn btn-ghost" onClick=\{\(\) => fork\(row\.pubId\)\}/)
+    expect(pageSrc).toMatch(/\{row\.rowExists && !row\.refunded && <button className="btn btn-ghost" onClick=\{\(\) => fork\(row\.pubId\)\}/)
   })
 })
 
@@ -635,16 +652,22 @@ describe('#407 — a refunded purchase renders as a receipt', () => {
     expect(shelf.refundedCount).toBe(1)
   })
 
-  it('keeps refunded and unlisted ORTHOGONAL — a row can be both', () => {
+  it('keeps refunded and withdrawn ORTHOGONAL — a row can be both', () => {
     // Two different stories with different next steps: "the creator took it
     // down" versus "your money was returned". Conflating them would tell a
     // refunded buyer their access ended because of the creator.
     const refundedListed = buildPurchaseShelf([], [pub()], [], [order({ status: 'failed' })])
-    expect(refundedListed.rows[0]).toMatchObject({ refunded: true, listed: true })
+    expect(refundedListed.rows[0]).toMatchObject({ refunded: true, rowExists: true, onSale: true })
 
-    // No publication in the cache: withdrawn AND refunded.
-    const refundedWithdrawn = buildPurchaseShelf([], [], [], [order({ status: 'failed' })])
-    expect(refundedWithdrawn.rows[0]).toMatchObject({ refunded: true, listed: false })
+    // #570 — the withdrawn face has two shapes now: the row survives a #350
+    // withdrawal (present, off sale) or is gone entirely (pre-#350). Both are
+    // "withdrawn" to the buyer and both must render the Refunded chip alongside.
+    const refundedStamped = buildPurchaseShelf([], [pub({ unpublishedAt: 1_700_000_000_001 })], [], [order({ status: 'failed' })])
+    expect(refundedStamped.rows[0]).toMatchObject({ refunded: true, rowExists: true, onSale: false })
+
+    // No publication in the cache: gone AND refunded.
+    const refundedGone = buildPurchaseShelf([], [], [], [order({ status: 'failed' })])
+    expect(refundedGone.rows[0]).toMatchObject({ refunded: true, rowExists: false, onSale: false })
   })
 
   it('offers no share and no access for a refunded row', () => {
@@ -713,11 +736,11 @@ describe('#407 — the shelf page renders the refund, and reads both sources', (
     expect(pageSrc).toContain('the access it came with has ended')
     // Both access buttons carry the refund gate, and the share gate is derived
     // from the row (`purchaseShareable`), which is pinned false above.
-    expect(pageSrc).toMatch(/\{row\.listed && !row\.refunded && \(/)
-    expect(pageSrc).toContain('{row.listed && !row.refunded && <button')
+    expect(pageSrc).toMatch(/\{row\.rowExists && !row\.refunded && \(/)
+    expect(pageSrc).toContain('{row.rowExists && !row.refunded && <button')
     // The copy resolver is skipped for a refunded row rather than offering a
     // link to access the buyer no longer has.
-    expect(pageSrc).toContain('const copy = row.listed || row.refunded ? null : findBuyerCopy(row, trips)')
+    expect(pageSrc).toContain('const copy = row.rowExists || row.refunded ? null : findBuyerCopy(row, trips)')
   })
 
   it('names the refunded count, because the total excludes it', () => {
@@ -729,9 +752,55 @@ describe('#407 — the shelf page renders the refund, and reads both sources', (
 
   it('keeps the withdrawn note for un-refunded rows only', () => {
     // The two notes are mutually exclusive by construction: a refunded row says
-    // its money came back, an unlisted one says access is unaffected — and
-    // telling a refunded buyer the second would be false.
-    expect(pageSrc).toContain('!row.refunded && !row.listed && (')
+    // its money came back, a withdrawn one says access is unaffected — and
+    // telling a refunded buyer the second would be false. #570: the note keys
+    // on `onSale`, the fact the marker actually decides.
+    expect(pageSrc).toContain('!row.refunded && !row.onSale && (')
+  })
+})
+
+// ============ #570 — the shelf learns the soft-unpublish marker ============
+// #350 separated two facts this shelf conflated: the publication row SURVIVES a
+// withdrawal (presence ≠ on sale), and the buyer's access survives with it (off
+// sale ≠ unopenable). No earlier test fed the payload shape the wire now
+// produces — a row with `unpublished_at` set — through `buildPurchaseShelf`, so
+// the suite pinned the pre-#350 world and agreed with the bug.
+describe('#570 — rowExists and onSale are different facts', () => {
+  const pageSrc = readFileSync(new URL('../src/pages/Purchases.tsx', import.meta.url), 'utf8')
+
+  it('reads a surviving withdrawn row as present but not on sale', () => {
+    const withdrawn = buildPurchaseShelf([entitlement()], [pub({ unpublishedAt: 1_700_000_000_001 })], [])
+    expect(withdrawn.rows[0]).toMatchObject({ rowExists: true, onSale: false })
+    // …a live row is both…
+    const live = buildPurchaseShelf([entitlement()], [pub()], [])
+    expect(live.rows[0]).toMatchObject({ rowExists: true, onSale: true })
+    // …and a row whose publication is gone is neither.
+    const gone = buildPurchaseShelf([entitlement()], [], [])
+    expect(gone.rows[0]).toMatchObject({ rowExists: false, onSale: false })
+  })
+
+  it('renders the not-on-sale notice for a withdrawn row — the buyer\'s one need', () => {
+    // The one thing the buyer most needs to know — the plan they paid for came
+    // off sale — and pre-#570 the condition was unreachable for exactly the
+    // rows it was written for. The withdrawn face says the plan still opens
+    // from here (it does — get_public_trip serves entitled holders); the
+    // gone-entirely face falls back to the forked copy.
+    expect(pageSrc).toContain('!row.refunded && !row.onSale && (')
+    expect(pageSrc).toContain('it still opens from here')
+  })
+
+  it('keeps Open and Fork working through a withdrawal — the buyer\'s one working path', () => {
+    // Gating these on "on sale" would break the very access the notice just
+    // promised is unaffected. Pinned on the guard itself.
+    expect(pageSrc).toContain('{row.rowExists && !row.refunded && (')
+    expect(pageSrc).toContain('{row.rowExists && !row.refunded && <button')
+  })
+
+  it('offers no share and no auto cover for a withdrawn row', () => {
+    // The two "needs a LIVE plan" surfaces, both keyed on `onSale`: a card the
+    // recipient cannot open, and a title-derived photo in the cover slot.
+    expect(purchaseShareable(buildPurchaseShelf([entitlement()], [pub({ unpublishedAt: 1_700_000_000_001 })], []).rows[0]!)).toBe(false)
+    expect(pageSrc).toContain('trip={row.onSale ? { name: row.title } : null}')
   })
 })
 
