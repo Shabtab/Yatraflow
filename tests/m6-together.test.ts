@@ -86,6 +86,9 @@ describe('B4 · markExpenseSettled', () => {
   // itself is pinned in tests/budget-read-status.test.ts.
   it('writes the settled flag through to the trips row', async () => {
     const trip = singleTrip()
+    // #578 — the write is identity-gated (dropped without a session), same as
+    // the activity entry below.
+    getSnapshot().sessionUserId = ownerId
     await flush()
     calls.length = 0
     addExpense(trip.id, { label: 'Fuel bluff', category: 'transport', amountInr: 2000 })

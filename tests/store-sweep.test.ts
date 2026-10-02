@@ -168,6 +168,9 @@ async function freshStore() {
   const store = await import('../src/store/store')
   store._setTripWriteDebounceMs(0)
   const db = store.getSnapshot() as any
+  // #578 — debounced writes are identity-gated; the sweep fixtures edit the
+  // trip as its owner, so give the session one.
+  db.sessionUserId = 'amelia'
   db.trips.push(mkTrip())
   db.suggestions.push(mkSuggestion())
   return store

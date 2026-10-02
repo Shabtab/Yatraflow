@@ -50,7 +50,7 @@ vi.mock('../src/lib/supabase', () => {
   }
 })
 
-import { duplicateTrip, addStop, tripById, moveStopBetweenDays, updateStop, _setTripWriteDebounceMs } from '../src/store/store'
+import { duplicateTrip, addStop, tripById, moveStopBetweenDays, updateStop, _setTripWriteDebounceMs, getSnapshot } from '../src/store/store'
 
 // The production 600ms trailing debounce would delay writes past flush()
 // (setTimeout 0). Zero it here; coalescing is covered in store-debounce.test.ts.
@@ -61,6 +61,10 @@ const ownerId = 'owner-test'
 
 function singleTrip() {
   calls.length = 0
+  // #578 — debounced writes are identity-gated now: a write captured under no
+  // session is dropped instead of being stamped with the trip owner. These
+  // tests exercise the write-through mechanics, so give them an editor.
+  getSnapshot().sessionUserId = ownerId
   return duplicateTrip(keralaTrip, ownerId)
 }
 

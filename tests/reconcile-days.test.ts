@@ -133,7 +133,12 @@ describe('updateTrip date handling', () => {
     state.updates.length = 0
     // updateTrip persists through persistTripField; zero the 600ms debounce so
     // the write lands before this test's setTimeout(0) flush helper.
-    ;(await import('../src/store/store'))._setTripWriteDebounceMs(0)
+    const store = await import('../src/store/store')
+    store._setTripWriteDebounceMs(0)
+    // #578 — debounced writes are identity-gated (a write captured under no
+    // session is dropped, never stamped with the trip owner), and these tests
+    // assert the PERSISTED payload — so they need a signed-in editor.
+    store.getSnapshot().sessionUserId = 'user-reconcile'
   })
 
   async function seedTripFromRow() {

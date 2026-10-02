@@ -452,6 +452,15 @@ export async function logout(): Promise<void> {
   const departing = cache.sessionUserId
   patch({ trips: [], trashedTrips: [], trashLoaded: false, trashFailed: false, suggestions: [], decisions: [], activity: [], notifications: [], published: [], adminAudit: [], adminAuditFailed: false, sessionUserId: null, ready: true, cachedAt: null })
   commit()
+  // #578 — the in-memory debounce timers are a module Map that knows nothing
+  // of auth, and they outlive this wipe unless told not to. A timer firing
+  // after this point would RE-QUEUE an entry the wipe deliberately discarded,
+  // stamped with the trip owner's id (sessionUserId is already null) and sent
+  // under whatever JWT is live at fire time — the next account's on an A→B
+  // switch. Cancel and drop: losing the last ≤600ms of edits is the intended
+  // trade, exactly parallel to the durable wipe below. Do NOT "fix" this by
+  // flushing instead — that re-introduces the leak the wipe exists to close.
+  _cancelTripWrites()
   // hydrate(null) skips the snapshot/write cleanup when sessionUserId is
   // already null — which it now always is by this point — so the departing
   // account's snapshot and unsynced writes are cleared HERE. Their edits are
@@ -528,6 +537,13 @@ export function init(): void {
   if (typeof addEventListener !== 'undefined') addEventListener('online', () => { void replayQueuedWrites() })
 
   const hydrate = async (userId: string | null) => {
+    // #578 — any identity TRANSITION drops the in-memory debounce timers along
+    // with the account. This is the only place the A→B switch in one tab is
+    // visible (it never passes through logout()), and it must fire before the
+    // same-user dedupe below so a switch onto an in-flight hydrate still
+    // cancels. A same-user rehydrate keeps the timers: the load-time
+    // double-fire must not eat the user's last edit.
+    if (cache.sessionUserId !== userId) _cancelTripWrites()
     // Same-user dedupe FIRST, generation bump second. The old order bumped
     // hydrateGen for EVERY call — so the load-time double-fire (getSession +
     // onAuthStateChange INITIAL_SESSION, both with the SAME user) marked the
@@ -2378,11 +2394,27 @@ export function updateTrip(id: ID, patchFields: Partial<Trip>): boolean {
 // discard the local edit that scheduled it (the exact failure B0 exists to
 // prevent).
 let TRIP_WRITE_DEBOUNCE_MS = 600
-const pendingTripWrites = new Map<ID, { timer: ReturnType<typeof setTimeout>; trip: Trip }>()
+// #578 — each entry also carries the session the edit was CAPTURED under: the
+// fire-time identity check in persistTripFieldNow compares against this, never
+// against whatever account happens to be signed in when the timer runs.
+const pendingTripWrites = new Map<ID, { timer: ReturnType<typeof setTimeout>; trip: Trip; sessionId: string | null }>()
 
 /** Test hook — 0 disables the debounce: writes issue immediately, as before. */
 export function _setTripWriteDebounceMs(ms: number): void {
   TRIP_WRITE_DEBOUNCE_MS = ms
+}
+
+/** Cancel every pending debounced trip write — timers cleared, entries
+ *  dropped, nothing fired and nothing queued. Called on every session
+ *  TRANSITION (logout, and hydrate onto a different account): the write a
+ *  departing account captured is theirs alone, exactly like the durable queue
+ *  entry the sign-out wipe discards. Test hook mirror of _flushTripWrites. */
+export function _cancelTripWrites(): void {
+  for (const id of [...pendingTripWrites.keys()]) {
+    const pending = pendingTripWrites.get(id)
+    if (pending) clearTimeout(pending.timer)
+    pendingTripWrites.delete(id)
+  }
 }
 
 /** Fire every pending debounced trip write right now. Best-effort — errors
@@ -2398,13 +2430,26 @@ export function _flushTripWrites(): void {
     // above: a remote update that landed while the write was pending must not
     // be re-persisted over the local edit, and the local edit must not be
     // lost by persisting the remote row.
-    void persistTripFieldNow(id, pending.trip)
+    void persistTripFieldNow(id, pending.trip, pending.sessionId)
   }
 }
 
-/** The real row UPDATE — exactly the old persistTripField body. */
-async function persistTripFieldNow(id: ID, t: Trip | undefined): Promise<void> {
+/** The real row UPDATE — exactly the old persistTripField body.
+ *
+ *  #578 — `scheduledFor` is the session the edit was captured under. A write
+ *  that fires under any OTHER identity (or under none) is DROPPED: the queue
+ *  stamp would be a guess and the UPDATE would ride the wrong JWT. */
+async function persistTripFieldNow(id: ID, t: Trip | undefined, scheduledFor: string | null): Promise<void> {
   if (!t) return
+  // #578 — belt-and-braces on top of the cancel hooks: they can be missed (a
+  // pagehide flush racing a sign-out), so the fire itself checks identity.
+  // A null session is refused too — with nobody signed in the write belongs to
+  // a departed account (or to no one), and stamping it with the trip owner is
+  // #393's zombie entry from the other direction. Dropped, not guessed.
+  if (!scheduledFor || cache.sessionUserId !== scheduledFor) {
+    console.warn('[yatraflow] dropping debounced trip write — it was captured under a session that is no longer live')
+    return
+  }
   // Claim the echo window BEFORE awaiting: the guard must be in place from the
   // moment the write is in flight, not from the moment it resolves. Recording
   // it after the await left a hole the width of the whole round trip — an echo
@@ -2423,7 +2468,10 @@ async function persistTripFieldNow(id: ID, t: Trip | undefined): Promise<void> {
   // sign-out only clears this account's entries — so an editor editing
   // somebody else's trip used to queue under the OWNER's id: never replayed,
   // never cleared by their own sign-out, silently doomed. The row write below
-  // still targets the trip's own owner.
+  // still targets the trip's own owner. (The guard above makes the old
+  // `?? owner?.userId ?? id` fallback unreachable: a null session never gets
+  // this far, so the stamp below is always the editor — #393's promise kept
+  // from the other direction now too.)
   await queueWrite({ tripId: id, ownerId: cache.sessionUserId ?? owner?.userId ?? id, capturedAt: Date.now(), attempts: 0, trip: t })
   const cols = await tripsHaveOptionalColumns()
   const { error } = await supabase.from('trips').update(tripToRow(t, owner?.userId ?? id, cols)).eq('id', id)
@@ -2500,8 +2548,12 @@ function persistTripField(id: ID, t: Trip): void {
   // later edit) before the debounce fires. A shared reference let the pending
   // write drift with the cache — the exact loss B0 exists to prevent.
   const snapshot = structuredClone(t)
+  // #578 — capture WHOSE edit this is, at call time, alongside the snapshot:
+  // the fire-time identity check compares against this, so a write captured
+  // under one account can never be persisted under another.
+  const scheduledFor = cache.sessionUserId
   if (TRIP_WRITE_DEBOUNCE_MS <= 0) {
-    void persistTripFieldNow(id, snapshot)
+    void persistTripFieldNow(id, snapshot, scheduledFor)
     return
   }
   const prev = pendingTripWrites.get(id)
@@ -2511,9 +2563,9 @@ function persistTripField(id: ID, t: Trip): void {
     // Persist the CAPTURED snapshot, never a re-read of tripById(id): the
     // timer's re-read let a REMOTE update landing inside the debounce window
     // be persisted over the local edit that scheduled this write (B0).
-    void persistTripFieldNow(id, snapshot)
+    void persistTripFieldNow(id, snapshot, scheduledFor)
   }, TRIP_WRITE_DEBOUNCE_MS)
-  pendingTripWrites.set(id, { timer, trip: snapshot })
+  pendingTripWrites.set(id, { timer, trip: snapshot, sessionId: scheduledFor })
 }
 
 // ---------------- Members & collaboration ----------------

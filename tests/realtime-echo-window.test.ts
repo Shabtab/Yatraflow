@@ -97,7 +97,7 @@ vi.mock('../src/lib/supabase', () => {
   }
 })
 
-import { duplicateTrip, updateStop, tripById, connectRealtime, _flushTripWrites, _clearRecentLocalWrites, _setTripWriteDebounceMs } from '../src/store/store'
+import { duplicateTrip, updateStop, tripById, connectRealtime, _flushTripWrites, _clearRecentLocalWrites, _setTripWriteDebounceMs, getSnapshot } from '../src/store/store'
 
 const keralaTrip = seedData.trips[0]
 
@@ -130,6 +130,9 @@ function rowOf(tripId: string) {
 describe('the echo guard is armed before the write is awaited', () => {
   it('a stale echo landing mid-flight does not revert the reorder', async () => {
     const trip = duplicateTrip(keralaTrip, 'owner-test')
+    // #578 — debounced writes are identity-gated; give the write an editor so
+    // it is not dropped as captured-under-no-session.
+    getSnapshot().sessionUserId = 'owner-test'
     // Creating the trip performs a write of its own, which arms an echo window.
     // Clear the ledger so the ONLY window in play is the reorder's — otherwise
     // the setup window masks the very bug under test (2s is longer than a test).
@@ -192,6 +195,9 @@ describe('the echo guard is armed before the write is awaited', () => {
 describe('the echo window is armed at commit time (debounce-gap hole)', () => {
   it('a stale echo landing DURING the debounce gap does not revert the reorder', async () => {
     const trip = duplicateTrip(keralaTrip, 'owner-test')
+    // #578 — debounced writes are identity-gated; give the write an editor so
+    // it is not dropped as captured-under-no-session.
+    getSnapshot().sessionUserId = 'owner-test'
     // Creating the trip performs a write of its own, which arms an echo window.
     // Clear the ledger so the ONLY window in play is the reorder's.
     await new Promise(r => setTimeout(r, 0))
