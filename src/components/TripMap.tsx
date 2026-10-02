@@ -630,9 +630,6 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
       }
     })()
     return () => { cancelled = true }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- `coordFixes` is read
-    // to skip what is already fixed; depending on it would restart the queue on
-    // every landing and re-attempt hits that can never resolve.
   }, [nearbyPois, slotPins])
   const mappedPois = useMemo(
     () => nearbyPois.map(h => {

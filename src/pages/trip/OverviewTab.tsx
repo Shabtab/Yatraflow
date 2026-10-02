@@ -252,7 +252,7 @@ function WeatherCard({ trip }: { trip: Trip }) {
       .then(w => { if (!cancelled) { setByDate(w); setState('ready') } })
       .catch(() => { if (!cancelled) setState('unavailable') })
     return () => { cancelled = true }
-  }, [anchor, trip.startDate, trip.days.length]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [anchor, trip.startDate, trip.days.length])
 
   if (state === 'loading') {
     return <div className="card"><h3 className="card-head"><InlineIcon icon={CloudSun} size={14} gap={4} />Weather</h3><p className="muted small">Loading forecast…</p></div>

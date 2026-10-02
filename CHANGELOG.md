@@ -28,6 +28,15 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
   documentation, new rules, changelog entries and chat explanations follow one instruction per
   sentence, a 20 word limit, and a plain vocabulary. Run `npm run lint:ste` to check the lines
   you changed. Existing text is unchanged.
+- **A hook below an early return in Profile no longer crashes the page on a full
+  reload.** The theme hook and the notifications memo sat under `if (!me) return
+  null`. React reported a hook count mismatch as soon as the store hydrated after
+  mount. Both hooks now sit above the guard.
+- **ESLint now runs as a ratchet.** `npm run lint` reported 148 errors, so it
+  could not gate a push. `npm run lint:ratchet` compares each file against
+  `eslint-baseline.json` and fails only when a count rises. The baseline starts
+  at 144 errors, which is four fewer than the day before. Fixing an error lowers
+  the ceiling in the same commit.
 
 ## [0.72.0] - 2026-10-01
 

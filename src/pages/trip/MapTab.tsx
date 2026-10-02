@@ -1665,8 +1665,6 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
       shortlisted: omniPicked ? shortlist.some(h => h.id === omniPicked.h.id) : false,
       shortlistCount: trayShortlist.length,
     }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- filingOptionsFor reads
-    // the active day's slots, which are derived from the inputs listed here.
     [omniPicked, activeDayIndex, trip.days, activeDaySlots, shortlist, trayShortlist, identity],
   )
 

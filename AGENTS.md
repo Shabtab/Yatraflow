@@ -259,6 +259,20 @@ that notices the drift.
     See [`CODING_STANDARDS.md`](CODING_STANDARDS.md) §2 for the full
     vocabulary and the exceptions.
 
+14. **Lint is a ratchet, not a gate. Never add errors.** `npm run lint`
+    reports errors today. `npm run lint:ratchet` compares that report against
+    `eslint-baseline.json` and fails only when a count got worse. It compares
+    per rule AND per file, so a new file with one error is caught even when
+    the total falls somewhere else. Run it in the same commit as a fix. When
+    you fix errors, run this command to lower the ceiling:
+
+    ```bash
+    npm run lint:ratchet -- --update
+    ```
+
+    Do not raise the baseline to make a check pass. A raised baseline hides a
+    regression.
+
 
    **A migration the USER must run is handed over as complete SQL, in the chat,
    with its full local path — never as a filename to go and find (user-mandated
