@@ -15,6 +15,11 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Added
+
+- **`npm run check:ui` — a gate for the mechanical design rules.** It enforces the three that can be decided with no false positives: no `transition: all`, no raw `z-index` at or above 999, and no blocked pinch-zoom in the viewport meta. Each finding names the file, the line, the offending source and why it matters. The remaining candidate rules were measured against this codebase and deliberately left out — `scale()` on hover has 9 sites that are all correct, emoji-as-icons has 403 codepoints that are mostly the weather map and user-chosen trip content, and blanket line-height normalisation would be ~25 false findings. A gate that fires on correct code gets ignored, so the exclusions are recorded in the script itself rather than quietly dropped. Pass `--json` for machine output.
+- **`docs/UI-REVIEW-CHECKLIST.md` — the review notes worth keeping.** It records the chart-type verdict for every surface that draws data (all correct, nothing to change), the five-point pre-flight for new UI, the rules this codebase deliberately deviates from, and the three ways a generic checklist reports defects that do not exist.
+
 ### Fixed
 
 - **The create-trip stop boxes now announce what they are.** Adding a stop and adding a return stop were the only two controls on the journey's most-used screen that reached a screen reader as a bare "combobox, edit text" — no name, because they sit outside the `Field` that labels every other control in the funnel. Both are named now, and `LocationInput` carries an optional accessible name for any future unwrapped use.
