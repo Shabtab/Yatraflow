@@ -273,6 +273,20 @@ that notices the drift.
     Do not raise the baseline to make a check pass. A raised baseline hides a
     regression.
 
+15. **`NODE_ENV=production` breaks `npm install` on this machine.** Some shells
+    set it in the environment. npm reads it as `--omit=dev`, so the install
+    reports success and skips every devDependency. The failure lands one
+    command later as `'tsc' is not recognized`, which reads like a broken repo.
+    Check and clear it before any install:
+
+    ```bash
+    npm run clean:env                                # report the state
+    npm run clean:env -- --exec npm install         # install with it cleared
+    ```
+
+    The variable is not a User or Machine setting, so it returns in every new
+    shell. Clear it per command. Do not reinstall the whole tree to chase this.
+
 
    **A migration the USER must run is handed over as complete SQL, in the chat,
    with its full local path — never as a filename to go and find (user-mandated

@@ -11,10 +11,11 @@
     "test": "vitest run",
     "test:integration": "node scripts/integration/integrationHarness.mjs",
     "check:migrations": "node scripts/checkMigrations.mjs",
+    "clean:env": "node scripts/clean-env.mjs",
     "lint": "eslint src",
     "lint:ratchet": "node scripts/lint-ratchet.mjs",
     "lint:ste": "node scripts/lint-ste.mjs",
-    "verify": "tsc -b --clean && npm test && npm run build"
+    "verify": "tsc -b --clean && npm run lint:ratchet && npm test && npm run build"
   },
   "allowScripts": {
     "esbuild": true

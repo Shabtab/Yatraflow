@@ -37,6 +37,15 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
   `eslint-baseline.json` and fails only when a count rises. The baseline starts
   at 144 errors, which is four fewer than the day before. Fixing an error lowers
   the ceiling in the same commit.
+- **The lint ratchet now runs in the gate.** `npm run verify` runs it after the
+  typecheck and before the tests, so a regression fails in about 25 seconds
+  instead of after the whole suite. CI runs the same command, and its job
+  timeout rises from 15 to 20 minutes to cover the extra step.
+- **`npm run clean:env` reports and clears the NODE_ENV trap.** Some shells set
+  `NODE_ENV=production`. npm reads that as `--omit=dev`, so `npm install`
+  reports success and skips every devDependency. The failure appears later as
+  `'tsc' is not recognized`. The new script reports the state, and its `--exec`
+  mode runs any command with the variable cleared.
 
 ## [0.72.0] - 2026-10-01
 
