@@ -55,6 +55,9 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
   reports success and skips every devDependency. The failure appears later as
   `'tsc' is not recognized`. The new script reports the state, and its `--exec`
   mode runs any command with the variable cleared.
+- **The lint baseline is pinned to LF line endings.** `tests/lint-ratchet.test.ts`
+  demands a byte-identical rewrite of `eslint-baseline.json`, which a CRLF checkout
+  breaks on Windows; a `.gitattributes` rule now pins it to LF on every platform.
 
 ### Fixed
 

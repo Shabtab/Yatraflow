@@ -324,6 +324,8 @@ discriminates a migration-gated table in one call — **`200 []` means the table
 
 - **A release bullet can name the wrong tag, and nothing in the gate reads tag names — so grep the tag you quote.** Writing the v0.68.0 cut turned up the v0.67.0 promotion bullet asserting the tag `v0.66.0` on its merge commit (the tag itself was right; only the prose was wrong). Compare `git tag -l -n1 vX.Y.Z` against the sentence in the same session you touch the release's status lines, and treat every `vX.Y.Z` in prose as a claim about `refs/tags` — the same rule as §2.6c for "done"/"missing" claims, applied to version strings.
 
+- **A test that compares a file byte-for-byte needs pinned line endings (learned 2026-10-02).** `tests/lint-ratchet.test.ts` rewrites `eslint-baseline.json` and demands the rewrite be identical. A Windows checkout converts LF to CRLF, so the rewrite always differed and the test failed on every Windows machine while CI on Linux stayed green. Pin such files with a `.gitattributes` rule (`eslint-baseline.json text eol=lf`). A byte-identity assertion and platform line-ending conversion cannot coexist without one.
+
 ### 3.1 What CI actually runs, per destination
 
 Neither workflow has a `paths` filter, so **docs-only changes still run the full

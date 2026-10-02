@@ -1,0 +1,4 @@
+# Machine-compared files check out with LF endings on every platform.
+# tests/lint-ratchet.test.ts demands a byte-identical rewrite of the
+# baseline; a CRLF checkout breaks that comparison on Windows.
+eslint-baseline.json text eol=lf
