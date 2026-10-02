@@ -53,6 +53,14 @@ try {
 }
 
 /** { "<relative path>": { "<ruleId>": count } } */
+//
+// Codacy flags the bracket assignments below as "Generic Object Injection Sink"
+// (PR #577: lines 64, 66, 106, 108). They are false positives and this is the
+// reasoning, so the next session does not re-open it: `id` is an ESLint rule
+// id from our own `eslint src` report, `rel` is a path on disk, and both keys
+// are written into a plain object that is never used as a lookup on
+// untrusted input. There is no attacker-controlled key here — the tool reads
+// its own linter's output.
 function tally() {
   const out = {}
   for (const file of report) {
