@@ -303,6 +303,15 @@ that notices the drift.
    `resolved_option_id` type change is the case that proves it:
    `check:migrations` can never see it, and only the probe did).
 
+16. **Work only in your own clone.** This machine holds many clones of this
+    repo. You must work only in the clone that your agent owns. Your session's
+    working directory may not be a repo. You must give every command an
+    explicit root. A `yatraflow*` directory that is not yours belongs to
+    another agent. You must stop and ask before you edit, build or commit in
+    it. The clone-to-agent list is in the global user-level `AGENTS.md` —
+    the one sitting beside this machine's clone folders, not any copy inside
+    a clone.
+
 
 ## 3. Verification, CI and the migration check
 
