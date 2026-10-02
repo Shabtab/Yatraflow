@@ -26,6 +26,12 @@ interface Props {
   /** id of the element carrying `error`'s text — binds the message to the input
    *  so a screen reader announces which control resolves it (UI audit F-01 pattern). */
   errorId?: string
+  /** Accessible name for the inner input, for call sites NOT wrapped in a
+   *  `Field` (which supplies its own name via the `id` it injects). Without
+   *  either, a bare LocationInput announces only as "combobox, edit text".
+   *  Set it only where no `Field` wraps the control — inside one, this would
+   *  shadow the visible label. */
+  ariaLabel?: string
 }
 
 /** The text a pick puts in the box. Exported so a caller that must remember
@@ -35,7 +41,7 @@ export function pickLabel(hit: PlaceHit): string {
   return hit.name + (hit.kind === 'place' && hit.admin1 ? `, ${hit.admin1}` : '')
 }
 
-export function LocationInput({ value, onChange, onPick, placeholder, error, errorId, autoFocus, indiaOnly = true, id, disabled }: Props) {
+export function LocationInput({ value, onChange, onPick, placeholder, error, errorId, autoFocus, indiaOnly = true, id, disabled, ariaLabel }: Props) {
   const [hits, setHits] = useState<PlaceHit[]>([])
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -121,6 +127,7 @@ export function LocationInput({ value, onChange, onPick, placeholder, error, err
         style={error ? { borderColor: 'var(--danger)' } : undefined}
         aria-invalid={error ? true : undefined}
         aria-describedby={error && errorId ? errorId : undefined}
+        aria-label={ariaLabel}
         value={value}
         autoComplete="off"
         autoFocus={autoFocus}
