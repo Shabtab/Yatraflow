@@ -15,6 +15,12 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Added
+
+- **Per-repo configuration for the engineering skills.** `docs/agents/issue-tracker.md` records that issues live in this repo's GitHub Issues (driven with `gh`), alongside the three conventions that override skill defaults: one `priority: P0`–`P3` label per issue, a diagnosis posted on an issue is a claim unless it is claimed in the same breath, and merges into `test` leave issues open. `docs/agents/domain.md` sets the domain-doc layout — single-context, one root `GLOSSARY.md` and `docs/adr/` — with the consumer rules for both: look a term up before naming it, keep entries describing what the code does today, and supersede an ADR rather than rewriting its decision. `docs/agents/triage-labels.md` records the five canonical triage labels the `triage` skill applies — `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix` — and how they sit alongside this repo's own `priority: P0`–`P3` rather than replacing them: priority answers *how urgent*, the triage label answers *what state*, so an issue carries one of each. `AGENTS.md` gained the matching `## Agent skills` block.
+
+- **The domain vocabulary those skills assume now exists.** `GLOSSARY.md` defines the plan, crew, road-measurement, publishing and session terms — each entry grounded in the export that defines it, alongside the traps that have bitten readers (`day.index` vs array position, 1-based `orderInDay`, INTO-legs, unpublish-is-a-marker). `docs/adr/` holds decision records, starting with the two-branch release model that AGENTS.md already assumes. `.out-of-scope/` holds one file per rejected feature request, so `triage` stops re-litigating a decision already made — with an explicit line on what does *not* belong there (bugs, and milestone-scope deferrals, which are ROADMAP's idea bank).
+
 ### Fixed
 
 - **The Map tab's Nearby-ideas rail no longer latches into a permanent "searching…" when the route's real geometry arrives mid-scan.** The corridor scan's cleanup cancelled a superseded run without releasing the loading flag it owned, so when the refreshed route matched the persisted suggestion cache the rail never learned the scan was over — and Refresh plus the detour-scope slider stayed disabled until a full reload. The cleanup now releases the flag; only a run actually in flight keeps the rail busy. (#544)
