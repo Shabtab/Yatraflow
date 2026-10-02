@@ -14,11 +14,12 @@
  * them, and there was no map-level surface where a place could be found and then
  * explicitly filed.
  */
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { MapPin } from 'lucide-react'
 import type { PlaceHit } from '../../lib/geocode'
 import { InlineIcon } from '../../components/icons'
 import { searchAnnouncement } from '../../lib/railA11y'
+import { railKeyAction } from '../../lib/railKeys'
 import { placementPrompt, type PlacementOption } from './mapPlacement'
 
 export type OmnibarHit = { h: PlaceHit; km: number | null; off: number | null }
@@ -56,11 +57,26 @@ export function MapOmnibar({
   onPlace: (option: PlacementOption) => void
 }) {
   const [showAll, setShowAll] = useState(false)
+  const listRef = useRef<HTMLDivElement | null>(null)
   const rows = useMemo(
     () => (showAll ? results : results.slice(0, PAGE)),
     [results, showAll],
   )
+  // #576: `highlight` is the row that owns the roving tabIndex. Arrow keys
+  // move it, and Enter selects that row. The label has promised this.
+  // The mark carries the slice it indexes. When `rows` changes (new results, a
+  // show-all toggle) the mark stops matching, and the highlight reads as none.
+  const [mark, setMark] = useState<{ rows: OmnibarHit[]; highlight: number }>({ rows, highlight: -1 })
+  const highlight = mark.rows === rows ? mark.highlight : -1
+  const setHighlight = (next: number) => setMark({ rows, highlight: next })
   const selected = results.find(r => r.h.id === selectedId) ?? null
+  // The highlight indexes `rows`, the visible slice. A stale value clamps to
+  // the last visible row. While nothing is highlighted, the selected row (or
+  // row 0) keeps the tab stop so the list is still enterable.
+  const roving =
+    highlight >= 0
+      ? Math.min(highlight, rows.length - 1)
+      : Math.max(rows.findIndex(r => r.h.id === selectedId), 0)
   const short = query.trim().length > 0 && query.trim().length < 2
 
   return (
@@ -117,6 +133,7 @@ export function MapOmnibar({
 
       {results.length > 0 && (
         <div
+          ref={listRef}
           className="map-search-results"
           role="listbox"
           aria-label={`Map search results. ${rows.length} of ${results.length} shown. Use the arrow keys to move between them, then Enter to select one.`}
@@ -130,14 +147,32 @@ export function MapOmnibar({
                 key={r.h.id as string}
                 role="option"
                 aria-selected={isSelected}
-                tabIndex={isSelected || (selectedId == null && rowIndex === 0) ? 0 : -1}
+                data-row-index={rowIndex}
+                tabIndex={rowIndex === roving ? 0 : -1}
                 className={`row-between${isSelected ? ' is-selected' : ''}`}
                 style={{ gap: 8, opacity: inScope ? 1 : 0.66 }}
+                onFocus={() => setHighlight(rowIndex)}
                 onClick={() => onSelect(isSelected ? null : (r.h.id as string | number))}
                 onKeyDown={e => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault()
+                  // #576: the shared grammar (lib/railKeys), the same wiring
+                  // the rails use. Claim Space here, or the page scrolls
+                  // under the row it just selected.
+                  const action = railKeyAction(e.key, { highlight: rowIndex, count: rows.length })
+                  if (action.type === 'none') return
+                  e.preventDefault()
+                  if (action.type === 'move') {
+                    const el = listRef.current?.querySelector(`[data-row-index="${action.highlight}"]`)
+                    if (el instanceof HTMLElement) {
+                      setHighlight(action.highlight)
+                      el.focus()
+                    }
+                  } else if (action.type === 'pin') {
                     onSelect(isSelected ? null : (r.h.id as string | number))
+                  } else {
+                    // Escape drops the selection and the highlight. It leaves
+                    // the query alone, so one key press does not lose the search.
+                    setHighlight(-1)
+                    onSelect(null)
                   }
                 }}
               >
