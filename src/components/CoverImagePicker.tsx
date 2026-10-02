@@ -186,6 +186,7 @@ export function CoverImagePicker({ trip, editable, error: externalError }: {
           <div className="cover-picker-custom">
             <input
               className="input" placeholder="Paste an image URL…" value={custom}
+              aria-label="Custom cover image URL"
               aria-invalid={showError ? true : undefined}
               aria-describedby={showError ? 'cover-picker-error' : undefined}
               onChange={e => { setCustom(e.target.value); if (error) setError(null) }}

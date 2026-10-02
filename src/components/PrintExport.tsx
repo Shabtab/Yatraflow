@@ -33,7 +33,7 @@ function PrintRow({ row, timeFormat }: { row: ReturnType<typeof buildPrintModel>
     <div className="pr-stop">
       <span className="pr-stop-title">
         {stop.title}
-        {stop.status === 'confirmed' && <span className="pr-badge pr-badge--ok">✓</span>}
+        {stop.status === 'confirmed' && <span className="pr-badge pr-badge--ok">confirmed</span>}
         {stop.status === 'needs-booking' && <span className="pr-badge pr-badge--warn">book</span>}
       </span>
       <span className="pr-stop-meta">

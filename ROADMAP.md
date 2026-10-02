@@ -424,6 +424,7 @@ get a row here again.
 | 5 | Form hygiene (F-13–F-16) | ✅ |
 | 6 | URL state (tabs, Explore filters) + copy (F-21, F-22, F-31, F-32) | ✅ |
 | 7 | Impeccable whole-app refinement pass (2026-09-18) — mobile topnav, timeline reorder, `.two-col` overflow, create-trip calendar occlusion, light-theme contrast, board peek transition, reduced-motion delays, keyboard focus for the ledgers, viewer affordances, role/casing leaks, profile save feedback. Snapshot `.impeccable/critique/2026-09-17T17-42-23Z__src-app-tsx.md` closed; narrative in the CHANGELOG | ✅ |
+| 8 | Independent whole-app accessibility re-audit (2026-10-02) — `LocationInput` gains an `ariaLabel` so the create-trip stop and return-stop boxes announce a name instead of a bare combobox; the cover URL and Print's confirmed badge stop depending on a placeholder or a lone glyph. Contrast, reduced-motion, touch targets, icon set and form labelling were all re-measured; no contrast or motion defect survived verification | ✅ |
 
 ---
 ## Idea bank
