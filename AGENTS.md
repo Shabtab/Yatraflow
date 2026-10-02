@@ -1941,3 +1941,17 @@ by orphan check** (Sep 2026): the reported "802 orphan rows" turned out to be
 - **A source-scanning guard reads comments too -- in the file being guarded, not just in the test (learned 2026-09-26, second instance).** `tests/stage2-p1.test.ts` pins that `styles.css` contains exactly ONE narrow-band reset, so a NEW comment in that file that merely *names* the at-rule (`@media (max-width: 1278px)` in prose) made the count 2 and turned a correct fix red. The same trap had already bitten a `tabIndex={-1}` guard earlier in the same session. So when a guard counts or greps a literal, that literal is banned from prose in the guarded file as well: write the shape out (`max-width: 1278px`, "a -1 tabIndex`) instead of quoting it, and after any edit to a file that guards scan, re-run that guard rather than assuming comments are invisible.
 - **`.NET String.Replace` replaces EVERY occurrence — a scripted "insert after this anchor" needs a uniqueness check, or it edits a component you never looked at (learned 2026-09-27).** Inserting a `useEffect` after the anchor `}, [isLoaded, map, data, sourceId]);` in `mapcn/map.tsx` matched **two** components (`MapGeoJSON` and `MapClusterLayer`) and silently wrote the effect into both; `tsc` then failed with "Cannot find name" in the component that had no such prop, ~700 lines from where the edit was intended. `String.Replace` and `-replace` have no "first only" mode — count the anchor first (`([regex]::Matches($src, [regex]::Escape($anchor))).Count` must be 1) and use `(regex).Replace($src, $new, 1)` when it genuinely appears more than once. Corollary for deletions: never delete a range you located by *scanning forward to the next matching line* — that scan is how a 61-line removal took the enclosing block's brace with it and left a file that no longer parsed.
 - **PowerShell parses the WHOLE script before running any of it, so one typo discards the batch — and that is the safety property, not the problem (learned 2026-09-27).** Three separate parse failures in one session (`$iunclusteredVisible?:` read as a variable name — needs `${i}` before a `?:`; a stray `)` ; a backslash-escaped quote) each aborted before the first statement, which is why nothing was half-written. Build on that: make every scripted source edit **fail closed** — assert each anchor exists and is unique, `throw` before any write, and after writing verify by **counting the token you meant to insert**, then run a parser or typecheck (`npx tsc -b`) before the gate. For a file whose braces are load-bearing and whose components repeat each other, prefer the editor primitives over a script entirely: today's one range-deletion left a source file that did not parse, and the fast recovery was `git checkout -- <file>` and redo, not repair. A `[regex]::Matches($src, $rx.Pattern)` call is also wrong twice over — `.Pattern` is a string, so it counts something else entirely (it returned the file's byte length here).
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in this repo's GitHub Issues, driven with the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical roles (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`), used alongside this repo's own `priority: P0`–`P3`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one root `GLOSSARY.md` and `docs/adr/`. See `docs/agents/domain.md`.
