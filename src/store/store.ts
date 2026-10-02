@@ -3733,7 +3733,15 @@ const MAX_RECENT_WRITES = 500
 
 /** Record a recent local write so its realtime echo can be suppressed. */
 function markLocalWrite(table: string, id: string): void {
-  recentLocalWrites.set(`${table}:${id}`, Date.now())
+  const key = `${table}:${id}`
+  // #579 — LRU promotion: `Map.set` on an existing key never refreshes the
+  // key's position in iteration order, so evicting `keys().next().value` was
+  // oldest-INSERTED, not least-recently-used — the trip being edited kept its
+  // original slot and was evicted FIRST while entries nobody had touched since
+  // boot lingered at the front. Delete-then-set moves a re-recorded key to the
+  // end, so the eviction below now drops the true least-recently-written.
+  recentLocalWrites.delete(key)
+  recentLocalWrites.set(key, Date.now())
   // Sweep old entries to prevent unbounded growth. #36-2.
   if (recentLocalWrites.size > MAX_RECENT_WRITES) {
     const oldestKey = recentLocalWrites.keys().next().value
@@ -3770,6 +3778,11 @@ const MAX_SERVER_TRIP_TS = 500
 function recordServerTripTimestamp(id: string, raw: unknown): void {
   const n = Number(raw)
   if (!Number.isFinite(n)) return
+  // #579 — LRU promotion, the same delete-then-set as markLocalWrite: a
+  // re-seeded id (every hydrate re-records the trips the user can see, and
+  // those are exactly the actively-edited ones) must move to the end of the
+  // iteration order, or the eviction below drops the live entry first.
+  serverTripTimestamps.delete(id)
   serverTripTimestamps.set(id, n)
   if (serverTripTimestamps.size > MAX_SERVER_TRIP_TS) {
     const oldestKey = serverTripTimestamps.keys().next().value
@@ -3780,6 +3793,16 @@ function recordServerTripTimestamp(id: string, raw: unknown): void {
 /** Test hook — clear the server-timestamp ledger (see _clearRecentLocalWrites). */
 export function _clearServerTripTimestamps(): void {
   serverTripTimestamps.clear()
+}
+
+/** Test hooks — read one entry from each bounded ledger, so the #579 eviction
+ *  policy can be asserted without exporting the maps. */
+export function _serverTripTimestampEntry(id: string): number | undefined {
+  return serverTripTimestamps.get(id)
+}
+
+export function _recentLocalWriteEntry(table: string, id: string): number | undefined {
+  return recentLocalWrites.get(`${table}:${id}`)
 }
 
 /** Realtime payloads come off the wire, so they are not ours to trust. An
