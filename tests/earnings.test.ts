@@ -61,6 +61,19 @@ describe('projectEarnings', () => {
     expect(r.rows.map(x => x.pubId)).toEqual(['high', 'low', 'none'])
     expect(r.rows.find(x => x.pubId === 'none')?.grossInr).toBe(0)
   })
+
+  it('keeps a soft-unpublished priced plan in the projection — its forks happened on sale (#586)', () => {
+    const r = projectEarnings([
+      pub({ id: 'down', title: 'Down', premiumPriceInr: 199, copies: 4, unpublishedAt: 1_700_000_000_000 }),
+      pub({ id: 'live', title: 'Live', premiumPriceInr: 99, copies: 2 }),
+    ])
+    // Deliberate: Potential is a statement about forks that already exist, not
+    // about plans that still sell. Filtering the row here would erase real
+    // history from the hypothetical — so the hub's strip says "published" and
+    // its note names the unpublished rows instead.
+    expect(r.rows.map(x => x.pubId)).toEqual(['down', 'live'])
+    expect(r.potentialInr).toBe(199 * 4 + 99 * 2)
+  })
 })
 
 describe('deriveActualSales (I-11)', () => {
@@ -661,5 +674,25 @@ describe('deriveLedgerRead — the order of the three states', () => {
         expect(deriveLedgerRead({ hasFigures: true, reading, error })).toBe('ready')
       }
     }
+  })
+})
+
+describe('the projection strip names its denominator (#586)', () => {
+  // The hub needs a creator account to render, which a node test cannot supply,
+  // so the vocabulary is pinned at the source — the strip and the note are the
+  // two places the projection could claim a live count it does not compute.
+  const hub = readFileSync(new URL('../src/pages/CreatorHubPage.tsx', import.meta.url), 'utf8')
+
+  it('the priced-plans tile says "published" over the denominator, never "live"', () => {
+    // The denominator is every publication the creator owns — withdrawn ones
+    // included — because the projection keeps their rows (pinned above).
+    expect(hub).toMatch(/of \{myPubs\.length\} published/)
+    expect(hub).not.toMatch(/of \{myPubs\.length\} live/)
+  })
+
+  it('a note names the unpublished plans exactly when the hub has any', () => {
+    // Conditional: the reader of an all-live hub sees no permanent caveat.
+    expect(hub).toMatch(/projectedUnpublished > 0 &&/)
+    expect(hub).toMatch(/plans here are unpublished/)
   })
 })

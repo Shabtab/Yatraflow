@@ -783,6 +783,10 @@ export function EarningsTab({ myPubs, sales, salesError, salesAt, salesReading, 
   // keeps only publications carrying a premium price, so an empty projection is
   // exactly "nothing priced".
   const nothingPriced = projection.rows.length === 0
+  // #586 — the projection keeps a withdrawn plan's rows on purpose (its forks
+  // happened while the plan was on sale), so the strip and the note must name
+  // the denominator honestly instead of borrowing the Overview's "live".
+  const projectedUnpublished = myPubs.filter(p => p.unpublishedAt).length
   const actual = sales
   const timeFmt = useTimeFormat()
   /** Whether the ledger has been READ. The figures below still derive from
@@ -835,7 +839,7 @@ export function EarningsTab({ myPubs, sales, salesError, salesAt, salesReading, 
           <div className="hub-cell">
             <span className="stat-label">Priced plans</span>
             <span className="stat-value hub-cell-value">{projection.rows.length}</span>
-            <span className="hub-cell-hint muted">of {myPubs.length} live</span>
+            <span className="hub-cell-hint muted">of {myPubs.length} published</span>
           </div>
           <div className="hub-cell">
             <span className="stat-label">Forks so far</span>
@@ -1084,6 +1088,11 @@ export function EarningsTab({ myPubs, sales, salesError, salesAt, salesReading, 
             A projection, not money: price × forks so far, assuming every fork had bought the unlock. The
             potential total is exact for the fee ladder ({PLATFORM_FEE_SUMMARY}); the per-row fee shares are
             illustrative, because which sale earns the lower rate depends on what actually sells first.
+            {projectedUnpublished > 0 && (
+              <> {projectedUnpublished} of the {myPubs.length} plans here are unpublished. They keep their
+              rows and their free count, because their forks happened while they were on sale. They no
+              longer sell.</>
+            )}
           </p>
           <table className={`compare-table pub-ledger${basisClass} ledger-projection`} tabIndex={0} aria-label="Projection ledger">
             <thead><tr><th className="col-wide">Itinerary</th><th className="num col-opt">Price</th><th className="num">Forks</th><th className="num">If all unlocked</th><th className="num col-opt">Fee</th><th className="num">Net</th></tr></thead>
