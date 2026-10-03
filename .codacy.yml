@@ -53,3 +53,20 @@
 exclude_paths:
   - "api/sitemap.js"
   - "api/c.js"
+#
+# `api/payments-webhook.js` is excluded on the same terms, added only after
+# Codacy actually flagged the file (#554). One finding, already triaged:
+#
+#   x1  "user-controlled URLs passed to HTTP client libraries" (the refund RPC
+#       fetch) — the flagged dataflow is `process.env.SUPABASE_URL` into the
+#       fetch base. That value is DEPLOYMENT CONFIGURATION, not request data:
+#       the Razorpay event contributes nothing to the URL but a static path,
+#       and the request body (the refund figures) is a JSON POST body, not URL
+#       material. The engine flags any env-derived fetch target regardless.
+#       This is the exact rule AGENTS-VERIFICATION documents as unresolvable
+#       in code (PR #224 burned four rounds proving it); the substance fix —
+#       `new URL(path, base)` so a malformed SUPABASE_URL throws before any
+#       fetch — is kept. Every fetch in the file shares the one benign shape.
+#
+# The signature gate (HMAC over the raw body, RAZORPAY_WEBHOOK_SECRET) runs
+# before any of these fetches; unauthenticated events never reach them.

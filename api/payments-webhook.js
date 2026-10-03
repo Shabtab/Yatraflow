@@ -110,7 +110,12 @@ async function grantEntitlement(supabaseUrl, serviceKey, order, signal) {
  *  means PostgREST did not answer as documented, and guessing an outcome
  *  would be inventing a fact. */
 async function applyRefund(supabaseUrl, serviceKey, razorpayOrderId, refundedPaise, capturedPaise, signal) {
-  const response = await fetch(`${supabaseUrl.replace(/\/+$/, '')}/rest/v1/rpc/apply_order_refund`, {
+  // Hardening pass (#554): the RPC path is parsed against the configured base,
+  // so a malformed SUPABASE_URL throws here instead of producing a fetch to a
+  // made-up host. The event contributes nothing to the URL — only a static
+  // path and the JSON body — so no request data reaches the destination.
+  const url = new URL('/rest/v1/rpc/apply_order_refund', supabaseUrl)
+  const response = await fetch(url, {
     method: 'POST',
     headers: supabaseServiceHeaders(serviceKey, {
       'content-type': 'application/json',
