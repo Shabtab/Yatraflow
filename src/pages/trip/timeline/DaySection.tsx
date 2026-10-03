@@ -29,6 +29,12 @@ import { motionTiming, prefersReducedMotion } from '../../../lib/motion'
 import { stopKindOf, STOP_KIND_LABELS } from '../../../lib/stopKind'
 import { statusLabel } from '../../../lib/labels'
 import { Chip, EmptyState, Modal, toast, useReorder } from '../../../components/ui'
+import { Select } from '../../../components/Select'
+
+/** Stop options for a commitment link: live stops only, plus the unlink row. */
+function linkStopOptions(stops: ItineraryStop[]): { value: string; label: string }[] {
+  return [{ value: '', label: 'No linked stop' }, ...stops.filter(s => s.status !== 'rejected').map(s => ({ value: String(s.id), label: s.title }))]
+}
 import { glideOffsetPx, insertionIndexFor, rowLayoutBoxes, cancelRowSettle, cancelListSettles, settleRow } from '../../../lib/touchDnd'
 import { useSuggestionCache } from '../../../hooks/useSuggestionCache'
 import { searchNearbyPois } from '../../../lib/geocode'
@@ -186,7 +192,7 @@ function SmoothCollapse({ open, children, fallbackFocus }: { open: boolean; chil
 // (whose travel panel searches against the whole itinerary). A closed card
 // therefore cannot read the trip at all: `trip` is optional, so a `trip.x` on
 // the collapsed path is a compile error rather than a stale render.
-export const DaySection = React.memo(function DaySection({ day, trip, facts, editable, open, reviewMode, inView, onToggleOpen, onInsertHere, onAdd, onEdit, onDelete, onMoveWithinDay, onReorderDay, onMoveBetweenDays, onMoveStopIn, onRenameDay, onCopyDay, onAddQuickStop, onSetDayStart, onAddPlannedHalts, warnings, onStatus, legCorrections, suggestionCache, dayTotals }: {
+export const DaySection = React.memo(function DaySection({ day, trip, facts, editable, open, reviewMode, inView, onToggleOpen, onInsertHere, onAdd, onEdit, onDelete, onMoveWithinDay, onReorderDay, onMoveBetweenDays, onMoveStopIn, onRenameDay, onCopyDay, onAddQuickStop, onSetDayStart, onAddPlannedHalts, onLinkCommitment, warnings, onStatus, legCorrections, suggestionCache, dayTotals }: {
   day: Trip['days'][number]
   /** fresh ONLY for the open day — everything else comes from `facts` */
   trip?: Trip
@@ -227,6 +233,8 @@ export const DaySection = React.memo(function DaySection({ day, trip, facts, edi
   onSetDayStart: (dayIndex: number, time: string) => void
   /** insert planned break halts, each at a user-chosen km point, ordered by distance */
   onAddPlannedHalts: (dayIndex: number, halts: { km: number; stop: Omit<ItineraryStop, 'id' | 'orderInDay'> }[]) => void
+  /** link a fixed commitment to the stop its deadline is checked against (null unlinks) */
+  onLinkCommitment: (commitmentId: string, dayIndex: number, stopId: string | null) => void
   warnings: ScheduleWarning[]
   onStatus: (stop: ItineraryStop, status: ItineraryStop['status']) => void
 }) {
@@ -641,6 +649,11 @@ export const DaySection = React.memo(function DaySection({ day, trip, facts, edi
           <div>
             <div className="warn-title">{fc.title}</div>
             <div className="warn-fix">Fixed at {formatHM(fc.time, timeFormat)}{fc.notes ? ` — ${fc.notes}` : ''}</div>
+            {editable && fc.type !== 'hotel-checkin' && (
+              <Select value={fc.stopId ?? ''} aria-label={`Stop the ${fc.title} deadline is checked against`}
+                onChange={val => onLinkCommitment(String(fc.id), day.index, val || null)}
+                options={linkStopOptions(ordered)} />
+            )}
           </div>
         </div>
       ))}

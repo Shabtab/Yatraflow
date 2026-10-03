@@ -9,7 +9,8 @@ import type { PlaceHit } from '../lib/geocode'
 import { resolveHitCoords } from '../lib/geocode'
 import { hasCoords, mappablePois, projectOntoPolyline } from '../lib/providers/hits'
 import { buildRoadChain, measureDayRide, roadChainSig, routeDrawGrade } from '../lib/tripRoad'
-import { buildJourney, getAssumptions, isRoundTrip } from '../lib/engine'
+import { buildJourney, getAssumptions, isRoundTrip, type LegEstimate } from '../lib/engine'
+import { buildStopClock } from '../lib/stopClock'
 import { clockHM, type ClockMilestone } from '../lib/clockOverlay'
 import { pointAtKm } from '../lib/geo'
 import { useTimeFormat, formatHM } from '../lib/timefmt'
@@ -429,7 +430,7 @@ const SLOT_PIN_GLYPH: Record<string, string> = {
   breakfast: 'B', lunch: 'L', fuel: 'F', stretch: 'S', dinner: 'D', stay: 'N',
 }
 
-export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusDay, onDayFilterChange, tripReadinessRows = [], showToolbar = true, enableMapViewModes = false, activeHitId = null, onActivateHit, onOpenInTimeline, onOpenInBoard, onDeleteStop, mainRouteGeometry = null, returnRouteGeometry = null, allowSelfMeasurement = true, clockMilestones = null, onOpenHaltDay, onShowReturnChange, slotPins = [], onOpenSlot, hitCosts, searchHitIds }: {
+export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusDay, onDayFilterChange, tripReadinessRows = [], showToolbar = true, enableMapViewModes = false, activeHitId = null, onActivateHit, onOpenInTimeline, onOpenInBoard, onDeleteStop, mainRouteGeometry = null, returnRouteGeometry = null, allowSelfMeasurement = true, clockMilestones = null, onOpenHaltDay, onShowReturnChange, slotPins = [], onOpenSlot, hitCosts, searchHitIds, legCorrections }: {
   trip: Trip
   onOpenStop?: (stopId: string) => void
   /** potential POIs to show as gold "idea" markers */
@@ -491,6 +492,10 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
    *  markers disappear with them. Undefined = every idea keeps its old look. */
   searchHitIds?: Set<string | number> | null
   hitCosts?: Record<string, string>
+  /** The workspace's measured road data (#611). Pin clocks derive from the
+   *  same corrected journey the Timeline rows read; legs it does not cover
+   *  stay estimates and say so. Absent = every clock is an estimate. */
+  legCorrections?: Record<string, LegEstimate>
   /** Delete the stop straight from the map (popup action) — wired by MapTab. */
   onDeleteStop?: (stopId: string, stop: { title: string; dayIndex: number }) => void
   /** The Return-home toggle's direction state, reported up so the suggestion
@@ -745,24 +750,16 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
   // say when the ROUTE demands it; the two never claim to be one source.
   const { dayRoutePoints, stopClock } = useMemo(() => {
     const out: Record<string, { lat: number; lng: number }[] | null> = {}
-    const clock = new Map<string, { arrive: string; cumKm: number }>()
-    let cum = 0
     for (const d of trip.days) {
-      const j = buildJourney(trip, d)
+      const j = buildJourney(trip, d, legCorrections)
       if (!(j.distanceKm >= 0.5 || j.driveMinutes > 0)) { out[String(d.index)] = null; continue }
       const pts = j.points
         .map(p => ({ lat: p.lat, lng: p.lng }))
         .filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng))
       out[String(d.index)] = pts.length >= 2 ? pts : null
-      let legKm = 0
-      for (const p of j.points) {
-        legKm += p.legIn?.distanceKm ?? 0
-        if (!p.synthesized) clock.set(p.stop.id, { arrive: p.arrive, cumKm: Math.round(cum + legKm) })
-      }
-      cum += j.distanceKm
     }
-    return { dayRoutePoints: out, stopClock: clock }
-  }, [trip])
+    return { dayRoutePoints: out, stopClock: buildStopClock(trip, legCorrections) }
+  }, [trip, legCorrections])
   const dayRoutesKey = useMemo(
     () => Object.entries(dayRoutePoints)
       .map(([k, v]) => `${k}:${(v ?? []).map(p => `${p.lat.toFixed(5)},${p.lng.toFixed(5)}`).join('>')}`)
@@ -780,10 +777,10 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
     if (dayFilter === 'all') return []
     const day = trip.days.find(d => d.index === dayFilter)
     if (!day) return []
-    const j = buildJourney(trip, day)
+    const j = buildJourney(trip, day, legCorrections)
     const plotted = daysToPlot.find(d => d.index === dayFilter)?.stops ?? []
     return extraJourneyMarkers(j.points, plotted, j.direction)
-  }, [trip, dayFilter, daysToPlot])
+  }, [trip, dayFilter, daysToPlot, legCorrections])
 
   // The map mounts lazily inside a Suspense boundary, so mapRef may be null on
   // the first render(s). Poll until the instance exists, then attach to its real
@@ -1411,9 +1408,9 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
                         <span className="yf-pin-cluster" style={offsetStyle}>
                           <span className="yf-map-pin yf-map-flag" title={p.title}>{label}</span>
                         </span>
-                        {c && <span className="yf-pin-time">{formatHM(c.arrive, timeFormat)}</span>}
+                        {c && <span className="yf-pin-time">{formatHM(c.arrive, timeFormat)}{c.estimated ? ' (est.)' : ''}</span>}
                       </MarkerContent>
-                      <MarkerTooltip>{isLast ? `Final destination - ${p.title}` : `Trip start - ${p.title}`}{c ? `, arrives ${formatHM(c.arrive, timeFormat)}, ~${c.cumKm} km into the trip` : ''}</MarkerTooltip>
+                      <MarkerTooltip>{isLast ? `Final destination - ${p.title}` : `Trip start - ${p.title}`}{c ? `, arrives ${formatHM(c.arrive, timeFormat)}, ~${c.cumKm} km into the trip${c.estimated ? ' (estimate)' : ''}` : ''}</MarkerTooltip>
                     </MapMarker>
                   )
                 }
@@ -1436,9 +1433,9 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
                         </span>
                       </button>
                       </span>
-                      {c && <span className="yf-pin-time">{formatHM(c.arrive, timeFormat)}</span>}
+                      {c && <span className="yf-pin-time">{formatHM(c.arrive, timeFormat)}{c.estimated ? ' (est.)' : ''}</span>}
                     </MarkerContent>
-                    <MarkerTooltip>{p.title}{c ? `, arrives ${formatHM(c.arrive, timeFormat)}, ~${c.cumKm} km into the trip` : ''}</MarkerTooltip>
+                    <MarkerTooltip>{p.title}{c ? `, arrives ${formatHM(c.arrive, timeFormat)}, ~${c.cumKm} km into the trip${c.estimated ? ' (estimate)' : ''}` : ''}</MarkerTooltip>
                   </MapMarker>
                 )
               })

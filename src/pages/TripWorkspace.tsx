@@ -270,7 +270,7 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
   }
 
   const effective = pending?.proposed ?? trip
-  const health = computeHealth(effective)
+  const health = computeHealth(effective, legCorrections)
   const totals = computeTotals(effective, legCorrections)
 
   function keepPending() {
@@ -406,7 +406,15 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
       )}
       {tab === 'map' && (
         <React.Suspense fallback={<MapTabSkeleton />}>
-          <MapTab trip={effective} editable={editable} applyChange={applyChange} suggestionCache={suggestionCache} onInputsHash={publishMapInputs} crewSuggestions={db.suggestions.filter(s => s.tripId === trip.id)} decisions={db.decisions.filter(d => d.tripId === trip.id)} road={road} onOpenTimeline={() => setTab('timeline')} onOpenBoard={() => setTab('board')} onOpenDay={(dayIndex) => { setFocusedDay(dayIndex); setFocus(focusForDay(trip!.id, dayIndex)); setTimelineFocusDay(dayIndex); setTab('timeline') }} onOpenGroupInput={() => setTab('group')} previewOpen={!!pending} dayFocus={sharedDay} onDayFocusChange={(day) => { setFocus(focusForDay(trip!.id, day === 'all' ? null : day)); if (day !== 'all') setTimelineFocusDay(day) }} />
+          <MapTab trip={effective} editable={editable} applyChange={applyChange}
+            suggestionCache={suggestionCache} onInputsHash={publishMapInputs}
+            crewSuggestions={db.suggestions.filter(s => s.tripId === trip.id)}
+            decisions={db.decisions.filter(d => d.tripId === trip.id)} road={road}
+            onOpenTimeline={() => setTab('timeline')} onOpenBoard={() => setTab('board')}
+            onOpenDay={(dayIndex) => { setFocusedDay(dayIndex); setFocus(focusForDay(trip!.id, dayIndex)); setTimelineFocusDay(dayIndex); setTab('timeline') }}
+            onOpenGroupInput={() => setTab('group')} previewOpen={!!pending}
+            dayFocus={sharedDay} legCorrections={legCorrections}
+            onDayFocusChange={(day) => { setFocus(focusForDay(trip!.id, day === 'all' ? null : day)); if (day !== 'all') setTimelineFocusDay(day) }} />
         </React.Suspense>
       )}
       {tab === 'group' && <GroupInputTab trip={effective} editable={editable} me={me} previewOpen={!!pending} />}

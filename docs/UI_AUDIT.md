@@ -599,3 +599,103 @@ Batch 1 + 3 are pure CSS/one-liners (highest fix-per-risk ratio). Batch 6 contai
 | F-32 | P2 | Straight apostrophes in copy | `Landing.tsx:53`, `TripsList.tsx:30,91` |
 
 *Counts: 32 findings — 2 P0 · 15 P1 · 15 P2. Sections 11, 14, 15 record the passes.*
+
+---
+
+## Workspace tab audit — 2026-10-03
+
+### Scope and method
+
+This section covers Map, Overview, and Timeline. It does not replace the historical 32-finding audit above.
+
+- Local branch: `fix/576-mapomnibar-keys`, commit `2f431c3`.
+- Latest fetched integration branch: `origin/test`, commit `08b9c1e`.
+- I compared the affected source with that integration branch. None of the eight findings has a repair there.
+- I used the signed-in local app with existing Kerala and Kolkata–Delhi trips.
+- I checked desktop layout and a 390×844 phone viewport.
+- I read source, rendered text, accessibility trees, computed bounds, and browser request logs.
+- I used cloned, in-memory fixtures for warning checks. Those fixtures never entered the store.
+- I did not save trip edits or change product code.
+
+The severity labels below use the GitHub label definitions, not the older audit key above.
+
+### Confirmed defects
+
+| ID | Severity | Finding | Evidence | Source | Tracker |
+|---|---|---|---|---|---|
+| A1 | P1 | Sightseeing stops fill meal slots. | Day 1 calls a park Breakfast and a waterfall Lunch. Day 3 claims two meals while Timeline warns about no meal break. | [daySlots.ts:349–452](../src/lib/daySlots.ts#L349-L452) | [#607](https://github.com/hasnaina955/Yatraflow/issues/607) |
+| A2 | P1 | Health and warnings ignore measured road times. | Timeline receives 28 corrections. Its Day 3 arrival is 16:08, but the hours warning uses 15:27. A six-hour correction still returns Comfortable in a controlled fixture. | [engine.ts:793–899](../src/lib/engine.ts#L793-L899), [dayCards.ts:87–88](../src/lib/dayCards.ts#L87-L88) | [#608](https://github.com/hasnaina955/Yatraflow/issues/608) |
+| A3 | P1 | Commitment checks use the day's last stop, not the commitment's place. | Boarding arrives at 11:22 before a noon deadline. Evening dinner creates a boarding conflict. Remove dinner in memory and the conflict disappears. | [engine.ts:884–896](../src/lib/engine.ts#L884-L896) | [#609](https://github.com/hasnaina955/Yatraflow/issues/609) |
+| A4 | P2 | Map ignores the shared day selection. | Select Day 3, open Overview, and return to Map. Map and Needs reset to Day 1. | [MapTab.tsx:248](../src/pages/trip/MapTab.tsx#L248), [MapTab.tsx:2517–2528](../src/pages/trip/MapTab.tsx#L2517-L2528) | [#610](https://github.com/hasnaina955/Yatraflow/issues/610) |
+| A5 | P2 | Map stop clocks differ from Timeline clocks. | Day 3 Map: 10:24, 12:35, 15:27. Corrected schedule: 10:56, 13:12, 16:08. | [TripMap.tsx:746–771](../src/components/TripMap.tsx#L746-L771) | [#611](https://github.com/hasnaina955/Yatraflow/issues/611) |
+| A6 | P2 | Phone stop popup hides its name and overflows. | At 390px, the name has zero width. Close starts at x=391.9, outside the viewport. | [TripMap.tsx:1533–1546](../src/components/TripMap.tsx#L1533-L1546) | [#612](https://github.com/hasnaina955/Yatraflow/issues/612) |
+| A7 | P2 | A driving day without stored stops loses its map. | Kolkata–Delhi Day 2 has a 992km derived journey. Selecting it removes the canvas and shows a no-stops message. | [TripMap.tsx:703–723](../src/components/TripMap.tsx#L703-L723), [TripMap.tsx:1022](../src/components/TripMap.tsx#L1022), [TripMap.tsx:1229](../src/components/TripMap.tsx#L1229) | [#613](https://github.com/hasnaina955/Yatraflow/issues/613) |
+| A8 | P3 | Route snapshot prints zero-based day labels. | The four-day Kerala Overview prints 0, 1, 2, 3. Timeline and the matrix print Day 1 through Day 4. | [OverviewTab.tsx:161](../src/pages/trip/OverviewTab.tsx#L161), [ui.tsx:663](../src/components/ui.tsx#L663) | [#614](https://github.com/hasnaina955/Yatraflow/issues/614) |
+
+**Acceptance checks:**
+
+- A1: A sight must not fill a meal from opening hours alone. Preserve explicit meal assignments.
+- A2: Warnings must use the same corrected arrivals as the displayed schedule. Preserve fallback estimates.
+- A3: Link a commitment to its place or stop. An unlinked deadline must state the missing information.
+- A4: A day selection must survive tab changes. A removed or foreign day must fall back safely.
+- A5: Compare the same stored stop across Map and Timeline after measurement resolves.
+- A6: Keep the stop name and every action inside the popup at 320px and 390px.
+- A7: Render valid journey endpoints without needing an intermediate stop.
+- A8: Use one-based display labels without shifting the illustrative branch twice.
+
+The issue bodies contain the reproduction steps and full acceptance checks.
+
+### UX and feature proposals
+
+These are proposals, not confirmed defects. [ROADMAP.md](../ROADMAP.md#idea-bank) holds their work status.
+
+| Area | Proposal | Current evidence | Outcome to check | Roadmap |
+|---|---|---|---|---|
+| All three | Turn warnings and missing parts into exact fix links. | Overview opens Timeline without a target. Warning rows show advice but no action. | You reach the affected day and stop from one action. Return focus to that item. | I-28 |
+| Map | Show planning controls beside the map on phones. | At 390px, the Needs rail begins about 971px below the sheet selector. | You compare a pin and its candidates without repeated long page scrolls. | I-29 |
+| Overview | Lead with a short, actionable readiness summary. | Health reasons repeat the same three warnings in the next card. Booking and decision counts lack direct actions. | You can name the next task without reading two copies of the same warning. | I-30 |
+| Overview and Timeline | Use named, per-day weather places. | Overview uses one trip centroid. Timeline uses each day's first stop. Forecast failures hide the card. | You know which place and date each forecast covers. Separate unavailable dates from failed reads. | I-31 |
+| Timeline | Add a compact reading mode with useful filters. | All days opens every row. Each expanded day includes warnings, travel facts, planner tools, and stop actions. | You can scan timings or booking tasks without every specialist tool open. | I-32 |
+| Timeline | Show slack, waiting, and deadline risk on the day clock. | Warning detail contains arrival facts that rows do not show. Early opening conflicts offer only reorder advice. | You can see the timing gap and compare a waiting or earlier-start preview. | I-33 |
+| Map | Use one main search entry and a clear read-state panel. | Desktop has corridor search and map search. Slot search adds another entry. Non-quota scan failures lack a distinct error branch. | You know what each search covers. Failed, empty, cached, and loading states look different. | I-34 |
+| All three | Show one measurement state across the workspace. | Road failure and Retry live mainly on Map. Overview and Timeline mix estimates with measured figures. | Each tab states whether its route data is measured, pending, partial, or failed. | I-35 |
+| All three | Support sharing the exact day or stop being reviewed. | Tabs have real paths. Day and stop focus stay in local component state. | A review link opens the exact item without storing focus as trip data. | I-36 |
+
+### Source-backed items that need browser proof
+
+Do not treat these as reproduced defects yet.
+
+- **Stop handoff:** The Map popup passes a stop ID. The workspace callback discards it and only changes tabs.
+- **Hidden rail:** A slot pin unfolds Needs but does not select Needs in the phone sheet.
+- **Search freshness:** Editing or clearing a query does not cancel its active request or advance the search token.
+- **Matrix freshness:** The published Map hash stops updating while Map is unmounted. Test a settings change before returning to Map.
+- **Placement wording:** The day placement label names the active day. Its modal can choose another day from road position.
+- **Viewer controls:** MapOmnibar placement and the split banner need an explicit viewer-role check.
+- **Long trips:** WeatherCard checks the start date, then requests the whole trip. Test a trip beyond the forecast window.
+
+These items need a focused follow-up check before another issue claims browser reproduction.
+
+### Checks and limits
+
+- Nine existing suites passed: **219 tests**.
+- The suites covered meals, Overview truth, warning labels, focus wiring, Timeline review, leg rows, map keys, engine, and weather.
+- The tests also pin some current behavior that caused these findings. A green suite does not disprove the audit.
+- At 390px, Overview and Timeline had no whole-page horizontal overflow in the measured states.
+- Inspect removed the tested stop edit controls. All days rendered all four days and fifteen stop rows.
+- Google Routes requests failed CORS checks on this local origin.
+- Some provider requests returned 429 or 504. I did not treat those responses as product defects by themselves.
+- Some browser actions reported success without a state change. I discarded those probes and used fresh tabs for later checks.
+- A screenshot failed once because the page produced no frames. Later screenshots succeeded.
+- I checked Overview in dark mode at 390px. It had no whole-page horizontal overflow.
+- I did not test physical touch dragging, viewer roles, offline recovery, or full dark-theme interactions.
+- New prose passed `npm run lint:ste` and a separate check of this section.
+- Whole-file STE checking reported 31 legacy prose findings above this section. I left that historical text unchanged.
+- I did not run the full verify gate. Product code did not change.
+
+### Recommendation
+
+Repair A1 through A3 before adding more planning advice. These defects undermine the facts that all three tabs present.
+
+Then repair selection, clocks, route drawing, and phone popup bounds. Start UX work with exact fix links and phone planning access.
+
+Preserve the existing preview, Undo, measured-route fallback, and keyboard controls. The tabs need clearer connections, not more parallel tools.

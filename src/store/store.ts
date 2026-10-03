@@ -1300,7 +1300,7 @@ export interface NewTripInput {
   /** Stay budget tier — the separate pricing dial. Set at create time from the
    *  Budget preference bar, so a new trip never depends on the legacy style. */
   stayStyle?: Trip['stayStyle'];
-  fixedCommitments: Omit<FixedCommitment, 'id'>[];
+  fixedCommitments: (Omit<FixedCommitment, 'id'> & { destName?: string })[];
   coverEmoji?: string;
   /** optional owner-chosen cover image URL; when set it is the trip's canonical cover */
   coverImageUrl?: string;
@@ -1358,6 +1358,18 @@ export function reconcileDays(
   return { days: next }
 }
 
+/** Link a created commitment to its stop (#609, stored link). The create form
+ *  names a destination; the seeded day holds that destination as a stop, so
+ *  the name resolves to a stop id here, once, at creation. Exact name match
+ *  only — anything else stays unlinked and says so. */
+export function linkCommitmentStop(stops: ItineraryStop[], destName: string): ID | undefined {
+  const want = destName.toLowerCase().trim()
+  if (!want) return undefined
+  return stops.find(s =>
+    s.title.toLowerCase().trim() === want || s.locationName.toLowerCase().trim() === want,
+  )?.id
+}
+
 /** Build the trip a create form describes. Pure: adds nothing to the cache and
  *  writes nothing, so the two creators below cannot drift apart (#374). */
 function buildNewTrip(ownerId: ID, input: NewTripInput, seedStops?: ItineraryStop[][]): Trip {
@@ -1396,7 +1408,12 @@ function buildNewTrip(ownerId: ID, input: NewTripInput, seedStops?: ItinerarySto
     ...input,
     startLocationCoords: input.startLocationCoords,
     destinationCoords: input.destinationCoords,
-    fixedCommitments: input.fixedCommitments.map(fc => ({ ...fc, id: uid('fc') })),
+    fixedCommitments: input.fixedCommitments.map(fc => {
+      const { destName, ...rest } = fc
+      const day = days.find(d => d.index === fc.dayIndex)
+      const stopId = destName && day ? linkCommitmentStop(day.stops, destName) : undefined
+      return { ...rest, ...(stopId ? { stopId } : {}), id: uid('fc') }
+    }),
     days, expenses: [], coverEmoji: input.coverEmoji ?? '🧭',
     coverImageUrl: input.coverImageUrl ?? undefined,
     visibility: 'private', createdAt: Date.now(), updatedAt: Date.now(),
@@ -1653,15 +1670,27 @@ function buildTripCopy(source: Trip, ownerId: ID, opts: { makePublic?: boolean; 
   // #230 — the fork's own acquisition stamp, never the source trip's. A copy
   // of a copy starts a NEW attribution chain at whatever surface forked it.
   copy.ref = opts.ref ?? undefined
+  // Fresh stop ids would dangle every commitment link, so each copy carries
+  // its stops' old-to-new map and rewrites the links through it (#609).
+  const stopIdMap = new Map<string, ID>()
+  const freshStopId = (s: ItineraryStop): ItineraryStop => {
+    const id = uid('st')
+    stopIdMap.set(String(s.id), id)
+    return { ...s, id }
+  }
+  const remapCommitment = (f: FixedCommitment): FixedCommitment => ({
+    ...f,
+    id: uid('fc'),
+    stopId: f.stopId != null ? stopIdMap.get(String(f.stopId)) : undefined,
+  })
   if (free) {
     copy.days = copy.days.map(d => ({
       ...d,
       id: uid('day'),
       stops: d.stops.map(s => free.has(d.index)
-        ? { ...s, id: uid('st') }
+        ? freshStopId(s)
         : {
-            ...s,
-            id: uid('st'),
+            ...freshStopId(s),
             description: LOCKED_STOP_DESCRIPTION,
             notes: '',
             entryFeeInrPerPerson: 0,
@@ -1676,10 +1705,11 @@ function buildTripCopy(source: Trip, ownerId: ID, opts: { makePublic?: boolean; 
       .map(e => ({ ...e, id: uid('ex') }))
     copy.fixedCommitments = copy.fixedCommitments
       .filter(f => free.has(f.dayIndex))
+      .map(remapCommitment)
   } else {
-    copy.days = copy.days.map(d => ({ ...d, id: uid('day'), stops: d.stops.map(s => ({ ...s, id: uid('st') })) }))
+    copy.days = copy.days.map(d => ({ ...d, id: uid('day'), stops: d.stops.map(freshStopId) }))
     copy.expenses = copy.expenses.map(e => ({ ...e, id: uid('ex') }))
-    copy.fixedCommitments = copy.fixedCommitments.map(f => ({ ...f, id: uid('fc') }))
+    copy.fixedCommitments = copy.fixedCommitments.map(remapCommitment)
   }
   copy.members = [{ userId: ownerId, role: 'owner' as const, joinedAt: Date.now() }]
   copy.coverImageUrl = source.coverImageUrl

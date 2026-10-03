@@ -88,7 +88,7 @@ export const EXPENSE_KEYS = new Set([
   'id', 'label', 'category', 'amountInr', 'perPerson', 'optional', 'stopId', 'dayIndex', 'paidBy',
   'settled',
 ])
-export const COMMITMENT_KEYS = new Set(['id', 'title', 'type', 'dayIndex', 'time', 'notes'])
+export const COMMITMENT_KEYS = new Set(['id', 'title', 'type', 'dayIndex', 'time', 'notes', 'stopId'])
 export const PUBLICATION_KEYS = new Set([
   'id', 'tripId', 'creatorId', 'title', 'tagline', 'coverImageUrl', 'routeSummary',
   'durationDays', 'estimatedBudgetPerPersonInr', 'travelStyle', 'bestSeason', 'travelTips',
@@ -688,6 +688,11 @@ export function normalizeTrip(source: Record<string, unknown>, report: Normalize
       report.warnings.push(`fixedCommitments[${i}] "${title || 'untitled'}" did not fit the plan (bad day or time) — dropped.`)
       return
     }
+    let stopId = str(raw.stopId) || undefined
+    if (stopId && !days[dayIndex].stops.some(s => s.id === stopId)) {
+      report.repairs.push(`fixedCommitments[${i}] "${title}" pointed at no stop of Day ${dayIndex + 1} — kept the deadline, dropped the link.`)
+      stopId = undefined
+    }
     commitments.push({
       id: freshId('fc'),
       title,
@@ -695,6 +700,7 @@ export function normalizeTrip(source: Record<string, unknown>, report: Normalize
       dayIndex,
       time,
       notes: str(raw.notes) || undefined,
+      stopId,
     })
   })
 

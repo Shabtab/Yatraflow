@@ -1,6 +1,6 @@
 // ============ Scheduling & impact engine ============
 // All outputs are transparent estimates. Nothing here claims live data.
-import type { Trip, ItineraryStop, ItineraryDay, ID, TravelStyle } from '../data/types'
+import type { Trip, ItineraryStop, ItineraryDay, ID, TravelStyle, FixedCommitment } from '../data/types'
 import { haversineKm } from './geo'
 import { STAY_RATE_PER_NIGHT } from './rates'
 
@@ -789,8 +789,11 @@ export interface HealthResult {
 /**
  * All schedule issues for a trip. Used both for the health score and for
  * diffing current-vs-proposed plans in the Impact Preview.
+ * `legCorrections` is the workspace's measured road data — the same figures
+ * the Timeline rows render with. Pass it wherever the caller shows measured
+ * clocks (#608); without it the warnings honestly fall back to estimates.
  */
-export function collectWarnings(trip: Trip): ScheduleWarning[] {
+export function collectWarnings(trip: Trip, legCorrections?: Record<string, LegEstimate>): ScheduleWarning[] {
   const warnings: ScheduleWarning[] = []
   const A = getAssumptions(trip)
   const dayCount = Math.max(1, trip.days.length)
@@ -804,7 +807,7 @@ export function collectWarnings(trip: Trip): ScheduleWarning[] {
     // simulateDay already builds the day's full unified journey — the drive
     // to the day's destination (or back home) is inside these totals, so no
     // overlay math is needed to make travel/fatigue checks honest.
-    const sim = simulateDay(day, trip, originOf(trip, day.index), day.index)
+    const sim = simulateDay(day, trip, originOf(trip, day.index), day.index, legCorrections)
     const n = sim.activeStops.length
     dayClocks.set(day.index, {
       startsAt: sim.startsAt, endsAt: sim.endsAt,
@@ -881,18 +884,36 @@ export function collectWarnings(trip: Trip): ScheduleWarning[] {
     }
   })
 
-  // Fixed-commitment conflicts: does anything run past a commitment time?
+  // Fixed-commitment conflicts: each deadline is checked against arrival at
+  // its OWN stop, never the day's last stop (#609). A later dinner can no
+  // longer make an on-time boarding read late. A commitment with no matching
+  // stop says so honestly instead of borrowing another stop's clock.
   for (const fc of trip.fixedCommitments) {
+    if (fc.type === 'hotel-checkin') continue // check-in is an anchor, not a race
     const day = trip.days.find(d => d.index === fc.dayIndex)
     if (!day) continue
-    const sim = simulateDay(day, trip, originOf(trip, fc.dayIndex), fc.dayIndex)
+    const sim = simulateDay(day, trip, originOf(trip, fc.dayIndex), fc.dayIndex, legCorrections)
     const commitMin = hmToMinutes(fc.time)
-    if (fc.type === 'hotel-checkin') continue // check-in is an anchor, not a race
-    const lastDepIdx = sim.departures.length - 1
-    if (lastDepIdx >= 0 && hmToMinutes(sim.arrivalTimes[lastDepIdx]) > commitMin) {
-      warnings.push({ code: 'commitment', severity: 'high', dayIndex: fc.dayIndex, title: `Conflicts with ${fc.title}`, detail: `Day ${fc.dayIndex + 1} plan reaches its last stop after the ${fc.time} commitment.`, fix: 'Cut an earlier stop so you arrive with buffer.' })
-    } else if (lastDepIdx >= 0 && commitMin - hmToMinutes(sim.arrivalTimes[lastDepIdx]) < 45 && sim.activeStops.length > 0) {
-      warnings.push({ code: 'buffer', severity: 'medium', dayIndex: fc.dayIndex, title: `Thin buffer before ${fc.title}`, detail: `Less than ~45 min of slack before the ${fc.time} commitment.`, fix: 'Drop one optional stop to protect your connection.' })
+    const atIdx = commitmentStopIndex(sim.activeStops, fc)
+    if (atIdx == null || sim.arrivalTimes[atIdx] == null) {
+      const title = `${fc.title}: no linked stop`
+      const detail = `Day ${fc.dayIndex + 1} has no stop linked to the ${fc.time} commitment.`
+      const fix = 'Open the day on the Timeline and pick the stop this deadline belongs to.'
+      warnings.push({ code: 'commitment-unlinked', severity: 'low', dayIndex: fc.dayIndex, title, detail, fix })
+      continue
+    }
+    const arrivalMin = hmToMinutes(sim.arrivalTimes[atIdx])
+    const atName = sim.activeStops[atIdx].title
+    if (arrivalMin > commitMin) {
+      const title = `Conflicts with ${fc.title}`
+      const detail = `You reach ${atName} ~${sim.arrivalTimes[atIdx]}, after the ${fc.time} commitment.`
+      const fix = 'Cut an earlier stop so you arrive with buffer.'
+      warnings.push({ code: 'commitment', severity: 'high', dayIndex: fc.dayIndex, title, detail, fix })
+    } else if (commitMin - arrivalMin < 45) {
+      const title = `Thin buffer before ${fc.title}`
+      const detail = `You reach ${atName} ~${sim.arrivalTimes[atIdx]}, under ~45 min before the ${fc.time} commitment.`
+      const fix = 'Drop one optional stop to protect your connection.'
+      warnings.push({ code: 'buffer', severity: 'medium', dayIndex: fc.dayIndex, title, detail, fix })
     }
   }
 
@@ -960,9 +981,28 @@ export function dayIndexFromTitle(title: string): number | null {
   return m ? Number(m[1]) - 1 : null
 }
 
-/** Public API: compute health from collected warnings. */
-export function computeHealth(trip: Trip): HealthResult {
-  return scoreWarnings(collectWarnings(trip))
+/** Public API: compute health from collected warnings. Takes the same measured
+ *  road data as `collectWarnings` — the health dial must agree with the rows
+ *  beside it (#608). */
+export function computeHealth(trip: Trip, legCorrections?: Record<string, LegEstimate>): HealthResult {
+  return scoreWarnings(collectWarnings(trip, legCorrections))
+}
+
+/**
+ * Link a fixed commitment to its stop (#609, stored link). The link is the
+ * stop id the commitment carries — picked in the create form, auto-linked at
+ * creation, or linked later on the Timeline. Returns the stop's index into
+ * the day's active stops, or null when the link is absent or stale: the
+ * caller then says the check lacks a location instead of borrowing another
+ * stop's clock. The null contract is the whole point — no guessing.
+ */
+export function commitmentStopIndex(
+  stops: Pick<ItineraryStop, 'id'>[],
+  fc: Pick<FixedCommitment, 'stopId'>,
+): number | null {
+  if (fc.stopId == null) return null
+  const at = stops.findIndex(s => String(s.id) === String(fc.stopId))
+  return at >= 0 ? at : null
 }
 
 export function scoreWarnings(warnings: ScheduleWarning[]): HealthResult {

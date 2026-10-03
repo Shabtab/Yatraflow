@@ -271,6 +271,39 @@ describe('filled states (P1.2)', () => {
     expect(noHours[0].state).toBe('empty')
   })
 
+  it('destination stops never fill a meal from opening hours alone (#607)', () => {
+    const slots = daySlots(0, base({
+      haltSegments: [sh(seg('meal', { etaMinutes: 500 }), null), sh(seg('meal', { etaMinutes: 735 }), null)],
+      dayStops: [
+        stop('p1', 'Blossom park evening walk', { category: 'nature', openTime: '08:00', closeTime: '18:00' }),
+        stop('w1', 'Valara waterfalls', { category: 'nature', openTime: '08:00', closeTime: '18:00' }),
+        stop('s1', 'Periyar boat safari', { category: 'adventure', openTime: '09:00', closeTime: '17:00' }),
+        stop('m1', 'Tea museum tour', { category: 'museum', openTime: '09:00', closeTime: '17:00' }),
+        stop('g1', 'Spice garden guided walk', { category: 'sightseeing', openTime: '09:00', closeTime: '17:00' }),
+      ],
+    }))
+    expect(slots.filter(s => s.state === 'filled')).toHaveLength(0)
+  })
+
+  it('an all-day restaurant lands in its longest-overlap window, not breakfast (#607)', () => {
+    const slots = daySlots(0, base({
+      haltSegments: [sh(seg('meal', { etaMinutes: 500 }), null), sh(seg('meal', { etaMinutes: 735 }), null), sh(seg('meal', { etaMinutes: 1200 }), null)],
+      dayStops: [stop('s1', 'Lunch at Saravana Bhavan', { openTime: '07:00', closeTime: '22:00' })],
+    }))
+    expect(slots.find(s => s.key === 'lunch')?.filledStop?.title).toBe('Lunch at Saravana Bhavan')
+    expect(slots.find(s => s.key === 'breakfast')?.state).toBe('empty')
+    expect(slots.find(s => s.key === 'dinner')?.state).toBe('empty')
+  })
+
+  it('an explicit meal slotKey still files a destination stop (#607)', () => {
+    const slots = daySlots(0, base({
+      haltSegments: [sh(seg('meal', { etaMinutes: 735 }), null)],
+      dayStops: [stop('s1', 'Spice garden lunch halt', { category: 'sightseeing', slotKey: 'lunch', openTime: '09:00', closeTime: '17:00' })],
+    }))
+    expect(slots[0].state).toBe('filled')
+    expect(slots[0].filledStop?.title).toBe('Spice garden lunch halt')
+  })
+
   it('a food stop without hours falls to the first empty meal slot', () => {
     const slots = daySlots(0, base({
       haltSegments: [sh(seg('meal', { etaMinutes: 735 }), null), sh(seg('meal', { etaMinutes: 1250 }), null)],

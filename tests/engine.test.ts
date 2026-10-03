@@ -5,8 +5,8 @@
 // pure functions where exact values are cheap and meaningful.
 import { describe, it, expect } from 'vitest'
 import {
-  addMinutesToClock, hmToMinutes, legBetween, simulateDay,
-  computeTotals, computeHealth, collectWarnings, countHotelNights, originOf, firstFixedPoint,
+  addMinutesToClock, hmToMinutes, legBetween, legKey, simulateDay,
+  computeTotals, computeHealth, collectWarnings, commitmentStopIndex, countHotelNights, originOf, firstFixedPoint,
   getAssumptions, formatInr, scoreWarnings, predecessorOf, nextAfter, estimateLeg,
   FUEL_PRICE_INR_PER_L, parseFuelEconomyKmL, isImplausibleFuelEconomy, parseFuelPricePerL,
   isRoundTrip, lastActiveStopPoint, buildJourney, minutesToHM,
@@ -606,5 +606,154 @@ describe('computeTotals byDay attribution (v0.36)', () => {
       expect(lastRound.transportInr).toBeGreaterThan(lastOneway.transportInr)
       expect(lastRound.distanceKm).toBeGreaterThan(lastOneway.distanceKm)
     }
+  })
+})
+
+// ============ Measured road data in warnings and health (#608) ============
+
+const HOP_ORIGIN = { lat: 22.5726, lng: 88.3639 }
+const HOP_STOP = { lat: 22.6, lng: 88.39 }
+
+function hopStop(over: Partial<ItineraryStop> = {}): ItineraryStop {
+  return {
+    ...foodStop(HOP_STOP, 1, 'hop'),
+    title: 'Nearby halt',
+    locationName: 'Nearby halt',
+    category: 'travel',
+    visitMinutes: 20,
+    ...over,
+  }
+}
+
+/** One short hop: the estimate stays well under every warning threshold. */
+function makeHopTrip(stopOver: Partial<ItineraryStop> = {}): Trip {
+  const t = structuredClone(keralaTrip)
+  t.transportMode = 'car'
+  t.roundTrip = false
+  t.startLocation = 'Kolkata'
+  t.startLocationCoords = HOP_ORIGIN
+  t.destinations = []
+  t.destinationCoords = []
+  t.fixedCommitments = []
+  t.days = [{ id: 'd0', index: 0, stops: [hopStop(stopOver)] }] as Trip['days']
+  return t
+}
+
+describe('measured road corrections in warnings and health (#608)', () => {
+  it('a measured six-hour drive triggers the travel warning and lowers health', () => {
+    const trip = makeHopTrip()
+    const sim = simulateDay(trip.days[0], trip, originOf(trip, 0), 0)
+    expect(sim.totalTravelMinutes).toBeLessThan(300)
+    expect(collectWarnings(trip).some(w => w.code === 'travel')).toBe(false)
+    expect(computeHealth(trip).band).toBe('Comfortable')
+
+    const corrections = {
+      [legKey(originOf(trip, 0), HOP_STOP)]: { distanceKm: 180, durationMinutes: 360 },
+    }
+    const measured = collectWarnings(trip, corrections)
+    expect(measured.some(w => w.code === 'travel' && w.severity === 'high')).toBe(true)
+    const health = computeHealth(trip, corrections)
+    expect(health.score).toBeLessThan(computeHealth(trip).score)
+    expect(health.band).not.toBe('Comfortable')
+  })
+
+  it('hours warnings use the corrected arrivals the rows display', () => {
+    const trip = makeHopTrip()
+    const est = simulateDay(trip.days[0], trip, originOf(trip, 0), 0)
+    const estArr = hmToMinutes(est.arrivalTimes[0])
+    // The halt keeps honest hours around its estimated visit: no warning either way yet.
+    trip.days[0].stops[0].openTime = addMinutesToClock(estArr, -60)
+    trip.days[0].stops[0].closeTime = addMinutesToClock(estArr, 120)
+    trip.days[0].stops[0].visitMinutes = 20
+    expect(collectWarnings(trip).some(w => w.code === 'hours')).toBe(false)
+
+    // The road measures six hours: the corrected arrival misses closing time.
+    const corrections = {
+      [legKey(originOf(trip, 0), HOP_STOP)]: { distanceKm: 180, durationMinutes: 360 },
+    }
+    const shown = simulateDay(trip.days[0], trip, originOf(trip, 0), 0, corrections)
+    expect(hmToMinutes(shown.arrivalTimes[0]) + 20).toBeGreaterThan(hmToMinutes(trip.days[0].stops[0].closeTime!))
+    const measured = collectWarnings(trip, corrections)
+    expect(measured.some(w => w.code === 'hours')).toBe(true)
+  })
+})
+
+// ============ Commitment deadlines check their own stop (#609) ============
+
+const BOARDING = { lat: 22.6, lng: 88.4 }
+const FAR_DINNER = { lat: 23.6, lng: 87.4 }
+
+/** Morning boarding, far-away evening dinner: the day ends well after noon. */
+function makeBoardingTrip(): Trip {
+  const t = structuredClone(keralaTrip)
+  t.transportMode = 'car'
+  t.roundTrip = false
+  t.startLocation = 'Kolkata'
+  t.startLocationCoords = HOP_ORIGIN
+  t.destinations = []
+  t.destinationCoords = []
+  t.fixedCommitments = []
+  const boarding = hopStop({
+    id: 'board', title: 'Houseboat boarding', locationName: 'Alleppey jetty',
+    category: 'transport-hub', lat: BOARDING.lat, lng: BOARDING.lng, visitMinutes: 30, orderInDay: 1,
+  })
+  const dinner = hopStop({
+    id: 'din', title: 'Dinner at Sterling', locationName: 'Sterling resort',
+    category: 'food', lat: FAR_DINNER.lat, lng: FAR_DINNER.lng, visitMinutes: 60, orderInDay: 2,
+  })
+  t.days = [{ id: 'd0', index: 0, stops: [boarding, dinner] }] as Trip['days']
+  return t
+}
+
+describe('commitment deadlines check their linked stop (#609, stored link)', () => {
+  it('resolves through the stored stop id, never the title', () => {
+    const stops = [{ id: 's1' }, { id: 's2' }]
+    expect(commitmentStopIndex(stops, { stopId: 's2' })).toBe(1)
+    expect(commitmentStopIndex(stops, {})).toBeNull()
+    expect(commitmentStopIndex(stops, { stopId: 'gone' })).toBeNull()
+    // A matching title without a link resolves to nothing.
+    expect(commitmentStopIndex([{ id: 's1' }], { stopId: undefined })).toBeNull()
+  })
+
+  it('a later dinner does not make an on-time boarding read late', () => {
+    const trip = makeBoardingTrip()
+    const sim = simulateDay(trip.days[0], trip, originOf(trip, 0), 0)
+    const boardArr = hmToMinutes(sim.arrivalTimes[0])
+    const lastArr = hmToMinutes(sim.arrivalTimes[sim.arrivalTimes.length - 1])
+    // Arm the trap from the issue: the deadline sits between the boarding
+    // arrival and the day's last arrival.
+    const at = addMinutesToClock(boardArr, 60)
+    expect(lastArr).toBeGreaterThan(hmToMinutes(at))
+    trip.fixedCommitments = [{ id: 'fc1', title: 'Houseboat boarding', type: 'event', dayIndex: 0, time: at, stopId: 'board' }]
+    const codes = collectWarnings(trip).map(w => w.code)
+    expect(codes).not.toContain('commitment')
+    expect(codes).not.toContain('buffer')
+  })
+
+  it('a real late boarding still warns, naming its own stop', () => {
+    const trip = makeBoardingTrip()
+    const sim = simulateDay(trip.days[0], trip, originOf(trip, 0), 0)
+    const at = addMinutesToClock(hmToMinutes(sim.arrivalTimes[0]), -30)
+    trip.fixedCommitments = [{ id: 'fc1', title: 'Houseboat boarding', type: 'event', dayIndex: 0, time: at, stopId: 'board' }]
+    const found = collectWarnings(trip).find(w => w.code === 'commitment')
+    expect(found?.severity).toBe('high')
+    expect(found?.detail).toContain('Houseboat boarding')
+  })
+
+  it('an unlinked commitment states the missing stop instead of borrowing a clock', () => {
+    const trip = makeBoardingTrip()
+    const sim = simulateDay(trip.days[0], trip, originOf(trip, 0), 0)
+    const lastArr = hmToMinutes(sim.arrivalTimes[sim.arrivalTimes.length - 1])
+    // A deadline the old last-stop check would have failed: it sits before
+    // the day's end and carries no link.
+    const at = addMinutesToClock(lastArr, -60)
+    trip.fixedCommitments = [{ id: 'fc1', title: 'Noon flight to Delhi', type: 'flight-departure', dayIndex: 0, time: at }]
+    const warnings = collectWarnings(trip)
+    const codes = warnings.map(w => w.code)
+    expect(codes).not.toContain('commitment')
+    expect(codes).not.toContain('buffer')
+    const unlinked = warnings.find(w => w.code === 'commitment-unlinked')
+    expect(unlinked?.severity).toBe('low')
+    expect(unlinked?.detail).toContain('no stop')
   })
 })
