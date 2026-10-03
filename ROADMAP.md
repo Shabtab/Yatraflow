@@ -491,6 +491,13 @@ unbuilt). **Before picking up a row, and before quoting one in a plan, confirm i
 | # | Idea | Blocked on | Note |
 |---|---|---|---|
 | I-29 | Phone map planning access | Choose a sheet or split layout | Keep candidates near the map. Preserve keyboard focus and touch targets. [Audit](docs/UI_AUDIT.md#workspace-tab-audit--2026-10-03). |
+| I-37 | Stop handoff from the Map popup | Browser reproduction | The popup passes a stop id and the workspace callback drops it, so the tab opens without a target. Reproduce before any fix. [Audit](docs/UI_AUDIT.md#workspace-tab-audit--2026-10-03). |
+| I-38 | Hidden rail after a slot pin | Browser reproduction | A slot pin unfolds Needs but does not select Needs in the phone sheet. Reproduce before any fix. [Audit](docs/UI_AUDIT.md#workspace-tab-audit--2026-10-03). |
+| I-39 | Search request freshness | Browser reproduction | Editing or clearing a query may leave its request running and its token stale. Reproduce before any fix. [Audit](docs/UI_AUDIT.md#workspace-tab-audit--2026-10-03). |
+| I-40 | Published Map hash while unmounted | Browser reproduction | The hash may stop updating while Map is unmounted. Test a settings change before returning to Map. [Audit](docs/UI_AUDIT.md#workspace-tab-audit--2026-10-03). |
+| I-41 | Day placement wording | Product decision | The label names the active day while its modal can pick another from road position. Decide the wording before any fix. [Audit](docs/UI_AUDIT.md#workspace-tab-audit--2026-10-03). |
+| I-42 | Viewer role on Map controls | Browser reproduction | MapOmnibar placement and the split banner need an explicit viewer-role check. [Audit](docs/UI_AUDIT.md#workspace-tab-audit--2026-10-03). |
+| I-43 | Weather beyond the forecast window | Browser reproduction | The card checks the start date, then requests the whole trip. Test a trip past the window. [Audit](docs/UI_AUDIT.md#workspace-tab-audit--2026-10-03). |
 | I-36 | Share an exact review target | Choose the day and stop URL contract | Open the exact item from a review link. Keep focus out of stored trip data. [Audit](docs/UI_AUDIT.md#workspace-tab-audit--2026-10-03). |
 | I-12 | Price history | M7 (schema) | The BOOKS are already right — `purchase_orders.price_snapshot_inr` is written at checkout and copied to `entitlements.amount_paid_inr`, so no sale is re-priced by a later edit. What remains is the creator-facing trail of their own price changes; I-24 still reads from it. |
 | I-14 | Payout method + KYC management | M7 (schema) | Bank/UPI + legal name + PAN on profiles — M7's biggest schema lift. |

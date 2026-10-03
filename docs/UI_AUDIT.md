@@ -673,7 +673,7 @@ Do not treat these as reproduced defects yet.
 - **Viewer controls:** MapOmnibar placement and the split banner need an explicit viewer-role check.
 - **Long trips:** WeatherCard checks the start date, then requests the whole trip. Test a trip beyond the forecast window.
 
-These items need a focused follow-up check before another issue claims browser reproduction.
+These items need a focused follow-up check before another issue claims browser reproduction. ROADMAP idea-bank rows **I-37 through I-43** carry them until that check runs.
 
 ### Checks and limits
 
