@@ -799,7 +799,13 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
             pub={pub}
             trip={revealTrip}
             creator={creator}
-            amountPaidInr={pub.premiumPriceInr}
+            /* #591 — the receipt states what was PAID, which is the entitlement
+               row's snapshot, not the catalog copy: a creator changing the price
+               while this tab sat open would otherwise make the reveal contradict
+               the shelf for the same purchase. Absent for a beat when the
+               re-read has not landed — the component renders no figure rather
+               than a wrong one. */
+            amountPaidInr={entitlements.find(e => e.pubId === pub.id)?.amountPaidInr}
             // The grant itself, for the reveal's share card (I-21) — read from the
             // entitlement list the purchase refreshed, so it arrives with the read
             // that followed the unlock.
