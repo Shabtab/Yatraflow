@@ -75,6 +75,19 @@ export interface PurchaseRow {
    *  conflating them would tell a refunded buyer their access ended because the
    *  creator unpublished, which is a different story with different next steps. */
   refunded: boolean
+  /** #589 — the money was captured and the GRANT has not landed yet: a paid
+   *  order with no entitlement row (the 503 "confirm-but-not-saved" answer
+   *  promises the webhook may still finish it, and the checkout's self-heal
+   *  grants on the next Unlock). NOT a claim of access — the paywall refuses
+   *  this publication server-side until the grant exists — so the row shows
+   *  money and state, never Open/Fork/Share.
+   *
+   *  ORTHOGONAL to `refunded`: a failed (refunded) order and a paid order are
+   *  different rows of money history, and a `pending`-status order (an
+   *  abandoned checkout) never becomes a row at all — only `paid` proves money
+   *  moved. A later grant converts the row into a normal one: the entitlement
+   *  loop claims the publication slot first. */
+  pendingGrant: boolean
 }
 
 export interface PurchaseShelf {
@@ -99,6 +112,12 @@ export interface PurchaseShelf {
    *  count the header would have to be silently short, which is the shape of
    *  dishonesty the rest of this file exists to avoid. */
   refundedCount: number
+  /** #589 — how many rows are captured payments whose grant has not landed.
+   *  Named separately because `totalPaidInr` excludes them too: the money
+   *  moved, but the plan is not held yet — the same holds-based definition
+   *  that excludes refunds. The count keeps the exclusion named, and the page
+   *  uses it to explain the "being finalized" state. */
+  pendingGrantCount: number
 }
 
 /** The buyer's shelf, newest purchase first.
@@ -134,6 +153,7 @@ export function buildPurchaseShelf(
     amountClaim: unknown
     moneyAt: unknown
     refunded: boolean
+    pendingGrant?: boolean
   }): PurchaseRow => {
     const pub = pubById.get(input.pubId)
     // A stored amount is a CLAIM about money, so it is checked rather than cast:
@@ -166,6 +186,7 @@ export function buildPurchaseShelf(
       amountReadable,
       dateReadable,
       refunded: input.refunded,
+      pendingGrant: input.pendingGrant ?? false,
     }
   }
 
@@ -183,6 +204,29 @@ export function buildPurchaseShelf(
       amountClaim: e.amountPaidInr,
       moneyAt: e.grantedAt,
       refunded: isRefunded(orderById.get(e.orderId) ?? { status: 'paid' }),
+    }))
+  }
+
+  // #589 — THEN the in-flight grants: a paid order with NO entitlement row is
+  // money captured whose grant has not landed yet. It runs BEFORE the receipts
+  // loop so a publication with both a refunded order and a fresh paid one shows
+  // the money that is now the buyer's — the refund is history, the
+  // captured payment is now. `pending`-status orders (abandoned checkouts) must
+  // NOT become rows: only `paid` proves money moved. A later grant converts the
+  // row into a normal one, because the entitlement loop claims the slot first.
+  for (const o of [...orders].sort((a, b) => orderMoneyAt(a) - orderMoneyAt(b))) {
+    if (o.status !== 'paid') continue
+    if (seen.has(o.pubId)) continue
+    seen.add(o.pubId)
+    rows.push(rowFor({
+      pubId: o.pubId,
+      // No grant exists, so there is no entitlement to name. The ORDER id is
+      // the honest identifier: it is what the payment is a receipt for.
+      entitlementId: o.id,
+      amountClaim: o.amountInr,
+      moneyAt: orderMoneyAt(o),
+      refunded: false,
+      pendingGrant: true,
     }))
   }
 
@@ -207,16 +251,19 @@ export function buildPurchaseShelf(
   rows.sort((a, b) => b.grantedAt - a.grantedAt || a.title.localeCompare(b.title))
   // The TOTAL and the update count are about what the buyer HOLDS, so refunded
   // receipts are excluded from both: their money came back, and a plan they
-  // cannot open has no update to be told about. `refundedCount` below is what
-  // keeps that exclusion visible instead of silent.
-  const liveRows = rows.filter(r => !r.refunded)
-  const totalPaidInr = liveRows.reduce((sum, r) => sum + (r.amountReadable ? r.amountPaidInr : 0), 0)
+  // cannot open has no update to be told about. #589 — in-flight grants are
+  // excluded for the same reason: the money moved, but the plan is not held
+  // yet. `refundedCount` and `pendingGrantCount` keep both exclusions visible
+  // instead of silent.
+  const heldRows = rows.filter(r => !r.refunded && !r.pendingGrant)
+  const totalPaidInr = heldRows.reduce((sum, r) => sum + (r.amountReadable ? r.amountPaidInr : 0), 0)
   return {
     rows,
     totalPaidInr,
-    totalReadable: liveRows.every(r => r.amountReadable),
-    updatedCount: liveRows.filter(r => r.updatedSince).length,
+    totalReadable: heldRows.every(r => r.amountReadable),
+    updatedCount: heldRows.filter(r => r.updatedSince).length,
     refundedCount: rows.filter(r => r.refunded).length,
+    pendingGrantCount: rows.filter(r => r.pendingGrant).length,
   }
 }
 
@@ -235,7 +282,9 @@ export function buildPurchaseShelf(
  *  — posting one for a plan whose money went back would be the same overclaim as
  *  the "₹500 paid" chip was, in a place other people can see. */
 export function purchaseShareable(row: PurchaseRow): boolean {
-  return row.onSale && !row.refunded
+  // #589 — an in-flight grant is not access yet: sharing a plan the buyer
+  // cannot open is the same overclaim as sharing a refunded one.
+  return row.onSale && !row.refunded && !row.pendingGrant
 }
 
 /** How sure a match is. `exact` is the publication's own itinerary, which a copy

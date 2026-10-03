@@ -164,8 +164,9 @@ describe('the purchase shelf', () => {
     // the AGENTS §4 trap ("adding a field to a returned object breaks every
     // `toEqual` on it") — the pin was never pinning a defect here, it was
     // pinning the SHAPE, so the key is added rather than the assertion loosened.
+    // #589 adds `pendingGrantCount` for the same reason.
     expect(buildPurchaseShelf([], [pub()], [])).toEqual({
-      rows: [], totalPaidInr: 0, totalReadable: true, updatedCount: 0, refundedCount: 0,
+      rows: [], totalPaidInr: 0, totalReadable: true, updatedCount: 0, refundedCount: 0, pendingGrantCount: 0,
     })
   })
 })
@@ -473,8 +474,8 @@ describe('#409 — the shelf stops overclaiming', () => {
     // explanation belongs only to rows whose catalogue entry is gone. Both are
     // conditional: a permanent sentence about a case most shelves never have
     // would be its own small dishonesty.
-    expect(pageSrc).toContain('shelf.rows.some(r => !r.onSale && !r.refunded)')
-    expect(pageSrc).toContain('shelf.rows.some(r => !r.rowExists && !r.refunded)')
+    expect(pageSrc).toContain('shelf.rows.some(r => !r.onSale && !r.refunded && !r.pendingGrant)')
+    expect(pageSrc).toContain('shelf.rows.some(r => !r.rowExists && !r.refunded && !r.pendingGrant)')
     expect(pageSrc).toContain('keeps its receipt and your access')
     // …and the promise that IS always true stays true.
     expect(pageSrc).toContain('the shape of the plan')
@@ -581,8 +582,11 @@ describe('#405 — the shelf never offers a link that cannot load', () => {
     // #570 — the gate is `rowExists`, deliberately NOT `onSale`: since #350 a
     // withdrawn row still serves its buyer, and this button is that buyer's one
     // working path to the plan they paid for.
-    const guarded = pageSrc.match(/\{row\.rowExists && !row\.refunded && \(([\s\S]{0,400}?)\)\}/)
-    expect(guarded, 'the /pub/ button is no longer behind a rowExists-and-not-refunded guard').not.toBeNull()
+    // #589 — and the gate carries `!row.pendingGrant`: an in-flight grant is
+    // refused server-side exactly like a refunded purchase, so the same
+    // exclusion applies.
+    const guarded = pageSrc.match(/\{row\.rowExists && !row\.refunded && !row\.pendingGrant && \(([\s\S]{0,400}?)\)\}/)
+    expect(guarded, 'the /pub/ button is no longer behind a rowExists-and-not-refunded-and-not-pending guard').not.toBeNull()
     expect(guarded![1]).toContain('`/pub/${row.pubId}`')
     // And the share/fork buttons are guarded the same way (asserted below), so
     // the guard here is a real gate rather than a stray token.
@@ -601,9 +605,10 @@ describe('#405 — the shelf never offers a link that cannot load', () => {
     // quietly re-open either.
     // #407 — the fork guard gained `!row.refunded` alongside the others, for the
     // same reason the /pub/ button did: forking is an access affordance, and a
-    // refunded row has no access to fork into.
+    // refunded row has no access to fork into. #589 adds `!row.pendingGrant` to
+    // the same guard for the same reason.
     expect(pageSrc).toMatch(/\{purchaseShareable\(row\) && \(/)
-    expect(pageSrc).toMatch(/\{row\.rowExists && !row\.refunded && <button className="btn btn-ghost" onClick=\{\(\) => fork\(row\.pubId\)\}/)
+    expect(pageSrc).toMatch(/\{row\.rowExists && !row\.refunded && !row\.pendingGrant && <button className="btn btn-ghost" onClick=\{\(\) => fork\(row\.pubId\)\}/)
   })
 })
 
@@ -699,14 +704,15 @@ describe('#407 — a refunded purchase renders as a receipt', () => {
 
   it('does NOT turn a pending or declined order into a row', () => {
     // `failed` is written by exactly one function and only `where status =
-    // 'paid'`, so a declined card stays `pending`. Neither may appear as a
-    // purchase — only a refund is a receipt for money that actually moved.
+    // 'paid'`, so a declined card stays `pending`. A pending order must never
+    // appear as a purchase. #589 narrows the old expectation's paid-order
+    // half: a PAID order with no grant is now its own in-flight row kind
+    // (pinned in the #589 describe) — this pin keeps the no-money half.
     const shelf = buildPurchaseShelf([], [pub()], [], [
       order({ id: 'ord_pending', status: 'pending', paidAt: null }),
-      order({ id: 'ord_paid', status: 'paid' }),
     ])
     expect(shelf.rows).toEqual([])
-    expect(shelf.refundedCount).toBe(0)
+    expect(shelf.pendingGrantCount).toBe(0)
   })
 
   it('still flags an unreadable refund amount instead of printing zero', () => {
@@ -736,10 +742,11 @@ describe('#407 — the shelf page renders the refund, and reads both sources', (
   it('shows the Refunded chip and removes every access affordance', () => {
     expect(pageSrc).toContain('<Chip tone="info">Refunded</Chip>')
     expect(pageSrc).toContain('the access it came with has ended')
-    // Both access buttons carry the refund gate, and the share gate is derived
-    // from the row (`purchaseShareable`), which is pinned false above.
-    expect(pageSrc).toMatch(/\{row\.rowExists && !row\.refunded && \(/)
-    expect(pageSrc).toContain('{row.rowExists && !row.refunded && <button')
+    // Both access buttons carry the refund gate (#589 adds the in-flight
+    // conjunct), and the share gate is derived from the row
+    // (`purchaseShareable`), which is pinned false above.
+    expect(pageSrc).toMatch(/\{row\.rowExists && !row\.refunded && !row\.pendingGrant && \(/)
+    expect(pageSrc).toContain('{row.rowExists && !row.refunded && !row.pendingGrant && <button')
     // The copy resolver is skipped for a refunded row rather than offering a
     // link to access the buyer no longer has.
     expect(pageSrc).toContain('const copy = row.rowExists || row.refunded ? null : findBuyerCopy(row, trips)')
@@ -757,7 +764,7 @@ describe('#407 — the shelf page renders the refund, and reads both sources', (
     // its money came back, a withdrawn one says access is unaffected — and
     // telling a refunded buyer the second would be false. #570: the note keys
     // on `onSale`, the fact the marker actually decides.
-    expect(pageSrc).toContain('!row.refunded && !row.onSale && (')
+    expect(pageSrc).toContain('!row.refunded && !row.pendingGrant && !row.onSale && (')
   })
 })
 
@@ -787,15 +794,15 @@ describe('#570 — rowExists and onSale are different facts', () => {
     // rows it was written for. The withdrawn face says the plan still opens
     // from here (it does — get_public_trip serves entitled holders); the
     // gone-entirely face falls back to the forked copy.
-    expect(pageSrc).toContain('!row.refunded && !row.onSale && (')
+    expect(pageSrc).toContain('!row.refunded && !row.pendingGrant && !row.onSale && (')
     expect(pageSrc).toContain('it still opens from here')
   })
 
   it('keeps Open and Fork working through a withdrawal — the buyer\'s one working path', () => {
     // Gating these on "on sale" would break the very access the notice just
     // promised is unaffected. Pinned on the guard itself.
-    expect(pageSrc).toContain('{row.rowExists && !row.refunded && (')
-    expect(pageSrc).toContain('{row.rowExists && !row.refunded && <button')
+    expect(pageSrc).toContain('{row.rowExists && !row.refunded && !row.pendingGrant && (')
+    expect(pageSrc).toContain('{row.rowExists && !row.refunded && !row.pendingGrant && <button')
   })
 
   it('offers no share and no auto cover for a withdrawn row', () => {
@@ -806,3 +813,88 @@ describe('#570 — rowExists and onSale are different facts', () => {
   })
 })
 
+
+describe('#589 — a paid order whose grant has not landed is its own row kind', () => {
+  const paid = 1_700_000_000_000
+  const order = (overrides: Partial<PurchaseOrder> = {}): PurchaseOrder => ({
+    id: 'ord_1',
+    userId: 'buyer_1',
+    pubId: 'pub_a',
+    amountInr: 500,
+    status: 'paid',
+    createdAt: paid,
+    paidAt: paid,
+    ...overrides,
+  })
+
+  it('shows a captured payment with no grant as an in-flight row, not owned', () => {
+    const shelf = buildPurchaseShelf([], [pub()], [], [order()])
+    expect(shelf.rows).toHaveLength(1)
+    expect(shelf.rows[0]).toMatchObject({
+      pubId: 'pub_a', pendingGrant: true, refunded: false, amountPaidInr: 500, amountReadable: true,
+    })
+    // The money moved but the plan is not held: excluded from the total, and
+    // the exclusion is named rather than silent.
+    expect(shelf.totalPaidInr).toBe(0)
+    expect(shelf.pendingGrantCount).toBe(1)
+  })
+
+  it('a pending-status order (abandoned checkout) never becomes a row', () => {
+    // Only `paid` proves money moved — `pending` is a cart nobody paid for.
+    const shelf = buildPurchaseShelf([], [pub()], [], [order({ status: 'pending' })])
+    expect(shelf.rows).toHaveLength(0)
+    expect(shelf.pendingGrantCount).toBe(0)
+  })
+
+  it('a later grant converts the row into a normal one', () => {
+    // The entitlement loop claims the publication slot first, so the same
+    // payment renders as owned the moment the grant lands.
+    const shelf = buildPurchaseShelf([entitlement({ orderId: 'ord_1', amountPaidInr: 500 })], [pub()], [], [order()])
+    expect(shelf.rows).toHaveLength(1)
+    expect(shelf.rows[0]!.pendingGrant).toBe(false)
+    expect(shelf.totalPaidInr).toBe(500)
+    expect(shelf.pendingGrantCount).toBe(0)
+  })
+
+  it('fresh captured money outranks an old refunded receipt for the same plan', () => {
+    // A re-buy after a refund: the failed order is history, the paid order is
+    // what is now the buyer's — so the in-flight row claims the slot.
+    const shelf = buildPurchaseShelf([], [pub()], [], [
+      order({ id: 'ord_old', status: 'failed', paidAt: paid - DAY }),
+      order({ id: 'ord_new', status: 'paid' }),
+    ])
+    expect(shelf.rows).toHaveLength(1)
+    expect(shelf.rows[0]!.pendingGrant).toBe(true)
+    expect(shelf.refundedCount).toBe(0)
+  })
+
+  it('an in-flight row is never shareable', () => {
+    // The buyer cannot open the plan yet; advertising it would be the same
+    // overclaim as sharing a refunded purchase.
+    const shelf = buildPurchaseShelf([], [pub()], [], [order()])
+    expect(purchaseShareable(shelf.rows[0]!)).toBe(false)
+  })
+})
+
+describe('#589 — the shelf page renders the in-flight grant without owned affordances', () => {
+  const page = readFileSync(new URL('../src/pages/Purchases.tsx', import.meta.url), 'utf8')
+
+  it('Open and Fork are gated on the grant, and the status line explains the state', () => {
+    expect(page).toContain('{row.rowExists && !row.refunded && !row.pendingGrant && (')
+    expect(page).toContain('>Open the plan</button>')
+    expect(page).toContain('{row.rowExists && !row.refunded && !row.pendingGrant && <button')
+    expect(page).toContain('>Fork into my trips</button>')
+    expect(page).toContain('Payment received')
+  })
+
+  it('the header names the exclusion and the lede explains the recovery path', () => {
+    expect(page).toMatch(/pendingGrantCount > 0 && <>\s*· <b>\{shelf\.pendingGrantCount\}/)
+    expect(page).toContain('being finalized')
+    expect(page).toContain('without a second charge')
+  })
+
+  it('the "still opens from here" caveat never fires for an in-flight row', () => {
+    // That sentence promises access; a grant that has not landed cannot keep it.
+    expect(page).toMatch(/!row\.refunded && !row\.pendingGrant && !row\.onSale/)
+  })
+})
