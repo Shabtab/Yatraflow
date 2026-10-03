@@ -104,12 +104,15 @@ function seedTrip(trip: any) {
     commit_timestamp: new Date().toISOString(), old: {}, new: trip,
   } as never)
   for (const m of trip.members ?? []) {
-    // The dispatch drops payloads with no row id (the generic guard at the
-    // top of applyRealtimeEvent) — real trip_members rows carry one.
+    // #567 — the honest payload shape: `trip_members` has no `id` column (the
+    // composite (trip_id, user_id) is the key), and the dispatch keys the
+    // composite for this table. The old comment here asserted the false belief
+    // that real rows carry an id — and fabricated one to get past the guard,
+    // pinning behaviour against a shape the wire never produces.
     _applyRealtimeEventForTest('trip_members', {
       eventType: 'INSERT', schema: 'public', table: 'trip_members',
       commit_timestamp: new Date().toISOString(), old: {},
-      new: { id: `m-${m.userId}`, trip_id: trip.id, user_id: m.userId, role: m.role, joined_at: Date.now() },
+      new: { trip_id: trip.id, user_id: m.userId, role: m.role, joined_at: Date.now() },
     } as never)
   }
   return getSnapshot().trips.find(t => t.id === trip.id)!
