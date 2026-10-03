@@ -32,6 +32,7 @@ const STORE = codeOf(src('../src/store/store.ts'))
 const SHARE = codeOf(src('../src/pages/trip/ShareTab.tsx'))
 const PICKER = codeOf(src('../src/components/CoverImagePicker.tsx'))
 const RULES = src('../src/lib/publishRules.ts')
+const PAGE = codeOf(src('../src/pages/PublicItinerary.tsx'))
 
 /** A valid publication's fields, as a base to break one rule at a time. */
 const ok = (over: Partial<Parameters<typeof publishValidation>[0]> = {}) => ({
@@ -511,5 +512,26 @@ describe('#391 — a refused member write is rolled back and said', () => {
     // The in-flight state is said, and the control is guarded.
     expect(SHARE).toContain("{busy ? 'Building…' : 'Create snapshot link'}")
     expect(SHARE).toContain('disabled={busy}')
+  })
+})
+
+describe('#592 — a charged plan at ₹0 does not exist', () => {
+  it('refuses a zero price for a plan the rules treat as charged', () => {
+    // The form coerces 0 to entirely-free before validating, so only a
+    // non-form caller could produce this row — and that caller is exactly
+    // who this module exists to refuse. The gateway floor is ₹1.
+    expect(publishValidation(ok({ priceNum: 0 })).price)
+      .toBe('Price must be at least ₹1 to charge for a plan.')
+    // The boundary itself is allowed.
+    expect(publishValidation(ok({ priceNum: 1 })).price).toBeUndefined()
+  })
+
+  it('the ₹1 floor is ONE vocabulary across the form, the rules and the page', () => {
+    // The form coerces 0 to entirely-free before validating; the rules refuse
+    // it at the writer; and the page renders a row that slipped through as
+    // FREE rather than as an unchargeable ₹0 CTA.
+    expect(SHARE).toContain('priceNum === 0')
+    expect(RULES).toContain('Price must be at least ₹1 to charge for a plan.')
+    expect(PAGE).toContain('const price = pub.premiumPriceInr || undefined')
   })
 })
