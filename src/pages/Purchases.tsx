@@ -143,10 +143,10 @@ export function PurchasesPage({ onNavigate }: { onNavigate: (r: string) => void 
       <p className="hint-text purchases-lede">
         Plans you unlocked, kept here for good — with what you paid, the shape of the plan, and any update
         from the person who made them.
-        {shelf.rows.some(r => !r.onSale && !r.refunded) && (
+        {shelf.rows.some(r => !r.onSale && !r.refunded && !r.pendingGrant) && (
           <> A plan taken off sale keeps its receipt and your access — it still opens from here.</>
         )}
-        {shelf.rows.some(r => !r.rowExists && !r.refunded) && (
+        {shelf.rows.some(r => !r.rowExists && !r.refunded && !r.pendingGrant) && (
           <> A plan whose catalogue entry is gone keeps its receipt and your access; its length, places and cover
           live in the copy you forked, which is why they are not repeated here.</>
         )}
@@ -188,7 +188,18 @@ export function PurchasesPage({ onNavigate }: { onNavigate: (r: string) => void 
                 than left for the reader to notice. A silently smaller number is
                 the same class of lie as a silently larger one. */}
             {shelf.refundedCount > 0 && <> · <b>{shelf.refundedCount}</b> refunded</>}
+            {/* #589 — in-flight grants are excluded from the total above (the
+                money moved but the plan is not held yet), so the exclusion is
+                named like the refunds' is. */}
+            {shelf.pendingGrantCount > 0 && <> · <b>{shelf.pendingGrantCount}</b> {shelf.pendingGrantCount === 1 ? 'payment' : 'payments'} being finalized</>}
           </p>
+          {shelf.pendingGrantCount > 0 && (
+            <p className="hint-text">
+              A payment was captured and its access is still being finalized. This usually clears in a
+              minute. If it does not, open the plan once more and press Unlock — the checkout completes
+              the grant without a second charge.
+            </p>
+          )}
           {!shelf.totalReadable && (
             <p className="hint-text">
               One or more purchases could not be read back, so this total is a floor rather than the
@@ -258,13 +269,26 @@ export function PurchasesPage({ onNavigate }: { onNavigate: (r: string) => void 
                       access, not a reason to erase that you bought it.
                     </p>
                   )}
+                  {/* #589 — the money moved and the grant has not landed. The row
+                      says money and state, never access: the paywall refuses this
+                      publication until the grant exists, so any owned-language
+                      affordance here would dead-end. The header explains the
+                      recovery path (press Unlock again — the checkout self-heals). */}
+                  {row.pendingGrant && (
+                    <p className="hint-text">
+                      <b>Payment received</b> — access is being finalized. This row is a receipt until the
+                      grant lands; it usually takes a minute.
+                    </p>
+                  )}
                   {/* #570 — fires for BOTH faces of "not on sale": the row
                       surviving a withdrawal (#350 — the plan is still readable
                       from here) and the row being gone entirely (pre-#350, where
                       the forked copy is the fallback). Before the marker split
                       this could not fire for a withdrawn plan at all — the one
-                      thing the buyer most needed to know. */}
-                  {!row.refunded && !row.onSale && (
+                      thing the buyer most needed to know. #589 — never for an
+                      in-flight grant: its access is not ready, so "it still
+                      opens from here" would be false in the other direction. */}
+                  {!row.refunded && !row.pendingGrant && !row.onSale && (
                     <p className="hint-text">
                       This plan is not listed publicly any more. Your access is unaffected
                       {row.rowExists
@@ -288,8 +312,9 @@ export function PurchasesPage({ onNavigate }: { onNavigate: (r: string) => void 
                         paywall already refuses it server-side, so an "Open the
                         plan" button here would be a button whose only outcome is a
                         locked page. The receipt above is what a refunded row is
-                        FOR. */}
-                    {row.rowExists && !row.refunded && (
+                        FOR. #589 — an in-flight grant is refused the same way
+                        until it lands, so the same gate excludes it. */}
+                    {row.rowExists && !row.refunded && !row.pendingGrant && (
                       <button className="btn btn-primary" onClick={() => onNavigate(`/pub/${row.pubId}`)}>Open the plan</button>
                     )}
                     {copy && (
@@ -299,7 +324,7 @@ export function PurchasesPage({ onNavigate }: { onNavigate: (r: string) => void 
                         {copy.exact ? 'Open your copy' : 'Open your copy (we think this is it)'}
                       </button>
                     )}
-                    {row.rowExists && !row.refunded && <button className="btn btn-ghost" onClick={() => fork(row.pubId)}>Fork into my trips</button>}
+                    {row.rowExists && !row.refunded && !row.pendingGrant && <button className="btn btn-ghost" onClick={() => fork(row.pubId)}>Fork into my trips</button>}
                     {/* ROADMAP I-21: the buyer's own card. Offered only while the
                         plan is still ON SALE — a withdrawn plan's link previews as
                         a live card whose recipient is then refused the page (#350),
