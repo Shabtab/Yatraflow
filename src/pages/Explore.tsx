@@ -6,7 +6,7 @@ import {
 } from 'lucide-react'
 import { InlineIcon, MetaIcon } from '../components/icons'
 import { usePublished, useUsers, useTrips, useSessionUserId, useDb, rereadPublicSlices } from '../store/store'
-import type { PublishedItinerary, User } from '../data/types'
+import type { User } from '../data/types'
 import { computeHealth, formatInr } from '../lib/engine'
 import { useSavedPubs } from '../lib/savedPubs'
 import { sliceState, emptyCopyFor } from '../lib/readState'
@@ -16,6 +16,7 @@ import { Avatar, Chip, EmptyState, toast } from '../components/ui'
 import { Select } from '../components/Select'
 import { PubCard } from '../components/PubCard'
 import { appLink } from '../lib/appLink'
+import { livePubs } from '../lib/livePubs'
 
 type SortKey = 'popular' | 'newest' | 'budget-asc' | 'budget-desc' | 'duration'
 const STYLES = ['relaxed', 'balanced', 'packed', 'adventure', 'luxury', 'budget', 'family', 'spiritual', 'food-focused', 'creator'] as const
@@ -27,21 +28,11 @@ const PAGE_SIZE = 12
  *  credibility (§6.10). */
 const FEATURED_MIN_VIEWS = 25
 
-/** The gallery's pool: only publications that are still LIVE on Explore (#350).
- *
- *  A soft-unpublished row deliberately keeps existing — its buyers keep the
- *  plan they paid for and the creator's ledger keeps its sales history — but it
- *  has come down, so it leaves every Explore surface with it: the grid, the
- *  featured card (which reads the catalog directly and would otherwise keep
- *  leading the page with a plan nobody can open) and the style counts beside
- *  the filters.
- *
- *  Exported because the test suite runs in node env and cannot render a page:
- *  `tests/soft-unpublish.test.ts` calls this rather than re-implementing the
- *  predicate and asserting its own copy. */
-export function livePubs(pubs: PublishedItinerary[]): PublishedItinerary[] {
-  return pubs.filter(p => !p.unpublishedAt)
-}
+// #350 — the gallery's pool lives in lib/livePubs.ts so every public catalog
+// surface shares one predicate copy. Re-exported for the test suite, which
+// pins the filter at its definition.
+export { livePubs }
+
 
 /** Filter + sort state encoded in the route's query (F-22). Read at mount and
  *  on every real navigation. Filter edits write the query with `replaceRoute`,
