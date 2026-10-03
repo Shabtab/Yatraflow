@@ -66,6 +66,34 @@ describe('STE100 lint (scripts/lint-ste.mjs)', () => {
     expect(r.code).toBe(0)
   })
 
+  it('ignores code lines, so a correct file is never restructured to please it', () => {
+    // Every line below is real source the checker used to flag, which forced
+    // working code to be reshaped. See `isCode` in scripts/lint-ste.mjs.
+    const code = [
+      '    priority: \'nice-to-have\', status: \'confirmed\', orderInDay: 1,',
+      '      warnings.push({ code: \'commitment-unlinked\', severity: \'low\', title, detail, fix })',
+      '          <MapTab trip={effective} editable={editable} applyChange={applyChange}',
+      '            onOpenDay={(dayIndex) => { setFocusedDay(dayIndex); setTab(\'timeline\') }}',
+      '                options={linkStopOptions(ordered)} />',
+      '  const ok = daySlots(0, deps(segs, stops)).length',
+      '      expect(clock.get(s.id)?.arrive).toBe(sim.arrivalTimes[i])',
+      '  count: 1, done: true,',
+    ].join('\n')
+    expect(run(code + '\n').code).toBe(0)
+  })
+
+  it('ignores a string literal that carries code, such as a test fixture', () => {
+    const literal = '  "    priority: \'nice-to-have\', status: \'confirmed\', orderInDay: 1,",\n'
+    expect(run(literal).code).toBe(0)
+  })
+
+  it('still checks prose that merely mentions code', () => {
+    // A documentation sentence is prose even when it names a function.
+    expect(run('The function daySlots returns the slots for a day.\n').code).toBe(0)
+    const long = 'You must call the helper daySlots before you render the slots list for one whole day in the plan rail today.\n'
+    expect(run(long).code).toBe(1)
+  })
+
   it('the repo script exists and is runnable', () => {
     expect(() => execFileSync(process.execPath, [SCRIPT, '--help-flag-that-is-ignored'], {
       encoding: 'utf8',

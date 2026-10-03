@@ -12,6 +12,13 @@ name: CI
 # each file against eslint-baseline.json and fails only when a count rises, so
 # it cannot block work on the existing debt.
 #
+# `verify` runs `tsc -b --clean && tsc -b` FIRST: `--clean` deletes the
+# incremental cache and exits WITHOUT compiling, so without the second call the
+# only typecheck happened inside `npm run build` — last, after the whole test
+# suite (docs/AGENTS-VERIFICATION.md §3). `lint:ste` (AGENTS.md §2 rule 13) is
+# in the gate too; it was agent-memory-only until this, and `isCode` in
+# scripts/lint-ste.mjs now keeps it off real source lines.
+#
 # `test` belongs in the PR trigger for the same reason `main` does: it is where
 # feature work integrates, so while only `main` was listed it was the one
 # destination where a green check list proved nothing. A PR into `test` showed
@@ -31,7 +38,7 @@ permissions:
 
 jobs:
   verify:
-    name: Verify (tsc --clean + lint ratchet + tests + build)
+    name: Verify (tsc + lint ratchet + lint:ste + tests + build)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

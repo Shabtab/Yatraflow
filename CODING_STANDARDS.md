@@ -1099,3 +1099,26 @@ anywhere in this repo means the entry labelled `6b` below.
 
 - **A new CSS block may not claim an existing bare class name — later in the file wins on equal specificity, and the whole gate stays green while it does it (learned 2026-09-21).** I-20's unlock sheet shipped as `.reveal`, which is the Landing page's scroll-reveal utility (`body.reveal-armed .reveal` — nine elements: the section `h2`, three feature cards, four steps, all armed by one IntersectionObserver). The new block sits further down the stylesheet, so it won: those elements were re-laid-out as a flex column wearing the sheet's padding, and `.reveal > *` handed each of their children the sheet's stagger animation. **Nothing in the gate can see this** — `tsc` does not read CSS, the node tests have no DOM, and the contrast/spacing ratchets key on declarations rather than ownership — so it survived a fully green `npm run verify` (1613 passed, build clean). What caught it was rendering a page and asking the DOM a question: `document.querySelector('.reveal')` came back **truthy on a Landing render**. The recipe, cheap enough to run for every class a new block defines: `git show origin/test:src/styles.css | grep -c "\.<name>[ ,{:]"` — 15 of that block's 16 names cleared at zero and the sixteenth was the collision. Prefer a prefix you cannot collide with over a good short name (`.unlock-reveal*`, not `.reveal*`). It is now pinned by `tests/design-system.test.ts` → *"a class name has one owner"*, which fails on a bare `.reveal` selector naming the reason, and the pin was teeth-tested by appending `.reveal { outline: 0; }` and watching it fail before reverting. Same collision class as the two idea-banks' `I-19` and `I-20` (AGENTS §6): when a name is shared across the project, check the *namespace*, not just the name.
 
+## 3. Scripted edits
+
+Read this section **before** writing any script that edits a source file.
+The editor primitives are the default; a script is the exception.
+
+- **A scripted replace needs an anchor that is unique.** `.NET String.Replace`
+  replaces every occurrence, and `-replace` has no "first only" mode. A
+  `useEffect` was once inserted after the anchor `}, [isLoaded, map, data,
+  sourceId]);` in `mapcn/map.tsx`, which matched **two** components
+  (`MapGeoJSON` and `MapClusterLayer`) and wrote the effect into both. `tsc`
+  then failed with "Cannot find name" about 700 lines from the intended edit.
+  Count the anchor first — `[regex]::Matches($src, [regex]::Escape($anchor)).Count`
+  must be 1 — and use `$rx.Replace($src, $new, 1)` when it really appears twice.
+  Note that `[regex]::Matches($src, $rx.Pattern)` counts something else
+  entirely: `.Pattern` is a string, so the call returned the file's byte length.
+- **Never delete a range you found by scanning forward to the next match.**
+  That scan took the enclosing block's brace with it and left a file that did
+  not parse. The fast recovery was `git checkout -- <file>` and redo.
+- **PowerShell parses the whole script before running any of it.** Three
+  separate typos (a variable name with `?:`, a stray `)`, a backslash-escaped
+  quote) each aborted before the first statement, so nothing was ever
+  half-written. Keep that property: assert every anchor exists and is unique,
+  `throw` before any write, then verify by counting the token you inserted.

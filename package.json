@@ -16,7 +16,8 @@
     "lint": "eslint src",
     "lint:ratchet": "node scripts/lint-ratchet.mjs",
     "lint:ste": "node scripts/lint-ste.mjs",
-    "verify": "tsc -b --clean && npm run lint:ratchet && npm test && npm run build"
+    "verify": "tsc -b --clean && tsc -b && npm run lint:ratchet && npm run lint:ste && npm test && vite build",
+    "verify:typecheck": "tsc -b --clean && tsc -b"
   },
   "allowScripts": {
     "esbuild": true

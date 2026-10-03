@@ -73,6 +73,29 @@ function words(text) {
   return text.split(/\s+/).filter(Boolean)
 }
 
+// A CODE line is not prose, even when its tokens read as English. Without
+// these exclusions the checker fired on real code and forced working code to
+// be restructured to please it (an object key named `priority` read as the
+// word "prefer"; a JSX prop list read as one long sentence) — and a gate
+// that punishes correct code is a gate agents learn to ignore.
+function isCode(t) {
+  // a string literal on its own line: a fixture, a snapshot, a key
+  if (/^['"`]/.test(t) && !/^>/.test(t)) return true
+  // object / class property: `key: value`, `key:`, `"key": value`
+  if (/^['"]?[A-Za-z_$][\w$]*['"]?\s*:\s*([`'"{[(]|\d|$)/.test(t)) return true
+  // JSX attribute: `onClick={...}`, `options={[...]`, bare `foo=`
+  if (/^[A-Za-z_$][\w$.-]*\s*=\s*\{/.test(t)) return true
+  // JSX element / closing tag: `<MapTab ... />`, `</div>`
+  if (/^<\/?[A-Za-z]/.test(t) || /^>/.test(t)) return true
+  // TypeScript member / signature shapes: `foo(a: string): void`
+  if (/^[A-Za-z_$][\w$]*\([^)]*:\s*[A-Za-z]/.test(t)) return true
+  // a bare call: `foo(bar, baz)` or `foo.bar(baz)`
+  if (/^[A-Za-z_$][\w$.]*\([^)]*\)\s*[;.)]?\s*$/.test(t)) return true
+  // ends in a statement terminator after code punctuation
+  if (/[;{}]\s*$/.test(t) && /[()[\]=>]/.test(t)) return true
+  return false
+}
+
 function isProse(line) {
   const t = line.trim()
   if (!t) return false
@@ -81,6 +104,7 @@ function isProse(line) {
   if (t.startsWith('- ') || t.startsWith('* ')) return false // handled as list text
   if (/^```/.test(t)) return false             // fence
   if (/^\s*(const|let|var|function|import|export|return|if|for)\b/.test(t)) return false
+  if (isCode(t)) return false                  // code, not prose
   if (/`[^`]*`/.test(t) && !/[a-z]{4,}/i.test(t.replace(/`[^`]*`/g, ''))) return false
   return true
 }

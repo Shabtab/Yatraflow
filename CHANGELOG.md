@@ -58,6 +58,10 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - **The lint baseline is pinned to LF line endings.** `tests/lint-ratchet.test.ts`
   demands a byte-identical rewrite of `eslint-baseline.json`, which a CRLF checkout
   breaks on Windows; a `.gitattributes` rule now pins it to LF on every platform.
+- **`docs/MODULE-MAP.md` — where the big files keep their answers.** `store.ts` is
+  4,255 lines and `MapTab.tsx` 2,757; finding a function in them cost repeated
+  greps. The map names what each module owns, which function answers which
+  question, and the trap in each.
 - **The agent manual now tells an agent where to work.** `AGENTS.md` gained
   rule §2.16. It states that this machine holds many clones of the repo. It
   states that each agent must work only in its own clone. The session working
@@ -66,6 +70,8 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ### Fixed
 
+- **The prose linter now runs in the gate, and it no longer fires on source code.** `npm run lint:ste` checked only the lines an agent changed, but nothing ran it: it was memory, not a gate. It has joined `verify` and therefore CI. The checker also read real code as English — an object key named `priority` was reported as the word "prefer", a JSX prop list came back as a 45-word sentence — so correct code had to be restructured to satisfy it. Code lines are now excluded from the prose check, and three new tests pin that behaviour both ways.
+- **A type error no longer waits for the whole test suite.** `tsc -b --clean` deletes the incremental cache and exits without compiling, so the only real typecheck happened inside the production build — last. `verify` now cleans and typechecks up front, which turns a late two-minute failure into an early four-second one.
 - **The create-trip stop boxes now announce what they are.** Adding a stop and adding a return stop were the only two controls on the journey's most-used screen that reached a screen reader as a bare "combobox, edit text" — no name, because they sit outside the `Field` that labels every other control in the funnel. Both are named now, and `LocationInput` carries an optional accessible name for any future unwrapped use.
 - **Two controls no longer rely on a placeholder or a bare glyph for their meaning.** The custom cover-image URL box in Rename & cover announced only as "edit text" — its placeholder was the whole of its affordance, and it disappears on focus. The printed itinerary's confirmed badge was a lone ✓ beside a sibling badge that spells out "book"; it reads "confirmed", so one printed page now carries one convention.
 - **The error boundary uses the app's icon set.** Its warning glyph was an emoji where the rest of the product draws from Lucide; it is now the same `TriangleAlert` the sign-in page already imports.
