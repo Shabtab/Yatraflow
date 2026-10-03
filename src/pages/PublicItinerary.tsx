@@ -444,7 +444,12 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
   }
   // Undefined when the creator published the itinerary as entirely free —
   // the Unlock buttons below are hidden rather than inventing a ₹199 fallback.
-  const price = pub.premiumPriceInr
+  // Undefined when the creator published the itinerary as entirely free —
+  // the Unlock buttons below are hidden rather than inventing a ₹199 fallback.
+  // #592 — zero reads as free too: a ₹0 row that slipped past the writer must
+  // render as a free plan, not as an unchargeable ₹0 CTA whose every click
+  // answers with the checkout's "this itinerary is free" refusal.
+  const price = pub.premiumPriceInr || undefined
   // Which days this publication withholds comes from its own freeDayIndexes —
   // never from an assumed tail. A live Spiti row (₹500) locks days 5–8 and
   // leaves 9–10 free, so "the later days stay preview-only" was false there.

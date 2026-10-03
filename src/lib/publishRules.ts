@@ -81,6 +81,14 @@ export function publishValidation(input: PublishValidationInput): Partial<Record
   else if (!COVER_URL_PATTERN.test(coverImageUrl)) errs.cover = 'The cover must be an https image URL — link previews ignore anything else.'
   if (!Number.isFinite(priceNum) || priceNum < 0) errs.price = 'Price must be a number of rupees, 0 or more.'
   else if (!entirelyFree && priceNum > MAX_PREMIUM_PRICE_INR) errs.price = 'The maximum premium price is ₹1,00,000.'
+  // #592 — a charged plan at ₹0 does not exist: the gateway floor is ₹1
+  // (MIN_ORDER_AMOUNT_INR), the type contract calls 0/undefined "entirely
+  // free", and the page that skipped every rule above rendered "Unlock full
+  // plan · ₹0" over locked days — a CTA whose every click answered with the
+  // checkout's "this itinerary is free" refusal. The form never sends this
+  // (it coerces 0 to entirely-free before validating); a non-form caller is
+  // exactly the caller this module exists for.
+  else if (!entirelyFree && priceNum === 0) errs.price = 'Price must be at least ₹1 to charge for a plan.'
   else if (!Number.isInteger(priceNum)) errs.price = 'Price must be a whole number of rupees.'
   // A price over content the reader can already see is charged for nothing, so
   // a priced publication must withhold at least one day.
