@@ -19,9 +19,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
 import { seedData } from '../src/data/seed'
 import type { PublishedItinerary, Trip } from '../src/data/types'
-// The gallery's own predicate, imported rather than re-implemented: a test that
+// The catalog's own predicate, imported rather than re-implemented: a test that
 // asserts its own copy of a filter proves only that the copy agrees with itself.
-import { livePubs } from '../src/pages/Explore'
+import { livePubs } from '../src/lib/livePubs'
 
 const { calls, rpcCalls, probe, toast } = vi.hoisted(() => ({
   /** Every chained query the store built, in order. */
@@ -402,5 +402,23 @@ describe('#350 — Explore shows only what is live', () => {
     expect(page).toMatch(/let list = \[\.\.\.livePubs\(published\)\]/)
     expect(page).toMatch(/const pool = livePubs\(published\)\.filter/)
     expect(page).toMatch(/for \(const p of livePubs\(published\)\)/)
+  })
+})
+
+describe('#585 — the creator public page shows only what is live', () => {
+  it('is the filter the public catalog and its stat tiles use', () => {
+    const page = readFileSync(new URL('../src/pages/CreatorPage.tsx', import.meta.url), 'utf8')
+    // One filtered memo feeds the cards AND the three stat tiles (Itineraries,
+    // total views, total forks) — the tiles claim only what a visitor can see.
+    expect(page).toMatch(/livePubs\(published\.filter\(p => p\.creatorId === creatorId\)\)/)
+  })
+
+  it('shares one predicate copy with Explore — no page keeps its own', () => {
+    const lib = readFileSync(new URL('../src/lib/livePubs.ts', import.meta.url), 'utf8')
+    expect(lib).toContain('export function livePubs(')
+    const explore = readFileSync(new URL('../src/pages/Explore.tsx', import.meta.url), 'utf8')
+    expect(explore).toMatch(/import \{ livePubs \} from '\.\.\/lib\/livePubs'/)
+    const creator = readFileSync(new URL('../src/pages/CreatorPage.tsx', import.meta.url), 'utf8')
+    expect(creator).toMatch(/import \{ livePubs \} from '\.\.\/lib\/livePubs'/)
   })
 })
