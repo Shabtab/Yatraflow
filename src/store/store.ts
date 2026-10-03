@@ -3836,23 +3836,22 @@ export function connectRealtime(_userId: string): void {
   if (!isSupabaseConfigured || realtimeChannel) return
   try {
     let everSubscribed = false
-    realtimeChannel = supabase
-      .channel('yatraflow-live')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'trips' }, p => dispatchRealtimeEvent('trips', p))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'trip_members' }, p => dispatchRealtimeEvent('trip_members', p))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'suggestions' }, p => dispatchRealtimeEvent('suggestions', p))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'decisions' }, p => dispatchRealtimeEvent('decisions', p))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'activity' }, p => dispatchRealtimeEvent('activity', p))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, p => dispatchRealtimeEvent('notifications', p))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, p => dispatchRealtimeEvent('profiles', p))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'published_itineraries' }, p => dispatchRealtimeEvent('published_itineraries', p))
-      // #367: the audit log goes live for admins. The publication already
-      // carries admin_audit (20260909_masteradmin.sql); subscribing here ends
-      // the poll-only staleness where a second admin's actions were invisible
-      // until a manual refresh. The RLS read policy is admin-gated, so a
-      // non-admin's subscription simply never receives rows — no flag needed.
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'admin_audit' }, p => dispatchRealtimeEvent('admin_audit', p))
-      .subscribe(status => {
+    const channel = supabase.channel('yatraflow-live')
+    // ONE list drives the subscriptions AND the reconnect resync (#568):
+    // adding a table to RESYNC_TABLES is the whole job, so the two can never
+    // drift apart again — the gap that left seven slices stale on every
+    // laptop sleep. Each table dispatches identically, so the loop is the
+    // unrolled chain it replaces, verbatim.
+    // admin_audit is subscribed too (#367): the audit log goes live for
+    // admins — the publication already carries it (20260909_masteradmin.sql),
+    // ending the poll-only staleness where a second admin's actions were
+    // invisible until a manual refresh. The RLS read policy is admin-gated,
+    // so a non-admin's subscription simply never receives rows — no flag
+    // needed.
+    for (const t of RESYNC_TABLES) {
+      channel.on('postgres_changes', { event: '*', schema: 'public', table: t }, p => dispatchRealtimeEvent(t, p))
+    }
+    realtimeChannel = channel.subscribe(status => {
         // Reconnect resync: postgres_changes is NOT replayed across a socket
         // gap — after a laptop sleep / network switch the channel rejoins and
         // every row changed while we were away is silently missing, so an open
@@ -3879,28 +3878,128 @@ export function connectRealtime(_userId: string): void {
  *  payload bounded and lets RLS/the tombstone filter apply per row normally.
  *  Failures are logged, not thrown: a failed resync leaves the cache as-is
  *  (stale but consistent), and the next successful event or reload repairs it. */
+/** #568 — the tables the reconnect resync reconciles, in ONE place: every
+ *  subscription in connectRealtime has a companion here, and the source pin
+ *  keeps the two lists in step — the next table added to the channel has a
+ *  single companion to update, which is the artifact whose absence let the
+ *  first seven slices go stale on every laptop sleep. */
+const RESYNC_TABLES = [
+  'trips', 'trip_members', 'suggestions', 'decisions', 'activity',
+  'notifications', 'profiles', 'published_itineraries', 'admin_audit',
+] as const
+
+/** Feed a synthetic postgres_changes payload through the SAME dispatch a live
+ *  event takes — no bypass, no second code path: the echo window, the B2
+ *  ledger and the stale-guard semantics apply to a resynced row exactly as to
+ *  a live one. */
+function feedSynthetic(table: string, eventType: 'INSERT' | 'UPDATE' | 'DELETE', newRow: unknown, oldRow: unknown = {}): void {
+  applyRealtimeEvent(table, {
+    eventType,
+    schema: 'public',
+    table,
+    commit_timestamp: new Date().toISOString(),
+    old: oldRow,
+    new: newRow,
+  } as unknown as Parameters<typeof applyRealtimeEvent>[1])
+}
+
+/** A row DELETED during the socket gap leaves a phantom if the resync only
+ *  adds: the refetch cannot see it, so only a sweep can. Every cached row the
+ *  refetch no longer returns feeds a synthetic DELETE through the dispatch.
+ *  Scoped to what the refetch actually covers — a row outside that scope was
+ *  never evidence of anything. */
+function sweepPhantoms(
+  table: 'suggestions' | 'decisions' | 'activity',
+  tripIds: string[],
+  fetchedIds: Set<string>,
+): void {
+  const slice = table === 'suggestions' ? cache.suggestions : table === 'decisions' ? cache.decisions : cache.activity
+  for (const cached of slice) {
+    if (!tripIds.includes(cached.tripId) || fetchedIds.has(cached.id)) continue
+    feedSynthetic(table, 'DELETE', {}, { id: cached.id })
+  }
+}
+
 async function resyncTripsAfterReconnect(): Promise<void> {
   const ids = cache.trips.map(t => t.id)
   if (!ids.length) return
-  try {
-    const { data, error } = await supabase
-      .from('trips')
-      .select('*')
-      .in('id', ids)
-    if (error) { console.error('[yatraflow] reconnect resync failed', error); return }
-    for (const row of (data ?? []) as Record<string, unknown>[]) {
-      applyRealtimeEvent('trips', {
-        eventType: 'UPDATE',
-        schema: 'public',
-        table: 'trips',
-        commit_timestamp: new Date().toISOString(),
-        old: {},
-        new: row,
-      } as unknown as Parameters<typeof applyRealtimeEvent>[1])
-    }
-  } catch (e) {
-    console.error('[yatraflow] reconnect resync failed', e)
+  // Each slice reconciles independently: one flaky read must not strand the
+  // slices after it — the next resync only happens at the NEXT reconnect.
+  const step = async (label: string, fn: () => Promise<void>): Promise<void> => {
+    try { await fn() } catch (e) { console.error(`[yatraflow] reconnect resync (${label}) failed`, e) }
   }
+  await step('trips', async () => {
+    const { data, error } = await supabase.from('trips').select('*').in('id', ids)
+    if (error) throw error
+    for (const row of (data ?? []) as Record<string, unknown>[]) feedSynthetic('trips', 'UPDATE', row)
+  })
+  // The collaborative slices, scoped per trip like hydration scopes them.
+  await step('collab', async () => {
+    for (const table of ['suggestions', 'decisions', 'activity'] as const) {
+      const { data, error } = await supabase.from(table).select('*').in('trip_id', ids)
+      if (error) throw error
+      const rows = (data ?? []) as Record<string, unknown>[]
+      sweepPhantoms(table, ids, new Set(rows.map(r => String(r.id))))
+      for (const row of rows) feedSynthetic(table, 'INSERT', row)
+    }
+  })
+  // Per-USER scope, never per-trip — the RLS policy shapes the query.
+  await step('notifications', async () => {
+    const me = cache.sessionUserId
+    if (!me) return
+    const { data, error } = await supabase.from('notifications').select('*').eq('user_id', me)
+    if (error) throw error
+    const rows = (data ?? []) as Record<string, unknown>[]
+    const fetchedIds = new Set(rows.map(r => String(r.id)))
+    for (const cached of cache.notifications) {
+      if (cached.userId !== me || fetchedIds.has(cached.id)) continue
+      feedSynthetic('notifications', 'DELETE', {}, { id: cached.id })
+    }
+    for (const row of rows) feedSynthetic('notifications', 'INSERT', row)
+  })
+  // Known-trip membership changes (unknown trips take the INSERT path into
+  // fetchTripIntoCache inside the case). A missing OWN row evicts through
+  // the same branch a live DELETE uses.
+  await step('trip_members', async () => {
+    const { data, error } = await supabase.from('trip_members').select('*').in('trip_id', ids)
+    if (error) throw error
+    const rows = (data ?? []) as Record<string, unknown>[]
+    const fetchedKeys = new Set(rows.map(r => `${String(r.trip_id)}:${String(r.user_id)}`))
+    for (const tripId of ids) {
+      for (const m of tripById(tripId)?.members ?? []) {
+        if (!fetchedKeys.has(`${tripId}:${m.userId}`)) feedSynthetic('trip_members', 'DELETE', {}, { trip_id: tripId, user_id: m.userId })
+      }
+    }
+    for (const row of rows) feedSynthetic('trip_members', 'INSERT', row)
+  })
+  await step('profiles', async () => {
+    const { data, error } = await supabase.from('profiles').select('*')
+    if (error) throw error
+    // Upsert-only, no phantom sweep: there is no scoping that makes a missing
+    // profile row evidence of deletion, and the cost of a stale name for a
+    // deleted account is nil.
+    for (const row of (data ?? []) as Record<string, unknown>[]) feedSynthetic('profiles', 'INSERT', row)
+  })
+  await step('published_itineraries', async () => {
+    const { data, error } = await supabase.from('published_itineraries').select('*')
+    if (error) throw error
+    const rows = (data ?? []) as Record<string, unknown>[]
+    const fetchedIds = new Set(rows.map(r => String(r.id)))
+    // A publication unpublished mid-gap must LEAVE the cache — the stale-pub
+    // face is half this issue.
+    for (const cached of cache.published) {
+      if (fetchedIds.has(cached.id)) continue
+      feedSynthetic('published_itineraries', 'DELETE', {}, { id: cached.id })
+    }
+    for (const row of rows) feedSynthetic('published_itineraries', 'INSERT', row)
+  })
+  await step('admin_audit', async () => {
+    const { data } = await fetchAdminAuditRows()
+    // Append-only log, INSERT-only case, always PREPENDED — feed oldest-first
+    // so the newest ends up first, exactly as the live events would have.
+    const rows = ((data ?? []) as Record<string, unknown>[]).slice().reverse()
+    for (const row of rows) feedSynthetic('admin_audit', 'INSERT', row)
+  })
 }
 
 /** Tear down the channel. Call on sign-out. */

@@ -6,6 +6,7 @@
 // column is a JSONB blob, so a key the mapper drops would vanish silently).
 // B1's client gating pins that presence degrades to no-op without a backend.
 import { describe, it, expect, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { seedData } from '../src/data/seed'
 
 const { calls } = vi.hoisted(() => ({
@@ -346,5 +347,38 @@ describe('#567 — trip_members events route on the composite key, no fabricated
     expect(() => feedMembership({ eventType: 'INSERT', new: { trip_id: 'trip-not-in-cache-567', user_id: 'crew-8', role: 'editor', joined_at: 1 } })).not.toThrow()
     expect(tripById(trip.id)!.members.some(m => m.userId === 'crew-8')).toBe(false)
     expect(calls.some(c => c.table === 'trips' && (c.method === 'update' || c.method === 'insert'))).toBe(false)
+  })
+})
+
+describe('#568 — the reconnect resync covers every subscribed table', () => {
+  const store = readFileSync(new URL('../src/store/store.ts', import.meta.url), 'utf8')
+
+  it('the channel subscribes exactly the RESYNC_TABLES list', () => {
+    // The artifact whose absence let the first seven slices go stale: the
+    // resync read as complete while refetching only trips. The subscription
+    // loop and the resync now share ONE constant, so the two cannot drift —
+    // adding a table to the list is the whole job.
+    const fnStart = store.indexOf('export function connectRealtime')
+    const fn = store.slice(fnStart, store.indexOf("'[yatraflow] realtime subscribe failed'", fnStart))
+    expect(fn).toContain('for (const t of RESYNC_TABLES)')
+    const resyncMatch = store.match(/const RESYNC_TABLES = \[([^\]]+)\]/)
+    expect(resyncMatch).not.toBeNull()
+    const resynced = (resyncMatch![1]!.match(/'([a-z_]+)'/g) ?? []).map(s => s.slice(1, -1))
+    expect(resynced).toContain('trips')
+    expect(resynced).toContain('trip_members')
+    expect(resynced).toContain('notifications')
+    expect(resynced).toContain('published_itineraries')
+    expect(resynced).toContain('admin_audit')
+    expect(resynced).toHaveLength(9)
+  })
+
+  it('the gap slices refetch and feed synthetic events through the dispatch', () => {
+    // No bypass: the resync speaks the same synthetic-event grammar the trips
+    // slice always has, so the echo window and the stale guard still apply.
+    expect(store).toContain("feedSynthetic('trips', 'UPDATE', row)")
+    expect(store).toContain("feedSynthetic(table, 'INSERT', row)")
+    expect(store).toMatch(/from\('notifications'\)\.select\('\*'\)\.eq\('user_id', me\)/)
+    expect(store).toMatch(/from\('trip_members'\)\.select\('\*'\)\.in\('trip_id', ids\)/)
+    expect(store).toContain('sweepPhantoms(table, ids,')
   })
 })

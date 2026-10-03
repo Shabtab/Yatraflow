@@ -210,10 +210,14 @@ describe('reconnect resync — re-SUBSCRIBED replays cached trips through the li
   it('the resync path is guarded by the same echo window + B2 ledger as a live event', () => {
     // structural pin: the synthetic dispatch goes through applyRealtimeEvent
     // (the live-event handler), not a bespoke cache write that would bypass
-    // echo suppression and the stale guard.
+    // echo suppression and the stale guard. #568 — the resync now speaks the
+    // feedSynthetic grammar for every slice, and feedSynthetic wraps the same
+    // applyRealtimeEvent.
     const store = read('src/store/store.ts')
     expect(store).toContain('void resyncTripsAfterReconnect()')
-    expect(store).toMatch(/resyncTripsAfterReconnect[\s\S]*?applyRealtimeEvent\('trips'/)
+    expect(store).toMatch(/resyncTripsAfterReconnect[\s\S]*?feedSynthetic\('trips'/)
+    const fnStart = store.indexOf('function feedSynthetic')
+    expect(store.slice(fnStart, fnStart + 500)).toContain('applyRealtimeEvent(table,')
   })
 })
 
