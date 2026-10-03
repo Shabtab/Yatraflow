@@ -3915,8 +3915,24 @@ function applyRealtimeEvent(table: string, payload: RealtimePostgresChangesPaylo
   const event = payload.eventType as 'INSERT' | 'UPDATE' | 'DELETE'
   const row = payload.new as Record<string, any> | undefined
   const oldRow = payload.old as Record<string, any> | undefined
-  const id: string = row?.id ?? oldRow?.id
-  if (id === undefined) return
+  // #567 — the row key is PER-TABLE. `trip_members` has no `id` column (its
+  // primary key is the composite (trip_id, user_id)), and its case below never
+  // reads `id` — but the generic guard used to demand one, so every real
+  // membership payload was dropped before its case ever ran: remote evictions
+  // did not evict, remote joins never appeared, role changes never landed.
+  // The composite string keys the dispatch; the case itself keeps reading
+  // trip_id/user_id. Every other table keys on `id`, which stays guarded.
+  let id: string
+  if (table === 'trip_members') {
+    const tripId: string | undefined = row?.trip_id ?? oldRow?.trip_id
+    const userId: string | undefined = row?.user_id ?? oldRow?.user_id
+    if (!tripId || !userId) return
+    id = `${tripId}:${userId}`
+  } else {
+    const key: string | undefined = row?.id ?? oldRow?.id
+    if (key === undefined) return
+    id = key
+  }
 
   switch (table) {
     case 'trips': {
@@ -3970,6 +3986,13 @@ function applyRealtimeEvent(table: string, payload: RealtimePostgresChangesPaylo
       // If we were removed, the trip disappears from our view.
       if (event === 'DELETE' && userId === cache.sessionUserId) {
         cache.trips = cache.trips.filter(t => t.id !== tripId)
+        // #567 — mirror the trips DELETE case: the sibling slices cascade too,
+        // or the evicted trip's rows sit orphaned in the cache and resurface
+        // stale if the user is re-invited.
+        cache.suggestions = cache.suggestions.filter(s => s.tripId !== tripId)
+        cache.decisions = cache.decisions.filter(d => d.tripId !== tripId)
+        cache.activity = cache.activity.filter(a => a.tripId !== tripId)
+        cache.notifications = cache.notifications.filter(n => n.tripId !== tripId)
       } else {
         mutateTrip(tripId, draft => {
           draft.members = applyMemberChange(draft.members ?? [], {
