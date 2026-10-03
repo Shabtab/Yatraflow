@@ -169,6 +169,11 @@ export async function fetchMyOrders(userId: string | null): Promise<PurchaseOrde
     // Null before the gateway captures the money — never `new Date(null)`, which
     // is 1970 and would render as a real date.
     paidAt: row.paid_at ? new Date(row.paid_at as string).getTime() : null,
+    // #554 — the cumulative refunded paise, coerced: junk on the wire must not
+    // reach the shelf as NaN (a pre-migration database answers null).
+    refundedPaise: Number.isFinite(Number(row.refunded_paise)) && Number(row.refunded_paise) >= 0
+      ? Number(row.refunded_paise)
+      : 0,
   }))
 }
 

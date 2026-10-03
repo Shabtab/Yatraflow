@@ -175,7 +175,7 @@ export type OrderStatus = 'pending' | 'paid' | 'failed'
  *  `ENTITLEMENT_COLUMNS`, and for the same reason: a column that exists on only
  *  one side of this list turns the read into a PostgREST 400 (and the silent-[]
  *  degradation). Keep in sync with 20260918_payments_rail.sql. */
-export const ORDER_COLUMNS = 'id,user_id,pub_id,amount_inr,status,created_at,paid_at' as const
+export const ORDER_COLUMNS = 'id,user_id,pub_id,amount_inr,status,created_at,paid_at,refunded_paise' as const
 
 /** One purchase order, as the buyer's shelf needs it (#407).
  *
@@ -196,6 +196,12 @@ export interface PurchaseOrder {
   createdAt: number
   /** Epoch ms the gateway captured the money; null before that. */
   paidAt: number | null
+  /** #554 — the CUMULATIVE paise refunded against this order (Razorpay's
+   *  `payment.amount_refunded`, recorded by apply_order_refund). Zero for a
+   *  sale with no refund. A partial refund leaves the order `paid` and the
+   *  entitlement alive — this figure is how the shelf says "₹X of this came
+   *  back" without erasing the sale. Kept in paise: the books stay exact. */
+  refundedPaise: number
 }
 
 /** Whether this order's money was captured and later given back.

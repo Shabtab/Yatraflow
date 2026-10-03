@@ -898,3 +898,39 @@ describe('#589 — the shelf page renders the in-flight grant without owned affo
     expect(page).toMatch(/!row\.refunded && !row\.pendingGrant && !row\.onSale/)
   })
 })
+
+describe('#554 — a partial refund is visible on the row it did not erase', () => {
+  const paid = 1_700_000_000_000
+  const order = (overrides: Partial<PurchaseOrder> = {}): PurchaseOrder => ({
+    id: 'ord_1',
+    userId: 'buyer_1',
+    pubId: 'pub_a',
+    amountInr: 500,
+    status: 'paid',
+    createdAt: paid,
+    paidAt: paid,
+    refundedPaise: 0,
+    ...overrides,
+  })
+
+  it('a partial refund shows the returned money on the still-owned row', () => {
+    // The entitlement survived and the order stayed `paid` — the row is owned,
+    // and the ₹50 that came back is named beside the ₹500 that was paid.
+    const shelf = buildPurchaseShelf([entitlement({ orderId: 'ord_1', amountPaidInr: 500 })], [pub()], [], [order({ refundedPaise: 5000 })])
+    expect(shelf.rows[0]!.refundedPaise).toBe(5000)
+    expect(shelf.rows[0]!.refunded).toBe(false)
+    // Still owned: the share gate is untouched by a partial refund.
+    expect(purchaseShareable(shelf.rows[0]!)).toBe(true)
+  })
+
+  it('a full refund keeps its receipt shape — the figure never double-tells', () => {
+    const shelf = buildPurchaseShelf([], [pub()], [], [order({ status: 'failed', refundedPaise: 50000 })])
+    expect(shelf.rows[0]!.refunded).toBe(true)
+    expect(shelf.rows[0]!.refundedPaise).toBe(0)
+  })
+
+  it('the page renders the refunded chip in rupees', () => {
+    const page = readFileSync(new URL('../src/pages/Purchases.tsx', import.meta.url), 'utf8')
+    expect(page).toContain('{formatInr(Math.round(row.refundedPaise / 100))} refunded')
+  })
+})

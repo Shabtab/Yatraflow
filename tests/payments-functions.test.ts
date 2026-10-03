@@ -616,26 +616,32 @@ describe('POST /api/payments-webhook', () => {
     expect(res.statusCode).toBe(500)
   })
 
-  it('revokes the entitlement on payment.refunded (M2) via the service-only RPC', async () => {
+  it('routes a refund through apply_order_refund with the event amounts (#554)', async () => {
+    // #554 — the webhook carries the cumulative refunded/captured figures; the
+    // full-vs-partial decision lives in the RPC, against the ORDER's own amount.
     const refund = {
       event: 'payment.refunded',
-      payload: { payment: { entity: { order_id: 'order_ABC123', id: 'pay_XYZ789' } } },
+      payload: { payment: { entity: { order_id: 'order_ABC123', id: 'pay_XYZ789', amount: 50000, amount_refunded: 50000 } } },
     }
     const sig = await hmacHex(JSON.stringify(refund), ENV.RAZORPAY_WEBHOOK_SECRET)
-    const revokeCalls: Array<{ url: string; body: unknown }> = []
+    const refundCalls: Array<{ url: string; body: unknown }> = []
     fetchMock.mockImplementation(async (input: RequestInfo | URL, init: RequestInit = {}) => {
       const url = String(input)
-      if (url.includes('/rpc/revoke_refunded_entitlement')) {
-        revokeCalls.push({ url, body: JSON.parse(String(init.body)) })
-        return jsonResponse(true)
+      if (url.includes('/rpc/apply_order_refund')) {
+        refundCalls.push({ url, body: JSON.parse(String(init.body)) })
+        return jsonResponse('revoked')
       }
       throw new Error(`unexpected fetch ${url}`)
     })
     const res = await run(JSON.stringify(refund), sig)
     expect(res.statusCode).toBe(200)
-    expect(JSON.parse(res.body).revoked).toBe(true)
-    expect(revokeCalls).toHaveLength(1)
-    expect(revokeCalls[0]!.body).toEqual({ p_razorpay_order_id: 'order_ABC123' })
+    expect(JSON.parse(res.body)).toMatchObject({ ok: true, outcome: 'revoked' })
+    expect(refundCalls).toHaveLength(1)
+    expect(refundCalls[0]!.body).toEqual({
+      p_razorpay_order_id: 'order_ABC123',
+      p_amount_refunded_paise: 50000,
+      p_amount_captured_paise: 50000,
+    })
     // Nothing was granted and no order row was touched.
     expect(fetchMock.mock.calls.filter(c => String(c[0]).includes('/rest/v1/entitlements?on_conflict'))).toHaveLength(0)
   })
@@ -652,35 +658,36 @@ describe('POST /api/payments-webhook', () => {
     expect(fetchMock.mock.calls.filter(c => String(c[0]).includes('/rpc/'))).toHaveLength(0)
   })
 
-  it('reports a REAL revoke and a foreign refund differently, both as 200 (#355)', async () => {
-    // The whole point of the RPC's boolean: `false` means no local order carries
-    // that id, so the delivery was a foreign or test event. Both used to answer
-    // `{ revoked: true }`, which made the two indistinguishable in a log.
+  it('reports a REAL revoke and a foreign refund differently, both as 200 (#355, #554)', async () => {
+    // The whole point of the RPC's outcome string: `unknown-order` means no
+    // local order carries that id, so the delivery was a foreign or test
+    // event. Both used to answer `{ revoked: true }`, which made the two
+    // indistinguishable in a log.
     const refund = {
       event: 'payment.refunded',
-      payload: { payment: { entity: { order_id: 'order_NOTOURS', id: 'pay_XYZ789' } } },
+      payload: { payment: { entity: { order_id: 'order_NOTOURS', id: 'pay_XYZ789', amount: 50000, amount_refunded: 50000 } } },
     }
     const sig = await hmacHex(JSON.stringify(refund), ENV.RAZORPAY_WEBHOOK_SECRET)
-    fetchMock.mockImplementation(async () => jsonResponse(false))
+    fetchMock.mockImplementation(async () => jsonResponse('unknown-order'))
     const res = await run(JSON.stringify(refund), sig)
     // Still a 200 — a retry storm over an order we will never find helps nobody.
     expect(res.statusCode).toBe(200)
-    expect(JSON.parse(res.body)).toMatchObject({ ok: true, revoked: false, outcome: 'unknown-order' })
+    expect(JSON.parse(res.body)).toMatchObject({ ok: true, outcome: 'unknown-order' })
   })
 
-  it('says it could NOT tell when the revoke RPC answers something that is not a boolean (#355)', async () => {
-    // The RPC is `returns boolean`, so this is PostgREST not answering as
+  it('says it could NOT tell when the refund RPC answers off-contract (#355, #554)', async () => {
+    // The RPC is `returns text`, so this is PostgREST not answering as
     // documented. Reporting it as "unknown order" would invent a fact, and
     // reporting it as revoked would be worse.
     const refund = {
       event: 'payment.refunded',
-      payload: { payment: { entity: { order_id: 'order_ABC123', id: 'pay_XYZ789' } } },
+      payload: { payment: { entity: { order_id: 'order_ABC123', id: 'pay_XYZ789', amount: 50000, amount_refunded: 50000 } } },
     }
     const sig = await hmacHex(JSON.stringify(refund), ENV.RAZORPAY_WEBHOOK_SECRET)
     fetchMock.mockImplementation(async () => new Response('not json at all', { status: 200 }))
     const res = await run(JSON.stringify(refund), sig)
     expect(res.statusCode).toBe(200)
-    expect(JSON.parse(res.body)).toMatchObject({ ok: true, revoked: false, outcome: 'unreadable' })
+    expect(JSON.parse(res.body)).toMatchObject({ ok: true, outcome: 'unreadable' })
   })
 })
 

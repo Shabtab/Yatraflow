@@ -51,8 +51,11 @@ function readRawBody(req) {
 
 async function fetchOrderRow(supabaseUrl, serviceKey, razorpayOrderId, signal) {
   // status=eq.paid is the refund guard: a late or replayed `payment.captured`
-  // after a refund must not re-grant — revoke_refunded_entitlement flips the
-  // row paid -> failed, and without this filter the read would return it.
+  // after a FULL refund must not re-grant — revoke_refunded_entitlement flips
+  // the row paid -> failed, and without this filter the read would return it.
+  // #554 — a PARTIAL refund keeps the row `paid`, so this filter does not
+  // answer it; the duplicate-grant guard does (the entitlement row survived,
+  // so the upsert's ignore-duplicates makes the re-grant a no-op).
   const url = `${supabaseUrl.replace(/\/+$/, '')}/rest/v1/purchase_orders` +
     `?razorpay_order_id=eq.${encodeURIComponent(razorpayOrderId)}&status=eq.paid&select=id,user_id,pub_id,price_snapshot_inr,status&limit=1`
   const response = await fetch(url, {
@@ -91,29 +94,37 @@ async function grantEntitlement(supabaseUrl, serviceKey, order, signal) {
   }
 }
 
-/** Revoke through the service-only RPC and REPORT what it said (#355).
+/** Apply a refund through the service-only RPC and REPORT what it said (#355).
  *
- *  `revoke_refunded_entitlement` returns a boolean that distinguishes a REAL
- *  revoke from a no-op: `false` means no local order carries that id, so the
- *  event was foreign or a test event. This used to be discarded — the caller
- *  always answered `{ revoked: true }` — which is why a genuine revoke and a
- *  passing stranger's refund looked identical in the logs.
+ *  #554 — Razorpay emits `payment.refunded` for PARTIAL refunds as well as
+ *  full ones, and the amounts are on the event's payment entity:
+ *  `amount_refunded` is the CUMULATIVE paise returned (preferred over summing
+ *  refund events — deliveries can be missed), `amount` the paise captured.
+ *  The full-vs-partial decision itself lives in `apply_order_refund`, against
+ *  the ORDER's own `amount_inr` — the webhook carries the figures, never the
+ *  verdict. A full refund revokes as always; a partial one records the refund
+ *  and leaves the entitlement and the `paid` status alone.
  *
- *  `null` (rather than `false`) when the body is not a boolean: the RPC's
- *  contract is `returns boolean`, so that means PostgREST did not answer as
- *  documented, and claiming "unknown order" would be inventing a fact. */
-async function revokeEntitlement(supabaseUrl, serviceKey, razorpayOrderId, signal) {
-  const response = await fetch(`${supabaseUrl.replace(/\/+$/, '')}/rest/v1/rpc/revoke_refunded_entitlement`, {
+ *  The RPC's contract is `returns text` — 'revoked' | 'recorded' |
+ *  'unknown-order' | 'invalid'. `null` when the body is not a string: that
+ *  means PostgREST did not answer as documented, and guessing an outcome
+ *  would be inventing a fact. */
+async function applyRefund(supabaseUrl, serviceKey, razorpayOrderId, refundedPaise, capturedPaise, signal) {
+  const response = await fetch(`${supabaseUrl.replace(/\/+$/, '')}/rest/v1/rpc/apply_order_refund`, {
     method: 'POST',
     headers: supabaseServiceHeaders(serviceKey, {
       'content-type': 'application/json',
     }),
-    body: JSON.stringify({ p_razorpay_order_id: razorpayOrderId }),
+    body: JSON.stringify({
+      p_razorpay_order_id: razorpayOrderId,
+      p_amount_refunded_paise: refundedPaise,
+      p_amount_captured_paise: capturedPaise,
+    }),
     signal,
   })
-  if (!response.ok) throw new Error(`entitlement revoke failed: ${response.status}`)
+  if (!response.ok) throw new Error(`refund apply failed: ${response.status}`)
   const body = await response.json().catch(() => null)
-  return typeof body === 'boolean' ? body : null
+  return typeof body === 'string' ? body : null
 }
 
 export default async function handler(req, res) {
@@ -170,19 +181,25 @@ export default async function handler(req, res) {
 
   const signal = AbortSignal.timeout(8000)
   if (event.event === 'payment.refunded') {
+    // #554 — the amounts decide full vs partial, so an event without them is
+    // malformed rather than "probably full": 400 acks it for good (Razorpay
+    // stops retrying) instead of guessing a revocation either way.
+    const refundedPaise = Number(payment?.amount_refunded)
+    const capturedPaise = Number(payment?.amount)
+    if (!Number.isFinite(refundedPaise) || refundedPaise < 0 || !Number.isFinite(capturedPaise) || capturedPaise < 0) {
+      return json(res, 400, { error: 'refund event missing amount_refunded/amount' })
+    }
     try {
-      const revoked = await revokeEntitlement(supabaseUrl, serviceKey, orderId, signal)
+      const outcome = await applyRefund(supabaseUrl, serviceKey, orderId, refundedPaise, capturedPaise, signal)
       // Still a 200 for a no-op: an unknown order is a foreign or test event,
       // and a retry storm over something we will never find helps nobody.
       //
-      // What changed (#355) is that the response now SAYS which it was. The
-      // status stays 200 either way, so `outcome` is the only thing that
-      // separates a real revoke from noise in a log — which is exactly the
-      // question an operator reading these had no way to answer before.
+      // What changed (#355) is that the response SAYS which it was; #554
+      // extends the vocabulary — 'recorded' is the partial-refund outcome,
+      // where the sale survives and the refund is on the books.
       return json(res, 200, {
         ok: true,
-        revoked: revoked === true,
-        outcome: revoked === true ? 'revoked' : revoked === false ? 'unknown-order' : 'unreadable',
+        outcome: outcome ?? 'unreadable',
       })
     } catch {
       return json(res, 500, { error: 'could not revoke the entitlement' })
