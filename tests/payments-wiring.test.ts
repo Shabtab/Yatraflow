@@ -45,7 +45,7 @@ describe('the public page wires the real unlock flow', () => {
   it('purchases through lib/unlock and gates rendering with hasUnlock', () => {
     expect(page).toMatch(/import\s*\{[^}]*purchaseUnlock[^}]*\}\s*from\s*'\.\.\/lib\/unlock'/)
     expect(page).toMatch(/import\s*\{[^}]*hasUnlock[^}]*\}\s*from\s*'\.\.\/lib\/payments'/)
-    expect(page).toContain('const unlocked = hasUnlock(')
+    expect(page).toContain('const unlocked = tripReReadFailed ? false : hasUnlock(')
   })
 
   it('disables the unlock buttons while a purchase is in flight (the #36-6 rule)', () => {
@@ -142,8 +142,10 @@ describe('the public page wires the real unlock flow', () => {
     expect(code).toContain('entitlementsReading')
     expect(code).toContain('entitlementsRetry')
     // 2. The price CTA is gated on a read that ANSWERED. A logged-out visitor
-    //    has nothing to check, so the gate opens for them.
-    expect(code).toMatch(/const mayShowPriceCta = !meId \|\| entitlementRead === 'ready'/)
+    //    has nothing to check, so the gate opens for them. #588 adds the
+    //    second conjunct: a stuck post-purchase trip re-read silences the CTA
+    //    too — the buyer owns the plan, so no price tag may render.
+    expect(code).toMatch(/const mayShowPriceCta = \(!meId \|\| entitlementRead === 'ready'\) && !tripReReadFailed/)
     // 3. Every one of the two price buttons sits behind that gate — the day-card
     //    one and the sticky-sidebar one. A single unguarded site is enough to
     //    re-open the bug, and a guard that only covers the obvious one is the
@@ -171,9 +173,12 @@ describe('the public page wires the real unlock flow', () => {
     // The catch sets the error flag and NOTHING else — it does not clear the
     // list, so a refresh that fails cannot take away access already on screen.
     expect(code).toMatch(/\.catch\(\(\) => \{ if \(alive\) setEntitlementsError\(true\) \}\)/)
-    // `unlocked` is still `hasUnlock(entitlements, …)` — the failure flag is
-    // routed to the UI, never into the unlock decision.
-    expect(code).toMatch(/const unlocked = hasUnlock\(entitlements, meId/)
+    // `unlocked` is still derived from `hasUnlock(entitlements, …)` — the
+    // entitlement failure flag is routed to the UI, never into the unlock
+    // decision. #588 adds exactly one narrowing conjunct in front of it (the
+    // stuck post-purchase trip re-read), and that flag can only ever turn a
+    // true into a false — it never widens what is shown.
+    expect(code).toMatch(/const unlocked = tripReReadFailed \? false : hasUnlock\(entitlements, meId/)
     // And the paywall itself is untouched: this is a presentation gate, the wire
     // still decides what content exists.
     expect(code).toContain('forkPublication(pub!, me?.id ?? null, onNavigate, unlocked, shareRefFromSearch(window.location.search))')
@@ -283,5 +288,46 @@ describe('the unlock library degrades honestly', () => {
     // A logged-out visitor is still an empty list — there is nothing to read,
     // and that is not a failure.
     expect(fn).toMatch(/if \(!userId\) return \[\]/)
+  })
+})
+
+describe('#588 — a failed post-purchase re-read cannot render as fresh', () => {
+  const page = read('../src/pages/PublicItinerary.tsx')
+
+  it('the entitlement catch clears the read marker, so the gate falls to failed', () => {
+    // #359's keep-proven-access ordering is deliberate — and it is exactly
+    // what made the failure invisible here: the pre-purchase read proved
+    // NOT-owning, so the marker standing means a stale negative renders as
+    // fresh. The post-purchase catch must clear the marker with the flag.
+    // Anchored to the onUnlocked chain — the folded retry's catch shares the
+    // shape but its then-clause also sets the read marker, so a bare catch
+    // regex could pass on the wrong call site.
+    expect(page).toMatch(/setEntitlements\(rows\); setEntitlementsError\(false\) \}\)\s*\.catch\(\(\) => \{ setEntitlementsError\(true\); setEntitlementsReadFor\(null\) \}\)/)
+  })
+
+  it('a null post-purchase trip sets the stuck flag; only a real trip clears it', () => {
+    expect(page).toMatch(/else \{\s*setTripReReadFailedFor\(pub!\.id\)/)
+    expect(page).toMatch(/setFetched\(fresh\)\s*setTripReReadFailedFor\(null\)/)
+  })
+
+  it('the stuck flag gates the lock and silences the price CTA', () => {
+    // The overlays stay over the stub, and no "Unlock full plan" can render
+    // for the plan the buyer just paid for.
+    expect(page).toMatch(/const unlocked = tripReReadFailed \? false : hasUnlock\(/)
+    expect(page).toMatch(/mayShowPriceCta = \(!meId \|\| entitlementRead === 'ready'\) && !tripReReadFailed/)
+  })
+
+  it('both CTA sites route the stuck state to the post-purchase panel', () => {
+    expect((page.match(/<PurchaseLoadState/g) ?? []).length).toBe(2)
+    expect(page).toMatch(/retryPostPurchaseReads/)
+  })
+
+  it('the folded retry asks both halves of the question', () => {
+    // One Retry re-runs the entitlement read AND the trip read — two halves
+    // of one question (what did I just buy).
+    expect(page).toMatch(/const retryPostPurchaseReads = useCallback/)
+    const fn = page.slice(page.indexOf('const retryPostPurchaseReads'), page.indexOf('}, [pub?.id, meId, postPurchaseRetrying])'))
+    expect(fn).toContain('fetchMyEntitlements(meId)')
+    expect(fn).toContain('fetchPublicTrip(id)')
   })
 })

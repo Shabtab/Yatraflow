@@ -226,11 +226,13 @@ describe('I-20 — the bought plan is re-read, not re-rendered', () => {
     // and costs, so lifting the lock over it shows a full-looking plan made of
     // placeholders. Removing this fetch is the regression this pins.
     expect(pageSource).toMatch(/const fresh = await fetchPublicTrip/)
-    expect(pageSource).toMatch(/if \(fresh\) setFetched\(fresh\)/)
+    // #588 — the fresh trip also clears the stuck flag; a null re-read routes
+    // to the post-purchase retry panel instead of silently keeping the stub.
+    expect(pageSource).toMatch(/if \(fresh\) \{\s*setFetched\(fresh\)\s*setTripReReadFailedFor\(null\)/)
   })
 
   it('opens the reveal only with the copy that came back after the entitlement existed', () => {
-    expect(pageSource).toMatch(/if \(outcome === 'unlocked' && fresh\) setRevealTrip\(fresh\)/)
+    expect(pageSource).toMatch(/if \(outcome === 'unlocked'\) setRevealTrip\(fresh\)/)
     expect(pageSource).toMatch(/trip=\{revealTrip\}/)
   })
 

@@ -64,6 +64,26 @@ function UnlockCheckState({ read, onRetry, centered }: {
   )
 }
 
+/** #588 — the purchase SUCCEEDED and the access check agrees, but the re-read
+ *  that should replace the pre-purchase stub with the real days came back
+ *  empty. The pages stay locked (placeholder copy must never render as the
+ *  plan the buyer owns) and this panel says what actually happened. */
+function PurchaseLoadState({ onRetry, retrying, centered }: {
+  onRetry: () => void
+  retrying: boolean
+  centered?: boolean
+}) {
+  return (
+    <div className="hub-note is-failure" role="alert" style={{ marginTop: 8, textAlign: centered ? 'center' : undefined }}>
+      <b>Your purchase went through.</b> The full plan could not load just now, so the pages stay
+      locked rather than show placeholder text. Nothing was charged twice.
+      <button className="btn btn-outline btn-sm hub-note-action" disabled={retrying} onClick={onRetry}>
+        {retrying ? 'Loading…' : 'Retry'}
+      </button>
+    </div>
+  )
+}
+
 export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavigate: (r: string) => void }) {
   const db = useDb()
   const timeFormat = useTimeFormat()
@@ -101,6 +121,12 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
   const [entitlementsSettled, setEntitlementsSettled] = useState(-1)
   const entitlementsReading = entitlementsRetry !== entitlementsSettled
   const [buying, setBuying] = useState(false)
+  // #588 — the post-purchase trip re-read failed: `fetchPublicTrip` answers
+  // null on a dropped connection, and null must not read as "nothing to do".
+  // Keyed by publication id like the entitlement read marker, so a second
+  // publication on the same mounted page cannot inherit the flag.
+  const [tripReReadFailedFor, setTripReReadFailedFor] = useState<string | null>(null)
+  const [postPurchaseRetrying, setPostPurchaseRetrying] = useState(false)
   // F3 (#227) — the WhatsApp send in flight, held so a double-tap cannot
   // fire two sheets or open two chat tabs. The §6a guard on an async path:
   // disabled while it runs, and the button says so.
@@ -282,7 +308,12 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
   // strings while the row is missing — hasUnlock can match neither a creator id
   // nor an entitlement against those, so "no publication" reads as not
   // unlocked, which is what the loading/error branches below then say.)
-  const unlocked = hasUnlock(entitlements, meId, pub?.id ?? '', pub?.creatorId ?? '')
+  // #588 — while the post-purchase re-read is stuck, the page still holds the
+  // PRE-purchase stub. Ungating the lock would lift the overlays over
+  // placeholder copy, so the access stays visually locked until the real days
+  // arrive (the retry panel says what is happening).
+  const tripReReadFailed = !!pub && tripReReadFailedFor === pub.id
+  const unlocked = tripReReadFailed ? false : hasUnlock(entitlements, meId, pub?.id ?? '', pub?.creatorId ?? '')
   /** The entitlement read has landed FOR THIS publication. */
   const entitlementsRead = !!pub && entitlementsReadFor === pub.id
   // #359 — which of the three truths the gate is looking at. Ordered the way
@@ -301,13 +332,36 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
       : entitlementsError
         ? 'failed'
         : 'reading'
-  /** A logged-out visitor has nothing to check, so the CTA is honest for them. */
-  const mayShowPriceCta = !meId || entitlementRead === 'ready'
+  /** A logged-out visitor has nothing to check, so the CTA is honest for them.
+   *  #588 — a stuck post-purchase re-read silences it too: the buyer owns the
+   *  plan, so a price tag over the locked pages would be the exact
+   *  contradiction the gate exists to prevent. */
+  const mayShowPriceCta = (!meId || entitlementRead === 'ready') && !tripReReadFailed
   // #359 — asking again is a NEW question, so it takes a new attempt number; the
   // derived `entitlementsReading` flips true on its own and the button's own
   // label says "Checking…" rather than re-rendering the alert it was pressed
   // against (a dead button, per the hub's retry rule).
   const retryEntitlements = useCallback(() => { setEntitlementsRetry(n => n + 1) }, [])
+
+  // #588 — the two re-reads are two halves of one question (what did I just
+  // buy), so one Retry asks both. The entitlement half reuses the same state
+  // the gate derives from; the trip half clears the stuck flag only on a real
+  // trip, never on another null. (Placed above the early returns with the
+  // other hooks — a hook below a return crashes the page on a full reload.)
+  const retryPostPurchaseReads = useCallback(() => {
+    const id = pub?.id
+    if (!id || !meId || postPurchaseRetrying) return
+    setPostPurchaseRetrying(true)
+    void fetchMyEntitlements(meId)
+      .then(rows => { setEntitlements(rows); setEntitlementsError(false); setEntitlementsReadFor(id) })
+      .catch(() => { setEntitlementsError(true); setEntitlementsReadFor(null) })
+    void fetchPublicTrip(id).then(fresh => {
+      if (fresh) {
+        setFetched(fresh)
+        setTripReReadFailedFor(null)
+      }
+    }).finally(() => setPostPurchaseRetrying(false))
+  }, [pub?.id, meId, postPurchaseRetrying])
 
   // ---- Soft-unpublish (#350). The row survives — that is what keeps buyers
   // whole — but the page is no longer public. The creator and anyone holding an
@@ -412,13 +466,15 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
       title: pub!.title,
       onUnlocked: () => {
         // #359 — this read REJECTS now, so a failure here must not be a
-        // rejection nobody catches. It is routed through the same error flag the
-        // first read uses, which is the honest outcome: the purchase succeeded
-        // (the wire now serves real days) but the buyer's own shelf could not be
-        // re-read, so the page says so rather than showing a stale access list.
+        // rejection nobody catches. #588 — and the catch must not stop at the
+        // error flag: the derive keeps 'ready' while the read marker stands,
+        // and that marker now proves NOT-owning (the pre-purchase read).
+        // Clearing it drops the gate to 'failed', whose Retry re-asks.
+        // #359's keep-proven-access rule is about a failed refresh behind
+        // access already proven — this read was asking for NEW access.
         void fetchMyEntitlements(meId)
           .then(rows => { setEntitlements(rows); setEntitlementsError(false) })
-          .catch(() => { setEntitlementsError(true) })
+          .catch(() => { setEntitlementsError(true); setEntitlementsReadFor(null) })
       },
     }).then(async outcome => {
       // Both a completed purchase and a 409 mean the days are readable now (the
@@ -432,11 +488,21 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
       // placeholder text. Re-read through the same RPC — the entitlement now
       // exists, so it answers with real days — rather than clearing `fetched`,
       // which would flash the loading state mid-ceremony.
+      // #588 — null here is a dropped connection, not a missing row (the
+      // purchase just succeeded, so the row exists). `if (fresh)` alone would
+      // silently keep the stub and, with the entitlement re-read succeeded,
+      // lift the lock over placeholder copy. The flag routes the page to the
+      // post-purchase retry panel instead.
       const fresh = await fetchPublicTrip(pub!.id)
-      if (fresh) setFetched(fresh)
-      // The reveal opens only on a real trip: its numbers ARE the point, and
-      // stats read from the stubbed copy would describe an empty plan.
-      if (outcome === 'unlocked' && fresh) setRevealTrip(fresh)
+      if (fresh) {
+        setFetched(fresh)
+        setTripReReadFailedFor(null)
+        // The reveal opens only on a real trip: its numbers ARE the point, and
+        // stats read from the stubbed copy would describe an empty plan.
+        if (outcome === 'unlocked') setRevealTrip(fresh)
+      } else {
+        setTripReReadFailedFor(pub!.id)
+      }
     }).finally(() => setBuying(false))
   }
 
@@ -632,7 +698,9 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
                               actually answered. Over a failed read it would be a
                               price tag on a plan the buyer already paid for. */}
                           {price !== undefined && mayShowPriceCta && <button className="btn btn-saffron" disabled={buying} onClick={unlockThis}>{buying ? 'Opening payments…' : <>Unlock full plan · {formatInr(price)}</>}</button>}
-                          {price !== undefined && !mayShowPriceCta && <UnlockCheckState read={entitlementRead} onRetry={retryEntitlements} />}
+                          {price !== undefined && !mayShowPriceCta && (tripReReadFailed
+                            ? <PurchaseLoadState onRetry={retryPostPurchaseReads} retrying={postPurchaseRetrying} />
+                            : <UnlockCheckState read={entitlementRead} onRetry={retryEntitlements} />)}
                         </div>
                       </div>
                     </>
@@ -688,7 +756,9 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
                     because one is in a day card and one in the sticky sidebar:
                     a buyer must not meet "Unlock for ₹499" for their own plan
                     in either. */}
-                {price !== undefined && !unlocked && !mayShowPriceCta && <UnlockCheckState read={entitlementRead} onRetry={retryEntitlements} centered />}
+                {price !== undefined && !unlocked && !mayShowPriceCta && (tripReReadFailed
+                  ? <PurchaseLoadState onRetry={retryPostPurchaseReads} retrying={postPurchaseRetrying} centered />
+                  : <UnlockCheckState read={entitlementRead} onRetry={retryEntitlements} centered />)}
                 {price !== undefined && unlocked && <p className="hint-text" style={{ textAlign: 'center', marginTop: 10 }}>
                   ✓ Full plan unlocked — forking carries every day as a real, editable plan.
                 </p>}
