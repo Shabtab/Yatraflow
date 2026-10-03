@@ -187,7 +187,10 @@ describe('#367 — source invariants', () => {
   const page = read('src/pages/AdminPage.tsx')
 
   it('connectRealtime subscribes admin_audit (the publication already carries it)', () => {
-    expect(store).toMatch(/table: 'admin_audit'/)
+    // #568 — the subscriptions iterate the shared RESYNC_TABLES constant, so
+    // the subscription is expressed by the list containing the table.
+    expect(store).toContain('for (const t of RESYNC_TABLES)')
+    expect(store).toMatch(/const RESYNC_TABLES = \[[^\]]*'admin_audit'/)
   })
 
   it('the console header states the hatch boundary', () => {
