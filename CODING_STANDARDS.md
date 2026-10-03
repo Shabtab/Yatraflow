@@ -571,6 +571,29 @@ anywhere in this repo means the entry labelled `6b` below.
    sites, so the two surfaces carry source pins too (the timeline-quick-add
    pattern); stashing just the components fails exactly those.
 
+ 6ab. **A tombstone and a sale-withdrawal are two different verbs — and
+   `raise exception` rolls back its own audit row (learned 2026-10-02, the
+   marker-family sweep).** Trashing a trip stamped only `trips.deleted_at`,
+   while every selling surface (Explore, the sitemap, the share card, checkout)
+   reads `published_itineraries.unpublished_at` — so a trashed trip kept
+   SELLING while `get_public_trip`'s tombstone filter simultaneously darkened
+   the buyers' links: the worst of both halves, from one write where the verb
+   needed two. Mechanics: (1) when a lifecycle verb spans two rows, name BOTH
+   writes and order them so a half-done state is the harmless one (withdraw
+   first, tombstone second — a plan that stopped selling but stayed listed is
+   survivable; the reverse is not); (2) when the second write is gated by a
+   different principal (`published write` is `auth.uid() = creator_id`, `trips
+   update` is `is_editor`), the actor who cannot write it is REFUSED the whole
+   verb rather than half-served — and deliberately no trigger: withdrawing the
+   sale is the creator's action, not a side effect; (3) `raise exception` aborts
+   the transaction INCLUDING any insert made earlier in the same function, so
+   "audit before the effect leaves an attempted row" is only true when the
+   failure arrives as an error RESPONSE after the body commits, never for a
+   raise inside it. A refusal that must be recorded cannot also raise — pick the
+   return-value shape or surface the sentence to the caller; a refusal with
+   nothing destroyed and nothing to record should raise and say why. The
+   comment in 20260929_trash_purge_audit.sql still over-promises on this point.
+
 ## 2. Conventions (`AGENTS.md` §4)
 
 - **Anything that leaves the device must read STORED state, never what a component happens to render (learned 2026-09-19).** `CoverThumb` resolves a trip's cover from three sources in order — the owner's explicit `coverImageUrl`, then a Wikipedia photo fetched at runtime and cached in localStorage — so a trip with no stored cover still *looks* illustrated. The share preview has no such fallback chain: `api/i.js` reads `published_itineraries.cover_image_url` and nothing else, so a publication published without an explicit cover stamped `NULL` and previewed as the brand card while the app showed a photo of the destination. Both halves were correct in isolation and the reporter's symptom ("it shows the brand image on all links") read like a handler bug; the data answered it in one query (`select id, cover_image_url from published_itineraries`). Rule: when a rendered value has a runtime fallback, ask what the *stored* value is before debugging the consumer — and if a downstream surface (a crawler, an API, an export) can only read the stored one, make the fallback explicit and persisted at the moment the user commits (here: the publish form requires a saved cover), or the two will disagree silently forever.

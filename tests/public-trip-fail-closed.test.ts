@@ -19,7 +19,7 @@ const codeOf = (source: string) => source
   .replace(/--[^\n]*/g, ' ')
   .replace(/(^|\n)[^\S\n]*\/\/[^\n]*/g, '$1')
 
-const NEWEST = '20260928_public_trip_fail_closed.sql'
+const NEWEST = '20261002_trash_purge_publication_guard.sql'
 
 /** The `$$`-delimited body of a named function, comments stripped. Located by
  *  index rather than by a built pattern, so no `RegExp` is ever constructed
@@ -145,12 +145,43 @@ describe('every redefinition keeps what the previous three fixes added', () => {
       .filter(f => f.endsWith('.sql'))
       .filter(f => codeOf(read(`../supabase/migrations/${f}`)).includes('create or replace function public.get_public_trip('))
       .sort()
-    // Four files now define it; whichever sorts LAST is what a fresh in-order
-    // apply leaves behind.
+    // Five files now define it; whichever sorts LAST is what a fresh in-order
+    // apply leaves behind (§6k — and the last one must carry the previous
+    // four's guards, which is what the tests above pin).
     expect(definers.length).toBeGreaterThan(1)
     expect(definers[definers.length - 1]).toBe(NEWEST)
     expect(read(`../supabase/migrations/${NEWEST}`)).toMatch(
       /grant execute on function public\.get_public_trip\(text\) to anon, authenticated/,
     )
+  })
+})
+
+// ============ #566 — trash is a withdraw, never a revoke ============
+// The trip fetch used to filter `t.deleted_at is null`, so the moment a creator
+// hit Trash, every buyer's link went dark — the tombstone is about the trip's
+// place in the owner's lists, not about what buyers paid for. The filter is
+// replaced by a gate that serves the creator and every entitled buyer and
+// turns away only the viewers who had no claim on the plan.
+describe('#566 — a trashed trip keeps serving its creator and buyers', () => {
+  it('drops the tombstone filter from the trip fetch', () => {
+    // The change itself: this pattern is what darkened buyers' links.
+    expect(body()).not.toMatch(/and t\.deleted_at is null/)
+  })
+
+  it('gates on the tombstone instead — creator and entitled buyers pass', () => {
+    const fn = body()
+    expect(fn, 'the trash gate is gone').toMatch(/if v_trip\.deleted_at is not null and not \(/)
+    const gate = fn.slice(fn.indexOf('if v_trip.deleted_at is not null and not ('))
+    const claimants = gate.slice(0, gate.indexOf('then'))
+    expect(claimants).toContain('v_pub.creator_id = auth.uid()')
+    expect(claimants).toContain('from public.entitlements e')
+  })
+
+  it('runs the gate before any path that could serve the trip', () => {
+    const fn = body()
+    const gate = fn.indexOf('if v_trip.deleted_at is not null and not (')
+    expect(gate).toBeGreaterThan(-1)
+    // Before the first `return next`, so no branch can skip it.
+    expect(gate).toBeLessThan(fn.indexOf('return next v_trip'))
   })
 })

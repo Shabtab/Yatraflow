@@ -163,13 +163,13 @@ describe('#351 — the anon paywalled RPC cannot hand out a capability', () => {
   it('the definition a fresh database ends up with is the fixed one — and it keeps #350', () => {
     const files = defining('get_public_trip')
 
-    // More than one file defines it (#350, this fix, then #352/#353), so name
-    // order decides — and it now decides in a LATER file's favour. That is the
-    // point of this test rather than an inconvenience: the fix has to survive
-    // every subsequent redefinition, so the assertions below run against the
-    // newest one, and the loop at the end of this block applies the same rule
-    // to anything added after it.
-    const NEWEST = '20260928_public_trip_fail_closed.sql'
+    // More than one file defines it (#350, this fix, then #352/#353, then
+    // #566's trash gate), so name order decides — and it now decides in a
+    // LATER file's favour. That is the point of this test rather than an
+    // inconvenience: the fix has to survive every subsequent redefinition, so
+    // the assertions below run against the newest one, and the loop at the end
+    // of this block applies the same rule to anything added after it.
+    const NEWEST = '20261002_trash_purge_publication_guard.sql'
     expect(files.length).toBeGreaterThan(1)
     expect(files[files.length - 1]).toBe(NEWEST)
 

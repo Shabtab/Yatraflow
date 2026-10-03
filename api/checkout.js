@@ -44,8 +44,12 @@ async function authUserId(supabaseUrl, anonKey, token, signal) {
 }
 
 async function fetchPublication(supabaseUrl, anonKey, pubId, signal) {
+  // unpublished_at=is.null: the paywall is at the wire, not in React — a
+  // withdrawn plan must not mint a gateway order. Rows survive #350, so a
+  // withdrawn pub otherwise reads as present and sells; with the filter it
+  // takes the exact "not found" refusal a missing row already gets.
   const url = `${supabaseUrl.replace(/\/+$/, '')}/rest/v1/published_itineraries` +
-    `?id=eq.${encodeURIComponent(pubId)}&select=id,trip_id,creator_id,premium_price_inr&limit=1`
+    `?id=eq.${encodeURIComponent(pubId)}&unpublished_at=is.null&select=id,trip_id,creator_id,premium_price_inr&limit=1`
   const response = await fetch(url, {
     headers: supabaseAnonHeaders(anonKey),
     signal,
