@@ -1,9 +1,16 @@
 // ============ trips table serialization + Supabase error classification ============
 // Pure helpers with NO react/supabase/toast imports, so the row mapping and the
 // missing-column detection are unit-testable in the node test environment.
-import type { Trip, ItineraryDay, TripMember, Expense, FixedCommitment, LatLngPoint } from '../data/types'
+import type { Trip, ItineraryDay, ItineraryStop, TripMember, Expense, FixedCommitment, LatLngPoint } from '../data/types'
 import { normalizeVehicleProfile } from './vehicleProfile'
 import { allowedAmount } from './expenseAmount'
+
+/** #559 — the jsonb coercion: a real array passes, ANYTHING else (null, an
+ *  object, a string, a number) becomes empty. `?? []` only answers null, which
+ *  is how a corrupt jsonb value reached renders as a typed lie. */
+function arrayOrEmpty<T>(v: unknown): T[] {
+  return Array.isArray(v) ? (v as T[]) : []
+}
 
 export interface TripRow {
   id: string; owner_id: string; name: string; start_location: string;
@@ -94,27 +101,39 @@ export function rowToTrip(row: TripRow, members: TripMember[]): Trip {
   const tankL = sanitizeTankL(row.tank_l)
   const rentPerDayInr = sanitizeRentPerDayInr(row.rent_per_day_inr)
   const localTrain = typeof row.local_train === 'boolean' ? row.local_train : undefined
+  // #559 — the jsonb columns are corruptible (direct SQL, a partial write, a
+  // restored dump): the server's own RPCs guard them with `jsonb_typeof`,
+  // so `?? []` is not enough — it answers null but passes a non-array object
+  // straight through, and the first render that calls .flatMap/.map on the
+  // lie crashes. This mapper is the chokepoint: every downstream reader
+  // inherits the coercion, so it lives here and nowhere else.
+  const destinations = arrayOrEmpty<string>(row.destinations)
+  const fixedCommitments = arrayOrEmpty<FixedCommitment>(row.fixed_commitments)
+  const days = arrayOrEmpty<ItineraryDay>(row.days)
+    .filter(d => d != null && typeof d === 'object')
+    .map(d => ({ ...d, stops: arrayOrEmpty<ItineraryStop>(d.stops) }))
   // #382: a hydrate drops what the writers refuse. A row persisted by the old
   // code — or hand-edited in the dashboard — can carry a non-finite, negative
   // or zero amount, and it would flow into the totals, the settlement math and
   // the pacing figure. The rule is the importer's own (lib/expenseAmount), one
   // rule for every path; the drop is said in the console because a hydrate has
   // no toast surface to say it on.
-  const expenses = (row.expenses ?? []).filter(e => {
+  const expenses = arrayOrEmpty<Expense>(row.expenses).filter(e => {
+    if (e == null || typeof e !== 'object') return false
     if (allowedAmount(e.amountInr) !== null) return true
     console.warn(`tripRow: dropped expense "${e.label}" — amount ${String(e.amountInr)} is not a finite number of rupees above zero`)
     return false
   })
   return {
     id: row.id, name: row.name, startLocation: row.start_location, startLocationCoords: row.start_location_coords ?? undefined,
-    destinations: row.destinations ?? [],
+    destinations,
     destinationCoords: row.destination_coords ?? undefined,
     startDate: row.start_date, endDate: row.end_date, travellers: row.travellers,
     transportMode: row.transport_mode as Trip['transportMode'], budgetPerPersonInr: row.budget_per_person_inr,
     fuelEconomyKmL: row.fuel_economy_km_per_l ?? undefined,
     fuelPricePerL: row.fuel_price_per_l ?? undefined,
     roundTrip: row.round_trip ?? undefined,
-    travelStyle: row.travel_style as Trip['travelStyle'], fixedCommitments: row.fixed_commitments ?? [],
+    travelStyle: row.travel_style as Trip['travelStyle'], fixedCommitments,
     // Absent column (pre-migration) stays undefined so stayKeyFor() falls back to
     // the legacy travelStyle and no stored trip re-prices silently.
     stayStyle: (row.stay_style ?? undefined) as Trip['stayStyle'],
@@ -125,7 +144,7 @@ export function rowToTrip(row: TripRow, members: TripMember[]): Trip {
     tankL: tankL ?? undefined,
     rentPerDayInr: rentPerDayInr ?? undefined,
     localTrain,
-    days: row.days ?? [], expenses, coverEmoji: row.cover_emoji,
+    days, expenses, coverEmoji: row.cover_emoji,
     coverImageUrl: row.cover_image_url ?? undefined, inviteCode: row.invite_code ?? undefined,
     ref: row.ref ?? undefined,
     visibility: row.visibility, deletedAt: row.deleted_at != null ? new Date(row.deleted_at).getTime() : undefined,
