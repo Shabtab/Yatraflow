@@ -331,3 +331,27 @@ describe('#588 — a failed post-purchase re-read cannot render as fresh', () =>
     expect(fn).toContain('fetchPublicTrip(id)')
   })
 })
+
+describe('#587 — the entitlements read timeout is bound to the request', () => {
+  const page = read('../src/pages/PublicItinerary.tsx')
+
+  it('the read takes a signal and hands it to the wire', () => {
+    // The bounded-read recipe existed except the wire between its halves: the
+    // page aborted a controller no request listened to, so a hung connection
+    // never settled the promise and "Checking your access…" had no exit.
+    const source = read('../src/lib/unlock.ts')
+    const fn = fnSource(source, 'fetchMyEntitlements')
+    expect(fn).toContain('opts: { signal?: AbortSignal } = {}')
+    expect(fn).toContain('opts.signal ? query.abortSignal(opts.signal) : query')
+  })
+
+  it('a timeout logs as a failure and a teardown as a cancel, like the siblings', () => {
+    const source = read('../src/lib/unlock.ts')
+    const fn = fnSource(source, 'fetchMyEntitlements')
+    expect(fn).toContain("reportReadFailure('entitlements', error, opts.signal)")
+  })
+
+  it('the effect passes its controller signal to the read', () => {
+    expect(page).toContain('fetchMyEntitlements(meId, { signal: ac.signal })')
+  })
+})

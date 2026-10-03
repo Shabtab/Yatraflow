@@ -186,7 +186,10 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
     // REJECTS now, so this needs both arms. A success clears the failure flag;
     // a failure sets it WITHOUT clearing the entitlements, so a refresh that
     // could not be replaced keeps the access it already proved.
-    void fetchMyEntitlements(meId)
+    // #587 — the signal is HANDED to the read: the timeout was aborting a
+    // controller no request listened to, so a hung connection never settled
+    // the promise and the page sat on "Checking your access…" forever.
+    void fetchMyEntitlements(meId, { signal: ac.signal })
       .then(rows => {
         if (!alive) return
         setEntitlements(rows)

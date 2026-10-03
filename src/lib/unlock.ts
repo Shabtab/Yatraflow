@@ -72,14 +72,19 @@ export function loadRazorpay(): Promise<boolean> {
  *  A logged-out visitor still gets `[]` — there is nothing to read, and that is
  *  not a failure. Every caller owns the error state; none of them may treat a
  *  rejection as a non-owner. */
-export async function fetchMyEntitlements(userId: string | null): Promise<Entitlement[]> {
+export async function fetchMyEntitlements(userId: string | null, opts: { signal?: AbortSignal } = {}): Promise<Entitlement[]> {
   if (!userId) return []
-  const { data, error } = await supabase
+  const query = supabase
     .from('entitlements')
     .select(ENTITLEMENT_COLUMNS)
     .eq('user_id', userId)
+  // #587 — the caller's signal is HONOURED, not ignored: the public page binds
+  // this read to a 10-second timeout and an effect teardown, and a signal that
+  // reaches nothing aborts a controller no request listens to while the read
+  // hangs forever. Same contract as the creator reads below.
+  const { data, error } = await (opts.signal ? query.abortSignal(opts.signal) : query)
   if (error) {
-    console.error('[yatraflow] entitlements read failed', error)
+    reportReadFailure('entitlements', error, opts.signal)
     throw error
   }
   // The epoch-ms fields arrive as ISO strings; shape them for the type.
