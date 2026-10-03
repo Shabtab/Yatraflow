@@ -58,6 +58,11 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - **The lint baseline is pinned to LF line endings.** `tests/lint-ratchet.test.ts`
   demands a byte-identical rewrite of `eslint-baseline.json`, which a CRLF checkout
   breaks on Windows; a `.gitattributes` rule now pins it to LF on every platform.
+- **The agent manual now tells an agent where to work.** `AGENTS.md` gained
+  rule §2.16. It states that this machine holds many clones of the repo. It
+  states that each agent must work only in its own clone. The session working
+  directory is not a repo, so you must give every command an explicit root. The
+  clone-to-agent list stays in the global user-level `AGENTS.md`.
 
 ### Fixed
 
