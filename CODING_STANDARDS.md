@@ -594,6 +594,28 @@ anywhere in this repo means the entry labelled `6b` below.
    nothing destroyed and nothing to record should raise and say why. The
    comment in 20260929_trash_purge_audit.sql still over-promises on this point.
 
+ 6ac. **A module-level timer Map is unowned state — and a write must capture
+   WHOSE it is at schedule time (learned 2026-10-02, #578).** The debounced
+   trip-write coalescer kept its timers in a module Map no lifecycle event knew
+   about: `logout()` wiped the durable queue and cancelled nothing, so a timer
+   firing after the wipe RE-QUEUED the discarded entry (stamped with the trip
+   OWNER — #393's zombie shape inverted) and sent the UPDATE under whatever JWT
+   was live at fire time, the NEXT account's on an A→B switch (which goes
+   through `hydrate`, never `logout`). Mechanics: (1) any debounce whose
+   callback can outlive a lifecycle boundary needs a hook ON that boundary —
+   cancel on logout AND on the hydrate identity transition (the only place a
+   one-tab account switch is visible), with a test hook mirroring the flush
+   hook; (2) the guard that matters is at FIRE time: capture the session id at
+   schedule time beside the captured snapshot and refuse to write under any
+   other identity — that also covers the pagehide flush racing a sign-out — and
+   "no session at capture" means DROP, never borrow the owner's id (an anon
+   write is refused by RLS anyway, so the fallback only ever minted zombies);
+   (3) the suites that drive writes with no session now stub one deliberately
+   (`getSnapshot().sessionUserId = …`) — the contract change is pinned by
+   tests/session-lifecycle.test.ts's #578 block. Quirk: tests/lint-ste.test.ts
+   enforces house vocabulary in prose ("try" over its -ments synonym) and fails
+   as a TEST — a comment can break the gate, and the lint reads AGENTS.md too.
+
 ## 2. Conventions (`AGENTS.md` §4)
 
 - **Anything that leaves the device must read STORED state, never what a component happens to render (learned 2026-09-19).** `CoverThumb` resolves a trip's cover from three sources in order — the owner's explicit `coverImageUrl`, then a Wikipedia photo fetched at runtime and cached in localStorage — so a trip with no stored cover still *looks* illustrated. The share preview has no such fallback chain: `api/i.js` reads `published_itineraries.cover_image_url` and nothing else, so a publication published without an explicit cover stamped `NULL` and previewed as the brand card while the app showed a photo of the destination. Both halves were correct in isolation and the reporter's symptom ("it shows the brand image on all links") read like a handler bug; the data answered it in one query (`select id, cover_image_url from published_itineraries`). Rule: when a rendered value has a runtime fallback, ask what the *stored* value is before debugging the consumer — and if a downstream surface (a crawler, an API, an export) can only read the stored one, make the fallback explicit and persisted at the moment the user commits (here: the publish form requires a saved cover), or the two will disagree silently forever.
