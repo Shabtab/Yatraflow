@@ -115,3 +115,18 @@ describe('the quick add keeps the shared add-path contracts (#422)', () => {
     expect(quick).toMatch(/\{busy \? 'Adding…' : 'Add stop'\}/)
   })
 })
+
+describe('#563 — the day mutators refuse a stale index, they never crash', () => {
+  const timeline = read('src/pages/trip/TimelineTab.tsx')
+
+  it('reorder, quick-add and planned-halts all guard the day lookup', () => {
+    // A drag payload snapshots fromDay at drag start and a stable callback
+    // captures dayIndex at render — reconcile shrinking the days between the
+    // two used to TypeError through applyChange into the crash screen. Each
+    // mutator resolves defensively and refuses: the proposal then equals the
+    // base and the impact sheet reads zero-delta.
+    const guards = timeline.match(/const day = draft\.days\.find\(d => d\.index === dayIndex\)\r?\n\s*if \(!day\) \{ toast\('That day is no longer on this trip\.', 'err'\); return \}/g) ?? []
+    expect(guards.length).toBeGreaterThanOrEqual(3)
+    expect(timeline).not.toMatch(/draft\.days\.find\(d => d\.index === dayIndex\)!/)
+  })
+})

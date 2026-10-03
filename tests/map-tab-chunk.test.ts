@@ -44,3 +44,10 @@ describe('the Map tab is a real chunk boundary (#332 R4)', () => {
     expect(read('../src/pages/trip/MapTab.tsx')).not.toMatch(/export function MapTabSkeleton/)
   })
 })
+
+describe('#563 — the batch-add skips a day that reconcile removed', () => {
+  it('the byDay loop guards the day lookup with continue, never a bang', () => {
+    const map = readFileSync(new URL('../src/pages/trip/MapTab.tsx', import.meta.url), 'utf8')
+    expect(map).toMatch(/const day = draft\.days\.find\(d => d\.index === dayIndex\)\r?\n\s*if \(!day\) continue/)
+  })
+})

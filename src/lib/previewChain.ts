@@ -23,10 +23,22 @@ export function previewBase(committed: Trip, staged: Trip | null): Trip {
 
 /** Apply a mutation to the right base and hand back the proposed shape. The
  *  first staged change survives a second mutation because the second clones
- *  the first's proposal, never the committed row. */
+ *  the first's proposal, never the committed row.
+ *
+ *  #563 — the belt under the mutators' own day guards: a mutator that throws
+ *  anyway (a stale index no guard reached) must not crash the workspace, and
+ *  must not stage a HALF-applied draft either. The throw discards the draft —
+ *  a fresh clone of the base is proposed, so the impact sheet reads zero-delta
+ *  — and the reason is logged, not swallowed. */
 export function stagedChange(committed: Trip, staged: Trip | null, mutator: (draft: Trip) => void): Trip {
-  const proposed = structuredClone(previewBase(committed, staged)) as Trip
-  mutator(proposed)
+  const base = previewBase(committed, staged)
+  const proposed = structuredClone(base) as Trip
+  try {
+    mutator(proposed)
+  } catch (err) {
+    console.error('[yatraflow] staged change refused — the mutator threw', err)
+    return structuredClone(base) as Trip
+  }
   return proposed
 }
 
