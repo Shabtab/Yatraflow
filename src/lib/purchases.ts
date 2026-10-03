@@ -88,6 +88,10 @@ export interface PurchaseRow {
    *  moved. A later grant converts the row into a normal one: the entitlement
    *  loop claims the publication slot first. */
   pendingGrant: boolean
+  /** #554 — the cumulative paise refunded against this row's order, while the
+   *  plan is still owned (a partial refund). Zero for a full refund — that
+   *  story is the `refunded` receipt's to tell — and for no refund at all. */
+  refundedPaise: number
 }
 
 export interface PurchaseShelf {
@@ -154,6 +158,7 @@ export function buildPurchaseShelf(
     moneyAt: unknown
     refunded: boolean
     pendingGrant?: boolean
+    refundPaise?: number
   }): PurchaseRow => {
     const pub = pubById.get(input.pubId)
     // A stored amount is a CLAIM about money, so it is checked rather than cast:
@@ -187,6 +192,12 @@ export function buildPurchaseShelf(
       dateReadable,
       refunded: input.refunded,
       pendingGrant: input.pendingGrant ?? false,
+      // #554 — the cumulative paise refunded against the row's order; zero
+      // means nothing came back. A FULL refund renders as the refunded
+      // receipt instead (the chip tells that story), so its figure stays 0
+      // rather than double-telling. Display-only here: the books keep the
+      // paise-exact figure on the order itself.
+      refundedPaise: input.refunded ? 0 : Math.max(0, Math.round(input.refundPaise ?? 0)),
     }
   }
 
@@ -204,6 +215,9 @@ export function buildPurchaseShelf(
       amountClaim: e.amountPaidInr,
       moneyAt: e.grantedAt,
       refunded: isRefunded(orderById.get(e.orderId) ?? { status: 'paid' }),
+      // #554 — a partial refund left the entitlement alive; the order carries
+      // how much of the money came back.
+      refundPaise: orderById.get(e.orderId)?.refundedPaise ?? 0,
     }))
   }
 
@@ -227,6 +241,7 @@ export function buildPurchaseShelf(
       moneyAt: orderMoneyAt(o),
       refunded: false,
       pendingGrant: true,
+      refundPaise: o.refundedPaise ?? 0,
     }))
   }
 

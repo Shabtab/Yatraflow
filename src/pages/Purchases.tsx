@@ -258,6 +258,9 @@ export function PurchasesPage({ onNavigate }: { onNavigate: (r: string) => void 
                       // "₹0 paid" would be a claim that this plan was free. It
                       // was not — the price simply could not be read.
                       : <Chip tone="saffron">price unavailable</Chip>}
+                    {/* #554 — a partial refund is money that came back while
+                        the plan is still owned: both facts, side by side. */}
+                    {row.refundedPaise > 0 && <Chip tone="info">{formatInr(Math.round(row.refundedPaise / 100))} refunded</Chip>}
                     {row.updatedSince && row.refreshedAt && (
                       <Chip tone="info">Updated {updatedIn(row.refreshedAt)}</Chip>
                     )}
