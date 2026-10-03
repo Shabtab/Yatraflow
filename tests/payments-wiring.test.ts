@@ -355,3 +355,24 @@ describe('#587 — the entitlements read timeout is bound to the request', () =>
     expect(page).toContain('fetchMyEntitlements(meId, { signal: ac.signal })')
   })
 })
+
+describe('#591 — the reveal states what was paid, from the snapshot', () => {
+  const page = read('../src/pages/PublicItinerary.tsx')
+
+  it('the receipt amount comes from the entitlement row, never the catalog copy', () => {
+    // A creator changing the price while the tab sat open would otherwise make
+    // the ceremony contradict the shelf for the same purchase — the reveal is
+    // the one surface that spends the PAID figure.
+    expect(page).toContain('amountPaidInr={entitlements.find(e => e.pubId === pub.id)?.amountPaidInr}')
+    expect(page).not.toContain('amountPaidInr={pub.premiumPriceInr}')
+  })
+
+  it('an unreadable figure renders as no figure, and the component keeps that rule', () => {
+    // The pitfall: the entitlement can be absent for a beat — prefer no figure
+    // over a wrong one. The component's own guard is what makes the fallback
+    // safe, so it is pinned too.
+    expect(page).toContain('?.amountPaidInr}')
+    const reveal = read('../src/components/UnlockReveal.tsx')
+    expect(reveal).toMatch(/typeof amountPaidInr === 'number'/)
+  })
+})
