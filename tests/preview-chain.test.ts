@@ -141,3 +141,30 @@ describe('the surfaces that must not race a preview (#334)', () => {
     expect(ws).toMatch(/<GroupInputTab trip=\{effective\} editable=\{editable\} me=\{me\} previewOpen=\{!!pending\} \/>/)
   })
 })
+
+describe('#563 — a stale day index refuses, it never crashes', () => {
+  it('the belt: a mutator that throws proposes the unchanged base, loudly', () => {
+    const base = trip()
+    const proposed = stagedChange(base, null, draft => {
+      const day = draft.days.find(d => d.index === 99)!
+      day.stops = []
+    })
+    // Zero-delta: the half-applied draft is discarded, not staged.
+    expect(proposed).toEqual(base)
+    expect(proposed.days[0]!.stops).toHaveLength(1)
+  })
+
+  it('the guarded mutator shape: a missing day is a no-op over a 1-day trip', () => {
+    const base = trip()
+    const proposed = stagedChange(base, null, draft => {
+      const day = draft.days.find(d => d.index === 99)
+      if (!day) return
+      day.stops = []
+    })
+    expect(proposed).toEqual(base)
+    // And chaining still works after a refusal — the next change clones the
+    // refused (unchanged) proposal, never a half-state.
+    const second = stagedChange(base, proposed, d => { d.days[0]!.stops.push(stop('st-2', 'Lunch')) })
+    expect(second.days[0]!.stops).toHaveLength(2)
+  })
+})

@@ -2621,7 +2621,11 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
                               byDay.set(item.dayIndex, list)
                             }
                             for (const [dayIndex, items] of byDay) {
-                              const day = draft.days.find(d => d.index === dayIndex)!
+                              // #563 — a day that reconcile removed mid-scan is
+                              // skipped, not crashed into: its items are dropped
+                              // with the rest of the batch still landing.
+                              const day = draft.days.find(d => d.index === dayIndex)
+                              if (!day) continue
                               // new stops sorted by road position so sequential
                               // splices land in journey order
                               const sorted = [...items].sort((a, b) =>

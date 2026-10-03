@@ -234,7 +234,12 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
    *  from/to splice to make — the same invariant as lib/stopOrder's helpers. */
   const handleReorderDay = useCallback((dayIndex: number, orderedIds: string[]) => {
     latest.current.applyChange(draft => {
-      const day = draft.days.find(d => d.index === dayIndex)!
+      // #563 — a stale dayIndex (a drag payload snapshot, or a click on a
+      // button rendered before reconcileDays shrank the days) must REFUSE, not
+      // crash: the proposal then equals the base and the impact sheet reads
+      // zero-delta.
+      const day = draft.days.find(d => d.index === dayIndex)
+      if (!day) { toast('That day is no longer on this trip.', 'err'); return }
       const byId = new Map(day.stops.map(s => [s.id, s]))
       const reordered = orderedIds.map(id => byId.get(id)!).filter(Boolean)
       // any stop the optimizer left out (safety net) rides at the end
@@ -446,7 +451,9 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
   /** One-click add from the empty-day suggestions (route continuation / nearby POI). */
   const handleAddQuickStop = useCallback((dayIndex: number, stop: Omit<ItineraryStop, 'id' | 'orderInDay'>) => {
     latest.current.applyChange(draft => {
-      const day = draft.days.find(d => d.index === dayIndex)!
+      // #563 — refuse a stale dayIndex, never crash (same as the reorder guard).
+      const day = draft.days.find(d => d.index === dayIndex)
+      if (!day) { toast('That day is no longer on this trip.', 'err'); return }
       day.stops.push({ ...stop, id: pendingStopId(), orderInDay: nextOrderInDay(day) })
     }, 'add', dayIndex)
   }, [])
@@ -466,7 +473,9 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
   const handleAddPlannedHalts = useCallback((dayIndex: number, halts: { km: number; stop: Omit<ItineraryStop, 'id' | 'orderInDay'> }[]) => {
     if (halts.length === 0) return
     latest.current.applyChange(draft => {
-      const day = draft.days.find(d => d.index === dayIndex)!
+      // #563 — refuse a stale dayIndex, never crash (same as the reorder guard).
+      const day = draft.days.find(d => d.index === dayIndex)
+      if (!day) { toast('That day is no longer on this trip.', 'err'); return }
       const j = buildJourney(draft, day, legCorrections) // existing stop → km lookup
       // Position stops on the day's ROAD polyline when the routing layer has
       // resolved one — the halt planner's km are road km, so ordering against
