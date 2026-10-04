@@ -173,8 +173,41 @@ export default async function handler(req, res) {
   // Captured payments grant; refunds revoke (M2 — the entitlement must not
   // outlive the money). Every other event is 200-acknowledged so Razorpay
   // stops retrying it.
-  if (event?.event !== 'payment.captured' && event?.event !== 'payment.refunded') {
+  //
+  // #593 — the event set is the FIRST thing that was broken. Razorpay sends NO
+  // `payment.refunded` event (verified against razorpay.com/docs/webhooks on
+  // 2026-10-03): its refund events are `refund.created` / `refund.processed` /
+  // `refund.failed` / `refund.speed_changed`, and its payment events stop at
+  // `payment.captured`. So every real refund delivery matched the gate below
+  // and was 200-ACKed as `ignored`, which left the revoke branch unreachable —
+  // and `revoke_refunded_entitlement` has no other caller, so refunds have
+  // never revoked anything in production.
+  //
+  // What each real event means for the money (the product decisions #593 asks
+  // for, made once here):
+  //   refund.processed — the money actually came back. This is the ONE that
+  //     decides: the #554 full/partial rule runs on this delivery.
+  //   refund.created  — a refund was generated, not yet returned. No money has
+  //     moved, so nothing is revoked and nothing is recorded; acked so
+  //     Razorpay stops retrying. `refund.processed` follows with the real
+  //     figures (or `refund.failed` below).
+  //   refund.failed   — the refund did NOT happen. Deliberately a no-op: a
+  //     revoke that ran on `refund.created` would otherwise leave the order
+  //     `failed` and the entitlement gone while the payment stands, which is
+  //     the exact over-revocation M2 exists to prevent.
+  //   payment.dispute.lost — a lost chargeback pulls the money back like a
+  //     refund, so it revokes on the same rule (M2's premise holds for it too).
+  const REFUND_EVENTS = new Set(['refund.processed', 'payment.dispute.lost'])
+  const REFUND_AWAITING_MONEY = new Set(['refund.created'])
+  const isRefundEvent = REFUND_EVENTS.has(event?.event) || REFUND_AWAITING_MONEY.has(event?.event)
+  if (event?.event !== 'payment.captured' && !isRefundEvent) {
     return json(res, 200, { ok: true, ignored: event?.event ?? null })
+  }
+
+  if (REFUND_AWAITING_MONEY.has(event?.event)) {
+    // Generated, not returned. Deliberately no revoke and no record — the
+    // processed event carries the money.
+    return json(res, 200, { ok: true, outcome: 'refund-pending' })
   }
 
   const payment = event.payload?.payment?.entity
@@ -185,12 +218,21 @@ export default async function handler(req, res) {
   }
 
   const signal = AbortSignal.timeout(8000)
-  if (event.event === 'payment.refunded') {
-    // #554 — the amounts decide full vs partial, so an event without them is
-    // malformed rather than "probably full": 400 acks it for good (Razorpay
-    // stops retrying) instead of guessing a revocation either way.
-    const refundedPaise = Number(payment?.amount_refunded)
+  if (isRefundEvent) {
+  // #554 — a Razorpay refund event carries a CUMULATIVE refunded figure as well
+  // as a full/partial flag; the amounts decide which, so an event without them
+  // is malformed rather than "probably full": 400 acks it for good (Razorpay
+  // stops retrying) instead of guessing a revocation either way.
+  //
+  // #593 — `amount_refunded` is the payment entity's CUMULATIVE total (the
+    // running figure across every refund on that payment), which is why it
+    // rather than `refund.entity.amount`: summing events loses money whenever a
+    // delivery is missed. A dispute-lost payload carries the dispute, not a
+    // refund, and may omit the cumulative figure — the payment's own `amount`
+    // is then the whole amount, and it is fully returned.
     const capturedPaise = Number(payment?.amount)
+    const cumulative = Number(payment?.amount_refunded)
+    const refundedPaise = Number.isFinite(cumulative) && cumulative > 0 ? cumulative : capturedPaise
     if (!Number.isFinite(refundedPaise) || refundedPaise < 0 || !Number.isFinite(capturedPaise) || capturedPaise < 0) {
       return json(res, 400, { error: 'refund event missing amount_refunded/amount' })
     }

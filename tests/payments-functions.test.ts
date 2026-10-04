@@ -567,12 +567,16 @@ describe('POST /api/payments-webhook', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('acknowledges non-captured events without touching the database', async () => {
-    const other = { event: 'refund.processed', payload: {} }
+  it('acks a non-captured, non-refund event without touching the database', async () => {
+    // #593 — this used to use `refund.processed`, the ONE REAL refund event,
+    // pinned as "ignored". That assertion is what let the dead event gate read
+    // as intended behaviour: the suite proved only that the handler processed
+    // the invented `payment.refunded` name and ignored the real one.
+    const other = { event: 'refund.speed_changed', payload: {} }
     const sig = await hmacHex(JSON.stringify(other), ENV.RAZORPAY_WEBHOOK_SECRET)
     const res = await run(JSON.stringify(other), sig)
     expect(res.statusCode).toBe(200)
-    expect(JSON.parse(res.body)).toEqual({ ok: true, ignored: 'refund.processed' })
+    expect(JSON.parse(res.body)).toEqual({ ok: true, ignored: 'refund.speed_changed' })
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
@@ -616,12 +620,18 @@ describe('POST /api/payments-webhook', () => {
     expect(res.statusCode).toBe(500)
   })
 
-  it('routes a refund through apply_order_refund with the event amounts (#554)', async () => {
-    // #554 — the webhook carries the cumulative refunded/captured figures; the
-    // full-vs-partial decision lives in the RPC, against the ORDER's own amount.
+  it('routes a REAL refund.processed through apply_order_refund with the event amounts (#593, #554)', async () => {
+    // #593 — `payment.refunded` is not an event Razorpay sends; the real one is
+    // `refund.processed`, carrying both halves: the refund entity and the
+    // payment entity's cumulative `amount_refunded`. #554 — the webhook carries
+    // the figures; the full-vs-partial decision lives in the RPC, against the
+    // ORDER's own amount.
     const refund = {
-      event: 'payment.refunded',
-      payload: { payment: { entity: { order_id: 'order_ABC123', id: 'pay_XYZ789', amount: 50000, amount_refunded: 50000 } } },
+      event: 'refund.processed',
+      payload: {
+        refund: { entity: { id: 'rfnd_1', amount: 50000, currency: 'INR', status: 'processed' } },
+        payment: { entity: { order_id: 'order_ABC123', id: 'pay_XYZ789', amount: 50000, amount_refunded: 50000 } },
+      },
     }
     const sig = await hmacHex(JSON.stringify(refund), ENV.RAZORPAY_WEBHOOK_SECRET)
     const refundCalls: Array<{ url: string; body: unknown }> = []
@@ -646,16 +656,56 @@ describe('POST /api/payments-webhook', () => {
     expect(fetchMock.mock.calls.filter(c => String(c[0]).includes('/rest/v1/entitlements?on_conflict'))).toHaveLength(0)
   })
 
-  it('acks an unknown non-captured non-refunded event without granting or revoking', async () => {
+  it('refund.created is acked as pending — no revoke, no record, until the money moves (#593)', async () => {
+    // The product decision #593 asks for: a generated refund has NOT returned
+    // money yet. Revoking here would leave the order `failed` and the
+    // entitlement gone if the refund then failed — the over-revocation M2
+    // exists to prevent. `refund.processed` carries the real figures.
     const other = {
-      event: 'refund.processed',
-      payload: { refund: { entity: { id: 'rfnd_1', payment_id: 'pay_XYZ789' } } },
+      event: 'refund.created',
+      payload: {
+        refund: { entity: { id: 'rfnd_1', amount: 50000, currency: 'INR', status: 'pending' } },
+        payment: { entity: { order_id: 'order_ABC123', id: 'pay_XYZ789', amount: 50000, amount_refunded: 0 } },
+      },
     }
     const sig = await hmacHex(JSON.stringify(other), ENV.RAZORPAY_WEBHOOK_SECRET)
     const res = await run(JSON.stringify(other), sig)
     expect(res.statusCode).toBe(200)
-    expect(JSON.parse(res.body).ignored).toBe('refund.processed')
+    expect(JSON.parse(res.body)).toEqual({ ok: true, outcome: 'refund-pending' })
     expect(fetchMock.mock.calls.filter(c => String(c[0]).includes('/rpc/'))).toHaveLength(0)
+  })
+
+  it('refund.failed is a no-op — the money did not come back (#593)', async () => {
+    const other = {
+      event: 'refund.failed',
+      payload: {
+        refund: { entity: { id: 'rfnd_1', amount: 50000, currency: 'INR', status: 'failed' } },
+        payment: { entity: { order_id: 'order_ABC123', id: 'pay_XYZ789', amount: 50000, amount_refunded: 0 } },
+      },
+    }
+    const sig = await hmacHex(JSON.stringify(other), ENV.RAZORPAY_WEBHOOK_SECRET)
+    const res = await run(JSON.stringify(other), sig)
+    expect(res.statusCode).toBe(200)
+    expect(fetchMock.mock.calls.filter(c => String(c[0]).includes('/rpc/'))).toHaveLength(0)
+  })
+
+  it('a lost dispute revokes on the refund rule — M2 holds for chargebacks too (#593)', async () => {
+    const dispute = {
+      event: 'payment.dispute.lost',
+      payload: { payment: { entity: { order_id: 'order_ABC123', id: 'pay_XYZ789', amount: 50000 } } },
+    }
+    const sig = await hmacHex(JSON.stringify(dispute), ENV.RAZORPAY_WEBHOOK_SECRET)
+    const refundCalls: Array<{ body: unknown }> = []
+    fetchMock.mockImplementation(async (_input: RequestInfo | URL, init: RequestInit = {}) => {
+      refundCalls.push({ body: JSON.parse(String(init.body)) })
+      return jsonResponse('revoked')
+    })
+    const res = await run(JSON.stringify(dispute), sig)
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body)).toMatchObject({ ok: true, outcome: 'revoked' })
+    // No cumulative figure on a dispute payload — the payment's own amount is
+    // the whole thing, and it is fully returned.
+    expect(refundCalls[0]!.body).toMatchObject({ p_amount_refunded_paise: 50000, p_amount_captured_paise: 50000 })
   })
 
   it('reports a REAL revoke and a foreign refund differently, both as 200 (#355, #554)', async () => {
@@ -664,8 +714,11 @@ describe('POST /api/payments-webhook', () => {
     // event. Both used to answer `{ revoked: true }`, which made the two
     // indistinguishable in a log.
     const refund = {
-      event: 'payment.refunded',
-      payload: { payment: { entity: { order_id: 'order_NOTOURS', id: 'pay_XYZ789', amount: 50000, amount_refunded: 50000 } } },
+      event: 'refund.processed',
+      payload: {
+        refund: { entity: { id: 'rfnd_1', amount: 50000, currency: 'INR', status: 'processed' } },
+        payment: { entity: { order_id: 'order_NOTOURS', id: 'pay_XYZ789', amount: 50000, amount_refunded: 50000 } },
+      },
     }
     const sig = await hmacHex(JSON.stringify(refund), ENV.RAZORPAY_WEBHOOK_SECRET)
     fetchMock.mockImplementation(async () => jsonResponse('unknown-order'))
@@ -680,8 +733,11 @@ describe('POST /api/payments-webhook', () => {
     // documented. Reporting it as "unknown order" would invent a fact, and
     // reporting it as revoked would be worse.
     const refund = {
-      event: 'payment.refunded',
-      payload: { payment: { entity: { order_id: 'order_ABC123', id: 'pay_XYZ789', amount: 50000, amount_refunded: 50000 } } },
+      event: 'refund.processed',
+      payload: {
+        refund: { entity: { id: 'rfnd_1', amount: 50000, currency: 'INR', status: 'processed' } },
+        payment: { entity: { order_id: 'order_ABC123', id: 'pay_XYZ789', amount: 50000, amount_refunded: 50000 } },
+      },
     }
     const sig = await hmacHex(JSON.stringify(refund), ENV.RAZORPAY_WEBHOOK_SECRET)
     fetchMock.mockImplementation(async () => new Response('not json at all', { status: 200 }))
