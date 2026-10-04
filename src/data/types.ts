@@ -59,6 +59,9 @@ export interface FixedCommitment {
   dayIndex: number          // 0-based day of the trip
   time: string              // "HH:MM" 24h
   notes?: string
+  /** The day stop this deadline is checked against. Absent = the check
+   *  lacks a location and says so (never borrows another stop's clock). */
+  stopId?: ID
 }
 
 export interface UserProfile {

@@ -8,7 +8,7 @@ import type { Trip, ItineraryStop, TripDecision } from '../../data/types'
 import type { ImpactResult } from '../../lib/impact'
 import { removeStopWithUndo } from '../../lib/mutationLifecycle'
 import { mapRoadViewFromLegs, mapReturnGeometryFromLegs, outboundLegs, type TripRoadView } from '../../lib/tripRoad'
-import { buildJourney, minutesToHM, fmtDur, computeCategoryBias, MODE_SPEED, isRoundTrip } from '../../lib/engine'
+import { buildJourney, minutesToHM, fmtDur, computeCategoryBias, MODE_SPEED, isRoundTrip, type LegEstimate } from '../../lib/engine'
 import { useTimeFormat, formatHM, formatHMRange } from '../../lib/timefmt'
 import { loadPref, savePref, loadHaltPinsForTrip, saveHaltPin, clearHaltPin, clearHaltPinsForTrip } from '../../lib/uiPrefs'
 import { DEBOUNCE_MS } from '../../lib/geocode'
@@ -21,6 +21,7 @@ import { corridorAnchors, detourKm, asymmetricDetourKm, asymmetricDetourMinutes,
 import { useResolvePick } from '../../components/ResolvePickDialog'
 import { clockHM, deriveClockMilestones } from '../../lib/clockOverlay'
 import { SHEET_TABS, sheetAppliesAt, sheetHiddenClass, sheetTabMove, type SheetTabKey } from '../../lib/mapSheet'
+import { resolveRailDay } from '../../lib/tripFocus'
 import { mapScopeNote } from '../../lib/railA11y'
 import { railKeyAction } from '../../lib/railKeys'
 import { candidatesAnnouncement, fillLabel, pickDayCaveat, scopeValueText, searchAnnouncement, voteStatusId } from '../../lib/railA11y'
@@ -137,7 +138,7 @@ function SlotGlyph({ kind, label }: { kind: DaySlotKind; label: string }) {
   const G = label === 'Breakfast' ? Coffee : KIND_GLYPH[kind]
   return G ? <InlineIcon icon={G} size={12} /> : null
 }
-export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsHash, crewSuggestions, decisions, road, onOpenTimeline, onOpenBoard, onOpenDay, onOpenGroupInput, previewOpen, dayFocus, onDayFocusChange }: {
+export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsHash, crewSuggestions, decisions, road, onOpenTimeline, onOpenBoard, onOpenDay, onOpenGroupInput, previewOpen, dayFocus, onDayFocusChange, legCorrections }: {
   trip: Trip
   editable: boolean
   applyChange: (mutator: (d: Trip) => void, kind: ImpactResult['kind'], dayIndex: number, onKept?: () => void) => void
@@ -170,6 +171,8 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
   dayFocus?: number | 'all'
   /** reports the tab's day-axis choice back up to the workspace. */
   onDayFocusChange?: (day: number | 'all') => void
+  /** The workspace's measured road data — pin clocks read it (#611). */
+  legCorrections?: Record<string, LegEstimate>
 }) {
   const [pois, setPois] = useState<SegmentHit[]>([])
   const timeFormat = useTimeFormat()
@@ -245,7 +248,8 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
   // #416: what the map is showing, as far as the rail has been TOLD.
   // null = not reported yet, which must stay silent rather than guess.
   const [mapFilter, setMapFilter] = useState<number | 'all' | null>(null)
-  const [activeDayIndex, setActiveDayIndex] = useState(0)
+  const [localDay, setLocalDay] = useState(0)
+  const activeDayIndex = resolveRailDay(dayFocus, trip.days.map(d => d.index), localDay)
   // #415: which rail the narrow-band sheet shows, and whether the sheet is in play
   // at all. false until the width is measured -- the desktop layout is what renders
   // on an unknown width, never a guess that hides a rail.
@@ -2198,7 +2202,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
                     aria-pressed={d.index === activeDayIndex}
                     aria-label={`Day ${d.index + 1}: ${filled} of ${required} planned${auto > 0 ? `, ${auto} engine-managed` : ''}`}
                     className={'slots-daychip' + (d.index === activeDayIndex ? ' is-on' : '')}
-                    onClick={() => { setActiveDayIndex(d.index); onDayFocusChange?.(d.index); setOpenSlotKey(null) }}
+                    onClick={() => { setLocalDay(d.index); onDayFocusChange?.(d.index); setOpenSlotKey(null) }}
                   >
                     Day {d.index + 1} <span className="slots-daychip-rd">{filled}/{required}</span>
                     {dayRainPct?.[d.index] != null && dayRainPct[d.index]! >= 40 && (
@@ -2515,6 +2519,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
               onOpenInTimeline={onOpenTimeline}
               onOpenInBoard={onOpenBoard ? () => onOpenBoard() : undefined}
               focusDay={activeDayIndex}
+              legCorrections={legCorrections}
               tripReadinessRows={tripReadinessRows}
               onDayFilterChange={day => {
       // #416: the map reports its own scope, including 'all' — the rail records it
@@ -2524,8 +2529,10 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
                 // leaves it where it is; a day chip moves the rail onto that day.
                 // #425 PR 2: the same choice rides the shared day-focus axis, so
                 // the Board's columns and this rail agree whichever was touched.
-                if (typeof day === 'number') onDayFocusChange?.(day)
-                if (typeof day === 'number') setActiveDayIndex(day)
+                // #610: 'all' publishes too — scope rides the axis, the rail
+                // keeps its day and the map reads 'all' straight from dayFocus.
+                onDayFocusChange?.(day)
+                if (typeof day === 'number') setLocalDay(day)
               }}
               slotPins={slotPins}
               hitCosts={hitCosts}

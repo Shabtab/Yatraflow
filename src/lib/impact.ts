@@ -3,7 +3,7 @@
 import type { Trip } from '../data/types'
 import {
   getAssumptions, simulateDay, computeTotals, originOf,
-  hmToMinutes, legBetween, legKey, collectWarnings,
+  hmToMinutes, legBetween, legKey, collectWarnings, commitmentStopIndex,
   type LegEstimate, type ScheduleWarning,
 } from './engine'
 
@@ -80,14 +80,18 @@ function detectBacktrack(trip: Trip, legCorrections?: LegCorrections): boolean {
 function commitmentConflictsFor(trip: Trip, legCorrections?: LegCorrections): string[] {
   const out: string[] = []
   for (const fc of trip.fixedCommitments) {
-    // Same rule as collectWarnings: check-in is an anchor, not a race.
+    // Same rule as collectWarnings: check-in is an anchor, not a race — and
+    // the deadline is checked against its OWN stop, never the day's last (#609).
+    // An unlinked commitment claims no conflict: without a place there is no
+    // arrival to compare, and the engine already says so in its own warning.
     if (fc.type === 'hotel-checkin') continue
     const day = trip.days.find(d => d.index === fc.dayIndex)
     if (!day) continue
     const sim = simulateDay(day, trip, originOf(trip, fc.dayIndex), fc.dayIndex, legCorrections)
     if (!sim.activeStops.length) continue
-    const lastArr = sim.arrivalTimes[sim.arrivalTimes.length - 1]
-    if (hmToMinutes(lastArr) > hmToMinutes(fc.time)) out.push(`${fc.title} (${fc.time})`)
+    const atIdx = commitmentStopIndex(sim.activeStops, fc)
+    if (atIdx == null || sim.arrivalTimes[atIdx] == null) continue
+    if (hmToMinutes(sim.arrivalTimes[atIdx]) > hmToMinutes(fc.time)) out.push(`${fc.title} (${fc.time})`)
   }
   return out
 }
@@ -132,8 +136,8 @@ export function computeImpact(trip: Trip, proposed: Trip, kind: ImpactResult['ki
   const curCost = computeTotals(trip).totalCostInr
   const propCost = computeTotals(proposed).totalCostInr
 
-  const curW = collectWarnings(trip)
-  const propW = collectWarnings(proposed)
+  const curW = collectWarnings(trip, legCorrections ?? undefined)
+  const propW = collectWarnings(proposed, legCorrections ?? undefined)
   const { newWarnings, clearedWarnings } = diffWarnings(curW, propW)
 
   // Arrival-time changes on the affected day, matched by STOP IDENTITY (#342).

@@ -249,6 +249,15 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
     }, 'reorder', dayIndex)
   }, [])
 
+  /** Link a fixed commitment to its stop (null unlinks) — an 'edit' write, so the impact preview guards it. */
+  const handleLinkCommitment = useCallback((commitmentId: string, dayIndex: number, stopId: string | null) => {
+    const { applyChange } = latest.current
+    applyChange(draft => {
+      const fc = draft.fixedCommitments.find(f => String(f.id) === String(commitmentId))
+      if (fc) fc.stopId = stopId ?? undefined
+    }, 'edit', dayIndex)
+  }, [])
+
   /** Cross-day drag: lift a stop out of its day and insert it at `position` of `toDayIndex`. */
   const handleMoveStopInto = useCallback((stopId: string, _fromDayIndex: number, toDayIndex: number, position: number) => {
     const { applyChange, trip } = latest.current
@@ -272,14 +281,14 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
   // accommodation one (#402).
   const warningsCache = useRef<Map<number, ScheduleWarning[]> | null>(null)
   const { dayWarnings, tripWideWarnings, warnDayCount } = useMemo(() => {
-    const { byDay, tripWide } = groupWarnings(collectWarnings(trip))
+    const { byDay, tripWide } = groupWarnings(collectWarnings(trip, legCorrections))
     // #347: `groupWarnings` mints a fresh array for every warned day on every
     // trip change — content-equal, ref-different, which re-rendered those days.
     // NO_WARNINGS above only ever saved the days with nothing to warn about.
     const stable = reuseWarningGroups(warningsCache.current, byDay)
     warningsCache.current = stable
     return { dayWarnings: stable, tripWideWarnings: tripWide, warnDayCount: byDay.size }
-  }, [trip])
+  }, [trip, legCorrections])
   // M4: sticky trip-total strip (doc §6.3) — same engine numbers as Overview.
   const totals = useMemo(() => computeTotals(trip, legCorrections), [trip, legCorrections])
   // computeTotals().byDay mints a fresh object per day on any change, and that
@@ -639,6 +648,7 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
           onAddQuickStop={handleAddQuickStop}
           onSetDayStart={handleSetDayStart}
           onAddPlannedHalts={handleAddPlannedHalts}
+          onLinkCommitment={handleLinkCommitment}
           warnings={dayWarnings.get(day.index) ?? NO_WARNINGS}
           onStatus={handleStatus}
         />

@@ -408,7 +408,9 @@ one `platform_invites` entity — detailed execution guide in
 
 ---
 
-## 🟣 UI-audit remediation — COMPLETE (32/32)
+## 🟣 UI-audit remediation
+
+**Historical audit: 32/32 repaired. Workspace tab audit: 5/8 repaired.**
 
 Full report: [`docs/UI_AUDIT.md`](docs/UI_AUDIT.md). All six batches shipped in
 v0.23.0 (both P0s closed: F-28, F-01); narrative in the CHANGELOG. This
@@ -426,6 +428,21 @@ get a row here again.
 | 7 | Impeccable whole-app refinement pass (2026-09-18) — mobile topnav, timeline reorder, `.two-col` overflow, create-trip calendar occlusion, light-theme contrast, board peek transition, reduced-motion delays, keyboard focus for the ledgers, viewer affordances, role/casing leaks, profile save feedback. Snapshot `.impeccable/critique/2026-09-17T17-42-23Z__src-app-tsx.md` closed; narrative in the CHANGELOG | ✅ |
 | 8 | Independent whole-app accessibility re-audit (2026-10-02) — `LocationInput` gains an `ariaLabel` so the create-trip stop and return-stop boxes announce a name instead of a bare combobox; the cover URL and Print's confirmed badge stop depending on a placeholder or a lone glyph. Contrast, reduced-motion, touch targets, icon set and form labelling were all re-measured; no contrast or motion defect survived verification | ✅ |
 | 9 | UI rule gate + review checklist (2026-10-02) — `npm run check:ui` enforces the three mechanical design rules that carry no false positives (no `transition: all`, no raw `z-index` ≥999, no blocked pinch-zoom), and `docs/UI-REVIEW-CHECKLIST.md` records the chart-type verdicts plus the rules this repo deliberately deviates from. The other ~20 candidate rules were measured and excluded with counts, because a gate that fires on correct code gets ignored | ✅ |
+
+### Workspace tabs — 2026-10-03
+
+**Progress: 5/8 repaired.** Source and browser evidence live in [the tab audit](docs/UI_AUDIT.md#workspace-tab-audit--2026-10-03).
+
+| Finding | Scope | Status |
+|---|---|---|
+| A1 / #607 | Meal claims count sightseeing stops | ✅ |
+| A2 / #608 | Health and warnings ignore measured times | ✅ |
+| A3 / #609 | Commitment checks use the last stop | ✅ |
+| A4 / #610 | Map discards shared day selection | ✅ |
+| A5 / #611 | Map stop clocks differ from Timeline | ✅ |
+| A6 / #612 | Phone popup actions overflow | Open |
+| A7 / #613 | Stopless driving day loses its map | Open |
+| A8 / #614 | Snapshot prints zero-based days | Open |
 
 ---
 ## Idea bank
@@ -461,11 +478,27 @@ unbuilt). **Before picking up a row, and before quoting one in a plan, confirm i
 | I-23 | Publish-quality score | creator | 1 d | Checklist with nudges (cover photo, budget filled, notes density, preview-day choice) on the hub + Share tab. Ship, measure via I-22, then claim any lift (research §5). |
 | I-25 | Buyer reviews | creator | 2 d | Post-purchase ratings on itineraries: schema (reviews table + RLS), policy question (purchase-gated?) first. Feeds conversion, creator feedback, and I-26. |
 | I-27 | Hub presentation pass | creator | 1 d | KPI sparklines, activity feed ("Admin unlocked Spiti · 2h ago"), motion per `docs/MOTION-TOKENS.md`. The studio-dashboard pass over the existing Overview + Earnings. Research §5. |
+| I-28 | Exact fix links | workspace | Not sized | Open the affected day and stop from a warning or missing part. [Audit](docs/UI_AUDIT.md#workspace-tab-audit--2026-10-03). |
+| I-30 | Actionable readiness summary | Overview | Not sized | Combine repeated warnings. Link booking gaps, budget gaps, and open decisions to their tools. [Audit](docs/UI_AUDIT.md#workspace-tab-audit--2026-10-03). |
+| I-31 | Named per-day forecasts | weather | Not sized | Use each day's place. Separate failed reads from unavailable dates. [Audit](docs/UI_AUDIT.md#workspace-tab-audit--2026-10-03). |
+| I-32 | Compact reading and task filters | Timeline | Not sized | Let you scan timings, warnings, or booking tasks without every specialist tool open. [Audit](docs/UI_AUDIT.md#workspace-tab-audit--2026-10-03). |
+| I-33 | Slack and deadline clock | Timeline | Not sized | Show waiting and deadline gaps. Preview changes before you keep them. [Audit](docs/UI_AUDIT.md#workspace-tab-audit--2026-10-03). |
+| I-34 | Clear search scope and read states | Map | Not sized | Reduce parallel search entry points. Show failed, empty, cached, and loading results as distinct states. [Audit](docs/UI_AUDIT.md#workspace-tab-audit--2026-10-03). |
+| I-35 | Shared measurement status | workspace | Not sized | State measured, pending, partial, and failed route data on all three tabs. Add a shared Retry action. [Audit](docs/UI_AUDIT.md#workspace-tab-audit--2026-10-03). |
 
 ### Tier 2 — blocked on a named dependency
 
 | # | Idea | Blocked on | Note |
 |---|---|---|---|
+| I-29 | Phone map planning access | Choose a sheet or split layout | Keep candidates near the map. Preserve keyboard focus and touch targets. [Audit](docs/UI_AUDIT.md#workspace-tab-audit--2026-10-03). |
+| I-37 | Stop handoff from the Map popup | Browser reproduction | The popup passes a stop id and the workspace callback drops it, so the tab opens without a target. Reproduce before any fix. [Audit](docs/UI_AUDIT.md#workspace-tab-audit--2026-10-03). |
+| I-38 | Hidden rail after a slot pin | Browser reproduction | A slot pin unfolds Needs but does not select Needs in the phone sheet. Reproduce before any fix. [Audit](docs/UI_AUDIT.md#workspace-tab-audit--2026-10-03). |
+| I-39 | Search request freshness | Browser reproduction | Editing or clearing a query may leave its request running and its token stale. Reproduce before any fix. [Audit](docs/UI_AUDIT.md#workspace-tab-audit--2026-10-03). |
+| I-40 | Published Map hash while unmounted | Browser reproduction | The hash may stop updating while Map is unmounted. Test a settings change before returning to Map. [Audit](docs/UI_AUDIT.md#workspace-tab-audit--2026-10-03). |
+| I-41 | Day placement wording | Product decision | The label names the active day while its modal can pick another from road position. Decide the wording before any fix. [Audit](docs/UI_AUDIT.md#workspace-tab-audit--2026-10-03). |
+| I-42 | Viewer role on Map controls | Browser reproduction | MapOmnibar placement and the split banner need an explicit viewer-role check. [Audit](docs/UI_AUDIT.md#workspace-tab-audit--2026-10-03). |
+| I-43 | Weather beyond the forecast window | Browser reproduction | The card checks the start date, then requests the whole trip. Test a trip past the window. [Audit](docs/UI_AUDIT.md#workspace-tab-audit--2026-10-03). |
+| I-36 | Share an exact review target | Choose the day and stop URL contract | Open the exact item from a review link. Keep focus out of stored trip data. [Audit](docs/UI_AUDIT.md#workspace-tab-audit--2026-10-03). |
 | I-12 | Price history | M7 (schema) | The BOOKS are already right — `purchase_orders.price_snapshot_inr` is written at checkout and copied to `entitlements.amount_paid_inr`, so no sale is re-priced by a later edit. What remains is the creator-facing trail of their own price changes; I-24 still reads from it. |
 | I-14 | Payout method + KYC management | M7 (schema) | Bank/UPI + legal name + PAN on profiles — M7's biggest schema lift. |
 | I-18 | `overdrive` on the four authored surfaces | the owner's direction pick | The v0.60.0 pass scoped `overdrive` for Landing/PlanBench, the Trip Ticket (Create Trip), the Overview hero and the public-itinerary editorial, and deliberately ran without it: the command's contract forbids writing code before 2–3 directions are presented and one is picked, and requires browser iteration plus a banner. Nothing overdrive-shaped has been built anywhere. |
