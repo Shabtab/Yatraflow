@@ -26,7 +26,7 @@ import { mapScopeNote } from '../../lib/railA11y'
 import { railKeyAction } from '../../lib/railKeys'
 import { candidatesAnnouncement, fillLabel, pickDayCaveat, scopeValueText, searchAnnouncement, voteStatusId } from '../../lib/railA11y'
 import { MapOmnibar } from './MapOmnibar'
-import { placementOptions, type PlacementOption } from './mapPlacement'
+import { useOmnibarPlacement } from './map/useOmnibarPlacement'
 import { ShortlistTray } from './map/ShortlistTray'
 import { useShortlist } from './map/useShortlist'
 import {
@@ -1665,53 +1665,25 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
     [activeDayIndex, daySlotDeps, activeDayStops, daySlotSig],
   )
 
-  // #I-41: the day the stop editor will open on for the omnibar's selected hit.
-  // One lookup feeds the placement label and the click, so the label and the
-  // editor cannot name two different days. An unknown road position falls back
-  // to the trip's first day — the same fallback the editor applies.
-  const omniPlaceKm = omniPicked ? (omniPicked.km ?? omniPicked.h.cumKm ?? null) : null
-  const omniPlaceDay = useMemo(
-    () => dayForKm(omniPlaceKm) ?? trip.days[0]?.index ?? 0,
-    [omniPlaceKm, dayForKm, trip.days],
-  )
-
-  // #418: the omnibar's choices for the place it just found. The list itself is
-  // pure (`mapPlacement.ts` decides what may be filed where, and why not); this
-  // only hands it the facts, so the same rules are unit-testable without a DOM.
-  const omniPlacement = useMemo<PlacementOption[]>(
-    () => placementOptions({
-      hit: omniPicked?.h ?? null,
-      dayIndex: activeDayIndex,
-      placeDayIndex: omniPlaceDay,
-      placeDayLabel: trip.days.find(d => d.index === omniPlaceDay)?.title ?? null,
-      km: omniPlaceKm,
-      // The parts this place's own category could serve on the day the rail is
-      // planning — the same helper the corridor rows already file through.
-      filingOptions: omniPicked ? filingOptionsForPicked(omniPicked.h) : [],
-      alreadyAdded: omniPicked ? isAlreadyAdded(omniPicked.h, identity) : false,
-      shortlisted: omniPicked ? shortlist.some(h => h.id === omniPicked.h.id) : false,
-      shortlistCount: trayShortlist.length,
-    }),
-    [omniPicked, activeDayIndex, omniPlaceDay, omniPlaceKm, trip.days, activeDaySlots, shortlist, trayShortlist, identity],
-  )
-
-  /** #418: every placement routes into a path that already existed and nothing is
-   *  re-implemented here — a day opens the stop editor (which asks for the day and
-   *  owns the write), a part fills through the same manual-candidate path the rail
-   *  uses, the shortlist collects without touching the plan, and the vote is the
-   *  tray's own decision. Nothing happens until the user clicks one. */
-  function placeOmnibarHit(option: PlacementOption) {
-    const picked = omniPicked
-    if (!picked) return
-    if (option.kind === 'day') { openAddModal(picked.h, picked.km, omniPlaceDay); return }
-    if (option.kind === 'slot') {
-      const slot = activeDaySlots.find(s => s.key === option.slotKey)
-      if (slot) addManualCandidate(slot, picked.h)
-      return
-    }
-    if (option.kind === 'shortlist') { toggleShortlist(picked.h); return }
-    if (option.kind === 'vote') { void raiseShortlistVote(); return }
-  }
+  // #I-41: the day the stop editor opens on lives in ./map/useOmnibarPlacement
+  // now (moved there by #420 slice 7) — one lookup feeds the placement label
+  // and the click, so the label and the editor cannot name two different days.
+  // An unknown road position falls back to the trip's first day — the same
+  // fallback the editor applies.
+  const { omniPlacement, placeOmnibarHit } = useOmnibarPlacement({
+    picked: omniPicked,
+    activeDayIndex,
+    days: trip.days,
+    dayForKm,
+    activeDaySlots,
+    shortlist,
+    trayShortlist,
+    identity,
+    openAddModal,
+    addManualCandidate,
+    toggleShortlist,
+    raiseShortlistVote,
+  })
   /** Counted off the very slots the rail renders, not re-derived: a second
    *  `daySlots` call here was a whole extra derivation of the same day, and a
    *  meter that could in principle disagree with the list beside it. */

@@ -13,6 +13,7 @@ import type { PlaceHit } from '../src/lib/providers/hits'
 
 const mapTab = readFileSync(new URL('../src/pages/trip/MapTab.tsx', import.meta.url), 'utf8')
 const omnibar = readFileSync(new URL('../src/pages/trip/MapOmnibar.tsx', import.meta.url), 'utf8')
+const placementHook = readFileSync(new URL('../src/pages/trip/map/useOmnibarPlacement.ts', import.meta.url), 'utf8')
 
 const hit = (over: Partial<PlaceHit> = {}): PlaceHit =>
   ({ id: 'h1', name: 'Kodikuthy View Point', latitude: 9.9, longitude: 76.7, kind: 'poi', ...over }) as PlaceHit
@@ -156,19 +157,33 @@ describe('#418 — the omnibar files nothing on its own', () => {
   })
 
   it('is mounted on the map with the pure placement list, not with bespoke rules', () => {
-    expect(mapTab).toContain("from './mapPlacement'")
+    // #420 slice 7: the wiring lives in the hook now — the page only mounts
+    // the hook's outputs, and the pure list still feeds the omnibar.
+    expect(mapTab).toContain("from './map/useOmnibarPlacement'")
     expect(mapTab).toMatch(/<MapOmnibar[\s\S]{0,900}?placement=\{omniPlacement\}/)
-    expect(mapTab).toMatch(/placementOptions\(\{/)
+    expect(mapTab).toMatch(/const \{ omniPlacement, placeOmnibarHit \} = useOmnibarPlacement\(\{/)
+    expect(mapTab).not.toContain('placementOptions({')
+    expect(placementHook).toContain("from '../mapPlacement'")
+    expect(placementHook).toMatch(/placementOptions\(\{/)
   })
 
   it('routes each choice into a path that already existed', () => {
-    const start = mapTab.indexOf('function placeOmnibarHit(')
+    // #420 slice 7: the router moved with the wiring — same four paths, same
+    // order, now closing over the hook's named deps instead of page locals.
+    const start = placementHook.indexOf('function placeOmnibarHit(')
     expect(start, 'placeOmnibarHit moved — re-anchor this guard').toBeGreaterThan(0)
-    const handler = mapTab.slice(start, start + 1400)
+    const handler = placementHook.slice(start, start + 1400)
     expect(handler).toContain('openAddModal(picked.h, picked.km, omniPlaceDay)')
     expect(handler).toContain('addManualCandidate(slot, picked.h)')
     expect(handler).toContain('toggleShortlist(picked.h)')
     expect(handler).toContain('raiseShortlistVote()')
+  })
+
+  it('names every page touch in the hook deps (#420)', () => {
+    // The slice contract: a reviewer reads the deps and knows all of it.
+    for (const dep of ['picked:', 'activeDayIndex', 'days:', 'dayForKm', 'activeDaySlots', 'shortlist', 'trayShortlist', 'identity', 'openAddModal', 'addManualCandidate', 'toggleShortlist', 'raiseShortlistVote']) {
+      expect(placementHook, `hook lost its ${dep} dep`).toContain(dep)
+    }
   })
 
   it('keeps ONE route-aware search for the corridor and the map together', () => {
