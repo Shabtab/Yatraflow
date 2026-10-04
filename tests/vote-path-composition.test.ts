@@ -96,11 +96,14 @@ describe('vote payload composition (a placeholder pick cannot reach a decision)'
 
 describe('MapTab vote writers (source tripwire to the composed contract)', () => {
   const src = readFileSync(new URL('../src/pages/trip/MapTab.tsx', import.meta.url), 'utf8')
-  // #420 slice 2 moved the shortlist writers into their own hook. A tripwire that
-  // kept reading MapTab would have gone on passing while guarding nothing, so it
-  // follows the code: `raiseSlotVote` is still the page's, `raiseShortlistVote` is
-  // the hook's, and both are held to the same composed contract.
+  // #420 slice 2 moved the shortlist writers into their own hook, and slice 10
+  // did the same for the slot vote. A tripwire that kept reading MapTab would
+  // have gone on passing while guarding nothing, so each guard follows its
+  // writer: `raiseSlotVote` is read from the writers hook, `raiseShortlistVote`
+  // from the shortlist hook, and both are held to the same composed contract.
   const shortlistSrc = readFileSync(new URL('../src/pages/trip/map/useShortlist.ts', import.meta.url), 'utf8')
+  // #420 slice 10 moved the slot vote with the writers into its own hook.
+  const writersSrc = readFileSync(new URL('../src/pages/trip/map/useMapWriters.ts', import.meta.url), 'utf8')
 
   /** The body of `function <name>` … up to the next top-level function. */
   const fnBody = (source: string, name: string): string => {
@@ -129,7 +132,7 @@ describe('MapTab vote writers (source tripwire to the composed contract)', () =>
   })
 
   it('raiseSlotVote resolves every candidate before writing, gates, and pins the payload', () => {
-    const body = fnBody(src, 'raiseSlotVote')
+    const body = fnBody(writersSrc, 'raiseSlotVote')
     expect(body).toMatch(/resolvePick\(c\.hit\)/)               // resolve-or-prompt at the boundary
     expect(body).toMatch(/usable\.length < 2/)                  // a vote needs ≥2 pinnable places
     expect(body).toMatch(/was not created/)                     // refusal is said out loud

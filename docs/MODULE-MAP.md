@@ -60,6 +60,7 @@ each rail is its own panel, not because the logic is deep.
 | Where does the omnibar file a found place? | `src/pages/trip/map/useOmnibarPlacement.ts` |
 | Where does the shared search run? | `src/pages/trip/map/useMapSearch.ts` |
 | Where does the add draft live? | `src/pages/trip/map/useAddModal.ts` |
+| Where do the plan writes run? | `src/pages/trip/map/useMapWriters.ts` |
 
 The rails' own helpers live under `src/pages/trip/map/` — check there before
 adding a loop in this file.
