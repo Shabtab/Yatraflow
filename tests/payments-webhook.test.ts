@@ -64,9 +64,16 @@ function fakeRes(): { statusCode: number; body: string; setHeader: () => void; s
 }
 
 function refundEvent(amount: number, amountRefunded: number): Record<string, unknown> {
+  // #593 — the REAL event name and shape (razorpay.com/docs/webhooks/refunds):
+  // a `refund.processed` delivery carries both the refund entity and the
+  // payment entity's cumulative `amount_refunded`. The old test drove an
+  // invented `payment.refunded` name, which is why the dead gate stayed green.
   return {
-    event: 'payment.refunded',
-    payload: { payment: { entity: { id: 'pay_1', order_id: 'order_1', amount, amount_refunded: amountRefunded } } },
+    event: 'refund.processed',
+    payload: {
+      refund: { entity: { id: 'rfnd_1', amount: amountRefunded, currency: 'INR', status: 'processed' } },
+      payment: { entity: { id: 'pay_1', order_id: 'order_1', amount, amount_refunded: amountRefunded } },
+    },
   }
 }
 
@@ -108,7 +115,7 @@ describe('#554 — the refund webhook carries the amounts, never the verdict', (
 
   it('a refund event without readable amounts is 400-acked, never guessed', async () => {
     const event = {
-      event: 'payment.refunded',
+      event: 'refund.processed',
       payload: { payment: { entity: { id: 'pay_1', order_id: 'order_1' } } },
     }
     const r = await post(event)
