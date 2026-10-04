@@ -20,8 +20,7 @@ import { openExternal } from '../../lib/native'
 import { corridorAnchors, detourKm, asymmetricDetourKm, asymmetricDetourMinutes, googleEnabled, reasonForSegmentHit, searchPlacesText, kmFromStartForHit, planDriveDays, planTravelClock, rainFactorFor, directionalKm, alongRouteKmOf, DEFER_START, type NearbyOpts, type PlaceHit, type TravelClockVerdict } from '../../lib/geocode'
 import { useResolvePick } from '../../components/ResolvePickDialog'
 import { clockHM, deriveClockMilestones } from '../../lib/clockOverlay'
-import { SHEET_TABS, sheetAppliesAt, sheetHiddenClass, sheetTabMove, type SheetTabKey } from '../../lib/mapSheet'
-import { resolveRailDay } from '../../lib/tripFocus'
+import { SHEET_TABS, sheetHiddenClass, sheetTabMove } from '../../lib/mapSheet'
 import { mapScopeNote } from '../../lib/railA11y'
 import { railKeyAction } from '../../lib/railKeys'
 import { candidatesAnnouncement, fillLabel, pickDayCaveat, scopeValueText, searchAnnouncement, voteStatusId } from '../../lib/railA11y'
@@ -33,6 +32,7 @@ import { ShortlistTray } from './map/ShortlistTray'
 import { useShortlist } from './map/useShortlist'
 import { useMapWriters } from './map/useMapWriters'
 import { useCorridorCache } from './map/useCorridorCache'
+import { useRailView } from './map/useRailView'
 import {
   NEED_PURPOSES, SEE_VISIBLE, SCOPE_KM_STEPS, SCOPE_STORAGE_KEY,
   googleMapsUrl, newStopId, poiVisitMinutes, smallThumb,
@@ -238,29 +238,12 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
   // group can vote on them. The tray under the grid owns the actions. The whole
   // feature (collection, filter, both writers) lives in map/useShortlist.ts since
   // #420 slice 2; the hook is called below, after the helpers it needs.
-  // One reason chip can narrow the rail, so "where are the lunch options?" is a
-  // tap instead of a scroll.
-  const [chipFilter, setChipFilter] = useState<string | null>(null)
-  // Fold-to-spines: either rail can step back to a 48px spine so the map gains
-  // the room. Session state on purpose - a layout whim should not persist.
-  const [folded, setFolded] = useState<{ needs: boolean; see: boolean }>({ needs: false, see: false })
-  // P2: the day the plan rail reads. Day 1 by default; the strip's chips switch it.
-  // #416: what the map is showing, as far as the rail has been TOLD.
-  // null = not reported yet, which must stay silent rather than guess.
-  const [mapFilter, setMapFilter] = useState<number | 'all' | null>(null)
-  const [localDay, setLocalDay] = useState(0)
-  const activeDayIndex = resolveRailDay(dayFocus, trip.days.map(d => d.index), localDay)
-  // #415: which rail the narrow-band sheet shows, and whether the sheet is in play
-  // at all. false until the width is measured -- the desktop layout is what renders
-  // on an unknown width, never a guess that hides a rail.
-  const [sheetTab, setSheetTab] = useState<SheetTabKey>('needs')
-  const [sheetApplies, setSheetApplies] = useState(false)
-  useEffect(() => {
-    const sync = () => setSheetApplies(sheetAppliesAt(typeof window === 'undefined' ? null : window.innerWidth))
-    sync()
-    window.addEventListener('resize', sync)
-    return () => window.removeEventListener('resize', sync)
-  }, [])
+  // #420 slice 12: the rail view (filter, fold, day, sheet, return) lives in
+  // ./map/useRailView. States return with their setters; the page calls those
+  // from event handlers only, never during render.
+  const { chipFilter, setChipFilter, folded, setFolded, mapFilter, setMapFilter,
+    setLocalDay, activeDayIndex, sheetTab, setSheetTab, sheetApplies,
+    showReturn, setShowReturn } = useRailView({ dayFocus, dayIndexes: trip.days.map(d => d.index) })
 
   // #420 slice 8: the search state moved with the runner into
   // ./map/useMapSearch (called after routeKmOf below) — the list refs and the
@@ -424,12 +407,6 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
   // asymmetric detour measure so on-the-way hits cost ~0 and spurs pay round trip.
   const routePolyline = useMemo(() => routePolylineFrom(routeGeometry), [routeGeometry])
 
-  // #polylines: the Return-home toggle is a DIRECTION filter, not a drawing
-  // switch. On (default): the corridor reads the loop — km labels wrap past the
-  // far end onto the ride home, exactly like the plan's loop math. Off: the
-  // outbound road only — a place 30 km before the far end reads ~30 km from
-  // home on the way back instead of a meaningless 95% of the loop.
-  const [showReturn, setShowReturn] = useState(true)
 
   // Crew seeds: open group-input ideas suppress near-duplicates and bias the
   // corridor toward crew-proposed kinds.

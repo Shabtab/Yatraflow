@@ -15,6 +15,8 @@ import { SHEET_MAX_WIDTH, SHEET_TABS, sheetAppliesAt, sheetHiddenClass, sheetTab
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const tab = readFileSync(join(root, 'src', 'pages', 'trip', 'MapTab.tsx'), 'utf8')
+// #420 slice 12: the sheet state and its measure effect live in the rail-view hook.
+const hook = readFileSync(join(root, 'src', 'pages', 'trip', 'map', 'useRailView.ts'), 'utf8')
 const css = readFileSync(join(root, 'src', 'styles.css'), 'utf8')
 
 describe('the sheet tab model (A415)', () => {
@@ -74,7 +76,7 @@ describe('the sheet tab model (A415)', () => {
 describe('MapTab renders the sheet (A415)', () => {
   it('renders the switcher only while the band is measured', () => {
     expect(tab).toMatch(/\{sheetApplies && \(\s*<div className="map-ideas-sheet-tabs"/)
-    expect(tab).toMatch(/setSheetApplies\(sheetAppliesAt\(/)
+    expect(hook).toMatch(/setSheetApplies\(sheetAppliesAt\(/)
   })
 
   it('is a pressed-state switcher, not inert tabs', () => {
@@ -88,7 +90,7 @@ describe('MapTab renders the sheet (A415)', () => {
   })
 
   it('starts on a real tab', () => {
-    expect(tab).toMatch(/useState<SheetTabKey>\('needs'\)/)
+    expect(hook).toMatch(/useState<SheetTabKey>\('needs'\)/)
   })
 })
 
@@ -122,11 +124,12 @@ describe('the wiring is declared exactly once (A415)', () => {
   })
 
   it('declares the sheet state once', () => {
-    expect(tab.match(/const \[sheetTab, setSheetTab\]/g)).toHaveLength(1)
-    expect(tab.match(/const \[sheetApplies, setSheetApplies\]/g)).toHaveLength(1)
+    expect(hook.match(/const \[sheetTab, setSheetTab\]/g)).toHaveLength(1)
+    expect(hook.match(/const \[sheetApplies, setSheetApplies\]/g)).toHaveLength(1)
+    expect(tab).toContain('} = useRailView(')
   })
 
   it('opens and closes the switcher conditional exactly once', () => {
     expect(tab.match(/\{sheetApplies && \(/g)).toHaveLength(1)
   })
-})
+})
