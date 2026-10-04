@@ -13,7 +13,8 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 
-const src = readFileSync(new URL('../src/pages/trip/MapTab.tsx', import.meta.url), 'utf8')
+// #420 slice 11: the scan effect lives in the corridor hook now.
+const src = readFileSync(new URL('../src/pages/trip/map/useCorridorCache.ts', import.meta.url), 'utf8')
 
 // The scan effect's own slice: from the call that raises the flag to the
 // effect's dependency line.
