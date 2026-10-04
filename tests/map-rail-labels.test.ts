@@ -12,6 +12,8 @@ import { detourBits, hitCostLabels, slotPinsFor } from '../src/pages/trip/map/ra
 import type { DaySlot } from '../src/lib/daySlots'
 
 const mapTab = readFileSync(new URL('../src/pages/trip/MapTab.tsx', import.meta.url), 'utf8')
+// #420 slice 13: the cost assembly lives in the rail-content hook; the pin stays.
+const hook = readFileSync(new URL('../src/pages/trip/map/useRailContent.ts', import.meta.url), 'utf8')
 
 describe('#420 — the three bits, in the order every surface prints them', () => {
   it('says an unmeasured position instead of a number', () => {
@@ -120,7 +122,7 @@ describe('#420 — slice 4 wiring', () => {
     expect(mapTab).toContain("from './map/railLabels'")
     // The chip and the pin both printed THIS sentence; it now comes from the module.
     expect(mapTab).not.toContain("of the day's detour budget")
-    expect(mapTab).toMatch(/const hitCosts = useMemo\(\(\) => hitCostLabels\(\{/)
+    expect(hook).toMatch(/const hitCosts = useMemo\(\(\) => hitCostLabels\(\{/)
     expect(mapTab).toMatch(/const slotPins = useMemo\(\(\) => slotPinsFor\(activeDaySlots\)/)
   })
 
@@ -141,7 +143,7 @@ describe('#420 — slice 4 wiring', () => {
   })
 
   it('the page still supplies the trip-aware inputs the module must not know', () => {
-    const call = mapTab.slice(mapTab.indexOf('hitCostLabels({'), mapTab.indexOf('}), [pois, hitEngine'))
+    const call = hook.slice(hook.indexOf('hitCostLabels({'), hook.indexOf('}), [pois, hitEngine'))
     expect(call).toContain('detourMin: hitEngine.get(String(sh.hit.id))?.detourMin ?? null')
     expect(call).toContain('etaMinutes: sh.segment.etaMinutes')
     expect(call).toContain('dayForKm,')
