@@ -622,6 +622,11 @@ anywhere in this repo means the entry labelled `6b` below.
    whole file before you move a declaration. You must leave a shared state
    with the caller. A state with one writer moves. A state with two writers
    stays.
+ 6af. **You must end a scripted cut on the construct's closing line (learned
+   2026-10-04, #420 slices 12-14).** A `useMemo` ends on its closing paren,
+   not on its deps line. You must include that line in the cut range. Cutting
+   at the deps line leaves a stray paren, and tsc reports it far from the
+   edit.
 
 ## 2. Conventions (`AGENTS.md` §4)
 
