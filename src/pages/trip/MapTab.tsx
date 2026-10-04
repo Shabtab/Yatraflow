@@ -34,11 +34,11 @@ import { useMapWriters } from './map/useMapWriters'
 import { useCorridorCache } from './map/useCorridorCache'
 import { useRailView } from './map/useRailView'
 import { useRailContent } from './map/useRailContent'
+import { useDaySlots } from './map/useDaySlots'
 import {
   SEE_VISIBLE, SCOPE_KM_STEPS, SCOPE_STORAGE_KEY,
   googleMapsUrl, newStopId, poiVisitMinutes, smallThumb,
 } from './map/pageHelpers'
-import { slotPinsFor } from './map/railLabels'
 import { alternativesFor as pickAlternatives, sightRowChips } from './map/sightRows'
 import { filingOptionsFor, manualCandidateFor, mergeSlotCandidates, slotFileRefusal } from './map/slotFiling'
 import {
@@ -53,12 +53,12 @@ import { isSightCategory, roadProfileFromLegs, loopProfile } from '../../lib/rid
 import { QuotaExhaustedError } from '../../lib/providers/google'
 import { isElectric } from '../../lib/vehicleProfile'
 import type { RailChip } from '../../lib/railReasons'
-import { daySlots, dayShape, tripDayAttribution, tripReadiness, SLOT_URGENCY_MIN, type DaySlot, type DaySlotKind, type DaySlotsDeps } from '../../lib/daySlots'
+import { dayShape, tripDayAttribution, SLOT_URGENCY_MIN, type DaySlot, type DaySlotKind } from '../../lib/daySlots'
 import { discardedStagedIds, isAlreadyAdded, normalizePlaceName, tripPresence, type PlaceIdentity } from '../../lib/placeIdentity'
 
 import { dayDetourBudgetMin, budgetSharePct, splitByDetourBudget } from '../../lib/detourBudget'
 import { anyQuotaExhausted } from '../../lib/providers/quota'
-import { buildDnaVectorAcrossTrips, loadDnaLog, recordDnaEvent, dnaNoteForHit, slotPatternHint, crewSeedsFromSuggestions, crewSeedsToPlannedStops, crewSeedEvents, crewNoteForHit } from '../../lib/tripDna'
+import { buildDnaVectorAcrossTrips, loadDnaLog, recordDnaEvent, dnaNoteForHit, crewSeedsFromSuggestions, crewSeedsToPlannedStops, crewSeedEvents, crewNoteForHit } from '../../lib/tripDna'
 import { visitMinutesForCategory } from '../../lib/slackPrompts'
 import { scrollBehavior } from '../../lib/motion'
 import type { SegmentHit } from '../../lib/geocode'
@@ -1027,46 +1027,14 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
   // drift from the engine. stopSig/refreshTick keep the memo honest against
   // store writes; the deps memo carries the expensive shared inputs.
   const daySlotSig = `${stopSig}|${refreshTick}|${dismissedIds.size}|${addedIds.size}|${shortlist.length}`
-  const daySlotDeps = useMemo<Omit<DaySlotsDeps, 'dayStops'>>(() => ({
-    haltSegments: pois,
-    anchors,
-    routePolyline: routePolyline ?? null,
-    transportMode: trip.transportMode,
-    travelStyle: trip.travelStyle,
-    existingNames,
-    identity,
-    altPool: altPool.all.map(e => e.h),
-    decisions,
-    memberCount: (trip.members ?? []).length,
-    // #344: the slot re-scores its pool with the same extras the corridor
-    // ranked by — DNA (per-trip learning + crew seeds) and the home point —
-    // and reads the session add/dismiss bags so a just-added or just-
-    // dismissed hit leaves the open slot with the pool cards. plannedStops
-    // is derived per day inside candidatesFor from `dayStops` (a single
-    // shared count here would charge every day the ACTIVE day's density,
-    // including tripReadiness's matrix).
-    dnaVector: buildDnaVectorAcrossTrips(loadDnaLog(), crewSeedEvents(trip.id, crewSeeds)),
-    homeCenter: trip.startLocationCoords ?? null,
-    addedIds,
-    dismissedIds,
-    // The shared attribution object - the same shape the Overview matrix feeds
-    // its own deps, so the two surfaces cannot attribute a halt to two days.
-    dayOfSegment: dayAttribution.dayOfSegment,
-    // P2: the rail always renders the day's grammar - the skeleton supplies
-    // the parts the corridor plan did not halt for, positioned on the day's
-    // own road-km span (the same road-true km dayForKm trusts).
-    fillSkeleton: true,
-    daySpanKm: dayAttribution.daySpanKm,
-  }), [pois, anchors, routePolyline, trip.transportMode, trip.travelStyle, existingNames, identity, altPool, dayAttribution, decisions, trip.travellers, trip.startLocationCoords, crewSeeds, dnaTick, addedIds, dismissedIds])
-  /** This day's stops - one lookup, shared by the slots, the shape and the fills. */
-  const activeDayStops = useMemo(
-    () => trip.days.find(d => d.index === activeDayIndex)?.stops ?? [],
-    [trip.days, activeDayIndex],
-  )
-  const activeDaySlots = useMemo<DaySlot[]>(
-    () => daySlots(activeDayIndex, { ...daySlotDeps, dayStops: activeDayStops }),
-    [activeDayIndex, daySlotDeps, activeDayStops, daySlotSig],
-  )
+  // #420 slice 14: the day's plan derivations (deps, stops, slots, readiness,
+  // rows, hints, pins) live in ./map/useDaySlots. Values only, never callbacks.
+  const { daySlotDeps, activeDayStops, activeDaySlots, activeDayReadiness, tripReadinessRows, dnaSlotHints, slotPins } = useDaySlots({
+    pois, anchors, routePolyline, transportMode: trip.transportMode, travelStyle: trip.travelStyle,
+    existingNames, identity, altPool, dayAttribution, decisions, members: trip.members,
+    travellers: trip.travellers, startLocationCoords: trip.startLocationCoords, tripId: trip.id,
+    crewSeeds, dnaTick, addedIds, dismissedIds, days: trip.days, activeDayIndex, daySlotSig,
+  })
 
   // #I-41: the day the stop editor opens on lives in ./map/useOmnibarPlacement
   // now (moved there by #420 slice 7) — one lookup feeds the placement label
@@ -1087,28 +1055,6 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
     toggleShortlist,
     raiseShortlistVote,
   })
-  /** Counted off the very slots the rail renders, not re-derived: a second
-   *  `daySlots` call here was a whole extra derivation of the same day, and a
-   *  meter that could in principle disagree with the list beside it. */
-  const activeDayReadiness = useMemo(() => {
-    const auto = activeDaySlots.filter(s => s.auto).length
-    return {
-      dayIndex: activeDayIndex,
-      filled: activeDaySlots.filter(s => s.state === 'filled').length,
-      total: activeDaySlots.length,
-      auto,
-      required: activeDaySlots.length - auto,
-    }
-  }, [activeDaySlots, activeDayIndex])
-  /** S2: the whole day-chip row in ONE pass. The chips used to call
-   *  `dayReadiness` per day inline in the render body, so every keystroke in
-   *  the search box re-derived every day's slots - and each empty slot scores
-   *  the entire corridor pool through `scoreHitForSegment`, two geometry
-   *  projections per hit. */
-  const tripReadinessRows = useMemo(
-    () => tripReadiness(pois, trip.days.map(d => ({ index: d.index, stops: d.stops })), daySlotDeps),
-    [pois, trip.days, daySlotDeps, daySlotSig],
-  )
   const [openSlotKey, setOpenSlotKey] = useState<string | null>(null)
   // P1: closing or switching parts drops the in-flight search (the seq bump
   // retires any query still in the air so its rows can never land elsewhere).
@@ -1116,17 +1062,6 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
   // Plan P2.5's mobile slots summary: collapsed to a count + open on phones,
   // desktop hides the summary so this state never touches it there.
   const [slotsPeek, setSlotsPeek] = useState(false)
-  /** P7.2: what the log has learned about each KIND of part - shown on an open
-   *  part as context, never as a claim (silent until 3+ accepts). */
-  const dnaSlotHints = useMemo(() => {
-    const log = loadDnaLog()
-    return {
-      meal: slotPatternHint(log, 'meal'),
-      fuel: slotPatternHint(log, 'fuel'),
-      overnight: slotPatternHint(log, 'overnight'),
-      stretch: slotPatternHint(log, 'stretch'),
-    }
-  }, [dnaTick])
   /** m5: `DaySlotKind` is exactly the four keys the hints are built for, so an
    *  unknown kind yields nothing. The old ternary's last branch fell through to
    *  the stretch hint, which would quietly mislabel any future kind. */
@@ -1151,9 +1086,6 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
   )
   /** P5.3: the selected day's empty parts as hollow amber pins - their top
    *  candidate's real position, with P5.2's cost line in the tooltip. */
-  // #420 slice 4: the pin's label is the same sentence a corridor row prints, from
-  // the same helper — the two used to assemble it separately.
-  const slotPins = useMemo(() => slotPinsFor(activeDaySlots), [activeDaySlots])
   /** The rail's meter copy: the mockup's wording, honest per day. The count is
    *  over `required` (engine-managed parts excluded) — the work the crew owns. */
   function activeReadinessLabel() {

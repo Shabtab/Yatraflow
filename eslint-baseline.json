@@ -1,7 +1,7 @@
 {
   "generatedBy": "npm run lint:ratchet -- --update",
   "errors": 142,
-  "warnings": 33,
+  "warnings": 29,
   "files": {
     "src/App.tsx": {
       "react-hooks/set-state-in-effect": 1
@@ -104,7 +104,7 @@
     },
     "src/pages/trip/MapTab.tsx": {
       "@typescript-eslint/no-unused-vars": 14,
-      "react-hooks/exhaustive-deps": 8
+      "react-hooks/exhaustive-deps": 4
     },
     "src/pages/trip/OverviewTab.tsx": {
       "react-hooks/set-state-in-effect": 1
