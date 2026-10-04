@@ -17,6 +17,7 @@ import type { ItineraryStop } from '../src/data/types'
 const read = (p: string) => readFileSync(new URL(p, import.meta.url), 'utf8').replace(/\r\n/g, '\n')
 const travelPanel = read('../src/pages/trip/timeline/TravelPanel.tsx')
 const mapTab = read('../src/pages/trip/MapTab.tsx')
+const writersSrc = read('../src/pages/trip/map/useMapWriters.ts')
 const daySlotsSrc = read('../src/lib/daySlots.ts')
 const cacheSrc = read('../src/hooks/useSuggestionCache.ts')
 
@@ -216,8 +217,10 @@ describe('#346 — a superseded search says so', () => {
 
 describe('#346 — fills and deletes filter locally', () => {
   it('fillSlot / fillTheDay / removeStopFromMap no longer force a re-search', () => {
-    const fillSlot = travelPanelSection(mapTab, 'async function fillSlot')
-    const fillTheDay = travelPanelSection(mapTab, 'async function fillTheDay')
+    // #420 slice 10: the fills moved with the writers into ./map — the guard
+    // follows them, while the delete path never left the page.
+    const fillSlot = travelPanelSection(writersSrc, 'async function fillSlot')
+    const fillTheDay = travelPanelSection(writersSrc, 'async function fillTheDay')
     const removeStop = travelPanelSection(mapTab, 'function removeStopFromMap')
     for (const section of [fillSlot, fillTheDay, removeStop]) {
       expect(section).not.toContain('suggestionCache.clearMap()')
