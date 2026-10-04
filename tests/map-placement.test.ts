@@ -212,10 +212,12 @@ describe('#418 — the omnibar files nothing on its own', () => {
 
   it('feeds the placement label and the stop editor one resolved day (#I-41)', () => {
     // One memo resolves the day; the label reads it and the click forwards it,
-    // so no second derivation can name a different day.
-    expect(mapTab).toMatch(/placeDayIndex:\s*omniPlaceDay/)
-    expect(mapTab).toMatch(/const omniPlaceDay = useMemo/)
-    expect(mapTab).toMatch(/dayForKm\([\s\S]{0,120}?\)\s*\?\?\s*trip\.days\[0\]/)
+    // so no second derivation can name a different day. #420 slice 7 moved
+    // the memo with the wiring — the hook owns it now, the page mounts it.
+    expect(placementHook).toMatch(/placeDayIndex:\s*omniPlaceDay/)
+    expect(placementHook).toMatch(/const omniPlaceDay = useMemo/)
+    expect(placementHook).toMatch(/dayForKm\([\s\S]{0,120}?\)\s*\?\?\s*(trip\.)?days\[0\]/)
+    expect(mapTab).toMatch(/dayForKm,\s+activeDaySlots,\s+shortlist,/)
   })
 
   it('keeps the omnibar pick out of the rail\'s hover state', () => {

@@ -28,6 +28,7 @@ import { candidatesAnnouncement, fillLabel, pickDayCaveat, scopeValueText, searc
 import { MapOmnibar } from './MapOmnibar'
 import { useOmnibarPlacement } from './map/useOmnibarPlacement'
 import { useMapSearch } from './map/useMapSearch'
+import { useAddModal } from './map/useAddModal'
 import { ShortlistTray } from './map/ShortlistTray'
 import { useShortlist } from './map/useShortlist'
 import {
@@ -223,10 +224,8 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
     }, DEBOUNCE_MS)
   }
   useEffect(() => () => { if (scopeTimer.current) clearTimeout(scopeTimer.current) }, [])
-  // pending "add from map / nearby" — pick a day, then confirm
-  const [poiDraft, setPoiDraft] = useState<{ hit: PlaceHit } | null>(null)
-  const [pickDay, setPickDay] = useState<number>(0)
-  const [pickDayGuessed, setPickDayGuessed] = useState(false)
+  // #420 slice 9: the add draft moved with the opener into
+  // ./map/useAddModal (called after dayForKm below) — the modal JSX stays.
   // cross-highlighting: the suggestion currently hovered/selected in EITHER the
   // side panels or the map. Panel hover/click sets it (map flies to the pin);
   // map hover/click sets it (panel row highlights and scrolls into view).
@@ -373,6 +372,15 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
    *  defaults, per-day budgets, day chips). #161: unknown km returns null and
    *  each consumer decides honestly — never a silent Day 1. */
   const dayForKm = dayAttribution.dayForKm
+
+  // #420 slice 9: the add draft lives in ./map/useAddModal now — same inputs
+  // in, same outputs out, no behavior change. Called here because the day
+  // default reads the attribution above. Hook order changes once, then stays
+  // fixed — every hook here runs each render.
+  const {
+    poiDraft, setPoiDraft, pickDay, setPickDay,
+    pickDayGuessed, setPickDayGuessed, openAddModal,
+  } = useAddModal({ identity, dayForKm, days: trip.days })
 
   // search the WHOLE route corridor (start → stops → destination); the home
   // zone around the starting point is excluded inside the engine
@@ -1241,29 +1249,6 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
     toast(`"${h.name}" added as a candidate for the ${slot.label.toLowerCase()} slot.`)
   }
 
-  function openAddModal(hit: PlaceHit, kmOverride?: number | null, dayOverride?: number | null) {
-    // Duplicate guard (#179 family): a place already in the plan (matched by
-    // title) can't be added again from ANY path — the map-pin "+", a search
-    // row, or the shortlist tray — so the modal never opens for a repeat.
-    if (isAlreadyAdded(hit, identity)) { toast(`“${hit.name}” is already in your trip.`); return }
-    // Pick-day default: prefer the caller's road position (search rows pass the
-    // along-route km they already measured — searchPlacesText hits carry NO
-    // cumKm, so reading hit.cumKm alone always defaulted to Day 1), else the
-    // hit's own ride-plan cumKm (corridor pins). An unknown position can't
-    // preselect honestly, so fall back to the first day — the picker is
-    // user-adjustable, so nothing is attributed silently.
-    const kmForPick = kmOverride ?? hit.cumKm
-    // #I-41: the omnibar passes the day its placement label already named.
-    // The label and this editor then open on one day, never two.
-    const derivedDay = dayOverride ?? dayForKm(kmForPick)
-    setPickDay(derivedDay ?? trip.days[0]?.index ?? 0)
-    // #333 A9: an unknown position still cannot preselect honestly — but the
-    // fallback to Day 1 used to happen in silence, with the reasoning living
-    // only in this comment. The modal discloses the guess now, and it stops
-    // being a guess the moment the user picks a day themselves.
-    setPickDayGuessed(kmForPick == null)
-    setPoiDraft({ hit })
-  }
 
   /** Delete straight from the map pin's popup. Since #424 this is THE
    *  destructive-stop path, shared with the Timeline's day row and the Board's
