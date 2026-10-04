@@ -1246,7 +1246,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
     toast(`"${h.name}" added as a candidate for the ${slot.label.toLowerCase()} slot.`)
   }
 
-  function openAddModal(hit: PlaceHit, kmOverride?: number | null) {
+  function openAddModal(hit: PlaceHit, kmOverride?: number | null, dayOverride?: number | null) {
     // Duplicate guard (#179 family): a place already in the plan (matched by
     // title) can't be added again from ANY path — the map-pin "+", a search
     // row, or the shortlist tray — so the modal never opens for a repeat.
@@ -1257,13 +1257,16 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
     // hit's own ride-plan cumKm (corridor pins). An unknown position can't
     // preselect honestly, so fall back to the first day — the picker is
     // user-adjustable, so nothing is attributed silently.
-    const derivedDay = dayForKm(kmOverride ?? hit.cumKm)
-    setPickDay(derivedDay ?? 0)
+    const kmForPick = kmOverride ?? hit.cumKm
+    // #I-41: the omnibar passes the day its placement label already named.
+    // The label and this editor then open on one day, never two.
+    const derivedDay = dayOverride ?? dayForKm(kmForPick)
+    setPickDay(derivedDay ?? trip.days[0]?.index ?? 0)
     // #333 A9: an unknown position still cannot preselect honestly — but the
     // fallback to Day 1 used to happen in silence, with the reasoning living
     // only in this comment. The modal discloses the guess now, and it stops
     // being a guess the moment the user picks a day themselves.
-    setPickDayGuessed(derivedDay == null)
+    setPickDayGuessed(kmForPick == null)
     setPoiDraft({ hit })
   }
 
@@ -1662,6 +1665,16 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
     [activeDayIndex, daySlotDeps, activeDayStops, daySlotSig],
   )
 
+  // #I-41: the day the stop editor will open on for the omnibar's selected hit.
+  // One lookup feeds the placement label and the click, so the label and the
+  // editor cannot name two different days. An unknown road position falls back
+  // to the trip's first day — the same fallback the editor applies.
+  const omniPlaceKm = omniPicked ? (omniPicked.km ?? omniPicked.h.cumKm ?? null) : null
+  const omniPlaceDay = useMemo(
+    () => dayForKm(omniPlaceKm) ?? trip.days[0]?.index ?? 0,
+    [omniPlaceKm, dayForKm, trip.days],
+  )
+
   // #418: the omnibar's choices for the place it just found. The list itself is
   // pure (`mapPlacement.ts` decides what may be filed where, and why not); this
   // only hands it the facts, so the same rules are unit-testable without a DOM.
@@ -1669,8 +1682,9 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
     () => placementOptions({
       hit: omniPicked?.h ?? null,
       dayIndex: activeDayIndex,
-      dayLabel: trip.days.find(d => d.index === activeDayIndex)?.title ?? null,
-      km: omniPicked?.km ?? null,
+      placeDayIndex: omniPlaceDay,
+      placeDayLabel: trip.days.find(d => d.index === omniPlaceDay)?.title ?? null,
+      km: omniPlaceKm,
       // The parts this place's own category could serve on the day the rail is
       // planning — the same helper the corridor rows already file through.
       filingOptions: omniPicked ? filingOptionsForPicked(omniPicked.h) : [],
@@ -1678,7 +1692,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
       shortlisted: omniPicked ? shortlist.some(h => h.id === omniPicked.h.id) : false,
       shortlistCount: trayShortlist.length,
     }),
-    [omniPicked, activeDayIndex, trip.days, activeDaySlots, shortlist, trayShortlist, identity],
+    [omniPicked, activeDayIndex, omniPlaceDay, omniPlaceKm, trip.days, activeDaySlots, shortlist, trayShortlist, identity],
   )
 
   /** #418: every placement routes into a path that already existed and nothing is
@@ -1689,7 +1703,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
   function placeOmnibarHit(option: PlacementOption) {
     const picked = omniPicked
     if (!picked) return
-    if (option.kind === 'day') { openAddModal(picked.h, picked.km); return }
+    if (option.kind === 'day') { openAddModal(picked.h, picked.km, omniPlaceDay); return }
     if (option.kind === 'slot') {
       const slot = activeDaySlots.find(s => s.key === option.slotKey)
       if (slot) addManualCandidate(slot, picked.h)

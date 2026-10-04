@@ -227,9 +227,12 @@ that notices the drift.
    **Automation (same day):** `.github/workflows/issue-autoclose.yml` mirrors
     the tracker on every PR merged into `test` (keyword grammar in
     `scripts/pr-auto-close.mjs`, pinned by `tests/pr-auto-close.test.ts`) and
-    leaves a landing comment on each issue it closes. Still verify after a
-    merge, and close by hand when that job is red — the rule is the mirror, not
-    the mechanism.
+   leaves a landing comment on each issue it closes. The job runs the closing
+   keyword grammar, and a claim like `Claiming #N` is not a keyword — so it can
+   report success and close nothing (#617 did exactly that). Check
+   `gh issue view` after every merge. Close the issues by hand when the state is
+   still OPEN, whether the job passed or failed. The rule is the mirror, not
+   the mechanism.
 
 13. **Write new prose in Simplified Technical English (ASD-STE100) — this
     covers new documentation, new rules, changelog entries, and how an agent

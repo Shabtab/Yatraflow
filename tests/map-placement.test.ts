@@ -19,7 +19,8 @@ const hit = (over: Partial<PlaceHit> = {}): PlaceHit =>
 
 const base = {
   dayIndex: 0,
-  dayLabel: 'Kochi to Munnar — waterfalls en route',
+  placeDayIndex: 0,
+  placeDayLabel: 'Kochi to Munnar — waterfalls en route',
   km: 73,
   filingOptions: [] as Array<{ key: string; label: string; noun: string }>,
   alreadyAdded: false,
@@ -46,6 +47,26 @@ describe('#418 — placement choices', () => {
     const unplaced = placementOptions({ ...base, hit: hit(), km: null })
     expect(unplaced[0].hint).toMatch(/guess/i)
     expect(unplaced[0].hint).toMatch(/change it in the stop editor/i)
+  })
+
+  it('names the day the stop editor will open on, not the rail\'s day (#I-41)', () => {
+    // The defect: the label named the active day while the editor preselected
+    // the day the hit's road position reaches.
+    const options = placementOptions({
+      ...base,
+      dayIndex: 0,
+      placeDayIndex: 2,
+      placeDayLabel: 'Munnar to Madurai',
+      km: 420,
+      hit: hit(),
+      filingOptions: [{ key: 'day1:lunch', label: 'Add as Lunch', noun: 'lunch' }],
+    })
+    const dayOption = options.find(o => o.kind === 'day')!
+    expect(dayOption.label).toBe('Add to Day 3')
+    expect(dayOption.hint).toContain('Day 3: Munnar to Madurai')
+    // The slots belong to the rail's own day, so their hint keeps naming it.
+    const slot = options.find(o => o.kind === 'slot')!
+    expect(slot.hint).toContain("Day 1's empty lunch")
   })
 
   it('offers one option per empty part the place could serve, carrying its slot', () => {
@@ -144,7 +165,7 @@ describe('#418 — the omnibar files nothing on its own', () => {
     const start = mapTab.indexOf('function placeOmnibarHit(')
     expect(start, 'placeOmnibarHit moved — re-anchor this guard').toBeGreaterThan(0)
     const handler = mapTab.slice(start, start + 1400)
-    expect(handler).toContain('openAddModal(picked.h, picked.km)')
+    expect(handler).toContain('openAddModal(picked.h, picked.km, omniPlaceDay)')
     expect(handler).toContain('addManualCandidate(slot, picked.h)')
     expect(handler).toContain('toggleShortlist(picked.h)')
     expect(handler).toContain('raiseShortlistVote()')
@@ -167,6 +188,14 @@ describe('#418 — the omnibar files nothing on its own', () => {
     expect(omnibar).not.toMatch(/\bsearchPlacesText\(/)
     expect(omnibar).not.toMatch(/\bsearchPlaces\(/)
     expect(omnibar).toMatch(/results: OmnibarHit\[\]/)
+  })
+
+  it('feeds the placement label and the stop editor one resolved day (#I-41)', () => {
+    // One memo resolves the day; the label reads it and the click forwards it,
+    // so no second derivation can name a different day.
+    expect(mapTab).toMatch(/placeDayIndex:\s*omniPlaceDay/)
+    expect(mapTab).toMatch(/const omniPlaceDay = useMemo/)
+    expect(mapTab).toMatch(/dayForKm\([\s\S]{0,120}?\)\s*\?\?\s*trip\.days\[0\]/)
   })
 
   it('keeps the omnibar pick out of the rail\'s hover state', () => {

@@ -669,11 +669,11 @@ Do not treat these as reproduced defects yet.
 - **Hidden rail:** A slot pin unfolds Needs but does not select Needs in the phone sheet.
 - **Search freshness:** Editing or clearing a query does not cancel its active request or advance the search token.
 - **Matrix freshness:** The published Map hash stops updating while Map is unmounted. Test a settings change before returning to Map.
-- **Placement wording:** The day placement label names the active day. Its modal can choose another day from road position.
+- **Placement wording:** ✅ Decided and fixed 2026-10-04. The label now names the day the stop editor will open on. The Map resolves one day for both the label and the click (`mapPlacement.ts`, `MapTab.tsx`). The slot hints keep naming the rail's own day.
 - **Viewer controls:** MapOmnibar placement and the split banner need an explicit viewer-role check.
 - **Long trips:** WeatherCard checks the start date, then requests the whole trip. Test a trip beyond the forecast window.
 
-These items need a focused follow-up check before another issue claims browser reproduction. ROADMAP idea-bank rows **I-37 through I-43** carry them until that check runs.
+These items need a focused follow-up check before another issue claims browser reproduction. ROADMAP idea-bank rows **I-37 through I-43** carry them until that check runs (**I-41** shipped 2026-10-04).
 
 ### Checks and limits
 
