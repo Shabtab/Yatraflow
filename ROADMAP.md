@@ -431,7 +431,7 @@ get a row here again.
 
 ### Workspace tabs — 2026-10-03
 
-**Progress: 5/8 repaired.** Source and browser evidence live in [the tab audit](docs/UI_AUDIT.md#workspace-tab-audit--2026-10-03).
+**Progress: 8/8 repaired.** Source and browser evidence live in [the tab audit](docs/UI_AUDIT.md#workspace-tab-audit--2026-10-03).
 
 | Finding | Scope | Status |
 |---|---|---|
@@ -440,9 +440,9 @@ get a row here again.
 | A3 / #609 | Commitment checks use the last stop | ✅ |
 | A4 / #610 | Map discards shared day selection | ✅ |
 | A5 / #611 | Map stop clocks differ from Timeline | ✅ |
-| A6 / #612 | Phone popup actions overflow | Open |
-| A7 / #613 | Stopless driving day loses its map | Open |
-| A8 / #614 | Snapshot prints zero-based days | Open |
+| A6 / #612 | Phone popup actions overflow | ✅ |
+| A7 / #613 | Stopless driving day loses its map | ✅ |
+| A8 / #614 | Snapshot prints zero-based days | ✅ |
 
 ---
 ## Idea bank

@@ -147,18 +147,17 @@ export function OverviewTab({ trip, onOpenTimeline, onOpenMap, onInvite, health,
               two coordinates are valid, and the honest absence is rendered here
               in the Overview's own branch rather than by changing the shared
               component (PublicItinerary is its second caller). */}
-          {/* `RouteSnapshot` takes a non-null `day` badge index. The chain's start,
-              return leg and destination tail carry `null` because no day owns them;
-              `?? 0` restores exactly the old badge placement (the start used to be
-              pushed as day 0), and the component's own dedupe means those later
-              points add no second badge. */}
+          {/* `RouteSnapshot` prints each badge as its day index plus one. The
+              chain's start, return leg and destination tail carry `null` because
+              no day owns them, and the component draws those points without a
+              badge — so no phantom Day 0 appears (#614). */}
           {routePoints.length >= 2
             ? <RouteSnapshot
                 count={trip.days.length}
                 startLabel={trip.startLocation}
                 endLabel={trip.destinations[trip.destinations.length - 1]}
                 roundTripNote={isRoundTrip(trip) ? `↩ returns to ${trip.startLocation}` : undefined}
-                points={routePoints.map(p => ({ lat: p.lat, lng: p.lng, day: p.day ?? 0 }))}
+                points={routePoints.map(p => ({ lat: p.lat, lng: p.lng, day: p.day }))}
               />
             : <p className="muted small" style={{ margin: 0 }}>
                 No route to draw yet — this plan needs at least two places with confirmed

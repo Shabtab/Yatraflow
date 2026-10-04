@@ -760,6 +760,13 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
     }
     return { dayRoutePoints: out, stopClock: buildStopClock(trip, legCorrections) }
   }, [trip, legCorrections])
+  // #613: whether the map has anything to draw. A day can carry a real derived
+  // journey without stored stops, so the single-day gate reads the journey —
+  // the pins alone would hide a driving day behind the no-stops message. The
+  // all-days view still needs plotted stops for its shared stop chain.
+  const canDrawRoute = dayFilter === 'all'
+    ? allPoints.length > 0
+    : allPoints.length > 0 || dayRoutePoints[String(dayFilter)] != null
   const dayRoutesKey = useMemo(
     () => Object.entries(dayRoutePoints)
       .map(([k, v]) => `${k}:${(v ?? []).map(p => `${p.lat.toFixed(5)},${p.lng.toFixed(5)}`).join('>')}`)
@@ -791,7 +798,7 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
     [allPoints],
   )
   useEffect(() => {
-    if (allPoints.length === 0) { setMapLoaded(false); return }
+    if (!canDrawRoute) { setMapLoaded(false); return }
     let cancelled = false
     let attached = false
     let watchdog = 0
@@ -1016,7 +1023,7 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
   )
 
   useEffect(() => {
-    if (allPoints.length === 0) { setGeom({}); return }
+    if (!canDrawRoute) { setGeom({}); return }
     // AbortSignal, not just a flag: a cancelled effect must STOP the in-flight
     // fetches (they eat the shared OSRM rate-limit budget and their results
     // were being thrown away anyway) — #polylines.
@@ -1223,7 +1230,7 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
       )}
 
       <div className="map-frame">
-        {allPoints.length === 0 ? (
+        {!canDrawRoute ? (
           <div className="empty-state"><div className="big"><MapIcon size={38} aria-hidden /></div><p>No confirmed stops to plot yet - add some in the Timeline.</p></div>
         ) : (
           <MapLibreMap
@@ -1529,8 +1536,15 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
 
         {selectedStop && (onOpenInTimeline || onOpenInBoard || onDeleteStop) && (
           <div className="yf-stop-jump" role="dialog" aria-label={`Selected stop: ${selectedStop.title}`}
-            style={{ position: 'absolute', left: '50%', bottom: 14, transform: 'translateX(-50%)', zIndex: 5, display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-soft)', maxWidth: 'calc(100% - 24px)' }}>
-            <span className="small" style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 200 }}>{selectedStop.title}</span>
+            style={{ position: 'absolute', left: '50%', bottom: 14, transform: 'translateX(-50%)', zIndex: 5, display: 'flex', flexDirection: 'column', gap: 8, padding: '8px 10px', background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-soft)', maxWidth: 'calc(100% - 24px)' }}>
+            {/* #612: the name gets its own row. It used to share one flex row
+                with every action, so at phone width the buttons kept their
+                minimum widths and squeezed the name to zero. */}
+            <span className="small" style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{selectedStop.title}</span>
+            {/* The actions wrap inside the popup's own bounds instead of pushing
+                past them — Close stays visible at 320px. Touch targets do not
+                change: the buttons keep their sizes, they only reflow. */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             {onOpenInTimeline && (
               <button className="btn btn-sm btn-primary" onClick={() => { onOpenInTimeline(selectedStop.id); setSelectedStop(null) }}>Open in Timeline</button>
             )}
@@ -1540,7 +1554,8 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
             {onDeleteStop && (
               <button className="btn btn-sm btn-danger" onClick={() => { onDeleteStop(selectedStop.id, { title: selectedStop.title, dayIndex: selectedStop.dayIndex }); setSelectedStop(null) }}>Remove</button>
             )}
-            <button className="icon-btn" onClick={() => setSelectedStop(null)} aria-label="Close" style={{ flex: '0 0 auto' }}><X size={14} aria-hidden /></button>
+            <button className="icon-btn" onClick={() => setSelectedStop(null)} aria-label="Close" style={{ flex: '0 0 auto', marginLeft: 'auto' }}><X size={14} aria-hidden /></button>
+            </div>
           </div>
         )}
 

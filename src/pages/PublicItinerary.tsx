@@ -273,8 +273,9 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
   )
   const routePoints = useMemo(() => {
     if (!trip) return undefined
-    const pts: Array<{ lat: number; lng: number; day: number }> = []
-    if (trip.startLocationCoords) pts.push({ lat: trip.startLocationCoords.lat, lng: trip.startLocationCoords.lng, day: 0 })
+    const pts: Array<{ lat: number; lng: number; day: number | null }> = []
+    // The start belongs to no day: it draws the line but earns no badge (#614).
+    if (trip.startLocationCoords) pts.push({ lat: trip.startLocationCoords.lat, lng: trip.startLocationCoords.lng, day: null })
     for (const day of orderedDays) {
       for (const s of [...day.stops].sort((a, b) => a.orderInDay - b.orderInDay)) {
         if (s.status !== 'rejected' && Number.isFinite(s.lat) && Number.isFinite(s.lng)) {
