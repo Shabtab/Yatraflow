@@ -384,6 +384,117 @@ describe('POST /api/checkout', () => {
     expect(res.statusCode).toBe(200)
     expect(JSON.parse(res.body).orderId).toBe('order_NEW')
   })
+
+  describe('#594 — every live order is read, oldest capture first', () => {
+    const liveRow = (id: string, status: string, amount = 500) => ({
+      razorpay_order_id: id, amount_inr: amount, status,
+    })
+    function stubLiveOrders(rows: unknown[], gateway: Record<string, string>) {
+      fetchMock.mockImplementation(async (input: RequestInfo | URL, init: RequestInit = {}) => {
+        const url = String(input)
+        const method = (init.method ?? 'GET') as string
+        if (url.includes('/auth/v1/user')) return jsonResponse({ id: 'buyer-1' })
+        if (url.includes('/rest/v1/published_itineraries')) return jsonResponse([pubRow])
+        if (url.includes('/rest/v1/entitlements')) return jsonResponse([])
+        // The recovery tail: mark the captured row paid, then grant through the
+        // buyer-scoped RPC. Both are what a real recovery calls, so the stub
+        // carries them rather than the test asserting on a 503 short-circuit.
+        if (url.includes('/rpc/claim_paid_order')) return jsonResponse('ent-uuid')
+        if (url.includes('/rest/v1/purchase_orders') && method === 'PATCH') return jsonResponse([{ id: 'o', razorpay_order_id: 'x', status: 'paid' }])
+        if (url.includes('/rest/v1/purchase_orders') && method === 'POST') return jsonResponse(null, 201)
+        if (url.includes('/rest/v1/purchase_orders') && method === 'GET') return jsonResponse(rows)
+        // Gateway order STATUS probes come before the create call: the create URL
+        // is an exact match, so the prefix branch must not be shadowed by it.
+        if (url.includes('api.razorpay.com/v1/orders/')) {
+          const id = decodeURIComponent(url.split('/v1/orders/')[1]!)
+          return jsonResponse({ id, status: gateway[id] ?? 'created' })
+        }
+        if (url === 'https://api.razorpay.com/v1/orders') return jsonResponse({ id: 'order_NEW', amount: 50000, currency: 'INR' })
+        throw new Error(`unexpected fetch ${url}`)
+      })
+    }
+    it('reads every live row, not just the newest', async () => {
+      stubLiveOrders([liveRow('order_OLD', 'pending'), liveRow('order_NEW1', 'pending')], { order_OLD: 'created', order_NEW1: 'created' })
+      await run({ pubId: 'kerala-trip_1' })
+      const reads = fetchMock.mock.calls.filter(c => String(c[0]).includes('status=in.(pending,paid)'))
+      expect(reads.length).toBe(1)
+      // The old `limit=1` read shape is gone — no read asks for one row.
+      expect(fetchMock.mock.calls.some(c => String(c[0]).includes('/rest/v1/purchase_orders') && String(c[0]).includes('limit=1') && String(c[0]).includes('created_at'))).toBe(false)
+    })
+    it('a CAPTURED OLDER order is recovered before the newer pending one is re-served', async () => {
+      // The bug's exact shape: newest-first would re-serve order_NEW1 and never
+      // notice that order_OLD already took the money.
+      stubLiveOrders([liveRow('order_NEW1', 'pending'), liveRow('order_OLD', 'pending')], {
+        order_OLD: 'paid', order_NEW1: 'created',
+      })
+      const res = await run({ pubId: 'kerala-trip_1' })
+      // Recovered: the grant is finished on the OLD order, and NO fresh modal is
+      // handed back (a 200 with orderId would be a second payable thing).
+      expect(res.statusCode).toBe(409)
+      expect(JSON.parse(res.body).error).toMatch(/earlier payment was confirmed/)
+      expect(JSON.parse(res.body).orderId).toBeUndefined()
+      expect(fetchMock.mock.calls.some(c => String(c[0]) === 'https://api.razorpay.com/v1/orders')).toBe(false)
+      // The OLDER row is the one that was probed and recovered — with a
+      // newest-only read, order_OLD is never asked about at all.
+      const probes = fetchMock.mock.calls.map(c => String(c[0])).filter(u => u.includes('api.razorpay.com/v1/orders/'))
+      expect(probes.some(u => u.includes('order_OLD'))).toBe(true)
+      // …and once the older capture is found the scan RECOVERS there and stops —
+      // the newer row is never re-served, which is the whole point.
+      expect(probes.some(u => u.includes('order_NEW1'))).toBe(false)
+    })
+    it('re-serves the one payable order when a newer one is captured on the gateway', async () => {
+      // The realistic two-row shape after the index lands: the older row is
+      // paid-and-granted already (so this path would not be reached), and the
+      // live case is one pending row re-served against a captured older one —
+      // which is the recovery test above. Here the surviving case is simply the
+      // single-row re-serve, plus a row at a DIFFERENT price (a price change),
+      // which is out of scope for this scan by design.
+      stubLiveOrders([liveRow('order_NEW1', 'pending'), liveRow('order_OLDPRICE', 'pending', 400)], {
+        order_NEW1: 'created', order_OLDPRICE: 'created',
+      })
+      const res = await run({ pubId: 'kerala-trip_1' })
+      expect(res.statusCode).toBe(200)
+      expect(JSON.parse(res.body).orderId).toBe('order_NEW1')
+    })
+    it('two live pending orders at the current price refuse rather than mint or re-serve', async () => {
+      // The overpayment case the issue asks to surface: both rows say payable,
+      // so handing back either one risks a second capture on a plan whose money
+      // may already have moved. Nothing is minted, and the operator gets the ids.
+      stubLiveOrders([liveRow('order_A', 'pending'), liveRow('order_B', 'pending')], {
+        order_A: 'created', order_B: 'created',
+      })
+      const res = await run({ pubId: 'kerala-trip_1' })
+      expect(res.statusCode).toBe(409)
+      expect(JSON.parse(res.body).error).toMatch(/more than one unfinished payment/)
+      expect(fetchMock.mock.calls.some(c => String(c[0]) === 'https://api.razorpay.com/v1/orders')).toBe(false)
+    })
+    it('a lost mint race (the index refuses the row) is a 409, never a dead order id', async () => {
+      fetchMock.mockImplementation(async (input: RequestInfo | URL, init: RequestInit = {}) => {
+        const url = String(input)
+        if (url.includes('/auth/v1/user')) return jsonResponse({ id: 'buyer-1' })
+        if (url.includes('/rest/v1/published_itineraries')) return jsonResponse([pubRow])
+        if (url.includes('/rest/v1/entitlements')) return jsonResponse([])
+        if (url.includes('/rest/v1/purchase_orders') && (init.method ?? 'GET') === 'GET') return jsonResponse([])
+        if (url.includes('/rest/v1/purchase_orders')) return jsonResponse(null, 409)
+        if (url === 'https://api.razorpay.com/v1/orders') return jsonResponse({ id: 'order_RACED', amount: 50000, currency: 'INR' })
+        throw new Error(`unexpected fetch ${url}`)
+      })
+      const res = await run({ pubId: 'kerala-trip_1' })
+      expect(res.statusCode).toBe(409)
+      // Never hand back an order_id whose row does not exist — that modal opens
+      // and Razorpay takes money for a payment the app can never resolve.
+      expect(JSON.parse(res.body).orderId).toBeUndefined()
+      expect(JSON.parse(res.body).error).toMatch(/nothing was charged/)
+    })
+    it('failed rows are not live: they never enter the scan', async () => {
+      stubLiveOrders([], {})
+      await run({ pubId: 'kerala-trip_1' })
+      // The scan query excludes `failed` server-side.
+      const scanUrl = fetchMock.mock.calls.find(c => String(c[0]).includes('status=in.(pending,paid)'))![0] as string
+      expect(scanUrl).toContain('status=in.(pending,paid)')
+      expect(scanUrl).not.toContain('status=neq.failed')
+    })
+  })
 })
 
 describe('POST /api/payments-verify', () => {
@@ -506,6 +617,14 @@ describe('POST /api/payments-verify', () => {
     expect(res.statusCode).toBe(200)
     expect(JSON.parse(res.body)).toEqual({ ok: true })
   })
+
+  // #594 — several LIVE orders can exist for one (buyer, pub) until the
+  // one-live-order index (20261004) lands: a concurrent mint across two tabs, or
+  // a price change that minted a fresh order while the old one stayed payable.
+  // The recovery machinery was blind to every row but the newest, so a captured
+  // but stranded OLDER order was invisible while the newest pending row passed
+  // its gateway probe — and the app opened a payable modal for a plan whose
+  // money had already moved.
 })
 
 describe('POST /api/payments-webhook', () => {
