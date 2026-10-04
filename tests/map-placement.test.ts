@@ -14,6 +14,7 @@ import type { PlaceHit } from '../src/lib/providers/hits'
 const mapTab = readFileSync(new URL('../src/pages/trip/MapTab.tsx', import.meta.url), 'utf8')
 const omnibar = readFileSync(new URL('../src/pages/trip/MapOmnibar.tsx', import.meta.url), 'utf8')
 const placementHook = readFileSync(new URL('../src/pages/trip/map/useOmnibarPlacement.ts', import.meta.url), 'utf8')
+const searchHook = readFileSync(new URL('../src/pages/trip/map/useMapSearch.ts', import.meta.url), 'utf8')
 
 const hit = (over: Partial<PlaceHit> = {}): PlaceHit =>
   ({ id: 'h1', name: 'Kodikuthy View Point', latitude: 9.9, longitude: 76.7, kind: 'poi', ...over }) as PlaceHit
@@ -187,16 +188,20 @@ describe('#418 — the omnibar files nothing on its own', () => {
   })
 
   it('keeps ONE route-aware search for the corridor and the map together', () => {
-    // Two call sites are correct and both are named here: the corridor/map runner
-    // (`runRouteSearch`, shared by the rail's box and the omnibar) and the slot's
-    // own "find inside this part" flow, which #418 says to KEEP as a specialized
-    // path. A third would be a parallel search, so this pins the number.
-    const sites = mapTab.match(/\bsearchPlacesText\((?=\S)/g) ?? []
-    expect(sites.length, 'a third search appeared — the omnibar must share runRouteSearch').toBe(2)
-    expect(mapTab).toContain('async function runRouteSearch(')
+    // #420 slice 8: the shared runner lives in the hook now — the page mounts
+    // its outputs, and the slot's own "find inside this part" flow stays as
+    // the one specialized path #418 says to keep. A third searchPlacesText
+    // would be a parallel search, so the count is pinned across both files.
+    const pageSites = mapTab.match(/\bsearchPlacesText\((?=\S)/g) ?? []
+    const hookSites = searchHook.match(/\bsearchPlacesText\((?=\S)/g) ?? []
+    expect(pageSites.length, 'the page must hold only the slot search').toBe(1)
+    expect(hookSites.length, 'the hook must hold only the shared runner').toBe(1)
     expect(mapTab).toContain('async function runSlotSearch(')
-    expect(mapTab).toMatch(/onSearch[\s\S]{0,200}?await runRouteSearch\(searchQ\)/)
-    expect(mapTab).toMatch(/onOmniSearch[\s\S]{0,200}?await runRouteSearch\(omniQ\)/)
+    expect(mapTab).not.toContain('async function runRouteSearch(')
+    expect(mapTab).toMatch(/\} = useMapSearch\(\{ routeGeometry, anchors, routePolyline, scopeKm, routeKmOf \}\)/)
+    expect(searchHook).toContain('async function runRouteSearch(')
+    expect(searchHook).toMatch(/onSearch[\s\S]{0,200}?await runRouteSearch\(searchQ\)/)
+    expect(searchHook).toMatch(/onOmniSearch[\s\S]{0,200}?await runRouteSearch\(omniQ\)/)
   })
 
   it('the omnibar itself never searches — it renders what it is handed', () => {
@@ -215,9 +220,12 @@ describe('#418 — the omnibar files nothing on its own', () => {
 
   it('keeps the omnibar pick out of the rail\'s hover state', () => {
     // The pitfall in the issue's own words: the surface must not inherit the stale
-    // context of whatever rail was last active. The pick is its own state.
-    expect(mapTab).toMatch(/const \[omniPicked, setOmniPicked\]/)
-    expect(mapTab).toMatch(/const \[omniQ, setOmniQ\]/)
+    // context of whatever rail was last active. The pick is its own state —
+    // #420 slice 8: it lives in the search hook now, and the page reads it
+    // through the hook instead of owning it.
+    expect(searchHook).toMatch(/const \[omniPicked, setOmniPicked\]/)
+    expect(searchHook).toMatch(/const \[omniQ, setOmniQ\]/)
+    expect(mapTab).toMatch(/omniPicked, setOmniPicked[^}]*\} = useMapSearch\(/)
     expect(mapTab).toMatch(/selectedId=\{omniPicked\?\.h\.id \?\? null\}/)
   })
 })
