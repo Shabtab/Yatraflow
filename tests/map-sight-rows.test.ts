@@ -14,6 +14,8 @@ import type { PlaceHit } from '../src/lib/providers/hits'
 
 const mapTab = readFileSync(new URL('../src/pages/trip/MapTab.tsx', import.meta.url), 'utf8')
 const module_ = readFileSync(new URL('../src/pages/trip/map/sightRows.ts', import.meta.url), 'utf8')
+// #420 slice 15: the page asks railRows, which asks sightRows — one layer each.
+const railRows = readFileSync(new URL('../src/pages/trip/map/railRows.ts', import.meta.url), 'utf8')
 
 const hit = (id: string, over: Partial<PlaceHit> = {}): PlaceHit =>
   ({ id, name: `Place ${id}`, latitude: 10, longitude: 76, kind: 'poi', ...over }) as PlaceHit
@@ -128,11 +130,14 @@ describe('#420 — a row\'s reason chips', () => {
 
 describe('#420 — slice 5 wiring', () => {
   it('the page asks the module instead of rebuilding the rules', () => {
-    expect(mapTab).toContain("from './map/sightRows'")
-    expect(mapTab).toMatch(/return pickAlternatives\(\{/)
-    expect(mapTab).toMatch(/return sightRowChips\(\{ segment: sh\.segment, hit, detourMin, dayBudget \}\)/)
+    expect(mapTab).toContain("from './map/railRows'")
+    expect(mapTab).toMatch(/alternativesFor\(sh, hit, altPool\)/)
+    expect(mapTab).toMatch(/chipsFor\(sh, hit, chipFacts\)/)
     expect(mapTab).not.toContain('altPool.byPurpose.get(sh.segment.purpose)')
     expect(mapTab).not.toContain('railReasonChips(')
+    expect(railRows).toContain("from './sightRows'")
+    expect(railRows).toMatch(/return pickAlternatives\(\{/)
+    expect(railRows).toMatch(/return sightRowChips\(\{ segment: sh\.segment, hit, detourMin, dayBudget \}\)/)
   })
 
   it('the module reuses the one NEED_PURPOSES rather than declaring its own', () => {
