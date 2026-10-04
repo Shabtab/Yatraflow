@@ -18,6 +18,8 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 
 const mapTab = readFileSync(new URL('../src/pages/trip/MapTab.tsx', import.meta.url), 'utf8')
+// #420 slice 11: the hash, its publish and both scans live in the hook now.
+const corridorCache = readFileSync(new URL('../src/pages/trip/map/useCorridorCache.ts', import.meta.url), 'utf8')
 const cache = readFileSync(new URL('../src/hooks/useSuggestionCache.ts', import.meta.url), 'utf8')
 
 describe('the Map publishes the freshness the Overview gates on (#404)', () => {
@@ -33,18 +35,18 @@ describe('the Map publishes the freshness the Overview gates on (#404)', () => {
   })
 
   it('notifies with the same pair the cache entry is keyed by', () => {
-    expect(mapTab).toContain('onInputsHash(mapInputsHash, scopeKm)')
+    expect(corridorCache).toContain('onInputsHash(mapInputsHash, scopeKm)')
   })
 
   it('notifies once per VALUE, not once per render', () => {
-    expect(mapTab).toContain('publishedInputsRef')
-    expect(mapTab).toMatch(/if \(publishedInputsRef\.current === key\) return/)
+    expect(corridorCache).toContain('publishedInputsRef')
+    expect(corridorCache).toMatch(/if \(publishedInputsRef\.current === key\) return/)
   })
 
   it('reads and writes the map cache under that one hash', () => {
-    expect(mapTab).toContain('const inputsHash = mapInputsHash')
-    expect(mapTab).toContain('isMapCacheFresh(cached, scopeKm, inputsHash)')
-    expect(mapTab).toContain('setMapCache(plan, inputsHash, scopeKm)')
+    expect(corridorCache).toContain('const inputsHash = mapInputsHash')
+    expect(corridorCache).toContain('isMapCacheFresh(cached, scopeKm, inputsHash)')
+    expect(corridorCache).toContain('setMapCache(plan, inputsHash, scopeKm)')
   })
 
   it('keeps the freshness predicate comparing scope and hash, not age', () => {

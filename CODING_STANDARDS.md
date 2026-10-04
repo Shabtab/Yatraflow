@@ -616,6 +616,12 @@ anywhere in this repo means the entry labelled `6b` below.
    enforces house vocabulary in prose ("try" over its -ments synonym) and fails
    as a TEST — a comment can break the gate, and the lint reads AGENTS.md too.
  6ad. **A hook output called during render must be data, not a function call — an opaque render-time call fails the whole file's compiler check (learned 2026-10-04, #420 slice 9).** `eslint-plugin-react-hooks` v7 (`recommended-latest`) compiles each component; when it bails, `preserve-manual-memoization` reports "Compilation Skipped" on every manual memo and `refs`/`set-state-in-effect` surface every latent pattern — 22 errors on lines the slice never touched (the pristine file lints 0 on those rules, so each flag is cascade, not cause). Bisects isolated the trigger shape: the hook call alone is clean, the effect change alone is clean, undefined-callee calls are clean; the failure needs render-time calls (`slotCands(slot)`, `filingOptionsForPicked(h)`) resolving to hook-returned functions that consume hook-input-derived values. The handler-only hooks from slices 7–8 pass, and `isShortlisted(hit)` passes (a boolean over another hook's data). Wrapping the outputs in `useCallback` does NOT fix it (tried — still 22; cross-file is opaque, so the memoization is invisible where it matters). Shape rule for future slices: hook outputs consumed during render must be state/memo reads (like `searchResults`), never calls; a derivation that needs a call keeps a thin local in the page or moves fully. Specimen: the reverted `useSlotSearch.ts` (deleted uncommitted) moved the slot derivations out while the render kept feeding them `activeDaySlots`-derived values; the replacement slice (`useAddModal.ts`, draft state + handler-only opener) passes clean.
+ 6ae. **A state that a slice declares may still belong to the page (learned
+   2026-10-04, #420 slice 11).** The corridor block declared `searchQuotaOut`.
+   The slot search below also wrote it. You must grep each setter across the
+   whole file before you move a declaration. You must leave a shared state
+   with the caller. A state with one writer moves. A state with two writers
+   stays.
 
 ## 2. Conventions (`AGENTS.md` §4)
 
