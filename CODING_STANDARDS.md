@@ -627,6 +627,13 @@ anywhere in this repo means the entry labelled `6b` below.
    not on its deps line. You must include that line in the cut range. Cutting
    at the deps line leaves a stray paren, and tsc reports it far from the
    edit.
+ 6ag. **A runner with a quota-mapped catch must stay in the page (learned
+   2026-10-04, #420 slice 17).** Moving `runSlotSearch` (or the cells it
+   writes) into a hook trips the render compiler with a file-wide bail.
+   Bisects proved the trigger sits in the catch: any `err instanceof` body
+   keeps the file compiling, any reduction bails. You must keep the runner
+   and its cells in the page. You must move only the writer beside it. You
+   must record the split in the hook header.
 
 ## 2. Conventions (`AGENTS.md` §4)
 

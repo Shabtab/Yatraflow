@@ -3,7 +3,7 @@
 Read this before grepping a large file. The four biggest modules cost hours
 when entered blind; this map names what each owns and who calls into it.
 
-Sizes as of 2026-10-04 (`wc -l`): `store.ts` 4255, `MapTab.tsx` 1963,
+Sizes as of 2026-10-04 (`wc -l`): `store.ts` 4255, `MapTab.tsx` 1951,
 `engine.ts` 1638, `TripMap.tsx` 1589, `daySlots.ts` 959.
 
 ## `src/store/store.ts` — the data layer
@@ -62,6 +62,7 @@ each rail is its own panel, not because the logic is deep.
 | Where does the add draft live? | `src/pages/trip/map/useAddModal.ts` |
 | Where do the plan writes run? | `src/pages/trip/map/useMapWriters.ts` |
 | Where do the rail rows render? | `src/pages/trip/map/RailRowViews.tsx` |
+| Where does the slot filing writer live? | `src/pages/trip/map/useSlotSearch.ts` |
 
 The rails' own helpers live under `src/pages/trip/map/` — check there before
 adding a loop in this file.

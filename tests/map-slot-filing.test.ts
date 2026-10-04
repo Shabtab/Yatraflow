@@ -25,6 +25,8 @@ import type { DaySlotKind, SlotState } from '../src/lib/daySlots'
 
 const mapTab = readFileSync(new URL('../src/pages/trip/MapTab.tsx', import.meta.url), 'utf8')
 const module_ = readFileSync(new URL('../src/pages/trip/map/slotFiling.ts', import.meta.url), 'utf8')
+// #420 slice 17: the filing writer lives in the hook with its refusal.
+const slotHook = readFileSync(new URL('../src/pages/trip/map/useSlotSearch.ts', import.meta.url), 'utf8')
 
 const hit = (id: string, over: Partial<PlaceHit> = {}): PlaceHit =>
   ({ id, name: `Place ${id}`, latitude: 10, longitude: 76, kind: 'poi', ...over }) as PlaceHit
@@ -177,10 +179,15 @@ describe('slotFileRefusal — a refusal always has a reason', () => {
 
 describe('MapTab goes THROUGH the module (wiring is part of the contract)', () => {
   it('imports the five rules from ./map/slotFiling', () => {
+    // #420 slice 17: the refusal moved with its caller. The page keeps the
+    // three render-side rules. The hook carries the fourth.
     expect(mapTab).toMatch(/from '\.\/map\/slotFiling'/)
-    for (const name of ['filingOptionsFor', 'manualCandidateFor', 'mergeSlotCandidates', 'slotFileRefusal']) {
+    for (const name of ['filingOptionsFor', 'manualCandidateFor', 'mergeSlotCandidates']) {
       expect(mapTab, name).toContain(name)
     }
+    expect(mapTab).not.toContain('slotFileRefusal')
+    expect(slotHook).toMatch(/from '\.\/slotFiling'/)
+    expect(slotHook).toContain('slotFileRefusal')
   })
 
   it('no longer carries the rules inline', () => {
