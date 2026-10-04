@@ -39,7 +39,7 @@ import {
   SEE_VISIBLE, SCOPE_KM_STEPS, SCOPE_STORAGE_KEY,
   googleMapsUrl, newStopId, poiVisitMinutes, smallThumb,
 } from './map/pageHelpers'
-import { alternativesFor as pickAlternatives, sightRowChips } from './map/sightRows'
+import { alternativesFor, chipsFor, activeReadinessLabel, activeDayLabel } from './map/railRows'
 import { filingOptionsFor, manualCandidateFor, mergeSlotCandidates, slotFileRefusal } from './map/slotFiling'
 import {
   dayWeatherJoin, drizzleDayIndex, journeyKmFrom, routePolylineFrom, weatherAnchorFrom, weatherFetchRefusal,
@@ -52,7 +52,6 @@ const SEARCH_PAGE = 5
 import { isSightCategory, roadProfileFromLegs, loopProfile } from '../../lib/ridePlan'
 import { QuotaExhaustedError } from '../../lib/providers/google'
 import { isElectric } from '../../lib/vehicleProfile'
-import type { RailChip } from '../../lib/railReasons'
 import { dayShape, tripDayAttribution, SLOT_URGENCY_MIN, type DaySlot, type DaySlotKind } from '../../lib/daySlots'
 import { discardedStagedIds, isAlreadyAdded, normalizePlaceName, tripPresence, type PlaceIdentity } from '../../lib/placeIdentity'
 
@@ -864,6 +863,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
   const detourMinFor = (hit: PlaceHit): number | null =>
     hitEngine.get(String(hit.id))?.detourMin
       ?? asymmetricDetourMinutes(hit, anchors, routePolyline ?? null, MODE_SPEED[trip.transportMode] ?? 40)
+  const chipFacts = { detourMinFor, days: trip.days, dayForKm, travelStyle: trip.travelStyle }
 
   // #420 slice 2: the shortlist feature lives in its own hook now — the collection,
   // the shared "already mine?" filter, and both batch writers. Called here rather
@@ -886,7 +886,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
     busy: addingAny,
     setBusy: setAddingAny,
   })
-  const seeForRail = chipFilter ? seeAndDoLive.filter(sh => sh.hit && chipsFor(sh, sh.hit).some(c => c.key === chipFilter)) : seeAndDoLive
+  const seeForRail = chipFilter ? seeAndDoLive.filter(sh => sh.hit && chipsFor(sh, sh.hit, chipFacts).some(c => c.key === chipFilter)) : seeAndDoLive
   const filterActive = chipFilter != null
   // Detour-budget enforcement (Horizon 3.2's "finite, honest menu"): the
   // see-&-do list is the endless one — need halts are finite by construction,
@@ -945,9 +945,9 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
     const added = isAlreadyAdded(hit, identity)
     const detourMin = hitEngine.get(String(hit.id))?.detourMin
       ?? asymmetricDetourMinutes(hit, anchors, routePolyline ?? null, MODE_SPEED[trip.transportMode] ?? 40)
-    const chips = chipsFor(sh, hit)
+    const chips = chipsFor(sh, hit, chipFacts)
     const hitDay = dayForKm(hit.cumKm)
-    const alts = alternativesFor(sh, hit).filter(e => e.h.id !== hit.id)
+    const alts = alternativesFor(sh, hit, altPool).filter(e => e.h.id !== hit.id)
     const shelf = (
       <div className="ledger-shelf">
         {chips.length > 0 && chips.map(c => (
@@ -1086,53 +1086,6 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
   )
   /** P5.3: the selected day's empty parts as hollow amber pins - their top
    *  candidate's real position, with P5.2's cost line in the tooltip. */
-  /** The rail's meter copy: the mockup's wording, honest per day. The count is
-   *  over `required` (engine-managed parts excluded) — the work the crew owns. */
-  function activeReadinessLabel() {
-    const r = activeDayReadiness
-    if (r.total === 0) return 'nothing scheduled for this day yet'
-    return `${r.filled} of ${r.required} planned${r.auto > 0 ? ` · ${r.auto} auto` : ''}`
-  }
-
-  /** The header's day identity: the day's own title, else its first-to-last
-   *  stops - the mockup reads 'Day 2 - Kochi to Alleppey' where it can. */
-  function activeDayLabel(): string {
-    const d = trip.days.find(x => x.index === activeDayIndex)
-    if (!d) return 'your drive'
-    if (d.title && d.title.trim()) return d.title.trim()
-    const stops = d.stops.filter(s => s.status !== 'rejected')
-    const first = stops[0]?.locationName ?? stops[0]?.title
-    const last = stops[stops.length - 1]?.locationName ?? stops[stops.length - 1]?.title
-    if (first && last && first !== last) return `${first} to ${last}`
-    return first ?? 'your drive'
-  }
-
-
-  /** Closest alternatives for a halt: next 2 by road position plus detour. */
-  function alternativesFor(sh: SegmentHit, hit: PlaceHit): Array<{ h: PlaceHit; dKm: number | null }> {
-    // #420 slice 5: the family/ranking rule lives in ./map/sightRows with its tests;
-    // this only names the halt and hands over the pool.
-    return pickAlternatives({
-      purpose: sh.segment.purpose,
-      targetKm: sh.segment.targetKm,
-      hit,
-      pool: altPool,
-    })
-  }
-
-  /** Reason chips for one suggestion, shared by the card and the rail filter. */
-  function chipsFor(sh: SegmentHit, hit: PlaceHit): RailChip[] {
-    // #420 slice 5: the chips themselves (including the #163 rounding predicate) come
-    // from ./map/sightRows; the trip-aware numbers are resolved here.
-    const detourMin = detourMinFor(hit)
-    const hitDay = trip.days.find(d => d.index === dayForKm(hit.cumKm))
-    const dayBudget = dayDetourBudgetMin({
-      travelStyle: trip.travelStyle,
-      plannedStops: (hitDay?.stops ?? []).filter(s => s.status !== 'rejected').length,
-    })
-    return sightRowChips({ segment: sh.segment, hit, detourMin, dayBudget })
-  }
-
   /** A corridor halt the engine found no place for. The only row still rendered
    *  through here: every hit row is a flat ledger row (`renderLedgerRow`), so
    *  this is the honest gap — and its action is the lever the engine actually
@@ -1477,8 +1430,8 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
             <div className="poi-col-head">
               <span className="poi-col-head-ico"><Fuel size={13} aria-hidden /></span>
               <div className="poi-col-head-txt">
-                <b>Day {activeDayIndex + 1} · {activeDayLabel()}</b>
-                <span className="small muted">{activeDaySlots.length === 0 ? 'the day takes shape as you plan the drive' : `${activeReadinessLabel()}`}</span>
+                <b>Day {activeDayIndex + 1} · {activeDayLabel(trip.days, activeDayIndex)}</b>
+                <span className="small muted">{activeDaySlots.length === 0 ? 'the day takes shape as you plan the drive' : `${activeReadinessLabel(activeDayReadiness)}`}</span>
               </div>
               <button
                 type="button"
