@@ -2,7 +2,7 @@
 // Mechanical extraction from src/pages/TripWorkspace.tsx (M3.4) — no behavior changes.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { InlineIcon } from '../../components/icons'
-import { BedDouble, ChevronDown, CircleCheck, Coffee, ExternalLink, Fuel, Lightbulb, MapPin, Pause, Plus, RefreshCw, RotateCcw, Sparkles, Star, Utensils } from 'lucide-react'
+import { BedDouble, ChevronDown, CircleCheck, Coffee, ExternalLink, Fuel, Lightbulb, MapPin, Pause, Plus, RefreshCw, RotateCcw, Sparkles, Utensils } from 'lucide-react'
 import { uid } from '../../data/seed'
 import type { Trip, ItineraryStop, TripDecision } from '../../data/types'
 import type { ImpactResult } from '../../lib/impact'
@@ -39,7 +39,8 @@ import {
   SEE_VISIBLE, SCOPE_KM_STEPS, SCOPE_STORAGE_KEY,
   googleMapsUrl, newStopId, poiVisitMinutes, smallThumb,
 } from './map/pageHelpers'
-import { alternativesFor, chipsFor, activeReadinessLabel, activeDayLabel } from './map/railRows'
+import { chipsFor, activeReadinessLabel, activeDayLabel } from './map/railRows'
+import { LedgerRow } from './map/RailRowViews'
 import { filingOptionsFor, manualCandidateFor, mergeSlotCandidates, slotFileRefusal } from './map/slotFiling'
 import {
   dayWeatherJoin, drizzleDayIndex, journeyKmFrom, routePolylineFrom, weatherAnchorFrom, weatherFetchRefusal,
@@ -223,6 +224,12 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
     }, DEBOUNCE_MS)
   }
   useEffect(() => () => { if (scopeTimer.current) clearTimeout(scopeTimer.current) }, [])
+  // #420 slice 16: widening stays a page callback — the gap row calls it,
+  // and the corridor re-plans through the same state it always did.
+  const widenScope = () => {
+    setScopeIdx(i => Math.min(i + 1, SCOPE_KM_STEPS.length - 1))
+    toast('Widened the search - the corridor will re-plan')
+  }
   // #420 slice 9: the add draft moved with the opener into
   // ./map/useAddModal (called after dayForKm below) — the modal JSX stays.
   // cross-highlighting: the suggestion currently hovered/selected in EITHER the
@@ -932,91 +939,43 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
    * computed once per hit here; rows only rank the already-filtered pool.
    */
 
-  /**
-   * P2 ledger row for the see-&-do rail: the corridor pick as a flat two-line
-   * row on the spine - name + one meta line (detour, day, window reasons) -
-   * expanding in place to a shelf with the card's actions. Replaces the old
-   * boxed cards in the ledger, keeping every behaviour reachable.
-   */
-  function renderLedgerRow(sh: SegmentHit) {
+  // #420 slice 16: thin JSX factory — one rail row's data lives here, its
+  // rendering lives in map/RailRowViews. Called during render like every
+  // other local row helper, so no hook boundary is involved.
+  const ledgerRow = (sh: SegmentHit) => {
     const hit = sh.hit
-    if (hit && dismissedIds.has(hit.id as string)) return null
-    if (!hit) return renderGapRow(sh) // gaps keep their honest row
-    const added = isAlreadyAdded(hit, identity)
-    const detourMin = hitEngine.get(String(hit.id))?.detourMin
-      ?? asymmetricDetourMinutes(hit, anchors, routePolyline ?? null, MODE_SPEED[trip.transportMode] ?? 40)
-    const chips = chipsFor(sh, hit, chipFacts)
-    const hitDay = dayForKm(hit.cumKm)
-    const alts = alternativesFor(sh, hit, altPool).filter(e => e.h.id !== hit.id)
-    const shelf = (
-      <div className="ledger-shelf">
-        {chips.length > 0 && chips.map(c => (
-          <button
-            key={c.key}
-            type="button"
-            className={(c.tone === 'warn' ? 'poi-rchip poi-rchip--warn' : 'poi-rchip') + (chipFilter === c.key ? ' is-on' : '')}
-            aria-pressed={chipFilter === c.key}
-            onClick={(e) => { e.stopPropagation(); setChipFilter(prev => (prev === c.key ? null : c.key)) }}
-          >
-            {c.icon === 'star' && <Star size={11} aria-hidden />}
-            {c.label}
-          </button>
-        ))}
-        {editable && (
-          added
-            ? <span className="chip chip-teal"><InlineIcon icon={CircleCheck} size={11} gap={3} />Added</span>
-            : <button className="day-slot-fill" onClick={() => openAddModal(hit)}>+ Add to a day</button>
-        )}
-        {!added && editable && (
-          <button
-            className="chip chip-sm"
-            title="Not interested - hide this and teach the engine"
-            onClick={() => {
-              recordDnaEvent({ tripId: trip.id, action: 'decline', haltKind: sh.segment.purpose, category: hit.category, detourMin: detourMin ?? undefined })
-              // Dismiss is a local rail decision: keep the current plan visible
-              // and do not invalidate/rebill the corridor. DNA is persisted and
-              // will be read by the next explicit replan.
-              setDismissedIds(prev => new Set(prev).add(hit.id as string))
-            }}
-          >Dismiss</button>
-        )}
-        {!added && editable && (
-          <button
-            className="chip chip-sm"
-            aria-pressed={isShortlisted(hit)}
-            title="Collect for the shortlist tray - the rail collects, the tray decides"
-            onClick={() => toggleShortlist(hit)}
-          >
-            {isShortlisted(hit) ? 'Shortlisted' : 'Shortlist'}
-          </button>
-        )}
-        {alts.length > 0 && alts.map(({ h, dKm }) => (
-          <button
-            key={h.id as string}
-            className="shelf-alt"
-            title={h.name}
-            onClick={() => openAddModal(h)}
-          >
-            <span className="shelf-alt-nm">{h.name}</span>
-            <span className="shelf-alt-km">{dKm != null ? `${dKm.toFixed(1)} km off` : 'on route'}</span>
-          </button>
-        ))}
-      </div>
-    )
-    const meta = [
-      detourMin == null ? 'position unknown' : detourMin > 0 ? `+${Math.round(detourMin)} min detour` : 'on route',
-      hitDay != null ? `Day ${hitDay + 1}` : null,
-    ].filter(Boolean).join(' \u00b7 ')
+    const detourMin = hit
+      ? (hitEngine.get(String(hit.id))?.detourMin
+        ?? asymmetricDetourMinutes(hit, anchors, routePolyline ?? null, MODE_SPEED[trip.transportMode] ?? 40))
+      : undefined
+    const dismissHit = () => {
+      if (!hit) return
+      recordDnaEvent({ tripId: trip.id, action: 'decline', haltKind: sh.segment.purpose, category: hit.category, detourMin: detourMin ?? undefined })
+      // Dismiss is a local rail decision: keep the current plan visible
+      // and do not invalidate/rebill the corridor. DNA is persisted and
+      // will be read by the next explicit replan.
+      setDismissedIds(prev => new Set(prev).add(hit.id as string))
+    }
     return (
-      <details key={hit.id as string} className="lrow-new" onToggle={undefined}>
-        <summary className="lrow-sum" title={hit.name}>
-          <span className="xdot" aria-hidden />
-          <span className="lr-name">{hit.name}</span>
-          <span className="lr-meta">{meta}</span>
-          <ChevronDown className="lr-go" size={12} aria-hidden />
-        </summary>
-        {shelf}
-      </details>
+      <LedgerRow
+        key={hit ? String(hit.id) : `gap-${sh.segment.index}`}
+        sh={sh}
+        dismissed={!!hit && dismissedIds.has(hit.id as string)}
+        added={hit ? isAlreadyAdded(hit, identity) : false}
+        detourMin={detourMin}
+        hitDay={hit ? dayForKm(hit.cumKm) : null}
+        chipFacts={chipFacts}
+        altPool={altPool}
+        chipFilter={chipFilter}
+        editable={editable}
+        shortlisted={hit ? isShortlisted(hit) : false}
+        onSelectChip={key => setChipFilter(prev => (prev === key ? null : key))}
+        onAdd={() => { if (hit) openAddModal(hit) }}
+        onDismiss={dismissHit}
+        onToggleShortlist={() => { if (hit) toggleShortlist(hit) }}
+        onOpenAlt={h => openAddModal(h)}
+        onWiden={widenScope}
+      />
     )
   }
 
@@ -1086,39 +1045,6 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
   )
   /** P5.3: the selected day's empty parts as hollow amber pins - their top
    *  candidate's real position, with P5.2's cost line in the tooltip. */
-  /** A corridor halt the engine found no place for. The only row still rendered
-   *  through here: every hit row is a flat ledger row (`renderLedgerRow`), so
-   *  this is the honest gap — and its action is the lever the engine actually
-   *  has, a wider detour scope. The live card renderer that used to follow this
-   *  branch was unreachable once the ledger replaced the boxed cards, and has
-   *  been removed. */
-  function renderGapRow(sh: SegmentHit) {
-    const hit = sh.hit
-    // dismissed stays hidden for the session (logged as a DNA decline)
-    if (hit && dismissedIds.has(hit.id as string)) return null
-    if (!hit) {
-      return (
-        <div key={`gap-${sh.segment.index}`} className="poi-plan-row poi-plan-gap">
-              <span className={`ride-purpose ride-purpose-${sh.segment.purpose} ride-purpose-muted`}>{sh.segment.label}</span>
-              <span className="muted small">No good match near ~{sh.segment.targetKm.toFixed(0)} km yet.</span>
-              {/* A gap has no place to add, so the action raises the corridor's
-                  detour scope - the honest lever the engine actually has. */}
-              <button
-                type="button"
-                className="poi-gap-add"
-                title="Raises the detour scope so more stops qualify. You can also add a stop on the Timeline and it will pin itself here."
-                onClick={() => {
-                  setScopeIdx(i => Math.min(i + 1, SCOPE_KM_STEPS.length - 1))
-                  toast('Widened the search - the corridor will re-plan')
-                }}
-              >
-                Widen search
-              </button>
-            </div>
-      )
-    }
-  }
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column' }}>
       <div className="card" style={{ order: 1 }}>
@@ -1172,7 +1098,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
             {searchResults.slice(0, showAllResults ? searchResults.length : SEARCH_PAGE).map(({ h, km, off }, rowIndex) => {
               const inScope = off != null && off <= scopeKm
               // SB2: the same membership guard every other rail row uses
-              // (renderLedgerRow, and the card before it). Without it this row
+              // (the ledger row, and the card before it). Without it this row
               // was the one place that would happily add the same place twice.
               const added = isAlreadyAdded(h, identity)
               // Selected twin: clicking the map's search marker highlights this
@@ -1978,11 +1904,11 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
                         <span className="poi-grp-n">{seeForRail.length}</span>
                         <span className="poi-grp-ln" />
                       </div>
-                      {seeForRail.slice(0, SEE_VISIBLE).map(renderLedgerRow)}
+                      {seeForRail.slice(0, SEE_VISIBLE).map(ledgerRow)}
                       {seeForRail.length > SEE_VISIBLE && (
                         <details className="poi-more">
                           <summary><ChevronDown className="poi-chev" size={12} aria-hidden />{seeForRail.length - SEE_VISIBLE} more picks</summary>
-                          <div className="poi-more-list">{seeForRail.slice(SEE_VISIBLE).map(renderLedgerRow)}</div>
+                          <div className="poi-more-list">{seeForRail.slice(SEE_VISIBLE).map(ledgerRow)}</div>
                         </details>
                       )}
                     </>
