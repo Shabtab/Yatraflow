@@ -16,6 +16,8 @@ const mapTab = readFileSync(new URL('../src/pages/trip/MapTab.tsx', import.meta.
 const contentHook = readFileSync(new URL('../src/pages/trip/map/useRailContent.ts', import.meta.url), 'utf8')
 // #420 slice 14: the slot pins live in the day-slots hook with their input.
 const slotsHook = readFileSync(new URL('../src/pages/trip/map/useDaySlots.ts', import.meta.url), 'utf8')
+// #420 slice 16: the rail rows render in their own module.
+const views = readFileSync(new URL('../src/pages/trip/map/RailRowViews.tsx', import.meta.url), 'utf8')
 
 describe('#420 — the three bits, in the order every surface prints them', () => {
   it('says an unmeasured position instead of a number', () => {
@@ -140,9 +142,13 @@ describe('#420 — slice 4 wiring', () => {
     // This count is what stops a FIFTH copy appearing unnoticed. If a future change
     // makes one of these identical to the shared sentence, move it in and lower the
     // number rather than relaxing the assertion.
+    // #420 slice 16: the see-rail row's copy moved with its JSX — the words are
+    // unchanged, so both homes carry a count and the total is still three.
     expect(mapTab).toContain('% of day detours')
-    expect(mapTab).toContain('min detour`')
-    expect((mapTab.match(/'position unknown'/g) ?? []).length).toBe(3)
+    expect(mapTab).not.toContain('min detour`')
+    expect(views).toContain('min detour`')
+    expect((mapTab.match(/'position unknown'/g) ?? []).length).toBe(2)
+    expect((views.match(/'position unknown'/g) ?? []).length).toBe(1)
   })
 
   it('the page still supplies the trip-aware inputs the module must not know', () => {
