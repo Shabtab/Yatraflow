@@ -34,6 +34,7 @@ import { useMapWriters } from './map/useMapWriters'
 import { useCorridorCache } from './map/useCorridorCache'
 import { useRailView } from './map/useRailView'
 import { useRailContent } from './map/useRailContent'
+import { useSlotSearch } from './map/useSlotSearch'
 import { useDaySlots } from './map/useDaySlots'
 import {
   SEE_VISIBLE, SCOPE_KM_STEPS, SCOPE_STORAGE_KEY,
@@ -41,7 +42,7 @@ import {
 } from './map/pageHelpers'
 import { chipsFor, activeReadinessLabel, activeDayLabel } from './map/railRows'
 import { LedgerRow } from './map/RailRowViews'
-import { filingOptionsFor, manualCandidateFor, mergeSlotCandidates, slotFileRefusal } from './map/slotFiling'
+import { filingOptionsFor, manualCandidateFor, mergeSlotCandidates } from './map/slotFiling'
 import {
   dayWeatherJoin, drizzleDayIndex, journeyKmFrom, routePolylineFrom, weatherAnchorFrom, weatherFetchRefusal,
 } from './map/weatherGeometry'
@@ -773,20 +774,11 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
   /** Engine candidates plus this slot's own search picks — manual ones first
    *  (they are the user's explicit picks), re-validated at render per #179: a
    *  hit later added to the plan or dismissed drops out instead of doubling. */
-  function slotCands(slot: DaySlot) {
-    const manual = (slotManual[slot.key] ?? [])
-      .filter(h => !isAlreadyAdded(h, identity))
-      .map(makeManualCandidate)
-    // #420 slice 5: manual picks first, then the engine's minus their ids — the
-    // merge rule lives in ./map/slotFiling so it cannot drift from the refusal
-    // that reads the same two lists.
-    return mergeSlotCandidates(manual, slot.candidates)
-  }
-
   /** The mockup's headline interaction: find inside the open part. Mirrors
    *  onSearch's guards (2-char floor, seq ownership, scope rank, quota class)
    *  but answers into slot-local state, so the top search card keeps owning
-   *  corridor-wide discovery. */
+   *  corridor-wide discovery. Stays here (not in the hook): its quota-mapped
+   *  catch keeps the render compiler compiling — see the 6ad note. */
   async function runSlotSearch(slot: DaySlot) {
     const q = (slotSearch?.key === slot.key ? slotSearch.q : '').trim()
     if (q.length < 2 || slotSearch?.busy) return
@@ -814,25 +806,14 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
     }
   }
 
-  /** File a found place into THIS slot as a candidate (never straight into the
-   *  plan — Fill stays the second, explicit act) under the #179 guards. */
-  function addManualCandidate(slot: DaySlot, h: PlaceHit) {
-    // #420 slice 5: the two refusals (and their copy) live in ./map/slotFiling,
-    // checked in the order the user meets them.
-    const refusal = slotFileRefusal({
-      hit: h,
-      slotLabel: slot.label,
-      manual: slotManual[slot.key] ?? [],
-      candidates: slot.candidates,
-      isAdded: x => isAlreadyAdded(x, identity),
-    })
-    if (refusal) {
-      toast(refusal.message)
-      return
-    }
-    setSlotManual(prev => ({ ...prev, [slot.key]: [h, ...(prev[slot.key] ?? [])] }))
-    setSlotSearch(s => (s && s.key === slot.key ? { ...s, q: '', hits: [], err: null } : s))
-    toast(`"${h.name}" added as a candidate for the ${slot.label.toLowerCase()} slot.`)
+  function slotCands(slot: DaySlot) {
+    const manual = (slotManual[slot.key] ?? [])
+      .filter(h => !isAlreadyAdded(h, identity))
+      .map(makeManualCandidate)
+    // #420 slice 5: manual picks first, then the engine's minus their ids — the
+    // merge rule lives in ./map/slotFiling so it cannot drift from the refusal
+    // that reads the same two lists.
+    return mergeSlotCandidates(manual, slot.candidates)
   }
 
 
@@ -1010,11 +991,18 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
     trayShortlist,
     identity,
     openAddModal,
-    addManualCandidate,
+    addManualCandidate: (slot, h) => addManualCandidate(slot, h),
     toggleShortlist,
     raiseShortlistVote,
   })
   const [openSlotKey, setOpenSlotKey] = useState<string | null>(null)
+  // #420 slice 17: the slot filing writer lives in ./map/useSlotSearch —
+  // the query state, the manual picks and the runner stay page cells (see
+  // the hook's header for why the split falls here). Handler-only output,
+  // called from event handlers and the placement hook below, never render.
+  const { addManualCandidate } = useSlotSearch({
+    slotManual, setSlotManual, setSlotSearch, identity,
+  })
   // P1: closing or switching parts drops the in-flight search (the seq bump
   // retires any query still in the air so its rows can never land elsewhere).
   useEffect(() => { slotSeq.current += 1; setSlotSearch(null) }, [openSlotKey])
