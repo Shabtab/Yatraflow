@@ -67,6 +67,9 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
   states that each agent must work only in its own clone. The session working
   directory is not a repo, so you must give every command an explicit root. The
   clone-to-agent list stays in the global user-level `AGENTS.md`.
+- **The omnibar's placement wiring is a hook now, not page code (#420, slice 7).** The picked row, the placement-day facts and the four-way place router each lived as closures inside the Map tab. They are `pages/trip/map/useOmnibarPlacement.ts` now, with the page's complete touch list written down as deps. Behaviour is unchanged.
+- **The map's shared search is a hook now, not page code (#420, slice 8).** Both queries, both row lists, the omnibar pick, the spinner, the quota flag and the seq/abort discipline each lived as closures inside the Map tab. They are `pages/trip/map/useMapSearch.ts` now, with the five road facts written down as deps. Behaviour is unchanged.
+- **The add draft is a hook now, not page code (#420, slice 9).** The pending place, the picked day, the guess flag and the day-default opener each lived as closures inside the Map tab. They are `pages/trip/map/useAddModal.ts` now, with the identity and the day rule written down as deps. The modal and its confirm write stay in the page. Behaviour is unchanged.
 
 ### Fixed
 

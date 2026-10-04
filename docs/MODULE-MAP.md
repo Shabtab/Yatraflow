@@ -57,6 +57,9 @@ each rail is its own panel, not because the logic is deep.
 | Which day does the tab show? | `resolveRailDay(dayFocus, ...)` |
 | How are hit costs computed? | `src/pages/trip/map/railLabels.ts` |
 | How does a candidate get filed? | `src/pages/trip/map/slotFiling.ts` |
+| Where does the omnibar file a found place? | `src/pages/trip/map/useOmnibarPlacement.ts` |
+| Where does the shared search run? | `src/pages/trip/map/useMapSearch.ts` |
+| Where does the add draft live? | `src/pages/trip/map/useAddModal.ts` |
 
 The rails' own helpers live under `src/pages/trip/map/` — check there before
 adding a loop in this file.

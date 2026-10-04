@@ -26,7 +26,9 @@ import { mapScopeNote } from '../../lib/railA11y'
 import { railKeyAction } from '../../lib/railKeys'
 import { candidatesAnnouncement, fillLabel, pickDayCaveat, scopeValueText, searchAnnouncement, voteStatusId } from '../../lib/railA11y'
 import { MapOmnibar } from './MapOmnibar'
-import { placementOptions, type PlacementOption } from './mapPlacement'
+import { useOmnibarPlacement } from './map/useOmnibarPlacement'
+import { useMapSearch } from './map/useMapSearch'
+import { useAddModal } from './map/useAddModal'
 import { ShortlistTray } from './map/ShortlistTray'
 import { useShortlist } from './map/useShortlist'
 import {
@@ -222,10 +224,8 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
     }, DEBOUNCE_MS)
   }
   useEffect(() => () => { if (scopeTimer.current) clearTimeout(scopeTimer.current) }, [])
-  // pending "add from map / nearby" — pick a day, then confirm
-  const [poiDraft, setPoiDraft] = useState<{ hit: PlaceHit } | null>(null)
-  const [pickDay, setPickDay] = useState<number>(0)
-  const [pickDayGuessed, setPickDayGuessed] = useState(false)
+  // #420 slice 9: the add draft moved with the opener into
+  // ./map/useAddModal (called after dayForKm below) — the modal JSX stays.
   // cross-highlighting: the suggestion currently hovered/selected in EITHER the
   // side panels or the map. Panel hover/click sets it (map flies to the pin);
   // map hover/click sets it (panel row highlights and scrolls into view).
@@ -262,26 +262,11 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
     return () => window.removeEventListener('resize', sync)
   }, [])
 
-  // In-map place search (§6.5): a free-text query over the provider facade,
-  // plus the results to add straight from the Map tab.
-  const [searchQ, setSearchQ] = useState('')
-  const [searchResults, setSearchResults] = useState<{ h: PlaceHit; km: number | null; off: number | null }[]>([])
-  const [searching, setSearching] = useState(false)
-  // "show all N" — the rail lists 5 by default; this unfolds the rest.
-  const [showAllResults, setShowAllResults] = useState(false)
-  // #418: the map's OWN search — its query, its rows, and the hit the user picked
-  // from them. The pick is deliberately its own state rather than `activeHitId`:
-  // the rail's rows move that one on hover, so keying the placement step off it
-  // would let the omnibar inherit the context of whatever rail was last active.
-  const [omniQ, setOmniQ] = useState('')
-  const [omniResults, setOmniResults] = useState<{ h: PlaceHit; km: number | null; off: number | null }[]>([])
-  const [omniPicked, setOmniPicked] = useState<{ h: PlaceHit; km: number | null; off: number | null } | null>(null)
+  // #420 slice 8: the search state moved with the runner into
+  // ./map/useMapSearch (called after routeKmOf below) — the list refs and the
+  // slot abort stay here with the slot search that owns them.
   const listRef = useRef<HTMLDivElement | null>(null)
   const searchListRef = useRef<HTMLDivElement | null>(null)
-  // Monotonic search token: a slow earlier query must never clobber the rows of
-  // a newer one that resolved first (out-of-order responses).
-  const searchSeq = useRef(0)
-  const searchAbort = useRef<AbortController | null>(null)
   const slotAbort = useRef<AbortController | null>(null)
   // Shared resolve-or-prompt guard (product decision 2026-09-25, #424): every
   // unknown-position pick below resolves through resolvePick — retry / manual
@@ -289,38 +274,8 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
   // other hooks, above every path out of this component (AGENTS §6e).
   const { resolvePick, dialog: resolvePickDialog } = useResolvePick()
   useEffect(() => () => {
-    searchAbort.current?.abort()
     slotAbort.current?.abort()
   }, [])
-  // Search hits join the corridor ideas on the map so a hovered result row
-  // eases the camera to its pin and draws its spur — the same cross-highlight
-  // the suggestion rail already has. Deduped by id (a place can be BOTH a
-  // corridor idea and a search hit) and empty until a search lands, so the map
-  // is unchanged when nobody is searching.
-  const mapPois = useMemo(() => {
-    const corridor = pois.flatMap(p => (p.hit ? [p.hit] : []))
-    const seen = new Set(corridor.map(h => h.id))
-    return [
-      ...corridor,
-      ...searchResults.map(r => r.h).filter(h => !seen.has(h.id)),
-      // #418: an omnibar hit is a discovery like any other — it draws the same
-      // selectable marker, so the map never hides a place the user just found.
-      ...omniResults.map(r => r.h).filter(h => !seen.has(h.id) && !searchResults.some(s => s.h.id === h.id)),
-    ]
-  }, [pois, searchResults, omniResults])
-
-  // The subset of map pins that came from a search — the map draws them as
-  // distinct selectable markers (solid teal, not the dashed gold ideas), and
-  // they vanish with the results list when the search bar clears. Both searches
-  // feed it: a row found in either box is a search result on the map.
-  const searchHitIds = useMemo(
-    () => new Set<string | number>([
-      ...searchResults.map(r => r.h.id),
-      ...omniResults.map(r => r.h.id),
-    ]),
-    [searchResults, omniResults],
-  )
-
   // #345: ONE identity answers "is this already mine?" for every rail, slot,
   // arc, pin and search row. `tripPresence` is the stable half (the plan's own
   // stops, rejected ones excluded so a turned-down suggestion stays
@@ -417,6 +372,15 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
    *  defaults, per-day budgets, day chips). #161: unknown km returns null and
    *  each consumer decides honestly — never a silent Day 1. */
   const dayForKm = dayAttribution.dayForKm
+
+  // #420 slice 9: the add draft lives in ./map/useAddModal now — same inputs
+  // in, same outputs out, no behavior change. Called here because the day
+  // default reads the attribution above. Hook order changes once, then stays
+  // fixed — every hook here runs each render.
+  const {
+    poiDraft, setPoiDraft, pickDay, setPickDay,
+    pickDayGuessed, setPickDayGuessed, openAddModal,
+  } = useAddModal({ identity, dayForKm, days: trip.days })
 
   // search the WHOLE route corridor (start → stops → destination); the home
   // zone around the starting point is excluded inside the engine
@@ -720,7 +684,6 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
   // one light corridor fetch feeds the ¼/½/¾ rows.
   const [fractionPois, setFractionPois] = useState<PlaceHit[] | null>(null)
   const [corridorQuotaOut, setCorridorQuotaOut] = useState(false)
-  const [searchQuotaOut, setSearchQuotaOut] = useState(false)
   const corridorAbort = useRef<AbortController | null>(null)
   useEffect(() => {
     if (loadingPois || pois.length > 0 || anchors.length < 2) { setFractionPois(null); return }
@@ -844,6 +807,46 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
     const total = span?.totalKm ?? km
     return directionalKm(km, total, showReturn)
   }
+
+  // #420 slice 8: the shared route-aware search lives in ./map/useMapSearch
+  // now — same inputs in, same outputs out, no behavior change. Called here
+  // (not at the top) because it closes over the road and scope above; the two
+  // memos below move with it since they render its rows on the map. Hook order
+  // changes once, then stays fixed — every hook here runs each render.
+  const {
+    searchQ, setSearchQ, searchResults, setSearchResults, searching,
+    showAllResults, setShowAllResults, omniQ, setOmniQ, omniResults,
+    setOmniResults, omniPicked, setOmniPicked, searchQuotaOut,
+    onSearch, onOmniSearch,
+  } = useMapSearch({ routeGeometry, anchors, routePolyline, scopeKm, routeKmOf })
+  // Search hits join the corridor ideas on the map so a hovered result row
+  // eases the camera to its pin and draws its spur — the same cross-highlight
+  // the suggestion rail already has. Deduped by id (a place can be BOTH a
+  // corridor idea and a search hit) and empty until a search lands, so the map
+  // is unchanged when nobody is searching.
+  const mapPois = useMemo(() => {
+    const corridor = pois.flatMap(p => (p.hit ? [p.hit] : []))
+    const seen = new Set(corridor.map(h => h.id))
+    return [
+      ...corridor,
+      ...searchResults.map(r => r.h).filter(h => !seen.has(h.id)),
+      // #418: an omnibar hit is a discovery like any other — it draws the same
+      // selectable marker, so the map never hides a place the user just found.
+      ...omniResults.map(r => r.h).filter(h => !seen.has(h.id) && !searchResults.some(s => s.h.id === h.id)),
+    ]
+  }, [pois, searchResults, omniResults])
+
+  // The subset of map pins that came from a search — the map draws them as
+  // distinct selectable markers (solid teal, not the dashed gold ideas), and
+  // they vanish with the results list when the search bar clears. Both searches
+  // feed it: a row found in either box is a search result on the map.
+  const searchHitIds = useMemo(
+    () => new Set<string | number>([
+      ...searchResults.map(r => r.h.id),
+      ...omniResults.map(r => r.h.id),
+    ]),
+    [searchResults, omniResults],
+  )
 
   /** #345: mark the ids a staged change will add — at the moment it is STAGED,
    *  not when Keep lands. All three add paths call this, so the window in which
@@ -1246,29 +1249,6 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
     toast(`"${h.name}" added as a candidate for the ${slot.label.toLowerCase()} slot.`)
   }
 
-  function openAddModal(hit: PlaceHit, kmOverride?: number | null, dayOverride?: number | null) {
-    // Duplicate guard (#179 family): a place already in the plan (matched by
-    // title) can't be added again from ANY path — the map-pin "+", a search
-    // row, or the shortlist tray — so the modal never opens for a repeat.
-    if (isAlreadyAdded(hit, identity)) { toast(`“${hit.name}” is already in your trip.`); return }
-    // Pick-day default: prefer the caller's road position (search rows pass the
-    // along-route km they already measured — searchPlacesText hits carry NO
-    // cumKm, so reading hit.cumKm alone always defaulted to Day 1), else the
-    // hit's own ride-plan cumKm (corridor pins). An unknown position can't
-    // preselect honestly, so fall back to the first day — the picker is
-    // user-adjustable, so nothing is attributed silently.
-    const kmForPick = kmOverride ?? hit.cumKm
-    // #I-41: the omnibar passes the day its placement label already named.
-    // The label and this editor then open on one day, never two.
-    const derivedDay = dayOverride ?? dayForKm(kmForPick)
-    setPickDay(derivedDay ?? trip.days[0]?.index ?? 0)
-    // #333 A9: an unknown position still cannot preselect honestly — but the
-    // fallback to Day 1 used to happen in silence, with the reasoning living
-    // only in this comment. The modal discloses the guess now, and it stops
-    // being a guess the moment the user picks a day themselves.
-    setPickDayGuessed(kmForPick == null)
-    setPoiDraft({ hit })
-  }
 
   /** Delete straight from the map pin's popup. Since #424 this is THE
    *  destructive-stop path, shared with the Timeline's day row and the Board's
@@ -1289,83 +1269,6 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
    *  road — so no forced re-search fires and no spinner flashes. */
   function removeStopFromMap(stopId: string, meta: { title: string; dayIndex: number }) {
     removeStopWithUndo({ trip, stopId, dayIndex: meta.dayIndex, applyChange })
-  }
-
-  /** #418: ONE route-aware search, shared by the rail's corridor box and the map
-   *  omnibar — same query, same ranking, same quota and abort discipline — so the
-   *  two surfaces cannot disagree about what a search found or what it cost. The
-   *  caller decides where the rows live; `null` means a newer search superseded
-   *  this one (or it failed), so a caller never renders stale rows. */
-  async function runRouteSearch(raw: string): Promise<Array<{ h: PlaceHit; km: number | null; off: number | null }> | null> {
-    const q = raw.trim()
-    if (q.length < 2) return null
-    // Claim this as the latest search; a slower earlier query that resolves
-    // later is ignored so it can never overwrite the newer rows.
-    const mySeq = ++searchSeq.current
-    searchAbort.current?.abort()
-    const controller = new AbortController()
-    searchAbort.current = controller
-    setSearching(true)
-    try {
-      // searchPlacesText (NOT searchPlaces): this surface ranks and annotates
-      // every row by road position BEFORE any pick, so hits must carry real
-      // coordinates — autocomplete placeholders measure Null Island
-      // (live 2026-09-14: five different places all read "~1675 km · 8448 km
-      // off-route" because they shared the placeholder).
-      // Route-aware bias (found live 2026-09-24): the trip's road is the
-      // spatial signal — without it Google IP-biases results to wherever the
-      // user is typing from, not the corridor they're planning.
-      const hits = await searchPlacesText(q, { routeCoords: routeGeometry, anchors, signal: controller.signal })
-      if (mySeq !== searchSeq.current) return null // a newer search superseded this one
-      // Trip/route/map aware (user ask): "coffee on my route", not coffee
-      // everywhere in India. Each hit is projected onto this trip's road and
-      // ranked by detour (then road position); anything beyond the current
-      // detour scope renders muted and the toast says why.
-      // asymmetricDetourKm measures the perpendicular spur against the DRAWN
-      // polyline (road-true) and only falls back to straight-line-to-anchor
-      // when the road isn't measured — detourKm over-counts hits that sit
-      // between two anchors.
-      const ranked = hits
-        .map(h => ({ h, km: routeKmOf(h.latitude, h.longitude), off: asymmetricDetourKm(h, anchors, routePolyline) }))
-        .sort((a, b) => {
-          const ao = a.off == null ? Number.POSITIVE_INFINITY : a.off
-          const bo = b.off == null ? Number.POSITIVE_INFINITY : b.off
-          return ao - bo || (a.km == null ? Number.POSITIVE_INFINITY : a.km) - (b.km == null ? Number.POSITIVE_INFINITY : b.km)
-        })
-      const onScope = ranked.filter(en => en.off != null && en.off <= scopeKm)
-      if (hits.length === 0) toast('No places found for that search.')
-      else if (onScope.length === 0) toast(`Nothing for “${q}” within your ${scopeKm} km detour scope - widen the detour-scope slider to see them.`)
-      return ranked
-    } catch (err) {
-      if (mySeq !== searchSeq.current || controller.signal.aborted) return null
-      if (err instanceof QuotaExhaustedError) { setSearchQuotaOut(true); toast('Google Places 80% safety pause reached - search resumes next UTC month. Remove the key in Settings and reload to use the free stack.', 'err') } else {
-        toast('Search failed - try again.', 'err')
-      }
-      return null
-    } finally {
-      // Only the newest search owns the spinner; a superseded one leaves the
-      // newer request's "searching" state untouched.
-      if (mySeq === searchSeq.current) setSearching(false)
-    }
-  }
-
-  async function onSearch(e: React.FormEvent) {
-    e.preventDefault()
-    const ranked = await runRouteSearch(searchQ)
-    if (ranked) {
-      setShowAllResults(false)
-      setSearchResults(ranked)
-    }
-  }
-
-  /** #418: the omnibar's own submit. Its rows live in their own state so the
-   *  rail's list is not silently replaced by a search made on the map. */
-  async function onOmniSearch() {
-    const ranked = await runRouteSearch(omniQ)
-    if (ranked) {
-      setOmniResults(ranked)
-      setOmniPicked(null)
-    }
   }
 
   const dayOptions = trip.days.map(d => ({ index: d.index }))
@@ -1665,53 +1568,25 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
     [activeDayIndex, daySlotDeps, activeDayStops, daySlotSig],
   )
 
-  // #I-41: the day the stop editor will open on for the omnibar's selected hit.
-  // One lookup feeds the placement label and the click, so the label and the
-  // editor cannot name two different days. An unknown road position falls back
-  // to the trip's first day — the same fallback the editor applies.
-  const omniPlaceKm = omniPicked ? (omniPicked.km ?? omniPicked.h.cumKm ?? null) : null
-  const omniPlaceDay = useMemo(
-    () => dayForKm(omniPlaceKm) ?? trip.days[0]?.index ?? 0,
-    [omniPlaceKm, dayForKm, trip.days],
-  )
-
-  // #418: the omnibar's choices for the place it just found. The list itself is
-  // pure (`mapPlacement.ts` decides what may be filed where, and why not); this
-  // only hands it the facts, so the same rules are unit-testable without a DOM.
-  const omniPlacement = useMemo<PlacementOption[]>(
-    () => placementOptions({
-      hit: omniPicked?.h ?? null,
-      dayIndex: activeDayIndex,
-      placeDayIndex: omniPlaceDay,
-      placeDayLabel: trip.days.find(d => d.index === omniPlaceDay)?.title ?? null,
-      km: omniPlaceKm,
-      // The parts this place's own category could serve on the day the rail is
-      // planning — the same helper the corridor rows already file through.
-      filingOptions: omniPicked ? filingOptionsForPicked(omniPicked.h) : [],
-      alreadyAdded: omniPicked ? isAlreadyAdded(omniPicked.h, identity) : false,
-      shortlisted: omniPicked ? shortlist.some(h => h.id === omniPicked.h.id) : false,
-      shortlistCount: trayShortlist.length,
-    }),
-    [omniPicked, activeDayIndex, omniPlaceDay, omniPlaceKm, trip.days, activeDaySlots, shortlist, trayShortlist, identity],
-  )
-
-  /** #418: every placement routes into a path that already existed and nothing is
-   *  re-implemented here — a day opens the stop editor (which asks for the day and
-   *  owns the write), a part fills through the same manual-candidate path the rail
-   *  uses, the shortlist collects without touching the plan, and the vote is the
-   *  tray's own decision. Nothing happens until the user clicks one. */
-  function placeOmnibarHit(option: PlacementOption) {
-    const picked = omniPicked
-    if (!picked) return
-    if (option.kind === 'day') { openAddModal(picked.h, picked.km, omniPlaceDay); return }
-    if (option.kind === 'slot') {
-      const slot = activeDaySlots.find(s => s.key === option.slotKey)
-      if (slot) addManualCandidate(slot, picked.h)
-      return
-    }
-    if (option.kind === 'shortlist') { toggleShortlist(picked.h); return }
-    if (option.kind === 'vote') { void raiseShortlistVote(); return }
-  }
+  // #I-41: the day the stop editor opens on lives in ./map/useOmnibarPlacement
+  // now (moved there by #420 slice 7) — one lookup feeds the placement label
+  // and the click, so the label and the editor cannot name two different days.
+  // An unknown road position falls back to the trip's first day — the same
+  // fallback the editor applies.
+  const { omniPlacement, placeOmnibarHit } = useOmnibarPlacement({
+    picked: omniPicked,
+    activeDayIndex,
+    days: trip.days,
+    dayForKm,
+    activeDaySlots,
+    shortlist,
+    trayShortlist,
+    identity,
+    openAddModal,
+    addManualCandidate,
+    toggleShortlist,
+    raiseShortlistVote,
+  })
   /** Counted off the very slots the rail renders, not re-derived: a second
    *  `daySlots` call here was a whole extra derivation of the same day, and a
    *  meter that could in principle disagree with the list beside it. */
