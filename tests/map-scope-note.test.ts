@@ -39,7 +39,10 @@ describe('mapScopeNote (A416)', () => {
 
 describe('MapTab wires the scope note honestly (A416)', () => {
   it('initialises the map scope as unknown, never as a guess', () => {
-    expect(tab).toMatch(/useState<number \| 'all' \| null>\(null\)/)
+    // #420 slice 12: the state lives in the rail-view hook; the page consumes it.
+    const hook = readFileSync(join(root, 'src', 'pages', 'trip', 'map', 'useRailView.ts'), 'utf8')
+    expect(hook).toMatch(/useState<number \| 'all' \| null>\(null\)/)
+    expect(tab).toContain('} = useRailView(')
   })
 
   it('records what the map reports, including all days', () => {
@@ -50,4 +53,4 @@ describe('MapTab wires the scope note honestly (A416)', () => {
     expect(tab).toMatch(/mapScopeNote\(mapFilter, activeDayIndex\)/)
     expect(tab).toMatch(/role="status"/)
   })
-})
+})
