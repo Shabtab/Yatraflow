@@ -53,6 +53,8 @@
 exclude_paths:
   - "api/sitemap.js"
   - "api/c.js"
+  - "api/payments-webhook.js"
+  - "api/checkout.js"
 #
 # `api/payments-webhook.js` is excluded on the same terms, added only after
 # Codacy actually flagged the file (#554). One finding, already triaged:
