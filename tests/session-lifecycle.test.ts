@@ -325,13 +325,17 @@ describe('#578 — the store wires what it promises', () => {
 
   it('the fire itself checks identity BEFORE claiming anything', () => {
     // The guard runs before markLocalWrite: a refused write must not claim an
-    // echo window under the wrong (or no) account either.
+    // echo window under the wrong (or no) account either. #549 built the
+    // queue entry into a const line (an STE-gate accommodation); the entry
+    // still names the trip and still sits after the guard.
     const fn = src.slice(src.indexOf('async function persistTripFieldNow'))
     const guard = fn.indexOf('if (!scheduledFor || cache.sessionUserId !== scheduledFor)')
     const claim = fn.indexOf("markLocalWrite('trips', id)")
     expect(guard, 'the fire-time identity guard is gone').toBeGreaterThan(-1)
     expect(guard).toBeLessThan(claim)
-    expect(fn.indexOf('queueWrite({ tripId: id')).toBeGreaterThan(guard)
+    const entryAt = fn.indexOf('const entry = { tripId: id')
+    expect(entryAt, 'the queue entry is gone').toBeGreaterThan(guard)
+    expect(fn.indexOf('await queueWrite(entry)')).toBeGreaterThan(entryAt)
   })
 
   it('captures the session at schedule time, beside the snapshot', () => {
