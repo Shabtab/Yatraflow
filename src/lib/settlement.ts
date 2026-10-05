@@ -16,11 +16,22 @@
 //    site can quietly re-introduce them (the I-19 invariant, pinned by tests).
 //  - Only lines TAGGED with a payer move a balance; untagged lines stay in the
 //    shared kitty and move nobody — they are outside the fair share too.
-//  - A per-person line is multiplied by the head count — whoever fronted it
-//    paid for everyone — using the same floor of 1 as the division, so a
-//    0/undefined head count cannot divide by zero.
-//  - A payer who is not a member (stale row, removed crew member) credits
-//    nobody: balances are computed over members only.
+//  - The fair share is split across the ACCOUNTS (members), not the traveller
+//    count (#548): a guardian account shoulders the share of the travellers
+//    who have no account of their own. Balances are rows over members, so the
+//    split and the rows must measure the same population or the card can
+//    never net to zero.
+//  - A per-person line is multiplied by the trip's TRAVELLER count — whoever
+//    fronted it paid for every human, accounted or not — with a floor of 1 so
+//    a 0/undefined head count cannot divide by zero. Only the split is per
+//    account; the expansion follows travellers, so the card's total still
+//    matches the expense table's group-total display.
+//  - A payer who is not a member (stale row, removed crew member) sits
+//    outside the card entirely (#548): openTaggedLines drops their lines, so
+//    they feed neither the fair share nor a credit. A line whose credit
+//    landed nowhere would strand its own share on the other rows and break
+//    the net-zero sum again. The line still shows in the settle strip, where
+//    it can be marked settled.
 import type { Expense, ID, User } from '../data/types'
 import { allowedAmount } from './expenseAmount'
 
@@ -39,10 +50,13 @@ export interface Transfer {
   amount: number
 }
 
-/** The per-head fair share the balances are measured against (exported for the
- *  card's copy, which prints it even when balances are hidden). */
-export function fairSharePerHead(travellers: number, totalCostInr: number): number {
-  return totalCostInr / Math.max(1, travellers)
+/** The fair share each account owes: the total divided across `splitAcross`
+ *  shares, floored at 1 (#548: the balances card passes its member count, so
+ *  a family of four travellers on two accounts splits the total two ways).
+ *  Exported for the card's copy, which prints it even when balances are
+ *  hidden. */
+export function fairSharePerHead(splitAcross: number, totalCostInr: number): number {
+  return totalCostInr / Math.max(1, splitAcross)
 }
 
 /** One line's credited amount: a per-person line covers the whole head count.
@@ -67,28 +81,35 @@ export function linesTotal(expenses: Expense[], travellers: number): number {
 }
 
 /**
- * The population the balances measure: the OPEN lines that have a payer.
- * Settled lines are done and untagged ones sit in the shared kitty without
- * owing anybody anything — neither belongs in a "who owes whom" figure. One
- * predicate, both consumers (the balances and the card's "still to square up"
- * total), so the two figures can never disagree.
+ * The population the balances measure: the OPEN lines whose payer is in the
+ * crew. Settled lines are done, untagged ones sit in the shared kitty without
+ * owing anybody anything, and a payer who has left the trip credits nobody —
+ * #548: such a line must not feed the fair share either, or its unclaimed
+ * credit strands the share on the remaining rows and the card stops netting
+ * to zero. One predicate, both consumers (the balances and the card's "still
+ * to square up" total), so the two figures can never disagree.
  */
-export function openTaggedLines(expenses: Expense[]): Expense[] {
-  return expenses.filter(e => !e.settled && e.paidBy)
+export function openTaggedLines(expenses: Expense[], memberIds: ID[]): Expense[] {
+  const inCrew = new Set(memberIds)
+  return expenses.filter(e => !e.settled && e.paidBy != null && inCrew.has(e.paidBy))
 }
 
 /**
- * Per-member balances for a trip: everyone's fair share is the OPEN tagged
- * lines' total split per head, and those same lines credit whoever fronted
- * them, with per-person lines expanded to the full head count. Because both
- * sides come from one population the balances net to zero across the crew and
- * the settlement transfers balance exactly; settle every line and every row
- * reads 0.
+ * Per-member balances for a trip: everyone's fair share is the OPEN
+ * crew-tagged lines' total split across the MEMBERS (floor 1), and those same
+ * lines credit whoever fronted them. Per-person lines expand to the trip's
+ * traveller count, not the member count — the money fronted is real either
+ * way — while the split follows the accounts (#548), so a guardian account
+ * shoulders the travellers who have no account of their own. Both sides of
+ * the subtraction draw on one population with one expansion, so the balances
+ * net to zero across the crew and the settlement transfers balance exactly;
+ * settle every line and every row reads 0.
  *
- * Pass the trip's WHOLE expense list — settled lines are filtered in here
- * (I-19), never by the caller. Sorted richest-first (the balances card's
- * display order). `getUser` is an injected lookup so this module never imports
- * the store.
+ * `travellers` drives the per-person expansion only; the split ignores it.
+ * Pass the trip's WHOLE expense list — settled and non-member lines are
+ * filtered in here (I-19 and #548), never by the caller. Sorted richest-first
+ * (the balances card's display order). `getUser` is an injected lookup so
+ * this module never imports the store.
  */
 export function computeBalances(
   members: { userId: ID }[],
@@ -97,8 +118,8 @@ export function computeBalances(
   getUser?: (id: ID) => User | undefined,
 ): BalanceRow[] {
   const heads = Math.max(1, travellers)
-  const open = openTaggedLines(expenses)
-  const fairShare = fairSharePerHead(heads, linesTotal(open, heads))
+  const open = openTaggedLines(expenses, members.map(m => m.userId))
+  const fairShare = fairSharePerHead(members.length, linesTotal(open, heads))
   const paid = new Map<ID, number>()
   for (const e of open) {
     paid.set(e.paidBy as ID, (paid.get(e.paidBy as ID) ?? 0) + lineAmount(e, heads))

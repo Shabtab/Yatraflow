@@ -4,7 +4,10 @@
 // the persistence wiring but never reach this arithmetic — this file is its
 // only coverage. I-19 re-based the balances onto the OPEN tagged lines, so
 // settling a line now genuinely removes it; the I-19 cases below are the
-// regression guard for that. See the module header in settlement.ts.
+// regression guard for that. #548 moved the split from the traveller count to
+// the members themselves and dropped non-member payers from the population,
+// so the net-zero claim now holds even when the two counts diverge — the
+// invariant cases at the bottom pin it. See the module header in settlement.ts.
 import { describe, it, expect } from 'vitest'
 import { computeBalances, settleBalances, fairSharePerHead, linesTotal, openTaggedLines } from '../src/lib/settlement'
 import type { BalanceRow } from '../src/lib/settlement'
@@ -90,18 +93,24 @@ describe('computeBalances', () => {
     expect(rows.every(r => r.bal === 0)).toBe(true)
   })
 
-  it('a payer who is not a member credits nobody (stale removed crew)', () => {
+  it('a payer who is not a member credits nobody, and owes nobody (#548)', () => {
+    // The ghost line is outside the fair share too, so the card still nets to
+    // zero — the old code made every member owe a share of it.
     const expenses = [{ id: 'e1', paidBy: 'ghost', amountInr: 9_000 }] as never[]
     const rows = computeBalances(members, expenses, 3)
     expect(rows.every(r => r.paid === 0)).toBe(true)
+    expect(rows.every(r => r.bal === 0)).toBe(true)
   })
 
   it('a 0 head count cannot divide by zero (floor of 1 traveller)', () => {
-    // One line, one head: the only payer is exactly even and nothing is NaN.
-    const expenses = [{ id: 'e1', paidBy: 'a', amountInr: 1_000 }] as never[]
+    // Expansion floors at 1 head — a per-person line counts once — and the
+    // split floors at the member count. Nothing is NaN, and the crew nets to
+    // zero.
+    const expenses = [{ id: 'e1', paidBy: 'a', amountInr: 1_000, perPerson: true }] as never[]
     const rows = computeBalances(members, expenses, 0)
-    expect(rows.find(r => r.id === 'a')!.bal).toBe(0)
+    expect(rows.find(r => r.id === 'a')!.paid).toBe(1_000)
     expect(rows.every(r => Number.isFinite(r.bal))).toBe(true)
+    expect(rows.reduce((s, r) => s + r.bal, 0)).toBeCloseTo(0, 6)
   })
 
   it('sorts richest-first for the balances card', () => {
@@ -123,13 +132,15 @@ describe('computeBalances', () => {
 describe('openTaggedLines / linesTotal', () => {
   const settled = { by: 'a', at: 1 }
 
-  it('keeps only the open lines that have a payer', () => {
+  it('keeps only the open lines whose payer is in the crew', () => {
     const expenses = [
       { id: 'e1', paidBy: 'a', amountInr: 1_000 },
       { id: 'e2', amountInr: 2_000 },
       { id: 'e3', paidBy: 'b', amountInr: 3_000, settled },
+      { id: 'e4', paidBy: 'ghost', amountInr: 4_000 },
     ] as never[]
-    expect(openTaggedLines(expenses).map(e => e.id)).toEqual(['e1'])
+    // #548: a payer who has left the trip is outside the balances population.
+    expect(openTaggedLines(expenses, ['a', 'b']).map(e => e.id)).toEqual(['e1'])
   })
 
   it('linesTotal expands per-person lines to the head count', () => {
@@ -149,7 +160,7 @@ describe('openTaggedLines / linesTotal', () => {
     ] as never[]
     // The settled 6_000 is outside the open population, so the share comes off
     // the 30_000 alone — and every row is its own credits minus that share.
-    expect(fairSharePerHead(2, linesTotal(openTaggedLines(expenses), 2))).toBe(15_000)
+    expect(fairSharePerHead(2, linesTotal(openTaggedLines(expenses, ['a', 'b']), 2))).toBe(15_000)
     const rows = computeBalances([{ userId: 'a' }, { userId: 'b' }], expenses, 2)
     expect(rows.map(r => r.bal)).toEqual([15_000, -15_000])
   })
@@ -209,5 +220,87 @@ describe('settleBalances', () => {
 
   it('returns nothing when everyone is even', () => {
     expect(settleBalances([row('a', 0), row('b', 0)])).toEqual([])
+  })
+})
+
+// ============ #548 — the net-zero invariant when members ≠ travellers ========
+// computeBalances used to divide the fair share by `travellers` while summing
+// rows over `members` only, so any divergence stranded a residual no transfer
+// could settle. The split now follows the members and non-member payers sit
+// outside the population — these cases are the issue's verification: the sum
+// is zero for random shapes, and the transfers leave every row even.
+describe('#548 — the balances net to zero whatever the head count', () => {
+  // Deterministic LCG so a failure reproduces exactly on every run.
+  let seed = 548
+  const rand = (): number => {
+    seed = (seed * 1_664_525 + 1_013_904_223) % 4_294_967_296
+    return seed / 4_294_967_296
+  }
+  const pick = <T,>(xs: readonly T[]): T => xs[Math.floor(rand() * xs.length)]!
+
+  it('family shape: 4 travellers, 2 accounts — each account shoulders the kids', () => {
+    // ₹40,000 tagged to 'a': the share is ₹20,000 per account, not ₹10,000 per
+    // head — the old travellers split left ₹20,000 stranded on the card.
+    const expenses = [{ id: 'e1', paidBy: 'a', amountInr: 40_000 }] as never[]
+    const rows = computeBalances([{ userId: 'a' }, { userId: 'b' }], expenses, 4)
+    expect(rows.find(r => r.id === 'a')!.bal).toBe(20_000)
+    expect(rows.find(r => r.id === 'b')!.bal).toBe(-20_000)
+    expect(rows.reduce((s, r) => s + r.bal, 0)).toBeCloseTo(0, 6)
+    expect(settleBalances(rows)).toEqual([
+      { from: expect.objectContaining({ id: 'b' }), to: expect.objectContaining({ id: 'a' }), amount: 20_000 },
+    ])
+  })
+
+  it('a per-person line still expands to the TRAVELLER count, not the accounts', () => {
+    // ₹2,000 per person across 4 travellers is ₹8,000 of real money fronted by
+    // 'a'. The split is over the 2 accounts, so each share is ₹4,000 and 'a'
+    // keeps the kids' half.
+    const expenses = [{ id: 'e1', paidBy: 'a', amountInr: 2_000, perPerson: true }] as never[]
+    const rows = computeBalances([{ userId: 'a' }, { userId: 'b' }], expenses, 4)
+    expect(rows.find(r => r.id === 'a')!.paid).toBe(8_000)
+    expect(rows.find(r => r.id === 'a')!.bal).toBe(4_000)
+    expect(rows.find(r => r.id === 'b')!.bal).toBe(-4_000)
+  })
+
+  it('a non-member payer feeds neither side of the subtraction', () => {
+    // Only the member line counts: the share is 4,000 per account over 2
+    // accounts. The ghost's 9,000 would otherwise inflate every share.
+    const expenses = [
+      { id: 'e1', paidBy: 'ghost', amountInr: 9_000 },
+      { id: 'e2', paidBy: 'a', amountInr: 8_000 },
+    ] as never[]
+    const rows = computeBalances([{ userId: 'a' }, { userId: 'b' }], expenses, 4)
+    expect(rows.find(r => r.id === 'a')!.bal).toBe(4_000)
+    expect(rows.find(r => r.id === 'b')!.bal).toBe(-4_000)
+    expect(rows.reduce((s, r) => s + r.bal, 0)).toBeCloseTo(0, 6)
+  })
+
+  it('random shapes: the rows sum to zero and the transfers leave every row even', () => {
+    for (let round = 0; round < 60; round++) {
+      const travellers = Math.floor(rand() * 7) // 0..6, deliberately unequal to the members
+      const crewIds = ['a', 'b', 'c', 'd'].slice(0, 1 + Math.floor(rand() * 4))
+      const members = crewIds.map(id => ({ userId: id }))
+      const expenses = Array.from({ length: 1 + Math.floor(rand() * 5) }, (_, i) => ({
+        id: `e${i}`,
+        paidBy: pick([...crewIds, 'ghost']),
+        amountInr: 1 + Math.floor(rand() * 50_000),
+        perPerson: rand() < 0.3,
+        settled: rand() < 0.2 ? { by: 'a', at: 1 } : undefined,
+      })) as never[]
+      const rows = computeBalances(members, expenses, travellers)
+      expect(rows.reduce((s, r) => s + r.bal, 0), `round ${round}: rows must sum to zero`).toBeCloseTo(0, 6)
+      const transfers = settleBalances(rows)
+      // A debtor's bal is negative: paying RAISES it toward zero; the
+      // creditor's bal falls. Applying either sign the other way doubles the
+      // imbalance instead of closing it.
+      const balAfter = new Map(rows.map(r => [r.id, r.bal]))
+      for (const t of transfers) {
+        balAfter.set(t.from.id, balAfter.get(t.from.id)! + t.amount)
+        balAfter.set(t.to.id, balAfter.get(t.to.id)! - t.amount)
+      }
+      for (const id of crewIds) {
+        expect(Math.abs(balAfter.get(id)!), `round ${round}: ${id} must be even`).toBeLessThanOrEqual(0.5 + 1e-9)
+      }
+    }
   })
 })
