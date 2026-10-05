@@ -211,10 +211,12 @@ export function BudgetTab({ trip, totals, editable, previewOpen, onOpenSettings 
     .sort((a, b) => b[1] - a[1])
   const maxCat = cats.length ? cats[0][1] : 1
 
-  // I-19 — the balances measure the OPEN lines: fair share = open tagged total
-  // ÷ travellers, credited to whoever fronted those same lines. One population
-  // on both sides, so the card nets to zero and marking a line settled really
-  // does remove it — settle every line and every row reads 0. The trip estimate
+  // I-19 — the balances measure the OPEN lines: fair share = open crew-tagged
+  // total ÷ accounts, credited to whoever fronted those same lines. #548: the
+  // split follows the members (a family of four travellers on two accounts
+  // splits two ways) and non-member payers sit outside the population. One
+  // population on both sides, so the card nets to zero and marking a line
+  // settled really does remove it — settle every line and every row reads 0. The trip estimate
   // is deliberately NOT part of this card any more: it stays in the metric strip
   // above, which is where a planning figure belongs. Math lives in the pure
   // lib/settlement.ts (unit-tested there; the component is presentation only).
@@ -223,14 +225,22 @@ export function BudgetTab({ trip, totals, editable, previewOpen, onOpenSettings 
   const settledExpenses = trip.expenses.filter(e => e.settled).sort((a, b) => (b.settled?.at ?? 0) - (a.settled?.at ?? 0))
   // I-6 nudge: only tagged lines move money between people, so both the "still
   // to square up" count and the card's fair share are over those alone (an
-  // untagged shared-kitty line owes nobody anything) — and both come from the
-  // same two helpers, so the figures can never disagree.
-  const openPayable = openTaggedLines(trip.expenses)
+  // untagged shared-kitty line owes nobody anything, and a payer who has left
+  // the trip feeds neither) — and both come from the same two helpers, so the
+  // figures can never disagree.
+  // #548: the balances' population is the crew — members' open tagged lines.
+  const memberIds = members.map(m => m.userId)
+  const openPayable = openTaggedLines(trip.expenses, memberIds)
   const openPayableTotal = linesTotal(openPayable, trip.travellers)
   const settledTotal = linesTotal(settledExpenses, trip.travellers)
   const balances = computeBalances(members, trip.expenses, trip.travellers, userById)
-  const fairShare = fairSharePerHead(trip.travellers, openPayableTotal)
+  const fairShare = fairSharePerHead(members.length, openPayableTotal)
   const tagged = openPayable.length > 0
+  // #548 card copy: name the split's population when the counts diverge.
+  const sharePer = members.length === trip.travellers ? 'each' : 'per account'
+  const splitNote = members.length !== trip.travellers
+    ? ` Your ${trip.travellers} travellers share it across ${members.length} account${members.length === 1 ? '' : 's'}.`
+    : ''
   const transfers = settleBalances(balances)
   const nameOf = (u: User | undefined) => u?.profile.name ?? 'Traveller'
 
@@ -478,11 +488,13 @@ export function BudgetTab({ trip, totals, editable, previewOpen, onOpenSettings 
                 )
               )}
               {expensesRead === 'ready' && (members.length < 2
-                ? <p className="hint-text" style={{ margin: '6px 0 0' }}>{tagged && <>Fair share is {formatInr(fairShare)} each. </>}Invite your crew from the Share tab, then tag who paid on expense lines — who owes whom shows up here.</p>
+                ? <p className="hint-text" style={{ margin: '6px 0 0' }}>{tagged && <>Fair share is {formatInr(fairShare)} {sharePer}. </>}Invite your crew from the Share tab, then tag who paid on expense lines — who owes whom shows up here.</p>
                 : <>
                     <p className="hint-text" style={{ margin: '6px 0 10px' }}>
                       {tagged
-                        ? <>Fair share is {formatInr(fairShare)} each, counted over the {openPayable.length} open tagged line{openPayable.length !== 1 ? 's' : ''}.</>
+                        ? <>Fair share is {formatInr(fairShare)} {sharePer}, counted over the {openPayable.length} open tagged line{openPayable.length !== 1 ? 's' : ''}.
+                          {splitNote}
+                        </>
                         : settledExpenses.length > 0
                           ? <>Every tagged line is squared up — nothing left to split.</>
                           : <>Nothing to split yet — tag who paid on expense lines and balances appear here. The estimates above are your planning figure, not a debt.</>}
