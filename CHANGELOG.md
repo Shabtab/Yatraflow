@@ -26,6 +26,8 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ### Changed
 
+- **The coding standards are navigable again: the domain entries now live in three `docs/standards/` files.** `CODING_STANDARDS.md` had grown to 1,143 lines, and its index covered only the numbered pitfall rules — the ~480 lines of convention bullets under §2 had no way in. The split (2026-10-05 review-loop retro over the repo's PR/issue review comments) moves them verbatim: `store-persistence.md` (write-through, Supabase, RLS, covers, offline, import), `maps-and-providers.md` (basemaps, quota, coordinates, route measurement) and `ui-and-design-system.md` (CSS cascade, contrast, motion, a11y, chunking). The root file keeps the numbered rules, the data-model and process entries and the index, and drops to 840 lines. Two new rules came out of the same corpus: §6ah pins the fix-ready comment contract (verified facts, root cause, patch, delivery — the four stages whose absence caused every operator correction from #43 to #181), and §6h gains the gate-first sequencing rule from #154 (extend the gate before or with an audit sweep's fixes, so every fix lands already pinned). All three new files joined `tests/doc-drift.test.ts`'s LIVE list, so their prose is now scanned for absence claims.
+
 - **Split the agent operating manual into three files.** `AGENTS.md` was 1,920 lines. Every
   turn loaded all of it, whatever the task. The workflow rules, the verification gate, the code
   pitfalls and the status block shared one file. `AGENTS.md` is now 407 lines of rules and
