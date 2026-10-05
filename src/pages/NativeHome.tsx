@@ -57,7 +57,7 @@ function HomeTripRow({ trip, onNavigate }: { trip: Trip; onNavigate: (r: string)
               ? <>Starts {new Date(Date.parse(trip.startDate!)).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</>
               : <>{trip.days.length} days</>}
           <span aria-hidden>·</span>
-          <span><InlineIcon icon={Wallet} size={12} gap={2} />{formatInrShort(totals.costPerPersonInr)}/person</span>
+          <span><InlineIcon icon={Wallet} size={12} gap={2} />~{formatInrShort(totals.costPerPersonInr)}/person</span>
           {crew > 1 && (
             <><span aria-hidden>·</span><span><InlineIcon icon={Users} size={12} gap={2} />{crew}</span></>
           )}
