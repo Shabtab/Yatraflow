@@ -389,7 +389,7 @@ describe('POST /api/checkout', () => {
     const liveRow = (id: string, status: string, amount = 500) => ({
       razorpay_order_id: id, amount_inr: amount, status,
     })
-    function stubLiveOrders(rows: unknown[], gateway: Record<string, string>) {
+    function stubLiveOrders(rows: unknown[], gateway: Record<string, string>, payments: Record<string, unknown> = {}) {
       fetchMock.mockImplementation(async (input: RequestInfo | URL, init: RequestInit = {}) => {
         const url = String(input)
         const method = (init.method ?? 'GET') as string
@@ -403,6 +403,12 @@ describe('POST /api/checkout', () => {
         if (url.includes('/rest/v1/purchase_orders') && method === 'PATCH') return jsonResponse([{ id: 'o', razorpay_order_id: 'x', status: 'paid' }])
         if (url.includes('/rest/v1/purchase_orders') && method === 'POST') return jsonResponse(null, 201)
         if (url.includes('/rest/v1/purchase_orders') && method === 'GET') return jsonResponse(rows)
+        // #595 — the payments-list probe the recovery makes before marking:
+        // keyed by order id, answered with the gateway's own items shape.
+        if (url.includes('/v1/orders/') && url.endsWith('/payments')) {
+          const id = decodeURIComponent(url.split('/v1/orders/')[1]!.replace(/\/payments$/, ''))
+          return jsonResponse({ count: 1, items: payments[id] ?? [] })
+        }
         // Gateway order STATUS probes come before the create call: the create URL
         // is an exact match, so the prefix branch must not be shadowed by it.
         if (url.includes('api.razorpay.com/v1/orders/')) {
@@ -426,6 +432,8 @@ describe('POST /api/checkout', () => {
       // notice that order_OLD already took the money.
       stubLiveOrders([liveRow('order_NEW1', 'pending'), liveRow('order_OLD', 'pending')], {
         order_OLD: 'paid', order_NEW1: 'created',
+      }, {
+        order_OLD: [{ id: 'pay_REAL_554', status: 'captured' }],
       })
       const res = await run({ pubId: 'kerala-trip_1' })
       // Recovered: the grant is finished on the OLD order, and NO fresh modal is
@@ -441,6 +449,33 @@ describe('POST /api/checkout', () => {
       // …and once the older capture is found the scan RECOVERS there and stops —
       // the newer row is never re-served, which is the whole point.
       expect(probes.some(u => u.includes('order_NEW1'))).toBe(false)
+    })
+
+    it('the mark carries the REAL gateway payment id, never a sentinel (#595)', async () => {
+      // `razorpay_payment_id` is a Razorpay PAYMENT id by schema contract — a
+      // future refund tool calls the refund API keyed by it, so the sentinel the
+      // recovery used to write would 404 a refund at the worst moment.
+      stubLiveOrders([liveRow('order_OLD', 'pending')], { order_OLD: 'paid' }, {
+        order_OLD: [{ id: 'pay_REAL_554', status: 'captured' }],
+      })
+      await run({ pubId: 'kerala-trip_1' })
+      const patch = fetchMock.mock.calls.find(c => String(c[0]).includes('/rest/v1/purchase_orders') && (c[1] as RequestInit | undefined)?.method === 'PATCH')
+      expect(patch).toBeTruthy()
+      expect(JSON.parse(String((patch![1] as RequestInit).body)).razorpay_payment_id).toBe('pay_REAL_554')
+    })
+
+    it('a payments list without a captured entry marks with NULL and still recovers (#595)', async () => {
+      // The money moved (the gateway says paid), so the grant must proceed —
+      // but the column's contract is "a Razorpay payment id or nothing", so the
+      // fallback is null, never an invented string.
+      stubLiveOrders([liveRow('order_OLD', 'pending')], { order_OLD: 'paid' }, {
+        order_OLD: [],
+      })
+      const res = await run({ pubId: 'kerala-trip_1' })
+      expect(res.statusCode).toBe(409)
+      expect(JSON.parse(res.body).error).toMatch(/earlier payment was confirmed/)
+      const patch = fetchMock.mock.calls.find(c => String(c[0]).includes('/rest/v1/purchase_orders') && (c[1] as RequestInit | undefined)?.method === 'PATCH')
+      expect(JSON.parse(String((patch![1] as RequestInit).body)).razorpay_payment_id).toBeNull()
     })
     it('re-serves the one payable order when a newer one is captured on the gateway', async () => {
       // The realistic two-row shape after the index lands: the older row is

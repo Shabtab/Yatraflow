@@ -135,6 +135,31 @@ async function fetchGatewayOrderStatus(keyId, keySecret, razorpayOrderId, signal
   return typeof order?.status === 'string' ? order.status : 'unknown'
 }
 
+/** #595 — the real payment id behind a captured order, read from the gateway's
+ *  payments list for that order. The recovery path marks a stranded row paid,
+ *  and `razorpay_payment_id` is a Razorpay PAYMENT id by schema contract — a
+ *  future refund tool calls Razorpay's refund API keyed by payment id, so a
+ *  sentinel string there turns a refund into a 404 at exactly the wrong
+ *  moment. Returns null when the list answers but holds no captured payment:
+ *  the mark still proceeds (the money moved — blocking the grant over a missing
+ *  id would strand the buyer worse), and the column stays honest. */
+async function fetchCapturedPaymentId(keyId, keySecret, razorpayOrderId, signal) {
+  try {
+    const response = await fetch(`https://api.razorpay.com/v1/orders/${encodeURIComponent(razorpayOrderId)}/payments`, {
+      headers: { authorization: `Basic ${Buffer.from(`${keyId}:${keySecret}`).toString('base64')}` },
+      signal,
+    })
+    if (!response.ok) return null
+    const body = await response.json().catch(() => null)
+    const items = Array.isArray(body?.items) ? body.items : []
+    const captured = items.find(p => p?.status === 'captured' && typeof p.id === 'string')
+    return captured?.id ?? null
+  } catch {
+    // The probe is best-effort by design: the grant must not hinge on it.
+    return null
+  }
+}
+
 /** Grant via the buyer-scoped RPC — the same tail the verify function runs. The
  *  mark itself lives in `_order-mark.js` (#355) because all three payment
  *  functions perform it and it is subtle enough that three copies is three
@@ -266,8 +291,18 @@ export default async function handler(req, res) {
       if (gatewayStatus === 'paid') {
         recovering = true // from here, any throw means money moved and we failed to finish
         if (order.status === 'pending') {
-          // A captured payment this flow never confirmed: mark it first.
-          const mark = await markOrderPaid(serviceKey, order.razorpay_order_id, 'recovered-by-checkout', signal)
+          // A captured payment this flow never confirmed: read its REAL payment
+          // id from the gateway and mark the row with that (#595). The column is
+          // a Razorpay payment id by schema contract — a refund tool keys on it,
+          // so a sentinel there would 404 a refund at the worst moment. Null is
+          // the honest fallback when the payments list answers without one: the
+          // mark still proceeds (the money moved), the column stays a payment id
+          // or nothing.
+          const recoveredPaymentId = await fetchCapturedPaymentId(keyId, keySecret, order.razorpay_order_id, signal)
+          if (!recoveredPaymentId) {
+            console.error(`[yatraflow] checkout recovery: no captured payment id on the gateway for order ${order.razorpay_order_id} — marking paid with a null payment id`)
+          }
+          const mark = await markOrderPaid(serviceKey, order.razorpay_order_id, recoveredPaymentId, signal)
           // The gateway says paid but the row came back refunded: the two
           // disagree, and the ROW is the one the entitlement was revoked against
           // (#355). Granting here would resurrect access a refund deleted —
