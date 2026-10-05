@@ -1458,10 +1458,20 @@ export async function createTripPersisted(ownerId: ID, input: NewTripInput, seed
  *  again if this attempt fails too; the `retry` flag lets this one meet its own
  *  earlier rows without calling them a failure (see persistTrip). */
 export async function retryCreateTrip(trip: Trip, ownerId: ID): Promise<boolean> {
+  return retryTripSave(trip, ownerId, 'create retry failed')
+}
+
+/** Retry an import whose save failed (#551) — the SAME contract as
+ *  `retryCreateTrip`: same trip object, `retry: true`, retract on failure. */
+export async function retryImportTrip(trip: Trip, ownerId: ID): Promise<boolean> {
+  return retryTripSave(trip, ownerId, 'import retry failed')
+}
+
+async function retryTripSave(trip: Trip, ownerId: ID, label: string): Promise<boolean> {
   if (!cache.trips.some(t => t.id === trip.id)) admitTripCopy(trip)
   let persisted = false
   try { persisted = await persistTrip(trip, ownerId, { retry: true }) }
-  catch (e) { console.error('[yatraflow] create retry failed', e) }
+  catch (e) { console.error(`[yatraflow] ${label}`, e) }
   if (!persisted) retractTripCopy(trip)
   return persisted
 }
@@ -1750,7 +1760,9 @@ export function duplicateTrip(source: Trip, ownerId: ID, makePublic?: boolean): 
 /** Import a trip the user brought with them — a file export or a gallery
  *  itinerary (`lib/tripImport.ts`). Identical to `duplicateTrip` except that it
  *  keeps the plan's own name: nothing is being copied, so " (copy)" would be a
- *  lie, and a published import would carry that lie into the gallery title. */
+ *  lie, and a published import would carry that lie into the gallery title.
+ *  Fire-and-forget: callers that must know the outcome use
+ *  `importTripPersisted` (#551). */
 export function importTrip(source: Trip, ownerId: ID): Trip {
   const copy = buildTripCopy(source, ownerId, { keepName: true })
   admitTripCopy(copy)
@@ -1758,14 +1770,26 @@ export function importTrip(source: Trip, ownerId: ID): Trip {
   return copy
 }
 
+/** Shared tail of every persisted copy: persist, then roll the cache copy back
+ *  out on ANY failure — including a THROW. supabase-js answers a refused write
+ *  with an error object, but a dropped fetch rejects, and an uncaught rejection
+ *  would leave the optimistic row in the cache as the zombie §6i is about
+ *  (#551): the same treatment createTripPersisted gives the create path. */
+async function persistCopyOrRetract(copy: Trip, ownerId: ID): Promise<boolean> {
+  admitTripCopy(copy)
+  let persisted = false
+  try { persisted = await persistTrip(copy, ownerId) }
+  catch (e) { console.error('[yatraflow] trip copy save failed', e) }
+  if (!persisted) retractTripCopy(copy)
+  return persisted
+}
+
 /** Duplicate that reports whether the rows actually landed, so the caller can
  *  toast the truth instead of a success the next reload will disprove. On
  *  failure the cache copy is retracted. */
 export async function duplicateTripPersisted(source: Trip, ownerId: ID, makePublic?: boolean, ref?: ShareSource | null): Promise<{ trip: Trip; persisted: boolean }> {
   const copy = buildTripCopy(source, ownerId, { makePublic, ref })
-  admitTripCopy(copy)
-  const persisted = await persistTrip(copy, ownerId)
-  if (!persisted) retractTripCopy(copy)
+  const persisted = await persistCopyOrRetract(copy, ownerId)
   return { trip: copy, persisted }
 }
 
@@ -1773,9 +1797,17 @@ export async function duplicateTripPersisted(source: Trip, ownerId: ID, makePubl
  *  `freeDayIndexes` variant of `duplicateTripPersisted`. */
 export async function duplicateTripPublicPersisted(source: Trip, ownerId: ID, freeDayIndexes: number[], ref?: ShareSource | null): Promise<{ trip: Trip; persisted: boolean }> {
   const copy = buildTripCopy(source, ownerId, { freeDayIndexes, ref })
-  admitTripCopy(copy)
-  const persisted = await persistTrip(copy, ownerId)
-  if (!persisted) retractTripCopy(copy)
+  const persisted = await persistCopyOrRetract(copy, ownerId)
+  return { trip: copy, persisted }
+}
+
+/** Import that reports whether the rows actually landed (#551) — the awaited
+ *  sibling `ImportTripButton` and the snapshot page were missing: the caller
+ *  toasts success only when `persisted` is true, and on failure retries the
+ *  SAME trip object through `retryImportTrip` (its id is the idempotency key). */
+export async function importTripPersisted(source: Trip, ownerId: ID): Promise<{ trip: Trip; persisted: boolean }> {
+  const copy = buildTripCopy(source, ownerId, { keepName: true })
+  const persisted = await persistCopyOrRetract(copy, ownerId)
   return { trip: copy, persisted }
 }
 
@@ -2584,8 +2616,18 @@ export async function replayQueuedWrites(): Promise<number> {
       const result = replayVerdict((current?.[0] as { updated_at?: unknown } | undefined)?.updated_at, write.capturedAt)
       const owner = trip.members?.find(m => m.role === 'owner')
       const cols = await tripsHaveOptionalColumns()
-      const { error } = await supabase.from('trips').update(tripToRow(trip, owner?.userId ?? userId, cols)).eq('id', write.tripId)
-      if (error) {
+      // count: 'exact' is the #551 half of this send — PostgREST answers a
+      // no-match UPDATE with { error: null, count: 0 }, which a bare error
+      // check reads as success. The contract for a write that touched no row
+      // (the trip was never persisted, or a collaborator deleted it
+      // mid-flight): it fails like any other write — the failure counter
+      // climbs, the entry stays queued for the bounded retry, and past the
+      // cap it is dropped
+      // with the loud toast. Never confirmed, never counted, never toasted as
+      // synced. Only a DEFINITIVE 0 fails; a null count (not answered) stays
+      // a success, the probe's own definitive-only rule.
+      const { error, count } = await supabase.from('trips').update(tripToRow(trip, owner?.userId ?? userId, cols), { count: 'exact' }).eq('id', write.tripId)
+      if (error || count === 0) {
         const attempts = write.attempts + 1
         if (shouldRetry({ attempts })) {
           const retry = { ...write, attempts }
