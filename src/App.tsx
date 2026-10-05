@@ -13,7 +13,7 @@ import {
   shouldBrowserNotify,
 } from './lib/browserNotifications'
 import type { Trip } from './data/types'
-import { useDb, currentUser, useUsers, useNotifications, useSessionUserId, logout, markAllNotificationsRead, tripById, joinViaInvite, duplicateTrip, init, resumeSync, useStoreReady, fetchSharedTrip, fetchTripByInviteCode, collectUnclaimedCovers } from './store/store'
+import { useDb, currentUser, useUsers, useNotifications, useSessionUserId, logout, markAllNotificationsRead, tripById, joinViaInvite, importTripPersisted, retryImportTrip, init, resumeSync, useStoreReady, fetchSharedTrip, fetchTripByInviteCode, collectUnclaimedCovers } from './store/store'
 import { Avatar, BrandMark, ToastZone, useClickOutside, toast } from './components/ui'
 import { BottomNav } from './components/BottomNav'
 import { OfflineBanner } from './components/OfflineBanner'
@@ -610,6 +610,11 @@ function SharedTripPage({ payload, onNavigate }: { payload: string; onNavigate: 
     { s: 'loading' } | { s: 'error' } | { s: 'ready'; name: string; days: number; destinations: string }
   >({ s: 'loading' })
   const [trip, setTrip] = useState<Trip | null>(null)
+  // #551 — the copy a failed import built, held for a same-object retry: its
+  // id is the idempotency key, so a first save that reached the server after
+  // the client gave up is not followed by a twin (#374's rule).
+  const [pendingImport, setPendingImport] = useState<Trip | null>(null)
+  const [importing, setImporting] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -623,11 +628,26 @@ function SharedTripPage({ payload, onNavigate }: { payload: string; onNavigate: 
     return () => { cancelled = true }
   }, [payload])
 
-  function importIt() {
-    if (!trip || !me) { onNavigate('/auth'); return }
-    duplicateTrip(trip, me.id)
-    toast('Snapshot imported - it is now in your trips')
-    onNavigate('/trips')
+  async function importIt() {
+    if (!me) { onNavigate('/auth'); return }
+    if (!trip || importing) return
+    setImporting(true)
+    try {
+      const retry = pendingImport
+      if (retry) {
+        // persistTrip has already said why the save failed; only the truth
+        // navigates (#551).
+        if (!await retryImportTrip(retry, me.id)) return
+        setPendingImport(null)
+      } else {
+        const { trip: copy, persisted } = await importTripPersisted(trip, me.id)
+        if (!persisted) { setPendingImport(copy); return }
+      }
+      toast('Snapshot imported - it is now in your trips')
+      onNavigate('/trips')
+    } finally {
+      setImporting(false)
+    }
   }
 
   if (state.s === 'error') {
@@ -656,7 +676,7 @@ function SharedTripPage({ payload, onNavigate }: { payload: string; onNavigate: 
         Import it to get your own editable copy{me ? '' : ' (you will be asked to log in first)'}.
       </p>
       <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 14 }}>
-        <button className="btn btn-primary" onClick={importIt}><InlineIcon icon={Import} size={16} gap={6} vAlign="-3px" />{me ? 'Import into my trips' : 'Log in & import'}</button>
+        <button className="btn btn-primary" onClick={importIt} disabled={importing} aria-busy={importing}><InlineIcon icon={Import} size={16} gap={6} vAlign="-3px" />{importing ? 'Importing…' : pendingImport ? 'Retry import' : me ? 'Import into my trips' : 'Log in & import'}</button>
         <button className="btn btn-outline" onClick={() => onNavigate('/')}>Not now</button>
       </div>
     </div>
