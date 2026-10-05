@@ -81,3 +81,83 @@ describe('buildPrintModel', () => {
     expect(Number.isFinite(model.days[0].costInr)).toBe(true)
   })
 })
+
+describe('#557 — each drive prints exactly once', () => {
+  /** An ordinary sightseeing day: three real stops out of Panjim, no return
+   *  anchor, no ride halts — so the journey synthesizes no destination and
+   *  the schedule holds exactly the printed stops. */
+  function panjimDay(stops: Array<{ id: string; title: string; lat: number; lng: number }>): Trip {
+    const trip = structuredClone(keralaTrip) as Trip
+    trip.startLocation = 'Panjim'
+    trip.startLocationCoords = { lat: 15.4909, lng: 73.8278 }
+    trip.destinations = []
+    trip.destinationCoords = []
+    trip.days = [{
+      id: 'd0', index: 0, startTime: '09:00',
+      stops: stops.map((s, i) => ({
+        id: s.id, title: s.title, category: 'sightseeing', locationName: s.title,
+        lat: s.lat, lng: s.lng, visitMinutes: 60, entryFeeInrPerPerson: 0,
+        transportCostInrTotal: 0, priority: 'must-do', status: 'confirmed', orderInDay: i + 1,
+      })),
+    }] as Trip['days']
+    return trip
+  }
+
+  /** The row vocabulary of a day card, spelled out — the duplicate survived
+   *  arrayContaining pins, so these assert the exact sequence. */
+  const seq = (rows: ReturnType<typeof buildPrintModel>['days'][number]['rows']) =>
+    rows.map(r => r.kind === 'leg' ? `leg ${r.leg.fromTitle} -> ${r.leg.toTitle}` : `stop ${r.stop.title}`)
+
+  it('an ordinary 3-stop day prints each leg once — the last into-leg is not repeated', () => {
+    const trip = panjimDay([
+      { id: 's1', title: 'Fort', lat: 15.5527, lng: 73.7517 },
+      { id: 's2', title: 'Beach', lat: 15.5813, lng: 73.7610 },
+      { id: 's3', title: 'Museum', lat: 15.4990, lng: 73.8290 },
+    ])
+    expect(seq(buildPrintModel(trip).days[0].rows)).toEqual([
+      'leg Panjim -> Fort',
+      'stop Fort',
+      'leg Fort -> Beach',
+      'stop Beach',
+      'leg Beach -> Museum',
+      'stop Museum',
+    ])
+  })
+
+  it('a single-stop day keeps its opening drive, once', () => {
+    const trip = panjimDay([{ id: 's1', title: 'Fort', lat: 15.5527, lng: 73.7517 }])
+    expect(seq(buildPrintModel(trip).days[0].rows)).toEqual([
+      'leg Panjim -> Fort',
+      'stop Fort',
+    ])
+  })
+
+  it('a day that ends at a synthesized destination still prints that final leg, once, at the end', () => {
+    // Ride-halt day: the journey continues to the next planned destination,
+    // so the schedule holds one row the printed stops do not — its into-leg
+    // is the day's real final drive (today-correct; pinned so the fix above
+    // cannot move it).
+    const trip = structuredClone(keralaTrip) as Trip
+    trip.startLocation = 'Kolkata'
+    trip.startLocationCoords = { lat: 22.5726, lng: 88.3639 }
+    trip.destinations = ['Siliguri']
+    trip.destinationCoords = [{ lat: 26.7271, lng: 88.3953 }]
+    trip.days = [
+      {
+        id: 'd0', index: 0, startTime: '08:00',
+        // a real visit: day 0 ends at its last stop, so day 1 starts there
+        stops: [{ id: 's0', title: 'Kolkata halt', category: 'sightseeing', locationName: 'Kolkata halt', lat: 22.7, lng: 88.5, visitMinutes: 60, entryFeeInrPerPerson: 0, transportCostInrTotal: 0, priority: 'must-do', status: 'confirmed', orderInDay: 1 }],
+      },
+      {
+        id: 'd1', index: 1, startTime: '08:00',
+        stops: [{ id: 's1', title: 'Dhaba halt', category: 'food', locationName: 'Dhaba halt', lat: 24.8, lng: 88.4, visitMinutes: 30, entryFeeInrPerPerson: 0, transportCostInrTotal: 0, priority: 'must-do', status: 'confirmed', orderInDay: 1 }],
+      },
+    ] as Trip['days']
+    const rows = buildPrintModel(trip).days[1].rows
+    expect(seq(rows)).toEqual([
+      'leg Kolkata halt -> Dhaba halt',
+      'stop Dhaba halt',
+      'leg Dhaba halt -> Siliguri',
+    ])
+  })
+})
