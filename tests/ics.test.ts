@@ -64,6 +64,39 @@ describe('buildIcs', () => {
     expect(ends.some(s => s.endsWith('T150000'))).toBe(true)
   })
 
+  it('a 23:30 commitment ends at 00:30 on the NEXT day, never before its start', () => {
+    const trip = structuredClone(keralaTrip) as Trip
+    trip.fixedCommitments = [
+      { id: 'fc-late', title: 'Late flight', type: 'flight', dayIndex: 0, time: '23:30' },
+    ]
+    const ics = buildIcs(trip)
+    const start = /DTSTART:(\d{8}T\d{6})/.exec(ics)
+    const end = /DTEND:(\d{8}T\d{6})/.exec(ics)
+    expect(start).not.toBeNull()
+    expect(end).not.toBeNull()
+    // expected dates derived from the trip's own start, so month-end rolls too
+    const p = (n: number) => String(n).padStart(2, '0')
+    const ymdOf = (offsetDays: number) => {
+      const d = new Date(`${trip.startDate}T00:00:00`)
+      d.setDate(d.getDate() + offsetDays)
+      return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}`
+    }
+    expect(start![1]).toBe(`${ymdOf(0)}T233000`)
+    expect(end![1]).toBe(`${ymdOf(1)}T003000`)
+    expect(end![1] > start![1]).toBe(true) // RFC 5545: DTEND later than DTSTART
+  })
+
+  it('a 23:00 commitment on a month’s last day wraps the calendar month as well', () => {
+    const trip = structuredClone(keralaTrip) as Trip
+    trip.startDate = '2026-10-31'
+    trip.fixedCommitments = [
+      { id: 'fc-year-end', title: 'New Year train', type: 'train', dayIndex: 0, time: '23:00' },
+    ]
+    const ics = buildIcs(trip)
+    expect(ics).toContain('DTSTART:20261031T230000')
+    expect(ics).toContain('DTEND:20261101T000000')
+  })
+
   it('escapes commas/semicolons and folds long lines to ≤75 octets', () => {
     const trip = structuredClone(keralaTrip) as Trip
     trip.name = 'A very long trip name, with commas; semicolons; and more words than one line can hold — RFC 5545 requires folding at 75 octets'
@@ -74,6 +107,25 @@ describe('buildIcs', () => {
     }
     expect(ics).toContain('\\,')
     expect(ics).toContain('\\;')
+  })
+
+  it('folds multi-byte text by octets: every physical line ≤ 75 UTF-8 bytes, re-join intact', () => {
+    const trip = structuredClone(keralaTrip) as Trip
+    // 80 × ₹ = 240 bytes; a code-point folder reads it as 80 "octets" and
+    // emits chunks far past the real limit
+    trip.fixedCommitments = [
+      { id: 'fc-rupee', title: 'Rupee wall', type: 'other', dayIndex: 0, time: '10:00', notes: '₹'.repeat(80) },
+    ]
+    const ics = buildIcs(trip)
+    const utf8 = new TextEncoder()
+    for (const line of ics.split('\r\n')) {
+      expect(utf8.encode(line).length).toBeLessThanOrEqual(75)
+    }
+    // Unfold per §3.1 (CRLF + single space is continuation, not data) and the
+    // value must re-read exactly as it went in.
+    const logical = ics.replace(/\r\n /g, '')
+    const descs = [...logical.matchAll(/^DESCRIPTION:(.*)$/gm)].map(m => m[1])
+    expect(descs).toContain('₹'.repeat(80))
   })
 
   it('skips days and commitments with malformed dates instead of corrupting the calendar', () => {

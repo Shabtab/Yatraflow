@@ -13,12 +13,28 @@ import type { Trip } from '../data/types'
 import { simulateDay, originOf, buildJourney, minutesToHM, type LegEstimate } from './engine'
 
 /** Fold per RFC 5545 §3.1: content lines longer than 75 octets are split,
- *  continuation lines start with a space. Uppercase property names preserved. */
+ *  continuation lines start with a space. An octet is a UTF-8 byte, not a
+ *  code point; ₹ is one character but three octets. The walk stays per code
+ *  point, so no multi-byte character or surrogate pair is ever split. The
+ *  continuation space counts toward the 75. */
 function foldLine(line: string): string[] {
-  const octets = [...line]
-  if (octets.length <= 73) return [line]
-  const out: string[] = [octets.slice(0, 73).join('')]
-  for (let i = 73; i < octets.length; i += 72) out.push(' ' + octets.slice(i, i + 72).join(''))
+  const utf8 = new TextEncoder()
+  const octets = (s: string) => utf8.encode(s).length
+  if (octets(line) <= 75) return [line]
+  const out: string[] = []
+  let buf = ''
+  let bufBytes = 0
+  for (const ch of [...line]) {
+    const chBytes = octets(ch)
+    if (bufBytes + chBytes > 75) {
+      out.push(buf)
+      buf = ' '
+      bufBytes = 1
+    }
+    buf += ch
+    bufBytes += chBytes
+  }
+  if (buf) out.push(buf)
   return out
 }
 
@@ -94,8 +110,11 @@ export function buildIcs(trip: Trip, legCorrections?: Record<string, LegEstimate
     push(`UID:${trip.id}-fc-${fc.id}@yatraflow`)
     push(`DTSTAMP:${stamp}`)
     push(`DTSTART:${icsDateTime(fc.time, ymd)}`)
-    // commitments get a 1h default so busy slots show on calendar grids
-    push(`DTEND:${icsDateTime(addHour(fc.time), ymd)}`)
+    // 1h default so busy slots show on calendar grids. A wrap past midnight
+    // drops the end clock below the start, so the end date moves to next day.
+    const endHm = addHour(fc.time)
+    const endYmd = endHm < fc.time ? nextYmd(ymd) : ymd
+    push(`DTEND:${icsDateTime(endHm, endYmd)}`)
     push(`SUMMARY:${esc(`${fc.type.replace('-', ' ')} — ${fc.title}`)}`)
     if (fc.notes) push(`DESCRIPTION:${esc(fc.notes)}`)
     push('END:VEVENT')
