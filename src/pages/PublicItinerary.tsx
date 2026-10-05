@@ -23,7 +23,7 @@ import { fetchMyEntitlements, fetchCreatorSales, fetchCreatorFunnel, purchaseUnl
 import { UnlockReveal } from '../components/UnlockReveal'
 import { hasUnlock } from '../lib/payments'
 import { buildPubFunnels, describePreLog, funnelGlance, type FunnelSale } from '../lib/pubFunnel'
-import { currentPublicShareUrl, shareRefFromSearch, withShareRef } from '../lib/shareUrl'
+import { clearShareRefFromLocation, currentPublicShareUrl, shareRefFromSearch, withShareRef } from '../lib/shareUrl'
 import { sharePublicationOnWhatsApp } from '../lib/whatsAppShare'
 import { appLink } from '../lib/appLink'
 import { pageTitle } from '../lib/pageTitle'
@@ -98,6 +98,14 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
   const cachedTrip = pub ? tripById(pub.tripId) : undefined
   const [fetched, setFetched] = useState<Trip | null>(null)
   const [miss, setMiss] = useState(false)
+  // #552 — the arrival ref is read ONCE, here at first render, and then taken
+  // back out of the address bar (the effect below): with hash navigation
+  // nothing else ever clears the query, and a sticky `ref` handed every later
+  // view and fork in the tab to whatever link the tab first touched. The one
+  // value serves this page instance's three uses — the view registration, the
+  // re-share's second hop and the fork stamp; they are one arrival. A later
+  // page reads a clean query and records "direct", which is the honest answer.
+  const [arrivalRef] = useState(() => shareRefFromSearch(window.location.search))
   // Paid-unlock state (M7): entitlements are read on demand (RLS: own rows),
   // not carried in the hydrate cache. Re-read after a purchase resolves.
   const [entitlements, setEntitlements] = useState<Entitlement[]>([])
@@ -156,10 +164,13 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
   // the same stored URL.
   useEffect(() => {
     // #230 — the view carries its route in: the `ref` the shared link brought
-    // (query, so it survives the redirect and address promotion), or null for a
-    // visitor who arrived some other way — which is recorded as "direct".
-    if (pub) registerPubView(pub.id, shareRefFromSearch(window.location.search))
+    // (consumed once at first render, #552), or null for a visitor who arrived
+    // some other way — which is recorded as "direct".
+    if (pub) registerPubView(pub.id, arrivalRef)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  // #552 — the query's work is done once the arrival is read. Only a ref the
+  // vocabulary knows is removed; everything else in the query stays.
+  useEffect(() => { clearShareRefFromLocation() }, [])
   // This page owns the publication record, so it is the only place that can put
   // the itinerary's own name in the tab. App titles every other route; for
   // `/pub/…` it can only say "Itinerary" without subscribing to this table.
@@ -426,18 +437,13 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
   // through. Display and copy are the same string: the code box shows exactly
   // what lands on the clipboard.
   const shareLink = withShareRef(currentPublicShareUrl(pub.id), 'copy')
-  // F7 (#228): the channel this visitor arrived through. A second hop inside
-  // the same community keeps the post's reference — a link that travelled
-  // through a community post does not forget where it came from — while a
-  // fresh arrival stamps the send unit's own channel. It rides the link,
-  // never the sentence. Vocabulary-checked: only a ShareSource survives the
-  // read, so an unknown ref falls back to the default rather than travelling
-  // onward.
-  const arrivalRef = shareRefFromSearch(location.search)
-  // F3 (#227): send this plan to a WhatsApp group. The sheet first (a phone
-  // lists WhatsApp directly), click-to-chat otherwise — the fallback chain
-  // lives in the helper; this holds the in-flight guard so a double-tap
-  // cannot fire both. Nothing reads a window handle (§6e).
+  // F7 (#228): the channel this visitor arrived through — consumed once at
+  // first render (#552). A second hop inside the same community keeps the
+  // post's reference — a link that travelled through a community post does not
+  // forget where it came from — while a fresh arrival stamps the send unit's
+  // own channel. It rides the link, never the sentence. Vocabulary-checked:
+  // only a ShareSource survives the read, so an unknown ref falls back to the
+  // default rather than travelling onward.
   async function sendOnWhatsApp() {
     if (sendingWhatsApp || !pub) return
     setSendingWhatsApp(true)
@@ -464,7 +470,7 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
     // stubs — forkPublication re-stubs from whatever arrived, so the fork can
     // never contain more than the server showed. The `unlocked` flag here is
     // presentation-only now; the wire already decided.
-    void forkPublication(pub!, me?.id ?? null, onNavigate, unlocked, shareRefFromSearch(window.location.search))
+    void forkPublication(pub!, me?.id ?? null, onNavigate, unlocked, arrivalRef)
   }
 
   function unlockThis() {

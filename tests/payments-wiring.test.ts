@@ -61,7 +61,7 @@ describe('the public page wires the real unlock flow', () => {
   it('passes the unlock state into the fork, so a buyer forks real days', () => {
     // The fifth argument (#230) is the link's route in — the pin follows the
     // call site, and the unlock flag stays in its own position.
-    expect(page).toMatch(/forkPublication\(pub!, me\?\.id \?\? null, onNavigate, unlocked, shareRefFromSearch\(window\.location\.search\)\)/)
+    expect(page).toMatch(/forkPublication\(pub!, me\?\.id \?\? null, onNavigate, unlocked, arrivalRef\)/)
   })
 
   it('fetches the trip through the PAYWALL RPC, never the raw table (the P0)', () => {
@@ -181,7 +181,7 @@ describe('the public page wires the real unlock flow', () => {
     expect(code).toMatch(/const unlocked = tripReReadFailed \? false : hasUnlock\(entitlements, meId/)
     // And the paywall itself is untouched: this is a presentation gate, the wire
     // still decides what content exists.
-    expect(code).toContain('forkPublication(pub!, me?.id ?? null, onNavigate, unlocked, shareRefFromSearch(window.location.search))')
+    expect(code).toContain('forkPublication(pub!, me?.id ?? null, onNavigate, unlocked, arrivalRef)')
   })
 
   it('the purchase re-read cannot become an unhandled rejection (#359)', () => {
