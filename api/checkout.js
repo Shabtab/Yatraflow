@@ -154,8 +154,11 @@ async function fetchCapturedPaymentId(keyId, keySecret, razorpayOrderId, signal)
     const items = Array.isArray(body?.items) ? body.items : []
     const captured = items.find(p => p?.status === 'captured' && typeof p.id === 'string')
     return captured?.id ?? null
-  } catch {
-    // The probe is best-effort by design: the grant must not hinge on it.
+  } catch (err) {
+    // The probe is best-effort by design: the grant must not hinge on it. The
+    // error is NAMED here rather than swallowed silently — the operator learns
+    // why the row's payment id will be null.
+    console.warn(`[yatraflow] checkout: could not read the payments list for order ${razorpayOrderId}`, err)
     return null
   }
 }

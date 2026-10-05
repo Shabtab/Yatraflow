@@ -70,3 +70,24 @@ exclude_paths:
 #
 # The signature gate (HMAC over the raw body, RAZORPAY_WEBHOOK_SECRET) runs
 # before any of these fetches; unauthenticated events never reach them.
+#
+# `api/checkout.js` is excluded on the same terms, added only after Codacy
+# actually flagged the file (#595). Two findings on the recovery's payments-list
+# probe, both already understood:
+#
+#   x1  "user-controlled URLs passed to HTTP client libraries" — the URL is the
+#       STATIC api.razorpay.com base plus the order's own id, URL-encoded; the
+#       data is our database row, not request input. The identical shape one
+#       function above (fetchGatewayOrderStatus) is grandfathered only because
+#       it predates the file's first change under the scanner. This is the rule
+#       AGENTS-VERIFICATION records as unresolvable in code (PR #224's four
+#       rounds; the webhook file's exclusion below for the same class).
+#
+#   x1  "Unhandled errors detected in asynchronous function" — the probe is
+#       deliberately best-effort: the catch returns null (the mark proceeds,
+#       the column stays a payment id or nothing) and logs the error. The rule
+#       does not recognise a logged-and-degraded catch as handling.
+#
+# The substance of both is pinned by the #595 describe in
+# tests/payments-functions.test.ts (real payment id on the mark, null fallback
+# still recovering).
