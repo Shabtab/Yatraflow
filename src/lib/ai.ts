@@ -3,7 +3,7 @@
 // every answer cites the assumptions it used.
 import type { Trip, ItineraryStop } from '../data/types'
 import {
-  getAssumptions, simulateDay, computeTotals, originOf,
+  getAssumptions, simulateDay, computeTotals, originOf, scheduleRowsById, legCostInr,
   minutesToHM, hmToMinutes, collectWarnings, formatInr, countHotelNights,
 } from './engine'
 import { INTENT_NONE, type CompanionIntent } from './jevTaxonomy'
@@ -32,11 +32,18 @@ function busiestDay(trip: Trip): { index: number; travelMin: number; stops: numb
 
 function cheapestRemovableStop(trip: Trip): { stop: ItineraryStop; saving: number } | null {
   let best: { stop: ItineraryStop; saving: number } | null = null
+  const perKm = getAssumptions(trip).inrPerKm ?? 8
   for (const day of trip.days) {
+    // the same per-stop transport figure the budget counts (#573): the stated
+    // cost of the leg INTO the stop when the row holds one, else that leg's
+    // per-km estimate
+    const rows = scheduleRowsById(simulateDay(day, trip, originOf(trip, day.index), day.index))
     for (const s of day.stops) {
       if (s.priority === 'must-do' || s.status === 'rejected') continue
-      // rough saving: entry fees for the group + the stop's own transport cost line
-      const saving = s.entryFeeInrPerPerson * trip.travellers + s.transportCostInrTotal
+      const stated = s.transportCostInrTotal
+      const legEstimate = rows.get(s.id)?.legIn?.distanceKm ?? 0
+      // rough saving: entry fees for the group + the transport the budget counts
+      const saving = s.entryFeeInrPerPerson * trip.travellers + legCostInr(stated, legEstimate, perKm)
       if (!best || saving > best.saving) best = { stop: s, saving }
     }
   }
