@@ -125,6 +125,23 @@ export function shareRefFromSearch(search: string): ShareSource | null {
   return raw !== null && (SHARE_SOURCES as readonly string[]).includes(raw) ? (raw as ShareSource) : null
 }
 
+/** Take a recognised `ref` back OUT of the address bar (#552). The query must
+ *  not outlive the page it brought the reader to: with hash navigation nothing
+ *  else ever clears it, so a sticky `ref` hands every later view and fork in
+ *  the tab to whatever link the tab first touched. Only a ref the vocabulary
+ *  knows is removed — a stranger's parameters (and `?buyer=`, an entitlement
+ *  request the card re-reads on refresh) are not ours to drop. Idempotent: a
+ *  second call finds nothing of ours and touches nothing. */
+export function clearShareRefFromLocation(): void {
+  if (typeof window === 'undefined' || typeof history === 'undefined') return
+  const search = window.location.search
+  if (shareRefFromSearch(search) === null) return
+  const params = new URLSearchParams(search)
+  params.delete('ref')
+  const rest = params.toString()
+  history.replaceState(history.state, '', `${window.location.pathname}${rest ? `?${rest}` : ''}${window.location.hash}`)
+}
+
 /** Stamp a share address with its `ref`, keeping any query it already carries
  *  (`?buyer=`) and any hash after it. A `ref` is metadata about the LINK, so
  *  it travels in the query — a fragment never reaches a crawler, a server
