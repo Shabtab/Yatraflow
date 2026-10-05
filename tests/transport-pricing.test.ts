@@ -6,7 +6,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   resolveTransportPricing, getAssumptions, computeTotals, simulateDay, originOf,
-  legBetween, lastActiveStopPoint, firstFixedPoint,
+  legBetween, lastActiveStopPoint, firstFixedPoint, legCostInr,
   MODE_COST_PER_KM, LOCAL_TRAIN_COST_PER_KM,
 } from '../src/lib/engine'
 import { estimateTripStarter } from '../src/lib/tripStarter'
@@ -76,10 +76,11 @@ describe('same fixture through both paths (#521)', () => {
     let legsCost = 0
     trip.days.forEach(d => {
       const sim = simulateDay(d, trip, originOf(trip, d.index), d.index)
-      sim.legs.forEach(l => { legsCost += l.distanceKm * (A.inrPerKm ?? 0) })
+      // the one rule (#573): a stated cost replaces that leg's estimate
+      sim.legs.forEach((l, k) => { legsCost += legCostInr(sim.activeStops[k]?.transportCostInrTotal, l.distanceKm, A.inrPerKm ?? 0) })
     })
     const turnaround = lastActiveStopPoint(trip)
-    if (turnaround) legsCost += legBetween(turnaround, firstFixedPoint(trip), A).distanceKm * (A.inrPerKm ?? 0)
+    if (turnaround) legsCost += legCostInr(undefined, legBetween(turnaround, firstFixedPoint(trip), A).distanceKm, A.inrPerKm ?? 0)
     const explicit = trip.expenses
       .filter(e => e.category === 'transport')
       .reduce((s, e) => s + (e.perPerson ? e.amountInr * trip.travellers : e.amountInr), 0)
@@ -95,7 +96,7 @@ describe('same fixture through both paths (#521)', () => {
         originOf(trip, b.dayIndex), b.dayIndex,
       )
       let dayLegs = 0
-      sim.legs.forEach(l => { dayLegs += l.distanceKm * (A.inrPerKm ?? 0) })
+      sim.legs.forEach((l, k) => { dayLegs += legCostInr(sim.activeStops[k]?.transportCostInrTotal, l.distanceKm, A.inrPerKm ?? 0) })
       expect(b.transportInr - dayLegs).toBeGreaterThanOrEqual(2000 - 1e-4)
       bucketSum += b.transportInr
     }

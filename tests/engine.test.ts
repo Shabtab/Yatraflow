@@ -9,10 +9,11 @@ import {
   computeTotals, computeHealth, collectWarnings, commitmentStopIndex, countHotelNights, originOf, firstFixedPoint,
   getAssumptions, formatInr, scoreWarnings, predecessorOf, nextAfter, estimateLeg,
   FUEL_PRICE_INR_PER_L, parseFuelEconomyKmL, isImplausibleFuelEconomy, parseFuelPricePerL,
-  isRoundTrip, lastActiveStopPoint, buildJourney, minutesToHM,
+  isRoundTrip, lastActiveStopPoint, buildJourney, minutesToHM, legCostInr,
 } from '../src/lib/engine'
 import { seedData } from '../src/data/seed'
-import type { Trip, ItineraryStop } from '../src/data/types'
+import type { Trip, ItineraryStop, Expense, ID } from '../src/data/types'
+import { answerForIntent } from '../src/lib/ai'
 
 const keralaTrip = seedData.trips[0]
 
@@ -76,12 +77,15 @@ describe('fuel-economy-aware costs', () => {
     let legsCost = 0
     eco.days.forEach(d => {
       const sim = simulateDay(d, eco, originOf(eco, d.index), d.index)
-      sim.legs.forEach(l => { legsCost += l.distanceKm * (A.inrPerKm ?? 0) })
+      // the one rule (#573): a stated cost replaces that leg's estimate, so
+      // only the ESTIMATED legs respond to the stated economy
+      sim.legs.forEach((l, k) => { legsCost += legCostInr(sim.activeStops[k]?.transportCostInrTotal, l.distanceKm, A.inrPerKm ?? 0) })
     })
     // round trip default: the drive back to the start is priced like any leg
+    // (no stop states it, so it stays an estimate)
     const turnaround = lastActiveStopPoint(eco)
-    if (turnaround) legsCost += legBetween(turnaround, firstFixedPoint(eco), A).distanceKm * (A.inrPerKm ?? 0)
-    // byCategory['transport'] = distance-derived legs + explicit transport expenses
+    if (turnaround) legsCost += legCostInr(undefined, legBetween(turnaround, firstFixedPoint(eco), A).distanceKm, A.inrPerKm ?? 0)
+    // byCategory['transport'] = legs under the one rule + explicit transport expenses
     const explicit = eco.expenses
       .filter(e => e.category === 'transport')
       .reduce((s, e) => s + (e.perPerson ? e.amountInr * eco.travellers : e.amountInr), 0)
@@ -755,5 +759,92 @@ describe('commitment deadlines check their linked stop (#609, stored link)', () 
     const unlinked = warnings.find(w => w.code === 'commitment-unlinked')
     expect(unlinked?.severity).toBe('low')
     expect(unlinked?.detail).toContain('no stop')
+  })
+})
+
+describe('#573 — one reconciliation of the two money channels', () => {
+  /** A controlled one-stop trip: no round-trip return, no rental, no lodging,
+   *  so every bucket holds exactly the channel under test. */
+  function moneyTrip(opts: { fee?: number; stated?: number; expense?: { category?: string; amountInr: number; stopId?: ID } }): Trip {
+    const trip = structuredClone(keralaTrip) as Trip
+    trip.travellers = 2
+    trip.startLocation = 'Panjim'
+    trip.startLocationCoords = { lat: 15.4909, lng: 73.8278 }
+    trip.destinations = []
+    trip.destinationCoords = []
+    trip.rentPerDayInr = 0
+    trip.roundTrip = false // no synthesized return leg in these buckets
+    trip.days = [{
+      id: 'd0', index: 0, startTime: '09:00',
+      stops: [{
+        id: 'st_a', title: 'Fort', category: 'sightseeing', locationName: 'Fort',
+        lat: 15.5527, lng: 73.7517, visitMinutes: 60,
+        entryFeeInrPerPerson: opts.fee ?? 0, transportCostInrTotal: opts.stated ?? 0,
+        priority: 'nice-to-have', status: 'confirmed', orderInDay: 1,
+      }],
+    }] as Trip['days']
+    trip.expenses = opts.expense
+      ? [{ id: 'ex1', label: 'Ticket', category: opts.expense.category ?? 'entry-fees', amountInr: opts.expense.amountInr, stopId: opts.expense.stopId } as Expense]
+      : []
+    return trip
+  }
+
+  it('a ticket recorded both ways counts ONCE — the ₹1000-vs-₹500 pin', () => {
+    // ₹500/person fee on the stop (2 travellers) + the ₹500 the crew actually
+    // paid, attached to that stop: the total must read ₹500, not ₹1500.
+    const t = computeTotals(moneyTrip({ fee: 500, expense: { amountInr: 500, stopId: 'st_a' } }))
+    expect(t.byCategory['entry-fees']).toBe(500)
+    expect(t.totalCostInr).toBe(500 + (t.byCategory['transport'] ?? 0))
+    expect(t.byDay.reduce((s, b) => s + b.totalInr, 0)).toBeCloseTo(t.totalCostInr, 4)
+  })
+
+  it('a stop fee with no recorded ticket is still counted', () => {
+    const t = computeTotals(moneyTrip({ fee: 500 }))
+    expect(t.byCategory['entry-fees']).toBe(1000) // 2 travellers
+  })
+
+  it('a recorded ticket on a fee-less stop is still counted', () => {
+    const t = computeTotals(moneyTrip({ expense: { amountInr: 300, stopId: 'st_a' } }))
+    expect(t.byCategory['entry-fees']).toBe(300)
+  })
+
+  it('an UNATTACHED entry-fees line covers nothing — both channels count', () => {
+    // the documented rule: only the stopId link proves coverage; a trip-level
+    // entry-fees line is a general budget line, not this stop's ticket
+    const t = computeTotals(moneyTrip({ fee: 500, expense: { amountInr: 500 } }))
+    expect(t.byCategory['entry-fees']).toBe(1500)
+  })
+
+  it('a stated transport cost REPLACES the leg estimate — never adds to it', () => {
+    const trip = moneyTrip({ stated: 900 })
+    const t = computeTotals(trip)
+    // the leg into the stop would estimate at well under ₹900; stated wins
+    const A = getAssumptions(trip)
+    const sim = simulateDay(trip.days[0], trip, trip.startLocationCoords!, 0)
+    const estimate = legCostInr(undefined, sim.legs[0].distanceKm, A.inrPerKm ?? 8)
+    expect(estimate).toBeGreaterThan(0)
+    expect(estimate).not.toBe(900)
+    expect(t.byCategory['transport']).toBe(900)
+    expect(t.byDay[0].transportInr).toBe(900)
+    expect(t.byDay.reduce((s, b) => s + b.totalInr, 0)).toBeCloseTo(t.totalCostInr, 4)
+  })
+
+  it('an unstated stop keeps the leg estimate', () => {
+    const trip = moneyTrip({})
+    const t = computeTotals(trip)
+    const A = getAssumptions(trip)
+    const sim = simulateDay(trip.days[0], trip, trip.startLocationCoords!, 0)
+    expect(t.byCategory['transport']).toBe(sim.legs[0].distanceKm * (A.inrPerKm ?? 8))
+  })
+
+  it('the AI saving line reads the same figure the budget counts', () => {
+    const statedReply = answerForIntent(moneyTrip({ stated: 900 }), 'cheaper', 'how do we spend less?')
+    expect(statedReply.text).toContain('saves roughly ₹900')
+    const trip = moneyTrip({})
+    const A = getAssumptions(trip)
+    const sim = simulateDay(trip.days[0], trip, trip.startLocationCoords!, 0)
+    const estimate = Math.round(sim.legs[0].distanceKm * (A.inrPerKm ?? 8)).toLocaleString('en-IN')
+    const estimateReply = answerForIntent(trip, 'cheaper', 'how do we spend less?')
+    expect(estimateReply.text).toContain(`saves roughly ₹${estimate}`)
   })
 })

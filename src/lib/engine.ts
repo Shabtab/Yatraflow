@@ -1392,6 +1392,15 @@ function num0(x: unknown): number {
   return typeof x === 'number' && Number.isFinite(x) ? x : 0
 }
 
+/** One leg's transport money (#573), stated once: the stop's stated cost of
+ *  getting there REPLACES the leg's per-km estimate when the row holds one —
+ *  never added to it — and the estimate stands when nothing is stated. The
+ *  one rule computeTotals, the AI saving line and the tests all read. */
+export function legCostInr(stated: unknown, distanceKm: number, inrPerKm: number): number {
+  const s = num0(stated)
+  return s > 0 ? s : distanceKm * inrPerKm
+}
+
 export function computeTotals(trip: Trip, legCorrections?: Record<string, LegEstimate>): TripTotals {
   const A = getAssumptions(trip)
   let travelMinutes = 0, distanceKm = 0, stopCount = 0
@@ -1425,9 +1434,15 @@ export function computeTotals(trip: Trip, legCorrections?: Record<string, LegEst
       bucket.distanceKm = sim.totalDistanceKm
     }
     stopCount += day.stops.filter(s => s.status !== 'rejected').length
-    // per-leg fuel/fare cost derived from distance
-    sim.legs.forEach(l => {
-      const legCost = l.distanceKm * (A.inrPerKm ?? 8)
+    // Per-leg fuel/fare cost derived from distance — unless the stop STATES
+    // its own cost of getting there (#573): a train fare, a toll road or a
+    // bus ticket does not scale with per-km fuel math, and the timeline shows
+    // the stated figure. STATED REPLACES the leg's estimate, never adds to it
+    // (adding would be the entry-fee double-count's twin); the round-trip
+    // return leg has no stop and keeps its estimate. Rows are aligned per
+    // active stop, so legs[k] is the into-leg of activeStops[k].
+    sim.legs.forEach((l, k) => {
+      const legCost = legCostInr(sim.activeStops[k]?.transportCostInrTotal, l.distanceKm, A.inrPerKm ?? 8)
       transportCost += legCost
       if (bucket) bucket.transportInr += legCost
     })
@@ -1484,10 +1499,19 @@ export function computeTotals(trip: Trip, legCorrections?: Record<string, LegEst
     if (b) b.expensesInr += amt
     else for (const bd of byDay) bd.expensesInr += amt / dayCount // unattached trip-level costs spread evenly
   }
-  // entry fees from stops not already covered by explicit expenses
+  // Entry fees from stops whose ticket is not already RECORDED (#573): an
+  // entry-fees expense attached to the stop (stopId) is what the crew paid —
+  // the recorded line replaces the stop's estimate in the total, so one
+  // monument ticket never counts twice. The rule is the stopId link only: an
+  // UNATTACHED entry-fees line covers nothing specific (matching free-text
+  // labels would guess), and its amount already flows through the ledger
+  // loop above. Suggestion acceptance auto-fills the stop field from the
+  // estimate (store.ts), so the estimate exists precisely until the real
+  // ticket is recorded.
+  const entryCovered = new Set<ID>(trip.expenses.filter(e => e.category === 'entry-fees' && e.stopId != null).map(e => e.stopId as ID))
   let entryFromStops = 0
   trip.days.forEach(d => d.stops.forEach(s => {
-    if (s.status !== 'rejected') {
+    if (s.status !== 'rejected' && !entryCovered.has(s.id)) {
       const fee = num0(s.entryFeeInrPerPerson) * travellers
       entryFromStops += fee
       entryByDay.set(d.index, (entryByDay.get(d.index) ?? 0) + fee)
