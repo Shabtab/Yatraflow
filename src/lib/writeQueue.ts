@@ -9,7 +9,11 @@
 // Three rules, each a silent failure if broken:
 //   1. ONE entry per trip — a newer snapshot REPLACES the older one, exactly
 //      like the in-memory coalescer it mirrors. Replaying an older snapshot
-//      after a newer one would resurrect stops the user deleted.
+//      after a newer one would resurrect stops the user deleted. The same
+//      keying cuts the other way (#549): a cleanup must remove only the
+//      entry its writer SENT, or a success deletes the newer edit queued
+//      behind it — hence the conditional removeIf/putIf and the
+//      dropWriteIfCurrent/requeueIfCurrent wrappers.
 //   2. Bounded retries. An entry carries an attempt count; a write that keeps
 //      failing (RLS, a validation rejection — not just the network) is dropped
 //      LOUDLY rather than retried forever behind the user's back.
@@ -37,6 +41,16 @@ export interface WriteQueueStore {
   list(): Promise<unknown[]>
   put(entry: QueuedWrite): Promise<void>
   remove(tripId: string): Promise<void>
+  /** Conditional delete in ONE transaction: the key is removed only when the
+   *  stored entry's `capturedAt` matches. Returns whether it removed. (#549:
+   *  the check and the delete must be atomic — a newer queueWrite landing
+   *  between a read and a plain remove is exactly the race being closed.) */
+  removeIf(tripId: string, capturedAt: number): Promise<boolean>
+  /** Conditional put in ONE transaction: the key is overwritten only when the
+   *  stored entry's `capturedAt` still matches `expectedCapturedAt`. Returns
+   *  whether it wrote. (#549: a retry re-queue must not clobber a newer
+   *  snapshot with the older one it read.) */
+  putIf(entry: QueuedWrite, expectedCapturedAt: number): Promise<boolean>
 }
 
 /** IndexedDB-backed queue. Every path resolves; "no queue" is a valid answer. */
@@ -56,6 +70,31 @@ function idbWriteStore(): WriteQueueStore {
     })
   }
 
+  // The conditional ops cannot ride the `run` helper: they need a get and a
+  // write inside the SAME transaction, or the window between them reopens the
+  // race they exist to close (#549). No db means nothing was stored, so the
+  // conditional answer is honestly "did not match".
+  const inTransaction = async (op: (store: IDBObjectStore, current: unknown) => IDBRequest | null, tripId: string): Promise<boolean> => {
+    const db = await openOfflineDb()
+    if (!db) return false
+    return new Promise<boolean>(resolve => {
+      try {
+        const tx = db.transaction(WRITE_STORE, 'readwrite')
+        const store = tx.objectStore(WRITE_STORE)
+        const get = store.get(tripId)
+        get.onsuccess = () => {
+          const request = op(store, get.result)
+          if (!request) { resolve(false); return }
+          request.onsuccess = () => resolve(true)
+          request.onerror = () => resolve(false)
+        }
+        get.onerror = () => resolve(false)
+      } catch {
+        resolve(false)
+      }
+    })
+  }
+
   return {
     list: () => run<unknown[]>('readonly', store => store.getAll(), []),
     put: async entry => {
@@ -65,6 +104,14 @@ function idbWriteStore(): WriteQueueStore {
     remove: async tripId => {
       await run('readwrite', store => store.delete(tripId), undefined as unknown)
     },
+    removeIf: (tripId, capturedAt) => inTransaction((store, current) => {
+      if (!current || (current as QueuedWrite).capturedAt !== capturedAt) return null
+      return store.delete(tripId)
+    }, tripId),
+    putIf: (entry, expectedCapturedAt) => inTransaction((store, current) => {
+      if (!current || (current as QueuedWrite).capturedAt !== expectedCapturedAt) return null
+      return store.put(entry, entry.tripId)
+    }, entry.tripId),
   }
 }
 
@@ -124,6 +171,29 @@ export async function dropWrite(tripId: string, store: WriteQueueStore = idbWrit
     await store.remove(tripId)
   } catch {
     /* nothing to undo */
+  }
+}
+
+/** Forget one trip's pending write ONLY if the key still holds the entry that
+ *  was sent — #549: the success of an in-flight write must not delete the
+ *  newer snapshot a later edit queued behind it. Returns whether the entry
+ *  was dropped (false also covers "nothing was queued"). */
+export async function dropWriteIfCurrent(tripId: string, capturedAt: number, store: WriteQueueStore = idbWriteStore()): Promise<boolean> {
+  try {
+    return await store.removeIf(tripId, capturedAt)
+  } catch {
+    return false
+  }
+}
+
+/** Re-queue a retry ONLY if the key still holds the entry that was read —
+ *  #549: the bumped-attempts older snapshot must not clobber a newer edit
+ *  queued while the failed write was in flight. Returns whether it re-queued. */
+export async function requeueIfCurrent(entry: QueuedWrite, store: WriteQueueStore = idbWriteStore()): Promise<boolean> {
+  try {
+    return await store.putIf(entry, entry.capturedAt)
+  } catch {
+    return false
   }
 }
 
