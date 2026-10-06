@@ -39,6 +39,7 @@ import { glideOffsetPx, insertionIndexFor, rowLayoutBoxes, cancelRowSettle, canc
 import { useSuggestionCache } from '../../../hooks/useSuggestionCache'
 import { searchNearbyPois } from '../../../lib/geocode'
 import type { PlaceHit } from '../../../lib/geocode'
+import { nearbyHitKey } from '../../../lib/providers/hits'
 import { InlineIcon, MetaIcon } from '../../../components/icons'
 import { fetchDailyWeather, forecastAvailable, isoAddDays, weatherAnchor, wmoInfo } from '../../../lib/weather'
 import type { DayWeather } from '../../../lib/weather'
@@ -684,7 +685,7 @@ export const DaySection = React.memo(function DaySection({ day, trip, facts, edi
               </button>
             )}
             {nearby.map(h => (
-              <button key={h.name} className="chip-btn" onClick={() => onAddQuickStop(day.index, poiQuickStop(h))} title="Add this nearby idea">
+              <button key={nearbyHitKey(h)} className="chip-btn" onClick={() => onAddQuickStop(day.index, poiQuickStop(h))} title="Add this nearby idea">
                 <InlineIcon icon={Plus} size={12} gap={3} />{h.name}
               </button>
             ))}
