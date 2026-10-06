@@ -8,6 +8,8 @@
 //      cached shell serves every route.
 //   2. Hashed build assets (/assets/*) and icons -> cache-first. Vite hashes
 //      the filename, so a cache hit is always the right bytes for that URL.
+//      (A MISS is guarded: the host's catch-all rewrite answers a vanished
+//      chunk with 200 + the HTML shell, and caching that would poison the URL.)
 //   3. Everything else -> straight to the network, uncached. `/api/*`, the
 //      `/i/<id>` crawler preview, `sitemap.xml` and the Mappls proxy are in
 //      the NEVER list below; cross-origin (Supabase, tiles, fonts, Wikimedia)
@@ -18,7 +20,7 @@
 // that is not this version's is dropped on activate — so a deploy rolls the
 // offline copy forward without a version bump. Bump SW_VERSION only to force a
 // full drop (e.g. when the caching policy itself changes).
-const SW_VERSION = 'v1'
+const SW_VERSION = 'v2'
 const CACHE = `yatraflow-${SW_VERSION}`
 const SHELL = '/'
 const SHELL_ASSETS = [SHELL, '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png']
@@ -74,13 +76,22 @@ self.addEventListener('fetch', event => {
       caches.match(request).then(
         hit =>
           hit ??
-          fetch(request).then(response => {
-            if (response.ok) {
+          fetch(request)
+            .then(response => {
+              // The host's catch-all rewrite answers a MISSING asset with 200
+              // + the HTML shell. Caching that would file markup under a .js
+              // URL and serve it cache-first forever, so only a real asset may
+              // enter the cache; a rewritten answer fails like the 404 it
+              // hides, and the app's stale-chunk boundary owns the recovery.
+              const type = response.headers.get('content-type') ?? ''
+              if (!response.ok || type.includes('text/html')) return Response.error()
               const copy = response.clone()
               caches.open(CACHE).then(cache => cache.put(request, copy))
-            }
-            return response
-          }),
+              return response
+            })
+            // An offline miss resolves as a network error — a rejected
+            // respondWith surfaces as an unhandled failure, not a clean miss.
+            .catch(() => Response.error()),
       ),
     )
   }

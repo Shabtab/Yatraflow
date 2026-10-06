@@ -9,6 +9,7 @@ import { readFileSync } from 'node:fs'
 import {
   SNAPSHOT_VERSION,
   SLICE_KEYS,
+  clearAllSnapshots,
   clearSnapshot,
   loadSnapshot,
   saveSnapshot,
@@ -129,5 +130,51 @@ describe('the store wiring keeps the two silent-failure rules', () => {
   it('marks cache-served rows with their snapshot time and clears it on a network hydrate', () => {
     expect(store).toContain('cachedAt: snapshot.savedAt')
     expect(store).toMatch(/sessionUserId: userId,\s*\n\s*cachedAt: null,/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// #575 Face C — the recovery screen's clear wipes the snapshot store whole,
+// and never the pending-write queue: those rows are unsynced user work.
+// ---------------------------------------------------------------------------
+
+/** A hand-rolled IDBDatabase fake: records which stores were opened and
+ *  cleared, and settles each transaction in a microtask like a real one. */
+function fakeDb(settle: 'complete' | 'error') {
+  const cleared: string[] = []
+  const opened: string[] = []
+  const db = {
+    transaction(name: string, _mode: IDBTransactionMode) {
+      opened.push(name)
+      const tx = {
+        objectStore(storeName: string) {
+          return { clear: () => cleared.push(storeName) }
+        },
+        oncomplete: null as (() => void) | null,
+        onerror: null as (() => void) | null,
+        onabort: null as (() => void) | null,
+      }
+      queueMicrotask(() => (settle === 'complete' ? tx.oncomplete?.() : tx.onerror?.()))
+      return tx
+    },
+  } as unknown as IDBDatabase
+  return { db, cleared, opened }
+}
+
+describe('clearAllSnapshots (#575 Face C)', () => {
+  it('clears the snapshot store and never opens the write queue', async () => {
+    const f = fakeDb('complete')
+    expect(await clearAllSnapshots(Promise.resolve(f.db))).toBe(true)
+    expect(f.cleared).toEqual(['snapshots'])
+    expect(f.opened).toEqual(['snapshots'])
+  })
+
+  it('resolves false when there is no database — a best-effort clear', async () => {
+    expect(await clearAllSnapshots(Promise.resolve(null))).toBe(false)
+  })
+
+  it('resolves false when the transaction fails', async () => {
+    const f = fakeDb('error')
+    expect(await clearAllSnapshots(Promise.resolve(f.db))).toBe(false)
   })
 })
