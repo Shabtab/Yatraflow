@@ -585,7 +585,9 @@ export function rankAndCap(
     poiTouristScore(b, anchors, radiusM, opts.categoryBias) - poiTouristScore(a, anchors, radiusM, opts.categoryBias))
   const deduped = dedupeCandidates(homeFiltered)
   const catCap = Math.max(3, Math.ceil(count / 3))
-  const fuelCap = opts.includeFuel ? 4 : 0
+  // 'a couple of pit stops' — the documented cap, and harder than every other
+  // category's: fuel exists to break a drive, not to become the list (#565).
+  const fuelCap = opts.includeFuel ? Math.min(2, catCap) : 0
   const used = new Map<string, number>()
   const out: PlaceHit[] = []
   let fuelUsed = 0
