@@ -146,3 +146,40 @@ describe('computeCategoryBias', () => {
   })
 })
 
+
+// ---------------------------------------------------------------------------
+// #565 — fuel is capped at "a couple of pit stops", the documented intent.
+// ---------------------------------------------------------------------------
+
+import { rankAndCap } from '../src/lib/providers/hits'
+
+describe('rankAndCap fuel cap (#565)', () => {
+  const anchors = [{ lat: 23.5, lng: 88.3 }] // past the 15 km home zone below
+  // Distinct names and >0.5 km spacing, so dedupeCandidates keeps them all.
+  const fuel = (n: number) => ({
+    id: n, name: `Fuel Stop ${n}`, latitude: 23.75 + n * 0.03, longitude: 88.6,
+    kind: 'poi' as const, category: 'transport-hub',
+  })
+  const sight = (n: number) => ({
+    id: 100 + n, name: `Terracotta Temple ${n}`, latitude: 23.8, longitude: 88.7 + n * 0.03,
+    kind: 'poi' as const,
+  })
+
+  it('a fuel-heavy corridor suggests at most a couple of pit stops', () => {
+    const hits = [
+      ...Array.from({ length: 6 }, (_, i) => fuel(i + 1)),
+      ...Array.from({ length: 3 }, (_, i) => sight(i + 1)),
+    ]
+    const out = rankAndCap(hits, anchors, 40_000, 6, { includeFuel: true })
+    const fuelOut = out.filter(h => h.category === 'transport-hub')
+    expect(fuelOut.length).toBeLessThanOrEqual(2)
+    // the cap trims fuel, it does not erase it: fuel is what remains once the
+    // three sights have filled their own category cap
+    expect(fuelOut.length).toBeGreaterThan(0)
+  })
+
+  it('without includeFuel no fuel is suggested at all', () => {
+    const hits = Array.from({ length: 6 }, (_, i) => fuel(i + 1))
+    expect(rankAndCap(hits, anchors, 40_000, 6)).toHaveLength(0)
+  })
+})
