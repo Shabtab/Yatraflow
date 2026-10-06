@@ -17,6 +17,8 @@
 // list of literals would be stale the moment a trip is opened. The prefixes are
 // narrow enough to be this app's alone.
 
+import { clearAllSnapshots } from './offlineCache'
+
 /** Every localStorage key this app writes begins with one of these. */
 export const LOCAL_KEY_PREFIXES = ['yatraflow_', 'yf.'] as const
 
@@ -26,15 +28,17 @@ export function isAppLocalKey(key: string): boolean {
 }
 
 /** What the clear promise means, in one sentence both the crash screen and the
- *  audit read. Trips are on the account, not here — so say that rather than
- *  implying the user is about to lose them. */
+ *  audit read. It names the stores the clear actually touches — localStorage,
+ *  Cache Storage and the offline snapshot — and says what survives: unsynced
+ *  edits are the user's own work, not cache. Trips are on the account, not
+ *  here — so say that rather than implying the user is about to lose them. */
 export const LOCAL_DATA_NOTE =
-  'This clears what this browser saved — display preferences, cached suggestions and the offline copy. Trips saved to your account are not affected.'
+  'This clears what this browser saved — display preferences, cached suggestions, the offline copy and the app\'s cached files. Unsynced edits still waiting to upload stay. Trips saved to your account are not affected.'
 
 /** Remove every key this app keeps in localStorage. Returns how many went, so a
  *  caller can say what happened instead of shrugging. Best-effort: private mode
  *  and quota errors leave the count short rather than throwing on a crash screen. */
-export function clearLocalAppData(): number {
+function clearLocalKeys(): number {
   if (typeof localStorage === 'undefined') return 0
   const doomed: string[] = []
   try {
@@ -54,5 +58,33 @@ export function clearLocalAppData(): number {
       /* keep going — one stubborn key must not abandon the rest */
     }
   }
+  return removed
+}
+
+/** Delete every Cache Storage bucket on this origin — the service worker's
+ *  shell and asset caches included. The recovery screen needs this: a poisoned
+ *  cache entry is exactly what the clear exists to remove. Best-effort. */
+async function clearAppCaches(): Promise<boolean> {
+  try {
+    if (typeof caches === 'undefined') return false
+    const keys = await caches.keys()
+    await Promise.all(keys.map(key => caches.delete(key)))
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * The one honest "clear this browser's app data": the app's localStorage keys
+ * (counted), every Cache Storage bucket, and all accounts' offline snapshots
+ * (offlineCache.clearAllSnapshots). The pending-write queue survives — those
+ * are unsynced edits, and the note says so. Resolves the localStorage key
+ * count; the store clears are best-effort and never throw.
+ */
+export async function clearLocalAppData(): Promise<number> {
+  const removed = clearLocalKeys()
+  await clearAppCaches()
+  await clearAllSnapshots()
   return removed
 }

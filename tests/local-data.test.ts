@@ -51,14 +51,14 @@ describe('isAppLocalKey', () => {
 })
 
 describe('clearLocalAppData', () => {
-  it('removes the app keys and nothing else, and says how many went', () => {
+  it('removes the app keys and nothing else, and says how many went', async () => {
     fake.setItem('yatraflow_theme', 'dark')
     fake.setItem('yatraflow_open_day', '{"t1":1}')
     fake.setItem('yf.savedPubs', '["p1"]')
     fake.setItem('other-app:token', 'keep-me')
     fake.setItem('theme', 'keep-me-too')
 
-    expect(clearLocalAppData()).toBe(3)
+    expect(await clearLocalAppData()).toBe(3)
     expect(fake.getItem('yatraflow_theme')).toBeNull()
     expect(fake.getItem('yf.savedPubs')).toBeNull()
     // The foreign keys survive — a crash-recovery button has no business
@@ -67,19 +67,33 @@ describe('clearLocalAppData', () => {
     expect(fake.getItem('theme')).toBe('keep-me-too')
   })
 
-  it('is idempotent and never throws on an empty or hostile storage', () => {
-    expect(clearLocalAppData()).toBe(0)
+  it('is idempotent and never throws on an empty or hostile storage', async () => {
+    expect(await clearLocalAppData()).toBe(0)
     fake.setItem('yatraflow_x', '1')
-    expect(clearLocalAppData()).toBe(1)
-    expect(clearLocalAppData()).toBe(0)
+    expect(await clearLocalAppData()).toBe(1)
+    expect(await clearLocalAppData()).toBe(0)
     ;(globalThis as { localStorage?: unknown }).localStorage = undefined
-    expect(clearLocalAppData()).toBe(0)
+    expect(await clearLocalAppData()).toBe(0)
   })
 
-  it('promises only what it does', () => {
+  it('promises only what it does (#575: the note names every store it touches)', () => {
     // The copy may not imply the user is about to lose their trips.
     expect(LOCAL_DATA_NOTE).toMatch(/browser saved/)
     expect(LOCAL_DATA_NOTE).toMatch(/not affected/)
+    // Face C: the clear really reaches Cache Storage and the offline copy,
+    // and says the pending-write queue survives.
+    expect(LOCAL_DATA_NOTE).toMatch(/offline copy/)
+    expect(LOCAL_DATA_NOTE).toMatch(/cached files/)
+    expect(LOCAL_DATA_NOTE).toMatch(/Unsynced edits still waiting to upload stay\./)
+  })
+
+  it('reaches the stores the note names (#575 Face C, source pin)', () => {
+    // Node has no Cache Storage or IndexedDB, so the wiring is pinned at
+    // source: the clear must call both stores, best-effort, never throwing.
+    const source = readFileSync(new URL('../src/lib/localData.ts', import.meta.url), 'utf8')
+    expect(source).toContain('caches.keys()')
+    expect(source).toContain('clearAllSnapshots()')
+    expect(source).toContain("from './offlineCache'")
   })
 })
 
