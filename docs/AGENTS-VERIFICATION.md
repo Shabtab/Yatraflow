@@ -347,6 +347,17 @@ Vercel, while the merge itself is what burns an Android build. Verify with
 `gh pr checks <n>` rather than reasoning from the YAML; the check list names the
 workflow that actually fired.
 
+**A run that dies at ~15 minutes with zero executed steps is the runner queue,
+not the code (seen twice, 2026-10-05/06).** Two runs hit it. Run `37364628598`
+was the auto-close job on #573's merge. Run `37370502800` was the `Verify` job
+on PR #642. Both ended `cancelled`/`fail` at about 15 minutes, with zero steps
+executed. The annotation says the job was never acquired by a hosted runner.
+The first cost a hand-closed issue under the workflow's own fall-back rule.
+The second read as a red gate; a rerun went green in under two minutes. The
+signature is unambiguous: duration near 15 minutes, conclusion `cancelled`,
+no steps, no log. Rerun once (`gh run rerun <id> --failed`) before any other
+diagnosis. Only a rerun that fails with real steps executed is a code problem.
+
 **A PR that conflicts with its base runs NO gate at all — and its check list
 still looks nearly complete (learned 2026-09-20).** #268 and #269 both sat with
 Codacy and Vercel green and **no `Verify` job of any kind**: GitHub cannot build
