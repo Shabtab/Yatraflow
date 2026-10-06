@@ -712,7 +712,10 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
                               does not own, so it may only render on a read that
                               actually answered. Over a failed read it would be a
                               price tag on a plan the buyer already paid for. */}
-                          {price !== undefined && mayShowPriceCta && <button className="btn btn-saffron" disabled={buying} onClick={unlockThis}>{buying ? 'Opening payments…' : <>Unlock full plan · {formatInr(price)}</>}</button>}
+                          {price !== undefined && mayShowPriceCta && <>
+                            <button className="btn btn-saffron" disabled={buying} onClick={unlockThis}>{buying ? 'Opening payments…' : <>Unlock full plan · {formatInr(price)}</>}</button>
+                            <p className="hint-text" style={{ margin: '6px 0 0' }}>One-time payment. No subscription.</p>
+                          </>}
                           {price !== undefined && !mayShowPriceCta && (tripReReadFailed
                             ? <PurchaseLoadState onRetry={retryPostPurchaseReads} retrying={postPurchaseRetrying} />
                             : <UnlockCheckState read={entitlementRead} onRetry={retryEntitlements} />)}
@@ -762,10 +765,13 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
                 <button className="btn fork-btn btn-lg" style={{ width: '100%' }} onClick={copyThis}>
                   <InlineIcon icon={GitFork} size={15} gap={5} />{me ? 'Fork this trip' : 'Log in to fork'}
                 </button>
-                {price !== undefined && !unlocked && mayShowPriceCta && <button className="btn btn-saffron btn-lg" style={{ width: '100%', marginTop: 10 }}
-                  disabled={buying} onClick={unlockThis}>
-                  <InlineIcon icon={Lock} size={15} gap={5} />{buying ? 'Opening payments…' : <>Unlock full plan · {formatInr(price)}</>}
-                </button>}
+                {price !== undefined && !unlocked && mayShowPriceCta && <>
+                  <button className="btn btn-saffron btn-lg" style={{ width: '100%', marginTop: 10 }}
+                    disabled={buying} onClick={unlockThis}>
+                    <InlineIcon icon={Lock} size={15} gap={5} />{buying ? 'Opening payments…' : <>Unlock full plan · {formatInr(price)}</>}
+                  </button>
+                  <p className="hint-text" style={{ textAlign: 'center', marginTop: 8 }}>One-time payment. No subscription.</p>
+                </>}
                 {/* #359 — the failed/in-flight read replaces the price button
                     rather than sitting under it. Both placements are covered,
                     because one is in a day card and one in the sticky sidebar:
