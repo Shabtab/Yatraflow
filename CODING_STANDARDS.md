@@ -117,6 +117,14 @@ anywhere in this repo means the entry labelled `6b` below.
    gate BEFORE or WITH the fixes it pins — #154's map-rail batch landed the
    measurement harness first, so every fix landed already pinned; fix-first
    leaves the defect class free to re-enter the next batch unmeasured.
+   **Fixture companion (2026-10-06, #553/#562): a break that passes points at
+   the fixture first.** Two break proofs in this repo passed at first, and
+   both times the fixture was the defect, not the code. #553's attribution
+   test placed the rival edits on other days. The day filter hid the missing
+   title check, so the weakened pin still passed. #562's overlay test set the
+   overlay open before the first press. The press never armed, so the disarm
+   had nothing to disarm. Strengthen the fixture until it proves its own
+   precondition, then re-run the break, then read the result.
  6i. **A create that is awaited must roll back like the copy path, retry on the
    SAME object, and tolerate its own duplicate key — and its UI guard must span
    the await (learned 2026-09-25).** #374/#373: `createTrip` admitted the trip,
