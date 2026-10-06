@@ -556,6 +556,14 @@ export function filterPlannedNearby<T extends Pick<PlaceHit, 'latitude' | 'longi
   })
 }
 
+/** Stable React key for a nearby hit: the coordinates the quick-stop builder
+ *  consumes, plus the name. Same-named POIs (fuel stations especially) are the
+ *  normal case, so name alone gives two chips one identity and React can swap
+ *  which hit a tap adds (#564). */
+export function nearbyHitKey(h: Pick<PlaceHit, 'latitude' | 'longitude' | 'name'>): string {
+  return `${h.latitude},${h.longitude},${h.name}`
+}
+
 /**
  * Shared tail of every nearby search: drop hits in the home zone around the
  * trip's start, rank by tourist value (+ itinerary-gap bias), then greedy-pick

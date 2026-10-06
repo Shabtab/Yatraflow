@@ -148,10 +148,38 @@ describe('computeCategoryBias', () => {
 
 
 // ---------------------------------------------------------------------------
-// #565 — fuel is capped at "a couple of pit stops", the documented intent.
+// #564 — the empty-day chips key by the hit's identity, not its name.
 // ---------------------------------------------------------------------------
 
-import { rankAndCap } from '../src/lib/providers/hits'
+import { readFileSync } from 'node:fs'
+import { nearbyHitKey, rankAndCap } from '../src/lib/providers/hits'
+
+const daySection = readFileSync(new URL('../src/pages/trip/timeline/DaySection.tsx', import.meta.url), 'utf8')
+
+describe('nearbyHitKey (#564)', () => {
+  const hit = (name: string, latitude: number, longitude: number) => ({ name, latitude, longitude })
+
+  it('two same-named hits at different coordinates derive different keys', () => {
+    const pump1 = nearbyHitKey(hit('Indian Oil', 10.1234, 76.4567))
+    const pump2 = nearbyHitKey(hit('Indian Oil', 10.9876, 76.789))
+    expect(pump1).not.toBe(pump2)
+  })
+
+  it('keys stably for the same hit, and separates names at one spot', () => {
+    expect(nearbyHitKey(hit('Cafe Coffee Day', 9.93, 76.26)))
+      .toBe(nearbyHitKey(hit('Cafe Coffee Day', 9.93, 76.26)))
+    expect(nearbyHitKey(hit('A', 9.93, 76.26))).not.toBe(nearbyHitKey(hit('B', 9.93, 76.26)))
+  })
+
+  it('the chip list uses the derived key, never the bare name', () => {
+    expect(daySection).toContain('key={nearbyHitKey(h)}')
+    expect(daySection).not.toContain('key={h.name}')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// #565 — fuel is capped at "a couple of pit stops", the documented intent.
+// ---------------------------------------------------------------------------
 
 describe('rankAndCap fuel cap (#565)', () => {
   const anchors = [{ lat: 23.5, lng: 88.3 }] // past the 15 km home zone below
