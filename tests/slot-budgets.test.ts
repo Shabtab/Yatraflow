@@ -17,6 +17,9 @@ import type { ItineraryStop } from '../src/data/types'
 const read = (p: string) => readFileSync(new URL(p, import.meta.url), 'utf8').replace(/\r\n/g, '\n')
 const travelPanel = read('../src/pages/trip/timeline/TravelPanel.tsx')
 const mapTab = read('../src/pages/trip/MapTab.tsx')
+const writersSrc = read('../src/pages/trip/map/useMapWriters.ts')
+// #420 slice 14: the deps memo lives in the day-slots hook; the pins follow it.
+const hook = read('../src/pages/trip/map/useDaySlots.ts')
 const daySlotsSrc = read('../src/lib/daySlots.ts')
 const cacheSrc = read('../src/hooks/useSuggestionCache.ts')
 
@@ -58,7 +61,7 @@ describe('#344 — slot and rail budget from the same base', () => {
     // A single shared count would charge every day of tripReadiness' matrix
     // the ACTIVE day's density; the per-day derivation in candidatesFor is
     // the fix, so the deps must not carry the prop at all.
-    expect(mapTab).toMatch(/const daySlotDeps = useMemo<Omit<DaySlotsDeps, 'dayStops'>/)
+    expect(hook).toMatch(/const daySlotDeps = useMemo<Omit<DaySlotsDeps, 'dayStops'>/)
     expect(mapTab).not.toMatch(/plannedStops: /)
   })
 
@@ -144,8 +147,8 @@ describe('#344 — the pool is re-scored with the inputs the corridor used', () 
   })
 
   it('MapTab passes the corridor DNA and home centre into daySlotDeps', () => {
-    expect(mapTab).toMatch(/dnaVector: buildDnaVectorAcrossTrips\(loadDnaLog\(\), crewSeedEvents\(trip\.id, crewSeeds\)\),/)
-    expect(mapTab).toMatch(/homeCenter: trip\.startLocationCoords \?\? null,\n\s*addedIds,/)
+    expect(hook).toMatch(/dnaVector: buildDnaVectorAcrossTrips\(loadDnaLog\(\), crewSeedEvents\(tripId, crewSeeds\)\),/)
+    expect(hook).toMatch(/homeCenter: startLocationCoords \?\? null,\n\s*addedIds,/)
   })
 })
 
@@ -216,8 +219,10 @@ describe('#346 — a superseded search says so', () => {
 
 describe('#346 — fills and deletes filter locally', () => {
   it('fillSlot / fillTheDay / removeStopFromMap no longer force a re-search', () => {
-    const fillSlot = travelPanelSection(mapTab, 'async function fillSlot')
-    const fillTheDay = travelPanelSection(mapTab, 'async function fillTheDay')
+    // #420 slice 10: the fills moved with the writers into ./map — the guard
+    // follows them, while the delete path never left the page.
+    const fillSlot = travelPanelSection(writersSrc, 'async function fillSlot')
+    const fillTheDay = travelPanelSection(writersSrc, 'async function fillTheDay')
     const removeStop = travelPanelSection(mapTab, 'function removeStopFromMap')
     for (const section of [fillSlot, fillTheDay, removeStop]) {
       expect(section).not.toContain('suggestionCache.clearMap()')

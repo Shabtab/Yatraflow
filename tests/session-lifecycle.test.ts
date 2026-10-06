@@ -10,7 +10,7 @@
 //
 // The mock harness is the hydrate-race one's shape (same vi.mock of
 // lib/supabase), without its gates: nothing here needs a race, only states.
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { readFileSync } from 'node:fs'
 import type { TripRow } from '../src/lib/tripRow'
 
@@ -25,6 +25,8 @@ const { state } = vi.hoisted(() => ({
     resolveSession: null as (() => void) | null,
     sessionUser: null as string | null,
     signOuts: 0,
+    /** Every row UPDATE the store tries (write-pipeline assertions). */
+    updates: [] as Array<{ table: string; payload: unknown }>,
   },
 }))
 
@@ -33,7 +35,8 @@ vi.mock('../src/lib/supabase', () => {
     const rows = state.tables[table] ?? []
     const builder: Record<string, unknown> = {
       select: () => builder, eq: () => builder, in: () => builder,
-      update: () => builder, insert: () => builder, delete: () => builder,
+      update: (p: unknown) => (state.updates.push({ table, payload: p }), builder),
+      insert: () => builder, delete: () => builder,
       limit: () => builder, order: () => builder, maybeSingle: () => builder,
       then: (res: (v: { data: unknown; error: unknown }) => unknown) =>
         Promise.resolve({ data: rows, error: null }).then(res),
@@ -105,6 +108,7 @@ beforeEach(() => {
   state.resolveSession = null
   state.sessionUser = null
   state.signOuts = 0
+  state.updates = []
 })
 
 describe('#393 — the Trash does not outlive the session', () => {
@@ -202,5 +206,143 @@ describe('#393 — the store wires what it promises', () => {
 
   it('the stale "10 demo trips" comments match the three that ship', () => {
     expect(src).not.toMatch(/10 fake trips|10 demo/)
+  })
+})
+
+// ============ #578 — debounced trip writes do not outlive the session ============
+// The 600ms coalescer's timers live in a module Map with no owner and no hook
+// into any auth event. A timer that outlives a sign-out re-queues the entry the
+// durable wipe deliberately discarded (stamped with the TRIP OWNER, because
+// sessionUserId is already null) and sends the UPDATE under whatever JWT is
+// live at fire time — the NEXT account's, on an A→B switch in one tab. Losing
+// the last ≤600ms of edits at a session transition is the intended trade, the
+// exact parallel of the durable wipe.
+describe('#578 — debounced trip writes do not outlive the session', () => {
+  const tripUpdates = () => state.updates.filter(u => u.table === 'trips')
+
+  afterEach(() => vi.useRealTimers())
+
+  /** Boot the store as `userId` with one owned trip, under fake timers. */
+  async function bootedAs(userId: string, tripId = 'tripA') {
+    vi.useFakeTimers()
+    const store = await freshStore()
+    // Same fresh module registry the store was imported from, so this is the
+    // exact queue instance its writes land in.
+    const queue = await import('../src/lib/writeQueue')
+    state.tables = rowsFor(tripId, userId)
+    state.sessionUser = userId
+    store.init()
+    state.resolveSession!()
+    await vi.advanceTimersByTimeAsync(10)
+    expect(store.getSnapshot().sessionUserId).toBe(userId)
+    return { store, queue }
+  }
+
+  it('sign-out cancels the pending timer: no UPDATE, no queue entry', async () => {
+    const { store, queue } = await bootedAs('userA')
+    store._setTripWriteDebounceMs(60)
+    expect(store.updateTrip('tripA', { name: 'Edited by A' })).toBe(true)
+    // Still inside the coalescer's window — nothing written yet.
+    expect(tripUpdates()).toHaveLength(0)
+
+    await store.logout()
+    await vi.advanceTimersByTimeAsync(500)
+
+    // Old behaviour: the timer fired AFTER the wipe and re-queued exactly the
+    // entry the wipe discarded — stamped with the trip owner's id and sent
+    // under the next account's JWT.
+    expect(tripUpdates()).toHaveLength(0)
+    expect((await queue.pendingWrites()).map(w => w.tripId)).not.toContain('tripA')
+  })
+
+  it('an A→B switch in one tab cancels before the timer: nothing lands under B', async () => {
+    const { store, queue } = await bootedAs('userA')
+    store._setTripWriteDebounceMs(60)
+    expect(store.updateTrip('tripA', { name: 'Edited by A' })).toBe(true)
+
+    // The switch never passes through logout(): the auth event hydrates B
+    // straight over A's cache, which is the ONLY place the transition shows.
+    state.tables = rowsFor('tripB', 'userB')
+    state.authHandler!('SIGNED_IN', { user: { id: 'userB' } })
+    await vi.advanceTimersByTimeAsync(500)
+
+    expect(store.getSnapshot().sessionUserId).toBe('userB')
+    expect(tripUpdates()).toHaveLength(0)
+    expect((await queue.pendingWrites()).map(w => w.tripId)).not.toContain('tripA')
+  })
+
+  it('belt-and-braces: a flush that missed the cancel hook still refuses', async () => {
+    const { store, queue } = await bootedAs('userA')
+    store._setTripWriteDebounceMs(60)
+    expect(store.updateTrip('tripA', { name: 'Edited by A' })).toBe(true)
+
+    // No cancel hook runs at all (the pagehide-flush racing a sign-out shape):
+    // flip the session by hand and force the flush. The fire-time identity
+    // check must refuse BOTH the queue write and the UPDATE.
+    store.getSnapshot().sessionUserId = 'userB'
+    store._flushTripWrites()
+    await vi.advanceTimersByTimeAsync(10)
+
+    expect(tripUpdates()).toHaveLength(0)
+    expect((await queue.pendingWrites()).map(w => w.tripId)).not.toContain('tripA')
+  })
+
+  it('a write captured under no session is dropped, never stamped with the owner', async () => {
+    const { store, queue } = await bootedAs('userA')
+    store._setTripWriteDebounceMs(60)
+    store.getSnapshot().sessionUserId = null
+    expect(store.updateTrip('tripA', { name: 'Edited with nobody signed in' })).toBe(true)
+    await vi.advanceTimersByTimeAsync(500)
+
+    // The owner-fallback stamp is #393's zombie entry from the other
+    // direction: it would replay under a future session of the OWNER — who
+    // never made this edit. Dropped, not guessed.
+    expect(tripUpdates()).toHaveLength(0)
+    expect((await queue.pendingWrites()).map(w => w.tripId)).not.toContain('tripA')
+  })
+
+  it('control: a write captured and fired under the same live session still saves', async () => {
+    // The guard must not over-refuse: same identity, same as before.
+    const { store } = await bootedAs('userA')
+    store._setTripWriteDebounceMs(60)
+    expect(store.updateTrip('tripA', { name: 'Edited by A' })).toBe(true)
+    await vi.advanceTimersByTimeAsync(500)
+    expect(tripUpdates()).toHaveLength(1)
+  })
+})
+
+describe('#578 — the store wires what it promises', () => {
+  const src = read('../src/store/store.ts')
+
+  it('cancels on logout AND on any hydrate identity transition', () => {
+    // logout covers the sign-out; the hydrate closure is the ONLY place the
+    // A→B switch is visible — a fix that touches logout() alone leaves that
+    // path wide open (the pitfall the issue pins).
+    expect(src).toMatch(/if \(cache\.sessionUserId !== userId\) _cancelTripWrites\(\)/)
+    const logoutBody = src.slice(src.indexOf('export async function logout'), src.indexOf('export async function enforceDisabledCheck'))
+    expect(logoutBody).toContain('_cancelTripWrites()')
+  })
+
+  it('the fire itself checks identity BEFORE claiming anything', () => {
+    // The guard runs before markLocalWrite: a refused write must not claim an
+    // echo window under the wrong (or no) account either. #549 built the
+    // queue entry into a const line (an STE-gate accommodation); the entry
+    // still names the trip and still sits after the guard.
+    const fn = src.slice(src.indexOf('async function persistTripFieldNow'))
+    const guard = fn.indexOf('if (!scheduledFor || cache.sessionUserId !== scheduledFor)')
+    const claim = fn.indexOf("markLocalWrite('trips', id)")
+    expect(guard, 'the fire-time identity guard is gone').toBeGreaterThan(-1)
+    expect(guard).toBeLessThan(claim)
+    const entryAt = fn.indexOf('const entry = { tripId: id')
+    expect(entryAt, 'the queue entry is gone').toBeGreaterThan(guard)
+    expect(fn.indexOf('await queueWrite(entry)')).toBeGreaterThan(entryAt)
+  })
+
+  it('captures the session at schedule time, beside the snapshot', () => {
+    // B0's snapshot-at-call-time contract, extended to identity: the entry
+    // carries WHOSE edit it is, so the fire compares against that and not
+    // against whoever is signed in when the timer runs.
+    expect(src).toMatch(/const scheduledFor = cache\.sessionUserId/)
+    expect(src).toMatch(/pendingTripWrites\.set\(id, \{ timer, trip: snapshot, sessionId: scheduledFor \}\)/)
   })
 })

@@ -438,27 +438,51 @@ function ContentTab() {
 
   return (
     <div>
+      {/* #561 — the hint described the DELETE-based unpublish that died with
+          #350, and contradicted its own dialog below. It now states the shipped
+          policy — parity with ShareTab's and the creator hub's copy. */}
       <p className="hint-text" style={{ margin: '0 0 12px' }}>
-        Every public Explore page. Unpublishing removes the page and flips the trip back to private.
+        Every published itinerary — live and withdrawn. Unpublishing takes a plan off Explore and stops it
+        selling. The trip itself is not touched, the creator keeps its sales history, and anyone who already
+        unlocked it keeps the full plan.
       </p>
       {pubs.length === 0 ? (
         <EmptyState icon={<Eye size={38} aria-hidden />} title="Nothing published" body="Published itineraries appear here for moderation." />
       ) : (
         <table className="compare-table" tabIndex={0} aria-label="Published itineraries">
-          <thead><tr><th>Itinerary</th><th>Creator</th><th className="num">Views</th><th className="num">Forks</th><th>Published</th><th>Actions</th></tr></thead>
+          <thead><tr><th>Itinerary</th><th>State</th><th>Creator</th><th className="num">Views</th><th className="num">Forks</th><th>Published</th><th>Actions</th></tr></thead>
           <tbody>
             {pubs.map(p => {
               const creator = db.users.find(u => u.id === p.creatorId)
               return (
                 <tr key={p.id}>
                   <td><a {...appLink(`/pub/${p.id}`)}>{p.title}</a><br /><span className="muted small">{p.routeSummary.join(' → ')}</span></td>
+                  {/* #561 — live vs withdrawn, labelled not filtered: #350's
+                      whole point is that the history survives, and a withdrawn
+                      row is exactly the row an operator is looking for. */}
+                  <td className="small">
+                    {p.unpublishedAt
+                      ? <Chip tone="info">Unpublished {new Date(p.unpublishedAt).toLocaleDateString()}</Chip>
+                      : <Chip tone="ok">Live</Chip>}
+                  </td>
                   <td className="small">{creator?.profile.name ?? '—'}</td>
                   <td className="num">{p.views}</td>
                   <td className="num">{p.copies}</td>
                   <td className="small muted">{new Date(p.publishedAt).toLocaleDateString()}</td>
                   <td>
                     {tripOf(p.tripId) ? (
-                      <button className="btn btn-outline btn-sm" disabled={busy} onClick={() => setConfirmUnpub(tripOf(p.tripId)!)}>Unpublish</button>
+                      p.unpublishedAt ? (
+                        // #561 — an action that re-stamps an already-stamped row
+                        // reads as a working button that changed nothing. It is
+                        // still idempotent server-side; it is just not offered
+                        // twice, and the tooltip says what already happened.
+                        <button className="btn btn-outline btn-sm" disabled
+                          title={`Already unpublished on ${new Date(p.unpublishedAt).toLocaleDateString()} — the creator can re-publish from their Share tab.`}>
+                          Unpublish
+                        </button>
+                      ) : (
+                        <button className="btn btn-outline btn-sm" disabled={busy} onClick={() => setConfirmUnpub(tripOf(p.tripId)!)}>Unpublish</button>
+                      )
                     ) : (
                       <span className="small muted">trip gone</span>
                     )}

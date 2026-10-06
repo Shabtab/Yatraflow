@@ -74,7 +74,7 @@ export function Modal({ open, onClose, title, children, initialFocus, variant = 
       window.removeEventListener('keydown', onKey)
       document.body.style.overflow = prevOverflow
       clearTimeout(t)
-      previouslyFocused?.isConnected && previouslyFocused.focus()
+      if (previouslyFocused?.isConnected) previouslyFocused.focus()
     }
   }, [open, onClose, initialFocus])
   if (!open) return null
@@ -555,8 +555,11 @@ export function RouteSnapshot({ count, startLabel, endLabel, roundTripNote, poin
   /** set when the trip returns to its start - a small note; the end label stays
       the final destination, never a duplicate of the start */
   roundTripNote?: string
-  /** ordered stop coordinates (lat/lng) with day index; optional */
-  points?: Array<{ lat: number; lng: number; day: number }>
+  /** ordered stop coordinates (lat/lng) with the owning day's index. Null when
+      no day owns the point (the chain start, the return leg, the destination
+      tail): those points draw the line but earn no badge. Badges print the
+      index plus one — the same convention the Timeline and the matrix use. */
+  points?: Array<{ lat: number; lng: number; day: number | null }>
 }) {
   const gid = React.useId().replace(/[:]/g, '')
   const W = 540, H = 168, PAD = 34
@@ -564,7 +567,7 @@ export function RouteSnapshot({ count, startLabel, endLabel, roundTripNote, poin
 
   // ---- real-geometry path ----
   let realPath: string | null = null
-  let dayAnchors: Array<{ day: number; x: number; y: number }> = []
+  const dayAnchors: Array<{ day: number; x: number; y: number }> = []
   if (points && points.length >= 2) {
     const lats = points.map(p => p.lat), lngs = points.map(p => p.lng)
     const minLat = Math.min(...lats), maxLat = Math.max(...lats)
@@ -589,7 +592,7 @@ export function RouteSnapshot({ count, startLabel, endLabel, roundTripNote, poin
       raw[i].y + dy,
     ]
     // decimate points landing on nearly the same canvas spot
-    const kept: Array<{ x: number; y: number; day: number }> = []
+    const kept: Array<{ x: number; y: number; day: number | null }> = []
     for (let i = 0; i < points.length; i++) {
       const [x, y] = px(points[i], i)
       const last = kept[kept.length - 1]
@@ -597,9 +600,11 @@ export function RouteSnapshot({ count, startLabel, endLabel, roundTripNote, poin
     }
     if (kept.length >= 2) {
       realPath = catmullRomPath(kept)
-      // badge on each day's first stop (dedup: several days may share a base)
+      // badge on each day's first stop (dedup: several days may share a base).
+      // A point no day owns draws the line but earns no badge (#614).
       const seen = new Set<number>()
       for (const k of kept) {
+        if (k.day == null) continue
         if (!seen.has(k.day)) { seen.add(k.day); dayAnchors.push({ day: k.day, x: k.x, y: k.y }) }
       }
     }
@@ -642,7 +647,9 @@ export function RouteSnapshot({ count, startLabel, endLabel, roundTripNote, poin
       if (i < 1) i = 1
       return pts[i - 1]
     }
-    const dayNums = thin(Array.from({ length: Math.max(2, Math.min(count || 2, 30)) }, (_, i) => i + 1))
+    // Zero-based like the real branch: the badge below adds one, so this
+    // branch must not shift twice (#614).
+    const dayNums = thin(Array.from({ length: Math.max(2, Math.min(count || 2, 30)) }, (_, i) => i))
     badges = dayNums.map((day, i) => { const [x, y] = pointAt(i / (dayNums.length - 1)); return { day, x, y } })
   }
 
@@ -660,7 +667,7 @@ export function RouteSnapshot({ count, startLabel, endLabel, roundTripNote, poin
       {badges.map(({ day, x, y }) => (
         <g key={day}>
           <circle cx={x} cy={y} r="13" fill="#FFFFFF" />
-          <text x={x} y={y + 4} textAnchor="middle" fontSize="11" fontWeight="700" fill="#155B60">{day}</text>
+          <text x={x} y={y + 4} textAnchor="middle" fontSize="11" fontWeight="700" fill="#155B60">{day + 1}</text>
         </g>
       ))}
       {/* start label bottom-left, final destination top-right - never duplicated */}

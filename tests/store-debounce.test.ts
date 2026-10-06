@@ -3,7 +3,7 @@
 // a trailing 600ms timer. The suite's default is zero-debounce (immediate), so
 // this file turns it back ON with fake timers to prove coalescing and the
 // _flushTripWrites() escape hatch, then restores the default.
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { seedData } from '../src/data/seed'
 
 const { calls } = vi.hoisted(() => ({
@@ -33,7 +33,14 @@ vi.mock('../src/lib/supabase', () => {
   return { isSupabaseConfigured: false, supabase: { from: (t: string) => makeBuilder(t) } }
 })
 
-import { duplicateTrip, updateStop, _setTripWriteDebounceMs, _flushTripWrites } from '../src/store/store'
+import { duplicateTrip, updateStop, _setTripWriteDebounceMs, _flushTripWrites, getSnapshot } from '../src/store/store'
+
+// #578 — debounced writes are identity-gated: a write captured under no
+// session is dropped rather than stamped with the trip owner. This suite
+// exercises the coalescer's timing, so give it an editor.
+beforeEach(() => {
+  getSnapshot().sessionUserId = 'owner-test'
+})
 
 const keralaTrip = seedData.trips[0]
 const updates = () => calls.filter(c => c.table === 'trips' && c.method === 'update').length

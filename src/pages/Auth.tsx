@@ -6,6 +6,7 @@ import { PillNav } from '../components/PillNav'
 import { useTablist } from '../hooks/useTablist'
 import { useDb, currentUser, login, signup } from '../store/store'
 import { isSupabaseConfigured } from '../lib/supabase'
+import { isAdultSignup } from '../lib/ageGate'
 import { currentQuery } from '../lib/router'
 import { MISSING_BACKEND_MESSAGE } from '../lib/authErrors'
 import { Field } from '../components/ui'
@@ -40,8 +41,15 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
    *  form-level alert instead). */
   const [nameErr, setNameErr] = useState<string | null>(null)
   const [passwordErr, setPasswordErr] = useState<string | null>(null)
+  const [dob, setDob] = useState('')
+  const [dobErr, setDobErr] = useState<string | null>(null)
   const nameRef = useRef<HTMLInputElement>(null)
   const passwordRef = useRef<HTMLInputElement>(null)
+  const dobRef = useRef<HTMLInputElement>(null)
+  // Today as YYYY-MM-DD (local): the date input's max, so the picker cannot
+  // offer a future day.
+  const now = new Date()
+  const todayISO = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
   /** The form-level alert, for failures no single field owns. */
   const errRef = useRef<HTMLDivElement>(null)
 
@@ -64,6 +72,7 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
     setError(null)
     setNameErr(null)
     setPasswordErr(null)
+    setDobErr(null)
     setSaving(true)
     // Safety net: if the session never materialises (e.g. hydration failure),
     // re-enable the form so the user isn't stuck on a disabled button.
@@ -91,6 +100,17 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
         passwordRef.current?.focus()
         return
       }
+      // Adults-only signup (see lib/ageGate for the why). The date of birth
+      // is checked here and never stored.
+      if (!isAdultSignup(dob, new Date())) {
+        clearTimeout(failSafe)
+        setDobErr('You need to be 18 or older to create an account.')
+        setSaving(false)
+        // Field-level, like the checks above: the message goes on the field
+        // that failed and focus follows it.
+        dobRef.current?.focus()
+        return
+      }
       const r = await signup(name, email, password)
       if (!r.ok) { clearTimeout(failSafe); setError(r.error ?? 'Signup failed'); setSaving(false); return }
     }
@@ -104,7 +124,7 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
   // a spec mismatch. Now proper tabs: role="tab", aria-selected, roving
   // tabindex, arrow/Home/End. The form sits in one panel whose label follows the
   // active tab (the fields differ only by the name row).
-  const { refs, tabProps } = useTablist(AUTH_MODES, mode, m => { setMode(m); setError(null); setNameErr(null); setPasswordErr(null) })
+  const { refs, tabProps } = useTablist(AUTH_MODES, mode, m => { setMode(m); setError(null); setNameErr(null); setPasswordErr(null); setDobErr(null) })
 
   return (
     <div className="auth-wrap">
@@ -117,10 +137,10 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
         <PillNav className="tabbar auth-tabs" role="tablist" aria-label="Login or sign up" activeKey={mode}>
           <button ref={refs(0)} className={`tab-btn${mode === 'login' ? ' active' : ''}`} type="button" role="tab" id="auth-tab-login" data-pill-key="login"
             aria-selected={mode === 'login'} aria-controls="auth-panel"
-            onClick={() => { setMode('login'); setError(null); setNameErr(null); setPasswordErr(null) }} {...tabProps('login', 0)}>Log in</button>
+            onClick={() => { setMode('login'); setError(null); setNameErr(null); setPasswordErr(null); setDobErr(null) }} {...tabProps('login', 0)}>Log in</button>
           <button ref={refs(1)} className={`tab-btn${mode === 'signup' ? ' active' : ''}`} type="button" role="tab" id="auth-tab-signup" data-pill-key="signup"
             aria-selected={mode === 'signup'} aria-controls="auth-panel"
-            onClick={() => { setMode('signup'); setError(null); setNameErr(null); setPasswordErr(null) }} {...tabProps('signup', 1)}>Create account</button>
+            onClick={() => { setMode('signup'); setError(null); setNameErr(null); setPasswordErr(null); setDobErr(null) }} {...tabProps('signup', 1)}>Create account</button>
         </PillNav>
 
         {/* Say so up front: a build with no Supabase project compiled in can
@@ -141,6 +161,12 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
             <Field label="Your name" error={nameErr ?? undefined}>
               <input className="input" name="name" autoComplete="name" ref={nameRef} value={name}
                 onChange={e => { setName(e.target.value); if (nameErr) setNameErr(null) }} placeholder="e.g. Meera Nair" />
+            </Field>
+          )}
+          {mode === 'signup' && (
+            <Field label="Date of birth" hint="Checked at signup. Never stored." error={dobErr ?? undefined}>
+              <input className="input" type="date" name="dob" autoComplete="bday" max={todayISO} ref={dobRef} value={dob}
+                onChange={e => { setDob(e.target.value); if (dobErr) setDobErr(null) }} />
             </Field>
           )}
           <Field label="Email"><input className="input" type="email" name="email" autoComplete="email" spellCheck={false} value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" /></Field>

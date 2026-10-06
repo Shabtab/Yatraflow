@@ -589,6 +589,33 @@ begin
   ) then
     raise exception 'admin_audit is append-only: no UPDATE/DELETE/ALL policy may exist for any role';
   end if;
+
+  -- #554. apply_order_refund decides full-vs-partial refunds and can revoke
+  -- entitlements — the same blast radius as revoke_refunded_entitlement, so
+  -- the same contract: service_role (the webhook) alone may call it. The
+  -- default function ACL is EXECUTE-to-PUBLIC, so a missing revoke would leave
+  -- it world-callable.
+  if exists (
+    select 1 from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    cross join lateral aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) e
+    where n.nspname = 'public' and p.proname = 'apply_order_refund'
+      and e.grantee in ((select oid from pg_roles where rolname = 'anon'),
+                        (select oid from pg_roles where rolname = 'authenticated'),
+                        0::oid)
+  ) then
+    raise exception 'apply_order_refund must not be granted to anon/authenticated/public — it revokes entitlements and is the webhook''s alone';
+  end if;
+
+  if not exists (
+    select 1 from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    cross join lateral aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) e
+    where n.nspname = 'public' and p.proname = 'apply_order_refund'
+      and e.grantee = (select oid from pg_roles where rolname = 'service_role')
+  ) then
+    raise exception 'apply_order_refund must stay executable by service_role — the webhook path; a lockdown strands every refund event';
+  end if;
 end $$;
 
 -- ------------------------------------------------------------------------ done

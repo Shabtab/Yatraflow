@@ -7042,6 +7042,11 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 .map-scope-lbl {
   font-size: 11px; font-weight: 700; text-transform: uppercase;
   letter-spacing: .06em; color: var(--text-3); align-self: center;
+  /* #546: inside the nowrap overflow-x rails (the map day filter, the rail day
+     strip) this label was the only child allowed to shrink — it absorbed the
+     whole width deficit and wrapped a word per line at phone width. Keep it
+     out of the shrink calculation; one rule covers both rails. */
+  white-space: nowrap; flex: none;
 }
 .hint-more { margin-top: 2px; }
 .hint-more summary { cursor: pointer; color: var(--text-2); font-weight: 600; }

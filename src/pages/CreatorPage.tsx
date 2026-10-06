@@ -13,6 +13,7 @@ import { useSavedPubs } from '../lib/savedPubs'
 import { Avatar, CopyButton, EmptyState } from '../components/ui'
 import { PubCard } from '../components/PubCard'
 import { sliceState, emptyCopyFor, figureOrUnavailable } from '../lib/readState'
+import { livePubs } from '../lib/livePubs'
 
 export function CreatorPage({ creatorId, onNavigate }: { creatorId: string; onNavigate: (r: string) => void }) {
   const me = useSessionUserId()
@@ -29,8 +30,14 @@ export function CreatorPage({ creatorId, onNavigate }: { creatorId: string; onNa
   const retry = () => { void rereadPublicSlices() }
 
   const creator = userById(creatorId)
+  // #585 — this is the creator's PUBLIC catalog, so #350's vocabulary applies:
+  // a plan that came down leaves the page. The creator's own hub keeps the row
+  // on purpose (its sales history and funnel live there) — the two surfaces
+  // disagree deliberately. The stat tiles below read this same filtered list,
+  // so they claim only what a visitor can actually see; a buyer who kept the
+  // plan reaches it through their purchases shelf, which gates nothing away.
   const pubs = useMemo(
-    () => published.filter(p => p.creatorId === creatorId).sort((a, b) => b.publishedAt - a.publishedAt),
+    () => livePubs(published.filter(p => p.creatorId === creatorId)).sort((a, b) => b.publishedAt - a.publishedAt),
     [published, creatorId],
   )
   const totalViews = pubs.reduce((s, p) => s + p.views, 0)

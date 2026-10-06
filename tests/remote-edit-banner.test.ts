@@ -18,7 +18,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { seedData } from '../src/data/seed'
+import type { ActivityEntry } from '../src/data/types'
 import { stopWasRemotelyEdited, canonicalKey } from '../src/lib/realtimeCore'
+import { reArmFromLive, actorForStopConflict } from '../src/components/useStopConflict'
 
 const REPO = resolve(__dirname, '..')
 const read = (p: string) => readFileSync(resolve(REPO, p), 'utf8')
@@ -74,6 +76,96 @@ describe('useStopConflict contract — detection via stopWasRemotelyEdited', () 
     expect(stopWasRemotelyEdited(remote, remote)).toBe(false)
     // ...and a later remote change against the new snapshot flags again
     expect(stopWasRemotelyEdited(remote, { ...remote, title: 'Newer' })).toBe(true)
+  })
+})
+
+describe('keep-mine re-arms (#553) — a second remote edit must re-flag', () => {
+  const opened = { id: 's1', title: 'Old title', visitMinutes: 30 }
+  const theirs1 = { id: 's1', title: 'Theirs', visitMinutes: 30 }
+  const theirs2 = { id: 's1', title: 'Theirs again', visitMinutes: 45 }
+
+  it('the full sequence: open → remote edit → keep-mine → further remote edit → conflict again', () => {
+    // the first remote edit flags against the snapshot taken at open
+    expect(stopWasRemotelyEdited(opened, theirs1)).toBe(true)
+    // keep-mine settles on the rejected version as the new baseline — the
+    // banner goes quiet while nothing further happens
+    const reArmed = reArmFromLive(theirs1, opened.id)
+    expect(reArmed).toEqual({ stopId: 's1', mine: theirs1 })
+    expect(stopWasRemotelyEdited(reArmed!.mine, theirs1)).toBe(false)
+    // the teammate edits AGAIN: the detector must fire again, not stay dead
+    // for the rest of the session (the old nulling disarmed it)
+    expect(stopWasRemotelyEdited(reArmed!.mine, theirs2)).toBe(true)
+  })
+
+  it('the re-armed baseline is a fresh copy, never a reference', () => {
+    // the store swaps trip objects on every write; a shared reference would
+    // drift with them and mute the comparison
+    const live = { id: 's1', title: 'Live' }
+    const reArmed = reArmFromLive(live, 's1')!
+    expect(reArmed.mine).not.toBe(live)
+    expect(reArmed.mine).toEqual(live)
+  })
+
+  it('no live stop arms nothing', () => {
+    expect(reArmFromLive(undefined, 's1')).toBeNull()
+  })
+
+  it('keep-mine never nulls the snapshot; close still does (source tripwire)', () => {
+    const hook = read('src/components/useStopConflict.ts')
+    const keepMine = hook.slice(hook.indexOf('const keepMine'), hook.indexOf('/** Take-theirs'))
+    expect(keepMine).not.toContain('setConflictSnapshot(null)')
+    expect(keepMine).toMatch(/reArm\(liveStop/)
+    // the full wiring chain: both choices reach the state through the
+    // extracted re-arm decision, so the sequence test's verdict is the hook's
+    const reArm = hook.slice(hook.indexOf('const reArm = useCallback'), hook.indexOf('/** Keep-mine'))
+    expect(reArm).toMatch(/reArmFromLive\(live, conflictSnapshot\?\.stopId\)/)
+    expect(reArm).toMatch(/if \(next\) setConflictSnapshot\(next\)/)
+    // clearConflict (editor close) nulling is correct — the session is over
+    expect(hook).toMatch(/const clearConflict = useCallback\(\(\) => setConflictSnapshot\(null\), \[\]\)/)
+  })
+})
+
+describe('the banner names only a provable editor (#553)', () => {
+  const entry = (i: number, actorId: string, verb: string, target: string): ActivityEntry =>
+    ({ id: `a${i}`, tripId: 't1', actorId, verb, target, at: i })
+
+  it('names the teammate whose entry titles this stop on this day', () => {
+    const log = [entry(0, 'me', 'updated "Taj Mahal at sunrise"', 'Day 2'), entry(1, 'priya', 'updated "Taj Mahal at sunrise"', 'Day 2')]
+    expect(actorForStopConflict(log, 't1', 'me', 'Day 2', ['Taj Mahal at sunrise'])?.actorId).toBe('priya')
+  })
+
+  it('stays silent when the edit was elsewhere on the trip — no wrong name', () => {
+    // the issue's misattribution: a rename of a DIFFERENT stop (same day —
+    // the realistic collision), or an add elsewhere, must not be reported as
+    // this stop's editor
+    const log = [entry(0, 'priya', 'updated "Fatehpur Sikri"', 'Day 2'), entry(1, 'priya', 'added "Agra fort walk"', 'Day 1')]
+    expect(actorForStopConflict(log, 't1', 'me', 'Day 2', ['Taj Mahal at sunrise'])).toBeUndefined()
+  })
+
+  it('a rename of THIS stop still names its author (the live title matches)', () => {
+    const log = [entry(0, 'priya', 'updated "Taj sunrise — with guide"', 'Day 2')]
+    expect(actorForStopConflict(log, 't1', 'me', 'Day 2', ['Taj Mahal at sunrise', 'Taj sunrise — with guide'])?.actorId).toBe('priya')
+  })
+
+  it('the reader never names themselves, and non-edit verbs stay out', () => {
+    const log = [
+      entry(0, 'me', 'updated "Taj Mahal at sunrise"', 'Day 2'),
+      entry(1, 'priya', 'voted on "Lunch spot"', 'Day 2'),
+      entry(2, 'priya', 'updated "Taj Mahal at sunrise"', 'Day 2'),
+    ]
+    expect(actorForStopConflict(log, 't1', 'me', 'Day 2', ['Taj Mahal at sunrise'])?.actorId).toBe('priya')
+  })
+
+  it('the most recent naming entry wins', () => {
+    const log = [entry(0, 'priya', 'updated "Taj Mahal at sunrise"', 'Day 2'), entry(1, 'sam', 'updated "Taj Mahal at sunrise"', 'Day 2')]
+    expect(actorForStopConflict(log, 't1', 'me', 'Day 2', ['Taj Mahal at sunrise'])?.actorId).toBe('sam')
+  })
+
+  it('the hook attributes through the naming filter, not any trip activity (tripwire)', () => {
+    const hook = read('src/components/useStopConflict.ts')
+    expect(hook).toMatch(/actorForStopConflict\(\s*\r?\n?\s*dbAll\.activity/)
+    // the old any-trip-activity filter is gone
+    expect(hook).not.toContain("[...dbAll.activity].reverse().find(a =>")
   })
 })
 
@@ -210,10 +302,14 @@ describe('reconnect resync — re-SUBSCRIBED replays cached trips through the li
   it('the resync path is guarded by the same echo window + B2 ledger as a live event', () => {
     // structural pin: the synthetic dispatch goes through applyRealtimeEvent
     // (the live-event handler), not a bespoke cache write that would bypass
-    // echo suppression and the stale guard.
+    // echo suppression and the stale guard. #568 — the resync now speaks the
+    // feedSynthetic grammar for every slice, and feedSynthetic wraps the same
+    // applyRealtimeEvent.
     const store = read('src/store/store.ts')
     expect(store).toContain('void resyncTripsAfterReconnect()')
-    expect(store).toMatch(/resyncTripsAfterReconnect[\s\S]*?applyRealtimeEvent\('trips'/)
+    expect(store).toMatch(/resyncTripsAfterReconnect[\s\S]*?feedSynthetic\('trips'/)
+    const fnStart = store.indexOf('function feedSynthetic')
+    expect(store.slice(fnStart, fnStart + 500)).toContain('applyRealtimeEvent(table,')
   })
 })
 

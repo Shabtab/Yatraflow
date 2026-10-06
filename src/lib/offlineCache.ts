@@ -156,3 +156,27 @@ export async function clearSnapshot(userId: string, store: SnapshotStore = idbSt
     /* nothing to undo */
   }
 }
+
+/** Wipe every account's snapshot rows — the recovery screen's clear owns
+ *  derived data, and the offline copy is derived. The pending-write queue in
+ *  WRITE_STORE is the user's own unsynced work and must survive. Resolves
+ *  false when IndexedDB is unavailable or the clear failed, so the caller can
+ *  still say what happened. The db is injectable like SnapshotStore, so tests
+ *  never need a real IndexedDB. */
+export async function clearAllSnapshots(
+  dbPromise: Promise<IDBDatabase | null> = openOfflineDb(),
+): Promise<boolean> {
+  const db = await dbPromise
+  if (!db) return false
+  return new Promise(resolve => {
+    try {
+      const transaction = db.transaction(SNAPSHOT_STORE, 'readwrite')
+      transaction.objectStore(SNAPSHOT_STORE).clear()
+      transaction.oncomplete = () => resolve(true)
+      transaction.onerror = () => resolve(false)
+      transaction.onabort = () => resolve(false)
+    } catch {
+      resolve(false)
+    }
+  })
+}

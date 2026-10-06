@@ -146,3 +146,68 @@ describe('computeCategoryBias', () => {
   })
 })
 
+
+// ---------------------------------------------------------------------------
+// #564 — the empty-day chips key by the hit's identity, not its name.
+// ---------------------------------------------------------------------------
+
+import { readFileSync } from 'node:fs'
+import { nearbyHitKey, rankAndCap } from '../src/lib/providers/hits'
+
+const daySection = readFileSync(new URL('../src/pages/trip/timeline/DaySection.tsx', import.meta.url), 'utf8')
+
+describe('nearbyHitKey (#564)', () => {
+  const hit = (name: string, latitude: number, longitude: number) => ({ name, latitude, longitude })
+
+  it('two same-named hits at different coordinates derive different keys', () => {
+    const pump1 = nearbyHitKey(hit('Indian Oil', 10.1234, 76.4567))
+    const pump2 = nearbyHitKey(hit('Indian Oil', 10.9876, 76.789))
+    expect(pump1).not.toBe(pump2)
+  })
+
+  it('keys stably for the same hit, and separates names at one spot', () => {
+    expect(nearbyHitKey(hit('Cafe Coffee Day', 9.93, 76.26)))
+      .toBe(nearbyHitKey(hit('Cafe Coffee Day', 9.93, 76.26)))
+    expect(nearbyHitKey(hit('A', 9.93, 76.26))).not.toBe(nearbyHitKey(hit('B', 9.93, 76.26)))
+  })
+
+  it('the chip list uses the derived key, never the bare name', () => {
+    expect(daySection).toContain('key={nearbyHitKey(h)}')
+    expect(daySection).not.toContain('key={h.name}')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// #565 — fuel is capped at "a couple of pit stops", the documented intent.
+// ---------------------------------------------------------------------------
+
+describe('rankAndCap fuel cap (#565)', () => {
+  const anchors = [{ lat: 23.5, lng: 88.3 }] // past the 15 km home zone below
+  // Distinct names and >0.5 km spacing, so dedupeCandidates keeps them all.
+  const fuel = (n: number) => ({
+    id: n, name: `Fuel Stop ${n}`, latitude: 23.75 + n * 0.03, longitude: 88.6,
+    kind: 'poi' as const, category: 'transport-hub',
+  })
+  const sight = (n: number) => ({
+    id: 100 + n, name: `Terracotta Temple ${n}`, latitude: 23.8, longitude: 88.7 + n * 0.03,
+    kind: 'poi' as const,
+  })
+
+  it('a fuel-heavy corridor suggests at most a couple of pit stops', () => {
+    const hits = [
+      ...Array.from({ length: 6 }, (_, i) => fuel(i + 1)),
+      ...Array.from({ length: 3 }, (_, i) => sight(i + 1)),
+    ]
+    const out = rankAndCap(hits, anchors, 40_000, 6, { includeFuel: true })
+    const fuelOut = out.filter(h => h.category === 'transport-hub')
+    expect(fuelOut.length).toBeLessThanOrEqual(2)
+    // the cap trims fuel, it does not erase it: fuel is what remains once the
+    // three sights have filled their own category cap
+    expect(fuelOut.length).toBeGreaterThan(0)
+  })
+
+  it('without includeFuel no fuel is suggested at all', () => {
+    const hits = Array.from({ length: 6 }, (_, i) => fuel(i + 1))
+    expect(rankAndCap(hits, anchors, 40_000, 6)).toHaveLength(0)
+  })
+})

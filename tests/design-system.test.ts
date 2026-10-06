@@ -6,6 +6,7 @@ import { readFileSync, readdirSync, writeFileSync } from 'node:fs'
 
 const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8')
+const main = readFileSync(new URL('../src/main.tsx', import.meta.url), 'utf8')
 
 const srcRoot = new URL('../src/', import.meta.url)
 const sourceFiles = readdirSync(srcRoot, { recursive: true })
@@ -19,12 +20,13 @@ const source = (rel: string) => readFileSync(new URL('../' + rel, import.meta.ur
 
 const loadedWeights = (s: string): Set<number> => {
   const out = new Set<number>()
-  // Family-agnostic on purpose: read every `family=<Name>:wght@<weights>` axis
-  // in the link rather than naming the families, so swapping one (Inter ->
-  // Plus Jakarta Sans, Sep 2026) or adding a third cannot silently empty this
-  // set and turn the gate into a no-op that passes on nothing.
-  for (const m of s.matchAll(/family=([^:&"']+):wght@([\d;]+)/g)) {
-    for (const w of m[2].split(';')) out.add(Number(w))
+  // Family-agnostic on purpose: read every vendored weight import rather than
+  // naming the families, so swapping one (Inter -> Plus Jakarta Sans, Sep 2026)
+  // or adding a third cannot silently empty this set and turn the gate into a
+  // no-op that passes on nothing. The fonts moved off the Google CDN onto
+  // @fontsource imports in main.tsx (2026-10-06), so the gate follows them.
+  for (const m of s.matchAll(/@fontsource\/[a-z-]+\/(\d+)\.css/g)) {
+    out.add(Number(m[1]))
   }
   return out
 }
@@ -56,13 +58,13 @@ function mediaBlocks(cssText: string, query: string): string[] {
 // 1 ---------------------------------------------------------------------------
 
 describe('font weights match the loaded faces', () => {
-  const loaded = loadedWeights(html)
+  const loaded = loadedWeights(main)
 
   it('loads the canonical weight set (Plus Jakarta Sans 400-800, Sora 600-800)', () => {
     for (const w of [400, 500, 600, 700, 800]) expect(loaded.has(w), `Plus Jakarta Sans/Sora must ship ${w}`).toBe(true)
   })
 
-  it('declares no font-weight that the font link does not load', () => {
+  it('declares no font-weight that the vendored imports do not load', () => {
     const declared = [...css.matchAll(/font-weight:\s*(\d+)/g)].map((m) => Number(m[1]))
     expect(declared.length).toBeGreaterThan(100)
     const off = [...new Set(declared.filter((w) => !loaded.has(w)))]
@@ -870,15 +872,21 @@ describe('icon stroke weight is a token, not a library default', () => {
 
 describe('the typefaces are the language, not a preference', () => {
   // The weight gate above is deliberately FAMILY-AGNOSTIC: it reads every
-  // `family=<name>:wght@` axis so that swapping a family cannot silently empty
-  // the loaded-weight set and leave the gate passing on nothing. That symmetry
-  // has a cost - on its own it would let a revert to Inter pass the build. The
-  // families themselves are pinned here instead.
-  const families = [...html.matchAll(/family=([^:&"']+):wght@/g)].map((m) => m[1].replace(/\+/g, ' '))
+  // vendored @fontsource weight import so that swapping a family cannot
+  // silently empty the loaded-weight set and leave the gate passing on
+  // nothing. That symmetry has a cost - on its own it would let a revert to
+  // Inter pass the build. The families themselves are pinned here instead,
+  // named the way the vendored packages declare them.
+  const SLUG_TO_FAMILY: Record<string, string> = {
+    'plus-jakarta-sans': 'Plus Jakarta Sans',
+    sora: 'Sora',
+  }
+  const families = [...main.matchAll(/@fontsource\/([a-z-]+)\/\d+\.css/g)]
+    .map((m) => SLUG_TO_FAMILY[m[1]] ?? m[1])
 
-  it('declares Plus Jakarta Sans and Sora on the font link', () => {
-    expect(families, `font link declares: ${families.join(', ')}`).toContain('Plus Jakarta Sans')
-    expect(families, `font link declares: ${families.join(', ')}`).toContain('Sora')
+  it('declares Plus Jakarta Sans and Sora among the vendored font imports', () => {
+    expect(families, `font imports declare: ${families.join(', ')}`).toContain('Plus Jakarta Sans')
+    expect(families, `font imports declare: ${families.join(', ')}`).toContain('Sora')
   })
 
   it('routes both font tokens through them, so every surface inherits them', () => {

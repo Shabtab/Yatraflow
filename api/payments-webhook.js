@@ -51,8 +51,11 @@ function readRawBody(req) {
 
 async function fetchOrderRow(supabaseUrl, serviceKey, razorpayOrderId, signal) {
   // status=eq.paid is the refund guard: a late or replayed `payment.captured`
-  // after a refund must not re-grant — revoke_refunded_entitlement flips the
-  // row paid -> failed, and without this filter the read would return it.
+  // after a FULL refund must not re-grant — revoke_refunded_entitlement flips
+  // the row paid -> failed, and without this filter the read would return it.
+  // #554 — a PARTIAL refund keeps the row `paid`, so this filter does not
+  // answer it; the duplicate-grant guard does (the entitlement row survived,
+  // so the upsert's ignore-duplicates makes the re-grant a no-op).
   const url = `${supabaseUrl.replace(/\/+$/, '')}/rest/v1/purchase_orders` +
     `?razorpay_order_id=eq.${encodeURIComponent(razorpayOrderId)}&status=eq.paid&select=id,user_id,pub_id,price_snapshot_inr,status&limit=1`
   const response = await fetch(url, {
@@ -91,29 +94,42 @@ async function grantEntitlement(supabaseUrl, serviceKey, order, signal) {
   }
 }
 
-/** Revoke through the service-only RPC and REPORT what it said (#355).
+/** Apply a refund through the service-only RPC and REPORT what it said (#355).
  *
- *  `revoke_refunded_entitlement` returns a boolean that distinguishes a REAL
- *  revoke from a no-op: `false` means no local order carries that id, so the
- *  event was foreign or a test event. This used to be discarded — the caller
- *  always answered `{ revoked: true }` — which is why a genuine revoke and a
- *  passing stranger's refund looked identical in the logs.
+ *  #554 — Razorpay emits `payment.refunded` for PARTIAL refunds as well as
+ *  full ones, and the amounts are on the event's payment entity:
+ *  `amount_refunded` is the CUMULATIVE paise returned (preferred over summing
+ *  refund events — deliveries can be missed), `amount` the paise captured.
+ *  The full-vs-partial decision itself lives in `apply_order_refund`, against
+ *  the ORDER's own `amount_inr` — the webhook carries the figures, never the
+ *  verdict. A full refund revokes as always; a partial one records the refund
+ *  and leaves the entitlement and the `paid` status alone.
  *
- *  `null` (rather than `false`) when the body is not a boolean: the RPC's
- *  contract is `returns boolean`, so that means PostgREST did not answer as
- *  documented, and claiming "unknown order" would be inventing a fact. */
-async function revokeEntitlement(supabaseUrl, serviceKey, razorpayOrderId, signal) {
-  const response = await fetch(`${supabaseUrl.replace(/\/+$/, '')}/rest/v1/rpc/revoke_refunded_entitlement`, {
+ *  The RPC's contract is `returns text` — 'revoked' | 'recorded' |
+ *  'unknown-order' | 'invalid'. `null` when the body is not a string: that
+ *  means PostgREST did not answer as documented, and guessing an outcome
+ *  would be inventing a fact. */
+async function applyRefund(supabaseUrl, serviceKey, razorpayOrderId, refundedPaise, capturedPaise, signal) {
+  // Hardening pass (#554): the RPC path is parsed against the configured base,
+  // so a malformed SUPABASE_URL throws here instead of producing a fetch to a
+  // made-up host. The event contributes nothing to the URL — only a static
+  // path and the JSON body — so no request data reaches the destination.
+  const url = new URL('/rest/v1/rpc/apply_order_refund', supabaseUrl)
+  const response = await fetch(url, {
     method: 'POST',
     headers: supabaseServiceHeaders(serviceKey, {
       'content-type': 'application/json',
     }),
-    body: JSON.stringify({ p_razorpay_order_id: razorpayOrderId }),
+    body: JSON.stringify({
+      p_razorpay_order_id: razorpayOrderId,
+      p_amount_refunded_paise: refundedPaise,
+      p_amount_captured_paise: capturedPaise,
+    }),
     signal,
   })
-  if (!response.ok) throw new Error(`entitlement revoke failed: ${response.status}`)
+  if (!response.ok) throw new Error(`refund apply failed: ${response.status}`)
   const body = await response.json().catch(() => null)
-  return typeof body === 'boolean' ? body : null
+  return typeof body === 'string' ? body : null
 }
 
 export default async function handler(req, res) {
@@ -157,8 +173,41 @@ export default async function handler(req, res) {
   // Captured payments grant; refunds revoke (M2 — the entitlement must not
   // outlive the money). Every other event is 200-acknowledged so Razorpay
   // stops retrying it.
-  if (event?.event !== 'payment.captured' && event?.event !== 'payment.refunded') {
+  //
+  // #593 — the event set is the FIRST thing that was broken. Razorpay sends NO
+  // `payment.refunded` event (verified against razorpay.com/docs/webhooks on
+  // 2026-10-03): its refund events are `refund.created` / `refund.processed` /
+  // `refund.failed` / `refund.speed_changed`, and its payment events stop at
+  // `payment.captured`. So every real refund delivery matched the gate below
+  // and was 200-ACKed as `ignored`, which left the revoke branch unreachable —
+  // and `revoke_refunded_entitlement` has no other caller, so refunds have
+  // never revoked anything in production.
+  //
+  // What each real event means for the money (the product decisions #593 asks
+  // for, made once here):
+  //   refund.processed — the money actually came back. This is the ONE that
+  //     decides: the #554 full/partial rule runs on this delivery.
+  //   refund.created  — a refund was generated, not yet returned. No money has
+  //     moved, so nothing is revoked and nothing is recorded; acked so
+  //     Razorpay stops retrying. `refund.processed` follows with the real
+  //     figures (or `refund.failed` below).
+  //   refund.failed   — the refund did NOT happen. Deliberately a no-op: a
+  //     revoke that ran on `refund.created` would otherwise leave the order
+  //     `failed` and the entitlement gone while the payment stands, which is
+  //     the exact over-revocation M2 exists to prevent.
+  //   payment.dispute.lost — a lost chargeback pulls the money back like a
+  //     refund, so it revokes on the same rule (M2's premise holds for it too).
+  const REFUND_EVENTS = new Set(['refund.processed', 'payment.dispute.lost'])
+  const REFUND_AWAITING_MONEY = new Set(['refund.created'])
+  const isRefundEvent = REFUND_EVENTS.has(event?.event) || REFUND_AWAITING_MONEY.has(event?.event)
+  if (event?.event !== 'payment.captured' && !isRefundEvent) {
     return json(res, 200, { ok: true, ignored: event?.event ?? null })
+  }
+
+  if (REFUND_AWAITING_MONEY.has(event?.event)) {
+    // Generated, not returned. Deliberately no revoke and no record — the
+    // processed event carries the money.
+    return json(res, 200, { ok: true, outcome: 'refund-pending' })
   }
 
   const payment = event.payload?.payment?.entity
@@ -169,20 +218,35 @@ export default async function handler(req, res) {
   }
 
   const signal = AbortSignal.timeout(8000)
-  if (event.event === 'payment.refunded') {
+  if (isRefundEvent) {
+  // #554 — a Razorpay refund event carries a CUMULATIVE refunded figure as well
+  // as a full/partial flag; the amounts decide which, so an event without them
+  // is malformed rather than "probably full": 400 acks it for good (Razorpay
+  // stops retrying) instead of guessing a revocation either way.
+  //
+  // #593 — `amount_refunded` is the payment entity's CUMULATIVE total (the
+    // running figure across every refund on that payment), which is why it
+    // rather than `refund.entity.amount`: summing events loses money whenever a
+    // delivery is missed. A dispute-lost payload carries the dispute, not a
+    // refund, and may omit the cumulative figure — the payment's own `amount`
+    // is then the whole amount, and it is fully returned.
+    const capturedPaise = Number(payment?.amount)
+    const cumulative = Number(payment?.amount_refunded)
+    const refundedPaise = Number.isFinite(cumulative) && cumulative > 0 ? cumulative : capturedPaise
+    if (!Number.isFinite(refundedPaise) || refundedPaise < 0 || !Number.isFinite(capturedPaise) || capturedPaise < 0) {
+      return json(res, 400, { error: 'refund event missing amount_refunded/amount' })
+    }
     try {
-      const revoked = await revokeEntitlement(supabaseUrl, serviceKey, orderId, signal)
+      const outcome = await applyRefund(supabaseUrl, serviceKey, orderId, refundedPaise, capturedPaise, signal)
       // Still a 200 for a no-op: an unknown order is a foreign or test event,
       // and a retry storm over something we will never find helps nobody.
       //
-      // What changed (#355) is that the response now SAYS which it was. The
-      // status stays 200 either way, so `outcome` is the only thing that
-      // separates a real revoke from noise in a log — which is exactly the
-      // question an operator reading these had no way to answer before.
+      // What changed (#355) is that the response SAYS which it was; #554
+      // extends the vocabulary — 'recorded' is the partial-refund outcome,
+      // where the sale survives and the refund is on the books.
       return json(res, 200, {
         ok: true,
-        revoked: revoked === true,
-        outcome: revoked === true ? 'revoked' : revoked === false ? 'unknown-order' : 'unreadable',
+        outcome: outcome ?? 'unreadable',
       })
     } catch {
       return json(res, 500, { error: 'could not revoke the entitlement' })

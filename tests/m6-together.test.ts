@@ -6,6 +6,7 @@
 // column is a JSONB blob, so a key the mapper drops would vanish silently).
 // B1's client gating pins that presence degrades to no-op without a backend.
 import { describe, it, expect, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { seedData } from '../src/data/seed'
 
 const { calls } = vi.hoisted(() => ({
@@ -86,6 +87,9 @@ describe('B4 · markExpenseSettled', () => {
   // itself is pinned in tests/budget-read-status.test.ts.
   it('writes the settled flag through to the trips row', async () => {
     const trip = singleTrip()
+    // #578 — the write is identity-gated (dropped without a session), same as
+    // the activity entry below.
+    getSnapshot().sessionUserId = ownerId
     await flush()
     calls.length = 0
     addExpense(trip.id, { label: 'Fuel bluff', category: 'transport', amountInr: 2000 })
@@ -298,5 +302,83 @@ describe('B2 · stale-update guard vs the SERVER ledger (store level)', () => {
     moveStopBetweenDays(trip.id, tripById(trip.id)!.days[0].stops[0].id, 1)
     await flush()
     expect(tripsUpdates().length).toBeGreaterThan(0)
+  })
+})
+
+describe('#567 — trip_members events route on the composite key, no fabricated id', () => {
+  function feedMembership(payload: { eventType: 'INSERT' | 'UPDATE' | 'DELETE'; new?: unknown; old?: unknown }): void {
+    _applyRealtimeEventForTest('trip_members', payload as never)
+  }
+
+  it('a real DELETE payload (replica identity: composite key only) evicts the session user', () => {
+    const trip = singleTrip()
+    getSnapshot().sessionUserId = ownerId
+    // Orphaned sibling rows for this trip — the eviction must cascade them the
+    // same way the trips DELETE case does.
+    getSnapshot().suggestions = [{ id: 's-orphan', tripId: trip.id }] as never
+    getSnapshot().notifications = [{ id: 'n-orphan', tripId: trip.id }] as never
+    feedMembership({ eventType: 'DELETE', old: { trip_id: trip.id, user_id: ownerId } })
+    const db = getSnapshot()
+    expect(db.trips.find(t => t.id === trip.id)).toBeUndefined()
+    expect(db.suggestions).toHaveLength(0)
+    expect(db.notifications).toHaveLength(0)
+  })
+
+  it('a remote role UPDATE lands on an existing trip', () => {
+    const trip = singleTrip()
+    feedMembership({ eventType: 'INSERT', new: { trip_id: trip.id, user_id: 'crew-9', role: 'owner', joined_at: 1 } })
+    expect(tripById(trip.id)!.members.some(m => m.userId === 'crew-9' && m.role === 'owner')).toBe(true)
+    feedMembership({ eventType: 'UPDATE', new: { trip_id: trip.id, user_id: 'crew-9', role: 'editor', joined_at: 1 } })
+    expect(tripById(trip.id)!.members.find(m => m.userId === 'crew-9')?.role).toBe('editor')
+  })
+
+  it('another member\'s DELETE removes just that member, and an unknown trip triggers the fetch', () => {
+    const trip = singleTrip()
+    feedMembership({ eventType: 'INSERT', new: { trip_id: trip.id, user_id: 'crew-7', role: 'member', joined_at: 1 } })
+    feedMembership({ eventType: 'DELETE', old: { trip_id: trip.id, user_id: 'crew-7' } })
+    expect(tripById(trip.id)!.members.some(m => m.userId === 'crew-7')).toBe(false)
+    expect(getSnapshot().trips.find(t => t.id === trip.id)).toBeTruthy()
+
+    calls.length = 0
+    // The unknown-trip branch calls fetchTripIntoCache; with the mock's
+    // null-data selects it resolves quietly. The observable contract here:
+    // the event ROUTES — nothing throws out of the dispatch, the known trip
+    // is untouched, and no write went out under a trip the session cannot see.
+    expect(() => feedMembership({ eventType: 'INSERT', new: { trip_id: 'trip-not-in-cache-567', user_id: 'crew-8', role: 'editor', joined_at: 1 } })).not.toThrow()
+    expect(tripById(trip.id)!.members.some(m => m.userId === 'crew-8')).toBe(false)
+    expect(calls.some(c => c.table === 'trips' && (c.method === 'update' || c.method === 'insert'))).toBe(false)
+  })
+})
+
+describe('#568 — the reconnect resync covers every subscribed table', () => {
+  const store = readFileSync(new URL('../src/store/store.ts', import.meta.url), 'utf8')
+
+  it('the channel subscribes exactly the RESYNC_TABLES list', () => {
+    // The artifact whose absence let the first seven slices go stale: the
+    // resync read as complete while refetching only trips. The subscription
+    // loop and the resync now share ONE constant, so the two cannot drift —
+    // adding a table to the list is the whole job.
+    const fnStart = store.indexOf('export function connectRealtime')
+    const fn = store.slice(fnStart, store.indexOf("'[yatraflow] realtime subscribe failed'", fnStart))
+    expect(fn).toContain('for (const t of RESYNC_TABLES)')
+    const resyncMatch = store.match(/const RESYNC_TABLES = \[([^\]]+)\]/)
+    expect(resyncMatch).not.toBeNull()
+    const resynced = (resyncMatch![1]!.match(/'([a-z_]+)'/g) ?? []).map(s => s.slice(1, -1))
+    expect(resynced).toContain('trips')
+    expect(resynced).toContain('trip_members')
+    expect(resynced).toContain('notifications')
+    expect(resynced).toContain('published_itineraries')
+    expect(resynced).toContain('admin_audit')
+    expect(resynced).toHaveLength(9)
+  })
+
+  it('the gap slices refetch and feed synthetic events through the dispatch', () => {
+    // No bypass: the resync speaks the same synthetic-event grammar the trips
+    // slice always has, so the echo window and the stale guard still apply.
+    expect(store).toContain("feedSynthetic('trips', 'UPDATE', row)")
+    expect(store).toContain("feedSynthetic(table, 'INSERT', row)")
+    expect(store).toMatch(/from\('notifications'\)\.select\('\*'\)\.eq\('user_id', me\)/)
+    expect(store).toMatch(/from\('trip_members'\)\.select\('\*'\)\.in\('trip_id', ids\)/)
+    expect(store).toContain('sweepPhantoms(table, ids,')
   })
 })

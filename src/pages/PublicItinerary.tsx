@@ -14,7 +14,7 @@ import type { Entitlement } from '../lib/payments'
 import { useDb, currentUser, tripById, userById, registerPubView, fetchPublicTrip } from '../store/store'
 import { forkPublication } from '../lib/forkPub'
 import { describePreviewSplit } from '../lib/previewSplit'
-import { simulateDay, originOf, minutesToHM, formatInr, getAssumptions, computeTotals, isRoundTrip } from '../lib/engine'
+import { simulateDay, scheduleRowsById, originOf, minutesToHM, formatInr, getAssumptions, computeTotals, isRoundTrip } from '../lib/engine'
 import { cap, titleCase } from '../lib/labels'
 import { useTimeFormat, formatHM, formatHMRange } from '../lib/timefmt'
 import { stopKindOf, STOP_KIND_LABELS } from '../lib/stopKind'
@@ -23,7 +23,7 @@ import { fetchMyEntitlements, fetchCreatorSales, fetchCreatorFunnel, purchaseUnl
 import { UnlockReveal } from '../components/UnlockReveal'
 import { hasUnlock } from '../lib/payments'
 import { buildPubFunnels, describePreLog, funnelGlance, type FunnelSale } from '../lib/pubFunnel'
-import { currentPublicShareUrl, shareRefFromSearch, withShareRef } from '../lib/shareUrl'
+import { clearShareRefFromLocation, currentPublicShareUrl, shareRefFromSearch, withShareRef } from '../lib/shareUrl'
 import { sharePublicationOnWhatsApp } from '../lib/whatsAppShare'
 import { appLink } from '../lib/appLink'
 import { pageTitle } from '../lib/pageTitle'
@@ -64,6 +64,26 @@ function UnlockCheckState({ read, onRetry, centered }: {
   )
 }
 
+/** #588 — the purchase SUCCEEDED and the access check agrees, but the re-read
+ *  that should replace the pre-purchase stub with the real days came back
+ *  empty. The pages stay locked (placeholder copy must never render as the
+ *  plan the buyer owns) and this panel says what actually happened. */
+function PurchaseLoadState({ onRetry, retrying, centered }: {
+  onRetry: () => void
+  retrying: boolean
+  centered?: boolean
+}) {
+  return (
+    <div className="hub-note is-failure" role="alert" style={{ marginTop: 8, textAlign: centered ? 'center' : undefined }}>
+      <b>Your purchase went through.</b> The full plan could not load just now, so the pages stay
+      locked rather than show placeholder text. Nothing was charged twice.
+      <button className="btn btn-outline btn-sm hub-note-action" disabled={retrying} onClick={onRetry}>
+        {retrying ? 'Loading…' : 'Retry'}
+      </button>
+    </div>
+  )
+}
+
 export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavigate: (r: string) => void }) {
   const db = useDb()
   const timeFormat = useTimeFormat()
@@ -78,6 +98,14 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
   const cachedTrip = pub ? tripById(pub.tripId) : undefined
   const [fetched, setFetched] = useState<Trip | null>(null)
   const [miss, setMiss] = useState(false)
+  // #552 — the arrival ref is read ONCE, here at first render, and then taken
+  // back out of the address bar (the effect below): with hash navigation
+  // nothing else ever clears the query, and a sticky `ref` handed every later
+  // view and fork in the tab to whatever link the tab first touched. The one
+  // value serves this page instance's three uses — the view registration, the
+  // re-share's second hop and the fork stamp; they are one arrival. A later
+  // page reads a clean query and records "direct", which is the honest answer.
+  const [arrivalRef] = useState(() => shareRefFromSearch(window.location.search))
   // Paid-unlock state (M7): entitlements are read on demand (RLS: own rows),
   // not carried in the hydrate cache. Re-read after a purchase resolves.
   const [entitlements, setEntitlements] = useState<Entitlement[]>([])
@@ -101,6 +129,12 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
   const [entitlementsSettled, setEntitlementsSettled] = useState(-1)
   const entitlementsReading = entitlementsRetry !== entitlementsSettled
   const [buying, setBuying] = useState(false)
+  // #588 — the post-purchase trip re-read failed: `fetchPublicTrip` answers
+  // null on a dropped connection, and null must not read as "nothing to do".
+  // Keyed by publication id like the entitlement read marker, so a second
+  // publication on the same mounted page cannot inherit the flag.
+  const [tripReReadFailedFor, setTripReReadFailedFor] = useState<string | null>(null)
+  const [postPurchaseRetrying, setPostPurchaseRetrying] = useState(false)
   // F3 (#227) — the WhatsApp send in flight, held so a double-tap cannot
   // fire two sheets or open two chat tabs. The §6a guard on an async path:
   // disabled while it runs, and the button says so.
@@ -130,10 +164,13 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
   // the same stored URL.
   useEffect(() => {
     // #230 — the view carries its route in: the `ref` the shared link brought
-    // (query, so it survives the redirect and address promotion), or null for a
-    // visitor who arrived some other way — which is recorded as "direct".
-    if (pub) registerPubView(pub.id, shareRefFromSearch(window.location.search))
+    // (consumed once at first render, #552), or null for a visitor who arrived
+    // some other way — which is recorded as "direct".
+    if (pub) registerPubView(pub.id, arrivalRef)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  // #552 — the query's work is done once the arrival is read. Only a ref the
+  // vocabulary knows is removed; everything else in the query stays.
+  useEffect(() => { clearShareRefFromLocation() }, [])
   // This page owns the publication record, so it is the only place that can put
   // the itinerary's own name in the tab. App titles every other route; for
   // `/pub/…` it can only say "Itinerary" without subscribing to this table.
@@ -160,7 +197,10 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
     // REJECTS now, so this needs both arms. A success clears the failure flag;
     // a failure sets it WITHOUT clearing the entitlements, so a refresh that
     // could not be replaced keeps the access it already proved.
-    void fetchMyEntitlements(meId)
+    // #587 — the signal is HANDED to the read: the timeout was aborting a
+    // controller no request listened to, so a hung connection never settled
+    // the promise and the page sat on "Checking your access…" forever.
+    void fetchMyEntitlements(meId, { signal: ac.signal })
       .then(rows => {
         if (!alive) return
         setEntitlements(rows)
@@ -244,8 +284,9 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
   )
   const routePoints = useMemo(() => {
     if (!trip) return undefined
-    const pts: Array<{ lat: number; lng: number; day: number }> = []
-    if (trip.startLocationCoords) pts.push({ lat: trip.startLocationCoords.lat, lng: trip.startLocationCoords.lng, day: 0 })
+    const pts: Array<{ lat: number; lng: number; day: number | null }> = []
+    // The start belongs to no day: it draws the line but earns no badge (#614).
+    if (trip.startLocationCoords) pts.push({ lat: trip.startLocationCoords.lat, lng: trip.startLocationCoords.lng, day: null })
     for (const day of orderedDays) {
       for (const s of [...day.stops].sort((a, b) => a.orderInDay - b.orderInDay)) {
         if (s.status !== 'rejected' && Number.isFinite(s.lat) && Number.isFinite(s.lng)) {
@@ -282,7 +323,12 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
   // strings while the row is missing — hasUnlock can match neither a creator id
   // nor an entitlement against those, so "no publication" reads as not
   // unlocked, which is what the loading/error branches below then say.)
-  const unlocked = hasUnlock(entitlements, meId, pub?.id ?? '', pub?.creatorId ?? '')
+  // #588 — while the post-purchase re-read is stuck, the page still holds the
+  // PRE-purchase stub. Ungating the lock would lift the overlays over
+  // placeholder copy, so the access stays visually locked until the real days
+  // arrive (the retry panel says what is happening).
+  const tripReReadFailed = !!pub && tripReReadFailedFor === pub.id
+  const unlocked = tripReReadFailed ? false : hasUnlock(entitlements, meId, pub?.id ?? '', pub?.creatorId ?? '')
   /** The entitlement read has landed FOR THIS publication. */
   const entitlementsRead = !!pub && entitlementsReadFor === pub.id
   // #359 — which of the three truths the gate is looking at. Ordered the way
@@ -301,13 +347,36 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
       : entitlementsError
         ? 'failed'
         : 'reading'
-  /** A logged-out visitor has nothing to check, so the CTA is honest for them. */
-  const mayShowPriceCta = !meId || entitlementRead === 'ready'
+  /** A logged-out visitor has nothing to check, so the CTA is honest for them.
+   *  #588 — a stuck post-purchase re-read silences it too: the buyer owns the
+   *  plan, so a price tag over the locked pages would be the exact
+   *  contradiction the gate exists to prevent. */
+  const mayShowPriceCta = (!meId || entitlementRead === 'ready') && !tripReReadFailed
   // #359 — asking again is a NEW question, so it takes a new attempt number; the
   // derived `entitlementsReading` flips true on its own and the button's own
   // label says "Checking…" rather than re-rendering the alert it was pressed
   // against (a dead button, per the hub's retry rule).
   const retryEntitlements = useCallback(() => { setEntitlementsRetry(n => n + 1) }, [])
+
+  // #588 — the two re-reads are two halves of one question (what did I just
+  // buy), so one Retry asks both. The entitlement half reuses the same state
+  // the gate derives from; the trip half clears the stuck flag only on a real
+  // trip, never on another null. (Placed above the early returns with the
+  // other hooks — a hook below a return crashes the page on a full reload.)
+  const retryPostPurchaseReads = useCallback(() => {
+    const id = pub?.id
+    if (!id || !meId || postPurchaseRetrying) return
+    setPostPurchaseRetrying(true)
+    void fetchMyEntitlements(meId)
+      .then(rows => { setEntitlements(rows); setEntitlementsError(false); setEntitlementsReadFor(id) })
+      .catch(() => { setEntitlementsError(true); setEntitlementsReadFor(null) })
+    void fetchPublicTrip(id).then(fresh => {
+      if (fresh) {
+        setFetched(fresh)
+        setTripReReadFailedFor(null)
+      }
+    }).finally(() => setPostPurchaseRetrying(false))
+  }, [pub?.id, meId, postPurchaseRetrying])
 
   // ---- Soft-unpublish (#350). The row survives — that is what keeps buyers
   // whole — but the page is no longer public. The creator and anyone holding an
@@ -368,18 +437,13 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
   // through. Display and copy are the same string: the code box shows exactly
   // what lands on the clipboard.
   const shareLink = withShareRef(currentPublicShareUrl(pub.id), 'copy')
-  // F7 (#228): the channel this visitor arrived through. A second hop inside
-  // the same community keeps the post's reference — a link that travelled
-  // through a community post does not forget where it came from — while a
-  // fresh arrival stamps the send unit's own channel. It rides the link,
-  // never the sentence. Vocabulary-checked: only a ShareSource survives the
-  // read, so an unknown ref falls back to the default rather than travelling
-  // onward.
-  const arrivalRef = shareRefFromSearch(location.search)
-  // F3 (#227): send this plan to a WhatsApp group. The sheet first (a phone
-  // lists WhatsApp directly), click-to-chat otherwise — the fallback chain
-  // lives in the helper; this holds the in-flight guard so a double-tap
-  // cannot fire both. Nothing reads a window handle (§6e).
+  // F7 (#228): the channel this visitor arrived through — consumed once at
+  // first render (#552). A second hop inside the same community keeps the
+  // post's reference — a link that travelled through a community post does not
+  // forget where it came from — while a fresh arrival stamps the send unit's
+  // own channel. It rides the link, never the sentence. Vocabulary-checked:
+  // only a ShareSource survives the read, so an unknown ref falls back to the
+  // default rather than travelling onward.
   async function sendOnWhatsApp() {
     if (sendingWhatsApp || !pub) return
     setSendingWhatsApp(true)
@@ -387,7 +451,12 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
   }
   // Undefined when the creator published the itinerary as entirely free —
   // the Unlock buttons below are hidden rather than inventing a ₹199 fallback.
-  const price = pub.premiumPriceInr
+  // Undefined when the creator published the itinerary as entirely free —
+  // the Unlock buttons below are hidden rather than inventing a ₹199 fallback.
+  // #592 — zero reads as free too: a ₹0 row that slipped past the writer must
+  // render as a free plan, not as an unchargeable ₹0 CTA whose every click
+  // answers with the checkout's "this itinerary is free" refusal.
+  const price = pub.premiumPriceInr || undefined
   // Which days this publication withholds comes from its own freeDayIndexes —
   // never from an assumed tail. A live Spiti row (₹500) locks days 5–8 and
   // leaves 9–10 free, so "the later days stay preview-only" was false there.
@@ -401,7 +470,7 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
     // stubs — forkPublication re-stubs from whatever arrived, so the fork can
     // never contain more than the server showed. The `unlocked` flag here is
     // presentation-only now; the wire already decided.
-    void forkPublication(pub!, me?.id ?? null, onNavigate, unlocked, shareRefFromSearch(window.location.search))
+    void forkPublication(pub!, me?.id ?? null, onNavigate, unlocked, arrivalRef)
   }
 
   function unlockThis() {
@@ -412,13 +481,15 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
       title: pub!.title,
       onUnlocked: () => {
         // #359 — this read REJECTS now, so a failure here must not be a
-        // rejection nobody catches. It is routed through the same error flag the
-        // first read uses, which is the honest outcome: the purchase succeeded
-        // (the wire now serves real days) but the buyer's own shelf could not be
-        // re-read, so the page says so rather than showing a stale access list.
+        // rejection nobody catches. #588 — and the catch must not stop at the
+        // error flag: the derive keeps 'ready' while the read marker stands,
+        // and that marker now proves NOT-owning (the pre-purchase read).
+        // Clearing it drops the gate to 'failed', whose Retry re-asks.
+        // #359's keep-proven-access rule is about a failed refresh behind
+        // access already proven — this read was asking for NEW access.
         void fetchMyEntitlements(meId)
           .then(rows => { setEntitlements(rows); setEntitlementsError(false) })
-          .catch(() => { setEntitlementsError(true) })
+          .catch(() => { setEntitlementsError(true); setEntitlementsReadFor(null) })
       },
     }).then(async outcome => {
       // Both a completed purchase and a 409 mean the days are readable now (the
@@ -432,11 +503,21 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
       // placeholder text. Re-read through the same RPC — the entitlement now
       // exists, so it answers with real days — rather than clearing `fetched`,
       // which would flash the loading state mid-ceremony.
+      // #588 — null here is a dropped connection, not a missing row (the
+      // purchase just succeeded, so the row exists). `if (fresh)` alone would
+      // silently keep the stub and, with the entitlement re-read succeeded,
+      // lift the lock over placeholder copy. The flag routes the page to the
+      // post-purchase retry panel instead.
       const fresh = await fetchPublicTrip(pub!.id)
-      if (fresh) setFetched(fresh)
-      // The reveal opens only on a real trip: its numbers ARE the point, and
-      // stats read from the stubbed copy would describe an empty plan.
-      if (outcome === 'unlocked' && fresh) setRevealTrip(fresh)
+      if (fresh) {
+        setFetched(fresh)
+        setTripReReadFailedFor(null)
+        // The reveal opens only on a real trip: its numbers ARE the point, and
+        // stats read from the stubbed copy would describe an empty plan.
+        if (outcome === 'unlocked') setRevealTrip(fresh)
+      } else {
+        setTripReReadFailedFor(pub!.id)
+      }
     }).finally(() => setBuying(false))
   }
 
@@ -631,8 +712,13 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
                               does not own, so it may only render on a read that
                               actually answered. Over a failed read it would be a
                               price tag on a plan the buyer already paid for. */}
-                          {price !== undefined && mayShowPriceCta && <button className="btn btn-saffron" disabled={buying} onClick={unlockThis}>{buying ? 'Opening payments…' : <>Unlock full plan · {formatInr(price)}</>}</button>}
-                          {price !== undefined && !mayShowPriceCta && <UnlockCheckState read={entitlementRead} onRetry={retryEntitlements} />}
+                          {price !== undefined && mayShowPriceCta && <>
+                            <button className="btn btn-saffron" disabled={buying} onClick={unlockThis}>{buying ? 'Opening payments…' : <>Unlock full plan · {formatInr(price)}</>}</button>
+                            <p className="hint-text" style={{ margin: '6px 0 0' }}>One-time payment. No subscription.</p>
+                          </>}
+                          {price !== undefined && !mayShowPriceCta && (tripReReadFailed
+                            ? <PurchaseLoadState onRetry={retryPostPurchaseReads} retrying={postPurchaseRetrying} />
+                            : <UnlockCheckState read={entitlementRead} onRetry={retryEntitlements} />)}
                         </div>
                       </div>
                     </>
@@ -679,16 +765,21 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
                 <button className="btn fork-btn btn-lg" style={{ width: '100%' }} onClick={copyThis}>
                   <InlineIcon icon={GitFork} size={15} gap={5} />{me ? 'Fork this trip' : 'Log in to fork'}
                 </button>
-                {price !== undefined && !unlocked && mayShowPriceCta && <button className="btn btn-saffron btn-lg" style={{ width: '100%', marginTop: 10 }}
-                  disabled={buying} onClick={unlockThis}>
-                  <InlineIcon icon={Lock} size={15} gap={5} />{buying ? 'Opening payments…' : <>Unlock full plan · {formatInr(price)}</>}
-                </button>}
+                {price !== undefined && !unlocked && mayShowPriceCta && <>
+                  <button className="btn btn-saffron btn-lg" style={{ width: '100%', marginTop: 10 }}
+                    disabled={buying} onClick={unlockThis}>
+                    <InlineIcon icon={Lock} size={15} gap={5} />{buying ? 'Opening payments…' : <>Unlock full plan · {formatInr(price)}</>}
+                  </button>
+                  <p className="hint-text" style={{ textAlign: 'center', marginTop: 8 }}>One-time payment. No subscription.</p>
+                </>}
                 {/* #359 — the failed/in-flight read replaces the price button
                     rather than sitting under it. Both placements are covered,
                     because one is in a day card and one in the sticky sidebar:
                     a buyer must not meet "Unlock for ₹499" for their own plan
                     in either. */}
-                {price !== undefined && !unlocked && !mayShowPriceCta && <UnlockCheckState read={entitlementRead} onRetry={retryEntitlements} centered />}
+                {price !== undefined && !unlocked && !mayShowPriceCta && (tripReReadFailed
+                  ? <PurchaseLoadState onRetry={retryPostPurchaseReads} retrying={postPurchaseRetrying} centered />
+                  : <UnlockCheckState read={entitlementRead} onRetry={retryEntitlements} centered />)}
                 {price !== undefined && unlocked && <p className="hint-text" style={{ textAlign: 'center', marginTop: 10 }}>
                   ✓ Full plan unlocked — forking carries every day as a real, editable plan.
                 </p>}
@@ -726,7 +817,13 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
             pub={pub}
             trip={revealTrip}
             creator={creator}
-            amountPaidInr={pub.premiumPriceInr}
+            /* #591 — the receipt states what was PAID, which is the entitlement
+               row's snapshot, not the catalog copy: a creator changing the price
+               while this tab sat open would otherwise make the reveal contradict
+               the shelf for the same purchase. Absent for a beat when the
+               re-read has not landed — the component renders no figure rather
+               than a wrong one. */
+            amountPaidInr={entitlements.find(e => e.pubId === pub.id)?.amountPaidInr}
             // The grant itself, for the reveal's share card (I-21) — read from the
             // entitlement list the purchase refreshed, so it arrives with the read
             // that followed the unlock.
@@ -766,6 +863,10 @@ function DayStops({ stops, sim, assumptions, timeFormat, stayDay, mode }: {
   /** the trip's transport mode — the travelling strip's glyph follows it. */
   mode: string
 }) {
+  // #555: the schedule keyed by stop id — sim's legs are INTO legs (legIn of
+  // each active stop) and its arrays are per-active-stop, so the strip below
+  // reads this row's own facts instead of a neighbour's position.
+  const simRows = scheduleRowsById(sim)
   return (
     <>
       {stops.map((s, i) => {
@@ -786,9 +887,15 @@ function DayStops({ stops, sim, assumptions, timeFormat, stayDay, mode }: {
               </div>
             )
           }
-          const inbound = i > 0 ? sim.legs[i - 1] : null
-          const dep = inbound ? (sim.departures[i - 1] ?? '--:--') : (sim.departures[i] ?? '--:--')
-          const arr = sim.arrivalTimes[i] ?? dep
+          // The drive that brought you TO this anchor: its own inbound leg
+          // (the old read handed the strip the leg into the row above — one
+          // drive stale). Departure is the previous row's clock, arrival this
+          // row's — both id-keyed so nothing shifts when a row is skipped.
+          const row = simRows.get(s.id)
+          const prevRow = i > 0 ? simRows.get(stops[i - 1].id) : null
+          const inbound = i > 0 ? row?.legIn ?? null : null
+          const dep = inbound ? (prevRow?.depart ?? '--:--') : (row?.depart ?? '--:--')
+          const arr = row?.arrive ?? dep
           const cost = inbound ? Math.round(inbound.distanceKm * (assumptions.inrPerKm ?? 8)) : 0
           const depHM = dep !== '--:--' ? formatHM(dep, timeFormat) : dep
           const arrHM = arr !== '--:--' ? formatHM(arr, timeFormat) : arr

@@ -118,3 +118,22 @@ describe('I-21 — where the surfaces offer it', () => {
     expect(action).toMatch(/nativeCopyText/)
   })
 })
+
+describe('#590 — both share controls run the same in-flight guard', () => {
+  const page = read('../src/pages/Purchases.tsx')
+
+  it('the reveal disables, relabels and re-enables around the share', () => {
+    // The §6a pair: a disabled state alone reads as a dead button, a label
+    // alone does not stop a second sheet. Both, cleared in finally.
+    expect(reveal).toContain('const [sharing, setSharing] = useState(false)')
+    expect(reveal).toMatch(/if \(sharing \|\| !entitlementId\) return/)
+    expect(reveal).toContain('disabled={sharing}')
+    expect(reveal).toContain("{sharing ? 'Opening…' : 'Share what you bought'}")
+    expect(reveal).toMatch(/\.finally\(\(\) => setSharing\(false\)\)/)
+  })
+
+  it('the pair stays pinned: the shelf keeps its own guard', () => {
+    expect(page).toContain('const [sharingId, setSharingId] = useState<string | null>(null)')
+    expect(page).toContain('disabled={sharingId !== null}')
+  })
+})

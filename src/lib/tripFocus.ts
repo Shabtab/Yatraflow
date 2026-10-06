@@ -116,3 +116,20 @@ export function dayFromFocus(
 export function focusForDay(tripId: string, dayIndex: number | null): TripFocus {
   return normalizeFocus({ tripId, dayIndex })
 }
+
+/**
+ * The Map rail's side of the shared day axis (#610). A shared number this
+ * trip holds wins — that is what carries a Board or rail pick across a tab
+ * switch. 'all'/absent/foreign falls back to the rail's own day, then to
+ * day one. The rail always plans exactly one day, so 'all' never reaches
+ * it: the map scope reads 'all' from the axis directly.
+ */
+export function resolveRailDay(
+  dayFocus: number | 'all' | undefined,
+  indexes: number[],
+  localDay: number,
+): number {
+  if (typeof dayFocus === 'number' && indexes.includes(dayFocus)) return dayFocus
+  if (indexes.includes(localDay)) return localDay
+  return indexes[0] ?? 0
+}

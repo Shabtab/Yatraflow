@@ -68,6 +68,14 @@ describe('#425 PR 2 — the map validates its inbound day filter', () => {
     expect(ws).toMatch(/dayFromFocus\(focus, trip\.id\)/)
   })
 
+  it('MapTab consumes the axis through resolveRailDay, not a day-zero reset (#610)', () => {
+    // #420 slice 12: the rule lives in the rail-view hook; the page consumes it.
+    const hook = codeOf('../src/pages/trip/map/useRailView.ts')
+    expect(hook).toMatch(/const activeDayIndex = resolveRailDay\(dayFocus/)
+    const tab = codeOf('../src/pages/trip/MapTab.tsx')
+    expect(tab).toContain('} = useRailView(')
+  })
+
   it('Board and MapTab hold no second selection when the axis is handed over', () => {
     const board = codeOf('../src/components/BoardView.tsx')
     expect(board).toMatch(/dayFocus \?\? localFocusDay/)

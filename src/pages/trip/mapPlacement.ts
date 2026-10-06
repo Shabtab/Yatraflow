@@ -38,10 +38,16 @@ export type PlacementOption = {
 export type PlacementInput = {
   /** the selected discovery, or null when nothing is selected */
   hit: (Pick<PlaceHit, 'name' | 'latitude' | 'longitude'> & { id?: PlaceHit['id'] }) | null
-  /** the day the map is planning (the rail's active day) */
+  /** the day the map is planning (the rail's active day). Its empty parts are
+   *  the filing options, so their hints name this day. */
   dayIndex: number
-  /** the day's own title, when it has one */
-  dayLabel?: string | null
+  /** The day the stop editor will open on. The caller resolves it through the
+   *  same road-position lookup the editor uses. When the position is unknown,
+   *  pass the editor's own fallback: the trip's first day. The day option names
+   *  THIS day, so the label and the editor cannot disagree (#I-41). */
+  placeDayIndex: number
+  /** the placement day's own title, when it has one */
+  placeDayLabel?: string | null
   /** the hit's road position, when the route could place it (km) */
   km?: number | null
   /** empty parts of the active day this hit's own category can serve */
@@ -72,13 +78,17 @@ export const VOTE_MIN_PLACES = 2
  * every option disabled (with its reason) when the hit cannot be placed.
  */
 export function placementOptions(input: PlacementInput): PlacementOption[] {
-  const { hit, dayIndex, dayLabel, filingOptions, alreadyAdded, shortlisted, shortlistCount } = input
+  const { hit, dayIndex, placeDayIndex, filingOptions, alreadyAdded, shortlisted, shortlistCount } = input
   if (hit == null) return []
 
   const dayName = `Day ${dayIndex + 1}`
+  // #I-41: the day option names the day the stop editor will open on. The
+  // caller resolves one day and passes it here and to the click, so the label
+  // and the editor cannot drift apart.
+  const placeDayName = `Day ${placeDayIndex + 1}`
   const km = input.km
   const dayHint = km == null
-    ? `No road position for this place, so ${dayName} is a guess — you can change it in the stop editor.`
+    ? `No road position for this place, so ${placeDayName} is a guess — you can change it in the stop editor.`
     : `~${Math.round(km)} km into the route, so it lands on the day that covers that stretch.`
 
   // A vote is raised FROM the tray, so the hit has to be in it: offering "ask the
@@ -91,8 +101,8 @@ export function placementOptions(input: PlacementInput): PlacementOption[] {
   const options: PlacementOption[] = [
     {
       kind: 'day',
-      label: `Add to ${dayName}`,
-      hint: dayLabel ? `${dayName}: ${dayLabel}. ${dayHint}` : dayHint,
+      label: `Add to ${placeDayName}`,
+      hint: input.placeDayLabel ? `${placeDayName}: ${input.placeDayLabel}. ${dayHint}` : dayHint,
       disabled: false,
     },
     ...filingOptions.map(f => ({

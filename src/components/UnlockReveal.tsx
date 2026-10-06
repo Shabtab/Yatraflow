@@ -12,6 +12,7 @@
 // Motion follows the token catalog: a full-screen sheet is a large surface
 // (--motion-slow + --ease-out), the facts take the entrance pattern, and both
 // opt out under prefers-reduced-motion (AGENTS rule 10).
+import { useState } from 'react'
 import { CalendarDays, Share2 } from 'lucide-react'
 import { InlineIcon } from './icons'
 import { Modal, StatTile } from './ui'
@@ -40,6 +41,17 @@ export function UnlockReveal({ open, pub, trip, creator, amountPaidInr, entitlem
   onClose: () => void
 }) {
   const stats = unlockRevealStats(trip)
+  // #590 — the share awaits the system sheet (or the clipboard fallback), so a
+  // double-tap on the quietest button of the ceremony would open two sheets or
+  // fire two toasts. Same guard the shelf's identical control carries (the
+  // #409 pass) — the pair is pinned together in tests.
+  const [sharing, setSharing] = useState(false)
+  const shareBought = () => {
+    if (sharing || !entitlementId) return
+    setSharing(true)
+    void sharePurchase({ pubId: pub.id, entitlementId, title: pub.title })
+      .finally(() => setSharing(false))
+  }
 
   return (
     <Modal open={open} onClose={onClose} title="You now own it" variant="full">
@@ -96,10 +108,11 @@ export function UnlockReveal({ open, pub, trip, creator, amountPaidInr, entitlem
           {entitlementId && (
             <button
               className="btn btn-ghost"
-              onClick={() => void sharePurchase({ pubId: pub.id, entitlementId, title: pub.title })}
+              disabled={sharing}
+              onClick={shareBought}
             >
               <InlineIcon icon={Share2} size={15} gap={6} />
-              Share what you bought
+              {sharing ? 'Opening…' : 'Share what you bought'}
             </button>
           )}
         </div>

@@ -41,10 +41,20 @@ export interface PurchaseRow {
   /** The creator has re-published since this purchase. */
   updatedSince: boolean
   refreshedAt?: number
-  /** False when the publication row is not in the cache. The entitlement is
-   *  still the buyer's (the database ties the two together for life), so the
-   *  row is kept and rendered as "no longer listed" rather than dropped. */
-  listed: boolean
+  /** #570 — the publication row is in the cache. The entitlement is still the
+   *  buyer's (the database ties the two together for life), so the row is kept
+   *  and rendered rather than dropped. PRESENCE ONLY: since #350 a withdrawn
+   *  publication's row survives, so this says nothing about whether the plan is
+   *  still on sale — that is `onSale`. Gates "Open the plan" and "Fork", which
+   *  work through a withdrawal for a buyer (get_public_trip serves entitled
+   *  holders). */
+  rowExists: boolean
+  /** #570 — the two facts #350 separated. True when the row exists AND has not
+   *  been soft-unpublished (`unpublished_at` is null). Gates only what needs a
+   *  LIVE plan: the share card and the cover auto-lookup. Never the buyer's own
+   *  access — gating that on "still on sale" would break the one working path
+   *  to a plan they paid for. */
+  onSale: boolean
   /** The row's own facts could not be read as money: the amount is absent or
    *  not a finite number. The plan is STILL listed and still the buyer's — only
    *  the money is unreadable, so the row is flagged instead of dropped (silently
@@ -60,11 +70,28 @@ export interface PurchaseRow {
    *  RECEIPT and not a claim of access. Read from the ORDER's money state, the
    *  only row that survives a refund (the entitlement is deleted).
    *
-   *  ORTHOGONAL to `listed`: a refunded plan can still be published, and a
-   *  withdrawn plan can still be owned. The two chips render independently —
+   *  ORTHOGONAL to `onSale`/`rowExists`: a refunded plan can still be on sale,
+   *  and a withdrawn plan can still be owned. The two chips render independently —
    *  conflating them would tell a refunded buyer their access ended because the
    *  creator unpublished, which is a different story with different next steps. */
   refunded: boolean
+  /** #589 — the money was captured and the GRANT has not landed yet: a paid
+   *  order with no entitlement row (the 503 "confirm-but-not-saved" answer
+   *  promises the webhook may still finish it, and the checkout's self-heal
+   *  grants on the next Unlock). NOT a claim of access — the paywall refuses
+   *  this publication server-side until the grant exists — so the row shows
+   *  money and state, never Open/Fork/Share.
+   *
+   *  ORTHOGONAL to `refunded`: a failed (refunded) order and a paid order are
+   *  different rows of money history, and a `pending`-status order (an
+   *  abandoned checkout) never becomes a row at all — only `paid` proves money
+   *  moved. A later grant converts the row into a normal one: the entitlement
+   *  loop claims the publication slot first. */
+  pendingGrant: boolean
+  /** #554 — the cumulative paise refunded against this row's order, while the
+   *  plan is still owned (a partial refund). Zero for a full refund — that
+   *  story is the `refunded` receipt's to tell — and for no refund at all. */
+  refundedPaise: number
 }
 
 export interface PurchaseShelf {
@@ -89,6 +116,12 @@ export interface PurchaseShelf {
    *  count the header would have to be silently short, which is the shape of
    *  dishonesty the rest of this file exists to avoid. */
   refundedCount: number
+  /** #589 — how many rows are captured payments whose grant has not landed.
+   *  Named separately because `totalPaidInr` excludes them too: the money
+   *  moved, but the plan is not held yet — the same holds-based definition
+   *  that excludes refunds. The count keeps the exclusion named, and the page
+   *  uses it to explain the "being finalized" state. */
+  pendingGrantCount: number
 }
 
 /** The buyer's shelf, newest purchase first.
@@ -124,6 +157,8 @@ export function buildPurchaseShelf(
     amountClaim: unknown
     moneyAt: unknown
     refunded: boolean
+    pendingGrant?: boolean
+    refundPaise?: number
   }): PurchaseRow => {
     const pub = pubById.get(input.pubId)
     // A stored amount is a CLAIM about money, so it is checked rather than cast:
@@ -151,10 +186,18 @@ export function buildPurchaseShelf(
       // value must read as "not updated", never as "updated".
       updatedSince: Boolean(pub?.refreshedAt && pub.refreshedAt > (input.moneyAt as number)),
       refreshedAt: pub?.refreshedAt,
-      listed: Boolean(pub),
+      rowExists: Boolean(pub),
+      onSale: pub ? !pub.unpublishedAt : false,
       amountReadable,
       dateReadable,
       refunded: input.refunded,
+      pendingGrant: input.pendingGrant ?? false,
+      // #554 — the cumulative paise refunded against the row's order; zero
+      // means nothing came back. A FULL refund renders as the refunded
+      // receipt instead (the chip tells that story), so its figure stays 0
+      // rather than double-telling. Display-only here: the books keep the
+      // paise-exact figure on the order itself.
+      refundedPaise: input.refunded ? 0 : Math.max(0, Math.round(input.refundPaise ?? 0)),
     }
   }
 
@@ -172,6 +215,33 @@ export function buildPurchaseShelf(
       amountClaim: e.amountPaidInr,
       moneyAt: e.grantedAt,
       refunded: isRefunded(orderById.get(e.orderId) ?? { status: 'paid' }),
+      // #554 — a partial refund left the entitlement alive; the order carries
+      // how much of the money came back.
+      refundPaise: orderById.get(e.orderId)?.refundedPaise ?? 0,
+    }))
+  }
+
+  // #589 — THEN the in-flight grants: a paid order with NO entitlement row is
+  // money captured whose grant has not landed yet. It runs BEFORE the receipts
+  // loop so a publication with both a refunded order and a fresh paid one shows
+  // the money that is now the buyer's — the refund is history, the
+  // captured payment is now. `pending`-status orders (abandoned checkouts) must
+  // NOT become rows: only `paid` proves money moved. A later grant converts the
+  // row into a normal one, because the entitlement loop claims the slot first.
+  for (const o of [...orders].sort((a, b) => orderMoneyAt(a) - orderMoneyAt(b))) {
+    if (o.status !== 'paid') continue
+    if (seen.has(o.pubId)) continue
+    seen.add(o.pubId)
+    rows.push(rowFor({
+      pubId: o.pubId,
+      // No grant exists, so there is no entitlement to name. The ORDER id is
+      // the honest identifier: it is what the payment is a receipt for.
+      entitlementId: o.id,
+      amountClaim: o.amountInr,
+      moneyAt: orderMoneyAt(o),
+      refunded: false,
+      pendingGrant: true,
+      refundPaise: o.refundedPaise ?? 0,
     }))
   }
 
@@ -196,33 +266,40 @@ export function buildPurchaseShelf(
   rows.sort((a, b) => b.grantedAt - a.grantedAt || a.title.localeCompare(b.title))
   // The TOTAL and the update count are about what the buyer HOLDS, so refunded
   // receipts are excluded from both: their money came back, and a plan they
-  // cannot open has no update to be told about. `refundedCount` below is what
-  // keeps that exclusion visible instead of silent.
-  const liveRows = rows.filter(r => !r.refunded)
-  const totalPaidInr = liveRows.reduce((sum, r) => sum + (r.amountReadable ? r.amountPaidInr : 0), 0)
+  // cannot open has no update to be told about. #589 — in-flight grants are
+  // excluded for the same reason: the money moved, but the plan is not held
+  // yet. `refundedCount` and `pendingGrantCount` keep both exclusions visible
+  // instead of silent.
+  const heldRows = rows.filter(r => !r.refunded && !r.pendingGrant)
+  const totalPaidInr = heldRows.reduce((sum, r) => sum + (r.amountReadable ? r.amountPaidInr : 0), 0)
   return {
     rows,
     totalPaidInr,
-    totalReadable: liveRows.every(r => r.amountReadable),
-    updatedCount: liveRows.filter(r => r.updatedSince).length,
+    totalReadable: heldRows.every(r => r.amountReadable),
+    updatedCount: heldRows.filter(r => r.updatedSince).length,
     refundedCount: rows.filter(r => r.refunded).length,
+    pendingGrantCount: rows.filter(r => r.pendingGrant).length,
   }
 }
 
 /** Whether this purchase can be offered for sharing at all (ROADMAP I-21).
  *
- *  A buyer's card resolves through `/i/<pubId>`, and unpublishing DELETES the
- *  publication row — so the link for a withdrawn plan previews as nothing, and
- *  offering it would hand somebody a dead link to post. The buyer's own access
- *  and their copy are untouched by this: only the public card needs the row to
- *  exist.
+ *  A buyer's card resolves through `/i/<pubId>`, and the recipient lands on the
+ *  plan's PUBLIC page — which a withdrawn plan no longer serves to strangers
+ *  (#350: the row survives so the buyer keeps their access, but everyone else
+ *  is turned away). Offering the card would hand somebody a link that previews
+ *  as a live plan and then refuses them — a card that sells what the recipient
+ *  cannot see. The buyer's own access and their copy are untouched: only the
+ *  public card needs the plan to still be on sale.
  *
  *  #407 adds the second reason a row cannot be shared: a REFUNDED purchase has
  *  no access left to advertise. The share card is a claim about what you bought
  *  — posting one for a plan whose money went back would be the same overclaim as
  *  the "₹500 paid" chip was, in a place other people can see. */
 export function purchaseShareable(row: PurchaseRow): boolean {
-  return row.listed && !row.refunded
+  // #589 — an in-flight grant is not access yet: sharing a plan the buyer
+  // cannot open is the same overclaim as sharing a refunded one.
+  return row.onSale && !row.refunded && !row.pendingGrant
 }
 
 /** How sure a match is. `exact` is the publication's own itinerary, which a copy

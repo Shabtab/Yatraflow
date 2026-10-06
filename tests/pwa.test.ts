@@ -97,3 +97,23 @@ describe('registration and update plumbing', () => {
     expect(cacheControl).toContain('no-cache')
   })
 })
+
+describe('the asset branch refuses rewritten answers (#575 Face A)', () => {
+  // The host's catch-all rewrite answers a MISSING hashed asset with 200 + the
+  // HTML shell. Caching that would file markup under a .js URL and serve it
+  // cache-first until a version bump — the durable poison this guards against.
+  const assetsBranch = () => sw.slice(sw.indexOf("startsWith('/assets/')"))
+
+  it('bumps the version — the policy changed, so activate sweeps poisoned v1 caches', () => {
+    expect(sw).toContain("const SW_VERSION = 'v2'")
+  })
+
+  it('refuses to cache a text/html response under an asset URL', () => {
+    expect(assetsBranch()).toContain("type.includes('text/html')")
+    expect(assetsBranch()).toContain('return Response.error()')
+  })
+
+  it('resolves an offline asset miss as a network error, not a rejected respondWith', () => {
+    expect(assetsBranch()).toContain('.catch(() => Response.error())')
+  })
+})

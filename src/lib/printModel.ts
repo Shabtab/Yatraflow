@@ -98,13 +98,13 @@ export function buildPrintModel(
     })
 
     const rows: PrintDay['rows'] = []
-    byOrder.forEach((s, i) => {
+    byOrder.forEach(s => {
       const clocks = byId.get(s.id)
-      // the leg that brought you to this stop, when the simulator knows it
-      if (i > 0) {
-        const leg = sim.legs[sim.activeStops.findIndex(x => x.id === s.id)]
-        if (leg && leg.distanceKm > 0) rows.push({ kind: 'leg', leg: { fromTitle: leg.fromTitle, toTitle: leg.toTitle, distanceKm: fin(leg.distanceKm), durationMinutes: fin(leg.durationMinutes) } })
-      }
+      // every stop prints its OWN inbound leg — the opening drive is the first
+      // stop's into-leg, so no leg is hand-appended before the row that led
+      // into it was already printed (#557)
+      const leg = sim.legs[sim.activeStops.findIndex(x => x.id === s.id)]
+      if (leg && leg.distanceKm > 0) rows.push({ kind: 'leg', leg: { fromTitle: leg.fromTitle, toTitle: leg.toTitle, distanceKm: fin(leg.distanceKm), durationMinutes: fin(leg.durationMinutes) } })
       rows.push({
         kind: 'stop',
         stop: {
@@ -117,14 +117,13 @@ export function buildPrintModel(
       })
     })
 
-    // Base → first stop (and last stop → destination when the journey adds an
-    // anchor) are real legs the traveller drives; surface them when present.
-    const firstLeg = sim.legs[0]
-    if (firstLeg && firstLeg.distanceKm > 0 && rows.length > 0 && rows[0].kind === 'stop') {
-      rows.unshift({ kind: 'leg', leg: { fromTitle: firstLeg.fromTitle, toTitle: firstLeg.toTitle, distanceKm: fin(firstLeg.distanceKm), durationMinutes: fin(firstLeg.durationMinutes) } })
-    }
+    // A trailing drive prints only when the schedule holds a row the printed
+    // stops do not — the synthesized destination a return day or a ride-halt
+    // day ends at. Its into-leg is the day's real final drive; on an ordinary
+    // day the loop above already printed every leg, the last one included
+    // (#557 — the old unconditional append repeated it).
     const lastLeg = sim.legs[sim.legs.length - 1]
-    if (lastLeg && lastLeg.distanceKm > 0 && sim.legs.length > 1) {
+    if (lastLeg && lastLeg.distanceKm > 0 && sim.activeStops.length > byOrder.length) {
       rows.push({ kind: 'leg', leg: { fromTitle: lastLeg.fromTitle, toTitle: lastLeg.toTitle, distanceKm: fin(lastLeg.distanceKm), durationMinutes: fin(lastLeg.durationMinutes) } })
     }
 

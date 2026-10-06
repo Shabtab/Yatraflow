@@ -23,9 +23,9 @@
 // tests/share-preview.test.ts; the counter threading runs in
 // tests/pub-counters.test.ts; the fork's trip stamp runs in
 // tests/forkPersist.test.ts.
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi, afterEach } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
-import { SHARE_SOURCES, SHARE_SOURCE_LABELS, shareRefFromSearch, withShareRef } from '../src/lib/shareUrl'
+import { SHARE_SOURCES, SHARE_SOURCE_LABELS, shareRefFromSearch, withShareRef, clearShareRefFromLocation } from '../src/lib/shareUrl'
 import { tripToRow, rowToTrip, type OptionalColumnsProbe, type TripRow } from '../src/lib/tripRow'
 import type { Trip } from '../src/data/types'
 import { seedData } from '../src/data/seed'
@@ -180,6 +180,74 @@ describe('withShareRef — the link end', () => {
   })
 })
 
+describe('clearShareRefFromLocation — the consume (#552)', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  /** A stand-in address bar: replaceState re-parses the URL it is handed, so
+   *  the tests can chain reads after a clear the way a real tab would. */
+  function installAddress(search: string, pathname = '/i/A', hash = '#/pub/A') {
+    const addr = {
+      pathname, search, hash, state: null as unknown, calls: [] as string[],
+      replaceState(_s: unknown, _t: string, url: string) {
+        addr.calls.push(url)
+        const q = url.indexOf('?')
+        const h = url.indexOf('#')
+        addr.pathname = url.slice(0, q >= 0 ? q : h >= 0 ? h : url.length)
+        addr.search = q >= 0 ? url.slice(q, h >= 0 ? h : undefined) : ''
+        addr.hash = h >= 0 ? url.slice(h) : ''
+      },
+    }
+    vi.stubGlobal('window', { location: addr })
+    vi.stubGlobal('history', addr)
+    return addr
+  }
+
+  it('removes a recognised ref and keeps every other parameter', () => {
+    const addr = installAddress('?buyer=ent-1&ref=buyer')
+    clearShareRefFromLocation()
+    expect(addr.calls).toEqual(['/i/A?buyer=ent-1#/pub/A'])
+    expect(addr.search).toBe('?buyer=ent-1')
+  })
+
+  it('a bare ref leaves no dangling separator behind', () => {
+    const addr = installAddress('?ref=copy')
+    clearShareRefFromLocation()
+    expect(addr.calls).toEqual(['/i/A#/pub/A'])
+    expect(addr.search).toBe('')
+  })
+
+  it('an unknown ref is a stranger’s parameter — not ours to drop', () => {
+    const addr = installAddress('?ref=bogus&x=1')
+    clearShareRefFromLocation()
+    expect(addr.calls).toEqual([])
+  })
+
+  it('a clean address is left untouched', () => {
+    const addr = installAddress('', '/pub/A')
+    clearShareRefFromLocation()
+    expect(addr.calls).toEqual([])
+  })
+
+  it('is idempotent — the second call finds nothing of ours', () => {
+    const addr = installAddress('?ref=wa')
+    clearShareRefFromLocation()
+    clearShareRefFromLocation()
+    expect(addr.calls).toHaveLength(1)
+  })
+
+  it('the route-level story: first read carries the link, the next reads direct', () => {
+    // The sticky-query bug in one breath: a reader opens ?ref=copy#/pub/A,
+    // then Explore, then publication B — B's view must record direct, not
+    // inherit the first link's route. The cleared address is the latch.
+    installAddress('?ref=copy')
+    const first = shareRefFromSearch(window.location.search)
+    clearShareRefFromLocation()
+    const later = shareRefFromSearch(window.location.search)
+    expect(first).toBe('copy')
+    expect(later).toBeNull()
+  })
+})
+
 describe('the migration shape', () => {
   it('drops the two-argument overload BEFORE the three-argument one lands', () => {
     // With a defaulted third parameter, a two-argument call matches both
@@ -272,8 +340,16 @@ describe('every surface stamps its own route in', () => {
   const purchases = read('../src/pages/Purchases.tsx')
 
   it('the public page attributes its views and forks to the link’s ref', () => {
-    expect(publicPage).toContain('registerPubView(pub.id, shareRefFromSearch(window.location.search))')
-    expect(publicPage).toContain('unlocked, shareRefFromSearch(window.location.search)')
+    expect(publicPage).toContain('registerPubView(pub.id, arrivalRef)')
+    expect(publicPage).toContain('unlocked, arrivalRef)')
+  })
+
+  it('the ref is consumed once, then taken out of the bar (#552)', () => {
+    // Read at first render into state (one value for the page's view, re-share
+    // and fork — one arrival), and the query cleared afterwards: a sticky ref
+    // would hand every later view and fork in the tab to the first link.
+    expect(publicPage).toContain('const [arrivalRef] = useState(() => shareRefFromSearch(window.location.search))')
+    expect(publicPage).toContain('useEffect(() => { clearShareRefFromLocation() }, [])')
   })
 
   it('the two Copy-link buttons mint a copy link (display and copy are one string)', () => {

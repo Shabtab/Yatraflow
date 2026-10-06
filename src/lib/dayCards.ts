@@ -135,7 +135,7 @@ export function dayCardKey(
     .join(';')
   const commitments = trip.fixedCommitments
     .filter(fc => fc.dayIndex === day.index)
-    .map(fc => `${fc.id},${fc.title},${fc.time},${fc.type},${fc.notes ?? NO}`)
+    .map(fc => `${fc.id},${fc.title},${fc.time},${fc.type},${fc.notes ?? NO},${fc.stopId ?? NO}`)
     .join(';')
   const sc = trip.startLocationCoords
   const dest = trip.destinationCoords ?? []

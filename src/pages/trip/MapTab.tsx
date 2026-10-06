@@ -2,39 +2,47 @@
 // Mechanical extraction from src/pages/TripWorkspace.tsx (M3.4) — no behavior changes.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { InlineIcon } from '../../components/icons'
-import { BedDouble, ChevronDown, CircleCheck, Coffee, ExternalLink, Fuel, Lightbulb, MapPin, Pause, Plus, RefreshCw, RotateCcw, Sparkles, Star, Utensils } from 'lucide-react'
+import { BedDouble, ChevronDown, CircleCheck, Coffee, ExternalLink, Fuel, Lightbulb, MapPin, Pause, Plus, RefreshCw, RotateCcw, Sparkles, Utensils } from 'lucide-react'
 import { uid } from '../../data/seed'
 import type { Trip, ItineraryStop, TripDecision } from '../../data/types'
 import type { ImpactResult } from '../../lib/impact'
 import { removeStopWithUndo } from '../../lib/mutationLifecycle'
 import { mapRoadViewFromLegs, mapReturnGeometryFromLegs, outboundLegs, type TripRoadView } from '../../lib/tripRoad'
-import { buildJourney, minutesToHM, fmtDur, computeCategoryBias, MODE_SPEED, isRoundTrip } from '../../lib/engine'
+import { buildJourney, minutesToHM, fmtDur, computeCategoryBias, MODE_SPEED, isRoundTrip, type LegEstimate } from '../../lib/engine'
 import { useTimeFormat, formatHM, formatHMRange } from '../../lib/timefmt'
 import { loadPref, savePref, loadHaltPinsForTrip, saveHaltPin, clearHaltPin, clearHaltPinsForTrip } from '../../lib/uiPrefs'
 import { DEBOUNCE_MS } from '../../lib/geocode'
 import { Modal, Field, toast, undoToast, useInView, useMedia, usePageVisible } from '../../components/ui'
 import { Select } from '../../components/Select'
 import { DetourWhisk } from '../../components/DetourWhisk'
-import { useSuggestionCache, isMapCacheFresh } from '../../hooks/useSuggestionCache'
+import { useSuggestionCache } from '../../hooks/useSuggestionCache'
 import { openExternal } from '../../lib/native'
-import { corridorAnchors, detourKm, asymmetricDetourKm, asymmetricDetourMinutes, googleEnabled, planJourneyHalts, reasonForSegmentHit, searchPlacesText, searchNearbyPoisMulti, kmFromStartForHit, planDriveDays, planTravelClock, rainFactorFor, directionalKm, alongRouteKmOf, DEFER_START, type NearbyOpts, type PlaceHit, type TravelClockVerdict, routeHash } from '../../lib/geocode'
+import { corridorAnchors, asymmetricDetourKm, asymmetricDetourMinutes, googleEnabled, reasonForSegmentHit, searchPlacesText, kmFromStartForHit, planDriveDays, planTravelClock, rainFactorFor, directionalKm, alongRouteKmOf, DEFER_START, type NearbyOpts, type PlaceHit, type TravelClockVerdict } from '../../lib/geocode'
 import { useResolvePick } from '../../components/ResolvePickDialog'
 import { clockHM, deriveClockMilestones } from '../../lib/clockOverlay'
-import { SHEET_TABS, sheetAppliesAt, sheetHiddenClass, sheetTabMove, type SheetTabKey } from '../../lib/mapSheet'
+import { SHEET_TABS, sheetHiddenClass, sheetTabMove } from '../../lib/mapSheet'
 import { mapScopeNote } from '../../lib/railA11y'
 import { railKeyAction } from '../../lib/railKeys'
 import { candidatesAnnouncement, fillLabel, pickDayCaveat, scopeValueText, searchAnnouncement, voteStatusId } from '../../lib/railA11y'
 import { MapOmnibar } from './MapOmnibar'
-import { placementOptions, type PlacementOption } from './mapPlacement'
+import { useOmnibarPlacement } from './map/useOmnibarPlacement'
+import { useMapSearch } from './map/useMapSearch'
+import { useAddModal } from './map/useAddModal'
 import { ShortlistTray } from './map/ShortlistTray'
 import { useShortlist } from './map/useShortlist'
+import { useMapWriters } from './map/useMapWriters'
+import { useCorridorCache } from './map/useCorridorCache'
+import { useRailView } from './map/useRailView'
+import { useRailContent } from './map/useRailContent'
+import { useSlotSearch } from './map/useSlotSearch'
+import { useDaySlots } from './map/useDaySlots'
 import {
-  NEED_PURPOSES, SEE_VISIBLE, SCOPE_KM_STEPS, SCOPE_STORAGE_KEY,
+  SEE_VISIBLE, SCOPE_KM_STEPS, SCOPE_STORAGE_KEY,
   googleMapsUrl, newStopId, poiVisitMinutes, smallThumb,
 } from './map/pageHelpers'
-import { hitCostLabels, slotPinsFor } from './map/railLabels'
-import { alternativesFor as pickAlternatives, sightRowChips } from './map/sightRows'
-import { filingOptionsFor, manualCandidateFor, mergeSlotCandidates, slotFileRefusal } from './map/slotFiling'
+import { chipsFor, activeReadinessLabel, activeDayLabel } from './map/railRows'
+import { LedgerRow } from './map/RailRowViews'
+import { filingOptionsFor, manualCandidateFor, mergeSlotCandidates } from './map/slotFiling'
 import {
   dayWeatherJoin, drizzleDayIndex, journeyKmFrom, routePolylineFrom, weatherAnchorFrom, weatherFetchRefusal,
 } from './map/weatherGeometry'
@@ -46,19 +54,16 @@ const SEARCH_PAGE = 5
 import { isSightCategory, roadProfileFromLegs, loopProfile } from '../../lib/ridePlan'
 import { QuotaExhaustedError } from '../../lib/providers/google'
 import { isElectric } from '../../lib/vehicleProfile'
-import { planInputsHash } from '../../hooks/useSuggestionCache'
-import type { RailChip } from '../../lib/railReasons'
-import { daySlots, dayShape, tripDayAttribution, tripReadiness, SLOT_URGENCY_MIN, type DaySlot, type DaySlotKind, type DaySlotsDeps } from '../../lib/daySlots'
+import { dayShape, tripDayAttribution, SLOT_URGENCY_MIN, type DaySlot, type DaySlotKind } from '../../lib/daySlots'
 import { discardedStagedIds, isAlreadyAdded, normalizePlaceName, tripPresence, type PlaceIdentity } from '../../lib/placeIdentity'
-import { addDecision, deleteStop } from '../../store/store'
+
 import { dayDetourBudgetMin, budgetSharePct, splitByDetourBudget } from '../../lib/detourBudget'
 import { anyQuotaExhausted } from '../../lib/providers/quota'
-import { buildDnaVectorAcrossTrips, loadDnaLog, recordDnaEvent, dnaNoteForHit, slotPatternHint, crewSeedsFromSuggestions, crewSeedsToPlannedStops, crewSeedEvents, crewNoteForHit } from '../../lib/tripDna'
-import { clusterStoryArcs } from '../../lib/storyArcs'
+import { buildDnaVectorAcrossTrips, loadDnaLog, recordDnaEvent, dnaNoteForHit, crewSeedsFromSuggestions, crewSeedsToPlannedStops, crewSeedEvents, crewNoteForHit } from '../../lib/tripDna'
 import { visitMinutesForCategory } from '../../lib/slackPrompts'
 import { scrollBehavior } from '../../lib/motion'
 import type { SegmentHit } from '../../lib/geocode'
-import { anchorHash, projectOntoPolyline } from '../../lib/providers/hits'
+import { projectOntoPolyline } from '../../lib/providers/hits'
 import { fetchDailyWeather, forecastAvailable, isoAddDays, todayISO } from '../../lib/weather'
 // MapLibre is heavy (~1MB) — load it only when the Map tab is actually opened.
 const TripMap = React.lazy(() => import('../../components/TripMap').then(m => ({ default: m.TripMap })))
@@ -137,7 +142,7 @@ function SlotGlyph({ kind, label }: { kind: DaySlotKind; label: string }) {
   const G = label === 'Breakfast' ? Coffee : KIND_GLYPH[kind]
   return G ? <InlineIcon icon={G} size={12} /> : null
 }
-export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsHash, crewSuggestions, decisions, road, onOpenTimeline, onOpenBoard, onOpenDay, onOpenGroupInput, previewOpen, dayFocus, onDayFocusChange }: {
+export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsHash, crewSuggestions, decisions, road, onOpenTimeline, onOpenBoard, onOpenDay, onOpenGroupInput, previewOpen, dayFocus, onDayFocusChange, legCorrections }: {
   trip: Trip
   editable: boolean
   applyChange: (mutator: (d: Trip) => void, kind: ImpactResult['kind'], dayIndex: number, onKept?: () => void) => void
@@ -170,10 +175,11 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
   dayFocus?: number | 'all'
   /** reports the tab's day-axis choice back up to the workspace. */
   onDayFocusChange?: (day: number | 'all') => void
+  /** The workspace's measured road data — pin clocks read it (#611). */
+  legCorrections?: Record<string, LegEstimate>
 }) {
   const [pois, setPois] = useState<SegmentHit[]>([])
   const timeFormat = useTimeFormat()
-  const [loadingPois, setLoadingPois] = useState(false)
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set())
   // dismissed suggestion ids — logged as DNA declines, hidden for the session
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set())
@@ -219,10 +225,14 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
     }, DEBOUNCE_MS)
   }
   useEffect(() => () => { if (scopeTimer.current) clearTimeout(scopeTimer.current) }, [])
-  // pending "add from map / nearby" — pick a day, then confirm
-  const [poiDraft, setPoiDraft] = useState<{ hit: PlaceHit } | null>(null)
-  const [pickDay, setPickDay] = useState<number>(0)
-  const [pickDayGuessed, setPickDayGuessed] = useState(false)
+  // #420 slice 16: widening stays a page callback — the gap row calls it,
+  // and the corridor re-plans through the same state it always did.
+  const widenScope = () => {
+    setScopeIdx(i => Math.min(i + 1, SCOPE_KM_STEPS.length - 1))
+    toast('Widened the search - the corridor will re-plan')
+  }
+  // #420 slice 9: the add draft moved with the opener into
+  // ./map/useAddModal (called after dayForKm below) — the modal JSX stays.
   // cross-highlighting: the suggestion currently hovered/selected in EITHER the
   // side panels or the map. Panel hover/click sets it (map flies to the pin);
   // map hover/click sets it (panel row highlights and scrolls into view).
@@ -235,49 +245,18 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
   // group can vote on them. The tray under the grid owns the actions. The whole
   // feature (collection, filter, both writers) lives in map/useShortlist.ts since
   // #420 slice 2; the hook is called below, after the helpers it needs.
-  // One reason chip can narrow the rail, so "where are the lunch options?" is a
-  // tap instead of a scroll.
-  const [chipFilter, setChipFilter] = useState<string | null>(null)
-  // Fold-to-spines: either rail can step back to a 48px spine so the map gains
-  // the room. Session state on purpose - a layout whim should not persist.
-  const [folded, setFolded] = useState<{ needs: boolean; see: boolean }>({ needs: false, see: false })
-  // P2: the day the plan rail reads. Day 1 by default; the strip's chips switch it.
-  // #416: what the map is showing, as far as the rail has been TOLD.
-  // null = not reported yet, which must stay silent rather than guess.
-  const [mapFilter, setMapFilter] = useState<number | 'all' | null>(null)
-  const [activeDayIndex, setActiveDayIndex] = useState(0)
-  // #415: which rail the narrow-band sheet shows, and whether the sheet is in play
-  // at all. false until the width is measured -- the desktop layout is what renders
-  // on an unknown width, never a guess that hides a rail.
-  const [sheetTab, setSheetTab] = useState<SheetTabKey>('needs')
-  const [sheetApplies, setSheetApplies] = useState(false)
-  useEffect(() => {
-    const sync = () => setSheetApplies(sheetAppliesAt(typeof window === 'undefined' ? null : window.innerWidth))
-    sync()
-    window.addEventListener('resize', sync)
-    return () => window.removeEventListener('resize', sync)
-  }, [])
+  // #420 slice 12: the rail view (filter, fold, day, sheet, return) lives in
+  // ./map/useRailView. States return with their setters; the page calls those
+  // from event handlers only, never during render.
+  const { chipFilter, setChipFilter, folded, setFolded, mapFilter, setMapFilter,
+    setLocalDay, activeDayIndex, sheetTab, setSheetTab, sheetApplies,
+    showReturn, setShowReturn } = useRailView({ dayFocus, dayIndexes: trip.days.map(d => d.index) })
 
-  // In-map place search (§6.5): a free-text query over the provider facade,
-  // plus the results to add straight from the Map tab.
-  const [searchQ, setSearchQ] = useState('')
-  const [searchResults, setSearchResults] = useState<{ h: PlaceHit; km: number | null; off: number | null }[]>([])
-  const [searching, setSearching] = useState(false)
-  // "show all N" — the rail lists 5 by default; this unfolds the rest.
-  const [showAllResults, setShowAllResults] = useState(false)
-  // #418: the map's OWN search — its query, its rows, and the hit the user picked
-  // from them. The pick is deliberately its own state rather than `activeHitId`:
-  // the rail's rows move that one on hover, so keying the placement step off it
-  // would let the omnibar inherit the context of whatever rail was last active.
-  const [omniQ, setOmniQ] = useState('')
-  const [omniResults, setOmniResults] = useState<{ h: PlaceHit; km: number | null; off: number | null }[]>([])
-  const [omniPicked, setOmniPicked] = useState<{ h: PlaceHit; km: number | null; off: number | null } | null>(null)
+  // #420 slice 8: the search state moved with the runner into
+  // ./map/useMapSearch (called after routeKmOf below) — the list refs and the
+  // slot abort stay here with the slot search that owns them.
   const listRef = useRef<HTMLDivElement | null>(null)
   const searchListRef = useRef<HTMLDivElement | null>(null)
-  // Monotonic search token: a slow earlier query must never clobber the rows of
-  // a newer one that resolved first (out-of-order responses).
-  const searchSeq = useRef(0)
-  const searchAbort = useRef<AbortController | null>(null)
   const slotAbort = useRef<AbortController | null>(null)
   // Shared resolve-or-prompt guard (product decision 2026-09-25, #424): every
   // unknown-position pick below resolves through resolvePick — retry / manual
@@ -285,38 +264,8 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
   // other hooks, above every path out of this component (AGENTS §6e).
   const { resolvePick, dialog: resolvePickDialog } = useResolvePick()
   useEffect(() => () => {
-    searchAbort.current?.abort()
     slotAbort.current?.abort()
   }, [])
-  // Search hits join the corridor ideas on the map so a hovered result row
-  // eases the camera to its pin and draws its spur — the same cross-highlight
-  // the suggestion rail already has. Deduped by id (a place can be BOTH a
-  // corridor idea and a search hit) and empty until a search lands, so the map
-  // is unchanged when nobody is searching.
-  const mapPois = useMemo(() => {
-    const corridor = pois.flatMap(p => (p.hit ? [p.hit] : []))
-    const seen = new Set(corridor.map(h => h.id))
-    return [
-      ...corridor,
-      ...searchResults.map(r => r.h).filter(h => !seen.has(h.id)),
-      // #418: an omnibar hit is a discovery like any other — it draws the same
-      // selectable marker, so the map never hides a place the user just found.
-      ...omniResults.map(r => r.h).filter(h => !seen.has(h.id) && !searchResults.some(s => s.h.id === h.id)),
-    ]
-  }, [pois, searchResults, omniResults])
-
-  // The subset of map pins that came from a search — the map draws them as
-  // distinct selectable markers (solid teal, not the dashed gold ideas), and
-  // they vanish with the results list when the search bar clears. Both searches
-  // feed it: a row found in either box is a search result on the map.
-  const searchHitIds = useMemo(
-    () => new Set<string | number>([
-      ...searchResults.map(r => r.h.id),
-      ...omniResults.map(r => r.h.id),
-    ]),
-    [searchResults, omniResults],
-  )
-
   // #345: ONE identity answers "is this already mine?" for every rail, slot,
   // arc, pin and search row. `tripPresence` is the stable half (the plan's own
   // stops, rejected ones excluded so a turned-down suggestion stays
@@ -414,6 +363,15 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
    *  each consumer decides honestly — never a silent Day 1. */
   const dayForKm = dayAttribution.dayForKm
 
+  // #420 slice 9: the add draft lives in ./map/useAddModal now — same inputs
+  // in, same outputs out, no behavior change. Called here because the day
+  // default reads the attribution above. Hook order changes once, then stays
+  // fixed — every hook here runs each render.
+  const {
+    poiDraft, setPoiDraft, pickDay, setPickDay,
+    pickDayGuessed, setPickDayGuessed, openAddModal,
+  } = useAddModal({ identity, dayForKm, days: trip.days })
+
   // search the WHOLE route corridor (start → stops → destination); the home
   // zone around the starting point is excluded inside the engine
   const anchors = useMemo(() => {
@@ -456,12 +414,6 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
   // asymmetric detour measure so on-the-way hits cost ~0 and spurs pay round trip.
   const routePolyline = useMemo(() => routePolylineFrom(routeGeometry), [routeGeometry])
 
-  // #polylines: the Return-home toggle is a DIRECTION filter, not a drawing
-  // switch. On (default): the corridor reads the loop — km labels wrap past the
-  // far end onto the ride home, exactly like the plan's loop math. Off: the
-  // outbound road only — a place 30 km before the far end reads ~30 km from
-  // home on the way back instead of a meaningless 95% of the loop.
-  const [showReturn, setShowReturn] = useState(true)
 
   // Crew seeds: open group-input ideas suppress near-duplicates and bias the
   // corridor toward crew-proposed kinds.
@@ -665,136 +617,15 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
     toast(`Added ${add} travel day${add !== 1 ? 's' : ''} (08:30 starts) - accept a night halt to pin them`)
   }
 
-  // #331: one hash is shared by the main plan and the light fraction fallback.
-  // Missing fields stay optional for older callers/tests; the Map tab passes all
-  // current engine inputs explicitly.
-  const mapInputsHash = useMemo(() => planInputsHash({
-    anchorsHash: anchorHash(anchors),
-    routeHash: routeHash(routeGeometry),
-    travelStyle: trip.travelStyle,
-    transportMode: trip.transportMode,
-    scopeKm,
-    // #335: planInputsHash keys the suggestion cache on the same cadence crew
-    // the nearby fetch above reads — `travellers`, never the member list.
-    travellers: trip.travellers,
-    driverCount: trip.driverCount,
-    hasVulnerable: trip.hasVulnerable,
-    driveAfterDinnerMin: trip.driveAfterDinnerMin,
-    dayStartTimes: trip.days.map(d => d.startTime ?? '08:30'),
-    dayRainPct,
-    dayWeatherCode,
-    haltPins: loadHaltPinsForTrip(trip.id),
-    dnaVector: buildDnaVectorAcrossTrips(loadDnaLog(), crewSeedEvents(trip.id, crewSeeds)),
-    speedKmph: MODE_SPEED[trip.transportMode] ?? 40,
-    budgetPerPersonInr: trip.budgetPerPersonInr,
-    fuelEconomyKmL: trip.fuelEconomyKmL,
-    fuelPricePerL: trip.fuelPricePerL,
-    roundTrip: trip.roundTrip,
-    vehicleProfile: trip.vehicleProfile,
-  }), [anchors, routeGeometry, trip, scopeKm, dayRainPct, dayWeatherCode, crewSeeds, dnaTick])
-
-  // #404: the Overview's slot matrix gates on the SAME freshness this tab's cache
-  // was written with — `isMapCacheFresh(cache.map, scopeKm, mapInputsHash)` — and
-  // it cannot recompute the hash: `routeHash(routeGeometry)` needs the measured
-  // road, and the rain/code arrays are this tab's state. A partial hash computed
-  // workspace-side would never equal this one, so its comparison would report
-  // "stale" forever — worse than today's silence. Publishing the pair is the fix.
-  // The ref makes the call idempotent per VALUE: a parent re-rendering with a
-  // fresh callback identity must not be re-notified, or the two tabs ping-pong
-  // state at each other.
-  const publishedInputsRef = useRef('')
-  useEffect(() => {
-    if (!onInputsHash) return
-    const key = `${mapInputsHash}|${scopeKm}`
-    if (publishedInputsRef.current === key) return
-    publishedInputsRef.current = key
-    onInputsHash(mapInputsHash, scopeKm)
-  }, [mapInputsHash, scopeKm, onInputsHash])
-
-  // Fraction fallback pool (P1-C): below the fatigue floor the planner is
-  // honestly silent, but the strip must never read as "nothing around" —
-  // one light corridor fetch feeds the ¼/½/¾ rows.
-  const [fractionPois, setFractionPois] = useState<PlaceHit[] | null>(null)
-  const [corridorQuotaOut, setCorridorQuotaOut] = useState(false)
-  const [searchQuotaOut, setSearchQuotaOut] = useState(false)
-  const corridorAbort = useRef<AbortController | null>(null)
-  useEffect(() => {
-    if (loadingPois || pois.length > 0 || anchors.length < 2) { setFractionPois(null); return }
-    const cached = suggestionCache.cache.fraction
-    if (cached && isMapCacheFresh(cached, scopeKm, mapInputsHash)) {
-      setFractionPois(cached.hits)
-      return
-    }
-    const controller = new AbortController()
-    corridorAbort.current?.abort()
-    corridorAbort.current = controller
-    let cancelled = false
-    searchNearbyPoisMulti(anchors, scopeKm * 1000, 12, { ...nearbyOpts, purposes: ['sight' as const, 'meal' as const], signal: controller.signal })
-      .then(hits => {
-        if (cancelled) return
-        setFractionPois(hits)
-        if (hits.length > 0) suggestionCache.setFractionCache(hits, mapInputsHash, scopeKm)
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return
-        if (err instanceof QuotaExhaustedError) { setCorridorQuotaOut(true); setFractionPois(null) }
-        else if (!controller.signal.aborted) setFractionPois([])
-      })
-    return () => { cancelled = true; controller.abort() }
-  }, [loadingPois, pois, anchors, nearbyOpts, scopeKm, refreshTick, mapInputsHash, suggestionCache])
-
-  useEffect(() => {
-    if (anchors.length === 0) return
-    const cached = suggestionCache.cache.map
-    // #331: the shared hash covers route shape, weather/time cadence, pinned
-    // halts, DNA preferences, speed, crew/fuel/budget and scope. Cache hits
-    // therefore survive tab switches but never serve a stale engine plan.
-    const inputsHash = mapInputsHash
-    // Persisted results win across tab switches and unrelated saves. When the
-    // route resolves after mount, the effect intentionally re-runs once through
-    // the degraded-scan path so a starved pre-geometry plan is replaced by the
-    // real road corridor; only ↻ Refresh, a scope change, new anchors, or an
-    // empty cache starts another paid scan.
-    if (cached && isMapCacheFresh(cached, scopeKm, inputsHash)) {
-      setCorridorQuotaOut(false)
-      setPois(cached.segments)
-      return
-    }
-    let cancelled = false
-    const controller = new AbortController()
-    setLoadingPois(true)
-    // Day Planner arming (P1-B/#121): the ROUTE arms the split — the clock
-    // walk when it speaks ('ok' → its day count), the drive-day split when the
-    // clock defers, tonight's hop otherwise. NEVER the planned day count: a
-    // 700 km 1-day plan still needs its night halt; a 3-day 200 km trip none.
-    const derivedMultiDay = clockVerdict.verdict === 'ok'
-      ? travelDayNeed > 1
-      : splitVerdict
-        ? splitVerdict.driveDayCount > 1
-        : clockVerdict.verdict === 'hop'
-    planJourneyHalts(anchors, planKm, wholeTrip.min, { ...nearbyOpts, multiDay: derivedMultiDay, signal: controller.signal }, scopeKm * 1000)
-      .then(plan => {
-        if (!cancelled) {
-          setCorridorQuotaOut(false)
-          setPois(plan)
-          // Never cache an empty plan: the first search can run before the
-          // route resolves, and a persisted [] would stick until Refresh.
-          // #185: also never cache a DEGRADED plan — when the road hasn't
-          // resolved for a multi-anchor trip, the scan ran start-area point
-          // searches only; persisting it would serve the starved corridor for
-          // the full 4 h TTL. The scan effect re-fires when geometry arrives
-          // (nearbyOpts depends on it), and the fresh plan then caches.
-          const degradedScan = routeGeometry == null && anchors.length >= 2
-          if (plan.length > 0 && !degradedScan) suggestionCache.setMapCache(plan, inputsHash, scopeKm)
-        }
-      })
-      .catch((err: unknown) => {
-        if (cancelled || controller.signal.aborted) return
-        if (err instanceof QuotaExhaustedError) { setCorridorQuotaOut(true); setPois([]) }
-      })
-      .finally(() => { if (!cancelled) setLoadingPois(false) })
-    return () => { cancelled = true; controller.abort() }
-  }, [anchors, nearbyOpts, scopeKm, mapInputsHash, planKm, wholeTrip.min, travelDayNeed, clockVerdict.verdict, refreshTick, splitVerdict?.driveDayCount]) // eslint-disable-line react-hooks/exhaustive-deps -- splitVerdict is read for derivedMultiDay; wholeTrip covers the geometry changes
+  // #420 slice 11: the corridor cache (hash, publish, both scans) lives in
+  // ./map/useCorridorCache. It returns values only, never callbacks.
+  const { fractionPois, corridorQuotaOut, loadingPois } = useCorridorCache({
+    trip, anchors, routeGeometry, scopeKm, dayRainPct, dayWeatherCode, crewSeeds,
+    dnaTick, onInputsHash, pois, setPois, nearbyOpts, planKm,
+    wholeTripMin: wholeTrip.min, travelDayNeed,
+    clockVerdict: clockVerdict.verdict, splitDriveDayCount: splitVerdict?.driveDayCount,
+    refreshTick, suggestionCache,
+  })
 
   // When the activation came from the map (pin hover/click), bring the matching
   // panel row into view so the two surfaces visibly point at the same place.
@@ -832,6 +663,46 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
     return directionalKm(km, total, showReturn)
   }
 
+  // #420 slice 8: the shared route-aware search lives in ./map/useMapSearch
+  // now — same inputs in, same outputs out, no behavior change. Called here
+  // (not at the top) because it closes over the road and scope above; the two
+  // memos below move with it since they render its rows on the map. Hook order
+  // changes once, then stays fixed — every hook here runs each render.
+  const {
+    searchQ, setSearchQ, searchResults, setSearchResults, searching,
+    showAllResults, setShowAllResults, omniQ, setOmniQ, omniResults,
+    setOmniResults, omniPicked, setOmniPicked, searchQuotaOut,
+    onSearch, onOmniSearch,
+  } = useMapSearch({ routeGeometry, anchors, routePolyline, scopeKm, routeKmOf })
+  // Search hits join the corridor ideas on the map so a hovered result row
+  // eases the camera to its pin and draws its spur — the same cross-highlight
+  // the suggestion rail already has. Deduped by id (a place can be BOTH a
+  // corridor idea and a search hit) and empty until a search lands, so the map
+  // is unchanged when nobody is searching.
+  const mapPois = useMemo(() => {
+    const corridor = pois.flatMap(p => (p.hit ? [p.hit] : []))
+    const seen = new Set(corridor.map(h => h.id))
+    return [
+      ...corridor,
+      ...searchResults.map(r => r.h).filter(h => !seen.has(h.id)),
+      // #418: an omnibar hit is a discovery like any other — it draws the same
+      // selectable marker, so the map never hides a place the user just found.
+      ...omniResults.map(r => r.h).filter(h => !seen.has(h.id) && !searchResults.some(s => s.h.id === h.id)),
+    ]
+  }, [pois, searchResults, omniResults])
+
+  // The subset of map pins that came from a search — the map draws them as
+  // distinct selectable markers (solid teal, not the dashed gold ideas), and
+  // they vanish with the results list when the search bar clears. Both searches
+  // feed it: a row found in either box is a search result on the map.
+  const searchHitIds = useMemo(
+    () => new Set<string | number>([
+      ...searchResults.map(r => r.h.id),
+      ...omniResults.map(r => r.h.id),
+    ]),
+    [searchResults, omniResults],
+  )
+
   /** #345: mark the ids a staged change will add — at the moment it is STAGED,
    *  not when Keep lands. All three add paths call this, so the window in which
    *  the same place can slip in twice stops existing; `stagedIdsRef` lets the
@@ -863,283 +734,15 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
     })
   }, [previewOpen, identity])
 
-  async function addPoiToDay(hit: PlaceHit, dayIndex: number) {
-    const key = String(hit.id)
-    if (addingIdsRef.current.has(key)) return
-    addingIdsRef.current.add(key)
-    setAddingIds(new Set(addingIdsRef.current))
-    setAddingAny(true)
-    try {
-      const pinned = await resolvePick(hit)
-      if (!pinned) {
-        toast(`Could not pin “${hit.name}” on the map - not added. Try another suggestion.`)
-        return
-      }
-      applyChange(draft => {
-        const day = draft.days.find(d => d.index === dayIndex)
-        if (!day) return
-        const newStop = {
-          id: newStopId(),
-          title: hit.name,
-          category: (hit.category as ItineraryStop['category']) ?? 'sightseeing',
-          locationName: hit.description ?? hit.name,
-          placeId: pinned.placeId,
-          lat: pinned.latitude,
-          lng: pinned.longitude,
-          description: hit.description ?? '',
-          notes: hit.haltPurpose ? 'Added from the ride plan' : 'Added from nearby suggestions',
-          visitMinutes: poiVisitMinutes(hit.category),
-          openTime: hit.openTime ?? '', closeTime: hit.closeTime ?? '',
-          entryFeeInrPerPerson: 0,
-          transportCostInrTotal: 0,
-          priority: 'nice-to-have',
-          sourceUrl: '',
-          status: 'suggested',
-          orderInDay: day.stops.length + 1,
-        } as unknown as ItineraryStop
-        const newKm = routeKmOf(pinned.latitude, pinned.longitude)
-        let at = day.stops.length
-        if (newKm != null) {
-          at = day.stops.findIndex(s => {
-            const km = routeKmOf(s.lat, s.lng)
-            return km != null && km > newKm
-          })
-          if (at === -1) at = day.stops.length
-          day.stops.splice(at, 0, newStop)
-          day.stops.forEach((s, i) => { s.orderInDay = i + 1 })
-        } else {
-          day.stops.push(newStop)
-        }
-      }, 'add', dayIndex)
-      markStaged([hit])
-      if (hit.haltPurpose === 'overnight') {
-        const seg = pois.find(p => p.hit?.id === hit.id)?.segment
-        if (seg) {
-          const ordinals = pois
-            .filter(x => x.segment.purpose === 'overnight')
-            .sort((a, b) => a.segment.targetKm - b.segment.targetKm)
-            .findIndex(x => x.segment.index === seg.index)
-          if (ordinals >= 0) {
-            saveHaltPin(trip.id, ordinals, seg.targetKm)
-            toast(`“${hit.name}” added to Day ${dayIndex + 1} - night halt pinned, it won't move unless the road does`)
-            return
-          }
-        }
-      }
-      toast(`“${hit.name}” added to Day ${dayIndex + 1}`)
-    } finally {
-      addingIdsRef.current.delete(key)
-      setAddingIds(new Set(addingIdsRef.current))
-      if (addingIdsRef.current.size === 0) setAddingAny(false)
-    }
-  }
-
   /** P2: fill one empty part of the day with a candidate. The stop id is
    *  minted here so Undo can delete exactly what was added (addPoiToDay's
    *  own undo hooks into toasts we do not own). Coord resolution stays. */
-  async function fillSlot(slot: DaySlot, hit: PlaceHit) {
-    const key = String(hit.id)
-    if (addingAny || addingIdsRef.current.has(key)) return
-    addingIdsRef.current.add(key)
-    setAddingIds(new Set(addingIdsRef.current))
-    setAddingAny(true)
-    try {
-      const dayIdx = activeDayIndex
-      const pinned = await resolvePick(hit)
-      if (!pinned) { toast(`Could not pin "${hit.name}" on the map - not added. Try another suggestion.`); return }
-      const stopId = newStopId()
-    markStaged([hit])
-    applyChange(draft => {
-      const day = draft.days.find(d => d.index === dayIdx)
-      if (!day) return
-      const stop = {
-        id: stopId,
-        title: hit.name,
-        category: (hit.category as ItineraryStop['category']) ?? 'sightseeing',
-        locationName: hit.description ?? hit.name,
-        placeId: pinned.placeId,
-        lat: pinned.latitude,
-        lng: pinned.longitude,
-        description: hit.description ?? '',
-        // The note stays human prose; `slotKey` below is the provenance the
-        // rail actually reads back, so this line is free to be edited or
-        // cleared without silently un-planning the day.
-        notes: 'Filled from the day plan',
-        slotKey: slot.key,
-        visitMinutes: poiVisitMinutes(hit.category),
-        openTime: hit.openTime ?? '', closeTime: hit.closeTime ?? '',
-        entryFeeInrPerPerson: 0,
-        transportCostInrTotal: 0,
-        priority: 'nice-to-have',
-        sourceUrl: '',
-        status: 'suggested',
-        // 1-based, contiguous (the spec's invariant, and every sibling's
-        // `length + 1`): this one shipped without the +1 and duplicated the
-        // last stop's order until V8's stable sort happened to save it (#337).
-        orderInDay: day.stops.length + 1,
-      } as ItineraryStop
-      day.stops.push(stop)
-    }, 'add', dayIdx, () => {
-      // S6: the single Fill is the PRIMARY path, so it has to teach the engine
-      // too. The batch fill did and this did not, which made one action's
-      // consequence depend on which button was pressed - and starved the P7.2
-      // hints, which stay silent below 3 accepts.
-      recordDnaEvent({ tripId: trip.id, action: 'accept', haltKind: slot.kind, category: hit.category, detourMin: asymmetricDetourMinutes(hit, anchors, routePolyline ?? null, MODE_SPEED[trip.transportMode] ?? 40) ?? undefined, visitMin: visitMinutesForCategory(hit.category) })
-      setDnaTick(t => t + 1)
-      // #143: an overnight fill pins the halt, same as addPoiToDay's rule.
-      if (hit.haltPurpose === 'overnight') {
-        const ordinals = pois
-          .filter(x => x.segment.purpose === 'overnight')
-          .sort((a, b) => a.segment.targetKm - b.segment.targetKm)
-          .findIndex(x => x.segment.index === slot.segment?.index)
-        if (ordinals >= 0) saveHaltPin(trip.id, ordinals, slot.segment?.targetKm ?? 0)
-      }
-      // #346: no clearMap/refreshTick here — a fill hides its row LOCALLY
-      // (identity/addedIds carry the id; stopSig re-derives the slots). The
-      // DNA accept above stays the one legitimate engine re-plan input. The
-      // old forced re-search billed a full scan and flashed the spinner for
-      // every fill.
-      undoToast(`"${hit.name}" fills ${slot.label} on Day ${dayIdx + 1}`, () => {
-        deleteStop(trip.id, stopId)
-        setDnaTick(t => t + 1)
-      })
-    })
-      setOpenSlotKey(null)
-    } finally {
-      addingIdsRef.current.delete(key)
-      setAddingIds(new Set(addingIdsRef.current))
-      if (addingIdsRef.current.size === 0) setAddingAny(false)
-    }
-  }
   /** P3.1: fill every empty part of the day with its top candidate in ONE
    *  batched write. Undo removes exactly the stops the fill added; `deleteStop`
    *  renumbers the day, so the stops that were already there land back in their
    *  original sequence without needing a separate snapshot. */
-  async function fillTheDay() {
-    const dayIdx = activeDayIndex
-    const targets = activeDaySlots
-      .filter(s => s.state === 'empty' && s.candidates.length > 0)
-      .map(s => ({ slot: s, hit: s.candidates[0].hit as PlaceHit }))
-    if (targets.length === 0 || fillingDay) return
-    setFillingDay(true)
-    try {
-      // Placeholder coords resolve BEFORE the write (the Null Island guard).
-      const resolved: Array<{ slot: DaySlot; hit: PlaceHit }> = []
-      for (const t of targets) {
-        const pinned = await resolvePick(t.hit)
-        if (pinned) resolved.push({ slot: t.slot, hit: pinned })
-      }
-      if (resolved.length === 0) {
-        toast('Nothing could be pinned from the suggestions - try filling one at a time.')
-        return
-      }
-      // Road order first, so sequential splices land in journey order.
-      const ordered = [...resolved].sort((a, b) =>
-        (routeKmOf(a.hit.latitude, a.hit.longitude) ?? Infinity) -
-        (routeKmOf(b.hit.latitude, b.hit.longitude) ?? Infinity))
-      const bytes = new Uint32Array(ordered.length * 2)
-      crypto.getRandomValues(bytes)
-      const newIds = ordered.map((_, i) => `pending_${bytes[i * 2].toString(36)}${bytes[i * 2 + 1].toString(36)}`)
-      // Both the pre-resolve candidates (what the rails render) and the pinned
-      // shapes are marked: on discard the effect releases the ones whose place
-      // is not in the plan, so over-marking is self-healing.
-      markStaged([...targets.map(t => t.hit), ...ordered.map(x => x.hit)])
-      applyChange(draft => {
-        const day = draft.days.find(d => d.index === dayIdx)
-        if (!day) return
-        ordered.forEach((item, i) => {
-          const hit = item.hit
-          const stop = {
-            id: newIds[i],
-            title: hit.name,
-            category: (hit.category as ItineraryStop['category']) ?? 'sightseeing',
-            locationName: hit.description ?? hit.name,
-            placeId: hit.placeId,
-            lat: hit.latitude,
-            lng: hit.longitude,
-            description: hit.description ?? '',
-            notes: 'Filled from the day plan',
-            slotKey: item.slot.key,
-            visitMinutes: poiVisitMinutes(hit.category),
-            openTime: hit.openTime ?? '', closeTime: hit.closeTime ?? '',
-            entryFeeInrPerPerson: 0,
-            transportCostInrTotal: 0,
-            priority: 'nice-to-have',
-            sourceUrl: '',
-            status: 'suggested',
-            orderInDay: day.stops.length + 1,
-          } as ItineraryStop
-          const newKm = routeKmOf(hit.latitude, hit.longitude)
-          let at = day.stops.length
-          if (newKm != null) {
-            at = day.stops.findIndex(x => {
-              const km = routeKmOf(x.lat, x.lng)
-              return km != null && km > newKm
-            })
-            if (at === -1) at = day.stops.length
-            day.stops.splice(at, 0, stop)
-            day.stops.forEach((x, j) => { x.orderInDay = j + 1 })
-          } else {
-            day.stops.push(stop)
-          }
-        })
-      }, 'add', dayIdx, () => {
-        for (const { slot, hit } of ordered) {
-          recordDnaEvent({ tripId: trip.id, action: 'accept', haltKind: slot.kind, category: hit.category, detourMin: asymmetricDetourMinutes(hit, anchors, routePolyline ?? null, MODE_SPEED[trip.transportMode] ?? 40) ?? undefined, visitMin: visitMinutesForCategory(hit.category) })
-        }
-        // #346: the batch fill re-plans through DNA only — the rows hide
-        // locally (identity/addedIds), so no forced re-search or spinner.
-        setDnaTick(t => t + 1)
-        setOpenSlotKey(null)
-        const n = ordered.length
-        const left = targets.length - ordered.length
-        undoToast(
-          `Day ${dayIdx + 1} planned - ${n} stop${n === 1 ? '' : 's'} added${left > 0 ? ` · ${left} left for you` : ''}`,
-          () => {
-            // Removing exactly the stops the fill added is enough: deleteStop
-            // renumbers the day, so the stops that were already there come back
-            // to 1..n in their original sequence.
-            for (const id of newIds) deleteStop(trip.id, id)
-            setDnaTick(t => t + 1)
-            toast('The planned fills were pulled back')
-          },
-        )
-      })
-    } finally {
-      setFillingDay(false)
-    }
-  }
-
   /** P4: raise the crew's vote for this part - the candidates become the
    *  options (each carrying its place), and resolving it lands the winner. */
-  async function raiseSlotVote(slot: DaySlot) {
-    const picks = slot.candidates.slice(0, 3)
-    if (picks.length < 2 || addingAny) return
-    setAddingAny(true)
-    try {
-      const resolved = await Promise.all(picks.map(async c => ({ c, pinned: await resolvePick(c.hit) })))
-      const usable = resolved.filter((x): x is { c: (typeof picks)[number]; pinned: PlaceHit } => !!x.pinned)
-      if (usable.length < 2) { toast('Those places could not be pinned on the map - the vote was not created.'); return }
-      addDecision(trip.id, {
-        question: `Day ${activeDayIndex + 1} ${slot.label.toLowerCase()} - where?`,
-        context: `Voting from the day plan (Day ${activeDayIndex + 1})`,
-        options: usable.map(({ c, pinned }) => ({
-          id: `slot:${slot.key}:${String(c.hit.id)}`, label: c.hit.name,
-          timeImpactMin: c.detourMin == null ? undefined : Math.round(c.detourMin) || undefined,
-          place: {
-            title: c.hit.name, category: (c.hit.category as ItineraryStop['category']) ?? 'sightseeing',
-            locationName: c.hit.description ?? c.hit.name, lat: pinned.latitude, lng: pinned.longitude,
-            description: c.hit.description, visitMinutes: poiVisitMinutes(c.hit.category),
-            openTime: c.hit.openTime, closeTime: c.hit.closeTime, dayIndex: activeDayIndex,
-          },
-        })),
-      })
-      toast(`The crew is voting on Day ${activeDayIndex + 1} ${slot.label.toLowerCase()} - resolve it in Group input`)
-      setOpenSlotKey(null)
-      onOpenGroupInput?.()
-    } finally { setAddingAny(false) }
-  }
-
   /** P5.4: routing for a search result - a place whose own category can serve a
    *  part of the day can be filed straight into it, or added plainly as an
    *  extra. The kinds mirror the category claims `fillStopFor` already makes
@@ -1171,20 +774,11 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
   /** Engine candidates plus this slot's own search picks — manual ones first
    *  (they are the user's explicit picks), re-validated at render per #179: a
    *  hit later added to the plan or dismissed drops out instead of doubling. */
-  function slotCands(slot: DaySlot) {
-    const manual = (slotManual[slot.key] ?? [])
-      .filter(h => !isAlreadyAdded(h, identity))
-      .map(makeManualCandidate)
-    // #420 slice 5: manual picks first, then the engine's minus their ids — the
-    // merge rule lives in ./map/slotFiling so it cannot drift from the refusal
-    // that reads the same two lists.
-    return mergeSlotCandidates(manual, slot.candidates)
-  }
-
   /** The mockup's headline interaction: find inside the open part. Mirrors
    *  onSearch's guards (2-char floor, seq ownership, scope rank, quota class)
    *  but answers into slot-local state, so the top search card keeps owning
-   *  corridor-wide discovery. */
+   *  corridor-wide discovery. Stays here (not in the hook): its quota-mapped
+   *  catch keeps the render compiler compiling — see the 6ad note. */
   async function runSlotSearch(slot: DaySlot) {
     const q = (slotSearch?.key === slot.key ? slotSearch.q : '').trim()
     if (q.length < 2 || slotSearch?.busy) return
@@ -1212,47 +806,16 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
     }
   }
 
-  /** File a found place into THIS slot as a candidate (never straight into the
-   *  plan — Fill stays the second, explicit act) under the #179 guards. */
-  function addManualCandidate(slot: DaySlot, h: PlaceHit) {
-    // #420 slice 5: the two refusals (and their copy) live in ./map/slotFiling,
-    // checked in the order the user meets them.
-    const refusal = slotFileRefusal({
-      hit: h,
-      slotLabel: slot.label,
-      manual: slotManual[slot.key] ?? [],
-      candidates: slot.candidates,
-      isAdded: x => isAlreadyAdded(x, identity),
-    })
-    if (refusal) {
-      toast(refusal.message)
-      return
-    }
-    setSlotManual(prev => ({ ...prev, [slot.key]: [h, ...(prev[slot.key] ?? [])] }))
-    setSlotSearch(s => (s && s.key === slot.key ? { ...s, q: '', hits: [], err: null } : s))
-    toast(`"${h.name}" added as a candidate for the ${slot.label.toLowerCase()} slot.`)
+  function slotCands(slot: DaySlot) {
+    const manual = (slotManual[slot.key] ?? [])
+      .filter(h => !isAlreadyAdded(h, identity))
+      .map(makeManualCandidate)
+    // #420 slice 5: manual picks first, then the engine's minus their ids — the
+    // merge rule lives in ./map/slotFiling so it cannot drift from the refusal
+    // that reads the same two lists.
+    return mergeSlotCandidates(manual, slot.candidates)
   }
 
-  function openAddModal(hit: PlaceHit, kmOverride?: number | null) {
-    // Duplicate guard (#179 family): a place already in the plan (matched by
-    // title) can't be added again from ANY path — the map-pin "+", a search
-    // row, or the shortlist tray — so the modal never opens for a repeat.
-    if (isAlreadyAdded(hit, identity)) { toast(`“${hit.name}” is already in your trip.`); return }
-    // Pick-day default: prefer the caller's road position (search rows pass the
-    // along-route km they already measured — searchPlacesText hits carry NO
-    // cumKm, so reading hit.cumKm alone always defaulted to Day 1), else the
-    // hit's own ride-plan cumKm (corridor pins). An unknown position can't
-    // preselect honestly, so fall back to the first day — the picker is
-    // user-adjustable, so nothing is attributed silently.
-    const derivedDay = dayForKm(kmOverride ?? hit.cumKm)
-    setPickDay(derivedDay ?? 0)
-    // #333 A9: an unknown position still cannot preselect honestly — but the
-    // fallback to Day 1 used to happen in silence, with the reasoning living
-    // only in this comment. The modal discloses the guess now, and it stops
-    // being a guess the moment the user picks a day themselves.
-    setPickDayGuessed(derivedDay == null)
-    setPoiDraft({ hit })
-  }
 
   /** Delete straight from the map pin's popup. Since #424 this is THE
    *  destructive-stop path, shared with the Timeline's day row and the Board's
@@ -1275,129 +838,20 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
     removeStopWithUndo({ trip, stopId, dayIndex: meta.dayIndex, applyChange })
   }
 
-  /** #418: ONE route-aware search, shared by the rail's corridor box and the map
-   *  omnibar — same query, same ranking, same quota and abort discipline — so the
-   *  two surfaces cannot disagree about what a search found or what it cost. The
-   *  caller decides where the rows live; `null` means a newer search superseded
-   *  this one (or it failed), so a caller never renders stale rows. */
-  async function runRouteSearch(raw: string): Promise<Array<{ h: PlaceHit; km: number | null; off: number | null }> | null> {
-    const q = raw.trim()
-    if (q.length < 2) return null
-    // Claim this as the latest search; a slower earlier query that resolves
-    // later is ignored so it can never overwrite the newer rows.
-    const mySeq = ++searchSeq.current
-    searchAbort.current?.abort()
-    const controller = new AbortController()
-    searchAbort.current = controller
-    setSearching(true)
-    try {
-      // searchPlacesText (NOT searchPlaces): this surface ranks and annotates
-      // every row by road position BEFORE any pick, so hits must carry real
-      // coordinates — autocomplete placeholders measure Null Island
-      // (live 2026-09-14: five different places all read "~1675 km · 8448 km
-      // off-route" because they shared the placeholder).
-      // Route-aware bias (found live 2026-09-24): the trip's road is the
-      // spatial signal — without it Google IP-biases results to wherever the
-      // user is typing from, not the corridor they're planning.
-      const hits = await searchPlacesText(q, { routeCoords: routeGeometry, anchors, signal: controller.signal })
-      if (mySeq !== searchSeq.current) return null // a newer search superseded this one
-      // Trip/route/map aware (user ask): "coffee on my route", not coffee
-      // everywhere in India. Each hit is projected onto this trip's road and
-      // ranked by detour (then road position); anything beyond the current
-      // detour scope renders muted and the toast says why.
-      // asymmetricDetourKm measures the perpendicular spur against the DRAWN
-      // polyline (road-true) and only falls back to straight-line-to-anchor
-      // when the road isn't measured — detourKm over-counts hits that sit
-      // between two anchors.
-      const ranked = hits
-        .map(h => ({ h, km: routeKmOf(h.latitude, h.longitude), off: asymmetricDetourKm(h, anchors, routePolyline) }))
-        .sort((a, b) => {
-          const ao = a.off == null ? Number.POSITIVE_INFINITY : a.off
-          const bo = b.off == null ? Number.POSITIVE_INFINITY : b.off
-          return ao - bo || (a.km == null ? Number.POSITIVE_INFINITY : a.km) - (b.km == null ? Number.POSITIVE_INFINITY : b.km)
-        })
-      const onScope = ranked.filter(en => en.off != null && en.off <= scopeKm)
-      if (hits.length === 0) toast('No places found for that search.')
-      else if (onScope.length === 0) toast(`Nothing for “${q}” within your ${scopeKm} km detour scope - widen the detour-scope slider to see them.`)
-      return ranked
-    } catch (err) {
-      if (mySeq !== searchSeq.current || controller.signal.aborted) return null
-      if (err instanceof QuotaExhaustedError) { setSearchQuotaOut(true); toast('Google Places 80% safety pause reached - search resumes next UTC month. Remove the key in Settings and reload to use the free stack.', 'err') } else {
-        toast('Search failed - try again.', 'err')
-      }
-      return null
-    } finally {
-      // Only the newest search owns the spinner; a superseded one leaves the
-      // newer request's "searching" state untouched.
-      if (mySeq === searchSeq.current) setSearching(false)
-    }
-  }
-
-  async function onSearch(e: React.FormEvent) {
-    e.preventDefault()
-    const ranked = await runRouteSearch(searchQ)
-    if (ranked) {
-      setShowAllResults(false)
-      setSearchResults(ranked)
-    }
-  }
-
-  /** #418: the omnibar's own submit. Its rows live in their own state so the
-   *  rail's list is not silently replaced by a search made on the map. */
-  async function onOmniSearch() {
-    const ranked = await runRouteSearch(omniQ)
-    if (ranked) {
-      setOmniResults(ranked)
-      setOmniPicked(null)
-    }
-  }
-
   const dayOptions = trip.days.map(d => ({ index: d.index }))
 
-  // Split corridor suggestions into two curated columns: need-based halts
-  // (fuel/food/rest/stretch/overnight/stay) on the LEFT in teal-amber, and
-  // see-&-do / sightseeing + detours on the RIGHT in scenic purple — so the
-  // map tab needs no scrolling to reach either kind (§6.10 CTI tone coding).
-  const needs = pois.filter(sh => sh.segment && NEED_PURPOSES.has(sh.segment.purpose))
-  const seeAndDo = pois.filter(sh => sh.segment && !NEED_PURPOSES.has(sh.segment.purpose))
-  // Rail derivations for the V2 pass: one chip filter narrows both rails, and the
-  // ruler marks reuse each card's own cumulative km so a dot never disagrees with
-  // #178: per-hit engine math in ONE memo keyed by hit id. Every card's
-  // detour minutes used to re-run the anchor-list projection per card per
-  // render — a shortlist toggle or keystroke re-did hundreds of walks. Chips,
-  // the budget walk, whiskers and vote contexts all read this map now.
-  const hitEngine = useMemo(() => {
-    const speedK = MODE_SPEED[trip.transportMode] ?? 40
-    const m = new Map<string, { detourMin: number | null }>()
-    for (const sh of pois) {
-      if (!sh.hit) continue
-      m.set(String(sh.hit.id), { detourMin: asymmetricDetourMinutes(sh.hit, anchors, routePolyline ?? null, speedK) })
-    }
-    return m
-  }, [pois, anchors, routePolyline, trip.transportMode])
-  /** P5.2: the cost line a suggestion's map popup shows - arrive, detour and
-   *  the day's detour-budget share, from numbers the corridor already computed.
-   *  The budget is the hit's OWN day's, the same one `chipsFor` and the rail
-   *  read: charging every hit against Day 1's stop count made the popup and the
-   *  card disagree about the same place. */
-  const hitCosts = useMemo(() => hitCostLabels({
-    // #420 slice 4: the label assembly (and the per-day budget cache) lives in
-    // ./map/railLabels with its tests; this only supplies the trip-aware inputs.
-    hits: pois.flatMap(sh => (sh.hit ? [{
-      id: String(sh.hit.id),
-      cumKm: sh.hit.cumKm,
-      detourMin: hitEngine.get(String(sh.hit.id))?.detourMin ?? null,
-      etaMinutes: sh.segment.etaMinutes,
-    }] : [])),
-    dayForKm,
-    detourBudgetMin: dayIndex => dayDetourBudgetMin({
-      travelStyle: trip.travelStyle,
-      plannedStops: (trip.days.find(d => d.index === dayIndex)?.stops ?? []).filter(x => x.status !== 'rejected').length,
-    }),
-  }), [pois, hitEngine, trip.travelStyle, trip.days, dayForKm])
+  // #420 slice 13: the rail content (split, engine, costs, pool, arcs)
+  // lives in ./map/useRailContent. Values only, never callbacks — the
+  // render-called helpers stay with the page for the rails slice.
+  const { needs, seeAndDoLive, hitEngine, hitCosts, altPool, arcHits, arcs } = useRailContent({
+    pois, anchors, routePolyline, transportMode: trip.transportMode,
+    travelStyle: trip.travelStyle, days: trip.days, dayForKm, identity,
+  })
+
   const detourMinFor = (hit: PlaceHit): number | null =>
     hitEngine.get(String(hit.id))?.detourMin
       ?? asymmetricDetourMinutes(hit, anchors, routePolyline ?? null, MODE_SPEED[trip.transportMode] ?? 40)
+  const chipFacts = { detourMinFor, days: trip.days, dayForKm, travelStyle: trip.travelStyle }
 
   // #420 slice 2: the shortlist feature lives in its own hook now — the collection,
   // the shared "already mine?" filter, and both batch writers. Called here rather
@@ -1420,14 +874,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
     busy: addingAny,
     setBusy: setAddingAny,
   })
-  // the number printed on its card.
-  // A resolved group vote lands its winner on the timeline; those stops then
-  // drop out of the see-&-do rail entirely (count included), same as the
-  // “Added” state does for need halts. Name-match matches the rail's dedupe.
-  const voteResolvedOut = (sh: { hit?: PlaceHit | null }) =>
-    !!sh.hit && isAlreadyAdded(sh.hit, identity)
-  const seeAndDoLive = seeAndDo.filter(sh => !voteResolvedOut(sh))
-  const seeForRail = chipFilter ? seeAndDoLive.filter(sh => sh.hit && chipsFor(sh, sh.hit).some(c => c.key === chipFilter)) : seeAndDoLive
+  const seeForRail = chipFilter ? seeAndDoLive.filter(sh => sh.hit && chipsFor(sh, sh.hit, chipFacts).some(c => c.key === chipFilter)) : seeAndDoLive
   const filterActive = chipFilter != null
   // Detour-budget enforcement (Horizon 3.2's "finite, honest menu"): the
   // see-&-do list is the endless one — need halts are finite by construction,
@@ -1466,24 +913,6 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
   // rendering an empty state that reads like "nothing around".
   const corridorQuotaBlocked = corridorQuotaOut || searchQuotaOut || anyQuotaExhausted('textSearchPro', 'nearbySearch', 'placeDetails')
   const quotaOut = googleEnabled() && corridorQuotaBlocked
-  // Story arcs: themed bundles from live, not-yet-added sights. Memoised so
-  // the clustering pass (#166) only re-runs when membership actually changes.
-  const arcHits = useMemo(() => seeAndDoLive.flatMap(sh => {
-    const h = sh.hit
-    // #345: arcs advertise "live, not-yet-added sights" — so they read the
-    // SAME predicate as the rails. They used to skip the trip-presence half
-    // and push places you already own.
-    if (!h || isAlreadyAdded(h, identity)) return []
-    return [h]
-  }), [seeAndDoLive, identity])
-  // #166: clustering walks the whole sight pool per render — memo it so a
-  // search keystroke or shortlist toggle doesn't re-cluster 200 sights. The
-  // labels are pre-split once here too (title/body were parsed twice per arc
-  // per render in JSX).
-  const arcs = useMemo(() => clusterStoryArcs(arcHits).map(a => {
-    const sep = a.label.indexOf(':')
-    return { ...a, theme: sep >= 0 ? a.label.slice(0, sep) : a.label, arcBody: sep >= 0 ? a.label.slice(sep + 1).trim() : '' }
-  }), [arcHits])
 
   /**
    * "Also nearby" candidates, pre-grouped once per render instead of per row.
@@ -1491,116 +920,46 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
    * computed once per hit here; rows only rank the already-filtered pool.
    */
 
-  /**
-   * P2 ledger row for the see-&-do rail: the corridor pick as a flat two-line
-   * row on the spine - name + one meta line (detour, day, window reasons) -
-   * expanding in place to a shelf with the card's actions. Replaces the old
-   * boxed cards in the ledger, keeping every behaviour reachable.
-   */
-  function renderLedgerRow(sh: SegmentHit) {
+  // #420 slice 16: thin JSX factory — one rail row's data lives here, its
+  // rendering lives in map/RailRowViews. Called during render like every
+  // other local row helper, so no hook boundary is involved.
+  const ledgerRow = (sh: SegmentHit) => {
     const hit = sh.hit
-    if (hit && dismissedIds.has(hit.id as string)) return null
-    if (!hit) return renderGapRow(sh) // gaps keep their honest row
-    const added = isAlreadyAdded(hit, identity)
-    const detourMin = hitEngine.get(String(hit.id))?.detourMin
-      ?? asymmetricDetourMinutes(hit, anchors, routePolyline ?? null, MODE_SPEED[trip.transportMode] ?? 40)
-    const chips = chipsFor(sh, hit)
-    const hitDay = dayForKm(hit.cumKm)
-    const alts = alternativesFor(sh, hit).filter(e => e.h.id !== hit.id)
-    const shelf = (
-      <div className="ledger-shelf">
-        {chips.length > 0 && chips.map(c => (
-          <button
-            key={c.key}
-            type="button"
-            className={(c.tone === 'warn' ? 'poi-rchip poi-rchip--warn' : 'poi-rchip') + (chipFilter === c.key ? ' is-on' : '')}
-            aria-pressed={chipFilter === c.key}
-            onClick={(e) => { e.stopPropagation(); setChipFilter(prev => (prev === c.key ? null : c.key)) }}
-          >
-            {c.icon === 'star' && <Star size={11} aria-hidden />}
-            {c.label}
-          </button>
-        ))}
-        {editable && (
-          added
-            ? <span className="chip chip-teal"><InlineIcon icon={CircleCheck} size={11} gap={3} />Added</span>
-            : <button className="day-slot-fill" onClick={() => openAddModal(hit)}>+ Add to a day</button>
-        )}
-        {!added && editable && (
-          <button
-            className="chip chip-sm"
-            title="Not interested - hide this and teach the engine"
-            onClick={() => {
-              recordDnaEvent({ tripId: trip.id, action: 'decline', haltKind: sh.segment.purpose, category: hit.category, detourMin: detourMin ?? undefined })
-              // Dismiss is a local rail decision: keep the current plan visible
-              // and do not invalidate/rebill the corridor. DNA is persisted and
-              // will be read by the next explicit replan.
-              setDismissedIds(prev => new Set(prev).add(hit.id as string))
-            }}
-          >Dismiss</button>
-        )}
-        {!added && editable && (
-          <button
-            className="chip chip-sm"
-            aria-pressed={isShortlisted(hit)}
-            title="Collect for the shortlist tray - the rail collects, the tray decides"
-            onClick={() => toggleShortlist(hit)}
-          >
-            {isShortlisted(hit) ? 'Shortlisted' : 'Shortlist'}
-          </button>
-        )}
-        {alts.length > 0 && alts.map(({ h, dKm }) => (
-          <button
-            key={h.id as string}
-            className="shelf-alt"
-            title={h.name}
-            onClick={() => openAddModal(h)}
-          >
-            <span className="shelf-alt-nm">{h.name}</span>
-            <span className="shelf-alt-km">{dKm != null ? `${dKm.toFixed(1)} km off` : 'on route'}</span>
-          </button>
-        ))}
-      </div>
-    )
-    const meta = [
-      detourMin == null ? 'position unknown' : detourMin > 0 ? `+${Math.round(detourMin)} min detour` : 'on route',
-      hitDay != null ? `Day ${hitDay + 1}` : null,
-    ].filter(Boolean).join(' \u00b7 ')
+    const detourMin = hit
+      ? (hitEngine.get(String(hit.id))?.detourMin
+        ?? asymmetricDetourMinutes(hit, anchors, routePolyline ?? null, MODE_SPEED[trip.transportMode] ?? 40))
+      : undefined
+    const dismissHit = () => {
+      if (!hit) return
+      recordDnaEvent({ tripId: trip.id, action: 'decline', haltKind: sh.segment.purpose, category: hit.category, detourMin: detourMin ?? undefined })
+      // Dismiss is a local rail decision: keep the current plan visible
+      // and do not invalidate/rebill the corridor. DNA is persisted and
+      // will be read by the next explicit replan.
+      setDismissedIds(prev => new Set(prev).add(hit.id as string))
+    }
     return (
-      <details key={hit.id as string} className="lrow-new" onToggle={undefined}>
-        <summary className="lrow-sum" title={hit.name}>
-          <span className="xdot" aria-hidden />
-          <span className="lr-name">{hit.name}</span>
-          <span className="lr-meta">{meta}</span>
-          <ChevronDown className="lr-go" size={12} aria-hidden />
-        </summary>
-        {shelf}
-      </details>
+      <LedgerRow
+        key={hit ? String(hit.id) : `gap-${sh.segment.index}`}
+        sh={sh}
+        dismissed={!!hit && dismissedIds.has(hit.id as string)}
+        added={hit ? isAlreadyAdded(hit, identity) : false}
+        detourMin={detourMin}
+        hitDay={hit ? dayForKm(hit.cumKm) : null}
+        chipFacts={chipFacts}
+        altPool={altPool}
+        chipFilter={chipFilter}
+        editable={editable}
+        shortlisted={hit ? isShortlisted(hit) : false}
+        onSelectChip={key => setChipFilter(prev => (prev === key ? null : key))}
+        onAdd={() => { if (hit) openAddModal(hit) }}
+        onDismiss={dismissHit}
+        onToggleShortlist={() => { if (hit) toggleShortlist(hit) }}
+        onOpenAlt={h => openAddModal(h)}
+        onWiden={widenScope}
+      />
     )
   }
 
-  const altPool = useMemo(() => {
-    type AltEntry = { h: PlaceHit; dKm: number | null }
-    const all: AltEntry[] = []
-    const byPurpose = new Map<string, AltEntry[]>()
-    const byCategory = new Map<string, AltEntry[]>()
-    const push = (map: Map<string, AltEntry[]>, key: string, e: AltEntry) => {
-      const list = map.get(key)
-      if (list) list.push(e)
-      else map.set(key, [e])
-    }
-    for (const r of pois) {
-      const h = r.hit
-      if (!h) continue
-      const id = h.id as string
-      if (isAlreadyAdded(h, identity)) continue
-      const e: AltEntry = { h, dKm: detourKm(h, anchors) }
-      all.push(e)
-      if (h.haltPurpose) push(byPurpose, h.haltPurpose, e)
-      if (h.category) push(byCategory, h.category, e)
-    }
-    return { all, byPurpose, byCategory }
-  }, [pois, identity, anchors])
 
   // ---- P2: the day's plan (slots rail) ----
   // One derivation feeds the rail, the meter and the fill flow: slots derive
@@ -1608,130 +967,59 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
   // drift from the engine. stopSig/refreshTick keep the memo honest against
   // store writes; the deps memo carries the expensive shared inputs.
   const daySlotSig = `${stopSig}|${refreshTick}|${dismissedIds.size}|${addedIds.size}|${shortlist.length}`
-  const daySlotDeps = useMemo<Omit<DaySlotsDeps, 'dayStops'>>(() => ({
-    haltSegments: pois,
-    anchors,
-    routePolyline: routePolyline ?? null,
-    transportMode: trip.transportMode,
-    travelStyle: trip.travelStyle,
-    existingNames,
+  // #420 slice 14: the day's plan derivations (deps, stops, slots, readiness,
+  // rows, hints, pins) live in ./map/useDaySlots. Values only, never callbacks.
+  const { daySlotDeps, activeDayStops, activeDaySlots, activeDayReadiness, tripReadinessRows, dnaSlotHints, slotPins } = useDaySlots({
+    pois, anchors, routePolyline, transportMode: trip.transportMode, travelStyle: trip.travelStyle,
+    existingNames, identity, altPool, dayAttribution, decisions, members: trip.members,
+    travellers: trip.travellers, startLocationCoords: trip.startLocationCoords, tripId: trip.id,
+    crewSeeds, dnaTick, addedIds, dismissedIds, days: trip.days, activeDayIndex, daySlotSig,
+  })
+
+  // #I-41: the day the stop editor opens on lives in ./map/useOmnibarPlacement
+  // now (moved there by #420 slice 7) — one lookup feeds the placement label
+  // and the click, so the label and the editor cannot name two different days.
+  // An unknown road position falls back to the trip's first day — the same
+  // fallback the editor applies.
+  const { omniPlacement, placeOmnibarHit } = useOmnibarPlacement({
+    picked: omniPicked,
+    activeDayIndex,
+    days: trip.days,
+    dayForKm,
+    activeDaySlots,
+    shortlist,
+    trayShortlist,
     identity,
-    altPool: altPool.all.map(e => e.h),
-    decisions,
-    memberCount: (trip.members ?? []).length,
-    // #344: the slot re-scores its pool with the same extras the corridor
-    // ranked by — DNA (per-trip learning + crew seeds) and the home point —
-    // and reads the session add/dismiss bags so a just-added or just-
-    // dismissed hit leaves the open slot with the pool cards. plannedStops
-    // is derived per day inside candidatesFor from `dayStops` (a single
-    // shared count here would charge every day the ACTIVE day's density,
-    // including tripReadiness's matrix).
-    dnaVector: buildDnaVectorAcrossTrips(loadDnaLog(), crewSeedEvents(trip.id, crewSeeds)),
-    homeCenter: trip.startLocationCoords ?? null,
-    addedIds,
-    dismissedIds,
-    // The shared attribution object - the same shape the Overview matrix feeds
-    // its own deps, so the two surfaces cannot attribute a halt to two days.
-    dayOfSegment: dayAttribution.dayOfSegment,
-    // P2: the rail always renders the day's grammar - the skeleton supplies
-    // the parts the corridor plan did not halt for, positioned on the day's
-    // own road-km span (the same road-true km dayForKm trusts).
-    fillSkeleton: true,
-    daySpanKm: dayAttribution.daySpanKm,
-  }), [pois, anchors, routePolyline, trip.transportMode, trip.travelStyle, existingNames, identity, altPool, dayAttribution, decisions, trip.travellers, trip.startLocationCoords, crewSeeds, dnaTick, addedIds, dismissedIds])
-  /** This day's stops - one lookup, shared by the slots, the shape and the fills. */
-  const activeDayStops = useMemo(
-    () => trip.days.find(d => d.index === activeDayIndex)?.stops ?? [],
-    [trip.days, activeDayIndex],
-  )
-  const activeDaySlots = useMemo<DaySlot[]>(
-    () => daySlots(activeDayIndex, { ...daySlotDeps, dayStops: activeDayStops }),
-    [activeDayIndex, daySlotDeps, activeDayStops, daySlotSig],
-  )
-
-  // #418: the omnibar's choices for the place it just found. The list itself is
-  // pure (`mapPlacement.ts` decides what may be filed where, and why not); this
-  // only hands it the facts, so the same rules are unit-testable without a DOM.
-  const omniPlacement = useMemo<PlacementOption[]>(
-    () => placementOptions({
-      hit: omniPicked?.h ?? null,
-      dayIndex: activeDayIndex,
-      dayLabel: trip.days.find(d => d.index === activeDayIndex)?.title ?? null,
-      km: omniPicked?.km ?? null,
-      // The parts this place's own category could serve on the day the rail is
-      // planning — the same helper the corridor rows already file through.
-      filingOptions: omniPicked ? filingOptionsForPicked(omniPicked.h) : [],
-      alreadyAdded: omniPicked ? isAlreadyAdded(omniPicked.h, identity) : false,
-      shortlisted: omniPicked ? shortlist.some(h => h.id === omniPicked.h.id) : false,
-      shortlistCount: trayShortlist.length,
-    }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- filingOptionsFor reads
-    // the active day's slots, which are derived from the inputs listed here.
-    [omniPicked, activeDayIndex, trip.days, activeDaySlots, shortlist, trayShortlist, identity],
-  )
-
-  /** #418: every placement routes into a path that already existed and nothing is
-   *  re-implemented here — a day opens the stop editor (which asks for the day and
-   *  owns the write), a part fills through the same manual-candidate path the rail
-   *  uses, the shortlist collects without touching the plan, and the vote is the
-   *  tray's own decision. Nothing happens until the user clicks one. */
-  function placeOmnibarHit(option: PlacementOption) {
-    const picked = omniPicked
-    if (!picked) return
-    if (option.kind === 'day') { openAddModal(picked.h, picked.km); return }
-    if (option.kind === 'slot') {
-      const slot = activeDaySlots.find(s => s.key === option.slotKey)
-      if (slot) addManualCandidate(slot, picked.h)
-      return
-    }
-    if (option.kind === 'shortlist') { toggleShortlist(picked.h); return }
-    if (option.kind === 'vote') { void raiseShortlistVote(); return }
-  }
-  /** Counted off the very slots the rail renders, not re-derived: a second
-   *  `daySlots` call here was a whole extra derivation of the same day, and a
-   *  meter that could in principle disagree with the list beside it. */
-  const activeDayReadiness = useMemo(() => {
-    const auto = activeDaySlots.filter(s => s.auto).length
-    return {
-      dayIndex: activeDayIndex,
-      filled: activeDaySlots.filter(s => s.state === 'filled').length,
-      total: activeDaySlots.length,
-      auto,
-      required: activeDaySlots.length - auto,
-    }
-  }, [activeDaySlots, activeDayIndex])
-  /** S2: the whole day-chip row in ONE pass. The chips used to call
-   *  `dayReadiness` per day inline in the render body, so every keystroke in
-   *  the search box re-derived every day's slots - and each empty slot scores
-   *  the entire corridor pool through `scoreHitForSegment`, two geometry
-   *  projections per hit. */
-  const tripReadinessRows = useMemo(
-    () => tripReadiness(pois, trip.days.map(d => ({ index: d.index, stops: d.stops })), daySlotDeps),
-    [pois, trip.days, daySlotDeps, daySlotSig],
-  )
+    openAddModal,
+    addManualCandidate: (slot, h) => addManualCandidate(slot, h),
+    toggleShortlist,
+    raiseShortlistVote,
+  })
   const [openSlotKey, setOpenSlotKey] = useState<string | null>(null)
+  // #420 slice 17: the slot filing writer lives in ./map/useSlotSearch —
+  // the query state, the manual picks and the runner stay page cells (see
+  // the hook's header for why the split falls here). Handler-only output,
+  // called from event handlers and the placement hook below, never render.
+  const { addManualCandidate } = useSlotSearch({
+    slotManual, setSlotManual, setSlotSearch, identity,
+  })
   // P1: closing or switching parts drops the in-flight search (the seq bump
   // retires any query still in the air so its rows can never land elsewhere).
   useEffect(() => { slotSeq.current += 1; setSlotSearch(null) }, [openSlotKey])
   // Plan P2.5's mobile slots summary: collapsed to a count + open on phones,
   // desktop hides the summary so this state never touches it there.
   const [slotsPeek, setSlotsPeek] = useState(false)
-  /** P7.2: what the log has learned about each KIND of part - shown on an open
-   *  part as context, never as a claim (silent until 3+ accepts). */
-  const dnaSlotHints = useMemo(() => {
-    const log = loadDnaLog()
-    return {
-      meal: slotPatternHint(log, 'meal'),
-      fuel: slotPatternHint(log, 'fuel'),
-      overnight: slotPatternHint(log, 'overnight'),
-      stretch: slotPatternHint(log, 'stretch'),
-    }
-  }, [dnaTick])
   /** m5: `DaySlotKind` is exactly the four keys the hints are built for, so an
    *  unknown kind yields nothing. The old ternary's last branch fell through to
    *  the stretch hint, which would quietly mislabel any future kind. */
   const slotPattern = (kind: DaySlotKind): string | null => dnaSlotHints[kind] ?? null
   const [fillingDay, setFillingDay] = useState(false)
+  const { addPoiToDay, fillSlot, fillTheDay, raiseSlotVote } = useMapWriters({
+    resolvePick, applyChange, trip, pois, routeKmOf, anchors, routePolyline,
+    activeDayIndex, activeDaySlots, markStaged, addingAny, addingIdsRef,
+    setAddingIds, setAddingAny, fillingDay, setFillingDay, setDnaTick,
+    setOpenSlotKey, onOpenGroupInput,
+  })
   /** P6.1: the rail's second reading - the day as a shape on one clock. */
   const [shapeView, setShapeView] = useState(false)
   const shapeBlocks = useMemo(
@@ -1745,89 +1033,6 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
   )
   /** P5.3: the selected day's empty parts as hollow amber pins - their top
    *  candidate's real position, with P5.2's cost line in the tooltip. */
-  // #420 slice 4: the pin's label is the same sentence a corridor row prints, from
-  // the same helper — the two used to assemble it separately.
-  const slotPins = useMemo(() => slotPinsFor(activeDaySlots), [activeDaySlots])
-  /** The rail's meter copy: the mockup's wording, honest per day. The count is
-   *  over `required` (engine-managed parts excluded) — the work the crew owns. */
-  function activeReadinessLabel() {
-    const r = activeDayReadiness
-    if (r.total === 0) return 'nothing scheduled for this day yet'
-    return `${r.filled} of ${r.required} planned${r.auto > 0 ? ` · ${r.auto} auto` : ''}`
-  }
-
-  /** The header's day identity: the day's own title, else its first-to-last
-   *  stops - the mockup reads 'Day 2 - Kochi to Alleppey' where it can. */
-  function activeDayLabel(): string {
-    const d = trip.days.find(x => x.index === activeDayIndex)
-    if (!d) return 'your drive'
-    if (d.title && d.title.trim()) return d.title.trim()
-    const stops = d.stops.filter(s => s.status !== 'rejected')
-    const first = stops[0]?.locationName ?? stops[0]?.title
-    const last = stops[stops.length - 1]?.locationName ?? stops[stops.length - 1]?.title
-    if (first && last && first !== last) return `${first} to ${last}`
-    return first ?? 'your drive'
-  }
-
-
-  /** Closest alternatives for a halt: next 2 by road position plus detour. */
-  function alternativesFor(sh: SegmentHit, hit: PlaceHit): Array<{ h: PlaceHit; dKm: number | null }> {
-    // #420 slice 5: the family/ranking rule lives in ./map/sightRows with its tests;
-    // this only names the halt and hands over the pool.
-    return pickAlternatives({
-      purpose: sh.segment.purpose,
-      targetKm: sh.segment.targetKm,
-      hit,
-      pool: altPool,
-    })
-  }
-
-  /** Reason chips for one suggestion, shared by the card and the rail filter. */
-  function chipsFor(sh: SegmentHit, hit: PlaceHit): RailChip[] {
-    // #420 slice 5: the chips themselves (including the #163 rounding predicate) come
-    // from ./map/sightRows; the trip-aware numbers are resolved here.
-    const detourMin = detourMinFor(hit)
-    const hitDay = trip.days.find(d => d.index === dayForKm(hit.cumKm))
-    const dayBudget = dayDetourBudgetMin({
-      travelStyle: trip.travelStyle,
-      plannedStops: (hitDay?.stops ?? []).filter(s => s.status !== 'rejected').length,
-    })
-    return sightRowChips({ segment: sh.segment, hit, detourMin, dayBudget })
-  }
-
-  /** A corridor halt the engine found no place for. The only row still rendered
-   *  through here: every hit row is a flat ledger row (`renderLedgerRow`), so
-   *  this is the honest gap — and its action is the lever the engine actually
-   *  has, a wider detour scope. The live card renderer that used to follow this
-   *  branch was unreachable once the ledger replaced the boxed cards, and has
-   *  been removed. */
-  function renderGapRow(sh: SegmentHit) {
-    const hit = sh.hit
-    // dismissed stays hidden for the session (logged as a DNA decline)
-    if (hit && dismissedIds.has(hit.id as string)) return null
-    if (!hit) {
-      return (
-        <div key={`gap-${sh.segment.index}`} className="poi-plan-row poi-plan-gap">
-              <span className={`ride-purpose ride-purpose-${sh.segment.purpose} ride-purpose-muted`}>{sh.segment.label}</span>
-              <span className="muted small">No good match near ~{sh.segment.targetKm.toFixed(0)} km yet.</span>
-              {/* A gap has no place to add, so the action raises the corridor's
-                  detour scope - the honest lever the engine actually has. */}
-              <button
-                type="button"
-                className="poi-gap-add"
-                title="Raises the detour scope so more stops qualify. You can also add a stop on the Timeline and it will pin itself here."
-                onClick={() => {
-                  setScopeIdx(i => Math.min(i + 1, SCOPE_KM_STEPS.length - 1))
-                  toast('Widened the search - the corridor will re-plan')
-                }}
-              >
-                Widen search
-              </button>
-            </div>
-      )
-    }
-  }
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column' }}>
       <div className="card" style={{ order: 1 }}>
@@ -1881,7 +1086,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
             {searchResults.slice(0, showAllResults ? searchResults.length : SEARCH_PAGE).map(({ h, km, off }, rowIndex) => {
               const inScope = off != null && off <= scopeKm
               // SB2: the same membership guard every other rail row uses
-              // (renderLedgerRow, and the card before it). Without it this row
+              // (the ledger row, and the card before it). Without it this row
               // was the one place that would happily add the same place twice.
               const added = isAlreadyAdded(h, identity)
               // Selected twin: clicking the map's search marker highlights this
@@ -1969,7 +1174,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
         )}
         {/* #333 A5: the result count sat in a static aria-label; this says it aloud
             when it changes. Always mounted — a region that mounts with its text is silent. */}
-        <span className="sr-only" role="status" aria-live="polite">{searchResults.length > 0 ? searchAnnouncement(searchQ, searchResults.length, showAllResults ? searchResults.length : SEARCH_PAGE) : ''}</span>
+        <span className="sr-only" role="status" aria-live="polite">{searchAnnouncement(searchQ, searchResults.length, showAllResults ? searchResults.length : SEARCH_PAGE)}</span>
         {searchResults.length > 5 && (
           <button type="button" className="btn btn-outline btn-sm" style={{ marginBottom: 10 }} onClick={() => setShowAllResults(v => !v)}>
             {showAllResults ? 'Show top 5' : `Show all ${searchResults.length}`}
@@ -2139,8 +1344,8 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
             <div className="poi-col-head">
               <span className="poi-col-head-ico"><Fuel size={13} aria-hidden /></span>
               <div className="poi-col-head-txt">
-                <b>Day {activeDayIndex + 1} · {activeDayLabel()}</b>
-                <span className="small muted">{activeDaySlots.length === 0 ? 'the day takes shape as you plan the drive' : `${activeReadinessLabel()}`}</span>
+                <b>Day {activeDayIndex + 1} · {activeDayLabel(trip.days, activeDayIndex)}</b>
+                <span className="small muted">{activeDaySlots.length === 0 ? 'the day takes shape as you plan the drive' : `${activeReadinessLabel(activeDayReadiness)}`}</span>
               </div>
               <button
                 type="button"
@@ -2191,7 +1396,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
                     aria-pressed={d.index === activeDayIndex}
                     aria-label={`Day ${d.index + 1}: ${filled} of ${required} planned${auto > 0 ? `, ${auto} engine-managed` : ''}`}
                     className={'slots-daychip' + (d.index === activeDayIndex ? ' is-on' : '')}
-                    onClick={() => { setActiveDayIndex(d.index); onDayFocusChange?.(d.index); setOpenSlotKey(null) }}
+                    onClick={() => { setLocalDay(d.index); onDayFocusChange?.(d.index); setOpenSlotKey(null) }}
                   >
                     Day {d.index + 1} <span className="slots-daychip-rd">{filled}/{required}</span>
                     {dayRainPct?.[d.index] != null && dayRainPct[d.index]! >= 40 && (
@@ -2508,6 +1713,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
               onOpenInTimeline={onOpenTimeline}
               onOpenInBoard={onOpenBoard ? () => onOpenBoard() : undefined}
               focusDay={activeDayIndex}
+              legCorrections={legCorrections}
               tripReadinessRows={tripReadinessRows}
               onDayFilterChange={day => {
       // #416: the map reports its own scope, including 'all' — the rail records it
@@ -2517,8 +1723,10 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
                 // leaves it where it is; a day chip moves the rail onto that day.
                 // #425 PR 2: the same choice rides the shared day-focus axis, so
                 // the Board's columns and this rail agree whichever was touched.
-                if (typeof day === 'number') onDayFocusChange?.(day)
-                if (typeof day === 'number') setActiveDayIndex(day)
+                // #610: 'all' publishes too — scope rides the axis, the rail
+                // keeps its day and the map reads 'all' straight from dayFocus.
+                onDayFocusChange?.(day)
+                if (typeof day === 'number') setLocalDay(day)
               }}
               slotPins={slotPins}
               hitCosts={hitCosts}
@@ -2614,7 +1822,11 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
                               byDay.set(item.dayIndex, list)
                             }
                             for (const [dayIndex, items] of byDay) {
-                              const day = draft.days.find(d => d.index === dayIndex)!
+                              // #563 — a day that reconcile removed mid-scan is
+                              // skipped, not crashed into: its items are dropped
+                              // with the rest of the batch still landing.
+                              const day = draft.days.find(d => d.index === dayIndex)
+                              if (!day) continue
                               // new stops sorted by road position so sequential
                               // splices land in journey order
                               const sorted = [...items].sort((a, b) =>
@@ -2680,11 +1892,11 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
                         <span className="poi-grp-n">{seeForRail.length}</span>
                         <span className="poi-grp-ln" />
                       </div>
-                      {seeForRail.slice(0, SEE_VISIBLE).map(renderLedgerRow)}
+                      {seeForRail.slice(0, SEE_VISIBLE).map(ledgerRow)}
                       {seeForRail.length > SEE_VISIBLE && (
                         <details className="poi-more">
                           <summary><ChevronDown className="poi-chev" size={12} aria-hidden />{seeForRail.length - SEE_VISIBLE} more picks</summary>
-                          <div className="poi-more-list">{seeForRail.slice(SEE_VISIBLE).map(renderLedgerRow)}</div>
+                          <div className="poi-more-list">{seeForRail.slice(SEE_VISIBLE).map(ledgerRow)}</div>
                         </details>
                       )}
                     </>

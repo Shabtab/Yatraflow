@@ -185,6 +185,10 @@ export function LandingPage({ onNavigate }: { onNavigate: (r: string) => void })
           <DemoButtons />
         </div>
       </section>
+
+      <p className="small muted" style={{ textAlign: 'center', paddingBottom: 24 }}>
+        © {new Date().getFullYear()} YatraFlow · <a className="text-link" href="#/dmca">Copyright and DMCA</a>
+      </p>
       </div>
     </div>
   )

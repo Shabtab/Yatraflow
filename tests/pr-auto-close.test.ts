@@ -1,8 +1,9 @@
 // The closing-keyword grammar that scripts/pr-auto-close.mjs applies to a PR
 // body (AGENTS.md rule 12's automation). GitHub only auto-closes issues on
 // merges into the DEFAULT branch, so this parser is what mirrors the tracker
-// for `test` — these fixtures pin it to GitHub's own keyword grammar so a
-// future tweak can neither miss a real reference nor close a stray one.
+// for `test` — these fixtures pin it to GitHub's keyword grammar plus this
+// repo's claim spellings, so a future tweak can neither miss a real reference
+// nor close a stray one.
 import { describe, expect, it } from 'vitest'
 import { buildComment, parseClosingIssueRefs, stripCode } from '../scripts/pr-auto-close.mjs'
 
@@ -35,6 +36,23 @@ describe('parseClosingIssueRefs — GitHub closing-keyword grammar', () => {
   it('dedupes repeated references', () => {
     expect(parseClosingIssueRefs('Closes #5, fixes #5')).toEqual([5])
     expect(parseClosingIssueRefs('Closes #5\nFixes #5')).toEqual([5])
+    expect(parseClosingIssueRefs('Claiming #5, closes #5')).toEqual([5])
+  })
+
+  it('treats a work claim like a closing keyword (the #617 miss)', () => {
+    // PR #617's body said "Claiming #607, #608, #609, #610, #611" and the
+    // mirror closed nothing, because a claim is not a GitHub keyword. Claims
+    // in this repo mean taken work (AGENTS.md rule 4), so a merged PR closes
+    // the issues it names either way. Same trade-off as the closing grammar:
+    // no negation is read, and the number must sit outside a claim's reach.
+    expect(parseClosingIssueRefs('Claim #12')).toEqual([12])
+    expect(parseClosingIssueRefs('Claims #12')).toEqual([12])
+    expect(parseClosingIssueRefs('Claiming #607, #608, #609, #610, #611')).toEqual([607, 608, 609, 610, 611])
+    expect(parseClosingIssueRefs('claimed #12')).toEqual([12])
+    expect(parseClosingIssueRefs('Claiming #607, #608, #609, #610, #611 (all filed by the audit)')).toEqual([607, 608, 609, 610, 611])
+    expect(parseClosingIssueRefs('not claiming #12')).toEqual([12])
+    expect(parseClosingIssueRefs('Reclaim #5')).toEqual([])
+    expect(parseClosingIssueRefs('See issue #44 for context')).toEqual([])
   })
 
   it('binds nothing without the keyword, and no keyword without the ref', () => {
@@ -79,6 +97,7 @@ describe('buildComment', () => {
     expect(c).toContain('PR #399')
     expect(c).toContain('5550fae')
     expect(c).toContain('DEFAULT branch')
+    expect(c).toContain('work claim')
     expect(c).toContain('Reopen')
   })
 })

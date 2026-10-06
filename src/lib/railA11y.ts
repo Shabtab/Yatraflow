@@ -9,9 +9,14 @@
  *  screen reader reads only if you go looking for it; a live region says it. */
 export function searchAnnouncement(q: string, count: number, shown: number): string {
   const query = q.trim()
-  if (count === 0) return `No results for ${query || 'that search'}.`
+  // #545: an empty query is the idle box, not a search that found nothing — a
+  // live region announcing "No results" before anything was typed is a false
+  // negative on first paint. Idle stays silent; a real zero-result search
+  // still speaks. Both call sites call unguarded, so this is the one rule.
+  if (!query) return ''
+  if (count === 0) return `No results for ${query}.`
   const rest = shown < count ? `, showing the closest ${shown}` : ''
-  return `${count} result${count === 1 ? '' : 's'} for ${query || 'that search'}${rest}.`
+  return `${count} result${count === 1 ? '' : 's'} for ${query}${rest}.`
 }
 
 /** A5 — a slot's candidates arriving (the second list the issue named). */

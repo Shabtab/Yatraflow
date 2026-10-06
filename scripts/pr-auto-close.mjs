@@ -5,8 +5,10 @@
 // integrates on `test`, so every fix that lands there leaves its issues OPEN —
 // the Wave-0 map merges (#380/#399) carried seven closing keywords and closed
 // nothing until each issue was closed by hand (AGENTS.md rule 12). This script
-// mirrors the tracker: it parses the merged PR's body with GitHub's own keyword
-// grammar and closes the referenced issues with a landing comment.
+// mirrors the tracker: it parses the merged PR's body and closes the
+// referenced issues with a landing comment. The grammar is GitHub's own, plus
+// this repo's claim spellings (`Claiming #N`): PR #617's body claimed five
+// issues and closed none, because a claim is not a GitHub keyword.
 //
 // Run by .github/workflows/issue-autoclose.yml with the default Actions env
 // (GITHUB_TOKEN, GITHUB_REPOSITORY) and the event payload PIPED ON STDIN —
@@ -30,18 +32,21 @@ export function stripCode(text) {
 const REF_RE = /^(?:(?:#|GH-)(\d+)|https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/issues\/(\d+))/i
 const SEP_RE = /^\s*(?:,\s*and\s+|,\s*|\s+and\s+|\s+)/
 
-/** Issue numbers closed by the text's closing keywords, in order, deduped.
- *  Grammar matches GitHub: a keyword followed directly by one or more issue
- *  references joined by commas, whitespace or `and`. A keyword with no
- *  reference directly after it binds nothing ("this fix closes the gap" — no
- *  match), and a reference with no keyword in front ("see #44") is ignored. */
+/** Issue numbers a text closes with its closing keywords and claims, deduped.
+ *  Grammar matches GitHub — a keyword followed directly by one or
+ *  more issue references joined by commas, whitespace or `and` — plus the
+ *  claim spellings (`claim`, `claims`, `claiming`, `claimed`). A keyword with
+ *  no reference directly after it binds nothing ("this fix closes the gap" —
+ *  no match), and a reference with no keyword in front ("see #44") stays
+ *  ignored. Like GitHub's own grammar, this reads no negation.
+ */
 export function parseClosingIssueRefs(text) {
   const clean = stripCode(text)
   const found = []
   // A literal per call, not a rebuilt module constant: global regexes carry
   // lastIndex state, and a fresh literal keeps callers independent. (A
   // `new RegExp(name.source)` also trips the non-literal-constructor lint.)
-  const kw = /\b(close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s*/gi
+  const kw = /\b(close[sd]?|fix(?:e[sd])?|resolve[sd]?|claim(?:s|ing|ed)?)\s*:?\s*/gi
   let m
   while ((m = kw.exec(clean)) !== null) {
     let pos = kw.lastIndex
@@ -60,7 +65,7 @@ export function parseClosingIssueRefs(text) {
 /** The landing comment each mirrored close leaves behind. */
 export function buildComment(prNumber, mergeSha) {
   return [
-    `Closed automatically: PR #${prNumber} (merge \`${mergeSha}\`) merged into \`test\` and referenced this issue with a closing keyword.`,
+    `Closed automatically: PR #${prNumber} (merge \`${mergeSha}\`) merged into \`test\` and referenced this issue with a closing keyword or a work claim.`,
     '',
     "GitHub's closing keywords only auto-close issues on merges into the DEFAULT branch, so this workflow mirrors the tracker for the integration branch. Reopen if the fix needs follow-up.",
   ].join('\n')

@@ -234,7 +234,12 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
    *  from/to splice to make — the same invariant as lib/stopOrder's helpers. */
   const handleReorderDay = useCallback((dayIndex: number, orderedIds: string[]) => {
     latest.current.applyChange(draft => {
-      const day = draft.days.find(d => d.index === dayIndex)!
+      // #563 — a stale dayIndex (a drag payload snapshot, or a click on a
+      // button rendered before reconcileDays shrank the days) must REFUSE, not
+      // crash: the proposal then equals the base and the impact sheet reads
+      // zero-delta.
+      const day = draft.days.find(d => d.index === dayIndex)
+      if (!day) { toast('That day is no longer on this trip.', 'err'); return }
       const byId = new Map(day.stops.map(s => [s.id, s]))
       const reordered = orderedIds.map(id => byId.get(id)!).filter(Boolean)
       // any stop the optimizer left out (safety net) rides at the end
@@ -242,6 +247,15 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
       day.stops = [...reordered, ...rest]
       day.stops.forEach((s, i) => { s.orderInDay = i + 1 })
     }, 'reorder', dayIndex)
+  }, [])
+
+  /** Link a fixed commitment to its stop (null unlinks) — an 'edit' write, so the impact preview guards it. */
+  const handleLinkCommitment = useCallback((commitmentId: string, dayIndex: number, stopId: string | null) => {
+    const { applyChange } = latest.current
+    applyChange(draft => {
+      const fc = draft.fixedCommitments.find(f => String(f.id) === String(commitmentId))
+      if (fc) fc.stopId = stopId ?? undefined
+    }, 'edit', dayIndex)
   }, [])
 
   /** Cross-day drag: lift a stop out of its day and insert it at `position` of `toDayIndex`. */
@@ -267,14 +281,14 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
   // accommodation one (#402).
   const warningsCache = useRef<Map<number, ScheduleWarning[]> | null>(null)
   const { dayWarnings, tripWideWarnings, warnDayCount } = useMemo(() => {
-    const { byDay, tripWide } = groupWarnings(collectWarnings(trip))
+    const { byDay, tripWide } = groupWarnings(collectWarnings(trip, legCorrections))
     // #347: `groupWarnings` mints a fresh array for every warned day on every
     // trip change — content-equal, ref-different, which re-rendered those days.
     // NO_WARNINGS above only ever saved the days with nothing to warn about.
     const stable = reuseWarningGroups(warningsCache.current, byDay)
     warningsCache.current = stable
     return { dayWarnings: stable, tripWideWarnings: tripWide, warnDayCount: byDay.size }
-  }, [trip])
+  }, [trip, legCorrections])
   // M4: sticky trip-total strip (doc §6.3) — same engine numbers as Overview.
   const totals = useMemo(() => computeTotals(trip, legCorrections), [trip, legCorrections])
   // computeTotals().byDay mints a fresh object per day on any change, and that
@@ -446,7 +460,9 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
   /** One-click add from the empty-day suggestions (route continuation / nearby POI). */
   const handleAddQuickStop = useCallback((dayIndex: number, stop: Omit<ItineraryStop, 'id' | 'orderInDay'>) => {
     latest.current.applyChange(draft => {
-      const day = draft.days.find(d => d.index === dayIndex)!
+      // #563 — refuse a stale dayIndex, never crash (same as the reorder guard).
+      const day = draft.days.find(d => d.index === dayIndex)
+      if (!day) { toast('That day is no longer on this trip.', 'err'); return }
       day.stops.push({ ...stop, id: pendingStopId(), orderInDay: nextOrderInDay(day) })
     }, 'add', dayIndex)
   }, [])
@@ -466,7 +482,9 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
   const handleAddPlannedHalts = useCallback((dayIndex: number, halts: { km: number; stop: Omit<ItineraryStop, 'id' | 'orderInDay'> }[]) => {
     if (halts.length === 0) return
     latest.current.applyChange(draft => {
-      const day = draft.days.find(d => d.index === dayIndex)!
+      // #563 — refuse a stale dayIndex, never crash (same as the reorder guard).
+      const day = draft.days.find(d => d.index === dayIndex)
+      if (!day) { toast('That day is no longer on this trip.', 'err'); return }
       const j = buildJourney(draft, day, legCorrections) // existing stop → km lookup
       // Position stops on the day's ROAD polyline when the routing layer has
       // resolved one — the halt planner's km are road km, so ordering against
@@ -630,6 +648,7 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
           onAddQuickStop={handleAddQuickStop}
           onSetDayStart={handleSetDayStart}
           onAddPlannedHalts={handleAddPlannedHalts}
+          onLinkCommitment={handleLinkCommitment}
           warnings={dayWarnings.get(day.index) ?? NO_WARNINGS}
           onStatus={handleStatus}
         />

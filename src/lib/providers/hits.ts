@@ -556,6 +556,14 @@ export function filterPlannedNearby<T extends Pick<PlaceHit, 'latitude' | 'longi
   })
 }
 
+/** Stable React key for a nearby hit: the coordinates the quick-stop builder
+ *  consumes, plus the name. Same-named POIs (fuel stations especially) are the
+ *  normal case, so name alone gives two chips one identity and React can swap
+ *  which hit a tap adds (#564). */
+export function nearbyHitKey(h: Pick<PlaceHit, 'latitude' | 'longitude' | 'name'>): string {
+  return `${h.latitude},${h.longitude},${h.name}`
+}
+
 /**
  * Shared tail of every nearby search: drop hits in the home zone around the
  * trip's start, rank by tourist value (+ itinerary-gap bias), then greedy-pick
@@ -577,7 +585,9 @@ export function rankAndCap(
     poiTouristScore(b, anchors, radiusM, opts.categoryBias) - poiTouristScore(a, anchors, radiusM, opts.categoryBias))
   const deduped = dedupeCandidates(homeFiltered)
   const catCap = Math.max(3, Math.ceil(count / 3))
-  const fuelCap = opts.includeFuel ? 4 : 0
+  // 'a couple of pit stops' — the documented cap, and harder than every other
+  // category's: fuel exists to break a drive, not to become the list (#565).
+  const fuelCap = opts.includeFuel ? Math.min(2, catCap) : 0
   const used = new Map<string, number>()
   const out: PlaceHit[] = []
   let fuelUsed = 0

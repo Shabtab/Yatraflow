@@ -361,3 +361,37 @@ describe('isMissingColumnError (issue #17)', () => {
     expect(isMissingColumnError(new Error('network'))).toBe(false)
   })
 })
+describe('#559 — a corrupt jsonb column coerces, it never poisons a render', () => {
+  it('non-array days/expenses/fixed_commitments map to empty arrays, never throw', () => {
+    const t = baseTrip()
+    const row = { ...tripToRow(t, 'owner-1'), days: {}, expenses: 'oops', fixed_commitments: 5 } as unknown as ReturnType<typeof tripToRow>
+    const back = rowToTrip({ ...row, created_at: t.createdAt, updated_at: t.updatedAt }, MEMBERS)
+    expect(back.days).toEqual([])
+    expect(back.expenses).toEqual([])
+    expect(back.fixedCommitments).toEqual([])
+    // The shapes the crash reports named are safe on the coerced trip.
+    expect(() => back.days.flatMap(d => d.stops.map(s => s.title))).not.toThrow()
+    expect(back.days.length).toBe(0)
+  })
+
+  it('a day entry without stops becomes stops: [], and a null entry is dropped', () => {
+    const t = baseTrip()
+    const row = tripToRow(t, 'owner-1')
+    const corruptDays = [
+      { ...row.days[0], stops: undefined },
+      null,
+      'junk',
+    ] as unknown as typeof row.days
+    const back = rowToTrip({ ...row, days: corruptDays, created_at: t.createdAt, updated_at: t.updatedAt }, MEMBERS)
+    expect(back.days).toHaveLength(1)
+    expect(back.days[0]!.stops).toEqual([])
+  })
+
+  it('valid rows round-trip unchanged — the coercion wraps, never rewrites', () => {
+    const t = tripWithExpenses()
+    const row = tripToRow(t, 'owner-1')
+    const back = rowToTrip({ ...row, created_at: t.createdAt, updated_at: t.updatedAt }, MEMBERS)
+    expect(back.days).toEqual(t.days)
+    expect(back.expenses).toEqual(t.expenses)
+  })
+})

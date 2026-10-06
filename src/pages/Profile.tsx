@@ -64,20 +64,26 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
   const [notifOn, setNotifOn] = useState(() => browserNotifEnabled())
   const [notifPerm, setNotifPerm] = useState<NotificationPermission | 'unsupported'>(() => browserNotifPermission())
   useEffect(() => { setNotifPerm(browserNotifPermission()) }, [notifOn])
+  // Shell-only relocated controls (the signed-in app hides the website
+  // topnav): theme toggle, in-app notifications, account actions.
+  // These hooks must stay ABOVE the `if (!me) return null` below. A hook that
+  // sits under an early return crashes with "Rendered more hooks than during
+  // the previous render" the moment the store hydrates after mount (CODING
+  // STANDARDS rule 6e).
+  const dark = useTheme()
+  const notifs = useMemo(() => (me ? notificationsFor(me.id) : []), [me])
   // Not logged in: route to auth instead of rendering a blank page.
   const loggedIn = Boolean(me)
   useEffect(() => { if (!loggedIn) onNavigate('/auth') })
   if (!me) return null
 
+  // `me` is non-null after the guard above, but TS drops the narrowing inside
+  // a hoisted function declaration, so read it through a const it can follow.
+  const me0 = me
   function toggleStyle(s: TravelStyle) {
-    const has = me!.profile.travelStyles.includes(s)
-    updateProfile({ travelStyles: has ? me!.profile.travelStyles.filter(x => x !== s) : [...me!.profile.travelStyles, s] })
+    const has = me0.profile.travelStyles.includes(s)
+    updateProfile({ travelStyles: has ? me0.profile.travelStyles.filter(x => x !== s) : [...me0.profile.travelStyles, s] })
   }
-
-  // Shell-only relocated controls (the signed-in app hides the website
-  // topnav): theme toggle, in-app notifications, account actions.
-  const dark = useTheme()
-  const notifs = useMemo(() => notificationsFor(me.id), [me])
 
   return (
     <div className="container form-page">

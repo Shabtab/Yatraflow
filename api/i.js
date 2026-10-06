@@ -218,7 +218,11 @@ export default async function handler(req, res) {
   if (url && key) {
     try {
       const response = await fetch(
+        // unpublished_at=is.null: a withdrawn publication takes the existing
+        // 404-without-canonical/noindex path below (rows survive #350, so the
+        // missing-row fallback alone no longer reaches them).
         `${url.replace(/\/+$/, '')}/rest/v1/published_itineraries?id=eq.${encodeURIComponent(id)}` +
+        '&unpublished_at=is.null' +
         '&select=id,title,tagline,route_summary,cover_image_url,duration_days,estimated_budget_per_person_inr&limit=1',
         {
           headers: { apikey: key, authorization: `Bearer ${key}` },

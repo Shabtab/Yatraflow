@@ -104,12 +104,15 @@ function seedTrip(trip: any) {
     commit_timestamp: new Date().toISOString(), old: {}, new: trip,
   } as never)
   for (const m of trip.members ?? []) {
-    // The dispatch drops payloads with no row id (the generic guard at the
-    // top of applyRealtimeEvent) — real trip_members rows carry one.
+    // #567 — the honest payload shape: `trip_members` has no `id` column (the
+    // composite (trip_id, user_id) is the key), and the dispatch keys the
+    // composite for this table. The old comment here asserted the false belief
+    // that real rows carry an id — and fabricated one to get past the guard,
+    // pinning behaviour against a shape the wire never produces.
     _applyRealtimeEventForTest('trip_members', {
       eventType: 'INSERT', schema: 'public', table: 'trip_members',
       commit_timestamp: new Date().toISOString(), old: {},
-      new: { id: `m-${m.userId}`, trip_id: trip.id, user_id: m.userId, role: m.role, joined_at: Date.now() },
+      new: { trip_id: trip.id, user_id: m.userId, role: m.role, joined_at: Date.now() },
     } as never)
   }
   return getSnapshot().trips.find(t => t.id === trip.id)!
@@ -184,7 +187,10 @@ describe('#367 — source invariants', () => {
   const page = read('src/pages/AdminPage.tsx')
 
   it('connectRealtime subscribes admin_audit (the publication already carries it)', () => {
-    expect(store).toMatch(/table: 'admin_audit'/)
+    // #568 — the subscriptions iterate the shared RESYNC_TABLES constant, so
+    // the subscription is expressed by the list containing the table.
+    expect(store).toContain('for (const t of RESYNC_TABLES)')
+    expect(store).toMatch(/const RESYNC_TABLES = \[[^\]]*'admin_audit'/)
   })
 
   it('the console header states the hatch boundary', () => {
@@ -197,5 +203,42 @@ describe('#367 — source invariants', () => {
   it('the audit tab re-reads on focus (the socket gap is replayed for trips only)', () => {
     expect(page).toMatch(/refreshAdminAuditNow\(\)/)
     expect(page).toMatch(/visibilitychange/)
+  })
+})
+
+// ============ #561 — the content tab learns the soft-unpublish marker ============
+// The tab still described the DELETE-based unpublish ("removes the page and
+// flips the trip back to private") that died with #350, contradicted its own
+// dialog twelve lines below, and listed withdrawn rows indistinguishably from
+// live ones — the marker was already in the cache and the table never read it.
+// Copy and moderation UX only, no wire behaviour: the pins are on the source.
+describe('#561 — the content tab labels live vs withdrawn', () => {
+  const page = read('src/pages/AdminPage.tsx')
+
+  it('no longer claims unpublish flips the trip back to private', () => {
+    // The string that shipped — and that its own ConfirmDialog below already
+    // contradicted. Rewritten to the shipped policy, in the register the Share
+    // tab and creator hub already use.
+    expect(page).not.toContain('flips the trip back to private')
+    expect(page).toContain('takes a plan off Explore and stops it')
+  })
+
+  it('renders the row state from the marker, keeping withdrawn rows listed', () => {
+    // Label, not filter: moderation needs the withdrawn rows — they are
+    // exactly the rows an operator is looking for, and #350's whole point is
+    // that the history survives.
+    expect(page).toContain('{p.unpublishedAt')
+    expect(page).toContain('<Chip tone="info">Unpublished ')
+    expect(page).toContain('<Chip tone="ok">Live</Chip>')
+    // …and the table still enumerates every row.
+    expect(page).toContain('pubs.map(p => {')
+  })
+
+  it('reads honestly on an already-withdrawn row instead of re-offering the action', () => {
+    // The re-stamp is idempotent server-side; what was wrong was a working
+    // button on a withdrawn row that read as an action doing something new.
+    // Pinned on the disabled-with-tooltip branch.
+    expect(page).toContain('title={`Already unpublished on ')
+    expect(page).toContain('Already unpublished on ${new Date(p.unpublishedAt)')
   })
 })

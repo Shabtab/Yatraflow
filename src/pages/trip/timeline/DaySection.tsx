@@ -15,7 +15,7 @@ import {
 import type { Trip, ItineraryStop } from '../../../data/types'
 import {
   minutesToHM, hmToMinutes, formatInr,
-  computeCategoryBias, optimizeDayOrder, roadScaleRatio, measuredLegCount, optimiseKmLabel,
+  computeCategoryBias, optimizeDayOrder, roadScaleRatio, measuredLegCount, optimiseKmLabel, scheduleRowsById,
 } from '../../../lib/engine'
 import { sameDaySectionProps, type DayCardFacts, type DayTotals } from '../../../lib/dayCards'
 import type { LegEstimate, ScheduleWarning, OptimizeDayResult } from '../../../lib/engine'
@@ -29,10 +29,17 @@ import { motionTiming, prefersReducedMotion } from '../../../lib/motion'
 import { stopKindOf, STOP_KIND_LABELS } from '../../../lib/stopKind'
 import { statusLabel } from '../../../lib/labels'
 import { Chip, EmptyState, Modal, toast, useReorder } from '../../../components/ui'
+import { Select } from '../../../components/Select'
+
+/** Stop options for a commitment link: live stops only, plus the unlink row. */
+function linkStopOptions(stops: ItineraryStop[]): { value: string; label: string }[] {
+  return [{ value: '', label: 'No linked stop' }, ...stops.filter(s => s.status !== 'rejected').map(s => ({ value: String(s.id), label: s.title }))]
+}
 import { glideOffsetPx, insertionIndexFor, rowLayoutBoxes, cancelRowSettle, cancelListSettles, settleRow } from '../../../lib/touchDnd'
 import { useSuggestionCache } from '../../../hooks/useSuggestionCache'
 import { searchNearbyPois } from '../../../lib/geocode'
 import type { PlaceHit } from '../../../lib/geocode'
+import { nearbyHitKey } from '../../../lib/providers/hits'
 import { InlineIcon, MetaIcon } from '../../../components/icons'
 import { fetchDailyWeather, forecastAvailable, isoAddDays, weatherAnchor, wmoInfo } from '../../../lib/weather'
 import type { DayWeather } from '../../../lib/weather'
@@ -186,7 +193,7 @@ function SmoothCollapse({ open, children, fallbackFocus }: { open: boolean; chil
 // (whose travel panel searches against the whole itinerary). A closed card
 // therefore cannot read the trip at all: `trip` is optional, so a `trip.x` on
 // the collapsed path is a compile error rather than a stale render.
-export const DaySection = React.memo(function DaySection({ day, trip, facts, editable, open, reviewMode, inView, onToggleOpen, onInsertHere, onAdd, onEdit, onDelete, onMoveWithinDay, onReorderDay, onMoveBetweenDays, onMoveStopIn, onRenameDay, onCopyDay, onAddQuickStop, onSetDayStart, onAddPlannedHalts, warnings, onStatus, legCorrections, suggestionCache, dayTotals }: {
+export const DaySection = React.memo(function DaySection({ day, trip, facts, editable, open, reviewMode, inView, onToggleOpen, onInsertHere, onAdd, onEdit, onDelete, onMoveWithinDay, onReorderDay, onMoveBetweenDays, onMoveStopIn, onRenameDay, onCopyDay, onAddQuickStop, onSetDayStart, onAddPlannedHalts, onLinkCommitment, warnings, onStatus, legCorrections, suggestionCache, dayTotals }: {
   day: Trip['days'][number]
   /** fresh ONLY for the open day — everything else comes from `facts` */
   trip?: Trip
@@ -227,6 +234,8 @@ export const DaySection = React.memo(function DaySection({ day, trip, facts, edi
   onSetDayStart: (dayIndex: number, time: string) => void
   /** insert planned break halts, each at a user-chosen km point, ordered by distance */
   onAddPlannedHalts: (dayIndex: number, halts: { km: number; stop: Omit<ItineraryStop, 'id' | 'orderInDay'> }[]) => void
+  /** link a fixed commitment to the stop its deadline is checked against (null unlinks) */
+  onLinkCommitment: (commitmentId: string, dayIndex: number, stopId: string | null) => void
   warnings: ScheduleWarning[]
   onStatus: (stop: ItineraryStop, status: ItineraryStop['status']) => void
 }) {
@@ -257,6 +266,12 @@ export const DaySection = React.memo(function DaySection({ day, trip, facts, edi
     : isDriveDay(journey.distanceKm, journey.driveMinutes) ? 'DRIVE' : 'MIXED'
   const A = facts.assumptions
   const ordered = useMemo(() => [...day.stops].sort((a, b) => a.orderInDay - b.orderInDay), [day.stops])
+  // #555: this day's schedule keyed by stop id. `sim`'s arrays are aligned per
+  // ACTIVE stop and its legs are INTO legs, while `ordered` also carries
+  // rejected stops the simulator skips — so every clock and leg read below
+  // goes through this map (printModel's accessor), never through the rendered
+  // position.
+  const simRows = useMemo(() => scheduleRowsById(sim), [sim])
   // ---- Optimize day order (anti-crisscross) ----
   // Preview is computed from the CURRENT day snapshot (pure engine call; the
   // helper clones its inputs, so the render-phase memo can't touch the store);
@@ -635,6 +650,11 @@ export const DaySection = React.memo(function DaySection({ day, trip, facts, edi
           <div>
             <div className="warn-title">{fc.title}</div>
             <div className="warn-fix">Fixed at {formatHM(fc.time, timeFormat)}{fc.notes ? ` — ${fc.notes}` : ''}</div>
+            {editable && fc.type !== 'hotel-checkin' && (
+              <Select value={fc.stopId ?? ''} aria-label={`Stop the ${fc.title} deadline is checked against`}
+                onChange={val => onLinkCommitment(String(fc.id), day.index, val || null)}
+                options={linkStopOptions(ordered)} />
+            )}
           </div>
         </div>
       ))}
@@ -665,7 +685,7 @@ export const DaySection = React.memo(function DaySection({ day, trip, facts, edi
               </button>
             )}
             {nearby.map(h => (
-              <button key={h.name} className="chip-btn" onClick={() => onAddQuickStop(day.index, poiQuickStop(h))} title="Add this nearby idea">
+              <button key={nearbyHitKey(h)} className="chip-btn" onClick={() => onAddQuickStop(day.index, poiQuickStop(h))} title="Add this nearby idea">
                 <InlineIcon icon={Plus} size={12} gap={3} />{h.name}
               </button>
             ))}
@@ -674,11 +694,35 @@ export const DaySection = React.memo(function DaySection({ day, trip, facts, edi
       </>)}
 
       <div className={`tl${dragging !== null ? ' is-dragging' : ''}`} ref={stopsRef} data-yf-list={listId}>
+        {/* #555: the day's opening drive (origin → first stop) is a real leg —
+            printModel unshifts it before the first stop row, and the timeline
+            shows it the same way: a leg row above the first stop. It sits
+            before the list rather than between two rows, so it carries no drop
+            zone or Insert control (those belong to the gaps between rows), and
+            a leading auto anchor — which IS the day's start — shows none. */}
+        {(() => {
+          const first = ordered[0]
+          const leg = first && first.auto !== true ? simRows.get(first.id)?.legIn : null
+          if (!leg || leg.distanceKm < 0.5) return null
+          return (
+            <div className="tl-legrow">
+              <div className="tl-gutter tl-gutter-leg"><span className="tl-line tl-line-leg" /></div>
+              <div className="tl-leg-cell">
+                <div className="travel-leg">
+                  <MetaIcon icon={ Car } tone="money" />~{leg.distanceKm.toFixed(0)} km · ~{Math.round(leg.durationMinutes)} min from {leg.fromTitle.replace(/ \((start|end)\)$/, '')} · est ₹{Math.round(leg.distanceKm * (A.inrPerKm ?? 8))} ({A.mode})
+                </div>
+              </div>
+            </div>
+          )
+        })()}
         {ordered.map((s, i) => {
           // Auto anchors (trip start/end, route-continuation waypoints) are pure
           // route endpoints, not activities. The rich travel summary (mode,
           // distance, fuel, departure→ETA, halts) lives in TravelPanel above;
           // here we just anchor the timeline leg with a clean marker.
+          // #555: this row's own schedule facts, keyed by stop id — never by
+          // the rendered index (rejected rows shift positional reads).
+          const row = simRows.get(s.id)
           const isAnchor = s.auto === true
           if (isAnchor) {
             const cleanName = (s.locationName || s.title).replace(/ \((start|end)\)$/, '')
@@ -702,14 +746,14 @@ export const DaySection = React.memo(function DaySection({ day, trip, facts, edi
             return (
               <div key={s.id} data-stop-id={s.id} className="tl-row tl-anchor" style={{ transform: glideOffset(i) != null ? `translateY(${glideOffset(i)}px)` : undefined }} {...(editable ? dndHandlers(i) : {})}>
                 <div className="tl-gutter">
-                  <span className="tl-time"><span className="sr-only">{isFinal ? 'Arrival: ' : 'Departure: '}</span>{isFinal ? (sim.arrivalTimes[i] ? formatHM(sim.arrivalTimes[i], timeFormat) : '--:--') : (sim.departures[i] ? formatHM(sim.departures[i], timeFormat) : '--:--')}</span>
+                  <span className="tl-time"><span className="sr-only">{isFinal ? 'Arrival: ' : 'Departure: '}</span>{isFinal ? (row?.arrive ? formatHM(row.arrive, timeFormat) : '--:--') : (row?.depart ? formatHM(row.depart, timeFormat) : '--:--')}</span>
                 </div>
                 <div className="travel-endpoint">
                   <span className="travel-anchor-ico">{i === 0 || isFinal ? <Flag size={13} aria-hidden /> : <MapPin size={13} aria-hidden />}</span>
                   <span>
                     {i === 0 ? `Start — ${cleanName}` : isFinal ? `Destination — ${cleanName}` : cleanName}
                   </span>
-                  {isFinal && <span className="small muted" style={{ marginLeft: 6 }}>arrives ~{sim.arrivalTimes[i] ? formatHM(sim.arrivalTimes[i], timeFormat) : '--:--'}</span>}
+                  {isFinal && <span className="small muted" style={{ marginLeft: 6 }}>arrives ~{row?.arrive ? formatHM(row.arrive, timeFormat) : '--:--'}</span>}
                 </div>
               </div>
             )
@@ -724,9 +768,9 @@ export const DaySection = React.memo(function DaySection({ day, trip, facts, edi
                 {...(editable ? dndHandlers(i) : {})}
               >
                 <div className="tl-gutter">
-                  <span className="tl-time tl-arr"><span className="sr-only">Arrival: </span>{sim.arrivalTimes[i] ? formatHM(sim.arrivalTimes[i], timeFormat) : '--:--'}</span>
+                  <span className="tl-time tl-arr"><span className="sr-only">Arrival: </span>{row?.arrive ? formatHM(row.arrive, timeFormat) : '--:--'}</span>
                   <span className="tl-line" aria-hidden="true" />
-                  <span className="tl-time tl-dep"><span className="sr-only">Departure: </span>{sim.departures[i] ? formatHM(sim.departures[i], timeFormat) : '--:--'}</span>
+                  <span className="tl-time tl-dep"><span className="sr-only">Departure: </span>{row?.depart ? formatHM(row.depart, timeFormat) : '--:--'}</span>
                 </div>
                 <div
                   className={`stop-card kind-${kind} status-${s.status} ${foreignOver === i && dragging === null ? 'foreign-over' : ''}`}
@@ -777,14 +821,19 @@ export const DaySection = React.memo(function DaySection({ day, trip, facts, edi
             </div>
 
             {i < ordered.length - 1 && !(ordered[i + 1].auto === true) && (() => {
-                const leg = sim.legs[i]
-                if (!leg) return null
+                // #555: the gap under this row is the drive INTO the row BELOW
+                // it — sim's legs are into-legs, resolved by stop id here, so a
+                // rejected neighbour (absent from the schedule) can never shift
+                // another row's leg into this gap. The row renders even without
+                // a leg: it is also the drop zone / Insert slot between the two
+                // rows.
+                const leg = simRows.get(ordered[i + 1].id)?.legIn
                 return (
                   <div className="tl-legrow" {...(editable ? dayDropHandlers(i + 1) : {})}>
                     <div className="tl-gutter tl-gutter-leg"><span className="tl-line tl-line-leg" /></div>
                     <div className="tl-leg-cell">
                       <div className={`travel-leg ${foreignOver === i + 1 && dragging === null ? 'foreign-over' : ''}`}>
-                        <MetaIcon icon={ Car } tone="money" />~{leg.distanceKm.toFixed(0)} km · ~{Math.round(leg.durationMinutes)} min from {leg.fromTitle.replace(/ \((start|end)\)$/, '')} · est ₹{Math.round(leg.distanceKm * (A.inrPerKm ?? 8))} ({A.mode})
+                        {leg && leg.distanceKm >= 0.5 && <><MetaIcon icon={ Car } tone="money" />~{leg.distanceKm.toFixed(0)} km · ~{Math.round(leg.durationMinutes)} min from {leg.fromTitle.replace(/ \((start|end)\)$/, '')} · est ₹{Math.round(leg.distanceKm * (A.inrPerKm ?? 8))} ({A.mode})</>}
                       </div>
                       {/* #422: the insertion control belongs to the leg BETWEEN
                           two stops, and it hands over the slot it sits in —

@@ -1,6 +1,6 @@
 // ============ Scheduling & impact engine ============
 // All outputs are transparent estimates. Nothing here claims live data.
-import type { Trip, ItineraryStop, ItineraryDay, ID, TravelStyle } from '../data/types'
+import type { Trip, ItineraryStop, ItineraryDay, ID, TravelStyle, FixedCommitment } from '../data/types'
 import { haversineKm } from './geo'
 import { STAY_RATE_PER_NIGHT } from './rates'
 
@@ -311,6 +311,33 @@ export function simulateDay(
     endsAtStart: j.endsAtStart,
     dwellMinutes: j.dwellMinutes,
   }
+}
+
+/** One rendered row's schedule facts, keyed by stop id. */
+export interface StopScheduleRow {
+  /** clock the traveller arrives at this stop */
+  arrive: string
+  /** clock the traveller leaves this stop */
+  depart: string
+  /** the drive that brought the traveller TO this stop (an into-leg) */
+  legIn: ScheduledLeg
+}
+
+/**
+ * The one accessor for DaySchedule's parallel arrays (#555). They are aligned
+ * per ACTIVE stop: `legs[k]` is the leg that brought you INTO `activeStops[k]`
+ * (`legs[0]` is the day's opening drive) and `arrivalTimes[k]`/`departures[k]`
+ * are that row's clocks. Rendered lists also carry rejected stops the
+ * simulator skips, so a positional read shifts at the first rejected row and
+ * shows one stop's times/leg under another. Look rows up by stop id — this map
+ * is the accessor printModel's lookup mirrors.
+ */
+export function scheduleRowsById(sim: DaySchedule): Map<string, StopScheduleRow> {
+  const byId = new Map<string, StopScheduleRow>()
+  sim.activeStops.forEach((s, k) => {
+    byId.set(s.id, { arrive: sim.arrivalTimes[k], depart: sim.departures[k], legIn: sim.legs[k] })
+  })
+  return byId
 }
 
 // ---------------- Leg-aware stop insertion ----------------
@@ -762,8 +789,11 @@ export interface HealthResult {
 /**
  * All schedule issues for a trip. Used both for the health score and for
  * diffing current-vs-proposed plans in the Impact Preview.
+ * `legCorrections` is the workspace's measured road data — the same figures
+ * the Timeline rows render with. Pass it wherever the caller shows measured
+ * clocks (#608); without it the warnings honestly fall back to estimates.
  */
-export function collectWarnings(trip: Trip): ScheduleWarning[] {
+export function collectWarnings(trip: Trip, legCorrections?: Record<string, LegEstimate>): ScheduleWarning[] {
   const warnings: ScheduleWarning[] = []
   const A = getAssumptions(trip)
   const dayCount = Math.max(1, trip.days.length)
@@ -777,7 +807,7 @@ export function collectWarnings(trip: Trip): ScheduleWarning[] {
     // simulateDay already builds the day's full unified journey — the drive
     // to the day's destination (or back home) is inside these totals, so no
     // overlay math is needed to make travel/fatigue checks honest.
-    const sim = simulateDay(day, trip, originOf(trip, day.index), day.index)
+    const sim = simulateDay(day, trip, originOf(trip, day.index), day.index, legCorrections)
     const n = sim.activeStops.length
     dayClocks.set(day.index, {
       startsAt: sim.startsAt, endsAt: sim.endsAt,
@@ -854,18 +884,36 @@ export function collectWarnings(trip: Trip): ScheduleWarning[] {
     }
   })
 
-  // Fixed-commitment conflicts: does anything run past a commitment time?
+  // Fixed-commitment conflicts: each deadline is checked against arrival at
+  // its OWN stop, never the day's last stop (#609). A later dinner can no
+  // longer make an on-time boarding read late. A commitment with no matching
+  // stop says so honestly instead of borrowing another stop's clock.
   for (const fc of trip.fixedCommitments) {
+    if (fc.type === 'hotel-checkin') continue // check-in is an anchor, not a race
     const day = trip.days.find(d => d.index === fc.dayIndex)
     if (!day) continue
-    const sim = simulateDay(day, trip, originOf(trip, fc.dayIndex), fc.dayIndex)
+    const sim = simulateDay(day, trip, originOf(trip, fc.dayIndex), fc.dayIndex, legCorrections)
     const commitMin = hmToMinutes(fc.time)
-    if (fc.type === 'hotel-checkin') continue // check-in is an anchor, not a race
-    const lastDepIdx = sim.departures.length - 1
-    if (lastDepIdx >= 0 && hmToMinutes(sim.arrivalTimes[lastDepIdx]) > commitMin) {
-      warnings.push({ code: 'commitment', severity: 'high', dayIndex: fc.dayIndex, title: `Conflicts with ${fc.title}`, detail: `Day ${fc.dayIndex + 1} plan reaches its last stop after the ${fc.time} commitment.`, fix: 'Cut an earlier stop so you arrive with buffer.' })
-    } else if (lastDepIdx >= 0 && commitMin - hmToMinutes(sim.arrivalTimes[lastDepIdx]) < 45 && sim.activeStops.length > 0) {
-      warnings.push({ code: 'buffer', severity: 'medium', dayIndex: fc.dayIndex, title: `Thin buffer before ${fc.title}`, detail: `Less than ~45 min of slack before the ${fc.time} commitment.`, fix: 'Drop one optional stop to protect your connection.' })
+    const atIdx = commitmentStopIndex(sim.activeStops, fc)
+    if (atIdx == null || sim.arrivalTimes[atIdx] == null) {
+      const title = `${fc.title}: no linked stop`
+      const detail = `Day ${fc.dayIndex + 1} has no stop linked to the ${fc.time} commitment.`
+      const fix = 'Open the day on the Timeline and pick the stop this deadline belongs to.'
+      warnings.push({ code: 'commitment-unlinked', severity: 'low', dayIndex: fc.dayIndex, title, detail, fix })
+      continue
+    }
+    const arrivalMin = hmToMinutes(sim.arrivalTimes[atIdx])
+    const atName = sim.activeStops[atIdx].title
+    if (arrivalMin > commitMin) {
+      const title = `Conflicts with ${fc.title}`
+      const detail = `You reach ${atName} ~${sim.arrivalTimes[atIdx]}, after the ${fc.time} commitment.`
+      const fix = 'Cut an earlier stop so you arrive with buffer.'
+      warnings.push({ code: 'commitment', severity: 'high', dayIndex: fc.dayIndex, title, detail, fix })
+    } else if (commitMin - arrivalMin < 45) {
+      const title = `Thin buffer before ${fc.title}`
+      const detail = `You reach ${atName} ~${sim.arrivalTimes[atIdx]}, under ~45 min before the ${fc.time} commitment.`
+      const fix = 'Drop one optional stop to protect your connection.'
+      warnings.push({ code: 'buffer', severity: 'medium', dayIndex: fc.dayIndex, title, detail, fix })
     }
   }
 
@@ -933,9 +981,28 @@ export function dayIndexFromTitle(title: string): number | null {
   return m ? Number(m[1]) - 1 : null
 }
 
-/** Public API: compute health from collected warnings. */
-export function computeHealth(trip: Trip): HealthResult {
-  return scoreWarnings(collectWarnings(trip))
+/** Public API: compute health from collected warnings. Takes the same measured
+ *  road data as `collectWarnings` — the health dial must agree with the rows
+ *  beside it (#608). */
+export function computeHealth(trip: Trip, legCorrections?: Record<string, LegEstimate>): HealthResult {
+  return scoreWarnings(collectWarnings(trip, legCorrections))
+}
+
+/**
+ * Link a fixed commitment to its stop (#609, stored link). The link is the
+ * stop id the commitment carries — picked in the create form, auto-linked at
+ * creation, or linked later on the Timeline. Returns the stop's index into
+ * the day's active stops, or null when the link is absent or stale: the
+ * caller then says the check lacks a location instead of borrowing another
+ * stop's clock. The null contract is the whole point — no guessing.
+ */
+export function commitmentStopIndex(
+  stops: Pick<ItineraryStop, 'id'>[],
+  fc: Pick<FixedCommitment, 'stopId'>,
+): number | null {
+  if (fc.stopId == null) return null
+  const at = stops.findIndex(s => String(s.id) === String(fc.stopId))
+  return at >= 0 ? at : null
 }
 
 export function scoreWarnings(warnings: ScheduleWarning[]): HealthResult {
@@ -1325,6 +1392,15 @@ function num0(x: unknown): number {
   return typeof x === 'number' && Number.isFinite(x) ? x : 0
 }
 
+/** One leg's transport money (#573), stated once: the stop's stated cost of
+ *  getting there REPLACES the leg's per-km estimate when the row holds one —
+ *  never added to it — and the estimate stands when nothing is stated. The
+ *  one rule computeTotals, the AI saving line and the tests all read. */
+export function legCostInr(stated: unknown, distanceKm: number, inrPerKm: number): number {
+  const s = num0(stated)
+  return s > 0 ? s : distanceKm * inrPerKm
+}
+
 export function computeTotals(trip: Trip, legCorrections?: Record<string, LegEstimate>): TripTotals {
   const A = getAssumptions(trip)
   let travelMinutes = 0, distanceKm = 0, stopCount = 0
@@ -1358,9 +1434,15 @@ export function computeTotals(trip: Trip, legCorrections?: Record<string, LegEst
       bucket.distanceKm = sim.totalDistanceKm
     }
     stopCount += day.stops.filter(s => s.status !== 'rejected').length
-    // per-leg fuel/fare cost derived from distance
-    sim.legs.forEach(l => {
-      const legCost = l.distanceKm * (A.inrPerKm ?? 8)
+    // Per-leg fuel/fare cost derived from distance — unless the stop STATES
+    // its own cost of getting there (#573): a train fare, a toll road or a
+    // bus ticket does not scale with per-km fuel math, and the timeline shows
+    // the stated figure. STATED REPLACES the leg's estimate, never adds to it
+    // (adding would be the entry-fee double-count's twin); the round-trip
+    // return leg has no stop and keeps its estimate. Rows are aligned per
+    // active stop, so legs[k] is the into-leg of activeStops[k].
+    sim.legs.forEach((l, k) => {
+      const legCost = legCostInr(sim.activeStops[k]?.transportCostInrTotal, l.distanceKm, A.inrPerKm ?? 8)
       transportCost += legCost
       if (bucket) bucket.transportInr += legCost
     })
@@ -1417,10 +1499,19 @@ export function computeTotals(trip: Trip, legCorrections?: Record<string, LegEst
     if (b) b.expensesInr += amt
     else for (const bd of byDay) bd.expensesInr += amt / dayCount // unattached trip-level costs spread evenly
   }
-  // entry fees from stops not already covered by explicit expenses
+  // Entry fees from stops whose ticket is not already RECORDED (#573): an
+  // entry-fees expense attached to the stop (stopId) is what the crew paid —
+  // the recorded line replaces the stop's estimate in the total, so one
+  // monument ticket never counts twice. The rule is the stopId link only: an
+  // UNATTACHED entry-fees line covers nothing specific (matching free-text
+  // labels would guess), and its amount already flows through the ledger
+  // loop above. Suggestion acceptance auto-fills the stop field from the
+  // estimate (store.ts), so the estimate exists precisely until the real
+  // ticket is recorded.
+  const entryCovered = new Set<ID>(trip.expenses.filter(e => e.category === 'entry-fees' && e.stopId != null).map(e => e.stopId as ID))
   let entryFromStops = 0
   trip.days.forEach(d => d.stops.forEach(s => {
-    if (s.status !== 'rejected') {
+    if (s.status !== 'rejected' && !entryCovered.has(s.id)) {
       const fee = num0(s.entryFeeInrPerPerson) * travellers
       entryFromStops += fee
       entryByDay.set(d.index, (entryByDay.get(d.index) ?? 0) + fee)

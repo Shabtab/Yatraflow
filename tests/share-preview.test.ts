@@ -814,19 +814,22 @@ describe('a shared link carries its channel', () => {
 
   it('a second hop keeps the arrival channel instead of laundering it', () => {
     const source = readFileSync(new URL('../src/pages/PublicItinerary.tsx', import.meta.url), 'utf8')
-    // The page reads the arrival ref and passes it to its own send: a link
-    // that travelled through a post keeps that post's reference.
-    expect(source).toMatch(/const arrivalRef = shareRefFromSearch\(location\.search\)/)
+    // The page consumes the arrival ref once (#552) and passes that ONE value
+    // to its own send: a link that travelled through a post keeps that post's
+    // reference, for the whole life of the page it arrived on.
+    expect(source).toMatch(/const \[arrivalRef\] = useState\(\(\) => shareRefFromSearch\(window\.location\.search\)\)/)
     expect(source).toMatch(/sharePublicationOnWhatsApp\(pub, arrivalRef \?\? 'wa'\)/)
   })
 
-  it('no address-bar rewrite remains that could drop an arrival channel', () => {
+  it('the only address-bar writer left removes a consumed ref, nothing else (#552)', () => {
     // The sync that used to rewrite the address behind a publication page is
-    // retired (#426 slice 2): the route IS the pathname now, so nothing
-    // rewrites the query behind the page's back and the ref a link arrived
-    // with survives by construction. The one writer left is the boot bridge,
-    // and its query ride-through is pinned in the bridge describe above.
+    // retired (#426 slice 2). #552 adds back ONE deliberate writer: the
+    // consumption takes a RECOGNISED ref out of the bar after the page has
+    // read it — every other parameter survives, so it cannot drop an arrival
+    // channel the way the old sync could. The boot bridge's query ride-through
+    // stays pinned in the bridge describe above.
     expect(read('../src/lib/shareUrl.ts')).not.toContain('syncPublicAddress')
+    expect(read('../src/pages/PublicItinerary.tsx')).toContain('useEffect(() => { clearShareRefFromLocation() }, [])')
   })
 })
 describe('sending a publication on WhatsApp', () => {

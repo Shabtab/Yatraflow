@@ -53,6 +53,8 @@ interface CommitDraft {
   type: FixedCommitment['type']
   dayIndex: number
   time: string
+  /** Destination this deadline is checked against — resolved to a stop id at creation. */
+  destName?: string
 }
 
 /** A destination picked (or typed) for the route. */
@@ -168,7 +170,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
   const [returnInput, setReturnInput] = useState('')
   const [startCoords, setStartCoords] = useState<LatLngPoint | null>(null)
   const [commitments, setCommitments] = useState<CommitDraft[]>([])
-  const [c, setC] = useState<CommitDraft>({ title: '', type: 'hotel-checkin', dayIndex: 0, time: '14:00' })
+  const [c, setC] = useState<CommitDraft>({ title: '', type: 'hotel-checkin', dayIndex: 0, time: '14:00', destName: '' })
   const [errs, setErrs] = useState<Record<string, string>>({})
   const [busyCover, setBusyCover] = useState(false)
   const [billPrinted, setBillPrinted] = useState(false)
@@ -798,8 +800,8 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
   function addCommitment() {
     if (!c.title.trim()) { toast('Name the commitment first (e.g. "Train 12626").', 'err'); return }
     if (!dayCount || c.dayIndex >= dayCount) { toast('Pick a day within the trip dates.', 'err'); return }
-    setCommitments(list => [...list, { ...c, title: c.title.trim() }])
-    setC({ title: '', type: 'hotel-checkin', dayIndex: 0, time: '14:00' })
+    setCommitments(list => [...list, { ...c, title: c.title.trim(), destName: c.destName?.trim() || undefined }])
+    setC({ title: '', type: 'hotel-checkin', dayIndex: 0, time: '14:00', destName: '' })
   }
 
   // The mockup's step markers answer "is this question done?" - derived from
@@ -990,6 +992,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
               <div className="ct-q-field ct-add-stop">
                 <LocationInput
                   id="ct-dest-input"
+                  ariaLabel="Add a stop to the trip"
                   value={destInput}
                   onChange={setDestInput}
                   errorId={errs.destinations ? 'ct-dest-err' : undefined}
@@ -1075,6 +1078,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
                   </div>
                   <LocationInput
                     id="ct-return-input"
+                    ariaLabel="Add a return stop to the trip"
                     value={returnInput}
                     onChange={setReturnInput}
                     errorId={errs.returnStops ? 'ct-return-err' : undefined}
@@ -1483,7 +1487,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
                     <span className="warn-icon"><Pin size={13} aria-hidden /></span>
                     <div style={{ flex: 1 }}>
                       <div className="warn-title">{x.title}</div>
-                      <div className="warn-fix">Day {x.dayIndex + 1} at {formatHM(x.time, timeFormat)}</div>
+                      <div className="warn-fix">Day {x.dayIndex + 1} at {formatHM(x.time, timeFormat)}{x.destName ? ` — at ${x.destName}` : ''}</div>
                     </div>
                     <button type="button" className="icon-btn" aria-label={`Remove ${x.title}`} onClick={() => setCommitments(l => l.filter((_, j) => j !== i))}><X size={13} aria-hidden /></button>
                   </div>
@@ -1511,6 +1515,11 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
                   options={Array.from({ length: Math.max(1, dayCount) }, (_, i) => ({ value: String(i), label: `Day ${i + 1}` }))} />
               </Field>
               <Field label="Time"><input className="input" type="time" value={c.time} onChange={e => setC(x => ({ ...x, time: e.target.value }))} /></Field>
+              <Field label="Linked stop">
+                <Select value={c.destName ?? ''} onChange={val => setC(x => ({ ...x, destName: val }))}
+                  aria-label="Destination this deadline is checked against"
+                  options={[{ value: '', label: 'No linked stop' }, ...dests.map(d => ({ value: d.name, label: d.name }))]} />
+              </Field>
               <button type="button" className="btn btn-outline" onClick={addCommitment} style={{ height: 42 }}>Add pinned plan</button>
             </div>
           </div>

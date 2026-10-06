@@ -303,10 +303,14 @@ function windowFor(draft: SlotDraft): [number, number] | null {
 
 /**
  * Which stop fills a slot, if any. Rejected stops never fill. Category
- * claims first (food -> meal slots, hotel -> stay), then a stop's reported
- * hours overlapping an empty slot's window, then the nearest-window
- * fallback for food stops whose hours name no window. One stop fills at
- * most one slot, and a generic stop without a matching time fills nothing.
+ * claims first (food -> meal slots, hotel -> stay), then a food stop's hours
+ * claiming the meal window they overlap MOST, then the nearest-window
+ * fallback for food stops whose hours name no window, then a plausible
+ * non-food halt (roadside, rest, mall) filling an empty meal window from its
+ * hours. Destination kinds (park, waterfall, safari, museum ...) never fill a
+ * meal from hours alone (#607) — their hours describe visiting, not eating.
+ * One stop fills at most one slot, and a generic stop without a matching
+ * time fills nothing.
  */
 function fillStopFor(
   drafts: SlotDraft[],
@@ -344,20 +348,36 @@ function fillStopFor(
     }
   }
 
-  // Pass 1 - meals: a food stop whose hours overlap the slot's window.
-  for (const d of drafts) {
-    if (d.kind !== 'meal') continue
-    const win = windowFor(d)
-    if (!win) continue
-    const matching = foodStops.filter(s => {
-      if (claimed.has(String(s.id)) || !belongsTo(d.key)(s)) return false
+  // Pass 1 - meals: each food stop lands in the empty meal slot its hours
+  // overlap MOST. The old per-slot iteration let the earliest draft claim an
+  // all-day restaurant — 07:00-22:00 read as breakfast (#607). The longest
+  // overlap is the honest guess; ties break to the earlier window, and each
+  // stop still fills at most one slot. An explicit slotKey (Pass 0) always
+  // wins over this hours guess.
+  {
+    const mealDrafts = drafts.filter(d => d.kind === 'meal')
+    const overlapMin = (span: [number, number], win: [number, number]) =>
+      Math.max(0, Math.min(span[1], win[1]) - Math.max(span[0], win[0]))
+    const orderedFood = [...foodStops].sort((a, b) => a.orderInDay - b.orderInDay)
+    for (const s of orderedFood) {
+      if (claimed.has(String(s.id))) continue
       const span = stopSpanMin(s)
-      return span != null && span[0] < win[1] && span[1] > win[0]
-    })
-    const pick = takeLatest(matching)
-    if (pick) {
-      claims.set(d.key, pick)
-      claimed.add(String(pick.id))
+      if (span == null) continue
+      let best: { key: SlotKey; overlap: number; winStart: number } | null = null
+      for (const d of mealDrafts) {
+        if (claims.has(d.key) || !belongsTo(d.key)(s)) continue
+        const win = windowFor(d)
+        if (!win) continue
+        const ov = overlapMin(span, win)
+        if (ov <= 0) continue
+        if (best == null || ov > best.overlap || (ov === best.overlap && win[0] < best.winStart)) {
+          best = { key: d.key, overlap: ov, winStart: win[0] }
+        }
+      }
+      if (best) {
+        claims.set(best.key, s)
+        claimed.add(String(s.id))
+      }
     }
   }
 
@@ -420,16 +440,21 @@ function fillStopFor(
     }
   }
 
-  // Pass 4 - a non-food, non-hotel stop whose hours overlap an empty slot's
+  // Pass 4 - a plausible non-food halt whose hours overlap an empty meal
   // window fills that window (a 12:30 'travel' stop reads as lunch). Without
   // matching hours it fills nothing - two slots never claim one stop.
+  // Destination kinds never fill here (#607): a park, waterfall, safari or
+  // museum keeps its hours for VISITING, and the meal slot stays honestly
+  // empty until the crew files a real meal (an explicit slotKey in Pass 0
+  // still files any stop, destination or not).
   for (const d of drafts) {
     if (claims.has(d.key)) continue
     const win = windowFor(d)
     if (!win) continue
     const matching = active.filter(s => {
       if (claimed.has(String(s.id)) || !belongsTo(d.key)(s)) return false
-      if (s.category === 'food' || s.category === 'hotel') return false
+      if (s.category === 'food' || (s.category as string) === 'cafe' || s.category === 'hotel') return false
+      if (NON_MEAL_CATEGORIES.has(s.category)) return false
       const span = stopSpanMin(s)
       return span != null && span[0] < win[1] && span[1] > win[0]
     })
@@ -442,6 +467,14 @@ function fillStopFor(
 
   return claims
 }
+
+/** Pass-4 denylist (#607): stop kinds whose opening hours describe VISITING,
+ *  not eating. A park open 08:00-18:00 overlaps every meal window, so letting
+ *  it claim lunch is a category error, not a plan. Plausible meal halts
+ *  (travel, rest, shopping, transport-hub) stay claimable below. */
+const NON_MEAL_CATEGORIES: ReadonlySet<string> = new Set([
+  'sightseeing', 'nature', 'beach', 'temple', 'museum', 'adventure', 'event',
+])
 
 /** Slot engine speed: the trip mode's own door-to-door figure, 40 as fallback. */
 function speedFor(mode: TransportMode | null | undefined): number {

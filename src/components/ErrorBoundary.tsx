@@ -8,6 +8,7 @@
 // boundary now performs automatically (once, guarded against reload loops).
 import { Component } from 'react'
 import type { ErrorInfo, ReactNode } from 'react'
+import { TriangleAlert } from 'lucide-react'
 import { clearLocalAppData, LOCAL_DATA_NOTE } from '../lib/localData'
 
 const RELOAD_FLAG = 'yf-chunk-reload'
@@ -18,6 +19,18 @@ function isStaleChunkError(error: Error | null): boolean {
   if (!error) return false
   return /failed to fetch dynamically imported module|importing a module script failed|error loading dynamically imported module|dynamically imported module/i
     .test(error.message)
+}
+
+/** The stale-chunk reload decision as a pure function of the session flag.
+ *  The loop guarantee must be testable in a node env (AGENTS §1: no DOM).
+ *  One-shot per TAB SESSION: the first stale-chunk crash in a tab reloads,
+ *  and any later one lands on the fallback below, whose "Reload the app"
+ *  button clears the flag so a deliberate reload re-arms. (An earlier version
+ *  cleared the flag on mount instead. React runs componentDidMount before the
+ *  componentDidCatch callback in the same commit — every page life disarmed
+ *  the guard before reading it.) */
+export function chunkReloadAction(reloadFlagPresent: boolean): 'reload' | 'fallback' {
+  return reloadFlagPresent ? 'fallback' : 'reload'
 }
 
 interface Props { children: ReactNode }
@@ -40,20 +53,17 @@ export class ErrorBoundary extends Component<Props, State> {
     console.error('YatraFlow crashed:', error, info.componentStack)
     // A deploy shipped while this tab was open: its old shell now imports
     // chunk hashes that no longer exist. Reload once into the fresh deploy —
-    // a session flag prevents a reload loop if the reload itself fails.
+    // any further occurrence in this tab session lands on the fallback
+    // instead of a second automatic reload, so a recurring failure (offline,
+    // or a poisoned cache entry) can never loop.
     if (isStaleChunkError(error)) {
-      let alreadyReloaded = false
-      try { alreadyReloaded = sessionStorage.getItem(RELOAD_FLAG) === '1' } catch { /* private mode */ }
-      if (!alreadyReloaded) {
+      let flagPresent = false
+      try { flagPresent = sessionStorage.getItem(RELOAD_FLAG) === '1' } catch { /* private mode */ }
+      if (chunkReloadAction(flagPresent) === 'reload') {
         try { sessionStorage.setItem(RELOAD_FLAG, '1') } catch { /* ignore */ }
         location.reload()
       }
     }
-  }
-
-  componentDidMount() {
-    // A clean mount (full page load) re-arms the one-shot reload guard.
-    try { sessionStorage.removeItem(RELOAD_FLAG) } catch { /* ignore */ }
   }
 
   render() {
@@ -61,7 +71,7 @@ export class ErrorBoundary extends Component<Props, State> {
       const staleChunk = isStaleChunkError(this.state.error)
       return (
         <div className="container empty-state" style={{ paddingTop: 80 }}>
-          <div className="big">⚠️</div>
+          <div className="big"><TriangleAlert size={38} aria-hidden /></div>
           <h2>{staleChunk ? 'YatraFlow was just updated' : 'Something went wrong'}</h2>
           <p className="muted small" style={{ maxWidth: 480, margin: '8px auto' }}>
             {staleChunk
@@ -74,8 +84,8 @@ export class ErrorBoundary extends Component<Props, State> {
               <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
                 <button
                   className="btn btn-danger"
-                  onClick={() => {
-                    clearLocalAppData()
+                  onClick={async () => {
+                    await clearLocalAppData()
                     location.reload()
                   }}
                 >

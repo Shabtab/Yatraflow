@@ -1,0 +1,139 @@
+{
+  "generatedBy": "npm run lint:ratchet -- --update",
+  "errors": 142,
+  "warnings": 29,
+  "files": {
+    "src/App.tsx": {
+      "react-hooks/set-state-in-effect": 1
+    },
+    "src/components/BoardView.tsx": {
+      "@typescript-eslint/no-unused-vars": 2,
+      "react-hooks/exhaustive-deps": 3,
+      "react-hooks/refs": 2,
+      "react-hooks/immutability": 1,
+      "react-hooks/set-state-in-effect": 1
+    },
+    "src/components/PlanBench.tsx": {
+      "react-hooks/purity": 3
+    },
+    "src/components/PrintExport.tsx": {
+      "react-hooks/refs": 4
+    },
+    "src/components/ResolvePickDialog.tsx": {
+      "react-hooks/refs": 1
+    },
+    "src/components/StopEditor.tsx": {
+      "react-hooks/set-state-in-effect": 1,
+      "react-hooks/exhaustive-deps": 1
+    },
+    "src/components/TripMap.tsx": {
+      "react-hooks/set-state-in-effect": 4,
+      "react-hooks/exhaustive-deps": 5,
+      "react-hooks/immutability": 1,
+      "react-hooks/preserve-manual-memoization": 1
+    },
+    "src/components/mapcn/map.tsx": {
+      "react-hooks/refs": 9,
+      "react-hooks/set-state-in-effect": 1
+    },
+    "src/components/ui.tsx": {
+      "react-hooks/immutability": 1,
+      "react-hooks/refs": 3,
+      "react-hooks/set-state-in-effect": 1
+    },
+    "src/components/useStopConflict.ts": {
+      "react-hooks/refs": 1
+    },
+    "src/hooks/useDestinationCover.ts": {
+      "react-hooks/set-state-in-effect": 1,
+      "react-hooks/exhaustive-deps": 1
+    },
+    "src/hooks/useSuggestionCache.ts": {
+      "react-hooks/set-state-in-effect": 1
+    },
+    "src/hooks/useTripPresence.ts": {
+      "react-hooks/set-state-in-effect": 1,
+      "react-hooks/refs": 2
+    },
+    "src/lib/budgetBenchmarks.ts": {
+      "@typescript-eslint/no-unused-vars": 1
+    },
+    "src/lib/clockOverlay.ts": {
+      "@typescript-eslint/no-unused-vars": 2
+    },
+    "src/pages/AdminPage.tsx": {
+      "react-hooks/set-state-in-effect": 3,
+      "react-hooks/immutability": 1
+    },
+    "src/pages/CreateTrip.tsx": {
+      "@typescript-eslint/no-unused-vars": 12,
+      "react-hooks/set-state-in-effect": 3,
+      "react-hooks/exhaustive-deps": 2
+    },
+    "src/pages/Explore.tsx": {
+      "@typescript-eslint/no-unused-vars": 2,
+      "react-hooks/set-state-in-effect": 1,
+      "react-hooks/exhaustive-deps": 1
+    },
+    "src/pages/Profile.tsx": {
+      "react-hooks/set-state-in-effect": 1
+    },
+    "src/pages/PublicItinerary.tsx": {
+      "react-hooks/exhaustive-deps": 1,
+      "react-hooks/set-state-in-effect": 1,
+      "react-hooks/purity": 1
+    },
+    "src/pages/Purchases.tsx": {
+      "react-hooks/set-state-in-effect": 1
+    },
+    "src/pages/TripCreated.tsx": {
+      "@typescript-eslint/no-unused-vars": 1,
+      "react-hooks/exhaustive-deps": 4
+    },
+    "src/pages/TripWorkspace.tsx": {
+      "react-hooks/refs": 1,
+      "react-hooks/set-state-in-effect": 2,
+      "react-hooks/preserve-manual-memoization": 2,
+      "react-hooks/exhaustive-deps": 2
+    },
+    "src/pages/TripsList.tsx": {
+      "react-hooks/exhaustive-deps": 2
+    },
+    "src/pages/trip/GroupInputTab.tsx": {
+      "react-hooks/set-state-in-effect": 1
+    },
+    "src/pages/trip/MapTab.tsx": {
+      "@typescript-eslint/no-unused-vars": 14,
+      "react-hooks/exhaustive-deps": 4
+    },
+    "src/pages/trip/OverviewTab.tsx": {
+      "react-hooks/set-state-in-effect": 1
+    },
+    "src/pages/trip/ShareTab.tsx": {
+      "@typescript-eslint/no-unused-vars": 1
+    },
+    "src/pages/trip/TimelineTab.tsx": {
+      "@typescript-eslint/no-unused-vars": 5,
+      "react-hooks/exhaustive-deps": 2,
+      "react-hooks/refs": 7,
+      "react-hooks/set-state-in-effect": 3
+    },
+    "src/pages/trip/timeline/DaySection.tsx": {
+      "react-hooks/set-state-in-effect": 4,
+      "react-hooks/refs": 6,
+      "react-hooks/immutability": 1
+    },
+    "src/pages/trip/timeline/TravelPanel.tsx": {
+      "react-hooks/set-state-in-effect": 1,
+      "react-hooks/exhaustive-deps": 1,
+      "react-hooks/refs": 5,
+      "react-hooks/immutability": 4,
+      "react-hooks/purity": 1,
+      "@typescript-eslint/no-unused-vars": 1
+    },
+    "src/store/store.ts": {
+      "@typescript-eslint/no-explicit-any": 7,
+      "@typescript-eslint/no-unused-vars": 2
+    }
+  }
+}

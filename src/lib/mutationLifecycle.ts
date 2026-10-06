@@ -293,8 +293,8 @@ export function supersededPaths(): readonly { name: string; why: string }[] {
  *  so it shows up in review. */
 export const DIRECT_WRITE_ALLOWLIST: readonly { file: string; why: string }[] = [
   {
-    file: 'src/pages/trip/MapTab.tsx',
-    why: 'The Undo of a fill (single or batch) removes the stops that fill just added, after its preview closed — direct by design, and declared as stop.remove-from-fill.',
+    file: 'src/pages/trip/map/useMapWriters.ts',
+    why: 'The Undo of a fill (single or batch) removes the stops that fill just added, after its preview closed — direct by design, and declared as stop.remove-from-fill. Moved here from MapTab.tsx with the writers (#420 slice 10).',
   },
 ]
 

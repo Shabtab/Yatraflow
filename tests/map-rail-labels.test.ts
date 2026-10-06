@@ -12,6 +12,12 @@ import { detourBits, hitCostLabels, slotPinsFor } from '../src/pages/trip/map/ra
 import type { DaySlot } from '../src/lib/daySlots'
 
 const mapTab = readFileSync(new URL('../src/pages/trip/MapTab.tsx', import.meta.url), 'utf8')
+// #420 slice 13: the cost assembly lives in the rail-content hook.
+const contentHook = readFileSync(new URL('../src/pages/trip/map/useRailContent.ts', import.meta.url), 'utf8')
+// #420 slice 14: the slot pins live in the day-slots hook with their input.
+const slotsHook = readFileSync(new URL('../src/pages/trip/map/useDaySlots.ts', import.meta.url), 'utf8')
+// #420 slice 16: the rail rows render in their own module.
+const views = readFileSync(new URL('../src/pages/trip/map/RailRowViews.tsx', import.meta.url), 'utf8')
 
 describe('#420 — the three bits, in the order every surface prints them', () => {
   it('says an unmeasured position instead of a number', () => {
@@ -117,11 +123,12 @@ describe('#420 — the empty-part pin says the same thing', () => {
 
 describe('#420 — slice 4 wiring', () => {
   it('the shared sentence has one home now, and the page is not it', () => {
-    expect(mapTab).toContain("from './map/railLabels'")
+    expect(mapTab).not.toContain("from './map/railLabels'")
     // The chip and the pin both printed THIS sentence; it now comes from the module.
     expect(mapTab).not.toContain("of the day's detour budget")
-    expect(mapTab).toMatch(/const hitCosts = useMemo\(\(\) => hitCostLabels\(\{/)
-    expect(mapTab).toMatch(/const slotPins = useMemo\(\(\) => slotPinsFor\(activeDaySlots\)/)
+    expect(contentHook).toMatch(/const hitCosts = useMemo\(\(\) => hitCostLabels\(\{/)
+    expect(slotsHook).toMatch(/const slotPins = useMemo\(\(\) => slotPinsFor\(activeDaySlots\)/)
+    expect(mapTab).toContain('} = useDaySlots(')
   })
 
   it('leaves the two denser variants alone, and pins how many there are', () => {
@@ -135,13 +142,17 @@ describe('#420 — slice 4 wiring', () => {
     // This count is what stops a FIFTH copy appearing unnoticed. If a future change
     // makes one of these identical to the shared sentence, move it in and lower the
     // number rather than relaxing the assertion.
+    // #420 slice 16: the see-rail row's copy moved with its JSX — the words are
+    // unchanged, so both homes carry a count and the total is still three.
     expect(mapTab).toContain('% of day detours')
-    expect(mapTab).toContain('min detour`')
-    expect((mapTab.match(/'position unknown'/g) ?? []).length).toBe(3)
+    expect(mapTab).not.toContain('min detour`')
+    expect(views).toContain('min detour`')
+    expect((mapTab.match(/'position unknown'/g) ?? []).length).toBe(2)
+    expect((views.match(/'position unknown'/g) ?? []).length).toBe(1)
   })
 
   it('the page still supplies the trip-aware inputs the module must not know', () => {
-    const call = mapTab.slice(mapTab.indexOf('hitCostLabels({'), mapTab.indexOf('}), [pois, hitEngine'))
+    const call = contentHook.slice(contentHook.indexOf('hitCostLabels({'), contentHook.indexOf('}), [pois, hitEngine'))
     expect(call).toContain('detourMin: hitEngine.get(String(sh.hit.id))?.detourMin ?? null')
     expect(call).toContain('etaMinutes: sh.segment.etaMinutes')
     expect(call).toContain('dayForKm,')

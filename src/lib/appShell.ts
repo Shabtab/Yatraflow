@@ -59,8 +59,11 @@ export function registerAndroidBack(ctx: BackHandlerContext): () => void {
     if (ctx.closeOverlay()) { armed = false; return }
 
     // 2) the plugin tells us whether the WebView has history to walk back
-    //    through; the app pushes a history entry per hash navigation
+    //    through; the app pushes a history entry per hash navigation.
+    //    Navigating disarms, same as the overlay branch: a press that moves
+    //    the user somewhere else must not leave a stale exit arm behind.
     if (canGoBack) {
+      armed = false
       history.back()
       return
     }

@@ -1,0 +1,15 @@
+# Machine-compared files check out with LF endings on every platform.
+# tests/lint-ratchet.test.ts demands a byte-identical rewrite of the
+# baseline; a CRLF checkout breaks that comparison on Windows.
+eslint-baseline.json text eol=lf
+
+# CHANGELOG.md: sequential PRs both append an entry at the same anchor (top of
+# [Unreleased] Fixed), so every second PR merge hit a hand-merge conflict
+# (#643 against #642's entry, #654 against #653's). The union merge driver
+# keeps both sides' lines instead of conflicting — proven on two scratch
+# branches: the same two-append merge that read CONFLICT without the driver
+# resolves clean with it, both entries kept. Cost: union's line order is
+# "ours then theirs", so a merged-in entry can sit below an older one until a
+# docs commit tidies it. NEVER extend union to source or test files — it
+# duplicates lines on any non-append overlap.
+CHANGELOG.md merge=union

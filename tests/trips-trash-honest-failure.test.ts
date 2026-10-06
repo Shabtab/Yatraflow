@@ -171,3 +171,71 @@ describe('F1 — the purge audit row (#387, lane G surface)', () => {
     expect(checker).toContain('20260929_trash_purge_audit.sql')
   })
 })
+
+// ============ #566 — trash withdraws, the purge refuses (client half) ============
+// The trip's tombstone and the publication's `unpublished_at` marker are two
+// different verbs: Explore, the sitemap, the share card and checkout all read
+// the MARKER, so trashing a trip without stamping it leaves the removed trip's
+// plan selling from a page its owner just took down. And a hard delete of a
+// published trip cascades the buyers' entitlements and the creator's sales
+// ledger away — the thing both purge paths now refuse server-side, so no client
+// path may be the back door around them.
+describe('#566 — the client keeps the gate vocabulary', () => {
+  const store = src('../src/store/store.ts')
+  const page = src('../src/pages/TripsList.tsx')
+
+  function bodyOf(name: string): string {
+    const at = store.indexOf(`function ${name}(`)
+    expect(at, `store never defines ${name}`).toBeGreaterThan(-1)
+    const next = store.indexOf('export ', at + name.length + 10)
+    return next >= 0 ? store.slice(at, next) : store.slice(at)
+  }
+
+  it('trashTrip withdraws the trip\'s still-on-sale publications with it', () => {
+    const body = bodyOf('trashTrip')
+    // The stamp is the only thing the selling surfaces read — probe-gated on
+    // the column so a pre-#350 database keeps its old vocabulary.
+    expect(body).toContain('publishedHaveUnpublishedAt()')
+    expect(body).toContain('unpublished_at')
+    // Withdraw FIRST: if the plan cannot stop selling, the trip stays put
+    // rather than half-moving.
+    expect(body.indexOf('publishedHaveUnpublishedAt()')).toBeLessThan(body.indexOf('update({ deleted_at'))
+    // The marker is optimistic and rolls back together with the trip.
+    expect(body).toContain('cache.published = prevPubs')
+  })
+
+  it('refuses to trash a still-selling trip the caller cannot withdraw', () => {
+    // `published write` RLS is creator-only while `trips update` is is_editor,
+    // so an editor cannot stamp the marker — refused outright rather than
+    // half-served (and deliberately no trigger: withdrawing the sale is the
+    // creator's action, not a side effect of a tombstone).
+    const body = bodyOf('trashTrip')
+    expect(body).toContain('onSale.some(p => p.creatorId !== me)')
+    expect(store).toContain('Only the trip owner can trash a published trip')
+  })
+
+  it('deleteTrip refuses a published trip outright', () => {
+    // The legacy hard delete cascades the money rows away and a marker stamp
+    // cannot help — the row it would stamp dies with the trip. Refused like
+    // the purge RPC refuses it, so it is not the one back door around the
+    // guard (nothing calls it since the trash landed; kept for the undo suite).
+    const body = bodyOf('deleteTrip')
+    expect(body).toContain('cache.published.some(p => p.tripId === id)')
+    expect(store).toContain('Move it to trash instead')
+  })
+
+  it('surfaces the purge refusal sentence instead of a shrug', () => {
+    // The refusal is a sentence from the RPC ("trip has N publication row(s)
+    // … never purged") — hiding it behind "Could not delete that trip." is how
+    // a owner learns nothing about why the trip stays in the trash.
+    const body = bodyOf('permanentlyDeleteTrip')
+    expect(body).toContain('error.message')
+    // …and the failure branch still re-issues the bin RPC (F1's contract).
+    expect(body.split('fetchTrashedTrips').length - 1).toBeGreaterThanOrEqual(2)
+  })
+
+  it('the confirm copy says what happens to the public page', () => {
+    expect(page).toContain('stops selling and stays readable')
+    expect(page).toContain('records stay with it')
+  })
+})
