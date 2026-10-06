@@ -314,6 +314,33 @@ that notices the drift.
     the one sitting beside this machine's clone folders, not any copy inside
     a clone.
 
+### What enforces each rule
+
+A rule nobody checks fails silently. This table pairs each rule above (and the
+two moved sections) with the gate that fails when you break it. "Judgment"
+means no gate exists — only a human or an agent that reads the rule can catch
+a breach, so treat those rows as the ones most easily skipped.
+
+| Rule | What fails when you break it |
+| --- | --- |
+| §2.1 push to `main` only on confirmation | judgment — the user; Vercel serves `main` |
+| §2.2–3 changelog entry, final state, in the push | `lint:ste` on the entry's prose; review for the rest; `.gitattributes` gives `CHANGELOG.md` a union merge driver, so two sequential PRs no longer conflict on their appends |
+| §2.4 claim the work in the same breath | judgment — `git ls-remote --heads origin \| grep <n>` is the manual check |
+| §2.5 UI-audit fixes tick ROADMAP in the same commit | review; judgment |
+| §2.6 re-derive "done" from git, never from memory | `git status -sb` + `git log` — manual, on every resume |
+| §2.7 hand over exact, proven localhost URLs | judgment — the probe commands in the rule |
+| §2.8 build locally, confirm target branch, then push | judgment — the user confirms |
+| §2.9 edit CHANGELOG with editor primitives only | review of the diff stat; `lint:ste` reads every changed line |
+| §2.10 motion tokens on every new interactive surface | `npm run check:ui` (partial: `transition: all`, z-index ≥ 999, blocked pinch-zoom) |
+| §2.11 work stays local until the batch is done | judgment — the user says when to push |
+| §2.12 close the issues a `test` merge leaves open | `.github/workflows/issue-autoclose.yml`, pinned by `tests/pr-auto-close.test.ts`; fall back to `gh issue view` after every merge |
+| §2.13 new prose in Simplified Technical English | `npm run lint:ste` (runs inside `verify` too) |
+| §2.14 lint is a ratchet — never add errors | `npm run lint:ratchet` vs `eslint-baseline.json` (inside `verify`) |
+| §2.15 clear `NODE_ENV` before installs | `npm run clean:env` |
+| §2.16 work only in your own clone | judgment — the global user-level `AGENTS.md` clone table |
+| §3 gate, CI, migrations | `npm run verify` locally; `ci.yml` on push and PR (`tests/ci-workflow.test.ts` pins the triggers); `npm run check:migrations` + a live PostgREST probe for schema |
+| §4 code conventions and pitfalls | the pin tests named in each rule — `verify` runs them all |
+
 
 ## 3. Verification, CI and the migration check
 
