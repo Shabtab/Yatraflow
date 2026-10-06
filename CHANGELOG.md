@@ -40,6 +40,15 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
   documentation, new rules, changelog entries and chat explanations follow one instruction per
   sentence, a 20 word limit, and a plain vocabulary. Run `npm run lint:ste` to check the lines
   you changed. Existing text is unchanged.
+- **Signup now asks for a date of birth, and the DMCA policy has a page.** Accounts are
+  adults-only. India's DPDP Act 2023 treats under-18 users as children. Their data needs
+  verifiable parental consent, and Razorpay account holders must be 18. The signup form asks
+  for a date of birth, refuses anyone younger, and stores nothing — the check runs and the
+  value is dropped. A copyright and DMCA page lives at `#/dmca`, linked from the landing page
+  footer. It tells rights holders how to report infringing content, what a report carries,
+  and how the counter-notice path works. It answers signed-out visitors too. Both unlock
+  buttons now say "One-time payment. No subscription." so the purchase shape is clear at the
+  point of payment.
 - **A hook below an early return in Profile no longer crashes the page on a full
   reload.** The theme hook and the notifications memo sat under `if (!me) return
   null`. React reported a hook count mismatch as soon as the store hydrated after
@@ -84,6 +93,13 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ### Fixed
 
+- **Brand fonts now load from the app itself, not from Google's font CDN.** Every page load
+  told Google each visitor's IP address before any consent could exist — the German courts'
+  GDPR reading of the Google Fonts embed — and added a third party whose outage or block
+  could hold the app's own typography hostage. The two families ship as vendored `@fontsource`
+  packages now: same files, same weights, same `font-display: swap`, no CDN request. Source
+  pins keep the CDN links out of `index.html` and every vendored weight imported, so a
+  re-added link fails the build instead of leaking again.
 - **Nearby suggestions no longer turn a fuel-heavy corridor into a wall of pumps.** The shared tail of every nearby search allowed 4 fuel stops — the largest allowance on the list — while both of its own comments document fuel as "capped at a couple of pit stops". With 6 slots, a corridor lined with pumps could fill most of the suggestion rail with them; the feature exists to break up a drive with sights and meals, not to re-suggest the road. Fuel is now genuinely capped at 2, harder than every other category, as the docs always said. (#565)
 - **Two same-named nearby ideas no longer share one React identity.** The empty-day suggestion chips keyed by the POI's name, and same-named results are the normal case on Indian roads — two "Indian Oil" pumps within the search radius was enough. React could attach one chip's tap to the other chip's row, so the wrong chip silently added the same-named place at the other location. The key is now the hit's coordinates plus its name — the identity the quick-stop builder consumes — through one shared, pinned helper. (#564)
 - **A deploy's stale-chunk crash can no longer reload the tab forever, and the recovery button now clears what it promises.** Three contracts disagreed. The service worker cached any 200 response under a hashed asset URL, and the host's catch-all rewrite answers a vanished chunk with 200 + the HTML shell — so one stale import filed markup under a `.js` URL and the worker served it cache-first forever. The asset branch now refuses HTML answers as the misses they are, and an offline miss resolves as a network error. The version bumps to `v2`, so `activate` sweeps already-poisoned caches off devices. The crash screen's reload guard was cleared on mount — before the crash handler read it — so every occurrence reloaded, and a recurring failure looped forever with the fallback UI unreachable. The guard is one-shot per tab session now: one automatic reload, then the fallback, whose reload button re-arms it. "Clear saved data" walked localStorage only while promising the offline copy; it now wipes Cache Storage and the offline snapshots too. Unsynced edits waiting to upload survive, and the note says so. (#575)
