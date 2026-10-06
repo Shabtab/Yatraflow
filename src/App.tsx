@@ -49,6 +49,7 @@ const CreatorHubPage = lazy(() => import('./pages/CreatorHubPage').then(m => ({ 
 // Masteradmin console: JWT app_metadata role only (never linked anywhere -
 // admins type /admin; non-admins fall through to landing inside the page).
 const AdminPage = lazy(() => import('./pages/AdminPage').then(m => ({ default: m.AdminPage })))
+const DMCAPage = lazy(() => import('./pages/DMCAPage').then(m => ({ default: m.DMCAPage })))
 
 /** Suspense fallback for the lazy routes - the same loading block the ready-gate shows. */
 const lazyRouteFallback = <div className="container loading-block"><div className="spinner" />Loading…</div>
@@ -304,6 +305,10 @@ export default function App() {
     // Legacy UUID links (#/invite/<tripId>) from before invite codes shipped.
     // Keep working: the gate accepts a raw trip id too.
     page = <InviteGate codeOrTripId={parts[1]} onNavigate={navigate} />
+  } else if (parts[0] === 'dmca') {
+    // A policy page answers for signed-out visitors too, so it sits pre-switch
+    // beside share/join/invite rather than inside the signed-in switch.
+    page = <Suspense fallback={lazyRouteFallback}><DMCAPage /></Suspense>
   } else if (!me) {
     // public pages stay accessible logged-out; everything else funnels to auth/landing
     if (parts[0] === 'pub' && parts[1]) page = <Suspense fallback={lazyRouteFallback}><PublicItineraryPage slug={parts[1]} onNavigate={navigate} /></Suspense>
