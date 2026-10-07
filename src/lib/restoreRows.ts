@@ -49,9 +49,12 @@ export function notificationToRow(n: Notification) {
 
 /** The published row is the public URL: its `id` IS the slug, so restoring must
  *  reuse it or the old share link breaks even though a link exists again.
- *  `published_at`/`views`/`copies` ride along so the counts survive too. */
-export function publishedToRow(p: PublishedItinerary) {
-  return {
+ *  `published_at`/`views`/`copies` ride along so the counts survive too.
+ *  `withRefreshedAt` gates `refreshed_at` the way `withComments` gates the
+ *  decision column. The key is omitted until the caller says the column
+ *  exists: a write naming an unknown column is rejected whole. */
+export function publishedToRow(p: PublishedItinerary, withRefreshedAt: boolean) {
+  const row: Record<string, unknown> = {
     id: p.id, trip_id: p.tripId, creator_id: p.creatorId, title: p.title,
     tagline: p.tagline ?? null, cover_image_url: p.coverImageUrl ?? null,
     route_summary: p.routeSummary, duration_days: p.durationDays,
@@ -62,4 +65,8 @@ export function publishedToRow(p: PublishedItinerary) {
     subscriber_cta: p.subscriberCta ?? null,
     published_at: p.publishedAt, views: p.views, copies: p.copies,
   }
+  // The sitemap's <lastmod> and Explore's freshness sort read refreshed_at
+  // (api/sitemap.js). An undo that drops it buries the revived publication.
+  if (withRefreshedAt) row.refreshed_at = p.refreshedAt ?? null
+  return row
 }

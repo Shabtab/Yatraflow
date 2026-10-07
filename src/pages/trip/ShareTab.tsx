@@ -18,6 +18,8 @@ import { netOfFeeInr, PLATFORM_FEE_SUMMARY } from '../../lib/earnings'
 import {
   publishValidation, PUBLISH_FIELD_ORDER, PUBLISH_FIELD_LABELS, PublishRejected, type PublishField,
 } from '../../lib/publishRules'
+import { takePublishDraft } from '../../lib/publishDraft'
+import type { PublicationDraft } from '../../lib/itinerarySpec'
 import { Avatar, Chip, ConfirmDialog, CopyButton, Field, FormErrorSummary, toast, undoToast } from '../../components/ui'
 import { PrintExport } from '../../components/PrintExport'
 import { cap, timeAgo } from './shared'
@@ -104,9 +106,13 @@ const DEFAULT_WARNINGS = ['All costs are estimates based on typical prices — v
  *  now chooses which days are the free preview, whether the itinerary is
  *  premium at all (empty/₹0 price = entirely free), and the reader-facing
  *  copy — pre-filled from the live publication when updating. */
-function PublicationForm({ trip, pub, live = true, isOwner, creatorId, onDone }: {
+function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, onDone }: {
   trip: Trip
   pub: PublishedItinerary | undefined
+  /** An imported file's publish block, taken once from the stash. The draft
+   *  is an offer the creator reviews, never a publish: the form's own rules
+   *  and submit path still decide what may go live. */
+  draft?: PublicationDraft | null
   /** Whether that row is up on Explore right now (#350). False while it is
    *  soft-unpublished: the form keeps the row as its prefill — the creator
    *  should not retype their tagline — but its button offers publishing again
@@ -117,12 +123,17 @@ function PublicationForm({ trip, pub, live = true, isOwner, creatorId, onDone }:
   onDone: (published: boolean) => void
 }) {
   const defaultTagline = `${trip.days.length}-day ${trip.travelStyle} trip through ${trip.destinations.join(', ')}.`
-  const [free, setFree] = useState<Set<number>>(() => new Set(pub?.freeDayIndexes ?? [0]))
-  const [price, setPrice] = useState(pub?.premiumPriceInr != null ? String(pub.premiumPriceInr) : '')
-  const [tagline, setTagline] = useState(pub?.tagline ?? defaultTagline)
-  const [bestSeason, setBestSeason] = useState(pub?.bestSeason ?? '')
-  const [tips, setTips] = useState(pub ? pub.travelTips.join('\n') : DEFAULT_TRAVEL_TIPS.join('\n'))
-  const [cta, setCta] = useState(pub?.subscriberCta ?? '')
+  // The draft wins over a live row: it is the freshest intent the creator
+  // was just offered. Every field falls back to the row, then the default.
+  const [free, setFree] = useState<Set<number>>(() => new Set(draft?.freeDayIndexes ?? pub?.freeDayIndexes ?? [0]))
+  const [price, setPrice] = useState(() => {
+    const priced = draft?.premiumPriceInr ?? pub?.premiumPriceInr
+    return priced != null ? String(priced) : ''
+  })
+  const [tagline, setTagline] = useState(draft?.tagline ?? pub?.tagline ?? defaultTagline)
+  const [bestSeason, setBestSeason] = useState(draft?.bestSeason ?? pub?.bestSeason ?? '')
+  const [tips, setTips] = useState(() => (draft?.travelTips ?? pub?.travelTips ?? DEFAULT_TRAVEL_TIPS).join('\n'))
+  const [cta, setCta] = useState(draft?.subscriberCta ?? pub?.subscriberCta ?? '')
   // #389 — F-15, ported from CreateTrip rather than invented a second time.
   // The form had ONE `err: string` driving ONE `role="alert"` banner at the
   // bottom: a screen-reader user heard "Premium days need a call-to-action" and
@@ -430,6 +441,9 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
   // #230 — the copy button's link names the button it left through (`ref=copy`).
   const pubLink = pubLive && pub ? withShareRef(currentPublicShareUrl(pub.id), 'copy') : ''
   const isOwner = (trip.members ?? []).some(m => m.userId === me.id && m.role === 'owner')
+  // One read consumes the stash (#368): the import's offer lands here or
+  // nowhere. Reviewing and publishing stay in the creator's hands.
+  const [draft] = useState(() => takePublishDraft(trip.id))
   const [tab, setTab] = useState<ShareTabId>('plan')
   const [pendingRemove, setPendingRemove] = useState<NonNullable<Trip['members']>[number] | null>(null)
   const [pendingUnpublish, setPendingUnpublish] = useState(false)
@@ -554,7 +568,7 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
               Unpublished — it has left Explore and is no longer on sale. Anyone who already unlocked it keeps the full plan.
             </p>
           ))}
-          <PublicationForm trip={trip} pub={pub} live={pubLive} isOwner={isOwner} creatorId={me.id}
+          <PublicationForm trip={trip} pub={pub} draft={draft} live={pubLive} isOwner={isOwner} creatorId={me.id}
             onDone={wasPublished => toast(wasPublished ? 'Publication updated' : 'Published to Explore')} />
           {pub && isOwner && pubLive && (
             <button className="btn btn-ghost btn-sm" style={{ marginTop: 10 }} onClick={() => setPendingUnpublish(true)}>Unpublish</button>
