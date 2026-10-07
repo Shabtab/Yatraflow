@@ -15,6 +15,16 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Changed
+
+- **The canonical origin is now `https://www.yatraflow.in`.** The app moved to its
+  own domain, and every surface that mints or pins an address follows it: the share
+  links the Android app mints, the Plan Bench receipt's link, the shell's Open Graph
+  and canonical defaults, the robots.txt sitemap line, and the card handlers' and
+  sitemap's fallback origin. The old `yatraflow-blond.vercel.app` alias keeps serving,
+  so every link already in the wild keeps working. The pin tests hold the literals
+  together, so the next origin change fails the build if any surface disagrees.
+
 ### Fixed
 
 - **The installed app no longer serves a creator card as its offline shell.** The
