@@ -66,7 +66,7 @@ describe('share preview handler in node', () => {
     const res = await runHandler()
     const title = 'Tom &amp; Jerry&#39;s &quot;Monsoon&quot; Escape — YatraFlow'
     const description = 'Kochi &amp; back via &quot;Munnar&quot; tea hills'
-    const canonical = `https://yatraflow-blond.vercel.app/i/${publication.id}`
+    const canonical = `https://www.yatraflow.in/i/${publication.id}`
     expect(res.statusCode).toBe(200)
     expect(res.headers['content-type']).toBe('text/html; charset=utf-8')
     expect(res.headers['x-content-type-options']).toBe('nosniff')
@@ -83,7 +83,7 @@ describe('share preview handler in node', () => {
     expect(res.body).toContain(`location.replace("/pub/${publication.id}")`)
     expect(res.body).toContain(`href="/pub/${publication.id}"`)
     // No cover on this row, so the app's own asset has to carry the card.
-    const fallback = 'https://yatraflow-blond.vercel.app/og-default.png'
+    const fallback = 'https://www.yatraflow.in/og-default.png'
     expect(res.body).toContain(`og:image" content="${fallback}"`)
     expect(res.body).toContain(`twitter:image" content="${fallback}"`)
     expect(res.body).toContain('og:image:width" content="1200"')
@@ -166,7 +166,7 @@ describe('share preview handler in node', () => {
       respond([{ ...publication, cover_image_url: cover }])
       const res = await runHandler()
       expect(res.body).not.toContain('http://images.example.test/cover.jpg')
-      expect(res.body).toContain('og:image" content="https://yatraflow-blond.vercel.app/og-default.png"')
+      expect(res.body).toContain('og:image" content="https://www.yatraflow.in/og-default.png"')
       expect(res.body).toContain('twitter:card" content="summary_large_image"')
     },
   )
@@ -312,7 +312,7 @@ describe('share preview handler in node', () => {
 
 /** The buyer-thrown request: the publication row, then the gate's verdict. */
 const BUYER = '3f1a2b4c-5d6e-4f70-8a91-b2c3d4e5f601'
-const DEFAULT_ORIGIN = 'https://yatraflow-blond.vercel.app'
+const DEFAULT_ORIGIN = 'https://www.yatraflow.in'
 
 function respondBuyerCard(bought: unknown, publicationRows: unknown = [publication]) {
   fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(publicationRows)))
@@ -463,7 +463,7 @@ describe('public share URLs', () => {
 
   it.each(['capacitor://localhost', 'http://localhost', 'https://preview.example.test'])('uses production https for native origin %s', async origin => {
     const { publicShareUrl } = await import(shareUrlPath)
-    expect(publicShareUrl(publication.id, origin, true)).toBe(`https://yatraflow-blond.vercel.app/i/${publication.id}`)
+    expect(publicShareUrl(publication.id, origin, true)).toBe(`https://www.yatraflow.in/i/${publication.id}`)
   })
 })
 
@@ -619,7 +619,7 @@ describe('public share source wiring', () => {
     expect(creatorShareUrl('alice', 'https://app.example.test/', false))
       .toBe('https://app.example.test/c/alice')
     expect(creatorShareUrl('alice', 'capacitor://localhost', true))
-      .toBe('https://yatraflow-blond.vercel.app/c/alice')
+      .toBe('https://www.yatraflow.in/c/alice')
   })
 })
 
@@ -798,7 +798,7 @@ describe('a shared link carries its channel', () => {
       .toBe('https://app.example.test/i/kerala-trip_1')
     // Native keeps minting the production origin, with the ref.
     expect(publicShareUrl('kerala-trip_1', 'capacitor://localhost', true, 'wa'))
-      .toBe('https://yatraflow-blond.vercel.app/i/kerala-trip_1?ref=wa')
+      .toBe('https://www.yatraflow.in/i/kerala-trip_1?ref=wa')
   })
 
   it('the send stamps its own channel by default, and the message is unchanged', async () => {
