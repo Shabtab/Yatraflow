@@ -18,13 +18,17 @@ function v1Trip(): Record<string, unknown> {
     days: [
       {
         id: 'd1', index: 0, stops: [
-          { id: 's1', title: 'Beach', lat: 15.01, lng: 74.02, category: 'beach', visitMinutes: 90, entryFeeInrPerPerson: 0, transportCostInrTotal: 0, priority: 'must-do', status: 'confirmed', orderInDay: 0, departTime: '08:00', arrivalTime: '09:00', legDistanceKm: 12, legTravelMinutes: 20 },
-          { id: 's2', title: 'Market', lat: 15.1, lng: 74.1, category: 'shopping', visitMinutes: 45, entryFeeInrPerPerson: 0, transportCostInrTotal: 0, priority: 'must-do', status: 'confirmed', orderInDay: 1 },
+          { id: 's1', title: 'Beach', lat: 15.01, lng: 74.02, category: 'beach', visitMinutes: 90,
+            entryFeeInrPerPerson: 0, transportCostInrTotal: 0, priority: 'must-do', status: 'confirmed',
+            orderInDay: 0, departTime: '08:00', arrivalTime: '09:00', legDistanceKm: 12, legTravelMinutes: 20 },
+          { id: 's2', title: 'Market', lat: 15.1, lng: 74.1, category: 'shopping', visitMinutes: 45,
+            entryFeeInrPerPerson: 0, transportCostInrTotal: 0, priority: 'must-do', status: 'confirmed', orderInDay: 1 },
         ],
       },
       {
         id: 'd2', index: 1, stops: [
-          { id: 's3', title: 'Cafe', lat: 15.2, lng: 74.2, category: 'food', visitMinutes: 60, entryFeeInrPerPerson: 0, transportCostInrTotal: 0, priority: 'must-do', status: 'confirmed', orderInDay: 0 },
+          { id: 's3', title: 'Cafe', lat: 15.2, lng: 74.2, category: 'food', visitMinutes: 60,
+            entryFeeInrPerPerson: 0, transportCostInrTotal: 0, priority: 'must-do', status: 'confirmed', orderInDay: 0 },
         ],
       },
     ],

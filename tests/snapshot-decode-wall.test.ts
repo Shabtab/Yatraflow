@@ -34,13 +34,18 @@ const dirtyTrip = {
   days: [
     {
       id: 'd1', index: 0, stops: [
-        { id: 's2', title: 'Palolem Beach', lat: 15.01, lng: 74.02, visitMinutes: 90, entryFeeInrPerPerson: 0, transportCostInrTotal: 0, category: 'beach', priority: 'must-do', status: 'confirmed', orderInDay: 0, legDistanceKm: 12, arrivalTime: '09:00' },
-        { id: 's1', title: 'Null Island pin', lat: 0, lng: 0, visitMinutes: 60, entryFeeInrPerPerson: 0, transportCostInrTotal: 0, category: 'sightseeing', priority: 'must-do', status: 'confirmed', orderInDay: 1 },
+        { id: 's2', title: 'Palolem Beach', lat: 15.01, lng: 74.02, visitMinutes: 90,
+          entryFeeInrPerPerson: 0, transportCostInrTotal: 0, category: 'beach', priority: 'must-do',
+          status: 'confirmed', orderInDay: 0, legDistanceKm: 12, arrivalTime: '09:00' },
+        { id: 's1', title: 'Null Island pin', lat: 0, lng: 0, visitMinutes: 60,
+          entryFeeInrPerPerson: 0, transportCostInrTotal: 0, category: 'sightseeing', priority: 'must-do',
+          status: 'confirmed', orderInDay: 1 },
       ],
     },
     {
       id: 'd2', index: 1, stops: [
-        { id: 's3', title: 'Market', lat: 15.1, lng: 74.1, visitMinutes: 45, entryFeeInrPerPerson: 0, transportCostInrTotal: 0, category: 'shopping', priority: 'must-do', status: 'confirmed', orderInDay: 0 },
+        { id: 's3', title: 'Market', lat: 15.1, lng: 74.1, visitMinutes: 45, entryFeeInrPerPerson: 0,
+          transportCostInrTotal: 0, category: 'shopping', priority: 'must-do', status: 'confirmed', orderInDay: 0 },
       ],
     },
   ],
