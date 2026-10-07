@@ -11,11 +11,12 @@ import { Upload } from 'lucide-react'
 import type { ID, Trip } from '../data/types'
 import { importTripPersisted, retryImportTrip } from '../store/store'
 import { parseTripImport, TripImportError } from '../lib/tripImport'
-import type { DroppedStopPatch } from '../lib/tripImport'
+import type { DroppedStopPatch, PublicationDraft } from '../lib/tripImport'
 import { digestImportReport, type ImportReportDigest } from '../lib/itinerarySpec'
+import { stashPublishDraft } from '../lib/publishDraft'
 import { useResolvePick } from './ResolvePickDialog'
 import { unnamedPick } from '../lib/resolvePick'
-import { toast } from './ui'
+import { toast, ConfirmDialog } from './ui'
 
 /** How many dropped rows get the pin prompt. A hand-edited file drops a stop
  *  or two; a corrupt one could drop dozens, and stacking dialogs past this
@@ -37,15 +38,41 @@ export function ImportTripButton({ ownerId, onNavigate, className = 'btn btn-out
   // not followed by a twin (#374's rule). `digest` rides along so the retry's
   // success tells the same story the first save would have.
   const [pending, setPending] = useState<{
-    trip: Trip; summary: string; note: string; digest: ImportReportDigest | null
+    trip: Trip; summary: string; note: string; digest: ImportReportDigest | null; offer?: PublicationDraft
   } | null>(null)
   const [saving, setSaving] = useState(false)
+  // #368 — a file's publish block becomes an offer: the dialog stashes it
+  // for the Share tab's form. Nothing is stored until the creator confirms,
+  // and nothing goes live until they publish.
+  const [offer, setOffer] = useState<{ trip: Trip; draft: PublicationDraft } | null>(null)
 
   /** The success side of both paths, in the order the two toasts must read. */
   function announceImported(done: { trip: Trip; summary: string; note: string; digest: ImportReportDigest | null }) {
     toast(`Imported “${done.trip.name}” — ${done.summary}.${done.note}`)
     if (done.digest) toast(done.digest.message, done.digest.kind)
     onNavigate('/trips')
+  }
+
+  /** The offer path toasts the import but leaves navigation to the dialog.
+   *  Confirm opens the prefilled Share tab; cancel goes to My Trips. */
+  function offerPrefill(trip: Trip, draft: PublicationDraft, digest: ImportReportDigest | null, summary: string) {
+    toast(`Imported “${trip.name}” — ${summary}.`)
+    if (digest) toast(digest.message, digest.kind)
+    setOffer({ trip, draft })
+  }
+
+  function confirmOffer() {
+    if (!offer) return
+    stashPublishDraft(offer.trip.id, offer.draft)
+    onNavigate(`/trip/${offer.trip.id}/share`)
+    setOffer(null)
+  }
+
+  function closeOffer() {
+    // ConfirmDialog runs onConfirm, then onClose — a confirmed offer already
+    // navigated. A cancelled offer lands in My Trips like any other import.
+    if (offer) onNavigate('/trips')
+    setOffer(null)
   }
 
   async function retrySave() {
@@ -55,7 +82,8 @@ export function ImportTripButton({ ownerId, onNavigate, className = 'btn btn-out
       if (!await retryImportTrip(pending.trip, ownerId)) return
       const done = pending
       setPending(null)
-      announceImported(done)
+      if (done.offer) offerPrefill(done.trip, done.offer, done.digest, done.summary)
+      else announceImported(done)
     } finally {
       setSaving(false)
     }
@@ -81,21 +109,21 @@ export function ImportTripButton({ ownerId, onNavigate, className = 'btn btn-out
         if (pinned) patches.push({ dayIndex: d.dayIndex, stopIndex: d.stopIndex, latitude: pinned.latitude, longitude: pinned.longitude })
       }
       const parsed = patches.length > 0 ? parseTripImport(text, patches) : first
-      // A gallery file also carries publish details. Say so rather than let
-      // them vanish — publishing stays a deliberate step in the Share tab.
-      const note = parsed.publication
-        ? ' Its publish details (title, price, cover) were not applied.'
-        : ''
+      // A gallery file can also carry a publish block. Refused blocks ride
+      // out as a reason on the import toast; a valid block becomes the
+      // prefill offer. Publishing stays a deliberate Share-tab step.
+      const note = parsed.publicationRefused ? ` Its publish block was refused on import: ${parsed.publicationRefused}` : ''
       const digest = digestImportReport(parsed.report)
       // #551 — the save is awaited and the success toast waits for its truth:
       // persistTrip has already said why a save failed, and a success toast on
       // top would contradict it while a zombie row sits in My Trips.
       const { trip: imported, persisted } = await importTripPersisted(parsed.trip, ownerId)
       if (!persisted) {
-        setPending({ trip: imported, summary: parsed.summary, note, digest })
+        setPending({ trip: imported, summary: parsed.summary, note, digest, offer: parsed.publication })
         return
       }
-      announceImported({ trip: imported, summary: parsed.summary, note, digest })
+      if (parsed.publication) offerPrefill(imported, parsed.publication, digest, parsed.summary)
+      else announceImported({ trip: imported, summary: parsed.summary, note, digest })
     } catch (err) {
       toast(
         err instanceof TripImportError ? err.message : 'That file could not be read.',
@@ -125,6 +153,14 @@ export function ImportTripButton({ ownerId, onNavigate, className = 'btn btn-out
         onChange={e => void onFile(e)}
       />
       {resolvePickDialog}
+      <ConfirmDialog
+        open={!!offer}
+        title="Publish details found"
+        body="This file carries a publish block. The import only prefills the publish form — nothing goes live until you publish in the Share tab."
+        confirmLabel="Prefill the publish form"
+        onConfirm={confirmOffer}
+        onClose={closeOffer}
+      />
     </>
   )
 }

@@ -60,7 +60,7 @@ describe('robots.txt', () => {
     // The /i/<id> rewrite target: indexing it would duplicate every itinerary.
     expect(robots).toMatch(/^Disallow: \/api\/$/m)
     expect(robots).toMatch(/^Disallow: \/mappls\/$/m)
-    expect(robots).toMatch(/^Sitemap: https:\/\/yatraflow-blond\.vercel\.app\/sitemap\.xml$/m)
+    expect(robots).toMatch(/^Sitemap: https:\/\/www\.yatraflow\.in\/sitemap\.xml$/m)
   })
 
   it('keeps the app-shell id-bearing paths out of the index (#426 slice 3)', () => {
@@ -123,9 +123,9 @@ describe('sitemap handler in node', () => {
     expect(res.headers['x-content-type-options']).toBe('nosniff')
     expect(res.body).toContain('<?xml version="1.0" encoding="UTF-8"?>')
     expect(res.body).toContain('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">')
-    expect(res.body).toContain('<loc>https://yatraflow-blond.vercel.app/</loc>')
-    expect(res.body).toContain('<loc>https://yatraflow-blond.vercel.app/i/kerala-trip_1</loc>')
-    expect(res.body).toContain('<loc>https://yatraflow-blond.vercel.app/i/goa-north</loc>')
+    expect(res.body).toContain('<loc>https://www.yatraflow.in/</loc>')
+    expect(res.body).toContain('<loc>https://www.yatraflow.in/i/kerala-trip_1</loc>')
+    expect(res.body).toContain('<loc>https://www.yatraflow.in/i/goa-north</loc>')
     expect(res.body.trimEnd().endsWith('</urlset>')).toBe(true)
   })
 
@@ -144,14 +144,14 @@ describe('sitemap handler in node', () => {
       { id: 'never-refreshed', refreshed_at: null, published_at: SEP_17_2026_MS },
     ])
     const res = await runHandler()
-    expect(res.body).toContain('<loc>https://yatraflow-blond.vercel.app/i/refreshed</loc>\n    <lastmod>2026-09-17</lastmod>')
-    expect(res.body).toContain('<loc>https://yatraflow-blond.vercel.app/i/never-refreshed</loc>\n    <lastmod>2026-09-17</lastmod>')
+    expect(res.body).toContain('<loc>https://www.yatraflow.in/i/refreshed</loc>\n    <lastmod>2026-09-17</lastmod>')
+    expect(res.body).toContain('<loc>https://www.yatraflow.in/i/never-refreshed</loc>\n    <lastmod>2026-09-17</lastmod>')
   })
 
   it('omits lastmod entirely rather than guessing when no timestamp is usable', async () => {
     respond([{ id: 'undated', refreshed_at: null, published_at: null }])
     const res = await runHandler()
-    expect(res.body).toContain('<loc>https://yatraflow-blond.vercel.app/i/undated</loc>')
+    expect(res.body).toContain('<loc>https://www.yatraflow.in/i/undated</loc>')
     expect(res.body).not.toContain('<lastmod>')
   })
 
@@ -216,7 +216,7 @@ describe('sitemap handler in node', () => {
     respond([])
     const res = await runHandler()
     expect(res.body).toContain('<loc>https://preview.example.test/</loc>')
-    expect(res.body).not.toContain('yatraflow-blond.vercel.app')
+    expect(res.body).not.toContain('www.yatraflow.in')
   })
 
   it('escapes XML metacharacters in the origin instead of emitting raw markup', async () => {
@@ -281,7 +281,7 @@ describe('sitemap handler in node', () => {
       expect(res.body.indexOf('/i/updated-classic')).toBeGreaterThan(-1)
       expect(res.body.indexOf('/i/updated-classic')).toBeLessThan(res.body.indexOf('/i/newer'))
       // lastmod still prefers the refreshed timestamp — unchanged contract.
-      expect(res.body).toContain('<loc>https://yatraflow-blond.vercel.app/i/updated-classic</loc>\n    <lastmod>2026-09-17</lastmod>')
+      expect(res.body).toContain('<loc>https://www.yatraflow.in/i/updated-classic</loc>\n    <lastmod>2026-09-17</lastmod>')
     })
 
     it('lists a creator page per creator with publications, deduped and id-validated', async () => {
@@ -294,8 +294,8 @@ describe('sitemap handler in node', () => {
         { id: 'p4', published_at: SEP_17_2026_MS - 3, refreshed_at: null, creator_id: 'not-a-uuid' },
       ])
       const res = await runHandler()
-      expect(res.body).toContain(`<loc>https://yatraflow-blond.vercel.app/c/${alice}</loc>`)
-      expect(res.body).toContain(`<loc>https://yatraflow-blond.vercel.app/c/${bob}</loc>`)
+      expect(res.body).toContain(`<loc>https://www.yatraflow.in/c/${alice}</loc>`)
+      expect(res.body).toContain(`<loc>https://www.yatraflow.in/c/${bob}</loc>`)
       // One entry per creator, and nothing that would 400 at the handler.
       expect((res.body.match(new RegExp(`/c/${alice}`, 'g')) ?? []).length).toBe(1)
       expect(res.body).not.toContain('/c/not-a-uuid')
@@ -348,8 +348,8 @@ describe('creator card handler in node', () => {
     expect(res.body).toContain('3 published itineraries')
     // #426 slice 3: the hand-off targets the app page's real path.
     expect(res.body).toContain(`location.replace("/creator/${CREATOR_ID}")`)
-    expect(res.body).toContain(`<link rel="canonical" href="https://yatraflow-blond.vercel.app/c/${CREATOR_ID}"`)
-    expect(res.body).toContain('og:url" content="https://yatraflow-blond.vercel.app/c/')
+    expect(res.body).toContain(`<link rel="canonical" href="https://www.yatraflow.in/c/${CREATOR_ID}"`)
+    expect(res.body).toContain('og:url" content="https://www.yatraflow.in/c/')
     // The count is the exact-count HEAD, not the profile rows.
     const second = fetchMock.mock.calls[1] as [string, { method?: string }]
     expect(String(second[0])).toContain('creator_id=eq.')
@@ -438,6 +438,6 @@ describe('creator card handler in node', () => {
     fetchMock.mockResolvedValueOnce(countResponse(2))
     const res = await runCreator()
     expect(res.body).toContain(`rel="canonical" href="https://preview.example.test/c/${CREATOR_ID}"`)
-    expect(res.body).not.toContain('yatraflow-blond.vercel.app')
+    expect(res.body).not.toContain('www.yatraflow.in')
   })
 })

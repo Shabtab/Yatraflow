@@ -11,7 +11,7 @@
 // known production origin — and every server surface reads it from HERE, so
 // the card and the sitemap can never name different origins again.
 
-export const DEFAULT_ORIGIN = 'https://yatraflow-blond.vercel.app'
+export const DEFAULT_ORIGIN = 'https://www.yatraflow.in'
 
 /**
  * env → production alias → known production, trailing slashes stripped.

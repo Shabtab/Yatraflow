@@ -51,7 +51,7 @@ describe('restore row mappers (#43)', () => {
   it('emits only snake_case columns, so Postgres accepts every row', () => {
     const rows = [
       suggestionToRow(suggestion), decisionToRow(decision), activityToRow(activity),
-      notificationToRow(notification), publishedToRow(published),
+      notificationToRow(notification), publishedToRow(published, false),
     ]
     for (const row of rows) {
       const camel = Object.keys(row).filter(k => /[A-Z]/.test(k))
@@ -94,11 +94,29 @@ describe('restore row mappers (#43)', () => {
   })
 
   it('restores the public URL by its slug, with the view/copy counts intact', () => {
-    const row = publishedToRow(published)
+    const row = publishedToRow(published, false)
     // `id` IS the slug in the public link — minting a new one would leave the
     // share URL people already have pointing at nothing.
     expect(row.id).toBe('kerala-4-days')
     expect(row).toMatchObject({ trip_id: 'trip-1', creator_id: 'user-a', published_at: 50, views: 17, copies: 3 })
+  })
+
+  it('carries refreshed_at when the caller says the column exists (#368)', () => {
+    // Undo re-inserts the row. The sitemap's <lastmod> and Explore's newest
+    // sort read refreshed_at, so it must survive the delete too.
+    const row = publishedToRow({ ...published, refreshedAt: 1728000000000 }, true)
+    expect(row.refreshed_at).toBe(1728000000000)
+  })
+
+  it('sends a null refreshed_at when the restored row never had one', () => {
+    // Pre-v0.37 rows carry no stamp; the column still needs a value.
+    expect(publishedToRow(published, true).refreshed_at).toBeNull()
+  })
+
+  it('omits refreshed_at entirely until the caller says the column exists', () => {
+    // A write naming a column the database lacks is rejected whole. The key
+    // must be ABSENT — not null — behind the capability probe.
+    expect('refreshed_at' in publishedToRow(published, false)).toBe(false)
   })
 
   it('sends null rather than undefined for absent optional columns', () => {
@@ -108,7 +126,7 @@ describe('restore row mappers (#43)', () => {
     expect(decisionToRow({ ...decision, resolvedOptionId: undefined, resolvedAt: undefined }).resolved_option_id).toBeNull()
     expect(activityToRow({ ...activity, target: undefined }).target).toBeNull()
     expect(notificationToRow({ ...notification, tripId: undefined }).trip_id).toBeNull()
-    expect(publishedToRow({ ...published, bestSeason: undefined }).best_season).toBeNull()
+    expect(publishedToRow({ ...published, bestSeason: undefined }, false).best_season).toBeNull()
   })
 
   it('maps activity and notification ownership columns', () => {
