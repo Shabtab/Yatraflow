@@ -380,18 +380,41 @@ export function readExport(raw: string): ReadExportResult {
  * it must; the normalizer (below) is what fixes rule violations, so a new
  * version needs a migration only when the SHAPE changes.
  *
- * v1 → v2: the shape is unchanged (the normalizer handles v1's 0-based
- * `orderInDay` and its stale leg fields). v2 exists so a file can declare
- * itself, and so a v3 change has somewhere honest to land.
+ * v1 → v2 does the two shape repairs v1 files need, so the normalizer meets a
+ * v2-shaped trip. v1 wrote 0-based `orderInDay`; the migration renumbers to
+ * the app's 1-based convention. v1's schema carried four hand-written leg
+ * fields; v2's engine measures every leg itself, so the migration strips them.
  */
 export const MIGRATIONS: Record<number, (trip: Record<string, unknown>) => Record<string, unknown>> = {
-  1: (trip) => trip,
+  1: (trip) => {
+    const days = Array.isArray(trip.days) ? trip.days : []
+    return {
+      ...trip,
+      days: days.map(day => {
+        // A day without a stops list is malformed, not v1-shaped. It passes
+        // through untouched, so the wall's truncation refusal still fires.
+        if (!isObject(day) || !Array.isArray(day.stops)) return day
+        return {
+          ...day,
+          stops: day.stops.map((stop, si) => {
+            if (!isObject(stop)) return stop
+            const { departTime, arrivalTime, legDistanceKm, legTravelMinutes, ...rest } = stop
+            void departTime; void arrivalTime; void legDistanceKm; void legTravelMinutes
+            // v1 wrote 0-based stop orders; the app numbers from 1.
+            return { ...rest, orderInDay: si + 1 }
+          }),
+        }
+      }),
+    }
+  },
 }
 
-/** Apply the migration chain up to the current version. */
-export function migrateTrip(trip: Record<string, unknown>, fromVersion: number): Record<string, unknown> {
+/** Apply the migration chain up to `toVersion` (the current version by
+ *  default). The seam exists so a future v3 can be smoke-tested without
+ *  bumping the live version. */
+export function migrateTrip(trip: Record<string, unknown>, fromVersion: number, toVersion: number = ITINERARY_FORMAT_VERSION): Record<string, unknown> {
   let current = trip
-  for (let v = fromVersion; v < ITINERARY_FORMAT_VERSION; v++) {
+  for (let v = fromVersion; v < toVersion; v++) {
     const step = MIGRATIONS[v]
     if (!step) continue
     current = step(current)

@@ -188,7 +188,10 @@ describe('parseTripImport — the format version contract', () => {
 
 describe('parseTripImport — the repair pass', () => {
   it('renumbers 0-based stop order to the app\'s 1-based convention', () => {
-    const trip = bareExport()
+    // A CURRENT-version file can still carry a hand-edited 0-based order: the
+    // wall repairs it and says so. A v1 file is renumbered by the migration
+    // chain before the wall sees it (tests/itinerary-migrations.test.ts).
+    const trip = { ...bareExport(), formatVersion: ITINERARY_FORMAT_VERSION }
     trip.days[0].stops[0].orderInDay = 0
     const r = parseTripImport(JSON.stringify(trip))
     expect(r.trip.days[0].stops[0].orderInDay).toBe(1)
@@ -218,7 +221,9 @@ describe('parseTripImport — the repair pass', () => {
   })
 
   it('drops hand-written leg fields — the engine measures the road', () => {
-    const trip = bareExport()
+    // Same split as the renumber pin: the wall's own note belongs to a
+    // current-version file; a v1 file is stripped silently by the chain.
+    const trip = { ...bareExport(), formatVersion: ITINERARY_FORMAT_VERSION }
     Object.assign(trip.days[0].stops[0], { legDistanceKm: 220, departTime: '07:00' })
     const r = parseTripImport(JSON.stringify(trip))
     expect('legDistanceKm' in r.trip.days[0].stops[0]).toBe(false)
