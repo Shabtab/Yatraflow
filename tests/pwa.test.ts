@@ -54,8 +54,8 @@ describe('the manifest makes the app installable', () => {
 })
 
 describe('the service worker caches the shell and nothing private', () => {
-  it('keeps /api, the crawler preview, the sitemap and the mappls proxy out of the cache', () => {
-    for (const prefix of ["'/api/'", "'/i/'", "'/sitemap.xml'", "'/mappls/'"]) {
+  it('keeps /api, the crawler cards, the sitemap and the mappls proxy out of the cache', () => {
+    for (const prefix of ["'/api/'", "'/i/'", "'/c/'", "'/sitemap.xml'", "'/mappls/'"]) {
       expect(sw, `${prefix} must stay in the NEVER list`).toContain(prefix)
     }
     // Cross-origin is left to the network too: Supabase, tiles, fonts. A cached

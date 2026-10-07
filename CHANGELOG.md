@@ -17,6 +17,15 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ### Fixed
 
+- **The installed app no longer serves a creator card as its offline shell.** The
+  service worker's never-cache list predated the `/c/` card endpoints, so a
+  navigation to a creator card in the installed app was intercepted: online it
+  passed through, but the successful card answer was cached under the shell key,
+  and an offline navigation would then open card HTML at every address. The cards
+  now always reach the network. This closes the routing migration's own list: the
+  address table, the router swap, the legacy-hash bridge, the crawler redo, origin
+  consolidation and the PWA and native edges all sit on real paths. (#426)
+
 - **A delete→undo no longer buries the revived publication in discovery.** The undo
   row now carries `refreshed_at`, behind the existing capability probe. The sitemap's
   `<lastmod>` and Explore's freshness sort read that column, so a publication brought

@@ -25,8 +25,12 @@ const CACHE = `yatraflow-${SW_VERSION}`
 const SHELL = '/'
 const SHELL_ASSETS = [SHELL, '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png']
 
-/** Paths that must never be cached or served from cache. */
-const NEVER = ['/api/', '/i/', '/sitemap.xml', '/mappls/']
+/** Paths that must never be cached or served from cache. `/i/` and `/c/` are
+ *  the tag-bearing card endpoints: a navigation to one must reach the network
+ *  even in the installed app, because a successful card answer would otherwise
+ *  be cached under the SHELL key — offline navigations would then open card
+ *  HTML at every address (#426 slice 4). */
+const NEVER = ['/api/', '/i/', '/c/', '/sitemap.xml', '/mappls/']
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL_ASSETS)))
