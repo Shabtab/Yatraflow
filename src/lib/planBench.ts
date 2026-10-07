@@ -275,6 +275,6 @@ export function formatBenchShareText(bill: BenchBill, input: BenchInputs): strin
     `Total ${formatInr(bill.total)} · ${formatInr(bill.perHead)} per person`,
     `${bill.fatigue.verdict} (~${Math.round(bill.wheelHours)}h ${rideWord}, ~${bill.hoursPerDay.toFixed(1)}h/day)`,
     '',
-    'Excludes tolls, parking and entry fees. Price your own trip on the Plan Bench → https://yatraflow-blond.vercel.app/',
+    'Excludes tolls, parking and entry fees. Price your own trip on the Plan Bench → https://www.yatraflow.in/',
   ].join('\n')
 }

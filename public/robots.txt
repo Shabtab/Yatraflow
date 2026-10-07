@@ -1,4 +1,4 @@
-# YatraFlow — https://yatraflow-blond.vercel.app
+# YatraFlow — https://www.yatraflow.in
 #
 # The app routes on real paths now (#426): every screen is separately
 # addressable. The pages a crawler can actually READ — title, description,
@@ -30,4 +30,4 @@ Disallow: /join/
 Disallow: /created/
 Disallow: /share/
 
-Sitemap: https://yatraflow-blond.vercel.app/sitemap.xml
+Sitemap: https://www.yatraflow.in/sitemap.xml

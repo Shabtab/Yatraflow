@@ -1,6 +1,6 @@
 import { Capacitor } from '@capacitor/core'
 
-const PUBLIC_ORIGIN = 'https://yatraflow-blond.vercel.app'
+const PUBLIC_ORIGIN = 'https://www.yatraflow.in'
 
 /** A link minted for one publication, optionally stamped with its route out
  *  (F7 · #228 — the WhatsApp send stamps its own channel, `wa`). Absent means
