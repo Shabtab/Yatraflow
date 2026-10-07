@@ -2182,12 +2182,17 @@ async function restoreTripData(trip: Trip, snap: TripSnapshot | null): Promise<v
   // decisions.comments may not exist yet on a pre-migration database — the probe
   // gate keeps the column out of the INSERT rather than failing the whole row.
   const withDecisionComments = await decisionsHaveComments()
+  // Same idea for refreshed_at (#368): an undo that drops the column's value
+  // strips the revived publication's sitemap `<lastmod>` and sinks it in
+  // Explore's freshness sort. A bare `.map(publishedToRow)` would pass the
+  // array INDEX as the flag — the lambda is load-bearing.
+  const withRefreshedAt = await publishedHaveRefreshedAt()
   const results = await Promise.all([
     restoreRows('suggestions', snap.suggestions.map(suggestionToRow)),
     restoreRows('decisions', snap.decisions.map(d => decisionToRow(d, withDecisionComments))),
     restoreRows('activity', snap.activity.map(activityToRow)),
     restoreRows('notifications', snap.notifications.map(notificationToRow)),
-    restoreRows('published_itineraries', snap.published.map(publishedToRow), true),
+    restoreRows('published_itineraries', snap.published.map(p => publishedToRow(p, withRefreshedAt)), true),
   ])
 
   const failed = [
