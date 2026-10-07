@@ -34,6 +34,9 @@ export interface ParsedTripImport {
   trip: Trip
   /** Present when the file carried a `publication` block. */
   publication?: PublicationDraft
+  /** Set when the file carried a publish block the publish rules refuse:
+   *  the block is dropped and this names the rule it broke. */
+  publicationRefused?: string
   format: 'trip' | 'gallery'
   /** One short phrase for the toast, e.g. "6-day gallery itinerary, 23 stops". */
   summary: string
@@ -80,6 +83,7 @@ export function parseTripImport(text: string, patches: DroppedStopPatch[] = []):
   return {
     trip,
     publication: found.publication,
+    publicationRefused: found.publicationRefused,
     format: isGallery ? 'gallery' : 'trip',
     summary: `${trip.days.length}-day ${isGallery ? 'gallery itinerary' : 'trip'}, ${stopCount} stops`,
     version: found.version,

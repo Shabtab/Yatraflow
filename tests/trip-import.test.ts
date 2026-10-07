@@ -64,7 +64,12 @@ describe('parseTripImport — format detection', () => {
   it('accepts a gallery file and keeps the publication block (v1 envelope)', () => {
     const r = parseTripImport(JSON.stringify({
       trip: bareExport(),
-      publication: { id: 'goa-north-to-south', title: 'Goa, North to the Quiet South', premiumPriceInr: 199 },
+      // The block must satisfy the one publish rule set to ride along.
+      publication: {
+        id: 'goa-north-to-south', title: 'Goa, North to the Quiet South',
+        coverImageUrl: 'https://x/y.jpg', premiumPriceInr: 199,
+        freeDayIndexes: [1], subscriberCta: 'Unlock the quiet south.',
+      },
     }))
     expect(r.format).toBe('gallery')
     expect(r.publication?.id).toBe('goa-north-to-south')
@@ -121,7 +126,8 @@ describe('parseTripImport — format detection', () => {
   it('converges: exporting what it just imported produces the same file', () => {
     // The property that makes format evolution safe — a file that has been
     // through this build must not keep changing shape on every pass.
-    const first = buildTripExport(parseTripImport(JSON.stringify({ trip: bareExport(), publication: { id: 'p', title: 'P' } })).trip, { id: 'p', title: 'P' }, '9.9.9')
+    const block = { id: 'p', title: 'P', coverImageUrl: 'https://x/y.jpg' }
+    const first = buildTripExport(parseTripImport(JSON.stringify({ trip: bareExport(), publication: block })).trip, block, '9.9.9')
     const second = parseTripImport(JSON.stringify(first))
     const third = buildTripExport(second.trip, second.publication as Record<string, unknown>, '9.9.9')
     // Ids are excluded on purpose, not to make the test pass: the importer mints
@@ -155,13 +161,75 @@ describe('parseTripImport — format detection', () => {
     expect(r.trip.id).toBe('import-pending')
   })
 
-  it('says a gallery file\'s publish details were not applied (they ride along)', () => {
+  it('cuts tool-managed stats so a file never carries them', () => {
     const pub = { id: 'goa', title: 'Goa', coverImageUrl: 'https://x/y.jpg', views: 40, copies: 3, publishedAt: 123 }
     const exported = publicationExport(pub)
     expect(exported.views).toBeUndefined()
     expect(exported.copies).toBeUndefined()
     expect(exported.publishedAt).toBeUndefined()
     expect(exported.coverImageUrl).toBe('https://x/y.jpg')
+  })
+})
+
+describe('gallery publish blocks — the one publish rule set checks them (#368)', () => {
+  /** A three-day trip, so "one day locked of 3" has a real day count. */
+  function threeDayExport() {
+    const base = bareExport()
+    return {
+      ...base,
+      endDate: '2026-11-03',
+      days: [
+        ...base.days,
+        {
+          id: 'd3', index: 2, stops: [
+            {
+              id: 's3', title: 'Cape', lat: 14.9, lng: 74.1,
+              visitMinutes: 60, entryFeeInrPerPerson: 0, transportCostInrTotal: 0,
+              category: 'sightseeing', priority: 'must-do', status: 'confirmed', orderInDay: 1,
+            },
+          ],
+        },
+      ],
+    }
+  }
+  const envelope = (publication: Record<string, unknown>) =>
+    JSON.stringify({ formatVersion: 2, trip: threeDayExport(), publication })
+
+  it('refuses a priced block whose every day is free, with the free-days reason', () => {
+    const r = readExport(envelope({ id: 'g1', title: 'G', coverImageUrl: 'https://x/y.jpg', premiumPriceInr: 199, freeDayIndexes: [0, 1, 2] }))
+    expect(r.publication).toBeUndefined()
+    expect(r.publicationRefused).toContain('Free days:')
+    expect(r.publicationRefused).toMatch(/Every day is free/)
+  })
+
+  it('refuses a price over the gateway ceiling, with the price reason', () => {
+    const r = readExport(envelope({ id: 'g2', title: 'G', coverImageUrl: 'https://x/y.jpg', premiumPriceInr: 100001, freeDayIndexes: [0, 1] }))
+    expect(r.publication).toBeUndefined()
+    expect(r.publicationRefused).toContain('Premium price:')
+    expect(r.publicationRefused).toMatch(/maximum premium price/)
+  })
+
+  it('keeps a valid priced block intact', () => {
+    const block = {
+      id: 'g3', title: 'G', coverImageUrl: 'https://x/y.jpg', premiumPriceInr: 199,
+      freeDayIndexes: [0, 1], subscriberCta: 'Full checklist inside.',
+    }
+    const r = readExport(envelope(block))
+    expect(r.publicationRefused).toBeUndefined()
+    expect(r.publication).toEqual(block)
+  })
+
+  it('refuses a coverless block, with the cover reason', () => {
+    const r = readExport(envelope({ id: 'g4', title: 'G' }))
+    expect(r.publication).toBeUndefined()
+    expect(r.publicationRefused).toContain('Cover photo:')
+    expect(r.publicationRefused).toMatch(/Add a cover photo/)
+  })
+
+  it('parseTripImport carries the refusal to its caller', () => {
+    const parsed = parseTripImport(envelope({ id: 'g5', title: 'G' }))
+    expect(parsed.publication).toBeUndefined()
+    expect(parsed.publicationRefused).toMatch(/Add a cover photo/)
   })
 })
 
@@ -427,13 +495,15 @@ describe('parseTripImport — every shelf file the repo ships', () => {
       // that would have caught the 2026-09-18 stacked-pin batch.
       expect(r.report).toEqual({ repairs: [], warnings: [], droppedStops: [], unknownKeys: [] })
       expect(r.version).toBe(ITINERARY_FORMAT_VERSION)
-      expect(r.format).toBe('gallery')
       expect(r.trip.days.length).toBeGreaterThan(0)
       expect(r.trip.name).toBeTruthy()
-      expect(r.publication?.id).toMatch(/^[a-z0-9-]+$/)
-      // the publication's own contract: these two must agree with the trip
-      expect(r.publication?.durationDays).toBe(r.trip.days.length)
-      expect(r.publication?.estimatedBudgetPerPersonInr).toBe(r.trip.budgetPerPersonInr)
+      // The shelf's publish blocks predate the CTA publish rule: each is
+      // priced with free days named but no subscriberCta. The one rule set
+      // refuses the block on import and names why; the writer would refuse
+      // the same row. The fixture files live in docs/; when they gain a
+      // subscriberCta, flip these pins back to publication-intact ones.
+      expect(r.publication).toBeUndefined()
+      expect(r.publicationRefused).toMatch(/call-to-action/)
     })
 
     it(`keeps ${f}'s stop order 1-based and contiguous`, () => {

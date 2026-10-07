@@ -34,6 +34,7 @@ import type {
 import {
   TRANSPORT_MODES, TRAVEL_STYLES, STOP_CATEGORIES, STOP_STATUSES, EXPENSE_CATEGORIES, STAY_STYLES,
 } from '../data/types'
+import { PUBLISH_FIELD_LABELS, PUBLISH_FIELD_ORDER, publishValidation } from './publishRules'
 
 /** The wire format this build writes and reads. Bump it whenever the SHAPE
  *  changes — a reader that understands 2 must still read 1 (via MIGRATIONS). */
@@ -267,6 +268,9 @@ export interface ReadExportResult {
   /** The trip object, in whatever shape that version used. */
   trip: Record<string, unknown>
   publication?: PublicationDraft
+  /** Set when the file carried a publish block the publish rules refuse.
+   *  The block is dropped and this names the rule it broke. */
+  publicationRefused?: string
   /** The detected wire version (1 when the file predates versioning). */
   version: number
   kind: FileKind
@@ -366,9 +370,11 @@ export function readExport(raw: string): ReadExportResult {
     throw new TripImportError('That export has no itinerary days — it is not a trip.')
   }
 
+  const checked = migratePublication(publication, Array.isArray(trip.days) ? trip.days.length : 0)
   return {
     trip,
-    publication: migratePublication(publication, version),
+    publication: checked.publication,
+    publicationRefused: checked.refused,
     version,
     kind,
     hasMetadata: kind === 'envelope',
@@ -422,10 +428,37 @@ export function migrateTrip(trip: Record<string, unknown>, fromVersion: number, 
   return current
 }
 
-function migratePublication(pub: PublicationDraft | undefined, version: number): PublicationDraft | undefined {
-  void version
-  if (!pub) return undefined
-  return publicationExport(pub as Record<string, unknown>) as PublicationDraft
+/** Cut the publication block down to the contract's fields, then run the
+ *  publish rule set over it. The rules live in lib/publishRules — the same
+ *  rules the form and the writer answer to. A block the rules refuse is
+ *  dropped; the reason rides out as `refused`. An import never applies
+ *  publish details silently, and it never applies details the writer would
+ *  reject. */
+function migratePublication(pub: PublicationDraft | undefined, totalDays: number): { publication?: PublicationDraft; refused?: string } {
+  if (!pub) return {}
+  const cut = publicationExport(pub as Record<string, unknown>) as PublicationDraft
+  // Input shaping for a hand-written file: coerce the way the publish form
+  // does. The shapes are guarded here; publishValidation decides the rules.
+  const coverImageUrl = typeof cut.coverImageUrl === 'string' ? cut.coverImageUrl.trim() || undefined : undefined
+  const priceNum = cut.premiumPriceInr === undefined ? 0 : num(cut.premiumPriceInr, NaN)
+  const entirelyFree = !priceNum
+  const freeDayCount = (Array.isArray(cut.freeDayIndexes) ? cut.freeDayIndexes : []).length
+  const cta = typeof cut.subscriberCta === 'string' ? cut.subscriberCta.trim() : ''
+  const errs = publishValidation({
+    coverImageUrl,
+    priceNum,
+    entirelyFree,
+    freeDayCount,
+    totalDays,
+    cta,
+    hasPremiumDay: !entirelyFree && freeDayCount < totalDays,
+  })
+  const refused = PUBLISH_FIELD_ORDER
+    .map(f => (errs[f] ? `${PUBLISH_FIELD_LABELS[f]}: ${errs[f]}` : undefined))
+    .filter((s): s is string => !!s)
+    .join('; ')
+  if (refused) return { refused }
+  return { publication: cut }
 }
 
 /** Cut a publication row down to the fields the contract defines — the exact
