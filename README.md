@@ -10,7 +10,7 @@ A collaborative travel-planning web app, built India-first. Real multi-day itine
 
 <br />
 
-<a href="https://yatraflow-blond.vercel.app"><img src="https://img.shields.io/badge/Live--demo-try-0F9E90?style=for-the-badge" alt="Live demo" /></a>
+<a href="https://www.yatraflow.in"><img src="https://img.shields.io/badge/Live--demo-try-0F9E90?style=for-the-badge" alt="Live demo" /></a>
 &nbsp;
 <a href="https://github.com/hasnaina955/Yatraflow/releases"><img src="https://img.shields.io/github/v/release/hasnaina955/yatraflow?style=for-the-badge&color=F8B14E" alt="Latest release" /></a>
 &nbsp;

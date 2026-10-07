@@ -89,7 +89,7 @@ const ROUTE = [
   [77.06, 10.089],     // Munnar
 ]
 
-const PROD_REFERER = 'https://yatraflow-blond.vercel.app/'
+const PROD_REFERER = 'https://www.yatraflow.in/'
 let usedReferer = false
 
 async function call(name, path, init) {

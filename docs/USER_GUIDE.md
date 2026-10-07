@@ -6,7 +6,7 @@ Everything you need to plan a trip with your group. ⏱ ~5 minutes to learn.
 
 ## 1. Log in
 
-Open [YatraFlow](https://yatraflow-blond.vercel.app). Either:
+Open [YatraFlow](https://www.yatraflow.in). Either:
 
 - **Create an account** (name + email + password — 8+ characters), or
 - **Log in** if you already have one. Your session survives reloads and follows you across devices.
