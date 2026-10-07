@@ -15,6 +15,39 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Fixed
+
+- **A delete→undo no longer buries the revived publication in discovery.** The undo
+  row now carries `refreshed_at`, behind the existing capability probe. The sitemap's
+  `<lastmod>` and Explore's freshness sort read that column, so a publication brought
+  back keeps its search place instead of sinking with a null marker. (#368)
+- **A shared link's trip arrives through the same repair wall a file import runs.**
+  An old snapshot payload could decode with 0-based stop orders, hand-written leg
+  fields, and Null-Island coordinates straight into a rendered trip — the file path
+  repaired all three, the link path never did. Decode now runs the wall, and the
+  payload's own identity rides back on top, so a clean link still round-trips
+  losslessly and a dirty one arrives clean or is refused as bad data. (#368)
+- **The itinerary migration chain now does the v1 compatibility it claims.** The
+  chain was identity-only and the real repairs lived in the unversioned normalizer.
+  `MIGRATIONS[1→2]` renumbers v1's 0-based stop orders and strips the four stale leg
+  fields; the normalizer keeps only version-independent hygiene; `migrateTrip` gains
+  a to-version seam, so a future v3 lands on an exercised pattern instead of a
+  decorative table. Golden itineraries unchanged. (#368)
+- **A gallery file's publish block is checked by the publish rules on import.** The
+  parser ran a version-blind allowlist cut, so a block the publish form would refuse
+  (priced with every day free, over the gateway ceiling, coverless, premium without a
+  call-to-action) imported as broken metadata. The importer now runs the same shared
+  predicate the form and the writer answer to, and a refused block rides out with the
+  rule it broke named. (#368)
+
+### Changed
+
+- **Importing a gallery file now offers its publish block as a draft.** The old toast
+  footnote announced the loss ("its publish details were not applied") and that was
+  the whole story. The import now asks: confirm, and the publish form opens prefilled
+  in the Share tab for the creator to review and edit; decline, and the block is
+  dropped by explicit choice. Nothing publishes until the creator publishes. (#368)
+
 ## [0.73.0] - 2026-10-06
 
 ### Added
