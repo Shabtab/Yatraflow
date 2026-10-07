@@ -253,7 +253,7 @@ discriminates a migration-gated table in one call — **`200 []` means the table
     `vercel inspect` reports `target production`**, so an anonymous fetch
     returns Vercel's own Next.js login page (~340 KB, `X-Matched-Path: /login`)
     and the grep reports a misleading `False`. Grep the **canonical alias**
-    (`yatraflow-blond.vercel.app`). Tell them apart by size: the real
+    (`www.yatraflow.in`). Tell them apart by size: the real
     `index.html` is ~1.2 KB, the login page ~340 KB.
   - **The `localhost:54321` fallback is in *every* bundle.** `supabase.ts`
     compiles `import.meta.env.X || 'http://localhost:54321'`, so the placeholder

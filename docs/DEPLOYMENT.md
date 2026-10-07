@@ -10,7 +10,7 @@ YatraFlow is a static SPA backed by [Supabase](https://supabase.com) for account
 
 ## Vercel (current setup)
 
-The app lives at **https://yatraflow-blond.vercel.app**, connected to `hasnaina955/Yatraflow`:
+The app lives at **https://www.yatraflow.in**, connected to `hasnaina955/Yatraflow`:
 
 - Every push to `main` auto-deploys production (~1 min).
 - Every push to another branch (e.g. `test`) gets its own preview deployment, and `yatraflow-git-<branch>-….vercel.app` always serves the branch's latest build.
@@ -52,12 +52,12 @@ In the dashboard, the equivalent is editing the variable and clearing its **Git 
 
 3. **Redeploy** — `vercel redeploy <deployment-url>`, or Deployments → ⋯ → Redeploy. Step 2 alone changes nothing on an existing deployment, because the values were already compiled in.
 
-4. Confirm the backend is actually inlined — **on production's canonical alias only**. Two traps make this check lie to you: previews sit behind Vercel SSO, and so do *deployment-specific* URLs (`yatraflow-<8char>-<scope>.vercel.app`) even when `vercel inspect` says `target production`. An anonymous request to either returns Vercel's own login page, not the app, and the check below misleadingly reports `False`. Use `yatraflow-blond.vercel.app`; the real `index.html` is ~1.2 KB, the SSO page ~340 KB, so the size tells you which one you got.
+4. Confirm the backend is actually inlined — **on production's canonical alias only**. Two traps make this check lie to you: previews sit behind Vercel SSO, and so do *deployment-specific* URLs (`yatraflow-<8char>-<scope>.vercel.app`) even when `vercel inspect` says `target production`. An anonymous request to either returns Vercel's own login page, not the app, and the check below misleadingly reports `False`. Use `www.yatraflow.in`; the real `index.html` is ~1.2 KB, the SSO page ~340 KB, so the size tells you which one you got.
 
 ```powershell
-$h = (Invoke-WebRequest https://yatraflow-blond.vercel.app -UseBasicParsing).Content
+$h = (Invoke-WebRequest https://www.yatraflow.in -UseBasicParsing).Content
 $js = [regex]::Match($h, '/assets/[A-Za-z0-9_.-]+\.js').Value
-(Invoke-WebRequest ("https://yatraflow-blond.vercel.app" + $js) -UseBasicParsing)
+(Invoke-WebRequest ("https://www.yatraflow.in" + $js) -UseBasicParsing)
   .Content.Contains('.supabase.co')   # True = backend compiled in, False = broken auth
 ```
 
@@ -76,7 +76,7 @@ The function reads only public publication metadata, with a four-second deadline
 Before closing #226:
 
 1. Deploy the verified code with explicit owner approval; environment variable presence alone does not prove a deployed function can read the publication.
-2. Fetch `https://yatraflow-blond.vercel.app/i/pub_1cp2i9jq872` anonymously and verify the current publication's title/description, not merely HTTP 200. Verify a missing id returns 404.
+2. Fetch `https://www.yatraflow.in/i/pub_1cp2i9jq872` anonymously and verify the current publication's title/description, not merely HTTP 200. Verify a missing id returns 404.
 3. Open the link in a browser and confirm arrival on the correct itinerary; old `/#/pub/<id>` links must still work.
 4. Confirm the card in WhatsApp or the Meta Sharing Debugger. An SSO-protected preview cannot satisfy anonymous crawler acceptance.
 
