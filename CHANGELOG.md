@@ -15,6 +15,8 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+## [0.74.0] - 2026-10-07
+
 ### Changed
 
 - **The canonical origin is now `https://www.yatraflow.in`.** The app moved to its
