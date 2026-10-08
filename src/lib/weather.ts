@@ -41,6 +41,11 @@ export function wmoInfo(code: number): { icon: string; label: string } {
   return WMO[code] ?? { icon: '🌡️', label: '—' }
 }
 
+/** A real, finite number from the API — the honest guard against `?? 0`. */
+function isNum(v: unknown): v is number {
+  return typeof v === 'number' && Number.isFinite(v)
+}
+
 /**
  * Fetch daily forecasts for a set of dates near one coordinate.
  * Returns a map of ISO date → forecast for the dates Open-Meteo could cover.
@@ -53,17 +58,35 @@ export function wmoInfo(code: number): { icon: string; label: string } {
  * failed request is retried on the next mount rather than cached.
  */
 const inflightWeather = new Map<string, Promise<Record<string, DayWeather>>>()
+const weatherCache = new Map<string, { at: number; data: Record<string, DayWeather> }>()
+
+/** How long a fetched forecast is served from cache before it is re-pulled.
+ *  Matches the UI refresh cadence so an open tab stays current without
+ *  hammering the API on every remount. */
+export const WEATHER_TTL_MS = 5 * 60 * 1000
 
 export function fetchDailyWeather(
   lat: number,
   lng: number,
   startDate: string,
   numDays: number,
+  opts: { force?: boolean } = {},
 ): Promise<Record<string, DayWeather>> {
   const key = `${lat},${lng},${startDate},${numDays}`
+  // Serve a fresh-enough cached result so remounts don't flash a spinner and
+  // the chip + Overview + Map don't each hit the network for the same day.
+  if (!opts.force) {
+    const cached = weatherCache.get(key)
+    if (cached && Date.now() - cached.at < WEATHER_TTL_MS) return Promise.resolve(cached.data)
+  }
   const hit = inflightWeather.get(key)
   if (hit) return hit
-  const p = fetchDailyWeatherOnce(lat, lng, startDate, numDays)
+  // Only successes are cached — a failed request is retried on the next call
+  // rather than frozen as an empty result.
+  const p = fetchDailyWeatherOnce(lat, lng, startDate, numDays).then(data => {
+    weatherCache.set(key, { at: Date.now(), data })
+    return data
+  })
   inflightWeather.set(key, p)
   const settle = () => { inflightWeather.delete(key) }
   p.then(settle, settle)
@@ -87,12 +110,21 @@ async function fetchDailyWeatherOnce(
   const out: Record<string, DayWeather> = {}
   const times: string[] = d.time ?? []
   for (let i = 0; i < times.length; i++) {
+    const tMax = d.temperature_2m_max?.[i]
+    const tMin = d.temperature_2m_min?.[i]
+    const rain = d.precipitation_probability_max?.[i]
+    const code = d.weather_code?.[i]
+    // Publish a day ONLY when we have real numbers for it. The old `?? 0`
+    // fallbacks turned a missing field into a confident "0°C / 0%", which is
+    // fabricated data; a day we cannot fully read is left absent, so the chip
+    // and card render nothing for it rather than inventing a forecast.
+    if (!isNum(tMax) || !isNum(tMin) || !isNum(rain)) continue
     out[times[i]] = {
       date: times[i],
-      code: d.weather_code?.[i] ?? -1,
-      tempMaxC: d.temperature_2m_max?.[i] ?? 0,
-      tempMinC: d.temperature_2m_min?.[i] ?? 0,
-      rainChancePct: d.precipitation_probability_max?.[i] ?? 0,
+      code: isNum(code) ? code : -1,
+      tempMaxC: tMax,
+      tempMinC: tMin,
+      rainChancePct: rain,
     }
   }
   return out

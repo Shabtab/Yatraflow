@@ -99,9 +99,12 @@ describe('the weather chip asks about its own day (#340)', () => {
 
   it('depends on the resolved coordinates instead of suppressing exhaustive-deps', () => {
     const chip = day.slice(day.indexOf('function DayWeatherChip'), day.indexOf('function ClampedText'))
-    expect(chip).toContain('}, [lat, lng, date])')
+    expect(chip).toContain('}, [lat, lng, date, tick])')
     // and it gates on its OWN day's date, not the trip's start (#340)
     expect(chip).toContain('!forecastAvailable(date)')
+    // and it re-pulls on the refresh cadence / tab focus, forcing past the cache
+    expect(chip).toContain('useWeatherRefreshTick()')
+    expect(chip).toContain('{ force: tick > 0 }')
     expect(chip).not.toContain('eslint-disable')
   })
 })

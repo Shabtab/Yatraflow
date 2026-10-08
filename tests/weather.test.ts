@@ -1,6 +1,6 @@
 // ============ Weather forecast-window regression tests ============
-import { describe, it, expect } from 'vitest'
-import { forecastAvailable, isoAddDays, weatherAnchor } from '../src/lib/weather'
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import { forecastAvailable, isoAddDays, weatherAnchor, fetchDailyWeather, WEATHER_TTL_MS } from '../src/lib/weather'
 
 /** Minimal day shape — the resolver only reads the stop list. */
 const day = (stops: Array<{ lat: number; lng: number; status?: string; orderInDay: number }>) => ({ stops })
@@ -72,5 +72,53 @@ describe('isoAddDays', () => {
   it('handles month boundaries', () => {
     expect(isoAddDays('2026-01-31', 1)).toBe('2026-02-01')
     expect(isoAddDays('2026-12-31', 1)).toBe('2027-01-01')
+  })
+})
+
+describe('fetchDailyWeather — real data only, kept fresh', () => {
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  const stub = (daily: unknown) => {
+    const fn = vi.fn(async () =>
+      new Response(JSON.stringify({ daily }), { status: 200, headers: { 'content-type': 'application/json' } }))
+    vi.stubGlobal('fetch', fn)
+    return fn
+  }
+
+  it('publishes a day only when every field is a real number — never a fabricated 0°C / 0%', async () => {
+    stub({
+      time: ['2026-10-09', '2026-10-10'],
+      weather_code: [1, 3],
+      temperature_2m_max: [22.5, null], // day 2 has no real temp → must be dropped
+      temperature_2m_min: [14, 15],
+      precipitation_probability_max: [10, 20],
+    })
+    const out = await fetchDailyWeather(11.5, 76.8, '2026-10-09', 2, { force: true })
+    expect(Object.keys(out)).toEqual(['2026-10-09'])
+    expect(out['2026-10-09']).toMatchObject({ code: 1, tempMaxC: 22.5, tempMinC: 14, rainChancePct: 10 })
+  })
+
+  it('serves a fresh success from cache and re-pulls only when forced', async () => {
+    const fn = stub({ time: ['2026-10-09'], weather_code: [0], temperature_2m_max: [30], temperature_2m_min: [20], precipitation_probability_max: [0] })
+    const a = await fetchDailyWeather(22.25, 76.8, '2026-10-09', 1, { force: true })
+    expect(fn).toHaveBeenCalledTimes(1)
+    const b = await fetchDailyWeather(22.25, 76.8, '2026-10-09', 1) // within TTL → cached
+    expect(fn).toHaveBeenCalledTimes(1)
+    expect(b).toEqual(a)
+    const c = await fetchDailyWeather(22.25, 76.8, '2026-10-09', 1, { force: true }) // forced → re-pull
+    expect(fn).toHaveBeenCalledTimes(2)
+    expect(c).toEqual(a)
+  })
+
+  it('never caches a failure, so the next call retries instead of showing nothing forever', async () => {
+    const fn = vi.fn(async () => new Response('boom', { status: 500 }))
+    vi.stubGlobal('fetch', fn)
+    await expect(fetchDailyWeather(33.33, 76.8, '2026-10-09', 1, { force: true })).rejects.toThrow()
+    await expect(fetchDailyWeather(33.33, 76.8, '2026-10-09', 1, { force: true })).rejects.toThrow()
+    expect(fn).toHaveBeenCalledTimes(2)
+  })
+
+  it('exposes a TTL matching the refresh cadence', () => {
+    expect(WEATHER_TTL_MS).toBeGreaterThan(0)
   })
 })

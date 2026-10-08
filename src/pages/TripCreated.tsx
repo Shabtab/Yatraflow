@@ -18,6 +18,7 @@ import { estimateLunchStop } from '../lib/routeIq'
 import { planJourneyHalts } from '../lib/geocode'
 import { MODE_SPEED, isRoadMeasuredMode } from '../lib/engine'
 import { fetchDailyWeather, forecastAvailable, isoAddDays } from '../lib/weather'
+import { useWeatherRefreshTick } from '../hooks/useWeatherRefresh'
 import { readHandoff, clearHandoff, billTotal } from '../lib/createHandoff'
 import { shareBillImage } from '../lib/billCapture'
 import { crewInviteMessage, PLANNER_ROLE_LINE, CREW_CHANNELS, inviteChannelUrl, channelNeedsPhone, telegramShareUrl, addCrewEntry, parseCrewEntry, type CrewChannel, type CrewEntry } from '../lib/crewInvite'
@@ -155,14 +156,16 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
        pairs guard and cleanup; this one had the guard and never the cleanup. */
     return () => { alive = false }
   }, [trip?.id, handoff])
-  // weather: only inside the honest forecast window
+  // weather: only inside the honest forecast window; re-pulled on the refresh
+  // cadence and whenever the tab regains focus so it never goes stale.
+  const weatherTick = useWeatherRefreshTick()
   useEffect(() => {
     if (!trip) return
     if (!forecastAvailable(trip.startDate)) return
     const anchor = trip.startLocationCoords
     if (!anchor) return
     let alive = true
-    fetchDailyWeather(anchor.lat, anchor.lng, trip.startDate, trip.days.length || 1)
+    fetchDailyWeather(anchor.lat, anchor.lng, trip.startDate, trip.days.length || 1, { force: weatherTick > 0 })
       .then(w => {
         if (!alive) return
         const wet: number[] = []
@@ -174,7 +177,7 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
       })
       .catch(() => { /* a forecast we could not get says nothing */ })
     return () => { alive = false }
-  }, [trip?.id])
+  }, [trip?.id, weatherTick])
 
   const items: AnticipationItem[] = useMemo(() => {
     if (!trip) return []
