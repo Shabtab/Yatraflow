@@ -17,10 +17,11 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import type { PublishedItinerary, User } from '../src/data/types'
 import {
-  FEATURED_MIN_VIEWS, communityCounts, featuredCreators, popularity, trendingPubs,
+  FEATURED_MIN_VIEWS, comparePopularity, communityCounts, featuredCreators, popularity, trendingPubs,
 } from '../src/lib/discovery'
-import type { CreatorRank } from '../src/lib/discovery'
-import { FeaturedCreators, ShareStoriesCta, TrendingShelf } from '../src/components/ExploreDiscovery'
+import type { CreatorTile } from '../src/lib/explorePage'
+import { CreatorsPanel } from '../src/components/explore/CreatorsPanel'
+import { TrendingShelf } from '../src/components/explore/TrendingShelf'
 
 const user = (id: string, name: string, over: Partial<User['profile']> = {}): User => ({
   id,
@@ -59,6 +60,13 @@ describe('popularity', () => {
     expect(popularity({ views: 10, copies: 0 })).toBe(10)
     expect(popularity({ views: 0, copies: 2 })).toBe(10)
     expect(popularity({ views: 10, copies: 2 })).toBe(20)
+  })
+
+  it('orders the shared "most popular" rule: score, forks, views, recency, then id', () => {
+    const a = { id: 'a', views: 10, copies: 2, publishedAt: 1 }   // score 20, 2 forks
+    const b = { id: 'b', views: 20, copies: 0, publishedAt: 1 }   // score 20, no forks
+    const c = { id: 'c', views: 20, copies: 0, publishedAt: 1 }   // ties b on everything
+    expect([c, b, a].sort(comparePopularity).map(p => p.id)).toEqual(['a', 'b', 'c'])
   })
 })
 
@@ -253,34 +261,36 @@ describe('the discovery copy', () => {
     vi.stubGlobal('location', new URL('https://app.example.test/explore'))
   })
 
-  const share = (pubCount: number, creatorCount: number, signedIn = false) =>
-    renderToStaticMarkup(createElement(ShareStoriesCta, { pubCount, creatorCount, signedIn, onNavigate: () => {} }))
-
-  it('spells the itinerary plural, which is not an `s`', () => {
-    const html = share(6, 4)
-    expect(html).toContain('6 itineraries from 4 creators live here')
-    expect(html).not.toContain('itinerarys')
+  // The creators panel is the live surface for the plan-count plural (the
+  // share and featured-creator cards that also spelled it were removed).
+  const creatorRow = (id: string, plans: number, forks: number): CreatorTile => ({
+    id, name: id.toUpperCase(), plans, forks, isCreator: true,
   })
+  const panel = (rows: CreatorTile[]) =>
+    renderToStaticMarkup(createElement(CreatorsPanel, { rows, users: [user('a', 'A'), user('b', 'B')] }))
 
-  it('stays singular at one of each', () => {
-    expect(share(1, 1)).toContain('1 itinerary from 1 creator live here')
-  })
-
-  it('offers the action the session can take', () => {
-    expect(share(1, 1, false)).toContain('Become a creator')
-    expect(share(1, 1, true)).toContain('Publish a trip')
-  })
-
-  it('spells the creator card counts too', () => {
-    const rank = (id: string, pubCount: number, views: number): CreatorRank => ({
-      user: user(id, id.toUpperCase()), pubCount, forks: 0, views, score: views,
-    })
-    const html = renderToStaticMarkup(createElement(FeaturedCreators, {
-      creators: [rank('a', 2, 30), rank('b', 1, 5)],
-    }))
+  it('spells the itinerary plural on the creators panel, which is not an `s`', () => {
+    const html = panel([creatorRow('a', 6, 4), creatorRow('b', 2, 1)])
+    expect(html).toContain('6 itineraries')
     expect(html).toContain('2 itineraries')
-    expect(html).toContain('1 itinerary</span>')
+    expect(html).toContain('1 fork')
     expect(html).not.toContain('itinerarys')
+  })
+
+  it('stays singular at one of each on the creators panel', () => {
+    expect(panel([creatorRow('a', 1, 1)])).toContain('1 itinerary')
+  })
+
+  it('draws nothing for an empty trending list', () => {
+    expect(renderToStaticMarkup(createElement(TrendingShelf, { pubs: [], users: [] }))).toBe('')
+  })
+
+  it('links each trending card to its plan', () => {
+    const html = renderToStaticMarkup(createElement(TrendingShelf, {
+      pubs: [pub('p1', 'c1', { views: 26 })], users: [user('c1', 'Arun')],
+    }))
+    expect(html).toContain('/pub/p1')
+    expect(html).toContain('/creator/c1')
   })
 
   it('spells the views count in a trending row', () => {
@@ -289,6 +299,6 @@ describe('the discovery copy', () => {
       pubs, users: [user('c1', 'Arun'), user('c2', 'Bea')],
     }))
     expect(html).toContain('26 views')
-    expect(html).toContain('1 view</span>')
+    expect(html).toContain('1 view</p>')
   })
 })

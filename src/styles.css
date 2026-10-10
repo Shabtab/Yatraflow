@@ -3948,104 +3948,6 @@ html.vt-active :where(*) {
 .featured-meta { display: flex; gap: 18px; flex-wrap: wrap; color: #e2f1ef; font-size: 13px; margin-bottom: 16px; }
 .featured-actions { display: flex; gap: 10px; flex-wrap: wrap; }
 
-/* ---- MR10 discovery blocks (Explore): featured creators,
-   trending itineraries, the share-stories CTA. Geometry follows
-   the mockup's hub (creator rail, ranked rows, join bar); every
-   colour is a semantic token, per ADR 0002. ---- */
-
-.discovery-block { margin-bottom: var(--space-9); }
-.discovery-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-4); flex-wrap: wrap; margin-bottom: var(--space-5); }
-.discovery-title { font-family: var(--font-display); font-size: clamp(19px, 2vw, 24px); margin: 0; display: flex; align-items: center; gap: var(--space-2); }
-.discovery-sub { margin: 0; color: var(--text-3); font-size: var(--text-xs); max-width: 52ch; }
-
-/* Featured creators — a rail the page scrolls: four cards fit the
-   desktop container, and below that the rail keeps its beat instead
-   of crowding into a narrower grid (the mockup drew exactly four). */
-.creator-rail {
-  display: flex; gap: var(--space-6);
-  overflow-x: auto; scroll-snap-type: x proximity;
-  scrollbar-width: thin;
-  padding: var(--space-1) var(--space-1) var(--space-4);
-}
-.creator-card {
-  scroll-snap-align: start;
-  flex: 0 0 minmax(200px, 232px);
-  display: flex; flex-direction: column; align-items: flex-start;
-  gap: var(--space-3);
-  background: var(--card); border: 1px solid var(--line);
-  border-radius: var(--radius); box-shadow: var(--shadow-sm);
-  padding: var(--space-6);
-  color: inherit; text-decoration: none;
-  transition: transform var(--t-fast) var(--ease-out), box-shadow var(--t-fast) var(--ease-out);
-}
-.creator-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-soft); }
-.creator-card:focus-visible { outline: none; box-shadow: var(--ring); }
-.creator-name { display: flex; align-items: center; gap: var(--space-2); font-weight: 800; font-size: 15px; letter-spacing: -.01em; color: var(--text); }
-.creator-bio {
-  font-size: var(--text-xs); color: var(--text-2); line-height: 1.55;
-  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
-}
-.creator-evidence { display: flex; align-items: center; gap: var(--space-2); margin-top: auto; font-size: var(--text-xs); color: var(--text-3); }
-
-/* Trending itineraries — ranked compact rows (the Trips list-row
-   precedent), not full cards: the grid below already renders every
-   plan as a card, so a second full-card rendering would show the
-   same catalog twice. The hit is the row's first link; the
-   creator's page is the row's second, in the footer. */
-.trending-list { display: grid; gap: var(--space-4); margin: 0; padding: 0; list-style: none; }
-.trend-row {
-  display: grid; gap: var(--space-4);
-  background: var(--card); border: 1px solid var(--line);
-  border-radius: var(--radius); box-shadow: var(--shadow-sm);
-  padding: var(--space-5);
-  transition: transform var(--t-fast) var(--ease-out), box-shadow var(--t-fast) var(--ease-out);
-}
-.trend-row:hover { transform: translateY(-2px); box-shadow: var(--shadow-soft); }
-.trend-hit {
-  all: unset; cursor: pointer;
-  display: grid; grid-template-columns: 20px 96px minmax(0, 1fr);
-  gap: var(--space-5); align-items: center;
-  border-radius: var(--radius-sm);
-}
-.trend-hit:focus-visible { outline: none; box-shadow: var(--ring); }
-.trend-rank { font-family: var(--font-display); font-weight: 800; font-size: 18px; color: var(--text-3); text-align: center; }
-.trend-body { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
-.trend-title { font-size: 15px; font-weight: 800; letter-spacing: -.01em; margin: 0; color: var(--text); }
-.trend-tagline {
-  font-size: var(--text-xs); color: var(--text-2); line-height: 1.55;
-  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
-}
-.trend-meta { display: flex; gap: var(--space-5); flex-wrap: wrap; font-size: var(--text-xs); color: var(--text-3); }
-.trend-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); flex-wrap: wrap; }
-.trend-evidence { display: inline-flex; align-items: center; gap: var(--space-3); font-size: var(--text-xs); color: var(--text-3); }
-.trend-evidence-sep { opacity: .55; }
-
-/* Share your travel stories — the join bar. The counts line is the
-   card's only claim; it is derived from the catalog, never asserted. */
-.share-cta {
-  margin-top: var(--space-10);
-  background: var(--card-soft); border: 1px solid var(--line);
-  border-radius: var(--radius-lg); box-shadow: var(--shadow-soft);
-  padding: var(--space-10);
-  display: grid; justify-items: center; gap: var(--space-4);
-  text-align: center;
-}
-.share-cta-title { font-family: var(--font-display); font-size: clamp(22px, 2.6vw, 30px); margin: 0; color: var(--text); }
-.share-cta-sub { margin: 0; color: var(--text-2); font-size: 14px; line-height: 1.6; max-width: 56ch; }
-.share-cta-counts { margin: 0; font-size: var(--text-xs); color: var(--text-3); }
-.share-cta-ticks { display: flex; gap: var(--space-6); flex-wrap: wrap; justify-content: center; margin: 0; padding: 0; list-style: none; color: var(--text-2); font-size: 13px; }
-.share-cta-ticks li { display: flex; align-items: center; }
-.share-cta-actions { display: flex; align-items: center; justify-content: center; gap: var(--space-4); flex-wrap: wrap; }
-.share-cta-hint { margin: 0; font-size: var(--text-xs); color: var(--text-3); }
-
-/* The rail's cards and the list-row's cover narrow with the page,
-   the same way the Trips list rows do at 640px. */
-@media (max-width: 640px) {
-  .creator-card { flex-basis: 190px; }
-  .trend-hit { grid-template-columns: 16px 72px minmax(0, 1fr); gap: var(--space-4); }
-  .trend-meta { gap: var(--space-4); }
-}
-
 /* save heart on grid cards */
 .save-heart {
   position: absolute; top: 12px; right: 12px; z-index: var(--z-raised); cursor: pointer;
@@ -9614,31 +9516,6 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 .explore-grid.as-list .itin-card > .trip-card-hit { grid-column: 1; grid-row: 1; min-width: 0; }
 .explore-grid.as-list .itin-card > .trip-task-row { grid-column: 1; grid-row: 2; margin-top: var(--space-3); }
 
-/* ---------- the saved shelf on My Trips ----------
-   MR8's hearts wrote ids that nothing read back. This is the surface that
-   does: every saved day and stop in plan order, each row a link to the exact
-   day or stop it names. Removing a row flips the same id the heart wrote. */
-.saved-shelf { margin-top: var(--space-10); display: grid; gap: var(--space-4); }
-.saved-shelf-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-4); }
-.saved-shelf-head h3 { display: inline-flex; align-items: center; gap: var(--space-2); margin: 0; }
-.saved-shelf-hint { margin: 0; font-size: var(--text-xs); color: var(--text-3); }
-.saved-group { padding: var(--space-5) var(--space-6); border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--bg-soft); }
-.saved-group-trip { font-size: 13px; font-weight: 700; color: var(--text); text-decoration: none; }
-.saved-group-trip:hover { color: var(--teal-700); }
-.saved-list { list-style: none; margin: var(--space-4) 0 0; padding: 0; display: grid; gap: var(--space-1); }
-.saved-row { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
-.saved-row-link { flex: 1; display: flex; align-items: center; gap: var(--space-3); min-width: 0; padding: var(--space-2) var(--space-4); border-radius: var(--radius-sm); color: inherit; text-decoration: none; transition: background var(--motion-fast) var(--ease-out); }
-.saved-row-link:hover { background: var(--card); }
-.saved-row-kind { flex: none; font-size: var(--text-xs); font-weight: 800; color: var(--teal-700); }
-.saved-row-title { min-width: 0; overflow: hidden; font-size: 13px; font-weight: 600; color: var(--text); text-overflow: ellipsis; white-space: nowrap; }
-.saved-row-meta { flex: none; font-size: var(--text-xs); color: var(--text-3); font-variant-numeric: tabular-nums; }
-@media (max-width: 640px) {
-  .saved-row-meta { display: none; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .saved-row-link { transition: none; }
-}
-
 /* ==========================================================================
    Mockup card style - My Trips, grid AND list
    --------------------------------------------------------------------------
@@ -9870,5 +9747,141 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 }
 @media (prefers-reduced-motion: reduce) {
   .page-enter > * { animation: none; }
+}
+
+/* ===== My trips saved shelf =====
+   Components: src/components/trips/SavedShelfSection.tsx. The saved days and
+   stops (the Timeline's hearts), grouped by trip. Each row is a compact card on
+   the trip card's surface, radius and shadow, and it moves on the same motion
+   tokens. Every animated rule has a reduced-motion opt-out below. */
+.mt-shelf { display: grid; gap: 0; }
+.mt-shelf .mt-section-title:focus { outline: none; }
+.mt-shelf-hint { margin: 0; color: var(--text-2); font-size: 13px; line-height: 1.5; }
+.mt-shelf-group { display: grid; gap: 8px; margin-top: 16px; }
+.mt-shelf-trip { margin: 0; color: var(--text); font-family: var(--font-body); font-size: 17px; font-weight: 700; line-height: 1.3; letter-spacing: -.01em; }
+.mt-shelf-trip-link { color: inherit; text-decoration: none; border-radius: 4px; }
+.mt-shelf-trip-link:hover { color: var(--teal-700); }
+.mt-shelf-trip-link:focus-visible { outline: none; box-shadow: var(--ring); }
+.mt-shelf-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+@container mt-catalog (min-width: 560px) {
+  .mt-shelf-list { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+}
+.mt-shelf-item { min-width: 0; animation: cardIn var(--motion-slow) var(--ease-out) backwards; }
+.mt-shelf-row {
+  position: relative; display: flex; align-items: center; gap: 4px; min-width: 0;
+  padding: 4px 4px 4px 12px;
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-sm); box-shadow: var(--shadow-card);
+  transition: transform var(--motion-med) var(--ease-out), box-shadow var(--motion-med) var(--ease-out), border-color var(--motion-med) var(--ease-out);
+}
+.mt-shelf-row:hover { transform: translateY(-2px); box-shadow: var(--shadow-card-hover); border-color: var(--line-strong); }
+.mt-shelf-link {
+  flex: 1; display: flex; align-items: center; gap: 12px; min-width: 0;
+  padding: 8px 4px; border-radius: var(--radius-sm); color: inherit; text-decoration: none;
+}
+.mt-shelf-link:focus-visible { outline: none; box-shadow: var(--ring); }
+.mt-shelf-kind {
+  flex: none; display: inline-flex; align-items: center; min-height: 26px; padding: 0 10px;
+  border: 1px solid var(--line-strong); border-radius: 999px; color: var(--text);
+  font-size: 12.5px; font-weight: 600;
+}
+.mt-shelf-text { display: grid; gap: 2px; min-width: 0; }
+.mt-shelf-name { overflow: hidden; color: var(--text); font-size: 15px; font-weight: 700; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
+.mt-shelf-meta { overflow: hidden; color: var(--text-2); font-size: 13px; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
+.mt-shelf-unsave { flex: none; color: var(--text-2); }
+.mt-shelf-unsave:hover { background: var(--color-destructive-soft); color: var(--ink-coral); }
+.mt-shelf-unsave:focus-visible { outline: none; box-shadow: var(--ring); }
+/* Phones and touch screens: 40px targets for the remove button and the row. */
+@media (max-width: 720px), (pointer: coarse) {
+  .mt-shelf-unsave { width: 40px; height: 40px; }
+  .mt-shelf-link { padding: 12px 4px; }
+}
+@media (max-width: 640px) {
+  .mt-shelf-row:hover { transform: none; }
+  .mt-shelf-group { margin-top: 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mt-shelf-item { animation: none; }
+  .mt-shelf-row, .mt-shelf-row:hover { transition: none; transform: none; }
+}
+
+/* ===== Explore trending shelf ===== */
+/* Up to four plans between the featured card and the grid. Components:
+   src/components/explore/TrendingShelf.tsx; every class starts with "ex-trend-".
+   Phones get a snapping scroll row; the grid takes over as the main column
+   widens. Tokens only, and the motion tokens; the reduced-motion rule at the end
+   stops the hover lift. */
+
+.ex-trend { margin-top: 24px; min-width: 0; }
+.ex-trend-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 16px; margin-bottom: 12px; }
+.ex-trend-title { margin: 0; color: var(--text); font-family: var(--font-body); font-size: 20px; font-weight: 800; line-height: 1.25; letter-spacing: -.01em; }
+.ex-trend-sub { margin: 0; color: var(--text-2); font-size: 14px; }
+
+.ex-trend-list {
+  display: flex; gap: 12px; margin: 0; padding: 4px 2px 12px; list-style: none;
+  overflow-x: auto; scroll-snap-type: x proximity; scrollbar-width: thin;
+}
+.ex-trend-item { flex: 0 0 min(72%, 260px); min-width: 0; scroll-snap-align: start; }
+@container ex-main (min-width: 560px) {
+  .ex-trend-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; overflow: visible; padding: 4px 0 0; }
+  .ex-trend-item { flex: none; }
+}
+@container ex-main (min-width: 880px) {
+  .ex-trend-list { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+}
+
+.ex-trend-card {
+  position: relative; display: flex; flex-direction: column; min-width: 0; padding: 6px;
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--ex-shadow-sm);
+  transition: transform var(--motion-med) var(--ease-out), box-shadow var(--motion-med) var(--ease-out), border-color var(--motion-med) var(--ease-out);
+}
+.ex-trend-card:hover { transform: translateY(-2px); box-shadow: var(--ex-shadow-md); border-color: var(--ex-line-strong); }
+.ex-trend-card:hover .ex-cover-img, .ex-trend-card:hover .mt-motif { transform: scale(1.035); }
+.ex-trend-cover { position: relative; overflow: hidden; aspect-ratio: 16 / 9; border-radius: var(--radius-sm); }
+.ex-trend-rank {
+  position: absolute; top: 8px; left: 8px; z-index: var(--z-raised); pointer-events: none;
+  min-width: 28px; height: 28px; padding: 0 8px; box-sizing: border-box; display: inline-grid; place-items: center;
+  border-radius: 999px; background: var(--card); color: var(--text);
+  font-size: 13px; font-weight: 800; font-variant-numeric: tabular-nums; box-shadow: var(--ex-shadow-sm);
+}
+.ex-trend-body { display: flex; flex: 1; flex-direction: column; gap: 8px; min-width: 0; padding: 12px 10px 4px; }
+.ex-trend-name { margin: 0; color: var(--text); font-size: 15px; font-weight: 800; line-height: 1.3; letter-spacing: -.01em; overflow-wrap: anywhere; }
+.ex-trend-link { border-radius: 4px; color: inherit; text-decoration: none; }
+.ex-trend-link::after { content: ''; position: absolute; inset: 0; z-index: var(--z-content); border-radius: var(--radius); }
+.ex-trend-link:focus-visible { outline: none; }
+.ex-trend-link:focus-visible::after { box-shadow: var(--ring); }
+.ex-trend-views { display: inline-flex; align-items: center; gap: 6px; margin: 0; color: var(--text-2); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.ex-trend-body .ex-byline { align-self: flex-start; margin-top: auto; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ex-trend-card, .ex-trend-card:hover { transition: none; transform: none; }
+  .ex-trend-card:hover .ex-cover-img, .ex-trend-card:hover .mt-motif { transform: none; }
+}
+
+/* ===== My trips next step and view preference ===== */
+/* The planning meter on a grid or list card. It reuses the Up next bar
+   (.mt-meter-bar) and sets only its height and label here. */
+.mt-card-meter { display: grid; gap: 4px; }
+.mt-card-meter-label { margin: 0; color: var(--text-2); font-size: 13px; }
+.mt-card-meter-label b { color: var(--text); font-weight: 700; }
+.mt-card-meter .mt-meter-bar { height: 6px; }
+
+/* The next-step row: one link to the day or stop the step names. It sits above
+   the card's whole-card link and keeps a 40px phone target. */
+.mt-task {
+  position: relative; z-index: var(--z-raised); box-sizing: border-box;
+  display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 6px 10px;
+  border-radius: var(--radius-sm); background: var(--teal-soft); color: var(--text);
+  font-size: 13.5px; font-weight: 600; line-height: 1.3; text-decoration: none;
+  transition: background var(--motion-fast) var(--ease-out), box-shadow var(--motion-fast) var(--ease-out);
+}
+.mt-task > svg { flex: none; color: var(--ink-teal); }
+.mt-task-label { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.mt-task-chev { margin-left: auto; color: var(--text-3); }
+.mt-task:hover { background: color-mix(in srgb, var(--teal-soft) 75%, var(--card)); }
+.mt-task:focus-visible { outline: none; box-shadow: var(--ring); }
+.mt-task--done { background: transparent; color: var(--text-2); font-weight: 500; }
+
+@media (prefers-reduced-motion: reduce) {
+  .mt-task { transition: none; }
 }
 

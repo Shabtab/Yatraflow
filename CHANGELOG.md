@@ -17,12 +17,12 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ### Added
 
-- **Explore now shows the community, to every visitor.** Three blocks sit between the featured
-  card and the grid. A rail names the featured creators. A shelf lists the trending itineraries.
-  A card invites visitors to share their travel stories. One module derives every claim: one
-  popularity score, one evidence bar, one deterministic order. So "trending" and the featured
-  card cannot disagree. A block appears only when its own evidence exists. A heading over an
-  empty rail would advertise a community that is not there.
+- **Explore ranks plans and creators by evidence, and a block draws only when its evidence exists.**
+  A Trending now shelf sits between the featured card and the grid. It ranks plans by popularity,
+  which is views plus five times forks. It shows only when no filter is set and the catalog has
+  loaded, and it leaves the featured pick out. The Creators side panel ranks creators by forks.
+  The featured pick ranks forks first. A heading over an empty rail would advertise a community
+  that is not there, so an empty block draws nothing.
 
 - **A browser check in CI fails a page block that appears between two frames.** `npm run check:motion` builds the app, serves it, opens four public routes and samples every block of the page root once per animation frame from before navigation. A block whose opacity and transform never change had no motion at all, so the run fails and names the block. The `motion` job runs beside `verify` in CI, and `npm run verify` still needs no browser.
 
@@ -31,9 +31,8 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - **Glass cannot be painted without its blur any more.** A rule that paints a translucent glass token must declare `backdrop-filter` in the same rule, or name its exception and its reason in the gate's list. An entry that no longer matches a rule fails too,so the list cannot outlive its reason.
 
 - **Every trip card now says what to do next, and how much of the plan exists.** My Trips
-  prints the one action worth doing under each trip's chips. A chevron carries the card's own
-  link, so the line navigates like the rest of the card. A bar and a count report the planned
-  days. `src/lib/tripNextStep.ts` derives both, and 16 tests pin the order. Set the dates
+  prints the one action worth doing above each trip's chips. The line is a link to that task,
+  marked by a chevron. A bar and a count report the planned days. `src/lib/tripNextStep.ts` derives both, and 16 tests pin the order. Set the dates
   first, because a draft has no days to plan. Then the earliest empty day, because it blocks
   every day after it. Then the earliest stop that needs a booking. Then the earliest suggestion
   to confirm. A cover photo waits for last. A rejected stop blocks nothing, so a day left with
@@ -46,14 +45,6 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
   cover thumbnail falls back to the same glyph. A live read of every published itinerary found
   that emoji set on all of them and a photo on one, so the step never fired. A chosen emoji
   counts now. The default compass does not.
-- **My Trips can now be filtered by what each trip still needs.** Five tabs sit under the
-  toolbar, each with a live count: all trips, needs dates, needs planning, needs booking, and
-  ready. The tab you pick survives a reload, because the choice goes through the same
-  `lib/uiPrefs` store the per-day collapse already uses. A count comes from every trip the
-  search and the other filters leave behind, so a tab says what clicking it would show.
-  A trip needing a booking gets its own tab instead of hiding inside "needs planning". The
-  buckets are disjoint, because the derivation returns one next step per trip, so the five
-  counts add up to the page total.
 - **`npm run probe:next-step` reports the derivation against live data.** It reads every
   published itinerary, runs it through the app's own row normalizer and next-step derivation,
   and prints the derived label per publication plus a histogram. Pass `--json` for machine
@@ -65,11 +56,11 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
   `docs/adr/0002-mockup-palette-not-adopted.md` records the decision and what it costs. The
   mockup keeps its typography. Its page layout is adopted section by section through the
   roadmap's MR track. Its ten swatches never reach the design tokens.
-- **The trip list can now be read as a list, and an upcoming trip says how long until it leaves.**
-  Two additions to the same card. A labelled pair in the toolbar switches between the grid and a
-  one-row-per-trip list, where each cover collapses to a small thumbnail. The choice survives a
-  reload through the same preferences store the status tabs use, and the buttons carry pressed
-  states and a focus ring rather than being an unlabelled icon pair. An upcoming trip now shows
+- **The trip list can now be read as a list, and the Up next card says how long until it leaves.**
+  Two additions to the same card. A labelled pair in the Other trips header switches between the
+  grid and a one-row-per-trip list, where each cover collapses to a small thumbnail. The choice
+  survives a reload through the same preferences store the per-day collapse uses, and the
+  buttons carry pressed states. The Up next card now shows
   "Departs in 6 days", or "Departs today" and "Departs tomorrow" in words. The line disappears
   the moment a trip leaves, and for a past or undated one, rather than counting down to nothing.
   The count comes from the trip's own dates through the repository's single day-count helper, so
@@ -101,13 +92,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
   what the press will do, and the 40px touch floor. This is deliberately not the map shortlist:
   that tray filters out anything already added to the plan, so a day or a stop put there would have
   been dropped on arrival.
-- **My Trips now features the closest upcoming departure as a prominent hero journey.**
-  Variant A from the layout study leads the page with a photo cover, dates, route, travellers,
-  and a planning progress bar. The hero card surfaces the single next task with a targeted action
-  button and an overview link. When no filters are active, the remaining trips appear below in the
-  supporting grid or list under an explicit heading. The lead journey uses existing design tokens
-  and respects light and dark themes without mockup assets.
-- **The featured journey's action button now opens the exact day and stop it names.**
+- **The Up next card's button opens the exact day and stop it names.**
   The button carried only the trip link. The timeline opened at the top, and you had to find
   the day yourself. The button now links with the day and the stop in the address. The
   workspace checks the request against the trip. It opens that day and scrolls the stop to the
@@ -120,7 +105,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
   says which one it is. A row can be dropped again from the shelf, through the same store the
   hearts write. An id whose day or stop is gone is dropped rather than shown as a row that
   opens nothing, and a stop that a re-split moved follows its new day. `src/lib/savedShelf.ts`
-  resolves the ids against live trip data; `src/components/SavedShelf.tsx` draws them.
+  resolves the ids against live trip data; `src/components/trips/SavedShelfSection.tsx` draws them.
 
 - **A browser verification harness for agents, under `.agents/skills/verify-yatraflow/`.** It starts the dev server on port 5178. It checks the server and the Supabase project ref. It drives a headless Edge or Chrome to a route. Each run writes a screenshot and a JSON record to `.verify-evidence/`, which git ignores. The feature map covers five signed-out flows.
 
@@ -163,34 +148,23 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
   behind. The hub's Live and Behind counts read the same derivation as the rows, so the strip can
   no longer count a row the list below it refuses to label.
 
-- **My Trips puts the view switch on the status-tab row, with travel style, when and sort as
-  three separate dropdowns.** The Grid/List control used to close the wrapping filter bar, so it
-  wrapped onto a line of its own at every width, away from the tabs it belongs to. It now sits on
-  the status-tab row as a labelled segmented control, right-aligned, and drops below the tabs
-  when the width will not hold both. Its glider slides between the two choices instead of two
-  backgrounds swapping. Style, when and sort each get their own labelled menu, and the style menu
-  carries the count the chip row used to add up, so a filtered list still says why it is short.
-  A switch from grid to list replays the cards' own entrance cascade instead of changing every
-  card's size between two frames. The page-to-page entrance reads as motion now as well: it kept a
+- **My Trips puts the Grid | List switch in the Other trips header, and keeps the filters in the filter bar.**
+  The switch is a labelled segmented control, placed beside the list it changes. Style is a chip
+  row, and each chip carries a count, so a filtered list still says why it is short. When and sort
+  are labelled menus. The page-to-page entrance reads as motion now as well: it kept a
   550ms clock but spent 63% of its travel in the first 55ms, which is why a navigation looked
   like a snap, and it runs on `--motion-slow` with the fade still under way while the next page's
   content arrives.
 
-- **The My Trips cards now use the mockup's card style, in both list and grid view.** Each
-  card has the mockup's 14px radius, its hairline resting shadow and its 16/8.4 cover. A
-  status pill sits at the cover's top left. The pill reads the same status list the filter
-  tabs render. So a pill cannot name a status the tabs would not. The body reads in the
-  mockup's order: title, route, meta row, tags, departure line, progress meter. The day count
-  left the route line for the meta row, where the mockup keeps it. A hairline separates the
-  card's foot. The foot holds the crew on the left and the next action on the right. One hover
-  moves one surface. The card lifts 3px, the border darkens, and the shadow deepens. The cover
-  zooms to 1.04. Grid and list share the card. The list view puts a 236px cover beside the body.
-  The cover runs the row's full height, as the mockup's does. That needs the cover to sit
-  outside the body's link. So the cover is a second link to the same trip. The second link
-  stays out of the tab order and out of the accessibility tree. The body link carries the
-  trip's name, and the focus ring moves to the card. Below 760px the row stacks and the cover
-  keeps its 16/8.4 shape. All of it runs on the motion tokens, with a `prefers-reduced-motion`
-  opt-out. The port is scoped to `.trips-page`, so the Explore grid keeps the card it had.
+- **The My Trips cards use the mockup's card style, in both list and grid view.** Each card has a
+  16/10 cover. A status tag sits at the cover's top left. The body reads in this order: title,
+  route, the budget, travel and dates columns, the planned-days meter, the next step, then the
+  travel-style and planner chips. A hairline separates the card's foot. The foot holds the crew on
+  the left and the delete button on the right. One hover moves one surface. The card lifts 2px,
+  the border darkens, and the shadow deepens. The cover art zooms to 1.035. The list view puts a
+  112px cover beside the body, and a 168px cover once the container is 720px wide. The cover runs
+  the row's full height. All of it runs on the motion tokens, with a `prefers-reduced-motion`
+  opt-out.
 
 ### Fixed
 
@@ -235,8 +209,8 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
   card's own link, so a click opened the trip overview and you had to find “Book Shimla
   tickets” yourself. It is a separate link now, because a link must not hold a second link:
   the card still opens the trip, and the line opens the day and the stop its own label names.
-  A dates or cover step opens Settings, where those fields live. The featured card's button
-  and a list row read one builder, so the two cannot disagree about where a step lives.
+  A dates or cover step opens Settings, where those fields live. The Up next button and each
+  card's next-step line read one builder, so the two cannot disagree about where a step lives.
 - **The day rail tracks where you are, and a day jump no longer lands under it.**
   The rail marks the day in view in review mode. It marks the open day in
   one-day mode. A jump used to land the day header under the sticky bars on a

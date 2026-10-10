@@ -23,6 +23,21 @@ export function popularity(p: { views: number; copies: number }): number {
   return p.views + p.copies * 5
 }
 
+/** The one order for "most popular" surfaces: the popularity score, then
+ *  forks, then views, then recency, then id. The trending shelf and the
+ *  grid's default sort both use it, so a tie resolves the same way on
+ *  both, and no arrival order can swap two equal plans. */
+export function comparePopularity(
+  a: { id: string; views: number; copies: number; publishedAt: number },
+  b: { id: string; views: number; copies: number; publishedAt: number },
+): number {
+  return popularity(b) - popularity(a) ||
+    b.copies - a.copies ||
+    b.views - a.views ||
+    b.publishedAt - a.publishedAt ||
+    (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+}
+
 /** One creator's rank in the discovery rail: who they are, and the
  *  evidence in their live catalog. */
 export interface CreatorRank {
@@ -91,15 +106,7 @@ export function trendingPubs(
   const pool = livePubs(pubs).filter(
     p => !excluded.has(p.id) && (p.copies >= 1 || p.views >= FEATURED_MIN_VIEWS),
   )
-  return [...pool]
-    .sort((a, b) =>
-      popularity(b) - popularity(a) ||
-      b.copies - a.copies ||
-      b.views - a.views ||
-      b.publishedAt - a.publishedAt ||
-      (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
-    )
-    .slice(0, limit)
+  return [...pool].sort(comparePopularity).slice(0, limit)
 }
 
 /** The community counts the share-stories card states: live

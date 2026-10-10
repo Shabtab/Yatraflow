@@ -1,6 +1,6 @@
 // ============ My trips cards — pure text helpers ============
 import { describe, expect, it } from 'vitest'
-import { gridShape, meterPercent, routeLine, startOfLocalDay, travelHoursText } from '../src/lib/tripsCard'
+import { gridShape, layoutFromPref, meterPercent, routeLine, startOfLocalDay, travelHoursText } from '../src/lib/tripsCard'
 import type { ItineraryDay } from '../src/data/types'
 
 const days = (count: number) => Array.from({ length: count }, () => ({ stops: [] }) as unknown as ItineraryDay)
@@ -75,5 +75,18 @@ describe('startOfLocalDay', () => {
   })
   it('moves on at local midnight', () => {
     expect(startOfLocalDay(new Date(2026, 9, 11, 0, 0, 1))).toBeGreaterThan(startOfLocalDay(new Date(2026, 9, 10, 23, 59, 59)))
+  })
+})
+
+describe('layoutFromPref', () => {
+  it('reads a stored list as the list layout', () => {
+    expect(layoutFromPref('list')).toBe('list')
+  })
+  it('reads the grid, and anything that names no layout, as the grid', () => {
+    expect(layoutFromPref('grid')).toBe('grid')
+    expect(layoutFromPref('table')).toBe('grid')
+    expect(layoutFromPref('')).toBe('grid')
+    expect(layoutFromPref(null)).toBe('grid')
+    expect(layoutFromPref(undefined)).toBe('grid')
   })
 })

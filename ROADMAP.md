@@ -592,7 +592,7 @@ Neither decision touches a colour value, per [ADR 0002](docs/adr/0002-mockup-pal
   - **The hearts got a destination (2026-10-06).** This was the review's own proposal: the ids
     had no reader, so a save was decoration. My Trips now carries a “Saved for later” shelf.
     `src/lib/savedShelf.ts` resolves each id against live trip data — a day, or the stop and the
-    day it sits on today — and `src/components/SavedShelf.tsx` draws them grouped by trip in plan
+    day it sits on today — and `src/components/trips/SavedShelfSection.tsx` draws them grouped by trip in plan
     order, each row a deep link to that day or stop. A re-split moves a saved stop with its day,
     and an id whose day or stop is gone is dropped rather than drawn as a row that opens nothing.
     A row can be dropped again through the same `flipSavedId` the heart writes with.
@@ -638,7 +638,8 @@ Neither decision touches a colour value, per [ADR 0002](docs/adr/0002-mockup-pal
   - **Built 2026-10-10.** The three blocks are wired into Explore behind the page's own read
     state: `src/lib/discovery.ts` derives them (one
     popularity score, one evidence bar, a deterministic order, so "trending" and the featured
-    card cannot disagree), `src/components/ExploreDiscovery.tsx` draws them, and each block
+    card cannot disagree), `src/components/explore/TrendingShelf.tsx` draws the trending shelf
+    and the Creators and Share panels draw the other two, and each block
     returns null until its own evidence exists. 18 cases in `tests/discovery.test.ts` pin the
     derivations with no DOM.
   - **The blocker, and its fix (2026-10-10).** A signed-out browser showed Explore stuck on

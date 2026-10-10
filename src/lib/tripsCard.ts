@@ -61,3 +61,14 @@ export function gridShape(count: number, isGrid: boolean): {
 export function startOfLocalDay(date: Date): number {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
 }
+
+/** The My trips card layout: a grid of cards, or one row per trip. */
+export type TripsLayout = 'grid' | 'list'
+
+/** The uiPrefs key the layout choice is stored under. Only the layout is stored. */
+export const TRIPS_LAYOUT_PREF = 'trips_layout'
+
+/** A stored layout that names a real layout. Anything else reads as the grid. */
+export function layoutFromPref(raw: string | null | undefined): TripsLayout {
+  return raw === 'list' ? 'list' : 'grid'
+}

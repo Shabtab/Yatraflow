@@ -20,8 +20,10 @@ import { ExploreStateBlock } from '../components/explore/ExploreStateBlock'
 import { PlacesPanel } from '../components/explore/PlacesPanel'
 import { CreatorsPanel } from '../components/explore/CreatorsPanel'
 import { SharePanel } from '../components/explore/SharePanel'
+import { TrendingShelf } from '../components/explore/TrendingShelf'
 import { livePubs } from '../lib/livePubs'
-import { matchesQuery, pickFeatured, placeTiles, creatorList, savedEmptyKind, type SavedEmptyKind } from '../lib/explorePage'
+import { comparePopularity } from '../lib/discovery'
+import { matchesQuery, pickFeatured, placeTiles, creatorList, savedEmptyKind, trendingShelfPicks, type SavedEmptyKind } from '../lib/explorePage'
 
 type SortKey = 'popular' | 'newest' | 'budget-asc' | 'budget-desc' | 'duration'
 const STYLES = ['relaxed', 'balanced', 'packed', 'adventure', 'luxury', 'budget', 'family', 'spiritual', 'food-focused', 'creator'] as const
@@ -107,8 +109,6 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
     replaceRoute(`/explore${qs ? '?' + qs : ''}`)
   }
 
-  const popularity = (p: { views: number; copies: number }) => p.views + p.copies * 5
-
   const pubs = useMemo(() => {
     let list = [...livePubs(published)]
     list = list.filter(p => matchesQuery(p, q, userOf(users, p.creatorId)?.profile.name))
@@ -129,7 +129,7 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
       case 'budget-asc': return list.sort((a, b) => a.estimatedBudgetPerPersonInr - b.estimatedBudgetPerPersonInr)
       case 'budget-desc': return list.sort((a, b) => b.estimatedBudgetPerPersonInr - a.estimatedBudgetPerPersonInr)
       case 'duration': return list.sort((a, b) => b.durationDays - a.durationDays)
-      default: return list.sort((a, b) => popularity(b) - popularity(a))
+      default: return list.sort(comparePopularity)
     }
   }
 
@@ -146,10 +146,6 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
   // on a three-item shelf the duplicate was a third of the page. Only ever a
   // no-op when the featured pick is a card from OUTSIDE the active filters,
   // which is the normal case once any filter is on.
-  const gridPubs = useMemo(
-    () => (featured ? pubs.filter(p => p.id !== featured.id) : pubs),
-    [pubs, featured],
-  )
   // "outside your filters" is a claim, so only make it when it is true: with a
   // filter on, the featured pick is often the matching card itself (it was
   // labelled "outside your filters" while being the only adventure result).
@@ -209,6 +205,20 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
   const emptyKind = savedEmptyKind({
     pubsCount: pubs.length, filtersActive, savedOnly, savedCount: savedLiveCount, signedIn: Boolean(me),
   })
+
+  // The trending shelf: the same catalog, the featured pick left out, and drawn
+  // only while nothing is filtered and the catalog read is ready (lib/explorePage.ts).
+  const shelfPicks = useMemo(
+    () => trendingShelfPicks({ pubs: published, featured, filtersActive, ready: pubsRead === 'ready' }),
+    [published, featured, filtersActive, pubsRead],
+  )
+  // The grid leaves out the featured pick and, while the shelf shows, the shelf's
+  // plans too, so no itinerary appears twice near the top of the page.
+  const gridPubs = useMemo(() => {
+    const shown = new Set(shelfPicks.map(p => p.id))
+    if (featured) shown.add(featured.id)
+    return pubs.filter(p => !shown.has(p.id))
+  }, [pubs, featured, shelfPicks])
 
   // A new key remounts the grid, so its cards run their staggered entrance again
   // each time a filter, the search or the sort changes what the grid holds.
@@ -301,6 +311,8 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
               onToggleSave={() => toggleHeart(featured.id)}
             />
           )}
+
+          {shelfPicks.length > 0 && <TrendingShelf pubs={shelfPicks} users={users} />}
 
           {pubsRead !== 'ready' ? (
             /* #364: a failed catalog read used to render "just getting started" —

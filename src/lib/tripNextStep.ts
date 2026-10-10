@@ -232,7 +232,7 @@ export function departureLabel(trip: Trip, today: Date): string | null {
  * trip can therefore read 0 of 3 days while a route already exists, which is the
  * honest answer to "what have I planned".
  */
-export function plannedDayRatio(trip: Trip): { planned: number; total: number; pct: number } {
+export function plannedDayRatio(trip: Pick<Trip, 'days'>): { planned: number; total: number; pct: number } {
   const days = trip.days ?? []
   const total = days.length
   const planned = days.filter(isPlannedDay).length

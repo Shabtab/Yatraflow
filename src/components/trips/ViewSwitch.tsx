@@ -1,7 +1,8 @@
 // ============ My trips — Grid | List switch ============
 import { LayoutGrid, List } from 'lucide-react'
+import type { TripsLayout } from '../../lib/tripsCard'
 
-export type TripsLayout = 'grid' | 'list'
+export type { TripsLayout }
 
 export function ViewSwitch({ layout, onChange }: { layout: TripsLayout; onChange: (next: TripsLayout) => void }) {
   return (

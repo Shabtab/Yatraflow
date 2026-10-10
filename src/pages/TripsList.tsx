@@ -15,12 +15,14 @@ import { sliceState, emptyCopyFor, readState } from '../lib/readState'
 import type { Trip } from '../data/types'
 import { TRAVEL_STYLES } from '../data/types'
 import { heroHeadline, heroNote, heroPostcards, heroStats, otherTripsEmptyKind, pickUpNext, whenBucket, type WhenKey } from '../lib/tripsPage'
-import { gridShape, startOfLocalDay } from '../lib/tripsCard'
+import { gridShape, layoutFromPref, startOfLocalDay, TRIPS_LAYOUT_PREF } from '../lib/tripsCard'
+import { loadPref, savePref } from '../lib/uiPrefs'
 import { TripArtSprite } from '../components/trips/TripArt'
 import { TripsHero } from '../components/trips/TripsHero'
 import { FilterChip } from '../components/filters/FilterChip'
 import { SearchField } from '../components/filters/SearchField'
 import { UpNextCard } from '../components/trips/UpNextCard'
+import { SavedShelfSection } from '../components/trips/SavedShelfSection'
 import { TripCard } from '../components/trips/TripCard'
 import { ViewSwitch, type TripsLayout } from '../components/trips/ViewSwitch'
 
@@ -109,7 +111,14 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
   const [style, setStyle] = useState<'all' | Trip['travelStyle']>('all')
   const [when, setWhen] = useState<WhenKey>('all')
   const [sortKey, setSortKey] = useState<SortKey>('recent')
-  const [layout, setLayout] = useState<TripsLayout>('grid')
+  // The Grid | List choice is the one view pref this page keeps. It is read on
+  // mount and written on each change; a stored value that names no layout reads
+  // as the grid, and a storage failure keeps the default.
+  const [layout, setLayout] = useState<TripsLayout>(() => layoutFromPref(loadPref(TRIPS_LAYOUT_PREF, 'grid')))
+  function pickLayout(next: TripsLayout) {
+    setLayout(next)
+    savePref(TRIPS_LAYOUT_PREF, next)
+  }
 
   const mine = useMemo(() => tripsForUser(meId), [allTrips, meId])
 
@@ -338,12 +347,14 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
             </section>
           )}
 
+          <SavedShelfSection trips={mine} />
+
           <section aria-labelledby={otherTitleId}>
             <div className="mt-section-head">
               <h2 className="mt-section-title" id={otherTitleId}>{upNext ? 'Other trips' : 'All trips'} ({otherTrips.length})</h2>
               <div className="mt-head-actions">
                 <button ref={headerTrashToggleRef} type="button" className="btn btn-quiet" aria-pressed={isTrashView} onClick={toggleTrash}><InlineIcon icon={Trash2} size={15} gap={5} />Trash</button>
-                <ViewSwitch layout={layout} onChange={setLayout} />
+                <ViewSwitch layout={layout} onChange={pickLayout} />
               </div>
             </div>
 

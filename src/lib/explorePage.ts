@@ -4,7 +4,7 @@
 // store reads. Every figure comes from the publication rows passed in.
 import type { PublishedItinerary, User } from '../data/types'
 import { formatInrShort } from './engine'
-import { FEATURED_MIN_VIEWS } from './discovery'
+import { FEATURED_MIN_VIEWS, trendingPubs } from './discovery'
 import { livePubs } from './livePubs'
 
 /** Views a plan needs to be featured when it has no fork yet. One value,
@@ -192,4 +192,21 @@ export function savedEmptyKind({ pubsCount, filtersActive, savedOnly, savedCount
   if (savedOnly && savedCount === 0) return 'no-saved'
   if (filtersActive) return 'no-match'
   return signedIn ? 'no-catalog-signed-in' : 'no-catalog-signed-out'
+}
+
+/**
+ * The trending shelf's picks. The shelf shows only while the catalog read is
+ * ready and no filter or search is on: "trending" over a filtered list would
+ * claim something about the filter, not the catalog. The featured pick is left
+ * out, so the same plan never leads twice. Empty means the shelf is not drawn.
+ */
+export function trendingShelfPicks({ pubs, featured, filtersActive, ready, limit = 4 }: {
+  pubs: PublishedItinerary[]
+  featured: PublishedItinerary | undefined
+  filtersActive: boolean
+  ready: boolean
+  limit?: number
+}): PublishedItinerary[] {
+  if (!ready || filtersActive) return []
+  return trendingPubs(pubs, limit, featured ? [featured.id] : [])
 }

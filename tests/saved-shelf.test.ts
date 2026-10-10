@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { savedShelfFor, SAVED_DAY_PREFIX, SAVED_STOP_PREFIX } from '../src/lib/savedShelf'
+import { savedDayId, savedStopId, flipSavedId } from '../src/lib/uiPrefs'
 import type { ItineraryDay, ItineraryStop, Trip } from '../src/data/types'
 
 /* The saved shelf reads MR8's ids back. Its rules have cases: an id outlives
@@ -115,5 +116,21 @@ describe('savedShelfFor', () => {
 
   it('says nothing when nothing is saved', () => {
     expect(savedShelfFor(goa(), [])).toEqual([])
+  })
+})
+
+describe('the shelf and the hearts share one store', () => {
+  it('resolves the exact ids the hearts write', () => {
+    const rows = savedShelfFor(goa(), [savedDayId(1), savedStopId('market')])
+    expect(rows.map(r => r.id)).toEqual(['stop:market', 'day:1'])
+  })
+
+  it('removing a row flips the id its heart wrote, so the heart clears too', () => {
+    const stored = [savedDayId(0), savedStopId('market')]
+    const removed = savedShelfFor(goa(), stored)[1]
+    expect(removed.id).toBe('stop:market')
+    const after = flipSavedId(stored, removed.id)
+    expect(after).toEqual(['day:0'])
+    expect(savedShelfFor(goa(), after).map(r => r.id)).toEqual(['day:0'])
   })
 })

@@ -30,13 +30,18 @@ describe('a step\u2019s deep link \u2014 the builder writes the address', () => 
 })
 
 describe('a step\u2019s deep link \u2014 every caller reads that one builder', () => {
-  const list = codeOf('../src/pages/TripsList.tsx')
+  // The My trips cards build their step address here, not in the page: the
+  // featured card in UpNextCard and the card's task row in TripCard.
+  const upNext = codeOf('../src/components/trips/UpNextCard.tsx')
+  const card = codeOf('../src/components/trips/TripCard.tsx')
 
-  // The redesigned TripsList does not render the next-step row or the featured
-  // button yet, so no caller reads the builder. The pin returns with the wiring.
-  it.skip('the featured button and the card task row both build through it — restored in the re-port phase', () => {
-    expect(list).toMatch(/const targetRoute = nextStepRoute\(trip, step\)/)
-    expect(list).toMatch(/appLink\(nextStepRoute\(t, step\)\)/)
+  it('the featured button builds its target through it, and the trip root when there is no step', () => {
+    expect(upNext).toMatch(/const targetRoute = step \? nextStepRoute\(trip, step\) : detailRoute/)
+    expect(upNext).toMatch(/\{\.\.\.appLink\(targetRoute\)\}/)
+  })
+
+  it('the card task row builds its link through it', () => {
+    expect(card).toMatch(/<a className="mt-task" \{\.\.\.appLink\(nextStepRoute\(trip, step\)\)\}>/)
   })
 })
 
