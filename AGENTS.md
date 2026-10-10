@@ -302,6 +302,13 @@ that notices the drift.
     The variable is not a User or Machine setting, so it returns in every new
     shell. Clear it per command. Do not reinstall the whole tree to chase this.
 
+    **The `--exec` form does not start npm on Windows.** The wrapper spawns its
+    command without a shell, and `npm` is a `.cmd` shim there. On 2026-10-10 the
+    documented line exited 1 with no output, and the missing packages stayed
+    missing. Check the state with `npm run clean:env` first. Then run
+    `npm install` in a shell that has the variable cleared, and check the
+    result: the package is in `node_modules`, or the build passes.
+
 
    **A migration the USER must run is handed over as complete SQL, in the chat,
    with its full local path — never as a filename to go and find (user-mandated
@@ -354,6 +361,30 @@ a breach, so treat those rows as the ones most easily skipped.
 | §3 gate, CI, migrations | `npm run verify` locally; `ci.yml` on push and PR (`tests/ci-workflow.test.ts` pins the triggers); `npm run check:migrations` + a live PostgREST probe for schema |
 | §4 code conventions and pitfalls | the pin tests named in each rule — `verify` runs them all |
 
+
+### What enforces each rule
+
+The rules above are prose, and prose does not fail a build. This table names the
+check behind each one that has a check. **A rule with no row here is a judgment
+call, and that is where repeats come from:** rule 10 (motion) sat here for months
+with nothing enforcing its *presence*, so the duration gate happily passed a
+surface that shipped with no animation at all — the operator had to point that
+out three times before anyone fixed the mechanism instead of the instance. When
+an operator corrects you on a rule with no row, add the check in the same change.
+
+| Rule | Enforced by |
+| --- | --- |
+| §2.10 motion ships with every surface | `tests/design-system.test.ts` → *a surface that appears carries motion*: page roots are **discovered** from `src/App.tsx`, so a new page fails until its root carries `page-enter`, and the shared `.page-enter > *` rule must give its children a token-duration entrance with a `--stagger-step` delay plus the reduced-motion opt-out; a binding the walk cannot read fails the test rather than leaving a gap; the same file pins duration/type/spacing/contrast |
+| §2.13 new prose is STE100 | `npm run lint:ste` (changed lines only) |
+| §2.14 never add lint errors | `npm run lint:ratchet` against `eslint-baseline.json`, per rule and per file |
+| §2.12 a merge into `test` does not close issues | `.github/workflows/issue-autoclose.yml` + `scripts/pr-auto-close.mjs`, pinned by `tests/pr-auto-close.test.ts` |
+| §6 the roadmap's version and date track the release | `tests/roadmap-status.test.ts` (against `package.json` and the newest CHANGELOG heading) |
+| §6 docs must not promise a surface the code does not have | `tests/doc-drift.test.ts` (its LIVE list) |
+| A panel painted with the glass token must carry its blur (§4 / `CODING_STANDARDS` 6an) | `tests/design-system.test.ts` → *one rule owns the popover glass*: only `.popover` may paint `var(--popover-bg)`, and it must declare `backdrop-filter` …; and *every glass paint carries its blur*: any rule painting a translucent glass token must declare `backdrop-filter`, or sit in that test's reason-carrying exception list, and a stale entry fails too |
+| A page block must move in the real app, not only in CSS text (§2.10) | CI job `motion` → `npm run check:motion` (`scripts/browser-motion-check.mjs`): serves the build, samples each page root's blocks once per animation frame from before navigation, and fails a block that appears between two frames. `npm run verify` stays browser-free |
+| §4 conventions (RLS, SQL, providers, scripted edits) | `CODING_STANDARDS.md` + `supabase/tests/rls_contract.test.sql`; the CSS gates land in `tests/design-system.test.ts` |
+
+Both local runs and CI run the same command: `npm run verify`.
 
 ## 3. Verification, CI and the migration check
 

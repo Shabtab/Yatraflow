@@ -324,7 +324,19 @@ function spitiDays() {
 }
 
 /** The trips row, shaped exactly as the store writes it (src/data/types.ts Trip). */
+// The fixture trip carries REAL dates. The first version wrote `''` for both,
+// which is legal but made this seeder the reason 3 of the 6 published
+// itineraries had no dates at all. That made "Set your travel dates" the most
+// common next step in `npm run probe:next-step`. That was an artifact of a test
+// fixture, not a fact about publishing. The window is fixed so a re-run is
+// byte-comparable, and the end date is derived from the real day count rather
+// than hard-coded per fixture.
+const FIXTURE_TRIP_START = '2027-01-10'
+
 function tripRow(pub, ownerId) {
+  const endDate = new Date(
+    Date.parse(FIXTURE_TRIP_START) + (pub.days.length - 1) * 86400000,
+  ).toISOString().slice(0, 10)
   return {
     id: randomUUID(),
     // OWNER IS MANDATORY. trips.owner_id is `not null` and has no default, and
@@ -336,7 +348,7 @@ function tripRow(pub, ownerId) {
     start_location: pub.days[0].stops[0].locationName,
     start_location_coords: { lat: pub.days[0].stops[0].lat, lng: pub.days[0].stops[0].lng },
     destinations: pub.days.flatMap(d => d.stops.slice(1).map(s => s.locationName)),
-    start_date: '', end_date: '',
+    start_date: FIXTURE_TRIP_START, end_date: endDate,
     travellers: 2, transport_mode: 'car',
     budget_per_person_inr: 25_000, travel_style: 'balanced',
     stay_style: 'comfort',

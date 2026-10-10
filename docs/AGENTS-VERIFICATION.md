@@ -21,6 +21,8 @@ Sections:
 
 ## The gate
 
+**A clean working tree makes the default STE check inspect zero lines.** It reads unstaged changes, not committed branch changes. You must also check new branch prose through `--stdin` during a branch review.
+
 Use `npm run verify` — it runs the full gate:
 `tsc -b --clean` → fresh typecheck → full test suite → production build.
 
@@ -387,6 +389,25 @@ rather than replacing it; that duplication is deliberate. Verify with
 `gh pr checks <n>` rather than reasoning from the YAML; the check list names the
 workflow that actually fired.
 
+**The `motion` job's teardown exit is invisible on Windows, so only CI can catch
+it (learned 2026-10-10).** `npm run check:motion` serves the build, and then it
+kills the preview server in its own `finally` block. On Linux the preview
+catches SIGTERM and exits 143. On Windows the same kill reports
+`signal=SIGTERM` with a null code. The script read a non-zero code as a crash,
+so the Linux form failed the job's FIRST CI run — after every sampled block had
+already passed. The handler now ignores an exit that follows the teardown, and
+it still fails an exit that happens while the check runs. A local Windows run
+cannot reproduce the teardown failure, so read the CI job for that path.
+
+**The `motion` job samples a Supabase-blind build, so it sees less than your
+tree does (learned 2026-10-10).** CI holds no credentials, so `vite.config.ts`
+warns in place of aborting, and the app compiles without a project ref. The
+job's first run sampled one block on `/explore` and one on `/trips`, where a
+local run with `.env.local` sampled three and two. The job still proves the
+public shell's block entrance. It cannot see the blocks that need catalog data.
+A green `motion` job is not coverage of those surfaces; the idea bank's I-47
+names the fix.
+
 **Codacy's `action_required` state hides REAL findings too — read the
 annotations, not just the conclusion.** The "auth-gated bot quirk" framing was
 right for merges (nothing blocks), but on PR #224 the same `action_required`
@@ -422,6 +443,14 @@ real-vs-baseline on its merits, fix the substance once, then mark the finding
 as managed in the Codacy dashboard (code-pattern ignore on that file with the
 four-layer justification) — and say so in the PR so the review trail shows the
 decision was made, not missed.
+
+**One shape does clear that rule, and it is the cheapest one to try first
+(learned 2026-10-10).** `scripts/browser-motion-check.mjs` hit the same finding
+at a helper whose URL arrived as a PARAMETER, `fetch(url)`. Drop the parameter
+and fetch the module's own loopback constant, with its port read through an
+integer range check: Codacy reported zero findings on the next run. So the
+unresolvable rounds above shared a harder shape — a URL built from application
+data — and this one is a taint path you delete rather than a value you clean.
 
 **The verify gate must GATE the push — no `;`-chained command strings.** On
 PR #224 a `npm run verify …; git commit … && git push …` one-liner pushed a

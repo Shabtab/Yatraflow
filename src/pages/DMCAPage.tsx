@@ -5,7 +5,7 @@
 
 export function DMCAPage() {
   return (
-    <div className="auth-wrap">
+    <div className="auth-wrap page-enter">
       <div className="card auth-card">
         <h1 className="auth-title">Copyright and DMCA</h1>
         <p className="small muted" style={{ marginTop: 4 }}>

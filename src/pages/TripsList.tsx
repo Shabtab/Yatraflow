@@ -207,7 +207,7 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
   }
 
   return (
-    <div className="container trips-page">
+    <div className="container trips-page page-enter">
       <TripArtSprite />
       <TripsHero
         headline={heroHeadlineText}

@@ -17,6 +17,111 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ### Added
 
+- **Explore now shows the community, to every visitor.** Three blocks sit between the featured
+  card and the grid. A rail names the featured creators. A shelf lists the trending itineraries.
+  A card invites visitors to share their travel stories. One module derives every claim: one
+  popularity score, one evidence bar, one deterministic order. So "trending" and the featured
+  card cannot disagree. A block appears only when its own evidence exists. A heading over an
+  empty rail would advertise a community that is not there.
+
+- **A browser check in CI fails a page block that appears between two frames.** `npm run check:motion` builds the app, serves it, opens four public routes and samples every block of the page root once per animation frame from before navigation. A block whose opacity and transform never change had no motion at all, so the run fails and names the block. The `motion` job runs beside `verify` in CI, and `npm run verify` still needs no browser.
+
+- **The pages a motion gate checks are discovered from the router, not typed into a list.** `tests/design-system.test.ts` reads `src/App.tsx` and takes every component App renders — a static import, a route-level `lazy()` binding, or a component declared in App itself — then requires each returned root to carry `page-enter`. A new page joins the set by existing, so it cannot ship motionless. A binding the walk cannot read is an error rather than a skip: an unreadable page must not pass as an empty one. The cascade behind the class is one shared rule, `.page-enter > *`, with its stagger and its reduced-motion opt-out beside it.
+
+- **Glass cannot be painted without its blur any more.** A rule that paints a translucent glass token must declare `backdrop-filter` in the same rule, or name its exception and its reason in the gate's list. An entry that no longer matches a rule fails too,so the list cannot outlive its reason.
+
+- **Every trip card now says what to do next, and how much of the plan exists.** My Trips
+  prints the one action worth doing under each trip's chips. A chevron carries the card's own
+  link, so the line navigates like the rest of the card. A bar and a count report the planned
+  days. `src/lib/tripNextStep.ts` derives both, and 16 tests pin the order. Set the dates
+  first, because a draft has no days to plan. Then the earliest empty day, because it blocks
+  every day after it. Then the earliest stop that needs a booking. Then the earliest suggestion
+  to confirm. A cover photo waits for last. A rejected stop blocks nothing, so a day left with
+  only rejected stops still counts as unplanned. A finished trip reads "Ready to travel" and
+  drops the chevron, because there is nothing left to open. The bar is the 5px meter the day
+  header already draws, in the same teal and the same motion, and the two read their numbers
+  from one function.
+- **The cover-photo step is reachable again.** The prototype counted any cover emoji as a
+  cover. Every trip is born with 🧭, because the column is `not null default '🧭'` and the
+  cover thumbnail falls back to the same glyph. A live read of every published itinerary found
+  that emoji set on all of them and a photo on one, so the step never fired. A chosen emoji
+  counts now. The default compass does not.
+- **My Trips can now be filtered by what each trip still needs.** Five tabs sit under the
+  toolbar, each with a live count: all trips, needs dates, needs planning, needs booking, and
+  ready. The tab you pick survives a reload, because the choice goes through the same
+  `lib/uiPrefs` store the per-day collapse already uses. A count comes from every trip the
+  search and the other filters leave behind, so a tab says what clicking it would show.
+  A trip needing a booking gets its own tab instead of hiding inside "needs planning". The
+  buckets are disjoint, because the derivation returns one next step per trip, so the five
+  counts add up to the page total.
+- **`npm run probe:next-step` reports the derivation against live data.** It reads every
+  published itinerary, runs it through the app's own row normalizer and next-step derivation,
+  and prints the derived label per publication plus a histogram. Pass `--json` for machine
+  output. It exits non-zero when an invariant breaks, so it doubles as a check. Run it after
+  a schema change: a renamed status or a different days shape shows up as a changed
+  histogram before a user ever sees a wrong card. A priced publication is marked, because an
+  anonymous read returns its locked days.
+- **The mockup's colour palette is not adopted, and the decision is written down.**
+  `docs/adr/0002-mockup-palette-not-adopted.md` records the decision and what it costs. The
+  mockup keeps its typography. Its page layout is adopted section by section through the
+  roadmap's MR track. Its ten swatches never reach the design tokens.
+- **The trip list can now be read as a list, and an upcoming trip says how long until it leaves.**
+  Two additions to the same card. A labelled pair in the toolbar switches between the grid and a
+  one-row-per-trip list, where each cover collapses to a small thumbnail. The choice survives a
+  reload through the same preferences store the status tabs use, and the buttons carry pressed
+  states and a focus ring rather than being an unlabelled icon pair. An upcoming trip now shows
+  "Departs in 6 days", or "Departs today" and "Departs tomorrow" in words. The line disappears
+  the moment a trip leaves, and for a past or undated one, rather than counting down to nothing.
+  The count comes from the trip's own dates through the repository's single day-count helper, so
+  a daylight-saving edge cannot shift it.
+- **The cover-photo prompt and the solo-traveller line were already there.** A roadmap row asked
+  for both. Checked against the code rather than assumed: the prompt is one of the six next-step
+  labels and only became reachable once the default compass emoji stopped counting as a cover,
+  and the avatars with "Just you so far" were already in the card foot. No new code was needed.
+- **The Timeline's day rail now says where you are and when the route moves.** Each chip became a
+  card carrying the place that day sits in and its stop count, with a marker on the day the city
+  changes rather than the day before it. The jump and the day-collapse behaviour behind it are
+  unchanged — this is the rail that already existed, made legible. The two facts it shows come
+  from a new pure module with eleven tests, because the marker sits on a boundary and an off-by-one
+  would place it on the wrong day, which reads as the plan being wrong rather than the strip being
+  wrong. A day that names no place prints none, and an unnamed day between two named ones does not
+  make the second look like a change.
+- **Three layout defects, found by measuring the trip list at 1440px and 390px against real
+  trips.** A full-width list column produced 1140px rows holding a title and two chips, so half the
+  screen was whitespace; the rows now keep a readable measure and the grid takes more of them. The
+  replacement used `minmax(520px, 1fr)`, whose floor cannot shrink — at 390px it held a 520px card
+  in a 373px viewport and pushed the whole document sideways, fixed with `min(520px, 100%)`. And
+  renaming the day-rail chip to a card silently dropped the 40px mobile touch floor the old class
+  already carried, leaving the new card at 28px; it is restored under the new name.
+- **Days and experiences can now be saved from the Timeline.** A heart sits beside each day's
+  title and on each planned stop. Saved state lives in the preferences store that already keeps
+  per-day collapse, so it survives a reload without becoming trip data — it is never shared with
+  the crew, so it needs no sync and no undo. Ids are namespaced so a day and a stop can never mean
+  the same thing. The heart is a real button, so it carries a pressed state, a label that says
+  what the press will do, and the 40px touch floor. This is deliberately not the map shortlist:
+  that tray filters out anything already added to the plan, so a day or a stop put there would have
+  been dropped on arrival.
+- **My Trips now features the closest upcoming departure as a prominent hero journey.**
+  Variant A from the layout study leads the page with a photo cover, dates, route, travellers,
+  and a planning progress bar. The hero card surfaces the single next task with a targeted action
+  button and an overview link. When no filters are active, the remaining trips appear below in the
+  supporting grid or list under an explicit heading. The lead journey uses existing design tokens
+  and respects light and dark themes without mockup assets.
+- **The featured journey's action button now opens the exact day and stop it names.**
+  The button carried only the trip link. The timeline opened at the top, and you had to find
+  the day yourself. The button now links with the day and the stop in the address. The
+  workspace checks the request against the trip. It opens that day and scrolls the stop to the
+  centre of the view. A ring marks the row for a moment. A stale request does nothing. A day
+  the trip lacks falls back to the day alone. A request for another trip is ignored.
+- **A saved-items shelf on My Trips gives the hearts somewhere to go.** Saving a day or an
+  experience wrote an id that nothing read back. A “Saved for later” section now lists every
+  saved item in plan order, grouped by trip, and each row opens the exact day and stop it
+  names. A saved day opens the whole day. A saved experience opens that stop, and the row
+  says which one it is. A row can be dropped again from the shelf, through the same store the
+  hearts write. An id whose day or stop is gone is dropped rather than shown as a row that
+  opens nothing, and a stop that a re-split moved follows its new day. `src/lib/savedShelf.ts`
+  resolves the ids against live trip data; `src/components/SavedShelf.tsx` draws them.
+
 - **A browser verification harness for agents, under `.agents/skills/verify-yatraflow/`.** It starts the dev server on port 5178. It checks the server and the Supabase project ref. It drives a headless Edge or Chrome to a route. Each run writes a screenshot and a JSON record to `.verify-evidence/`, which git ignores. The feature map covers five signed-out flows.
 
 - **My trips shows a pinned Up next card for your live or soonest trip.** The card shows a countdown, Budget, Travel and Dates columns, a planning meter, the next step and a delete button. It stays pinned through sort and style filters. It hides while you search.
@@ -49,7 +154,123 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 - **The featured itinerary title is an h3, so the page heading order stays in sequence.**
 
+- **Every publication row in the creator hub states its status, and its button follows from it.**
+  A row used to say nothing when its page was healthy, and it labelled only the two exceptions;
+  now it always states one status — Live, Unpublished, or Page behind itinerary — so a healthy
+  publication is as readable as a broken one. The row's action comes from the same derivation as
+  its label, so a row cannot read "Live" beside a "Publish again" button. A withdrawn page stays
+  Unpublished whatever its itinerary did afterwards, because a page that is down cannot be
+  behind. The hub's Live and Behind counts read the same derivation as the rows, so the strip can
+  no longer count a row the list below it refuses to label.
+
+- **My Trips puts the view switch on the status-tab row, with travel style, when and sort as
+  three separate dropdowns.** The Grid/List control used to close the wrapping filter bar, so it
+  wrapped onto a line of its own at every width, away from the tabs it belongs to. It now sits on
+  the status-tab row as a labelled segmented control, right-aligned, and drops below the tabs
+  when the width will not hold both. Its glider slides between the two choices instead of two
+  backgrounds swapping. Style, when and sort each get their own labelled menu, and the style menu
+  carries the count the chip row used to add up, so a filtered list still says why it is short.
+  A switch from grid to list replays the cards' own entrance cascade instead of changing every
+  card's size between two frames. The page-to-page entrance reads as motion now as well: it kept a
+  550ms clock but spent 63% of its travel in the first 55ms, which is why a navigation looked
+  like a snap, and it runs on `--motion-slow` with the fade still under way while the next page's
+  content arrives.
+
+- **The My Trips cards now use the mockup's card style, in both list and grid view.** Each
+  card has the mockup's 14px radius, its hairline resting shadow and its 16/8.4 cover. A
+  status pill sits at the cover's top left. The pill reads the same status list the filter
+  tabs render. So a pill cannot name a status the tabs would not. The body reads in the
+  mockup's order: title, route, meta row, tags, departure line, progress meter. The day count
+  left the route line for the meta row, where the mockup keeps it. A hairline separates the
+  card's foot. The foot holds the crew on the left and the next action on the right. One hover
+  moves one surface. The card lifts 3px, the border darkens, and the shadow deepens. The cover
+  zooms to 1.04. Grid and list share the card. The list view puts a 236px cover beside the body.
+  The cover runs the row's full height, as the mockup's does. That needs the cover to sit
+  outside the body's link. So the cover is a second link to the same trip. The second link
+  stays out of the tab order and out of the accessibility tree. The body link carries the
+  trip's name, and the focus ring moves to the card. Below 760px the row stacks and the cover
+  keeps its 16/8.4 shape. All of it runs on the motion tokens, with a `prefers-reduced-motion`
+  opt-out. The port is scoped to `.trips-page`, so the Explore grid keeps the card it had.
+
 ### Fixed
+
+- **Explore loads for logged-out visitors again.** A first visit without an account showed "Loading the catalog…" with no end, although the itineraries had loaded. The logged-out data load now reports the catalog as loaded or failed. A failed read now shows the error with a Retry button. The bug did not affect signed-in users.
+
+- **The copyright page enters with the shared cascade.** The page arrived without
+  `page-enter`, so its blocks appeared between two frames and the motion gate failed. It now
+  carries the class its sibling auth page carries.
+
+- **Explore, the trip workspace, the creator hub and the public itinerary enter with motion now.** Every top-level block on those four pages appeared between two frames: the hero, the head, the tab bar and the body popped into place with nothing under them. They take the shared container cascade now — each block rises 8px over `--motion-slow`, staggered by `--stagger-step`, and stops under reduced motion. Sampled in the browser after the change: zero motionless blocks on the six routes checked.
+
+- **The bezel tray and the landing's feature cards carry the whole glass pair.** Both restated the glass background and border and left the `backdrop-filter` behind — the same split the popover shipped with. The bezel wears the `.glass` owner now and keeps only its own geometry and shadow. The feature card cannot wear it, because `.card`'s later background would win the cascade, so it declares the pair itself.
+
+- **The map's idea-filters popup is readable now, not see-through.** The panel restated a
+  popover's background, border, radius, shadow and entrance, and left out one thing: the
+  `backdrop-filter` that goes with the glass background. Glass is translucent by design. The day
+  chips and markers behind the menu showed through it. The panel carries the `popover` class
+  now, which owns that pair in one place, and `tests/design-system.test.ts` fails when a second
+  rule paints the glass without it.
+
+- **My Trips now arrives as a sequence instead of all at once.** The hero, the page head, the
+  toolbar, the viewbar and the saved shelf used to appear between two frames while the cards
+  below them cascaded. A still hero above moving cards reads as a broken element, not a calm
+  one. The page root owns one entrance for its own children now, staggered in DOM order, so a
+  block added to the page later cannot miss one. `tests/design-system.test.ts` fails when a
+  pinned page root has no entrance, no stagger, or no reduced-motion opt-out, and the rule table
+  in `AGENTS.md` names that check next to the rule it enforces.
+
+- **The progress meter counts activities, not route points.** The store anchors a new trip's route
+  with automatic stops. Those stops have no dwell time. The meter counted one of them as a planned
+  day. A trip with nothing to do on it could then read “1 of 1 days planned” and “Ready to travel”.
+  The meter and the card's next-step line now share one definition of a planned day: a day that
+  holds at least one usable stop that is not automatic. The label names the measure — “Days with
+  activities”. An anchored day asks you to “Plan day N” instead of reading as a finished trip.
+- **My Trips moves to the next day while the page stays open.** The page read the clock once and
+  kept that value. A tab left open overnight said “Departs tomorrow” for a trip that leaves today,
+  and the date filter was a day stale with it. `src/lib/dayClock.ts` holds one calendar-day clock.
+  It wakes at local midnight. It also re-reads the day when the window regains focus, because a
+  background tab throttles timers. One value feeds the countdown and the date filter, so the two
+  cannot disagree. The unit is a day, so nothing polls and a focus on the same day renders nothing.
+- **A trip card's next-step line now opens the task it names.** The line lived inside the
+  card's own link, so a click opened the trip overview and you had to find “Book Shimla
+  tickets” yourself. It is a separate link now, because a link must not hold a second link:
+  the card still opens the trip, and the line opens the day and the stop its own label names.
+  A dates or cover step opens Settings, where those fields live. The featured card's button
+  and a list row read one builder, so the two cannot disagree about where a step lives.
+- **The day rail tracks where you are, and a day jump no longer lands under it.**
+  The rail marks the day in view in review mode. It marks the open day in
+  one-day mode. A jump used to land the day header under the sticky bars on a
+  phone. The bar stack is measured per width and mode now, and every jump
+  lands below it. The current-day marker is a border and a weight. A day's
+  warning tint can no longer replace the marker.
+- **The trip list rows stop clipping their content on a phone.** List mode put
+  the member stack and the delete control on the same line as the card body.
+  At 373px the body overran them and the card clipped both. The row now has
+  explicit thumbnail, content and action columns, and the content column can
+  shrink. Below 640px the footer moves onto its own line under the content.
+  Wide screens show one trip per row, the mockup's scan order. Metadata wraps
+  instead of widening the row.
+- **The Timeline day rail names a real place again.** The rail card showed the
+  day title as the city, so two Jaipur days titled "Arrival" and "Fort visit"
+  marked a city change inside one city. The place now comes from the day's
+  base stop: the last stop in plan order, where the day ends. Rejected stops
+  do not place the day. A day with no named stop prints no place and makes no
+  claim.
+- **A heart press can no longer save twice or drop earlier saves.** The save
+  updater flipped the set by reading storage inside React's state calculation.
+  React can run that calculation twice, so one press could land twice. When
+  storage was denied, every read came back empty and each press dropped the
+  ids saved before it. The set now derives from the previous state and is
+  written once after the change. The in-memory set stays authoritative when
+  storage fails.
+
+- **The test fixture no longer publishes dateless itineraries.** Three of the six published
+  itineraries carried no start or end date, which made "Set your travel dates" the most common
+  next step in the probe histogram. Every one of those three came from
+  `scripts/seedCreatorFixture.mjs`, which wrote an empty string for both dates; all three real
+  publications have real dates. The seeder now derives a fixed window from each fixture's day
+  count. Publishing a trip with no dates was never the defect, so the publish path is
+  unchanged. Rows already in the database keep their empty dates until the fixture is re-applied.
 
 - **Icons drawn through the shared inline icon wrapper no longer render as solid black shapes.** The wrapper sets an empty fill, so every outline icon keeps its stroke style.
 
@@ -63,9 +284,8 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 - **A destination only matches a region as a whole word.** "Goalpara" no longer takes the Goa artwork.
 
-- **A signed-out visitor no longer stays on "Loading the catalog" on Explore.** The logged-out load records whether it read profiles and itineraries. A failed read now shows Retry.
-
 ## [0.74.0] - 2026-10-07
+
 
 ### Changed
 

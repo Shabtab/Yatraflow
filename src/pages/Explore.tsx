@@ -215,7 +215,7 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
   const gridKey = [q, style, maxBudget, duration, sortKey, savedOnly].join('|')
 
   return (
-    <div className="container ex-page">
+    <div className="container ex-page page-enter">
       <TripArtSprite />
       <ExploreHero stats={heroStats} onExplore={jumpToResults} />
 

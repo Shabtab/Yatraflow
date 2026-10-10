@@ -4,10 +4,13 @@
 // store reads. Every figure comes from the publication rows passed in.
 import type { PublishedItinerary, User } from '../data/types'
 import { formatInrShort } from './engine'
+import { FEATURED_MIN_VIEWS } from './discovery'
 import { livePubs } from './livePubs'
 
-/** Views a plan needs to be featured when it has no fork yet. */
-export const FEATURED_MIN_VIEWS = 25
+/** Views a plan needs to be featured when it has no fork yet. One value,
+ *  owned by `discovery.ts`, so the featured card and the trending shelf
+ *  cannot use two different bars. Re-exported for the page's own callers. */
+export { FEATURED_MIN_VIEWS }
 
 export interface PlaceTile { name: string; count: number }
 export interface CreatorTile { id: string; name: string; plans: number; forks: number; isCreator: boolean }

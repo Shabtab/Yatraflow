@@ -121,7 +121,7 @@ export function PurchasesPage({ onNavigate }: { onNavigate: (r: string) => void 
   }
 
   return (
-    <div className="container purchases-page">
+    <div className="container purchases-page page-enter">
       <div className="purchases-head">
         <button className="btn btn-ghost" onClick={() => onNavigate('/trips')}>
           <InlineIcon icon={ArrowLeft} size={14} gap={4} />My trips

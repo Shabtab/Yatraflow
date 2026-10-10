@@ -657,7 +657,7 @@ function SharedTripPage({ payload, onNavigate }: { payload: string; onNavigate: 
 
   if (state.s === 'error') {
     return (
-      <div className="container empty-state">
+      <div className="container empty-state page-enter">
         <div className="big"><Link2 size={38} aria-hidden /></div>
         {/* Decoding can fail for reasons that are NOT the link: `inflate` throws
             where DecompressionStream is missing, and a newer snapshot can fail
@@ -670,7 +670,7 @@ function SharedTripPage({ payload, onNavigate }: { payload: string; onNavigate: 
   }
 
   return (
-    <div className="container empty-state">
+    <div className="container empty-state page-enter">
       <div className="big"><Luggage size={38} aria-hidden /></div>
       <h1 style={{ fontSize: 26 }}>Shared itinerary{state.s === 'ready' ? `: “${state.name}”` : ''}</h1>
       {state.s === 'ready' && (

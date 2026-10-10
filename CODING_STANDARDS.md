@@ -649,6 +649,74 @@ anywhere in this repo means the entry labelled `6b` below.
    keeps the file compiling, any reduction bails. You must keep the runner
    and its cells in the page. You must move only the writer beside it. You
    must record the split in the hook header.
+ 6ah. **A queued slice replays stale code beside the hook that replaced it
+   (learned 2026-10-04, #420 slices 14-15).** A stacked branch holds the
+   pre-merge page. Its hunks can re-add a memo, a filter or a block that a
+   merged slice already moved into a hook. You must check each hunk side
+   against the hooks that exist now. The merged hook wins. The stale copy
+   dies. A duplicate `const` is the signal: the hook already returns the
+   name, so the incoming copy cannot stay.
+ 6ai. **You must union rebase imports, then prune with the linter (learned
+   2026-10-04, #420 slices 13-15).** Each side names what its own tree used.
+   You must keep every name first. You must delete what `eslint` reports as
+   unused. You must not raise the baseline to cover leftovers. You must
+   regenerate it lower in the same commit.
+ 6aj. **You must classify a branch by patch ancestry, not by name or age
+   (learned 2026-10-04, prune of 80 refs).** A merged pull request leaves its
+   branch ref behind. Test each ref with `git merge-base --is-ancestor <ref>
+   origin/test`. You must run `git cherry` on what is left. `git cherry`
+   skips merge commits, so a branch of merge commits only reads as empty.
+   `git log origin/test..<ref>` shows those. You must keep a branch whose
+   commits no patch in test owns. You must keep a `release/*` ref, because
+   this repo tags no release. You must run `git worktree list` before you
+   delete a local branch.   `git branch -d` refuses an unmerged branch, so it
+   must be the only delete verb you use.
+ 6ak. **You must not poll with requestAnimationFrame when a timer can poll
+   (learned 2026-10-05, the featured deep link).** A browser that makes no
+   rendering frames never runs a rAF callback. The preview browser did this
+   while it read "visible". A rAF loop then does nothing. A smooth scroll
+   never moves. You must poll with `setTimeout`. You must land a scroll after
+   the layout settles, or the target drifts. You must check a scroll by class
+   and probe, not by `scrollY`. Script-driven scroll needs frames too.
+ 6al. **A class rename must move the class's whole selector family (learned
+   2026-10-06, MR9).** Renaming `.day-rail-chip` to `.day-rail-card` left one
+   selector behind. The `[aria-current]` rule stayed on the dead name, so the
+   current-day marker silently died. The green pins hid it: a sibling rule on
+   the new name already passed. You must grep the old class through
+   `styles.css` before the rename lands. Each selector must take the new
+   name or die with the old one.
+ 6am. **A CSS gate can fail on how a rule is ADDED, not on what it says
+   (learned 2026-10-06, #645).** Three gates read `styles.css`, and one edit
+   hit all three. `duplicateSelectors` counts TOP-LEVEL rules only, so a new
+   top-level rule that repeats an existing selector fails: extend the existing
+   rule in place. `offLadderSpacing` reads every `NNpx` in a spacing property,
+   and the numbers inside `calc()` count too — `padding-left: calc(96px + 14px)`
+   fails on the 96. Use `var(--space-*)` instead of the arithmetic.
+   `subPixelType` refuses a `font-size` below 11px, and `var(--text-xs)` is the
+   only size token left. **Every ratchet key is declaration text now, not a line
+   number.** Each key in `tests/design-system-baseline.json` is the offending
+   declaration's own text, with the old `styles.css:<line>` prefix dropped; the
+   test file's header records why that changed. Edit a rule where it sits. Add
+   comment lines above it. A shift moves nothing. Only a change to what a rule
+   *declares* trips a gate. So append at EOF when that is where the change
+   belongs — not to protect the baseline.
+   **A migrated legacy value fails the gate until you delete its entry (learned
+   2026-10-06).** Replacing `.route-panel`'s raw `.55s` with `var(--motion-slow)`
+   made the gate report `.route-panel — animation: .55s` under "these no longer
+   reproduce — delete them from design-system-baseline.json". That message is
+   the cleanup the ratchet asks for, not a regression. Delete the line. Never
+   raise the baseline.
+
+ 6an. **A popover's background is a PAIR — copy `background: var(--popover-bg)`
+   without its `backdrop-filter` and the panel is see-through (learned
+   2026-10-06).** `--popover-bg` is `var(--yf-nav-glass)`, a translucent glass
+   colour. The `.popover` class is what makes it readable: it pairs that
+   background with `backdrop-filter: blur(var(--yf-blur-nav)) saturate(1.2)`.
+   A My Trips filters panel took the background and left the blur behind. The
+   status tabs and the cards showed straight through it. The screenshot showed
+   the symptom; only the CSS pair explained it. So reuse the `.popover` class
+   instead of re-declaring its properties, or carry the filter with the
+   background.
 
  6ah. **A fix-ready comment earns its title in stages — verified facts, root cause, patch,
    delivery (learned 2026-10-05, the review-loop retro).** The day-planner wave (#117–#181)
@@ -843,6 +911,8 @@ process.
   introduced in this session and re-read your own changelog prose against the final code.
 
 - **Vendored ripgrep can be missing in the desktop environment — `code_search` fails with ENOENT (`rg.exe` not found).** Don't retry it; fall back to `grep -n` / `awk` in the shell, which answer the same question.
+
+- **The changelog's union driver applies only when both sides already carry it (learned 2026-10-10).** `union` is a built-in git driver, so no `merge.union.driver` config is needed (checked on git 2.51.0): with the rule in `.gitattributes`, an append-vs-append merge keeps both sides and writes no markers. The merge that BRINGS the rule in is the exception: the pre-merge tip had no `CHANGELOG.md merge=union` line, so that merge wrote markers — and the incoming release headings left 29 of this branch's entries inside the released `[0.73.0]` section. A docs commit had to move each one back to `[Unreleased]`. After a merge that cuts a release, check the shape by hand: every branch-new entry must sit above the newest `## [X.Y.Z]` heading, and byte-diff each moved block against the pre-merge copy.
 
 - **Release tags are not automatic — they were skipped after v0.44.0.** `git tag` stopped at v0.44.0 while `package.json` climbed to 0.47.0 and nothing in the gate reads tags, so nobody noticed. Verify tag state with `git tag --sort=-creatordate | head` when a release claims to be tagged; backfilling needs an explicit tag push to the remote.
 
