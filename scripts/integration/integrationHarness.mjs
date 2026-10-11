@@ -146,7 +146,8 @@ let main = async () => {
   if (prof.error || prof.data?.length !== 2) return;
 
   // ---- 1. trips:insert — any signed-in user can create an own trip
-  const t = await U1.from('trips').insert({ owner_id: owner.id, name: `${P} Shared Trip`, visibility: 'private' }).select('id');
+  const inviteCode = `${P}SHARED`; // the code is the join capability; a trip id is not
+  const t = await U1.from('trips').insert({ owner_id: owner.id, name: `${P} Shared Trip`, visibility: 'private', invite_code: inviteCode }).select('id');
   assert(!t.error && t.data?.length === 1, 'trips: signed-in user creates own trip', t.error?.message);
   if (t.error || !t.data?.[0]) return;
   sharedTripId = t.data[0].id; created++;
@@ -161,9 +162,15 @@ let main = async () => {
   const unseen = await U2.from('trips').select('id').eq('name', `${P} Shared Trip`);
   assert(!unseen.error && unseen.data?.length === 0, 'trips: non-member cannot see private trip', unseen.error?.message);
 
-  // ---- 3. trip_members:join — crew can add themselves (invite-join path)
-  const join = await U2.from('trip_members').insert({ trip_id: sharedTripId, user_id: crew.id, role: 'viewer' });
-  assert(!join.error, 'members: crew joins themselves as viewer', join.error?.message);
+  // ---- 3. trip_members:join — a trip id joins nobody; the invite code does
+  const byId = await U2.rpc('join_trip', { p_code: sharedTripId });
+  assert(!byId.error && byId.data === null, 'members: a trip id does not join', byId.error?.message ?? `joined ${byId.data}`);
+  const join = await U2.rpc('join_trip', { p_code: inviteCode });
+  assert(!join.error && join.data === sharedTripId, 'members: crew joins with the invite code', join.error?.message ?? 'join_trip returned no trip');
+  // join_trip adds an editor. The owner sets the crew member to viewer, so the
+  // viewer checks below still hold.
+  const joinerViewer = await U1.from('trip_members').update({ role: 'viewer' }).eq('trip_id', sharedTripId).eq('user_id', crew.id).select('role');
+  assert(!joinerViewer.error && joinerViewer.data?.[0]?.role === 'viewer', 'members: owner sets the joiner to viewer', joinerViewer.error?.message ?? 'no row matched');
 
   // ---- 4. trips:read — crew now sees the trip (is_member path)
   const seen = await U2.from('trips').select('id').eq('name', `${P} Shared Trip`);

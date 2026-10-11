@@ -1,7 +1,8 @@
-// ============ Joining a trip goes through join_trip(), not a client insert ============
+// ============ Joining a trip goes through join_trip(), by invite code only ============
 // The "members insert" policy used to accept a row for the caller's own user id,
-// so any signed-in user could add themselves to any trip with any role. These
-// pins hold the migration, its schema.sql mirror and the client on the server path.
+// so any signed-in user could add themselves to any trip with any role. A trip id
+// also revealed the invite code. These pins hold the migration, its schema.sql
+// mirror, the trip-id preview and the client on the server path.
 import { describe, expect, it } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
 
@@ -12,6 +13,8 @@ const MIGRATION_FILE = '20261012_member_join_guard.sql'
 const MIGRATION = read(`../supabase/migrations/${MIGRATION_FILE}`)
 const SCHEMA = read('../supabase/schema.sql')
 const STORE = read('../src/store/store.ts')
+const APP = read('../src/App.tsx')
+const SHARE_TAB = read('../src/pages/trip/ShareTab.tsx')
 
 /** The text of one `create policy "<name>"` on trip_members, through its semicolon. */
 function membersPolicy(sql: string, name: string): string {
@@ -43,22 +46,54 @@ describe('join_trip migration', () => {
     expect(header).toMatch(/set search_path = public/)
   })
 
-  it('adds the joiner as the literal role editor and keeps an existing member row', () => {
+  it('takes the invite code as p_code, and never a trip id', () => {
+    expect(fn.slice(0, fn.indexOf('as $$'))).toMatch(/join_trip\(p_code text\)/)
+    expect(fn).toMatch(/upper\(t\.invite_code\) = v_key/)
+    expect(fn).not.toMatch(/\[0-9A-F\]\{8\}|::uuid|v_as_uuid|public\.is_member|t\.visibility|premium_price_inr/)
+  })
+
+  it('adds a new joiner as editor, the trip owner as owner, and keeps an existing row', () => {
     expect(fn).toMatch(/insert into public\.trip_members[\s\S]*?'editor'/)
+    expect(fn).toMatch(/case when v_is_owner then 'owner' else 'editor' end/)
     expect(fn).toMatch(/on conflict \(trip_id, user_id\) do nothing/)
   })
 
-  it('revokes from public and anon, then grants execute to authenticated', () => {
-    const revoke = MIGRATION.search(/revoke all on function public\.join_trip\(text\) from public, anon/)
+  it('drops the old join_trip signature before it creates the new one', () => {
+    const drop = MIGRATION.indexOf('drop function if exists public.join_trip(text);')
+    const create = MIGRATION.indexOf('create or replace function public.join_trip(')
+    expect(drop).toBeGreaterThan(-1)
+    expect(create).toBeGreaterThan(drop)
+  })
+
+  it('revokes from public, anon and authenticated, then grants execute to authenticated', () => {
+    const revoke = MIGRATION.search(/revoke all on function public\.join_trip\(text\) from public, anon, authenticated;/)
     const grant = MIGRATION.search(/grant execute on function public\.join_trip\(text\) to authenticated;/)
     expect(revoke).toBeGreaterThan(-1)
     expect(grant).toBeGreaterThan(revoke)
   })
 
-  it('keeps the disabled-account block and the live, not-trashed, paywall guard', () => {
+  it('keeps the disabled-account block and the not-trashed filter', () => {
     expect(fn).toMatch(/public\.is_disabled\(\)/)
     expect(fn).toMatch(/t\.deleted_at is null/)
-    expect(fn).toMatch(/premium_price_inr/)
+  })
+})
+
+describe('get_invite_trip withholds the invite code', () => {
+  const start = MIGRATION.indexOf('create or replace function public.get_invite_trip(')
+
+  it('is redefined with the same signature and the same grants', () => {
+    expect(start).toBeGreaterThan(-1)
+    expect(MIGRATION).toMatch(/grant execute on function public\.get_invite_trip\(uuid\) to anon, authenticated;/)
+  })
+
+  it('clears the code before the row leaves the function', () => {
+    expect(MIGRATION.slice(start)).toMatch(/v_trip\.invite_code := null;/)
+  })
+
+  it('keeps the visibility and paywall guard and the not-trashed filter', () => {
+    const body = MIGRATION.slice(start)
+    expect(body).toMatch(/premium_price_inr/)
+    expect(body).toMatch(/t\.deleted_at is null/)
   })
 })
 
@@ -106,8 +141,8 @@ describe('schema.sql mirror of join_trip', () => {
 describe('joinViaInvite client path', () => {
   const body = functionBody(STORE, 'export async function joinViaInvite(')
 
-  it('joins through the join_trip RPC', () => {
-    expect(body).toMatch(/\.rpc\('join_trip'/)
+  it('joins through the join_trip RPC, sending the invite code', () => {
+    expect(body).toMatch(/\.rpc\('join_trip', \{ p_code: inviteCode \}\)/)
   })
 
   it('no longer writes the membership row itself', () => {
@@ -115,7 +150,33 @@ describe('joinViaInvite client path', () => {
     expect(body).not.toMatch(/\.from\('trip_members'\)\.insert/)
   })
 
-  it('takes no role argument, so a caller cannot pick one', () => {
-    expect(STORE).toMatch(/export async function joinViaInvite\(tripId: ID, userId: ID\): Promise<boolean>/)
+  it('takes the invite code and no role argument', () => {
+    expect(STORE).toMatch(/export async function joinViaInvite\(tripId: ID, userId: ID, inviteCode: string\): Promise<boolean>/)
+  })
+
+  it('fails closed on a null answer or an answer naming another trip', () => {
+    expect(body).toMatch(/if \(!joinedTripId \|\| String\(joinedTripId\)\.toLowerCase\(\) !== tripId\.toLowerCase\(\)\) return false/)
+  })
+})
+
+describe('viewerIsMemberOf reads only the viewer membership', () => {
+  const body = functionBody(STORE, 'export async function viewerIsMemberOf(')
+
+  it('reads trip_members and never the invite code', () => {
+    expect(body).toMatch(/from\('trip_members'\)/)
+    expect(body).not.toMatch(/invite_code|inviteCode/)
+  })
+})
+
+describe('the invite screens never join by trip id', () => {
+  it('InviteGate refuses a trip-id link for a non-member and joins by code', () => {
+    expect(APP).toMatch(/if \(isTripIdLink\) \{/)
+    expect(APP).toMatch(/This link no longer adds people/)
+    expect(APP).toMatch(/joinViaInvite\(trip\.id, me\.id, trip\.inviteCode \?\? linkTarget\)/)
+  })
+
+  it('ShareTab never falls back to a trip-id link', () => {
+    expect(SHARE_TAB).not.toMatch(/\/invite\/\$\{trip\.id\}/)
+    expect(SHARE_TAB).toMatch(/Try again/)
   })
 })

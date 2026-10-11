@@ -2780,25 +2780,41 @@ export function setMemberRole(tripId: ID, userId: ID, role: TripMember['role']):
  * optimistically (joiners need the trip in My Trips immediately).
  * Returns whether the user is a member of the trip afterwards.
  */
-export async function joinViaInvite(tripId: ID, userId: ID): Promise<boolean> {
+export async function joinViaInvite(tripId: ID, userId: ID, inviteCode: string): Promise<boolean> {
   const t = tripById(tripId)
   if (!t) return false
   if (t.members?.some(m => m.userId === userId)) return true
   const joinedAt = Date.now()
-  // join_trip() adds the signed-in user as an editor. It answers with the trip
-  // id, or with null when the link no longer resolves to a live trip.
+  // join_trip() takes the invite code, never a trip id. It adds the signed-in
+  // user as an editor. It returns the trip id, or null for a dead code.
   const role: TripMember['role'] = 'editor'
-  const { data: joinedTripId, error } = await supabase.rpc('join_trip', { p_target: tripId })
+  const { data: joinedTripId, error } = await supabase.rpc('join_trip', { p_code: inviteCode })
   if (error) {
     console.error('[yatraflow] join write failed', error)
     return false
   }
-  if (!joinedTripId) return false
+  // Fail closed: a null answer, or an answer naming another trip, joins nothing.
+  if (!joinedTripId || String(joinedTripId).toLowerCase() !== tripId.toLowerCase()) return false
   markLocalWrite('trip_members', tripId)
   mutateTrip(tripId, draft => { draft.members = [...(draft.members ?? []), { userId, role, joinedAt }] }, { touch: false })
   addActivity(tripId, userId, 'joined via invite link', 'Members')
   notifyOwnerOf(tripId, `${userName(userId)} joined “${t.name}” as ${role}.`)
   return true
+}
+
+/** True when this user already holds a membership row on the trip. It reads
+ *  only that user's own row, which the members read policy always allows. It
+ *  never reads the invite code. */
+export async function viewerIsMemberOf(tripId: ID, userId: ID): Promise<boolean> {
+  if (tripById(tripId)?.members?.some(m => m.userId === userId)) return true
+  const { data, error } = await supabase
+    .from('trip_members')
+    .select('user_id')
+    .eq('trip_id', tripId)
+    .eq('user_id', userId)
+    .maybeSingle()
+  if (error) console.error('[yatraflow] membership check failed', error)
+  return !error && !!data
 }
 
 /**

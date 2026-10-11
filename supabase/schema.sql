@@ -811,16 +811,15 @@ $$;
 grant execute on function public.get_trip_by_invite_code(text) to anon, authenticated;
 
 -- ============================================================
--- join_trip(p_target): the server path for joining a trip.
+-- join_trip(p_code): the server path for joining a trip.
 --
--- p_target is a trip UUID (the /invite/<uuid> link) or an invite code (the
--- /join/<code> link). Holding either one is the capability. The function
--- returns the trip id, or null when no live trip matches.
---
--- The guard after "where" repeats get_trip_by_invite_code and get_invite_trip.
--- Keep the three in step.
+-- p_code is the invite code from a /join/<code> link. Holding the code is the
+-- capability. A trip id joins nobody. The function returns the trip id, or
+-- null when no live trip has that code.
 -- ============================================================
-create or replace function public.join_trip(p_target text)
+drop function if exists public.join_trip(text);
+
+create or replace function public.join_trip(p_code text)
 returns uuid
 language plpgsql
 security definer
@@ -828,8 +827,7 @@ set search_path = public
 as $$
 declare
   v_uid      uuid := auth.uid();
-  v_key      text := upper(trim(coalesce(p_target, '')));
-  v_as_uuid  uuid;
+  v_key      text := upper(trim(coalesce(p_code, '')));
   v_trip_id  uuid;
   v_is_owner boolean;
 begin
@@ -846,37 +844,11 @@ begin
     return null;
   end if;
 
-  -- Cast only a value that has the UUID shape. A code never reaches ::uuid.
-  if v_key ~ '^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$' then
-    v_as_uuid := v_key::uuid;
-  end if;
-
   select t.id, t.owner_id = v_uid
     into v_trip_id, v_is_owner
   from public.trips t
-  where (t.id = v_as_uuid or upper(t.invite_code) = v_key)
+  where upper(t.invite_code) = v_key
     and t.deleted_at is null
-    and (
-      t.owner_id = v_uid
-      or public.is_member(t.id)
-      or public.is_admin()
-      or t.visibility = 'private'
-      or not exists (
-        select 1 from public.published_itineraries p
-        where p.trip_id = t.id and coalesce(p.premium_price_inr, 0) > 0
-      )
-      or exists (
-        select 1 from public.published_itineraries p
-        where p.trip_id = t.id
-          and (
-            p.creator_id = v_uid
-            or exists (
-              select 1 from public.entitlements e
-              where e.pub_id = p.id and e.user_id = v_uid
-            )
-          )
-      )
-    )
   limit 1;
 
   if v_trip_id is null then

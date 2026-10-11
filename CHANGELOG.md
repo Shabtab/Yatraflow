@@ -57,7 +57,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ### Fixed
 
-- **Joining a trip now goes through a server check.** The server reads the invite link and adds you as an editor. The app no longer writes the membership row itself.
+- **Joining a trip now needs its invite code.** The server reads the code and adds you as an editor. The app no longer writes the membership row itself. A link that carries only a trip ID no longer adds anyone. Trip previews and share snapshots no longer include the invite code. Share snapshots also no longer include the member list.
 
 - **Explore loads for logged-out visitors again.** A first visit without an account showed "Loading the catalog…" with no end, although the itineraries had loaded. The logged-out data load now reports the catalog as loaded or failed. A failed read now shows the error with a Retry button. The bug did not affect signed-in users.
 

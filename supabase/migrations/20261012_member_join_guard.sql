@@ -6,32 +6,36 @@
 -- and the app wrote that row directly. So the caller chose the trip and the
 -- role.
 --
--- The fix has two parts.
---   1. join_trip(p_target) is the only path that adds a joiner. It takes a
---      trip UUID or an invite code. It applies the same guard as the invite
---      preview functions. It adds the caller as an editor.
---   2. The insert policy keeps only the owner branch. The trip owner still
+-- The trip-id preview also returned the whole trip row, invite code included.
+-- So a trip id could reach the code that joins the trip.
+--
+-- The fix has three parts.
+--   1. join_trip(p_code) is the only path that adds a member. It takes an
+--      invite code. It never takes a trip id. A new joiner becomes an editor.
+--      The trip owner keeps the owner role.
+--   2. get_invite_trip(uuid) returns the trip without its invite code.
+--   3. The insert policy keeps only the owner branch. The trip owner still
 --      adds and manages members. No client can add a row for itself.
 --
 -- join_trip() runs as its owner, so row-level security does not check its
 -- writes. It checks public.is_disabled() itself, to keep the block on
 -- disabled accounts.
 --
--- Safe to re-run. The policy is dropped before it is created, because
--- Postgres has no "create policy if not exists".
+-- Safe to re-run. The old join_trip signature is dropped first, because
+-- create or replace cannot rename a parameter. The policy is dropped before
+-- it is created, because Postgres has no create-policy-if-not-exists form.
 -- ============================================================
 
 -- ============================================================
--- join_trip(p_target): the server path for joining a trip.
+-- join_trip(p_code): the server path for joining a trip.
 --
--- p_target is a trip UUID (the /invite/<uuid> link) or an invite code (the
--- /join/<code> link). Holding either one is the capability. The function
--- returns the trip id, or null when no live trip matches.
---
--- The guard after "where" repeats get_trip_by_invite_code and get_invite_trip.
--- Keep the three in step.
+-- p_code is the invite code from a /join/<code> link. Holding the code is the
+-- capability. A trip id joins nobody. The function returns the trip id, or
+-- null when no live trip has that code.
 -- ============================================================
-create or replace function public.join_trip(p_target text)
+drop function if exists public.join_trip(text);
+
+create or replace function public.join_trip(p_code text)
 returns uuid
 language plpgsql
 security definer
@@ -39,8 +43,7 @@ set search_path = public
 as $$
 declare
   v_uid      uuid := auth.uid();
-  v_key      text := upper(trim(coalesce(p_target, '')));
-  v_as_uuid  uuid;
+  v_key      text := upper(trim(coalesce(p_code, '')));
   v_trip_id  uuid;
   v_is_owner boolean;
 begin
@@ -57,37 +60,11 @@ begin
     return null;
   end if;
 
-  -- Cast only a value that has the UUID shape. A code never reaches ::uuid.
-  if v_key ~ '^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$' then
-    v_as_uuid := v_key::uuid;
-  end if;
-
   select t.id, t.owner_id = v_uid
     into v_trip_id, v_is_owner
   from public.trips t
-  where (t.id = v_as_uuid or upper(t.invite_code) = v_key)
+  where upper(t.invite_code) = v_key
     and t.deleted_at is null
-    and (
-      t.owner_id = v_uid
-      or public.is_member(t.id)
-      or public.is_admin()
-      or t.visibility = 'private'
-      or not exists (
-        select 1 from public.published_itineraries p
-        where p.trip_id = t.id and coalesce(p.premium_price_inr, 0) > 0
-      )
-      or exists (
-        select 1 from public.published_itineraries p
-        where p.trip_id = t.id
-          and (
-            p.creator_id = v_uid
-            or exists (
-              select 1 from public.entitlements e
-              where e.pub_id = p.id and e.user_id = v_uid
-            )
-          )
-      )
-    )
   limit 1;
 
   if v_trip_id is null then
@@ -124,3 +101,61 @@ create policy "members insert" on public.trip_members
       where t.id = trip_members.trip_id and t.owner_id = auth.uid()
     )
   );
+
+-- ============================================================
+-- get_invite_trip(uuid): the trip-id preview. It withholds the invite code.
+--
+-- The visibility and paywall guard is unchanged from 20260918. Only the
+-- returned row changes: the code is cleared before the row leaves the function.
+-- The loop keeps select t.* so the row type never drifts from the table.
+-- ============================================================
+create or replace function public.get_invite_trip(p_trip_id uuid)
+returns setof public.trips
+language plpgsql
+security definer
+set search_path = public
+stable
+as $$
+declare
+  v_trip public.trips;
+begin
+  for v_trip in
+    select t.* from public.trips t
+    where t.id = p_trip_id
+      and t.deleted_at is null
+      and (
+        t.owner_id = auth.uid()
+        or public.is_member(t.id)
+        or public.is_admin()
+        -- Private trip: a preview by trip id, with no invite code.
+        or t.visibility = 'private'
+        -- Public trip: fine unless a live premium publication backs it.
+        or not exists (
+          select 1 from public.published_itineraries p
+          where p.trip_id = t.id and coalesce(p.premium_price_inr, 0) > 0
+        )
+        -- Premium-backed: the creator or an entitled buyer may still preview
+        -- (they see real days on the pub page anyway).
+        or exists (
+          select 1 from public.published_itineraries p
+          where p.trip_id = t.id
+            and (
+              p.creator_id = auth.uid()
+              or exists (
+                select 1 from public.entitlements e
+                where e.pub_id = p.id and e.user_id = auth.uid()
+              )
+            )
+        )
+      )
+  loop
+    -- The code joins the trip. A caller with only the trip id never gets it.
+    v_trip.invite_code := null;
+    return next v_trip;
+  end loop;
+  return;
+end;
+$$;
+
+revoke all on function public.get_invite_trip(uuid) from public;
+grant execute on function public.get_invite_trip(uuid) to anon, authenticated;
