@@ -105,7 +105,7 @@ describe('#52 — every optimistic write must actually reach the client', () => 
   const cases: Array<{ name: string; table: string; method: 'insert' | 'update' | 'delete'; run: (s: any) => void }> = [
     { name: 'restoreMember', table: 'trip_members', method: 'insert', run: s => s.restoreMember('trip-1', { userId: 'diego', role: 'editor', joinedAt: 3 }) },
     { name: 'setMemberRole', table: 'trip_members', method: 'update', run: s => s.setMemberRole('trip-1', 'priya', 'viewer') },
-    { name: 'joinViaInvite', table: 'trip_members', method: 'insert', run: s => s.joinViaInvite('trip-1', 'newcomer', 'editor') },
+    { name: 'joinViaInvite', table: 'join_trip', method: 'rpc', run: s => s.joinViaInvite('trip-1', 'newcomer') },
     { name: 'removeMember', table: 'trip_members', method: 'delete', run: s => s.removeMember('trip-1', 'priya') },
     {
       name: 'addSuggestion',

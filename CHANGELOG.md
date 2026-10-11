@@ -57,6 +57,84 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ### Fixed
 
+- **Joining a trip now goes through a server check.** The server reads the invite link and adds you as an editor. The app no longer writes the membership row itself.
+
+- **Explore loads for logged-out visitors again.** A first visit without an account showed "Loading the catalog…" with no end, although the itineraries had loaded. The logged-out data load now reports the catalog as loaded or failed. A failed read now shows the error with a Retry button. The bug did not affect signed-in users.
+
+- **The copyright page enters with the shared cascade.** The page arrived without
+  `page-enter`, so its blocks appeared between two frames and the motion gate failed. It now
+  carries the class its sibling auth page carries.
+
+- **Explore, the trip workspace, the creator hub and the public itinerary enter with motion now.** Every top-level block on those four pages appeared between two frames: the hero, the head, the tab bar and the body popped into place with nothing under them. They take the shared container cascade now — each block rises 8px over `--motion-slow`, staggered by `--stagger-step`, and stops under reduced motion. Sampled in the browser after the change: zero motionless blocks on the six routes checked.
+
+- **The bezel tray and the landing's feature cards carry the whole glass pair.** Both restated the glass background and border and left the `backdrop-filter` behind — the same split the popover shipped with. The bezel wears the `.glass` owner now and keeps only its own geometry and shadow. The feature card cannot wear it, because `.card`'s later background would win the cascade, so it declares the pair itself.
+
+- **The map's idea-filters popup is readable now, not see-through.** The panel restated a
+  popover's background, border, radius, shadow and entrance, and left out one thing: the
+  `backdrop-filter` that goes with the glass background. Glass is translucent by design. The day
+  chips and markers behind the menu showed through it. The panel carries the `popover` class
+  now, which owns that pair in one place, and `tests/design-system.test.ts` fails when a second
+  rule paints the glass without it.
+
+- **My Trips now arrives as a sequence instead of all at once.** The hero, the page head, the
+  toolbar, the viewbar and the saved shelf used to appear between two frames while the cards
+  below them cascaded. A still hero above moving cards reads as a broken element, not a calm
+  one. The page root owns one entrance for its own children now, staggered in DOM order, so a
+  block added to the page later cannot miss one. `tests/design-system.test.ts` fails when a
+  pinned page root has no entrance, no stagger, or no reduced-motion opt-out, and the rule table
+  in `AGENTS.md` names that check next to the rule it enforces.
+
+- **The progress meter counts activities, not route points.** The store anchors a new trip's route
+  with automatic stops. Those stops have no dwell time. The meter counted one of them as a planned
+  day. A trip with nothing to do on it could then read “1 of 1 days planned” and “Ready to travel”.
+  The meter and the card's next-step line now share one definition of a planned day: a day that
+  holds at least one usable stop that is not automatic. The Up next card names the measure: “3 of 5
+  days have activities”. An anchored day asks you to “Plan day N” instead of reading as a finished trip.
+- **My Trips moves to the next day while the page stays open.** The countdown and the date filter
+  follow the calendar day, so a tab left open overnight shows the right countdown. `src/lib/dayClock.ts` holds one calendar-day clock.
+  It wakes at local midnight. It also re-reads the day when the window regains focus, because a
+  background tab throttles timers. One value feeds the countdown and the date filter, so the two
+  cannot disagree. The unit is a day, so nothing polls and a focus on the same day renders nothing.
+- **A trip card's next-step line now opens the task it names.** The line lived inside the
+  card's own link, so a click opened the trip overview and you had to find “Book Shimla
+  tickets” yourself. It is a separate link now, because a link must not hold a second link:
+  the card still opens the trip, and the line opens the day and the stop its own label names.
+  A dates or cover step opens Settings, where those fields live. The Up next button and each
+  card's next-step line read one builder, so the two cannot disagree about where a step lives.
+- **The day rail tracks where you are, and a day jump no longer lands under it.**
+  The rail marks the day in view in review mode. It marks the open day in
+  one-day mode. A jump used to land the day header under the sticky bars on a
+  phone. The bar stack is measured per width and mode now, and every jump
+  lands below it. The current-day marker is a border and a weight. A day's
+  warning tint can no longer replace the marker.
+- **The trip list rows stop clipping their content on a phone.** List mode put
+  the member stack and the delete control on the same line as the card body.
+  At 373px the body overran them and the card clipped both. The row now has
+  explicit thumbnail, content and action columns, and the content column can
+  shrink. Below 640px the footer moves onto its own line under the content.
+  Wide screens show one trip per row, the mockup's scan order. Metadata wraps
+  instead of widening the row.
+- **The Timeline day rail names a real place again.** The rail card showed the
+  day title as the city, so two Jaipur days titled "Arrival" and "Fort visit"
+  marked a city change inside one city. The place now comes from the day's
+  base stop: the last stop in plan order, where the day ends. Rejected stops
+  do not place the day. A day with no named stop prints no place and makes no
+  claim.
+- **A heart press can no longer save twice or drop earlier saves.** The save
+  updater flipped the set by reading storage inside React's state calculation.
+  React can run that calculation twice, so one press could land twice. When
+  storage was denied, every read came back empty and each press dropped the
+  ids saved before it. The set now derives from the previous state and is
+  written once after the change. The in-memory set stays authoritative when
+  storage fails.
+
+- **The test fixture no longer publishes dateless itineraries.** Three of the six published
+  itineraries carried no start or end date, which made "Set your travel dates" the most common
+  next step in the probe histogram. Every one of those three came from
+  `scripts/seedCreatorFixture.mjs`, which wrote an empty string for both dates; all three real
+  publications have real dates. The seeder now derives a fixed window from each fixture's day
+  count. Publishing a trip with no dates was never the defect, so the publish path is
+  unchanged. Rows already in the database keep their empty dates until the fixture is re-applied.
 - **The creator fixture script no longer writes to a remote project by accident.** The script used the Supabase project that `.env.local` named, and a run against the live project put "(fixture)" itineraries into the live sitemap. Now it writes to a local project only. A remote project needs `FIXTURE_ALLOW_REMOTE` set to the exact host of the project, and your own `FIXTURE_PASSWORD` of 12 characters or more. The default password works on a local project only. Promoting the admin on a remote project also needs `--promote-admin`. The check runs before `--apply` and before `--clean`, because `--clean` signs the fixture accounts up first. A dry run is never blocked. The rules sit in `scripts/fixtureGuard.mjs`. (#689)
 
 - **Icons drawn through the shared inline icon wrapper no longer render as solid black shapes.** The wrapper sets an empty fill, so every outline icon keeps its stroke style.

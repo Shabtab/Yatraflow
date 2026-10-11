@@ -1,6 +1,6 @@
 // ============ Joining via invite: write order + code lookup ============
 // The join flow had two silent-failure bugs this pins:
-// 1. WRITE ORDER — joinViaInvite must write the trip_members row BEFORE the
+// 1. WRITE ORDER — joinViaInvite must join through the join_trip RPC BEFORE the
 //    activity log and owner notification: those are RLS-gated on
 //    is_editor(), which is false until the membership exists, so a join that
 //    fires side effects first writes nothing (console errors only).
@@ -51,6 +51,10 @@ vi.mock('../src/lib/supabase', () => {
       from: (t: string) => makeBuilder(t),
       rpc: (name: string, args: Record<string, unknown>) => {
         writes.push({ table: `rpc:${name}`, kind: 'rpc', payload: args })
+        // join_trip answers with the trip id, or null, and can plant an error.
+        if (name === 'join_trip') {
+          return Promise.resolve({ data: state.joinResult ?? null, error: state.joinError ?? null })
+        }
         return Promise.resolve({ data: state.rpcRows, error: null })
       },
     },
@@ -114,7 +118,7 @@ describe('fetchTripByInviteCode', () => {
 })
 
 describe('joinViaInvite (write order)', () => {
-  it('writes the membership row before the activity log and owner notification', async () => {
+  it('joins through join_trip before the activity log and owner notification', async () => {
     await seedTripWithOwner()
     writes.length = 0
 
@@ -124,18 +128,19 @@ describe('joinViaInvite (write order)', () => {
 
     // Membership first, side effects after — and the joiner is on the trip.
     const order = writes.map(w => w.table)
-    expect(order.indexOf('trip_members')).toBeGreaterThanOrEqual(0)
-    expect(order.indexOf('trip_members')).toBeLessThan(order.indexOf('activity'))
-    expect(order.indexOf('trip_members')).toBeLessThan(order.indexOf('notifications'))
-    const memberInsert = writes.find(w => w.table === 'trip_members')!
-    expect((memberInsert.payload as { user_id: string }).user_id).toBe(meId)
+    expect(order.indexOf('rpc:join_trip')).toBeGreaterThanOrEqual(0)
+    expect(order.indexOf('rpc:join_trip')).toBeLessThan(order.indexOf('activity'))
+    expect(order.indexOf('rpc:join_trip')).toBeLessThan(order.indexOf('notifications'))
+    // The server adds the signed-in user, so the call names only the trip.
+    const joinCall = writes.find(w => w.table === 'rpc:join_trip')!
+    expect(joinCall.payload).toEqual({ p_target: row().id })
     expect(tripById(row().id)?.members?.some(m => m.userId === meId)).toBe(true)
   })
 
-  it('reports failure honestly when the membership write is rejected', async () => {
+  it('reports failure honestly when join_trip refuses the join', async () => {
     await seedTripWithOwner()
     writes.length = 0
-    ;(state as { insertError?: unknown }).insertError = { message: 'row-level security policy violation' }
+    state.joinError = { message: 'row-level security policy violation' }
 
     const stranger = '44444444-4444-4444-8444-444444444444'
     const ok = await joinViaInvite(row().id, stranger)
@@ -145,7 +150,19 @@ describe('joinViaInvite (write order)', () => {
     expect(writes.find(w => w.table === 'notifications')).toBeUndefined()
     expect(tripById(row().id)?.members?.some(m => m.userId === stranger)).toBe(false)
 
-    delete (state as { insertError?: unknown }).insertError
+    delete state.joinError
+  })
+
+  it('treats a null answer from join_trip as a failed join', async () => {
+    await seedTripWithOwner()
+    writes.length = 0
+    state.joinResult = null
+
+    const stranger = '44444444-4444-4444-8444-444444444444'
+    const ok = await joinViaInvite(row().id, stranger)
+    expect(ok).toBe(false)
+    expect(writes.find(w => w.table === 'activity')).toBeUndefined()
+    expect(tripById(row().id)?.members?.some(m => m.userId === stranger)).toBe(false)
   })
 
   it('is idempotent for an existing member', async () => {
@@ -155,7 +172,7 @@ describe('joinViaInvite (write order)', () => {
     writes.length = 0
     const ok = await joinViaInvite(row().id, meId)
     expect(ok).toBe(true)
-    expect(writes.filter(w => w.table === 'trip_members')).toHaveLength(0)
+    expect(writes.filter(w => w.table === 'rpc:join_trip')).toHaveLength(0)
   })
 })
 
@@ -165,6 +182,8 @@ describe('joinViaInvite (write order)', () => {
 async function seedTripWithOwner(): Promise<void> {
   state.rpcRows = [row()]
   state.tripRow = row()
+  state.joinResult = row().id
+  state.joinError = null
   await fetchTripByInviteCode('GOABEACHWE-K7QF')
   const cached = tripById(row().id)
   if (!cached) throw new Error('seed failed: trip not in cache')

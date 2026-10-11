@@ -2780,16 +2780,20 @@ export function setMemberRole(tripId: ID, userId: ID, role: TripMember['role']):
  * optimistically (joiners need the trip in My Trips immediately).
  * Returns whether the user is a member of the trip afterwards.
  */
-export async function joinViaInvite(tripId: ID, userId: ID, role: TripMember['role'] = 'editor'): Promise<boolean> {
+export async function joinViaInvite(tripId: ID, userId: ID): Promise<boolean> {
   const t = tripById(tripId)
   if (!t) return false
   if (t.members?.some(m => m.userId === userId)) return true
   const joinedAt = Date.now()
-  const { error } = await supabase.from('trip_members').insert({ trip_id: tripId, user_id: userId, role, joined_at: joinedAt })
+  // join_trip() adds the signed-in user as an editor. It answers with the trip
+  // id, or with null when the link no longer resolves to a live trip.
+  const role: TripMember['role'] = 'editor'
+  const { data: joinedTripId, error } = await supabase.rpc('join_trip', { p_target: tripId })
   if (error) {
     console.error('[yatraflow] join write failed', error)
     return false
   }
+  if (!joinedTripId) return false
   markLocalWrite('trip_members', tripId)
   mutateTrip(tripId, draft => { draft.members = [...(draft.members ?? []), { userId, role, joinedAt }] }, { touch: false })
   addActivity(tripId, userId, 'joined via invite link', 'Members')

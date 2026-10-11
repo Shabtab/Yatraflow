@@ -138,14 +138,22 @@ begin
     raise exception 'trip_members SELECT must use the security-definer is_member() (42P17 recursion guard)';
   end if;
 
-  -- Self-or-owner insert (invite join via code, or owner manage). INSERT
-  -- expressions ride with_check.
+  -- Owner-only insert. A joiner gets a row from join_trip(), never from a
+  -- direct insert, so no INSERT policy may let a user add their own row.
+  -- INSERT expressions ride with_check.
   if not exists (
     select 1 from pg_policies
     where schemaname = 'public' and tablename = 'trip_members'
-      and cmd = 'INSERT' and with_check like '%user_id%auth.uid()%owner_id%'
+      and cmd = 'INSERT' and with_check like '%owner_id%auth.uid()%'
   ) then
-    raise exception 'trip_members INSERT must allow self-join or owner management';
+    raise exception 'trip_members INSERT must allow owner management';
+  end if;
+  if exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'trip_members'
+      and cmd = 'INSERT' and with_check like '%user_id%auth.uid()%'
+  ) then
+    raise exception 'trip_members INSERT must not let a user add their own row (joins go through join_trip)';
   end if;
 
   -- Owner update, owner-or-self delete (leave a trip you're on).
