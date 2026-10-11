@@ -57,7 +57,7 @@ export function AdminPage({ onNavigate }: { onNavigate: (r: string) => void }) {
   return (
     <div className="container form-page">
       <h1>Master admin</h1>
-      <p className="muted small adm-mb-16">
+      <p className="muted small adm-page-intro">
         Full-control console — every destructive action is audit-logged.
         {/* #367: the hatch boundary, said where admins will see it. Direct
             writes through the workspace's own UI are the documented escape
@@ -140,7 +140,7 @@ function UsersTab() {
 
   return (
     <div>
-      <input className="input adm-panel-note" type="search" value={q} onChange={e => setQ(e.target.value)}
+      <input className="input adm-user-search" type="search" value={q} onChange={e => setQ(e.target.value)}
         placeholder="Search name or email…" aria-label="Search users" />
       <p className="sr-only" role="status">{users.length} users</p>
       {users.length === 0 ? (
@@ -152,14 +152,14 @@ function UsersTab() {
             {users.map(u => (
               <tr key={u.id} style={u.profile.isDisabled ? { opacity: 0.6 } : undefined}>
                 <td>
-                  <span className="adm-inline-mid">
+                  <span className="adm-user-identity">
                     <Avatar user={u} size="sm" />
                     <span>{u.profile.name}<br /><span className="muted small">{u.email}</span></span>
                   </span>
                 </td>
                 <td className="num">{ownedCount(u.id)}</td>
                 <td>
-                  <span className="adm-chip-row">
+                  <span className="adm-user-badges">
                     {u.profile.isCreator && <Chip tone="ok">Creator</Chip>}
                     {u.profile.isDisabled && <Chip tone="danger">Disabled</Chip>}
                     {u.id === meId && <Chip tone="info">You</Chip>}
@@ -167,7 +167,7 @@ function UsersTab() {
                 </td>
                 <td className="small muted">{new Date(u.createdAt).toLocaleDateString()}</td>
                 <td>
-                  <span className="adm-chip-row">
+                  <span className="adm-user-actions">
                     <button className="btn btn-outline btn-sm" disabled={busy}
                       onClick={() => { setBusy(true); void adminSetCreator(u.id, !u.profile.isCreator).finally(() => setBusy(false)) }}>
                       {u.profile.isCreator ? 'Unmake creator' : 'Make creator'}
@@ -219,7 +219,7 @@ function UsersTab() {
           audit log keeps a snapshot row. */}
       <Modal open={!!deleteTarget} onClose={() => setDeleteTarget(null)}
         title={`Delete ${deleteTarget?.profile.name ?? ''} permanently?`}>
-        <p className="muted adm-mt-0">
+        <p className="muted adm-user-delete-warning">
           This cannot be undone. Deleting <strong>{deleteTarget?.email ?? ''}</strong> removes
           every trip they own (plans, expenses, votes, decisions, activity), their rows in other
           crews' trips, and their notifications. The audit log keeps a snapshot.
@@ -237,8 +237,8 @@ function UsersTab() {
         {(() => {
           const pubs = deleteTarget ? db.published.filter(p => p.creatorId === deleteTarget.id).length : 0
           return pubs > 0 ? (
-            <label className="adm-callout">
-              <input className="adm-mt-3" type="checkbox" checked={deleteForce} onChange={e => setDeleteForce(e.target.checked)}
+            <label className="adm-force-delete-choice">
+              <input className="adm-force-delete-checkbox" type="checkbox" checked={deleteForce} onChange={e => setDeleteForce(e.target.checked)}
               />
               <span className="small">
                 Also delete the published itinerary(ies) — they are public on Explore and will
@@ -247,7 +247,7 @@ function UsersTab() {
             </label>
           ) : null
         })()}
-        <input className="input adm-mt-10" value={deleteName} onChange={e => setDeleteName(e.target.value)}
+        <input className="input adm-user-delete-confirm" value={deleteName} onChange={e => setDeleteName(e.target.value)}
           placeholder={deleteTarget?.email ?? 'Email'} aria-label="Type the user's email to confirm" />
         <div className="confirm-actions">
           <button
@@ -286,8 +286,8 @@ function TripsTab() {
 
   return (
     <div>
-      <div className="adm-toolbar">
-        <input className="input adm-narrow" type="search" value={q} onChange={e => setQ(e.target.value)}
+      <div className="adm-trip-filter-toolbar">
+        <input className="input adm-trip-search" type="search" value={q} onChange={e => setQ(e.target.value)}
           placeholder="Search trips…" aria-label="Search trips" />
         <PillNav className="filter-pillbar" role="group" aria-label="Visibility filter" activeKey={vis}>
           {([['all', 'All'], ['private', 'Private'], ['public', 'Public']] as const).map(([k, label]) => (
@@ -308,7 +308,7 @@ function TripsTab() {
               <td><Chip tone={t.visibility === 'public' ? 'ok' : 'info'}>{t.visibility}</Chip></td>
               <td className="small muted">{new Date(t.updatedAt).toLocaleDateString()}</td>
               <td>
-                <span className="adm-chip-row">
+                <span className="adm-trip-actions">
                   <button className="btn btn-outline btn-sm" disabled={busy}
                     onClick={() => { setBusy(true); void adminSetTripVisibility(t.id, t.visibility === 'public' ? 'private' : 'public').finally(() => setBusy(false)) }}>
                     {t.visibility === 'public' ? <><EyeOff size={13} aria-hidden /> Make private</> : <><Eye size={13} aria-hidden /> Make public</>}
@@ -332,11 +332,11 @@ function TripsTab() {
           button stays disabled until the typed name matches exactly. */}
       <Modal open={!!deleteTarget} onClose={() => setDeleteTarget(null)}
         title={`Delete “${deleteTarget?.name ?? ''}”?`}>
-        <p className="muted adm-mt-0">
+        <p className="muted adm-trip-delete-warning">
           This is permanent — the trip, its votes, decisions, activity and publication go with it
           (the audit log keeps a snapshot). Type the trip name to confirm.
         </p>
-        <input className="input adm-mt-10" value={deleteName} onChange={e => setDeleteName(e.target.value)}
+        <input className="input adm-trip-delete-confirm" value={deleteName} onChange={e => setDeleteName(e.target.value)}
           placeholder={deleteTarget?.name ?? 'Trip name'} aria-label="Type the trip name to confirm"
            />
         <div className="confirm-actions">
@@ -372,7 +372,7 @@ function InvitesTab() {
 
   return (
     <div>
-      <p className="hint-text adm-mt0-mb12">
+      <p className="hint-text adm-invite-ranking-intro">
         Ranked by member joins in the last 30 days, so unusual invite spread surfaces first.
       </p>
       <table className="compare-table" tabIndex={0} aria-label="Invites">
@@ -384,13 +384,13 @@ function InvitesTab() {
               <td className="num">{joins30d}</td>
               <td className="num">{t.members?.length ?? 0}</td>
               <td>
-                <span className="adm-chip-row">
+                <span className="adm-invite-members">
                   {(t.members ?? []).slice(0, 8).map(m => {
                     const u = nameOf(m.userId)
                     return (
                       <span key={m.userId} className="chip" title={`${u?.profile.name ?? m.userId} · ${m.role}`}>
                         {u?.profile.name ?? 'Unknown'}
-                        <button className="icon-btn adm-flag" 
+                        <button className="icon-btn adm-remove-member-button"
                           aria-label={`Remove ${u?.profile.name ?? 'member'} from ${t.name}`}
                           disabled={busy}
                           onClick={() => u && setConfirmKick({ trip: t, user: u })}>
@@ -440,7 +440,7 @@ function ContentTab() {
       {/* #561 — the hint described the DELETE-based unpublish that died with
           #350, and contradicted its own dialog below. It now states the shipped
           policy — parity with ShareTab's and the creator hub's copy. */}
-      <p className="hint-text adm-mt0-mb12">
+      <p className="hint-text adm-published-content-intro">
         Every published itinerary — live and withdrawn. Unpublishing takes a plan off Explore and stops it
         selling. The trip itself is not touched, the creator keeps its sales history, and anyone who already
         unlocked it keeps the full plan.
@@ -607,7 +607,7 @@ function AnalyticsTab() {
         <div className="stat-tile"><div className="stat-label">Trips published</div><div className="stat-value">{pct(funnel.publishPct)}</div></div>
         <div className="stat-tile"><div className="stat-label">Explore views → forks</div><div className="stat-value">{pct(funnel.viewToCopyPct)}</div></div>
       </div>
-      <p className="hint-text adm-mt-8">
+      <p className="hint-text adm-funnel-raw-totals">
         Raw: {db.published.reduce((s, p) => s + p.views, 0)} views · {db.published.reduce((s, p) => s + p.copies, 0)} forks.
       </p>
       <h2 style={{ marginTop: 18 }}>Growth — last 12 weeks</h2>
@@ -620,9 +620,9 @@ function AnalyticsTab() {
               <td className="num">{g.signups}</td>
               <td className="num">{g.trips}</td>
               <td>
-                <span className="adm-bar-head" aria-hidden>
-                  <span className="adm-bar adm-bar-signup" style={{ height: Math.max(2, Math.round((g.signups / maxBar) * 18)) }} />
-                  <span className="adm-bar adm-bar-trip" style={{ height: Math.max(2, Math.round((g.trips / maxBar) * 18)) }} />
+                <span className="adm-signup-trip-bars" aria-hidden>
+                  <span className="adm-signup-bar" style={{ height: Math.max(2, Math.round((g.signups / maxBar) * 18)) }} />
+                  <span className="adm-trip-bar" style={{ height: Math.max(2, Math.round((g.trips / maxBar) * 18)) }} />
                 </span>
                 <span className="sr-only">{g.signups} signups, {g.trips} trips</span>
               </td>
@@ -630,7 +630,7 @@ function AnalyticsTab() {
           ))}
         </tbody>
       </table>
-      <p className="hint-text adm-mt-8">
+      <p className="hint-text adm-signup-trip-chart-legend">
         Teal bar = signups, saffron = trips.
       </p>
 
@@ -642,7 +642,7 @@ function AnalyticsTab() {
             The funnel log could not be read — {attr.message}. This section shows nothing rather
             than a zero it cannot vouch for.
           </p>
-          <button type="button" className="btn btn-outline btn-sm adm-mt-8"  onClick={() => setAttrAttempt(a => a + 1)}>
+          <button type="button" className="btn btn-outline btn-sm adm-attribution-retry"  onClick={() => setAttrAttempt(a => a + 1)}>
             Retry
           </button>
         </>
@@ -668,7 +668,7 @@ function AnalyticsTab() {
               ))}
             </tbody>
           </table>
-          <p className="hint-text adm-mt-8">
+          <p className="hint-text adm-attribution-explanation">
             Route in = the ref a shared link carried, or the in-app surface that forked. Direct
             is a visitor who arrived some other way. The two stages count the same kind of thing
             (one view and one fork per browser session), so a rate above 100% is possible and
@@ -686,7 +686,7 @@ function AnalyticsTab() {
             books as the database reports them, so this tab shows nothing rather than a zero it
             cannot vouch for.
           </p>
-          <button type="button" className="btn btn-outline btn-sm adm-mt-8"  onClick={() => setAttempt(a => a + 1)}>
+          <button type="button" className="btn btn-outline btn-sm adm-attribution-retry"  onClick={() => setAttempt(a => a + 1)}>
             Retry
           </button>
         </>
@@ -717,7 +717,7 @@ function AnalyticsTab() {
               ))}
             </tbody>
           </table>
-          <p className="hint-text adm-mt-8">
+          <p className="hint-text adm-payout-explanation">
             Weeks are the payout runs creators are told about. The fee is the 15% / 10% ladder
             charged to each of {books.creators} {books.creators === 1 ? 'creator' : 'creators'}
             {' '}separately — the tier follows a creator's own lifetime gross, so it is not one
@@ -741,7 +741,7 @@ function AnalyticsTab() {
               ))}
             </tbody>
           </table>
-          <p className="hint-text adm-mt-8">
+          <p className="hint-text adm-payout-explanation">
             The same rows as the weekly table, grouped by plan instead of by date, and they add up
             to the tiles above — each fee is its own sale's slice of that creator's ladder, not a
             rate applied to a plan's total. A plan nobody bought is absent rather than a ₹0 row.
@@ -757,7 +757,7 @@ function AnalyticsTab() {
             The funnel log could not be read — {cf.message}. This tab shows nothing rather
             than a zero it cannot vouch for.
           </p>
-          <button type="button" className="btn btn-outline btn-sm adm-mt-8"  onClick={() => setCfAttempt(a => a + 1)}>
+          <button type="button" className="btn btn-outline btn-sm adm-cancellation-retry"  onClick={() => setCfAttempt(a => a + 1)}>
             Retry
           </button>
         </>
@@ -778,7 +778,7 @@ function AnalyticsTab() {
               ))}
             </tbody>
           </table>
-          <p className="hint-text adm-mt-8">
+          <p className="hint-text adm-cancellation-funnel-explanation">
             Top abandonment stage: {cfStats.topAbandonStage ?? '—'}.
             {cfStats.templates.length > 0 && ` Template picks: ${cfStats.templates.slice(0, 5).map(t => `${t.templateId} (${t.picks})`).join(', ')}.`}
             {' '}The abandoned event is best-effort (mobile kills page beacons), so it is
@@ -808,9 +808,9 @@ function AuditTab() {
   return (
     <div>
       {auditFailed && (
-        <div className="warn-item sev-mid adm-mb-12" role="status" >
+        <div className="warn-item sev-mid adm-audit-failure-notice" role="status" >
           <span className="warn-icon"><ShieldAlert size={13} aria-hidden /></span>
-          <div className="adm-grow">
+          <div className="adm-audit-failure-copy">
             <div className="warn-title">The audit log couldn't be read.</div>
             <div className="warn-fix">Rows shown below may be out of date — nothing was lost.</div>
           </div>

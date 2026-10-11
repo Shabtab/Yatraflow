@@ -8951,22 +8951,33 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 
 /* ==== Stage A: AdminPage inline styles -> classes (no visual change) ==== */
 
-.adm-mt-8 { margin-top: 8px; }
-.adm-mt-10 { margin-top: 10px; }
-.adm-mt-0 { margin-top: 0; }
-.adm-mt-3 { margin-top: 3px; }
-.adm-mb-12 { margin-bottom: 12px; }
-.adm-mb-16 { margin-bottom: 16px; }
-.adm-mt0-mb12 { margin: 0 0 12px; }
-.adm-chip-row { display: inline-flex; gap: 6px; flex-wrap: wrap; }
-.adm-bar-head { display: inline-flex; gap: 4px; align-items: end; height: 18px; }
-.adm-inline-mid { display: inline-flex; align-items: center; gap: 8px; }
-.adm-callout { display: flex; gap: 8px; align-items: flex-start; margin: 10px 0; }
-.adm-toolbar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
-.adm-grow { flex: 1; }
-.adm-panel-note { max-width: 320px; margin-bottom: 12px; }
-.adm-narrow { max-width: 280px; }
-.adm-flag { width: 20px; height: 20px; margin-left: 4px; }
-.adm-bar { display: inline-block; width: 10px; }
-.adm-bar-signup { background: var(--yf-teal-600); }
-.adm-bar-trip { background: var(--yf-saffron); }
+.adm-page-intro { margin-bottom: 16px; }
+.adm-user-search { max-width: 320px; margin-bottom: 12px; }
+.adm-user-identity { display: inline-flex; align-items: center; gap: 8px; }
+.adm-user-badges,
+.adm-user-actions,
+.adm-trip-actions,
+.adm-invite-members { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+.adm-user-delete-warning,
+.adm-trip-delete-warning { margin-top: 0; }
+.adm-force-delete-choice { display: flex; gap: 8px; align-items: flex-start; margin: 10px 0; }
+.adm-force-delete-checkbox { margin-top: 3px; }
+.adm-user-delete-confirm,
+.adm-trip-delete-confirm { margin-top: 10px; }
+.adm-trip-filter-toolbar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.adm-trip-search { max-width: 280px; }
+.adm-invite-ranking-intro,
+.adm-published-content-intro { margin: 0 0 12px; }
+.adm-remove-member-button { width: 20px; height: 20px; margin-left: 4px; }
+.adm-funnel-raw-totals { margin-top: 8px; }
+.adm-signup-trip-bars { display: inline-flex; gap: 4px; align-items: end; height: 18px; }
+.adm-signup-bar { display: inline-block; width: 10px; background: var(--yf-teal-600); }
+.adm-trip-bar { display: inline-block; width: 10px; background: var(--yf-saffron); }
+.adm-signup-trip-chart-legend { margin-top: 8px; }
+.adm-attribution-retry { margin-top: 8px; }
+.adm-attribution-explanation { margin-top: 8px; }
+.adm-payout-explanation { margin-top: 8px; }
+.adm-cancellation-retry { margin-top: 8px; }
+.adm-cancellation-funnel-explanation { margin-top: 8px; }
+.adm-audit-failure-notice { margin-bottom: 12px; }
+.adm-audit-failure-copy { flex: 1; }
