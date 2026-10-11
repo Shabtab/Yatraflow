@@ -1,0 +1,215 @@
+{
+  "pageRootAllowlist": [
+    "src/App.tsx#InviteGate",
+    "src/App.tsx#SharedTripPage",
+    "src/pages/AdminPage.tsx",
+    "src/pages/Auth.tsx",
+    "src/pages/CreateTrip.tsx",
+    "src/pages/CreatorHubPage.tsx",
+    "src/pages/CreatorPage.tsx",
+    "src/pages/DMCAPage.tsx",
+    "src/pages/Explore.tsx",
+    "src/pages/Landing.tsx",
+    "src/pages/NativeHome.tsx",
+    "src/pages/Profile.tsx",
+    "src/pages/PublicItinerary.tsx",
+    "src/pages/TripCreated.tsx",
+    "src/pages/TripWorkspace.tsx",
+    "src/pages/TripsList.tsx"
+  ],
+  "pageFiles": {
+    "src/pages/AdminPage.tsx": {
+      "EmptyState": 5,
+      "loadingBlock": 0,
+      "inlineStyle": 38,
+      "rawH1": 1
+    },
+    "src/pages/Auth.tsx": {
+      "EmptyState": 0,
+      "loadingBlock": 0,
+      "inlineStyle": 7,
+      "rawH1": 1
+    },
+    "src/pages/CreateTrip.tsx": {
+      "EmptyState": 0,
+      "loadingBlock": 0,
+      "inlineStyle": 12,
+      "rawH1": 1
+    },
+    "src/pages/CreatorHubPage.tsx": {
+      "EmptyState": 0,
+      "loadingBlock": 1,
+      "inlineStyle": 12,
+      "rawH1": 1
+    },
+    "src/pages/CreatorPage.tsx": {
+      "EmptyState": 5,
+      "loadingBlock": 2,
+      "inlineStyle": 2,
+      "rawH1": 1
+    },
+    "src/pages/DMCAPage.tsx": {
+      "EmptyState": 0,
+      "loadingBlock": 0,
+      "inlineStyle": 3,
+      "rawH1": 1
+    },
+    "src/pages/Explore.tsx": {
+      "EmptyState": 0,
+      "loadingBlock": 0,
+      "inlineStyle": 0,
+      "rawH1": 0
+    },
+    "src/pages/Landing.tsx": {
+      "EmptyState": 0,
+      "loadingBlock": 0,
+      "inlineStyle": 17,
+      "rawH1": 1
+    },
+    "src/pages/NativeHome.tsx": {
+      "EmptyState": 0,
+      "loadingBlock": 0,
+      "inlineStyle": 0,
+      "rawH1": 1
+    },
+    "src/pages/Profile.tsx": {
+      "EmptyState": 0,
+      "loadingBlock": 0,
+      "inlineStyle": 26,
+      "rawH1": 1
+    },
+    "src/pages/PublicItinerary.tsx": {
+      "EmptyState": 2,
+      "loadingBlock": 2,
+      "inlineStyle": 24,
+      "rawH1": 1
+    },
+    "src/pages/Purchases.tsx": {
+      "EmptyState": 0,
+      "loadingBlock": 0,
+      "inlineStyle": 0,
+      "rawH1": 0
+    },
+    "src/pages/trip/BudgetTab.tsx": {
+      "EmptyState": 2,
+      "loadingBlock": 2,
+      "inlineStyle": 29,
+      "rawH1": 0
+    },
+    "src/pages/trip/GroupInputTab.tsx": {
+      "EmptyState": 2,
+      "loadingBlock": 0,
+      "inlineStyle": 27,
+      "rawH1": 0
+    },
+    "src/pages/trip/map/RailRowViews.tsx": {
+      "EmptyState": 0,
+      "loadingBlock": 0,
+      "inlineStyle": 0,
+      "rawH1": 0
+    },
+    "src/pages/trip/map/ShortlistTray.tsx": {
+      "EmptyState": 0,
+      "loadingBlock": 0,
+      "inlineStyle": 0,
+      "rawH1": 0
+    },
+    "src/pages/trip/MapOmnibar.tsx": {
+      "EmptyState": 0,
+      "loadingBlock": 0,
+      "inlineStyle": 18,
+      "rawH1": 0
+    },
+    "src/pages/trip/MapTab.tsx": {
+      "EmptyState": 0,
+      "loadingBlock": 0,
+      "inlineStyle": 32,
+      "rawH1": 0
+    },
+    "src/pages/trip/MapTabSkeleton.tsx": {
+      "EmptyState": 0,
+      "loadingBlock": 0,
+      "inlineStyle": 0,
+      "rawH1": 0
+    },
+    "src/pages/trip/OverviewTab.tsx": {
+      "EmptyState": 0,
+      "loadingBlock": 0,
+      "inlineStyle": 14,
+      "rawH1": 0
+    },
+    "src/pages/trip/shared.tsx": {
+      "EmptyState": 0,
+      "loadingBlock": 0,
+      "inlineStyle": 0,
+      "rawH1": 0
+    },
+    "src/pages/trip/ShareTab.tsx": {
+      "EmptyState": 0,
+      "loadingBlock": 0,
+      "inlineStyle": 16,
+      "rawH1": 0
+    },
+    "src/pages/trip/timeline/DaySection.tsx": {
+      "EmptyState": 1,
+      "loadingBlock": 0,
+      "inlineStyle": 18,
+      "rawH1": 0
+    },
+    "src/pages/trip/timeline/DaySpark.tsx": {
+      "EmptyState": 0,
+      "loadingBlock": 0,
+      "inlineStyle": 0,
+      "rawH1": 0
+    },
+    "src/pages/trip/timeline/MoveStopModal.tsx": {
+      "EmptyState": 0,
+      "loadingBlock": 0,
+      "inlineStyle": 1,
+      "rawH1": 0
+    },
+    "src/pages/trip/timeline/QuickAddStop.tsx": {
+      "EmptyState": 0,
+      "loadingBlock": 0,
+      "inlineStyle": 2,
+      "rawH1": 0
+    },
+    "src/pages/trip/timeline/TravelPanel.tsx": {
+      "EmptyState": 0,
+      "loadingBlock": 0,
+      "inlineStyle": 8,
+      "rawH1": 0
+    },
+    "src/pages/trip/TimelineTab.tsx": {
+      "EmptyState": 0,
+      "loadingBlock": 0,
+      "inlineStyle": 4,
+      "rawH1": 0
+    },
+    "src/pages/trip/TripSettingsForm.tsx": {
+      "EmptyState": 0,
+      "loadingBlock": 0,
+      "inlineStyle": 14,
+      "rawH1": 0
+    },
+    "src/pages/TripCreated.tsx": {
+      "EmptyState": 0,
+      "loadingBlock": 0,
+      "inlineStyle": 0,
+      "rawH1": 1
+    },
+    "src/pages/TripsList.tsx": {
+      "EmptyState": 0,
+      "loadingBlock": 0,
+      "inlineStyle": 7,
+      "rawH1": 0
+    },
+    "src/pages/TripWorkspace.tsx": {
+      "EmptyState": 0,
+      "loadingBlock": 3,
+      "inlineStyle": 8,
+      "rawH1": 1
+    }
+  },
+  "cardHoverViolations": 5
+}
