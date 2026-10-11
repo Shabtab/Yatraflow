@@ -18,10 +18,11 @@ import {
   useDb, userById, currentUser, addSuggestion, voteSuggestion, addCommentToSuggestion,
   acceptSuggestionIntoTimeline, declineSuggestion, addDecision, voteOnDecision, resolveDecision,
   addCommentToDecision,
-  activityFor,
+  activityFor, resumeSync,
 } from '../../store/store'
 import { formatInr, minutesToHM } from '../../lib/engine'
 import { decisionContext, contextLine, recommendForDecision } from '../../lib/decisionGuide'
+import { emptyCopyFor, sliceState } from '../../lib/readState'
 import { Avatar, Chip, EmptyState, Field, toast } from '../../components/ui'
 import { refuseWhileStaged } from '../../lib/mutationLifecycle'
 import type { BusyClaim } from '../../lib/busyClaim'
@@ -92,6 +93,17 @@ export function GroupInputTab({ trip, editable, me, previewOpen }: {
 
   const suggestions = db.suggestions.filter(s => s.tripId === trip.id)
   const decisions = db.decisions.filter(d => d.tripId === trip.id)
+  const tripActivity = activityFor(trip.id)
+
+  // #704: a failed read must never print as an empty group. The list fails when
+  // either slice fails, and it reads while either slice is still pending.
+  const suggestionsRead = sliceState(db.sliceReads, 'suggestions')
+  const decisionsRead = sliceState(db.sliceReads, 'decisions')
+  const listFailed = suggestionsRead === 'failed' || decisionsRead === 'failed'
+  const listReading = !listFailed && (suggestionsRead === 'reading' || decisionsRead === 'reading')
+  const activityRead = sliceState(db.sliceReads, 'activity')
+  // Retry re-issues the read through the same re-hydrate that app resume runs.
+  const retryGroupInput = () => { void resumeSync() }
 
   // "Needs you" spans both kinds: an open item I haven't voted on.
   const suggestionNeedsMe = (sg: StopSuggestion) => sg.status === 'open' && !sg.votes.some(v => v.userId === me.id)
@@ -168,26 +180,42 @@ export function GroupInputTab({ trip, editable, me, previewOpen }: {
 
       <div className="two-col">
         <div>
-          {items.length === 0 && (
-            <EmptyState icon={<Lightbulb size={38} aria-hidden />} title={EMPTY_COPY.all.title}
-              body={EMPTY_COPY.all.body} />
-          )}
-          {items.length > 0 && shown.length === 0 && (
-            <EmptyState icon={EMPTY_COPY[filter].icon === 'idea' ? <Lightbulb size={38} aria-hidden /> : <Scale size={38} aria-hidden />}
-              title={EMPTY_COPY[filter].title} body={EMPTY_COPY[filter].body}
-              action={<button className="btn btn-outline btn-sm" onClick={() => setFilter('all')}>Show everything</button>} />
-          )}
-          {shown.map(item => item.kind === 'idea'
-            ? <SuggestionCard key={item.sg.id} sg={item.sg} trip={trip} me={me} editable={editable} memberCount={memberCount}
-                needsMe={suggestionNeedsMe(item.sg)} previewOpen={previewOpen} />
-            : <DecisionCard key={item.d.id} d={item.d} me={me} editable={editable}
-                needsMe={decisionNeedsMe(item.d)} trip={trip} previewOpen={previewOpen} />
+          {listFailed ? (() => {
+            const copy = emptyCopyFor('failed', 'group input', retryGroupInput)
+            return (
+              <EmptyState icon={<Lightbulb size={38} aria-hidden />} title={copy.title} body={copy.body}
+                action={<button className="btn btn-primary" onClick={retryGroupInput}>Try again</button>} />
+            )
+          })() : listReading ? (
+            <div className="loading-block"><div className="spinner" />Loading group input…</div>
+          ) : (
+            <>
+              {items.length === 0 && (
+                <EmptyState icon={<Lightbulb size={38} aria-hidden />} title={EMPTY_COPY.all.title}
+                  body={EMPTY_COPY.all.body} />
+              )}
+              {items.length > 0 && shown.length === 0 && (
+                <EmptyState icon={EMPTY_COPY[filter].icon === 'idea' ? <Lightbulb size={38} aria-hidden /> : <Scale size={38} aria-hidden />}
+                  title={EMPTY_COPY[filter].title} body={EMPTY_COPY[filter].body}
+                  action={<button className="btn btn-outline btn-sm" onClick={() => setFilter('all')}>Show everything</button>} />
+              )}
+              {shown.map(item => item.kind === 'idea'
+                ? <SuggestionCard key={item.sg.id} sg={item.sg} trip={trip} me={me} editable={editable} memberCount={memberCount}
+                    needsMe={suggestionNeedsMe(item.sg)} previewOpen={previewOpen} />
+                : <DecisionCard key={item.d.id} d={item.d} me={me} editable={editable}
+                    needsMe={decisionNeedsMe(item.d)} trip={trip} previewOpen={previewOpen} />
+              )}
+            </>
           )}
 
           <div className="card">
             <h3>Activity feed</h3>
             <hr className="divider" />
-            {activityFor(trip.id).slice(0, 20).map(a => (
+            {activityRead === 'failed' ? (
+              <p className="small muted">Couldn’t load activity. <button className="btn btn-outline btn-sm" onClick={retryGroupInput}>Try again</button></p>
+            ) : activityRead === 'ready' && tripActivity.length === 0 ? (
+              <p className="small muted">No activity yet.</p>
+            ) : tripActivity.slice(0, 20).map(a => (
               <div key={a.id} className="feed-item">
                 <Avatar user={userById(a.actorId)} />
                 <span><b>{userById(a.actorId)?.profile.name}</b> {a.verb}{a.target ? ` · ${a.target}` : ''}</span>
