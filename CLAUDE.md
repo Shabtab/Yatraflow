@@ -10,7 +10,7 @@ This file holds only the routing rules for Claude sessions.
 | Role | Model and effort | Job |
 | --- | --- | --- |
 | Main thread | Opus, medium effort | Plan, write briefs, guide workers, check every report against git, report to the user. Do as little hands-on work as possible. |
-| Worker | Haiku 5.5, max effort | Do all the labour, including UI work, fixes and doc edits. Run a swarm in parallel. |
+| Worker | Haiku 5.5, max or high effort | Do all the labour, including UI work, fixes and doc edits. Run a swarm in parallel. Use max for work that needs judgment (SQL, security, logic, honesty fixes, spec-matched UI). Use high for mechanical work (class moves, changelog, version bumps, sweeps, rebases). If you are not sure, use max. |
 | Reviewer | Sonnet, high effort | Review UI and complex work before it reaches the user. |
 | Advisor | Opus, high effort | Advise on hard decisions only. Spawn it as a subagent. Do not use it for labour. |
 
