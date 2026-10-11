@@ -130,7 +130,7 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
     <div className="auth-wrap">
       <div className="card auth-card">
         <h1 className="auth-title">{mode === 'login' ? 'Welcome back' : 'Create your account'}</h1>
-        <p className="muted small" style={{ marginTop: 4 }}>
+        <p className="muted small auth-description">
           {mode === 'login' ? 'Log in to your trip plans.' : 'Free to plan. No card needed.'}
         </p>
 
@@ -146,9 +146,9 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
         {/* Say so up front: a build with no Supabase project compiled in can
             only ever fail, and "Failed to fetch" blames the wrong thing. */}
         {!isSupabaseConfigured && (
-          <div className="err-text" style={{ marginBottom: 12 }}>
+          <div className="err-text auth-backend-warning">
             <InlineIcon icon={TriangleAlert} size={13} gap={4} /><strong>This build has no backend configured.</strong>
-            <div className="small" style={{ marginTop: 4 }}>{MISSING_BACKEND_MESSAGE}</div>
+            <div className="small auth-backend-detail">{MISSING_BACKEND_MESSAGE}</div>
           </div>
         )}
 
@@ -173,12 +173,12 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
           <Field label="Password" hint={mode === 'signup' ? 'At least 8 characters' : undefined} error={passwordErr ?? undefined}>
             <input className="input" type="password" name="password" autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} minLength={mode === 'signup' ? 8 : undefined} value={password} onChange={e => { setPassword(e.target.value); if (passwordErr) setPasswordErr(null) }} placeholder="••••••••" ref={passwordRef} />
           </Field>
-          {error && <div className="err-text" role="alert" tabIndex={-1} ref={errRef} style={{ marginBottom: 10 }}><InlineIcon icon={TriangleAlert} size={13} gap={4} />{error}</div>}
-          <button type="submit" className="btn btn-primary btn-lg" style={{ width: '100%' }} disabled={saving}>
+          {error && <div className="err-text auth-submit-error" role="alert" tabIndex={-1} ref={errRef}><InlineIcon icon={TriangleAlert} size={13} gap={4} />{error}</div>}
+          <button type="submit" className="btn btn-primary btn-lg auth-submit" disabled={saving}>
             {saving ? (mode === 'login' ? 'Signing in…' : 'Creating account…') : mode === 'login' ? 'Log in' : 'Create account'}
           </button>
           {mode === 'login' && (
-            <p className="hint-text" style={{ margin: '10px 0 0', textAlign: 'center' }}>
+            <p className="hint-text auth-reset-help">
               Forgot your password? Resets aren’t self-serve yet.{' '}
               <a className="text-link" href="mailto:support@yatraflow.app?subject=Reset%20my%20YatraFlow%20password">Mail support and we’ll reset it</a>.
             </p>
@@ -186,7 +186,7 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
         </form>
         </div>
 
-        <p className="hint-text" style={{ textAlign: 'center', marginTop: 14 }}>
+        <p className="hint-text auth-sample-note">
           Three sample trips arrive in My Trips on first sign-in. Delete them any time.
         </p>
       </div>

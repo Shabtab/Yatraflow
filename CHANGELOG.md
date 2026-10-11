@@ -29,6 +29,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 - **Overview uses CSS classes for its static styles.** Its appearance stays the same, including the data-driven health bar.
 - **Share uses CSS classes for its static styles.** Its appearance and sharing behavior stay the same.
+- **Auth uses CSS classes for its static styles.** Its appearance and sign-in behavior stay the same.
 
 - **Search engines get clearer signals for the calculator and the share cards.** The calculator page says "Prices checked October 2026" and lists a published and modified date in its structured data. The address without the final slash now redirects to the page. The app pages and the share cards declare the language `en-IN`. A share card for an itinerary or creator that exists is now cached at the edge for five minutes. A missing or failed card is never cached.
 

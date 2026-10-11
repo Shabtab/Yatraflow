@@ -8954,3 +8954,12 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 .hint-text.shr-unpublished-note { margin-bottom: 10px; }
 .btn.shr-unpublish-action { margin-top: 10px; }
 .share-link-box.shr-publication-link { margin-top: 10px; }
+
+/* Auth: static presentation extracted from Auth.tsx. */
+.auth-description { margin-top: 4px; }
+.auth-backend-warning { margin-bottom: 12px; }
+.auth-backend-detail { margin-top: 4px; }
+.auth-submit-error { margin-bottom: 10px; }
+.btn.auth-submit { width: 100%; }
+.hint-text.auth-reset-help { margin: 10px 0 0; text-align: center; }
+.hint-text.auth-sample-note { text-align: center; margin-top: 14px; }
