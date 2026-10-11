@@ -1,7 +1,9 @@
 # CLAUDE.md — YatraFlow agent routing
 
-Read [`AGENTS.md`](AGENTS.md) first. It holds the workflow rules. This file holds
-only the routing rules for Claude sessions.
+@AGENTS.md
+
+The import above loads [`AGENTS.md`](AGENTS.md), which holds the workflow rules.
+This file holds only the routing rules for Claude sessions.
 
 ## Roles
 
@@ -38,7 +40,7 @@ applies: one batch branch per worker group, no push until the user says so.
 
 ## Consistency effort
 
-Read these two files before you start consistency work:
+Read these three files before you start consistency work:
 
 - [`docs/consistency/consistency-rulings.md`](docs/consistency/consistency-rulings.md): rulings R1 to R19.
 - [`docs/consistency/app-consistency-plan.md`](docs/consistency/app-consistency-plan.md): the plan, with pages P1 to P16.

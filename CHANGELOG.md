@@ -131,6 +131,8 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 - **Overview, Share, sign-in and DMCA pages keep the same appearance.** Their static styles now use CSS classes. Their behavior stays the same.
 
+- **A `CLAUDE.md` file now sets how Claude sessions split the work on this repo.** An Opus main thread at medium effort plans and checks the work. Haiku workers at max effort do the edits. A Sonnet reviewer checks UI work, and an Opus subagent gives advice on hard decisions. The file also links the consistency plan, the rulings R1 to R19 and the newest handoff note in `docs/consistency/`. `CODING_STANDARDS.md` now says how to move a layout value into a page class, and names the three cases where the value stays inline.
+
 - **Search engines get clearer signals for the calculator and the share cards.** The calculator page says "Prices checked October 2026" and lists a published and modified date in its structured data. The address without the final slash now redirects to the page. The app pages and the share cards declare the language `en-IN`. A share card for an itinerary or creator that exists is now cached at the edge for five minutes. A missing or failed card is never cached.
 
 - **My trips opens with an editorial hero built from your own trips.** The headline names the place your next trip ends at, for example "Next stop, Goa." That is the same place the Up next card shows. A row of counts shows your trips, upcoming and live trips, places and co-planners. Co-planners are the other people who can edit your trips. Up to three postcards show your trips, with a handwritten note such as "10 days to go!". While your trips load, the hero shows a neutral headline and no counts, postcards or note.
