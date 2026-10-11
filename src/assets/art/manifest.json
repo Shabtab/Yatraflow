@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "regions": {
+    "kerala": ["kerala-1"],
+    "goa": [],
+    "rajasthan": ["rajasthan-1"],
+    "coorg": [],
+    "meghalaya": [],
+    "kashmir": ["himalaya-1"],
+    "generic": []
+  },
+  "fallbacks": {
+    "road": ["road-1"],
+    "city": ["city-1"]
+  },
+  "vignettes": {
+    "first-trip": "es-first-trip"
+  },
+  "ids": {
+    "kerala-1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "himalaya-1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "rajasthan-1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "city-1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "road-1": {
+      "widths": [320, 640, 960],
+      "webp": 640,
+      "ratio": "3:2",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    },
+    "es-first-trip": {
+      "widths": [280, 560],
+      "webp": 560,
+      "ratio": "1:1",
+      "focalY": { "default": 50, "21:9": 40, "3:1": 60, "3.5:1": 55 }
+    }
+  },
+  "budget": {
+    "avifKiB": { "280": 12, "320": 10, "560": 30, "640": 24, "960": 40 },
+    "webpKiB": 45,
+    "totalMiB": 6
+  }
+}

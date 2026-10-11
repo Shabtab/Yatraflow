@@ -3,6 +3,7 @@
 // in any of these rules fails CI without needing a browser.
 import { describe, it, expect } from 'vitest'
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import ts from 'typescript'
 
 const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8')
@@ -1235,5 +1236,319 @@ describe('data type keeps its floor', () => {
       }
     }
     ratchet('subPixelType', offenders)
+  })
+})
+
+describe('a surface that appears carries motion (AGENTS §2.10)', () => {
+  // Rule 10 was prose with no enforcement, and the omission was structural: the
+  // duration gate above only inspects rules that ALREADY animate, so a surface
+  // that shipped with no motion at all produced no offender and no failure. The
+  // operator corrected exactly that on 2026-10-06 — "why do I have to point out
+  // adding transitions everytime" — and the measurement agreed: on My Trips,
+  // sampled every frame for 900ms at 1440px, ONE class animated
+  // (`card itin-card trip-enter`) while the hero, the page head, the toolbar, the
+  // viewbar and the saved shelf all appeared between two frames. The hero read
+  // as broken precisely because it sat above a cascade.
+  //
+  // The mechanism is the shape `.empty-state > *` already used: the CONTAINER
+  // owns the entrance, so a block added later cannot forget one. The cascade
+  // itself is one shared rule, `.page-enter > *`, and a page root carries the
+  // `page-enter` class.
+  //
+  // The SET of pages is not pinned here. It is discovered from src/App.tsx,
+  // because a hand-written list fails the way this one used to: a new page is
+  // simply absent from it, and absence produced no failure. Discovery inverts
+  // that. A page App renders is always in the set, and every binding the walk
+  // cannot resolve is an ERROR rather than a silently skipped page — fail
+  // closed, so "I could not tell what this page renders" can never read as
+  // "this page is fine".
+  type PageRoot = { file: string; component: string; line: number; cls: string | null; kind: 'element' | 'fragment' | 'unresolved'; detail?: string }
+
+  const parseTs = (file: string) =>
+    ts.createSourceFile(file, readFileSync(new URL('../' + file, import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
+
+  /** className of a returned JSX element, read as source text (a template
+   *  literal counts: the page's own text is what the gate greps). */
+  const rootClassName = (el: ts.JsxOpeningElement | ts.JsxSelfClosingElement): string | null => {
+    for (const attr of el.attributes.properties) {
+      if (!ts.isJsxAttribute(attr) || attr.name.text !== 'className') continue
+      let init: ts.Expression | undefined = attr.initializer
+      if (!init) return ''
+      // `className={\`...\`}` wraps the value in a JsxExpression; unwrap it.
+      if (ts.isJsxExpression(init)) init = init.expression
+      if (!init || init.kind === ts.SyntaxKind.NullLiteral) return null
+      if (ts.isStringLiteral(init) || init.kind === ts.SyntaxKind.NoSubstitutionTemplateLiteral) return init.text
+      return init.getText()
+    }
+    return null
+  }
+
+  /** Every JSX element a `return` can render. `null` renders nothing. A return
+   *  we cannot read is recorded as `unresolved` so the gate fails on it instead
+   *  of quietly dropping the page. */
+  const jsxRoots = (expr: ts.Expression | undefined, out: PageRoot[], file: string, component: string, depth = 0): void => {
+    if (!expr || depth > 8) return
+    if (ts.isParenthesizedExpression(expr)) return jsxRoots(expr.expression, out, file, component, depth + 1)
+    if (ts.isJsxFragment(expr)) { out.push({ file, component, line: lineOf(expr), cls: null, kind: 'fragment' }); return }
+    if (ts.isJsxElement(expr)) { out.push({ file, component, line: lineOf(expr.openingElement), cls: rootClassName(expr.openingElement), kind: 'element' }); return }
+    if (ts.isJsxSelfClosingElement(expr)) { out.push({ file, component, line: lineOf(expr), cls: rootClassName(expr), kind: 'element' }); return }
+    if (ts.isConditionalExpression(expr)) { jsxRoots(expr.whenTrue, out, file, component, depth + 1); jsxRoots(expr.whenFalse, out, file, component, depth + 1); return }
+    if (ts.isBinaryExpression(expr) && (expr.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken || expr.operatorToken.kind === ts.SyntaxKind.BarBarToken)) {
+      jsxRoots(expr.left, out, file, component, depth + 1); jsxRoots(expr.right, out, file, component, depth + 1); return
+    }
+    if (expr.kind === ts.SyntaxKind.NullLiteral || expr.kind === ts.SyntaxKind.NullKeyword || expr.getText() === 'null') return
+    out.push({ file, component, line: lineOf(expr), cls: null, kind: 'unresolved', detail: expr.getText().slice(0, 60) })
+  }
+
+  const lineOf = (node: ts.Node) => node.getSourceFile().getLineAndCharacterOfPosition(node.getStart()).line + 1
+
+  /** Every page the router can render, and the JSX roots each one returns.
+   *  Source of truth is src/App.tsx: a component App renders as JSX is a page,
+   *  whether it is a static import, a route-level `lazy()` binding, or a
+   *  component declared in App.tsx itself (SharedTripPage). */
+  function discoverPageRoots(): { roots: PageRoot[]; errors: string[] } {
+    const errors: string[] = []
+    const app = parseTs('src/App.tsx')
+
+    // tag -> file, from App's imports (static and lazy)
+    const tagToFile = new Map<string, string>()
+    const track = (name: string, spec: string) => {
+      if (!/pages/.test(spec)) return
+      tagToFile.set(name, 'src/' + spec.replace(/^\.\/pages\//, 'pages/') + '.tsx')
+    }
+    const walkImports = (n: ts.Node) => {
+      if (ts.isImportDeclaration(n)) {
+        const spec = String(n.moduleSpecifier.getText().replace(/^['"]|['"]$/g, ''))
+        if (/^\.\/pages\//.test(spec)) {
+          for (const el of n.importClause?.namedBindings && ts.isNamedImports(n.importClause.namedBindings)
+            ? n.importClause.namedBindings.elements
+            : []) track(el.name.text, spec)
+        }
+      }
+      if (ts.isVariableDeclaration(n) && n.initializer) {
+        // const X = lazy(() => import('./pages/Y').then(m => ({ default: m.X })))
+        const text = n.initializer.getText()
+        const spec = text.match(/import\(\s*['"]([^'"]+)['"]\s*\)/)?.[1]
+        const comp = text.match(/default:\s*[\w$]+\.(\w+)/)?.[1]
+        if (spec && /^\.\/pages\//.test(spec)) {
+          if (comp) track(comp, spec)
+          else errors.push(`src/App.tsx: cannot tell which export of ${spec} is rendered — write the binding as \`.then(m => ({ default: m.Name }))\``)
+        }
+      }
+      ts.forEachChild(n, walkImports)
+    }
+    walkImports(app)
+
+    // a page component declared in App.tsx is a page too
+    for (const stmt of app.statements) {
+      if (ts.isFunctionDeclaration(stmt) && stmt.name && /Page$/.test(stmt.name.text)) tagToFile.set(stmt.name.text, 'src/App.tsx')
+    }
+
+    // which of them App actually renders
+    const rendered = new Map<string, string>()
+    const walkJsx = (n: ts.Node) => {
+      if ((ts.isJsxOpeningElement(n) || ts.isJsxSelfClosingElement(n))) {
+        const tag = n.tagName.getText()
+        const file = tagToFile.get(tag)
+        if (file && /Page$|Workspace$/.test(tag)) rendered.set(tag, file)
+      }
+      ts.forEachChild(n, walkJsx)
+    }
+    walkJsx(app)
+    for (const [name, spec] of [...tagToFile]) {
+      if (!rendered.has(name)) errors.push(`src/App.tsx imports ${name} from ${spec} but never renders it (stale import, or this walk missed its JSX)`)
+    }
+
+    const roots: PageRoot[] = []
+    const cache = new Map<string, ts.SourceFile>()
+    for (const [component, file] of rendered) {
+      let sf = cache.get(file)
+      if (!sf) { sf = parseTs(file); cache.set(file, sf) }
+      for (const stmt of sf.statements) {
+        if (!ts.isFunctionDeclaration(stmt) || stmt.name?.text !== component) continue
+        const walk = (n: ts.Node, inPage: boolean) => {
+          if (ts.isFunctionDeclaration(n) || ts.isFunctionExpression(n) || ts.isArrowFunction(n)) {
+            // a nested function is a helper: its returns render its own output
+            ts.forEachChild(n, (c) => walk(c, n === stmt))
+            return
+          }
+          if (inPage && ts.isReturnStatement(n) && n.expression) {
+            const e = ts.isParenthesizedExpression(n.expression) ? n.expression.expression : n.expression
+            // arrow/object/array/call returns are effects and memoised values,
+            // not the page's render
+            if (!ts.isArrowFunction(e) && !ts.isObjectLiteralExpression(e) && !ts.isArrayLiteralExpression(e) && !ts.isCallExpression(e) && !ts.isIdentifier(e) && !ts.isPropertyAccessExpression(e)) {
+              jsxRoots(e, roots, file, component)
+            }
+          }
+          ts.forEachChild(n, (c) => walk(c, inPage))
+        }
+        walk(stmt, true)
+      }
+    }
+    return { roots, errors }
+  }
+
+  const discovered = discoverPageRoots()
+
+  it('resolves every page the router can render — an unresolvable one is a failure', () => {
+    // Fail-closed is the property that makes discovery safe. A hand list's hole
+    // was that an entry nobody wrote produced no failure; here a binding the
+    // walk cannot read, or a return that is not JSX, is an error string, so
+    // "could not tell" can never be mistaken for "nothing to check".
+    expect(discovered.errors, discovered.errors.join('; ')).toEqual([])
+    expect(discovered.roots.length, 'no page roots discovered — the walk is broken, not the pages').toBeGreaterThan(5)
+  })
+
+  it('gives every discovered page root the shared container entrance', () => {
+    const missing = discovered.roots
+      .filter((r) => r.kind === 'element' && !(r.cls ?? '').includes('page-enter'))
+      .map((r) => `${r.file}:${r.line} \`${r.component}\` — className ${JSON.stringify(r.cls)}`)
+    const unreadable = discovered.roots
+      .filter((r) => r.kind !== 'element')
+      .map((r) => `${r.file}:${r.line} \`${r.component}\` returns ${r.kind}${r.detail ? ` (${r.detail})` : ''}`)
+
+    expect(
+      unreadable,
+      'A page root must be a single JSX element so the entrance can attach to it. '
+      + 'Wrap the return in one <div className="… page-enter"> (a fragment and a non-JSX return both fail here).',
+    ).toEqual([])
+    expect(
+      missing,
+      'These page roots carry no `page-enter` class, so their blocks appear between two frames with no motion. '
+      + 'Add `page-enter` to the root\'s className. The cascade itself is shared: `.page-enter > *` in styles.css. '
+      + 'A NEW page goes in this list by existing — App.tsx renders it — not by being typed here.',
+    ).toEqual([])
+  })
+
+  it('the shared cascade owns every page root\'s entrance, with a token clock and a stagger', () => {
+    const entrance = cssRules.filter(
+      (r) => /^\.page-enter > \*/.test(r.selector) && (declMap(r.body).get('animation') ?? '').includes('var(--'),
+    )
+    expect(
+      entrance.length,
+      '`.page-enter > *` has no container entrance, so every page\'s blocks appear at once with no motion. '
+        + 'Write `.page-enter > * { animation: pageRise var(--motion-slow) var(--ease-out) backwards; }` '
+        + '— one rule, one owner, so no page can half-copy it.',
+    ).toBeGreaterThan(0)
+    const staggered = cssRules.filter(
+      (r) => /^\.page-enter > \*:nth-child\(/.test(r.selector) &&
+        /animation-delay:\s*calc\(\s*var\(--stagger-step\)/.test(r.body),
+    )
+    expect(
+      staggered.length,
+      'The shared cascade has no stagger, so its blocks are meant to arrive in DOM order and cannot. '
+        + 'Add `.page-enter > *:nth-child(N)` rules with `animation-delay: calc(var(--stagger-step) * N)`.',
+    ).toBeGreaterThan(3)
+  })
+
+  it('one rule owns the popover glass, and it carries its blur', () => {
+    // `--popover-bg` is `var(--yf-nav-glass)`: glass is TRANSLUCENT by design,
+    // and `.popover` is the rule that makes it readable by pairing it with a
+    // backdrop-filter. A panel that copies the background and leaves the blur
+    // behind renders see-through, so the tabs and cards behind it show through
+    // the menu. That shipped on My Trips on 2026-10-06 (the operator's
+    // screenshot caught it) and was already live on the map's filters popup.
+    //
+    // One owner is the fix at the highest level available in CSS: a second
+    // panel cannot half-copy the pair, because it cannot declare the glass at
+    // all. Reuse `.popover` on the element instead.
+    const owners = cssRules.filter((r) => /background(-color)?:[^;]*var\(--popover-bg\)/.test(r.body))
+    expect(
+      owners.map((o) => normalise(o.selector)),
+      'Only `.popover` may paint `var(--popover-bg)`. A panel that restates the glass ' +
+        'background must restate the `backdrop-filter: blur(var(--yf-blur-nav)) saturate(1.2)` ' +
+        'beside it, or the panel renders see-through. Add the `popover` class to the element ' +
+        'and keep only that panel\'s own position and size in its rule.',
+    ).toEqual(['.popover'])
+    expect(
+      owners[0]?.body ?? '',
+      '.popover paints the glass background with no `backdrop-filter`: every popover in the app ' +
+        'becomes see-through. Put `backdrop-filter: blur(var(--yf-blur-nav)) saturate(1.2)` back, ' +
+        'with its `-webkit-` twin.',
+    ).toMatch(/backdrop-filter:\s*blur\(/)
+  })
+
+  it('every glass paint carries its blur — the pair is never split', () => {
+    // `--yf-glass` and `--yf-nav-glass` are rgba(...,0.58): TRANSLUCENT by
+    // design. The backdrop-filter is what keeps the content behind readable,
+    // so a rule that paints the glass and leaves the blur behind renders
+    // see-through. That shipped twice on 2026-10-06: the My Trips filters
+    // popover (the operator's screenshot) and the map's filters popup.
+    //
+    // `topLevelRules` skips rules inside @media. That is right for the other
+    // checks and wrong here: a rule this gate cannot see is a rule it cannot
+    // police, so this walks every block with its media context.
+    type Block = { selector: string; body: string; media: string; line: number }
+    const walkBlocks = (src: string, media: string, at: number): Block[] => {
+      const out: Block[] = []
+      let i = 0
+      while (i < src.length) {
+        const open = src.indexOf('{', i)
+        if (open === -1) break
+        const selector = normalise(src.slice(i, open))
+        let depth = 0
+        let j = open
+        for (; j < src.length; j++) {
+          if (src[j] === '{') depth++
+          else if (src[j] === '}') { depth--; if (depth === 0) break }
+        }
+        const body = src.slice(open + 1, j)
+        const line = at + src.slice(0, open).split('\n').length
+        if (selector.startsWith('@keyframes')) { /* keyframe steps are not rules */ }
+        else if (selector.startsWith('@')) out.push(...walkBlocks(body, media ? `${media} ${selector}` : selector, line))
+        else if (body.includes(':')) out.push({ selector, body, media, line })
+        i = j + 1
+      }
+      return out
+    }
+    const blocks = walkBlocks(stripCssComments(css), '', 0)
+    const key = (b: Block) => (b.media ? `${b.media} ` : '') + b.selector
+
+    const GLASS = /background(?:-color)?:\s*[^;]*(?:var\(--popover-bg\)|var\(--yf-nav-glass\)|var\(--yf-glass\))/
+    const PAIR = /backdrop-filter:\s*blur/
+
+    // A tint or an override is not a panel, and an override inherits the pair
+    // from the rule it refines. Each entry names its reason; the check below
+    // also fails on an entry that no longer matches, so this list cannot rot.
+    const EXCEPTIONS: Record<string, string> = {
+      "[data-theme='dark'] .map-legend-toggle": 'Dark override of a rule that declares the pair.',
+      '.dest-ticker': 'Mixes the glass with an opaque colour, so the painted result is opaque.',
+      '.map-day-chip--util:hover': 'Hover tint. Its base opts out of glass with backdrop-filter: none.',
+      '.day-slot-search-hit:hover': 'Hover tint on an opaque row, not a panel.',
+      '.map-day-filter .map-day-chip:not(.on):hover': 'Hover override of .map-day-chip, which declares the pair.',
+      '.map-filters-row:hover': 'Hover tint on an opaque button, not a panel.',
+    }
+
+    const bare = blocks.filter((b) => GLASS.test(b.body) && !PAIR.test(b.body))
+    const offenders = bare
+      .filter((b) => !(key(b) in EXCEPTIONS))
+      .map((b) => `${b.media ? b.media + ' ' : ''}${b.selector} (line ${b.line})`)
+    expect(
+      offenders,
+      'These rules paint translucent glass and leave the backdrop-filter behind, so they render '
+        + 'see-through — the popover bug, in a new place. Either add `backdrop-filter: blur(...)` '
+        + 'with its `-webkit-` twin, or wear the owner class (`.glass`, `.popover`) instead of '
+        + 'restating the recipe. A tint or an override earns an EXCEPTIONS entry with a reason.',
+    ).toEqual([])
+
+    const stale = Object.keys(EXCEPTIONS).filter((k) => !bare.some((b) => key(b) === k))
+    expect(
+      stale,
+      'These EXCEPTIONS entries no longer match a rule: the glass paint they excuse is gone. '
+        + 'Delete the entry — a list that outlives its reason hides the next real offender.',
+    ).toEqual([])
+    const empty = Object.entries(EXCEPTIONS).filter(([, v]) => !v.trim()).map(([k]) => k)
+    expect(empty, 'Every glass exception must state why it is not a split pair.').toEqual([])
+  })
+
+  it('stops every container entrance under reduced motion', () => {
+    // These gates read top-level rules only; a rule inside @media is invisible to
+    // them. The opt-out is the one part of the mechanism they cannot check for
+    // us, so this reads the raw file — the same trade `.trip-enter` makes.
+    expect(
+      css.includes('.page-enter > * { animation: none;'),
+      'No `prefers-reduced-motion: reduce` opt-out for the shared cascade. '
+        + 'Write `.page-enter > * { animation: none; }` inside that media query.',
+    ).toBe(true)
   })
 })

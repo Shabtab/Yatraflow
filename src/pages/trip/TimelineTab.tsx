@@ -7,7 +7,34 @@
 // Mechanical extraction from src/pages/TripWorkspace.tsx (M3.4) — no behavior changes.
 // Includes DaySection, DayWeatherChip, TravelPanel, HaltPlanRow, DaySpark,
 // MoveStopModal and ClampedText — the whole timeline hot path.
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ArrowRight } from 'lucide-react'
+import { dayStripItems } from '../../lib/dayStrip'
+import { loadSavedIds, saveSavedIds, flipSavedId } from '../../lib/uiPrefs'
+
+/**
+ * MR8: the hearts' saved set. It lives in lib/uiPrefs, so it survives a reload
+ * without becoming trip data — it is never shared with the crew, which is why
+ * it needs no sync and no undo. The hook owns the list so every heart on the
+ * page re-renders from one read.
+ *
+ * S1: the set is DERIVED from the previous state and persisted after the
+ * change. A side-effecting updater (read storage, flip, write storage) is not
+ * safe under React's repeated calculation: Strict Mode runs the updater
+ * twice, so one press flips twice. And when storage is denied, every read
+ * comes back empty, so each toggle dropped the ids saved before it. State is
+ * the authority; the write mirrors it and may fail silently.
+ */
+function useSavedSet(tripId: string) {
+  const [savedIds, setSavedIds] = useState<string[]>(() => loadSavedIds(tripId))
+  const toggleSaved = useCallback((id: string) => {
+    setSavedIds(prev => flipSavedId(prev, id))
+  }, [])
+  useEffect(() => {
+    saveSavedIds(tripId, savedIds)
+  }, [tripId, savedIds])
+  return { savedIds, toggleSaved }
+}
 import { InlineIcon } from '../../components/icons'
 import {
   
@@ -24,7 +51,7 @@ import type { LegEstimate, ScheduleWarning } from '../../lib/engine'
 import type { ImpactResult } from '../../lib/impact'
 import { loadOpenDay, loadReviewAll, saveOpenDay, saveReviewAll } from '../../lib/uiPrefs'
 import { accordionNext } from '../../lib/daySummary'
-import { scrollBehavior } from '../../lib/motion'
+import { scrollBehavior, motionTiming } from '../../lib/motion'
 import { toast } from '../../components/ui'
 import { StopEditor, type StopFormValues } from '../../components/StopEditor'
 import { RemoteEditBanner } from '../../components/RemoteEditBanner'
@@ -46,9 +73,29 @@ import { MoveStopModal } from './timeline/MoveStopModal'
 /** Shared empty array so the memoized DaySections' `warnings` prop keeps a
  *  stable reference for days without warnings (`?? []` would defeat the memo). */
 const NO_WARNINGS: ScheduleWarning[] = []
+
+/** The bottom edge, px, of the bars stuck to the top of the viewport — the
+ *  space a jumped-to card must clear (P4). MEASURED, never assumed: the stack
+ *  is the floating nav, plus the sticky day rail in review, and it differs per
+ *  width (84px desktop, ~181px on a phone). Only top-anchored bars count. A
+ *  full-screen layer is excluded by the height cap. */
+function measureStickyStack(): number {
+  if (typeof document === 'undefined') return 0
+  let bottom = 0
+  for (const el of Array.from(document.querySelectorAll<HTMLElement>('body *'))) {
+    const s = getComputedStyle(el)
+    if (s.position !== 'sticky' && s.position !== 'fixed') continue
+    const top = parseFloat(s.top)
+    if (!Number.isFinite(top) || top > 120) continue
+    const h = el.offsetHeight
+    if (h === 0 || h > 240) continue
+    bottom = Math.max(bottom, top + h)
+  }
+  return bottom
+}
 // ================= Timeline =================
 
-export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorrections, suggestionCache, onOpenBoard, focusDay, onFocusConsumed }: {
+export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorrections, suggestionCache, onOpenBoard, focusDay, focusStopId, onFocusConsumed }: {
   trip: Trip
   editable: boolean
   /** `onKept` runs only when the user keeps the staged change — the hook the
@@ -66,6 +113,9 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
    *  stale value can neither re-fire on a later mount (tab navigation) nor
    *  leak into another trip's timeline (the workspace outlives trips). */
   focusDay?: number | null
+  /** Deep link (?stop=): a stop on the focused day. It scrolls to centre and
+   *  flashes once, then the same consume clears it with the day. */
+  focusStopId?: string | null
   /** clears the workspace's focusDay signal once the request is handled */
   onFocusConsumed?: () => void
 }) {
@@ -88,6 +138,10 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
   // Sorted once per trip change — a stable array of stable day references so
   // the memoized DaySections below only re-render when their own data changes.
   const days = useMemo(() => [...trip.days].sort((a, b) => a.index - b.index), [trip.days])
+  // MR7: what the day strip shows — the place each day sits in, and the day the
+  // route moves on. Pure and unit-tested in lib/dayStrip.ts.
+  const dayStrip = useMemo(() => dayStripItems(days), [days])
+  const { savedIds, toggleSaved } = useSavedSet(trip.id)
 
   // --- Collapsed-by-default accordion (docs/TIMELINE-PLAN.md Phase 1) ---
   // ONE open day per trip, persisted per trip id (uiPrefs `yatraflow_open_day`);
@@ -352,6 +406,25 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
     return () => observer.disconnect()
   }, [reviewAll, dayIndexSig])
 
+  // MR9/P4: the sticky stack is measured and published as --tl-stack. The
+  // scroll-margin on each day card reads it, so every jump lands clear of the
+  // bars, and the spy's line below reads the same number — one measurement,
+  // one answer for both. Re-measured on resize and on the review switch,
+  // which is what makes the rail enter or leave the stack.
+  const stackRef = useRef(84)
+  useEffect(() => {
+    const sync = () => {
+      stackRef.current = measureStickyStack()
+      document.documentElement.style.setProperty('--tl-stack', `${stackRef.current}px`)
+    }
+    sync()
+    window.addEventListener('resize', sync)
+    return () => {
+      window.removeEventListener('resize', sync)
+      document.documentElement.style.removeProperty('--tl-stack')
+    }
+  }, [reviewAll])
+
   // Which day the rail marks as you read (#421). The rail is the mode's own
   // orientation — the day whose card has scrolled past the sticky line — and it
   // exists so the DAY HEADER can stay in flow: measured, a header carrying the
@@ -360,19 +433,23 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
   const [currentDay, setCurrentDay] = useState<number | null>(null)
   useEffect(() => {
     if (!reviewAll) { setCurrentDay(null); return }
-    const line = 12 + 62 + 10 // the rail's own sticky offset (nav + gap)
+    const line = stackRef.current // the measured sticky stack (MR9/P4)
     let raf = 0
     const measure = () => {
       raf = 0
       let best: number | null = null
+      let first: number | null = null
       for (const part of dayIndexSig.split(',')) {
         if (!part) continue
         const idx = Number(part)
         const el = document.getElementById(`day-card-${idx}`)
         if (!el) continue
+        if (first === null) first = idx
         if (el.getBoundingClientRect().top - line <= 1) best = idx
       }
-      setCurrentDay(best)
+      // At the top of the page no card has crossed the line yet, and the day
+      // in view is the first one — the nav must not go blank there.
+      setCurrentDay(best ?? first)
     }
     const onScroll = () => { if (!raf) raf = requestAnimationFrame(measure) }
     measure()
@@ -406,6 +483,32 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
     if (!isVisible) el.scrollIntoView({ behavior: scrollBehavior(), block: 'start' })
   }
 
+  /** Deep-link target: the stop row. The day body mounts one commit after the
+   *  accordion opens (SmoothCollapse), so seek the row first. The land waits
+   *  for the expand to settle — a row scrolled mid-expansion drifts out of the
+   *  centred spot. Then it scrolls the row to centre and flashes it once.
+   *  A row that never appears does nothing. */
+  function focusStopRow(stopId: string) {
+    let tries = 0
+    const land = (row: HTMLElement) => {
+      row.scrollIntoView({ behavior: scrollBehavior(), block: 'center' })
+      row.classList.add('tl-stop-flash')
+      const clear = () => row.classList.remove('tl-stop-flash')
+      row.addEventListener('animationend', clear, { once: true })
+      // Reduced motion sets animation: none, so animationend never fires.
+      window.setTimeout(clear, motionTiming('--motion-slower').duration * 2 + 250)
+    }
+    const seek = () => {
+      const row = document.querySelector<HTMLElement>(`[data-stop-id="${CSS.escape(stopId)}"]`)
+      if (!row) {
+        if (tries++ < 40) window.setTimeout(seek, 50)
+        return
+      }
+      window.setTimeout(() => land(row), motionTiming('--motion-slower').duration + 250)
+    }
+    seek()
+  }
+
   // Phase 3 (the living plan): a halt label on the map asked for this day's
   // plan — open its accordion and bring the card into view. Runs after mount
   // so the day cards exist (the workspace mounts this tab in the same commit
@@ -426,9 +529,10 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
       return
     }
     jumpToDay(focusDay)
+    if (focusStopId) focusStopRow(focusStopId)
     onFocusConsumed?.()
     // eslint-disable-next-line react-hooks/exhaustive-deps -- jumpToDay reads openDay (stable) + the DOM; focusDay is the one-shot signal
-  }, [focusDay])
+  }, [focusDay, focusStopId])
 
   /** Inline day rename — a lightweight label change, applied directly (no impact preview). */
   const handleRenameDay = useCallback((dayIndex: number, title: string) => {
@@ -614,20 +718,40 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
       )}
 
       {/* #421: in review the rail is the mode's navigation, so it appears for
-          any trip length — and it marks the day you are in as you scroll. */}
+          any trip length — and it marks the day you are in as you scroll.
+          MR7: the chip became a card carrying the place that day sits in and a
+          stop count, with a marker on the day the route moves on. The jump and
+          the day-collapse state behind it are untouched — same rail, richer. */}
       {(days.length >= 4 || reviewAll) && (
         <div className="day-rail" role="navigation" aria-label="Jump to day">
           <span className="day-rail-label">Jump to day</span>
-          <div className="day-rail-chips">
-            {days.map(d => {
-              const hasWarn = (dayWarnings.get(d.index)?.length ?? 0) > 0
-              const current = reviewAll && currentDay === d.index
+          <div className="day-rail-cards">
+            {dayStrip.map(it => {
+              const hasWarn = (dayWarnings.get(it.dayIndex)?.length ?? 0) > 0
+              const current = reviewAll ? currentDay === it.dayIndex : openDayIndex === it.dayIndex
               return (
-                <button key={d.id} type="button" className={`day-rail-chip ${hasWarn ? 'warn' : ''}`}
-                  aria-current={current ? 'true' : undefined}
-                  onClick={() => jumpToDay(d.index)}>
-                  Day {d.index + 1}{hasWarn && <InlineIcon icon={TriangleAlert} size={11} gap={0} vAlign="-1px" style={{ marginLeft: 3 }} />}
-                </button>
+                <Fragment key={`d${it.dayIndex}`}>
+                  {/* The transit marker belongs to the day the route MOVES on,
+                      so it renders before that day's card, never after the last
+                      one — there is no day 0 boundary to mark. */}
+                  {it.changesCity && (
+                    <span className="day-rail-transit" aria-hidden>
+                      <InlineIcon icon={ArrowRight} size={12} gap={0} />
+                    </span>
+                  )}
+                  <button type="button" className={`day-rail-card${hasWarn ? ' warn' : ''}`}
+                    aria-current={current ? 'true' : undefined}
+                    onClick={() => jumpToDay(it.dayIndex)}>
+                    <span className="day-rail-card-day">
+                      {it.label}
+                      {hasWarn && <InlineIcon icon={TriangleAlert} size={11} gap={0} vAlign="-1px" style={{ marginLeft: 3 }} />}
+                    </span>
+                    {it.place && <span className="day-rail-card-place">{it.place}</span>}
+                    <span className="day-rail-card-meta">
+                      {it.stopCount} {it.stopCount === 1 ? 'stop' : 'stops'}
+                    </span>
+                  </button>
+                </Fragment>
               )
             })}
           </div>
@@ -651,6 +775,8 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
           onLinkCommitment={handleLinkCommitment}
           warnings={dayWarnings.get(day.index) ?? NO_WARNINGS}
           onStatus={handleStatus}
+          savedIds={savedIds}
+          onToggleSaved={toggleSaved}
         />
       ))}
 

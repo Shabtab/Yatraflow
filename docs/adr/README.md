@@ -19,6 +19,7 @@ Consumer rules (also in [`docs/agents/domain.md`](../../docs/agents/domain.md)):
 | # | Title | Status |
 | --- | --- | --- |
 | [0001](0001-two-branch-release-model.md) | Feature work integrates on `test`; only releases reach `main` | Accepted |
+| [0002](0002-mockup-palette-not-adopted.md) | The mockup palette is not adopted; the shipped `--yf-*` tokens stay authoritative | Accepted |
 
 ## Status values
 

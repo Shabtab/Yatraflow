@@ -86,7 +86,7 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
   }
 
   return (
-    <div className="container form-page">
+    <div className="container form-page page-enter">
       <h1>Profile & settings</h1>
       <p className="muted small prof-page-lede">{tripCount} trip{tripCount !== 1 ? 's' : ''} · {me.email}</p>
 

@@ -8,6 +8,7 @@ import { ArrowDownUp, Heart, SlidersHorizontal, X } from 'lucide-react'
 import { Select } from '../Select'
 import { FilterChip } from '../filters/FilterChip'
 import { SearchField } from '../filters/SearchField'
+import { usePresenceList, presenceAttrs } from '../../lib/usePresenceList'
 
 export interface StyleOption { value: string; label: string; count: number }
 
@@ -59,6 +60,13 @@ export function ExploreFilterBar({
 }) {
   const selectsId = useId()
   const [selectsOpen, setSelectsOpen] = useState(false)
+  // Clear filters leaves with a short exit instead of vanishing. Keyboard focus
+  // on it moves to the first style chip, because the button goes inert.
+  const { entries: clearEntries, attachList: attachClearRow } = usePresenceList(
+    filtersActive ? ['clear'] : [],
+    key => key,
+    { fallbackFocus: row => row.querySelector<HTMLElement>('.ex-chip') },
+  )
   const selectCount = (duration !== 'all' ? 1 : 0) + (maxBudget !== '' ? 1 : 0) + (sortKey !== 'popular' ? 1 : 0)
   return (
     <div className="ex-filterbar filterbar-host" role="search" aria-label="Filter itineraries">
@@ -83,7 +91,7 @@ export function ExploreFilterBar({
           </div>
         </div>
       </div>
-      <div className="ex-chip-row">
+      <div className="ex-chip-row" ref={attachClearRow}>
         <div className="ex-chips" role="group" aria-label="Travel style">
           <FilterChip pressed={style === 'all'} onClick={onAllStyles}>All styles</FilterChip>
           {styles.map(option => (
@@ -99,11 +107,11 @@ export function ExploreFilterBar({
           <Heart size={14} aria-hidden fill={savedOnly ? 'currentColor' : 'none'} />
           Saved{savedCount > 0 && <span className="ex-chip-count">{savedCount}</span>}
         </button>
-        {filtersActive && (
-          <button type="button" className="btn btn-quiet ex-clear" onClick={onClear}>
+        {clearEntries.map(({ key, exiting }) => (
+          <button key={key} type="button" className="btn btn-quiet ex-clear" onClick={onClear} {...presenceAttrs({ exiting })}>
             <X size={13} aria-hidden />Clear filters
           </button>
-        )}
+        ))}
       </div>
     </div>
   )

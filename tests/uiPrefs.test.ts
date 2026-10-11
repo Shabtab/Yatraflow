@@ -262,3 +262,43 @@ describe('review-all-days view (#421)', () => {
     expect(store.has('yatraflow_review_all')).toBe(true)
   })
 })
+
+describe('My trips Grid | List choice (trips_layout)', () => {
+  const g = globalThis as unknown as { localStorage: Storage }
+  const prev = globalThis.localStorage
+  afterEach(() => { g.localStorage = prev })
+
+  it('reads the fallback and saves without storage (node)', () => {
+    expect(loadPref('trips_layout', 'grid')).toBe('grid')
+    expect(() => savePref('trips_layout', 'list')).not.toThrow()
+    expect(loadPref('trips_layout', 'grid')).toBe('grid')
+  })
+
+  it('keeps the choice across a reload', () => {
+    const store = new Map<string, string>()
+    g.localStorage = {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => { store.set(k, v) },
+      removeItem: (k: string) => { store.delete(k) },
+      clear: () => store.clear(),
+      key: () => null,
+      get length() { return store.size },
+    } as Storage
+    savePref('trips_layout', 'list')
+    expect(loadPref('trips_layout', 'grid')).toBe('list')
+    expect(store.get('yatraflow_trips_layout')).toBe('list')
+  })
+
+  it('degrades to the fallback when every storage call throws', () => {
+    g.localStorage = {
+      getItem: () => { throw new Error('denied') },
+      setItem: () => { throw new Error('denied') },
+      removeItem: () => { throw new Error('denied') },
+      clear: () => { throw new Error('denied') },
+      key: () => null,
+      length: 0,
+    } as Storage
+    expect(loadPref('trips_layout', 'grid')).toBe('grid')
+    expect(() => savePref('trips_layout', 'list')).not.toThrow()
+  })
+})

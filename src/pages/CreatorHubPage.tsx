@@ -33,6 +33,7 @@ import {
 import { formatInr } from '../lib/engine'
 import { formatHM, useTimeFormat } from '../lib/timefmt'
 import { Chip, ConfirmDialog, Field, toast } from '../components/ui'
+import { pubRowStatus } from '../lib/pubRowStatus'
 import { appLink } from '../lib/appLink'
 
 /** Social links are stored raw and later emitted as an `href`, so a non-URL
@@ -203,7 +204,7 @@ export function CreatorHubPage({ onNavigate }: { onNavigate: (r: string) => void
   if (!me) return null
 
   return (
-    <div className="container hub-page">
+    <div className="container hub-page page-enter">
       <header className="hub-head">
         <div className="hub-head-id">
           <h1>Creator hub</h1>
@@ -550,13 +551,14 @@ export function HubOverview({ myPubs, onUnpublish, onNavigate, daily, dailyAt, s
   // list below it refuses to label is the strip contradicting its own contents.
   // The row itself stays in `myPubs` (and so in every ledger and funnel
   // derivation) because unpublishing does not un-earn a sale or erase reach.
-  const liveCount = myPubs.filter(p => !p.unpublishedAt).length
-  const unpublishedCount = myPubs.length - liveCount
-  const staleCount = myPubs.filter(p => {
-    if (p.unpublishedAt) return false
-    const t = tripById(p.tripId)
-    return !!t && t.updatedAt > (p.refreshedAt ?? p.publishedAt)
-  }).length
+  // ONE derivation behind the strip, the row labels and the row actions
+  // (MR11). The comment above states why the strip and the list MUST agree;
+  // reading both halves from `pubRowStatus` makes that agreement structural
+  // instead of a promise two copies of the rule have to keep.
+  const rowStatuses = myPubs.map(p => pubRowStatus(p, tripById(p.tripId)))
+  const liveCount = rowStatuses.filter(s => s.key === 'live').length
+  const unpublishedCount = rowStatuses.filter(s => s.key === 'unpublished').length
+  const staleCount = rowStatuses.filter(s => s.key === 'behind').length
   const windowLabel = FUNNEL_WINDOWS.find(w => w.days === days)?.label ?? `${days} days`
   // The counters-vs-log fact, said ONCE for the account instead of once per row.
   // Every publication's counters predate the same log, so repeating the sentence
@@ -680,22 +682,23 @@ export function HubOverview({ myPubs, onUnpublish, onNavigate, daily, dailyAt, s
               </p>
             ) : (
               <div>
-                {myPubs.map(p => {
-                  const trip = tripById(p.tripId)
+                {myPubs.map((p, rowIndex) => {
                   // #350 — a soft-unpublished publication STAYS in this list on
                   // purpose: the row is where its funnel and its sales history
                   // live, and unpublishing does not un-earn either. What it must
                   // not do is read as live, so it is labelled, and the
                   // "page behind itinerary" nudge is suppressed — a page that is
                   // down cannot be behind.
-                  const unpublished = Boolean(p.unpublishedAt)
-                  const stale = !unpublished && !!trip && trip.updatedAt > (p.refreshedAt ?? p.publishedAt)
+                  //
+                  // MR11 — the label, the action and the strip's counts all
+                  // come from the same `pubRowStatus` call (see
+                  // lib/pubRowStatus.ts), so no two of them can disagree.
+                  const status = rowStatuses[rowIndex]
                   return (
                     <div key={p.id} className="hub-lead-row">
                       <span className="hub-lead-title">
                         <a {...appLink(`/pub/${p.id}`)}>{p.title}</a>
-                        {unpublished && <Chip tone="info">Unpublished</Chip>}
-                        {stale && <Chip tone="saffron">Page behind itinerary</Chip>}
+                        <Chip tone={status.tone}>{status.label}</Chip>
                         {/* Where it goes and how long — not what it costs. The
                             price belongs with the money surfaces; this row is
                             about whether the page converts. */}
@@ -718,24 +721,17 @@ export function HubOverview({ myPubs, onUnpublish, onNavigate, daily, dailyAt, s
                           the reading state now returns first.) */}
                       <FunnelLine f={funnelOf.get(p.id)} funnelRead={trafficRead} unlockRead={unlockRead} windowLabel={windowLabel} />
                       <span className="pub-row-actions">
-                        {unpublished ? (
-                          // The way back up: the Share tab's publish form
-                          // re-lists it (and clears the marker).
-                          <button className="btn btn-saffron btn-sm" aria-label={`Publish ${p.title} again`}
-                            onClick={() => { onNavigate(`/trip/${p.tripId}/share`) }}>
-                            <InlineIcon icon={Pencil} size={13} gap={3} />Publish again
-                          </button>
-                        ) : stale ? (
-                          <button className="btn btn-saffron btn-sm" aria-label={`Update page for ${p.title}`}
-                            onClick={() => { onNavigate(`/trip/${p.tripId}/share`) }}>
-                            <InlineIcon icon={Pencil} size={13} gap={3} />Update page
-                          </button>
-                        ) : (
-                          <button className="btn btn-outline btn-sm" aria-label={`Edit ${p.title}`} onClick={() => { onNavigate(`/trip/${p.tripId}/share`) }}>
-                            <InlineIcon icon={Pencil} size={13} gap={3} />Edit
-                          </button>
-                        )}
-                        {!unpublished && (
+                        <button
+                          className={`btn btn-sm ${status.action === 'edit' ? 'btn-outline' : 'btn-saffron'}`}
+                          aria-label={status.action === 'edit'
+                            ? `Edit ${p.title}`
+                            : status.action === 'update-page'
+                              ? `Update page for ${p.title}`
+                              : `Publish ${p.title} again`}
+                          onClick={() => { onNavigate(`/trip/${p.tripId}/share`) }}>
+                          <InlineIcon icon={Pencil} size={13} gap={3} />{status.actionLabel}
+                        </button>
+                        {status.key !== 'unpublished' && (
                           <button className="btn btn-ghost btn-sm" aria-label={`Unpublish ${p.title}`} onClick={() => { onUnpublish(p) }}>Unpublish</button>
                         )}
                       </span>

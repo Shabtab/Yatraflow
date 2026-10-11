@@ -12,7 +12,7 @@ import type { LegEstimate } from '../lib/engine'
 import { buildRoadChain, measureRoadChain, correctionsFromLegs, type RoadStatus, type TripRoadView } from '../lib/tripRoad'
 import { computeImpact, type ImpactResult } from '../lib/impact'
 import { routeParts } from '../lib/pageTitle'
-import { currentRoute, replaceRoute } from '../lib/router'
+import { currentQuery, currentRoute, replaceRoute } from '../lib/router'
 import { scrollBehavior } from '../lib/motion'
 import { Avatar, toast } from '../components/ui'
 import { useTripPresence } from '../hooks/useTripPresence'
@@ -194,7 +194,39 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
   // (tab navigation) and leak into the NEXT trip's timeline, since this
   // workspace component is not keyed by trip id.
   const [timelineFocusDay, setTimelineFocusDay] = useState<number | null>(null)
-  const clearTimelineFocusDay = useCallback(() => setTimelineFocusDay(null), [])
+  const [timelineFocusStop, setTimelineFocusStop] = useState<string | null>(null)
+  const clearTimelineFocus = useCallback(() => {
+    setTimelineFocusDay(null)
+    setTimelineFocusStop(null)
+  }, [])
+  // Deep link from the featured next step (?day=&stop=): a one-shot request,
+  // armed only on a timeline address and validated against this trip before
+  // it can open or scroll anything. A request for another trip reads as
+  // nothing (this workspace outlives trips).
+  const deepLinkRef = useRef<{ tripId: string; dayIndex: number; stopId: string | null } | null>(null)
+  useEffect(() => {
+    if (routeParts(currentRoute())[2] !== 'timeline') return
+    const dayRaw = currentQuery().get('day')
+    if (dayRaw == null) return
+    const dayIndex = Number(dayRaw)
+    if (!Number.isInteger(dayIndex) || dayIndex < 0) return
+    deepLinkRef.current = { tripId, dayIndex, stopId: currentQuery().get('stop') }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- parse once on mount; tripId only stamps the guard
+  }, [])
+  useEffect(() => {
+    const req = deepLinkRef.current
+    if (!req || !trip) return
+    deepLinkRef.current = null
+    if (req.tripId !== trip.id) return
+    if (!canFocusDay(focusDayRequest(req.dayIndex), trip)) return
+    setTimelineFocusDay(req.dayIndex)
+    // The stop scrolls only when it really sits on that day. A name the day
+    // does not hold falls back to the day focus alone.
+    const stopId = req.stopId
+    if (stopId && trip.days.some(d => d.index === req.dayIndex && d.stops.some(s => s.id === stopId))) {
+      setTimelineFocusStop(stopId)
+    }
+  }, [trip])
   // #425 PR 1: the shared focus contract lives in lib/tripFocus. The workspace
   // owns the CURRENT focus for the surfaces it hosts; raising a day focus
   // validates the request against THIS trip before it can open anything
@@ -263,10 +295,10 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
   }
 
   if ((!trip && fetchMissed) || !me) {
-    return <div className="container loading-block">Trip not found. <button className="btn btn-outline btn-sm" onClick={() => onNavigate('trips')}>Back to my trips</button></div>
+    return <div className="container loading-block page-enter">Trip not found. <button className="btn btn-outline btn-sm" onClick={() => onNavigate('trips')}>Back to my trips</button></div>
   }
   if (!trip) {
-    return <div className="container loading-block"><div className="spinner" />Loading trip…</div>
+    return <div className="container loading-block page-enter"><div className="spinner" />Loading trip…</div>
   }
 
   const effective = pending?.proposed ?? trip
@@ -325,7 +357,7 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
   }
 
   return (
-    <div className={`container${tab === 'board' ? ' container--board' : ''}${tab === 'map' ? ' container--map' : ''}`} style={{ paddingTop: 22 }}>
+    <div className={`container page-enter${tab === 'board' ? ' container--board' : ''}${tab === 'map' ? ' container--map' : ''}`} style={{ paddingTop: 22 }}>
       {/* ---------- Header ---------- */}
       <div className="trip-head-card">
         <div className="row-between">
@@ -396,7 +428,7 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
       {tab === 'overview' && <OverviewTab trip={effective} editable={editable} onOpenDecisions={() => setTab('group')} onOpenTimeline={() => setTab('timeline')} onOpenMap={() => setTab('map')} onInvite={() => setTab('share')} health={health} totals={totals} road={road} corridorSegments={suggestionCache.cache.map?.segments} mapInputs={mapInputs} mapCache={suggestionCache.cache.map} />}
       {/* key: the timeline holds per-trip view state (open-day accordion) —
           remount it when the workspace switches trips (e.g. browser back/forward). */}
-      {tab === 'timeline' && <TimelineTab key={effective.id} trip={effective} editable={editable} applyChange={applyChange} previewOpen={!!pending} legCorrections={legCorrections} suggestionCache={suggestionCache} onOpenBoard={() => setTab('board')} focusDay={timelineFocusDay} onFocusConsumed={clearTimelineFocusDay} />}
+      {tab === 'timeline' && <TimelineTab key={effective.id} trip={effective} editable={editable} applyChange={applyChange} previewOpen={!!pending} legCorrections={legCorrections} suggestionCache={suggestionCache} onOpenBoard={() => setTab('board')} focusDay={timelineFocusDay} focusStopId={timelineFocusStop} onFocusConsumed={clearTimelineFocus} />}
       {tab === 'board' && (
         <React.Suspense fallback={<div className="container loading-block"><div className="spinner" />Loading board…</div>}>
           <BoardView trip={effective} editable={editable} applyChange={applyChange} health={health} totals={totals} legCorrections={legCorrections} previewOpen={!!pending} road={road}

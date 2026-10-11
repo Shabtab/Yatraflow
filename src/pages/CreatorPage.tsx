@@ -48,7 +48,7 @@ export function CreatorPage({ creatorId, onNavigate }: { creatorId: string; onNa
     if (profileRead !== 'ready') {
       const copy = emptyCopyFor(profileRead, 'this creator', retry)
       return (
-        <div className="container">
+        <div className="container page-enter">
           {profileRead === 'reading' ? (
             <div className="loading-block"><div className="spinner" />{copy.title}</div>
           ) : (
@@ -59,7 +59,7 @@ export function CreatorPage({ creatorId, onNavigate }: { creatorId: string; onNa
       )
     }
     return (
-      <div className="container">
+      <div className="container page-enter">
         <EmptyState icon={<Link2 size={38} aria-hidden />} title="Creator not found"
           body="This page may have been removed, or the link is wrong."
           action={<button className="btn btn-primary" onClick={() => onNavigate('/explore')}>Back to Explore</button>} />
@@ -76,7 +76,7 @@ export function CreatorPage({ creatorId, onNavigate }: { creatorId: string; onNa
   const shareLink = currentCreatorShareUrl(creatorId)
 
   return (
-    <div>
+    <div className="page-enter">
       {/* ---- Creator hero: identity, trust, share ---- */}
       <section className="creator-hero">
         <div className="container creator-hero-inner">

@@ -55,7 +55,7 @@ export function AdminPage({ onNavigate }: { onNavigate: (r: string) => void }) {
   if (!isAdmin) return null
 
   return (
-    <div className="container form-page">
+    <div className="container form-page page-enter">
       <h1>Master admin</h1>
       <p className="muted small adm-page-intro">
         Full-control console — every destructive action is audit-logged.
