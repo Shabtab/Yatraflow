@@ -9,6 +9,7 @@ import {
   placeTiles,
   routeTrail,
   savedEmptyKind,
+  trendingShelfPicks,
 } from '../src/lib/explorePage'
 import { formatInrShort } from '../src/lib/engine'
 import type { PublishedItinerary, User } from '../src/data/types'
@@ -37,6 +38,11 @@ const user = (id: string, name: string, isCreator = true): User => ({
   profile: { name, languages: ['en'], travelStyles: [], isCreator },
   createdAt: 1,
 })
+
+const disabledUser = (id: string, name: string): User => {
+  const base = user(id, name)
+  return { ...base, profile: { ...base.profile, isDisabled: true } }
+}
 
 const stopNames = (count: number, prefix = 's') => Array.from({ length: count }, (_, i) => `${prefix}${i}`)
 
@@ -311,6 +317,22 @@ describe('creatorList', () => {
     expect(creatorList(pubs, users).map(row => row.id)).toEqual(['creator-a'])
   })
 
+  it('skips a disabled creator, and the next creator fills the list', () => {
+    const users = [disabledUser('c1', 'Zed'), user('c2', 'Amy'), user('c3', 'Bob')]
+    const pubs = [
+      pub({ id: 'p1', creatorId: 'c1', copies: 9 }),
+      pub({ id: 'p2', creatorId: 'c2', copies: 2 }),
+      pub({ id: 'p3', creatorId: 'c3', copies: 1 }),
+    ]
+    expect(creatorList(pubs, users, 2).map(row => row.id)).toEqual(['c2', 'c3'])
+  })
+
+  it('returns an empty list when every creator is disabled', () => {
+    const users = [disabledUser('c1', 'Zed'), disabledUser('c2', 'Amy')]
+    const pubs = [pub({ id: 'p1', creatorId: 'c1', copies: 4 }), pub({ id: 'p2', creatorId: 'c2', copies: 1 })]
+    expect(creatorList(pubs, users)).toEqual([])
+  })
+
   it('does not count unpublished rows, and drops a creator left with none', () => {
     const users = [user('creator-a', 'Asha'), user('creator-b', 'Ben')]
     const pubs = [
@@ -415,5 +437,41 @@ describe('savedEmptyKind', () => {
 
   it('ignores saved count outside the saved-only view', () => {
     expect(savedEmptyKind({ ...base, savedOnly: false, savedCount: 0, signedIn: true })).toBe('no-catalog-signed-in')
+  })
+})
+
+describe('trendingShelfPicks', () => {
+  // The featured pick ranks by forks first, so it wins here while the
+  // most-viewed plan out-scores it on popularity. The shelf must still leave
+  // it off and show the rest by popularity.
+  const featured = pub({ id: 'featured', copies: 5, views: 300 })    // popularity 325
+  const viewed = pub({ id: 'viewed', copies: 0, views: 900 })        // popularity 900
+  const forked = pub({ id: 'forked', copies: 3, views: 30 })         // popularity 45
+  const quiet = pub({ id: 'quiet', copies: 0, views: 1 })            // below the bar
+  const catalog = [featured, viewed, forked, quiet]
+  const ids = (picks: { id: string }[]) => picks.map(p => p.id)
+
+  it('leaves the featured pick off, even when it would score second', () => {
+    expect(pickFeatured(catalog)?.id).toBe('featured')
+    expect(ids(trendingShelfPicks({ pubs: catalog, featured: pickFeatured(catalog), filtersActive: false, ready: true })))
+      .toEqual(['viewed', 'forked'])
+  })
+
+  it('shows nothing while a filter or the search is on', () => {
+    expect(trendingShelfPicks({ pubs: catalog, featured: pickFeatured(catalog), filtersActive: true, ready: true })).toEqual([])
+  })
+
+  it('shows nothing until the catalog read is ready', () => {
+    expect(trendingShelfPicks({ pubs: catalog, featured: pickFeatured(catalog), filtersActive: false, ready: false })).toEqual([])
+  })
+
+  it('shows nothing when no plan clears the evidence bar', () => {
+    expect(trendingShelfPicks({ pubs: [quiet], featured: undefined, filtersActive: false, ready: true })).toEqual([])
+  })
+
+  it('caps the shelf at four by default', () => {
+    const many = Array.from({ length: 7 }, (_, i) => pub({ id: `m${i}`, copies: 1, views: 10 * (i + 1) }))
+    const all = [featured, ...many]
+    expect(trendingShelfPicks({ pubs: all, featured: pickFeatured(all), filtersActive: false, ready: true })).toHaveLength(4)
   })
 })

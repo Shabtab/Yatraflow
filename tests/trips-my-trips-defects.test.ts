@@ -11,7 +11,7 @@ import { readFileSync } from 'node:fs'
 import { seedData } from '../src/data/seed'
 import { tripToRow } from '../src/lib/tripRow'
 
-const src = (rel: string) => readFileSync(new URL(rel, import.meta.url), 'utf8')
+const src = (rel: string) => readFileSync(new URL(rel, import.meta.url), 'utf8').replace(/\r\n/g, '\n')
 const page = () => src('../src/pages/TripsList.tsx')
 const storeSrc = () => src('../src/store/store.ts')
 

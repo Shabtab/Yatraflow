@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 // The page ships as static files under public/, so the module is loaded by a
 // variable path (the same pattern seo-discovery.test.ts uses for api/*.js).
 const corePath = '../public/ladakh-trip-cost-calculator/calc-core.js'
-const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8')
+const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8').replace(/\r\n/g, '\n')
 const core = await import(corePath)
 
 describe('Ladakh cost calculator core', () => {

@@ -3,15 +3,17 @@
 // The title link stretches over the whole card. The save heart and the other
 // controls sit above that link.
 import type { CSSProperties } from 'react'
-import { GitFork, Heart, Sparkles } from 'lucide-react'
+import { GitFork, Sparkles } from 'lucide-react'
 import type { PublishedItinerary, User } from '../../data/types'
 import { appLink } from '../../lib/appLink'
+import type { PresenceAttrs } from '../../lib/usePresenceList'
 import { cap } from '../../lib/labels'
 import { Avatar } from '../ui'
 import { ExploreCover } from './ExploreCover'
 import { ExploreFacts } from './ExploreFacts'
+import { ExploreSaveHeart } from './ExploreSaveHeart'
 
-export function ExploreCard({ pub, creator, saved, needsLogin, enterIndex, onFork, onToggleSave }: {
+export function ExploreCard({ pub, creator, saved, needsLogin, enterIndex, presence, onFork, onToggleSave }: {
   pub: PublishedItinerary
   creator?: User
   saved: boolean
@@ -19,6 +21,8 @@ export function ExploreCard({ pub, creator, saved, needsLogin, enterIndex, onFor
   needsLogin: boolean
   /** Position in its page of results. It sets the card's staggered entrance. */
   enterIndex: number
+  /** Worn by the list that plays this card's exit (usePresenceList). */
+  presence?: PresenceAttrs
   onFork: () => void
   onToggleSave: () => void
 }) {
@@ -26,15 +30,11 @@ export function ExploreCard({ pub, creator, saved, needsLogin, enterIndex, onFor
   const title = pub.title
   const enterDelay: CSSProperties = { animationDelay: `calc(var(--stagger-step) * ${Math.min(enterIndex, 8)})` }
   return (
-    <article className="ex-card ex-enter" data-id={pub.id} style={enterDelay}>
+    <article className="ex-card ex-enter" data-id={pub.id} style={enterDelay} {...presence}>
       <div className="ex-cover-wrap">
         <ExploreCover pub={pub} />
         <span className="ex-style-tag">{cap(pub.travelStyle)}</span>
-        {/* The label is fixed; aria-pressed carries the saved state. */}
-        <button type="button" className="ex-save" aria-pressed={saved}
-          aria-label={`Save ${title}`} onClick={onToggleSave}>
-          <span className="ex-save-dot"><Heart size={16} aria-hidden fill={saved ? 'currentColor' : 'none'} /></span>
-        </button>
+        <ExploreSaveHeart title={title} saved={saved} onToggle={onToggleSave} />
       </div>
       <div className="ex-card-main">
         <div className="ex-card-body">
