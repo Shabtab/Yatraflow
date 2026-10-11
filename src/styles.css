@@ -8936,3 +8936,21 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 .ovw-matrix-legend { margin: 6px 0 0; }
 .ovw-matrix-unverified { margin: 4px 0 0; }
 .ovw-matrix-partial { margin: 4px 0 0; }
+
+/* Share: static presentation extracted from ShareTab.tsx. */
+.hint-text.shr-snapshot-description { margin: 6px 0 12px; }
+.shr-snapshot-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.share-link-box.shr-snapshot-link { margin-top: 10px; }
+.shr-snapshot-url { word-break: break-all; }
+.hint-text.shr-invite-description { margin: 6px 0 12px; }
+.invite-code-row.shr-invite-code-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+.shr-members { margin-top: 10px; }
+.feed-item.shr-member-row { align-items: center; }
+.shr-member-details { flex: 1; }
+.hint-text.shr-removal-warning { margin: 6px 0; }
+.row-between.shr-removal-row { padding: 5px 0; }
+.hint-text.shr-publication-description { margin: 6px 0 12px; }
+.row-between.shr-publication-status { margin-bottom: 10px; }
+.hint-text.shr-unpublished-note { margin-bottom: 10px; }
+.btn.shr-unpublish-action { margin-top: 10px; }
+.share-link-box.shr-publication-link { margin-top: 10px; }
