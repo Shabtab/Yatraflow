@@ -36,7 +36,7 @@ const TARGET = `origin/${TARGET_BRANCH}`
 // A gerund starts a step only when a determiner or a code span follows it.
 // "Checking the value." is a gerund step. "Landing page" is a page name.
 const GERUND_FIRST = /^[A-Z][a-z]+ing$/
-const DETERMINERS = new Set(['the', 'a', 'an', 'this', 'that', 'these', 'those', 'each', 'every', 'all', 'your', 'its', 'their', 'our'])
+const DETERMINERS = new Set(['the', 'a', 'an', 'this', 'that', 'these', 'those', 'each', 'every', 'all', 'your', 'its', 'their', 'our', 'any', 'some', 'both', 'no', 'one', 'my', 'his', 'her'])
 
 // Plain-word substitutions. Each entry is [pattern, replacement].
 const VOCAB = [
@@ -155,16 +155,17 @@ function stripCode(text) {
 
 // A sentence ends at . ! or ?, then whitespace. Closing quotes, brackets and
 // underscores may sit between the mark and the space. "e.g.", "i.e.", "vs." and
-// "cf." do not end a sentence, so a long sentence that names one stays whole.
-const SENTENCE_BREAK = /(?<!\b(?:e\.g|i\.e|vs|cf)\.)(?<=[.!?][_"'”’)\]]*)\s+/
+// "cf." and "etc." do not end a sentence, in any letter case, so a long sentence stays whole.
+const SENTENCE_BREAK = /(?<!\b(?:e\.g|i\.e|vs|cf|etc)\.)(?<=[.!?][_"'”’)\]]*)\s+/i
 
 function sentencesOf(text) {
   return text.split(SENTENCE_BREAK).map((s) => s.trim()).filter(Boolean)
 }
 
 // A word is a token with a letter or a digit. A bare "(", "," or "—" is not a word.
+// An em dash or an en dash joins words, so each side counts as one word.
 function countWords(sentence) {
-  return sentence.split(/\s+/).filter((t) => /[A-Za-z0-9]/.test(t)).length
+  return sentence.replace(/[—–]/g, ' ').split(/\s+/).filter((t) => /[A-Za-z0-9]/.test(t)).length
 }
 
 function startsGerundStep(sentence) {
@@ -316,6 +317,7 @@ function mergeBaseOf(ref) {
 
 // Added lines of `git diff -U0`, each with its file and line number.
 // The prefixes are forced, so a diff.noprefix setting cannot hide every file.
+// Git adds a tab after a name that has a space. The tab is not part of the name.
 function addedLines(args) {
   const out = git(['diff', '-U0', '--no-color', '--no-ext-diff', '--src-prefix=a/', '--dst-prefix=b/', ...args])
   const added = []
@@ -324,7 +326,7 @@ function addedLines(args) {
   for (const line of out.split(/\r?\n/)) {
     let m
     if (line === '+++ /dev/null') { file = null; continue }
-    if ((m = /^\+\+\+ b\/(.*)$/.exec(line))) { file = m[1]; continue }
+    if ((m = /^\+\+\+ b\/(.*?)\t?$/.exec(line))) { file = m[1]; continue }
     if ((m = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(line))) { lineno = parseInt(m[1], 10); continue }
     if (file !== null && line.startsWith('+')) {
       added.push({ file, lineno, text: line.slice(1) })

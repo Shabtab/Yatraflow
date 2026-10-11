@@ -156,10 +156,30 @@ describe('STE100 lint (scripts/lint-ste.mjs)', () => {
     expect(run(eg).code).toBe(1)
   }, SLOW)
 
+  it('keeps a capital E.g. or an etc. inside one sentence, so a long sentence still fails', () => {
+    // The break rule ignores letter case. It also skips etc.
+    const eg = 'Use the share link to open the trip plan in another browser, E.g. Firefox, Edge or Safari, before you publish the page to the public web.\n'
+    expect(run(eg).code).toBe(1)
+    const etc = 'Use the share link to open the trip plan in another browser, the phone, the tablet, etc. before you publish the page to the public web.\n'
+    expect(run(etc).code).toBe(1)
+  }, SLOW)
+
   it('counts only words, so punctuation tokens do not push a sentence over the limit', () => {
     // Eighteen words and thirty-three tokens. Only the words count.
     const punctuated = 'Check the value ( a ) , b , c , d , e and f , g , h , i , j , k , l , m , n .\n'
     expect(run(punctuated).code).toBe(0)
+  }, SLOW)
+
+  it('counts the words on each side of an em dash or an en dash', () => {
+    // Seventeen space-separated tokens, but twenty-four words once each dash splits a word.
+    const emDash = 'Check the price—then the tax—then the fee—then the rate—then the date—then the note—then the sum—then the bill.\n'
+    const enDash = 'Check the price–then the tax–then the fee–then the rate–then the date–then the note–then the sum–then the bill.\n'
+    expect(run(emDash).code).toBe(1)
+    expect(run(emDash).out).toMatch(/24 words/)
+    expect(run(enDash).code).toBe(1)
+    // A hyphen does not split a word, so a hyphenated compound still counts as one.
+    const hyphen = 'Check the price-then the tax-then the fee-then the rate-then the date-then the note-then the sum-then the bill.\n'
+    expect(run(hyphen).code).toBe(0)
   }, SLOW)
 
   it('starts a gerund step only before a determiner or a code span', () => {
@@ -170,6 +190,12 @@ describe('STE100 lint (scripts/lint-ste.mjs)', () => {
     const stepBeforeCode = 'Running `npm test` now.\n'
     expect(run(stepBeforeDeterminer).code).toBe(1)
     expect(run(stepBeforeCode).code).toBe(1)
+  }, SLOW)
+
+  it('starts a gerund step before any, some, both, no, one, my, his or her', () => {
+    for (const word of ['any', 'some', 'both', 'no', 'one', 'my', 'his', 'her']) {
+      expect(run('Checking ' + word + ' value before you proceed.\n').code, word).toBe(1)
+    }
   }, SLOW)
 
   it('skips the must/should rule for a question, and still checks a statement', () => {
@@ -404,6 +430,19 @@ describe('STE100 default run (fixture repositories, real git)', () => {
     writeFileSync(path.join(dir, 'new.md'), BAD_LINE)
     git(dir, ['add', 'new.md'])
     expect(runScript(dir).code).toBe(1)
+  }, SLOW)
+
+  it('reads a path with a space, and drops the tab that git adds after the name', () => {
+    // Git ends the +++ line of such a path with a tab. Without the strip, the gate read a file that does not exist.
+    const flagged = /Utilize|facilitate/
+    const dir = fixtureRepo(GOOD)
+    commitFile(dir, 'docs/sp ace/n.md', BAD_LINE)
+    const bad = runScript(dir)
+    expect(bad.code).toBe(1)
+    expect(bad.stderr).toMatch(flagged)
+    const clean = fixtureRepo(GOOD)
+    commitFile(clean, 'docs/sp ace/n.md', GOOD)
+    expect(runScript(clean).code).toBe(0)
   }, SLOW)
 
   it('exempts docs/consistency/ from the diff runs, and still checks the same line elsewhere', () => {
