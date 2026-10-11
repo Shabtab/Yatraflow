@@ -15,6 +15,50 @@ import { computeTotals } from './engine'
 import { isRefunded, orderMoneyAt, type Entitlement, type PurchaseOrder } from './payments'
 import type { PublishedItinerary, Trip, User } from '../data/types'
 
+/** Text from a stored field, or undefined when it is missing or blank. */
+function cleanText(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : undefined
+}
+
+/** How many tips hold real text. A stored list can be missing or hold blanks. */
+function countTips(tips: unknown): number {
+  if (!Array.isArray(tips)) return 0
+  return tips.filter(tip => typeof tip === 'string' && tip.trim().length > 0).length
+}
+
+/** "12 Sep 2026" — the same en-IN shape the plan bench and the print view use.
+ *  A grant date that could not be read says so: "Invalid Date" is a developer
+ *  string leaking into a receipt, and a wrong date is worse than an absent one.
+ *
+ *  #409 — formatted in **UTC**, because `toLocaleDateString` alone reads the
+ *  BROWSER's timezone: a grant at 23:30 UTC was "yesterday" in IST and "today"
+ *  in the US, so the same receipt carried two dates depending on where the buyer
+ *  opened it. A purchase date is a fact about the account, not about the reader,
+ *  and a money-adjacent date must be the last one to move under someone.
+ *  Day granularity is unchanged — only the timezone is pinned. */
+export function boughtOn(ms: number, readable: boolean): string {
+  if (!readable) return 'date unknown'
+  return new Date(ms).toLocaleDateString('en-IN', {
+    day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC',
+  })
+}
+
+/** "Sep 2026" — an update is a season, not a timestamp, on a shelf.
+ *
+ *  #409 asked whether two same-month updates collapsing is a defect; it is a
+ *  deliberate granularity, recorded here so the next reader does not "fix" it.
+ *  The month is the unit a buyer acts on ("did this change since I bought it,
+ *  roughly when"), the exact instant is not, and the shelf's `updatedCount`
+ *  counts ROWS rather than versions to match — the two are consistent, which is
+ *  the property that matters. A day-granular date would read as a changelog
+ *  this surface is not. (Also UTC for the same reason as `boughtOn`: a month
+ *  label that flips between readers is the same bug one unit up.) */
+export function updatedIn(ms: number): string {
+  return new Date(ms).toLocaleDateString('en-IN', { month: 'short', year: 'numeric', timeZone: 'UTC' })
+}
+
 /** One owned publication, as the shelf needs it. */
 export interface PurchaseRow {
   pubId: string
@@ -92,6 +136,16 @@ export interface PurchaseRow {
    *  plan is still owned (a partial refund). Zero for a full refund — that
    *  story is the `refunded` receipt's to tell — and for no refund at all. */
   refundedPaise: number
+  /** The creator's own avatar, from the profile in the cache. Absent when the
+   *  profile has none or is not loaded. The card falls back to initials. */
+  creatorAvatarUrl?: string
+  /** How many non-empty travel tips the creator wrote. A count only: the
+   *  shelf never prints the tips themselves. Zero when the row is gone. */
+  tipCount: number
+  /** The creator's own words for the best season. Absent when not set. */
+  bestSeason?: string
+  /** The creator's one-line description of the plan. Absent when not set. */
+  tagline?: string
 }
 
 export interface PurchaseShelf {
@@ -141,6 +195,7 @@ export function buildPurchaseShelf(
 ): PurchaseShelf {
   const pubById = new Map(pubs.map(p => [p.id, p]))
   const nameById = new Map(users.map(u => [u.id, u.profile?.name || undefined]))
+  const avatarById = new Map(users.map(u => [u.id, u.profile?.avatarUrl || undefined]))
   // The money state, by the ORDER it belongs to. An entitlement carries its
   // `orderId`, so a surviving grant can still be recognised as refunded if the
   // delete ever raced or failed — defence in depth for the same truth.
@@ -198,6 +253,13 @@ export function buildPurchaseShelf(
       // rather than double-telling. Display-only here: the books keep the
       // paise-exact figure on the order itself.
       refundedPaise: input.refunded ? 0 : Math.max(0, Math.round(input.refundPaise ?? 0)),
+      // The creator's own words, read from fields the shelf already holds in
+      // the cache. Nothing is derived or invented: a field that is empty here
+      // stays empty on the card.
+      creatorAvatarUrl: pub ? avatarById.get(pub.creatorId) : undefined,
+      tipCount: countTips(pub?.travelTips),
+      bestSeason: cleanText(pub?.bestSeason),
+      tagline: cleanText(pub?.tagline),
     }
   }
 
@@ -300,6 +362,52 @@ export function purchaseShareable(row: PurchaseRow): boolean {
   // #589 — an in-flight grant is not access yet: sharing a plan the buyer
   // cannot open is the same overclaim as sharing a refunded one.
   return row.onSale && !row.refunded && !row.pendingGrant
+}
+
+/** Whether the card may call this purchase "yours": the grant landed, the
+ *  money stayed, and the plan is still on sale. A refunded, pending or
+ *  off-sale row keeps the plain card, so its money state stays obvious. */
+export function isKeptRow(row: PurchaseRow): boolean {
+  return row.onSale && !row.refunded && !row.pendingGrant
+}
+
+/** The creator's first name, or their whole name when it is one word. */
+export function creatorFirstName(name: string | undefined): string | undefined {
+  const first = name?.trim().split(/\s+/)[0]
+  return first ? first : undefined
+}
+
+/** "Made by Priya Nair · yours since 12 Sep 2026", or null when the creator's
+ *  name is missing: a provenance line with a blank in it is worse than the
+ *  plain line. A grant date that cannot be read drops the "yours since" part
+ *  instead of printing "date unknown" as if it were a date. */
+export function keepsakeLine(row: PurchaseRow): string | null {
+  const name = row.creatorName?.trim()
+  if (!name) return null
+  if (!row.dateReadable) return `Made by ${name}`
+  return `Made by ${name} · yours since ${boughtOn(row.grantedAt, true)}`
+}
+
+/** Chips for what the creator wrote into the plan. Only real fields: no chip
+ *  when a field is missing or empty, and never a placeholder. */
+export function keepsakeChips(row: PurchaseRow): string[] {
+  const who = creatorFirstName(row.creatorName) ?? 'the creator'
+  const chips: string[] = []
+  const tips = Number.isFinite(row.tipCount) ? Math.floor(row.tipCount) : 0
+  if (tips > 0) chips.push(`${tips} ${tips === 1 ? 'tip' : 'tips'} from ${who}`)
+  const season = row.bestSeason?.trim()
+  if (season) chips.push(`Best ${season}, says ${who}`)
+  return chips
+}
+
+/** The honest update sentence, or null. It follows the shelf's own rule for
+ *  "updated since you bought it" (`updatedSince` with a `refreshedAt`). The app
+ *  records that the creator re-published, not what changed, so the sentence
+ *  says no more than that. */
+export function republishedLine(row: PurchaseRow): string | null {
+  if (!row.updatedSince || !row.refreshedAt) return null
+  const who = row.creatorName?.trim() || 'The creator'
+  return `${who} re-published this plan in ${updatedIn(row.refreshedAt)}, after you bought it.`
 }
 
 /** How sure a match is. `exact` is the publication's own itinerary, which a copy

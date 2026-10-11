@@ -122,7 +122,7 @@ number that drives a decision uses tabular figures so it can be scanned and comp
   (`#0E7A72`) is used for fills that carry white text so the label clears AA.
 - Sora for display and figures, Plus Jakarta Sans for body; tabular numerals wherever a number
   is compared. The two catalog pages (Explore and My trips) add Playfair Display for the
-  hero line and Caveat for the handwritten note.
+  hero line and Caveat for the handwritten note. The My purchases header also carries one Caveat note.
 - Pill-first form language: 999px chips and segmented rails; 12/18/24px radii for cards and
   inputs. Buttons are 12px on the two catalog pages and pills elsewhere.
 - Depth from soft navy shadows and four blur tiers — never from heavy borders.
@@ -190,7 +190,9 @@ panel titles and every decision-bearing figure; Plus Jakarta Sans carries prose 
 The catalog pages (Explore and My trips) differ. Their section titles and card titles use
 Plus Jakarta Sans (800 and 700). Their hero headline uses Playfair Display 600 with one
 italic accent phrase. A short handwritten note beside the hero uses Caveat 600. Use these two
-fonts only in a catalog hero.
+fonts only in a catalog hero. One exception exists. The My purchases header may carry one
+Caveat note, set with the `note` slot of the page header. Use one note on a page. Write only a
+true line in it. Mark it `aria-hidden`, and keep the same meaning in the lede.
 Discouraged weights are not merely avoided in new code — a gate fails the build if a
 declared weight is not in the loaded set.
 

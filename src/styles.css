@@ -9926,3 +9926,177 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
   [data-presence='exit'], :is(.ex-page, .trips-page) .ex-clear[data-presence='exit'] { animation: none; }
   .trips-page .ex-clear[style*='hidden'] { transform: none; transition: none; }
 }
+
+/* ===== Shared page components: state block ===== */
+.yf-state {
+  display: grid; justify-items: center; gap: 10px; margin-top: 16px; padding: 44px 24px;
+  text-align: center; border: 1.5px dashed var(--ex-line-strong); border-radius: var(--radius);
+}
+.yf-state-icon { display: grid; place-items: center; color: var(--teal); }
+.yf-state-icon .spinner { width: 28px; height: 28px; }
+.yf-state-title {
+  margin: 0; color: var(--text); font-family: var(--font-body); font-size: 20px; font-weight: 800; line-height: 1.25;
+}
+.yf-state-body { margin: 0; max-width: 44ch; color: var(--text-2); }
+.yf-state-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 4px; }
+@media (max-width: 640px) {
+  .yf-state { padding: 32px 16px; }
+}
+
+/* ===== Page scope: yf-page ===== */
+/* A page with the yf-page class gets the catalog container width and the
+   catalog button skin. The rules copy the catalog rules above and list only
+   yf-page, so the catalog pages keep their own rules unchanged. No page carries
+   yf-page yet. */
+.container:is(.yf-page) {
+  max-width: 1240px;
+}
+
+/* Buttons on yf-page pages: the same skin as the catalog buttons. */
+:is(.yf-page) .btn:where(:not(.btn-sm, .modal *)) {
+  min-height: 44px; padding: 0 16px; border-radius: 12px; font-size: 15px; font-weight: 700; letter-spacing: -.005em;
+  transition: background-color var(--motion-fast) var(--ease-out), border-color var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out), box-shadow var(--motion-fast) var(--ease-out), transform var(--motion-fast) var(--ease-out);
+}
+:is(.yf-page) .btn:where(:not(.modal *)):active:not(:disabled) { transform: translateY(1px); }
+:is(.yf-page) .btn-primary:where(:not(.modal *)) { box-shadow: inset 0 1px 0 rgb(255 255 255 / .16), 0 10px 22px -12px color-mix(in srgb, var(--color-primary) 90%, transparent); }
+:is(.yf-page) .btn-secondary:where(:not(.modal *)) { background: var(--card); border-color: var(--ex-line-strong); color: var(--text); }
+:is(.yf-page) .btn-secondary:where(:not(.modal *)):hover:not(:disabled) { border-color: var(--teal-deep); color: var(--ink-teal); }
+:is(.yf-page) .btn-quiet:where(:not(.modal *)) { background: transparent; color: var(--text); }
+:is(.yf-page) .btn-quiet:where(:not(.modal *)):hover:not(:disabled) { background: var(--bg-soft); }
+/* A pressed toggle shows it: a soft teal fill and a ring. */
+:is(.yf-page) .btn-quiet[aria-pressed='true']:where(:not(.modal *)),
+:is(.yf-page) .btn-quiet[aria-pressed='true']:where(:not(.modal *)):hover:not(:disabled) {
+  background: var(--teal-soft); color: var(--ink-teal); box-shadow: inset 0 0 0 1px var(--teal-deep);
+}
+@media (prefers-reduced-motion: reduce) {
+  :is(.yf-page) .btn:where(:not(.modal *)) { transition: none; }
+  :is(.yf-page) .btn:where(:not(.modal *)):active:not(:disabled) { transform: none; }
+}
+
+/* ===== Shared page components: header ===== */
+/* The compact header of a tool page. No band and no postcards. The title and
+   the accent copy the hero rules above. A 1px rule closes the header. */
+.yf-header {
+  margin-bottom: 24px; padding-bottom: 20px; border-bottom: 1px solid var(--line);
+  animation: cardIn var(--motion-slow) var(--ease-out) backwards;
+}
+.yf-header .yf-header-back { display: flex; width: fit-content; margin: 0 0 8px -12px; padding: 0 12px; justify-content: flex-start; }
+.yf-header .yf-header-kicker { margin-bottom: 8px; }
+.yf-header-row { display: flex; flex-direction: column; gap: 12px; }
+.yf-header-title {
+  margin: 0; min-width: 0; color: var(--text); font-family: var(--font-serif); font-weight: 600;
+  font-size: clamp(2rem, 1.2rem + 2vw, 2.75rem); line-height: 1.08; letter-spacing: -.015em; text-wrap: balance;
+}
+.yf-header-title em { position: relative; font-style: italic; color: var(--ink-teal); white-space: nowrap; }
+.yf-header-title em::after {
+  content: ''; position: absolute; left: 2%; right: 4%; bottom: -.1em; height: .16em; background: var(--saffron);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 10' preserveAspectRatio='none'%3E%3Cpath d='M2 7c30-5 60-6 98-3s70 2 98-3' fill='none' stroke='black' stroke-width='3.2' stroke-linecap='round'/%3E%3C/svg%3E") center / 100% 100% no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 10' preserveAspectRatio='none'%3E%3Cpath d='M2 7c30-5 60-6 98-3s70 2 98-3' fill='none' stroke='black' stroke-width='3.2' stroke-linecap='round'/%3E%3C/svg%3E") center / 100% 100% no-repeat;
+}
+.yf-header-actions { display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
+.yf-header-actions > .btn { width: 100%; justify-content: center; }
+.yf-header-lede { margin: 12px 0 0; max-width: 62ch; color: var(--text-2); font-size: 16px; line-height: 1.5; text-wrap: pretty; }
+.yf-header-meta { margin-top: 16px; }
+.yf-header-stats { margin-top: 16px; }
+@media (min-width: 720px) {
+  .yf-header-row { flex-direction: row; align-items: flex-end; justify-content: space-between; gap: 24px; }
+  .yf-header-actions { flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: flex-end; }
+  .yf-header-actions > .btn { width: auto; }
+  .yf-header-lede { font-size: 17px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .yf-header { animation: none; }
+}
+
+/* ===== Shared page components: surface ===== */
+/* The card skin: border, radius, colour and shadow. The caller sets the
+   padding. A surface that is one whole link or button lifts on hover. */
+.yf-surface {
+  position: relative; min-width: 0;
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-card);
+}
+.yf-surface.is-interactive {
+  transition: transform var(--motion-med) var(--ease-out), box-shadow var(--motion-med) var(--ease-out), border-color var(--motion-med) var(--ease-out);
+}
+.yf-surface.is-interactive:hover { transform: translateY(-2px); box-shadow: var(--shadow-card-hover); border-color: var(--line-strong); }
+.yf-surface.is-entering { animation: cardIn var(--motion-slow) var(--ease-out) backwards; }
+@media (prefers-reduced-motion: reduce) {
+  .yf-surface.is-interactive, .yf-surface.is-interactive:hover { transition: none; transform: none; }
+  .yf-surface.is-entering { animation: none; }
+}
+
+/* ===== My purchases (page rules) ===== */
+.pur-page { padding-top: 22px; padding-bottom: 24px; }
+.pur-summary { margin: 0; color: var(--text-2); font-size: 15px; line-height: 1.5; font-variant-numeric: tabular-nums; }
+.pur-summary b { color: var(--text); font-weight: 800; }
+.pur-note { margin: 0 0 16px; max-width: 62ch; }
+.pur-list { display: flex; flex-direction: column; gap: 16px; }
+.pur-row { display: flex; gap: 20px; padding: 12px; }
+.pur-thumb { position: relative; flex: 0 0 176px; align-self: stretch; min-height: 112px; border-radius: var(--radius-sm); overflow: hidden; }
+.pur-thumb .itin-emoji { position: absolute; inset: 0; aspect-ratio: auto; border-bottom: 0; }
+.pur-body { display: flex; flex: 1; flex-direction: column; gap: 8px; min-width: 0; padding: 2px 8px 2px 0; }
+.pur-name { margin: 0; color: var(--text); font-family: var(--font-body); font-size: 18px; font-weight: 800; line-height: 1.25; letter-spacing: -.02em; text-wrap: balance; }
+.pur-by { margin: 0; color: var(--text-2); font-size: 13px; }
+.pur-by b { color: var(--text); }
+.pur-meta { display: flex; flex-wrap: wrap; gap: 6px; }
+.pur-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.pur-foot { margin: 16px 0 0; max-width: 68ch; }
+.pur-page > :is(.yf-state, .pur-note) { animation: cardIn var(--motion-slow) var(--ease-out) var(--stagger-step) backwards; }
+.pur-page > .pur-foot { animation: cardIn var(--motion-slow) var(--ease-out) calc(var(--stagger-step) * 2) backwards; }
+@media (max-width: 560px) {
+  .pur-row { flex-direction: column; gap: 12px; }
+  .pur-thumb { flex: none; align-self: auto; aspect-ratio: 16 / 9; min-height: 0; }
+  .pur-body { padding: 0 4px 4px; }
+  .pur-summary { font-size: 14px; }
+  .pur-actions > .btn { flex: 1 1 100%; justify-content: center; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pur-page > :is(.yf-state, .pur-note, .pur-foot) { animation: none; }
+}
+
+/* ===== My purchases: the kept-for-you card, the update note, the new-card outline ===== */
+/* A held plan shows the creator's face, a quiet "Yours" seal and the creator's
+   own facts. Every word comes from a stored field. */
+.pur-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 6px 12px; }
+.pur-head .pur-name { flex: 1 1 12rem; min-width: 0; }
+.pur-seal {
+  display: inline-flex; flex: none; align-items: center; gap: 4px; padding: 2px 10px 2px 8px;
+  border: 1px solid color-mix(in srgb, var(--ink-teal) 55%, transparent); border-radius: 999px;
+  color: var(--ink-teal); font-size: 12px; font-weight: 700; line-height: 1.5; white-space: nowrap;
+}
+.pur-by-kept { display: flex; align-items: center; gap: 8px; }
+.pur-avatar { display: inline-flex; flex: none; }
+.pur-by-kept > span:last-child { min-width: 0; text-wrap: balance; }
+.pur-update { margin: 0; max-width: 52ch; color: var(--text-2); font-size: 13px; line-height: 1.45; text-wrap: pretty; }
+/* The card that the unlock moment points at: one outline that holds, then
+   fades to clear. Reduced motion keeps a still, soft outline. */
+.pur-row.is-new::after {
+  content: ''; position: absolute; inset: -3px; border: 2px solid var(--ink-teal);
+  border-radius: calc(var(--radius) + 3px); pointer-events: none;
+  animation: purNewRing var(--motion-slow) var(--ease-out) var(--motion-slower) forwards;
+}
+@keyframes purNewRing {
+  from { border-color: var(--ink-teal); }
+  to { border-color: transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pur-row.is-new::after { animation: none; border-color: color-mix(in srgb, var(--ink-teal) 45%, transparent); }
+}
+.unlock-reveal-link { color: var(--ink-teal); font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
+.unlock-reveal-link:focus-visible { outline: none; box-shadow: var(--ring); border-radius: 4px; }
+
+/* ===== Shared page components: the handwritten header note ===== */
+/* One short aside in Caveat beside the title. The values copy the hero note:
+   font, size, rotation, the saffron highlight and the hand-drawn arrow. */
+.yf-header-note {
+  display: none; align-items: flex-end; gap: 2px; margin: 0; color: var(--ink-teal);
+  font-family: var(--font-hand); font-weight: 600; font-size: 29px; line-height: .95; transform: rotate(-4deg);
+}
+.yf-header-note-hl {
+  padding-right: 2px;
+  background: linear-gradient(transparent 62%, color-mix(in srgb, var(--saffron) 45%, transparent) 62%, color-mix(in srgb, var(--saffron) 45%, transparent) 92%, transparent 92%);
+}
+.yf-header-note svg { width: 54px; height: 62px; margin-bottom: -26px; color: var(--ink-teal); }
+@media (min-width: 720px) {
+  .yf-header-note { display: flex; flex: none; margin-left: auto; margin-right: 8px; }
+}

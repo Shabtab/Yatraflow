@@ -333,9 +333,10 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
                that we could not read it. The failed branch is checked FIRST, and
                the retry re-issues the read rather than re-rendering nothing. */
             pubsRead === 'reading' ? (
-              <ExploreStateBlock icon={<span className="spinner" aria-hidden="true" />} title="Loading the catalog…" />
+              <ExploreStateBlock kind="loading" icon={<span className="spinner" aria-hidden="true" />} title="Loading the catalog…" />
             ) : (
               <ExploreStateBlock
+                kind="failed"
                 icon={<TriangleAlert size={36} aria-hidden />}
                 title={emptyCopyFor(pubsRead, 'catalog', retryCatalog).title}
                 body={emptyCopyFor(pubsRead, 'catalog', retryCatalog).body}
@@ -383,25 +384,25 @@ function ExploreEmpty({ kind, onClear, onNavigate }: {
   const clearButton = <button className="btn btn-secondary" type="button" onClick={onClear}>Clear filters</button>
   if (kind === 'no-saved') {
     return (
-      <ExploreStateBlock icon={<Heart size={36} aria-hidden />} title="You haven’t saved any itineraries yet"
+      <ExploreStateBlock kind="empty" icon={<Heart size={36} aria-hidden />} title="You haven’t saved any itineraries yet"
         body="Tap the heart on a plan to keep it here, ready to fork." actions={clearButton} />
     )
   }
   if (kind === 'no-match') {
     return (
-      <ExploreStateBlock icon={<Search size={36} aria-hidden />} title="Nothing matches those filters"
+      <ExploreStateBlock kind="empty" icon={<Search size={36} aria-hidden />} title="Nothing matches those filters"
         body="Try widening the budget or clearing a filter." actions={clearButton} />
     )
   }
   if (kind === 'no-catalog-signed-in') {
     return (
-      <ExploreStateBlock icon={<Compass size={36} aria-hidden />} title="No itineraries published yet"
+      <ExploreStateBlock kind="empty" icon={<Compass size={36} aria-hidden />} title="No itineraries published yet"
         body="Publish one of your trips from its Share tab and it will appear here." />
     )
   }
   if (kind === 'no-catalog-signed-out') {
     return (
-      <ExploreStateBlock icon={<Compass size={36} aria-hidden />} title="The community catalog is just getting started"
+      <ExploreStateBlock kind="empty" icon={<Compass size={36} aria-hidden />} title="The community catalog is just getting started"
         body="Sign in to fork community itineraries into your own trips. Or load the demo from My trips to look around first."
         actions={(
           <>
