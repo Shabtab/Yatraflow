@@ -104,9 +104,12 @@ export function useCorridorCache({
   // one light corridor fetch feeds the ¼/½/¾ rows.
   const [fractionPois, setFractionPois] = useState<PlaceHit[] | null>(null)
   const [corridorQuotaOut, setCorridorQuotaOut] = useState(false)
+  // #704: a failed search is not an empty one. The Map tab shows a note for it.
+  const [scanFailed, setScanFailed] = useState(false)
+  const [fractionFailed, setFractionFailed] = useState(false)
   const corridorAbort = useRef<AbortController | null>(null)
   useEffect(() => {
-    if (loadingPois || pois.length > 0 || anchors.length < 2) { setFractionPois(null); return } // eslint-disable-line react-hooks/set-state-in-effect -- the guard clears stale fallback rows before the fetch below runs
+    if (loadingPois || pois.length > 0 || anchors.length < 2) { setFractionPois(null); setFractionFailed(false); return } // eslint-disable-line react-hooks/set-state-in-effect -- the guard clears stale fallback rows before the fetch below runs
     const cached = suggestionCache.cache.fraction
     if (cached && isMapCacheFresh(cached, scopeKm, mapInputsHash)) {
       setFractionPois(cached.hits)
@@ -116,22 +119,23 @@ export function useCorridorCache({
     corridorAbort.current?.abort()
     corridorAbort.current = controller
     let cancelled = false
-    searchNearbyPoisMulti(anchors, scopeKm * 1000, 12, { ...nearbyOpts, purposes: ['sight' as const, 'meal' as const], signal: controller.signal })
+    searchNearbyPoisMulti(anchors, scopeKm * 1000, 12, { ...nearbyOpts, purposes: ['sight' as const, 'meal' as const], signal: controller.signal, rejectOnFailure: true })
       .then(hits => {
         if (cancelled) return
+        setFractionFailed(false)
         setFractionPois(hits)
         if (hits.length > 0) suggestionCache.setFractionCache(hits, mapInputsHash, scopeKm)
       })
       .catch((err: unknown) => {
         if (cancelled) return
         if (err instanceof QuotaExhaustedError) { setCorridorQuotaOut(true); setFractionPois(null) }
-        else if (!controller.signal.aborted) setFractionPois([])
+        else if (!controller.signal.aborted) { setFractionFailed(true); setFractionPois([]) }
       })
     return () => { cancelled = true; controller.abort() }
   }, [loadingPois, pois, anchors, nearbyOpts, scopeKm, refreshTick, mapInputsHash, suggestionCache])
 
   useEffect(() => {
-    if (anchors.length === 0) return
+    if (anchors.length === 0) { setScanFailed(false); return } // eslint-disable-line react-hooks/set-state-in-effect -- the guard clears a stale failure note, since no stops means no scan
     const cached = suggestionCache.cache.map
     // #331: the shared hash covers route shape, weather/time cadence, pinned
     // halts, DNA preferences, speed, crew/fuel/budget and scope. Cache hits
@@ -143,7 +147,7 @@ export function useCorridorCache({
     // real road corridor; only ↻ Refresh, a scope change, new anchors, or an
     // empty cache starts another paid scan.
     if (cached && isMapCacheFresh(cached, scopeKm, inputsHash)) {
-      setCorridorQuotaOut(false) // eslint-disable-line react-hooks/set-state-in-effect -- a fresh cache answers at once: publish it instead of starting a paid scan
+      setCorridorQuotaOut(false); setScanFailed(false) // a fresh cache answers at once: publish it instead of starting a paid scan
       setPois(cached.segments)
       return
     }
@@ -159,10 +163,11 @@ export function useCorridorCache({
       : splitDriveDayCount != null
         ? splitDriveDayCount > 1
         : clockVerdict === 'hop'
-    planJourneyHalts(anchors, planKm, wholeTripMin, { ...nearbyOpts, multiDay: derivedMultiDay, signal: controller.signal }, scopeKm * 1000)
+    planJourneyHalts(anchors, planKm, wholeTripMin, { ...nearbyOpts, multiDay: derivedMultiDay, signal: controller.signal, rejectOnFailure: true }, scopeKm * 1000)
       .then(plan => {
         if (!cancelled) {
           setCorridorQuotaOut(false)
+          setScanFailed(false)
           setPois(plan)
           // Never cache an empty plan: the first search can run before the
           // route resolves, and a persisted [] would stick until Refresh.
@@ -178,6 +183,8 @@ export function useCorridorCache({
       .catch((err: unknown) => {
         if (cancelled || controller.signal.aborted) return
         if (err instanceof QuotaExhaustedError) { setCorridorQuotaOut(true); setPois([]) }
+        // #704: a failed scan is not an empty one, so the Map tab shows a note for it.
+        else { setScanFailed(true); setPois([]) }
       })
       .finally(() => { if (!cancelled) setLoadingPois(false) })
     return () => {
@@ -192,5 +199,5 @@ export function useCorridorCache({
     }
   }, [anchors, nearbyOpts, scopeKm, mapInputsHash, planKm, wholeTripMin, travelDayNeed, clockVerdict, refreshTick, splitDriveDayCount]) // eslint-disable-line react-hooks/exhaustive-deps -- the scan reads the split count through its dep; the cache identity and the raw geometry stay out (nearbyOpts covers geometry, the cache would loop)
 
-  return { mapInputsHash, fractionPois, corridorQuotaOut, loadingPois }
+  return { mapInputsHash, fractionPois, corridorQuotaOut, loadingPois, poisFailed: scanFailed || fractionFailed }
 }
