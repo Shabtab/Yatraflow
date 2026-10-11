@@ -42,6 +42,7 @@ Read these two files before you start consistency work:
 
 - [`docs/consistency/consistency-rulings.md`](docs/consistency/consistency-rulings.md): rulings R1 to R19.
 - [`docs/consistency/app-consistency-plan.md`](docs/consistency/app-consistency-plan.md): the plan, with pages P1 to P16.
+- The newest `docs/consistency/handoff-*.md`: the branch map and next steps from the last session.
 
 A ruling overrides the plan where they differ. Example: R14 limits the serif font to the
 page h1, which answers plan question Q1. Re-derive the open pull requests from `gh` and
