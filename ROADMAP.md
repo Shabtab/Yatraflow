@@ -476,6 +476,7 @@ Neither decision touches a colour value, per [ADR 0002](docs/adr/0002-mockup-pal
     [`mr2-progress-390.png`](docs/screenshots/mr2-progress-390.png), both of the featured card
     that carries the meter: `role="progressbar"`, the label "Days with activities", and the
     2/2 count on the fixture account.
+  - **Changed 2026-10-11.** The trip cards drop the bar. The next-step line carries the same fact as an action. Up next keeps one meter, labelled as days with activities.
 - [x] **MR3. Status filter tabs with counts.** `src/pages/TripsList.tsx`. Five filters with live
   counts. Persist the choice through `src/lib/uiPrefs.ts`, which already stores per-day collapse.
   - **Landed 2026-10-05, review still owed.** The five filters are all trips, needs dates, needs

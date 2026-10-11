@@ -6,7 +6,7 @@ export type { TripsLayout }
 
 export function ViewSwitch({ layout, onChange }: { layout: TripsLayout; onChange: (next: TripsLayout) => void }) {
   return (
-    <div className="mt-seg" role="group" aria-label="Layout">
+    <div className="mt-seg" role="group" aria-label="Layout" data-layout={layout}>
       <button type="button" aria-pressed={layout === 'grid'} onClick={() => onChange('grid')}>
         <LayoutGrid size={15} aria-hidden />Grid
       </button>

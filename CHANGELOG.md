@@ -24,22 +24,27 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
   The featured pick ranks forks first. A heading over an empty rail would advertise a community
   that is not there, so an empty block draws nothing.
 
+- **The Grid and List switch on My trips now slides and replays the cards.** A pill glides behind the active button in 180ms, and the button text changes colour on the same clock. The card grid remounts when the layout changes, so the cards play their staggered entrance again. Before this, the pressed button changed colour and the cards snapped into place. With reduced motion set, both changes are instant. The Clear filters button now fades in and slides 6px when a filter is set, on My trips and on Explore.
+
+- **A static test fails a toggle control that has no motion.** `tests/motion-state-change.test.ts` finds every group of buttons where one choice is pressed at a time. Each group needs a glider with a motion-token transition and a reduced-motion opt-out. The test also checks that the My trips card grid is keyed by its layout. The Trip map day filter has no glider yet and is listed as a known gap. The list can only get shorter.
+
+- **The motion check clicks the My trips layout switch.** `scripts/browser-motion-check.mjs` samples the cards and the glider once per frame across the click. It fails when the cards snap or the glider jumps. My trips needs a signed-in session, so the step reads a Playwright storage-state file from `MOTION_STORAGE_STATE`. Without that file it skips and says so. `MOTION_REQUIRE_SESSION=1` turns the skip into a failure.
+
 - **A browser check in CI fails a page block that appears between two frames.** `npm run check:motion` builds the app, serves it, opens four public routes and samples every block of the page root once per animation frame from before navigation. A block whose opacity and transform never change had no motion at all, so the run fails and names the block. The `motion` job runs beside `verify` in CI, and `npm run verify` still needs no browser.
 
 - **The pages a motion gate checks are discovered from the router, not typed into a list.** `tests/design-system.test.ts` reads `src/App.tsx` and takes every component App renders — a static import, a route-level `lazy()` binding, or a component declared in App itself — then requires each returned root to carry `page-enter`. A new page joins the set by existing, so it cannot ship motionless. A binding the walk cannot read is an error rather than a skip: an unreadable page must not pass as an empty one. The cascade behind the class is one shared rule, `.page-enter > *`, with its stagger and its reduced-motion opt-out beside it.
 
 - **Glass cannot be painted without its blur any more.** A rule that paints a translucent glass token must declare `backdrop-filter` in the same rule, or name its exception and its reason in the gate's list. An entry that no longer matches a rule fails too,so the list cannot outlive its reason.
 
-- **Every trip card now says what to do next, and how much of the plan exists.** My Trips
+- **Every trip card now says what to do next.** My Trips
   prints the one action worth doing above each trip's chips. The line is a link to that task,
-  marked by a chevron. A bar and a count report the planned days. `src/lib/tripNextStep.ts` derives both, and 16 tests pin the order. Set the dates
+  marked by a chevron. `src/lib/tripNextStep.ts` derives the step, and 16 tests pin the order. Set the dates
   first, because a draft has no days to plan. Then the earliest empty day, because it blocks
   every day after it. Then the earliest stop that needs a booking. Then the earliest suggestion
   to confirm. A cover photo waits for last. A rejected stop blocks nothing, so a day left with
   only rejected stops still counts as unplanned. A finished trip reads "Ready to travel" and
-  drops the chevron, because there is nothing left to open. The bar is the 5px meter the day
-  header already draws, in the same teal and the same motion, and the two read their numbers
-  from one function.
+  drops the chevron, because there is nothing left to open. The Up next card also shows how
+  many days have activities, as a count and a meter, until the trip is live.
 - **The cover-photo step is reachable again.** The prototype counted any cover emoji as a
   cover. Every trip is born with 🧭, because the column is `not null default '🧭'` and the
   cover thumbnail falls back to the same glyph. A live read of every published itinerary found
@@ -109,7 +114,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 - **A browser verification harness for agents, under `.agents/skills/verify-yatraflow/`.** It starts the dev server on port 5178. It checks the server and the Supabase project ref. It drives a headless Edge or Chrome to a route. Each run writes a screenshot and a JSON record to `.verify-evidence/`, which git ignores. The feature map covers five signed-out flows.
 
-- **My trips shows a pinned Up next card for your live or soonest trip.** The card shows a countdown, Budget, Travel and Dates columns, a planning meter, the next step and a delete button. It stays pinned through sort and style filters. It hides while you search.
+- **My trips shows a pinned Up next card for your live or soonest trip.** The card shows a countdown, Budget, Travel and Dates columns, the count of days that have activities, the next step and a delete button. The count hides when the trip is live, because the day count is the progress then. It stays pinned through sort and style filters. It hides while you search.
 
 ### Changed
 
@@ -117,7 +122,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 - **My trips and Explore share one look.** Both pages use the same serif and handwritten fonts, 12px-corner buttons, filter bar and card skin. Budget shows in one compact format, such as "~₹12k/person". On a phone, both pages hide the postcards and the handwritten note.
 
-- **My trips has a Grid | List switch.** Phone list rows fit the screen, and the filter box no longer leaves blank space.
+- **My trips has a Grid | List switch.** Phone list rows fit the screen, and the filter box no longer leaves blank space. The grid has one column on a phone, two on a tablet and three on a wide screen. This holds for any number of results, so one result is one card of normal width in the first cell. Explore uses the same column rule. Only the Up next card and the Explore featured card use the wide form.
 
 - **The Load demo trips button shows only when you have no trips.** It sits in the first-run state, next to Plan your first trip.
 
@@ -158,7 +163,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 - **The My Trips cards use the mockup's card style, in both list and grid view.** Each card has a
   16/10 cover. A status tag sits at the cover's top left. The body reads in this order: title,
-  route, the budget, travel and dates columns, the planned-days meter, the next step, then the
+  route, the budget, travel and dates columns, the next step, then the
   travel-style and planner chips. A hairline separates the card's foot. The foot holds the crew on
   the left and the delete button on the right. One hover moves one surface. The card lifts 2px,
   the border darkens, and the shadow deepens. The cover art zooms to 1.035. The list view puts a
@@ -197,8 +202,8 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
   with automatic stops. Those stops have no dwell time. The meter counted one of them as a planned
   day. A trip with nothing to do on it could then read “1 of 1 days planned” and “Ready to travel”.
   The meter and the card's next-step line now share one definition of a planned day: a day that
-  holds at least one usable stop that is not automatic. The label names the measure — “Days with
-  activities”. An anchored day asks you to “Plan day N” instead of reading as a finished trip.
+  holds at least one usable stop that is not automatic. The Up next card names the measure: “3 of 5
+  days have activities”. An anchored day asks you to “Plan day N” instead of reading as a finished trip.
 - **My Trips moves to the next day while the page stays open.** The page read the clock once and
   kept that value. A tab left open overnight said “Departs tomorrow” for a trip that leaves today,
   and the date filter was a day stale with it. `src/lib/dayClock.ts` holds one calendar-day clock.

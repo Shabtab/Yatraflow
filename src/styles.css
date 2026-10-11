@@ -8150,37 +8150,24 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 .mt-kicker-note { color: var(--text-3); font-size: .6em; font-weight: 600; letter-spacing: 0; white-space: nowrap; }
 
 /* ---------- Grid | List switch ---------- */
-.mt-seg { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--card); }
+.mt-seg { position: relative; display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; padding: 2px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--card); }
 .mt-seg button {
-  display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 14px;
+  position: relative; z-index: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px; padding: 0 14px;
   border: 0; border-radius: 999px; background: none; color: var(--text);
   font-size: 14px; font-weight: 600; cursor: pointer;
-  transition: background-color var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out);
+  transition: background-color var(--motion-fast) var(--ease-out), color var(--motion-med) var(--ease-glide);
 }
 .mt-seg button:hover:not([aria-pressed='true']) { background: var(--bg-soft); }
-.mt-seg button[aria-pressed='true'] { background: var(--text); color: var(--bg); }
+.mt-seg button[aria-pressed='true'] { background: transparent; color: var(--bg); }
 .mt-seg button:focus-visible { outline: none; box-shadow: var(--ring); }
 
 /* ---------- Grid ---------- */
 .mt-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
 @container mt-catalog (min-width: 560px) {
-  .mt-grid { grid-template-columns: repeat(var(--mt-c2, 2), minmax(0, 1fr)); gap: 18px; }
+  .mt-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
 }
 @container mt-catalog (min-width: 880px) {
-  .mt-grid { grid-template-columns: repeat(var(--mt-c3, 3), minmax(0, 1fr)); gap: 20px; }
-}
-/* A lone last card spans the row as a compact horizontal card. */
-@container mt-catalog (min-width: 560px) and (max-width: 879px) {
-  .mt-grid[data-lone-two='1'] > .mt-card:last-child { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 36fr) minmax(0, 64fr); }
-  .mt-grid[data-lone-two='1'] > .mt-card:last-child .mt-cover { aspect-ratio: auto; align-self: stretch; min-height: 150px; max-height: 220px; }
-  .mt-grid[data-lone-two='1'] > .mt-card:last-child .mt-card-main { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
-  .mt-grid[data-lone-two='1'] > .mt-card:last-child .mt-card-foot { flex-direction: column; align-items: flex-end; gap: 4px; margin: 0 8px 0 0; padding: 0; }
-}
-@container mt-catalog (min-width: 880px) {
-  .mt-grid[data-lone-three='1'] > .mt-card:last-child { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 36fr) minmax(0, 64fr); }
-  .mt-grid[data-lone-three='1'] > .mt-card:last-child .mt-cover { aspect-ratio: auto; align-self: stretch; min-height: 150px; max-height: 220px; }
-  .mt-grid[data-lone-three='1'] > .mt-card:last-child .mt-card-main { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
-  .mt-grid[data-lone-three='1'] > .mt-card:last-child .mt-card-foot { gap: 18px; margin: 0 14px 0 0; padding: 0; }
+  .mt-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
 }
 
 /* ---------- Card ---------- */
@@ -8272,7 +8259,8 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 .mt-meter { display: grid; gap: 6px; }
 .mt-meter-label { margin: 0; color: var(--text-2); font-size: 13.5px; }
 .mt-meter-label b { color: var(--text); font-weight: 700; }
-.mt-meter-bar { height: 8px; overflow: hidden; border-radius: 999px; background: color-mix(in srgb, var(--teal-deep) 18%, var(--card)); }
+/* The track edge uses --gray-400, so the empty track is visible on the card (3:1 or more). */
+.mt-meter-bar { box-sizing: border-box; height: 8px; overflow: hidden; border: 1px solid var(--gray-400); border-radius: 999px; background: color-mix(in srgb, var(--teal-deep) 18%, var(--card)); }
 .mt-meter-bar i { display: block; height: 100%; border-radius: 999px; background: var(--teal-deep); transition: width var(--motion-slow) var(--ease-out); }
 .mt-next { display: flex; align-items: flex-start; gap: 8px; margin: 0; padding: 8px 12px; border-radius: var(--radius-sm); background: var(--teal-soft); color: var(--text); font-size: 14.5px; line-height: 1.4; }
 .mt-next svg { flex: none; margin-top: 2px; color: var(--ink-teal); }
@@ -8308,10 +8296,14 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
   .mt-grid.is-list .mt-tag-dot { width: 8px; height: 8px; }
   .mt-grid.is-list .mt-card-main { display: grid; grid-template-columns: minmax(0, 1.6fr) 150px minmax(0, 1fr) 150px; align-items: center; gap: 0 20px; padding: 4px 8px 4px 18px; }
   .mt-grid.is-list .mt-card-body { display: contents; }
-  .mt-grid.is-list .mt-card-head { grid-column: 1; min-width: 0; }
-  .mt-grid.is-list .mt-stats { grid-column: 2; flex-direction: column; flex-wrap: nowrap; gap: 2px; }
-  .mt-grid.is-list .mt-card-chips { grid-column: 3; margin-top: 0; padding: 0; }
-  .mt-grid.is-list .mt-card-foot { grid-column: 4; justify-content: flex-end; gap: 12px; margin: 0; padding: 0; }
+  /* Head, stats and foot span two grid rows. The next-step row and the chips
+     stack in column 3, so a row with a step stays about as tall as one without. */
+  .mt-grid.is-list .mt-card-head { grid-column: 1; grid-row: 1 / span 2; min-width: 0; }
+  .mt-grid.is-list .mt-stats { grid-column: 2; grid-row: 1 / span 2; flex-direction: column; flex-wrap: nowrap; gap: 2px; }
+  .mt-grid.is-list .mt-task { grid-column: 3; grid-row: 1; }
+  .mt-grid.is-list .mt-card-chips { grid-column: 3; grid-row: 1 / span 2; margin-top: 0; padding: 0; }
+  .mt-grid.is-list .mt-task + .mt-card-chips { grid-row: 2; }
+  .mt-grid.is-list .mt-card-foot { grid-column: 4; grid-row: 1 / span 2; justify-content: flex-end; gap: 12px; margin: 0; padding: 0; }
   .mt-grid.is-list .mt-card-title { font-size: 18px; }
 }
 
@@ -8338,7 +8330,7 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
   .mt-grid.is-list .mt-route { font-size: 13px; line-height: 1.4; }
   .mt-grid.is-list .mt-stats { gap: 0 10px; font-size: 12.5px; line-height: 1.4; }
   .mt-grid.is-list .mt-stat-ico { display: none; }
-  .mt-grid.is-list .mt-card-chips, .mt-grid.is-list .mt-planners, .mt-grid.is-list .mt-solo { display: none; }
+  .mt-grid.is-list .mt-card-chips, .mt-grid.is-list .mt-task, .mt-grid.is-list .mt-planners, .mt-grid.is-list .mt-solo { display: none; }
   .mt-grid.is-list .mt-card-foot { justify-self: end; margin: 0; padding: 0; }
 }
 @media (max-width: 360px) {
@@ -8613,15 +8605,6 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 }
 @container ex-main (min-width: 880px) {
   .ex-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
-}
-/* A lone last card takes its own row and lays out across, like the featured card. */
-@container ex-main (min-width: 560px) and (max-width: 879px) {
-  .ex-grid > .ex-card:last-child:nth-child(2n + 1):not(:first-child) { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-  .ex-grid > .ex-card:last-child:nth-child(2n + 1):not(:first-child) .ex-cover-wrap { aspect-ratio: auto; align-self: stretch; min-height: 180px; }
-}
-@container ex-main (min-width: 880px) {
-  .ex-grid > .ex-card:last-child:nth-child(3n + 1):not(:first-child) { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-  .ex-grid > .ex-card:last-child:nth-child(3n + 1):not(:first-child) .ex-cover-wrap { aspect-ratio: auto; align-self: stretch; min-height: 180px; }
 }
 
 /* ---------- Itinerary card ---------- */
@@ -9826,7 +9809,7 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
   .ex-trend-item { flex: none; }
 }
 @container ex-main (min-width: 880px) {
-  .ex-trend-list { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+  .ex-trend-list { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
 }
 
 .ex-trend-card {
@@ -9836,7 +9819,7 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 }
 .ex-trend-card:hover { transform: translateY(-2px); box-shadow: var(--ex-shadow-md); border-color: var(--ex-line-strong); }
 .ex-trend-card:hover .ex-cover-img, .ex-trend-card:hover .mt-motif { transform: scale(1.035); }
-.ex-trend-cover { position: relative; overflow: hidden; aspect-ratio: 16 / 9; border-radius: var(--radius-sm); }
+.ex-trend-cover { position: relative; overflow: hidden; aspect-ratio: 16 / 10; border-radius: var(--radius-sm); }
 .ex-trend-rank {
   position: absolute; top: 8px; left: 8px; z-index: var(--z-raised); pointer-events: none;
   min-width: 28px; height: 28px; padding: 0 8px; box-sizing: border-box; display: inline-grid; place-items: center;
@@ -9858,13 +9841,6 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 }
 
 /* ===== My trips next step and view preference ===== */
-/* The planning meter on a grid or list card. It reuses the Up next bar
-   (.mt-meter-bar) and sets only its height and label here. */
-.mt-card-meter { display: grid; gap: 4px; }
-.mt-card-meter-label { margin: 0; color: var(--text-2); font-size: 13px; }
-.mt-card-meter-label b { color: var(--text); font-weight: 700; }
-.mt-card-meter .mt-meter-bar { height: 6px; }
-
 /* The next-step row: one link to the day or stop the step names. It sits above
    the card's whole-card link and keeps a 40px phone target. */
 .mt-task {
@@ -9885,3 +9861,33 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
   .mt-task { transition: none; }
 }
 
+
+/* ===== State-change motion: Grid | List switch and the filter reset ===== */
+/* A segmented control (one choice of two or more, a group of aria-pressed
+   buttons) slides a glider behind the active button. This is the toggle-glider
+   pattern from docs/MOTION-TOKENS.md. The group is a grid of equal columns, so
+   the glider needs no measuring: its box moves between two fixed positions.
+   The group sets data-layout to the active choice. The pressed button keeps no
+   fill of its own, because the glider paints it. The group's own rules are in
+   the Grid | List switch section above. */
+.mt-seg::before {
+  content: ''; position: absolute; z-index: 0; top: 2px; bottom: 2px; left: 2px;
+  width: calc((100% - 6px) / 2); border-radius: 999px; background: var(--text); pointer-events: none;
+  transition: left var(--motion-med) var(--ease-glide);
+}
+.mt-seg[data-layout='list']::before { left: calc(50% + 1px); }
+
+/* The Clear filters button fades in and slides 6px when a filter is set. On
+   My trips the button stays mounted and hidden by an inline style, so the
+   rule reads that style; on Explore the button mounts when a filter is set. */
+@keyframes ex-clear-in {
+  from { opacity: 0; transform: translateX(-6px); }
+  to { opacity: 1; transform: none; }
+}
+.ex-page .ex-clear,
+.trips-page .ex-clear[style*='visible'] { animation: ex-clear-in var(--motion-med) var(--ease-out) backwards; }
+
+@media (prefers-reduced-motion: reduce) {
+  .mt-seg::before, .mt-seg button { transition: none; }
+  .ex-page .ex-clear, .trips-page .ex-clear[style*='visible'] { animation: none; }
+}

@@ -13,6 +13,16 @@
 // able to fail: the class of bug it exists for (2026-10-06, a hero that popped
 // into place above a cascade) reads as "states = 1" here.
 //
+// A second step covers STATE CHANGES, which the page-load sampler cannot see.
+// It clicks the My trips Grid | List switch and samples the card blocks and the
+// switch's glider once per frame across the click. The cards must change opacity
+// or transform (the staggered entrance replays) and the glider must travel. A
+// layout that snaps shows one state per card and fails. My trips is a signed-in
+// route, and a clean browser holds no session, so the step needs a Playwright
+// storage state in MOTION_STORAGE_STATE (a file kept outside the repo). Without
+// it the step is skipped and says so; MOTION_REQUIRE_SESSION=1 turns that skip
+// into a failure for a job that does hold credentials.
+//
 // It runs in CI as its own job because it needs a browser. `npm run verify`
 // stays runnable on a machine with no Chrome.
 import { spawn } from 'node:child_process'
@@ -54,6 +64,30 @@ const SAMPLE = (windowMs) => {
   const start = performance.now()
   requestAnimationFrame(read)
 }
+
+// Samples the My trips card blocks and the switch glider once per frame. The
+// click lands after ~50ms, so the frames before it are the resting state.
+const SWITCH_SAMPLE = ({ clickSel, windowMs }) => new Promise((resolve) => {
+  const frames = []
+  const start = performance.now()
+  let clicked = false
+  const seg = document.querySelector('.mt-seg')
+  const step = () => {
+    const elapsed = performance.now() - start
+    if (!clicked && elapsed > 50) {
+      clicked = true
+      document.querySelector(clickSel)?.click()
+    }
+    const cards = [...document.querySelectorAll('.mt-grid > .mt-card')].slice(0, 6).map((el) => {
+      const cs = getComputedStyle(el)
+      return `${(+cs.opacity).toFixed(3)}|${cs.transform}`
+    })
+    frames.push({ clicked, cards, glider: seg ? getComputedStyle(seg, '::before').left : '' })
+    if (elapsed < windowMs) requestAnimationFrame(step)
+    else resolve(frames)
+  }
+  requestAnimationFrame(step)
+})
 
 function fail(message) {
   console.error(`\nmotion check: ${message}`)
@@ -127,8 +161,59 @@ server.on('exit', (code) => {
   if (code !== 0 && code !== null) fail(`vite preview exited with ${code}:\n${serverLog}`)
 })
 
+/** Click the My trips layout switch and report whether the cards and the glider
+ *  moved. Returns the number of failed directions. */
+async function checkLayoutSwitch(browser, storageState) {
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, storageState })
+  const page = await ctx.newPage()
+  let bad = 0
+  try {
+    await page.goto(`${BASE}/trips`, { waitUntil: 'domcontentloaded', timeout: 30000 })
+    const reached = await page.waitForSelector('.mt-seg', { timeout: 20000 }).then(() => true, () => false)
+    if (!reached) {
+      console.log('FAIL  /trips layout switch — the Grid | List switch never rendered; the session in MOTION_STORAGE_STATE may be expired')
+      return 1
+    }
+    await page.waitForSelector('.mt-grid > .mt-card', { timeout: 20000 }).catch(() => {})
+    if ((await page.locator('.mt-grid > .mt-card').count()) < 1) {
+      console.log('FAIL  /trips layout switch — the account has no trip cards in the grid, so there is nothing to sample')
+      return 1
+    }
+    // Start from the grid and let its entrance finish.
+    await page.click('.mt-seg button:nth-child(1)')
+    await page.waitForTimeout(1200)
+
+    for (const [label, clickSel] of [['grid -> list', '.mt-seg button:nth-child(2)'], ['list -> grid', '.mt-seg button:nth-child(1)']]) {
+      const frames = await page.evaluate(SWITCH_SAMPLE, { clickSel, windowMs: 1000 })
+      const after = frames.filter((f) => f.clicked)
+      const cardCount = Math.max(...after.map((f) => f.cards.length))
+      let cardsMoved = 0
+      for (let i = 0; i < cardCount; i++) {
+        const states = new Set(after.map((f) => f.cards[i]).filter((v) => v !== undefined))
+        // Three or more states: the rest state, the end state and a frame in between.
+        // Two states is a snap.
+        if (states.size > 2) cardsMoved++
+      }
+      const gliderStates = new Set(after.map((f) => f.glider)).size
+      const ok = cardCount > 0 && cardsMoved === cardCount && gliderStates > 2
+      if (ok) {
+        console.log(`ok    /trips layout switch ${label} — ${cardsMoved}/${cardCount} card(s) animated, glider took ${gliderStates} positions, across ${after.length} frames`)
+      } else {
+        bad++
+        console.log(`FAIL  /trips layout switch ${label} — ${cardsMoved}/${cardCount} card(s) passed through in-between opacity/transform frames, glider took ${gliderStates} position(s) across ${after.length} frames`)
+        console.log('        The cards snapped into the new layout, or the switch painted its pressed state with no glide.')
+      }
+      await page.waitForTimeout(1200)
+    }
+  } finally {
+    await ctx.close()
+  }
+  return bad
+}
+
 let browser
 let failures = 0
+let interactionFailures = 0
 try {
   await waitForServer()
   browser = await launchChrome()
@@ -193,13 +278,26 @@ try {
     if (pageErrors.length) console.log(`      page errors: ${pageErrors.join(' | ')}`)
     await ctx.close()
   }
+
+  const storageState = process.env.MOTION_STORAGE_STATE
+  if (storageState) {
+    if (!existsSync(storageState)) fail(`MOTION_STORAGE_STATE points at ${storageState}, which does not exist.`)
+    interactionFailures += await checkLayoutSwitch(browser, storageState)
+  } else if (process.env.MOTION_REQUIRE_SESSION === '1') {
+    fail('MOTION_REQUIRE_SESSION=1 but MOTION_STORAGE_STATE is not set; the layout-switch step cannot run.')
+  } else {
+    console.log('skip  /trips layout switch — My trips is a signed-in route; set MOTION_STORAGE_STATE to a Playwright storage-state file to run this step')
+  }
 } finally {
   stopping = true
   await browser?.close().catch(() => {})
   server.kill()
 }
 
+if (interactionFailures > 0) {
+  fail(`${interactionFailures} state-change interaction(s) did not move. A control that changes state must animate: slide its glider and replay the card entrance.`)
+}
 if (failures > 0) {
   fail(`${failures} route(s) rendered motionless blocks. A page block must animate in: give the page root's children the shared \`.page-enter > *\` cascade.`)
 }
-console.log('\nmotion check: every sampled block animated in.')
+console.log(`\nmotion check: every sampled block animated in${process.env.MOTION_STORAGE_STATE ? ', and every exercised state change moved' : ''}.`)

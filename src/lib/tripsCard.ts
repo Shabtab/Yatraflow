@@ -35,25 +35,12 @@ export function meterPercent(planned: number, total: number): number {
   return Math.min(100, Math.max(0, raw))
 }
 
-/**
- * Grid shape flags for the trip grid. The grid uses at most as many columns as
- * it has cards. A lone last card spans the row when it would sit alone: with
- * two columns when the count is odd and at least three, with three columns when
- * the count leaves a remainder of one and is at least four. The list layout
- * never spans.
- */
-export function gridShape(count: number, isGrid: boolean): {
-  columnsTwo: number
-  columnsThree: number
-  loneLastTwo: boolean
-  loneLastThree: boolean
-} {
-  return {
-    columnsTwo: Math.min(2, Math.max(1, count)),
-    columnsThree: Math.min(3, Math.max(1, count)),
-    loneLastTwo: isGrid && count >= 3 && count % 2 === 1,
-    loneLastThree: isGrid && count >= 4 && count % 3 === 1,
-  }
+/** Meter label: "3 of 5 days have activities". The noun and verb follow the
+ *  total, so one day reads "1 of 1 day has activities". No days gives "No days yet". */
+export function meterLabel(planned: number, total: number): string {
+  if (!(total > 0)) return 'No days yet'
+  const dayPhrase = total === 1 ? 'day has' : 'days have'
+  return `${planned} of ${total} ${dayPhrase} activities`
 }
 
 /** Midnight of the local calendar day of `date`, as a timestamp. It stays the

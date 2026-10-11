@@ -209,7 +209,7 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
   // The trending shelf: the same catalog, the featured pick left out, and drawn
   // only while nothing is filtered and the catalog read is ready (lib/explorePage.ts).
   const shelfPicks = useMemo(
-    () => trendingShelfPicks({ pubs: published, featured, filtersActive, ready: pubsRead === 'ready' }),
+    () => trendingShelfPicks({ pubs: published, featured, filtersActive, ready: pubsRead === 'ready', limit: 3 }),
     [published, featured, filtersActive, pubsRead],
   )
   // The grid leaves out the featured pick and, while the shelf shows, the shelf's

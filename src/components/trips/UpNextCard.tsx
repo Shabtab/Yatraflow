@@ -1,11 +1,12 @@
 // ============ My trips — the pinned "Up next" card ============
 // The trip that starts soonest, or the one under way. It shows the countdown,
-// how much of the plan exists, and the next step the card's row also offers.
-import { useId, type ReactNode } from 'react'
+// the count of days that have activities (hidden once the trip is live, when the
+// day count is the progress), and the next step the card's row also offers.
+import type { ReactNode } from 'react'
 import { Check, Flag, Trash2 } from 'lucide-react'
 import { appLink } from '../../lib/appLink'
 import { nextStepRoute } from '../../lib/tripNextStep'
-import { meterPercent, routeLine, travelHoursText } from '../../lib/tripsCard'
+import { meterLabel, meterPercent, routeLine, travelHoursText } from '../../lib/tripsCard'
 import { cardNextStep, countdownText, planning, rangeText, statusOf } from '../../lib/tripsPage'
 import type { Trip, User } from '../../data/types'
 import { Planners } from './Planners'
@@ -23,10 +24,10 @@ export interface UpNextCardProps {
 }
 
 export function UpNextCard({ trip, today, budget, totalTravelMinutes, users, meId, onDelete }: UpNextCardProps) {
-  const meterLabelId = useId()
   const status = statusOf(trip, today)
   const countdown = countdownText(trip, today)
   const { planned, total } = planning(trip)
+  const meterText = meterLabel(planned, total)
   const step = cardNextStep(trip, today)
   const plannerCount = (trip.members ?? []).length
   const detailRoute: `/${string}` = `/trip/${trip.id}`
@@ -47,26 +48,24 @@ export function UpNextCard({ trip, today, budget, totalTravelMinutes, users, meI
           <Planners trip={trip} users={users} meId={meId} />
           {plannerCount > 1 && <span>{plannerCount} planners</span>}
         </div>
-        <div className="mt-meter">
-          {total > 0 ? (
-            <>
-              <p className="mt-meter-label" id={meterLabelId}><b>{planned} of {total}</b> days planned</p>
+        {status !== 'live' && (
+          <div className="mt-meter">
+            <p className="mt-meter-label" aria-hidden={total > 0 ? true : undefined}>{meterText}</p>
+            {total > 0 && (
               <div
                 className="mt-meter-bar"
-                role="progressbar"
-                aria-labelledby={meterLabelId}
+                role="meter"
+                aria-label="Days with activities"
                 aria-valuemin={0}
                 aria-valuemax={total}
                 aria-valuenow={planned}
-                aria-valuetext={`${planned} of ${total} days planned`}
+                aria-valuetext={meterText}
               >
                 <i style={{ width: `${meterPercent(planned, total)}%` }} />
               </div>
-            </>
-          ) : (
-            <p className="mt-meter-label">No days planned yet</p>
-          )}
-        </div>
+            )}
+          </div>
+        )}
         {step && (step.kind === 'done' ? (
           <p className="mt-next">
             <Check size={15} aria-hidden />

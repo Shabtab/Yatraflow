@@ -1,5 +1,5 @@
 // ============ My trips ============
-import { useEffect, useId, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Compass, Plus, Rocket, ShoppingBag, Trash2, X } from 'lucide-react'
 import { InlineIcon } from '../components/icons'
 import { useTrips, useTrashedTrips, useUsers, useSessionUserId, useSliceReads, useTrashLoaded, useTrashFailed, tripsForUser, trashTrip, restoreTrashedTrip, restoreTrashedTripById, permanentlyDeleteTrip, fetchTrashedTrips, rereadTrips, addDemoTrips } from '../store/store'
@@ -15,7 +15,7 @@ import { sliceState, emptyCopyFor, readState } from '../lib/readState'
 import type { Trip } from '../data/types'
 import { TRAVEL_STYLES } from '../data/types'
 import { heroHeadline, heroNote, heroPostcards, heroStats, otherTripsEmptyKind, pickUpNext, whenBucket, type WhenKey } from '../lib/tripsPage'
-import { gridShape, layoutFromPref, startOfLocalDay, TRIPS_LAYOUT_PREF } from '../lib/tripsCard'
+import { layoutFromPref, startOfLocalDay, TRIPS_LAYOUT_PREF } from '../lib/tripsCard'
 import { loadPref, savePref } from '../lib/uiPrefs'
 import { TripArtSprite } from '../components/trips/TripArt'
 import { TripsHero } from '../components/trips/TripsHero'
@@ -167,7 +167,6 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
   const upNextTotals = upNext ? computeTotals(upNext) : null
   const otherTrips = upNext ? trips.filter(t => t.id !== upNext.id) : trips
   const otherEmptyKind = otherTripsEmptyKind({ matchCount: trips.length, otherCount: otherTrips.length, hasFilters })
-  const shape = gridShape(otherTrips.length, layout === 'grid')
   const upNextTitleId = useId()
   const otherTitleId = useId()
 
@@ -424,12 +423,9 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
                 action={<button className="btn btn-secondary" onClick={clearFilters}>Clear filters</button>}
               />
             ) : otherEmptyKind === 'none' ? (
-              <div
-                className={`mt-grid${layout === 'list' ? ' is-list' : ''}`}
-                data-lone-two={shape.loneLastTwo ? '1' : '0'}
-                data-lone-three={shape.loneLastThree ? '1' : '0'}
-                style={{ '--mt-c2': shape.columnsTwo, '--mt-c3': shape.columnsThree } as CSSProperties}
-              >
+              // The grid is keyed by its layout, so a Grid | List switch remounts the cards
+              // and they replay the staggered entrance (cardIn) instead of snapping.
+              <div key={layout} className={`mt-grid${layout === 'list' ? ' is-list' : ''}`}>
                 {otherTrips.map((t, i) => {
                   const totals = computeTotals(t)
                   return (

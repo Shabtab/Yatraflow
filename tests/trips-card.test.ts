@@ -1,6 +1,6 @@
 // ============ My trips cards — pure text helpers ============
 import { describe, expect, it } from 'vitest'
-import { gridShape, layoutFromPref, meterPercent, routeLine, startOfLocalDay, travelHoursText } from '../src/lib/tripsCard'
+import { layoutFromPref, meterLabel, meterPercent, routeLine, startOfLocalDay, travelHoursText } from '../src/lib/tripsCard'
 import type { ItineraryDay } from '../src/data/types'
 
 const days = (count: number) => Array.from({ length: count }, () => ({ stops: [] }) as unknown as ItineraryDay)
@@ -41,28 +41,19 @@ describe('meterPercent', () => {
   })
 })
 
-describe('gridShape', () => {
-  it('never asks for more columns than cards', () => {
-    expect(gridShape(1, true)).toMatchObject({ columnsTwo: 1, columnsThree: 1 })
-    expect(gridShape(2, true)).toMatchObject({ columnsTwo: 2, columnsThree: 2 })
-    expect(gridShape(9, true)).toMatchObject({ columnsTwo: 2, columnsThree: 3 })
+describe('meterLabel', () => {
+  it('names the planned days out of the total, with the plural verb', () => {
+    expect(meterLabel(3, 5)).toBe('3 of 5 days have activities')
   })
-  it('keeps one column for an empty grid', () => {
-    expect(gridShape(0, true)).toMatchObject({ columnsTwo: 1, columnsThree: 1 })
+  it('reads zero planned of several days as plural', () => {
+    expect(meterLabel(0, 3)).toBe('0 of 3 days have activities')
   })
-  it('flags a lone last card in the two-column grid', () => {
-    expect(gridShape(3, true).loneLastTwo).toBe(true)
-    expect(gridShape(4, true).loneLastTwo).toBe(false)
-    expect(gridShape(2, true).loneLastTwo).toBe(false)
+  it('uses the singular noun and verb for one day', () => {
+    expect(meterLabel(1, 1)).toBe('1 of 1 day has activities')
+    expect(meterLabel(0, 1)).toBe('0 of 1 day has activities')
   })
-  it('flags a lone last card in the three-column grid', () => {
-    expect(gridShape(4, true).loneLastThree).toBe(true)
-    expect(gridShape(7, true).loneLastThree).toBe(true)
-    expect(gridShape(6, true).loneLastThree).toBe(false)
-    expect(gridShape(3, true).loneLastThree).toBe(false)
-  })
-  it('never flags the list layout', () => {
-    expect(gridShape(5, false)).toMatchObject({ loneLastTwo: false, loneLastThree: false })
+  it('says there are no days yet when the trip has none', () => {
+    expect(meterLabel(0, 0)).toBe('No days yet')
   })
 })
 

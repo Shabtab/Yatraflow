@@ -2,13 +2,13 @@
 // One markup, two looks. The grid shows three labelled columns (budget, travel,
 // dates). The list switch restyles the same card as a row. The whole card is
 // one link on the title; the delete button and the next-step row sit above it.
-import { useId, type CSSProperties, type ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { Check, ChevronRight, Flag, Trash2 } from 'lucide-react'
 import { appLink } from '../../lib/appLink'
 import { cap } from '../../lib/labels'
 import { nextStepRoute } from '../../lib/tripNextStep'
-import { meterPercent, routeLine, travelHoursText } from '../../lib/tripsCard'
-import { cardNextStep, planning, rangeText, statusOf } from '../../lib/tripsPage'
+import { routeLine, travelHoursText } from '../../lib/tripsCard'
+import { cardNextStep, rangeText, statusOf } from '../../lib/tripsPage'
 import type { Trip, User } from '../../data/types'
 import { Planners } from './Planners'
 import { TripCover } from './TripCover'
@@ -28,10 +28,8 @@ export interface TripCardProps {
 }
 
 export function TripCard({ trip, today, budget, totalTravelMinutes, users, meId, enterIndex, onDelete }: TripCardProps) {
-  const meterLabelId = useId()
   const status = statusOf(trip, today)
   const step = cardNextStep(trip, today)
-  const { planned, total } = planning(trip)
   const plannerCount = (trip.members ?? []).length
   const enterDelay: CSSProperties = { animationDelay: `calc(var(--stagger-step) * ${Math.min(enterIndex, 8)})` }
   return (
@@ -46,24 +44,6 @@ export function TripCard({ trip, today, budget, totalTravelMinutes, users, meId,
             <p className="mt-route">{routeLine(trip)}</p>
           </div>
           <TripFacts budget={budget} travel={travelHoursText(totalTravelMinutes)} dates={rangeText(trip, today)} />
-          {total > 0 ? (
-            <div className="mt-card-meter">
-              <p className="mt-card-meter-label" id={meterLabelId}><b>{planned} of {total}</b> days planned</p>
-              <div
-                className="mt-meter-bar"
-                role="progressbar"
-                aria-labelledby={meterLabelId}
-                aria-valuemin={0}
-                aria-valuemax={total}
-                aria-valuenow={planned}
-                aria-valuetext={`${planned} of ${total} days planned`}
-              >
-                <i style={{ width: `${meterPercent(planned, total)}%` }} />
-              </div>
-            </div>
-          ) : (
-            <p className="mt-card-meter-label">No days planned yet</p>
-          )}
           {step && (step.kind === 'done' ? (
             <p className="mt-task mt-task--done"><Check size={15} aria-hidden /><span className="mt-task-label">{step.label}</span></p>
           ) : (
