@@ -23,6 +23,7 @@ import { SearchField } from '../components/filters/SearchField'
 import { UpNextCard } from '../components/trips/UpNextCard'
 import { TripCard } from '../components/trips/TripCard'
 import { ViewSwitch, type TripsLayout } from '../components/trips/ViewSwitch'
+import { SectionHead } from '../components/page/SectionHead'
 
 type SortKey = 'recent' | 'name' | 'budget-asc' | 'budget-desc' | 'length-desc'
 
@@ -321,11 +322,8 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
         <div className="mt-catalog">
           {upNext && upNextTotals && (
             <section aria-labelledby={upNextTitleId}>
-              <div className="mt-section-head">
-                <h2 className="mt-section-title" id={upNextTitleId}>
-                  Up next{upNextIsOutsideFilters && <span className="mt-kicker-note"> · outside your filters</span>}
-                </h2>
-              </div>
+              <SectionHead id={upNextTitleId}
+                title={<>Up next{upNextIsOutsideFilters && <span className="mt-kicker-note"> · outside your filters</span>}</>} />
               <UpNextCard
                 trip={upNext}
                 today={today}
@@ -339,13 +337,14 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
           )}
 
           <section aria-labelledby={otherTitleId}>
-            <div className="mt-section-head">
-              <h2 className="mt-section-title" id={otherTitleId}>{upNext ? 'Other trips' : 'All trips'} ({otherTrips.length})</h2>
-              <div className="mt-head-actions">
-                <button ref={headerTrashToggleRef} type="button" className="btn btn-quiet" aria-pressed={isTrashView} onClick={toggleTrash}><InlineIcon icon={Trash2} size={15} gap={5} />Trash</button>
-                <ViewSwitch layout={layout} onChange={setLayout} />
-              </div>
-            </div>
+            <SectionHead id={otherTitleId}
+              title={`${upNext ? 'Other trips' : 'All trips'} (${otherTrips.length})`}
+              actions={(
+                <>
+                  <button ref={headerTrashToggleRef} type="button" className="btn btn-quiet" aria-pressed={isTrashView} onClick={toggleTrash}><InlineIcon icon={Trash2} size={15} gap={5} />Trash</button>
+                  <ViewSwitch layout={layout} onChange={setLayout} />
+                </>
+              )} />
 
             {/* ---- Explore's filter bar: search, selects, then chips ---- */}
             <div className="ex-filterbar filterbar-host" role="search" aria-label="Filter your trips">
