@@ -20,6 +20,8 @@
 > kicker recipe includes `.eyebrow` (`src/styles.css:5250–5263`, same snapshot).
 > Do not restore the deleted scales or reverse the contrast fix from these rows;
 > use `DESIGN_TOKENS.md` for the current inventory and legacy-kicker exception.
+>
+> **Explore rebuild.** The Explore page was rebuilt with `ex-` classes. The old `explore-hero` and `featured-card` selectors no longer exist, so their rows below describe the pre-rebuild page.
 
 **Started:** 2026-09-12 · `main` = `test` = `f754b7e` (release v0.50.2)
 **Method:** rule-by-rule pass against the project's own design language — `src/styles.css` token system,

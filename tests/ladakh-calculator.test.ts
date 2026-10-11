@@ -159,6 +159,15 @@ describe('Ladakh calculator page', () => {
     expect(core.formatRange(r.perPerson)).toBe('₹15,400 – ₹22,300')
   })
 
+  it('shows the price check date and carries dateModified in the JSON-LD', () => {
+    expect(html).toContain('Prices checked October 2026')
+    const block = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)
+    expect(block).not.toBeNull()
+    const ld = JSON.parse(block![1])
+    expect(ld.dateModified).toBe('2026-10-10')
+    expect(ld.datePublished).toBe('2026-10-10')
+  })
+
   it('has no button element and no raw animation durations', () => {
     expect(html).not.toContain('<button')
     const css = html.slice(html.indexOf('<style>'), html.indexOf('</style>'))

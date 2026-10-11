@@ -22,6 +22,9 @@ dev_server_err.log
 dev.log
 docs/diagrams/*.html
 
+# verify-yatraflow skill: run state and proof artifacts (screenshots, evidence JSON)
+.verify-evidence/
+
 # local build/verify output dumps
 tsc_out.txt
 vitest_out.txt

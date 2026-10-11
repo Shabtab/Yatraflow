@@ -25,6 +25,13 @@
       "headers": [{ "key": "Cache-Control", "value": "public, max-age=3600" }]
     }
   ],
+  "redirects": [
+    {
+      "source": "/ladakh-trip-cost-calculator",
+      "destination": "/ladakh-trip-cost-calculator/",
+      "permanent": true
+    }
+  ],
   "rewrites": [
     {
       "source": "/i/:id",

@@ -62,6 +62,12 @@
 // SAFETY
 //   * A plain run is a DRY RUN: it prints the plan and changes nothing. Add
 //     `--apply` to write, `--clean` to remove the fixture's rows.
+//   * It writes to a LOCAL project only, unless you opt in on purpose. A remote
+//     project needs FIXTURE_ALLOW_REMOTE=<its exact host> and your own
+//     FIXTURE_PASSWORD. Promoting the admin on a remote project also needs
+//     `--promote-admin`. The rules live in `scripts/fixtureGuard.mjs`. The guard
+//     exists because one run against the live project put "(fixture)"
+//     itineraries into the live sitemap.
 //   * It only touches rows it names: the fixture's own four trips, its three
 //     publications, and the orders/entitlements pointing at them. The buyer,
 //     creator and admin accounts are shared with nothing else — they exist per
@@ -104,6 +110,8 @@ import {
 // numbers a browser check needs an answer key for are in `fixtureFunnelPlan.mjs`
 // (see that file's header).
 import { FUNNEL_PLAN, funnelTotals, planFunnelEvents, PLAN_WINDOWS, windowTotals } from './fixtureFunnelPlan.mjs'
+// The guard that keeps this script off the live project (see that file's header).
+import { FIXTURE_DEFAULT_PASSWORD, checkFixtureTarget } from './fixtureGuard.mjs'
 
 const GREEN = '\x1b[32m', RED = '\x1b[31m', YELLOW = '\x1b[33m', DIM = '\x1b[2m', OFF = '\x1b[0m'
 
@@ -132,8 +140,17 @@ const args = new Set(process.argv.slice(2))
 const APPLY = args.has('--apply')
 const CLEAN = args.has('--clean')
 
+// Where would this run write? A local project passes. A remote project needs
+// FIXTURE_ALLOW_REMOTE=<host> and its own FIXTURE_PASSWORD, and the admin
+// promotion needs --promote-admin there. Checked below, BEFORE any write.
+const GUARD = checkFixtureTarget({
+  url: URL,
+  env: { FIXTURE_ALLOW_REMOTE: env('FIXTURE_ALLOW_REMOTE'), FIXTURE_PASSWORD: env('FIXTURE_PASSWORD') },
+  args,
+})
+
 // ------------------------------------------------------------------- fixture
-const PASSWORD = env('FIXTURE_PASSWORD') || 'yatraflow-fixture-2026'
+const PASSWORD = env('FIXTURE_PASSWORD') || FIXTURE_DEFAULT_PASSWORD
 const CREATOR = { email: env('FIXTURE_CREATOR_EMAIL') || 'creator-fixture@example.com', pass: PASSWORD }
 const BUYERS = [1, 2, 3].map(n => ({ email: `fixture-buyer-${n}@example.com`, pass: PASSWORD }))
 // The console's operator, and a creator too: the second payee the per-creator
@@ -382,7 +399,7 @@ function funnelPlanLines() {
 
 function printPlan() {
   console.log(`\n${DIM}YatraFlow creator fixture — ${APPLY ? 'APPLY' : 'DRY RUN'}${OFF}`)
-  console.log(`project: ${URL}`)
+  console.log(`project: ${URL}  (${GUARD.local ? 'local' : 'REMOTE'})`)
   console.log(`creator: ${CREATOR.email}`)
   console.log(`buyers:  ${BUYERS.map(b => b.email).join(', ')}\n`)
   console.log('publications')
@@ -395,7 +412,9 @@ function printPlan() {
   console.log(`  gross ₹${EXPECTED.grossInr.toLocaleString('en-IN')} · fee ₹${EXPECTED.feeInr.toLocaleString('en-IN')} · net ₹${EXPECTED.netInr.toLocaleString('en-IN')}`)
   console.log(`\nadmin`)
   console.log(`  ${ADMIN.email}  → ${ADMIN_PUBLICATION.id}  ₹${ADMIN_PUBLICATION.priceInr.toLocaleString('en-IN')}  ${ADMIN_PUBLICATION.title}`)
-  console.log(`  to be promoted to masteradmin (JWT app_metadata role)`)
+  console.log(GUARD.promoteAdmin
+    ? `  to be promoted to masteradmin (JWT app_metadata role)`
+    : `  NOT promoted: this project is remote (pass --promote-admin to promote it)`)
   console.log(`  its own ledger: gross ₹${ADMIN_EXPECTED.grossInr.toLocaleString('en-IN')} · fee ₹${ADMIN_EXPECTED.feeInr.toLocaleString('en-IN')} · net ₹${ADMIN_EXPECTED.netInr.toLocaleString('en-IN')}`)
   console.log('  its sales:')
   for (const s of ADMIN_SALES) {
@@ -507,7 +526,7 @@ function printSqlFallback({ creatorId, adminId, buyerIds, creatorPubIds, adminPu
   console.log(`\n${YELLOW}No SUPABASE_SERVICE_ROLE_KEY and no PGCONN — paste this into the Supabase SQL editor,\nthen sign out and back in (the admin role lives in the JWT, so a fresh one is needed).${OFF}
 
 -- 1. the admin's role (account ${adminId})
-${adminPromotionSql(ADMIN.email)}
+${GUARD.promoteAdmin ? adminPromotionSql(ADMIN.email) : '-- skipped: this project is remote. Pass --promote-admin to print the promotion statement.'}
 
 -- 2. orders — ${SALES.length} for creator ${creatorId}, ${ADMIN_SALES.length} for admin ${adminId}
 ${orders}
@@ -632,9 +651,11 @@ async function apply() {
   const creator = await seedOwner(CREATOR, PUBLICATIONS, 'creator')
   const admin = await seedOwner(ADMIN, [ADMIN_PUBLICATION], 'admin')
 
-  const promoted = await promoteMasteradmin(URL, SERVICE, admin.userId, ADMIN.email)
+  const promoted = GUARD.promoteAdmin ? await promoteMasteradmin(URL, SERVICE, admin.userId, ADMIN.email) : false
   if (promoted) {
     console.log(`${GREEN}admin promoted${OFF} ${ADMIN.email} → masteradmin (sign OUT and back in: the role lives in the JWT)`)
+  } else if (!GUARD.promoteAdmin) {
+    console.log(`${YELLOW}admin NOT promoted${OFF} — this project is remote. Pass --promote-admin to promote ${ADMIN.email} to masteradmin here.`)
   } else {
     console.log(`${YELLOW}admin NOT promoted${OFF} — no elevation, so the role cannot be set. Paste the statement below, then sign out and back in.`)
   }
@@ -781,6 +802,15 @@ if (/YOUR-PROJECT/.test(URL)) {
 }
 
 printPlan()
+
+// Nothing below may touch the network until the guard agrees. This covers
+// --clean too: it signs the fixture accounts up before it deletes anything.
+if ((CLEAN || APPLY) && !GUARD.ok) {
+  console.error(`\n${RED}Refusing to write to ${GUARD.host}.${OFF}`)
+  for (const problem of GUARD.problems) console.error(`  - ${problem}`)
+  console.error(`${DIM}A plain run (no --apply, no --clean) is a dry run and is always allowed.${OFF}`)
+  process.exit(2)
+}
 
 if (CLEAN) {
   await clean()

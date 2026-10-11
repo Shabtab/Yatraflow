@@ -57,8 +57,10 @@ describe('#386 — the manual seed refuses duplicates and broken reads (source)'
     expect(body).toContain('demoSeedInFlight')
   })
 
-  it('both wirings call the same guarded function', () => {
-    expect(page().split('onClick={addDemoTrips}').length - 1).toBe(2)
+  it('the one button, in the zero-trips empty state, calls the guarded function', () => {
+    // The hero no longer carries a second "Load demo trips" button: the demo
+    // seed is offered only where there are no trips yet.
+    expect(page().split('onClick={addDemoTrips}').length - 1).toBe(1)
   })
 
   it('keeps the load-bearing seed mechanics it did not change', () => {
@@ -71,8 +73,85 @@ describe('#386 — the manual seed refuses duplicates and broken reads (source)'
     expect(s).toContain('seed trip member insert failed')
   })
 
-  it('the header seed button stands down while the trips read is failed', () => {
-    expect(page()).toContain(`disabled={tripsRead === 'failed'}`)
+  it('the seed button sits behind the trips verdict, so a failed read never shows it', () => {
+    const p = page()
+    const guard = p.indexOf("tripsRead !== 'ready'")
+    const button = p.indexOf('onClick={addDemoTrips}')
+    expect(guard).toBeGreaterThan(-1)
+    expect(button).toBeGreaterThan(guard)
+  })
+
+  it('the seed button sits inside the zero-trips branch and nowhere else', () => {
+    // The branch that renders when the user has no trips (and no filter hides
+    // them) starts at this condition and ends where the catalog branch begins.
+    const p = page()
+    const branchStart = p.indexOf('trips.length === 0 && !hasFilters ? (')
+    const catalogStart = p.indexOf('<div className="mt-catalog">')
+    const button = p.indexOf('onClick={addDemoTrips}')
+    expect(branchStart, 'the zero-trips branch moved or was renamed').toBeGreaterThan(-1)
+    expect(catalogStart).toBeGreaterThan(branchStart)
+    expect(button).toBeGreaterThan(branchStart)
+    expect(button).toBeLessThan(catalogStart)
+    // The first-run copy of that branch is the one that offers it.
+    expect(p.slice(branchStart, button)).toContain('title="No trips yet"')
+    // The hero, which shows with trips too, never offers it.
+    const heroEnd = p.indexOf('/>\n\n      {view === \'trash\'')
+    expect(heroEnd).toBeGreaterThan(-1)
+    expect(p.slice(0, heroEnd)).not.toContain('onClick={addDemoTrips')
+  })
+})
+
+describe('My trips Trash toggle and hero wiring (source)', () => {
+  const css = () => src('../src/styles.css')
+
+  it('both Trash toggles and the Back button report the view through one handler', () => {
+    const p = page()
+    expect(p.split('aria-pressed={isTrashView}').length - 1).toBe(2)
+    expect(p.split('onClick={toggleTrash}').length - 1).toBe(3)
+    expect(p).not.toContain("setView('trips')")
+  })
+
+  it('moves focus to the Trash heading on entry and to a Trash toggle on return', () => {
+    const p = page()
+    expect(p).toContain('<h3 ref={trashHeadingRef} tabIndex={-1}')
+    expect(p).toContain('trashHeadingRef.current?.focus()')
+    expect(p).toContain('(headerTrashToggleRef.current ?? heroTrashToggleRef.current)?.focus()')
+  })
+
+  it('keeps Trash reachable whenever the Other trips header is not drawn', () => {
+    const p = page()
+    expect(p).toContain("const showsOtherTripsHeader = !isTrashView && tripsRead === 'ready' && !(trips.length === 0 && !hasFilters)")
+    expect(p).toContain('{!showsOtherTripsHeader && (')
+  })
+
+  it('gates the headline, stats, postcards and note on the same ready flag', () => {
+    const p = page()
+    for (const call of ['heroHeadline', 'heroStats', 'heroPostcards', 'heroNote']) {
+      const start = p.indexOf(`${call}({`)
+      expect(start, call).toBeGreaterThan(-1)
+      const argsEnd = p.indexOf('})', start)
+      expect(p.slice(start, argsEnd), call).toContain('ready: tripsReady')
+    }
+  })
+
+  it('uses the secondary style, never btn-outline, for the buttons on the page', () => {
+    expect(page()).not.toContain('btn-outline')
+  })
+
+  it('styles a pressed quiet button and keeps the page button rules off dialogs and small buttons', () => {
+    const c = css()
+    expect(c).toContain(".btn-quiet[aria-pressed='true']:where(:not(.modal *))")
+    expect(c).toContain('.btn:where(:not(.btn-sm, .modal *)) {')
+    expect(c).not.toMatch(/:is\(\.ex-page, \.trips-page\) \.btn \{\s*min-height/)
+    expect(c).not.toContain('.btn.on-teal')
+  })
+
+  it('hides the postcards and the note below 640px on both pages with one rule', () => {
+    const c = css()
+    const phone = c.indexOf('No postcards and no handwritten note on a phone')
+    expect(phone).toBeGreaterThan(-1)
+    expect(c.slice(phone, phone + 120)).toContain('.ex-hero-visual { display: none; }')
+    expect(c).not.toContain('.mt-hero .ex-hero-visual { display: none; }')
   })
 })
 

@@ -9,12 +9,13 @@ import type { Trip } from '../../data/types'
 import { useDb, userById, activityFor } from '../../store/store'
 import { computeHealth, computeTotals, formatInr, minutesToHM, countHotelNights, isRoundTrip } from '../../lib/engine'
 import { healthBandClass, healthBandTone } from '../../lib/healthBand'
-import { overviewRoutePoints, routeWeatherAnchor } from '../../lib/overviewTruth'
+import { overviewRoutePoints } from '../../lib/overviewTruth'
 import { rankWarnings, warningKey, maxWarningSeverity, severityLead } from '../../lib/overviewWarnings'
 import { matrixFreshness } from '../../lib/matrixFreshness'
 import { useTimeFormat, formatHM } from '../../lib/timefmt'
-import { fetchDailyWeather, forecastAvailable, wmoInfo } from '../../lib/weather'
+import { fetchDailyWeather, forecastAvailable, isoAddDays, weatherAnchor, wmoInfo } from '../../lib/weather'
 import type { DayWeather } from '../../lib/weather'
+import { useWeatherRefreshTick } from '../../hooks/useWeatherRefresh'
 import { timeAgo } from './shared'
 import { Avatar, Chip, StatTile, RouteSnapshot } from '../../components/ui'
 import { InlineIcon, wmoIcon } from '../../components/icons'
@@ -235,24 +236,47 @@ export function OverviewTab({ trip, onOpenTimeline, onOpenMap, onInvite, health,
 function WeatherCard({ trip }: { trip: Trip }) {
   const [byDate, setByDate] = useState<Record<string, DayWeather>>({})
   const [state, setState] = useState<'loading' | 'ready' | 'unavailable'>('loading')
+  const tick = useWeatherRefreshTick()
 
-  // #403: the anchor is the centroid of the trip's VALID, non-rejected stops.
-  // It used to average every non-rejected stop with no validity check, so ONE
-  // `(0,0)` placeholder moved the centroid halfway to Null Island — and the
-  // forecast fetch then SUCCEEDED for the wrong ocean under the heading
-  // "Weather along the route", which is worse than showing nothing. No valid
-  // stop is now null, and the card hides rather than inventing a city.
-  const anchor = useMemo(() => routeWeatherAnchor(trip), [trip])
+  // Per-day anchor + per-day forecast-window gate — the SAME rule the Timeline
+  // chip uses. This used to centre ONE centroid across the whole trip, so a
+  // multi-city trip showed the midpoint's weather for every day (a forecast for
+  // the sea between cities). Each day now asks about its OWN first placed stop;
+  // a day with no anchor, or one past the forecast window, has no cell until it
+  // closes in. Nothing is invented.
+  const dayAnchors = useMemo(() => {
+    const out: Array<{ date: string; lat: number; lng: number }> = []
+    for (const day of trip.days) {
+      const date = isoAddDays(trip.startDate, day.index)
+      if (!forecastAvailable(date)) continue
+      const a = weatherAnchor(day)
+      if (a) out.push({ date, lat: a.lat, lng: a.lng })
+    }
+    return out
+  }, [trip])
 
   useEffect(() => {
-    if (!anchor || !forecastAvailable(trip.startDate)) { setState('unavailable'); return }
+    if (dayAnchors.length === 0) return
     let cancelled = false
-    fetchDailyWeather(anchor.lat, anchor.lng, trip.startDate, trip.days.length || 1)
-      .then(w => { if (!cancelled) { setByDate(w); setState('ready') } })
+    Promise.all(dayAnchors.map(d => fetchDailyWeather(d.lat, d.lng, d.date, 1, { force: tick > 0 })))
+      .then(results => {
+        if (cancelled) return
+        const merged: Record<string, DayWeather> = {}
+        results.forEach((r, i) => {
+          const w = r[dayAnchors[i].date]
+          if (w) merged[w.date] = w
+        })
+        setByDate(merged)
+        setState(Object.keys(merged).length > 0 ? 'ready' : 'unavailable')
+      })
       .catch(() => { if (!cancelled) setState('unavailable') })
     return () => { cancelled = true }
-  }, [anchor, trip.startDate, trip.days.length])
+  }, [dayAnchors, tick])
 
+  // No anchored day inside the forecast window yet — a far-future trip, or one
+  // with no placed stops. Show nothing rather than a spinner that never
+  // resolves; derived from the data, not set from the effect above.
+  if (dayAnchors.length === 0) return null
   if (state === 'loading') {
     return <div className="card"><h3 className="card-head"><InlineIcon icon={CloudSun} size={14} gap={4} />Weather</h3><p className="muted small">Loading forecast…</p></div>
   }
@@ -264,7 +288,7 @@ function WeatherCard({ trip }: { trip: Trip }) {
     <div className="card">
       <div className="row-between card-head">
         <h3><InlineIcon icon={CloudSun} size={14} gap={4} />Weather along the route</h3>
-        <span className="small muted">Open-Meteo · forecasts ±15 days</span>
+        <span className="small muted">Open-Meteo · auto-refreshed · ±15 days</span>
       </div>
       <div className="weather-strip">
         {entries.map(w => {

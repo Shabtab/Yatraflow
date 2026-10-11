@@ -80,7 +80,7 @@ export function InlineIcon({ icon: Icon, size = 13, gap = 4, className, style, f
   /** baseline nudge; -1px is the 12px-glyph house style */
   vAlign?: string
 }): ReactNode {
-  return <Icon size={size} aria-hidden fill={fill}
+  return <Icon size={size} aria-hidden fill={fill ?? 'none'}
     className={[size <= 12 ? 'ic-sm' : '', className].filter(Boolean).join(' ') || undefined}
     style={{ verticalAlign: vAlign, marginRight: gap, ...style }} />
 }

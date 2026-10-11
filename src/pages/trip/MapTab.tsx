@@ -65,6 +65,7 @@ import { scrollBehavior } from '../../lib/motion'
 import type { SegmentHit } from '../../lib/geocode'
 import { projectOntoPolyline } from '../../lib/providers/hits'
 import { fetchDailyWeather, forecastAvailable, isoAddDays, todayISO } from '../../lib/weather'
+import { useWeatherRefreshTick } from '../../hooks/useWeatherRefresh'
 // MapLibre is heavy (~1MB) — load it only when the Map tab is actually opened.
 const TripMap = React.lazy(() => import('../../components/TripMap').then(m => ({ default: m.TripMap })))
 
@@ -387,6 +388,8 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
   // WMO code per day (#141) — separates a drizzle chance from a storm chance
   // in the cap multiplier. Same loading lifecycle as the rain array.
   const [dayWeatherCode, setDayWeatherCode] = useState<(number | null)[] | null>(null)
+  // Keep the rain join fresh: re-pull on the cadence and when the tab returns.
+  const weatherTick = useWeatherRefreshTick()
   useEffect(() => {
     // #420 slice 6: which stops the forecast may be centred on, and whether it may
     // be fetched at all, are rules with their own tests now (map/weatherGeometry).
@@ -396,7 +399,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
       setDayRainPct(null); setDayWeatherCode(null); return
     }
     let cancelled = false
-    fetchDailyWeather(anchor.lat, anchor.lng, trip.startDate, trip.days.length || 1)
+    fetchDailyWeather(anchor.lat, anchor.lng, trip.startDate, trip.days.length || 1, { force: weatherTick > 0 })
       .then(w => {
         if (cancelled) return
         const join = dayWeatherJoin({ dayCount: trip.days.length, startDate: trip.startDate, byDate: w, isoAddDays })
@@ -405,7 +408,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
       })
       .catch(() => { if (!cancelled) { setDayRainPct(null); setDayWeatherCode(null) } })
     return () => { cancelled = true }
-  }, [trip])
+  }, [trip, weatherTick])
   // OSRM's road total (when resolved AND worth trusting) is the most accurate
   // journey budget for the fatigue math; otherwise the journey-summed estimate.
   const planKm = journeyKmFrom(routeTotalKm, wholeTrip.km)

@@ -400,7 +400,8 @@ describe('#350 — Explore shows only what is live', () => {
     const page = readFileSync(new URL('../src/pages/Explore.tsx', import.meta.url), 'utf8')
     // The helper existing proves nothing on its own — the surfaces must call it.
     expect(page).toMatch(/let list = \[\.\.\.livePubs\(published\)\]/)
-    expect(page).toMatch(/const pool = livePubs\(published\)\.filter/)
+    expect(page).toMatch(/const featured = useMemo\(\(\) => pickFeatured\(published\)/)
+    expect(readFileSync(new URL('../src/lib/explorePage.ts', import.meta.url), 'utf8')).toMatch(/const pool = livePubs\(pubs\)\.filter/)
     expect(page).toMatch(/for \(const p of livePubs\(published\)\)/)
   })
 })

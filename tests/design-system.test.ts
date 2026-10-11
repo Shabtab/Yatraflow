@@ -856,8 +856,13 @@ describe('icon stroke weight is a token, not a library default', () => {
   // from ONE rule rather than carrying a prop on each usage. These pins keep it
   // that way: the token must exist, the rule must consume it, and no component
   // may drift back to the library default.
+  // The value is 1.9, not 1.5. The stroke is drawn at stroke * size / 24, so at
+  // the 13-15px the UI uses, 1.5 drew under 1px and looked faint, while 1.9 draws
+  // about 1.0-1.2px. The small-glyph step is held at the same 1.9 for the same
+  // reason: at 12px a 1.25 stroke drew under 0.7px.
   it('declares the token and consumes it from the .lucide base rule', () => {
-    expect(css, '--icon-stroke token missing from styles.css').toMatch(/--icon-stroke:\s*1\.5;/)
+    expect(css, '--icon-stroke token missing from styles.css').toMatch(/--icon-stroke:\s*1\.9;/)
+    expect(css, '--icon-stroke-sm token missing from styles.css').toMatch(/--icon-stroke-sm:\s*1\.9;/)
     expect(css, 'the .lucide base rule is missing').toMatch(/\.lucide\s*\{\s*stroke-width:\s*var\(--icon-stroke\)/)
   })
 
@@ -1043,14 +1048,15 @@ describe("a popup's host claims the rung, never the popup", () => {
   // card's own node — not by reading z-indexes.
   const rule = (selector: string) => cssRules.find((r) => normalise(r.selector) === selector)
 
-  it('gives the Explore filter bar a rung above the cards its menu opens over', () => {
-    const bar = rule('.explore-filterbar')
-    expect(bar, '.explore-filterbar is missing from styles.css').toBeTruthy()
+  it('gives the filter bar of Explore and My trips a rung above the cards its menu opens over', () => {
+    const bar = rule('.filterbar-host')
+    expect(bar, '.filterbar-host is missing from styles.css').toBeTruthy()
     expect(bar!.body).toMatch(/position:\s*relative/)
     expect(bar!.body).toMatch(/z-index:\s*var\(--z-frost\)/)
     // The rule changes nothing unless the page carries the class on the bar
     // that actually holds the selects.
-    expect(source('src/pages/Explore.tsx')).toContain('card glass-soft explore-filterbar')
+    expect(source('src/components/explore/ExploreFilterBar.tsx')).toContain('ex-filterbar filterbar-host')
+    expect(source('src/pages/TripsList.tsx')).toContain('ex-filterbar filterbar-host')
   })
 
   it('keeps the card footer row clear of the corner it sits in', () => {

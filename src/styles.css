@@ -200,14 +200,14 @@
   --font-display: 'Sora', 'Plus Jakarta Sans', system-ui, sans-serif;
   --font-body: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
   /* Icon stroke weight. Lucide ships 2 as a presentation attribute on every
-     glyph; the app's icon grammar is hairline geometry - at the 14-20px the UI
-     renders at, 2 reads as clip-art. One token, consumed by the .lucide base
-     rule near the type rules, so a denser surface can step it deliberately. */
-  --icon-stroke: 1.5;
-  /* Small-glyph step: at 12px and under in dark ink a 1.5 stroke fills dense
-     glyphs in (Sparkles, Lock, kind kickers read as blobs), so the shared
-     inline wrappers drop to 1.25 through .ic-sm below. */
-  --icon-stroke-sm: 1.25;
+     glyph. At the 13-15px the UI renders at, 1.5 drew under 1px and looked faint,
+     so 1.9 draws about 1.0-1.2px there (stroke x size / 24). One token, consumed by the
+     .lucide base rule near the type rules, so a denser surface can step it deliberately. */
+  --icon-stroke: 1.9;
+  /* Small-glyph step, matched to the base step: at 12px a 1.25 stroke drew under
+     0.7px and read as faint, so the shared inline wrappers keep 1.9 through .ic-sm
+     below (about 0.95px at 12px). */
+  --icon-stroke-sm: 1.9;
   /* ---- Landing display scale + macro-whitespace ----
      The marketing page is the one surface that is deliberately editorial rather
      than app-scale: its headline is the largest type on the site and its
@@ -389,7 +389,6 @@ html.native-shell .atmos {
   .tabbar,
   .glass-soft,
   .filter-pillbar,
-  .explore-chips .clickable-chip,
   .tl-total-strip,
   .board-info, .board-pulse {
     -webkit-backdrop-filter: blur(var(--yf-blur-chip)) saturate(1.1);
@@ -808,7 +807,7 @@ a.btn { text-decoration: none; }
   padding: 10px 32px 10px 13px;
   cursor: pointer;
   /* soft teal chevron (clean SVG stroke), vertically centred, clear of the text */
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1.5 1.5L6 6l4.5-4.5' fill='none' stroke='%230E7A72' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1.5 1.5L6 6l4.5-4.5' fill='none' stroke='%230E7A72' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/></svg>");
   background-repeat: no-repeat;
   background-position: right 12px center;
   background-size: 11px 7px;
@@ -857,7 +856,7 @@ a.btn { text-decoration: none; }
 /* The chevron is baked into a background-image, so it can't follow a token —
    re-declare it for dark mode or it lands ~1.8:1 on the dark pill. */
 [data-theme='dark'] .select {
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1.5 1.5L6 6l4.5-4.5' fill='none' stroke='%238FA0B5' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1.5 1.5L6 6l4.5-4.5' fill='none' stroke='%238FA0B5' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/></svg>");
 }
 .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
 /* Commitments: deliberate 5-track layout on wide screens, but it collapses
@@ -947,11 +946,6 @@ a.btn { text-decoration: none; }
    Inside a PillNav the glider owns the paint entirely (see .pill-nav rules). */
 .clickable-chip.on-teal { background: var(--teal-deep); color: #fff; box-shadow: var(--shadow-glow-teal); }
 [data-theme='dark'] .clickable-chip.on-teal { background: var(--teal); color: #06251f; }
-/* Same selected treatment for a `.btn` carrying on-teal (My Trips Trash toggle):
-   before this, on-teal matched no .btn rule, so the pressed state was invisible
-   to sighted users (aria-pressed was correct — sighted-only defect). */
-.btn.on-teal { background: var(--teal-deep); border-color: var(--teal-deep); color: #fff; box-shadow: var(--shadow-glow-teal); }
-[data-theme='dark'] .btn.on-teal { background: var(--teal); border-color: var(--teal); color: #06251f; }
 /* SYS-7a: these change background/border/colour on hover and selection but
    declared no transition at all — they snapped while every chip eased. */
 .route-btn, .mode-btn, .crew-btn, .cal-day, .quick-budget .chip,
@@ -968,43 +962,15 @@ a.btn { text-decoration: none; }
   box-shadow: var(--shadow-soft);
 }
 
-/* ---- Explore travel-style filter pills: glass with backdrop (per CTI) ---- */
-.explore-chips .clickable-chip {
-  background: var(--yf-glass);
-  border: 1px solid var(--yf-glass-border);
-  -webkit-backdrop-filter: blur(var(--yf-blur-chip)); backdrop-filter: blur(var(--yf-blur-chip));
-  box-shadow: var(--shadow-sm);
-  color: var(--text-2);
-}
-/* The glass base above has the SAME specificity as the global .on-teal and comes
-   later, so it won every property — a selected travel-style chip rendered
-   identically to an unselected one, on Explore and again in the My Trips
-   toolbar. The selected pair needs its own rule here, exactly as the saffron
-   variant below already has one. */
-.explore-chips .clickable-chip.on-teal {
-  background: var(--teal-deep); border-color: var(--teal-deep); color: #fff;
-  box-shadow: var(--shadow-glow-teal);
-}
-[data-theme='dark'] .explore-chips .clickable-chip.on-teal {
-  background: var(--teal); border-color: var(--teal); color: #06251f;
-}
 /* Selected states paint through box-shadow — a glow here, and `box-shadow: none`
    in the pill nav so the glider owns the fill. Both outrank the shared
    `:focus-visible` ring on specificity, so a focused *selected* chip lost its
    focus indicator entirely. Restate the ring wherever selection wins. */
 .pill-nav .clickable-chip.on-teal:focus-visible,
 .pill-nav .tab-btn.active:focus-visible,
-.pill-nav .nav-link.active:focus-visible,
-.explore-chips .clickable-chip.on-teal:focus-visible,
-[data-theme='dark'] .explore-chips .clickable-chip.on-teal:focus-visible {
+.pill-nav .nav-link.active:focus-visible {
   outline: none; box-shadow: var(--ring);
 }
-/* Selected "Saved" chip — was white-on-saffron (1.97:1 both themes). Now the
-   same soft-fill + deep-ink language as every other selected chip (5.08/5.56). */
-.explore-chips .clickable-chip.chip-saffron {
-  background: var(--saffron-soft); color: var(--ink-amber); border-color: var(--saffron);
-}
-
 /* ---------- Stat tiles ---------- */
 .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
 .stat-tile { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 15px 17px; box-shadow: var(--shadow-sm); }
@@ -2925,18 +2891,13 @@ main:has(.auth-wrap) .route-panel { flex: 1; display: flex; flex-direction: colu
 .form-page { max-width: 1080px; padding-top: 26px; padding-bottom: 30px; }
 /* #86: Profile's single-column content — readable measure, no empty grid gutter. */
 .profile-col { max-width: 720px; }
-.explore-filters { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-.explore-filters .input, .explore-filters .select { width: auto; min-width: 140px; flex: 0 1 auto; }
-/* the custom Select wraps its trigger in a div — flex sizing moves to the wrapper */
-.explore-filters .cselect, .trips-toolbar .cselect { flex: 0 1 auto; }
-.explore-filters .cselect .select, .trips-toolbar .cselect .select { min-width: 140px; }
 /* The filter bar's own backdrop-filter (.glass-soft) makes it a stacking
    context, so the .cselect menu opened inside it was trapped at the bar's rung
    — and every card below is positioned, so they painted over the open menu:
    the last two budget options hit-tested into .featured-body, invisible and
    unclickable, while the menu's first three rows stayed reachable. The HOST
    claims a rung; raising the popup cannot escape its ancestor's context. */
-.explore-filterbar { position: relative; z-index: var(--z-frost); }
+.filterbar-host { position: relative; z-index: var(--z-frost); }
 .trip-card-hit { all: unset; cursor: pointer; display: block; border-radius: inherit; }
 
 /* Trip card emoji cover */
@@ -3936,78 +3897,10 @@ html.vt-active :where(*) {
 .day-highlight-meta { font-size: 12.5px; color: var(--text-3); }
 .pub-footer-line { text-align: center; color: var(--text-3); font-size: 13px; padding: 24px 0 12px; }
 
-/* ---------- M7: Explore editorial treatment (§6.10) ---------- */
-.explore-hero {
-  color: #fff; padding: 52px 0 44px;
-  background: linear-gradient(160deg, var(--yf-navy) 0%, #0d4b56 58%, #0b3844 100%);
-  position: relative; overflow: hidden;
-}
-.explore-hero::before {
-  content: ''; position: absolute; inset: 0; pointer-events: none;
-  background:
-    radial-gradient(60% 70% at 88% 10%, rgba(23, 110, 112, .35), transparent 60%),
-    repeating-radial-gradient(150% 100% at 10% -10%, transparent 0 42px, rgba(255, 255, 255, .045) 42px 43px);
-}
-.explore-hero-inner { position: relative; z-index: var(--z-content); }
-/* size/weight ride the global h1 ramp — this hero doesn't get a second scale */
-.explore-hero h1 { margin: 6px 0 0; }
-.explore-hero-kicker { color: #a9eadc; }
-.explore-hero-sub { color: #d9efeb; font-size: clamp(14px, 1.6vw, 16.5px); max-width: 620px; margin: 10px 0 18px; line-height: 1.6; }
-.explore-hero-search {
-  max-width: 520px; width: 100%; border-radius: 999px; padding: 13px 18px;
-  border: 1px solid rgba(255, 255, 255, .3); background: rgba(255, 255, 255, .12); color: #fff;
-  -webkit-backdrop-filter: blur(var(--yf-blur-chip)); backdrop-filter: blur(var(--yf-blur-chip));
-}
-.explore-hero-search::placeholder { color: #e2f1ef; }
-/* Own focus ring: the shared `.input:focus` teal ring reads 1.18:1 over the
-   dark hero; this surface needs a white one, declared here so box-shadow is
-   overridden (not just border-color/outline). */
-.explore-hero-search:focus { background: rgba(255, 255, 255, .18); border-color: rgba(255, 255, 255, .5); outline: none; box-shadow: 0 0 0 3px rgba(255, 255, 255, .5); }
-/* The search's clear affordance lives with its cause: q is typed HERE, but the
-   only Clear button sat in the filter card ~300px below. */
-.explore-hero-searchrow { position: relative; max-width: 520px; }
-.explore-hero-searchrow .explore-hero-search { padding-right: 44px; }
-.explore-hero-clear {
-  position: absolute; right: 7px; top: 50%; transform: translateY(-50%);
-  width: 28px; height: 28px; border-radius: 999px; border: none; cursor: pointer;
-  display: inline-flex; align-items: center; justify-content: center;
-  background: rgba(255, 255, 255, .16); color: #fff;
-  transition: background var(--motion-fast) var(--ease-out);
-}
-.explore-hero-clear:hover { background: rgba(255, 255, 255, .3); }
-.explore-hero-clear:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(255, 255, 255, .5); }
-.explore-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+/* ---------- Chip counts ---------- */
 /* No opacity: .65 composited the inherited ink to 2.5–3.2:1 (it's 11px text,
    needs 4.5). Full strength = the chip's own AA-checked colour, on every surface. */
 .chip-count { font-variant-numeric: tabular-nums; font-size: 11px; margin-left: 3px; }
-
-/* featured itinerary */
-.featured-card {
-  border-radius: var(--radius-lg); padding: 20px 24px; margin-bottom: 22px; position: relative;
-  background: linear-gradient(120deg, #0e3a45, #0b2740);
-  color: #fff; box-shadow: var(--shadow-soft); overflow: hidden;
-}
-.featured-card::before {
-  content: ''; position: absolute; inset: 0; pointer-events: none;
-  background: radial-gradient(52% 90% at 90% 6%, rgba(240, 165, 63, .18), transparent 62%);
-}
-.featured-body { position: relative; z-index: var(--z-content); }
-.featured-kicker { color: #ffd79a; }
-/* One section-title ramp with .editorial-title (the public page's equivalent) —
-   they were 2px apart at every width for no stated reason. The title also takes
-   the same two-line clamp the grid cards use, so a long name stops crowding the
-   tagline beneath it. */
-.featured-body h2 { font-family: var(--font-display); font-size: clamp(24px, 3vw, 32px); margin: 6px 0 8px; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
-.featured-title-link { color: #fff; text-decoration: none; }
-.featured-title-link:hover { text-decoration: underline; }
-.featured-tagline { color: #d5e7e4; margin: 0 0 8px; max-width: 640px; line-height: 1.6; }
-/* Prose measure: the neighbouring tagline caps at 640px, but this block and
-   Explore's fork note run at 13px and 12.5px, where a 640px cap still buys
-   78-81 characters a line. `ch` self-adjusts to the font size, so one value
-   holds every block inside the 60-75ch band. */
-.featured-credibility { color: #a9d8cf; font-size: 13px; margin: 0 0 12px; max-width: 72ch; }
-.featured-meta { display: flex; gap: 18px; flex-wrap: wrap; color: #e2f1ef; font-size: 13px; margin-bottom: 16px; }
-.featured-actions { display: flex; gap: 10px; flex-wrap: wrap; }
 
 /* save heart on grid cards */
 .save-heart {
@@ -4483,7 +4376,7 @@ html.vt-active :where(*) {
 }
 /* Dark: --yf-teal-700 is the bright end of the scale (#1E9D92), so the bubble's
    white 12px/800 label is only 3.34:1. Same near-black ink the rest of the
-   solid-teal-fill family takes (see .ai-bubble.user / .btn.on-teal above). */
+   solid-teal-fill family takes (see .ai-bubble.user above). */
 [data-theme='dark'] .bench-bubble { color: #06251f; }
 @keyframes bench-pop { from { opacity: 0; } }
 
@@ -5246,8 +5139,6 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
   .pub-actions-btns { justify-content: stretch; }
   .pub-actions-btns .btn { flex: 1; }
   .day-highlight-row { grid-template-columns: 1fr; }
-  .explore-hero { padding: 36px 0 32px; }
-  .featured-actions .btn { flex: 1; }
   /* 34px sat under the 40px coarse-pointer floor; the cover has room for 40. */
   .save-heart { width: 40px; height: 40px; }
   /* Mobile bill dock: leave breathing room so it never covers the fineprint */
@@ -5631,15 +5522,6 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
   .ts-savebar .btn { flex: 1; }
 }
 
-/* ============ My Trips toolbar (search / style chips / when / sort) ============ */
-.trips-toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 18px; }
-.trips-toolbar .trips-search { flex: 1 1 240px; min-width: 200px; }
-.trips-toolbar .select { width: auto; min-width: 130px; flex: 0 1 auto; }
-.trips-toolbar .cselect .select { min-width: 130px; }
-/* the chips' own margin-bottom is for the Explore filter card — inside the
-   centered toolbar row it lifts them ~7px out of line with the search field */
-.trips-toolbar .explore-chips { margin-bottom: 0; }
-
 /* trash list rows — :last-child drops the rule so it doesn't float above the
    card's bottom padding */
 .trash-row { padding: 10px 0; border-bottom: 1px solid var(--line); }
@@ -5652,34 +5534,9 @@ body.reveal-armed .reveal-underline.io-inview::after { transform: scaleX(1); }
    vertical page-header stack with a full-width primary CTA — the Android
    pattern — and single-column cards with comfortable gutters. */
 .trips-page { padding-top: 26px; }
-.trips-head { margin-bottom: 18px; flex-wrap: wrap; gap: 12px; }
-.trips-head-actions { display: flex; gap: 10px; flex-wrap: wrap; }
-@media (max-width: 720px) {
-  .trips-toolbar { align-items: stretch; }
-  .trips-toolbar .trips-search { flex-basis: 100%; }
-  .trips-toolbar .explore-chips { order: 3; flex-basis: 100%; margin-bottom: 0; }
-  /* Selects pair up while the row can hold them. The 45% basis on its own let
-     two share a row all the way down to 320px, where each got ~120px and the
-     label clipped to "Any bu…" — so the desktop min-widths (140px here, 130px
-     on the trips toolbar) stay in place as the floor instead of being zeroed.
-     Two selects need ~290px; below that the row wraps rather than crushing. */
-  .trips-toolbar .select { flex: 1 1 45%; }
-  .trips-toolbar .cselect { flex: 1 1 45%; }
-  .trips-toolbar .cselect .select { width: 100%; }
-  /* Explore's filter row mirrors the toolbar pairing, so its three selects
-     don't drop to one full-width stack on a phone. */
-  .explore-filters .select, .explore-filters .cselect { flex: 1 1 45%; }
-  .explore-filters .cselect .select { width: 100%; }
-}
 
 @media (max-width: 720px) {
   .trips-page { padding-top: 8px; }
-  .trips-head-title { flex: 1 1 100%; }
-  .trips-head-actions { width: 100%; }
-  /* primary CTA owns the row; demo-trips becomes a quiet secondary */
-  .trips-head-actions .btn { flex: 1; }
-  .trips-head-actions .btn-outline { flex: 0 0 auto; padding: 10px 13px; }
-  .trips-head-actions .btn-outline span { display: none; }
   /* cards: single column, softer radius, no hover-lift (touch has no hover) */
   .explore-grid { grid-template-columns: 1fr; gap: 12px; }
   .itin-card { border-radius: var(--radius-sm); }
@@ -8227,3 +8084,840 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 .tsx-hero-edit[aria-expanded='true'] { background: rgba(255,255,255,.2); }
 .tsx-card--identity .bench-pair { align-items: start; }
 .tsx-card--identity .cover-picker-preview { height: 72px; }
+
+/* ============ My trips: Up next, grid and list ============
+   Components: src/components/trips/. Every class starts with "mt-" so nothing
+   here touches another page. Colours come from the app tokens only. The
+   exception is the region art: each region sets its own sky and ink, the same
+   in both themes, and dark mode adds a soft dim layer on top.
+   Motion comes from the motion tokens. Each animated rule has a reduced-motion
+   opt-out at the end of this section. */
+
+/* ---------- Sections ---------- */
+.mt-catalog { container: mt-catalog / inline-size; }
+.mt-section-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 16px; margin: 24px 0 14px; }
+.mt-catalog > section:first-child > .mt-section-head { margin-top: 0; }
+.mt-section-title { margin: 0; color: var(--text); font-family: var(--font-body); font-size: 28px; font-weight: 800; line-height: 1.2; letter-spacing: -.02em; }
+.mt-kicker-note { color: var(--text-3); font-size: .6em; font-weight: 600; letter-spacing: 0; white-space: nowrap; }
+
+/* ---------- Grid | List switch ---------- */
+.mt-seg { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--card); }
+.mt-seg button {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 14px;
+  border: 0; border-radius: 999px; background: none; color: var(--text);
+  font-size: 14px; font-weight: 600; cursor: pointer;
+  transition: background-color var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out);
+}
+.mt-seg button:hover:not([aria-pressed='true']) { background: var(--bg-soft); }
+.mt-seg button[aria-pressed='true'] { background: var(--text); color: var(--bg); }
+.mt-seg button:focus-visible { outline: none; box-shadow: var(--ring); }
+
+/* ---------- Grid ---------- */
+.mt-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+@container mt-catalog (min-width: 560px) {
+  .mt-grid { grid-template-columns: repeat(var(--mt-c2, 2), minmax(0, 1fr)); gap: 18px; }
+}
+@container mt-catalog (min-width: 880px) {
+  .mt-grid { grid-template-columns: repeat(var(--mt-c3, 3), minmax(0, 1fr)); gap: 20px; }
+}
+/* A lone last card spans the row as a compact horizontal card. */
+@container mt-catalog (min-width: 560px) and (max-width: 879px) {
+  .mt-grid[data-lone-two='1'] > .mt-card:last-child { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 36fr) minmax(0, 64fr); }
+  .mt-grid[data-lone-two='1'] > .mt-card:last-child .mt-cover { aspect-ratio: auto; align-self: stretch; min-height: 150px; max-height: 220px; }
+  .mt-grid[data-lone-two='1'] > .mt-card:last-child .mt-card-main { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+  .mt-grid[data-lone-two='1'] > .mt-card:last-child .mt-card-foot { flex-direction: column; align-items: flex-end; gap: 4px; margin: 0 8px 0 0; padding: 0; }
+}
+@container mt-catalog (min-width: 880px) {
+  .mt-grid[data-lone-three='1'] > .mt-card:last-child { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 36fr) minmax(0, 64fr); }
+  .mt-grid[data-lone-three='1'] > .mt-card:last-child .mt-cover { aspect-ratio: auto; align-self: stretch; min-height: 150px; max-height: 220px; }
+  .mt-grid[data-lone-three='1'] > .mt-card:last-child .mt-card-main { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+  .mt-grid[data-lone-three='1'] > .mt-card:last-child .mt-card-foot { gap: 18px; margin: 0 14px 0 0; padding: 0; }
+}
+
+/* ---------- Card ---------- */
+.mt-card {
+  position: relative; display: flex; flex-direction: column; padding: 6px;
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-card);
+  transition: transform var(--motion-med) var(--ease-out), box-shadow var(--motion-med) var(--ease-out), border-color var(--motion-med) var(--ease-out);
+  animation: cardIn var(--motion-slow) var(--ease-out) backwards;
+}
+.mt-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-card-hover); border-color: var(--line-strong); }
+.mt-card:hover .mt-motif { transform: scale(1.035); }
+
+/* ---------- Cover and region art ---------- */
+.mt-cover { position: relative; isolation: isolate; overflow: hidden; aspect-ratio: 16 / 10; border-radius: var(--radius-sm); }
+.mt-cover .itin-emoji { position: absolute; inset: 0; aspect-ratio: auto; border-bottom: 0; }
+.mt-art { position: absolute; inset: 0; overflow: hidden; background: linear-gradient(180deg, var(--mt-sky1) 0%, var(--mt-sky2) 100%); }
+.mt-art::after { content: ''; position: absolute; inset: 0; background: transparent; pointer-events: none; }
+[data-theme='dark'] .mt-art::after { background: rgba(6, 20, 24, .16); }
+.mt-motif { position: absolute; inset: 0; width: 100%; height: 100%; transition: transform var(--motion-slow) var(--ease-out); }
+.mt-art--coorg { --mt-sky1: #D3E6D4; --mt-sky2: #F2E8C4; color: #28543C; }
+.mt-art--kashmir { --mt-sky1: #C9DCEE; --mt-sky2: #F3E5D3; color: #2B4B62; }
+.mt-art--kerala { --mt-sky1: #D2E9E2; --mt-sky2: #F4E2BA; color: #10494A; }
+.mt-art--meghalaya { --mt-sky1: #CDE4DC; --mt-sky2: #E4EBCF; color: #1F4A3B; }
+.mt-art--rajasthan { --mt-sky1: #F8DAB0; --mt-sky2: #EBA57B; color: #79341F; }
+.mt-art--goa { --mt-sky1: #CFE6EE; --mt-sky2: #F8DDB4; color: #1B5566; }
+.mt-art--generic { --mt-sky1: #D9E8E4; --mt-sky2: #F3E8CC; color: #3A5E5B; }
+
+/* ---------- Status tag: a dot and a word, never colour alone ---------- */
+.mt-tag {
+  position: absolute; top: 10px; left: 10px; z-index: var(--z-content);
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px 4px 8px; border-radius: 999px;
+  background: rgb(255 255 255 / .96); color: var(--yf-navy);
+  font-size: 12px; font-weight: 700; letter-spacing: .01em; line-height: 1.4;
+}
+.mt-tag-dot { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--yf-navy); }
+.mt-tag--live { background: var(--saffron); color: var(--color-accent-foreground); }
+.mt-tag--live .mt-tag-dot { background: var(--color-accent-foreground); }
+.mt-tag--past .mt-tag-dot { border-radius: 2px; }
+.mt-tag--draft .mt-tag-dot { background: transparent; border: 2px solid var(--yf-navy); }
+@media (prefers-reduced-motion: no-preference) {
+  .mt-tag--live .mt-tag-dot { animation: mt-pulse 1.8s var(--ease-out) infinite; }
+}
+@keyframes mt-pulse { 50% { transform: scale(1.5); opacity: .55; } }
+
+/* ---------- Card text ---------- */
+.mt-card-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.mt-card-body { flex: 1; display: flex; flex-direction: column; gap: 8px; padding: 14px 12px 8px; }
+.mt-card-title {
+  margin: 0; color: var(--text); font-family: var(--font-body); font-size: 19px; font-weight: 700; line-height: 1.28; letter-spacing: -.015em; text-wrap: balance;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+/* One link covers the whole card. The delete button sits above it. */
+.mt-card-link { color: inherit; text-decoration: none; border-radius: 4px; }
+.mt-card-link::after { content: ''; position: absolute; inset: 0; z-index: var(--z-content); border-radius: var(--radius); }
+.mt-card-link:focus-visible { outline: none; }
+.mt-card-link:focus-visible::after { box-shadow: var(--ring); }
+.mt-route { margin: 0; color: var(--text-2); font-size: 14px; }
+
+/* Three labelled columns: the label sits above the value, with no icons. */
+.mt-stats {
+  display: grid; grid-template-columns: repeat(3, minmax(0, auto)); justify-content: space-between; gap: 0 8px;
+  margin: 0; padding: 12px 0 0; border-top: 1px solid var(--line); list-style: none;
+}
+.mt-stats li { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
+.mt-stat-ico { display: none; color: var(--text-3); }
+.mt-stat-lab { color: var(--text-2); font-size: var(--kicker-size); font-weight: var(--kicker-weight); letter-spacing: var(--kicker-tracking); text-transform: uppercase; }
+.mt-stat-val { color: var(--text); font-size: 13.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+.mt-card-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; padding-top: 2px; }
+.mt-chip { display: inline-flex; align-items: center; min-height: 26px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 999px; color: var(--text); font-size: 12.5px; font-weight: 600; }
+.mt-chip--plain { border-color: transparent; background: var(--bg-soft); }
+
+/* No divider above the footer. */
+.mt-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 12px; padding: 4px 0 6px; }
+.mt-solo { color: var(--text-2); font-size: 13.5px; }
+.mt-planners { max-height: none; overflow: visible; min-height: 30px; }
+.mt-del { position: relative; z-index: var(--z-raised); color: var(--text-2); }
+.mt-del:hover { background: var(--color-destructive-soft); color: var(--ink-coral); }
+
+/* ---------- Up next ---------- */
+.mt-feat { display: grid; grid-template-columns: minmax(0, 1fr); }
+.mt-feat .mt-cover { aspect-ratio: 16 / 9; }
+.mt-feat-body { display: flex; flex-direction: column; gap: 12px; padding: 16px 14px 14px; }
+.mt-feat .mt-card-title { display: block; overflow: visible; font-size: 24px; font-weight: 700; line-height: 1.2; letter-spacing: -.02em; }
+.mt-feat-when { margin: 0; font-size: 15px; font-variant-numeric: tabular-nums; }
+.mt-feat-when b { color: var(--ink-teal); font-weight: 800; }
+.mt-feat-planners { display: flex; align-items: center; gap: 12px; color: var(--text); font-size: 14px; font-weight: 600; }
+.mt-feat-planners .mt-planners { min-height: 32px; }
+.mt-meter { display: grid; gap: 6px; }
+.mt-meter-label { margin: 0; color: var(--text-2); font-size: 13.5px; }
+.mt-meter-label b { color: var(--text); font-weight: 700; }
+.mt-meter-bar { height: 8px; overflow: hidden; border-radius: 999px; background: color-mix(in srgb, var(--teal-deep) 18%, var(--card)); }
+.mt-meter-bar i { display: block; height: 100%; border-radius: 999px; background: var(--teal-deep); transition: width var(--motion-slow) var(--ease-out); }
+.mt-next { display: flex; align-items: flex-start; gap: 8px; margin: 0; padding: 8px 12px; border-radius: var(--radius-sm); background: var(--teal-soft); color: var(--text); font-size: 14.5px; line-height: 1.4; }
+.mt-next svg { flex: none; margin-top: 2px; color: var(--ink-teal); }
+.mt-next b { font-weight: 800; }
+.mt-feat-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 4px; }
+.mt-feat-actions .btn { position: relative; z-index: var(--z-raised); }
+.mt-feat-actions .mt-del { margin-left: auto; }
+@container mt-catalog (min-width: 640px) {
+  .mt-feat { grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); }
+  .mt-feat .mt-cover { aspect-ratio: auto; height: 100%; min-height: 300px; }
+  .mt-feat-body { gap: 12px; padding: 18px 20px 16px 22px; }
+  .mt-feat .mt-card-title { font-size: 28px; line-height: 1.18; }
+}
+
+/* ---------- List layout ---------- */
+.mt-grid.is-list { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+.mt-grid.is-list > .mt-card { display: grid; grid-template-columns: 112px minmax(0, 1fr); }
+.mt-grid.is-list .mt-cover { aspect-ratio: auto; height: 100%; min-height: 100%; }
+.mt-grid.is-list .mt-tag { top: 6px; left: 6px; gap: 5px; padding: 2px 8px 2px 6px; font-size: 11px; }
+.mt-grid.is-list .mt-tag-dot { width: 7px; height: 7px; }
+.mt-grid.is-list .mt-card-body { gap: 6px; padding: 12px 12px 6px 14px; }
+.mt-grid.is-list .mt-card-title { font-size: 17px; }
+.mt-grid.is-list .mt-card-foot { margin: 0 4px 0 14px; }
+/* In a row the labels stay for screen readers and the icons carry the look. */
+.mt-grid.is-list .mt-stats { display: flex; flex-wrap: wrap; gap: 4px 16px; padding: 0; border-top: 0; }
+.mt-grid.is-list .mt-stats li { flex-direction: row; align-items: center; gap: 6px; white-space: nowrap; }
+.mt-grid.is-list .mt-stat-ico { display: block; }
+.mt-grid.is-list .mt-stat-lab { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.mt-grid.is-list .mt-stat-val { color: var(--text-2); font-weight: 500; }
+@container mt-catalog (min-width: 720px) {
+  .mt-grid.is-list > .mt-card { grid-template-columns: 168px minmax(0, 1fr); }
+  .mt-grid.is-list .mt-tag { top: 8px; left: 8px; gap: 6px; padding: 4px 12px 4px 8px; font-size: 12px; }
+  .mt-grid.is-list .mt-tag-dot { width: 8px; height: 8px; }
+  .mt-grid.is-list .mt-card-main { display: grid; grid-template-columns: minmax(0, 1.6fr) 150px minmax(0, 1fr) 150px; align-items: center; gap: 0 20px; padding: 4px 8px 4px 18px; }
+  .mt-grid.is-list .mt-card-body { display: contents; }
+  .mt-grid.is-list .mt-card-head { grid-column: 1; min-width: 0; }
+  .mt-grid.is-list .mt-stats { grid-column: 2; flex-direction: column; flex-wrap: nowrap; gap: 2px; }
+  .mt-grid.is-list .mt-card-chips { grid-column: 3; margin-top: 0; padding: 0; }
+  .mt-grid.is-list .mt-card-foot { grid-column: 4; justify-content: flex-end; gap: 12px; margin: 0; padding: 0; }
+  .mt-grid.is-list .mt-card-title { font-size: 18px; }
+}
+
+/* ---------- Phones ---------- */
+@media (max-width: 720px), (pointer: coarse) {
+  .mt-del { width: 44px; height: 44px; }
+  .mt-seg button { min-height: 44px; min-width: 44px; }
+  .mt-feat-actions .btn { min-height: 44px; }
+  .draft-card .btn { min-height: 44px; }
+}
+@media (max-width: 640px) {
+  .mt-section-title { font-size: 24px; }
+  .mt-section-head { margin-top: 22px; }
+  .mt-card:hover { transform: none; }
+  /* Compact rows: a small square cover, the text, and the delete button. */
+  .mt-grid.is-list { gap: 8px; }
+  .mt-grid.is-list > .mt-card { grid-template-columns: 76px minmax(0, 1fr) 44px; align-items: center; column-gap: 12px; padding: 6px 4px 6px 6px; }
+  .mt-grid.is-list .mt-card-main { display: contents; }
+  .mt-grid.is-list .mt-cover { aspect-ratio: 1 / 1; height: auto; min-height: 0; align-self: center; }
+  .mt-grid.is-list .mt-tag { top: 4px; left: 4px; padding: 2px 6px; font-size: 10.5px; gap: 4px; }
+  .mt-grid.is-list .mt-tag-dot { display: none; }
+  .mt-grid.is-list .mt-card-body { gap: 2px; padding: 0; }
+  .mt-grid.is-list .mt-card-title { font-size: 16px; line-height: 1.25; }
+  .mt-grid.is-list .mt-route { font-size: 13px; line-height: 1.4; }
+  .mt-grid.is-list .mt-stats { gap: 0 10px; font-size: 12.5px; line-height: 1.4; }
+  .mt-grid.is-list .mt-stat-ico { display: none; }
+  .mt-grid.is-list .mt-card-chips, .mt-grid.is-list .mt-planners, .mt-grid.is-list .mt-solo { display: none; }
+  .mt-grid.is-list .mt-card-foot { justify-self: end; margin: 0; padding: 0; }
+}
+@media (max-width: 360px) {
+  .mt-grid.is-list > .mt-card { grid-template-columns: 64px minmax(0, 1fr) 44px; column-gap: 10px; }
+  .mt-grid.is-list .mt-card-title { font-size: 15px; }
+}
+
+/* ---------- Reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .mt-card { animation: none; transition: none; }
+  .mt-card:hover { transform: none; }
+  .mt-card:hover .mt-motif { transform: none; }
+  .mt-motif, .mt-meter-bar i, .mt-seg button { transition: none; }
+  .mt-tag--live .mt-tag-dot { animation: none; }
+}
+
+/* ---------- My trips fixes: phone list rows ---------- */
+@media (max-width: 640px) {
+  /* The status tag shrinks to a dot. The word stays for screen readers. */
+  .mt-grid.is-list .mt-tag { width: 18px; height: 18px; padding: 0; justify-content: center; gap: 0; }
+  .mt-grid.is-list .mt-tag-dot { display: block; width: 8px; height: 8px; }
+  .mt-grid.is-list .mt-tag-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  /* Meta stack: budget on its own line, then travel and dates with a dot. */
+  .mt-grid.is-list .mt-stats { flex-wrap: wrap; justify-content: flex-start; gap: 0; }
+  .mt-grid.is-list .mt-stats li:first-child { flex-basis: 100%; }
+  .mt-grid.is-list .mt-stats li:last-child::before { content: '·'; margin: 0 6px; color: var(--text-3); }
+}
+
+/* ---------- Empty-state icon weight ---------- */
+.empty-state .big .lucide { stroke-width: 1.25; }
+
+/* ===== Explore redesign ===== */
+/* Components: src/components/explore/. Every class starts with "ex-". Colours
+   come from the app tokens, so light and dark both follow the theme. The
+   papercut art is the My trips art (TripArt). My trips wears the same page
+   skin, so the button, hero and filter rules reach both pages. Motion uses the motion tokens
+   (docs/MOTION-TOKENS.md); every animated rule has a reduced-motion opt-out in
+   the last block. Type: Playfair Display for the hero line, Caveat for the
+   handwritten note, the app's body font for everything else. */
+
+.container:is(.ex-page, .trips-page) {
+  /* One width for both catalog pages. The tokens they share (--font-serif,
+     --font-hand, --line-strong, --shadow-card, --shadow-card-hover) are on
+     :root, in the shared-tokens block at the end of this file. */
+  max-width: 1240px;
+}
+
+/* ---------- Buttons on these pages ----------
+   Squarer corners than the app's pills, a firm weight, a one-pixel press.
+   A dialog is not portaled, so it sits inside the page container. The
+   :where(:not(.modal *)) guard keeps these rules off every dialog button, and
+   the small button size (.btn-sm) keeps its own height and corner. :where adds
+   no specificity, so .ex-cta and the hero rules still win over the base. */
+:is(.ex-page, .trips-page) .btn:where(:not(.btn-sm, .modal *)) {
+  min-height: 44px; padding: 0 16px; border-radius: 12px; font-size: 15px; font-weight: 700; letter-spacing: -.005em;
+  transition: background-color var(--motion-fast) var(--ease-out), border-color var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out), box-shadow var(--motion-fast) var(--ease-out), transform var(--motion-fast) var(--ease-out);
+}
+:is(.ex-page, .trips-page) .btn:where(:not(.modal *)):active:not(:disabled) { transform: translateY(1px); }
+:is(.ex-page, .trips-page) .btn-primary:where(:not(.modal *)) { box-shadow: inset 0 1px 0 rgb(255 255 255 / .16), 0 10px 22px -12px color-mix(in srgb, var(--color-primary) 90%, transparent); }
+:is(.ex-page, .trips-page) .btn-secondary:where(:not(.modal *)) { background: var(--card); border-color: var(--ex-line-strong); color: var(--text); }
+:is(.ex-page, .trips-page) .btn-secondary:where(:not(.modal *)):hover:not(:disabled) { border-color: var(--teal-deep); color: var(--ink-teal); }
+:is(.ex-page, .trips-page) .btn-quiet:where(:not(.modal *)) { background: transparent; color: var(--text); }
+:is(.ex-page, .trips-page) .btn-quiet:where(:not(.modal *)):hover:not(:disabled) { background: var(--bg-soft); }
+/* A pressed toggle (the Trash button) shows it: a soft teal fill and a ring. */
+:is(.ex-page, .trips-page) .btn-quiet[aria-pressed='true']:where(:not(.modal *)),
+:is(.ex-page, .trips-page) .btn-quiet[aria-pressed='true']:where(:not(.modal *)):hover:not(:disabled) {
+  background: var(--teal-soft); color: var(--ink-teal); box-shadow: inset 0 0 0 1px var(--teal-deep);
+}
+
+/* ---------- Hero ---------- */
+.ex-hero {
+  --ex-paper: #FFFDF6;
+  --ex-paper-ink: #123F49;
+  --ex-pattern-opacity: .075;
+  position: relative; isolation: isolate; overflow: hidden;
+  display: grid; grid-template-columns: minmax(0, 1.12fr) minmax(0, .88fr); align-items: center; gap: 24px;
+  margin-top: 8px; padding: 44px;
+  border: 1px solid var(--line); border-radius: 28px;
+  background: linear-gradient(120deg, var(--yf-mist) 0%, var(--yf-peach) 100%);
+}
+[data-theme='dark'] .ex-hero { --ex-paper: #EEE7D7; --ex-pattern-opacity: .06; }
+.ex-hero::before {
+  content: ''; position: absolute; inset: 0; z-index: -1;
+  background: var(--teal); opacity: var(--ex-pattern-opacity);
+  -webkit-mask:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='44' height='44'%3E%3Cg fill='black'%3E%3Ccircle cx='22' cy='22' r='2.2'/%3E%3Ccircle cx='22' cy='15.6' r='2.6'/%3E%3Ccircle cx='22' cy='28.4' r='2.6'/%3E%3Ccircle cx='15.6' cy='22' r='2.6'/%3E%3Ccircle cx='28.4' cy='22' r='2.6'/%3E%3Ccircle cx='0' cy='0' r='2'/%3E%3Ccircle cx='44' cy='0' r='2'/%3E%3Ccircle cx='0' cy='44' r='2'/%3E%3Ccircle cx='44' cy='44' r='2'/%3E%3C/g%3E%3C/svg%3E") 0 0 / 44px 44px repeat,
+    linear-gradient(90deg, transparent 25%, #000 75%);
+  -webkit-mask-composite: source-in;
+  mask:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='44' height='44'%3E%3Cg fill='black'%3E%3Ccircle cx='22' cy='22' r='2.2'/%3E%3Ccircle cx='22' cy='15.6' r='2.6'/%3E%3Ccircle cx='22' cy='28.4' r='2.6'/%3E%3Ccircle cx='15.6' cy='22' r='2.6'/%3E%3Ccircle cx='28.4' cy='22' r='2.6'/%3E%3Ccircle cx='0' cy='0' r='2'/%3E%3Ccircle cx='44' cy='0' r='2'/%3E%3Ccircle cx='0' cy='44' r='2'/%3E%3Ccircle cx='44' cy='44' r='2'/%3E%3C/g%3E%3C/svg%3E") 0 0 / 44px 44px repeat,
+    linear-gradient(90deg, transparent 25%, #000 75%);
+  mask-composite: intersect;
+}
+.ex-hero-copy { min-width: 0; animation: cardIn var(--motion-slow) var(--ease-out) backwards; }
+.ex-hero h1 {
+  margin: 0; color: var(--text); font-family: var(--ex-font-serif); font-weight: 600;
+  font-size: clamp(2.25rem, 1.15rem + 2.9vw, 3.5rem); line-height: 1.04; letter-spacing: -.015em; text-wrap: balance;
+}
+.ex-hero h1 em { position: relative; font-style: italic; color: var(--ink-teal); white-space: nowrap; }
+.ex-hero h1 em::after {
+  content: ''; position: absolute; left: 2%; right: 4%; bottom: -.1em; height: .16em; background: var(--saffron);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 10' preserveAspectRatio='none'%3E%3Cpath d='M2 7c30-5 60-6 98-3s70 2 98-3' fill='none' stroke='black' stroke-width='3.2' stroke-linecap='round'/%3E%3C/svg%3E") center / 100% 100% no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 10' preserveAspectRatio='none'%3E%3Cpath d='M2 7c30-5 60-6 98-3s70 2 98-3' fill='none' stroke='black' stroke-width='3.2' stroke-linecap='round'/%3E%3C/svg%3E") center / 100% 100% no-repeat;
+}
+.ex-hero-lede { margin: 18px 0 0; max-width: 46ch; color: var(--text-2); font-size: 18px; line-height: 1.5; text-wrap: pretty; }
+.ex-hero-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 16px 24px; margin-top: 24px; }
+:is(.ex-page, .trips-page) .ex-cta { min-height: 52px; padding: 0 22px 0 24px; border-radius: 14px; font-size: 16px; }
+.ex-stats { display: flex; margin: 0; }
+.ex-stat { display: flex; flex-direction: column-reverse; padding: 0 18px; border-left: 1px solid var(--ex-line-strong); }
+.ex-stat:first-child { padding-left: 0; border-left: 0; }
+.ex-stat dd { margin: 0; color: var(--text); font-size: 22px; font-weight: 800; line-height: 1.1; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.ex-stat dt { color: var(--text-2); font-size: 13px; white-space: nowrap; }
+
+.ex-hero-visual { position: relative; width: 100%; max-width: 480px; justify-self: end; aspect-ratio: 480 / 272; animation: cardIn var(--motion-slow) var(--ease-out) var(--stagger-step) backwards; }
+.ex-postcards { position: absolute; inset: 0; }
+.ex-route-line { position: absolute; inset: 0; width: 100%; height: 100%; }
+.ex-route-line path { fill: none; stroke: var(--saffron); stroke-width: 2; stroke-dasharray: 2 7; stroke-linecap: round; }
+.ex-route-line circle { fill: var(--saffron); }
+.ex-postcard {
+  position: absolute; width: 32%; margin: 0; padding: 7px 7px 0; background: var(--ex-paper); border-radius: 6px;
+  box-shadow: 0 1px 2px rgba(var(--shadow-navy-rgb), .12), 0 18px 30px -16px rgba(var(--shadow-navy-rgb), .45);
+  transform: rotate(var(--ex-rot)); transform-origin: 50% 60%;
+  transition: transform var(--motion-slow) var(--ease-out);
+}
+.ex-postcard-art { position: relative; overflow: hidden; aspect-ratio: 4 / 3; border-radius: 3px; }
+.ex-postcard figcaption {
+  display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 7px 2px 8px;
+  color: var(--ex-paper-ink); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+}
+.ex-stamp {
+  width: 16px; height: 18px; flex: none; border-radius: 2px; background: var(--saffron);
+  -webkit-mask: radial-gradient(circle at 2px 2px, transparent 1.2px, #000 1.4px) -2px -2px / 4px 4px;
+  mask: radial-gradient(circle at 2px 2px, transparent 1.2px, #000 1.4px) -2px -2px / 4px 4px;
+}
+.ex-pc-1 { --ex-rot: -7deg; left: 22%; top: 4%; }
+.ex-pc-2 { --ex-rot: 5deg; left: 66%; top: 0; z-index: 4; }
+.ex-pc-3 { --ex-rot: -2deg; left: 44%; top: 43%; z-index: 3; }
+.ex-hero:hover .ex-pc-1 { transform: rotate(-9deg) translateY(-3px); }
+.ex-hero:hover .ex-pc-2 { transform: rotate(7deg) translateY(-3px); }
+.ex-hero:hover .ex-postcard .mt-motif { transform: scale(1.06); }
+
+.ex-note {
+  position: absolute; left: 0; bottom: 2%; z-index: 4; display: flex; align-items: flex-end; gap: 2px; margin: 0;
+  color: var(--ink-teal); font-family: var(--ex-font-hand); font-weight: 600; font-size: 29px; line-height: .95;
+  transform: rotate(-4deg);
+}
+.ex-note span { display: block; }
+.ex-note-hl {
+  padding-right: 2px;
+  background: linear-gradient(transparent 62%, color-mix(in srgb, var(--saffron) 45%, transparent) 62%, color-mix(in srgb, var(--saffron) 45%, transparent) 92%, transparent 92%);
+}
+.ex-note svg { width: 54px; height: 62px; margin-bottom: -26px; color: var(--ink-teal); }
+
+/* ---------- Layout: catalog | side panels ---------- */
+.ex-layout { display: grid; grid-template-columns: minmax(0, 1fr) 288px; gap: 24px; align-items: start; margin-top: 24px; }
+.ex-layout > * { min-width: 0; }
+.ex-main { container: ex-main / inline-size; scroll-margin-top: 88px; }
+.ex-main:focus { outline: none; }
+.ex-aside { display: grid; gap: 20px; align-content: start; }
+@media (max-width: 1099px) {
+  .ex-layout { grid-template-columns: minmax(0, 1fr); margin-top: 24px; }
+  .ex-aside { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ex-panel-places { grid-column: 1 / -1; }
+  .ex-places { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .ex-hero { padding: 32px 24px; }
+  .ex-note svg { display: none; }
+}
+@media (max-width: 959px) {
+  .ex-hero { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  .ex-hero-visual { aspect-ratio: auto; max-width: none; justify-self: stretch; }
+  .ex-postcards { display: none; }
+  .ex-note { position: static; align-self: start; width: fit-content; transform: rotate(-2deg); }
+  .ex-note svg { display: block; margin-bottom: -20px; transform: scaleX(-1) rotate(-12deg); }
+}
+@media (max-width: 720px) {
+  .ex-aside { grid-template-columns: minmax(0, 1fr); }
+  .ex-places { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+.ex-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px; margin-bottom: 14px; }
+.ex-section-title { margin: 0; color: var(--text); font-family: var(--font-body); font-size: 28px; font-weight: 800; line-height: 1.2; letter-spacing: -.02em; }
+.ex-result-count { margin: 0; color: var(--text-2); font-size: 14px; font-variant-numeric: tabular-nums; }
+
+/* ---------- Filter bar ----------
+   The bar is a stacking host: the select menus open inside it and must paint
+   over the cards below. The .filterbar-host rule sets the same rung. */
+.ex-filterbar {
+  position: relative; z-index: var(--z-frost); display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 12px;
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--ex-shadow-sm);
+}
+.ex-filter-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; min-width: 0; }
+.ex-search { position: relative; flex: 1 1 100%; min-width: 0; }
+.ex-search-icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--text-2); pointer-events: none; }
+.ex-search-input {
+  width: 100%; min-height: 44px; padding: 0 3rem 0 2.75rem;
+  border: 1px solid var(--ex-line-strong); border-radius: 12px; background: var(--card-soft); color: var(--text);
+  font-size: 15px; -webkit-appearance: none; appearance: none;
+  transition: border-color var(--motion-fast) var(--ease-out), background-color var(--motion-fast) var(--ease-out), box-shadow var(--motion-fast) var(--ease-out);
+}
+.ex-search-input::placeholder { color: var(--text-2); opacity: 1; }
+.ex-search-input:hover { border-color: color-mix(in srgb, var(--text) 40%, transparent); }
+.ex-search-input:focus-visible { outline: none; border-color: var(--teal-deep); box-shadow: var(--ring); }
+.ex-search-input::-webkit-search-cancel-button { display: none; }
+.ex-search-clear {
+  position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+  width: 40px; height: 40px; display: grid; place-items: center; padding: 0;
+  border: 0; border-radius: 50%; background: none; color: var(--text-2); cursor: pointer;
+  transition: background-color var(--motion-fast) var(--ease-out);
+}
+.ex-search-clear:hover { background: var(--bg-soft); }
+.ex-search-clear:focus-visible { outline: none; box-shadow: var(--ring); }
+
+.ex-selects { display: contents; }
+.ex-filters-toggle { display: none; }
+.ex-filters-count {
+  display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px;
+  background: var(--text); color: var(--bg); font-size: 12px; font-weight: 700;
+}
+.ex-select { position: relative; flex: 1 1 0; min-width: 150px; }
+.ex-select--sort { min-width: 210px; }
+.ex-select .cselect { width: 100%; }
+.ex-select .cselect-trigger {
+  width: 100%; min-height: 44px; padding: 0 40px 0 14px; border: 1px solid var(--ex-line-strong); border-radius: 12px;
+  background-color: var(--card-soft); font-size: 14px; font-weight: 600;
+}
+.ex-select .cselect-trigger:hover:not(:disabled) { border-color: color-mix(in srgb, var(--text) 40%, transparent); }
+.ex-select .cselect-trigger:focus-visible { border-color: var(--teal-deep); box-shadow: var(--ring); }
+.ex-select-icon { position: absolute; left: 12px; top: 50%; z-index: var(--z-content); transform: translateY(-50%); color: var(--text-2); pointer-events: none; }
+.ex-select--sort .cselect-trigger { padding-left: 2.25rem; }
+
+.ex-chip-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.ex-chips { display: contents; } /* Saved shares the style chips' wrapping row. */
+.ex-chip {
+  display: inline-flex; align-items: center; gap: 7px; flex: none; min-height: 38px; padding: 0 14px;
+  border: 1px solid var(--ex-line-strong); border-radius: 999px; background: transparent; color: var(--text);
+  font-size: 14px; font-weight: 600; white-space: nowrap; cursor: pointer;
+  transition: background-color var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out), border-color var(--motion-fast) var(--ease-out), transform var(--motion-fast) var(--ease-out);
+}
+.ex-chip:hover { background: var(--bg-soft); }
+.ex-chip:active { transform: translateY(1px); }
+.ex-chip:focus-visible { outline: none; box-shadow: var(--ring); }
+.ex-chip[aria-pressed='true'] { background: var(--text); border-color: var(--text); color: var(--bg); }
+.ex-chip-count { font-size: 12px; font-weight: 700; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.ex-chip[aria-pressed='true'] .ex-chip-count { color: inherit; opacity: .8; }
+.ex-chip svg { flex: none; }
+.ex-chip-saved[aria-pressed='true'] { background: var(--saffron-soft); border-color: var(--saffron); color: var(--ink-amber); }
+.ex-chip-saved[aria-pressed='true'] .ex-chip-count { color: inherit; }
+.ex-chip-divider { width: 1px; height: 24px; margin-inline: 4px; background: var(--ex-line-strong); }
+:is(.ex-page, .trips-page) .ex-clear { margin-left: auto; min-height: 38px; padding: 0 10px; color: var(--ink-teal); font-size: 14px; }
+:is(.ex-page, .trips-page) .ex-clear:hover:not(:disabled) { background: var(--teal-soft); }
+
+/* "How forking works": a compact dashed strip, out of the grid. */
+.ex-howto {
+  display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 6px 22px;
+  margin-top: 12px; padding: 12px 16px; border: 1px dashed var(--ex-line-strong); border-radius: 16px;
+}
+.ex-howto h3 { margin: 0; color: var(--text); font-family: var(--font-body); font-size: 18px; font-weight: 800; letter-spacing: -.005em; white-space: nowrap; }
+.ex-howto ol { display: flex; flex-wrap: wrap; gap: 4px 20px; margin: 0; padding: 0; list-style: none; counter-reset: ex-step; color: var(--text-2); font-size: 14px; }
+.ex-howto li { display: inline-flex; align-items: center; gap: 8px; counter-increment: ex-step; }
+.ex-howto li::before {
+  content: counter(ex-step); width: 22px; height: 22px; flex: none; display: grid; place-items: center; border-radius: 50%;
+  background: var(--teal-soft); color: var(--ink-teal); font-size: 12px; font-weight: 800;
+}
+.ex-howto b { color: var(--text); font-weight: 700; }
+.ex-fork-note { display: flex; align-items: center; gap: 8px; grid-column: 1 / -1; margin: 0; color: var(--text-2); font-size: 14px; }
+.ex-fork-note svg { flex: none; color: var(--teal); }
+
+/* ---------- Grid ---------- */
+.ex-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; margin-top: 16px; }
+@container ex-main (min-width: 560px) {
+  .ex-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+}
+@container ex-main (min-width: 880px) {
+  .ex-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+}
+/* A lone last card takes its own row and lays out across, like the featured card. */
+@container ex-main (min-width: 560px) and (max-width: 879px) {
+  .ex-grid > .ex-card:last-child:nth-child(2n + 1):not(:first-child) { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .ex-grid > .ex-card:last-child:nth-child(2n + 1):not(:first-child) .ex-cover-wrap { aspect-ratio: auto; align-self: stretch; min-height: 180px; }
+}
+@container ex-main (min-width: 880px) {
+  .ex-grid > .ex-card:last-child:nth-child(3n + 1):not(:first-child) { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .ex-grid > .ex-card:last-child:nth-child(3n + 1):not(:first-child) .ex-cover-wrap { aspect-ratio: auto; align-self: stretch; min-height: 180px; }
+}
+
+/* ---------- Itinerary card ---------- */
+.ex-card {
+  position: relative; display: flex; flex-direction: column; min-width: 0; padding: 6px;
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--ex-shadow-sm);
+  transition: transform var(--motion-med) var(--ease-out), box-shadow var(--motion-med) var(--ease-out), border-color var(--motion-med) var(--ease-out);
+}
+.ex-card:hover { transform: translateY(-2px); box-shadow: var(--ex-shadow-md); border-color: var(--ex-line-strong); }
+.ex-card:hover .ex-cover-img, .ex-card:hover .mt-motif { transform: scale(1.035); }
+.ex-cover-wrap { position: relative; overflow: hidden; aspect-ratio: 16 / 10; border-radius: var(--radius-sm); }
+.ex-cover-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: transform var(--motion-slow) var(--ease-out); }
+.ex-save {
+  position: absolute; top: 4px; right: 4px; z-index: var(--z-raised);
+  width: 40px; height: 40px; display: grid; place-items: center; padding: 0;
+  border: 0; border-radius: 50%; background: none; cursor: pointer;
+}
+.ex-save-dot {
+  width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center;
+  background: rgb(255 255 255 / .96); color: var(--yf-navy); box-shadow: 0 1px 3px rgba(var(--shadow-navy-rgb), .25);
+  transition: transform var(--motion-fast) var(--ease-out), background-color var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out);
+}
+.ex-save:hover .ex-save-dot { transform: scale(1.08); }
+.ex-save:active .ex-save-dot { transform: scale(.94); }
+.ex-save:focus-visible { outline: none; border-radius: 50%; box-shadow: var(--ring); }
+.ex-save[aria-pressed='true'] .ex-save-dot { background: var(--saffron); color: var(--color-accent-foreground); }
+.ex-save[aria-pressed='true'] svg { fill: currentColor; }
+
+.ex-card-main { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+.ex-card-body { display: flex; flex: 1; flex-direction: column; gap: 8px; min-width: 0; padding: 14px 12px 8px; }
+.ex-card-title {
+  margin: 0; color: var(--text); font-family: var(--font-body); font-size: 19px; font-weight: 700;
+  line-height: 1.28; letter-spacing: -.015em; text-wrap: balance;
+}
+/* The title link covers the whole card, so a tap anywhere opens the plan. */
+.ex-card-link { border-radius: 4px; color: inherit; text-decoration: none; }
+.ex-card-link::after { content: ''; position: absolute; inset: 0; z-index: var(--z-content); border-radius: var(--radius); }
+.ex-card-link:focus-visible { outline: none; }
+.ex-card-link:focus-visible::after { box-shadow: var(--ring); }
+.ex-card-desc {
+  margin: 0; color: var(--text-2); font-size: 15px; line-height: 1.5;
+  display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.ex-facts {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 10px 8px;
+  margin: auto 0 0; padding-top: 12px; border-top: 1px solid var(--line);
+}
+.ex-facts > div { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
+.ex-facts dt { color: var(--text-2); font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
+.ex-facts dd { margin: 0; color: var(--text); font-size: 13.5px; font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: break-word; }
+
+.ex-card-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 0 12px 8px; }
+.ex-byline {
+  position: relative; z-index: var(--z-raised); display: inline-flex; flex: 0 1 auto; align-items: center; gap: 8px;
+  min-width: 0; min-height: 40px; border-radius: 10px; color: var(--text); font-size: 14px; font-weight: 600; text-decoration: none;
+}
+.ex-byline .avatar { width: 28px; height: 28px; box-shadow: 0 0 0 2px var(--card); }
+.ex-byline .avatar, .ex-byline svg { flex: none; }
+.ex-byline > span:not(.avatar) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ex-byline:hover > span:not(.avatar) { text-decoration: underline; text-underline-offset: 3px; }
+.ex-byline:focus-visible { outline: none; box-shadow: var(--ring); }
+.ex-page .ex-fork { position: relative; z-index: var(--z-raised); flex: none; min-height: 40px; margin-left: auto; padding: 0 12px; font-size: 14px; }
+.ex-inline-icon { display: inline-block; vertical-align: -1px; margin-left: 2px; }
+
+/* ---------- Featured itinerary ----------
+   Phone: cover, then text, then the route. Wider: the cover sits over the route
+   on the left and the text runs down the right. */
+.ex-feature {
+  position: relative; display: grid; grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "cover" "body" "route"; margin-top: 16px; padding: 6px;
+  border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); box-shadow: var(--ex-shadow-sm);
+  transition: box-shadow var(--motion-med) var(--ease-out), border-color var(--motion-med) var(--ease-out);
+}
+.ex-feature:hover { box-shadow: var(--ex-shadow-md); border-color: var(--ex-line-strong); }
+.ex-feature-cover { grid-area: cover; position: relative; overflow: hidden; aspect-ratio: 16 / 9; border-radius: var(--radius-sm); }
+.ex-feature-cover .ex-cover-img { transition: transform var(--motion-slower) var(--ease-out); }
+.ex-feature:hover .ex-feature-cover .ex-cover-img, .ex-feature:hover .mt-motif { transform: scale(1.03); }
+.ex-feature-body { grid-area: body; align-self: stretch; display: flex; flex-direction: column; gap: 11px; min-width: 0; padding: 18px 12px 12px; }
+.ex-feature-route { grid-area: route; display: flex; flex-direction: column; gap: 14px; min-width: 0; padding: 4px 12px 8px; }
+@container ex-main (min-width: 640px) {
+  .ex-feature { grid-template-columns: minmax(0, 1.08fr) minmax(0, 1fr); grid-template-areas: "cover body" "route body"; align-items: start; }
+  .ex-feature-cover { aspect-ratio: 16 / 10; }
+  .ex-feature-body { padding: 18px 20px 14px 22px; }
+  .ex-feature-route { padding: 6px 8px 8px; }
+  .ex-feature-title { font-size: 28px; line-height: 1.18; }
+  .ex-feature .ex-facts { grid-template-columns: repeat(4, auto); justify-content: space-between; }
+}
+.ex-kicker {
+  display: inline-flex; align-items: center; gap: 6px; margin: 0; color: var(--ink-teal);
+  font-size: 12px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+}
+.ex-feature-title {
+  margin: 0; color: var(--text); font-family: var(--font-body); font-size: 24px; font-weight: 700;
+  line-height: 1.2; letter-spacing: -.02em; text-wrap: balance;
+}
+.ex-feature-link { border-radius: 4px; color: inherit; text-decoration: none; }
+.ex-feature-link:focus-visible { outline: none; box-shadow: var(--ring); }
+.ex-feature-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+.ex-feature-tagline { margin: 0; color: var(--text-2); font-size: 15px; line-height: 1.5; max-width: 60ch; }
+.ex-credibility { margin: 0; color: var(--text-2); font-size: 14px; max-width: 72ch; }
+.ex-feature-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; margin-top: auto; padding-top: 6px; }
+.ex-feature-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+
+/* ---------- Route trail ---------- */
+.ex-route { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.ex-route-kind { display: inline-flex; align-items: center; gap: 6px; margin: 0; color: var(--ink-teal); font-size: 13px; font-weight: 700; }
+.ex-trail {
+  display: flex; flex-wrap: wrap; align-items: center; margin: 0; padding: 0; list-style: none;
+  color: var(--text); font-size: 13px; font-weight: 600; line-height: 2; text-wrap: balance;
+}
+.ex-trail li { display: inline-flex; align-items: center; white-space: nowrap; }
+.ex-trail li:first-child::before {
+  content: ''; width: 8px; height: 8px; margin-right: 6px; border-radius: 50%; border: 2px solid var(--teal);
+}
+.ex-trail li:not(:last-child)::after {
+  content: ''; width: 12px; height: 2px; margin-inline: 5px;
+  background: repeating-linear-gradient(90deg, var(--teal) 0 3px, transparent 3px 6px);
+}
+.ex-trail li:last-child::after { content: ''; width: 8px; height: 8px; margin-left: 6px; border-radius: 50%; background: var(--saffron); }
+/* A loop ends where it began, so its last dot is hollow, like its first. */
+.ex-trail.is-loop li:last-child::after { background: none; border: 2px solid var(--teal); }
+.ex-route-more { margin: 0; color: var(--text-2); font-size: 13px; }
+
+/* ---------- Side panels ---------- */
+.ex-panel {
+  min-width: 0; padding: 20px; border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--card); box-shadow: var(--ex-shadow-sm);
+}
+.ex-panel-title {
+  margin: 0 0 14px; color: var(--text); font-family: var(--font-body); font-size: 19px; font-weight: 800;
+  line-height: 1.25; letter-spacing: -.01em;
+}
+.ex-places { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 0; padding: 0; list-style: none; }
+.ex-place {
+  position: relative; display: block; width: 100%; aspect-ratio: 1 / 1; padding: 0; border: 0;
+  border-radius: var(--radius-sm); overflow: hidden; background: none; text-align: left; cursor: pointer;
+  transition: box-shadow var(--motion-med) var(--ease-out), transform var(--motion-med) var(--ease-out);
+}
+.ex-place:hover { box-shadow: var(--ex-shadow-md); transform: translateY(-1px); }
+.ex-place:active { transform: translateY(1px); }
+.ex-place:focus-visible { outline: none; box-shadow: var(--ring); }
+.ex-place-art { position: absolute; inset: 0; }
+.ex-place:hover .mt-motif { transform: scale(1.06); }
+/* A band that hugs the label; the art above it stays clear. */
+.ex-place-label {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: var(--z-content); display: block;
+  padding: 22px 10px 9px; color: #fff; line-height: 1.2;
+  background: linear-gradient(to top, rgba(var(--shadow-navy-rgb), .82) 0, rgba(var(--shadow-navy-rgb), .82) calc(100% - 22px), rgba(var(--shadow-navy-rgb), 0) 100%);
+}
+.ex-place-name { display: block; font-size: 14px; font-weight: 800; letter-spacing: -.005em; overflow-wrap: anywhere; }
+.ex-place-meta { display: block; font-size: 12px; }
+
+.ex-creators { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.ex-creator {
+  display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 6px 8px; margin-inline: -8px;
+  border-radius: 12px; color: var(--text); text-decoration: none; transition: background-color var(--motion-fast) var(--ease-out);
+}
+.ex-creator .avatar { width: 36px; height: 36px; font-size: 13px; }
+.ex-creator:hover { background: var(--bg-soft); }
+.ex-creator:focus-visible { outline: none; box-shadow: var(--ring); }
+.ex-creator-text { display: flex; flex-direction: column; min-width: 0; }
+.ex-creator-name { display: inline-flex; align-items: center; gap: 4px; font-size: 15px; font-weight: 700; }
+.ex-creator-meta { font-size: 13px; color: var(--text-2); }
+
+.ex-share { position: relative; overflow: hidden; }
+.ex-share::before {
+  content: ''; position: absolute; right: -46px; top: -46px; width: 96px; height: 96px; border-radius: 50%;
+  background: radial-gradient(circle, var(--saffron-soft) 0 60%, transparent 61%);
+}
+.ex-share > * { position: relative; }
+.ex-share-lede { margin: -6px 0 14px; color: var(--text-2); font-size: 14px; }
+.ex-ticks { display: grid; gap: 10px; margin: 0 0 18px; padding: 0; list-style: none; }
+.ex-ticks li { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 10px; color: var(--text); font-size: 14px; }
+.ex-ticks svg { margin-top: 3px; color: var(--teal); }
+.ex-share-btn { width: 100%; }
+
+/* ---------- Loading, failed and empty states ---------- */
+.ex-state {
+  display: grid; justify-items: center; gap: 10px; margin-top: 16px; padding: 44px 24px;
+  text-align: center; border: 1.5px dashed var(--ex-line-strong); border-radius: var(--radius);
+}
+.ex-state-icon { display: grid; place-items: center; color: var(--teal); }
+.ex-state-icon .spinner { width: 28px; height: 28px; }
+.ex-state-title {
+  margin: 0; color: var(--text); font-family: var(--font-body); font-size: 20px; font-weight: 800; line-height: 1.25;
+}
+.ex-state-body { margin: 0; max-width: 44ch; color: var(--text-2); }
+.ex-state-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 4px; }
+.ex-more { display: flex; justify-content: center; padding: 18px 0 4px; }
+
+/* ---------- Travel-style tag ----------
+   A label over the cover's top-left corner, not a control: no 40px target. A
+   near-white pill with dark ink stays readable over any cover, in either theme. */
+.ex-style-tag {
+  position: absolute; top: 10px; left: 10px; z-index: var(--z-content); max-width: calc(100% - 64px);
+  padding: 4px 10px; border-radius: 999px; background: rgb(255 255 255 / .96); color: var(--yf-navy);
+  font-size: 12px; font-weight: 700; letter-spacing: .01em; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+/* ---------- Touch sizes and phone layout ---------- */
+@media (max-width: 720px), (pointer: coarse) {
+  .ex-chip, :is(.ex-page, .trips-page) .ex-clear { min-height: 44px; }
+  .ex-page .ex-fork, .ex-byline { min-height: 44px; }
+  .ex-search-clear { width: 44px; height: 44px; }
+}
+@media (max-width: 760px) {
+  .ex-howto { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 640px) {
+  .ex-hero { margin-top: 0; padding: 26px 20px 24px; border-radius: 22px; }
+  .ex-hero-lede { font-size: 16px; }
+  /* No postcards and no handwritten note on a phone, on either page. */
+  .ex-hero-visual { display: none; }
+  .ex-hero-actions { gap: 20px; margin-top: 22px; }
+  :is(.ex-page, .trips-page) .ex-cta { width: 100%; }
+  .ex-stats { display: flex; flex-wrap: wrap; gap: 2px 14px; width: 100%; }
+  .ex-stat, .ex-stat:first-child { flex-direction: row-reverse; justify-content: flex-end; align-items: baseline; gap: 4px; padding: 0; border-left: 0; }
+  .ex-stat dd { font-size: 15px; }
+  .ex-note { font-size: 26px; }
+  .ex-layout { gap: 24px; margin-top: 20px; }
+  .ex-section-title { font-size: 24px; }
+  .ex-filterbar { padding: 10px; border-radius: 18px; }
+  .ex-search { flex: 1 1 0; }
+  .ex-filters-toggle { display: inline-flex; flex: none; }
+  .ex-selects { display: none; }
+  .ex-selects.is-open { display: flex; flex-wrap: wrap; flex-basis: 100%; gap: 10px; }
+  .ex-select, .ex-select--sort { flex: 1 1 calc(50% - 5px); min-width: 0; }
+  .ex-select--sort { flex-basis: 100%; }
+  .ex-chip-row { flex-wrap: wrap; }
+  .ex-chips { display: flex; flex: 1 1 100%; flex-wrap: wrap; gap: 8px; }
+  .ex-chip-divider { display: none; }
+  :is(.ex-page, .trips-page) .ex-clear { flex: none; margin-left: 0; white-space: nowrap; }
+  /* While hidden, the Clear button must not claim a wrapped line of its own. */
+  :is(.ex-page, .trips-page) .ex-clear[style*="hidden"] { position: absolute; }
+  .ex-howto { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 10px 12px; }
+  .ex-fork-note { flex-basis: 100%; }
+  .ex-howto h3 { font-size: 14px; }
+  .ex-howto ol { flex-wrap: nowrap; gap: 10px; font-size: 13px; }
+  .ex-howto li { gap: 4px; white-space: nowrap; }
+  .ex-howto li::before { width: 18px; height: 18px; font-size: 11px; }
+  .ex-howto-more { display: none; }
+  .ex-fork-note { align-items: flex-start; font-size: 13px; }
+  .ex-fork-note svg { margin-top: 2px; }
+  .ex-grid { margin-top: 14px; }
+  .ex-panel { padding: 18px 16px; }
+  .ex-places { gap: 8px; }
+  .ex-place-label { padding: 22px 8px 8px; }
+  .ex-place-name { font-size: 13px; }
+  .ex-state { padding: 32px 16px; }
+}
+@media (max-width: 360px) {
+  .ex-select, .ex-select--sort { flex-basis: 100%; }
+  .ex-howto ol { flex-wrap: wrap; }
+}
+
+/* ---------- Motion ----------
+   Entrance: cards rise and fade in, one stagger step apart (the My trips
+   pattern, cardIn + --stagger-step). The grid remounts when a filter changes,
+   so the same entrance plays for the new results. */
+.ex-enter { animation: cardIn var(--motion-slow) var(--ease-out) backwards; }
+.ex-aside > :nth-child(1) { animation: cardIn var(--motion-slow) var(--ease-out) backwards; animation-delay: calc(var(--stagger-step) * 1); }
+.ex-aside > :nth-child(2) { animation: cardIn var(--motion-slow) var(--ease-out) backwards; animation-delay: calc(var(--stagger-step) * 2); }
+.ex-aside > :nth-child(3) { animation: cardIn var(--motion-slow) var(--ease-out) backwards; animation-delay: calc(var(--stagger-step) * 3); }
+/* Mobile filters open with the popover entrance: fade and a 4px rise. */
+.ex-selects.is-open { animation: exDrop var(--motion-med) var(--ease-out); }
+@keyframes exDrop {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+/* A saved heart pops once when it turns on. */
+.ex-save[aria-pressed='true'] .ex-save-dot,
+.ex-chip-saved[aria-pressed='true'] svg,
+.ex-feature-actions .btn[aria-pressed='true'] svg { animation: exHeartPop var(--motion-med) var(--ease-out); }
+@keyframes exHeartPop {
+  0% { transform: scale(.8); }
+  55% { transform: scale(1.22); }
+  100% { transform: scale(1); }
+}
+
+/* ---------- Reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .ex-enter, .ex-hero-copy, .ex-hero-visual, .ex-aside > :nth-child(n), .ex-selects.is-open,
+  .ex-save[aria-pressed='true'] .ex-save-dot, .ex-chip-saved[aria-pressed='true'] svg,
+  .ex-feature-actions .btn[aria-pressed='true'] svg { animation: none; }
+  .ex-card, .ex-card:hover, .ex-feature, .ex-place, .ex-place:hover { transition: none; transform: none; }
+  .ex-postcard { transition: none; }
+  .ex-card:hover .ex-cover-img, .ex-card:hover .mt-motif, .ex-place:hover .mt-motif,
+  .ex-feature:hover .ex-feature-cover .ex-cover-img, .ex-feature:hover .mt-motif, .ex-hero:hover .ex-postcard .mt-motif { transform: none; }
+  .ex-hero:hover .ex-pc-1 { transform: rotate(var(--ex-rot)); }
+  .ex-hero:hover .ex-pc-2 { transform: rotate(var(--ex-rot)); }
+  .ex-cover-img, .ex-feature-cover .ex-cover-img, .ex-save-dot, .ex-chip, .ex-search-input, .ex-search-clear, .ex-creator,
+  .ex-select .cselect-trigger, :is(.ex-page, .trips-page) .btn { transition: none; }
+  .ex-save:hover .ex-save-dot, .ex-save:active .ex-save-dot, .ex-chip:active, :is(.ex-page, .trips-page) .btn:where(:not(.modal *)):active:not(:disabled) { transform: none; }
+}
+
+/* ===== Shared page tokens, and the My trips hero ===== */
+/* Explore and My trips are siblings and read as one design. The tokens they
+   share live here on :root. The --ex-* names stay as aliases. Type: Playfair
+   Display for a hero line, Caveat for the handwritten note, Plus Jakarta Sans
+   for everything else. */
+:root {
+  --font-serif: 'Playfair Display', Georgia, 'Times New Roman', serif;
+  --font-hand: 'Caveat', 'Segoe Print', 'Bradley Hand', cursive;
+  --line-strong: color-mix(in srgb, var(--text) 22%, transparent);
+  --shadow-card: 0 1px 2px rgba(var(--shadow-navy-rgb), .05), 0 4px 12px -6px rgba(var(--shadow-navy-rgb), .12);
+  --shadow-card-hover: 0 2px 4px rgba(var(--shadow-navy-rgb), .05), 0 22px 40px -20px rgba(var(--shadow-navy-rgb), .32);
+  --ex-font-serif: var(--font-serif);
+  --ex-font-hand: var(--font-hand);
+  --ex-line-strong: var(--line-strong);
+  --ex-shadow-sm: var(--shadow-card);
+  --ex-shadow-md: var(--shadow-card-hover);
+}
+
+/* The hero is Explore's hero (.ex-hero). These rules only change what a
+   headline from real data needs: a long place name must wrap, and the page can
+   have one, two or three postcards. */
+.mt-hero { margin-bottom: 24px; }
+.mt-catalog .ex-filterbar { margin-bottom: 16px; }
+.mt-hero .ex-kicker { margin-bottom: 12px; }
+.mt-hero h1 { overflow-wrap: anywhere; }
+.mt-hero h1 em { display: inline-block; max-width: 100%; white-space: normal; }
+.mt-hero-secondary { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.mt-hero-stats { margin-top: 22px; }
+.mt-hero .ex-postcards[data-count='0'] .ex-route-line { display: none; }
+.mt-hero .ex-postcards[data-count='1'] .ex-pc-1 { left: 31%; top: 6%; width: 42%; }
+.mt-hero .ex-postcards[data-count='1'] .ex-route-line { display: none; }
+.mt-hero .ex-postcards[data-count='2'] .ex-pc-2 { left: 56%; top: 14%; }
+.mt-pc-place { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mt-pc-blank {
+  position: absolute; inset: 0; display: grid; place-items: center; color: var(--ex-paper-ink);
+  border: 1.5px dashed color-mix(in srgb, var(--ex-paper-ink) 45%, transparent); border-radius: 3px;
+  background: color-mix(in srgb, var(--ex-paper-ink) 7%, transparent);
+}
+.mt-note { max-width: 100%; }
+.mt-head-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+@media (max-width: 959px) {
+  /* The postcards are hidden here. With no note either, the empty visual goes. */
+  .mt-hero .ex-hero-visual:not(:has(.mt-note)) { display: none; }
+}
+@media (max-width: 640px) {
+  .mt-hero .ex-kicker { margin-bottom: 8px; }
+  .mt-hero .ex-hero-actions { gap: 10px; margin-top: 16px; }
+  .mt-hero .ex-hero-actions > .ex-cta { flex: 1 1 100%; }
+  .mt-hero-secondary { flex: 1 1 100%; }
+  .mt-hero-secondary > .btn { flex: 1 1 0; justify-content: center; padding: 0 10px; }
+  .mt-hero-stats { margin-top: 12px; }
+}

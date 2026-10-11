@@ -14,6 +14,9 @@ import { resolveOrigin } from './_origin.js'
 
 const DEFAULT_TITLE = 'YatraFlow — Plan real trips, together'
 const ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+// A found card is edge-cacheable for five minutes, then served stale for ten
+// while it revalidates. Everything else answers no-store.
+const CARD_CACHE_CONTROL = 'public, max-age=0, s-maxage=300, stale-while-revalidate=600'
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, character => ({
@@ -32,7 +35,7 @@ function renderCreator(profile, id, publicationCount) {
   const name = typeof profile?.name === 'string' && profile.name.trim() ? profile.name.trim() : null
   if (!name) {
     return `<!doctype html>
-<html lang="en">
+<html lang="en-IN">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -57,7 +60,7 @@ function renderCreator(profile, id, publicationCount) {
   // #426 slice 3: the browser lands on the app page's real path directly.
   const target = `/creator/${id}`
   return `<!doctype html>
-<html lang="en">
+<html lang="en-IN">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -158,6 +161,10 @@ export default async function handler(req, res) {
     // Countless but present — the card still says who they are.
   }
 
+  // Only a card that names a real creator may be shared at the edge. The
+  // noindex fallback (a profile with no name) keeps the no-store header set above.
+  const named = typeof profile?.name === 'string' && profile.name.trim() !== ''
+  if (named) res.setHeader('cache-control', CARD_CACHE_CONTROL)
   res.status(200)
   return req.method === 'HEAD' ? res.end() : res.send(renderCreator(profile, id, publicationCount))
 }

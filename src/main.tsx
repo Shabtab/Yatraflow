@@ -7,6 +7,7 @@ import { haptic } from './lib/haptics'
 // Brand fonts are self-hosted through @fontsource, so first paint never waits
 // on a font CDN. Sora 600-800 covers display; Plus Jakarta Sans 400-800 covers
 // body text. The family names match --font-display/--font-body in styles.css.
+// Playfair Display 600 (and italic) and Caveat 600 serve the Explore and My trips heroes.
 import '@fontsource/sora/600.css'
 import '@fontsource/sora/700.css'
 import '@fontsource/sora/800.css'
@@ -15,6 +16,9 @@ import '@fontsource/plus-jakarta-sans/500.css'
 import '@fontsource/plus-jakarta-sans/600.css'
 import '@fontsource/plus-jakarta-sans/700.css'
 import '@fontsource/plus-jakarta-sans/800.css'
+import '@fontsource/playfair-display/600.css'
+import '@fontsource/playfair-display/600-italic.css'
+import '@fontsource/caveat/600.css'
 import './styles.css'
 
 // Native-shell class, set before the first React paint: switches CSS onto
