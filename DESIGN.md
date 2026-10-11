@@ -214,6 +214,12 @@ a number.
 **The Kicker Casing Rule.** Sentence case in source, uppercase in CSS. Visible
 all-caps strings in markup are a violation unless on the short documented allowlist.
 
+### Phase 0 notes
+
+**Title font.** Plus Jakarta Sans 800 is the title font. Sora is retired for titles.
+Phase 0 makes no global heading font change. Each page adopts the title font when you migrate it.
+The final cleanup removes Sora from titles.
+
 ## Layout
 
 A centred container, `max-width: 1180px` with `padding: 0 20px`. Pages open with a
@@ -241,6 +247,12 @@ padding); backgrounds and media may bleed, controls and text may not.
 **The Logical Property Rule.** Direction-dependent padding, margin and borders use
 `padding-inline-*`, `margin-inline-*`, `border-inline-start` — physical left/right
 only for genuinely physical geometry.
+
+### Phase 0 notes
+
+The `yf-page` class gives a page the catalog container width.
+The page width token is `--page-max`, at 1240px. Phase 0 adds it to the stylesheet.
+Add new page-skin rules at the end of `src/styles.css`. Do not edit the older rules.
 
 ## Elevation & Depth
 
@@ -339,6 +351,12 @@ shared scale — a second axis would make unlocks look healthy beside a visits c
 It shares one window rule and one clock with the table beneath it, so the chart and
 the rows can never describe different periods, and a failed read never renders as a
 zero: the empty state only appears once the log was actually read.
+
+### Phase 0 notes
+
+The page primitives are in `src/components/page/`: `PageHero`, `PageHeader`, `StateBlock`, `SectionHead` and `Surface`.
+Use `StateBlock` for loading, failed and empty states on a new page.
+Add `yf-page` to the root of a page when you convert it. The page skin then applies to that page.
 
 ## Do's and Don'ts
 
