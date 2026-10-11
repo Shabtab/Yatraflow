@@ -9048,3 +9048,50 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 @media (prefers-reduced-motion: reduce) {
   .pur-page > :is(.yf-state, .pur-note, .pur-foot) { animation: none; }
 }
+
+/* ===== My purchases: the kept-for-you card, the update note, the new-card outline ===== */
+/* A held plan shows the creator's face, a quiet "Yours" seal and the creator's
+   own facts. Every word comes from a stored field. */
+.pur-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 6px 12px; }
+.pur-head .pur-name { flex: 1 1 12rem; min-width: 0; }
+.pur-seal {
+  display: inline-flex; flex: none; align-items: center; gap: 4px; padding: 2px 10px 2px 8px;
+  border: 1px solid color-mix(in srgb, var(--ink-teal) 55%, transparent); border-radius: 999px;
+  color: var(--ink-teal); font-size: 12px; font-weight: 700; line-height: 1.5; white-space: nowrap;
+}
+.pur-by-kept { display: flex; align-items: center; gap: 8px; }
+.pur-avatar { display: inline-flex; flex: none; }
+.pur-by-kept > span:last-child { min-width: 0; text-wrap: balance; }
+.pur-update { margin: 0; max-width: 52ch; color: var(--text-2); font-size: 13px; line-height: 1.45; text-wrap: pretty; }
+/* The card that the unlock moment points at: one outline that holds, then
+   fades to clear. Reduced motion keeps a still, soft outline. */
+.pur-row.is-new::after {
+  content: ''; position: absolute; inset: -3px; border: 2px solid var(--ink-teal);
+  border-radius: calc(var(--radius) + 3px); pointer-events: none;
+  animation: purNewRing var(--motion-slow) var(--ease-out) var(--motion-slower) forwards;
+}
+@keyframes purNewRing {
+  from { border-color: var(--ink-teal); }
+  to { border-color: transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pur-row.is-new::after { animation: none; border-color: color-mix(in srgb, var(--ink-teal) 45%, transparent); }
+}
+.unlock-reveal-link { color: var(--ink-teal); font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
+.unlock-reveal-link:focus-visible { outline: none; box-shadow: var(--ring); border-radius: 4px; }
+
+/* ===== Shared page components: the handwritten header note ===== */
+/* One short aside in Caveat beside the title. The values copy the hero note:
+   font, size, rotation, the saffron highlight and the hand-drawn arrow. */
+.yf-header-note {
+  display: none; align-items: flex-end; gap: 2px; margin: 0; color: var(--ink-teal);
+  font-family: var(--font-hand); font-weight: 600; font-size: 29px; line-height: .95; transform: rotate(-4deg);
+}
+.yf-header-note-hl {
+  padding-right: 2px;
+  background: linear-gradient(transparent 62%, color-mix(in srgb, var(--saffron) 45%, transparent) 62%, color-mix(in srgb, var(--saffron) 45%, transparent) 92%, transparent 92%);
+}
+.yf-header-note svg { width: 54px; height: 62px; margin-bottom: -26px; color: var(--ink-teal); }
+@media (min-width: 720px) {
+  .yf-header-note { display: flex; flex: none; margin-left: auto; margin-right: 8px; }
+}

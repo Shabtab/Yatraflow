@@ -41,7 +41,7 @@ describe('Purchases page: shared components', () => {
 
   it('renders each purchase row on a Surface with its place in the list', async () => {
     const source = await read(PAGE)
-    expect(source).toContain('<Surface as="article" className="pur-row" key={row.pubId} enterIndex={rowIndex}>')
+    expect(source).toContain("<Surface as=\"article\" className={isHighlighted ? 'pur-row is-new' : 'pur-row'} key={row.pubId} id={purchaseCardId(row.pubId)} enterIndex={rowIndex}>")
   })
 })
 
@@ -92,5 +92,83 @@ describe('Purchases page: the summary keeps its honesty', () => {
   it('does not turn the summary into counts', async () => {
     const source = await read(PAGE)
     expect(source).not.toContain('stats={')
+  })
+
+  it('keeps the caveat phrases of the summary line exactly', async () => {
+    const source = await read(PAGE)
+    expect(source).toContain('<><b>{formatInr(shelf.totalPaidInr)}</b> paid</>')
+    expect(source).toContain("{shelf.updatedCount > 0 && <> · <b>{shelf.updatedCount}</b> updated since you bought {shelf.updatedCount === 1 ? 'it' : 'them'}</>}")
+    expect(source).toContain('{shelf.refundedCount > 0 && <> · <b>{shelf.refundedCount}</b> refunded</>}')
+    expect(source).toContain("{shelf.pendingGrantCount > 0 && <> · <b>{shelf.pendingGrantCount}</b> {shelf.pendingGrantCount === 1 ? 'payment' : 'payments'} being finalized</>}")
+  })
+})
+
+describe('Purchases page: honest update and arrival copy', () => {
+  it('says what the creator did, not what changed, and drops the old chip', async () => {
+    const source = await read(PAGE)
+    expect(source).toContain('republishedLine(row)')
+    expect(source).toContain('{updateSentence && <p className="pur-update">{updateSentence}</p>}')
+    expect(source).not.toContain('<Chip tone="info">Updated ')
+  })
+
+  it('tells the truth about the dates of a fork in the footer', async () => {
+    const source = await read(PAGE)
+    expect(source).toContain('the plan’s original dates')
+    expect(source).toContain('You can change')
+    expect(source).toContain('Your copy stays yours, even if the creator updates the plan later.')
+    expect(source).not.toContain('with your dates')
+  })
+
+  it('reads the new parameter once, plays the highlight only for a card on the shelf, and clears the parameter', async () => {
+    const source = await read(PAGE)
+    expect(source).toContain("useRef(currentQuery().get('new'))")
+    expect(source).toContain('if (!shelf.rows.some(row => row.pubId === wantedId)) return')
+    expect(source).toContain('hasPlayedNew.current = true')
+    expect(source).toContain("query.delete('new')")
+    expect(source).toContain('replaceRoute(')
+    expect(source).toContain("window.matchMedia('(prefers-reduced-motion: reduce)').matches")
+  })
+
+  it('passes one handwritten note to the header', async () => {
+    const source = await read(PAGE)
+    expect(source).toContain('note="Yours to keep."')
+    expect((source.match(/\bnote=/g) ?? [])).toHaveLength(1)
+  })
+})
+
+describe('UnlockReveal: true copy and a way to the shelf', () => {
+  const REVEAL = 'src/components/UnlockReveal.tsx'
+
+  it('no longer promises today’s dates', async () => {
+    const source = await read(REVEAL)
+    expect(source).not.toMatch(/today[\s\S]{0,40}dates/i)
+    expect(source).toContain('with the creator’s dates')
+    expect(source).toContain('change the dates')
+  })
+
+  it('links to My purchases and names the new purchase in the query', async () => {
+    const source = await read(REVEAL)
+    expect(source).toContain("import { appLink } from '../lib/appLink'")
+    expect(source).toContain('appLink(`/purchases?new=${encodeURIComponent(pub.id)}`)')
+    expect(source).toContain('>My purchases</a>')
+  })
+
+  it('keeps the primary action and the share control', async () => {
+    const source = await read(REVEAL)
+    expect(source).toContain('onClick={onFork}')
+    expect(source).toContain('Fork into my trips')
+    expect(source).toContain('Share what you bought')
+  })
+})
+
+describe('Styles: the new rules use tokens and opt out of motion', () => {
+  it('fades the new-card outline with the slow token and the out easing, and has a still fallback', async () => {
+    const css = await read('src/styles.css')
+    const start = css.indexOf('.pur-row.is-new::after')
+    expect(start).toBeGreaterThan(-1)
+    const block = css.slice(start, start + 900)
+    expect(block).toContain('animation: purNewRing var(--motion-slow) var(--ease-out)')
+    expect(block).toMatch(/prefers-reduced-motion: reduce\)[\s\S]*\.pur-row\.is-new::after \{ animation: none;/)
+    expect(block).not.toMatch(/\d+ms/)
   })
 })

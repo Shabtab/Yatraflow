@@ -12,51 +12,32 @@
 //   * Every price shown is the entitlement's own snapshot, never the
 //     publication's price today — a creator raising their price does not
 //     retroactively change what you paid.
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { InlineIcon } from '../components/icons'
-import { Share2, ShoppingBag } from 'lucide-react'
+import { BookmarkCheck, Share2, ShoppingBag } from 'lucide-react'
 import { usePublished, useUsers, useSessionUserId, useTrips } from '../store/store'
 import { fetchMyOrders, fetchMyPurchases } from '../lib/unlock'
-import { buildPurchaseShelf, purchaseShareable, findBuyerCopy } from '../lib/purchases'
+import {
+  boughtOn, buildPurchaseShelf, findBuyerCopy, isKeptRow, keepsakeChips, keepsakeLine, purchaseShareable,
+  republishedLine,
+} from '../lib/purchases'
+import { currentQuery, replaceRoute } from '../lib/router'
 import { sharePurchase } from '../lib/purchaseShare'
 import { forkPublication } from '../lib/forkPub'
 import { CoverThumb } from '../components/CoverThumb'
-import { Chip, toast } from '../components/ui'
+import { Avatar, Chip, toast } from '../components/ui'
 import { PageHeader } from '../components/page/PageHeader'
 import { StateBlock } from '../components/page/StateBlock'
 import { Surface } from '../components/page/Surface'
 import { formatInr } from '../lib/engine'
 import type { Entitlement, PurchaseOrder } from '../lib/payments'
 
-/** "12 Sep 2026" — the same en-IN shape the plan bench and the print view use.
- *  A grant date that could not be read says so: "Invalid Date" is a developer
- *  string leaking into a receipt, and a wrong date is worse than an absent one.
- *
- *  #409 — formatted in **UTC**, because `toLocaleDateString` alone reads the
- *  BROWSER's timezone: a grant at 23:30 UTC was "yesterday" in IST and "today"
- *  in the US, so the same receipt carried two dates depending on where the buyer
- *  opened it. A purchase date is a fact about the account, not about the reader,
- *  and a money-adjacent date is the last one that should move under someone.
- *  Day granularity is unchanged — only the timezone is pinned. */
-function boughtOn(ms: number, readable: boolean): string {
-  if (!readable) return 'date unknown'
-  return new Date(ms).toLocaleDateString('en-IN', {
-    day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC',
-  })
-}
+// The date formatters (`boughtOn`, `updatedIn`) and the keepsake helpers live
+// in lib/purchases so the node suite can pin them.
 
-/** "Sep 2026" — an update is a season, not a timestamp, on a shelf.
- *
- *  #409 asked whether two same-month updates collapsing is a defect; it is a
- *  deliberate granularity, recorded here so the next reader does not "fix" it.
- *  The month is the unit a buyer acts on ("did this change since I bought it,
- *  roughly when"), the exact instant is not, and the shelf's `updatedCount`
- *  counts ROWS rather than versions to match — the two are consistent, which is
- *  the property that matters. A day-granular date would read as a changelog
- *  this surface is not. (Also UTC for the same reason as `boughtOn`: a month
- *  label that flips between readers is the same bug one unit up.) */
-function updatedIn(ms: number): string {
-  return new Date(ms).toLocaleDateString('en-IN', { month: 'short', year: 'numeric', timeZone: 'UTC' })
+/** The element id of one card, so the unlock link can find it on the shelf. */
+function purchaseCardId(pubId: string): string {
+  return `purchase-${pubId}`
 }
 
 export function PurchasesPage({ onNavigate }: { onNavigate: (r: string) => void }) {
@@ -127,6 +108,33 @@ export function PurchasesPage({ onNavigate }: { onNavigate: (r: string) => void 
   // It exists only when the shelf itself is on screen: not while signed out,
   // not while loading, not after a failed read, not when nothing is owned.
   const isShelfShown = Boolean(meId) && !failed && entitlements !== null && orders !== null && shelf.rows.length > 0
+
+  // The unlock moment links here with `?new=<publication id>`. If that id is a
+  // card on the shelf, the card plays one outline highlight and scrolls into
+  // view. An id that matches nothing does nothing. The address is read once, so
+  // the later clean-up of the parameter cannot cancel the highlight.
+  const requestedNewId = useRef(currentQuery().get('new'))
+  const hasPlayedNew = useRef(false)
+  const [highlightId, setHighlightId] = useState<string | null>(null)
+  useEffect(() => {
+    const wantedId = requestedNewId.current
+    if (!wantedId || hasPlayedNew.current || !isShelfShown) return
+    if (!shelf.rows.some(row => row.pubId === wantedId)) return
+    hasPlayedNew.current = true
+    setHighlightId(wantedId)
+    const card = document.getElementById(purchaseCardId(wantedId))
+    if (card) {
+      const bounds = card.getBoundingClientRect()
+      const isOffScreen = bounds.top < 0 || bounds.bottom > window.innerHeight
+      const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      if (isOffScreen) card.scrollIntoView({ block: 'center', behavior: prefersReducedMotion ? 'auto' : 'smooth' })
+    }
+    // Drop the parameter without a history entry, so Back does not replay it.
+    const query = currentQuery()
+    query.delete('new')
+    const rest = query.toString()
+    replaceRoute(rest ? `/purchases?${rest}` : '/purchases')
+  }, [isShelfShown, shelf.rows])
   const summaryLine = isShelfShown ? (
     <p className="pur-summary">
       <b>{shelf.rows.length}</b> {shelf.rows.length === 1 ? 'plan' : 'plans'} ·{' '}
@@ -178,6 +186,7 @@ export function PurchasesPage({ onNavigate }: { onNavigate: (r: string) => void 
           )}
         </>}
         meta={summaryLine}
+        note="Yours to keep."
       />
 
       {!meId ? (
@@ -224,8 +233,16 @@ export function PurchasesPage({ onNavigate }: { onNavigate: (r: string) => void 
               // access to point at, so offering "Open your copy" would advertise
               // a plan the buyer's money was returned for.
               const copy = row.rowExists || row.refunded ? null : findBuyerCopy(row, trips)
+              // Only a held plan gets the "kept for you" card: the creator's
+              // face, the "Yours" seal and the creator's own facts. A refunded,
+              // pending or off-sale row keeps the plain card, so its money
+              // state stays the first thing a reader sees.
+              const provenance = isKeptRow(row) ? keepsakeLine(row) : null
+              const keptChips = isKeptRow(row) ? keepsakeChips(row) : []
+              const updateSentence = republishedLine(row)
+              const isHighlighted = row.pubId === highlightId
               return (
-              <Surface as="article" className="pur-row" key={row.pubId} enterIndex={rowIndex}>
+              <Surface as="article" className={isHighlighted ? 'pur-row is-new' : 'pur-row'} key={row.pubId} id={purchaseCardId(row.pubId)} enterIndex={rowIndex}>
                 <div className="pur-thumb">
                   {/* #409 — a row that is not on sale gets NO auto lookup.
                       `CoverThumb` resolves a missing cover through
@@ -242,11 +259,28 @@ export function PurchasesPage({ onNavigate }: { onNavigate: (r: string) => void 
                     trip={row.onSale ? { name: row.title } : null} emoji="🧭" />
                 </div>
                 <div className="pur-body">
-                  <h2 className="pur-name">{row.title}</h2>
-                  <p className="pur-by">
-                    {row.creatorName ? <>by <b>{row.creatorName}</b></> : <>creator no longer listed</>}
-                    {' · '}bought {boughtOn(row.grantedAt, row.dateReadable)}
-                  </p>
+                  <div className="pur-head">
+                    <h2 className="pur-name">{row.title}</h2>
+                    {isKeptRow(row) && (
+                      <span className="pur-seal">
+                        <BookmarkCheck size={13} aria-hidden />
+                        Yours
+                      </span>
+                    )}
+                  </div>
+                  {provenance ? (
+                    <p className="pur-by pur-by-kept">
+                      <span className="pur-avatar" aria-hidden="true">
+                        <Avatar user={{ profile: { name: row.creatorName ?? '', avatarUrl: row.creatorAvatarUrl } }} />
+                      </span>
+                      <span>{provenance}</span>
+                    </p>
+                  ) : (
+                    <p className="pur-by">
+                      {row.creatorName ? <>by <b>{row.creatorName}</b></> : <>creator no longer listed</>}
+                      {' · '}bought {boughtOn(row.grantedAt, row.dateReadable)}
+                    </p>
+                  )}
                   <div className="pur-meta">
                     {/* #407 — the money STATE, independent of the shape chips
                         below. A refunded purchase keeps both of them when the
@@ -264,10 +298,15 @@ export function PurchasesPage({ onNavigate }: { onNavigate: (r: string) => void 
                     {/* #554 — a partial refund is money that came back while
                         the plan is still owned: both facts, side by side. */}
                     {row.refundedPaise > 0 && <Chip tone="info">{formatInr(Math.round(row.refundedPaise / 100))} refunded</Chip>}
-                    {row.updatedSince && row.refreshedAt && (
-                      <Chip tone="info">Updated {updatedIn(row.refreshedAt)}</Chip>
-                    )}
                   </div>
+                  {keptChips.length > 0 && (
+                    <div className="pur-meta pur-keepsake">
+                      {keptChips.map(chipText => <Chip key={chipText}>{chipText}</Chip>)}
+                    </div>
+                  )}
+                  {/* The app records that the creator re-published, not what
+                      changed. The sentence says exactly that and no more. */}
+                  {updateSentence && <p className="pur-update">{updateSentence}</p>}
                   {row.refunded && (
                     <p className="hint-text">
                       The money for this plan was refunded, so the access it came with has ended. The
@@ -350,8 +389,8 @@ export function PurchasesPage({ onNavigate }: { onNavigate: (r: string) => void 
             })}
           </div>
           <p className="hint-text pur-foot">
-            Forking copies a plan into your own trips with your dates — it stays yours even if the original
-            is updated later.
+            A fork copies a plan into your own trips with the plan’s original dates. You can change
+            the dates. Your copy stays yours, even if the creator updates the plan later.
           </p>
         </>
       )}

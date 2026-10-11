@@ -99,3 +99,31 @@ describe('Surface component contract', () => {
     expect(block).not.toMatch(/\d+ms/)
   })
 })
+
+describe('PageHeader note slot', () => {
+  it('declares an optional note and renders it only when it is given', async () => {
+    const source = await read(PAGE_HEADER)
+    expect(source).toMatch(/note\?: ReactNode/)
+    expect(source).toMatch(/\{note \? \(/)
+    expect(source).toContain('<p className="yf-header-note" aria-hidden="true">')
+  })
+
+  it('hides the decorative note from assistive technology and keeps the one h1', async () => {
+    const source = await read(PAGE_HEADER)
+    expect(source.match(/<h1[\s>]/g)).toHaveLength(1)
+    expect(source).toContain('aria-hidden="true"')
+  })
+
+  it('copies the hero note look: hand font, saffron highlight and the hand-drawn arrow', async () => {
+    const css = await read(STYLES)
+    const start = css.indexOf('/* ===== Shared page components: the handwritten header note ===== */')
+    expect(start).toBeGreaterThan(-1)
+    const block = css.slice(start)
+    expect(block).toContain('font-family: var(--font-hand)')
+    expect(block).toContain('font-weight: 600')
+    expect(block).toContain('color-mix(in srgb, var(--saffron) 45%, transparent)')
+    expect(block).toContain('.yf-header-note svg { width: 54px; height: 62px;')
+    expect(block).toMatch(/@media \(min-width: 720px\) \{\s*\.yf-header-note \{ display: flex;/)
+    expect(block).not.toMatch(/\d+ms/)
+  })
+})

@@ -21,6 +21,10 @@ export interface PageHeaderProps {
   actions?: ReactNode
   /** Free content under the lede, such as a summary line. */
   meta?: ReactNode
+  /** One short handwritten aside beside the title. It is decorative and hidden
+   *  from assistive technology, so the same meaning must also be in the lede.
+   *  Use it once per page. */
+  note?: ReactNode
   /** Real counts only. The row is hidden when the list is empty. */
   stats?: { label: string; value: number }[]
   /** The aria-label of the counts list. */
@@ -36,6 +40,7 @@ export function PageHeader({
   lede,
   actions,
   meta,
+  note,
   stats,
   statsLabel,
   className,
@@ -57,6 +62,17 @@ export function PageHeader({
           {headline.lead}
           {headline.accent ? <> <em>{headline.accent}</em></> : null}
         </h1>
+        {note ? (
+          // A decorative aside in handwriting. The meaning must also sit in the
+          // lede, so it is hidden from assistive technology.
+          <p className="yf-header-note" aria-hidden="true">
+            <span className="yf-header-note-hl">{note}</span>
+            <svg viewBox="0 0 54 62" focusable="false">
+              <path d="M8 4c14 4 30 16 30 34 0 6-2 11-6 16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+              <path d="M24 50l8 6 6-10" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </p>
+        ) : null}
         {actions ? <div className="yf-header-actions">{actions}</div> : null}
       </div>
       {hasLede ? <p className="yf-header-lede">{lede}</p> : null}
