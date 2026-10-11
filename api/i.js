@@ -3,6 +3,7 @@
 // sibling api module, not client code: the dependency rule below is about the
 // bundler, and this compiles with the function.
 import { resolveOrigin } from './_origin.js'
+import { renderBodyHTML, touristTripJsonLd } from './_publicBody.js'
 
 const DEFAULT_TITLE = 'YatraFlow — Plan real trips, together'
 const DEFAULT_DESCRIPTION = 'Plan realistic India trips together. See the time, distance and cost impact of every stop.'
@@ -18,6 +19,9 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // outside the app) joined the original five for F7 · #228).
 const SHARE_SOURCES = ['copy', 'buyer', 'explore', 'creator', 'purchases', 'wa', 'community']
 const COVER_WIDTH = 1200
+// A found card is edge-cacheable for five minutes, then served stale for ten
+// while it revalidates. Everything else answers no-store.
+const CARD_CACHE_CONTROL = 'public, max-age=0, s-maxage=300, stale-while-revalidate=600'
 const WIKIMEDIA_PATH_RE = /^https:\/\/[^/]*wikimedia\.org\/wikipedia\/([^/]+)\/(.+)$/
 
 /** The same Wikimedia file at a sane width.
@@ -91,7 +95,7 @@ async function ownsPublication(url, key, entitlement, id) {
 function renderNotFound() {
   const origin = resolveOrigin()
   return `<!doctype html>
-<html lang="en">
+<html lang="en-IN">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -114,7 +118,7 @@ function renderNotFound() {
 </html>`
 }
 
-function renderPublication(publication, id, buyer = null, ref = null) {
+function renderPublication(publication, id, buyer = null, ref = null, trip = null, shared = false) {
   // A row the database could not read is a 404-without-canonical card, never
   // the brand card under the id it failed to find (#362).
   if (!publication) return renderNotFound()
@@ -157,11 +161,15 @@ function renderPublication(publication, id, buyer = null, ref = null) {
   // arrive here.
   const target = ref ? `/pub/${id}?ref=${encodeURIComponent(ref)}` : `/pub/${id}`
   const canonical = `${origin}/i/${id}`
+  // #691 — a shared link (it carries `ref` or `buyer`) opens the app as before.
+  // A search visitor and a crawler have neither, and they read the page. With
+  // no trip to print, the card keeps the old redirect for every visitor.
+  const redirects = !trip || shared
   // The buyer's address is a variant of the same page with its own metadata, so
   // it advertises itself; the canonical link still points at the publication.
   const ogUrl = buyer ? `${canonical}?buyer=${encodeURIComponent(buyer)}` : canonical
   return `<!doctype html>
-<html lang="en">
+<html lang="en-IN">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -178,9 +186,10 @@ ${imageTags}
 <meta name="twitter:description" content="${escapeHtml(description)}" />
 <meta name="twitter:image" content="${escapeHtml(image)}" />
 <link rel="canonical" href="${escapeHtml(canonical)}" />
-<script>location.replace(${JSON.stringify(target)})</script>
+${trip ? `<script type="application/ld+json">${touristTripJsonLd(publication, trip, canonical)}</script>` : ''}
+${redirects ? `<script>location.replace(${JSON.stringify(target)})</script>` : ''}
 </head>
-<body><p>Opening <a href="${escapeHtml(target)}">this itinerary</a>…</p></body>
+<body>${trip ? renderBodyHTML(publication, trip, target) : `<p>Opening <a href="${escapeHtml(target)}">this itinerary</a>…</p>`}</body>
 </html>`
 }
 
@@ -223,7 +232,7 @@ export default async function handler(req, res) {
         // missing-row fallback alone no longer reaches them).
         `${url.replace(/\/+$/, '')}/rest/v1/published_itineraries?id=eq.${encodeURIComponent(id)}` +
         '&unpublished_at=is.null' +
-        '&select=id,title,tagline,route_summary,cover_image_url,duration_days,estimated_budget_per_person_inr&limit=1',
+        '&select=id,title,tagline,route_summary,cover_image_url,duration_days,estimated_budget_per_person_inr,premium_price_inr,free_day_indexes&limit=1',
         {
           headers: { apikey: key, authorization: `Bearer ${key}` },
           signal: AbortSignal.timeout(4000),
@@ -247,6 +256,32 @@ export default async function handler(req, res) {
     verifiedBuyer = buyer
   }
 
+  // #691 — the readable body. The anonymous RPC stubs locked days; the body
+  // module locks again. Any failure here leaves the plain card, never an error.
+  // A shared link redirects and a HEAD sends no body, so neither pays for the read.
+  const shared = Boolean(ref || buyer)
+  let trip = null
+  if (publication && url && key && !shared && req.method !== 'HEAD') {
+    try {
+      const response = await fetch(`${url.replace(/\/+$/, '')}/rest/v1/rpc/get_public_trip`, {
+        method: 'POST',
+        headers: { apikey: key, authorization: `Bearer ${key}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ p_pub_id: id }),
+        signal: AbortSignal.timeout(4000),
+      })
+      if (response.ok) {
+        const rows = await response.json()
+        if (Array.isArray(rows) && rows[0] && Array.isArray(rows[0].days)) trip = { days: rows[0].days }
+      }
+    } catch {
+      trip = null
+    }
+  }
+
+  // Only a card for a publication that exists may be shared at the edge. A
+  // not-found, error or unverified answer keeps the no-store header set above.
+  // A page whose trip read failed is not cached: crawlers would keep the empty card.
+  if (publication && (trip || shared)) res.setHeader('cache-control', CARD_CACHE_CONTROL)
   res.status(status)
-  return req.method === 'HEAD' ? res.end() : res.send(renderPublication(publication, id, verifiedBuyer, ref))
+  return req.method === 'HEAD' ? res.end() : res.send(renderPublication(publication, id, verifiedBuyer, ref, trip, shared))
 }

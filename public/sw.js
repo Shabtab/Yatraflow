@@ -29,8 +29,9 @@ const SHELL_ASSETS = [SHELL, '/manifest.webmanifest', '/icons/icon-192.png', '/i
  *  the tag-bearing card endpoints: a navigation to one must reach the network
  *  even in the installed app, because a successful card answer would otherwise
  *  be cached under the SHELL key — offline navigations would then open card
- *  HTML at every address (#426 slice 4). */
-const NEVER = ['/api/', '/i/', '/c/', '/sitemap.xml', '/mappls/']
+ *  HTML at every address (#426 slice 4). The static calculator page is the
+ *  same case: its navigation must not be filed under the SHELL key. */
+const NEVER = ['/api/', '/i/', '/c/', '/sitemap.xml', '/mappls/', '/ladakh-trip-cost-calculator/']
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL_ASSETS)))

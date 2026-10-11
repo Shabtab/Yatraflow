@@ -114,7 +114,12 @@ function renderSitemap(rows, creators, origin) {
   // paths (`/pub/<id>`, `/explore`, ...) serve the client-rendered shell —
   // nothing per-URL for a crawler — and robots.txt keeps them out of the
   // index (#426 slice 3).
-  const entries = [`  <url>\n    <loc>${escapeXml(`${origin}/`)}</loc>\n  </url>`]
+  const entries = [`  <url>\n    <loc>${escapeXml(`${origin}/`)}</loc>\n  </url>`,
+    // The static calculator page (public/ladakh-trip-cost-calculator/): a real
+    // crawlable page with its own title, description and canonical. No
+    // lastmod: the handler only prints dates it can derive (see toLastmod).
+    `  <url>\n    <loc>${escapeXml(`${origin}/ladakh-trip-cost-calculator/`)}</loc>\n  </url>`,
+  ]
   // Ordered by recency, not arrival: an updated classic belongs above a newer
   // row nobody has touched since it published.
   const ordered = [...rows].sort((a, b) => recencyOf(b) - recencyOf(a))

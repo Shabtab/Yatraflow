@@ -5,6 +5,8 @@ const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf
 const apiPath = '../api/i.js'
 const shareUrlPath = '../src/lib/shareUrl.ts'
 const fetchMock = vi.fn<typeof fetch>()
+// The trip read for the page body (#691) is not a card read; the call-count pins below ignore it.
+const cardCalls = () => fetchMock.mock.calls.filter(call => !String(call[0]).includes('get_public_trip'))
 const publication = {
   id: 'kerala-trip_1',
   title: 'Tom & Jerry\'s "Monsoon" Escape',
@@ -195,8 +197,8 @@ describe('share preview handler in node', () => {
   it('fetches only the publication REST row with an AbortSignal, never the application shell', async () => {
     respond([publication])
     await runHandler()
-    expect(fetchMock).toHaveBeenCalledTimes(1)
-    const [url, init] = fetchMock.mock.calls[0]!
+    expect(cardCalls()).toHaveLength(1)
+    const [url, init] = cardCalls()[0]!
     const target = new URL(String(url))
     expect(target.origin).toBe('https://database.example.test')
     expect(target.pathname).toBe('/rest/v1/published_itineraries')
@@ -204,6 +206,7 @@ describe('share preview handler in node', () => {
     expect(target.searchParams.get('limit')).toBe('1')
     expect(target.searchParams.get('select')?.split(',')).toEqual([
       'id', 'title', 'tagline', 'route_summary', 'cover_image_url', 'duration_days', 'estimated_budget_per_person_inr',
+      'premium_price_inr', 'free_day_indexes',
     ])
     expect(init?.headers).toMatchObject({ apikey: 'test-anon-key', authorization: 'Bearer test-anon-key' })
     expect(init?.signal).toBeInstanceOf(AbortSignal)
@@ -334,10 +337,10 @@ describe('the buyer’s card (I-21)', () => {
   it('asks the database with a POST to the gate, carrying only the pair', async () => {
     respondBuyerCard(true)
     await runHandler('GET', publication.id, { buyer: BUYER })
-    expect(fetchMock).toHaveBeenCalledTimes(2)
-    expect(fetchMock.mock.calls.map(call => new URL(String(call[0])).pathname))
+    expect(cardCalls()).toHaveLength(2)
+    expect(cardCalls().map(call => new URL(String(call[0])).pathname))
       .toEqual(['/rest/v1/published_itineraries', '/rest/v1/rpc/owns_publication'])
-    const [, init] = fetchMock.mock.calls[1]!
+    const [, init] = cardCalls()[1]!
     expect(init?.method).toBe('POST')
     expect(JSON.parse(String(init?.body))).toEqual({ p_entitlement: BUYER, p_pub_id: publication.id })
     expect(init?.headers).toMatchObject({ apikey: 'test-anon-key', authorization: 'Bearer test-anon-key' })
@@ -399,7 +402,7 @@ describe('the buyer’s card (I-21)', () => {
       const res = await runHandler('GET', publication.id, { buyer })
       expect(res.statusCode).toBe(200)
       expect(res.body).not.toContain('I bought')
-      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(cardCalls()).toHaveLength(1)
     },
   )
 
@@ -413,7 +416,7 @@ describe('the buyer’s card (I-21)', () => {
     respond([])
     const res = await runHandler('GET', publication.id, { buyer: BUYER })
     expect(res.statusCode).toBe(404)
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(cardCalls()).toHaveLength(1)
   })
 
   it('HEAD with a buyer still sends no body', async () => {

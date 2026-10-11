@@ -585,7 +585,7 @@ export default function App() {
       <footer className="footer">
         <div className="container footer-inner">
           <span><b>YatraFlow</b>: plan together, travel better. Built for Indian travellers</span>
-          <span className="small muted">All costs are transparent estimates. No bookings — planning plus paid itinerary unlocks. <a className="footer-link" href={feedbackHref()}>Send feedback</a></span>
+          <span className="small muted">All costs are transparent estimates. No bookings — planning plus paid itinerary unlocks. <a className="footer-link" href={feedbackHref()}>Send feedback</a> · <a className="footer-link" href="/ladakh-trip-cost-calculator/">Ladakh trip cost calculator</a></span>
         </div>
       </footer>
 

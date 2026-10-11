@@ -25,6 +25,13 @@
       "headers": [{ "key": "Cache-Control", "value": "public, max-age=3600" }]
     }
   ],
+  "redirects": [
+    {
+      "source": "/ladakh-trip-cost-calculator",
+      "destination": "/ladakh-trip-cost-calculator/",
+      "permanent": true
+    }
+  ],
   "rewrites": [
     {
       "source": "/i/:id",
@@ -47,7 +54,7 @@
       "destination": "https://search.mappls.com/:path*"
     },
     {
-      "source": "/((?!api/|i/|c/|sitemap.xml|sw.js|manifest.webmanifest|robots.txt).*)",
+      "source": "/((?!api/|i/|c/|sitemap.xml|ladakh-trip-cost-calculator/|sw.js|manifest.webmanifest|robots.txt).*)",
       "destination": "/index.html"
     }
   ]

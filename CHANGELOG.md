@@ -111,12 +111,17 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
   hearts write. An id whose day or stop is gone is dropped rather than shown as a row that
   opens nothing, and a stop that a re-split moved follows its new day. `src/lib/savedShelf.ts`
   resolves the ids against live trip data; `src/components/trips/SavedShelfSection.tsx` draws them.
+- **A free Ladakh bike trip cost calculator at `/ladakh-trip-cost-calculator/`.** You get a low to high cost range in rupees, for each rider and for the group. No signup is needed. The page is plain static HTML, so a crawler can read the title, the intro, a default result and the FAQ without JavaScript. You pick one of four routes, then set days, people, bikes, stay, food and rent. A "sourced" or "assumption" tag marks each default, and a source list sits at the bottom. Each cost shows as a bar. The solid part is the low figure and the striped part is the extra up to the high figure. The page link keeps your numbers. A phone shows a short summary above the form. A bar at the bottom shows your range until the full result is on screen. The one button leads to the app. The sitemap lists the page, and the service worker never caches it.
+
+- **A published itinerary's share page now shows its free days to search engines.** A visitor who opens `/i/<id>` without a share tag reads the title, the facts, and each free day with its stops. A day behind the paywall shows only its title and a line that says the full plan is in the app. A link shared with a `ref` or `buyer` tag still opens the app at once. The page adds `TouristTrip` structured data with no rating and no price. If the trip cannot be read, the page falls back to the old redirect card. A test proves that no locked content reaches the page or the structured data. (#691)
 
 - **A browser verification harness for agents, under `.agents/skills/verify-yatraflow/`.** It starts the dev server on port 5178. It checks the server and the Supabase project ref. It drives a headless Edge or Chrome to a route. Each run writes a screenshot and a JSON record to `.verify-evidence/`, which git ignores. The feature map covers five signed-out flows.
 
 - **My trips shows a pinned Up next card for your live or soonest trip.** The card shows a countdown, Budget, Travel and Dates columns, the count of days that have activities, the next step and a delete button. The count hides when the trip is live, because the day count is the progress then. It stays pinned through sort and style filters. It hides while you search.
 
 ### Changed
+
+- **Search engines get clearer signals for the calculator and the share cards.** The calculator page says "Prices checked October 2026" and lists a published and modified date in its structured data. The address without the final slash now redirects to the page. The app pages and the share cards declare the language `en-IN`. A share card for an itinerary or creator that exists is now cached at the edge for five minutes. A missing or failed card is never cached.
 
 - **My trips opens with an editorial hero built from your own trips.** The headline names the place your next trip ends at, for example "Next stop, Goa." That is the same place the Up next card shows. A row of counts shows your trips, upcoming and live trips, places and co-planners. Co-planners are the other people who can edit your trips. Up to three postcards show your trips, with a handwritten note such as "10 days to go!". While your trips load, the hero shows a neutral headline and no counts, postcards or note.
 
@@ -250,6 +255,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
   publications have real dates. The seeder now derives a fixed window from each fixture's day
   count. Publishing a trip with no dates was never the defect, so the publish path is
   unchanged. Rows already in the database keep their empty dates until the fixture is re-applied.
+- **The creator fixture script no longer writes to a remote project by accident.** The script used the Supabase project that `.env.local` named, and a run against the live project put "(fixture)" itineraries into the live sitemap. Now it writes to a local project only. A remote project needs `FIXTURE_ALLOW_REMOTE` set to the exact host of the project, and your own `FIXTURE_PASSWORD` of 12 characters or more. The default password works on a local project only. Promoting the admin on a remote project also needs `--promote-admin`. The check runs before `--apply` and before `--clean`, because `--clean` signs the fixture accounts up first. A dry run is never blocked. The rules sit in `scripts/fixtureGuard.mjs`. (#689)
 
 - **Icons drawn through the shared inline icon wrapper no longer render as solid black shapes.** The wrapper sets an empty fill, so every outline icon keeps its stroke style.
 
