@@ -48,6 +48,16 @@ This file grows. Claude adds a ruling each time an agent asks something new. Re-
 
 **R19. Wait for `page-enter`.** `page-enter` exists only in #695. No page branch starts until #695 is on `test`. After that, `page-enter` owns the page entrance and `cardIn` entrances on page headers are removed.
 
+## Stage B rulings (user-approved 2026-10-12)
+
+**R20. Titles follow R14.** Card and section titles use Plus Jakarta Sans 800. Change them page by page, as each page converts. Big numbers keep Sora. Do not change the global h1-h4 rule in a page PR.
+
+**R21. Serif h1 on content pages only.** Trip created, Profile, Creator hub and Invite get the `PageHeader` serif h1. Auth, Admin and Native home keep a Sora h1.
+
+**R22. Tabs use a compact `StateBlock`.** Inside a workspace tab or a card, use the compact variant. It has no dashed border and small padding. It keeps the same roles, and failed stays separate from empty. A whole page uses the full block.
+
+**R23. Honesty fixes land before the visual pass.** A read that fails must not render as empty, and a write must not report success before it has a result. Fix these in small PRs before the page's consistency PR. A consistency PR stays visual.
+
 ## Where decisions go
 
 Design questions (a colour, a layout, a font size, a new component shape, a motion feel) are never yours to decide. Write the question down. The user decides, with Claude's advice.
