@@ -118,7 +118,7 @@ function renderNotFound() {
 </html>`
 }
 
-function renderPublication(publication, id, buyer = null, ref = null, trip = null) {
+function renderPublication(publication, id, buyer = null, ref = null, trip = null, shared = false) {
   // A row the database could not read is a 404-without-canonical card, never
   // the brand card under the id it failed to find (#362).
   if (!publication) return renderNotFound()
@@ -164,7 +164,7 @@ function renderPublication(publication, id, buyer = null, ref = null, trip = nul
   // #691 — a shared link (it carries `ref` or `buyer`) opens the app as before.
   // A search visitor and a crawler have neither, and they read the page. With
   // no trip to print, the card keeps the old redirect for every visitor.
-  const redirects = !trip || Boolean(ref || buyer)
+  const redirects = !trip || shared
   // The buyer's address is a variant of the same page with its own metadata, so
   // it advertises itself; the canonical link still points at the publication.
   const ogUrl = buyer ? `${canonical}?buyer=${encodeURIComponent(buyer)}` : canonical
@@ -258,8 +258,10 @@ export default async function handler(req, res) {
 
   // #691 — the readable body. The anonymous RPC stubs locked days; the body
   // module locks again. Any failure here leaves the plain card, never an error.
+  // A shared link redirects and a HEAD sends no body, so neither pays for the read.
+  const shared = Boolean(ref || buyer)
   let trip = null
-  if (publication && url && key) {
+  if (publication && url && key && !shared && req.method !== 'HEAD') {
     try {
       const response = await fetch(`${url.replace(/\/+$/, '')}/rest/v1/rpc/get_public_trip`, {
         method: 'POST',
@@ -278,7 +280,8 @@ export default async function handler(req, res) {
 
   // Only a card for a publication that exists may be shared at the edge. A
   // not-found, error or unverified answer keeps the no-store header set above.
-  if (publication) res.setHeader('cache-control', CARD_CACHE_CONTROL)
+  // A page whose trip read failed is not cached: crawlers would keep the empty card.
+  if (publication && (trip || shared)) res.setHeader('cache-control', CARD_CACHE_CONTROL)
   res.status(status)
-  return req.method === 'HEAD' ? res.end() : res.send(renderPublication(publication, id, verifiedBuyer, ref, trip))
+  return req.method === 'HEAD' ? res.end() : res.send(renderPublication(publication, id, verifiedBuyer, ref, trip, shared))
 }

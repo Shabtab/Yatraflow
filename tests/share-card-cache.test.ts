@@ -57,10 +57,22 @@ describe('publication card (api/i.js) cache header', () => {
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify([{
       id: PUB_ID, title: 'Monsoon Escape', route_summary: ['Kochi'], duration_days: 5,
     }]), { status: 200 }))
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify([{
+      days: [{ index: 0, title: 'Arrival', stops: [] }],
+    }]), { status: 200 }))
     const res = await runPublication()
     expect(res.statusCode).toBe(200)
     expect(res.body).toContain('og:title')
     expect(res.headers['cache-control']).toBe(CARD_CACHE)
+  })
+
+  it('keeps no-store when the trip read fails, so a crawler never keeps the empty card', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify([{
+      id: PUB_ID, title: 'Monsoon Escape', route_summary: ['Kochi'], duration_days: 5,
+    }]), { status: 200 }))
+    const res = await runPublication()
+    expect(res.statusCode).toBe(200)
+    expect(res.headers['cache-control']).toBe('no-store')
   })
 
   it('keeps no-store for a not-found publication', async () => {

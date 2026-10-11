@@ -19,7 +19,7 @@ function escapeHtml(value) {
 function text(value, max = 600) {
   if (typeof value !== 'string') return ''
   const clean = value.replace(/\s+/g, ' ').trim()
-  return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean
+  return clean.length > max ? `${Array.from(clean).slice(0, max - 1).join('')}…` : clean
 }
 
 /** The set of day indexes a stranger may read in full.
@@ -64,7 +64,7 @@ export function renderBodyHTML(publication, trip, appHref) {
   const lead = text(publication?.tagline, 300)
   const facts = []
   if (Number.isFinite(Number(publication?.duration_days)) && Number(publication.duration_days) > 0) {
-    facts.push(`${Number(publication.duration_days)} days`)
+    facts.push(Number(publication.duration_days) === 1 ? '1 day' : `${Number(publication.duration_days)} days`)
   }
   const route = publication?.route_summary
   const routeText = Array.isArray(route) ? route.map(item => text(item, 80)).filter(Boolean).join(' → ') : text(route, 300)

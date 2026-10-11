@@ -113,6 +113,31 @@ describe('/i/<id> handler', () => {
     const res = await run({ ref: 'wa' })
     expect(res.body).toContain('location.replace')
   })
+  it('redirects an unverified buyer link without reading the trip', async () => {
+    const res = await run({ buyer: '3f1a2b4c-5d6e-4f70-8a91-b2c3d4e5f601' })
+    expect(res.body).toContain('location.replace')
+    expect(fetchMock.mock.calls.some(call => String(call[0]).includes('get_public_trip'))).toBe(false)
+  })
+  it('skips the trip read for a shared link and for HEAD', async () => {
+    await run({ ref: 'wa' })
+    expect(fetchMock.mock.calls.some(call => String(call[0]).includes('get_public_trip'))).toBe(false)
+    fetchMock.mockClear()
+    const res = makeRes()
+    const { default: handler } = await import('../api/i.js')
+    await handler({ method: 'HEAD', query: { id: PUB_ID } }, res)
+    expect(fetchMock.mock.calls.some(call => String(call[0]).includes('get_public_trip'))).toBe(false)
+  })
+  it('does not cache a page whose trip read failed', async () => {
+    fetchMock.mockImplementation(async input => {
+      if (String(input).includes('/rpc/get_public_trip')) throw new Error('down')
+      return new Response(JSON.stringify([priced]), { status: 200 })
+    })
+    expect((await run()).headers['cache-control']).toBe('no-store')
+  })
+  it('prints one day, not "1 days"', () => {
+    expect(renderBodyHTML({ ...priced, duration_days: 1 }, trip, '/pub/x')).toContain('1 day')
+    expect(renderBodyHTML({ ...priced, duration_days: 1 }, trip, '/pub/x')).not.toContain('1 days')
+  })
   it('keeps the old redirect card when the trip read fails', async () => {
     fetchMock.mockImplementation(async input => {
       if (String(input).includes('/rpc/get_public_trip')) throw new Error('down')
