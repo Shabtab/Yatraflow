@@ -14,7 +14,7 @@ This file grows. Claude adds a ruling each time an agent asks something new. Re-
 
 **R4. Keep dynamic values inline.** A width, colour or position that comes from data stays in `style`. You may pass it as a CSS custom property set inline, for example `style={{ '--pct': pct }}`.
 
-**R5. An inline declaration that fights a host class.** The host class (for example `.row-between` with `gap: 12px`) has the same specificity as one new class. A single appended class wins only by source order. Use a **same-element compound selector**: `.row-between.prof-notif-row { gap: 10px }`. It has higher specificity, so it wins in any order. It names no descendant relationship. Put both classes on the element. Do not use a descendant selector. Do not leave the declaration inline.
+**R5. An inline declaration that fights a host class.** The host class (for example `.row-between` with `gap: 12px`) has the same specificity as one new class. A single appended class wins only by source order. Use a **same-element compound selector**: `.row-between.prof-notif-row { gap: 10px }`. It has higher specificity, so it wins in any order. It names no descendant relationship. Put both classes on the element. Do not use a descendant selector. Do not leave the declaration inline. Exception: a selector that a vocabulary test collects stays inline (`CODING_STANDARDS.md`, #512).
 
 **R6. Append only.** Add CSS at the end of `src/styles.css`, under one section comment per file. Never insert above an existing rule.
 
