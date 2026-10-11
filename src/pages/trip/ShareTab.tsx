@@ -67,10 +67,10 @@ function SnapshotCard({ trip, me, onNavigate, legCorrections, publication }: {
     <div className="card">
       <span className="share-intent share-intent--info">3 · Keep a record</span>
       <h3>Export & snapshot sharing</h3>
-      <p className="hint-text" style={{ margin: '6px 0 12px' }}>
+      <p className="hint-text shr-snapshot-description">
         Take the whole plan anywhere — no server stores it. Snapshot links embed the trip in the URL itself.
       </p>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      <div className="shr-snapshot-actions">
                   <ImportTripButton ownerId={me.id} onNavigate={onNavigate} className="btn btn-outline btn-sm" />
                   <button className="btn btn-outline btn-sm" onClick={() => downloadTripJson(trip, publication)}><InlineIcon icon={Download} size={13} gap={4} />Download JSON</button>
                   <PrintExport trip={trip} legCorrections={legCorrections} />
@@ -80,8 +80,8 @@ function SnapshotCard({ trip, me, onNavigate, legCorrections, publication }: {
                    </button>
       </div>
       {link && (
-        <div className="share-link-box" style={{ marginTop: 10 }}>
-          <code style={{ wordBreak: 'break-all' }} title={link}>{link}</code>
+        <div className="share-link-box shr-snapshot-link">
+          <code className="shr-snapshot-url" title={link}>{link}</code>
           <CopyButton text={link} label="Copy" />
         </div>
       )}
@@ -492,9 +492,9 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
         <div className="card">
           <span className="share-intent share-intent--teal">1 · Plan together</span>
           <h3>Invite collaborators</h3>
-          <p className="hint-text" style={{ margin: '6px 0 12px' }}>Anyone with this link joins as an editor after logging in.</p>
+          <p className="hint-text shr-invite-description">Anyone with this link joins as an editor after logging in.</p>
           {inviteCode && (
-            <div className="invite-code-row" style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
+            <div className="invite-code-row shr-invite-code-row">
               <div className="invite-code-chip">
                 <code className="invite-code-text" aria-label={`Trip code ${inviteCode}`}>{inviteCode}</code>
                 <CopyButton text={inviteCode} />
@@ -505,13 +505,13 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
           <div className="share-link-box"><code title={inviteLink}>{inviteLink}</code><CopyButton text={inviteLink} /></div>
           <hr className="divider" />
           <h3>Members & roles</h3>
-          <div style={{ marginTop: 10 }}>
+          <div className="shr-members">
             {(trip.members ?? []).map(m => {
               const u = userById(m.userId)
               return (
-                <div key={m.userId} className="feed-item" style={{ alignItems: 'center' }}>
+                <div key={m.userId} className="feed-item shr-member-row">
                   <Avatar user={u} size="lg" />
-                  <div style={{ flex: 1 }}>
+                  <div className="shr-member-details">
                     <b>{u?.profile.name ?? 'Traveller'}</b> <span className="muted small">{u?.email}</span>
                     <div className="small muted">Joined {timeAgo(m.joinedAt)}</div>
                   </div>
@@ -535,9 +535,9 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
         {isOwner && (trip.members ?? []).length > 1 && (
           <div className="card">
             <h3>Danger zone</h3>
-            <p className="hint-text" style={{ margin: '6px 0' }}>Removing someone revokes their access immediately.</p>
+            <p className="hint-text shr-removal-warning">Removing someone revokes their access immediately.</p>
             {(trip.members ?? []).filter(m => m.role !== 'owner').map(m => (
-              <div key={m.userId} className="row-between" style={{ padding: '5px 0' }}>
+              <div key={m.userId} className="row-between shr-removal-row">
                 <span className="small">{userById(m.userId)?.profile.name}</span>
                 <button className="btn btn-danger btn-sm" onClick={() => setPendingRemove(m)}>Remove</button>
               </div>
@@ -553,27 +553,27 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
         <div className="card">
           <span className="share-intent share-intent--saffron">2 · Share publicly</span>
           <h3>Publish as public itinerary</h3>
-          <p className="hint-text" style={{ margin: '6px 0 12px' }}>
+          <p className="hint-text shr-publication-description">
             List this trip on Explore so anyone can discover and fork it. Choose which days are the free preview — the rest sit behind a premium placeholder (no real payments in this MVP).
           </p>
           {pub && (pubLive ? (
-            <div className="row-between" style={{ marginBottom: 10 }}>
+            <div className="row-between shr-publication-status">
               <span className="small muted">Live on Explore · {pub.views} views · {pub.copies} forks</span>
               <button className="btn btn-outline btn-sm" onClick={() => onNavigate(`/pub/${pub.id}`)}>View public page</button>
             </div>
           ) : (
             // No "View public page" button and no copyable link here: nothing is
             // up to share. The form below is the way back.
-            <p className="hint-text ts-note" style={{ marginBottom: 10 }}>
+            <p className="hint-text ts-note shr-unpublished-note">
               Unpublished — it has left Explore and is no longer on sale. Anyone who already unlocked it keeps the full plan.
             </p>
           ))}
           <PublicationForm trip={trip} pub={pub} draft={draft} live={pubLive} isOwner={isOwner} creatorId={me.id}
             onDone={wasPublished => toast(wasPublished ? 'Publication updated' : 'Published to Explore')} />
           {pub && isOwner && pubLive && (
-            <button className="btn btn-ghost btn-sm" style={{ marginTop: 10 }} onClick={() => setPendingUnpublish(true)}>Unpublish</button>
+            <button className="btn btn-ghost btn-sm shr-unpublish-action" onClick={() => setPendingUnpublish(true)}>Unpublish</button>
           )}
-          {pubLink && <div className="share-link-box" style={{ marginTop: 10 }}><code title={pubLink}>{pubLink}</code><CopyButton text={pubLink} label="Copy" /></div>}
+          {pubLink && <div className="share-link-box shr-publication-link"><code title={pubLink}>{pubLink}</code><CopyButton text={pubLink} label="Copy" /></div>}
         </div>
       </section>
 
