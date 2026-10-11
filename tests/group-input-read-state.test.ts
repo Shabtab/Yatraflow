@@ -1,11 +1,12 @@
-// ============ #704 — a failed group read is never an empty group ============
+// ============ #704 — a failed or waiting group read never hides loaded cards ============
 //
 // The bug this pins: Group input printed "Nothing waiting on the group" when
 // the suggestions or decisions read had failed. A failed hydrate leaves both
 // arrays empty, so the empty copy showed over a dropped connection. The fix
-// reads each slice's verdict through `sliceState`, then branches failed,
-// reading, ready, in the order BudgetTab uses. The branch order is the whole
-// fix and lives in the render, so this guard reads the source.
+// reads each slice's verdict through `sliceState`. The failed and reading
+// branches render only for an empty list, and the empty copy comes last.
+// Loaded cards stay on screen, and a failed read adds one note above them.
+// The branch order is the whole fix, so this guard reads the source.
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 
@@ -46,11 +47,32 @@ describe('#704 — Group input reads its verdicts before it renders', () => {
     expect(readingAt).toBeLessThan(readyEmptyAt)
   })
 
+  it('the failed and reading branches render only for an empty list, so loaded cards stay visible', () => {
+    expect(component).toMatch(/items\.length === 0 && listFailed && \(\(\) => \{/)
+    expect(component).toMatch(/items\.length === 0 && listReading && \(\s*<div className="loading-block">/)
+    expect(component).not.toMatch(/listFailed \?/)
+    expect(component).not.toMatch(/listReading \?/)
+    expect(component).toMatch(/\{shown\.map\(item => item\.kind === 'idea'/)
+  })
+
+  it('the all-empty copy is gated on a ready, empty list, and comes after the failed and reading branches', () => {
+    expect(component).toMatch(/items\.length === 0 && !listFailed && !listReading && \(\s*<EmptyState/)
+    const failedAt = component.indexOf("emptyCopyFor('failed'")
+    const readingAt = component.indexOf('Loading group input')
+    const readyEmptyAt = component.indexOf('EMPTY_COPY.all.title')
+    expect(readyEmptyAt).toBeGreaterThan(failedAt)
+    expect(readyEmptyAt).toBeGreaterThan(readingAt)
+  })
+
   it('the friendly all-empty copy is defined once, above the component, and not rendered outside the ready branch', () => {
     const copyAt = src.indexOf("'Nothing waiting on the group'")
     expect(copyAt).toBeGreaterThan(-1)
     expect(copyAt).toBeLessThan(src.indexOf('export function GroupInputTab'))
     expect(component).not.toContain("'Nothing waiting on the group'")
+  })
+
+  it('a failed read with loaded cards adds one note above them, with a retry', () => {
+    expect(component).toMatch(/items\.length > 0 && listFailed && \(\s*<p className="small muted">Couldn’t refresh group input — showing what was loaded\. <button className="btn btn-outline btn-sm" onClick=\{retryGroupInput\}>Try again<\/button><\/p>/)
   })
 
   it('the failed branch offers a Try again that re-issues the read through resumeSync, as Budget does', () => {
@@ -63,9 +85,11 @@ describe('#704 — Group input reads its verdicts before it renders', () => {
     expect(component).toMatch(/<div className="loading-block"><div className="spinner" \/>Loading group input…<\/div>/)
   })
 
-  it('the activity feed fails to a line with a retry, and shows the empty line only once it has loaded', () => {
-    expect(component).toMatch(/activityRead === 'failed' \?/)
-    expect(component).toMatch(/activityRead === 'ready' && tripActivity\.length === 0/)
-    expect(component).toMatch(/No activity yet\./)
+  it('the activity feed always shows loaded rows, with a note, a failed line or an empty line around them', () => {
+    expect(component).toMatch(/activityRead === 'failed' && tripActivity\.length > 0 && \(\s*<p className="small muted">Couldn’t refresh activity — showing what was loaded\./)
+    expect(component).toMatch(/activityRead === 'failed' && tripActivity\.length === 0 && \(\s*<p className="small muted">Couldn’t load activity\. <button className="btn btn-outline btn-sm" onClick=\{retryGroupInput\}>Try again<\/button><\/p>/)
+    expect(component).toMatch(/activityRead === 'ready' && tripActivity\.length === 0 && \(\s*<p className="small muted">No activity yet\.<\/p>/)
+    expect(component).toMatch(/\{tripActivity\.slice\(0, 20\)\.map\(a => \(/)
+    expect(component).not.toMatch(/activityRead === '[a-z]+' \?/)
   })
 })
