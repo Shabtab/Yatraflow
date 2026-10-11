@@ -8963,3 +8963,8 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 .btn.auth-submit { width: 100%; }
 .hint-text.auth-reset-help { margin: 10px 0 0; text-align: center; }
 .hint-text.auth-sample-note { text-align: center; margin-top: 14px; }
+
+/* DMCA: static presentation extracted from DMCAPage.tsx. */
+.dmca-introduction { margin-top: 4px; }
+.dmca-report-requirements { padding-left: 18px; line-height: 1.9; margin: 8px 0; }
+.dmca-agent-contact { margin: 0; }
