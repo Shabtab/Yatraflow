@@ -3,7 +3,8 @@
 // `npm run verify` without a browser. Every count is keyed by file path, never by line.
 // Each rule is a pure function with one bad and one good fixture below. A rule that
 // stops firing fails in this file rather than passing silently.
-// Rule (e), the serif scope, is not enforced: plan section 9 Q1 has no recorded answer.
+// Rule (e), the font scope (ruling R14), is a ratchet: each face is used only on its allowed
+// selectors, and no .tsx file under src/ names a face. Both counts may only fall.
 import { describe, it, expect } from 'vitest'
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 
@@ -182,18 +183,87 @@ function cardHoverProblems(cssText: string): string[] {
   return out
 }
 
+// Rule (e): font scope, ruling R14 --------------------------------------------
+
+// The serif face (Playfair) and the hand face (Caveat) each have a fixed set of allowed selectors.
+// An alias such as --ex-font-serif counts as a use of the same face.
+type Face = 'serif' | 'hand'
+const FACE_ALLOWED: Record<Face, string[]> = {
+  serif: ['.ex-hero h1', '.yf-header-title'],
+  hand: ['.ex-note', '.yf-header-note'],
+}
+const FACE_USE: Array<[Face, RegExp]> = [
+  ['serif', /var\(--(?:ex-)?font-serif\)|Playfair/],
+  ['hand', /var\(--(?:ex-)?font-hand\)|Caveat/],
+]
+// Token blocks (:root and the theme blocks) hold the definitions and always pass.
+const isTokenBlock = (selector: string): boolean => /^(?::root|\[data-theme)\S*$/.test(selector)
+
+/**
+ * Rule (e1). A rule that uses a face must have a selector on that face's allowlist.
+ * Each (selector, face) pair that is not allowed is one violation.
+ */
+function fontScopeProblems(cssText: string): string[] {
+  const css = cssText.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+  const out: string[] = []
+  for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const selector = m[1].trim().replace(/\s+/g, ' ')
+    if (isTokenBlock(selector)) continue
+    for (const [face, use] of FACE_USE) {
+      if (use.test(m[2]) && !FACE_ALLOWED[face].includes(selector)) out.push(`${selector}: uses the ${face} face`)
+    }
+  }
+  return out
+}
+
+// Rule (e2): no .tsx file under src/ names a face. Counted per file.
+const FACE_NAME_IN_TSX = /--(?:ex-)?font-(?:serif|hand)|Playfair/g
+const countFaceNames = (text: string): number => count(text, FACE_NAME_IN_TSX)
+
+function listSourceTsx(): string[] {
+  return readdirSync(new URL('../src/', import.meta.url), { recursive: true })
+    .map((f) => 'src/' + f.split('\\').join('/'))
+    .filter((f) => f.endsWith('.tsx'))
+    .sort()
+}
+
+function faceNameFiles(): Record<string, number> {
+  const out: Record<string, number> = {}
+  for (const f of listSourceTsx()) {
+    const n = countFaceNames(read(f))
+    if (n > 0) out[f] = n
+  }
+  return out
+}
+
+/** Ratchet over face-name counts. A count may not rise. A count that fell must be locked in by regenerating the baseline. */
+function compareFaceNames(current: Record<string, number>, baseline: Record<string, number>): string[] {
+  const out: string[] = []
+  for (const file of new Set([...Object.keys(current), ...Object.keys(baseline)])) {
+    const now = current[file] ?? 0
+    const before = baseline[file] ?? 0
+    if (now > before) out.push(`${file}: names a serif or hand face ${now} times, up from ${before}`)
+    else if (now < before) out.push(`${file}: names a serif or hand face ${now} times, down from ${before}; regenerate the baseline`)
+  }
+  return out
+}
+
 // Snapshot, baseline and the one-env regeneration path ------------------------
 
 interface Baseline {
   pageRootAllowlist: string[]
   pageFiles: Record<string, PageMetrics>
   cardHoverViolations: number
+  fontScopeViolations: number
+  fontNameFiles: Record<string, number>
 }
 
 interface Snapshot {
   routed: Array<{ key: string; hasScope: boolean }>
   pageFiles: Record<string, PageMetrics>
   cardProblems: string[]
+  fontScope: string[]
+  fontNames: Record<string, number>
 }
 
 function listPageFiles(): string[] {
@@ -209,7 +279,13 @@ function snapshot(): Snapshot {
   const routed = units.map((u) => ({ key: u.key, hasScope: unitHasScope(u, read) }))
   const pageFiles: Record<string, PageMetrics> = {}
   for (const f of listPageFiles()) pageFiles[f] = pageMetrics(read(f))
-  return { routed, pageFiles, cardProblems: cardHoverProblems(read(STYLES)) }
+  return {
+    routed,
+    pageFiles,
+    cardProblems: cardHoverProblems(read(STYLES)),
+    fontScope: fontScopeProblems(read(STYLES)),
+    fontNames: faceNameFiles(),
+  }
 }
 
 const snap = snapshot()
@@ -220,6 +296,8 @@ function writeBaseline(): void {
     pageRootAllowlist: snap.routed.filter((u) => !u.hasScope).map((u) => u.key).sort(),
     pageFiles: sortedPages,
     cardHoverViolations: snap.cardProblems.length,
+    fontScopeViolations: snap.fontScope.length,
+    fontNameFiles: Object.fromEntries(Object.entries(snap.fontNames).sort(([a], [b]) => a.localeCompare(b))),
   }
   writeFileSync(baselineUrl, JSON.stringify(next, null, 2) + '\n')
 }
@@ -252,6 +330,20 @@ describe('page consistency ratchet (plan section 4.5)', () => {
     const now = snap.cardProblems.length
     expect(now, `card hover violations rose above the baseline:\n${snap.cardProblems.join('\n')}`).toBeLessThanOrEqual(base)
     expect(now, `card hover violations fell to ${now}; regenerate the baseline`).toBeGreaterThanOrEqual(base)
+  })
+
+  it('keeps the serif and hand faces on their R14 selectors, and their count from rising (rule e1)', () => {
+    if (updating) return writeBaseline()
+    const base = loadBaseline().fontScopeViolations
+    const now = snap.fontScope.length
+    expect(now, `font scope violations rose above the baseline:\n${snap.fontScope.join('\n')}`).toBeLessThanOrEqual(base)
+    expect(now, `font scope violations fell to ${now}; regenerate the baseline`).toBeGreaterThanOrEqual(base)
+  })
+
+  it('keeps .tsx files from naming a serif or hand face above their baseline count (rule e2)', () => {
+    if (updating) return writeBaseline()
+    const problems = compareFaceNames(snap.fontNames, loadBaseline().fontNameFiles)
+    expect(problems, problems.join('\n')).toEqual([])
   })
 })
 
@@ -327,5 +419,29 @@ describe('each rule fails on its bad fixture and passes its good one', () => {
       '.stop-card:hover { border-color: red; }',
     ].join('\n')
     expect(cardHoverProblems(good)).toEqual([])
+  })
+
+  it('rule e1: a face used outside its R14 selectors is flagged, the allowed selectors and token blocks pass', () => {
+    expect(fontScopeProblems('.trip-card h2 { font-family: var(--font-serif); }')).toHaveLength(1)
+    expect(fontScopeProblems('.card-a, .ex-hero h1 { font-family: var(--ex-font-serif); }')).toHaveLength(1)
+    expect(fontScopeProblems('.ex-note { font-family: var(--font-serif); }')).toHaveLength(1)
+    expect(fontScopeProblems(".card { font-family: 'Playfair Display', serif; }")).toHaveLength(1)
+    const good = [
+      ':root { --font-serif: "Playfair Display", Georgia, serif; --ex-font-serif: var(--font-serif); }',
+      ':root[data-theme="dark"] { --font-hand: "Caveat", cursive; }',
+      '.ex-hero h1 { font-family: var(--font-serif); }',
+      '.yf-header-title { font-family: var(--font-serif); }',
+      '.ex-note { font-family: var(--ex-font-hand); }',
+      '.yf-header-note { font-family: var(--font-hand); }',
+    ].join('\n')
+    expect(fontScopeProblems(good)).toEqual([])
+  })
+
+  it('rule e2: a .tsx file that names a face is counted, and a count that rises or falls is flagged', () => {
+    expect(count("const s = '--font-serif'\n// Playfair", FACE_NAME_IN_TSX)).toBe(2)
+    expect(countFaceNames("const s = { fontFamily: 'Plus Jakarta Sans' }")).toBe(0)
+    expect(compareFaceNames({ 'src/x.tsx': 1 }, {})).toHaveLength(1)
+    expect(compareFaceNames({}, { 'src/x.tsx': 1 })).toHaveLength(1)
+    expect(compareFaceNames({ 'src/x.tsx': 1 }, { 'src/x.tsx': 1 })).toEqual([])
   })
 })

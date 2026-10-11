@@ -211,5 +211,9 @@
       "rawH1": 1
     }
   },
-  "cardHoverViolations": 5
+  "cardHoverViolations": 5,
+  "fontScopeViolations": 0,
+  "fontNameFiles": {
+    "src/main.tsx": 1
+  }
 }
