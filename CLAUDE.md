@@ -7,15 +7,19 @@ only the routing rules for Claude sessions.
 
 | Role | Model and effort | Job |
 | --- | --- | --- |
-| Main thread | Sonnet | Plan, write the brief, check every report against git, report to the user. |
-| Worker | Haiku 5.5, max effort | Do the labour, including UI work. Run a swarm in parallel. |
-| Reviewer | Sonnet, high effort | Review UI and complex work. |
-| Advisor | Opus | Advise on hard decisions only. Do not use Opus for labour. |
+| Main thread | Opus, medium effort | Plan, write briefs, guide workers, check every report against git, report to the user. Do as little hands-on work as possible. |
+| Worker | Haiku 5.5, max effort | Do all the labour, including UI work, fixes and doc edits. Run a swarm in parallel. |
+| Reviewer | Sonnet, high effort | Review UI and complex work before it reaches the user. |
+| Advisor | Opus, high effort | Advise on hard decisions only. Spawn it as a subagent. Do not use it for labour. |
+
+The main thread may run short read-only checks itself, such as `git log`, `git diff --stat` and `grep`.
+It must not write code, tests or docs that a worker can write. A one-line fix to its own
+briefing files is the exception.
 
 ## Lanes
 
-Cline and Codex no longer work on this repo. Haiku workers do all the labour. Sonnet
-orchestrates and reviews. Opus advises. Read "Cline" and "Codex" in the rulings as
+Cline and Codex no longer work on this repo. Haiku workers do all the labour. Opus
+orchestrates, Sonnet reviews and an Opus subagent advises. Read "Cline" and "Codex" in the rulings as
 "a Haiku worker". The rulings that name their clones (R9, R10) do not apply. R11 still
 applies: one batch branch per worker group, no push until the user says so.
 
