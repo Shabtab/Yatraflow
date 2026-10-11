@@ -25,14 +25,13 @@ only the routing rules for Claude sessions.
 9. Write prose in STE (`AGENTS.md` §2.13).
 10. Keep the failed, loading and empty states separate. Do not invent data.
 
-## Consistency effort rulings
+## Consistency effort
 
-The full rulings R1 to R19 and the plan are local files outside this repo. They are
-not visible in cloud sessions. R14 to R19 in short:
+Read these two files before you start consistency work:
 
-- R14: Playfair only on the page h1. Caveat only in the page note, once per page.
-- R15: The button skin stays on `yf-page` until P16.
-- R16: One `SegmentedTabs` component with two variants, tablist and toggle.
-- R17: My trips keeps its own filter bar until one approved PR matches it to Explore.
-- R18: Merge order is #695, #696, #697, #698, then `feat/consistency-foundations-2`.
-- R19: `page-enter` owns the entrance. Stage B pages wait for it.
+- [`docs/consistency/consistency-rulings.md`](docs/consistency/consistency-rulings.md): rulings R1 to R19.
+- [`docs/consistency/app-consistency-plan.md`](docs/consistency/app-consistency-plan.md): the plan, with pages P1 to P16.
+
+A ruling overrides the plan where they differ. Example: R14 limits the serif font to the
+page h1, which answers plan question Q1. Re-derive the open pull requests from `gh` and
+git. Do not rely on a status line in these files.
