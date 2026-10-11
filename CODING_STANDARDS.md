@@ -848,6 +848,22 @@ process.
 
 - **A day is addressed by `day.index` and never by array position — and one report names only one of the places that got it wrong (learned 2026-09-26).** Issue #338 read as a per-day money bug in `computeTotals` (`byDay` was built positionally but read with `byDay[day.index]`, the round-trip drive home went to `byDay[len - 1]`, and an expense's `dayIndex` was clamped to the last day — so on a sparse trip, indexes 0,2,3 after a deleted middle day, a day could show a stranger's total). Fixing exactly that was not enough for the issue's own acceptance test *"an unsorted `trip.days` array follows `day.index`"*: the same index-vs-position mistake lived in `originOf`'s `dayEndPosition` (`trip.days[dayIndex]`, so a sparse trip's later days woke up at their own start and measured zero legs), in `firstFixedPoint`/`lastActiveStopPoint` ("home" and the return turnaround read from the array's first/last slot, so shuffling the array moved the whole route), and in two `day.index === trip.days.length - 1` return-shape checks (a count is not the last index). When a day-keyed bug lands, grep `trip.days[` **and** `days.length - 1` across `src/lib` before calling it fixed. The readers clamp too: the Timeline's chip, `printModel` and the engine's own lookups each had their own positional `Math.min(index, len - 1)` — a lookup that finds no bucket must render NOTHING, never another day's number. Two smaller lessons from the same wave: the page handlers that carry this class of bug can still be regression-tested in the node suite — `react-dom/server` renders a pure component (`tests/timefmt.test.ts`, `tests/form-error-summary.test.ts` are the precedent, used here for `DaySpark`'s NaN coordinates) and a narrow source assertion binds a handler to the helper it must call (`tests/decision-resolve.test.ts` is the precedent); and a guard keyed on a row's `status` must treat a MISSING status as open (`if (sg.status && sg.status !== 'open')`), because a hydrated row that predates the field would otherwise become un-actionable — the `fire-and-forget` fixture has no status and caught exactly that.
 
+- **A test that reads source text must turn CRLF into LF first (learned 2026-10-11).**
+  On Windows, `core.autocrlf` is `true`. Git stores LF and writes CRLF to the
+  working tree. A pin that searches for `\n\n` or `/>\n` then finds nothing, and
+  it fails on every Windows checkout. CI on Linux hides the fault. Read the file
+  with `.replace(/\r\n/g, '\n')`. Two pins failed this way
+  (`tests/trips-my-trips-defects.test.ts`, `tests/ladakh-calculator.test.ts`).
+  Check a new source-reading pin on a Windows checkout before you trust it.
+  A line-ending check with `grep -c $'\r'` in a shell loop printed 0 on CRLF
+  files. Use `node -e "fs.readFileSync(f,'utf8').includes('\r')"` instead.
+
+- **Route paths, not hash fragments, address pages (learned 2026-10-11).** The
+  app routes by path (`/trips`). A signed-out visit to a signed-in route keeps
+  its URL and shows the landing page in place. A check that compares URLs
+  reports success on a wrong page. Compare the page content, such as the h1.
+  `AGENTS.md` still says "hash routing". Treat that line as stale.
+
 ## 3. Scripted edits
 
 Read this section **before** writing any script that edits a source file.
