@@ -121,8 +121,8 @@ number that drives a decision uses tabular figures so it can be scanned and comp
 - One brand teal (`#0D8D82`) as the single primary accent; a second, deeper teal
   (`#0E7A72`) is used for fills that carry white text so the label clears AA.
 - Sora for display and figures, Plus Jakarta Sans for body; tabular numerals wherever a number
-  is compared. The two catalog pages (Explore and My trips) add Playfair Display for the
-  hero line and Caveat for the handwritten note. The My purchases header also carries one Caveat note.
+  is compared. The page h1 uses Playfair Display (`--font-serif`), set by `PageHeader` and the
+  catalog heroes. A handwritten note uses Caveat (`--font-hand`). Each face has a fixed scope; see Typography.
 - Pill-first form language: 999px chips and segmented rails; 12/18/24px radii for cards and
   inputs. Buttons are 12px on the two catalog pages and pills elsewhere.
 - Depth from soft navy shadows and four blur tiers — never from heavy borders.
@@ -189,10 +189,10 @@ never carries two meanings.
 panel titles and every decision-bearing figure; Plus Jakarta Sans carries prose and controls.
 The catalog pages (Explore and My trips) differ. Their section titles and card titles use
 Plus Jakarta Sans (800 and 700). Their hero headline uses Playfair Display 600 with one
-italic accent phrase. A short handwritten note beside the hero uses Caveat 600. Use these two
-fonts only in a catalog hero. One exception exists. The My purchases header may carry one
-Caveat note, set with the `note` slot of the page header. Use one note on a page. Write only a
-true line in it. Mark it `aria-hidden`, and keep the same meaning in the lede.
+italic accent phrase. A short handwritten note beside the hero uses Caveat 600.
+
+**Font scope (ruling R14).** The serif face (Playfair Display, `--font-serif`) sets the page h1 only. You must use it only in `.ex-hero h1` and `.yf-header-title`. The hand face (Caveat, `--font-hand`) sets the handwritten note only. You must use it only in `.ex-note` and `.yf-header-note`. Use at most one handwritten note on a page. You must not use the hand face in a `StateBlock`. Set the note with the `note` slot of `PageHeader`. Write only a true line in the note. Mark it `aria-hidden`. Keep the same meaning in the lede. The two face names belong only in the token definitions in `:root`. Source files must not name them. The guard `tests/page-consistency.test.ts` counts the existing exceptions.
+
 Discouraged weights are not merely avoided in new code — a gate fails the build if a
 declared weight is not in the loaded set.
 
@@ -251,7 +251,7 @@ only for genuinely physical geometry.
 ### Phase 0 notes
 
 The `yf-page` class gives a page the catalog container width.
-The page width token is `--page-max`, at 1240px. Phase 0 adds it to the stylesheet.
+The planned page width token is `--page-max`, at 1240px. It is not yet defined in `src/styles.css`. Do not use it until it is defined.
 Add new page-skin rules at the end of `src/styles.css`. Do not edit the older rules.
 
 ## Elevation & Depth
@@ -357,6 +357,10 @@ zero: the empty state only appears once the log was actually read.
 The page primitives are in `src/components/page/`: `PageHero`, `PageHeader`, `StateBlock`, `SectionHead` and `Surface`.
 Use `StateBlock` for loading, failed and empty states on a new page.
 Add `yf-page` to the root of a page when you convert it. The page skin then applies to that page.
+
+**Button skin (ruling R15).** The catalog button skin stays scoped to `yf-page` until phase P16. Before the workspace page (P2) converts, the design lead decides where the skin stops. At P16, only the corner radius and the weight move into base `.btn`.
+
+**Segmented tabs (ruling R16).** `SegmentedTabs` is one component with two variants. Select a variant with its `semantics` prop. The tablist variant (workspace, auth, hub, admin) uses the glass `tabbar` and a teal glider. The toggle variant (Grid and List) is planned to use `mt-seg` and an ink glider. The toggle must emit the active-state attribute that the glider reads.
 
 ## Do's and Don'ts
 
