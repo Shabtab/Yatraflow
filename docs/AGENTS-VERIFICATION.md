@@ -21,7 +21,7 @@ Sections:
 
 ## The gate
 
-**A clean working tree makes the default STE check inspect zero lines.** It reads unstaged changes, not committed branch changes. You must also check new branch prose through `--stdin` during a branch review.
+**The default STE check reads the whole branch, not only unstaged edits.** `npm run lint:ste` compares the tree with the merge base of `origin/test`, so committed and uncommitted lines both count. Run `git fetch origin test` first. Without it, the check reads uncommitted lines only and prints a warning. A new file must be staged (`git add -N`) before the check sees it.
 
 Use `npm run verify` — it runs the full gate:
 `tsc -b --clean` → fresh typecheck → full test suite → production build.
