@@ -8949,3 +8949,24 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
   border-bottom: 1px solid var(--line);
 }
 
+/* ==== Stage A: AdminPage inline styles -> classes (no visual change) ==== */
+
+.adm-mt-8 { margin-top: 8px; }
+.adm-mt-10 { margin-top: 10px; }
+.adm-mt-0 { margin-top: 0; }
+.adm-mt-3 { margin-top: 3px; }
+.adm-mb-12 { margin-bottom: 12px; }
+.adm-mb-16 { margin-bottom: 16px; }
+.adm-mt0-mb12 { margin: 0 0 12px; }
+.adm-chip-row { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+.adm-bar-head { display: inline-flex; gap: 4px; align-items: end; height: 18px; }
+.adm-inline-mid { display: inline-flex; align-items: center; gap: 8px; }
+.adm-callout { display: flex; gap: 8px; align-items: flex-start; margin: 10px 0; }
+.adm-toolbar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.adm-grow { flex: 1; }
+.adm-panel-note { max-width: 320px; margin-bottom: 12px; }
+.adm-narrow { max-width: 280px; }
+.adm-flag { width: 20px; height: 20px; margin-left: 4px; }
+.adm-bar { display: inline-block; width: 10px; }
+.adm-bar-signup { background: var(--yf-teal-600); }
+.adm-bar-trip { background: var(--yf-saffron); }
