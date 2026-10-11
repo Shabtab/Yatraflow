@@ -1482,13 +1482,13 @@ a.btn { text-decoration: none; }
   padding: 8px 12px;
   box-shadow: var(--shadow-soft);
 }
-/* Which day you are in: the chip whose card has scrolled past the sticky line.
-   One marker, not a second colour for "warn" — the warn tint is the day's own
-   state and stays readable next to it. */
-.day-rail-chip[aria-current='true'] {
+/* Which day you are in: the card whose day has scrolled past the sticky
+   line. The marker is the BORDER plus the weight, so the warn tint cannot
+   replace it — the tint is the day's own state and stays next to the marker. */
+.day-rail-card.warn[aria-current='true'] {
   border-color: var(--teal);
-  background: var(--teal-soft);
-  color: var(--teal-deep);
+  background: var(--yf-amber-100);
+  color: var(--ink-amber);
   font-weight: 800;
 }
 
@@ -2031,8 +2031,13 @@ button.board-col-zone--add:active { transform: translateY(1px); }
 .bezel {
   display: flex; flex-direction: column;
   padding: 6px; border-radius: 2rem;
-  background: var(--yf-glass); border: 1px solid var(--yf-glass-border);
-  /* NO outer hairline, deliberately. The first cut carried the landing's
+  /* The glass itself comes from `.glass` — this tray RESTATED that recipe's
+     background and border while leaving its backdrop-filter behind, which is
+     the split the popover shipped with. It wears the owner instead and keeps
+     only its own geometry and shadow (its own `box-shadow` below also wins the
+     cascade over the owner's inset sheen, so the tray keeps the depth it was
+     measured with).
+     NO outer hairline, deliberately. The first cut carried the landing's
      `0 0 0 1px rgba(navy,.05)` ring; measured against this canvas the tray FILL
      is imperceptible - cream #F8F7EF -> 58% white = #FBFAF7, a 1.3% step, then
      the plate adds another 1.3% to pure white - so the only part of the tray the
@@ -2065,7 +2070,12 @@ button.board-col-zone--add:active { transform: translateY(1px); }
    The tray fill and the plate's highlight are the existing glass tokens, NOT
    light literals: --yf-glass is white/58 in light and #101B2B/58 in dark, so the
    tray is correct in both themes without a second [data-theme] rule. */
-.feature-card { display: flex; flex-direction: column; background: var(--yf-glass); border: 1px solid var(--yf-glass-border); border-radius: var(--radius-lg); padding: 6px; box-shadow: 0 0 0 1px rgba(var(--shadow-navy-rgb), .05), var(--shadow-soft); transition: transform var(--t-fast) var(--ease-out), box-shadow var(--t-fast) var(--ease-out); }
+/* `.feature-card` cannot wear the `.glass` owner: it also carries `.card`, and
+   `.card`'s background rule sits LATER in this file, so the owner's background
+   would lose the cascade and the tray would turn opaque. So it declares
+   the glass PAIR itself — background and backdrop-filter together, never one
+   without the other (the popover's split). */
+.feature-card { display: flex; flex-direction: column; background: var(--yf-glass); border: 1px solid var(--yf-glass-border); -webkit-backdrop-filter: blur(var(--yf-blur-nav)) saturate(1.2); backdrop-filter: blur(var(--yf-blur-nav)) saturate(1.2); border-radius: var(--radius-lg); padding: 6px; box-shadow: 0 0 0 1px rgba(var(--shadow-navy-rgb), .05), var(--shadow-soft); transition: transform var(--t-fast) var(--ease-out), box-shadow var(--t-fast) var(--ease-out); }
 .feature-card:hover { transform: translateY(-2px); box-shadow: 0 0 0 1px rgba(var(--shadow-navy-rgb), .05), 0 4px 8px rgba(var(--shadow-navy-rgb), .06), 0 20px 48px rgba(var(--shadow-navy-rgb), .16); }
 .feature-core { display: flex; flex-direction: column; height: 100%; padding: 16px; border-radius: calc(var(--radius-lg) - 7px); background: var(--card); box-shadow: inset 0 1px 0 var(--yf-glass-sheen); }
 .feature-card h3 { font-size: 15.5px; }
@@ -3324,7 +3334,7 @@ main:focus { outline: none; }
 .day-rail-chip:focus-visible,
 .map-day-chip:focus-visible, .map-idea-chip:focus-visible, .map-legend-toggle:focus-visible,
 .map-expand-chip:focus-visible, .loc-option:focus-visible, .ai-fab:focus-visible,
-.trip-card-hit:focus-visible, .skip-link:focus-visible, .yf-map-pin:focus-visible,
+.trip-card-hit:focus-visible, .trip-task-row:focus-visible, .skip-link:focus-visible, .yf-map-pin:focus-visible,
 .clamp-toggle:focus-visible, .board-fit:focus-visible, .save-heart:focus-visible,
 .dest-chip button:focus-visible, .role-select:focus-visible, .day-title-btn:focus-visible,
 .trip-hero-back:focus-visible, .health-rec:focus-visible, .link-btn:focus-visible,
@@ -3719,8 +3729,16 @@ body, .topnav, .glass, .board, .modal, .toast {
 }
 
 /* Route-level entrance: every main page change (My trips ↔ Explore ↔ a trip)
-   replays the same gentle fade+rise as workspace tab switches. */
-.route-panel { animation: routeIn .55s cubic-bezier(.22, 1, .36, 1) backwards; }
+   replays the same gentle fade+rise as workspace tab switches.
+   The duration is a token now, not the raw `.55s` this rule shipped with. That
+   rule kept its 550ms clock but paired it with cubic-bezier(.22, 1, .36, 1),
+   a curve whose peak slope puts 63% of the travel into the first 55ms — so the
+   navigation read as an instant snap. Frame samples of /trips -> /trip/:id
+   agreed: the trip page's own content lands ~217ms after the click, past the
+   point where the old curve had already finished. The arrival looked like a
+   pop. On --motion-slow the fade is still running when the content arrives,
+   and the rise is part of one motion instead of ahead of it. */
+.route-panel { animation: routeIn var(--motion-slow) var(--ease-out) backwards; }
 
 /* Drag-and-drop feedback: the carried card's original becomes a dashed slot
    (above), while any valid drop target breathes a teal ring so the landing
@@ -3901,6 +3919,34 @@ html.vt-active :where(*) {
 /* No opacity: .65 composited the inherited ink to 2.5–3.2:1 (it's 11px text,
    needs 4.5). Full strength = the chip's own AA-checked colour, on every surface. */
 .chip-count { font-variant-numeric: tabular-nums; font-size: 11px; margin-left: 3px; }
+
+/* featured itinerary */
+.featured-card {
+  border-radius: var(--radius-lg); padding: 20px 24px; margin-bottom: 22px; position: relative;
+  background: linear-gradient(120deg, #0e3a45, #0b2740);
+  color: #fff; box-shadow: var(--shadow-soft); overflow: hidden;
+}
+.featured-card::before {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(52% 90% at 90% 6%, rgba(240, 165, 63, .18), transparent 62%);
+}
+.featured-body { position: relative; z-index: var(--z-content); }
+.featured-kicker { color: #ffd79a; }
+/* One section-title ramp with .editorial-title (the public page's equivalent) —
+   they were 2px apart at every width for no stated reason. The title also takes
+   the same two-line clamp the grid cards use, so a long name stops crowding the
+   tagline beneath it. */
+.featured-body h2 { font-family: var(--font-display); font-size: clamp(24px, 3vw, 32px); margin: 6px 0 8px; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.featured-title-link { color: #fff; text-decoration: none; }
+.featured-title-link:hover { text-decoration: underline; }
+.featured-tagline { color: #d5e7e4; margin: 0 0 8px; max-width: 640px; line-height: 1.6; }
+/* Prose measure: the neighbouring tagline caps at 640px, but this block and
+   Explore's fork note run at 13px and 12.5px, where a 640px cap still buys
+   78-81 characters a line. `ch` self-adjusts to the font size, so one value
+   holds every block inside the 60-75ch band. */
+.featured-credibility { color: #a9d8cf; font-size: 13px; margin: 0 0 12px; max-width: 72ch; }
+.featured-meta { display: flex; gap: 18px; flex-wrap: wrap; color: #e2f1ef; font-size: 13px; margin-bottom: 16px; }
+.featured-actions { display: flex; gap: 10px; flex-wrap: wrap; }
 
 /* save heart on grid cards */
 .save-heart {
@@ -7004,12 +7050,15 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 .map-day-chip--ghost:hover { background: transparent; border-color: transparent; color: var(--text-2); }
 [data-theme='dark'] .map-day-chip--ghost:hover { color: var(--text); }
 .map-filters { position: relative; display: inline-flex; }
+/* Position and size only. The element carries `.popover` in TripMap.tsx, which
+   owns the glass pair — background AND `backdrop-filter`. This rule used to
+   restate all five of those declarations and lost the blur, so the panel was
+   translucent with nothing behind it to frost and the map's own chips and day
+   markers read through it. `tests/design-system.test.ts` now pins that
+   `--popover-bg` has exactly one owner. */
 .map-filters-pop {
   position: absolute; top: calc(100% + 6px); left: 0; z-index: 30;
   min-width: 210px; padding: 6px;
-  background: var(--popover-bg); border: 1px solid var(--popover-border);
-  border-radius: 12px; box-shadow: var(--shadow-soft);
-  animation: popover-in var(--motion-med) var(--ease-glide);
 }
 .map-filters-row {
   display: flex; align-items: center; gap: 8px; width: 100%;
@@ -7025,7 +7074,7 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 }
 .map-filters-row[aria-pressed='true'] { color: var(--text); font-weight: 600; }
 @media (prefers-reduced-motion: reduce) {
-  .map-filters-pop { animation: none; }
+  /* the panel's own entrance is `.popover`'s now, and its opt-out is there */
   .map-filters-row { transition: none; }
 }
 /* ============================================================
@@ -8101,37 +8150,24 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 .mt-kicker-note { color: var(--text-3); font-size: .6em; font-weight: 600; letter-spacing: 0; white-space: nowrap; }
 
 /* ---------- Grid | List switch ---------- */
-.mt-seg { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--card); }
+.mt-seg { position: relative; display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; padding: 2px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--card); }
 .mt-seg button {
-  display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 14px;
+  position: relative; z-index: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px; padding: 0 14px;
   border: 0; border-radius: 999px; background: none; color: var(--text);
   font-size: 14px; font-weight: 600; cursor: pointer;
-  transition: background-color var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out);
+  transition: background-color var(--motion-fast) var(--ease-out), color var(--motion-med) var(--ease-glide);
 }
 .mt-seg button:hover:not([aria-pressed='true']) { background: var(--bg-soft); }
-.mt-seg button[aria-pressed='true'] { background: var(--text); color: var(--bg); }
+.mt-seg button[aria-pressed='true'] { background: transparent; color: var(--bg); }
 .mt-seg button:focus-visible { outline: none; box-shadow: var(--ring); }
 
 /* ---------- Grid ---------- */
 .mt-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
 @container mt-catalog (min-width: 560px) {
-  .mt-grid { grid-template-columns: repeat(var(--mt-c2, 2), minmax(0, 1fr)); gap: 18px; }
+  .mt-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
 }
 @container mt-catalog (min-width: 880px) {
-  .mt-grid { grid-template-columns: repeat(var(--mt-c3, 3), minmax(0, 1fr)); gap: 20px; }
-}
-/* A lone last card spans the row as a compact horizontal card. */
-@container mt-catalog (min-width: 560px) and (max-width: 879px) {
-  .mt-grid[data-lone-two='1'] > .mt-card:last-child { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 36fr) minmax(0, 64fr); }
-  .mt-grid[data-lone-two='1'] > .mt-card:last-child .mt-cover { aspect-ratio: auto; align-self: stretch; min-height: 150px; max-height: 220px; }
-  .mt-grid[data-lone-two='1'] > .mt-card:last-child .mt-card-main { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
-  .mt-grid[data-lone-two='1'] > .mt-card:last-child .mt-card-foot { flex-direction: column; align-items: flex-end; gap: 4px; margin: 0 8px 0 0; padding: 0; }
-}
-@container mt-catalog (min-width: 880px) {
-  .mt-grid[data-lone-three='1'] > .mt-card:last-child { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 36fr) minmax(0, 64fr); }
-  .mt-grid[data-lone-three='1'] > .mt-card:last-child .mt-cover { aspect-ratio: auto; align-self: stretch; min-height: 150px; max-height: 220px; }
-  .mt-grid[data-lone-three='1'] > .mt-card:last-child .mt-card-main { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
-  .mt-grid[data-lone-three='1'] > .mt-card:last-child .mt-card-foot { gap: 18px; margin: 0 14px 0 0; padding: 0; }
+  .mt-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
 }
 
 /* ---------- Card ---------- */
@@ -8223,7 +8259,8 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 .mt-meter { display: grid; gap: 6px; }
 .mt-meter-label { margin: 0; color: var(--text-2); font-size: 13.5px; }
 .mt-meter-label b { color: var(--text); font-weight: 700; }
-.mt-meter-bar { height: 8px; overflow: hidden; border-radius: 999px; background: color-mix(in srgb, var(--teal-deep) 18%, var(--card)); }
+/* The track edge uses --gray-400, so the empty track is visible on the card (3:1 or more). */
+.mt-meter-bar { box-sizing: border-box; height: 8px; overflow: hidden; border: 1px solid var(--gray-400); border-radius: 999px; background: color-mix(in srgb, var(--teal-deep) 18%, var(--card)); }
 .mt-meter-bar i { display: block; height: 100%; border-radius: 999px; background: var(--teal-deep); transition: width var(--motion-slow) var(--ease-out); }
 .mt-next { display: flex; align-items: flex-start; gap: 8px; margin: 0; padding: 8px 12px; border-radius: var(--radius-sm); background: var(--teal-soft); color: var(--text); font-size: 14.5px; line-height: 1.4; }
 .mt-next svg { flex: none; margin-top: 2px; color: var(--ink-teal); }
@@ -8259,10 +8296,14 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
   .mt-grid.is-list .mt-tag-dot { width: 8px; height: 8px; }
   .mt-grid.is-list .mt-card-main { display: grid; grid-template-columns: minmax(0, 1.6fr) 150px minmax(0, 1fr) 150px; align-items: center; gap: 0 20px; padding: 4px 8px 4px 18px; }
   .mt-grid.is-list .mt-card-body { display: contents; }
-  .mt-grid.is-list .mt-card-head { grid-column: 1; min-width: 0; }
-  .mt-grid.is-list .mt-stats { grid-column: 2; flex-direction: column; flex-wrap: nowrap; gap: 2px; }
-  .mt-grid.is-list .mt-card-chips { grid-column: 3; margin-top: 0; padding: 0; }
-  .mt-grid.is-list .mt-card-foot { grid-column: 4; justify-content: flex-end; gap: 12px; margin: 0; padding: 0; }
+  /* Head, stats and foot span two grid rows. The next-step row and the chips
+     stack in column 3, so a row with a step stays about as tall as one without. */
+  .mt-grid.is-list .mt-card-head { grid-column: 1; grid-row: 1 / span 2; min-width: 0; }
+  .mt-grid.is-list .mt-stats { grid-column: 2; grid-row: 1 / span 2; flex-direction: column; flex-wrap: nowrap; gap: 2px; }
+  .mt-grid.is-list .mt-task { grid-column: 3; grid-row: 1; }
+  .mt-grid.is-list .mt-card-chips { grid-column: 3; grid-row: 1 / span 2; margin-top: 0; padding: 0; }
+  .mt-grid.is-list .mt-task + .mt-card-chips { grid-row: 2; }
+  .mt-grid.is-list .mt-card-foot { grid-column: 4; grid-row: 1 / span 2; justify-content: flex-end; gap: 12px; margin: 0; padding: 0; }
   .mt-grid.is-list .mt-card-title { font-size: 18px; }
 }
 
@@ -8289,7 +8330,7 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
   .mt-grid.is-list .mt-route { font-size: 13px; line-height: 1.4; }
   .mt-grid.is-list .mt-stats { gap: 0 10px; font-size: 12.5px; line-height: 1.4; }
   .mt-grid.is-list .mt-stat-ico { display: none; }
-  .mt-grid.is-list .mt-card-chips, .mt-grid.is-list .mt-planners, .mt-grid.is-list .mt-solo { display: none; }
+  .mt-grid.is-list .mt-card-chips, .mt-grid.is-list .mt-task, .mt-grid.is-list .mt-planners, .mt-grid.is-list .mt-solo { display: none; }
   .mt-grid.is-list .mt-card-foot { justify-self: end; margin: 0; padding: 0; }
 }
 @media (max-width: 360px) {
@@ -8564,15 +8605,6 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 }
 @container ex-main (min-width: 880px) {
   .ex-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
-}
-/* A lone last card takes its own row and lays out across, like the featured card. */
-@container ex-main (min-width: 560px) and (max-width: 879px) {
-  .ex-grid > .ex-card:last-child:nth-child(2n + 1):not(:first-child) { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-  .ex-grid > .ex-card:last-child:nth-child(2n + 1):not(:first-child) .ex-cover-wrap { aspect-ratio: auto; align-self: stretch; min-height: 180px; }
-}
-@container ex-main (min-width: 880px) {
-  .ex-grid > .ex-card:last-child:nth-child(3n + 1):not(:first-child) { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-  .ex-grid > .ex-card:last-child:nth-child(3n + 1):not(:first-child) .ex-cover-wrap { aspect-ratio: auto; align-self: stretch; min-height: 180px; }
 }
 
 /* ---------- Itinerary card ---------- */
@@ -8920,4 +8952,977 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
   .mt-hero-secondary { flex: 1 1 100%; }
   .mt-hero-secondary > .btn { flex: 1 1 0; justify-content: center; padding: 0 10px; }
   .mt-hero-stats { margin-top: 12px; }
+}
+
+/* ---------- MR1/MR2 - trip card next step + planning progress ----------
+   Appended at EOF on purpose. tests/design-system.test.ts keys every finding by
+   styles.css LINE NUMBER, so an insertion above an existing rule remaps all the
+   entries beneath it and reports unchanged violations as new ones. */
+.trip-plan { display: flex; align-items: center; gap: 9px; }
+.trip-plan-bar {
+  flex: 1 1 auto; max-width: 170px; height: 5px; border-radius: 3px;
+  background: var(--bg-soft); overflow: hidden;
+}
+.trip-plan-fill {
+  display: block; height: 100%; border-radius: 3px; background: var(--teal);
+  transition: width var(--t-med) var(--ease-out);
+}
+.trip-plan-text {
+  font-size: var(--text-xs); font-weight: 500; color: var(--text-3);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+/* The action line sits under the card's chips with no second divider — the card
+   foot already draws one, and two rules a few pixels apart read as a sandwich. */
+.trip-next {
+  display: flex; align-items: center; gap: 4px; margin-top: 4px;
+  color: var(--teal-deep); font-size: 13px; font-weight: 600;
+}
+.trip-next-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trip-next-chevron { flex: none; transition: transform var(--t-fast) var(--ease-out); }
+.itin-card:hover .trip-next-chevron { transform: translateX(2px); }
+/* A finished trip has nothing to open, so the row steps back to plain meta ink. */
+.trip-next.is-done { color: var(--text-3); font-weight: 500; }
+
+@media (prefers-reduced-motion: reduce) {
+  .trip-plan-fill, .trip-next-chevron { transition: none; }
+  .itin-card:hover .trip-next-chevron { transform: none; }
+}
+
+/* ---------- MR3 - status filter tabs on My Trips ----------
+   Appended at EOF with the MR1/MR2 block for the same reason: the design-system
+   baseline is keyed by styles.css line number. */
+.trips-status-tabs { margin: -6px 0 16px; }
+
+/* ---------- MR4/MR6 - view toggle, list rows, departure line ----------
+   Appended at EOF with the other MR blocks for the same reason: the
+   design-system baseline is keyed by styles.css line number. */
+.view-toggle { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.view-toggle-btn {
+  display: grid; place-items: center; width: 32px; height: 28px; padding: 0;
+  border: 0; border-radius: calc(var(--radius-sm) - 2px); background: transparent;
+  color: var(--text-3); cursor: pointer;
+  transition: background var(--t-fast) var(--ease-out), color var(--t-fast) var(--ease-out);
+}
+.view-toggle-btn:hover { background: var(--bg-soft); color: var(--text-2); }
+.view-toggle-btn.on-teal { background: var(--teal-soft); color: var(--teal-deep); }
+.view-toggle-btn:focus-visible { outline: none; box-shadow: var(--ring); }
+.trip-departs {
+  font-size: var(--text-xs); font-weight: 600; color: var(--teal-deep);
+  font-variant-numeric: tabular-nums; margin-top: -3px;
+}
+/* List mode turns each card into one row: thumbnail, content, actions —
+   explicit columns, one trip per row. One column is the mockup's scan
+   order. A tiled row list was measured at 1440px and kept once, but it
+   split the scan into two 565px columns, so it is one column everywhere.
+   The content column carries min-width: 0 and a minmax(0, 1fr) track: a
+   flex child without it keeps its min-content width, overruns the footer
+   beside it, and the card clips both — zero page overflow never showed
+   this, because the card hides its own children. The footer (members and
+   the delete control) moves below the row at phone widths, so it can
+   never share a line with the content it used to overlap (P1). */
+.explore-grid.as-list { grid-template-columns: 1fr; gap: 10px; }
+.explore-grid.as-list .itin-card { flex-direction: row; align-items: stretch; display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+.explore-grid.as-list .trip-card-hit { flex: 1; display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 14px; align-items: start; min-width: 0; }
+.explore-grid.as-list .itin-emoji { width: 96px; height: 96px; flex: none; aspect-ratio: auto; border-radius: var(--radius-sm); }
+.explore-grid.as-list .itin-body { padding: 12px 0; min-width: 0; }
+.explore-grid.as-list .itin-card > .itin-meta { flex: none; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 12px 14px; margin-top: 0; grid-column: 2; grid-row: 1 / span 2; }
+.explore-grid.as-list .itin-card > .itin-meta::before { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .view-toggle-btn { transition: none; }
+}
+
+/* ---------- MR7 - the Timeline day strip as cards ----------
+   The rail's own scroll container keeps its old class so the existing
+   overflow-x and scrollbar-width rules still apply; only the inner row and the
+   button shape are new. Appended at EOF for the line-keyed baseline reason. */
+.day-rail-cards { display: flex; align-items: stretch; gap: 6px; overflow-x: auto; padding: 2px; scrollbar-width: thin; }
+.day-rail-card {
+  flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
+  min-width: 116px; max-width: 190px; padding: 8px 12px; cursor: pointer;
+  border: 1px solid var(--line); border-radius: var(--radius-sm);
+  background: var(--card); color: var(--text-2); text-align: left;
+  transition: border-color var(--t-fast) var(--ease-out), background var(--t-fast) var(--ease-out), color var(--t-fast) var(--ease-out);
+}
+.day-rail-card:hover { border-color: var(--teal); color: var(--teal-deep); background: var(--teal-soft); }
+.day-rail-card[aria-current='true'] { border-color: var(--teal); background: var(--teal-soft); color: var(--teal-deep); }
+.day-rail-card.warn { background: var(--yf-amber-100); border-color: transparent; color: var(--ink-amber); }
+.day-rail-card.warn:hover { background: var(--saffron-soft); }
+.day-rail-card-day { font-size: 12px; font-weight: 700; white-space: nowrap; }
+/* The place can be a long free-text title, so it truncates rather than
+   widening the card — the strip is a scroller, not a layout that reflows. */
+.day-rail-card-place {
+  font-size: 12px; color: var(--text-3); max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.day-rail-card-meta { font-size: 11px; color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.day-rail-transit {
+  flex: 0 0 auto; align-self: center; display: grid; place-items: center;
+  width: 18px; height: 18px; border-radius: 999px;
+  background: var(--bg-soft); color: var(--text-3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .day-rail-card { transition: none; }
+}
+
+/* ---------- MR7 touch floor - the day rail cards ----------
+   The mobile block above already carries `.day-rail-chip { min-height: 40px }`
+   for the 40px touch floor. MR7 renamed the element to `.day-rail-card`, and
+   the old rule silently stopped applying to it — measured at 28px tall on a
+   390px viewport. Same rule, new name. The view toggle is new in MR4 and owes
+   the floor too. */
+@media (pointer: coarse), (max-width: 720px) {
+  .day-rail-card { min-height: 40px; }
+  .view-toggle-btn { min-height: 40px; min-width: 40px; }
+}
+
+/* ---------- MR8 - the save hearts ----------
+   NAMED `tl-save-heart`, NOT `save-heart`: the cover picker already owns
+   `.save-heart` (styles.css ~4013) with its own scale-on-hover, and two
+   components sharing one selector is how a cover heart ends up scaling when a
+   timeline heart is pressed. The `tl-` prefix is what the timeline's own rows
+   already use (.tl-time, .tl-root-review).
+   The hover ink is --teal-700, not --teal-deep: on --bg-soft the deeper token
+   measured 4.49:1, which fails AA. A heart is small enough that its label is
+   the only thing a low-vision reader gets, so the state has to clear. */
+.tl-save-heart {
+  flex: none; display: grid; place-items: center; min-width: 32px; min-height: 32px;
+  padding: 0; border: 0; border-radius: var(--radius-sm);
+  background: transparent; color: var(--text-3); cursor: pointer;
+  transition: color var(--t-fast) var(--ease-out), background var(--t-fast) var(--ease-out);
+}
+.tl-save-heart:hover { background: var(--bg-soft); color: var(--teal-700); }
+.tl-save-heart.on { color: var(--danger); }
+.tl-save-heart:focus-visible { outline: none; box-shadow: var(--ring); }
+.tl-save-heart--stop { min-width: 28px; min-height: 28px; }
+
+@media (pointer: coarse), (max-width: 720px) {
+  .tl-save-heart, .tl-save-heart--stop { min-width: 40px; min-height: 40px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tl-save-heart { transition: none; }
+}
+
+/* ============ Variant A Featured-Trip Hierarchy (My Trips) ============ */
+.trip-featured {
+  margin-bottom: 24px;
+}
+.trip-featured-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.trip-featured-head h2 {
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 700;
+  margin: 0;
+  color: var(--text);
+}
+.trip-featured-subheading {
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.trip-featured-card {
+  border: 1px solid var(--yf-border);
+  border-radius: var(--radius-lg);
+  background: var(--yf-surface);
+  overflow: hidden;
+  box-shadow: 0 16px 38px -26px rgba(var(--shadow-navy-rgb), 0.5);
+  display: grid;
+  grid-template-columns: 42% 1fr;
+  min-width: 0;
+}
+
+.trip-featured-photo {
+  position: relative;
+  min-height: 400px;
+  background-size: cover;
+  background-position: center 55%;
+  background-repeat: no-repeat;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 24px;
+}
+.trip-featured-photo::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(12, 20, 32, 0.15) 30%, rgba(12, 20, 32, 0.88) 100%);
+  pointer-events: none;
+}
+.trip-featured-photo-top,
+.trip-featured-photo-bottom {
+  position: relative;
+  z-index: 1;
+  color: #ffffff;
+}
+.trip-featured-photo-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: space-between;
+}
+.trip-featured-photo-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 8px;
+  padding: 6px 10px;
+  background: var(--yf-surface);
+  color: var(--yf-teal-700);
+  font-weight: 700;
+  font-size: 11px;
+}
+.trip-featured-photo-date {
+  background: rgba(12, 20, 32, 0.7);
+  color: #ffffff;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  -webkit-backdrop-filter: blur(var(--yf-blur-scrim));
+  backdrop-filter: blur(var(--yf-blur-scrim));
+}
+.trip-featured-photo-heading {
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.25;
+  margin: 0 0 6px;
+  color: #ffffff;
+  letter-spacing: -0.03em;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+.trip-featured-photo-caption {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.9);
+  margin: 0;
+}
+
+.trip-featured-body {
+  padding: 24px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+.trip-featured-kicker {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--yf-teal-700);
+  display: block;
+}
+.trip-featured-title {
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.3;
+  margin: 8px 0 4px;
+  color: var(--text);
+  letter-spacing: -0.02em;
+}
+.trip-featured-route {
+  color: var(--text-3);
+  font-size: 13px;
+  margin: 0 0 16px;
+}
+.trip-featured-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  color: var(--text-2);
+  font-size: 12px;
+  margin: 0 0 16px;
+}
+.trip-featured-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.trip-featured-progress {
+  margin-bottom: 6px;
+}
+.trip-featured-progress-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  margin-bottom: 8px;
+  color: var(--text-2);
+}
+.trip-featured-progress-head strong {
+  color: var(--text);
+}
+.trip-featured-progress-track {
+  height: 6px;
+  overflow: hidden;
+  background: var(--yf-border);
+  border-radius: 999px;
+}
+.trip-featured-progress-fill {
+  display: block;
+  height: 100%;
+  background: var(--yf-teal-600);
+  border-radius: inherit;
+  transition: width var(--motion-med) var(--ease-glide);
+}
+.trip-featured-progress-note {
+  font-size: 11px;
+  color: var(--text-3);
+  margin: 6px 0 0;
+}
+
+.trip-featured-task {
+  margin: 20px 0 16px;
+  padding: 14px 16px;
+  background: var(--yf-teal-100);
+  border-radius: var(--radius-sm);
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.trip-featured-task-icon {
+  color: var(--yf-teal-700);
+  flex: none;
+  margin-top: 2px;
+}
+.trip-featured-task-meta {
+  color: var(--yf-teal-700);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  display: block;
+}
+.trip-featured-task-title {
+  display: block;
+  margin: 2px 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+.trip-featured-task-desc {
+  color: var(--text-2);
+  font-size: 12px;
+  margin: 2px 0 0;
+}
+
+.trip-featured-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 6px;
+}
+.trip-featured-crew {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-3);
+  font-size: 12px;
+}
+.trip-featured-crew-stack {
+  display: flex;
+  align-items: center;
+}
+.trip-featured-crew-stack > * {
+  margin-left: -4px;
+}
+.trip-featured-crew-stack > *:first-child {
+  margin-left: 0;
+}
+.trip-featured-btn-group {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.trip-featured-overview-btn {
+  color: var(--teal-deep);
+  font-weight: 600;
+  font-size: 12.5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: color var(--motion-fast) var(--ease-out), background var(--motion-fast) var(--ease-out);
+}
+.trip-featured-overview-btn:hover {
+  background: var(--bg-soft);
+  color: var(--ink-teal);
+}
+.trip-featured-overview-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.trip-other-heading {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0;
+}
+.trip-other-count {
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+@media (max-width: 850px) {
+  .trip-featured-card {
+    grid-template-columns: 38% 1fr;
+  }
+  .trip-featured-body {
+    padding: 22px;
+  }
+  .trip-featured-title {
+    font-size: 22px;
+  }
+  .trip-featured-photo {
+    min-height: 360px;
+  }
+}
+
+@media (max-width: 640px) {
+  .trip-featured-card {
+    grid-template-columns: 1fr;
+    border-radius: var(--radius-md);
+  }
+  .trip-featured-photo {
+    min-height: 180px;
+    height: 180px;
+    padding: 16px;
+  }
+  .trip-featured-photo-bottom p {
+    display: none;
+  }
+  .trip-featured-photo-heading {
+    font-size: 18px;
+  }
+  .trip-featured-body {
+    padding: 20px;
+  }
+  .trip-featured-title {
+    font-size: 20px;
+  }
+  .trip-featured-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .trip-featured-crew {
+    display: none;
+  }
+  .trip-featured-btn-group {
+    flex-direction: column;
+    width: 100%;
+  }
+  .trip-featured-btn-group .btn {
+    width: 100%;
+    min-height: 40px;
+  }
+  .trip-featured-overview-btn {
+    width: 100%;
+    justify-content: center;
+    min-height: 40px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trip-featured-progress-fill,
+  .trip-featured-overview-btn {
+    transition: none;
+  }
+}
+
+/* ---- Timeline deep-link stop flash (featured next step) ----
+   One ring marks the stop row that the CTA named. The class runs two pulses.
+   JS removes the class on animationend. Reduced motion never animates.
+   JS then clears the class on a token-derived timeout. */
+.tl-row.tl-stop-flash {
+  animation: yf-stop-flash var(--motion-slower) var(--ease-out) 2;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tl-row.tl-stop-flash {
+    animation: none;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--saffron-500) 50%, transparent);
+  }
+}
+@keyframes yf-stop-flash {
+  0%, 55% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--saffron-500) 50%, transparent); }
+  100% { box-shadow: 0 0 0 3px transparent; }
+}
+
+/* ---------- MR4 - list rows on a phone (P1) ----------
+   Below 640px the row stacks: thumbnail and content on top, and the member
+   stack with the delete control on their own line under them. The footer
+   used to sit beside the content at 373px, where the body overran it and
+   the card clipped both. Metadata wraps rather than widening the column. */
+@media (max-width: 640px) {
+  .explore-grid.as-list .itin-card { flex-direction: column; grid-template-columns: minmax(0, 1fr); }
+  .explore-grid.as-list .trip-card-hit { grid-template-columns: 72px minmax(0, 1fr); gap: 12px; }
+  .explore-grid.as-list .itin-emoji { width: 72px; height: 72px; }
+  .explore-grid.as-list .itin-card > .itin-meta {
+    flex-direction: row; align-items: center; justify-content: space-between;
+    width: 100%; padding: 0 12px 12px; grid-column: 1; grid-row: 3;
+  }
+}
+.explore-grid.as-list .stop-meta { flex-wrap: wrap; }
+
+/* ---------- MR9/P4 - a day jump lands clear of the sticky stack ----------
+   The measured stack (the floating nav, plus the sticky rail in review)
+   publishes as --tl-stack, and every scrollIntoView on a day card honours it
+   through scroll-margin — so the day header never lands under the bars. */
+[id^='day-card'] { scroll-margin-top: var(--tl-stack, 84px); }
+
+/* ---------- #645 - the card's task row is its own link ----------
+   The row cannot live inside .trip-card-hit any more: a link must not hold a
+   second link. It is a sibling now. The stacked card lets it follow the body;
+   in a list row the two placements above put it under that row's own block,
+   never in a third column beside the footer. */
+.trip-task-row { margin-top: -8px; padding: 0 16px 12px; text-decoration: none; }
+.explore-grid.as-list .itin-card > .trip-card-hit { grid-column: 1; grid-row: 1; min-width: 0; }
+.explore-grid.as-list .itin-card > .trip-task-row { grid-column: 1; grid-row: 2; margin-top: var(--space-3); }
+
+/* ==========================================================================
+   Mockup card style - My Trips, grid AND list
+   --------------------------------------------------------------------------
+   Ported from the external mockup's `.tcard`. One card geometry serves both
+   views: a 16/8.4 cover with a status pill on it, a 14px radius, a hairline
+   resting shadow, and a hover that lifts 3px, darkens the border, deepens the
+   shadow and zooms the cover. Every value is written in this app's own tokens
+   - the spacing ladder, the motion tokens, the shadow navy - so only the
+   geometry is the mockup's. Scoped to `.trips-page`, so the Explore grid keeps
+   the card it already had.
+   ========================================================================== */
+
+.trips-page .itin-card {
+  border-radius: 14px;
+  border-color: var(--line);
+  box-shadow: 0 1px 2px rgba(var(--shadow-navy-rgb), .05);
+  transition: transform var(--motion-slow) var(--ease-out),
+    box-shadow var(--motion-slow) var(--ease-out),
+    border-color var(--motion-slow) var(--ease-out);
+}
+/* The card, not its inner anchor, owns the lift. `.trip-card-hit` also matches
+   the shared `.trip-card-hit:hover` rule, which lifted the anchor a second time
+   inside the card - the mockup answers one hover with ONE surface moving. */
+.trips-page .trip-card-hit {
+  display: flex; flex-direction: column; flex: 1; min-width: 0;
+  transition: none;
+}
+.trips-page .trip-card-hit:hover { transform: none; box-shadow: none; }
+/* The cover's own link. It exists because the cover has to sit outside the
+   body's link - see the note on the markup. The ring moves to the card below,
+   because that link now holds only the body and its own ring would outline a
+   third of the card. */
+.trips-page .trip-card-cover { display: block; flex: none; cursor: pointer; border-radius: inherit; }
+.trips-page .trip-card-hit:focus-visible { outline: none; box-shadow: none; }
+.trips-page .itin-card:has(.trip-card-hit:focus-visible) { box-shadow: var(--ring); }
+.trips-page .itin-card:hover {
+  transform: translateY(-3px);
+  border-color: color-mix(in srgb, var(--line) 80%, var(--text-3));
+  box-shadow: 0 8px 24px -14px rgba(var(--shadow-navy-rgb), .28);
+}
+
+/* ---- the cover ---- */
+.trips-page .trip-card-media {
+  position: relative; overflow: hidden; flex: none;
+  aspect-ratio: 16 / 8.4; background: var(--bg-soft);
+}
+.trips-page .trip-card-media .itin-emoji {
+  width: 100%; height: 100%; aspect-ratio: auto; border-radius: 0; border-bottom: 0;
+  transition: transform var(--motion-slower) var(--ease-out);
+}
+.trips-page .itin-card:hover .trip-card-media .itin-emoji { transform: scale(1.04); }
+
+/* The mockup's status pill: a tinted capsule with a dot, top-left on the
+   cover. The label and the tint both come from the status tabs' own list, so a
+   pill can never name a status the tabs would not. */
+.trips-page .trip-card-status {
+  position: absolute; top: 10px; left: 10px; z-index: var(--z-raised);
+  height: 28px; padding: 0 var(--space-5); gap: var(--space-3);
+  font-size: 12.5px; font-weight: 700;
+  box-shadow: 0 2px 8px rgba(var(--shadow-navy-rgb), .14);
+}
+.trips-page .trip-card-status::before {
+  content: ''; flex: none; width: 8px; height: 8px;
+  border-radius: 50%; background: currentColor;
+}
+
+/* ---- the body ---- */
+.trips-page .itin-body { flex: 1; padding: var(--space-6) var(--space-7) 0; gap: var(--space-5); }
+.trips-page .trip-card-head { display: flex; flex-direction: column; gap: var(--space-1); }
+.trips-page .itin-body .card-title { font-size: 16.5px; line-height: 22px; letter-spacing: -.015em; }
+.trips-page .trip-card-route { margin: 0; font-size: 13px; line-height: 19px; color: var(--text-2); }
+.trips-page .trip-card-meta {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4) var(--space-7);
+  margin: 0; padding: 0; list-style: none;
+  font-size: 13px; font-weight: 500; color: var(--text-2);
+}
+.trips-page .trip-card-meta li { display: inline-flex; align-items: center; gap: var(--space-4); white-space: nowrap; }
+.trips-page .trip-card-tags { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+.trips-page .trip-card-departs { margin: 0; font-size: 13px; font-weight: 600; color: var(--text-2); }
+.trips-page .trip-plan { gap: var(--space-4); }
+.trips-page .trip-plan-bar {
+  max-width: none; height: 7px; border-radius: 999px;
+  background: var(--bg-soft); border: 1px solid var(--line);
+}
+.trips-page .trip-plan-fill { border-radius: 999px; }
+
+/* ---- the foot ---- */
+.trips-page .trip-card-foot {
+  margin-top: auto; flex: none;
+  display: flex; align-items: center; gap: var(--space-5);
+  padding: var(--space-5) var(--space-7) var(--space-7);
+  border-top: 1px solid var(--line);
+}
+/* The task row is the mockup's footer action: it takes the free space and ends
+   at the right, where the mockup keeps its button. */
+.trips-page .trip-card-foot .trip-task-row {
+  flex: 1; min-width: 0; justify-content: flex-end;
+  margin: 0; padding: 0; background: transparent; border: 0;
+  font-size: 13px; font-weight: 700; color: var(--teal-deep);
+}
+.trips-page .trip-card-foot .trip-task-row.is-done { color: var(--text-3); font-weight: 500; }
+
+/* ---- list view: the same card, laid on its side ----
+   The mockup's list row is a 236px cover beside the body, and the cover runs
+   the CARD's full height - 225px of cover beside a 225px body in a 227px card,
+   not a thumbnail sitting above the foot. So the card is a two-column,
+   two-row grid: the cover spans both rows in column 1, the body is row 1 of
+   column 2, and the foot takes row 2, where its hairline starts at the body's
+   left edge. `grid-template-rows` has to be declared for `-1` to name the
+   last row line. */
+.trips-page .explore-grid.as-list .itin-card {
+  display: grid; align-items: stretch;
+  grid-template-columns: 236px minmax(0, 1fr); grid-template-rows: auto auto;
+}
+.trips-page .explore-grid.as-list .trip-card-cover { grid-column: 1; grid-row: 1 / -1; min-width: 0; }
+.trips-page .explore-grid.as-list .trip-card-media { aspect-ratio: auto; height: 100%; }
+/* Re-declared, not just placed: Explore's list rule makes this column a
+   `96px 1fr` grid for its own thumbnail, and an item that only names its grid
+   area still inherits that, which wrapped the body into a 96px column. */
+.trips-page .explore-grid.as-list .trip-card-hit {
+  grid-column: 2; grid-row: 1;
+  display: flex; flex-direction: column; gap: 0; min-width: 0;
+  align-items: stretch;
+}
+.trips-page .explore-grid.as-list .itin-body { padding: var(--space-6) var(--space-8) 0; }
+.trips-page .explore-grid.as-list .itin-body .card-title { font-size: 17px; }
+.trips-page .explore-grid.as-list .trip-card-foot {
+  grid-column: 2; grid-row: 2;
+  padding: var(--space-5) var(--space-8) var(--space-7);
+}
+
+/* The mockup stacks its list row below 760px, cover on top: 236px of cover
+   leaves no body at a phone width. The stacked row is three rows, so the cover
+   stops spanning. */
+@media (max-width: 760px) {
+  .trips-page .explore-grid.as-list .itin-card {
+    grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto auto;
+  }
+  .trips-page .explore-grid.as-list .trip-card-cover { grid-column: 1; grid-row: 1; }
+  .trips-page .explore-grid.as-list .trip-card-media { aspect-ratio: 16 / 8.4; height: auto; }
+  .trips-page .explore-grid.as-list .trip-card-hit { grid-column: 1; grid-row: 2; }
+  .trips-page .explore-grid.as-list .itin-body { padding: var(--space-6) var(--space-7) 0; }
+  .trips-page .explore-grid.as-list .trip-card-foot {
+    grid-column: 1; grid-row: 3; padding: var(--space-5) var(--space-7) var(--space-7);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trips-page .itin-card { transition: none; }
+  .trips-page .itin-card:hover { transform: none; }
+  .trips-page .trip-card-media .itin-emoji { transition: none; }
+  .trips-page .itin-card:hover .trip-card-media .itin-emoji { transform: none; }
+}
+
+/* ---------- My Trips — the viewbar, the segmented view control and the
+   filters dropdown ----------
+   Appended at the file's end, like the other MR blocks.
+   The arrangement is the mockup's: its `.viewbar` puts the status tabs and the
+   view segment on ONE row with the segment right-aligned (`.seg--app` carries
+   `margin-left: auto`), and its segment is labelled rather than icon-only.
+   Ours closed the wrapping `.trips-toolbar` instead, so it was the control that
+   got pushed onto a line of its own at every width — away from the tabs it
+   belongs to and from the grid it arranges. Shape ported; the colours are still
+   ours (ADR 0002 keeps the tokens). */
+
+/* the mockup's `.viewbar`: gap 14, bottom padding 14 — both on our ladder */
+.trips-viewbar {
+  display: flex; align-items: center; flex-wrap: wrap;
+  gap: var(--space-6); margin: 0 0 var(--space-7);
+}
+/* the tabs carry their own bottom margin; inside the viewbar the row's margin
+   is what spaces the row from the shelf below it */
+.trips-viewbar .trips-status-tabs { margin: 0; }
+.trips-seg {
+  margin-left: auto;
+  display: inline-flex; gap: var(--space-2); padding: var(--space-2);
+  border: 1px solid var(--line); border-radius: 999px; background: var(--card);
+}
+/* Overrides the 32x28 icon square the control had when it was icon-only: a
+   labelled segment sizes itself, and the label is what makes the current
+   choice readable without pressing it first. */
+.trips-seg .view-toggle-btn {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  width: auto; height: auto;
+  padding: var(--space-4) var(--space-6);
+  border: 0; border-radius: 999px; background: transparent;
+  color: var(--text-3); font: inherit; font-size: 12px; font-weight: 600;
+  cursor: pointer;
+  transition: color var(--motion-fast) var(--ease-out);
+}
+.trips-seg .view-toggle-btn:hover { background: transparent; color: var(--text); }
+/* Ink on the glider, never a background on the segment: the glider paints the
+   active fill, and a background that pops on the segment while the glider is
+   still sliding is the two-step switch the glider exists to remove. Light
+   mode's glider is pale teal, so the label keeps deep-teal ink; dark mode's is
+   saturated and wants dark ink — the pair every pill nav already uses. */
+.trips-seg .view-toggle-btn.on-teal,
+.trips-seg .view-toggle-btn.on-teal:hover { background: transparent; box-shadow: none; color: var(--yf-teal-700); }
+[data-theme='dark'] .trips-seg .view-toggle-btn.on-teal { color: #06251f; }
+.trips-seg .view-toggle-btn:focus-visible { outline: none; box-shadow: var(--ring); }
+
+/* ---------- A page's own blocks arrive as one sequence (AGENTS §2.10) ----------
+   My Trips shipped five of its six top-level blocks with no motion at all and a
+   cascade on the sixth, so the hero sat above a stack of cards that moved and
+   did not move itself. A still element above an animating one reads as a broken
+   element, not a calm one.
+   The CONTAINER owns the entrance for that reason: a block added to a page
+   later cannot forget one, because it never had to remember. `.empty-state > *`
+   already worked this way, and this copies its shape.
+   ONE rule owns it for every page: a page root carries the `page-enter` class
+   instead of restating this cascade, so a second page cannot half-copy it —
+   the same rule the popover pair follows. tests/design-system.test.ts discovers
+   the pages from src/App.tsx and fails a root that arrives without the class.
+   Why these rules sit at the top level rather than inside the `no-preference`
+   media query that shape usually wears: every gate in tests/design-system.test.ts
+   reads top-level rules only, so a rule inside `@media` is invisible to all of
+   them. The opt-out is the one part of the mechanism a gate cannot see for us,
+   and it is asserted against the raw file. */
+.page-enter > * { animation: pageRise var(--motion-slow) var(--ease-out) backwards; }
+.page-enter > *:nth-child(2) { animation-delay: calc(var(--stagger-step) * 1); }
+.page-enter > *:nth-child(3) { animation-delay: calc(var(--stagger-step) * 2); }
+.page-enter > *:nth-child(4) { animation-delay: calc(var(--stagger-step) * 3); }
+.page-enter > *:nth-child(5) { animation-delay: calc(var(--stagger-step) * 4); }
+.page-enter > *:nth-child(6) { animation-delay: calc(var(--stagger-step) * 5); }
+/* 8px: the rise `.empty-state`'s own children use. `cardIn`'s 14px is a card's
+   lift, and a full-width page block lifting that far reads as a bounce. */
+@keyframes pageRise {
+  from { opacity: 0; transform: translateY(8px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .page-enter > * { animation: none; }
+}
+
+/* ===== My trips saved shelf =====
+   Components: src/components/trips/SavedShelfSection.tsx. The saved days and
+   stops (the Timeline's hearts), grouped by trip. Each row is a compact card on
+   the trip card's surface, radius and shadow, and it moves on the same motion
+   tokens. Every animated rule has a reduced-motion opt-out below. */
+.mt-shelf { display: grid; gap: 0; }
+.mt-shelf .mt-section-title:focus { outline: none; }
+.mt-shelf-hint { margin: 0; color: var(--text-2); font-size: 13px; line-height: 1.5; }
+.mt-shelf-group { display: grid; gap: 8px; margin-top: 16px; }
+.mt-shelf-trip { margin: 0; color: var(--text); font-family: var(--font-body); font-size: 17px; font-weight: 700; line-height: 1.3; letter-spacing: -.01em; }
+.mt-shelf-trip-link { color: inherit; text-decoration: none; border-radius: 4px; }
+.mt-shelf-trip-link:hover { color: var(--teal-700); }
+.mt-shelf-trip-link:focus-visible { outline: none; box-shadow: var(--ring); }
+.mt-shelf-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+@container mt-catalog (min-width: 560px) {
+  .mt-shelf-list { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+}
+.mt-shelf-item { min-width: 0; animation: cardIn var(--motion-slow) var(--ease-out) backwards; }
+.mt-shelf-row {
+  position: relative; display: flex; align-items: center; gap: 4px; min-width: 0;
+  padding: 4px 4px 4px 12px;
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-sm); box-shadow: var(--shadow-card);
+  transition: transform var(--motion-med) var(--ease-out), box-shadow var(--motion-med) var(--ease-out), border-color var(--motion-med) var(--ease-out);
+}
+.mt-shelf-row:hover { transform: translateY(-2px); box-shadow: var(--shadow-card-hover); border-color: var(--line-strong); }
+.mt-shelf-link {
+  flex: 1; display: flex; align-items: center; gap: 12px; min-width: 0;
+  padding: 8px 4px; border-radius: var(--radius-sm); color: inherit; text-decoration: none;
+}
+.mt-shelf-link:focus-visible { outline: none; box-shadow: var(--ring); }
+.mt-shelf-kind {
+  flex: none; display: inline-flex; align-items: center; min-height: 26px; padding: 0 10px;
+  border: 1px solid var(--line-strong); border-radius: 999px; color: var(--text);
+  font-size: 12.5px; font-weight: 600;
+}
+.mt-shelf-text { display: grid; gap: 2px; min-width: 0; }
+.mt-shelf-name { overflow: hidden; color: var(--text); font-size: 15px; font-weight: 700; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
+.mt-shelf-meta { overflow: hidden; color: var(--text-2); font-size: 13px; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
+.mt-shelf-unsave { flex: none; color: var(--text-2); }
+.mt-shelf-unsave:hover { background: var(--color-destructive-soft); color: var(--ink-coral); }
+.mt-shelf-unsave:focus-visible { outline: none; box-shadow: var(--ring); }
+/* Phones and touch screens: 40px targets for the remove button and the row. */
+@media (max-width: 720px), (pointer: coarse) {
+  .mt-shelf-unsave { width: 40px; height: 40px; }
+  .mt-shelf-link { padding: 12px 4px; }
+}
+@media (max-width: 640px) {
+  .mt-shelf-row:hover { transform: none; }
+  .mt-shelf-group { margin-top: 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mt-shelf-item { animation: none; }
+  .mt-shelf-row, .mt-shelf-row:hover { transition: none; transform: none; }
+}
+
+/* ===== Explore trending shelf ===== */
+/* Up to four plans between the featured card and the grid. Components:
+   src/components/explore/TrendingShelf.tsx; every class starts with "ex-trend-".
+   Phones get a snapping scroll row; the grid takes over as the main column
+   widens. Tokens only, and the motion tokens; the reduced-motion rule at the end
+   stops the hover lift. */
+
+.ex-trend { margin-top: 24px; min-width: 0; }
+.ex-trend-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 16px; margin-bottom: 12px; }
+.ex-trend-title { margin: 0; color: var(--text); font-family: var(--font-body); font-size: 20px; font-weight: 800; line-height: 1.25; letter-spacing: -.01em; }
+.ex-trend-sub { margin: 0; color: var(--text-2); font-size: 14px; }
+
+.ex-trend-list {
+  display: flex; gap: 12px; margin: 0; padding: 4px 2px 12px; list-style: none;
+  overflow-x: auto; scroll-snap-type: x proximity; scrollbar-width: thin;
+}
+.ex-trend-item { flex: 0 0 min(72%, 260px); min-width: 0; scroll-snap-align: start; }
+@container ex-main (min-width: 560px) {
+  .ex-trend-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; overflow: visible; padding: 4px 0 0; }
+  .ex-trend-item { flex: none; }
+}
+@container ex-main (min-width: 880px) {
+  .ex-trend-list { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+}
+
+.ex-trend-card {
+  position: relative; display: flex; flex-direction: column; min-width: 0; padding: 6px;
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--ex-shadow-sm);
+  transition: transform var(--motion-med) var(--ease-out), box-shadow var(--motion-med) var(--ease-out), border-color var(--motion-med) var(--ease-out);
+}
+.ex-trend-card:hover { transform: translateY(-2px); box-shadow: var(--ex-shadow-md); border-color: var(--ex-line-strong); }
+.ex-trend-card:hover .ex-cover-img, .ex-trend-card:hover .mt-motif { transform: scale(1.035); }
+.ex-trend-cover { position: relative; overflow: hidden; aspect-ratio: 16 / 10; border-radius: var(--radius-sm); }
+.ex-trend-rank {
+  position: absolute; top: 8px; left: 8px; z-index: var(--z-raised); pointer-events: none;
+  min-width: 28px; height: 28px; padding: 0 8px; box-sizing: border-box; display: inline-grid; place-items: center;
+  border-radius: 999px; background: var(--card); color: var(--text);
+  font-size: 13px; font-weight: 800; font-variant-numeric: tabular-nums; box-shadow: var(--ex-shadow-sm);
+}
+.ex-trend-body { display: flex; flex: 1; flex-direction: column; gap: 8px; min-width: 0; padding: 12px 10px 4px; }
+.ex-trend-name { margin: 0; color: var(--text); font-size: 15px; font-weight: 800; line-height: 1.3; letter-spacing: -.01em; overflow-wrap: anywhere; }
+.ex-trend-link { border-radius: 4px; color: inherit; text-decoration: none; }
+.ex-trend-link::after { content: ''; position: absolute; inset: 0; z-index: var(--z-content); border-radius: var(--radius); }
+.ex-trend-link:focus-visible { outline: none; }
+.ex-trend-link:focus-visible::after { box-shadow: var(--ring); }
+.ex-trend-views { display: inline-flex; align-items: center; gap: 6px; margin: 0; color: var(--text-2); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.ex-trend-body .ex-byline { align-self: flex-start; margin-top: auto; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ex-trend-card, .ex-trend-card:hover { transition: none; transform: none; }
+  .ex-trend-card:hover .ex-cover-img, .ex-trend-card:hover .mt-motif { transform: none; }
+}
+
+/* ===== My trips next step and view preference ===== */
+/* The next-step row: one link to the day or stop the step names. It sits above
+   the card's whole-card link and keeps a 40px phone target. */
+.mt-task {
+  position: relative; z-index: var(--z-raised); box-sizing: border-box;
+  display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 6px 10px;
+  border-radius: var(--radius-sm); background: var(--teal-soft); color: var(--text);
+  font-size: 13.5px; font-weight: 600; line-height: 1.3; text-decoration: none;
+  transition: background var(--motion-fast) var(--ease-out), box-shadow var(--motion-fast) var(--ease-out);
+}
+.mt-task > svg { flex: none; color: var(--ink-teal); }
+.mt-task-label { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.mt-task-chev { margin-left: auto; color: var(--text-3); }
+.mt-task:hover { background: color-mix(in srgb, var(--teal-soft) 75%, var(--card)); }
+.mt-task:focus-visible { outline: none; box-shadow: var(--ring); }
+.mt-task--done { background: transparent; color: var(--text-2); font-weight: 500; }
+
+@media (prefers-reduced-motion: reduce) {
+  .mt-task { transition: none; }
+}
+
+
+/* ===== State-change motion: Grid | List switch and the filter reset ===== */
+/* A segmented control (one choice of two or more, a group of aria-pressed
+   buttons) slides a glider behind the active button. This is the toggle-glider
+   pattern from docs/MOTION-TOKENS.md. The group is a grid of equal columns, so
+   the glider needs no measuring: its box moves between two fixed positions.
+   The group sets data-layout to the active choice. The pressed button keeps no
+   fill of its own, because the glider paints it. The group's own rules are in
+   the Grid | List switch section above. */
+.mt-seg::before {
+  content: ''; position: absolute; z-index: 0; top: 2px; bottom: 2px; left: 2px;
+  width: calc((100% - 6px) / 2); border-radius: 999px; background: var(--text); pointer-events: none;
+  transition: left var(--motion-med) var(--ease-glide);
+}
+.mt-seg[data-layout='list']::before { left: calc(50% + 1px); }
+
+/* The Clear filters button fades in and slides 6px when a filter is set. On
+   My trips the button stays mounted and hidden by an inline style, so the
+   rule reads that style; on Explore the button mounts when a filter is set. */
+@keyframes ex-clear-in {
+  from { opacity: 0; transform: translateX(-6px); }
+  to { opacity: 1; transform: none; }
+}
+.ex-page .ex-clear,
+.trips-page .ex-clear[style*='visible'] { animation: ex-clear-in var(--motion-med) var(--ease-out) backwards; }
+
+@media (prefers-reduced-motion: reduce) {
+  .mt-seg::before, .mt-seg button { transition: none; }
+  .ex-page .ex-clear, .trips-page .ex-clear[style*='visible'] { animation: none; }
+}
+
+/* ===== Exit motion: a list item that leaves ===== */
+/* A card, a Trash row, a saved-shelf row or a Clear filters button that leaves
+   its list stays mounted for one exit (usePresenceList in src/lib). It fades and
+   sinks 6px, one --motion-med on --ease-out: the entrance played backwards,
+   shorter. The hook marks the item data-presence="exit", makes it inert and moves
+   focus off it, then drops it. Clicks pass through it meanwhile. Under
+   prefers-reduced-motion the hook drops the item at once and plays no exit. */
+@keyframes presence-out {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateY(6px) scale(.97); }
+}
+[data-presence='exit'] {
+  pointer-events: none;
+  animation: presence-out var(--motion-med) var(--ease-out) forwards;
+}
+
+/* Clear filters leaves the way it came: it fades and slides 6px back. Explore
+   unmounts the button, so the hook keeps it for the exit. My trips keeps the
+   button mounted and hidden by an inline style, so the same fade rides a
+   transition, and the button turns hidden only when the fade ends. */
+@keyframes ex-clear-out {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateX(-6px); }
+}
+:is(.ex-page, .trips-page) .ex-clear[data-presence='exit'] { animation: ex-clear-out var(--motion-med) var(--ease-out) forwards; }
+.trips-page .ex-clear[style*='hidden'] {
+  transform: translateX(-6px); pointer-events: none;
+  transition: opacity var(--motion-med) var(--ease-out), transform var(--motion-med) var(--ease-out), visibility 0s linear var(--motion-med);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-presence='exit'], :is(.ex-page, .trips-page) .ex-clear[data-presence='exit'] { animation: none; }
+  .trips-page .ex-clear[style*='hidden'] { transform: none; transition: none; }
 }

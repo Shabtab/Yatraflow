@@ -7,6 +7,8 @@
 // Includes DaySection, DayWeatherChip, TravelPanel, HaltPlanRow, DaySpark,
 // MoveStopModal and ClampedText — the whole timeline hot path.
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Heart } from 'lucide-react'
+import { savedDayId, savedStopId } from '../../../lib/uiPrefs'
 import {
   ArrowRight, Ban, Car, ChevronDown, ChevronUp, CircleCheck, CircleHelp, Clock, CloudRain, CloudSun,
   Copy, Droplets, ExternalLink, Flag, MapPin,
@@ -197,8 +199,11 @@ function SmoothCollapse({ open, children, fallbackFocus }: { open: boolean; chil
 // (whose travel panel searches against the whole itinerary). A closed card
 // therefore cannot read the trip at all: `trip` is optional, so a `trip.x` on
 // the collapsed path is a compile error rather than a stale render.
-export const DaySection = React.memo(function DaySection({ day, trip, facts, editable, open, reviewMode, inView, onToggleOpen, onInsertHere, onAdd, onEdit, onDelete, onMoveWithinDay, onReorderDay, onMoveBetweenDays, onMoveStopIn, onRenameDay, onCopyDay, onAddQuickStop, onSetDayStart, onAddPlannedHalts, onLinkCommitment, warnings, onStatus, legCorrections, suggestionCache, dayTotals }: {
+export const DaySection = React.memo(function DaySection({ day, trip, facts, savedIds, onToggleSaved, editable, open, reviewMode, inView, onToggleOpen, onInsertHere, onAdd, onEdit, onDelete, onMoveWithinDay, onReorderDay, onMoveBetweenDays, onMoveStopIn, onRenameDay, onCopyDay, onAddQuickStop, onSetDayStart, onAddPlannedHalts, onLinkCommitment, warnings, onStatus, legCorrections, suggestionCache, dayTotals }: {
   day: Trip['days'][number]
+  /** MR8: this trip's saved ids, and the one toggle every heart on the page uses. */
+  savedIds: string[]
+  onToggleSaved: (id: string) => void
   /** fresh ONLY for the open day — everything else comes from `facts` */
   trip?: Trip
   /** the trip-wide slice this card reads, resolved once per trip change */
@@ -253,6 +258,8 @@ export const DaySection = React.memo(function DaySection({ day, trip, facts, edi
   // travel panel mid-animation — and a never-opened card never gets one at all.
   const lastTrip = useRef(trip)
   if (trip) lastTrip.current = trip
+  // MR8: one lookup for this day's heart. The stop hearts read the same list.
+  const daySaved = savedIds.includes(savedDayId(day.index))
   const bodyTrip = trip ?? lastTrip.current
   const visitCount = journey.points.filter(p => p.kind === 'visit').length
   // A stay day: the journey never leaves its base — no chain, no synthesized
@@ -538,6 +545,17 @@ export const DaySection = React.memo(function DaySection({ day, trip, facts, edi
             ) : (
               <h3>{day.title ?? `Day ${day.index + 1}`}</h3>
             )}
+            {/* MR8: save the day. A heart beside the title rather than inside the
+                title button, so saving does not open the rename field. */}
+            <button
+              className={`tl-save-heart${daySaved ? ' on' : ''}`}
+              aria-pressed={daySaved}
+              aria-label={`${daySaved ? 'Remove' : 'Save'} Day ${day.index + 1}`}
+              title={daySaved ? 'Remove from saved' : 'Save this day'}
+              onClick={() => onToggleSaved(savedDayId(day.index))}
+            >
+              <Heart size={14} aria-hidden fill={daySaved ? 'currentColor' : 'none'} />
+            </button>
             {/* Day Planner day type (P1-D): derived from the journey, never
                 labelled by hand — wheel time makes it a drive, none makes it a
                 stay, a short hop plus local time is mixed. */}
@@ -763,6 +781,7 @@ export const DaySection = React.memo(function DaySection({ day, trip, facts, edi
             )
           }
           const kind = stopKindOf(s)
+          const stopSaved = savedIds.includes(savedStopId(s.id))
           return (
             <React.Fragment key={s.id}>
               <div
@@ -783,6 +802,18 @@ export const DaySection = React.memo(function DaySection({ day, trip, facts, edi
               <div className="stop-main">
                 <div className="stop-toprow">
                   <span className="stop-title">{s.title}</span>
+                  {/* MR8: save the experience. The heart is a real button, not a
+                      glyph on the row, so it is reachable by keyboard and the
+                      press state is announced. */}
+                  <button
+                    className={`tl-save-heart tl-save-heart--stop${stopSaved ? ' on' : ''}`}
+                    aria-pressed={stopSaved}
+                    aria-label={`${stopSaved ? 'Remove' : 'Save'} ${s.title}`}
+                    title={stopSaved ? 'Remove from saved' : 'Save this stop'}
+                    onClick={() => onToggleSaved(savedStopId(s.id))}
+                  >
+                    <Heart size={13} aria-hidden fill={stopSaved ? 'currentColor' : 'none'} />
+                  </button>
                   <Chip tone={statusTone(s.status)}>{statusLabel(s.status)}</Chip>
                   <span className={`stop-kind-tag kind-${kind}`}>{STOP_KIND_LABELS[kind]}</span>
                   {s.priority === 'must-do' && <Chip tone="danger">Must do</Chip>}

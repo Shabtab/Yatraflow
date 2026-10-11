@@ -1187,7 +1187,10 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
                 Filters{hiddenIdeaCats.size > 0 ? ` (${hiddenIdeaCats.size})` : ''}
               </button>
               {filtersOpen && (
-                <div className="map-filters-pop" role="group" aria-label="Nearby idea categories">
+                /* `popover` carries the glass pair (background + backdrop-filter) and
+                   the entrance. This panel used to restate them and shipped
+                   see-through, so the class is the one way to frost a panel. */
+                <div className="map-filters-pop popover" role="group" aria-label="Nearby idea categories">
                   {ideaCats.map(([cat, count]) => (
                     <button
                       key={cat}

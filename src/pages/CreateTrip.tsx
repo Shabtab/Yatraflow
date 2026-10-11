@@ -838,7 +838,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
   // ---- Shared fragments ----------------------------------------------------
 
   return (
-    <div className="container form-page trip-starter">
+    <div className="container form-page trip-starter page-enter">
       {createFunnelOn('drafts') && draft && (
         <div className="draft-banner" role="status">
           <div className="draft-banner-copy">

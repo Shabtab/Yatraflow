@@ -127,7 +127,7 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
   const { refs, tabProps } = useTablist(AUTH_MODES, mode, m => { setMode(m); setError(null); setNameErr(null); setPasswordErr(null); setDobErr(null) })
 
   return (
-    <div className="auth-wrap">
+    <div className="auth-wrap page-enter">
       <div className="card auth-card">
         <h1 className="auth-title">{mode === 'login' ? 'Welcome back' : 'Create your account'}</h1>
         <p className="muted small" style={{ marginTop: 4 }}>

@@ -274,6 +274,19 @@ border rather than a heavy rule. Focus is a 3px solid ring (`--ring`) on
 `box-shadow`, never a removed outline — a gate measures it for 3:1 against the
 adjacent colours.
 
+## Illustration
+
+Papercut scenes are the picture for trip and place cards when the user has no cover photo.
+The style is layered cut paper, flat colour and soft paper grain. The images contain no text,
+no faces and no maps. Use the palette tokens above when you make or edit a scene.
+
+Each scene has one image for both themes. The dark scrim sits over the image, as it does over
+the inline SVG motif. A user cover photo always wins over a generated scene.
+
+The files, the manifest and the size budget are described in
+[`docs/ART-PIPELINE.md`](docs/ART-PIPELINE.md). The style brief is in
+[`design/art/STYLE.md`](design/art/STYLE.md).
+
 ## Components
 
 ### Buttons

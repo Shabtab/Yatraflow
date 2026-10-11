@@ -56,3 +56,28 @@ jobs:
 
       - name: Run verification gate
         run: npm run verify
+
+  # The verify job reads CSS as TEXT: it can prove a page root carries an
+  # entrance, and it cannot prove anything moves. This job serves the built app
+  # and samples each page block once per animation frame, so a block that pops
+  # into place between two frames fails the PR. It is a separate job because it
+  # needs a browser; `npm run verify` stays runnable without one.
+  # Routes are public only — a clean browser holds no Supabase session, and the
+  # static gate (tests/design-system.test.ts) covers every page root anyway.
+  motion:
+    name: Motion check (blocks animate in, in a real browser)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build and sample every page block in Chrome
+        run: npm run check:motion

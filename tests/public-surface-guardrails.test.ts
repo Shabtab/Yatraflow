@@ -46,7 +46,8 @@ describe('the gallery explains its own vocabulary', () => {
     const explore = read('../src/pages/Explore.tsx')
     // The featured pick is derived from the unfiltered set, so without this the
     // most-forked plan rendered twice on a three-item shelf.
-    expect(explore).toMatch(/pubs\.filter\(p => p\.id !== featured\.id\)/)
+    expect(explore).toMatch(/if \(featured\) shown\.add\(featured\.id\)/)
+    expect(explore).toMatch(/pubs\.filter\(p => !shown\.has\(p\.id\)\)/)
     // The grid, its paging and its "Load more" count all read the deduped list…
     expect(explore).not.toMatch(/pubs\.slice\(0, visibleCount\)/)
     expect(explore).toMatch(/gridPubs\.slice\(0, visibleCount\)/)

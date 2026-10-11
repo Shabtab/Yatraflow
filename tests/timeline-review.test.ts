@@ -138,8 +138,23 @@ describe('review mode is a continuous read, oriented by the day rail (#421)', ()
   it('marks the day the reader is in, and grows the rail for any trip length', () => {
     expect(tab).toMatch(/\(days\.length >= 4 \|\| reviewAll\) && \(/)
     expect(tab).toMatch(/aria-current=\{current \? 'true' : undefined\}/)
-    expect(tab).toMatch(/const current = reviewAll && currentDay === d\.index/)
+    // MR7 renamed the loop variable: the rail renders the derived strip now, so
+    // the item is `it` and its index is `it.dayIndex`. MR9 marks the day the
+    // reader is in on both modes: the day in view in review, the open day
+    // otherwise.
+    expect(tab).toMatch(/const current = reviewAll \? currentDay === it\.dayIndex : openDayIndex === it\.dayIndex/)
     expect(tab).toMatch(/if \(el\.getBoundingClientRect\(\)\.top - line <= 1\) best = idx/)
-    expect(css).toMatch(/\.day-rail-chip\[aria-current='true'\] \{/)
+    expect(css).toMatch(/\.day-rail-card\[aria-current='true'\] \{/)
+  })
+
+  it('renders the rail from the tested strip, and marks the day the route moves on (MR7)', () => {
+    // The rail must not re-derive the place itself: the boundary logic lives in
+    // lib/dayStrip.ts with its own tests, and a second copy here is how the
+    // marker would drift onto the wrong day.
+    expect(tab).toMatch(/const dayStrip = useMemo\(\(\) => dayStripItems\(days\), \[days\]\)/)
+    expect(tab).toMatch(/\{dayStrip\.map\(it => \{/)
+    // The transit marker belongs to the day the city CHANGES, so it renders
+    // inside the map, before that day's card — never after the last card.
+    expect(tab).toMatch(/\{it\.changesCity && \(\s*<span className="day-rail-transit"/)
   })
 })
