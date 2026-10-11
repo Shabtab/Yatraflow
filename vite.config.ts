@@ -37,6 +37,11 @@ function assertDeployEnv(env: Record<string, string>) {
   console.warn(`\n[yatraflow] WARNING — ${msg}\n`)
 }
 
+/** True for files in the generated illustration folder (see docs/ART-PIPELINE.md). */
+function isIllustrationPath(filePath: string): boolean {
+  return filePath.replace(/\\/g, '/').includes('/src/assets/art/')
+}
+
 /** The create-funnel phases this build can switch on — the value
  *  `VITE_CREATE_FUNNEL` has to carry to light up the v0.65.0 arc. Kept in step
  *  with the `createFunnelOn()` call sites and with the deploy table by
@@ -102,6 +107,10 @@ export default defineConfig(({ mode }) => {
       // Ship sourcemaps so Lighthouse's "unused JavaScript" attribution and
       // production stack traces map back to source instead of minified bundles.
       sourcemap: true,
+      // Never inline the illustration set. Vite inlines any file under 4 KB as
+      // base64 in the JS bundle, and a small AVIF is under 4 KB. Every other
+      // asset keeps Vite's default limit (returning undefined falls back to it).
+      assetsInlineLimit: (filePath) => (isIllustrationPath(filePath) ? false : undefined),
     },
     server: {
       proxy: {

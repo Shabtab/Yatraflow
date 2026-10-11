@@ -282,8 +282,9 @@ function patch(next: Partial<DB>) {
  *  invent a verdict for a read it never issued). */
 export const READ_SLICES = ['trips', 'profiles', 'suggested itineraries'] as const
 export type ReadSlice = typeof READ_SLICES[number]
-/** The two slices a logged-out hydrate reads. A signed-out visitor never reads
- *  `trips`, so that verdict stays unreported. */
+
+/** The two slices a logged-out page reads. The anonymous hydrate and
+ *  `rereadPublicSlices` both report exactly this set, never `trips`. */
 const PUBLIC_READ_SLICES = ['profiles', 'suggested itineraries'] as const
 
 /** Turn the hydrate's `partial` list into a per-slice verdict.
@@ -325,8 +326,7 @@ export async function rereadPublicSlices(): Promise<void> {
   // invent a trips verdict either — `sliceReadReport` covers every READ_SLICE,
   // and overwriting with it would mark trips ok/failed on evidence this read
   // never collected. Only the two public slices move; `trips` is preserved.
-  const PUBLIC_SLICES = ['profiles', 'suggested itineraries'] as const
-  let failed: string[] = [...PUBLIC_SLICES]
+  let failed: string[] = [...PUBLIC_READ_SLICES]
   try {
     const [profRes, pubRes] = await Promise.all([
       supabase.from('profiles').select('*'),
@@ -591,16 +591,19 @@ export function init(): void {
         ])
         const users = mapOrSkip((profRes.data ?? []), rowToUser)
         const pubRows = mapOrSkip((pubRes.data ?? []), rowToPublished)
-        if (profRes.error) { console.error('[yatraflow] hydrate profiles failed', profRes.error) }
-        if (pubRes.error) { console.error('[yatraflow] hydrate published failed', pubRes.error) }
         const anonFailed: string[] = []
-        if (profRes.error) anonFailed.push('profiles')
-        if (pubRes.error) anonFailed.push('suggested itineraries')
+        if (profRes.error) { console.error('[yatraflow] hydrate profiles failed', profRes.error); anonFailed.push('profiles') }
+        if (pubRes.error) { console.error('[yatraflow] hydrate published failed', pubRes.error); anonFailed.push('suggested itineraries') }
+        // A cold logged-out visit reaches Explore and creator pages through this
+        // read alone, so it must publish the public verdict itself. Without it,
+        // `sliceState` reads "never reported" as 'reading' and the gallery spins
+        // forever over rows that already loaded. The report replaces the whole
+        // map: a `trips` verdict left by the account that signed out is stale.
         patch({ users, trips: [], trashedTrips: [], trashLoaded: false, trashFailed: false, suggestions: [], decisions: [], activity: [], notifications: [], published: dedupePublished(pubRows), adminAudit: [], adminAuditFailed: false, sessionUserId: null, ready: true, cachedAt: null, sliceReads: sliceReadReport(anonFailed, PUBLIC_READ_SLICES) })
         commit()
       } catch (e) {
         console.error('[yatraflow] anonymous hydration failed', e)
-        patch({ users: [], trips: [], trashedTrips: [], trashLoaded: false, trashFailed: false, suggestions: [], decisions: [], activity: [], notifications: [], published: [], adminAudit: [], adminAuditFailed: false, sessionUserId: null, ready: true, cachedAt: null, sliceReads: sliceReadReport([...PUBLIC_READ_SLICES], PUBLIC_READ_SLICES) })
+        patch({ users: [], trips: [], trashedTrips: [], trashLoaded: false, trashFailed: false, suggestions: [], decisions: [], activity: [], notifications: [], published: [], adminAudit: [], adminAuditFailed: false, sessionUserId: null, ready: true, cachedAt: null, sliceReads: sliceReadReport(PUBLIC_READ_SLICES, PUBLIC_READ_SLICES) })
         commit()
       }
       })()

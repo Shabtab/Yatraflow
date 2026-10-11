@@ -93,7 +93,7 @@ export function NativeHomePage({ me, onNavigate }: {
   const firstName = me.profile.name.split(' ')[0]
 
   return (
-    <div className="app-home">
+    <div className="app-home page-enter">
       {/* Greeting block — an app, not a website: who's here and what matters now. */}
       <div className="app-home-hero">
         <div className="app-home-hello">

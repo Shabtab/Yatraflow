@@ -233,7 +233,7 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
 
   if (!trip) {
     return (
-      <div className="container created-page">
+      <div className="container created-page page-enter">
         <p className="muted">That trip is not loaded on this device.</p>
         <button className="btn btn-primary" onClick={() => onNavigate('/trips')}>Go to my trips</button>
       </div>
@@ -371,7 +371,7 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
   }
 
   return (
-    <div className="container created-page">
+    <div className="container created-page page-enter">
       {/* The mockup's moment-after composition: the celebration column beside
           the artifact column (the bill and where to go next). */}
       <div className="created-cols">
@@ -383,7 +383,7 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
       </header>
 
       {items.length > 0 && (
-        <div className="bezel reveal reveal-d1">
+        <div className="bezel glass reveal reveal-d1">
           <section className="created-card" aria-label="What the engine already knows">
             <h2 className="created-card-title">Watch for these - the engine already knows</h2>
             <ul className="created-list">
@@ -401,7 +401,7 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
         </div>
       )}
 
-      <div className="bezel reveal reveal-d2">
+      <div className="bezel glass reveal reveal-d2">
         <section className="created-card" aria-label="Bring the crew">
           <h2 className="created-card-title">The crew <span className="created-role">{PLANNER_ROLE_LINE}</span></h2>
           {crew.length === 0 && (

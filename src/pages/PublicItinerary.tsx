@@ -391,13 +391,13 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
     // never shown "no longer published" for the plan they paid for.
     if (!entitlementsRead) {
       return (
-        <div className="container">
+        <div className="container page-enter">
           <div className="container loading-block"><div className="spinner" />Loading itinerary…</div>
         </div>
       )
     }
     return (
-      <div className="container">
+      <div className="container page-enter">
         <EmptyState icon={<TriangleAlert size={38} aria-hidden />} title="This itinerary is no longer published"
           body="The creator took it off Explore, so it is no longer on sale. If you unlocked it, sign in with the account that bought it and the full plan is still yours — otherwise browse what’s published now."
           action={<button className="btn btn-primary" onClick={() => onNavigate('/explore')}>Back to Explore</button>} />
@@ -407,7 +407,7 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
 
   if (!pub || !trip) {
     return (
-      <div className="container">
+      <div className="container page-enter">
         {pub && !miss
           ? <div className="container loading-block"><div className="spinner" />Loading itinerary…</div>
           : /* The fetch returns null for a missing row AND for a failed select, so
@@ -530,7 +530,7 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
   //  gate — totalsN/routePointsN/highlightsN.)
 
   return (
-    <div>
+    <div className="page-enter">
       {/* ---- Editorial hero: destination-led, creator-attributed (§6.11) ---- */}
       <section className="pub-hero">
         {heroSrc
@@ -591,7 +591,7 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
             </div>
             {/* Double-Bezel: this wrapper is the TRAY, the .card inside it is the
                 PLATE. Same pair Explore uses, so there is one bezel recipe. */}
-            <div className="bezel">
+            <div className="bezel glass">
               <aside className="card route-snap route-glance">
                 <span className="route-glance-label">The route at a glance</span>
                 <RouteSnapshot
@@ -630,7 +630,7 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
         <div className="two-col">
           <div>
             {/* ---- Creator ---- */}
-            <div className="bezel">
+            <div className="bezel glass">
               <div className="card">
                 <div className="creator-line">
                   <Avatar user={creator} size="lg" />
@@ -729,7 +729,7 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
 
             {/* ---- Tips & warnings ---- */}
             <div className="two-col two-col--even" style={{ marginTop: 16 }}>
-              <div className="bezel">
+              <div className="bezel glass">
                 <div className="card">
                   <h2>Travel tips</h2>
                   <hr className="divider" />
@@ -738,7 +738,7 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
                   </ul>
                 </div>
               </div>
-              <div className="bezel">
+              <div className="bezel glass">
                 <div className="card">
                   <h2>Warnings & assumptions</h2>
                   <hr className="divider" />
@@ -756,7 +756,7 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
                 within its containing block, so leaving it on the inner card - now
                 the tray's only child, and exactly as tall as the tray - would give
                 it no room to move. */}
-            <div className="bezel" style={{ position: 'sticky', top: 80 }}>
+            <div className="bezel glass" style={{ position: 'sticky', top: 80 }}>
               <div className="card">
                 <h2>Take this trip with you</h2>
                 <p className="hint-text" style={{ margin: '8px 0 14px' }}>

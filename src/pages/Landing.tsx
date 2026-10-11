@@ -25,7 +25,7 @@ export function LandingPage({ onNavigate }: { onNavigate: (r: string) => void })
   // different targets made every link list ambiguous.
   const heroCtaLabel = me ? 'Plan a new trip' : 'Start a trip plan'
   return (
-    <div>
+    <div className="page-enter">
       {/* ---------- Hero (split layout, per CTI homepage mockup) ---------- */}
       {/* hero-blob spans + hero-rise choreography: the atmosphere drifts slowly
           and the copy rises in one orchestrated stagger on load. */}

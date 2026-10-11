@@ -19,7 +19,7 @@ describe('Purchases page: shared components', () => {
 
   it('carries the page scope on its root and no longer uses the old state components', async () => {
     const source = await read(PAGE)
-    expect(source).toContain('className="container yf-page pur-page"')
+    expect(source).toContain('className="container yf-page pur-page page-enter"')
     expect(source).not.toContain('<EmptyState')
     expect(source).not.toContain('loading-block')
     expect(source).not.toContain('purchases-error')

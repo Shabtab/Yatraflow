@@ -447,8 +447,10 @@ describe('Phase 3 signal lifecycle (source invariants)', () => {
 
   it('the workspace clears the signal once consumed (no stale refire, no cross-trip leak)', () => {
     const ws = read('../src/pages/TripWorkspace.tsx')
-    expect(ws).toContain('onFocusConsumed={clearTimelineFocusDay}')
+    // One consume clears both one-shot signals: the day and the deep-link stop.
+    expect(ws).toContain('onFocusConsumed={clearTimelineFocus}')
     expect(ws).toContain('setTimelineFocusDay(null)')
+    expect(ws).toContain('setTimelineFocusStop(null)')
   })
 
   it('only labels with an honest itinerary day are tappable, and they open that day', () => {

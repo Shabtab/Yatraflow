@@ -159,7 +159,7 @@ export function PurchasesPage({ onNavigate }: { onNavigate: (r: string) => void 
   ) : null
 
   return (
-    <div className="container yf-page pur-page">
+    <div className="container yf-page pur-page page-enter">
       {/* #409 — the lede promised three things and, on a row whose publication
           row is GONE, showed one: "what is inside" is read from the publication
           row, so its shape chips are simply absent. The base sentence stays (it
