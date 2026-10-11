@@ -26,8 +26,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - **My trips shows a pinned Up next card for your live or soonest trip.** The card shows a countdown, Budget, Travel and Dates columns, a planning meter, the next step and a delete button. It stays pinned through sort and style filters. It hides while you search.
 
 ### Changed
-
-- **The Profile page uses CSS classes for its spacing and colour.** The page styles move from inline attributes into named classes at the end of `src/styles.css`. The text that describes the AI-companion key and the developer audit keeps its spacing. The read mark on a notification stays an inline style, because it changes with the state. The page looks the same.
+- **The Profile page uses CSS classes for its spacing and colour.** The page styles move from inline attributes into named classes at the end of `src/styles.css`. The text that describes the AI-companion key and the developer audit keeps its spacing. The read mark on a notification stays an inline style, because it changes with the state. Pixel-for-pixel screenshots prove the page looks the same, in light and dark, at 1280 and 390.
 
 - **Search engines get clearer signals for the calculator and the share cards.** The calculator page says "Prices checked October 2026" and lists a published and modified date in its structured data. The address without the final slash now redirects to the page. The app pages and the share cards declare the language `en-IN`. A share card for an itinerary or creator that exists is now cached at the edge for five minutes. A missing or failed card is never cached.
 

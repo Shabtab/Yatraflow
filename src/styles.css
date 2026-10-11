@@ -8923,6 +8923,8 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 }
 
 /* ===== Stage A: Profile.tsx — inline styles moved to classes (no visual change) ===== */
+.prof-page-lede { margin-bottom: 20px; }
+.prof-creator-lede { margin-bottom: 14px; }
 .prof-hint { margin: 6px 0 12px; }
 .prof-hint-tight { margin: 6px 0 10px; }
 .prof-hint-top { margin: 6px 0 0; }
