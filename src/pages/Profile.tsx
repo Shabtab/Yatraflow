@@ -88,7 +88,7 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
   return (
     <div className="container form-page">
       <h1>Profile & settings</h1>
-      <p className="muted small" style={{ marginBottom: 20 }}>{tripCount} trip{tripCount !== 1 ? 's' : ''} · {me.email}</p>
+      <p className="muted small prof-page-lede">{tripCount} trip{tripCount !== 1 ? 's' : ''} · {me.email}</p>
 
       {/* #86: this page's content is a single column — the .two-col grid left
           a 340px empty gutter at desktop widths. A readable single column
@@ -98,7 +98,7 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
           <div className="card">
             <h3>Your details</h3>
             <hr className="divider" />
-            <div className="creator-line" style={{ marginBottom: 14 }}>
+            <div className="creator-line prof-creator-lede">
               <Avatar user={me} size="lg" />
               <span className="small muted">Avatars use your initials in this MVP.</span>
             </div>
@@ -111,7 +111,7 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
 
           <div className="card stack-gap">
             <h3>Travel styles</h3>
-            <p className="hint-text" style={{ margin: '6px 0 10px' }}>Pick all that fit — helps collaborators know what kind of trip to invite you to.</p>
+            <p className="hint-text prof-hint-tight">Pick all that fit — helps collaborators know what kind of trip to invite you to.</p>
             <div className="chip-row">
               {TRAVEL_STYLES.map(s => (
                 <Chip key={s} active={me.profile.travelStyles.includes(s)} aria-pressed={me.profile.travelStyles.includes(s)} onClick={() => toggleStyle(s)}>{cap(s)}</Chip>
@@ -151,7 +151,7 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
               <h3>Creator hub</h3>
               <Chip tone={me.profile.isCreator ? 'ok' : 'info'}>{me.profile.isCreator ? 'Enabled' : 'Off'}</Chip>
             </div>
-            <p className="hint-text" style={{ margin: '6px 0 12px' }}>
+            <p className="hint-text prof-hint">
               {me.profile.isCreator
                 ? 'Manage your creator profile, social links and published itineraries.'
                 : 'A branding badge: your bio and social links appear on the itineraries you publish.'}
@@ -159,7 +159,7 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
             {me.profile.isCreator ? (
               <>
                 <button className="btn btn-primary btn-sm" onClick={() => onNavigate('/creator-hub')}>Open creator hub</button>
-                <a className="btn btn-outline btn-sm" style={{ marginLeft: 10 }} {...appLink(`/creator/${me.id}`)}>View public page</a>
+                <a className="btn btn-outline btn-sm prof-btn-offset" {...appLink(`/creator/${me.id}`)}>View public page</a>
               </>
             ) : (
               <button className="btn btn-saffron" onClick={() => { updateProfile({ isCreator: true }); toast('Creator mode enabled — open the hub to add your bio and links.') }}>
@@ -191,12 +191,12 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
               })
               toast('Profile saved')
             }}>Save profile</button>
-            <button className="btn btn-ghost btn-sm" style={{ marginLeft: 10 }} onClick={() => onNavigate('/trips')}>← Back to my trips</button>
+            <button className="btn btn-ghost btn-sm prof-btn-offset" onClick={() => onNavigate('/trips')}>← Back to my trips</button>
           </div>
 
           <div className="card stack-gap">
             <h3>Notifications</h3>
-            <p className="hint-text" style={{ margin: '6px 0 12px' }}>
+            <p className="hint-text prof-hint">
               Get an OS-level ping when a collaborator writes to you — even with
               YatraFlow in a background tab. The in-app bell always works; this
               just mirrors it to the system.
@@ -206,8 +206,8 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
             ) : notifPerm === 'denied' ? (
               <p className="hint-text">Notifications are blocked for this site — allow them in your browser’s site settings to turn this on.</p>
             ) : (
-              <div className="row-between" style={{ gap: 10 }}>
-                <span className="small" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div className="row-between prof-notif-toggle">
+                <span className="small prof-notif-label">
                   <Bell size={14} aria-hidden /> Browser notifications
                 </span>
                 <button
@@ -238,7 +238,7 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
 
           <div className="card stack-gap">
             <h3>About your data</h3>
-            <p className="hint-text" style={{ marginTop: 6 }}>
+            <p className="hint-text prof-hint-mt">
               Your trips, votes and decisions are saved to your account, so they follow you between
               devices. Display preferences stay on this device. Costs and timings are transparent
               estimates — always verify prices before travelling.
@@ -253,7 +253,7 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
           {isNative && <>
             <div className="card stack-gap">
               <h3>Appearance</h3>
-              <p className="hint-text" style={{ margin: '6px 0 12px' }}>Light or dark — your choice sticks across trips.</p>
+              <p className="hint-text prof-hint">Light or dark — your choice sticks across trips.</p>
               <button
                 className={`btn btn-sm ${dark ? 'btn-primary' : 'btn-outline'}`}
                 aria-pressed={dark}
@@ -264,20 +264,20 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
             </div>
 
             <div className="card stack-gap">
-              <div className="row-between" style={{ marginBottom: 8 }}>
-                <h3 style={{ margin: 0 }}>Notifications</h3>
+              <div className="row-between prof-notif-head">
+                <h3 className="prof-notif-title">Notifications</h3>
                 {notifs.length > 0 && notifs.some(n => !n.read) && (
                   <button className="btn btn-ghost btn-sm" onClick={() => markAllNotificationsRead(me.id)}>Mark all read</button>
                 )}
               </div>
               {notifs.length === 0 ? (
-                <p className="hint-text" style={{ marginTop: 0 }}>No notifications yet — collaborators writing to you will show up here.</p>
+                <p className="hint-text prof-hint-flush">No notifications yet — collaborators writing to you will show up here.</p>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div className="prof-notif-list">
                   {notifs.slice(0, 8).map(n => (
-                    <div key={n.id} className="row-between" style={{ fontSize: 13, padding: '6px 0', borderBottom: '1px solid var(--line)' }}>
+                    <div key={n.id} className="row-between prof-notif-row">
                       <span style={{ opacity: n.read ? 0.6 : 1 }}>{n.text}</span>
-                      <span className="muted small" style={{ flex: '0 0 auto', marginLeft: 8 }}>{formatTimeAgo(n.at)}</span>
+                      <span className="muted small prof-notif-time">{formatTimeAgo(n.at)}</span>
                     </div>
                   ))}
                   {notifs.length > 8 && <span className="muted small">+{notifs.length - 8} older</span>}
@@ -288,12 +288,12 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
             <div className="card stack-gap">
               <h3>Account</h3>
               {me.profile.isCreator && (
-                <button className="btn btn-outline btn-sm" style={{ marginBottom: 8 }} onClick={() => onNavigate('/creator-hub')}>
+                <button className="btn btn-outline btn-sm prof-btn-block" onClick={() => onNavigate('/creator-hub')}>
                   <InlineIcon icon={Sparkles} size={14} gap={6} />Creator hub
                 </button>
               )}
               <div>
-                <a className="btn btn-outline btn-sm" href={feedbackHref()} style={{ marginBottom: 8 }}>
+                <a className="btn btn-outline btn-sm prof-btn-block" href={feedbackHref()}>
                   <InlineIcon icon={Mail} size={14} gap={6} />Send feedback
                 </a>
               </div>
@@ -377,7 +377,7 @@ function AiProviderCard() {
         <h3>AI companion</h3>
         <Chip tone={saved ? 'ok' : 'info'}>{saved ? 'LLM configured' : 'Not configured'}</Chip>
       </div>
-      <p className="hint-text" style={{ margin: '6px 0 0' }}>
+      <p className="hint-text prof-hint-top">
         Optional. Point the companion at any OpenAI-compatible endpoint and it answers with that model — grounded in this
         trip's data. Without one it uses the built-in deterministic assistant. The key is stored on this device only and
         is never sent to YatraFlow's servers.
@@ -409,7 +409,7 @@ function AiProviderCard() {
       </div>
       {/* A stable empty live region: dynamically inserted status nodes are
           announced unreliably, an always-present one is not (a11y rule). */}
-      <p className="hint-text" role="status" style={{ margin: 0 }}>{result}</p>
+      <p className="hint-text prof-status" role="status">{result}</p>
     </div>
   )
 }
@@ -474,10 +474,10 @@ function JevCard() {
   return (
     <div className="card stack-gap">
       <div className="row-between">
-        <h3>Jev intent router <span className="hint-text" style={{ fontWeight: 400 }}>(faster answers)</span></h3>
+        <h3>Jev intent router <span className="hint-text prof-heading-note">(faster answers)</span></h3>
         <Chip tone={saved ? 'ok' : 'info'}>{saved ? 'Routing via Jev' : 'Not configured'}</Chip>
       </div>
-      <p className="hint-text" style={{ margin: '6px 0 0' }}>
+      <p className="hint-text prof-hint-top">
         Optional, and independent of the LLM above. Jev (TypeSafe System One) reads the question and picks which
         analysis to run — the answer itself is then computed on-device, so replies arrive after one small request
         instead of a full model generation. When configured it takes precedence over the LLM endpoint. The key is
@@ -501,7 +501,7 @@ function JevCard() {
         <button className="btn btn-primary btn-sm" onClick={onTest} disabled={testing}>{testing ? 'Testing…' : 'Save & test connection'}</button>
         {saved && <button className="btn btn-outline btn-sm" onClick={onClear} disabled={testing}>Clear</button>}
       </div>
-      <p className="hint-text" role="status" style={{ margin: 0 }}>{result}</p>
+      <p className="hint-text prof-status" role="status">{result}</p>
     </div>
   )
 }
@@ -525,7 +525,7 @@ function InstallCard() {
   return (
     <div className="card stack-gap">
       <h3>Install YatraFlow</h3>
-      <p className="hint-text" style={{ margin: '6px 0 10px' }}>
+      <p className="hint-text prof-hint-tight">
         {ios
           ? 'On iPhone and iPad: tap Share, then “Add to Home Screen”. It opens in its own window, like an app.'
           : 'Adds YatraFlow to your home screen — its own window, its own icon, and a faster start.'}

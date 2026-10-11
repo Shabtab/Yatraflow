@@ -27,6 +27,8 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ### Changed
 
+- **The Profile page uses CSS classes for its spacing and colour.** The page styles move from inline attributes into named classes at the end of `src/styles.css`. The text that describes the AI-companion key and the developer audit keeps its spacing. The read mark on a notification stays an inline style, because it changes with the state. The page looks the same.
+
 - **Search engines get clearer signals for the calculator and the share cards.** The calculator page says "Prices checked October 2026" and lists a published and modified date in its structured data. The address without the final slash now redirects to the page. The app pages and the share cards declare the language `en-IN`. A share card for an itinerary or creator that exists is now cached at the edge for five minutes. A missing or failed card is never cached.
 
 - **My trips opens with an editorial hero built from your own trips.** The headline names the place your next trip ends at, for example "Next stop, Goa." That is the same place the Up next card shows. A row of counts shows your trips, upcoming and live trips, places and co-planners. Co-planners are the other people who can edit your trips. Up to three postcards show your trips, with a handwritten note such as "10 days to go!". While your trips load, the hero shows a neutral headline and no counts, postcards or note.

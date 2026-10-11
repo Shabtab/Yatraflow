@@ -8921,3 +8921,29 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
   .mt-hero-secondary > .btn { flex: 1 1 0; justify-content: center; padding: 0 10px; }
   .mt-hero-stats { margin-top: 12px; }
 }
+
+/* ===== Stage A: Profile.tsx — inline styles moved to classes (no visual change) ===== */
+.prof-hint { margin: 6px 0 12px; }
+.prof-hint-tight { margin: 6px 0 10px; }
+.prof-hint-top { margin: 6px 0 0; }
+.prof-hint-mt { margin-top: 6px; }
+.prof-hint-flush { margin-top: 0; }
+.prof-status { margin: 0; }
+.prof-heading-note { font-weight: 400; }
+.prof-btn-offset { margin-left: 10px; }
+.prof-btn-block { margin-bottom: 8px; }
+.prof-notif-label { display: flex; align-items: center; gap: 6px; }
+.prof-notif-list { display: flex; flex-direction: column; gap: 8px; }
+.prof-notif-time { flex: 0 0 auto; margin-left: 8px; }
+.prof-notif-title { margin: 0; }
+/* The host class has the same specificity as one new class, so a single
+   appended class would win only by source order. The compound selector
+   wins in any order. */
+.row-between.prof-notif-head { margin-bottom: 8px; }
+.row-between.prof-notif-toggle { gap: 10px; }
+.row-between.prof-notif-row {
+  font-size: 13px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+}
+
