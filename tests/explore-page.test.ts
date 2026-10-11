@@ -39,6 +39,11 @@ const user = (id: string, name: string, isCreator = true): User => ({
   createdAt: 1,
 })
 
+const disabledUser = (id: string, name: string): User => {
+  const base = user(id, name)
+  return { ...base, profile: { ...base.profile, isDisabled: true } }
+}
+
 const stopNames = (count: number, prefix = 's') => Array.from({ length: count }, (_, i) => `${prefix}${i}`)
 
 describe('FEATURED_MIN_VIEWS', () => {
@@ -310,6 +315,22 @@ describe('creatorList', () => {
       pub({ id: 'ghost', creatorId: 'creator-missing', copies: 50 }),
     ]
     expect(creatorList(pubs, users).map(row => row.id)).toEqual(['creator-a'])
+  })
+
+  it('skips a disabled creator, and the next creator fills the list', () => {
+    const users = [disabledUser('c1', 'Zed'), user('c2', 'Amy'), user('c3', 'Bob')]
+    const pubs = [
+      pub({ id: 'p1', creatorId: 'c1', copies: 9 }),
+      pub({ id: 'p2', creatorId: 'c2', copies: 2 }),
+      pub({ id: 'p3', creatorId: 'c3', copies: 1 }),
+    ]
+    expect(creatorList(pubs, users, 2).map(row => row.id)).toEqual(['c2', 'c3'])
+  })
+
+  it('returns an empty list when every creator is disabled', () => {
+    const users = [disabledUser('c1', 'Zed'), disabledUser('c2', 'Amy')]
+    const pubs = [pub({ id: 'p1', creatorId: 'c1', copies: 4 }), pub({ id: 'p2', creatorId: 'c2', copies: 1 })]
+    expect(creatorList(pubs, users)).toEqual([])
   })
 
   it('does not count unpublished rows, and drops a creator left with none', () => {

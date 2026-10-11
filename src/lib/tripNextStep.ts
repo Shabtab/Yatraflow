@@ -1,7 +1,6 @@
 /**
- * The trip card's derivations: its next-step line (MR1), its planning bar
- * (MR2), its status filter taxonomy (MR3) and its departure countdown (MR6).
- * Pure on purpose: no React, no store, no DOM, so each answer is testable on
+ * The trip card's derivations: its next-step line (MR1) and its planning bar
+ * (MR2). Pure on purpose: no React, no store, no DOM, so each answer is testable on
  * its own and the card only reads them.
  *
  * The next-step order below is the finding, not a taste call. An unfilled day
@@ -17,7 +16,6 @@
  */
 
 import type { ItineraryDay, ItineraryStop, Trip } from '../data/types'
-import { dayCountForRange } from './dayCount'
 
 /** What the card should offer. `done` means the trip needs nothing from you. */
 export type NextStepKind =
@@ -146,82 +144,6 @@ export function nextTripStep(trip: Trip): NextStep {
   }
 
   return { kind: 'done', label: 'Ready to travel' }
-}
-
-/**
- * The status filters on My Trips, in the order they are drawn.
- *
- * `nextTripStep` returns exactly ONE step per trip, so these buckets are
- * disjoint and every trip lands in exactly one of them. That is what makes the
- * tab counts add up to the page total instead of drifting apart.
- */
-export type StatusBucket = 'all' | 'dates' | 'planning' | 'booking' | 'ready'
-
-export const STATUS_FILTERS: { id: StatusBucket; label: string }[] = [
-  { id: 'all', label: 'All trips' },
-  { id: 'dates', label: 'Needs dates' },
-  { id: 'planning', label: 'Needs planning' },
-  { id: 'booking', label: 'Needs booking' },
-  { id: 'ready', label: 'Ready' },
-]
-
-/**
- * Which filter a step belongs to. A booking outranks planning in the order, but
- * a trip that needs planning can still owe a booking, so `book-stop` gets its
- * own tab instead of hiding inside "needs planning" where nobody would look.
- */
-const BUCKET_BY_KIND: Record<NextStepKind, Exclude<StatusBucket, 'all'>> = {
-  'add-dates': 'dates',
-  'plan-day': 'planning',
-  'confirm-stop': 'planning',
-  'add-cover': 'planning',
-  'book-stop': 'booking',
-  'done': 'ready',
-}
-
-/** The filter this trip belongs to. Never 'all' — that is the no-filter case. */
-export function statusBucket(trip: Trip): Exclude<StatusBucket, 'all'> {
-  return BUCKET_BY_KIND[nextTripStep(trip).kind]
-}
-
-/** True for a stored pref that names a real filter. Junk degrades to 'all'. */
-export function isStatusBucket(raw: string | null | undefined): raw is StatusBucket {
-  return !!raw && STATUS_FILTERS.some(f => f.id === raw)
-}
-
-/**
- * `yyyy-mm-dd` for a Date's LOCAL calendar day.
- *
- * `isoDay` in components/DateRangeCalendar is the same inverse of
- * `localMidnightMs`, but it lives in a component module — importing it here
- * would pull React into a pure module that node-env tests load directly. Three
- * lines beat a framework dependency in a file the engine never renders.
- */
-function isoOf(d: Date): string {
-  const p = (n: number) => (n < 10 ? `0${n}` : `${n}`)
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
-}
-
-/**
- * "Departs in 6 days", for a trip that has NOT left yet. Returns null the
- * moment a trip has departed, so the card prints nothing rather than a
- * negative countdown or a "departs today" that is a day stale.
- *
- * Computed from the trip's own dates, never from a stored string, and through
- * `dayCountForRange` rather than a private copy of the span math — that helper
- * is the repo's single day-count and it rounds, so a daylight-saving edge
- * between today and the departure cannot shift the answer.
- */
-export function departureLabel(trip: Trip, today: Date): string | null {
-  if (!trip.startDate) return null
-  // `dayCountForRange` counts inclusively and returns 0 for a missing,
-  // unparseable or already-elapsed range, so one subtraction turns the span
-  // into "days from now" and the same 0 covers every unusable input.
-  const days = dayCountForRange(isoOf(today), trip.startDate) - 1
-  if (days < 0) return null
-  if (days === 0) return 'Departs today'
-  if (days === 1) return 'Departs tomorrow'
-  return `Departs in ${days} days`
 }
 
 /**

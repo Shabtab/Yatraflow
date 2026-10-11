@@ -3,8 +3,10 @@
 // the featured card and the grid. The ranking and the evidence bar live in
 // lib/explorePage.ts (trendingShelfPicks) and lib/discovery.ts; this component
 // only draws the picks it is given. It draws nothing when the list is empty.
-// The whole card is one link to the plan; the creator's byline is the second
-// link, raised above the card's stretched link.
+// The whole card is one link to the plan. The creator's byline and the save
+// heart are raised above the card's stretched link. The heart is the same
+// component the grid card uses, and the page owns the saved state, so a plan
+// reads the same in the shelf and in the grid.
 import { useId, type CSSProperties } from 'react'
 import { Eye } from 'lucide-react'
 import type { PublishedItinerary, User } from '../../data/types'
@@ -12,13 +14,19 @@ import { appLink } from '../../lib/appLink'
 import { Avatar } from '../ui'
 import { ExploreCover } from './ExploreCover'
 import { ExploreFacts } from './ExploreFacts'
+import { ExploreSaveHeart } from './ExploreSaveHeart'
 
 /** Views in words: "1 view", "26 views". The noun changes shape, so both are passed. */
 function viewCount(n: number): string {
   return `${n} ${n === 1 ? 'view' : 'views'}`
 }
 
-export function TrendingShelf({ pubs, users }: { pubs: PublishedItinerary[]; users: User[] }) {
+export function TrendingShelf({ pubs, users, isSaved, onToggleSave }: {
+  pubs: PublishedItinerary[]
+  users: User[]
+  isSaved: (id: string) => boolean
+  onToggleSave: (id: string) => void
+}) {
   const titleId = useId()
   if (pubs.length === 0) return null
   return (
@@ -38,6 +46,7 @@ export function TrendingShelf({ pubs, users }: { pubs: PublishedItinerary[]; use
                 <div className="ex-trend-cover">
                   <ExploreCover pub={pub} />
                   <span className="ex-trend-rank" aria-hidden="true">{index + 1}</span>
+                  <ExploreSaveHeart title={pub.title} saved={isSaved(pub.id)} onToggle={() => onToggleSave(pub.id)} />
                 </div>
                 <div className="ex-trend-body">
                   <h3 className="ex-trend-name">

@@ -1,11 +1,11 @@
 /**
  * The page's calendar clock (#648).
  *
- * My Trips needs "today" for two readings: the departure countdown and the date
+ * My Trips needs "today" for two readings: the trip countdown and the date
  * filter. One value must feed both, so the two cannot disagree. That value must
  * also move when the calendar day moves. A value captured once at mount stays on
- * the mount date, so a tab left open overnight keeps saying "Departs tomorrow"
- * for a trip that leaves today.
+ * the mount date, so a tab left open overnight keeps saying "Starts tomorrow"
+ * for a trip that starts today.
  *
  * The unit is a day, not a second, so the clock wakes once per midnight. The
  * pure part lives here and takes its time source from the caller, so a node test

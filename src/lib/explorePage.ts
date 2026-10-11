@@ -132,8 +132,8 @@ export function placeTiles(pubs: PublishedItinerary[], users: User[] = [], limit
 /**
  * Creators strip: each creator with a live plan, the number of live plans, and
  * the total forks (copies) across them. A creator missing from `users` is
- * skipped. Sorted by forks, then plans, then name, then id. Returns the top
- * `limit` creators.
+ * skipped, and so is a disabled account, as in `featuredCreators`. Sorted by
+ * forks, then plans, then name, then id. Returns the top `limit` creators.
  */
 export function creatorList(pubs: PublishedItinerary[], users: User[], limit = 5): CreatorTile[] {
   const usersById = new Map(users.map(user => [user.id, user] as const))
@@ -147,7 +147,9 @@ export function creatorList(pubs: PublishedItinerary[], users: User[], limit = 5
   const rows: CreatorTile[] = []
   for (const [id, tally] of tallies) {
     const user = usersById.get(id)
-    if (!user) continue
+    // A disabled account is not one a visitor should be pointed at.
+    const isListable = user !== undefined && !user.profile.isDisabled
+    if (!isListable) continue
     rows.push({ id, name: user.profile.name, plans: tally.plans, forks: tally.forks, isCreator: user.profile.isCreator })
   }
   return rows

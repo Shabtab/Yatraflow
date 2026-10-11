@@ -183,3 +183,63 @@ describe('the Clear filters button appears with motion', () => {
     expect(optedOut).toBe(true)
   })
 })
+
+describe('a list item that leaves plays an exit (AGENTS §2.10)', () => {
+  const read = (rel: string) => readFileSync(new URL('../' + rel, import.meta.url), 'utf8').replace(/\r\n/g, '\n')
+
+  it('plays the exit on motion tokens, never a raw duration', () => {
+    expect(css).toMatch(/@keyframes presence-out\s*\{[\s\S]*?to\s*\{[^}]*opacity:\s*0/)
+    const rule = css.match(/\[data-presence='exit'\]\s*\{([^}]*)\}/)?.[1] ?? ''
+    expect(rule, 'no [data-presence="exit"] rule').not.toBe('')
+    expect(rule).toMatch(/animation:\s*presence-out var\(--motion-med\) var\(--ease-out\)/)
+    expect(rule, 'a leaving item must not take clicks').toMatch(/pointer-events:\s*none/)
+    expect(rule).not.toMatch(/\d+m?s\b/)
+    const clearRule = css.match(/\.ex-clear\[data-presence='exit'\]\s*\{([^}]*)\}/)?.[1] ?? ''
+    expect(clearRule).toMatch(/animation:\s*ex-clear-out var\(--motion-med\) var\(--ease-out\)/)
+  })
+
+  it('fades the My trips Clear filters button out on the same tokens', () => {
+    const rule = css.match(/\.trips-page \.ex-clear\[style\*='hidden'\]\s*\{([^}]*)\}/)?.[1] ?? ''
+    expect(rule, 'no hidden-state rule for the My trips Clear filters button').not.toBe('')
+    expect(rule).toMatch(/opacity var\(--motion-med\) var\(--ease-out\)/)
+    expect(rule, 'the button must turn hidden only when the fade ends').toMatch(/visibility 0s linear var\(--motion-med\)/)
+  })
+
+  it('opts out under prefers-reduced-motion', () => {
+    const blocks = reducedMotionBlocks()
+    expect(blocks.some(block => /\[data-presence='exit'\][^{]*\{[^}]*animation\s*:\s*none/.test(block))).toBe(true)
+    expect(blocks.some(block => /\.trips-page \.ex-clear\[style\*='hidden'\][^{]*\{[^}]*transition\s*:\s*none/.test(block))).toBe(true)
+  })
+
+  it('skips the exit for reduced motion and a hidden tab, and times it on the token', () => {
+    const hook = read('src/lib/usePresenceList.ts')
+    expect(hook).toMatch(/!prefersReducedMotion\(\)\s*&&\s*document\.visibilityState === 'visible'/)
+    expect(hook).toContain("motionTiming('--motion-med')")
+    expect(hook).toMatch(/toggleAttribute\('inert'/)
+    expect(hook, 'focus must leave the item before it goes inert').toMatch(/target\.focus\(/)
+    expect(hook).not.toMatch(/setTimeout\([^)]*,\s*\d+\s*\)/)
+  })
+
+  // Every list that drops items wears the hook. A new list that drops items
+  // without it would vanish its items between two frames again.
+  const wired: { file: string; uses: RegExp }[] = [
+    { file: 'src/pages/TripsList.tsx', uses: /usePresenceList\(\s*otherTrips,/ },
+    { file: 'src/pages/TripsList.tsx', uses: /usePresenceList\(trashed,/ },
+    { file: 'src/pages/Explore.tsx', uses: /usePresenceList\(\s*gridPubs\.slice\(0, visibleCount\),/ },
+    { file: 'src/components/trips/SavedShelfSection.tsx', uses: /usePresenceList\(shelfRows,/ },
+    { file: 'src/components/explore/ExploreFilterBar.tsx', uses: /usePresenceList\(\s*filtersActive/ },
+  ]
+  for (const { file, uses } of wired) {
+    it(`${file} keeps a leaving item mounted: ${uses.source.slice(0, 40)}`, () => {
+      const source = read(file)
+      expect(source).toMatch(uses)
+      expect(source, 'the list must mark each item with presenceAttrs').toContain('presenceAttrs(')
+      expect(source, 'the list must attach the hook to its container').toMatch(/ref=\{attach\w+\}/)
+    })
+  }
+
+  it('lets both card components wear the presence attributes', () => {
+    expect(read('src/components/trips/TripCard.tsx')).toMatch(/\{\.\.\.presence\}/)
+    expect(read('src/components/explore/ExploreCard.tsx')).toMatch(/\{\.\.\.presence\}/)
+  })
+})

@@ -282,12 +282,12 @@ describe('the discovery copy', () => {
   })
 
   it('draws nothing for an empty trending list', () => {
-    expect(renderToStaticMarkup(createElement(TrendingShelf, { pubs: [], users: [] }))).toBe('')
+    expect(renderToStaticMarkup(createElement(TrendingShelf, { pubs: [], users: [], isSaved: () => false, onToggleSave: () => {} }))).toBe('')
   })
 
   it('links each trending card to its plan', () => {
     const html = renderToStaticMarkup(createElement(TrendingShelf, {
-      pubs: [pub('p1', 'c1', { views: 26 })], users: [user('c1', 'Arun')],
+      pubs: [pub('p1', 'c1', { views: 26 })], users: [user('c1', 'Arun')], isSaved: () => false, onToggleSave: () => {},
     }))
     expect(html).toContain('/pub/p1')
     expect(html).toContain('/creator/c1')
@@ -296,7 +296,7 @@ describe('the discovery copy', () => {
   it('spells the views count in a trending row', () => {
     const pubs = [pub('p1', 'c1', { views: 26 }), pub('p2', 'c2', { views: 1, copies: 1 })]
     const html = renderToStaticMarkup(createElement(TrendingShelf, {
-      pubs, users: [user('c1', 'Arun'), user('c2', 'Bea')],
+      pubs, users: [user('c1', 'Arun'), user('c2', 'Bea')], isSaved: () => false, onToggleSave: () => {},
     }))
     expect(html).toContain('26 views')
     expect(html).toContain('1 view</p>')

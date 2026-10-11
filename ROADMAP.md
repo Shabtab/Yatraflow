@@ -477,34 +477,24 @@ Neither decision touches a colour value, per [ADR 0002](docs/adr/0002-mockup-pal
     that carries the meter: `role="progressbar"`, the label "Days with activities", and the
     2/2 count on the fixture account.
   - **Changed 2026-10-11.** The trip cards drop the bar. The next-step line carries the same fact as an action. Up next keeps one meter, labelled as days with activities.
-- [x] **MR3. Status filter tabs with counts.** `src/pages/TripsList.tsx`. Five filters with live
+- [ ] **MR3. Status filter tabs with counts.** `src/pages/TripsList.tsx`. Five filters with live
   counts. Persist the choice through `src/lib/uiPrefs.ts`, which already stores per-day collapse.
-  - **Landed 2026-10-05, review still owed.** The five filters are all trips, needs dates, needs
-    planning, needs booking, and ready. The taxonomy lives beside the derivation in
-    `src/lib/tripNextStep.ts` as `STATUS_FILTERS` and `statusBucket`, so it is unit-tested
-    without a DOM and cannot drift from the steps it groups. Counts come from the set the
-    search and the other filters leave behind, so a tab says what clicking it would show.
-  - **Accepted 2026-10-06.** The tab row was screened with the view switch beside it, at both
-    widths: [`docs/screenshots/mr4-viewbar-1440.png`](docs/screenshots/mr4-viewbar-1440.png) and
-    [`mr4-viewbar-390.png`](docs/screenshots/mr4-viewbar-390.png). Six trips were on screen, and
-    the counts matched the trips under each tab.
-  - **The tabs have their own capture now (2026-10-10).**
-    [`mr3-status-tabs-1440.png`](docs/screenshots/mr3-status-tabs-1440.png) and
-    [`mr3-status-tabs-390.png`](docs/screenshots/mr3-status-tabs-390.png) hold the five tabs with
-    their live counts — All trips 2 · Needs dates 2 · Needs planning 0 · Needs booking 0 ·
-    Ready 0 on the fixture account.
-- [x] **MR4. Grid and list view toggle.** `src/pages/TripsList.tsx`. Both layouts, persisted the
-  same way as MR3.
+  - **Not in the app (2026-10-11).** The five-filter taxonomy and its helpers were removed from
+    `src/lib/tripNextStep.ts`, and no page draws them. The When filter keeps its own choices:
+    any time, upcoming and live, past trips, and drafts. This row stays open until the tabs are
+    designed and built again.
+- [x] **MR4. Grid and list view toggle.** `src/pages/TripsList.tsx`. Both layouts, persisted
+  through `src/lib/uiPrefs.ts`.
   - **Landed 2026-10-05, review still owed.** A labelled pair, not one cycling button, so the
     current choice is readable without pressing it first. List mode lays each card out as one
-    row. Persisted through the same `loadPref`/`savePref` pair MR3 uses.
+    row. Persisted through the `loadPref`/`savePref` pair in `src/lib/uiPrefs.ts`.
   - **The row's cover is the mockup's now (2026-10-06).** The row ran a 96px thumbnail inside
     the card's link, and the mockup's row runs a 236px cover the card's full height. The cover
     must sit outside the body's link to span the row, so it is its own link now. It stays out
     of the tab order and out of the accessibility tree, and the body link keeps the name.
-  - **The switch moved onto the status-tab row, 2026-10-06.** It used to close the wrapping
+  - **The switch sits on the toolbar row, 2026-10-06.** It used to close the wrapping
     filter bar, so it wrapped onto a line of its own at every width. The mockup's own bar pairs
-    the tabs and the view segment: one row while the width holds both, the segment dropped below
+    its filter row and the view segment: one row while the width holds both, the segment dropped below
     and right-aligned when it does not (measured at 1920 and 1100, and at its own 390). Ours does
     the same through `flex-wrap` plus `margin-left: auto` on the segment, and it labels the two
     choices. `PillNav` slides the glider between them, and the cards re-enter on a switch because
@@ -531,30 +521,20 @@ Neither decision touches a colour value, per [ADR 0002](docs/adr/0002-mockup-pal
     [`mr5-card-foot-390.png`](docs/screenshots/mr5-card-foot-390.png) hold the card foot at both
     widths: the traveller line and the cover state the row describes. The capture is the evidence
     that the two halves render; the code check above is the evidence that no new work was needed.
-- [x] **MR6. Departure countdown.** `src/pages/TripsList.tsx`. "Departs in N days" on upcoming
-  trips only. Compute from the trip start date, never from a stored string.
-  - **Landed 2026-10-05.** `departureLabel` lives beside the other card derivations and returns
-    null the moment a trip has departed, so the card prints nothing rather than a negative count
-    or a "departs today" that is a day stale. "Today" and "tomorrow" are spelled out. The span
-    goes through `dayCountForRange`, the repo's single day-count, which rounds so a
-    daylight-saving edge cannot shift it — `tests/dayCount.test.ts` guards that one home and
-    failed the first private copy of the math.
+- [x] **MR6. Countdown on upcoming trips.** `src/pages/TripsList.tsx`. A countdown on upcoming
+  trips only. Compute from the trip start date, never from a stored string. The shipped copy is
+  "Starts in N days", not the "Departs in N days" this row first named.
+  - **Shipped copy (2026-10-11).** `countdownText` in `src/lib/tripsPage.ts` prints "Starts in N
+    days" or "Starts tomorrow" for an upcoming trip, and "Day N of M" for a live one. It returns
+    null for past and draft trips. The departure wording and its helper were removed on 2026-10-11
+    with the other unused ports.
   - **The clock moves while the page lives (2026-10-06, #648).** The page read the clock once, at
     mount, and kept that value. One calendar-day clock now feeds the countdown and the date
     filter. It wakes at local midnight and re-reads the day on focus or visibility. The unit is a
     day, so nothing polls. Eleven cases in `tests/day-clock.test.ts` drive it with an injected
     clock.
-  - **Acceptance (2026-10-06):** screened at 1440px and 390px, in
-    [`docs/screenshots/mr1-task-row-1440.png`](docs/screenshots/mr1-task-row-1440.png) and
-    [`mr1-task-row-390.png`](docs/screenshots/mr1-task-row-390.png). Two upcoming trips printed a
-    countdown at each width: "Departs in 17 days" and "Departs in 20 days".
-  - **Its own capture, on live dates (2026-10-10).**
-    [`mr6-countdown-1440.png`](docs/screenshots/mr6-countdown-1440.png) and
-    [`mr6-countdown-390.png`](docs/screenshots/mr6-countdown-390.png) hold the card that carries
-    the line, on the signed-in account that owns the trips. The countdown read "Departs in 13
-    days" and "Departs in 16 days" at both widths, and the capture asserts the copy's shape: a
-    span is either absent or one of "Departs in N days", "today", "tomorrow" — never a
-    negative count.
+  - **Older captures show the removed copy.** The 2026-10-06 and 2026-10-10 screenshots of the
+    countdown were taken before the copy changed, so they are not evidence for the current copy.
 - [x] **MR7. Day strip with transit markers.** `src/pages/TripWorkspace.tsx`, timeline tab. Days as
   horizontal cards, with a marker where the city changes. Reuse the existing day-collapse state.
   - **Landed 2026-10-05 — and the row was half-written already.** The timeline's day rail already

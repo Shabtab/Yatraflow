@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { nextTripStep, nextStepRoute, plannedDayRatio, statusBucket, isStatusBucket, STATUS_FILTERS, departureLabel } from '../src/lib/tripNextStep'
+import { nextTripStep, nextStepRoute, plannedDayRatio } from '../src/lib/tripNextStep'
 import type { ItineraryDay, ItineraryStop, Trip } from '../src/data/types'
 
 /* The trip card's next-step line (MR1) and planning bar (MR2) read this
@@ -210,115 +210,6 @@ describe('#647 an automatic route anchor is not an activity', () => {
     const step = nextTripStep(t)
     expect(step.kind).not.toBe('done')
     expect(step).toEqual({ kind: 'plan-day', label: 'Plan day 1', dayIndex: 0 })
-    expect(statusBucket(t)).toBe('planning')
-  })
-
-  it('keeps a fully anchored trip out of the Ready filter', () => {
-    const t = trip({
-      days: [day(0, [anchor()]), day(1, [anchor()])],
-      coverImageUrl: 'x.jpg',
-    })
-    expect(statusBucket(t)).toBe('planning')
-  })
-})
-
-/** One trip that lands in each bucket, built to clear the branches above it. */
-const BUCKET_FIXTURES: { kind: string; trip: Trip }[] = [
-  { kind: 'add-dates', trip: trip({ startDate: '', endDate: '' }) },
-  { kind: 'plan-day', trip: trip({ days: [day(0, [stop()]), day(1, [])] }) },
-  { kind: 'confirm-stop', trip: trip({ days: [day(0, [stop({ status: 'suggested' })])] }) },
-  { kind: 'add-cover', trip: trip({ days: [day(0, [stop()])], coverEmoji: '🧭' }) },
-  { kind: 'book-stop', trip: trip({ days: [day(0, [stop({ status: 'needs-booking' })])] }) },
-  { kind: 'done', trip: trip({ days: [day(0, [stop()])], coverImageUrl: 'x.jpg' }) },
-]
-
-describe('statusBucket', () => {
-  it('covers every kind the derivation can return', () => {
-    for (const f of BUCKET_FIXTURES) {
-      expect(nextTripStep(f.trip).kind, f.kind).toBe(f.kind)
-      expect(typeof statusBucket(f.trip), f.kind).toBe('string')
-    }
-  })
-
-  it('puts a booking in its own bucket, so nobody has to look inside "needs planning"', () => {
-    const booking = BUCKET_FIXTURES.find(f => f.kind === 'book-stop')!.trip
-    expect(statusBucket(booking)).toBe('booking')
-  })
-
-  it('groups the unfinished kinds into one planning bucket', () => {
-    for (const kind of ['plan-day', 'confirm-stop', 'add-cover']) {
-      const f = BUCKET_FIXTURES.find(x => x.kind === kind)!
-      expect(statusBucket(f.trip), kind).toBe('planning')
-    }
-  })
-
-  it('partitions the trips, so the tab counts add up to the page total', () => {
-    const counted = new Map<string, number>()
-    for (const f of BUCKET_FIXTURES) {
-      const b = statusBucket(f.trip)
-      counted.set(b, (counted.get(b) ?? 0) + 1)
-    }
-    const total = [...counted.values()].reduce((a, b) => a + b, 0)
-    expect(total).toBe(BUCKET_FIXTURES.length)
-    expect(counted.get('planning')).toBe(3)
-    expect(counted.get('dates')).toBe(1)
-    expect(counted.get('booking')).toBe(1)
-    expect(counted.get('ready')).toBe(1)
-  })
-})
-
-describe('isStatusBucket', () => {  it('accepts every filter the page draws', () => {
-    for (const f of STATUS_FILTERS) expect(isStatusBucket(f.id), f.id).toBe(true)
-  })
-
-  it('rejects junk, so a corrupted pref reads as no filter', () => {
-    for (const bad of ['', 'nope', 'ALL', 'null', '__proto__', null, undefined]) {
-      expect(isStatusBucket(bad as string), String(bad)).toBe(false)
-    }
-  })
-})
-
-describe('departureLabel', () => {
-  const on = (y: number, m: number, d: number) => new Date(y, m - 1, d, 9, 30)
-  const dated = (startDate: string, endDate: string) => trip({ startDate, endDate })
-
-  it('counts down to a trip that has not left yet', () => {
-    expect(departureLabel(dated('2026-10-20', '2026-10-24'), on(2026, 10, 14)))
-      .toBe('Departs in 6 days')
-  })
-
-  it('says today and tomorrow in words, not numbers', () => {
-    expect(departureLabel(dated('2026-10-14', '2026-10-18'), on(2026, 10, 14))).toBe('Departs today')
-    expect(departureLabel(dated('2026-10-15', '2026-10-18'), on(2026, 10, 14))).toBe('Departs tomorrow')
-  })
-
-  it('says nothing for a trip that has already ended', () => {
-    expect(departureLabel(dated('2026-10-01', '2026-10-05'), on(2026, 10, 14))).toBeNull()
-  })
-
-  it('says nothing once a trip has departed, even while it is still running', () => {
-    // Started yesterday and ends next week. It has LEFT, so a countdown would
-    // be counting down to nothing — and "Departs today" would be a day stale.
-    expect(departureLabel(dated('2026-10-13', '2026-10-20'), on(2026, 10, 14))).toBeNull()
-  })
-
-  it('says nothing for an undated trip, rather than counting from nothing', () => {
-    expect(departureLabel(trip({ startDate: '', endDate: '' }), on(2026, 10, 14))).toBeNull()
-  })
-
-  it('says nothing for an unparseable date instead of printing NaN days', () => {
-    expect(departureLabel(dated('not-a-date', 'also-not'), on(2026, 10, 14))).toBeNull()
-  })
-
-  it('refuses an impossible date rather than counting to it', () => {
-    expect(departureLabel(dated('2026-02-30', '2026-03-02'), on(2026, 10, 14))).toBeNull()
-  })
-
-  it('counts whole days across a daylight-saving change', () => {
-    // US DST ends 2026-11-01. Both ends are pinned to local midnight, so a
-    // 23-hour day must not shorten the gap to 6.95 and round to 7 twice over.
-    const label = departureLabel(dated('2026-11-08', '2026-11-12'), on(2026, 11, 1))
-    expect(label).toBe('Departs in 7 days')
   })
 })
 

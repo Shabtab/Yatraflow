@@ -9891,3 +9891,38 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
   .mt-seg::before, .mt-seg button { transition: none; }
   .ex-page .ex-clear, .trips-page .ex-clear[style*='visible'] { animation: none; }
 }
+
+/* ===== Exit motion: a list item that leaves ===== */
+/* A card, a Trash row, a saved-shelf row or a Clear filters button that leaves
+   its list stays mounted for one exit (usePresenceList in src/lib). It fades and
+   sinks 6px, one --motion-med on --ease-out: the entrance played backwards,
+   shorter. The hook marks the item data-presence="exit", makes it inert and moves
+   focus off it, then drops it. Clicks pass through it meanwhile. Under
+   prefers-reduced-motion the hook drops the item at once and plays no exit. */
+@keyframes presence-out {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateY(6px) scale(.97); }
+}
+[data-presence='exit'] {
+  pointer-events: none;
+  animation: presence-out var(--motion-med) var(--ease-out) forwards;
+}
+
+/* Clear filters leaves the way it came: it fades and slides 6px back. Explore
+   unmounts the button, so the hook keeps it for the exit. My trips keeps the
+   button mounted and hidden by an inline style, so the same fade rides a
+   transition, and the button turns hidden only when the fade ends. */
+@keyframes ex-clear-out {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateX(-6px); }
+}
+:is(.ex-page, .trips-page) .ex-clear[data-presence='exit'] { animation: ex-clear-out var(--motion-med) var(--ease-out) forwards; }
+.trips-page .ex-clear[style*='hidden'] {
+  transform: translateX(-6px); pointer-events: none;
+  transition: opacity var(--motion-med) var(--ease-out), transform var(--motion-med) var(--ease-out), visibility 0s linear var(--motion-med);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-presence='exit'], :is(.ex-page, .trips-page) .ex-clear[data-presence='exit'] { animation: none; }
+  .trips-page .ex-clear[style*='hidden'] { transform: none; transition: none; }
+}

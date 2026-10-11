@@ -17,18 +17,24 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ### Added
 
+- **The app now ships its own papercut illustrations, with a build pipeline and a size budget.** Six images cover Kerala, Kashmir, Rajasthan, a generic city, a generic road and the first-trip empty state. Each scene has AVIF files at 320, 640 and 960 pixels and one WebP file at 640 pixels. The files live in `src/assets/art/` with a `manifest.json`. `npm run art:build` rebuilds them from the master PNGs, which stay out of git. The build never inlines these files into the JavaScript, so each one has its own hashed URL. The whole set weighs about 358 KiB. A test fails `npm test` when a file or the total goes over its size cap. No screen shows these images yet. The cards still draw the inline SVG motifs.
+
 - **Explore ranks plans and creators by evidence, and a block draws only when its evidence exists.**
   A Trending now shelf sits between the featured card and the grid. It ranks plans by popularity,
   which is views plus five times forks. It shows only when no filter is set and the catalog has
-  loaded, and it leaves the featured pick out. The Creators side panel ranks creators by forks.
+  loaded, and it leaves the featured pick out. Each card in the shelf has the same save heart as a
+  grid card, at the top right of the cover. The shelf and the grid share one saved list.
+  The Creators side panel ranks creators by forks.
   The featured pick ranks forks first. A heading over an empty rail would advertise a community
   that is not there, so an empty block draws nothing.
 
-- **The Grid and List switch on My trips now slides and replays the cards.** A pill glides behind the active button in 180ms, and the button text changes colour on the same clock. The card grid remounts when the layout changes, so the cards play their staggered entrance again. Before this, the pressed button changed colour and the cards snapped into place. With reduced motion set, both changes are instant. The Clear filters button now fades in and slides 6px when a filter is set, on My trips and on Explore.
+- **The Grid and List switch on My trips now slides and replays the cards.** A pill glides behind the active button in 180ms, and the button text changes colour on the same clock. The card grid remounts when the layout changes, so the cards play their staggered entrance again. Before this, the pressed button changed colour and the cards snapped into place. With reduced motion set, both changes are instant. The Clear filters button now fades in and slides 6px when a filter is set, on My trips and on Explore. It fades out when the filters clear.
 
-- **A static test fails a toggle control that has no motion.** `tests/motion-state-change.test.ts` finds every group of buttons where one choice is pressed at a time. Each group needs a glider with a motion-token transition and a reduced-motion opt-out. The test also checks that the My trips card grid is keyed by its layout. The Trip map day filter has no glider yet and is listed as a known gap. The list can only get shorter.
+- **A card, row or button that leaves a list now fades out instead of vanishing.** This covers My trips cards that a filter or the Trash removes, and Trash rows that you restore or delete. It also covers Explore cards that a filter or the Saved view removes, saved-shelf rows that you forget, and the Explore Clear filters button. The item stays for 180ms, fades and sinks 6px. Then the cards that stay glide into the free slot. One hook, `usePresenceList`, does this for every list. A leaving item is inert, hidden from screen readers and ignores the pointer. Keyboard focus on a leaving item moves to the next item. With reduced motion set, or in a hidden tab, the item leaves at once. The empty message waits until the last item has gone. Explore no longer replays the entrance of the cards that stay when a filter changes. A new sort order still does.
 
-- **The motion check clicks the My trips layout switch.** `scripts/browser-motion-check.mjs` samples the cards and the glider once per frame across the click. It fails when the cards snap or the glider jumps. My trips needs a signed-in session, so the step reads a Playwright storage-state file from `MOTION_STORAGE_STATE`. Without that file it skips and says so. `MOTION_REQUIRE_SESSION=1` turns the skip into a failure.
+- **A static test fails a toggle control that has no motion.** `tests/motion-state-change.test.ts` finds every group of buttons where one choice is pressed at a time. Each group needs a glider with a motion-token transition and a reduced-motion opt-out. The test also checks that the My trips card grid is keyed by its layout. The Trip map day filter has no glider yet and is listed as a known gap. The list can only get shorter. The same file pins the list exit: its rule uses motion tokens, it has a reduced-motion opt-out, and every list that drops items uses the hook.
+
+- **The motion check clicks the My trips layout switch and removes Explore cards.** `scripts/browser-motion-check.mjs` samples the cards and the glider once per frame across the click. It fails when the cards snap or the glider jumps. A second step turns on the Explore Saved filter and samples each removed card. It fails when a card vanishes between two frames, or when it is not inert. With reduced motion set, it fails when a card plays an exit. That step needs no session. My trips needs a signed-in session, so the step reads a Playwright storage-state file from `MOTION_STORAGE_STATE`. Without that file it skips and says so. `MOTION_REQUIRE_SESSION=1` turns the skip into a failure.
 
 - **A browser check in CI fails a page block that appears between two frames.** `npm run check:motion` builds the app, serves it, opens four public routes and samples every block of the page root once per animation frame from before navigation. A block whose opacity and transform never change had no motion at all, so the run fails and names the block. The `motion` job runs beside `verify` in CI, and `npm run verify` still needs no browser.
 
@@ -61,15 +67,12 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
   `docs/adr/0002-mockup-palette-not-adopted.md` records the decision and what it costs. The
   mockup keeps its typography. Its page layout is adopted section by section through the
   roadmap's MR track. Its ten swatches never reach the design tokens.
-- **The trip list can now be read as a list, and the Up next card says how long until it leaves.**
+- **The trip list can now be read as a list, and the Up next card says how long until it starts.**
   Two additions to the same card. A labelled pair in the Other trips header switches between the
   grid and a one-row-per-trip list, where each cover collapses to a small thumbnail. The choice
   survives a reload through the same preferences store the per-day collapse uses, and the
-  buttons carry pressed states. The Up next card now shows
-  "Departs in 6 days", or "Departs today" and "Departs tomorrow" in words. The line disappears
-  the moment a trip leaves, and for a past or undated one, rather than counting down to nothing.
-  The count comes from the trip's own dates through the repository's single day-count helper, so
-  a daylight-saving edge cannot shift it.
+  buttons carry pressed states. The Up next card shows "Starts in 6 days", or "Starts tomorrow".
+  Once the trip is live, it shows its day number instead. A past or undated trip shows no countdown.
 - **The cover-photo prompt and the solo-traveller line were already there.** A roadmap row asked
   for both. Checked against the code rather than assumed: the prompt is one of the six next-step
   labels and only became reachable once the default compass emoji stopped counting as a cover,
@@ -209,9 +212,8 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
   The meter and the card's next-step line now share one definition of a planned day: a day that
   holds at least one usable stop that is not automatic. The Up next card names the measure: “3 of 5
   days have activities”. An anchored day asks you to “Plan day N” instead of reading as a finished trip.
-- **My Trips moves to the next day while the page stays open.** The page read the clock once and
-  kept that value. A tab left open overnight said “Departs tomorrow” for a trip that leaves today,
-  and the date filter was a day stale with it. `src/lib/dayClock.ts` holds one calendar-day clock.
+- **My Trips moves to the next day while the page stays open.** The countdown and the date filter
+  follow the calendar day, so a tab left open overnight shows the right countdown. `src/lib/dayClock.ts` holds one calendar-day clock.
   It wakes at local midnight. It also re-reads the day when the window regains focus, because a
   background tab throttles timers. One value feeds the countdown and the date filter, so the two
   cannot disagree. The unit is a day, so nothing polls and a focus on the same day renders nothing.

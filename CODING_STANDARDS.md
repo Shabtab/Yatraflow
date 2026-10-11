@@ -735,6 +735,16 @@ anywhere in this repo means the entry labelled `6b` below.
    missing-guard family, the shell-mangling rule for what counts as having read a line, and
    the contrast-claims rule for when verification means measurement.
 
+6ao. **Vite inlines any asset under 4 KB into the JavaScript as base64 (learned 2026-10-11).**
+   The 280 px vignette is 2.9 KB, so the default build put it in the bundle. `vite.config.ts`
+   now sets `build.assetsInlineLimit` to a function. The function returns `false` for paths
+   under `src/assets/art/` and `undefined` for every other file, which keeps Vite's default.
+   After an art change, check that the `.avif` files appear in `dist/assets/`, not in the JS.
+
+6ap. **On Windows, `convert` is the disk tool, not ImageMagick (learned 2026-10-11).**
+   `C:\WINDOWS\system32\convert` is not an image converter. Use `magick` for ImageMagick, or use
+   `sharp` through `scripts/build-art.mjs`. Never run `convert` in a shell on this machine.
+
 ## 2. Conventions (`AGENTS.md` §4)
 
 The store, maps and UI entries live in `docs/standards/` now (2026-10-05

@@ -17,6 +17,7 @@ import { TRAVEL_STYLES } from '../data/types'
 import { heroHeadline, heroNote, heroPostcards, heroStats, otherTripsEmptyKind, pickUpNext, whenBucket, type WhenKey } from '../lib/tripsPage'
 import { layoutFromPref, startOfLocalDay, TRIPS_LAYOUT_PREF } from '../lib/tripsCard'
 import { loadPref, savePref } from '../lib/uiPrefs'
+import { usePresenceList, presenceAttrs } from '../lib/usePresenceList'
 import { TripArtSprite } from '../components/trips/TripArt'
 import { TripsHero } from '../components/trips/TripsHero'
 import { FilterChip } from '../components/filters/FilterChip'
@@ -65,6 +66,9 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
   const headerTrashToggleRef = useRef<HTMLButtonElement>(null)
   const heroTrashToggleRef = useRef<HTMLButtonElement>(null)
   const viewChangedByUser = useRef(false)
+  // A restored or deleted trip leaves the Trash with a short exit. Focus that
+  // sat on its button moves to the Trash heading, because the row goes inert.
+  const { entries: trashEntries, exiting: trashExiting, attachList: attachTrash } = usePresenceList(trashed, t => t.id, { fallbackFocus: () => trashHeadingRef.current })
 
   // The Trash view is populated on demand from the owner-scoped RPC (the
   // restrictive RLS policy hides trashed trips from normal hydration).
@@ -167,6 +171,13 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
   const upNextTotals = upNext ? computeTotals(upNext) : null
   const otherTrips = upNext ? trips.filter(t => t.id !== upNext.id) : trips
   const otherEmptyKind = otherTripsEmptyKind({ matchCount: trips.length, otherCount: otherTrips.length, hasFilters })
+  // A trip that a filter or the Trash takes out of the list leaves with a short
+  // exit. The empty copy waits until the last card has gone.
+  const { entries: tripEntries, exiting: tripsExiting, attachList: attachGrid } = usePresenceList(
+    otherTrips, t => t.id,
+    // Focus on the last card that leaves goes to the catalog region.
+    { fallbackFocus: root => root.closest<HTMLElement>('.mt-catalog') },
+  )
   const upNextTitleId = useId()
   const otherTitleId = useId()
 
@@ -245,7 +256,7 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
       />
 
       {view === 'trash' && (
-        <div className="card" style={{ marginBottom: 18 }}>
+        <div className="card" style={{ marginBottom: 18 }} ref={attachTrash}>
           <div className="row-between">
             <h3 ref={trashHeadingRef} tabIndex={-1} style={{ margin: 0 }}>Trash {trashed.length > 0 && <span className="small muted">({trashed.length})</span>}</h3>
             <button className="btn btn-secondary" onClick={toggleTrash}>Back to my trips</button>
@@ -263,12 +274,12 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
                 body={emptyCopyFor(trashRead, 'trash', retryTrash).body}
                 action={<button className="btn btn-primary" onClick={retryTrash}>Try again</button>} />
             )
-          ) : trashed.length === 0 ? (
+          ) : trashed.length === 0 && !trashExiting ? (
             <EmptyState icon={<Trash2 size={38} aria-hidden />} title="Trash is empty"
               body="Trips you delete will show up here so you can restore them within 30 days." />
           ) : (
-            trashed.map(t => (
-              <div key={t.id} className="row-between trash-row">
+            trashEntries.map(({ item: t, key, exiting }) => (
+              <div key={key} className="row-between trash-row" {...presenceAttrs({ exiting })}>
                 <div>
                   <b>{t.name}</b>
                   <div className="small muted">{t.startLocation} → {t.destinations[t.destinations.length - 1] ?? t.startLocation} · {t.days.length} days</div>
@@ -399,7 +410,7 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
                 {/* "Clear filters" (review finding 4): the empty state's action said
                     "Clear filters" while this ghost button said "Clear" — the same
                     reset under two names, both once visible in one frame. */}
-                <button type="button" className="btn btn-quiet ex-clear" style={{ visibility: hasFilters ? 'visible' : 'hidden' }} onClick={clearFilters}>
+                <button type="button" className="btn btn-quiet ex-clear" style={{ visibility: hasFilters ? 'visible' : 'hidden', opacity: hasFilters ? 1 : 0 }} onClick={clearFilters}>
                   <X size={13} aria-hidden />Clear filters
                 </button>
               </div>
@@ -409,35 +420,36 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
 
             {/* 'no-trips' never reaches this list: the page-level branch above
                 shows the first-run copy for it, so it renders nothing here. */}
-            {otherEmptyKind === 'none-other' ? (
+            {otherEmptyKind === 'none-other' && !tripsExiting ? (
               <EmptyState
                 icon={<Compass size={38} aria-hidden />}
                 title="No other trips yet"
                 body="Your next trips will show up here."
               />
-            ) : otherEmptyKind === 'no-match' ? (
+            ) : otherEmptyKind === 'no-match' && !tripsExiting ? (
               <EmptyState
                 icon={<Compass size={38} aria-hidden />}
                 title="No trips match those filters"
                 body="Try a different search or clear the filters to see all your trips."
                 action={<button className="btn btn-secondary" onClick={clearFilters}>Clear filters</button>}
               />
-            ) : otherEmptyKind === 'none' ? (
+            ) : otherEmptyKind === 'none' || tripsExiting ? (
               // The grid is keyed by its layout, so a Grid | List switch remounts the cards
               // and they replay the staggered entrance (cardIn) instead of snapping.
-              <div key={layout} className={`mt-grid${layout === 'list' ? ' is-list' : ''}`}>
-                {otherTrips.map((t, i) => {
+              <div key={layout} ref={attachGrid} className={`mt-grid${layout === 'list' ? ' is-list' : ''}`}>
+                {tripEntries.map(({ item: t, key, exiting }, i) => {
                   const totals = computeTotals(t)
                   return (
                     <TripCard
-                      key={t.id}
+                      key={key}
                       trip={t}
                       today={today}
                       budget={<BudgetText totals={totals} />}
                       totalTravelMinutes={totals.totalTravelMinutes}
                       users={users}
                       meId={meId}
-                      enterIndex={i}
+                      enterIndex={exiting ? 0 : i}
+                      presence={presenceAttrs({ exiting })}
                       onDelete={setPendingDelete}
                     />
                   )

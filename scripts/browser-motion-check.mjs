@@ -23,6 +23,15 @@
 // it the step is skipped and says so; MOTION_REQUIRE_SESSION=1 turns that skip
 // into a failure for a job that does hold credentials.
 //
+// A third step covers REMOVAL, on the public Explore route. It turns the Saved
+// filter on, which takes every card out of the grid, and samples each removed
+// card once per frame. The card must stay mounted for an exit: it passes
+// through in-between opacity frames, wears data-presence="exit", is inert and
+// ignores the pointer. A card that vanishes between two frames fails. It then
+// repeats the click with prefers-reduced-motion on and needs the opposite result:
+// the card is gone at once and no exit is painted. The step skips with a note
+// when the catalog holds no card to remove.
+//
 // It runs in CI as its own job because it needs a browser. `npm run verify`
 // stays runnable on a machine with no Chrome.
 import { spawn } from 'node:child_process'
@@ -85,6 +94,40 @@ const SWITCH_SAMPLE = ({ clickSel, windowMs }) => new Promise((resolve) => {
     frames.push({ clicked, cards, glider: seg ? getComputedStyle(seg, '::before').left : '' })
     if (elapsed < windowMs) requestAnimationFrame(step)
     else resolve(frames)
+  }
+  requestAnimationFrame(step)
+})
+
+// Samples the Explore grid cards once per frame. The click lands after ~50ms.
+// A card is "removed" when it is in the first frame and not in the last one.
+const REMOVAL_SAMPLE = ({ clickSel, windowMs }) => new Promise((resolve) => {
+  const seen = new Map()
+  const start = performance.now()
+  let clicked = false
+  let lastIds = []
+  const step = () => {
+    const elapsed = performance.now() - start
+    if (!clicked && elapsed > 50) {
+      clicked = true
+      document.querySelector(clickSel)?.click()
+    }
+    const cards = [...document.querySelectorAll('.ex-grid > .ex-card')]
+    lastIds = cards.map((el) => el.dataset.id)
+    for (const el of cards) {
+      const cs = getComputedStyle(el)
+      const rec = seen.get(el.dataset.id) ?? { opacities: new Set(), exit: false, inert: false, hidden: false, pointer: 'auto', frames: 0 }
+      rec.opacities.add((+cs.opacity).toFixed(3))
+      rec.frames++
+      if (el.dataset.presence === 'exit') {
+        rec.exit = true
+        rec.inert = el.hasAttribute('inert')
+        rec.hidden = el.getAttribute('aria-hidden') === 'true'
+        rec.pointer = cs.pointerEvents
+      }
+      seen.set(el.dataset.id, rec)
+    }
+    if (elapsed < windowMs) requestAnimationFrame(step)
+    else resolve([...seen].map(([id, rec]) => ({ id, ...rec, opacities: rec.opacities.size, removed: !lastIds.includes(id) })))
   }
   requestAnimationFrame(step)
 })
@@ -211,6 +254,58 @@ async function checkLayoutSwitch(browser, storageState) {
   return bad
 }
 
+/** Take every card out of the Explore grid and check how it leaves. Returns the
+ *  number of failed checks. */
+async function checkListExit(browser) {
+  let bad = 0
+  for (const reducedMotion of ['no-preference', 'reduce']) {
+    const label = reducedMotion === 'reduce' ? 'reduced motion' : 'motion on'
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion })
+    const page = await ctx.newPage()
+    try {
+      await page.goto(`${BASE}/explore`, { waitUntil: 'domcontentloaded', timeout: 30000 })
+      await page.waitForSelector('.ex-chip-saved', { timeout: 20000 }).catch(() => {})
+      await page.waitForSelector('.ex-grid > .ex-card', { timeout: 15000 }).catch(() => {})
+      if ((await page.locator('.ex-grid > .ex-card').count()) < 1) {
+        console.log(`skip  /explore card exit (${label}) — the catalog holds no card in the grid, so there is nothing to remove`)
+        continue
+      }
+      // Let the card entrance end, so the sample sees the resting state first.
+      await page.waitForTimeout(1200)
+      const cards = await page.evaluate(REMOVAL_SAMPLE, { clickSel: '.ex-chip-saved', windowMs: 900 })
+      const removed = cards.filter((c) => c.removed)
+      if (removed.length === 0) {
+        bad++
+        console.log(`FAIL  /explore card exit (${label}) — the Saved filter left every card in the grid`)
+        continue
+      }
+      if (reducedMotion === 'reduce') {
+        const painted = removed.filter((c) => c.exit || c.opacities > 1)
+        if (painted.length === 0) {
+          console.log(`ok    /explore card exit (${label}) — ${removed.length} card(s) left at once, no exit painted`)
+        } else {
+          bad++
+          console.log(`FAIL  /explore card exit (${label}) — ${painted.length} card(s) played an exit; prefers-reduced-motion must remove them at once`)
+        }
+        continue
+      }
+      // Three or more opacity states: the rest state, the end state and a frame in between.
+      const snapped = removed.filter((c) => c.opacities <= 2)
+      const unsafe = removed.filter((c) => !(c.exit && c.inert && c.hidden && c.pointer === 'none'))
+      if (snapped.length === 0 && unsafe.length === 0) {
+        console.log(`ok    /explore card exit (${label}) — ${removed.length} card(s) faded out across ${Math.max(...removed.map((c) => c.opacities))} opacity states, inert and aria-hidden while they left`)
+      } else {
+        bad++
+        console.log(`FAIL  /explore card exit (${label}) — ${snapped.length}/${removed.length} card(s) vanished between two frames, ${unsafe.length} card(s) were not inert, aria-hidden and click-through while they left`)
+        console.log('        A card that leaves a list must stay mounted for its exit: see usePresenceList and the [data-presence="exit"] rule.')
+      }
+    } finally {
+      await ctx.close()
+    }
+  }
+  return bad
+}
+
 let browser
 let failures = 0
 let interactionFailures = 0
@@ -279,6 +374,8 @@ try {
     await ctx.close()
   }
 
+  interactionFailures += await checkListExit(browser)
+
   const storageState = process.env.MOTION_STORAGE_STATE
   if (storageState) {
     if (!existsSync(storageState)) fail(`MOTION_STORAGE_STATE points at ${storageState}, which does not exist.`)
@@ -295,7 +392,7 @@ try {
 }
 
 if (interactionFailures > 0) {
-  fail(`${interactionFailures} state-change interaction(s) did not move. A control that changes state must animate: slide its glider and replay the card entrance.`)
+  fail(`${interactionFailures} state-change interaction(s) did not move. A control that changes state must animate: slide its glider and replay the card entrance. A card that leaves a list must fade out.`)
 }
 if (failures > 0) {
   fail(`${failures} route(s) rendered motionless blocks. A page block must animate in: give the page root's children the shared \`.page-enter > *\` cascade.`)

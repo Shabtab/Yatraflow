@@ -10,6 +10,7 @@ import { nextStepRoute } from '../../lib/tripNextStep'
 import { routeLine, travelHoursText } from '../../lib/tripsCard'
 import { cardNextStep, rangeText, statusOf } from '../../lib/tripsPage'
 import type { Trip, User } from '../../data/types'
+import type { PresenceAttrs } from '../../lib/usePresenceList'
 import { Planners } from './Planners'
 import { TripCover } from './TripCover'
 import { TripFacts } from './TripFacts'
@@ -24,16 +25,18 @@ export interface TripCardProps {
   meId: string | null
   /** Position in the grid. It sets the entrance delay. */
   enterIndex: number
+  /** Worn by the list that plays this card's exit (usePresenceList). */
+  presence?: PresenceAttrs
   onDelete: (trip: Trip) => void
 }
 
-export function TripCard({ trip, today, budget, totalTravelMinutes, users, meId, enterIndex, onDelete }: TripCardProps) {
+export function TripCard({ trip, today, budget, totalTravelMinutes, users, meId, enterIndex, presence, onDelete }: TripCardProps) {
   const status = statusOf(trip, today)
   const step = cardNextStep(trip, today)
   const plannerCount = (trip.members ?? []).length
   const enterDelay: CSSProperties = { animationDelay: `calc(var(--stagger-step) * ${Math.min(enterIndex, 8)})` }
   return (
-    <article className="mt-card" data-status={status} style={enterDelay}>
+    <article className="mt-card" data-status={status} style={enterDelay} {...presence}>
       <TripCover trip={trip} status={status} />
       <div className="mt-card-main">
         <div className="mt-card-body">

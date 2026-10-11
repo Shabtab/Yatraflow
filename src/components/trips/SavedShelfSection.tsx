@@ -9,6 +9,7 @@ import type { Trip } from '../../data/types'
 import { appLink } from '../../lib/appLink'
 import { savedShelfFor, type ShelfRow } from '../../lib/savedShelf'
 import { loadSavedIds, saveSavedIds, flipSavedId } from '../../lib/uiPrefs'
+import { usePresenceList, presenceAttrs } from '../../lib/usePresenceList'
 
 export interface SavedShelfSectionProps {
   trips: Trip[]
@@ -32,15 +33,27 @@ export function SavedShelfSection({ trips }: SavedShelfSectionProps) {
     .map(trip => ({ trip, rows: savedShelfFor(trip, loadSavedIds(trip.id)) }))
     .filter(group => group.rows.length > 0)
 
-  const total = groups.reduce((n, group) => n + group.rows.length, 0)
-  if (total === 0) return null
+  // A row that is forgotten stays for one exit, then goes. The shelf holds one
+  // flat list of rows, and the groups below are rebuilt from it, so a group that
+  // lost its last row stays until that row has left.
+  const shelfRows = groups.flatMap(({ trip, rows }) => rows.map(row => ({ trip, row })))
+  const { entries: presenceEntries, attachList } = usePresenceList(shelfRows, entry => `${entry.trip.id}:${entry.row.id}`)
+
+  const total = shelfRows.length
+  if (presenceEntries.length === 0) return null
 
   // Each group's rows continue the count from the group before, so the stagger
-  // runs down the whole shelf rather than restarting in every trip.
-  const firstIndexOf = groups.reduce<number[]>((starts, group, i) => {
-    const previous = i === 0 ? 0 : starts[i - 1] + groups[i - 1].rows.length
-    return [...starts, previous]
-  }, [])
+  // runs down the whole shelf rather than restarting in every trip. A row that
+  // leaves has no delay, so its exit starts at once.
+  const shownGroups: { trip: Trip; rows: { row: ShelfRow; key: string; exiting: boolean; index: number }[] }[] = []
+  presenceEntries.forEach(({ item, key, exiting }, index) => {
+    let group = shownGroups.find(g => g.trip.id === item.trip.id)
+    if (!group) {
+      group = { trip: item.trip, rows: [] }
+      shownGroups.push(group)
+    }
+    group.rows.push({ row: item.row, key, exiting, index })
+  })
 
   function forget(tripId: string, id: string) {
     saveSavedIds(tripId, flipSavedId(loadSavedIds(tripId), id))
@@ -50,7 +63,7 @@ export function SavedShelfSection({ trips }: SavedShelfSectionProps) {
   }
 
   return (
-    <section className="mt-shelf" aria-labelledby={titleId}>
+    <section className="mt-shelf" aria-labelledby={titleId} ref={attachList}>
       <div className="mt-section-head">
         <h2 className="mt-section-title" id={titleId} ref={titleRef} tabIndex={-1}>
           Saved for later ({total})
@@ -61,14 +74,14 @@ export function SavedShelfSection({ trips }: SavedShelfSectionProps) {
       <p className="mt-shelf-hint">
         A saved day opens that whole day on the timeline. A saved experience opens the stop itself.
       </p>
-      {groups.map(({ trip, rows }, groupIndex) => (
+      {shownGroups.map(({ trip, rows }) => (
         <div key={trip.id} className="mt-shelf-group">
           <h3 className="mt-shelf-trip">
             <a className="mt-shelf-trip-link" {...appLink(`/trip/${trip.id}`)}>{trip.name}</a>
           </h3>
           <ul className="mt-shelf-list">
-            {rows.map((row: ShelfRow, rowIndex) => (
-              <li key={row.id} className="mt-shelf-item" style={enterDelay(firstIndexOf[groupIndex] + rowIndex)}>
+            {rows.map(({ row, key, exiting, index }) => (
+              <li key={key} className="mt-shelf-item" style={exiting ? undefined : enterDelay(index)} {...presenceAttrs({ exiting })}>
                 <div className="mt-shelf-row">
                   <a className="mt-shelf-link" {...appLink(row.route)}>
                     <span className="mt-shelf-kind">{row.kind === 'day' ? 'Day' : 'Stop'}</span>
