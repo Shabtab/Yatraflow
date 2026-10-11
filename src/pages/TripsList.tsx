@@ -5,7 +5,7 @@ import { InlineIcon } from '../components/icons'
 import { useTrips, useTrashedTrips, useUsers, useSessionUserId, useSliceReads, useTrashLoaded, useTrashFailed, tripsForUser, trashTrip, restoreTrashedTrip, restoreTrashedTripById, permanentlyDeleteTrip, fetchTrashedTrips, rereadTrips, addDemoTrips } from '../store/store'
 import { computeTotals, formatInrShort } from '../lib/engine'
 import { cap } from '../lib/labels'
-import { EmptyState, toast, undoToast, ConfirmDialog } from '../components/ui'
+import { toast, undoToast, ConfirmDialog } from '../components/ui'
 import { Select } from '../components/Select'
 import { loadDraft, draftIsWorthKeeping, draftAgeLabel } from '../lib/createDraft'
 import { readinessFromDraft } from '../lib/createReadiness'
@@ -26,6 +26,8 @@ import { UpNextCard } from '../components/trips/UpNextCard'
 import { SavedShelfSection } from '../components/trips/SavedShelfSection'
 import { TripCard } from '../components/trips/TripCard'
 import { ViewSwitch, type TripsLayout } from '../components/trips/ViewSwitch'
+import { SectionHead } from '../components/page/SectionHead'
+import { StateBlock } from '../components/page/StateBlock'
 
 type SortKey = 'recent' | 'name' | 'budget-asc' | 'budget-desc' | 'length-desc'
 
@@ -268,14 +270,14 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
             // The failed branch is checked first, and its Retry re-issues the
             // RPC rather than re-rendering the same empty bin.
             trashRead === 'reading' ? (
-              <div className="loading-block"><div className="spinner" />{emptyCopyFor(trashRead, 'trash', retryTrash).title}</div>
+              <StateBlock kind="loading" icon={<span className="spinner" aria-hidden="true" />} title={emptyCopyFor(trashRead, 'trash', retryTrash).title} />
             ) : (
-              <EmptyState icon={<Trash2 size={38} aria-hidden />} title={emptyCopyFor(trashRead, 'trash', retryTrash).title}
+              <StateBlock kind="failed" icon={<Trash2 size={38} aria-hidden />} title={emptyCopyFor(trashRead, 'trash', retryTrash).title}
                 body={emptyCopyFor(trashRead, 'trash', retryTrash).body}
-                action={<button className="btn btn-primary" onClick={retryTrash}>Try again</button>} />
+                actions={<button className="btn btn-primary" onClick={retryTrash}>Try again</button>} />
             )
           ) : trashed.length === 0 && !trashExiting ? (
-            <EmptyState icon={<Trash2 size={38} aria-hidden />} title="Trash is empty"
+            <StateBlock kind="empty" icon={<Trash2 size={38} aria-hidden />} title="Trash is empty"
               body="Trips you delete will show up here so you can restore them within 30 days." />
           ) : (
             trashEntries.map(({ item: t, key, exiting }) => (
@@ -314,21 +316,23 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
         // no error branch. The failed branch precedes loading precedes empty,
         // and its Retry re-issues the hydrate rather than re-rendering.
         tripsRead === 'reading' ? (
-          <div className="loading-block"><div className="spinner" />{emptyCopyFor(tripsRead, 'trips', retryTrips).title}</div>
+          <StateBlock kind="loading" icon={<span className="spinner" aria-hidden="true" />} title={emptyCopyFor(tripsRead, 'trips', retryTrips).title} />
         ) : (
-          <EmptyState
+          <StateBlock
+            kind="failed"
             icon={<Compass size={38} aria-hidden />}
             title={emptyCopyFor(tripsRead, 'trips', retryTrips).title}
             body={emptyCopyFor(tripsRead, 'trips', retryTrips).body}
-            action={<button className="btn btn-primary" onClick={retryTrips}>Try again</button>}
+            actions={<button className="btn btn-primary" onClick={retryTrips}>Try again</button>}
           />
         )
       ) : trips.length === 0 && !hasFilters ? (
-        <EmptyState
+        <StateBlock
+          kind="empty"
           icon={<Compass size={38} aria-hidden />}
           title="No trips yet"
           body="Start from scratch with dates and budget, or copy a public itinerary from Explore."
-          action={
+          actions={
             <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
               <button className="btn btn-secondary" onClick={() => onNavigate('/new')}>Plan your first trip</button>
               <button className="btn btn-secondary" onClick={addDemoTrips} title="Adds 3 sample trips — Kerala, Goa & Rajasthan — to your account"><InlineIcon icon={Rocket} size={15} gap={5} />Load demo trips</button>
@@ -340,11 +344,8 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
         <div className="mt-catalog">
           {upNext && upNextTotals && (
             <section aria-labelledby={upNextTitleId}>
-              <div className="mt-section-head">
-                <h2 className="mt-section-title" id={upNextTitleId}>
-                  Up next{upNextIsOutsideFilters && <span className="mt-kicker-note"> · outside your filters</span>}
-                </h2>
-              </div>
+              <SectionHead id={upNextTitleId}
+                title={<>Up next{upNextIsOutsideFilters && <span className="mt-kicker-note"> · outside your filters</span>}</>} />
               <UpNextCard
                 trip={upNext}
                 today={today}
@@ -360,13 +361,14 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
           <SavedShelfSection trips={mine} />
 
           <section aria-labelledby={otherTitleId}>
-            <div className="mt-section-head">
-              <h2 className="mt-section-title" id={otherTitleId}>{upNext ? 'Other trips' : 'All trips'} ({otherTrips.length})</h2>
-              <div className="mt-head-actions">
-                <button ref={headerTrashToggleRef} type="button" className="btn btn-quiet" aria-pressed={isTrashView} onClick={toggleTrash}><InlineIcon icon={Trash2} size={15} gap={5} />Trash</button>
-                <ViewSwitch layout={layout} onChange={pickLayout} />
-              </div>
-            </div>
+            <SectionHead id={otherTitleId}
+              title={`${upNext ? 'Other trips' : 'All trips'} (${otherTrips.length})`}
+              actions={(
+                <>
+                  <button ref={headerTrashToggleRef} type="button" className="btn btn-quiet" aria-pressed={isTrashView} onClick={toggleTrash}><InlineIcon icon={Trash2} size={15} gap={5} />Trash</button>
+                  <ViewSwitch layout={layout} onChange={pickLayout} />
+                </>
+              )} />
 
             {/* ---- Explore's filter bar: search, selects, then chips ---- */}
             <div className="ex-filterbar filterbar-host" role="search" aria-label="Filter your trips">
@@ -421,17 +423,19 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
             {/* 'no-trips' never reaches this list: the page-level branch above
                 shows the first-run copy for it, so it renders nothing here. */}
             {otherEmptyKind === 'none-other' && !tripsExiting ? (
-              <EmptyState
+              <StateBlock
+                kind="empty"
                 icon={<Compass size={38} aria-hidden />}
                 title="No other trips yet"
                 body="Your next trips will show up here."
               />
             ) : otherEmptyKind === 'no-match' && !tripsExiting ? (
-              <EmptyState
+              <StateBlock
+                kind="empty"
                 icon={<Compass size={38} aria-hidden />}
                 title="No trips match those filters"
                 body="Try a different search or clear the filters to see all your trips."
-                action={<button className="btn btn-secondary" onClick={clearFilters}>Clear filters</button>}
+                actions={<button className="btn btn-secondary" onClick={clearFilters}>Clear filters</button>}
               />
             ) : otherEmptyKind === 'none' || tripsExiting ? (
               // The grid is keyed by its layout, so a Grid | List switch remounts the cards

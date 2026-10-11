@@ -15,6 +15,7 @@
 import { useState } from 'react'
 import { CalendarDays, Share2 } from 'lucide-react'
 import { InlineIcon } from './icons'
+import { appLink } from '../lib/appLink'
 import { Modal, StatTile } from './ui'
 import { CoverThumb } from './CoverThumb'
 import { formatInr } from '../lib/engine'
@@ -92,7 +93,8 @@ export function UnlockReveal({ open, pub, trip, creator, amountPaidInr, entitlem
 
         <p className="unlock-reveal-receipt">
           {typeof amountPaidInr === 'number' ? <>Paid <b>{formatInr(amountPaidInr)}</b> · </> : null}
-          yours for good — find it any time under <b>My purchases</b>.
+          yours for good — find it any time under{' '}
+          <a className="unlock-reveal-link" {...appLink(`/purchases?new=${encodeURIComponent(pub.id)}`)}>My purchases</a>.
         </p>
 
         <div className="unlock-reveal-actions">
@@ -117,8 +119,8 @@ export function UnlockReveal({ open, pub, trip, creator, amountPaidInr, entitlem
           )}
         </div>
         <p className="hint-text unlock-reveal-hint">
-          Forking copies the whole plan into your own trips with today’s dates — you can rename it, re-time it and
-          take it with you offline.
+          A fork copies the whole plan into your own trips with the creator’s dates. You can rename it,
+          change the dates and take it with you offline.
         </p>
       </div>
     </Modal>

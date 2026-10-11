@@ -123,6 +123,9 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - **My trips shows a pinned Up next card for your live or soonest trip.** The card shows a countdown, Budget, Travel and Dates columns, the count of days that have activities, the next step and a delete button. The count hides when the trip is live, because the day count is the progress then. It stays pinned through sort and style filters. It hides while you search.
 
 ### Changed
+- **Profile and Admin look the same, with no visual changes.** Static styles now use named CSS classes. Values that depend on data or state stay inline. Admin's six 18px spacings stay inline under the spacing ruling.
+
+- **My purchases now matches Explore and My trips, with creator details on plans you hold.** The page has a serif title, a back link and cards with wide covers. Its summary keeps every caveat about unreadable totals, refunds and pending payments. Loading, failed reads and empty shelves stay separate states on Purchases and My trips. Held plans show the creator's avatar, your purchase date and a "Yours" seal. Tips and season chips appear only when the creator supplied them. Refunded, pending and off-sale plans keep plain cards. Update text identifies a re-publication without claiming what changed. The desktop header carries the note "Yours to keep." The unlock screen links to My purchases, where your new card shows one fading outline. A fork keeps the creator's dates, which you can change. Motion respects your device's reduced-motion setting.
 
 - **Overview, Share, sign-in and DMCA pages keep the same appearance.** Their static styles now use CSS classes. Their behavior stays the same.
 
