@@ -8937,3 +8937,33 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 @media (max-width: 640px) {
   .yf-state { padding: 32px 16px; }
 }
+
+/* ===== Page scope: yf-page ===== */
+/* A page with the yf-page class gets the catalog container width and the
+   catalog button skin. The rules copy the catalog rules above and list only
+   yf-page, so the catalog pages keep their own rules unchanged. No page carries
+   yf-page yet. */
+.container:is(.yf-page) {
+  max-width: 1240px;
+}
+
+/* Buttons on yf-page pages: the same skin as the catalog buttons. */
+:is(.yf-page) .btn:where(:not(.btn-sm, .modal *)) {
+  min-height: 44px; padding: 0 16px; border-radius: 12px; font-size: 15px; font-weight: 700; letter-spacing: -.005em;
+  transition: background-color var(--motion-fast) var(--ease-out), border-color var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out), box-shadow var(--motion-fast) var(--ease-out), transform var(--motion-fast) var(--ease-out);
+}
+:is(.yf-page) .btn:where(:not(.modal *)):active:not(:disabled) { transform: translateY(1px); }
+:is(.yf-page) .btn-primary:where(:not(.modal *)) { box-shadow: inset 0 1px 0 rgb(255 255 255 / .16), 0 10px 22px -12px color-mix(in srgb, var(--color-primary) 90%, transparent); }
+:is(.yf-page) .btn-secondary:where(:not(.modal *)) { background: var(--card); border-color: var(--ex-line-strong); color: var(--text); }
+:is(.yf-page) .btn-secondary:where(:not(.modal *)):hover:not(:disabled) { border-color: var(--teal-deep); color: var(--ink-teal); }
+:is(.yf-page) .btn-quiet:where(:not(.modal *)) { background: transparent; color: var(--text); }
+:is(.yf-page) .btn-quiet:where(:not(.modal *)):hover:not(:disabled) { background: var(--bg-soft); }
+/* A pressed toggle shows it: a soft teal fill and a ring. */
+:is(.yf-page) .btn-quiet[aria-pressed='true']:where(:not(.modal *)),
+:is(.yf-page) .btn-quiet[aria-pressed='true']:where(:not(.modal *)):hover:not(:disabled) {
+  background: var(--teal-soft); color: var(--ink-teal); box-shadow: inset 0 0 0 1px var(--teal-deep);
+}
+@media (prefers-reduced-motion: reduce) {
+  :is(.yf-page) .btn:where(:not(.modal *)) { transition: none; }
+  :is(.yf-page) .btn:where(:not(.modal *)):active:not(:disabled) { transform: none; }
+}
