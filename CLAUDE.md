@@ -12,6 +12,13 @@ only the routing rules for Claude sessions.
 | Reviewer | Sonnet, high effort | Review UI and complex work. |
 | Advisor | Opus | Advise on hard decisions only. Do not use Opus for labour. |
 
+## Lanes
+
+Cline and Codex no longer work on this repo. Haiku workers do all the labour. Sonnet
+orchestrates and reviews. Opus advises. Read "Cline" and "Codex" in the rulings as
+"a Haiku worker". The rulings that name their clones (R9, R10) do not apply. R11 still
+applies: one batch branch per worker group, no push until the user says so.
+
 ## Rules
 
 1. Give every worker disjoint files or its own worktree.
