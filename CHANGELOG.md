@@ -57,8 +57,6 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ### Fixed
 
-- **Joining a trip now needs its invite code.** The server reads the code and adds you as an editor. The app no longer writes the membership row itself. A link that carries only a trip ID no longer adds anyone. Trip previews and share snapshots no longer include the invite code. Share snapshots also no longer include the member list.
-
 - **Explore loads for logged-out visitors again.** A first visit without an account showed "Loading the catalog…" with no end, although the itineraries had loaded. The logged-out data load now reports the catalog as loaded or failed. A failed read now shows the error with a Retry button. The bug did not affect signed-in users.
 
 - **The copyright page enters with the shared cascade.** The page arrived without
@@ -150,6 +148,12 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - **A destination only matches a region as a whole word.** "Goalpara" no longer takes the Goa artwork.
 
 - **A signed-out visitor no longer stays on "Loading the catalog" on Explore.** The logged-out load records whether it read profiles and itineraries. A failed read now shows Retry.
+
+## [0.74.1] - 2026-10-12
+
+### Fixed
+
+- **Joining a trip now needs its invite code.** The server reads the code and adds you as an editor. The app no longer writes the membership row itself. A link that carries only a trip ID no longer adds anyone. Trip previews and share snapshots no longer include the invite code. Share snapshots also no longer include the member list.
 
 ## [0.74.0] - 2026-10-07
 
