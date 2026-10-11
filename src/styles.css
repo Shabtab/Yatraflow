@@ -8921,3 +8921,8 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
   .mt-hero-secondary > .btn { flex: 1 1 0; justify-content: center; padding: 0 10px; }
   .mt-hero-stats { margin-top: 12px; }
 }
+
+/* DMCA: static presentation extracted from DMCAPage.tsx. */
+.dmca-introduction { margin-top: 4px; }
+.dmca-report-requirements { padding-left: 18px; line-height: 1.9; margin: 8px 0; }
+.dmca-agent-contact { margin: 0; }
