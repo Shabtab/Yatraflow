@@ -46,6 +46,7 @@ Read these three files before you start consistency work:
 - [`docs/consistency/app-consistency-plan.md`](docs/consistency/app-consistency-plan.md): the plan, with pages P1 to P16.
 - The newest `docs/consistency/handoff-*.md`: the branch map and next steps from the last session.
 
+The Roles table in this file overrides every routing line in the plan.
 A ruling overrides the plan where they differ. Example: R14 limits the serif font to the
 page h1, which answers plan question Q1. Re-derive the open pull requests from `gh` and
 git. Do not rely on a status line in these files.
