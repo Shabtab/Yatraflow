@@ -36,7 +36,7 @@ function countTips(tips: unknown): number {
  *  BROWSER's timezone: a grant at 23:30 UTC was "yesterday" in IST and "today"
  *  in the US, so the same receipt carried two dates depending on where the buyer
  *  opened it. A purchase date is a fact about the account, not about the reader,
- *  and a money-adjacent date is the last one that should move under someone.
+ *  and a money-adjacent date must be the last one to move under someone.
  *  Day granularity is unchanged — only the timezone is pinned. */
 export function boughtOn(ms: number, readable: boolean): string {
   if (!readable) return 'date unknown'
