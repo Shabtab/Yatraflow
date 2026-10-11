@@ -14,21 +14,24 @@ export function stateBlockRole(kind: StateKind): 'status' | 'alert' | undefined 
   return undefined
 }
 
-export function StateBlock({ kind, art, icon, title, body, actions }: {
+export function StateBlock({ kind, art, icon, title, body, actions, titleLevel = 'h3' }: {
   kind: StateKind
   art?: ReactNode
   icon?: ReactNode
   title: string
   body?: string
   actions?: ReactNode
+  /** The heading level of the title. Use h2 on a page whose block sits right under the h1. */
+  titleLevel?: 'h2' | 'h3'
 }) {
   const role = stateBlockRole(kind)
   const isLoading = kind === 'loading'
+  const TitleTag = titleLevel
   return (
     <div className="yf-state" data-kind={kind} role={role} aria-live={isLoading ? 'polite' : undefined}>
       {art && <div className="yf-state-art">{art}</div>}
       {icon && <div className="yf-state-icon">{icon}</div>}
-      <h3 className="yf-state-title">{title}</h3>
+      <TitleTag className="yf-state-title">{title}</TitleTag>
       {body && <p className="yf-state-body">{body}</p>}
       {actions && <div className="yf-state-actions">{actions}</div>}
     </div>
