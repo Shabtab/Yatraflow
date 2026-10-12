@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { surfaceButtonType, surfaceIsInteractive } from '../src/components/page/Surface'
 
 const read = async (relativePath: string) =>
   (await readFile(join(process.cwd(), relativePath), 'utf8')).replace(/\r\n/g, '\n')
@@ -74,10 +75,10 @@ describe('PageHeader styles', () => {
 })
 
 describe('Surface component contract', () => {
-  it('exports a Surface with the four tags and the interactive flag', async () => {
+  it('exports a Surface with its tag type and the interactive flag', async () => {
     const source = await read(SURFACE)
     expect(source).toMatch(/export function Surface\(/)
-    expect(source).toMatch(/as\?: 'div' \| 'article' \| 'li' \| 'section'/)
+    expect(source).toMatch(/as\?: SurfaceTag/)
     expect(source).toMatch(/interactive\?: boolean/)
     expect(source).toContain("classNames.push('is-interactive')")
   })
@@ -97,6 +98,61 @@ describe('Surface component contract', () => {
     expect(block).toContain('.yf-surface.is-interactive:hover { transform: translateY(-2px); box-shadow: var(--shadow-card-hover); border-color: var(--line-strong); }')
     expect(block).not.toMatch(/\n\.yf-surface:hover/)
     expect(block).toMatch(/prefers-reduced-motion: reduce\) \{[\s\S]*transform: none/)
+    expect(block).not.toMatch(/\d+ms/)
+  })
+})
+
+describe('Surface root tags', () => {
+  it('names the button and details roots in the tag type', async () => {
+    const source = await read(SURFACE)
+    expect(source).toContain("export type SurfaceTag = 'div' | 'article' | 'li' | 'section' | 'button' | 'details'")
+    expect(source).toMatch(/as\?: SurfaceTag/)
+  })
+
+  it('sets type="button" on a button surface unless the caller gives a type', () => {
+    expect(surfaceButtonType('button')).toBe('button')
+    expect(surfaceButtonType('button', 'submit')).toBe('submit')
+    expect(surfaceButtonType('div')).toBeUndefined()
+    expect(surfaceButtonType('details', 'submit')).toBeUndefined()
+  })
+
+  it('lifts a button surface whether or not interactive is set', () => {
+    expect(surfaceIsInteractive('button', false)).toBe(true)
+    expect(surfaceIsInteractive('details', false)).toBe(false)
+    expect(surfaceIsInteractive('article', true)).toBe(true)
+  })
+
+  it('passes the type to the tag only for a button, and spreads the other props last', async () => {
+    const source = await read(SURFACE)
+    expect(source).toContain('const buttonType = surfaceButtonType(as, type)')
+    expect(source).toContain('{...(buttonType ? { type: buttonType } : {})}')
+    // The rest of the props spread after the type, so a caller's own attributes win.
+    expect(source.indexOf('{...rest}')).toBeGreaterThan(source.indexOf('{...(buttonType'))
+  })
+})
+
+describe('Surface root styles', () => {
+  const BLOCK_MARK = '/* ===== Shared page components: compact state block and surface roots ===== */'
+
+  it('rings a focused button surface with the shared ring, not a new recipe', async () => {
+    const css = await read(STYLES)
+    const block = css.slice(css.indexOf(BLOCK_MARK))
+    expect(css.indexOf(BLOCK_MARK)).toBeGreaterThan(-1)
+    expect(block).toContain('.yf-surface.is-interactive:focus-visible { outline: none; box-shadow: var(--ring); }')
+  })
+
+  it('presses on the fast clock and turns the press off under reduced motion', async () => {
+    const css = await read(STYLES)
+    const block = css.slice(css.indexOf(BLOCK_MARK))
+    expect(block).toContain('.yf-surface.is-interactive:active { transform: translateY(1px); transition-duration: var(--motion-fast); }')
+    expect(block).toMatch(/prefers-reduced-motion: reduce\) \{\s*\.yf-surface\.is-interactive:active \{ transform: none; transition: none; \}/)
+  })
+
+  it('declares the button reset with the card font and no raw duration', async () => {
+    const css = await read(STYLES)
+    const block = css.slice(css.indexOf(BLOCK_MARK)).replace(/\/\*[\s\S]*?\*\//g, '')
+    expect(block).toContain(':where(button.yf-surface) {')
+    expect(block).toContain('font: inherit; color: inherit;')
     expect(block).not.toMatch(/\d+ms/)
   })
 })

@@ -362,6 +362,12 @@ Add `yf-page` to the root of a page when you convert it. The page skin then appl
 
 **Segmented tabs (ruling R16).** `SegmentedTabs` is one component with two variants. Select a variant with its `semantics` prop. The tablist variant (workspace, auth, hub, admin) uses the glass `tabbar` and a teal glider. The toggle variant (Grid and List) uses `mt-seg` with an ink glider. `ViewSwitch` is its caller. The toggle must emit the active-state attribute that the glider reads.
 
+**Compact state block (ruling R22).** Use `size="compact"` on `StateBlock` inside a workspace tab or a card. The compact block has no dashed border and smaller padding. It keeps the roles and kinds of the full block. It has no entrance of its own, so its container gives the entrance. A whole page uses the full block.
+
+**Rich body.** The `body` prop takes a string or a ReactNode. Use a ReactNode only when the copy needs inline markup, such as a `<b>`. Keep the copy short.
+
+**Surface roots.** Set `as` to `button` for a card that is one whole action. A button surface lifts and presses like an interactive surface. The button gets `type="button"` unless you pass a `type`. Set `as` to `details` for a card that folds. Its children must set the `<summary>`.
+
 ## Do's and Don'ts
 
 ### Do:
