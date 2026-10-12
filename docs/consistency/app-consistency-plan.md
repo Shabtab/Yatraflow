@@ -110,10 +110,12 @@ Routes come from `src/App.tsx:296-385`. "Lines" is the page file only. The verdi
 ### 3.2 Explore (`/explore`) — reference
 
 - Public and signed-in. 412 lines + `components/explore/*`. Verdict: **OK**. Phase 0 only moves its parts into shared primitives.
+- To do (2026-10-12): restore the card hover to the catalog shadow (`.ex-trend-card`, and on My trips `.itin-card` and `.trip-card-hit`). The page-consistency baseline accepted the current hover at 8 on 2026-10-12.
 
 ### 3.3 My trips (`/trips`) — reference
 
 - Signed-in. 483 lines + `components/trips/*`. Verdict: **OK, small enhance** (the three gaps in section 2).
+- To do (2026-10-12): restore the card hover on `.itin-card` and `.trip-card-hit` to the catalog shadow. See 3.2.
 
 ### 3.4 Trip workspace header and tab bar (`/trip/:id`)
 
