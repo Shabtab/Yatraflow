@@ -10227,5 +10227,7 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 @media (prefers-reduced-motion: reduce) {
   .yf-surface.is-interactive:active { transform: none; transition: none; }
 }
-/* The sign-up confirmation note keeps the error line's gap above the submit button. */
-.auth-submit-notice { margin-bottom: 10px; }
+/* The sign-up confirmation note enters like the error line. Its gap is 8px because 10px is off the spacing ladder. */
+.auth-submit-notice { margin-bottom: 8px; animation: errIn var(--motion-med) var(--ease-out); }
+@media (prefers-reduced-motion: reduce) { .auth-submit-notice { animation: none; } }
+>

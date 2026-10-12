@@ -26,10 +26,9 @@ function nextRoute(): string {
 
 const AUTH_MODES = ['login', 'signup'] as const
 
-/** The copy store.signup returns when Supabase holds the new account until its
- *  email is confirmed. The store reports it as a failed result, so this page
- *  shows it as a notice instead. It must match the store's text exactly. The
- *  match is pinned in tests/auth-notice.test.ts. */
+/** The message shown after sign-up when the new account waits for its email
+ *  link. The store reports that state as a field, and this page owns the copy.
+ *  tests/auth-notice.test.ts pins the field. */
 const CONFIRM_EMAIL_COPY = 'Check your email to confirm your account, then log in.'
 
 export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
@@ -122,14 +121,9 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
         return
       }
       const r = await signup(name, email, password)
-      if (!r.ok) {
-        clearTimeout(failSafe)
-        // The store reports the confirmation as a failed result. Show it as a notice.
-        if (r.error === CONFIRM_EMAIL_COPY) setNotice(r.error)
-        else setError(r.error ?? 'Signup failed')
-        setSaving(false)
-        return
-      }
+      if (!r.ok) { clearTimeout(failSafe); setError(r.error ?? 'Signup failed'); setSaving(false); return }
+      // The account waits for its email link. That is a notice, not a failure.
+      if (r.needsConfirmation) { clearTimeout(failSafe); setNotice(CONFIRM_EMAIL_COPY); setSaving(false); return }
     }
     // Deliberately do NOT navigate here. The store hydrates asynchronously on
     // the auth event; navigating before `me` is set makes the router fall

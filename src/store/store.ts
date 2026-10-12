@@ -422,8 +422,10 @@ export async function login(email: string, password: string): Promise<{ ok: bool
   }
 }
 
-/** Email/password sign up via Supabase Auth. Profile row is created by the DB trigger. */
-export async function signup(name: string, email: string, password: string): Promise<{ ok: boolean; error?: string }> {
+/** Email/password sign up via Supabase Auth. Profile row is created by the DB trigger.
+ *  `needsConfirmation` is true when the account exists but has no session yet,
+ *  because Supabase waits for the email link. That is a success, not an error. */
+export async function signup(name: string, email: string, password: string): Promise<{ ok: boolean; error?: string; needsConfirmation?: boolean }> {
   const cleanEmail = email.trim().toLowerCase()
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) return { ok: false, error: 'Enter a valid email address.' }
   if (password.length < 8) return { ok: false, error: 'Password must be at least 8 characters.' }
@@ -434,10 +436,8 @@ export async function signup(name: string, email: string, password: string): Pro
       options: { data: { name: name.trim() } },
     })
     if (error) return { ok: false, error: describeAuthFailure(error, { configured: true }) }
-    // Supabase may require email confirmation; surface that gently.
-    if (data.session === null) {
-      return { ok: false, error: 'Check your email to confirm your account, then log in.' }
-    }
+    // Supabase may need email confirmation. The account exists, but there is no session yet.
+    if (data.session === null) return { ok: true, needsConfirmation: true }
     return { ok: true }
   } catch (e) {
     return { ok: false, error: describeAuthFailure(e, { configured: true }) }
