@@ -1103,17 +1103,41 @@ function dedupePublished(rows: PublishedItinerary[]): PublishedItinerary[] {
 
 // ---------------- Profile ----------------
 
-export function updateProfile(patchFields: Partial<User['profile']>): void {
+/** The line the Profile page shows when a profile save is refused or never answered. */
+export const PROFILE_NOT_SAVED = 'Profile not saved. Check your connection and try again.'
+
+/**
+ * Save profile fields and answer only after the server has ruled on the write.
+ * The cache takes the edit at once, so the page reads the new values. A refused
+ * or failed write puts the saved profile back, the same rollback that
+ * setMemberRole and removeMember use, so the app never shows a name the server
+ * did not keep. The caller's form keeps its draft either way.
+ */
+export async function updateProfile(patchFields: Partial<User['profile']>): Promise<{ ok: boolean; error?: string }> {
   const u = currentUser()
-  if (!u) return
+  if (!u) return { ok: false, error: PROFILE_NOT_SAVED }
   const idx = cache.users.findIndex(x => x.id === u.id)
-  if (idx >= 0) { cache.users[idx] = { ...cache.users[idx], profile: { ...cache.users[idx].profile, ...patchFields } }; commit() }
-  // Fire-and-forget persistence; surface failures without blocking the UI.
-  fire('profiles', supabase.from('profiles').update({
-    name: patchFields.name, home_city: patchFields.homeCity, languages: patchFields.languages,
-    travel_styles: patchFields.travelStyles, is_creator: patchFields.isCreator,
-    creator_bio: patchFields.creatorBio, social_links: patchFields.socialLinks,
-  }).eq('id', u.id))
+  const before = idx >= 0 ? cache.users[idx] : null
+  if (before) { cache.users[idx] = { ...before, profile: { ...before.profile, ...patchFields } }; commit() }
+  const rollBack = () => {
+    const i = cache.users.findIndex(x => x.id === u.id)
+    if (before && i >= 0) { cache.users[i] = before; commit() }
+  }
+  try {
+    const { error } = await supabase.from('profiles').update({
+      name: patchFields.name, home_city: patchFields.homeCity, languages: patchFields.languages,
+      travel_styles: patchFields.travelStyles, is_creator: patchFields.isCreator,
+      creator_bio: patchFields.creatorBio, social_links: patchFields.socialLinks,
+    }).eq('id', u.id)
+    if (!error) return { ok: true }
+    console.error('[yatraflow] profiles write failed', error)
+    rollBack()
+    return { ok: false, error: PROFILE_NOT_SAVED }
+  } catch (err) {
+    console.error('[yatraflow] profiles write rejected', err)
+    rollBack()
+    return { ok: false, error: PROFILE_NOT_SAVED }
+  }
 }
 
 // ---------------- Trips ----------------

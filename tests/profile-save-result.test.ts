@@ -1,0 +1,121 @@
+// ============ #704 — "Profile saved" only after the server accepts the write ============
+// updateProfile used to return nothing and fire its UPDATE without a result, so
+// the Profile page said "Profile saved" whatever the server answered. These
+// tests drive the real store against a Supabase mock whose profiles UPDATE
+// answers with the outcome each test sets, then pin the Profile page to that
+// result.
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { readFileSync } from 'node:fs'
+
+const { state } = vi.hoisted(() => ({
+  state: {
+    updates: [] as Array<{ payload: unknown; eq: Record<string, unknown> }>,
+    refuse: null as null | { message: string },
+    reject: false,
+  },
+}))
+
+vi.mock('../src/lib/supabase', () => {
+  const makeBuilder = (table: string) => {
+    let method: string | undefined
+    let payload: unknown
+    const eqs: Record<string, unknown> = {}
+    const builder: Record<string, unknown> = {}
+    const chain = (m: string, p?: unknown) => { method = m; payload = p; return builder }
+    builder.update = (p: unknown) => chain('update', p)
+    builder.insert = (p: unknown) => chain('insert', p)
+    builder.delete = () => chain('delete')
+    builder.select = () => builder
+    builder.eq = (col: string, val: unknown) => { eqs[col] = val; return builder }
+    builder.in = () => builder
+    builder.order = () => builder
+    builder.limit = () => builder
+    builder.maybeSingle = () => builder
+    builder.single = () => builder
+    builder.then = (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) => {
+      if (method === 'update' && table === 'profiles') {
+        state.updates.push({ payload, eq: { ...eqs } })
+        if (state.reject) {
+          state.reject = false
+          return Promise.reject(new Error('network down')).then(res, rej)
+        }
+        return Promise.resolve({ data: null, error: state.refuse }).then(res, rej)
+      }
+      return Promise.resolve({ data: null, error: null }).then(res, rej)
+    }
+    return builder
+  }
+  return { isSupabaseConfigured: false, supabase: { from: (t: string) => makeBuilder(t) } }
+})
+
+import { getSnapshot, updateProfile, PROFILE_NOT_SAVED } from '../src/store/store'
+
+const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8').replace(/\r\n/g, '\n')
+
+const savedName = () => getSnapshot().users.find(u => u.id === 'amelia')?.profile.name
+
+beforeEach(() => {
+  const db = getSnapshot()
+  db.users = [{
+    id: 'amelia', email: 'amelia@example.test', createdAt: 1,
+    profile: { name: 'Amelia', homeCity: 'Kochi', languages: ['en'], travelStyles: [], isCreator: false },
+  }]
+  db.sessionUserId = 'amelia'
+  state.updates.length = 0
+  state.refuse = null
+  state.reject = false
+})
+
+describe('#704 — updateProfile answers with the server verdict', () => {
+  it('answers ok once the server accepts the write', async () => {
+    const r = await updateProfile({ name: 'Amelia R' })
+    expect(r).toEqual({ ok: true })
+    expect(state.updates).toHaveLength(1)
+    expect(state.updates[0].eq).toEqual({ id: 'amelia' })
+    expect(state.updates[0].payload).toMatchObject({ name: 'Amelia R' })
+    expect(savedName()).toBe('Amelia R')
+  })
+
+  it('answers not saved and restores the saved name when the server refuses', async () => {
+    state.refuse = { message: 'new row violates row-level security policy' }
+    const r = await updateProfile({ name: 'Amelia R' })
+    expect(r).toEqual({ ok: false, error: PROFILE_NOT_SAVED })
+    expect(savedName()).toBe('Amelia')
+  })
+
+  it('treats a request that never answers as not saved and restores the name', async () => {
+    state.reject = true
+    const r = await updateProfile({ name: 'Amelia R' })
+    expect(r).toEqual({ ok: false, error: PROFILE_NOT_SAVED })
+    expect(savedName()).toBe('Amelia')
+  })
+
+  it('answers not saved without a write when nobody is signed in', async () => {
+    getSnapshot().sessionUserId = null
+    const r = await updateProfile({ name: 'Nobody' })
+    expect(r).toEqual({ ok: false, error: PROFILE_NOT_SAVED })
+    expect(state.updates).toHaveLength(0)
+  })
+})
+
+describe('#704 — the Profile page says "saved" only on success', () => {
+  const src = read('../src/pages/Profile.tsx')
+
+  it('waits for the write before it says "Profile saved"', () => {
+    expect(src).toMatch(/const r = await updateProfile\(\{/)
+    expect(src).toMatch(/if \(r\.ok\) \{ toast\('Profile saved'\); return \}/)
+  })
+
+  it('disables the save button while the write is in flight', () => {
+    expect(src).toMatch(/<button className="btn btn-primary" disabled=\{saving\} onClick=\{async \(\) => \{/)
+    expect(src).toMatch(/setSaving\(true\)/)
+    expect(src).toMatch(/setSaving\(false\)/)
+  })
+
+  it('shows a refused save beside the button and keeps the typed values', () => {
+    expect(src).toMatch(/setSaveErr\(r\.error \?\? PROFILE_NOT_SAVED\)/)
+    expect(src).toMatch(/\{saveErr && <p className="err-text" role="alert">\{saveErr\}<\/p>\}/)
+    // The draft is never reseeded from the cache on a failed save.
+    expect(src).not.toMatch(/setF\(formFrom/)
+  })
+})
