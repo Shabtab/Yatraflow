@@ -266,7 +266,7 @@ function sameSavedValue(a: unknown, b: unknown): boolean {
 }
 
 /** #704: the line a refused settings save shows. The edit stays in the cache and the durable queue, and the queue retries it. */
-const TRIP_SETTINGS_NOT_SAVED = 'Settings not saved. Your changes stay on this device and retry automatically.'
+const TRIP_SETTINGS_NOT_SAVED = 'Settings not saved. They stay here, and the app will retry.'
 
 export function TripSettingsForm({ trip, editable, onOpenDay }: {
   trip: Trip
@@ -276,7 +276,13 @@ export function TripSettingsForm({ trip, editable, onOpenDay }: {
    *  blocking days as plain text when no workspace is wired up. */
   onOpenDay?: (dayIndex: number) => void
 }) {
-  const [f, setF] = useState(() => formFromTrip(trip))
+  /** #704: the last write the server did not keep. Shown beside the Save button; the draft stays. */
+  const [writeErr, setWriteErr] = useState<string | null>(null)
+  /** #704: true from the Save click until the server answers. Save stays disabled meanwhile. */
+  const [savingSettings, setSavingSettings] = useState(false)
+  const [f, setFState] = useState(() => formFromTrip(trip))
+  /** Any edit to the draft clears a refusal, because the refusal described the draft before the edit (#704). */
+  const setF = (next: Parameters<typeof setFState>[0]) => { setWriteErr(null); setFState(next) }
   /** #414: when the trip row moves under the open draft (a crew member saved
    *  while this form was open), the banner offers keep-mine / take-theirs.
    *  `openedAtRef` is the updatedAt the draft was born against; our OWN save
@@ -295,18 +301,18 @@ export function TripSettingsForm({ trip, editable, onOpenDay }: {
     const target = Math.round((e.getTime() - s.getTime()) / 86400000) + 1
     return target - trip.days.length
   })()
-  const [startPin, setStartPin] = useState<StartPin | null>(
+  const [startPin, setStartPinState] = useState<StartPin | null>(
     trip.startLocationCoords ? { coords: trip.startLocationCoords, label: trip.startLocation } : null,
   )
+  const setStartPin = (next: Parameters<typeof setStartPinState>[0]) => { setWriteErr(null); setStartPinState(next) }
   /** #410: soft notice under the start field — the pin is off, and why. */
   const [startNotice, setStartNotice] = useState('')
-  /** #704: the last write the server did not keep. Shown beside the Save button; the draft stays. */
-  const [writeErr, setWriteErr] = useState<string | null>(null)
   /** #411: the route tail as ONE array of {name, lat?, lng?} pairs — the
    *  form's single source of truth. The row's parallel arrays exist only at
    *  the boundary (zip on open, split on save), so a rename or a remove can
    *  no longer slide names out from under their pins. */
-  const [dests, setDests] = useState<DestPair[]>(() => zipDests(trip.destinations, trip.destinationCoords))
+  const [dests, setDestsState] = useState<DestPair[]>(() => zipDests(trip.destinations, trip.destinationCoords))
+  const setDests = (next: Parameters<typeof setDestsState>[0]) => { setWriteErr(null); setDestsState(next) }
   const [destInput, setDestInput] = useState('')
   /** #411: rename-in-place. The chip edits its own name; coords and position
    *  are untouched by construction (renameDest rebuilds nothing). */
@@ -927,7 +933,7 @@ export function TripSettingsForm({ trip, editable, onOpenDay }: {
           </span>
         )}
         {writeErr && <span className="err-text" role="alert">{writeErr}</span>}
-        <button className="btn btn-primary" disabled={!canSave}
+        <button className="btn btn-primary" disabled={!canSave || savingSettings}
           title={canSave ? undefined : dry.ok ? 'No changes' : dry.reason} onClick={() => {
           // #408: the Preview and this button run the SAME dry run. A refusal
           // is already rendered inline (and in the receipt) — clicking Save on
@@ -941,12 +947,17 @@ export function TripSettingsForm({ trip, editable, onOpenDay }: {
             ownSaveRef.current = true
             // #704: "Trip settings updated" waits for the server. The cache
             // already holds the edit, so the page reads the saved values meanwhile.
-            void tripWriteVerdict(trip.id)?.then(saved => {
-              if (saved) toast('Trip settings updated')
-              else setWriteErr(TRIP_SETTINGS_NOT_SAVED)
-            })
+            const verdict = tripWriteVerdict(trip.id)
+            if (verdict) {
+              setSavingSettings(true)
+              void verdict.then(saved => {
+                setSavingSettings(false)
+                if (saved) toast('Trip settings updated')
+                else setWriteErr(TRIP_SETTINGS_NOT_SAVED)
+              })
+            }
           }
-        }}>Save settings</button>
+        }}>{savingSettings ? 'Saving…' : 'Save settings'}</button>
       </StickyFormBar>
     </div>
   )

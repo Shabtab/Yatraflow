@@ -181,7 +181,8 @@ describe('#704 — the settings form says "updated" only on a true verdict', () 
 
   it('reads the verdict right after the cache write, and announces success only when it is true', () => {
     expect(src).toMatch(/if \(updateTrip\(trip\.id, dry\.patch\)\) \{/)
-    expect(src).toMatch(/void tripWriteVerdict\(trip\.id\)\?\.then\(saved => \{/)
+    expect(src).toMatch(/const verdict = tripWriteVerdict\(trip\.id\)/)
+    expect(src).toMatch(/void verdict\.then\(saved => \{/)
     expect(src).toMatch(/if \(saved\) toast\('Trip settings updated'\)/)
     expect(src.indexOf("toast('Trip settings updated')")).toBeGreaterThan(src.indexOf('tripWriteVerdict(trip.id)'))
   })
@@ -190,5 +191,23 @@ describe('#704 — the settings form says "updated" only on a true verdict', () 
     expect(src).toMatch(/const \[writeErr, setWriteErr\] = useState<string \| null>\(null\)/)
     expect(src).toMatch(/else setWriteErr\(TRIP_SETTINGS_NOT_SAVED\)/)
     expect(src).toMatch(/\{writeErr && <span className="err-text" role="alert">\{writeErr\}<\/span>\}/)
+  })
+
+  it('disables Save and reads Saving… until the verdict settles', () => {
+    expect(src).toMatch(/const \[savingSettings, setSavingSettings\] = useState\(false\)/)
+    expect(src).toMatch(/setSavingSettings\(true\)/)
+    expect(src).toMatch(/setSavingSettings\(false\)/)
+    expect(src).toMatch(/disabled=\{!canSave \|\| savingSettings\}/)
+    expect(src).toContain("{savingSettings ? 'Saving…' : 'Save settings'}")
+  })
+
+  it('every draft setter clears a refused save before it writes, so the next edit clears the refusal', () => {
+    expect(src).toMatch(/const setF = \(next: Parameters<typeof setFState>\[0\]\) => \{ setWriteErr\(null\); setFState\(next\) \}/)
+    expect(src).toMatch(/const setStartPin = \(next: Parameters<typeof setStartPinState>\[0\]\) => \{ setWriteErr\(null\); setStartPinState\(next\) \}/)
+    expect(src).toMatch(/const setDests = \(next: Parameters<typeof setDestsState>\[0\]\) => \{ setWriteErr\(null\); setDestsState\(next\) \}/)
+  })
+
+  it('a refused save says the settings stay here and the app will retry', () => {
+    expect(src).toContain("const TRIP_SETTINGS_NOT_SAVED = 'Settings not saved. They stay here, and the app will retry.'")
   })
 })
