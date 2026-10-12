@@ -13,7 +13,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
 import ts from 'typescript'
 
-const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
+const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
 
 const srcRoot = new URL('../src/', import.meta.url)
 const tsxFiles = readdirSync(srcRoot, { recursive: true })
@@ -101,7 +101,17 @@ function segmentedGroups(): { file: string; cls: string }[] {
   return found
 }
 
-const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+function gliderRules(source: string, cls: string): { body: string; stateful: boolean }[] {
+  const rules: { body: string; stateful: boolean }[] = []
+  for (const match of source.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const selectors = match[1].replace(/\/\*[\s\S]*?\*\//g, '').split(',')
+    for (const selector of selectors) {
+      const glider = selector.trim().match(/^\.([\w-]+)(\[[^\]]*\])?::(?:before|after)$/)
+      if (glider?.[1] === cls) rules.push({ body: match[2], stateful: glider[2] !== undefined })
+    }
+  }
+  return rules
+}
 
 /** Segmented controls found outside the Explore and My trips pages that still
  *  have no glider. This is a ratchet: it may only shrink. When one gets a glider,
@@ -113,11 +123,12 @@ const KNOWN_WITHOUT_GLIDER: Record<string, string> = {
 describe('a control that changes state carries motion (AGENTS §2.10)', () => {
   const allGroups = segmentedGroups()
   const groups = allGroups.filter((g) => !(g.cls in KNOWN_WITHOUT_GLIDER))
+  const activeMotionCss = reducedMotionBlocks().reduce((source, block) => source.replace(block, ''), css)
 
   it('keeps the known-gap list honest', () => {
     for (const cls of Object.keys(KNOWN_WITHOUT_GLIDER)) {
       expect(allGroups.map((g) => g.cls), `.${cls} is no longer a segmented control: remove it from KNOWN_WITHOUT_GLIDER`).toContain(cls)
-      const hasGlider = new RegExp(`${escapeRe('.' + cls)}[^{,]*::(?:before|after)\s*\{`).test(css)
+      const hasGlider = gliderRules(css, cls).length > 0
       expect(hasGlider, `.${cls} now has a glider rule: remove it from KNOWN_WITHOUT_GLIDER so the full guard applies`).toBe(false)
     }
   })
@@ -129,13 +140,10 @@ describe('a control that changes state carries motion (AGENTS §2.10)', () => {
   })
 
   for (const { file, cls } of groups) {
-    const base = escapeRe(`.${cls}`)
-
     it(`${cls} (${file}) slides a glider with motion tokens`, () => {
       // A rule on the group's ::before or ::after (the glider) that moves it with
       // a duration token and an easing token, never a raw ms value.
-      const gliderRule = new RegExp(`${base}(?:\\[[^\\]]*\\])?::(?:before|after)\\s*\\{([^}]*)\\}`, 'g')
-      const transitions = [...css.matchAll(gliderRule)].map((m) => m[1]).filter((body) => /transition\s*:/.test(body))
+      const transitions = gliderRules(activeMotionCss, cls).map((rule) => rule.body).filter((body) => /transition\s*:/.test(body))
       expect(transitions.length, `.${cls} has no glider rule with a transition`).toBeGreaterThan(0)
       for (const body of transitions) {
         const transition = body.match(/transition\s*:([^;]*);/)?.[1] ?? ''
@@ -145,13 +153,13 @@ describe('a control that changes state carries motion (AGENTS §2.10)', () => {
       }
       // The glider must have somewhere to go: a rule that moves it for the other
       // choice (a data attribute on the group).
-      const movesGlider = new RegExp(`${base}\\[[^\\]]+\\]::(?:before|after)\\s*\\{[^}]*(left|transform)\\s*:`)
-      expect(css, `.${cls} glider never moves`).toMatch(movesGlider)
+      const movesGlider = gliderRules(activeMotionCss, cls).some((rule) => rule.stateful && /(left|transform)\s*:/.test(rule.body))
+      expect(movesGlider, `.${cls} glider never moves`).toBe(true)
     })
 
     it(`${cls} (${file}) turns the glider off under prefers-reduced-motion`, () => {
       const optedOut = reducedMotionBlocks().some((block) =>
-        new RegExp(`${base}::(?:before|after)[^{]*\\{[^}]*transition\\s*:\\s*none`).test(block))
+        gliderRules(block, cls).some((rule) => !rule.stateful && /transition\s*:\s*none/.test(rule.body)))
       expect(optedOut, `.${cls}::before has no transition: none in a reduced-motion block`).toBe(true)
     })
   }

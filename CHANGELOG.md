@@ -17,7 +17,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [0.75.0] - 2026-10-12
 
-This release makes the trip pages easier to read and act on. Every trip card names its next step, and the Timeline lets you save days and stops. Pages enter with motion, and a failed read now says so instead of looking empty.
+This release makes the trip pages easier to read and act on. Every trip card names its next step, and the Timeline lets you save days and stops. Pages enter with motion. Group input and map panels show failed reads with a retry action.
 
 ### Added
 
@@ -114,6 +114,8 @@ This release makes the trip pages easier to read and act on. Every trip card nam
 - **My trips filters show a count on each style chip, and labelled When and Sort menus.** Each style chip carries a count, so a short list still says why it is short. The When and Sort menus are labelled.
 
 ### Fixed
+
+- **Grid and motion checks use fixed regex patterns.** The checks still enforce column counts, glider movement, motion tokens, and reduced-motion rules.
 
 - **Group input and the Map tab now say when a read failed, and keep what did load.** Group input shows a failed message with a Try again button when nothing loaded. When cards did load, it keeps them and adds a short note with Try again.
   A pending read with nothing loaded shows a loading line. The activity feed keeps its rows the same way. It shows a failed line when it has no rows. It shows a short empty line when the feed loaded with no entries.
