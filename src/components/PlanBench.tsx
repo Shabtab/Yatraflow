@@ -18,6 +18,7 @@ import { formatInr, MODE_SPEED, MODE_COST_PER_KM } from '../lib/engine'
 import { InlineIcon, modeIcon } from './icons'
 import { nativeCopyText } from '../lib/native'
 import { cap } from '../lib/labels'
+import { appLink } from '../lib/appLink'
 import { navigate } from '../lib/router'
 import {
   BENCH_MODES, BENCH_DEFAULTS, BENCH_PRESETS, STAY_STYLES,
@@ -529,7 +530,7 @@ export function PlanBench() {
             <button type="button" className="btn btn-primary btn-lg bench-cta" onClick={handleCta}>
               Turn these numbers into a real trip →
             </button>
-            <a className="bench-alt-link" href="#/explore">or browse ready itineraries →</a>
+            <a className="bench-alt-link" {...appLink('/explore')}>or browse ready itineraries →</a>
           </div>
           <div className="bench-receipt-actions">
             <button type="button" className={`chip chip-outline${copied ? ' chip-copied' : ''}`} onClick={copyBill}>

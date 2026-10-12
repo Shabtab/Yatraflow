@@ -944,7 +944,7 @@ process.
   app routes by path (`/trips`). A signed-out visit to a signed-in route keeps
   its URL and shows the landing page in place. A check that compares URLs
   reports success on a wrong page. Compare the page content, such as the h1.
-  `AGENTS.md` still says "hash routing". Treat that line as stale.
+  `AGENTS.md` still says "hash routing". Treat that line as stale. Link to a page with `appLink('/path')`, never with a `#/` anchor. `tests/app-link.test.ts` fails when a source file does.
 
 - **You must parse CSS time units before you use motion tokens in JavaScript.** Production CSS can change `180ms` to `.18s`. Convert seconds to milliseconds before you start timers or browser animations.
 
