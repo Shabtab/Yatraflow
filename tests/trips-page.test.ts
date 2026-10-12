@@ -1,6 +1,6 @@
 // ============ My trips page — pure logic ============
 import { describe, expect, it } from 'vitest'
-import { countdownText, heroHeadline, heroNote, heroPostcards, heroStats, nextStep, otherTripsEmptyKind, pickUpNext, planning, rangeText, regionFor, statusOf, whenBucket, type HeroTrip } from '../src/lib/tripsPage'
+import { cardNextStep, countdownText, heroHeadline, heroNote, heroPostcards, heroStats, otherTripsEmptyKind, pickUpNext, planning, rangeText, regionFor, statusOf, whenBucket, type HeroTrip } from '../src/lib/tripsPage'
 import { routeLine } from '../src/lib/tripsCard'
 import type { ItineraryDay, StopStatus } from '../src/data/types'
 
@@ -172,26 +172,34 @@ describe('planning', () => {
   it('handles a trip with no days', () => {
     expect(planning({ days: [] })).toEqual({ planned: 0, total: 0 })
   })
+  it('does not count a day that holds only a route anchor (#647)', () => {
+    const anchorOnly = { id: 'a', index: 0, stops: [{ title: 'Origin', status: 'confirmed', auto: true }] }
+    const withLunch = day(['Lunch', 'confirmed'])
+    expect(planning({ days: [anchorOnly, withLunch] as unknown as ItineraryDay[] })).toEqual({ planned: 1, total: 2 })
+  })
 })
 
-describe('nextStep', () => {
-  const days = [
-    day(['Early', 'needs-booking']),
-    day(['Fine', 'confirmed']),
-    day(['Boat safari', 'needs-booking'], ['Other', 'needs-booking']),
-  ]
-  it('skips days that are already past', () => {
-    expect(nextStep(trip('2026-10-09', '2026-10-11', days), TODAY)).toEqual({ day: 3, title: 'Boat safari' })
+describe('cardNextStep', () => {
+  // Indexed days: nextTripStep reads `index`, and the `day()` helper leaves it at 0.
+  const indexed = (...days: ItineraryDay[]) => days.map((d, index) => ({ ...d, index }))
+  const booking = indexed(day(['Early', 'needs-booking']), day(['Fine', 'confirmed']))
+  it('shows no step for a past trip, even one with a booking left', () => {
+    expect(cardNextStep(trip('2026-10-05', '2026-10-09', booking) as never, TODAY)).toBeNull()
   })
-  it('starts at day 1 for a trip that has not started', () => {
-    expect(nextStep(trip('2026-10-20', '2026-10-22', days), TODAY)).toEqual({ day: 1, title: 'Early' })
+  it('shows the step nextTripStep returns for a trip still ahead', () => {
+    expect(cardNextStep(trip('2026-10-20', '2026-10-22', booking) as never, TODAY))
+      .toEqual({ kind: 'book-stop', label: 'Book Early', dayIndex: 0, stopId: undefined })
   })
-  it('starts at day 1 when the start date is invalid', () => {
-    expect(nextStep(trip('', '', days), TODAY)).toEqual({ day: 1, title: 'Early' })
+  it('asks for dates on a draft', () => {
+    expect(cardNextStep(trip('', '', []) as never, TODAY)).toEqual({ kind: 'add-dates', label: 'Set your travel dates' })
   })
-  it('returns null when nothing needs booking from today on', () => {
-    expect(nextStep(trip('2026-10-05', '2026-10-12', days), TODAY)).toBeNull()
-    expect(nextStep(trip('2026-10-10', '2026-10-12', []), TODAY)).toBeNull()
+  it('offers to plan the first day of a dated trip with no days', () => {
+    expect(cardNextStep(trip('2026-10-20', '2026-10-22', []) as never, TODAY)).toEqual({ kind: 'plan-day', label: 'Plan your first day' })
+  })
+  it('reports a finished trip as done only while it is still ahead', () => {
+    const finished = { ...trip('2026-10-20', '2026-10-22', indexed(day(['Beach', 'confirmed']))), coverImageUrl: 'https://example.test/c.jpg' }
+    expect(cardNextStep(finished as never, TODAY)).toEqual({ kind: 'done', label: 'Ready to travel' })
+    expect(cardNextStep({ ...finished, startDate: '2026-10-01', endDate: '2026-10-05' } as never, TODAY)).toBeNull()
   })
 })
 

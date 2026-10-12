@@ -12,48 +12,32 @@
 //   * Every price shown is the entitlement's own snapshot, never the
 //     publication's price today — a creator raising their price does not
 //     retroactively change what you paid.
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { InlineIcon } from '../components/icons'
-import { ArrowLeft, Share2, ShoppingBag } from 'lucide-react'
+import { BookmarkCheck, Share2, ShoppingBag } from 'lucide-react'
 import { usePublished, useUsers, useSessionUserId, useTrips } from '../store/store'
 import { fetchMyOrders, fetchMyPurchases } from '../lib/unlock'
-import { buildPurchaseShelf, purchaseShareable, findBuyerCopy } from '../lib/purchases'
+import {
+  boughtOn, buildPurchaseShelf, findBuyerCopy, isKeptRow, keepsakeChips, keepsakeLine, purchaseShareable,
+  republishedLine,
+} from '../lib/purchases'
+import { currentQuery, replaceRoute } from '../lib/router'
 import { sharePurchase } from '../lib/purchaseShare'
 import { forkPublication } from '../lib/forkPub'
 import { CoverThumb } from '../components/CoverThumb'
-import { Chip, EmptyState, toast } from '../components/ui'
+import { Avatar, Chip, toast } from '../components/ui'
+import { PageHeader } from '../components/page/PageHeader'
+import { StateBlock } from '../components/page/StateBlock'
+import { Surface } from '../components/page/Surface'
 import { formatInr } from '../lib/engine'
 import type { Entitlement, PurchaseOrder } from '../lib/payments'
 
-/** "12 Sep 2026" — the same en-IN shape the plan bench and the print view use.
- *  A grant date that could not be read says so: "Invalid Date" is a developer
- *  string leaking into a receipt, and a wrong date is worse than an absent one.
- *
- *  #409 — formatted in **UTC**, because `toLocaleDateString` alone reads the
- *  BROWSER's timezone: a grant at 23:30 UTC was "yesterday" in IST and "today"
- *  in the US, so the same receipt carried two dates depending on where the buyer
- *  opened it. A purchase date is a fact about the account, not about the reader,
- *  and a money-adjacent date is the last one that should move under someone.
- *  Day granularity is unchanged — only the timezone is pinned. */
-function boughtOn(ms: number, readable: boolean): string {
-  if (!readable) return 'date unknown'
-  return new Date(ms).toLocaleDateString('en-IN', {
-    day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC',
-  })
-}
+// The date formatters (`boughtOn`, `updatedIn`) and the keepsake helpers live
+// in lib/purchases so the node suite can pin them.
 
-/** "Sep 2026" — an update is a season, not a timestamp, on a shelf.
- *
- *  #409 asked whether two same-month updates collapsing is a defect; it is a
- *  deliberate granularity, recorded here so the next reader does not "fix" it.
- *  The month is the unit a buyer acts on ("did this change since I bought it,
- *  roughly when"), the exact instant is not, and the shelf's `updatedCount`
- *  counts ROWS rather than versions to match — the two are consistent, which is
- *  the property that matters. A day-granular date would read as a changelog
- *  this surface is not. (Also UTC for the same reason as `boughtOn`: a month
- *  label that flips between readers is the same bug one unit up.) */
-function updatedIn(ms: number): string {
-  return new Date(ms).toLocaleDateString('en-IN', { month: 'short', year: 'numeric', timeZone: 'UTC' })
+/** The element id of one card, so the unlock link can find it on the shelf. */
+function purchaseCardId(pubId: string): string {
+  return `purchase-${pubId}`
 }
 
 export function PurchasesPage({ onNavigate }: { onNavigate: (r: string) => void }) {
@@ -120,15 +104,62 @@ export function PurchasesPage({ onNavigate }: { onNavigate: (r: string) => void 
     try { await sharePurchase(row) } finally { setSharingId(null) }
   }
 
-  return (
-    <div className="container purchases-page">
-      <div className="purchases-head">
-        <button className="btn btn-ghost" onClick={() => onNavigate('/trips')}>
-          <InlineIcon icon={ArrowLeft} size={14} gap={4} />My trips
-        </button>
-      </div>
+  // The summary line sits in the header, so it is built before the header is.
+  // It exists only when the shelf itself is on screen: not while signed out,
+  // not while loading, not after a failed read, not when nothing is owned.
+  const isShelfShown = Boolean(meId) && !failed && entitlements !== null && orders !== null && shelf.rows.length > 0
 
-      <h1 className="purchases-title">My purchases</h1>
+  // The unlock moment links here with `?new=<publication id>`. If that id is a
+  // card on the shelf, the card plays one outline highlight and scrolls into
+  // view. An id that matches nothing does nothing. The address is read once, so
+  // the later clean-up of the parameter cannot cancel the highlight.
+  const requestedNewId = useRef(currentQuery().get('new'))
+  const hasPlayedNew = useRef(false)
+  const [highlightId, setHighlightId] = useState<string | null>(null)
+  useEffect(() => {
+    const wantedId = requestedNewId.current
+    if (!wantedId || hasPlayedNew.current || !isShelfShown) return
+    if (!shelf.rows.some(row => row.pubId === wantedId)) return
+    hasPlayedNew.current = true
+    setHighlightId(wantedId)
+    const card = document.getElementById(purchaseCardId(wantedId))
+    if (card) {
+      const bounds = card.getBoundingClientRect()
+      const isOffScreen = bounds.top < 0 || bounds.bottom > window.innerHeight
+      const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      if (isOffScreen) card.scrollIntoView({ block: 'center', behavior: prefersReducedMotion ? 'auto' : 'smooth' })
+    }
+    // Drop the parameter without a history entry, so Back does not replay it.
+    const query = currentQuery()
+    query.delete('new')
+    const rest = query.toString()
+    replaceRoute(rest ? `/purchases?${rest}` : '/purchases')
+  }, [isShelfShown, shelf.rows])
+  const summaryLine = isShelfShown ? (
+    <p className="pur-summary">
+      <b>{shelf.rows.length}</b> {shelf.rows.length === 1 ? 'plan' : 'plans'} ·{' '}
+      {shelf.totalReadable ? (
+        <><b>{formatInr(shelf.totalPaidInr)}</b> paid</>
+      ) : (
+        // A partial sum printed as the total is the same lie as a wrong
+        // one: it reads as complete. Say the figure is incomplete instead.
+        <>at least <b>{formatInr(shelf.totalPaidInr)}</b> paid</>
+      )}
+      {shelf.updatedCount > 0 && <> · <b>{shelf.updatedCount}</b> updated since you bought {shelf.updatedCount === 1 ? 'it' : 'them'}</>}
+      {/* #407 — the total above EXCLUDES refunded purchases and the update
+          count excludes them too, so the exclusion is named here rather
+          than left for the reader to notice. A silently smaller number is
+          the same class of lie as a silently larger one. */}
+      {shelf.refundedCount > 0 && <> · <b>{shelf.refundedCount}</b> refunded</>}
+      {/* #589 — in-flight grants are excluded from the total above (the
+          money moved but the plan is not held yet), so the exclusion is
+          named like the refunds' is. */}
+      {shelf.pendingGrantCount > 0 && <> · <b>{shelf.pendingGrantCount}</b> {shelf.pendingGrantCount === 1 ? 'payment' : 'payments'} being finalized</>}
+    </p>
+  ) : null
+
+  return (
+    <div className="container yf-page pur-page page-enter">
       {/* #409 — the lede promised three things and, on a row whose publication
           row is GONE, showed one: "what is inside" is read from the publication
           row, so its shape chips are simply absent. The base sentence stays (it
@@ -140,75 +171,56 @@ export function PurchasesPage({ onNavigate }: { onNavigate: (r: string) => void 
           single caveat would have claimed its details were "not repeated here"
           while they are printed right below. Refunded rows say their own piece
           per row, so neither caveat speaks for them. */}
-      <p className="hint-text purchases-lede">
-        Plans you unlocked, kept here for good — with what you paid, the shape of the plan, and any update
-        from the person who made them.
-        {shelf.rows.some(r => !r.onSale && !r.refunded && !r.pendingGrant) && (
-          <> A plan taken off sale keeps its receipt and your access — it still opens from here.</>
-        )}
-        {shelf.rows.some(r => !r.rowExists && !r.refunded && !r.pendingGrant) && (
-          <> A plan whose catalogue entry is gone keeps its receipt and your access; its length, places and cover
-          live in the copy you forked, which is why they are not repeated here.</>
-        )}
-      </p>
+      <PageHeader
+        back={{ label: 'My trips', onClick: () => onNavigate('/trips') }}
+        headline={{ lead: 'My', accent: 'purchases' }}
+        lede={<>
+          Plans you unlocked, kept here for good — with what you paid, the shape of the plan, and any update
+          from the person who made them.
+          {shelf.rows.some(r => !r.onSale && !r.refunded && !r.pendingGrant) && (
+            <> A plan taken off sale keeps its receipt and your access — it still opens from here.</>
+          )}
+          {shelf.rows.some(r => !r.rowExists && !r.refunded && !r.pendingGrant) && (
+            <> A plan whose catalogue entry is gone keeps its receipt and your access; its length, places and cover
+            live in the copy you forked, which is why they are not repeated here.</>
+          )}
+        </>}
+        meta={summaryLine}
+        note="Yours to keep."
+      />
 
       {!meId ? (
-        <EmptyState icon={<ShoppingBag size={38} aria-hidden />} title="Sign in to see what you own"
+        <StateBlock kind="empty" titleLevel="h2" icon={<ShoppingBag size={38} aria-hidden />} title="Sign in to see what you own"
           body="Purchases are tied to your account, so they follow you to any device you sign in on."
-          action={<button className="btn btn-primary" onClick={() => onNavigate('/auth')}>Sign in</button>} />
+          actions={<button className="btn btn-primary" onClick={() => onNavigate('/auth')}>Sign in</button>} />
       ) : failed ? (
-        <div className="card purchases-error">
-          <h2>Couldn’t load your purchases</h2>
-          <p className="hint-text">
-            The request failed, which is not the same as owning nothing — your plans are safe on your account.
-            Check your connection and try again.
-          </p>
-          <button className="btn btn-primary" onClick={() => setAttempt(n => n + 1)}>Try again</button>
-        </div>
+        <StateBlock kind="failed" titleLevel="h2" title="Couldn’t load your purchases"
+          body="The request failed, which is not the same as owning nothing — your plans are safe on your account. Check your connection and try again."
+          actions={<button className="btn btn-primary" onClick={() => setAttempt(n => n + 1)}>Try again</button>} />
       ) : entitlements === null || orders === null ? (
-        <div className="loading-block"><div className="spinner" />Loading your purchases…</div>
+        <StateBlock kind="loading" titleLevel="h2" icon={<span className="spinner" aria-hidden="true" />} title="Loading your purchases…" />
       ) : shelf.rows.length === 0 ? (
-        <EmptyState icon={<ShoppingBag size={38} aria-hidden />} title="Nothing bought yet"
+        <StateBlock kind="empty" titleLevel="h2" icon={<ShoppingBag size={38} aria-hidden />} title="Nothing bought yet"
           body="Unlock a priced itinerary and it appears here permanently — with the price you paid and any later updates. Free previews you fork live in My trips."
-          action={<button className="btn btn-primary" onClick={() => onNavigate('/explore')}>Browse itineraries</button>} />
+          actions={<button className="btn btn-primary" onClick={() => onNavigate('/explore')}>Browse itineraries</button>} />
       ) : (
         <>
-          <p className="purchases-sum">
-            <b>{shelf.rows.length}</b> {shelf.rows.length === 1 ? 'plan' : 'plans'} ·{' '}
-            {shelf.totalReadable ? (
-              <><b>{formatInr(shelf.totalPaidInr)}</b> paid</>
-            ) : (
-              // A partial sum printed as the total is the same lie as a wrong
-              // one: it reads as complete. Say the figure is incomplete instead.
-              <>at least <b>{formatInr(shelf.totalPaidInr)}</b> paid</>
-            )}
-            {shelf.updatedCount > 0 && <> · <b>{shelf.updatedCount}</b> updated since you bought {shelf.updatedCount === 1 ? 'it' : 'them'}</>}
-            {/* #407 — the total above EXCLUDES refunded purchases and the update
-                count excludes them too, so the exclusion is named here rather
-                than left for the reader to notice. A silently smaller number is
-                the same class of lie as a silently larger one. */}
-            {shelf.refundedCount > 0 && <> · <b>{shelf.refundedCount}</b> refunded</>}
-            {/* #589 — in-flight grants are excluded from the total above (the
-                money moved but the plan is not held yet), so the exclusion is
-                named like the refunds' is. */}
-            {shelf.pendingGrantCount > 0 && <> · <b>{shelf.pendingGrantCount}</b> {shelf.pendingGrantCount === 1 ? 'payment' : 'payments'} being finalized</>}
-          </p>
           {shelf.pendingGrantCount > 0 && (
-            <p className="hint-text">
+            <p className="hint-text pur-note">
               A payment was captured and its access is still being finalized. This usually clears in a
               minute. If it does not, open the plan once more and press Unlock — the checkout completes
               the grant without a second charge.
             </p>
           )}
           {!shelf.totalReadable && (
-            <p className="hint-text">
+            <p className="hint-text pur-note">
               One or more purchases could not be read back, so this total is a floor rather than the
               whole amount. Your plans are unaffected — the price is just not showing.
             </p>
           )}
 
-          <div className="purchase-list">
-            {shelf.rows.map(row => {
+          <div className="pur-list">
+            {shelf.rows.map((row, rowIndex) => {
               // Only a plan whose catalogue entry is GONE needs a copy resolved:
               // a withdrawn plan's own page still works for its buyer (#350 —
               // get_public_trip serves entitled holders), so the fork is a
@@ -221,9 +233,17 @@ export function PurchasesPage({ onNavigate }: { onNavigate: (r: string) => void 
               // access to point at, so offering "Open your copy" would advertise
               // a plan the buyer's money was returned for.
               const copy = row.rowExists || row.refunded ? null : findBuyerCopy(row, trips)
+              // Only a held plan gets the "kept for you" card: the creator's
+              // face, the "Yours" seal and the creator's own facts. A refunded,
+              // pending or off-sale row keeps the plain card, so its money
+              // state stays the first thing a reader sees.
+              const provenance = isKeptRow(row) ? keepsakeLine(row) : null
+              const keptChips = isKeptRow(row) ? keepsakeChips(row) : []
+              const updateSentence = republishedLine(row)
+              const isHighlighted = row.pubId === highlightId
               return (
-              <article className="purchase-row" key={row.pubId}>
-                <div className="purchase-thumb">
+              <Surface as="article" className={isHighlighted ? 'pur-row is-new' : 'pur-row'} key={row.pubId} id={purchaseCardId(row.pubId)} enterIndex={rowIndex}>
+                <div className="pur-thumb">
                   {/* #409 — a row that is not on sale gets NO auto lookup.
                       `CoverThumb` resolves a missing cover through
                       `pickTripQueryCandidates`, which for this caller degrades to
@@ -238,13 +258,30 @@ export function PurchasesPage({ onNavigate }: { onNavigate: (r: string) => void 
                   <CoverThumb variant="short" explicitUrl={row.coverImageUrl}
                     trip={row.onSale ? { name: row.title } : null} emoji="🧭" />
                 </div>
-                <div className="purchase-body">
-                  <h2 className="purchase-name">{row.title}</h2>
-                  <p className="purchase-by">
-                    {row.creatorName ? <>by <b>{row.creatorName}</b></> : <>creator no longer listed</>}
-                    {' · '}bought {boughtOn(row.grantedAt, row.dateReadable)}
-                  </p>
-                  <div className="purchase-meta">
+                <div className="pur-body">
+                  <div className="pur-head">
+                    <h2 className="pur-name">{row.title}</h2>
+                    {isKeptRow(row) && (
+                      <span className="pur-seal">
+                        <BookmarkCheck size={13} aria-hidden />
+                        Yours
+                      </span>
+                    )}
+                  </div>
+                  {provenance ? (
+                    <p className="pur-by pur-by-kept">
+                      <span className="pur-avatar" aria-hidden="true">
+                        <Avatar user={{ profile: { name: row.creatorName ?? '', avatarUrl: row.creatorAvatarUrl } }} />
+                      </span>
+                      <span>{provenance}</span>
+                    </p>
+                  ) : (
+                    <p className="pur-by">
+                      {row.creatorName ? <>by <b>{row.creatorName}</b></> : <>creator no longer listed</>}
+                      {' · '}bought {boughtOn(row.grantedAt, row.dateReadable)}
+                    </p>
+                  )}
+                  <div className="pur-meta">
                     {/* #407 — the money STATE, independent of the shape chips
                         below. A refunded purchase keeps both of them when the
                         publication is gone: `refunded` and `listed` are
@@ -261,10 +298,15 @@ export function PurchasesPage({ onNavigate }: { onNavigate: (r: string) => void 
                     {/* #554 — a partial refund is money that came back while
                         the plan is still owned: both facts, side by side. */}
                     {row.refundedPaise > 0 && <Chip tone="info">{formatInr(Math.round(row.refundedPaise / 100))} refunded</Chip>}
-                    {row.updatedSince && row.refreshedAt && (
-                      <Chip tone="info">Updated {updatedIn(row.refreshedAt)}</Chip>
-                    )}
                   </div>
+                  {keptChips.length > 0 && (
+                    <div className="pur-meta pur-keepsake">
+                      {keptChips.map(chipText => <Chip key={chipText}>{chipText}</Chip>)}
+                    </div>
+                  )}
+                  {/* The app records that the creator re-published, not what
+                      changed. The sentence says exactly that and no more. */}
+                  {updateSentence && <p className="pur-update">{updateSentence}</p>}
                   {row.refunded && (
                     <p className="hint-text">
                       The money for this plan was refunded, so the access it came with has ended. The
@@ -301,7 +343,7 @@ export function PurchasesPage({ onNavigate }: { onNavigate: (r: string) => void 
                           : <> — but we could not find your copy in My trips, so there is nothing here to open.</>}
                     </p>
                   )}
-                  <div className="purchase-actions">
+                  <div className="pur-actions">
                     {/* The link is offered while the publication ROW exists —
                         `/pub/<id>` reads the row, and since #350 a withdrawn row
                         still serves its buyer (get_public_trip + the page's
@@ -342,13 +384,13 @@ export function PurchasesPage({ onNavigate }: { onNavigate: (r: string) => void 
                     )}
                   </div>
                 </div>
-              </article>
+              </Surface>
               )
             })}
           </div>
-          <p className="hint-text purchases-foot">
-            Forking copies a plan into your own trips with your dates — it stays yours even if the original
-            is updated later.
+          <p className="hint-text pur-foot">
+            A fork copies a plan into your own trips with the plan’s original dates. You can change
+            the dates. Your copy stays yours, even if the creator updates the plan later.
           </p>
         </>
       )}

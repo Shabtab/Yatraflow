@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { currentQuery, onRouteChange, replaceRoute } from '../lib/router'
 import { Compass, Heart, Lock, Search, TriangleAlert } from 'lucide-react'
 import { usePublished, useUsers, useTrips, useSessionUserId, useDb, rereadPublicSlices } from '../store/store'
-import type { User } from '../data/types'
+import type { PublishedItinerary, User } from '../data/types'
 import { computeHealth } from '../lib/engine'
 import { useSavedPubs } from '../lib/savedPubs'
 import { sliceState, emptyCopyFor } from '../lib/readState'
@@ -20,8 +20,11 @@ import { ExploreStateBlock } from '../components/explore/ExploreStateBlock'
 import { PlacesPanel } from '../components/explore/PlacesPanel'
 import { CreatorsPanel } from '../components/explore/CreatorsPanel'
 import { SharePanel } from '../components/explore/SharePanel'
+import { TrendingShelf } from '../components/explore/TrendingShelf'
 import { livePubs } from '../lib/livePubs'
-import { matchesQuery, pickFeatured, placeTiles, creatorList, savedEmptyKind, type SavedEmptyKind } from '../lib/explorePage'
+import { comparePopularity } from '../lib/discovery'
+import { usePresenceList, presenceAttrs, type PresenceEntry } from '../lib/usePresenceList'
+import { matchesQuery, pickFeatured, placeTiles, creatorList, savedEmptyKind, trendingShelfPicks, type SavedEmptyKind } from '../lib/explorePage'
 
 type SortKey = 'popular' | 'newest' | 'budget-asc' | 'budget-desc' | 'duration'
 const STYLES = ['relaxed', 'balanced', 'packed', 'adventure', 'luxury', 'budget', 'family', 'spiritual', 'food-focused', 'creator'] as const
@@ -107,8 +110,6 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
     replaceRoute(`/explore${qs ? '?' + qs : ''}`)
   }
 
-  const popularity = (p: { views: number; copies: number }) => p.views + p.copies * 5
-
   const pubs = useMemo(() => {
     let list = [...livePubs(published)]
     list = list.filter(p => matchesQuery(p, q, userOf(users, p.creatorId)?.profile.name))
@@ -129,7 +130,7 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
       case 'budget-asc': return list.sort((a, b) => a.estimatedBudgetPerPersonInr - b.estimatedBudgetPerPersonInr)
       case 'budget-desc': return list.sort((a, b) => b.estimatedBudgetPerPersonInr - a.estimatedBudgetPerPersonInr)
       case 'duration': return list.sort((a, b) => b.durationDays - a.durationDays)
-      default: return list.sort((a, b) => popularity(b) - popularity(a))
+      default: return list.sort(comparePopularity)
     }
   }
 
@@ -146,10 +147,6 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
   // on a three-item shelf the duplicate was a third of the page. Only ever a
   // no-op when the featured pick is a card from OUTSIDE the active filters,
   // which is the normal case once any filter is on.
-  const gridPubs = useMemo(
-    () => (featured ? pubs.filter(p => p.id !== featured.id) : pubs),
-    [pubs, featured],
-  )
   // "outside your filters" is a claim, so only make it when it is true: with a
   // filter on, the featured pick is often the matching card itself (it was
   // labelled "outside your filters" while being the only adventure result).
@@ -210,12 +207,38 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
     pubsCount: pubs.length, filtersActive, savedOnly, savedCount: savedLiveCount, signedIn: Boolean(me),
   })
 
-  // A new key remounts the grid, so its cards run their staggered entrance again
-  // each time a filter, the search or the sort changes what the grid holds.
-  const gridKey = [q, style, maxBudget, duration, sortKey, savedOnly].join('|')
+  // The trending shelf: the same catalog, the featured pick left out, and drawn
+  // only while nothing is filtered and the catalog read is ready (lib/explorePage.ts).
+  const shelfPicks = useMemo(
+    () => trendingShelfPicks({ pubs: published, featured, filtersActive, ready: pubsRead === 'ready', limit: 3 }),
+    [published, featured, filtersActive, pubsRead],
+  )
+  // The grid leaves out the featured pick and, while the shelf shows, the shelf's
+  // plans too, so no itinerary appears twice near the top of the page.
+  const gridPubs = useMemo(() => {
+    const shown = new Set(shelfPicks.map(p => p.id))
+    if (featured) shown.add(featured.id)
+    return pubs.filter(p => !shown.has(p.id))
+  }, [pubs, featured, shelfPicks])
+
+  // A card that a filter, the search or the Saved view takes out of the grid
+  // stays mounted for one exit (usePresenceList), then goes. The cards that stay
+  // keep their place, and a card that is new plays its entrance.
+  const { entries: cardEntries, exiting: cardsExiting, attachList: attachGrid } = usePresenceList(
+    gridPubs.slice(0, visibleCount), p => p.id,
+    // Focus on the last card that leaves goes to the results region.
+    { fallbackFocus: () => document.getElementById('explore-results') },
+  )
+  // A new sort order moves every card, so the sort alone remounts the grid and
+  // the cards run their staggered entrance again.
+  const gridKey = sortKey
+  const gridBlock = (
+    <ExploreGrid key={gridKey} entries={cardEntries} attachList={attachGrid} users={users} isSaved={isSaved}
+      needsLogin={!me} onFork={forkTrip} onToggleSave={toggleHeart} />
+  )
 
   return (
-    <div className="container ex-page">
+    <div className="container ex-page page-enter">
       <TripArtSprite />
       <ExploreHero stats={heroStats} onExplore={jumpToResults} />
 
@@ -302,15 +325,18 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
             />
           )}
 
+          {shelfPicks.length > 0 && <TrendingShelf pubs={shelfPicks} users={users} isSaved={isSaved} onToggleSave={toggleHeart} />}
+
           {pubsRead !== 'ready' ? (
             /* #364: a failed catalog read used to render "just getting started" —
                copy that tells a visitor the community is empty when the truth is
                that we could not read it. The failed branch is checked FIRST, and
                the retry re-issues the read rather than re-rendering nothing. */
             pubsRead === 'reading' ? (
-              <ExploreStateBlock icon={<span className="spinner" aria-hidden="true" />} title="Loading the catalog…" />
+              <ExploreStateBlock kind="loading" icon={<span className="spinner" aria-hidden="true" />} title="Loading the catalog…" />
             ) : (
               <ExploreStateBlock
+                kind="failed"
                 icon={<TriangleAlert size={36} aria-hidden />}
                 title={emptyCopyFor(pubsRead, 'catalog', retryCatalog).title}
                 body={emptyCopyFor(pubsRead, 'catalog', retryCatalog).body}
@@ -318,21 +344,15 @@ export function ExplorePage({ onNavigate }: { onNavigate: (r: string) => void })
               />
             )
           ) : pubs.length === 0 ? (
-            <ExploreEmpty kind={emptyKind} onClear={clearFilters} onNavigate={onNavigate} />
+            // The empty copy waits until the last card has left the grid. The grid
+            // sits in the same fragment shape as below, so it is not remounted.
+            cardsExiting ? <>{gridBlock}</> : <ExploreEmpty kind={emptyKind} onClear={clearFilters} onNavigate={onNavigate} />
           ) : (
             <>
               {/* Only when something is left after the featured pick — otherwise
                   the featured card was the whole result and an empty grid would
                   just add a gap under it. */}
-              {gridPubs.length > 0 && (
-                <div className="ex-grid" key={gridKey}>
-                  {gridPubs.slice(0, visibleCount).map((p, index) => (
-                    <ExploreCard key={p.id} pub={p} creator={userOf(users, p.creatorId)} saved={isSaved(p.id)}
-                      enterIndex={index % PAGE_SIZE}
-                      onFork={() => forkTrip(p.id)} onToggleSave={() => toggleHeart(p.id)} needsLogin={!me} />
-                  ))}
-                </div>
-              )}
+              {(gridPubs.length > 0 || cardsExiting) && gridBlock}
               {gridPubs.length > visibleCount && (
                 <div className="ex-more ex-enter">
                   <button className="btn btn-secondary" type="button" onClick={() => setVisibleCount(c => c + PAGE_SIZE)}
@@ -364,25 +384,25 @@ function ExploreEmpty({ kind, onClear, onNavigate }: {
   const clearButton = <button className="btn btn-secondary" type="button" onClick={onClear}>Clear filters</button>
   if (kind === 'no-saved') {
     return (
-      <ExploreStateBlock icon={<Heart size={36} aria-hidden />} title="You haven’t saved any itineraries yet"
+      <ExploreStateBlock kind="empty" icon={<Heart size={36} aria-hidden />} title="You haven’t saved any itineraries yet"
         body="Tap the heart on a plan to keep it here, ready to fork." actions={clearButton} />
     )
   }
   if (kind === 'no-match') {
     return (
-      <ExploreStateBlock icon={<Search size={36} aria-hidden />} title="Nothing matches those filters"
+      <ExploreStateBlock kind="empty" icon={<Search size={36} aria-hidden />} title="Nothing matches those filters"
         body="Try widening the budget or clearing a filter." actions={clearButton} />
     )
   }
   if (kind === 'no-catalog-signed-in') {
     return (
-      <ExploreStateBlock icon={<Compass size={36} aria-hidden />} title="No itineraries published yet"
+      <ExploreStateBlock kind="empty" icon={<Compass size={36} aria-hidden />} title="No itineraries published yet"
         body="Publish one of your trips from its Share tab and it will appear here." />
     )
   }
   if (kind === 'no-catalog-signed-out') {
     return (
-      <ExploreStateBlock icon={<Compass size={36} aria-hidden />} title="The community catalog is just getting started"
+      <ExploreStateBlock kind="empty" icon={<Compass size={36} aria-hidden />} title="The community catalog is just getting started"
         body="Sign in to fork community itineraries into your own trips. Or load the demo from My trips to look around first."
         actions={(
           <>
@@ -393,6 +413,27 @@ function ExploreEmpty({ kind, onClear, onNavigate }: {
     )
   }
   return null
+}
+
+/** The card grid. Each entry is a plan that is in the list, or one that just left and plays its exit. */
+function ExploreGrid({ entries, attachList, users, isSaved, needsLogin, onFork, onToggleSave }: {
+  entries: PresenceEntry<PublishedItinerary>[]
+  attachList: (element: HTMLElement | null) => void
+  users: User[]
+  isSaved: (id: string) => boolean
+  needsLogin: boolean
+  onFork: (id: string) => void
+  onToggleSave: (id: string) => void
+}) {
+  return (
+    <div className="ex-grid" ref={attachList}>
+      {entries.map(({ item: p, key, exiting }, index) => (
+        <ExploreCard key={key} pub={p} creator={userOf(users, p.creatorId)} saved={isSaved(p.id)}
+          enterIndex={exiting ? 0 : index % PAGE_SIZE} presence={presenceAttrs({ exiting })}
+          onFork={() => onFork(p.id)} onToggleSave={() => onToggleSave(p.id)} needsLogin={needsLogin} />
+      ))}
+    </div>
+  )
 }
 
 function userOf(users: User[], id: string): User | undefined {

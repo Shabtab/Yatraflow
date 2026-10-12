@@ -93,6 +93,14 @@ A collaborative travel-planning web app, built India-first. Real multi-day itine
 
 _Release highlights, newest first — the full record lives in [CHANGELOG.md](CHANGELOG.md)._
 
+## ✨ The v0.75 release, in plain words
+
+- **Every trip card names the next step to take.** A link on each card opens that task. Dates come first, then the first empty day, then the first stop that needs a booking.
+- **Save days and stops on the Timeline.** A heart beside each day and stop saves it. Your saved items appear in a "Saved for later" list on My trips.
+- **My trips and Explore look the same.** Both pages share fonts, buttons, filters and cards. My trips can show its trips as a grid or as a list.
+- **Shared plans show their free days to search engines.** The share page shows each free day and its stops. A Ladakh bike trip cost calculator is free to use.
+- **Pages enter with motion.** Group input and map panels show failed reads with a retry action.
+
 ## ✨ The v0.67–v0.68 run, in plain words
 
 - **One edit now costs one render.** Renaming a day used to re-run the engine's day math for every day on the Timeline; it now re-derives that day and no other. The Board's columns and its embedded map memoize the same way, the Map tab's suggestion stack loads only when the tab opens (the workspace bundle drops from 264 KB to 206 KB, measured), and switching trips aborts the road measurement you left behind instead of finishing it on the next trip.

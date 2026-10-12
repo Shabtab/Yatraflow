@@ -15,23 +15,15 @@ user confirmation before any push. Feature work reaches `test` **via pull
 request** (never a direct push); `main` merges stay explicitly user-gated
 (AGENTS rule 1).
 
-**Snapshot (2026-10-12, verified against the repo):** v0.74.1 is a security hotfix, cut from `main` this day. Run `20261012a_join_trip_function.sql`, then `20261012b_member_insert_owner_only.sql`. The rest of this line describes v0.74.0, which it follows. **v0.74.0 was cut on `test` on 2026-10-07.** 18 commits since the v0.73.0 promotion. No migrations. It carries the import-fidelity wave (#368): delete→undo preserves the publication's `refreshed_at` so discovery survives, snapshot links run the same repair wall as file imports, the itinerary migration chain does the v1 compat it claims with a v3 seam proven, gallery publish blocks answer to the shared publish rules, and a publish block lands as a reviewable draft instead of a toast footnote. It carries the routing migration's last slice (#426): the service worker never intercepts the `/c/` creator cards, closing the migration's own list end to end. It carries the domain move: the canonical origin is now `https://www.yatraflow.in` across every minting surface, the live docs and the places probe, with the old vercel alias still serving everything already in the wild. `check:migrations` at the cut: 41 migrations · 18 applied · 0 missing · 23 no probe surface (1 optional) · 0 unchecked.**
-Current version: **0.74.1** — hotfix cut from `main` on 2026-10-12: the join-by-invite-code security fix alone. Under it: **0.74.0** — cut on `test` on 2026-10-07. Contents: import fidelity (#368); the routing migration's last slice (#426); the domain move to `www.yatraflow.in` (#663, #664). No migrations. **Promoted to `main` the same day (PR #665, `main` at `e08e326`, tagged annotated `v0.74.0` on the merge commit; production verified serving the new canonical and sitemap lines)**. Under it: v0.73.0 — cut on `test` on 2026-10-06 (the reliability waves #548–#553, #557; deploy recovery #575; Android back #562; estimate marker #574; money reconciliation #573; nearby #564, #565; the payment id #595; the #420 map-rail lane; the legal-audit pass #658; guardrails #657; four migrations, all applied live) — **promoted to `main` the same day (PR #660, `main` at `b772db8`, tagged annotated `v0.73.0` on the merge commit)**. Under it: v0.72.0 — cut on `test` on 2026-10-01 (real paths + crawler redo, #426 slices 1–3; the honest money rail #355; measured sharing #227/#228/#230; refunded receipts #407; covers #360; crawl redo #362; funnel events #428; focus contract #425; freshness gate #404; rental/train pricing #521; four migrations, all applied live) — **promoted to `main` the same day (PR #543, `main` at `f8f25a3`, tagged annotated `v0.72.0` on the merge commit, the Android APK workflow green on the tag push)**. Under it: v0.71.0 — cut on `test` on 2026-09-29 (publish rules + backstop, counters/read-states honesty, session/budget/settings waves, health band + overview truth, settings V2, map freshness publisher; two migrations, both applied live) — **promoted to `main` the same day (PR #516, `main` at `6b58b80`, tagged annotated `v0.71.0` on the merge commit)**. Under it: v0.70.0 — cut on `test` on 2026-09-28 (the honesty-and-recovery wave: every failed read says so instead of looking empty, the creator's payout runs and access check, the create flow's one day count and persisted vehicle inputs, the footer copy, and one staged/kept/undone mutation contract) — **promoted to `main` the same day (PR #500, `main` at `7c82bfe`), tagged annotated `v0.70.0` on the merge commit, the Android APK workflow green on the tag push**. Under it: v0.69.0 — cut on `test` on 2026-09-27 (the P1 wave, and the map's own search), **promoted to `main` the same day (PR #489, `main` at `d20f195`, tagged annotated `v0.69.0` on the merge commit)**. The release that closes every P1 the day's audit sweep filed — an amount rule that refuses negative, infinite and NaN rupees on every path, a session lifecycle that keeps what the store already promised, crew signals that claim their row before they write, a start rename that stops measuring the old city, a publish button that waits for its save, a shelf total that survives one unreadable purchase, creator and Explore pages that admit a failed read, and a withdrawn plan whose button leads somewhere — and that takes the map and the Timeline forward: the map's own search with explicit placement, suggestion pins that cluster into count badges instead of piling up, an all-days Timeline review mode, and inline insertion between two stops. No migrations. Under it: v0.68.0 — cut on `test` on 2026-09-26 (the audit's third wave: the workspace surfaces' honesty-and-cost pass), **promoted to `main` the same day (PR #464, `main` at `bed7ef3`, tagged annotated `v0.68.0` on the merge commit)**. The release where one edit costs one render — a renamed day re-derives that day alone, a Board interaction re-renders no columns it does not own, the Map tab's suggestion stack loads on demand (the workspace bundle drops 264 KB to 206 KB, measured), and a trip switch aborts the road measurement it left behind — and where the surfaces stop disagreeing with each other: the Board's mini-map draws the workspace's one road measurement and names a dashed amber estimate when there is none, its health dial takes its colour from the band word it prints, its pulse reads the engine's warning identity rather than parsing rendered titles, per-day money follows the day's own index so a skipped day number can no longer show a neighbour's total, and a day's stops stay numbered 1..n through delete, undo, drag and day-moves. The optimiser can neither move tomorrow's wake-up point nor apply over an edit that landed meanwhile, an unmeasured distance says "(est.)", the map rail's results are a keyboard-operable self-announcing listbox, the map's pins meet the 40px touch floor, and the create flow keeps the stop text you typed — with the Plan Bench's hand-off pinned to the one create-route definition. No migrations. Under it: v0.67.0 — cut on `test` on 2026-09-25 (the audit plan's first two waves) and **promoted to `main` the same day (PR #446, `main` at `af373cc`, tagged annotated `v0.67.0` on the merge commit)**; the release where the public wire stops telling a reassuring story: the invite code no longer rides along with an anonymous read of a published itinerary, a viewer who has not bought a priced plan receives no budget breakdown (only the publication's own per-person estimate, which the page always showed), and unpublishing keeps the row, so a buyer keeps the access they paid for while the ledger and funnel freeze. It is also where the pruner that deletes traffic history became an operator action, resolving a decision persists, the create flow can neither mint twin trips nor leave a zombie row behind, an unlock is live without a reload, a staged timeline edit survives the next one, the map measures the road once, and a map pick that cannot be pinned asks for its position instead of being dropped. It also makes the creator hub's own recovery path reachable — a failed ledger read had shown a spinner that never resolved, a retry looked like a dead button, and a failed refresh erased figures already on screen. Five migrations, all applied before the promotion. Under it: v0.66.0 — the creator hub as an operating picture and the app's high-end visual pass: the hub opens on a KPI strip and a recorded-traffic trend (visits/forks/unlocks over 7/30/90 days) drawn from the same derivation the rows beneath read, one row per publication with its funnel and actions, the creator profile moved into a disclosure at the foot of the page — every honesty state kept (an unread ledger never reads as an empty one; an un-recorded window says so rather than printing zeroes) — nested funnel figures in the trend's own hues with a monotone-cubic trend that cannot overshoot and invent traffic, a hover/keyboard readout and a chart-navy KPI band, a second critique pass (no zero that was never read, the stage bar a real drop-off, each row stating its window and each rate its denominator), and the hub's 23 Codacy findings cleared (the gate's type-aware ESLint ruleset is invisible to the repo's own `npm run lint`); map-tab search is route-aware (both surfaces run Search-Along-Route over the trip's polyline, the keyless stack ranks merged hits by distance to the corridor, and hits draw as selectable teal markers that clear with the box); and the high-end visual pass lands (Plus Jakarta Sans replaces Inter, one 1.5 icon stroke via `--icon-stroke`, the pill nav's glider animating its own box instead of a distorting `scaleX`, the landing's display scale/macro-whitespace/Double-Bezel buttons, the public itinerary's soft trays, TripCreated's entry choreography, and the OG share card rendering the app's real font again). Also in it: the create funnel's interface review, one assertive form-error beat app-wide with polite field errors, the moment-after's watch-list planning real fuel halts, crew invites on every channel, and theme-aware `::selection`/caret. Four PRs merged to `test` on 2026-09-24: **#315** (`feat/creator-hub-dashboard`, merge `8830648`), **#316** (`fix/map-search-route-bias`, merge `9138ff2`), **#317** (`fix/og-card-font`, merge `3c97d8e`), and **#318** (`docs/promote-v0.66.0`, the release cut, merge `a2d92d9`). Under it: v0.65.0 — cut on `test` and promoted to `main` on 2026-09-22 (PR #304, `main` at `3893ccc`): the Create funnel and its ticket (templates, readiness, radar, route IQ, seasonality, crew invites), the M5 AI companion (a configurable LLM endpoint with Jev routing and an honest offline fallback), the PWA pair (installability, offline reading, durable sync), the map's honesty pass (the fit frames the drawn route, slot search lands a real stop, the P3 sweep), the security hardening batch (rate limiting, headers, the CSPRNG), one icon vocabulary across every surface, and the design AA/palette/spacing-ladder cleanup. Under that: v0.64.0 (decision comments + settle-up, creator-owned share covers, onboarding a11y — PR #270); the 2026-09-22 queue landed on `test` as 12 reviewable integrations with `npm run verify` green at each merge.
+**Snapshot (2026-10-12, verified against the repo):** v0.75.0 is prepared on `release/0.75.0`. PR #711 tracks promotion to `main`. Promotion remains pending. You must read branch progress with `git rev-list --left-right --count origin/main...origin/test`. No migration is new in this release. The 0.74.1 migrations already reached `main`. CHANGELOG.md holds the full release record.
+Current version: **0.75.0**. Under it: **0.74.1**, a security hotfix cut from `main` on 2026-10-12. Under that: **0.74.0**, cut on `test` on 2026-10-07 and promoted to `main` the same day. Older releases appear in CHANGELOG.md.
 
 **Live open work is tracked in two places, and this file must agree with both:**
 
-1. **The issue queue** — see [Open issues](#open-issues) below for the current list, which is
-   derived from the GitHub API rather than recalled. **47 issues are open** (2026-09-28,
-   `gh issue list --state open` — 14 P1, 48 P2, 13 P3, and an empty P0 shelf): the audit plan's
-   P1–P3 remainder, the #226–#234 launch-readiness criteria filed from
-   [`docs/PLAN-LAUNCH-AND-DISTRIBUTION.md`](docs/PLAN-LAUNCH-AND-DISTRIBUTION.md), and the
-   #236–#240 milestone tracks (M5 → M9) — **#238 (M7) closed 2026-09-19**, the money rail
-   having shipped in v0.61.0, so the live track issues are #236, #237, #239 and #240. All
-   were filed as issues, not only prose in this file.
-   The queue was empty for a day on 2026-09-16: #213 was filed and closed inside it (its six
-   phases shipped in #219/#220), the rebrand (#96) is archived — no need or plan to rename —
-   and #122's season half is closed as not planned, the late dinner window being deliberate.
-   Re-derive with `gh issue list` before quoting counts.
+1. **The issue queue.** GitHub holds the current issue states and priorities.
+   You must read current counts with `gh issue list --state open --limit 1000`.
+   The [Open issues](#open-issues) table tracks the named launch criteria and milestone tracks.
+   It does not list every open issue.
 2. **The milestone tracks** — M5 → M9, plus the 1.0 cut. These are *planning* tracks: they are
    directions of travel, not release numbers.
 
@@ -47,8 +39,8 @@ number collides with a shipped release, the ledger wins.
 
 ## Open issues
 
-Re-derived from the GitHub API 2026-09-28 (`gh issue list --state open`) — **47 issues are open**
-(14 P1, 48 P2, 13 P3; P0 empty). The table below tracks the two named sets: the
+You must read current counts from GitHub with `gh issue list --state open --limit 1000`.
+This table tracks two named sets, not the full queue. These sets are the
 **launch-readiness criteria** (#227–#234), filed from
 [`docs/PLAN-LAUNCH-AND-DISTRIBUTION.md`](docs/PLAN-LAUNCH-AND-DISTRIBUTION.md) and its
 `STEP-0-DECISIONS.md` companion; the **milestone tracks** (#236–#240) are the M5 → M9 paragraphs
@@ -61,15 +53,15 @@ the live milestone tracks are #236, #237, #239 and #240. Re-derive the count bef
 | # | Priority | Issue | State |
 |---|---|---|---|
 | #226 | P1 | E1 · Make links preview | **Closed 2026-09-19.** Shipped in v0.57.0: `/i/<id>` serves public metadata and redirects browsers to the hash route, with no cross-deployment shell fetch; the trip-JSON import that PR #235 also carried landed alongside it. v0.58.0 gave that preview a picture — a branded 1200×630 card for any publication with no cover of its own, and auto-picked covers resized through Wikimedia's own endpoint so none exceeds the 600 KB `og:image` ceiling. The acceptance it could not close by itself — a card rendered in a real messaging client — is what #227 (F3) exercises by hand. See `docs/DEPLOYMENT.md`. |
-| #232 | P1 | E2 · The gallery is curated | `#/explore` holds one itinerary; the shelf has to read as chosen, not as everything that passed the gate |
-| #230 | P1 | E3 · Attribute shares, and settle how the readings are kept | Decides what a share is attributed to, and where the readings live, before any of it is measured |
+| #232 | P1 | E2 · The gallery is curated | Open. The gallery still needs curation evidence. |
+| #230 | P1 | E3 · Attribute shares, and settle how the readings are kept | Closed 2026-09-29. Share attribution shipped. |
 | #229 | P1 | F1 · Write the thresholds down, before measuring | **Closed 2026-09-19.** The four launch signals (shares→views, views→forks, forks→signups, signups→2nd session) and the Stage 1→2 marks, committed in-repo **before** E3's first reading. D5 of [`docs/commercial/STEP-0-DECISIONS.md`](docs/commercial/STEP-0-DECISIONS.md) holds the numbers, which merged into the repo with PR #214 — no longer an unmerged branch; thresholds are immutable once set, so doing this after E3 starts is the failure mode the rule exists to prevent |
 | #233 | P1 | F2 · Three real trips, four real people each | Real crews on real trips — the evidence that the planning holds outside a fixture |
-| #227 | P1 | F3 · Send one published link to a WhatsApp group | The smallest honest distribution test, in the channel the product is positioned against |
+| #227 | P1 | F3 · Send one published link to a WhatsApp group | Closed 2026-09-29. The first distribution check passed. |
 | #231 | P2 | F4 · Four consecutive weekly readings | Four weeks is the shortest window that shows a trend rather than a day |
 | #234 | P1 | F6 · CA confirms the merchant-of-record branch | Branch 1 (intermediary) vs Branch 2 (merchant of record) moves the creator's net ~₹27 a sale — ₹161.47 vs ₹134.10 on a ₹199 sale — and the 15% fee must clear the ~3.86% cost floor. Also scopes GST/TDS registration |
 | #228 | P2 | F7 · First distribution loop | The repeatable loop, and only after F3 has answered |
-| #252 | — | F7 · Decide who becomes a creator, and who may publish | Filed 2026-09-19, **unlabelled** — no priority, no type — with 3.3 KB of body. The decision: creator mode is self-enabled by any signed-in user (`CreatorHubPage.tsx` → `updateProfile`), `adminSetCreator()` can badge anyone but is not a gate, and publishing is gated on trip ownership rather than on creator status, so the two switches have never been reconciled. Needs a priority and an owner before it can be scheduled |
+| #252 | P3 | F7 · Decide who becomes a creator, and who may publish | Open. This issue needs a product decision about creator access and publishing. |
 | #255 | P3 | Overdrive: the receipt learns to print — morph the itinerary's numbers into a real bill | Filed 2026-09-18 — this is **I-18** from the Tier 1 bank below, now tracked. Parked, not started: ~~blocked on a product decision~~ **decision made 2026-09-25** (recorded on the issue): the bill shows **the creator's stated estimate** (`estimatedBudgetPerPersonInr`), never a viewer-side recalculation — the §4 D3 morph is then honest by construction. Still parked; remaining gate is the design-token approval rule, and its own contract (2–3 directions presented and one picked before any code) still applies |
 | #236 | P2 | M5 · AI companion — user-configurable LLM endpoint | **Shipped in v0.65.0 (PR #304)** — endpoint, Jev fast path, offline fallback; flag-off in prod until M8's premium unmount, which is why the issue stays open |
 | #237 | P2 | M6 · Together — collaboration depth | The track below |
@@ -408,6 +400,321 @@ one `platform_invites` entity — detailed execution guide in
 
 ---
 
+### MR — "Mockup adoption" (trip-list and trip-page ideas from `C:\Users\hasna\yatraflow-mockup`)
+
+**Origin.** A four-page static mockup folder, built outside the repo and never reconciled with
+`docs/redesign/ALIGNMENT.md`. It proposes new layout, new interactions and a second palette.
+
+**The palette is out of scope.** You ruled it out. Its ten swatches have zero occurrences in
+`src/styles.css`, and the shipped `--yf-*` layer stays authoritative. Every row below adopts a
+layout or interaction idea and re-points it at the existing tokens. No row changes a colour value.
+
+**This is a second direction, not a follow-up.** The CTI redesign is already shipped and audited
+through M6, with 351 lines and 425 occurrences of `--yf-*` in `src/styles.css`. Read
+`docs/redesign/YATRAFLOW_DESIGN_DIRECTION.md` before you start any row. Two mockup ideas also
+contradict a decision the repo already made, and you must settle those before any code moves.
+
+**Two decisions, now settled.** Both change what a page is, not how it looks.
+
+| # | Decision | The mockup said | Settled | Why |
+|---|---|---|---|---|
+| D1 | Trip page shape | One scrolling page with six sections | **Keep the four tabs.** Adopt the section contents. | The Map tab holds a persistent MapLibre canvas and a search panel. A scrolling page has no place to pin them. |
+| D2 | Mobile navigation | Fixed bottom tabbar with four destinations | **Adopt it, behind `VITE_MOBILE_TABBAR`, and ship last.** | Four destinations in one tap beats two taps through a drawer. The flag keeps the shell change reversible. |
+
+Neither decision touches a colour value, per [ADR 0002](docs/adr/0002-mockup-palette-not-adopted.md).
+
+**Sequencing.** Rows run one after another. Each is one PR, one reviewable change, one gate.
+
+- [x] **MR1. Next-step affordance on the trip card.** `src/pages/TripsList.tsx`. Show the single
+  most useful pending action on the featured trip, with a chevron.
+  - Settled by prototype. `src/lib/tripNextStep.ts` derives it, and
+    `tests/trip-next-step.test.ts` pins the order. An unfilled day comes first, because it blocks
+    every later day. A booking comes second. A suggestion comes third. A cover photo waits for
+    last. MR1 wires the function to the card and owns the click target.
+  - **Landed 2026-10-05; the action opens its own task now (2026-10-06, #645).** The line
+    renders on EVERY card, not only the featured one, because the page has no separately
+    featured card. It is its own link: a link must not hold a second link, so the row left
+    `.trip-card-hit` — the card still opens the trip, and the row opens the day and the stop
+    its label names. `nextStepRoute` in `src/lib/tripNextStep.ts` builds one address for the
+    featured card's button and this row, so the two cannot disagree. `done` drops the chevron.
+    Two live-data corrections came out of the wiring: the default 🧭 emoji does not count as a
+    cover, and a finished trip can still read 100% planned while owing a booking.
+  - **Acceptance (2026-10-06):** verified live on the signed-in page. The measurements come from the
+    trip list at 1440 and 390 CSS px. The row is never inside the card link. It stays inside
+    the card box, and it sits below the block in list mode. A click opened
+    `/trip/<id>/timeline?day=1&stop=…`, with Day 2 expanded and the stop row in view. The card
+    link alone still opened the Overview. The screenshots are
+    [`docs/screenshots/mr1-task-row-1440.png`](docs/screenshots/mr1-task-row-1440.png) and
+    [`mr1-task-row-390.png`](docs/screenshots/mr1-task-row-390.png). A second capture on
+    2026-10-06 found 6 cards and 6 task rows at each width. No row sat inside a card link.
+- [x] **MR2. Planning progress per trip.** `src/pages/TripsList.tsx`. A progress bar and a count of
+  planned days on every card.
+  - Settled by prototype. `plannedDayRatio` in the same module supplies the percent. **No engine
+    value exists to reuse.** An earlier draft of this row claimed one did. It does not.
+  - **Landed 2026-10-05.** The bar copies the day header's 5px meter, the same `--teal` fill and
+    the same `--t-med`/`--ease-out` width transition, so the two read as one meter in two places.
+    It carries `role="progressbar"` with the real values, and a trip with no days says so instead
+    of printing "0 of 0".
+  - **The measure is activities (2026-10-06, #647).** The store anchors a new trip's route with
+    automatic stops. The meter counted one of those as a planned day. The meter and the card's
+    next-step line now share one rule: a planned day holds a usable stop that is not automatic.
+    The label names the measure, "Days with activities".
+  - **Acceptance (2026-10-06):** screened at 1440px and 390px on the signed-in page, in
+    [`docs/screenshots/mr1-task-row-1440.png`](docs/screenshots/mr1-task-row-1440.png) and
+    [`mr1-task-row-390.png`](docs/screenshots/mr1-task-row-390.png). All six cards read
+    "N of M days with activities" at both widths. No card claimed "Ready to travel".
+  - **The row has its own capture now (2026-10-10).** The pair above was MR1's. This row's own
+    evidence is [`mr2-progress-1440.png`](docs/screenshots/mr2-progress-1440.png) and
+    [`mr2-progress-390.png`](docs/screenshots/mr2-progress-390.png), both of the featured card
+    that carries the meter: `role="progressbar"`, the label "Days with activities", and the
+    2/2 count on the fixture account.
+  - **Changed 2026-10-11.** The trip cards drop the bar. The next-step line carries the same fact as an action. Up next keeps one meter, labelled as days with activities.
+- [ ] **MR3. Status filter tabs with counts.** `src/pages/TripsList.tsx`. Five filters with live
+  counts. Persist the choice through `src/lib/uiPrefs.ts`, which already stores per-day collapse.
+  - **Not in the app (2026-10-11).** The five-filter taxonomy and its helpers were removed from
+    `src/lib/tripNextStep.ts`, and no page draws them. The When filter keeps its own choices:
+    any time, upcoming and live, past trips, and drafts. This row stays open until the tabs are
+    designed and built again.
+- [x] **MR4. Grid and list view toggle.** `src/pages/TripsList.tsx`. Both layouts, persisted
+  through `src/lib/uiPrefs.ts`.
+  - **Landed 2026-10-05, review still owed.** A labelled pair, not one cycling button, so the
+    current choice is readable without pressing it first. List mode lays each card out as one
+    row. Persisted through the `loadPref`/`savePref` pair in `src/lib/uiPrefs.ts`.
+  - **The row's cover is the mockup's now (2026-10-06).** The row ran a 96px thumbnail inside
+    the card's link, and the mockup's row runs a 236px cover the card's full height. The cover
+    must sit outside the body's link to span the row, so it is its own link now. It stays out
+    of the tab order and out of the accessibility tree, and the body link keeps the name.
+  - **The switch sits on the toolbar row, 2026-10-06.** It used to close the wrapping
+    filter bar, so it wrapped onto a line of its own at every width. The mockup's own bar pairs
+    its filter row and the view segment: one row while the width holds both, the segment dropped below
+    and right-aligned when it does not (measured at 1920 and 1100, and at its own 390). Ours does
+    the same through `flex-wrap` plus `margin-left: auto` on the segment, and it labels the two
+    choices. `PillNav` slides the glider between them, and the cards re-enter on a switch because
+    the grid is keyed by the layout. Travel style, when and sort became three separate dropdowns,
+    which is what stopped the wrap. One `Filters` popover holding all three was built first and
+    rejected: a panel of independent choices reads as a settings sheet, not a toolbar.
+  - **Acceptance (2026-10-06):** screened at 1440px and 390px, in
+    [`docs/screenshots/mr4-list-1440.png`](docs/screenshots/mr4-list-1440.png) and
+    [`mr4-list-390.png`](docs/screenshots/mr4-list-390.png). List mode engaged at both widths and
+    drew 6 rows. No row pushed the page sideways. The three dropdowns were screened with the
+    style menu open, at both widths, in
+    [`docs/screenshots/mr4-toolbar-1440.png`](docs/screenshots/mr4-toolbar-1440.png) and
+    [`mr4-toolbar-390.png`](docs/screenshots/mr4-toolbar-390.png).
+- [x] **MR5. Cover-photo prompt and solo-traveller line.** `src/pages/TripsList.tsx`. Show
+  "Add a cover photo" when a trip has none. Show avatars, or "Just you so far", in the card foot.
+  - **Satisfied without new code, 2026-10-05 — checked against `src/`, not assumed.** Both halves
+    were already true once MR1 landed. "Add a cover photo" is one of the six next-step labels, and
+    MR1's fix to the default 🧭 emoji is what made it reachable at all; before that it could never
+    render. The avatars and "Just you so far" line were already in the card foot. This row is the
+    clearest case in the track of a plan being a claim about code rather than a fact: it was
+    written as work and turned out to be a description.
+  - **Its own capture, and what it shows (2026-10-10).**
+    [`mr5-card-foot-1440.png`](docs/screenshots/mr5-card-foot-1440.png) and
+    [`mr5-card-foot-390.png`](docs/screenshots/mr5-card-foot-390.png) hold the card foot at both
+    widths: the traveller line and the cover state the row describes. The capture is the evidence
+    that the two halves render; the code check above is the evidence that no new work was needed.
+- [x] **MR6. Countdown on upcoming trips.** `src/pages/TripsList.tsx`. A countdown on upcoming
+  trips only. Compute from the trip start date, never from a stored string. The shipped copy is
+  "Starts in N days", not the "Departs in N days" this row first named.
+  - **Shipped copy (2026-10-11).** `countdownText` in `src/lib/tripsPage.ts` prints "Starts in N
+    days" or "Starts tomorrow" for an upcoming trip, and "Day N of M" for a live one. It returns
+    null for past and draft trips. The departure wording and its helper were removed on 2026-10-11
+    with the other unused ports.
+  - **The clock moves while the page lives (2026-10-06, #648).** The page read the clock once, at
+    mount, and kept that value. One calendar-day clock now feeds the countdown and the date
+    filter. It wakes at local midnight and re-reads the day on focus or visibility. The unit is a
+    day, so nothing polls. Eleven cases in `tests/day-clock.test.ts` drive it with an injected
+    clock.
+  - **Older captures show the removed copy.** The 2026-10-06 and 2026-10-10 screenshots of the
+    countdown were taken before the copy changed, so they are not evidence for the current copy.
+- [x] **MR7. Day strip with transit markers.** `src/pages/TripWorkspace.tsx`, timeline tab. Days as
+  horizontal cards, with a marker where the city changes. Reuse the existing day-collapse state.
+  - **Landed 2026-10-05 — and the row was half-written already.** The timeline's day rail already
+    existed as a row of chips that jump to a day. This is that rail made legible, not a new surface.
+    The file named in the row is `src/pages/trip/TimelineTab.tsx`; `TripWorkspace.tsx`
+    no longer holds the day surfaces after the M3 split. The new part is the data: `dayStrip.ts`
+    derives each day's place and whether the route moves on, with 11 tests because the marker sits
+    on a BOUNDARY and an off-by-one puts it on the wrong day, which reads as the plan being wrong
+    rather than the strip being wrong. `jumpToDay` and the day-collapse state are untouched.
+  - **Screenshotted at 1440px and 390px, signed in against real trips.** Three defects found and
+    fixed, two of them introduced by this batch: a full-width list column gave 1140px rows holding
+    a title and two chips; the `minmax(520px, …)` floor then could not shrink and held a 520px
+    card in a 373px viewport, pushing the document 161px sideways; and renaming the rail chip to
+    a card silently dropped the 40px mobile touch floor that `.day-rail-chip` already carried.
+  - **Acceptance (2026-10-10):** screened at both widths on the signed-in "Royal Rajasthan
+    Heritage Circuit" trip, in
+    [`mr7-day-rail-1440.png`](docs/screenshots/mr7-day-rail-1440.png) and
+    [`mr7-day-rail-390.png`](docs/screenshots/mr7-day-rail-390.png). The rail drew six day cards
+    with two transit markers, and the capture asserts the first before it fires: a rail that drew
+    no card is not evidence of a rail. Each card names its place ("Tonk Road outskirts",
+    "Jodhpur-South (M Corp.)") and its stop count.
+- [x] **MR8. Save toggles on days and experiences.** `src/pages/TripWorkspace.tsx`. A heart on each
+  day and each experience, wired to the existing shortlist store in `useShortlist.ts`. This adds a
+  new entry point, not a new store.
+  - **Landed 2026-10-05 — the wiring in this row could not work, and what it names is not a
+    store.** `useShortlist` holds `PlaceHit[]` in `useState` inside MapTab, and `trayShortlist`
+    filters out everything `isAlreadyAdded`. A day or an itinerary stop is already added, so
+    shortlisting one would have been a silent no-op. You chose the alternative: a saved set in
+    `lib/uiPrefs`, the store that already keeps per-day collapse — a real store, a new entry point,
+    and independent of the map tray. It never reaches `trips`, so it is not shared with the crew
+    and needs no sync or undo. Ids are namespaced `day:<n>` and `stop:<id>`, so a stop whose id is
+    `"0"` cannot collide with day 0. Seven tests pin the parsing; a corrupted value saves nothing
+    rather than crashing the timeline. **Verified in the browser** on a real trip: 11 hearts
+    (3 days, 8 stops), the Day 1 heart pressed and persisted as `["day:0"]` while every stop heart
+    stayed off. The class is `.tl-save-heart`, not `.save-heart` — the cover picker owns that one.
+  - **The hearts got a destination (2026-10-06).** This was the review's own proposal: the ids
+    had no reader, so a save was decoration. My Trips now carries a “Saved for later” shelf.
+    `src/lib/savedShelf.ts` resolves each id against live trip data — a day, or the stop and the
+    day it sits on today — and `src/components/trips/SavedShelfSection.tsx` draws them grouped by trip in plan
+    order, each row a deep link to that day or stop. A re-split moves a saved stop with its day,
+    and an id whose day or stop is gone is dropped rather than drawn as a row that opens nothing.
+    A row can be dropped again through the same `flipSavedId` the heart writes with.
+  - **Acceptance (2026-10-06):** verified live on the signed-in trip list. The shelf drew
+    at 1440 and 390 CSS px. A saved day resolved to “Day 1 · Siolim · 2 stops”. Its row linked
+    to `/trip/<id>/timeline?day=0`. The meta column hid at 390, so the title kept the width. The
+    page had no horizontal overflow at either width. Ten cases in
+    `tests/saved-shelf.test.ts` pin the resolution. The screenshots are
+    [`docs/screenshots/mr8-saved-shelf-1440.png`](docs/screenshots/mr8-saved-shelf-1440.png) and
+    [`mr8-saved-shelf-390.png`](docs/screenshots/mr8-saved-shelf-390.png).
+- [x] **MR9. Sticky section nav with scroll-spy.** One nav that tracks the section in view. Must
+  respect `prefers-reduced-motion` (AGENTS.md §2.10).
+  - **Landed 2026-10-06, resolved against the tab model (P8).** D1 keeps the routed tabs. So
+    this adds no second navigation system. The one nav is the day rail. The sections in view
+    are the Timeline's days. The rail marks the day in view in review mode. It marks the open
+    day otherwise. The jump offset and the spy line read one measured stack height. The
+    measurement replaces a hardcoded constant. On a phone the stack is about 181px, and a jump
+    landed the day header under the bars (P4). The current-day marker is a border and a weight.
+    A warn tint cannot replace it (P4). Jumps use `scrollBehavior()`, so reduced motion is
+    honoured. Pins live in `tests/rail-spy.test.ts`. The row named `TripWorkspace.tsx`. Like
+    MR7, the day surfaces live in `src/pages/trip/TimelineTab.tsx`.
+  - **Acceptance (2026-10-10):** screened on the signed-in "Royal Rajasthan Heritage Circuit"
+    trip at both widths. [`mr9-sticky-rail-1440.png`](docs/screenshots/mr9-sticky-rail-1440.png)
+    and [`mr9-sticky-rail-390.png`](docs/screenshots/mr9-sticky-rail-390.png) show the rail stuck
+    while the day it names is in view, and
+    [`mr9-timeline-1440.png`](docs/screenshots/mr9-timeline-1440.png) and
+    [`mr9-timeline-390.png`](docs/screenshots/mr9-timeline-390.png) show that state in the page.
+    The spy was driven rather than assumed: review mode was engaged, a middle day was scrolled to
+    the sticky line, and the marked card was asserted — `aria-current="true"` on Day 3, at
+    scrollY 3586 (1440) and 6309 (390), with the day section under the sticky line also reading
+    `day-card-2`. **The row's own 181px figure is stale:** measured today, the review-mode stack
+    is 149px at 390px (a 64px nav plus the 85px stuck rail), and the one-day-mode stack is 108px
+    (nav plus the 44px trip-total strip). Both numbers are recorded on the MR12 row, which is
+    where the tabbar's cost is decided.
+- [x] **MR10. Public discovery blocks — in Explore, not in the owner dashboard (P8).**
+  `src/pages/Explore.tsx`. Featured creators, trending itineraries, and a "Share your travel
+  stories" call to action.
+  - **Surface corrected 2026-10-06 (P8).** The row named `src/pages/CreatorHubPage.tsx`. That page
+    is the signed-in owner dashboard: it reads the session's own publications and shows the
+    creator their funnels and money. A visitor has none of that and never sees the page. Discovery
+    is a public surface, so it lands in Explore, which any visitor can read. `/pub/:slug` and
+    `/creator/:id` stay visitor-facing and keep their current shape.
+  - **Built 2026-10-10.** The three blocks are wired into Explore behind the page's own read
+    state: `src/lib/discovery.ts` derives them (one
+    popularity score, one evidence bar, a deterministic order, so "trending" and the featured
+    card cannot disagree), `src/components/explore/TrendingShelf.tsx` draws the trending shelf
+    and the Creators and Share panels draw the other two, and each block
+    returns null until its own evidence exists. 18 cases in `tests/discovery.test.ts` pin the
+    derivations with no DOM.
+  - **The blocker, and its fix (2026-10-10).** A signed-out browser showed Explore stuck on
+    "Loading the catalog…" with real rows behind it. The anonymous hydrate patched `published`
+    and `users`. It never wrote `sliceReads`, and the page's state machine reads that verdict.
+    Commit `94af150` on `origin/fix/explore-anon-catalog` reports the public slices from both
+    anonymous patches. This branch carries it as cherry-pick `1ebde7b`, with four cases in
+    `tests/explore-anon-catalog.test.ts`.
+  - **Acceptance (2026-10-10):** the signed-out pair in
+    [`docs/screenshots/mr10-discovery-1440.png`](docs/screenshots/mr10-discovery-1440.png) and
+    [`mr10-discovery-390.png`](docs/screenshots/mr10-discovery-390.png). A fresh browser context
+    holds no session (`authKeys: []`), and the dev server serves this tree. Both frames show the
+    three blocks. The rail holds 3 creator cards, and the shelf holds 4 trending rows. The share
+    card reads "6 itineraries from 4 creators live here". The loading line is gone. The capture
+    checks each block's content and the signed-out button copy before it shoots. The live run
+    caught "6 itinerarys" on the share card. One `plural` helper spells it now, and five render
+    cases in `tests/discovery.test.ts` pin it.
+- [ ] **MR11. Publications table in the owner dashboard — the public profile stays public (P8).**
+  `src/pages/CreatorHubPage.tsx`. Each publication as a row with its status and its own actions.
+  - **Surface corrected 2026-10-06 (P8).** The row named `src/pages/CreatorPage.tsx`, which is the
+    public creator profile a visitor reads. It cannot carry "my publications" or an unpublish
+    action. The owner dashboard already holds that page. `HubOverview` draws one row per
+    publication from `myPubs`, with its funnel, its window and its actions, and `hubTab` splits
+    Overview from Earnings. So this row is a presentation pass over a table that exists. It is not
+    a new page, and it does not replace the public profile's grid.
+  - **Landed 2026-10-10. A row states its status, and its action comes from the same call.**
+    `src/lib/pubRowStatus.ts` owns the rules and returns the label, the chip tone and the row's
+    action together, so a row cannot read "Live" beside a "Publish again" button. Every row now
+    states its status, live included — before this, a healthy publication said nothing at all
+    and only the two exceptions were labelled. Precedence is load-bearing: a withdrawn page is
+    `Unpublished` whatever the itinerary did afterwards, because a page that is down cannot be
+    behind. The KPI strip's Live and Behind counts read the same derivation, which is what the
+    #350 note above demands — the strip may not count a row the list below it refuses to label —
+    so that agreement is now structural rather than two copies of a rule. Eight cases in
+    `tests/pub-row-status.test.ts` pin it, and the public creator profile is untouched.
+  - **Acceptance (2026-10-10):** screened on the signed-in hub at both widths, in
+    [`docs/screenshots/mr11-publications-1440.png`](docs/screenshots/mr11-publications-1440.png)
+    and [`mr11-publications-390.png`](docs/screenshots/mr11-publications-390.png). Both fixture
+    publications drew a `Live` chip with that row's own `Edit` and `Unpublish` actions, and the
+    strip read Live 2 · Behind 0. The `Unpublished` and `Page behind itinerary` states are pinned
+    by the unit tests rather than by a screenshot: reaching them live means withdrawing or
+    editing the fixture account's publications, which is a shared-database write this pass did
+    not need to make.
+- [ ] **MR12. Mobile bottom tabbar — parked, not dropped (2026-10-06).** `src/App.tsx` and
+  `src/styles.css`. Gated on `VITE_MOBILE_TABBAR`, per D2.
+  - **Decision (2026-10-06): do not build this row yet.** The evidence comes from `src/`, not from
+    taste. `VITE_MOBILE_TABBAR` appears nowhere in the repo, so nothing is half-built and nothing
+    is lost by waiting. The shell already serves a phone: the hamburger tray takes over at 720px
+    and carries every destination, Log in and Creator hub included. A fixed bar would hold about
+    60px of viewport on every route for good. The Timeline is where that tax hurts most, because
+    its sticky stack measures about 181px on a phone — the number the P4 repair spent its effort
+    recovering. The gain is one tap. The cost is a shell change on every route (Appendix B's
+    widest blast radius) and a shorter day view.
+  - **What would revive it:** a measurement, not a preference. Measure the trip list paint time
+    and the Timeline's usable height at 390px with the tray, then compare against a bar. The idea
+    keeps a Tier 2 row in the Idea bank, which names the dependency.
+  - **The measurement is taken, twice over (2026-10-10). Its acceptance is met; the BUILD is
+    still parked.** Both halves ran against the production build (`vite preview`), signed in, with
+    every timing recorded inside the page: a first pass timed Playwright's own polling interval,
+    which measures the harness rather than the app, and was discarded.
+    - **The trip list paints at a median 1522 ms at 390×844** (1216–1787 ms over seven loads),
+      with FCP 272 ms, DOMContentLoaded 216 ms, one long task, and 246 KB of JS and CSS
+      transferred. At 1440×1000 the median is 1432 ms. The figure is dominated by the signed-in
+      data round trip, not the bundle: paint lands about 1.3 s after DOMContentLoaded because the
+      list waits on Supabase.
+    - **The Timeline's usable day view at 390×844 is 695 px**, measured on the signed-in
+      "Royal Rajasthan Heritage Circuit" trip in review mode, the worst case. The sticky stack
+      there is **149 px** — the 64 px nav plus the 85 px stuck day rail. In one-day mode the stack
+      is **108 px** (the nav plus the 44 px trip-total strip). A 60 px bar would leave **635 px**
+      of day view in review mode, so it costs 8.6% of the usable day view and 7.1% of the
+      viewport on every route.
+    - The row's "about 181 px" stacks are stale. The number to carry forward is 149 px in review
+      mode, which is the state a phone actually reads a day in.
+  - **What the numbers say, and what is still a product call.** The chip cost is real but smaller
+    than the row assumed: about 50 px less chrome than 181 px implied, and the trip list's paint
+    time is a data-round-trip problem a tabbar neither causes nor fixes. Two things are outside a
+    measurement: whether one tap saved is worth 60 px permanently, and whether the bar replaces
+    the hamburger tray or sits beside it (either choice makes the stack taller, not shorter).
+    Those are yours. The row stays parked until you call it, but it no longer waits on a
+    number.
+
+**Verification each row must pass.** The gate is `npm run verify`, which runs tsc, the lint
+ratchet, STE lint, the full test suite and the production build. Tests alone do not prove a row.
+Each row also needs one browser screenshot at 1440px and one at 390px. Save the pair in
+`docs/screenshots/` and name both files in the row's acceptance line. Rows MR1, MR3, MR4 and MR8
+change an interaction, so you review each with the screenshots before merge. MR12 is parked (see
+the row), so it needs no screenshot.
+
+**Appendix A. What the mockup offered that this plan does not adopt.** The mobile phone frame and
+the right-hand "why this design language works" list in `index.html`. Both are board furniture, not
+product. The hero banner behind the page title is a candidate only if MR12 lands, because it
+competes with a fixed tabbar for vertical space. The mockup's own palette is not adopted either:
+ADR 0002 keeps this app's tokens, so the card port takes the mockup's geometry and its motion,
+not its colours. The board's `.pill--overlay` shape is adopted, but its status vocabulary is not:
+the pill reads this app's own buckets, because a card must not name a status the filter tabs
+would not.
+
+**Appendix B. Risks.** MR11 changes the owner dashboard's publication rows, so it holds the
+highest regression risk of the two remaining rows. MR12 would touch the app shell, which is the
+widest blast radius of any row in this track — one reason it is parked rather than scheduled. The
+imagery in `assets/` is AI-generated per `_gen3.json`, so no row may ship those files.
+
 ## 🟣 UI-audit remediation
 
 **Historical audit: 32/32 repaired. Workspace tab audit: 5/8 repaired.**
@@ -485,6 +792,8 @@ unbuilt). **Before picking up a row, and before quoting one in a plan, confirm i
 | I-33 | Slack and deadline clock | Timeline | Not sized | Show waiting and deadline gaps. Preview changes before you keep them. [Audit](docs/UI_AUDIT.md#workspace-tab-audit--2026-10-03). |
 | I-34 | Clear search scope and read states | Map | Not sized | Reduce parallel search entry points. Show failed, empty, cached, and loading results as distinct states. [Audit](docs/UI_AUDIT.md#workspace-tab-audit--2026-10-03). |
 | I-35 | Shared measurement status | workspace | Not sized | State measured, pending, partial, and failed route data on all three tabs. Add a shared Retry action. [Audit](docs/UI_AUDIT.md#workspace-tab-audit--2026-10-03). |
+| I-46 | Cascade Landing's second-level blocks | motion | 1 h | The page root enters, but its six sections sit one level deeper, so the shared rule misses them. Drop the bare wrapper so `.landing-canvas` becomes the returned root, then prove it with `npm run check:motion`. |
+| I-47 | Sample signed-in routes in the CI motion check | motion | 2 h | `check:motion` opens public routes only: a clean browser holds no Supabase session. The workspace and the creator hub then rely on the static gate alone. Seed a test session in CI to sample them. The same job samples a Supabase-blind build, because CI holds no credentials: `/explore` yields one block there against three on a tree with `.env.local`, so the public data surfaces need a project ref in CI as well. |
 
 ### Tier 2 — blocked on a named dependency
 
@@ -504,6 +813,8 @@ unbuilt). **Before picking up a row, and before quoting one in a plan, confirm i
 | I-22 | Publication funnel UI | the benchmark (research §5) | Per-pub views→forks→sales funnel with preview→sale conversion, against a benchmark once measured. The instrumentation behind it has shipped — the `pub_events` log with `get_creator_funnel` and its retention prune — so what is left is the per-publication view itself and the benchmark to judge it against. |
 | I-24 | Pricing assistant | I-12 price history | Per-day anchor ("6 days · ₹83/day"), the ₹99–499 band, and a price-change trail. |
 | I-26 | Creator levels | I-25 reviews | Progress strip (portfolio, sales, ratings) with tier perks (Explore placement). |
+| I-44 | Mobile bottom tabbar | A measured viewport budget at 390px | The MR12 row, parked 2026-10-06. The tray already carries every destination at 720px and below. A fixed bar costs about 60px of viewport on every route, and the Timeline's sticky stack is already about 181px on a phone. Measure the paint time and the usable day-view height first. See the MR12 row. |
+| I-45 | Featured trip lead on the mockup's `.feature` geometry | A product decision on the page's hierarchy | The My Trips cards took the mockup's `.tcard` geometry on 2026-10-06, so they now differ from the featured lead above them. The lead keeps a 24px radius and a deeper shadow on purpose: it is the page's one hero, and `Variant A` was built to make it stand out. Adopt the mockup's 18px radius and hairline shadow only after deciding whether that hierarchy stays. Check `trip-featured-card` in `src/styles.css` against `.feature` in the mockup first. |
 
 ### Tier 3 — milestone-shaped, tracked as tracks (not ideas)
 

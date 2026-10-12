@@ -1,11 +1,11 @@
 // ============ My trips ============
-import { useEffect, useId, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Compass, Plus, Rocket, ShoppingBag, Trash2, X } from 'lucide-react'
 import { InlineIcon } from '../components/icons'
 import { useTrips, useTrashedTrips, useUsers, useSessionUserId, useSliceReads, useTrashLoaded, useTrashFailed, tripsForUser, trashTrip, restoreTrashedTrip, restoreTrashedTripById, permanentlyDeleteTrip, fetchTrashedTrips, rereadTrips, addDemoTrips } from '../store/store'
 import { computeTotals, formatInrShort } from '../lib/engine'
 import { cap } from '../lib/labels'
-import { EmptyState, toast, undoToast, ConfirmDialog } from '../components/ui'
+import { toast, undoToast, ConfirmDialog } from '../components/ui'
 import { Select } from '../components/Select'
 import { loadDraft, draftIsWorthKeeping, draftAgeLabel } from '../lib/createDraft'
 import { readinessFromDraft } from '../lib/createReadiness'
@@ -15,14 +15,19 @@ import { sliceState, emptyCopyFor, readState } from '../lib/readState'
 import type { Trip } from '../data/types'
 import { TRAVEL_STYLES } from '../data/types'
 import { heroHeadline, heroNote, heroPostcards, heroStats, otherTripsEmptyKind, pickUpNext, whenBucket, type WhenKey } from '../lib/tripsPage'
-import { gridShape, startOfLocalDay } from '../lib/tripsCard'
+import { layoutFromPref, startOfLocalDay, TRIPS_LAYOUT_PREF } from '../lib/tripsCard'
+import { loadPref, savePref } from '../lib/uiPrefs'
+import { usePresenceList, presenceAttrs } from '../lib/usePresenceList'
 import { TripArtSprite } from '../components/trips/TripArt'
 import { TripsHero } from '../components/trips/TripsHero'
 import { FilterChip } from '../components/filters/FilterChip'
 import { SearchField } from '../components/filters/SearchField'
 import { UpNextCard } from '../components/trips/UpNextCard'
+import { SavedShelfSection } from '../components/trips/SavedShelfSection'
 import { TripCard } from '../components/trips/TripCard'
 import { ViewSwitch, type TripsLayout } from '../components/trips/ViewSwitch'
+import { SectionHead } from '../components/page/SectionHead'
+import { StateBlock } from '../components/page/StateBlock'
 
 type SortKey = 'recent' | 'name' | 'budget-asc' | 'budget-desc' | 'length-desc'
 
@@ -63,6 +68,9 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
   const headerTrashToggleRef = useRef<HTMLButtonElement>(null)
   const heroTrashToggleRef = useRef<HTMLButtonElement>(null)
   const viewChangedByUser = useRef(false)
+  // A restored or deleted trip leaves the Trash with a short exit. Focus that
+  // sat on its button moves to the Trash heading, because the row goes inert.
+  const { entries: trashEntries, exiting: trashExiting, attachList: attachTrash } = usePresenceList(trashed, t => t.id, { fallbackFocus: () => trashHeadingRef.current })
 
   // The Trash view is populated on demand from the owner-scoped RPC (the
   // restrictive RLS policy hides trashed trips from normal hydration).
@@ -109,7 +117,14 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
   const [style, setStyle] = useState<'all' | Trip['travelStyle']>('all')
   const [when, setWhen] = useState<WhenKey>('all')
   const [sortKey, setSortKey] = useState<SortKey>('recent')
-  const [layout, setLayout] = useState<TripsLayout>('grid')
+  // The Grid | List choice is the one view pref this page keeps. It is read on
+  // mount and written on each change; a stored value that names no layout reads
+  // as the grid, and a storage failure keeps the default.
+  const [layout, setLayout] = useState<TripsLayout>(() => layoutFromPref(loadPref(TRIPS_LAYOUT_PREF, 'grid')))
+  function pickLayout(next: TripsLayout) {
+    setLayout(next)
+    savePref(TRIPS_LAYOUT_PREF, next)
+  }
 
   const mine = useMemo(() => tripsForUser(meId), [allTrips, meId])
 
@@ -158,7 +173,13 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
   const upNextTotals = upNext ? computeTotals(upNext) : null
   const otherTrips = upNext ? trips.filter(t => t.id !== upNext.id) : trips
   const otherEmptyKind = otherTripsEmptyKind({ matchCount: trips.length, otherCount: otherTrips.length, hasFilters })
-  const shape = gridShape(otherTrips.length, layout === 'grid')
+  // A trip that a filter or the Trash takes out of the list leaves with a short
+  // exit. The empty copy waits until the last card has gone.
+  const { entries: tripEntries, exiting: tripsExiting, attachList: attachGrid } = usePresenceList(
+    otherTrips, t => t.id,
+    // Focus on the last card that leaves goes to the catalog region.
+    { fallbackFocus: root => root.closest<HTMLElement>('.mt-catalog') },
+  )
   const upNextTitleId = useId()
   const otherTitleId = useId()
 
@@ -207,7 +228,7 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
   }
 
   return (
-    <div className="container trips-page">
+    <div className="container trips-page page-enter">
       <TripArtSprite />
       <TripsHero
         headline={heroHeadlineText}
@@ -237,7 +258,7 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
       />
 
       {view === 'trash' && (
-        <div className="card" style={{ marginBottom: 18 }}>
+        <div className="card" style={{ marginBottom: 18 }} ref={attachTrash}>
           <div className="row-between">
             <h3 ref={trashHeadingRef} tabIndex={-1} style={{ margin: 0 }}>Trash {trashed.length > 0 && <span className="small muted">({trashed.length})</span>}</h3>
             <button className="btn btn-secondary" onClick={toggleTrash}>Back to my trips</button>
@@ -249,18 +270,18 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
             // The failed branch is checked first, and its Retry re-issues the
             // RPC rather than re-rendering the same empty bin.
             trashRead === 'reading' ? (
-              <div className="loading-block"><div className="spinner" />{emptyCopyFor(trashRead, 'trash', retryTrash).title}</div>
+              <StateBlock kind="loading" icon={<span className="spinner" aria-hidden="true" />} title={emptyCopyFor(trashRead, 'trash', retryTrash).title} />
             ) : (
-              <EmptyState icon={<Trash2 size={38} aria-hidden />} title={emptyCopyFor(trashRead, 'trash', retryTrash).title}
+              <StateBlock kind="failed" icon={<Trash2 size={38} aria-hidden />} title={emptyCopyFor(trashRead, 'trash', retryTrash).title}
                 body={emptyCopyFor(trashRead, 'trash', retryTrash).body}
-                action={<button className="btn btn-primary" onClick={retryTrash}>Try again</button>} />
+                actions={<button className="btn btn-primary" onClick={retryTrash}>Try again</button>} />
             )
-          ) : trashed.length === 0 ? (
-            <EmptyState icon={<Trash2 size={38} aria-hidden />} title="Trash is empty"
+          ) : trashed.length === 0 && !trashExiting ? (
+            <StateBlock kind="empty" icon={<Trash2 size={38} aria-hidden />} title="Trash is empty"
               body="Trips you delete will show up here so you can restore them within 30 days." />
           ) : (
-            trashed.map(t => (
-              <div key={t.id} className="row-between trash-row">
+            trashEntries.map(({ item: t, key, exiting }) => (
+              <div key={key} className="row-between trash-row" {...presenceAttrs({ exiting })}>
                 <div>
                   <b>{t.name}</b>
                   <div className="small muted">{t.startLocation} → {t.destinations[t.destinations.length - 1] ?? t.startLocation} · {t.days.length} days</div>
@@ -295,21 +316,23 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
         // no error branch. The failed branch precedes loading precedes empty,
         // and its Retry re-issues the hydrate rather than re-rendering.
         tripsRead === 'reading' ? (
-          <div className="loading-block"><div className="spinner" />{emptyCopyFor(tripsRead, 'trips', retryTrips).title}</div>
+          <StateBlock kind="loading" icon={<span className="spinner" aria-hidden="true" />} title={emptyCopyFor(tripsRead, 'trips', retryTrips).title} />
         ) : (
-          <EmptyState
+          <StateBlock
+            kind="failed"
             icon={<Compass size={38} aria-hidden />}
             title={emptyCopyFor(tripsRead, 'trips', retryTrips).title}
             body={emptyCopyFor(tripsRead, 'trips', retryTrips).body}
-            action={<button className="btn btn-primary" onClick={retryTrips}>Try again</button>}
+            actions={<button className="btn btn-primary" onClick={retryTrips}>Try again</button>}
           />
         )
       ) : trips.length === 0 && !hasFilters ? (
-        <EmptyState
+        <StateBlock
+          kind="empty"
           icon={<Compass size={38} aria-hidden />}
           title="No trips yet"
           body="Start from scratch with dates and budget, or copy a public itinerary from Explore."
-          action={
+          actions={
             <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
               <button className="btn btn-secondary" onClick={() => onNavigate('/new')}>Plan your first trip</button>
               <button className="btn btn-secondary" onClick={addDemoTrips} title="Adds 3 sample trips — Kerala, Goa & Rajasthan — to your account"><InlineIcon icon={Rocket} size={15} gap={5} />Load demo trips</button>
@@ -321,11 +344,8 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
         <div className="mt-catalog">
           {upNext && upNextTotals && (
             <section aria-labelledby={upNextTitleId}>
-              <div className="mt-section-head">
-                <h2 className="mt-section-title" id={upNextTitleId}>
-                  Up next{upNextIsOutsideFilters && <span className="mt-kicker-note"> · outside your filters</span>}
-                </h2>
-              </div>
+              <SectionHead id={upNextTitleId}
+                title={<>Up next{upNextIsOutsideFilters && <span className="mt-kicker-note"> · outside your filters</span>}</>} />
               <UpNextCard
                 trip={upNext}
                 today={today}
@@ -338,14 +358,17 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
             </section>
           )}
 
+          <SavedShelfSection trips={mine} />
+
           <section aria-labelledby={otherTitleId}>
-            <div className="mt-section-head">
-              <h2 className="mt-section-title" id={otherTitleId}>{upNext ? 'Other trips' : 'All trips'} ({otherTrips.length})</h2>
-              <div className="mt-head-actions">
-                <button ref={headerTrashToggleRef} type="button" className="btn btn-quiet" aria-pressed={isTrashView} onClick={toggleTrash}><InlineIcon icon={Trash2} size={15} gap={5} />Trash</button>
-                <ViewSwitch layout={layout} onChange={setLayout} />
-              </div>
-            </div>
+            <SectionHead id={otherTitleId}
+              title={`${upNext ? 'Other trips' : 'All trips'} (${otherTrips.length})`}
+              actions={(
+                <>
+                  <button ref={headerTrashToggleRef} type="button" className="btn btn-quiet" aria-pressed={isTrashView} onClick={toggleTrash}><InlineIcon icon={Trash2} size={15} gap={5} />Trash</button>
+                  <ViewSwitch layout={layout} onChange={pickLayout} />
+                </>
+              )} />
 
             {/* ---- Explore's filter bar: search, selects, then chips ---- */}
             <div className="ex-filterbar filterbar-host" role="search" aria-label="Filter your trips">
@@ -389,7 +412,7 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
                 {/* "Clear filters" (review finding 4): the empty state's action said
                     "Clear filters" while this ghost button said "Clear" — the same
                     reset under two names, both once visible in one frame. */}
-                <button type="button" className="btn btn-quiet ex-clear" style={{ visibility: hasFilters ? 'visible' : 'hidden' }} onClick={clearFilters}>
+                <button type="button" className="btn btn-quiet ex-clear" style={{ visibility: hasFilters ? 'visible' : 'hidden', opacity: hasFilters ? 1 : 0 }} onClick={clearFilters}>
                   <X size={13} aria-hidden />Clear filters
                 </button>
               </div>
@@ -399,38 +422,38 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
 
             {/* 'no-trips' never reaches this list: the page-level branch above
                 shows the first-run copy for it, so it renders nothing here. */}
-            {otherEmptyKind === 'none-other' ? (
-              <EmptyState
+            {otherEmptyKind === 'none-other' && !tripsExiting ? (
+              <StateBlock
+                kind="empty"
                 icon={<Compass size={38} aria-hidden />}
                 title="No other trips yet"
                 body="Your next trips will show up here."
               />
-            ) : otherEmptyKind === 'no-match' ? (
-              <EmptyState
+            ) : otherEmptyKind === 'no-match' && !tripsExiting ? (
+              <StateBlock
+                kind="empty"
                 icon={<Compass size={38} aria-hidden />}
                 title="No trips match those filters"
                 body="Try a different search or clear the filters to see all your trips."
-                action={<button className="btn btn-secondary" onClick={clearFilters}>Clear filters</button>}
+                actions={<button className="btn btn-secondary" onClick={clearFilters}>Clear filters</button>}
               />
-            ) : otherEmptyKind === 'none' ? (
-              <div
-                className={`mt-grid${layout === 'list' ? ' is-list' : ''}`}
-                data-lone-two={shape.loneLastTwo ? '1' : '0'}
-                data-lone-three={shape.loneLastThree ? '1' : '0'}
-                style={{ '--mt-c2': shape.columnsTwo, '--mt-c3': shape.columnsThree } as CSSProperties}
-              >
-                {otherTrips.map((t, i) => {
+            ) : otherEmptyKind === 'none' || tripsExiting ? (
+              // The grid is keyed by its layout, so a Grid | List switch remounts the cards
+              // and they replay the staggered entrance (cardIn) instead of snapping.
+              <div key={layout} ref={attachGrid} className={`mt-grid${layout === 'list' ? ' is-list' : ''}`}>
+                {tripEntries.map(({ item: t, key, exiting }, i) => {
                   const totals = computeTotals(t)
                   return (
                     <TripCard
-                      key={t.id}
+                      key={key}
                       trip={t}
                       today={today}
                       budget={<BudgetText totals={totals} />}
                       totalTravelMinutes={totals.totalTravelMinutes}
                       users={users}
                       meId={meId}
-                      enterIndex={i}
+                      enterIndex={exiting ? 0 : i}
+                      presence={presenceAttrs({ exiting })}
                       onDelete={setPendingDelete}
                     />
                   )

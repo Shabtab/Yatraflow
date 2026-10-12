@@ -50,7 +50,6 @@
     ".odo-strip — transition: .55s",
     ".reveal-underline::after — transition: .15s",
     ".reveal-underline::after — transition: .8s",
-    ".route-panel — animation: .55s",
     ".rs-road — animation: .3s",
     ".rs-road — animation: 2s",
     ".rs-stop — animation: .5s",

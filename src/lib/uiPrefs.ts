@@ -175,6 +175,72 @@ export function saveRideHintsHidden(tripId: string, dayIndex: number, hidden: bo
   }
 }
 
+// ---- Saved days and experiences (MR8) ----
+// A heart on a day or an experience marks it saved-for-later. This is UI state,
+// not the plan: it never reaches `trips`, so it is not shared with the crew and
+// does not need an undo, a sync or a migration. One list per trip.
+//
+// NOT the map shortlist. `useShortlist` holds map search results inside MapTab
+// and filters out anything already added, so a day or a stop put in that tray
+// would be dropped on arrival. This is its own set, in the store that already
+// keeps per-day collapse.
+const SAVED_KEY_PREFIX = 'yatraflow_saved_'
+
+/** The id a heart writes. Namespaced so a day and a stop can never collide. */
+export function savedDayId(dayIndex: number): string {
+  return `day:${dayIndex}`
+}
+
+export function savedStopId(stopId: string): string {
+  return `stop:${stopId}`
+}
+
+/** Parse a stored list. Only an array of non-empty strings survives; anything
+ *  else is dropped whole, so a corrupted entry saves nothing rather than
+ *  crashing the timeline. */
+export function parseSavedIds(raw: string | null | undefined): string[] {
+  if (!raw) return []
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((v): v is string => typeof v === 'string' && v.length > 0)
+  } catch {
+    return []
+  }
+}
+
+/** This trip's saved ids. Missing storage or junk reads as nothing saved. */
+export function loadSavedIds(tripId: string): string[] {
+  if (typeof localStorage === 'undefined') return []
+  try {
+    return parseSavedIds(localStorage.getItem(SAVED_KEY_PREFIX + tripId))
+  } catch {
+    return []
+  }
+}
+
+/** Write this trip's saved ids, de-duplicated. Silent no-op without storage. */
+export function saveSavedIds(tripId: string, ids: string[]): void {
+  if (typeof localStorage === 'undefined') return
+  try {
+    localStorage.setItem(SAVED_KEY_PREFIX + tripId, JSON.stringify([...new Set(ids)]))
+  } catch {
+    // best-effort, same as every other pref here
+  }
+}
+
+/**
+ * Flip one id against the CURRENT set, with no I/O. The caller derives the
+ * next set from React's previous state and persists that exact set after the
+ * change. An updater that reads and writes storage is not safe under React's
+ * repeated calculation (Strict Mode runs it twice, so the flip lands twice),
+ * and a storage read inside it loses the session when storage is denied —
+ * each toggle then starts from empty and drops the ids saved before it.
+ */
+export function flipSavedId(current: string[], id: string): string[] {
+  return current.includes(id) ? current.filter(x => x !== id) : [...current, id]
+}
+
 // ---- Generic named string prefs ----
 // String-valued counterpart to the flag pair: for numeric/duration-ish view
 // prefs (detour-scope km, etc.) that should survive reloads. Same guards —

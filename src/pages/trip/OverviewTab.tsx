@@ -83,7 +83,7 @@ export function OverviewTab({ trip, onOpenTimeline, onOpenMap, onInvite, health,
           </div>
           <div className="health-big">
             <div className={`health-num-big ${healthBandClass(health.band)}`}>{health.score}</div>
-            <div style={{ flex: 1, minWidth: 200 }}>
+            <div className="ovw-score-details">
               <div className="health-bar">
                 <i className={healthBandClass(health.band)} style={{ width: `${health.score}%` }} />
               </div>
@@ -104,7 +104,7 @@ export function OverviewTab({ trip, onOpenTimeline, onOpenMap, onInvite, health,
         </div>
 
         {/* Bento stat cluster: cost / per-person / effort / stops at a glance */}
-        <div className="stat-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)', marginTop: 14, marginBottom: 14 }}>
+        <div className="stat-grid ovw-stats">
           <StatTile label="Total cost" value={formatInr(totals.totalCostInr)} sub={`${formatInr(totals.costPerDayInr)}/day · estimates`} />
           <StatTile label="Per person" value={formatInr(totals.costPerPersonInr)} sub={`vs ${formatInr(trip.budgetPerPersonInr)} target`} />
           <StatTile label="Travel effort" value={minutesToHM(totals.totalTravelMinutes)} sub={`≈${Math.round(totals.totalDistanceKm)} km route`} />
@@ -135,7 +135,7 @@ export function OverviewTab({ trip, onOpenTimeline, onOpenMap, onInvite, health,
               {health.warnings.length > 3 && <span className="small muted">+{health.warnings.length - 3} more warning{health.warnings.length - 3 !== 1 ? 's' : ''} — see Timeline.</span>}
             </div>
           )}
-          <button className="link-btn teal" style={{ marginTop: 12 }} onClick={onOpenTimeline}>Open Timeline to resolve →</button>
+          <button className="link-btn teal ovw-timeline-action" onClick={onOpenTimeline}>Open Timeline to resolve →</button>
         </div>
       </div>
 
@@ -160,11 +160,11 @@ export function OverviewTab({ trip, onOpenTimeline, onOpenMap, onInvite, health,
                 roundTripNote={isRoundTrip(trip) ? `↩ returns to ${trip.startLocation}` : undefined}
                 points={routePoints.map(p => ({ lat: p.lat, lng: p.lng, day: p.day }))}
               />
-            : <p className="muted small" style={{ margin: 0 }}>
+            : <p className="muted small ovw-route-empty">
                 No route to draw yet — this plan needs at least two places with confirmed
                 coordinates. Add a stop, or pin the ones that are missing, and the shape appears here.
               </p>}
-          <p style={{ margin: '4px 0 0', fontSize: 12.5, opacity: .85, lineHeight: 1.6 }}>
+          <p className="ovw-route-summary">
             <b>{trip.startLocation}</b>
             {trip.destinations.map((d, i) => <span key={i}> → {d}</span>)}
             {isRoundTrip(trip) && <> → {trip.startLocation}</>}
@@ -183,7 +183,7 @@ export function OverviewTab({ trip, onOpenTimeline, onOpenMap, onInvite, health,
             <span className="chip chip-info">{trip.fixedCommitments.length}</span>
           </div>
           {nextCommitment ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div className="ovw-commitments">
               <div className="warn-item sev-low">
                 <span className="warn-icon"><Pin size={13} aria-hidden /></span>
                 <div>
@@ -192,7 +192,7 @@ export function OverviewTab({ trip, onOpenTimeline, onOpenMap, onInvite, health,
                 </div>
               </div>
               {trip.fixedCommitments.filter(fc => fc !== nextCommitment).map(fc => (
-                <div key={fc.id} className="row-between small" style={{ padding: '4px 0' }}>
+                <div key={fc.id} className="row-between small ovw-commitment-row">
                   <span><b>{fc.title}</b> <span className="muted">· Day {fc.dayIndex + 1}, {formatHM(fc.time, timeFormat)}</span></span>
                   <Chip tone="info">{labelCommitType(fc.type)}</Chip>
                 </div>
@@ -306,7 +306,7 @@ function WeatherCard({ trip }: { trip: Trip }) {
         })}
       </div>
       {wetDays > 0 && (
-        <p className="hint-text" style={{ marginTop: 8 }}>
+        <p className="hint-text ovw-rain-note">
           <InlineIcon icon={TriangleAlert} size={12} gap={3} />High rain chance on {wetDays} day{wetDays > 1 ? 's' : ''} — consider indoor alternatives for weather-sensitive stops (beaches, viewpoints, treks).
         </p>
       )}
@@ -390,11 +390,11 @@ function SlotMatrix({ trip, road, corridorSegments, mapInputs, mapCache, onRefre
       <h3 className="card-head">What each day holds</h3>
       {freshness === 'stale' ? (
         <>
-          <p className="muted small" style={{ margin: '6px 0 0' }}>
+          <p className="muted small ovw-matrix-stale">
             Stale: your settings changed since the Map tab&apos;s scan, so these numbers would describe the old
             plan. Nothing is shown rather than something wrong.
           </p>
-          <button className="link-btn teal" style={{ marginTop: 8 }} onClick={onRefreshMatrix}>Refresh on the Map tab →</button>
+          <button className="link-btn teal ovw-matrix-refresh" onClick={onRefreshMatrix}>Refresh on the Map tab →</button>
         </>
       ) : (
         <>
@@ -439,19 +439,19 @@ function SlotMatrix({ trip, road, corridorSegments, mapInputs, mapCache, onRefre
           )
         })}
       </div>
-      <p className="muted small" style={{ margin: '6px 0 0' }}>
+      <p className="muted small ovw-matrix-legend">
         Solid = planned, hollow = engine-managed, dot = still open.
         {thinnest ? ` Thinnest day: Day ${thinnest.index + 1}${thinnest.total === 0 ? ' (nothing planned yet)' : ` (${thinnest.filled} of ${thinnest.total})`}.` : ''}
       </p>
           {freshness === 'unknown' && (
-            <p className="muted small" style={{ margin: '4px 0 0' }}>
+            <p className="muted small ovw-matrix-unverified">
               Unverified: the Map tab hasn&apos;t published a scan this session, so this may predate your latest settings.
             </p>
           )}
         </>
       )}
       {!hasCorridor && (
-        <p className="muted small" style={{ margin: '4px 0 0' }}>
+        <p className="muted small ovw-matrix-partial">
           Partial: this trip&apos;s corridor hasn&apos;t been scanned yet, so the fuel and stretch breaks the engine
           derives aren&apos;t counted here. Open the Map tab once and this fills in.
         </p>

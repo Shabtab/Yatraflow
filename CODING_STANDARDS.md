@@ -649,6 +649,74 @@ anywhere in this repo means the entry labelled `6b` below.
    keeps the file compiling, any reduction bails. You must keep the runner
    and its cells in the page. You must move only the writer beside it. You
    must record the split in the hook header.
+ 6ah. **A queued slice replays stale code beside the hook that replaced it
+   (learned 2026-10-04, #420 slices 14-15).** A stacked branch holds the
+   pre-merge page. Its hunks can re-add a memo, a filter or a block that a
+   merged slice already moved into a hook. You must check each hunk side
+   against the hooks that exist now. The merged hook wins. The stale copy
+   dies. A duplicate `const` is the signal: the hook already returns the
+   name, so the incoming copy cannot stay.
+ 6ai. **You must union rebase imports, then prune with the linter (learned
+   2026-10-04, #420 slices 13-15).** Each side names what its own tree used.
+   You must keep every name first. You must delete what `eslint` reports as
+   unused. You must not raise the baseline to cover leftovers. You must
+   regenerate it lower in the same commit.
+ 6aj. **You must classify a branch by patch ancestry, not by name or age
+   (learned 2026-10-04, prune of 80 refs).** A merged pull request leaves its
+   branch ref behind. Test each ref with `git merge-base --is-ancestor <ref>
+   origin/test`. You must run `git cherry` on what is left. `git cherry`
+   skips merge commits, so a branch of merge commits only reads as empty.
+   `git log origin/test..<ref>` shows those. You must keep a branch whose
+   commits no patch in test owns. You must keep a `release/*` ref, because
+   this repo tags no release. You must run `git worktree list` before you
+   delete a local branch.   `git branch -d` refuses an unmerged branch, so it
+   must be the only delete verb you use.
+ 6ak. **You must not poll with requestAnimationFrame when a timer can poll
+   (learned 2026-10-05, the featured deep link).** A browser that makes no
+   rendering frames never runs a rAF callback. The preview browser did this
+   while it read "visible". A rAF loop then does nothing. A smooth scroll
+   never moves. You must poll with `setTimeout`. You must land a scroll after
+   the layout settles, or the target drifts. You must check a scroll by class
+   and probe, not by `scrollY`. Script-driven scroll needs frames too.
+ 6al. **A class rename must move the class's whole selector family (learned
+   2026-10-06, MR9).** The rename from `.day-rail-chip` to `.day-rail-card` left one
+   selector behind. The `[aria-current]` rule stayed on the dead name, so the
+   current-day marker silently died. The green pins hid it: a sibling rule on
+   the new name already passed. You must grep the old class through
+   `styles.css` before the rename lands. Each selector must take the new
+   name or die with the old one.
+ 6am. **A CSS gate can fail on how a rule is ADDED, not on what it says
+   (learned 2026-10-06, #645).** Three gates read `styles.css`, and one edit
+   hit all three. `duplicateSelectors` counts TOP-LEVEL rules only, so a new
+   top-level rule that repeats an existing selector fails: extend the existing
+   rule in place. `offLadderSpacing` reads every `NNpx` in a spacing property,
+   and the numbers inside `calc()` count too — `padding-left: calc(96px + 14px)`
+   fails on the 96. Use `var(--space-*)` instead of the arithmetic.
+   `subPixelType` refuses a `font-size` below 11px, and `var(--text-xs)` is the
+   only size token left. **Every ratchet key is declaration text now, not a line
+   number.** Each key in `tests/design-system-baseline.json` is the offending
+   declaration's own text, with the old `styles.css:<line>` prefix dropped; the
+   test file's header records why that changed. Edit a rule where it sits. Add
+   comment lines above it. A shift moves nothing. Only a change to what a rule
+   *declares* trips a gate. So append at EOF when that is where the change
+   belongs — not to protect the baseline.
+   **A migrated legacy value fails the gate until you delete its entry (learned
+   2026-10-06).** The change from `.route-panel`'s raw `.55s` to `var(--motion-slow)`
+   made the gate report `.route-panel — animation: .55s` under "these no longer
+   reproduce — delete them from design-system-baseline.json". That message is
+   the cleanup the ratchet asks for, not a regression. Delete the line. Never
+   raise the baseline.
+
+ 6an. **A popover's background is a PAIR — copy `background: var(--popover-bg)`
+   without its `backdrop-filter` and the panel is see-through (learned
+   2026-10-06).** `--popover-bg` is `var(--yf-nav-glass)`, a translucent glass
+   colour. The `.popover` class is what makes it readable: it pairs that
+   background with `backdrop-filter: blur(var(--yf-blur-nav)) saturate(1.2)`.
+   A My Trips filters panel took the background and left the blur behind. The
+   status tabs and the cards showed straight through it. The screenshot showed
+   the symptom; only the CSS pair explained it. So reuse the `.popover` class
+   instead of re-declaring its properties, or carry the filter with the
+   background.
 
  6ah. **A fix-ready comment earns its title in stages — verified facts, root cause, patch,
    delivery (learned 2026-10-05, the review-loop retro).** The day-planner wave (#117–#181)
@@ -666,6 +734,16 @@ anywhere in this repo means the entry labelled `6b` below.
    never what you expect to find. Companions: §6c's absence-claim rule for the
    missing-guard family, the shell-mangling rule for what counts as having read a line, and
    the contrast-claims rule for when verification means measurement.
+
+6ao. **Vite inlines any asset under 4 KB into the JavaScript as base64 (learned 2026-10-11).**
+   The 280 px vignette is 2.9 KB, so the default build put it in the bundle. `vite.config.ts`
+   now sets `build.assetsInlineLimit` to a function. The function returns `false` for paths
+   under `src/assets/art/` and `undefined` for every other file, which keeps Vite's default.
+   After an art change, check that the `.avif` files appear in `dist/assets/`, not in the JS.
+
+6ap. **On Windows, `convert` is the disk tool, not ImageMagick (learned 2026-10-11).**
+   `C:\WINDOWS\system32\convert` is not an image converter. Use `magick` for ImageMagick, or use
+   `sharp` through `scripts/build-art.mjs`. Never run `convert` in a shell on this machine.
 
 ## 2. Conventions (`AGENTS.md` §4)
 
@@ -802,7 +880,9 @@ process.
   diff it against the merge base (`git diff <merge-base> <branch> -- <file>`)
   and port only the intended hunks.
 
-- **A stale visual branch is re-cut, never merged — and layout overrides on shared classes belong inline, not in the stylesheet (learned 2026-09-29, #512).** The V2 settings branch predated five behavior waves on the same form, so merging either way silently reverted one side. The recut keeps test's state/handlers/tests verbatim and re-applies only the presentation — and every landed mapping stays landed (the branch's stale `HEALTH_TONE`/`MODE_ICON`/inline settlement math were the traps). Companion: `tests/health-band.test.ts` collects every rule whose SELECTOR mentions health/pulse, so four layout overrides (`.tsx-read .health-*`) failed it as non-vocabulary additions — one-off compositions on shared classes go inline (`style={{ gap: 14 }}`), keeping the tripwire asserting exactly the band vocabulary.
+- **Re-cut a stale visual branch, never merge it. Move layout overrides on shared classes into page classes, with three exceptions (learned 2026-09-29, #512; revised 2026-10-11, R5).** The V2 settings branch predated five behavior waves on the same form. A merge silently reverted one side. The recut keeps the state, handlers and tests from `test` and applies only the presentation again. Every landed mapping stays landed. The stale `HEALTH_TONE`, `MODE_ICON` and inline settlement math were the traps.
+  Move an inline layout value into a page-prefixed class (R1). Find every rule that sets the same property on the shared class. Include the `+`, `>` and ancestor forms, such as `.card + .card`. If one exists, use a same-element compound selector, such as `.row-between.bud-watch-row`. If none exists, use the page class alone. Append the rule at the end of `src/styles.css` (R6). A two-class compound only ties a combinator rule. If a host rule has more specificity than two classes, keep the value inline.
+  Keep the value inline in three cases. (1) A test collects rules by selector name and the new selector contains that name. `tests/health-band.test.ts` collects every `health` or `pulse` selector, and four `.tsx-read .health-*` overrides failed it in #512. Do not widen the test to pass. (2) The value breaks a design-system gate (R13). (3) The value comes from data (R4).
 
 - **A squash-merge can silently DROP files, and nothing in the gate catches it.**
   PR #75's squash carried the calendar/print/ShareTab files but silently omitted
@@ -844,9 +924,29 @@ process.
 
 - **Vendored ripgrep can be missing in the desktop environment — `code_search` fails with ENOENT (`rg.exe` not found).** Don't retry it; fall back to `grep -n` / `awk` in the shell, which answer the same question.
 
+- **The changelog's union driver applies only when both sides already carry it (learned 2026-10-10).** Git provides the `union` driver. You do not need a `merge.union.driver` setting. With the rule in `.gitattributes`, an append conflict keeps both sides without markers. The merge that adds this rule is an exception. The earlier tip had no `CHANGELOG.md merge=union` line, so that merge wrote markers. Incoming release headings also left 29 new entries inside the released `[0.73.0]` section. A later edit moved each entry back to `[Unreleased]`. After a release merge, you must check every new entry's release heading. You must compare each moved block with its earlier copy.
+
 - **Release tags are not automatic — they were skipped after v0.44.0.** `git tag` stopped at v0.44.0 while `package.json` climbed to 0.47.0 and nothing in the gate reads tags, so nobody noticed. Verify tag state with `git tag --sort=-creatordate | head` when a release claims to be tagged; backfilling needs an explicit tag push to the remote.
 
 - **A day is addressed by `day.index` and never by array position — and one report names only one of the places that got it wrong (learned 2026-09-26).** Issue #338 read as a per-day money bug in `computeTotals` (`byDay` was built positionally but read with `byDay[day.index]`, the round-trip drive home went to `byDay[len - 1]`, and an expense's `dayIndex` was clamped to the last day — so on a sparse trip, indexes 0,2,3 after a deleted middle day, a day could show a stranger's total). Fixing exactly that was not enough for the issue's own acceptance test *"an unsorted `trip.days` array follows `day.index`"*: the same index-vs-position mistake lived in `originOf`'s `dayEndPosition` (`trip.days[dayIndex]`, so a sparse trip's later days woke up at their own start and measured zero legs), in `firstFixedPoint`/`lastActiveStopPoint` ("home" and the return turnaround read from the array's first/last slot, so shuffling the array moved the whole route), and in two `day.index === trip.days.length - 1` return-shape checks (a count is not the last index). When a day-keyed bug lands, grep `trip.days[` **and** `days.length - 1` across `src/lib` before calling it fixed. The readers clamp too: the Timeline's chip, `printModel` and the engine's own lookups each had their own positional `Math.min(index, len - 1)` — a lookup that finds no bucket must render NOTHING, never another day's number. Two smaller lessons from the same wave: the page handlers that carry this class of bug can still be regression-tested in the node suite — `react-dom/server` renders a pure component (`tests/timefmt.test.ts`, `tests/form-error-summary.test.ts` are the precedent, used here for `DaySpark`'s NaN coordinates) and a narrow source assertion binds a handler to the helper it must call (`tests/decision-resolve.test.ts` is the precedent); and a guard keyed on a row's `status` must treat a MISSING status as open (`if (sg.status && sg.status !== 'open')`), because a hydrated row that predates the field would otherwise become un-actionable — the `fire-and-forget` fixture has no status and caught exactly that.
+
+- **A test that reads source text must turn CRLF into LF first (learned 2026-10-11).**
+  On Windows, `core.autocrlf` is `true`. Git stores LF and writes CRLF to the
+  working tree. A pin that searches for `\n\n` or `/>\n` then finds nothing, and
+  it fails on every Windows checkout. CI on Linux hides the fault. Read the file
+  with `.replace(/\r\n/g, '\n')`. Two pins failed this way
+  (`tests/trips-my-trips-defects.test.ts`, `tests/ladakh-calculator.test.ts`).
+  Check a new source-reading pin on a Windows checkout before you trust it.
+  A line-ending check with `grep -c $'\r'` in a shell loop printed 0 on CRLF
+  files. Use `node -e "fs.readFileSync(f,'utf8').includes('\r')"` instead.
+
+- **Route paths, not hash fragments, address pages (learned 2026-10-11).** The
+  app routes by path (`/trips`). A signed-out visit to a signed-in route keeps
+  its URL and shows the landing page in place. A check that compares URLs
+  reports success on a wrong page. Compare the page content, such as the h1.
+  `AGENTS.md` still says "hash routing". Treat that line as stale.
+
+- **You must parse CSS time units before you use motion tokens in JavaScript.** Production CSS can change `180ms` to `.18s`. Convert seconds to milliseconds before you start timers or browser animations.
 
 ## 3. Scripted edits
 

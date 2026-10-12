@@ -1,13 +1,13 @@
 // ============ Explore — filter bar ============
 // The search field, three selects, then the travel-style chips with counts, the
 // Saved toggle and Clear. The page owns the state and the URL. This bar only
-// shows it and reports taps. The bar is a stacking host, so the select menus
-// open above the cards. On a phone the selects fold behind a Filters button.
-import { useId, useState } from 'react'
-import { ArrowDownUp, Heart, SlidersHorizontal, X } from 'lucide-react'
+// shows it and reports taps. The frame, the stacking host and the phone Filters
+// fold come from FilterBar. This file only fills its slots.
+import { ArrowDownUp, Heart } from 'lucide-react'
 import { Select } from '../Select'
 import { FilterChip } from '../filters/FilterChip'
 import { SearchField } from '../filters/SearchField'
+import { FilterBar } from '../page/FilterBar'
 
 export interface StyleOption { value: string; label: string; count: number }
 
@@ -57,20 +57,17 @@ export function ExploreFilterBar({
   filtersActive: boolean
   onClear: () => void
 }) {
-  const selectsId = useId()
-  const [selectsOpen, setSelectsOpen] = useState(false)
   const selectCount = (duration !== 'all' ? 1 : 0) + (maxBudget !== '' ? 1 : 0) + (sortKey !== 'popular' ? 1 : 0)
   return (
-    <div className="ex-filterbar filterbar-host" role="search" aria-label="Filter itineraries">
-      <div className="ex-filter-row">
+    <FilterBar
+      label="Filter itineraries"
+      search={
         <SearchField value={query} onChange={onQueryChange} label="Search by route, place or creator"
           placeholder="Search a route, place or creator" shortPlaceholder="Search routes" />
-        <button type="button" className="btn btn-secondary ex-filters-toggle" aria-expanded={selectsOpen}
-          aria-controls={selectsId} onClick={() => setSelectsOpen(open => !open)}>
-          <SlidersHorizontal size={15} aria-hidden />Filters
-          {selectCount > 0 && <span className="ex-filters-count">{selectCount}</span>}
-        </button>
-        <div className={`ex-selects${selectsOpen ? ' is-open' : ''}`} id={selectsId}>
+      }
+      activeSelectCount={selectCount}
+      selects={
+        <>
           <div className="ex-select">
             <Select value={duration} onChange={onDuration} aria-label="Duration" options={DURATION_OPTIONS} />
           </div>
@@ -81,9 +78,9 @@ export function ExploreFilterBar({
             <ArrowDownUp className="ex-select-icon" size={15} aria-hidden />
             <Select value={sortKey} onChange={onSort} aria-label="Sort by" options={SORT_OPTIONS} />
           </div>
-        </div>
-      </div>
-      <div className="ex-chip-row">
+        </>
+      }
+      chips={
         <div className="ex-chips" role="group" aria-label="Travel style">
           <FilterChip pressed={style === 'all'} onClick={onAllStyles}>All styles</FilterChip>
           {styles.map(option => (
@@ -93,18 +90,15 @@ export function ExploreFilterBar({
             </FilterChip>
           ))}
         </div>
-        <span className="ex-chip-divider" aria-hidden="true" />
-        {/* Saved sits in the same wrapping row as the style chips. */}
+      }
+      trailing={
+        // Saved sits in the same wrapping row as the style chips.
         <button type="button" className="ex-chip ex-chip-saved" aria-pressed={savedOnly} onClick={onToggleSaved}>
           <Heart size={14} aria-hidden fill={savedOnly ? 'currentColor' : 'none'} />
           Saved{savedCount > 0 && <span className="ex-chip-count">{savedCount}</span>}
         </button>
-        {filtersActive && (
-          <button type="button" className="btn btn-quiet ex-clear" onClick={onClear}>
-            <X size={13} aria-hidden />Clear filters
-          </button>
-        )}
-      </div>
-    </div>
+      }
+      onClear={filtersActive ? onClear : undefined}
+    />
   )
 }

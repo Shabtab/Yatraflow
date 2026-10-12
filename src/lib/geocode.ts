@@ -199,6 +199,8 @@ async function googlePointScan(
 ): Promise<PlaceHit[]> {
   const out: PlaceHit[] = []
   const seen = new Set<string | number>()
+  let failedAnchors = 0
+  let lastError: unknown = null
   for (const a of anchors.slice(0, maxAnchors)) {
     try {
       if (signal?.aborted) throw new DOMException('The request was aborted.', 'AbortError')
@@ -212,8 +214,12 @@ async function googlePointScan(
     } catch (err) {
       if (err instanceof QuotaExhaustedError || signal?.aborted || (err instanceof DOMException && err.name === 'AbortError')) throw err
       /* this anchor failed — try the next one */
+      failedAnchors++
+      lastError = err
     }
   }
+  // No hits and at least one anchor failed: the scan failed, it did not come back empty (#704).
+  if (out.length === 0 && failedAnchors > 0) throw lastError
   return out
 }
 
@@ -260,7 +266,7 @@ export async function searchNearbyPoisMulti(
       }
       return rankAndCap(hits, capped, radiusM, count, opts)
     } catch (err) {
-      if (err instanceof QuotaExhaustedError || opts.signal?.aborted || (err instanceof DOMException && err.name === 'AbortError')) throw err
+      if (opts.rejectOnFailure || err instanceof QuotaExhaustedError || opts.signal?.aborted || (err instanceof DOMException && err.name === 'AbortError')) throw err
       return [] as PlaceHit[]
     }
   } else if (googleEnabled()) {
@@ -278,7 +284,7 @@ export async function searchNearbyPoisMulti(
           })
       return rankAndCap(hits, capped, radiusM, count, opts)
     } catch (err) {
-      if (err instanceof QuotaExhaustedError || opts.signal?.aborted || (err instanceof DOMException && err.name === 'AbortError')) throw err
+      if (opts.rejectOnFailure || err instanceof QuotaExhaustedError || opts.signal?.aborted || (err instanceof DOMException && err.name === 'AbortError')) throw err
       return [] as PlaceHit[]
     }
   }
@@ -367,7 +373,11 @@ export async function planJourneyHalts(
         }),
       ]).then(([towns, localities]) => [...towns, ...localities])
   const [hits, cities] = await Promise.all([
-    searchNearbyPoisMulti(anchors, radiusM, 16, { ...opts, purposes }).catch(() => [] as PlaceHit[]),
+    searchNearbyPoisMulti(anchors, radiusM, 16, { ...opts, purposes }).catch((err: unknown) => {
+      // #704: the Map tab asks to hear a failed search. Other callers keep the empty list.
+      if (opts.rejectOnFailure) throw err
+      return [] as PlaceHit[]
+    }),
     citySearch,
   ])
   // A city that sits nowhere near any halt must not fill one: rural circles

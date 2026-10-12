@@ -622,7 +622,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
 
   // #420 slice 11: the corridor cache (hash, publish, both scans) lives in
   // ./map/useCorridorCache. It returns values only, never callbacks.
-  const { fractionPois, corridorQuotaOut, loadingPois } = useCorridorCache({
+  const { fractionPois, corridorQuotaOut, loadingPois, poisFailed } = useCorridorCache({
     trip, anchors, routeGeometry, scopeKm, dayRainPct, dayWeatherCode, crewSeeds,
     dnaTick, onInputsHash, pois, setPois, nearbyOpts, planKm,
     wholeTripMin: wholeTrip.min, travelDayNeed,
@@ -1308,6 +1308,9 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
           ) : quotaOut ? (
             // #176: under quota-out the empty strip must not blame the plan.
             <p className="muted small">Google search quota reached - corridor fallback suggestions are paused until the counter rolls over (this is not about your route).</p>
+          ) : poisFailed ? (
+            // #704: a failed search is not an empty one, so the route is not blamed.
+            <p className="muted small">Stops along the route could not be loaded just now.</p>
           ) : (
             <p className="muted small">Not enough driving distance yet for a fatigue plan - add a longer route (90+ km) in the Timeline and segmented stop suggestions will appear here.</p>
           )

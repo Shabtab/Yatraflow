@@ -5,6 +5,7 @@
 // timestamps, so a time zone cannot move a trip to another day.
 import type { Trip, TripMember } from '../data/types'
 import { lastStop } from './tripsCard'
+import { nextTripStep, plannedDayRatio, type NextStep } from './tripNextStep'
 
 export type WhenKey = 'all' | 'upcoming' | 'past' | 'draft'
 export type TripStatus = 'live' | 'upcoming' | 'past' | 'draft'
@@ -121,25 +122,24 @@ export function countdownText(t: TripPlan, today: Date): string | null {
   return daysAway === 1 ? 'Starts tomorrow' : `Starts in ${daysAway} days`
 }
 
-/** Days with at least one stop that is not rejected, against the day count. */
+/**
+ * Days with activities against the day count. It is the same measure as the
+ * card's next step and the planning bar (`plannedDayRatio`), so an automatic
+ * route anchor does not count as a planned day (#647).
+ */
 export function planning(t: Pick<Trip, 'days'>): { planned: number; total: number } {
-  const planned = t.days.filter(day => day.stops.some(stop => stop.status !== 'rejected')).length
-  return { planned, total: t.days.length }
+  const { planned, total } = plannedDayRatio(t)
+  return { planned, total }
 }
 
 /**
- * The first stop marked "needs-booking" on a day that is today or later.
- * Days already gone are skipped. A trip that has not started, or has no valid
- * start date, scans from day 1. Returns the 1-based day number and the title.
+ * The next-step line a trip card shows. A past trip shows none: the step
+ * derivation does not read dates, so a booking left on a trip that already
+ * ended would read as a to-do. Every other trip gets what `nextTripStep` returns.
  */
-export function nextStep(t: TripPlan, today: Date): { day: number; title: string } | null {
-  const start = parseYmd(t.startDate)
-  const firstDayIndex = start ? Math.max(0, diffDays(start, localDay(today))) : 0
-  for (let dayIndex = firstDayIndex; dayIndex < t.days.length; dayIndex++) {
-    const stop = t.days[dayIndex].stops.find(candidate => candidate.status === 'needs-booking')
-    if (stop) return { day: dayIndex + 1, title: stop.title }
-  }
-  return null
+export function cardNextStep(t: Trip, today: Date): NextStep | null {
+  if (statusOf(t, today) === 'past') return null
+  return nextTripStep(t)
 }
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
