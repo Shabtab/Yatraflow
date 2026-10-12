@@ -86,7 +86,6 @@ You must finish these before you drive any traffic.
 | Item | Why |
 | --- | --- |
 | Confirm the live checks of P0 #689 | The issue is closed. Prove on the live project that no `masteradmin` account keeps a public password, and that no fixture page stays in the sitemap or in Explore (#672). |
-| Resync `test` with `main` | `main` holds the v0.74.1 invite-code security fix. `test` does not. |
 | Fix the create-funnel events | The live table holds no `started` row. We cannot measure a broken funnel. |
 | Decide the router | The public OSRM demo server forbids commercial use (STEP-0 D6). Self-host it or pay for one. |
 
