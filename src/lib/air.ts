@@ -42,7 +42,7 @@ export interface LatLng {
  * unit-test and small enough to ship in the bundle.
  *
  * Coordinates are the airport reference points (roughly the terminal), which is
- * what "nearest airport to this town" should measure to. A missing entry means
+ * what "nearest airport to this town" must measure to. A missing entry means
  * `nearestAirport` returns null and the UI says so rather than guessing.
  */
 export const INDIAN_AIRPORTS: readonly Airport[] = [
@@ -263,9 +263,9 @@ export const AIRPORT_SEARCH_MAX_KM = 400
  * The `count` airports closest to `point`, nearest first. `maxKm` bounds the
  * search: a point with nothing inside the radius gets a SHORTER list rather
  * than a far-away airport presented as "your airport". A city with two fields
- * (Delhi, Mumbai, Goa, Bengaluru's neighbours) therefore returns both, and the
- * UI can let the traveller pick — which is the whole point of returning a list
- * rather than a single winner.
+ * (Delhi, Mumbai, Goa, Bengaluru's neighbours) so returns both, and the UI can
+ * let the traveller pick — which is the whole point of returning a list rather
+ * than a single winner.
  */
 export function nearestAirports(point: LatLng | null | undefined, count = 1, maxKm = AIRPORT_SEARCH_MAX_KM): Airport[] {
   if (!point || !Number.isFinite(point.lat) || !Number.isFinite(point.lng)) return []

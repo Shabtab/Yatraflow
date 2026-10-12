@@ -333,12 +333,13 @@ export function simulateDay(
 ): DaySchedule {
   const j = buildJourney(trip, { ...day, index: dayIndex }, legCorrections, startOrigin)
   // Timeline rows: every stored stop, plus the engine-added destination anchor
-  // when the journey needs one, plus the AIRPORT waypoints a flight day walks
-  // through — those rows carry the air leg, and the sector's fare and block time
-  // have to reach the totals, the ICS export and every other consumer of this
-  // schedule. The synthesized START (where the traveller wakes up that morning)
-  // is journey context, not a row.
-  const rows = j.points.filter(p => !p.synthesized || p.kind === 'destination' || p.legIn?.kind === 'air')
+  // when the journey needs one, plus the AIRPORT anchors a flight day walks
+  // through. Both airports, not just the one the sector lands on — the ground
+  // leg INTO the origin airport is a real leg of the day and its fare has to
+  // reach the totals, the ICS export and every other consumer of this schedule.
+  // The synthesized START (where the traveller wakes up that morning) is journey
+  // context, not a row.
+  const rows = j.points.filter(p => !p.synthesized || p.kind === 'destination' || p.kind === 'airport')
   return {
     dayIndex,
     startsAt: j.startTime,
@@ -444,7 +445,7 @@ export function nextAfter(trip: Trip, dayIndex: number): LegAnchor | null {
 // header, the travel panel, warnings, totals and the impact preview all
 // read from it.
 
-export type JourneyPointKind = 'start' | 'waypoint' | 'halt' | 'visit' | 'destination'
+export type JourneyPointKind = 'start' | 'waypoint' | 'halt' | 'visit' | 'destination' | 'airport'
 
 export interface JourneyPoint {
   kind: JourneyPointKind
@@ -865,7 +866,7 @@ export function buildJourney(
       // An airport is a transit point, not a visit: no dwell beyond the
       // check-in already baked into the day's start clock.
       points.push({
-        kind: 'waypoint', title: a.title, lat: a.point.lat, lng: a.point.lng,
+        kind: 'airport', title: a.title, lat: a.point.lat, lng: a.point.lng,
         stop: synthesizedAnchor(`journey_air_${day.index}_${a.title.slice(0, 3)}`, a.title, a.point),
         synthesized: true, legIn: lg, arrive, depart: arrive, dwellMinutes: 0,
       })
@@ -902,9 +903,10 @@ export function buildJourney(
     // Rental stacks here too: one rent-day on the day's own bill, so the
     // Timeline chip and the Budget bucket read the same number (#521 — the
     // two-verdicts trap: computeTotals adds the identical term below).
-    // An air leg carries its own fare and is never also billed ₹/km.
+    // An air leg carries its own fare and is never also billed ₹/km; a ground
+    // leg is billed at the CAR rate, the same figure computeTotals uses.
     transportCostInr: points.reduce((a, p) => a + (p.legIn
-      ? (p.legIn.costInr ?? p.legIn.distanceKm * (A.inrPerKm ?? 8))
+      ? (p.legIn.costInr ?? p.legIn.distanceKm * (p.legIn.kind === 'air' ? 0 : (GA.inrPerKm ?? 8)))
       : 0), 0) + (A.rentPerDayInr ?? 0),
     fuelLitres: A.kmPerLiter ? distanceKm / A.kmPerLiter : null,
     fuelPricePerL: A.fuelPricePerL ?? null,
@@ -1729,6 +1731,10 @@ export function legCostInr(stated: unknown, distanceKm: number, inrPerKm: number
 
 export function computeTotals(trip: Trip, legCorrections?: Record<string, LegEstimate>): TripTotals {
   const A = getAssumptions(trip)
+  // The rate for GROUND legs. Identical to A on every non-air mode; on a flight
+  // trip it is the car rate, so the budget's per-km figure matches the journey
+  // card's for the same leg.
+  const GA = groundAssumptions(trip)
   let travelMinutes = 0, distanceKm = 0, stopCount = 0
   // Per-km fuel/fare AND the rental per-day stack — one transport number, so
   // the name says what it holds (#521; it used to be km-only).
@@ -1771,7 +1777,10 @@ export function computeTotals(trip: Trip, legCorrections?: Record<string, LegEst
       // An air sector carries its own fare (fare × heads) and is priced from it
       // — never from ₹/km of great-circle distance, and never from the stop's
       // stated transport cost, which belongs to a ground leg.
-      const legCost = l.costInr ?? legCostInr(sim.activeStops[k]?.transportCostInrTotal, l.distanceKm, A.inrPerKm ?? 8)
+      // A ground leg on an air trip is priced at the CAR rate, the same figure
+      // buildJourney's groundAssumptions gives it — otherwise the Journey card
+      // and the Budget tab disagree about the same leg (#521's two-verdicts trap).
+      const legCost = l.costInr ?? legCostInr(sim.activeStops[k]?.transportCostInrTotal, l.distanceKm, GA.inrPerKm ?? 8)
       transportCost += legCost
       if (bucket) bucket.transportInr += legCost
     })

@@ -8,7 +8,7 @@ import { describe, it, expect } from 'vitest'
 import {
   buildJourney, computeTotals, journeyGeometry, flightForDay, resolveAirports,
   flightBlockMinutes, flightFareInrPerPerson, isAirMode, isRoadMeasuredMode,
-  AIRPORT_CHECKIN_MIN,
+  AIRPORT_CHECKIN_MIN, simulateDay, originOf,
 } from '../src/lib/engine'
 import { nearestAirport, airportByIata } from '../src/lib/air'
 import type { Trip, FlightLeg } from '../src/data/types'
@@ -186,6 +186,38 @@ describe('computeTotals on a flight trip', () => {
     const totals = computeTotals(t)
     // 2 travellers × ₹5,000, plus the two ground legs — and NOT 1150 km × 6.5
     expect(totals.byCategory.transport).toBeGreaterThanOrEqual(10000)
+  })
+
+  it('prices the GROUND legs at the car rate, so the Budget tab and the Journey card agree', () => {
+    // The two-verdicts trap (#521): the journey card priced the run to the
+    // airport with groundAssumptions (car ₹/km) while computeTotals used the
+    // flight mode's blended ₹/km, so one leg had two prices.
+    const t = flightTrip([flight({ costInrPerPerson: 4000 })])
+    t.days = [{ id: 'd0', index: 0, stops: [] }]
+    const journey = buildJourney(t, t.days[0])
+    const totals = computeTotals(t)
+    expect(totals.byCategory.transport).toBeCloseTo(journey.transportCostInr, 6)
+  })
+
+  it('keeps BOTH airport legs in the schedule, so the budget prices the run to the field', () => {
+    // The first cut of the row filter kept only the point the sector LANDS on,
+    // so the ground leg INTO the origin airport fell out of sim.legs and the
+    // budget silently under-counted it.
+    const t = flightTrip([flight({ costInrPerPerson: 4000 })])
+    t.days = [{ id: 'd0', index: 0, stops: [] }]
+    const sim = simulateDay(t.days[0], t, originOf(t, 0), 0)
+    // both airports and the trip's end are rows of the day's schedule
+    expect(sim.activeStops.map(s => s.title)).toEqual([
+      expect.stringContaining('DEL'),
+      expect.stringContaining('BOM'),
+      expect.stringContaining('Mumbai'),
+    ])
+    // two ground legs + the sector
+    expect(sim.legs).toHaveLength(3)
+    expect(sim.legs.filter(l => l.kind === 'air')).toHaveLength(1)
+    // the leg INTO the origin airport survived the row filter
+    expect(sim.legs[0].toTitle).toContain('DEL')
+    expect(sim.legs[0].kind).not.toBe('air')
   })
 })
 
