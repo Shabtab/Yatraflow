@@ -61,8 +61,8 @@ you put it in public copy.
 
 > **The road-trip plan your whole group can actually drive.**
 
-YatraFlow is a logistics and coordination product. It is not an AI product and not a content
-store. The rivals are a WhatsApp thread full of links and a chatbot plan that ignores the road.
+YatraFlow is a logistics and coordination product. It is not an AI product. The rivals are a
+WhatsApp thread full of links and a chatbot plan that ignores the road.
 
 What we own, and what we must keep true:
 
@@ -73,9 +73,40 @@ What we own, and what we must keep true:
 3. **A plan you can take, not a PDF.** A shared plan forks into your own trip, with your dates
    and your crew.
 
-Who we serve first: **groups of three to eight friends or family who drive a two- to five-day
-trip from a metro.** Long weekends set the calendar. Pilgrimage circuits and rider groups are
-the next wedges. Do not open them until the first wedge passes its gate.
+### Who we serve first: creators, then their crews
+
+**The first customer is the small Indian travel creator** (10k to 100k followers). The creator
+is a customer and the distribution at the same time. Each creator brings an audience, so the
+tool works for them on day one, with no other users on the platform.
+
+**Groups of three to eight who drive a two- to five-day trip** are the proof that the product
+works. They arrive through creator routes, and each one invites a crew.
+
+The loop:
+
+> A creator's route → followers fork it → each follower invites a crew → a group trip → new
+> followers find the creator.
+
+We build a **creator tool**, not a creator marketplace. In a tool, the creator brings the
+buyers. In a marketplace, we must bring buyers and sellers at the same time. Explore stays a
+shelf until creator traffic gives it buyers.
+
+What the tool gives a creator:
+
+1. **One link that answers "itinerary please?"** This is the most common comment under an
+   Indian travel Reel.
+2. **A plan that stays useful.** A Reel fades in two days. A YatraFlow plan keeps real drive
+   times, and followers fork it with their own dates and crew.
+3. **A portfolio.** One creator page with a map of every trip, bio-ready stats (km driven, states
+   covered, nights on the road), trips by season, and a short handle. Its media-kit section shows
+   brands the forks, the demand by month and where the audience plans to go.
+4. **Content tools.** Assets that make the creator's posts better, each with a link back to the
+   plan (§4).
+5. **Income from more than one source.** Paid forks first. A share of stay and rental links
+   later. Brand placements after that.
+
+Pilgrimage circuits and rider groups are the next wedges. Do not open them until the first
+wedge passes its gate.
 
 ## 4. The next six weeks
 
@@ -88,57 +119,102 @@ You must finish these before you drive any traffic.
 | Confirm the live checks of P0 #689 | The issue is closed. Prove on the live project that no `masteradmin` account keeps a public password, and that no fixture page stays in the sitemap or in Explore (#672). |
 | Fix the create-funnel events | The live table holds no `started` row. We cannot measure a broken funnel. |
 | Decide the router | The public OSRM demo server forbids commercial use (STEP-0 D6). Self-host it or pay for one. |
+| Build creator payouts | The earnings tab shows a schedule, but no payouts table, KYC or transfer exists (I-14). A creator must be able to take money out before we sell them a way to earn it. |
+| Close the merchant-of-record decision | A real creator sale needs the CA's answer first (STEP-0 D3, #234). |
 
-### Weeks 1–6 — feature freeze, distribution sprint
+### Weeks 1–6 — feature freeze, creator sprint
 
-1. **Freeze features.** The agents work only on problems that a real user hit or that the
-   funnel shows. Polish, consistency ratchets and the UI audit wait.
-2. **Run three real group trips** (#233). Use real groups of four or more. Diwali week is the
+1. **Freeze features.** The agents work only on the creator track below, on problems that a
+   real user hit, or on what the funnel shows. Polish, consistency ratchets and the UI audit
+   wait.
+2. **Talk to ten creators** (10k to 100k followers). Ask one question: "What do you do when
+   people ask for your itinerary?" Write down the answers word for word.
+3. **Serve five creators by hand.** Build their plans for them from content they already have:
+   a Reel caption, a YouTube description, a doc. Point the import pipeline at these sources.
+   Give each creator a portfolio page, a snapshot set and one hand-made route clip.
+4. **Count what they post.** Give each asset a link with its own share source (#230), so the
+   funnel shows which format brings forks.
+5. **Run three real group trips** (#233). Use real groups of four or more. Diwali week is the
    first window. Write down where each crew stalls.
-3. **Put the crew first.** Ask "Who is coming?" in the first step, with a WhatsApp invite. Today
+6. **Put the crew first.** Ask "Who is coming?" in the first step, with a WhatsApp invite. Today
    111 of 114 trips stay solo, so the invite step does not fire.
-4. **Publish 15–20 corridor plans that we drove or checked.** For example: Delhi → Rishikesh,
-   Mumbai → Goa coast, Bengaluru → Coorg, the Spiti loop, the Char Dham circuit. Label them as
-   written by the YatraFlow team. Each one is a share page, a search page and a demo.
-5. **Recruit ten small travel creators** (10k to 100k followers). Offer one thing: a free "fork
-   my route" link for their bio. Count the forks.
-6. **Read the funnel every week** and write the reading into the release log.
+7. **Read the funnel every week** and write the reading into the release log.
 
-### The one metric
+### Content tools, in build order
 
-**Weekly crew trips:** trips with two or more members that a person we do not know edited in
-the week. A solo trip by the founder does not count.
+Do each by hand for the five creators first. Build the tool only for the format they post.
+
+| Tool | What it is | Cost | When |
+| --- | --- | --- | --- |
+| **Creator portfolio** | Trip map, bio stats, trips by season, short handle, media kit. The creator page (`/c/:id`) already exists. | Low | Build in the sprint |
+| **Branded route snapshot** | The route, halts and drive times in the creator's logo, colours and handle. A QR code and a short link back to the plan. Formats: 9:16 Story, 4:5 post, and a carousel with one slide per day. | Low to medium | Build in the sprint if creators post the hand-made ones |
+| **Animated route clip** | The camera flies along the route, day by day, as a 9:16 MP4. Browsers record WebM, and Instagram wants MP4, so a server render is likely. | High | After the gate |
+
+Two rules apply to every export:
+
+- **Keep the map credit.** Every image and clip carries the OpenStreetMap and OpenFreeMap
+  credit.
+- **Keep Google content out.** Google's terms limit the use of Places photos and details away
+  from a Google map. Exports use only our route data and the open basemap.
+
+The free version always carries the YatraFlow link. That link is the distribution. Creator
+Pro restyles the link to match the creator's brand. It never removes the link.
+
+### The two metrics
+
+- **Weekly creator posts:** posts by creators that link to a YatraFlow plan.
+- **Weekly crew trips:** trips with two or more members that a person we do not know edited in
+  the week. A solo trip by the founder does not count.
 
 ### The gate at week 6
 
 Write these numbers down before week 1 starts. Do not change them after the first reading.
 
-| Measure | Pass mark |
-| --- | --- |
-| Trips owned by people we do not know | 40 or more |
-| Share of those trips with a second member | 30% or more |
-| Owners who return in week 4 | 20% or more |
+| Track | Measure | Pass mark |
+| --- | --- | --- |
+| Creators | Creators who post a YatraFlow link with no prompt | 5 or more |
+| Creators | Plan views from creator links | 1,000 or more |
+| Creators | Creators who earn money and receive a payout | 1 or more |
+| Crews | Trips owned by people we do not know | 40 or more |
+| Crews | Share of those trips with a second member | 30% or more |
+| Crews | Owners who return in week 4 | 20% or more |
 
-**If the gate passes:** turn on the paid fork and the affiliate test (§5), then pitch one
-rental company.
+These pass marks are assumptions. Set the final numbers before the first reading.
 
-**If the gate fails:** find the step that stalls, the crew invite or the share. Fix that one
-step, or test the next wedge. Do not build new features to fix a demand problem.
+**If the gate passes:** build the content tool that creators post most. Turn on the affiliate
+test (§5). Then pitch one rental company.
+
+**If the creator track fails:** find out why creators did not post. The cause is the asset, the
+plan or the payout. Fix that one thing. Do not build new tools to fix a demand problem.
+
+**If the crew track fails:** find the step that stalls, the crew invite or the share. Fix that
+one step, or test the next wedge.
 
 ## 5. How we make money, in order
 
+The rule: **we earn when the creator earns, and we charge a creator only after the creator
+earns.**
+
 1. **Now: no revenue target.** At ₹25.30 net per unlock, ₹5 lakh a month needs about 19,800
-   unlocks a month. That needs millions of views. Used group trips come first.
-2. **After the gate: the paid fork.** A buyer pays to fork a whole plan, paid days included,
-   into their own trip. This settles the open question between `PLAN-MONETISATION.md` §2 and the
-   research doc. Creators are a distribution channel, not stock for a store.
-3. **After the gate: booking affiliates.** The planner already knows where the group sleeps and
-   when it arrives. A "beds in this town tonight" link helps at that moment. We do not become a
+   unlocks a month. That needs millions of views. Creator posts and used group trips come first.
+2. **Now: the paid fork, with a split fee.** A buyer pays to fork a whole plan, paid days
+   included, into their own trip. This settles the open question between
+   `PLAN-MONETISATION.md` §2 and the research doc. The fee depends on who brought the buyer:
+   about 10% when the creator's own link brought the buyer, and about 15–20% when Explore did.
+   The low rate matches Topmate on the creator's own traffic. Share attribution (#230) already
+   tells the two apart. This changes the flat ladder in STEP-0 D1, so ratify it there before the
+   first real sale.
+3. **After the gate: booking affiliates, shared with the creator.** The planner already knows
+   where the group sleeps and when it arrives. A "beds in this town tonight" link helps at that
+   moment. On a creator's plan, we split the commission with the creator. We do not become a
    travel agent.
-4. **Later: rental partners.** Self-drive rental firms (Zoomcar, Revv, Myles) earn more when
-   trips run longer. A good plan makes trips longer. Zoomcar already embeds a third-party
-   planner. Pitch this only with the gate's numbers in hand.
-5. **Paused: the AI subscription.** Free AI planners set the price of AI at zero. Revisit only if
+4. **After the gate: Creator Pro.** Demand insights, brand styling on every export, the animated
+   clip, and import of many trips at once. About ₹299–499 a month. That price is an assumption.
+   Offer it only to creators who already earn.
+5. **Later: brand and partner deals.** States, stays and self-drive rental firms (Zoomcar, Revv,
+   Myles) pay to reach a creator's route audience. Rental firms earn more when trips run
+   longer, and a good plan makes trips longer. Pitch this only with the gate's numbers in hand.
+6. **Paused: the AI subscription.** Free AI planners set the price of AI at zero. Revisit only if
    users ask for the companion.
 
 Before the first real sale, three decisions must close: the merchant-of-record branch with a
