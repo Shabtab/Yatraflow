@@ -26,6 +26,12 @@ function nextRoute(): string {
 
 const AUTH_MODES = ['login', 'signup'] as const
 
+/** The copy store.signup returns when Supabase holds the new account until its
+ *  email is confirmed. The store reports it as a failed result, so this page
+ *  shows it as a notice instead. It must match the store's text exactly. The
+ *  match is pinned in tests/auth-notice.test.ts. */
+const CONFIRM_EMAIL_COPY = 'Check your email to confirm your account, then log in.'
+
 export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
   const db = useDb()
   const me = currentUser(db)
@@ -34,6 +40,9 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
+  /** Success or info copy for the form, such as "check your email". It is kept
+   *  apart from `error`: a new error clears it, and a new notice clears an error. */
+  const [notice, setNotice] = useState<string | null>(null)
   /** Field-scoped errors. The form-level `error` above is for failures with
    *  no single field to blame (bad credentials, network); a field's own
    *  failure (empty name, short password) belongs on that field, marked and
@@ -70,6 +79,7 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
+    setNotice(null)
     setNameErr(null)
     setPasswordErr(null)
     setDobErr(null)
@@ -112,7 +122,14 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
         return
       }
       const r = await signup(name, email, password)
-      if (!r.ok) { clearTimeout(failSafe); setError(r.error ?? 'Signup failed'); setSaving(false); return }
+      if (!r.ok) {
+        clearTimeout(failSafe)
+        // The store reports the confirmation as a failed result. Show it as a notice.
+        if (r.error === CONFIRM_EMAIL_COPY) setNotice(r.error)
+        else setError(r.error ?? 'Signup failed')
+        setSaving(false)
+        return
+      }
     }
     // Deliberately do NOT navigate here. The store hydrates asynchronously on
     // the auth event; navigating before `me` is set makes the router fall
@@ -124,7 +141,7 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
   // a spec mismatch. Now proper tabs: role="tab", aria-selected, roving
   // tabindex, arrow/Home/End. The form sits in one panel whose label follows the
   // active tab (the fields differ only by the name row).
-  const { refs, tabProps } = useTablist(AUTH_MODES, mode, m => { setMode(m); setError(null); setNameErr(null); setPasswordErr(null); setDobErr(null) })
+  const { refs, tabProps } = useTablist(AUTH_MODES, mode, m => { setMode(m); setError(null); setNotice(null); setNameErr(null); setPasswordErr(null); setDobErr(null) })
 
   return (
     <div className="auth-wrap page-enter">
@@ -137,10 +154,10 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
         <PillNav className="tabbar auth-tabs" role="tablist" aria-label="Login or sign up" activeKey={mode}>
           <button ref={refs(0)} className={`tab-btn${mode === 'login' ? ' active' : ''}`} type="button" role="tab" id="auth-tab-login" data-pill-key="login"
             aria-selected={mode === 'login'} aria-controls="auth-panel"
-            onClick={() => { setMode('login'); setError(null); setNameErr(null); setPasswordErr(null); setDobErr(null) }} {...tabProps('login', 0)}>Log in</button>
+            onClick={() => { setMode('login'); setError(null); setNotice(null); setNameErr(null); setPasswordErr(null); setDobErr(null) }} {...tabProps('login', 0)}>Log in</button>
           <button ref={refs(1)} className={`tab-btn${mode === 'signup' ? ' active' : ''}`} type="button" role="tab" id="auth-tab-signup" data-pill-key="signup"
             aria-selected={mode === 'signup'} aria-controls="auth-panel"
-            onClick={() => { setMode('signup'); setError(null); setNameErr(null); setPasswordErr(null); setDobErr(null) }} {...tabProps('signup', 1)}>Create account</button>
+            onClick={() => { setMode('signup'); setError(null); setNotice(null); setNameErr(null); setPasswordErr(null); setDobErr(null) }} {...tabProps('signup', 1)}>Create account</button>
         </PillNav>
 
         {/* Say so up front: a build with no Supabase project compiled in can
@@ -173,6 +190,11 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
           <Field label="Password" hint={mode === 'signup' ? 'At least 8 characters' : undefined} error={passwordErr ?? undefined}>
             <input className="input" type="password" name="password" autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} minLength={mode === 'signup' ? 8 : undefined} value={password} onChange={e => { setPassword(e.target.value); if (passwordErr) setPasswordErr(null) }} placeholder="••••••••" ref={passwordRef} />
           </Field>
+          {/* A live region that stays in the DOM. A status node inserted with
+              its text is announced unreliably, so only its copy changes. */}
+          <div role="status" aria-live="polite">
+            {notice && <div className="hub-note auth-submit-notice">{notice}</div>}
+          </div>
           {error && <div className="err-text auth-submit-error" role="alert" tabIndex={-1} ref={errRef}><InlineIcon icon={TriangleAlert} size={13} gap={4} />{error}</div>}
           <button type="submit" className="btn btn-primary btn-lg auth-submit" disabled={saving}>
             {saving ? (mode === 'login' ? 'Signing in…' : 'Creating account…') : mode === 'login' ? 'Log in' : 'Create account'}
