@@ -214,7 +214,7 @@ a number.
 **The Kicker Casing Rule.** Sentence case in source, uppercase in CSS. Visible
 all-caps strings in markup are a violation unless on the short documented allowlist.
 
-### Phase 0 notes
+### Phase 0 notes: title font
 
 **Title font.** Plus Jakarta Sans 800 is the title font. Sora is retired for titles.
 Phase 0 makes no global heading font change. Each page adopts the title font when you migrate it.
@@ -248,7 +248,7 @@ padding); backgrounds and media may bleed, controls and text may not.
 `padding-inline-*`, `margin-inline-*`, `border-inline-start` — physical left/right
 only for genuinely physical geometry.
 
-### Phase 0 notes
+### Phase 0 notes: page width and skin
 
 The `yf-page` class gives a page the catalog container width.
 The planned page width token is `--page-max`, at 1240px. It is not yet defined in `src/styles.css`. Do not use it until it is defined.
@@ -352,7 +352,7 @@ It shares one window rule and one clock with the table beneath it, so the chart 
 the rows can never describe different periods, and a failed read never renders as a
 zero: the empty state only appears once the log was actually read.
 
-### Phase 0 notes
+### Phase 0 notes: page primitives
 
 The page primitives are in `src/components/page/`: `PageHero`, `PageHeader`, `StateBlock`, `SectionHead` and `Surface`.
 Use `StateBlock` for loading, failed and empty states on a new page.
@@ -360,7 +360,7 @@ Add `yf-page` to the root of a page when you convert it. The page skin then appl
 
 **Button skin (ruling R15).** The catalog button skin stays scoped to `yf-page` until phase P16. Before the workspace page (P2) converts, the design lead decides where the skin stops. At P16, only the corner radius and the weight move into base `.btn`.
 
-**Segmented tabs (ruling R16).** `SegmentedTabs` is one component with two variants. Select a variant with its `semantics` prop. The tablist variant (workspace, auth, hub, admin) uses the glass `tabbar` and a teal glider. The toggle variant (Grid and List) is planned to use `mt-seg` and an ink glider. The toggle must emit the active-state attribute that the glider reads.
+**Segmented tabs (ruling R16).** `SegmentedTabs` is one component with two variants. Select a variant with its `semantics` prop. The tablist variant (workspace, auth, hub, admin) uses the glass `tabbar` and a teal glider. The toggle variant (Grid and List) uses `mt-seg` with an ink glider. `ViewSwitch` is its caller. The toggle must emit the active-state attribute that the glider reads.
 
 ## Do's and Don'ts
 
