@@ -8,6 +8,7 @@
 // ex-filterbar set in styles.css.
 import { useId, useState, type ReactNode } from 'react'
 import { SlidersHorizontal, X } from 'lucide-react'
+import { presenceAttrs, usePresenceList } from '../../lib/usePresenceList'
 
 export interface FilterBarProps {
   /** The accessible name of the bar. */
@@ -24,7 +25,7 @@ export interface FilterBarProps {
   chips?: ReactNode
   /** Controls after a divider in the chip row, such as a Saved toggle. */
   trailing?: ReactNode
-  /** The Clear button shows when this is given. Pass it only while a filter is active. */
+  /** The Clear button shows while this is given. Remove it when no filter is active, and the button leaves with a short exit. */
   onClear?: () => void
   /** The label of the Clear button. */
   clearLabel?: string
@@ -46,9 +47,16 @@ export function FilterBar({
 }: FilterBarProps) {
   const selectsId = useId()
   const [selectsOpen, setSelectsOpen] = useState(false)
+  // The Clear button stays mounted for a short exit after onClear goes away.
+  // Keyboard focus then moves to the first style chip, because the button goes inert.
+  const { entries: clearEntries, attachList: attachClearRow } = usePresenceList(
+    onClear ? ['clear'] : [],
+    key => key,
+    { fallbackFocus: row => row.querySelector<HTMLElement>('.ex-chip') },
+  )
   const hasSelects = selects !== undefined && selects !== null
   const hasTrailing = trailing !== undefined && trailing !== null
-  const hasChipRow = Boolean(chips) || hasTrailing || onClear !== undefined
+  const hasChipRow = Boolean(chips) || hasTrailing || onClear !== undefined || clearEntries.length > 0
   const barClassName = className ? `ex-filterbar filterbar-host ${className}` : 'ex-filterbar filterbar-host'
   return (
     <div className={barClassName} role="search" aria-label={label}>
@@ -68,7 +76,7 @@ export function FilterBar({
         ) : null}
       </div>
       {hasChipRow ? (
-        <div className="ex-chip-row">
+        <div className="ex-chip-row" ref={attachClearRow}>
           {chips}
           {hasTrailing ? (
             <>
@@ -76,11 +84,11 @@ export function FilterBar({
               {trailing}
             </>
           ) : null}
-          {onClear ? (
-            <button type="button" className="btn btn-quiet ex-clear" onClick={onClear}>
+          {clearEntries.map(({ key, exiting }) => (
+            <button key={key} type="button" className="btn btn-quiet ex-clear" onClick={onClear} {...presenceAttrs({ exiting })}>
               <X size={13} aria-hidden />{clearLabel}
             </button>
-          ) : null}
+          ))}
         </div>
       ) : null}
     </div>
