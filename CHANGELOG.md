@@ -15,6 +15,10 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Changed
+
+- **The DMCA page and the log in tabs now use the shared page parts.** The DMCA page has a serif title, a one-line lede and one text panel about 68 characters wide. The log in tabs use the shared tab row, with the same keyboard controls. The log in page announces its missing-backend warning to screen readers. The form error sits 8px above the submit button, the same gap as the sign-up notice.
+
 ### Fixed
 
 - **The sign-up confirmation shows as a notice, not an error.** After sign-up, the message "Check your email to confirm your account" uses the info style. It has no warning icon. Screen readers announce it as a status update, not as an alert. Errors keep the red style and still announce as an alert. (#704)
@@ -26,6 +30,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 - **A failed read of your publications no longer looks like an empty account.** The creator hub shows a failed line with Try again where its list sits. Its figures show "Unavailable" instead of zero, and "Loading…" while the list is in flight. Figures that loaded stay on screen, with a note. "Nothing published yet" appears only after a read that succeeded. The Share tab does not say a trip is not published after a failed read. It shows "Couldn’t check if this trip is on Explore." with a Try again button. The publish form appears once the status has loaded. A later refresh that fails keeps the form open with your edits. Its submit waits until the status loads again. A publish counts as saved only after the server accepts it. A failed save shows its error beside the button, and the form keeps your edits. If the account load throws, the Share tab shows its failed line instead of waiting. (#704)
 - **The creator hub reports a profile change only after the server accepts it.** Enable creator mode, Save creator profile and Disable creator mode each wait for the server. A refused change shows its error, or "Profile not saved. Check your connection and try again." Save creator profile is disabled while its save is in flight. (#704)
+- **An empty login form asks for the email and password before it contacts the server.** The form error line shows "Enter your email and password." instead of the server's message.
 
 ## [0.75.0] - 2026-10-12
 
