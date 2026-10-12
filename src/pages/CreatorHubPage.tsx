@@ -20,7 +20,7 @@ import { ChevronDown, ExternalLink, Pencil } from 'lucide-react'
 import { PillNav } from '../components/PillNav'
 import { TrendChart, type UnlockRead } from '../components/TrendChart'
 import type { PublishedItinerary } from '../data/types'
-import { useDb, currentUser, updateProfile, unpublishItinerary, tripById, rereadPublicSlices } from '../store/store'
+import { useDb, currentUser, updateProfile, unpublishItinerary, tripById, rereadPublicSlices, PROFILE_NOT_SAVED } from '../store/store'
 import {
   projectEarnings, deriveActualSales, deriveLedgerRead, payoutStatus, payoutWalk, payoutPeriodStatus,
   PAYOUT_MINIMUM_INR, PLATFORM_FEE_SUMMARY, type ActualSales,
@@ -96,6 +96,8 @@ export function CreatorHubPage({ onNavigate }: { onNavigate: (r: string) => void
     void rereadPublicSlices().finally(() => { setPublishedRetrying(false) })
   }
 
+  // #704: Save creator profile is disabled while its write is in flight.
+  const [savingCreator, setSavingCreator] = useState(false)
   const [creatorBio, setCreatorBio] = useState(me?.profile.creatorBio ?? '')
   const [youtube, setYoutube] = useState(me?.profile.socialLinks?.youtube ?? '')
   const [instagram, setInstagram] = useState(me?.profile.socialLinks?.instagram ?? '')
@@ -234,7 +236,11 @@ export function CreatorHubPage({ onNavigate }: { onNavigate: (r: string) => void
           <p className="hint-text" style={{ margin: '6px 0 12px' }}>
             Creator mode is a branding badge: your bio and social links appear on the itineraries you publish, and you get a public creator page others can follow.
           </p>
-          <button className="btn btn-saffron" onClick={() => { updateProfile({ isCreator: true }); toast('Creator mode enabled — your bio and links now show on published itineraries.') }}>
+          <button className="btn btn-saffron" onClick={async () => {
+            const r = await updateProfile({ isCreator: true })
+            if (r.ok) toast('Creator mode enabled — your bio and links now show on published itineraries.')
+            else toast(r.error ?? PROFILE_NOT_SAVED, 'err')
+          }}>
             Enable creator mode
           </button>
         </div>
@@ -314,7 +320,7 @@ export function CreatorHubPage({ onNavigate }: { onNavigate: (r: string) => void
               <Field label="Instagram link" error={socialErrors.instagram}><input className="input" type="url" inputMode="url" value={instagram} onChange={e => { setInstagram(e.target.value); if (socialErrors.instagram) setSocialErrors(s => ({ ...s, instagram: undefined })) }} placeholder="https://instagram.com/…" /></Field>
             </div>
             <div className="hub-profile-actions">
-              <button className="btn btn-primary btn-sm" onClick={() => {
+              <button className="btn btn-primary btn-sm" disabled={savingCreator} onClick={async () => {
                 const yt = youtube.trim()
                 const ig = instagram.trim()
                 const nextErrors = {
@@ -323,13 +329,16 @@ export function CreatorHubPage({ onNavigate }: { onNavigate: (r: string) => void
                 }
                 setSocialErrors(nextErrors)
                 if (nextErrors.youtube || nextErrors.instagram) return
-                updateProfile({
+                setSavingCreator(true)
+                const r = await updateProfile({
                   creatorBio: creatorBio.trim() || undefined,
                   socialLinks: (yt || ig)
                     ? { youtube: yt || undefined, instagram: ig || undefined }
                     : undefined,
                 })
-                toast('Creator profile saved')
+                setSavingCreator(false)
+                if (r.ok) toast('Creator profile saved')
+                else toast(r.error ?? PROFILE_NOT_SAVED, 'err')
               }}>Save creator profile</button>
               <button className="btn btn-ghost btn-sm" onClick={() => { setConfirmDisable(true) }}>Disable creator mode</button>
             </div>
@@ -343,10 +352,11 @@ export function CreatorHubPage({ onNavigate }: { onNavigate: (r: string) => void
         body="Your bio and social links stop showing on your published itineraries and the creator badge is removed. Your publications stay live — you can re-enable the badge anytime."
         confirmLabel="Disable"
         danger
-        onConfirm={() => {
-          updateProfile({ isCreator: false })
+        onConfirm={async () => {
           setConfirmDisable(false)
-          toast('Creator mode disabled — your publications stay live.')
+          const r = await updateProfile({ isCreator: false })
+          if (r.ok) toast('Creator mode disabled — your publications stay live.')
+          else toast(r.error ?? PROFILE_NOT_SAVED, 'err')
         }}
         onClose={() => { setConfirmDisable(false) }}
       />
