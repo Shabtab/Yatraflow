@@ -123,6 +123,8 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - **My trips shows a pinned Up next card for your live or soonest trip.** The card shows a countdown, Budget, Travel and Dates columns, the count of days that have activities, the next step and a delete button. The count hides when the trip is live, because the day count is the progress then. It stays pinned through sort and style filters. It hides while you search.
 
 ### Changed
+- **Verification notes cover locked trip content, fixture cleanup, and edge caching.** Public pages must test locked content. Cleanup checks use a fresh query. Cache checks use two GET requests.
+
 - **Profile and Admin look the same, with no visual changes.** Static styles now use named CSS classes. Values that depend on data or state stay inline. Admin's six 18px spacings stay inline under the spacing ruling.
 
 - **Page headers animate in once, with the rest of the page.** The header no longer adds its own rise-and-fade on top of the page entrance. The Explore filter bar now uses the shared `FilterBar`. Its Clear filters button still fades out when the last filter goes. The My trips Grid and List switch uses the shared `SegmentedTabs`. Later pages can reuse both parts. A new test keeps the page counts in a baseline, and a count rises only through a deliberate update.
