@@ -7,10 +7,9 @@
 //               Home and End) and a PillNav glider slides behind the active tab.
 //               The look is the tabbar and tab-btn rules in styles.css.
 //   'toggle'  - the choices are a pressed-state group, such as Grid and List.
-//               Each button carries aria-pressed. There is no roving focus and
-//               no glider, so the markup stays the same as the My trips switch
-//               had before this primitive existed. The caller passes the look
-//               class, such as mt-seg.
+//               Each button carries aria-pressed. There is no roving focus.
+//               The group sets data-layout to the active key. The look class,
+//               such as mt-seg, reads that attribute to draw a glider.
 //
 // The semantics prop exists so a group of pressed buttons is never announced
 // as tabs. A tab needs a panel to point at. A toggle does not have one.
@@ -53,7 +52,7 @@ export function SegmentedTabs({ semantics, items, value, onChange, label, classN
 
   if (semantics === 'toggle') {
     return (
-      <div className={className} role="group" aria-label={label}>
+      <div className={className} role="group" aria-label={label} data-layout={value}>
         {items.map(item => (
           <button key={item.key} type="button" aria-pressed={value === item.key} onClick={() => onChange(item.key)}>
             {item.icon}{item.label}

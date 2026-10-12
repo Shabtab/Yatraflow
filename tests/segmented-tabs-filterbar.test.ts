@@ -38,6 +38,14 @@ describe('SegmentedTabs', () => {
     expect(toggleBranch).not.toContain('role="tab"')
   })
 
+  it('sets data-layout to the active key, the attribute the mt-seg glider reads', () => {
+    const toggleBranch = segmented.slice(segmented.indexOf("semantics === 'toggle'"), segmented.indexOf('return (\n    <PillNav'))
+    const glider = styles.match(/\.mt-seg\[(data-[\w-]+)='list'\]::before/)
+    const attribute = glider?.[1] ?? ''
+    expect(attribute, 'styles.css must draw the mt-seg glider from a data attribute').not.toBe('')
+    expect(toggleBranch).toContain(`${attribute}={value}`)
+  })
+
   it('adds no raw duration of its own', () => {
     expect(segmented).not.toMatch(/\d\s*ms\b/)
   })
