@@ -15,6 +15,10 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+## [0.76.0] - 2026-10-12
+
+**This release brings the new Ribbon Y logo, clearer error states, shared page parts and working landing links.**
+
 ### Changed
 
 - **The DMCA page and the log in tabs now use the shared page parts.** The DMCA page has a serif title, a one-line lede and one text panel about 68 characters wide. The log in tabs use the shared tab row, with the same keyboard controls. The log in page announces its missing-backend warning to screen readers. The form error sits 8px above the submit button, the same gap as the sign-up notice.
