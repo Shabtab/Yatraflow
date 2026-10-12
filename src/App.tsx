@@ -13,7 +13,7 @@ import {
   shouldBrowserNotify,
 } from './lib/browserNotifications'
 import type { Trip } from './data/types'
-import { useDb, currentUser, useUsers, useNotifications, useSessionUserId, logout, markAllNotificationsRead, tripById, joinViaInvite, importTripPersisted, retryImportTrip, init, resumeSync, useStoreReady, fetchSharedTrip, fetchTripByInviteCode, collectUnclaimedCovers } from './store/store'
+import { useDb, currentUser, useUsers, useNotifications, useSessionUserId, logout, markAllNotificationsRead, tripById, joinViaInvite, importTripPersisted, retryImportTrip, init, resumeSync, useStoreReady, fetchSharedTrip, fetchTripByInviteCode, viewerIsMemberOf, collectUnclaimedCovers } from './store/store'
 import { Avatar, BrandMark, ToastZone, useClickOutside, toast } from './components/ui'
 import { BottomNav } from './components/BottomNav'
 import { OfflineBanner } from './components/OfflineBanner'
@@ -706,7 +706,7 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
   // RPC fallback covers private trips: holding the link (the trip's UUID)
   // is the capability to preview it.
   const [trip, setTrip] = useState<Trip | null>(null)
-  const [status, setStatus] = useState<'loading' | 'broken' | 'joining'>('loading')
+  const [status, setStatus] = useState<'loading' | 'broken' | 'joining' | 'retired'>('loading')
   // A dropped connection resolves to the same null as a dead code, so the
   // failure screen has to offer the one remedy that costs nothing: try again.
   const [retryTick, setRetryTick] = useState(0)
@@ -714,6 +714,10 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
   // on every parent re-render.
   const navigateRef = useRef(onNavigate)
   useEffect(() => { navigateRef.current = onNavigate })
+  // The link's own value, decoded once. A trip-id link (/invite/<uuid>) never
+  // joins anyone: it opens the trip only for a viewer who is already a member.
+  const linkTarget = (() => { try { return decodeURIComponent(codeOrTripId) } catch { return codeOrTripId } })()
+  const isTripIdLink = UUID_RE.test(linkTarget)
 
   // Resolve the code/UUID to a trip, once per link target. A hydration can
   // evict the fetched trip from the cache (fetchSharedTrip merges it, the
@@ -753,12 +757,21 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
     }
     joinedRef.current = true // StrictMode double-fire guard
     void (async () => {
+      // A trip-id link never joins. A member still opens the trip, and anyone
+      // else sees the explanation. The membership check reads only this
+      // viewer's own row, so no invite code is fetched for a non-member.
+      if (isTripIdLink) {
+        if (await viewerIsMemberOf(trip.id, me.id)) navigateRef.current(`/trip/${trip.id}`)
+        else setStatus('retired')
+        return
+      }
       setStatus('joining')
       // Ensure the trip is in the cache before joining - a sign-in hydration
       // can have replaced the cache after our first fetch, and joinViaInvite
       // reads tripById.
       await fetchSharedTrip(trip.id, true)
-      const ok = await joinViaInvite(trip.id, me.id)
+      // The code is the one the viewer presented, as the trip row carries it.
+      const ok = await joinViaInvite(trip.id, me.id, trip.inviteCode ?? linkTarget)
       if (ok) toast(`You’re on “${trip.name}” - happy planning!`)
       // joinViaInvite reports false for an RLS refusal or a dropped connection
       // just as readily as for a stale code, so this cannot blame the link.
@@ -768,7 +781,20 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
     // Depend on me/trip objects, not a mount-only []: the store hydrates them
     // asynchronously after init(), so a one-shot effect ran before they
     // existed and the invite never auto-joined.
-  }, [me, trip])
+  }, [me, trip, isTripIdLink, linkTarget])
+
+  if (status === 'retired') {
+    return (
+      <div className="container empty-state">
+        <div className="big"><Link2 size={38} aria-hidden /></div>
+        <h1 style={{ fontSize: 26 }}>This link no longer adds people</h1>
+        <p className="muted">Ask the trip owner for a fresh invite link.</p>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 14 }}>
+          <button className="btn btn-outline" onClick={() => onNavigate('/')}>Go home</button>
+        </div>
+      </div>
+    )
+  }
 
   if (status === 'broken' || !trip) {
     return status === 'broken' ? (

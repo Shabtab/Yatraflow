@@ -38,7 +38,8 @@ function fromBase64Url(s: string): Uint8Array {
 export async function encodeTripSnapshot(trip: Trip): Promise<string> {
   // The version rides inside the payload so a link made today decodes into
   // tomorrow's shape — a snapshot is shared far more widely than a file.
-  const json = JSON.stringify({ ...trip, formatVersion: ITINERARY_FORMAT_VERSION })
+  const shareable: Record<string, unknown> = { ...trip }
+  const json = JSON.stringify({ ...withoutJoinSecrets(shareable), formatVersion: ITINERARY_FORMAT_VERSION })
   // 1-byte flag: 1 = deflate-raw, 0 = raw (browser without CompressionStream)
   const useDeflate = typeof CompressionStream !== 'undefined'
   const body = useDeflate
@@ -57,7 +58,7 @@ export async function decodeTripSnapshot(payload: string): Promise<Trip> {
   const raw = JSON.parse(json) as Record<string, unknown>
   if (!raw || typeof raw !== 'object') throw new Error('bad data')
   const declared = typeof raw.formatVersion === 'number' ? raw.formatVersion : 1
-  const migrated = migrateTrip(stripVersion(raw), declared) as unknown as Trip
+  const migrated = migrateTrip(stripVersion(withoutJoinSecrets(raw)), declared) as unknown as Trip
   if (!migrated || typeof migrated.id !== 'string' || !Array.isArray(migrated.days)) throw new Error('bad data')
   // This decode runs the same repair wall a file import runs. A stop that
   // cannot be placed is dropped; 0-based orders are rebuilt; stale leg fields
@@ -65,7 +66,11 @@ export async function decodeTripSnapshot(payload: string): Promise<Trip> {
   // trip arrives clean, or the link is refused as bad data.
   const walled = normalizeTrip(migrated as unknown as Record<string, unknown>, emptyReport(), [])
   if (!walled) throw new Error('bad data')
-  return restoreSnapshotIdentity(raw, walled)
+  const restored = restoreSnapshotIdentity(raw, walled)
+  // The join code and the crew list never leave a link, not even as empty keys.
+  delete restored.inviteCode
+  delete restored.members
+  return restored
 }
 
 // ---- the lossless half ----
@@ -74,8 +79,10 @@ export async function decodeTripSnapshot(payload: string): Promise<Trip> {
 // so those fields ride back from the payload after the wall. The wall still
 // owns the content: coords, orders and stale legs stay repaired.
 
+// The crew list and the join code are not identity here. A link must not carry
+// either one (see withoutJoinSecrets).
 const SNAPSHOT_IDENTITY_KEYS = [
-  'id', 'createdAt', 'updatedAt', 'visibility', 'members', 'inviteCode',
+  'id', 'createdAt', 'updatedAt', 'visibility',
   'deletedAt', 'ref', 'vehicleProfile', 'startLocationCoords',
   'destinationCoords', 'driverCount', 'hasVulnerable', 'driveAfterDinnerMin',
 ] as const
@@ -119,6 +126,16 @@ function rowKey(row: Record<string, unknown>): string {
     out.push([k, v])
   }
   return JSON.stringify(out)
+}
+
+/** Drop the join code and the crew list from a trip body. A link reader must
+ *  never see either one. Payloads from older builds can still carry them, so
+ *  decode drops them as well. */
+function withoutJoinSecrets(raw: Record<string, unknown>): Record<string, unknown> {
+  const copy: Record<string, unknown> = { ...raw }
+  delete copy.inviteCode
+  delete copy.members
+  return copy
 }
 
 /** Split the payload's own version tag off the trip it describes. */

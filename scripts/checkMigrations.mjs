@@ -314,6 +314,18 @@ export const NO_PROBE_SURFACE = {
     // first, the ambiguity refusal and the mint-race 409).
     reason: 'adds a partial unique INDEX (not probeable by a REST column/bucket read, and a partial index has no PostgREST surface) — its absence is caught by the migration\'s own duplicate-pair guard, which names every affected (buyer, pub) before the build; the code half is pinned by the #594 describe in tests/payments-functions.test.ts',
   },
+  '20261012a_join_trip_function.sql': {
+    // Function only. join_trip() is the join path the app calls, so a database
+    // without it fails every join at call time with PGRST202, which is loud.
+    reason: 'defines `join_trip` — a missing join_trip fails the join at call time (PGRST202, loud); there is no column or bucket to probe',
+  },
+  '20261012b_member_insert_owner_only.sql': {
+    // Policy, function and code re-issue. get_invite_trip answers with the same
+    // columns as before. None of the three adds a column or a bucket, so no
+    // probe can see them. The policy is pinned by supabase/tests/rls_contract.test.sql,
+    // and the statements by tests/member-join-guard.test.ts.
+    reason: 'replaces the `members insert` policy, redefines `get_invite_trip` and re-issues invite codes — none adds a column or bucket to probe; the policy is pinned by supabase/tests/rls_contract.test.sql, the statements by tests/member-join-guard.test.ts',
+  },
 }
 
 /** The plan: one entry per migration file, with its probes and the reason none

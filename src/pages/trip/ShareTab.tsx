@@ -417,20 +417,23 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
 }) {
   const db = useDb()
   // Short invite code link (#/join/GOA-K7QF): minted lazily on first share —
-  // codes are meaningfully readable instead of a 36-char UUID. Falls back to
-  // the legacy UUID link only while minting is impossible (no DB column yet).
+  // codes are meaningfully readable instead of a 36-char UUID. A trip id is
+  // never offered as a link, because it no longer joins anyone. When minting
+  // fails, the panel says so and offers another try.
   const [inviteCode, setInviteCode] = useState<string | null>(trip.inviteCode ?? null)
+  const [mintFailed, setMintFailed] = useState(false)
+  const [mintTry, setMintTry] = useState(0)
   useEffect(() => {
     if (inviteCode) return
     let alive = true
     void ensureInviteCode(trip.id).then(code => {
-      if (alive && code) setInviteCode(code)
+      if (!alive) return
+      if (code) setInviteCode(code)
+      else setMintFailed(true)
     })
     return () => { alive = false }
-  }, [trip.id, inviteCode])
-  const inviteLink = inviteCode
-    ? `${location.origin}/join/${inviteCode}`
-    : `${location.origin}/invite/${trip.id}`
+  }, [trip.id, inviteCode, mintTry])
+  const inviteLink = inviteCode ? `${location.origin}/join/${inviteCode}` : ''
   const pub = db.published.find(p => p.tripId === trip.id)
   // #350 — a soft-unpublished publication keeps its row (so buyers keep what
   // they paid for and the sales history stays whole) but it is NOT live. Every
@@ -502,7 +505,16 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
               <span className="small muted">read it out loud — friends type it on the home screen</span>
             </div>
           )}
-          <div className="share-link-box"><code title={inviteLink}>{inviteLink}</code><CopyButton text={inviteLink} /></div>
+          {inviteLink ? (
+            <div className="share-link-box"><code title={inviteLink}>{inviteLink}</code><CopyButton text={inviteLink} /></div>
+          ) : mintFailed ? (
+            <p className="hint-text" aria-live="polite" style={{ margin: '0 0 10px' }}>
+              We could not make an invite link.{' '}
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setMintFailed(false); setMintTry(n => n + 1) }}>Try again</button>
+            </p>
+          ) : (
+            <p className="hint-text" aria-live="polite" style={{ margin: '0 0 10px' }}>Making your invite link…</p>
+          )}
           <hr className="divider" />
           <h3>Members & roles</h3>
           <div className="shr-members">
