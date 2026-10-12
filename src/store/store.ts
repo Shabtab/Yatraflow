@@ -743,7 +743,7 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     let tripsReadFailed = false
     if (profRes.error) { console.error('[yatraflow] hydrate profiles failed', profRes.error); partial.push('profiles') }
     const profiles = (profRes.data ?? []) as ProfileRow[]
-    if (myMembershipsRes.error) { console.error('[yatraflow] hydrate memberships failed', myMembershipsRes.error); partial.push('memberships'); tripCountUnknown = true }
+    if (myMembershipsRes.error) { console.error('[yatraflow] hydrate memberships failed', myMembershipsRes.error); partial.push('memberships'); tripCountUnknown = true; tripsReadFailed = true }
     const myRows = (myMembershipsRes.data ?? []) as MemberRow[]
     const memberTripIds = myRows.map(m => m.trip_id)
     const myTripIds = [...new Set(memberTripIds)]
@@ -920,11 +920,13 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     // hydrate already uses, so a page can ask about the slice it renders.
     //
     // #383: `asked` mirrors what THIS run actually read, so a slice the run
-    // never touched (the trip-scoped six on an account with no trips yet, the
+    // never touched (the five trip-scoped slices on an account with no trips yet, the
     // audit log for a non-admin) stays unreported — an unreported read is an
     // unread one — instead of being reported 'ok' without ever being read.
-    const askedSlices: string[] = ['profiles', 'memberships', 'suggested itineraries']
-    if (admin || myTripIds.length > 0) askedSlices.push('trips', 'members', 'suggestions', 'decisions', 'activity', 'notifications')
+    // The trips verdict comes from the memberships read. A zero-row read is a read,
+    // so trips reports ready. A failed read reports failed, because partial names trips.
+    const askedSlices: string[] = ['profiles', 'memberships', 'suggested itineraries', 'trips']
+    if (admin || myTripIds.length > 0) askedSlices.push('members', 'suggestions', 'decisions', 'activity', 'notifications')
     if (admin) askedSlices.push('audit')
     patch({ sliceReads: sliceReadReport(partial, askedSlices) })
     // Publish the verdict now. patch() wakes no subscriber by itself.
@@ -937,7 +939,12 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     // #94: a failed memberships/trips query also reads as "zero trips" — for a
     // real account on a flaky connection that meant writing 3 fake trips next
     // to the user's actual ones. Only seed when the trip count is trustworthy.
-    if (tripList.length === 0 && seedIfEmpty && !admin && !tripCountUnknown) await seedDemoFor(userId, gen)
+    if (tripList.length === 0 && seedIfEmpty && !admin && !tripCountUnknown) {
+      // The empty state offers "Load demo trips" while this seed runs. The flag that
+      // addDemoTrips checks keeps that button from seeding a second set.
+      demoSeedInFlight = true
+      try { await seedDemoFor(userId, gen) } finally { demoSeedInFlight = false }
+    }
   } catch (e) {
     console.error('[yatraflow] hydration failed', e)
     toast('Could not load your data - check your connection.')

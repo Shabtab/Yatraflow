@@ -77,11 +77,9 @@ export function NativeHomePage({ me, onNavigate }: {
   const notifs = useNotifications()
   const unread = notifs.filter(n => !n.read).length
   // #704: the page says what the trips read did. It never infers success from
-  // an empty array. The trip list is built from the memberships read, so a failed
-  // memberships read counts as a failed trips read: the store reports no trips
-  // verdict in that case.
+  // an empty array. The store publishes the trips verdict, failed memberships included.
   const sliceReads = useSliceReads()
-  const tripsRead = sliceState(sliceReads, 'memberships') === 'failed' ? 'failed' : sliceState(sliceReads, 'trips')
+  const tripsRead = sliceState(sliceReads, 'trips')
   const retryTrips = () => { void rereadTrips() }
 
   // Same membership rule as the trips page. Read on every render, not memoised:

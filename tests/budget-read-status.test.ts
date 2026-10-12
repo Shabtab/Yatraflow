@@ -144,11 +144,12 @@ describe('#383 — the hydrate publishes a per-slice verdict, never an invented 
     expect(sliceState(store.getSnapshot().sliceReads, 'trips')).toBe('failed')
   })
 
-  it('a slice the run never asked for stays unreported — unread is not ok', async () => {
+  it('an empty memberships read is a read: trips is ready, and the trip-scoped slices stay unreported', async () => {
     const store = await freshStore()
     state.sessionUser = 'u-owner'
-    // No memberships: the run reads no trip-scoped slice at all. Reporting
-    // those 'ok' anyway would be inventing a success — the mirror mistake.
+    // No memberships: the memberships read succeeded and found no trips. So trips
+    // is ready, and the page shows its empty state. The five trip-scoped slices are
+    // never read, so they stay unreported. An 'ok' for them would invent a success.
     state.tables = {
       profiles: [profileRow('u-owner')],
       published_itineraries: [],
@@ -161,8 +162,35 @@ describe('#383 — the hydrate publishes a per-slice verdict, never an invented 
     await flush()
 
     const reads = store.getSnapshot().sliceReads
-    expect('trips' in reads).toBe(false)
-    expect(sliceState(reads, 'trips')).toBe('reading')
+    expect(sliceState(reads, 'trips')).toBe('ready')
+    expect('members' in reads).toBe(false)
+    expect(sliceState(reads, 'members')).toBe('reading')
+  })
+
+  it('a failed memberships read marks trips failed and keeps the trips it already loaded', async () => {
+    const store = await freshStore()
+    state.sessionUser = 'u-owner'
+    state.tables = {
+      profiles: [profileRow('u-owner')],
+      published_itineraries: [],
+      trip_members: [memberRow('tripA', 'u-owner', 'owner')],
+      trips: [tripRow('tripA', [])],
+    }
+    store.init()
+    state.resolveSession!()
+    await flush()
+    await flush()
+    expect(store.getSnapshot().trips.map(t => t.id)).toEqual(['tripA'])
+
+    // The memberships read now fails. The trip list cannot be rebuilt. So the
+    // verdict is failed, and the cache keeps its trips.
+    state.errors = { trip_members: { message: 'dropped connection' } }
+    await store.rereadTrips()
+    await flush()
+
+    const snap = store.getSnapshot()
+    expect(sliceState(snap.sliceReads, 'trips')).toBe('failed')
+    expect(snap.trips.map(t => t.id)).toEqual(['tripA'])
   })
 
   it('the report covers the asked set and nothing else', async () => {

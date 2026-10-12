@@ -72,10 +72,11 @@ describe('#704 — the Overview weather card says when the forecast read failed'
 })
 
 describe('#704 — native Home reads the trips verdict before it renders', () => {
-  it('reads the trips slice through sliceState, and a failed memberships read counts as a failed trips read', () => {
+  it('reads the trips verdict through sliceState and nothing else', () => {
     expect(home).toMatch(/import \{[^}]*\bsliceState\b[^}]*\} from '\.\.\/lib\/readState'/)
     expect(home).toMatch(/import \{[^}]*\buseSliceReads\b[^}]*\} from '\.\.\/store\/store'/)
-    expect(home).toMatch(/const tripsRead = sliceState\(sliceReads, 'memberships'\) === 'failed' \? 'failed' : sliceState\(sliceReads, 'trips'\)/)
+    expect(home).toMatch(/const tripsRead = sliceState\(sliceReads, 'trips'\)/)
+    expect(home).not.toMatch(/'memberships'/)
   })
 
   it('the trip list is read on every render, with no memo keyed on the session, so a retry shows its rows', () => {
@@ -135,5 +136,18 @@ describe('#704 — the store publishes each read verdict to the pages', () => {
     expect(verdictAt, 'the verdict write').toBeGreaterThan(-1)
     expect(seedAt, 'the seed step').toBeGreaterThan(verdictAt)
     expect(store.slice(verdictAt, seedAt)).toMatch(/\bcommit\(\)/)
+  })
+
+  it('trips is always asked, so a memberships read that succeeds with no rows reports ready', () => {
+    expect(store).toMatch(/const askedSlices: string\[\] = \['profiles', 'memberships', 'suggested itineraries', 'trips'\]/)
+    expect(store).not.toMatch(/askedSlices\.push\('trips'/)
+  })
+
+  it('a failed memberships read marks trips failed and keeps the cached trips', () => {
+    expect(store).toMatch(/hydrate memberships failed', myMembershipsRes\.error\); partial\.push\('memberships'\); tripCountUnknown = true; tripsReadFailed = true \}/)
+  })
+
+  it('the auto-seed sets the flag addDemoTrips checks, so the Load demo button cannot seed a second set', () => {
+    expect(store).toMatch(/demoSeedInFlight = true\s*try \{ await seedDemoFor\(userId, gen\) \} finally \{ demoSeedInFlight = false \}/)
   })
 })
