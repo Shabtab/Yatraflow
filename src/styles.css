@@ -10214,7 +10214,7 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
    roles and kinds of the full block. It has no entrance of its own: the
    container that holds it gives the entrance, as it does for the full block. */
 .yf-state.yf-state--compact { gap: 6px; margin-top: 8px; padding: 12px 16px; border: 0; }
-.yf-state.yf-state--compact .yf-state-title { font-size: 18px; }
+.yf-state.yf-state--compact .yf-state-title { font-size: 18px; line-height: 1.3; }
 .yf-state.yf-state--compact .yf-state-actions { gap: 8px; }
 /* A surface that is one whole button. The reset takes the card's font and colour
    from its parent. The caller's class sets the padding and the layout. The lift,

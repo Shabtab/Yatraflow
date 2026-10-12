@@ -77,7 +77,7 @@ describe('compact state block styles', () => {
 
   it('sets the compact title one step below the full 20px title', () => {
     expect(CSS).toMatch(/\.yf-state-title \{\s*margin: 0;[^}]*font-size: 20px;/)
-    expect(block()).toContain('.yf-state.yf-state--compact .yf-state-title { font-size: 18px; }')
+    expect(block()).toContain('.yf-state.yf-state--compact .yf-state-title { font-size: 18px; line-height: 1.3; }')
   })
 
   it('takes every padding, margin and gap value from the spacing ladder', () => {
