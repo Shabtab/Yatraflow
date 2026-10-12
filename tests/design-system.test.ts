@@ -173,8 +173,11 @@ describe('one green (#0D8D82)', () => {
 
   it('keeps the map palette, logo mark and favicon on the unified green', () => {
     expect(source('src/components/TripMap.tsx')).toContain("const DAY_COLORS = ['#0D8D82'")
-    expect(source('src/components/ui.tsx')).toContain('fill="#0D8D82"')
-    expect(html).toContain("%230D8D82")
+    // The Ribbon Y reads the teal ladder so it follows the theme; its fallbacks
+    // and the static favicon stay on the one brand green.
+    expect(source('src/components/ui.tsx')).toContain("stroke: 'var(--teal-500, #0D8D82)'")
+    expect(html).toContain('<link rel="icon" href="/favicon.svg" type="image/svg+xml" />')
+    expect(source('public/favicon.svg')).toContain('stroke="#0D8D82"')
   })
 })
 

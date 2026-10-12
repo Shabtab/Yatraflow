@@ -2,8 +2,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { InlineIcon } from '../components/icons'
 import { TriangleAlert } from 'lucide-react'
-import { PillNav } from '../components/PillNav'
-import { useTablist } from '../hooks/useTablist'
+import { SegmentedTabs } from '../components/page/SegmentedTabs'
 import { useDb, currentUser, login, signup } from '../store/store'
 import { isSupabaseConfigured } from '../lib/supabase'
 import { isAdultSignup } from '../lib/ageGate'
@@ -24,7 +23,16 @@ function nextRoute(): string {
   return decoded
 }
 
-const AUTH_MODES = ['login', 'signup'] as const
+/** The two tabs of the form. Each tab names the panel it controls. */
+const AUTH_TABS = [
+  { key: 'login', label: 'Log in', id: 'auth-tab-login', controls: 'auth-panel' },
+  { key: 'signup', label: 'Create account', id: 'auth-tab-signup', controls: 'auth-panel' },
+] as const
+
+/** The message shown after sign-up when the new account waits for its email
+ *  link. The store reports that state as a field, and this page owns the copy.
+ *  tests/auth-notice.test.ts pins the field. */
+const CONFIRM_EMAIL_COPY = 'Check your email to confirm your account, then log in.'
 
 export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
   const db = useDb()
@@ -34,6 +42,9 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
+  /** Success or info copy for the form, such as "check your email". It is kept
+   *  apart from `error`: a new error clears it, and a new notice clears an error. */
+  const [notice, setNotice] = useState<string | null>(null)
   /** Field-scoped errors. The form-level `error` above is for failures with
    *  no single field to blame (bad credentials, network); a field's own
    *  failure (empty name, short password) belongs on that field, marked and
@@ -70,6 +81,7 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
+    setNotice(null)
     setNameErr(null)
     setPasswordErr(null)
     setDobErr(null)
@@ -78,6 +90,14 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
     // re-enable the form so the user isn't stuck on a disabled button.
     const failSafe = setTimeout(() => setSaving(false), 10000)
     if (mode === 'login') {
+      // The server answers an empty request with its own text. The page
+      // asks for the fields first, so an empty form never reaches the server.
+      if (!email.trim() || !password) {
+        clearTimeout(failSafe)
+        setError('Enter your email and password.')
+        setSaving(false)
+        return
+      }
       const r = await login(email, password)
       if (!r.ok) { clearTimeout(failSafe); setError(r.error ?? 'Login failed'); setSaving(false); return }
     } else {
@@ -113,6 +133,8 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
       }
       const r = await signup(name, email, password)
       if (!r.ok) { clearTimeout(failSafe); setError(r.error ?? 'Signup failed'); setSaving(false); return }
+      // The account waits for its email link. That is a notice, not a failure.
+      if (r.needsConfirmation) { clearTimeout(failSafe); setNotice(CONFIRM_EMAIL_COPY); setSaving(false); return }
     }
     // Deliberately do NOT navigate here. The store hydrates asynchronously on
     // the auth event; navigating before `me` is set makes the router fall
@@ -120,33 +142,29 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
     // session is actually visible to the app.
   }
 
-  // #87: this was a role="tablist" whose children were aria-pressed buttons —
-  // a spec mismatch. Now proper tabs: role="tab", aria-selected, roving
-  // tabindex, arrow/Home/End. The form sits in one panel whose label follows the
-  // active tab (the fields differ only by the name row).
-  const { refs, tabProps } = useTablist(AUTH_MODES, mode, m => { setMode(m); setError(null); setNameErr(null); setPasswordErr(null); setDobErr(null) })
+  // The tab row is SegmentedTabs in its tablist variant. It gives role="tab",
+  // aria-selected, a roving tabindex, and the arrow, Home and End keys. The form
+  // sits in one panel whose label follows the active tab. Every switch clears
+  // every message. A stale error never follows the user to the other form.
+  function switchMode(key: string) {
+    setMode(key === 'signup' ? 'signup' : 'login')
+    setError(null); setNotice(null); setNameErr(null); setPasswordErr(null); setDobErr(null)
+  }
 
   return (
     <div className="auth-wrap page-enter">
       <div className="card auth-card">
-        <h1 className="auth-title">{mode === 'login' ? 'Welcome back' : 'Create your account'}</h1>
+        <h1>{mode === 'login' ? 'Welcome back' : 'Create your account'}</h1>
         <p className="muted small auth-description">
           {mode === 'login' ? 'Log in to your trip plans.' : 'Free to plan. No card needed.'}
         </p>
 
-        <PillNav className="tabbar auth-tabs" role="tablist" aria-label="Login or sign up" activeKey={mode}>
-          <button ref={refs(0)} className={`tab-btn${mode === 'login' ? ' active' : ''}`} type="button" role="tab" id="auth-tab-login" data-pill-key="login"
-            aria-selected={mode === 'login'} aria-controls="auth-panel"
-            onClick={() => { setMode('login'); setError(null); setNameErr(null); setPasswordErr(null); setDobErr(null) }} {...tabProps('login', 0)}>Log in</button>
-          <button ref={refs(1)} className={`tab-btn${mode === 'signup' ? ' active' : ''}`} type="button" role="tab" id="auth-tab-signup" data-pill-key="signup"
-            aria-selected={mode === 'signup'} aria-controls="auth-panel"
-            onClick={() => { setMode('signup'); setError(null); setNameErr(null); setPasswordErr(null); setDobErr(null) }} {...tabProps('signup', 1)}>Create account</button>
-        </PillNav>
+        <SegmentedTabs semantics="tablist" className="tabbar auth-tabs" label="Login or sign up" items={AUTH_TABS} value={mode} onChange={switchMode} />
 
         {/* Say so up front: a build with no Supabase project compiled in can
             only ever fail, and "Failed to fetch" blames the wrong thing. */}
         {!isSupabaseConfigured && (
-          <div className="err-text auth-backend-warning">
+          <div className="err-text auth-backend-warning" role="status">
             <InlineIcon icon={TriangleAlert} size={13} gap={4} /><strong>This build has no backend configured.</strong>
             <div className="small auth-backend-detail">{MISSING_BACKEND_MESSAGE}</div>
           </div>
@@ -173,6 +191,11 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
           <Field label="Password" hint={mode === 'signup' ? 'At least 8 characters' : undefined} error={passwordErr ?? undefined}>
             <input className="input" type="password" name="password" autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} minLength={mode === 'signup' ? 8 : undefined} value={password} onChange={e => { setPassword(e.target.value); if (passwordErr) setPasswordErr(null) }} placeholder="••••••••" ref={passwordRef} />
           </Field>
+          {/* A live region that stays in the DOM. A status node inserted with
+              its text is announced unreliably, so only its copy changes. */}
+          <div role="status" aria-live="polite">
+            {notice && <div className="hub-note auth-submit-notice">{notice}</div>}
+          </div>
           {error && <div className="err-text auth-submit-error" role="alert" tabIndex={-1} ref={errRef}><InlineIcon icon={TriangleAlert} size={13} gap={4} />{error}</div>}
           <button type="submit" className="btn btn-primary btn-lg auth-submit" disabled={saving}>
             {saving ? (mode === 'login' ? 'Signing in…' : 'Creating account…') : mode === 'login' ? 'Log in' : 'Create account'}

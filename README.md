@@ -93,6 +93,14 @@ A collaborative travel-planning web app, built India-first. Real multi-day itine
 
 _Release highlights, newest first — the full record lives in [CHANGELOG.md](CHANGELOG.md)._
 
+## ✨ The v0.76 release, in plain words
+
+- **YatraFlow has a new logo, the Ribbon Y.** Two routes fold into one road, and a saffron dot marks the destination. The logo appears in the header, the browser icon and the app icons.
+- **Failed reads say so.** When the forecast or your trips fail to load, the page shows a message and a Try again button. It does not look empty.
+- **The landing page links open their pages.** The planning link, Explore, sign-up, DMCA and Plan Bench links open inside the app.
+- **Profile and trip settings report saves honestly.** "Profile saved" and "Trip settings updated" appear only after the server accepts the change.
+- **The DMCA page and the log-in tabs match the rest of the app.** They use the shared page parts: a title, a short lede and a text panel.
+
 ## ✨ The v0.75 release, in plain words
 
 - **Every trip card names the next step to take.** A link on each card opens that task. Dates come first, then the first empty day, then the first stop that needs a booking.

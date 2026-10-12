@@ -11,7 +11,7 @@ import { loadDraft, draftIsWorthKeeping, draftAgeLabel } from '../lib/createDraf
 import { readinessFromDraft } from '../lib/createReadiness'
 import { createFunnelOn } from '../lib/featureFlags'
 import { ImportTripButton } from '../components/ImportTripButton'
-import { sliceState, emptyCopyFor, readState } from '../lib/readState'
+import { sliceState, emptyCopyFor, readState, rowsView } from '../lib/readState'
 import type { Trip } from '../data/types'
 import { TRAVEL_STYLES } from '../data/types'
 import { heroHeadline, heroNote, heroPostcards, heroStats, otherTripsEmptyKind, pickUpNext, whenBucket, type WhenKey } from '../lib/tripsPage'
@@ -200,7 +200,11 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
 
   // The hero reads all of the viewer's trips, not the filtered list, so a
   // search or a filter never changes its headline, counts or postcards.
-  const tripsReady = tripsRead === 'ready'
+  // #704: a failed refresh with rows already loaded is 'kept'. The page keeps
+  // showing those rows, so the hero and the Other trips header read them as
+  // ready. Only a failed or pending read with no rows is not ready.
+  const tripsView = rowsView(tripsRead, mine.length)
+  const tripsReady = tripsView !== 'failed' && tripsView !== 'reading'
   const heroHeadlineText = heroHeadline({ trips: mine, today, ready: tripsReady })
   const heroStatRow = heroStats({ trips: mine, today, meId, ready: tripsReady })
   const heroCards = heroPostcards({ trips: mine, today, ready: tripsReady })
@@ -211,11 +215,11 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
     setView(v => v === 'trash' ? 'trips' : 'trash')
   }
   // The Trash toggle lives in the "Other trips" header. That header is drawn
-  // only when the trips read is ready and the list is not the first-run empty
-  // state, and never in the Trash view. In every other case the hero carries
-  // the toggle, so the Trash stays reachable while trips load, after a failed
-  // read, with cached trips, and with no trips at all.
-  const showsOtherTripsHeader = !isTrashView && tripsRead === 'ready' && !(trips.length === 0 && !hasFilters)
+  // only when trips are ready and the list is not the first-run empty state,
+  // and never in the Trash view. In every other case the hero carries the
+  // toggle, so the Trash stays reachable while trips load, after a failed read
+  // with no trips, and when there are no trips at all.
+  const showsOtherTripsHeader = !isTrashView && tripsReady && !(trips.length === 0 && !hasFilters)
 
   function confirmDelete() {
     if (!pendingDelete) return
@@ -311,7 +315,7 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
         </div>
       )}
 
-      {view !== 'trash' && (tripsRead !== 'ready' ? (
+      {view !== 'trash' && (!tripsReady ? (
         // #383: a failed trips read used to render the genuine-empty copy with
         // no error branch. The failed branch precedes loading precedes empty,
         // and its Retry re-issues the hydrate rather than re-rendering.
@@ -342,6 +346,16 @@ export function TripsListPage({ onNavigate }: { onNavigate: (r: string) => void 
         />
       ) : (
         <div className="mt-catalog">
+          {tripsView === 'kept' && (
+            // #704: the refresh failed. The rows below are the ones that loaded.
+            <StateBlock
+              size="compact"
+              kind="kept"
+              titleLevel="h2"
+              title="Couldn’t refresh your trips. Showing the ones that loaded."
+              actions={<button className="btn btn-secondary" onClick={retryTrips}>Try again</button>}
+            />
+          )}
           {upNext && upNextTotals && (
             <section aria-labelledby={upNextTitleId}>
               <SectionHead id={upNextTitleId}

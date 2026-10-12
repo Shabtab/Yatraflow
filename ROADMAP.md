@@ -15,8 +15,8 @@ user confirmation before any push. Feature work reaches `test` **via pull
 request** (never a direct push); `main` merges stay explicitly user-gated
 (AGENTS rule 1).
 
-**Snapshot (2026-10-12, verified against the repo):** v0.75.0 is prepared on `release/0.75.0`. PR #711 tracks promotion to `main`. Promotion remains pending. You must read branch progress with `git rev-list --left-right --count origin/main...origin/test`. No migration is new in this release. The 0.74.1 migrations already reached `main`. CHANGELOG.md holds the full release record.
-Current version: **0.75.0**. Under it: **0.74.1**, a security hotfix cut from `main` on 2026-10-12. Under that: **0.74.0**, cut on `test` on 2026-10-07 and promoted to `main` the same day. Older releases appear in CHANGELOG.md.
+**Snapshot (2026-10-12, verified against the repo):** v0.76.0 is cut on `release/v0.76.0` for promotion to `main`. v0.75.0 reached `main` through PR #711. You must read branch progress with `git rev-list --left-right --count origin/main...origin/test`. No migration is new in this release. The 0.74.1 migrations already reached `main`. CHANGELOG.md holds the full release record.
+Current version: **0.76.0**. Under it: **0.75.0**, promoted to `main` on 2026-10-12. Under that: **0.74.1**, a security hotfix cut from `main` on 2026-10-12. Under that: **0.74.0**, cut on `test` on 2026-10-07 and promoted to `main` the same day. Older releases appear in CHANGELOG.md.
 
 **Live open work is tracked in two places, and this file must agree with both:**
 
@@ -34,6 +34,8 @@ numbers are now **consumed** — `v0.32.0` in particular shipped "Stabilization 
 M6. The `vX.Y.Z` in each M-heading is therefore **historical intent only and is not a booking**;
 the ledger tracks content, and only the ledger's version numbers are real. Where a heading's
 number collides with a shipped release, the ledger wins.
+
+> **Strategy (2026-10-12):** the order of work is set by [`docs/commercial/STRATEGY.md`](docs/commercial/STRATEGY.md) — a six-week feature freeze and distribution sprint with a written gate.
 
 ---
 

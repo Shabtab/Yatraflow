@@ -857,12 +857,16 @@ export function useClickOutside(onOutside: () => void) {
   return [ref, portalRef] as const
 }
 
+/** The Ribbon Y: two routes fold into one road and arrive at the saffron
+ *  destination. The fold and road read the teal ladder, so the mark follows the
+ *  theme (light #0B6B63/#0D8D82, dark #1E9D92/#2BB8AC). Exported files and the
+ *  construction rules live in `public/brand/` and DESIGN.md → Brand mark. */
 export function BrandMark({ size = 26 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 100 100" aria-hidden="true">
-      <circle cx="50" cy="50" r="46" fill="#0B2545" />
-      <path d="M28 62 L44 34 L56 52 L64 40 L76 62 Z" fill="#0D8D82" />
-      <circle cx="66" cy="30" r="7" fill="#F59E2D" />
+    <svg width={size} height={size} viewBox="4.25 5.5 55.5 56.5" aria-hidden="true">
+      <path d="M15 6C15 26 32 24 32 40" fill="none" strokeWidth="11" style={{ stroke: 'var(--teal-700, #0B6B63)' }} />
+      <path d="M49 6C49 26 32 24 32 40V46" fill="none" strokeWidth="11" style={{ stroke: 'var(--teal-500, #0D8D82)' }} />
+      <circle cx="32" cy="56" r="5.5" style={{ fill: 'var(--saffron, #F59E2D)' }} />
     </svg>
   )
 }

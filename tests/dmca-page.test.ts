@@ -33,7 +33,7 @@ describe('the unlock buttons disclose the payment shape', () => {
 })
 
 describe('the landing page links the policy', () => {
-  it('carries the copyright line with a #/dmca link', () => {
-    expect(landing).toContain('href="#/dmca"')
+  it('carries the copyright line with an appLink to /dmca', () => {
+    expect(landing).toContain("{...appLink('/dmca')}")
   })
 })

@@ -10229,7 +10229,7 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 .auth-description { margin-top: 4px; }
 .auth-backend-warning { margin-bottom: 12px; }
 .auth-backend-detail { margin-top: 4px; }
-.auth-submit-error { margin-bottom: 10px; }
+.auth-submit-error { margin-bottom: 8px; }
 .btn.auth-submit { width: 100%; }
 .hint-text.auth-reset-help { margin: 10px 0 0; text-align: center; }
 .hint-text.auth-sample-note { text-align: center; margin-top: 14px; }
@@ -10241,3 +10241,59 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 
 /* ShareTab: the invite-link status line (minting, failed) keeps its margin in a class. */
 .hint-text.shr-invite-status { margin: 0 0 10px; }
+
+/* ===== Shared page components: compact state block and surface roots ===== */
+/* A compact state block sits inside a workspace tab or a card (ruling R22). It
+   has no dashed border, and it uses the smaller padding and gap. It keeps the
+   roles and kinds of the full block. It has no entrance of its own: the
+   container that holds it gives the entrance, as it does for the full block. */
+.yf-state.yf-state--compact { gap: 6px; margin-top: 8px; padding: 12px 16px; border: 0; }
+.yf-state.yf-state--compact .yf-state-title { font-size: 18px; line-height: 1.3; }
+.yf-state.yf-state--compact .yf-state-actions { gap: 8px; }
+/* A surface that is one whole button. The reset takes the card's font and colour
+   from its parent. The caller's class sets the padding and the layout. The lift,
+   the press and the ring are the ones an interactive surface uses. */
+:where(button.yf-surface) {
+  display: block; width: 100%; margin: 0; padding: 0; font: inherit; color: inherit; text-align: inherit; cursor: pointer;
+}
+.yf-surface.is-interactive:active { transform: translateY(1px); transition-duration: var(--motion-fast); }
+.yf-surface.is-interactive:focus-visible { outline: none; box-shadow: var(--ring); }
+@media (prefers-reduced-motion: reduce) {
+  .yf-surface.is-interactive:active { transform: none; transition: none; }
+}
+/* The sign-up confirmation note enters like the error line. Its gap is 8px because 10px is off the spacing ladder. */
+.auth-submit-notice { margin-bottom: 8px; animation: errIn var(--motion-med) var(--ease-out); }
+@media (prefers-reduced-motion: reduce) { .auth-submit-notice { animation: none; } }
+/* #704: the publish button waits for the publish status. This fieldset carries
+   that gate. It draws no box and lays its button out as the form does. */
+.ts-submit-gate { display: flex; flex-direction: column; border: 0; margin: 0; padding: 0; min-width: 0; }
+
+/* Creator hub: honesty states (#704). */
+.hub-pubs-loading { margin: 6px 0 0; }
+
+/* #704: a note that says a read failed enters like the error line it stands in for. */
+.ovw-weather-failed, .ovw-weather-kept { animation: errIn var(--motion-med) var(--ease-out); }
+@media (prefers-reduced-motion: reduce) { .ovw-weather-failed, .ovw-weather-kept { animation: none; } }
+
+/* #704: the publish-status notes on the Share tab enter like the error line. */
+.shr-read-failed, .shr-read-kept, .shr-read-loading { animation: errIn var(--motion-med) var(--ease-out); }
+@media (prefers-reduced-motion: reduce) { .shr-read-failed, .shr-read-kept, .shr-read-loading { animation: none; } }
+
+/* #704: the creator hub's failure and kept notes enter like the error line. */
+.hub-read-failed, .hub-read-kept { animation: errIn var(--motion-med) var(--ease-out); }
+@media (prefers-reduced-motion: reduce) { .hub-read-failed, .hub-read-kept { animation: none; } }
+
+/* ===== P8: DMCA page, a content page with a serif header and one text panel ===== */
+/* The page root carries yf-page. The text panel holds the policy text at a readable
+   measure. The top and bottom padding copy the content pages (My purchases). */
+/* The reading text uses the base body size and ink. */
+/* Blocks sit 12px apart, list items 6px apart, and the rule has 16px above it. */
+.dmca-page { padding-top: 22px; padding-bottom: 24px; }
+.dmca-body { max-width: 68ch; padding: 24px; font-size: 15px; line-height: 1.6; color: var(--text); }
+.dmca-body > p, .dmca-body > ul { font-size: inherit; line-height: inherit; color: inherit; }
+.dmca-body > p + p, .dmca-body > p + ul, .dmca-body > ul + p { margin-top: 12px; }
+.dmca-body > ul > li + li { margin-top: 6px; }
+.dmca-body > .divider { margin-top: 16px; }
+@media (max-width: 560px) {
+  .dmca-body { padding: 16px; }
+}

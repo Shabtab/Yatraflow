@@ -13,8 +13,14 @@ export const CREATE_SEGMENT = 'new'
 /** The path form, for comparisons such as `route === CREATE_PATH`. */
 export const CREATE_PATH = `/${CREATE_SEGMENT}`
 
-/** The hash form, for links, redirects and `location.hash = CREATE_ROUTE`. */
+/** The hash form, kept for the native shell and its tests. Links use CREATE_PATH through appLink. */
 export const CREATE_ROUTE = `#${CREATE_PATH}`
+
+/** The signed-out planning target: sign up, then return to the create-trip page.
+ *  A path with a query, so appLink renders it as a real href on the web. */
+export function signupThenCreatePath(): `/${string}` {
+  return `/auth?mode=signup&next=${encodeURIComponent(CREATE_PATH)}`
+}
 
 /** Every first segment the router resolves (`App.tsx`'s pre-switch gates and
  *  `switch`, including '' for the bare route). The legacy-hash bridge maps an

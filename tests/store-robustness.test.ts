@@ -3,18 +3,30 @@
 //  #4 registerPubView/Copy only writes when the viewer owns the published row
 //  #5 reorderStop guards out-of-range indices (no undefined in day.stops)
 //  #9 acceptSuggestionIntoTimeline no longer dereferences a null session user
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
   tripById,
   getSnapshot, createTrip, reorderStop, acceptSuggestionIntoTimeline,
   publishItinerary, registerPubView, currentUser,
 } from '../src/store/store'
 import { supabase } from '../src/lib/supabase'
+import { sliceState } from '../src/lib/readState'
 import type { Trip, PublishedItinerary } from '../src/data/types'
 
 function resetCacheForTest() {
   // getSnapshot() is stable until a mutation replaces the cache; we just read it.
   return getSnapshot()
+}
+
+/** `publishItinerary` reports its outcome, not the row. These tests assert the
+ *  outcome, then read the row that the accepted write left in the cache. */
+async function publishedRow(
+  store: typeof import('../src/store/store'),
+  pub: Omit<PublishedItinerary, 'id' | 'publishedAt' | 'views' | 'copies'>,
+): Promise<PublishedItinerary> {
+  const outcome = await store.publishItinerary(pub)
+  expect(outcome.ok, outcome.error).toBe(true)
+  return getSnapshot().published.find(x => x.tripId === pub.tripId)!
 }
 
 describe('reorderStop guards out-of-range indices (regression #5)', () => {
@@ -107,7 +119,7 @@ describe('registerPubView only writes for the owning viewer (regression #4)', ()
         travelStyle: 'balanced', bestSeason: 'winter', travelTips: [],
         warningsAndAssumptions: [], freeDayIndexes: [0],
       }
-      const p = await store.publishItinerary(pub)
+      const p = await publishedRow(store, pub)
       const before = p.views
       // Simulate a NON-owner viewer (sessionUserId differs from creatorId)
       const snap = getSnapshot() as any
@@ -135,7 +147,7 @@ describe('registerPubView counts real visits only (v0.36)', () => {
     const fromSpy = vi.spyOn(supabase, 'from').mockImplementation(
       () => ({ upsert, update }) as unknown as ReturnType<typeof supabase.from>,
     )
-    const p = await store.publishItinerary({
+    const p = await publishedRow(store, {
       tripId: 't-views', creatorId, title: 'Kerala', tagline: 'x',
       // #354 — the writer now enforces the publish rules, so a fixture that
       // published a COVERLESS row is no longer a valid publication. These tests
@@ -195,7 +207,7 @@ describe('unpublishItinerary owner gate + rollback (v0.36)', () => {
     const fromSpy = vi.spyOn(supabase, 'from').mockImplementation(
       () => ({ upsert, update }) as unknown as ReturnType<typeof supabase.from>,
     )
-    const p = await store.publishItinerary({
+    const p = await publishedRow(store, {
       tripId: 't-unpub', creatorId, title: 'Kerala', tagline: 'x',
       // #354 — same as the fixture above: the writer enforces the publish rules
       // now, so this one carries a cover and a free day. These tests are about
@@ -233,6 +245,166 @@ describe('unpublishItinerary owner gate + rollback (v0.36)', () => {
       expect(getSnapshot().published.some(x => x.id === p.id)).toBe(true)
     } finally {
       vi.restoreAllMocks()
+    }
+  })
+})
+
+// ============ #704 — a failed read is never an empty slice ============
+// These drive the real store through its auth entry point. A fresh module graph
+// gives each test its own Supabase client, so the test answers every read.
+
+/** A query builder that answers with `result`, as the store's awaited reads do. */
+function answering(result: { data: unknown; error: unknown }) {
+  const builder: Record<string, unknown> = {}
+  for (const m of ['select', 'eq', 'in']) builder[m] = () => builder
+  builder.then = (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) =>
+    Promise.resolve(result).then(res, rej)
+  return builder
+}
+
+/** A fresh store, signed in as `user`, on its own Supabase client. */
+async function freshStore(user: string) {
+  vi.resetModules()
+  const store = await import('../src/store/store')
+  const { supabase: client } = await import('../src/lib/supabase')
+  vi.spyOn(client.auth, 'getSession').mockResolvedValue(
+    { data: { session: { user: { id: user } } }, error: null } as never,
+  )
+  vi.spyOn(client.auth, 'onAuthStateChange').mockReturnValue(
+    { data: { subscription: { unsubscribe: () => {} } } } as never,
+  )
+  return { store, client }
+}
+
+describe('#704 — a throw after the first read still gives the trips slice a verdict', () => {
+  afterEach(() => { vi.restoreAllMocks() })
+
+  it('the outer catch reports trips failed, so a page that waits on the trips read cannot spin', async () => {
+    const { store, client } = await freshStore('user-d4')
+    vi.spyOn(client, 'from').mockImplementation(((table: string) => {
+      if (table === 'trip_members') {
+        return answering({ data: [{ trip_id: 'trip-d4', user_id: 'user-d4', role: 'owner', joined_at: 1 }], error: null })
+      }
+      // Stage 2 reads trips. This throw comes after stage 1 has read the memberships.
+      if (table === 'trips') throw new Error('forced after stage 1')
+      return answering({ data: [], error: null })
+    }) as never)
+
+    store.init()
+    await vi.waitFor(() => expect(sliceState(store.getSnapshot().sliceReads, 'trips')).toBe('failed'))
+  })
+})
+
+/** The slices a page reads through `sliceState`. A run that settled must leave none of them reading. */
+const PAGE_SLICES = ['trips', 'profiles', 'suggested itineraries', 'suggestions', 'decisions', 'activity'] as const
+
+describe('#704 — a throw during hydrate fails every slice it left unread', () => {
+  afterEach(() => { vi.restoreAllMocks() })
+
+  it('a throw after stage 1 leaves no page slice reading, not only trips', async () => {
+    const { store, client } = await freshStore('user-e1')
+    vi.spyOn(client, 'from').mockImplementation(((table: string) => {
+      if (table === 'trip_members') {
+        return answering({ data: [{ trip_id: 'trip-e1', user_id: 'user-e1', role: 'owner', joined_at: 1 }], error: null })
+      }
+      // Stage 2 reads trips. This throw comes after stage 1 has read the profiles, the published rows and the memberships.
+      if (table === 'trips') throw new Error('forced after stage 1')
+      return answering({ data: [], error: null })
+    }) as never)
+
+    store.init()
+    await vi.waitFor(() => expect(sliceState(store.getSnapshot().sliceReads, 'trips')).toBe('failed'))
+    for (const slice of PAGE_SLICES) {
+      expect(sliceState(store.getSnapshot().sliceReads, slice), slice).not.toBe('reading')
+    }
+  })
+
+  it('a throw before the membership scope is known leaves no page slice reading', async () => {
+    const { store, client } = await freshStore('user-e2')
+    vi.spyOn(client, 'from').mockImplementation(((table: string) => {
+      // The first stage-1 read throws, so the run never learns which trips the user belongs to.
+      if (table === 'profiles') throw new Error('forced at the start of stage 1')
+      return answering({ data: [], error: null })
+    }) as never)
+
+    store.init()
+    await vi.waitFor(() => expect(sliceState(store.getSnapshot().sliceReads, 'trips')).toBe('failed'))
+    for (const slice of PAGE_SLICES) {
+      expect(sliceState(store.getSnapshot().sliceReads, slice), slice).not.toBe('reading')
+    }
+  })
+
+  it('a throw after the verdict keeps every verdict the run already reported', async () => {
+    const { store, client } = await freshStore('user-e3')
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.spyOn(client, 'from').mockImplementation(((table: string) => {
+      // No membership row, so the run reports its verdict and then seeds demo trips. The first seed write throws.
+      if (table === 'trips') throw new Error('forced after the verdict')
+      return answering({ data: [], error: null })
+    }) as never)
+
+    store.init()
+    await vi.waitFor(() => expect(consoleError).toHaveBeenCalledWith('[yatraflow] hydration failed', expect.anything()))
+    for (const slice of ['trips', 'profiles', 'suggested itineraries'] as const) {
+      expect(sliceState(store.getSnapshot().sliceReads, slice), slice).toBe('ready')
+    }
+  })
+})
+
+/** A trip row that rowToTrip maps, so a read that finds a trip never reaches the demo seed. */
+function mappableTripRow(id: string, ownerId: string) {
+  return {
+    id, owner_id: ownerId, name: `Trip ${id}`, start_location: 'Kochi',
+    start_location_coords: null, destinations: ['Kochi'], destination_coords: null,
+    start_date: '2026-10-01', end_date: '2026-10-03', travellers: 2, transport_mode: 'car',
+    budget_per_person_inr: 5000, travel_style: 'balanced', fixed_commitments: [],
+    days: [], expenses: [], cover_emoji: '🧭', visibility: 'private',
+    created_at: 1, updated_at: 1,
+  }
+}
+
+describe('#704 — a failed memberships read keeps the trip-scoped rows and reports them failed', () => {
+  afterEach(() => { vi.restoreAllMocks() })
+
+  it('keeps the cached suggestions, decisions, activity and notifications, and reports each one failed', async () => {
+    const { store, client } = await freshStore('user-d5')
+    let memberships: { data: unknown; error: unknown } = {
+      data: [{ trip_id: 'trip-d5', user_id: 'user-d5', role: 'owner', joined_at: 1 }],
+      error: null,
+    }
+    const rows: Record<string, unknown[]> = {
+      trips: [mappableTripRow('trip-d5', 'user-d5')],
+      suggestions: [{
+        id: 's1', trip_id: 'trip-d5', day_index: 0, proposed_by: 'user-d5', title: 'Fort', category: 'sightseeing',
+        location_name: 'Fort', lat: 10, lng: 76, visit_minutes: 60, status: 'open', votes: [], comments: [], created_at: 1,
+      }],
+      decisions: [{
+        id: 'd1', trip_id: 'trip-d5', question: 'Where to?', context: null, options: [], votes_by_user_id: {},
+        status: 'open', comments: [], raised_by: 'user-d5', created_at: 1,
+      }],
+      activity: [{ id: 'a1', trip_id: 'trip-d5', actor_id: 'user-d5', verb: 'added', target: 'Fort', at: 1 }],
+      notifications: [{ id: 'n1', user_id: 'user-d5', trip_id: 'trip-d5', text: 'Hello', read: false, at: 1 }],
+    }
+    vi.spyOn(client, 'from').mockImplementation(((table: string) => {
+      if (table === 'trip_members') return answering(memberships)
+      return answering({ data: rows[table] ?? [], error: null })
+    }) as never)
+
+    store.init()
+    await vi.waitFor(() => expect(store.getSnapshot().sliceReads.trips).toBe('ok'))
+    expect(store.getSnapshot().suggestions.map(s => s.id)).toEqual(['s1'])
+
+    // The memberships read fails now. Stage 2 never runs, so the cached rows must stay.
+    memberships = { data: null, error: { message: 'boom' } }
+    await store.rereadTrips()
+
+    const db = store.getSnapshot()
+    expect(db.suggestions.map(s => s.id)).toEqual(['s1'])
+    expect(db.decisions.map(d => d.id)).toEqual(['d1'])
+    expect(db.activity.map(a => a.id)).toEqual(['a1'])
+    expect(db.notifications.map(n => n.id)).toEqual(['n1'])
+    for (const slice of ['memberships', 'trips', 'suggestions', 'decisions', 'activity', 'notifications']) {
+      expect(sliceState(db.sliceReads, slice), slice).toBe('failed')
     }
   })
 })

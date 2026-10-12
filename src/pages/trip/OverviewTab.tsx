@@ -3,7 +3,7 @@
 import { daySlots, tripDayAttribution, type DaySlotsDeps } from '../../lib/daySlots'
 import { mapRoadViewFromLegs, type TripRoadView } from '../../lib/tripRoad'
 import type { SegmentHit } from '../../lib/geocode'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { CircleCheck, CloudSun, Droplets, Lightbulb, Pin, Siren, TriangleAlert } from 'lucide-react'
 import type { Trip } from '../../data/types'
 import { useDb, userById, activityFor } from '../../store/store'
@@ -214,7 +214,7 @@ export function OverviewTab({ trip, onOpenTimeline, onOpenMap, onInvite, health,
           ))}
         </div>
 
-        <WeatherCard trip={trip} />
+        <WeatherCard key={trip.id} trip={trip} />
       </div>
 
       <div className="card pulse-bar">
@@ -232,10 +232,19 @@ export function OverviewTab({ trip, onOpenTimeline, onOpenMap, onInvite, health,
 
 // ================= Weather =================
 
-/** Per-day forecast strip for the Overview tab. Best-effort; hides itself when unavailable. */
+/** Per-day forecast strip for the Overview tab. Hides itself when no day has a forecast.
+ *  A failed read says so and offers Try again (#704). A failed refresh keeps the
+ *  forecast on screen and says that it could not refresh (#704). */
 function WeatherCard({ trip }: { trip: Trip }) {
   const [byDate, setByDate] = useState<Record<string, DayWeather>>({})
-  const [state, setState] = useState<'loading' | 'ready' | 'unavailable'>('loading')
+  const [state, setState] = useState<'loading' | 'ready' | 'unavailable' | 'failed'>('loading')
+  // #704: the forecast on screen, mirrored into a ref so the settle handlers of a
+  // request can tell "nothing has loaded" from "a forecast is on screen".
+  const byDateRef = useRef<Record<string, DayWeather>>({})
+  // Set when a refresh fails while a forecast is on screen. The card keeps that forecast.
+  const [refreshFailed, setRefreshFailed] = useState(false)
+  // Bumped by Try again. A bump re-pulls the forecast past the cache.
+  const [retries, setRetries] = useState(0)
   const tick = useWeatherRefreshTick()
 
   // Per-day anchor + per-day forecast-window gate — the SAME rule the Timeline
@@ -258,7 +267,7 @@ function WeatherCard({ trip }: { trip: Trip }) {
   useEffect(() => {
     if (dayAnchors.length === 0) return
     let cancelled = false
-    Promise.all(dayAnchors.map(d => fetchDailyWeather(d.lat, d.lng, d.date, 1, { force: tick > 0 })))
+    Promise.all(dayAnchors.map(d => fetchDailyWeather(d.lat, d.lng, d.date, 1, { force: tick > 0 || retries > 0 })))
       .then(results => {
         if (cancelled) return
         const merged: Record<string, DayWeather> = {}
@@ -266,20 +275,50 @@ function WeatherCard({ trip }: { trip: Trip }) {
           const w = r[dayAnchors[i].date]
           if (w) merged[w.date] = w
         })
-        setByDate(merged)
-        setState(Object.keys(merged).length > 0 ? 'ready' : 'unavailable')
+        if (Object.keys(merged).length > 0) {
+          byDateRef.current = merged
+          setByDate(merged)
+          setState('ready')
+          setRefreshFailed(false)
+        } else if (Object.keys(byDateRef.current).length > 0) {
+          // A refresh with no usable day keeps the forecast on screen.
+          setRefreshFailed(true)
+        } else {
+          setState('unavailable')
+        }
       })
-      .catch(() => { if (!cancelled) setState('unavailable') })
+      .catch(() => {
+        if (cancelled) return
+        // A failed refresh keeps the forecast on screen. A failed first read sets the failed state.
+        if (Object.keys(byDateRef.current).length > 0) setRefreshFailed(true)
+        else setState('failed')
+      })
     return () => { cancelled = true }
-  }, [dayAnchors, tick])
+  }, [dayAnchors, tick, retries])
+
+  // #704: Try again shows the loading line only while nothing has loaded. With a
+  // forecast on screen, it refreshes in place.
+  const retryWeather = () => {
+    if (Object.keys(byDateRef.current).length === 0) setState('loading')
+    setRetries(r => r + 1)
+  }
 
   // No anchored day inside the forecast window yet — a far-future trip, or one
   // with no placed stops. Show nothing rather than a spinner that never
   // resolves; derived from the data, not set from the effect above.
   if (dayAnchors.length === 0) return null
   if (state === 'loading') {
-    return <div className="card"><h3 className="card-head"><InlineIcon icon={CloudSun} size={14} gap={4} />Weather</h3><p className="muted small">Loading forecast…</p></div>
+    return <div className="card"><h3 className="card-head"><InlineIcon icon={CloudSun} size={14} gap={4} />Weather</h3><p className="muted small" role="status">Loading forecast…</p></div>
   }
+  if (state === 'failed') {
+    return (
+      <div className="card">
+        <h3 className="card-head"><InlineIcon icon={CloudSun} size={14} gap={4} />Weather</h3>
+        <p className="muted small ovw-weather-failed" role="alert">Couldn’t load the forecast. <button className="btn btn-outline btn-sm" onClick={retryWeather}>Try again</button></p>
+      </div>
+    )
+  }
+  // 'unavailable': the forecast came back with no usable day, so there is nothing to show.
   if (state !== 'ready') return null
 
   const entries = Object.values(byDate)
@@ -309,6 +348,9 @@ function WeatherCard({ trip }: { trip: Trip }) {
         <p className="hint-text ovw-rain-note">
           <InlineIcon icon={TriangleAlert} size={12} gap={3} />High rain chance on {wetDays} day{wetDays > 1 ? 's' : ''} — consider indoor alternatives for weather-sensitive stops (beaches, viewpoints, treks).
         </p>
+      )}
+      {refreshFailed && (
+        <p className="muted small ovw-weather-kept" role="status">Couldn’t refresh the forecast. Showing the last one. <button className="btn btn-outline btn-sm" onClick={retryWeather}>Try again</button></p>
       )}
     </div>
   )

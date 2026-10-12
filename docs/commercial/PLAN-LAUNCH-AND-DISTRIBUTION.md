@@ -1,5 +1,7 @@
 # YatraFlow — Launch plan: from built to shared
 
+> ⚠️ **HISTORICAL (2026-10-12).** [`STRATEGY.md`](STRATEGY.md) replaces this doc's position, sequence and targets. Read this doc for its detail only.
+
 **Date:** 2026-09-15 · **Product:** `v0.54.0` · **Method:** live deployment loaded in a real
 browser (Chrome via playwright), plus `src/` read directly. Screenshots:
 `landing-live-2026-09-15.png` and `explore-live-2026-09-15.png` (same folder).

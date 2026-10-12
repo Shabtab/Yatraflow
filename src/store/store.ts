@@ -287,6 +287,9 @@ export type ReadSlice = typeof READ_SLICES[number]
  *  `rereadPublicSlices` both report exactly this set, never `trips`. */
 const PUBLIC_READ_SLICES = ['profiles', 'suggested itineraries'] as const
 
+/** The trip-scoped reads a member's stage 2 issues, named as the verdict names them (#704). */
+const TRIP_SCOPED_READS = ['members', 'suggestions', 'decisions', 'activity', 'notifications'] as const
+
 /** Turn the hydrate's `partial` list into a per-slice verdict.
  *
  *  Everything the run asked for and did not name in `partial` succeeded. That
@@ -422,8 +425,10 @@ export async function login(email: string, password: string): Promise<{ ok: bool
   }
 }
 
-/** Email/password sign up via Supabase Auth. Profile row is created by the DB trigger. */
-export async function signup(name: string, email: string, password: string): Promise<{ ok: boolean; error?: string }> {
+/** Email/password sign up via Supabase Auth. Profile row is created by the DB trigger.
+ *  `needsConfirmation` is true when the account exists but has no session yet,
+ *  because Supabase waits for the email link. That is a success, not an error. */
+export async function signup(name: string, email: string, password: string): Promise<{ ok: boolean; error?: string; needsConfirmation?: boolean }> {
   const cleanEmail = email.trim().toLowerCase()
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) return { ok: false, error: 'Enter a valid email address.' }
   if (password.length < 8) return { ok: false, error: 'Password must be at least 8 characters.' }
@@ -434,10 +439,8 @@ export async function signup(name: string, email: string, password: string): Pro
       options: { data: { name: name.trim() } },
     })
     if (error) return { ok: false, error: describeAuthFailure(error, { configured: true }) }
-    // Supabase may require email confirmation; surface that gently.
-    if (data.session === null) {
-      return { ok: false, error: 'Check your email to confirm your account, then log in.' }
-    }
+    // Supabase may need email confirmation. The account exists, but there is no session yet.
+    if (data.session === null) return { ok: true, needsConfirmation: true }
     return { ok: true }
   } catch (e) {
     return { ok: false, error: describeAuthFailure(e, { configured: true }) }
@@ -706,6 +709,13 @@ export async function resumeSync(): Promise<void> {
 }
 
 async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = true): Promise<void> {
+  // #704: the slices this run answers for, named as its verdict names them. Stage 1
+  // fixes the first four. Stage 2 adds the trip-scoped ones once the scope is known.
+  // A throw ends the run before its verdict. The catch fails every name here that has
+  // no verdict yet, so no page waits on a read that will never settle.
+  const askedSlices: string[] = ['profiles', 'memberships', 'suggested itineraries', 'trips']
+  let scopeKnown = false
+  let verdictPublished = false
   try {
     // Stage 1 - global catalogs + the user's memberships. Explore reads the curated
     // published_itineraries table and profiles are small rows for user avatars,so
@@ -743,10 +753,19 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     let tripsReadFailed = false
     if (profRes.error) { console.error('[yatraflow] hydrate profiles failed', profRes.error); partial.push('profiles') }
     const profiles = (profRes.data ?? []) as ProfileRow[]
-    if (myMembershipsRes.error) { console.error('[yatraflow] hydrate memberships failed', myMembershipsRes.error); partial.push('memberships'); tripCountUnknown = true }
+    if (myMembershipsRes.error) { console.error('[yatraflow] hydrate memberships failed', myMembershipsRes.error); partial.push('memberships'); tripCountUnknown = true; tripsReadFailed = true }
     const myRows = (myMembershipsRes.data ?? []) as MemberRow[]
     const memberTripIds = myRows.map(m => m.trip_id)
     const myTripIds = [...new Set(memberTripIds)]
+    // #704: a failed memberships read leaves the trip scope unknown, so stage 2 read
+    // nothing for a member. The admin reads are not scoped by membership, so they stand.
+    const scopeUnread = !!myMembershipsRes.error && !admin
+    // #704: the scope is known now, so name the slices this run answers for before
+    // stage 2 issues any read. A throw from here on finds them in `askedSlices` (see the catch).
+    scopeKnown = true
+    if (admin || myTripIds.length > 0) askedSlices.push(...TRIP_SCOPED_READS)
+    if (scopeUnread) askedSlices.push('suggestions', 'decisions', 'activity', 'notifications')
+    if (admin) askedSlices.push('audit')
 
     // Stage 2 - the user's own trips + their collaboration data (PostgREST
     // rejects `id=in.<empty>`, so with no trips yet we record empty slices
@@ -845,6 +864,8 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     // empty list — the exact lie #383 owns. Name it, so the page's failed
     // branch (not its empty copy) renders and the demo seed stays blocked.
     if ((tripCountUnknown || tripsReadFailed) && !partial.includes('trips')) partial.push('trips')
+    // #704: the trip-scoped slices are unread too, so they report failed the way trips does.
+    if (scopeUnread) partial.push('suggestions', 'decisions', 'activity', 'notifications')
 
     // Stale run — a sign-out or account switch bumped hydrateGen while these
     // queries were in flight. Writing now would leak the previous account's rows
@@ -869,10 +890,8 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     patch({
       users,
       ...(tripsRead !== undefined ? { trips: tripsRead } : {}),
-      suggestions,
-      decisions,
-      activity,
-      notifications,
+      // #704: an unread scope keeps the cached rows. Clearing them would show an empty account.
+      ...(scopeUnread ? {} : { suggestions, decisions, activity, notifications }),
       adminAudit,
       // De-dupe published rows left by earlier buggy seeds (the publishItinerary
       // path used to mint a fresh trip id on every call — many rows per
@@ -885,7 +904,10 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
       // all of it. The trip behind a publication is read through
       // `get_public_trip` (the public page and the fork path both do), and the
       // row cascades away with its trip, so a publication stands on its own.
-      published: dedupePublished(pubRows),
+      // #704: a failed published read keeps the rows already loaded. The empty
+      // result of a failed read is not an empty catalog. The verdict in
+      // `sliceReads` still reports the failure.
+      published: pubRes.error ? cache.published : dedupePublished(pubRows),
       sessionUserId: userId,
       cachedAt: null,
     })
@@ -920,13 +942,16 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     // hydrate already uses, so a page can ask about the slice it renders.
     //
     // #383: `asked` mirrors what THIS run actually read, so a slice the run
-    // never touched (the trip-scoped six on an account with no trips yet, the
+    // never touched (the five trip-scoped slices on an account with no trips yet, the
     // audit log for a non-admin) stays unreported — an unreported read is an
     // unread one — instead of being reported 'ok' without ever being read.
-    const askedSlices: string[] = ['profiles', 'memberships', 'suggested itineraries']
-    if (admin || myTripIds.length > 0) askedSlices.push('trips', 'members', 'suggestions', 'decisions', 'activity', 'notifications')
-    if (admin) askedSlices.push('audit')
+    // The trips verdict comes from the memberships read. A zero-row read is a read,
+    // so trips reports ready. A failed read reports failed, because partial names trips.
     patch({ sliceReads: sliceReadReport(partial, askedSlices) })
+    verdictPublished = true
+    // Publish the verdict now. patch() wakes no subscriber by itself.
+    // A retry or a resume reaches this line with no commit after it.
+    commit()
 
     // First-time users get the demo trips seeded into their account. Admins
     // skip the seed: their "empty" is a real empty app, and seeding the 3 demo
@@ -934,9 +959,25 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     // #94: a failed memberships/trips query also reads as "zero trips" — for a
     // real account on a flaky connection that meant writing 3 fake trips next
     // to the user's actual ones. Only seed when the trip count is trustworthy.
-    if (tripList.length === 0 && seedIfEmpty && !admin && !tripCountUnknown) await seedDemoFor(userId, gen)
+    if (tripList.length === 0 && seedIfEmpty && !admin && !tripCountUnknown) {
+      // The empty state offers "Load demo trips" while this seed runs. The flag that
+      // addDemoTrips checks keeps that button from seeding a second set.
+      demoSeedInFlight = true
+      try { await seedDemoFor(userId, gen) } finally { demoSeedInFlight = false }
+    }
   } catch (e) {
     console.error('[yatraflow] hydration failed', e)
+    // #704: a throw ends the run before its verdict. Each name the run answers for that
+    // has no verdict yet fails, so no page waits on a read that will never settle. A
+    // verdict already published stands. Cached rows stay in the cache: a failed slice
+    // with rows reads as kept, not empty. A run that threw before its scope was known
+    // could not read the trip-scoped slices either, so they fail too. A newer run owns the verdicts.
+    if (gen === hydrateGen && !verdictPublished) {
+      const unread = scopeKnown ? askedSlices : [...askedSlices, ...TRIP_SCOPED_READS]
+      // sliceReadReport marks a name failed when the list it gets lists that name. Here every name is listed.
+      patch({ sliceReads: { ...cache.sliceReads, ...sliceReadReport(unread, unread) } })
+      commit()
+    }
     toast('Could not load your data - check your connection.')
   }
 }
@@ -1093,17 +1134,41 @@ function dedupePublished(rows: PublishedItinerary[]): PublishedItinerary[] {
 
 // ---------------- Profile ----------------
 
-export function updateProfile(patchFields: Partial<User['profile']>): void {
+/** The line the Profile page shows when a profile save is refused or never answered. */
+export const PROFILE_NOT_SAVED = 'Profile not saved. Check your connection and try again.'
+
+/**
+ * Save profile fields and answer only after the server has ruled on the write.
+ * The cache takes the edit at once, so the page reads the new values. A refused
+ * or failed write puts the saved profile back, the same rollback that
+ * setMemberRole and removeMember use, so the app never shows a name the server
+ * did not keep. The caller's form keeps its draft either way.
+ */
+export async function updateProfile(patchFields: Partial<User['profile']>): Promise<{ ok: boolean; error?: string }> {
   const u = currentUser()
-  if (!u) return
+  if (!u) return { ok: false, error: PROFILE_NOT_SAVED }
   const idx = cache.users.findIndex(x => x.id === u.id)
-  if (idx >= 0) { cache.users[idx] = { ...cache.users[idx], profile: { ...cache.users[idx].profile, ...patchFields } }; commit() }
-  // Fire-and-forget persistence; surface failures without blocking the UI.
-  fire('profiles', supabase.from('profiles').update({
-    name: patchFields.name, home_city: patchFields.homeCity, languages: patchFields.languages,
-    travel_styles: patchFields.travelStyles, is_creator: patchFields.isCreator,
-    creator_bio: patchFields.creatorBio, social_links: patchFields.socialLinks,
-  }).eq('id', u.id))
+  const before = idx >= 0 ? cache.users[idx] : null
+  if (before) { cache.users[idx] = { ...before, profile: { ...before.profile, ...patchFields } }; commit() }
+  const rollBack = () => {
+    const i = cache.users.findIndex(x => x.id === u.id)
+    if (before && i >= 0) { cache.users[i] = before; commit() }
+  }
+  try {
+    const { error } = await supabase.from('profiles').update({
+      name: patchFields.name, home_city: patchFields.homeCity, languages: patchFields.languages,
+      travel_styles: patchFields.travelStyles, is_creator: patchFields.isCreator,
+      creator_bio: patchFields.creatorBio, social_links: patchFields.socialLinks,
+    }).eq('id', u.id)
+    if (!error) return { ok: true }
+    console.error('[yatraflow] profiles write failed', error)
+    rollBack()
+    return { ok: false, error: PROFILE_NOT_SAVED }
+  } catch (err) {
+    console.error('[yatraflow] profiles write rejected', err)
+    rollBack()
+    return { ok: false, error: PROFILE_NOT_SAVED }
+  }
 }
 
 // ---------------- Trips ----------------
@@ -2510,6 +2575,35 @@ let TRIP_WRITE_DEBOUNCE_MS = 600
 // against whatever account happens to be signed in when the timer runs.
 const pendingTripWrites = new Map<ID, { timer: ReturnType<typeof setTimeout>; trip: Trip; sessionId: string | null }>()
 
+// #704 — the server's verdict on a trip write. updateTrip answers at once from
+// the cache. A caller that must show the server's answer reads tripWriteVerdict
+// right after updateTrip: that edit rides the write the verdict belongs to.
+type TripVerdict = { promise: Promise<boolean>; settle: (saved: boolean) => void }
+/** The verdict of each trip's pending debounced write. Edits in one window share it. */
+const pendingTripVerdicts = new Map<ID, TripVerdict>()
+/** The verdict of the newest write for each trip, until that write settles. */
+const newestTripVerdicts = new Map<ID, TripVerdict>()
+
+function openTripVerdict(): TripVerdict {
+  let settle: (saved: boolean) => void = () => {}
+  const promise = new Promise<boolean>(resolve => { settle = resolve })
+  return { promise, settle }
+}
+
+/** Send one row write under its verdict. The verdict takes the write's result, then stops being the newest. */
+function sendUnderVerdict(id: ID, v: TripVerdict, write: Promise<boolean>): void {
+  const finish = (saved: boolean) => {
+    v.settle(saved)
+    if (newestTripVerdicts.get(id) === v) newestTripVerdicts.delete(id)
+  }
+  void write.then(finish, err => { console.error('[yatraflow] trip write rejected', err); finish(false) })
+}
+
+/** The server's verdict on the row write that carries the newest edit to this trip, or null. Read it right after updateTrip. It resolves true once the server has the row. */
+export function tripWriteVerdict(id: ID): Promise<boolean> | null {
+  return newestTripVerdicts.get(id)?.promise ?? null
+}
+
 // #549 — ONE in-flight whole-trip write per trip, across BOTH senders: the
 // debounced path and replayQueuedWrites chain onto the same tail, so two
 // UPDATEs for one trip are never in flight together. Nothing here ordered them
@@ -2547,6 +2641,13 @@ export function _cancelTripWrites(): void {
     const pending = pendingTripWrites.get(id)
     if (pending) clearTimeout(pending.timer)
     pendingTripWrites.delete(id)
+    // A cancelled write never reached the server, so its verdict is "not saved".
+    const v = pendingTripVerdicts.get(id)
+    pendingTripVerdicts.delete(id)
+    if (v) {
+      v.settle(false)
+      if (newestTripVerdicts.get(id) === v) newestTripVerdicts.delete(id)
+    }
   }
 }
 
@@ -2563,7 +2664,9 @@ export function _flushTripWrites(): void {
     // above: a remote update that landed while the write was pending must not
     // be re-persisted over the local edit, and the local edit must not be
     // lost by persisting the remote row.
-    void persistTripFieldNow(id, pending.trip, pending.sessionId)
+    const v = pendingTripVerdicts.get(id) ?? openTripVerdict()
+    pendingTripVerdicts.delete(id)
+    sendUnderVerdict(id, v, persistTripFieldNow(id, pending.trip, pending.sessionId))
   }
 }
 
@@ -2572,8 +2675,8 @@ export function _flushTripWrites(): void {
  *  #578 — `scheduledFor` is the session the edit was captured under. A write
  *  that fires under any OTHER identity (or under none) is DROPPED: the queue
  *  stamp would be a guess and the UPDATE would ride the wrong JWT. */
-async function persistTripFieldNow(id: ID, t: Trip | undefined, scheduledFor: string | null): Promise<void> {
-  if (!t) return
+async function persistTripFieldNow(id: ID, t: Trip | undefined, scheduledFor: string | null): Promise<boolean> {
+  if (!t) return false
   // #578 — belt-and-braces on top of the cancel hooks: they can be missed (a
   // pagehide flush racing a sign-out), so the fire itself checks identity.
   // A null session is refused too — with nobody signed in the write belongs to
@@ -2581,7 +2684,7 @@ async function persistTripFieldNow(id: ID, t: Trip | undefined, scheduledFor: st
   // #393's zombie entry from the other direction. Dropped, not guessed.
   if (!scheduledFor || cache.sessionUserId !== scheduledFor) {
     console.warn('[yatraflow] dropping debounced trip write — it was captured under a session that is no longer live')
-    return
+    return false
   }
   // Claim the echo window BEFORE awaiting: the guard must be in place from the
   // moment the write is in flight, not from the moment it resolves. Recording
@@ -2615,6 +2718,9 @@ async function persistTripFieldNow(id: ID, t: Trip | undefined, scheduledFor: st
   // as prose on added lines, and the queue's field name trips it otherwise.
   const entry = { tripId: id, ownerId: cache.sessionUserId ?? owner?.userId ?? id, capturedAt, attempts: 0, trip: t }
   await queueWrite(entry)
+  // #704: `saved` becomes true only after the server accepts the row.
+  // A failed send leaves the queued edit in place.
+  let saved = false
   await serializeTripWrite(id, async () => {
     const cols = await tripsHaveOptionalColumns()
     const { error } = await supabase.from('trips').update(tripToRow(t, owner?.userId ?? id, cols)).eq('id', id)
@@ -2630,7 +2736,9 @@ async function persistTripFieldNow(id: ID, t: Trip | undefined, scheduledFor: st
       return
     }
     await dropWriteIfCurrent(id, capturedAt)
+    saved = true
   })
+  return saved
 }
 
 /** PWA phase 3 - push every queued offline edit, oldest first. Bounded: a
@@ -2717,17 +2825,24 @@ function persistTripField(id: ID, t: Trip): void {
   // under one account can never be persisted under another.
   const scheduledFor = cache.sessionUserId
   if (TRIP_WRITE_DEBOUNCE_MS <= 0) {
-    void persistTripFieldNow(id, snapshot, scheduledFor)
+    const v = openTripVerdict()
+    newestTripVerdicts.set(id, v)
+    sendUnderVerdict(id, v, persistTripFieldNow(id, snapshot, scheduledFor))
     return
   }
   const prev = pendingTripWrites.get(id)
   if (prev) clearTimeout(prev.timer)
+  // An edit that joins a pending write shares that write's verdict.
+  const v = pendingTripVerdicts.get(id) ?? openTripVerdict()
+  pendingTripVerdicts.set(id, v)
+  newestTripVerdicts.set(id, v)
   const timer = setTimeout(() => {
+    pendingTripVerdicts.delete(id)
     pendingTripWrites.delete(id)
     // Persist the CAPTURED snapshot, never a re-read of tripById(id): the
     // timer's re-read let a REMOTE update landing inside the debounce window
     // be persisted over the local edit that scheduled this write (B0).
-    void persistTripFieldNow(id, snapshot, scheduledFor)
+    sendUnderVerdict(id, v, persistTripFieldNow(id, snapshot, scheduledFor))
   }, TRIP_WRITE_DEBOUNCE_MS)
   pendingTripWrites.set(id, { timer, trip: snapshot, sessionId: scheduledFor })
 }
@@ -3392,7 +3507,11 @@ export function resolveDecision(decisionId: ID, optionId: ID): void {
 
 // ---------------- Publishing ----------------
 
-export async function publishItinerary(pub: Omit<PublishedItinerary, 'id' | 'publishedAt' | 'views' | 'copies'>): Promise<PublishedItinerary> {
+// The outcome is `{ ok: true }` only after the server accepts the row and its
+// public page opens. A refusal is still thrown, as PublishRejected, because the
+// form maps it onto fields. A failed write rolls the cache back and returns
+// `{ ok: false, error }`. The caller shows that error, so nothing toasts here.
+export async function publishItinerary(pub: Omit<PublishedItinerary, 'id' | 'publishedAt' | 'views' | 'copies'>): Promise<{ ok: boolean; error?: string }> {
   // #354 — THE WRITER ENFORCES THE RULES, not just the form that calls it.
   // Every publish rule used to live only in `PublicationForm`, so this function
   // enforced none of them and the database had no backstop either. Any direct
@@ -3508,7 +3627,6 @@ export async function publishItinerary(pub: Omit<PublishedItinerary, 'id' | 'pub
   })
   if (error) {
     console.error('[yatraflow] publish persist failed', error)
-    toast('Could not save the publication — it will not survive a refresh. (' + error.message + ')')
     const idx = cache.published.findIndex(x => x.id === p.id)
     if (idx >= 0) {
       cache.published = previous
@@ -3528,6 +3646,7 @@ export async function publishItinerary(pub: Omit<PublishedItinerary, 'id' | 'pub
     if (ownedUrl && tripCoverBefore !== ownedUrl) {
       updateTrip(p.tripId, { coverImageUrl: tripCoverBefore })
     }
+    return { ok: false, error: 'Could not save the publication — nothing was published. Try again.' }
   } else {
     markLocalWrite('published_itineraries', p.id)
     // A published itinerary is a public page: flip the trip to visibility
@@ -3551,14 +3670,14 @@ export async function publishItinerary(pub: Omit<PublishedItinerary, 'id' | 'pub
       // the same "before" picture.
       cache.trips = cache.trips.map(t => t.id === p.tripId ? { ...t, visibility: tripVisibilityBefore } : t)
       commit()
-      toast('Published to Explore, but the public page could not be opened — check your connection and republish. (' + flipError.message + ')', 'err')
+      return { ok: false, error: 'The publication saved, but its public page could not be opened. Publish again to retry.' }
     } else {
       markLocalWrite('trips', p.tripId)
       cache.trips = cache.trips.map(t => t.id === p.tripId ? { ...t, visibility: 'public' } : t)
       commit()
     }
   }
-  return p
+  return { ok: true }
 }
 
 /** In-flight cover collection, so two callers (the app shell's post-hydrate

@@ -170,7 +170,7 @@ of status hues that keep their meaning across every surface and both themes.
 
 ### Named Rules
 **The One Green Rule.** There is exactly one brand green, `#0D8D82`. Every teal in
-the product derives from it; a second, unrelated green is a defect.
+the product derives from it; a second, unrelated green is a defect. The mark's deeper teal and the dark-theme teals derive from `#0D8D82`.
 
 **The Semantic Colour Rule.** Teal = primary planning action. Saffron = invite,
 share, publish, explore. Mint/green = confirmed, saved, synced. Amber = attention,
@@ -198,7 +198,8 @@ declared weight is not in the loaded set.
 
 ### Hierarchy
 - **Display** (800, 23px, 1.15): the metric tile figure — the number a decision hangs on.
-- **Title** (700, 16px, 1.3): panel and card titles, publication names at row level.
+- **Title** (700, 16px, 1.3): panel titles and publication names at row level.
+- **Card title** (800, 18px, 1.3): card titles, such as the title of a compact `StateBlock`.
 - **Body** (400–500, 15px, 1.55): prose, hints, notes. Helper copy runs 12.5px.
 - **Label** (600, 12px, 0.05em, uppercase via CSS): stat labels and kickers. Short
   metadata only — the source text stays sentence case and CSS owns the caps.
@@ -361,6 +362,44 @@ Add `yf-page` to the root of a page when you convert it. The page skin then appl
 **Button skin (ruling R15).** The catalog button skin stays scoped to `yf-page` until phase P16. Before the workspace page (P2) converts, the design lead decides where the skin stops. At P16, only the corner radius and the weight move into base `.btn`.
 
 **Segmented tabs (ruling R16).** `SegmentedTabs` is one component with two variants. Select a variant with its `semantics` prop. The tablist variant (workspace, auth, hub, admin) uses the glass `tabbar` and a teal glider. The toggle variant (Grid and List) uses `mt-seg` with an ink glider. `ViewSwitch` is its caller. The toggle must emit the active-state attribute that the glider reads.
+
+**Compact state block (ruling R22).** Use `size="compact"` on `StateBlock` inside a workspace tab or a card. The compact block has no dashed border and smaller padding. It keeps the roles and kinds of the full block. It has no entrance of its own, so its container gives the entrance. A whole page uses the full block.
+
+**Rich body.** The `body` prop takes a string or a ReactNode. Use a ReactNode only when the copy needs inline markup, such as a `<b>`. Keep the copy short.
+
+**Surface roots.** Set `as` to `button` for a card that is one whole action. A button surface lifts and presses like an interactive surface. The button gets `type="button"` unless you pass a `type`. Set `as` to `details` for a card that folds. Its children must set the `<summary>`.
+
+## Brand mark
+
+**The Ribbon Y.** Two routes fold into one road, and a saffron dot marks the shared destination. The Y also stands for Yatra.
+
+### Construction
+- The mark is drawn on a 64-unit grid with three shapes. Each copy uses the same path data.
+- The fold is `M15 6C15 26 32 24 32 40` in the deeper teal (`#0B6B63`, `--teal-700`), 11 units wide.
+- The road is `M49 6C49 26 32 24 32 40V46` in Calm Teal (`#0D8D82`), 11 units wide. It is drawn over the fold.
+- The destination is a 5.5-unit circle at (32, 56) in Marigold Saffron (`#F59E2D`).
+- The stroke ends are flat. Do not round them.
+
+### Wordmark and lockup
+- The wordmark is "Yatra" in Ink and "Flow" in Calm Teal, in Sora 800.
+- In the lockup, the mark is 1.78 times the cap height of the wordmark. The gap is 0.31 em.
+- The exported lockups have the wordmark as outlines. They do not need the font.
+
+### Colour versions
+- **Primary:** fold `#0B6B63`, road `#0D8D82`, on light grounds.
+- **Dark:** fold `#1E9D92`, road `#2BB8AC`. These are the dark-theme `--teal-700` and `--teal-500`.
+- **Dark dot:** `#F5A94A`, the dark-theme `--saffron` token. The dark and reversed files use this colour.
+- **Reversed:** fold `#BFE3DD`, road white, on Planning Teal or Chart Navy.
+- **One colour:** Ink only. A 2-unit gap cuts the fold where the road crosses it, so the fold stays visible.
+- The destination dot stays saffron in all versions except one colour.
+
+### Files and use
+- `public/brand/` has the mark and the lockup in each version, as SVG.
+- `public/favicon.svg` is the primary mark. `public/icons/` has the PWA icons, the Apple touch icon and a 32px PNG favicon.
+- The app icon is the reversed mark on a Planning Teal (`#0E7A72`) tile. The Android adaptive icon uses the same tile colour.
+- `BrandMark` in `src/components/ui.tsx` reads `--teal-700`, `--teal-500` and `--saffron`, so the mark follows the theme.
+- Clear space is half the mark width on all sides. The smallest mark is 16px, and the smallest lockup is 96px wide.
+- Do not rotate, stretch or recolour the mark.
 
 ## Do's and Don'ts
 

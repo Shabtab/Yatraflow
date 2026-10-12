@@ -121,7 +121,7 @@ describe('the public page wires the real unlock flow', () => {
     expect(creatorFn).toContain('throw error')
     expect(creatorFn).not.toMatch(/catch[^}]*return \[\]/)
     const hub = read('../src/pages/CreatorHubPage.tsx')
-    expect(hub).toContain("Couldn't load your sales")
+    expect(hub).toContain('Couldn’t load your sales')
     expect(hub).toContain('salesError')
     expect(hub).toContain('onRetry')
   })
