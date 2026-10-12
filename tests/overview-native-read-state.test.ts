@@ -33,24 +33,43 @@ describe('#704 — the Overview weather card says when the forecast read failed'
     expect(weatherEnd).toBeGreaterThan(weatherStart)
   })
 
-  it('a failed fetch sets its own failed state, not the unavailable state that renders nothing', () => {
+  it('a failed first read sets its own failed state, not the unavailable state that renders nothing', () => {
     expect(weather).toMatch(/useState<'loading' \| 'ready' \| 'unavailable' \| 'failed'>\('loading'\)/)
-    expect(weather).toMatch(/\.catch\(\(\) => \{ if \(!cancelled\) setState\('failed'\) \}\)/)
+    expect(weather).toMatch(/else setState\('failed'\)/)
     expect(weather).not.toMatch(/\.catch\(\(\) => \{ if \(!cancelled\) setState\('unavailable'\)/)
   })
 
-  it('the failed branch shows a short line with Try again, before the quiet fallthrough', () => {
+  it('a failed refresh keeps the forecast on screen, and only a read with nothing loaded fails', () => {
+    expect(weather).toMatch(/byDateRef\.current = merged/)
+    const catchAt = weather.indexOf('.catch(() => {')
+    expect(catchAt).toBeGreaterThan(-1)
+    expect(weather.slice(catchAt)).toMatch(/if \(Object\.keys\(byDateRef\.current\)\.length > 0\) setRefreshFailed\(true\)\s*else setState\('failed'\)/)
+  })
+
+  it('the failed branch is an alert with a short line and Try again, before the quiet fallthrough', () => {
     const failedAt = weather.indexOf("if (state === 'failed') {")
     const quietAt = weather.indexOf("if (state !== 'ready') return null")
     expect(failedAt, 'the failed branch').toBeGreaterThan(-1)
     expect(quietAt, 'the quiet fallthrough').toBeGreaterThan(failedAt)
     expect(weather.slice(failedAt, quietAt)).toMatch(
-      /Weather could not be loaded\. <button className="btn btn-outline btn-sm" onClick=\{retryWeather\}>Try again<\/button>/,
+      /<p className="muted small ovw-weather-failed" role="alert">Couldn’t load the forecast\. <button className="btn btn-outline btn-sm" onClick=\{retryWeather\}>Try again<\/button><\/p>/,
     )
   })
 
-  it('Try again shows the loading line and re-pulls the forecast past the cache', () => {
-    expect(weather).toMatch(/const retryWeather = \(\) => \{\s*setState\('loading'\)\s*setRetries\(r => r \+ 1\)\s*\}/)
+  it('the loading line is a status, so a screen reader hears that the forecast is coming', () => {
+    expect(weather).toMatch(/<p className="muted small" role="status">Loading forecast…<\/p>/)
+  })
+
+  it('a kept forecast adds a status note with Try again in the ready branch', () => {
+    const readyAt = weather.indexOf("if (state !== 'ready') return null")
+    expect(readyAt).toBeGreaterThan(-1)
+    expect(weather.slice(readyAt)).toMatch(
+      /\{refreshFailed && \(\s*<p className="muted small ovw-weather-kept" role="status">Couldn’t refresh the forecast\. Showing the last one\. <button className="btn btn-outline btn-sm" onClick=\{retryWeather\}>Try again<\/button><\/p>\s*\)\}/,
+    )
+  })
+
+  it('Try again shows the loading line only while nothing has loaded, and re-pulls the forecast past the cache', () => {
+    expect(weather).toMatch(/const retryWeather = \(\) => \{\s*if \(Object\.keys\(byDateRef\.current\)\.length === 0\) setState\('loading'\)\s*setRetries\(r => r \+ 1\)\s*\}/)
     expect(weather).toMatch(/\{ force: tick > 0 \|\| retries > 0 \}/)
     expect(weather).toMatch(/\}, \[dayAnchors, tick, retries\]\)/)
   })
@@ -62,12 +81,22 @@ describe('#704 — the Overview weather card says when the forecast read failed'
     expect(noDataAt).toBeLessThan(weather.indexOf("if (state === 'failed')"))
   })
 
-  it('a successful call with no usable day still renders nothing, never the failure line', () => {
-    expect(weather).toMatch(/setState\(Object\.keys\(merged\)\.length > 0 \? 'ready' : 'unavailable'\)/)
+  it('a successful call with no usable day and nothing loaded still renders nothing, never the failure line', () => {
+    expect(weather).toMatch(/\} else \{\s*setState\('unavailable'\)\s*\}/)
     const failedAt = weather.indexOf("if (state === 'failed')")
     const quietAt = weather.indexOf("if (state !== 'ready') return null")
-    expect(weather.indexOf('Weather could not be loaded')).toBeGreaterThan(failedAt)
-    expect(weather.indexOf('Weather could not be loaded')).toBeLessThan(quietAt)
+    expect(weather.indexOf('Couldn’t load the forecast')).toBeGreaterThan(failedAt)
+    expect(weather.indexOf('Couldn’t load the forecast')).toBeLessThan(quietAt)
+  })
+
+  it('the card is keyed by trip, so one trip’s forecast never stands in for another', () => {
+    expect(overview).toMatch(/<WeatherCard key=\{trip\.id\} trip=\{trip\} \/>/)
+  })
+
+  it('the failed line and the kept note enter like the error line, with the reduced-motion opt-out', () => {
+    const css = read('../src/styles.css')
+    expect(css).toMatch(/\.ovw-weather-failed, \.ovw-weather-kept \{ animation: errIn var\(--motion-med\) var\(--ease-out\); \}/)
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{ \.ovw-weather-failed, \.ovw-weather-kept \{ animation: none; \} \}/)
   })
 })
 

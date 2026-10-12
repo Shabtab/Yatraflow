@@ -10236,3 +10236,7 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 
 /* Creator hub: honesty states (#704). */
 .hub-pubs-loading { margin: 6px 0 0; }
+
+/* #704: a note that says a read failed enters like the error line it stands in for. */
+.ovw-weather-failed, .ovw-weather-kept { animation: errIn var(--motion-med) var(--ease-out); }
+@media (prefers-reduced-motion: reduce) { .ovw-weather-failed, .ovw-weather-kept { animation: none; } }
