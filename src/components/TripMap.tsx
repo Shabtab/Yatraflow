@@ -9,7 +9,7 @@ import type { PlaceHit } from '../lib/geocode'
 import { resolveHitCoords } from '../lib/geocode'
 import { hasCoords, mappablePois, projectOntoPolyline } from '../lib/providers/hits'
 import { buildRoadChain, measureDayRide, roadChainSig, routeDrawGrade } from '../lib/tripRoad'
-import { buildJourney, getAssumptions, isRoundTrip, type LegEstimate } from '../lib/engine'
+import { buildJourney, getAssumptions, isRoundTrip, isAirMode, type LegEstimate } from '../lib/engine'
 import { buildStopClock } from '../lib/stopClock'
 import { clockHM, type ClockMilestone } from '../lib/clockOverlay'
 import { pointAtKm } from '../lib/geo'
@@ -1032,6 +1032,19 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
     let cancelled = false
     ;(async () => {
       const asm = getAssumptions(trip)
+      // A flight trip's line is the great-circle arc the workspace's journey
+      // supplies, never a road measurement. Google Routes has no FLYING
+      // travelMode and OSRM's endpoint is hardcoded to `/driving/`, so asking
+      // either for a flight trip answers with ROAD directions — which is
+      // exactly the defect this branch replaces.
+      if (isAirMode(trip.transportMode)) {
+        if (!cancelled) {
+          setGeom(mainRouteGeometry && mainRouteGeometry.length > 1
+            ? { all: dedupeConsecutive(mainRouteGeometry) }
+            : {})
+        }
+        return
+      }
       if (dayFilter === 'all') {
         const pts: { lat: number; lng: number }[] = allPoints.map(p => ({ lat: p.lat, lng: p.lng }))
         if (pts.length < 2) return

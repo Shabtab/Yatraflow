@@ -661,6 +661,43 @@ anywhere in this repo means the entry labelled `6b` below.
    You must keep every name first. You must delete what `eslint` reports as
    unused. You must not raise the baseline to cover leftovers. You must
    regenerate it lower in the same commit.
+  6ak. **A clock that reaches `hmToMinutes` must be a 24h `"HH:MM"` string —
+    `minutesToHM` renders `"3h 28m"` and feeds NaN straight into the walk
+    (learned 2026-10-12, flight planning).** The two formatters are not
+    interchangeable: `minutesToHM` is a HUMAN renderer and `hmToMinutes` parses
+    the stored shape. A helper that back-computes a day's start clock and returns
+    `minutesToHM(...)` builds green, typechecks, and then silently poisons every
+    arrival on that day — `hmToMinutes("3h 28m")` is NaN, and NaN propagates
+    through `addMinutesToClock` into each row's clock without a single test
+    noticing until you print the journey. When a computed clock is going to be
+    parsed rather than printed, format it with `padStart(2,'0')` yourself and
+    assert the shape in the test (`expect(j.startTime).toMatch(/^\d{2}:\d{2}$/)`).
+    Same family as the `num0` guards: the failure is a shape, not a value.
+
+  6al. **A new page file must ship with zero `inlineStyle` and use `StateBlock`
+    — and a rule a module owns must not be re-derived in a page (learned
+    2026-10-12, flight planning).** Two ratchets caught a new
+    `src/pages/trip/timeline/FlightsPanel.tsx` in one run: the page-consistency
+    ratchet (`tests/page-consistency.test.ts`) failed on six inline
+    `style={{ width }}` attributes, and the map-geometry ratchet
+    (`tests/map-weather-geometry.test.ts`) failed on a `pts.length >= 2` copied
+    into `MapTab.tsx`. Both are cheap to satisfy BEFORE the first verify run:
+    put widths in `src/styles.css` as named classes, and put the road-vs-air
+    geometry split in `src/lib/engine.ts` (`journeyGeometry` /
+    `tripJourneyGeometry`) so the page file only calls it. Run
+    `npx vitest run tests/page-consistency.test.ts tests/map-weather-geometry.test.ts`
+    the moment you add a page file or touch MapTab — not at the end.
+
+  6am. **`lint:ste`'s 20-word sentence cap applies to `CHANGELOG.md` prose on
+    changed lines, and it is the last gate to fail (learned 2026-10-12).** There
+    is no markdown exemption in `EXCLUDED_PATH_PREFIXES` (only
+    `docs/consistency/`), and the diff run measures against the merge base — so
+    pre-existing long entries pass and your new ones do not. Write CHANGELOG
+    bullets as short declarative sentences from the start (a subject, a verb, one
+    fact), because rewriting a 60-word sentence into four after the fact is the
+    same work twice. The same gate demands "must" over the weaker word in any
+    comment on a changed line — including a doc comment above a `const`.
+
  6aj. **You must classify a branch by patch ancestry, not by name or age
    (learned 2026-10-04, prune of 80 refs).** A merged pull request leaves its
    branch ref behind. Test each ref with `git merge-base --is-ancestor <ref>

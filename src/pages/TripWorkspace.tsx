@@ -516,6 +516,17 @@ function useTripRoad(trip: Trip | null | undefined): {
       setState({ status: 'ok', legs: [] })
       return
     }
+    // A mode the routing layer cannot describe must never be measured as a
+    // road. Google Routes has no FLYING travelMode (the request errors) and
+    // OSRM's endpoint is hardcoded to `/driving/`, so asking either for a
+    // flight trip answers with ROAD directions — which is exactly what used to
+    // get drawn as the map's line and read as the trip's travel time. Skip the
+    // request entirely: the engine's air model owns those numbers, and the
+    // quota that measurement would have spent is simply not spent.
+    if (!isRoadMeasuredMode(trip.transportMode)) {
+      setState({ status: 'ok', legs: [] })
+      return
+    }
     let cancelled = false
     // #325: two layers, two jobs. The flag guards `setState`; the controller stops
     // the network work. Without the abort the whole OSRM chain (and its parallel

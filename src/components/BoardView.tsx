@@ -15,7 +15,7 @@ import {
 } from '../lib/stopOrder'
 import { InlineIcon, KindIcon } from './icons'
 import type { Trip, ItineraryStop } from '../data/types'
-import { computeTotals, computeHealth, collectWarnings, minutesToHM, formatInr, buildJourney, dayRoadPolyline, isRoadMeasuredMode } from '../lib/engine'
+import { computeTotals, computeHealth, collectWarnings, minutesToHM, formatInr, buildJourney, dayRoadPolyline, isRoadMeasuredMode, isAirMode, tripJourneyGeometry } from '../lib/engine'
 import type { ScheduleWarning, LegEstimate } from '../lib/engine'
 import { mapReturnGeometryFromLegs, mapRoadViewFromLegs, type TripRoadView } from '../lib/tripRoad'
 import type { ImpactResult } from '../lib/impact'
@@ -140,6 +140,14 @@ export function BoardView({ trip, editable, applyChange, health, totals, onOpenO
   const mapReturnGeometry = useMemo(
     () => mapReturnGeometryFromLegs(road?.chain ?? null, road?.legs ?? null),
     [road],
+  )
+  // A flight trip has no road chain to draw (the workspace never measures one
+  // for that mode), so the Board takes the journey the Map tab draws — ground
+  // legs plus the sector's great-circle arc — through the same engine helper.
+  // Without this the Board's map would be blank on a flight trip.
+  const airGeometry = useMemo(
+    () => (isAirMode(trip.transportMode) ? tripJourneyGeometry(trip, legCorrections).geometry : null),
+    [trip, legCorrections],
   )
   /** The road did not resolve (or is being re-measured after a failed attempt)
    *  AND this trip is actually driven: the map's line is graded rough, and the
@@ -281,7 +289,7 @@ export function BoardView({ trip, editable, applyChange, health, totals, onOpenO
         {/* pinned route map — the existing component, no second map system (§8 guardrail) */}
         <div className="board-map">
           <MemoTripMap trip={trip} focusDay={focusedDay} showToolbar={false}
-            mainRouteGeometry={roadView.geometry} returnRouteGeometry={mapReturnGeometry}
+            mainRouteGeometry={airGeometry ?? roadView.geometry} returnRouteGeometry={mapReturnGeometry}
             allowSelfMeasurement={false} />
         </div>
 

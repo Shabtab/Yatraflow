@@ -1246,6 +1246,40 @@ a.btn { text-decoration: none; }
   border-top: 1px solid var(--line);
 }
 
+/* ---------- Flight card (flight-mode trips only) ---------- */
+.flight-card {
+  margin-top: 12px; padding: 12px;
+  background: var(--surface-2, var(--info-soft));
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md, var(--radius-sm));
+}
+.flight-card-head { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.flight-card-title {
+  font-weight: 800; font-size: 13px; font-family: var(--font-display);
+  color: var(--text); min-width: 0;
+}
+.flight-route {
+  font-size: 13px; font-weight: 700; color: var(--teal-deep);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.flight-card-body { display: flex; flex-wrap: wrap; gap: 10px 26px; margin-top: 10px; }
+/* The assumption sentence printed beside a modelled number — the transparency
+   promise's "no estimate without its assumptions on screen". */
+.flight-note {
+  margin-top: 8px; font-size: 11.5px; line-height: 1.45; color: var(--text-3);
+}
+.flight-form { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: flex-end; margin-top: 12px; }
+.flight-empty {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+  margin-top: 12px; padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.flight-edit { margin-left: auto; flex: none; }
+.flight-w-airline { width: 140px; }
+.flight-w-flight { width: 96px; }
+.flight-w-fare { width: 110px; }
+.flight-w-ref { width: 120px; }
+
 /* ---------- Timeline time rail ---------- */
 /* one shared rail geometry — these three used to redeclare 74px/12px each,
    so widening the rail meant finding all of them */

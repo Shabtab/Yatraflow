@@ -15,6 +15,19 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Added
+
+- **A flight trip plans the whole journey, not one long leg.** The travel day now runs home → the origin airport → the sector → the destination airport → your stay. The two ground legs either side are timed and priced as car legs. Only the sector is an air leg.
+  Before this a flight trip ran every leg at one blended speed. A 20 km run to the airport cost four minutes. A 1,150 km sector was billed as a drive. `src/lib/air.ts` holds the new model. It bundles India's commercial airports and finds the nearest field to each end. The distance it measured is shown, so you confirm the choice. A block-time model and an indicative per-person fare complete it. Both invented numbers print their assumptions beside themselves.
+
+- **You can enter the flight you are actually taking.** A flight card sits in the day's travel panel. It takes the airline, the flight number, both airports and the booking reference. It also takes the departure and arrival clocks, and the fare you paid per person.
+  A stated departure and arrival replace the estimated block time. A stated fare replaces the indicative one. The estimate then disappears from the card. Flights ride in their own `flights` jsonb column, in `supabase/migrations/20261012c_trip_flights.sql`. The day's start clock is back-computed from a stated departure. That puts you at the airport two hours before it. An estimated departure never moves your clock.
+
+### Fixed
+
+- **A flight trip no longer shows road directions, driving time or a per-km fare.** The Map tab drew real driving directions for a flight trip. The workspace measured the trip's road chain for every mode. Google Routes has no FLYING travel mode, so the request errors. OSRM's endpoint is hardcoded to `/driving/`. Both answered with the road. That road was drawn as the map's line and read as the trip's travel time.
+  Neither measurement path now measures a mode the routing layer cannot describe. The map draws the journey instead. Ground legs take the measured road shape, and the sector takes a great-circle arc. The sector is priced by fare × travellers, not ₹/km of great-circle distance. The ground legs either side are priced at car rates, which is what they are. Timeline leg rows read as a flight, with a plane glyph, the block time and the fare.
+
 ## [0.75.0] - 2026-10-12
 
 This release makes the trip pages easier to read and act on. Every trip card names its next step, and the Timeline lets you save days and stops. Pages enter with motion. Group input and map panels show failed reads with a retry action.

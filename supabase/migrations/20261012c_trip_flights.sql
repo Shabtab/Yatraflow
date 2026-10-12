@@ -1,0 +1,22 @@
+-- ============ Trip flights (jsonb) ============
+-- A flight-mode trip needs to know which flights it takes: which airports, on
+-- which day, and (once the traveller says) the carrier, the times and the fare.
+-- Without it the engine has no air leg to plan — it prices the sector at the
+-- car's ₹/km over great-circle distance and times the whole day at one blended
+-- speed, which is what produced a map full of road directions, a timeline full
+-- of driving time, and a 20 km run to the airport costed at four minutes.
+--
+-- jsonb, like `days` / `expenses` / `fixed_commitments`: the shape is owned by
+-- the TypeScript model (`FlightLeg` in src/data/types.ts), so a new field is a
+-- type change and not a migration. Absent = no flights recorded, and every
+-- surface falls back to the engine's own airport/block-time/fare model.
+--
+-- Idempotent (`add column if not exists`), so this file is safe to re-run
+-- against an install that is already up to date.
+--
+-- Pre-application behaviour: until the column exists, `tripToRow` omits it (the
+-- optional-column probe reports `flights: false`) and entered flights stay
+-- session-only — the same shape as `tank_l` and `stay_style` before them.
+-- `npm run check:migrations` reports this column as MISSING until it is run.
+
+alter table public.trips add column if not exists flights jsonb;

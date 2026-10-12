@@ -12,13 +12,14 @@ import { savedDayId, savedStopId } from '../../../lib/uiPrefs'
 import {
   ArrowRight, Ban, Car, ChevronDown, ChevronUp, CircleCheck, CircleHelp, Clock, CloudRain, CloudSun,
   Copy, Droplets, ExternalLink, Flag, MapPin,
-  MoveHorizontal, PenLine, Pencil, Pin, Plus, Route as RouteIcon,   Ticket, Trash2, TriangleAlert, 
+  MoveHorizontal, PenLine, Pencil, Pin, PlaneTakeoff, Plus, Route as RouteIcon,   Ticket, Trash2, TriangleAlert, 
 } from 'lucide-react'
 import type { Trip, ItineraryStop } from '../../../data/types'
 import {
   minutesToHM, hmToMinutes, formatInr,
   computeCategoryBias, optimizeDayOrder, roadScaleRatio, measuredLegCount, optimiseKmLabel, scheduleRowsById,
 } from '../../../lib/engine'
+import type { ScheduledLeg } from '../../../lib/engine'
 import { sameDaySectionProps, type DayCardFacts, type DayTotals } from '../../../lib/dayCards'
 import type { LegEstimate, ScheduleWarning, OptimizeDayResult } from '../../../lib/engine'
 import { routeChain, stayDaySummary, dwellSegments, visibleStops } from '../../../lib/daySummary'
@@ -34,6 +35,27 @@ import { Chip, EmptyState, Modal, toast, useReorder } from '../../../components/
 import { Select } from '../../../components/Select'
 
 /** Stop options for a commitment link: live stops only, plus the unlink row. */
+/** One leg row's summary. An air sector reads as a flight — a plane glyph, the
+ *  block time and the fare — and never as "~N km · ~N min · est ₹/km", which is
+ *  what a flight row used to say when the whole day ran at one blended speed. */
+function LegSummary({ leg, inrPerKm, mode }: { leg: ScheduledLeg; inrPerKm: number; mode: string }) {
+  const from = leg.fromTitle.replace(/ \((start|end)\)$/, '')
+  if (leg.kind === 'air') {
+    const fare = leg.costInr != null ? ` · ${formatInr(Math.round(leg.costInr))} total` : ''
+    return (
+      <>
+        <MetaIcon icon={PlaneTakeoff} tone="money" />{leg.toTitle} · fly {minutesToHM(leg.durationMinutes)} from {from}
+        {leg.distanceKm >= 0.5 ? ` · ${Math.round(leg.distanceKm)} km` : ''}{fare}
+      </>
+    )
+  }
+  return (
+    <>
+      <MetaIcon icon={Car} tone="money" />~{leg.distanceKm.toFixed(0)} km · ~{Math.round(leg.durationMinutes)} min from {from} · est ₹{Math.round(leg.distanceKm * inrPerKm)} ({mode})
+    </>
+  )
+}
+
 function linkStopOptions(stops: ItineraryStop[]): { value: string; label: string }[] {
   return [{ value: '', label: 'No linked stop' }, ...stops.filter(s => s.status !== 'rejected').map(s => ({ value: String(s.id), label: s.title }))]
 }
@@ -731,7 +753,7 @@ export const DaySection = React.memo(function DaySection({ day, trip, facts, sav
               <div className="tl-gutter tl-gutter-leg"><span className="tl-line tl-line-leg" /></div>
               <div className="tl-leg-cell">
                 <div className="travel-leg">
-                  <MetaIcon icon={ Car } tone="money" />~{leg.distanceKm.toFixed(0)} km · ~{Math.round(leg.durationMinutes)} min from {leg.fromTitle.replace(/ \((start|end)\)$/, '')} · est ₹{Math.round(leg.distanceKm * (A.inrPerKm ?? 8))} ({A.mode})
+                  <LegSummary leg={leg} inrPerKm={A.inrPerKm ?? 8} mode={A.mode} />
                 </div>
               </div>
             </div>
@@ -868,7 +890,7 @@ export const DaySection = React.memo(function DaySection({ day, trip, facts, sav
                     <div className="tl-gutter tl-gutter-leg"><span className="tl-line tl-line-leg" /></div>
                     <div className="tl-leg-cell">
                       <div className={`travel-leg ${foreignOver === i + 1 && dragging === null ? 'foreign-over' : ''}`}>
-                        {leg && leg.distanceKm >= 0.5 && <><MetaIcon icon={ Car } tone="money" />~{leg.distanceKm.toFixed(0)} km · ~{Math.round(leg.durationMinutes)} min from {leg.fromTitle.replace(/ \((start|end)\)$/, '')} · est ₹{Math.round(leg.distanceKm * (A.inrPerKm ?? 8))} ({A.mode})</>}
+                        {leg && leg.distanceKm >= 0.5 && <LegSummary leg={leg} inrPerKm={A.inrPerKm ?? 8} mode={A.mode} />}
                       </div>
                       {/* #422: the insertion control belongs to the leg BETWEEN
                           two stops, and it hands over the slot it sits in —
@@ -903,7 +925,7 @@ export const DaySection = React.memo(function DaySection({ day, trip, facts, sav
                 <div className="tl-legrow">
                   <div className="tl-gutter tl-gutter-leg"><span className="tl-line tl-line-leg" /></div>
                   <div className="travel-leg">
-                    <MetaIcon icon={ Car } tone="money" />~{last.legIn.distanceKm.toFixed(0)} km · ~{Math.round(last.legIn.durationMinutes)} min from {last.legIn.fromTitle} · est ₹{Math.round(last.legIn.distanceKm * (A.inrPerKm ?? 8))} ({A.mode})
+                    <LegSummary leg={last.legIn} inrPerKm={A.inrPerKm ?? 8} mode={A.mode} />
                   </div>
                 </div>
               )}
