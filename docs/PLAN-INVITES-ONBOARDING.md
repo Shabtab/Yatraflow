@@ -65,7 +65,7 @@ Read this table before writing any code. Every row is verified against the tree.
 
 | Piece | Location | What it does |
 |---|---|---|
-| Trip invite code format | `src/lib/inviteCode.ts` | `<SLUG>-<4 chars>`; alphabet `TAIL_ALPHABET = 'ABCDEFGHJKLMNPQRTUVWXY346789'` (:11), `INVITE_SEPARATOR` (:16), `makeInviteCode` (:45), `normalizeInviteCode` (:56), `looksLikeInviteCode` (:66), `inviteRoute` (:78) |
+| Trip invite code format | `src/lib/inviteCode.ts` | `<SLUG>-<8 chars>`. Older 4-char codes still work. Alphabet `TAIL_ALPHABET = 'ABCDEFGHJKLMNPQRTUVWXY346789'` (:12), `INVITE_SEPARATOR` (:21), `makeInviteCode` (:72), `normalizeInviteCode` (:83), `looksLikeInviteCode` (:94), `inviteRoute` (:107) |
 | Lazy code minting | `store.ts:777` `ensureInviteCode()` | writes `trips.invite_code`; unique index `idx_trips_invite_code` (`schema.sql:71`) |
 | Code → trip lookup | `20260909_invite_codes.sql:65` `get_trip_by_invite_code(p_code)` | `security definer`, **granted to `anon`** (:76) — the code *is* the capability. Mirrored at `schema.sql:478` |
 | Legacy UUID invites | `store.ts:721` `fetchSharedTrip(id, allowInvitePreview)` | still honoured by `#/invite/<uuid>` |

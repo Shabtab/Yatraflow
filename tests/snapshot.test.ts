@@ -1,6 +1,7 @@
 // ============ Trip snapshot encode/decode symmetry ============
 // Pure logic (node env): guards the URL-share format from issue #21.
 import { describe, it, expect } from 'vitest'
+import { deflateRawSync } from 'node:zlib'
 import { encodeTripSnapshot, decodeTripSnapshot } from '../src/lib/snapshot'
 import { seedData } from '../src/data/seed'
 
@@ -25,5 +26,30 @@ describe('trip snapshot encode/decode symmetry (issue #21)', () => {
   it('rejects malformed payloads instead of crashing', async () => {
     await expect(decodeTripSnapshot('nope')).rejects.toThrow('unknown format')
     await expect(decodeTripSnapshot('yf1_AAAA')).rejects.toThrow()
+  })
+
+  it('never carries the invite code or the member list', async () => {
+    const trip = {
+      ...structuredClone(seedData.trips[0]),
+      inviteCode: 'GOA-K7QF',
+      members: [{ userId: 'amelia', role: 'owner' as const, joinedAt: 1 }],
+    }
+    const back = await decodeTripSnapshot(await encodeTripSnapshot(trip))
+    expect(back).not.toHaveProperty('inviteCode')
+    expect(back).not.toHaveProperty('members')
+    expect(back.name).toBe(trip.name)
+  })
+
+  it('drops an invite code and member list that a link from an older build still carries', async () => {
+    const legacy = {
+      ...structuredClone(seedData.trips[0]),
+      inviteCode: 'GOA-K7QF',
+      members: [{ userId: 'amelia', role: 'owner', joinedAt: 1 }],
+      formatVersion: 1,
+    }
+    const payload = 'yf1_' + Buffer.concat([Buffer.from([1]), deflateRawSync(JSON.stringify(legacy))]).toString('base64url')
+    const back = await decodeTripSnapshot(payload)
+    expect(back).not.toHaveProperty('inviteCode')
+    expect(back).not.toHaveProperty('members')
   })
 })

@@ -1247,8 +1247,20 @@ export async function fetchTripByInviteCode(code: string): Promise<Trip | null> 
   return trip
 }
 
+/** The invite code the server holds for a trip. `undefined` means the read
+ *  failed, so the caller must not guess. `null` means the server holds none. */
+async function readServerInviteCode(tripId: ID): Promise<string | null | undefined> {
+  const { data, error } = await supabase.from('trips').select('invite_code').eq('id', tripId).maybeSingle()
+  if (error) {
+    console.error('[yatraflow] invite-code read failed', error)
+    return undefined
+  }
+  const row = data as { invite_code: string | null } | null
+  return row?.invite_code || null
+}
+
 /**
- * Mint (or re-mint) the invite code for one of the viewer's trips and
+ * Mint the invite code for one of the viewer's trips, when the server holds none, and
  * persist it. Codes are shown on the Share tab; minting happens lazily on
  * first share rather than at trip creation, so the DB column can be absent
  * (probe false) without breaking trip creation. A unique clash regenerates
@@ -1260,14 +1272,35 @@ export async function ensureInviteCode(tripId: ID): Promise<string | null> {
   if (t.inviteCode) return t.inviteCode
   const cols = await tripsHaveOptionalColumns()
   if (!cols.inviteCode) return null
+  // A cached trip without a code does not prove the server has none. Read the
+  // server first, so a code that already exists is never replaced.
+  const held = await readServerInviteCode(tripId)
+  if (held === undefined) return null
+  if (held) {
+    mutateTrip(tripId, draft => { draft.inviteCode = held }, { touch: false })
+    return held
+  }
   for (let attempt = 0; attempt < 5; attempt++) {
     const code = makeInviteCode(t)
-    const { error } = await supabase.from('trips').update({ invite_code: code }).eq('id', tripId)
+    // The write lands only while the server still holds no code.
+    const { data, error } = await supabase
+      .from('trips')
+      .update({ invite_code: code })
+      .eq('id', tripId)
+      .is('invite_code', null)
+      .select('invite_code')
     if (!error) {
-      // RLS update policy only lets the owner/editor write; the caller is by
-      // construction the owner sharing the trip.
-      mutateTrip(tripId, draft => { draft.inviteCode = code }, { touch: false })
-      return code
+      if (Array.isArray(data) && data.length > 0) {
+        // RLS update policy only lets the owner/editor write; the caller is by
+        // construction the owner sharing the trip.
+        mutateTrip(tripId, draft => { draft.inviteCode = code }, { touch: false })
+        return code
+      }
+      // No row changed. Another writer set a code first, or this caller cannot
+      // write. Read once more. Never write again in this call.
+      const again = await readServerInviteCode(tripId)
+      if (again) mutateTrip(tripId, draft => { draft.inviteCode = again }, { touch: false })
+      return again ?? null
     }
     // Anything but a unique clash is a real failure — report it.
     if (!/duplicate key|unique/i.test(String(error.message ?? ''))) {
@@ -2780,21 +2813,41 @@ export function setMemberRole(tripId: ID, userId: ID, role: TripMember['role']):
  * optimistically (joiners need the trip in My Trips immediately).
  * Returns whether the user is a member of the trip afterwards.
  */
-export async function joinViaInvite(tripId: ID, userId: ID, role: TripMember['role'] = 'editor'): Promise<boolean> {
+export async function joinViaInvite(tripId: ID, userId: ID, inviteCode: string): Promise<boolean> {
   const t = tripById(tripId)
   if (!t) return false
   if (t.members?.some(m => m.userId === userId)) return true
   const joinedAt = Date.now()
-  const { error } = await supabase.from('trip_members').insert({ trip_id: tripId, user_id: userId, role, joined_at: joinedAt })
+  // join_trip() takes the invite code, never a trip id. It adds the signed-in
+  // user as an editor. It returns the trip id, or null for a dead code.
+  const role: TripMember['role'] = 'editor'
+  const { data: joinedTripId, error } = await supabase.rpc('join_trip', { p_code: inviteCode })
   if (error) {
     console.error('[yatraflow] join write failed', error)
     return false
   }
+  // Fail closed: a null answer, or an answer naming another trip, joins nothing.
+  if (!joinedTripId || String(joinedTripId).toLowerCase() !== tripId.toLowerCase()) return false
   markLocalWrite('trip_members', tripId)
   mutateTrip(tripId, draft => { draft.members = [...(draft.members ?? []), { userId, role, joinedAt }] }, { touch: false })
   addActivity(tripId, userId, 'joined via invite link', 'Members')
   notifyOwnerOf(tripId, `${userName(userId)} joined “${t.name}” as ${role}.`)
   return true
+}
+
+/** True when this user already holds a membership row on the trip. It reads
+ *  only that user's own row, which the members read policy always allows. It
+ *  never reads the invite code. */
+export async function viewerIsMemberOf(tripId: ID, userId: ID): Promise<boolean> {
+  if (tripById(tripId)?.members?.some(m => m.userId === userId)) return true
+  const { data, error } = await supabase
+    .from('trip_members')
+    .select('user_id')
+    .eq('trip_id', tripId)
+    .eq('user_id', userId)
+    .maybeSingle()
+  if (error) console.error('[yatraflow] membership check failed', error)
+  return !error && !!data
 }
 
 /**
