@@ -15,6 +15,11 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Fixed
+
+- **List exits and panel motion keep their full duration in production builds.** JavaScript accepts motion tokens in seconds or milliseconds. Explore cards stay mounted until their fade ends.
+- **Browser motion checks measure the final page after its loading screen leaves.** A brief loading spinner cannot cause a false failure.
+
 ### Added
 
 - **The app now ships its own papercut illustrations, with a build pipeline and a size budget.** Six images cover Kerala, Kashmir, Rajasthan, a generic city, a generic road and the first-trip empty state. Each scene has AVIF files at 320, 640 and 960 pixels and one WebP file at 640 pixels. The files live in `src/assets/art/` with a `manifest.json`. `npm run art:build` rebuilds them from the master PNGs, which stay out of git. The build never inlines these files into the JavaScript, so each one has its own hashed URL. The whole set weighs about 358 KiB. A test fails `npm test` when a file or the total goes over its size cap. No screen shows these images yet. The cards still draw the inline SVG motifs.
@@ -132,6 +137,8 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - **My purchases now matches Explore and My trips, with creator details on plans you hold.** The page has a serif title, a back link and cards with wide covers. Its summary keeps every caveat about unreadable totals, refunds and pending payments. Loading, failed reads and empty shelves stay separate states on Purchases and My trips. Held plans show the creator's avatar, your purchase date and a "Yours" seal. Tips and season chips appear only when the creator supplied them. Refunded, pending and off-sale plans keep plain cards. Update text identifies a re-publication without claiming what changed. The desktop header carries the note "Yours to keep." The unlock screen links to My purchases, where your new card shows one fading outline. A fork keeps the creator's dates, which you can change. Motion respects your device's reduced-motion setting.
 
 - **Overview, Share, sign-in and DMCA pages keep the same appearance.** Their static styles now use CSS classes. Their behavior stays the same.
+
+- **A `CLAUDE.md` file now sets how Claude sessions split the work on this repo.** An Opus main thread at medium effort plans and checks the work. Haiku workers use max effort for judgment and high effort for mechanical edits. A Sonnet reviewer checks UI work, and an Opus subagent gives advice on hard decisions. The file links the consistency plan, rulings R1 to R23, and the newest handoff note in `docs/consistency/`. `CODING_STANDARDS.md` explains how to move a layout value into a page class. It also names three cases where the value stays inline.
 
 - **Search engines get clearer signals for the calculator and the share cards.** The calculator page says "Prices checked October 2026" and lists a published and modified date in its structured data. The address without the final slash now redirects to the page. The app pages and the share cards declare the language `en-IN`. A share card for an itinerary or creator that exists is now cached at the edge for five minutes. A missing or failed card is never cached.
 

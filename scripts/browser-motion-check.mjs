@@ -38,6 +38,7 @@ import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { samplePageMotion as SAMPLE } from './motion-page-sampler.mjs'
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 const PORT = Number(process.env.MOTION_PORT ?? 4319)
@@ -48,31 +49,6 @@ const WINDOW_MS = 4000
 // clean browser, and CI holds no credentials. The static gate covers every
 // page's root; this one proves the ones a browser can actually reach move.
 const ROUTES = ['/', '/explore', '/auth', '/trips']
-
-const SAMPLE = (windowMs) => {
-  window.__blocks = []
-  const read = () => {
-    const root = document.querySelector('.route-panel > *')
-    if (root) {
-      const rows = []
-      for (const el of root.children) {
-        const box = el.getBoundingClientRect()
-        if (box.height < 24) continue
-        const cs = getComputedStyle(el)
-        rows.push({
-          cls: (typeof el.className === 'string' && el.className.trim()) || '(no class)',
-          op: +(+cs.opacity).toFixed(3),
-          tf: cs.transform === 'none' ? 'none' : cs.transform,
-          vis: cs.visibility,
-        })
-      }
-      window.__blocks.push({ t: Math.round(performance.now()), rows })
-    }
-    if (performance.now() - start < windowMs) requestAnimationFrame(read)
-  }
-  const start = performance.now()
-  requestAnimationFrame(read)
-}
 
 // Samples the My trips card blocks and the switch glider once per frame. The
 // click lands after ~50ms, so the frames before it are the resting state.
