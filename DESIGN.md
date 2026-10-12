@@ -199,7 +199,7 @@ declared weight is not in the loaded set.
 ### Hierarchy
 - **Display** (800, 23px, 1.15): the metric tile figure — the number a decision hangs on.
 - **Title** (700, 16px, 1.3): panel titles and publication names at row level.
-- **Card title** (800, 18px, 1.25): card titles, such as the title of a compact `StateBlock`.
+- **Card title** (800, 18px, 1.3): card titles, such as the title of a compact `StateBlock`.
 - **Body** (400–500, 15px, 1.55): prose, hints, notes. Helper copy runs 12.5px.
 - **Label** (600, 12px, 0.05em, uppercase via CSS): stat labels and kickers. Short
   metadata only — the source text stays sentence case and CSS owns the caps.
