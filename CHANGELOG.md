@@ -19,6 +19,10 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 - **The DMCA page and the log in tabs now use the shared page parts.** The DMCA page has a serif title, a one-line lede and one text panel about 68 characters wide. The log in tabs use the shared tab row, with the same keyboard controls. The log in page announces its missing-backend warning to screen readers. The form error sits 8px above the submit button, the same gap as the sign-up notice.
 
+- **YatraFlow has a new logo, the Ribbon Y.** Two routes fold into one road, and a saffron dot marks the destination. It replaces the mountain-and-sun mark in the header, the favicon and the link preview card.
+  The PWA icons and the Apple touch icon now show the mark on a Planning Teal tile. The Android launcher icons and splash screens replaced the default Capacitor art. The adaptive icon ground is now Planning Teal. The app drops its old icon cache, so installed copies pick up the new icons.
+  `public/brand/` has the mark and the lockup as SVG files, in primary, dark, reversed and one-colour versions. DESIGN.md has a new Brand mark section with the construction and use rules. A test checks that each copy of the mark has the same geometry.
+
 ### Fixed
 
 - **The sign-up confirmation shows as a notice, not an error.** After sign-up, the message "Check your email to confirm your account" uses the info style. It has no warning icon. Screen readers announce it as a status update, not as an alert. Errors keep the red style and still announce as an alert. (#704)

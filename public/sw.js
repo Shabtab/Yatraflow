@@ -20,7 +20,7 @@
 // that is not this version's is dropped on activate — so a deploy rolls the
 // offline copy forward without a version bump. Bump SW_VERSION only to force a
 // full drop (e.g. when the caching policy itself changes).
-const SW_VERSION = 'v2'
+const SW_VERSION = 'v3'
 const CACHE = `yatraflow-${SW_VERSION}`
 const SHELL = '/'
 const SHELL_ASSETS = [SHELL, '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png']
