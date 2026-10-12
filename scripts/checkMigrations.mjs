@@ -320,10 +320,11 @@ export const NO_PROBE_SURFACE = {
     reason: 'defines `join_trip` — a missing join_trip fails the join at call time (PGRST202, loud); there is no column or bucket to probe',
   },
   '20261012b_member_insert_owner_only.sql': {
-    // Policy and function redefinition only. The policy has no REST surface, so
-    // the trip_members INSERT assertion in supabase/tests/rls_contract.test.sql
-    // pins it instead. get_invite_trip answers with the same columns as before.
-    reason: 'replaces the `members insert` policy and redefines `get_invite_trip` — neither has a column or bucket to probe; the policy is pinned by supabase/tests/rls_contract.test.sql',
+    // Policy, function and code re-issue. get_invite_trip answers with the same
+    // columns as before. None of the three adds a column or a bucket, so no
+    // probe can see them. The policy is pinned by supabase/tests/rls_contract.test.sql,
+    // and the statements by tests/member-join-guard.test.ts.
+    reason: 'replaces the `members insert` policy, redefines `get_invite_trip` and re-issues invite codes — none adds a column or bucket to probe; the policy is pinned by supabase/tests/rls_contract.test.sql, the statements by tests/member-join-guard.test.ts',
   },
 }
 

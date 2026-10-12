@@ -8,11 +8,16 @@
 -- It also stops get_invite_trip(uuid) from returning the invite code, so a
 -- trip id alone cannot reach the code.
 --
+-- It also issues new invite codes for trips that back a published itinerary.
+-- Anyone holding a trip id could read the old codes. Members keep their
+-- membership.
+--
 -- When to run: AFTER the new app is live. Run 20261012a_join_trip_function.sql
 -- first. Until this file runs, the old app still writes membership rows itself.
 --
--- Safe to re-run. The policy is dropped before it is created, because Postgres
--- has no create-policy-if-not-exists form.
+-- Run this file once. The policy and the function are safe to re-run, because
+-- the policy is dropped before it is created. The code re-issue is not safe to
+-- re-run: a second run issues new codes again.
 -- ============================================================
 
 -- ============================================================
@@ -85,3 +90,57 @@ $$;
 
 revoke all on function public.get_invite_trip(uuid) from public;
 grant execute on function public.get_invite_trip(uuid) to anon, authenticated;
+
+-- ============================================================
+-- Re-issue the invite codes of trips that back a published itinerary.
+-- The old code is replaced. Membership rows are not touched.
+-- A new code has the shape of makeInviteCode in src/lib/inviteCode.ts: a head
+-- from the trip name or start city, one dash, then four tail characters.
+-- ============================================================
+do $$
+declare
+  v_trip     record;
+  v_head     text;
+  v_tail     text;
+  v_byte     int;
+  v_issued   boolean;
+  v_alphabet text := 'ABCDEFGHJKLMNPQRTUVWXY346789';
+  -- 256 / 28 gives 9 whole alphabets. A byte at or above 252 is redrawn.
+  v_limit    int := 252;
+begin
+  for v_trip in
+    select t.id, t.name, t.start_location
+    from public.trips t
+    where t.invite_code is not null
+      and t.id in (select p.trip_id from public.published_itineraries p)
+  loop
+    -- Head: capital letters and digits only, at most 10 characters.
+    v_head := coalesce(
+      nullif(left(regexp_replace(upper(v_trip.name), '[^A-Z0-9]+', '', 'g'), 10), ''),
+      nullif(left(regexp_replace(upper(v_trip.start_location), '[^A-Z0-9]+', '', 'g'), 10), ''),
+      'YATRA'
+    );
+    v_issued := false;
+    for v_attempt in 1..10 loop
+      v_tail := '';
+      while length(v_tail) < 4 loop
+        v_byte := get_byte(decode(replace(gen_random_uuid()::text, '-', ''), 'hex'), 0);
+        if v_byte < v_limit then
+          v_tail := v_tail || substr(v_alphabet, 1 + v_byte % 28, 1);
+        end if;
+      end loop;
+      begin
+        update public.trips set invite_code = v_head || '-' || v_tail where id = v_trip.id;
+        v_issued := true;
+        exit;
+      exception when unique_violation then
+        -- Another trip holds this code. Draw another.
+        null;
+      end;
+    end loop;
+    if not v_issued then
+      raise exception 'no free invite code for trip %', v_trip.id;
+    end if;
+  end loop;
+end
+$$;

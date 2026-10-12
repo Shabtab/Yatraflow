@@ -2,7 +2,8 @@
 -- 20261012a_join_trip_function.sql
 --
 -- Adds join_trip(p_code): the server path for joining a trip by invite code.
--- This file only adds a function. The current app keeps working.
+-- This file only adds a function. It is safe to run before the new app.
+-- The current app keeps working.
 --
 -- When to run: BEFORE the app deploy that calls join_trip().
 -- Run 20261012b_member_insert_owner_only.sql after the new app is live.

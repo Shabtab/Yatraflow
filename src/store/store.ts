@@ -1247,8 +1247,20 @@ export async function fetchTripByInviteCode(code: string): Promise<Trip | null> 
   return trip
 }
 
+/** The invite code the server holds for a trip. `undefined` means the read
+ *  failed, so the caller must not guess. `null` means the server holds none. */
+async function readServerInviteCode(tripId: ID): Promise<string | null | undefined> {
+  const { data, error } = await supabase.from('trips').select('invite_code').eq('id', tripId).maybeSingle()
+  if (error) {
+    console.error('[yatraflow] invite-code read failed', error)
+    return undefined
+  }
+  const row = data as { invite_code: string | null } | null
+  return row?.invite_code || null
+}
+
 /**
- * Mint (or re-mint) the invite code for one of the viewer's trips and
+ * Mint the invite code for one of the viewer's trips, when the server holds none, and
  * persist it. Codes are shown on the Share tab; minting happens lazily on
  * first share rather than at trip creation, so the DB column can be absent
  * (probe false) without breaking trip creation. A unique clash regenerates
@@ -1260,14 +1272,35 @@ export async function ensureInviteCode(tripId: ID): Promise<string | null> {
   if (t.inviteCode) return t.inviteCode
   const cols = await tripsHaveOptionalColumns()
   if (!cols.inviteCode) return null
+  // A cached trip without a code does not prove the server has none. Read the
+  // server first, so a code that already exists is never replaced.
+  const held = await readServerInviteCode(tripId)
+  if (held === undefined) return null
+  if (held) {
+    mutateTrip(tripId, draft => { draft.inviteCode = held }, { touch: false })
+    return held
+  }
   for (let attempt = 0; attempt < 5; attempt++) {
     const code = makeInviteCode(t)
-    const { error } = await supabase.from('trips').update({ invite_code: code }).eq('id', tripId)
+    // The write lands only while the server still holds no code.
+    const { data, error } = await supabase
+      .from('trips')
+      .update({ invite_code: code })
+      .eq('id', tripId)
+      .is('invite_code', null)
+      .select('invite_code')
     if (!error) {
-      // RLS update policy only lets the owner/editor write; the caller is by
-      // construction the owner sharing the trip.
-      mutateTrip(tripId, draft => { draft.inviteCode = code }, { touch: false })
-      return code
+      if (Array.isArray(data) && data.length > 0) {
+        // RLS update policy only lets the owner/editor write; the caller is by
+        // construction the owner sharing the trip.
+        mutateTrip(tripId, draft => { draft.inviteCode = code }, { touch: false })
+        return code
+      }
+      // No row changed. Another writer set a code first, or this caller cannot
+      // write. Read once more. Never write again in this call.
+      const again = await readServerInviteCode(tripId)
+      if (again) mutateTrip(tripId, draft => { draft.inviteCode = again }, { touch: false })
+      return again ?? null
     }
     // Anything but a unique clash is a real failure — report it.
     if (!/duplicate key|unique/i.test(String(error.message ?? ''))) {

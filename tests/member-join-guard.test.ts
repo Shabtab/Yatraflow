@@ -20,6 +20,14 @@ const SCHEMA = read('../supabase/schema.sql')
 const STORE = read('../src/store/store.ts')
 const APP = read('../src/App.tsx')
 const SHARE_TAB = read('../src/pages/trip/ShareTab.tsx')
+const INVITE_LIB = read('../src/lib/inviteCode.ts')
+
+/** The first capture group of a pattern. A missing match fails the test. */
+function captured(src: string, pattern: RegExp): string {
+  const found = pattern.exec(src)
+  expect(found, `${pattern} must match`).not.toBeNull()
+  return found?.[1] ?? ''
+}
 
 /** The text of one `create policy "<name>"` on trip_members, through its semicolon. */
 function membersPolicy(sql: string, name: string): string {
@@ -50,6 +58,11 @@ describe('the fix ships as an add step, then a tighten step', () => {
   it('the add step creates the function and changes no policy', () => {
     expect(ADD_SQL).not.toMatch(/(create|drop) policy/)
     expect(ADD_SQL).toMatch(/create or replace function public\.join_trip\(p_code text\)/)
+  })
+
+  it('the add step changes no trip row and carries no preview', () => {
+    expect(ADD_SQL).not.toMatch(/update\s+public\.trips/)
+    expect(ADD_SQL).not.toMatch(/get_invite_trip/)
   })
 
   it('the tighten step carries no join function', () => {
@@ -151,6 +164,48 @@ describe('members insert policy (tighten step)', () => {
       if (!sql.includes('create policy "members insert" on public.trip_members')) continue
       expect(membersPolicy(sql, 'members insert'), `${file} re-adds a self-join branch`).not.toMatch(/user_id = auth\.uid\(\)/)
     }
+  })
+})
+
+describe('invite codes re-issued for published trips (tighten step)', () => {
+  const start = TIGHTEN_SQL.indexOf('do $$')
+  const body = TIGHTEN_SQL.slice(start)
+  const TAIL = captured(INVITE_LIB, /TAIL_ALPHABET = '([A-Z0-9]+)'/)
+
+  it('runs as one DO block after get_invite_trip is redefined', () => {
+    expect(start).toBeGreaterThan(-1)
+    expect(start).toBeGreaterThan(TIGHTEN_SQL.indexOf('create or replace function public.get_invite_trip('))
+  })
+
+  it('targets trips with a code that back a publication, by query', () => {
+    expect(body).toMatch(/where t\.invite_code is not null\s+and t\.id in \(select p\.trip_id from public\.published_itineraries p\)/)
+  })
+
+  it('draws the tail from the client alphabet, the client length and the client bias limit', () => {
+    expect(captured(body, /v_alphabet text := '([A-Z0-9]+)'/)).toBe(TAIL)
+    expect(INVITE_LIB).toMatch(/const TAIL_LENGTH = 4$/m)
+    expect(body).toMatch(/length\(v_tail\) < 4/)
+    expect(Number(captured(body, /v_limit\s+int := (\d+);/))).toBe(Math.floor(256 / TAIL.length) * TAIL.length)
+  })
+
+  it('builds the head the way slugifyHead does, with the same fallbacks', () => {
+    expect(INVITE_LIB).toMatch(/\.replace\(\/\[\^A-Z0-9\]\+\/g, ''\)/)
+    expect(body).toMatch(/regexp_replace\(upper\(v_trip\.name\), '\[\^A-Z0-9\]\+', '', 'g'\), 10\)/)
+    expect(body).toMatch(/'YATRA'/)
+  })
+
+  it('draws bytes from gen_random_uuid(), never from random()', () => {
+    expect(body).toMatch(/gen_random_uuid\(\)/)
+    expect(body).not.toMatch(/\brandom\(\)/)
+  })
+
+  it('retries a unique clash, and writes each trip at most once per attempt', () => {
+    expect(body).toMatch(/exception when unique_violation then/)
+    expect(body.match(/update public\.trips set invite_code/g)).toHaveLength(1)
+  })
+
+  it('touches no membership row', () => {
+    expect(TIGHTEN_SQL).not.toMatch(/(update|delete\s+from|insert\s+into)\s+public\.trip_members/)
   })
 })
 
