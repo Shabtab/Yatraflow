@@ -15,272 +15,131 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+## [0.75.0] - 2026-10-12
+
+This release makes the trip pages easier to read and act on. Every trip card names its next step, and the Timeline lets you save days and stops. Pages enter with motion, and a failed read now says so instead of looking empty.
+
 ### Added
 
-- **The app now ships its own papercut illustrations, with a build pipeline and a size budget.** Six images cover Kerala, Kashmir, Rajasthan, a generic city, a generic road and the first-trip empty state. Each scene has AVIF files at 320, 640 and 960 pixels and one WebP file at 640 pixels. The files live in `src/assets/art/` with a `manifest.json`. `npm run art:build` rebuilds them from the master PNGs, which stay out of git. The build never inlines these files into the JavaScript, so each one has its own hashed URL. The whole set weighs about 358 KiB. A test fails `npm test` when a file or the total goes over its size cap. No screen shows these images yet. The cards still draw the inline SVG motifs.
+- **The app ships six papercut illustrations, with a build step and a size budget.** The scenes cover Kerala, Kashmir, Rajasthan, a generic city, a generic road and the first-trip empty state. Each scene has AVIF files at 320, 640 and 960 pixels, and one WebP file at 640 pixels.
+  The files live in `src/assets/art/` with a `manifest.json`. `npm run art:build` rebuilds them from master PNGs that stay out of git. The build never inlines these files into the JavaScript, so each one has its own hashed URL. The whole set weighs about 358 KiB. A test fails when a file or the whole set goes over its size cap. No screen shows these images yet. The cards still draw the inline SVG motifs.
 
-- **Explore ranks plans and creators by evidence, and a block draws only when its evidence exists.**
-  A Trending now shelf sits between the featured card and the grid. It ranks plans by popularity,
-  which is views plus five times forks. It shows only when no filter is set and the catalog has
-  loaded, and it leaves the featured pick out. Each card in the shelf has the same save heart as a
-  grid card, at the top right of the cover. The shelf and the grid share one saved list.
-  The Creators side panel ranks creators by forks.
-  The featured pick ranks forks first. A heading over an empty rail would advertise a community
-  that is not there, so an empty block draws nothing.
+- **Explore ranks plans and creators by evidence, and a block shows only when it has data.** A Trending now shelf sits between the featured card and the grid. It ranks plans by views plus five times forks. It shows only when no filter is set and the catalog has loaded. It leaves out the featured pick. Each shelf card has the same save heart as a grid card.
+  The Creators panel ranks creators by forks. The featured pick ranks forks first. An empty block draws nothing.
 
-- **The Grid and List switch on My trips now slides and replays the cards.** A pill glides behind the active button in 180ms, and the button text changes colour on the same clock. The card grid remounts when the layout changes, so the cards play their staggered entrance again. Before this, the pressed button changed colour and the cards snapped into place. With reduced motion set, both changes are instant. The Clear filters button now fades in and slides 6px when a filter is set, on My trips and on Explore. It fades out when the filters clear.
+- **My trips has a Grid and List view.** A labelled switch in the Other trips header changes the layout, and the choice survives a reload. The pill glides behind the active button in 180ms, and the cards replay their entrance when the layout changes.
+  The List view shows one row per trip, with a small cover thumbnail. Each List row has a thumbnail, a content column and an action column. Below 640px, the footer moves below the content. The grid has one column on a phone, two on a tablet and three on a wide screen. Explore uses the same rule.
 
-- **A card, row or button that leaves a list now fades out instead of vanishing.** This covers My trips cards that a filter or the Trash removes, and Trash rows that you restore or delete. It also covers Explore cards that a filter or the Saved view removes, saved-shelf rows that you forget, and the Explore Clear filters button. The item stays for 180ms, fades and sinks 6px. Then the cards that stay glide into the free slot. One hook, `usePresenceList`, does this for every list. A leaving item is inert, hidden from screen readers and ignores the pointer. Keyboard focus on a leaving item moves to the next item. With reduced motion set, or in a hidden tab, the item leaves at once. The empty message waits until the last item has gone. Explore no longer replays the entrance of the cards that stay when a filter changes. A new sort order still does.
+- **A card, row or button that leaves a list now fades out instead of vanishing.** It covers My trips cards that a filter or the Trash removes. It also covers Trash rows that you restore or delete. It also covers Explore cards that a filter or the Saved view removes. It also covers saved-shelf rows that you forget.
+  The item stays for 180ms, then fades and sinks 6px. The cards that stay glide into the free slot. A leaving item is inert and hidden from screen readers. Keyboard focus moves to the next item. With reduced motion set, or in a hidden tab, the item leaves at once. The empty message waits until the last item has gone. One hook, `usePresenceList`, does this for every list.
+  Explore no longer replays the entrance of cards that stay when a filter changes. A new sort order still does. The Clear filters button fades in and slides 6px when a filter is set. It fades out when the filters clear.
 
-- **A static test fails a toggle control that has no motion.** `tests/motion-state-change.test.ts` finds every group of buttons where one choice is pressed at a time. Each group needs a glider with a motion-token transition and a reduced-motion opt-out. The test also checks that the My trips card grid is keyed by its layout. The Trip map day filter has no glider yet and is listed as a known gap. The list can only get shorter. The same file pins the list exit: its rule uses motion tokens, it has a reduced-motion opt-out, and every list that drops items uses the hook.
+- **Motion is checked in the browser and by unit tests.** `tests/design-system.test.ts` reads `src/App.tsx` and checks that every page root carries `page-enter`. A new page joins that set when it exists, so it cannot ship without motion. `tests/motion-state-change.test.ts` finds each group of buttons where one choice is pressed at a time.
+  Each such group needs a glider with a motion-token transition and a reduced-motion opt-out. A rule that paints a translucent glass token must declare `backdrop-filter`, or name its exception and its reason.
+  `npm run check:motion` builds the app, serves it, and samples every page block once per animation frame. It fails when a block appears between two frames. A CI job named `motion` runs it beside `verify`. `npm run verify` still needs no browser. The same check clicks the My trips layout switch, and it removes Explore cards to test their exit.
 
-- **The motion check clicks the My trips layout switch and removes Explore cards.** `scripts/browser-motion-check.mjs` samples the cards and the glider once per frame across the click. It fails when the cards snap or the glider jumps. A second step turns on the Explore Saved filter and samples each removed card. It fails when a card vanishes between two frames, or when it is not inert. With reduced motion set, it fails when a card plays an exit. That step needs no session. My trips needs a signed-in session, so the step reads a Playwright storage-state file from `MOTION_STORAGE_STATE`. Without that file it skips and says so. `MOTION_REQUIRE_SESSION=1` turns the skip into a failure.
+- **Every trip card names the next step to take.** The line sits above the trip's chips, and it links to that task. Dates come first, because a draft has no days to plan. Then come the earliest empty day, the earliest stop that needs a booking and the earliest suggestion to confirm.
+  A cover photo comes last, and only a chosen emoji counts as a cover. A rejected stop blocks nothing, so a day with only rejected stops still counts as unplanned. A finished trip reads "Ready to travel" and has no link. The line opens the day and stop it names. A dates or cover step opens Settings, where those fields live.
 
-- **A browser check in CI fails a page block that appears between two frames.** `npm run check:motion` builds the app, serves it, opens four public routes and samples every block of the page root once per animation frame from before navigation. A block whose opacity and transform never change had no motion at all, so the run fails and names the block. The `motion` job runs beside `verify` in CI, and `npm run verify` still needs no browser.
+- **`npm run probe:next-step` checks the next-step labels against live data.** It reads every published itinerary. It runs each one through the app's own row normalizer and next-step derivation.
+  It prints the label for each publication, and a histogram. Pass `--json` for machine output. It exits non-zero when an invariant breaks. A priced publication is marked, because an anonymous read returns its locked days.
 
-- **The pages a motion gate checks are discovered from the router, not typed into a list.** `tests/design-system.test.ts` reads `src/App.tsx` and takes every component App renders — a static import, a route-level `lazy()` binding, or a component declared in App itself — then requires each returned root to carry `page-enter`. A new page joins the set by existing, so it cannot ship motionless. A binding the walk cannot read is an error rather than a skip: an unreadable page must not pass as an empty one. The cascade behind the class is one shared rule, `.page-enter > *`, with its stagger and its reduced-motion opt-out beside it.
+- **An ADR records why the mockup's colour palette is not adopted.** `docs/adr/0002-mockup-palette-not-adopted.md` gives the decision and what it costs. The mockup keeps its typography. Its page layout comes in section by section through the roadmap's MR track.
 
-- **Glass cannot be painted without its blur any more.** A rule that paints a translucent glass token must declare `backdrop-filter` in the same rule, or name its exception and its reason in the gate's list. An entry that no longer matches a rule fails too,so the list cannot outlive its reason.
+- **My trips pins an Up next card for your live or soonest trip.** The card shows a countdown, Budget, Travel and Dates columns, the next step, and a delete button. It shows "Starts in 6 days" or "Starts tomorrow". Once the trip is live, it shows its day number. A past or undated trip shows no countdown.
+  Until the trip is live, the card shows how many days have activities, as a count and a meter. A day counts as planned only when it holds a stop that is not automatic. The countdown follows the calendar day, so a tab left open overnight stays right. The card stays pinned through sort and style filters, and it hides while you search.
 
-- **Every trip card now says what to do next.** My Trips
-  prints the one action worth doing above each trip's chips. The line is a link to that task,
-  marked by a chevron. `src/lib/tripNextStep.ts` derives the step, and 16 tests pin the order. Set the dates
-  first, because a draft has no days to plan. Then the earliest empty day, because it blocks
-  every day after it. Then the earliest stop that needs a booking. Then the earliest suggestion
-  to confirm. A cover photo waits for last. A rejected stop blocks nothing, so a day left with
-  only rejected stops still counts as unplanned. A finished trip reads "Ready to travel" and
-  drops the chevron, because there is nothing left to open. The Up next card also shows how
-  many days have activities, as a count and a meter, until the trip is live.
-- **The cover-photo step is reachable again.** The prototype counted any cover emoji as a
-  cover. Every trip is born with 🧭, because the column is `not null default '🧭'` and the
-  cover thumbnail falls back to the same glyph. A live read of every published itinerary found
-  that emoji set on all of them and a photo on one, so the step never fired. A chosen emoji
-  counts now. The default compass does not.
-- **`npm run probe:next-step` reports the derivation against live data.** It reads every
-  published itinerary, runs it through the app's own row normalizer and next-step derivation,
-  and prints the derived label per publication plus a histogram. Pass `--json` for machine
-  output. It exits non-zero when an invariant breaks, so it doubles as a check. Run it after
-  a schema change: a renamed status or a different days shape shows up as a changed
-  histogram before a user ever sees a wrong card. A priced publication is marked, because an
-  anonymous read returns its locked days.
-- **The mockup's colour palette is not adopted, and the decision is written down.**
-  `docs/adr/0002-mockup-palette-not-adopted.md` records the decision and what it costs. The
-  mockup keeps its typography. Its page layout is adopted section by section through the
-  roadmap's MR track. Its ten swatches never reach the design tokens.
-- **The trip list can now be read as a list, and the Up next card says how long until it starts.**
-  Two additions to the same card. A labelled pair in the Other trips header switches between the
-  grid and a one-row-per-trip list, where each cover collapses to a small thumbnail. The choice
-  survives a reload through the same preferences store the per-day collapse uses, and the
-  buttons carry pressed states. The Up next card shows "Starts in 6 days", or "Starts tomorrow".
-  Once the trip is live, it shows its day number instead. A past or undated trip shows no countdown.
-- **The cover-photo prompt and the solo-traveller line were already there.** A roadmap row asked
-  for both. Checked against the code rather than assumed: the prompt is one of the six next-step
-  labels and only became reachable once the default compass emoji stopped counting as a cover,
-  and the avatars with "Just you so far" were already in the card foot. No new code was needed.
-- **The Timeline's day rail now says where you are and when the route moves.** Each chip became a
-  card carrying the place that day sits in and its stop count, with a marker on the day the city
-  changes rather than the day before it. The jump and the day-collapse behaviour behind it are
-  unchanged — this is the rail that already existed, made legible. The two facts it shows come
-  from a new pure module with eleven tests, because the marker sits on a boundary and an off-by-one
-  would place it on the wrong day, which reads as the plan being wrong rather than the strip being
-  wrong. A day that names no place prints none, and an unnamed day between two named ones does not
-  make the second look like a change.
-- **Three layout defects, found by measuring the trip list at 1440px and 390px against real
-  trips.** A full-width list column produced 1140px rows holding a title and two chips, so half the
-  screen was whitespace; the rows now keep a readable measure and the grid takes more of them. The
-  replacement used `minmax(520px, 1fr)`, whose floor cannot shrink — at 390px it held a 520px card
-  in a 373px viewport and pushed the whole document sideways, fixed with `min(520px, 100%)`. And
-  renaming the day-rail chip to a card silently dropped the 40px mobile touch floor the old class
-  already carried, leaving the new card at 28px; it is restored under the new name.
-- **Days and experiences can now be saved from the Timeline.** A heart sits beside each day's
-  title and on each planned stop. Saved state lives in the preferences store that already keeps
-  per-day collapse, so it survives a reload without becoming trip data — it is never shared with
-  the crew, so it needs no sync and no undo. Ids are namespaced so a day and a stop can never mean
-  the same thing. The heart is a real button, so it carries a pressed state, a label that says
-  what the press will do, and the 40px touch floor. This is deliberately not the map shortlist:
-  that tray filters out anything already added to the plan, so a day or a stop put there would have
-  been dropped on arrival.
-- **The Up next card's button opens the exact day and stop it names.**
-  The button carried only the trip link. The timeline opened at the top, and you had to find
-  the day yourself. The button now links with the day and the stop in the address. The
-  workspace checks the request against the trip. It opens that day and scrolls the stop to the
-  centre of the view. A ring marks the row for a moment. A stale request does nothing. A day
-  the trip lacks falls back to the day alone. A request for another trip is ignored.
-- **A saved-items shelf on My Trips gives the hearts somewhere to go.** Saving a day or an
-  experience wrote an id that nothing read back. A “Saved for later” section now lists every
-  saved item in plan order, grouped by trip, and each row opens the exact day and stop it
-  names. A saved day opens the whole day. A saved experience opens that stop, and the row
-  says which one it is. A row can be dropped again from the shelf, through the same store the
-  hearts write. An id whose day or stop is gone is dropped rather than shown as a row that
-  opens nothing, and a stop that a re-split moved follows its new day. `src/lib/savedShelf.ts`
-  resolves the ids against live trip data; `src/components/trips/SavedShelfSection.tsx` draws them.
-- **A free Ladakh bike trip cost calculator at `/ladakh-trip-cost-calculator/`.** You get a low to high cost range in rupees, for each rider and for the group. No signup is needed. The page is plain static HTML, so a crawler can read the title, the intro, a default result and the FAQ without JavaScript. You pick one of four routes, then set days, people, bikes, stay, food and rent. A "sourced" or "assumption" tag marks each default, and a source list sits at the bottom. Each cost shows as a bar. The solid part is the low figure and the striped part is the extra up to the high figure. The page link keeps your numbers. A phone shows a short summary above the form. A bar at the bottom shows your range until the full result is on screen. The one button leads to the app. The sitemap lists the page, and the service worker never caches it.
+- **The Timeline day rail shows the place each day sits in.** Each chip is a card with the day's place and its stop count. A marker sits on the day the city changes, not on the day before.
+  The place comes from the day's base stop. That is the last stop in plan order, where the day ends. Rejected stops do not place a day, and a day with no named stop shows no place. The rail marks the day in view in review mode, and the open day in one-day mode.
 
-- **A published itinerary's share page now shows its free days to search engines.** A visitor who opens `/i/<id>` without a share tag reads the title, the facts, and each free day with its stops. A day behind the paywall shows only its title and a line that says the full plan is in the app. A link shared with a `ref` or `buyer` tag still opens the app at once. The page adds `TouristTrip` structured data with no rating and no price. If the trip cannot be read, the page falls back to the old redirect card. A test proves that no locked content reaches the page or the structured data. (#691)
+- **You can save days and stops from the Timeline, and find them on My trips.** A heart sits beside each day title and each planned stop. Saves live in the preferences store that keeps the per-day collapse. They survive a reload, and the crew never sees them.
+  The heart is a real button with a pressed state and a 40px touch floor. If browser storage is blocked, the saves stay in memory for the session. A "Saved for later" section on My trips lists every saved item in plan order, grouped by trip. Each row opens its exact day or stop, and you can remove a row from the section. A saved item whose day or stop is gone leaves the section.
 
-- **A browser verification harness for agents, under `.agents/skills/verify-yatraflow/`.** It starts the dev server on port 5178. It checks the server and the Supabase project ref. It drives a headless Edge or Chrome to a route. Each run writes a screenshot and a JSON record to `.verify-evidence/`, which git ignores. The feature map covers five signed-out flows.
+- **The Up next button opens the exact day and stop it names.** The button links with the day and the stop in the address. The workspace checks the request against the trip.
+  It opens that day and scrolls the stop to the middle of the view. A ring marks the row for a moment. A stale request does nothing, and a request for another trip is ignored.
 
-- **My trips shows a pinned Up next card for your live or soonest trip.** The card shows a countdown, Budget, Travel and Dates columns, the count of days that have activities, the next step and a delete button. The count hides when the trip is live, because the day count is the progress then. It stays pinned through sort and style filters. It hides while you search.
+- **A free Ladakh bike trip cost calculator lives at `/ladakh-trip-cost-calculator/`.** It shows a low to high cost range in rupees, for each rider and for the group. No signup is needed. The page is plain static HTML. A crawler reads its title, intro, default result and FAQ without JavaScript.
+  You pick one of four routes, then set days, people, bikes, stay, food and rent. Each default carries a "sourced" or "assumption" tag, and a source list sits at the foot of the page. Each cost shows as a bar. The solid part is the low figure, and the striped part is the rise to the high figure. The page link keeps your numbers.
+  A phone shows a short summary above the form. A bar at the bottom shows your range until the full result is on screen. The one button leads to the app. The sitemap lists the page, and the service worker never caches it.
+
+- **A published itinerary's share page shows its free days to search engines.** A visitor without a share tag reads the title, the facts and each free day with its stops. A day behind the paywall shows only its title. A line says the full plan is in the app.
+  A link with a `ref` or `buyer` tag still opens the app at once. The page adds `TouristTrip` structured data, with no rating and no price. If the trip cannot be read, the page falls back to the old redirect card. A test proves that no locked content reaches the page or its structured data. (#691)
+
+- **A browser check for agents lives in `.agents/skills/verify-yatraflow/`.** It starts the dev server on port 5178 and checks the Supabase project ref. It drives a headless Edge or Chrome to a route.
+  Each run writes a screenshot and a JSON record to `.verify-evidence/`, which git ignores.
 
 ### Changed
-- **Profile and Admin look the same, with no visual changes.** Static styles now use named CSS classes. Values that depend on data or state stay inline. Admin's six 18px spacings stay inline under the spacing ruling.
 
-- **Page headers animate in once, with the rest of the page.** The header no longer adds its own rise-and-fade on top of the page entrance. The Explore filter bar now uses the shared `FilterBar`. Its Clear filters button still fades out when the last filter goes. The My trips Grid and List switch uses the shared `SegmentedTabs`. Later pages can reuse both parts. A new test keeps the page counts in a baseline, and a count rises only through a deliberate update.
+- **Profile, Admin, Overview, Share, sign-in and DMCA pages keep their look.** Their static styles now use named CSS classes. Values that depend on data or state stay inline.
 
-- **My purchases now matches Explore and My trips, with creator details on plans you hold.** The page has a serif title, a back link and cards with wide covers. Its summary keeps every caveat about unreadable totals, refunds and pending payments. Loading, failed reads and empty shelves stay separate states on Purchases and My trips. Held plans show the creator's avatar, your purchase date and a "Yours" seal. Tips and season chips appear only when the creator supplied them. Refunded, pending and off-sale plans keep plain cards. Update text identifies a re-publication without claiming what changed. The desktop header carries the note "Yours to keep." The unlock screen links to My purchases, where your new card shows one fading outline. A fork keeps the creator's dates, which you can change. Motion respects your device's reduced-motion setting.
+- **Pages share one filter bar and one segmented control, and headers animate once.** Explore uses the shared `FilterBar`, and its Clear filters button fades out when the last filter goes.
+  My trips uses the shared `SegmentedTabs` for its Grid and List switch. A page header no longer adds its own entrance on top of the page entrance. A test keeps the page counts in a baseline, and a count rises only through a deliberate update.
 
-- **Overview, Share, sign-in and DMCA pages keep the same appearance.** Their static styles now use CSS classes. Their behavior stays the same.
+- **My purchases matches Explore and My trips, and it shows creator details on plans you hold.** The page has a serif title, a back link and cards with wide covers. Its summary keeps every caveat about unreadable totals, refunds and pending payments.
+  Loading, failed reads and empty shelves stay separate states. Held plans show the creator's avatar, your purchase date and a "Yours" seal. Tips and season chips appear only when the creator supplied them. Refunded, pending and off-sale plans keep plain cards.
+  Update text names a re-publication without claiming what changed. The unlock screen links to My purchases. A fork keeps the creator's dates, which you can change. Motion respects your reduced-motion setting.
 
-- **Search engines get clearer signals for the calculator and the share cards.** The calculator page says "Prices checked October 2026" and lists a published and modified date in its structured data. The address without the final slash now redirects to the page. The app pages and the share cards declare the language `en-IN`. A share card for an itinerary or creator that exists is now cached at the edge for five minutes. A missing or failed card is never cached.
+- **Search engines get clearer signals for the calculator and the share cards.** The calculator page says "Prices checked October 2026". Its structured data lists a published date and a modified date. The address without the final slash redirects to the page.
+  The app pages and the share cards declare the language `en-IN`. A share card for an itinerary or creator that exists is cached at the edge for five minutes. A missing or failed card is never cached.
 
-- **My trips opens with an editorial hero built from your own trips.** The headline names the place your next trip ends at, for example "Next stop, Goa." That is the same place the Up next card shows. A row of counts shows your trips, upcoming and live trips, places and co-planners. Co-planners are the other people who can edit your trips. Up to three postcards show your trips, with a handwritten note such as "10 days to go!". While your trips load, the hero shows a neutral headline and no counts, postcards or note.
+- **My trips opens with an editorial hero built from your own trips.** The headline names the place your next trip ends at, for example "Next stop, Goa." The same place shows on the Up next card. A row of counts shows your trips, upcoming and live trips, places and co-planners.
+  Co-planners are the other people who can edit your trips. Up to three postcards show your trips, with a handwritten note such as "10 days to go!" While trips load, the hero shows a neutral headline and no counts, postcards or note.
 
-- **My trips and Explore share one look.** Both pages use the same serif and handwritten fonts, 12px-corner buttons, filter bar and card skin. Budget shows in one compact format, such as "~₹12k/person". On a phone, both pages hide the postcards and the handwritten note.
-
-- **My trips has a Grid | List switch.** Phone list rows fit the screen, and the filter box no longer leaves blank space. The grid has one column on a phone, two on a tablet and three on a wide screen. This holds for any number of results, so one result is one card of normal width in the first cell. Explore uses the same column rule. Only the Up next card and the Explore featured card use the wide form.
+- **My trips and Explore share one look.** Both pages use the same serif and handwritten fonts, 12px-corner buttons, filter bar and card skin.
+  Budgets show in one compact form, such as "~₹12k/person". On a phone, both pages hide the postcards and the handwritten note.
 
 - **The Load demo trips button shows only when you have no trips.** It sits in the first-run state, next to Plan your first trip.
 
-- **The My trips Trash button sits in the Other trips header.** If that header is not shown, the button stays in the hero. The button shows a pressed style while the Trash is open. Opening the Trash moves focus to its heading. Going back moves focus to the Trash button.
+- **The My trips Trash button sits in the Other trips header.** If that header is hidden, the button stays in the hero. It shows a pressed style while the Trash is open.
+  When you open the Trash, focus moves to its heading. When you go back, focus returns to the Trash button.
 
-- **Trip cards show a status tag and labelled Budget, Travel and Dates columns.** The tag reads Live, Upcoming, Past or Draft. A trip without a cover image shows papercut art instead.
+- **Trip cards show a status tag, labelled columns and the mockup's layout.** Each card has a 16/10 cover, and a status tag sits at the cover's top left. The tag reads Live, Upcoming, Past or Draft. Each status has its own dot shape.
+  The body reads title, route, the Budget, Travel and Dates columns, the next step, and the chips. A hairline separates the foot, which holds the crew on the left and delete on the right. A hover lifts the card 2px, darkens its border and deepens its shadow. The cover art zooms to 1.035.
+  The list view puts a 112px cover beside the body. A 168px cover applies once the container is 720px wide. Its motion uses the motion tokens, with a reduced-motion opt-out. A trip without a cover image shows papercut art.
 
-- **Icon strokes now draw at a visible weight, and small icons match them.** Empty-state icons and select arrows are rebalanced too.
+- **Icon strokes draw at a visible weight, and small icons match them.** Empty-state icons and select arrows are rebalanced too.
 
-- **Explore has a new hero banner, one filter bar and a featured itinerary.** The hero banner shows a serif headline, counts, papercut postcards and a handwritten note. The filter bar holds the search box, style chips, trip length, budget and sort. The featured itinerary shows its route trail and a credibility line.
+- **Explore has a new hero banner, one filter bar, a featured itinerary and side panels.** The hero shows a serif headline, counts, papercut postcards and a handwritten note. The filter bar holds the search box, style chips, trip length, budget and sort.
+  The featured itinerary shows its route trail and a credibility line. Each card shows Days, Budget, Places and Forks columns and a travel-style tag. The side panels show Places in the community, Creators and Share a plan. Each panel uses only published data.
+  With no saved itineraries, the saved view reads "You haven't saved any itineraries yet".
 
-- **Each Explore card shows Days, Budget, Places and Forks columns and a travel-style tag.**
+- **Save buttons keep one accessible name, and the featured title is a heading.** Each save button reports its state with `aria-pressed`. The featured itinerary title is an h3, so the page heading order stays in sequence.
 
-- **Explore side panels show Places in the community, Creators and Share a plan.** Each panel uses only published data.
+- **Every publication row in the creator hub states its status, and its button follows from it.** A row always states one status: Live, Unpublished or Page behind itinerary. The row's action comes from the same derivation as its label.
+  A row cannot read "Live" beside a "Publish again" button. A withdrawn page stays Unpublished, whatever its itinerary did afterwards, because a page that is down cannot be behind. The hub's Live and Behind counts read the same derivation as the rows.
 
-- **When you have no saved itineraries, Explore shows "You haven't saved any itineraries yet".**
-
-- **Save buttons keep one accessible name and report their state with aria-pressed.**
-
-- **The featured itinerary title is an h3, so the page heading order stays in sequence.**
-
-- **Every publication row in the creator hub states its status, and its button follows from it.**
-  A row used to say nothing when its page was healthy, and it labelled only the two exceptions;
-  now it always states one status — Live, Unpublished, or Page behind itinerary — so a healthy
-  publication is as readable as a broken one. The row's action comes from the same derivation as
-  its label, so a row cannot read "Live" beside a "Publish again" button. A withdrawn page stays
-  Unpublished whatever its itinerary did afterwards, because a page that is down cannot be
-  behind. The hub's Live and Behind counts read the same derivation as the rows, so the strip can
-  no longer count a row the list below it refuses to label.
-
-- **My Trips puts the Grid | List switch in the Other trips header, and keeps the filters in the filter bar.**
-  The switch is a labelled segmented control, placed beside the list it changes. Style is a chip
-  row, and each chip carries a count, so a filtered list still says why it is short. When and sort
-  are labelled menus. The page-to-page entrance reads as motion now as well: it kept a
-  550ms clock but spent 63% of its travel in the first 55ms, which is why a navigation looked
-  like a snap, and it runs on `--motion-slow` with the fade still under way while the next page's
-  content arrives.
-
-- **The My Trips cards use the mockup's card style, in both list and grid view.** Each card has a
-  16/10 cover. A status tag sits at the cover's top left. The body reads in this order: title,
-  route, the budget, travel and dates columns, the next step, then the
-  travel-style and planner chips. A hairline separates the card's foot. The foot holds the crew on
-  the left and the delete button on the right. One hover moves one surface. The card lifts 2px,
-  the border darkens, and the shadow deepens. The cover art zooms to 1.035. The list view puts a
-  112px cover beside the body, and a 168px cover once the container is 720px wide. The cover runs
-  the row's full height. All of it runs on the motion tokens, with a `prefers-reduced-motion`
-  opt-out.
+- **My trips filters show a count on each style chip, and labelled When and Sort menus.** Each style chip carries a count, so a short list still says why it is short. The When and Sort menus are labelled.
 
 ### Fixed
 
-- **Group input now says when it could not load, and keeps what it loaded.** If the stop ideas or decisions read fails with nothing loaded, the tab shows a failed message. The message has a Try again button. If cards are loaded, the tab keeps them and adds a short note with Try again. A pending read with nothing loaded shows a loading line. The activity feed keeps its rows the same way, and shows a failed line when it has none. When the feed loaded and has no entries, it shows a short empty line. (#704)
-- **The Map tab now says when it could not load stops along the route**. A failed Google Places search shows "Stops along the route could not be loaded just now." A search that finds no stops still shows the route message. (#704)
-- **`npm run lint:ste` checks the prose lines your branch adds.** The check diffs your work against the merge base of `origin/test`, so committed and uncommitted lines both count. In a pull request, the base is the target branch. If `origin/test` is missing, the check tries `origin/main`, then `HEAD~1`, and prints the base it used. Under CI, a missing base stops the check with exit code 2. A list item is checked after its marker, unless it sits in a code fence. Each sentence on a checked line is measured in full.
+- **Group input and the Map tab now say when a read failed, and keep what did load.** Group input shows a failed message with a Try again button when nothing loaded. When cards did load, it keeps them and adds a short note with Try again.
+  A pending read with nothing loaded shows a loading line. The activity feed keeps its rows the same way. It shows a failed line when it has no rows. It shows a short empty line when the feed loaded with no entries.
+  The Map tab shows "Stops along the route could not be loaded just now." when its Google Places search fails. A search that finds no stops still shows the route message. (#704)
 
-- **Explore loads for logged-out visitors again.** A first visit without an account showed "Loading the catalog…" with no end, although the itineraries had loaded. The logged-out data load now reports the catalog as loaded or failed. A failed read now shows the error with a Retry button. The bug did not affect signed-in users.
+- **Explore loads for logged-out visitors again.** A first visit without an account showed "Loading the catalog…" with no end, although the itineraries had loaded. The catalog now reports loaded or failed. A failed read shows the error with a Retry button. Signed-in users were not affected.
 
-- **The copyright page enters with the shared cascade.** The page arrived without
-  `page-enter`, so its blocks appeared between two frames and the motion gate failed. It now
-  carries the class its sibling auth page carries.
+- **Pages enter with motion, and no block appears between two frames.** Explore, the trip workspace, the creator hub and the public itinerary use the shared cascade. My trips and the copyright page use it too.
+  Each top-level block rises 8px over `--motion-slow`, staggered by `--stagger-step`, and does not animate under reduced motion. The My trips page root owns the entrance for its children, so a block added later cannot miss one. The page-to-page transition also runs on `--motion-slow`.
 
-- **Explore, the trip workspace, the creator hub and the public itinerary enter with motion now.** Every top-level block on those four pages appeared between two frames: the hero, the head, the tab bar and the body popped into place with nothing under them. They take the shared container cascade now — each block rises 8px over `--motion-slow`, staggered by `--stagger-step`, and stops under reduced motion. Sampled in the browser after the change: zero motionless blocks on the six routes checked.
+- **Translucent panels keep the blur that goes with their glass.** The bezel tray and the landing's feature cards declare the whole glass pair: the translucent background and the `backdrop-filter`.
+  The map's idea-filters popup uses the `popover` class, which owns the pair. So the day chips and markers behind it no longer show through.
 
-- **The bezel tray and the landing's feature cards carry the whole glass pair.** Both restated the glass background and border and left the `backdrop-filter` behind — the same split the popover shipped with. The bezel wears the `.glass` owner now and keeps only its own geometry and shadow. The feature card cannot wear it, because `.card`'s later background would win the cascade, so it declares the pair itself.
+- **A day jump lands below the sticky bars on a phone.** The bar stack is measured for each width and mode, so the day header never lands under it. The current-day marker is a border and a weight. A day's warning tint cannot replace it.
 
-- **The map's idea-filters popup is readable now, not see-through.** The panel restated a
-  popover's background, border, radius, shadow and entrance, and left out one thing: the
-  `backdrop-filter` that goes with the glass background. Glass is translucent by design. The day
-  chips and markers behind the menu showed through it. The panel carries the `popover` class
-  now, which owns that pair in one place, and `tests/design-system.test.ts` fails when a second
-  rule paints the glass without it.
+- **The creator fixture script writes to a local project only, unless you name the remote host.** A remote project needs `FIXTURE_ALLOW_REMOTE` set to the exact host, and your own `FIXTURE_PASSWORD` of 12 characters or more. The default password works on a local project only.
+  To promote the admin on a remote project, pass `--promote-admin`. The guard runs before `--apply` and `--clean`, and a dry run is never blocked. The rules sit in `scripts/fixtureGuard.mjs`.
+  The seeder derives a fixed date window for each fixture, so no fixture publishes without dates. Rows already in the database keep their empty dates until you apply the fixture again. (#689)
 
-- **My Trips now arrives as a sequence instead of all at once.** The hero, the page head, the
-  toolbar, the viewbar and the saved shelf used to appear between two frames while the cards
-  below them cascaded. A still hero above moving cards reads as a broken element, not a calm
-  one. The page root owns one entrance for its own children now, staggered in DOM order, so a
-  block added to the page later cannot miss one. `tests/design-system.test.ts` fails when a
-  pinned page root has no entrance, no stagger, or no reduced-motion opt-out, and the rule table
-  in `AGENTS.md` names that check next to the rule it enforces.
-
-- **The progress meter counts activities, not route points.** The store anchors a new trip's route
-  with automatic stops. Those stops have no dwell time. The meter counted one of them as a planned
-  day. A trip with nothing to do on it could then read “1 of 1 days planned” and “Ready to travel”.
-  The meter and the card's next-step line now share one definition of a planned day: a day that
-  holds at least one usable stop that is not automatic. The Up next card names the measure: “3 of 5
-  days have activities”. An anchored day asks you to “Plan day N” instead of reading as a finished trip.
-- **My Trips moves to the next day while the page stays open.** The countdown and the date filter
-  follow the calendar day, so a tab left open overnight shows the right countdown. `src/lib/dayClock.ts` holds one calendar-day clock.
-  It wakes at local midnight. It also re-reads the day when the window regains focus, because a
-  background tab throttles timers. One value feeds the countdown and the date filter, so the two
-  cannot disagree. The unit is a day, so nothing polls and a focus on the same day renders nothing.
-- **A trip card's next-step line now opens the task it names.** The line lived inside the
-  card's own link, so a click opened the trip overview and you had to find “Book Shimla
-  tickets” yourself. It is a separate link now, because a link must not hold a second link:
-  the card still opens the trip, and the line opens the day and the stop its own label names.
-  A dates or cover step opens Settings, where those fields live. The Up next button and each
-  card's next-step line read one builder, so the two cannot disagree about where a step lives.
-- **The day rail tracks where you are, and a day jump no longer lands under it.**
-  The rail marks the day in view in review mode. It marks the open day in
-  one-day mode. A jump used to land the day header under the sticky bars on a
-  phone. The bar stack is measured per width and mode now, and every jump
-  lands below it. The current-day marker is a border and a weight. A day's
-  warning tint can no longer replace the marker.
-- **The trip list rows stop clipping their content on a phone.** List mode put
-  the member stack and the delete control on the same line as the card body.
-  At 373px the body overran them and the card clipped both. The row now has
-  explicit thumbnail, content and action columns, and the content column can
-  shrink. Below 640px the footer moves onto its own line under the content.
-  Wide screens show one trip per row, the mockup's scan order. Metadata wraps
-  instead of widening the row.
-- **The Timeline day rail names a real place again.** The rail card showed the
-  day title as the city, so two Jaipur days titled "Arrival" and "Fort visit"
-  marked a city change inside one city. The place now comes from the day's
-  base stop: the last stop in plan order, where the day ends. Rejected stops
-  do not place the day. A day with no named stop prints no place and makes no
-  claim.
-- **A heart press can no longer save twice or drop earlier saves.** The save
-  updater flipped the set by reading storage inside React's state calculation.
-  React can run that calculation twice, so one press could land twice. When
-  storage was denied, every read came back empty and each press dropped the
-  ids saved before it. The set now derives from the previous state and is
-  written once after the change. The in-memory set stays authoritative when
-  storage fails.
-
-- **The test fixture no longer publishes dateless itineraries.** Three of the six published
-  itineraries carried no start or end date, which made "Set your travel dates" the most common
-  next step in the probe histogram. Every one of those three came from
-  `scripts/seedCreatorFixture.mjs`, which wrote an empty string for both dates; all three real
-  publications have real dates. The seeder now derives a fixed window from each fixture's day
-  count. Publishing a trip with no dates was never the defect, so the publish path is
-  unchanged. Rows already in the database keep their empty dates until the fixture is re-applied.
-- **The creator fixture script no longer writes to a remote project by accident.** The script used the Supabase project that `.env.local` named, and a run against the live project put "(fixture)" itineraries into the live sitemap. Now it writes to a local project only. A remote project needs `FIXTURE_ALLOW_REMOTE` set to the exact host of the project, and your own `FIXTURE_PASSWORD` of 12 characters or more. The default password works on a local project only. Promoting the admin on a remote project also needs `--promote-admin`. The check runs before `--apply` and before `--clean`, because `--clean` signs the fixture accounts up first. A dry run is never blocked. The rules sit in `scripts/fixtureGuard.mjs`. (#689)
-
-- **Icons drawn through the shared inline icon wrapper no longer render as solid black shapes.** The wrapper sets an empty fill, so every outline icon keeps its stroke style.
-
-- **My trips shows "No other trips yet" when the only trip is the pinned Up next card.** A sort or style filter that still matches that trip no longer shows "No trips match those filters" with a Clear filters button.
+- **Icons drawn through the shared inline icon wrapper keep their outline.** The wrapper sets an empty fill, so an outline icon no longer renders as a solid black shape.
 
 - **The Clear filters button no longer shifts the search, chips and selects.** While a filter is active, the button takes its own full-width row under the selects.
 
-- **Each My trips status tag has its own dot shape.** Upcoming is a filled circle, Live a pulsing circle, Past a square and Draft a ring. The dot uses a dark ink, so it stays readable in dark mode.
+- **The When filter treats an impossible date, such as 2026-02-31, as a draft trip.** The filter now agrees with the status shown on the card.
 
-- **The When filter treats an impossible date such as 2026-02-31 as a draft trip.** It now agrees with the status shown on the card.
+- **A destination matches a region only as a whole word.** "Goalpara" no longer takes the Goa artwork.
 
-- **A destination only matches a region as a whole word.** "Goalpara" no longer takes the Goa artwork.
+- **`npm run lint:ste` checks every prose line your branch changes.** The check compares your branch with the merge base of `origin/test`, so committed and uncommitted lines both count.
+  Under CI, a missing base stops the check with exit code 2. Each sentence on a checked line is measured.
 
 ## [0.74.1] - 2026-10-12
 
