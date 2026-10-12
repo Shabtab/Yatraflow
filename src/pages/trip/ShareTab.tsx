@@ -508,12 +508,12 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
           {inviteLink ? (
             <div className="share-link-box"><code title={inviteLink}>{inviteLink}</code><CopyButton text={inviteLink} /></div>
           ) : mintFailed ? (
-            <p className="hint-text" aria-live="polite" style={{ margin: '0 0 10px' }}>
+            <p className="hint-text shr-invite-status" aria-live="polite">
               We could not make an invite link.{' '}
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setMintFailed(false); setMintTry(n => n + 1) }}>Try again</button>
             </p>
           ) : (
-            <p className="hint-text" aria-live="polite" style={{ margin: '0 0 10px' }}>Making your invite link…</p>
+            <p className="hint-text shr-invite-status" aria-live="polite">Making your invite link…</p>
           )}
           <hr className="divider" />
           <h3>Members & roles</h3>
