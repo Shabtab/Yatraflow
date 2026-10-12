@@ -19,19 +19,16 @@
 // Exit codes. 0 passes. 1 means a rule is broken. 2 means the gate cannot run.
 // Exit 2 covers bad usage, unreadable input, and a shallow clone with no merge
 // base. It also covers a missing base branch under CI. Outside CI, a missing
-// origin/test only warns, and the default run then checks uncommitted lines.
+// origin/test falls back to origin/main, then to HEAD~1, with a warning. The
+// base order is in scripts/lint-ste-base.mjs.
 // Stage a new file with `git add -N` so the default run sees it.
 
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
+import { chooseLintBase, GateError, requireMergeBase } from './lint-ste-base.mjs'
 
 const MAX_WORDS = 20
-
-// The branch the default run compares with. A pull request names its target
-// in GITHUB_BASE_REF, so a PR into main diffs against origin/main.
-const TARGET_BRANCH = process.env.GITHUB_BASE_REF || 'test'
-const TARGET = `origin/${TARGET_BRANCH}`
 
 // A gerund starts a step only when a determiner or a code span follows it.
 // "Checking the value." is a gerund step. "Landing page" is a page name.
@@ -85,8 +82,6 @@ const VOCAB = [
 
 const problems = []
 let checkedLines = 0
-
-class GateError extends Error {}
 
 // A CODE line is not prose, even when its tokens read as English. Without
 // these exclusions the checker fired on real code and forced working code to
@@ -300,19 +295,14 @@ function fail(message) {
   throw new GateError(message)
 }
 
-// The merge base of a ref and HEAD. No merge base means a shallow clone or
-// unrelated history. The gate stops here instead of guessing a range.
+// The merge base of a ref and HEAD, or an empty string when there is none.
+// The caller decides what a missing merge base means. See requireMergeBase.
 function mergeBaseOf(ref) {
-  let sha = ''
   try {
-    sha = git(['merge-base', ref, 'HEAD']).trim()
+    return git(['merge-base', ref, 'HEAD']).trim()
   } catch {
-    sha = ''
+    return ''
   }
-  if (!sha) {
-    fail(`${ref} and HEAD have no merge base: shallow clone or unrelated history; run \`git fetch --unshallow\`.`)
-  }
-  return sha
 }
 
 // Added lines of `git diff -U0`, each with its file and line number.
@@ -378,30 +368,22 @@ function report(label, note = '') {
     console.error(`  ${key}  ${kinds.join('; ')}`)
     console.error(`      ${text}`)
   }
-  console.error('\nSee AGENTS.md §2 rule 13.')
+  console.error(`\nSTE100: ${checkedLines} prose line(s) checked: ${label}.`)
+  console.error('See AGENTS.md §2 rule 13.')
   return 1
 }
 
-// Resolves the commit the diff starts from, and how the report names it.
-// A missing target is a warning outside CI. Under CI it stops the gate, so a
-// CI misconfiguration cannot turn the check off without a sign.
+// Resolves the commit the diff starts from. The --base option names its own
+// ref. Otherwise the order in scripts/lint-ste-base.mjs picks the base.
 function chooseBase() {
   if (argv.includes('--base')) {
     const ref = argValue('--base')
     if (!ref) fail('--base needs a ref.')
     if (!commitOf(ref)) fail(`--base ${ref} is not a commit.`)
-    const sha = mergeBaseOf(ref)
-    return { sha, label: `changed lines since the merge base of ${ref} and HEAD (${sha.slice(0, 7)})` }
+    const sha = requireMergeBase(ref, mergeBaseOf)
+    return { sha, label: `changed lines since the merge base of ${ref} and HEAD (${sha.slice(0, 7)})`, warning: '' }
   }
-  if (!commitOf(TARGET)) {
-    if (process.env.CI) {
-      fail(`${TARGET} not found under CI, so the gate cannot run. Fetch the full history (fetch-depth: 0).`)
-    }
-    console.error(`STE100: WARNING: ${TARGET} not found. Only uncommitted lines are checked. Run: git fetch origin ${TARGET_BRANCH}`)
-    return { sha: 'HEAD', label: `uncommitted lines only, because ${TARGET} is absent` }
-  }
-  const sha = mergeBaseOf(TARGET)
-  return { sha, label: `changed lines vs merge base with ${TARGET} (${sha.slice(0, 7)})` }
+  return chooseLintBase({ env: process.env, commitOf, mergeBaseOf })
 }
 
 // Names an empty range, so a run that checks nothing says so.
@@ -435,6 +417,7 @@ function main() {
     return report('staged lines')
   }
   const base = chooseBase()
+  if (base.warning) console.error(base.warning)
   const added = addedLines([base.sha])
   checkAdded(added, false)
   return report(base.label, rangeNote(base, added))

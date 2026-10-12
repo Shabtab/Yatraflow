@@ -21,7 +21,9 @@ Sections:
 
 ## The gate
 
-**The default STE check reads the whole branch, not only unstaged edits.** `npm run lint:ste` compares the tree with the merge base of `origin/test`, so committed and uncommitted lines both count. In a pull request, it uses the target branch instead. Run `git fetch origin test` first. A new file must be staged (`git add -N`) before the check sees it. The check exits 2 when it cannot run. That covers a shallow clone with no merge base (run `git fetch --unshallow`) and a missing base branch under CI. Outside CI, a missing `origin/test` prints a warning, and the check reads uncommitted lines only. Exit 0 passes, and exit 1 means a rule is broken. The directory `docs/consistency/` is exempt from the diff runs, because it holds planning notes written before these rules. An explicit `--file` still checks the file you name.
+**The default STE check reads the whole branch, not only unstaged edits.** `npm run lint:ste` compares the tree with the merge base of `origin/test`, so committed and uncommitted lines both count. In a pull request, it uses the target branch instead. Run `git fetch origin test` first. A new file must be staged (`git add -N`) before the check sees it. The check exits 2 when it cannot run. That covers a shallow clone with no merge base (run `git fetch --unshallow`) and a missing base branch under CI. Outside CI, a missing `origin/test` falls back to `origin/main`, then to `HEAD~1`, and a warning names the base used. Exit 0 passes, and exit 1 means a rule is broken. The directory `docs/consistency/` is exempt from the diff runs, because it holds planning notes written before these rules. An explicit `--file` still checks the file you name.
+
+The check once read only unstaged edits, so a commit made it inspect zero lines and always pass. If the checked count is zero, read the base named in the verdict before you trust the pass.
 
 Use `npm run verify` — it runs the full gate:
 `tsc -b --clean` → fresh typecheck → full test suite → production build.

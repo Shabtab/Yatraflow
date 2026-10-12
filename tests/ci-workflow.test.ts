@@ -109,3 +109,28 @@ describe('ci.yml — the gate reaches the branches work integrates through', () 
     expect(workflow).toMatch(/lint ratchet/)
   })
 })
+
+/** The body of one job under `jobs:`. A job key sits two spaces in. */
+function jobBlock(name: string): string {
+  const lines = workflow.split(/\r?\n/)
+  const start = lines.findIndex((line) => line === `  ${name}:`)
+  if (start === -1) return ''
+  const rest = lines.slice(start + 1)
+  // The block ends at the next key that is two spaces in or less.
+  const end = rest.findIndex((line) => /^(?: {0,2}\S)/.test(line) && !/^\s*#/.test(line))
+  return (end === -1 ? rest : rest.slice(0, end)).join('\n')
+}
+
+describe('ci.yml — the verify job reads the full history the lint:ste base needs', () => {
+  it('checks out with fetch-depth 0 before it runs the gate', () => {
+    // lint:ste diffs against the merge base with origin/test. A shallow checkout
+    // has no such base, so the gate would stop or check nothing.
+    const verify = jobBlock('verify')
+    expect(verify).toMatch(/npm run verify/)
+    const from = verify.indexOf('- uses: actions/checkout')
+    expect(from).toBeGreaterThanOrEqual(0)
+    // The checkout step ends where the next step starts, six spaces in.
+    const checkoutStep = verify.slice(from).split(/\n {6}- /)[0]
+    expect(checkoutStep).toMatch(/fetch-depth:\s*0\b/)
+  })
+})

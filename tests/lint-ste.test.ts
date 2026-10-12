@@ -381,19 +381,48 @@ describe('STE100 default run (fixture repositories, real git)', () => {
     expect(runScript(dir, ['--base', 'side']).code).toBe(1)
   }, SLOW)
 
-  it('warns when origin/test is absent, and checks only uncommitted lines', () => {
+  it('warns when origin/test is absent, and falls back to HEAD~1 outside CI', () => {
+    // With no origin/main either, the last commit is the base, so the committed bad line is inside the range.
     const dir = fixtureRepo(GOOD, false)
     commitNotes(dir, GOOD + BAD_LINE)
     const committed = runScript(dir)
-    expect(committed.code).toBe(0)
+    expect(committed.code).toBe(1)
     expect(committed.stderr).toMatch(/origin\/test not found/)
     expect(committed.stderr).toMatch(/git fetch origin test/)
-    writeFileSync(path.join(dir, 'notes.md'), GOOD + BAD_LINE + BAD_LINE)
-    expect(runScript(dir).code).toBe(1)
+    expect(committed.stderr).toMatch(/HEAD~1/)
+  }, SLOW)
+
+  it('falls back to origin/main when origin/test is absent, and names the base it used', () => {
+    const dir = fixtureRepo(GOOD, false)
+    git(dir, ['update-ref', 'refs/remotes/origin/main', 'HEAD'])
+    commitNotes(dir, GOOD + BAD_LINE)
+    const r = runScript(dir)
+    expect(r.code).toBe(1)
+    expect(r.stderr).toMatch(/origin\/test not found/)
+    expect(r.stderr).toMatch(/merge base with origin\/main/)
+  }, SLOW)
+
+  it('checks only uncommitted lines when no base commit exists', () => {
+    // A single commit has no parent, and no origin ref exists, so only uncommitted lines count.
+    const dir = fixtureRepo(GOOD, false)
+    expect(runScript(dir).code).toBe(0)
+    writeFileSync(path.join(dir, 'notes.md'), GOOD + BAD_LINE)
+    const r = runScript(dir)
+    expect(r.code).toBe(1)
+    expect(r.stderr).toMatch(/uncommitted lines only/)
   }, SLOW)
 
   it('fails closed under CI when origin/test is absent', () => {
     const dir = fixtureRepo(GOOD, false)
+    commitNotes(dir, GOOD + BAD_LINE)
+    const r = runScript(dir, [], { CI: 'true' })
+    expect(r.code).toBe(2)
+    expect(r.stderr).toMatch(/origin\/test not found under CI/)
+  }, SLOW)
+
+  it('never falls back under CI, even when origin/main exists', () => {
+    const dir = fixtureRepo(GOOD, false)
+    git(dir, ['update-ref', 'refs/remotes/origin/main', 'HEAD'])
     commitNotes(dir, GOOD + BAD_LINE)
     const r = runScript(dir, [], { CI: 'true' })
     expect(r.code).toBe(2)
