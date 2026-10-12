@@ -128,6 +128,9 @@ This release makes the trip pages easier to read and act on. Every trip card nam
 - **The sign-up confirmation shows as a notice, not an error.** After sign-up, the message "Check your email to confirm your account" uses the info style. It has no warning icon. Screen readers announce it as a status update, not as an alert. Errors keep the red style and still announce as an alert. (#704)
 
 - **Grid and motion checks use fixed regex patterns.** The checks still enforce column counts, glider movement, motion tokens, and reduced-motion rules.
+- **Failed weather and trip reads now say so instead of looking empty.** The Overview tab shows "Weather could not be loaded." with a Try again button when the forecast fails. The installed app's home screen shows a loading line while trips load. When the trips read fails, it shows a failed message with Try again. If trips are already loaded, the home screen keeps them and adds a short note above them. "No trips yet" appears only after a trips read succeeds with no trips. (#704)
+
+- **Explore loads for logged-out visitors again.** A first visit without an account showed "Loading the catalog…" with no end, although the itineraries had loaded. The logged-out data load now reports the catalog as loaded or failed. A failed read now shows the error with a Retry button. The bug did not affect signed-in users.
 
 - **Group input and the Map tab now say when a read failed, and keep what did load.** Group input shows a failed message with a Try again button when nothing loaded. When cards did load, it keeps them and adds a short note with Try again.
   A pending read with nothing loaded shows a loading line. The activity feed keeps its rows the same way. It shows a failed line when it has no rows. It shows a short empty line when the feed loaded with no entries.

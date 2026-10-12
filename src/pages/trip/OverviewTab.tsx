@@ -232,10 +232,13 @@ export function OverviewTab({ trip, onOpenTimeline, onOpenMap, onInvite, health,
 
 // ================= Weather =================
 
-/** Per-day forecast strip for the Overview tab. Best-effort; hides itself when unavailable. */
+/** Per-day forecast strip for the Overview tab. Hides itself when no day has a forecast.
+ *  A failed read says so and offers Try again (#704). */
 function WeatherCard({ trip }: { trip: Trip }) {
   const [byDate, setByDate] = useState<Record<string, DayWeather>>({})
-  const [state, setState] = useState<'loading' | 'ready' | 'unavailable'>('loading')
+  const [state, setState] = useState<'loading' | 'ready' | 'unavailable' | 'failed'>('loading')
+  // Bumped by Try again. A bump re-pulls the forecast past the cache.
+  const [retries, setRetries] = useState(0)
   const tick = useWeatherRefreshTick()
 
   // Per-day anchor + per-day forecast-window gate — the SAME rule the Timeline
@@ -258,7 +261,7 @@ function WeatherCard({ trip }: { trip: Trip }) {
   useEffect(() => {
     if (dayAnchors.length === 0) return
     let cancelled = false
-    Promise.all(dayAnchors.map(d => fetchDailyWeather(d.lat, d.lng, d.date, 1, { force: tick > 0 })))
+    Promise.all(dayAnchors.map(d => fetchDailyWeather(d.lat, d.lng, d.date, 1, { force: tick > 0 || retries > 0 })))
       .then(results => {
         if (cancelled) return
         const merged: Record<string, DayWeather> = {}
@@ -269,9 +272,15 @@ function WeatherCard({ trip }: { trip: Trip }) {
         setByDate(merged)
         setState(Object.keys(merged).length > 0 ? 'ready' : 'unavailable')
       })
-      .catch(() => { if (!cancelled) setState('unavailable') })
+      .catch(() => { if (!cancelled) setState('failed') })
     return () => { cancelled = true }
-  }, [dayAnchors, tick])
+  }, [dayAnchors, tick, retries])
+
+  // #704: Try again shows the loading line, then pulls the forecast again.
+  const retryWeather = () => {
+    setState('loading')
+    setRetries(r => r + 1)
+  }
 
   // No anchored day inside the forecast window yet — a far-future trip, or one
   // with no placed stops. Show nothing rather than a spinner that never
@@ -280,6 +289,15 @@ function WeatherCard({ trip }: { trip: Trip }) {
   if (state === 'loading') {
     return <div className="card"><h3 className="card-head"><InlineIcon icon={CloudSun} size={14} gap={4} />Weather</h3><p className="muted small">Loading forecast…</p></div>
   }
+  if (state === 'failed') {
+    return (
+      <div className="card">
+        <h3 className="card-head"><InlineIcon icon={CloudSun} size={14} gap={4} />Weather</h3>
+        <p className="muted small">Weather could not be loaded. <button className="btn btn-outline btn-sm" onClick={retryWeather}>Try again</button></p>
+      </div>
+    )
+  }
+  // 'unavailable': the forecast came back with no usable day, so there is nothing to show.
   if (state !== 'ready') return null
 
   const entries = Object.values(byDate)

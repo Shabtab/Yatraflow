@@ -927,6 +927,9 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     if (admin || myTripIds.length > 0) askedSlices.push('trips', 'members', 'suggestions', 'decisions', 'activity', 'notifications')
     if (admin) askedSlices.push('audit')
     patch({ sliceReads: sliceReadReport(partial, askedSlices) })
+    // Publish the verdict now. patch() wakes no subscriber by itself.
+    // A retry or a resume reaches this line with no commit after it.
+    commit()
 
     // First-time users get the demo trips seeded into their account. Admins
     // skip the seed: their "empty" is a real empty app, and seeding the 3 demo
