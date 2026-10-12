@@ -66,7 +66,8 @@ describe('PageHeader styles', () => {
     expect(block).toContain('font-family: var(--font-serif)')
     expect(block).toContain('clamp(2rem, 1.2rem + 2vw, 2.75rem)')
     expect(block).toContain('border-bottom: 1px solid var(--line)')
-    expect(block).toContain('animation: cardIn var(--motion-slow) var(--ease-out) backwards')
+    // R19: page-enter owns the page entrance, so the page header has no cardIn entrance.
+    expect(block).not.toContain('cardIn')
     expect(block).toMatch(/prefers-reduced-motion: reduce\) \{\s*\.yf-header \{ animation: none; \}/)
     expect(block).not.toMatch(/\d+ms/)
   })

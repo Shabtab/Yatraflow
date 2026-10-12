@@ -9978,7 +9978,6 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
    the accent copy the hero rules above. A 1px rule closes the header. */
 .yf-header {
   margin-bottom: 24px; padding-bottom: 20px; border-bottom: 1px solid var(--line);
-  animation: cardIn var(--motion-slow) var(--ease-out) backwards;
 }
 .yf-header .yf-header-back { display: flex; width: fit-content; margin: 0 0 8px -12px; padding: 0 12px; justify-content: flex-start; }
 .yf-header .yf-header-kicker { margin-bottom: 8px; }
