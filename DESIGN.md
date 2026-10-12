@@ -198,7 +198,8 @@ declared weight is not in the loaded set.
 
 ### Hierarchy
 - **Display** (800, 23px, 1.15): the metric tile figure — the number a decision hangs on.
-- **Title** (700, 16px, 1.3): panel and card titles, publication names at row level.
+- **Title** (700, 16px, 1.3): panel titles and publication names at row level.
+- **Card title** (800, 18px, 1.3): card titles, such as the title of a compact `StateBlock`.
 - **Body** (400–500, 15px, 1.55): prose, hints, notes. Helper copy runs 12.5px.
 - **Label** (600, 12px, 0.05em, uppercase via CSS): stat labels and kickers. Short
   metadata only — the source text stays sentence case and CSS owns the caps.
@@ -361,6 +362,12 @@ Add `yf-page` to the root of a page when you convert it. The page skin then appl
 **Button skin (ruling R15).** The catalog button skin stays scoped to `yf-page` until phase P16. Before the workspace page (P2) converts, the design lead decides where the skin stops. At P16, only the corner radius and the weight move into base `.btn`.
 
 **Segmented tabs (ruling R16).** `SegmentedTabs` is one component with two variants. Select a variant with its `semantics` prop. The tablist variant (workspace, auth, hub, admin) uses the glass `tabbar` and a teal glider. The toggle variant (Grid and List) uses `mt-seg` with an ink glider. `ViewSwitch` is its caller. The toggle must emit the active-state attribute that the glider reads.
+
+**Compact state block (ruling R22).** Use `size="compact"` on `StateBlock` inside a workspace tab or a card. The compact block has no dashed border and smaller padding. It keeps the roles and kinds of the full block. It has no entrance of its own, so its container gives the entrance. A whole page uses the full block.
+
+**Rich body.** The `body` prop takes a string or a ReactNode. Use a ReactNode only when the copy needs inline markup, such as a `<b>`. Keep the copy short.
+
+**Surface roots.** Set `as` to `button` for a card that is one whole action. A button surface lifts and presses like an interactive surface. The button gets `type="button"` unless you pass a `type`. Set `as` to `details` for a card that folds. Its children must set the `<summary>`.
 
 ## Do's and Don'ts
 
