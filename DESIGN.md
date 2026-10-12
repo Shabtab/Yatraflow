@@ -170,7 +170,7 @@ of status hues that keep their meaning across every surface and both themes.
 
 ### Named Rules
 **The One Green Rule.** There is exactly one brand green, `#0D8D82`. Every teal in
-the product derives from it; a second, unrelated green is a defect.
+the product derives from it; a second, unrelated green is a defect. The mark's deeper teal and the dark-theme teals derive from `#0D8D82`.
 
 **The Semantic Colour Rule.** Teal = primary planning action. Saffron = invite,
 share, publish, explore. Mint/green = confirmed, saved, synced. Amber = attention,
@@ -375,7 +375,7 @@ Add `yf-page` to the root of a page when you convert it. The page skin then appl
 
 ### Construction
 - The mark is drawn on a 64-unit grid with three shapes. Each copy uses the same path data.
-- The fold is `M15 6C15 26 32 24 32 40` in Teal Pressed (`#0B6B63`), 11 units wide.
+- The fold is `M15 6C15 26 32 24 32 40` in the deeper teal (`#0B6B63`, `--teal-700`), 11 units wide.
 - The road is `M49 6C49 26 32 24 32 40V46` in Calm Teal (`#0D8D82`), 11 units wide. It is drawn over the fold.
 - The destination is a 5.5-unit circle at (32, 56) in Marigold Saffron (`#F59E2D`).
 - The stroke ends are flat. Do not round them.
