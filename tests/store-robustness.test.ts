@@ -295,6 +295,62 @@ describe('#704 — a throw after the first read still gives the trips slice a ve
   })
 })
 
+/** The slices a page reads through `sliceState`. A run that settled must leave none of them reading. */
+const PAGE_SLICES = ['trips', 'profiles', 'suggested itineraries', 'suggestions', 'decisions', 'activity'] as const
+
+describe('#704 — a throw during hydrate fails every slice it left unread', () => {
+  afterEach(() => { vi.restoreAllMocks() })
+
+  it('a throw after stage 1 leaves no page slice reading, not only trips', async () => {
+    const { store, client } = await freshStore('user-e1')
+    vi.spyOn(client, 'from').mockImplementation(((table: string) => {
+      if (table === 'trip_members') {
+        return answering({ data: [{ trip_id: 'trip-e1', user_id: 'user-e1', role: 'owner', joined_at: 1 }], error: null })
+      }
+      // Stage 2 reads trips. This throw comes after stage 1 has read the profiles, the published rows and the memberships.
+      if (table === 'trips') throw new Error('forced after stage 1')
+      return answering({ data: [], error: null })
+    }) as never)
+
+    store.init()
+    await vi.waitFor(() => expect(sliceState(store.getSnapshot().sliceReads, 'trips')).toBe('failed'))
+    for (const slice of PAGE_SLICES) {
+      expect(sliceState(store.getSnapshot().sliceReads, slice), slice).not.toBe('reading')
+    }
+  })
+
+  it('a throw before the membership scope is known leaves no page slice reading', async () => {
+    const { store, client } = await freshStore('user-e2')
+    vi.spyOn(client, 'from').mockImplementation(((table: string) => {
+      // The first stage-1 read throws, so the run never learns which trips the user belongs to.
+      if (table === 'profiles') throw new Error('forced at the start of stage 1')
+      return answering({ data: [], error: null })
+    }) as never)
+
+    store.init()
+    await vi.waitFor(() => expect(sliceState(store.getSnapshot().sliceReads, 'trips')).toBe('failed'))
+    for (const slice of PAGE_SLICES) {
+      expect(sliceState(store.getSnapshot().sliceReads, slice), slice).not.toBe('reading')
+    }
+  })
+
+  it('a throw after the verdict keeps every verdict the run already reported', async () => {
+    const { store, client } = await freshStore('user-e3')
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.spyOn(client, 'from').mockImplementation(((table: string) => {
+      // No membership row, so the run reports its verdict and then seeds demo trips. The first seed write throws.
+      if (table === 'trips') throw new Error('forced after the verdict')
+      return answering({ data: [], error: null })
+    }) as never)
+
+    store.init()
+    await vi.waitFor(() => expect(consoleError).toHaveBeenCalledWith('[yatraflow] hydration failed', expect.anything()))
+    for (const slice of ['trips', 'profiles', 'suggested itineraries'] as const) {
+      expect(sliceState(store.getSnapshot().sliceReads, slice), slice).toBe('ready')
+    }
+  })
+})
+
 /** A trip row that rowToTrip maps, so a read that finds a trip never reaches the demo seed. */
 function mappableTripRow(id: string, ownerId: string) {
   return {

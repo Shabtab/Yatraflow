@@ -287,6 +287,9 @@ export type ReadSlice = typeof READ_SLICES[number]
  *  `rereadPublicSlices` both report exactly this set, never `trips`. */
 const PUBLIC_READ_SLICES = ['profiles', 'suggested itineraries'] as const
 
+/** The trip-scoped reads a member's stage 2 issues, named as the verdict names them (#704). */
+const TRIP_SCOPED_READS = ['members', 'suggestions', 'decisions', 'activity', 'notifications'] as const
+
 /** Turn the hydrate's `partial` list into a per-slice verdict.
  *
  *  Everything the run asked for and did not name in `partial` succeeded. That
@@ -706,6 +709,13 @@ export async function resumeSync(): Promise<void> {
 }
 
 async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = true): Promise<void> {
+  // #704: the slices this run answers for, named as its verdict names them. Stage 1
+  // fixes the first four. Stage 2 adds the trip-scoped ones once the scope is known.
+  // A throw ends the run before its verdict. The catch fails every name here that has
+  // no verdict yet, so no page waits on a read that will never settle.
+  const askedSlices: string[] = ['profiles', 'memberships', 'suggested itineraries', 'trips']
+  let scopeKnown = false
+  let verdictPublished = false
   try {
     // Stage 1 - global catalogs + the user's memberships. Explore reads the curated
     // published_itineraries table and profiles are small rows for user avatars,so
@@ -750,6 +760,12 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     // #704: a failed memberships read leaves the trip scope unknown, so stage 2 read
     // nothing for a member. The admin reads are not scoped by membership, so they stand.
     const scopeUnread = !!myMembershipsRes.error && !admin
+    // #704: the scope is known now, so name the slices this run answers for before
+    // stage 2 issues any read. A throw from here on finds them in `askedSlices` (see the catch).
+    scopeKnown = true
+    if (admin || myTripIds.length > 0) askedSlices.push(...TRIP_SCOPED_READS)
+    if (scopeUnread) askedSlices.push('suggestions', 'decisions', 'activity', 'notifications')
+    if (admin) askedSlices.push('audit')
 
     // Stage 2 - the user's own trips + their collaboration data (PostgREST
     // rejects `id=in.<empty>`, so with no trips yet we record empty slices
@@ -931,11 +947,8 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     // unread one — instead of being reported 'ok' without ever being read.
     // The trips verdict comes from the memberships read. A zero-row read is a read,
     // so trips reports ready. A failed read reports failed, because partial names trips.
-    const askedSlices: string[] = ['profiles', 'memberships', 'suggested itineraries', 'trips']
-    if (admin || myTripIds.length > 0) askedSlices.push('members', 'suggestions', 'decisions', 'activity', 'notifications')
-    if (scopeUnread) askedSlices.push('suggestions', 'decisions', 'activity', 'notifications')
-    if (admin) askedSlices.push('audit')
     patch({ sliceReads: sliceReadReport(partial, askedSlices) })
+    verdictPublished = true
     // Publish the verdict now. patch() wakes no subscriber by itself.
     // A retry or a resume reaches this line with no commit after it.
     commit()
@@ -954,10 +967,15 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     }
   } catch (e) {
     console.error('[yatraflow] hydration failed', e)
-    // #704: a throw leaves the trips read with no verdict, and a page that waits
-    // on that read would spin forever. Name the failure, unless a newer run replaced this one.
-    if (gen === hydrateGen) {
-      patch({ sliceReads: { ...cache.sliceReads, trips: 'failed' } })
+    // #704: a throw ends the run before its verdict. Each name the run answers for that
+    // has no verdict yet fails, so no page waits on a read that will never settle. A
+    // verdict already published stands. Cached rows stay in the cache: a failed slice
+    // with rows reads as kept, not empty. A run that threw before its scope was known
+    // could not read the trip-scoped slices either, so they fail too. A newer run owns the verdicts.
+    if (gen === hydrateGen && !verdictPublished) {
+      const unread = scopeKnown ? askedSlices : [...askedSlices, ...TRIP_SCOPED_READS]
+      // sliceReadReport marks a name failed when the list it gets lists that name. Here every name is listed.
+      patch({ sliceReads: { ...cache.sliceReads, ...sliceReadReport(unread, unread) } })
       commit()
     }
     toast('Could not load your data - check your connection.')
