@@ -281,8 +281,6 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 - **A destination only matches a region as a whole word.** "Goalpara" no longer takes the Goa artwork.
 
-- **A signed-out visitor no longer stays on "Loading the catalog" on Explore.** The logged-out load records whether it read profiles and itineraries. A failed read now shows Retry.
-
 ## [0.74.1] - 2026-10-12
 
 ### Fixed
