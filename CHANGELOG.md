@@ -186,6 +186,8 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ### Fixed
 
+- **Group input now says when it could not load, and keeps what it loaded.** If the stop ideas or decisions read fails with nothing loaded, the tab shows a failed message. The message has a Try again button. If cards are loaded, the tab keeps them and adds a short note with Try again. A pending read with nothing loaded shows a loading line. The activity feed keeps its rows the same way, and shows a failed line when it has none. When the feed loaded and has no entries, it shows a short empty line. (#704)
+
 - **Explore loads for logged-out visitors again.** A first visit without an account showed "Loading the catalog…" with no end, although the itineraries had loaded. The logged-out data load now reports the catalog as loaded or failed. A failed read now shows the error with a Retry button. The bug did not affect signed-in users.
 
 - **The copyright page enters with the shared cascade.** The page arrived without

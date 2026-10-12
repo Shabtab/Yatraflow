@@ -18,10 +18,11 @@ import {
   useDb, userById, currentUser, addSuggestion, voteSuggestion, addCommentToSuggestion,
   acceptSuggestionIntoTimeline, declineSuggestion, addDecision, voteOnDecision, resolveDecision,
   addCommentToDecision,
-  activityFor,
+  activityFor, resumeSync,
 } from '../../store/store'
 import { formatInr, minutesToHM } from '../../lib/engine'
 import { decisionContext, contextLine, recommendForDecision } from '../../lib/decisionGuide'
+import { emptyCopyFor, sliceState } from '../../lib/readState'
 import { Avatar, Chip, EmptyState, Field, toast } from '../../components/ui'
 import { refuseWhileStaged } from '../../lib/mutationLifecycle'
 import type { BusyClaim } from '../../lib/busyClaim'
@@ -92,6 +93,18 @@ export function GroupInputTab({ trip, editable, me, previewOpen }: {
 
   const suggestions = db.suggestions.filter(s => s.tripId === trip.id)
   const decisions = db.decisions.filter(d => d.tripId === trip.id)
+  const tripActivity = activityFor(trip.id)
+
+  // #704: a failed or pending read never hides loaded cards. The empty copy shows
+  // only for an empty list that read successfully. The list fails when either
+  // slice fails, and it reads while either slice is still pending.
+  const suggestionsRead = sliceState(db.sliceReads, 'suggestions')
+  const decisionsRead = sliceState(db.sliceReads, 'decisions')
+  const listFailed = suggestionsRead === 'failed' || decisionsRead === 'failed'
+  const listReading = !listFailed && (suggestionsRead === 'reading' || decisionsRead === 'reading')
+  const activityRead = sliceState(db.sliceReads, 'activity')
+  // Retry re-issues the read through the same re-hydrate that app resume runs.
+  const retryGroupInput = () => { void resumeSync() }
 
   // "Needs you" spans both kinds: an open item I haven't voted on.
   const suggestionNeedsMe = (sg: StopSuggestion) => sg.status === 'open' && !sg.votes.some(v => v.userId === me.id)
@@ -168,7 +181,20 @@ export function GroupInputTab({ trip, editable, me, previewOpen }: {
 
       <div className="two-col">
         <div>
-          {items.length === 0 && (
+          {items.length > 0 && listFailed && (
+            <p className="small muted">Couldn’t refresh group input — showing what was loaded. <button className="btn btn-outline btn-sm" onClick={retryGroupInput}>Try again</button></p>
+          )}
+          {items.length === 0 && listFailed && (() => {
+            const copy = emptyCopyFor('failed', 'group input', retryGroupInput)
+            return (
+              <EmptyState icon={<Lightbulb size={38} aria-hidden />} title={copy.title} body={copy.body}
+                action={<button className="btn btn-primary" onClick={retryGroupInput}>Try again</button>} />
+            )
+          })()}
+          {items.length === 0 && listReading && (
+            <div className="loading-block"><div className="spinner" />Loading group input…</div>
+          )}
+          {items.length === 0 && !listFailed && !listReading && (
             <EmptyState icon={<Lightbulb size={38} aria-hidden />} title={EMPTY_COPY.all.title}
               body={EMPTY_COPY.all.body} />
           )}
@@ -187,7 +213,16 @@ export function GroupInputTab({ trip, editable, me, previewOpen }: {
           <div className="card">
             <h3>Activity feed</h3>
             <hr className="divider" />
-            {activityFor(trip.id).slice(0, 20).map(a => (
+            {activityRead === 'failed' && tripActivity.length > 0 && (
+              <p className="small muted">Couldn’t refresh activity — showing what was loaded. <button className="btn btn-outline btn-sm" onClick={retryGroupInput}>Try again</button></p>
+            )}
+            {activityRead === 'failed' && tripActivity.length === 0 && (
+              <p className="small muted">Couldn’t load activity. <button className="btn btn-outline btn-sm" onClick={retryGroupInput}>Try again</button></p>
+            )}
+            {activityRead === 'ready' && tripActivity.length === 0 && (
+              <p className="small muted">No activity yet.</p>
+            )}
+            {tripActivity.slice(0, 20).map(a => (
               <div key={a.id} className="feed-item">
                 <Avatar user={userById(a.actorId)} />
                 <span><b>{userById(a.actorId)?.profile.name}</b> {a.verb}{a.target ? ` · ${a.target}` : ''}</span>
