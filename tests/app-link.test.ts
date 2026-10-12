@@ -113,7 +113,9 @@ const readComponent = (file: string) => readFileSync(new URL(file, srcRoot), 'ut
 
 // Whole-line comments are prose, so a route named in a comment is not a link.
 const isCommentLine = (line: string) => /^\s*(\/\/|\/\*|\*)/.test(line)
-const nameIn = (name: string) => new RegExp(`\\b${name}\\b`)
+// Identifier tokens in a source fragment. A token is a whole identifier, so
+// CREATE_ROUTE never matches inside CREATE_ROUTES.
+const identifiersIn = (text: string): Set<string> => new Set(text.match(/[A-Za-z_$][\w$]*/g) ?? [])
 
 // Route constants whose value is a hash address. Found by value, not by name,
 // so a renamed constant with the same hash value is still caught.
@@ -134,7 +136,8 @@ function hashValuedNames(lines: string[]): Set<string> {
   while (grew) {
     grew = false
     for (const { name, value } of declarations) {
-      const reachesHash = value.includes('#/') || [...hashValued].some(hash => nameIn(hash).test(value))
+      const valueIds = identifiersIn(value)
+      const reachesHash = value.includes('#/') || [...hashValued].some(hash => valueIds.has(hash))
       if (!hashValued.has(name) && reachesHash) {
         hashValued.add(name)
         grew = true
@@ -155,7 +158,7 @@ function hashRouteOffenders(): string[] {
       if (isCommentLine(line)) return
       const quotedHash = /["'`]#\//.test(line)
       const href = /\bhref\s*=\s*\{([^}]*)\}/.exec(line)
-      const computedHash = href !== null && [...hashValued].some(name => nameIn(name).test(href[1]))
+      const computedHash = href !== null && [...identifiersIn(href[1])].some(id => hashValued.has(id))
       if (quotedHash || computedHash) offenders.push(`${file}:${index + 1}: ${line.trim()}`)
     })
   }
