@@ -1,10 +1,11 @@
 {
   "name": "yatraflow",
-  "version": "0.74.0",
+  "version": "0.74.1",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "ui:sweep": "node scripts/ui-sweep.mjs",
     "start": "pwsh -NoProfile -File scripts/start.ps1",
     "build": "tsc -b && vite build",
     "preview": "vite preview",

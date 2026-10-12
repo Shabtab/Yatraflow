@@ -397,7 +397,9 @@ describe('#406 — the shelf surfaces the flag instead of printing the number', 
   })
 
   it('says the date is unknown rather than printing an invalid one', () => {
-    expect(pageSrc).toContain('date unknown')
+    // The formatter moved to lib/purchases, so the string is pinned there.
+    const libSrc = readFileSync(new URL('../src/lib/purchases.ts', import.meta.url), 'utf8')
+    expect(libSrc).toContain("'date unknown'")
   })
 
   it('passes the row flag into the date renderer, so a bad date cannot slip past it', () => {
@@ -428,11 +430,14 @@ describe('#409 — the shelf stops overclaiming', () => {
     // The pin is on the option that decides it. `toLocaleDateString` alone reads
     // the BROWSER's zone, which is the bug: a grant at 23:30 UTC was "yesterday"
     // in IST and "today" in the US — the same receipt, two dates.
-    expect(pageSrc).toMatch(/timeZone: 'UTC'/)
+    const libForZone = readFileSync(new URL('../src/lib/purchases.ts', import.meta.url), 'utf8')
+    expect(libForZone).toMatch(/timeZone: 'UTC'/)
     // Both formatters, not just the visible one: a month label that flips
     // between readers is the same defect one unit up.
-    const bought = pageSrc.slice(pageSrc.indexOf('function boughtOn'), pageSrc.indexOf('function updatedIn'))
-    const updated = pageSrc.slice(pageSrc.indexOf('function updatedIn'), pageSrc.indexOf('export function PurchasesPage'))
+    // The formatters live in lib/purchases so the keepsake helpers can share them.
+    const libSrc = readFileSync(new URL('../src/lib/purchases.ts', import.meta.url), 'utf8')
+    const bought = libSrc.slice(libSrc.indexOf('export function boughtOn'), libSrc.indexOf('export function updatedIn'))
+    const updated = libSrc.slice(libSrc.indexOf('export function updatedIn'), libSrc.indexOf('/** One owned publication'))
     expect(bought).toContain("timeZone: 'UTC'")
     expect(updated).toContain("timeZone: 'UTC'")
   })

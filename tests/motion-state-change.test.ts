@@ -64,6 +64,15 @@ function segmentedGroups(): { file: string; cls: string }[] {
   for (const rel of tsxFiles) {
     const sf = parse(rel)
     const visit = (node: ts.Node) => {
+      // The shared toggle draws its group inside SegmentedTabs.tsx, where the look class
+      // is a prop. The caller passes the class as a literal, so the caller is read here.
+      if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
+        if (node.tagName.getText() === 'SegmentedTabs' && stringValueOf(attrOf(node, 'semantics')) === 'toggle') {
+          for (const token of (stringValueOf(attrOf(node, 'className')) ?? '').split(/\s+/).filter(Boolean)) {
+            found.push({ file: 'src/' + rel, cls: token })
+          }
+        }
+      }
       if (ts.isJsxElement(node)) {
         const open = node.openingElement
         const role = stringValueOf(attrOf(open, 'role'))
@@ -227,7 +236,7 @@ describe('a list item that leaves plays an exit (AGENTS §2.10)', () => {
     { file: 'src/pages/TripsList.tsx', uses: /usePresenceList\(trashed,/ },
     { file: 'src/pages/Explore.tsx', uses: /usePresenceList\(\s*gridPubs\.slice\(0, visibleCount\),/ },
     { file: 'src/components/trips/SavedShelfSection.tsx', uses: /usePresenceList\(shelfRows,/ },
-    { file: 'src/components/explore/ExploreFilterBar.tsx', uses: /usePresenceList\(\s*filtersActive/ },
+    { file: 'src/components/page/FilterBar.tsx', uses: /usePresenceList\(\s*onClear \? \['clear'\] : \[\]/ },
   ]
   for (const { file, uses } of wired) {
     it(`${file} keeps a leaving item mounted: ${uses.source.slice(0, 40)}`, () => {
@@ -237,6 +246,10 @@ describe('a list item that leaves plays an exit (AGENTS §2.10)', () => {
       expect(source, 'the list must attach the hook to its container').toMatch(/ref=\{attach\w+\}/)
     })
   }
+
+  it('ExploreFilterBar hands FilterBar its Clear handler only while a filter is active', () => {
+    expect(read('src/components/explore/ExploreFilterBar.tsx')).toMatch(/onClear=\{filtersActive \? onClear : undefined\}/)
+  })
 
   it('lets both card components wear the presence attributes', () => {
     expect(read('src/components/trips/TripCard.tsx')).toMatch(/\{\.\.\.presence\}/)

@@ -123,6 +123,13 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - **My trips shows a pinned Up next card for your live or soonest trip.** The card shows a countdown, Budget, Travel and Dates columns, the count of days that have activities, the next step and a delete button. The count hides when the trip is live, because the day count is the progress then. It stays pinned through sort and style filters. It hides while you search.
 
 ### Changed
+- **Profile and Admin look the same, with no visual changes.** Static styles now use named CSS classes. Values that depend on data or state stay inline. Admin's six 18px spacings stay inline under the spacing ruling.
+
+- **Page headers animate in once, with the rest of the page.** The header no longer adds its own rise-and-fade on top of the page entrance. The Explore filter bar now uses the shared `FilterBar`. Its Clear filters button still fades out when the last filter goes. The My trips Grid and List switch uses the shared `SegmentedTabs`. Later pages can reuse both parts. A new test keeps the page counts in a baseline, and a count rises only through a deliberate update.
+
+- **My purchases now matches Explore and My trips, with creator details on plans you hold.** The page has a serif title, a back link and cards with wide covers. Its summary keeps every caveat about unreadable totals, refunds and pending payments. Loading, failed reads and empty shelves stay separate states on Purchases and My trips. Held plans show the creator's avatar, your purchase date and a "Yours" seal. Tips and season chips appear only when the creator supplied them. Refunded, pending and off-sale plans keep plain cards. Update text identifies a re-publication without claiming what changed. The desktop header carries the note "Yours to keep." The unlock screen links to My purchases, where your new card shows one fading outline. A fork keeps the creator's dates, which you can change. Motion respects your device's reduced-motion setting.
+
+- **Overview, Share, sign-in and DMCA pages keep the same appearance.** Their static styles now use CSS classes. Their behavior stays the same.
 
 - **Search engines get clearer signals for the calculator and the share cards.** The calculator page says "Prices checked October 2026" and lists a published and modified date in its structured data. The address without the final slash now redirects to the page. The app pages and the share cards declare the language `en-IN`. A share card for an itinerary or creator that exists is now cached at the edge for five minutes. A missing or failed card is never cached.
 
@@ -180,6 +187,10 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
   opt-out.
 
 ### Fixed
+
+- **Group input now says when it could not load, and keeps what it loaded.** If the stop ideas or decisions read fails with nothing loaded, the tab shows a failed message. The message has a Try again button. If cards are loaded, the tab keeps them and adds a short note with Try again. A pending read with nothing loaded shows a loading line. The activity feed keeps its rows the same way, and shows a failed line when it has none. When the feed loaded and has no entries, it shows a short empty line. (#704)
+- **The Map tab now says when it could not load stops along the route**. A failed Google Places search shows "Stops along the route could not be loaded just now." A search that finds no stops still shows the route message. (#704)
+- **`npm run lint:ste` checks the prose lines your branch adds.** The check diffs your work against the merge base of `origin/test`, so committed and uncommitted lines both count. In a pull request, the base is the target branch. If `origin/test` is missing, the check tries `origin/main`, then `HEAD~1`, and prints the base it used. Under CI, a missing base stops the check with exit code 2. A list item is checked after its marker, unless it sits in a code fence. Each sentence on a checked line is measured in full.
 
 - **Explore loads for logged-out visitors again.** A first visit without an account showed "Loading the catalog…" with no end, although the itineraries had loaded. The logged-out data load now reports the catalog as loaded or failed. A failed read now shows the error with a Retry button. The bug did not affect signed-in users.
 
@@ -270,6 +281,12 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - **The When filter treats an impossible date such as 2026-02-31 as a draft trip.** It now agrees with the status shown on the card.
 
 - **A destination only matches a region as a whole word.** "Goalpara" no longer takes the Goa artwork.
+
+## [0.74.1] - 2026-10-12
+
+### Fixed
+
+- **Joining a trip now needs its invite code.** The server reads the code and adds you as an editor. The app no longer writes the membership row itself. A link that carries only a trip ID no longer adds anyone. Trip previews and share snapshots no longer include the invite code. Share snapshots also no longer include the member list. Trips with a published itinerary have re-issued invite codes, so earlier links to them stop working. The app never replaces an invite code that the server already holds. New invite codes are longer and harder to guess, and older codes still work, except re-issued codes.
 
 ## [0.74.0] - 2026-10-07
 

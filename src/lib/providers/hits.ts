@@ -392,6 +392,11 @@ export interface NearbyOpts {
   speedKmph?: number
   /** Already-planned stops — candidates near them are dropped (see filterPlannedNearby). */
   plannedStops?: PlannedStop[]
+  /**
+   * #704: reject when a Google search fails, instead of answering []. Only the
+   * Map tab sets it, so its note can say the search failed rather than blame the route.
+   */
+  rejectOnFailure?: boolean
   /** "HH:MM" drive-start per day index for the journey clock (unset falls back to 08:30). */
   dayStartTimes?: string[]
   /** rain chance percent per day index for the weather join (null = no forecast). */

@@ -1056,7 +1056,7 @@ describe("a popup's host claims the rung, never the popup", () => {
     expect(bar!.body).toMatch(/z-index:\s*var\(--z-frost\)/)
     // The rule changes nothing unless the page carries the class on the bar
     // that actually holds the selects.
-    expect(source('src/components/explore/ExploreFilterBar.tsx')).toContain('ex-filterbar filterbar-host')
+    expect(source('src/components/page/FilterBar.tsx')).toContain('ex-filterbar filterbar-host')
     expect(source('src/pages/TripsList.tsx')).toContain('ex-filterbar filterbar-host')
   })
 

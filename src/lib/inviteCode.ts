@@ -1,15 +1,19 @@
 // ============ Invite codes ============
 // Human-usable invite codes: shorter and more meaningful than the raw trip
-// UUID. Shape: <SLUG>-<4 unambiguous chars> — the slug comes from the trip's
-// name/start city (e.g. "GOA-K7QF", "RAJASTHAN-X2M9"), the 4-char tail is
-// drawn from an unambiguous alphabet (no 0/O/1/I/S/5) so codes can be read
-// out over a call without confusion. Pure module: no supabase/react imports,
-// node-testable.
+// UUID. Shape: <SLUG>-<8 unambiguous chars> — the slug comes from the trip's
+// name/start city (e.g. "GOA-K7QFH3WT", "RAJASTHAN-XM9P4KTN"). The 8-char tail
+// is drawn from an unambiguous 28-character alphabet (no 0/O, 1/I, 2/Z, 5/S),
+// so codes can be read out over a call without confusion. Codes made before
+// the tail grew to 8 characters have a 4-char tail, and they still work.
+// Pure module: no supabase/react imports, node-testable.
 import type { Trip } from '../data/types'
 
-/** Unambiguous uppercase alphabet for the random tail: no 0/O, 1/I, 5/S, 2/Z. */
+/** Unambiguous uppercase alphabet for the random tail: no 0/O, 1/I, 5/S, 2/Z. 28 characters. */
 const TAIL_ALPHABET = 'ABCDEFGHJKLMNPQRTUVWXY346789'
-const TAIL_LENGTH = 4
+/** Tail length of every code made now. 28^8 is about 3.8e11 possible tails. */
+const TAIL_LENGTH = 8
+/** Tail length of codes made before TAIL_LENGTH was 8. Still accepted. */
+const LEGACY_TAIL_LENGTH = 4
 let tailLastResortSeq = 0
 
 /** Characters that never appear in a slug, and therefore safely separate it
@@ -29,11 +33,11 @@ function slugifyHead(text: string): string {
   return slug.slice(0, 10)
 }
 
-/** Random 4-char tail from the unambiguous alphabet, drawn from the platform
- *  CSPRNG — an invite code is a join credential, so generator predictability
- *  is a security property, not a style choice (the same fix class as
- *  presence.ts's session key). Rejection sampling keeps the 26-char alphabet
- *  unbiased: bytes >= 234 (= floor(256/26)*26) are redrawn. */
+/** Random tail of TAIL_LENGTH characters from the unambiguous alphabet, drawn
+ *  from the platform CSPRNG — an invite code is a join credential, so generator
+ *  predictability is a security property, not a style choice (the same fix class
+ *  as presence.ts's session key). Rejection sampling keeps the 28-character
+ *  alphabet unbiased: bytes >= 252 (= floor(256/28)*28) are redrawn. */
 function randomTail(): string {
   const size = TAIL_ALPHABET.length
   const maxUnbiased = Math.floor(256 / size) * size
@@ -85,13 +89,15 @@ export function normalizeInviteCode(raw: string): string {
     .replace(new RegExp(`^${INVITE_SEPARATOR}+|${INVITE_SEPARATOR}+$`, 'g'), '')
 }
 
-/** Is this string shaped like an invite code (a head, one separator, a tail)? */
+/** Is this string shaped like an invite code (a head, one separator, a tail)?
+ *  The tail has the current length, or the legacy length from before it grew. */
 export function looksLikeInviteCode(raw: string): boolean {
   const code = normalizeInviteCode(raw)
   const parts = code.split(INVITE_SEPARATOR)
   if (parts.length !== 2) return false
   const [head, tail] = parts
-  return /^[A-Z0-9]{1,10}$/.test(head) && new RegExp(`^[${TAIL_ALPHABET}]{${TAIL_LENGTH}}$`).test(tail)
+  const tailShape = new RegExp(`^(?:[${TAIL_ALPHABET}]{${TAIL_LENGTH}}|[${TAIL_ALPHABET}]{${LEGACY_TAIL_LENGTH}})$`)
+  return /^[A-Z0-9]{1,10}$/.test(head) && tailShape.test(tail)
 }
 
 /**

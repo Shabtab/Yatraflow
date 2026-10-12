@@ -1,20 +1,16 @@
 // ============ Explore — loading, failed and empty states ============
 // One block for every state the grid can show in place of cards. The copy comes
-// from the page, so each state says only what that page has read.
+// from the page, so each state says only what that page has read. The markup
+// lives in the shared StateBlock; this wrapper keeps Explore's call sites short.
 import type { ReactNode } from 'react'
+import { StateBlock, type StateKind } from '../page/StateBlock'
 
-export function ExploreStateBlock({ icon, title, body, actions }: {
+export function ExploreStateBlock({ kind = 'empty', icon, title, body, actions }: {
+  kind?: StateKind
   icon?: ReactNode
   title: string
   body?: string
   actions?: ReactNode
 }) {
-  return (
-    <div className="ex-state">
-      {icon && <div className="ex-state-icon">{icon}</div>}
-      <h3 className="ex-state-title">{title}</h3>
-      {body && <p className="ex-state-body">{body}</p>}
-      {actions && <div className="ex-state-actions">{actions}</div>}
-    </div>
-  )
+  return <StateBlock kind={kind} icon={icon} title={title} body={body} actions={actions} />
 }
