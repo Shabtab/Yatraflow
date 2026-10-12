@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { createElement } from 'react'
 import { stateBlockHasBody, stateBlockRole, stateBlockRootClass } from '../src/components/page/StateBlock'
 
-const SOURCE = readFileSync(join(process.cwd(), 'src/components/page/StateBlock.tsx'), 'utf8')
+const SOURCE = readFileSync(join(process.cwd(), 'src/components/page/StateBlock.tsx'), 'utf8').replace(/\r\n/g, '\n')
 
 describe('stateBlockRole', () => {
   it('announces loading as a polite status', () => {
