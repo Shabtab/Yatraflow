@@ -153,7 +153,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ### Fixed
 
-- **Joining a trip now needs its invite code.** The server reads the code and adds you as an editor. The app no longer writes the membership row itself. A link that carries only a trip ID no longer adds anyone. Trip previews and share snapshots no longer include the invite code. Share snapshots also no longer include the member list. Trips with a published itinerary have re-issued invite codes, so earlier links to them stop working. The app never replaces an invite code that the server already holds.
+- **Joining a trip now needs its invite code.** The server reads the code and adds you as an editor. The app no longer writes the membership row itself. A link that carries only a trip ID no longer adds anyone. Trip previews and share snapshots no longer include the invite code. Share snapshots also no longer include the member list. Trips with a published itinerary have re-issued invite codes, so earlier links to them stop working. The app never replaces an invite code that the server already holds. New invite codes are longer and harder to guess, and older codes still work, except re-issued codes.
 
 ## [0.74.0] - 2026-10-07
 

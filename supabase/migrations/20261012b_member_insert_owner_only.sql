@@ -95,7 +95,7 @@ grant execute on function public.get_invite_trip(uuid) to anon, authenticated;
 -- Re-issue the invite codes of trips that back a published itinerary.
 -- The old code is replaced. Membership rows are not touched.
 -- A new code has the shape of makeInviteCode in src/lib/inviteCode.ts: a head
--- from the trip name or start city, one dash, then four tail characters.
+-- from the trip name or start city, one dash, then eight tail characters.
 -- ============================================================
 do $$
 declare
@@ -123,7 +123,7 @@ begin
     v_issued := false;
     for v_attempt in 1..10 loop
       v_tail := '';
-      while length(v_tail) < 4 loop
+      while length(v_tail) < 8 loop
         v_byte := get_byte(decode(replace(gen_random_uuid()::text, '-', ''), 'hex'), 0);
         if v_byte < v_limit then
           v_tail := v_tail || substr(v_alphabet, 1 + v_byte % 28, 1);

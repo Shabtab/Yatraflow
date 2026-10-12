@@ -183,8 +183,8 @@ describe('invite codes re-issued for published trips (tighten step)', () => {
 
   it('draws the tail from the client alphabet, the client length and the client bias limit', () => {
     expect(captured(body, /v_alphabet text := '([A-Z0-9]+)'/)).toBe(TAIL)
-    expect(INVITE_LIB).toMatch(/const TAIL_LENGTH = 4$/m)
-    expect(body).toMatch(/length\(v_tail\) < 4/)
+    expect(INVITE_LIB).toMatch(/const TAIL_LENGTH = 8$/m)
+    expect(body).toMatch(/length\(v_tail\) < 8/)
     expect(Number(captured(body, /v_limit\s+int := (\d+);/))).toBe(Math.floor(256 / TAIL.length) * TAIL.length)
   })
 
