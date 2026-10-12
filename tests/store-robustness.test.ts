@@ -294,3 +294,61 @@ describe('#704 — a throw after the first read still gives the trips slice a ve
     await vi.waitFor(() => expect(sliceState(store.getSnapshot().sliceReads, 'trips')).toBe('failed'))
   })
 })
+
+/** A trip row that rowToTrip maps, so a read that finds a trip never reaches the demo seed. */
+function mappableTripRow(id: string, ownerId: string) {
+  return {
+    id, owner_id: ownerId, name: `Trip ${id}`, start_location: 'Kochi',
+    start_location_coords: null, destinations: ['Kochi'], destination_coords: null,
+    start_date: '2026-10-01', end_date: '2026-10-03', travellers: 2, transport_mode: 'car',
+    budget_per_person_inr: 5000, travel_style: 'balanced', fixed_commitments: [],
+    days: [], expenses: [], cover_emoji: '🧭', visibility: 'private',
+    created_at: 1, updated_at: 1,
+  }
+}
+
+describe('#704 — a failed memberships read keeps the trip-scoped rows and reports them failed', () => {
+  afterEach(() => { vi.restoreAllMocks() })
+
+  it('keeps the cached suggestions, decisions, activity and notifications, and reports each one failed', async () => {
+    const { store, client } = await freshStore('user-d5')
+    let memberships: { data: unknown; error: unknown } = {
+      data: [{ trip_id: 'trip-d5', user_id: 'user-d5', role: 'owner', joined_at: 1 }],
+      error: null,
+    }
+    const rows: Record<string, unknown[]> = {
+      trips: [mappableTripRow('trip-d5', 'user-d5')],
+      suggestions: [{
+        id: 's1', trip_id: 'trip-d5', day_index: 0, proposed_by: 'user-d5', title: 'Fort', category: 'sightseeing',
+        location_name: 'Fort', lat: 10, lng: 76, visit_minutes: 60, status: 'open', votes: [], comments: [], created_at: 1,
+      }],
+      decisions: [{
+        id: 'd1', trip_id: 'trip-d5', question: 'Where to?', context: null, options: [], votes_by_user_id: {},
+        status: 'open', comments: [], raised_by: 'user-d5', created_at: 1,
+      }],
+      activity: [{ id: 'a1', trip_id: 'trip-d5', actor_id: 'user-d5', verb: 'added', target: 'Fort', at: 1 }],
+      notifications: [{ id: 'n1', user_id: 'user-d5', trip_id: 'trip-d5', text: 'Hello', read: false, at: 1 }],
+    }
+    vi.spyOn(client, 'from').mockImplementation(((table: string) => {
+      if (table === 'trip_members') return answering(memberships)
+      return answering({ data: rows[table] ?? [], error: null })
+    }) as never)
+
+    store.init()
+    await vi.waitFor(() => expect(store.getSnapshot().sliceReads.trips).toBe('ok'))
+    expect(store.getSnapshot().suggestions.map(s => s.id)).toEqual(['s1'])
+
+    // The memberships read fails now. Stage 2 never runs, so the cached rows must stay.
+    memberships = { data: null, error: { message: 'boom' } }
+    await store.rereadTrips()
+
+    const db = store.getSnapshot()
+    expect(db.suggestions.map(s => s.id)).toEqual(['s1'])
+    expect(db.decisions.map(d => d.id)).toEqual(['d1'])
+    expect(db.activity.map(a => a.id)).toEqual(['a1'])
+    expect(db.notifications.map(n => n.id)).toEqual(['n1'])
+    for (const slice of ['memberships', 'trips', 'suggestions', 'decisions', 'activity', 'notifications']) {
+      expect(sliceState(db.sliceReads, slice), slice).toBe('failed')
+    }
+  })
+})

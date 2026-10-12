@@ -747,6 +747,9 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     const myRows = (myMembershipsRes.data ?? []) as MemberRow[]
     const memberTripIds = myRows.map(m => m.trip_id)
     const myTripIds = [...new Set(memberTripIds)]
+    // #704: a failed memberships read leaves the trip scope unknown, so stage 2 read
+    // nothing for a member. The admin reads are not scoped by membership, so they stand.
+    const scopeUnread = !!myMembershipsRes.error && !admin
 
     // Stage 2 - the user's own trips + their collaboration data (PostgREST
     // rejects `id=in.<empty>`, so with no trips yet we record empty slices
@@ -845,6 +848,8 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     // empty list — the exact lie #383 owns. Name it, so the page's failed
     // branch (not its empty copy) renders and the demo seed stays blocked.
     if ((tripCountUnknown || tripsReadFailed) && !partial.includes('trips')) partial.push('trips')
+    // #704: the trip-scoped slices are unread too, so they report failed the way trips does.
+    if (scopeUnread) partial.push('suggestions', 'decisions', 'activity', 'notifications')
 
     // Stale run — a sign-out or account switch bumped hydrateGen while these
     // queries were in flight. Writing now would leak the previous account's rows
@@ -869,10 +874,8 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     patch({
       users,
       ...(tripsRead !== undefined ? { trips: tripsRead } : {}),
-      suggestions,
-      decisions,
-      activity,
-      notifications,
+      // #704: an unread scope keeps the cached rows. Clearing them would show an empty account.
+      ...(scopeUnread ? {} : { suggestions, decisions, activity, notifications }),
       adminAudit,
       // De-dupe published rows left by earlier buggy seeds (the publishItinerary
       // path used to mint a fresh trip id on every call — many rows per
@@ -930,6 +933,7 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     // so trips reports ready. A failed read reports failed, because partial names trips.
     const askedSlices: string[] = ['profiles', 'memberships', 'suggested itineraries', 'trips']
     if (admin || myTripIds.length > 0) askedSlices.push('members', 'suggestions', 'decisions', 'activity', 'notifications')
+    if (scopeUnread) askedSlices.push('suggestions', 'decisions', 'activity', 'notifications')
     if (admin) askedSlices.push('audit')
     patch({ sliceReads: sliceReadReport(partial, askedSlices) })
     // Publish the verdict now. patch() wakes no subscriber by itself.
