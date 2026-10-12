@@ -168,7 +168,7 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
   // for a read that succeeded. The reason is shown beside the button.
   const publishReady = publishRead === 'ready'
   const publishBlockedReason = publishRead === 'failed'
-    ? 'Publishing is paused. This trip may already be on Explore, and its status could not be read. Retry above.'
+    ? 'Publishing is paused until this trip’s Explore status loads. Try again above.'
     : 'Publishing waits until this trip’s publish status has loaded.'
 
   const priceNum = price.trim() === '' ? 0 : Number(price)
@@ -302,9 +302,6 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
         }
         return
       }
-      // The store already toasts its own failure and rolls the cache back; this
-      // keeps the form honest about the fact that nothing was published, rather
-      // than leaving the last validation error standing as if it were the reason.
       // `saveErr`, not `errs`: a write that failed is not a field's fault, and
       // pointing at the price box for a dropped connection would be a lie.
       setSaveErr('Could not save the publication — nothing was published. Try again.')
@@ -626,13 +623,13 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
           {/* Loading, failed and "not published" are three different statements
               (#704). The last one is said only after a read that succeeded. */}
           {publishView === 'reading' && (
-            <p className="hint-text ts-note">Checking whether this trip is on Explore…</p>
+            <p className="hint-text ts-note shr-read-loading" role="status">Checking whether this trip is on Explore…</p>
           )}
           {publishView === 'failed' && (
-            <p className="err-text ts-note" aria-live="polite">
-              Couldn't read this trip's publish status.{' '}
+            <p className="err-text ts-note shr-read-failed" role="alert">
+              Couldn’t check if this trip is on Explore.{' '}
               <button className="btn btn-outline btn-sm" onClick={retryPublish} disabled={publishRetrying}>
-                {publishRetrying ? 'Retrying…' : 'Retry'}
+                {publishRetrying ? 'Trying…' : 'Try again'}
               </button>
             </p>
           )}
@@ -649,10 +646,10 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
             </p>
           ))}
           {publishView === 'kept' && (
-            <p className="err-text ts-note" aria-live="polite">
-              Couldn't refresh the publish status. The status above is the last one that loaded.{' '}
+            <p className="err-text ts-note shr-read-kept" role="status">
+              Couldn’t refresh. Showing the last status that loaded.{' '}
               <button className="btn btn-outline btn-sm" onClick={retryPublish} disabled={publishRetrying}>
-                {publishRetrying ? 'Retrying…' : 'Retry'}
+                {publishRetrying ? 'Trying…' : 'Try again'}
               </button>
             </p>
           )}

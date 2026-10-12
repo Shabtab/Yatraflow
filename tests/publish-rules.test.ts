@@ -377,7 +377,7 @@ describe('#389 — the publish form reports a rule against its own field', () =>
     expect(SHARE).toContain('aria-invalid={errs.freeDays ? true : undefined}')
   })
 
-  it('keeps field messages POLITE and the summary the only assertive beat', () => {
+  it('keeps field messages POLITE, and the write banner the only assertive beat in the form', () => {
     // The split that makes a multi-field failure interrupt ONCE: every field
     // message is `role="status"`, and the single `role="alert"` is the
     // write-failure banner, which is genuinely whole-form — a dropped connection
@@ -387,9 +387,13 @@ describe('#389 — the publish form reports a rule against its own field', () =>
     // their politeness from `Field` (ui.tsx renders `error` as a `role="status"`
     // sibling) while the cover and the day group carry it by hand. Asserting
     // "three" in this file would be counting a message that is not here.
-    expect(SHARE.match(/role="status"/g) ?? []).toHaveLength(2)
-    expect(SHARE.match(/role="alert"/g) ?? []).toHaveLength(1)
+    // The publish-status notes (#704) sit above the form and are not field messages.
+    // The loading hint and the kept note are polite. The failed note is a second alert,
+    // and it reports the status read, not a write. Both counts move on purpose.
+    expect(SHARE.match(/role="status"/g) ?? []).toHaveLength(4)
+    expect(SHARE.match(/role="alert"/g) ?? []).toHaveLength(2)
     expect(SHARE).toContain('role="alert">{saveErr}</p>')
+    expect(SHARE).toContain('shr-read-failed" role="alert"')
     // The picker's own message is polite too — it is a field message, and it
     // shares one node with the form's cover message.
     expect(PICKER).toContain('role="status" aria-live="polite"')

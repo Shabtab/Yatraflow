@@ -10240,3 +10240,7 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 /* #704: a note that says a read failed enters like the error line it stands in for. */
 .ovw-weather-failed, .ovw-weather-kept { animation: errIn var(--motion-med) var(--ease-out); }
 @media (prefers-reduced-motion: reduce) { .ovw-weather-failed, .ovw-weather-kept { animation: none; } }
+
+/* #704: the publish-status notes on the Share tab enter like the error line. */
+.shr-read-failed, .shr-read-kept, .shr-read-loading { animation: errIn var(--motion-med) var(--ease-out); }
+@media (prefers-reduced-motion: reduce) { .shr-read-failed, .shr-read-kept, .shr-read-loading { animation: none; } }

@@ -289,8 +289,26 @@ describe('#704 — the Share tab does not say "not published" over an unread sta
     const form = share.indexOf('<PublicationForm')
     expect(failed).toBeGreaterThan(-1)
     expect(form).toBeGreaterThan(failed)
-    expect(share).toContain("Couldn't read this trip's publish status.")
+    expect(share).toContain('Couldn’t check if this trip is on Explore.')
+    expect(share).toMatch(/<p className="err-text ts-note shr-read-failed" role="alert">/)
     expect(share).toMatch(/rereadPublicSlices\(\)\.finally/)
+  })
+
+  it('the kept note is a status with the new copy, and the loading hint is a status', () => {
+    expect(share).toMatch(/<p className="err-text ts-note shr-read-kept" role="status">\s*Couldn’t refresh\. Showing the last status that loaded\./)
+    expect(share).toMatch(/<p className="hint-text ts-note shr-read-loading" role="status">Checking whether this trip is on Explore…<\/p>/)
+  })
+
+  it('a failed read and a kept read both offer Try again, and say Trying… while the re-read runs', () => {
+    expect(share.match(/\{publishRetrying \? 'Trying…' : 'Try again'\}/g)?.length ?? 0).toBe(2)
+    expect(share).not.toContain("'Retry'")
+    expect(share).not.toContain("'Retrying…'")
+  })
+
+  it('the old Share copy is gone, and so is the stale store-toast comment', () => {
+    expect(share).not.toContain("Couldn't read this trip's publish status")
+    expect(share).not.toContain("Couldn't refresh the publish status")
+    expect(read('../src/pages/trip/ShareTab.tsx')).not.toContain('The store already toasts its own failure')
   })
 
   it('never claims that the trip is not published', () => {
@@ -307,7 +325,7 @@ describe('#704 — the Share tab does not say "not published" over an unread sta
   it('disables submit with the reason until the status is ready again', () => {
     expect(share).toMatch(/<fieldset className="ts-submit-gate" disabled=\{!publishReady\}>/)
     expect(share).toMatch(/if \(!publishReady\) return/)
-    expect(share).toContain('Publishing is paused.')
+    expect(share).toContain('Publishing is paused until this trip’s Explore status loads. Try again above.')
     expect(share).toContain('Publishing waits until')
     expect(share).toMatch(/publishRead=\{publishRead\}/)
   })
