@@ -30,7 +30,7 @@ export function isSameLocalDay(a: Date, b: Date): boolean {
  * Milliseconds from `now` to the next local midnight.
  *
  * The span comes from calendar fields, not from adding 24 hours. A local
- * midnight is therefore always the target, even on a day a daylight-saving
+ * midnight is always the target, even on a day a daylight-saving
  * change shortens or lengthens. The answer is at least 1ms, so a caller at
  * exactly midnight still waits for the NEXT midnight instead of waking at once
  * in a loop.

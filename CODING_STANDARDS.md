@@ -679,7 +679,7 @@ anywhere in this repo means the entry labelled `6b` below.
    the layout settles, or the target drifts. You must check a scroll by class
    and probe, not by `scrollY`. Script-driven scroll needs frames too.
  6al. **A class rename must move the class's whole selector family (learned
-   2026-10-06, MR9).** Renaming `.day-rail-chip` to `.day-rail-card` left one
+   2026-10-06, MR9).** The rename from `.day-rail-chip` to `.day-rail-card` left one
    selector behind. The `[aria-current]` rule stayed on the dead name, so the
    current-day marker silently died. The green pins hid it: a sibling rule on
    the new name already passed. You must grep the old class through
@@ -701,7 +701,7 @@ anywhere in this repo means the entry labelled `6b` below.
    *declares* trips a gate. So append at EOF when that is where the change
    belongs — not to protect the baseline.
    **A migrated legacy value fails the gate until you delete its entry (learned
-   2026-10-06).** Replacing `.route-panel`'s raw `.55s` with `var(--motion-slow)`
+   2026-10-06).** The change from `.route-panel`'s raw `.55s` to `var(--motion-slow)`
    made the gate report `.route-panel — animation: .55s` under "these no longer
    reproduce — delete them from design-system-baseline.json". That message is
    the cleanup the ratchet asks for, not a regression. Delete the line. Never
@@ -922,7 +922,7 @@ process.
 
 - **Vendored ripgrep can be missing in the desktop environment — `code_search` fails with ENOENT (`rg.exe` not found).** Don't retry it; fall back to `grep -n` / `awk` in the shell, which answer the same question.
 
-- **The changelog's union driver applies only when both sides already carry it (learned 2026-10-10).** `union` is a built-in git driver, so no `merge.union.driver` config is needed (checked on git 2.51.0): with the rule in `.gitattributes`, an append-vs-append merge keeps both sides and writes no markers. The merge that BRINGS the rule in is the exception: the pre-merge tip had no `CHANGELOG.md merge=union` line, so that merge wrote markers — and the incoming release headings left 29 of this branch's entries inside the released `[0.73.0]` section. A docs commit had to move each one back to `[Unreleased]`. After a merge that cuts a release, check the shape by hand: every branch-new entry must sit above the newest `## [X.Y.Z]` heading, and byte-diff each moved block against the pre-merge copy.
+- **The changelog's union driver applies only when both sides already carry it (learned 2026-10-10).** Git provides the `union` driver. You do not need a `merge.union.driver` setting. With the rule in `.gitattributes`, an append conflict keeps both sides without markers. The merge that adds this rule is an exception. The earlier tip had no `CHANGELOG.md merge=union` line, so that merge wrote markers. Incoming release headings also left 29 new entries inside the released `[0.73.0]` section. A later edit moved each entry back to `[Unreleased]`. After a release merge, you must check every new entry's release heading. You must compare each moved block with its earlier copy.
 
 - **Release tags are not automatic — they were skipped after v0.44.0.** `git tag` stopped at v0.44.0 while `package.json` climbed to 0.47.0 and nothing in the gate reads tags, so nobody noticed. Verify tag state with `git tag --sort=-creatordate | head` when a release claims to be tagged; backfilling needs an explicit tag push to the remote.
 

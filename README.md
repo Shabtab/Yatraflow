@@ -99,7 +99,7 @@ _Release highlights, newest first — the full record lives in [CHANGELOG.md](CH
 - **Save days and stops on the Timeline.** A heart beside each day and stop saves it. Your saved items appear in a "Saved for later" list on My trips.
 - **My trips and Explore look the same.** Both pages share fonts, buttons, filters and cards. My trips can show its trips as a grid or as a list.
 - **Shared plans show their free days to search engines.** The share page shows each free day and its stops. A Ladakh bike trip cost calculator is free to use.
-- **Pages enter with motion, and a failed read says so.** A failed read shows a message, not an empty page.
+- **Pages enter with motion.** Group input and map panels show failed reads with a retry action.
 
 ## ✨ The v0.67–v0.68 run, in plain words
 

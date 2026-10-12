@@ -17,7 +17,7 @@
 
 import type { ItineraryDay, ItineraryStop, Trip } from '../data/types'
 
-/** What the card should offer. `done` means the trip needs nothing from you. */
+/** What the card must offer. `done` means the trip needs nothing from you. */
 export type NextStepKind =
   | 'add-dates'
   | 'plan-day'
@@ -40,7 +40,7 @@ export interface NextStep {
  * The cover emoji a trip gets before anyone chooses one.
  *
  * `trips.cover_emoji` is `not null default '🧭'`, and `CoverThumb` falls back to
- * the same glyph when it is handed no emoji at all. A stored 🧭 is therefore
+ * the same glyph when it is handed no emoji at all. A stored 🧭 is
  * indistinguishable from "no cover chosen" on screen and in the data — which is
  * why a live read of every publication (2026-10-05) found `coverEmoji` set on
  * all of them while `coverImageUrl` was set on one. Counting 🧭 as a cover made
@@ -151,7 +151,7 @@ export function nextTripStep(trip: Trip): NextStep {
  *
  * The measure is activity coverage, not readiness. A day the store anchored
  * automatically is not planned, because an anchor is a route point (#647). A
- * trip can therefore read 0 of 3 days while a route already exists, which is the
+ * trip can read 0 of 3 days while a route already exists, which is the
  * honest answer to "what have I planned".
  */
 export function plannedDayRatio(trip: Pick<Trip, 'days'>): { planned: number; total: number; pct: number } {

@@ -25,8 +25,7 @@ const MANIFEST_PATH = path.join(DEFAULT_OUT, 'manifest.json')
 const FILE_PATTERN = /^[a-z0-9-]+-\d+\.(avif|webp)$/
 
 // Encoder settings. These match the pilot (records/manifest-pilot.json,
-// sharp 0.35.5). Changing one changes every derivative, so bump the budget
-// review with it.
+// sharp 0.35.5). A change affects every derivative, so review the budget too.
 const ENCODE = {
   avif: { quality: 50, effort: 6, chromaSubsampling: '4:2:0' },
   webp: { quality: 60, effort: 6 },
