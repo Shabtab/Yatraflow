@@ -35,6 +35,8 @@ M6. The `vX.Y.Z` in each M-heading is therefore **historical intent only and is 
 the ledger tracks content, and only the ledger's version numbers are real. Where a heading's
 number collides with a shipped release, the ledger wins.
 
+> **Strategy (2026-10-12):** the order of work is set by [`docs/commercial/STRATEGY.md`](docs/commercial/STRATEGY.md) — a six-week feature freeze and distribution sprint with a written gate.
+
 ---
 
 ## Open issues

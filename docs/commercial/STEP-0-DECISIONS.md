@@ -1,5 +1,7 @@
 # YatraFlow — Step 0: Ratified Commercial Decisions
 
+> **2026-10-12:** [`STRATEGY.md`](STRATEGY.md) sets the current position and order of work. Where the two disagree, `STRATEGY.md` wins.
+
 **Date:** 2026-09-16 · **Status:** D1 RATIFIED by founder 2026-09-16; D2/D3 open ·
 **Supersedes:** the fee/subscription [DECISION]s left open in the source docs
 
