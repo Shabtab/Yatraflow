@@ -57,6 +57,23 @@ time, and that time does not go to travellers.
 Sources for this section are in the session research of 2026-10-12. Re-check a figure before
 you put it in public copy.
 
+### Creator evidence (checked on the source page, 2026-10-12)
+
+| Figure | Why it matters | Source |
+| --- | --- | --- |
+| 4.12M Indian creators in 2025, up from 0.96M in 2020. 66% are outside the metros. | The supply of creators is large and spread across the country. | ISB–Hashfame report, 2026-07-14 |
+| Over 2–2.5M monetised content creators in India. | Many creators already sell something. A better way to earn is a direct draw. | BCG, 2025-05-03 |
+| Topmate takes 10% on a creator's own link and 20% on its marketplace. | Our split fee (§5) matches the market norm. | topmate.io pricing page |
+| Gumroad takes 10% + $0.50 on a direct sale and 30% on its marketplace. | 10% is the norm for a creator's own buyers. | gumroad.com pricing page |
+| Cleartrip's creators get a "TRIP" comment that sends a booking link by DM. No follower minimum. | An Indian OTA already runs the comment-to-plan flow. We compete on the plan, not on payouts. | Cleartrip, 2026-06-24 |
+| MakeMyTrip's creator programme pays on engagement and states no follower minimum. | The OTAs court small creators too. | Skift, 2026-06-03 |
+| Instagram allows one private reply per comment, within seven days. | A "comment ROUTE" flow must fit that limit. | Meta Private Replies docs |
+| Carousels earn the most saves on Instagram. | The snapshot tool needs a day-by-day carousel. | Socialinsider, 2026-02-20 |
+| Polarsteps reached 20M users, up from 15M in July 2025. | Travellers share trip maps. | Polarsteps, 2026-03-27 |
+
+**Not measured yet:** how often followers ask creators for an itinerary. Only vendors of
+comment-to-DM tools claim it. The ten creator interviews in §4 measure it.
+
 ## 3. Position
 
 > **The road-trip plan your whole group can actually drive.**
