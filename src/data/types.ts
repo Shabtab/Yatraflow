@@ -32,6 +32,40 @@ export type StopStatus = (typeof STOP_STATUSES)[number]
 
 export type FixedCommitmentType = 'hotel-checkin' | 'train-departure' | 'flight-departure' | 'event' | 'other'
 
+/**
+ * A flight the crew is actually taking, on a flight-mode trip. This is the DATA
+ * the engine plans around: without it a flight trip is priced as ₹/road-km and
+ * timed at one blended speed, which is what produced a map full of road
+ * directions and a timeline full of driving time.
+ *
+ * Every field except the two airports and the day is OPTIONAL and means "the
+ * traveller has not said". Absent times fall back to the block-time model in
+ * `lib/air.ts`; an absent fare falls back to its indicative estimate. Neither
+ * fallback is ever dressed up as a booked fact — the UI labels both.
+ */
+export interface FlightLeg {
+  id: ID
+  /** The 0-based itinerary day this flight departs on. */
+  dayIndex: number
+  /** IATA codes. Resolved against lib/air.ts's INDIAN_AIRPORTS; an unknown code
+   *  is dropped on read rather than planned around. */
+  fromAirport: string
+  toAirport: string
+  /** Operating carrier, as the traveller types it ("IndiGo", "6E-2144"). */
+  airline?: string
+  /** Flight designator, e.g. "6E 2144". */
+  flightNumber?: string
+  /** "HH:MM" 24h — LOCAL departure time at fromAirport. Overrides the model. */
+  departAt?: string
+  /** "HH:MM" 24h — LOCAL arrival time at toAirport. Overrides the model. */
+  arriveAt?: string
+  /** Per-person fare in ₹ as paid/booked. Overrides the indicative estimate. */
+  costInrPerPerson?: number
+  /** PNR / booking reference. Never used for math — carried for the traveller. */
+  bookingRef?: string
+  notes?: string
+}
+
 /** Fuel or energy source for the vehicle on this trip. */
 export type FuelType = 'petrol' | 'diesel' | 'electric' | 'cng'
 
@@ -232,6 +266,17 @@ export interface Trip {
    */
   stayStyle?: 'budget' | 'comfort' | 'luxury'
   fixedCommitments: FixedCommitment[]
+  /**
+   * The flights this trip actually takes. Only meaningful when `transportMode`
+   * is `flight` — the engine decomposes the travel day into
+   * home → origin airport → flight → destination airport → hotel, and prices
+   * the sector from these rows rather than from a ₹/km table.
+   *
+   * Rides in its own `flights` jsonb column (see
+   * supabase/migrations/20261012c_trip_flights.sql), so it round-trips like
+   * `days`/`expenses` and needs no per-field probing.
+   */
+  flights?: FlightLeg[]
   days: ItineraryDay[]
   expenses: Expense[]
   members?: TripMember[]

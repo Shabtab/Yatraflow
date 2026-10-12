@@ -1,8 +1,9 @@
 // ============ Scheduling & impact engine ============
 // All outputs are transparent estimates. Nothing here claims live data.
-import type { Trip, ItineraryStop, ItineraryDay, ID, TravelStyle, FixedCommitment } from '../data/types'
+import type { Trip, ItineraryStop, ItineraryDay, ID, TravelStyle, FixedCommitment, FlightLeg } from '../data/types'
 import { haversineKm } from './geo'
 import { STAY_RATE_PER_NIGHT } from './rates'
+import { airportByIata, airBlockMinutes, airDistanceKm, airArc, airFareEstimateInr, nearestAirport, type Airport } from './air'
 
 export interface EngineAssumptions {
   mode: string
@@ -234,6 +235,31 @@ export interface LegEstimate {
    *  came from a routing provider (Google Routes / OSRM). The haversine
    *  fallback has no road shape — consumers must treat it as optional. */
   geometry?: [number, number][]
+  /** 'road' for a measured/estimated ground leg, 'air' for a flight sector.
+   *  Absent reads as 'road' — every leg written before flights existed was one.
+   *  The two kinds are priced and drawn differently, so a consumer that does not
+   *  check this silently bills a flight at the car's ₹/km. */
+  kind?: LegKind
+}
+
+/** How a leg is travelled — the split that makes a flight trip honest. */
+export type LegKind = 'road' | 'air'
+
+/**
+ * Assumptions for the GROUND legs of an air trip. The run to the origin airport
+ * and the run from the destination airport are car legs: pricing or timing them
+ * with the flight mode's blended figures — ₹6.5/km over great-circle distance,
+ * or 320 km/h — is exactly what made "home to airport" cost four minutes.
+ */
+export function groundAssumptions(trip: Pick<Trip, 'transportMode' | 'fuelEconomyKmL' | 'fuelPricePerL' | 'rentPerDayInr' | 'localTrain'>): EngineAssumptions {
+  const A = getAssumptions(trip)
+  if (!isAirMode(trip.transportMode)) return A
+  return { ...A, mode: 'car', avgSpeedKmph: MODE_SPEED.car, inrPerKm: MODE_COST_PER_KM.car }
+}
+
+/** True when the trip's mode flies, so its long leg is an air sector. */
+export function isAirMode(mode: string | undefined): boolean {
+  return mode === 'flight'
 }
 
 /** Canonical key for a leg between two points (used by the OSRM refinement layer). */
@@ -261,6 +287,18 @@ export interface ScheduledLeg {
   toTitle: string
   distanceKm: number
   durationMinutes: number
+  /** 'air' for a flight sector, 'road' (or absent) for everything on the ground.
+   *  Drives the map's line style, the timeline's icon and the budget's pricing
+   *  rule — a flight sector is priced by fare, never by ₹/km. */
+  kind?: LegKind
+  /** The FlightLeg id behind an air sector, so a surface can look up the
+   *  carrier, the number and the fare the traveller entered. */
+  flightId?: ID
+  /** The leg's whole-group cost when it is NOT distance-derived — a flight
+   *  fare. Present only on air legs. When set it REPLACES the ₹/km figure for
+   *  this leg everywhere money is summed (never adds to it), so a flight sector
+   *  can never also be billed at the car's per-km rate. */
+  costInr?: number
 }
 
 export interface DaySchedule {
@@ -294,10 +332,13 @@ export function simulateDay(
   legCorrections?: Record<string, LegEstimate>,
 ): DaySchedule {
   const j = buildJourney(trip, { ...day, index: dayIndex }, legCorrections, startOrigin)
-  // Timeline rows: every stored stop, plus the engine-added destination
-  // anchor when the journey needs one. The synthesized START (where the
-  // traveller wakes up that morning) is journey context, not a row.
-  const rows = j.points.filter(p => !p.synthesized || p.kind === 'destination')
+  // Timeline rows: every stored stop, plus the engine-added destination anchor
+  // when the journey needs one, plus the AIRPORT waypoints a flight day walks
+  // through — those rows carry the air leg, and the sector's fare and block time
+  // have to reach the totals, the ICS export and every other consumer of this
+  // schedule. The synthesized START (where the traveller wakes up that morning)
+  // is journey context, not a row.
+  const rows = j.points.filter(p => !p.synthesized || p.kind === 'destination' || p.legIn?.kind === 'air')
   return {
     dayIndex,
     startsAt: j.startTime,
@@ -479,6 +520,155 @@ function dayStartLabel(trip: Trip, dayIndex: number): string {
   return cleanPlaceName(trip.startLocation)
 }
 
+// ---------------- Flight decomposition ----------------
+// A flight-mode day is three legs, not one long one at one speed:
+//   home → origin airport (ground, road-measured) → sector (air) → the trip's
+//   end (ground). Pricing and timing all three at MODE_SPEED.flight is what
+//   made a flight trip's map show road directions, its timeline show driving
+//   time, and a 20 km run to the airport cost four minutes.
+
+/** How long before departure the traveller must be at the airport. */
+export const AIRPORT_CHECKIN_MIN = 120
+
+/** The flight that departs on `dayIndex`, or null. One per day is the model. */
+export function flightForDay(trip: Trip, dayIndex: number): FlightLeg | null {
+  const list = trip.flights ?? []
+  const f = list.find(x => x && x.dayIndex === dayIndex)
+  return f ?? null
+}
+
+/**
+ * A stand-in flight for a travel day that has none recorded yet: the nearest
+ * airport to where the day starts and the nearest to where it ends, with no
+ * times and no fare so every number it produces is the engine's own labelled
+ * model. This is what makes a flight-mode trip plan correctly BEFORE the
+ * traveller enters anything — the map draws an arc, the timeline shows a block
+ * time, and the Add-flight card is one tap away.
+ *
+ * Deliberately NOT produced for a day that plans its own stops: a sightseeing
+ * day at the destination is not a second flight.
+ */
+export function synthesizedFlight(
+  trip: Trip,
+  dayIndex: number,
+  startPoint: { lat: number; lng: number } | null | undefined,
+  endPoint: { lat: number; lng: number } | null | undefined,
+): FlightLeg | null {
+  const from = nearestAirport(startPoint)
+  const to = nearestAirport(endPoint)
+  if (!from || !to) return null
+  return {
+    id: `journey_air_${dayIndex}`,
+    dayIndex,
+    fromAirport: from.iata,
+    toAirport: to.iata,
+  }
+}
+
+export interface ResolvedAirports {
+  from: Airport
+  to: Airport
+}
+
+/**
+ * The two airports a flight day runs between. A stored IATA code that the
+ * bundled list does not know is dropped rather than planned around — an unknown
+ * code must not become an unplaced leg. Falls back to the nearest airport to
+ * the day's start / end points so a trip still plans before the traveller
+ * picks, and null when either end has nothing within range.
+ */
+export function resolveAirports(
+  flight: FlightLeg,
+  startPoint: { lat: number; lng: number } | null | undefined,
+  endPoint: { lat: number; lng: number } | null | undefined,
+): ResolvedAirports | null {
+  const from = airportByIata(flight.fromAirport) ?? nearestAirport(startPoint)
+  const to = airportByIata(flight.toAirport) ?? nearestAirport(endPoint)
+  if (!from || !to) return null
+  return { from, to }
+}
+
+/** Parse a stored "HH:MM" into minutes, or null when it is not one. */
+function parseHM(raw: string | undefined): number | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec((raw ?? '').trim())
+  if (!m) return null
+  const h = Number(m[1])
+  const min = Number(m[2])
+  if (!Number.isFinite(h) || !Number.isFinite(min) || h > 23 || min > 59) return null
+  return h * 60 + min
+}
+
+/**
+ * Block minutes for a sector: the traveller's stated departure and arrival when
+ * both are present and give a sane positive span (all sectors here are domestic,
+ * so both clocks are IST and the difference IS the block time), otherwise the
+ * model in lib/air.ts.
+ */
+export function flightBlockMinutes(
+  flight: FlightLeg,
+  from: { lat: number; lng: number },
+  to: { lat: number; lng: number },
+): number {
+  const dep = parseHM(flight.departAt)
+  const arr = parseHM(flight.arriveAt)
+  if (dep != null && arr != null) {
+    let span = arr - dep
+    if (span <= 0) span += 1440 // a red-eye that lands after midnight
+    if (span > 0 && span <= 1440) return span
+  }
+  return airBlockMinutes(from, to)
+}
+
+/** Per-person fare for a sector: stated when the traveller gave one, else the
+ *  indicative estimate. Never zero — a zero fare is not a fact. */
+export function flightFareInrPerPerson(
+  flight: FlightLeg,
+  from: { lat: number; lng: number },
+  to: { lat: number; lng: number },
+): number {
+  const stated = flight.costInrPerPerson
+  if (typeof stated === 'number' && Number.isFinite(stated) && stated > 0) return stated
+  return airFareEstimateInr(from, to)
+}
+
+/**
+ * The clock a flight day starts so the traveller reaches the origin airport
+ * `AIRPORT_CHECKIN_MIN` before a STATED departure. Only applied when a
+ * departure is stated — an estimated departure must not invent a wake-up time.
+ *
+ * Returns a 24h "HH:MM" string, the one clock shape the data model stores and
+ * `hmToMinutes` parses. (`minutesToHM` renders "3h 28m" for humans and would
+ * feed NaN straight into the day's clock walk.)
+ */
+export function airDayStartHM(
+  flight: FlightLeg,
+  groundMinutesToAirport: number,
+  fallback: string,
+): string {
+  const dep = parseHM(flight.departAt)
+  if (dep == null) return fallback
+  const start = dep - AIRPORT_CHECKIN_MIN - groundMinutesToAirport
+  if (start < 0) return fallback
+  const m = ((Math.round(start) % 1440) + 1440) % 1440
+  return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
+}
+
+/** Great-circle distance of a sector, in km. */
+export function flightDistanceKm(from: { lat: number; lng: number }, to: { lat: number; lng: number }): number {
+  return airDistanceKm(from, to)
+}
+
+/**
+ * The sector's drawn geometry: a great-circle arc, never a road. A flight path
+ * on a map is the honest picture; a road line here was the reported defect.
+ */
+export function airLegGeometry(
+  from: { lat: number; lng: number },
+  to: { lat: number; lng: number },
+): { lat: number; lng: number }[] {
+  return airArc(from, to).map(([lng, lat]) => ({ lat, lng }))
+}
+
 /**
  * Build a day's full journey. Shapes it handles (all through the same code
  * path — there is no distance threshold and no separate planner anymore):
@@ -501,6 +691,11 @@ export function buildJourney(
   startOriginOverride?: { lat: number; lng: number },
 ): Journey {
   const A = getAssumptions(trip)
+  // Travellers scales the air fare (a flight is sold per head). A missing or
+  // zero count reads as one rather than poisoning the money sums.
+  const travellers = typeof trip.travellers === 'number' && Number.isFinite(trip.travellers) && trip.travellers > 0
+    ? trip.travellers
+    : 1
   const active = [...day.stops].filter(s => s.status !== 'rejected').sort((a, b) => a.orderInDay - b.orderInDay)
   const nonAuto = active.filter(s => !s.auto)
   const home = trip.startLocationCoords
@@ -510,12 +705,12 @@ export function buildJourney(
     ? trip.destinationCoords[trip.destinationCoords.length - 1]
     : undefined
   const origin = startOriginOverride ?? originOf(trip, day.index)
-  const startHM = day.startTime ?? A.dayStart
-  const startMin = hmToMinutes(startHM)
-  const leg = (a: { lat: number; lng: number }, b: { lat: number; lng: number }, fromTitle: string, toTitle: string): ScheduledLeg => {
+  let startHM = day.startTime ?? A.dayStart
+  let startMin = hmToMinutes(startHM)
+  const leg = (a: { lat: number; lng: number }, b: { lat: number; lng: number }, fromTitle: string, toTitle: string, asm: EngineAssumptions = A): ScheduledLeg => {
     const hit = legCorrections?.[legKey(a, b)]
     if (hit) return { fromTitle, toTitle, distanceKm: hit.distanceKm, durationMinutes: hit.durationMinutes }
-    const est = legBetween(a, b, A)
+    const est = legBetween(a, b, asm)
     // two points at the same place are not a drive — skip the city-traffic pad
     const samePlace = haversineKm(a.lat, a.lng, b.lat, b.lng) < 0.5
     return {
@@ -576,6 +771,34 @@ export function buildJourney(
     }
   }
 
+  // --- flight decomposition -------------------------------------------------
+  // A flight-mode day is home → origin airport → sector → the trip's end. The
+  // ground legs either side keep the road-measured car assumptions; only the
+  // sector is an air leg. Without this the whole day ran at MODE_SPEED.flight,
+  // which is what priced a run to the airport at four minutes.
+  const flight = isAirMode(trip.transportMode)
+    ? (flightForDay(trip, day.index) ?? (nonAuto.length === 0 ? synthesizedFlight(trip, day.index, startPoint, synthDest?.point ?? lastDest ?? null) : null))
+    : null
+  let air: ResolvedAirports | null = null
+  if (flight) {
+    air = resolveAirports(flight, startPoint, synthDest?.point ?? lastDest ?? null)
+  }
+  // The ground legs either side of the sector are car legs — never timed or
+  // priced with the flight mode's blended figures.
+  const GA = groundAssumptions(trip)
+  // Back-compute the day's start so the traveller reaches the origin airport
+  // AIRPORT_CHECKIN_MIN before a STATED departure. Only for a pure travel day —
+  // a day that already plans its own stops owns its own start clock, and
+  // inventing a wake-up time under it would just make the plan look late. An
+  // ESTIMATED departure never moves the start: the model must not fabricate a
+  // schedule the traveller did not give it.
+  if (air && flight && nonAuto.length === 0) {
+    const groundToAirport = legBetween(startPoint, { lat: air.from.lat, lng: air.from.lng }, GA).durationMinutes
+    startHM = airDayStartHM(flight, groundToAirport, startHM)
+  }
+  // The walk's clock origin follows the (possibly back-computed) start.
+  startMin = hmToMinutes(startHM)
+
   // --- walk the chain --------------------------------------------------------
   const points: JourneyPoint[] = [{
     kind: 'start', title: startTitle, lat: startPoint.lat, lng: startPoint.lng,
@@ -613,6 +836,42 @@ export function buildJourney(
     if (isHalt) halts.push(s)
     prev = { title, point: p }
   }
+  // --- the flight -----------------------------------------------------------
+  // Appended after the day's own stops (which are the local run before the
+  // airport) and BEFORE the synthesized destination, so the day reads
+  // home → … → origin airport → sector → destination airport → the trip's end.
+  // The sector is the only air leg; the two airport legs stay ground legs and
+  // keep whatever road measurement the routing layer found.
+  if (air && flight) {
+    const legs: Array<{ title: string; point: { lat: number; lng: number }; isAir: boolean }> = [
+      { title: `${air.from.iata} · ${air.from.name}`, point: { lat: air.from.lat, lng: air.from.lng }, isAir: false },
+      { title: `${air.to.iata} · ${air.to.name}`, point: { lat: air.to.lat, lng: air.to.lng }, isAir: true },
+    ]
+    for (const a of legs) {
+      // Don't walk to an airport we are already standing at.
+      if (coLocates(prev.point, a.point)) continue
+      const lg: ScheduledLeg = a.isAir
+        ? {
+            fromTitle: prev.title, toTitle: a.title,
+            distanceKm: flightDistanceKm(prev.point, a.point),
+            durationMinutes: flightBlockMinutes(flight, prev.point, a.point),
+            kind: 'air', flightId: flight.id,
+            // Priced by fare × heads, never by ₹/km of great-circle distance.
+            costInr: Math.round(flightFareInrPerPerson(flight, prev.point, a.point) * travellers),
+          }
+        : leg(prev.point, a.point, prev.title, a.title, GA)
+      cursor += lg.durationMinutes
+      const arrive = addMinutesToClock(startMin, cursor - startMin)
+      // An airport is a transit point, not a visit: no dwell beyond the
+      // check-in already baked into the day's start clock.
+      points.push({
+        kind: 'waypoint', title: a.title, lat: a.point.lat, lng: a.point.lng,
+        stop: synthesizedAnchor(`journey_air_${day.index}_${a.title.slice(0, 3)}`, a.title, a.point),
+        synthesized: true, legIn: lg, arrive, depart: arrive, dwellMinutes: 0,
+      })
+      prev = { title: a.title, point: a.point }
+    }
+  }
   if (synthDest) {
     const lg = leg(prev.point, synthDest.point, prev.title, synthDest.title)
     cursor += lg.durationMinutes
@@ -643,8 +902,10 @@ export function buildJourney(
     // Rental stacks here too: one rent-day on the day's own bill, so the
     // Timeline chip and the Budget bucket read the same number (#521 — the
     // two-verdicts trap: computeTotals adds the identical term below).
-    transportCostInr: points.reduce((a, p) => a + (p.legIn ? p.legIn.distanceKm * (A.inrPerKm ?? 8) : 0), 0)
-      + (A.rentPerDayInr ?? 0),
+    // An air leg carries its own fare and is never also billed ₹/km.
+    transportCostInr: points.reduce((a, p) => a + (p.legIn
+      ? (p.legIn.costInr ?? p.legIn.distanceKm * (A.inrPerKm ?? 8))
+      : 0), 0) + (A.rentPerDayInr ?? 0),
     fuelLitres: A.kmPerLiter ? distanceKm / A.kmPerLiter : null,
     fuelPricePerL: A.fuelPricePerL ?? null,
     points,
@@ -687,6 +948,71 @@ export function dayRoadPolyline(
     out.push(...seg)
   }
   return out.length >= 2 ? out : null
+}
+
+/**
+ * The day's journey as ONE polyline, mixing each leg's own geometry: road legs
+ * take the routing provider's measured shape (the same source the km numbers
+ * come from), and an air sector takes a great-circle arc instead. Returns null
+ * when the journey never moves.
+ *
+ * This is what a flight trip draws. `dayRoadPolyline` above deliberately does
+ * not: it assembles ROAD geometry only, so a flight day came back null and the
+ * caller fell back to the straight-line stop chain — which is how a flight trip
+ * ended up with a road-looking line on the map at all.
+ */
+export function journeyGeometry(
+  points: JourneyPoint[],
+  corrections?: Record<string, LegEstimate>,
+): { lat: number; lng: number }[] | null {
+  if (points.length < 2) return null
+  const out: { lat: number; lng: number }[] = []
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i]
+    const b = points[i + 1]
+    const seg: { lat: number; lng: number }[] = b.legIn?.kind === 'air'
+      ? airLegGeometry(a, b)
+      : (corrections?.[legKey(a, b)]?.geometry?.map(([lng, lat]) => ({ lat, lng }))
+        // No measured road for this leg: fall back to the chord, oriented a→b.
+        ?? [{ lat: a.lat, lng: a.lng }, { lat: b.lat, lng: b.lng }])
+    // drop the junction duplicate (the previous leg ends where this one starts)
+    const last = out[out.length - 1]
+    const start = last && haversineKm(last.lat, last.lng, seg[0].lat, seg[0].lng) < 0.02 ? seg.slice(1) : seg
+    out.push(...start)
+  }
+  return out.length >= 2 ? out : null
+}
+
+/**
+ * The whole trip's journey as one drawn polyline, plus its wheel distance and
+ * time. Mixes each day's own legs: measured road geometry where the routing
+ * layer found it, a great-circle arc for a flight sector. Returns `[lng, lat]`
+ * pairs — the map's convention — so a caller never re-implements the
+ * road-vs-air split (the ratchet that keeps MapTab from holding a second copy
+ * of a rule a module owns).
+ *
+ * A flight trip's numbers come from here, not from the road chain: the chain is
+ * never even measured for that mode.
+ */
+export function tripJourneyGeometry(
+  trip: Trip,
+  corrections?: Record<string, LegEstimate>,
+): { geometry: [number, number][] | null; km: number; min: number } {
+  let km = 0
+  let min = 0
+  const pts: { lat: number; lng: number }[] = []
+  for (const d of trip.days) {
+    const j = buildJourney(trip, d, corrections)
+    km += j.distanceKm
+    min += j.driveMinutes
+    const g = journeyGeometry(j.points, corrections)
+    if (g) pts.push(...g)
+  }
+  return {
+    geometry: pts.length >= 2 ? pts.map(p => [p.lng, p.lat] as [number, number]) : null,
+    km,
+    min,
+  }
 }
 
 /**
@@ -1442,7 +1768,10 @@ export function computeTotals(trip: Trip, legCorrections?: Record<string, LegEst
     // return leg has no stop and keeps its estimate. Rows are aligned per
     // active stop, so legs[k] is the into-leg of activeStops[k].
     sim.legs.forEach((l, k) => {
-      const legCost = legCostInr(sim.activeStops[k]?.transportCostInrTotal, l.distanceKm, A.inrPerKm ?? 8)
+      // An air sector carries its own fare (fare × heads) and is priced from it
+      // — never from ₹/km of great-circle distance, and never from the stop's
+      // stated transport cost, which belongs to a ground leg.
+      const legCost = l.costInr ?? legCostInr(sim.activeStops[k]?.transportCostInrTotal, l.distanceKm, A.inrPerKm ?? 8)
       transportCost += legCost
       if (bucket) bucket.transportInr += legCost
     })

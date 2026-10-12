@@ -8,7 +8,7 @@ import type { Trip, ItineraryStop, TripDecision } from '../../data/types'
 import type { ImpactResult } from '../../lib/impact'
 import { removeStopWithUndo } from '../../lib/mutationLifecycle'
 import { mapRoadViewFromLegs, mapReturnGeometryFromLegs, outboundLegs, type TripRoadView } from '../../lib/tripRoad'
-import { buildJourney, minutesToHM, fmtDur, computeCategoryBias, MODE_SPEED, isRoundTrip, type LegEstimate } from '../../lib/engine'
+import { buildJourney, minutesToHM, fmtDur, computeCategoryBias, MODE_SPEED, isRoundTrip, isAirMode, tripJourneyGeometry, type LegEstimate } from '../../lib/engine'
 import { useTimeFormat, formatHM, formatHMRange } from '../../lib/timefmt'
 import { loadPref, savePref, loadHaltPinsForTrip, saveHaltPin, clearHaltPin, clearHaltPinsForTrip } from '../../lib/uiPrefs'
 import { DEBOUNCE_MS } from '../../lib/geocode'
@@ -290,13 +290,23 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
     () => mapRoadViewFromLegs(road?.chain ?? null, road?.legs ?? null, trip.days.map(d => d.index)),
     [road, trip.days],
   )
-  const routeGeometry = roadView.geometry
+  // A flight trip draws its JOURNEY, not the road chain: the ground legs either
+  // side of the sector take the measured road shape where one exists, and the
+  // sector takes a great-circle arc. The road chain is never even measured for
+  // this mode (see useTripRoad), so without this the map would draw nothing at
+  // all — and before that gate it drew the driving directions OSRM answered.
+  // The derivation lives in the engine (`tripJourneyGeometry`), not here.
+  const airPlan = useMemo(
+    () => (isAirMode(trip.transportMode) ? tripJourneyGeometry(trip, legCorrections) : null),
+    [trip, legCorrections],
+  )
+  const routeGeometry = airPlan?.geometry ?? roadView.geometry
   const returnRouteGeometry = useMemo(
     () => mapReturnGeometryFromLegs(road?.chain ?? null, road?.legs ?? null),
     [road],
   )
-  const routeTotalKm = roadView.totalKm
-  const routeTotalMin = roadView.totalMin
+  const routeTotalKm = airPlan ? airPlan.km : roadView.totalKm
+  const routeTotalMin = airPlan ? airPlan.min : roadView.totalMin
   const dayRoadKm = roadView.dayRoadKm
   // The measurement's outcome, handed down from the workspace: when the road
   // can't be measured (rate limits, very long routes — exactly where the banner

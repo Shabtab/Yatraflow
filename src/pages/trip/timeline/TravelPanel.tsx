@@ -35,6 +35,7 @@ import { loadHaltPinsForTrip } from '../../../lib/uiPrefs'
 import { planInputsHash, isHaltCacheFresh } from '../../../hooks/useSuggestionCache'
 import type { LucideIcon } from 'lucide-react'
 import { InlineIcon, MetaIcon } from '../../../components/icons'
+import { FlightsPanel } from './FlightsPanel'
 import { cap } from '../shared'
 function modeLabelMode(m: string): string {
   const map: Record<string, string> = {
@@ -468,6 +469,10 @@ export function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAdd
         </div>
         {journey.dwellMinutes > 0 && <div className="small muted">includes {minutesToHM(journey.dwellMinutes)} of stops</div>}
       </div>
+
+      {/* The flight card — only a flight-mode trip renders one. Everything
+          else on this panel is unchanged. */}
+      <FlightsPanel trip={trip} day={day} editable={editable} />
 
       {journey.driveMinutes >= 420 && journey.halts.length === 0 && (
         <div className="warn-item sev-medium" style={{ marginTop: 10 }}>
