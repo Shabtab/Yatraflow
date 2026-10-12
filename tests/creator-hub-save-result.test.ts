@@ -23,9 +23,8 @@ const hub = stripComments(read('../src/pages/CreatorHubPage.tsx'))
 
 describe('#704 — creator mode enables only after the server accepts it', () => {
   it('the enable button waits for the profile write and toasts success only on r.ok', () => {
-    expect(hub).toMatch(
-      /onClick=\{async \(\) => \{\s*const r = await updateProfile\(\{ isCreator: true \}\)\s*if \(r\.ok\) toast\('Creator mode enabled — your bio and links now show on published itineraries\.'\)\s*else toast\(r\.error \?\? PROFILE_NOT_SAVED, 'err'\)\s*\}\}>/,
-    )
+    const enableHandler = /onClick=\{async \(\) => \{\s*const r = await updateProfile\(\{ isCreator: true \}\)\s*if \(r\.ok\) toast\('Creator mode enabled — your bio and links now show on published itineraries\.'\)\s*else toast\(r\.error \?\? PROFILE_NOT_SAVED, 'err'\)\s*\}\}>/
+    expect(hub).toMatch(enableHandler)
   })
 
   it('the disable confirmation waits for the profile write and toasts success only on r.ok', () => {

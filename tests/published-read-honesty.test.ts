@@ -327,7 +327,8 @@ describe('#704 — the Share tab does not say "not published" over an unread sta
   })
 
   it('the kept note is a status with the new copy, and the loading hint is a status', () => {
-    expect(share).toMatch(/<p className="err-text ts-note shr-read-kept" role="status">\s*Couldn’t refresh\. Showing the last status that loaded\./)
+    const keptStatus = /<p className="err-text ts-note shr-read-kept" role="status">\s*Couldn’t refresh\. Showing the last status that loaded\./
+    expect(share).toMatch(keptStatus)
     expect(share).toMatch(/<p className="hint-text ts-note shr-read-loading" role="status">Checking whether this trip is on Explore…<\/p>/)
   })
 

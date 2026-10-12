@@ -63,9 +63,8 @@ describe('#704 — the Overview weather card says when the forecast read failed'
   it('a kept forecast adds a status note with Try again in the ready branch', () => {
     const readyAt = weather.indexOf("if (state !== 'ready') return null")
     expect(readyAt).toBeGreaterThan(-1)
-    expect(weather.slice(readyAt)).toMatch(
-      /\{refreshFailed && \(\s*<p className="muted small ovw-weather-kept" role="status">Couldn’t refresh the forecast\. Showing the last one\. <button className="btn btn-outline btn-sm" onClick=\{retryWeather\}>Try again<\/button><\/p>\s*\)\}/,
-    )
+    const keptNote = /\{refreshFailed && \(\s*<p className="muted small ovw-weather-kept" role="status">Couldn’t refresh the forecast\. Showing the last one\. <button className="btn btn-outline btn-sm" onClick=\{retryWeather\}>Try again<\/button><\/p>\s*\)\}/
+    expect(weather.slice(readyAt)).toMatch(keptNote)
   })
 
   it('Try again shows the loading line only while nothing has loaded, and re-pulls the forecast past the cache', () => {
