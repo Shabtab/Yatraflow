@@ -15,7 +15,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { rowsView, sliceState } from '../src/lib/readState'
-import { publishFormKey } from '../src/lib/publishFormKey'
+import { publishFormKey, publishFormMount } from '../src/lib/publishFormKey'
 
 // Source scans read LF text. They ignore comments, so prose cannot pass a check.
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8').replace(/\r\n/g, '\n')
@@ -297,11 +297,26 @@ describe('#704 — the Share tab does not say "not published" over an unread sta
     expect(share).not.toMatch(/not published/i)
   })
 
-  it('mounts the publish form only once the status has loaded', () => {
-    expect(share).toMatch(/publishRead === 'ready' && \(\s*<PublicationForm/)
-    // While the status is unread, no editable field exists to fill.
-    expect(share).not.toMatch(/publishBlockedReason/)
-    expect(share).not.toMatch(/ts-submit-gate/)
+  it('mounts the publish form only once the status has loaded, and keeps it shown through a refresh', () => {
+    expect(share).toMatch(/const mount = publishFormMount\(\{ read: publishRead, formKey, shownKey \}\)/)
+    // A render-phase update, guarded so it settles after one pass.
+    expect(share).toMatch(/if \(mount\.shownKey !== shownKey\) setShownKey\(mount\.shownKey\)/)
+    expect(share).toMatch(/\{mount\.mounted && \(\s*<PublicationForm/)
+  })
+
+  it('disables submit with the reason until the status is ready again', () => {
+    expect(share).toMatch(/<fieldset className="ts-submit-gate" disabled=\{!publishReady\}>/)
+    expect(share).toMatch(/if \(!publishReady\) return/)
+    expect(share).toContain('Publishing is paused.')
+    expect(share).toContain('Publishing waits until')
+    expect(share).toMatch(/publishRead=\{publishRead\}/)
+  })
+
+  it('the gate draws no box of its own, and lays its button out as the form does', () => {
+    // A block wrapper would shrink the inline-flex button to its natural width.
+    expect(read('../src/styles.css')).toContain(
+      '.ts-submit-gate { display: flex; flex-direction: column; border: 0; margin: 0; padding: 0; min-width: 0; }',
+    )
   })
 
   it('keys the form by the publication it edits, and holds the key while a write is in flight', () => {
@@ -342,6 +357,35 @@ describe('#704 — the publish form is keyed by the publication it edits', () =>
     expect(publishFormKey({ id: 'pub-1', publishedAt: 100 }))
       .toBe(publishFormKey({ id: 'pub-1', publishedAt: 100, refreshedAt: undefined }))
     expect(publishFormKey({ id: 'pub-1', publishedAt: 100 })).not.toBe(publishFormKey({ id: 'pub-1', publishedAt: 101 }))
+  })
+})
+
+// ================= the form's mount: first showing waits, a shown form stays =================
+
+describe('#704 — a publish form, once shown, stays open through a refresh', () => {
+  it('its first showing waits for a read that succeeded', () => {
+    expect(publishFormMount({ read: 'reading', formKey: 'K1', shownKey: null })).toEqual({ mounted: false, shownKey: null })
+    expect(publishFormMount({ read: 'failed', formKey: 'K1', shownKey: null })).toEqual({ mounted: false, shownKey: null })
+  })
+
+  it('a read that succeeded shows the form for its record', () => {
+    expect(publishFormMount({ read: 'ready', formKey: 'K1', shownKey: null })).toEqual({ mounted: true, shownKey: 'K1' })
+  })
+
+  it('a refresh that is pending or fails keeps the shown form, so its edits stay', () => {
+    expect(publishFormMount({ read: 'reading', formKey: 'K1', shownKey: 'K1' })).toEqual({ mounted: true, shownKey: 'K1' })
+    expect(publishFormMount({ read: 'failed', formKey: 'K1', shownKey: 'K1' })).toEqual({ mounted: true, shownKey: 'K1' })
+  })
+
+  it('a different record remounts only once a read succeeds', () => {
+    expect(publishFormMount({ read: 'failed', formKey: 'K2', shownKey: 'K1' })).toEqual({ mounted: false, shownKey: null })
+    expect(publishFormMount({ read: 'ready', formKey: 'K2', shownKey: null })).toEqual({ mounted: true, shownKey: 'K2' })
+  })
+
+  it('an unmounted record does not come back on a pending or failed read alone', () => {
+    // K2 unmounted the K1 form. Returning to K1 while reading must not show it again.
+    const afterK2 = publishFormMount({ read: 'reading', formKey: 'K2', shownKey: 'K1' })
+    expect(publishFormMount({ read: 'reading', formKey: 'K1', shownKey: afterK2.shownKey })).toEqual({ mounted: false, shownKey: null })
   })
 })
 

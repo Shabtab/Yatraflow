@@ -19,8 +19,8 @@ import {
   publishValidation, PUBLISH_FIELD_ORDER, PUBLISH_FIELD_LABELS, PublishRejected, type PublishField,
 } from '../../lib/publishRules'
 import { takePublishDraft } from '../../lib/publishDraft'
-import { publishFormKey } from '../../lib/publishFormKey'
-import { sliceState, rowsView, type RowsView } from '../../lib/readState'
+import { publishFormKey, publishFormMount } from '../../lib/publishFormKey'
+import { sliceState, rowsView, type ReadState, type RowsView } from '../../lib/readState'
 import type { PublicationDraft } from '../../lib/itinerarySpec'
 import { Avatar, Chip, ConfirmDialog, CopyButton, Field, FormErrorSummary, toast, undoToast } from '../../components/ui'
 import { PrintExport } from '../../components/PrintExport'
@@ -108,7 +108,7 @@ const DEFAULT_WARNINGS = ['All costs are estimates based on typical prices — v
  *  now chooses which days are the free preview, whether the itinerary is
  *  premium at all (empty/₹0 price = entirely free), and the reader-facing
  *  copy — pre-filled from the live publication when updating. */
-function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, onDone, onWriting, saveErr, setSaveErr }: {
+function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, onDone, onWriting, saveErr, setSaveErr, publishRead }: {
   trip: Trip
   pub: PublishedItinerary | undefined
   /** An imported file's publish block, taken once from the stash. The draft
@@ -130,6 +130,9 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
   /** The inline write error, held by the parent so a remount cannot drop it (#704). */
   saveErr: string | null
   setSaveErr: (message: string | null) => void
+  /** The publish status read. The form can stay open while it is pending or
+   *  failed, but its submit waits for a read that succeeded (#704). */
+  publishRead: ReadState
 }) {
   const defaultTagline = `${trip.days.length}-day ${trip.travelStyle} trip through ${trip.destinations.join(', ')}.`
   // The draft wins over a live row: it is the freshest intent the creator
@@ -160,6 +163,13 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
   // accidental id-reuse in the store, which is not a guard. The cover picker's
   // `busy` is the pattern this copies.
   const [busy, setBusy] = useState(false)
+  // #704: a form can stay open while the status is pending or failed. An unread
+  // status cannot say whether the trip already has a publication, so submit waits
+  // for a read that succeeded. The reason is shown beside the button.
+  const publishReady = publishRead === 'ready'
+  const publishBlockedReason = publishRead === 'failed'
+    ? 'Publishing is paused. This trip may already be on Explore, and its status could not be read. Retry above.'
+    : 'Publishing waits until this trip’s publish status has loaded.'
 
   const priceNum = price.trim() === '' ? 0 : Number(price)
   const entirelyFree = price.trim() === '' || priceNum === 0
@@ -203,6 +213,8 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
     // publishes (AGENTS §2.6a — every async path needs an input guard, and the
     // guard must match the visual feedback state).
     if (busy) return
+    // #704: the same rule as the disabled button, enforced again here.
+    if (!publishReady) return
     // The publication's cover IS the link preview: api/i.js serves it as
     // og:image/twitter:image, and it is copied from the trip here. Publishing
     // without one — or with a URL the handler's `^https://\S+$` test rejects —
@@ -400,9 +412,15 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
           only way to hear about six different rules, which is what made it
           useless for locating one. */}
       {saveErr && <p className="err-text ts-warn-note" role="alert">{saveErr}</p>}
-      <button className="btn btn-saffron" disabled={!isOwner || busy} onClick={() => void submit()}>
-        {busy ? 'Publishing…' : pub && live ? 'Update publication' : 'Publish to Explore'}
-      </button>
+      {/* The fieldset carries the publish-status gate (#704). A disabled fieldset
+          disables the button inside it, and the button keeps its own owner and
+          write rules. */}
+      <fieldset className="ts-submit-gate" disabled={!publishReady}>
+        <button className="btn btn-saffron" disabled={!isOwner || busy} onClick={() => void submit()}>
+          {busy ? 'Publishing…' : pub && live ? 'Update publication' : 'Publish to Explore'}
+        </button>
+      </fieldset>
+      {!publishReady && <p className="hint-text ts-note">{publishBlockedReason}</p>}
       {!isOwner && <p className="hint-text ts-note">Only the trip owner can publish.</p>}
     </div>
   )
@@ -473,6 +491,11 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
   // held at its pre-write value while a write is in flight.
   const [frozenKey, setFrozenKey] = useState<string | null>(null)
   const formKey = frozenKey ?? publishFormKey(pub)
+  // #704: a form that has been shown stays shown for its record while a refresh is
+  // pending or failed. The first showing waits for a read that succeeded.
+  const [shownKey, setShownKey] = useState<string | null>(null)
+  const mount = publishFormMount({ read: publishRead, formKey, shownKey })
+  if (mount.shownKey !== shownKey) setShownKey(mount.shownKey)
   // #230 — the copy button's link names the button it left through (`ref=copy`).
   const pubLink = pubLive && pub ? withShareRef(currentPublicShareUrl(pub.id), 'copy') : ''
   const isOwner = (trip.members ?? []).some(m => m.userId === me.id && m.role === 'owner')
@@ -634,9 +657,11 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
             </p>
           )}
           {/* The form reads its fields when it mounts. It mounts only once the
-              status has loaded, and it remounts when the publication changes (#704). */}
-          {publishRead === 'ready' && (
+              status has loaded, stays open through a later refresh, and remounts
+              when the publication changes (#704). */}
+          {mount.mounted && (
             <PublicationForm key={formKey} trip={trip} pub={pub} draft={draft} live={pubLive} isOwner={isOwner} creatorId={me.id}
+              publishRead={publishRead}
               onDone={wasPublished => {
                 // A published draft is spent. A later remount must not seed the form from it again.
                 setDraft(null)

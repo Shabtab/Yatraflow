@@ -10230,3 +10230,6 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 /* The sign-up confirmation note enters like the error line. Its gap is 8px because 10px is off the spacing ladder. */
 .auth-submit-notice { margin-bottom: 8px; animation: errIn var(--motion-med) var(--ease-out); }
 @media (prefers-reduced-motion: reduce) { .auth-submit-notice { animation: none; } }
+/* #704: the publish button waits for the publish status. This fieldset carries
+   that gate. It draws no box and lays its button out as the form does. */
+.ts-submit-gate { display: flex; flex-direction: column; border: 0; margin: 0; padding: 0; min-width: 0; }
