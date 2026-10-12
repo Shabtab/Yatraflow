@@ -114,9 +114,12 @@ describe('#704 — native Home reads the trips verdict before it renders', () =>
     expect(home).not.toMatch(/useMemo\(/)
   })
 
-  it('the retry re-reads the trips slice', () => {
+  it('the retry re-reads the trips slice, and Try again is disabled while the read runs', () => {
     expect(home).toMatch(/import \{[^}]*\brereadTrips\b[^}]*\} from '\.\.\/store\/store'/)
-    expect(home).toMatch(/const retryTrips = \(\) => \{ void rereadTrips\(\) \}/)
+    expect(home).toMatch(/const \[retrying, setRetrying\] = useState\(false\)/)
+    expect(home).toMatch(/const retryTrips = \(\) => \{\s*setRetrying\(true\)\s*void rereadTrips\(\)\.finally\(\(\) => \{ setRetrying\(false\) \}\)\s*\}/)
+    expect(home).toContain("{retrying ? 'Trying…' : 'Try again'}")
+    expect(home.match(/disabled=\{retrying\}/g)?.length ?? 0).toBe(2)
   })
 
   it('reading shows a loading row, failed shows its own message, and empty shows only after a successful read', () => {
@@ -129,19 +132,25 @@ describe('#704 — native Home reads the trips verdict before it renders', () =>
     expect(readyAt, 'the ready branch').toBeGreaterThan(failedAt)
     expect(rowsAt, 'the rows branch').toBeGreaterThan(readyAt)
     expect(homeBody.slice(readingAt, failedAt)).toMatch(/<StateBlock kind="loading" icon=\{<span className="spinner" aria-hidden="true" \/>\} title="Loading trips…" \/>/)
-    expect(homeBody.slice(failedAt, readyAt)).toMatch(/Couldn’t load trips[\s\S]*onClick=\{retryTrips\}>Try again<\/button>/)
+    expect(homeBody.slice(failedAt, readyAt)).toMatch(
+      /<StateBlock\s+kind="failed"\s+icon=\{<TriangleAlert size=\{26\} aria-hidden \/>\}\s+title="Couldn’t load trips"\s+body="The request failed\. That does not mean you have no trips\."/,
+    )
+    expect(homeBody.slice(failedAt, readyAt)).toMatch(
+      /actions=\{<button className="btn btn-primary" onClick=\{retryTrips\} disabled=\{retrying\}>\{retrying \? 'Trying…' : 'Try again'\}<\/button>\}/,
+    )
     expect(homeBody.slice(readyAt, rowsAt)).toContain('No trips yet.')
   })
 
-  it('the failed branch never carries the empty copy', () => {
+  it('the failed branch never carries the empty copy, and is the shared failed block, not the empty markup', () => {
     const failedAt = homeBody.indexOf("trips.length === 0 && tripsRead === 'failed'")
     const readyAt = homeBody.indexOf("trips.length === 0 && tripsRead === 'ready'")
     expect(homeBody.slice(failedAt, readyAt)).not.toContain('No trips yet')
+    expect(homeBody.slice(failedAt, readyAt)).not.toContain('app-home-empty')
   })
 
-  it('a failed read with loaded trips keeps the rows and adds one note with Try again above them', () => {
+  it('a failed read with loaded trips keeps the rows and adds one status note with Try again above them', () => {
     expect(homeBody).toMatch(
-      /\{trips\.length > 0 && \(\s*<>\s*\{tripsRead === 'failed' && \(\s*<p className="small muted">Couldn’t refresh your trips — showing what was loaded\. <button className="btn btn-outline btn-sm" onClick=\{retryTrips\}>Try again<\/button><\/p>\s*\)\}/,
+      /\{trips\.length > 0 && \(\s*<>\s*\{tripsRead === 'failed' && \(\s*<p className="small muted" role="status">Couldn’t refresh your trips — showing what was loaded\. <button className="btn btn-outline btn-sm" onClick=\{retryTrips\} disabled=\{retrying\}>\{retrying \? 'Trying…' : 'Try again'\}<\/button><\/p>\s*\)\}/,
     )
   })
 

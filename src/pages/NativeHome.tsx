@@ -10,6 +10,7 @@
 // This component never mounts on the web: App.tsx picks it only when
 // isNative && me, so the landing page's SEO/marketing job stays untouched.
 
+import { useState } from 'react'
 import { InlineIcon } from '../components/icons'
 import { Bell, Compass, MapPin, Plus, Sparkles, TriangleAlert, Users, Wallet } from 'lucide-react'
 import type { Trip } from '../data/types'
@@ -81,7 +82,12 @@ export function NativeHomePage({ me, onNavigate }: {
   // an empty array. The store publishes the trips verdict, failed memberships included.
   const sliceReads = useSliceReads()
   const tripsRead = sliceState(sliceReads, 'trips')
-  const retryTrips = () => { void rereadTrips() }
+  // #704: Try again is disabled while the re-read runs, so one press starts one read.
+  const [retrying, setRetrying] = useState(false)
+  const retryTrips = () => {
+    setRetrying(true)
+    void rereadTrips().finally(() => { setRetrying(false) })
+  }
 
   // Same membership rule as the trips page. Read on every render, not memoised:
   // every hydrate writes sliceReads, so the page re-renders and a retry shows its rows.
@@ -141,12 +147,13 @@ export function NativeHomePage({ me, onNavigate }: {
         <StateBlock kind="loading" icon={<span className="spinner" aria-hidden="true" />} title="Loading trips…" />
       )}
       {trips.length === 0 && tripsRead === 'failed' && (
-        <div className="app-home-empty">
-          <TriangleAlert size={26} aria-hidden />
-          <p><strong>Couldn’t load trips</strong></p>
-          <p className="muted small">The request failed. That does not mean you have no trips.</p>
-          <button className="btn btn-primary" onClick={retryTrips}>Try again</button>
-        </div>
+        <StateBlock
+          kind="failed"
+          icon={<TriangleAlert size={26} aria-hidden />}
+          title="Couldn’t load trips"
+          body="The request failed. That does not mean you have no trips."
+          actions={<button className="btn btn-primary" onClick={retryTrips} disabled={retrying}>{retrying ? 'Trying…' : 'Try again'}</button>}
+        />
       )}
       {trips.length === 0 && tripsRead === 'ready' && (
         <div className="app-home-empty">
@@ -158,7 +165,7 @@ export function NativeHomePage({ me, onNavigate }: {
       {trips.length > 0 && (
         <>
           {tripsRead === 'failed' && (
-            <p className="small muted">Couldn’t refresh your trips — showing what was loaded. <button className="btn btn-outline btn-sm" onClick={retryTrips}>Try again</button></p>
+            <p className="small muted" role="status">Couldn’t refresh your trips — showing what was loaded. <button className="btn btn-outline btn-sm" onClick={retryTrips} disabled={retrying}>{retrying ? 'Trying…' : 'Try again'}</button></p>
           )}
           <h2 className="app-home-section">Your trips</h2>
           <div className="app-home-trips">
