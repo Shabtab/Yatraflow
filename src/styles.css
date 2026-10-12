@@ -10252,8 +10252,14 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 /* ===== P8: DMCA page, a content page with a serif header and one text panel ===== */
 /* The page root carries yf-page. The text panel holds the policy text at a readable
    measure. The top and bottom padding copy the content pages (My purchases). */
+/* The reading text uses the base body size and ink. */
+/* Blocks sit 12px apart, list items 6px apart, and the rule has 16px above it. */
 .dmca-page { padding-top: 22px; padding-bottom: 24px; }
-.dmca-body { max-width: 68ch; padding: 24px; }
+.dmca-body { max-width: 68ch; padding: 24px; font-size: 15px; line-height: 1.6; color: var(--text); }
+.dmca-body > p, .dmca-body > ul { font-size: inherit; line-height: inherit; color: inherit; }
+.dmca-body > p + p, .dmca-body > p + ul, .dmca-body > ul + p { margin-top: 12px; }
+.dmca-body > ul > li + li { margin-top: 6px; }
+.dmca-body > .divider { margin-top: 16px; }
 @media (max-width: 560px) {
   .dmca-body { padding: 16px; }
 }
