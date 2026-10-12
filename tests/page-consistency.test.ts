@@ -65,14 +65,18 @@ function discoverRoutedUnits(appText: string, fileExists: (p: string) => boolean
   for (const m of region.matchAll(/<([A-Z][A-Za-z0-9]*)[\s/>]/g)) {
     if (m[1] !== 'Suspense') names.add(m[1])
   }
+  const appFunctions = new Set([...appText.matchAll(/^function ([A-Z][A-Za-z0-9]*)\(/gm)].map((m) => m[1]))
+  const lazyImports = new Map<string, string>()
+  for (const m of appText.matchAll(/const ([A-Z][A-Za-z0-9]*) = lazy\(\(\) => import\('(\.\/[^']+)'\)/g)) {
+    if (!lazyImports.has(m[1])) lazyImports.set(m[1], m[2])
+  }
   const units: RoutedUnit[] = []
   for (const name of names) {
-    if (new RegExp(`^function ${name}\\(`, 'm').test(appText)) {
+    if (appFunctions.has(name)) {
       units.push({ key: `${APP}#${name}`, file: APP, symbol: name })
       continue
     }
-    const lazyMatch = new RegExp(`const ${name} = lazy\\(\\(\\) => import\\('(\\.\\/[^']+)'\\)`).exec(appText)
-    const importRel = lazyMatch?.[1] ?? importPathFor(appText, name)
+    const importRel = lazyImports.get(name) ?? importPathFor(appText, name)
     if (!importRel) throw new Error(`cannot read a binding for routed component ${name} in App.tsx`)
     const file = resolvePageFile(importRel, fileExists)
     units.push({ key: file, file, symbol: name })
