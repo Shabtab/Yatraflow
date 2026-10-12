@@ -11,10 +11,11 @@
 //   - the store keeps the rows it loaded when a refresh fails;
 //   - a failed read with no rows is `failed`, never `empty`;
 //   - each surface checks that verdict before it prints an empty answer;
-//   - the Share tab submit waits for a read that succeeded.
+//   - the Share tab mounts its publish form only after a read that succeeded.
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { rowsView, sliceState } from '../src/lib/readState'
+import { publishFormKey } from '../src/lib/publishFormKey'
 
 // Source scans read LF text. They ignore comments, so prose cannot pass a check.
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8').replace(/\r\n/g, '\n')
@@ -289,19 +290,51 @@ describe('#704 — the Share tab does not say "not published" over an unread sta
     expect(share).not.toMatch(/not published/i)
   })
 
-  it('holds submit until the status has loaded, in the button, the handler and the reason', () => {
-    expect(share).toMatch(/const publishReady = publishRead === 'ready'/)
-    expect(share).toMatch(/<fieldset className="ts-submit-gate" disabled=\{!publishReady\}>/)
-    expect(share).toMatch(/if \(!publishReady\) return/)
-    expect(share).toContain('Publishing is paused.')
-    expect(share).toContain('Publishing waits until')
+  it('mounts the publish form only once the status has loaded', () => {
+    expect(share).toMatch(/publishRead === 'ready' && \(\s*<PublicationForm/)
+    // While the status is unread, no editable field exists to fill.
+    expect(share).not.toMatch(/publishBlockedReason/)
+    expect(share).not.toMatch(/ts-submit-gate/)
   })
 
-  it('the gate draws no box of its own, and lays its button out as the form does', () => {
-    // A block wrapper would shrink the inline-flex button to its natural width.
-    expect(read('../src/styles.css')).toContain(
-      '.ts-submit-gate { display: flex; flex-direction: column; border: 0; margin: 0; padding: 0; min-width: 0; }',
-    )
+  it('keys the form by the publication it edits, and holds the key while a write is in flight', () => {
+    expect(share).toMatch(/const formKey = frozenKey \?\? publishFormKey\(pub\)/)
+    expect(share).toMatch(/<PublicationForm key=\{formKey\}/)
+    expect(share).toMatch(/onWriting=\{writing => setFrozenKey\(writing \? publishFormKey\(pub\) : null\)\}/)
+  })
+
+  it('reports each write to the parent, and spends the draft on a publish', () => {
+    expect(share).toMatch(/setBusy\(true\)\s*onWriting\(true\)/)
+    expect(share).toMatch(/setBusy\(false\)\s*onWriting\(false\)/)
+    expect(share).toContain('setDraft(null)')
+  })
+})
+
+// ================= the form's key =================
+
+describe('#704 — the publish form is keyed by the publication it edits', () => {
+  const pub = { id: 'pub-1', publishedAt: 100, refreshedAt: 200 }
+
+  it('names no publication "new"', () => {
+    expect(publishFormKey(undefined)).toBe('new')
+  })
+
+  it('changes when the publication is replaced', () => {
+    expect(publishFormKey({ ...pub, id: 'pub-2' })).not.toBe(publishFormKey(pub))
+  })
+
+  it('changes when a write refreshes the publication', () => {
+    expect(publishFormKey({ ...pub, refreshedAt: 300 })).not.toBe(publishFormKey(pub))
+  })
+
+  it('holds still for the same publication at the same refresh', () => {
+    expect(publishFormKey({ ...pub })).toBe(publishFormKey(pub))
+  })
+
+  it('falls back to the publish time for a row with no refresh time', () => {
+    expect(publishFormKey({ id: 'pub-1', publishedAt: 100 }))
+      .toBe(publishFormKey({ id: 'pub-1', publishedAt: 100, refreshedAt: undefined }))
+    expect(publishFormKey({ id: 'pub-1', publishedAt: 100 })).not.toBe(publishFormKey({ id: 'pub-1', publishedAt: 101 }))
   })
 })
 
