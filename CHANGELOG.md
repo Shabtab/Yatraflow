@@ -133,6 +133,8 @@ This release makes the trip pages easier to read and act on. Every trip card nam
 
 - **Trip settings say "Trip settings updated" only after the server accepts the change.** A save the server refuses shows a short message beside the Save settings button. The form keeps your edits, and the app retries the save when the connection returns. (#704)
 
+- **A failed read of your publications no longer looks like an empty account.** The creator hub shows a failed line with Retry where its list sits. Its figures show "Not read" instead of zero. Figures that loaded stay on screen, with a note. "Nothing published yet" appears only after a read that succeeded. The Share tab does not say a trip is not published after a failed read. It shows a failed line with Retry, and the Publish button waits until the status loads. A second publication cannot start while the status is unknown. (#704)
+
 - **Explore loads for logged-out visitors again.** A first visit without an account showed "Loading the catalog…" with no end, although the itineraries had loaded. The logged-out data load now reports the catalog as loaded or failed. A failed read now shows the error with a Retry button. The bug did not affect signed-in users.
 
 - **Group input and the Map tab now say when a read failed, and keep what did load.** Group input shows a failed message with a Try again button when nothing loaded. When cards did load, it keeps them and adds a short note with Try again.

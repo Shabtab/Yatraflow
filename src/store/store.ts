@@ -885,7 +885,10 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
       // all of it. The trip behind a publication is read through
       // `get_public_trip` (the public page and the fork path both do), and the
       // row cascades away with its trip, so a publication stands on its own.
-      published: dedupePublished(pubRows),
+      // #704: a failed published read keeps the rows already loaded. The empty
+      // result of a failed read is not an empty catalog. The verdict in
+      // `sliceReads` still reports the failure.
+      published: pubRes.error ? cache.published : dedupePublished(pubRows),
       sessionUserId: userId,
       cachedAt: null,
     })
