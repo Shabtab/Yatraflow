@@ -90,6 +90,14 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
     // re-enable the form so the user isn't stuck on a disabled button.
     const failSafe = setTimeout(() => setSaving(false), 10000)
     if (mode === 'login') {
+      // The server answers an empty request with its own text. The page
+      // asks for the fields first, so an empty form never reaches the server.
+      if (!email.trim() || !password) {
+        clearTimeout(failSafe)
+        setError('Enter your email and password.')
+        setSaving(false)
+        return
+      }
       const r = await login(email, password)
       if (!r.ok) { clearTimeout(failSafe); setError(r.error ?? 'Login failed'); setSaving(false); return }
     } else {

@@ -136,6 +136,12 @@ This release makes the trip pages easier to read and act on. Every trip card nam
 
 - **List exits and panel motion keep their full duration in production builds.** JavaScript accepts motion tokens in seconds or milliseconds. Explore cards stay mounted until their fade ends.
 - **Browser motion checks measure the final page after its loading screen leaves.** A brief loading spinner cannot cause a false failure.
+- **An empty login form asks for the email and password before it contacts the server.** The form error line shows "Enter your email and password." instead of the server's message.
+
+- **Group input now says when it could not load, and keeps what it loaded.** If the stop ideas or decisions read fails with nothing loaded, the tab shows a failed message. The message has a Try again button. If cards are loaded, the tab keeps them and adds a short note with Try again. A pending read with nothing loaded shows a loading line. The activity feed keeps its rows the same way, and shows a failed line when it has none. When the feed loaded and has no entries, it shows a short empty line. (#704)
+- **The Map tab now says when it could not load stops along the route**. A failed Google Places search shows "Stops along the route could not be loaded just now." A search that finds no stops still shows the route message. (#704)
+- **`npm run lint:ste` checks the prose lines your branch adds.** The check diffs your work against the merge base of `origin/test`, so committed and uncommitted lines both count. In a pull request, the base is the target branch. If `origin/test` is missing, the check tries `origin/main`, then `HEAD~1`, and prints the base it used. Under CI, a missing base stops the check with exit code 2. A list item is checked after its marker, unless it sits in a code fence. Each sentence on a checked line is measured in full.
+- **The sign-up confirmation shows as a notice, not an error.** After sign-up, the message "Check your email to confirm your account" uses the info style. It has no warning icon. Screen readers announce it as a status update, not as an alert. Errors keep the red style and still announce as an alert. (#704)
 
 - **Grid and motion checks use fixed regex patterns.** The checks still enforce column counts, glider movement, motion tokens, and reduced-motion rules.
 
