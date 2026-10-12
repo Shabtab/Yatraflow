@@ -42,7 +42,7 @@ applies: one batch branch per worker group, no push until the user says so.
 
 Read these three files before you start consistency work:
 
-- [`docs/consistency/consistency-rulings.md`](docs/consistency/consistency-rulings.md): rulings R1 to R19.
+- [`docs/consistency/consistency-rulings.md`](docs/consistency/consistency-rulings.md): rulings R1 to R23.
 - [`docs/consistency/app-consistency-plan.md`](docs/consistency/app-consistency-plan.md): the plan, with pages P1 to P16.
 - The newest `docs/consistency/handoff-*.md`: the branch map and next steps from the last session.
 
