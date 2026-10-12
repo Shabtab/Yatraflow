@@ -20,6 +20,10 @@ describe('stateBlockRole', () => {
   it('keeps an empty state silent', () => {
     expect(stateBlockRole('empty')).toBeUndefined()
   })
+
+  it('announces a kept note as a status, because its rows stay on screen (#704)', () => {
+    expect(stateBlockRole('kept')).toBe('status')
+  })
 })
 
 const CSS = readFileSync(join(process.cwd(), 'src/styles.css'), 'utf8').replace(/\r\n/g, '\n')

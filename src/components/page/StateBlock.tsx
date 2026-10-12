@@ -8,13 +8,14 @@
 // R22). It keeps the same roles and kinds, and it has no dashed border.
 import type { ReactNode } from 'react'
 
-export type StateKind = 'loading' | 'failed' | 'empty'
+/** A kept note sits above rows on screen. It announces as a status, not an alert (#704). */
+export type StateKind = 'loading' | 'failed' | 'empty' | 'kept'
 /** The full block fills a page. The compact block sits inside a tab or a card. */
 export type StateSize = 'full' | 'compact'
 
-/** The ARIA role a state announces with. Loading is a polite status, a failed read is an alert, and an empty state stays silent. */
+/** The ARIA role a state announces with. Loading and a kept note are a polite status. A failed read is an alert. An empty state stays silent. */
 export function stateBlockRole(kind: StateKind): 'status' | 'alert' | undefined {
-  if (kind === 'loading') return 'status'
+  if (kind === 'loading' || kind === 'kept') return 'status'
   if (kind === 'failed') return 'alert'
   return undefined
 }
