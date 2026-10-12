@@ -23,6 +23,8 @@ Sections:
 
 **Run browser sampling after the test suite finishes.** Parallel test workers can cause test timeouts and missed animation frames. You must keep these checks separate on a busy machine.
 
+**The page sampler follows the final route root.** A lazy route can replace a loading screen after one frame. The sampler starts a new record for that page. It still checks every block in the final page.
+
 **The default STE check reads the whole branch, not only unstaged edits.** `npm run lint:ste` compares the tree with the merge base of `origin/test`, so committed and uncommitted lines both count. In a pull request, it uses the target branch instead. Run `git fetch origin test` first. A new file must be staged (`git add -N`) before the check sees it. The check exits 2 when it cannot run. That covers a shallow clone with no merge base (run `git fetch --unshallow`) and a missing base branch under CI. Outside CI, a missing `origin/test` falls back to `origin/main`, then to `HEAD~1`, and a warning names the base used. Exit 0 passes, and exit 1 means a rule is broken. The directory `docs/consistency/` is exempt from the diff runs, because it holds planning notes written before these rules. An explicit `--file` still checks the file you name.
 
 The check once read only unstaged edits, so a commit made it inspect zero lines and always pass. If the checked count is zero, read the base named in the verdict before you trust the pass.

@@ -15,6 +15,11 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Fixed
+
+- **List exits and panel motion keep their full duration in production builds.** JavaScript accepts motion tokens in seconds or milliseconds. Explore cards stay mounted until their fade ends.
+- **Browser motion checks measure the final page after its loading screen leaves.** A brief loading spinner cannot cause a false failure.
+
 ### Added
 
 - **The app now ships its own papercut illustrations, with a build pipeline and a size budget.** Six images cover Kerala, Kashmir, Rajasthan, a generic city, a generic road and the first-trip empty state. Each scene has AVIF files at 320, 640 and 960 pixels and one WebP file at 640 pixels. The files live in `src/assets/art/` with a `manifest.json`. `npm run art:build` rebuilds them from the master PNGs, which stay out of git. The build never inlines these files into the JavaScript, so each one has its own hashed URL. The whole set weighs about 358 KiB. A test fails `npm test` when a file or the total goes over its size cap. No screen shows these images yet. The cards still draw the inline SVG motifs.

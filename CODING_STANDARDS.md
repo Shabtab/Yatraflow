@@ -946,6 +946,8 @@ process.
   reports success on a wrong page. Compare the page content, such as the h1.
   `AGENTS.md` still says "hash routing". Treat that line as stale.
 
+- **You must parse CSS time units before you use motion tokens in JavaScript.** Production CSS can change `180ms` to `.18s`. Convert seconds to milliseconds before you start timers or browser animations.
+
 ## 3. Scripted edits
 
 Read this section **before** writing any script that edits a source file.
