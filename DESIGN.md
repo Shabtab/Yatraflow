@@ -369,6 +369,37 @@ Add `yf-page` to the root of a page when you convert it. The page skin then appl
 
 **Surface roots.** Set `as` to `button` for a card that is one whole action. A button surface lifts and presses like an interactive surface. The button gets `type="button"` unless you pass a `type`. Set `as` to `details` for a card that folds. Its children must set the `<summary>`.
 
+## Brand mark
+
+**The Ribbon Y.** Two routes fold into one road, and a saffron dot marks the shared destination. The Y also stands for Yatra.
+
+### Construction
+- The mark is drawn on a 64-unit grid with three shapes. Each copy uses the same path data.
+- The fold is `M15 6C15 26 32 24 32 40` in Teal Pressed (`#0B6B63`), 11 units wide.
+- The road is `M49 6C49 26 32 24 32 40V46` in Calm Teal (`#0D8D82`), 11 units wide. It is drawn over the fold.
+- The destination is a 5.5-unit circle at (32, 56) in Marigold Saffron (`#F59E2D`).
+- The stroke ends are flat. Do not round them.
+
+### Wordmark and lockup
+- The wordmark is "Yatra" in Ink and "Flow" in Calm Teal, in Sora 800.
+- In the lockup, the mark is 1.78 times the cap height of the wordmark. The gap is 0.31 em.
+- The exported lockups have the wordmark as outlines. They do not need the font.
+
+### Colour versions
+- **Primary:** fold `#0B6B63`, road `#0D8D82`, on light grounds.
+- **Dark:** fold `#1E9D92`, road `#2BB8AC`. These are the dark-theme `--teal-700` and `--teal-500`.
+- **Reversed:** fold `#BFE3DD`, road white, on Planning Teal or Chart Navy.
+- **One colour:** Ink only. A 2-unit gap cuts the fold where the road crosses it, so the fold stays visible.
+- The destination dot stays saffron in all versions except one colour.
+
+### Files and use
+- `public/brand/` has the mark and the lockup in each version, as SVG.
+- `public/favicon.svg` is the primary mark. `public/icons/` has the PWA icons, the Apple touch icon and a 32px PNG favicon.
+- The app icon is the reversed mark on a Planning Teal (`#0E7A72`) tile. The Android adaptive icon uses the same tile colour.
+- `BrandMark` in `src/components/ui.tsx` reads `--teal-700`, `--teal-500` and `--saffron`, so the mark follows the theme.
+- Clear space is half the mark width on all sides. The smallest mark is 16px, and the smallest lockup is 96px wide.
+- Do not rotate, stretch or recolour the mark.
+
 ## Do's and Don'ts
 
 ### Do:
