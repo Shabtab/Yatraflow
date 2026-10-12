@@ -10204,3 +10204,6 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 .dmca-introduction { margin-top: 4px; }
 .dmca-report-requirements { padding-left: 18px; line-height: 1.9; margin: 8px 0; }
 .dmca-agent-contact { margin: 0; }
+
+/* ShareTab: the invite-link status line (minting, failed) keeps its margin in a class. */
+.hint-text.shr-invite-status { margin: 0 0 10px; }
