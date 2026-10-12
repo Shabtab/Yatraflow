@@ -16,6 +16,7 @@ import type { Trip } from '../data/types'
 import { useUsers, useSessionUserId, useNotifications, useSliceReads, tripsForUser, rereadTrips } from '../store/store'
 import { computeTotals, formatInrShort } from '../lib/engine'
 import { sliceState } from '../lib/readState'
+import { StateBlock } from '../components/page/StateBlock'
 import { Avatar } from '../components/ui'
 
 function greeting(): string {
@@ -137,7 +138,7 @@ export function NativeHomePage({ me, onNavigate }: {
 
       {/* #704: the three read states differ. The empty copy shows only after a read that succeeded. */}
       {trips.length === 0 && tripsRead === 'reading' && (
-        <div className="loading-block"><div className="spinner" />Loading trips…</div>
+        <StateBlock kind="loading" icon={<span className="spinner" aria-hidden="true" />} title="Loading trips…" />
       )}
       {trips.length === 0 && tripsRead === 'failed' && (
         <div className="app-home-empty">

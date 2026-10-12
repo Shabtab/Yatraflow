@@ -99,7 +99,7 @@ describe('#704 — native Home reads the trips verdict before it renders', () =>
     expect(failedAt, 'the failed branch').toBeGreaterThan(readingAt)
     expect(readyAt, 'the ready branch').toBeGreaterThan(failedAt)
     expect(rowsAt, 'the rows branch').toBeGreaterThan(readyAt)
-    expect(homeBody.slice(readingAt, failedAt)).toMatch(/<div className="loading-block"><div className="spinner" \/>Loading trips…<\/div>/)
+    expect(homeBody.slice(readingAt, failedAt)).toMatch(/<StateBlock kind="loading" icon=\{<span className="spinner" aria-hidden="true" \/>\} title="Loading trips…" \/>/)
     expect(homeBody.slice(failedAt, readyAt)).toMatch(/Couldn’t load trips[\s\S]*onClick=\{retryTrips\}>Try again<\/button>/)
     expect(homeBody.slice(readyAt, rowsAt)).toContain('No trips yet.')
   })

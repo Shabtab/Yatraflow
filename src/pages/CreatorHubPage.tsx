@@ -500,7 +500,7 @@ function PubsUnread({ view, retrying, onRetry, need }: {
   onRetry: () => void
   need?: string
 }) {
-  if (view === 'reading') return <p className="hint-text" style={{ margin: '6px 0 0' }}>Loading your publications…</p>
+  if (view === 'reading') return <p className="hint-text hub-pubs-loading">Loading your publications…</p>
   return (
     <div className="hub-note is-failure" role="alert">
       <b>Couldn't load your publications.</b> Nothing has been lost.{need ? ` ${need}` : ''}
