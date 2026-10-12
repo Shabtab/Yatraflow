@@ -485,10 +485,10 @@ function FunnelLine({ f, funnelRead, unlockRead = 'ready', windowLabel }: { f: P
   )
 }
 
-/** A tile's figure while the publication list is unread. "Reading…" and "Not
- *  read" are different answers, and neither is a number (#704). */
+/** A tile's figure while the publication list is unread. "Loading…" and
+ *  "Unavailable" are different answers, and neither is a number (#704). */
 function UnreadFigure({ view }: { view: RowsView }) {
-  return <span className="stat-value hub-cell-value hub-cell-unread">{view === 'reading' ? 'Reading…' : 'Not read'}</span>
+  return <span className="stat-value hub-cell-value hub-cell-unread">{view === 'reading' ? 'Loading…' : 'Unavailable'}</span>
 }
 
 /** The publication list while it is unread, for any claim that needs it. Loading
@@ -500,12 +500,12 @@ function PubsUnread({ view, retrying, onRetry, need }: {
   onRetry: () => void
   need?: string
 }) {
-  if (view === 'reading') return <p className="hint-text hub-pubs-loading">Loading your publications…</p>
+  if (view === 'reading') return <p className="hint-text hub-pubs-loading" role="status">Loading your publications…</p>
   return (
-    <div className="hub-note is-failure" role="alert">
-      <b>Couldn't load your publications.</b> Nothing has been lost.{need ? ` ${need}` : ''}
+    <div className="hub-note is-failure hub-read-failed" role="alert">
+      <b>Couldn’t load your publications.</b> Nothing has been lost.{need ? ` ${need}` : ''}
       <button className="btn btn-outline btn-sm hub-note-action" onClick={onRetry} disabled={retrying}>
-        {retrying ? 'Retrying…' : 'Retry'}
+        {retrying ? 'Trying…' : 'Try again'}
       </button>
     </div>
   )
@@ -642,17 +642,17 @@ export function HubOverview({ myPubs, onUnpublish, onNavigate, daily, dailyAt, s
         <div className="hub-note is-failure" role={salesAt ? 'status' : 'alert'}>
           {salesAt ? (
             <>
-              <b>Couldn&apos;t refresh your sales ledger.</b> The figures on this tab are the ones that loaded at{' '}
+              <b>Couldn’t refresh your sales ledger.</b> The figures on this tab are the ones that loaded at{' '}
               {formatHM(readAtHM(salesAt), timeFmt)} — nothing has been lost, they are simply older than now.
             </>
           ) : (
             <>
-              <b>Couldn&apos;t read your sales ledger.</b> Every unlock figure on this tab is unknown until it loads —
+              <b>Couldn’t read your sales ledger.</b> Every unlock figure on this tab is unknown until it loads —
               nothing has been lost, it just could not be read.
             </>
           )}
           <button className="btn btn-outline btn-sm hub-note-action" onClick={onRetrySales} disabled={salesReading}>
-            {salesReading ? 'Retrying…' : 'Retry'}
+            {salesReading ? 'Trying…' : 'Try again'}
           </button>
         </div>
       )}
@@ -696,7 +696,7 @@ export function HubOverview({ myPubs, onUnpublish, onNavigate, daily, dailyAt, s
                   ? 'Reading recorded traffic…'
                   : funnelError
                     ? daily !== null && dailyAt !== null
-                      ? `Couldn't refresh — showing the log read at ${formatHM(readAtHM(dailyAt), timeFmt)}.`
+                      ? `Couldn’t refresh — showing the log read at ${formatHM(readAtHM(dailyAt), timeFmt)}.`
                       : 'Recorded traffic could not be read just now — the trend is unchanged on the server.'
                     : recordingSince
                       // #358 — QUALIFIED. This is the GLOBAL earliest day across
@@ -707,7 +707,7 @@ export function HubOverview({ myPubs, onUnpublish, onNavigate, daily, dailyAt, s
                       ? `Chart shows recorded days only; your log begins ${new Date(`${recordingSince}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} — the earliest of your plans.`
                       : 'Nothing recorded yet — the trend starts with the first visit.'}
               </span>
-              {funnelError && <button className="btn btn-outline btn-sm" onClick={handleRetryFunnel} disabled={funnelReading}>{funnelReading ? 'Retrying…' : 'Retry'}</button>}
+              {funnelError && <button className="btn btn-outline btn-sm" onClick={handleRetryFunnel} disabled={funnelReading}>{funnelReading ? 'Trying…' : 'Try again'}</button>}
             </div>
             {/* A failed or in-flight read must not draw as "nothing recorded": the
                 chart's own empty state is a measurement, so it is only shown once
@@ -737,10 +737,10 @@ export function HubOverview({ myPubs, onUnpublish, onNavigate, daily, dailyAt, s
             ) : (
               <div>
                 {publishedView === 'kept' && (
-                  <div className="hub-note is-failure" role="status">
-                    <b>Couldn't refresh your publications.</b> Showing the ones that loaded.
+                  <div className="hub-note is-failure hub-read-kept" role="status">
+                    <b>Couldn’t refresh your publications.</b> Showing the ones that loaded.
                     <button className="btn btn-outline btn-sm hub-note-action" onClick={onRetryPublished} disabled={publishedRetrying}>
-                      {publishedRetrying ? 'Retrying…' : 'Retry'}
+                      {publishedRetrying ? 'Trying…' : 'Try again'}
                     </button>
                   </div>
                 )}
@@ -864,7 +864,7 @@ export function EarningsTab({ myPubs, sales, salesError, salesAt, salesReading, 
   // the error flag, and only an empty, idle, failed read is 'failed' — the one
   // state that owns the Retry button.
   const ledgerRead = deriveLedgerRead({ hasFigures: actual !== null, reading: salesReading, error: salesError })
-  const unreadLabel = ledgerRead === 'reading' ? 'Reading…' : 'Not read'
+  const unreadLabel = ledgerRead === 'reading' ? 'Loading…' : 'Unavailable'
   /** What the tiles and pills SHOW — gross until told otherwise. The basis control
    *  has always opened on gross, even though the product's own balance copy and the
    *  payout tile beside it are net. */
@@ -1023,7 +1023,7 @@ export function EarningsTab({ myPubs, sales, salesError, salesAt, salesReading, 
 
       {salesError && salesAt !== null && (
         <div className="hub-note is-failure" role="status">
-          <b>Couldn&apos;t refresh — showing what loaded at {formatHM(readAtHM(salesAt), timeFmt)}.</b> The ledger
+          <b>Couldn’t refresh — showing what loaded at {formatHM(readAtHM(salesAt), timeFmt)}.</b> The ledger
           below is real; it may simply be older than now.
         </div>
       )}
@@ -1040,10 +1040,10 @@ export function EarningsTab({ myPubs, sales, salesError, salesAt, salesReading, 
         ) : ledgerRead === 'failed' ? (
           <>
             <div className="hub-note is-failure" role="alert">
-              <b>Couldn't load your sales.</b> The ledger read failed or timed out — your recorded sales are safe
+              <b>Couldn’t load your sales.</b> The ledger read failed or timed out — your recorded sales are safe
               and will appear once the connection works. Check your connection and try again.
             </div>
-            <button className="btn btn-outline btn-sm" style={{ marginTop: 8 }} onClick={handleRetry}>Retry</button>
+            <button className="btn btn-outline btn-sm" style={{ marginTop: 8 }} onClick={handleRetry}>Try again</button>
           </>
         ) : !actual || actual.rows.length === 0 ? (
           <>

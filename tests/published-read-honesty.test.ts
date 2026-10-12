@@ -253,11 +253,11 @@ describe('#704 — the creator hub checks the list before it prints an empty ans
   })
 
   it('the failed sentence and the empty sentence are different', () => {
-    expect(hub).toContain("Couldn't load your publications.")
+    expect(hub).toContain('Couldn’t load your publications.')
     expect(hub).toContain('Nothing published yet')
   })
 
-  it('the four tiles show "Not read", not a zero, until the list reads', () => {
+  it('the four tiles show "Unavailable", not a zero, until the list reads', () => {
     expect(hub.match(/unknownPubs \? <UnreadFigure view=\{publishedView\} \/> : /g)?.length ?? 0).toBe(4)
     expect(hub).toMatch(/pubsUnknown \? <UnreadFigure view=\{publishedView\} \/> : /)
   })
@@ -270,7 +270,39 @@ describe('#704 — the creator hub checks the list before it prints an empty ans
 
   it('a retry re-issues the public read and shows that it is in flight', () => {
     expect(hub).toMatch(/rereadPublicSlices\(\)\.finally/)
-    expect(hub).toContain('Retrying…')
+    expect(hub).toContain('Trying…')
+  })
+
+  it('the loading line is a status, and the failed note is an alert with the Try again button', () => {
+    expect(hub).toMatch(/<p className="hint-text hub-pubs-loading" role="status">Loading your publications…<\/p>/)
+    expect(hub).toMatch(/<div className="hub-note is-failure hub-read-failed" role="alert">/)
+    expect(hub).toMatch(/\{retrying \? 'Trying…' : 'Try again'\}/)
+  })
+
+  it('a kept publication list adds a status note with Try again, and the failure note keeps its alert', () => {
+    expect(hub).toMatch(/<div className="hub-note is-failure hub-read-kept" role="status">/)
+    expect(hub).toMatch(/\{publishedRetrying \? 'Trying…' : 'Try again'\}/)
+  })
+
+  it('the tiles read "Loading…" while the list is in flight and "Unavailable" once it has failed', () => {
+    expect(hub).toContain("view === 'reading' ? 'Loading…' : 'Unavailable'")
+    expect(hub).toContain("ledgerRead === 'reading' ? 'Loading…' : 'Unavailable'")
+    expect(hub).not.toContain("'Not read'")
+    expect(hub).not.toContain("'Reading…'")
+  })
+
+  it('the Hub carries no straight apostrophe and no Retry label in its UI copy', () => {
+    expect(hub).not.toContain("Couldn't")
+    expect(hub).not.toContain('Couldn&apos;t')
+    expect(hub).not.toContain(">Retry<")
+    expect(hub).not.toContain("'Retry'")
+    expect(hub).not.toContain("'Retrying…'")
+  })
+
+  it('the motion for the Hub notes is in the stylesheet, with the reduced-motion opt-out', () => {
+    const css = read('../src/styles.css')
+    expect(css).toMatch(/\.hub-read-failed, \.hub-read-kept \{ animation: errIn var\(--motion-med\) var\(--ease-out\); \}/)
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{ \.hub-read-failed, \.hub-read-kept \{ animation: none; \} \}/)
   })
 })
 

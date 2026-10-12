@@ -10244,3 +10244,7 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 /* #704: the publish-status notes on the Share tab enter like the error line. */
 .shr-read-failed, .shr-read-kept, .shr-read-loading { animation: errIn var(--motion-med) var(--ease-out); }
 @media (prefers-reduced-motion: reduce) { .shr-read-failed, .shr-read-kept, .shr-read-loading { animation: none; } }
+
+/* #704: the creator hub's failure and kept notes enter like the error line. */
+.hub-read-failed, .hub-read-kept { animation: errIn var(--motion-med) var(--ease-out); }
+@media (prefers-reduced-motion: reduce) { .hub-read-failed, .hub-read-kept { animation: none; } }
