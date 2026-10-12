@@ -25,6 +25,8 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ### Fixed
 
+- **The hand-drawn arrow beside the handwritten note has a clean head.** The arrowhead sits on the end of the curve, and its two sides are even. The arrow shows in the My trips and Explore heroes and in the Purchases page header.
+
 - **Five landing page links now open their pages.** The hero planning link, Explore, signup, DMCA and Plan Bench links navigate inside the app. A click opens the page in the same tab. (#714)
 
 - **The sign-up confirmation shows as a notice, not an error.** After sign-up, the message "Check your email to confirm your account" uses the info style. It has no warning icon. Screen readers announce it as a status update, not as an alert. Errors keep the red style and still announce as an alert. (#704)

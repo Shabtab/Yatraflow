@@ -7,6 +7,7 @@
 import { useId, type ReactNode } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import { InlineIcon } from '../icons'
+import { NoteArrow } from './NoteArrow'
 
 export interface PageHeaderProps {
   /** A quiet link above the kicker, such as a way back to the parent page. */
@@ -67,10 +68,7 @@ export function PageHeader({
           // lede, so it is hidden from assistive technology.
           <p className="yf-header-note" aria-hidden="true">
             <span className="yf-header-note-hl">{note}</span>
-            <svg viewBox="0 0 54 62" focusable="false">
-              <path d="M8 4c14 4 30 16 30 34 0 6-2 11-6 16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
-              <path d="M24 50l8 6 6-10" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
+            <NoteArrow />
           </p>
         ) : null}
         {actions ? <div className="yf-header-actions">{actions}</div> : null}

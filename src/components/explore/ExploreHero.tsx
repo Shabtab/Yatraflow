@@ -7,6 +7,7 @@ import { ArrowDown } from 'lucide-react'
 import type { TripRegion } from '../../lib/tripsPage'
 import { TripArt } from '../trips/TripArt'
 import { PageHero } from '../page/PageHero'
+import { NoteArrow } from '../page/NoteArrow'
 
 export interface HeroStat { label: string; value: number }
 
@@ -52,10 +53,7 @@ export function ExploreHero({ stats, onExplore }: {
               <span>fork it,</span>
               <span className="ex-note-hl">make it yours.</span>
             </span>
-            <svg viewBox="0 0 54 62" focusable="false">
-              <path d="M8 4c14 4 30 16 30 34 0 6-2 11-6 16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
-              <path d="M24 50l8 6 6-10" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
+            <NoteArrow />
           </p>
         </>
       }
