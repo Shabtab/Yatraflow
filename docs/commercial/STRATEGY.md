@@ -85,7 +85,7 @@ You must finish these before you drive any traffic.
 
 | Item | Why |
 | --- | --- |
-| Close P0 #689 | Remove the `masteradmin` account or rotate its password. Purge fixture pages from the live sitemap and from Explore (#672). |
+| Confirm the live checks of P0 #689 | The issue is closed. Prove on the live project that no `masteradmin` account keeps a public password, and that no fixture page stays in the sitemap or in Explore (#672). |
 | Resync `test` with `main` | `main` holds the v0.74.1 invite-code security fix. `test` does not. |
 | Fix the create-funnel events | The live table holds no `started` row. We cannot measure a broken funnel. |
 | Decide the router | The public OSRM demo server forbids commercial use (STEP-0 D6). Self-host it or pay for one. |
@@ -159,7 +159,8 @@ the fee floor in `PLAN-MONETISATION.md` from about 3.86% to about 2.96%. This is
 
 ```bash
 git log origin/test --since="30 days ago" --no-merges --oneline | wc -l   # build rate
-gh issue list --state open --label "priority: P0"                         # open P0s
+gh issue list --state open --json number,title,labels \
+  --jq '.[] | select(any(.labels[]; .name | endswith("P0"))) | "\(.number) \(.title)"'   # open P0s
 git rev-list --left-right --count origin/main...origin/test               # branch drift
 ```
 
