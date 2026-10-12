@@ -880,7 +880,9 @@ process.
   diff it against the merge base (`git diff <merge-base> <branch> -- <file>`)
   and port only the intended hunks.
 
-- **A stale visual branch is re-cut, never merged — and layout overrides on shared classes belong inline, not in the stylesheet (learned 2026-09-29, #512).** The V2 settings branch predated five behavior waves on the same form, so merging either way silently reverted one side. The recut keeps test's state/handlers/tests verbatim and re-applies only the presentation — and every landed mapping stays landed (the branch's stale `HEALTH_TONE`/`MODE_ICON`/inline settlement math were the traps). Companion: `tests/health-band.test.ts` collects every rule whose SELECTOR mentions health/pulse, so four layout overrides (`.tsx-read .health-*`) failed it as non-vocabulary additions — one-off compositions on shared classes go inline (`style={{ gap: 14 }}`), keeping the tripwire asserting exactly the band vocabulary.
+- **Re-cut a stale visual branch, never merge it. Move layout overrides on shared classes into page classes, with three exceptions (learned 2026-09-29, #512; revised 2026-10-11, R5).** The V2 settings branch predated five behavior waves on the same form. A merge silently reverted one side. The recut keeps the state, handlers and tests from `test` and applies only the presentation again. Every landed mapping stays landed. The stale `HEALTH_TONE`, `MODE_ICON` and inline settlement math were the traps.
+  Move an inline layout value into a page-prefixed class (R1). Find every rule that sets the same property on the shared class. Include the `+`, `>` and ancestor forms, such as `.card + .card`. If one exists, use a same-element compound selector, such as `.row-between.bud-watch-row`. If none exists, use the page class alone. Append the rule at the end of `src/styles.css` (R6). A two-class compound only ties a combinator rule. If a host rule has more specificity than two classes, keep the value inline.
+  Keep the value inline in three cases. (1) A test collects rules by selector name and the new selector contains that name. `tests/health-band.test.ts` collects every `health` or `pulse` selector, and four `.tsx-read .health-*` overrides failed it in #512. Do not widen the test to pass. (2) The value breaks a design-system gate (R13). (3) The value comes from data (R4).
 
 - **A squash-merge can silently DROP files, and nothing in the gate catches it.**
   PR #75's squash carried the calendar/print/ShareTab files but silently omitted
@@ -943,6 +945,8 @@ process.
   its URL and shows the landing page in place. A check that compares URLs
   reports success on a wrong page. Compare the page content, such as the h1.
   `AGENTS.md` still says "hash routing". Treat that line as stale.
+
+- **You must parse CSS time units before you use motion tokens in JavaScript.** Production CSS can change `180ms` to `.18s`. Convert seconds to milliseconds before you start timers or browser animations.
 
 ## 3. Scripted edits
 

@@ -34,7 +34,8 @@ export function motionTiming(token: keyof typeof MOTION_DURATION_FALLBACK | stri
   const fallback = { duration: MOTION_DURATION_FALLBACK[token] ?? 240, easing: 'cubic-bezier(.3, .86, .48, 1)' }
   if (typeof window === 'undefined') return fallback
   const s = getComputedStyle(document.documentElement)
-  const duration = parseFloat(s.getPropertyValue(token))
+  const cssDuration = s.getPropertyValue(token).trim()
+  const duration = parseFloat(cssDuration) * (cssDuration.endsWith('ms') ? 1 : cssDuration.endsWith('s') ? 1000 : NaN)
   const easing = s.getPropertyValue('--ease-glide').trim()
   return {
     duration: Number.isFinite(duration) && duration > 0 ? duration : fallback.duration,

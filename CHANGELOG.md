@@ -18,6 +18,10 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 ## [0.75.0] - 2026-10-12
 
 This release makes the trip pages easier to read and act on. Every trip card names its next step, and the Timeline lets you save days and stops. Pages enter with motion. Group input and map panels show failed reads with a retry action.
+### Fixed
+
+- **List exits and panel motion keep their full duration in production builds.** JavaScript accepts motion tokens in seconds or milliseconds. Explore cards stay mounted until their fade ends.
+- **Browser motion checks measure the final page after its loading screen leaves.** A brief loading spinner cannot cause a false failure.
 
 ### Added
 
@@ -84,6 +88,9 @@ This release makes the trip pages easier to read and act on. Every trip card nam
 
 - **Search engines get clearer signals for the calculator and the share cards.** The calculator page says "Prices checked October 2026". Its structured data lists a published date and a modified date. The address without the final slash redirects to the page.
   The app pages and the share cards declare the language `en-IN`. A share card for an itinerary or creator that exists is cached at the edge for five minutes. A missing or failed card is never cached.
+- **A `CLAUDE.md` file now sets how Claude sessions split the work on this repo.** An Opus main thread at medium effort plans and checks the work. Haiku workers use max effort for judgment and high effort for mechanical edits. A Sonnet reviewer checks UI work, and an Opus subagent gives advice on hard decisions. The file links the consistency plan, rulings R1 to R23, and the newest handoff note in `docs/consistency/`. `CODING_STANDARDS.md` explains how to move a layout value into a page class. It also names three cases where the value stays inline.
+
+- **Search engines get clearer signals for the calculator and the share cards.** The calculator page says "Prices checked October 2026" and lists a published and modified date in its structured data. The address without the final slash now redirects to the page. The app pages and the share cards declare the language `en-IN`. A share card for an itinerary or creator that exists is now cached at the edge for five minutes. A missing or failed card is never cached.
 
 - **My trips opens with an editorial hero built from your own trips.** The headline names the place your next trip ends at, for example "Next stop, Goa." The same place shows on the Up next card. A row of counts shows your trips, upcoming and live trips, places and co-planners.
   Co-planners are the other people who can edit your trips. Up to three postcards show your trips, with a handwritten note such as "10 days to go!" While trips load, the hero shows a neutral headline and no counts, postcards or note.

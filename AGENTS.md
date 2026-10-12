@@ -334,6 +334,15 @@ that notices the drift.
     the one sitting beside this machine's clone folders, not any copy inside
     a clone.
 
+17. **Promote `test` to `main` per finished batch (user-mandated
+    2026-10-12).** Promote when a coherent batch lands on `test`. Do not let
+    `test` collect weeks of work. A release that adds a feature raises the
+    minor number. A release that only fixes bugs raises the patch number.
+    A security fix ships alone as a patch hotfix from `main`, then merges
+    back into `test`. A fix that changes the database and the app ships in
+    two SQL steps. Run the additive step before the app deploys. Run the
+    tightening step after the new app is live.
+
 ### What enforces each rule
 
 A rule nobody checks fails silently. This table pairs each rule above (and the
@@ -358,6 +367,7 @@ a breach, so treat those rows as the ones most easily skipped.
 | §2.14 lint is a ratchet — never add errors | `npm run lint:ratchet` vs `eslint-baseline.json` (inside `verify`) |
 | §2.15 clear `NODE_ENV` before installs | `npm run clean:env` |
 | §2.16 work only in your own clone | judgment — the global user-level `AGENTS.md` clone table |
+| §2.17 promote per batch; patch for fixes; two-step SQL | judgment — `git rev-list --count origin/main..origin/test` shows the backlog |
 | §3 gate, CI, migrations | `npm run verify` locally; `ci.yml` on push and PR (`tests/ci-workflow.test.ts` pins the triggers); `npm run check:migrations` + a live PostgREST probe for schema |
 | §4 code conventions and pitfalls | the pin tests named in each rule — `verify` runs them all |
 
