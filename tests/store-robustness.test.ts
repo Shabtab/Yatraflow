@@ -3,13 +3,14 @@
 //  #4 registerPubView/Copy only writes when the viewer owns the published row
 //  #5 reorderStop guards out-of-range indices (no undefined in day.stops)
 //  #9 acceptSuggestionIntoTimeline no longer dereferences a null session user
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
   tripById,
   getSnapshot, createTrip, reorderStop, acceptSuggestionIntoTimeline,
   publishItinerary, registerPubView, currentUser,
 } from '../src/store/store'
 import { supabase } from '../src/lib/supabase'
+import { sliceState } from '../src/lib/readState'
 import type { Trip, PublishedItinerary } from '../src/data/types'
 
 function resetCacheForTest() {
@@ -245,5 +246,51 @@ describe('unpublishItinerary owner gate + rollback (v0.36)', () => {
     } finally {
       vi.restoreAllMocks()
     }
+  })
+})
+
+// ============ #704 — a failed read is never an empty slice ============
+// These drive the real store through its auth entry point. A fresh module graph
+// gives each test its own Supabase client, so the test answers every read.
+
+/** A query builder that answers with `result`, as the store's awaited reads do. */
+function answering(result: { data: unknown; error: unknown }) {
+  const builder: Record<string, unknown> = {}
+  for (const m of ['select', 'eq', 'in']) builder[m] = () => builder
+  builder.then = (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) =>
+    Promise.resolve(result).then(res, rej)
+  return builder
+}
+
+/** A fresh store, signed in as `user`, on its own Supabase client. */
+async function freshStore(user: string) {
+  vi.resetModules()
+  const store = await import('../src/store/store')
+  const { supabase: client } = await import('../src/lib/supabase')
+  vi.spyOn(client.auth, 'getSession').mockResolvedValue(
+    { data: { session: { user: { id: user } } }, error: null } as never,
+  )
+  vi.spyOn(client.auth, 'onAuthStateChange').mockReturnValue(
+    { data: { subscription: { unsubscribe: () => {} } } } as never,
+  )
+  return { store, client }
+}
+
+describe('#704 — a throw after the first read still gives the trips slice a verdict', () => {
+  afterEach(() => { vi.restoreAllMocks() })
+
+  it('the outer catch reports trips failed, so a page that waits on the trips read cannot spin', async () => {
+    const { store, client } = await freshStore('user-d4')
+    vi.spyOn(client, 'from').mockImplementation(((table: string) => {
+      if (table === 'trip_members') {
+        return answering({ data: [{ trip_id: 'trip-d4', user_id: 'user-d4', role: 'owner', joined_at: 1 }], error: null })
+      }
+      // Stage 2 reads trips. This throw comes after stage 1 has read the memberships.
+      if (table === 'trips') throw new Error('forced after stage 1')
+      return answering({ data: [], error: null })
+    }) as never)
+
+    store.init()
+    await vi.waitFor(() => expect(sliceState(store.getSnapshot().sliceReads, 'trips')).toBe('failed'))
   })
 })

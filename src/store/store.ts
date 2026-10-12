@@ -950,6 +950,12 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     }
   } catch (e) {
     console.error('[yatraflow] hydration failed', e)
+    // #704: a throw leaves the trips read with no verdict, and a page that waits
+    // on that read would spin forever. Name the failure, unless a newer run replaced this one.
+    if (gen === hydrateGen) {
+      patch({ sliceReads: { ...cache.sliceReads, trips: 'failed' } })
+      commit()
+    }
     toast('Could not load your data - check your connection.')
   }
 }
