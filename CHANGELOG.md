@@ -69,6 +69,9 @@ This release makes the trip pages easier to read and act on. Every trip card nam
   Each run writes a screenshot and a JSON record to `.verify-evidence/`, which git ignores.
 
 ### Changed
+- **Verification notes cover locked trip content, fixture cleanup, and edge caching.** Public pages must test locked content. Cleanup checks use a fresh query. Cache checks use two GET requests.
+
+- **Profile and Admin look the same, with no visual changes.** Static styles now use named CSS classes. Values that depend on data or state stay inline. Admin's six 18px spacings stay inline under the spacing ruling.
 
 - **Profile, Admin, Overview, Share, sign-in and DMCA pages keep their look.** Their static styles now use named CSS classes. Values that depend on data or state stay inline.
 
