@@ -10195,7 +10195,7 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 .auth-description { margin-top: 4px; }
 .auth-backend-warning { margin-bottom: 12px; }
 .auth-backend-detail { margin-top: 4px; }
-.auth-submit-error { margin-bottom: 10px; }
+.auth-submit-error { margin-bottom: 8px; }
 .btn.auth-submit { width: 100%; }
 .hint-text.auth-reset-help { margin: 10px 0 0; text-align: center; }
 .hint-text.auth-sample-note { text-align: center; margin-top: 14px; }
@@ -10248,3 +10248,12 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 /* #704: the creator hub's failure and kept notes enter like the error line. */
 .hub-read-failed, .hub-read-kept { animation: errIn var(--motion-med) var(--ease-out); }
 @media (prefers-reduced-motion: reduce) { .hub-read-failed, .hub-read-kept { animation: none; } }
+
+/* ===== P8: DMCA page, a content page with a serif header and one text panel ===== */
+/* The page root carries yf-page. The text panel holds the policy text at a readable
+   measure. The top and bottom padding copy the content pages (My purchases). */
+.dmca-page { padding-top: 22px; padding-bottom: 24px; }
+.dmca-body { max-width: 68ch; padding: 24px; }
+@media (max-width: 560px) {
+  .dmca-body { padding: 16px; }
+}

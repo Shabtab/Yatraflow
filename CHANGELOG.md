@@ -85,6 +85,7 @@ This release makes the trip pages easier to read and act on. Every trip card nam
 ### Changed
 
 - **Verification notes cover locked trip content, fixture cleanup, and edge caching.** Public pages must test locked content. Cleanup checks use a fresh query. Cache checks use two GET requests.
+- **The DMCA page and the log in tabs now use the shared page parts.** The DMCA page has a serif title, a one-line lede and one text panel about 68 characters wide. The log in tabs use the shared tab row, with the same keyboard controls. The log in page announces its missing-backend warning to screen readers. The form error sits 8px above the submit button, the same gap as the sign-up notice.
 
 - **Profile and Admin look the same, with no visual changes.** Static styles now use named CSS classes. Values that depend on data or state stay inline. Admin's six 18px spacings stay inline under the spacing ruling.
 

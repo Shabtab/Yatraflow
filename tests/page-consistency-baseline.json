@@ -7,7 +7,6 @@
     "src/pages/CreateTrip.tsx",
     "src/pages/CreatorHubPage.tsx",
     "src/pages/CreatorPage.tsx",
-    "src/pages/DMCAPage.tsx",
     "src/pages/Explore.tsx",
     "src/pages/Landing.tsx",
     "src/pages/NativeHome.tsx",
@@ -52,7 +51,7 @@
       "EmptyState": 0,
       "loadingBlock": 0,
       "inlineStyle": 0,
-      "rawH1": 1
+      "rawH1": 0
     },
     "src/pages/Explore.tsx": {
       "EmptyState": 0,
