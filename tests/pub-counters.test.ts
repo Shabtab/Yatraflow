@@ -30,6 +30,17 @@ const pubPayload = (tripId: string, creatorId: string): Omit<PublishedItinerary,
   warningsAndAssumptions: [], freeDayIndexes: [0],
 })
 
+/** `publishItinerary` reports its outcome, not the row. A test that needs the row
+ *  asserts the outcome, then reads the row the accepted write left in the cache. */
+async function publishRow(
+  store: typeof import('../src/store/store'),
+  payload: Omit<PublishedItinerary, 'id' | 'publishedAt' | 'views' | 'copies'>,
+): Promise<PublishedItinerary> {
+  const outcome = await store.publishItinerary(payload)
+  expect(outcome.ok, outcome.error).toBe(true)
+  return store.getSnapshot().published.find(x => x.tripId === payload.tripId)!
+}
+
 /** A session-scoped storage double, so "one per session" is testable at all.
  *  `removeItem` is included because the fix RELEASES the mark on a failed
  *  write — a double without it would hide that half. */
@@ -78,7 +89,7 @@ describe('#363 — forks are counted once per session, like views', () => {
     fakeSessionStorage()
     try {
       const store = await import('../src/store/store')
-      const p = await store.publishItinerary(pubPayload('t-fork', 'owner-1'))
+      const p = await publishRow(store, pubPayload('t-fork', 'owner-1'))
       ;(store.getSnapshot() as unknown as { sessionUserId: string }).sessionUserId = 'viewer-1'
 
       store.registerPubCopy(p.id)
@@ -97,7 +108,7 @@ describe('#363 — forks are counted once per session, like views', () => {
     fakeSessionStorage()
     try {
       const store = await import('../src/store/store')
-      const p = await store.publishItinerary(pubPayload('t-source', 'owner-1'))
+      const p = await publishRow(store, pubPayload('t-source', 'owner-1'))
       ;(store.getSnapshot() as unknown as { sessionUserId: string }).sessionUserId = 'viewer-1'
 
       store.registerPubView(p.id, 'copy')
@@ -118,7 +129,7 @@ describe('#363 — forks are counted once per session, like views', () => {
     fakeSessionStorage()
     try {
       const store = await import('../src/store/store')
-      const p = await store.publishItinerary(pubPayload('t-both', 'owner-1'))
+      const p = await publishRow(store, pubPayload('t-both', 'owner-1'))
       ;(store.getSnapshot() as unknown as { sessionUserId: string }).sessionUserId = 'viewer-1'
 
       store.registerPubView(p.id)
@@ -135,7 +146,7 @@ describe('#363 — forks are counted once per session, like views', () => {
     fakeSessionStorage()
     try {
       const store = await import('../src/store/store')
-      const p = await store.publishItinerary(pubPayload('t-self', 'owner-9'))
+      const p = await publishRow(store, pubPayload('t-self', 'owner-9'))
       ;(store.getSnapshot() as unknown as { sessionUserId: string }).sessionUserId = 'owner-9'
 
       store.registerPubCopy(p.id)
@@ -155,7 +166,7 @@ describe('#363 — forks are counted once per session, like views', () => {
     })
     try {
       const store = await import('../src/store/store')
-      const p = await store.publishItinerary(pubPayload('t-private', 'owner-1'))
+      const p = await publishRow(store, pubPayload('t-private', 'owner-1'))
       ;(store.getSnapshot() as unknown as { sessionUserId: string }).sessionUserId = 'viewer-1'
       store.registerPubCopy(p.id)
       expect(rowOf(store, p.id).copies).toBe(p.copies + 1)
@@ -174,7 +185,7 @@ describe('#363 — a bump that fails does not keep its +1', () => {
     const backing = fakeSessionStorage()
     try {
       const store = await import('../src/store/store')
-      const p = await store.publishItinerary(pubPayload('t-fail', 'owner-1'))
+      const p = await publishRow(store, pubPayload('t-fail', 'owner-1'))
       ;(store.getSnapshot() as unknown as { sessionUserId: string }).sessionUserId = 'viewer-1'
 
       store.registerPubView(p.id)
@@ -197,7 +208,7 @@ describe('#363 — a bump that fails does not keep its +1', () => {
     fakeSessionStorage()
     try {
       const store = await import('../src/store/store')
-      const p = await store.publishItinerary(pubPayload('t-reject', 'owner-1'))
+      const p = await publishRow(store, pubPayload('t-reject', 'owner-1'))
       ;(store.getSnapshot() as unknown as { sessionUserId: string }).sessionUserId = 'viewer-1'
 
       store.registerPubCopy(p.id)
@@ -224,7 +235,7 @@ describe('#363 — a bump that fails does not keep its +1', () => {
     fakeSessionStorage()
     try {
       const store = await import('../src/store/store')
-      const p = await store.publishItinerary(pubPayload('t-retry', 'owner-1'))
+      const p = await publishRow(store, pubPayload('t-retry', 'owner-1'))
       ;(store.getSnapshot() as unknown as { sessionUserId: string }).sessionUserId = 'viewer-1'
 
       store.registerPubView(p.id)
@@ -247,7 +258,7 @@ describe('#363 — a bump that fails does not keep its +1', () => {
     fakeSessionStorage()
     try {
       const store = await import('../src/store/store')
-      const p = await store.publishItinerary(pubPayload('t-floor', 'owner-1'))
+      const p = await publishRow(store, pubPayload('t-floor', 'owner-1'))
       ;(store.getSnapshot() as unknown as { sessionUserId: string }).sessionUserId = 'viewer-1'
       // Force two bumps past the session guard (different kinds), fail both.
       store.registerPubView(p.id)

@@ -5,7 +5,7 @@ import { Bell, LogOut, Mail, Moon, Sparkles, Sun } from 'lucide-react'
 import { TravelStyle } from '../data/types'
 import { TRAVEL_STYLES } from '../data/types'
 import {
-  useDb, currentUser, updateProfile, tripsForUser, logout, notificationsFor, markAllNotificationsRead,
+  useDb, currentUser, updateProfile, PROFILE_NOT_SAVED, tripsForUser, logout, notificationsFor, markAllNotificationsRead,
 } from '../store/store'
 import { Avatar, Chip, Field, toast, undoToast } from '../components/ui'
 import { useTimeFormat, setTimeFormat, formatHM, type TimeFormat } from '../lib/timefmt'
@@ -52,6 +52,10 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
     languages: (me?.profile.languages ?? ['en']).join(', '),
   }))
   const [nameErr, setNameErr] = useState<string | null>(null)
+  // #704: the save button is disabled while the write is in flight, and a
+  // refused save says why beside it. The typed values in `f` are never reset.
+  const [saving, setSaving] = useState(false)
+  const [saveErr, setSaveErr] = useState<string | null>(null)
   // The Save details card sits well below "Your details" — the field this
   // button validates (Display name) is off-screen from it, so a failed save
   // rendered its error out of sight and the click read as "save did nothing".
@@ -171,7 +175,7 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
           <div className="card stack-gap">
             <h3>Save details</h3>
             <hr className="divider" />
-            <button className="btn btn-primary" onClick={() => {
+            <button className="btn btn-primary" disabled={saving} onClick={async () => {
               // Inline validation — the name silently reverting to the old one
               // read as "save doesn't work". Say so, next to the field.
               if (!f.name.trim()) {
@@ -184,13 +188,20 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
                 return
               }
               setNameErr(null)
-              updateProfile({
+              setSaveErr(null)
+              setSaving(true)
+              // #704: "Profile saved" waits for the server. A refused save keeps
+              // the typed values in the form and says why beside the button.
+              const r = await updateProfile({
                 name: f.name.trim(),
                 homeCity: f.homeCity.trim() || undefined,
                 languages: f.languages.split(',').map(s => s.trim()).filter(Boolean),
               })
-              toast('Profile saved')
+              setSaving(false)
+              if (r.ok) { toast('Profile saved'); return }
+              setSaveErr(r.error ?? PROFILE_NOT_SAVED)
             }}>Save profile</button>
+            {saveErr && <p className="err-text" role="alert">{saveErr}</p>}
             <button className="btn btn-ghost btn-sm prof-btn-offset" onClick={() => onNavigate('/trips')}>← Back to my trips</button>
           </div>
 

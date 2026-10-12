@@ -20,7 +20,7 @@ import { ChevronDown, ExternalLink, Pencil } from 'lucide-react'
 import { PillNav } from '../components/PillNav'
 import { TrendChart, type UnlockRead } from '../components/TrendChart'
 import type { PublishedItinerary } from '../data/types'
-import { useDb, currentUser, updateProfile, unpublishItinerary, tripById } from '../store/store'
+import { useDb, currentUser, updateProfile, unpublishItinerary, tripById, rereadPublicSlices, PROFILE_NOT_SAVED } from '../store/store'
 import {
   projectEarnings, deriveActualSales, deriveLedgerRead, payoutStatus, payoutWalk, payoutPeriodStatus,
   PAYOUT_MINIMUM_INR, PLATFORM_FEE_SUMMARY, type ActualSales,
@@ -35,6 +35,7 @@ import { formatHM, useTimeFormat } from '../lib/timefmt'
 import { Chip, ConfirmDialog, Field, toast } from '../components/ui'
 import { pubRowStatus } from '../lib/pubRowStatus'
 import { appLink } from '../lib/appLink'
+import { sliceState, rowsView, type RowsView } from '../lib/readState'
 
 /** Social links are stored raw and later emitted as an `href`, so a non-URL
  *  value becomes a live broken link. The inputs are `type="url"` but sit
@@ -84,7 +85,19 @@ export function CreatorHubPage({ onNavigate }: { onNavigate: (r: string) => void
   const db = useDb()
   const me = currentUser(db)
   const myPubs = me ? db.published.filter(p => p.creatorId === me.id) : []
+  // #704: the publication list is a read like any other. An empty list means
+  // "nothing published" only after a read that succeeded. Until then the zero
+  // figures and the "behind" count are unknown, not zero.
+  const publishedRead = sliceState(db.sliceReads, 'suggested itineraries')
+  const publishedView = rowsView(publishedRead, myPubs.length)
+  const [publishedRetrying, setPublishedRetrying] = useState(false)
+  const retryPublished = () => {
+    setPublishedRetrying(true)
+    void rereadPublicSlices().finally(() => { setPublishedRetrying(false) })
+  }
 
+  // #704: Save creator profile is disabled while its write is in flight.
+  const [savingCreator, setSavingCreator] = useState(false)
   const [creatorBio, setCreatorBio] = useState(me?.profile.creatorBio ?? '')
   const [youtube, setYoutube] = useState(me?.profile.socialLinks?.youtube ?? '')
   const [instagram, setInstagram] = useState(me?.profile.socialLinks?.instagram ?? '')
@@ -223,7 +236,11 @@ export function CreatorHubPage({ onNavigate }: { onNavigate: (r: string) => void
           <p className="hint-text" style={{ margin: '6px 0 12px' }}>
             Creator mode is a branding badge: your bio and social links appear on the itineraries you publish, and you get a public creator page others can follow.
           </p>
-          <button className="btn btn-saffron" onClick={() => { updateProfile({ isCreator: true }); toast('Creator mode enabled — your bio and links now show on published itineraries.') }}>
+          <button className="btn btn-saffron" onClick={async () => {
+            const r = await updateProfile({ isCreator: true })
+            if (r.ok) toast('Creator mode enabled — your bio and links now show on published itineraries.')
+            else toast(r.error ?? PROFILE_NOT_SAVED, 'err')
+          }}>
             Enable creator mode
           </button>
         </div>
@@ -274,12 +291,14 @@ export function CreatorHubPage({ onNavigate }: { onNavigate: (r: string) => void
               funnelReading={funnelReading}
               unlockRead={sales !== null ? 'ready' : salesReading ? 'reading' : 'failed'}
               salesError={salesError} salesAt={salesAt} salesReading={salesReading}
-              onRetrySales={() => { setSalesRetry(n => n + 1) }} />
+              onRetrySales={() => { setSalesRetry(n => n + 1) }}
+              publishedView={publishedView} publishedRetrying={publishedRetrying} onRetryPublished={retryPublished} />
           ) : (
             <EarningsTab myPubs={myPubs} sales={sales} salesError={salesError} salesAt={salesAt}
               salesReading={salesReading}
               onRetry={() => { setSalesRetry(n => n + 1) }} view={earningsView} onView={setEarningsView}
-              basis={earningsBasis} onBasis={setEarningsBasis} />
+              basis={earningsBasis} onBasis={setEarningsBasis}
+              publishedView={publishedView} publishedRetrying={publishedRetrying} onRetryPublished={retryPublished} />
           )}
 
           {/* The profile is a thing you set once. It used to own the fold and
@@ -301,7 +320,7 @@ export function CreatorHubPage({ onNavigate }: { onNavigate: (r: string) => void
               <Field label="Instagram link" error={socialErrors.instagram}><input className="input" type="url" inputMode="url" value={instagram} onChange={e => { setInstagram(e.target.value); if (socialErrors.instagram) setSocialErrors(s => ({ ...s, instagram: undefined })) }} placeholder="https://instagram.com/…" /></Field>
             </div>
             <div className="hub-profile-actions">
-              <button className="btn btn-primary btn-sm" onClick={() => {
+              <button className="btn btn-primary btn-sm" disabled={savingCreator} onClick={async () => {
                 const yt = youtube.trim()
                 const ig = instagram.trim()
                 const nextErrors = {
@@ -310,13 +329,16 @@ export function CreatorHubPage({ onNavigate }: { onNavigate: (r: string) => void
                 }
                 setSocialErrors(nextErrors)
                 if (nextErrors.youtube || nextErrors.instagram) return
-                updateProfile({
+                setSavingCreator(true)
+                const r = await updateProfile({
                   creatorBio: creatorBio.trim() || undefined,
                   socialLinks: (yt || ig)
                     ? { youtube: yt || undefined, instagram: ig || undefined }
                     : undefined,
                 })
-                toast('Creator profile saved')
+                setSavingCreator(false)
+                if (r.ok) toast('Creator profile saved')
+                else toast(r.error ?? PROFILE_NOT_SAVED, 'err')
               }}>Save creator profile</button>
               <button className="btn btn-ghost btn-sm" onClick={() => { setConfirmDisable(true) }}>Disable creator mode</button>
             </div>
@@ -330,10 +352,11 @@ export function CreatorHubPage({ onNavigate }: { onNavigate: (r: string) => void
         body="Your bio and social links stop showing on your published itineraries and the creator badge is removed. Your publications stay live — you can re-enable the badge anytime."
         confirmLabel="Disable"
         danger
-        onConfirm={() => {
-          updateProfile({ isCreator: false })
+        onConfirm={async () => {
           setConfirmDisable(false)
-          toast('Creator mode disabled — your publications stay live.')
+          const r = await updateProfile({ isCreator: false })
+          if (r.ok) toast('Creator mode disabled — your publications stay live.')
+          else toast(r.error ?? PROFILE_NOT_SAVED, 'err')
         }}
         onClose={() => { setConfirmDisable(false) }}
       />
@@ -472,10 +495,36 @@ function FunnelLine({ f, funnelRead, unlockRead = 'ready', windowLabel }: { f: P
   )
 }
 
+/** A tile's figure while the publication list is unread. "Loading…" and
+ *  "Unavailable" are different answers, and neither is a number (#704). */
+function UnreadFigure({ view }: { view: RowsView }) {
+  return <span className="stat-value hub-cell-value hub-cell-unread">{view === 'reading' ? 'Loading…' : 'Unavailable'}</span>
+}
+
+/** The publication list while it is unread, for any claim that needs it. Loading
+ *  and failed are different sentences, and only the failed one offers a Retry
+ *  (#704). `need` says what the page waits for, when it is not obvious. */
+function PubsUnread({ view, retrying, onRetry, need }: {
+  view: RowsView
+  retrying: boolean
+  onRetry: () => void
+  need?: string
+}) {
+  if (view === 'reading') return <p className="hint-text hub-pubs-loading" role="status">Loading your publications…</p>
+  return (
+    <div className="hub-note is-failure hub-read-failed" role="alert">
+      <b>Couldn’t load your publications.</b> Nothing has been lost.{need ? ` ${need}` : ''}
+      <button className="btn btn-outline btn-sm hub-note-action" onClick={onRetry} disabled={retrying}>
+        {retrying ? 'Trying…' : 'Try again'}
+      </button>
+    </div>
+  )
+}
+
 /** Overview: the KPI strip, the recorded-traffic trend, and the publication
  *  manager rows — the trend and the rows built from one derivation over one
  *  clock, so the picture and the table describe the same window. */
-export function HubOverview({ myPubs, onUnpublish, onNavigate, daily, dailyAt, salesRows, funnelError, onRetry, days, onDays, unlockRead, salesError, salesAt, salesReading, funnelReading, onRetrySales }: {
+export function HubOverview({ myPubs, onUnpublish, onNavigate, daily, dailyAt, salesRows, funnelError, onRetry, days, onDays, unlockRead, salesError, salesAt, salesReading, funnelReading, onRetrySales, publishedView, publishedRetrying, onRetryPublished }: {
   myPubs: PublishedItinerary[]
   onUnpublish: (p: PublishedItinerary) => void
   onNavigate: (r: string) => void
@@ -507,6 +556,11 @@ export function HubOverview({ myPubs, onUnpublish, onNavigate, daily, dailyAt, s
   /** The funnel read's own in-flight flag, for the same reason. */
   funnelReading: boolean
   onRetrySales: () => void
+  /** The publication list's read state, from `rowsView`. Figures and claims
+   *  that depend on the list are unknown until it reads. */
+  publishedView: RowsView
+  publishedRetrying: boolean
+  onRetryPublished: () => void
 }) {
   const totalViews = myPubs.reduce((s, p) => s + p.views, 0)
   const totalForks = myPubs.reduce((s, p) => s + p.copies, 0)
@@ -571,13 +625,17 @@ export function HubOverview({ myPubs, onUnpublish, onNavigate, daily, dailyAt, s
       ? 'The four figures above are all-time counters. The chart and the rows below count only recorded events, and most of a counter predates the log.'
       : 'The four figures above are all-time counters. Nothing has been recorded yet, so the trend starts with the first visit.'
 
+  // The list decides whether these figures are measurements. While it is unread
+  // it is empty, and a "0" over an empty list states a count nobody made (#704).
+  const unknownPubs = publishedView === 'failed' || publishedView === 'reading'
+
   return (
     <>
       <div className="hub-strip">
-        <div className="hub-cell"><span className="stat-label">Views (all time)</span><span className="stat-value hub-cell-value">{totalViews.toLocaleString('en-IN')}</span></div>
-        <div className="hub-cell"><span className="stat-label">Forks (all time)</span><span className="stat-value hub-cell-value">{totalForks.toLocaleString('en-IN')}</span></div>
-        <div className="hub-cell"><span className="stat-label">Live</span><span className="stat-value hub-cell-value">{liveCount}</span></div>
-        <div className="hub-cell"><span className="stat-label">Behind</span><span className="stat-value hub-cell-value">{staleCount > 0 ? <span className="metric-warn">{staleCount}</span> : 0}</span></div>
+        <div className="hub-cell"><span className="stat-label">Views (all time)</span>{unknownPubs ? <UnreadFigure view={publishedView} /> : <span className="stat-value hub-cell-value">{totalViews.toLocaleString('en-IN')}</span>}</div>
+        <div className="hub-cell"><span className="stat-label">Forks (all time)</span>{unknownPubs ? <UnreadFigure view={publishedView} /> : <span className="stat-value hub-cell-value">{totalForks.toLocaleString('en-IN')}</span>}</div>
+        <div className="hub-cell"><span className="stat-label">Live</span>{unknownPubs ? <UnreadFigure view={publishedView} /> : <span className="stat-value hub-cell-value">{liveCount}</span>}</div>
+        <div className="hub-cell"><span className="stat-label">Behind</span>{unknownPubs ? <UnreadFigure view={publishedView} /> : <span className="stat-value hub-cell-value">{staleCount > 0 ? <span className="metric-warn">{staleCount}</span> : 0}</span>}</div>
       </div>
 
       {framingNote && <div className="hub-note hub-framing">{framingNote}</div>}
@@ -594,17 +652,17 @@ export function HubOverview({ myPubs, onUnpublish, onNavigate, daily, dailyAt, s
         <div className="hub-note is-failure" role={salesAt ? 'status' : 'alert'}>
           {salesAt ? (
             <>
-              <b>Couldn&apos;t refresh your sales ledger.</b> The figures on this tab are the ones that loaded at{' '}
+              <b>Couldn’t refresh your sales ledger.</b> The figures on this tab are the ones that loaded at{' '}
               {formatHM(readAtHM(salesAt), timeFmt)} — nothing has been lost, they are simply older than now.
             </>
           ) : (
             <>
-              <b>Couldn&apos;t read your sales ledger.</b> Every unlock figure on this tab is unknown until it loads —
+              <b>Couldn’t read your sales ledger.</b> Every unlock figure on this tab is unknown until it loads —
               nothing has been lost, it just could not be read.
             </>
           )}
           <button className="btn btn-outline btn-sm hub-note-action" onClick={onRetrySales} disabled={salesReading}>
-            {salesReading ? 'Retrying…' : 'Retry'}
+            {salesReading ? 'Trying…' : 'Try again'}
           </button>
         </div>
       )}
@@ -648,7 +706,7 @@ export function HubOverview({ myPubs, onUnpublish, onNavigate, daily, dailyAt, s
                   ? 'Reading recorded traffic…'
                   : funnelError
                     ? daily !== null && dailyAt !== null
-                      ? `Couldn't refresh — showing the log read at ${formatHM(readAtHM(dailyAt), timeFmt)}.`
+                      ? `Couldn’t refresh — showing the log read at ${formatHM(readAtHM(dailyAt), timeFmt)}.`
                       : 'Recorded traffic could not be read just now — the trend is unchanged on the server.'
                     : recordingSince
                       // #358 — QUALIFIED. This is the GLOBAL earliest day across
@@ -659,7 +717,7 @@ export function HubOverview({ myPubs, onUnpublish, onNavigate, daily, dailyAt, s
                       ? `Chart shows recorded days only; your log begins ${new Date(`${recordingSince}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} — the earliest of your plans.`
                       : 'Nothing recorded yet — the trend starts with the first visit.'}
               </span>
-              {funnelError && <button className="btn btn-outline btn-sm" onClick={handleRetryFunnel} disabled={funnelReading}>{funnelReading ? 'Retrying…' : 'Retry'}</button>}
+              {funnelError && <button className="btn btn-outline btn-sm" onClick={handleRetryFunnel} disabled={funnelReading}>{funnelReading ? 'Trying…' : 'Try again'}</button>}
             </div>
             {/* A failed or in-flight read must not draw as "nothing recorded": the
                 chart's own empty state is a measurement, so it is only shown once
@@ -672,16 +730,30 @@ export function HubOverview({ myPubs, onUnpublish, onNavigate, daily, dailyAt, s
           <section className="hub-instrument-col" aria-labelledby="hub-pubs-h">
             <div className="hub-lead-head">
               <h2 id="hub-pubs-h">Publications</h2>
-              <span>
-                {liveCount} live{unpublishedCount > 0 ? ` · ${unpublishedCount} unpublished` : ''}{staleCount > 0 ? ` · ${staleCount} behind` : ''}
-              </span>
+              {!unknownPubs && (
+                <span>
+                  {liveCount} live{unpublishedCount > 0 ? ` · ${unpublishedCount} unpublished` : ''}{staleCount > 0 ? ` · ${staleCount} behind` : ''}
+                </span>
+              )}
             </div>
-            {myPubs.length === 0 ? (
+            {/* Loading, failed and empty are three different rooms (#704). "Nothing
+                published yet" is said only after a read that succeeded with no rows. */}
+            {publishedView === 'reading' || publishedView === 'failed' ? (
+              <PubsUnread view={publishedView} retrying={publishedRetrying} onRetry={onRetryPublished} />
+            ) : myPubs.length === 0 ? (
               <p className="hint-text" style={{ margin: '6px 0 0' }}>
                 Nothing published yet — list a trip on Explore from its Share tab.
               </p>
             ) : (
               <div>
+                {publishedView === 'kept' && (
+                  <div className="hub-note is-failure hub-read-kept" role="status">
+                    <b>Couldn’t refresh your publications.</b> Showing the ones that loaded.
+                    <button className="btn btn-outline btn-sm hub-note-action" onClick={onRetryPublished} disabled={publishedRetrying}>
+                      {publishedRetrying ? 'Trying…' : 'Try again'}
+                    </button>
+                  </div>
+                )}
                 {myPubs.map((p, rowIndex) => {
                   // #350 — a soft-unpublished publication STAYS in this list on
                   // purpose: the row is where its funnel and its sales history
@@ -752,7 +824,7 @@ export function HubOverview({ myPubs, onUnpublish, onNavigate, daily, dailyAt, s
 /** Earnings tab: the Gumroad-shaped payout ledger. The "Actual" view shows
  *  REAL sales once the payments rail is live (empty honestly until then);
  *  the Projection view stays clearly-labeled not-money. */
-export function EarningsTab({ myPubs, sales, salesError, salesAt, salesReading, onRetry, view, onView, basis, onBasis }: {
+export function EarningsTab({ myPubs, sales, salesError, salesAt, salesReading, onRetry, view, onView, basis, onBasis, publishedView, publishedRetrying, onRetryPublished }: {
   myPubs: PublishedItinerary[]
   sales: ActualSales | null   // the last ledger that LOADED — kept across a failed refresh
   salesError: boolean         // the read itself failed — distinct from an empty ledger
@@ -768,8 +840,14 @@ export function EarningsTab({ myPubs, sales, salesError, salesAt, salesReading, 
    *  toggle changes emphasis rather than hiding a number. */
   basis: 'gross' | 'net' | null
   onBasis: (b: 'gross' | 'net') => void
+  /** The publication list's read state, from `rowsView`. */
+  publishedView: RowsView
+  publishedRetrying: boolean
+  onRetryPublished: () => void
 }) {
   const projection = projectEarnings(myPubs)
+  // Unknown until the list reads. An empty list is then not "nothing priced" (#704).
+  const pubsUnknown = publishedView === 'failed' || publishedView === 'reading'
   /** Σ forks across the priced plans — the denominator the potential is built from,
    *  and the same sum the projection table's Total row shows. */
   const projectionForks = projection.rows.reduce((s, r) => s + r.forks, 0)
@@ -796,7 +874,7 @@ export function EarningsTab({ myPubs, sales, salesError, salesAt, salesReading, 
   // the error flag, and only an empty, idle, failed read is 'failed' — the one
   // state that owns the Retry button.
   const ledgerRead = deriveLedgerRead({ hasFigures: actual !== null, reading: salesReading, error: salesError })
-  const unreadLabel = ledgerRead === 'reading' ? 'Reading…' : 'Not read'
+  const unreadLabel = ledgerRead === 'reading' ? 'Loading…' : 'Unavailable'
   /** What the tiles and pills SHOW — gross until told otherwise. The basis control
    *  has always opened on gross, even though the product's own balance copy and the
    *  payout tile beside it are net. */
@@ -834,12 +912,12 @@ export function EarningsTab({ myPubs, sales, salesError, salesAt, salesReading, 
         <div className="hub-strip">
           <div className="hub-cell">
             <span className="stat-label">Priced plans</span>
-            <span className="stat-value hub-cell-value">{projection.rows.length}</span>
-            <span className="hub-cell-hint muted">of {myPubs.length} published</span>
+            {pubsUnknown ? <UnreadFigure view={publishedView} /> : <span className="stat-value hub-cell-value">{projection.rows.length}</span>}
+            {!pubsUnknown && <span className="hub-cell-hint muted">of {myPubs.length} published</span>}
           </div>
           <div className="hub-cell">
             <span className="stat-label">Forks so far</span>
-            <span className="stat-value hub-cell-value">{projectionForks.toLocaleString('en-IN')}</span>
+            {pubsUnknown ? <UnreadFigure view={publishedView} /> : <span className="stat-value hub-cell-value">{projectionForks.toLocaleString('en-IN')}</span>}
           </div>
         </div>
       ) : (
@@ -955,7 +1033,7 @@ export function EarningsTab({ myPubs, sales, salesError, salesAt, salesReading, 
 
       {salesError && salesAt !== null && (
         <div className="hub-note is-failure" role="status">
-          <b>Couldn&apos;t refresh — showing what loaded at {formatHM(readAtHM(salesAt), timeFmt)}.</b> The ledger
+          <b>Couldn’t refresh — showing what loaded at {formatHM(readAtHM(salesAt), timeFmt)}.</b> The ledger
           below is real; it may simply be older than now.
         </div>
       )}
@@ -972,35 +1050,43 @@ export function EarningsTab({ myPubs, sales, salesError, salesAt, salesReading, 
         ) : ledgerRead === 'failed' ? (
           <>
             <div className="hub-note is-failure" role="alert">
-              <b>Couldn't load your sales.</b> The ledger read failed or timed out — your recorded sales are safe
+              <b>Couldn’t load your sales.</b> The ledger read failed or timed out — your recorded sales are safe
               and will appear once the connection works. Check your connection and try again.
             </div>
-            <button className="btn btn-outline btn-sm" style={{ marginTop: 8 }} onClick={handleRetry}>Retry</button>
+            <button className="btn btn-outline btn-sm" style={{ marginTop: 8 }} onClick={handleRetry}>Try again</button>
           </>
         ) : !actual || actual.rows.length === 0 ? (
           <>
             <table className={`compare-table pub-ledger${basisClass} ledger-sales`} tabIndex={0} aria-label="Sales ledger">
               <thead><tr><th>Date</th><th className="col-wide">Itinerary</th><th className="num">Paid</th><th className="num col-opt">Fee</th><th className="num">Net</th></tr></thead>
               <tbody>
-                <tr><td colSpan={5} className="empty-ledger">{nothingPriced ? 'Nothing priced yet' : 'No sales yet'}</td></tr>
+                <tr><td colSpan={5} className="empty-ledger">{nothingPriced && !pubsUnknown ? 'Nothing priced yet' : 'No sales yet'}</td></tr>
               </tbody>
             </table>
-            <div className="hub-note">
-              {/* The table cell above states the state, so this note adds only what
-                  the reader cannot see: WHY, and what to do about it. */}
-              {nothingPriced ? (
-                <>
-                  <b>An itinerary needs a price before it can sell.</b> Set one from a trip&apos;s Share tab and
-                  its sales land here, with the amount the buyer actually paid.
-                </>
-              ) : (
-                <>
-                  <b>Your priced itineraries are live.</b> When someone buys the full plan on one, the sale lands
-                  here with the amount they actually paid. The Projection tab shows what the same traffic would be
-                  worth if every fork had bought.
-                </>
-              )}
-            </div>
+            {/* The sales read is its own, so "No sales yet" stands. Whether anything
+                is priced needs the publication list, and until it reads the note
+                says so instead of naming a state it has not measured (#704). */}
+            {pubsUnknown ? (
+              <PubsUnread view={publishedView} retrying={publishedRetrying} onRetry={onRetryPublished}
+                need="This cannot say yet whether any itinerary is priced." />
+            ) : (
+              <div className="hub-note">
+                {/* The table cell above states the state, so this note adds only what
+                    the reader cannot see: WHY, and what to do about it. */}
+                {nothingPriced ? (
+                  <>
+                    <b>An itinerary needs a price before it can sell.</b> Set one from a trip&apos;s Share tab and
+                    its sales land here, with the amount the buyer actually paid.
+                  </>
+                ) : (
+                  <>
+                    <b>Your priced itineraries are live.</b> When someone buys the full plan on one, the sale lands
+                    here with the amount they actually paid. The Projection tab shows what the same traffic would be
+                    worth if every fork had bought.
+                  </>
+                )}
+              </div>
+            )}
           </>
         ) : (
           <>
@@ -1068,6 +1154,8 @@ export function EarningsTab({ myPubs, sales, salesError, salesAt, salesReading, 
             )}
           </>
         )
+      ) : pubsUnknown ? (
+        <PubsUnread view={publishedView} retrying={publishedRetrying} onRetry={onRetryPublished} need="The projection needs them." />
       ) : projection.rows.length === 0 ? (
         <div className="hub-note">
           <b>Nothing to project yet.</b> Projections need a priced publication — set a premium price on one from its

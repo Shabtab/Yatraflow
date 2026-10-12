@@ -375,7 +375,7 @@ describe('#413 — the dirty compare is over the saved field set, by value', () 
     expect(form).not.toMatch(/<StickyFormBar show=\{editable\}>/)
     // Disabled exactly when a click would not write.
     expect(form).toMatch(/const canSave = dry\.ok && settingsAreDirty\(dry\.patch, trip\)/)
-    expect(form).toMatch(/disabled=\{!canSave\}/)
+    expect(form).toMatch(/disabled=\{!canSave \|\| savingSettings\}/)
     // The permissioned line for viewers.
     expect(form).toMatch(/Only editors can change trip settings/)
     expect(form).toMatch(/\{!editable && \(/)
