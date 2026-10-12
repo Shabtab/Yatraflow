@@ -21,13 +21,13 @@
     "src/pages/AdminPage.tsx": {
       "EmptyState": 5,
       "loadingBlock": 0,
-      "inlineStyle": 38,
+      "inlineStyle": 8,
       "rawH1": 1
     },
     "src/pages/Auth.tsx": {
       "EmptyState": 0,
       "loadingBlock": 0,
-      "inlineStyle": 7,
+      "inlineStyle": 0,
       "rawH1": 1
     },
     "src/pages/CreateTrip.tsx": {
@@ -51,7 +51,7 @@
     "src/pages/DMCAPage.tsx": {
       "EmptyState": 0,
       "loadingBlock": 0,
-      "inlineStyle": 3,
+      "inlineStyle": 0,
       "rawH1": 1
     },
     "src/pages/Explore.tsx": {
@@ -75,7 +75,7 @@
     "src/pages/Profile.tsx": {
       "EmptyState": 0,
       "loadingBlock": 0,
-      "inlineStyle": 26,
+      "inlineStyle": 1,
       "rawH1": 1
     },
     "src/pages/PublicItinerary.tsx": {
@@ -135,7 +135,7 @@
     "src/pages/trip/OverviewTab.tsx": {
       "EmptyState": 0,
       "loadingBlock": 0,
-      "inlineStyle": 14,
+      "inlineStyle": 1,
       "rawH1": 0
     },
     "src/pages/trip/shared.tsx": {
@@ -147,7 +147,7 @@
     "src/pages/trip/ShareTab.tsx": {
       "EmptyState": 0,
       "loadingBlock": 0,
-      "inlineStyle": 16,
+      "inlineStyle": 0,
       "rawH1": 0
     },
     "src/pages/trip/timeline/DaySection.tsx": {
@@ -201,7 +201,7 @@
     "src/pages/TripsList.tsx": {
       "EmptyState": 0,
       "loadingBlock": 0,
-      "inlineStyle": 7,
+      "inlineStyle": 6,
       "rawH1": 0
     },
     "src/pages/TripWorkspace.tsx": {
