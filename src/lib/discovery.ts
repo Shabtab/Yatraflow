@@ -68,9 +68,8 @@ export function featuredCreators(
   }
   const ranks: CreatorRank[] = []
   for (const user of users) {
-    // A disabled account (masteradmin console) is not a creator a
-    // visitor should be pointed at, and a non-creator has no
-    // public page to open.
+    // Visitors must not follow a disabled creator account.
+    // A non-creator has no public page to open.
     if (!user.profile.isCreator || user.profile.isDisabled) continue
     const list = byCreator.get(user.id)
     if (!list || list.length === 0) continue

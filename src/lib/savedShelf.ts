@@ -44,7 +44,7 @@ function orderedStops(day: ItineraryDay): ItineraryStop[] {
   return [...day.stops].sort((a, b) => a.orderInDay - b.orderInDay)
 }
 
-/** The stop with this id, wherever it currently lives — or null once deleted. */
+/** The stop with this id, wherever it lives now, or null once deleted. */
 function findStop(days: ItineraryDay[], stopId: string): { day: ItineraryDay; stop: ItineraryStop } | null {
   for (const day of days) {
     const stop = orderedStops(day).find(s => s.id === stopId)

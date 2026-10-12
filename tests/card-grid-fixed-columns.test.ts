@@ -62,10 +62,10 @@ describe('card grids keep a fixed column count', () => {
     it(`${name}: one result keeps the column tracks of a full grid`, () => {
       const middle = blockBody(css, `@container ${container} (min-width: 560px) {`)
       const wide = blockBody(css, `@container ${container} (min-width: 880px) {`)
-      const twoTracks = new RegExp(`${selector.replace('.', '\\.')}\\s*\\{[^}]*grid-template-columns:\\s*repeat\\(2,\\s*minmax\\(0,\\s*1fr\\)\\)`)
-      const threeTracks = new RegExp(`${selector.replace('.', '\\.')}\\s*\\{[^}]*grid-template-columns:\\s*repeat\\(3,\\s*minmax\\(0,\\s*1fr\\)\\)`)
-      expect(middle).toMatch(twoTracks)
-      expect(wide).toMatch(threeTracks)
+      const middleGrid = blockBody(middle, `${selector} {`)
+      const wideGrid = blockBody(wide, `${selector} {`)
+      expect(middleGrid).toMatch(/grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/)
+      expect(wideGrid).toMatch(/grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/)
     })
   }
 })

@@ -24,8 +24,8 @@ is a real absence rather than a notation mismatch.
 | Warning `#F59E0B` | `--yf-saffron` `#F3AA3D` |
 | Sand `#FBF5ED`, Mint `#E8F5F1` | no equivalent |
 
-Adopting the palette means re-pointing 425 declarations that an audited direction document already
-governs, and it splits the meaning of every colour the app has shipped.
+The palette would change 425 declarations that an audited direction document already governs.
+It would also split the meaning of every colour the app has shipped.
 
 The mockup's imagery cannot help either. `_gen3.json` records the prompts that generated every
 file in `assets/`, so those images carry no licence.

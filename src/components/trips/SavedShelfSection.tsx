@@ -1,6 +1,6 @@
 // ============ My trips — the saved shelf ============
 // Every saved day and stop (the Timeline's hearts), grouped by trip. Each row
-// links to the exact day or stop it names. Removing a row flips the same id
+// links to the exact day or stop it names. A removed row flips the same id
 // the heart wrote, through the same pure helpers, so the heart and the shelf
 // are one store. Nothing is drawn when nothing is saved.
 import { useId, useRef, useState, type CSSProperties } from 'react'
