@@ -18,11 +18,6 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 ## [0.75.0] - 2026-10-12
 
 This release makes the trip pages easier to read and act on. Every trip card names its next step, and the Timeline lets you save days and stops. Pages enter with motion. Group input and map panels show failed reads with a retry action.
-### Fixed
-
-- **List exits and panel motion keep their full duration in production builds.** JavaScript accepts motion tokens in seconds or milliseconds. Explore cards stay mounted until their fade ends.
-- **Browser motion checks measure the final page after its loading screen leaves.** A brief loading spinner cannot cause a false failure.
-
 ### Added
 
 - **The app ships six papercut illustrations, with a build step and a size budget.** The scenes cover Kerala, Kashmir, Rajasthan, a generic city, a generic road and the first-trip empty state. Each scene has AVIF files at 320, 640 and 960 pixels, and one WebP file at 640 pixels.
@@ -35,7 +30,7 @@ This release makes the trip pages easier to read and act on. Every trip card nam
   The List view shows one row per trip, with a small cover thumbnail. Each List row has a thumbnail, a content column and an action column. Below 640px, the footer moves below the content. The grid has one column on a phone, two on a tablet and three on a wide screen. Explore uses the same rule.
 
 - **A card, row or button that leaves a list now fades out instead of vanishing.** It covers My trips cards that a filter or the Trash removes. It also covers Trash rows that you restore or delete. It also covers Explore cards that a filter or the Saved view removes. It also covers saved-shelf rows that you forget.
-  The item stays for 180ms, then fades and sinks 6px. The cards that stay glide into the free slot. A leaving item is inert and hidden from screen readers. Keyboard focus moves to the next item. With reduced motion set, or in a hidden tab, the item leaves at once. The empty message waits until the last item has gone. One hook, `usePresenceList`, does this for every list.
+  The item fades and sinks 6px over 180ms. The cards that stay glide into the free slot. A leaving item is inert and hidden from screen readers. Keyboard focus moves to the next item. With reduced motion set, or in a hidden tab, the item leaves at once. The empty message waits until the last item has gone. One hook, `usePresenceList`, does this for every list.
   Explore no longer replays the entrance of cards that stay when a filter changes. A new sort order still does. The Clear filters button fades in and slides 6px when a filter is set. It fades out when the filters clear.
 
 - **Motion is checked in the browser and by unit tests.** `tests/design-system.test.ts` reads `src/App.tsx` and checks that every page root carries `page-enter`. A new page joins that set when it exists, so it cannot ship without motion. `tests/motion-state-change.test.ts` finds each group of buttons where one choice is pressed at a time.
@@ -73,6 +68,7 @@ This release makes the trip pages easier to read and act on. Every trip card nam
   Each run writes a screenshot and a JSON record to `.verify-evidence/`, which git ignores.
 
 ### Changed
+
 - **Verification notes cover locked trip content, fixture cleanup, and edge caching.** Public pages must test locked content. Cleanup checks use a fresh query. Cache checks use two GET requests.
 
 - **Profile and Admin look the same, with no visual changes.** Static styles now use named CSS classes. Values that depend on data or state stay inline. Admin's six 18px spacings stay inline under the spacing ruling.
@@ -121,6 +117,9 @@ This release makes the trip pages easier to read and act on. Every trip card nam
 - **My trips filters show a count on each style chip, and labelled When and Sort menus.** Each style chip carries a count, so a short list still says why it is short. The When and Sort menus are labelled.
 
 ### Fixed
+
+- **List exits and panel motion keep their full duration in production builds.** JavaScript accepts motion tokens in seconds or milliseconds. Explore cards stay mounted until their fade ends.
+- **Browser motion checks measure the final page after its loading screen leaves.** A brief loading spinner cannot cause a false failure.
 
 - **Grid and motion checks use fixed regex patterns.** The checks still enforce column counts, glider movement, motion tokens, and reduced-motion rules.
 
