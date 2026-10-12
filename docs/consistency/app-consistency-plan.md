@@ -245,7 +245,7 @@ Put them in `src/components/page/`. Keep the `ex-`/`mt-` class names that exist.
 |---|---|---|
 | `PageHero` (full editorial hero: kicker, serif h1 + accent, lede, primary, secondary, stats, postcards, note) | merge `ExploreHero` and `TripsHero`; both become thin callers | Explore, My trips, Creator page, Landing (if Q6 says so) |
 | `PageHeader` (compact editorial header: back link, kicker, serif h1 with optional accent, lede, actions, optional stat row; no postcards) | new, same tokens as the hero | Purchases, Profile, Creator hub, Create trip, Trip created, Auth, Admin, Workspace header (if the mockup picks it) |
-| `StateBlock` (`kind: 'loading' \| 'failed' \| 'empty'`, icon, optional `art` slot, title, body, actions; `role="status"` on loading) | `ExploreStateBlock` + `EmptyState` | every page; replaces `EmptyState` and `loading-block` by a ratchet |
+| `StateBlock` (`kind: 'loading' \| 'failed' \| 'empty' \| 'kept'`, icon, optional `art` slot, title, body, actions; `role="status"` on loading and kept) | `ExploreStateBlock` + `EmptyState` | every page; replaces `EmptyState` and `loading-block` by a ratchet |
 | `SectionHead` (h2 + right-side actions) | `mt-section-head` | My trips, Creator page, Purchases, Hub, Profile |
 | `Surface` card skin (`.yf-surface`: radius, `--shadow-card`, `--line-strong` hover only when clickable) | `.ex-card`/`.mt-card` shell without the cover | settings panels, hub panels, purchase rows |
 | `SegmentedTabs` (one tab look, `useTablist` keyboard contract, pill glider motion) | `PillNav` + `ViewSwitch` look | workspace tabs, auth tabs, hub, admin |

@@ -69,7 +69,7 @@ describe('F1 — TripsList checks the failure before the empty copy', () => {
   const page = src('../src/pages/TripsList.tsx')
 
   it('My Trips guards on the trips verdict before either empty copy', () => {
-    const guard = page.indexOf("tripsRead !== 'ready'")
+    const guard = page.indexOf('!tripsReady')
     const genuine = page.indexOf('title="No trips yet"')
     const filtered = page.indexOf('title="No trips match those filters"')
     expect(guard).toBeGreaterThan(-1)

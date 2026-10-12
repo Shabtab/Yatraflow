@@ -1,5 +1,7 @@
 # YatraFlow — Operating Report v3.0
 
+> ⚠️ **HISTORICAL (2026-10-12).** [`STRATEGY.md`](STRATEGY.md) replaces this doc's position, sequence and targets. Read this doc for its detail only.
+
 **Status date:** 2026-09-15 · **Product:** `v0.54.0` (`main` = `6940e44`) · **Revenue to date:** ₹0
 
 ---

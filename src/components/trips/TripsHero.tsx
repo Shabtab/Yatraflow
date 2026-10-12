@@ -12,6 +12,7 @@ import { sizedCoverUrl } from '../../lib/tripThumb'
 import type { HeroHeadline, HeroPostcard, HeroStat } from '../../lib/tripsPage'
 import { TripArt } from './TripArt'
 import { PageHero } from '../page/PageHero'
+import { NoteArrow } from '../page/NoteArrow'
 
 export function TripsHero({ headline, lede, stats, postcards, note, primary, secondary }: {
   headline: HeroHeadline
@@ -63,10 +64,7 @@ export function TripsHero({ headline, lede, stats, postcards, note, primary, sec
           {note && (
             <p className="ex-note mt-note">
               <span><span className="ex-note-hl">{note}</span></span>
-              <svg viewBox="0 0 54 62" focusable="false">
-                <path d="M8 4c14 4 30 16 30 34 0 6-2 11-6 16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
-                <path d="M24 50l8 6 6-10" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
+              <NoteArrow />
             </p>
           )}
         </>

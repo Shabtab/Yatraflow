@@ -15,6 +15,36 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+## [0.76.0] - 2026-10-12
+
+**This release brings the new Ribbon Y logo, clearer error states, shared page parts and working landing links.**
+
+### Changed
+
+- **The DMCA page and the log in tabs now use the shared page parts.** The DMCA page has a serif title, a one-line lede and one text panel about 68 characters wide. The log in tabs use the shared tab row, with the same keyboard controls. The log in page announces its missing-backend warning to screen readers. The form error sits 8px above the submit button, the same gap as the sign-up notice.
+
+- **YatraFlow has a new logo, the Ribbon Y.** Two routes fold into one road, and a saffron dot marks the destination. It replaces the mountain-and-sun mark in the header, the favicon and the link preview card.
+  The PWA icons and the Apple touch icon now show the mark on a Planning Teal tile. The Android launcher icons and splash screens replaced the default Capacitor art. The adaptive icon ground is now Planning Teal. The app drops its old icon cache, so installed copies pick up the new icons.
+  `public/brand/` has the mark and the lockup as SVG files, in primary, dark, reversed and one-colour versions. DESIGN.md has a new Brand mark section with the construction and use rules. A test checks that each copy of the mark has the same geometry.
+
+### Fixed
+
+- **The hand-drawn arrow beside the handwritten note has a clean head.** The arrowhead sits on the end of the curve, and its two sides are even. The arrow shows in the My trips and Explore heroes and in the Purchases page header.
+
+- **Five landing page links now open their pages.** The hero planning link, Explore, signup, DMCA and Plan Bench links navigate inside the app. A click opens the page in the same tab. (#714)
+
+- **The sign-up confirmation shows as a notice, not an error.** After sign-up, the message "Check your email to confirm your account" uses the info style. It has no warning icon. Screen readers announce it as a status update, not as an alert. Errors keep the red style and still announce as an alert. (#704)
+
+- **Failed weather and trip reads now say so instead of looking empty.** The Overview tab shows "Couldn’t load the forecast." with a Try again button when the first forecast read fails. A failed refresh keeps the forecast on screen, and a note with a Try again button says the refresh failed. The installed app's home screen shows a loading line while trips load. With no trips loaded, a failed trips read shows "Couldn’t load trips" with a Try again button. That button reads "Trying…" and is disabled while the read runs. If trips are already loaded, the home screen keeps them and adds a short note above them. My trips keeps the loaded trips on screen when a refresh fails. A short note above them says the refresh failed, with a Try again button. "No trips yet" appears only after a trips read succeeds with no trips. If the memberships read fails, the app keeps the cached suggestions, decisions, activity and notifications. It reports each one as failed. (#704)
+- **The Profile page says "Profile saved" only after the server accepts the change.** A save the server refuses shows a short message beside the button. The typed values stay in the form, and the app shows the saved name again. The save button is disabled while the save is in flight. (#704)
+
+- **Trip settings say "Trip settings updated" only after the server accepts the change.** The Save settings button reads "Saving…" and stays disabled until the server answers. A save the server refuses shows "Settings not saved. They stay here, and the app will retry." beside the button. Any edit clears that message. (#704)
+
+- **A failed read of your publications no longer looks like an empty account.** The creator hub shows a failed line with Try again where its list sits. Its figures show "Unavailable" instead of zero, and "Loading…" while the list is in flight. Figures that loaded stay on screen, with a note. "Nothing published yet" appears only after a read that succeeded. The Share tab does not say a trip is not published after a failed read. It shows "Couldn’t check if this trip is on Explore." with a Try again button. The publish form appears once the status has loaded. A later refresh that fails keeps the form open with your edits. Its submit waits until the status loads again. A publish counts as saved only after the server accepts it. A failed save shows its error beside the button, and the form keeps your edits. If the account load throws, the Share tab shows its failed line instead of waiting. (#704)
+- **The creator hub reports a profile change only after the server accepts it.** Enable creator mode, Save creator profile and Disable creator mode each wait for the server. A refused change shows its error, or "Profile not saved. Check your connection and try again." Save creator profile is disabled while its save is in flight. (#704)
+- **An empty login form asks for the email and password before it contacts the server.** The form error line shows "Enter your email and password." instead of the server's message.
+- **One strategy page sets the order of work.** `docs/commercial/STRATEGY.md` states where the product stands, its position, a six-week plan with a written gate, and the order of revenue. It replaces the position and sequence in three older commercial docs, which now carry a historical banner.
+
 ## [0.75.0] - 2026-10-12
 
 This release makes the trip pages easier to read and act on. Every trip card names its next step, and the Timeline lets you save days and stops. Pages enter with motion. Group input and map panels show failed reads with a retry action.
@@ -22,6 +52,9 @@ This release makes the trip pages easier to read and act on. Every trip card nam
 
 - **The app ships six papercut illustrations, with a build step and a size budget.** The scenes cover Kerala, Kashmir, Rajasthan, a generic city, a generic road and the first-trip empty state. Each scene has AVIF files at 320, 640 and 960 pixels, and one WebP file at 640 pixels.
   The files live in `src/assets/art/` with a `manifest.json`. `npm run art:build` rebuilds them from master PNGs that stay out of git. The build never inlines these files into the JavaScript, so each one has its own hashed URL. The whole set weighs about 358 KiB. A test fails when a file or the whole set goes over its size cap. No screen shows these images yet. The cards still draw the inline SVG motifs.
+- **The shared page primitives gain three variants, and no screen changes yet.** `StateBlock` takes `size="compact"` for a block inside a tab or a card, and its `body` takes inline markup. `Surface` renders a `button` or a `details` root. No page uses these variants yet.
+
+- **The app now ships its own papercut illustrations, with a build pipeline and a size budget.** Six images cover Kerala, Kashmir, Rajasthan, a generic city, a generic road and the first-trip empty state. Each scene has AVIF files at 320, 640 and 960 pixels and one WebP file at 640 pixels. The files live in `src/assets/art/` with a `manifest.json`. `npm run art:build` rebuilds them from the master PNGs, which stay out of git. The build never inlines these files into the JavaScript, so each one has its own hashed URL. The whole set weighs about 358 KiB. A test fails `npm test` when a file or the total goes over its size cap. No screen shows these images yet. The cards still draw the inline SVG motifs.
 
 - **Explore ranks plans and creators by evidence, and a block shows only when it has data.** A Trending now shelf sits between the featured card and the grid. It ranks plans by views plus five times forks. It shows only when no filter is set and the catalog has loaded. It leaves out the featured pick. Each shelf card has the same save heart as a grid card.
   The Creators panel ranks creators by forks. The featured pick ranks forks first. An empty block draws nothing.

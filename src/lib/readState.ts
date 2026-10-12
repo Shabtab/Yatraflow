@@ -113,3 +113,18 @@ export function sliceState(
   if (verdict === 'ok') return 'ready'
   return 'reading'
 }
+
+/** What a list of rows may show, given the read that produced the list.
+ *
+ *  A failed read that left rows on screen keeps them, and the page adds a note.
+ *  A failed or pending read with no rows is never `empty`: an empty array from a
+ *  read that did not succeed says nothing about the account (#704). Only a read
+ *  that succeeded can say "nothing here". */
+export type RowsView = 'rows' | 'kept' | 'failed' | 'reading' | 'empty'
+
+export function rowsView(read: ReadState, rows: number): RowsView {
+  if (rows > 0) return read === 'failed' ? 'kept' : 'rows'
+  if (read === 'failed') return 'failed'
+  if (read === 'reading') return 'reading'
+  return 'empty'
+}

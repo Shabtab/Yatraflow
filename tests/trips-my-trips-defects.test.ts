@@ -75,7 +75,7 @@ describe('#386 — the manual seed refuses duplicates and broken reads (source)'
 
   it('the seed button sits behind the trips verdict, so a failed read never shows it', () => {
     const p = page()
-    const guard = p.indexOf("tripsRead !== 'ready'")
+    const guard = p.indexOf('!tripsReady')
     const button = p.indexOf('onClick={addDemoTrips}')
     expect(guard).toBeGreaterThan(-1)
     expect(button).toBeGreaterThan(guard)
@@ -120,7 +120,7 @@ describe('My trips Trash toggle and hero wiring (source)', () => {
 
   it('keeps Trash reachable whenever the Other trips header is not drawn', () => {
     const p = page()
-    expect(p).toContain("const showsOtherTripsHeader = !isTrashView && tripsRead === 'ready' && !(trips.length === 0 && !hasFilters)")
+    expect(p).toContain("const showsOtherTripsHeader = !isTrashView && tripsReady && !(trips.length === 0 && !hasFilters)")
     expect(p).toContain('{!showsOtherTripsHeader && (')
   })
 
@@ -152,6 +152,37 @@ describe('My trips Trash toggle and hero wiring (source)', () => {
     expect(phone).toBeGreaterThan(-1)
     expect(c.slice(phone, phone + 120)).toContain('.ex-hero-visual { display: none; }')
     expect(c).not.toContain('.mt-hero .ex-hero-visual { display: none; }')
+  })
+})
+
+// #704: a failed refresh with rows already loaded keeps those rows on screen.
+describe('#704 — a failed refresh keeps the loaded trips on screen (source)', () => {
+  it("reads the trips view through rowsView, over the viewer's own trips (never the trash)", () => {
+    const p = page()
+    expect(p).toMatch(/import \{[^}]*\browsView\b[^}]*\} from '\.\.\/lib\/readState'/)
+    expect(p).toContain('const tripsView = rowsView(tripsRead, mine.length)')
+  })
+
+  it('shows the list for every view with rows, so a kept read keeps its trips', () => {
+    const p = page()
+    expect(p).toContain("const tripsReady = tripsView !== 'failed' && tripsView !== 'reading'")
+    expect(p).toContain("{view !== 'trash' && (!tripsReady ? (")
+    expect(p).not.toContain("tripsRead === 'ready'")
+    expect(p).not.toContain("tripsRead !== 'ready'")
+  })
+
+  it('shows a compact kept note above the list, with the existing retry', () => {
+    const p = page()
+    const noteAt = p.indexOf("{tripsView === 'kept' && (")
+    expect(noteAt, 'the kept note is missing').toBeGreaterThan(-1)
+    expect(noteAt, 'the kept note sits outside the catalog').toBeGreaterThan(p.indexOf('<div className="mt-catalog">'))
+    expect(noteAt, 'the kept note sits below the first section').toBeLessThan(p.indexOf('{upNext && upNextTotals && ('))
+    const note = p.slice(noteAt, p.indexOf('/>', p.indexOf('kind="kept"', noteAt)) + 2)
+    expect(note).toContain('size="compact"')
+    expect(note).toContain('kind="kept"')
+    const copy = 'Couldn’t refresh your trips. Showing the ones that loaded.'
+    expect(note).toContain(copy)
+    expect(note).toContain('onClick={retryTrips}')
   })
 })
 

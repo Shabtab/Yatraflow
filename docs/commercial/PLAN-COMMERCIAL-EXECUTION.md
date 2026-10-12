@@ -1,5 +1,7 @@
 # YatraFlow — Commercial Execution Plan
 
+> ⚠️ **HISTORICAL (2026-10-12).** [`STRATEGY.md`](STRATEGY.md) replaces this doc's position, sequence and targets. Read this doc for its detail only.
+
 **Date:** 2026-09-16 · **Baseline:** `v0.54.0` (`test` = `main` = `d370aef`) · **Revenue:** ₹0
 
 > **Status, re-derived 2026-09-21 (`test` = `v0.63.0`).** This is a dated plan, so the queue

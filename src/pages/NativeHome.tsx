@@ -10,12 +10,14 @@
 // This component never mounts on the web: App.tsx picks it only when
 // isNative && me, so the landing page's SEO/marketing job stays untouched.
 
-import { useMemo } from 'react'
+import { useState } from 'react'
 import { InlineIcon } from '../components/icons'
-import { Bell, Compass, MapPin, Plus, Sparkles, Users, Wallet } from 'lucide-react'
+import { Bell, Compass, MapPin, Plus, Sparkles, TriangleAlert, Users, Wallet } from 'lucide-react'
 import type { Trip } from '../data/types'
-import { useUsers, useSessionUserId, useNotifications, tripsForUser } from '../store/store'
+import { useUsers, useSessionUserId, useNotifications, useSliceReads, tripsForUser, rereadTrips } from '../store/store'
 import { computeTotals, formatInrShort } from '../lib/engine'
+import { sliceState } from '../lib/readState'
+import { StateBlock } from '../components/page/StateBlock'
 import { Avatar } from '../components/ui'
 
 function greeting(): string {
@@ -76,20 +78,28 @@ export function NativeHomePage({ me, onNavigate }: {
   const meId = useSessionUserId()
   const notifs = useNotifications()
   const unread = notifs.filter(n => !n.read).length
+  // #704: the page says what the trips read did. It never infers success from
+  // an empty array. The store publishes the trips verdict, failed memberships included.
+  const sliceReads = useSliceReads()
+  const tripsRead = sliceState(sliceReads, 'trips')
+  // #704: Try again is disabled while the re-read runs, so one press starts one read.
+  const [retrying, setRetrying] = useState(false)
+  const retryTrips = () => {
+    setRetrying(true)
+    void rereadTrips().finally(() => { setRetrying(false) })
+  }
 
-  // Same membership rule as the trips page.
-  const trips = useMemo(
-    () => tripsForUser(meId)
-      .slice()
-      .sort((a, b) => {
-        // Live first, then upcoming (soonest first), then the rest by recency.
-        const phase = (t: Trip) => ({ live: 0, upcoming: 1, other: 2 })[tripPhase(t)]
-        if (phase(a) !== phase(b)) return phase(a) - phase(b)
-        if (tripPhase(a) === 'upcoming') return Date.parse(a.startDate!) - Date.parse(b.startDate!)
-        return b.updatedAt - a.updatedAt
-      }),
-    [meId],
-  )
+  // Same membership rule as the trips page. Read on every render, not memoised:
+  // every hydrate writes sliceReads, so the page re-renders and a retry shows its rows.
+  const trips = tripsForUser(meId)
+    .slice()
+    .sort((a, b) => {
+      // Live first, then upcoming (soonest first), then the rest by recency.
+      const phase = (t: Trip) => ({ live: 0, upcoming: 1, other: 2 })[tripPhase(t)]
+      if (phase(a) !== phase(b)) return phase(a) - phase(b)
+      if (tripPhase(a) === 'upcoming') return Date.parse(a.startDate!) - Date.parse(b.startDate!)
+      return b.updatedAt - a.updatedAt
+    })
   const firstName = me.profile.name.split(' ')[0]
 
   return (
@@ -98,13 +108,16 @@ export function NativeHomePage({ me, onNavigate }: {
       <div className="app-home-hero">
         <div className="app-home-hello">
           <h1>{greeting()}, {firstName}</h1>
-          <p className="muted small">
-            {trips.length === 0
-              ? 'Nothing planned yet — your first trip is one tap away.'
-              : trips.length === 1
-                ? 'One trip on your bench.'
-                : `${trips.length} trips on your bench.`}
-          </p>
+          {/* "Nothing planned yet" claims the list is empty, so it waits for a read that succeeded. */}
+          {(trips.length > 0 || tripsRead === 'ready') && (
+            <p className="muted small">
+              {trips.length === 0
+                ? 'Nothing planned yet — your first trip is one tap away.'
+                : trips.length === 1
+                  ? 'One trip on your bench.'
+                  : `${trips.length} trips on your bench.`}
+            </p>
+          )}
         </div>
         <div className="app-home-avatar-row">
           {unread > 0 && (
@@ -129,14 +142,31 @@ export function NativeHomePage({ me, onNavigate }: {
         </button>
       </div>
 
-      {trips.length === 0 ? (
+      {/* #704: the three read states differ. The empty copy shows only after a read that succeeded. */}
+      {trips.length === 0 && tripsRead === 'reading' && (
+        <StateBlock kind="loading" icon={<span className="spinner" aria-hidden="true" />} title="Loading trips…" />
+      )}
+      {trips.length === 0 && tripsRead === 'failed' && (
+        <StateBlock
+          kind="failed"
+          icon={<TriangleAlert size={26} aria-hidden />}
+          title="Couldn’t load trips"
+          body="The request failed. That does not mean you have no trips."
+          actions={<button className="btn btn-primary" onClick={retryTrips} disabled={retrying}>{retrying ? 'Trying…' : 'Try again'}</button>}
+        />
+      )}
+      {trips.length === 0 && tripsRead === 'ready' && (
         <div className="app-home-empty">
           <Sparkles size={26} aria-hidden />
           <p><strong>No trips yet.</strong></p>
           <p className="muted small">Start from scratch, or browse what other travellers have published in Explore.</p>
         </div>
-      ) : (
+      )}
+      {trips.length > 0 && (
         <>
+          {tripsRead === 'failed' && (
+            <p className="small muted" role="status">Couldn’t refresh your trips — showing what was loaded. <button className="btn btn-outline btn-sm" onClick={retryTrips} disabled={retrying}>{retrying ? 'Trying…' : 'Try again'}</button></p>
+          )}
           <h2 className="app-home-section">Your trips</h2>
           <div className="app-home-trips">
             {trips.slice(0, 6).map(t => <HomeTripRow key={t.id} trip={t} onNavigate={onNavigate} />)}

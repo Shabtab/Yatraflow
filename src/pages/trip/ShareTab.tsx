@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react'
 import { InlineIcon } from '../../components/icons'
 import { CalendarDays, Download, Link2, Lock } from 'lucide-react'
 import type { Trip, PublishedItinerary } from '../../data/types'
-import { useDb, userById, setMemberRole, removeMember, restoreMember, publishItinerary, unpublishItinerary, ensureInviteCode } from '../../store/store'
+import { useDb, userById, setMemberRole, removeMember, restoreMember, publishItinerary, unpublishItinerary, ensureInviteCode, rereadPublicSlices } from '../../store/store'
 import { encodeTripSnapshot, snapshotUrl, downloadTripJson } from '../../lib/snapshot'
 import { ImportTripButton } from '../../components/ImportTripButton'
 import { CoverImagePicker } from '../../components/CoverImagePicker'
@@ -19,6 +19,8 @@ import {
   publishValidation, PUBLISH_FIELD_ORDER, PUBLISH_FIELD_LABELS, PublishRejected, type PublishField,
 } from '../../lib/publishRules'
 import { takePublishDraft } from '../../lib/publishDraft'
+import { publishFormKey, publishFormMount } from '../../lib/publishFormKey'
+import { sliceState, rowsView, type ReadState, type RowsView } from '../../lib/readState'
 import type { PublicationDraft } from '../../lib/itinerarySpec'
 import { Avatar, Chip, ConfirmDialog, CopyButton, Field, FormErrorSummary, toast, undoToast } from '../../components/ui'
 import { PrintExport } from '../../components/PrintExport'
@@ -106,7 +108,7 @@ const DEFAULT_WARNINGS = ['All costs are estimates based on typical prices — v
  *  now chooses which days are the free preview, whether the itinerary is
  *  premium at all (empty/₹0 price = entirely free), and the reader-facing
  *  copy — pre-filled from the live publication when updating. */
-function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, onDone }: {
+function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, onDone, onWriting, saveErr, setSaveErr, publishRead }: {
   trip: Trip
   pub: PublishedItinerary | undefined
   /** An imported file's publish block, taken once from the stash. The draft
@@ -121,6 +123,16 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
   isOwner: boolean
   creatorId: string
   onDone: (published: boolean) => void
+  /** Reports the start and the end of each write. The parent holds the form's
+   *  key still while a write is in flight, so a write never remounts the form
+   *  (#704). */
+  onWriting: (writing: boolean) => void
+  /** The inline write error, held by the parent so a remount cannot drop it (#704). */
+  saveErr: string | null
+  setSaveErr: (message: string | null) => void
+  /** The publish status read. The form can stay open while it is pending or
+   *  failed, but its submit waits for a read that succeeded (#704). */
+  publishRead: ReadState
 }) {
   const defaultTagline = `${trip.days.length}-day ${trip.travelStyle} trip through ${trip.destinations.join(', ')}.`
   // The draft wins over a live row: it is the freshest intent the creator
@@ -143,7 +155,6 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
   // that map: a failed WRITE is not a field's fault, and pointing at the price
   // box for it would be a lie.
   const [errs, setErrs] = useState<Record<string, string>>({})
-  const [saveErr, setSaveErr] = useState<string | null>(null)
   /** first-invalid focus targets (F-15) — plain inputs and the day picker only */
   const fieldRefs = useRef<Record<string, HTMLElement | null>>({})
   // A publish is a network write, and this button was the only publish control
@@ -152,6 +163,13 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
   // accidental id-reuse in the store, which is not a guard. The cover picker's
   // `busy` is the pattern this copies.
   const [busy, setBusy] = useState(false)
+  // #704: a form can stay open while the status is pending or failed. An unread
+  // status cannot say whether the trip already has a publication, so submit waits
+  // for a read that succeeded. The reason is shown beside the button.
+  const publishReady = publishRead === 'ready'
+  const publishBlockedReason = publishRead === 'failed'
+    ? 'Publishing is paused until this trip’s Explore status loads. Try again above.'
+    : 'Publishing waits until this trip’s publish status has loaded.'
 
   const priceNum = price.trim() === '' ? 0 : Number(price)
   const entirelyFree = price.trim() === '' || priceNum === 0
@@ -195,6 +213,8 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
     // publishes (AGENTS §2.6a — every async path needs an input guard, and the
     // guard must match the visual feedback state).
     if (busy) return
+    // #704: the same rule as the disabled button, enforced again here.
+    if (!publishReady) return
     // The publication's cover IS the link preview: api/i.js serves it as
     // og:image/twitter:image, and it is copied from the trip here. Publishing
     // without one — or with a URL the handler's `^https://\S+$` test rejects —
@@ -233,12 +253,13 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
       return
     }
     setBusy(true)
+    onWriting(true)
     try {
       // AWAITED (#388). The old call was fire-and-forget, so `onDone` — and
       // with it the "Published to Explore" toast — fired while the write was
       // still in flight; a later failure then rolled back under a success
       // message. The toast is now a statement about a resolved outcome.
-      await publishItinerary({
+      const outcome = await publishItinerary({
         tripId: trip.id, creatorId,
         title: trip.name,
         // The TRIMMED value the rule above validated, not the raw field. The
@@ -257,6 +278,12 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
         premiumPriceInr: entirelyFree ? undefined : priceNum,
         subscriberCta: cta.trim() || undefined,
       })
+      // Only an accepted write reports success (#704). A refused one shows its
+      // message beside the button, and the form keeps the user's edits.
+      if (!outcome.ok) {
+        setSaveErr(outcome.error ?? 'Could not save the publication — nothing was published. Try again.')
+        return
+      }
       onDone(Boolean(pub) && live)
     } catch (e) {
       // #354/#389 — a REFUSAL is not a failed write. The writer raises it before
@@ -275,14 +302,12 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
         }
         return
       }
-      // The store already toasts its own failure and rolls the cache back; this
-      // keeps the form honest about the fact that nothing was published, rather
-      // than leaving the last validation error standing as if it were the reason.
       // `saveErr`, not `errs`: a write that failed is not a field's fault, and
       // pointing at the price box for a dropped connection would be a lie.
       setSaveErr('Could not save the publication — nothing was published. Try again.')
     } finally {
       setBusy(false)
+      onWriting(false)
     }
   }
 
@@ -384,9 +409,15 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
           only way to hear about six different rules, which is what made it
           useless for locating one. */}
       {saveErr && <p className="err-text ts-warn-note" role="alert">{saveErr}</p>}
-      <button className="btn btn-saffron" disabled={!isOwner || busy} onClick={() => void submit()}>
-        {busy ? 'Publishing…' : pub && live ? 'Update publication' : 'Publish to Explore'}
-      </button>
+      {/* The fieldset carries the publish-status gate (#704). A disabled fieldset
+          disables the button inside it, and the button keeps its own owner and
+          write rules. */}
+      <fieldset className="ts-submit-gate" disabled={!publishReady}>
+        <button className="btn btn-saffron" disabled={!isOwner || busy} onClick={() => void submit()}>
+          {busy ? 'Publishing…' : pub && live ? 'Update publication' : 'Publish to Explore'}
+        </button>
+      </fieldset>
+      {!publishReady && <p className="hint-text ts-note">{publishBlockedReason}</p>}
       {!isOwner && <p className="hint-text ts-note">Only the trip owner can publish.</p>}
     </div>
   )
@@ -441,12 +472,33 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
   // the public link, the Unpublish action. The form keeps `pub` as its prefill
   // either way — re-publishing should not mean retyping the tagline.
   const pubLive = !!pub && !pub.unpublishedAt
+  // #704: "not published" is a claim, and it holds only after a read that
+  // succeeded. A failed or pending read leaves `pub` empty without saying why.
+  const publishRead = sliceState(db.sliceReads, 'suggested itineraries')
+  const publishView: RowsView = rowsView(publishRead, pub ? 1 : 0)
+  const [publishRetrying, setPublishRetrying] = useState(false)
+  const retryPublish = () => {
+    setPublishRetrying(true)
+    void rereadPublicSlices().finally(() => { setPublishRetrying(false) })
+  }
+  // The inline write error. It lives here, not in the form, so a remount cannot drop it (#704).
+  const [saveErr, setSaveErr] = useState<string | null>(null)
+  // #704: the form is keyed by the publication it edits. A write changes that
+  // publication twice (optimistically, then again on a rollback), so the key is
+  // held at its pre-write value while a write is in flight.
+  const [frozenKey, setFrozenKey] = useState<string | null>(null)
+  const formKey = frozenKey ?? publishFormKey(pub)
+  // #704: a form that has been shown stays shown for its record while a refresh is
+  // pending or failed. The first showing waits for a read that succeeded.
+  const [shownKey, setShownKey] = useState<string | null>(null)
+  const mount = publishFormMount({ read: publishRead, formKey, shownKey })
+  if (mount.shownKey !== shownKey) setShownKey(mount.shownKey)
   // #230 — the copy button's link names the button it left through (`ref=copy`).
   const pubLink = pubLive && pub ? withShareRef(currentPublicShareUrl(pub.id), 'copy') : ''
   const isOwner = (trip.members ?? []).some(m => m.userId === me.id && m.role === 'owner')
   // One read consumes the stash (#368): the import's offer lands here or
   // nowhere. Reviewing and publishing stay in the creator's hands.
-  const [draft] = useState(() => takePublishDraft(trip.id))
+  const [draft, setDraft] = useState(() => takePublishDraft(trip.id))
   const [tab, setTab] = useState<ShareTabId>('plan')
   const [pendingRemove, setPendingRemove] = useState<NonNullable<Trip['members']>[number] | null>(null)
   const [pendingUnpublish, setPendingUnpublish] = useState(false)
@@ -568,6 +620,19 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
           <p className="hint-text shr-publication-description">
             List this trip on Explore so anyone can discover and fork it. Choose which days are the free preview — the rest sit behind a premium placeholder (no real payments in this MVP).
           </p>
+          {/* Loading, failed and "not published" are three different statements
+              (#704). The last one is said only after a read that succeeded. */}
+          {publishView === 'reading' && (
+            <p className="hint-text ts-note shr-read-loading" role="status">Checking whether this trip is on Explore…</p>
+          )}
+          {publishView === 'failed' && (
+            <p className="err-text ts-note shr-read-failed" role="alert">
+              Couldn’t check if this trip is on Explore.{' '}
+              <button className="btn btn-outline btn-sm" onClick={retryPublish} disabled={publishRetrying}>
+                {publishRetrying ? 'Trying…' : 'Try again'}
+              </button>
+            </p>
+          )}
           {pub && (pubLive ? (
             <div className="row-between shr-publication-status">
               <span className="small muted">Live on Explore · {pub.views} views · {pub.copies} forks</span>
@@ -580,8 +645,28 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
               Unpublished — it has left Explore and is no longer on sale. Anyone who already unlocked it keeps the full plan.
             </p>
           ))}
-          <PublicationForm trip={trip} pub={pub} draft={draft} live={pubLive} isOwner={isOwner} creatorId={me.id}
-            onDone={wasPublished => toast(wasPublished ? 'Publication updated' : 'Published to Explore')} />
+          {publishView === 'kept' && (
+            <p className="err-text ts-note shr-read-kept" role="status">
+              Couldn’t refresh. Showing the last status that loaded.{' '}
+              <button className="btn btn-outline btn-sm" onClick={retryPublish} disabled={publishRetrying}>
+                {publishRetrying ? 'Trying…' : 'Try again'}
+              </button>
+            </p>
+          )}
+          {/* The form reads its fields when it mounts. It mounts only once the
+              status has loaded, stays open through a later refresh, and remounts
+              when the publication changes (#704). */}
+          {mount.mounted && (
+            <PublicationForm key={formKey} trip={trip} pub={pub} draft={draft} live={pubLive} isOwner={isOwner} creatorId={me.id}
+              publishRead={publishRead}
+              onDone={wasPublished => {
+                // A published draft is spent. A later remount must not seed the form from it again.
+                setDraft(null)
+                toast(wasPublished ? 'Publication updated' : 'Published to Explore')
+              }}
+              onWriting={writing => setFrozenKey(writing ? publishFormKey(pub) : null)}
+              saveErr={saveErr} setSaveErr={setSaveErr} />
+          )}
           {pub && isOwner && pubLive && (
             <button className="btn btn-ghost btn-sm shr-unpublish-action" onClick={() => setPendingUnpublish(true)}>Unpublish</button>
           )}

@@ -1,5 +1,7 @@
 # YatraFlow — Monetisation Plan
 
+> **2026-10-12:** [`STRATEGY.md`](STRATEGY.md) sets the current position and order of work. Where the two disagree, `STRATEGY.md` wins.
+
 **Date:** 2026-09-15 · **Product:** `v0.54.0` · **Revenue to date:** ₹0
 
 A dedicated commercial design document. `REPORT-2026-09-15-strategy-and-position.md` (same folder) covers the business and the

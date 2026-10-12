@@ -9,7 +9,7 @@ import {
 } from 'lucide-react'
 import type { Trip, TransportMode } from '../../data/types'
 import { TRANSPORT_MODES, TRAVEL_STYLES, STAY_STYLES } from '../../data/types'
-import { updateTrip, reconcileDays } from '../../store/store'
+import { updateTrip, reconcileDays, tripWriteVerdict } from '../../store/store'
 import { FUEL_PRICE_INR_PER_L, DEFAULT_FUEL_ECONOMY_KML, MODE_SPEED, computeHealth, formatInr, isFuelEconomyMode, parseFuelEconomyKmL, isImplausibleFuelEconomy, parseFuelPricePerL } from '../../lib/engine'
 import { healthBandClass, healthBandTone } from '../../lib/healthBand'
 import { STAY_RATE_PER_NIGHT } from '../../lib/rates'
@@ -265,6 +265,9 @@ function sameSavedValue(a: unknown, b: unknown): boolean {
   )
 }
 
+/** #704: the line a refused settings save shows. The edit stays in the cache and the durable queue, and the queue retries it. */
+const TRIP_SETTINGS_NOT_SAVED = 'Settings not saved. They stay here, and the app will retry.'
+
 export function TripSettingsForm({ trip, editable, onOpenDay }: {
   trip: Trip
   editable: boolean
@@ -273,7 +276,13 @@ export function TripSettingsForm({ trip, editable, onOpenDay }: {
    *  blocking days as plain text when no workspace is wired up. */
   onOpenDay?: (dayIndex: number) => void
 }) {
-  const [f, setF] = useState(() => formFromTrip(trip))
+  /** #704: the last write the server did not keep. Shown beside the Save button; the draft stays. */
+  const [writeErr, setWriteErr] = useState<string | null>(null)
+  /** #704: true from the Save click until the server answers. Save stays disabled meanwhile. */
+  const [savingSettings, setSavingSettings] = useState(false)
+  const [f, setFState] = useState(() => formFromTrip(trip))
+  /** Any edit to the draft clears a refusal, because the refusal described the draft before the edit (#704). */
+  const setF = (next: Parameters<typeof setFState>[0]) => { setWriteErr(null); setFState(next) }
   /** #414: when the trip row moves under the open draft (a crew member saved
    *  while this form was open), the banner offers keep-mine / take-theirs.
    *  `openedAtRef` is the updatedAt the draft was born against; our OWN save
@@ -292,16 +301,18 @@ export function TripSettingsForm({ trip, editable, onOpenDay }: {
     const target = Math.round((e.getTime() - s.getTime()) / 86400000) + 1
     return target - trip.days.length
   })()
-  const [startPin, setStartPin] = useState<StartPin | null>(
+  const [startPin, setStartPinState] = useState<StartPin | null>(
     trip.startLocationCoords ? { coords: trip.startLocationCoords, label: trip.startLocation } : null,
   )
+  const setStartPin = (next: Parameters<typeof setStartPinState>[0]) => { setWriteErr(null); setStartPinState(next) }
   /** #410: soft notice under the start field — the pin is off, and why. */
   const [startNotice, setStartNotice] = useState('')
   /** #411: the route tail as ONE array of {name, lat?, lng?} pairs — the
    *  form's single source of truth. The row's parallel arrays exist only at
    *  the boundary (zip on open, split on save), so a rename or a remove can
    *  no longer slide names out from under their pins. */
-  const [dests, setDests] = useState<DestPair[]>(() => zipDests(trip.destinations, trip.destinationCoords))
+  const [dests, setDestsState] = useState<DestPair[]>(() => zipDests(trip.destinations, trip.destinationCoords))
+  const setDests = (next: Parameters<typeof setDestsState>[0]) => { setWriteErr(null); setDestsState(next) }
   const [destInput, setDestInput] = useState('')
   /** #411: rename-in-place. The chip edits its own name; coords and position
    *  are untouched by construction (renameDest rebuilds nothing). */
@@ -921,20 +932,32 @@ export function TripSettingsForm({ trip, editable, onOpenDay }: {
             <InlineIcon icon={TriangleAlert} size={12} gap={3} />Only editors can change trip settings — ask an editor on this trip, or duplicate it to edit your own copy.
           </span>
         )}
-        <button className="btn btn-primary" disabled={!canSave}
+        {writeErr && <span className="err-text" role="alert">{writeErr}</span>}
+        <button className="btn btn-primary" disabled={!canSave || savingSettings}
           title={canSave ? undefined : dry.ok ? 'No changes' : dry.reason} onClick={() => {
           // #408: the Preview and this button run the SAME dry run. A refusal
           // is already rendered inline (and in the receipt) — clicking Save on
           // a refused form is a no-op, never a toast that fades.
           if (!dry.ok) return
           if (dry.startCoordsDropped) setStartNotice(START_DROPPED)
+          setWriteErr(null)
           if (updateTrip(trip.id, dry.patch)) {
             // Our own save moves updatedAt — rebase the remote-edit watch so
             // the banner cannot fire on ourselves (#414).
             ownSaveRef.current = true
-            toast('Trip settings updated')
+            // #704: "Trip settings updated" waits for the server. The cache
+            // already holds the edit, so the page reads the saved values meanwhile.
+            const verdict = tripWriteVerdict(trip.id)
+            if (verdict) {
+              setSavingSettings(true)
+              void verdict.then(saved => {
+                setSavingSettings(false)
+                if (saved) toast('Trip settings updated')
+                else setWriteErr(TRIP_SETTINGS_NOT_SAVED)
+              })
+            }
           }
-        }}>Save settings</button>
+        }}>{savingSettings ? 'Saving…' : 'Save settings'}</button>
       </StickyFormBar>
     </div>
   )

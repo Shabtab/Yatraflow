@@ -4,8 +4,9 @@ import { InlineIcon } from '../components/icons'
 import { ArrowDown, ArrowRight, Clock, MapPin, Plane, Route, TriangleAlert, Users, Zap } from 'lucide-react'
 import { RouteSquiggle, useInView, usePageVisible } from '../components/ui'
 import { PlanBench } from '../components/PlanBench'
+import { appLink } from '../lib/appLink'
 import { scrollBehavior } from '../lib/motion'
-import { CREATE_ROUTE, CREATE_PATH } from '../lib/routes'
+import { CREATE_PATH, signupThenCreatePath } from '../lib/routes'
 import { useReveal } from '../hooks/useReveal'
 import { useDb, currentUser } from '../store/store'
 
@@ -15,9 +16,9 @@ export function LandingPage({ onNavigate }: { onNavigate: (r: string) => void })
   const me = currentUser(db)
   // Flow-aware hero CTA (Trip Ticket flow, Sep 2026): signed-in visitors go
   // straight to the create-trip page; everyone else funnels through signup and
-  // lands back on it via the auth page's `next` param — both forms read from
+  // lands back on it via the auth page's `next` param — both targets read from
   // lib/routes now, so this CTA cannot drift from the route the router matches.
-  const startPlanningHref = me ? CREATE_ROUTE : `#/auth?mode=signup&next=${encodeURIComponent(CREATE_PATH)}`
+  const startPlanningPath = me ? CREATE_PATH : signupThenCreatePath()
   // One label per action (review finding 8): the hero CTA funnels signed-out
   // visitors through signup AND lands them in the create-trip flow (the
   // `next` param), so it says what it does rather than reusing the chrome
@@ -47,11 +48,11 @@ export function LandingPage({ onNavigate }: { onNavigate: (r: string) => void })
               and keep your whole crew on the same page.
             </p>
             <div className="hero-ctas hero-rise rise-d3">
-              <a className="btn btn-primary btn-lg btn-trail" href={startPlanningHref}>
+              <a className="btn btn-primary btn-lg btn-trail" {...appLink(startPlanningPath)}>
                 {heroCtaLabel}
                 <span className="btn-trail-icon" aria-hidden="true"><InlineIcon icon={ArrowRight} size={15} gap={0} /></span>
               </a>
-              <a className="btn btn-saffron btn-lg" href="#/explore">Explore itineraries</a>
+              <a className="btn btn-saffron btn-lg" {...appLink('/explore')}>Explore itineraries</a>
             </div>
           </div>
 
@@ -187,7 +188,7 @@ export function LandingPage({ onNavigate }: { onNavigate: (r: string) => void })
       </section>
 
       <p className="small muted" style={{ textAlign: 'center', paddingBottom: 24 }}>
-        © {new Date().getFullYear()} YatraFlow · <a className="text-link" href="#/dmca">Copyright and DMCA</a>
+        © {new Date().getFullYear()} YatraFlow · <a className="text-link" {...appLink('/dmca')}>Copyright and DMCA</a>
       </p>
       </div>
     </div>
@@ -329,7 +330,7 @@ function BirdsSvg() {
 function DemoButtons() {
   return (
     <div className="cta-buttons">
-      <a className="btn btn-navy btn-lg" href="#/auth?mode=signup">
+      <a className="btn btn-navy btn-lg" {...appLink('/auth?mode=signup')}>
         Create a free account
       </a>
       <BrandHint />
