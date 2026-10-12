@@ -299,6 +299,8 @@ export interface ScheduledLeg {
    *  this leg everywhere money is summed (never adds to it), so a flight sector
    *  can never also be billed at the car's per-km rate. */
   costInr?: number
+  /** Ground price basis for this leg, including transfers on a flight trip. */
+  inrPerKm?: number
 }
 
 export interface DaySchedule {
@@ -315,6 +317,9 @@ export interface DaySchedule {
   endsAtStart: boolean
   /** stop time (visit minutes + per-stop buffers) — driving time lives in totalTravelMinutes */
   dwellMinutes: number
+  /** Offset from the flight's departure date when the day starts before midnight. */
+  startDayOffset?: number
+  flightWarnings?: ScheduleWarning[]
 }
 
 /**
@@ -338,7 +343,7 @@ export function simulateDay(
   // have to reach the totals, the ICS export and every other consumer of this
   // schedule. The synthesized START (where the traveller wakes up that morning)
   // is journey context, not a row.
-  const rows = j.points.filter(p => !p.synthesized || p.kind === 'destination' || p.legIn?.kind === 'air')
+  const rows = j.points.filter(p => !p.synthesized || p.kind !== 'start')
   return {
     dayIndex,
     startsAt: j.startTime,
@@ -351,6 +356,8 @@ export function simulateDay(
     endsAt: rows.length ? rows[rows.length - 1].depart : j.startTime,
     endsAtStart: j.endsAtStart,
     dwellMinutes: j.dwellMinutes,
+    startDayOffset: j.startDayOffset,
+    flightWarnings: j.flightWarnings,
   }
 }
 
@@ -485,6 +492,8 @@ export interface Journey {
   halts: ItineraryStop[]
   /** the journey ends back where the trip started (planned drive home) */
   endsAtStart: boolean
+  startDayOffset?: number
+  flightWarnings?: ScheduleWarning[]
 }
 
 /** Strip the "(start)"/"(end)" suffix the UI uses on anchor names. */
@@ -545,8 +554,7 @@ export function flightForDay(trip: Trip, dayIndex: number): FlightLeg | null {
  * traveller enters anything — the map draws an arc, the timeline shows a block
  * time, and the Add-flight card is one tap away.
  *
- * Deliberately NOT produced for a day that plans its own stops: a sightseeing
- * day at the destination is not a second flight.
+ * A day near the same airport stays on the ground. Destination visits can follow an estimated outbound flight.
  */
 export function synthesizedFlight(
   trip: Trip,
@@ -556,7 +564,7 @@ export function synthesizedFlight(
 ): FlightLeg | null {
   const from = nearestAirport(startPoint)
   const to = nearestAirport(endPoint)
-  if (!from || !to) return null
+  if (!from || !to || from.iata === to.iata) return null
   return {
     id: `journey_air_${dayIndex}`,
     dayIndex,
@@ -648,7 +656,6 @@ export function airDayStartHM(
   const dep = parseHM(flight.departAt)
   if (dep == null) return fallback
   const start = dep - AIRPORT_CHECKIN_MIN - groundMinutesToAirport
-  if (start < 0) return fallback
   const m = ((Math.round(start) % 1440) + 1440) % 1440
   return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
 }
@@ -705,11 +712,13 @@ export function buildJourney(
     ? trip.destinationCoords[trip.destinationCoords.length - 1]
     : undefined
   const origin = startOriginOverride ?? originOf(trip, day.index)
+  const GA = groundAssumptions(trip)
   let startHM = day.startTime ?? A.dayStart
   let startMin = hmToMinutes(startHM)
-  const leg = (a: { lat: number; lng: number }, b: { lat: number; lng: number }, fromTitle: string, toTitle: string, asm: EngineAssumptions = A): ScheduledLeg => {
+  const leg = (a: { lat: number; lng: number }, b: { lat: number; lng: number }, fromTitle: string, toTitle: string, asm: EngineAssumptions = GA): ScheduledLeg => {
     const hit = legCorrections?.[legKey(a, b)]
-    if (hit) return { fromTitle, toTitle, distanceKm: hit.distanceKm, durationMinutes: hit.durationMinutes }
+    const price = isAirMode(trip.transportMode) ? { inrPerKm: asm.inrPerKm } : {}
+    if (hit) return { fromTitle, toTitle, distanceKm: hit.distanceKm, durationMinutes: hit.durationMinutes, ...price }
     const est = legBetween(a, b, asm)
     // two points at the same place are not a drive — skip the city-traffic pad
     const samePlace = haversineKm(a.lat, a.lng, b.lat, b.lng) < 0.5
@@ -717,6 +726,7 @@ export function buildJourney(
       fromTitle, toTitle,
       distanceKm: samePlace ? 0 : est.distanceKm,
       durationMinutes: samePlace ? 0 : est.durationMinutes,
+      ...price,
     }
   }
 
@@ -776,28 +786,37 @@ export function buildJourney(
   // ground legs either side keep the road-measured car assumptions; only the
   // sector is an air leg. Without this the whole day ran at MODE_SPEED.flight,
   // which is what priced a run to the airport at four minutes.
+  const originAirport = isAirMode(trip.transportMode) ? nearestAirport(startPoint) : null
+  const onward = originAirport ? active.find(s => {
+    const to = nearestAirport(s)
+    return to && originAirport.iata !== to.iata
+  }) : null
   const flight = isAirMode(trip.transportMode)
-    ? (flightForDay(trip, day.index) ?? (nonAuto.length === 0 ? synthesizedFlight(trip, day.index, startPoint, synthDest?.point ?? lastDest ?? null) : null))
+    ? (flightForDay(trip, day.index) ?? synthesizedFlight(trip, day.index, startPoint, onward ?? synthDest?.point ?? lastDest ?? null))
     : null
   let air: ResolvedAirports | null = null
   if (flight) {
-    air = resolveAirports(flight, startPoint, synthDest?.point ?? lastDest ?? null)
+    air = resolveAirports(flight, startPoint, onward ?? synthDest?.point ?? lastDest ?? null)
   }
-  // The ground legs either side of the sector are car legs — never timed or
-  // priced with the flight mode's blended figures.
-  const GA = groundAssumptions(trip)
-  // Back-compute the day's start so the traveller reaches the origin airport
-  // AIRPORT_CHECKIN_MIN before a STATED departure. Only for a pure travel day —
-  // a day that already plans its own stops owns its own start clock, and
-  // inventing a wake-up time under it would just make the plan look late. An
-  // ESTIMATED departure never moves the start: the model must not fabricate a
-  // schedule the traveller did not give it.
-  if (air && flight && nonAuto.length === 0) {
-    const groundToAirport = legBetween(startPoint, { lat: air.from.lat, lng: air.from.lng }, GA).durationMinutes
+  const startStopId = startStop?.id
+  const chain = startStopId ? active.filter(s => s.id !== startStopId) : active
+  // Split at the first stop closer to the arrival airport. Preserve stored order on each side.
+  const arrivalIndex = air ? chain.findIndex(s =>
+    haversineKm(s.lat, s.lng, air!.to.lat, air!.to.lng) < haversineKm(s.lat, s.lng, air!.from.lat, air!.from.lng),
+  ) : -1
+  const beforeFlight = air && arrivalIndex >= 0 ? chain.slice(0, arrivalIndex) : chain
+  const afterFlight = air && arrivalIndex >= 0 ? chain.slice(arrivalIndex) : []
+  // Move the start only when there are no visits before the flight.
+  // Destination activities do not prevent an early departure from home.
+  let startDayOffset = 0
+  if (air && flight && beforeFlight.every(s => s.auto)) {
+    const groundToAirport = leg(startPoint, air.from, startTitle, air.from.iata).durationMinutes
     startHM = airDayStartHM(flight, groundToAirport, startHM)
+    const dep = parseHM(flight.departAt)
+    if (dep != null && dep - AIRPORT_CHECKIN_MIN - groundToAirport < 0) startDayOffset = -1
   }
   // The walk's clock origin follows the (possibly back-computed) start.
-  startMin = hmToMinutes(startHM)
+  startMin = hmToMinutes(startHM) + startDayOffset * 1440
 
   // --- walk the chain --------------------------------------------------------
   const points: JourneyPoint[] = [{
@@ -809,9 +828,8 @@ export function buildJourney(
   const halts: ItineraryStop[] = []
   let cursor = startMin
   let prev = { title: startTitle, point: startPoint }
-  const startStopId = startStop?.id
-  const chain = startStopId ? active.filter(s => s.id !== startStopId) : active
-  for (const s of chain) {
+  const flightWarnings: ScheduleWarning[] = []
+  const visitStop = (s: ItineraryStop) => {
     // A stored stop can carry a missing or non-finite visitMinutes (older rows,
     // hand-edited JSON, partial DB writes). Coerce once — otherwise
     // `undefined + buffer` = NaN silently poisons the day's dwell, its clocks
@@ -836,10 +854,9 @@ export function buildJourney(
     if (isHalt) halts.push(s)
     prev = { title, point: p }
   }
+  beforeFlight.forEach(visitStop)
   // --- the flight -----------------------------------------------------------
-  // Appended after the day's own stops (which are the local run before the
-  // airport) and BEFORE the synthesized destination, so the day reads
-  // home → … → origin airport → sector → destination airport → the trip's end.
+  // Insert the flight between origin activities and destination activities.
   // The sector is the only air leg; the two airport legs stay ground legs and
   // keep whatever road measurement the routing layer found.
   if (air && flight) {
@@ -850,6 +867,24 @@ export function buildJourney(
     for (const a of legs) {
       // Don't walk to an airport we are already standing at.
       if (coLocates(prev.point, a.point)) continue
+      if (a.isAir) {
+        const departure = parseHM(flight.departAt)
+        const checkinPoint = points[points.length - 1]
+        const earliestDeparture = cursor + AIRPORT_CHECKIN_MIN
+        if (departure != null && cursor > departure - AIRPORT_CHECKIN_MIN + 0.5) {
+          flightWarnings.push({
+            code: 'flight-checkin', severity: 'high', dayIndex: day.index,
+            title: `Day ${day.index + 1}: airport check-in conflict`,
+            detail: `Your plan reaches ${air.from.iata} too late for the ${flight.departAt} departure.`,
+            fix: 'Start earlier or move an activity after your flight.',
+          })
+        }
+        const takeoff = departure != null && departure >= earliestDeparture - 0.5
+          ? departure : earliestDeparture
+        checkinPoint.dwellMinutes += takeoff - cursor
+        checkinPoint.depart = addMinutesToClock(startMin, takeoff - startMin)
+        cursor = takeoff
+      }
       const lg: ScheduledLeg = a.isAir
         ? {
             fromTitle: prev.title, toTitle: a.title,
@@ -862,8 +897,7 @@ export function buildJourney(
         : leg(prev.point, a.point, prev.title, a.title, GA)
       cursor += lg.durationMinutes
       const arrive = addMinutesToClock(startMin, cursor - startMin)
-      // An airport is a transit point, not a visit: no dwell beyond the
-      // check-in already baked into the day's start clock.
+      // The departure waypoint receives its wait before the next leg starts.
       points.push({
         kind: 'waypoint', title: a.title, lat: a.point.lat, lng: a.point.lng,
         stop: synthesizedAnchor(`journey_air_${day.index}_${a.title.slice(0, 3)}`, a.title, a.point),
@@ -872,6 +906,7 @@ export function buildJourney(
       prev = { title: a.title, point: a.point }
     }
   }
+  afterFlight.forEach(visitStop)
   if (synthDest) {
     const lg = leg(prev.point, synthDest.point, prev.title, synthDest.title)
     cursor += lg.durationMinutes
@@ -904,13 +939,15 @@ export function buildJourney(
     // two-verdicts trap: computeTotals adds the identical term below).
     // An air leg carries its own fare and is never also billed ₹/km.
     transportCostInr: points.reduce((a, p) => a + (p.legIn
-      ? (p.legIn.costInr ?? p.legIn.distanceKm * (A.inrPerKm ?? 8))
+      ? (p.legIn.costInr ?? legCostInr(p.stop.transportCostInrTotal, p.legIn.distanceKm, p.legIn.inrPerKm ?? A.inrPerKm ?? 8))
       : 0), 0) + (A.rentPerDayInr ?? 0),
     fuelLitres: A.kmPerLiter ? distanceKm / A.kmPerLiter : null,
     fuelPricePerL: A.fuelPricePerL ?? null,
     points,
     halts,
     endsAtStart: coLocates(lastPoint, home),
+    startDayOffset,
+    flightWarnings,
   }
 }
 
@@ -1075,7 +1112,7 @@ export function estimateLeg(
   to: { lat: number; lng: number },
   trip: Pick<Trip, 'transportMode' | 'fuelEconomyKmL' | 'fuelPricePerL' | 'rentPerDayInr' | 'localTrain'>,
 ): StopLegEstimate {
-  const A = getAssumptions(trip)
+  const A = groundAssumptions(trip)
   const est = legBetween(from, to, A)
   return { ...est, costInr: est.distanceKm * (A.inrPerKm ?? 8) }
 }
@@ -1134,10 +1171,11 @@ export function collectWarnings(trip: Trip, legCorrections?: Record<string, LegE
     // to the day's destination (or back home) is inside these totals, so no
     // overlay math is needed to make travel/fatigue checks honest.
     const sim = simulateDay(day, trip, originOf(trip, day.index), day.index, legCorrections)
-    const n = sim.activeStops.length
+    warnings.push(...(sim.flightWarnings ?? []))
+    const n = sim.activeStops.filter(s => !s.id.startsWith('journey_air_')).length
     dayClocks.set(day.index, {
       startsAt: sim.startsAt, endsAt: sim.endsAt,
-      startMin: hmToMinutes(sim.startsAt), endMin: hmToMinutes(sim.endsAt),
+      startMin: hmToMinutes(sim.startsAt) + (sim.startDayOffset ?? 0) * 1440, endMin: hmToMinutes(sim.endsAt),
     })
     const travelMinutes = sim.totalTravelMinutes
     const travelKm = sim.totalDistanceKm
@@ -1188,6 +1226,7 @@ export function collectWarnings(trip: Trip, legCorrections?: Record<string, LegE
     // Backtracking: any leg that doubles back within 25 km of a previous point chain
     const pts = sim.activeStops
     for (let i = 1; i < pts.length - 1; i++) {
+      if (sim.legs[i]?.kind === 'air' || sim.legs[i + 1]?.kind === 'air') continue
       const back = legBetween(pts[i], pts[i - 1], A)
       const fwd = legBetween(pts[i], pts[i + 1], A)
       if (back.distanceKm < fwd.distanceKm * 0.55 && fwd.distanceKm > 18) {
@@ -1423,6 +1462,11 @@ function dayEndPosition(trip: Trip, dayIndex: number, startPos: { lat: number; l
   // own legs then measured zero — the #161 index-vs-count class).
   const day = trip.days.find(d => d.index === dayIndex)
   if (!day) return startPos
+  if (isAirMode(trip.transportMode)) {
+    const points = buildJourney(trip, day, undefined, startPos).points
+    const last = points[points.length - 1]
+    return { lat: last.lat, lng: last.lng }
+  }
   const active = [...day.stops].filter(s => s.status !== 'rejected').sort((a, b) => a.orderInDay - b.orderInDay)
   if (active.length === 0) return startPos
   const home = trip.startLocationCoords ?? null
@@ -1771,7 +1815,7 @@ export function computeTotals(trip: Trip, legCorrections?: Record<string, LegEst
       // An air sector carries its own fare (fare × heads) and is priced from it
       // — never from ₹/km of great-circle distance, and never from the stop's
       // stated transport cost, which belongs to a ground leg.
-      const legCost = l.costInr ?? legCostInr(sim.activeStops[k]?.transportCostInrTotal, l.distanceKm, A.inrPerKm ?? 8)
+      const legCost = l.costInr ?? legCostInr(sim.activeStops[k]?.transportCostInrTotal, l.distanceKm, l.inrPerKm ?? A.inrPerKm ?? 8)
       transportCost += legCost
       if (bucket) bucket.transportInr += legCost
     })

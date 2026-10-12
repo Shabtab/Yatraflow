@@ -63,6 +63,10 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 - **A flight trip no longer shows road directions, driving time or a per-km fare.** The Map tab drew real driving directions for a flight trip. The workspace measured the trip's road chain for every mode. Google Routes has no FLYING travel mode, so the request errors. OSRM's endpoint is hardcoded to `/driving/`. Both answered with the road. That road was drawn as the map's line and read as the trip's travel time.
   Neither measurement path now measures a mode the routing layer cannot describe. The map draws the journey instead. Ground legs take the measured road shape, and the sector takes a great-circle arc. The sector is priced by fare × travellers, not ₹/km of great-circle distance. The ground legs either side are priced at car rates, which is what they are. Timeline leg rows read as a flight, with a plane glyph, the block time and the fare.
+- **Flight journeys reach the airport before destination stops.** Local visits stay on their side of the flight. Ground legs use car timing and pricing. Both airport transfers enter the budget once. The sector uses the fare for your whole group. The map uses available road measurements for transfers and a great-circle arc for the flight.
+- **Your flight times anchor the schedule.** Airport waiting appears before departure. Flights after midnight can start the plan on the previous evening. A warning reports activities that leave too little time for check-in.
+- **Flight edits refresh timeline facts.** Changes to airports, times, fares and traveller counts update cached routes, clocks and costs. Later days start where the previous flight journey ends.
+- **Flight days show travel time and airport waiting.** Airport transfers beside flights no longer trigger road backtracking warnings. Flight journeys no longer offer driving directions for the entire route.
 ## [0.76.0] - 2026-10-12
 
 **This release brings the new Ribbon Y logo, clearer error states, shared page parts and working landing links.**

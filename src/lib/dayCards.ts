@@ -124,7 +124,7 @@ function num(v: number | undefined | null): string {
  */
 export function dayCardKey(
   trip: Pick<Trip, 'id' | 'days' | 'startDate' | 'startLocation' | 'startLocationCoords' | 'destinationCoords' |
-    'transportMode' | 'travelStyle' | 'fuelEconomyKmL' | 'fuelPricePerL' | 'roundTrip' | 'fixedCommitments'>,
+    'transportMode' | 'travelStyle' | 'fuelEconomyKmL' | 'fuelPricePerL' | 'roundTrip' | 'fixedCommitments' | 'flights' | 'travellers'>,
   day: Trip['days'][number],
   origin: { lat: number; lng: number },
   prevPoint: { lat: number; lng: number } | null,
@@ -138,6 +138,9 @@ export function dayCardKey(
     .map(fc => `${fc.id},${fc.title},${fc.time},${fc.type},${fc.notes ?? NO},${fc.stopId ?? NO}`)
     .join(';')
   const sc = trip.startLocationCoords
+  const flights = trip.transportMode === 'flight'
+    ? JSON.stringify([trip.travellers, (trip.flights ?? []).filter(f => f.dayIndex <= day.index)])
+    : NO
   const dest = trip.destinationCoords ?? []
   const lastDest = dest.length ? dest[dest.length - 1] : undefined
   // Day-index shape facts the engine reads indirectly: how many days exist,
@@ -165,6 +168,7 @@ export function dayCardKey(
     `mode ${trip.transportMode}|${num(trip.fuelEconomyKmL)}|${num(trip.fuelPricePerL)}|${trip.travelStyle ?? NO}`,
     `start ${trip.startDate}`,
     `fc ${commitments}`,
+    `flights ${flights}`,
   ].join('~')
 }
 

@@ -1,6 +1,6 @@
 // ============ The air model: airports, block time, fare, arc ============
 // Everything here is a MODEL, not live data — the repo's transparency promise
-// requires the numbers it produces to be labelled as estimates on every
+// needs the numbers it produces to be labelled as estimates on every
 // surface that shows them. These tests pin the model so a future change to it
 // is a decision rather than a drift.
 import { describe, it, expect } from 'vitest'

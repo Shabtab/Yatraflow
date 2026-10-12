@@ -52,7 +52,7 @@ function LegSummary({ leg, inrPerKm, mode }: { leg: ScheduledLeg; inrPerKm: numb
   }
   return (
     <>
-      <MetaIcon icon={Car} tone="money" />~{leg.distanceKm.toFixed(0)} km · ~{Math.round(leg.durationMinutes)} min from {from} · est ₹{Math.round(leg.distanceKm * inrPerKm)} ({mode})
+      <MetaIcon icon={Car} tone="money" />~{leg.distanceKm.toFixed(0)} km · ~{Math.round(leg.durationMinutes)} min from {from} · est ₹{Math.round(leg.distanceKm * (leg.inrPerKm ?? inrPerKm))} ({leg.inrPerKm != null ? 'car' : mode})
     </>
   )
 }
@@ -275,6 +275,7 @@ export const DaySection = React.memo(function DaySection({ day, trip, facts, sav
   // arrival clock — regardless of distance. This is the single travel system.
   const sim = facts.sim
   const journey = facts.journey
+  const hasAirLeg = journey.points.some(p => p.legIn?.kind === 'air')
   // The body keeps rendering through the collapse animation (SmoothCollapse
   // unmounts it a beat after the class flip), while `trip` only arrives for the
   // OPEN day. Hold the last one we were given so a fading body never loses its
@@ -516,7 +517,7 @@ export const DaySection = React.memo(function DaySection({ day, trip, facts, sav
     : [
         `${journey.startTitle} → ${journey.endTitle}`,
         `~${Math.round(journey.distanceKm)} km`,
-        `drive ~${minutesToHM(journey.driveMinutes)}`,
+        `${hasAirLeg ? 'travel' : 'drive'} ~${minutesToHM(journey.driveMinutes)}`,
         ...(journey.halts.length > 0 ? [`${journey.halts.length} halt${journey.halts.length !== 1 ? 's' : ''}`] : []),
         ...(visitCount > 0 ? [`${visitCount} visit${visitCount !== 1 ? 's' : ''}`] : []),
         `start ${formatHM(journey.startTime, timeFormat)} → ends ~${formatHM(sim.endsAt, timeFormat)}`,
@@ -582,7 +583,7 @@ export const DaySection = React.memo(function DaySection({ day, trip, facts, sav
                 labelled by hand — wheel time makes it a drive, none makes it a
                 stay, a short hop plus local time is mixed. */}
             <span className={`day-kind ${dayType.toLowerCase()}`}>
-              {dayType === 'STAY' ? 'Stay day' : dayType === 'DRIVE' ? 'Drive day' : 'Drive + local'}
+              {hasAirLeg ? 'Flight day' : dayType === 'STAY' ? 'Stay day' : dayType === 'DRIVE' ? 'Drive day' : 'Drive + local'}
             </span>
           </div>
           {/* Collapsed extra line: only when it adds something the stats line
