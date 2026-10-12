@@ -35,6 +35,10 @@ describe('the Ribbon Y', () => {
     for (const rel of [...carriers, 'index.html']) expect(read(rel), rel).not.toContain(RETIRED)
   })
 
+  it('draws the share card mark at the spec size', () => {
+    expect(read('scripts/og-default-card.html')).toContain('<svg width="31" height="34" viewBox="7.5 5.5 49 56.5"')
+  })
+
   it('gives the Android adaptive icon the Planning Teal ground', () => {
     expect(read('android/app/src/main/res/values/ic_launcher_background.xml')).toContain('#0E7A72')
   })
