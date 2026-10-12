@@ -17,6 +17,17 @@ function resetCacheForTest() {
   return getSnapshot()
 }
 
+/** `publishItinerary` reports its outcome, not the row. These tests assert the
+ *  outcome, then read the row that the accepted write left in the cache. */
+async function publishedRow(
+  store: typeof import('../src/store/store'),
+  pub: Omit<PublishedItinerary, 'id' | 'publishedAt' | 'views' | 'copies'>,
+): Promise<PublishedItinerary> {
+  const outcome = await store.publishItinerary(pub)
+  expect(outcome.ok, outcome.error).toBe(true)
+  return getSnapshot().published.find(x => x.tripId === pub.tripId)!
+}
+
 describe('reorderStop guards out-of-range indices (regression #5)', () => {
   beforeEach(() => { resetCacheForTest() })
 
@@ -107,7 +118,7 @@ describe('registerPubView only writes for the owning viewer (regression #4)', ()
         travelStyle: 'balanced', bestSeason: 'winter', travelTips: [],
         warningsAndAssumptions: [], freeDayIndexes: [0],
       }
-      const p = await store.publishItinerary(pub)
+      const p = await publishedRow(store, pub)
       const before = p.views
       // Simulate a NON-owner viewer (sessionUserId differs from creatorId)
       const snap = getSnapshot() as any
@@ -135,7 +146,7 @@ describe('registerPubView counts real visits only (v0.36)', () => {
     const fromSpy = vi.spyOn(supabase, 'from').mockImplementation(
       () => ({ upsert, update }) as unknown as ReturnType<typeof supabase.from>,
     )
-    const p = await store.publishItinerary({
+    const p = await publishedRow(store, {
       tripId: 't-views', creatorId, title: 'Kerala', tagline: 'x',
       // #354 — the writer now enforces the publish rules, so a fixture that
       // published a COVERLESS row is no longer a valid publication. These tests
@@ -195,7 +206,7 @@ describe('unpublishItinerary owner gate + rollback (v0.36)', () => {
     const fromSpy = vi.spyOn(supabase, 'from').mockImplementation(
       () => ({ upsert, update }) as unknown as ReturnType<typeof supabase.from>,
     )
-    const p = await store.publishItinerary({
+    const p = await publishedRow(store, {
       tripId: 't-unpub', creatorId, title: 'Kerala', tagline: 'x',
       // #354 — same as the fixture above: the writer enforces the publish rules
       // now, so this one carries a cover and a free day. These tests are about

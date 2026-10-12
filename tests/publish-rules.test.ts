@@ -168,7 +168,10 @@ describe('#354 — a rejected visibility flip cannot leave a live card over a de
   it('says so when the flip is refused', () => {
     // A rollback nobody is told about is a rollback that reads as success.
     expect(fn).toContain("console.error('[yatraflow] publish visibility flip failed'")
-    expect(fn).toMatch(/toast\('Published to Explore, but the public page could not be opened/)
+    // The message now travels in the returned outcome, which the form shows
+    // inline. The function no longer toasts, so a refused flip cannot be silent
+    // and cannot also toast (#704).
+    expect(fn).toMatch(/return \{ ok: false, error: 'The publication saved, but its public page could not be opened/)
   })
 })
 

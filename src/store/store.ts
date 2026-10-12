@@ -3477,7 +3477,11 @@ export function resolveDecision(decisionId: ID, optionId: ID): void {
 
 // ---------------- Publishing ----------------
 
-export async function publishItinerary(pub: Omit<PublishedItinerary, 'id' | 'publishedAt' | 'views' | 'copies'>): Promise<PublishedItinerary> {
+// The outcome is `{ ok: true }` only after the server accepts the row and its
+// public page opens. A refusal is still thrown, as PublishRejected, because the
+// form maps it onto fields. A failed write rolls the cache back and returns
+// `{ ok: false, error }`. The caller shows that error, so nothing toasts here.
+export async function publishItinerary(pub: Omit<PublishedItinerary, 'id' | 'publishedAt' | 'views' | 'copies'>): Promise<{ ok: boolean; error?: string }> {
   // #354 — THE WRITER ENFORCES THE RULES, not just the form that calls it.
   // Every publish rule used to live only in `PublicationForm`, so this function
   // enforced none of them and the database had no backstop either. Any direct
@@ -3593,7 +3597,6 @@ export async function publishItinerary(pub: Omit<PublishedItinerary, 'id' | 'pub
   })
   if (error) {
     console.error('[yatraflow] publish persist failed', error)
-    toast('Could not save the publication — it will not survive a refresh. (' + error.message + ')')
     const idx = cache.published.findIndex(x => x.id === p.id)
     if (idx >= 0) {
       cache.published = previous
@@ -3613,6 +3616,7 @@ export async function publishItinerary(pub: Omit<PublishedItinerary, 'id' | 'pub
     if (ownedUrl && tripCoverBefore !== ownedUrl) {
       updateTrip(p.tripId, { coverImageUrl: tripCoverBefore })
     }
+    return { ok: false, error: 'Could not save the publication — nothing was published. Try again.' }
   } else {
     markLocalWrite('published_itineraries', p.id)
     // A published itinerary is a public page: flip the trip to visibility
@@ -3636,14 +3640,14 @@ export async function publishItinerary(pub: Omit<PublishedItinerary, 'id' | 'pub
       // the same "before" picture.
       cache.trips = cache.trips.map(t => t.id === p.tripId ? { ...t, visibility: tripVisibilityBefore } : t)
       commit()
-      toast('Published to Explore, but the public page could not be opened — check your connection and republish. (' + flipError.message + ')', 'err')
+      return { ok: false, error: 'The publication saved, but its public page could not be opened. Publish again to retry.' }
     } else {
       markLocalWrite('trips', p.tripId)
       cache.trips = cache.trips.map(t => t.id === p.tripId ? { ...t, visibility: 'public' } : t)
       commit()
     }
   }
-  return p
+  return { ok: true }
 }
 
 /** In-flight cover collection, so two callers (the app shell's post-hydrate

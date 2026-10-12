@@ -108,7 +108,7 @@ const DEFAULT_WARNINGS = ['All costs are estimates based on typical prices — v
  *  now chooses which days are the free preview, whether the itinerary is
  *  premium at all (empty/₹0 price = entirely free), and the reader-facing
  *  copy — pre-filled from the live publication when updating. */
-function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, onDone, onWriting }: {
+function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, onDone, onWriting, saveErr, setSaveErr }: {
   trip: Trip
   pub: PublishedItinerary | undefined
   /** An imported file's publish block, taken once from the stash. The draft
@@ -127,6 +127,9 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
    *  key still while a write is in flight, so a write never remounts the form
    *  (#704). */
   onWriting: (writing: boolean) => void
+  /** The inline write error, held by the parent so a remount cannot drop it (#704). */
+  saveErr: string | null
+  setSaveErr: (message: string | null) => void
 }) {
   const defaultTagline = `${trip.days.length}-day ${trip.travelStyle} trip through ${trip.destinations.join(', ')}.`
   // The draft wins over a live row: it is the freshest intent the creator
@@ -149,7 +152,6 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
   // that map: a failed WRITE is not a field's fault, and pointing at the price
   // box for it would be a lie.
   const [errs, setErrs] = useState<Record<string, string>>({})
-  const [saveErr, setSaveErr] = useState<string | null>(null)
   /** first-invalid focus targets (F-15) — plain inputs and the day picker only */
   const fieldRefs = useRef<Record<string, HTMLElement | null>>({})
   // A publish is a network write, and this button was the only publish control
@@ -245,7 +247,7 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
       // with it the "Published to Explore" toast — fired while the write was
       // still in flight; a later failure then rolled back under a success
       // message. The toast is now a statement about a resolved outcome.
-      await publishItinerary({
+      const outcome = await publishItinerary({
         tripId: trip.id, creatorId,
         title: trip.name,
         // The TRIMMED value the rule above validated, not the raw field. The
@@ -264,6 +266,12 @@ function PublicationForm({ trip, pub, draft, live = true, isOwner, creatorId, on
         premiumPriceInr: entirelyFree ? undefined : priceNum,
         subscriberCta: cta.trim() || undefined,
       })
+      // Only an accepted write reports success (#704). A refused one shows its
+      // message beside the button, and the form keeps the user's edits.
+      if (!outcome.ok) {
+        setSaveErr(outcome.error ?? 'Could not save the publication — nothing was published. Try again.')
+        return
+      }
       onDone(Boolean(pub) && live)
     } catch (e) {
       // #354/#389 — a REFUSAL is not a failed write. The writer raises it before
@@ -458,6 +466,8 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
     setPublishRetrying(true)
     void rereadPublicSlices().finally(() => { setPublishRetrying(false) })
   }
+  // The inline write error. It lives here, not in the form, so a remount cannot drop it (#704).
+  const [saveErr, setSaveErr] = useState<string | null>(null)
   // #704: the form is keyed by the publication it edits. A write changes that
   // publication twice (optimistically, then again on a rollback), so the key is
   // held at its pre-write value while a write is in flight.
@@ -632,7 +642,8 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
                 setDraft(null)
                 toast(wasPublished ? 'Publication updated' : 'Published to Explore')
               }}
-              onWriting={writing => setFrozenKey(writing ? publishFormKey(pub) : null)} />
+              onWriting={writing => setFrozenKey(writing ? publishFormKey(pub) : null)}
+              saveErr={saveErr} setSaveErr={setSaveErr} />
           )}
           {pub && isOwner && pubLive && (
             <button className="btn btn-ghost btn-sm shr-unpublish-action" onClick={() => setPendingUnpublish(true)}>Unpublish</button>

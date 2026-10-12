@@ -227,7 +227,9 @@ describe('#350 — re-publishing clears the marker, in the cache and on the wire
     expect(typeof row(store)!.unpublishedAt).toBe('number')
     calls.length = 0
 
-    const republished = await store.publishItinerary(publishPayload)
+    const outcome = await store.publishItinerary(publishPayload)
+    expect(outcome).toEqual({ ok: true })
+    const republished = store.getSnapshot().published.find(p => p.tripId === publishPayload.tripId)!
 
     // The optimistic row: a re-publish builds a fresh object, so the marker the
     // caller never asked for cannot ride along.
@@ -243,7 +245,7 @@ describe('#350 — re-publishing clears the marker, in the cache and on the wire
     probe.unpublishedAt = false
     const store = await freshStore()
 
-    await store.publishItinerary(publishPayload)
+    expect(await store.publishItinerary(publishPayload)).toEqual({ ok: true })
 
     const upsert = calls.find(c => c.table === 'published_itineraries' && c.method === 'upsert')
     expect(upsert, 'the publication was persisted').toBeDefined()

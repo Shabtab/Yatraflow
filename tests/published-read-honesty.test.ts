@@ -32,6 +32,13 @@ const { state } = vi.hoisted(() => ({
   },
 }))
 
+// A spy on the toast, so a test can see that a publish toasts nothing (#704).
+const { toastSpy } = vi.hoisted(() => ({ toastSpy: vi.fn() }))
+vi.mock('../src/components/ui', async importOriginal => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  toast: toastSpy,
+}))
+
 vi.mock('../src/lib/supabase', () => {
   const makeBuilder = (table: string) => {
     const builder: Record<string, unknown> = {}
@@ -335,6 +342,81 @@ describe('#704 — the publish form is keyed by the publication it edits', () =>
     expect(publishFormKey({ id: 'pub-1', publishedAt: 100 }))
       .toBe(publishFormKey({ id: 'pub-1', publishedAt: 100, refreshedAt: undefined }))
     expect(publishFormKey({ id: 'pub-1', publishedAt: 100 })).not.toBe(publishFormKey({ id: 'pub-1', publishedAt: 101 }))
+  })
+})
+
+// ================= R23 — a publish is reported only after the server accepts it =================
+
+describe('#704 R23 — a publish reports its outcome, and only an accepted write is ok', () => {
+  /** A valid publication for one trip, free on every day, so no price rule applies. */
+  const payloadFor = (tripId: string) => ({
+    tripId, creatorId: 'u-owner', title: `Plan ${tripId}`, tagline: 'A route',
+    coverImageUrl: 'https://images.example.test/k.jpg', routeSummary: ['Kochi', 'Munnar'],
+    durationDays: 3, estimatedBudgetPerPersonInr: 5000, travelStyle: 'balanced',
+    travelTips: [], warningsAndAssumptions: [], freeDayIndexes: [0],
+  })
+
+  it('an accepted write reports { ok: true } and leaves the row in the cache', async () => {
+    const store = await freshStore()
+    signedIn([])
+    await signIn(store)
+
+    expect(await store.publishItinerary(payloadFor('tripA'))).toEqual({ ok: true })
+    expect(store.getSnapshot().published.some(p => p.tripId === 'tripA')).toBe(true)
+  })
+
+  it('a refused write reports { ok: false } with its message, rolls back, and toasts nothing', async () => {
+    const store = await freshStore()
+    signedIn([])
+    await signIn(store)
+    toastSpy.mockClear()
+
+    state.errors = { published_itineraries: { message: 'write refused' } }
+    expect(await store.publishItinerary(payloadFor('tripA'))).toEqual({
+      ok: false,
+      error: 'Could not save the publication — nothing was published. Try again.',
+    })
+    // The optimistic row is gone again: a refused publish changes nothing.
+    expect(store.getSnapshot().published.some(p => p.tripId === 'tripA')).toBe(false)
+    // One message shows, and the caller shows it. The store does not toast too.
+    expect(toastSpy).not.toHaveBeenCalled()
+  })
+
+  it('a refused public page reports { ok: false }, keeps the accepted row, restores the trip, and toasts nothing', async () => {
+    const store = await freshStore()
+    signedIn([])
+    await signIn(store)
+    toastSpy.mockClear()
+
+    state.errors = { trips: { message: 'visibility refused' } }
+    expect(await store.publishItinerary(payloadFor('tripA'))).toEqual({
+      ok: false,
+      error: 'The publication saved, but its public page could not be opened. Publish again to retry.',
+    })
+    // The row the server accepted stays, as it did before this change.
+    expect(store.getSnapshot().published.some(p => p.tripId === 'tripA')).toBe(true)
+    // The trip's own visibility goes back to the value it had before the publish.
+    expect(store.getSnapshot().trips.find(t => t.id === 'tripA')?.visibility).toBe('private')
+    expect(toastSpy).not.toHaveBeenCalled()
+  })
+
+  it('the writer is typed as an outcome, and its body never toasts', () => {
+    const storeSrc = codeOf(read('../src/store/store.ts'))
+    expect(storeSrc).toMatch(/export async function publishItinerary\([\s\S]*?\): Promise<\{ ok: boolean; error\?: string \}> \{/)
+    const start = storeSrc.indexOf('export async function publishItinerary')
+    const body = storeSrc.slice(start, storeSrc.indexOf('\n}\n', start))
+    expect(body).not.toContain('toast(')
+    expect(body).toContain('return { ok: true }')
+  })
+
+  it('the Share form reports success only after an accepted write, and shows a refusal inline', () => {
+    const share = codeOf(read('../src/pages/trip/ShareTab.tsx'))
+    expect(share).toMatch(/const outcome = await publishItinerary\(\{/)
+    const gate = share.indexOf('if (!outcome.ok) {')
+    const success = share.indexOf('onDone(Boolean(pub) && live)')
+    expect(gate).toBeGreaterThan(-1)
+    expect(success, 'success is reported after the refusal gate').toBeGreaterThan(gate)
+    expect(share).toContain('setSaveErr(outcome.error ??')
   })
 })
 
