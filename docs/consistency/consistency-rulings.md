@@ -50,7 +50,7 @@ This file grows. Claude adds a ruling each time an agent asks something new. Re-
 
 ## Stage B rulings (user-approved 2026-10-12)
 
-**R20. Titles follow R14.** Card and section titles use Plus Jakarta Sans 800. Change them page by page, as each page converts. Big numbers keep Sora. Do not change the global h1-h4 rule in a page PR.
+**R20. Titles follow R14.** Card and section titles use Plus Jakarta Sans 800, at 18px with a line height of 1.3. Change them page by page, as each page converts. Big numbers keep Sora. Do not change the global h1-h4 rule in a page PR.
 
 **R21. Serif h1 on content pages only.** Trip created, Profile, Creator hub and Invite get the `PageHeader` serif h1. Auth, Admin and Native home keep a Sora h1.
 
