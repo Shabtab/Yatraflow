@@ -2542,6 +2542,35 @@ let TRIP_WRITE_DEBOUNCE_MS = 600
 // against whatever account happens to be signed in when the timer runs.
 const pendingTripWrites = new Map<ID, { timer: ReturnType<typeof setTimeout>; trip: Trip; sessionId: string | null }>()
 
+// #704 — the server's verdict on a trip write. updateTrip answers at once from
+// the cache. A caller that must show the server's answer reads tripWriteVerdict
+// right after updateTrip: that edit rides the write the verdict belongs to.
+type TripVerdict = { promise: Promise<boolean>; settle: (saved: boolean) => void }
+/** The verdict of each trip's pending debounced write. Edits in one window share it. */
+const pendingTripVerdicts = new Map<ID, TripVerdict>()
+/** The verdict of the newest write for each trip, until that write settles. */
+const newestTripVerdicts = new Map<ID, TripVerdict>()
+
+function openTripVerdict(): TripVerdict {
+  let settle: (saved: boolean) => void = () => {}
+  const promise = new Promise<boolean>(resolve => { settle = resolve })
+  return { promise, settle }
+}
+
+/** Send one row write under its verdict. The verdict takes the write's result, then stops being the newest. */
+function sendUnderVerdict(id: ID, v: TripVerdict, write: Promise<boolean>): void {
+  const finish = (saved: boolean) => {
+    v.settle(saved)
+    if (newestTripVerdicts.get(id) === v) newestTripVerdicts.delete(id)
+  }
+  void write.then(finish, err => { console.error('[yatraflow] trip write rejected', err); finish(false) })
+}
+
+/** The server's verdict on the row write that carries the newest edit to this trip, or null. Read it right after updateTrip. It resolves true once the server has the row. */
+export function tripWriteVerdict(id: ID): Promise<boolean> | null {
+  return newestTripVerdicts.get(id)?.promise ?? null
+}
+
 // #549 — ONE in-flight whole-trip write per trip, across BOTH senders: the
 // debounced path and replayQueuedWrites chain onto the same tail, so two
 // UPDATEs for one trip are never in flight together. Nothing here ordered them
@@ -2579,6 +2608,13 @@ export function _cancelTripWrites(): void {
     const pending = pendingTripWrites.get(id)
     if (pending) clearTimeout(pending.timer)
     pendingTripWrites.delete(id)
+    // A cancelled write never reached the server, so its verdict is "not saved".
+    const v = pendingTripVerdicts.get(id)
+    pendingTripVerdicts.delete(id)
+    if (v) {
+      v.settle(false)
+      if (newestTripVerdicts.get(id) === v) newestTripVerdicts.delete(id)
+    }
   }
 }
 
@@ -2595,7 +2631,9 @@ export function _flushTripWrites(): void {
     // above: a remote update that landed while the write was pending must not
     // be re-persisted over the local edit, and the local edit must not be
     // lost by persisting the remote row.
-    void persistTripFieldNow(id, pending.trip, pending.sessionId)
+    const v = pendingTripVerdicts.get(id) ?? openTripVerdict()
+    pendingTripVerdicts.delete(id)
+    sendUnderVerdict(id, v, persistTripFieldNow(id, pending.trip, pending.sessionId))
   }
 }
 
@@ -2604,8 +2642,8 @@ export function _flushTripWrites(): void {
  *  #578 — `scheduledFor` is the session the edit was captured under. A write
  *  that fires under any OTHER identity (or under none) is DROPPED: the queue
  *  stamp would be a guess and the UPDATE would ride the wrong JWT. */
-async function persistTripFieldNow(id: ID, t: Trip | undefined, scheduledFor: string | null): Promise<void> {
-  if (!t) return
+async function persistTripFieldNow(id: ID, t: Trip | undefined, scheduledFor: string | null): Promise<boolean> {
+  if (!t) return false
   // #578 — belt-and-braces on top of the cancel hooks: they can be missed (a
   // pagehide flush racing a sign-out), so the fire itself checks identity.
   // A null session is refused too — with nobody signed in the write belongs to
@@ -2613,7 +2651,7 @@ async function persistTripFieldNow(id: ID, t: Trip | undefined, scheduledFor: st
   // #393's zombie entry from the other direction. Dropped, not guessed.
   if (!scheduledFor || cache.sessionUserId !== scheduledFor) {
     console.warn('[yatraflow] dropping debounced trip write — it was captured under a session that is no longer live')
-    return
+    return false
   }
   // Claim the echo window BEFORE awaiting: the guard must be in place from the
   // moment the write is in flight, not from the moment it resolves. Recording
@@ -2647,6 +2685,9 @@ async function persistTripFieldNow(id: ID, t: Trip | undefined, scheduledFor: st
   // as prose on added lines, and the queue's field name trips it otherwise.
   const entry = { tripId: id, ownerId: cache.sessionUserId ?? owner?.userId ?? id, capturedAt, attempts: 0, trip: t }
   await queueWrite(entry)
+  // #704: `saved` becomes true only after the server accepts the row.
+  // A failed send leaves the queued edit in place.
+  let saved = false
   await serializeTripWrite(id, async () => {
     const cols = await tripsHaveOptionalColumns()
     const { error } = await supabase.from('trips').update(tripToRow(t, owner?.userId ?? id, cols)).eq('id', id)
@@ -2662,7 +2703,9 @@ async function persistTripFieldNow(id: ID, t: Trip | undefined, scheduledFor: st
       return
     }
     await dropWriteIfCurrent(id, capturedAt)
+    saved = true
   })
+  return saved
 }
 
 /** PWA phase 3 - push every queued offline edit, oldest first. Bounded: a
@@ -2749,17 +2792,24 @@ function persistTripField(id: ID, t: Trip): void {
   // under one account can never be persisted under another.
   const scheduledFor = cache.sessionUserId
   if (TRIP_WRITE_DEBOUNCE_MS <= 0) {
-    void persistTripFieldNow(id, snapshot, scheduledFor)
+    const v = openTripVerdict()
+    newestTripVerdicts.set(id, v)
+    sendUnderVerdict(id, v, persistTripFieldNow(id, snapshot, scheduledFor))
     return
   }
   const prev = pendingTripWrites.get(id)
   if (prev) clearTimeout(prev.timer)
+  // An edit that joins a pending write shares that write's verdict.
+  const v = pendingTripVerdicts.get(id) ?? openTripVerdict()
+  pendingTripVerdicts.set(id, v)
+  newestTripVerdicts.set(id, v)
   const timer = setTimeout(() => {
+    pendingTripVerdicts.delete(id)
     pendingTripWrites.delete(id)
     // Persist the CAPTURED snapshot, never a re-read of tripById(id): the
     // timer's re-read let a REMOTE update landing inside the debounce window
     // be persisted over the local edit that scheduled this write (B0).
-    void persistTripFieldNow(id, snapshot, scheduledFor)
+    sendUnderVerdict(id, v, persistTripFieldNow(id, snapshot, scheduledFor))
   }, TRIP_WRITE_DEBOUNCE_MS)
   pendingTripWrites.set(id, { timer, trip: snapshot, sessionId: scheduledFor })
 }

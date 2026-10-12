@@ -131,6 +131,8 @@ This release makes the trip pages easier to read and act on. Every trip card nam
 - **Failed weather and trip reads now say so instead of looking empty.** The Overview tab shows "Weather could not be loaded." with a Try again button when the forecast fails. The installed app's home screen shows a loading line while trips load. When the trips read fails, it shows a failed message with Try again. If trips are already loaded, the home screen keeps them and adds a short note above them. "No trips yet" appears only after a trips read succeeds with no trips. (#704)
 - **The Profile page says "Profile saved" only after the server accepts the change.** A save the server refuses shows a short message beside the button. The typed values stay in the form, and the app shows the saved name again. The save button is disabled while the save is in flight. (#704)
 
+- **Trip settings say "Trip settings updated" only after the server accepts the change.** A save the server refuses shows a short message beside the Save settings button. The form keeps your edits, and the app retries the save when the connection returns. (#704)
+
 - **Explore loads for logged-out visitors again.** A first visit without an account showed "Loading the catalog…" with no end, although the itineraries had loaded. The logged-out data load now reports the catalog as loaded or failed. A failed read now shows the error with a Retry button. The bug did not affect signed-in users.
 
 - **Group input and the Map tab now say when a read failed, and keep what did load.** Group input shows a failed message with a Try again button when nothing loaded. When cards did load, it keeps them and adds a short note with Try again.
