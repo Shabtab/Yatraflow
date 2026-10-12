@@ -97,8 +97,8 @@
       "rawH1": 0
     },
     "src/pages/trip/GroupInputTab.tsx": {
-      "EmptyState": 2,
-      "loadingBlock": 0,
+      "EmptyState": 3,
+      "loadingBlock": 1,
       "inlineStyle": 27,
       "rawH1": 0
     },
@@ -211,7 +211,7 @@
       "rawH1": 1
     }
   },
-  "cardHoverViolations": 5,
+  "cardHoverViolations": 8,
   "fontScopeViolations": 0,
   "fontNameFiles": {
     "src/main.tsx": 1
