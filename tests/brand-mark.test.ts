@@ -10,6 +10,7 @@ const read = (rel: string) => readFileSync(new URL('../' + rel, import.meta.url)
 const FOLD = 'M15 6C15 26 32 24 32 40'
 const ROAD = 'M49 6C49 26 32 24 32 40V46'
 const DOT = 'cx="32" cy="56" r="5.5"'
+const DARK_DOT = 'cx="32" cy="56" r="5.5" fill="#F5A94A"'
 const RETIRED = 'M28 62 L44 34 L56 52 L64 40 L76 62 Z'
 
 const carriers = [
@@ -33,6 +34,15 @@ describe('the Ribbon Y', () => {
 
   it('leaves no copy of the retired mountain mark', () => {
     for (const rel of [...carriers, 'index.html']) expect(read(rel), rel).not.toContain(RETIRED)
+  })
+
+  it.each([
+    'public/brand/yatraflow-mark-dark.svg',
+    'public/brand/yatraflow-logo-dark.svg',
+    'public/brand/yatraflow-mark-reversed.svg',
+    'public/brand/yatraflow-logo-reversed.svg',
+  ])('%s uses the dark saffron for its destination dot', rel => {
+    expect(read(rel)).toContain(DARK_DOT)
   })
 
   it('draws the share card mark at the spec size', () => {

@@ -388,6 +388,7 @@ Add `yf-page` to the root of a page when you convert it. The page skin then appl
 ### Colour versions
 - **Primary:** fold `#0B6B63`, road `#0D8D82`, on light grounds.
 - **Dark:** fold `#1E9D92`, road `#2BB8AC`. These are the dark-theme `--teal-700` and `--teal-500`.
+- **Dark dot:** `#F5A94A`, the dark-theme `--saffron` token. The dark and reversed files use this colour.
 - **Reversed:** fold `#BFE3DD`, road white, on Planning Teal or Chart Navy.
 - **One colour:** Ink only. A 2-unit gap cuts the fold where the road crosses it, so the fold stays visible.
 - The destination dot stays saffron in all versions except one colour.
