@@ -32,7 +32,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - **The creator hub reports a profile change only after the server accepts it.** Enable creator mode, Save creator profile and Disable creator mode each wait for the server. A refused change shows its error, or "Profile not saved. Check your connection and try again." Save creator profile is disabled while its save is in flight. (#704)
 - **An empty login form asks for the email and password before it contacts the server.** The form error line shows "Enter your email and password." instead of the server's message.
 - **YatraFlow has a new logo, the Ribbon Y.** Two routes fold into one road, and a saffron dot marks the destination. It replaces the mountain-and-sun mark in the header, the favicon and the link preview card.
-  The PWA icons and the Apple touch icon now show the mark on a Planning Teal tile. The Android launcher icons and splash screens replaced the default Capacitor art. The adaptive icon ground is now Planning Teal.
+  The PWA icons and the Apple touch icon now show the mark on a Planning Teal tile. The Android launcher icons and splash screens replaced the default Capacitor art. The adaptive icon ground is now Planning Teal. The app drops its old icon cache, so installed copies pick up the new icons.
   `public/brand/` has the mark and the lockup as SVG files, in primary, dark, reversed and one-colour versions. DESIGN.md has a new Brand mark section with the construction and use rules. A test checks that each copy of the mark has the same geometry.
 
 ## [0.75.0] - 2026-10-12
