@@ -234,7 +234,7 @@ export function GroupInputTab({ trip, editable, me, previewOpen }: {
 
         <div>
           {needsYou.length > 0 && (
-            <div className="card" style={{ marginBottom: 14 }}>
+            <div className="card gin-digest-card">
               <h3>Needs you</h3>
               <hr className="divider" />
               {needsYou.map(i => (
@@ -296,8 +296,8 @@ function SuggestionCard({ sg, trip, me, editable, memberCount, needsMe, previewO
   const author = userById(sg.proposedBy)
   const { busy, claim } = useBusyClaim(sg.id)
   return (
-    <div id={`gi-item-${sg.id}`} tabIndex={-1} className={`card gi-item${needsMe ? ' gi-needs-you' : ''}`} style={{ marginBottom: 14 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 14 }}>
+    <div id={`gi-item-${sg.id}`} tabIndex={-1} className={`card gi-item gin-item-card${needsMe ? ' gi-needs-you' : ''}`}>
+      <div className="gin-item-layout">
       <div className="vote-col">
         <button className={`vote-btn ${myVote === 1 ? 'on' : ''}`} onClick={() => voteSuggestion(trip.id, sg.id, me.id, 1)} aria-label="Upvote" aria-pressed={myVote === 1}><ChevronUp size={13} aria-hidden /></button>
         <span className="vote-count">{ups - downs}</span>
@@ -306,34 +306,35 @@ function SuggestionCard({ sg, trip, me, editable, memberCount, needsMe, previewO
       <div>
         <div className="row-between">
           <h3>{sg.title}</h3>
-          <span style={{ display: 'inline-flex', gap: 6 }}>
+          <span className="gin-chip-group">
             {needsMe && <Chip tone="saffron">Needs your vote</Chip>}
             {sg.status === 'open' && consensusPct >= 60 && <Chip tone="teal">Best fit</Chip>}
             <Chip tone={sg.status === 'accepted' ? 'ok' : sg.status === 'declined' ? 'danger' : 'teal'}>{cap(sg.status)}</Chip>
           </span>
         </div>
-        <div className="creator-line" style={{ margin: '5px 0' }}>
+        <div className="creator-line gin-creator-line">
           <Avatar user={author} /> {author?.profile.name ?? 'Traveller'} suggested for Day {sg.dayIndex + 1}
         </div>
         {sg.description && <p className="small muted">{sg.description}</p>}
-        <div className="stop-meta" style={{ marginTop: 7 }}>
+        <div className="stop-meta gin-stop-meta">
           <span><MapPin size={13} aria-hidden /> {sg.locationName}</span>
           <span><Clock size={13} aria-hidden /> {minutesToHM(sg.visitMinutes)}</span>
           <span><Ticket size={13} aria-hidden /> ₹{sg.estimatedEntryFeeInr}/person</span>
           <span><Car size={13} aria-hidden /> ₹{sg.estimatedTransportInr} transport</span>
         </div>
-        <div style={{ marginTop: 9, display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div className="consensus-bar" style={{ flex: 1 }} role="img" aria-label={`Consensus ${consensusPct}% of members upvoted`}>
+        <div className="gin-consensus-row">
+          <div className="consensus-bar gin-consensus-track" role="img" aria-label={`Consensus ${consensusPct}% of members upvoted`}>
             {/* neutral → amber → green, each clearing 3:1 on the --bg-soft track
                 in both themes (was --line 1.18 / --saffron 1.85 / --ok 3.67 — the
                 low segment was invisible and mid failed the non-text floor). */}
             <div style={{ width: `${consensusPct}%`, background: consensusPct >= 60 ? 'var(--ink-ok)' : consensusPct >= 35 ? 'var(--ink-amber)' : 'var(--text-3)' }} />
           </div>
-          <span className="small muted num" style={{ whiteSpace: 'nowrap' }}>{ups} of {memberCount} upvoted</span>
+          <span className="small muted num gin-consensus-count">{ups} of {memberCount} upvoted</span>
         </div>
 
         {editable && sg.status === 'open' && (
-          <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginTop: 11 }}>
+          // off-ladder 11px: stays inline until the page redesign
+          <div className="gin-item-actions" style={{ marginTop: 11 }}>
             <button className="btn btn-primary btn-sm" disabled={busy} aria-busy={busy} onClick={() => {
               if (refuseWhileStaged(previewOpen)) return
               if (!claim()) return
@@ -350,7 +351,7 @@ function SuggestionCard({ sg, trip, me, editable, memberCount, needsMe, previewO
         )}
 
         {sg.comments.length > 0 && (
-          <div style={{ marginTop: 8 }}>
+          <div className="gin-comments">
             {sg.comments.map(c => (
               <div key={c.id} className="comment">
                 <Avatar user={userById(c.authorId)} />
@@ -373,7 +374,7 @@ function SuggestionCard({ sg, trip, me, editable, memberCount, needsMe, previewO
 function CommentForm({ onSubmit }: { onSubmit: (text: string) => void }) {
   const [text, setText] = useState('')
   return (
-    <form style={{ display: 'flex', gap: 7, marginTop: 10 }} onSubmit={e => { e.preventDefault(); if (text.trim()) { onSubmit(text.trim()); setText('') } }}>
+    <form className="gin-comment-form" onSubmit={e => { e.preventDefault(); if (text.trim()) { onSubmit(text.trim()); setText('') } }}>
       <input className="input" placeholder="Add a comment…" aria-label="Add a comment" value={text} onChange={e => setText(e.target.value)} />
       <button className="btn btn-sm btn-outline">Post</button>
     </form>
@@ -402,16 +403,16 @@ function DecisionCard({ d, me, editable, needsMe, trip, previewOpen }: {
   const { busy, claim } = useBusyClaim(d.id)
 
   return (
-    <div id={`gi-item-${d.id}`} tabIndex={-1} className={`card gi-item${needsMe ? ' gi-needs-you' : ''}`} style={{ marginBottom: 14 }}>
+    <div id={`gi-item-${d.id}`} tabIndex={-1} className={`card gi-item gin-item-card${needsMe ? ' gi-needs-you' : ''}`}>
       <div className="row-between">
         <h3>{d.question}</h3>
-        <span style={{ display: 'inline-flex', gap: 6 }}>
+        <span className="gin-chip-group">
           {needsMe && <Chip tone="saffron">Needs your vote</Chip>}
           <Chip tone={d.status === 'open' ? 'saffron' : 'ok'}>{cap(d.status)}</Chip>
         </span>
       </div>
-      {d.context && <p className="small muted" style={{ margin: '5px 0 10px' }}>{d.context}</p>}
-      <div style={{ margin: '8px 0' }}>
+      {d.context && <p className="small muted gin-decision-context">{d.context}</p>}
+      <div className="gin-decision-options">
         {d.options.map((o, i) => {
           const mine = d.votesByUserId[me.id] === o.id
           const voters = votersOf(o.id)
@@ -420,7 +421,7 @@ function DecisionCard({ d, me, editable, needsMe, trip, previewOpen }: {
             <div key={o.id} className={`decision-option-row${leading ? ' leading' : ''}`}>
               <button className={`vote-btn ${mine ? 'on' : ''}`} disabled={d.status === 'resolved'} aria-pressed={mine}
                 onClick={() => voteOnDecision(d.id, o.id)} aria-label={`Vote for ${o.label}`}><ChevronUp size={13} aria-hidden /></button>
-              <span style={{ flex: 1 }}>
+              <span className="gin-option-label">
                 {o.label}
                 {o.timeImpactMin ? <span className="muted small num"> · ≈{o.timeImpactMin} min detour</span> : null}
                 {o.costImpactInr ? <span className="muted small num"> · {o.costImpactInr > 0 ? '+' : ''}{formatInr(o.costImpactInr)}</span> : null}
@@ -438,13 +439,13 @@ function DecisionCard({ d, me, editable, needsMe, trip, previewOpen }: {
         })}
       </div>
       {d.status === 'open' && (
-        <div className="gi-guide" style={{ marginTop: 10 }}>
-          <p className="small muted" style={{ margin: 0 }}>
+        <div className="gi-guide gin-guide-block">
+          <p className="small muted gin-guide-note">
             <InlineIcon icon={ClipboardList} size={12} gap={4} />
             {contextLine(ctx)}
           </p>
           {rec && (
-            <p className="small" style={{ margin: '4px 0 0' }}>
+            <p className="small gin-guide-rec">
               <InlineIcon icon={Sparkles} size={12} gap={4} />
               <b>{rec.label}</b> — {rec.reason} <Chip tone="info">offline</Chip>
             </p>
@@ -474,7 +475,7 @@ function DecisionCard({ d, me, editable, needsMe, trip, previewOpen }: {
       {/* Discussion, same card language as suggestions (I-7): comments stay
           visible on a resolved decision — the record of why it was chosen. */}
       {d.comments.length > 0 && (
-        <div style={{ marginTop: 8 }}>
+        <div className="gin-comments">
           {d.comments.map(c => (
             <div key={c.id} className="comment">
               <Avatar user={userById(c.authorId)} />
@@ -541,7 +542,7 @@ function SuggestionComposerForm({ trip, me }: {
   return (
     <form onSubmit={submit}>
       <h3>Add to the plan</h3>
-      <p className="hint-text" style={{ margin: '6px 0 12px' }}>Others can vote and comment; editors can accept it into the timeline.</p>
+      <p className="hint-text gin-composer-hint">Others can vote and comment; editors can accept it into the timeline.</p>
       <Field label="Idea"><input className="input" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="e.g. Pothamedu viewpoint" /></Field>
       <div className="form-row">
         <Field label="Day">
@@ -564,7 +565,7 @@ function SuggestionComposerForm({ trip, me }: {
         <input type="number" className="input" min={0} value={form.transportCost} onChange={e => setForm(f => ({ ...f, transportCost: Number(e.target.value) }))} />
       </Field>
       <Field label="Why it’s worth it"><textarea className="textarea" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} /></Field>
-      <button className="btn btn-primary" style={{ width: '100%' }}>Share with the group</button>
+      <button className="btn btn-primary gin-submit">Share with the group</button>
     </form>
   )
 }
@@ -600,13 +601,13 @@ function DecisionComposerForm({ trip }: { trip: Trip }) {
   return (
     <form onSubmit={create}>
       <h3>Raise a decision</h3>
-      <p className="hint-text" style={{ margin: '6px 0 12px' }}>Turn endless group-chat debates into one clear vote.</p>
+      <p className="hint-text gin-composer-hint">Turn endless group-chat debates into one clear vote.</p>
       <Field label="Question"><input className="input" value={q} onChange={e => setQ(e.target.value)} placeholder="e.g. Beach day or backwater day on Day 3?" /></Field>
       <Field label="Context (optional)" hint="Why the group is deciding — e.g. “forecast says one beach afternoon is a washout”.">
         <input className="input" value={context} onChange={e => setContext(e.target.value)} />
       </Field>
       <Field label="Options" hint="At least two — cost impact is optional.">
-        <span style={{ display: 'grid', gap: 7 }}>
+        <span className="gin-option-grid">
           {opts.map((o, i) => (
             <span key={i} className="opt-row">
               <input className="input" placeholder={`Option ${i + 1}`} aria-label={`Option ${i + 1}`} value={o.label} onChange={e => setOpt(i, 'label', e.target.value)} />
@@ -621,7 +622,7 @@ function DecisionComposerForm({ trip }: { trip: Trip }) {
           </span>
         </span>
       </Field>
-      <button className="btn btn-primary" style={{ width: '100%' }}>Post decision</button>
+      <button className="btn btn-primary gin-submit">Post decision</button>
     </form>
   )
 }
