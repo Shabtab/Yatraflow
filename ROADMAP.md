@@ -527,8 +527,9 @@ Neither decision touches a colour value, per [ADR 0002](docs/adr/0002-mockup-pal
     filter. It wakes at local midnight and re-reads the day on focus or visibility. The unit is a
     day, so nothing polls. Eleven cases in `tests/day-clock.test.ts` drive it with an injected
     clock.
-  - **Older captures show the removed copy.** The 2026-10-06 and 2026-10-10 screenshots of the
-    countdown were taken before the copy changed, so they are not evidence for the current copy.
+  - **The superseded captures are gone (2026-10-13).** The 2026-10-06 and 2026-10-10 countdown
+    captures were taken before the copy changed. They are not evidence for the current copy, so
+    the pair left the repo.
 - [x] **MR7. Day strip with transit markers.** `src/pages/TripWorkspace.tsx`, timeline tab. Days as
   horizontal cards, with a marker where the city changes. Reuse the existing day-collapse state.
   - **Landed 2026-10-05 — and the row was half-written already.** The timeline's day rail already
