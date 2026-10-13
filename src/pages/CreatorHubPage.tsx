@@ -320,9 +320,9 @@ export function CreatorHubPage({ onNavigate }: { onNavigate: (r: string) => void
 
           {/* The profile is a thing you set once. It used to own the fold and
               push every number below it; it now closes the page instead. */}
-          <Surface as="details" className="hub-profile">
+          <details className="card hub-profile">
             <summary className="hub-profile-summary">
-              <h2 className="hub-card-title">Creator profile</h2>
+              <span className="card-title hub-panel-title">Creator profile</span>
               <Chip tone="ok">Enabled</Chip>
               <ChevronDown className="hub-chev" size={16} aria-hidden />
             </summary>
@@ -360,7 +360,7 @@ export function CreatorHubPage({ onNavigate }: { onNavigate: (r: string) => void
               }}>Save creator profile</button>
               <button className="btn btn-ghost btn-sm" onClick={() => { setConfirmDisable(true) }}>Disable creator mode</button>
             </div>
-          </Surface>
+          </details>
         </>
       )}
 
@@ -530,12 +530,11 @@ function PubsUnread({ view, retrying, onRetry, need }: {
 }) {
   if (view === 'reading') return <p className="hint-text hub-pubs-loading" role="status">Loading your publications…</p>
   return (
-    <div className="hub-note is-failure hub-read-failed" role="alert">
-      <b>Couldn’t load your publications.</b> Nothing has been lost.{need ? ` ${need}` : ''}
-      <button className="btn btn-outline btn-sm hub-note-action" onClick={onRetry} disabled={retrying}>
+    <StateBlock kind="failed" size="compact" title="Couldn’t load your publications."
+      body={`Nothing has been lost.${need ? ` ${need}` : ''}`}
+      actions={<button className="btn btn-outline btn-sm" onClick={onRetry} disabled={retrying}>
         {retrying ? 'Trying…' : 'Try again'}
-      </button>
-    </div>
+      </button>} />
   )
 }
 
@@ -673,20 +672,18 @@ export function HubOverview({ myPubs, onUnpublish, onNavigate, daily, dailyAt, s
       {/* The trips behind the counts failed or are still reading: the figures
           above are unknown, and only a failed read offers the way back. */}
       {tripsView === 'failed' && (
-        <div className="hub-note is-failure hub-read-failed" role="alert">
-          <b>Couldn’t load your trips.</b> Nothing has been lost — the Live and Behind counts need them.
-          <button className="btn btn-outline btn-sm hub-note-action" onClick={onRetryTrips} disabled={tripsRetrying}>
+        <StateBlock kind="failed" size="compact" title="Couldn’t load your trips."
+          body="Nothing has been lost — the Live and Behind counts need them."
+          actions={<button className="btn btn-outline btn-sm" onClick={onRetryTrips} disabled={tripsRetrying}>
             {tripsRetrying ? 'Trying…' : 'Try again'}
-          </button>
-        </div>
+          </button>} />
       )}
       {tripsView === 'kept' && (
-        <div className="hub-note is-failure hub-read-kept" role="status">
-          <b>Couldn’t refresh your trips.</b> Showing the last loaded rows.
-          <button className="btn btn-outline btn-sm hub-note-action" onClick={onRetryTrips} disabled={tripsRetrying}>
+        <StateBlock kind="kept" size="compact" title="Couldn’t refresh your trips."
+          body="Showing the last loaded rows."
+          actions={<button className="btn btn-outline btn-sm" onClick={onRetryTrips} disabled={tripsRetrying}>
             {tripsRetrying ? 'Trying…' : 'Try again'}
-          </button>
-        </div>
+          </button>} />
       )}
 
       {framingNote && <div className="hub-note hub-framing">{framingNote}</div>}
@@ -798,12 +795,11 @@ export function HubOverview({ myPubs, onUnpublish, onNavigate, daily, dailyAt, s
             ) : (
               <div>
                 {publishedView === 'kept' && (
-                  <div className="hub-note is-failure hub-read-kept" role="status">
-                    <b>Couldn’t refresh your publications.</b> Showing the ones that loaded.
-                    <button className="btn btn-outline btn-sm hub-note-action" onClick={onRetryPublished} disabled={publishedRetrying}>
+                  <StateBlock kind="kept" size="compact" title="Couldn’t refresh your publications."
+                    body="Showing the ones that loaded."
+                    actions={<button className="btn btn-outline btn-sm" onClick={onRetryPublished} disabled={publishedRetrying}>
                       {publishedRetrying ? 'Trying…' : 'Try again'}
-                    </button>
-                  </div>
+                    </button>} />
                 )}
                 {myPubs.map((p, rowIndex) => {
                   // #350 — a soft-unpublished publication STAYS in this list on
