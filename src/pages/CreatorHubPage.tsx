@@ -320,9 +320,9 @@ export function CreatorHubPage({ onNavigate }: { onNavigate: (r: string) => void
 
           {/* The profile is a thing you set once. It used to own the fold and
               push every number below it; it now closes the page instead. */}
-          <details className="card hub-profile">
+          <Surface as="details" className="hub-profile">
             <summary className="hub-profile-summary">
-              <span className="card-title hub-panel-title">Creator profile</span>
+              <h2 className="hub-card-title">Creator profile</h2>
               <Chip tone="ok">Enabled</Chip>
               <ChevronDown className="hub-chev" size={16} aria-hidden />
             </summary>
@@ -360,7 +360,7 @@ export function CreatorHubPage({ onNavigate }: { onNavigate: (r: string) => void
               }}>Save creator profile</button>
               <button className="btn btn-ghost btn-sm" onClick={() => { setConfirmDisable(true) }}>Disable creator mode</button>
             </div>
-          </details>
+          </Surface>
         </>
       )}
 
