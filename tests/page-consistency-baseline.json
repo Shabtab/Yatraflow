@@ -12,7 +12,6 @@
     "src/pages/NativeHome.tsx",
     "src/pages/Profile.tsx",
     "src/pages/PublicItinerary.tsx",
-    "src/pages/TripCreated.tsx",
     "src/pages/TripWorkspace.tsx",
     "src/pages/TripsList.tsx"
   ],
@@ -195,7 +194,7 @@
       "EmptyState": 0,
       "loadingBlock": 0,
       "inlineStyle": 0,
-      "rawH1": 1
+      "rawH1": 0
     },
     "src/pages/TripsList.tsx": {
       "EmptyState": 0,

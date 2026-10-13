@@ -49,6 +49,8 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ### Changed
 
+- **The trip created page now uses the shared page header and card titles.** The page title sits in the shared header, with the trip name upright and "is live." in italic. The page keeps its 1120px width and its own celebratory cards. The card titles are larger and bolder, so they read as headings. A trip that cannot be found now shows the shared empty message with one button back to your trips.
+
 - **The DMCA page and the log in tabs now use the shared page parts.** The DMCA page has a serif title, a one-line lede and one text panel about 68 characters wide. The log in tabs use the shared tab row, with the same keyboard controls. The log in page announces its missing-backend warning to screen readers. The form error sits 8px above the submit button, the same gap as the sign-up notice.
 
 - **YatraFlow has a new logo, the Ribbon Y.** Two routes fold into one road, and a saffron dot marks the destination. It replaces the mountain-and-sun mark in the header, the favicon and the link preview card.

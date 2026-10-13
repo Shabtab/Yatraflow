@@ -10366,3 +10366,15 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 @media (max-width: 640px) {
   .container.dmca-page { padding-left: 18px; padding-right: 18px; }
 }
+/* ===== P5: Trip created - the page scope and the card titles ===== */
+/* The page root carries yf-page, which sets the catalog container width. This
+   page keeps its own 1120px width, so the compound selector wins by specificity
+   (R5). It names no descendant relationship. */
+.yf-page.created-page { max-width: 1120px; }
+
+/* R20: card and section titles follow the shared title rule. Plus Jakarta Sans
+   800, 18px, line-height 1.3, the body text colour. The page's titles were
+   13px/700 Sora. The trip name on the bill card keeps its own size, because it
+   is the artifact's own heading and not a card title. */
+.created-card .created-card-title,
+.created-bill-body .created-card-title { font-family: var(--font-body); font-size: 18px; line-height: 1.3; font-weight: 800; color: var(--text); }

@@ -27,6 +27,7 @@ import { nativeCopyText, nativeShareText } from '../lib/native'
 import { haptic, HAPTIC } from '../lib/haptics'
 import { toast } from '../components/ui'
 import { StateBlock } from '../components/page/StateBlock'
+import { PageHeader } from '../components/page/PageHeader'
 import { createdReadView, createdInviteUrl, createdCanSend, inviteRowStatus, windowDidOpen, clipboardDidCopy, shareDidSend, inviteReadError, type InviteRowStatus } from '../lib/createdStates'
 import { useReveal } from '../hooks/useReveal'
 
@@ -315,9 +316,15 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
 
   if (!trip) {
     return (
-      <div className="container created-page page-enter">
-        <p className="muted">That trip is not loaded on this device.</p>
-        <button className="btn btn-primary" onClick={() => onNavigate('/trips')}>Go to my trips</button>
+      <div className="container yf-page created-page page-enter">
+        <StateBlock
+          kind="empty"
+          title="We couldn't find this trip."
+          body="The trip is not on this device. It may belong to another planner, or it may have been deleted."
+          actions={(
+            <button className="btn btn-primary" onClick={() => onNavigate('/trips')}>Go to my trips</button>
+          )}
+        />
       </div>
     )
   }
@@ -490,16 +497,17 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
   }
 
   return (
-    <div className="container created-page page-enter">
+    <div className="container yf-page created-page page-enter">
       {/* The mockup's moment-after composition: the celebration column beside
           the artifact column (the bill and where to go next). */}
       <div className="created-cols">
       <div className="created-celebrate">
-      <header className="created-head reveal">
-        <p className="eyebrow">Trip created</p>
-        <h1><span className="created-name">{trip.name}</span> is live.</h1>
-        <p className="muted small">Now the engine starts working for you.</p>
-      </header>
+      {/* R19: page-enter owns the page entrance, so the header carries no reveal. */}
+      <PageHeader
+        kicker="Trip created"
+        headline={{ lead: trip.name, accent: 'is live.' }}
+        lede="Now the engine starts working for you."
+      />
 
       {/* The card renders when any read on this page failed, even with no rows.
           A failure that rendered nowhere would read as "nothing to report". */}
