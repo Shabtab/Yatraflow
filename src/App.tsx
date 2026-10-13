@@ -31,6 +31,11 @@ import { setTheme, useTheme } from './lib/theme'
 import { hideSplash, registerAndroidBack, setNativeTheme } from './lib/appShell'
 import { LandingPage } from './pages/Landing'
 import { NativeHomePage } from './pages/NativeHome'
+import { StateBlock } from './components/page/StateBlock'
+import {
+  sharedSnapshotState, inviteGateState,
+  inviteLoginNext, inviteSignupNext, invitePreview,
+} from './lib/inviteGateStates'
 // Route-level code splitting: only the landing page stays in the main chunk (it
 // is the app's front door and reads no store data); every other route -
 // including the workspace and its map/editor subtree - loads on first visit.
@@ -655,35 +660,57 @@ function SharedTripPage({ payload, onNavigate }: { payload: string; onNavigate: 
     }
   }
 
-  if (state.s === 'error') {
+  /* The decode's own state. A snapshot travels inside the link, so a truncated
+     link and a browser without DecompressionStream both land in `failed`. That
+     is a different answer from "no trip", so the two never share a branch. */
+  const snapshot = sharedSnapshotState({ loading: state.s === 'loading', failed: state.s === 'error', trip })
+
+  if (snapshot === 'failed') {
     return (
-      <div className="container empty-state page-enter">
-        <div className="big"><Link2 size={38} aria-hidden /></div>
-        {/* Decoding can fail for reasons that are NOT the link: `inflate` throws
-            where DecompressionStream is missing, and a newer snapshot can fail
-            the shape check. Name the likely cause, keep the alternative. */}
-        <h1 style={{ fontSize: 26 }}>This snapshot didn’t load</h1>
-        <p className="muted">A snapshot travels inside the link itself, so this is usually a link that arrived truncated - ask for a fresh one from the trip’s Share tab. Opening it in an up-to-date browser, which can unpack it, is worth a try too.</p>
-        <button className="btn btn-primary" style={{ marginTop: 14 }} onClick={() => onNavigate('/')}>Go home</button>
+      <div className="container yf-page page-enter">
+        <StateBlock
+          kind="failed"
+          art={<Link2 size={38} aria-hidden />}
+          title="This snapshot didn’t load"
+          body="A snapshot travels inside the link itself, so this is usually a link that arrived truncated. Ask for a fresh one from the trip’s Share tab. Opening it in an up-to-date browser, which can unpack it, is worth a try too."
+          actions={(
+            <button className="btn btn-primary" onClick={() => onNavigate('/')}>Go home</button>
+          )}
+        />
+      </div>
+    )
+  }
+
+  if (snapshot === 'loading') {
+    return (
+      <div className="container yf-page page-enter">
+        <StateBlock kind="loading" title="Opening the shared plan" />
       </div>
     )
   }
 
   return (
-    <div className="container empty-state page-enter">
-      <div className="big"><Luggage size={38} aria-hidden /></div>
-      <h1 style={{ fontSize: 26 }}>Shared itinerary{state.s === 'ready' ? `: “${state.name}”` : ''}</h1>
-      {state.s === 'ready' && (
-        <p className="muted">{state.days}-day trip · {state.destinations}</p>
-      )}
-      <p className="muted small" style={{ maxWidth: 460 }}>
-        This whole plan is embedded in the link itself - nothing was stored on a server.
-        Import it to get your own editable copy{me ? '' : ' (you will be asked to log in first)'}.
-      </p>
-      <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 14 }}>
-        <button className="btn btn-primary" onClick={importIt} disabled={importing} aria-busy={importing}><InlineIcon icon={Import} size={16} gap={6} vAlign="-3px" />{importing ? 'Importing…' : pendingImport ? 'Retry import' : me ? 'Import into my trips' : 'Log in & import'}</button>
-        <button className="btn btn-outline" onClick={() => onNavigate('/')}>Not now</button>
-      </div>
+    <div className="container yf-page page-enter">
+      <StateBlock
+        kind="empty"
+        art={<Luggage size={38} aria-hidden />}
+        title={`Shared itinerary${state.s === 'ready' ? `: “${state.name}”` : ''}`}
+        body={(
+          <>
+            {state.s === 'ready' && <p className="muted">{state.days}-day trip · {state.destinations}</p>}
+            <p className="muted small">
+              This whole plan is embedded in the link itself - nothing was stored on a server.
+              Import it to get your own editable copy{me ? '' : ' (you will be asked to log in first)'}.
+            </p>
+          </>
+        )}
+        actions={(
+          <div className="inv-actions">
+            <button className="btn btn-primary" onClick={importIt} disabled={importing} aria-busy={importing}><InlineIcon icon={Import} size={16} gap={6} vAlign="-3px" />{importing ? 'Importing…' : pendingImport ? 'Retry import' : me ? 'Import into my trips' : 'Log in & import'}</button>
+            <button className="btn btn-outline" onClick={() => onNavigate('/')}>Not now</button>
+          </div>
+        )}
+      />
     </div>
   )
 }
@@ -783,32 +810,69 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
     // existed and the invite never auto-joined.
   }, [me, trip, isTripIdLink, linkTarget])
 
+  /* The gate's own state. A read that failed and a link that is dead are
+     different answers, and the code below never shows one as the other. */
+  const gate = inviteGateState({ loading: status === 'loading' || !trip, failed: status === 'broken', trip })
+
   if (status === 'retired') {
     return (
-      <div className="container empty-state">
-        <div className="big"><Link2 size={38} aria-hidden /></div>
-        <h1 style={{ fontSize: 26 }}>This link no longer adds people</h1>
-        <p className="muted">Ask the trip owner for a fresh invite link.</p>
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 14 }}>
-          <button className="btn btn-outline" onClick={() => onNavigate('/')}>Go home</button>
-        </div>
+      <div className="container yf-page page-enter">
+        <StateBlock
+          kind="empty"
+          art={<Link2 size={38} aria-hidden />}
+          title="This link no longer adds people"
+          body="Ask the trip owner for a fresh invite link."
+          actions={(
+            <button className="btn btn-outline" onClick={() => onNavigate('/')}>Go home</button>
+          )}
+        />
       </div>
     )
   }
 
-  if (status === 'broken' || !trip) {
-    return status === 'broken' ? (
-      <div className="container empty-state">
-        <div className="big"><Link2 size={38} aria-hidden /></div>
-        <h1 style={{ fontSize: 26 }}>This invite didn’t load</h1>
-        <p className="muted">The code may be mistyped or no longer active, or the connection may have dropped - we can’t tell which from here. Ask the organiser for a fresh link, or try again.</p>
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 14 }}>
-          <button className="btn btn-primary" onClick={() => { setStatus('loading'); setRetryTick(t => t + 1) }}>Try again</button>
-          <button className="btn btn-outline" onClick={() => onNavigate('/')}>Go home</button>
-        </div>
+  if (gate === 'failed') {
+    return (
+      <div className="container yf-page page-enter">
+        <StateBlock
+          kind="failed"
+          art={<Link2 size={38} aria-hidden />}
+          title="This invite didn’t load"
+          body="The connection may have dropped, so the link may still be good. Ask the organiser for a fresh link, or try again."
+          actions={(
+            <div className="inv-actions">
+              <button className="btn btn-primary" onClick={() => { setStatus('loading'); setRetryTick(t => t + 1) }}>Try again</button>
+              <button className="btn btn-outline" onClick={() => onNavigate('/')}>Go home</button>
+            </div>
+          )}
+        />
       </div>
-    ) : (
-      <div className="container loading-block"><div className="spinner" />Opening invite…</div>
+    )
+  }
+
+  if (gate === 'expired') {
+    return (
+      <div className="container yf-page page-enter">
+        <StateBlock
+          kind="empty"
+          art={<Link2 size={38} aria-hidden />}
+          title="This invite is no longer active"
+          body="The code may be mistyped or no longer active. Ask the organiser for a fresh link."
+          actions={(
+            <div className="inv-actions">
+              <button className="btn btn-primary" onClick={() => { setStatus('loading'); setRetryTick(t => t + 1) }}>Try again</button>
+              <button className="btn btn-outline" onClick={() => onNavigate('/')}>Go home</button>
+            </div>
+          )}
+        />
+      </div>
+    )
+  }
+
+  if (gate === 'loading') {
+    return (
+      <div className="container yf-page page-enter">
+        <StateBlock kind="loading" title={status === 'joining' && trip ? `Joining “${trip.name}”…` : 'Opening invite…'} />
+      </div>
     )
   }
 
@@ -817,24 +881,56 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
     // the old buttons went to plain /auth, and AuthPage's post-login redirect
     // to /trips dropped the invite entirely: users logged in, landed on My
     // Trips, and the trip never appeared.
-    const inviteRoute = UUID_RE.test(codeOrTripId) ? `/invite/${codeOrTripId}` : `/join/${codeOrTripId}`
+    // The preview below reads only what the gate already holds. No field is
+    // fetched a second time to fill it in.
+    const preview = invitePreview(trip ?? { name: '' })
     return (
-      <div className="container empty-state">
-        <div className="big"><Mail size={38} aria-hidden /></div>
-        <h1 style={{ fontSize: 26 }}>You’ve been invited to “{trip.name}”</h1>
-        <p className="muted">Log in or create a free account to join the planning crew.</p>
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 14 }}>
-          <button className="btn btn-outline" onClick={() => onNavigate(`/auth?next=${encodeURIComponent(inviteRoute)}`)}>Log in</button>
-          <button className="btn btn-primary" onClick={() => onNavigate(`/auth?mode=signup&next=${encodeURIComponent(inviteRoute)}`)}>Create account</button>
-        </div>
+      <div className="container yf-page page-enter">
+        <StateBlock
+          kind="empty"
+          art={<Mail size={38} aria-hidden />}
+          title={`You’ve been invited to “${preview.name}”`}
+          body={(
+            <>
+              <p className="muted">Log in or create a free account to join the planning crew.</p>
+              <dl className="inv-preview">
+                {preview.route && (
+                  <div className="inv-preview-row">
+                    <dt>Route</dt>
+                    <dd>{preview.route}</dd>
+                  </div>
+                )}
+                {preview.dates && (
+                  <div className="inv-preview-row">
+                    <dt>Dates</dt>
+                    <dd>{preview.dates}</dd>
+                  </div>
+                )}
+                <div className="inv-preview-row">
+                  <dt>Crew</dt>
+                  <dd>{preview.memberCount} {preview.memberCount === 1 ? 'planner' : 'planners'}</dd>
+                </div>
+              </dl>
+            </>
+          )}
+          actions={(
+            <div className="inv-actions">
+              {/* The `next` round-trip is load-bearing: it parks this invite so
+                  AuthPage returns here after login. The route and its encoding
+                  come from inviteLoginNext and inviteSignupNext, and the
+                  navigation calls below stay exactly as they were. */}
+              <button className="btn btn-outline" onClick={() => onNavigate(inviteLoginNext(codeOrTripId, isTripIdLink))}>Log in</button>
+              <button className="btn btn-primary" onClick={() => onNavigate(inviteSignupNext(codeOrTripId, isTripIdLink))}>Create account</button>
+            </div>
+          )}
+        />
       </div>
     )
   }
 
   return (
-    <div className="container loading-block">
-      <div className="spinner" />
-      {status === 'joining' ? `Joining “${trip.name}”…` : 'Opening invite…'}
+    <div className="container yf-page page-enter">
+      <StateBlock kind="loading" title={status === 'joining' && trip ? `Joining “${trip.name}”…` : 'Opening invite…'} />
     </div>
   )
 }

@@ -1,7 +1,5 @@
 {
   "pageRootAllowlist": [
-    "src/App.tsx#InviteGate",
-    "src/App.tsx#SharedTripPage",
     "src/pages/AdminPage.tsx",
     "src/pages/Auth.tsx",
     "src/pages/CreateTrip.tsx",
