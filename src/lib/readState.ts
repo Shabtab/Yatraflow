@@ -142,3 +142,12 @@ export function pubsPanel(view: RowsView): PubsPanel {
   if (view === 'empty') return 'empty'
   return 'list'
 }
+
+/** The combined verdict over several slices: failed if any failed, reading
+ *  if any is unread, ready only when every slice read. Composes the per-slice
+ *  verdicts above — one mechanism, not a second one. */
+export function combinedReadState(reads: ReadState[]): ReadState {
+  if (reads.includes('failed')) return 'failed'
+  if (reads.includes('reading')) return 'reading'
+  return 'ready'
+}
