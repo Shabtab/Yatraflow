@@ -12,8 +12,8 @@ import {
   browserNotifEnabled, browserNotifPermission, fireBrowserNotification,
   shouldBrowserNotify,
 } from './lib/browserNotifications'
-import type { Trip } from './data/types'
-import { useDb, currentUser, useUsers, useNotifications, useSessionUserId, logout, markAllNotificationsRead, tripById, joinViaInvite, importTripPersisted, retryImportTrip, init, resumeSync, useStoreReady, fetchSharedTrip, fetchTripByInviteCode, viewerIsMemberOf, collectUnclaimedCovers } from './store/store'
+import type { Notification, Trip } from './data/types'
+import { useDb, currentUser, useUsers, useNotifications, useSessionUserId, useSliceReads, logout, markAllNotificationsRead, tripById, joinViaInvite, importTripPersisted, retryImportTrip, init, resumeSync, useStoreReady, fetchSharedTrip, fetchTripByInviteCode, viewerIsMemberOf, collectUnclaimedCovers } from './store/store'
 import { Avatar, BrandMark, ToastZone, useClickOutside, toast } from './components/ui'
 import { BottomNav } from './components/BottomNav'
 import { OfflineBanner } from './components/OfflineBanner'
@@ -29,9 +29,10 @@ import { isNative } from './lib/native'
 import { feedbackHref } from './lib/feedback'
 import { setTheme, useTheme } from './lib/theme'
 import { hideSplash, registerAndroidBack, setNativeTheme } from './lib/appShell'
+import { sliceState, rowsView, type RowsView } from './lib/readState'
+import { StateBlock } from './components/page/StateBlock'
 import { LandingPage } from './pages/Landing'
 import { NativeHomePage } from './pages/NativeHome'
-import { StateBlock } from './components/page/StateBlock'
 import {
   sharedSnapshotState, inviteGateState,
   inviteLoginNext, inviteSignupNext, invitePreview,
@@ -59,6 +60,150 @@ const DMCAPage = lazy(() => import('./pages/DMCAPage').then(m => ({ default: m.D
 /** Suspense fallback for the lazy routes - the same loading block the ready-gate shows. */
 const lazyRouteFallback = <div className="container loading-block"><div className="spinner" />Loading…</div>
 
+export type ProfileLookupState = 'anonymous' | 'reading' | 'failed' | 'missing' | 'ready'
+
+export function needsProfileLookup(sessionUserId: string | null, hasProfile: boolean): boolean {
+  return !!sessionUserId && !hasProfile
+}
+
+export function profileLookupState(
+  sessionUserId: string | null,
+  hasProfile: boolean,
+  sliceReads: Record<string, 'ok' | 'failed'>,
+): ProfileLookupState {
+  if (hasProfile) return 'ready'
+  if (!sessionUserId) return 'anonymous'
+  const profileRead = sliceState(sliceReads, 'profiles')
+  if (profileRead === 'failed') return 'failed'
+  if (profileRead === 'reading') return 'reading'
+  return 'missing'
+}
+
+/** Whether the profile lookup takes the page from the route. A failed lookup takes it on the
+ *  bare route too, so its Try again is never hidden behind the landing. A reading lookup does
+ *  not, so the landing does not flash while hydrate runs. */
+export function profileLookupBlocksRoute(
+  sessionUserId: string | null,
+  hasProfile: boolean,
+  state: ProfileLookupState,
+  bareRoute: boolean,
+  native: boolean,
+): boolean {
+  if (!needsProfileLookup(sessionUserId, hasProfile)) return false
+  return !bareRoute || native || state === 'failed'
+}
+
+export function notificationPanelModel(
+  sliceReads: Record<string, 'ok' | 'failed'>,
+  notifications: Notification[],
+  sessionUserId: string | null,
+): { rows: Notification[]; view: RowsView } {
+  const rows = sessionUserId
+    ? notifications.filter(notification => notification.userId === sessionUserId).sort((a, b) => b.at - a.at)
+    : []
+  // hydrate reads notifications by trip, so an account with no trips issues no
+  // notifications read and the slice stays unreported. A trips verdict beside
+  // that gap is the answer: no trips, so no trip notifications. Without a trips
+  // verdict the read is still pending, and that stays "reading".
+  const noTripScope = !('notifications' in sliceReads) && sliceState(sliceReads, 'trips') === 'ready'
+  const read = noTripScope ? 'ready' : sliceState(sliceReads, 'notifications')
+  return { rows, view: rowsView(read, rows.length) }
+}
+
+export function retryProfileLookup(): void {
+  window.location.reload()
+}
+
+export function ProfileLookupNotice({ state }: { state: ProfileLookupState }) {
+  if (state === 'ready' || state === 'anonymous') return null
+  if (state === 'reading') {
+    return <StateBlock kind="loading" title="Loading your profile…" titleLevel="h2" />
+  }
+  if (state === 'failed') {
+    return (
+      <StateBlock
+        kind="failed"
+        title="Your profile could not load."
+        titleLevel="h2"
+        actions={<button className="btn btn-primary btn-sm" onClick={retryProfileLookup}>Try again</button>}
+      />
+    )
+  }
+  return (
+    <StateBlock
+      kind="empty"
+      title="Your profile is not available."
+      body="The profile read completed without a matching account."
+      titleLevel="h2"
+    />
+  )
+}
+
+function ProfileLookupPage({ state }: { state: ProfileLookupState }) {
+  return (
+    <div className="container page-enter yf-page">
+      <ProfileLookupNotice state={state} />
+    </div>
+  )
+}
+
+export function NotificationReadNotice({ view, onRetry }: { view: RowsView; onRetry: () => void }) {
+  if (view === 'rows' || view === 'empty') return null
+  if (view === 'reading') {
+    return <StateBlock kind="loading" size="compact" title="Loading notifications…" />
+  }
+  if (view === 'failed') {
+    return (
+      <StateBlock
+        kind="failed"
+        size="compact"
+        title="Couldn’t load notifications."
+        actions={<button className="btn btn-primary btn-sm" onClick={onRetry}>Try again</button>}
+      />
+    )
+  }
+  return (
+    <StateBlock
+      kind="kept"
+      size="compact"
+      title="Refresh failed. The app shows your last notifications."
+      actions={<button className="btn btn-primary btn-sm" onClick={onRetry}>Try again</button>}
+    />
+  )
+}
+
+export function NotificationPanelContent({
+  model,
+  showAll,
+  onRetry,
+  onOpenTrip,
+}: {
+  model: { rows: Notification[]; view: RowsView }
+  showAll: boolean
+  onRetry: () => void
+  onOpenTrip: (tripId: string) => void
+}) {
+  const { rows, view } = model
+  return (
+    <div style={{ maxHeight: showAll ? 'min(60vh, calc(100vh - 150px))' : 320, overflowY: 'auto', overscrollBehavior: 'contain' }}>
+      {view === 'empty' && (
+        <p className="muted small" style={{ padding: 16, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <Inbox size={14} aria-hidden />You’re all caught up
+        </p>
+      )}
+      <NotificationReadNotice view={view} onRetry={onRetry} />
+      {(showAll ? rows : rows.slice(0, 12)).map(notification => {
+        const tripId = notification.tripId
+        return (
+          <div key={notification.id} className={`notif-item ${notification.read ? '' : 'unread'}`}>
+            <span>{notification.text}</span>
+            {tripId && <button className="btn btn-ghost btn-sm" onClick={() => onOpenTrip(tripId)}>View →</button>}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
 
 export default function App() {
   // Slice subscriptions: the shell re-renders only when profiles, the session
@@ -67,8 +212,14 @@ export default function App() {
   const users = useUsers()
   const sessionUserId = useSessionUserId()
   const notifications = useNotifications()
+  const sliceReads = useSliceReads()
   // Same semantics as currentUser(): the profile whose id matches sessionUserId.
   const me = useMemo(() => users.find(u => u.id === sessionUserId) ?? null, [users, sessionUserId])
+  const profileState = profileLookupState(sessionUserId, !!me, sliceReads)
+  const notificationPanel = useMemo(
+    () => notificationPanelModel(sliceReads, notifications, sessionUserId),
+    [sliceReads, notifications, sessionUserId],
+  )
   // The route lives in the address bar now (web): the initial state settles
   // any legacy hash address first — a bookmark from the hash era, a card
   // handler's `/#/pub/<id>` hand-off, a native share intent opened on web —
@@ -319,7 +470,8 @@ export default function App() {
     if (parts[0] === 'pub' && parts[1]) page = <Suspense fallback={lazyRouteFallback}><PublicItineraryPage slug={parts[1]} onNavigate={navigate} /></Suspense>
     else if (parts[0] === 'creator' && parts[1]) page = <Suspense fallback={lazyRouteFallback}><CreatorPage creatorId={parts[1]} onNavigate={navigate} /></Suspense>
     else if (parts[0] === 'explore') page = <Suspense fallback={lazyRouteFallback}><ExplorePage onNavigate={navigate} /></Suspense>
-    else if (parts[0] === 'auth') page = <Suspense fallback={lazyRouteFallback}><AuthPage onNavigate={navigate} /></Suspense>
+    else if (parts[0] === 'auth' && !sessionUserId) page = <Suspense fallback={lazyRouteFallback}><AuthPage onNavigate={navigate} /></Suspense>
+    else if (profileLookupBlocksRoute(sessionUserId, !!me, profileState, bareRoute, isNative)) page = <ProfileLookupPage state={profileState} />
     else page = <LandingPage onNavigate={navigate} />
   } else {
     switch (parts[0]) {
@@ -391,13 +543,9 @@ export default function App() {
 
   // Same filter+sort as notificationsFor(), but derived from the subscribed
   // notifications slice so the bell stays live without a full-cache subscription.
-  const notifs = useMemo(
-    () => sessionUserId
-      ? notifications.filter(n => n.userId === sessionUserId).sort((a, b) => b.at - a.at)
-      : [],
-    [notifications, sessionUserId],
-  )
+  const notifs = notificationPanel.rows
   const unread = notifs.filter(n => !n.read).length
+  function retryNotifications() { void resumeSync() }
 
   // ---- Browser push (local Notification API, no service worker) ----
   // In-app bell is the source of truth; this effect mirrors NEW unread rows
@@ -492,19 +640,12 @@ export default function App() {
                     <b>Notifications</b>
                     {unread > 0 && <button className="btn btn-ghost btn-sm" onClick={() => markAllNotificationsRead(me.id)}>Mark all read</button>}
                   </div>
-                  <div style={{ maxHeight: notifShowAll ? 'min(60vh, calc(100vh - 150px))' : 320, overflowY: 'auto', overscrollBehavior: 'contain' }}>
-                    {notifs.length === 0 && (
-                      <p className="muted small" style={{ padding: 16, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <Inbox size={14} aria-hidden />You’re all caught up
-                      </p>
-                    )}
-                    {(notifShowAll ? notifs : notifs.slice(0, 12)).map(n => (
-                      <div key={n.id} className={`notif-item ${n.read ? '' : 'unread'}`}>
-                        <span>{n.text}</span>
-                        {n.tripId && <button className="btn btn-ghost btn-sm" onClick={() => { setNotifOpen(false); navigate(`/trip/${n.tripId}`) }}>View →</button>}
-                      </div>
-                    ))}
-                  </div>
+                  <NotificationPanelContent
+                    model={notificationPanel}
+                    showAll={notifShowAll}
+                    onRetry={retryNotifications}
+                    onOpenTrip={tripId => { setNotifOpen(false); navigate(`/trip/${tripId}`) }}
+                  />
                   {/* #84: the old panel truncated at 12 with no recovery path.
                       Honest count + in-place expansion; the list is already
                       fully loaded in the store, so this is pure disclosure. */}
@@ -544,7 +685,7 @@ export default function App() {
               a submit. Repeating them in the chrome gave the accent two owners
               on one screen — and two controls a screen apart that both said
               "Log in". */}
-          {!me && parts[0] !== 'auth' && (
+          {!me && !sessionUserId && parts[0] !== 'auth' && (
             <>
               <a className="btn btn-outline btn-sm" {...appLink('/auth')}>Log in</a>
               <a className="btn btn-primary btn-sm" {...appLink('/auth?mode=signup')}>Start planning free</a>
@@ -561,7 +702,7 @@ export default function App() {
               the reflow rung (≤350px) hides the chrome pair from .nav-right so
               the primary CTA fits 320px, and this tray keeps Log in reachable
               (review finding 1). */}
-          {!me && <a className="nav-link" {...appLink('/auth')}>Log in</a>}
+          {!me && !sessionUserId && <a className="nav-link" {...appLink('/auth')}>Log in</a>}
           {me && <>
             <a className={`nav-link ${route === '/trips' ? 'active' : ''}`} {...appLink('/trips')}><InlineIcon icon={Tent} size={15} gap={6} />My trips</a>
             <a className={`nav-link ${route === CREATE_PATH ? 'active' : ''}`} {...appLink(CREATE_PATH)}><InlineIcon icon={Plus} size={15} gap={6} />Plan a trip</a>
@@ -616,6 +757,8 @@ export default function App() {
 function SharedTripPage({ payload, onNavigate }: { payload: string; onNavigate: (r: string) => void }) {
   const db = useDb()
   const me = currentUser(db)
+  const profileState = profileLookupState(db.sessionUserId, !!me, db.sliceReads)
+  const profileLookupPending = needsProfileLookup(db.sessionUserId, !!me)
   const [state, setState] = useState<
     { s: 'loading' } | { s: 'error' } | { s: 'ready'; name: string; days: number; destinations: string }
   >({ s: 'loading' })
@@ -639,7 +782,10 @@ function SharedTripPage({ payload, onNavigate }: { payload: string; onNavigate: 
   }, [payload])
 
   async function importIt() {
-    if (!me) { onNavigate('/auth'); return }
+    if (!me) {
+      if (!db.sessionUserId) onNavigate('/auth')
+      return
+    }
     if (!trip || importing) return
     setImporting(true)
     try {
@@ -700,11 +846,13 @@ function SharedTripPage({ payload, onNavigate }: { payload: string; onNavigate: 
             {state.s === 'ready' && <p className="muted">{state.days}-day trip · {state.destinations}</p>}
             <p className="muted small">
               This whole plan is embedded in the link itself - nothing was stored on a server.
-              Import it to get your own editable copy{me ? '' : ' (you will be asked to log in first)'}.
+              Import it to get your own editable copy{me || db.sessionUserId ? '' : ' (you will be asked to log in first)'}.
             </p>
           </>
         )}
-        actions={(
+        actions={profileLookupPending ? (
+          <ProfileLookupNotice state={profileState} />
+        ) : (
           <div className="inv-actions">
             <button className="btn btn-primary" onClick={importIt} disabled={importing} aria-busy={importing}><InlineIcon icon={Import} size={16} gap={6} vAlign="-3px" />{importing ? 'Importing…' : pendingImport ? 'Retry import' : me ? 'Import into my trips' : 'Log in & import'}</button>
             <button className="btn btn-outline" onClick={() => onNavigate('/')}>Not now</button>
@@ -728,6 +876,7 @@ function SharedTripPage({ payload, onNavigate }: { payload: string; onNavigate: 
 function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavigate: (r: string) => void }) {
   const db = useDb()
   const me = currentUser(db)
+  const profileState = profileLookupState(db.sessionUserId, !!me, db.sliceReads)
   // The invited trip is (by definition) not the viewer's yet, so the
   // membership-scoped hydration never loaded it - fetch it on demand. The
   // RPC fallback covers private trips: holding the link (the trip's UUID)
@@ -877,6 +1026,18 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
   }
 
   if (!me) {
+    if (needsProfileLookup(db.sessionUserId, !!me)) {
+      return (
+        <div className="container yf-page page-enter">
+          <StateBlock
+            kind="empty"
+            art={<Mail size={38} aria-hidden />}
+            title={`You’ve been invited to “${invitePreview(trip ?? { name: '' }).name}”`}
+            actions={<ProfileLookupNotice state={profileState} />}
+          />
+        </div>
+      )
+    }
     // Park the invite in the URL and bounce through auth with a next param -
     // the old buttons went to plain /auth, and AuthPage's post-login redirect
     // to /trips dropped the invite entirely: users logged in, landed on My
