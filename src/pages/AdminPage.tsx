@@ -8,9 +8,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Eye, EyeOff, ShieldAlert, Trash2, UserX, Users } from 'lucide-react'
 import { PillNav } from '../components/PillNav'
-import { useTablist } from '../hooks/useTablist'
 import { Avatar, Chip, ConfirmDialog, EmptyState, Modal } from '../components/ui'
+import { PageHeader } from '../components/page/PageHeader'
+import { SegmentedTabs } from '../components/page/SegmentedTabs'
 import { StateBlock } from '../components/page/StateBlock'
+import { Surface } from '../components/page/Surface'
 import { sliceState, rowsView, combinedReadState } from '../lib/readState'
 import {
   useDb, useIsAdmin, useAdminAudit, useAdminAuditFailed, useSessionUserId, refreshAdminAuditNow,
@@ -31,20 +33,22 @@ import { appLink } from '../lib/appLink'
 
 type AdminTab = 'overview' | 'users' | 'trips' | 'invites' | 'content' | 'analytics' | 'audit'
 
-const ADMIN_TABS: [AdminTab, string][] = [
+const ADMIN_SECTIONS: [AdminTab, string][] = [
   ['overview', 'Overview'], ['users', 'Users'], ['trips', 'Trips'],
   ['invites', 'Invites'], ['content', 'Content'],
   ['analytics', 'Analytics'], ['audit', 'Audit log'],
 ]
-const ADMIN_TAB_IDS = ADMIN_TABS.map(([k]) => k)
+// Each section names its own tab and the one panel it controls, so a screen
+// reader can move from the button to the panel without guessing an id.
+const ADMIN_TABS = ADMIN_SECTIONS.map(([key, label]) => ({
+  key, label, id: `admin-tab-${key}`, controls: 'admin-panel',
+}))
 
 export function AdminPage({ onNavigate }: { onNavigate: (r: string) => void }) {
   const isAdmin = useIsAdmin()
   const readyGate = useDb().ready
   const [tab, setTab] = useState<AdminTab>('overview')
   const loggedIn = Boolean(useSessionUserId())
-  // #87: roving tabindex + arrow keys for the section tablist.
-  const { refs: tabRefs, tabProps } = useTablist(ADMIN_TAB_IDS, tab, setTab)
 
   useEffect(() => { if (!loggedIn) onNavigate('/auth') }, [loggedIn, onNavigate])
   // Gate AFTER the first hydrate settles: the admin flag rides the JWT fetch
@@ -57,27 +61,30 @@ export function AdminPage({ onNavigate }: { onNavigate: (r: string) => void }) {
   if (!isAdmin) return null
 
   return (
-    <div className="container form-page page-enter">
-      <h1>Master admin</h1>
-      <p className="muted small adm-page-intro">
-        Full-control console — every destructive action is audit-logged.
-        {/* #367: the hatch boundary, said where admins will see it. Direct
-            writes through the workspace's own UI are the documented escape
-            hatch (admin FOR ALL policies) and only the console's RPC actions
-            land in the audit log. */}
-        Actions taken here are logged. Actions taken through the regular workspace are not.
-      </p>
-      {/* #87: role="tab" children with aria-pressed and no keyboard contract —
-          now the shared useTablist primitive (roving tabindex + arrows). */}
-      <PillNav className="filter-pillbar" role="tablist" aria-label="Admin sections" activeKey={tab}>
-        {ADMIN_TABS.map(([k, label], i) => (
-          <button key={k} ref={tabRefs(i)} type="button" data-pill-key={k}
-            className={`clickable-chip chip${tab === k ? ' on-teal' : ''}`}
-            onClick={() => setTab(k)} role="tab" id={`admin-tab-${k}`}
-            aria-selected={tab === k} aria-controls="admin-panel" {...tabProps(k, i)}>{label}</button>
-        ))}
-      </PillNav>
-      <div style={{ marginTop: 18 }} id="admin-panel" role="tabpanel" aria-labelledby={`admin-tab-${tab}`}>
+    <div className="container yf-page form-page page-enter">
+      {/* R21 lists Admin among the pages that keep a Sora h1, and the shared
+          PageHeader renders the serif one. The header component wins here, so
+          the ruling and this page disagree; the user settles it. */}
+      <PageHeader
+        kicker="Admin"
+        headline={{ lead: 'Master admin' }}
+        lede={<>
+          Full-control console — every destructive action is audit-logged.
+          {/* #367: the hatch boundary, said where admins will see it. Direct
+              writes through the workspace's own UI are the documented escape
+              hatch (admin FOR ALL policies) and only the console's RPC actions
+              land in the audit log. */}
+          {' '}Actions taken here are logged. Actions taken through the regular workspace are not.
+        </>}
+      />
+      {/* #87: the section switch. R16 gives the tablist variant the glass
+          tabbar, and the keyboard contract comes with the component. */}
+      <SegmentedTabs semantics="tablist" className="tabbar adm-tabs" label="Admin sections"
+        items={ADMIN_TABS} value={tab} onChange={(key) => { setTab(key as AdminTab) }} />
+      {/* The panel's own 18px offset is gone: it collapsed into the tabbar's
+          20px bottom margin, so the gap the operator sees is the design
+          system's own step. */}
+      <div id="admin-panel" role="tabpanel" aria-labelledby={`admin-tab-${tab}`}>
         {tab === 'overview' && <OverviewTab />}
         {tab === 'users' && <UsersTab />}
         {tab === 'trips' && <TripsTab />}
@@ -732,7 +739,8 @@ function AnalyticsTab() {
       <p className="hint-text adm-funnel-raw-totals">
         Raw: {cacheFigure(String(db.published.reduce((s, p) => s + p.views, 0)))} views · {cacheFigure(String(db.published.reduce((s, p) => s + p.copies, 0)))} forks.
       </p>
-      <h2 style={{ marginTop: 18 }}>Growth — last 12 weeks</h2>
+      <Surface as="section" className="adm-section">
+      <h2 className="adm-card-title">Growth — last 12 weeks</h2>
       {feedsRead === 'reading' && <StateBlock kind="loading" size="compact" title="Loading growth…" />}
       {feedsRead === 'failed' && (
         <StateBlock kind="kept" size="compact" title="Couldn’t refresh growth." body="The bars below may be older than now."
@@ -766,8 +774,10 @@ function AnalyticsTab() {
       </p>
         </>
       )}
+      </Surface>
 
-      <h2 style={{ marginTop: 18 }}>Share attribution — how readers arrived</h2>
+      <Surface as="section" className="adm-section">
+      <h2 className="adm-card-title">Share attribution — how readers arrived</h2>
       {attr.phase === 'loading' && <p className="hint-text">Reading the funnel log…</p>}
       {attr.phase === 'error' && (
         <>
@@ -809,8 +819,10 @@ function AnalyticsTab() {
           </p>
         </>
       )}
+      </Surface>
 
-      <h2 style={{ marginTop: 18 }}>Revenue</h2>
+      <Surface as="section" className="adm-section">
+      <h2 className="adm-card-title">Revenue</h2>
       {revenue.phase === 'loading' && <p className="hint-text">Reading the sales ledger…</p>}
       {revenue.phase === 'error' && (
         <>
@@ -858,7 +870,9 @@ function AnalyticsTab() {
             revoked, so refunded money leaves these totals.
           </p>
 
-          <h3 style={{ marginTop: 18, marginBottom: 6 }}>By publication</h3>
+          {/* R13: the 18px step is off the spacing ladder, so it stays inline
+              until the page gets its real pass. */}
+          <h3 className="adm-card-subtitle" style={{ marginTop: 18 }}>By publication</h3>
           <table className="compare-table" tabIndex={0} aria-label="Revenue by publication">
             <thead><tr><th>Plan</th><th>Creator</th><th className="num">Sales</th><th className="num">Gross</th><th className="num">Fee</th><th className="num">Net</th></tr></thead>
             <tbody>
@@ -881,8 +895,10 @@ function AnalyticsTab() {
           </p>
         </>
       ))}
+      </Surface>
 
-      <h2 style={{ marginTop: 18 }}>Create funnel — last 30 days</h2>
+      <Surface as="section" className="adm-section">
+      <h2 className="adm-card-title">Create funnel — last 30 days</h2>
       {cf.phase === 'loading' && <p className="hint-text">Reading the funnel log…</p>}
       {cf.phase === 'error' && (
         <>
@@ -919,6 +935,7 @@ function AnalyticsTab() {
           </p>
         </>
       )}
+      </Surface>
     </div>
   )
 }

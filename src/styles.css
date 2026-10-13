@@ -10426,3 +10426,18 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 @media (prefers-reduced-motion: reduce) {
   .inv-preview-row { animation: none; }
 }
+
+/* ===== P15: Admin - the section surfaces and the card titles ===== */
+/* Each analytics section sits on the card skin. The card's padding sets the
+   title's offset, so the title no longer carries an 18px top margin, and the
+   sections stack on one step of the ladder. */
+.adm-section { padding: var(--space-8); }
+.adm-section + .adm-section { margin-top: var(--space-8); }
+/* A stat tile inside a card is a well, not a second card. */
+.adm-section .stat-tile { background: var(--bg-soft); border-color: transparent; box-shadow: none; }
+/* R20: section titles follow the shared title rule. Plus Jakarta Sans 800 at
+   18px with a line height of 1.3, the body text colour. The page's titles were
+   21px/700 Sora. Listed for the same later fold as .hub-card-title. */
+.adm-card-title { font-family: var(--font-body); font-size: 18px; font-weight: 800; line-height: 1.3; color: var(--text); }
+/* The sub-title inside the revenue card. Its own 18px offset stays inline (R13). */
+.adm-card-subtitle { margin-bottom: 6px; }
