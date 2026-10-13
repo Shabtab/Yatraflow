@@ -82,7 +82,7 @@ export function profileLookupState(
 /** Whether the profile lookup takes the page from the route. A failed lookup takes it on the
  *  bare route too, so its Try again is never hidden behind the landing. A reading lookup does
  *  not, so the landing does not flash while hydrate runs. */
-export function profileLookupTakesPage(
+export function profileLookupBlocksRoute(
   sessionUserId: string | null,
   hasProfile: boolean,
   state: ProfileLookupState,
@@ -471,7 +471,7 @@ export default function App() {
     else if (parts[0] === 'creator' && parts[1]) page = <Suspense fallback={lazyRouteFallback}><CreatorPage creatorId={parts[1]} onNavigate={navigate} /></Suspense>
     else if (parts[0] === 'explore') page = <Suspense fallback={lazyRouteFallback}><ExplorePage onNavigate={navigate} /></Suspense>
     else if (parts[0] === 'auth' && !sessionUserId) page = <Suspense fallback={lazyRouteFallback}><AuthPage onNavigate={navigate} /></Suspense>
-    else if (profileLookupTakesPage(sessionUserId, !!me, profileState, bareRoute, isNative)) page = <ProfileLookupPage state={profileState} />
+    else if (profileLookupBlocksRoute(sessionUserId, !!me, profileState, bareRoute, isNative)) page = <ProfileLookupPage state={profileState} />
     else page = <LandingPage onNavigate={navigate} />
   } else {
     switch (parts[0]) {

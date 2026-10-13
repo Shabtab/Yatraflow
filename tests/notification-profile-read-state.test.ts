@@ -10,7 +10,7 @@ import {
   needsProfileLookup,
   notificationPanelModel,
   profileLookupState,
-  profileLookupTakesPage,
+  profileLookupBlocksRoute,
   retryProfileLookup,
 } from '../src/App'
 import type { Notification } from '../src/data/types'
@@ -136,13 +136,13 @@ describe('notification read state', () => {
   })
 
   it('lets a failed profile lookup take the bare route, and keeps the landing while the lookup reads', () => {
-    expect(profileLookupTakesPage('userA', false, 'failed', true, false)).toBe(true)
-    expect(profileLookupTakesPage('userA', false, 'reading', true, false)).toBe(false)
-    expect(profileLookupTakesPage('userA', false, 'missing', true, false)).toBe(false)
-    expect(profileLookupTakesPage('userA', false, 'reading', true, true)).toBe(true)
-    expect(profileLookupTakesPage('userA', false, 'reading', false, false)).toBe(true)
-    expect(profileLookupTakesPage('userA', true, 'failed', true, false)).toBe(false)
-    expect(profileLookupTakesPage(null, false, 'anonymous', true, false)).toBe(false)
+    expect(profileLookupBlocksRoute('userA', false, 'failed', true, false)).toBe(true)
+    expect(profileLookupBlocksRoute('userA', false, 'reading', true, false)).toBe(false)
+    expect(profileLookupBlocksRoute('userA', false, 'missing', true, false)).toBe(false)
+    expect(profileLookupBlocksRoute('userA', false, 'reading', true, true)).toBe(true)
+    expect(profileLookupBlocksRoute('userA', false, 'reading', false, false)).toBe(true)
+    expect(profileLookupBlocksRoute('userA', true, 'failed', true, false)).toBe(false)
+    expect(profileLookupBlocksRoute(null, false, 'anonymous', true, false)).toBe(false)
     // The invite gate passes the profile notice as actions, so it does not sit inside a paragraph.
     expect(appSource).not.toContain('body={<ProfileLookupNotice')
     expect(appSource).toContain('actions={<ProfileLookupNotice state={profileState} />}')
@@ -158,7 +158,7 @@ describe('notification read state', () => {
     expect(appSource).toContain('<NotificationReadNotice view={view} onRetry={onRetry} />')
     expect(appSource).toContain('profileLookupState(sessionUserId, !!me, sliceReads)')
     expect(appSource).toContain('<ProfileLookupNotice state={profileState} />')
-    expect(appSource).toMatch(/else if \(profileLookupTakesPage\(sessionUserId, !!me, profileState, bareRoute, isNative\)\) page = <ProfileLookupPage state=\{profileState\} \/>/)
+    expect(appSource).toMatch(/else if \(profileLookupBlocksRoute\(sessionUserId, !!me, profileState, bareRoute, isNative\)\) page = <ProfileLookupPage state=\{profileState\} \/>/)
     expect(appSource).toContain('needsProfileLookup(sessionUserId, hasProfile)')
     expect(appSource).toContain('needsProfileLookup(db.sessionUserId, !!me)')
     expect(appSource).toContain('window.location.reload()')
@@ -167,7 +167,7 @@ describe('notification read state', () => {
     expect(routeParts('/')).toEqual([])
     expect(routeParts('/?utm_source=x')).toEqual([''])
     expect(appSource).toContain("const bareRoute = parts[0] === undefined || parts[0] === ''")
-    expect(appSource).toContain('profileLookupTakesPage(sessionUserId, !!me, profileState, bareRoute, isNative)')
+    expect(appSource).toContain('profileLookupBlocksRoute(sessionUserId, !!me, profileState, bareRoute, isNative)')
     expect(profileGate).toBeGreaterThan(-1)
     expect(profileGate).toBeLessThan(signInActions)
     expect(appSource).toMatch(/profileLookupPending \? \(\s*<ProfileLookupNotice state=\{profileState\} \/>/)
