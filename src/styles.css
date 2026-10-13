@@ -10396,3 +10396,11 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 .yf-surface.hub-profile { padding: 0 var(--space-7); }
 .yf-surface.hub-profile[open] { padding: var(--space-8); }
 .hub-profile-summary:hover .hub-card-title { text-decoration: underline; text-underline-offset: 3px; }
+
+/* ===== P12: Overview panels and titles ===== */
+.yf-surface.ovw-panel { border-radius: var(--radius); box-shadow: var(--shadow-card); }
+.yf-surface.ovw-panel:not(.ovw-strip) { padding: var(--space-8); }
+.yf-surface.ovw-panel.ovw-strip { padding: 14px 18px; }
+.ovw-card-title { font-family: var(--font-body); font-size: 18px; font-weight: 800; line-height: 1.3; color: var(--text); margin: 0; }
+.card-head.ovw-card-title { margin-bottom: 14px; }
+.ovw-route-snap svg > text { fill: var(--text); }

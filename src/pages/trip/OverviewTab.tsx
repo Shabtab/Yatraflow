@@ -18,6 +18,7 @@ import type { DayWeather } from '../../lib/weather'
 import { useWeatherRefreshTick } from '../../hooks/useWeatherRefresh'
 import { timeAgo } from './shared'
 import { Avatar, Chip, StatTile, RouteSnapshot } from '../../components/ui'
+import { Surface } from '../../components/page/Surface'
 import { InlineIcon, wmoIcon } from '../../components/icons'
 import { StateBlock } from '../../components/page/StateBlock'
 import { rowsView, sliceState, type RowsView } from '../../lib/readState'
@@ -138,13 +139,13 @@ export function OverviewTab({ trip, onOpenTimeline, onOpenMap, onInvite, health,
     <div className="two-col bento">
       <div>
         <div className="overview-head">
-          <h2>Trip briefing</h2>
+          <h2 className="ovw-card-title">Trip briefing</h2>
           <p className="muted small">What needs attention before this road trip starts.</p>
         </div>
 
-        <div className="card">
+        <Surface className="card ovw-panel" enterIndex={0}>
           <div className="row-between card-head">
-            <h3>Trip health</h3>
+            <h3 className="ovw-card-title">Trip health</h3>
             <Chip tone={healthBandTone(health.band)}>
               {health.band}
             </Chip>
@@ -169,7 +170,7 @@ export function OverviewTab({ trip, onOpenTimeline, onOpenMap, onInvite, health,
             </div>
           </div>
           <button className="health-rec" onClick={onOpenTimeline}>View health recommendations →</button>
-        </div>
+        </Surface>
 
         {/* Bento stat cluster: cost / per-person / effort / stops at a glance */}
         <div className="stat-grid ovw-stats">
@@ -180,13 +181,13 @@ export function OverviewTab({ trip, onOpenTimeline, onOpenMap, onInvite, health,
         </div>
 
         {/* Priority actions: the most consequential issues with a direct fix link */}
-        <div className="card">
+        <Surface className="card ovw-panel" enterIndex={1}>
           <div className="row-between card-head">
-            <h3>Priority actions</h3>
+            <h3 className="ovw-card-title">Priority actions</h3>
             {health.warnings.length > 0 && <span className={countTone}>{health.warnings.length} warning{health.warnings.length !== 1 ? 's' : ''} to review</span>}
           </div>
           {priorityActions.length === 0 ? (
-            <p className="muted small">Nothing needs fixing right now — the plan flows.</p>
+            <StateBlock kind="empty" size="compact" title="Nothing needs fixing right now" body="— the plan flows." />
           ) : (
             <div className="warn-list">
               {priorityActions.map(w => (
@@ -204,12 +205,12 @@ export function OverviewTab({ trip, onOpenTimeline, onOpenMap, onInvite, health,
             </div>
           )}
           <button className="link-btn teal ovw-timeline-action" onClick={onOpenTimeline}>Open Timeline to resolve →</button>
-        </div>
+        </Surface>
       </div>
 
       <div>
-        <div className="card route-snap">
-          <h3>Route snapshot</h3>
+        <Surface className="card ovw-panel ovw-route-snap" enterIndex={2}>
+          <h3 className="ovw-card-title">Route snapshot</h3>
           {/* #403: `RouteSnapshot`'s fallback is an ILLUSTRATIVE curve, so handing
               it nothing drew a mockup road wearing this trip's real day badges —
               a route for a trip that has none. `points` is `[]` when fewer than
@@ -228,10 +229,12 @@ export function OverviewTab({ trip, onOpenTimeline, onOpenMap, onInvite, health,
                 roundTripNote={isRoundTrip(trip) ? `↩ returns to ${trip.startLocation}` : undefined}
                 points={routePoints.map(p => ({ lat: p.lat, lng: p.lng, day: p.day }))}
               />
-            : <p className="muted small ovw-route-empty">
-                No route to draw yet — this plan needs at least two places with confirmed
-                coordinates. Add a stop, or pin the ones that are missing, and the shape appears here.
-              </p>}
+            : <div className="ovw-route-empty"><StateBlock
+                kind="empty"
+                size="compact"
+                title="No route to draw yet"
+                body="— this plan needs at least two places with confirmed coordinates. Add a stop, or pin the ones that are missing, and the shape appears here."
+              /></div>}
           <p className="ovw-route-summary">
             <b>{trip.startLocation}</b>
             {trip.destinations.map((d, i) => <span key={i}> → {d}</span>)}
@@ -241,13 +244,13 @@ export function OverviewTab({ trip, onOpenTimeline, onOpenMap, onInvite, health,
             <span>{trip.days.length} days · ≈{Math.round(totals.totalDistanceKm)} km · {totals.stopCount} stops</span>
             <button className="link-btn teal" onClick={onOpenMap}>Open map →</button>
           </div>
-        </div>
+        </Surface>
 
         <SlotMatrix trip={trip} road={road} corridorSegments={corridorSegments} mapInputs={mapInputs} mapCache={mapCache} onRefreshMatrix={onOpenMap} />
 
-        <div className="card">
+        <Surface className="card ovw-panel" enterIndex={4}>
           <div className="row-between card-head">
-            <h3>Fixed commitments</h3>
+            <h3 className="ovw-card-title">Fixed commitments</h3>
             <span className="chip chip-info">{trip.fixedCommitments.length}</span>
           </div>
           {nextCommitment ? (
@@ -267,12 +270,12 @@ export function OverviewTab({ trip, onOpenTimeline, onOpenMap, onInvite, health,
               ))}
             </div>
           ) : (
-            <p className="muted small">None saved yet. Add check-ins, trains or flights so the planner can protect them.</p>
+            <StateBlock kind="empty" size="compact" title="None saved yet." body="Add check-ins, trains or flights so the planner can protect them." />
           )}
-        </div>
+        </Surface>
 
-        <div className="card">
-          <h3 className="card-head">Recent activity</h3>
+        <Surface className="card ovw-panel" enterIndex={5}>
+          <h3 className="card-head ovw-card-title">Recent activity</h3>
           {activityView === 'reading' && <StateBlock kind="loading" size="compact" icon={<span className="spinner" aria-hidden="true" />} title="Loading activity…" />}
           {activityView === 'failed' && <StateBlock
             kind="failed"
@@ -297,13 +300,13 @@ export function OverviewTab({ trip, onOpenTimeline, onOpenMap, onInvite, health,
               <span className="feed-time">{timeAgo(a.at)}</span>
             </div>
           ))}
-        </div>
+        </Surface>
 
         <WeatherCard key={trip.id} trip={trip} />
       </div>
 
-      <div className="card pulse-bar">
-        <span className="pulse-label">Group pulse</span>
+      <Surface className="card pulse-bar ovw-panel ovw-strip" enterIndex={7}>
+        <h3 className="ovw-card-title">Group pulse</h3>
         <span className="pulse-item"><b>{crew.length}</b> member{crew.length !== 1 ? 's' : ''}</span>
         <span className="pulse-dot">·</span>
         {decisionsView === 'reading' && <StateBlock kind="loading" size="compact" icon={<span className="spinner" aria-hidden="true" />} title="Loading decisions…" />}
@@ -316,7 +319,9 @@ export function OverviewTab({ trip, onOpenTimeline, onOpenMap, onInvite, health,
           actions={<button className="btn btn-outline btn-sm" onClick={retryOverviewReads}>Try again</button>}
         />}
         {(decisionsView === 'rows' || decisionsView === 'empty' || decisionsView === 'kept') && <>
-          <span className="pulse-item"><b>{unresolvedDecisions}</b> open decision{unresolvedDecisions !== 1 ? 's' : ''}</span>
+          {decisionsView === 'empty'
+            ? <StateBlock kind="empty" size="compact" title="0 open decisions" />
+            : <span className="pulse-item"><b>{unresolvedDecisions}</b> open decision{unresolvedDecisions !== 1 ? 's' : ''}</span>}
           {decisionsView === 'kept' && <StateBlock
             kind="kept"
             size="compact"
@@ -328,7 +333,7 @@ export function OverviewTab({ trip, onOpenTimeline, onOpenMap, onInvite, health,
         <span className="pulse-dot">·</span>
         <span className="pulse-item">{trip.fixedCommitments.length ? <><b>{trip.fixedCommitments.length}</b> fixed commitment{trip.fixedCommitments.length !== 1 ? 's' : ''}</> : 'No fixed commitments yet'}</span>
         <button className="link-btn teal pulse-link" onClick={onInvite}>Invite travellers →</button>
-      </div>
+      </Surface>
     </div>
   )
 }
@@ -421,16 +426,16 @@ function WeatherCard({ trip }: { trip: Trip }) {
   // with no placed stops. Show nothing rather than a spinner that never
   // resolves; derived from the data, not set from the effect above.
   if (dayAnchors.length === 0) return null
-  const loadingCard = <div className="card"><h3 className="card-head"><InlineIcon icon={CloudSun} size={14} gap={4} />Weather</h3><StateBlock kind="loading" size="compact" title="Loading forecast…" /></div>
+  const loadingCard = <Surface className="card ovw-panel" enterIndex={6}><h3 className="card-head ovw-card-title"><InlineIcon icon={CloudSun} size={14} gap={4} />Weather</h3><StateBlock kind="loading" size="compact" title="Loading forecast…" /></Surface>
   if (state === 'loading') return loadingCard
   if (readPending && entries.length === 0) return loadingCard
   if (state === 'failed') {
     if (readPending) return loadingCard
     return (
-      <div className="card">
-        <h3 className="card-head"><InlineIcon icon={CloudSun} size={14} gap={4} />Weather</h3>
+      <Surface className="card ovw-panel" enterIndex={6}>
+        <h3 className="card-head ovw-card-title"><InlineIcon icon={CloudSun} size={14} gap={4} />Weather</h3>
         <div className="ovw-weather-failed"><StateBlock kind="failed" size="compact" title="Couldn’t load the forecast." actions={<button className="btn btn-outline btn-sm" onClick={retryWeather}>Try again</button>} /></div>
-      </div>
+      </Surface>
     )
   }
   // 'unavailable': the forecast came back with no usable day, so there is nothing to show.
@@ -438,9 +443,9 @@ function WeatherCard({ trip }: { trip: Trip }) {
 
   const wetDays = entries.filter(w => w.rainChancePct >= 60).length
   return (
-    <div className="card">
+    <Surface className="card ovw-panel" enterIndex={6}>
       <div className="row-between card-head">
-        <h3><InlineIcon icon={CloudSun} size={14} gap={4} />Weather along the route</h3>
+        <h3 className="ovw-card-title"><InlineIcon icon={CloudSun} size={14} gap={4} />Weather along the route</h3>
         <span className="small muted">Open-Meteo · auto-refreshed · ±15 days</span>
       </div>
       <div className="weather-strip">
@@ -474,14 +479,11 @@ function WeatherCard({ trip }: { trip: Trip }) {
         /></div>
       )}
       {refreshFailed && refreshFailedFor === anchorSignature && entries.length > 0 && (
-        <div className="ovw-weather-kept"><StateBlock
-          kind="kept"
-          size="compact"
-          title="Couldn’t refresh the forecast. Showing the last one."
+        <div className="ovw-weather-kept"><StateBlock kind="kept" size="compact" title="Couldn’t refresh the forecast. Showing the last one."
           actions={<button className="btn btn-outline btn-sm" onClick={retryWeather}>Try again</button>}
         /></div>
       )}
-    </div>
+    </Surface>
   )
 }
 
@@ -557,8 +559,8 @@ function SlotMatrix({ trip, road, corridorSegments, mapInputs, mapCache, onRefre
     .map(r => ({ index: r.day.index, filled: r.slots.filter(s => s.state === 'filled').length, total: r.slots.length }))
     .sort((a, b) => (a.filled / Math.max(1, a.total)) - (b.filled / Math.max(1, b.total)))[0]
   return (
-    <div className="card">
-      <h3 className="card-head">What each day holds</h3>
+    <Surface className="card ovw-panel" enterIndex={3}>
+      <h3 className="card-head ovw-card-title">What each day holds</h3>
       {freshness === 'stale' ? (
         <>
           <p className="muted small ovw-matrix-stale">
@@ -627,7 +629,7 @@ function SlotMatrix({ trip, road, corridorSegments, mapInputs, mapCache, onRefre
           derives aren&apos;t counted here. Open the Map tab once and this fills in.
         </p>
       )}
-    </div>
+    </Surface>
   )
 }
 
