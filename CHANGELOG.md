@@ -25,6 +25,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ### Changed
 
+- **The invite and shared-plan screens use the shared page parts.** Each screen states what happened. A read that failed says so. A link that is no longer active says so. The two never share a message. A signed-out invite shows a small trip preview: the route, the dates and the crew count. The log in and create account buttons return you to the invite you opened.
 - **The trip created page now uses the shared page header and card titles.** The page title sits in the shared header, with the trip name upright and "is live." in italic. The page keeps its 1120px width and its own celebratory cards. The card titles are larger and bolder, so they read as headings. A trip that cannot be found now shows the shared empty message with one button back to your trips.
 - **The Purchases page blocks rise once, with the page, and not twice.** The page entrance now owns the state, note and footer blocks. Each block no longer adds its own entrance on top of it. A list row inside a list keeps its own entrance, because the page entrance reaches a page's direct children only.
 - **The Budget tab's fixed layout values and two bar colours now come from CSS classes, not inline styles.** Values that come from the trip, such as bar widths and category colours, stay inline. The values are the same as before.
