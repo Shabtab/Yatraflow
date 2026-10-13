@@ -82,6 +82,7 @@ beforeEach(() => {
   state.auditReadError = null
   state.writes.length = 0
   toast.mockClear()
+  getSnapshot().sessionUserId = 'admin-1'
   setAdminForTest(true)
 })
 

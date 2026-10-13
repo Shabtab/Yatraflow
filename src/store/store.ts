@@ -455,6 +455,11 @@ export async function logout(): Promise<void> {
   // immediately; the auth event then loads the anonymous catalogs, and the
   // generation guard keeps a late hydrate from re-patching the old user back
   // in (issue #45).
+  ++hydrateGen
+  // The identity epoch also ends the Trash and audit reads this account started.
+  ++identityEpoch
+  activeHydrate = null
+  clearAdminCache()
   const departing = cache.sessionUserId
   patch({ trips: [], trashedTrips: [], trashLoaded: false, trashFailed: false, suggestions: [], decisions: [], activity: [], notifications: [], published: [], adminAudit: [], adminAuditFailed: false, sessionUserId: null, ready: true, cachedAt: null })
   commit()
@@ -474,7 +479,6 @@ export async function logout(): Promise<void> {
   // session "syncs" them.
   if (departing) { void clearSnapshot(departing); void clearWritesFor(departing) }
   await supabase.auth.signOut()
-  clearAdminCache()
   // onAuthStateChange handler loads the anonymous catalogs.
 }
 
@@ -522,6 +526,16 @@ let activeHydrate: { userId: string | null; promise: Promise<void> } | null = nu
  *  could see, and be treated as, the account that had just signed out. Issue #45. */
 let hydrateGen = 0
 
+/** Changes only on a real account change: a sign-out, or a sign-in as another user.
+ *  A same-user event leaves it alone. Trash and admin audit reads capture it before
+ *  their await, and drop their result only when it has changed. hydrateGen cannot
+ *  do this job, because every same-user sign-in event bumps it. */
+let identityEpoch = 0
+
+/** The user id of the newest auth event. hydrate() compares against it, not against
+ *  cache.sessionUserId, which lags behind during an account switch. */
+let lastAuthUserId: string | null = null
+
 /** Call once on app mount. Subscribes to auth and hydrates the cache. */
 export function init(): void {
   if (initialized) return
@@ -564,6 +578,18 @@ export function init(): void {
       return
     }
     const gen = ++hydrateGen
+    // A different user, or a sign-out, starts a new identity epoch. A same-user
+    // event keeps the epoch, so its late Trash and audit reads still land.
+    // Compare with the last auth event: sessionUserId lags during a sign-in.
+    if (lastAuthUserId !== userId) identityEpoch++
+    lastAuthUserId = userId
+    if (cache.sessionUserId !== userId) {
+      patch({
+        trashedTrips: [], trashLoaded: false, trashFailed: false,
+        adminAudit: [], adminAuditFailed: false,
+      })
+      commit()
+    }
 
     if (!userId) {
       clearAdminCache()
@@ -611,7 +637,7 @@ export function init(): void {
       }
       })()
       activeHydrate = { userId: null, promise: anonPromise }
-      try { await anonPromise } finally { if (activeHydrate?.userId === null) activeHydrate = null }
+      try { await anonPromise } finally { if (activeHydrate?.promise === anonPromise) activeHydrate = null }
       return
     }
     // Offline-first boot (PWA phase 2): on a cold cache, show this account's
@@ -642,7 +668,7 @@ export function init(): void {
     const promise = hydrateFromSupabase(userId, gen)
     activeHydrate = { userId, promise }
     try { await promise } finally {
-      if (activeHydrate?.userId === userId) activeHydrate = null
+      if (activeHydrate?.promise === promise) activeHydrate = null
     }
     // #393: the friendly disabled-account sign-out, finally wired to the
     // lifecycle it was written for. The function had no callers at all, so a
@@ -1958,12 +1984,17 @@ export async function refreshAdminAuditNow(): Promise<void> {
 }
 
 async function refreshAdminAudit(): Promise<void> {
+  const userId = cache.sessionUserId
+  if (!userId) return
+  const epoch = identityEpoch
   try {
     const { data, error } = await fetchAdminAuditRows()
+    if (epoch !== identityEpoch || cache.sessionUserId !== userId || !isAdminCached()) return
     if (error) throw error
     patch({ adminAudit: auditRowsToEntries(data), adminAuditFailed: false })
     commit()
   } catch (e) {
+    if (epoch !== identityEpoch || cache.sessionUserId !== userId || !isAdminCached()) return
     // #367: surfaced, not swallowed — the tab shows a retry, because a failed
     // read rendered as "No admin actions yet" is a lie about the log, not an
     // empty log.
@@ -2458,8 +2489,11 @@ export function restoreTrashedTrip(trip: Trip): void {
  *  on every tab focus. */
 export async function fetchTrashedTrips(): Promise<void> {
   if (!isSupabaseConfigured || !cache.sessionUserId) return
+  const userId = cache.sessionUserId
+  const epoch = identityEpoch
   try {
     const { data, error } = await supabase.rpc('get_trashed_trips')
+    if (epoch !== identityEpoch || cache.sessionUserId !== userId) return
     if (error) {
       console.error('[yatraflow] trashed trips fetch failed', error)
       patch({ trashFailed: true })
@@ -2473,6 +2507,7 @@ export async function fetchTrashedTrips(): Promise<void> {
     patch({ trashLoaded: true, trashFailed: false })
     commit()
   } catch (e) {
+    if (epoch !== identityEpoch || cache.sessionUserId !== userId) return
     console.error('[yatraflow] trashed trips fetch failed', e)
     patch({ trashFailed: true })
     commit()
