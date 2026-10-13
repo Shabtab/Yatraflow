@@ -69,7 +69,13 @@ describe('StateBlock size and body contract', () => {
 
 describe('compact state block styles', () => {
   // Comments are stripped, so a note that names a value cannot trip a check.
-  const block = () => CSS.slice(CSS.indexOf(COMPACT_BLOCK)).replace(/\/\*[\s\S]*?\*\//g, '')
+  // The scan covers this section only. It stops at the next section comment.
+  // A rule that a later page appends at the end of the file is not a compact
+  // rule. The ladder check must not read it.
+  const sectionEnd = CSS.indexOf('/* ===== ', CSS.indexOf(COMPACT_BLOCK) + COMPACT_BLOCK.length)
+  const block = () =>
+    CSS.slice(CSS.indexOf(COMPACT_BLOCK), sectionEnd === -1 ? undefined : sectionEnd)
+      .replace(/\/\*[\s\S]*?\*\//g, '')
 
   it('has the compact section in the stylesheet', () => {
     expect(CSS.indexOf(COMPACT_BLOCK)).toBeGreaterThan(-1)

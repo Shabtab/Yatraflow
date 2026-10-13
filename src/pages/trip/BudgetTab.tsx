@@ -291,7 +291,7 @@ export function BudgetTab({ trip, totals, editable, previewOpen, onOpenSettings 
         <div>
           <div className="card">
             <h3>Cost per day</h3>
-            <p className="hint-text" style={{ margin: '4px 0 14px' }}>
+            <p className="hint-text bud-card-lead">
               Day expenses + that day’s drive{avg > 0 && <> · <span className="avg-key" aria-hidden /> tick = daily average ({formatInr(avg)})</>}{avg > 0 && <> · <span className="daybar-over" aria-hidden>▲</span> = over the average</>}
             </p>
             <div className="daybars" ref={dayBarsRef} data-motion-paused={!visible || !daysInView}>
@@ -315,7 +315,7 @@ export function BudgetTab({ trip, totals, editable, previewOpen, onOpenSettings 
               })}
             </div>
             {overAvg && (
-              <p className="hint-text" style={{ marginTop: 10 }}>
+              <p className="hint-text bud-hint-note">
                 Day {overAvg.dayIndex + 1} runs {Math.round(((overAvg.totalInr - avg) / avg) * 100)}% over the daily average — trim an optional line or shorten the drive.
               </p>
             )}
@@ -323,7 +323,7 @@ export function BudgetTab({ trip, totals, editable, previewOpen, onOpenSettings 
 
           <div className="card">
             <h3>Where the money goes</h3>
-            <p className="hint-text" style={{ margin: '4px 0 14px' }}>
+            <p className="hint-text bud-card-lead">
               {A.kmPerLiter
                 ? <>All figures are estimates in INR. Transport is fuel-based: route distance{isRoundTrip(trip) ? ' (incl. return drive)' : ''} ≈{Math.round(totals.totalDistanceKm)} km ÷ {A.kmPerLiter} km/L ≈ <b>{Math.round(totals.totalDistanceKm / A.kmPerLiter)} L</b> of fuel × ₹{A.fuelPricePerL}/L ({A.fuelPriceIsUserSet ? 'your local pump price' : 'indicative petrol price — actual consumption varies'}).</>
                 : <>All figures are estimates in INR. Transport is derived from route distance × ₹{A.inrPerKm}/km for {trip.transportMode}.</>}
@@ -398,8 +398,8 @@ export function BudgetTab({ trip, totals, editable, previewOpen, onOpenSettings 
                               </span>
                               {e.label}
                             </span>
-                            {e.perPerson && <span className="chip chip-info" style={{ marginLeft: 6 }}>per person</span>}
-                            {e.optional && <span className="chip chip-saffron" style={{ marginLeft: 6 }}>optional</span>}
+                            {e.perPerson && <span className="chip chip-info bud-line-chip">per person</span>}
+                            {e.optional && <span className="chip chip-saffron bud-line-chip">optional</span>}
                           </td>
                           <td>{payer
                             ? <span className="payer-cell"><Avatar user={payer} /> {payer.profile.name}</span>
@@ -427,7 +427,7 @@ export function BudgetTab({ trip, totals, editable, previewOpen, onOpenSettings 
                   </tbody>
                 </table>
               )}
-            <p className="hint-text" style={{ marginTop: 10 }}>
+            <p className="hint-text bud-hint-note">
               Amounts are group totals unless marked per person. Tag who paid to settle up below.
             </p>
           </div>
@@ -449,7 +449,7 @@ export function BudgetTab({ trip, totals, editable, previewOpen, onOpenSettings 
                     ? <><b>{formatInr(-remaining)} over</b> the {formatInr(groupTarget)} group target · {formatInr(totals.costPerPersonInr)}/person · {formatInr(totals.costPerDayInr)}/day</>
                     : <><b>{formatInr(remaining)} under</b> the {formatInr(groupTarget)} group target · {formatInr(totals.costPerPersonInr)}/person · {formatInr(totals.costPerDayInr)}/day</>}
                 </div>
-                <div className="budget-bar-track" style={{ marginTop: 10 }}>
+                <div className="budget-bar-track bud-hero-meter">
                   <div className="budget-bar-fill" style={{ width: `${Math.min(100, pctUsed)}%`, background: pctUsed > 100 ? 'var(--coral)' : pctUsed > 85 ? 'var(--saffron)' : 'var(--teal)' }} />
                 </div>
                 <div className="budget-hero-pct">
@@ -471,7 +471,7 @@ export function BudgetTab({ trip, totals, editable, previewOpen, onOpenSettings 
           </div>
 
           {trip.travellers >= 2 && (
-            <div className="card" style={{ marginTop: 14 }}>
+            <div className="card bud-crew-card">
               <h3>Who paid · who owes</h3>
               {/* #383: the balances read the same list the ledger does — one
                   status, both consumers. A failed read must not print as a
@@ -488,9 +488,9 @@ export function BudgetTab({ trip, totals, editable, previewOpen, onOpenSettings 
                 )
               )}
               {expensesRead === 'ready' && (members.length < 2
-                ? <p className="hint-text" style={{ margin: '6px 0 0' }}>{tagged && <>Fair share is {formatInr(fairShare)} {sharePer}. </>}Invite your crew from the Share tab, then tag who paid on expense lines — who owes whom shows up here.</p>
+                ? <p className="hint-text bud-crew-invite">{tagged && <>Fair share is {formatInr(fairShare)} {sharePer}. </>}Invite your crew from the Share tab, then tag who paid on expense lines — who owes whom shows up here.</p>
                 : <>
-                    <p className="hint-text" style={{ margin: '6px 0 10px' }}>
+                    <p className="hint-text bud-crew-status">
                       {tagged
                         ? <>Fair share is {formatInr(fairShare)} {sharePer}, counted over the {openPayable.length} open tagged line{openPayable.length !== 1 ? 's' : ''}.
                           {splitNote}
@@ -514,18 +514,18 @@ export function BudgetTab({ trip, totals, editable, previewOpen, onOpenSettings 
                           ))}
                         </div>
                         {transfers.length > 0 && (
-                          <p className="hint-text" style={{ marginTop: 10 }}>
+                          <p className="hint-text bud-hint-note">
                             <b>Simplest settlement:</b> {transfers.map(t => `${nameOf(t.from.user)} → ${nameOf(t.to.user)} ${formatInr(t.amount)}`).join(' · ')}
                           </p>
                         )}
                         {openPayable.length > 0 && (
-                          <p className="hint-text" style={{ marginTop: 10 }}>
+                          <p className="hint-text bud-hint-note">
                             <b>{formatInr(openPayableTotal)}</b> across {openPayable.length} tagged line{openPayable.length !== 1 ? 's' : ''} still to square up — mark each settled as the money moves.
                           </p>
                         )}
                         {canSettle && openExpenses.length > 0 && (
-                          <div className="settled-strip" style={{ marginTop: 12 }}>
-                            <span className="hint-text" style={{ margin: 0 }}>
+                          <div className="settled-strip bud-settle-strip">
+                            <span className="hint-text bud-settle-lead">
                               <b>Settle up:</b> mark a line squared up — it leaves the balances and moves to the settled history below.
                             </span>
                             <div className="settled-list">
@@ -594,19 +594,19 @@ export function BudgetTab({ trip, totals, editable, previewOpen, onOpenSettings 
             <div className="budget-bars" ref={optionalBarsRef} data-motion-paused={!visible || !optionalInView}>
               <div className="budget-bar-row">
                 <span>Essential</span>
-                <div className="budget-bar-track"><div className="budget-bar-fill" style={{ width: `${(totals.essentialInr / Math.max(1, totals.totalCostInr)) * 100}%`, background: 'var(--teal)' }} /></div>
+                <div className="budget-bar-track"><div className="budget-bar-fill bud-essential-fill" style={{ width: `${(totals.essentialInr / Math.max(1, totals.totalCostInr)) * 100}%` }} /></div>
                 <b className="num">{formatInr(totals.essentialInr)}</b>
               </div>
               <div className="budget-bar-row">
                 <span>Optional</span>
-                <div className="budget-bar-track"><div className="budget-bar-fill" style={{ width: `${(totals.optionalInr / Math.max(1, totals.totalCostInr)) * 100}%`, background: 'var(--saffron)' }} /></div>
+                <div className="budget-bar-track"><div className="budget-bar-fill bud-optional-fill" style={{ width: `${(totals.optionalInr / Math.max(1, totals.totalCostInr)) * 100}%` }} /></div>
                 <b className="num">{formatInr(totals.optionalInr)}</b>
               </div>
             </div>
-            <p className="hint-text" style={{ marginTop: 10 }}>Optional includes buffers & shopping that you can trim to save.</p>
+            <p className="hint-text bud-hint-note">Optional includes buffers & shopping that you can trim to save.</p>
             {/* Optional-spend watch (user ask, P1-E follow-up): a TIP, not a
                 change — opt-in, session-persistent, never edits anything. */}
-            <div className="row-between" style={{ marginTop: 8, gap: 8 }}>
+            <div className="row-between bud-watch-row">
               <span className="small muted">A soft line at 20% of the estimate — tips only, nothing changes.</span>
               <button
                 className={`btn btn-sm ${watchOptional ? 'btn-primary' : 'btn-outline'}`}
@@ -619,7 +619,7 @@ export function BudgetTab({ trip, totals, editable, previewOpen, onOpenSettings 
             {watchOptional && totals.totalCostInr > 0 && (() => {
               const pct = (totals.optionalInr / totals.totalCostInr) * 100
               return (
-                <p className={`small ${pct > OPTIONAL_WATCH_PCT ? 'dayplanner-red' : 'muted'}`} style={{ marginTop: 6 }} role="status">
+                <p className={`small bud-watch-status ${pct > OPTIONAL_WATCH_PCT ? 'dayplanner-red' : 'muted'}`} role="status">
                   Optional watch: {formatInr(totals.optionalInr)} — {Math.round(pct)}% of the estimate,{' '}
                   {pct > OPTIONAL_WATCH_PCT ? `over the ${OPTIONAL_WATCH_PCT}% soft line. Trimming one optional line brings it back under.` : `inside the ${OPTIONAL_WATCH_PCT}% soft line.`}
                 </p>
@@ -698,7 +698,7 @@ function ExpenseEditor({ trip, members, expense, onDone, previewOpen }: {
         <input className="input qa-amount" type="number" min={0} aria-label="Amount in rupees" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} />
       </div>
       <ExpenseFormFields trip={trip} members={members} form={form} setForm={setForm} />
-      <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+      <div className="bud-editor-actions">
         <button type="submit" className="btn btn-primary btn-sm">Save changes</button>
         <button type="button" className="btn btn-outline btn-sm" onClick={onDone}>Cancel</button>
       </div>

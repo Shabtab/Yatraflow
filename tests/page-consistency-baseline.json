@@ -92,7 +92,7 @@
     "src/pages/trip/BudgetTab.tsx": {
       "EmptyState": 2,
       "loadingBlock": 2,
-      "inlineStyle": 29,
+      "inlineStyle": 11,
       "rawH1": 0
     },
     "src/pages/trip/GroupInputTab.tsx": {

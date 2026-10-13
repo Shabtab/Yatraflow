@@ -26,6 +26,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 ### Changed
 
 - **The Purchases page blocks rise once, with the page, and not twice.** The page entrance now owns the state, note and footer blocks. Each block no longer adds its own entrance on top of it. A list row inside a list keeps its own entrance, because the page entrance reaches a page's direct children only.
+- **The Budget tab's fixed layout values and two bar colours now come from CSS classes, not inline styles.** Values that come from the trip, such as bar widths and category colours, stay inline. The values are the same as before.
 
 ### Fixed
 

@@ -10295,3 +10295,19 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 @media (max-width: 560px) {
   .dmca-body { padding: 16px; }
 }
+/* ---------- Budget tab static styles (bud-) ---------- */
+.bud-card-lead { margin: 4px 0 14px; }
+.bud-hint-note { margin-top: 10px; }
+.bud-hero-meter { margin-top: 10px; }
+.bud-crew-card { margin-top: 14px; }
+.bud-crew-invite { margin: 6px 0 0; }
+.bud-crew-status { margin: 6px 0 10px; }
+.bud-settle-strip { margin-top: 12px; }
+.bud-settle-lead { margin: 0; }
+/* Same element as .row-between, so the compound wins over its gap. */
+.row-between.bud-watch-row { margin-top: 8px; gap: 8px; }
+.bud-watch-status { margin-top: 6px; }
+.bud-line-chip { margin-left: 6px; }
+.bud-editor-actions { display: flex; gap: 8px; margin-top: 10px; }
+.bud-essential-fill { background: var(--teal); }
+.bud-optional-fill { background: var(--saffron); }
