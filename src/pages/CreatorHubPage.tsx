@@ -1086,10 +1086,9 @@ export function EarningsTab({ myPubs, sales, salesError, salesAt, salesReading, 
           and had neither. */}
 
       {ledgerKeptAt !== null && (actual?.rows.length ?? 0) > 0 && (
-        <div className="hub-note is-failure" role="status">
-          <b>Couldn’t refresh — showing what loaded at {formatHM(readAtHM(ledgerKeptAt), timeFmt)}.</b> The ledger
-          below is real; it may simply be older than now.
-        </div>
+        <StateBlock kind="kept" size="compact"
+          title={`Couldn’t refresh — showing what loaded at ${formatHM(readAtHM(ledgerKeptAt), timeFmt)}.`}
+          body="The ledger below is real; it may simply be older than now." />
       )}
 
       {view === 'actual' ? (
@@ -1136,10 +1135,9 @@ export function EarningsTab({ myPubs, sales, salesError, salesAt, salesReading, 
             )}
           </>
         ) : ledgerView === 'kept' && ledgerKeptAt !== null ? (
-          <div className="hub-note is-failure" role="status">
-            <b>Couldn’t refresh — showing what loaded at {formatHM(readAtHM(ledgerKeptAt), timeFmt)}.</b> No sales
-            had landed yet, as of that read.
-          </div>
+          <StateBlock kind="kept" size="compact"
+            title={`Couldn’t refresh — showing what loaded at ${formatHM(readAtHM(ledgerKeptAt), timeFmt)}.`}
+            body="No sales had landed yet, as of that read." />
         ) : actual ? (
           <>
             <table className={`compare-table pub-ledger${basisClass} ledger-sales`} tabIndex={0} aria-label="Sales ledger">
