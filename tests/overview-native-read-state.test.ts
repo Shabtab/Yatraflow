@@ -8,6 +8,7 @@
 // The branch order is the whole fix, so this guard reads the source.
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
+import { stateBlockRole } from '../src/components/page/StateBlock'
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8').replace(/\r\n/g, '\n')
 
@@ -52,19 +53,22 @@ describe('#704 — the Overview weather card says when the forecast read failed'
     expect(failedAt, 'the failed branch').toBeGreaterThan(-1)
     expect(quietAt, 'the quiet fallthrough').toBeGreaterThan(failedAt)
     expect(weather.slice(failedAt, quietAt)).toMatch(
-      /<p className="muted small ovw-weather-failed" role="alert">Couldn’t load the forecast\. <button className="btn btn-outline btn-sm" onClick=\{retryWeather\}>Try again<\/button><\/p>/,
+      /<StateBlock kind="failed" size="compact" title="Couldn’t load the forecast\." actions=\{<button className="btn btn-outline btn-sm" onClick=\{retryWeather\}>Try again<\/button>\} \/>/,
     )
+    expect(stateBlockRole('failed')).toBe('alert')
   })
 
   it('the loading line is a status, so a screen reader hears that the forecast is coming', () => {
-    expect(weather).toMatch(/<p className="muted small" role="status">Loading forecast…<\/p>/)
+    expect(weather).toMatch(/<StateBlock kind="loading" size="compact" title="Loading forecast…" \/>/)
+    expect(stateBlockRole('loading')).toBe('status')
   })
 
   it('a kept forecast adds a status note with Try again in the ready branch', () => {
     const readyAt = weather.indexOf("if (state !== 'ready') return null")
     expect(readyAt).toBeGreaterThan(-1)
-    const keptNote = /\{refreshFailed && \(\s*<p className="muted small ovw-weather-kept" role="status">Couldn’t refresh the forecast\. Showing the last one\. <button className="btn btn-outline btn-sm" onClick=\{retryWeather\}>Try again<\/button><\/p>\s*\)\}/
+    const keptNote = /\{refreshFailed && refreshFailedFor === anchorSignature && entries\.length > 0 && \(\s*<div className="ovw-weather-kept"><StateBlock\s+kind="kept"\s+size="compact"\s+title="Couldn’t refresh the forecast\. Showing the last one\."\s+actions=\{<button className="btn btn-outline btn-sm" onClick=\{retryWeather\}>Try again<\/button>\}\s*\/>\s*<\/div>\s*\)\}/
     expect(weather.slice(readyAt)).toMatch(keptNote)
+    expect(stateBlockRole('kept')).toBe('status')
   })
 
   it('Try again shows the loading line only while nothing has loaded, and re-pulls the forecast past the cache', () => {
