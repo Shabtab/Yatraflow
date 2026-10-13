@@ -10,9 +10,11 @@ import { Eye, EyeOff, ShieldAlert, Trash2, UserX, Users } from 'lucide-react'
 import { PillNav } from '../components/PillNav'
 import { useTablist } from '../hooks/useTablist'
 import { Avatar, Chip, ConfirmDialog, EmptyState, Modal } from '../components/ui'
+import { StateBlock } from '../components/page/StateBlock'
+import { sliceState, rowsView, combinedReadState } from '../lib/readState'
 import {
   useDb, useIsAdmin, useAdminAudit, useAdminAuditFailed, useSessionUserId, refreshAdminAuditNow,
-  adminSetDisabled, adminSetCreator, adminSetTripVisibility,
+  adminSetDisabled, adminSetCreator, adminSetTripVisibility, rereadTrips, rereadPublicSlices,
   adminRemoveMember, adminUnpublish, adminDeleteTrip, adminDeleteUser,
 } from '../store/store'
 import {
@@ -93,6 +95,13 @@ function OverviewTab() {
   const o = useMemo(() => computeAdminOverview(
     db.users, db.trips, db.suggestions, db.decisions, db.published, db.activity,
   ), [db])
+  // Every tile below derives from the hydrated cache, so a failed feed makes
+  // its figures unknown, not zero. One verdict over the six feeding slices.
+  const feedsRead = combinedReadState(
+    ['profiles', 'trips', 'suggested itineraries', 'suggestions', 'decisions', 'activity']
+      .map(s => sliceState(db.sliceReads, s)),
+  )
+  const [readRetrying, setReadRetrying] = useState(false)
   const tiles: [string, string][] = [
     ['Users', String(o.totalUsers)],
     ['Trips', String(o.totalTrips)],
@@ -108,11 +117,21 @@ function OverviewTab() {
     ['Disabled', String(o.disabledUsers)],
   ]
   return (
-    <div className="creator-stats" role="group" aria-label="App overview">
-      {tiles.map(([label, value]) => (
-        <div key={label} className="stat-tile"><div className="stat-label">{label}</div><div className="stat-value">{value}</div></div>
-      ))}
-    </div>
+    <>
+      {feedsRead === 'failed' && (
+        <StateBlock kind="failed" size="compact" title="Couldn’t load overview figures."
+          body="Nothing has been lost."
+          actions={<button type="button" className="btn btn-outline btn-sm" disabled={readRetrying}
+            onClick={() => { setReadRetrying(true); void rereadTrips().finally(() => setReadRetrying(false)) }}>
+            {readRetrying ? 'Trying…' : 'Try again'}
+          </button>} />
+      )}
+      <div className="creator-stats" role="group" aria-label="App overview">
+        {tiles.map(([label, value]) => (
+          <div key={label} className="stat-tile"><div className="stat-label">{label}</div><div className="stat-value">{feedsRead === 'ready' ? value : feedsRead === 'reading' ? 'Loading…' : 'Unavailable'}</div></div>
+        ))}
+      </div>
+    </>
   )
 }
 
@@ -137,13 +156,27 @@ function UsersTab() {
     return [...list].sort((a, b) => b.createdAt - a.createdAt)
   }, [db.users, q])
   const ownedCount = (id: string) => db.trips.filter(t => (t.members ?? []).some(m => m.userId === id && m.role === 'owner')).length
+  // The user list is a read like any other: a failed profiles read leaves no
+  // rows, and "no users match" over it would read as an empty console.
+  const usersView = rowsView(sliceState(db.sliceReads, 'profiles'), users.length)
+  const [readRetrying, setReadRetrying] = useState(false)
 
   return (
     <div>
       <input className="input adm-user-search" type="search" value={q} onChange={e => setQ(e.target.value)}
         placeholder="Search name or email…" aria-label="Search users" />
-      <p className="sr-only" role="status">{users.length} users</p>
-      {users.length === 0 ? (
+      {usersView !== 'failed' && usersView !== 'reading' && (
+        <p className="sr-only" role="status">{users.length} users</p>
+      )}
+      {usersView === 'failed' ? (
+        <StateBlock kind="failed" size="compact" title="Couldn’t load users." body="Nothing has been lost."
+          actions={<button type="button" className="btn btn-outline btn-sm" disabled={readRetrying}
+            onClick={() => { setReadRetrying(true); void rereadTrips().finally(() => setReadRetrying(false)) }}>
+            {readRetrying ? 'Trying…' : 'Try again'}
+          </button>} />
+      ) : usersView === 'reading' ? (
+        <StateBlock kind="loading" size="compact" title="Loading users…" />
+      ) : usersView === 'empty' ? (
         <EmptyState icon={<Users size={38} aria-hidden />} title="No users match" body="Clear the search to see everyone." />
       ) : (
         <table className="compare-table" tabIndex={0} aria-label="Users">
@@ -283,6 +316,14 @@ function TripsTab() {
       .sort((a, b) => b.updatedAt - a.updatedAt)
   }, [db.trips, q, vis])
   const ownerOf = (t: Trip) => db.users.find(u => u.id === (t.members ?? []).find(m => m.role === 'owner')?.userId)
+  // Same rule as the user list: a failed trips read is failed, even with a
+  // search typed, and kept rows stay on screen with their note.
+  const tripsView = rowsView(sliceState(db.sliceReads, 'trips'), trips.length)
+  const [readRetrying, setReadRetrying] = useState(false)
+  const retryTrips = () => {
+    setReadRetrying(true)
+    void rereadTrips().finally(() => setReadRetrying(false))
+  }
 
   return (
     <div>
@@ -296,8 +337,27 @@ function TripsTab() {
           ))}
         </PillNav>
       </div>
-      <p className="sr-only" role="status">{trips.length} trips</p>
-      <table className="compare-table" tabIndex={0} aria-label="Trips">
+      {tripsView !== 'failed' && tripsView !== 'reading' && (
+        <p className="sr-only" role="status">{trips.length} trips</p>
+      )}
+      {tripsView === 'failed' ? (
+        <StateBlock kind="failed" size="compact" title="Couldn’t load trips." body="Nothing has been lost."
+          actions={<button type="button" className="btn btn-outline btn-sm" disabled={readRetrying} onClick={retryTrips}>
+            {readRetrying ? 'Trying…' : 'Try again'}
+          </button>} />
+      ) : tripsView === 'reading' ? (
+        <StateBlock kind="loading" size="compact" title="Loading trips…" />
+      ) : tripsView === 'empty' ? (
+        <EmptyState icon={<Eye size={38} aria-hidden />} title="No trips match" body="Clear the search or visibility filter." />
+      ) : (
+        <>
+          {tripsView === 'kept' && (
+            <StateBlock kind="kept" size="compact" title="Couldn’t refresh trips." body="Showing the last loaded rows."
+              actions={<button type="button" className="btn btn-outline btn-sm" disabled={readRetrying} onClick={retryTrips}>
+                {readRetrying ? 'Trying…' : 'Try again'}
+              </button>} />
+          )}
+          <table className="compare-table" tabIndex={0} aria-label="Trips">
         <thead><tr><th>Trip</th><th>Owner</th><th className="num">Crew</th><th>Visibility</th><th>Updated</th><th>Actions</th></tr></thead>
         <tbody>
           {trips.map(t => (
@@ -323,8 +383,7 @@ function TripsTab() {
           ))}
         </tbody>
       </table>
-      {trips.length === 0 && (
-        <EmptyState icon={<Eye size={38} aria-hidden />} title="No trips match" body="Clear the search or visibility filter." />
+        </>
       )}
       {/* Type-to-confirm delete: ConfirmDialog has no child slot, so the
           destructive modal is a Modal with the same .confirm-actions row.
@@ -369,13 +428,35 @@ function InvitesTab() {
     .sort((a, b) => b.joins30d - a.joins30d || b.trip.updatedAt - a.trip.updatedAt)
     .slice(0, 50), [db.trips])
   const nameOf = (id: string) => db.users.find(u => u.id === id)
+  // The invite ranking reads trips: no trips read, no ranking.
+  const tripsView = rowsView(sliceState(db.sliceReads, 'trips'), rows.length)
+  const [readRetrying, setReadRetrying] = useState(false)
 
   return (
     <div>
       <p className="hint-text adm-invite-ranking-intro">
         Ranked by member joins in the last 30 days, so unusual invite spread surfaces first.
       </p>
-      <table className="compare-table" tabIndex={0} aria-label="Invites">
+      {tripsView === 'failed' ? (
+        <StateBlock kind="failed" size="compact" title="Couldn’t load trips." body="Nothing has been lost."
+          actions={<button type="button" className="btn btn-outline btn-sm" disabled={readRetrying}
+            onClick={() => { setReadRetrying(true); void rereadTrips().finally(() => setReadRetrying(false)) }}>
+            {readRetrying ? 'Trying…' : 'Try again'}
+          </button>} />
+      ) : tripsView === 'reading' ? (
+        <StateBlock kind="loading" size="compact" title="Loading trips…" />
+      ) : tripsView === 'empty' ? (
+        <EmptyState icon={<Users size={38} aria-hidden />} title="No trips yet" body="Invite activity appears here once trips exist." />
+      ) : (
+        <>
+          {tripsView === 'kept' && (
+            <StateBlock kind="kept" size="compact" title="Couldn’t refresh trips." body="Showing the last loaded rows."
+              actions={<button type="button" className="btn btn-outline btn-sm" disabled={readRetrying}
+                onClick={() => { setReadRetrying(true); void rereadTrips().finally(() => setReadRetrying(false)) }}>
+                {readRetrying ? 'Trying…' : 'Try again'}
+              </button>} />
+          )}
+          <table className="compare-table" tabIndex={0} aria-label="Invites">
         <thead><tr><th>Trip</th><th className="num">Joins 30d</th><th className="num">Crew</th><th>Members</th></tr></thead>
         <tbody>
           {rows.map(({ trip: t, joins30d }) => (
@@ -406,8 +487,7 @@ function InvitesTab() {
           ))}
         </tbody>
       </table>
-      {rows.length === 0 && (
-        <EmptyState icon={<Users size={38} aria-hidden />} title="No trips yet" body="Invite activity appears here once trips exist." />
+        </>
       )}
       <ConfirmDialog
         open={!!confirmKick}
@@ -434,6 +514,10 @@ function ContentTab() {
   const [confirmUnpub, setConfirmUnpub] = useState<Trip | null>(null)
   const pubs = useMemo(() => [...db.published].sort((a, b) => b.publishedAt - a.publishedAt), [db.published])
   const tripOf = (tripId: string) => db.trips.find(t => t.id === tripId)
+  // A failed published read keeps its rows; only a read that succeeded with
+  // none may say nothing is published here.
+  const pubsView = rowsView(sliceState(db.sliceReads, 'suggested itineraries'), pubs.length)
+  const [readRetrying, setReadRetrying] = useState(false)
 
   return (
     <div>
@@ -445,10 +529,26 @@ function ContentTab() {
         selling. The trip itself is not touched, the creator keeps its sales history, and anyone who already
         unlocked it keeps the full plan.
       </p>
-      {pubs.length === 0 ? (
+      {pubsView === 'failed' ? (
+        <StateBlock kind="failed" size="compact" title="Couldn’t load published itineraries." body="Nothing has been lost."
+          actions={<button type="button" className="btn btn-outline btn-sm" disabled={readRetrying}
+            onClick={() => { setReadRetrying(true); void rereadPublicSlices().finally(() => setReadRetrying(false)) }}>
+            {readRetrying ? 'Trying…' : 'Try again'}
+          </button>} />
+      ) : pubsView === 'reading' ? (
+        <StateBlock kind="loading" size="compact" title="Loading published itineraries…" />
+      ) : pubsView === 'empty' ? (
         <EmptyState icon={<Eye size={38} aria-hidden />} title="Nothing published" body="Published itineraries appear here for moderation." />
       ) : (
-        <table className="compare-table" tabIndex={0} aria-label="Published itineraries">
+        <>
+          {pubsView === 'kept' && (
+            <StateBlock kind="kept" size="compact" title="Couldn’t refresh published itineraries." body="Showing the ones that loaded."
+              actions={<button type="button" className="btn btn-outline btn-sm" disabled={readRetrying}
+                onClick={() => { setReadRetrying(true); void rereadPublicSlices().finally(() => setReadRetrying(false)) }}>
+                {readRetrying ? 'Trying…' : 'Try again'}
+              </button>} />
+          )}
+          <table className="compare-table" tabIndex={0} aria-label="Published itineraries">
           <thead><tr><th>Itinerary</th><th>State</th><th>Creator</th><th className="num">Views</th><th className="num">Forks</th><th>Published</th><th>Actions</th></tr></thead>
           <tbody>
             {pubs.map(p => {
@@ -491,6 +591,7 @@ function ContentTab() {
             })}
           </tbody>
         </table>
+        </>
       )}
       <ConfirmDialog
         open={!!confirmUnpub}
@@ -599,18 +700,48 @@ function AnalyticsTab() {
   )
   const maxBar = Math.max(1, ...growth.map(g => Math.max(g.signups, g.trips)))
   const pct = (n: number) => `${n.toFixed(1)}%`
+  // The funnel tiles, the raw totals and the growth series all come from the
+  // hydrated cache, so a failed feed makes them unknown, not 0.0%. The three
+  // network reads below carry their own loading and error branches.
+  const feedsRead = combinedReadState(
+    ['profiles', 'trips', 'suggested itineraries'].map(s => sliceState(db.sliceReads, s)),
+  )
+  const [readRetrying, setReadRetrying] = useState(false)
+  const retryFeeds = () => {
+    setReadRetrying(true)
+    void rereadTrips().finally(() => setReadRetrying(false))
+  }
+  const cacheFigure = (value: string) => (
+    feedsRead === 'ready' ? value : feedsRead === 'reading' ? 'Loading…' : 'Unavailable'
+  )
   return (
     <div>
+      {feedsRead === 'failed' && (
+        <StateBlock kind="failed" size="compact" title="Couldn’t load the cached figures."
+          body="The reads below are unaffected. Nothing has been lost."
+          actions={<button type="button" className="btn btn-outline btn-sm" disabled={readRetrying} onClick={retryFeeds}>
+            {readRetrying ? 'Trying…' : 'Try again'}
+          </button>} />
+      )}
       <div className="creator-stats" role="group" aria-label="Funnels">
-        <div className="stat-tile"><div className="stat-label">Activation (users with a trip)</div><div className="stat-value">{pct(funnel.activationPct)}</div></div>
-        <div className="stat-tile"><div className="stat-label">Trips with collaborators</div><div className="stat-value">{pct(funnel.collabPct)}</div></div>
-        <div className="stat-tile"><div className="stat-label">Trips published</div><div className="stat-value">{pct(funnel.publishPct)}</div></div>
-        <div className="stat-tile"><div className="stat-label">Explore views → forks</div><div className="stat-value">{pct(funnel.viewToCopyPct)}</div></div>
+        <div className="stat-tile"><div className="stat-label">Activation (users with a trip)</div><div className="stat-value">{cacheFigure(pct(funnel.activationPct))}</div></div>
+        <div className="stat-tile"><div className="stat-label">Trips with collaborators</div><div className="stat-value">{cacheFigure(pct(funnel.collabPct))}</div></div>
+        <div className="stat-tile"><div className="stat-label">Trips published</div><div className="stat-value">{cacheFigure(pct(funnel.publishPct))}</div></div>
+        <div className="stat-tile"><div className="stat-label">Explore views → forks</div><div className="stat-value">{cacheFigure(pct(funnel.viewToCopyPct))}</div></div>
       </div>
       <p className="hint-text adm-funnel-raw-totals">
-        Raw: {db.published.reduce((s, p) => s + p.views, 0)} views · {db.published.reduce((s, p) => s + p.copies, 0)} forks.
+        Raw: {cacheFigure(String(db.published.reduce((s, p) => s + p.views, 0)))} views · {cacheFigure(String(db.published.reduce((s, p) => s + p.copies, 0)))} forks.
       </p>
       <h2 style={{ marginTop: 18 }}>Growth — last 12 weeks</h2>
+      {feedsRead === 'reading' && <StateBlock kind="loading" size="compact" title="Loading growth…" />}
+      {feedsRead === 'failed' && (
+        <StateBlock kind="kept" size="compact" title="Couldn’t refresh growth." body="The bars below may be older than now."
+          actions={<button type="button" className="btn btn-outline btn-sm" disabled={readRetrying} onClick={retryFeeds}>
+            {readRetrying ? 'Trying…' : 'Try again'}
+          </button>} />
+      )}
+      {feedsRead === 'ready' && (
+        <>
       <table className="compare-table" tabIndex={0} aria-label="Growth — last 12 weeks">
         <thead><tr><th>Week of</th><th className="num">Signups</th><th className="num">Trips</th><th>Trend</th></tr></thead>
         <tbody>
@@ -633,6 +764,8 @@ function AnalyticsTab() {
       <p className="hint-text adm-signup-trip-chart-legend">
         Teal bar = signups, saffron = trips.
       </p>
+        </>
+      )}
 
       <h2 style={{ marginTop: 18 }}>Share attribution — how readers arrived</h2>
       {attr.phase === 'loading' && <p className="hint-text">Reading the funnel log…</p>}
@@ -817,10 +950,13 @@ function AuditTab() {
           <button type="button" className="btn btn-outline" onClick={() => void refreshAdminAuditNow()}>Retry</button>
         </div>
       )}
-      {audit.length === 0 ? (
+      {/* #367: an empty log and a broken read must not render identically. Over
+          a failure the notice above is the answer; "no admin actions yet" would
+          say the console is clean when it simply could not be read. */}
+      {audit.length === 0 && !auditFailed ? (
         <EmptyState icon={<ShieldAlert size={38} aria-hidden />} title="No admin actions yet"
           body="Every disable, visibility flip, removal, unpublish and delete lands here with who did it and when." />
-      ) : (
+      ) : audit.length > 0 ? (
         <table className="compare-table" tabIndex={0} aria-label="Audit log">
           <thead><tr><th>When</th><th>Actor</th><th>Action</th><th>Target</th><th>Detail</th></tr></thead>
           <tbody>
@@ -835,7 +971,7 @@ function AuditTab() {
             ))}
           </tbody>
         </table>
-      )}
+      ) : null}
     </div>
   )
 }
