@@ -751,6 +751,8 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     // keep the previous cache instead of overwriting good rows with a partial
     // result (a wipe that made every later open say "Trip not found").
     let tripsReadFailed = false
+    let decisionsReadFailed = false
+    let activityReadFailed = false
     if (profRes.error) { console.error('[yatraflow] hydrate profiles failed', profRes.error); partial.push('profiles') }
     const profiles = (profRes.data ?? []) as ProfileRow[]
     if (myMembershipsRes.error) { console.error('[yatraflow] hydrate memberships failed', myMembershipsRes.error); partial.push('memberships'); tripCountUnknown = true; tripsReadFailed = true }
@@ -805,6 +807,8 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
           partial.push(name)
         }
       }
+      decisionsReadFailed = !!decRes.error
+      activityReadFailed = !!actRes.error
       if (tripsRes.error || memRes.error) { tripCountUnknown = true; tripsReadFailed = true }
       trips = (tripsRes.data ?? []) as TripRow[]
       members.push(...((memRes.data ?? []) as MemberRow[]))
@@ -834,6 +838,8 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
           partial.push(name)
         }
       }
+      decisionsReadFailed = !!decRes.error
+      activityReadFailed = !!actRes.error
       if (tripsRes.error || memRes.error) { tripCountUnknown = true; tripsReadFailed = true }
       trips = (tripsRes.data ?? []) as TripRow[]
       members.push(...((memRes.data ?? []) as MemberRow[]))
@@ -880,6 +886,7 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     const tripsRead = tripsReadFailed && cache.trips.some(t => t.members?.some?.(m => m.userId === userId))
       ? undefined
       : tripList
+    const sameSessionUser = cache.sessionUserId === userId
 
     // B2: seed the server-clock ledger with every server-applied trip row —
     // hydration is the definition of "server-applied" (see
@@ -890,8 +897,11 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     patch({
       users,
       ...(tripsRead !== undefined ? { trips: tripsRead } : {}),
-      // #704: an unread scope keeps the cached rows. Clearing them would show an empty account.
-      ...(scopeUnread ? {} : { suggestions, decisions, activity, notifications }),
+      // #704: an unread scope keeps same-account rows; another account cannot keep decisions or activity.
+      ...(scopeUnread ? {} : { suggestions }),
+      ...((scopeUnread || decisionsReadFailed) && sameSessionUser ? {} : { decisions }),
+      ...((scopeUnread || activityReadFailed) && sameSessionUser ? {} : { activity }),
+      ...(scopeUnread ? {} : { notifications }),
       adminAudit,
       // De-dupe published rows left by earlier buggy seeds (the publishItinerary
       // path used to mint a fresh trip id on every call — many rows per
@@ -975,7 +985,10 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     if (gen === hydrateGen && !verdictPublished) {
       const unread = scopeKnown ? askedSlices : [...askedSlices, ...TRIP_SCOPED_READS]
       // sliceReadReport marks a name failed when the list it gets lists that name. Here every name is listed.
-      patch({ sliceReads: { ...cache.sliceReads, ...sliceReadReport(unread, unread) } })
+      patch({
+        ...(cache.sessionUserId === userId ? {} : { decisions: [], activity: [] }),
+        sliceReads: { ...cache.sliceReads, ...sliceReadReport(unread, unread) },
+      })
       commit()
     }
     toast('Could not load your data - check your connection.')
