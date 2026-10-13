@@ -32,6 +32,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - **The Group input tab looks the same, with its styles kept in named classes.** Most inline style attributes on the tab now use named classes, and every value is unchanged. Two inline styles stay on purpose. One sets the width and colour of the consensus bar from the votes. The other sets the top margin of the accept and decline row.
 - **The creator hub reads like the catalog pages.** The hub has the shared serif header, tablist sections, surface panels, card titles and compact state notes.
 - **The admin console reads like the catalog pages.** The page has the shared header, the tab row, card surfaces, card titles and compact state blocks. The page now uses the catalog page width. Its static inline styles now come from named classes. Three styles stay inline. Two set a bar height from the data. The third sets an 18px step, which the spacing ladder does not carry.
+- **The Share tab reads like the other workspace tabs.** Its four panels sit on the shared card skin, and their titles are larger and bolder. Each state is now its own compact block. That covers a pending read, a failed read and a kept status. It also covers a failed invite code and a trip with no members. A failed read now interrupts a screen reader, where the old line did not. The section switch keeps its duration, and it now opts out when the reader asked for less motion.
 
 ### Fixed
 

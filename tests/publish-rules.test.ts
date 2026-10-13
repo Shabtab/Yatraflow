@@ -387,13 +387,16 @@ describe('#389 — the publish form reports a rule against its own field', () =>
     // their politeness from `Field` (ui.tsx renders `error` as a `role="status"`
     // sibling) while the cover and the day group carry it by hand. Asserting
     // "three" in this file would be counting a message that is not here.
-    // The publish-status notes (#704) sit above the form and are not field messages.
-    // The loading hint and the kept note are polite. The failed note is a second alert,
-    // and it reports the status read, not a write. Both counts move on purpose.
-    expect(SHARE.match(/role="status"/g) ?? []).toHaveLength(4)
-    expect(SHARE.match(/role="alert"/g) ?? []).toHaveLength(2)
+    //
+    // The three publish-status notes (#704) no longer write a role: they are the
+    // shared compact block (R22), and the block announces a failed read as an
+    // alert and a pending or kept one as a status. `state-block.test.ts` pins
+    // that table, so the two counts here are the form's own messages only: the
+    // write-failure banner is the single assertive beat the form still has.
+    expect(SHARE.match(/role="status"/g) ?? []).toHaveLength(2)
+    expect(SHARE.match(/role="alert"/g) ?? []).toHaveLength(1)
     expect(SHARE).toContain('role="alert">{saveErr}</p>')
-    expect(SHARE).toContain('shr-read-failed" role="alert"')
+    expect(SHARE).toContain('kind="failed" size="compact" title="Couldn’t check if this trip is on Explore."')
     // The picker's own message is polite too — it is a field message, and it
     // shares one node with the form's cover message.
     expect(PICKER).toContain('role="status" aria-live="polite"')
