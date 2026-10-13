@@ -10346,7 +10346,7 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
    the shared fixed canvas with no hard seam. The root html { overflow-x: clip }
    rule above is not enough on its own: it clips painting, but the section's own
    box still reported the wider scroll width. Clipping at the section that holds
-   each blob is the fix the AGENTS design note asks for. */
+   each blob is what removes the overflow from the document's scroll width. */
 .hero,
 .plan-bench {
   overflow-x: clip;
