@@ -378,3 +378,79 @@ that actually landed. Recovery is still through `refs/pull/<n>/head`, as always.
 Kept, unchanged: `refactor/brand-seam` and `explore/landing-hero-local` (no PR has ever existed, so
 the branch is the only copy), `feat/share-preview-og` (closed as superseded), and the two `cline`
 heads that fail the ancestor gate (`g9wfhxqs`, `n478z8sr`).
+
+## 2026-10-13 — the consistency-wave sweep: 14 refs
+
+Forty remote heads had accumulated. This sweep removed the fourteen whose work was already in the
+integration branch. Each was verified with GitHub's compare API immediately before deletion.
+`test...<branch>` answered `behind`, so every commit was reachable from `test`. No branch had an
+open PR, and every `refs/pull/<n>/head` resolved as the recovery path.
+
+The compare API replaced the local `git merge-base --is-ancestor` check. This clone's fetch
+refspec tracks only `test`, and the repo forbids a wildcard refspec. So the branch heads were not
+present locally to test. `test` was `b1b53a4` and `main` `c9f917f` when the gate ran.
+
+| Branch | Head SHA | Owning PR |
+|---|---|---|
+| `docs/creator-portfolio-ideas` | `192bb823bd3fe195c4385673662fc5888e6fe506` | #726 |
+| `feat/consistency-p12-budget` | `ce255e99ea3e36b51e318a3026080b734b323a7f` | #746 |
+| `feat/consistency-p12-group-max` | `254f348fd9e749242cc0b7101c1d00c8d767aef7` | #745 |
+| `feat/consistency-p12-overview` | `92d98a1d2b07de14a78646abc8b49e2ce04d5ce5` | #739 |
+| `feat/consistency-p12-settings` | `445f4247e544e22f52287512ef5f90d4f2aeb0e8` | #748 |
+| `feat/consistency-p12-share` | `010c96a87cedad807162777e7c74a9a2045d8fa3` | #742 |
+| `feat/consistency-p12-timeline` | `2ecf79aed3102b276bfc3b1c9c52c33c443eed20` | #749 |
+| `feat/consistency-p14-native` | `7c2cf57e51d0836dff1927b8259700df6c177e04` | #743 |
+| `feat/consistency-p15-admin` | `a71f7fe8d9e39f77d8a905cb29cb401247016413` | #741 |
+| `feat/consistency-p6-invite` | `add97e5c0423919e218128337614fd7b21768556` | #740 |
+| `fix/store-kept-decisions-activity` | `57dd0f01f9e9a8963d8ec5906ead33781a2c5d2b` | #738 |
+| `fix/store-kept-users-notifications` | `4942665175356842d3fa57cbc9eedfa962798e46` | #747 |
+| `fix/store-late-response-guard-epoch` | `05e158e5f9448cdce061bb0d832829165385ebae` | #744 |
+| `release/v0.76.0` | `1cc9bf1918c4ac08521e12d87be6fdec3efdef62` | #722 |
+
+Only `release/v0.76.0` was also an ancestor of `main`. The other thirteen are ancestors of `test`
+alone. `main` still lacks the 109 commits that `test` carries, so that is expected. The earlier
+sweeps waited for a promotion. This one did not. It follows the 2026-09-25 Wave 0/1 precedent,
+which pruned against `origin/test` directly. Remote heads went **40 → 26**.
+
+
+### Held back, and why
+
+Twenty-four heads stayed. Four have an open PR, and the rest fail the ancestor gate.
+
+| Branch | PR | Why it stayed |
+|---|---|---|
+| `chore/repo-hygiene` | #752 | PR open |
+| `cline/55k023ca` | #751 | PR open |
+| `fix/652-655-656-script-hardening` | #750 | PR open |
+| `fix/pr-723-flight-planning` | #725 | PR open |
+| `fix/612-614-audit-batch` | #620 | Merged by squash, so not an ancestor of `test` |
+| `fix/autoclose-claim-keywords` | #619 | Merged by squash |
+| `fix/i41-placement-day-wording` | #618 | Merged by squash |
+| `fix/money-payout-carry` | #496 | Merged by squash |
+| `cline/0323e33t` | #463, #465 | Merged by squash |
+| `ccr-656b43cc-7j5mui` | #688 | Closed, unmerged |
+| `feat/share-preview-og` | #235 | Closed as superseded |
+| `feat/trip-settings-rework` | #512 | Closed, unmerged |
+| `fix/cover-backfill-360` | #528 | Closed, unmerged |
+| `fix/creator-hero-fallback` | #530 | Closed, unmerged |
+| `fix/pricing-basis-521` | #537 | Closed, unmerged |
+| `chore/baseline-docs` | — | No PR has ever existed; the branch is the only copy |
+| `chore/consistency-entrance-dedupe` | — | No PR has ever existed; the branch is the only copy |
+| `chore/consistency-toggle-attr` | — | No PR has ever existed; the branch is the only copy |
+| `wip/foundations-2-ste` | — | No PR has ever existed; the branch is the only copy |
+| `fix/explore-anon-catalog` | — | No PR has ever existed; the branch is the only copy |
+| `feat/opencode-compact-card-correction` | — | No PR has ever existed; the branch is the only copy |
+| `cline/g9wfhxqs` | — | No PR; fails the ancestor gate, as before |
+| `explore/landing-hero-local` | — | No PR has ever existed; the branch is the only copy |
+| `refactor/brand-seam` | — | No PR has ever existed; the branch is the only copy |
+
+**Five carry a MERGED PR but fail the ancestor gate.** GitHub squashed them, so the branch's own
+commits never entered `test`. The doc above already draws that distinction. The 2026-09-20 sweep
+noted its branches "merged via merge commits rather than squash". To delete these five would orphan
+commits that only `refs/pull/<n>/head` still holds.
+
+Four of the no-PR group are named in a tracked session handoff note, which PR #752 removes.
+`chore/baseline-docs`, `chore/consistency-entrance-dedupe`, `chore/consistency-toggle-attr` and
+`wip/foundations-2-ste` hold real, unreviewed work. Open those PRs, or delete those branches on
+purpose.
+
