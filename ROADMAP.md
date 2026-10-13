@@ -15,7 +15,7 @@ user confirmation before any push. Feature work reaches `test` **via pull
 request** (never a direct push); `main` merges stay explicitly user-gated
 (AGENTS rule 1).
 
-**Snapshot (2026-10-12, verified against the repo):** v0.76.0 is cut on `release/v0.76.0` for promotion to `main`. v0.75.0 reached `main` through PR #711. You must read branch progress with `git rev-list --left-right --count origin/main...origin/test`. No migration is new in this release. The 0.74.1 migrations already reached `main`. CHANGELOG.md holds the full release record.
+**Snapshot (2026-10-13, verified against the repo):** v0.76.0 is on `main` (PR #724). `test` carries 109 commits that `main` does not. They hold the flight travel day, the one-designer consistency pass and the honesty fixes of #704. One migration is new and unreleased: `supabase/migrations/20261012c_trip_flights.sql`. You must read branch progress with `git rev-list --left-right --count origin/main...origin/test`. CHANGELOG.md holds the full release record.
 Current version: **0.76.0**. Under it: **0.75.0**, promoted to `main` on 2026-10-12. Under that: **0.74.1**, a security hotfix cut from `main` on 2026-10-12. Under that: **0.74.0**, cut on `test` on 2026-10-07 and promoted to `main` the same day. Older releases appear in CHANGELOG.md.
 
 **Live open work is tracked in two places, and this file must agree with both:**
@@ -162,7 +162,7 @@ and date), per the AGENTS §6 same-edit rule. Detail lives in
 - [x] **v0.41.0** — Corridor Concierge (H1–H3 complete): road personality, enforced detour budget, trip DNA + crew seeds, story arcs, slack prompts, asymmetric detours, hours scoring, fuel advisories; Google-only provider directive; store + AI-drawer sweep (issues 15/15)
 
 
-### Shipped — the v0.42 → v0.54 line (2026-09-06 → 09-15)
+### Shipped — the v0.42 → v0.76 line (2026-09-06 → 10-12)
 - [x] **v0.42.0** — Hy4 audit P0 fixes: the suggestion engine's persistent state and UI behaviour become reliable ("Add all" write-through, cache invalidation on route change, the degenerate-route guard, the detour budget enforced from the actual itinerary)
 - [x] **v0.43.0** — The suggestion engine comes alive — See & do finally fills, the map and the suggestion panels cross-highlight, every add lands in road order, and a bad merge's encoding corruption is repaired
 - [x] **v0.44.0** — The mid-trip questions, answered where the planning happens: safe-to-spend pacing, per-day cost/dwell chips, and calendar export
@@ -193,6 +193,13 @@ and date), per the AGENTS §6 same-edit rule. Detail lives in
 - [x] **v0.68.0** — The audit's third wave, a code-only release: the workspace surfaces' honesty-and-cost pass — one edit re-renders one day (and a Board interaction no columns it does not own), the Map tab's suggestion stack loads on demand, the Board's mini-map, pulse and health dial read the same engine facts the Map tab and the figures do, per-day money follows the day's own index, stops stay numbered 1..n through every mutation, the optimiser can neither move tomorrow's wake-up point nor apply over a landed edit, the map rail is keyboard-operable and self-announcing, and the create flow keeps the stop text you typed. Cut on `test` 2026-09-26 and promoted to `main` the same day (**PR #464**, `main` at `bed7ef3`, tagged annotated `v0.68.0` on the merge commit).
 - [x] **v0.69.0** — the P1 wave and the map's own search: every P1 the day's audit sweep filed (one amount rule that refuses negative, infinite and NaN rupees, a session lifecycle that keeps what the store promised, crew signals that claim their row before they write, a start rename that stops measuring the old city, a publish button that waits for its save, a shelf total that survives one unreadable purchase, creator and Explore pages that admit a failed read, a withdrawn plan whose button leads somewhere), plus the map's own search with explicit placement, suggestion pins that cluster instead of piling up, an all-days Timeline review mode and inline insertion between two stops. Promoted to `main` the same day (PR #489, `main` at `d20f195`, tagged annotated).
 - [x] **v0.70.0** — the honesty-and-recovery wave: a failed read is spoken on the Budget tab, My Trips and Trash instead of rendering the friendly empty copy; the pacing tile names the estimate it measures and settling is owner/editor-only in the store; the creator's payout runs roll over and a buyer's access check stops failing into a sales pitch; the create flow counts its days one way and keeps the vehicle inputs you typed; the footer stops denying the payments the product has; the AI companion guards its inputs while it thinks; the map's search-to-slot filing rules became a tested module; and every destructive write the store exports is declared with its way back — one staged/kept/undone contract. Two migrations, both applied live. Promoted to `main` the same day (PR #500, `main` at `7c82bfe`, tagged annotated).
+- [x] **v0.71.0** — The publish rules moved to the writer, with database constraints behind them. A refused publication names its field, and the cursor lands on it. Counters count like units and take back failed bumps. A failed read says so with a retry. Two migrations, both applied before the cut.
+- [x] **v0.72.0** — The addresses left the URL fragment. Every screen is a real path the router reads. One pinned bridge keeps every old hash link working. The money rail stopped guessing: the claim refuses without an oracle, and a refund survives a late callback. Sharing is measured end to end.
+- [x] **v0.73.0** — The engineering skills got per-repo configuration, and the domain vocabulary they assume now exists: `GLOSSARY.md`, `docs/adr/` and `.out-of-scope/`. `npm run check:ui` gates the three mechanical design rules. Every workflow rule now names what enforces it.
+- [x] **v0.74.0** — The canonical origin became `https://www.yatraflow.in`. Every surface that mints an address follows it, and the old alias keeps serving. The installed app stopped serving a creator card as its offline shell. A gallery file import now offers its publish block as a draft.
+- [x] **v0.74.1** — A security hotfix cut from `main`. To join a trip you now need its invite code, and the server reads that code. Trips with a published itinerary had their invite codes re-issued.
+- [x] **v0.75.0** — Every trip card names its next step. The Timeline saves days and stops, and My trips shows a saved shelf. Pages enter with motion. Group input and map panels show failed reads with a retry.
+- [x] **v0.76.0** — YatraFlow took the Ribbon Y logo. Failed reads say so. The landing page links open their pages. Profile and trip settings report saves only after the server accepts them. DMCA and the log-in tabs use the shared page parts.
 
 ### Remaining — in release order (details in the tracks below)
 - [x] **v0.45.0** — Create-flow + invites + settings release (PR #81 + merged test work): Trip Ticket bento starter (bill print, outline seeding), car rental mode + local-train fares, range calendar, invite short codes + join-flow fixes, auth-refresh fix, Plan Bench trip settings + editable dates, My Trips search/filter/sort restore (branch `feat/create-trip-ticket`)
@@ -420,7 +427,7 @@ contradict a decision the repo already made, and you must settle those before an
 
 | # | Decision | The mockup said | Settled | Why |
 |---|---|---|---|---|
-| D1 | Trip page shape | One scrolling page with six sections | **Keep the four tabs.** Adopt the section contents. | The Map tab holds a persistent MapLibre canvas and a search panel. A scrolling page has no place to pin them. |
+| D1 | Trip page shape | One scrolling page with six sections | **Keep the eight routed tabs.** Adopt the section contents. | The Map tab holds a persistent MapLibre canvas and a search panel. A scrolling page has no place to pin them. |
 | D2 | Mobile navigation | Fixed bottom tabbar with four destinations | **Adopt it, behind `VITE_MOBILE_TABBAR`, and ship last.** | Four destinations in one tap beats two taps through a drawer. The flag keeps the shell change reversible. |
 
 Neither decision touches a colour value, per [ADR 0002](docs/adr/0002-mockup-palette-not-adopted.md).
@@ -504,12 +511,14 @@ Neither decision touches a colour value, per [ADR 0002](docs/adr/0002-mockup-pal
     [`mr4-toolbar-390.png`](docs/screenshots/mr4-toolbar-390.png).
 - [x] **MR5. Cover-photo prompt and solo-traveller line.** `src/pages/TripsList.tsx`. Show
   "Add a cover photo" when a trip has none. Show avatars, or "Just you so far", in the card foot.
-  - **Satisfied without new code, 2026-10-05 — checked against `src/`, not assumed.** Both halves
-    were already true once MR1 landed. "Add a cover photo" is one of the six next-step labels, and
-    MR1's fix to the default 🧭 emoji is what made it reachable at all; before that it could never
-    render. The avatars and "Just you so far" line were already in the card foot. This row is the
-    clearest case in the track of a plan being a claim about code rather than a fact: it was
-    written as work and turned out to be a description.
+  - **Partly satisfied without new code, 2026-10-05 — checked against `src/`, not assumed.**
+    The avatars and the "Just you so far" line were already in the card foot.
+    "Add a cover photo" is one of the six next-step labels, and MR1 made it reachable.
+    MR1's fix to the default 🧭 emoji is what let it render at all.
+  - **Corrected 2026-10-13 — the cover prompt is conditional, so it is not always visible.**
+    The six labels are ranked. A higher-ranked task hides the cover prompt.
+    A coverless trip with an empty day shows "Plan day 1" instead, and a booking task hides it too.
+    Issue #646 tracks the separate prompt this row asked for.
   - **Its own capture, and what it shows (2026-10-10).**
     [`mr5-card-foot-1440.png`](docs/screenshots/mr5-card-foot-1440.png) and
     [`mr5-card-foot-390.png`](docs/screenshots/mr5-card-foot-390.png) hold the card foot at both
@@ -717,9 +726,38 @@ highest regression risk of the two remaining rows. MR12 would touch the app shel
 widest blast radius of any row in this track — one reason it is parked rather than scheduled. The
 imagery in `assets/` is AI-generated per `_gen3.json`, so no row may ship those files.
 
+### One-designer consistency (P1–P16)
+
+The plan is [`docs/consistency/app-consistency-plan.md`](docs/consistency/app-consistency-plan.md), with rulings R1–R23 in [`docs/consistency/consistency-rulings.md`](docs/consistency/consistency-rulings.md).
+The reference standard is the redesigned Explore and My trips pages.
+
+The strategy freezes this track for six weeks, so pick it up after the creator gate.
+
+| Page | The shared page parts are in it |
+| --- | --- |
+| P3 | Purchases |
+| P5 | Trip created |
+| P6 | The invite gate and the shared plan |
+| P8 | Auth and DMCA |
+| P10 | The creator hub |
+| P12 | The workspace tabs |
+| P14 | The Android home |
+| P15 | Admin |
+
+| Page | Still on the old markup |
+| --- | --- |
+| P1 | The app shell — the route fallback and the dialogs use the shared block; `ErrorBoundary` does not yet |
+| P2 | The workspace header and tab bar (a mockup is required) |
+| P4 | The creator page |
+| P7 | The public itinerary |
+| P9 | Profile |
+| P11 | Create trip |
+| P13 | Landing (a mockup is required) |
+| P16 | The fold-in, which closes the track |
+
 ## 🟣 UI-audit remediation
 
-**Historical audit: 32/32 repaired. Workspace tab audit: 5/8 repaired.**
+**Historical audit: 32/32 repaired. Workspace tab audit: 8/8 repaired.**
 
 Full report: [`docs/UI_AUDIT.md`](docs/UI_AUDIT.md). All six batches shipped in
 v0.23.0 (both P0s closed: F-28, F-01); narrative in the CHANGELOG. This
