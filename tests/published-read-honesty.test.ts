@@ -273,14 +273,14 @@ describe('#704 — the creator hub checks the list before it prints an empty ans
     expect(hub).toContain('Trying…')
   })
 
-  it('the loading line is a status, and the failed note is an alert with the Try again button', () => {
+  it('the loading line is a status, and the failed note is a failed StateBlock with Try again', () => {
     expect(hub).toMatch(/<p className="hint-text hub-pubs-loading" role="status">Loading your publications…<\/p>/)
-    expect(hub).toMatch(/<div className="hub-note is-failure hub-read-failed" role="alert">/)
+    expect(hub).toMatch(/<StateBlock kind="failed" size="compact" title="Couldn’t load your publications\."/)
     expect(hub).toMatch(/\{retrying \? 'Trying…' : 'Try again'\}/)
   })
 
-  it('a kept publication list adds a status note with Try again, and the failure note keeps its alert', () => {
-    expect(hub).toMatch(/<div className="hub-note is-failure hub-read-kept" role="status">/)
+  it('a kept publication list adds a kept StateBlock with Try again', () => {
+    expect(hub).toMatch(/<StateBlock kind="kept" size="compact" title="Couldn’t refresh your publications\."/)
     expect(hub).toMatch(/\{publishedRetrying \? 'Trying…' : 'Try again'\}/)
   })
 

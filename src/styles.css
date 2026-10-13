@@ -10379,3 +10379,20 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
    13px/700 Sora. The bill card is excluded by :not(), because its trip name is
    the receipt's own heading and the receipt stays unchanged. */
 .created-card:not(.created-billcard) .created-card-title { font-family: var(--font-body); font-size: 18px; line-height: 1.3; font-weight: 800; color: var(--text); }
+
+/* ===== P10: Creator hub — panel titles and moved margins ===== */
+/* Panel titles read R20: Plus Jakarta Sans 800 at 18px. Listed for a later
+   fold into `.yf-card-title`. */
+.hub-card-title { font-family: var(--font-body); font-size: 18px; font-weight: 800; line-height: 1.3; color: var(--text); }
+/* The Payouts panel keeps the card's padding on the surface skin. */
+.hub-payouts { padding: var(--space-8); }
+.hub-pubs-empty { margin: 6px 0 0; }
+.hub-payout-note { margin: 6px 0 6px; }
+.hub-ledger-note { margin-top: 8px; }
+.hub-projection-note { margin-bottom: 8px; }
+/* The profile disclosure owns the old card padding off the card skin. The
+   closed row keeps its flat padding. The open panel keeps the card's padding.
+   Compound selectors (R5), so they win in any order. */
+.yf-surface.hub-profile { padding: 0 var(--space-7); }
+.yf-surface.hub-profile[open] { padding: var(--space-8); }
+.hub-profile-summary:hover .hub-card-title { text-decoration: underline; text-underline-offset: 3px; }
