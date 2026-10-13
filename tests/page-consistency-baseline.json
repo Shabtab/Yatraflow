@@ -98,7 +98,7 @@
     "src/pages/trip/GroupInputTab.tsx": {
       "EmptyState": 3,
       "loadingBlock": 1,
-      "inlineStyle": 27,
+      "inlineStyle": 2,
       "rawH1": 0
     },
     "src/pages/trip/map/RailRowViews.tsx": {
