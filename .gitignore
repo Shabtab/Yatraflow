@@ -90,3 +90,21 @@ PRODUCT.md
 # it, never repo content. It slipped into one commit only while the mavis-trash
 # launcher was stale; ignored so it can never recur.
 .pr-body.md
+
+# The Cline agent's home directory inside the checkout: session transcripts, its
+# SQLite databases and a full npm cache — 112 MB in one clone, 36 MB of it the
+# databases alone. It was covered only by `.git/info/exclude`, which does not
+# travel with a clone — the exact failure the `.cache/` block above already
+# records, repeating one class over. On any other clone it appeared as 112 MB of
+# untracked state, and a `git add -A` would have committed the transcripts and a
+# binary database. `git status --ignored` in this clone showed it as the only
+# entry a local exclude was carrying.
+.cline-home/
+
+# Lane handoff notes live in `docs/consistency/` too, not only at the root. The
+# `/HANDOFF-*.md` rule above missed this one on both the directory and the letter
+# case, so a session handoff — a branch map written for one lane, stale the moment
+# those branches merge, naming branches and merge order rather than describing the
+# product — was tracked and pushed. Same class, same reason, now covered by shape
+# rather than by where it happened to be written.
+docs/consistency/handoff-*.md
