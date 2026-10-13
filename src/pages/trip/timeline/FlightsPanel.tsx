@@ -85,7 +85,8 @@ function FlightDayCard({ trip, day, editable }: { trip: Trip; day: ItineraryDay;
       <div className="flight-empty">
         <div className="small muted">
           <InlineIcon icon={PlaneTakeoff} size={12} gap={3} />
-          No flight recorded for Day {day.index + 1} yet. Add one and the map, the timeline and the budget plan around it — home to the airport, the sector, then the airport to your stay.
+          No flight recorded for Day {day.index + 1} yet. Add your flight to update the map, timeline and budget.
+          The plan includes both airport transfers and the flight.
         </div>
         {editable && (
           <button className="btn btn-outline btn-sm" onClick={addFlight}>

@@ -689,7 +689,7 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
         <span className="tl-total-label">Trip total</span>
         <span>{Math.round(totals.totalDistanceKm).toLocaleString('en-IN')} km</span>
         <span className="tl-total-dot" aria-hidden="true">·</span>
-        <span>{minutesToHM(totals.totalTravelMinutes)} driving</span>
+        <span>{minutesToHM(totals.totalTravelMinutes)} {trip.transportMode === 'flight' ? 'in transit' : 'driving'}</span>
         <span className="tl-total-dot" aria-hidden="true">·</span>
         <span>{formatInr(totals.totalCostInr)} estimated</span>
         {warnDayCount > 0 && (

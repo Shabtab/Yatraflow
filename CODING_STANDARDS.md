@@ -674,6 +674,8 @@ anywhere in this repo means the entry labelled `6b` below.
     assert the shape in the test (`expect(j.startTime).toMatch(/^\d{2}:\d{2}$/)`).
     Same family as the `num0` guards: the failure is a shape, not a value.
 
+  **Flight regressions must use the trip's stored start and destination anchors.** You must assert airport departure and arrival clocks. You must compare journey costs with budget totals. Flight fields and traveller counts must invalidate cached day facts.
+
   6al. **A new page file must ship with zero `inlineStyle` and use `StateBlock`
     — and a rule a module owns must not be re-derived in a page (learned
     2026-10-12, flight planning).** Two ratchets caught a new
