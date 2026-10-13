@@ -10519,3 +10519,12 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 @media (prefers-reduced-motion: reduce) {
   .nh-trip-row { animation: none; }
 }
+
+/* ===== P12: Group input tab - card titles and panel surfaces ===== */
+/* Card titles read R20: Plus Jakarta Sans 800 at 18px with a line height of
+   1.3, the body text colour. */
+.gin-card-title { font-family: var(--font-body); font-size: 18px; font-weight: 800; line-height: 1.3; color: var(--text); }
+/* The panels and item cards sit on the shared card skin. The card class keeps
+   its own padding and inner rules, so only the two skin values are restated,
+   as a same-element compound so they win in any order (R5). */
+.yf-surface.gin-panel { border-radius: var(--radius); box-shadow: var(--shadow-card); }

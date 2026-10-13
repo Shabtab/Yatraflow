@@ -23,7 +23,9 @@ import {
 import { formatInr, minutesToHM } from '../../lib/engine'
 import { decisionContext, contextLine, recommendForDecision } from '../../lib/decisionGuide'
 import { emptyCopyFor, sliceState } from '../../lib/readState'
-import { Avatar, Chip, EmptyState, Field, toast } from '../../components/ui'
+import { Avatar, Chip, Field, toast } from '../../components/ui'
+import { StateBlock } from '../../components/page/StateBlock'
+import { Surface } from '../../components/page/Surface'
 import { refuseWhileStaged } from '../../lib/mutationLifecycle'
 import type { BusyClaim } from '../../lib/busyClaim'
 import { isClaimed, takeClaim } from '../../lib/busyClaim'
@@ -182,26 +184,28 @@ export function GroupInputTab({ trip, editable, me, previewOpen }: {
       <div className="two-col">
         <div>
           {items.length > 0 && listFailed && (
-            <p className="small muted">Couldn’t refresh group input — showing what was loaded. <button className="btn btn-outline btn-sm" onClick={retryGroupInput}>Try again</button></p>
+            <StateBlock kind="kept" size="compact" title="Couldn’t refresh group input. Showing what was loaded."
+              actions={<button className="btn btn-outline btn-sm" onClick={retryGroupInput}>Try again</button>} />
           )}
           {items.length === 0 && listFailed && (() => {
             const copy = emptyCopyFor('failed', 'group input', retryGroupInput)
             return (
-              <EmptyState icon={<Lightbulb size={38} aria-hidden />} title={copy.title} body={copy.body}
-                action={<button className="btn btn-primary" onClick={retryGroupInput}>Try again</button>} />
+              <StateBlock kind="failed" size="compact" title={copy.title} body={copy.body}
+                icon={<Lightbulb size={38} aria-hidden />}
+                actions={<button className="btn btn-outline btn-sm" onClick={retryGroupInput}>Try again</button>} />
             )
           })()}
           {items.length === 0 && listReading && (
-            <div className="loading-block"><div className="spinner" />Loading group input…</div>
+            <StateBlock kind="loading" size="compact" title="Loading group input…" art={<div className="spinner" />} />
           )}
           {items.length === 0 && !listFailed && !listReading && (
-            <EmptyState icon={<Lightbulb size={38} aria-hidden />} title={EMPTY_COPY.all.title}
-              body={EMPTY_COPY.all.body} />
+            <StateBlock kind="empty" size="compact" title={EMPTY_COPY.all.title} body={EMPTY_COPY.all.body}
+              icon={<Lightbulb size={38} aria-hidden />} />
           )}
           {items.length > 0 && shown.length === 0 && (
-            <EmptyState icon={EMPTY_COPY[filter].icon === 'idea' ? <Lightbulb size={38} aria-hidden /> : <Scale size={38} aria-hidden />}
-              title={EMPTY_COPY[filter].title} body={EMPTY_COPY[filter].body}
-              action={<button className="btn btn-outline btn-sm" onClick={() => setFilter('all')}>Show everything</button>} />
+            <StateBlock kind="empty" size="compact" title={EMPTY_COPY[filter].title} body={EMPTY_COPY[filter].body}
+              icon={EMPTY_COPY[filter].icon === 'idea' ? <Lightbulb size={38} aria-hidden /> : <Scale size={38} aria-hidden />}
+              actions={<button className="btn btn-outline btn-sm" onClick={() => setFilter('all')}>Show everything</button>} />
           )}
           {shown.map(item => item.kind === 'idea'
             ? <SuggestionCard key={item.sg.id} sg={item.sg} trip={trip} me={me} editable={editable} memberCount={memberCount}
@@ -210,17 +214,19 @@ export function GroupInputTab({ trip, editable, me, previewOpen }: {
                 needsMe={decisionNeedsMe(item.d)} trip={trip} previewOpen={previewOpen} />
           )}
 
-          <div className="card">
-            <h3>Activity feed</h3>
+          <Surface className="card gin-panel">
+            <h3 className="gin-card-title">Activity feed</h3>
             <hr className="divider" />
             {activityRead === 'failed' && tripActivity.length > 0 && (
-              <p className="small muted">Couldn’t refresh activity — showing what was loaded. <button className="btn btn-outline btn-sm" onClick={retryGroupInput}>Try again</button></p>
+              <StateBlock kind="kept" size="compact" title="Couldn’t refresh activity. Showing what was loaded."
+                actions={<button className="btn btn-outline btn-sm" onClick={retryGroupInput}>Try again</button>} />
             )}
             {activityRead === 'failed' && tripActivity.length === 0 && (
-              <p className="small muted">Couldn’t load activity. <button className="btn btn-outline btn-sm" onClick={retryGroupInput}>Try again</button></p>
+              <StateBlock kind="failed" size="compact" title="Couldn’t load activity."
+                actions={<button className="btn btn-outline btn-sm" onClick={retryGroupInput}>Try again</button>} />
             )}
             {activityRead === 'ready' && tripActivity.length === 0 && (
-              <p className="small muted">No activity yet.</p>
+              <StateBlock kind="empty" size="compact" title="No activity yet." />
             )}
             {tripActivity.slice(0, 20).map(a => (
               <div key={a.id} className="feed-item">
@@ -229,13 +235,13 @@ export function GroupInputTab({ trip, editable, me, previewOpen }: {
                 <span className="feed-time">{timeAgo(a.at)}</span>
               </div>
             ))}
-          </div>
+          </Surface>
         </div>
 
         <div>
           {needsYou.length > 0 && (
-            <div className="card gin-digest-card">
-              <h3>Needs you</h3>
+            <Surface className="card gin-digest-card gin-panel">
+              <h3 className="gin-card-title">Needs you</h3>
               <hr className="divider" />
               {needsYou.map(i => (
                 <button key={itemId(i)} type="button" className="digest-row"
@@ -245,9 +251,9 @@ export function GroupInputTab({ trip, editable, me, previewOpen }: {
                   <span className="digest-sub num">{digestSub(i)}</span>
                 </button>
               ))}
-            </div>
+            </Surface>
           )}
-          <div className="card">
+          <Surface className="card gin-panel">
             <PillNav className="mode-pillbar" role="group" aria-label="What do you want to add?" activeKey={composerMode}>
               {([['idea', 'Stop idea'], ['question', 'Question']] as const).map(([k, label]) => (
                 <button key={k} type="button" data-pill-key={k} className={`tab-btn${composerMode === k ? ' active' : ''}`}
@@ -257,7 +263,7 @@ export function GroupInputTab({ trip, editable, me, previewOpen }: {
             {composerMode === 'idea'
               ? <SuggestionComposerForm trip={trip} me={me} />
               : <DecisionComposerForm trip={trip} />}
-          </div>
+          </Surface>
         </div>
       </div>
     </div>
@@ -296,7 +302,7 @@ function SuggestionCard({ sg, trip, me, editable, memberCount, needsMe, previewO
   const author = userById(sg.proposedBy)
   const { busy, claim } = useBusyClaim(sg.id)
   return (
-    <div id={`gi-item-${sg.id}`} tabIndex={-1} className={`card gi-item gin-item-card${needsMe ? ' gi-needs-you' : ''}`}>
+    <Surface id={`gi-item-${sg.id}`} tabIndex={-1} className={`card gi-item gin-item-card gin-panel${needsMe ? ' gi-needs-you' : ''}`}>
       <div className="gin-item-layout">
       <div className="vote-col">
         <button className={`vote-btn ${myVote === 1 ? 'on' : ''}`} onClick={() => voteSuggestion(trip.id, sg.id, me.id, 1)} aria-label="Upvote" aria-pressed={myVote === 1}><ChevronUp size={13} aria-hidden /></button>
@@ -305,7 +311,7 @@ function SuggestionCard({ sg, trip, me, editable, memberCount, needsMe, previewO
       </div>
       <div>
         <div className="row-between">
-          <h3>{sg.title}</h3>
+          <h3 className="gin-card-title">{sg.title}</h3>
           <span className="gin-chip-group">
             {needsMe && <Chip tone="saffron">Needs your vote</Chip>}
             {sg.status === 'open' && consensusPct >= 60 && <Chip tone="teal">Best fit</Chip>}
@@ -367,7 +373,7 @@ function SuggestionCard({ sg, trip, me, editable, memberCount, needsMe, previewO
         <CommentForm onSubmit={(text) => addCommentToSuggestion(trip.id, sg.id, me.id, text)} />
       </div>
       </div>
-    </div>
+    </Surface>
   )
 }
 
@@ -403,9 +409,9 @@ function DecisionCard({ d, me, editable, needsMe, trip, previewOpen }: {
   const { busy, claim } = useBusyClaim(d.id)
 
   return (
-    <div id={`gi-item-${d.id}`} tabIndex={-1} className={`card gi-item gin-item-card${needsMe ? ' gi-needs-you' : ''}`}>
+    <Surface id={`gi-item-${d.id}`} tabIndex={-1} className={`card gi-item gin-item-card gin-panel${needsMe ? ' gi-needs-you' : ''}`}>
       <div className="row-between">
-        <h3>{d.question}</h3>
+        <h3 className="gin-card-title">{d.question}</h3>
         <span className="gin-chip-group">
           {needsMe && <Chip tone="saffron">Needs your vote</Chip>}
           <Chip tone={d.status === 'open' ? 'saffron' : 'ok'}>{cap(d.status)}</Chip>
@@ -489,7 +495,7 @@ function DecisionCard({ d, me, editable, needsMe, trip, previewOpen }: {
         </div>
       )}
       <CommentForm onSubmit={text => addCommentToDecision(trip.id, d.id, me.id, text)} />
-    </div>
+    </Surface>
   )
 }
 
@@ -541,7 +547,7 @@ function SuggestionComposerForm({ trip, me }: {
 
   return (
     <form onSubmit={submit}>
-      <h3>Add to the plan</h3>
+      <h3 className="gin-card-title">Add to the plan</h3>
       <p className="hint-text gin-composer-hint">Others can vote and comment; editors can accept it into the timeline.</p>
       <Field label="Idea"><input className="input" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="e.g. Pothamedu viewpoint" /></Field>
       <div className="form-row">
@@ -600,7 +606,7 @@ function DecisionComposerForm({ trip }: { trip: Trip }) {
 
   return (
     <form onSubmit={create}>
-      <h3>Raise a decision</h3>
+      <h3 className="gin-card-title">Raise a decision</h3>
       <p className="hint-text gin-composer-hint">Turn endless group-chat debates into one clear vote.</p>
       <Field label="Question"><input className="input" value={q} onChange={e => setQ(e.target.value)} placeholder="e.g. Beach day or backwater day on Day 3?" /></Field>
       <Field label="Context (optional)" hint="Why the group is deciding — e.g. “forecast says one beach afternoon is a washout”.">
