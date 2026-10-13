@@ -10366,3 +10366,16 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 @media (max-width: 640px) {
   .container.dmca-page { padding-left: 18px; padding-right: 18px; }
 }
+/* ===== P5: Trip created - the page scope and the card titles ===== */
+/* The page root carries yf-page, which sets the catalog container width. This
+   page keeps its own 1120px width. The shared rule that sets 1240px is
+   `.container:is(.yf-page)`, which is (0,2,0) - the same as this compound
+   selector. The two are equal, so this rule wins by its place at the end of the
+   file, which is where appended CSS lands. */
+.yf-page.created-page { max-width: 1120px; }
+
+/* R20: card and section titles follow the shared title rule. Plus Jakarta Sans
+   800, 18px, line-height 1.3, the body text colour. The page's titles were
+   13px/700 Sora. The bill card is excluded by :not(), because its trip name is
+   the receipt's own heading and the receipt stays unchanged. */
+.created-card:not(.created-billcard) .created-card-title { font-family: var(--font-body); font-size: 18px; line-height: 1.3; font-weight: 800; color: var(--text); }
