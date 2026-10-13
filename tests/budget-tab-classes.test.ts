@@ -10,7 +10,6 @@ const tab = read('../src/pages/trip/BudgetTab.tsx')
 const css = read('../src/styles.css')
 
 const count = (source: string, needle: string) => source.split(needle).length - 1
-const escapeRe = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 const SECTION = '/* ---------- Budget tab static styles (bud-) ---------- */'
 
 // One entry per class. The selector and declarations must match styles.css.
@@ -97,9 +96,9 @@ describe('BudgetTab inline styles moved to bud- classes', () => {
 
   for (const rule of RULES) {
     it(`declares ${rule.selector} once, with the inline values`, () => {
-      const hits = [...css.matchAll(new RegExp(`(?:^|\\n)${escapeRe(rule.selector)} \\{([^}]*)\\}`, 'g'))]
+      const hits = [...css.matchAll(/(?:^|\n)([^\n{}]+) \{([^}]*)\}/g)].filter(hit => hit[1] === rule.selector)
       expect(hits.length).toBe(1)
-      expect(hits[0][1].replace(/\s+/g, ' ').trim()).toBe(rule.declarations)
+      expect(hits[0][2].replace(/\s+/g, ' ').trim()).toBe(rule.declarations)
     })
   }
 })
