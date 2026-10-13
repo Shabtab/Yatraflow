@@ -78,12 +78,12 @@ A collaborative travel-planning web app, built India-first. Real multi-day itine
 
 #### 👥 Collaborate & share
 
-- **Invite by link or short code** — friends join as owner / editor / commenter / viewer (enforced by Postgres RLS). The invite link is `#/join/<code>` where the code is short and trip-shaped (`GOABEACHWE-K7QF`), with a code box on the home screen for friends who only got the code
+- **Invite by link or short code** — friends join as owner / editor / commenter / viewer (enforced by Postgres RLS). The invite link is `/join/<code>`, where the code is short and trip-shaped (`GOABEACHWE-K7QF`). A code box on the home screen takes the code alone.
 - **One group-input stream** — stop ideas and group decisions share one tab; whatever needs *your* vote floats to the top with a sidebar digest, and decision cards show exactly who voted for what and where the tally leans
 - **Decisions** — structured polls with per-option cost/time impact and context, votes, resolve
 - **Publish itineraries** to the public Explore gallery; readers copy any trip in one click
-- **Creators get a public page** — `#/creator/:id` gathers a creator's bio, links, track record and every itinerary they've published, shareable in one link
-- **Export / import** JSON, or a self-contained snapshot link (`#/share/<payload>`, zero server storage)
+- **Creators get a public page** — `/c/<id>` gathers a creator's bio, links, track record and published itineraries. One link shares it.
+- **Export / import** JSON, or a self-contained snapshot link (`/share/<payload>`, zero server storage)
 
 </td>
 </tr>
@@ -253,26 +253,27 @@ You'll need a free [Supabase](https://supabase.com) project for accounts + data;
 | Layer | Choice | Why |
 |---|---|---|
 | Build | [Vite 8](https://vitejs.dev) | Instant dev server, zero-config builds |
-| UI | React 18 + TypeScript (strict) | No router lib or UI kit — hash routing + hand-rolled components stay lightweight |
+| UI | React 18 + TypeScript (strict) | No router lib or UI kit — real paths on the web, hash in the native shell, hand-rolled components |
 | State | `useSyncExternalStore` over a module store | Tiny reactive cache hydrated from Supabase; every mutation writes through |
 | Maps | [mapcn](https://github.com/AnmolSaini16/mapcn) (MapLibre GL) | [OpenFreeMap](https://openfreemap.org) basemaps tick light/dark — no key, no signup, no caps |
 | Backend | [Supabase](https://supabase.com) (Postgres + Auth + RLS) | Free tier covers the MVP; JSONB keeps trip internals denormalized |
 | Routing / geo | OSRM, Open-Meteo, Wikipedia, Overpass | Free + keyless, India-biasable; optional Google / Mappls keys — the free stack is the default; a Google key makes suggestions Google-only |
 
-Routing is hash-based (`#/trip/:id`, `#/pub/:slug`, `#/creator/:id`, `#/join/:code`) so the static build runs on any host with no rewrites.
+The web app routes on real paths (`/trip/<id>`, `/pub/<slug>`, `/c/<id>`, `/join/<code>`), so a deep link is a real address. The native shell and the file build keep the hash form. One catch-all rewrite in `vercel.json` serves `index.html`, so a static host needs the same fallback.
 
 ## 📁 Project structure
 
 ```
 src/
 ├── main.tsx           # Entry — mounts <App/> inside <ErrorBoundary/>
-├── App.tsx            # Hash router, nav shell, footer, notifications
+├── App.tsx            # Path router, nav shell, footer, notifications
 ├── styles.css         # Single hand-written stylesheet (light+dark via data-theme)
 ├── data/              # types.ts domain model · seed.ts demo content
 ├── store/store.ts     # Supabase-backed reactive cache + all mutations
 ├── lib/               # engine.ts · impact.ts · ai.ts · ridePlan.ts · geocode.ts
 │                      # routing.ts · snapshot.ts · weather.ts
 ├── components/        # ui.tsx · StopEditor.tsx · TripMap.tsx · ImpactPreview.tsx · PubCard.tsx · mapcn/
+│                      # page/ — the shared page parts (PageHero, PageHeader, Surface, StateBlock, SegmentedTabs)
 └── pages/             # Landing · Auth · TripsList · CreateTrip · TripCreated · TripWorkspace · Explore
                        # PublicItinerary · Purchases · CreatorPage · CreatorHubPage · Profile · AdminPage
                        # NativeHome + trip/ (one file per workspace tab)
@@ -301,7 +302,7 @@ MapLibre renders the required OSM/OpenMapTiles credit in every map corner.
 
 ## ☁️ Deployment
 
-Static hosting is enough. The repo auto-deploys to **Vercel** on every push to `main` (`npm run build`, output `dist/`). Any static host works — Netlify, GitHub Pages behind a base path — because routing is hash-based.
+Static hosting is enough. The repo auto-deploys to **Vercel** on every push to `main` (`npm run build`, output `dist/`). Any static host works when it serves `index.html` for an unknown path, as `vercel.json` does. Without that fallback, use the hash form.
 
 **Preview builds need the Supabase vars too.** Vite inlines `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` at build time and Vercel scopes them per environment — tick **Production, Preview and Development**, then **Redeploy**; the build guard in `vite.config.ts` fails a Vercel deploy if either is missing. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#if-login-fails-on-a-preview-but-works-on-production).
 
