@@ -33,6 +33,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ### Fixed
 
+- **Overview reports failed reads without hiding data.** It keeps loaded activity and decisions. It shows separate loading, failed and empty states. Weather keeps forecasts only for matching dates and places.
 - **Failed decisions and activity reads keep their last rows for the same account.** A failed read cannot keep another account's rows.
 - **The login and sign-up forms show their own message for an email with the wrong shape.** The browser no longer shows its own bubble over the form. The form error line above the button says "Enter a valid email address." The form sends no request until the address has the right shape.
 - **The app icons show the Ribbon Y mark.** The PWA icons and the Apple touch icon carry the reversed mark on the Planning Teal tile.
