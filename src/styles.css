@@ -10441,3 +10441,24 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 .adm-card-title { font-family: var(--font-body); font-size: 18px; font-weight: 800; line-height: 1.3; color: var(--text); }
 /* The sub-title inside the revenue card. Its own 18px offset stays inline (R13). */
 .adm-card-subtitle { margin-bottom: 6px; }
+
+/* ===== P12: Share tab - panel titles, surfaces and state motion ===== */
+/* Panel titles read R20: Plus Jakarta Sans 800 at 18px with a line height of
+   1.3, the body text colour. Listed for the same later fold as .ovw-card-title. */
+.shr-card-title { font-family: var(--font-body); font-size: 18px; font-weight: 800; line-height: 1.3; color: var(--text); }
+/* The panels sit on the shared card skin. The card class keeps its own padding
+   and its inner rules, so only the two skin values are restated, as a
+   same-element compound so they win in any order (R5). */
+.yf-surface.shr-panel { border-radius: var(--radius); box-shadow: var(--shadow-card); }
+/* A state block that appears inside a panel keeps the entrance the tab already
+   had: fade and a 4px rise on the motion tokens. `errIn` rises upward; the
+   catalog's entrance rises from below. Which direction reads right is a design
+   call, so the direction that shipped stays. */
+.shr-state { animation: errIn var(--motion-med) var(--ease-out); }
+@media (prefers-reduced-motion: reduce) { .shr-state { animation: none; } }
+/* The section switch transitioned its colour with no opt-out, so a reader who
+   asked for less motion still got a fade on hover and on the active state. The
+   duration stays on the token the rule already used: the legacy `--t-fast` step
+   is the slower of the two, so moving it would change how fast the tab answers,
+   and a motion feel is the user's call, not this pass's. */
+@media (prefers-reduced-motion: reduce) { .share-tab { transition: none; } }
