@@ -14,7 +14,7 @@
 //   - the Share tab mounts its publish form only after a read that succeeded.
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { rowsView, sliceState } from '../src/lib/readState'
+import { rowsView, sliceState, pubsPanel } from '../src/lib/readState'
 import { publishFormKey, publishFormMount } from '../src/lib/publishFormKey'
 
 // Source scans read LF text. They ignore comments, so prose cannot pass a check.
@@ -246,7 +246,7 @@ describe('#704 — the creator hub checks the list before it prints an empty ans
   })
 
   it('the loading and failed branches come before "Nothing published yet"', () => {
-    const gate = hub.indexOf("publishedView === 'reading' || publishedView === 'failed'")
+    const gate = hub.indexOf("pubsBody === 'unread'")
     const empty = hub.indexOf('Nothing published yet')
     expect(gate).toBeGreaterThan(-1)
     expect(empty).toBeGreaterThan(gate)
@@ -521,6 +521,28 @@ describe('#704 — the signed-in hydrate keeps the cached list on a failed read'
   it('keeps cache.published when the published read errors', () => {
     const store = codeOf(read('../src/store/store.ts'))
     expect(store).toMatch(/published: pubRes\.error \? cache\.published : dedupePublished\(pubRows\),/)
+  })
+})
+
+// ================= the panel body keys off the verdict =================
+
+describe('#704 — the publications panel keys its body off the verdict, never the raw list', () => {
+  const hub = codeOf(read('../src/pages/CreatorHubPage.tsx'))
+
+  it('a kept view selects the list even with no rows, so the kept note shows', () => {
+    // THE pin: kept with an empty list is the list with its kept note, never
+    // the empty copy.
+    expect(pubsPanel('kept')).toBe('list')
+    expect(pubsPanel('rows')).toBe('list')
+    expect(pubsPanel('empty')).toBe('empty')
+    expect(pubsPanel('failed')).toBe('unread')
+    expect(pubsPanel('reading')).toBe('unread')
+  })
+
+  it('the panel branches on the helper, and the empty copy needs view empty', () => {
+    expect(hub).toMatch(/const pubsBody = pubsPanel\(publishedView\)/)
+    expect(hub).toMatch(/pubsBody === 'empty' \? \(/)
+    expect(hub).not.toMatch(/myPubs\.length === 0 \? \(/)
   })
 })
 

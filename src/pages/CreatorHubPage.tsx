@@ -35,7 +35,7 @@ import { formatHM, useTimeFormat } from '../lib/timefmt'
 import { Chip, ConfirmDialog, Field, toast } from '../components/ui'
 import { pubRowStatus } from '../lib/pubRowStatus'
 import { appLink } from '../lib/appLink'
-import { sliceState, rowsView, type RowsView } from '../lib/readState'
+import { sliceState, rowsView, pubsPanel, type RowsView } from '../lib/readState'
 
 /** Social links are stored raw and later emitted as an `href`, so a non-URL
  *  value becomes a live broken link. The inputs are `type="url"` but sit
@@ -646,6 +646,10 @@ export function HubOverview({ myPubs, onUnpublish, onNavigate, daily, dailyAt, s
   // The list decides whether these figures are measurements. While it is unread
   // it is empty, and a "0" over an empty list states a count nobody made (#704).
   const unknownPubs = publishedView === 'failed' || publishedView === 'reading'
+  // The panel body reads the verdict alone, never the raw list length. A
+  // kept view carries its rows. Kept with an empty list still selects the
+  // list and its kept note, never the empty copy.
+  const pubsBody = pubsPanel(publishedView)
   // The Live and Behind counts read the trips through `tripById`. An unread
   // trips list makes them unknown, not zero. Unpublished needs no trip, so its
   // chip stays readable while the rest wait.
@@ -779,9 +783,9 @@ export function HubOverview({ myPubs, onUnpublish, onNavigate, daily, dailyAt, s
             </div>
             {/* Loading, failed and empty are three different rooms (#704). "Nothing
                 published yet" is said only after a read that succeeded with no rows. */}
-            {publishedView === 'reading' || publishedView === 'failed' ? (
+            {pubsBody === 'unread' ? (
               <PubsUnread view={publishedView} retrying={publishedRetrying} onRetry={onRetryPublished} />
-            ) : myPubs.length === 0 ? (
+            ) : pubsBody === 'empty' ? (
               <p className="hint-text" style={{ margin: '6px 0 0' }}>
                 Nothing published yet — list a trip on Explore from its Share tab.
               </p>

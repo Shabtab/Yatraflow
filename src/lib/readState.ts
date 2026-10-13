@@ -128,3 +128,17 @@ export function rowsView(read: ReadState, rows: number): RowsView {
   if (read === 'reading') return 'reading'
   return 'empty'
 }
+
+/** Which body the publications panel may show, from the rowsView verdict
+ *  alone. The shape matches the sales ledger view: the empty copy needs
+ *  the view to BE empty. A kept view carries its rows by construction.
+ *  rowsView says kept only with rows on screen. Kept with an empty list
+ *  still selects the list, where the kept note shows. The empty copy is
+ *  unreachable over a failed refresh, whatever the list holds. */
+export type PubsPanel = 'unread' | 'empty' | 'list'
+
+export function pubsPanel(view: RowsView): PubsPanel {
+  if (view === 'failed' || view === 'reading') return 'unread'
+  if (view === 'empty') return 'empty'
+  return 'list'
+}
