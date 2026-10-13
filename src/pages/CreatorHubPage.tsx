@@ -33,6 +33,10 @@ import {
 import { formatInr } from '../lib/engine'
 import { formatHM, useTimeFormat } from '../lib/timefmt'
 import { Chip, ConfirmDialog, Field, toast } from '../components/ui'
+import { PageHeader } from '../components/page/PageHeader'
+import { SegmentedTabs } from '../components/page/SegmentedTabs'
+import { StateBlock } from '../components/page/StateBlock'
+import { Surface } from '../components/page/Surface'
 import { pubRowStatus } from '../lib/pubRowStatus'
 import { appLink } from '../lib/appLink'
 import { sliceState, rowsView, pubsPanel, type RowsView } from '../lib/readState'
@@ -80,6 +84,13 @@ function useStableNow(): [number, () => void] {
   const refresh = useCallback(() => { setNow(Date.now()) }, [])
   return [now, refresh]
 }
+
+/** The hub's two sections, as tablist tabs. Each id pairs its tab with the
+ *  panel the tab controls. */
+const HUB_TABS = [
+  { key: 'overview', label: 'Overview', id: 'hub-tab-overview', controls: 'hub-panel-overview' },
+  { key: 'earnings', label: 'Earnings', id: 'hub-tab-earnings', controls: 'hub-panel-earnings' },
+]
 
 export function CreatorHubPage({ onNavigate }: { onNavigate: (r: string) => void }) {
   const db = useDb()
@@ -228,44 +239,34 @@ export function CreatorHubPage({ onNavigate }: { onNavigate: (r: string) => void
   if (!me) return null
 
   return (
-    <div className="container hub-page page-enter">
-      <header className="hub-head">
-        <div className="hub-head-id">
-          <h1>Creator hub</h1>
-          <p className="muted small">{me.email}</p>
-        </div>
-        {me.profile.isCreator && (
+    <div className="container yf-page hub-page page-enter">
+      <PageHeader
+        kicker="For creators"
+        headline={{ lead: 'Creator', accent: 'hub' }}
+        meta={<p className="muted small">{me.email}</p>}
+        actions={me.profile.isCreator ? (
           <a className="btn btn-outline btn-sm" {...appLink(`/creator/${me.id}`)}>
             <InlineIcon icon={ExternalLink} size={13} gap={5} />View public page
           </a>
-        )}
-      </header>
+        ) : undefined}
+      />
 
       {!me.profile.isCreator ? (
-        <div className="card">
-          <h2 className="card-title hub-panel-title">Creator mode</h2>
-          <p className="hint-text" style={{ margin: '6px 0 12px' }}>
-            Creator mode is a branding badge: your bio and social links appear on the itineraries you publish, and you get a public creator page others can follow.
-          </p>
-          <button className="btn btn-saffron" onClick={async () => {
+        <StateBlock kind="empty" titleLevel="h2" title="Creator mode is off"
+          body="Creator mode is a branding badge. Your bio and social links appear on the itineraries you publish. You get a public creator page others can follow."
+          actions={<button className="btn btn-saffron" onClick={async () => {
             const r = await updateProfile({ isCreator: true })
             if (r.ok) toast('Creator mode enabled — your bio and links now show on published itineraries.')
             else toast(r.error ?? PROFILE_NOT_SAVED, 'err')
           }}>
             Enable creator mode
-          </button>
-        </div>
+          </button>} />
       ) : (
         <>
           {/* One view switch for the page, sitting above everything it controls
               so the tabs read as the page's axis rather than a decoration on a
               card. */}
-          <PillNav className="filter-pillbar hub-tabs" role="group" aria-label="Creator hub view" activeKey={hubTab}>
-            {([['overview', 'Overview'], ['earnings', 'Earnings']] as const).map(([k, label]) => (
-              <button key={k} type="button" data-pill-key={k} className={`clickable-chip chip${hubTab === k ? ' on-teal' : ''}`}
-                onClick={() => { setHubTab(k) }} aria-pressed={hubTab === k}>{label}</button>
-            ))}
-          </PillNav>
+          <SegmentedTabs semantics="tablist" className="tabbar hub-tabs" label="Creator hub sections" items={HUB_TABS} value={hubTab} onChange={(key) => { setHubTab(key === 'earnings' ? 'earnings' : 'overview') }} />
 
           {/* ONE status and ONE control for the page's reads, on BOTH tabs. This
               row used to live inside the Earnings ledger, so Overview — whose
@@ -296,7 +297,8 @@ export function CreatorHubPage({ onNavigate }: { onNavigate: (r: string) => void
           )}
 
           {hubTab === 'overview' ? (
-            <HubOverview myPubs={myPubs} onUnpublish={setUnpubTarget} onNavigate={onNavigate}
+            <section role="tabpanel" id="hub-panel-overview" aria-labelledby="hub-tab-overview">
+              <HubOverview myPubs={myPubs} onUnpublish={setUnpubTarget} onNavigate={onNavigate}
               daily={daily} dailyAt={dailyAt} salesRows={sales?.rows ?? []} funnelError={funnelError}
               onRetry={() => { setFunnelRetry(n => n + 1) }} days={funnelDays} onDays={setFunnelDays}
               funnelReading={funnelReading}
@@ -305,12 +307,15 @@ export function CreatorHubPage({ onNavigate }: { onNavigate: (r: string) => void
               onRetrySales={() => { setSalesRetry(n => n + 1) }}
               publishedView={publishedView} publishedRetrying={publishedRetrying} onRetryPublished={retryPublished}
               tripsView={tripsView} tripsRetrying={tripsRetrying} onRetryTrips={retryTrips} />
+            </section>
           ) : (
+            <section role="tabpanel" id="hub-panel-earnings" aria-labelledby="hub-tab-earnings">
             <EarningsTab myPubs={myPubs} sales={sales} salesError={salesError} salesAt={salesAt}
               salesReading={salesReading}
               onRetry={() => { setSalesRetry(n => n + 1) }} view={earningsView} onView={setEarningsView}
               basis={earningsBasis} onBasis={setEarningsBasis}
               publishedView={publishedView} publishedRetrying={publishedRetrying} onRetryPublished={retryPublished} />
+            </section>
           )}
 
           {/* The profile is a thing you set once. It used to own the fold and
@@ -321,6 +326,7 @@ export function CreatorHubPage({ onNavigate }: { onNavigate: (r: string) => void
               <Chip tone="ok">Enabled</Chip>
               <ChevronDown className="hub-chev" size={16} aria-hidden />
             </summary>
+            {/* Off-ladder 10px: stays inline until the page redesign (R13). */}
             <p className="hint-text" style={{ margin: '10px 0 12px' }}>
               Publishing to Explore is open to everyone — do it from any trip&apos;s Share tab.
               Creator mode is a branding badge: your bio and social links appear
@@ -722,11 +728,11 @@ export function HubOverview({ myPubs, onUnpublish, onNavigate, daily, dailyAt, s
           inter-card gap to collapse, and the divider does the grouping two
           borders were doing badly. The pairing starts at 1024 rather than 1280
           because a 1140px window is a perfectly ordinary laptop. */}
-      <div className="card hub-instrument">
+      <Surface className="hub-instrument">
         <div className="hub-instrument-cols">
           <section className="hub-instrument-col" aria-labelledby="hub-trend-h">
             <div className="hub-panel-head">
-              <h2 className="hub-panel-title" id="hub-trend-h">Recorded traffic</h2>
+              <h2 className="hub-card-title" id="hub-trend-h">Recorded traffic</h2>
               <PillNav className="filter-pillbar hub-pills-quiet" role="group" aria-label="Funnel window" activeKey={String(days)}>
                 {FUNNEL_WINDOWS.map(w => (
                   <button key={w.days} type="button" data-pill-key={String(w.days)}
@@ -774,7 +780,7 @@ export function HubOverview({ myPubs, onUnpublish, onNavigate, daily, dailyAt, s
 
           <section className="hub-instrument-col" aria-labelledby="hub-pubs-h">
             <div className="hub-lead-head">
-              <h2 id="hub-pubs-h">Publications</h2>
+              <h2 className="hub-card-title" id="hub-pubs-h">Publications</h2>
               {!unknownPubs && tripsKnown && (
                 <span>
                   {liveCount} live{unpublishedCount > 0 ? ` · ${unpublishedCount} unpublished` : ''}{staleCount > 0 ? ` · ${staleCount} behind` : ''}
@@ -786,7 +792,7 @@ export function HubOverview({ myPubs, onUnpublish, onNavigate, daily, dailyAt, s
             {pubsBody === 'unread' ? (
               <PubsUnread view={publishedView} retrying={publishedRetrying} onRetry={onRetryPublished} />
             ) : pubsBody === 'empty' ? (
-              <p className="hint-text" style={{ margin: '6px 0 0' }}>
+              <p className="hint-text hub-pubs-empty">
                 Nothing published yet — list a trip on Explore from its Share tab.
               </p>
             ) : (
@@ -861,7 +867,7 @@ export function HubOverview({ myPubs, onUnpublish, onNavigate, daily, dailyAt, s
             )}
           </section>
         </div>
-      </div>
+      </Surface>
 
 
     </>
@@ -1039,13 +1045,13 @@ export function EarningsTab({ myPubs, sales, salesError, salesAt, salesReading, 
       </div>
 
       {view === 'actual' && (
-        <section className="card">
-          <h2 className="card-title hub-panel-title">Payouts</h2>
+        <Surface as="section" className="hub-payouts">
+          <h2 className="hub-card-title">Payouts</h2>
           {/* The schedule is a statement about real money, so it waits for the
               ledger. Until then it says the balance is unknown — the old text
               cheerfully described a ₹0 balance the page had never read. */}
           {ledgerRead === 'ready' ? (
-            <p className="hint-text" style={{ margin: '6px 0 6px' }}>
+            <p className="hint-text hub-payout-note">
               {payout.clearsInr > 0 ? (
                 <>The next run is <b>{longDate(payout.dueAt)}</b> — it would clear <b>{formatInr(payout.clearsInr)}</b>, your net balance after the platform fee.</>
               ) : payout.belowMinimum ? (
@@ -1061,9 +1067,8 @@ export function EarningsTab({ myPubs, sales, salesError, salesAt, salesReading, 
                   the ledger's own alert, which also carries the recovery — so a
                   fourth restatement in this card was pure repetition. */}
               {ledgerRead === 'reading' && (
-                <p className="hint-text" style={{ margin: '6px 0 6px' }}>
-                  Reading your sales ledger… the next run is not stated until it answers.
-                </p>
+                <StateBlock kind="loading" size="compact" title="Reading your sales ledger"
+                  body="The next run is not stated until it answers." />
               )}
             </>
           )}
@@ -1072,11 +1077,11 @@ export function EarningsTab({ myPubs, sales, salesError, salesAt, salesReading, 
               scroll above it. What earns its place here is only what this
               card's own figure means: the balance is what a run would disburse,
               and nothing transfers by itself. */}
-          <p className="hint-text" style={{ margin: 0 }}>
+          <p className="hint-text">
             Runs are not automated yet: this balance is what a payout would disburse and nothing transfers
             on its own.
           </p>
-        </section>
+        </Surface>
       )}
 
       {/* The read stamp and its Refresh used to sit here. They now render one
@@ -1096,15 +1101,11 @@ export function EarningsTab({ myPubs, sales, salesError, salesAt, salesReading, 
             need sales on the books. Kept is a failed refresh over an empty
             ledger. Empty is a read that succeeded with none. */
         ledgerView === 'reading' ? (
-          <div className="container loading-block" role="status"><div className="spinner" />Loading sales…</div>
+          <StateBlock kind="loading" size="compact" icon={<span className="spinner" aria-hidden="true" />} title="Loading sales…" />
         ) : ledgerView === 'failed' ? (
-          <>
-            <div className="hub-note is-failure" role="alert">
-              <b>Couldn’t load your sales.</b> The ledger read failed or timed out — your recorded sales are safe
-              and will appear once the connection works. Check your connection and try again.
-            </div>
-            <button className="btn btn-outline btn-sm" style={{ marginTop: 8 }} onClick={handleRetry}>Try again</button>
-          </>
+          <StateBlock kind="failed" size="compact" title="Couldn’t load your sales."
+            body="The ledger read failed or timed out — your recorded sales are safe and will appear once the connection works. Check your connection and try again."
+            actions={<button className="btn btn-outline btn-sm" onClick={handleRetry}>Try again</button>} />
         ) : ledgerView === 'empty' ? (
           <>
             <table className={`compare-table pub-ledger${basisClass} ledger-sales`} tabIndex={0} aria-label="Sales ledger">
@@ -1165,7 +1166,7 @@ export function EarningsTab({ myPubs, sales, salesError, salesAt, salesReading, 
                 </tr>
               </tbody>
             </table>
-            <p className="hint-text" style={{ marginTop: 8 }}>
+            <p className="hint-text hub-ledger-note">
               Fee is the platform's cut — {PLATFORM_FEE_SUMMARY}, charged across your sales in the order they
               happened, so a row's fee depends on where it fell on your lifetime gross and not on the order this
               table is read in. Amounts are what buyers actually paid at purchase time, not your publication's
@@ -1198,7 +1199,7 @@ export function EarningsTab({ myPubs, sales, salesError, salesAt, salesReading, 
                     ))}
                   </tbody>
                 </table>
-                <p className="hint-text" style={{ marginTop: 8 }}>
+                <p className="hint-text hub-ledger-note">
                   Each run covers the sales made since the previous one, and a sale lands on the Friday after it
                   was bought. A run under {formatInr(PAYOUT_MINIMUM_INR)} does not clear: it rolls into the next
                   one and is shown there as <b>Rolled in</b>, so a run's <b>Clears</b> is that run's own net plus
@@ -1223,7 +1224,7 @@ export function EarningsTab({ myPubs, sales, salesError, salesAt, salesReading, 
               with the disclaimer arriving after the figures it disclaims; the
               empty state already promises the potential is "clearly marked as
               not-money". */}
-          <p className="hint-text" style={{ marginBottom: 8 }}>
+          <p className="hint-text hub-projection-note">
             A projection, not money: price × forks so far, assuming every fork had bought the unlock. The
             potential total is exact for the fee ladder ({PLATFORM_FEE_SUMMARY}); the per-row fee shares are
             illustrative, because which sale earns the lower rate depends on what actually sells first.
