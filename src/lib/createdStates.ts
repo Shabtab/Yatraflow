@@ -48,3 +48,32 @@ export function createdInviteUrl(origin: string, code: string | null): string | 
 export function createdCanSend(joinUrl: string | null): boolean {
   return joinUrl != null && joinUrl !== ''
 }
+
+/* ---- The outcome of a write. Each decision below is one question the page
+   asks after a write, so the answer is pinned here rather than re-derived at
+   each call site. A write never reports success before it has a result. ---- */
+
+/** A popup blocker makes `window.open` return null without throwing. A window
+ *  that did not open is not an opened window, so the send is not recorded and
+ *  the row does not read as opened. */
+export function windowDidOpen(win: Window | null): boolean {
+  return win != null
+}
+
+/** A clipboard write that resolves false, or rejects, did not copy. The rows are
+ *  marked copied only when this is true. */
+export function clipboardDidCopy(result: boolean | Error): boolean {
+  return result === true
+}
+
+/** A share sheet the user dismissed, or that is unavailable, did not send. Only
+ *  a resolved 'shared' counts as a send. */
+export function shareDidSend(result: 'shared' | 'unavailable'): boolean {
+  return result === 'shared'
+}
+
+/** The invite read's error, or null when it has a code. A null code means the
+ *  read could not give a link, which is a failure and not an empty result. */
+export function inviteReadError(code: string | null): string | null {
+  return code == null ? 'unavailable' : null
+}

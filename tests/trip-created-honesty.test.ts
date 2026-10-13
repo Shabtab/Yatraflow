@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   createdReadView, inviteRowStatus, createdInviteUrl, createdCanSend,
+  windowDidOpen, clipboardDidCopy, shareDidSend, inviteReadError,
 } from '../src/lib/createdStates'
 
 describe('createdReadView', () => {
@@ -82,5 +83,49 @@ describe('createdCanSend', () => {
 
   it('refuses a send with an empty link', () => {
     expect(createdCanSend('')).toBe(false)
+  })
+})
+
+describe('windowDidOpen', () => {
+  it('is opened when the browser returned a window', () => {
+    expect(windowDidOpen({} as Window)).toBe(true)
+  })
+
+  it('is not opened when a popup blocker returned null', () => {
+    expect(windowDidOpen(null)).toBe(false)
+  })
+})
+
+describe('clipboardDidCopy', () => {
+  it('is copied when the clipboard write resolved true', () => {
+    expect(clipboardDidCopy(true)).toBe(true)
+  })
+
+  it('is not copied when the clipboard write resolved false', () => {
+    expect(clipboardDidCopy(false)).toBe(false)
+  })
+
+  it('is not copied when the clipboard write rejected', () => {
+    expect(clipboardDidCopy(new Error('denied'))).toBe(false)
+  })
+})
+
+describe('shareDidSend', () => {
+  it('is sent only when the share sheet resolved shared', () => {
+    expect(shareDidSend('shared')).toBe(true)
+  })
+
+  it('is not sent when the share sheet is unavailable', () => {
+    expect(shareDidSend('unavailable')).toBe(false)
+  })
+})
+
+describe('inviteReadError', () => {
+  it('is a failure when the read gave no code', () => {
+    expect(inviteReadError(null)).toBe('unavailable')
+  })
+
+  it('is not a failure when the read gave a code', () => {
+    expect(inviteReadError('abc123')).toBeNull()
   })
 })

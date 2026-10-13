@@ -27,7 +27,7 @@ import { nativeCopyText, nativeShareText } from '../lib/native'
 import { haptic, HAPTIC } from '../lib/haptics'
 import { toast } from '../components/ui'
 import { StateBlock } from '../components/page/StateBlock'
-import { createdReadView, createdInviteUrl, createdCanSend, inviteRowStatus, type InviteRowStatus } from '../lib/createdStates'
+import { createdReadView, createdInviteUrl, createdCanSend, inviteRowStatus, windowDidOpen, clipboardDidCopy, shareDidSend, inviteReadError, type InviteRowStatus } from '../lib/createdStates'
 import { useReveal } from '../hooks/useReveal'
 
 /** What a row records about its send. `inviteRowStatus` reads these to decide the
@@ -99,7 +99,7 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
       .then(code => {
         if (!alive) return
         setInviteCode(code)
-        setInviteError(code == null ? 'unavailable' : null)
+        setInviteError(inviteReadError(code))
       })
       .catch(() => {
         /* The read failed. The page cannot offer a link it does not have, and it
@@ -129,7 +129,9 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
   /* A failed read is not a clean trip. `collectWarnings` threw, so this page
      does not know whether the plan has conflicts. The memo reports the failure
      beside the (empty) list, so the render can say "could not check" instead of
-     showing nothing, which would read as "all clear". */
+     showing nothing, which would read as "all clear". The retry counter re-runs
+     this read alone. */
+  const [conflictAttempt, setConflictAttempt] = useState(0)
   const conflictRead = useMemo<{ items: { title: string; detail: string }[]; failed: boolean }>(() => {
     if (!trip) return { items: [], failed: false }
     try {
@@ -143,7 +145,12 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
     } catch {
       return { items: [], failed: true }
     }
-  }, [trip])
+    /* The retry counter re-runs this read alone, so a Try again on the clash
+       check does not re-run the weather or the halt read. The counter is the
+       trigger, so the body never reads it: the rule cannot see that a dep used
+       only as a trigger is load-bearing, and the disable names why. */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trip, conflictAttempt])
   const conflicts = conflictRead.items
 
   // weather: only inside the honest forecast window
@@ -349,7 +356,8 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
     // No direct scheme (Instagram has no DM intent URL): the OS share sheet
     // carries it - its picker includes DMs and everything else installed.
     const res = await nativeShareText({ text, title: trip!.name })
-    if (res === 'shared') {
+    /* A dismissed or unavailable sheet did not send. */
+    if (shareDidSend(res)) {
       // #428: the channel enum only — never the recipient, never the message.
       recordCreateEvent('moment_invite_sent', { channel }, { tripId: trip?.id })
       setStatuses(s => new Map(s).set(index, { opened: true }))
@@ -399,7 +407,8 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
       return
     }
     const res = await nativeShareText({ text, title: trip!.name })
-    if (res === 'shared') {
+    /* A dismissed or unavailable sheet did not send. */
+    if (shareDidSend(res)) {
       // #428: the channel enum only — never the recipient, never the message.
       recordCreateEvent('moment_invite_sent', { channel }, { tripId: trip?.id })
       return
@@ -415,10 +424,15 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
     if (!canSend) return
     haptic(HAPTIC.tick)
     const text = inviteText()
-    /* The rows are marked copied only after the clipboard write resolves. The
-       old code marked them first, so a refused clipboard read as a success. */
-    const res = await nativeCopyText(text)
-    if (!res) {
+    /* The rows are marked copied only after the clipboard write resolves. A write
+       that resolves false, or rejects, did not copy. */
+    let wrote: boolean | Error = false
+    try {
+      wrote = await nativeCopyText(text)
+    } catch (err) {
+      wrote = err instanceof Error ? err : new Error(String(err))
+    }
+    if (!clipboardDidCopy(wrote)) {
       setCopyError(true)
       toast('Could not copy. Select the text and copy it yourself.', 'err')
       return
@@ -487,34 +501,37 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
         <p className="muted small">Now the engine starts working for you.</p>
       </header>
 
-      {conflictView === 'failed' && (
-        <StateBlock
-          kind="failed"
-          title="Couldn't check the plan for clashes."
-          body="The clash check did not finish, so this page cannot say whether the plan has problems. It does not claim the plan is clear."
-          actions={(
-            <button className="btn btn-outline btn-sm" onClick={finish}>Open the workspace to check</button>
-          )}
-        />
-      )}
-
-      {items.length > 0 && (
+      {/* The card renders when any read on this page failed, even with no rows.
+          A failure that rendered nowhere would read as "nothing to report". */}
+      {(items.length > 0 || conflictView === 'failed' || weatherView === 'failed' || haltsView === 'failed') && (
         <div className="bezel glass reveal reveal-d1">
           <section className="created-card" aria-label="What the engine already knows">
             <h2 className="created-card-title">Watch for these - the engine already knows</h2>
-            <ul className="created-list">
-              {items.map(item => (
-                <li key={item.key} className={`created-item kind-${item.kind}`}>
-                  <span className="created-badge" aria-hidden>{badgeFor(item.kind)}</span>
-                  <span className="created-item-body">
-                    <b>{item.headline}</b>
-                    <span className="created-detail">{item.detail}</span>
-                  </span>
-                </li>
-              ))}
-            </ul>
+            {items.length > 0 && (
+              <ul className="created-list">
+                {items.map(item => (
+                  <li key={item.key} className={`created-item kind-${item.kind}`}>
+                    <span className="created-badge" aria-hidden>{badgeFor(item.kind)}</span>
+                    <span className="created-item-body">
+                      <b>{item.headline}</b>
+                      <span className="created-detail">{item.detail}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
             {/* A read that failed is not empty data. Each says so beside the rows
                 it would have added, and its Try again re-runs that read alone. */}
+            {conflictView === 'failed' && (
+              <StateBlock
+                kind="failed"
+                size="compact"
+                title="Couldn't check the plan for clashes."
+                actions={(
+                  <button className="btn btn-outline btn-sm" onClick={() => setConflictAttempt(n => n + 1)}>Try again</button>
+                )}
+              />
+            )}
             {weatherView === 'failed' && (
               <StateBlock
                 kind="failed"
@@ -743,7 +760,9 @@ function openExternal(url: string): boolean {
   try {
     const win = window.open(url, '_blank')
     if (win) { try { win.opener = null } catch { /* cross-origin refuse is fine */ } }
-    return true
+    /* A popup blocker returns null without throwing, so the return value is the
+       only signal. A window that did not open is not an opened window. */
+    return windowDidOpen(win)
   } catch {
     return false
   }
