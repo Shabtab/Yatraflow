@@ -32,6 +32,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ### Fixed
 
+- **The login and sign-up forms show their own message for an email with the wrong shape.** The browser no longer shows its own bubble over the form. The form error line above the button says "Enter a valid email address." The form sends no request until the address has the right shape.
 - **The app icons show the Ribbon Y mark.** The PWA icons and the Apple touch icon carry the reversed mark on the Planning Teal tile.
 - **The copyright page now lines up with the log in page on a phone.** On a narrow screen the copyright text started 14px from the edge. The log in card started 18px. The two pages used different page wrappers with different side padding. The copyright page now uses the same 18px side padding as the log in page on phones.
 
