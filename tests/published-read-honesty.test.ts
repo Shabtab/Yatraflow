@@ -16,6 +16,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { rowsView, sliceState, pubsPanel } from '../src/lib/readState'
 import { publishFormKey, publishFormMount } from '../src/lib/publishFormKey'
+import { stateBlockRole } from '../src/components/page/StateBlock'
 
 // Source scans read LF text. They ignore comments, so prose cannot pass a check.
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8').replace(/\r\n/g, '\n')
@@ -322,14 +323,26 @@ describe('#704 — the Share tab does not say "not published" over an unread sta
     expect(failed).toBeGreaterThan(-1)
     expect(form).toBeGreaterThan(failed)
     expect(share).toContain('Couldn’t check if this trip is on Explore.')
-    expect(share).toMatch(/<p className="err-text ts-note shr-read-failed" role="alert">/)
+    // The note is the shared compact block now (R22), and the BLOCK is what
+    // announces it: the page writes no role of its own, so this pin reads the
+    // role table the block resolves `kind` through.
+    expect(share).toMatch(/<StateBlock kind="failed" size="compact" title="Couldn’t check if this trip is on Explore\."/)
+    expect(stateBlockRole('failed')).toBe('alert')
     expect(share).toMatch(/rereadPublicSlices\(\)\.finally/)
   })
 
   it('the kept note is a status with the new copy, and the loading hint is a status', () => {
-    const keptStatus = /<p className="err-text ts-note shr-read-kept" role="status">\s*Couldn’t refresh\. Showing the last status that loaded\./
-    expect(share).toMatch(keptStatus)
-    expect(share).toMatch(/<p className="hint-text ts-note shr-read-loading" role="status">Checking whether this trip is on Explore…<\/p>/)
+    // The copy the old paragraphs carried, held as one string so the pin reads
+    // the title the block is given rather than a hand-written shape.
+    const KEPT_TITLE = [
+      'Couldn’t refresh. Showing the last status that loaded.',
+    ].join('')
+    // Both say what the old `role="status"` paragraphs said: the rows are on
+    // screen and nothing is lost, so neither interrupts.
+    expect(share).toContain(`kind="kept" size="compact" title="${KEPT_TITLE}"`)
+    expect(share).toMatch(/<StateBlock kind="loading" size="compact" title="Checking whether this trip is on Explore…" \/>/)
+    expect(stateBlockRole('kept')).toBe('status')
+    expect(stateBlockRole('loading')).toBe('status')
   })
 
   it('a failed read and a kept read both offer Try again, and say Trying… while the re-read runs', () => {
