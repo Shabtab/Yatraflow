@@ -24,18 +24,37 @@ const { state } = vi.hoisted(() => ({
     /** Gate per user id; a builder captures the gate of whoever is active when
      *  the query is issued, letting a specific account's hydrate be released late. */
     gates: {} as Record<string, Promise<void>>,
+    queryGates: {} as Record<string, Promise<void>[]>,
+    rpcGates: {} as Record<string, Promise<void>>,
+    rpcResponses: {} as Record<string, { data: unknown; error: unknown; rejection?: unknown }>,
+    savedSnapshots: [] as Array<{ userId: string; trashedTripIds: string[] }>,
     activeUser: null as string | null,
     authHandler: null as ((event: string, session: unknown) => void) | null,
     resolveSession: null as (() => void) | null,
     sessionUser: null as string | null,
+    holdSignOut: false,
+    resolveSignOut: null as (() => void) | null,
   },
+}))
+
+vi.mock('../src/lib/offlineCache', () => ({
+  clearSnapshot: vi.fn(async () => undefined),
+  loadSnapshot: vi.fn(async () => null),
+  saveSnapshot: vi.fn(async (userId: string, snapshot: { trashedTrips: Array<{ id: string }> }) => {
+    state.savedSnapshots.push({
+      userId,
+      trashedTripIds: snapshot.trashedTrips.map(trip => trip.id),
+    })
+  }),
 }))
 
 vi.mock('../src/lib/supabase', () => {
   const makeBuilder = (table: string) => {
     state.queriedTables.push(table)
     const rows = state.tables[table] ?? []
-    const gate = state.gates[state.activeUser ?? ''] ?? Promise.resolve()
+    const queryKey = `${state.activeUser ?? ''}:${table}`
+    const queryGate = state.queryGates[queryKey]?.shift()
+    const gate = queryGate ?? state.gates[state.activeUser ?? ''] ?? Promise.resolve()
     const error = state.errors[table] ?? null
     const rejection = state.rejects[table]
     const builder: Record<string, unknown> = {
@@ -86,6 +105,20 @@ vi.mock('../src/lib/supabase', () => {
           state.authHandler = cb
           return { data: { subscription: {} } }
         },
+        signOut: () => state.holdSignOut
+          ? new Promise(resolve => {
+            state.resolveSignOut = () => resolve({ error: null })
+          })
+          : Promise.resolve({ error: null }),
+      },
+      rpc: (name: string) => {
+        const key = `${state.activeUser ?? ''}:${name}`
+        const gate = state.rpcGates[key] ?? Promise.resolve()
+        const response = state.rpcResponses[key] ?? { data: [], error: null }
+        return gate.then(() => {
+          if (response.rejection !== undefined) throw response.rejection
+          return { data: response.error ? null : response.data, error: response.error }
+        })
       },
     },
   }
@@ -128,6 +161,13 @@ function activityRow(id: string, tripId: string, userId: string) {
   return { id, trip_id: tripId, actor_id: userId, verb: `Action ${id}`, target: null, at: 1 }
 }
 
+function auditRow(id: string, userId: string) {
+  return {
+    id, actor_id: userId, action: `Action ${id}`, target_type: null,
+    target_id: null, detail: {}, at: 1,
+  }
+}
+
 /** Let the store's fire-and-forget async work drain. */
 function flush(): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, 0))
@@ -150,6 +190,35 @@ function gated(user: string) {
   return () => release()
 }
 
+function gatedQuery(user: string, table: string) {
+  let release!: () => void
+  const key = `${user}:${table}`
+  state.queryGates[key] ??= []
+  state.queryGates[key].push(new Promise<void>(r => (release = r)))
+  return () => release()
+}
+
+function gatedRpc(user: string, name: string) {
+  let release!: () => void
+  state.rpcGates[`${user}:${name}`] = new Promise<void>(r => (release = r))
+  return () => release()
+}
+
+async function signedInAdminStore() {
+  const store = await freshStore()
+  state.tables = {
+    ...rowsFor('tripA', 'userA'),
+    admin_audit: [auditRow('auditA', 'userA')],
+  }
+  state.adminUser = 'userA'
+  state.activeUser = 'userA'
+  state.sessionUser = 'userA'
+  store.init()
+  state.resolveSession!()
+  await flush()
+  return store
+}
+
 beforeEach(() => {
   state.tables = {}
   state.errors = {}
@@ -157,10 +226,16 @@ beforeEach(() => {
   state.adminUser = null
   state.queriedTables = []
   state.gates = {}
+  state.queryGates = {}
+  state.rpcGates = {}
+  state.rpcResponses = {}
+  state.savedSnapshots = []
   state.activeUser = null
   state.authHandler = null
   state.resolveSession = null
   state.sessionUser = null
+  state.holdSignOut = false
+  state.resolveSignOut = null
 })
 
 describe('decision and activity hydration', () => {
@@ -590,5 +665,348 @@ describe('hydration isolation across sign-out and account switch (#45)', () => {
     expect(db.sessionUserId).toBe('userA')
     expect(db.trips.map(t => t.id)).toEqual(['tripA'])
     expect(store.tripsForUser('userA')).toHaveLength(1)
+  })
+})
+
+describe('deferred account-owned reads', () => {
+  const staleReadCases = [
+    { slice: 'trash', result: 'success' },
+    { slice: 'trash', result: 'error' },
+    { slice: 'trash', result: 'reject' },
+    { slice: 'audit', result: 'success' },
+    { slice: 'audit', result: 'error' },
+    { slice: 'audit', result: 'reject' },
+  ] as const
+
+  for (const transition of ['switch', 'logout'] as const) {
+    it.each(staleReadCases)(
+      `drops late $slice $result results after ${transition}`,
+      async ({ slice, result }) => {
+        const store = await signedInAdminStore()
+        const release = slice === 'trash'
+          ? gatedRpc('userA', 'get_trashed_trips')
+          : gatedQuery('userA', 'admin_audit')
+        const failure = new Error(`${slice} read failed`)
+        let pending: Promise<void>
+
+        if (slice === 'trash') {
+          const key = 'userA:get_trashed_trips'
+          state.rpcResponses[key] = result === 'success'
+            ? { data: [tripRow('trashA-late', 'userA')], error: null }
+            : result === 'error'
+              ? { data: [], error: failure }
+              : { data: [], error: null, rejection: failure }
+          pending = store.fetchTrashedTrips()
+        } else {
+          state.tables = { ...state.tables, admin_audit: [auditRow('auditA-late', 'userA')] }
+          if (result === 'error') state.errors = { admin_audit: failure }
+          if (result === 'reject') state.rejects = { admin_audit: failure }
+          pending = store.refreshAdminAuditNow()
+        }
+        await flush()
+
+        if (transition === 'switch') {
+          state.tables = {
+            ...rowsFor('tripB', 'userB'),
+            admin_audit: [auditRow('auditB', 'userB')],
+          }
+          state.errors = {}
+          state.rejects = {}
+          state.activeUser = 'userB'
+          state.sessionUser = 'userB'
+          state.adminUser = 'userB'
+          state.authHandler!('SIGNED_IN', {
+            user: { id: 'userB', app_metadata: { role: 'masteradmin' } },
+          })
+        } else {
+          state.activeUser = null
+          state.sessionUser = null
+          state.adminUser = null
+          state.errors = {}
+          state.rejects = {}
+          state.authHandler!('SIGNED_OUT', null)
+        }
+        await flush()
+
+        let notifications = 0
+        const unsubscribe = store.subscribe(() => { notifications += 1 })
+        const settledNotifications = notifications
+        release()
+        await pending
+        await flush()
+
+        expect(notifications).toBe(settledNotifications)
+        expect(store.getSnapshot().trashedTrips).toEqual([])
+        expect(store.getSnapshot().trashFailed).toBe(false)
+        if (transition === 'switch') {
+          expect(store.getSnapshot().sessionUserId).toBe('userB')
+          expect(store.getSnapshot().adminAudit.map(row => row.id)).toEqual(['auditB'])
+        } else {
+          expect(store.getSnapshot().sessionUserId).toBeNull()
+          expect(store.getSnapshot().adminAudit).toEqual([])
+        }
+        expect(store.getSnapshot().adminAuditFailed).toBe(false)
+        unsubscribe()
+      },
+    )
+  }
+
+  it.each(['trash', 'audit'] as const)('applies a delayed same-user %s read', async slice => {
+    const store = await signedInAdminStore()
+    let release: () => void
+    let pending: Promise<void>
+
+    if (slice === 'trash') {
+      const key = 'userA:get_trashed_trips'
+      state.rpcResponses[key] = { data: [tripRow('trashA-late', 'userA')], error: null }
+      release = gatedRpc('userA', 'get_trashed_trips')
+      pending = store.fetchTrashedTrips()
+    } else {
+      state.tables = { ...state.tables, admin_audit: [auditRow('auditA-late', 'userA')] }
+      release = gatedQuery('userA', 'admin_audit')
+      pending = store.refreshAdminAuditNow()
+    }
+
+    await flush()
+    release()
+    await pending
+
+    if (slice === 'trash') {
+      expect(store.getSnapshot().trashedTrips.map(row => row.id)).toEqual(['trashA-late'])
+      expect(store.getSnapshot().trashLoaded).toBe(true)
+    } else {
+      expect(store.getSnapshot().adminAudit.map(row => row.id)).toEqual(['auditA-late'])
+      expect(store.getSnapshot().adminAuditFailed).toBe(false)
+    }
+  })
+
+  it.each(['trash', 'audit'] as const)('drops same-user %s results after a newer hydrate', async slice => {
+    const store = await signedInAdminStore()
+    let release: () => void
+    let pending: Promise<void>
+
+    if (slice === 'trash') {
+      const key = 'userA:get_trashed_trips'
+      state.rpcResponses[key] = { data: [tripRow('trashA-late', 'userA')], error: null }
+      release = gatedRpc('userA', 'get_trashed_trips')
+      pending = store.fetchTrashedTrips()
+    } else {
+      state.tables = { ...state.tables, admin_audit: [auditRow('auditA-late', 'userA')] }
+      release = gatedQuery('userA', 'admin_audit')
+      pending = store.refreshAdminAuditNow()
+    }
+    await flush()
+    if (slice === 'audit') {
+      state.tables = { ...state.tables, admin_audit: [auditRow('auditA', 'userA')] }
+    }
+    await refresh(store)
+    const settledTrashIds = store.getSnapshot().trashedTrips.map(row => row.id)
+    const settledAuditIds = store.getSnapshot().adminAudit.map(row => row.id)
+    const settledTrashFailed = store.getSnapshot().trashFailed
+    const settledAuditFailed = store.getSnapshot().adminAuditFailed
+
+    release()
+    await pending
+
+    if (slice === 'trash') {
+      expect(store.getSnapshot().trashedTrips.map(row => row.id)).toEqual(settledTrashIds)
+      expect(store.getSnapshot().trashFailed).toBe(settledTrashFailed)
+    } else {
+      expect(store.getSnapshot().adminAudit.map(row => row.id)).toEqual(settledAuditIds)
+      expect(store.getSnapshot().adminAuditFailed).toBe(settledAuditFailed)
+    }
+  })
+
+  it('clears old account rows before B hydration and omits them from B snapshots', async () => {
+    const store = await signedInAdminStore()
+    state.rpcResponses['userA:get_trashed_trips'] = {
+      data: [tripRow('trashA', 'userA')], error: null,
+    }
+    await store.fetchTrashedTrips()
+    state.errors = { admin_audit: new Error('audit unavailable') }
+    await store.refreshAdminAuditNow()
+    expect(store.getSnapshot().adminAuditFailed).toBe(true)
+    expect(store.getSnapshot().trashedTrips.map(row => row.id)).toEqual(['trashA'])
+
+    state.errors = {}
+    state.tables = {
+      ...rowsFor('tripB', 'userB'),
+      admin_audit: [auditRow('auditB', 'userB')],
+    }
+    state.activeUser = 'userB'
+    state.sessionUser = 'userB'
+    state.adminUser = 'userB'
+    const releaseB = gated('userB')
+    state.authHandler!('SIGNED_IN', {
+      user: { id: 'userB', app_metadata: { role: 'masteradmin' } },
+    })
+
+    expect(store.getSnapshot().trashedTrips).toEqual([])
+    expect(store.getSnapshot().trashLoaded).toBe(false)
+    expect(store.getSnapshot().trashFailed).toBe(false)
+    expect(store.getSnapshot().adminAudit).toEqual([])
+    expect(store.getSnapshot().adminAuditFailed).toBe(false)
+
+    releaseB()
+    await flush()
+
+    const snapshotsForB = state.savedSnapshots.filter(snapshot => snapshot.userId === 'userB')
+    expect(snapshotsForB.length).toBeGreaterThan(0)
+    expect(snapshotsForB[snapshotsForB.length - 1]?.trashedTripIds).not.toContain('trashA')
+  })
+
+  it('does not request admin audit while logout is waiting for sign-out', async () => {
+    const store = await signedInAdminStore()
+    const adminSession = await import('../src/lib/adminSession')
+    state.holdSignOut = true
+    const beforeReads = state.queriedTables.filter(table => table === 'admin_audit').length
+    const pendingLogout = store.logout()
+    expect(store.getSnapshot().sessionUserId).toBeNull()
+    adminSession.setAdminForTest(true)
+
+    let notifications = 0
+    const unsubscribe = store.subscribe(() => { notifications += 1 })
+    await store.refreshAdminAuditNow()
+
+    expect(state.queriedTables.filter(table => table === 'admin_audit')).toHaveLength(beforeReads)
+    expect(notifications).toBe(0)
+    state.resolveSignOut!()
+    await pendingLogout
+    unsubscribe()
+  })
+
+  it('clears the old admin role at logout start and keeps a fresh role', async () => {
+    const store = await signedInAdminStore()
+    const adminSession = await import('../src/lib/adminSession')
+    expect(adminSession.isAdminCached()).toBe(true)
+
+    state.holdSignOut = true
+    const pendingLogout = store.logout()
+    expect(adminSession.isAdminCached()).toBe(false)
+
+    state.activeUser = 'userA'
+    state.sessionUser = 'userA'
+    state.adminUser = 'userA'
+    state.authHandler!('SIGNED_IN', {
+      user: { id: 'userA', app_metadata: { role: 'masteradmin' } },
+    })
+    await flush()
+
+    expect(store.getSnapshot().sessionUserId).toBe('userA')
+    expect(adminSession.isAdminCached()).toBe(true)
+    state.resolveSignOut!()
+    await pendingLogout
+
+    expect(adminSession.isAdminCached()).toBe(true)
+  })
+
+  it.each(['success', 'failure'] as const)(
+    'does not publish a late %s hydrate after logout starts without an auth event',
+    async result => {
+      const store = await signedInAdminStore()
+      const release = gatedQuery('userA', 'profiles')
+      if (result === 'failure') state.rejects = { profiles: new Error('profile query rejected') }
+      const pendingHydrate = store.resumeSync()
+      state.resolveSession!()
+      await flush()
+
+      state.holdSignOut = true
+      const pendingLogout = store.logout()
+      expect(store.getSnapshot().sessionUserId).toBeNull()
+
+      let staleIdentityRestored = false
+      const unsubscribe = store.subscribe(() => {
+        const snapshot = store.getSnapshot()
+        if (snapshot.sessionUserId === 'userA' || snapshot.trips.length > 0) staleIdentityRestored = true
+      })
+      release()
+      await pendingHydrate
+      await flush()
+
+      expect(store.getSnapshot().sessionUserId).toBeNull()
+      expect(store.getSnapshot().trips).toEqual([])
+      expect(staleIdentityRestored).toBe(false)
+      state.resolveSignOut!()
+      await pendingLogout
+      unsubscribe()
+    },
+  )
+
+  it('starts a fresh same-user hydrate after logout invalidates the old run', async () => {
+    const store = await freshStore()
+    state.tables = rowsFor('tripA', 'userA')
+    state.activeUser = 'userA'
+    state.sessionUser = 'userA'
+    store.init()
+    state.resolveSession!()
+    await flush()
+
+    const releaseOld = gatedQuery('userA', 'profiles')
+    state.authHandler!('SIGNED_IN', { user: { id: 'userA' } })
+    await flush()
+
+    state.holdSignOut = true
+    const pendingLogout = store.logout()
+
+    state.tables = rowsFor('recoveredTrip', 'userA')
+    state.activeUser = 'userA'
+    state.sessionUser = 'userA'
+    const profileReadsBeforeSignIn = state.queriedTables.filter(table => table === 'profiles').length
+    state.authHandler!('SIGNED_IN', { user: { id: 'userA' } })
+    await flush()
+    const profileReadsAfterSignIn = state.queriedTables.filter(table => table === 'profiles').length
+    const sessionBeforeOldResponse = store.getSnapshot().sessionUserId
+    const tripsBeforeOldResponse = store.getSnapshot().trips.map(trip => trip.id)
+
+    releaseOld()
+    await flush()
+    state.resolveSignOut!()
+    await pendingLogout
+
+    expect(profileReadsAfterSignIn).toBeGreaterThan(profileReadsBeforeSignIn)
+    expect(sessionBeforeOldResponse).toBe('userA')
+    expect(tripsBeforeOldResponse).toEqual(['recoveredTrip'])
+    expect(store.getSnapshot().sessionUserId).toBe('userA')
+    expect(store.getSnapshot().trips.map(trip => trip.id)).toEqual(['recoveredTrip'])
+  })
+
+  it('keeps the fresh same-user hydrate active when an obsolete run settles', async () => {
+    const store = await freshStore()
+    state.tables = rowsFor('tripA', 'userA')
+    state.activeUser = 'userA'
+    state.sessionUser = 'userA'
+    store.init()
+    state.resolveSession!()
+    await flush()
+
+    const releaseOld = gatedQuery('userA', 'profiles')
+    state.authHandler!('SIGNED_IN', { user: { id: 'userA' } })
+    await flush()
+
+    state.holdSignOut = true
+    const pendingLogout = store.logout()
+    const releaseFresh = gatedQuery('userA', 'profiles')
+    state.tables = rowsFor('freshTrip', 'userA')
+    state.sessionUser = 'userA'
+    state.activeUser = 'userA'
+    state.authHandler!('SIGNED_IN', { user: { id: 'userA' } })
+    await flush()
+
+    releaseOld()
+    await flush()
+
+    const profileReadsBeforeDuplicate = state.queriedTables.filter(table => table === 'profiles').length
+    state.authHandler!('INITIAL_SESSION', { user: { id: 'userA' } })
+    await flush()
+    const profileReadsAfterDuplicate = state.queriedTables.filter(table => table === 'profiles').length
+
+    releaseFresh()
+    await flush()
+    state.resolveSignOut!()
+    await pendingLogout
+
+    expect(profileReadsAfterDuplicate).toBe(profileReadsBeforeDuplicate)
+    expect(store.getSnapshot().sessionUserId).toBe('userA')
+    expect(store.getSnapshot().trips.map(trip => trip.id)).toEqual(['freshTrip'])
   })
 })

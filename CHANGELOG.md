@@ -38,6 +38,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 ### Fixed
 
 - **Overview keeps loaded activity and decisions visible after read failures.** It separates loading, failed and empty states. It retains forecasts only for matching dates and places. It uses consistent panel titles and compact empty states.
+- **Account changes clear old Trash and admin audit rows and discard late results.**
 - **Failed decisions and activity reads keep their last rows for the same account.** A failed read cannot keep another account's rows.
 - **A failed read in the admin console no longer looks like an empty one.** Users, trips, the invite ranking and published plans now say Loading… or Unavailable after a failure. Each panel offers Try again. Rows that already loaded stay on screen with a note. The overview tiles and the cached funnel figures say Unavailable instead of a zero. The growth table stays hidden until its reads settle. The empty audit message now needs a read that succeeded.
 - **The login and sign-up forms show their own message for an email with the wrong shape.** The browser no longer shows its own bubble over the form. The form error line above the button says "Enter a valid email address." The form sends no request until the address has the right shape.
