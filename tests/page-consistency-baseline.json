@@ -5,7 +5,6 @@
     "src/pages/CreatorPage.tsx",
     "src/pages/Explore.tsx",
     "src/pages/Landing.tsx",
-    "src/pages/NativeHome.tsx",
     "src/pages/Profile.tsx",
     "src/pages/PublicItinerary.tsx",
     "src/pages/TripWorkspace.tsx",
@@ -64,7 +63,7 @@
       "EmptyState": 0,
       "loadingBlock": 0,
       "inlineStyle": 0,
-      "rawH1": 1
+      "rawH1": 0
     },
     "src/pages/Profile.tsx": {
       "EmptyState": 0,

@@ -10462,3 +10462,60 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
    is the slower of the two, so moving it would change how fast the tab answers,
    and a motion feel is the user's call, not this pass's. */
 @media (prefers-reduced-motion: reduce) { .share-tab { transition: none; } }
+
+/* ===== P14: Native home (Android shell) ===== */
+/* The native home keeps its own one-column, big-touch grammar at 360px. The
+   root takes yf-page for the shared page scope, and the page keeps its own
+   640px width, so the compound selector wins over the shared 1240px rule.
+   The two rules are equal at (0,2,0), so this one wins by its place at the end
+   of the file. */
+.app-home.yf-page { max-width: 640px; }
+
+/* R21: Native home keeps a Sora h1. The shared header sets its title in the
+   serif, so this page scopes the title back to the display family. */
+.app-home .yf-header-title { font-family: var(--font-body); font-weight: 800; letter-spacing: -.01em; }
+
+/* The greeting row holds the bell and the avatar. The shared header puts its
+   actions there, so this row only needs to lay them out. */
+.app-home .app-home-avatar-row { display: flex; align-items: center; gap: 12px; }
+
+/* The two primary actions take the page skin. The primary action keeps the
+   teal fill the shell used, so the row still reads as one call to action. */
+.nh-actions { display: grid; grid-template-columns: 2fr 1fr; gap: 10px; margin-bottom: 26px; }
+.nh-action { min-height: 52px; font-size: 15px; gap: 8px; }
+
+/* A trip row is one whole card on the card skin. The lift, the press and the
+   ring are the ones an interactive surface uses. The rows also settle in
+   behind the header, one step after it, on the tokens MOTION-TOKENS.md names
+   for a page entrance. */
+.nh-trip-row { display: flex; align-items: center; gap: 14px; width: 100%; padding: 12px 14px; text-align: left; animation: cardIn var(--motion-med) var(--ease-out) var(--stagger-step) backwards; }
+.nh-trip-row:active { transform: translateY(1px); }
+
+/* The row thumb: the region motif, a cover the planner set, or the emoji.
+   It is square and clipped, so every row's art lines up. */
+.nh-trip-thumb { flex: none; display: grid; place-items: center; width: 48px; height: 48px; overflow: hidden; border-radius: var(--radius-sm); background: var(--bg-soft); }
+.nh-trip-cover { width: 100%; height: 100%; object-fit: cover; }
+.nh-trip-emoji { font-size: 22px; line-height: 1; }
+.nh-trip-body { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.nh-trip-name { font-weight: 700; color: var(--text); }
+.nh-trip-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 12.5px; color: var(--text-2); }
+
+/* The live dot is the row's one status mark, so it is not colour alone: the
+   words "Live now" sit beside it. */
+.nh-live-dot { width: 8px; height: 8px; border-radius: 999px; background: var(--color-primary); }
+
+/* The section title above the rows. R20: Plus Jakarta Sans 800 at 18px. */
+.nh-section { font-family: var(--font-body); font-size: 18px; font-weight: 800; line-height: 1.3; color: var(--text); margin: 0 0 10px; }
+
+.nh-trips { display: flex; flex-direction: column; gap: 8px; }
+.nh-more { margin-top: 12px; }
+
+.nh-trip-row:nth-child(2) { animation-delay: calc(var(--stagger-step) * 2); }
+.nh-trip-row:nth-child(3) { animation-delay: calc(var(--stagger-step) * 3); }
+.nh-trip-row:nth-child(4) { animation-delay: calc(var(--stagger-step) * 4); }
+.nh-trip-row:nth-child(5) { animation-delay: calc(var(--stagger-step) * 5); }
+.nh-trip-row:nth-child(6) { animation-delay: calc(var(--stagger-step) * 6); }
+
+@media (prefers-reduced-motion: reduce) {
+  .nh-trip-row { animation: none; }
+}

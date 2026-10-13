@@ -12,15 +12,19 @@
 
 import { useState } from 'react'
 import { InlineIcon } from '../components/icons'
-import { Bell, Compass, MapPin, Plus, Sparkles, TriangleAlert, Users, Wallet } from 'lucide-react'
+import { Bell, Compass, Plus, Sparkles, TriangleAlert, Users, Wallet } from 'lucide-react'
 import type { Trip } from '../data/types'
 import { useUsers, useSessionUserId, useNotifications, useSliceReads, tripsForUser, rereadTrips } from '../store/store'
 import { computeTotals, formatInrShort } from '../lib/engine'
 import { sliceState } from '../lib/readState'
 import { StateBlock } from '../components/page/StateBlock'
+import { PageHeader } from '../components/page/PageHeader'
 import { Avatar } from '../components/ui'
+import { TripArt } from '../components/trips/TripArt'
+import { regionFor } from '../lib/tripsPage'
 
-function greeting(): string {
+/** Exported for the pin test: the greeting is a pure read of the clock. */
+export function greeting(): string {
   const h = new Date().getHours()
   if (h < 5) return 'Late night planning'
   if (h < 12) return 'Good morning'
@@ -28,8 +32,9 @@ function greeting(): string {
   return 'Good evening'
 }
 
-/** Live = today falls inside the date range; upcoming = starts in the future. */
-function tripPhase(t: Trip): 'live' | 'upcoming' | 'other' {
+/** Live = today falls inside the date range; upcoming = starts in the future.
+ *  Exported for the pin test: the phase is a pure read of the trip's dates. */
+export function tripPhase(t: Trip): 'live' | 'upcoming' | 'other' {
   const start = t.startDate ? Date.parse(t.startDate) : NaN
   const end = t.endDate ? Date.parse(t.endDate) : NaN
   const today = new Date().setHours(0, 0, 0, 0)
@@ -46,15 +51,21 @@ function HomeTripRow({ trip, onNavigate }: { trip: Trip; onNavigate: (r: string)
   const totals = computeTotals(trip)
   const crew = (trip.members ?? []).length
   return (
-    <button className="app-home-trip" onClick={() => onNavigate(`/trip/${trip.id}`)}>
-      <span className={`app-home-trip-thumb ${phase === 'live' ? 'is-live' : ''}`}>
-        {trip.coverEmoji || <MapPin size={20} aria-hidden />}
+    <button className="nh-trip-row yf-surface" onClick={() => onNavigate(`/trip/${trip.id}`)}>
+      {/* The region motif is the row's thumb. A trip with its own cover image
+          keeps that image, so the art never hides a cover the planner set. */}
+      <span className="nh-trip-thumb">
+        {trip.coverImageUrl
+          ? <img className="nh-trip-cover" src={trip.coverImageUrl} alt="" loading="lazy" />
+          : trip.coverEmoji
+            ? <span className="nh-trip-emoji">{trip.coverEmoji}</span>
+            : <TripArt region={regionFor(trip)} />}
       </span>
-      <span className="app-home-trip-body">
-        <span className="app-home-trip-name">{trip.name}</span>
-        <span className="app-home-trip-meta">
+      <span className="nh-trip-body">
+        <span className="nh-trip-name">{trip.name}</span>
+        <span className="nh-trip-meta">
           {phase === 'live'
-            ? <><span className="app-home-live-dot" />Live now</>
+            ? <><span className="nh-live-dot" />Live now</>
             : phase === 'upcoming'
               ? <>Starts {new Date(Date.parse(trip.startDate!)).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</>
               : <>{trip.days.length} days</>}
@@ -103,40 +114,42 @@ export function NativeHomePage({ me, onNavigate }: {
   const firstName = me.profile.name.split(' ')[0]
 
   return (
-    <div className="app-home page-enter">
-      {/* Greeting block — an app, not a website: who's here and what matters now. */}
-      <div className="app-home-hero">
-        <div className="app-home-hello">
-          <h1>{greeting()}, {firstName}</h1>
-          {/* "Nothing planned yet" claims the list is empty, so it waits for a read that succeeded. */}
-          {(trips.length > 0 || tripsRead === 'ready') && (
-            <p className="muted small">
-              {trips.length === 0
-                ? 'Nothing planned yet — your first trip is one tap away.'
-                : trips.length === 1
-                  ? 'One trip on your bench.'
-                  : `${trips.length} trips on your bench.`}
-            </p>
-          )}
-        </div>
-        <div className="app-home-avatar-row">
-          {unread > 0 && (
-            <button className="app-home-bell" onClick={() => onNavigate('/trips')} aria-label={`${unread} unread notifications`}>
-              <Bell size={17} aria-hidden />
-              <span className="app-home-bell-count">{unread}</span>
-            </button>
-          )}
-          <Avatar user={{ profile: { name: me.profile.name, avatarUrl: users.find(u => u.id === meId)?.profile.avatarUrl } }} size="lg" />
-        </div>
-      </div>
+    <div className="app-home yf-page page-enter">
+      {/* R21: this page keeps a Sora h1, so the shared header's serif title is
+          scoped back to the display family in the appended CSS. */}
+      <PageHeader
+        className="app-home-header"
+        headline={{ lead: `${greeting()},`, accent: firstName }}
+        lede={(trips.length > 0 || tripsRead === 'ready') && (
+          <span className="muted small">
+            {trips.length === 0
+              ? 'Nothing planned yet — your first trip is one tap away.'
+              : trips.length === 1
+                ? 'One trip on your bench.'
+                : `${trips.length} trips on your bench.`}
+          </span>
+        )}
+        actions={(
+          <div className="app-home-avatar-row">
+            {unread > 0 && (
+              <button className="app-home-bell" onClick={() => onNavigate('/trips')} aria-label={`${unread} unread notifications`}>
+                <Bell size={17} aria-hidden />
+                <span className="app-home-bell-count">{unread}</span>
+              </button>
+            )}
+            <Avatar user={{ profile: { name: me.profile.name, avatarUrl: users.find(u => u.id === meId)?.profile.avatarUrl } }} size="lg" />
+          </div>
+        )}
+      />
 
-      {/* Primary actions — the two things an app home must do instantly. */}
-      <div className="app-home-actions">
-        <button className="app-home-action app-home-action--primary" onClick={() => onNavigate('/new')}>
+      {/* Primary actions — the two things an app home must do instantly. They
+          take the page skin, so they match the rest of the shell's buttons. */}
+      <div className="nh-actions">
+        <button className="btn btn-primary nh-action" onClick={() => onNavigate('/new')}>
           <Plus size={20} aria-hidden />
           <span>Plan a trip</span>
         </button>
-        <button className="app-home-action" onClick={() => onNavigate('/explore')}>
+        <button className="btn btn-outline nh-action" onClick={() => onNavigate('/explore')}>
           <Compass size={20} aria-hidden />
           <span>Explore</span>
         </button>
@@ -156,23 +169,25 @@ export function NativeHomePage({ me, onNavigate }: {
         />
       )}
       {trips.length === 0 && tripsRead === 'ready' && (
-        <div className="app-home-empty">
-          <Sparkles size={26} aria-hidden />
-          <p><strong>No trips yet.</strong></p>
-          <p className="muted small">Start from scratch, or browse what other travellers have published in Explore.</p>
-        </div>
+        <StateBlock
+          kind="empty"
+          icon={<Sparkles size={26} aria-hidden />}
+          title="No trips yet."
+          body="Start from scratch, or browse what other travellers have published in Explore."
+          actions={<button className="btn btn-primary" onClick={() => onNavigate('/new')}>Plan a trip</button>}
+        />
       )}
       {trips.length > 0 && (
         <>
           {tripsRead === 'failed' && (
             <p className="small muted" role="status">Couldn’t refresh your trips — showing what was loaded. <button className="btn btn-outline btn-sm" onClick={retryTrips} disabled={retrying}>{retrying ? 'Trying…' : 'Try again'}</button></p>
           )}
-          <h2 className="app-home-section">Your trips</h2>
-          <div className="app-home-trips">
+          <h2 className="nh-section">Your trips</h2>
+          <div className="nh-trips">
             {trips.slice(0, 6).map(t => <HomeTripRow key={t.id} trip={t} onNavigate={onNavigate} />)}
           </div>
           {trips.length > 6 && (
-            <button className="app-home-more" onClick={() => onNavigate('/trips')}>
+            <button className="btn btn-outline nh-more" onClick={() => onNavigate('/trips')}>
               All {trips.length} trips
             </button>
           )}
