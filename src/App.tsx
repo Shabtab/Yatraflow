@@ -33,7 +33,6 @@ import { sliceState, rowsView, type RowsView } from './lib/readState'
 import { StateBlock } from './components/page/StateBlock'
 import { LandingPage } from './pages/Landing'
 import { NativeHomePage } from './pages/NativeHome'
-import { StateBlock } from './components/page/StateBlock'
 import {
   sharedSnapshotState, inviteGateState,
   inviteLoginNext, inviteSignupNext, invitePreview,
@@ -1009,10 +1008,13 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
   if (!me) {
     if (needsProfileLookup(db.sessionUserId, !!me)) {
       return (
-        <div className="container empty-state page-enter">
-          <div className="big"><Mail size={38} aria-hidden /></div>
-          <h1 style={{ fontSize: 26 }}>You’ve been invited to “{trip.name}”</h1>
-          <ProfileLookupNotice state={profileState} />
+        <div className="container yf-page page-enter">
+          <StateBlock
+            kind="empty"
+            art={<Mail size={38} aria-hidden />}
+            title={`You’ve been invited to “${invitePreview(trip ?? { name: '' }).name}”`}
+            body={<ProfileLookupNotice state={profileState} />}
+          />
         </div>
       )
     }
