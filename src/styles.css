@@ -10334,3 +10334,20 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 .gin-composer-hint { margin: 6px 0 12px; }
 .gin-submit { width: 100%; }
 .gin-option-grid { display: grid; gap: 7px; }
+
+/* ---------- Landing horizontal clip (decorative blob overflow) ---------- */
+/* The hero and plan-bench atmosphere blobs are positioned past their section's
+   right edge (hero-blob-b at right: -120px, bench-blob-b at right: -150px) for a
+   soft diffused glow. On the web that overflow widened the document past the
+   window, so the landing page scrolled sideways. Clip each blob's own section on
+   the x axis. `overflow-x: clip` prunes the horizontal overflow WITHOUT becoming
+   a scroll container, so the floating position: sticky topnav keeps working, and
+   it leaves the y axis at `visible`, so the blobs keep their vertical bleed onto
+   the shared fixed canvas with no hard seam. The root html { overflow-x: clip }
+   rule above is not enough on its own: it clips painting, but the section's own
+   box still reported the wider scroll width. Clipping at the section that holds
+   each blob is the fix the AGENTS design note asks for. */
+.hero,
+.plan-bench {
+  overflow-x: clip;
+}
