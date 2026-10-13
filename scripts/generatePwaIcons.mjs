@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 // ============ PWA icon generator ============
-// Draws public/icons/*.png from the Ribbon Y mark. The art matches the
+// Draws icon-192.png, icon-512.png, icon-maskable-512.png and apple-touch-icon.png
+// from the Ribbon Y mark. The art matches the
 // construction in DESIGN.md → Brand mark, so the launcher icon cannot drift
 // from the header mark:
 //
 //   fold: M15 6C15 26 32 24 32 40 in pale mist #BFE3DD, 11 units wide
 //   road: M49 6C49 26 32 24 32 40V46 in white, 11 units wide, over the fold
-//   dot : centre (32, 56) r=5.5 in saffron #F59E2D
+//   dot : centre (32, 56) r=5.5 in saffron #F5A94A
 //
 // The tile is Planning Teal #0E7A72 on every file. Variants: 192/512 with
 // round corners and clear corners ("any" launcher), a 512 maskable tile
@@ -30,7 +31,7 @@ const DOT = { cx: 32, cy: 56, r: 5.5 }
 const TILE = [0x0e, 0x7a, 0x72]
 const FOLD_INK = [0xbf, 0xe3, 0xdd]
 const ROAD_INK = [0xff, 0xff, 0xff]
-const DOT_INK = [0xf5, 0x9e, 0x2d]
+const DOT_INK = [0xf5, 0xa9, 0x4a]
 const HALF_WIDTH = 11 / 2
 const SS = 3 // supersample factor per axis
 
