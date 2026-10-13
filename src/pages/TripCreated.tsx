@@ -26,9 +26,14 @@ import { recordCreateEvent } from '../lib/createEvents'
 import { nativeCopyText, nativeShareText } from '../lib/native'
 import { haptic, HAPTIC } from '../lib/haptics'
 import { toast } from '../components/ui'
+import { StateBlock } from '../components/page/StateBlock'
+import { createdReadView, createdInviteUrl, createdCanSend, inviteRowStatus, windowDidOpen, clipboardDidCopy, shareDidSend, inviteReadError, type InviteRowStatus } from '../lib/createdStates'
 import { useReveal } from '../hooks/useReveal'
 
-type InviteStatus = 'idle' | 'sent' | 'copied' | 'skipped'
+/** What a row records about its send. `inviteRowStatus` reads these to decide the
+ *  row's status, so "opened" means the window really opened and "copied" means
+ *  the clipboard write resolved. */
+type InviteAttempt = { opened?: boolean; blocked?: boolean; copied?: boolean }
 
 /** The in-flow collector caps at 4 (P5's anti-spam call); the moment-after
  *  screen is a calmer moment, so it allows a few more - but never unbounded. */
@@ -68,7 +73,7 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
   /* A Map, for the same reason as CHANNEL_LABEL: every read is keyed by a crew
      INDEX, and `statuses[i]` is the computed-member-access shape Codacy flags.
      The writes become `set`/`new Map(s)` below - one representation, no brackets. */
-  const [statuses, setStatuses] = useState<Map<number, InviteStatus>>(() => new Map())
+  const [statuses, setStatuses] = useState<Map<number, InviteAttempt>>(() => new Map())
   /** P7 - the receipt node the shared image is captured from. It is rendered
    *  off-screen: the artifact is the dark till-roll the product prints
    *  elsewhere, which is not what this page should look like. */
@@ -77,31 +82,76 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
   /** Crew added after creation - raw entries, merged into the list below. */
   const [extras, setExtras] = useState<string[]>([])
   const [crewInput, setCrewInput] = useState('')
+  /** Set when a clipboard write is refused, so the copy row can say so. */
+  const [copyError, setCopyError] = useState(false)
 
   // the join link: the same short code the Share tab mints, lazily
+  /* The join code read had no catch at all. A rejected `ensureInviteCode` was an
+     unhandled rejection, and the page silently offered no link. The error state
+     is null until the read resolves, so a read that starts again is a read that
+     has not failed. The retry counter re-runs this read alone. */
+  const [inviteError, setInviteError] = useState<string | null>(null)
+  const [inviteAttempt, setInviteAttempt] = useState(0)
   useEffect(() => {
     if (!trip) return
     let alive = true
-    void ensureInviteCode(trip.id).then(code => { if (alive && code) setInviteCode(code) })
+    void ensureInviteCode(trip.id)
+      .then(code => {
+        if (!alive) return
+        setInviteCode(code)
+        setInviteError(inviteReadError(code))
+      })
+      .catch(() => {
+        /* The read failed. The page cannot offer a link it does not have, and it
+           must not fall back to the bare site origin - that link joins nothing. */
+        if (!alive) return
+        setInviteCode(null)
+        setInviteError('failed')
+      })
     return () => { alive = false }
-  }, [trip?.id])
+  }, [trip?.id, inviteAttempt])
 
-  const joinUrl = inviteCode
-    ? `${typeof location !== 'undefined' ? location.origin : ''}/join/${inviteCode}`
-    : ''
+  const joinUrl = createdInviteUrl(typeof location !== 'undefined' ? location.origin : '', inviteCode) ?? ''
 
+  /* With no join code the invite has no link. It must not fall back to the bare
+     site origin: that link joins nothing and reads as a working invite. Every
+     caller guards on `joinUrl`, so the text is only built when a code exists. */
+  const canSend = createdCanSend(joinUrl)
+
+  function inviteText(): string {
+    return crewInviteMessage({
+      tripName: trip!.name,
+      joinUrl,
+      plannerName: handoff?.plannerName || me?.profile.name || '',
+    })
+  }
   // conflicts: the engine's own collector, read once for this trip
-  const conflicts = useMemo(() => {
-    if (!trip) return [] as { title: string; detail: string }[]
+  /* A failed read is not a clean trip. `collectWarnings` threw, so this page
+     does not know whether the plan has conflicts. The memo reports the failure
+     beside the (empty) list, so the render can say "could not check" instead of
+     showing nothing, which would read as "all clear". The retry counter re-runs
+     this read alone. */
+  const [conflictAttempt, setConflictAttempt] = useState(0)
+  const conflictRead = useMemo<{ items: { title: string; detail: string }[]; failed: boolean }>(() => {
+    if (!trip) return { items: [], failed: false }
     try {
-      return collectWarnings(trip)
-        .filter(w => w.severity === 'high' || w.severity === 'medium')
-        .slice(0, 2)
-        .map(w => ({ title: w.title, detail: w.detail }))
+      return {
+        items: collectWarnings(trip)
+          .filter(w => w.severity === 'high' || w.severity === 'medium')
+          .slice(0, 2)
+          .map(w => ({ title: w.title, detail: w.detail })),
+        failed: false,
+      }
     } catch {
-      return []
+      return { items: [], failed: true }
     }
-  }, [trip])
+    /* The retry counter re-runs this read alone, so a Try again on the clash
+       check does not re-run the weather or the halt read. The counter is the
+       trigger, so the body never reads it: the rule cannot see that a dep used
+       only as a trigger is load-bearing, and the disable names why. */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trip, conflictAttempt])
+  const conflicts = conflictRead.items
 
   // weather: only inside the honest forecast window
   const [rainyDays, setRainyDays] = useState<number[]>([])
@@ -114,6 +164,11 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
   // same shape a failed weather fetch takes (a forecast we cannot get says
   // nothing).
   const [fuelHalts, setFuelHalts] = useState<{ title: string; cumKm: number }[]>([])
+  /* A failed halt read is not an empty corridor. The error state stays null until
+     the read resolves, so a read that starts again is a read that has not failed.
+     The retry counter re-runs this read alone. */
+  const [haltsError, setHaltsError] = useState<string | null>(null)
+  const [haltsAttempt, setHaltsAttempt] = useState(0)
   useEffect(() => {
     if (!trip) return
     if (!isRoadMeasuredMode(trip.transportMode)) return
@@ -134,6 +189,7 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
     )
       .then(hits => {
         if (!alive) return
+        setHaltsError(null)
         setFuelHalts(
           hits
             // A fuel tick folded into a meal/overnight (#144A - "refuel where
@@ -149,16 +205,29 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
             .map(h => ({ title: h.hit?.name || h.segment.label, cumKm: h.segment.targetKm })),
         )
       })
-      .catch(() => { /* the planner failing says nothing - the line just skips */ })
+      .catch(() => {
+        /* The planner failed. The page cannot say how many fuel stops the drive
+           implies, so it says so instead of showing a fuel line that is absent
+           because the read failed. An empty result on a later success is still
+           empty copy. */
+        if (!alive) return
+        setFuelHalts([])
+        setHaltsError('failed')
+      })
     /* The guard above needs this cleanup to mean anything. Without it `alive` is
        never set false, so `if (!alive) return` was dead code - which is precisely
        what Codacy reported, and it was right. The weather effect below already
        pairs guard and cleanup; this one had the guard and never the cleanup. */
     return () => { alive = false }
-  }, [trip?.id, handoff])
+  }, [trip?.id, handoff, haltsAttempt])
   // weather: only inside the honest forecast window; re-pulled on the refresh
   // cadence and whenever the tab regains focus so it never goes stale.
   const weatherTick = useWeatherRefreshTick()
+  /* A failed forecast is not a dry week. The error state stays null until the
+     read resolves, so a read that starts again is a read that has not failed.
+     The retry counter re-runs this read alone. */
+  const [weatherError, setWeatherError] = useState<string | null>(null)
+  const [weatherAttempt, setWeatherAttempt] = useState(0)
   useEffect(() => {
     if (!trip) return
     if (!forecastAvailable(trip.startDate)) return
@@ -174,10 +243,17 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
           if (day && day.rainChancePct >= 60) wet.push(i)
         })
         setRainyDays(wet)
+        setWeatherError(null)
       })
-      .catch(() => { /* a forecast we could not get says nothing */ })
+      .catch(() => {
+        /* The forecast failed. The page cannot say which days may rain, so it
+           says so instead of showing a dry week it never read. */
+        if (!alive) return
+        setRainyDays([])
+        setWeatherError('failed')
+      })
     return () => { alive = false }
-  }, [trip?.id, weatherTick])
+  }, [trip?.id, weatherTick, weatherAttempt])
 
   const items: AnticipationItem[] = useMemo(() => {
     if (!trip) return []
@@ -204,6 +280,12 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
     // only if rain or conflicts happened to change later (a race, live-caught
     // on a 1,421 km trip that planned fuel halts the list never showed).
   }, [trip?.id, handoff, rainyDays, conflicts, fuelHalts])
+
+  /* The three reads on this page each reduce to one view through the same rule,
+     so a failure never renders as empty data anywhere on the page. */
+  const conflictView = createdReadView({ loading: false, failed: conflictRead.failed, rows: conflicts.length })
+  const weatherView = createdReadView({ loading: false, failed: weatherError != null, rows: rainyDays.length })
+  const haltsView = createdReadView({ loading: false, failed: haltsError != null, rows: fuelHalts.length })
 
   // Crew composition is pure and hook-ordered: it lives ABOVE the `!trip`
   // early return so the render's hook count never changes (a conditional
@@ -242,14 +324,6 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
 
   const bill = handoff?.bill ?? null
 
-  function inviteText(): string {
-    return crewInviteMessage({
-      tripName: trip!.name,
-      joinUrl: joinUrl || (typeof location !== 'undefined' ? location.origin : ''),
-      plannerName: handoff?.plannerName || me?.profile.name || '',
-    })
-  }
-
   async function sendInvite(index: number, channel: CrewChannel) {
     /* A bounds check on the INDEX rather than `if (!member)`. TS types
        `crew[index]` as non-optional, so the old guard read as "always falsy" to
@@ -257,21 +331,40 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
     if (index < 0 || index >= crew.length) return
     const member = crew[index]
     if (channelNeedsPhone(channel) && !member.phone) return
+    /* No join code, no invite. The link is the whole message, so the send is
+       refused here rather than producing a message that joins nothing. */
+    if (!canSend) return
     haptic(HAPTIC.select)
-    // #428: the channel enum only — never the recipient, never the message.
-    recordCreateEvent('moment_invite_sent', { channel }, { tripId: trip?.id })
-    setStatuses(s => new Map(s).set(index, 'sent'))
     const text = inviteText()
-    const url = inviteChannelUrl(channel, member.phone, text, joinUrl || (typeof location !== 'undefined' ? location.origin : ''))
+    const url = inviteChannelUrl(channel, member.phone, text, joinUrl)
     if (url) {
-      if (openExternal(url)) return
+      /* The status is set only when the window really opened. A popup blocker
+         makes `window.open` return null, and the old code had already marked the
+         row "invite opened" before it tried. */
+      if (openExternal(url)) {
+        // #428: the channel enum only — never the recipient, never the message.
+        recordCreateEvent('moment_invite_sent', { channel }, { tripId: trip?.id })
+        setStatuses(s => new Map(s).set(index, { opened: true }))
+        return
+      }
+      /* The window did not open. The row records the refusal, so it never reads
+         as sent while nothing was sent. */
+      setStatuses(s => new Map(s).set(index, { blocked: true }))
       toast('The browser blocked the link - the invite is on this page to copy.', 'err')
       return
     }
     // No direct scheme (Instagram has no DM intent URL): the OS share sheet
     // carries it - its picker includes DMs and everything else installed.
     const res = await nativeShareText({ text, title: trip!.name })
-    if (res === 'unavailable') toast('No share sheet here - the invite link is on this page to copy.', 'err')
+    /* A dismissed or unavailable sheet did not send. */
+    if (shareDidSend(res)) {
+      // #428: the channel enum only — never the recipient, never the message.
+      recordCreateEvent('moment_invite_sent', { channel }, { tripId: trip?.id })
+      setStatuses(s => new Map(s).set(index, { opened: true }))
+      return
+    }
+    setStatuses(s => new Map(s).set(index, { blocked: true }))
+    toast('No share sheet here - the invite link is on this page to copy.', 'err')
   }
 
   /** Add a crew member from this screen. Same parse/dedupe rules as the
@@ -294,21 +387,32 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
    *  own chooser; SMS/Insta ride the OS share sheet (Android and iOS prefill
    *  the body there). Everything degrades to the copied link. */
   async function broadcastInvite(channel: CrewChannel) {
+    /* No join code, no invite. The link is the whole message. */
+    if (!canSend) return
     haptic(HAPTIC.select)
-    // #428: the no-recipient variant — same channel enum, same PII rule.
-    recordCreateEvent('moment_invite_sent', { channel }, { tripId: trip?.id })
     const text = inviteText()
     const url = channel === 'whatsapp'
       ? `https://wa.me/?text=${encodeURIComponent(text)}`
       : channel === 'telegram'
-        ? telegramShareUrl(text, joinUrl || (typeof location !== 'undefined' ? location.origin : ''))
+        ? telegramShareUrl(text, joinUrl)
         : null
     if (url) {
-      if (openExternal(url)) return
+      /* Same rule as a row send: the event fires only when the window opened. */
+      if (openExternal(url)) {
+        // #428: the channel enum only — never the recipient, never the message.
+        recordCreateEvent('moment_invite_sent', { channel }, { tripId: trip?.id })
+        return
+      }
       toast('The browser blocked the link - the invite is on this page to copy.', 'err')
       return
     }
     const res = await nativeShareText({ text, title: trip!.name })
+    /* A dismissed or unavailable sheet did not send. */
+    if (shareDidSend(res)) {
+      // #428: the channel enum only — never the recipient, never the message.
+      recordCreateEvent('moment_invite_sent', { channel }, { tripId: trip?.id })
+      return
+    }
     if (res === 'unavailable') {
       const copied = await nativeCopyText(text)
       toast(copied ? 'Invite copied - paste it into the chat' : 'No share sheet here - the invite link is on this page to copy.', copied ? undefined : 'err')
@@ -316,15 +420,30 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
   }
 
   async function copyAll() {
+    /* No join code, nothing to copy that joins. */
+    if (!canSend) return
     haptic(HAPTIC.tick)
     const text = inviteText()
-    const res = await nativeCopyText(text)
+    /* The rows are marked copied only after the clipboard write resolves. A write
+       that resolves false, or rejects, did not copy. */
+    let wrote: boolean | Error = false
+    try {
+      wrote = await nativeCopyText(text)
+    } catch (err) {
+      wrote = err instanceof Error ? err : new Error(String(err))
+    }
+    if (!clipboardDidCopy(wrote)) {
+      setCopyError(true)
+      toast('Could not copy. Select the text and copy it yourself.', 'err')
+      return
+    }
+    setCopyError(false)
     setStatuses(s => {
       const next = new Map(s)
-      crew.forEach((_, i) => { next.set(i, 'copied') })
+      crew.forEach((_, i) => { next.set(i, { copied: true }) })
       return next
     })
-    toast(res ? 'Invite copied - paste it wherever the crew talks' : 'Copy it from the link on this page')
+    toast('Invite copied - paste it wherever the crew talks')
   }
 
   function finish() {
@@ -382,21 +501,57 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
         <p className="muted small">Now the engine starts working for you.</p>
       </header>
 
-      {items.length > 0 && (
+      {/* The card renders when any read on this page failed, even with no rows.
+          A failure that rendered nowhere would read as "nothing to report". */}
+      {(items.length > 0 || conflictView === 'failed' || weatherView === 'failed' || haltsView === 'failed') && (
         <div className="bezel glass reveal reveal-d1">
           <section className="created-card" aria-label="What the engine already knows">
             <h2 className="created-card-title">Watch for these - the engine already knows</h2>
-            <ul className="created-list">
-              {items.map(item => (
-                <li key={item.key} className={`created-item kind-${item.kind}`}>
-                  <span className="created-badge" aria-hidden>{badgeFor(item.kind)}</span>
-                  <span className="created-item-body">
-                    <b>{item.headline}</b>
-                    <span className="created-detail">{item.detail}</span>
-                  </span>
-                </li>
-              ))}
-            </ul>
+            {items.length > 0 && (
+              <ul className="created-list">
+                {items.map(item => (
+                  <li key={item.key} className={`created-item kind-${item.kind}`}>
+                    <span className="created-badge" aria-hidden>{badgeFor(item.kind)}</span>
+                    <span className="created-item-body">
+                      <b>{item.headline}</b>
+                      <span className="created-detail">{item.detail}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {/* A read that failed is not empty data. Each says so beside the rows
+                it would have added, and its Try again re-runs that read alone. */}
+            {conflictView === 'failed' && (
+              <StateBlock
+                kind="failed"
+                size="compact"
+                title="Couldn't check the plan for clashes."
+                actions={(
+                  <button className="btn btn-outline btn-sm" onClick={() => setConflictAttempt(n => n + 1)}>Try again</button>
+                )}
+              />
+            )}
+            {weatherView === 'failed' && (
+              <StateBlock
+                kind="failed"
+                size="compact"
+                title="Couldn't load the weather."
+                actions={(
+                  <button className="btn btn-outline btn-sm" onClick={() => setWeatherAttempt(n => n + 1)}>Try again</button>
+                )}
+              />
+            )}
+            {haltsView === 'failed' && (
+              <StateBlock
+                kind="failed"
+                size="compact"
+                title="Couldn't plan the fuel stops."
+                actions={(
+                  <button className="btn btn-outline btn-sm" onClick={() => setHaltsAttempt(n => n + 1)}>Try again</button>
+                )}
+              />
+            )}
           </section>
         </div>
       )}
@@ -409,15 +564,15 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
           )}
           <div className="created-crew">
             {crew.map((m, i) => (
-              <div key={`${m.phone ?? m.name}-${i}`} className={`created-crew-row${statuses.get(i) === 'sent' || statuses.get(i) === 'copied' ? ' done' : ''}`}>
+              <div key={`${m.phone ?? m.name}-${i}`} className={`created-crew-row${['opened', 'copied'].includes(inviteRowStatus(statuses.get(i) ?? null)) ? ' done' : ''}`}>
                 <span className="created-dot" aria-hidden />
                 <span className="created-crew-name">{m.name || `+91 ${m.phone}`}</span>
                 <span className="created-channels" role="group" aria-label="Send the invite">
                   {CREW_CHANNELS.map(ch => {
-                    const off = channelNeedsPhone(ch) && !m.phone
+                    const off = (channelNeedsPhone(ch) && !m.phone) || !joinUrl
                     return (
                       <button key={ch} type="button" className="created-ch" disabled={off}
-                        title={off ? 'needs a number - Telegram or the share sheet work without one' : `Send via ${channelLabel(ch)}`}
+                        title={!joinUrl ? 'the invite link is not ready' : off ? 'needs a number - Telegram or the share sheet work without one' : `Send via ${channelLabel(ch)}`}
                         aria-label={`Send the invite via ${channelLabel(ch)}`}
                         onClick={() => void sendInvite(i, ch)}>
                         {channelLabel(ch)}
@@ -426,7 +581,7 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
                   })}
                 </span>
                 {!m.phone && <span className="created-crew-hint">no number - Telegram or the share sheet still work</span>}
-                <span className="created-crew-status">{statusLabel(statuses.get(i), m.phone)}</span>
+                <span className="created-crew-status">{statusLabel(inviteRowStatus(statuses.get(i) ?? null), m.phone)}</span>
               </div>
             ))}
           </div>
@@ -445,11 +600,26 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
             </button>
           </div>
           <div className="created-crew-acts">
-            <button type="button" className="btn btn-outline btn-sm" onClick={() => void copyAll()}>Copy the invite</button>
+            {/* With no join code there is no link to copy. The action is refused
+                rather than copying a message that joins nothing. */}
+            <button type="button" className="btn btn-outline btn-sm" onClick={() => void copyAll()} disabled={!joinUrl}>Copy the invite</button>
             {joinUrl && <code className="created-link" title={joinUrl}>{joinUrl}</code>}
+            {copyError && (
+              <span className="err-text" role="alert">Couldn't copy. Select the text and copy it yourself.</span>
+            )}
           </div>
           {joinUrl && (
             <p className="created-detail">They get: {crewInviteMessage({ tripName: trip.name, joinUrl, plannerName: handoff?.plannerName || me?.profile.name || '' })}</p>
+          )}
+          {inviteError != null && (
+            <StateBlock
+              kind="failed"
+              size="compact"
+              title="Couldn't create the invite link."
+              actions={(
+                <button className="btn btn-outline btn-sm" onClick={() => setInviteAttempt(n => n + 1)}>Try again</button>
+              )}
+            />
           )}
         </section>
       </div>
@@ -465,6 +635,8 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
             <span className="created-broadcast-label">or send the invite on</span>
             {CREW_CHANNELS.map(ch => (
               <button key={ch} type="button" className="created-ch" aria-label={`Send the invite via ${channelLabel(ch)}`}
+                disabled={!joinUrl}
+                title={joinUrl ? undefined : 'the invite link is not ready'}
                 onClick={() => void broadcastInvite(ch)}>
                 {channelLabel(ch)}
               </button>
@@ -588,7 +760,9 @@ function openExternal(url: string): boolean {
   try {
     const win = window.open(url, '_blank')
     if (win) { try { win.opener = null } catch { /* cross-origin refuse is fine */ } }
-    return true
+    /* A popup blocker returns null without throwing, so the return value is the
+       only signal. A window that did not open is not an opened window. */
+    return windowDidOpen(win)
   } catch {
     return false
   }
@@ -604,9 +778,10 @@ function badgeFor(kind: AnticipationItem['kind']): string {
   }
 }
 
-function statusLabel(status: InviteStatus | undefined, phone: string | null): string {
-  if (status === 'sent') return 'invite opened'
+function statusLabel(status: InviteRowStatus, phone: string | null): string {
+  if (status === 'opened') return 'invite opened'
   if (status === 'copied') return 'copied'
+  if (status === 'blocked') return 'not sent - copy the link'
   if (!phone) return ''
   return 'ready'
 }
