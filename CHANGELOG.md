@@ -27,6 +27,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ### Changed
 
+- **GitHub CI uses Node 24 for verification and motion checks, matching the deployed runtime.**
 - **The trip settings tab now uses the shared card and title parts.** Each panel sits on the shared card skin. The section titles read at the shared title size and weight. A save that is in flight shows its own message. The fixed layout values that were set inline now come from classes.
 - **The invite and shared-plan screens use the shared page parts.** Each screen states what happened. A read that failed says so. A link that is no longer active says so. The two never share a message. A signed-out invite shows a small trip preview: the route, the dates and the crew count. The log in and create account buttons return you to the invite you opened.
 - **The Android home screen now uses the shared page parts.** The greeting sits in the shared header. The bell and your avatar sit beside it. Each trip row is a card with the region art as its thumb. A trip with its own cover photo keeps that photo. The two main actions take the shared button skin. A failed read, a read in flight and an empty list each show their own message. The empty message offers the plan action.
