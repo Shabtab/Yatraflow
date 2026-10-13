@@ -24,7 +24,9 @@ import { sliceState, emptyCopyFor } from '../../lib/readState'
 import { computeBalances, settleBalances, fairSharePerHead, linesTotal, openTaggedLines } from '../../lib/settlement'
 import { loadFlag, saveFlag } from '../../lib/uiPrefs'
 import { titleCase } from '../../lib/labels'
-import { Avatar, Chip, Field, StatTile, toast, undoToast, useInView, usePageVisible, EmptyState } from '../../components/ui'
+import { Avatar, Chip, Field, StatTile, toast, undoToast, useInView, usePageVisible } from '../../components/ui'
+import { StateBlock } from '../../components/page/StateBlock'
+import { Surface } from '../../components/page/Surface'
 import { refuseWhileStaged } from '../../lib/mutationLifecycle'
 
 // ================= Budget tab =================
@@ -289,8 +291,8 @@ export function BudgetTab({ trip, totals, editable, previewOpen, onOpenSettings 
 
       <div className="two-col">
         <div>
-          <div className="card">
-            <h3>Cost per day</h3>
+          <Surface className="card bud-panel">
+            <h3 className="bud-card-title">Cost per day</h3>
             <p className="hint-text bud-card-lead">
               Day expenses + that day’s drive{avg > 0 && <> · <span className="avg-key" aria-hidden /> tick = daily average ({formatInr(avg)})</>}{avg > 0 && <> · <span className="daybar-over" aria-hidden>▲</span> = over the average</>}
             </p>
@@ -319,10 +321,10 @@ export function BudgetTab({ trip, totals, editable, previewOpen, onOpenSettings 
                 Day {overAvg.dayIndex + 1} runs {Math.round(((overAvg.totalInr - avg) / avg) * 100)}% over the daily average — trim an optional line or shorten the drive.
               </p>
             )}
-          </div>
+          </Surface>
 
-          <div className="card">
-            <h3>Where the money goes</h3>
+          <Surface className="card bud-panel">
+            <h3 className="bud-card-title">Where the money goes</h3>
             <p className="hint-text bud-card-lead">
               {A.kmPerLiter
                 ? <>All figures are estimates in INR. Transport is fuel-based: route distance{isRoundTrip(trip) ? ' (incl. return drive)' : ''} ≈{Math.round(totals.totalDistanceKm)} km ÷ {A.kmPerLiter} km/L ≈ <b>{Math.round(totals.totalDistanceKm / A.kmPerLiter)} L</b> of fuel × ₹{A.fuelPricePerL}/L ({A.fuelPriceIsUserSet ? 'your local pump price' : 'indicative petrol price — actual consumption varies'}).</>
@@ -351,30 +353,39 @@ export function BudgetTab({ trip, totals, editable, previewOpen, onOpenSettings 
                 )
               })}
             </div>
-          </div>
+          </Surface>
 
-          <div className="card">
+          <Surface className="card bud-panel">
             <div className="row-between">
-              <h3>Expense lines{expensesRead === 'ready' && trip.expenses.length > 0 ? ` · ${trip.expenses.length}` : ''}</h3>
+              <h3 className="bud-card-title">Expense lines{expensesRead === 'ready' && trip.expenses.length > 0 ? ` · ${trip.expenses.length}` : ''}</h3>
             </div>
             <hr className="divider" />
             {/* #383: the three states, in the order that makes the bug
                 impossible — the failure branch first (it is the only one that
                 offers a way back), then loading, and only then the genuine
                 empty copy. Branching data-only on a slice that can fail is
-                what printed the friendly empty copy over a dropped connection. */}
+                what printed the friendly empty copy over a dropped connection.
+                Each is its own compact block (R22), so the roles are the shared
+                ones: a failed read is an alert, a pending read is a status. */}
             {expensesRead !== 'ready' ? (
               expensesRead === 'failed' ? (() => {
                 const copy = emptyCopyFor('failed', 'expenses', retryExpenses)
                 return (
-                  <EmptyState title={copy.title} body={copy.body}
-                    action={<button className="btn btn-primary" onClick={retryExpenses}>Try again</button>} />
+                  <div className="bud-state">
+                    <StateBlock kind="failed" size="compact" title={copy.title} body={copy.body}
+                      actions={<button className="btn btn-primary btn-sm" onClick={retryExpenses}>Try again</button>} />
+                  </div>
                 )
               })() : (
-                <div className="loading-block"><div className="spinner" />Loading expenses…</div>
+                <div className="bud-state">
+                  <StateBlock kind="loading" size="compact" title="Loading expenses…" />
+                </div>
               )
             ) : trip.expenses.length === 0 ? (
-              <p className="muted small">No expense lines yet — add the big ones first (stay, fuel, food).</p>
+              <div className="bud-state">
+                <StateBlock kind="empty" size="compact" title="No expense lines yet"
+                  body="Add the big ones first (stay, fuel, food)." />
+              </div>
             ) : (
                 <table className="compare-table expense-table" tabIndex={0} aria-label="Expense lines">
                   <thead><tr><th>Line</th><th>Paid by</th><th className="num">Amount</th><th><span className="sr-only">Actions</span></th></tr></thead>
@@ -430,7 +441,7 @@ export function BudgetTab({ trip, totals, editable, previewOpen, onOpenSettings 
             <p className="hint-text bud-hint-note">
               Amounts are group totals unless marked per person. Tag who paid to settle up below.
             </p>
-          </div>
+          </Surface>
         </div>
 
         <div>
@@ -471,8 +482,8 @@ export function BudgetTab({ trip, totals, editable, previewOpen, onOpenSettings 
           </div>
 
           {trip.travellers >= 2 && (
-            <div className="card bud-crew-card">
-              <h3>Who paid · who owes</h3>
+            <Surface className="card bud-crew-card bud-panel">
+              <h3 className="bud-card-title">Who paid · who owes</h3>
               {/* #383: the balances read the same list the ledger does — one
                   status, both consumers. A failed read must not print as a
                   settled-up crew or an empty split. */}
@@ -480,11 +491,15 @@ export function BudgetTab({ trip, totals, editable, previewOpen, onOpenSettings 
                 expensesRead === 'failed' ? (() => {
                   const copy = emptyCopyFor('failed', 'expense lines', retryExpenses)
                   return (
-                    <EmptyState title={copy.title} body={copy.body}
-                      action={<button className="btn btn-primary btn-sm" onClick={retryExpenses}>Try again</button>} />
+                    <div className="bud-state">
+                      <StateBlock kind="failed" size="compact" title={copy.title} body={copy.body}
+                        actions={<button className="btn btn-primary btn-sm" onClick={retryExpenses}>Try again</button>} />
+                    </div>
                   )
                 })() : (
-                  <div className="loading-block"><div className="spinner" />Loading expense lines…</div>
+                  <div className="bud-state">
+                    <StateBlock kind="loading" size="compact" title="Loading expense lines…" />
+                  </div>
                 )
               )}
               {expensesRead === 'ready' && (members.length < 2
@@ -585,11 +600,14 @@ export function BudgetTab({ trip, totals, editable, previewOpen, onOpenSettings 
                       </>
                     )}
                   </>)}
-            </div>
+            </Surface>
           )}
 
-          <div className="card" style={{ marginTop: trip.travellers >= 2 ? 14 : 0 }}>
-            <h3>Essential vs optional</h3>
+          {/* The offset between the two right-hand cards follows the crew card:
+              R4 does not apply to it (the two steps are fixed, not measured),
+              so the step is a class and the condition stays in the markup. */}
+          <Surface className={`card bud-panel${trip.travellers >= 2 ? ' bud-panel-gap' : ''}`}>
+            <h3 className="bud-card-title">Essential vs optional</h3>
             <hr className="divider" />
             <div className="budget-bars" ref={optionalBarsRef} data-motion-paused={!visible || !optionalInView}>
               <div className="budget-bar-row">
@@ -625,7 +643,7 @@ export function BudgetTab({ trip, totals, editable, previewOpen, onOpenSettings 
                 </p>
               )
             })()}
-          </div>
+          </Surface>
         </div>
       </div>
     </div>
