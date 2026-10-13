@@ -29,6 +29,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - **The Purchases page blocks rise once, with the page, and not twice.** The page entrance now owns the state, note and footer blocks. Each block no longer adds its own entrance on top of it. A list row inside a list keeps its own entrance, because the page entrance reaches a page's direct children only.
 - **The Budget tab's fixed layout values and two bar colours now come from CSS classes, not inline styles.** Values that come from the trip, such as bar widths and category colours, stay inline. The values are the same as before.
 - **The Group input tab looks the same, with its styles kept in named classes.** Most inline style attributes on the tab now use named classes, and every value is unchanged. Two inline styles stay on purpose. One sets the width and colour of the consensus bar from the votes. The other sets the top margin of the accept and decline row.
+- **The creator hub reads like the catalog pages.** The hub has the shared serif header, tablist sections, surface panels, card titles and compact state notes.
 
 ### Fixed
 
