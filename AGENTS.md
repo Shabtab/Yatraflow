@@ -26,11 +26,11 @@ Prune entries that stop being true.
 ## 1. What this project is
 
 YatraFlow — collaborative India trip-planning app. React 18 + Vite 8 +
-TypeScript, Supabase (auth + data), MapLibre GL maps, hash-based routing,
+TypeScript, Supabase (auth + data), MapLibre GL maps, web paths and search since #426, hash in native and file builds,
 deployed on Vercel from `main`. No bookings — planning plus paid itinerary unlocks.
 
 Key locations:
-- `src/App.tsx` — app shell: hash routes, nav (hamburger ≤720px), theme, notifications
+- `src/App.tsx` — app shell: routes, nav (hamburger ≤720px), theme, notifications; links must use `appLink(path)` from `src/lib/appLink.ts`
 - `src/store/store.ts` — data layer (`useSyncExternalStore`) over Supabase
 - `src/lib/engine.ts` — pure planning engine (schedule, budget, breaks, warnings)
 - `src/lib/geocode.ts` — provider facade: Google-only suggestions when a key is configured, free stack as the keyless mode (see §5 directive)
