@@ -1092,7 +1092,7 @@ export function EarningsTab({ myPubs, sales, salesError, salesAt, salesReading, 
             need sales on the books. Kept is a failed refresh over an empty
             ledger. Empty is a read that succeeded with none. */
         ledgerView === 'reading' ? (
-          <div className="container loading-block"><div className="spinner" />Loading sales…</div>
+          <div className="container loading-block" role="status"><div className="spinner" />Loading sales…</div>
         ) : ledgerView === 'failed' ? (
           <>
             <div className="hub-note is-failure" role="alert">
