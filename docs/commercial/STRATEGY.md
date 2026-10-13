@@ -18,6 +18,8 @@ docs stay as reference for the detail they hold:
 
 Every number here has a source. Re-derive a number before you quote it. The probes are in §7.
 
+The [creator portfolio brainstorm](BRAINSTORM-2026-10-12-creator-portfolio.md) records source limits and proposals. `ROADMAP.md` remains the plan of record.
+
 ## 1. Where we stand
 
 The product is built far ahead of its demand. The gap is not features. It is time spent on
