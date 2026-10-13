@@ -780,7 +780,7 @@ describe('deferred account-owned reads', () => {
     }
   })
 
-  it.each(['trash', 'audit'] as const)('drops same-user %s results after a newer hydrate', async slice => {
+  it.each(['trash', 'audit'] as const)('lands same-user %s results after a newer hydrate', async slice => {
     const store = await signedInAdminStore()
     let release: () => void
     let pending: Promise<void>
@@ -800,22 +800,97 @@ describe('deferred account-owned reads', () => {
       state.tables = { ...state.tables, admin_audit: [auditRow('auditA', 'userA')] }
     }
     await refresh(store)
-    const settledTrashIds = store.getSnapshot().trashedTrips.map(row => row.id)
-    const settledAuditIds = store.getSnapshot().adminAudit.map(row => row.id)
-    const settledTrashFailed = store.getSnapshot().trashFailed
-    const settledAuditFailed = store.getSnapshot().adminAuditFailed
 
     release()
     await pending
 
     if (slice === 'trash') {
-      expect(store.getSnapshot().trashedTrips.map(row => row.id)).toEqual(settledTrashIds)
-      expect(store.getSnapshot().trashFailed).toBe(settledTrashFailed)
+      expect(store.getSnapshot().trashedTrips.map(row => row.id)).toEqual(['trashA-late'])
+      expect(store.getSnapshot().trashLoaded).toBe(true)
     } else {
-      expect(store.getSnapshot().adminAudit.map(row => row.id)).toEqual(settledAuditIds)
-      expect(store.getSnapshot().adminAuditFailed).toBe(settledAuditFailed)
+      expect(store.getSnapshot().adminAudit.map(row => row.id)).toEqual(['auditA-late'])
+      expect(store.getSnapshot().adminAuditFailed).toBe(false)
     }
   })
+
+  it('never lets late trash rows of the old account reach the new account state or snapshot', async () => {
+    const store = await signedInAdminStore()
+    state.rpcResponses['userA:get_trashed_trips'] = { data: [tripRow('trashA-late', 'userA')], error: null }
+    const releaseTrashA = gatedRpc('userA', 'get_trashed_trips')
+    const pendingTrashA = store.fetchTrashedTrips()
+    await flush()
+
+    // B hydrates behind a gate while A's trash read is still out.
+    state.tables = { ...rowsFor('tripB', 'userB'), admin_audit: [auditRow('auditB', 'userB')] }
+    state.activeUser = 'userB'
+    state.sessionUser = 'userB'
+    state.adminUser = 'userB'
+    const releaseB = gated('userB')
+    state.authHandler!('SIGNED_IN', {
+      user: { id: 'userB', app_metadata: { role: 'masteradmin' } },
+    })
+    await flush()
+
+    releaseTrashA()
+    await pendingTrashA
+    await flush()
+    expect(store.getSnapshot().trashedTrips).toEqual([])
+    expect(store.getSnapshot().trashLoaded).toBe(false)
+
+    releaseB()
+    await flush()
+
+    expect(store.getSnapshot().sessionUserId).toBe('userB')
+    expect(store.getSnapshot().trashedTrips.map(row => row.id)).not.toContain('trashA-late')
+    const snapshotsForB = state.savedSnapshots.filter(snapshot => snapshot.userId === 'userB')
+    expect(snapshotsForB.length).toBeGreaterThan(0)
+    for (const snapshot of snapshotsForB) {
+      expect(snapshot.trashedTripIds).not.toContain('trashA-late')
+    }
+  })
+
+  it.each(['trash', 'audit'] as const)(
+    'lands a same-user %s read that is still in flight when the same account signs in again',
+    async slice => {
+      const store = await signedInAdminStore()
+      let release: () => void
+      let pending: Promise<void>
+
+      if (slice === 'trash') {
+        state.rpcResponses['userA:get_trashed_trips'] = { data: [tripRow('trashA-late', 'userA')], error: null }
+        release = gatedRpc('userA', 'get_trashed_trips')
+        pending = store.fetchTrashedTrips()
+      } else {
+        state.tables = { ...state.tables, admin_audit: [auditRow('auditA-late', 'userA')] }
+        release = gatedQuery('userA', 'admin_audit')
+        pending = store.refreshAdminAuditNow()
+      }
+      await flush()
+
+      // A refocus sends SIGNED_IN for the same account while the read is out.
+      // Give the newer hydrate other audit rows, so the late read is visible when it lands.
+      if (slice === 'audit') {
+        state.tables = { ...state.tables, admin_audit: [auditRow('auditA', 'userA')] }
+      }
+      state.authHandler!('SIGNED_IN', {
+        user: { id: 'userA', app_metadata: { role: 'masteradmin' } },
+      })
+      await flush()
+
+      release()
+      await pending
+      await flush()
+
+      expect(store.getSnapshot().sessionUserId).toBe('userA')
+      if (slice === 'trash') {
+        expect(store.getSnapshot().trashedTrips.map(row => row.id)).toEqual(['trashA-late'])
+        expect(store.getSnapshot().trashLoaded).toBe(true)
+      } else {
+        expect(store.getSnapshot().adminAudit.map(row => row.id)).toEqual(['auditA-late'])
+        expect(store.getSnapshot().adminAuditFailed).toBe(false)
+      }
+    },
+  )
 
   it('clears old account rows before B hydration and omits them from B snapshots', async () => {
     const store = await signedInAdminStore()
