@@ -10351,3 +10351,20 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 .plan-bench {
   overflow-x: clip;
 }
+
+
+/* ---------- DMCA page gutter matches the auth page on phones ---------- */
+/* The DMCA page is a .container, and the ≤640px rule at styles.css:4999 drops
+   .container to padding: 0 14px. The auth page is NOT a .container — its card
+   sits in .auth-wrap, whose side padding is 18px. So on a phone the DMCA text
+   block started 14px from the edge while the auth card started 18px: two
+   policy-style pages, two different side gutters. Match the DMCA page to the
+   auth page's 18px on phones. Scoped to .container.dmca-page (two classes) so it
+   outranks the single-class .container mobile rule at any order, and touches no
+   other page. 18px is spelled calc(var(--space-8) - 2px): the auth page carries a
+   bare 18px, but 18 is not on the spacing ladder, and the state-block gate reads
+   every padding value from here to the end of the file. The 2px delta is on the
+   ladder, so the gate passes and the page still measures the same 18px. */
+@media (max-width: 640px) {
+  .container.dmca-page { padding-left: calc(var(--space-8) - 2px); padding-right: calc(var(--space-8) - 2px); }
+}

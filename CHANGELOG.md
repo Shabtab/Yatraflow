@@ -33,6 +33,8 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 ### Fixed
 
 - **The app icons show the Ribbon Y mark.** The PWA icons and the Apple touch icon carry the reversed mark on the Planning Teal tile.
+- **The copyright page now lines up with the log in page on a phone.** On a narrow screen the copyright text started 14px from the edge. The log in card started 18px. The two pages used different page wrappers with different side padding. The copyright page now uses the same 18px side padding as the log in page on phones.
+
 - **The home page no longer scrolls sideways.** Two decorative glow shapes in the hero and in the cost calculator sat past the right edge of the window. The page was wider than the window, so it scrolled to the side with no content there. Each shape now clips to its own section on the left-right axis. The clip does not make a scroll box, so the floating menu bar still sticks to the top. The shapes keep their soft top-bottom fade, so no hard line appears.
 
 - **A shared trip link now opens its page instead of a blank screen.** A shared snapshot address such as `/share/<payload>` loaded nothing. The browser asked for the app's script files at `/share/assets/…`. The server had no such path, so every request answered 404. The page stayed blank and the console filled with load errors. The same break hit every deep address, such as `/pub/<slug>` and `/trip/<id>`. The build now names its asset files from the site root, so they load on any address. `tests/build-base.test.ts` fails if the build returns to the broken form.
