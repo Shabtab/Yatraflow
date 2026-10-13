@@ -452,6 +452,24 @@ export function deriveLedgerRead(state: { hasFigures: boolean; reading: boolean;
   return state.error ? 'failed' : 'reading'
 }
 
+/** Which sales-ledger body the Earnings tab may show.
+ *
+ *  `deriveLedgerRead` answers ready, reading or failed. A ready ledger with
+ *  no rows is two states, not one. A refresh that failed over an empty
+ *  ledger reads as kept. The kept note stamps the read time, so the empty
+ *  copy stays hidden. `keptAt` carries that moment, and is null otherwise.
+ *
+ *  Order mirrors `rowsView`: a failed read is never empty, whatever else
+ *  holds. */
+export type SalesLedgerView = 'reading' | 'failed' | 'rows' | 'kept' | 'empty'
+
+export function salesLedgerView(input: { read: 'ready' | 'reading' | 'failed'; rows: number; keptAt: number | null }): SalesLedgerView {
+  if (input.read === 'reading') return 'reading'
+  if (input.read === 'failed') return 'failed'
+  if (input.rows > 0) return 'rows'
+  return input.keptAt !== null ? 'kept' : 'empty'
+}
+
 /**
  * Per-publication attribution over a ledger's rows — the breakdown a reader asks
  * for after a weekly one: not "what came in that week" but "WHICH PLAN sold".

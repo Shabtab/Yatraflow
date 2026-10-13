@@ -14,7 +14,7 @@
 //   - the Share tab mounts its publish form only after a read that succeeded.
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { rowsView, sliceState } from '../src/lib/readState'
+import { rowsView, sliceState, pubsPanel } from '../src/lib/readState'
 import { publishFormKey, publishFormMount } from '../src/lib/publishFormKey'
 
 // Source scans read LF text. They ignore comments, so prose cannot pass a check.
@@ -246,7 +246,7 @@ describe('#704 — the creator hub checks the list before it prints an empty ans
   })
 
   it('the loading and failed branches come before "Nothing published yet"', () => {
-    const gate = hub.indexOf("publishedView === 'reading' || publishedView === 'failed'")
+    const gate = hub.indexOf("pubsBody === 'unread'")
     const empty = hub.indexOf('Nothing published yet')
     expect(gate).toBeGreaterThan(-1)
     expect(empty).toBeGreaterThan(gate)
@@ -521,5 +521,65 @@ describe('#704 — the signed-in hydrate keeps the cached list on a failed read'
   it('keeps cache.published when the published read errors', () => {
     const store = codeOf(read('../src/store/store.ts'))
     expect(store).toMatch(/published: pubRes\.error \? cache\.published : dedupePublished\(pubRows\),/)
+  })
+})
+
+// ================= the panel body keys off the verdict =================
+
+describe('#704 — the publications panel keys its body off the verdict, never the raw list', () => {
+  const hub = codeOf(read('../src/pages/CreatorHubPage.tsx'))
+
+  it('a kept view selects the list even with no rows, so the kept note shows', () => {
+    // THE pin: kept with an empty list is the list with its kept note, never
+    // the empty copy.
+    expect(pubsPanel('kept')).toBe('list')
+    expect(pubsPanel('rows')).toBe('list')
+    expect(pubsPanel('empty')).toBe('empty')
+    expect(pubsPanel('failed')).toBe('unread')
+    expect(pubsPanel('reading')).toBe('unread')
+  })
+
+  it('the panel branches on the helper, and the empty copy needs view empty', () => {
+    expect(hub).toMatch(/const pubsBody = pubsPanel\(publishedView\)/)
+    expect(hub).toMatch(/pubsBody === 'empty' \? \(/)
+    expect(hub).not.toMatch(/myPubs\.length === 0 \? \(/)
+  })
+})
+
+// ================= the behind count reads the trips verdict =================
+
+describe('#704 — the hub states the trips read behind its Live and Behind counts', () => {
+  const hub = codeOf(read('../src/pages/CreatorHubPage.tsx'))
+
+  it('reads the trips slice through the shared rule, beside the publications', () => {
+    expect(hub).toMatch(/sliceState\(db\.sliceReads, 'trips'\)/)
+    expect(hub).toMatch(/rowsView\(tripsRead, myPubs\.filter\(p => tripById\(p\.tripId\)\)\.length\)/)
+  })
+
+  it('retries the trips read itself, and shows that it is in flight', () => {
+    // The public re-read never touches the trips tables, so the trips retry
+    // re-issues its own read — mirroring retryPublished above it.
+    expect(hub).toMatch(/void rereadTrips\(\)\.finally\(\(\) => \{ setTripsRetrying\(false\) \}\)/)
+    expect(hub).toContain("{tripsRetrying ? 'Trying…' : 'Try again'}")
+  })
+
+  it('the Live and Behind tiles stay unread while the trips are', () => {
+    // The published prefix is untouched: the trips gate rides behind it, so a
+    // failed publications read still reports through its own verdict first.
+    expect(hub).toContain('unknownPubs ? <UnreadFigure view={publishedView} /> : tripsKnown ? <span className="stat-value hub-cell-value">{liveCount}</span> : <UnreadFigure view={tripsView} />')
+    expect(hub).toContain('unknownPubs ? <UnreadFigure view={publishedView} /> : tripsKnown ? <span className="stat-value hub-cell-value">{staleCount')
+    expect(hub).toContain('{!unknownPubs && tripsKnown && (')
+    expect(hub).toMatch(/const tripsKnown = tripsView !== 'failed' && tripsView !== 'reading'/)
+  })
+
+  it('a row with no trip behind it prints no status instead of Live', () => {
+    // Unpublished needs no trip, so its chip stays: the rest wait for the
+    // trips read rather than print Live over an unread list.
+    expect(hub).toContain("tripsKnown || status.key === 'unpublished' ? <Chip tone={status.tone}>{status.label}</Chip> : null")
+  })
+
+  it('a failed trips read is an alert with Try again, a kept one a status', () => {
+    expect(hub).toContain('Couldn’t load your trips.')
+    expect(hub).toContain('Couldn’t refresh your trips.')
   })
 })
