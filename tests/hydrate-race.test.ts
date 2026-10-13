@@ -892,6 +892,45 @@ describe('deferred account-owned reads', () => {
     },
   )
 
+  it.each(['trash', 'audit'] as const)(
+    'drops a %s read that began before logout() when the same account signs in again',
+    async slice => {
+      const store = await signedInAdminStore()
+      let release: () => void
+      let pending: Promise<void>
+
+      if (slice === 'trash') {
+        state.rpcResponses['userA:get_trashed_trips'] = { data: [tripRow('trashA-late', 'userA')], error: null }
+        release = gatedRpc('userA', 'get_trashed_trips')
+        pending = store.fetchTrashedTrips()
+      } else {
+        state.tables = { ...state.tables, admin_audit: [auditRow('auditA-late', 'userA')] }
+        release = gatedQuery('userA', 'admin_audit')
+        pending = store.refreshAdminAuditNow()
+      }
+      await flush()
+
+      // logout() runs, then the same account signs in again. Here sessionUserId is
+      // userA again, so only the identity epoch can tell the old read from a new one.
+      await store.logout()
+      state.activeUser = 'userA'
+      state.sessionUser = 'userA'
+      state.adminUser = 'userA'
+      state.tables = { ...state.tables, admin_audit: [auditRow('auditA', 'userA')] }
+      state.authHandler!('SIGNED_IN', {
+        user: { id: 'userA', app_metadata: { role: 'masteradmin' } },
+      })
+      await flush()
+
+      release()
+      await pending
+      await flush()
+
+      expect(store.getSnapshot().trashedTrips.map(row => row.id)).not.toContain('trashA-late')
+      expect(store.getSnapshot().adminAudit.map(row => row.id)).not.toContain('auditA-late')
+    },
+  )
+
   it('clears old account rows before B hydration and omits them from B snapshots', async () => {
     const store = await signedInAdminStore()
     state.rpcResponses['userA:get_trashed_trips'] = {
