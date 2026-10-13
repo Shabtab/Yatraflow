@@ -3,8 +3,9 @@
 // server serves index.html at a nested URL. Vite's `base` decides whether the
 // built script/link tags are root-absolute (/assets/...) or relative (./assets/...).
 // A relative base resolves against the current path: on /share/<payload> every
-// chunk request becomes /share/assets/..., a 404, so the SPA never boots and the
-// page renders blank. A build opened from disk (file://), or
+// chunk request becomes /share/assets/..., which vercel.json's catch-all answers
+// with index.html, so the browser refuses the module (wrong MIME type), the SPA
+// never boots and the page renders blank. A build opened from disk (file://), or
 // one that addresses routes through the hash off http(s) like the native shell,
 // cannot resolve a root-absolute path and needs the relative base. `base` is
 // chosen by resolveBase(VITE_BUILD_TARGET): '/' for the web build (the default),

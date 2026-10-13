@@ -116,8 +116,9 @@ export default defineConfig(({ mode }) => {
     // routes by PATH on the web (/share/<payload>, /pub/<slug>, /trip/<id> …), so
     // index.html is served at a nested URL. A relative base emits `./assets/…`
     // script tags, which the browser resolves against the current path — on
-    // /share/<payload> that becomes /share/assets/…, a 404 for every chunk, so the
-    // SPA never boots. A root base keeps every asset URL
+    // /share/<payload> that becomes /share/assets/…, which vercel.json's
+    // catch-all answers with index.html, so the browser refuses the module (wrong
+    // MIME type) and the SPA never boots. A root base keeps every asset URL
     // absolute (/assets/…), which also matches the root-registered service worker
     // (/sw.js) and Capacitor's default https://localhost scheme.
     //
