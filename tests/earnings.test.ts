@@ -242,10 +242,9 @@ describe('the hub reads the ledger as written (I-9/I-10/I-13)', () => {
     // The first interrupts because nothing is on screen yet; the second announces a
     // change without stealing anything, because there are figures the reader can
     // keep using — which is also the line ui.tsx draws (assertive alerts,
-    // polite field errors).
-    const lines = hub.split('\n')
-    const overviewAlert = lines.findIndex(line => line.includes('role="alert"'))
-    expect(overviewAlert).toBeGreaterThan(-1)
+    // polite field errors). Failed states render as StateBlock kind="failed",
+    // which announces the alert; kept ones keep a status.
+    expect(hub).toContain('kind="failed"')
     expect(hub).toContain('role="status"')
   })
 
