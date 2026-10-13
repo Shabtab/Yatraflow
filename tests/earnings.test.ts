@@ -3,7 +3,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import {
-  projectEarnings, deriveActualSales, deriveLedgerRead, payoutStatus, payoutPeriods, payoutPeriodStatus, payoutWalk, revenuePeriods, nextPayoutRun,
+  projectEarnings, deriveActualSales, deriveLedgerRead, salesLedgerView, payoutStatus, payoutPeriods, payoutPeriodStatus, payoutWalk, revenuePeriods, nextPayoutRun,
   feeForSliceInr, platformFeeInr, netOfFeeInr, attributeFeesInr,
   PLATFORM_FEE_TIERS, PAYOUT_MINIMUM_INR, PAYOUT_WEEKDAY,
 } from '../src/lib/earnings'
@@ -694,5 +694,47 @@ describe('the projection strip names its denominator (#586)', () => {
     // Conditional: the reader of an all-live hub sees no permanent caveat.
     expect(hub).toMatch(/projectedUnpublished > 0 &&/)
     expect(hub).toMatch(/plans here are unpublished/)
+  })
+})
+
+// ---- The sales-ledger body: a failed read is never the empty copy ---------
+// A refresh that fails over an empty ledger used to print "No sales yet"
+// beside the failure note. That case is kept: the kept note shows, and the
+// empty copy does not. The order below is the fix, so pin it.
+describe('salesLedgerView — a failed sales read never renders the empty copy', () => {
+  it('reads a failed attempt with nothing loaded as failed', () => {
+    // THE pin: failed owns Retry, so it must never resolve to the empty copy.
+    expect(salesLedgerView({ read: 'failed', rows: 0, keptAt: null })).toBe('failed')
+    expect(salesLedgerView({ read: 'failed', rows: 0, keptAt: 1_700_000_000_000 })).toBe('failed')
+  })
+
+  it('reads a failed refresh over an empty ledger as kept, not empty', () => {
+    // The edge: a success stamped an empty ledger, then a refresh failed. The
+    // kept note carries that stamp, so the empty copy stays hidden.
+    expect(salesLedgerView({ read: 'ready', rows: 0, keptAt: 1_700_000_000_000 })).toBe('kept')
+  })
+
+  it('reads a ready ledger with sales as rows, and a fresh empty read as empty', () => {
+    expect(salesLedgerView({ read: 'ready', rows: 3, keptAt: null })).toBe('rows')
+    expect(salesLedgerView({ read: 'ready', rows: 3, keptAt: 1_700_000_000_000 })).toBe('rows')
+    expect(salesLedgerView({ read: 'ready', rows: 0, keptAt: null })).toBe('empty')
+  })
+
+  it('reads an in-flight attempt as reading, whatever else holds', () => {
+    expect(salesLedgerView({ read: 'reading', rows: 0, keptAt: null })).toBe('reading')
+    expect(salesLedgerView({ read: 'reading', rows: 3, keptAt: 1_700_000_000_000 })).toBe('reading')
+  })
+
+  it('the empty copy is gated on the helper, so a kept ledger cannot reach it', () => {
+    // The hub needs a creator account to render, which a node test cannot
+    // supply, so the wiring is pinned at the source like the cases above.
+    const hub = readFileSync(new URL('../src/pages/CreatorHubPage.tsx', import.meta.url), 'utf8')
+    expect(hub).toMatch(/const ledgerView = salesLedgerView\(\{ read: ledgerRead, rows: actual\?\.rows\.length \?\? 0, keptAt: ledgerKeptAt \}\)/)
+    expect(hub).toMatch(/ledgerView === 'kept' && ledgerKeptAt !== null \? \(/)
+    // The empty copy renders only for the helper's own 'empty': the helper
+    // resolves kept first, so no branch order can leak a kept ledger into it.
+    // The old predicate (empty OR nothing loaded) is gone with it.
+    expect(hub).toMatch(/ledgerView === 'empty' \? \(/)
+    expect(hub).not.toMatch(/!actual \|\| actual\.rows\.length === 0/)
   })
 })

@@ -523,3 +523,41 @@ describe('#704 — the signed-in hydrate keeps the cached list on a failed read'
     expect(store).toMatch(/published: pubRes\.error \? cache\.published : dedupePublished\(pubRows\),/)
   })
 })
+
+// ================= the behind count reads the trips verdict =================
+
+describe('#704 — the hub states the trips read behind its Live and Behind counts', () => {
+  const hub = codeOf(read('../src/pages/CreatorHubPage.tsx'))
+
+  it('reads the trips slice through the shared rule, beside the publications', () => {
+    expect(hub).toMatch(/sliceState\(db\.sliceReads, 'trips'\)/)
+    expect(hub).toMatch(/rowsView\(tripsRead, myPubs\.filter\(p => tripById\(p\.tripId\)\)\.length\)/)
+  })
+
+  it('retries the trips read itself, and shows that it is in flight', () => {
+    // The public re-read never touches the trips tables, so the trips retry
+    // re-issues its own read — mirroring retryPublished above it.
+    expect(hub).toMatch(/void rereadTrips\(\)\.finally\(\(\) => \{ setTripsRetrying\(false\) \}\)/)
+    expect(hub).toContain("{tripsRetrying ? 'Trying…' : 'Try again'}")
+  })
+
+  it('the Live and Behind tiles stay unread while the trips are', () => {
+    // The published prefix is untouched: the trips gate rides behind it, so a
+    // failed publications read still reports through its own verdict first.
+    expect(hub).toContain('unknownPubs ? <UnreadFigure view={publishedView} /> : tripsKnown ? <span className="stat-value hub-cell-value">{liveCount}</span> : <UnreadFigure view={tripsView} />')
+    expect(hub).toContain('unknownPubs ? <UnreadFigure view={publishedView} /> : tripsKnown ? <span className="stat-value hub-cell-value">{staleCount')
+    expect(hub).toContain('{!unknownPubs && tripsKnown && (')
+    expect(hub).toMatch(/const tripsKnown = tripsView !== 'failed' && tripsView !== 'reading'/)
+  })
+
+  it('a row with no trip behind it prints no status instead of Live', () => {
+    // Unpublished needs no trip, so its chip stays: the rest wait for the
+    // trips read rather than print Live over an unread list.
+    expect(hub).toContain("tripsKnown || status.key === 'unpublished' ? <Chip tone={status.tone}>{status.label}</Chip> : null")
+  })
+
+  it('a failed trips read is an alert with Try again, a kept one a status', () => {
+    expect(hub).toContain('Couldn’t load your trips.')
+    expect(hub).toContain('Couldn’t refresh your trips.')
+  })
+})
