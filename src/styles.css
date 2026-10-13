@@ -10611,7 +10611,8 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 
 @media (prefers-reduced-motion: reduce) {
   .yf-surface.tsx-card { animation: none; }
-=======
+}
+
 /* ===== P12: Timeline and Map states ===== */
 /* The map's "no confirmed stops" state moves onto the shared StateBlock, so it
    carries the shared role for an empty read and the shared compact skin. The
