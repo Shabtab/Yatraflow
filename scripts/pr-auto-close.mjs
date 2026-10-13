@@ -71,6 +71,26 @@ export function buildComment(prNumber, mergeSha) {
   ].join('\n')
 }
 
+// Every request waits at most this long (#655): a request that never answers
+// must fail the run, not hold the job until the runner gives up. Same bound as
+// scripts/checkMigrations.mjs's per-request default.
+const REQUEST_TIMEOUT_MS = 15_000
+
+/** One bounded request. A timeout becomes an ETIMEDOUT error that names its
+ *  stage, so the caller can skip that one issue and keep the rest of the run. */
+async function fetchBounded(stage, url, options) {
+  try {
+    return await fetch(url, { ...options, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) })
+  } catch (e) {
+    if (e?.name === 'TimeoutError') {
+      const err = new Error(`${stage} timed out after ${REQUEST_TIMEOUT_MS}ms`)
+      err.code = 'ETIMEDOUT'
+      throw err
+    }
+    throw e
+  }
+}
+
 async function main() {
   const token = process.env.GITHUB_TOKEN
   const repo = process.env.GITHUB_REPOSITORY
@@ -101,36 +121,46 @@ async function main() {
   }
   const sha = pr.merge_commit_sha ?? 'unknown'
   for (const n of refs) {
-    const lookup = await fetch(`${base}/issues/${n}`, { headers })
-    if (lookup.status === 404) { console.log(`issue-autoclose: #${n} not found — skipping`); continue }
-    if (!lookup.ok) {
-      console.error(`issue-autoclose: #${n} lookup failed — HTTP ${lookup.status}`)
+    // One issue's timeout must not stop the other issues (#655): the catch
+    // below marks the run failed, skips this issue, and the loop moves on.
+    try {
+      const lookup = await fetchBounded('lookup', `${base}/issues/${n}`, { headers })
+      if (lookup.status === 404) { console.log(`issue-autoclose: #${n} not found — skipping`); continue }
+      if (!lookup.ok) {
+        console.error(`issue-autoclose: #${n} lookup failed — HTTP ${lookup.status}`)
+        process.exitCode = 1
+        continue
+      }
+      const issue = await lookup.json()
+      if (issue.pull_request) { console.log(`issue-autoclose: #${n} is a pull request — skipping`); continue }
+      if (issue.state === 'closed') { console.log(`issue-autoclose: #${n} already closed — skipping`); continue }
+      const comment = await fetchBounded('comment', `${base}/issues/${n}/comments`, {
+        method: 'POST', headers, body: JSON.stringify({ body: buildComment(pr.number, sha) }),
+      })
+      if (!comment.ok) {
+        console.error(`issue-autoclose: #${n} comment failed — HTTP ${comment.status}`)
+        process.exitCode = 1
+        continue
+      }
+      const close = await fetchBounded('close', `${base}/issues/${n}`, {
+        method: 'PATCH', headers, body: JSON.stringify({ state: 'closed' }),
+      })
+      if (!close.ok) {
+        console.error(`issue-autoclose: #${n} close failed — HTTP ${close.status}`)
+        process.exitCode = 1
+        continue
+      }
+      console.log(`issue-autoclose: #${n} closed via PR #${pr.number}`)
+    } catch (e) {
+      if (e?.code !== 'ETIMEDOUT') throw e
+      console.error(`issue-autoclose: #${n} ${e.message} — skipping this issue; the run continues`)
       process.exitCode = 1
-      continue
     }
-    const issue = await lookup.json()
-    if (issue.pull_request) { console.log(`issue-autoclose: #${n} is a pull request — skipping`); continue }
-    if (issue.state === 'closed') { console.log(`issue-autoclose: #${n} already closed — skipping`); continue }
-    const comment = await fetch(`${base}/issues/${n}/comments`, {
-      method: 'POST', headers, body: JSON.stringify({ body: buildComment(pr.number, sha) }),
-    })
-    if (!comment.ok) {
-      console.error(`issue-autoclose: #${n} comment failed — HTTP ${comment.status}`)
-      process.exitCode = 1
-      continue
-    }
-    const close = await fetch(`${base}/issues/${n}`, {
-      method: 'PATCH', headers, body: JSON.stringify({ state: 'closed' }),
-    })
-    if (!close.ok) {
-      console.error(`issue-autoclose: #${n} close failed — HTTP ${close.status}`)
-      process.exitCode = 1
-      continue
-    }
-    console.log(`issue-autoclose: #${n} closed via PR #${pr.number}`)
   }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main().catch(e => { console.error('issue-autoclose:', e); process.exit(1) })
+  // exitCode, not process.exit: a direct exit can truncate this very message
+  // on Windows while the write is still queued (#656).
+  main().catch(e => { console.error('issue-autoclose:', e); process.exitCode = 1 })
 }

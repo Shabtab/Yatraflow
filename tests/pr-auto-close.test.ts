@@ -4,6 +4,7 @@
 // for `test` — these fixtures pin it to GitHub's keyword grammar plus this
 // repo's claim spellings, so a future tweak can neither miss a real reference
 // nor close a stray one.
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { buildComment, parseClosingIssueRefs, stripCode } from '../scripts/pr-auto-close.mjs'
 
@@ -99,5 +100,33 @@ describe('buildComment', () => {
     expect(c).toContain('DEFAULT branch')
     expect(c).toContain('work claim')
     expect(c).toContain('Reopen')
+  })
+})
+
+// #655: every request in the mirror carries a bounded wait, so a request that
+// never answers fails the run instead of holding the job until the runner
+// gives up. The pin reads the script's SOURCE, so a later request must route
+// through the bound too — adding a raw request fails this file.
+describe('bounded requests — scripts/pr-auto-close.mjs (#655)', () => {
+  const src = readFileSync(new URL('../scripts/pr-auto-close.mjs', import.meta.url), 'utf8')
+
+  it('reaches the network through one bounded helper, and nowhere else', () => {
+    const rawCalls = src.match(/(?<![A-Za-z])fetch\s*\(/g) ?? []
+    expect(rawCalls.length).toBe(1) // only the helper itself opens a request
+    expect(src).toContain('signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)')
+    expect(src).toMatch(/const REQUEST_TIMEOUT_MS\s*=\s*[1-9][0-9_]*\s*$/m)
+  })
+
+  it('routes every request through the bound', () => {
+    const helperCalls = src.match(/fetchBounded\(/g) ?? []
+    // Three requests — lookup, comment, close — plus the helper's own
+    // declaration. A fourth request that bypasses the bound fails this count.
+    expect(helperCalls.length).toBe(4)
+  })
+
+  it('fails a timed-out issue with a message, without stopping the run', () => {
+    expect(src).toContain("if (e?.code !== 'ETIMEDOUT') throw e")
+    expect(src).toContain('skipping this issue; the run continues')
+    expect(src).toContain('process.exitCode = 1')
   })
 })
