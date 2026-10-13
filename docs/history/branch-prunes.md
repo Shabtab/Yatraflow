@@ -379,9 +379,9 @@ Kept, unchanged: `refactor/brand-seam` and `explore/landing-hero-local` (no PR h
 the branch is the only copy), `feat/share-preview-og` (closed as superseded), and the two `cline`
 heads that fail the ancestor gate (`g9wfhxqs`, `n478z8sr`).
 
-## 2026-10-13 — the consistency-wave sweep: 14 refs
+## 2026-10-13 — the consistency-wave sweep: 13 refs
 
-Forty remote heads had accumulated. This sweep removed the fourteen whose work was already in the
+Forty remote heads had accumulated. This sweep removed the thirteen whose work was already in the
 integration branch. Each was verified with GitHub's compare API immediately before deletion.
 `test...<branch>` answered `behind`, so every commit was reachable from `test`. No branch had an
 open PR, and every `refs/pull/<n>/head` resolved as the recovery path.
@@ -405,20 +405,29 @@ present locally to test. `test` was `b1b53a4` and `main` `c9f917f` when the gate
 | `fix/store-kept-decisions-activity` | `57dd0f01f9e9a8963d8ec5906ead33781a2c5d2b` | #738 |
 | `fix/store-kept-users-notifications` | `4942665175356842d3fa57cbc9eedfa962798e46` | #747 |
 | `fix/store-late-response-guard-epoch` | `05e158e5f9448cdce061bb0d832829165385ebae` | #744 |
-| `release/v0.76.0` | `1cc9bf1918c4ac08521e12d87be6fdec3efdef62` | #722 |
 
-Only `release/v0.76.0` was also an ancestor of `main`. The other thirteen are ancestors of `test`
-alone. `main` still lacks the 109 commits that `test` carries, so that is expected. The earlier
-sweeps waited for a promotion. This one did not. It follows the 2026-09-25 Wave 0/1 precedent,
-which pruned against `origin/test` directly. Remote heads went **40 → 26**.
+All thirteen are ancestors of `test` alone. `main` still lacks the 109 commits that `test`
+carries, so that is expected. The earlier sweeps waited for a promotion. This one did not. It
+follows the 2026-09-25 Wave 0/1 precedent, which pruned against `origin/test` directly. Remote
+heads went **40 → 28**.
 
+### `release/v0.76.0` came back the same session
+
+The sweep deleted `release/v0.76.0` first. It went back minutes later, at the same SHA. Rule 6aj
+of `CODING_STANDARDS.md` says: "You must keep a `release/*` ref, because this repo tags no
+release." That still holds here. v0.76.0 carries no tag, and the newest tag is `v0.75.0`.
+
+The ancestor gate had passed it, and every commit on it is in `main`. But the rule is about the
+release marker, not about lost content. So the rule won, and the ref is back.
 
 ### Held back, and why
 
-Twenty-four heads stayed. Four have an open PR, and the rest fail the ancestor gate.
+Twenty-five heads stayed. Four have an open PR, one came back, and the rest fail the ancestor
+gate.
 
 | Branch | PR | Why it stayed |
 |---|---|---|
+| `release/v0.76.0` | #722 | Deleted, then restored: rule 6aj keeps a `release/*` ref while the release is untagged |
 | `chore/repo-hygiene` | #752 | PR open |
 | `cline/55k023ca` | #751 | PR open |
 | `fix/652-655-656-script-hardening` | #750 | PR open |
