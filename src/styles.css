@@ -10552,6 +10552,8 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 @media (prefers-reduced-motion: reduce) {
   .bud-state { animation: none; }
   .budget-bar-fill, .daybar-fill { transition: none; }
+}
+
 /* ===== P12: Trip settings tab ===== */
 /* The settings panels render through the shared Surface, so the card skin is
    restated as a same-element compound (R5). It wins over the tab's own card
