@@ -21,6 +21,7 @@ const { state } = vi.hoisted(() => ({
     rejects: {} as Record<string, unknown>,
     adminUser: null as string | null,
     queriedTables: [] as string[],
+    channelNames: [] as string[],
     /** Gate per user id; a builder captures the gate of whoever is active when
      *  the query is issued, letting a specific account's hydrate be released late. */
     gates: {} as Record<string, Promise<void>>,
@@ -84,7 +85,7 @@ vi.mock('../src/lib/supabase', () => {
     isSupabaseConfigured: true,
     supabase: {
       from: (t: string) => makeBuilder(t),
-      channel: () => chain,
+      channel: (name: string) => { state.channelNames.push(name); return chain },
       removeChannel: () => Promise.resolve(),
       auth: {
         getSession: () =>
@@ -147,6 +148,25 @@ function rowsFor(tripId: string, userId: string) {
     trip_members: [memberRow(tripId, userId)],
     trips: [tripRow(tripId, userId)],
   }
+}
+
+function profileRow(id: string) {
+  return {
+    id, email: `${id}@example.test`, created_at: 1, name: id,
+    languages: ['en'], travel_styles: ['balanced'], is_creator: false,
+  }
+}
+
+function suggestionRow(id: string, tripId: string, userId: string) {
+  return {
+    id, trip_id: tripId, day_index: 0, proposed_by: userId, title: `Idea ${id}`,
+    category: 'sightseeing', location_name: 'Fort', lat: 10, lng: 76,
+    description: '', visit_minutes: 30, votes: [], comments: [], status: 'open', created_at: 1,
+  }
+}
+
+function notificationRow(id: string, tripId: string, userId: string) {
+  return { id, trip_id: tripId, user_id: userId, text: `Notice ${id}`, read: false, at: 1 }
 }
 
 function decisionRow(id: string, tripId: string, userId: string) {
@@ -225,6 +245,7 @@ beforeEach(() => {
   state.rejects = {}
   state.adminUser = null
   state.queriedTables = []
+  state.channelNames = []
   state.gates = {}
   state.queryGates = {}
   state.rpcGates = {}
@@ -480,6 +501,196 @@ describe('decision and activity hydration', () => {
     expect(store.getSnapshot().activity).toEqual([])
     expect(store.getSnapshot().sliceReads.decisions).toBe('failed')
     expect(store.getSnapshot().sliceReads.activity).toBe('failed')
+  })
+})
+
+describe('profile, suggestion, and notification hydration', () => {
+  it('keeps same-user rows after failed reads and clears rows after successful empty reads', async () => {
+    const store = await freshStore()
+    state.tables = {
+      ...rowsFor('tripA', 'userA'),
+      profiles: [profileRow('userA')],
+      suggestions: [suggestionRow('suggestionA', 'tripA', 'userA')],
+      notifications: [notificationRow('notificationA', 'tripA', 'userA')],
+    }
+    state.activeUser = 'userA'
+    state.sessionUser = 'userA'
+    store.init()
+    state.resolveSession!()
+    await flush()
+
+    state.errors = {
+      profiles: new Error('profiles unavailable'),
+      suggestions: new Error('suggestions unavailable'),
+      notifications: new Error('notifications unavailable'),
+    }
+    state.tables = { ...state.tables, profiles: [], suggestions: [], notifications: [] }
+    await refresh(store)
+
+    expect(store.getSnapshot().users.map(row => row.id)).toEqual(['userA'])
+    expect(store.getSnapshot().suggestions.map(row => row.id)).toEqual(['suggestionA'])
+    expect(store.getSnapshot().notifications.map(row => row.id)).toEqual(['notificationA'])
+    expect(store.currentUser(store.getSnapshot())?.id).toBe('userA')
+    expect(store.getSnapshot().sliceReads.profiles).toBe('failed')
+    expect(store.getSnapshot().sliceReads.suggestions).toBe('failed')
+    expect(store.getSnapshot().sliceReads.notifications).toBe('failed')
+
+    state.errors = {}
+    await refresh(store)
+
+    expect(store.getSnapshot().users).toEqual([])
+    expect(store.getSnapshot().suggestions).toEqual([])
+    expect(store.getSnapshot().notifications).toEqual([])
+    expect(store.getSnapshot().sliceReads.profiles).toBe('ok')
+    expect(store.getSnapshot().sliceReads.suggestions).toBe('ok')
+    expect(store.getSnapshot().sliceReads.notifications).toBe('ok')
+  })
+
+  it('does not keep prior-account rows when a new account read fails', async () => {
+    const store = await freshStore()
+    state.tables = {
+      ...rowsFor('tripA', 'userA'),
+      profiles: [profileRow('userA')],
+      suggestions: [suggestionRow('suggestionA', 'tripA', 'userA')],
+      notifications: [notificationRow('notificationA', 'tripA', 'userA')],
+    }
+    state.activeUser = 'userA'
+    state.sessionUser = 'userA'
+    store.init()
+    state.resolveSession!()
+    await flush()
+
+    state.tables = {
+      ...rowsFor('tripB', 'userB'),
+      profiles: [profileRow('userB')],
+      suggestions: [],
+      notifications: [],
+    }
+    state.errors = {
+      profiles: new Error('profiles unavailable'),
+      suggestions: new Error('suggestions unavailable'),
+      notifications: new Error('notifications unavailable'),
+    }
+    state.activeUser = 'userB'
+    state.sessionUser = 'userB'
+    state.authHandler!('SIGNED_IN', { user: { id: 'userB' } })
+    await flush()
+
+    expect(store.getSnapshot().sessionUserId).toBe('userB')
+    expect(store.currentUser(store.getSnapshot())).toBeNull()
+    expect(store.getSnapshot().users).toEqual([])
+    expect(store.getSnapshot().suggestions).toEqual([])
+    expect(store.getSnapshot().notifications).toEqual([])
+    expect(store.getSnapshot().sliceReads.profiles).toBe('failed')
+    expect(store.getSnapshot().sliceReads.suggestions).toBe('failed')
+    expect(store.getSnapshot().sliceReads.notifications).toBe('failed')
+  })
+
+  it('publishes the real cold-session id after a rejected first hydrate and retries successfully', async () => {
+    const store = await freshStore()
+    state.tables = { ...rowsFor('tripA', 'userA'), profiles: [] }
+    state.rejects = { profiles: new Error('profiles query rejected') }
+    state.activeUser = 'userA'
+    state.sessionUser = 'userA'
+    store.init()
+    state.resolveSession!()
+    await flush()
+
+    expect(store.getSnapshot().sessionUserId).toBe('userA')
+    expect(store.getSnapshot().sliceReads.profiles).toBe('failed')
+    expect(store.currentUser(store.getSnapshot())).toBeNull()
+    expect(state.channelNames).toEqual([])
+
+    state.rejects = {}
+    state.tables = { ...state.tables, profiles: [profileRow('userA')] }
+    await refresh(store)
+
+    expect(store.currentUser(store.getSnapshot())?.id).toBe('userA')
+    expect(store.getSnapshot().sliceReads.profiles).toBe('ok')
+    expect(state.channelNames.length).toBeGreaterThan(0)
+  })
+
+  it('publishes the real session id after anonymous loading and retries a rejected profile read', async () => {
+    const store = await freshStore()
+    state.tables = { profiles: [], published_itineraries: [] }
+    store.init()
+    state.resolveSession!()
+    await flush()
+
+    state.rejects = { profiles: new Error('profiles query rejected') }
+    state.activeUser = 'userA'
+    state.sessionUser = 'userA'
+    state.authHandler!('SIGNED_IN', { user: { id: 'userA' } })
+    await flush()
+
+    expect(store.getSnapshot().sessionUserId).toBe('userA')
+    expect(store.getSnapshot().sliceReads.profiles).toBe('failed')
+    expect(store.currentUser(store.getSnapshot())).toBeNull()
+
+    state.rejects = {}
+    state.tables = { ...state.tables, profiles: [profileRow('userA')] }
+    await refresh(store)
+
+    expect(store.currentUser(store.getSnapshot())?.id).toBe('userA')
+    expect(store.getSnapshot().sliceReads.profiles).toBe('ok')
+  })
+
+  it('does not retag a prior owner when a switched-account hydrate rejects', async () => {
+    const store = await freshStore()
+    state.tables = {
+      ...rowsFor('tripA', 'userA'),
+      profiles: [profileRow('userA')],
+      suggestions: [suggestionRow('suggestionA', 'tripA', 'userA')],
+      notifications: [notificationRow('notificationA', 'tripA', 'userA')],
+    }
+    state.activeUser = 'userA'
+    state.sessionUser = 'userA'
+    store.init()
+    state.resolveSession!()
+    await flush()
+
+    state.rejects = { profiles: new Error('profiles query rejected') }
+    state.activeUser = 'userB'
+    state.sessionUser = 'userB'
+    state.authHandler!('SIGNED_IN', { user: { id: 'userB' } })
+    await flush()
+
+    expect(store.getSnapshot().sessionUserId).toBe('userA')
+    expect(store.currentUser(store.getSnapshot())).toBeNull()
+    expect(store.getSnapshot().users).toEqual([])
+    expect(store.getSnapshot().suggestions).toEqual([])
+    expect(store.getSnapshot().notifications).toEqual([])
+    expect(store.getSnapshot().sliceReads.profiles).toBe('failed')
+    expect(store.getSnapshot().sliceReads.suggestions).toBe('failed')
+    expect(store.getSnapshot().sliceReads.notifications).toBe('failed')
+  })
+
+  it('clears prior-account suggestions and notifications when the new scope fails', async () => {
+    const store = await freshStore()
+    state.tables = {
+      ...rowsFor('tripA', 'userA'),
+      profiles: [profileRow('userA')],
+      suggestions: [suggestionRow('suggestionA', 'tripA', 'userA')],
+      notifications: [notificationRow('notificationA', 'tripA', 'userA')],
+    }
+    state.activeUser = 'userA'
+    state.sessionUser = 'userA'
+    store.init()
+    state.resolveSession!()
+    await flush()
+
+    state.tables = { ...rowsFor('tripB', 'userB'), profiles: [profileRow('userB')] }
+    state.errors = { trip_members: new Error('membership scope unavailable') }
+    state.activeUser = 'userB'
+    state.sessionUser = 'userB'
+    state.authHandler!('SIGNED_IN', { user: { id: 'userB' } })
+    await flush()
+
+    expect(store.getSnapshot().sessionUserId).toBe('userB')
+    expect(store.getSnapshot().suggestions).toEqual([])
+    expect(store.getSnapshot().notifications).toEqual([])
+    expect(store.getSnapshot().sliceReads.suggestions).toBe('failed')
+    expect(store.getSnapshot().sliceReads.notifications).toBe('failed')
   })
 })
 

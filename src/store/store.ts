@@ -515,7 +515,7 @@ export async function enforceDisabledCheck(): Promise<boolean> {
  *  `patch({ trips })` overwrote the first's cache mid-seed — the seed appends
  *  the 10 trips AFTER that patch — so the trips loaded and then vanished. A
  *  redundant hydrate for the same user now just awaits the in-flight one. */
-let activeHydrate: { userId: string | null; promise: Promise<void> } | null = null
+let activeHydrate: { userId: string | null; promise: Promise<void | boolean> } | null = null
 
 /** Monotonic id of the newest auth intent. Every auth event (sign-in, account
  *  switch, sign-out) bumps it, and a hydrate commits its `patch()` only while its
@@ -667,7 +667,8 @@ export function init(): void {
     // means this user has no in-flight hydrate, so start one.
     const promise = hydrateFromSupabase(userId, gen)
     activeHydrate = { userId, promise }
-    try { await promise } finally {
+    let hydrationSucceeded = false
+    try { hydrationSucceeded = await promise } finally {
       if (activeHydrate?.promise === promise) activeHydrate = null
     }
     // #393: the friendly disabled-account sign-out, finally wired to the
@@ -679,25 +680,25 @@ export function init(): void {
     // same path. The generation guard keeps a superseded hydrate from signing
     // out whoever is signed in now. Fail-open by design: the RESTRICTIVE
     // policies are the real enforcement, this is only the message.
-    if (gen === hydrateGen && cache.sessionUserId === userId) await enforceDisabledCheck()
+    if (hydrationSucceeded && gen === hydrateGen && cache.sessionUserId === userId) await enforceDisabledCheck()
     // First settle of this session flips the app-wide loading gate, whatever
     // the outcome — pages stop showing "loading" and may show real empties.
     if (!cache.ready) { patch({ ready: true }); commit() }
     // Only go live for the account the cache still belongs to: a sign-out or an
     // account switch during the hydration above bumped hydrateGen.
-    if (gen === hydrateGen && cache.sessionUserId === userId) connectRealtime(userId)
+    if (hydrationSucceeded && gen === hydrateGen && cache.sessionUserId === userId) connectRealtime(userId)
     // I-16 — fold the account's Trip DNA into this device's log. Best-effort and
     // probe-gated (no `user_dna` table → device-local, exactly as before), and
     // fired after realtime so a slow DNA read never delays the workspace.
-    if (gen === hydrateGen && cache.sessionUserId === userId) void attachDnaAccount(supabase, userId)
+    if (hydrationSucceeded && gen === hydrateGen && cache.sessionUserId === userId) void attachDnaAccount(supabase, userId)
     // PWA phase 3: a boot that came online (or never left it) pushes any edits
     // this device is still holding - e.g. a tab closed mid-debounce, or a
     // replay that raced the last offline period.
-    if (gen === hydrateGen && cache.sessionUserId === userId) void replayQueuedWrites()
+    if (hydrationSucceeded && gen === hydrateGen && cache.sessionUserId === userId) void replayQueuedWrites()
     // #428: the funnel rows this browser session wrote pre-signup adopt the
     // account — exactly one keyed UPDATE, fire-and-forget. Runs on every
     // hydrate settle but the `is user_id null` filter makes it idempotent.
-    if (gen === hydrateGen && cache.sessionUserId === userId) backfillCreateFunnelSession(userId)
+    if (hydrationSucceeded && gen === hydrateGen && cache.sessionUserId === userId) backfillCreateFunnelSession(userId)
   }
 
   supabase.auth.getSession().then(({ data }) => {
@@ -727,14 +728,14 @@ export async function resumeSync(): Promise<void> {
   // fresh generation, exactly what a resume wants.
   const gen = ++hydrateGen
   activeHydrate = null
-  await hydrateFromSupabase(userId, gen, false)
-  if (gen === hydrateGen && cache.sessionUserId === userId) connectRealtime(userId)
+  const hydrationSucceeded = await hydrateFromSupabase(userId, gen, false)
+  if (hydrationSucceeded && gen === hydrateGen && cache.sessionUserId === userId) connectRealtime(userId)
   // PWA phase 3: a resumed app is by definition back on the network - push any
   // edits the backgrounded device is still holding.
-  if (gen === hydrateGen && cache.sessionUserId === userId) void replayQueuedWrites()
+  if (hydrationSucceeded && gen === hydrateGen && cache.sessionUserId === userId) void replayQueuedWrites()
 }
 
-async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = true): Promise<void> {
+async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = true): Promise<boolean> {
   // #704: the slices this run answers for, named as its verdict names them. Stage 1
   // fixes the first four. Stage 2 adds the trip-scoped ones once the scope is known.
   // A throw ends the run before its verdict. The catch fails every name here that has
@@ -777,9 +778,12 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     // keep the previous cache instead of overwriting good rows with a partial
     // result (a wipe that made every later open say "Trip not found").
     let tripsReadFailed = false
+    let profilesReadFailed = false
+    let suggestionsReadFailed = false
     let decisionsReadFailed = false
     let activityReadFailed = false
-    if (profRes.error) { console.error('[yatraflow] hydrate profiles failed', profRes.error); partial.push('profiles') }
+    let notificationsReadFailed = false
+    if (profRes.error) { console.error('[yatraflow] hydrate profiles failed', profRes.error); partial.push('profiles'); profilesReadFailed = true }
     const profiles = (profRes.data ?? []) as ProfileRow[]
     if (myMembershipsRes.error) { console.error('[yatraflow] hydrate memberships failed', myMembershipsRes.error); partial.push('memberships'); tripCountUnknown = true; tripsReadFailed = true }
     const myRows = (myMembershipsRes.data ?? []) as MemberRow[]
@@ -835,6 +839,8 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
       }
       decisionsReadFailed = !!decRes.error
       activityReadFailed = !!actRes.error
+      suggestionsReadFailed = !!sugRes.error
+      notificationsReadFailed = !!notRes.error
       if (tripsRes.error || memRes.error) { tripCountUnknown = true; tripsReadFailed = true }
       trips = (tripsRes.data ?? []) as TripRow[]
       members.push(...((memRes.data ?? []) as MemberRow[]))
@@ -866,6 +872,8 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
       }
       decisionsReadFailed = !!decRes.error
       activityReadFailed = !!actRes.error
+      suggestionsReadFailed = !!sugRes.error
+      notificationsReadFailed = !!notRes.error
       if (tripsRes.error || memRes.error) { tripCountUnknown = true; tripsReadFailed = true }
       trips = (tripsRes.data ?? []) as TripRow[]
       members.push(...((memRes.data ?? []) as MemberRow[]))
@@ -902,7 +910,7 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     // Stale run — a sign-out or account switch bumped hydrateGen while these
     // queries were in flight. Writing now would leak the previous account's rows
     // (and its sessionUserId) into the new session, so drop the whole patch.
-    if (gen !== hydrateGen) return
+    if (gen !== hydrateGen) return false
 
     // A failed trips/memberships read overwrote the cache with a partial (often
     // empty) result — the account kept rendering, but every trip was gone from
@@ -913,6 +921,15 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
       ? undefined
       : tripList
     const sameSessionUser = cache.sessionUserId === userId
+    // Failed reads keep rows only when the cache belongs to this account.
+    // A new account must not inherit another account's rows through a failed query.
+    const usersRead = profilesReadFailed && sameSessionUser ? undefined : profilesReadFailed ? [] : users
+    const suggestionsRead = (scopeUnread || suggestionsReadFailed) && sameSessionUser
+      ? undefined
+      : (scopeUnread || suggestionsReadFailed) ? [] : suggestions
+    const notificationsRead = (scopeUnread || notificationsReadFailed) && sameSessionUser
+      ? undefined
+      : (scopeUnread || notificationsReadFailed) ? [] : notifications
 
     // B2: seed the server-clock ledger with every server-applied trip row —
     // hydration is the definition of "server-applied" (see
@@ -921,13 +938,13 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     for (const t of tripList) recordServerTripTimestamp(t.id, t.updatedAt)
 
     patch({
-      users,
+      ...(usersRead !== undefined ? { users: usersRead } : {}),
       ...(tripsRead !== undefined ? { trips: tripsRead } : {}),
-      // #704: an unread scope keeps same-account rows; another account cannot keep decisions or activity.
-      ...(scopeUnread ? {} : { suggestions }),
+      // #704: a failed slice keeps same-account rows; another account cannot keep them.
+      ...(suggestionsRead !== undefined ? { suggestions: suggestionsRead } : {}),
       ...((scopeUnread || decisionsReadFailed) && sameSessionUser ? {} : { decisions }),
       ...((scopeUnread || activityReadFailed) && sameSessionUser ? {} : { activity }),
-      ...(scopeUnread ? {} : { notifications }),
+      ...(notificationsRead !== undefined ? { notifications: notificationsRead } : {}),
       adminAudit,
       // De-dupe published rows left by earlier buggy seeds (the publishItinerary
       // path used to mint a fresh trip id on every call — many rows per
@@ -1001,6 +1018,7 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
       demoSeedInFlight = true
       try { await seedDemoFor(userId, gen) } finally { demoSeedInFlight = false }
     }
+    return true
   } catch (e) {
     console.error('[yatraflow] hydration failed', e)
     // #704: a throw ends the run before its verdict. Each name the run answers for that
@@ -1011,13 +1029,18 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     if (gen === hydrateGen && !verdictPublished) {
       const unread = scopeKnown ? askedSlices : [...askedSlices, ...TRIP_SCOPED_READS]
       // sliceReadReport marks a name failed when the list it gets lists that name. Here every name is listed.
+      const sameSessionUser = cache.sessionUserId === userId
+      const sessionWasUnknown = cache.sessionUserId === null
       patch({
         ...(cache.sessionUserId === userId ? {} : { decisions: [], activity: [] }),
+        ...(!sameSessionUser ? { users: [], suggestions: [], notifications: [] } : {}),
+        ...(sessionWasUnknown ? { sessionUserId: userId } : {}),
         sliceReads: { ...cache.sliceReads, ...sliceReadReport(unread, unread) },
       })
       commit()
     }
     toast('Could not load your data - check your connection.')
+    return verdictPublished
   }
 }
 
