@@ -36,6 +36,7 @@ import {
   RotateCcw, Search, TriangleAlert, X,
 } from 'lucide-react'
 import { prefersReducedMotion, motionTiming } from '../lib/motion'
+import { StateBlock } from './page/StateBlock'
 import {
   Map as MapLibreMap,
   MapMarker,
@@ -1247,7 +1248,10 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
 
       <div className="map-frame">
         {!canDrawRoute ? (
-          <div className="empty-state"><div className="big"><MapIcon size={38} aria-hidden /></div><p>No confirmed stops to plot yet - add some in the Timeline.</p></div>
+          <div className="tm-state">
+            <StateBlock kind="empty" size="compact" icon={<MapIcon size={38} aria-hidden />}
+              title="No confirmed stops to plot yet" body="Add some in the Timeline." />
+          </div>
         ) : (
           <MapLibreMap
             ref={mapRef}
@@ -1608,11 +1612,11 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
           cannot see — so the grouped count is said in words here, or a keyboard
           or screen-reader user simply loses those suggestions at overview zoom. */}
       {clusterNote && (
-        <p className="hint-text" role="status" style={{ marginTop: 8 }}>
+        <p className="hint-text tm-note" role="status">
           <InlineIcon icon={Lightbulb} size={12} gap={3} />{clusterNote}
         </p>
       )}
-      <p className="hint-text" style={{ marginTop: 8 }}>
+      <p className="hint-text tm-note">
         <InlineIcon icon={TriangleAlert} size={12} gap={3} />Route lines follow real roads (© OSRM/OpenStreetMap) when available; distances/durations in the plan are real-road estimates for ground travel, falling back to transparent haversine assumptions when offline/other modes - no live traffic data.
       </p>
     </div>
