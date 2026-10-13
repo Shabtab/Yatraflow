@@ -101,7 +101,13 @@ export function notificationPanelModel(
   const rows = sessionUserId
     ? notifications.filter(notification => notification.userId === sessionUserId).sort((a, b) => b.at - a.at)
     : []
-  return { rows, view: rowsView(sliceState(sliceReads, 'notifications'), rows.length) }
+  // hydrate reads notifications by trip, so an account with no trips issues no
+  // notifications read and the slice stays unreported. A trips verdict beside
+  // that gap is the answer: no trips, so no trip notifications. Without a trips
+  // verdict the read is still pending, and that stays "reading".
+  const noTripScope = !('notifications' in sliceReads) && sliceState(sliceReads, 'trips') === 'ready'
+  const read = noTripScope ? 'ready' : sliceState(sliceReads, 'notifications')
+  return { rows, view: rowsView(read, rows.length) }
 }
 
 export function retryProfileLookup(): void {

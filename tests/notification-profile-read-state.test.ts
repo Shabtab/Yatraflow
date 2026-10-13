@@ -39,6 +39,22 @@ describe('notification read state', () => {
     expect(notificationPanelModel({}, [], 'userA')).toEqual({ rows: [], view: 'reading' })
   })
 
+  it('shows an account with no trips as empty, not as loading for good', () => {
+    // hydrate issues no notifications read for an account with no trips, so the
+    // slice is unreported while the trips verdict is in.
+    expect(notificationPanelModel({ trips: 'ok', profiles: 'ok' }, [], 'userA')).toEqual({
+      rows: [], view: 'empty',
+    })
+    // A failed trips read says nothing about notifications: still not empty.
+    expect(notificationPanelModel({ trips: 'failed' }, [], 'userA')).toEqual({
+      rows: [], view: 'reading',
+    })
+    // A failed notifications read stays failed whatever trips says.
+    expect(notificationPanelModel({ trips: 'ok', notifications: 'failed' }, [], 'userA')).toEqual({
+      rows: [], view: 'failed',
+    })
+  })
+
   it('keeps an authenticated profile available after a failed refresh', () => {
     expect(needsProfileLookup('userA', false)).toBe(true)
     expect(needsProfileLookup('userA', true)).toBe(false)
