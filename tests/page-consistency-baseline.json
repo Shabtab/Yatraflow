@@ -90,8 +90,8 @@
       "rawH1": 0
     },
     "src/pages/trip/GroupInputTab.tsx": {
-      "EmptyState": 3,
-      "loadingBlock": 1,
+      "EmptyState": 0,
+      "loadingBlock": 0,
       "inlineStyle": 2,
       "rawH1": 0
     },

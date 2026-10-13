@@ -41,6 +41,8 @@ const CLASSES: Array<[selector: string, declarations: string[]]> = [
   ['.gin-composer-hint', ['margin: 6px 0 12px']],
   ['.gin-submit', ['width: 100%']],
   ['.gin-option-grid', ['display: grid', 'gap: 7px']],
+  ['.gin-card-title', ['font-family: var(--font-body)', 'font-size: 18px', 'font-weight: 800', 'line-height: 1.3', 'color: var(--text)']],
+  ['.yf-surface.gin-panel', ['border-radius: var(--radius)', 'box-shadow: var(--shadow-card)']],
 ]
 
 // Every inline style attribute the change removed from the tab.
