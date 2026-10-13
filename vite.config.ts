@@ -97,7 +97,16 @@ export default defineConfig(({ mode }) => {
   warnDeployFlags(env)
   return {
     plugins: [react()],
-    base: './',
+    // Absolute base, not './'. The app routes by PATH (/share/<payload>,
+    // /pub/<slug>, /trip/<id> …), so index.html is served at a nested URL. A
+    // relative base emits `./assets/…` script tags, which the browser resolves
+    // against the current path — on /share/<payload> that becomes
+    // /share/assets/…, a 404 for every chunk, so the SPA never boots and the
+    // page renders blank with console errors. A root base keeps every asset URL
+    // absolute (/assets/…), which also matches the root-registered service
+    // worker (/sw.js) and the Capacitor WebView's default https://localhost
+    // scheme. Pinned by tests/build-base.test.ts.
+    base: '/',
     define: {
       // Inlined at build time from package.json — consumed by the feedback
       // mailto so bug reports carry the exact shipped version.
