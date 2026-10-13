@@ -44,7 +44,7 @@ Read these three files before you start consistency work:
 
 - [`docs/consistency/consistency-rulings.md`](docs/consistency/consistency-rulings.md): rulings R1 to R23.
 - [`docs/consistency/app-consistency-plan.md`](docs/consistency/app-consistency-plan.md): the plan, with pages P1 to P16.
-- The newest `docs/consistency/handoff-*.md`: the branch map and next steps from the last session.
+- Your clone's own `docs/consistency/handoff-*.md`, if it exists: the branch map from the last session. These notes are not tracked, and each clone keeps its own.
 
 The Roles table in this file overrides every routing line in the plan.
 A ruling overrides the plan where they differ. Example: R14 limits the serif font to the
