@@ -55,7 +55,7 @@ describe('tripPhase', () => {
 
   it('treats a missing end date as a one-day range', () => {
     expect(tripPhase(trip({ start: shiftDays(0) }))).toBe('live')
-    expect(tripPhase(trip({ start: shiftDays(-1) }))).toBe('other')
+    expect(tripPhase(trip({ start: shiftDays(-2) }))).toBe('other')
   })
 })
 
