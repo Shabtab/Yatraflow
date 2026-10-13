@@ -91,13 +91,44 @@ function warnDeployFlags(env: Record<string, string>) {
   }
 }
 
+/** Vite `base` for the build. The web build is served from an http(s) origin at
+ *  a nested path (Vercel, and Capacitor's https://localhost), so its asset URLs
+ *  must be root-absolute (/assets/…) or a deep route loads them from the wrong
+ *  place. A build opened straight from disk (file://) — or any target that, like
+ *  the native shell, addresses routes through the hash off http(s) — cannot
+ *  resolve a root-absolute path, so it takes the relative base (./assets/…).
+ *  `VITE_BUILD_TARGET` names the target; unset (the normal web build) is `/`.
+ *  This mirrors the router's own split: src/lib/router.ts `routeHref` keeps the
+ *  path form only on http(s) and falls back to the hash form for native and
+ *  file documents. */
+function resolveBase(target: string | undefined): string {
+  const t = (target ?? '').trim().toLowerCase()
+  return t === 'file' || t === 'native' ? './' : '/'
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   assertDeployEnv(env)
   warnDeployFlags(env)
   return {
     plugins: [react()],
-    base: './',
+    // Absolute base for the web build, relative for a file/native build. The app
+    // routes by PATH on the web (/share/<payload>, /pub/<slug>, /trip/<id> …), so
+    // index.html is served at a nested URL. A relative base emits `./assets/…`
+    // script tags, which the browser resolves against the current path — on
+    // /share/<payload> that becomes /share/assets/…, which vercel.json's
+    // catch-all answers with index.html, so the browser refuses the module (wrong
+    // MIME type) and the SPA never boots. A root base keeps every asset URL
+    // absolute (/assets/…), which also matches the root-registered service worker
+    // (/sw.js) and Capacitor's default https://localhost scheme.
+    //
+    // A build opened straight from disk (file://) cannot resolve /assets/… — the
+    // browser looks at the filesystem root — so that target needs the relative
+    // base. VITE_BUILD_TARGET is the build-time analogue of the router's runtime
+    // protocol/native check (src/lib/router.ts routeHref falls back to the hash
+    // form off http(s)); set it to `file` or `native` for such a build. Pinned by
+    // tests/build-base.test.ts.
+    base: resolveBase(process.env.VITE_BUILD_TARGET),
     define: {
       // Inlined at build time from package.json — consumed by the feedback
       // mailto so bug reports carry the exact shipped version.

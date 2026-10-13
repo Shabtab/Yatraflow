@@ -10334,3 +10334,35 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 .gin-composer-hint { margin: 6px 0 12px; }
 .gin-submit { width: 100%; }
 .gin-option-grid { display: grid; gap: 7px; }
+
+/* ---------- Landing horizontal clip (decorative blob overflow) ---------- */
+/* The hero and plan-bench atmosphere blobs are positioned past their section's
+   right edge (hero-blob-b at right: -120px, bench-blob-b at right: -150px) for a
+   soft diffused glow. On the web that overflow widened the document past the
+   window, so the landing page scrolled sideways. Clip each blob's own section on
+   the x axis. `overflow-x: clip` prunes the horizontal overflow WITHOUT becoming
+   a scroll container, so the floating position: sticky topnav keeps working, and
+   it leaves the y axis at `visible`, so the blobs keep their vertical bleed onto
+   the shared fixed canvas with no hard seam. The root html { overflow-x: clip }
+   rule above is not enough on its own: it clips painting, but the section's own
+   box still reported the wider scroll width. Clipping at the section that holds
+   each blob is what removes the overflow from the document's scroll width. */
+.hero,
+.plan-bench {
+  overflow-x: clip;
+}
+
+
+/* ---------- DMCA page gutter matches the auth page on phones ---------- */
+/* The DMCA page is a .container, and the ≤640px rule at styles.css:4999 drops
+   .container to padding: 0 14px. The auth page is NOT a .container — its card
+   sits in .auth-wrap, whose side padding is 18px. So on a phone the DMCA text
+   block started 14px from the edge while the auth card started 18px: two
+   policy-style pages, two different side gutters. Match the DMCA page to the
+   auth page's 18px on phones. Scoped to .container.dmca-page (two classes) so it
+   outranks the single-class .container mobile rule at any order, and touches no
+   other page. Match the auth page exactly: the same bare 18px its own .auth-wrap
+   rule carries. */
+@media (max-width: 640px) {
+  .container.dmca-page { padding-left: 18px; padding-right: 18px; }
+}
