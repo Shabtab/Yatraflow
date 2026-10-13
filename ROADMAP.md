@@ -818,6 +818,29 @@ unbuilt). **Before picking up a row, and before quoting one in a plan, confirm i
 | I-44 | Mobile bottom tabbar | A measured viewport budget at 390px | The MR12 row, parked 2026-10-06. The tray already carries every destination at 720px and below. A fixed bar costs about 60px of viewport on every route, and the Timeline's sticky stack is already about 181px on a phone. Measure the paint time and the usable day-view height first. See the MR12 row. |
 | I-45 | Featured trip lead on the mockup's `.feature` geometry | A product decision on the page's hierarchy | The My Trips cards took the mockup's `.tcard` geometry on 2026-10-06, so they now differ from the featured lead above them. The lead keeps a 24px radius and a deeper shadow on purpose: it is the page's one hero, and `Variant A` was built to make it stand out. Adopt the mockup's 18px radius and hairline shadow only after deciding whether that hierarchy stays. Check `trip-featured-card` in `src/styles.css` against `.feature` in the mockup first. |
 
+#### Creator portfolio proposals
+
+| # | Idea | Blocked on | Note |
+|---|---|---|---|
+| I-48 | Creator route-library foundation | Five-creator pilot | Proposed medium scope: separate unlock price from trip spend, feature one route, preview and share, then measure edits and invites. Reuse I-23's checklist. [Brainstorm](docs/commercial/BRAINSTORM-2026-10-12-creator-portfolio.md). |
+| I-49 | Routes from your city | Clean origin names and trip lengths | Test whether visitors find and open plans by origin. [Brainstorm](docs/commercial/BRAINSTORM-2026-10-12-creator-portfolio.md). |
+| I-50 | Reel-to-route links | Creator pilot | Test optional post links and source tags against repeat shares and plan opens. [Brainstorm](docs/commercial/BRAINSTORM-2026-10-12-creator-portfolio.md). |
+| I-51 | Make this your weekend | Sign-in return path | Test dates, crew setup, and plan copy against edits and invites. [Brainstorm](docs/commercial/BRAINSTORM-2026-10-12-creator-portfolio.md). |
+| I-52 | Seasonal collections | Creator-confirmed months | Test whether visitors open a season shelf and edit a plan. [Brainstorm](docs/commercial/BRAINSTORM-2026-10-12-creator-portfolio.md). |
+| I-53 | Public route atlas | Safe public place anchors | Use one clustered map with a list fallback. Load route detail on demand and keep map credits. [Brainstorm](docs/commercial/BRAINSTORM-2026-10-12-creator-portfolio.md). |
+| I-54 | Route freshness note | Review date and scope | Test whether a dated review note helps creators maintain plans and lowers uncertainty. [Brainstorm](docs/commercial/BRAINSTORM-2026-10-12-creator-portfolio.md). |
+| I-55 | Branded route snapshots | Creators post manual examples | Build a tool only after creators share hand-made snapshots. Keep links, licensed assets, and map credits. [Brainstorm](docs/commercial/BRAINSTORM-2026-10-12-creator-portfolio.md). |
+| I-56 | Private creator activity report and export | Creator pilot; reuse I-22 events | Define dated operational figures for the creator's private use. Keep this separate from I-22's publication funnel. [Brainstorm](docs/commercial/BRAINSTORM-2026-10-12-creator-portfolio.md). |
+| I-57 | Short creator handles | Normalize and reserve names; preserve old links | Set ownership and rename rules before public handles ship. [Brainstorm](docs/commercial/BRAINSTORM-2026-10-12-creator-portfolio.md). |
+| I-58 | Travel-proof creator stats | Canonical places and completion evidence | Label planned distance as planned. Require declarations or evidence for nights and states visited. [Brainstorm](docs/commercial/BRAINSTORM-2026-10-12-creator-portfolio.md). |
+| I-59 | Optional external creator media kit | I-56 data; creator-controlled sharing | Share selected dated I-56 figures externally or with a brand, only with creator consent. Keep it distinct from I-22's funnel and I-8's earnings statement. [Brainstorm](docs/commercial/BRAINSTORM-2026-10-12-creator-portfolio.md). |
+| I-60 | Animated route clips | Manual snapshot pilot | Defer rendering until creators post manual route assets. [Brainstorm](docs/commercial/BRAINSTORM-2026-10-12-creator-portfolio.md). |
+| I-61 | Custom creator domains | Handle and rename rules | Defer until links, ownership, and renames work. [Brainstorm](docs/commercial/BRAINSTORM-2026-10-12-creator-portfolio.md). |
+| I-62 | Booking integrations | Pilot demand and partner terms | Keep this as contextual monetization. It does not approve a booking agency. [Brainstorm](docs/commercial/BRAINSTORM-2026-10-12-creator-portfolio.md). |
+| I-63 | Expanded creator themes | Basic snapshot use | Defer until creators use basic branded assets. [Brainstorm](docs/commercial/BRAINSTORM-2026-10-12-creator-portfolio.md). |
+| I-64 | Creator follower system | Repeat creator and visitor value | Defer until a pilot shows repeat use. [Brainstorm](docs/commercial/BRAINSTORM-2026-10-12-creator-portfolio.md). |
+| I-65 | Demographic and future-demand media kit | Consented audience and travel-intent data | Keep request month separate from travel month. [Brainstorm](docs/commercial/BRAINSTORM-2026-10-12-creator-portfolio.md). |
+
 ### Tier 3 — milestone-shaped, tracked as tracks (not ideas)
 
 These are not loose ideas but full tracks with their own sections above — listed here only so

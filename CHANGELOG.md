@@ -17,6 +17,8 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ### Added
 
+- **A creator portfolio brainstorm records source limits and proposals.** The dated assessment covers the route library, experiments, effort, and deferred ideas. The roadmap remains the plan of record.
+
 - **A flight trip plans the whole journey, not one long leg.** The travel day now runs home → the origin airport → the sector → the destination airport → your stay. The two ground legs either side are timed and priced as car legs. Only the sector is an air leg.
   Before this a flight trip ran every leg at one blended speed. A 20 km run to the airport cost four minutes. A 1,150 km sector was billed as a drive. `src/lib/air.ts` holds the new model. It bundles India's commercial airports and finds the nearest field to each end. The distance it measured is shown, so you confirm the choice. A block-time model and an indicative per-person fare complete it. Both invented numbers print their assumptions beside themselves.
 
