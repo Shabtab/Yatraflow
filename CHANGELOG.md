@@ -25,6 +25,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ### Changed
 
+- **The trip created page now uses the shared page header and card titles.** The page title sits in the shared header, with the trip name upright and "is live." in italic. The page keeps its 1120px width and its own celebratory cards. The card titles are larger and bolder, so they read as headings. A trip that cannot be found now shows the shared empty message with one button back to your trips.
 - **The Purchases page blocks rise once, with the page, and not twice.** The page entrance now owns the state, note and footer blocks. Each block no longer adds its own entrance on top of it. A list row inside a list keeps its own entrance, because the page entrance reaches a page's direct children only.
 - **The Budget tab's fixed layout values and two bar colours now come from CSS classes, not inline styles.** Values that come from the trip, such as bar widths and category colours, stay inline. The values are the same as before.
 - **The Group input tab looks the same, with its styles kept in named classes.** Most inline style attributes on the tab now use named classes, and every value is unchanged. Two inline styles stay on purpose. One sets the width and colour of the consensus bar from the votes. The other sets the top margin of the accept and decline row.
@@ -48,8 +49,6 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 **This release brings the new Ribbon Y logo, clearer error states, shared page parts and working landing links.**
 
 ### Changed
-
-- **The trip created page now uses the shared page header and card titles.** The page title sits in the shared header, with the trip name upright and "is live." in italic. The page keeps its 1120px width and its own celebratory cards. The card titles are larger and bolder, so they read as headings. A trip that cannot be found now shows the shared empty message with one button back to your trips.
 
 - **The DMCA page and the log in tabs now use the shared page parts.** The DMCA page has a serif title, a one-line lede and one text panel about 68 characters wide. The log in tabs use the shared tab row, with the same keyboard controls. The log in page announces its missing-backend warning to screen readers. The form error sits 8px above the submit button, the same gap as the sign-up notice.
 

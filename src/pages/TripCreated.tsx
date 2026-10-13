@@ -320,7 +320,6 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
         <StateBlock
           kind="empty"
           title="We couldn't find this trip."
-          body="The trip is not on this device. It may belong to another planner, or it may have been deleted."
           actions={(
             <button className="btn btn-primary" onClick={() => onNavigate('/trips')}>Go to my trips</button>
           )}
