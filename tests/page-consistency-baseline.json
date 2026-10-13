@@ -1,6 +1,5 @@
 {
   "pageRootAllowlist": [
-    "src/pages/AdminPage.tsx",
     "src/pages/Auth.tsx",
     "src/pages/CreateTrip.tsx",
     "src/pages/CreatorPage.tsx",
@@ -16,8 +15,8 @@
     "src/pages/AdminPage.tsx": {
       "EmptyState": 5,
       "loadingBlock": 0,
-      "inlineStyle": 8,
-      "rawH1": 1
+      "inlineStyle": 3,
+      "rawH1": 0
     },
     "src/pages/Auth.tsx": {
       "EmptyState": 0,
@@ -152,6 +151,12 @@
       "rawH1": 0
     },
     "src/pages/trip/timeline/DaySpark.tsx": {
+      "EmptyState": 0,
+      "loadingBlock": 0,
+      "inlineStyle": 0,
+      "rawH1": 0
+    },
+    "src/pages/trip/timeline/FlightsPanel.tsx": {
       "EmptyState": 0,
       "loadingBlock": 0,
       "inlineStyle": 0,
