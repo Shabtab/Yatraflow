@@ -144,9 +144,9 @@
       "rawH1": 0
     },
     "src/pages/trip/timeline/DaySection.tsx": {
-      "EmptyState": 1,
+      "EmptyState": 0,
       "loadingBlock": 0,
-      "inlineStyle": 18,
+      "inlineStyle": 5,
       "rawH1": 0
     },
     "src/pages/trip/timeline/DaySpark.tsx": {

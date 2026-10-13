@@ -822,7 +822,8 @@ a.btn { text-decoration: none; }
    looks depending on which control carried it. */
 .input[aria-invalid='true'], .select[aria-invalid='true'], .textarea[aria-invalid='true'] { border-color: var(--danger); }
 
-/* ============ Custom listbox Select (components/Select.tsx) ============
+/* ============ Custom listbox Select (components/Select.tsx) =====}
+
    Same `.select` trigger recipe (it's on the button below), a real DOM popup
    instead of the OS one. High-traffic surfaces use this; low-traffic selects
    keep the native control — the trigger look is identical. */
@@ -10520,6 +10521,28 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
   .nh-trip-row { animation: none; }
 }
 
+/* ===== P12: Timeline and map - the last ad-hoc states and the static steps ===== */
+/* Each value below is the one the style attribute carried, unchanged. */
+.tl-rain-gap { margin-left: 4px; }
+.tl-stop-flex { flex: 1; min-width: 160px; }
+.tl-day-note { max-width: 300px; margin-bottom: 4px; }
+.tl-day-tools { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.tl-fixed-inline { display: inline-flex; }
+.tl-warn-gap { margin-bottom: 8px; }
+.tl-arrive-gap { margin-left: 6px; }
+.tl-source-gap { margin-left: 2px; }
+.tl-hint-gap { margin: 0 0 12px; }
+.tl-day-footer { display: flex; gap: 8px; margin-top: 14px; }
+/* The map's two notes keep their own step, so the cluster note stays a polite
+   status rather than a state block: it is information, not an empty room. */
+.tm-note { margin-top: 8px; }
+/* A state block inside a day or the map frame keeps the entrance the tab
+   already had: fade and a 4px rise on the motion tokens. */
+.tl-state, .tm-state { animation: errIn var(--motion-med) var(--ease-out); }
+@media (prefers-reduced-motion: reduce) {
+  .tl-state, .tm-state { animation: none; }
+}
+
 /* ===== P12: Group input tab - card titles and panel surfaces ===== */
 /* Card titles read R20: Plus Jakarta Sans 800 at 18px with a line height of
    1.3, the body text colour. */
@@ -10588,4 +10611,14 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 
 @media (prefers-reduced-motion: reduce) {
   .yf-surface.tsx-card { animation: none; }
+=======
+/* ===== P12: Timeline and Map states ===== */
+/* The map's "no confirmed stops" state moves onto the shared StateBlock, so it
+   carries the shared role for an empty read and the shared compact skin. The
+   two hint lines under the map keep their own markup: they are hints, not
+   states, and `.tm-note` already carries their margin. */
+.tm-state { animation: cardIn var(--motion-med) var(--ease-out) var(--stagger-step) backwards; }
+
+@media (prefers-reduced-motion: reduce) {
+  .tm-state { animation: none; }
 }
