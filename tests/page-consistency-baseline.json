@@ -84,9 +84,9 @@
       "rawH1": 0
     },
     "src/pages/trip/BudgetTab.tsx": {
-      "EmptyState": 2,
-      "loadingBlock": 2,
-      "inlineStyle": 11,
+      "EmptyState": 0,
+      "loadingBlock": 0,
+      "inlineStyle": 10,
       "rawH1": 0
     },
     "src/pages/trip/GroupInputTab.tsx": {
