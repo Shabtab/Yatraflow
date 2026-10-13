@@ -188,7 +188,7 @@
     "src/pages/trip/TripSettingsForm.tsx": {
       "EmptyState": 0,
       "loadingBlock": 0,
-      "inlineStyle": 14,
+      "inlineStyle": 4,
       "rawH1": 0
     },
     "src/pages/TripCreated.tsx": {

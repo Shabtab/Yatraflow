@@ -10553,3 +10553,39 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
   .bud-state { animation: none; }
   .budget-bar-fill, .daybar-fill { transition: none; }
 }
+
+/* ===== P12: Trip settings tab ===== */
+/* The settings panels render through the shared Surface, so the card skin is
+   restated as a same-element compound (R5). It wins over the tab's own card
+   rule in any order, because a compound outranks a single class. The panel
+   entrance rides on the same rule, so no second `.tsx-card` selector exists. */
+.yf-surface.tsx-card { border-radius: var(--radius); box-shadow: var(--shadow-card); animation: cardIn var(--motion-med) var(--ease-out) var(--stagger-step) backwards; }
+.yf-surface.tsx-card:nth-of-type(2) { animation-delay: calc(var(--stagger-step) * 2); }
+.yf-surface.tsx-card:nth-of-type(3) { animation-delay: calc(var(--stagger-step) * 3); }
+.yf-surface.tsx-card:nth-of-type(4) { animation-delay: calc(var(--stagger-step) * 4); }
+
+/* R20: the section titles read like every other card title. Plus Jakarta Sans
+   800, 18px, line-height 1.3, the body text colour. They were the display
+   family at 16.5px/700. A descendant selector, so it adds no second `.tsx-q`
+   rule to the sheet and still outranks the single-class rule. */
+.tsx-card .tsx-q { font-family: var(--font-body); font-size: 18px; font-weight: 800; line-height: 1.3; letter-spacing: 0; color: var(--text); }
+
+/* Static values that were inline. Each is the value the inline style used. The
+   names avoid the health-band vocabulary: tests/health-band.test.ts reads every
+   selector that names it, so a `set-health-*` class would look like a new band. */
+.set-daygrid-label { display: block; margin-bottom: 6px; }
+.set-start-notice { margin-top: 6px; }
+.set-receipt-reason { margin-top: 8px; }
+.set-bench-line-top { margin-top: 8px; }
+.set-bench-total-cap { max-width: 96px; }
+.set-read-gap { gap: 14px; }
+.set-read-score { font-size: 38px; }
+.set-read-bar { flex: 1; }
+.set-read-reasons { margin: 0; }
+
+/* The in-flight save is its own answer, so it gets its own block. */
+.set-save-state { margin-top: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .yf-surface.tsx-card { animation: none; }
+}
