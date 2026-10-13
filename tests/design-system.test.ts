@@ -1444,6 +1444,23 @@ describe('a surface that appears carries motion (AGENTS §2.10)', () => {
     ).toBeGreaterThan(3)
   })
 
+  it('no page block declares an entrance of its own, so the page cascade is the only owner', () => {
+    // A rule that gives a page block its own entrance outranks `.page-enter > *`
+    // (same specificity and later in the file, or a more specific selector). The
+    // shared entrance then stops applying to that block, with no failure to show
+    // it. The gate names the shared page blocks: the header, the state block and
+    // the My purchases page rules.
+    const own = cssRules.filter(
+      (r) => /(?:^|[\s,(>~+])\.(?:yf-header|yf-state|pur-page)(?![\w-])/.test(r.selector)
+        && declMap(r.body).has('animation'),
+    )
+    expect(
+      own.map((r) => normalise(r.selector)),
+      'These page blocks declare an entrance of their own, so `.page-enter > *` no longer owns them. '
+        + 'Delete the `animation` declaration. The page cascade supplies the entrance.',
+    ).toEqual([])
+  })
+
   it('one rule owns the popover glass, and it carries its blur', () => {
     // `--popover-bg` is `var(--yf-nav-glass)`: glass is TRANSLUCENT by design,
     // and `.popover` is the rule that makes it readable by pairing it with a

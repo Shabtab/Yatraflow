@@ -70,6 +70,8 @@ drag; movement is translation only (compositor-only).
 | Map shell expand / collapse | `scale(.94↔1)` + fade, `--motion-slow`, `--ease-out`; TripMap's unmount timer reads `motionTiming('--motion-slow')` so CSS and JS can't drift (0 under reduced motion — the glide is skipped entirely) | `.map-shell--expanded` / `.map-shell--closing` |
 | Rail fold | `grid-template-columns` glide, `--motion-slow`, `--ease-resize` — an in-place resize of both rails with the map re-fitting beside them (a day-collapse in miniature, so the symmetric curve; the fold icon rides the same clock so one click reads as one movement) | `.map-ideas-grid` folded states |
 
+**A list row keeps its own entrance.** The page cascade (`.page-enter > *`) reaches direct children only. A list row is not a direct child, so it uses `.yf-surface.is-entering`, as the purchase rows do.
+
 **Ambient loops are the cadence's own exception.** An `infinite` keyframe — the map
 skeleton's breathe, the live dot's ping — is exempt from the raw-duration ratchet
 because its cadence belongs to the effect, not to a UI transition; its easing still

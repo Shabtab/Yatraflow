@@ -10009,7 +10009,8 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 
 /* ===== Shared page components: header ===== */
 /* The compact header of a tool page. No band and no postcards. The title and
-   the accent copy the hero rules above. A 1px rule closes the header. */
+   the accent copy the hero rules above. A 1px rule closes the header. The page
+   cascade gives the header its entrance, so this block declares none. */
 .yf-header {
   margin-bottom: 24px; padding-bottom: 20px; border-bottom: 1px solid var(--line);
 }
@@ -10052,6 +10053,8 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
   transition: transform var(--motion-med) var(--ease-out), box-shadow var(--motion-med) var(--ease-out), border-color var(--motion-med) var(--ease-out);
 }
 .yf-surface.is-interactive:hover { transform: translateY(-2px); box-shadow: var(--shadow-card-hover); border-color: var(--line-strong); }
+/* A list row keeps its own entrance. The page cascade reaches a page's direct
+   children only, and a row sits one level down inside its list. */
 .yf-surface.is-entering { animation: cardIn var(--motion-slow) var(--ease-out) backwards; }
 @media (prefers-reduced-motion: reduce) {
   .yf-surface.is-interactive, .yf-surface.is-interactive:hover { transition: none; transform: none; }
@@ -10074,17 +10077,12 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 .pur-meta { display: flex; flex-wrap: wrap; gap: 6px; }
 .pur-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
 .pur-foot { margin: 16px 0 0; max-width: 68ch; }
-.pur-page > :is(.yf-state, .pur-note) { animation: cardIn var(--motion-slow) var(--ease-out) var(--stagger-step) backwards; }
-.pur-page > .pur-foot { animation: cardIn var(--motion-slow) var(--ease-out) calc(var(--stagger-step) * 2) backwards; }
 @media (max-width: 560px) {
   .pur-row { flex-direction: column; gap: 12px; }
   .pur-thumb { flex: none; align-self: auto; aspect-ratio: 16 / 9; min-height: 0; }
   .pur-body { padding: 0 4px 4px; }
   .pur-summary { font-size: 14px; }
   .pur-actions > .btn { flex: 1 1 100%; justify-content: center; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .pur-page > :is(.yf-state, .pur-note, .pur-foot) { animation: none; }
 }
 
 /* ===== My purchases: the kept-for-you card, the update note, the new-card outline ===== */

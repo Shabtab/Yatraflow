@@ -23,6 +23,10 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - **You can enter the flight you are actually taking.** A flight card sits in the day's travel panel. It takes the airline, the flight number, both airports and the booking reference. It also takes the departure and arrival clocks, and the fare you paid per person.
   A stated departure and arrival replace the estimated block time. A stated fare replaces the indicative one. The estimate then disappears from the card. Flights ride in their own `flights` jsonb column, in `supabase/migrations/20261012c_trip_flights.sql`. The day's start clock is back-computed from a stated departure. That puts you at the airport two hours before it. An estimated departure never moves your clock.
 
+### Changed
+
+- **The Purchases page blocks rise once, with the page, and not twice.** The page entrance now owns the state, note and footer blocks. Each block no longer adds its own entrance on top of it. A list row inside a list keeps its own entrance, because the page entrance reaches a page's direct children only.
+
 ### Fixed
 
 - **A flight trip no longer shows road directions, driving time or a per-km fare.** The Map tab drew real driving directions for a flight trip. The workspace measured the trip's road chain for every mode. Google Routes has no FLYING travel mode, so the request errors. OSRM's endpoint is hardcoded to `/driving/`. Both answered with the road. That road was drawn as the map's line and read as the trip's travel time.
