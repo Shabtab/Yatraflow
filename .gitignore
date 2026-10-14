@@ -91,14 +91,7 @@ PRODUCT.md
 # launcher was stale; ignored so it can never recur.
 .pr-body.md
 
-# The Cline agent's home directory inside the checkout: session transcripts, its
-# SQLite databases and a full npm cache — 112 MB in one clone, 36 MB of it the
-# databases alone. It was covered only by `.git/info/exclude`, which does not
-# travel with a clone — the exact failure the `.cache/` block above already
-# records, repeating one class over. On any other clone it appeared as 112 MB of
-# untracked state, and a `git add -A` would have committed the transcripts and a
-# binary database. `git status --ignored` in this clone showed it as the only
-# entry a local exclude was carrying.
+# The Cline agent home holds session state. Do not track it.
 .cline-home/
 
 # Lane handoff notes live in `docs/consistency/` too, not only at the root. The
