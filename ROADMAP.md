@@ -15,7 +15,7 @@ user confirmation before any push. Feature work reaches `test` **via pull
 request** (never a direct push); `main` merges stay explicitly user-gated
 (AGENTS rule 1).
 
-**Snapshot (2026-10-13, verified against the repo):** v0.76.0 is on `main` (PR #724). `test` carries 109 commits that `main` does not. They hold the flight travel day, the one-designer consistency pass and the honesty fixes of #704. One migration is new and unreleased: `supabase/migrations/20261012c_trip_flights.sql`. You must read branch progress with `git rev-list --left-right --count origin/main...origin/test`. CHANGELOG.md holds the full release record.
+**Snapshot (2026-10-13, verified against the repo):** v0.76.0 is on `main` (PR #724). `test` carries 136 commits that `main` does not. They hold the flight travel day, the one-designer consistency pass and the honesty fixes of #704. One migration is new and unreleased: `supabase/migrations/20261012c_trip_flights.sql`. You must read branch progress with `git rev-list --left-right --count origin/main...origin/test`. CHANGELOG.md holds the full release record.
 Current version: **0.76.0**. Under it: **0.75.0**, promoted to `main` on 2026-10-12. Under that: **0.74.1**, a security hotfix cut from `main` on 2026-10-12. Under that: **0.74.0**, cut on `test` on 2026-10-07 and promoted to `main` the same day. Older releases appear in CHANGELOG.md.
 
 **Live open work is tracked in two places, and this file must agree with both:**
@@ -162,7 +162,7 @@ and date), per the AGENTS §6 same-edit rule. Detail lives in
 - [x] **v0.41.0** — Corridor Concierge (H1–H3 complete): road personality, enforced detour budget, trip DNA + crew seeds, story arcs, slack prompts, asymmetric detours, hours scoring, fuel advisories; Google-only provider directive; store + AI-drawer sweep (issues 15/15)
 
 
-### Shipped — the v0.42 → v0.76 line (2026-09-06 → 10-12)
+### Shipped — the v0.42 → v0.76 line (2026-09-07 → 10-12)
 - [x] **v0.42.0** — Hy4 audit P0 fixes: the suggestion engine's persistent state and UI behaviour become reliable ("Add all" write-through, cache invalidation on route change, the degenerate-route guard, the detour budget enforced from the actual itinerary)
 - [x] **v0.43.0** — The suggestion engine comes alive — See & do finally fills, the map and the suggestion panels cross-highlight, every add lands in road order, and a bad merge's encoding corruption is repaired
 - [x] **v0.44.0** — The mid-trip questions, answered where the planning happens: safe-to-spend pacing, per-day cost/dwell chips, and calendar export
@@ -515,7 +515,7 @@ Neither decision touches a colour value, per [ADR 0002](docs/adr/0002-mockup-pal
     The avatars and the "Just you so far" line were already in the card foot.
     "Add a cover photo" is one of the six next-step labels, and MR1 made it reachable.
     MR1's fix to the default 🧭 emoji is what let it render at all.
-  - **Corrected 2026-10-13 — the cover prompt is conditional, so it is not always visible.**
+  - **The cover prompt is conditional, so it is not always visible.**
     The six labels are ranked. A higher-ranked task hides the cover prompt.
     A coverless trip with an empty day shows "Plan day 1" instead, and a booking task hides it too.
     Issue #646 tracks the separate prompt this row asked for.
@@ -735,10 +735,12 @@ The strategy freezes this track for six weeks, so pick it up after the creator g
 
 | Page | The shared page parts are in it |
 | --- | --- |
+| P1 | The app shell — the route fallback, the dialogs and `ErrorBoundary` |
 | P3 | Purchases |
 | P5 | Trip created |
 | P6 | The invite gate and the shared plan |
 | P8 | Auth and DMCA |
+| P9 | Profile |
 | P10 | The creator hub |
 | P12 | The workspace tabs |
 | P14 | The Android home |
@@ -746,11 +748,9 @@ The strategy freezes this track for six weeks, so pick it up after the creator g
 
 | Page | Still on the old markup |
 | --- | --- |
-| P1 | The app shell — the route fallback and the dialogs use the shared block; `ErrorBoundary` does not yet |
 | P2 | The workspace header and tab bar (a mockup is required) |
 | P4 | The creator page |
 | P7 | The public itinerary |
-| P9 | Profile |
 | P11 | Create trip |
 | P13 | Landing (a mockup is required) |
 | P16 | The fold-in, which closes the track |

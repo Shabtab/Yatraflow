@@ -78,11 +78,11 @@ A collaborative travel-planning web app, built India-first. Real multi-day itine
 
 #### 👥 Collaborate & share
 
-- **Invite by link or short code** — friends join as owner / editor / commenter / viewer (enforced by Postgres RLS). The invite link is `/join/<code>`, where the code is short and trip-shaped (`GOABEACHWE-K7QF`). A code box on the home screen takes the code alone.
+- **Invite by link or short code** — friends join as owner / editor / commenter / viewer (enforced by Postgres RLS). The invite link is `/join/<code>`, where the code is short and trip-shaped (`GOABEACHWE-K7QFH3WT`). A code box on the home screen takes the code alone.
 - **One group-input stream** — stop ideas and group decisions share one tab; whatever needs *your* vote floats to the top with a sidebar digest, and decision cards show exactly who voted for what and where the tally leans
 - **Decisions** — structured polls with per-option cost/time impact and context, votes, resolve
 - **Publish itineraries** to the public Explore gallery; readers copy any trip in one click
-- **Creators get a public page** — `/c/<id>` gathers a creator's bio, links, track record and published itineraries. One link shares it.
+- **Creators get a public page** — a creator's bio, links, track record and published itineraries live at `/creator/<id>`. The share link `/c/<id>` opens a preview card and redirects the reader to the page.
 - **Export / import** JSON, or a self-contained snapshot link (`/share/<payload>`, zero server storage)
 
 </td>
@@ -259,7 +259,7 @@ You'll need a free [Supabase](https://supabase.com) project for accounts + data;
 | Backend | [Supabase](https://supabase.com) (Postgres + Auth + RLS) | Free tier covers the MVP; JSONB keeps trip internals denormalized |
 | Routing / geo | OSRM, Open-Meteo, Wikipedia, Overpass | Free + keyless, India-biasable; optional Google / Mappls keys — the free stack is the default; a Google key makes suggestions Google-only |
 
-The web app routes on real paths (`/trip/<id>`, `/pub/<slug>`, `/c/<id>`, `/join/<code>`), so a deep link is a real address. The native shell and the file build keep the hash form. One catch-all rewrite in `vercel.json` serves `index.html`, so a static host needs the same fallback.
+The web app routes on real paths (`/trip/<id>`, `/pub/<slug>`, `/creator/<id>`, `/join/<code>`), so a deep link is a real address. The creator share link `/c/<id>` redirects to `/creator/<id>`. The native shell and the file build keep the hash form. One catch-all rewrite in `vercel.json` serves `index.html`, so a static host needs the same fallback.
 
 ## 📁 Project structure
 
