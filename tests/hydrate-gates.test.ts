@@ -43,10 +43,24 @@ const STEPS = [
 /** The two steps resumeSync repeats after its refetch. */
 const RESUME_STEPS = ['connectRealtime', 'replayQueuedWrites']
 
+/** Characters that may precede a call of a seam we scan for. A hit that
+ *  starts after one of these is part of a longer name, not a call. */
+const NOT_A_BOUNDARY = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_$.'
+
+/** True when `line` contains `token` with a boundary in front of it. String
+ *  work, not a built RegExp: the token comes from a variable. */
+function hasCall(line: string, token: string): boolean {
+  for (let at = line.indexOf(token); at !== -1; at = line.indexOf(token, at + 1)) {
+    const before = at === 0 ? '' : line[at - 1]
+    if (before === '' || !NOT_A_BOUNDARY.includes(before)) return true
+  }
+  return false
+}
+
 /** The body of a declared function, found by the indentation of its own
  *  declaration. hydrate() is an arrow inside init(), so both forms are read. */
 function bodyOf(name: string): string {
-  const decl = LINES.findIndex((line) => new RegExp(`function\\s+${name}\\s*\\(|const\\s+${name}\\s*=\\s*async`).test(line))
+  const decl = LINES.findIndex((line) => line.includes(`function ${name}(`) || line.includes(`const ${name} = async`))
   if (decl === -1) throw new Error(`${name}() is not declared in src/store/store.ts. The pin is stale.`)
   const indent = /^\s*/.exec(LINES[decl])![0].length
   const end = LINES.findIndex((line, i) => i > decl && line.trim() === '}' && /^\s*/.exec(line)![0].length <= indent)
@@ -64,7 +78,7 @@ function codeLines(body: string): string[] {
 
 /** Every call of a step, as the line that makes it. */
 function callsOf(body: string, step: string): string[] {
-  return codeLines(body).filter((line) => new RegExp(`(?:^|[^\\w.])${step}\\(`).test(line))
+  return codeLines(body).filter((line) => hasCall(line, `${step}(`))
 }
 
 /** The condition of the `if (...)` that guards a call, or null for a bare call. */
