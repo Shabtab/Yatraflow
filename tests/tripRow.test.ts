@@ -26,7 +26,7 @@ const ALL_COLUMNS = {
   economy: true, price: true, roundTrip: true, cover: true,
   inviteCode: true, deleted: true, stayStyle: true,
   driverCount: true, hasVulnerable: true, driveAfterDinner: true, vehicleProfile: true,
-  tankL: true, rentPerDayInr: true, localTrain: true,
+  tankL: true, rentPerDayInr: true, localTrain: true, flights: true,
 }
 
 /** The bare fixture — no optional fields set. */
@@ -395,3 +395,58 @@ describe('#559 — a corrupt jsonb column coerces, it never poisons a render', (
     expect(back.expenses).toEqual(t.expenses)
   })
 })
+
+// ============ Flights (20261012c_trip_flights.sql) ============
+describe('flights round-trip through the jsonb column', () => {
+  const flightLeg = {
+    id: 'flt-1', dayIndex: 0, fromAirport: 'DEL', toAirport: 'BOM',
+    airline: 'IndiGo', flightNumber: '6E 2144',
+    departAt: '06:00', arriveAt: '08:15', costInrPerPerson: 4321,
+    bookingRef: 'AB12CD', notes: 'window seat',
+  }
+
+  it('writes the column when the probe says it exists', () => {
+    const t = { ...baseTrip(), transportMode: 'flight' as const, flights: [flightLeg] }
+    expect(tripToRow(t, 'owner-1', ALL_COLUMNS).flights).toEqual([flightLeg])
+  })
+
+  it('omits it entirely when the probe says it does not', () => {
+    const t = { ...baseTrip(), flights: [flightLeg] }
+    const row = tripToRow(t, 'owner-1', { ...ALL_COLUMNS, flights: false })
+    expect(row).not.toHaveProperty('flights')
+  })
+
+  it('reads back unchanged, and an absent column stays undefined', () => {
+    const t = { ...baseTrip(), transportMode: 'flight' as const, flights: [flightLeg] }
+    const row = { ...tripToRow(t, 'owner-1', ALL_COLUMNS), created_at: t.createdAt, updated_at: t.updatedAt }
+    expect(rowToTrip(row, []).flights).toEqual([flightLeg])
+    // no column at all → nothing re-plans
+    const bare = { ...tripToRow(baseTrip(), 'owner-1', ALL_COLUMNS), created_at: 1, updated_at: 1 }
+    expect(rowToTrip(bare, []).flights).toBeUndefined()
+  })
+
+  it('drops unplaceable rows and degrades junk fields, rather than planning around either', () => {
+    const junk = {
+      ...tripToRow(baseTrip(), 'owner-1', ALL_COLUMNS), created_at: 1, updated_at: 1,
+      flights: [
+        null,
+        'nope',
+        { id: 'ok', dayIndex: 0, fromAirport: 'DEL', toAirport: 'BOM' },
+        { id: 'no-day', fromAirport: 'DEL', toAirport: 'BOM' },
+        { id: 'no-from', dayIndex: 0, toAirport: 'BOM' },
+        { id: 'bad-clock', dayIndex: 0, fromAirport: 'DEL', toAirport: 'BOM', departAt: '99:99' },
+        { id: 'zero-fare', dayIndex: 0, fromAirport: 'DEL', toAirport: 'BOM', costInrPerPerson: 0 },
+      ],
+    }
+    const back = rowToTrip(junk, []).flights!
+    // the three placeable rows survive; the unplaceable ones do not
+    expect(back.map(f => f.id)).toEqual(['ok', 'bad-clock', 'zero-fare'])
+    // a junk clock/fare degrades to undefined — the engine then uses its own
+    // labelled model for that number, and the airports/day are not lost
+    expect(back[1].departAt).toBeUndefined()
+    expect(back[2].costInrPerPerson).toBeUndefined()
+    // a non-array drops the whole list
+    expect(rowToTrip({ ...junk, flights: { nope: true } }, []).flights).toBeUndefined()
+  })
+})
+

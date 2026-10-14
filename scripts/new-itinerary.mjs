@@ -70,25 +70,31 @@ Example:
     --start "Bangalore" --night "Hampi, Karnataka" --night "Badami, Karnataka" --night "Bangalore" \\
     --start-date 2026-11-14 --mode car --style balanced --tier comfort`
 
-let args
-try {
-  args = parseArgs(process.argv.slice(2))
-} catch (e) {
-  console.error(`\n${e.message}\n\n${USAGE}`)
-  process.exit(2)
+// Returns null when parsing fails: the message below is already printed.
+function parseCli() {
+  try {
+    return parseArgs(process.argv.slice(2))
+  } catch (e) {
+    console.error(`\n${e.message}\n\n${USAGE}`)
+    return null
+  }
 }
-if (args.help) { console.log(USAGE); process.exit(0) }
 
-const missing = ['slug', 'name', 'start', 'start-date', 'mode', 'style', 'tier'].filter(k => !args[k])
-if (missing.length || args.night.length === 0) {
-  console.error(`Missing: ${[...missing.map(m => `--${m}`), ...(args.night.length ? [] : ['--night'])].join(', ')}\n\n${USAGE}`)
-  process.exit(2)
+// Prints the first problem and returns false. exitCode, not process.exit:
+// the message must reach the terminal (#656).
+function validateArgs(args) {
+  const missing = ['slug', 'name', 'start', 'start-date', 'mode', 'style', 'tier'].filter(k => !args[k])
+  if (missing.length || args.night.length === 0) {
+    console.error(`Missing: ${[...missing.map(m => `--${m}`), ...(args.night.length ? [] : ['--night'])].join(', ')}\n\n${USAGE}`)
+    return false
+  }
+  if (!/^[a-z0-9-]+$/.test(args.slug)) { console.error('--slug must match ^[a-z0-9-]+$'); return false }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(args['start-date'])) { console.error('--start-date must be yyyy-mm-dd'); return false }
+  if (!MODES.includes(args.mode)) { console.error(`--mode must be one of ${MODES.join(', ')}`); return false }
+  if (!STYLES.includes(args.style)) { console.error(`--style must be one of ${STYLES.join(', ')}`); return false }
+  if (!TIERS.includes(args.tier)) { console.error(`--tier must be one of ${TIERS.join(', ')}`); return false }
+  return true
 }
-if (!/^[a-z0-9-]+$/.test(args.slug)) { console.error('--slug must match ^[a-z0-9-]+$'); process.exit(2) }
-if (!/^\d{4}-\d{2}-\d{2}$/.test(args['start-date'])) { console.error('--start-date must be yyyy-mm-dd'); process.exit(2) }
-if (!MODES.includes(args.mode)) { console.error(`--mode must be one of ${MODES.join(', ')}`); process.exit(2) }
-if (!STYLES.includes(args.style)) { console.error(`--style must be one of ${STYLES.join(', ')}`); process.exit(2) }
-if (!TIERS.includes(args.tier)) { console.error(`--tier must be one of ${TIERS.join(', ')}`); process.exit(2) }
 
 /**
  * The write target is a path from the command line, so confine it: the scaffolder
@@ -105,117 +111,123 @@ function shelfTarget(raw) {
   return target
 }
 
-let outPath
-try {
-  outPath = shelfTarget(args.out ?? join(SHELF, `${args.slug}.draft.json`))
-} catch (e) {
-  console.error(`\n${e.message}\n\n${USAGE}`)
-  process.exit(2)
-}
-if (existsSync(outPath) && !args.force) {
-  console.error(`${outPath} exists — pass --force to overwrite.`)
-  process.exit(2)
-}
+async function scaffold(args) {
+  let outPath
+  try {
+    outPath = shelfTarget(args.out ?? join(SHELF, `${args.slug}.draft.json`))
+  } catch (e) {
+    console.error(`\n${e.message}\n\n${USAGE}`)
+    // exitCode, not process.exit: the message must reach the terminal (#656).
+    process.exitCode = 2
+    return
+  }
+  if (existsSync(outPath) && !args.force) {
+    console.error(`${outPath} exists — pass --force to overwrite.`)
+    process.exitCode = 2
+    return
+  }
 
-// ---- geocode every place (looked up, never typed) ----
-const places = [args.start, ...args.night]
-console.log(`Geocoding ${places.length} places…`)
-const { results, missed } = await geocodeMany(places, {
-  onResult: row => console.log(row.lat === null
-    ? `  NO HIT  ${row.query}`
-    : `  ${row.query}\n    -> ${row.lat.toFixed(4)}, ${row.lng.toFixed(4)}   [${row.matched}]`),
-})
-if (missed > 0) {
-  console.error(`\n${missed} place(s) could not be geocoded. Rephrase them with district + state and run again — a guessed coordinate is the one error the import gates cannot catch.`)
-  process.exit(1)
-}
+  // ---- geocode every place (looked up, never typed) ----
+  const places = [args.start, ...args.night]
+  console.log(`Geocoding ${places.length} places…`)
+  const { results, missed } = await geocodeMany(places, {
+    onResult: row => console.log(row.lat === null
+      ? `  NO HIT  ${row.query}`
+      : `  ${row.query}\n    -> ${row.lat.toFixed(4)}, ${row.lng.toFixed(4)}   [${row.matched}]`),
+  })
+  if (missed > 0) {
+    console.error(`\n${missed} place(s) could not be geocoded. Rephrase them with district + state and run again — a guessed coordinate is the one error the import gates cannot catch.`)
+    // exitCode, not process.exit: this message must reach the terminal (#656).
+    process.exitCode = 1
+    return
+  }
 
-const start = results[0]
-const nights = results.slice(1)
-const days = nights.length
-const dates = Array.from({ length: days }, (_, i) => {
-  const d = new Date(`${args['start-date']}T00:00:00Z`)
-  d.setUTCDate(d.getUTCDate() + i)
-  return d.toISOString().slice(0, 10)
-})
+  const start = results[0]
+  const nights = results.slice(1)
+  const days = nights.length
+  const dates = Array.from({ length: days }, (_, i) => {
+    const d = new Date(`${args['start-date']}T00:00:00Z`)
+    d.setUTCDate(d.getUTCDate() + i)
+    return d.toISOString().slice(0, 10)
+  })
 
-/** Readable, unique ids from a place name: "Nubra Valley, Ladakh" -> "nubra-valley". */
-function slugOf(place) {
-  return place.split(',')[0].trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'place'
-}
+  /** Readable, unique ids from a place name: "Nubra Valley, Ladakh" -> "nubra-valley". */
+  function slugOf(place) {
+    return place.split(',')[0].trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'place'
+  }
 
-const slugSeen = new Map()
-function uniqueSlug(prefix, place) {
-  const base = `${prefix}-${slugOf(place)}`
-  const n = (slugSeen.get(base) ?? 0) + 1
-  slugSeen.set(base, n)
-  return n === 1 ? base : `${base}-${n}`
-}
+  const slugSeen = new Map()
+  function uniqueSlug(prefix, place) {
+    const base = `${prefix}-${slugOf(place)}`
+    const n = (slugSeen.get(base) ?? 0) + 1
+    slugSeen.set(base, n)
+    return n === 1 ? base : `${base}-${n}`
+  }
 
-const trip = {
-  name: args.name,
-  startLocation: args.start,
-  startLocationCoords: { lat: start.lat, lng: start.lng },
-  destinations: args.night,
-  destinationCoords: nights.map(n => ({ lat: n.lat, lng: n.lng })),
-  startDate: dates[0],
-  endDate: dates[days - 1],
-  travellers: args.travellers ? Number(args.travellers) : 2,
-  transportMode: args.mode,
-  travelStyle: args.style,
-  stayStyle: args.tier,
-  roundTrip: !args['one-way'],
-  // Priced by the engine, never guessed: 0 is the explicit TODO the validator reports.
-  budgetPerPersonInr: 0,
-  coverEmoji: '🧭',
-  visibility: 'public',
-  fixedCommitments: [],
-  expenses: [],
-  days: nights.map((n, i) => ({
-    id: `d${i + 1}`,
-    index: i,
-    title: '',
-    stops: [{
-      id: uniqueSlug(`d${i + 1}`, n.query),
-      title: n.query.split(',')[0].trim(),
-      category: 'sightseeing',
-      locationName: n.query,
-      lat: n.lat,
-      lng: n.lng,
-      visitMinutes: 0,
-      entryFeeInrPerPerson: 0,
-      transportCostInrTotal: 0,
-      priority: 'must-do',
-      status: 'confirmed',
-      orderInDay: 1,
-    }],
-  })),
-}
-
-const doc = {
-  formatVersion: FORMAT_VERSION,
-  trip,
-  publication: {
-    id: args.slug,
-    title: args.name,
-    tagline: `${days}-day ${args.style} trip: ${args.night.map(n => n.split(',')[0].trim()).join(' → ')}.`,
-    routeSummary: [args.start.split(',')[0].trim(), ...args.night.map(n => n.split(',')[0].trim())],
-    durationDays: days,
-    estimatedBudgetPerPersonInr: 0,
+  const trip = {
+    name: args.name,
+    startLocation: args.start,
+    startLocationCoords: { lat: start.lat, lng: start.lng },
+    destinations: args.night,
+    destinationCoords: nights.map(n => ({ lat: n.lat, lng: n.lng })),
+    startDate: dates[0],
+    endDate: dates[days - 1],
+    travellers: args.travellers ? Number(args.travellers) : 2,
+    transportMode: args.mode,
     travelStyle: args.style,
-    travelTips: [],
-    warningsAndAssumptions: [],
-    freeDayIndexes: [],
-  },
-}
-if (args['driver-count']) Object.assign(trip, { driverCount: Number(args['driver-count']) })
+    stayStyle: args.tier,
+    roundTrip: !args['one-way'],
+    // Priced by the engine, never guessed: 0 is the explicit TODO the validator reports.
+    budgetPerPersonInr: 0,
+    coverEmoji: '🧭',
+    visibility: 'public',
+    fixedCommitments: [],
+    expenses: [],
+    days: nights.map((n, i) => ({
+      id: `d${i + 1}`,
+      index: i,
+      title: '',
+      stops: [{
+        id: uniqueSlug(`d${i + 1}`, n.query),
+        title: n.query.split(',')[0].trim(),
+        category: 'sightseeing',
+        locationName: n.query,
+        lat: n.lat,
+        lng: n.lng,
+        visitMinutes: 0,
+        entryFeeInrPerPerson: 0,
+        transportCostInrTotal: 0,
+        priority: 'must-do',
+        status: 'confirmed',
+        orderInDay: 1,
+      }],
+    })),
+  }
 
-mkdirSync(dirname(outPath), { recursive: true })
-writeFileSync(outPath, JSON.stringify(doc, null, 2) + '\n')
-console.log(`\nWrote ${outPath}`)
+  const doc = {
+    formatVersion: FORMAT_VERSION,
+    trip,
+    publication: {
+      id: args.slug,
+      title: args.name,
+      tagline: `${days}-day ${args.style} trip: ${args.night.map(n => n.split(',')[0].trim()).join(' → ')}.`,
+      routeSummary: [args.start.split(',')[0].trim(), ...args.night.map(n => n.split(',')[0].trim())],
+      durationDays: days,
+      estimatedBudgetPerPersonInr: 0,
+      travelStyle: args.style,
+      travelTips: [],
+      warningsAndAssumptions: [],
+      freeDayIndexes: [],
+    },
+  }
+  if (args['driver-count']) Object.assign(trip, { driverCount: Number(args['driver-count']) })
 
-console.log(`
-── What is already right ─────────────────────────────────────────────
+  mkdirSync(dirname(outPath), { recursive: true })
+  writeFileSync(outPath, JSON.stringify(doc, null, 2) + '\n')
+  console.log(`\nWrote ${outPath}`)
+
+  console.log(`
+\n── What is already right ─────────────────────────────────────────────
   formatVersion ${FORMAT_VERSION} · ${days} days dated ${dates[0]} → ${dates[days - 1]}
   ${places.length} places geocoded (start + ${days} overnights)
   one 1-based, contiguous anchor stop per day · publication.durationDays matches
@@ -235,8 +247,24 @@ console.log(`
 ── Gate 1 now ───────────────────────────────────────────────────────
 `)
 
-try {
-  execFileSync(process.execPath, ['scripts/validate-itinerary.mjs', outPath], { stdio: 'inherit' })
-} catch {
-  console.log('\nThe draft is expected to fail Gate 1 until the checklist above is done — that report is the to-do list.')
+  try {
+    execFileSync(process.execPath, ['scripts/validate-itinerary.mjs', outPath], { stdio: 'inherit' })
+  } catch {
+    console.log('\nThe draft is expected to fail Gate 1 until the checklist above is done — that report is the to-do list.')
+  }
+}
+
+const args = parseCli()
+if (!args) {
+  // The message above must reach the terminal. exitCode, not process.exit (#656).
+  process.exitCode = 2
+} else if (args.help) {
+  console.log(USAGE)
+  // --help stops here: the scaffold must not run. exitCode, not process.exit (#656).
+  process.exitCode = 0
+} else if (!validateArgs(args)) {
+  // The message above must reach the terminal. exitCode, not process.exit (#656).
+  process.exitCode = 2
+} else {
+  await scaffold(args)
 }

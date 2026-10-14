@@ -161,6 +161,17 @@ describe('UnlockReveal: true copy and a way to the shelf', () => {
   })
 })
 
+describe('Styles: the page blocks take their entrance from page-enter', () => {
+  it('declares no entrance on the My purchases page rules, so the shared cascade owns every block', async () => {
+    const css = await read('src/styles.css')
+    const start = css.indexOf('/* ===== My purchases (page rules) ===== */')
+    const end = css.indexOf('/* ===== My purchases: the kept-for-you card')
+    expect(start).toBeGreaterThan(-1)
+    expect(end).toBeGreaterThan(start)
+    expect(css.slice(start, end)).not.toMatch(/animation\s*:/)
+  })
+})
+
 describe('Styles: the new rules use tokens and opt out of motion', () => {
   it('fades the new-card outline with the slow token and the out easing, and has a still fallback', async () => {
     const css = await read('src/styles.css')

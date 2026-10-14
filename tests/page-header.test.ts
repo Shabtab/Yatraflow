@@ -59,7 +59,7 @@ describe('PageHeader component contract', () => {
 })
 
 describe('PageHeader styles', () => {
-  it('uses the yf-header rules, the serif title and token motion', async () => {
+  it('uses the yf-header rules and the serif title, and declares no entrance of its own', async () => {
     const css = await read(STYLES)
     const start = css.indexOf('/* ===== Shared page components: header ===== */')
     expect(start).toBeGreaterThan(-1)
@@ -99,6 +99,15 @@ describe('Surface component contract', () => {
     expect(block).not.toMatch(/\n\.yf-surface:hover/)
     expect(block).toMatch(/prefers-reduced-motion: reduce\) \{[\s\S]*transform: none/)
     expect(block).not.toMatch(/\d+ms/)
+  })
+
+  it('keeps the list-row entrance with its opt-out, because the page cascade reaches direct children only', async () => {
+    const css = await read(STYLES)
+    const start = css.indexOf('/* ===== Shared page components: surface ===== */')
+    expect(start).toBeGreaterThan(-1)
+    const block = css.slice(start, css.indexOf('/* ===== My purchases (page rules) ===== */'))
+    expect(block).toContain('.yf-surface.is-entering { animation: cardIn var(--motion-slow) var(--ease-out) backwards; }')
+    expect(block).toMatch(/prefers-reduced-motion: reduce\) \{[\s\S]*\.yf-surface\.is-entering \{ animation: none; \}/)
   })
 })
 

@@ -42,6 +42,11 @@ Hard rules (each learned the hard way — do not relearn them):
   `cmd` expands `%ERRORLEVEL%` **at parse time, before the commands run**, so it
   echoes a stale exit code and masks real failures. This caused repeated
   "local passes / Vercel fails" drift (Aug 2026, twice).
+- **You must check the Node version that runs npm with `npm config list`.**
+  A PowerShell npm shim can select another installed Node version. You must run
+  npm's CLI through your intended Node executable when the versions differ.
+- **You must set `TEMP` and `TMP` inside your worktree when Vite cannot rename
+  SSR temp files on Windows.** You must rerun `npm run verify`.
 - **PowerShell: a bare `echo;` (no argument) prompts for `InputObject` and hangs
   captured output** — always pass an argument (`echo '---'` / `Write-Host "…"`).
   The terminal looks stuck and shell-integration reports the command as still

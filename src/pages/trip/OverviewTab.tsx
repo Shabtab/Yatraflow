@@ -6,7 +6,7 @@ import type { SegmentHit } from '../../lib/geocode'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { CircleCheck, CloudSun, Droplets, Lightbulb, Pin, Siren, TriangleAlert } from 'lucide-react'
 import type { Trip } from '../../data/types'
-import { useDb, userById, activityFor } from '../../store/store'
+import { useDb, useSliceReads, userById, activityFor, resumeSync } from '../../store/store'
 import { computeHealth, computeTotals, formatInr, minutesToHM, countHotelNights, isRoundTrip } from '../../lib/engine'
 import { healthBandClass, healthBandTone } from '../../lib/healthBand'
 import { overviewRoutePoints } from '../../lib/overviewTruth'
@@ -18,9 +18,72 @@ import type { DayWeather } from '../../lib/weather'
 import { useWeatherRefreshTick } from '../../hooks/useWeatherRefresh'
 import { timeAgo } from './shared'
 import { Avatar, Chip, StatTile, RouteSnapshot } from '../../components/ui'
+import { Surface } from '../../components/page/Surface'
 import { InlineIcon, wmoIcon } from '../../components/icons'
+import { StateBlock } from '../../components/page/StateBlock'
+import { rowsView, sliceState, type RowsView } from '../../lib/readState'
 
 // ================= Overview =================
+
+export function overviewSliceView(
+  sliceReads: Record<string, 'ok' | 'failed'> | undefined,
+  slice: 'activity' | 'decisions',
+  rowCount: number,
+): RowsView {
+  return rowsView(sliceState(sliceReads, slice), rowCount)
+}
+
+export interface OverviewWeatherAnchor {
+  date: string
+  lat: number
+  lng: number
+}
+
+export function overviewWeatherKey(anchor: OverviewWeatherAnchor): string {
+  return JSON.stringify([anchor.date, anchor.lat, anchor.lng])
+}
+
+export function overviewWeatherSignature(anchors: readonly OverviewWeatherAnchor[]): string {
+  return JSON.stringify(anchors.map(overviewWeatherKey))
+}
+
+export function filterOverviewWeather(
+  forecasts: Record<string, DayWeather>,
+  anchors: readonly OverviewWeatherAnchor[],
+): Record<string, DayWeather> {
+  const activeKeys = new Set(anchors.map(overviewWeatherKey))
+  return Object.fromEntries(Object.entries(forecasts).filter(([key]) => activeKeys.has(key)))
+}
+
+export function mergeOverviewWeather(
+  anchors: readonly OverviewWeatherAnchor[],
+  results: readonly PromiseSettledResult<Record<string, DayWeather>>[],
+  previous: Record<string, DayWeather>,
+): { byDate: Record<string, DayWeather>; failedKeys: string[]; retainedKeys: string[] } {
+  const retained = filterOverviewWeather(previous, anchors)
+  const byDate: Record<string, DayWeather> = {}
+  const failedKeys: string[] = []
+  const retainedKeys: string[] = []
+
+  anchors.forEach((anchor, index) => {
+    const key = overviewWeatherKey(anchor)
+    const result = results[index]
+    if (result?.status === 'fulfilled') {
+      const forecast = result.value[anchor.date]
+      if (forecast?.date === anchor.date) byDate[key] = forecast
+      return
+    }
+
+    failedKeys.push(key)
+    const lastForecast = retained[key]
+    if (lastForecast) {
+      byDate[key] = lastForecast
+      retainedKeys.push(key)
+    }
+  })
+
+  return { byDate, failedKeys, retainedKeys }
+}
 
 export function OverviewTab({ trip, onOpenTimeline, onOpenMap, onInvite, health, totals, road, corridorSegments, mapInputs, mapCache }: {
   trip: Trip
@@ -42,8 +105,14 @@ export function OverviewTab({ trip, onOpenTimeline, onOpenMap, onInvite, health,
   mapCache?: { scopeKm: number; inputsHash: string } | null
 }) {
   const db = useDb()
+  const sliceReads = useSliceReads()
   const timeFormat = useTimeFormat()
-  const unresolvedDecisions = db.decisions.filter(d => d.tripId === trip.id && d.status === 'open').length
+  const tripDecisions = db.decisions.filter(d => d.tripId === trip.id)
+  const unresolvedDecisions = tripDecisions.filter(d => d.status === 'open').length
+  const decisionsView = overviewSliceView(sliceReads, 'decisions', tripDecisions.length)
+  const tripActivity = activityFor(trip.id)
+  const activityView = overviewSliceView(sliceReads, 'activity', tripActivity.length)
+  const retryOverviewReads = () => { void resumeSync().catch(() => undefined) }
   const nextCommitment = [...trip.fixedCommitments]
     .sort((a, b) => a.dayIndex - b.dayIndex || a.time.localeCompare(b.time))[0]
   const crew = trip.members ?? []
@@ -70,13 +139,13 @@ export function OverviewTab({ trip, onOpenTimeline, onOpenMap, onInvite, health,
     <div className="two-col bento">
       <div>
         <div className="overview-head">
-          <h2>Trip briefing</h2>
+          <h2 className="ovw-card-title">Trip briefing</h2>
           <p className="muted small">What needs attention before this road trip starts.</p>
         </div>
 
-        <div className="card">
+        <Surface className="card ovw-panel" enterIndex={0}>
           <div className="row-between card-head">
-            <h3>Trip health</h3>
+            <h3 className="ovw-card-title">Trip health</h3>
             <Chip tone={healthBandTone(health.band)}>
               {health.band}
             </Chip>
@@ -101,7 +170,7 @@ export function OverviewTab({ trip, onOpenTimeline, onOpenMap, onInvite, health,
             </div>
           </div>
           <button className="health-rec" onClick={onOpenTimeline}>View health recommendations →</button>
-        </div>
+        </Surface>
 
         {/* Bento stat cluster: cost / per-person / effort / stops at a glance */}
         <div className="stat-grid ovw-stats">
@@ -112,13 +181,13 @@ export function OverviewTab({ trip, onOpenTimeline, onOpenMap, onInvite, health,
         </div>
 
         {/* Priority actions: the most consequential issues with a direct fix link */}
-        <div className="card">
+        <Surface className="card ovw-panel" enterIndex={1}>
           <div className="row-between card-head">
-            <h3>Priority actions</h3>
+            <h3 className="ovw-card-title">Priority actions</h3>
             {health.warnings.length > 0 && <span className={countTone}>{health.warnings.length} warning{health.warnings.length !== 1 ? 's' : ''} to review</span>}
           </div>
           {priorityActions.length === 0 ? (
-            <p className="muted small">Nothing needs fixing right now — the plan flows.</p>
+            <StateBlock kind="empty" size="compact" title="Nothing needs fixing right now" body="— the plan flows." />
           ) : (
             <div className="warn-list">
               {priorityActions.map(w => (
@@ -136,12 +205,12 @@ export function OverviewTab({ trip, onOpenTimeline, onOpenMap, onInvite, health,
             </div>
           )}
           <button className="link-btn teal ovw-timeline-action" onClick={onOpenTimeline}>Open Timeline to resolve →</button>
-        </div>
+        </Surface>
       </div>
 
       <div>
-        <div className="card route-snap">
-          <h3>Route snapshot</h3>
+        <Surface className="card ovw-panel ovw-route-snap" enterIndex={2}>
+          <h3 className="ovw-card-title">Route snapshot</h3>
           {/* #403: `RouteSnapshot`'s fallback is an ILLUSTRATIVE curve, so handing
               it nothing drew a mockup road wearing this trip's real day badges —
               a route for a trip that has none. `points` is `[]` when fewer than
@@ -160,10 +229,12 @@ export function OverviewTab({ trip, onOpenTimeline, onOpenMap, onInvite, health,
                 roundTripNote={isRoundTrip(trip) ? `↩ returns to ${trip.startLocation}` : undefined}
                 points={routePoints.map(p => ({ lat: p.lat, lng: p.lng, day: p.day }))}
               />
-            : <p className="muted small ovw-route-empty">
-                No route to draw yet — this plan needs at least two places with confirmed
-                coordinates. Add a stop, or pin the ones that are missing, and the shape appears here.
-              </p>}
+            : <div className="ovw-route-empty"><StateBlock
+                kind="empty"
+                size="compact"
+                title="No route to draw yet"
+                body="— this plan needs at least two places with confirmed coordinates. Add a stop, or pin the ones that are missing, and the shape appears here."
+              /></div>}
           <p className="ovw-route-summary">
             <b>{trip.startLocation}</b>
             {trip.destinations.map((d, i) => <span key={i}> → {d}</span>)}
@@ -173,13 +244,13 @@ export function OverviewTab({ trip, onOpenTimeline, onOpenMap, onInvite, health,
             <span>{trip.days.length} days · ≈{Math.round(totals.totalDistanceKm)} km · {totals.stopCount} stops</span>
             <button className="link-btn teal" onClick={onOpenMap}>Open map →</button>
           </div>
-        </div>
+        </Surface>
 
         <SlotMatrix trip={trip} road={road} corridorSegments={corridorSegments} mapInputs={mapInputs} mapCache={mapCache} onRefreshMatrix={onOpenMap} />
 
-        <div className="card">
+        <Surface className="card ovw-panel" enterIndex={4}>
           <div className="row-between card-head">
-            <h3>Fixed commitments</h3>
+            <h3 className="ovw-card-title">Fixed commitments</h3>
             <span className="chip chip-info">{trip.fixedCommitments.length}</span>
           </div>
           {nextCommitment ? (
@@ -199,33 +270,70 @@ export function OverviewTab({ trip, onOpenTimeline, onOpenMap, onInvite, health,
               ))}
             </div>
           ) : (
-            <p className="muted small">None saved yet. Add check-ins, trains or flights so the planner can protect them.</p>
+            <StateBlock kind="empty" size="compact" title="None saved yet." body="Add check-ins, trains or flights so the planner can protect them." />
           )}
-        </div>
+        </Surface>
 
-        <div className="card">
-          <h3 className="card-head">Recent activity</h3>
-          {activityFor(trip.id).slice(0, 6).map(a => (
+        <Surface className="card ovw-panel" enterIndex={5}>
+          <h3 className="card-head ovw-card-title">Recent activity</h3>
+          {activityView === 'reading' && <StateBlock kind="loading" size="compact" icon={<span className="spinner" aria-hidden="true" />} title="Loading activity…" />}
+          {activityView === 'failed' && <StateBlock
+            kind="failed"
+            size="compact"
+            icon={<TriangleAlert size={18} aria-hidden />}
+            title="Couldn’t load activity"
+            body="The request failed. It does not mean there is no activity."
+            actions={<button className="btn btn-outline btn-sm" onClick={retryOverviewReads}>Try again</button>}
+          />}
+          {activityView === 'empty' && <StateBlock kind="empty" size="compact" title="No recent activity yet" body="Updates from your group will appear here." />}
+          {activityView === 'kept' && <StateBlock
+            kind="kept"
+            size="compact"
+            title="Couldn’t refresh recent activity"
+            body="Showing the activity that was loaded."
+            actions={<button className="btn btn-outline btn-sm" onClick={retryOverviewReads}>Try again</button>}
+          />}
+          {(activityView === 'rows' || activityView === 'kept') && tripActivity.slice(0, 6).map(a => (
             <div key={a.id} className="feed-item">
               <Avatar user={userById(a.actorId)} />
               <span><b>{userById(a.actorId)?.profile.name}</b> {a.verb}{a.target ? ` · ${a.target}` : ''}</span>
               <span className="feed-time">{timeAgo(a.at)}</span>
             </div>
           ))}
-        </div>
+        </Surface>
 
         <WeatherCard key={trip.id} trip={trip} />
       </div>
 
-      <div className="card pulse-bar">
-        <span className="pulse-label">Group pulse</span>
+      <Surface className="card pulse-bar ovw-panel ovw-strip" enterIndex={7}>
+        <h3 className="ovw-card-title">Group pulse</h3>
         <span className="pulse-item"><b>{crew.length}</b> member{crew.length !== 1 ? 's' : ''}</span>
         <span className="pulse-dot">·</span>
-        <span className="pulse-item"><b>{unresolvedDecisions}</b> open decision{unresolvedDecisions !== 1 ? 's' : ''}</span>
+        {decisionsView === 'reading' && <StateBlock kind="loading" size="compact" icon={<span className="spinner" aria-hidden="true" />} title="Loading decisions…" />}
+        {decisionsView === 'failed' && <StateBlock
+          kind="failed"
+          size="compact"
+          icon={<TriangleAlert size={18} aria-hidden />}
+          title="Couldn’t load decisions"
+          body="The request failed. It does not mean there are no open decisions."
+          actions={<button className="btn btn-outline btn-sm" onClick={retryOverviewReads}>Try again</button>}
+        />}
+        {(decisionsView === 'rows' || decisionsView === 'empty' || decisionsView === 'kept') && <>
+          {decisionsView === 'empty'
+            ? <StateBlock kind="empty" size="compact" title="0 open decisions" />
+            : <span className="pulse-item"><b>{unresolvedDecisions}</b> open decision{unresolvedDecisions !== 1 ? 's' : ''}</span>}
+          {decisionsView === 'kept' && <StateBlock
+            kind="kept"
+            size="compact"
+            title="Couldn’t refresh decisions"
+            body="Showing the decisions that were loaded."
+            actions={<button className="btn btn-outline btn-sm" onClick={retryOverviewReads}>Try again</button>}
+          />}
+        </>}
         <span className="pulse-dot">·</span>
         <span className="pulse-item">{trip.fixedCommitments.length ? <><b>{trip.fixedCommitments.length}</b> fixed commitment{trip.fixedCommitments.length !== 1 ? 's' : ''}</> : 'No fixed commitments yet'}</span>
         <button className="link-btn teal pulse-link" onClick={onInvite}>Invite travellers →</button>
-      </div>
+      </Surface>
     </div>
   )
 }
@@ -238,11 +346,13 @@ export function OverviewTab({ trip, onOpenTimeline, onOpenMap, onInvite, health,
 function WeatherCard({ trip }: { trip: Trip }) {
   const [byDate, setByDate] = useState<Record<string, DayWeather>>({})
   const [state, setState] = useState<'loading' | 'ready' | 'unavailable' | 'failed'>('loading')
-  // #704: the forecast on screen, mirrored into a ref so the settle handlers of a
-  // request can tell "nothing has loaded" from "a forecast is on screen".
+  // The ref carries forecasts for current anchors. Effects prune it before a
+  // request, and cancelled requests cannot write it back.
   const byDateRef = useRef<Record<string, DayWeather>>({})
-  // Set when a refresh fails while a forecast is on screen. The card keeps that forecast.
   const [refreshFailed, setRefreshFailed] = useState(false)
+  const [refreshFailedFor, setRefreshFailedFor] = useState<string | null>(null)
+  const [partialFailure, setPartialFailure] = useState<{ signature: string; missingDays: number } | null>(null)
+  const [resolvedSignature, setResolvedSignature] = useState<string | null>(null)
   // Bumped by Try again. A bump re-pulls the forecast past the cache.
   const [retries, setRetries] = useState(0)
   const tick = useWeatherRefreshTick()
@@ -263,35 +373,44 @@ function WeatherCard({ trip }: { trip: Trip }) {
     }
     return out
   }, [trip])
+  const anchorSignature = overviewWeatherSignature(dayAnchors)
+  const visibleByDate = filterOverviewWeather(byDate, dayAnchors)
+  const entries = Object.values(visibleByDate)
+  const readPending = resolvedSignature !== anchorSignature
 
   useEffect(() => {
+    const requestSignature = overviewWeatherSignature(dayAnchors)
+    const previous = filterOverviewWeather(byDateRef.current, dayAnchors)
+    byDateRef.current = previous
     if (dayAnchors.length === 0) return
     let cancelled = false
-    Promise.all(dayAnchors.map(d => fetchDailyWeather(d.lat, d.lng, d.date, 1, { force: tick > 0 || retries > 0 })))
+    void Promise.resolve()
+      .then(() => Promise.allSettled(dayAnchors.map(d => fetchDailyWeather(d.lat, d.lng, d.date, 1, { force: tick > 0 || retries > 0 }))))
       .then(results => {
         if (cancelled) return
-        const merged: Record<string, DayWeather> = {}
-        results.forEach((r, i) => {
-          const w = r[dayAnchors[i].date]
-          if (w) merged[w.date] = w
-        })
-        if (Object.keys(merged).length > 0) {
-          byDateRef.current = merged
-          setByDate(merged)
+        const merged = mergeOverviewWeather(dayAnchors, results, previous)
+        byDateRef.current = merged.byDate
+        setByDate(merged.byDate)
+        setResolvedSignature(requestSignature)
+        const missingDays = merged.failedKeys.length - merged.retainedKeys.length
+        setPartialFailure(missingDays > 0 ? { signature: requestSignature, missingDays } : null)
+        setRefreshFailed(merged.retainedKeys.length > 0)
+        setRefreshFailedFor(merged.retainedKeys.length > 0 ? requestSignature : null)
+        if (merged.failedKeys.length > 0) {
+          setState(Object.keys(merged.byDate).length > 0 ? 'ready' : 'failed')
+        } else if (Object.keys(merged.byDate).length > 0) {
           setState('ready')
-          setRefreshFailed(false)
-        } else if (Object.keys(byDateRef.current).length > 0) {
-          // A refresh with no usable day keeps the forecast on screen.
-          setRefreshFailed(true)
         } else {
           setState('unavailable')
         }
       })
       .catch(() => {
         if (cancelled) return
-        // A failed refresh keeps the forecast on screen. A failed first read sets the failed state.
         if (Object.keys(byDateRef.current).length > 0) setRefreshFailed(true)
         else setState('failed')
+        setRefreshFailedFor(Object.keys(byDateRef.current).length > 0 ? requestSignature : null)
+        setPartialFailure(null)
+        setResolvedSignature(requestSignature)
       })
     return () => { cancelled = true }
   }, [dayAnchors, tick, retries])
@@ -307,26 +426,26 @@ function WeatherCard({ trip }: { trip: Trip }) {
   // with no placed stops. Show nothing rather than a spinner that never
   // resolves; derived from the data, not set from the effect above.
   if (dayAnchors.length === 0) return null
-  if (state === 'loading') {
-    return <div className="card"><h3 className="card-head"><InlineIcon icon={CloudSun} size={14} gap={4} />Weather</h3><p className="muted small" role="status">Loading forecast…</p></div>
-  }
+  const loadingCard = <Surface className="card ovw-panel" enterIndex={6}><h3 className="card-head ovw-card-title"><InlineIcon icon={CloudSun} size={14} gap={4} />Weather</h3><StateBlock kind="loading" size="compact" title="Loading forecast…" /></Surface>
+  if (state === 'loading') return loadingCard
+  if (readPending && entries.length === 0) return loadingCard
   if (state === 'failed') {
+    if (readPending) return loadingCard
     return (
-      <div className="card">
-        <h3 className="card-head"><InlineIcon icon={CloudSun} size={14} gap={4} />Weather</h3>
-        <p className="muted small ovw-weather-failed" role="alert">Couldn’t load the forecast. <button className="btn btn-outline btn-sm" onClick={retryWeather}>Try again</button></p>
-      </div>
+      <Surface className="card ovw-panel" enterIndex={6}>
+        <h3 className="card-head ovw-card-title"><InlineIcon icon={CloudSun} size={14} gap={4} />Weather</h3>
+        <div className="ovw-weather-failed"><StateBlock kind="failed" size="compact" title="Couldn’t load the forecast." actions={<button className="btn btn-outline btn-sm" onClick={retryWeather}>Try again</button>} /></div>
+      </Surface>
     )
   }
   // 'unavailable': the forecast came back with no usable day, so there is nothing to show.
   if (state !== 'ready') return null
 
-  const entries = Object.values(byDate)
   const wetDays = entries.filter(w => w.rainChancePct >= 60).length
   return (
-    <div className="card">
+    <Surface className="card ovw-panel" enterIndex={6}>
       <div className="row-between card-head">
-        <h3><InlineIcon icon={CloudSun} size={14} gap={4} />Weather along the route</h3>
+        <h3 className="ovw-card-title"><InlineIcon icon={CloudSun} size={14} gap={4} />Weather along the route</h3>
         <span className="small muted">Open-Meteo · auto-refreshed · ±15 days</span>
       </div>
       <div className="weather-strip">
@@ -344,15 +463,27 @@ function WeatherCard({ trip }: { trip: Trip }) {
           )
         })}
       </div>
+      {readPending && <StateBlock kind="loading" size="compact" title="Updating forecasts…" />}
       {wetDays > 0 && (
         <p className="hint-text ovw-rain-note">
           <InlineIcon icon={TriangleAlert} size={12} gap={3} />High rain chance on {wetDays} day{wetDays > 1 ? 's' : ''} — consider indoor alternatives for weather-sensitive stops (beaches, viewpoints, treks).
         </p>
       )}
-      {refreshFailed && (
-        <p className="muted small ovw-weather-kept" role="status">Couldn’t refresh the forecast. Showing the last one. <button className="btn btn-outline btn-sm" onClick={retryWeather}>Try again</button></p>
+      {partialFailure?.signature === anchorSignature && partialFailure.missingDays > 0 && (
+        <div className="ovw-weather-failed"><StateBlock
+          kind="failed"
+          size="compact"
+          title="Couldn’t load some forecasts."
+          body={`${partialFailure.missingDays} day${partialFailure.missingDays === 1 ? '’s' : 's’'} forecast could not load. Showing available days.`}
+          actions={<button className="btn btn-outline btn-sm" onClick={retryWeather}>Try again</button>}
+        /></div>
       )}
-    </div>
+      {refreshFailed && refreshFailedFor === anchorSignature && entries.length > 0 && (
+        <div className="ovw-weather-kept"><StateBlock kind="kept" size="compact" title="Couldn’t refresh the forecast. Showing the last one."
+          actions={<button className="btn btn-outline btn-sm" onClick={retryWeather}>Try again</button>}
+        /></div>
+      )}
+    </Surface>
   )
 }
 
@@ -428,8 +559,8 @@ function SlotMatrix({ trip, road, corridorSegments, mapInputs, mapCache, onRefre
     .map(r => ({ index: r.day.index, filled: r.slots.filter(s => s.state === 'filled').length, total: r.slots.length }))
     .sort((a, b) => (a.filled / Math.max(1, a.total)) - (b.filled / Math.max(1, b.total)))[0]
   return (
-    <div className="card">
-      <h3 className="card-head">What each day holds</h3>
+    <Surface className="card ovw-panel" enterIndex={3}>
+      <h3 className="card-head ovw-card-title">What each day holds</h3>
       {freshness === 'stale' ? (
         <>
           <p className="muted small ovw-matrix-stale">
@@ -498,7 +629,7 @@ function SlotMatrix({ trip, road, corridorSegments, mapInputs, mapCache, onRefre
           derives aren&apos;t counted here. Open the Map tab once and this fills in.
         </p>
       )}
-    </div>
+    </Surface>
   )
 }
 

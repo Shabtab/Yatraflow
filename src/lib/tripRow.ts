@@ -1,7 +1,7 @@
 // ============ trips table serialization + Supabase error classification ============
 // Pure helpers with NO react/supabase/toast imports, so the row mapping and the
 // missing-column detection are unit-testable in the node test environment.
-import type { Trip, ItineraryDay, ItineraryStop, TripMember, Expense, FixedCommitment, LatLngPoint } from '../data/types'
+import type { Trip, ItineraryDay, ItineraryStop, TripMember, Expense, FixedCommitment, FlightLeg, LatLngPoint } from '../data/types'
 import { normalizeVehicleProfile } from './vehicleProfile'
 import { allowedAmount } from './expenseAmount'
 
@@ -35,6 +35,9 @@ export interface TripRow {
   tank_l?: number | null;
   rent_per_day_inr?: number | null;
   local_train?: boolean | null;
+  /** JSONB: the trip's flights (`FlightLeg[]`), present only after
+   *  20261012c_trip_flights.sql. Empty/absent = no flights recorded. */
+  flights?: FlightLeg[] | null;
   days: ItineraryDay[]; expenses: Expense[]; cover_emoji: string;
   /** present only after the cover-image migration (see supabase/schema.sql) */
   cover_image_url?: string | null;
@@ -75,6 +78,62 @@ export function sanitizeRentPerDayInr(v: number | undefined | null): number | nu
   return typeof v === 'number' && Number.isFinite(v) && v >= RENT_PER_DAY_MIN_INR && v <= RENT_PER_DAY_MAX_INR ? v : null
 }
 
+/** A stored "HH:MM" clock, or null. Same rule the engine's parser applies. */
+function hmOrNull(v: unknown): string | null {
+  if (typeof v !== 'string') return null
+  const m = /^(\d{1,2}):(\d{2})$/.exec(v.trim())
+  if (!m) return null
+  const h = Number(m[1])
+  const min = Number(m[2])
+  if (!Number.isFinite(h) || !Number.isFinite(min) || h > 23 || min > 59) return null
+  return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`
+}
+
+/** A finite positive ₹ amount, or null. Zero is not a fare. */
+function positiveAmountOrNull(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null
+}
+
+/** A non-empty trimmed string, or null. */
+function textOrNull(v: unknown): string | null {
+  return typeof v === 'string' && v.trim() ? v.trim() : null
+}
+
+/**
+ * Flight legs as read back from the jsonb column. Same fail-closed rule as the
+ * other jsonb columns: a non-array drops the whole list, and each row keeps
+ * only the fields that parse. A flight with no usable airports is dropped —
+ * `resolveAirports` can fall back to the nearest field, but only when the trip
+ * has geography to measure from, so an unusable row must not become an
+ * unplaced air leg.
+ */
+export function sanitizeFlights(v: unknown): FlightLeg[] {
+  if (!Array.isArray(v)) return []
+  const out: FlightLeg[] = []
+  for (const raw of v) {
+    if (raw == null || typeof raw !== 'object') continue
+    const r = raw as Record<string, unknown>
+    const id = textOrNull(r.id)
+    const from = textOrNull(r.fromAirport)
+    const to = textOrNull(r.toAirport)
+    const dayIndex = typeof r.dayIndex === 'number' && Number.isFinite(r.dayIndex) && r.dayIndex >= 0
+      ? Math.floor(r.dayIndex)
+      : null
+    if (!id || !from || !to || dayIndex == null) continue
+    out.push({
+      id, dayIndex, fromAirport: from, toAirport: to,
+      airline: textOrNull(r.airline) ?? undefined,
+      flightNumber: textOrNull(r.flightNumber) ?? undefined,
+      departAt: hmOrNull(r.departAt) ?? undefined,
+      arriveAt: hmOrNull(r.arriveAt) ?? undefined,
+      costInrPerPerson: positiveAmountOrNull(r.costInrPerPerson) ?? undefined,
+      bookingRef: textOrNull(r.bookingRef) ?? undefined,
+      notes: textOrNull(r.notes) ?? undefined,
+    })
+  }
+  return out
+}
+
 export function rowToTrip(row: TripRow, members: TripMember[]): Trip {
   // driverCount: NULL means "1 driver" (the legacy default). Anything outside
   // {2, 3} is junk — pre-migration trips stay at undefined, post-migration
@@ -101,6 +160,7 @@ export function rowToTrip(row: TripRow, members: TripMember[]): Trip {
   const tankL = sanitizeTankL(row.tank_l)
   const rentPerDayInr = sanitizeRentPerDayInr(row.rent_per_day_inr)
   const localTrain = typeof row.local_train === 'boolean' ? row.local_train : undefined
+  const flights = sanitizeFlights(row.flights)
   // #559 — the jsonb columns are corruptible (direct SQL, a partial write, a
   // restored dump): the server's own RPCs guard them with `jsonb_typeof`,
   // so `?? []` is not enough — it answers null but passes a non-array object
@@ -144,6 +204,8 @@ export function rowToTrip(row: TripRow, members: TripMember[]): Trip {
     tankL: tankL ?? undefined,
     rentPerDayInr: rentPerDayInr ?? undefined,
     localTrain,
+    // Absent column (pre-migration) stays undefined, so nothing re-plans.
+    flights: flights.length ? flights : undefined,
     days, expenses, coverEmoji: row.cover_emoji,
     coverImageUrl: row.cover_image_url ?? undefined, inviteCode: row.invite_code ?? undefined,
     ref: row.ref ?? undefined,
@@ -165,6 +227,8 @@ export interface OptionalColumnsProbe {
   tankL: boolean
   rentPerDayInr: boolean
   localTrain: boolean
+  /** the trip's flights (20261012c_trip_flights.sql) */
+  flights: boolean
   /** share attribution (20260929_pub_events_share_source.sql) */
   ref: boolean
 }
@@ -202,6 +266,7 @@ export function tripToRow(trip: Trip, ownerId: string, cols?: OptionalColumnsPro
   if (cols?.tankL) row.tank_l = sanitizeTankL(trip.tankL)
   if (cols?.rentPerDayInr) row.rent_per_day_inr = sanitizeRentPerDayInr(trip.rentPerDayInr)
   if (cols?.localTrain) row.local_train = typeof trip.localTrain === 'boolean' ? trip.localTrain : null
+  if (cols?.flights) row.flights = sanitizeFlights(trip.flights)
   if (cols?.ref) row.ref = trip.ref ?? null
   return row
 }

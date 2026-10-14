@@ -310,6 +310,43 @@ describe('the wiring: one measurement site, no second caller (#188)', () => {
     const calls = tripRoad.match(/routePath\(/g) ?? []
     expect(calls.length).toBe(2) // measureRoadChain + measureDayRide (the map's day line)
   })
+
+  // The reported defect: a flight trip was measured as a ROAD. Google Routes has
+  // no FLYING travelMode (the request errors) and OSRM's endpoint is hardcoded to
+  // /driving/, so both answer with driving directions — which got drawn as the
+  // map's line and read as the trip's travel time. Both measurement entry points
+  // must refuse a mode the routing layer cannot describe.
+  it('neither measurement path measures a mode the routing layer cannot describe', () => {
+    const workspace = read('../src/pages/TripWorkspace.tsx')
+    expect(workspace).toMatch(/isRoadMeasuredMode\(trip\.transportMode\)/)
+    expect(workspace).toMatch(/measureRoadChain\(/)
+
+    const tripMap = read('../src/components/TripMap.tsx')
+    expect(tripMap).toMatch(/isAirMode\(trip\.transportMode\)/)
+    // and the flight trip's line comes from the journey, never from a road
+    const mapTab = read('../src/pages/trip/MapTab.tsx')
+    expect(mapTab).toMatch(/tripJourneyGeometry\(/)
+    expect(mapTab).toMatch(/airPlan\?\.geometry \?\? roadView\.geometry/)
+  })
+
+  it('the engine owns the road-vs-air split, not a page file', () => {
+    const engine = read('../src/lib/engine.ts')
+    expect(engine).toMatch(/export function tripJourneyGeometry\(/)
+    expect(engine).toMatch(/export function journeyGeometry\(/)
+    expect(engine).toMatch(/export function groundAssumptions\(/)
+    // no page file may carry its own copy of the point-count rule
+    for (const f of ['../src/pages/trip/MapTab.tsx', '../src/pages/trip/timeline/FlightsPanel.tsx']) {
+      expect(read(f)).not.toMatch(/pts\.length >= 2/)
+    }
+  })
+
+  it('the Board draws the journey on a flight trip, not a blank map', () => {
+    const board = read('../src/components/BoardView.tsx')
+    // the Board has no road chain to draw for a flight trip, so it takes the
+    // same engine derivation the Map tab does
+    expect(board).toMatch(/isAirMode\(trip\.transportMode\) \? tripJourneyGeometry\(/)
+    expect(board).toMatch(/mainRouteGeometry=\{airGeometry \?\? roadView\.geometry\}/)
+  })
 })
 
 describe('derivations from the one measurement', () => {    const chain: RoadChain = {
@@ -413,7 +450,7 @@ describe('the Board draws the workspace road, graded (#370)', () => {
     const board = readSrc('../src/components/BoardView.tsx')
     expect(board).toMatch(/mapRoadViewFromLegs\(road\?\.chain \?\? null, road\?\.legs \?\? null, trip\.days\.map\(d => d\.index\)\)/)
     expect(board).toMatch(/mapReturnGeometryFromLegs\(road\?\.chain \?\? null, road\?\.legs \?\? null\)/)
-    expect(board).toMatch(/<MemoTripMap trip=\{trip\} focusDay=\{focusedDay\} showToolbar=\{false\}[\s\S]{0,120}mainRouteGeometry=\{roadView\.geometry\} returnRouteGeometry=\{mapReturnGeometry\}[\s\S]{0,80}allowSelfMeasurement=\{false\}/)
+    expect(board).toMatch(/<MemoTripMap trip=\{trip\} focusDay=\{focusedDay\} showToolbar=\{false\}[\s\S]{0,120}mainRouteGeometry=\{airGeometry \?\? roadView\.geometry\} returnRouteGeometry=\{mapReturnGeometry\}[\s\S]{0,80}allowSelfMeasurement=\{false\}/)
     // #425 PR 2: the focused day is the shared axis, not board-owned state
     expect(board).toMatch(/const focusedDay = dayFocus \?\? localFocusDay/)
     // the board no longer measures a road of its own

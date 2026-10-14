@@ -23,6 +23,8 @@ import { publishFormKey, publishFormMount } from '../../lib/publishFormKey'
 import { sliceState, rowsView, type ReadState, type RowsView } from '../../lib/readState'
 import type { PublicationDraft } from '../../lib/itinerarySpec'
 import { Avatar, Chip, ConfirmDialog, CopyButton, Field, FormErrorSummary, toast, undoToast } from '../../components/ui'
+import { StateBlock } from '../../components/page/StateBlock'
+import { Surface } from '../../components/page/Surface'
 import { PrintExport } from '../../components/PrintExport'
 import { cap, timeAgo } from './shared'
 
@@ -66,9 +68,9 @@ function SnapshotCard({ trip, me, onNavigate, legCorrections, publication }: {
   }
 
   return (
-    <div className="card">
+    <Surface className="card shr-panel">
       <span className="share-intent share-intent--info">3 · Keep a record</span>
-      <h3>Export & snapshot sharing</h3>
+      <h3 className="shr-card-title">Export & snapshot sharing</h3>
       <p className="hint-text shr-snapshot-description">
         Take the whole plan anywhere — no server stores it. Snapshot links embed the trip in the URL itself.
       </p>
@@ -87,7 +89,7 @@ function SnapshotCard({ trip, me, onNavigate, legCorrections, publication }: {
           <CopyButton text={link} label="Copy" />
         </div>
       )}
-    </div>
+    </Surface>
   )
 }
 
@@ -544,9 +546,9 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
       <section role="tabpanel" id="share-panel-plan" aria-labelledby="share-tab-plan"
         className="share-panel" hidden={tab !== 'plan'}>
         <h2 className="sr-only">Plan together</h2>
-        <div className="card">
+        <Surface className="card shr-panel">
           <span className="share-intent share-intent--teal">1 · Plan together</span>
-          <h3>Invite collaborators</h3>
+          <h3 className="shr-card-title">Invite collaborators</h3>
           <p className="hint-text shr-invite-description">Anyone with this link joins as an editor after logging in.</p>
           {inviteCode && (
             <div className="invite-code-row shr-invite-code-row">
@@ -557,20 +559,31 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
               <span className="small muted">read it out loud — friends type it on the home screen</span>
             </div>
           )}
+          {/* Minting the code is a write, so its three outcomes are three
+              statements. The failed one used to be a polite hint line, which a
+              screen reader could sit through while the panel claimed nothing was
+              wrong; the shared block announces it. */}
           {inviteLink ? (
             <div className="share-link-box"><code title={inviteLink}>{inviteLink}</code><CopyButton text={inviteLink} /></div>
           ) : mintFailed ? (
-            <p className="hint-text shr-invite-status" aria-live="polite">
-              We could not make an invite link.{' '}
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setMintFailed(false); setMintTry(n => n + 1) }}>Try again</button>
-            </p>
+            <div className="shr-state">
+              <StateBlock kind="failed" size="compact" title="We could not make an invite link."
+                actions={<button type="button" className="btn btn-outline btn-sm" onClick={() => { setMintFailed(false); setMintTry(n => n + 1) }}>Try again</button>} />
+            </div>
           ) : (
-            <p className="hint-text shr-invite-status" aria-live="polite">Making your invite link…</p>
+            <div className="shr-state">
+              <StateBlock kind="loading" size="compact" title="Making your invite link…" />
+            </div>
           )}
           <hr className="divider" />
-          <h3>Members & roles</h3>
+          <h3 className="shr-card-title">Members &amp; roles</h3>
           <div className="shr-members">
-            {(trip.members ?? []).map(m => {
+            {(trip.members ?? []).length === 0 ? (
+              <div className="shr-state">
+                <StateBlock kind="empty" size="compact" title="No one is on this trip yet."
+                  body="Share the invite link above and the travellers who join appear here." />
+              </div>
+            ) : (trip.members ?? []).map(m => {
               const u = userById(m.userId)
               return (
                 <div key={m.userId} className="feed-item shr-member-row">
@@ -594,11 +607,11 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
               )
             })}
           </div>
-        </div>
+        </Surface>
 
         {isOwner && (trip.members ?? []).length > 1 && (
-          <div className="card">
-            <h3>Danger zone</h3>
+          <Surface className="card shr-panel">
+            <h3 className="shr-card-title">Danger zone</h3>
             <p className="hint-text shr-removal-warning">Removing someone revokes their access immediately.</p>
             {(trip.members ?? []).filter(m => m.role !== 'owner').map(m => (
               <div key={m.userId} className="row-between shr-removal-row">
@@ -606,7 +619,7 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
                 <button className="btn btn-danger btn-sm" onClick={() => setPendingRemove(m)}>Remove</button>
               </div>
             ))}
-          </div>
+          </Surface>
         )}
       </section>
 
@@ -614,24 +627,28 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
       <section role="tabpanel" id="share-panel-publish" aria-labelledby="share-tab-publish"
         className="share-panel" hidden={tab !== 'publish'}>
         <h2 className="sr-only">Share publicly</h2>
-        <div className="card">
+        <Surface className="card shr-panel">
           <span className="share-intent share-intent--saffron">2 · Share publicly</span>
-          <h3>Publish as public itinerary</h3>
+          <h3 className="shr-card-title">Publish as public itinerary</h3>
           <p className="hint-text shr-publication-description">
             List this trip on Explore so anyone can discover and fork it. Choose which days are the free preview — the rest sit behind a premium placeholder (no real payments in this MVP).
           </p>
           {/* Loading, failed and "not published" are three different statements
-              (#704). The last one is said only after a read that succeeded. */}
+              (#704). The last one is said only after a read that succeeded.
+              Each is its own compact block, so the roles are the shared ones: a
+              failed read is an alert, a pending one and a kept note are statuses. */}
           {publishView === 'reading' && (
-            <p className="hint-text ts-note shr-read-loading" role="status">Checking whether this trip is on Explore…</p>
+            <div className="shr-state">
+              <StateBlock kind="loading" size="compact" title="Checking whether this trip is on Explore…" />
+            </div>
           )}
           {publishView === 'failed' && (
-            <p className="err-text ts-note shr-read-failed" role="alert">
-              Couldn’t check if this trip is on Explore.{' '}
-              <button className="btn btn-outline btn-sm" onClick={retryPublish} disabled={publishRetrying}>
-                {publishRetrying ? 'Trying…' : 'Try again'}
-              </button>
-            </p>
+            <div className="shr-state">
+              <StateBlock kind="failed" size="compact" title="Couldn’t check if this trip is on Explore."
+                actions={<button className="btn btn-outline btn-sm" onClick={retryPublish} disabled={publishRetrying}>
+                  {publishRetrying ? 'Trying…' : 'Try again'}
+                </button>} />
+            </div>
           )}
           {pub && (pubLive ? (
             <div className="row-between shr-publication-status">
@@ -646,12 +663,12 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
             </p>
           ))}
           {publishView === 'kept' && (
-            <p className="err-text ts-note shr-read-kept" role="status">
-              Couldn’t refresh. Showing the last status that loaded.{' '}
-              <button className="btn btn-outline btn-sm" onClick={retryPublish} disabled={publishRetrying}>
-                {publishRetrying ? 'Trying…' : 'Try again'}
-              </button>
-            </p>
+            <div className="shr-state">
+              <StateBlock kind="kept" size="compact" title="Couldn’t refresh. Showing the last status that loaded."
+                actions={<button className="btn btn-outline btn-sm" onClick={retryPublish} disabled={publishRetrying}>
+                  {publishRetrying ? 'Trying…' : 'Try again'}
+                </button>} />
+            </div>
           )}
           {/* The form reads its fields when it mounts. It mounts only once the
               status has loaded, stays open through a later refresh, and remounts
@@ -671,7 +688,7 @@ export function ShareTab({ trip, me, onNavigate, legCorrections }: {
             <button className="btn btn-ghost btn-sm shr-unpublish-action" onClick={() => setPendingUnpublish(true)}>Unpublish</button>
           )}
           {pubLink && <div className="share-link-box shr-publication-link"><code title={pubLink}>{pubLink}</code><CopyButton text={pubLink} label="Copy" /></div>}
-        </div>
+        </Surface>
       </section>
 
       {/* ---- Keep a record ---- */}

@@ -1,18 +1,11 @@
 {
   "pageRootAllowlist": [
-    "src/App.tsx#InviteGate",
-    "src/App.tsx#SharedTripPage",
-    "src/pages/AdminPage.tsx",
     "src/pages/Auth.tsx",
     "src/pages/CreateTrip.tsx",
-    "src/pages/CreatorHubPage.tsx",
     "src/pages/CreatorPage.tsx",
     "src/pages/Explore.tsx",
     "src/pages/Landing.tsx",
-    "src/pages/NativeHome.tsx",
-    "src/pages/Profile.tsx",
     "src/pages/PublicItinerary.tsx",
-    "src/pages/TripCreated.tsx",
     "src/pages/TripWorkspace.tsx",
     "src/pages/TripsList.tsx"
   ],
@@ -20,8 +13,8 @@
     "src/pages/AdminPage.tsx": {
       "EmptyState": 5,
       "loadingBlock": 0,
-      "inlineStyle": 8,
-      "rawH1": 1
+      "inlineStyle": 3,
+      "rawH1": 0
     },
     "src/pages/Auth.tsx": {
       "EmptyState": 0,
@@ -32,14 +25,14 @@
     "src/pages/CreateTrip.tsx": {
       "EmptyState": 0,
       "loadingBlock": 0,
-      "inlineStyle": 12,
-      "rawH1": 1
+      "inlineStyle": 11,
+      "rawH1": 0
     },
     "src/pages/CreatorHubPage.tsx": {
       "EmptyState": 0,
-      "loadingBlock": 1,
-      "inlineStyle": 12,
-      "rawH1": 1
+      "loadingBlock": 0,
+      "inlineStyle": 3,
+      "rawH1": 0
     },
     "src/pages/CreatorPage.tsx": {
       "EmptyState": 5,
@@ -69,13 +62,13 @@
       "EmptyState": 0,
       "loadingBlock": 0,
       "inlineStyle": 0,
-      "rawH1": 1
+      "rawH1": 0
     },
     "src/pages/Profile.tsx": {
       "EmptyState": 0,
       "loadingBlock": 0,
       "inlineStyle": 1,
-      "rawH1": 1
+      "rawH1": 0
     },
     "src/pages/PublicItinerary.tsx": {
       "EmptyState": 2,
@@ -90,15 +83,15 @@
       "rawH1": 0
     },
     "src/pages/trip/BudgetTab.tsx": {
-      "EmptyState": 2,
-      "loadingBlock": 2,
-      "inlineStyle": 29,
+      "EmptyState": 0,
+      "loadingBlock": 0,
+      "inlineStyle": 10,
       "rawH1": 0
     },
     "src/pages/trip/GroupInputTab.tsx": {
-      "EmptyState": 3,
-      "loadingBlock": 1,
-      "inlineStyle": 27,
+      "EmptyState": 0,
+      "loadingBlock": 0,
+      "inlineStyle": 2,
       "rawH1": 0
     },
     "src/pages/trip/map/RailRowViews.tsx": {
@@ -150,12 +143,18 @@
       "rawH1": 0
     },
     "src/pages/trip/timeline/DaySection.tsx": {
-      "EmptyState": 1,
+      "EmptyState": 0,
       "loadingBlock": 0,
-      "inlineStyle": 18,
+      "inlineStyle": 5,
       "rawH1": 0
     },
     "src/pages/trip/timeline/DaySpark.tsx": {
+      "EmptyState": 0,
+      "loadingBlock": 0,
+      "inlineStyle": 0,
+      "rawH1": 0
+    },
+    "src/pages/trip/timeline/FlightsPanel.tsx": {
       "EmptyState": 0,
       "loadingBlock": 0,
       "inlineStyle": 0,
@@ -188,14 +187,14 @@
     "src/pages/trip/TripSettingsForm.tsx": {
       "EmptyState": 0,
       "loadingBlock": 0,
-      "inlineStyle": 14,
+      "inlineStyle": 4,
       "rawH1": 0
     },
     "src/pages/TripCreated.tsx": {
       "EmptyState": 0,
       "loadingBlock": 0,
       "inlineStyle": 0,
-      "rawH1": 1
+      "rawH1": 0
     },
     "src/pages/TripsList.tsx": {
       "EmptyState": 0,

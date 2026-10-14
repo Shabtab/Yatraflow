@@ -1,7 +1,8 @@
 // ============ Brand mark: one geometry in every place it ships ============
-// The Ribbon Y is drawn by hand in several files (the React mark, the favicon,
-// the exported SVGs, the OG card source and the calculator page). A copy that
-// drifts back to the retired mountain mark, or loses a stroke, fails here.
+// The Ribbon Y is drawn by hand in several files. The React mark, the favicon
+// and the icon script carry it. The exported SVGs, the OG card source and the
+// calculator page carry it too. A copy that drifts back to the retired mountain
+// mark, or loses a stroke, fails here.
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 
@@ -34,6 +35,19 @@ describe('the Ribbon Y', () => {
 
   it('leaves no copy of the retired mountain mark', () => {
     for (const rel of [...carriers, 'index.html']) expect(read(rel), rel).not.toContain(RETIRED)
+  })
+
+  // The icon script parses the same path lines into raster math, so a rerun
+  // of the script keeps the mark.
+  it('scripts/generatePwaIcons.mjs rasterizes the same Ribbon Y', () => {
+    const text = read('scripts/generatePwaIcons.mjs')
+    expect(text).toContain(FOLD)
+    expect(text).toContain(ROAD)
+    expect(text).toContain('cx: 32, cy: 56, r: 5.5')
+  })
+
+  it('scripts/generatePwaIcons.mjs carries no retired mountain mark', () => {
+    expect(read('scripts/generatePwaIcons.mjs')).not.toContain(RETIRED)
   })
 
   it.each([

@@ -15,7 +15,7 @@ import {
 import type { Trip, ItineraryStop } from '../../../data/types'
 import {
   getAssumptions, minutesToHM, hmToMinutes, formatInr,
-  addMinutesToClock, FUEL_PRICE_INR_PER_L, dayRoadPolyline,
+  addMinutesToClock, FUEL_PRICE_INR_PER_L, dayRoadPolyline, isAirMode,
 } from '../../../lib/engine'
 import { MODE_SPEED } from '../../../lib/engine'
 import type { Journey, LegEstimate } from '../../../lib/engine'
@@ -35,6 +35,7 @@ import { loadHaltPinsForTrip } from '../../../lib/uiPrefs'
 import { planInputsHash, isHaltCacheFresh } from '../../../hooks/useSuggestionCache'
 import type { LucideIcon } from 'lucide-react'
 import { InlineIcon, MetaIcon } from '../../../components/icons'
+import { FlightsPanel } from './FlightsPanel'
 import { cap } from '../shared'
 function modeLabelMode(m: string): string {
   const map: Record<string, string> = {
@@ -62,6 +63,7 @@ export function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAdd
   suggestionCache: ReturnType<typeof useSuggestionCache>
 }) {
   const A = getAssumptions(trip)
+  const hasAirLeg = journey.points.some(p => p.legIn?.kind === 'air')
   const timeFormat = useTimeFormat()
   const { cache: sugCache, setHaltCache } = suggestionCache
 
@@ -79,8 +81,8 @@ export function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAdd
   // journey.points carries the synthesized legs (outbound continuation, ride
   // home), so anchor-only days get a full origin → destination URL too.
   const directionsUrl = useMemo(
-    () => googleMapsDirectionsUrl(journey.points.map(p => ({ lat: p.lat, lng: p.lng }))),
-    [journey],
+    () => isAirMode(trip.transportMode) ? null : googleMapsDirectionsUrl(journey.points.map(p => ({ lat: p.lat, lng: p.lng }))),
+    [journey, trip.transportMode],
   )
 
   // ---- Halt planner ----
@@ -429,7 +431,7 @@ export function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAdd
           )}
         </div>
         <div className="small muted">
-          {modeLabelMode(trip.transportMode)} · {journey.distanceKm.toFixed(0)} km · {minutesToHM(journey.driveMinutes)} wheel time
+          {modeLabelMode(trip.transportMode)} · {journey.distanceKm.toFixed(0)} km · {minutesToHM(journey.driveMinutes)} {hasAirLeg ? 'in transit' : 'wheel time'}
           {journey.halts.length > 0 && ` · ${journey.halts.length} halt${journey.halts.length !== 1 ? 's' : ''}`}
         </div>
       </div>
@@ -437,7 +439,7 @@ export function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAdd
       <div className="travel-panel-stats">
         <div className="tps-stat"><div className="tps-label">Mode</div><b>{modeLabelMode(trip.transportMode)}</b></div>
         <div className="tps-stat"><div className="tps-label">Distance</div><b>{journey.distanceKm.toFixed(0)} km</b></div>
-        <div className="tps-stat"><div className="tps-label">Drive time</div><b>{minutesToHM(journey.driveMinutes)}</b></div>
+        <div className="tps-stat"><div className="tps-label">{hasAirLeg ? 'Travel time' : 'Drive time'}</div><b>{minutesToHM(journey.driveMinutes)}</b></div>
         <div className="tps-stat">
           <div className="tps-label">{journey.fuelLitres != null ? 'Fuel needed' : 'Est. transport'}</div>
           <b>{journey.fuelLitres != null ? `${journey.fuelLitres.toFixed(1)} L` : formatInr(Math.round(fuelCost))}</b>
@@ -466,10 +468,15 @@ export function TravelPanel({ trip, day, editable, journey, onSetDayStart, onAdd
           <div className="tps-label">{isReturn ? 'Home by' : 'Arrival'}</div>
           <b>{formatHM(journey.arrivalTime, timeFormat)}</b>
         </div>
-        {journey.dwellMinutes > 0 && <div className="small muted">includes {minutesToHM(journey.dwellMinutes)} of stops</div>}
+        {(journey.startDayOffset ?? 0) < 0 && <div className="small muted">Your airport transfer starts on the previous day.</div>}
+        {journey.dwellMinutes > 0 && <div className="small muted">includes {minutesToHM(journey.dwellMinutes)} of {hasAirLeg ? 'airport waiting and stops' : 'stops'}</div>}
       </div>
 
-      {journey.driveMinutes >= 420 && journey.halts.length === 0 && (
+      {/* The flight card — only a flight-mode trip renders one. Everything
+          else on this panel is unchanged. */}
+      <FlightsPanel trip={trip} day={day} editable={editable} />
+
+      {!hasAirLeg && journey.driveMinutes >= 420 && journey.halts.length === 0 && (
         <div className="warn-item sev-medium" style={{ marginTop: 10 }}>
           <span className="warn-icon"><TriangleAlert size={13} aria-hidden /></span>
           <div>

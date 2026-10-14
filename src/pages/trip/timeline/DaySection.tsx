@@ -12,13 +12,14 @@ import { savedDayId, savedStopId } from '../../../lib/uiPrefs'
 import {
   ArrowRight, Ban, Car, ChevronDown, ChevronUp, CircleCheck, CircleHelp, Clock, CloudRain, CloudSun,
   Copy, Droplets, ExternalLink, Flag, MapPin,
-  MoveHorizontal, PenLine, Pencil, Pin, Plus, Route as RouteIcon,   Ticket, Trash2, TriangleAlert, 
+  MoveHorizontal, PenLine, Pencil, Pin, PlaneTakeoff, Plus, Route as RouteIcon,   Ticket, Trash2, TriangleAlert, 
 } from 'lucide-react'
 import type { Trip, ItineraryStop } from '../../../data/types'
 import {
   minutesToHM, hmToMinutes, formatInr,
   computeCategoryBias, optimizeDayOrder, roadScaleRatio, measuredLegCount, optimiseKmLabel, scheduleRowsById,
 } from '../../../lib/engine'
+import type { ScheduledLeg } from '../../../lib/engine'
 import { sameDaySectionProps, type DayCardFacts, type DayTotals } from '../../../lib/dayCards'
 import type { LegEstimate, ScheduleWarning, OptimizeDayResult } from '../../../lib/engine'
 import { routeChain, stayDaySummary, dwellSegments, visibleStops } from '../../../lib/daySummary'
@@ -30,10 +31,32 @@ import { useTimeFormat, formatHM, formatHMRange } from '../../../lib/timefmt'
 import { motionTiming, prefersReducedMotion } from '../../../lib/motion'
 import { stopKindOf, STOP_KIND_LABELS } from '../../../lib/stopKind'
 import { statusLabel } from '../../../lib/labels'
-import { Chip, EmptyState, Modal, toast, useReorder } from '../../../components/ui'
+import { Chip, Modal, toast, useReorder } from '../../../components/ui'
+import { StateBlock } from '../../../components/page/StateBlock'
 import { Select } from '../../../components/Select'
 
 /** Stop options for a commitment link: live stops only, plus the unlink row. */
+/** One leg row's summary. An air sector reads as a flight — a plane glyph, the
+ *  block time and the fare — and never as "~N km · ~N min · est ₹/km", which is
+ *  what a flight row used to say when the whole day ran at one blended speed. */
+function LegSummary({ leg, inrPerKm, mode }: { leg: ScheduledLeg; inrPerKm: number; mode: string }) {
+  const from = leg.fromTitle.replace(/ \((start|end)\)$/, '')
+  if (leg.kind === 'air') {
+    const fare = leg.costInr != null ? ` · ${formatInr(Math.round(leg.costInr))} total` : ''
+    return (
+      <>
+        <MetaIcon icon={PlaneTakeoff} tone="money" />{leg.toTitle} · fly {minutesToHM(leg.durationMinutes)} from {from}
+        {leg.distanceKm >= 0.5 ? ` · ${Math.round(leg.distanceKm)} km` : ''}{fare}
+      </>
+    )
+  }
+  return (
+    <>
+      <MetaIcon icon={Car} tone="money" />~{leg.distanceKm.toFixed(0)} km · ~{Math.round(leg.durationMinutes)} min from {from} · est ₹{Math.round(leg.distanceKm * (leg.inrPerKm ?? inrPerKm))} ({leg.inrPerKm != null ? 'car' : mode})
+    </>
+  )
+}
+
 function linkStopOptions(stops: ItineraryStop[]): { value: string; label: string }[] {
   return [{ value: '', label: 'No linked stop' }, ...stops.filter(s => s.status !== 'rejected').map(s => ({ value: String(s.id), label: s.title }))]
 }
@@ -79,7 +102,7 @@ function DayWeatherChip({ day, startDate }: { day: Trip['days'][number]; startDa
   const info = wmoInfo(w.code)
   return (
     <span className="weather-chip" title={`${info.label} · ${Math.round(w.tempMinC)}–${Math.round(w.tempMaxC)}°C · ${w.rainChancePct}% rain chance`}>
-      {info.icon} {Math.round(w.tempMaxC)}°<InlineIcon icon={Droplets} size={11} gap={2} vAlign="-1px" style={{ marginLeft: 4 }} />{w.rainChancePct}%
+      {info.icon} {Math.round(w.tempMaxC)}°<InlineIcon icon={Droplets} size={11} gap={2} vAlign="-1px" className="tl-rain-gap" />{w.rainChancePct}%
     </span>
   )
 }
@@ -252,6 +275,7 @@ export const DaySection = React.memo(function DaySection({ day, trip, facts, sav
   // arrival clock — regardless of distance. This is the single travel system.
   const sim = facts.sim
   const journey = facts.journey
+  const hasAirLeg = journey.points.some(p => p.legIn?.kind === 'air')
   // The body keeps rendering through the collapse animation (SmoothCollapse
   // unmounts it a beat after the class flip), while `trip` only arrives for the
   // OPEN day. Hold the last one we were given so a fading body never loses its
@@ -493,7 +517,7 @@ export const DaySection = React.memo(function DaySection({ day, trip, facts, sav
     : [
         `${journey.startTitle} → ${journey.endTitle}`,
         `~${Math.round(journey.distanceKm)} km`,
-        `drive ~${minutesToHM(journey.driveMinutes)}`,
+        `${hasAirLeg ? 'travel' : 'drive'} ~${minutesToHM(journey.driveMinutes)}`,
         ...(journey.halts.length > 0 ? [`${journey.halts.length} halt${journey.halts.length !== 1 ? 's' : ''}`] : []),
         ...(visitCount > 0 ? [`${visitCount} visit${visitCount !== 1 ? 's' : ''}`] : []),
         `start ${formatHM(journey.startTime, timeFormat)} → ends ~${formatHM(sim.endsAt, timeFormat)}`,
@@ -518,14 +542,13 @@ export const DaySection = React.memo(function DaySection({ day, trip, facts, sav
         </button>
         )}
         <div className="day-badge"><small>Day</small><b>{day.index + 1}</b></div>
-        <div style={{ flex: 1, minWidth: 160 }}>
+        <div className="tl-stop-flex">
           <div className="day-title-row">
             {editingTitle ? (
               <input
                 autoFocus
-                className="input"
+                className="input tl-day-note"
                 value={titleDraft}
-                style={{ maxWidth: 300, marginBottom: 4 }}
                 placeholder={`Day ${day.index + 1}`}
                 aria-label={`Rename Day ${day.index + 1}`}
                 onChange={e => setTitleDraft(e.target.value)}
@@ -560,7 +583,7 @@ export const DaySection = React.memo(function DaySection({ day, trip, facts, sav
                 labelled by hand — wheel time makes it a drive, none makes it a
                 stay, a short hop plus local time is mixed. */}
             <span className={`day-kind ${dayType.toLowerCase()}`}>
-              {dayType === 'STAY' ? 'Stay day' : dayType === 'DRIVE' ? 'Drive day' : 'Drive + local'}
+              {hasAirLeg ? 'Flight day' : dayType === 'STAY' ? 'Stay day' : dayType === 'DRIVE' ? 'Drive day' : 'Drive + local'}
             </span>
           </div>
           {/* Collapsed extra line: only when it adds something the stats line
@@ -635,7 +658,7 @@ export const DaySection = React.memo(function DaySection({ day, trip, facts, sav
             that eats the most of the day (mockup P1's "busiest stop"). */}
         {collapsed && <DwellBars day={day} />}
         {editable && (
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          <div className="tl-day-tools">
             {optResult.changed && !isStayDay && (
               <button
                 className="btn btn-outline btn-sm"
@@ -648,7 +671,7 @@ export const DaySection = React.memo(function DaySection({ day, trip, facts, sav
                 The tooltip needs the wrapper span — a disabled button fires no
                 pointer events, so its own title would never show. */}
             {!optResult.changed && optResult.blocked === 'mid-anchor' && !isStayDay && (
-              <span title="The order is fixed by your manually placed waypoints — the optimiser only rewires the middle of a day, and one of those sits mid-day." style={{ display: 'inline-flex' }}>
+              <span title="The order is fixed by your manually placed waypoints — the optimiser only rewires the middle of a day, and one of those sits mid-day." className="tl-fixed-inline">
                 <button className="btn btn-outline btn-sm" disabled aria-disabled="true">
                   <InlineIcon icon={RouteIcon} size={13} gap={4} />Optimise
                 </button>
@@ -667,7 +690,7 @@ export const DaySection = React.memo(function DaySection({ day, trip, facts, sav
 
       <SmoothCollapse open={!collapsed} fallbackFocus={collapseRef}>
       {commitmentsToday.map(fc => (
-        <div key={fc.id} className="warn-item sev-low" style={{ marginBottom: 8 }}>
+        <div key={fc.id} className="warn-item sev-low tl-warn-gap">
           <span className="warn-icon"><Pin size={13} aria-hidden /></span>
           <div>
             <div className="warn-title">{fc.title}</div>
@@ -684,7 +707,7 @@ export const DaySection = React.memo(function DaySection({ day, trip, facts, sav
       {/* Warning state lives inside the affected day (doc §6.3) — the "Day N:"
           prefix is redundant here, the pill + card already say which day. */}
       {warnings.map((w, i) => (
-        <div key={i} className={`warn-item ${w.severity === 'high' ? 'sev-high' : w.severity === 'medium' ? '' : 'sev-low'}`} style={{ marginBottom: 8 }}>
+        <div key={i} className={`warn-item ${w.severity === 'high' ? 'sev-high' : w.severity === 'medium' ? '' : 'sev-low'} tl-warn-gap`}>
           <span className="warn-icon">{w.severity === 'high' ? <Ban size={13} aria-hidden /> : <TriangleAlert size={13} aria-hidden />}</span>
           <div>
             <div className="warn-title">{w.title.replace(/^Day \d+:\s*/, '')}</div>
@@ -697,8 +720,10 @@ export const DaySection = React.memo(function DaySection({ day, trip, facts, sav
         onSetDayStart={onSetDayStart} onAddPlannedHalts={onAddPlannedHalts} />}
 
       {ordered.length === 0 && (<>
-        <EmptyState icon={<CloudSun size={38} aria-hidden />} title="Nothing planned yet" body="Add your first stop for this day — or drag one here from another day."
-          action={editable ? <button className="btn btn-primary btn-sm" onClick={() => onAdd(day.index)}>+ Add stop</button> : undefined} />
+        <div className="tl-state">
+        <StateBlock kind="empty" size="compact" icon={<CloudSun size={38} aria-hidden />} title="Nothing planned yet"
+          body="Add your first stop for this day — or drag one here from another day."
+          actions={editable ? <button className="btn btn-primary btn-sm" onClick={() => onAdd(day.index)}>+ Add stop</button> : undefined} />
         {editable && ((nextAnchor && !alreadyAtNext) || nearby.length > 0) && (
           <div className="day-suggest">
             {nextAnchor && !alreadyAtNext && (
@@ -713,6 +738,7 @@ export const DaySection = React.memo(function DaySection({ day, trip, facts, sav
             ))}
           </div>
         )}
+        </div>
       </>)}
 
       <div className={`tl${dragging !== null ? ' is-dragging' : ''}`} ref={stopsRef} data-yf-list={listId}>
@@ -731,7 +757,7 @@ export const DaySection = React.memo(function DaySection({ day, trip, facts, sav
               <div className="tl-gutter tl-gutter-leg"><span className="tl-line tl-line-leg" /></div>
               <div className="tl-leg-cell">
                 <div className="travel-leg">
-                  <MetaIcon icon={ Car } tone="money" />~{leg.distanceKm.toFixed(0)} km · ~{Math.round(leg.durationMinutes)} min from {leg.fromTitle.replace(/ \((start|end)\)$/, '')} · est ₹{Math.round(leg.distanceKm * (A.inrPerKm ?? 8))} ({A.mode})
+                  <LegSummary leg={leg} inrPerKm={A.inrPerKm ?? 8} mode={A.mode} />
                 </div>
               </div>
             </div>
@@ -775,7 +801,7 @@ export const DaySection = React.memo(function DaySection({ day, trip, facts, sav
                   <span>
                     {i === 0 ? `Start — ${cleanName}` : isFinal ? `Destination — ${cleanName}` : cleanName}
                   </span>
-                  {isFinal && <span className="small muted" style={{ marginLeft: 6 }}>arrives ~{row?.arrive ? formatHM(row.arrive, timeFormat) : '--:--'}</span>}
+                  {isFinal && <span className="small muted tl-arrive-gap">arrives ~{row?.arrive ? formatHM(row.arrive, timeFormat) : '--:--'}</span>}
                 </div>
               </div>
             )
@@ -836,7 +862,7 @@ export const DaySection = React.memo(function DaySection({ day, trip, facts, sav
                 </div>
                 {s.description && <ClampedText className="stop-desc">{s.description}</ClampedText>}
                 {s.notes && <ClampedText className="stop-desc muted"><InlineIcon icon={PenLine} size={12} gap={3} />{s.notes}</ClampedText>}
-                {s.sourceUrl && <a href={s.sourceUrl} target="_blank" rel="noreferrer" className="small" onClick={e => { e.preventDefault(); openExternal(s.sourceUrl!) }}>Source <InlineIcon icon={ExternalLink} size={11} gap={0} style={{ marginLeft: 2 }} /></a>}
+                {s.sourceUrl && <a href={s.sourceUrl} target="_blank" rel="noreferrer" className="small" onClick={e => { e.preventDefault(); openExternal(s.sourceUrl!) }}>Source <InlineIcon icon={ExternalLink} size={11} gap={0} className="tl-source-gap" /></a>}
               </div>
               {editable && (
                 <div className="stop-actions">
@@ -868,7 +894,7 @@ export const DaySection = React.memo(function DaySection({ day, trip, facts, sav
                     <div className="tl-gutter tl-gutter-leg"><span className="tl-line tl-line-leg" /></div>
                     <div className="tl-leg-cell">
                       <div className={`travel-leg ${foreignOver === i + 1 && dragging === null ? 'foreign-over' : ''}`}>
-                        {leg && leg.distanceKm >= 0.5 && <><MetaIcon icon={ Car } tone="money" />~{leg.distanceKm.toFixed(0)} km · ~{Math.round(leg.durationMinutes)} min from {leg.fromTitle.replace(/ \((start|end)\)$/, '')} · est ₹{Math.round(leg.distanceKm * (A.inrPerKm ?? 8))} ({A.mode})</>}
+                        {leg && leg.distanceKm >= 0.5 && <LegSummary leg={leg} inrPerKm={A.inrPerKm ?? 8} mode={A.mode} />}
                       </div>
                       {/* #422: the insertion control belongs to the leg BETWEEN
                           two stops, and it hands over the slot it sits in —
@@ -903,7 +929,7 @@ export const DaySection = React.memo(function DaySection({ day, trip, facts, sav
                 <div className="tl-legrow">
                   <div className="tl-gutter tl-gutter-leg"><span className="tl-line tl-line-leg" /></div>
                   <div className="travel-leg">
-                    <MetaIcon icon={ Car } tone="money" />~{last.legIn.distanceKm.toFixed(0)} km · ~{Math.round(last.legIn.durationMinutes)} min from {last.legIn.fromTitle} · est ₹{Math.round(last.legIn.distanceKm * (A.inrPerKm ?? 8))} ({A.mode})
+                    <LegSummary leg={last.legIn} inrPerKm={A.inrPerKm ?? 8} mode={A.mode} />
                   </div>
                 </div>
               )}
@@ -914,7 +940,7 @@ export const DaySection = React.memo(function DaySection({ day, trip, facts, sav
                 <div className="travel-endpoint">
                   <span className="travel-anchor-ico"><Flag size={13} aria-hidden /></span>
                   <span>{journey.direction === 'return' ? `Home — ${last.title}` : `Destination — ${last.title}`}</span>
-                  <span className="small muted" style={{ marginLeft: 6 }}>arrives ~{last.arrive ? formatHM(last.arrive, timeFormat) : '--:--'}</span>
+                  <span className="small muted tl-arrive-gap">arrives ~{last.arrive ? formatHM(last.arrive, timeFormat) : '--:--'}</span>
                 </div>
               </div>
             </>
@@ -939,7 +965,7 @@ export const DaySection = React.memo(function DaySection({ day, trip, facts, sav
         title={`Optimise Day ${day.index + 1}`}
       >
         {optPreview && <>
-          <p className="hint-text" style={{ margin: '0 0 12px' }}>
+          <p className="hint-text tl-hint-gap">
             Reorders the day's stops into the shortest route from where you start the day — grouping nearby sights,
             food and activities so you spend less time in transit. Anchors (your base, the day's destination and
             wherever the next day starts from) stay put; you can still drag anything afterwards.
@@ -947,7 +973,7 @@ export const DaySection = React.memo(function DaySection({ day, trip, facts, sav
           {/* #341: with no measured leg the numbers below are straight-line
               math scaled by 1 — they must say so rather than read as road km. */}
           {roadLegs === 0 && (
-            <p className="hint-text" style={{ margin: '0 0 12px' }}>
+            <p className="hint-text tl-hint-gap">
               These are straight-line estimates — the road for this trip has not been measured yet. Drive times
               after Keep come from the road itself.
             </p>
@@ -972,7 +998,7 @@ export const DaySection = React.memo(function DaySection({ day, trip, facts, sav
               </div>
             ))}
           </div>
-          <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+          <div className="tl-day-footer">
             <button className="btn btn-primary btn-sm" onClick={() => {
               // #341: re-derive from the day as it is NOW. A drag or an edit
               // that landed while this dialog was open used to be discarded

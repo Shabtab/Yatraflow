@@ -661,6 +661,45 @@ anywhere in this repo means the entry labelled `6b` below.
    You must keep every name first. You must delete what `eslint` reports as
    unused. You must not raise the baseline to cover leftovers. You must
    regenerate it lower in the same commit.
+  6ak. **A clock that reaches `hmToMinutes` must be a 24h `"HH:MM"` string —
+    `minutesToHM` renders `"3h 28m"` and feeds NaN straight into the walk
+    (learned 2026-10-12, flight planning).** The two formatters are not
+    interchangeable: `minutesToHM` is a HUMAN renderer and `hmToMinutes` parses
+    the stored shape. A helper that back-computes a day's start clock and returns
+    `minutesToHM(...)` builds green, typechecks, and then silently poisons every
+    arrival on that day — `hmToMinutes("3h 28m")` is NaN, and NaN propagates
+    through `addMinutesToClock` into each row's clock without a single test
+    noticing until you print the journey. When a computed clock is going to be
+    parsed rather than printed, format it with `padStart(2,'0')` yourself and
+    assert the shape in the test (`expect(j.startTime).toMatch(/^\d{2}:\d{2}$/)`).
+    Same family as the `num0` guards: the failure is a shape, not a value.
+
+  **Flight regressions must use the trip's stored start and destination anchors.** You must assert airport departure and arrival clocks. You must compare journey costs with budget totals. Flight fields and traveller counts must invalidate cached day facts.
+
+  6al. **A new page file must ship with zero `inlineStyle` and use `StateBlock`
+    — and a rule a module owns must not be re-derived in a page (learned
+    2026-10-12, flight planning).** Two ratchets caught a new
+    `src/pages/trip/timeline/FlightsPanel.tsx` in one run: the page-consistency
+    ratchet (`tests/page-consistency.test.ts`) failed on six inline
+    `style={{ width }}` attributes, and the map-geometry ratchet
+    (`tests/map-weather-geometry.test.ts`) failed on a `pts.length >= 2` copied
+    into `MapTab.tsx`. Both are cheap to satisfy BEFORE the first verify run:
+    put widths in `src/styles.css` as named classes, and put the road-vs-air
+    geometry split in `src/lib/engine.ts` (`journeyGeometry` /
+    `tripJourneyGeometry`) so the page file only calls it. Run
+    `npx vitest run tests/page-consistency.test.ts tests/map-weather-geometry.test.ts`
+    the moment you add a page file or touch MapTab — not at the end.
+
+  6am. **`lint:ste`'s 20-word sentence cap applies to `CHANGELOG.md` prose on
+    changed lines, and it is the last gate to fail (learned 2026-10-12).** There
+    is no markdown exemption in `EXCLUDED_PATH_PREFIXES` (only
+    `docs/consistency/`), and the diff run measures against the merge base — so
+    pre-existing long entries pass and your new ones do not. Write CHANGELOG
+    bullets as short declarative sentences from the start (a subject, a verb, one
+    fact), because rewriting a 60-word sentence into four after the fact is the
+    same work twice. The same gate demands "must" over the weaker word in any
+    comment on a changed line — including a doc comment above a `const`.
+
  6aj. **You must classify a branch by patch ancestry, not by name or age
    (learned 2026-10-04, prune of 80 refs).** A merged pull request leaves its
    branch ref behind. Test each ref with `git merge-base --is-ancestor <ref>
@@ -745,6 +784,37 @@ anywhere in this repo means the entry labelled `6b` below.
    `C:\WINDOWS\system32\convert` is not an image converter. Use `magick` for ImageMagick, or use
    `sharp` through `scripts/build-art.mjs`. Never run `convert` in a shell on this machine.
 
+6aq. **You must cut a branch with an explicit start point (learned 2026-10-13, the prune
+   record).** `git checkout -b <name>` cuts from HEAD, not from the integration branch. A branch
+   made while another lane's branch is checked out becomes a stack. Its PR then lists the parent
+   PR's files, and the review reads a change nobody asked for. Write
+   `git checkout -b <name> origin/test`, and fetch first. Check the result with
+   `git log --oneline origin/test..HEAD`: one commit is a feature branch, five commits you did not
+   write is a stack. The fix is a fresh branch plus a cherry-pick, never a force-push.
+
+6ar. **A conflict at the end of `src/styles.css` breaks a brace at the seam (learned 2026-10-14).**
+   Each page PR appends CSS at the end of `src/styles.css`. The next page PR then conflicts with it.
+   Merge one PR first. Then rebase the next PR once.
+   When you resolve the conflict, keep both blocks.
+   Then check the seam. The shared closing brace `}` belongs to the last block only.
+   The first block loses its closing brace. The tests do not catch this. `vite build` does.
+   After you resolve it, run this check:
+   `node -e "require('postcss').parse(require('fs').readFileSync('src/styles.css','utf8'))"`
+   The file has mixed CRLF and LF line endings. Do not match `=======\r\n` as a literal. Use a regex with `\r?` instead.
+   Regenerate `tests/page-consistency-baseline.json` instead of merging it by hand. Run `UPDATE_PAGE_CONSISTENCY_BASELINE=1 npx vitest run tests/page-consistency.test.ts`.
+
+6as. **Do not name a helper function with a name that ends in `Page` (learned 2026-10-14).**
+   `tests/design-system.test.ts` finds page components in `src/App.tsx`. It counts a function as a page when its name ends in `Page` and `App.tsx` renders it.
+   A helper with such a name enters the page checks. The checks then fail for a reason that is not obvious.
+   `tests/page-consistency.test.ts` counts every component that the page switch renders, whatever its name.
+   Name helpers by role. For example, use `routeFallback` or `shellFooter`.
+
+6at. **`npm run verify` has no browser, so a screen that appears must be checked with `npm run check:motion` (learned 2026-10-14).**
+   The P1 shell PR moved the lazy-route fallback to a `StateBlock`. `verify` passed. CI then failed the motion check on `/explore` and `/trips`.
+   The fallback root did not carry `page-enter`, so the block appeared between two frames with no entrance.
+   Put `page-enter` on the root of any screen that appears after load, and that includes a Suspense fallback.
+   Run `npm run check:motion` before you push a change that adds or moves a `StateBlock` outside a page root.
+
 ## 2. Conventions (`AGENTS.md` §4)
 
 The store, maps and UI entries live in `docs/standards/` now (2026-10-05
@@ -757,6 +827,8 @@ process.
 - **lint:ste counts code tokens as prose on added lines.** A long string inside a call fails the 20-word limit — build user-facing strings in `const` lines (the checker skips them) and keep the call short. A new line naming a banned field (a stop's `priority`) fails the vocabulary check — spread the helper that already declares it. (Learned 2026-10-03, #607–#609.)
 
 - **A verification probe can lie about the thing it probes — and a preview URL lies about its own content.** Two traps hit while closing #226. (1) `process.env.X = undefined` does **not** unset a variable: Node coerces it to the string `"undefined"`, which is truthy, so a probe that "cleared" `PUBLIC_ORIGIN` made the handler's `PUBLIC_ORIGIN || …` fallback resolve to a literal origin of `undefined` and `og:url` read `undefined/i/<id>`. It looked exactly like a product bug for a step; the unit test for the same branch was green the whole time, because `vi.stubEnv(k, undefined)` genuinely deletes. Use `delete` in a probe, and never diagnose a handler from a value the probe itself set. (2) A preview deployment answers **200 with a full Open Graph block** — Vercel's SSO login page carries its own tags (`og:title: "Protected Deployment – Vercel"`), so a "does it contain `og:title`" check passes on the wall itself. Match on the origin/description or check the byte size (~1.2 KB app shell vs ~340 KB login page), never the mere presence of a tag. Keep such probes in the scratch directory, not the repo. (3) **A source-scanning test can match its own subject's prose:** the tripwire asserting that `presence.ts` calls no weak generator failed on the doc comment *explaining* that it no longer does. Strip comment lines before asserting on source text, and match the call (`/Math\s*\.\s*random\s*\(/`) rather than the bare name — a test that forbids a string has to decide whether it forbids mentioning it.
+
+- **A comment can also move the lines a guard reads (learned 2026-10-14, #759).** A declaration search over the raw lines takes a doc comment that quotes the declaration as the declaration. The slice then starts at the comment. Read code lines only for the declaration and for the call. `tests/hydrate-gates.test.ts` does this.
 
 - **Jev audits are development-only review aids, not correctness oracles.** Keep `JEV_AUDIT` opt-in and credentials outside `VITE_*`. Repository seed/copy strings are not user transcripts or an independent holdout after tuning. Report code/model/expected-label results separately, disclose label corrections, and pin confirmed keyword collisions in offline regression tests before changing the router.
 

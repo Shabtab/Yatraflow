@@ -26,6 +26,10 @@ import { cap } from '../lib/labels'
 import { isIosSafari, isStandalone, onInstallAvailability, promptInstall } from '../lib/pwaInstall'
 import { scrollBehavior } from '../lib/motion'
 import { appLink } from '../lib/appLink'
+import { PageHeader } from '../components/page/PageHeader'
+import { Surface } from '../components/page/Surface'
+import { StateBlock } from '../components/page/StateBlock'
+import { FilterChip } from '../components/filters/FilterChip'
 
 /** Compact relative timestamp for the notifications list ("3m ago"). */
 function formatTimeAgo(ms: number): string {
@@ -84,23 +88,29 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
   // `me` is non-null after the guard above, but TS drops the narrowing inside
   // a hoisted function declaration, so read it through a const it can follow.
   const me0 = me
-  function toggleStyle(s: TravelStyle) {
+  // Instant save: the chip takes the new value at once, because the store
+  // applies the edit before the server answers. A refused write puts the saved
+  // value back, so the chip reverts, and the toast says why.
+  async function toggleStyle(s: TravelStyle) {
     const has = me0.profile.travelStyles.includes(s)
-    updateProfile({ travelStyles: has ? me0.profile.travelStyles.filter(x => x !== s) : [...me0.profile.travelStyles, s] })
+    const r = await updateProfile({ travelStyles: has ? me0.profile.travelStyles.filter(x => x !== s) : [...me0.profile.travelStyles, s] })
+    if (!r.ok) toast(r.error ?? PROFILE_NOT_SAVED, 'err')
   }
 
   return (
-    <div className="container form-page page-enter">
-      <h1>Profile & settings</h1>
-      <p className="muted small prof-page-lede">{tripCount} trip{tripCount !== 1 ? 's' : ''} · {me.email}</p>
+    <div className="container form-page yf-page page-enter">
+      <PageHeader
+        headline={{ lead: 'Profile & settings' }}
+        lede={<>{tripCount} trip{tripCount !== 1 ? 's' : ''} · {me.email}</>}
+      />
 
       {/* #86: this page's content is a single column — the .two-col grid left
           a 340px empty gutter at desktop widths. A readable single column
           instead (max-width keeps line lengths sane on wide screens). */}
       <div className="profile-col">
-        <div>
-          <div className="card">
-            <h3>Your details</h3>
+        <div className="prof-col">
+          <Surface className="prof-panel">
+            <h2 className="prof-panel-title">Your details</h2>
             <hr className="divider" />
             <div className="creator-line prof-creator-lede">
               <Avatar user={me} size="lg" />
@@ -111,31 +121,31 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
             <Field label="Languages you speak" hint="Comma separated — e.g. en, hi, ml">
               <input className="input" value={f.languages} onChange={e => setF(x => ({ ...x, languages: e.target.value }))} />
             </Field>
-          </div>
+          </Surface>
 
-          <div className="card stack-gap">
-            <h3>Travel styles</h3>
+          <Surface className="prof-panel">
+            <h2 className="prof-panel-title">Travel styles</h2>
             <p className="hint-text prof-hint-tight">Pick all that fit — helps collaborators know what kind of trip to invite you to.</p>
             <div className="chip-row">
               {TRAVEL_STYLES.map(s => (
-                <Chip key={s} active={me.profile.travelStyles.includes(s)} aria-pressed={me.profile.travelStyles.includes(s)} onClick={() => toggleStyle(s)}>{cap(s)}</Chip>
+                <FilterChip key={s} pressed={me.profile.travelStyles.includes(s)} onClick={() => toggleStyle(s)}>{cap(s)}</FilterChip>
               ))}
             </div>
-          </div>
+          </Surface>
 
-          <div className="card stack-gap">
-            <h3>Display preferences</h3>
+          <Surface className="prof-panel">
+            <h2 className="prof-panel-title">Display preferences</h2>
             <hr className="divider" />
             <Field label="Clock format" hint={`Applies across the app. Example: ${formatHM('18:30', timeFormat)}`}>
               <div className="chip-row">
                 {(['12h', '24h'] as TimeFormat[]).map(opt => (
-                  <Chip key={opt} active={timeFormat === opt} aria-pressed={timeFormat === opt} onClick={() => setTimeFormat(opt)}>
+                  <FilterChip key={opt} pressed={timeFormat === opt} onClick={() => setTimeFormat(opt)}>
                     {opt === '12h' ? '12h (AM/PM)' : '24h'}
-                  </Chip>
+                  </FilterChip>
                 ))}
               </div>
             </Field>
-          </div>
+          </Surface>
 
           {/* The companion drawer mounts only under VITE_AI_COMPANION=on
               (until M8) — its settings cards follow the same flag, so a build
@@ -149,10 +159,10 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
           )}
         </div>
 
-        <div>
-          <div className="card">
+        <div className="prof-col">
+          <Surface className="prof-panel">
             <div className="row-between">
-              <h3>Creator hub</h3>
+              <h2 className="prof-panel-title">Creator hub</h2>
               <Chip tone={me.profile.isCreator ? 'ok' : 'info'}>{me.profile.isCreator ? 'Enabled' : 'Off'}</Chip>
             </div>
             <p className="hint-text prof-hint">
@@ -166,14 +176,20 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
                 <a className="btn btn-outline btn-sm prof-btn-offset" {...appLink(`/creator/${me.id}`)}>View public page</a>
               </>
             ) : (
-              <button className="btn btn-saffron" onClick={() => { updateProfile({ isCreator: true }); toast('Creator mode enabled — open the hub to add your bio and links.') }}>
+              <button className="btn btn-saffron" onClick={async () => {
+                // The success line waits for the server. A refused write rolls
+                // the creator state back to its saved value.
+                const r = await updateProfile({ isCreator: true })
+                if (r.ok) toast('Creator mode enabled — open the hub to add your bio and links.')
+                else toast(r.error ?? PROFILE_NOT_SAVED, 'err')
+              }}>
                 Enable creator mode
               </button>
             )}
-          </div>
+          </Surface>
 
-          <div className="card stack-gap">
-            <h3>Save details</h3>
+          <Surface className="prof-panel">
+            <h2 className="prof-panel-title">Save details</h2>
             <hr className="divider" />
             <button className="btn btn-primary" disabled={saving} onClick={async () => {
               // Inline validation — the name silently reverting to the old one
@@ -203,10 +219,10 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
             }}>Save profile</button>
             {saveErr && <p className="err-text" role="alert">{saveErr}</p>}
             <button className="btn btn-ghost btn-sm prof-btn-offset" onClick={() => onNavigate('/trips')}>← Back to my trips</button>
-          </div>
+          </Surface>
 
-          <div className="card stack-gap">
-            <h3>Notifications</h3>
+          <Surface className="prof-panel">
+            <h2 className="prof-panel-title">Notifications</h2>
             <p className="hint-text prof-hint">
               Get an OS-level ping when a collaborator writes to you — even with
               YatraFlow in a background tab. The in-app bell always works; this
@@ -245,16 +261,16 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
                 </button>
               </div>
             )}
-          </div>
+          </Surface>
 
-          <div className="card stack-gap">
-            <h3>About your data</h3>
+          <Surface className="prof-panel">
+            <h2 className="prof-panel-title">About your data</h2>
             <p className="hint-text prof-hint-mt">
               Your trips, votes and decisions are saved to your account, so they follow you between
               devices. Display preferences stay on this device. Costs and timings are transparent
               estimates — always verify prices before travelling.
             </p>
-          </div>
+          </Surface>
 
           <InstallCard />
 
@@ -262,8 +278,8 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
               controls relocate here — Profile is a bottom-nav destination. Each
               card is shell-only; the web keeps the topnav. */}
           {isNative && <>
-            <div className="card stack-gap">
-              <h3>Appearance</h3>
+            <Surface className="prof-panel">
+              <h2 className="prof-panel-title">Appearance</h2>
               <p className="hint-text prof-hint">Light or dark — your choice sticks across trips.</p>
               <button
                 className={`btn btn-sm ${dark ? 'btn-primary' : 'btn-outline'}`}
@@ -272,17 +288,17 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
               >
                 {dark ? <><InlineIcon icon={Sun} size={14} gap={6} />Light mode</> : <><InlineIcon icon={Moon} size={14} gap={6} />Dark mode</>}
               </button>
-            </div>
+            </Surface>
 
-            <div className="card stack-gap">
+            <Surface className="prof-panel">
               <div className="row-between prof-notif-head">
-                <h3 className="prof-notif-title">Notifications</h3>
+                <h2 className="prof-panel-title prof-notif-title">Notifications</h2>
                 {notifs.length > 0 && notifs.some(n => !n.read) && (
                   <button className="btn btn-ghost btn-sm" onClick={() => markAllNotificationsRead(me.id)}>Mark all read</button>
                 )}
               </div>
               {notifs.length === 0 ? (
-                <p className="hint-text prof-hint-flush">No notifications yet — collaborators writing to you will show up here.</p>
+                <StateBlock kind="empty" size="compact" title="No notifications yet" body="Collaborators writing to you will show up here." />
               ) : (
                 <div className="prof-notif-list">
                   {notifs.slice(0, 8).map(n => (
@@ -294,10 +310,10 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
                   {notifs.length > 8 && <span className="muted small">+{notifs.length - 8} older</span>}
                 </div>
               )}
-            </div>
+            </Surface>
 
-            <div className="card stack-gap">
-              <h3>Account</h3>
+            <Surface className="prof-panel">
+              <h2 className="prof-panel-title">Account</h2>
               {me.profile.isCreator && (
                 <button className="btn btn-outline btn-sm prof-btn-block" onClick={() => onNavigate('/creator-hub')}>
                   <InlineIcon icon={Sparkles} size={14} gap={6} />Creator hub
@@ -311,7 +327,7 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
               <button className="btn btn-danger btn-sm" onClick={() => { logout(); onNavigate('/') }}>
                 <InlineIcon icon={LogOut} size={14} gap={6} />Log out
               </button>
-            </div>
+            </Surface>
           </>}
         </div>
       </div>
@@ -383,9 +399,9 @@ function AiProviderCard() {
   }
 
   return (
-    <div className="card stack-gap">
+    <Surface className="prof-panel">
       <div className="row-between">
-        <h3>AI companion</h3>
+        <h2 className="prof-panel-title">AI companion</h2>
         <Chip tone={saved ? 'ok' : 'info'}>{saved ? 'LLM configured' : 'Not configured'}</Chip>
       </div>
       <p className="hint-text prof-hint-top">
@@ -421,7 +437,7 @@ function AiProviderCard() {
       {/* A stable empty live region: dynamically inserted status nodes are
           announced unreliably, an always-present one is not (a11y rule). */}
       <p className="hint-text prof-status" role="status">{result}</p>
-    </div>
+    </Surface>
   )
 }
 
@@ -483,9 +499,9 @@ function JevCard() {
   }
 
   return (
-    <div className="card stack-gap">
+    <Surface className="prof-panel">
       <div className="row-between">
-        <h3>Jev intent router <span className="hint-text prof-heading-note">(faster answers)</span></h3>
+        <h2 className="prof-panel-title">Jev intent router <span className="hint-text prof-heading-note">(faster answers)</span></h2>
         <Chip tone={saved ? 'ok' : 'info'}>{saved ? 'Routing via Jev' : 'Not configured'}</Chip>
       </div>
       <p className="hint-text prof-hint-top">
@@ -513,7 +529,7 @@ function JevCard() {
         {saved && <button className="btn btn-outline btn-sm" onClick={onClear} disabled={testing}>Clear</button>}
       </div>
       <p className="hint-text prof-status" role="status">{result}</p>
-    </div>
+    </Surface>
   )
 }
 
@@ -534,8 +550,8 @@ function InstallCard() {
   if (!available && !ios) return null
 
   return (
-    <div className="card stack-gap">
-      <h3>Install YatraFlow</h3>
+    <Surface className="prof-panel">
+      <h2 className="prof-panel-title">Install YatraFlow</h2>
       <p className="hint-text prof-hint-tight">
         {ios
           ? 'On iPhone and iPad: tap Share, then “Add to Home Screen”. It opens in its own window, like an app.'
@@ -551,6 +567,6 @@ function InstallCard() {
           </button>
         </div>
       )}
-    </div>
+    </Surface>
   )
 }

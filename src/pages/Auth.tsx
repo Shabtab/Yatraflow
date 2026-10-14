@@ -6,6 +6,7 @@ import { SegmentedTabs } from '../components/page/SegmentedTabs'
 import { useDb, currentUser, login, signup } from '../store/store'
 import { isSupabaseConfigured } from '../lib/supabase'
 import { isAdultSignup } from '../lib/ageGate'
+import { looksLikeEmail } from '../lib/emailShape'
 import { currentQuery } from '../lib/router'
 import { MISSING_BACKEND_MESSAGE } from '../lib/authErrors'
 import { Field } from '../components/ui'
@@ -89,6 +90,14 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
     // Safety net: if the session never materialises (e.g. hydration failure),
     // re-enable the form so the user isn't stuck on a disabled button.
     const failSafe = setTimeout(() => setSaving(false), 10000)
+    // The form sets noValidate, so the browser shows no bubble of its own. A
+    // filled email field with the wrong shape gets the form error line here.
+    if (email.trim() && !looksLikeEmail(email)) {
+      clearTimeout(failSafe)
+      setError('Enter a valid email address.')
+      setSaving(false)
+      return
+    }
     if (mode === 'login') {
       // The server answers an empty request with its own text. The page
       // asks for the fields first, so an empty form never reaches the server.
@@ -174,7 +183,7 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
             carries it (and the id the tablist's aria-controls points at); the
             form inside stays a plain form. */}
         <div id="auth-panel" role="tabpanel" aria-labelledby={mode === 'login' ? 'auth-tab-login' : 'auth-tab-signup'}>
-        <form onSubmit={submit}>
+        <form onSubmit={submit} noValidate>
           {mode === 'signup' && (
             <Field label="Your name" error={nameErr ?? undefined}>
               <input className="input" name="name" autoComplete="name" ref={nameRef} value={name}

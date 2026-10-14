@@ -24,6 +24,8 @@ function current() {
   return process.env.NODE_ENV ?? ''
 }
 
+const execAt = args.indexOf('--exec')
+
 /** Report the state without changing anything. */
 if (!args.includes('--apply') && !args.includes('--exec')) {
   const v = current()
@@ -34,32 +36,35 @@ if (!args.includes('--apply') && !args.includes('--exec')) {
     console.log(isWin
       ? '  Remove-Item Env:\\NODE_ENV -ErrorAction SilentlyContinue; npm install'
       : '  NODE_ENV= npm install')
-    process.exit(0)
+  } else {
+    console.log(`NODE_ENV is ${v ? v : '(unset)'}. No trap.`)
   }
-  console.log(`NODE_ENV is ${v ? v : '(unset)'}. No trap.`)
-  process.exit(0)
-}
-
-/** Run a command with NODE_ENV cleared. */
-const execAt = args.indexOf('--exec')
-if (execAt >= 0) {
+  // exitCode, not process.exit: the report above must not be truncated on
+  // Windows while the write is still queued (#656).
+  process.exitCode = 0
+} else if (execAt >= 0) {
+  /** Run a command with NODE_ENV cleared. */
   const cmd = args.slice(execAt + 1)
   if (!cmd.length) {
     console.error('--exec needs a command. Example: --exec npm install')
-    process.exit(2)
+    // exitCode, not process.exit: this message must reach the terminal (#656).
+    process.exitCode = 2
+  } else {
+    const env = { ...process.env }
+    delete env.NODE_ENV
+    // No `shell`: on Windows it re-splits the command and mangles args that
+    // carry their own quotes (e.g. `node -e "..."`).
+    const r = spawnSync(cmd[0], cmd.slice(1), { stdio: 'inherit', env })
+    // Forward the child's code. exitCode, not process.exit: nothing runs after
+    // this line, and an immediate exit can drop queued output (#656).
+    process.exitCode = r.status ?? 1
   }
-  const env = { ...process.env }
-  delete env.NODE_ENV
-  // No `shell`: on Windows it re-splits the command and mangles args that
-  // carry their own quotes (e.g. `node -e "..."`).
-  const r = spawnSync(cmd[0], cmd.slice(1), { stdio: 'inherit', env })
-  process.exit(r.status ?? 1)
-}
-
-/** Print the line a human or agent pastes into their shell. */
-if (isWin) {
-  console.log('Remove-Item Env:\\NODE_ENV -ErrorAction SilentlyContinue')
 } else {
-  console.log('unset NODE_ENV')
+  /** Print the line a human or agent pastes into their shell. */
+  if (isWin) {
+    console.log('Remove-Item Env:\\NODE_ENV -ErrorAction SilentlyContinue')
+  } else {
+    console.log('unset NODE_ENV')
+  }
+  console.log('Then run your npm command in the same shell.')
 }
-console.log('Then run your npm command in the same shell.')

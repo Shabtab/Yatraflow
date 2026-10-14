@@ -95,6 +95,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.apkname }}
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          # The file carries its own versioned name from build.gradle, so the
+          # path follows it instead of the default app-debug name.
+          path: android/app/build/outputs/apk/debug/YatraFlow-*.apk
           retention-days: 14
 

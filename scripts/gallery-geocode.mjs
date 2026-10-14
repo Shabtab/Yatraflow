@@ -28,6 +28,8 @@ if (inputs.length === 1 && /\.(txt|md)$/i.test(inputs[0])) {
 }
 if (places.length === 0) {
   console.error('Usage: node scripts/gallery-geocode.mjs [--json] "<place, district, state>" [...] | <places.txt>')
+  // Usage path: one message, then the empty list must stop the script before
+  // geocodeMany runs. An immediate exit is allowed here (#656).
   process.exit(2)
 }
 
@@ -43,4 +45,5 @@ const { results, missed } = await geocodeMany(places, {
 if (asJson) console.log(JSON.stringify(results, null, 2))
 else console.log(`\n${places.length - missed}/${places.length} geocoded.${missed ? ' Fix the misses before drafting — a guessed coordinate is the one error the import gates cannot catch.' : ''}`)
 
-process.exit(missed ? 1 : 0)
+// exitCode, not process.exit: the summary above must not be truncated (#656).
+process.exitCode = missed ? 1 : 0

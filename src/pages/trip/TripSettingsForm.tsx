@@ -28,6 +28,8 @@ import type { StartPin } from '../../lib/startPin'
 import { coordsForText, pinMatchesText } from '../../lib/startPin'
 import { CoverImagePicker } from '../../components/CoverImagePicker'
 import { RemoteEditBanner } from '../../components/RemoteEditBanner'
+import { Surface } from '../../components/page/Surface'
+import { StateBlock } from '../../components/page/StateBlock'
 
 /** The allowance the "drive after dinner" toggle turns on when a trip has none
  *  (#122's dhaba case: dinner at X, two more hours to Y). */
@@ -455,8 +457,8 @@ export function TripSettingsForm({ trip, editable, onOpenDay }: {
       </section>
 
       {editable && identityOpen && (
-        <section className="tsx-card tsx-card--identity" aria-label="Trip name and cover">
-          <h3 className="tsx-q" style={{ fontSize: 15 }}>Rename &amp; cover</h3>
+        <Surface as="section" className="tsx-card tsx-card--identity" aria-label="Trip name and cover">
+          <h3 className="tsx-q">Rename &amp; cover</h3>
           <div className="bench-pair">
             <Field label="Trip name">
               <input className="input" disabled={!editable} value={f.name} onChange={e => setF(x => ({ ...x, name: e.target.value }))} />
@@ -467,14 +469,14 @@ export function TripSettingsForm({ trip, editable, onOpenDay }: {
             </Field>
           </div>
           <p className="hint-text">The cover is what a shared itinerary previews with.</p>
-        </section>
+        </Surface>
       )}
 
       <div className="tsx-band">
         <div className="tsx-band-main">
 
           {/* ---------- Q1 · the road & the days ---------- */}
-          <section className="tsx-card" aria-label="Where does it go, and for how many days">
+          <Surface as="section" className="tsx-card" aria-label="Where does it go, and for how many days">
             <header className="tsx-head">
               <span className="tsx-no" aria-hidden="true">01</span>
               <h3 className="tsx-q">Where does it go, and for how many days?</h3>
@@ -551,7 +553,7 @@ export function TripSettingsForm({ trip, editable, onOpenDay }: {
                   placeholder="Search a city…"
                   disabled={!editable}
                 />
-                {startNotice && <p className="hint-text" role="status" style={{ marginTop: 6 }}>{startNotice}</p>}
+                {startNotice && <p className="hint-text set-start-notice" role="status">{startNotice}</p>}
               </Field>
               <Field label={`Destinations (${dests.length})`} hint="Search to add — arrows reorder the route">
                 <LocationInput
@@ -573,7 +575,7 @@ export function TripSettingsForm({ trip, editable, onOpenDay }: {
                 onChange={({ startDate, endDate }) => { setF(x => ({ ...x, startDate, endDate })) }}
               />
               <div>
-                <span className="label" style={{ display: 'block', marginBottom: 6 }}>Day grid</span>
+                <span className="label set-daygrid-label">Day grid</span>
                 <div className="tsx-dm-track" role="img" aria-label={`${daysWithStops} of ${dayCount} days carry stops`}>
                   <i className="tsx-dm-fill" style={{ width: `${dayCount ? Math.round((daysWithStops / dayCount) * 100) : 0}%` }} />
                 </div>
@@ -595,10 +597,10 @@ export function TripSettingsForm({ trip, editable, onOpenDay }: {
               <span className="tsx-fact"><span className="tsx-fact-k">Days</span><b>{dayCount}</b></span>
               <span className="tsx-fact"><span className="tsx-fact-k">Days with stops</span><b>{daysWithStops} of {dayCount}</b></span>
             </footer>
-          </section>
+          </Surface>
 
           {/* ---------- Q2 · the party & the money ---------- */}
-          <section className="tsx-card" aria-label="Who is going, and how do they split the money">
+          <Surface as="section" className="tsx-card" aria-label="Who is going, and how do they split the money">
             <header className="tsx-head">
               <span className="tsx-no" aria-hidden="true">02</span>
               <h3 className="tsx-q">Who is going, and how do they split the money?</h3>
@@ -622,11 +624,10 @@ export function TripSettingsForm({ trip, editable, onOpenDay }: {
                 </div>
                 {/* A party bigger than the chips needs a way in — Create Trip has
                     the same field, so the two surfaces accept the same range. */}
-                <div className="bench-line" style={{ marginTop: 8 }}>
+                <div className="bench-line set-bench-line-top">
                   <label className="bench-hint" htmlFor="ts-crew-custom">More than 10? </label>
-                  <input id="ts-crew-custom" className="input mono" type="number" inputMode="numeric"
+                  <input id="ts-crew-custom" className="input mono set-bench-total-cap" type="number" inputMode="numeric"
                     min={CREW_MIN} max={CREW_MAX} disabled={!editable} value={f.travellers}
-                    style={{ maxWidth: 96 }}
                     onChange={e => setF(x => ({ ...x, travellers: clampCrew(Number(e.target.value)) }))} />
                   <span className="bench-hint">up to {CREW_MAX}</span>
                 </div>
@@ -664,7 +665,7 @@ export function TripSettingsForm({ trip, editable, onOpenDay }: {
               <span className="tsx-fact"><span className="tsx-fact-k">Group</span><b>{formatInr(clampedBudget * travellers)}</b></span>
               <span className="tsx-fact"><span className="tsx-fact-k">Bed</span><b>{formatInr(STAY_RATE_PER_NIGHT[f.stayStyle])} / night</b></span>
             </footer>
-          </section>
+          </Surface>
         </div>
 
         {/* ---------- the bill + the engine's read ---------- */}
@@ -680,7 +681,7 @@ export function TripSettingsForm({ trip, editable, onOpenDay }: {
               <div className="bench-receipt-head">
                 <span className="bench-receipt-kicker">Save preview</span>
               </div>
-              <p className="err-text ts-warn-note" style={{ marginTop: 8 }}>{dry.reason}</p>
+              <p className="err-text ts-warn-note set-receipt-reason">{dry.reason}</p>
               <BlockedDayLinks blocked={dry.blocked} onOpenDay={onOpenDay} />
             </div>
           )}
@@ -731,11 +732,11 @@ export function TripSettingsForm({ trip, editable, onOpenDay }: {
               <span className="tsx-read-kicker">The engine&apos;s read</span>
               <span className={`chip chip-${healthBandTone(engineRead.band)}`}>{engineRead.band}</span>
             </div>
-            <div className="health-big" style={{ gap: 14 }}>
-              <div className={`health-num-big ${healthBandClass(engineRead.band)}`} style={{ fontSize: 38 }}>{engineRead.score}</div>
-              <div className="health-bar" style={{ flex: 1 }}><i className={healthBandClass(engineRead.band)} style={{ width: `${engineRead.score}%` }} /></div>
+            <div className="health-big set-read-gap">
+              <div className={`health-num-big ${healthBandClass(engineRead.band)} set-read-score`}>{engineRead.score}</div>
+              <div className="health-bar set-read-bar"><i className={healthBandClass(engineRead.band)} style={{ width: `${engineRead.score}%` }} /></div>
             </div>
-            <ul className="health-reasons" style={{ margin: 0 }}>
+            <ul className="health-reasons set-read-reasons">
               {topWarning
                 ? <li><b>{topWarning.title}.</b> {topWarning.detail}</li>
                 : <li>No warnings — the plan reads clean against the engine&apos;s assumptions.</li>}
@@ -755,7 +756,7 @@ export function TripSettingsForm({ trip, editable, onOpenDay }: {
       </div>
 
       {/* ---------- Q3 · the machine ---------- */}
-      <section className="tsx-card tsx-card--machine" aria-label="What moves you, and who is behind the wheel">
+      <Surface as="section" className="tsx-card tsx-card--machine" aria-label="What moves you, and who is behind the wheel">
         <header className="tsx-head">
           <span className="tsx-no" aria-hidden="true">03</span>
           <h3 className="tsx-q">What moves you, and who is behind the wheel?</h3>
@@ -921,7 +922,7 @@ export function TripSettingsForm({ trip, editable, onOpenDay }: {
           <span className="tsx-fact"><span className="tsx-fact-k">Cost math</span><b>{fuelMode ? 'Fuel' : 'Fares'}</b></span>
           <span className="tsx-fact"><span className="tsx-fact-k">Return</span><b>{fuelMode ? (f.roundTrip ? 'included' : 'one way') : '—'}</b></span>
         </footer>
-      </section>
+      </Surface>
 
       <StickyFormBar show>
         {/* #413: a viewer used to get a vanished bar under disabled inputs —
@@ -931,6 +932,14 @@ export function TripSettingsForm({ trip, editable, onOpenDay }: {
           <span className="ts-savebar-note hint-text" role="status">
             <InlineIcon icon={TriangleAlert} size={12} gap={3} />Only editors can change trip settings — ask an editor on this trip, or duplicate it to edit your own copy.
           </span>
+        )}
+        {/* #704: a save in flight is its own answer, so it gets its own block
+            with its own role. The failed line keeps its own markup: it is
+            pinned verbatim by tests/trip-settings-result.test.ts. */}
+        {savingSettings && (
+          <div className="set-save-state">
+            <StateBlock kind="loading" size="compact" title="Saving your settings." />
+          </div>
         )}
         {writeErr && <span className="err-text" role="alert">{writeErr}</span>}
         <button className="btn btn-primary" disabled={!canSave || savingSettings}

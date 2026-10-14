@@ -49,14 +49,14 @@ describe('#704 — Group input reads its verdicts before it renders', () => {
 
   it('the failed and reading branches render only for an empty list, so loaded cards stay visible', () => {
     expect(component).toMatch(/items\.length === 0 && listFailed && \(\(\) => \{/)
-    expect(component).toMatch(/items\.length === 0 && listReading && \(\s*<div className="loading-block">/)
+    expect(component).toMatch(/items\.length === 0 && listReading && \(\s*<StateBlock kind="loading"/)
     expect(component).not.toMatch(/listFailed \?/)
     expect(component).not.toMatch(/listReading \?/)
     expect(component).toMatch(/\{shown\.map\(item => item\.kind === 'idea'/)
   })
 
   it('the all-empty copy is gated on a ready, empty list, and comes after the failed and reading branches', () => {
-    expect(component).toMatch(/items\.length === 0 && !listFailed && !listReading && \(\s*<EmptyState/)
+    expect(component).toMatch(/items\.length === 0 && !listFailed && !listReading && \(\s*<StateBlock kind="empty"/)
     const failedAt = component.indexOf("emptyCopyFor('failed'")
     const readingAt = component.indexOf('Loading group input')
     const readyEmptyAt = component.indexOf('EMPTY_COPY.all.title')
@@ -72,7 +72,7 @@ describe('#704 — Group input reads its verdicts before it renders', () => {
   })
 
   it('a failed read with loaded cards adds one note above them, with a retry', () => {
-    expect(component).toMatch(/items\.length > 0 && listFailed && \(\s*<p className="small muted">Couldn’t refresh group input — showing what was loaded\. <button className="btn btn-outline btn-sm" onClick=\{retryGroupInput\}>Try again<\/button><\/p>/)
+    expect(component).toMatch(/items\.length > 0 && listFailed && \(\s*<StateBlock kind="kept" size="compact" title="Couldn’t refresh group input\. Showing what was loaded\."\s*actions=\{<button className="btn btn-outline btn-sm" onClick=\{retryGroupInput\}>Try again<\/button>\} \/>/)
   })
 
   it('the failed branch offers a Try again that re-issues the read through resumeSync, as Budget does', () => {
@@ -81,14 +81,14 @@ describe('#704 — Group input reads its verdicts before it renders', () => {
     expect(component).toMatch(/onClick=\{retryGroupInput\}>Try again<\/button>/)
   })
 
-  it('the reading branch uses the loading markup Budget uses', () => {
-    expect(component).toMatch(/<div className="loading-block"><div className="spinner" \/>Loading group input…<\/div>/)
+  it('the reading branch uses the shared loading block, with its spinner', () => {
+    expect(component).toMatch(/<StateBlock kind="loading" size="compact" title="Loading group input…" art=\{<div className="spinner" \/>\} \/>/)
   })
 
   it('the activity feed always shows loaded rows, with a note, a failed line or an empty line around them', () => {
-    expect(component).toMatch(/activityRead === 'failed' && tripActivity\.length > 0 && \(\s*<p className="small muted">Couldn’t refresh activity — showing what was loaded\./)
-    expect(component).toMatch(/activityRead === 'failed' && tripActivity\.length === 0 && \(\s*<p className="small muted">Couldn’t load activity\. <button className="btn btn-outline btn-sm" onClick=\{retryGroupInput\}>Try again<\/button><\/p>/)
-    expect(component).toMatch(/activityRead === 'ready' && tripActivity\.length === 0 && \(\s*<p className="small muted">No activity yet\.<\/p>/)
+    expect(component).toMatch(/activityRead === 'failed' && tripActivity\.length > 0 && \(\s*<StateBlock kind="kept" size="compact" title="Couldn’t refresh activity\. Showing what was loaded\./)
+    expect(component).toMatch(/activityRead === 'failed' && tripActivity\.length === 0 && \(\s*<StateBlock kind="failed" size="compact" title="Couldn’t load activity\./)
+    expect(component).toMatch(/activityRead === 'ready' && tripActivity\.length === 0 && \(\s*<StateBlock kind="empty" size="compact" title="No activity yet\./)
     expect(component).toMatch(/\{tripActivity\.slice\(0, 20\)\.map\(a => \(/)
     expect(component).not.toMatch(/activityRead === '[a-z]+' \?/)
   })

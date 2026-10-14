@@ -192,7 +192,7 @@ describe('#393 — the store wires what it promises', () => {
     // signed in now. And it reads the in-hand cache, so it runs where that
     // cache belongs to this account — which is also what a login resolves
     // through, one path for both.
-    expect(src).toMatch(/if \(gen === hydrateGen && cache\.sessionUserId === userId\) await enforceDisabledCheck\(\)/)
+    expect(src).toMatch(/if \(hydrationSucceeded && gen === hydrateGen && cache\.sessionUserId === userId\) await enforceDisabledCheck\(\)/)
   })
 
   it('the write queue is stamped with the editor, not the trip owner', () => {

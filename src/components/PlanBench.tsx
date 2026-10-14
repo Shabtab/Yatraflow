@@ -471,7 +471,7 @@ export function PlanBench() {
         <div className={`bench-receipt card${tearing ? ' tearing' : ''}${capturing ? ' bench-capturing' : ''}`} ref={receiptRef}
           onMouseMove={onTiltMove} onMouseLeave={onTiltEnd}>
           <span className="bench-barcode" aria-hidden="true" />
-          <span className="bench-stamp" key={stampKey} aria-hidden="true">Estimate</span>
+          <span className="bench-stamp" key={`stamp-${stampKey}`} aria-hidden="true">Estimate</span>
           <div className="bench-receipt-head">
             <span className="bench-receipt-kicker">The Honest Bill</span>
             <span className="bench-receipt-date">{issued}</span>
@@ -501,7 +501,7 @@ export function PlanBench() {
             <span><span className="dot dot-stay" />stays {pct(shown.stayCost)}%</span>
             <span><span className="dot dot-meal" />food {pct(shown.mealCost)}%</span>
           </div>
-          <div className="bench-receipt-lines" key={lineKey}>
+          <div className="bench-receipt-lines" key={`lines-${lineKey}`}>
             <div className="bench-line">
               <div className="bench-line-head"><span>{modeIcon(shownInput.mode, 14)} {fuelMode ? 'Fuel' : 'Fares'}</span><b><Odometer value={formatInr(shown.transportCost)} animate={odometerAnimate} /></b></div>
               <span className="bench-line-formula">{shown.transportFormula}</span>

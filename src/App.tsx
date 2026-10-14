@@ -12,8 +12,8 @@ import {
   browserNotifEnabled, browserNotifPermission, fireBrowserNotification,
   shouldBrowserNotify,
 } from './lib/browserNotifications'
-import type { Trip } from './data/types'
-import { useDb, currentUser, useUsers, useNotifications, useSessionUserId, logout, markAllNotificationsRead, tripById, joinViaInvite, importTripPersisted, retryImportTrip, init, resumeSync, useStoreReady, fetchSharedTrip, fetchTripByInviteCode, viewerIsMemberOf, collectUnclaimedCovers } from './store/store'
+import type { Notification, Trip } from './data/types'
+import { useDb, currentUser, useUsers, useNotifications, useSessionUserId, useSliceReads, logout, markAllNotificationsRead, tripById, joinViaInvite, importTripPersisted, retryImportTrip, init, resumeSync, useStoreReady, fetchSharedTrip, fetchTripByInviteCode, viewerIsMemberOf, collectUnclaimedCovers } from './store/store'
 import { Avatar, BrandMark, ToastZone, useClickOutside, toast } from './components/ui'
 import { BottomNav } from './components/BottomNav'
 import { OfflineBanner } from './components/OfflineBanner'
@@ -29,8 +29,14 @@ import { isNative } from './lib/native'
 import { feedbackHref } from './lib/feedback'
 import { setTheme, useTheme } from './lib/theme'
 import { hideSplash, registerAndroidBack, setNativeTheme } from './lib/appShell'
+import { sliceState, rowsView, type RowsView } from './lib/readState'
+import { StateBlock } from './components/page/StateBlock'
 import { LandingPage } from './pages/Landing'
 import { NativeHomePage } from './pages/NativeHome'
+import {
+  sharedSnapshotState, inviteGateState,
+  inviteLoginNext, inviteSignupNext, invitePreview,
+} from './lib/inviteGateStates'
 // Route-level code splitting: only the landing page stays in the main chunk (it
 // is the app's front door and reads no store data); every other route -
 // including the workspace and its map/editor subtree - loads on first visit.
@@ -51,9 +57,153 @@ const CreatorHubPage = lazy(() => import('./pages/CreatorHubPage').then(m => ({ 
 const AdminPage = lazy(() => import('./pages/AdminPage').then(m => ({ default: m.AdminPage })))
 const DMCAPage = lazy(() => import('./pages/DMCAPage').then(m => ({ default: m.DMCAPage })))
 
-/** Suspense fallback for the lazy routes - the same loading block the ready-gate shows. */
-const lazyRouteFallback = <div className="container loading-block"><div className="spinner" />Loading…</div>
+/** Suspense fallback for the lazy routes - the same loading block the ready-gate shows. The `page-enter` root gives the block the shared entrance, so it never pops in. */
+const lazyRouteFallback = <div className="container page-enter"><StateBlock kind="loading" titleLevel="h2" icon={<span className="spinner" aria-hidden="true" />} title="Loading…" /></div>
 
+export type ProfileLookupState = 'anonymous' | 'reading' | 'failed' | 'missing' | 'ready'
+
+export function needsProfileLookup(sessionUserId: string | null, hasProfile: boolean): boolean {
+  return !!sessionUserId && !hasProfile
+}
+
+export function profileLookupState(
+  sessionUserId: string | null,
+  hasProfile: boolean,
+  sliceReads: Record<string, 'ok' | 'failed'>,
+): ProfileLookupState {
+  if (hasProfile) return 'ready'
+  if (!sessionUserId) return 'anonymous'
+  const profileRead = sliceState(sliceReads, 'profiles')
+  if (profileRead === 'failed') return 'failed'
+  if (profileRead === 'reading') return 'reading'
+  return 'missing'
+}
+
+/** Whether the profile lookup takes the page from the route. A failed lookup takes it on the
+ *  bare route too, so its Try again is never hidden behind the landing. A reading lookup does
+ *  not, so the landing does not flash while hydrate runs. */
+export function profileLookupBlocksRoute(
+  sessionUserId: string | null,
+  hasProfile: boolean,
+  state: ProfileLookupState,
+  bareRoute: boolean,
+  native: boolean,
+): boolean {
+  if (!needsProfileLookup(sessionUserId, hasProfile)) return false
+  return !bareRoute || native || state === 'failed'
+}
+
+export function notificationPanelModel(
+  sliceReads: Record<string, 'ok' | 'failed'>,
+  notifications: Notification[],
+  sessionUserId: string | null,
+): { rows: Notification[]; view: RowsView } {
+  const rows = sessionUserId
+    ? notifications.filter(notification => notification.userId === sessionUserId).sort((a, b) => b.at - a.at)
+    : []
+  // hydrate reads notifications by trip, so an account with no trips issues no
+  // notifications read and the slice stays unreported. A trips verdict beside
+  // that gap is the answer: no trips, so no trip notifications. Without a trips
+  // verdict the read is still pending, and that stays "reading".
+  const noTripScope = !('notifications' in sliceReads) && sliceState(sliceReads, 'trips') === 'ready'
+  const read = noTripScope ? 'ready' : sliceState(sliceReads, 'notifications')
+  return { rows, view: rowsView(read, rows.length) }
+}
+
+export function retryProfileLookup(): void {
+  window.location.reload()
+}
+
+export function ProfileLookupNotice({ state }: { state: ProfileLookupState }) {
+  if (state === 'ready' || state === 'anonymous') return null
+  if (state === 'reading') {
+    return <StateBlock kind="loading" title="Loading your profile…" titleLevel="h2" />
+  }
+  if (state === 'failed') {
+    return (
+      <StateBlock
+        kind="failed"
+        title="Your profile could not load."
+        titleLevel="h2"
+        actions={<button className="btn btn-primary btn-sm" onClick={retryProfileLookup}>Try again</button>}
+      />
+    )
+  }
+  return (
+    <StateBlock
+      kind="empty"
+      title="Your profile is not available."
+      body="The profile read completed without a matching account."
+      titleLevel="h2"
+    />
+  )
+}
+
+function ProfileLookupPage({ state }: { state: ProfileLookupState }) {
+  return (
+    <div className="container page-enter yf-page">
+      <ProfileLookupNotice state={state} />
+    </div>
+  )
+}
+
+export function NotificationReadNotice({ view, onRetry }: { view: RowsView; onRetry: () => void }) {
+  if (view === 'rows' || view === 'empty') return null
+  if (view === 'reading') {
+    return <StateBlock kind="loading" size="compact" title="Loading notifications…" />
+  }
+  if (view === 'failed') {
+    return (
+      <StateBlock
+        kind="failed"
+        size="compact"
+        title="Couldn’t load notifications."
+        actions={<button className="btn btn-primary btn-sm" onClick={onRetry}>Try again</button>}
+      />
+    )
+  }
+  return (
+    <StateBlock
+      kind="kept"
+      size="compact"
+      title="Refresh failed. The app shows your last notifications."
+      actions={<button className="btn btn-primary btn-sm" onClick={onRetry}>Try again</button>}
+    />
+  )
+}
+
+export function NotificationPanelContent({
+  model,
+  showAll,
+  onRetry,
+  onOpenTrip,
+}: {
+  model: { rows: Notification[]; view: RowsView }
+  showAll: boolean
+  onRetry: () => void
+  onOpenTrip: (tripId: string) => void
+}) {
+  const { rows, view } = model
+  return (
+    <div style={{ maxHeight: showAll ? 'min(60vh, calc(100vh - 150px))' : 320, overflowY: 'auto', overscrollBehavior: 'contain' }}>
+      {view === 'empty' && (
+        <p className="muted small" style={{ padding: 16, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <Inbox size={14} aria-hidden />You’re all caught up
+        </p>
+      )}
+      <NotificationReadNotice view={view} onRetry={onRetry} />
+      {(showAll ? rows : rows.slice(0, 12)).map(notification => {
+        const tripId = notification.tripId
+        return (
+          <div key={notification.id} className={`notif-item ${notification.read ? '' : 'unread'}`}>
+            <span>{notification.text}</span>
+            {tripId && <button className="btn btn-ghost btn-sm" onClick={() => onOpenTrip(tripId)}>View →</button>}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
 
 export default function App() {
   // Slice subscriptions: the shell re-renders only when profiles, the session
@@ -62,8 +212,14 @@ export default function App() {
   const users = useUsers()
   const sessionUserId = useSessionUserId()
   const notifications = useNotifications()
+  const sliceReads = useSliceReads()
   // Same semantics as currentUser(): the profile whose id matches sessionUserId.
   const me = useMemo(() => users.find(u => u.id === sessionUserId) ?? null, [users, sessionUserId])
+  const profileState = profileLookupState(sessionUserId, !!me, sliceReads)
+  const notificationPanel = useMemo(
+    () => notificationPanelModel(sliceReads, notifications, sessionUserId),
+    [sliceReads, notifications, sessionUserId],
+  )
   // The route lives in the address bar now (web): the initial state settles
   // any legacy hash address first — a bookmark from the hash era, a card
   // handler's `/#/pub/<id>` hand-off, a native share intent opened on web —
@@ -296,7 +452,7 @@ export default function App() {
   // unconditional, so every launch flashed the marketing landing + its
   // website chrome before NativeHome arrived.
   if (!ready && parts[0] !== 'auth' && parts[0] !== 'share' && (!bareRoute || isNative)) {
-    page = <div className="container loading-block" role="status"><div className="spinner" />Loading…</div>
+    page = lazyRouteFallback
   } else if (parts[0] === 'share' && parts[1]) {
     page = <SharedTripPage payload={parts[1]} onNavigate={navigate} />
   } else if (parts[0] === 'join' && parts[1]) {
@@ -314,7 +470,8 @@ export default function App() {
     if (parts[0] === 'pub' && parts[1]) page = <Suspense fallback={lazyRouteFallback}><PublicItineraryPage slug={parts[1]} onNavigate={navigate} /></Suspense>
     else if (parts[0] === 'creator' && parts[1]) page = <Suspense fallback={lazyRouteFallback}><CreatorPage creatorId={parts[1]} onNavigate={navigate} /></Suspense>
     else if (parts[0] === 'explore') page = <Suspense fallback={lazyRouteFallback}><ExplorePage onNavigate={navigate} /></Suspense>
-    else if (parts[0] === 'auth') page = <Suspense fallback={lazyRouteFallback}><AuthPage onNavigate={navigate} /></Suspense>
+    else if (parts[0] === 'auth' && !sessionUserId) page = <Suspense fallback={lazyRouteFallback}><AuthPage onNavigate={navigate} /></Suspense>
+    else if (profileLookupBlocksRoute(sessionUserId, !!me, profileState, bareRoute, isNative)) page = <ProfileLookupPage state={profileState} />
     else page = <LandingPage onNavigate={navigate} />
   } else {
     switch (parts[0]) {
@@ -386,13 +543,9 @@ export default function App() {
 
   // Same filter+sort as notificationsFor(), but derived from the subscribed
   // notifications slice so the bell stays live without a full-cache subscription.
-  const notifs = useMemo(
-    () => sessionUserId
-      ? notifications.filter(n => n.userId === sessionUserId).sort((a, b) => b.at - a.at)
-      : [],
-    [notifications, sessionUserId],
-  )
+  const notifs = notificationPanel.rows
   const unread = notifs.filter(n => !n.read).length
+  function retryNotifications() { void resumeSync() }
 
   // ---- Browser push (local Notification API, no service worker) ----
   // In-app bell is the source of truth; this effect mirrors NEW unread rows
@@ -487,19 +640,12 @@ export default function App() {
                     <b>Notifications</b>
                     {unread > 0 && <button className="btn btn-ghost btn-sm" onClick={() => markAllNotificationsRead(me.id)}>Mark all read</button>}
                   </div>
-                  <div style={{ maxHeight: notifShowAll ? 'min(60vh, calc(100vh - 150px))' : 320, overflowY: 'auto', overscrollBehavior: 'contain' }}>
-                    {notifs.length === 0 && (
-                      <p className="muted small" style={{ padding: 16, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <Inbox size={14} aria-hidden />You’re all caught up
-                      </p>
-                    )}
-                    {(notifShowAll ? notifs : notifs.slice(0, 12)).map(n => (
-                      <div key={n.id} className={`notif-item ${n.read ? '' : 'unread'}`}>
-                        <span>{n.text}</span>
-                        {n.tripId && <button className="btn btn-ghost btn-sm" onClick={() => { setNotifOpen(false); navigate(`/trip/${n.tripId}`) }}>View →</button>}
-                      </div>
-                    ))}
-                  </div>
+                  <NotificationPanelContent
+                    model={notificationPanel}
+                    showAll={notifShowAll}
+                    onRetry={retryNotifications}
+                    onOpenTrip={tripId => { setNotifOpen(false); navigate(`/trip/${tripId}`) }}
+                  />
                   {/* #84: the old panel truncated at 12 with no recovery path.
                       Honest count + in-place expansion; the list is already
                       fully loaded in the store, so this is pure disclosure. */}
@@ -539,7 +685,7 @@ export default function App() {
               a submit. Repeating them in the chrome gave the accent two owners
               on one screen — and two controls a screen apart that both said
               "Log in". */}
-          {!me && parts[0] !== 'auth' && (
+          {!me && !sessionUserId && parts[0] !== 'auth' && (
             <>
               <a className="btn btn-outline btn-sm" {...appLink('/auth')}>Log in</a>
               <a className="btn btn-primary btn-sm" {...appLink('/auth?mode=signup')}>Start planning free</a>
@@ -556,7 +702,7 @@ export default function App() {
               the reflow rung (≤350px) hides the chrome pair from .nav-right so
               the primary CTA fits 320px, and this tray keeps Log in reachable
               (review finding 1). */}
-          {!me && <a className="nav-link" {...appLink('/auth')}>Log in</a>}
+          {!me && !sessionUserId && <a className="nav-link" {...appLink('/auth')}>Log in</a>}
           {me && <>
             <a className={`nav-link ${route === '/trips' ? 'active' : ''}`} {...appLink('/trips')}><InlineIcon icon={Tent} size={15} gap={6} />My trips</a>
             <a className={`nav-link ${route === CREATE_PATH ? 'active' : ''}`} {...appLink(CREATE_PATH)}><InlineIcon icon={Plus} size={15} gap={6} />Plan a trip</a>
@@ -583,6 +729,11 @@ export default function App() {
       </main>
 
       <footer className="footer">
+        <svg className="footer-route-mark" viewBox="0 0 120 14" aria-hidden="true" focusable="false">
+          <path d="M3 5.5C9 2 16 2 22 5.5S35 9 41 5.5S54 2 60 5.5S73 9 79 5.5S92 2 98 5.5S111 9 117 5.5" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeDasharray="3 3" />
+          <circle cx="3" cy="5.5" r="3" fill="currentColor" />
+          <circle cx="117" cy="5.5" r="3" fill="currentColor" />
+        </svg>
         <div className="container footer-inner">
           <span><b>YatraFlow</b>: plan together, travel better. Built for Indian travellers</span>
           <span className="small muted">All costs are transparent estimates. No bookings — planning plus paid itinerary unlocks. <a className="footer-link" href={feedbackHref()}>Send feedback</a> · <a className="footer-link" href="/ladakh-trip-cost-calculator/">Ladakh trip cost calculator</a></span>
@@ -611,6 +762,8 @@ export default function App() {
 function SharedTripPage({ payload, onNavigate }: { payload: string; onNavigate: (r: string) => void }) {
   const db = useDb()
   const me = currentUser(db)
+  const profileState = profileLookupState(db.sessionUserId, !!me, db.sliceReads)
+  const profileLookupPending = needsProfileLookup(db.sessionUserId, !!me)
   const [state, setState] = useState<
     { s: 'loading' } | { s: 'error' } | { s: 'ready'; name: string; days: number; destinations: string }
   >({ s: 'loading' })
@@ -634,7 +787,10 @@ function SharedTripPage({ payload, onNavigate }: { payload: string; onNavigate: 
   }, [payload])
 
   async function importIt() {
-    if (!me) { onNavigate('/auth'); return }
+    if (!me) {
+      if (!db.sessionUserId) onNavigate('/auth')
+      return
+    }
     if (!trip || importing) return
     setImporting(true)
     try {
@@ -655,35 +811,59 @@ function SharedTripPage({ payload, onNavigate }: { payload: string; onNavigate: 
     }
   }
 
-  if (state.s === 'error') {
+  /* The decode's own state. A snapshot travels inside the link, so a truncated
+     link and a browser without DecompressionStream both land in `failed`. That
+     is a different answer from "no trip", so the two never share a branch. */
+  const snapshot = sharedSnapshotState({ loading: state.s === 'loading', failed: state.s === 'error', trip })
+
+  if (snapshot === 'failed') {
     return (
-      <div className="container empty-state page-enter">
-        <div className="big"><Link2 size={38} aria-hidden /></div>
-        {/* Decoding can fail for reasons that are NOT the link: `inflate` throws
-            where DecompressionStream is missing, and a newer snapshot can fail
-            the shape check. Name the likely cause, keep the alternative. */}
-        <h1 style={{ fontSize: 26 }}>This snapshot didn’t load</h1>
-        <p className="muted">A snapshot travels inside the link itself, so this is usually a link that arrived truncated - ask for a fresh one from the trip’s Share tab. Opening it in an up-to-date browser, which can unpack it, is worth a try too.</p>
-        <button className="btn btn-primary" style={{ marginTop: 14 }} onClick={() => onNavigate('/')}>Go home</button>
+      <div className="container yf-page page-enter">
+        <StateBlock
+          kind="failed"
+          art={<Link2 size={38} aria-hidden />}
+          title="This snapshot didn’t load"
+          body="A snapshot travels inside the link itself, so this is usually a link that arrived truncated. Ask for a fresh one from the trip’s Share tab. Opening it in an up-to-date browser, which can unpack it, is worth a try too."
+          actions={(
+            <button className="btn btn-primary" onClick={() => onNavigate('/')}>Go home</button>
+          )}
+        />
+      </div>
+    )
+  }
+
+  if (snapshot === 'loading') {
+    return (
+      <div className="container yf-page page-enter">
+        <StateBlock kind="loading" title="Opening the shared plan" />
       </div>
     )
   }
 
   return (
-    <div className="container empty-state page-enter">
-      <div className="big"><Luggage size={38} aria-hidden /></div>
-      <h1 style={{ fontSize: 26 }}>Shared itinerary{state.s === 'ready' ? `: “${state.name}”` : ''}</h1>
-      {state.s === 'ready' && (
-        <p className="muted">{state.days}-day trip · {state.destinations}</p>
-      )}
-      <p className="muted small" style={{ maxWidth: 460 }}>
-        This whole plan is embedded in the link itself - nothing was stored on a server.
-        Import it to get your own editable copy{me ? '' : ' (you will be asked to log in first)'}.
-      </p>
-      <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 14 }}>
-        <button className="btn btn-primary" onClick={importIt} disabled={importing} aria-busy={importing}><InlineIcon icon={Import} size={16} gap={6} vAlign="-3px" />{importing ? 'Importing…' : pendingImport ? 'Retry import' : me ? 'Import into my trips' : 'Log in & import'}</button>
-        <button className="btn btn-outline" onClick={() => onNavigate('/')}>Not now</button>
-      </div>
+    <div className="container yf-page page-enter">
+      <StateBlock
+        kind="empty"
+        art={<Luggage size={38} aria-hidden />}
+        title={`Shared itinerary${state.s === 'ready' ? `: “${state.name}”` : ''}`}
+        body={(
+          <>
+            {state.s === 'ready' && <p className="muted">{state.days}-day trip · {state.destinations}</p>}
+            <p className="muted small">
+              This whole plan is embedded in the link itself - nothing was stored on a server.
+              Import it to get your own editable copy{me || db.sessionUserId ? '' : ' (you will be asked to log in first)'}.
+            </p>
+          </>
+        )}
+        actions={profileLookupPending ? (
+          <ProfileLookupNotice state={profileState} />
+        ) : (
+          <div className="inv-actions">
+            <button className="btn btn-primary" onClick={importIt} disabled={importing} aria-busy={importing}><InlineIcon icon={Import} size={16} gap={6} vAlign="-3px" />{importing ? 'Importing…' : pendingImport ? 'Retry import' : me ? 'Import into my trips' : 'Log in & import'}</button>
+            <button className="btn btn-outline" onClick={() => onNavigate('/')}>Not now</button>
+          </div>
+        )}
+      />
     </div>
   )
 }
@@ -701,6 +881,7 @@ function SharedTripPage({ payload, onNavigate }: { payload: string; onNavigate: 
 function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavigate: (r: string) => void }) {
   const db = useDb()
   const me = currentUser(db)
+  const profileState = profileLookupState(db.sessionUserId, !!me, db.sliceReads)
   // The invited trip is (by definition) not the viewer's yet, so the
   // membership-scoped hydration never loaded it - fetch it on demand. The
   // RPC fallback covers private trips: holding the link (the trip's UUID)
@@ -783,58 +964,139 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
     // existed and the invite never auto-joined.
   }, [me, trip, isTripIdLink, linkTarget])
 
+  /* The gate's own state. A read that failed and a link that is dead are
+     different answers, and the code below never shows one as the other. */
+  const gate = inviteGateState({ loading: status === 'loading' || !trip, failed: status === 'broken', trip })
+
   if (status === 'retired') {
     return (
-      <div className="container empty-state">
-        <div className="big"><Link2 size={38} aria-hidden /></div>
-        <h1 style={{ fontSize: 26 }}>This link no longer adds people</h1>
-        <p className="muted">Ask the trip owner for a fresh invite link.</p>
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 14 }}>
-          <button className="btn btn-outline" onClick={() => onNavigate('/')}>Go home</button>
-        </div>
+      <div className="container yf-page page-enter">
+        <StateBlock
+          kind="empty"
+          art={<Link2 size={38} aria-hidden />}
+          title="This link no longer adds people"
+          body="Ask the trip owner for a fresh invite link."
+          actions={(
+            <button className="btn btn-outline" onClick={() => onNavigate('/')}>Go home</button>
+          )}
+        />
       </div>
     )
   }
 
-  if (status === 'broken' || !trip) {
-    return status === 'broken' ? (
-      <div className="container empty-state">
-        <div className="big"><Link2 size={38} aria-hidden /></div>
-        <h1 style={{ fontSize: 26 }}>This invite didn’t load</h1>
-        <p className="muted">The code may be mistyped or no longer active, or the connection may have dropped - we can’t tell which from here. Ask the organiser for a fresh link, or try again.</p>
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 14 }}>
-          <button className="btn btn-primary" onClick={() => { setStatus('loading'); setRetryTick(t => t + 1) }}>Try again</button>
-          <button className="btn btn-outline" onClick={() => onNavigate('/')}>Go home</button>
-        </div>
+  if (gate === 'failed') {
+    return (
+      <div className="container yf-page page-enter">
+        <StateBlock
+          kind="failed"
+          art={<Link2 size={38} aria-hidden />}
+          title="This invite didn’t load"
+          body="The connection may have dropped, so the link may still be good. Ask the organiser for a fresh link, or try again."
+          actions={(
+            <div className="inv-actions">
+              <button className="btn btn-primary" onClick={() => { setStatus('loading'); setRetryTick(t => t + 1) }}>Try again</button>
+              <button className="btn btn-outline" onClick={() => onNavigate('/')}>Go home</button>
+            </div>
+          )}
+        />
       </div>
-    ) : (
-      <div className="container loading-block"><div className="spinner" />Opening invite…</div>
+    )
+  }
+
+  if (gate === 'expired') {
+    return (
+      <div className="container yf-page page-enter">
+        <StateBlock
+          kind="empty"
+          art={<Link2 size={38} aria-hidden />}
+          title="This invite is no longer active"
+          body="The code may be mistyped or no longer active. Ask the organiser for a fresh link."
+          actions={(
+            <div className="inv-actions">
+              <button className="btn btn-primary" onClick={() => { setStatus('loading'); setRetryTick(t => t + 1) }}>Try again</button>
+              <button className="btn btn-outline" onClick={() => onNavigate('/')}>Go home</button>
+            </div>
+          )}
+        />
+      </div>
+    )
+  }
+
+  if (gate === 'loading') {
+    return (
+      <div className="container yf-page page-enter">
+        <StateBlock kind="loading" title={status === 'joining' && trip ? `Joining “${trip.name}”…` : 'Opening invite…'} />
+      </div>
     )
   }
 
   if (!me) {
+    if (needsProfileLookup(db.sessionUserId, !!me)) {
+      return (
+        <div className="container yf-page page-enter">
+          <StateBlock
+            kind="empty"
+            art={<Mail size={38} aria-hidden />}
+            title={`You’ve been invited to “${invitePreview(trip ?? { name: '' }).name}”`}
+            actions={<ProfileLookupNotice state={profileState} />}
+          />
+        </div>
+      )
+    }
     // Park the invite in the URL and bounce through auth with a next param -
     // the old buttons went to plain /auth, and AuthPage's post-login redirect
     // to /trips dropped the invite entirely: users logged in, landed on My
     // Trips, and the trip never appeared.
-    const inviteRoute = UUID_RE.test(codeOrTripId) ? `/invite/${codeOrTripId}` : `/join/${codeOrTripId}`
+    // The preview below reads only what the gate already holds. No field is
+    // fetched a second time to fill it in.
+    const preview = invitePreview(trip ?? { name: '' })
     return (
-      <div className="container empty-state">
-        <div className="big"><Mail size={38} aria-hidden /></div>
-        <h1 style={{ fontSize: 26 }}>You’ve been invited to “{trip.name}”</h1>
-        <p className="muted">Log in or create a free account to join the planning crew.</p>
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 14 }}>
-          <button className="btn btn-outline" onClick={() => onNavigate(`/auth?next=${encodeURIComponent(inviteRoute)}`)}>Log in</button>
-          <button className="btn btn-primary" onClick={() => onNavigate(`/auth?mode=signup&next=${encodeURIComponent(inviteRoute)}`)}>Create account</button>
-        </div>
+      <div className="container yf-page page-enter">
+        <StateBlock
+          kind="empty"
+          art={<Mail size={38} aria-hidden />}
+          title={`You’ve been invited to “${preview.name}”`}
+          body={(
+            <>
+              <p className="muted">Log in or create a free account to join the planning crew.</p>
+              <dl className="inv-preview">
+                {preview.route && (
+                  <div className="inv-preview-row">
+                    <dt>Route</dt>
+                    <dd>{preview.route}</dd>
+                  </div>
+                )}
+                {preview.dates && (
+                  <div className="inv-preview-row">
+                    <dt>Dates</dt>
+                    <dd>{preview.dates}</dd>
+                  </div>
+                )}
+                <div className="inv-preview-row">
+                  <dt>Crew</dt>
+                  <dd>{preview.memberCount} {preview.memberCount === 1 ? 'planner' : 'planners'}</dd>
+                </div>
+              </dl>
+            </>
+          )}
+          actions={(
+            <div className="inv-actions">
+              {/* The `next` round-trip is load-bearing: it parks this invite so
+                  AuthPage returns here after login. The route and its encoding
+                  come from inviteLoginNext and inviteSignupNext, and the
+                  navigation calls below stay exactly as they were. */}
+              <button className="btn btn-outline" onClick={() => onNavigate(inviteLoginNext(codeOrTripId, isTripIdLink))}>Log in</button>
+              <button className="btn btn-primary" onClick={() => onNavigate(inviteSignupNext(codeOrTripId, isTripIdLink))}>Create account</button>
+            </div>
+          )}
+        />
       </div>
     )
   }
 
   return (
-    <div className="container loading-block">
-      <div className="spinner" />
-      {status === 'joining' ? `Joining “${trip.name}”…` : 'Opening invite…'}
+    <div className="container yf-page page-enter">
+      <StateBlock kind="loading" title={status === 'joining' && trip ? `Joining “${trip.name}”…` : 'Opening invite…'} />
     </div>
   )
 }
