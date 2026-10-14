@@ -27,9 +27,10 @@ describe('footer route mark (P1)', () => {
     expect(footer.match(/<a\s/g)?.length).toBe(2)
   })
 
-  it('lifts the mark by the footer top padding, so its midline sits on the border', () => {
-    expect(css).toMatch(/\.footer \{[^}]*padding: 26px 0 34px/)
-    expect(markBlock).toMatch(/top: -32px;/)
+  it('positions the mark against the footer itself, not against its padding', () => {
+    expect(css).toMatch(/\.footer \{[^}]*position: relative/)
+    expect(markBlock).toMatch(/position: absolute;/)
+    expect(markBlock).toMatch(/top: -6px;/)
   })
 
   it('adds a static CSS block with no raw milliseconds, transition or animation', () => {
