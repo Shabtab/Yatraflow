@@ -18,6 +18,7 @@ describe('footer route mark (P1)', () => {
     expect(footer).not.toBe('')
     expect(footer.match(/<svg\b/g)?.length).toBe(1)
     expect(footer).toMatch(/<svg\b[^>]*aria-hidden="true"/)
+    expect(footer).toMatch(/<svg\b[^>]*focusable="false"/)
   })
 
   it('keeps the feedback link and the calculator link, and adds no anchor', () => {
