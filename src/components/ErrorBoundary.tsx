@@ -10,6 +10,7 @@ import { Component } from 'react'
 import type { ErrorInfo, ReactNode } from 'react'
 import { TriangleAlert } from 'lucide-react'
 import { clearLocalAppData, LOCAL_DATA_NOTE } from '../lib/localData'
+import { StateBlock } from './page/StateBlock'
 
 const RELOAD_FLAG = 'yf-chunk-reload'
 
@@ -69,53 +70,57 @@ export class ErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.error) {
       const staleChunk = isStaleChunkError(this.state.error)
+      const { confirming } = this.state
+      // A render error stays a failed state with its recovery actions. It never renders as empty (rule R23).
+      const body = confirming
+        ? <>{this.state.error.message}<br /><br />{LOCAL_DATA_NOTE}</>
+        : staleChunk ? 'A new version shipped while this page was open — one reload picks it up.' : this.state.error.message
+      let actions: ReactNode
+      if (confirming) {
+        actions = (
+          <>
+            <button
+              className="btn btn-danger"
+              onClick={async () => {
+                await clearLocalAppData()
+                location.reload()
+              }}
+            >
+              Clear and reload
+            </button>
+            <button className="btn btn-outline" onClick={() => this.setState({ confirming: false })}>Cancel</button>
+          </>
+        )
+      } else if (staleChunk) {
+        actions = (
+          <button
+            className="btn btn-primary"
+            onClick={() => {
+              try { sessionStorage.removeItem(RELOAD_FLAG) } catch { /* ignore */ }
+              location.reload()
+            }}
+          >
+            Reload the app
+          </button>
+        )
+      } else {
+        actions = (
+          <>
+            <button className="btn btn-outline" onClick={() => this.setState({ error: null, confirming: false })}>Try again</button>
+            <button className="btn btn-outline" onClick={() => this.setState({ confirming: true })}>Clear saved data…</button>
+          </>
+        )
+      }
       return (
-        <div className="container empty-state" style={{ paddingTop: 80 }}>
-          <div className="big"><TriangleAlert size={38} aria-hidden /></div>
-          <h2>{staleChunk ? 'YatraFlow was just updated' : 'Something went wrong'}</h2>
-          <p className="muted small" style={{ maxWidth: 480, margin: '8px auto' }}>
-            {staleChunk
-              ? 'A new version shipped while this page was open — one reload picks it up.'
-              : this.state.error.message}
-          </p>
-          {this.state.confirming ? (
-            <>
-              <p className="muted small" style={{ maxWidth: 480, margin: '8px auto' }}>{LOCAL_DATA_NOTE}</p>
-              <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
-                <button
-                  className="btn btn-danger"
-                  onClick={async () => {
-                    await clearLocalAppData()
-                    location.reload()
-                  }}
-                >
-                  Clear and reload
-                </button>
-                <button className="btn btn-outline" onClick={() => this.setState({ confirming: false })}>Cancel</button>
-              </div>
-            </>
-          ) : (
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 16 }}>
-              {staleChunk
-                ? (
-                    <button
-                      className="btn btn-primary"
-                      onClick={() => {
-                        try { sessionStorage.removeItem(RELOAD_FLAG) } catch { /* ignore */ }
-                        location.reload()
-                      }}
-                    >
-                      Reload the app
-                    </button>
-                  )
-                : (
-                    <>
-                      <button className="btn btn-outline" onClick={() => this.setState({ error: null, confirming: false })}>Try again</button>
-                      <button className="btn btn-outline" onClick={() => this.setState({ confirming: true })}>Clear saved data…</button>
-                    </>
-                  )}
-            </div>
-          )}
+        <div className="container" style={{ paddingTop: 80 }}>
+          <StateBlock
+            kind="failed"
+            titleLevel="h2"
+            icon={<TriangleAlert size={38} aria-hidden />}
+            title={staleChunk ? 'YatraFlow was just updated' : 'Something went wrong'}
+            body={body}
+            actions={actions}
+          />
         </div>
       )
     }
