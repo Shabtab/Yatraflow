@@ -12,7 +12,7 @@ const boundary = read('src/components/ErrorBoundary.tsx')
 
 describe('app shell loading states (P1)', () => {
   it('renders the lazy route fallback through StateBlock kind="loading", and the start-up gate reuses it', () => {
-    expect(app).toMatch(/const lazyRouteFallback = <div className="container"><StateBlock kind="loading"[^\n]*title="Loading…" \/><\/div>/)
+    expect(app).toMatch(/const lazyRouteFallback = <div className="container page-enter"><StateBlock kind="loading"[^\n]*title="Loading…" \/><\/div>/)
     expect(app).toMatch(/if \(!ready && [^\n]*\{\n\s*page = lazyRouteFallback\n/)
   })
 
