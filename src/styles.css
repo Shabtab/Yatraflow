@@ -10647,3 +10647,40 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 .prof-panel > .prof-panel-title + hr.divider { margin-top: var(--space-5); }
 /* A panel title uses the card-title style (R14, R20): Plus Jakarta Sans 800, 18px, line height 1.3. */
 .prof-panel-title { font-family: var(--font-body); font-size: 18px; font-weight: 800; line-height: 1.3; color: var(--text); }
+
+/* ===== Create trip (P11): page header, draft banner and template strip =====
+   The title is a PageHeader and the banner is a Surface. These rules set
+   the section and card titles (R20), the 92px TripArt cover, the 12px route
+   and price, and the phone row. The rules above stay in place. */
+.tpl-warm .tpl-warm-head { flex-wrap: wrap; }
+.tpl-warm .tpl-warm-head h2 { font-family: var(--font-body); font-size: 18px; font-weight: 800; line-height: 1.3; color: var(--text); }
+.tpl-card .tpl-cov { height: 92px; position: relative; }
+.tpl-card .tpl-cov .days { position: relative; z-index: 1; }
+.tpl-card .tpl-bd b { font-family: var(--font-body); font-size: 18px; font-weight: 800; line-height: 1.3; }
+.tpl-card .tpl-bd .r, .tpl-card .tpl-bd .p { font-size: 12px; }
+
+/* The "Start blank" link is for phones only. It sits beside the section title. */
+.tpl-blank-link { display: none; }
+.tpl-blank-link:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; border-radius: 999px; }
+
+/* On a phone the templates form one row of 236px cards. The next card peeks past
+   the edge. Each card snaps to the row start, and scroll-padding keeps a focused
+   card in view. The row keeps its scrollbar, so no control is hidden. */
+@media (max-width: 720px) {
+  .tpl-warm-head .tpl-blank-link { display: inline-flex; align-items: center; padding: 0; border: 0; background: none; font: inherit; font-size: 13px; font-weight: 700; color: var(--teal-deep, var(--teal)); cursor: pointer; }
+  .tpl-warm .tpl-strip { display: flex; gap: var(--space-5); overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory; scroll-padding-inline: var(--space-1); padding: var(--space-2) var(--space-1) var(--space-5); scroll-behavior: smooth; }
+  .tpl-strip .tpl-blank { display: none; }
+  .tpl-strip .tpl-card { flex: 0 0 236px; scroll-snap-align: start; }
+}
+@media (max-width: 720px) and (prefers-reduced-motion: reduce) {
+  .tpl-warm > .tpl-strip { scroll-behavior: auto; }
+}
+
+/* ===== Create trip (P11): phone hit area for Start blank, and the strip hint ===== */
+@media (max-width: 720px) {
+  /* The link needs a hit area of at least 44px on a phone. */
+  /* The padding adds that area. The negative margin cancels it, so the title row keeps its height. */
+  .tpl-warm-head .tpl-blank-link { min-height: 44px; padding: var(--space-6) 0; margin: calc(var(--space-6) * -1) 0; }
+  /* The hint repeats the link on a phone. It stays on desktop. */
+  .tpl-warm-head .tpl-blank-link ~ .why { display: none; }
+}
