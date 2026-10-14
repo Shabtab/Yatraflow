@@ -40,6 +40,13 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
+    // Name the APK file itself, not only the CI artifact. A sideloaded file
+    // must state its version, or every build reads as app-debug.
+    applicationVariants.all { variant ->
+        variant.outputs.all {
+            outputFileName = "YatraFlow-v${defaultConfig.versionName}-${variant.buildType.name}.apk"
+        }
+    }
 }
 
 repositories {
