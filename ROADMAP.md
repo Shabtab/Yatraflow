@@ -834,6 +834,9 @@ unbuilt). **Before picking up a row, and before quoting one in a plan, confirm i
 | I-35 | Shared measurement status | workspace | Not sized | State measured, pending, partial, and failed route data on all three tabs. Add a shared Retry action. [Audit](docs/UI_AUDIT.md#workspace-tab-audit--2026-10-03). |
 | I-46 | Cascade Landing's second-level blocks | motion | 1 h | The page root enters, but its six sections sit one level deeper, so the shared rule misses them. Drop the bare wrapper so `.landing-canvas` becomes the returned root, then prove it with `npm run check:motion`. |
 | I-47 | Sample signed-in routes in the CI motion check | motion | 2 h | `check:motion` opens public routes only: a clean browser holds no Supabase session. The workspace and the creator hub then rely on the static gate alone. Seed a test session in CI to sample them. The same job samples a Supabase-blind build, because CI holds no credentials: `/explore` yields one block there against three on a tree with `.env.local`, so the public data surfaces need a project ref in CI as well. |
+| I-66 | Elevation profile strip | map | 2–3 d | Sample the AWS elevation tiles the map already loads (`src/lib/mapViewModes.ts`) along the route. Show "unavailable" when a tile fails. Give no altitude-sickness or safety advice. Source: Stitch review 2026-10-14. |
+| I-67 | Live movement readout | map, Android first | 1–2 d | Show speed, altitude and heading from the position stream in `src/lib/native.ts`. Web altitude is often null: show "unavailable", never zero. Keep denied, stale and unavailable states apart. |
+| I-68 | Named crew duties | collaboration | 1–2 d | Let the owner give each member a duty: driver, stays or money. Keep the access `role` separate. Needs a member field and an RLS check. Keep saved duties visible after a failed read. |
 
 ### Tier 2 — blocked on a named dependency
 
@@ -876,8 +879,18 @@ unbuilt). **Before picking up a row, and before quoting one in a plan, confirm i
 | I-61 | Custom creator domains | Handle and rename rules | Defer until links, ownership, and renames work. [Brainstorm](docs/commercial/BRAINSTORM-2026-10-12-creator-portfolio.md). |
 | I-62 | Booking integrations | Pilot demand and partner terms | Keep this as contextual monetization. It does not approve a booking agency. [Brainstorm](docs/commercial/BRAINSTORM-2026-10-12-creator-portfolio.md). |
 | I-63 | Expanded creator themes | Basic snapshot use | Defer until creators use basic branded assets. [Brainstorm](docs/commercial/BRAINSTORM-2026-10-12-creator-portfolio.md). |
-| I-64 | Creator follower system | Repeat creator and visitor value | Defer until a pilot shows repeat use. [Brainstorm](docs/commercial/BRAINSTORM-2026-10-12-creator-portfolio.md). |
+| I-64 | Creator follower system | Repeat creator and visitor value | Defer until a pilot shows repeat use. Route update notices belong here. Report that a notice was sent, not that it was read. [Brainstorm](docs/commercial/BRAINSTORM-2026-10-12-creator-portfolio.md). |
 | I-65 | Demographic and future-demand media kit | Consented audience and travel-intent data | Keep request month separate from travel month. [Brainstorm](docs/commercial/BRAINSTORM-2026-10-12-creator-portfolio.md). |
+| I-69 | Shared trip checklist | Scope decision with I-30 | Store items and who finished them. Decide first whether I-30 and this idea are one feature. Needs a table and RLS. A failed read must never mark a task done. |
+| I-70 | Offline route package | Map tile licence check | Download map tiles and route data to the device for a no-network stretch. Read the tile provider terms before any bulk caching. Report missing, partial and failed downloads apart. |
+| I-71 | Receipt drafts from a photo | OCR test on Indian receipts | Read a receipt photo into a draft expense. A person reviews it before it saves. OCR never pays and never settles. Test accuracy before any build. |
+| I-72 | Creator route questions | Creator pilot volume and a moderation plan | Let a buyer ask a creator a route question and read the reply. Needs a table and spam handling. Make no booking promise. |
+| I-73 | Mixed-vehicle fuel estimates | Demand from group trips | Extend the single `vehicleProfile` to several vehicles on one trip. Changes the planning engine. Unknown inputs stay unknown. |
+| I-74 | Per-day photos | A per-day photo field decision | Let a creator attach a photo to each day. The public page then shows it on the route stage. Needs a data field. Source: public page redesign review 2026-10-14. |
+| I-75 | Pass and road status | A trusted data source | Show whether a mountain pass is open. Never invent a status. Show the source and the date. Source: public page redesign review. |
+| I-76 | Public page extras | The public page redesign landing (P7) | Add a share image of the route, a print view, km-stone motifs and a one-time unlock moment. Each reads the existing route data. Source: public page redesign review. |
+
+**Parked, not planned (2026-10-14).** Native satellite diagnostics need a custom plugin and add little. A convoy proximity radar needs consent, extra hardware and safety promises. Shared hazard reports need moderation and carry liability. Reopen one only with a named owner and a pilot.
 
 ### Tier 3 — milestone-shaped, tracked as tracks (not ideas)
 
