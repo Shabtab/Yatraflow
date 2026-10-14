@@ -809,6 +809,12 @@ anywhere in this repo means the entry labelled `6b` below.
    `tests/page-consistency.test.ts` counts every component that the page switch renders, whatever its name.
    Name helpers by role. For example, use `routeFallback` or `shellFooter`.
 
+6at. **`npm run verify` has no browser, so a screen that appears must be checked with `npm run check:motion` (learned 2026-10-14).**
+   The P1 shell PR moved the lazy-route fallback to a `StateBlock`. `verify` passed. CI then failed the motion check on `/explore` and `/trips`.
+   The fallback root did not carry `page-enter`, so the block appeared between two frames with no entrance.
+   Put `page-enter` on the root of any screen that appears after load, and that includes a Suspense fallback.
+   Run `npm run check:motion` before you push a change that adds or moves a `StateBlock` outside a page root.
+
 ## 2. Conventions (`AGENTS.md` §4)
 
 The store, maps and UI entries live in `docs/standards/` now (2026-10-05
