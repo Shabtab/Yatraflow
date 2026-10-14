@@ -93,6 +93,14 @@ A collaborative travel-planning web app, built India-first. Real multi-day itine
 
 _Release highlights, newest first — the full record lives in [CHANGELOG.md](CHANGELOG.md)._
 
+## ✨ The v0.77 release, in plain words
+
+- **Flight trips plan the whole journey.** The travel day runs home → the origin airport → the sector → the destination airport → your stay. Ground legs use car timing and pricing. The sector uses the fare for your whole group.
+- **You can enter the flight you are actually taking.** A flight card takes the airline, the flight number and both airports. It also takes the booking reference, both clocks and the fare you paid.
+- **The Create trip page has a new header.** The page title uses the shared header. Each region template shows its own cover art. On a phone the templates scroll sideways in one row.
+- **Every surface uses the shared page parts.** Profile, Timeline, map, Budget, Share and Group input share titles, cards and state blocks. Settings, the creator hub and the admin console use the same parts.
+- **Failed reads say so instead of looking empty.** The admin console, the creator hub, the trip-created page and notifications report failure with a Try again action. Loaded rows stay on screen.
+
 ## ✨ The v0.76 release, in plain words
 
 - **YatraFlow has a new logo, the Ribbon Y.** Two routes fold into one road, and a saffron dot marks the destination. The logo appears in the header, the browser icon and the app icons.
