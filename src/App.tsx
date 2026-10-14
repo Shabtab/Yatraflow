@@ -729,6 +729,11 @@ export default function App() {
       </main>
 
       <footer className="footer">
+        <svg className="footer-route-mark" viewBox="0 0 120 14" aria-hidden="true" focusable="false">
+          <path d="M3 5.5C9 2 16 2 22 5.5S35 9 41 5.5S54 2 60 5.5S73 9 79 5.5S92 2 98 5.5S111 9 117 5.5" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeDasharray="3 3" />
+          <circle cx="3" cy="5.5" r="3" fill="currentColor" />
+          <circle cx="117" cy="5.5" r="3" fill="currentColor" />
+        </svg>
         <div className="container footer-inner">
           <span><b>YatraFlow</b>: plan together, travel better. Built for Indian travellers</span>
           <span className="small muted">All costs are transparent estimates. No bookings — planning plus paid itinerary unlocks. <a className="footer-link" href={feedbackHref()}>Send feedback</a> · <a className="footer-link" href="/ladakh-trip-cost-calculator/">Ladakh trip cost calculator</a></span>
