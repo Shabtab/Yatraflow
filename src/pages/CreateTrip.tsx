@@ -47,6 +47,10 @@ import { cap } from '../lib/labels'
 import { readBenchPrefill } from '../lib/planBench'
 import { scrollBehavior } from '../lib/motion'
 import { LocationInput } from '../components/LocationInput'
+import { PageHeader } from '../components/page/PageHeader'
+import { Surface } from '../components/page/Surface'
+import { TripArt, TripArtSprite } from '../components/trips/TripArt'
+import { regionFor as artRegionFor } from '../lib/tripsPage'
 
 interface CommitDraft {
   title: string
@@ -840,7 +844,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
   return (
     <div className="container form-page trip-starter page-enter">
       {createFunnelOn('drafts') && draft && (
-        <div className="draft-banner" role="status">
+        <Surface className="draft-banner" role="status">
           <div className="draft-banner-copy">
             <b>Picking up where you left off</b>
             <span className="draft-banner-meta">
@@ -851,21 +855,21 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
             <button type="button" className="btn btn-primary btn-sm" onClick={resumeDraft}>Resume</button>
             <button type="button" className="btn btn-outline btn-sm" onClick={discardDraft}>Discard</button>
           </div>
-        </div>
+        </Surface>
       )}
-      <header className="ts-head">
-        <div>
-          <p className="eyebrow">Start something</p>
-          <h1>Plan a new trip</h1>
-          <p className="muted small">Fill the blocks — your ticket assembles itself as you go.</p>
-        </div>
-      </header>
+      <PageHeader
+        kicker="Start something"
+        headline={{ lead: 'Plan a new', accent: 'trip' }}
+        lede="Fill the blocks — your ticket assembles itself as you go."
+      />
 
       {/* ---- Warm start (P1): the front door, full width above the grid ---- */}
       {createFunnelOn('templates') && (
       <section className="tpl-warm" aria-label="Start from a real trip">
+        <TripArtSprite />
         <div className="tpl-warm-head">
           <h2>Start from a real trip</h2>
+          <button type="button" className="tpl-blank-link" onClick={clearTemplate}>Start blank</button>
           <span className="why">or blank - your call</span>
         </div>
 <div className="tpl-strip">
@@ -873,8 +877,8 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
                 <button type="button" className={`tpl-card${tplId === t.id ? ' on' : ''}`} key={t.id}
                   onClick={() => pickTemplate(t)}
                   aria-pressed={tplId === t.id}>
-                  <span className="tpl-cov" style={{ background: t.coverGradient }}>
-                    <span className="em" aria-hidden>{t.emoji}</span>
+                  <span className="tpl-cov">
+                    <TripArt region={artRegionFor({ destinations: t.prefill.destinations })} />
                     <span className="days">{t.prefill.days} days</span>
                   </span>
                   <span className="tpl-bd">
