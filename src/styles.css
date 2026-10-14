@@ -10623,3 +10623,18 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 @media (prefers-reduced-motion: reduce) {
   .tm-state { animation: none; }
 }
+
+/* ---------- Footer route mark ----------
+   A decorative dotted route line on the footer's top border. It is a static drawing.
+   The offset lifts the mark past the footer's top padding, so its midline sits on the border. */
+.footer-route-mark {
+  display: block;
+  position: relative;
+  top: -32px;
+  width: 120px;
+  height: 14px;
+  margin: 0 auto -14px;
+  color: var(--text-3);
+  opacity: .5;
+  pointer-events: none;
+}
