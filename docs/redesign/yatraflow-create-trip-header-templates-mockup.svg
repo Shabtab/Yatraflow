@@ -1,0 +1,274 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="2333" viewBox="0 0 1600 2333" role="img" aria-label="Create trip page P11: header and template strip mockup, desktop, phone and dark mode">
+<style>@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;1,600&amp;family=Plus+Jakarta+Sans:wght@500;600;700;800&amp;display=swap');</style>
+<defs>
+<filter id="soft" x="-10%" y="-20%" width="120%" height="150%"><feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#123c40" flood-opacity=".10"/></filter>
+
+        <g id="mt-palm-shape" fill="currentColor">
+          <path d="M262 146C258 116 262 92 276 70" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"/>
+          <path d="M276 70c-14-12-34-12-46 0 16-4 30-2 46 0z"/>
+          <path d="M276 70c-6-18-22-26-38-24 14 6 26 14 38 24z"/>
+          <path d="M276 70c4-18 20-26 36-22-14 4-26 12-36 22z"/>
+          <path d="M276 70c14-10 34-8 44 6-16-6-30-6-44-6z"/>
+          <path d="M276 70c-2 14-12 26-24 32 10-10 18-20 24-32z"/>
+          <path d="M276 70c8 12 12 26 8 38-2-14-4-26-8-38z"/>
+        </g>
+        <symbol id="mt-m-coorg" viewBox="0 0 320 200" preserveAspectRatio="xMidYMax slice">
+          <circle cx="238" cy="52" r="18" fill="#FFF6DD" opacity=".9"/>
+          <path d="M0 108c46-26 92-32 140-14s96 8 180-20v126H0z" fill="currentColor" opacity=".24"/>
+          <path d="M0 136c52-26 104-30 154-10s100 14 166-6v80H0z" fill="currentColor" opacity=".45"/>
+          <g fill="none" stroke="#fff" stroke-width="1.4" opacity=".3" stroke-linecap="round">
+            <path d="M22 134c40-14 82-16 126-4M18 144c46-14 94-14 140-2M60 124c30-8 62-6 92 4"/>
+            <path d="M190 126c32 4 66 0 100-8M180 136c36 6 74 2 112-8"/>
+          </g>
+          <g fill="currentColor" opacity=".9">
+            <rect x="64" y="104" width="3" height="32"/><ellipse cx="65.5" cy="100" rx="17" ry="9"/><ellipse cx="53" cy="106" rx="11" ry="6"/><ellipse cx="78" cy="106" rx="11" ry="6"/>
+            <rect x="236" y="96" width="3" height="34"/><ellipse cx="237.5" cy="92" rx="19" ry="10"/><ellipse cx="224" cy="99" rx="11" ry="6"/><ellipse cx="251" cy="99" rx="12" ry="6"/>
+            <rect x="150" y="116" width="2.4" height="22"/><ellipse cx="151.2" cy="113" rx="12" ry="6.5"/>
+          </g>
+          <path d="M118 200c16-18 30-26 60-34s60-14 80-30" fill="none" stroke="#FFF1D6" stroke-width="5" stroke-linecap="round" opacity=".6"/>
+          <path d="M0 176c60-14 120-6 180-4s100-8 140-4v32H0z" fill="currentColor"/>
+          <g fill="currentColor" opacity=".9"><path d="M20 176c4-14 9-14 12 0zM40 176c3-10 7-10 10 0zM284 174c4-14 9-14 12 0z"/></g>
+        </symbol>
+        <symbol id="mt-m-kashmir" viewBox="0 0 320 200" preserveAspectRatio="xMidYMax slice">
+          <circle cx="252" cy="46" r="15" fill="#FFF6DD" opacity=".9"/>
+          <path d="M0 116 34 78l22 20 40-56 38 54 28-22 44 42 30-26 84 50v60H0z" fill="currentColor" opacity=".28"/>
+          <path d="M96 42 82 62l8-4 6 9 7-9 9 4zM170 66l-9 11 5-3 4 6 4-6 5 3zM250 66l-9 10 5-2 4 5 4-5 5 2z" fill="#fff" opacity=".9"/>
+          <path d="M0 146 50 112l34 22 46-36 54 48 46-26 90 42v38H0z" fill="currentColor" opacity=".5"/>
+          <rect y="150" width="320" height="50" fill="currentColor" opacity=".18"/>
+          <path d="M40 160h52M120 170h70M222 158h54M60 184h60M180 186h80" stroke="#fff" stroke-width="2" stroke-linecap="round" opacity=".5"/>
+          <path d="M150 160c18 8 66 8 84 0-4 10-80 10-84 0z" fill="currentColor"/>
+          <path d="M176 158 184 146h30l8 12z" fill="currentColor" opacity=".85"/>
+          <path d="M186 150h26" stroke="#fff" stroke-width="1.6" opacity=".5"/>
+          <path d="M228 154l12-24" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          <g fill="currentColor">
+            <path d="M18 176 26 108 34 176z"/><path d="M34 178 40 124 46 178z"/><path d="M6 178 11 134 16 178z"/><path d="M270 176 277 118 284 176z"/><path d="M286 178 291 132 296 178z"/>
+          </g>
+          <path d="M0 184c70-10 130-4 190-2 56 2 94-6 130-2v20H0z" fill="currentColor"/>
+        </symbol>
+        <symbol id="mt-m-kerala" viewBox="0 0 320 200" preserveAspectRatio="xMidYMax slice">
+          <circle cx="84" cy="58" r="20" fill="#FFF6DD" opacity=".9"/>
+          <path d="M0 124c50-10 96-2 140-6 56-6 110 4 180-4v32H0z" fill="currentColor" opacity=".35"/>
+          <rect y="140" width="320" height="60" fill="currentColor" opacity=".16"/>
+          <path d="M24 162h44M100 174h64M196 160h52M232 184h56M40 188h40" stroke="#fff" stroke-width="2" stroke-linecap="round" opacity=".55"/>
+          <path d="M114 150c10-22 74-22 84 0z" fill="currentColor" opacity=".72"/>
+          <path d="M126 150v-9M142 150v-14M158 150v-16M174 150v-14M190 150v-9" stroke="#fff" stroke-width="1.5" opacity=".35"/>
+          <path d="M104 150h104l-12 12h-80z" fill="currentColor"/>
+          <path d="M120 168h72" stroke="currentColor" stroke-width="3" stroke-linecap="round" opacity=".28"/>
+          <use href="#mt-palm-shape"/>
+          <use href="#mt-palm-shape" transform="translate(-166 36) scale(.75)"/>
+          <path d="M0 192c80-6 200-6 320 0v8H0z" fill="currentColor" opacity=".5"/>
+        </symbol>
+        <symbol id="mt-m-meghalaya" viewBox="0 0 320 200" preserveAspectRatio="xMidYMax slice">
+          <circle cx="82" cy="46" r="16" fill="#FFF6DD" opacity=".75"/>
+          <path d="M0 110c40-26 82-22 124-8s90 6 130-14 46-6 66 4v108H0z" fill="currentColor" opacity=".22"/>
+          <path d="M0 132c36-18 76-20 112-8 38 12 66 8 98-8s74-10 110 6v78H0z" fill="currentColor" opacity=".42"/>
+          <g stroke="#fff" stroke-linecap="round" opacity=".7">
+            <path d="M232 94v52" stroke-width="5"/><path d="M243 98v46" stroke-width="3"/><path d="M222 100v40" stroke-width="2.5"/>
+          </g>
+          <path d="M208 92h46v8h-46z" fill="currentColor" opacity=".55"/>
+          <path d="M214 148c10-6 30-6 40 0-8 6-32 6-40 0z" fill="#fff" opacity=".45"/>
+          <path d="M0 150h92c8-6 14-8 18-8v58H0z" fill="currentColor" opacity=".85"/>
+          <path d="M320 150h-92c-8-6-14-8-18-8v58h110z" fill="currentColor" opacity=".85"/>
+          <g fill="none" stroke="currentColor" stroke-linecap="round">
+            <path d="M100 146Q160 98 220 146" stroke-width="6"/>
+            <path d="M104 148Q160 112 216 148" stroke-width="3.5"/>
+            <path d="M112 146Q160 122 210 146" stroke-width="2.4"/>
+            <path d="M128 126v22M146 116v32M164 114v34M182 118v30M198 128v18" stroke-width="2" opacity=".85"/>
+          </g>
+          <path d="M96 150h128v6H96z" fill="currentColor"/>
+          <g fill="currentColor"><circle cx="30" cy="132" r="22"/><circle cx="56" cy="138" r="16"/><circle cx="288" cy="130" r="20"/><circle cx="264" cy="138" r="14"/></g>
+          <path d="M0 184c70-8 140-4 200 0s90-4 120-2v18H0z" fill="currentColor"/>
+          <path d="M20 186c4-14 10-18 18-20-4 6-8 12-8 20zM46 186c6-12 12-14 20-14-6 4-12 8-14 14zM268 186c-4-14-10-18-18-20 4 6 8 12 8 20z" fill="currentColor"/>
+        </symbol>
+        <symbol id="mt-m-rajasthan" viewBox="0 0 320 200" preserveAspectRatio="xMidYMax slice">
+          <circle cx="236" cy="60" r="26" fill="#FFF0CC" opacity=".85"/>
+          <path d="M0 150c50-20 100-10 150-2s100-16 170-8v60H0z" fill="currentColor" opacity=".25"/>
+          <path d="M0 160c40-10 70-40 120-42h100c40 4 70 32 100 40v42H0z" fill="currentColor" opacity=".5"/>
+          <g fill="currentColor" opacity=".88">
+            <path d="M70 140V96h8v-6h5v6h6v-6h5v6h6v-6h5v6h8v44z"/>
+            <path d="M113 140v-34h10v-5h6v5h10v-5h6v5h10v-5h6v5h10v-5h6v5h10v34z"/>
+            <path d="M187 140V92h40v48z"/>
+            <rect x="191" y="88" width="32" height="4"/>
+            <rect x="195" y="80" width="3" height="8"/>
+            <rect x="216" y="80" width="3" height="8"/>
+            <rect x="192" y="77" width="30" height="3"/>
+            <path d="M196 77a11 11 0 0 1 22 0z"/>
+            <rect x="206" y="60" width="2" height="7"/>
+          </g>
+          <path d="M128 132v-8a4 4 0 0 1 8 0v8zM150 132v-8a4 4 0 0 1 8 0v8zM172 132v-8a4 4 0 0 1 8 0v8zM203 120v-10a4 4 0 0 1 8 0v10z" fill="#FFF4E0" opacity=".55"/>
+          <path d="M0 182c70-14 140 4 200-4 50-6 90 2 120-2v24H0z" fill="currentColor"/>
+        </symbol>
+        <symbol id="mt-m-goa" viewBox="0 0 320 200" preserveAspectRatio="xMidYMax slice">
+          <circle cx="244" cy="62" r="22" fill="#FFF0CC" opacity=".92"/>
+          <path d="M0 132c60-10 120 0 180-6s100-6 140 0v40H0z" fill="currentColor" opacity=".2"/>
+          <rect y="138" width="320" height="34" fill="currentColor" opacity=".28"/>
+          <path d="M26 148h66M150 156h92M232 146h60M60 164h50" stroke="#fff" stroke-width="2" stroke-linecap="round" opacity=".55"/>
+          <path d="M206 142l-2-34 24 34z" fill="currentColor" opacity=".8"/><path d="M226 142 244 142 236 148h-28z" fill="currentColor"/>
+          <g fill="currentColor" opacity=".92">
+            <rect x="70" y="100" width="15" height="50"/><rect x="118" y="100" width="15" height="50"/>
+            <path d="M70 100l7.5-14 7.5 14zM118 100l7.5-14 7.5 14z"/>
+            <rect x="85" y="116" width="33" height="34"/>
+            <path d="M85 116l16.5-13 16.5 13z"/>
+            <rect x="100.5" y="84" width="2" height="9"/><rect x="97" y="87" width="9" height="2"/>
+          </g>
+          <path d="M95 150v-13a6.5 6.5 0 0 1 13 0v13zM74 134v-8a3 3 0 0 1 6 0v8zM122 134v-8a3 3 0 0 1 6 0v8z" fill="#FFF4E0" opacity=".6"/>
+          <path d="M0 168c80-10 160-6 230 0s70 4 90 0v32H0z" fill="currentColor"/>
+          <use href="#mt-palm-shape" transform="translate(6 24)"/>
+          <use href="#mt-palm-shape" transform="translate(-22 40) scale(.7)"/>
+        </symbol>
+        <symbol id="mt-m-generic" viewBox="0 0 320 200" preserveAspectRatio="xMidYMax slice">
+          <circle cx="236" cy="56" r="20" fill="#FFF6DD" opacity=".9"/>
+          <path d="M0 118c52-24 104-26 156-8s100 8 164-14v104H0z" fill="currentColor" opacity=".24"/>
+          <path d="M0 144c60-22 118-20 172-4s96 6 148-10v70H0z" fill="currentColor" opacity=".45"/>
+          <path d="M96 200c10-22 34-34 66-40s56-16 66-34" fill="none" stroke="#FFF1D6" stroke-width="6" stroke-linecap="round" opacity=".6"/>
+          <g fill="currentColor" opacity=".9"><rect x="52" y="124" width="3" height="26"/><circle cx="53.5" cy="120" r="13"/><rect x="262" y="118" width="3" height="30"/><circle cx="263.5" cy="113" r="15"/><rect x="214" y="134" width="2.4" height="18"/><circle cx="215.2" cy="131" r="9"/></g>
+          <path d="M0 178c70-12 130-4 190-2s90-6 130-2v26H0z" fill="currentColor"/>
+        </symbol>
+      
+</defs>
+<rect width="1600" height="2333" fill="#EFEBE2"/>
+<text x="80" y="52" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="26" font-weight="800" fill="#0B2545">YatraFlow P11 · Create trip: page header and template strip</text>
+<text x="80" y="80" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="13" font-weight="500" fill="#45566E">Approval mockup. Draft for review. No app code changed. Brand tokens from src/styles.css and DESIGN_TOKENS.md. Art is the real TripArt sprite.</text>
+<g transform="translate(80 130)"><text x="0" y="-12" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="13" font-weight="700" fill="#0B2545">Desktop 1440 · light</text><clipPath id="fr80_130"><rect width="1440" height="800" rx="14"/></clipPath><rect width="1440" height="800" rx="14" fill="#F8F7EF" stroke="#CFC8B8"/><g clip-path="url(#fr80_130)"><rect width="1440" height="56" fill="#ECE8DF"/><text x="720" y="33" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="600" fill="#7C8088" text-anchor="middle">App navigation (unchanged)</text>
+<rect x="120" y="76" width="1200" height="64" rx="18" fill="#FFFFFF" stroke="#E4DCCC" filter="url(#soft)"/>
+<text x="144" y="103" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="14" font-weight="800" fill="#0B2545">Picking up where you left off</text><text x="144" y="123" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12.5" font-weight="500" fill="#45566E">45% ready - saved 2 hours ago</text>
+<rect x="1100" y="92" width="96" height="32" rx="16" fill="#0E7A72"/><text x="1148" y="112" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="13" font-weight="700" fill="#fff" text-anchor="middle">Resume</text>
+<rect x="1208" y="92" width="96" height="32" rx="16" fill="none" stroke="#E4DCCC"/><text x="1256" y="112" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="13" font-weight="700" fill="#0B2545" text-anchor="middle">Discard</text>
+<text x="120" y="186" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="700" fill="#0B6B63" letter-spacing="1.2">START SOMETHING</text>
+<text x="120" y="237.6" font-family="'Playfair Display', Georgia, serif" font-size="44" font-weight="600" fill="#0B2545" letter-spacing="-0.6599999999999999">Plan a new <tspan font-style="italic" fill="#0B6B63">trip</tspan></text>
+<path d="M342 244.6 q 19.44 -3.52 39.6 -0.88 t 32.4 -1.76" fill="none" stroke="#F59E2D" stroke-width="3.08" stroke-linecap="round"/>
+<text x="120" y="292" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="17" font-weight="500" fill="#45566E">Fill the blocks — your ticket assembles itself as you go.</text>
+<rect x="120" y="311" width="1200" height="1" fill="#E4DCCC"/>
+<text x="120" y="352" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="18" font-weight="800" fill="#0B2545">Start from a real trip</text><text x="322" y="352" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="500" fill="#5A6A80">or blank - your call</text>
+<g><clipPath id="cc0"><rect x="120" y="372" width="232" height="188" rx="12"/></clipPath>
+<rect x="118" y="370" width="236" height="192" rx="14" fill="none" stroke="#E5F4EE" stroke-width="4"/>
+<rect x="120" y="372" width="232" height="188" rx="12" fill="#FFFFFF" filter="url(#soft)"/>
+<g clip-path="url(#cc0)"><defs><linearGradient id="sky1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#D2E9E2"/><stop offset="1" stop-color="#F4E2BA"/></linearGradient></defs>
+<rect x="120" y="372" width="232" height="92" fill="url(#sky1)"/>
+<svg x="120" y="372" width="232" height="92" viewBox="0 0 232 92" color="#10494A" style="color:#10494A"><use href="#mt-m-kerala" width="232" height="92"/></svg></g>
+<rect x="120.5" y="372.5" width="231" height="187" rx="12" fill="none" stroke="#0D8D82" stroke-width="1"/>
+<rect x="280" y="436" width="62" height="20" rx="10" fill="#FFFFFF"/><text x="311" y="450" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="11" font-weight="700" fill="#0B2545" text-anchor="middle" letter-spacing=".06em">6 DAYS</text>
+<circle cx="334" cy="390" r="11" fill="#0E7A72"/><text x="334" y="394" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="700" fill="#fff" text-anchor="middle">✓</text>
+<text x="132" y="494" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="18" font-weight="800" fill="#0B2545">Kerala Backwaters</text>
+<text x="132" y="514" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="500" fill="#5A6A80">Kochi · Munnar · Alleppey</text>
+<text x="132" y="536" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="700" fill="#0E7A72">₹12,700–24,700<tspan font-weight="500" fill="#5A6A80"> / head, rough</tspan></text></g><g><clipPath id="cc2"><rect x="362" y="372" width="232" height="188" rx="12"/></clipPath>
+
+<rect x="362" y="372" width="232" height="188" rx="12" fill="#FFFFFF" filter="url(#soft)"/>
+<g clip-path="url(#cc2)"><defs><linearGradient id="sky3" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F8DAB0"/><stop offset="1" stop-color="#EBA57B"/></linearGradient></defs>
+<rect x="362" y="372" width="232" height="92" fill="url(#sky3)"/>
+<svg x="362" y="372" width="232" height="92" viewBox="0 0 232 92" color="#79341F" style="color:#79341F"><use href="#mt-m-rajasthan" width="232" height="92"/></svg></g>
+<rect x="362.5" y="372.5" width="231" height="187" rx="12" fill="none" stroke="#E4DCCC" stroke-width="1"/>
+<rect x="522" y="436" width="62" height="20" rx="10" fill="#FFFFFF"/><text x="553" y="450" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="11" font-weight="700" fill="#0B2545" text-anchor="middle" letter-spacing=".06em">7 DAYS</text>
+
+<text x="374" y="494" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="18" font-weight="800" fill="#0B2545">Rajasthan Forts</text>
+<text x="374" y="514" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="500" fill="#5A6A80">Jaipur · Jodhpur · Udaipur</text>
+<text x="374" y="536" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="700" fill="#0E7A72">₹18,300–32,700<tspan font-weight="500" fill="#5A6A80"> / head, rough</tspan></text></g><g><clipPath id="cc4"><rect x="604" y="372" width="232" height="188" rx="12"/></clipPath>
+
+<rect x="604" y="372" width="232" height="188" rx="12" fill="#FFFFFF" filter="url(#soft)"/>
+<g clip-path="url(#cc4)"><defs><linearGradient id="sky5" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#C9DCEE"/><stop offset="1" stop-color="#F3E5D3"/></linearGradient></defs>
+<rect x="604" y="372" width="232" height="92" fill="url(#sky5)"/>
+<svg x="604" y="372" width="232" height="92" viewBox="0 0 232 92" color="#2B4B62" style="color:#2B4B62"><use href="#mt-m-kashmir" width="232" height="92"/></svg></g>
+<rect x="604.5" y="372.5" width="231" height="187" rx="12" fill="none" stroke="#E4DCCC" stroke-width="1"/>
+<rect x="764" y="436" width="62" height="20" rx="10" fill="#FFFFFF"/><text x="795" y="450" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="11" font-weight="700" fill="#0B2545" text-anchor="middle" letter-spacing=".06em">8 DAYS</text>
+
+<text x="616" y="494" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="18" font-weight="800" fill="#0B2545">Himalayan Loop</text>
+<text x="616" y="514" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="500" fill="#5A6A80">Manali · Spiti · Kasol</text>
+<text x="616" y="536" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="700" fill="#0E7A72">₹11,500–20,800<tspan font-weight="500" fill="#5A6A80"> / head, rough</tspan></text></g><g><clipPath id="cc6"><rect x="846" y="372" width="232" height="188" rx="12"/></clipPath>
+
+<rect x="846" y="372" width="232" height="188" rx="12" fill="#FFFFFF" filter="url(#soft)"/>
+<g clip-path="url(#cc6)"><defs><linearGradient id="sky7" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#CFE6EE"/><stop offset="1" stop-color="#F8DDB4"/></linearGradient></defs>
+<rect x="846" y="372" width="232" height="92" fill="url(#sky7)"/>
+<svg x="846" y="372" width="232" height="92" viewBox="0 0 232 92" color="#1B5566" style="color:#1B5566"><use href="#mt-m-goa" width="232" height="92"/></svg></g>
+<rect x="846.5" y="372.5" width="231" height="187" rx="12" fill="none" stroke="#E4DCCC" stroke-width="1"/>
+<rect x="1006" y="436" width="62" height="20" rx="10" fill="#FFFFFF"/><text x="1037" y="450" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="11" font-weight="700" fill="#0B2545" text-anchor="middle" letter-spacing=".06em">3 DAYS</text>
+
+<text x="858" y="494" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="18" font-weight="800" fill="#0B2545">Goa Long Weekend</text>
+<text x="858" y="514" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="500" fill="#5A6A80">Panaji · Palolem · Gokarna</text>
+<text x="858" y="536" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="700" fill="#0E7A72">₹5,700–10,500<tspan font-weight="500" fill="#5A6A80"> / head, rough</tspan></text></g><rect x="1088.5" y="372.5" width="231" height="187" rx="12" fill="none" stroke="#0D8D82" stroke-dasharray="5 4"/><text x="1104" y="464" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="15" font-weight="700" fill="#0E7A72">Start blank</text><text x="1104" y="484" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="11" font-weight="500" fill="#5A6A80">three questions and a live ticket</text>
+<rect x="120" y="590" width="790" height="190" rx="12" fill="#ECE8DF" stroke="#CFC8B8" stroke-dasharray="5 4"/><text x="515" y="689" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="600" fill="#7C8088" text-anchor="middle">Form blocks, helper chips, advanced drawer (unchanged)</text><rect x="930" y="590" width="390" height="190" rx="12" fill="#ECE8DF" stroke="#CFC8B8" stroke-dasharray="5 4"/><text x="1125" y="689" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="600" fill="#7C8088" text-anchor="middle">Trip Ticket rail (unchanged)</text>
+<g><circle cx="100" cy="108" r="11" fill="#F59E2D" stroke="#fff" stroke-width="1.5"/><text x="100" y="112.5" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="800" fill="#0B2545" text-anchor="middle">1</text></g><g><circle cx="100" cy="182" r="11" fill="#F59E2D" stroke="#fff" stroke-width="1.5"/><text x="100" y="186.5" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="800" fill="#0B2545" text-anchor="middle">2</text></g><g><circle cx="100" cy="240" r="11" fill="#F59E2D" stroke="#fff" stroke-width="1.5"/><text x="100" y="244.5" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="800" fill="#0B2545" text-anchor="middle">3</text></g><g><circle cx="100" cy="286" r="11" fill="#F59E2D" stroke="#fff" stroke-width="1.5"/><text x="100" y="290.5" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="800" fill="#0B2545" text-anchor="middle">4</text></g><g><circle cx="1340" cy="311" r="11" fill="#F59E2D" stroke="#fff" stroke-width="1.5"/><text x="1340" y="315.5" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="800" fill="#0B2545" text-anchor="middle">5</text></g><g><circle cx="100" cy="348" r="11" fill="#F59E2D" stroke="#fff" stroke-width="1.5"/><text x="100" y="352.5" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="800" fill="#0B2545" text-anchor="middle">6</text></g><g><circle cx="378" cy="388" r="11" fill="#F59E2D" stroke="#fff" stroke-width="1.5"/><text x="378" y="392.5" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="800" fill="#0B2545" text-anchor="middle">7</text></g><g><circle cx="510" cy="446" r="11" fill="#F59E2D" stroke="#fff" stroke-width="1.5"/><text x="510" y="450.5" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="800" fill="#0B2545" text-anchor="middle">8</text></g><g><circle cx="572" cy="492" r="11" fill="#F59E2D" stroke="#fff" stroke-width="1.5"/><text x="572" y="496.5" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="800" fill="#0B2545" text-anchor="middle">9</text></g><g><circle cx="100" cy="470" r="11" fill="#F59E2D" stroke="#fff" stroke-width="1.5"/><text x="100" y="474.5" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="800" fill="#0B2545" text-anchor="middle">10</text></g><g><circle cx="1340" cy="460" r="11" fill="#F59E2D" stroke="#fff" stroke-width="1.5"/><text x="1340" y="464.5" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="800" fill="#0B2545" text-anchor="middle">11</text></g><g><circle cx="1340" cy="690" r="11" fill="#F59E2D" stroke="#fff" stroke-width="1.5"/><text x="1340" y="694.5" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="800" fill="#0B2545" text-anchor="middle">13</text></g></g></g>
+<g transform="translate(80 1010)"><text x="0" y="-12" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="13" font-weight="700" fill="#0B2545">Phone 390 · light</text><clipPath id="fr80_1010"><rect width="390" height="900" rx="14"/></clipPath><rect width="390" height="900" rx="14" fill="#F8F7EF" stroke="#CFC8B8"/><g clip-path="url(#fr80_1010)"><rect width="390" height="52" fill="#ECE8DF"/><text x="195" y="31" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="600" fill="#7C8088" text-anchor="middle">App navigation (unchanged)</text>
+<rect x="14" y="68" width="362" height="112" rx="18" fill="#FFFFFF" stroke="#E4DCCC" filter="url(#soft)"/>
+<text x="30" y="98" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="14" font-weight="800" fill="#0B2545">Picking up where you left off</text><text x="30" y="118" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12.5" font-weight="500" fill="#45566E">45% ready - saved 2 hours ago</text>
+<rect x="176" y="134" width="92" height="32" rx="16" fill="#0E7A72"/><text x="222" y="154" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="13" font-weight="700" fill="#fff" text-anchor="middle">Resume</text>
+<rect x="276" y="134" width="84" height="32" rx="16" fill="none" stroke="#E4DCCC"/><text x="318" y="154" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="13" font-weight="700" fill="#0B2545" text-anchor="middle">Discard</text>
+<text x="14" y="224" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="700" fill="#0B6B63" letter-spacing="1.2">START SOMETHING</text>
+<text x="14" y="264.8" font-family="'Playfair Display', Georgia, serif" font-size="32" font-weight="600" fill="#0B2545" letter-spacing="-0.48">Plan a new <tspan font-style="italic" fill="#0B6B63">trip</tspan></text>
+<path d="M172 271.8 q 14.580000000000002 -2.56 29.700000000000003 -0.64 t 24.3 -1.28" fill="none" stroke="#F59E2D" stroke-width="3" stroke-linecap="round"/>
+<text x="14" y="296" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="16" font-weight="500" fill="#45566E">Fill the blocks — your ticket assembles</text><text x="14" y="320" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="16" font-weight="500" fill="#45566E">itself as you go.</text>
+<rect x="14" y="340" width="362" height="1" fill="#E4DCCC"/>
+<text x="14" y="382" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="18" font-weight="800" fill="#0B2545">Start from a real trip</text><text x="214" y="382" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="500" fill="#5A6A80">or blank - your call</text>
+<g><clipPath id="cc8"><rect x="14" y="400" width="236" height="188" rx="12"/></clipPath>
+
+<rect x="14" y="400" width="236" height="188" rx="12" fill="#FFFFFF" filter="url(#soft)"/>
+<g clip-path="url(#cc8)"><defs><linearGradient id="sky9" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#D2E9E2"/><stop offset="1" stop-color="#F4E2BA"/></linearGradient></defs>
+<rect x="14" y="400" width="236" height="92" fill="url(#sky9)"/>
+<svg x="14" y="400" width="236" height="92" viewBox="0 0 236 92" color="#10494A" style="color:#10494A"><use href="#mt-m-kerala" width="236" height="92"/></svg></g>
+<rect x="14.5" y="400.5" width="235" height="187" rx="12" fill="none" stroke="#E4DCCC" stroke-width="1"/>
+<rect x="178" y="464" width="62" height="20" rx="10" fill="#FFFFFF"/><text x="209" y="478" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="11" font-weight="700" fill="#0B2545" text-anchor="middle" letter-spacing=".06em">6 DAYS</text>
+
+<text x="26" y="522" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="18" font-weight="800" fill="#0B2545">Kerala Backwaters</text>
+<text x="26" y="542" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="500" fill="#5A6A80">Kochi · Munnar · Alleppey</text>
+<text x="26" y="564" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="700" fill="#0E7A72">₹12,700–24,700<tspan font-weight="500" fill="#5A6A80"> / head, rough</tspan></text></g><g><clipPath id="cc10"><rect x="260" y="400" width="236" height="188" rx="12"/></clipPath>
+
+<rect x="260" y="400" width="236" height="188" rx="12" fill="#FFFFFF" filter="url(#soft)"/>
+<g clip-path="url(#cc10)"><defs><linearGradient id="sky11" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F8DAB0"/><stop offset="1" stop-color="#EBA57B"/></linearGradient></defs>
+<rect x="260" y="400" width="236" height="92" fill="url(#sky11)"/>
+<svg x="260" y="400" width="236" height="92" viewBox="0 0 236 92" color="#79341F" style="color:#79341F"><use href="#mt-m-rajasthan" width="236" height="92"/></svg></g>
+<rect x="260.5" y="400.5" width="235" height="187" rx="12" fill="none" stroke="#E4DCCC" stroke-width="1"/>
+<rect x="424" y="464" width="62" height="20" rx="10" fill="#FFFFFF"/><text x="455" y="478" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="11" font-weight="700" fill="#0B2545" text-anchor="middle" letter-spacing=".06em">7 DAYS</text>
+
+<text x="272" y="522" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="18" font-weight="800" fill="#0B2545">Rajasthan Forts</text>
+<text x="272" y="542" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="500" fill="#5A6A80">Jaipur · Jodhpur · Udaipur</text>
+<text x="272" y="564" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="700" fill="#0E7A72">₹18,300–32,700<tspan font-weight="500" fill="#5A6A80"> / head, rough</tspan></text></g><g><clipPath id="cc12"><rect x="506" y="400" width="236" height="188" rx="12"/></clipPath>
+
+<rect x="506" y="400" width="236" height="188" rx="12" fill="#FFFFFF" filter="url(#soft)"/>
+<g clip-path="url(#cc12)"><defs><linearGradient id="sky13" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#C9DCEE"/><stop offset="1" stop-color="#F3E5D3"/></linearGradient></defs>
+<rect x="506" y="400" width="236" height="92" fill="url(#sky13)"/>
+<svg x="506" y="400" width="236" height="92" viewBox="0 0 236 92" color="#2B4B62" style="color:#2B4B62"><use href="#mt-m-kashmir" width="236" height="92"/></svg></g>
+<rect x="506.5" y="400.5" width="235" height="187" rx="12" fill="none" stroke="#E4DCCC" stroke-width="1"/>
+<rect x="670" y="464" width="62" height="20" rx="10" fill="#FFFFFF"/><text x="701" y="478" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="11" font-weight="700" fill="#0B2545" text-anchor="middle" letter-spacing=".06em">8 DAYS</text>
+
+<text x="518" y="522" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="18" font-weight="800" fill="#0B2545">Himalayan Loop</text>
+<text x="518" y="542" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="500" fill="#5A6A80">Manali · Spiti · Kasol</text>
+<text x="518" y="564" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="700" fill="#0E7A72">₹11,500–20,800<tspan font-weight="500" fill="#5A6A80"> / head, rough</tspan></text></g><g><clipPath id="cc14"><rect x="752" y="400" width="236" height="188" rx="12"/></clipPath>
+
+<rect x="752" y="400" width="236" height="188" rx="12" fill="#FFFFFF" filter="url(#soft)"/>
+<g clip-path="url(#cc14)"><defs><linearGradient id="sky15" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#CFE6EE"/><stop offset="1" stop-color="#F8DDB4"/></linearGradient></defs>
+<rect x="752" y="400" width="236" height="92" fill="url(#sky15)"/>
+<svg x="752" y="400" width="236" height="92" viewBox="0 0 236 92" color="#1B5566" style="color:#1B5566"><use href="#mt-m-goa" width="236" height="92"/></svg></g>
+<rect x="752.5" y="400.5" width="235" height="187" rx="12" fill="none" stroke="#E4DCCC" stroke-width="1"/>
+<rect x="916" y="464" width="62" height="20" rx="10" fill="#FFFFFF"/><text x="947" y="478" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="11" font-weight="700" fill="#0B2545" text-anchor="middle" letter-spacing=".06em">3 DAYS</text>
+
+<text x="764" y="522" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="18" font-weight="800" fill="#0B2545">Goa Long Weekend</text>
+<text x="764" y="542" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="500" fill="#5A6A80">Panaji · Palolem · Gokarna</text>
+<text x="764" y="564" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="700" fill="#0E7A72">₹5,700–10,500<tspan font-weight="500" fill="#5A6A80"> / head, rough</tspan></text></g>
+<rect x="14" y="606" width="362" height="36" rx="12" fill="#ECE8DF" stroke="#CFC8B8" stroke-dasharray="5 4"/><text x="195" y="628" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="600" fill="#7C8088" text-anchor="middle">Helper chips (unchanged)</text><rect x="14" y="656" width="362" height="150" rx="12" fill="#ECE8DF" stroke="#CFC8B8" stroke-dasharray="5 4"/><text x="195" y="735" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="600" fill="#7C8088" text-anchor="middle">Form blocks (unchanged)</text><rect x="0" y="824" width="390" height="76" rx="12" fill="#ECE8DF" stroke="#CFC8B8" stroke-dasharray="5 4"/><text x="195" y="866" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="600" fill="#7C8088" text-anchor="middle">Fixed dock (unchanged)</text>
+<g><circle cx="372" cy="392" r="11" fill="#F59E2D" stroke="#fff" stroke-width="1.5"/><text x="372" y="396.5" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="800" fill="#0B2545" text-anchor="middle">12</text></g><g><circle cx="366" cy="78" r="11" fill="#F59E2D" stroke="#fff" stroke-width="1.5"/><text x="366" y="82.5" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="800" fill="#0B2545" text-anchor="middle">1</text></g><g><circle cx="300" cy="244" r="11" fill="#F59E2D" stroke="#fff" stroke-width="1.5"/><text x="300" y="248.5" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="800" fill="#0B2545" text-anchor="middle">3</text></g></g></g>
+<g transform="translate(520 1010)"><text x="0" y="-12" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="13" font-weight="700" fill="#0B2545">Dark mode strip · header and one card</text><clipPath id="fr520_1010"><rect width="680" height="480" rx="14"/></clipPath><rect width="680" height="480" rx="14" fill="#0C1420" stroke="#CFC8B8"/><g clip-path="url(#fr520_1010)"><text x="40" y="56" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="700" fill="#35C9BC" letter-spacing="1.2">START SOMETHING</text>
+<text x="40" y="107.6" font-family="'Playfair Display', Georgia, serif" font-size="44" font-weight="600" fill="#ECF1F8" letter-spacing="-0.6599999999999999">Plan a new <tspan font-style="italic" fill="#35C9BC">trip</tspan></text>
+<path d="M262 114.6 q 19.44 -3.52 39.6 -0.88 t 32.4 -1.76" fill="none" stroke="#F5A94A" stroke-width="3.08" stroke-linecap="round"/>
+<text x="40" y="162" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="17" font-weight="500" fill="#ADBCCF">Fill the blocks — your ticket assembles itself as you go.</text>
+<rect x="40" y="181" width="600" height="1" fill="#27395A"/>
+<text x="40" y="222" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="18" font-weight="800" fill="#ECF1F8">Start from a real trip</text><text x="242" y="222" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="500" fill="#8FA0B5">or blank - your call</text>
+<g><clipPath id="cc16"><rect x="40" y="242" width="232" height="188" rx="12"/></clipPath>
+<rect x="38" y="240" width="236" height="192" rx="14" fill="none" stroke="#12332F" stroke-width="4"/>
+<rect x="40" y="242" width="232" height="188" rx="12" fill="#16233A" filter="url(#soft)"/>
+<g clip-path="url(#cc16)"><defs><linearGradient id="sky17" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#D2E9E2"/><stop offset="1" stop-color="#F4E2BA"/></linearGradient></defs>
+<rect x="40" y="242" width="232" height="92" fill="url(#sky17)"/>
+<svg x="40" y="242" width="232" height="92" viewBox="0 0 232 92" color="#10494A" style="color:#10494A"><use href="#mt-m-kerala" width="232" height="92"/></svg><rect x="40" y="242" width="232" height="92" fill="rgb(6,20,24)" fill-opacity=".16"/></g>
+<rect x="40.5" y="242.5" width="231" height="187" rx="12" fill="none" stroke="#35C9BC" stroke-width="1"/>
+<rect x="200" y="306" width="62" height="20" rx="10" fill="#16233A"/><text x="231" y="320" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="11" font-weight="700" fill="#ECF1F8" text-anchor="middle" letter-spacing=".06em">6 DAYS</text>
+<circle cx="254" cy="260" r="11" fill="#0E7A72"/><text x="254" y="264" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="700" fill="#fff" text-anchor="middle">✓</text>
+<text x="52" y="364" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="18" font-weight="800" fill="#ECF1F8">Kerala Backwaters</text>
+<text x="52" y="384" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="500" fill="#8FA0B5">Kochi · Munnar · Alleppey</text>
+<text x="52" y="406" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="700" fill="#35C9BC">₹12,700–24,700<tspan font-weight="500" fill="#8FA0B5"> / head, rough</tspan></text></g>
+<text x="310" y="262" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="13" font-weight="800" fill="#ECF1F8">Dark mode tokens</text>
+<text x="310" y="286" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="500" fill="#ADBCCF">page  --bg  #0C1420</text><text x="310" y="308" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="500" fill="#ADBCCF">card  --card  #16233A</text><text x="310" y="330" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="500" fill="#ADBCCF">line  --line  #27395A</text><text x="310" y="352" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="500" fill="#ADBCCF">text  --text  #ECF1F8</text><text x="310" y="374" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="500" fill="#ADBCCF">ink  --ink-teal  #35C9BC</text><text x="310" y="396" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="500" fill="#ADBCCF">accent  --saffron  #F5A94A</text>
+<text x="310" y="430" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="500" fill="#8FA0B5">TripArt keeps its colours. The dark</text><text x="310" y="446" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="500" fill="#8FA0B5">theme adds a 16% shade (.mt-art::after).</text></g></g>
+<text x="520" y="1520" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="15" font-weight="800" fill="#0B2545">Annotations: what each element maps to</text>
+<text x="520" y="1545" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12.5" font-weight="500" fill="#0B2545">1  Draft banner: &lt;Surface className="draft-banner">, the yf-surface card skin (--card, --line, --radius, --shadow-card). Copy, role="status", Resume and Discard stay.</text><text x="520" y="1569" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12.5" font-weight="500" fill="#0B2545">2  Kicker: PageHeader kicker="Start something". It renders p.ex-kicker.yf-header-kicker (12px, 700, uppercase, --ink-teal). It replaces p.eyebrow.</text><text x="520" y="1593" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12.5" font-weight="500" fill="#0B2545">3  Title: PageHeader headline={{ lead: "Plan a new", accent: "trip" }}. h1.yf-header-title is Playfair Display 600, 44px. One serif on the page (R14).</text><text x="520" y="1617" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12.5" font-weight="500" fill="#0B2545">4  Lede: PageHeader lede. p.yf-header-lede, 17px (16px on a phone), --text-2. The words do not change.</text><text x="520" y="1641" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12.5" font-weight="500" fill="#0B2545">5  Header rule: .yf-header, 1px --line, padding-bottom 20px (--space-8), margin-bottom 24px (--space-10).</text><text x="520" y="1665" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12.5" font-weight="500" fill="#0B2545">6  Section title: h2 in Plus Jakarta Sans 800, 18px, line height 1.3 (R20). It was 16px Sora (.tpl-warm-head h2).</text><text x="520" y="1689" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12.5" font-weight="500" fill="#0B2545">7  Cover: &lt;TripArt region=... /> inside .tpl-cov, now position: relative and 92px high. It replaces the emoji span and the inline coverGradient.</text><text x="520" y="1713" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12.5" font-weight="500" fill="#0B2545">8  Days chip: .tpl-cov .days is unchanged. It sits above the art (z-index) with the --card pill.</text><text x="520" y="1737" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12.5" font-weight="500" fill="#0B2545">9  Card text: .tpl-bd b is 18px/1.3 800 (R20). Route and price rise from 11px to 12px. The price string comes from fmtBand, unchanged.</text><text x="520" y="1761" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12.5" font-weight="500" fill="#0B2545">10  Picked state: .tpl-card.on keeps the --teal border, the --teal-soft ring and the .tpl-pick tick. aria-pressed does not change.</text><text x="520" y="1785" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12.5" font-weight="500" fill="#0B2545">11  Start blank: .tpl-blank is unchanged. It still closes the strip and matches the row height.</text><text x="520" y="1809" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12.5" font-weight="500" fill="#0B2545">12  Phone strip: at 640px and below, .tpl-strip becomes one scroll-snap row of 236px cards. The next card peeks in. See question 2.</text><text x="520" y="1833" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12.5" font-weight="500" fill="#0B2545">13  Grey blocks: Trip Ticket rail, form blocks, helper chips and the fixed dock (styles.css:5954) are not in scope.</text><text x="520" y="1857" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12.5" font-weight="500" fill="#0B2545">TripArt regions in use: kerala, rajasthan, kashmir, goa. Each template gets a region field. See question 1.</text><text x="520" y="1895" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12.5" font-weight="700" fill="#0B2545">Question 1: Himalayan Loop has no region of its own. Use kashmir art through a new region field on each template? Or use generic art?</text><text x="520" y="1919" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12.5" font-weight="700" fill="#0B2545">Question 2: May the phone strip become a scroll-snap row? Or must the four cards stay stacked as they are now?</text><text x="520" y="1943" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12.5" font-weight="700" fill="#0B2545">Question 3: May the h1 split as "Plan a new" plus accent "trip"? The accessible name stays "Plan a new trip".</text>
+<text x="80" y="1979" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="15" font-weight="800" fill="#0B2545">Differences against the current page (written before any edit)</text>
+<text x="80" y="2007" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="13" font-weight="500" fill="#0B2545">1.  Banner: tinted --teal-soft box with a teal border (.draft-banner, 12px radius)  ->  white Surface card (18px radius, card shadow).</text><text x="80" y="2033" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="13" font-weight="500" fill="#0B2545">2.  Kicker: plain .eyebrow, grey  ->  .ex-kicker in --ink-teal with wide tracking, as on Explore and Profile.</text><text x="80" y="2059" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="13" font-weight="500" fill="#0B2545">3.  Title: h1 is Sora 28px (global h1 rule, sans)  ->  Playfair Display 600, 44px, italic teal accent on "trip" (R14).</text><text x="80" y="2085" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="13" font-weight="500" fill="#0B2545">4.  Lede: .muted.small, 13.5px  ->  .yf-header-lede, 17px desktop and 16px phone, --text-2.</text><text x="80" y="2111" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="13" font-weight="500" fill="#0B2545">5.  Header frame: no rule under the header  ->  1px --line rule and 24px gap, the same as every converted page.</text><text x="80" y="2137" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="13" font-weight="500" fill="#0B2545">6.  Section title: 16px Sora  ->  18px Plus Jakarta Sans 800, line height 1.3 (R20).</text><text x="80" y="2163" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="13" font-weight="500" fill="#0B2545">7.  Cover: 64px gradient plus an emoji  ->  92px TripArt papercut art by region. The emoji field leaves the card.</text><text x="80" y="2189" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="13" font-weight="500" fill="#0B2545">8.  Card title: 12.5px bold  ->  18px 800. Route and price: 11px  ->  12px. The card is 28px taller.</text><text x="80" y="2215" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="13" font-weight="500" fill="#0B2545">9.  Himalayan Loop: its emoji is a mountain  ->  kashmir art. regionFor() would return generic for Manali, Spiti and Kasol.</text><text x="80" y="2241" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="13" font-weight="500" fill="#0B2545">10.  Phone strip: four cards stacked, about 660px tall  ->  one scroll-snap row, about 188px tall. The form starts higher.</text><text x="80" y="2267" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="13" font-weight="500" fill="#0B2545">11.  Unchanged: Trip Ticket rail, readiness logic, fixed dock, every form field, Start blank, helper chips, the pick tick, all copy.</text>
+<text x="80" y="2319" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="12" font-weight="500" fill="#5A6A80">Grey dashed blocks are unchanged context. Numbered circles match the annotation list.</text>
+</svg>
