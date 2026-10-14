@@ -792,6 +792,23 @@ anywhere in this repo means the entry labelled `6b` below.
    `git log --oneline origin/test..HEAD`: one commit is a feature branch, five commits you did not
    write is a stack. The fix is a fresh branch plus a cherry-pick, never a force-push.
 
+6ar. **A conflict at the end of `src/styles.css` breaks a brace at the seam (learned 2026-10-14).**
+   Each page PR appends CSS at the end of `src/styles.css`. The next page PR then conflicts with it.
+   Merge one PR first. Then rebase the next PR once.
+   When you resolve the conflict, keep both blocks.
+   Then check the seam. The shared closing brace `}` belongs to the last block only.
+   The first block loses its closing brace. The tests do not catch this. `vite build` does.
+   After you resolve it, run this check:
+   `node -e "require('postcss').parse(require('fs').readFileSync('src/styles.css','utf8'))"`
+   The file has mixed CRLF and LF line endings. Do not match `=======\r\n` as a literal. Use a regex with `\r?` instead.
+   Regenerate `tests/page-consistency-baseline.json` instead of merging it by hand. Run `UPDATE_PAGE_CONSISTENCY_BASELINE=1 npx vitest run tests/page-consistency.test.ts`.
+
+6as. **Do not name a helper function with a name that ends in `Page` (learned 2026-10-14).**
+   `tests/design-system.test.ts` finds page components in `src/App.tsx`. It counts a function as a page when its name ends in `Page` and `App.tsx` renders it.
+   A helper with such a name enters the page checks. The checks then fail for a reason that is not obvious.
+   `tests/page-consistency.test.ts` counts every component that the page switch renders, whatever its name.
+   Name helpers by role. For example, use `routeFallback` or `shellFooter`.
+
 ## 2. Conventions (`AGENTS.md` §4)
 
 The store, maps and UI entries live in `docs/standards/` now (2026-10-05
