@@ -10676,3 +10676,12 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 @media (max-width: 720px) and (prefers-reduced-motion: reduce) {
   .tpl-warm > .tpl-strip { scroll-behavior: auto; }
 }
+
+/* ===== Create trip (P11): phone hit area for Start blank, and the strip hint ===== */
+@media (max-width: 720px) {
+  /* The link needs a hit area of at least 44px on a phone. */
+  /* The padding adds that area. The negative margin cancels it, so the title row keeps its height. */
+  .tpl-warm-head .tpl-blank-link { min-height: 44px; padding: var(--space-6) 0; margin: calc(var(--space-6) * -1) 0; }
+  /* The hint repeats the link on a phone. It stays on desktop. */
+  .tpl-warm-head .tpl-blank-link ~ .why { display: none; }
+}

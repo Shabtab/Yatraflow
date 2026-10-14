@@ -64,7 +64,9 @@ describe('Create trip template strip (P11)', () => {
 
 describe('Create trip stylesheet (P11)', () => {
   const MARK = '/* ===== Create trip (P11)'
+  const HIT = '/* ===== Create trip (P11): phone hit area'
   const section = css.slice(css.indexOf(MARK))
+  const hit = css.slice(css.indexOf(HIT))
   const phone = section.slice(section.indexOf('@media (max-width: 720px) {'))
 
   it('appends the P11 block after the Profile block at the end of the file', () => {
@@ -102,5 +104,17 @@ describe('Create trip stylesheet (P11)', () => {
   it('sets the card title to 18px at weight 800 (R20) and the cover to 92px', () => {
     expect(section).toContain('.tpl-bd b { font-family: var(--font-body); font-size: 18px; font-weight: 800; line-height: 1.3; }')
     expect(section).toContain('.tpl-cov { height: 92px; position: relative; }')
+  })
+
+  it('gives the phone link a hit area of at least 44px and keeps the title row', () => {
+    expect(css.indexOf(HIT)).toBeGreaterThan(-1)
+    expect(hit).toContain('.tpl-warm-head .tpl-blank-link { min-height: 44px; padding: var(--space-6) 0; margin: calc(var(--space-6) * -1) 0; }')
+  })
+
+  it('hides the duplicate hint only inside the 720px block', () => {
+    const media = hit.indexOf('@media (max-width: 720px) {')
+    expect(media).toBeGreaterThan(-1)
+    expect(hit.slice(0, media)).not.toContain('.tpl-blank-link ~ .why')
+    expect(hit.slice(media)).toContain('.tpl-warm-head .tpl-blank-link ~ .why { display: none; }')
   })
 })
