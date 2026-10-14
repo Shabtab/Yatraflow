@@ -784,6 +784,14 @@ anywhere in this repo means the entry labelled `6b` below.
    `C:\WINDOWS\system32\convert` is not an image converter. Use `magick` for ImageMagick, or use
    `sharp` through `scripts/build-art.mjs`. Never run `convert` in a shell on this machine.
 
+6aq. **You must cut a branch with an explicit start point (learned 2026-10-13, the prune
+   record).** `git checkout -b <name>` cuts from HEAD, not from the integration branch. A branch
+   made while another lane's branch is checked out becomes a stack. Its PR then lists the parent
+   PR's files, and the review reads a change nobody asked for. Write
+   `git checkout -b <name> origin/test`, and fetch first. Check the result with
+   `git log --oneline origin/test..HEAD`: one commit is a feature branch, five commits you did not
+   write is a stack. The fix is a fresh branch plus a cherry-pick, never a force-push.
+
 ## 2. Conventions (`AGENTS.md` §4)
 
 The store, maps and UI entries live in `docs/standards/` now (2026-10-05
