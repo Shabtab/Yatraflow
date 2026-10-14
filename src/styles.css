@@ -10639,3 +10639,13 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
   opacity: .5;
   pointer-events: none;
 }
+
+/* ===== Profile & settings (P9, Stage B): Surface panels, serif header, filter chips ===== */
+/* A panel is a Surface. It sets its own padding, the same as the card padding. */
+.prof-panel { padding: var(--space-8); }
+/* The gap between two panels, and between the two column groups, is 14px. The card rule that set it does not reach a Surface. */
+.prof-panel + .prof-panel, .prof-col + .prof-col { margin-top: var(--space-6); }
+/* The rule under a panel title keeps the 12px card spacing. The card rule for it applies only inside a card. */
+.prof-panel > .prof-panel-title + hr.divider { margin-top: var(--space-5); }
+/* A panel title uses the card-title style (R14, R20): Plus Jakarta Sans 800, 18px, line height 1.3. */
+.prof-panel-title { font-family: var(--font-body); font-size: 18px; font-weight: 800; line-height: 1.3; color: var(--text); }
