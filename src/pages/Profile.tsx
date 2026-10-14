@@ -84,9 +84,13 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
   // `me` is non-null after the guard above, but TS drops the narrowing inside
   // a hoisted function declaration, so read it through a const it can follow.
   const me0 = me
-  function toggleStyle(s: TravelStyle) {
+  // Instant save: the chip takes the new value at once, because the store
+  // applies the edit before the server answers. A refused write puts the saved
+  // value back, so the chip reverts, and the toast says why.
+  async function toggleStyle(s: TravelStyle) {
     const has = me0.profile.travelStyles.includes(s)
-    updateProfile({ travelStyles: has ? me0.profile.travelStyles.filter(x => x !== s) : [...me0.profile.travelStyles, s] })
+    const r = await updateProfile({ travelStyles: has ? me0.profile.travelStyles.filter(x => x !== s) : [...me0.profile.travelStyles, s] })
+    if (!r.ok) toast(r.error ?? PROFILE_NOT_SAVED, 'err')
   }
 
   return (
@@ -166,7 +170,13 @@ export function ProfilePage({ onNavigate }: { onNavigate: (r: string) => void })
                 <a className="btn btn-outline btn-sm prof-btn-offset" {...appLink(`/creator/${me.id}`)}>View public page</a>
               </>
             ) : (
-              <button className="btn btn-saffron" onClick={() => { updateProfile({ isCreator: true }); toast('Creator mode enabled — open the hub to add your bio and links.') }}>
+              <button className="btn btn-saffron" onClick={async () => {
+                // The success line waits for the server. A refused write rolls
+                // the creator state back to its saved value.
+                const r = await updateProfile({ isCreator: true })
+                if (r.ok) toast('Creator mode enabled — open the hub to add your bio and links.')
+                else toast(r.error ?? PROFILE_NOT_SAVED, 'err')
+              }}>
                 Enable creator mode
               </button>
             )}

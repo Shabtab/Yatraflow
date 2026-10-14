@@ -119,3 +119,24 @@ describe('#704 — the Profile page says "saved" only on success', () => {
     expect(src).not.toMatch(/setF\(formFrom/)
   })
 })
+
+describe('instant saves: a refused write is said, and the chip reverts', () => {
+  const src = read('../src/pages/Profile.tsx')
+
+  it('awaits the answer of every profile write on the page', () => {
+    // Each write is an instant save or the Save button. None may fire and forget.
+    const writes = src.match(/updateProfile\(/g) ?? []
+    const awaited = src.match(/const r = await updateProfile\(/g) ?? []
+    expect(writes.length).toBeGreaterThan(0)
+    expect(awaited).toHaveLength(writes.length)
+  })
+
+  it('says a refused travel-style save, after the server has answered', () => {
+    expect(src).toMatch(/async function toggleStyle\(s: TravelStyle\) \{[\s\S]*?if \(!r\.ok\) toast\(r\.error \?\? PROFILE_NOT_SAVED, 'err'\)/)
+  })
+
+  it('says "Creator mode enabled" only after the server accepts the write', () => {
+    expect(src).toMatch(/if \(r\.ok\) toast\('Creator mode enabled/)
+    expect(src).toMatch(/else toast\(r\.error \?\? PROFILE_NOT_SAVED, 'err'\)/)
+  })
+})

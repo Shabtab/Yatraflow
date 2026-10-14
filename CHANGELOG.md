@@ -45,6 +45,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ### Fixed
 
+- **Travel styles and Enable creator mode say when the server refuses a change.** A refused change returns to its saved value. A short message says the profile was not saved. The creator mode success line appears only after the server accepts the change. (#704)
 - **The repo's own scripts now fail with their message intact.** No script under `scripts/` ends an error path with an immediate `process.exit`. Windows cannot truncate the diagnostic that explains the failure anymore. A pin in `tests/script-exit-pins.test.ts` keeps new immediate exits out (#656). The autoclose workflow bounds every GitHub request at 15 seconds and skips a timed-out issue (#655). The next-step probe reads the whole `published_itineraries` collection. It reports access state from the returned shape and lists the surfaces it does not check (#652).
 - **Overview keeps loaded activity and decisions visible after read failures.** It separates loading, failed and empty states. It retains forecasts only for matching dates and places. It uses consistent panel titles and compact empty states.
 - **Account changes clear old Trash and admin audit rows and discard late results.**
