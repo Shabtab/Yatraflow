@@ -27,6 +27,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ### Changed
 
+- **The Profile page now uses the shared page parts.** The page title uses the serif heading of the shared header. The trip count and email sit under the title. Each panel uses the card skin, with its title in the 18px card-title style. The travel styles and the clock format use filter chips. An empty notifications list uses the compact state block.
 - **GitHub CI uses Node 24 for verification and motion checks, matching the deployed runtime.**
 - **The app shell's loading and crash screens use the shared state block.** The route loading screen and the start-up screen show the same loading block. A render failure shows the failed block and keeps its recovery actions. It never shows an empty state.
 - **The trip settings tab now uses the shared card and title parts.** Each panel sits on the shared card skin. The section titles read at the shared title size and weight. A save that is in flight shows its own message. The fixed layout values that were set inline now come from classes.
