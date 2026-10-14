@@ -57,10 +57,22 @@ function hasCall(line: string, token: string): boolean {
   return false
 }
 
+/** True for a line that holds no code: blank, or a comment-only line. A doc
+ *  comment that names a declaration must never be read AS that declaration,
+ *  so the declaration search and the call scan both skip these lines. */
+function isNonCode(line: string): boolean {
+  return line.trim() === '' || /^\s*(\/\/|\*|\/\*)/.test(line)
+}
+
 /** The body of a declared function, found by the indentation of its own
- *  declaration. hydrate() is an arrow inside init(), so both forms are read. */
+ *  declaration. hydrate() is an arrow inside init(), so both forms are read.
+ *  The search reads code lines only: store.ts explains its gates in prose, so
+ *  a comment that quotes a declaration must not move the slice. */
 function bodyOf(name: string): string {
-  const decl = LINES.findIndex((line) => line.includes(`function ${name}(`) || line.includes(`const ${name} = async`))
+  const decl = LINES.findIndex(
+    (line) => !isNonCode(line)
+      && (line.includes(`function ${name}(`) || line.includes(`const ${name} = async`)),
+  )
   if (decl === -1) throw new Error(`${name}() is not declared in src/store/store.ts. The pin is stale.`)
   const indent = /^\s*/.exec(LINES[decl])![0].length
   const end = LINES.findIndex((line, i) => i > decl && line.trim() === '}' && /^\s*/.exec(line)![0].length <= indent)
@@ -73,7 +85,7 @@ function codeLines(body: string): string[] {
   return body
     .split('\n')
     .map((line) => line.replace(/\s\/\/.*$/, ''))
-    .filter((line) => line.trim() !== '' && !/^\s*(\/\/|\*|\/\*)/.test(line))
+    .filter((line) => !isNonCode(line))
 }
 
 /** Every call of a step, as the line that makes it. */
@@ -147,7 +159,6 @@ describe('the post-hydrate gates (#759)', () => {
 // Half 1 is what holds condition 3.
 
 const { state } = vi.hoisted(() => {
-  const never = new Promise<void>(() => {})
   return {
     state: {
       session: null as null | { user: { id: string; app_metadata: Record<string, unknown> } },
@@ -155,7 +166,6 @@ const { state } = vi.hoisted(() => {
       throws: {} as Record<string, unknown>,
       snapshot: null as null | Record<string, unknown>,
       authHandler: null as null | ((event: string, session: unknown) => void),
-      reads: 0,
       writes: 0,
       signOuts: 0,
       channels: [] as string[],
@@ -164,7 +174,6 @@ const { state } = vi.hoisted(() => {
       pending: 0,
       readGate: Promise.resolve(),
       writeGate: Promise.resolve(),
-      held: never,
       releaseWrite: () => {},
     },
   }
@@ -210,7 +219,6 @@ vi.mock('../src/lib/supabase', () => {
         reject?: (reason: unknown) => unknown,
       ) => {
         const gate = isWrite ? state.writeGate : state.readGate
-        if (!isWrite) state.reads += 1
         return gate.then(() => {
           const thrown = state.throws[table]
           if (thrown) throw thrown
@@ -333,7 +341,6 @@ beforeEach(() => {
   state.throws = {}
   state.snapshot = null
   state.authHandler = null
-  state.reads = 0
   state.writes = 0
   state.signOuts = 0
   state.channels = []
@@ -425,6 +432,5 @@ describe('the five steps act only when the gates say yes (#759)', () => {
     expect(Object.keys(instruments()).sort()).toEqual([...STEPS].sort())
     expect(Object.keys(SILENT).sort()).toEqual([...STEPS].sort())
     expect(loggedErrors.every((args) => IGNORED_ERRORS.some((re) => re.test(String(args[0]))))).toBe(true)
-    void errorSpy
   })
 })
