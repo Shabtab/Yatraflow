@@ -1,19 +1,15 @@
-// /c/<creatorId> — the creator's public card (#362).
-//
-// `CreatorPage` shared itself as `${location.origin}/#/creator/<id>`, and a
-// fragment never leaves the browser: every unfurl of a creator link was the
-// generic app shell. This is the server path for sharing — the same
-// metadata-then-redirect shape `api/i.js` uses, deliberately, because
-// inventing a second pattern is how the handlers drifted before (#362).
-//
-// Dependency-free by design (the i.js header explains why): no client code,
-// one DB read for the profile, one counted read for the publications, and a
-// fail-closed card — an unknown or unreadable profile answers the same
-// honest 404-without-canonical card as a missing publication does.
+// /c/<creatorId> serves a public profile and live itinerary links (#701).
+// Search visitors read the page. A recognised share tag opens the app.
 import { resolveOrigin } from './_origin.js'
+import { renderCreatorBody, creatorJsonLd } from './_creatorBody.js'
 
 const DEFAULT_TITLE = 'YatraFlow — Plan real trips, together'
 const ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const PUBLICATION_ID_RE = /^[A-Za-z0-9_-]{1,64}$/
+// Must match src/lib/shareUrl.ts. The API cannot import client modules.
+const SHARE_SOURCES = ['copy', 'buyer', 'explore', 'creator', 'purchases', 'wa', 'community']
+const PAGE = 1000
+const MAX_PAGES = 20
 // A found card is edge-cacheable for five minutes, then served stale for ten
 // while it revalidates. Everything else answers no-store.
 const CARD_CACHE_CONTROL = 'public, max-age=0, s-maxage=300, stale-while-revalidate=600'
@@ -30,7 +26,7 @@ function escapeHtml(value) {
  * crawler at its own address is the 404 hygiene #362 asks for), and a
  * <meta name="robots" content="noindex"> so a shared typo is never indexed.
  */
-function renderCreator(profile, id, publicationCount) {
+function renderCreator(profile, id, publications, ref) {
   const origin = resolveOrigin()
   const name = typeof profile?.name === 'string' && profile.name.trim() ? profile.name.trim() : null
   if (!name) {
@@ -47,8 +43,8 @@ function renderCreator(profile, id, publicationCount) {
 </html>`
   }
   const bio = typeof profile.creator_bio === 'string' && profile.creator_bio.trim() ? profile.creator_bio.trim() : null
-  const count = Number(publicationCount)
-  const published = Number.isFinite(count) && count > 0
+  const count = publications?.length
+  const published = publications === null ? 'Published itineraries unavailable' : count > 0
     ? `${count} published ${count === 1 ? 'itinerary' : 'itineraries'}`
     : 'New to YatraFlow'
   const title = `${name} on YatraFlow`
@@ -58,7 +54,7 @@ function renderCreator(profile, id, publicationCount) {
   const description = [bio, published].filter(Boolean).join(' · ')
   const canonical = `${origin}/c/${id}`
   // #426 slice 3: the browser lands on the app page's real path directly.
-  const target = `/creator/${id}`
+  const target = `/creator/${id}${ref ? `?ref=${encodeURIComponent(ref)}` : ''}`
   return `<!doctype html>
 <html lang="en-IN">
 <head>
@@ -79,10 +75,38 @@ function renderCreator(profile, id, publicationCount) {
 <meta name="twitter:description" content="${escapeHtml(description)}" />
 <meta name="twitter:image" content="${escapeHtml(`${origin}/og-default.png`)}" />
 <link rel="canonical" href="${escapeHtml(canonical)}" />
-<script>location.replace(${JSON.stringify(target)})</script>
+<script type="application/ld+json">${creatorJsonLd(profile, canonical)}</script>
+${ref ? `<script>location.replace(${JSON.stringify(target)})</script>` : ''}
 </head>
-<body><p><a href="${escapeHtml(target)}">${escapeHtml(`${name} — ${published}`)}</a></p></body>
+<body>${renderCreatorBody(profile, publications, target)}</body>
 </html>`
+}
+
+// Read only public card fields. Never fetch trips, emails or sales.
+async function readPublications(url, key, id) {
+  const publications = []
+  let cursor = null
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const after = cursor ? `&id=gt.${encodeURIComponent(cursor)}` : ''
+    const response = await fetch(
+      `${url.replace(/\/+$/, '')}/rest/v1/published_itineraries?creator_id=eq.${encodeURIComponent(id)}` +
+      `&unpublished_at=is.null&select=id,title,tagline&order=id.asc&limit=${PAGE}${after}`,
+      {
+        headers: { apikey: key, authorization: `Bearer ${key}` },
+        signal: AbortSignal.timeout(4000),
+      },
+    )
+    if (!response.ok) return null
+    const rows = await response.json()
+    if (!Array.isArray(rows)) return null
+    publications.push(...rows)
+    if (rows.length < PAGE) return publications
+    const last = rows.at(-1)?.id
+    if (typeof last !== 'string' || !PUBLICATION_ID_RE.test(last) || (cursor && last <= cursor)) return null
+    cursor = last
+  }
+  // A partial catalogue must not pose as the complete list.
+  return null
 }
 
 export default async function handler(req, res) {
@@ -100,6 +124,8 @@ export default async function handler(req, res) {
   if (typeof id !== 'string' || !ID_RE.test(id)) {
     return res.status(id ? 400 : 404).end()
   }
+  const rawRef = req.query?.ref
+  const ref = typeof rawRef === 'string' && SHARE_SOURCES.includes(rawRef) ? rawRef : null
 
   const url = process.env.SUPABASE_URL
   const key = process.env.SUPABASE_ANON_KEY
@@ -107,7 +133,7 @@ export default async function handler(req, res) {
 
   let profile = null
   let profileReadFailed = false
-  let publicationCount = null
+  let publications = null
   try {
     const profileResponse = await fetch(
       `${url.replace(/\/+$/, '')}/rest/v1/profiles?id=eq.${encodeURIComponent(id)}` +
@@ -132,39 +158,16 @@ export default async function handler(req, res) {
   if (profileReadFailed) return res.status(503).end()
   if (!profile) return res.status(404).end()
 
-  // The count rides the content-range of a HEAD with an exact-count
-  // preference — the cheapest way to say "0-0/N" without transferring rows.
-  // It is decoration: a failed or absent count leaves the card honest
-  // ("New to YatraFlow") rather than taking the page down with it.
   try {
-    const countResponse = await fetch(
-      // unpublished_at=is.null: the count is live publications, not rows —
-      // a soft-unpublished row survives (#350) and must not count, or the
-      // card disagrees with Explore about how many plans exist.
-      `${url.replace(/\/+$/, '')}/rest/v1/published_itineraries?creator_id=eq.${encodeURIComponent(id)}&unpublished_at=is.null&select=id&limit=1`,
-      {
-        method: 'HEAD',
-        headers: {
-          apikey: key,
-          authorization: `Bearer ${key}`,
-          prefer: 'count=exact',
-        },
-        signal: AbortSignal.timeout(4000),
-      },
-    )
-    if (countResponse.ok) {
-      const range = countResponse.headers.get('content-range') ?? ''
-      const total = Number(/\/\s*(\d+)\s*$/.exec(range)?.[1])
-      if (Number.isFinite(total)) publicationCount = total
-    }
+    publications = await readPublications(url, key, id)
   } catch {
-    // Countless but present — the card still says who they are.
+    // Keep the public bio. Explain the failed catalogue read separately.
   }
 
   // Only a card that names a real creator may be shared at the edge. The
   // noindex fallback (a profile with no name) keeps the no-store header set above.
   const named = typeof profile?.name === 'string' && profile.name.trim() !== ''
-  if (named) res.setHeader('cache-control', CARD_CACHE_CONTROL)
+  if (named && publications !== null) res.setHeader('cache-control', CARD_CACHE_CONTROL)
   res.status(200)
-  return req.method === 'HEAD' ? res.end() : res.send(renderCreator(profile, id, publicationCount))
+  return req.method === 'HEAD' ? res.end() : res.send(renderCreator(profile, id, publications, ref))
 }

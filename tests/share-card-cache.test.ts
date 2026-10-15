@@ -94,7 +94,9 @@ describe('publication card (api/i.js) cache header', () => {
 describe('creator card (api/c.js) cache header', () => {
   it('sends the edge cache policy for a found card', async () => {
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify([{ name: 'Asha Menon', creator_bio: null }]), { status: 200 }))
-    fetchMock.mockResolvedValueOnce(new Response(null, { status: 200, headers: { 'content-range': '0-0/2' } }))
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify([
+      { id: 'trip-1', title: 'Kerala' }, { id: 'trip-2', title: 'Goa' },
+    ]), { status: 200 }))
     const res = await runCreator()
     expect(res.statusCode).toBe(200)
     expect(res.body).toContain('Asha Menon on YatraFlow')
@@ -110,7 +112,7 @@ describe('creator card (api/c.js) cache header', () => {
 
   it('keeps no-store for the noindex fallback when the profile has no name', async () => {
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify([{ name: '   ', creator_bio: 'x' }]), { status: 200 }))
-    fetchMock.mockResolvedValueOnce(new Response(null, { status: 200, headers: { 'content-range': '0-0/0' } }))
+    fetchMock.mockResolvedValueOnce(new Response('[]', { status: 200 }))
     const res = await runCreator()
     expect(res.statusCode).toBe(200)
     expect(res.body).toContain('<meta name="robots" content="noindex" />')

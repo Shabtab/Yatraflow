@@ -82,6 +82,19 @@ Before closing #226:
 
 The preview endpoint and the trip-JSON import that PR #235 also carried are both landed on `test`. What PR #235 still holds and this work does not is its route-to-title mapping (`src/lib/pageTitle.ts`, applied in `App.tsx`, so open tabs stop sharing one title) and its `.codacy.yml` exclusion, which was written for the older shell-injecting handler. PR #235's own `api/i.js` and `shareUrl.ts` are **superseded** by this implementation and must not be merged over it.
 
+## Public creator pages
+
+Vercel rewrites `/c/<creator-id>` to `api/c.js`. The HTML shows the public name, bio and live itinerary links.
+Search visitors can read it without JavaScript. A recognised `ref` tag redirects to `/creator/<id>` in the app.
+The canonical URL excludes the tag. `ProfilePage` structured data describes the public person.
+
+The function uses `SUPABASE_URL` and `SUPABASE_ANON_KEY`, like the itinerary endpoint.
+It selects only `name,creator_bio` from profiles and `id,title,tagline` from live publications.
+It reads publication pages in ID order. Private profile fields and trip details stay out of the response.
+
+A complete page can stay in the edge cache for five minutes.
+A failed catalogue read shows an error and uses `no-store`. A nameless profile stays `noindex` and uncached.
+
 ## Any other static host
 
 ```bash
