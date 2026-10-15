@@ -7205,7 +7205,7 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 .ready-row.ok .ready-tick { border-color: var(--teal-deep); background: var(--teal-deep); color: var(--card); }
 .ready-name { font-weight: 600; }
 .ready-why { margin-left: auto; color: var(--text-3); font-size: 11px; font-variant-numeric: tabular-nums; }
-.dock-ready { color: var(--text-3); font-size: 11px; }
+.dock-ready { display: block; color: var(--text-3); font-size: 11px; }
 /* ============================================================
    Create Trip - the draft banner (P4)
    The unfinished trip pulls you back with the truth: how far along it is,
@@ -9000,7 +9000,7 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 }
 .trip-plan-fill {
   display: block; height: 100%; border-radius: 3px; background: var(--teal);
-  transition: width var(--t-med) var(--ease-out);
+  transition: width var(--motion-med) var(--ease-out);
 }
 .trip-plan-text {
   font-size: var(--text-xs); font-weight: 500; color: var(--text-3);
@@ -9013,7 +9013,7 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
   color: var(--teal-deep); font-size: 13px; font-weight: 600;
 }
 .trip-next-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.trip-next-chevron { flex: none; transition: transform var(--t-fast) var(--ease-out); }
+.trip-next-chevron { flex: none; transition: transform var(--motion-fast) var(--ease-out); }
 .itin-card:hover .trip-next-chevron { transform: translateX(2px); }
 /* A finished trip has nothing to open, so the row steps back to plain meta ink. */
 .trip-next.is-done { color: var(--text-3); font-weight: 500; }
@@ -9036,7 +9036,7 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
   display: grid; place-items: center; width: 32px; height: 28px; padding: 0;
   border: 0; border-radius: calc(var(--radius-sm) - 2px); background: transparent;
   color: var(--text-3); cursor: pointer;
-  transition: background var(--t-fast) var(--ease-out), color var(--t-fast) var(--ease-out);
+  transition: background var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out);
 }
 .view-toggle-btn:hover { background: var(--bg-soft); color: var(--text-2); }
 .view-toggle-btn.on-teal { background: var(--teal-soft); color: var(--teal-deep); }
@@ -9077,7 +9077,7 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
   min-width: 116px; max-width: 190px; padding: 8px 12px; cursor: pointer;
   border: 1px solid var(--line); border-radius: var(--radius-sm);
   background: var(--card); color: var(--text-2); text-align: left;
-  transition: border-color var(--t-fast) var(--ease-out), background var(--t-fast) var(--ease-out), color var(--t-fast) var(--ease-out);
+  transition: border-color var(--motion-fast) var(--ease-out), background var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out);
 }
 .day-rail-card:hover { border-color: var(--teal); color: var(--teal-deep); background: var(--teal-soft); }
 .day-rail-card[aria-current='true'] { border-color: var(--teal); background: var(--teal-soft); color: var(--teal-deep); }
@@ -9125,7 +9125,7 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
   flex: none; display: grid; place-items: center; min-width: 32px; min-height: 32px;
   padding: 0; border: 0; border-radius: var(--radius-sm);
   background: transparent; color: var(--text-3); cursor: pointer;
-  transition: color var(--t-fast) var(--ease-out), background var(--t-fast) var(--ease-out);
+  transition: color var(--motion-fast) var(--ease-out), background var(--motion-fast) var(--ease-out);
 }
 .tl-save-heart:hover { background: var(--bg-soft); color: var(--teal-700); }
 .tl-save-heart.on { color: var(--danger); }
@@ -10684,3 +10684,46 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
   /* The hint repeats the link on a phone. It stays on desktop. */
   .tpl-warm-head .tpl-blank-link ~ .why { display: none; }
 }
+
+/* ============ Phone-polish batch, appended at EOF ============
+   These rules sit at the end of the file on purpose. tests/design-system.test.ts
+   keys each finding by styles.css LINE NUMBER. A rule inserted above an existing
+   rule remaps the entries below it. The gate then reports unchanged violations
+   as new ones. An append moves nothing.
+   #767 is not here: `.dock-ready` gains `display: block` in place at line 7208,
+   so that edit moves no line either. */
+
+/* ---------- #684 - the trip tab rail hides its scrollbar ----------
+   `.tabbar` scrolls sideways at phone width. It hides the scrollbar, so a tab
+   past the right edge ("Group input") was cut with no sign that more exist.
+   PillNav publishes the rail's scroll state on `data-overflow`. Each rule below
+   masks only a side that still holds hidden tabs. A rail that fits gets no mask.
+   The mask reaches the tab labels. A background gradient cannot, because the
+   labels paint above the background. */
+.tabbar[data-overflow='start'] {
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent);
+}
+.tabbar[data-overflow='middle'] {
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 20px, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 20px, #000 calc(100% - 28px), transparent);
+}
+.tabbar[data-overflow='end'] {
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 20px);
+  mask-image: linear-gradient(90deg, transparent, #000 20px);
+}
+
+/* ---------- #677 - the trip header band and rail on a phone ----------
+   At 390px the band and the rail took about 420px of an 844px screen. The tab
+   panel then started below the fold. The Board tab already ships a compact band
+   (`.container--board .trip-head-card`, near line 1600). A phone now takes that
+   treatment as its default. Two inline margins in TripWorkspace.tsx must yield,
+   so this block uses `!important`. The Board's member-stack rule already does. */
+@media (max-width: 720px) {
+  .trip-head-card { padding: 12px 14px; }
+  .trip-head-card h1 { font-size: 20px; margin-top: 6px !important; }
+  .trip-head-card p { margin-top: 2px !important; }
+  .trip-head-card .member-stack { margin-top: 6px !important; }
+  .tabbar { margin-bottom: 10px; }
+}
+

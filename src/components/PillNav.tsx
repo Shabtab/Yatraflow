@@ -15,6 +15,7 @@
 // along — the code now matches the catalog.
 import { useLayoutEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
+import { railOverflow } from '../lib/railOverflow'
 
 export function PillNav({ activeKey, className, role = 'presentation', 'aria-label': ariaLabel, children }: {
   activeKey: string
@@ -97,10 +98,19 @@ export function PillNav({ activeKey, className, role = 'presentation', 'aria-lab
       prevRef.current = { x, y, w, h }
     }
 
+    // The rail can overflow at phone width, and it hides its scrollbar. So the
+    // rail's own scroll position is published for CSS to paint the edge fade on
+    // a side that still holds hidden tabs. `.tabbar[data-overflow]` reads it.
+    const syncOverflow = () => {
+      const state = railOverflow(wrap.scrollLeft, wrap.scrollWidth, wrap.clientWidth)
+      if (wrap.dataset.overflow !== state) wrap.dataset.overflow = state
+    }
+
     // Only a change of activeKey glides; the first paint and every later
     // re-measure snap.
     const keyChanged = lastKeyRef.current !== activeKey
     place(!firstRunRef.current && keyChanged)
+    syncOverflow()
     firstRunRef.current = false
     lastKeyRef.current = activeKey
 
@@ -115,15 +125,19 @@ export function PillNav({ activeKey, className, role = 'presentation', 'aria-lab
     // wherever the row happened to be would read as a second, unasked-for
     // movement.
     let live = true
-    const remeasure = () => place(false)
+    const remeasure = () => { place(false); syncOverflow() }
     const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(remeasure)
     ro?.observe(wrap)
     document.fonts?.ready.then(() => { if (live) remeasure() }).catch(() => {})
     window.addEventListener('resize', remeasure)
+    // A sideways swipe is the common case, and it is the only one a resize
+    // observer cannot see. The listener is passive: it never blocks the swipe.
+    wrap.addEventListener('scroll', syncOverflow, { passive: true })
     return () => {
       live = false
       ro?.disconnect()
       window.removeEventListener('resize', remeasure)
+      wrap.removeEventListener('scroll', syncOverflow)
     }
   }, [activeKey, children])
 

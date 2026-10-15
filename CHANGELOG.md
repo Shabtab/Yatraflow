@@ -15,6 +15,17 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Changed
+
+- **The trip header is compact on a phone.** At 390px the header band and the tab rail took about 420px of an 844px screen. The tab panel then started below the fold. A phone now takes the compact band the Board tab already used. The band is shorter, the title is 20px and the tab rail is tighter. (#677)
+- **The My Trips rules now use the documented motion tokens.** Five rules in the trip-card and timeline block used the legacy `--t-fast` and `--t-med` durations. They now use `--motion-fast` and `--motion-med`. Each rule keeps its reduced-motion opt-out. (#650)
+- **Trip copy names consequences, not engine jargon.** The Overview health card now says what the score means, such as "The plan does not fit these days. Drop a stop or add a day." The day matrix explains its own columns. It lists B breakfast, L lunch, F fuel, S stretch, D dinner and N night. A cell the app filled itself reads "a break the app added". The Map legend and its day labels say the same. The Timeline's Inspect mode is now labelled Review, with the explanation "Study the day without changing it". (#683)
+
+### Fixed
+
+- **The Create trip phone dock no longer runs two phrases together.** The days line and the readiness line shared one inline row. "Pick your dates" and "3 things left" then printed as one phrase. The readiness line is a block now, so it sits under the days line. (#767)
+- **The trip tab rail shows that it scrolls sideways.** The rail hides its scrollbar. A tab past the right edge ("Group input") was cut with no sign that more exist. The rail now fades the edge that still holds hidden tabs. The fade clears once the end is reached. (#684)
+
 ## [0.77.0] - 2026-10-16
 
 **This release brings flight journeys, one design language on every surface and reads that report failure.**

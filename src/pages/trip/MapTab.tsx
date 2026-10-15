@@ -1410,7 +1410,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
                     key={d.index}
                     type="button"
                     aria-pressed={d.index === activeDayIndex}
-                    aria-label={`Day ${d.index + 1}: ${filled} of ${required} planned${auto > 0 ? `, ${auto} engine-managed` : ''}`}
+                    aria-label={`Day ${d.index + 1}: ${filled} of ${required} planned${auto > 0 ? `, ${auto} added by the app` : ''}`}
                     className={'slots-daychip' + (d.index === activeDayIndex ? ' is-on' : '')}
                     onClick={() => { setLocalDay(d.index); onDayFocusChange?.(d.index); setOpenSlotKey(null) }}
                   >
@@ -1431,13 +1431,13 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
                 <div className="slots-legend-body">
                   <p><b>✓</b> a planned part - one quiet line</p>
                   <p><b>○</b> an unplanned part - candidates inside</p>
-                  <p><b>dashed ring</b> engine-managed (stretch breaks)</p>
+                  <p><b>dashed ring</b> a stretch break the app added</p>
                   <p><b>violet dot</b> an extra worth adding</p>
                 </div>
               </details>
             </div>
             {activeDaySlots.length > 0 && (
-              <div className="slots-meter" role="status" aria-label={`Day ${activeDayIndex + 1}: ${activeDayReadiness.filled} of ${activeDayReadiness.required} parts of the day planned${activeDayReadiness.auto > 0 ? `, ${activeDayReadiness.auto} engine-managed` : ''}`}>
+              <div className="slots-meter" role="status" aria-label={`Day ${activeDayIndex + 1}: ${activeDayReadiness.filled} of ${activeDayReadiness.required} parts of the day planned${activeDayReadiness.auto > 0 ? `, ${activeDayReadiness.auto} added by the app` : ''}`}>
                 {activeDaySlots.map(s => (
                   <i key={s.key} className={s.state === 'filled' ? 'is-filled' : s.state === 'auto' ? 'is-auto' : 'is-empty'} />
                 ))}
