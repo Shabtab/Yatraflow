@@ -8,7 +8,7 @@ import { CircleCheck, CloudSun, Droplets, Lightbulb, Pin, Siren, TriangleAlert }
 import type { Trip } from '../../data/types'
 import { useDb, useSliceReads, userById, activityFor, resumeSync } from '../../store/store'
 import { computeHealth, computeTotals, formatInr, minutesToHM, countHotelNights, isRoundTrip } from '../../lib/engine'
-import { healthBandClass, healthBandTone } from '../../lib/healthBand'
+import { healthBandClass, healthBandSentence, healthBandTone } from '../../lib/healthBand'
 import { overviewRoutePoints } from '../../lib/overviewTruth'
 import { rankWarnings, warningKey, maxWarningSeverity, severityLead } from '../../lib/overviewWarnings'
 import { matrixFreshness } from '../../lib/matrixFreshness'
@@ -150,6 +150,7 @@ export function OverviewTab({ trip, onOpenTimeline, onOpenMap, onInvite, health,
               {health.band}
             </Chip>
           </div>
+          <p className="muted small">{healthBandSentence(health.band)}</p>
           <div className="health-big">
             <div className={`health-num-big ${healthBandClass(health.band)}`}>{health.score}</div>
             <div className="ovw-score-details">
@@ -594,7 +595,7 @@ function SlotMatrix({ trip, road, corridorSegments, mapInputs, mapCache, onRefre
                 const meaning = slot
                   ? `${slot.label}: ${slot.state === 'filled'
                     ? (slot.filledStop?.title ?? 'planned')
-                    : slot.state === 'auto' ? 'engine-managed' : 'still open'}`
+                    : slot.state === 'auto' ? 'added by the app' : 'still open'}`
                   : `${k.name}: not part of this day`
                 return (
                   <span
@@ -613,7 +614,8 @@ function SlotMatrix({ trip, road, corridorSegments, mapInputs, mapCache, onRefre
         })}
       </div>
       <p className="muted small ovw-matrix-legend">
-        Solid = planned, hollow = engine-managed, dot = still open.
+        Solid = planned. Hollow = a break the app added. Dot = still open.
+        Columns: B breakfast, L lunch, F fuel, S stretch, D dinner, N night.
         {thinnest ? ` Thinnest day: Day ${thinnest.index + 1}${thinnest.total === 0 ? ' (nothing planned yet)' : ` (${thinnest.filled} of ${thinnest.total})`}.` : ''}
       </p>
           {freshness === 'unknown' && (
@@ -625,8 +627,8 @@ function SlotMatrix({ trip, road, corridorSegments, mapInputs, mapCache, onRefre
       )}
       {!hasCorridor && (
         <p className="muted small ovw-matrix-partial">
-          Partial: this trip&apos;s corridor hasn&apos;t been scanned yet, so the fuel and stretch breaks the engine
-          derives aren&apos;t counted here. Open the Map tab once and this fills in.
+          Not counted yet: the app has not measured this route, so the fuel and stretch breaks
+          are missing here. Open the Map tab once and they join this list.
         </p>
       )}
     </Surface>

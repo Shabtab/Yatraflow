@@ -653,8 +653,9 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
               <PenLine size={14} aria-hidden />Plan
             </button>
             <button type="button" data-pill-key="inspect" className={`tab-btn${mode === 'inspect' ? ' active' : ''}`}
-              onClick={() => changeMode('inspect')} aria-pressed={mode === 'inspect'}>
-              <Eye size={14} aria-hidden />Inspect
+              onClick={() => changeMode('inspect')} aria-pressed={mode === 'inspect'}
+              title="Study the day without changing it">
+              <Eye size={14} aria-hidden />Review
             </button>
           </PillNav>
           </>
