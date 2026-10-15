@@ -815,6 +815,15 @@ anywhere in this repo means the entry labelled `6b` below.
    Put `page-enter` on the root of any screen that appears after load, and that includes a Suspense fallback.
    Run `npm run check:motion` before you push a change that adds or moves a `StateBlock` outside a page root.
 
+6au. **An inline `style` beats a stylesheet rule, so the Board tab's compact header
+   margins have no effect (learned 2026-10-15).** `TripWorkspace.tsx` sets the trip
+   header's `h1`, `p` and `.member-stack` top margins inline. So
+   `.container--board .trip-head-card h1 { margin-top: 4px }` has been inert since it
+   landed: the inline `12px` wins. A phone rule that compacts those margins must carry
+   `!important`. The Board's `.member-stack { margin-top: 0 !important }` rule already
+   does, and it is the precedent to copy. Check `TripWorkspace.tsx` for an inline value
+   before you write a margin rule for that header.
+
 ## 2. Conventions (`AGENTS.md` §4)
 
 The store, maps and UI entries live in `docs/standards/` now (2026-10-05
@@ -825,6 +834,7 @@ process.
 - **You must test both sides of a shared focus or schedule contract.** A prop-presence test cannot prove that a child reads the prop. Check a tab round trip through the browser. Compare arrivals and warnings for the same stop after road measurements resolve.
 
 - **lint:ste counts code tokens as prose on added lines.** A long string inside a call fails the 20-word limit — build user-facing strings in `const` lines (the checker skips them) and keep the call short. A new line naming a banned field (a stop's `priority`) fails the vocabulary check — spread the helper that already declares it. (Learned 2026-10-03, #607–#609.)
+  A CSS comment line added to `styles.css` is prose too. Keep each sentence under 20 words.
 
 - **A verification probe can lie about the thing it probes — and a preview URL lies about its own content.** Two traps hit while closing #226. (1) `process.env.X = undefined` does **not** unset a variable: Node coerces it to the string `"undefined"`, which is truthy, so a probe that "cleared" `PUBLIC_ORIGIN` made the handler's `PUBLIC_ORIGIN || …` fallback resolve to a literal origin of `undefined` and `og:url` read `undefined/i/<id>`. It looked exactly like a product bug for a step; the unit test for the same branch was green the whole time, because `vi.stubEnv(k, undefined)` genuinely deletes. Use `delete` in a probe, and never diagnose a handler from a value the probe itself set. (2) A preview deployment answers **200 with a full Open Graph block** — Vercel's SSO login page carries its own tags (`og:title: "Protected Deployment – Vercel"`), so a "does it contain `og:title`" check passes on the wall itself. Match on the origin/description or check the byte size (~1.2 KB app shell vs ~340 KB login page), never the mere presence of a tag. Keep such probes in the scratch directory, not the repo. (3) **A source-scanning test can match its own subject's prose:** the tripwire asserting that `presence.ts` calls no weak generator failed on the doc comment *explaining* that it no longer does. Strip comment lines before asserting on source text, and match the call (`/Math\s*\.\s*random\s*\(/`) rather than the bare name — a test that forbids a string has to decide whether it forbids mentioning it.
 
