@@ -108,7 +108,7 @@ describe('#352 — the client cannot fork what the server withheld', () => {
     const fn = fork()
     expect(fn).toMatch(/restubLockedDays\(src, pub\.freeDayIndexes, \(pub\.premiumPriceInr \?\? 0\) > 0\)/)
     expect(fn).toMatch(
-      /unlockedFork\s*\? await duplicateTripPersisted\(safe, meId, undefined, source\)\s*: await duplicateTripPublicPersisted\(safe, meId, pub\.freeDayIndexes, source\)/,
+      /unlockedFork\s*\? await duplicateTripPersisted\(safe, meId, undefined, source, origin\)\s*: await duplicateTripPublicPersisted\(safe, meId, pub\.freeDayIndexes, source, origin\)/,
     )
     // The fragile check is gone: a wire-stubbed row whose days came back empty
     // (the RPC's own fail-closed branch) read as "nothing locked" and took the

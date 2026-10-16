@@ -12,7 +12,9 @@ const state: {
   inserts: Array<{ table: string; payload: any }>
   /** table name → error object the next write returns */
   failures: Record<string, unknown>
-} = { inserts: [], failures: {} }
+  savedTrips: Map<string, any>
+  savedMembers: Map<string, any>
+} = { inserts: [], failures: {}, savedTrips: new Map(), savedMembers: new Map() }
 
 const { toast } = vi.hoisted(() => ({ toast: vi.fn() }))
 vi.mock('../src/components/ui', () => ({ toast }))
@@ -20,8 +22,9 @@ vi.mock('../src/components/ui', () => ({ toast }))
 vi.mock('../src/lib/supabase', () => {
   function query(table: string) {
     const qb: any = { table }
+    const filters = new Map<string, unknown>()
     qb.select = () => qb
-    qb.eq = () => qb
+    qb.eq = (key: string, value: unknown) => { filters.set(key, value); return qb }
     qb.in = () => qb
     qb.order = () => qb
     qb.limit = () => qb
@@ -32,7 +35,9 @@ vi.mock('../src/lib/supabase', () => {
     // client (not []), which is what fetchSharedTrip branches on.
     qb.maybeSingle = () => ({
       then: (res: (v: { data: unknown; error: null }) => unknown) =>
-        Promise.resolve({ data: null, error: null }).then(res),
+        Promise.resolve({ data: table === 'trips'
+          ? [...state.savedTrips.values()].find(row => [...filters].every(([key, value]) => row[key] === value)) ?? null
+          : [...state.savedMembers.values()].find(row => [...filters].every(([key, value]) => row[key] === value)) ?? null, error: null }).then(res),
     })
     return qb
   }
@@ -42,8 +47,19 @@ vi.mock('../src/lib/supabase', () => {
     qb.in = () => qb
     qb.select = () => qb
     qb.then = (res: (v: { data: unknown; error: unknown }) => unknown) => {
-      const failure = state.failures[method === 'insert' ? table : '']
+      let failure = state.failures[method === 'insert' ? table : '']
       state.inserts.push({ table, payload })
+      if (!failure && method === 'insert' && table === 'trips') {
+        if (state.savedTrips.has(payload.id)) failure = { code: '23505' }
+        else state.savedTrips.set(payload.id, { ...payload, created_at: Date.now(), updated_at: Date.now() })
+      }
+      if (!failure && method === 'insert' && table === 'trip_members') {
+        for (const member of Array.isArray(payload) ? payload : [payload]) {
+          const key = `${member.trip_id}:${member.user_id}`
+          if (state.savedMembers.has(key)) failure = { code: '23505' }
+          else state.savedMembers.set(key, member)
+        }
+      }
       const out = failure ? { data: null, error: failure } : { data: null, error: null }
       return Promise.resolve(out).then(res)
     }
@@ -83,6 +99,8 @@ const pubRow = { id: 'pub_test', tripId: 'trip-that-does-not-exist', title: 'A t
 beforeEach(() => {
   state.inserts.length = 0
   state.failures = {}
+  state.savedTrips.clear()
+  state.savedMembers.clear()
   toast.mockClear()
 })
 
@@ -146,7 +164,7 @@ describe('fork — the gate and its failure message are honest', () => {
     const nav = vi.fn()
     const ok = await forkPublication(pubRow, null, nav)
     expect(ok).toBe(false)
-    expect(nav).toHaveBeenCalledWith('/auth')
+    expect(nav).toHaveBeenCalledWith('/auth?next=%2Fpub%2Fpub_test')
     expect(toast).toHaveBeenCalledWith('Log in to fork this trip into your plans.')
     // The redirect is the whole interaction — no half-fork, no orphan rows.
     expect(state.inserts).toEqual([])
@@ -176,9 +194,40 @@ describe('fork stamp (#230) — the copy carries its own route in', () => {
   })
 
   it('never inherits the SOURCE trip’s ref — a copy of a copy starts a new chain', async () => {
-    const source: Trip = { ...structuredClone(base), ref: 'buyer' }
+    const source: Trip = { ...structuredClone(base), ref: 'buyer', creationKind: 'forked', sourcePubId: 'pub_old', campaignId: 'p_a7c1d9e4b206' }
     const { trip: copy } = await duplicateTripPublicPersisted(source, 'forker-8', [0], undefined)
     expect(copy.ref).toBeUndefined()
+    expect(copy.creationKind).toBe('copied')
+    expect(copy.sourcePubId).toBeUndefined()
+    expect(copy.campaignId).toBeUndefined()
     expect(state.inserts.find(i => i.table === 'trips')!.payload.ref).toBeNull()
+  })
+
+  it('recovers the same persisted fork row after a membership failure', async () => {
+    const origin = { publicationId: 'pub_growth_source', campaign: 'p_a7c1d9e4b206' as const, requestId: crypto.randomUUID() }
+    state.failures.trip_members = { code: '42501' }
+    const first = await duplicateTripPublicPersisted(base, 'retry-owner', [0], 'wa', origin)
+    expect(first.persisted).toBe(false)
+    const stored = state.savedTrips.get(origin.requestId)
+    expect(stored.creation_kind).toBe('forked')
+    expect(stored.source_pub_id).toBe(origin.publicationId)
+    expect(stored.campaign_id).toBe(origin.campaign)
+    state.failures = {}
+    const retried = await duplicateTripPublicPersisted(base, 'retry-owner', [0], 'wa', origin)
+    expect(retried.persisted).toBe(true)
+    expect(state.savedTrips.size).toBe(1)
+    expect(state.savedMembers.size).toBe(1)
+    expect(retried.trip.id).toBe(origin.requestId)
+    expect(retried.trip.days).toEqual(stored.days)
+  })
+
+  it('does not accept another publication as the pending action result', async () => {
+    const requestId = crypto.randomUUID()
+    const first = await duplicateTripPublicPersisted(base, 'same-owner', [0], 'wa', { requestId, publicationId: 'pub_first' })
+    expect(first.persisted).toBe(true)
+    const mismatch = await duplicateTripPublicPersisted(base, 'same-owner', [0], 'wa', { requestId, publicationId: 'pub_other' })
+    expect(mismatch.persisted).toBe(false)
+    expect(state.savedTrips.size).toBe(1)
+    expect(state.savedTrips.get(requestId).source_pub_id).toBe('pub_first')
   })
 })

@@ -18,6 +18,12 @@ docs stay as reference for the detail they hold:
 
 Every number here has a source. Re-derive a number before you quote it. The probes are in §7.
 
+**Distribution revision, 2026-10-15:** the [measurement audit](DISTRIBUTION-MEASUREMENT-AUDIT.md) records the revised three-engine hypothesis.
+The [pilot specification](DISTRIBUTION-PILOT.md) separates creator audiences, group planning, and travel-business partners.
+Its proposed gates need ratification before traffic starts. They differ from the earlier creator-only gates below.
+Local Experts without audiences need a distribution partner. Their expertise alone does not establish customer demand.
+This revision does not approve Studio construction, paid acquisition, or new commercial terms.
+
 The [creator portfolio brainstorm](BRAINSTORM-2026-10-12-creator-portfolio.md) records source limits and proposals. `ROADMAP.md` remains the plan of record.
 
 ## 1. Where we stand

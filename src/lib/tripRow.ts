@@ -4,6 +4,7 @@
 import type { Trip, ItineraryDay, ItineraryStop, TripMember, Expense, FixedCommitment, FlightLeg, LatLngPoint } from '../data/types'
 import { normalizeVehicleProfile } from './vehicleProfile'
 import { allowedAmount } from './expenseAmount'
+import { campaignId, TRIP_CREATION_KINDS } from './growthAttribution'
 
 /** #559 — the jsonb coercion: a real array passes, ANYTHING else (null, an
  *  object, a string, a number) becomes empty. `?? []` only answers null, which
@@ -46,6 +47,9 @@ export interface TripRow {
   /** present only after the share-source migration (20260929_pub_events_share_source.sql) —
    *  how this trip's owner ARRIVED: the shared link's ref, or the in-app surface */
   ref?: string | null;
+  creation_kind?: string | null;
+  source_pub_id?: string | null;
+  campaign_id?: string | null;
   /** present only after the trip-trash migration (20260910_trip_trash.sql) */
   deleted_at?: string | null;
   created_at: number; updated_at: number;
@@ -210,6 +214,9 @@ export function rowToTrip(row: TripRow, members: TripMember[]): Trip {
     days, expenses, coverEmoji: row.cover_emoji,
     coverImageUrl: row.cover_image_url ?? undefined, inviteCode: row.invite_code ?? undefined,
     ref: row.ref ?? undefined,
+    creationKind: TRIP_CREATION_KINDS.find(kind => kind === row.creation_kind),
+    sourcePubId: row.creation_kind === 'forked' ? row.source_pub_id ?? undefined : undefined,
+    campaignId: row.creation_kind === 'forked' ? campaignId(row.campaign_id) ?? undefined : undefined,
     visibility: row.visibility, deletedAt: row.deleted_at != null ? new Date(row.deleted_at).getTime() : undefined,
     createdAt: row.created_at, updatedAt: row.updated_at, members,
     writeVersion: Number.isSafeInteger(row.write_version) && row.write_version! >= 0 ? row.write_version : undefined,
@@ -233,6 +240,7 @@ export interface OptionalColumnsProbe {
   flights: boolean
   /** share attribution (20260929_pub_events_share_source.sql) */
   ref: boolean
+  growth?: boolean
 }
 
 /**
@@ -270,6 +278,11 @@ export function tripToRow(trip: Trip, ownerId: string, cols?: OptionalColumnsPro
   if (cols?.localTrain) row.local_train = typeof trip.localTrain === 'boolean' ? trip.localTrain : null
   if (cols?.flights) row.flights = sanitizeFlights(trip.flights)
   if (cols?.ref) row.ref = trip.ref ?? null
+  if (cols?.growth) {
+    row.creation_kind = TRIP_CREATION_KINDS.find(kind => kind === trip.creationKind) ?? null
+    row.source_pub_id = trip.creationKind === 'forked' ? trip.sourcePubId ?? null : null
+    row.campaign_id = trip.creationKind === 'forked' ? campaignId(trip.campaignId) : null
+  }
   return row
 }
 
@@ -308,7 +321,8 @@ export function tripUpdateRow(
  * True when a Supabase/PostgREST error means "this column does not exist".
  * Anything else (network failure, auth/RLS, etc.) is transient and must NOT be
  * cached as a missing column — see issue #17.
- */export function isMissingColumnError(error: unknown): boolean {
+ */
+export function isMissingColumnError(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false
   const code = (error as { code?: string }).code
   if (code === 'PGRST204' || code === '42703') return true

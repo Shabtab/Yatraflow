@@ -8,6 +8,7 @@ import { isSupabaseConfigured } from '../lib/supabase'
 import { isAdultSignup } from '../lib/ageGate'
 import { looksLikeEmail } from '../lib/emailShape'
 import { currentQuery } from '../lib/router'
+import { authNext } from '../lib/authNext'
 import { MISSING_BACKEND_MESSAGE } from '../lib/authErrors'
 import { Field } from '../components/ui'
 import { DobPicker } from '../components/DobPicker'
@@ -18,11 +19,7 @@ import { DobPicker } from '../components/DobPicker'
  *  must start with a single "/" and contain only path characters — no
  *  scheme ("https:"), no protocol-relative "//host", no query injection. */
 function nextRoute(): string {
-  const raw = currentQuery().get('next')
-  if (!raw) return '/trips'
-  const decoded = (() => { try { return decodeURIComponent(raw) } catch { return raw } })()
-  if (!/^\/[a-z0-9\-/]*$/i.test(decoded) || decoded.includes('//')) return '/trips'
-  return decoded
+  return authNext(currentQuery().get('next'))
 }
 
 /** The two tabs of the form. Each tab names the panel it controls. */

@@ -79,7 +79,7 @@ describe('I-21 — the claim is the server’s to make', () => {
     expect(handler).toMatch(/verifiedBuyer = buyer/)
     // #230 added the ref as a fourth argument — the gate's verdict still rides
     // the same call, and the pin follows the call site.
-    expect(handler).toMatch(/renderPublication\(publication, id, verifiedBuyer, ref, trip, shared\)/)
+    expect(handler).toMatch(/renderPublication\(publication, id, verifiedBuyer, ref, trip, shared, campaign\)/)
   })
 
   it('fails closed and silently when the gate cannot answer', () => {

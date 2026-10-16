@@ -349,7 +349,7 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
          row "invite opened" before it tried. */
       if (openExternal(url)) {
         // #428: the channel enum only — never the recipient, never the message.
-        recordCreateEvent('moment_invite_sent', { channel }, { tripId: trip?.id })
+        recordCreateEvent('moment_invite_sent', { channel }, { tripId: trip?.id, userId: me?.id })
         setStatuses(s => new Map(s).set(index, { opened: true }))
         return
       }
@@ -365,7 +365,7 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
     /* A dismissed or unavailable sheet did not send. */
     if (shareDidSend(res)) {
       // #428: the channel enum only — never the recipient, never the message.
-      recordCreateEvent('moment_invite_sent', { channel }, { tripId: trip?.id })
+      recordCreateEvent('moment_invite_sent', { channel }, { tripId: trip?.id, userId: me?.id })
       setStatuses(s => new Map(s).set(index, { opened: true }))
       return
     }
@@ -406,7 +406,7 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
       /* Same rule as a row send: the event fires only when the window opened. */
       if (openExternal(url)) {
         // #428: the channel enum only — never the recipient, never the message.
-        recordCreateEvent('moment_invite_sent', { channel }, { tripId: trip?.id })
+        recordCreateEvent('moment_invite_sent', { channel }, { tripId: trip?.id, userId: me?.id })
         return
       }
       toast('The browser blocked the link - the invite is on this page to copy.', 'err')
@@ -416,7 +416,7 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
     /* A dismissed or unavailable sheet did not send. */
     if (shareDidSend(res)) {
       // #428: the channel enum only — never the recipient, never the message.
-      recordCreateEvent('moment_invite_sent', { channel }, { tripId: trip?.id })
+      recordCreateEvent('moment_invite_sent', { channel }, { tripId: trip?.id, userId: me?.id })
       return
     }
     if (res === 'unavailable') {

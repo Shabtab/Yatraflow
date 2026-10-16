@@ -254,7 +254,8 @@ function sameSavedValue(a: unknown, b: unknown): boolean {
 }
 
 /** #408: the days a refused shrink is waiting on, each one a jump to its
- *  timeline day. Without a workspace to jump from, the days still get named. */function BlockedDayLinks({ blocked, onOpenDay }: { blocked?: number[]; onOpenDay?: (dayIndex: number) => void }) {
+ *  timeline day. Without a workspace to jump from, the days still get named. */
+function BlockedDayLinks({ blocked, onOpenDay }: { blocked?: number[]; onOpenDay?: (dayIndex: number) => void }) {
   if (!blocked || blocked.length === 0) return null
   return (
     <span className="ts-blocked-days">

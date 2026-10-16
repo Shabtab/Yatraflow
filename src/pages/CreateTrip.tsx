@@ -347,22 +347,23 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
     else { setDraftDecided(true) }
   }, [])
 
-  // #428 — the funnel's first event, once per page session. Fired after mount
-  // (the page exists), never blocking, never identifying.
+  // The first step records once after the signed-in page mounts.
+  // Metadata excludes private contents. Event failure must not block creation.
   const startedRef = useRef(false)
   useEffect(() => {
-    if (startedRef.current) return
+    if (startedRef.current || !me?.id) return
     startedRef.current = true
-    recordCreateEvent('started')
-  }, [])
+    recordCreateEvent('started', undefined, { userId: me.id })
+  }, [me?.id])
   // #428 — readiness_complete: the FIRST time the checklist goes all-green in
   // this session. One latch, so editing after ready does not re-fire it.
   const readyRef = useRef(false)
   useEffect(() => {
     if (readyRef.current || !readiness.ready) return
+    if (!me?.id) return
     readyRef.current = true
-    recordCreateEvent('readiness_complete')
-  }, [readiness.ready])
+    recordCreateEvent('readiness_complete', undefined, { userId: me.id })
+  }, [readiness.ready, me?.id])
 
   useEffect(() => {
     if (!createFunnelOn('drafts') || !draftDecided) return
@@ -390,7 +391,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
     setCrew(next)
     setCrewInput('')
     // #428: a COUNT went in — never a name or number.
-    recordCreateEvent('crew_added', { count: next.length })
+    recordCreateEvent('crew_added', { count: next.length }, { userId: me?.id })
   }
 
   /** P4: the percentage on the banner counts required things only, exactly like
@@ -403,7 +404,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
   function resumeDraft() {
     if (!draft) return
     haptic(HAPTIC.select)
-    recordCreateEvent('draft_resumed')
+    recordCreateEvent('draft_resumed', undefined, { userId: me?.id })
     setF(prev => ({ ...prev, ...(draft.form as Partial<typeof prev>) }))
     setDests(draft.dests)
     setReturnCount(draft.returnCount)
@@ -417,7 +418,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
 
   function discardDraft() {
     haptic(HAPTIC.toggle)
-    recordCreateEvent('draft_discarded')
+    recordCreateEvent('draft_discarded', undefined, { userId: me?.id })
     clearDraft()
     setDraft(null)
     setDraftDecided(true)
@@ -464,7 +465,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
     haptic(HAPTIC.select)
     // #428: the platform-authored slug and the pick source — the template's
     // own name/id, never what the user typed.
-    recordCreateEvent('template_picked', { source: 'template', templateId: t.id })
+    recordCreateEvent('template_picked', { source: 'template', templateId: t.id }, { userId: me?.id })
     const { fields, dests: tDests } = applyTemplate(t, {
       name: f.name, startLocation: f.startLocation, budgetTouched,
     })
@@ -486,7 +487,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
   function copyLastTrip() {
     if (!lastTrip) return
     haptic(HAPTIC.select)
-    recordCreateEvent('template_picked', { source: 'last' })
+    recordCreateEvent('template_picked', { source: 'last' }, { userId: me?.id })
     patchFields({
       travellers: lastTrip.travellers,
       transportMode: lastTrip.transportMode,
@@ -763,7 +764,6 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
       }
       // #428: the submit step — counts and the mode enum only (the trip name,
       // the destinations and the budget figure never enter the log).
-      recordCreateEvent('submitted', { days: bill.days, travellers: f.travellers, mode: f.transportMode }, { tripId: trip.id, userId: me.id })
       finishCreate(trip)
     } catch (err) {
       console.error('[yatraflow] create failed', err)
@@ -778,6 +778,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
    *  draft cleared, and the route in. Navigation never precedes the save — a
    *  workspace opened over a failed write is a trip that vanishes on reload. */
   function finishCreate(trip: Trip) {
+    recordCreateEvent('submitted', { days: trip.days.length, travellers: trip.travellers, mode: trip.transportMode }, { tripId: trip.id, userId: me?.id })
     haptic(HAPTIC.success)
     clearDraft()
     if (createFunnelOn('moment')) {

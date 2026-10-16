@@ -6,8 +6,10 @@ import type { ShareSource } from './shareUrl'
 import { fetchMyEntitlements } from './unlock'
 import { hasUnlock } from './payments'
 import { toast } from '../components/ui'
+import { finishPendingFork, pendingForkId, rememberFork, type CampaignId } from './growthAttribution'
 
 const LOCKED_STOP_DESCRIPTION = 'Locked — the full plan is on the original itinerary.'
+const inFlight = new Map<string, Promise<boolean>>()
 
 /** Defense-in-depth stub: re-applies the locked-day stub to days NOT in the
  *  publication's free list, EVEN IF the session's copy somehow carries real
@@ -85,8 +87,28 @@ export function wireWithheld(src: Trip, freeDayIndexes: number[]): boolean {
  *  A negative is never trusted, because the page's flag is `false` while that
  *  read is still in flight — which is exactly when a buyer who has just paid
  *  clicks Fork. */
-export async function forkPublication(pub: PublishedItinerary, meId: string | null, onNavigate: (r: string) => void, unlockedPresentationOnly?: boolean, source?: ShareSource | null): Promise<boolean> {
-  if (!meId) { toast('Log in to fork this trip into your plans.'); onNavigate('/auth'); return false }
+export async function forkPublication(pub: PublishedItinerary, meId: string | null, onNavigate: (r: string) => void, unlockedPresentationOnly?: boolean, source?: ShareSource | null, campaign?: CampaignId | null): Promise<boolean> {
+  if (!meId) {
+    rememberFork(pub.id, { source: source ?? null, campaign: campaign ?? null })
+    toast('Log in to fork this trip into your plans.')
+    onNavigate(`/auth?next=${encodeURIComponent(`/pub/${pub.id}`)}`)
+    return false
+  }
+  const key = `${meId}:${pub.id}`
+  const held = inFlight.get(key)
+  if (held) return held
+  rememberFork(pub.id, { source: source ?? null, campaign: campaign ?? null })
+  const operation = performFork(pub, meId, onNavigate, unlockedPresentationOnly, source, campaign)
+    .catch(() => {
+      toast('Could not save the forked trip — check your connection and try again.', 'err')
+      return false
+    })
+    .finally(() => inFlight.delete(key))
+  inFlight.set(key, operation)
+  return operation
+}
+
+async function performFork(pub: PublishedItinerary, meId: string, onNavigate: (r: string) => void, unlockedPresentationOnly?: boolean, source?: ShareSource | null, campaign?: CampaignId | null): Promise<boolean> {
   // Read through the paywall RPC, not the raw table. A creator/buyer session
   // gets the real trip back from the same call a visitor makes — the server
   // compared auth.uid() against the entitlement rows, not this client.
@@ -133,14 +155,17 @@ export async function forkPublication(pub: PublishedItinerary, meId: string | nu
   // #230 — the same `source` stamps two places: the funnel event (through the
   // counter RPC's p_source) and the forked trip's own `ref`, so a later
   // conversion on that trip can still name the surface that brought its owner.
+  const origin = { publicationId: pub.id, campaign, requestId: pendingForkId(meId, pub.id) }
   const { persisted } = unlockedFork
-    ? await duplicateTripPersisted(safe, meId, undefined, source)
-    : await duplicateTripPublicPersisted(safe, meId, pub.freeDayIndexes, source)
+    ? await duplicateTripPersisted(safe, meId, undefined, source, origin)
+    : await duplicateTripPublicPersisted(safe, meId, pub.freeDayIndexes, source, origin)
   if (!persisted) {
     toast('Could not save the forked trip — check your connection and try again.', 'err')
     return false
   }
-  registerPubCopy(pub.id, source)
+  finishPendingFork(meId, pub.id)
+  try { registerPubCopy(pub.id, source, campaign) }
+  catch { console.warn('[yatraflow] fork analytics unavailable') }
   toast(`“${pub.title}” forked to My trips ✈️`)
   onNavigate('/trips')
   return true

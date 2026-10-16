@@ -489,7 +489,7 @@ export default function App() {
     page = <Suspense fallback={lazyRouteFallback}><DMCAPage /></Suspense>
   } else if (!me) {
     // public pages stay accessible logged-out; everything else funnels to auth/landing
-    if (parts[0] === 'pub' && parts[1]) page = <Suspense fallback={lazyRouteFallback}><PublicItineraryPage slug={parts[1]} onNavigate={navigate} /></Suspense>
+    if (parts[0] === 'pub' && parts[1]) page = <Suspense fallback={lazyRouteFallback}><PublicItineraryPage key={parts[1]} slug={parts[1]} onNavigate={navigate} /></Suspense>
     else if (parts[0] === 'creator' && parts[1]) page = <Suspense fallback={lazyRouteFallback}><CreatorPage creatorId={parts[1]} onNavigate={navigate} /></Suspense>
     else if (parts[0] === 'explore') page = <Suspense fallback={lazyRouteFallback}><ExplorePage onNavigate={navigate} /></Suspense>
     else if (parts[0] === 'auth' && !sessionUserId) page = <Suspense fallback={lazyRouteFallback}><AuthPage onNavigate={navigate} /></Suspense>
@@ -523,7 +523,7 @@ export default function App() {
         page = <Suspense fallback={lazyRouteFallback}><ExplorePage onNavigate={navigate} /></Suspense>
         break
       case 'pub':
-        page = <Suspense fallback={lazyRouteFallback}><PublicItineraryPage slug={parts[1] ?? ''} onNavigate={navigate} /></Suspense>
+        page = <Suspense fallback={lazyRouteFallback}><PublicItineraryPage key={parts[1]} slug={parts[1] ?? ''} onNavigate={navigate} /></Suspense>
         break
       case 'creator':
         page = <Suspense fallback={lazyRouteFallback}><CreatorPage creatorId={parts[1] ?? ''} onNavigate={navigate} /></Suspense>
