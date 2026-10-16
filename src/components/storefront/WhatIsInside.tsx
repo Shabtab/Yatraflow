@@ -12,7 +12,7 @@ export function WhatIsInside(p: {
 }): JSX.Element {
   const body = (
     <div className="sf-daygrid">
-      {p.days.map((d) => <DayCard key={d.summary.index} {...d} />)}
+      {p.days.map((d, n) => <DayCard key={d.summary.index} {...d} stagger={n} />)}
     </div>
   )
   return (
@@ -28,7 +28,7 @@ export function WhatIsInside(p: {
           <div className="sf-daygrid">
             {w.days.map((i) => {
               const d = p.days[i]
-              return d ? <DayCard key={d.summary.index} {...d} /> : null
+              return d ? <DayCard key={d.summary.index} {...d} stagger={i} /> : null
             })}
           </div>
         </div>

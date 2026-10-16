@@ -1,11 +1,14 @@
 // P7 storefront: one day card. Free and yours show places. Locked shows counts.
+import type { CSSProperties } from 'react'
 import type { DaySummary, StorefrontKind } from '../../lib/publicStorefront'
 import { KindChip, KIND_CATEGORY } from './KindChip'
 import { CatIcon } from '../icons'
 
-export type DayCardProps =
+// `stagger` is the card's place in the grid. It feeds the entrance delay.
+export type DayCardProps = (
   | { state: 'free' | 'yours'; summary: DaySummary; places: { title: string; kind: StorefrontKind }[] }
   | { state: 'locked'; summary: DaySummary }
+) & { stagger?: number }
 
 const TAG: Record<DayCardProps['state'], string> = {
   free: 'Free',
@@ -25,7 +28,7 @@ export function DayCard(p: DayCardProps): JSX.Element {
   const s = p.summary
   const meta = travelLine(s.travelMinutes)
   return (
-    <article className={'sf-day sf-day--' + p.state}>
+    <article className={'sf-day sf-day--' + p.state} style={{ '--i': p.stagger ?? 0 } as CSSProperties}>
       <span className="sf-day-strip" aria-hidden="true">
         {s.kinds.map((k) => <span key={k.kind} className={'sf-day-strip-seg sf-kind--' + k.kind} />)}
       </span>
@@ -45,7 +48,7 @@ export function DayCard(p: DayCardProps): JSX.Element {
       ) : (
         <ul className="sf-day-places">
           {p.places.map((pl, i) => (
-            <li key={i} className="sf-day-place">
+            <li key={i} className={'sf-day-place sf-kind--' + pl.kind}>
               <CatIcon category={KIND_CATEGORY[pl.kind]} />
               <span>{pl.title}</span>
             </li>

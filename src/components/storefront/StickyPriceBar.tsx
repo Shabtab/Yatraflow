@@ -10,7 +10,7 @@ export function StickyPriceBar(p: {
     <div className={'sf-sticky' + (p.visible ? ' is-visible' : '')} aria-hidden={!p.visible}>
       <span className="sf-sticky-price">{p.priceLabel}</span>
       <button
-        className="sf-sticky-cta"
+        className={'sf-sticky-cta' + (p.mode === 'fork' ? ' sf-sticky-cta--fork' : '')}
         type="button"
         tabIndex={p.visible ? 0 : -1}
         onClick={p.onCta}
