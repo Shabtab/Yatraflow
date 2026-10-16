@@ -15,6 +15,10 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Added
+
+- **A public itinerary now shows what is inside before you pay.** The first screen holds the cover, the title, the facts and a buy box with the price. The cover is the creator's photo. A trip with no photo gets a designed ticket on a pattern of its own stop kinds. The "What is inside" section says the trip in one sentence and counts the places by kind. It shows one card per day, with a Free, Locked or Yours tag, a pace word and the road time. A free day lists its places. A locked day shows counts only, and its place names stay hidden. A trip longer than 7 days folds into weeks. A price bar appears once the first screen scrolls away. It sits under the top nav, or at the bottom of a phone. Its button does what the main button does. A free plan shows no saffron and offers "Fork to my trips" as the main button.
+
 ### Changed
 
 - **The trip header is compact on a phone.** At 390px the header band and the tab rail took about 420px of an 844px screen. The tab panel then started below the fold. A phone now takes the compact band the Board tab already used. The band is shorter, the title is 20px and the tab rail is tighter. (#677)
