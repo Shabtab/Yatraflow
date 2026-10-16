@@ -827,8 +827,8 @@ anywhere in this repo means the entry labelled `6b` below.
 - **A CSS pin must stop at the end of its own block.** `footer-route-mark.test.ts`
   read `styles.css` from its marker to the end of the file. The rule is "append
   CSS at the end". So the next appended section made the pin fail on rules that
-  were not the footer's. Slice from the marker to the next section comment.
-  Never slice to the end of the file. Check this when a guard fails after you
+  were not the footer's. Slice from the marker to the next section comment of
+  any style (`/* ----` or `/* ====`). Never slice to the end of the file. Check this when a guard fails after you
   append a section.
 
 ## 2. Conventions (`AGENTS.md` §4)

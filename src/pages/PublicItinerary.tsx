@@ -411,19 +411,22 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
     const allCats: Array<{ category: string }> = []
     const lockedRuns: Array<{ first: number; last: number; cats: Array<{ category: string }> }> = []
     const cards: DayCardProps[] = orderedDays.map(day => {
-      const live = day.stops.filter(s => s.status !== 'rejected')
+      // Auto anchors are start, end and night markers. They are not places, so
+      // the counts and the place lists both leave them out and always agree.
+      const live = day.stops.filter(s => s.status !== 'rejected' && s.auto !== true)
       const sim = simulateDay(day, trip, originOf(trip, day.index), day.index)
-      const summary = summariseDay({ ...day, stops: live }, Math.round(sim.totalTravelMinutes), flightDays.has(day.index))
+      const isLocked = !free.has(day.index) && !unlocked
+      // A locked card never says "Flight day": the flight data stays off it.
+      const summary = summariseDay({ ...day, stops: live }, Math.round(sim.totalTravelMinutes), isLocked ? false : flightDays.has(day.index))
       const cats = live.map(s => ({ category: s.category }))
       allCats.push(...cats)
-      if (!free.has(day.index) && !unlocked) {
+      if (isLocked) {
         const run = lockedRuns[lockedRuns.length - 1]
         if (run && run.last === day.index - 1) { run.last = day.index; run.cats.push(...cats) }
         else lockedRuns.push({ first: day.index, last: day.index, cats: [...cats] })
         return { state: 'locked', summary }
       }
       const places = live
-        .filter(s => s.auto !== true)
         .sort((a, b) => a.orderInDay - b.orderInDay)
         .map(s => ({ title: s.title, kind: kindOfCategory(s.category) }))
         .filter(p => p.kind !== 'stay' && p.kind !== 'travel')
@@ -432,17 +435,23 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
     const kinds: KindCount[] = countKinds(allCats)
     const list = describeKinds(kinds)
     const lede = list ? `A ${orderedDays.length}-day plan with ${list}.` : `A ${orderedDays.length}-day plan.`
+    // The buy promise is made only where a purchase is on offer right now.
+    const canBuy = !!pub.premiumPriceInr && mayShowPriceCta
+    const closing = canBuy ? undefined : 'Their names stay hidden on this page.'
     const lockedLine = lockedRuns
-      .map(r => lockedRunLine(r.first + 1, r.last + 1, countKinds(r.cats)))
+      .map(r => lockedRunLine(r.first + 1, r.last + 1, countKinds(r.cats), closing))
       .filter(Boolean)
       .join(' ')
+    const coverBase = { routeSummary: pub.routeSummary, durationDays: pub.durationDays }
     const cover = chooseCover(
-      { coverImageUrl: pub.coverImageUrl ? sizedCoverUrl(pub.coverImageUrl) : undefined, routeSummary: pub.routeSummary, durationDays: pub.durationDays },
+      { ...coverBase, coverImageUrl: pub.coverImageUrl ? sizedCoverUrl(pub.coverImageUrl) : undefined },
       kinds,
       cap(trip.transportMode),
     )
-    return { cards, kinds, lede, lockedLine, weeks: foldWeeks(cards.length), cover }
-  }, [pub, trip, orderedDays, unlocked])
+    // The ticket the plate shows if the photo fails to load.
+    const coverFallback = chooseCover({ ...coverBase, coverImageUrl: undefined }, kinds, cap(trip.transportMode))
+    return { cards, kinds, lede, lockedLine, weeks: foldWeeks(cards.length), cover, coverFallback: coverFallback.kind === 'ticket' ? coverFallback : undefined, allFree: orderedDays.every(d => free.has(d.index)) }
+  }, [pub, trip, orderedDays, unlocked, mayShowPriceCta])
 
   // ---- Soft-unpublish (#350). The row survives — that is what keeps buyers
   // whole — but the page is no longer public. The creator and anyone holding an
@@ -643,7 +652,7 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
             </div>
           </aside>
           <div className="sf-hero-side">
-            {storefront && <CoverPlate plan={storefront.cover} alt={`Cover for ${pub.title}`} />}
+            {storefront && <CoverPlate plan={storefront.cover} fallback={storefront.coverFallback} alt={`Cover for ${pub.title}`} />}
             <div className="sf-buybox">
               {showUnlockCta && <>
                 <p className="sf-buybox-price"><b>{formatInr(price)}</b><span>one payment, no subscription</span></p>
@@ -659,7 +668,7 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
                 ? <p className="small muted">Your purchase went through. The full plan could not load. Use Retry in the box further down.</p>
                 : <UnlockCheckState read={entitlementRead} onRetry={retryEntitlements} />)}
               {(price === undefined || unlocked) && <>
-                <p className="sf-buybox-price"><b>{unlocked && price !== undefined ? 'Yours' : 'Free'}</b><span>{unlocked && price !== undefined ? 'full plan unlocked' : 'every day is open to read'}</span></p>
+                <p className="sf-buybox-price"><b>{unlocked && price !== undefined ? 'Yours' : 'Free'}</b><span>{unlocked && price !== undefined ? (isMyPub ? 'your own plan' : 'full plan unlocked') : storefront?.allFree === false ? 'free to fork' : 'every day is open to read'}</span></p>
                 {pitch && <p className="sf-buybox-pitch">{pitch}</p>}
                 <button className="btn btn-primary btn-lg" onClick={copyThis}>
                   <InlineIcon icon={GitFork} size={15} gap={5} />{forkLabel}
@@ -676,6 +685,7 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
           priceLabel={stickyMode === 'unlock' ? formatInr(price ?? 0) : unlocked && price !== undefined ? 'Yours' : 'Free'}
           ctaLabel={stickyMode === 'unlock' ? (buying ? 'Opening payments…' : 'Unlock full plan') : forkLabel}
           mode={stickyMode}
+          disabled={stickyMode === 'unlock' && buying}
           onCta={stickyMode === 'unlock' ? unlockThis : copyThis}
         />
       )}

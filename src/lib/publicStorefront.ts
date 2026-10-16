@@ -181,7 +181,13 @@ export function chooseCover(
 
 /** Says what a locked run holds in counts: "Inside days 5 to 8: 4 nature stops,
  *  3 sights and 2 temples. Their names open when you buy the plan." */
-export function lockedRunLine(fromDay: number, toDay: number, kinds: KindCount[]): string {
+export function lockedRunLine(
+  fromDay: number,
+  toDay: number,
+  kinds: KindCount[],
+  /** The last sentence. The default promises a purchase. Pass a neutral one when no purchase is on offer. */
+  closing = 'Their names open when you buy the plan.',
+): string {
   const list = describeKinds(kinds)
   if (!list) return ''
   const span = toDay - fromDay
@@ -189,11 +195,13 @@ export function lockedRunLine(fromDay: number, toDay: number, kinds: KindCount[]
   if (span <= 0) days = `day ${fromDay}`
   else if (span === 1) days = `days ${fromDay} and ${toDay}`
   else days = `days ${fromDay} to ${toDay}`
-  return `Inside ${days}: ${list}. Their names open when you buy the plan.`
+  return `Inside ${days}: ${list}. ${closing}`
 }
 
 /** Cuts the pitch to its limit. An ellipsis marks a cut. */
 export function truncatePitch(text: string, max = 140): string {
-  if (text.length <= max) return text
-  return text.slice(0, Math.max(max - 1, 1)) + '…'
+  // Count code points, so an emoji is never split in half. Trim before the ellipsis.
+  const points = Array.from(text)
+  if (points.length <= max) return text
+  return points.slice(0, Math.max(max - 1, 1)).join('').trimEnd() + '…'
 }

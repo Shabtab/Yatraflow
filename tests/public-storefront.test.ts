@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { describe, it, expect } from 'vitest'
 import type { ItineraryDay, ItineraryStop } from '../src/data/types'
 import { chooseCover, countKinds, describeKinds, foldWeeks, kindOfCategory, lockedRunLine, paceOf, summariseDay, truncatePitch } from '../src/lib/publicStorefront'
@@ -143,6 +144,20 @@ describe('truncatePitch', () => {
     expect(cut.endsWith('…')).toBe(true)
   })
   it('keeps an empty pitch empty', () => expect(truncatePitch('')).toBe(''))
+  it('trims the space before the ellipsis', () => {
+    expect(truncatePitch('word '.repeat(40), 10)).toBe('word word…')
+  })
+  it('never splits a surrogate pair', () => {
+    const cut = truncatePitch('😀'.repeat(10), 4)
+    expect(cut).toBe('😀😀😀…')
+    expect(/[�-�](?![�-�])/.test(cut)).toBe(false)
+  })
+})
+
+describe('lockedRunLine closing', () => {
+  it('takes a neutral closing sentence', () => {
+    expect(lockedRunLine(2, 3, [{ kind: 'sight', count: 2 }], 'Their names stay hidden here.')).toBe('Inside days 2 and 3: 2 sights. Their names stay hidden here.')
+  })
 })
 
 describe('lock safety', () => {
@@ -165,5 +180,28 @@ describe('lock safety', () => {
     }
     expect(summary.placeCount).toBe(4)
     expect(summary.kinds).toEqual([{ kind: 'food', count: 1 }, { kind: 'nature', count: 1 }, { kind: 'sight', count: 1 }, { kind: 'temple', count: 1 }])
+  })
+})
+
+describe('page lock safety (source scan)', () => {
+  const page = readFileSync(new URL('../src/pages/PublicItinerary.tsx', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
+  const RETURN = "return { state: 'locked', summary }"
+  const open = page.indexOf('if (isLocked) {')
+  const close = open < 0 ? -1 : page.indexOf(RETURN, open)
+  const lockedBranch = open < 0 || close < 0 ? '' : page.slice(open, close + RETURN.length)
+
+  it('finds the locked branch and returns only state and summary', () => {
+    expect(lockedBranch).not.toBe('')
+    expect(lockedBranch).toContain(RETURN)
+  })
+
+  it('the locked branch has no places key, stop title or location name', () => {
+    expect(lockedBranch).not.toMatch(/\bplaces\b/)
+    expect(lockedBranch).not.toMatch(/\.title\b/)
+    expect(lockedBranch).not.toMatch(/locationName/)
+  })
+
+  it('a locked day is summarised without flight data', () => {
+    expect(page).toMatch(/summariseDay\([^\n]*isLocked \? false : flightDays\.has\(day\.index\)\)/)
   })
 })

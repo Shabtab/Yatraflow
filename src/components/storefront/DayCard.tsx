@@ -8,7 +8,11 @@ import { CatIcon } from '../icons'
 export type DayCardProps = (
   | { state: 'free' | 'yours'; summary: DaySummary; places: { title: string; kind: StorefrontKind }[] }
   | { state: 'locked'; summary: DaySummary }
-) & { stagger?: number }
+) & {
+  stagger?: number
+  /** 3 under a section heading. 4 when the card sits inside a week. */
+  headingLevel?: 3 | 4
+}
 
 const TAG: Record<DayCardProps['state'], string> = {
   free: 'Free',
@@ -27,6 +31,7 @@ function travelLine(min: number): string {
 export function DayCard(p: DayCardProps): JSX.Element {
   const s = p.summary
   const meta = travelLine(s.travelMinutes)
+  const Title = p.headingLevel === 4 ? 'h4' : 'h3'
   return (
     <article className={'sf-day sf-day--' + p.state} style={{ '--i': p.stagger ?? 0 } as CSSProperties}>
       <span className="sf-day-strip" aria-hidden="true">
@@ -36,7 +41,7 @@ export function DayCard(p: DayCardProps): JSX.Element {
         <span className="sf-day-num">Day {s.index + 1}</span>
         <span className="sf-day-tag">{TAG[p.state]}</span>
       </div>
-      <h3 className="sf-day-title">{s.title}</h3>
+      <Title className="sf-day-title">{s.title}</Title>
       <div className="sf-day-meta">
         <span className={'sf-pace sf-pace--' + s.pace.key}>{s.pace.label}</span>
         {meta ? <span>{meta}</span> : null}

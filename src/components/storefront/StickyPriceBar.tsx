@@ -4,6 +4,7 @@ export function StickyPriceBar(p: {
   priceLabel: string
   ctaLabel: string
   mode: 'unlock' | 'fork'
+  disabled?: boolean
   onCta: () => void
 }): JSX.Element {
   return (
@@ -13,6 +14,7 @@ export function StickyPriceBar(p: {
         className={'sf-sticky-cta' + (p.mode === 'fork' ? ' sf-sticky-cta--fork' : '')}
         type="button"
         tabIndex={p.visible ? 0 : -1}
+        disabled={p.disabled}
         onClick={p.onCta}
       >
         {p.ctaLabel}

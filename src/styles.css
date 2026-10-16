@@ -10826,9 +10826,12 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
   inset: 0;
   z-index: var(--z-under);
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(68px, 1fr));
-  grid-auto-rows: 68px;
-  gap: 2px;
+  grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
+  /* Only whole rows are drawn. Extra tiles fall into zero-height rows and
+     have no height, so no dot is ever cut in half. */
+  grid-template-rows: repeat(auto-fill, 56px);
+  grid-auto-rows: 0;
+  align-content: center;
   padding: var(--space-4);
   overflow: hidden;
 }
@@ -10837,7 +10840,7 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
   display: grid;
   place-items: center;
   width: 48px;
-  height: 48px;
+  height: min(48px, 100%);
   margin: auto;
   border-radius: 50%;
   background: var(--sf-c-bg);
@@ -10920,7 +10923,7 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 
 .sf-inside-lede {
   max-width: 62ch;
-  font-size: 17px;
+  font-size: 18px;
   line-height: 1.45;
   text-wrap: pretty;
 }
@@ -10933,10 +10936,6 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 
 /* The locked line is the only saffron block outside a day card. */
 .sf-inside-lock {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: start;
-  gap: var(--space-4);
   padding: var(--space-6);
   border-radius: var(--radius-sm);
   background: var(--saffron-soft);
@@ -10945,10 +10944,6 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
   font-weight: 600;
 }
 
-.sf-inside-lock svg {
-  width: 18px;
-  height: 18px;
-}
 /* ---------- the day grid and the week groups ---------- */
 .sf-daygrid {
   display: grid;
@@ -10968,8 +10963,11 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
   align-items: center;
   gap: var(--space-3);
   min-height: 44px;
-  font-size: 17px;
-  font-weight: 700;
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.3;
 }
 
 /* ---------- one day card ---------- */
@@ -10991,8 +10989,9 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
   color: var(--text);
 }
 
+/* A locked card is neutral. Only its tag and the locked line carry saffron. */
 .sf-day--locked {
-  background: var(--saffron-soft);
+  background: var(--bg-soft);
   color: var(--text);
 }
 
@@ -11049,8 +11048,10 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
   color: var(--ink-amber);
 }
 .sf-day-title {
-  font-size: 17px;
-  font-weight: 700;
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 18px;
+  font-weight: 800;
   line-height: 1.3;
   text-wrap: balance;
 }
@@ -11071,12 +11072,6 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
   font-size: 13px;
   font-weight: 600;
   color: var(--text-2);
-}
-
-.sf-pace svg {
-  flex: none;
-  width: 16px;
-  height: 16px;
 }
 
 .sf-pace--empty {
@@ -11178,11 +11173,6 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
     padding: var(--space-7);
   }
 
-  .sf-cover-pattern {
-    grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
-    grid-auto-rows: 52px;
-  }
-
   .sf-cover-ticket {
     padding: var(--space-7);
   }
@@ -11247,7 +11237,8 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 
   .sf-day,
   .sf-sticky,
-  .sf-sticky.is-visible {
+  .sf-sticky.is-visible,
+  .sf-week-summary::after {
     transition: none;
   }
 }
@@ -11311,12 +11302,12 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 }
 
 .sf-hero-side .sf-cover {
-  min-height: 0;
-  height: 232px;
+  min-height: 232px;
   padding: var(--space-7);
 }
 
 .sf-hero-side .sf-cover-photo {
+  height: 232px;
   padding: 0;
 }
 
@@ -11328,8 +11319,8 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 }
 
 .sf-hero--free .pub-hero-badge {
-  background: rgba(255, 255, 255, .16);
-  color: #fff;
+  background: var(--teal-soft);
+  color: var(--ink-teal);
 }
 
 .sf-buybox {
@@ -11383,18 +11374,72 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 
 .sf-inside-heading {
   margin: 0 0 var(--space-7);
-  font-size: 24px;
+  font-family: var(--font-body);
+  font-size: 18px;
   font-weight: 800;
+  line-height: 1.3;
   color: var(--text);
 }
 
 /* A free plan or an owned plan offers Fork. It uses the primary pair. */
+.sf-sticky-cta:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.sf-sticky-cta:disabled {
+  opacity: .6;
+  cursor: default;
+}
+
 .sf-sticky-cta--fork {
   background: var(--color-primary);
   color: var(--color-primary-foreground);
 }
 
+/* A week folds like a drawer. The summary is the week title. */
+.sf-week-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  min-height: 44px;
+  list-style: none;
+  cursor: pointer;
+}
+
+.sf-week-summary::-webkit-details-marker {
+  display: none;
+}
+
+.sf-week-summary::after {
+  content: '';
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-right: var(--space-4);
+  border-right: 2px solid var(--text-2);
+  border-bottom: 2px solid var(--text-2);
+  transform: rotate(45deg);
+  transition: transform var(--motion-fast) var(--ease-out);
+}
+
+.sf-week[open] > .sf-week-summary::after {
+  transform: rotate(-135deg);
+}
+
+.sf-week-summary:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+  border-radius: var(--radius-sm);
+}
+
 @media (max-width: 960px) {
+  /* On a phone the buy box comes before the cover, so the button is on screen. */
+  .sf-buybox {
+    order: -1;
+  }
+
   .sf-hero-grid {
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
@@ -11415,6 +11460,10 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
   }
 
   .sf-hero-side .sf-cover {
+    min-height: 200px;
+  }
+
+  .sf-hero-side .sf-cover-photo {
     height: 200px;
   }
 
@@ -11429,6 +11478,7 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 @media (min-width: 721px) {
   .sf-sticky {
     top: calc(12px + var(--nav-h) + var(--space-4));
+    width: min(100% - 24px, 560px);
     border-radius: var(--radius);
   }
 }
