@@ -1,6 +1,7 @@
 # Six-week distribution pilot
 
 This specification follows the [source audit](DISTRIBUTION-MEASUREMENT-AUDIT.md).
+The [supplied PDF review](DISTRIBUTION-SOURCE-REVIEW.md) adds page citations and records differences in scope.
 It tests three distribution mechanisms. It does not assume a working growth loop.
 You must freeze the sample, thresholds, exclusions, and reporting dates before the first real distribution action.
 Engine A means creator audiences. Engine B means group planning. Engine C means travel-business partners.
@@ -12,6 +13,13 @@ Use free plans during this pilot. Paid demand needs separate merchant, entitleme
 This free pilot cannot prove willingness to pay or a creator's first ₹1,000.
 Keep Local Experts and audience-first Travel Creators in one proposed Creator Network.
 Do not expect Local Experts without audiences to supply their own customers.
+These segments can overlap. They must not become mutually exclusive account types.
+
+The PDFs propose paid expert work and a first ₹1,000 as commercial success signals.
+Document B also recommends a small matched creator-and-expert experiment.
+This free pilot answers the revised distribution question. It leaves those commercial questions open.
+Expert-service demand and fulfillment need a separate approved test before larger service tools.
+Partner guide distribution does not prove affiliate bookings or creator income.
 
 The five campaign codes are fixed in `src/data/growthCampaigns.json`.
 They identify experimental slots. They contain no participant identities.
@@ -142,7 +150,7 @@ Do not store invitation codes, recipient names, phone numbers, or private trip t
 
 You must finish these checks before the six-week measurement window starts.
 
-1. Check related open issues and PRs when GitHub API access returns.
+1. Recheck related issues and PRs. Preserve existing security and routing gates in issue #782 for enabled pilot flows.
 2. Apply the additive attribution migration before the new app deploys.
 3. Deploy the app and apply the event guard migration afterward.
 4. Run the migration check and independent read-only production probes.
@@ -152,6 +160,7 @@ You must finish these checks before the six-week measurement window starts.
 8. Confirm a genuine non-owner proposal appears in the correct cohort aggregate.
 9. Freeze the campaign-publication mapping, team exclusion cohort, dates, thresholds, and effort budget.
 10. Verify free plan content, share previews, and the app's backend configuration.
+11. Prepare useful creator pages and manual snapshots. Keep creator and route links, licensed assets, and map credits.
 
 The local SQL harness uses an isolated disposable PostgreSQL database.
 It does not establish deployed migration status, Supabase role grants, or production success.
@@ -163,12 +172,15 @@ Use two audience-first creators, two travel businesses, and three real groups as
 Each group must plan a real upcoming trip. Recruit four or more intended travelers per group.
 Count confirmed membership separately from stated crew size.
 Use five campaign slots for their public routes and guides.
+Use the existing public creator pages as the portfolio starting point.
+Prepare Story, post, or carousel examples manually within the stated time budget.
+Record whether creators actually use each asset. Automate only when observed friction supports the work.
 Do not count Local Experts without audiences as failed creator distributors.
 Place their expertise in a partner-supplied guide only when a business agrees to distribute it.
 
 | Week | Required work | Evidence and decision |
 | --- | --- | --- |
-| 1 | Interview the creators and partners. Match each route to a real upcoming trip need. Observe one full traveler path. | Record actual distribution actions, qualified visitor interviews, first persisted trips, failures, and all manual minutes. |
+| 1 | Interview creators and partners. Prepare their existing public pages and manual snapshots. Match routes to real trip needs. Observe one full traveler path. | Record actual distribution actions, asset use, qualified visitor interviews, persisted trips, failures, and all manual minutes. |
 | 2 | Run Creator A's second route. Ask both partners to distribute to a second eligible cohort. Start the first group trip. | Separate prompted and unprompted repeat distribution. Check campaign contamination and join friction. |
 | 3 | Repeat the best useful content format manually. Run the remaining real group trips. | Report per-engine organizers, memberships, member proposals, costs, and effort. Do not compare raw views as channel quality. |
 | 4 | Observe productive returns in the earliest eligible cohorts. Ask inactive participants where they stopped. | Separate no current trip need from product failure. Record observed edits, proposals, and independent new trips. |
@@ -205,6 +217,7 @@ Use symbolic participant slots in the scorecard and any repository report.
 week_utc_start, week_utc_end, campaign_code, public_publication_id,
 engine, external_channel, distribution_action_number,
 distribution_confirmed, reminder_required, customer_cohort_number,
+asset_format, asset_used,
 preparation_minutes, outreach_minutes, support_minutes, reporting_minutes,
 cash_cost_inr, incentive_cost_inr, report_status
 ```

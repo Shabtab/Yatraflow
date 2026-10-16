@@ -10,23 +10,25 @@ Read the [pilot specification](DISTRIBUTION-PILOT.md) for metric definitions and
 
 | Source | Result |
 | --- | --- |
-| Local Guide Monetization Google Doc | Unread. Its text export returned HTTP 403 through the environment proxy. |
-| Creator Network Google Doc | Unread. Its text export returned HTTP 403 through the environment proxy. |
+| Local Guide Monetization document | Google Doc export returned HTTP 403. All five pages of the later supplied PDF were read on 2026-10-16. |
+| Creator Network document | Google Doc export returned HTTP 403. All thirteen pages of the later supplied PDF were read on 2026-10-16. |
 | Repository exports of those documents | No matching export found. The portfolio brainstorm is related evidence, not either document. |
 | `commercial/STRATEGY.md` | Read in full. Its live figures describe 2026-10-12, not this audit date. |
 | `commercial/BRAINSTORM-2026-10-12-creator-portfolio.md` | Read in full. Its proposals are distinct from shipped features. |
 | Older launch and execution plans | Reviewed as historical references. Their headers defer to `STRATEGY.md`. |
 | Default branch | Native Git confirmed `main` at `7bebcd8`. The checkout matched it. |
 | Integration branch | `origin/test` held six later commits. Their changes concern phone layout, copy, and screenshots. |
-| Open issues and PRs | Unverified. GitHub's GraphQL API returned `Forbidden`. No token was requested or replaced. |
-| Related remote work | `feat/creator-search-pages` adds creator SEO rendering. This task does not rebuild that feature. |
+| Open issues and PRs | Initially blocked. Later API reads confirmed PRs #794 and #773, plus relevant open issues. No token was replaced. |
+| Related remote work | PR #773 remains open for creator SEO rendering. Its changed-file list includes `api/c.js`. This task does not rebuild it. |
 | Production database | Unverified. No Supabase variables or local environment file were available. |
 | Baseline checks | Nine relevant test files passed: 227 tests. These mocks and source checks do not prove production RLS behavior. |
 
-The Google Docs interpretations below use your supplied brief. They do not claim access to the document contents.
-No external document, tracker record, production row, or deployment was changed during this audit.
+The initial interpretations used your brief. The later [PDF review](DISTRIBUTION-SOURCE-REVIEW.md) adds direct source evidence and page citations.
+It distinguishes the free distribution pilot from paid expert success and records the planned portfolio work.
+The Google Docs themselves remain unread. The PDFs do not prove current implementation or live demand.
+PR #794 now holds this work. No external strategic document, production row, or deployment was changed.
 
-You can repeat the blocked tracker checks after access is available:
+You can repeat these read-only tracker checks before integration:
 
 ```bash
 gh repo view hasnaina955/Yatraflow --json defaultBranchRef,pushedAt
@@ -50,6 +52,9 @@ You must inspect related PR diffs before integration. Git branch names cannot pr
 | Trips with two members represent collaboration. | `adminStats.computeFunnel` checks membership length. It does not check a second person's action. | Label this confirmed membership. Count a persisted non-owner proposal separately. |
 | A creator must receive a payout before distribution starts. | The strategy places payouts and merchant decisions in Week 0. This task measures distribution, not paid demand. | Use free pilot plans. Keep paid sales, payouts, tax, and merchant readiness as separate gates. |
 | SEO needs a new path router. | Current web routing already uses paths. `api/i.js` provides public itinerary bodies. Creator SEO has related remote work. | Keep SEO in the strategy. Start no programmatic SEO project here. |
+| The PDFs seek a paid expert success test. | A p. 5 targets the first ₹1,000. B pp. 3, 5, and 7 separates paid expert fulfillment from creator traffic. | The free pilot cannot meet that commercial gate. Keep a demand-backed paid-services follow-up separate. |
+| Portfolios and manual snapshots are early priorities. | B pp. 9 and 11–12 sets these priorities. This measurement PR reuses existing creator pages. | Prepare manual assets. Defer new portfolio features only within this measurement PR. |
+| The PDFs propose partner booking revenue. | A pp. 1–3 discusses eligible completed bookings. The revised Engine C tests guest-guide distribution. | Report partner-originated activation separately. Claim no booking commission or expert earnings from those forks. |
 
 Existing public creator pages and the Creator Hub cover parts of identity, creation, business, and intelligence.
 They do not establish a complete Creator Studio.

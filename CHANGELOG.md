@@ -25,7 +25,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - **Sharing copy now states what a snapshot link is.** Anyone who holds the link can read the trip, and no copied link can be revoked. The reader's page also records that an older link was already sent on its first request. A browser can repeat that in same-origin referrers, and the app does not stop it. (#805)
 ### Added
 
-- **A distribution pilot separates traffic, trip activation, membership, and meaningful collaboration.** Five opaque campaign slots retain source categories. A read-only scorecard uses persisted trips and product records. The six-week plan states its limits and proposed gates.
+- **A distribution pilot separates traffic, trip activation, membership, and meaningful collaboration.** Five opaque campaign slots retain source categories. A read-only scorecard uses persisted trips and product records. The six-week plan states its limits and proposed gates. A review of the supplied strategy PDFs separates distribution evidence from paid expert success. It preserves the portfolio and manual snapshot priorities.
 
 ### Fixed
 

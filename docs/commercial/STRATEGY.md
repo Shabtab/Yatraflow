@@ -24,6 +24,11 @@ Its proposed gates need ratification before traffic starts. They differ from the
 Local Experts without audiences need a distribution partner. Their expertise alone does not establish customer demand.
 This revision does not approve Studio construction, paid acquisition, or new commercial terms.
 
+The [supplied PDF review](DISTRIBUTION-SOURCE-REVIEW.md) records both strategic documents, read in full on 2026-10-16.
+Their paid expert and first ₹1,000 goals remain untested by the free distribution pilot.
+Their early portfolio and manual snapshot priorities remain visible. This measurement PR reuses existing creator pages.
+Travel Creator and Local Expert capabilities can overlap within one identity.
+
 The [creator portfolio brainstorm](BRAINSTORM-2026-10-12-creator-portfolio.md) records source limits and proposals. `ROADMAP.md` remains the plan of record.
 
 ## 1. Where we stand
