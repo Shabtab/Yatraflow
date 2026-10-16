@@ -10814,13 +10814,10 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
   background: var(--yf-navy);
 }
 
+/* The photo plate: the image inside it fills the box. */
 .sf-cover-photo {
-  position: absolute;
-  inset: 0;
-  z-index: var(--z-under);
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+  position: relative;
+  padding: 0;
 }
 
 /* The pattern is decoration. It draws no image. */
@@ -10889,7 +10886,7 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
   align-items: center;
   gap: var(--space-3);
   min-height: 30px;
-  padding: 0 var(--space-5) 0 var(--space-2);
+  padding: 0 var(--space-5) 0 var(--space-4);
   border-radius: 999px;
   background: var(--sf-c-bg);
   color: var(--sf-c);
@@ -11059,6 +11056,9 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 }
 
 .sf-day-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-5);
   font-size: 13px;
   font-weight: 600;
   color: var(--text-2);
@@ -11093,6 +11093,9 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
 .sf-day-place {
@@ -11126,6 +11129,7 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
   z-index: var(--z-strip);
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: var(--space-7);
   width: min(100% - 24px, 1080px);
   padding: var(--space-5);
@@ -11245,5 +11249,186 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
   .sf-sticky,
   .sf-sticky.is-visible {
     transition: none;
+  }
+}
+/* ---- P7 storefront: first screen and page wiring ----
+   The first screen holds the title, the facts, the cover and the buy box.
+   The cover photo and the ticket come from the storefront components.
+   Saffron stays on the paid button. A free plan shows none. */
+.sf-hero {
+  padding-bottom: calc(var(--surface-block-gap) + var(--space-7));
+}
+
+.sf-hero-grid {
+  position: relative;
+  z-index: var(--z-content);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 420px);
+  grid-template-areas:
+    "main side"
+    "facts side";
+  grid-template-rows: auto 1fr;
+  gap: var(--space-8) var(--surface-block-gap);
+  align-items: start;
+}
+
+.sf-hero-main {
+  grid-area: main;
+  min-width: 0;
+}
+
+.sf-hero .pub-hero-title {
+  max-width: 720px;
+}
+
+.sf-hero .pub-hero-story {
+  max-width: 640px;
+}
+
+.sf-hero .pub-hero-byline {
+  max-width: none;
+}
+
+/* The facts card sits in the flow here. It no longer floats over the hero. */
+.sf-hero .pub-hero-stats {
+  grid-area: facts;
+  position: static;
+  width: auto;
+  max-width: 520px;
+  margin: 0;
+}
+
+.sf-hero .pub-stats-row {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.sf-hero-side {
+  grid-area: side;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-7);
+  min-width: 0;
+}
+
+.sf-hero-side .sf-cover {
+  min-height: 0;
+  height: 232px;
+  padding: var(--space-7);
+}
+
+.sf-hero-side .sf-cover-photo {
+  padding: 0;
+}
+
+.sf-cover-photo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.sf-hero--free .pub-hero-badge {
+  background: rgba(255, 255, 255, .16);
+  color: #fff;
+}
+
+.sf-buybox {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--space-8);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--text);
+  box-shadow: var(--shadow-soft);
+}
+
+.sf-buybox .btn {
+  width: 100%;
+  min-height: 44px;
+  justify-content: center;
+}
+
+.sf-buybox-price {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-4);
+  margin: 0;
+}
+
+.sf-buybox-price b {
+  font-size: 24px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.sf-buybox-price span {
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.sf-buybox-pitch {
+  margin: 0;
+  padding-left: var(--space-5);
+  border-left: 3px solid var(--teal);
+  font-size: 15px;
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+
+.sf-inside-section {
+  margin: var(--surface-block-gap) 0;
+}
+
+.sf-inside-heading {
+  margin: 0 0 var(--space-7);
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+/* A free plan or an owned plan offers Fork. It uses the primary pair. */
+.sf-sticky-cta--fork {
+  background: var(--color-primary);
+  color: var(--color-primary-foreground);
+}
+
+@media (max-width: 960px) {
+  .sf-hero-grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "main"
+      "side"
+      "facts";
+    grid-template-rows: auto;
+  }
+
+  .sf-hero .pub-hero-stats {
+    max-width: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .sf-hero {
+    padding-bottom: var(--surface-block-gap);
+  }
+
+  .sf-hero-side .sf-cover {
+    height: 200px;
+  }
+
+  /* The fixed price bar owns the bottom edge. The page leaves room for it. */
+  .sf-page {
+    padding-bottom: calc(80px + var(--bottom-ui-offset));
+  }
+}
+
+
+/* On a wide screen the bar sits under the floating top nav, not behind it. */
+@media (min-width: 721px) {
+  .sf-sticky {
+    top: calc(12px + var(--nav-h) + var(--space-4));
+    border-radius: var(--radius);
   }
 }
