@@ -824,6 +824,13 @@ anywhere in this repo means the entry labelled `6b` below.
    does, and it is the precedent to copy. Check `TripWorkspace.tsx` for an inline value
    before you write a margin rule for that header.
 
+- **A CSS pin must stop at the end of its own block.** `footer-route-mark.test.ts`
+  read `styles.css` from its marker to the end of the file. The rule is "append
+  CSS at the end". So the next appended section made the pin fail on rules that
+  were not the footer's. Slice from the marker to the next section comment.
+  Never slice to the end of the file. Check this when a guard fails after you
+  append a section.
+
 ## 2. Conventions (`AGENTS.md` §4)
 
 The store, maps and UI entries live in `docs/standards/` now (2026-10-05
