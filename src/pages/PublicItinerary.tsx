@@ -618,7 +618,7 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
       {/* ---- Editorial hero: destination-led, creator-attributed (§6.11) ---- */}
       <section className={`pub-hero sf-hero${price === undefined ? ' sf-hero--free' : ''}`} ref={setHeroEl}>
         {heroSrc
-          ? <img className="pub-hero-photo" src={heroSrc} alt="" aria-hidden="true" width={1600} height={900} loading="eager" decoding="async" />
+          ? <img className="pub-hero-photo" src={heroSrc} alt="" aria-hidden="true" width={1600} height={900} loading="eager" decoding="async" onError={(e) => { e.currentTarget.hidden = true }} />
           : null}
         <div className="pub-hero-bg" aria-hidden="true" />
         <div className="container sf-hero-grid">

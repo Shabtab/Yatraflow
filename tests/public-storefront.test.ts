@@ -204,4 +204,9 @@ describe('page lock safety (source scan)', () => {
   it('a locked day is summarised without flight data', () => {
     expect(page).toMatch(/summariseDay\([^\n]*isLocked \? false : flightDays\.has\(day\.index\)\)/)
   })
+
+  it('the hero photo hides itself when its source fails', () => {
+    const heroImg = page.match(/<img[^>]*pub-hero-photo[^>]*>/)?.[0] ?? ''
+    expect(heroImg).toContain('onError=')
+  })
 })
