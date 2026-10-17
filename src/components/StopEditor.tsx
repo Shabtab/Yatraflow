@@ -12,7 +12,7 @@ import { useResolvePick } from './ResolvePickDialog'
 import { unnamedPick } from '../lib/resolvePick'
 import { fetchOpeningHours } from '../lib/geocode'
 import { roadLegBetween } from '../lib/routing'
-import { getAssumptions, hmToMinutes, addMinutesToClock, formatInr } from '../lib/engine'
+import { groundAssumptions, hmToMinutes, addMinutesToClock, formatInr } from '../lib/engine'
 import { titleCase, statusLabel } from '../lib/labels'
 import { useTimeFormat, formatHM } from '../lib/timefmt'
 
@@ -109,7 +109,7 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel,
 
   /** assumptions for the travel-leg preview (null when no leg context) */
   const legAssumptions = legContext
-    ? getAssumptions({ transportMode: legContext.transportMode, fuelEconomyKmL: legContext.fuelEconomyKmL, fuelPricePerL: legContext.fuelPricePerL })
+    ? groundAssumptions(legContext)
     : null
   /** one-line fuel/fare preview under the leg fields — litres-first when an economy is stated */
   const legPreview = (() => {
@@ -137,9 +137,9 @@ export function StopEditor({ open, onClose, initial, resetKey, onSave, dayLabel,
     if (legContext) {
       setLegState('loading')
       try {
-        const leg = await roadLegBetween(legContext.fromPoint, { lat: p.latitude, lng: p.longitude }, getAssumptions({ transportMode: legContext.transportMode, fuelEconomyKmL: legContext.fuelEconomyKmL }))
+        const leg = await roadLegBetween(legContext.fromPoint, { lat: p.latitude, lng: p.longitude }, groundAssumptions(legContext))
         if (!ownsRequest()) return
-        const perKm = getAssumptions({ transportMode: legContext.transportMode }).inrPerKm ?? 8
+        const perKm = groundAssumptions(legContext).inrPerKm ?? 8
         setV(prev => {
           if (!ownsRequest()) return prev
           const depart = prev.departTime || legContext.dayStart

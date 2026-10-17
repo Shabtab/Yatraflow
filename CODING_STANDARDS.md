@@ -1022,6 +1022,8 @@ process.
 
 ## 3. Scripted edits
 
+- **Transport labels must use `stopPresentation` with the trip mode.** The `drive` style kind also covers flights and hubs. Generated flight-trip stops represent ground transfers.
+
 Read this section **before** writing any script that edits a source file.
 The editor primitives are the default; a script is the exception.
 

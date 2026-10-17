@@ -15,6 +15,11 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Fixed
+
+- **Travel stop labels follow the transport mode.** Board, Timeline, and public highlights show Flight, Train, or Bus where applicable. Board uses the matching icon. Airport and ground transfer labels remain distinct.
+- **Local stops in flight trips use ground rates.** The stop editor calculates road travel time and fares with ground assumptions.
+
 ## [0.77.0] - 2026-10-16
 
 **This release brings flight journeys, one design language on every surface and reads that report failure.**

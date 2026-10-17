@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import ts from 'typescript'
 import { describe, expect, it, vi } from 'vitest'
+import { groundAssumptions, hmToMinutes, addMinutesToClock, legBetween } from '../src/lib/engine'
 
 const source = (path: string) => readFileSync(new URL(`../src/${path}`, import.meta.url), 'utf8')
 const group = source('pages/trip/GroupInputTab.tsx')
@@ -88,7 +89,7 @@ describe('Stage 2 P1 regressions', () => {
       open: true, placeRequest, invalidatePlaceRequest: () => { ++placeRequest.current },
       set: vi.fn(), setV, setLegState, setHoursState: vi.fn(), v: { openTime: '' },
       legContext: { fromPoint: {}, transportMode: 'car', dayStart: '08:00' },
-      roadLegBetween: () => road.promise, getAssumptions: () => ({}), fetchOpeningHours: hours,
+      roadLegBetween: () => road.promise, groundAssumptions, fetchOpeningHours: hours,
     })
     const work = pick({ name: 'Old place', kind: 'poi', latitude: 10, longitude: 76 })
     ++placeRequest.current // stop/reset/close ownership invalidation
@@ -99,6 +100,28 @@ describe('Stage 2 P1 regressions', () => {
     expect(setLegState).toHaveBeenCalledTimes(1) // stale finally cannot clear a newer spinner
     expect(editor).toContain('return () => { ++placeRequest.current }')
     expect(editor).toContain('}, [open, resetKey])')
+  })
+
+  it('uses ground timing and fares when adding a stop to a flight trip', async () => {
+    let values = { departTime: '', legDistanceKm: 0, transportCostInrTotal: 0 }
+    const fromPoint = { lat: 19.09, lng: 72.87 }
+    const destination = { lat: 18.93, lng: 72.83 }
+    const roadLegBetween = vi.fn(async (from, to, assumptions) => legBetween(from, to, assumptions))
+    const pick = handler(editor, 'onPlacePicked', {
+      open: true, placeRequest: { current: 0 }, invalidatePlaceRequest: () => {},
+      legContext: { fromPoint, transportMode: 'flight', dayStart: '08:00' },
+      groundAssumptions, hmToMinutes, addMinutesToClock, roadLegBetween,
+      set: () => {}, setHoursState: () => {}, setLegState: () => {},
+      setV: update => { values = update(values) }, v: { openTime: '' },
+    })
+    await pick({ name: 'Mumbai visit', kind: 'place', latitude: destination.lat, longitude: destination.lng })
+    const expected = legBetween(fromPoint, destination, groundAssumptions({ transportMode: 'flight' }))
+    expect(roadLegBetween.mock.calls[0][2].mode).toBe('car')
+    expect(values).toMatchObject({
+      legTravelMinutes: Math.max(1, Math.round(expected.durationMinutes)),
+      transportCostInrTotal: Math.round(expected.distanceKm * 9),
+      arrivalTime: addMinutesToClock(480, expected.durationMinutes),
+    })
   })
 
   it('discards stale opening hours after another pick', async () => {
