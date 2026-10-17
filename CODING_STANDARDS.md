@@ -1022,6 +1022,8 @@ process.
 
 ## 3. Scripted edits
 
+- **Day-start names must match the resolved origin.** Stored route points can precede a flight. Match location names against the journey coordinates.
+
 - **Transport labels must use `stopPresentation` with the trip mode.** The `drive` style kind also covers flights and hubs. Generated flight-trip stops can be route points. Flight duration must come from the journey's air leg, not a route point's visit time.
 
 Read this section **before** writing any script that edits a source file.

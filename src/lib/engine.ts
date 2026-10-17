@@ -517,14 +517,20 @@ function synthesizedAnchor(id: string, title: string, p: { lat: number; lng: num
   }
 }
 
-/** Where the traveller wakes up on `dayIndex`: last stop of the previous day, else the trip start. */
-function dayStartLabel(trip: Trip, dayIndex: number): string {
+/** Name the resolved origin, including destinations reached after the last stored stop. */
+function dayStartLabel(trip: Trip, dayIndex: number, origin: { lat: number; lng: number }): string {
   for (let d = dayIndex - 1; d >= 0; d--) {
     const stops = trip.days.find(x => x.index === d)?.stops.filter(s => s.status !== 'rejected') ?? []
     if (stops.length) {
       const last = [...stops].sort((a, b) => a.orderInDay - b.orderInDay)[stops.length - 1]
-      return cleanPlaceName(last.locationName || last.title)
+      if (coLocates(last, origin)) return cleanPlaceName(last.locationName || last.title)
     }
+    const target = nextAfter(trip, d)
+    if (target && coLocates(target.point, origin)) return cleanPlaceName(target.name)
+  }
+  if (dayIndex > 0 && isAirMode(trip.transportMode)) {
+    const airport = nearestAirport(origin)
+    if (airport && coLocates(airport, origin)) return `${airport.iata} · ${airport.name}`
   }
   return cleanPlaceName(trip.startLocation)
 }
@@ -759,7 +765,7 @@ export function buildJourney(
     startPoint = { lat: active[0].lat, lng: active[0].lng }
     startStop = active[0]
   } else {
-    startTitle = dayStartLabel(trip, day.index)
+    startTitle = dayStartLabel(trip, day.index, origin)
     startPoint = origin
   }
 
