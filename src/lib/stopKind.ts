@@ -32,7 +32,7 @@ export function stopPresentation(
   // An explicit ground transfer must not inherit the trip's flight mode.
   if (/\b(taxi|cab)\b/i.test(stop.title)) return { kind, label: 'Taxi', mode: 'taxi' }
   if (/\btransfer\b/i.test(stop.title)) return { kind, label: 'Transfer', mode: 'taxi' }
-  if (tripMode === 'flight' && stop.auto) return { kind, label: 'Transfer', mode: 'taxi' }
+  if (tripMode === 'flight' && stop.auto) return { kind, label: 'Route point', mode: 'mixed' }
   const labels: Record<TransportMode, string> = {
     car: 'Drive', rental: 'Drive', motorcycle: 'Ride', taxi: 'Taxi',
     train: 'Train', bus: 'Bus', flight: 'Flight', mixed: 'Travel',

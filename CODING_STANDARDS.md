@@ -1022,7 +1022,7 @@ process.
 
 ## 3. Scripted edits
 
-- **Transport labels must use `stopPresentation` with the trip mode.** The `drive` style kind also covers flights and hubs. Generated flight-trip stops represent ground transfers.
+- **Transport labels must use `stopPresentation` with the trip mode.** The `drive` style kind also covers flights and hubs. Generated flight-trip stops can be route points. Flight duration must come from the journey's air leg, not a route point's visit time.
 
 Read this section **before** writing any script that edits a source file.
 The editor primitives are the default; a script is the exception.

@@ -17,7 +17,7 @@ describe('transport stop presentation', () => {
     expect(stopPresentation({ category: 'travel', title: 'Airport transfer to hotel' }, 'flight'))
       .toMatchObject({ label: 'Transfer', mode: 'taxi' })
     expect(stopPresentation({ category: 'travel', title: 'Mumbai stay', auto: true }, 'flight'))
-      .toMatchObject({ label: 'Transfer', mode: 'taxi' })
+      .toMatchObject({ label: 'Route point', mode: 'mixed' })
   })
 
   it('names the hub rather than calling an airport a drive', () => {
