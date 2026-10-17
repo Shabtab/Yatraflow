@@ -15,6 +15,8 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+## [0.77.1] - 2026-10-18
+
 ### Fixed
 
 - **Backups and snapshot links retain flights and transport preferences.** Imports check flight clocks, fares, and itinerary days. Flight-only plans also import.
