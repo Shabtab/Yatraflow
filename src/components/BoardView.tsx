@@ -14,9 +14,10 @@ import {
   pendingStopId,
 } from '../lib/stopOrder'
 import { InlineIcon, KindIcon, modeIcon } from './icons'
-import type { Trip, ItineraryStop } from '../data/types'
-import { computeTotals, computeHealth, collectWarnings, minutesToHM, formatInr, buildJourney, dayRoadPolyline, isRoadMeasuredMode, isAirMode, tripJourneyGeometry } from '../lib/engine'
-import type { ScheduleWarning, LegEstimate } from '../lib/engine'
+import type { Trip, ItineraryStop, FlightLeg } from '../data/types'
+import { computeTotals, computeHealth, collectWarnings, minutesToHM, formatInr, buildJourney, dayRoadPolyline, isRoadMeasuredMode, isAirMode, tripJourneyGeometry, flightForDay } from '../lib/engine'
+import type { ScheduleWarning, LegEstimate, Journey } from '../lib/engine'
+import { AIR_TIME_ASSUMPTION_TEXT } from '../lib/air'
 import { mapReturnGeometryFromLegs, mapRoadViewFromLegs, type TripRoadView } from '../lib/tripRoad'
 import type { ImpactResult } from '../lib/impact'
 import { useTimeFormat, formatHM } from '../lib/timefmt'
@@ -148,6 +149,12 @@ export function BoardView({ trip, editable, applyChange, health, totals, onOpenO
   const airGeometry = useMemo(
     () => (isAirMode(trip.transportMode) ? tripJourneyGeometry(trip, legCorrections).geometry : null),
     [trip, legCorrections],
+  )
+  const airJourneys = useMemo(
+    () => isAirMode(trip.transportMode)
+      ? new Map(days.map(day => [day.index, buildJourney(trip, day, legCorrections)]))
+      : null,
+    [trip, days, legCorrections],
   )
   /** The road did not resolve (or is being re-measured after a failed attempt)
    *  AND this trip is actually driven: the map's line is graded rough, and the
@@ -359,6 +366,7 @@ export function BoardView({ trip, editable, applyChange, health, totals, onOpenO
         <div className="board-cols" role="list" aria-label="Trip days">
           {days.map(day => (
             <BoardColumn key={day.id} day={day} allDays={days} editable={editable} transportMode={trip.transportMode}
+              flightJourney={airJourneys?.get(day.index)} flight={flightForDay(trip, day.index)}
               warnings={warn.byDay.get(day.index) ?? NO_WARNINGS}
               focused={focusedDay === day.index}
               onToggleFocus={toggleDayFocus}
@@ -401,11 +409,13 @@ export function BoardView({ trip, editable, applyChange, health, totals, onOpenO
 // handlers, booleans and the day object itself (immutable between writes) — so
 // a column bails out unless ITS day, focus or warnings changed. The map is
 // memoized separately above.
-const BoardColumn = React.memo(function BoardColumn({ day, allDays, editable, transportMode, warnings, focused, onToggleFocus, onMoveStopIn, onReorder, onDelete, onStatus, onAdd, onEdit }: {
+const BoardColumn = React.memo(function BoardColumn({ day, allDays, editable, transportMode, flightJourney, flight, warnings, focused, onToggleFocus, onMoveStopIn, onReorder, onDelete, onStatus, onAdd, onEdit }: {
   day: Trip['days'][number]
   allDays: Trip['days']
   editable: boolean
   transportMode: Trip['transportMode']
+  flightJourney?: Journey
+  flight: FlightLeg | null
   warnings: ScheduleWarning[]
   focused: boolean
   onToggleFocus: (dayIndex: number) => void
@@ -552,6 +562,7 @@ const BoardColumn = React.memo(function BoardColumn({ day, allDays, editable, tr
       </button>
 
       <div className={`board-col-stops${dragging !== null ? ' is-dragging' : ''}`} ref={stopsRef} data-yf-list={listId}>
+        {flightJourney && <BoardFlightJourney journey={flightJourney} flight={flight} />}
         {ordered.map((s, i) => {
           const { kind, label, mode } = stopPresentation(s, transportMode)
           const meta = [
@@ -660,3 +671,28 @@ const BoardColumn = React.memo(function BoardColumn({ day, allDays, editable, tr
     </div>
   )
 })
+
+function BoardFlightJourney({ journey, flight }: { journey: Journey; flight: FlightLeg | null }) {
+  const timeFormat = useTimeFormat()
+  const sectorIndex = journey.points.findIndex(point => point.legIn?.kind === 'air')
+  if (sectorIndex < 1) return null
+  const sector = journey.points[sectorIndex]
+  const departure = journey.points[sectorIndex - 1].depart
+  const groundMinutes = journey.points.reduce((sum, point) =>
+    sum + (point.legIn?.kind !== 'air' ? point.legIn?.durationMinutes ?? 0 : 0), 0)
+  const statedTimes = [flight?.departAt, flight?.arriveAt].every(time =>
+    typeof time === 'string' && /^(?:\d|[01]\d|2[0-3]):[0-5]\d$/.test(time.trim()))
+  return (
+    <div className="board-stop board-flight stop-card kind-drive" role="group" aria-label="Flight journey">
+      <div className="stop-main">
+        <span className="board-stop-kicker">{modeIcon('flight', 12)}Flight</span>
+        <span className="stop-title">Flight time {minutesToHM(sector.legIn!.durationMinutes)}{statedTimes ? '' : ' (estimated)'}</span>
+        <span className="board-stop-meta">{sector.legIn!.fromTitle} → {sector.title}</span>
+        <span className="board-stop-meta">{formatHM(departure, timeFormat)} → {formatHM(sector.arrive, timeFormat)}{sector.arrive <= departure ? ' (+1 day)' : ''}</span>
+        <span className="board-stop-meta">Ground travel {minutesToHM(groundMinutes)}</span>
+        <span className="board-stop-meta">Total travel {minutesToHM(journey.driveMinutes)}</span>
+        {!statedTimes && <span className="board-stop-meta">{AIR_TIME_ASSUMPTION_TEXT}</span>}
+      </div>
+    </div>
+  )
+}

@@ -17,6 +17,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ### Fixed
 
+- **Board shows flight journeys with separate flight and ground travel times.** Flight cards appear even without a saved flight entry. Estimated flight times state their assumptions. Route points remain separate from flights.
 - **Travel stop labels follow the transport mode.** Board, Timeline, and public highlights show Flight, Train, or Bus where applicable. Board uses the matching icon. Airport and ground transfer labels remain distinct.
 - **Local stops in flight trips use ground rates.** The stop editor calculates road travel time and fares with ground assumptions.
 
