@@ -15,6 +15,10 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Added
+
+- **A published itinerary's share page prints the practical details a search visitor needs.** The page now shows the budget per person, the travel tips and the warnings. It shows the cover image as a real `<img>` with a width, a height and an alt. The structured data carries the same cover image. A field with no value prints nothing. (#700)
+
 ### Changed
 
 - **The trip header is compact on a phone.** At 390px the header band and the tab rail took about 420px of an 844px screen. The tab panel then started below the fold. A phone now takes the compact band the Board tab already used. The band is shorter, the title is 20px and the tab rail is tighter. (#677)
