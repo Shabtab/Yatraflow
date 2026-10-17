@@ -91,7 +91,8 @@ const { state } = vi.hoisted(() => ({
   },
 }))
 
-vi.mock('../src/lib/supabase', () => {
+vi.mock('../src/lib/supabase', async () => {
+  const { tripWriteClient } = await import('./helpers/tripWriteClient')
   const makeBuilder = (table: string) => {
     const builder: Record<string, unknown> = {}
     builder.select = () => builder
@@ -120,10 +121,10 @@ vi.mock('../src/lib/supabase', () => {
   }
   return {
     isSupabaseConfigured: false,
-    supabase: {
+    supabase: tripWriteClient({
       from: (t: string) => makeBuilder(t),
       rpc: () => Promise.resolve({ data: null, error: null }),
-    },
+    }, () => ({ trips: state.tripRow ? [state.tripRow] : [], members: state.tripRow ? [{ trip_id: (state.tripRow as any).id, user_id: 'u-owner', role: 'owner' }] : [] })),
   }
 })
 
@@ -138,7 +139,7 @@ describe('updateTrip date handling', () => {
     // #578 — debounced writes are identity-gated (a write captured under no
     // session is dropped, never stamped with the trip owner), and these tests
     // assert the PERSISTED payload — so they need a signed-in editor.
-    store.getSnapshot().sessionUserId = 'user-reconcile'
+    store.getSnapshot().sessionUserId = 'u-owner'
   })
 
   async function seedTripFromRow() {
@@ -147,7 +148,8 @@ describe('updateTrip date handling', () => {
     const row = state.tripRow as import('../src/lib/tripRow').TripRow
     const trip = rowToTrip(row, [{ userId: row.owner_id, role: 'owner', joinedAt: 1 }])
     state.tripRow = row // fetchSharedTrip's select re-reads state.tripRow
-    await fetchSharedTrip(row.id)
+    const cached = await fetchSharedTrip(row.id)
+    if (cached) cached.members = trip.members
     return trip
   }
 

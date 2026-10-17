@@ -15,7 +15,8 @@ const { calls } = vi.hoisted(() => ({
   calls: [] as Array<{ table: string; method: string; payload?: unknown }>,
 }))
 
-vi.mock('../src/lib/supabase', () => {
+vi.mock('../src/lib/supabase', async () => {
+  const { tripWriteClient } = await import('./helpers/tripWriteClient')
   const makeBuilder = (table: string) => {
     let method: string | undefined
     let payload: unknown
@@ -38,7 +39,7 @@ vi.mock('../src/lib/supabase', () => {
   }
   return {
     isSupabaseConfigured: false,
-    supabase: { from: (t: string) => makeBuilder(t) },
+    supabase: tripWriteClient({ from: (t: string) => makeBuilder(t) }),
   }
 })
 

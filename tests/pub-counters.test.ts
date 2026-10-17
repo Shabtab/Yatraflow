@@ -36,6 +36,7 @@ async function publishRow(
   store: typeof import('../src/store/store'),
   payload: Omit<PublishedItinerary, 'id' | 'publishedAt' | 'views' | 'copies'>,
 ): Promise<PublishedItinerary> {
+  store.getSnapshot().trips.push({ id: payload.tripId, visibility: 'public' } as import('../src/data/types').Trip)
   const outcome = await store.publishItinerary(payload)
   expect(outcome.ok, outcome.error).toBe(true)
   return store.getSnapshot().published.find(x => x.tripId === payload.tripId)!

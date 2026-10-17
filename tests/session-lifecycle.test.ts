@@ -24,6 +24,7 @@ const { state } = vi.hoisted(() => ({
     authHandler: null as ((event: string, session: unknown) => void) | null,
     resolveSession: null as (() => void) | null,
     sessionUser: null as string | null,
+    sessionLoaded: false,
     signOuts: 0,
     /** Every row UPDATE the store tries (write-pipeline assertions). */
     updates: [] as Array<{ table: string; payload: unknown }>,
@@ -33,13 +34,17 @@ const { state } = vi.hoisted(() => ({
 vi.mock('../src/lib/supabase', () => {
   const makeBuilder = (table: string) => {
     const rows = state.tables[table] ?? []
+    let single = false
+    let update = false
+    const eqs: Record<string, unknown> = {}
     const builder: Record<string, unknown> = {
-      select: () => builder, eq: () => builder, in: () => builder,
-      update: (p: unknown) => (state.updates.push({ table, payload: p }), builder),
+      select: () => builder, eq: (key: string, value: unknown) => { eqs[key] = value; return builder }, in: () => builder, setHeader: () => builder,
+      update: (p: unknown) => { update = true; state.updates.push({ table, payload: p }); return builder },
       insert: () => builder, delete: () => builder,
-      limit: () => builder, order: () => builder, maybeSingle: () => builder,
+      limit: () => builder, order: () => builder, maybeSingle: () => { single = true; return builder },
       then: (res: (v: { data: unknown; error: unknown }) => unknown) =>
-        Promise.resolve({ data: rows, error: null }).then(res),
+        Promise.resolve({ data: update ? [{ id: eqs.id, write_version: Number(eqs.write_version) + 1, updated_at: 2 }]
+          : single ? rows.find((row: any) => Object.entries(eqs).every(([key, value]) => row[key] === value)) ?? null : rows, error: null }).then(res),
     }
     return builder
   }
@@ -52,10 +57,14 @@ vi.mock('../src/lib/supabase', () => {
       channel: () => chain,
       removeChannel: () => Promise.resolve(),
       auth: {
-        getSession: () => new Promise(resolve => {
-          state.resolveSession = () =>
-            resolve({ data: { session: state.sessionUser ? { user: { id: state.sessionUser } } : null } })
-        }),
+        getSession: () => {
+          const response = () => ({ data: { session: state.sessionUser
+            ? { user: { id: state.sessionUser }, access_token: `fixture-${state.sessionUser}` } : null } })
+          if (state.sessionLoaded) return Promise.resolve(response())
+          return new Promise(resolve => {
+            state.resolveSession = () => { state.sessionLoaded = true; resolve(response()) }
+          })
+        },
         onAuthStateChange: (cb: (event: string, session: unknown) => void) => {
           state.authHandler = cb
           return { data: { subscription: {} } }
@@ -73,7 +82,7 @@ function tripRow(id: string, ownerId: string): TripRow {
     start_date: '2026-10-01', end_date: '2026-10-03', travellers: 2, transport_mode: 'car',
     budget_per_person_inr: 5000, travel_style: 'balanced', fixed_commitments: [],
     days: [], expenses: [], cover_emoji: '🧭', visibility: 'private',
-    created_at: 1, updated_at: 1,
+    created_at: 1, updated_at: 1, write_version: 0,
   }
 }
 
@@ -107,6 +116,7 @@ beforeEach(() => {
   state.authHandler = null
   state.resolveSession = null
   state.sessionUser = null
+  state.sessionLoaded = false
   state.signOuts = 0
   state.updates = []
 })
@@ -196,7 +206,7 @@ describe('#393 — the store wires what it promises', () => {
   })
 
   it('the write queue is stamped with the editor, not the trip owner', () => {
-    expect(src).toMatch(/ownerId: cache\.sessionUserId \?\? owner\?\.userId \?\? id/)
+    expect(src).toContain('ownerId: scope.userId')
   })
 
   it('both anonymous patches carry the Trash key', () => {
@@ -284,7 +294,7 @@ describe('#578 — debounced trip writes do not outlive the session', () => {
     await vi.advanceTimersByTimeAsync(10)
 
     expect(tripUpdates()).toHaveLength(0)
-    expect((await queue.pendingWrites()).map(w => w.tripId)).not.toContain('tripA')
+    expect((await queue.pendingWrites()).every(w => w.ownerId === 'userA')).toBe(true)
   })
 
   it('a write captured under no session is dropped, never stamped with the owner', async () => {
@@ -318,7 +328,7 @@ describe('#578 — the store wires what it promises', () => {
     // logout covers the sign-out; the hydrate closure is the ONLY place the
     // A→B switch is visible — a fix that touches logout() alone leaves that
     // path wide open (the pitfall the issue pins).
-    expect(src).toMatch(/if \(cache\.sessionUserId !== userId\) _cancelTripWrites\(\)/)
+    expect(src).toMatch(/const changed = lastAuthUserId !== userId[\s\S]*?if \(changed\) \{[\s\S]*?_cancelTripWrites\(\)/)
     const logoutBody = src.slice(src.indexOf('export async function logout'), src.indexOf('export async function enforceDisabledCheck'))
     expect(logoutBody).toContain('_cancelTripWrites()')
   })
@@ -329,20 +339,20 @@ describe('#578 — the store wires what it promises', () => {
     // queue entry into a const line (an STE-gate accommodation); the entry
     // still names the trip and still sits after the guard.
     const fn = src.slice(src.indexOf('async function persistTripFieldNow'))
-    const guard = fn.indexOf('if (!scheduledFor || cache.sessionUserId !== scheduledFor)')
+    const guard = fn.indexOf('if (!canSendTripWrite(scope, id, captured.accessEpoch))')
     const claim = fn.indexOf("markLocalWrite('trips', id)")
     expect(guard, 'the fire-time identity guard is gone').toBeGreaterThan(-1)
     expect(guard).toBeLessThan(claim)
-    const entryAt = fn.indexOf('const entry = { tripId: id')
-    expect(entryAt, 'the queue entry is gone').toBeGreaterThan(guard)
-    expect(fn.indexOf('await queueWrite(entry)')).toBeGreaterThan(entryAt)
+    const entryAt = src.indexOf('const entry: QueuedWrite = { tripId: id')
+    expect(entryAt, 'the queue entry is gone').toBeGreaterThan(-1)
+    expect(src.indexOf('durable: queueWrite(entry)', entryAt)).toBeGreaterThan(entryAt)
   })
 
   it('captures the session at schedule time, beside the snapshot', () => {
     // B0's snapshot-at-call-time contract, extended to identity: the entry
     // carries WHOSE edit it is, so the fire compares against that and not
     // against whoever is signed in when the timer runs.
-    expect(src).toMatch(/const scheduledFor = cache\.sessionUserId/)
-    expect(src).toMatch(/pendingTripWrites\.set\(id, \{ timer, trip: snapshot, sessionId: scheduledFor \}\)/)
+    expect(src).toContain('sessionId: scope.userId, epoch: scope.epoch')
+    expect(src).toContain('pendingTripWrites.set(id, { ...captured, timer })')
   })
 })

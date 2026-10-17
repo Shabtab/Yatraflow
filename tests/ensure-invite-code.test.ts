@@ -19,11 +19,12 @@ function functionBody(src: string, header: string): string {
 
 const MINT = functionBody(STORE, 'export async function ensureInviteCode(')
 const READ = functionBody(STORE, 'async function readServerInviteCode(')
+const PATCH = functionBody(STORE, 'async function persistTripMetadata(')
 
 describe('ensureInviteCode reads the server before it mints', () => {
   it('reads the stored code before the first write', () => {
-    const read = MINT.indexOf('readServerInviteCode(tripId)')
-    const write = MINT.indexOf('.update({ invite_code: code })')
+    const read = MINT.indexOf('readServerInviteCode(tripId, token)')
+    const write = MINT.indexOf('persistTripMetadata(tripId, { invite_code: code }')
     expect(read).toBeGreaterThan(-1)
     expect(read).toBeLessThan(write)
   })
@@ -33,7 +34,7 @@ describe('ensureInviteCode reads the server before it mints', () => {
   })
 
   it('mints nothing when the read fails', () => {
-    expect(MINT).toMatch(/if \(held === undefined\) return null/)
+    expect(MINT).toMatch(/if \(held === undefined \|\| !live\(\)\) return null/)
     expect(READ).toMatch(/if \(error\) \{\s*console\.error\('\[yatraflow\] invite-code read failed', error\)\s*return undefined\s*\}/)
   })
 
@@ -44,12 +45,15 @@ describe('ensureInviteCode reads the server before it mints', () => {
 
 describe('the write only lands while the server holds no code', () => {
   it('filters the update on a null invite_code and asks for the row back', () => {
-    expect(MINT).toMatch(/\.update\(\{ invite_code: code \}\)\s*\.eq\('id', tripId\)\s*\.is\('invite_code', null\)\s*\.select\('invite_code'\)/)
+    expect(MINT).toContain("{ inviteCode: code }, 'invite_code'")
+    expect(PATCH).toContain(".update(payload).eq('id', tripId)")
+    expect(PATCH).toContain('query.is(nullColumn, null)')
+    expect(PATCH).toContain("query.select('id, updated_at, write_version')")
   })
 
   it('writes once in the loop, and a lost race re-reads without a second write', () => {
-    expect(MINT.match(/\.update\(/g)).toHaveLength(1)
-    expect(MINT).toMatch(/const again = await readServerInviteCode\(tripId\)[\s\S]*?return again \?\? null/)
+    expect(MINT.match(/await persistTripMetadata\(/g)).toHaveLength(1)
+    expect(MINT).toMatch(/const again = await readServerInviteCode\(tripId, token\)[\s\S]*?if \(!uniqueClash\) return null/)
   })
 })
 
@@ -60,6 +64,6 @@ describe('the mint keeps its retry and its honest failure', () => {
   })
 
   it('reports any other write failure and returns null', () => {
-    expect(MINT).toContain("console.error('[yatraflow] invite-code mint failed', error)")
+    expect(MINT).toContain("console.error('[yatraflow] invite-code mint failed')")
   })
 })

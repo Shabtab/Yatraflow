@@ -34,7 +34,24 @@ file's index says when to read here; pitfall rules `6a`–`6ag` stay there.
 
 - **The offline snapshot cache has three rules, and each one fails SILENTLY (learned 2026-09-22, PWA phase 2).** (1) It is keyed by account and **cleared on sign-out** — issue #45 was the in-memory version of this bug (the previous user's rows re-patched into the cache after a logout); the on-disk version would outlive a reload, so the sign-out path clears it. (2) Only a **clean** hydrate is persisted (`partial.length === 0`) — the store's partial-failure model is the signal, and writing a partial snapshot presents half an account as the truth on the next cold boot. (3) A cache boot must never trigger the demo seed, which the existing `tripCountUnknown` guard already covers: the failed reads that made the cache necessary are exactly what sets it. `lib/offlineCache.ts` degrades to "no cache" on every path (no IndexedDB, quota, blocked upgrade) and validates the version plus EVERY slice on read, so a half-written record reads as absence rather than as a partial account.
 
-- **The offline write queue is durable BEFORE the send, one snapshot per trip, bounded, and cleared with its account (learned 2026-09-22, PWA phase 3).** (1) `persistTripFieldNow` queues the edit to IndexedDB BEFORE attempting the network write — durability-after-failure loses the edit to a crashed tab or a closed laptop, which are the common cases. The drop happens only on a CONFIRMED write. (2) The queue is keyed by trip id, mirroring the in-memory coalescer: a second edit replaces the first, so replay can never resurrect stops the user deleted. (3) Replays are bounded (three attempts, then a loud drop) and deliberately NOT routed through `persistTripFieldNow` — that path always re-queues with `attempts: 0`, which would unbound the retries. (4) Sign-out clears the departing account's entries (`clearWritesFor`): the next person on the device must never be the one whose session "syncs" the last one's unsynced edits. (5) A conflict (server row newer than the edit's capture) is last-writer-wins with BOTH sides told — the app's whole-trip write model makes rebasing a non-goal, and the peer's existing remote-edit banner covers their side. The replay carries no `markLocalWrite` on purpose: the echo of our own replay refreshes the cache from server truth instead of being suppressed.
+- **Save offline edits before the debounce, and acknowledge the exact edit (#783).**
+  `persistTripField` captures one complete plan per account and trip.
+  IndexedDB transaction completion proves durability. Request success alone does not.
+  Unavailable storage keeps a memory copy and shows a warning.
+  A random revision identifies each edit, including two edits captured in one millisecond.
+  Conditional cleanup must match the account, trip, and revision.
+  Three failed sends pause the edit. They never delete its only copy.
+  See [the replay audit](../OFFLINE-REPLAY-783.md) for tests and recovery choices.
+
+- **Use server revisions for conflicts, and bind requests to their account (#783).**
+  A client clock cannot prove that a shared plan has stayed unchanged.
+  Trip updates compare `write_version` and return the new revision.
+  A server sequence prevents revision reuse after deletion and same-ID restore.
+  Unknown or changed baselines pause for an explicit whole-plan choice.
+  Queue entries never hold access tokens. Each request uses a captured Authorization header.
+  Check account and permission generations after each await, before any cache update.
+  Removal and tombstones outrank echo suppression. Late hydration must not replace a higher acknowledged revision.
+  Serialize invite metadata, recovery choices, and plan sends through the same trip tail.
 
 - **Every trip-data mutation must write through — but know the real signatures before you "enforce" an order.** The store fixes (Sep 2026) revealed three bugs, and a later correction (M6 B0, Sep 19 2026) fixed the write-through paragraph itself:
   1. `setStopStatus` performed redundant lookups before committing, risking stale data.

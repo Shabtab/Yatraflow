@@ -49,6 +49,7 @@ export interface TripRow {
   /** present only after the trip-trash migration (20260910_trip_trash.sql) */
   deleted_at?: string | null;
   created_at: number; updated_at: number;
+  write_version?: number;
 }
 
 /** Sanity bounds for party fields — a row with garbage numbers would silently
@@ -211,6 +212,7 @@ export function rowToTrip(row: TripRow, members: TripMember[]): Trip {
     ref: row.ref ?? undefined,
     visibility: row.visibility, deletedAt: row.deleted_at != null ? new Date(row.deleted_at).getTime() : undefined,
     createdAt: row.created_at, updatedAt: row.updated_at, members,
+    writeVersion: Number.isSafeInteger(row.write_version) && row.write_version! >= 0 ? row.write_version : undefined,
   }
 }
 

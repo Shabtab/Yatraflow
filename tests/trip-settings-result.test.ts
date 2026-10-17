@@ -16,7 +16,8 @@ const { state } = vi.hoisted(() => ({
   },
 }))
 
-vi.mock('../src/lib/supabase', () => {
+vi.mock('../src/lib/supabase', async () => {
+  const { tripWriteClient } = await import('./helpers/tripWriteClient')
   const makeBuilder = (table: string) => {
     let method: string | undefined
     let payload: unknown
@@ -42,7 +43,7 @@ vi.mock('../src/lib/supabase', () => {
     }
     return builder
   }
-  return { isSupabaseConfigured: false, supabase: { from: (t: string) => makeBuilder(t) } }
+  return { isSupabaseConfigured: false, supabase: tripWriteClient({ from: (t: string) => makeBuilder(t) }) }
 })
 
 // The queue normally lives in IndexedDB, which Node does not have. Swap only the
@@ -53,18 +54,19 @@ vi.mock('../src/lib/writeQueue', async importOriginal => {
   const map = new Map<string, QueuedWrite>()
   const mem: WriteQueueStore = {
     list: async () => [...map.values()],
-    put: async entry => { map.set(entry.tripId, entry) },
+    put: async entry => { map.set(actual.writeQueueKey(entry.ownerId, entry.tripId), entry) },
     remove: async tripId => { map.delete(tripId) },
-    removeIf: async (tripId, capturedAt) => {
-      const current = map.get(tripId)
-      if (!current || current.capturedAt !== capturedAt) return false
-      map.delete(tripId)
+    removeIf: async (key, capturedAt, revision) => {
+      const current = map.get(key)
+      if (!current || current.revision !== revision || (revision === undefined && current.capturedAt !== capturedAt)) return false
+      map.delete(key)
       return true
     },
-    putIf: async (entry, expectedCapturedAt) => {
-      const current = map.get(entry.tripId)
-      if (!current || current.capturedAt !== expectedCapturedAt) return false
-      map.set(entry.tripId, entry)
+    putIf: async (entry, expectedCapturedAt, expectedRevision) => {
+      const key = actual.writeQueueKey(entry.ownerId, entry.tripId)
+      const current = map.get(key)
+      if (!current || current.revision !== expectedRevision || (expectedRevision === undefined && current.capturedAt !== expectedCapturedAt)) return false
+      map.set(key, entry)
       return true
     },
   }
@@ -72,6 +74,7 @@ vi.mock('../src/lib/writeQueue', async importOriginal => {
     ...actual,
     queueWrite: (entry: QueuedWrite) => actual.queueWrite(entry, mem),
     dropWrite: (tripId: string) => actual.dropWrite(tripId, mem),
+    dropQueuedWrite: (entry: QueuedWrite) => actual.dropQueuedWrite(entry, mem),
     dropWriteIfCurrent: (tripId: string, capturedAt: number) => actual.dropWriteIfCurrent(tripId, capturedAt, mem),
     requeueIfCurrent: (entry: QueuedWrite) => actual.requeueIfCurrent(entry, mem),
     pendingWrites: () => actual.pendingWrites(mem),

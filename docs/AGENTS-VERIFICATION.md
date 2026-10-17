@@ -21,6 +21,13 @@ Sections:
 
 ## The gate
 
+**Offline replay needs both transport tests and database checks.**
+Run `node scripts/integration/trip-write-version-db.mjs` for the isolated PostgreSQL checks.
+The harness accepts no database URL. It creates and removes its own container, with no published ports.
+It checks revision changes, stale writes, repeated sends, sequence permissions, same-ID restore, and migration reruns.
+It does not prove production RLS or a signed-in device journey.
+See [the replay audit](OFFLINE-REPLAY-783.md) for the remaining device checks and rollout order.
+
 **Run browser sampling after the test suite finishes.** Parallel test workers can cause test timeouts and missed animation frames. You must keep these checks separate on a busy machine.
 
 **The page sampler follows the final route root.** A lazy route can replace a loading screen after one frame. The sampler starts a new record for that page. It still checks every block in the final page.
