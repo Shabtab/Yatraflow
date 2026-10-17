@@ -13,14 +13,14 @@ import {
   activeStopsInOrder, moveActiveStopWithinDay, moveStopToDay, nextOrderInDay,
   pendingStopId,
 } from '../lib/stopOrder'
-import { InlineIcon, KindIcon } from './icons'
+import { InlineIcon, KindIcon, modeIcon } from './icons'
 import type { Trip, ItineraryStop } from '../data/types'
 import { computeTotals, computeHealth, collectWarnings, minutesToHM, formatInr, buildJourney, dayRoadPolyline, isRoadMeasuredMode, isAirMode, tripJourneyGeometry } from '../lib/engine'
 import type { ScheduleWarning, LegEstimate } from '../lib/engine'
 import { mapReturnGeometryFromLegs, mapRoadViewFromLegs, type TripRoadView } from '../lib/tripRoad'
 import type { ImpactResult } from '../lib/impact'
 import { useTimeFormat, formatHM } from '../lib/timefmt'
-import { stopKindOf, STOP_KIND_LABELS } from '../lib/stopKind'
+import { stopPresentation } from '../lib/stopKind'
 import { stopInitialValues, stopLegContext, stopEditorKey, stopDayIndex, type StopEditorTarget } from '../lib/stopForm'
 import { setStopStatus, useDb } from '../store/store'
 import { useReorder, Modal, toast } from './ui'
@@ -358,7 +358,7 @@ export function BoardView({ trip, editable, applyChange, health, totals, onOpenO
         {/* floating day columns — near-opaque so cards stay readable (§3.1) */}
         <div className="board-cols" role="list" aria-label="Trip days">
           {days.map(day => (
-            <BoardColumn key={day.id} day={day} allDays={days} editable={editable}
+            <BoardColumn key={day.id} day={day} allDays={days} editable={editable} transportMode={trip.transportMode}
               warnings={warn.byDay.get(day.index) ?? NO_WARNINGS}
               focused={focusedDay === day.index}
               onToggleFocus={toggleDayFocus}
@@ -401,10 +401,11 @@ export function BoardView({ trip, editable, applyChange, health, totals, onOpenO
 // handlers, booleans and the day object itself (immutable between writes) — so
 // a column bails out unless ITS day, focus or warnings changed. The map is
 // memoized separately above.
-const BoardColumn = React.memo(function BoardColumn({ day, allDays, editable, warnings, focused, onToggleFocus, onMoveStopIn, onReorder, onDelete, onStatus, onAdd, onEdit }: {
+const BoardColumn = React.memo(function BoardColumn({ day, allDays, editable, transportMode, warnings, focused, onToggleFocus, onMoveStopIn, onReorder, onDelete, onStatus, onAdd, onEdit }: {
   day: Trip['days'][number]
   allDays: Trip['days']
   editable: boolean
+  transportMode: Trip['transportMode']
   warnings: ScheduleWarning[]
   focused: boolean
   onToggleFocus: (dayIndex: number) => void
@@ -552,7 +553,7 @@ const BoardColumn = React.memo(function BoardColumn({ day, allDays, editable, wa
 
       <div className={`board-col-stops${dragging !== null ? ' is-dragging' : ''}`} ref={stopsRef} data-yf-list={listId}>
         {ordered.map((s, i) => {
-          const kind = stopKindOf(s)
+          const { kind, label, mode } = stopPresentation(s, transportMode)
           const meta = [
             s.locationName,
             minutesToHM(s.visitMinutes),
@@ -569,7 +570,7 @@ const BoardColumn = React.memo(function BoardColumn({ day, allDays, editable, wa
               {...(editable ? dndHandlers(i) : {})}>
               <div className={`board-stop stop-card kind-${kind} status-${s.status} ${foreignOver === i && dragging === null ? 'foreign-over' : ''}`}>
                 <div className="stop-main">
-                  <span className="board-stop-kicker">{s.departTime ? `${formatHM(s.departTime, timeFormat)} · ` : ''}<KindIcon kind={kind} size={12} />{STOP_KIND_LABELS[kind]}</span>
+                  <span className="board-stop-kicker">{s.departTime ? `${formatHM(s.departTime, timeFormat)} · ` : ''}{mode ? modeIcon(mode, 12) : <KindIcon kind={kind} size={12} />}{label}</span>
                   {editable ? (
                     <button type="button" className="board-stop-title-btn" onClick={() => onEdit(s.id)}
                       title={`Edit ${s.title}`} aria-label={`Edit ${s.title}`}>

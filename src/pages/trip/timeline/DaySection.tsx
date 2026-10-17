@@ -29,7 +29,7 @@ import { isDriveDay } from '../../../lib/ridePlan'
 import { openExternal } from '../../../lib/native'
 import { useTimeFormat, formatHM, formatHMRange } from '../../../lib/timefmt'
 import { motionTiming, prefersReducedMotion } from '../../../lib/motion'
-import { stopKindOf, STOP_KIND_LABELS } from '../../../lib/stopKind'
+import { stopPresentation } from '../../../lib/stopKind'
 import { statusLabel } from '../../../lib/labels'
 import { Chip, Modal, toast, useReorder } from '../../../components/ui'
 import { StateBlock } from '../../../components/page/StateBlock'
@@ -806,7 +806,7 @@ export const DaySection = React.memo(function DaySection({ day, trip, facts, sav
               </div>
             )
           }
-          const kind = stopKindOf(s)
+          const { kind, label } = stopPresentation(s, trip?.transportMode)
           const stopSaved = savedIds.includes(savedStopId(s.id))
           return (
             <React.Fragment key={s.id}>
@@ -841,7 +841,7 @@ export const DaySection = React.memo(function DaySection({ day, trip, facts, sav
                     <Heart size={13} aria-hidden fill={stopSaved ? 'currentColor' : 'none'} />
                   </button>
                   <Chip tone={statusTone(s.status)}>{statusLabel(s.status)}</Chip>
-                  <span className={`stop-kind-tag kind-${kind}`}>{STOP_KIND_LABELS[kind]}</span>
+                  <span className={`stop-kind-tag kind-${kind}`}>{label}</span>
                   {s.priority === 'must-do' && <Chip tone="danger">Must do</Chip>}
                   {s.priority === 'optional' && <Chip tone="saffron">Optional</Chip>}
                   {s.weatherSensitive && <Chip tone="info"><InlineIcon icon={CloudRain} size={11} gap={3} vAlign="-1px" />weather-sensitive</Chip>}
