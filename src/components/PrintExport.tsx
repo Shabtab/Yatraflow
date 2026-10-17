@@ -24,7 +24,7 @@ function PrintRow({ row, timeFormat }: { row: ReturnType<typeof buildPrintModel>
     return (
       <div className="pr-leg">
         <span className="pr-leg-route">{leg.fromTitle} → {leg.toTitle}</span>
-        <span className="pr-leg-meta">{Math.round(leg.distanceKm)} km · {Math.round(leg.durationMinutes)} min drive</span>
+        <span className="pr-leg-meta">{Math.round(leg.distanceKm)} km · {Math.round(leg.durationMinutes)} min {leg.kind === 'air' ? 'flight' : 'ground travel'}{leg.flightNumber ? ` · ${leg.flightNumber}` : ''}{leg.estimated ? ' (estimated)' : ''}</span>
       </div>
     )
   }
@@ -95,7 +95,7 @@ export function PrintExport({ trip, legCorrections }: { trip: Trip; legCorrectio
 
       <Modal open={open} onClose={() => setOpen(false)} title="Print day cards / offline PDF">
         <p className="hint-text" style={{ margin: '0 0 12px' }}>
-          A road-friendly copy of the plan — every day as a card with clocks, drives and stops. Use your browser’s
+          A road-friendly copy of the plan — every day as a card with clocks, travel legs and stops. Use your browser’s
           print dialog and pick <b>Save as PDF</b> to keep it on your phone for no-signal stretches.
         </p>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
@@ -125,7 +125,7 @@ function PrintSheet({ model, timeFormat }: { model: ReturnType<typeof buildPrint
         <p className="pr-trip-meta">{model.metaLine}</p>
         <p className="pr-trip-meta">
           <b>{fmtInr(model.totals.costInr)}</b> estimated · {Math.round(model.totals.distanceKm).toLocaleString('en-IN')} km ·{' '}
-          {Math.round(model.totals.travelMinutes / 60)}h driving · {model.totals.stops} stops
+          {Math.round(model.totals.travelMinutes / 60)}h travel · {model.totals.stops} stops
         </p>
       </header>
 

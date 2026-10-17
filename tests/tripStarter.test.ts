@@ -78,9 +78,10 @@ describe('estimateTripStarter — transport by mode', () => {
     expect(b.transportCost).toBe(b.roadKm! * 7 + 1800 * 7)
     expect(b.transportFormula).toContain('rent')
   })
-  it('prices flight through the blended per-km fare', () => {
+  it('prices a same-airport flight route as ground travel', () => {
     const b = estimateTripStarter({ ...base, mode: 'flight' })
-    expect(b.transportCost).toBe(Math.round(b.roadKm! * 6.5))
+    expect(b.transportFormula).toContain('0 estimated flight sectors')
+    expect(b.transportCost).toBeGreaterThan(0)
   })
   it('bills local trains at the suburban fare and says so', () => {
     const express = estimateTripStarter({ ...base, mode: 'train' })

@@ -1750,6 +1750,9 @@ a.btn { text-decoration: none; }
   font-variant-numeric: tabular-nums;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.board-flight .stop-title, .board-flight .board-stop-meta {
+  white-space: normal; overflow: visible; text-overflow: clip;
+}
 .board-col-zone {
   border: 1.5px dashed color-mix(in srgb, var(--yf-teal-600) 40%, var(--yf-border));
   border-radius: 13px;

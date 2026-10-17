@@ -1512,7 +1512,7 @@ export function reconcileDays(
       const blocked = next.slice(target).filter(loadBearing)
       return {
         days,
-        error: `Day ${(blocked[0]?.index ?? target) + 1} still has stops or a fixed commitment — move or delete them before shortening the trip.`,
+        error: `Day ${(blocked[0]?.index ?? target) + 1} still has stops or a fixed commitment or a flight — move or delete them before shortening the trip.`,
         blocked: blocked.map(d => d.index),
       }
     }
@@ -1892,6 +1892,7 @@ function buildTripCopy(source: Trip, ownerId: ID, opts: { makePublic?: boolean; 
     copy.expenses = copy.expenses.map(e => ({ ...e, id: uid('ex') }))
     copy.fixedCommitments = copy.fixedCommitments.map(remapCommitment)
   }
+  copy.flights = copy.flights?.filter(f => !free || free.has(f.dayIndex)).map(f => ({ ...f, id: uid('fl') }))
   copy.members = [{ userId: ownerId, role: 'owner' as const, joinedAt: Date.now() }]
   copy.coverImageUrl = source.coverImageUrl
   return copy
@@ -2615,7 +2616,7 @@ export function updateTrip(id: ID, patchFields: Partial<Trip>): boolean {
   const newEnd = patchFields.endDate ?? t.endDate
   const datesChanged = newStart !== t.startDate || newEnd !== t.endDate
   if (datesChanged) {
-    const protectedIdx = new Set(t.fixedCommitments.map(c => c.dayIndex))
+    const protectedIdx = new Set([...t.fixedCommitments, ...(t.flights ?? [])].map(c => c.dayIndex))
     const baseDays = patchFields.days ?? t.days
     const rec = reconcileDays(baseDays, newStart, newEnd, protectedIdx)
     if (rec.error) { toast(rec.error, 'err'); return false }

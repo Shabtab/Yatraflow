@@ -15,6 +15,17 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Fixed
+
+- **Backups and snapshot links retain flights and transport preferences.** Imports check flight clocks, fares, and itinerary days. Flight-only plans also import.
+- **Flight days stay protected when dates change.** Move the flight before removing its day.
+- **Create trip estimates charge flights per traveller.** Ground transfers use road rates and stay separate from air fares.
+- **Printed cards include flights and airport transfers.** Calendar exports include timed flight events and overnight arrivals.
+- **Settings previews use the full draft and current road measurements.** Route changes show estimates until fresh measurements arrive.
+- **Stay days show the arrival location after a flight.** Timeline, printed cards, and stop insertion use the resolved journey origin. Empty days retain the destination name. Airport-only arrivals show the airport name.
+- **Board shows flight journeys with separate flight and ground travel times.** Flight cards appear even without a saved flight entry. Estimated flight times state their assumptions. Route points remain separate from flights.
+- **Travel stop labels follow the transport mode.** Board, Timeline, and public highlights show Flight, Train, or Bus where applicable. Board uses the matching icon. Airport and ground transfer labels remain distinct.
+- **Local stops in flight trips use ground rates.** The stop editor calculates road travel time and fares with ground assumptions.
 ### Changed
 
 - **The trip header is compact on a phone.** At 390px the header band and the tab rail took about 420px of an 844px screen. The tab panel then started below the fold. A phone now takes the compact band the Board tab already used. The band is shorter, the title is 20px and the tab rail is tighter. (#677)

@@ -9,7 +9,7 @@
 // which stays on plain "HH:MM" minutes.
 
 import type { Trip, ItineraryStop } from '../data/types'
-import { simulateDay, originOf, computeTotals, hmToMinutes, getAssumptions, type LegEstimate, type DaySchedule } from './engine'
+import { buildJourney, computeTotals, hmToMinutes, getAssumptions, type LegEstimate } from './engine'
 
 export interface PrintStop {
   title: string
@@ -29,6 +29,9 @@ export interface PrintLeg {
   toTitle: string
   distanceKm: number
   durationMinutes: number
+  kind?: 'air' | 'road'
+  estimated?: boolean
+  flightNumber?: string
 }
 
 export interface PrintDay {
@@ -85,66 +88,44 @@ export function buildPrintModel(
   const totals = computeTotals(trip, opts.legCorrections)
 
   const days: PrintDay[] = trip.days.map(day => {
-    const sim: DaySchedule = simulateDay(day, trip, originOf(trip, day.index), day.index, opts.legCorrections)
-    const byOrder = [...day.stops].filter(s => s.status !== 'rejected').sort((a, b) => a.orderInDay - b.orderInDay)
-    // Pair each active stop with its engine arrival/departure clock. sim's
-    // rows are in schedule order and exclude synthesized START anchors, so
-    // index-matching against order-sorted stops holds for the common case;
-    // a stop the simulator skipped (rejected handled above) just misses its
-    // clocks rather than throwing the whole export.
-    const byId = new Map<string, { arrive?: string; depart?: string }>()
-    sim.activeStops.forEach((s, i) => {
-      byId.set(s.id, { arrive: sim.arrivalTimes[i], depart: sim.departures[i] })
-    })
-
+    const journey = buildJourney(trip, day, opts.legCorrections)
     const rows: PrintDay['rows'] = []
-    byOrder.forEach(s => {
-      const clocks = byId.get(s.id)
-      // every stop prints its OWN inbound leg — the opening drive is the first
-      // stop's into-leg, so no leg is hand-appended before the row that led
-      // into it was already printed (#557)
-      const leg = sim.legs[sim.activeStops.findIndex(x => x.id === s.id)]
-      if (leg && leg.distanceKm > 0) rows.push({ kind: 'leg', leg: { fromTitle: leg.fromTitle, toTitle: leg.toTitle, distanceKm: fin(leg.distanceKm), durationMinutes: fin(leg.durationMinutes) } })
-      rows.push({
-        kind: 'stop',
-        stop: {
-          title: s.title, category: s.category, status: s.status,
-          arrive: clocks?.arrive, depart: clocks?.depart,
-          visitMinutes: fin(s.visitMinutes),
-          entryFeeInrPerPerson: fin(s.entryFeeInrPerPerson),
-          notes: s.notes,
-        },
-      })
+    journey.points.forEach(p => {
+      const leg = p.legIn
+      if (leg && (leg.distanceKm > 0 || leg.durationMinutes > 0)) {
+        const flight = trip.flights?.find(f => f.id === leg.flightId)
+        rows.push({ kind: 'leg', leg: {
+          ...leg, distanceKm: fin(leg.distanceKm), durationMinutes: fin(leg.durationMinutes),
+          estimated: leg.kind === 'air' && !(flight?.departAt && flight?.arriveAt),
+          flightNumber: flight?.flightNumber,
+        } })
+      }
+      if (p.synthesized && p.kind !== 'waypoint') return
+      const s = p.stop
+      rows.push({ kind: 'stop', stop: {
+        title: s.title, category: s.category, status: p.synthesized ? 'suggested' : s.status,
+        arrive: p.arrive, depart: p.depart,
+        visitMinutes: fin(s.visitMinutes), entryFeeInrPerPerson: fin(s.entryFeeInrPerPerson), notes: p.synthesized ? undefined : s.notes,
+      } })
     })
-
-    // A trailing drive prints only when the schedule holds a row the printed
-    // stops do not — the synthesized destination a return day or a ride-halt
-    // day ends at. Its into-leg is the day's real final drive; on an ordinary
-    // day the loop above already printed every leg, the last one included
-    // (#557 — the old unconditional append repeated it).
-    const lastLeg = sim.legs[sim.legs.length - 1]
-    if (lastLeg && lastLeg.distanceKm > 0 && sim.activeStops.length > byOrder.length) {
-      rows.push({ kind: 'leg', leg: { fromTitle: lastLeg.fromTitle, toTitle: lastLeg.toTitle, distanceKm: fin(lastLeg.distanceKm), durationMinutes: fin(lastLeg.durationMinutes) } })
-    }
 
     // The day's bucket is found by INDEX, like the Timeline's chip (#338): a
     // positional clamp printed another day's cost on a skipped-index day.
     const dayTot = totals.byDay.find(b => b.dayIndex === day.index)
-    const startTitle = sim.legs[0]?.fromTitle ?? trip.startLocation
-    const endTitle = sim.legs.length > 1 ? lastLeg?.toTitle : startTitle
+    const { startTitle, endTitle } = journey
     return {
       index: day.index,
       title: day.title,
       date: fmtDate(trip.startDate, day.index),
-      routeLine: sim.totalDistanceKm < 0.5 && sim.activeStops.length === 0
+      routeLine: journey.distanceKm < 0.5 && rows.length === 0
         ? `Based in ${startTitle}`
         : `${startTitle} → ${endTitle}`,
-      startTime: sim.startsAt,
-      endsAt: sim.endsAt,
+      startTime: journey.startTime,
+      endsAt: journey.points[journey.points.length - 1]?.depart ?? journey.startTime,
       rows,
-      totalDistanceKm: fin(sim.totalDistanceKm),
-      totalTravelMinutes: fin(sim.totalTravelMinutes),
-      dwellMinutes: fin(sim.dwellMinutes),
+      totalDistanceKm: fin(journey.distanceKm),
+      totalTravelMinutes: fin(journey.driveMinutes),
+      dwellMinutes: fin(journey.dwellMinutes),
       costInr: fin(dayTot?.totalInr),
       // strip the "Day n:"/"Day n " prefix collectWarnings adds — the card
       // heading already says which day it is.
@@ -171,7 +152,7 @@ export function buildPrintModel(
       label: e.label, category: e.category,
       amountInr: fin(e.amountInr), perPerson: e.perPerson === true, dayIndex: e.dayIndex,
     })),
-    assumptionsLine: `~₹${Math.round(A.inrPerKm ?? 8)}/km · ${A.avgSpeedKmph} km/h avg · ${hmToMinutes(A.dayEnd) - hmToMinutes(A.dayStart) >= 0 ? '' : ''}${A.dayStart}–${A.dayEnd} planning window`.replace('  ', ' '),
+    assumptionsLine: trip.transportMode === 'flight' ? `Per-person flight fares + ground transfers · ${A.dayStart}–${A.dayEnd} planning window` : `~₹${Math.round(A.inrPerKm ?? 8)}/km · ${A.avgSpeedKmph} km/h avg · ${hmToMinutes(A.dayEnd) - hmToMinutes(A.dayStart) >= 0 ? '' : ''}${A.dayStart}–${A.dayEnd} planning window`.replace('  ', ' '),
     printedAt: (opts.now ?? new Date()).toISOString(),
   }
 }
