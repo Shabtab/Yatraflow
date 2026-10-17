@@ -79,7 +79,7 @@ const MODE_TILE_META: Record<TransportMode, { hint: string }> = {
   motorcycle: { hint: 'your fuel · ≈44 km/h' },
   train: { hint: '₹1.6/km fare' },
   bus: { hint: '₹2.2/km fare' },
-  flight: { hint: '₹6.5/km + fees' },
+  flight: { hint: 'Per-person fares + ground transfers' },
   taxi: { hint: '₹16/km fare' },
   mixed: { hint: 'a bit of everything' },
 }

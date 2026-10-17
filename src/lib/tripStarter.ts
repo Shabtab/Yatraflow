@@ -9,6 +9,7 @@
 import { haversineKm } from './geo'
 import { dayCountForRange } from './dayCount'
 import {
+  coLocates, synthesizedFlight, resolveAirports, flightFareInrPerPerson, legBetween, groundAssumptions,
   MODE_COST_PER_KM,
   parseFuelEconomyKmL,
   resolveTransportPricing,
@@ -125,7 +126,7 @@ export function estimateTripStarter(input: StarterTripInput): StarterBill {
   const outKm = chainKm(input.orderedPoints, 0, n - returnCount)
   const retKm = returnCount > 0 ? chainKm(input.orderedPoints, n - returnCount - 1, n) : 0
   const hasRoute = outKm > 0 || retKm > 0
-  const roadKm = hasRoute
+  let roadKm = hasRoute
     ? Math.round((outKm * (returnCount === 0 && input.roundTrip ? 2 : 1) + retKm) * ROAD_FACTOR)
     : null
 
@@ -155,6 +156,38 @@ export function estimateTripStarter(input: StarterTripInput): StarterBill {
       const rent = pricing.rentPerDayInr * days
       transportCost = (transportCost ?? 0) + rent
       transportFormula += ` + ₹${pricing.rentPerDayInr} × ${days}d rent`
+    }
+  }
+
+  if (input.mode === 'flight') {
+    const pts = input.orderedPoints
+    transportCost = null
+    roadKm = null
+    if (pts.length >= 2 && pts.every(p => p && Number.isFinite(p.lat) && Number.isFinite(p.lng))) {
+      const GA = groundAssumptions({ transportMode: 'flight' })
+      let cost = 0
+      let distance = 0
+      let sectors = 0
+      const route = input.roundTrip && returnCount === 0 ? [...pts, pts[0]] : pts
+      for (let i = 1; i < route.length; i++) {
+        const from = route[i - 1]!
+        const to = route[i]!
+        const flight = synthesizedFlight({ transportMode: input.mode }, i - 1, from, to)
+        const airports = flight ? resolveAirports(flight, from, to) : null
+        if (flight && airports) {
+          const ground = (coLocates(from, airports.from) ? 0 : legBetween(from, airports.from, GA).distanceKm) + (haversineKm(airports.to.lat, airports.to.lng, to.lat, to.lng) < 0.5 ? 0 : legBetween(airports.to, to, GA).distanceKm)
+          cost += flightFareInrPerPerson(flight, airports.from, airports.to) * crew + ground * (GA.inrPerKm ?? 0)
+          distance += ground
+          sectors++
+        } else {
+          const ground = haversineKm(from.lat, from.lng, to.lat, to.lng) < 0.5 ? 0 : legBetween(from, to, GA).distanceKm
+          cost += ground * (GA.inrPerKm ?? 0)
+          distance += ground
+        }
+      }
+      roadKm = Math.round(distance)
+      transportCost = Math.round(cost)
+      transportFormula = `${sectors} estimated flight sector${sectors === 1 ? '' : 's'} × ${crew} head${crew === 1 ? '' : 's'} + ${roadKm} km ground transfers`
     }
   }
 
