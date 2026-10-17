@@ -78,7 +78,7 @@ function SnapshotCard({ trip, me, onNavigate, legCorrections, publication }: {
                   <ImportTripButton ownerId={me.id} onNavigate={onNavigate} className="btn btn-outline btn-sm" />
                   <button className="btn btn-outline btn-sm" onClick={() => downloadTripJson(trip, publication)}><InlineIcon icon={Download} size={13} gap={4} />Download JSON</button>
                   <PrintExport trip={trip} legCorrections={legCorrections} />
-                  <button className="btn btn-outline btn-sm" onClick={() => downloadTripIcs(trip, legCorrections)} title="One calendar event per day plus timed events for fixed commitments — imports into Google/Apple/Outlook calendars"><InlineIcon icon={CalendarDays} size={13} gap={4} />Add to calendar</button>
+                  <button className="btn btn-outline btn-sm" onClick={() => downloadTripIcs(trip, legCorrections)} title="One calendar event per day plus timed events for flights and fixed commitments — imports into Google/Apple/Outlook calendars"><InlineIcon icon={CalendarDays} size={13} gap={4} />Add to calendar</button>
                    <button className="btn btn-saffron btn-sm" onClick={makeLink} disabled={busy} aria-busy={busy}>
                      <InlineIcon icon={Link2} size={13} gap={4} />{busy ? 'Building…' : 'Create snapshot link'}
                    </button>

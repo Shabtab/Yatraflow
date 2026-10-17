@@ -95,6 +95,7 @@ function restoreSnapshotIdentity(raw: Record<string, unknown>, walled: Trip): Tr
   return {
     ...walled,
     ...identity,
+    flights: walled.flights === undefined ? undefined : restoreOwnRows(Array.isArray(raw.flights) ? raw.flights : [], walled.flights),
     expenses: restoreOwnRows(Array.isArray(raw.expenses) ? raw.expenses : [], walled.expenses) as Trip['expenses'],
     fixedCommitments: restoreOwnRows(
       Array.isArray(raw.fixedCommitments) ? raw.fixedCommitments : [], walled.fixedCommitments,

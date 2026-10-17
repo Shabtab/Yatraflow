@@ -89,7 +89,7 @@ export function buildIcs(trip: Trip, legCorrections?: Record<string, LegEstimate
       rows.push(`${arrive} ${s.title}${s.visitMinutes ? ` (${minutesToHM(s.visitMinutes)})` : ''}`)
     })
     const desc = [
-      `${Math.round(sim.totalDistanceKm)} km · ${minutesToHM(sim.totalTravelMinutes)} driving`,
+      `${Math.round(sim.totalDistanceKm)} km · ${minutesToHM(sim.totalTravelMinutes)} travel`,
       ...rows,
     ].filter(Boolean).join('\n')
 
@@ -119,6 +119,29 @@ export function buildIcs(trip: Trip, legCorrections?: Record<string, LegEstimate
     if (fc.notes) push(`DESCRIPTION:${esc(fc.notes)}`)
     push('END:VEVENT')
   })
+
+  const clock = (value: string | undefined): string | null => {
+    const match = /^(\d{1,2}):(\d{2})$/.exec(value?.trim() ?? '')
+    return match && +match[1] <= 23 && +match[2] <= 59
+      ? `${match[1].padStart(2, '0')}:${match[2]}` : null
+  }
+  for (const flight of trip.flights ?? []) {
+    if (!trip.days.some(d => d.index === flight.dayIndex)) continue
+    const ymd = icsDate(trip.startDate, flight.dayIndex)
+    const dep = clock(flight.departAt)
+    const arr = clock(flight.arriveAt)
+    if (!ymd || !dep) continue
+    push('BEGIN:VEVENT')
+    push(`UID:${trip.id}-flight-${flight.id}@yatraflow`)
+    push(`DTSTAMP:${stamp}`)
+    push(`DTSTART:${icsDateTime(dep, ymd)}`)
+    if (arr) push(`DTEND:${icsDateTime(arr, arr <= dep ? nextYmd(ymd) : ymd)}`)
+    push(`SUMMARY:${esc(`Flight ${flight.flightNumber ?? ''} — ${flight.fromAirport} → ${flight.toAirport}`)}`)
+    push(`LOCATION:${esc(flight.fromAirport)}`)
+    const description = [flight.airline, flight.notes].filter(Boolean).join('\n')
+    if (description) push(`DESCRIPTION:${esc(description)}`)
+    push('END:VEVENT')
+  }
 
   lines.push('END:VCALENDAR')
   return lines.join(CRLF) + CRLF
