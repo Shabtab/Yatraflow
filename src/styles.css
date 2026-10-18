@@ -10739,9 +10739,8 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 
 /* Signed-in native shell: the top safe-area inset has no owner. On the web and
    in the signed-out shell, .topnav's own top margin carries the inset. In the
-   native shell the sign-in gate does not render .topnav, so the shell itself
-   must carry it — once. Without this, a page whose own top padding is under the
-   inset (Home 20px, Profile 26px) starts under the status bar. */
+   native shell the sign-in gate does not render .topnav, so main carries the
+   top inset once. */
 html.native-shell .app-shell:not(:has(> .topnav)) > main {
   padding-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
 }

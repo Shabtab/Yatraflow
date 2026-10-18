@@ -41,6 +41,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 - **The Create trip phone dock no longer runs two phrases together.** The days line and the readiness line shared one inline row. "Pick your dates" and "3 things left" then printed as one phrase. The readiness line is a block now, so it sits under the days line. (#767)
 - **The trip tab rail shows that it scrolls sideways.** The rail hides its scrollbar. A tab past the right edge ("Group input") was cut with no sign that more exist. The rail now fades the edge that still holds hidden tabs. The fade clears once the end is reached. (#684)
+- **Signed-in Android content now clears the status bar.** The native shell draws no top navigation bar for a signed-in user. The shell itself carries the top inset once. Home and Profile now start below the status bar, and the web and signed-out screens keep their current spacing. (#809)
 
 ## [0.77.0] - 2026-10-16
 
