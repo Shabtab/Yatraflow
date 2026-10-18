@@ -1,13 +1,13 @@
 // ============ Signup date-of-birth picker ============
-// The native <input type="date"> gave no way to jump to a birth year on Android
-// (only a month-by-month back arrow). DobPicker offers direct Year/Month/Day
-// selects while it keeps the 'YYYY-MM-DD' value the age gate reads, forbids a
-// future date, and never rolls a 31st or a Feb-29 into the next month.
+// Sign-up asks for a date of birth, where the year is the part that matters
+// most. DobPicker offers direct Year/Month/Day selects. It keeps the
+// 'YYYY-MM-DD' value the age gate reads. It forbids a future date. It never
+// rolls a 31st or a Feb-29 into the next month.
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { DobPicker, daysInMonth, composeDob, parseDob, dayCeiling, resolveDob } from '../src/components/DobPicker'
+import { DobPicker, daysInMonth, composeDob, parseDob, monthCeiling, dayCeiling, clampParts, resolveDob } from '../src/components/DobPicker'
 import { isAdultSignup } from '../src/lib/ageGate'
 
 // A fixed "today" so the future caps stay deterministic.
@@ -45,7 +45,12 @@ describe('dob date math', () => {
     expect(dayCeiling(2020, 2, MAX)).toBe(29)  // a leap year, not the max month
     expect(dayCeiling(2026, 6, MAX)).toBe(30)  // a past month of the max year
     expect(dayCeiling(2026, 10, MAX)).toBe(18) // max year + month -> today
-    expect(dayCeiling(2026, 12, MAX)).toBe(31) // raw math; the month select hides December
+    expect(dayCeiling(2026, 12, MAX)).toBe(31) // raw month length; clampParts hides December
+  })
+
+  it('caps the month at today inside the max year', () => {
+    expect(monthCeiling(1990, MAX)).toBe(12)
+    expect(monthCeiling(2026, MAX)).toBe(10)
   })
 })
 
@@ -71,6 +76,13 @@ describe('resolveDob — what the selects commit', () => {
   it('clamps the day at today inside the current month', () => {
     expect(resolveDob(2026, 10, 31, MAX)).toBe('2026-10-18')
     expect(resolveDob(2026, 10, 5, MAX)).toBe('2026-10-05')
+  })
+
+  it('F1: clamps a held later month when the year becomes the current year', () => {
+    // 1990/December/31 then year -> 2026 must clamp month AND day together,
+    // never emitting a future date or leaving a blank month select.
+    expect(resolveDob(2026, 12, 31, MAX)).toBe('2026-10-18')
+    expect(clampParts(2026, 12, 31, MAX)).toEqual({ y: 2026, mo: 10, d: 18 })
   })
 })
 
