@@ -51,6 +51,21 @@ export function prefersCooperativeGestures(): boolean {
   return window.matchMedia?.("(pointer: coarse)").matches ?? false;
 }
 
+/**
+ * Which gesture mode a mounted map wants, given what the surface is.
+ *
+ * An embed sitting in a scrolling page keeps cooperative gestures: one finger
+ * scrolls the page, two fingers pan the map, so the page is never trapped.
+ * A surface that owns its own area — the expanded overlay, or the dedicated Map
+ * tab — hands one-finger pan and pinch straight to the map instead.
+ *
+ * The pointer predicate still gates the call site, so a mouse desktop keeps
+ * plain wheel zoom either way.
+ */
+export function wantsCooperativeGestures(opts: { dedicated: boolean; expanded: boolean }): boolean {
+  return !opts.expanded && !opts.dedicated;
+}
+
 // Basemaps — OpenFreeMap (https://openfreemap.org): OpenMapTiles-schema vector
 // tiles, served keyless, using styles forked from the same open-source lineage
 // CARTO's dark-matter / positron styles came from — so the look is effectively

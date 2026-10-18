@@ -229,9 +229,11 @@ describe('inline map gestures', () => {
     )
     expect(tripMap).not.toContain('(pointer: coarse)')
 
-    // The inline-vs-expanded split still holds, on a coarse pointer: inline
-    // keeps the two-finger mode, the expanded overlay hands gestures back.
-    expect(tripMap).toContain('<CooperativeGestures enabled={!expanded} />')
+    // An embed keeps the two-finger mode on a coarse pointer; the expanded
+    // overlay and the dedicated Map tab both hand gestures back.
+    expect(tripMap).toContain(
+      '<CooperativeGestures enabled={wantsCooperativeGestures({ dedicated, expanded })} />',
+    )
     expect(runSwitch({ coarse: true, enabled: true })).toEqual(['enable'])
     expect(runSwitch({ coarse: true, enabled: false })).toEqual(['disable'])
 

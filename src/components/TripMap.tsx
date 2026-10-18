@@ -46,6 +46,7 @@ import {
   MapClusterLayer,
   MapControls,
   prefersCooperativeGestures,
+  wantsCooperativeGestures,
   useMap,
 } from './mapcn/map'
 
@@ -431,7 +432,7 @@ const SLOT_PIN_GLYPH: Record<string, string> = {
   breakfast: 'B', lunch: 'L', fuel: 'F', stretch: 'S', dinner: 'D', stay: 'N',
 }
 
-export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusDay, onDayFilterChange, tripReadinessRows = [], showToolbar = true, enableMapViewModes = false, activeHitId = null, onActivateHit, onOpenInTimeline, onOpenInBoard, onDeleteStop, mainRouteGeometry = null, returnRouteGeometry = null, allowSelfMeasurement = true, clockMilestones = null, onOpenHaltDay, onShowReturnChange, slotPins = [], onOpenSlot, hitCosts, searchHitIds, legCorrections }: {
+export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusDay, onDayFilterChange, tripReadinessRows = [], showToolbar = true, enableMapViewModes = false, dedicated = false, activeHitId = null, onActivateHit, onOpenInTimeline, onOpenInBoard, onDeleteStop, mainRouteGeometry = null, returnRouteGeometry = null, allowSelfMeasurement = true, clockMilestones = null, onOpenHaltDay, onShowReturnChange, slotPins = [], onOpenSlot, hitCosts, searchHitIds, legCorrections }: {
   trip: Trip
   onOpenStop?: (stopId: string) => void
   /** potential POIs to show as gold "idea" markers */
@@ -451,6 +452,11 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
       backdrop there, so the chips peeked out from behind the Board's info card.
       The Board provides the equivalents (column-click focus + 🎯 Fit route). */
   showToolbar?: boolean
+  /** The surface owns its own area rather than sitting in a scrolling page —
+   *  the dedicated Map tab. A coarse pointer gets one-finger pan and pinch
+   *  there; an embed keeps cooperative gestures so page scrolling is not
+   *  trapped. A fine pointer is unaffected in both cases. */
+  dedicated?: boolean
   /** Map view modes (2D · Terrain · 3D hero) — the toolbar gains the mode
       switcher and the saved preference drives the map. The Board stays hard
       2D: it's a pinned backdrop, it must never spend GPU on terrain, and one
@@ -1268,7 +1274,7 @@ export function TripMap({ trip, onOpenStop, nearbyPois = [], onAddNearby, focusD
             {enableMapViewModes && <MapViewModeController mode={viewMode} bearing={heroBearing} />}
             {/* Inline on a coarse pointer: one finger scrolls the page.
                 Expanded (or a mouse): normal gestures. */}
-            <CooperativeGestures enabled={!expanded} />
+            <CooperativeGestures enabled={wantsCooperativeGestures({ dedicated, expanded })} />
             {/* Live location layer — mounted always, self-gating on `liveOn`. */}
             <LiveLocationLayer active={liveOn} />
             {/* In All-days view a single connected main line from the trip start
