@@ -3,12 +3,10 @@
 // is JSON-encoded, deflated and base64url'd into the hash
 // (#/share/<payload>) so no server storage is needed.
 //
-// The payload is the whole trip in reversible base64. Compression is not
-// encryption, so the fragment is a privacy decision and not a convenience
-// one (#805). A browser never sends a fragment in a request, so a reader asks
-// for `/` and the trip stays in their browser. Do not move a payload into the
-// path or a query. That rule is the one exception to "route by path" in
-// CODING_STANDARDS, and it outranks that rule for this link.
+// The payload is the whole trip in reversible base64, and a browser never
+// sends a fragment in a request. That is what keeps it out of a server's
+// reach, so it is the one link in the app that must not be given a path or a
+// query. See the snapshot-fragment rule in CODING_STANDARDS (#805).
 //
 // Two different directions, two different treatments — both versioned:
 //
@@ -153,8 +151,6 @@ function stripVersion(raw: Record<string, unknown>): Record<string, unknown> {
   return rest
 }
 
-/** The route a snapshot link names. The payload rides after it, in the
- *  fragment. */
 const SHARE_ROUTE = '/share'
 
 /** The link a reader opens. The path is the bare root and the payload is the
