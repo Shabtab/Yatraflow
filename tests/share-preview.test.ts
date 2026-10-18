@@ -558,10 +558,18 @@ describe('the legacy-hash bridge (#426 slice 2)', () => {
     expect(route).toBeNull()
   })
 
-  it('snapshot links are rooted at the origin without a fragment', async () => {
+  it('snapshot links are rooted at the origin and keep the payload in the fragment (#805)', async () => {
+    // This pin once asserted the opposite: it needed a link with NO fragment,
+    // which is what put the whole trip in the request path. A snapshot payload
+    // is the trip in reversible base64, so it rides the fragment and the
+    // browser asks for the bare root. tests/snapshot-transport-privacy.test.ts
+    // owns the full transport argument.
     vi.stubGlobal('location', new URL('https://app.example.test/pub/kerala-trip_1'))
     const { snapshotUrl } = await import('../src/lib/snapshot')
-    expect(snapshotUrl({} as Parameters<typeof snapshotUrl>[0], 'yf1_payload')).toBe('https://app.example.test/share/yf1_payload')
+    const url = new URL(snapshotUrl({} as Parameters<typeof snapshotUrl>[0], 'yf1_payload'))
+    expect(url.origin).toBe('https://app.example.test')
+    expect(url.pathname + url.search).toBe('/')
+    expect(url.hash).toBe('#/share/yf1_payload')
   })
 })
 

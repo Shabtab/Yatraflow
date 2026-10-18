@@ -55,6 +55,15 @@ Two database migrations go with this release: `20261017_trip_write_version.sql` 
 
 ### Fixed
 
+- **A new snapshot link keeps the whole trip out of server requests.** The payload rides the part of the address after `#`. A browser then asks for the home page alone. The trip never enters a request target, a query, or a referrer. (#805)
+- **The boot bridge no longer moves a snapshot payload into the path.** It settles such a link by leaving the address alone, and it still renders the plan. An older link keeps opening. Its trip is already readable, so no redirect can undo that first request. (#805)
+- **Analytics data points drop a snapshot payload before they leave the page.** The page view is still counted, without the trip. (#805)
+- **Sharing copy now states what a snapshot link is.** Anyone who holds the link can read the trip, and no copied link can be revoked. The reader's page also records that an older link was already sent on its first request. (#805)
+
+## [0.77.1] - 2026-10-18
+
+### Fixed
+
 - **Backups and snapshot links retain flights and transport preferences.** Imports check flight clocks, fares, and itinerary days. Flight-only plans also import.
 - **Flight days stay protected when dates change.** Move the flight before removing its day.
 - **Create trip estimates charge flights per traveller.** Ground transfers use road rates and stay separate from air fares.

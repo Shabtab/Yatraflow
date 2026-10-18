@@ -7,7 +7,7 @@ import {
   Bell, Compass, Import, Inbox, Luggage, Link2, Mail, Menu, Moon, Plus,
   Settings, Sparkles, Sun, Tent, X,
 } from 'lucide-react'
-import { Analytics } from '@vercel/analytics/react'
+import { Analytics, type BeforeSendEvent } from '@vercel/analytics/react'
 import {
   browserNotifEnabled, browserNotifPermission, fireBrowserNotification,
   shouldBrowserNotify,
@@ -19,7 +19,7 @@ import { BottomNav } from './components/BottomNav'
 import { OfflineBanner } from './components/OfflineBanner'
 import { UpdateNotice } from './components/UpdateNotice'
 import { PillNav } from './components/PillNav'
-import { decodeTripSnapshot } from './lib/snapshot'
+import { decodeTripSnapshot, redactSnapshotUrl } from './lib/snapshot'
 import { scrollBehavior } from './lib/motion'
 import { pageTitle, routeParts } from './lib/pageTitle'
 import { CREATE_SEGMENT, CREATE_PATH } from './lib/routes'
@@ -778,9 +778,18 @@ export default function App() {
       {/* Web Analytics is a web concern: the Capacitor shell has no Vercel
           insights endpoint to reach, so the script would load and fail
           silently on Android. Mount it for the web app only. */}
-      {!isNative && <Analytics />}
+      {!isNative && <Analytics beforeSend={analyticsBeforeSend} />}
     </div>
   )
+}
+
+/** A snapshot payload is the whole trip, so no analytics data point may carry
+ *  it (#805). A browser keeps the fragment out of a request, but the collector
+ *  reads the page's own URL inside the page and could read the token there, so
+ *  strip it here instead of assuming the network did. The page view stays; only
+ *  the trip goes. */
+function analyticsBeforeSend(event: BeforeSendEvent): BeforeSendEvent | null {
+  return { ...event, url: redactSnapshotUrl(event.url) }
 }
 
 /** Snapshot links (#/share/<payload>) land here: decode, preview, import as own copy. */
@@ -875,7 +884,15 @@ function SharedTripPage({ payload, onNavigate }: { payload: string; onNavigate: 
           <>
             {state.s === 'ready' && <p className="muted">{state.days}-day trip · {state.destinations}</p>}
             <p className="muted small">
-              This whole plan is embedded in the link itself - nothing was stored on a server.
+              This whole plan is embedded in the link itself - nothing was stored on a server. The part after the
+              <code> # </code> stays in your browser and is never sent in a request.
+            </p>
+            <p className="muted small">
+              That also means anyone holding the link can read the plan, and the sender cannot take the link back.
+              Older links put the plan in the page address instead. Those were already exposed on their first request,
+              so opening one now sends it once more - a fresh link does not.
+            </p>
+            <p className="muted small">
               Import it to get your own editable copy{me || db.sessionUserId ? '' : ' (you will be asked to log in first)'}.
             </p>
           </>
