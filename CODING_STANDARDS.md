@@ -1072,6 +1072,26 @@ process.
   reports success on a wrong page. Compare the page content, such as the h1.
   `AGENTS.md` still says "hash routing". Treat that line as stale. Link to a page with `appLink('/path')`, never with a `#/` anchor. `tests/app-link.test.ts` fails when a source file does.
 
+- **A snapshot payload keeps its fragment, and every reader of it must agree (learned 2026-10-18, #805).**
+  `snapshotUrl` returns `<origin>/#/share/<payload>`. A browser sends `pathname
+  + search` and never the fragment, so that is what keeps the trip out of a
+  server's reach. Four readers each leaked the payload when left alone.
+  - `settleLegacyHash` must not promote the fragment into the path, and
+    `currentRoute` must read it. App starts the route from
+    `settleLegacyHash() ?? currentRoute()`, so both need one precedence rule.
+    A real path such as `/trips#/share/<p>` wins in the bridge exactly as it
+    wins in the reader. Test the startup expression, not only the reader.
+  - Analytics reads the page URL inside the page. The network's fragment rule
+    never reaches it. Strip the token in `beforeSend`, and keep the page view.
+  - A support draft leaves the device. `feedbackHref` must redact, and must
+    keep the route label and the app version a reporter needs.
+  `redactSnapshotUrl` is the one redaction. `tests/snapshot-transport-privacy.test.ts`
+  and `tests/snapshot-feedback-privacy.test.ts` pin all four. An old
+  `/share/<payload>` link still renders and cannot be un-exposed.
+  `strict-origin-when-cross-origin` sends a full same-origin path, so an old
+  link recurs in same-origin referrers. Say that in copy, and never write a
+  test that certifies a control the app does not have.
+
 - **You must parse CSS time units before you use motion tokens in JavaScript.** Production CSS can change `180ms` to `.18s`. Convert seconds to milliseconds before you start timers or browser animations.
 
 ## 3. Scripted edits
