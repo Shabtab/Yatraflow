@@ -860,7 +860,7 @@ function SharedTripPage({ payload, onNavigate }: { payload: string; onNavigate: 
             {state.s === 'ready' && <p className="muted">{state.days}-day trip · {state.destinations}</p>}
             <p className="muted small">
               This whole plan is embedded in the link itself - nothing was stored on a server. The part after the
-              <code> # </code> stays in your browser and is never sent in a request.
+              <code>#</code> stays in your browser and is never sent in a request.
             </p>
             <p className="muted small">
               That also means anyone holding the link can read the plan, and the sender cannot take the link back.
