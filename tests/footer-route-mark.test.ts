@@ -11,7 +11,13 @@ const footerOpen = app.indexOf('<footer className="footer">')
 const footerClose = app.indexOf('</footer>', footerOpen)
 const footer = footerOpen < 0 || footerClose < 0 ? '' : app.slice(footerOpen, footerClose + '</footer>'.length)
 const MARK_BLOCK_START = '/* ---------- Footer route mark'
-const markBlock = css.slice(css.indexOf(MARK_BLOCK_START))
+const markStart = css.indexOf(MARK_BLOCK_START)
+// Bound the slice to this block. Slicing to the end of the file made every
+// later rule part of "the footer block", so an unrelated animation below it
+// failed a check about a static drawing. The next top-level block comment ends
+// the footer block, and the contract below stays exactly as strict inside it.
+const markEnd = markStart < 0 ? -1 : css.indexOf('/* ', markStart + MARK_BLOCK_START.length)
+const markBlock = markStart < 0 ? '' : css.slice(markStart, markEnd === -1 ? undefined : markEnd)
 
 describe('footer route mark (P1)', () => {
   it('renders one decorative svg inside the footer, hidden from assistive tech', () => {

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // ============================================================================
-// APK release manifest — local generation and validation. NOTHING IS PUBLISHED.
+// APK release manifest — local generation and checking. NOTHING IS PUBLISHED.
 //
 // The update client reads one JSON document. This script produces that document
 // from a real APK, and refuses to produce one unless the artifact passes every
@@ -16,7 +16,9 @@
 //   node scripts/apk-release-manifest.mjs --check <manifest.json> \
 //     --apk <path.apk> [--hosts a,b]     # check an existing document
 //
-// Exit codes: 0 ok, 1 a check failed, 2 bad usage or a missing tool.
+// Exit codes: 0 ok, 1 a check failed, 2 bad usage or a missing tool. The script
+// sets process.exitCode and returns; it never calls process.exit, so a message
+// cannot be lost in a truncated write (#656).
 //
 // The checks, and why each one exists:
 //   availability  the APK file must exist and be readable on disk;
@@ -43,10 +45,17 @@ const APP_ID_FOR_CHANNEL = {
 // them. A rebuild of an already published release keeps its own code.
 const PUBLISHED_VERSION_CODES = [14]
 
+/** A stopping condition with the exit code it deserves. */
+class Stop extends Error {
+  constructor(code, message) {
+    super(message ?? '')
+    this.code = code
+    this.silent = !message
+  }
+}
+
 function usage(problem) {
-  console.error(`apk-release-manifest: ${problem}`)
-  console.error('See the header of this file for usage.')
-  process.exit(2)
+  throw new Stop(2, `apk-release-manifest: ${problem}\nSee the header of this file for usage.`)
 }
 
 function arg(name) {
@@ -115,16 +124,13 @@ function destinationProblem(url, hosts) {
   return null
 }
 
-const apkPath = arg('apk')
-if (!apkPath) usage('--apk is required')
-if (!existsSync(apkPath)) usage(`no APK at ${apkPath} (availability)`)
+/** Prints every problem, then stops with code 1. */
+function fail(problems) {
+  for (const problem of problems) console.error(`FAIL ${problem}`)
+  throw new Stop(1)
+}
 
-const identity = readApkIdentity(apkPath)
-const signer = verifySignature(apkPath)
-const hosts = approvedHosts()
-const manifestPath = arg('check')
-
-if (manifestPath) {
+function checkExisting(manifestPath, identity, signer, hosts) {
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
   const problems = []
   if (manifest.packageId !== identity.packageId) problems.push(`packageId ${manifest.packageId} does not match the APK's ${identity.packageId}`)
@@ -136,52 +142,73 @@ if (manifestPath) {
   const bad = destinationProblem(manifest.downloadUrl, hosts)
   if (bad) problems.push(bad)
   if (!signer) problems.push('apksigner did not verify the APK')
-  if (problems.length) {
-    for (const problem of problems) console.error(`FAIL ${problem}`)
-    process.exit(1)
-  }
+  if (problems.length) fail(problems)
   console.log(JSON.stringify({ ok: true, signer, manifest }, null, 2))
-  process.exit(0)
 }
 
-const channel = arg('channel')
-if (!APP_ID_FOR_CHANNEL[channel]) usage('--channel must be production or audit')
-const downloadUrl = arg('download-url')
-const notes = arg('notes') ?? ''
+function generate(identity, signer, hosts) {
+  const channel = arg('channel')
+  if (!APP_ID_FOR_CHANNEL[channel]) usage('--channel must be production or audit')
+  const downloadUrl = arg('download-url')
+  const notes = arg('notes') ?? ''
 
-const problems = []
-if (identity.packageId !== APP_ID_FOR_CHANNEL[channel]) {
-  problems.push(`channel ${channel} must ship as ${APP_ID_FOR_CHANNEL[channel]}, but this APK is ${identity.packageId}`)
-}
-if (!Number.isInteger(identity.versionCode) || identity.versionCode <= 0) {
-  problems.push(`the APK's versionCode "${identity.versionCode}" is not a positive integer`)
-}
-if (PUBLISHED_VERSION_CODES.includes(identity.versionCode)) {
-  problems.push(`versionCode ${identity.versionCode} is already published; a new release needs a higher one`)
-}
-const bad = destinationProblem(downloadUrl, hosts)
-if (bad) problems.push(bad)
-if (!signer) problems.push('apksigner did not verify the APK')
-if (problems.length) {
-  for (const problem of problems) console.error(`FAIL ${problem}`)
-  process.exit(1)
+  const problems = []
+  if (identity.packageId !== APP_ID_FOR_CHANNEL[channel]) {
+    problems.push(`channel ${channel} must ship as ${APP_ID_FOR_CHANNEL[channel]}, but this APK is ${identity.packageId}`)
+  }
+  if (!Number.isInteger(identity.versionCode) || identity.versionCode <= 0) {
+    problems.push(`the APK's versionCode "${identity.versionCode}" is not a positive integer`)
+  }
+  if (PUBLISHED_VERSION_CODES.includes(identity.versionCode)) {
+    problems.push(`versionCode ${identity.versionCode} is already published; a new release needs a higher one`)
+  }
+  const bad = destinationProblem(downloadUrl, hosts)
+  if (bad) problems.push(bad)
+  if (!signer) problems.push('apksigner did not verify the APK')
+  if (problems.length) fail(problems)
+
+  // The manifest fields, in the shape src/lib/apkUpdates.ts parses.
+  const manifest = {
+    packageId: identity.packageId,
+    channel,
+    versionCode: identity.versionCode,
+    versionName: identity.versionName,
+    notes,
+    downloadUrl,
+  }
+
+  const out = arg('out')
+  if (out) {
+    writeFileSync(out, `${JSON.stringify(manifest, null, 2)}\n`)
+    console.error(`wrote ${out} — publish it only after approval`)
+  } else {
+    console.log(JSON.stringify(manifest, null, 2))
+  }
+  console.error(`apk=${arg('apk')} package=${identity.packageId} versionCode=${identity.versionCode} versionName=${identity.versionName} signer=${signer}`)
 }
 
-// The manifest fields, in the shape src/lib/apkUpdates.ts parses.
-const manifest = {
-  packageId: identity.packageId,
-  channel,
-  versionCode: identity.versionCode,
-  versionName: identity.versionName,
-  notes,
-  downloadUrl,
+function main() {
+  const apkPath = arg('apk')
+  if (!apkPath) usage('--apk is required')
+  if (!existsSync(apkPath)) usage(`no APK at ${apkPath} (availability)`)
+
+  const identity = readApkIdentity(apkPath)
+  const signer = verifySignature(apkPath)
+  const hosts = approvedHosts()
+  const manifestPath = arg('check')
+
+  if (manifestPath) checkExisting(manifestPath, identity, signer, hosts)
+  else generate(identity, signer, hosts)
 }
 
-const out = arg('out')
-if (out) {
-  writeFileSync(out, `${JSON.stringify(manifest, null, 2)}\n`)
-  console.error(`wrote ${out} — publish it only after approval`)
-} else {
-  console.log(JSON.stringify(manifest, null, 2))
+try {
+  main()
+} catch (err) {
+  if (err instanceof Stop) {
+    if (!err.silent) console.error(err.message)
+    process.exitCode = err.code
+  } else {
+    console.error(err?.stack ?? String(err))
+    process.exitCode = 1
+  }
 }
-console.error(`apk=${apkPath} package=${identity.packageId} versionCode=${identity.versionCode} versionName=${identity.versionName} signer=${signer}`)

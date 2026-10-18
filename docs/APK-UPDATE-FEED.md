@@ -51,8 +51,8 @@ VITE_APK_UPDATE_HOSTS=www.yatraflow.in
 ```
 
 While either is unset the app stays inert: no request, and Profile says the
-check is not configured. **Setting these in Vercel or in the Android build needs
-the coordinator's explicit approval.** That approval also covers the published
+check is not configured. **The coordinator must approve these before they are
+set in Vercel or in the Android build.** That approval also covers the published
 manifest, and the compatible signed APK behind it.
 
 Steps, in this sequence:

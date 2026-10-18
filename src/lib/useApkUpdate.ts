@@ -1,10 +1,10 @@
 // ============ APK update React bindings ============
 // Two hooks, so no component invents its own notice rule. The core documents
-// the contract; `nextNoticeOffer` applies it, and the hook just holds the
-// result. That split keeps the rule testable in the node environment, with no
-// DOM and no React renderer.
+// the contract; `nextNoticeOffer` applies it, and the hook holds the result.
+// That split keeps the rule testable in the node environment, with no DOM and
+// no React renderer.
 
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useState, useSyncExternalStore } from 'react'
 import type { UpdateManifest, UpdateState } from './apkUpdates'
 import { apkUpdateStatus, subscribeApkUpdate, type UpdateRuntimeStatus } from './apkUpdateRuntime'
 
@@ -36,10 +36,12 @@ export function nextNoticeOffer(
 export function useUpdateNotice(): UpdateManifest | null {
   const { state } = useApkUpdateStatus()
   const [offer, setOffer] = useState<UpdateManifest | null>(null)
+  const next = nextNoticeOffer(offer, state)
 
-  useEffect(() => {
-    setOffer(previous => nextNoticeOffer(previous, state))
-  }, [state])
+  // Sync during render, not in an effect. The notice must be right in the same
+  // commit that carries the new state; an effect would paint the old value
+  // first. The step is idempotent, so this settles in one pass.
+  if (next !== offer) setOffer(next)
 
-  return offer
+  return next
 }

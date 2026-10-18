@@ -10761,9 +10761,9 @@ html.native-shell .app-shell:not(:has(> .topnav)) > main {
 
 /* Android update notice (components/UpdateNotice.tsx). Nonmodal and dismissible.
    It sits above the bottom nav and clears the system bars on every side. The
-   panel itself takes no pointer events, so it can never swallow a tap behind
-   it; only its two controls are interactive. The entrance uses the motion
-   vocabulary, and reduced motion opts out. */
+   panel takes no pointer events, so it can never swallow a tap behind it; only
+   its two controls are interactive. The entrance uses the motion vocabulary,
+   and reduced motion opts out. */
 .update-notice {
   position: fixed;
   left: calc(14px + var(--safe-area-inset-left, env(safe-area-inset-left, 0px)));
@@ -10783,7 +10783,7 @@ html.native-shell .app-shell:not(:has(> .topnav)) > main {
   pointer-events: none;
   animation: update-notice-in var(--motion-med) var(--ease-out) backwards;
 }
-.update-notice-icon { flex: none; display: inline-flex; padding-top: 1px; color: var(--teal); }
+.update-notice-icon { flex: none; display: inline-flex; color: var(--teal); }
 .update-notice-text { flex: 1; min-width: 0; }
 .update-notice-title { margin: 0; font-size: 14px; font-weight: 700; }
 .update-notice-notes { margin: 2px 0 0; font-size: 13px; color: var(--text-2); }
