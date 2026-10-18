@@ -10737,10 +10737,9 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
   .dob-picker { gap: 6px; grid-template-columns: 1fr 1.4fr 0.85fr; }
 }
 
-/* Signed-in native shell: the top safe-area inset has no owner. On the web and
-   in the signed-out shell, .topnav's own top margin carries the inset. In the
-   native shell the sign-in gate does not render .topnav, so main carries the
-   top inset once. */
+/* In the signed-in native shell the top safe-area inset has no owner. The
+   sign-in gate does not render .topnav there, so main carries the top inset
+   once. */
 html.native-shell .app-shell:not(:has(> .topnav)) > main {
   padding-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
 }
