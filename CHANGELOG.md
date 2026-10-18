@@ -15,6 +15,10 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Added
+
+- **The app can tell whether a newer Android build exists.** A new decision core reads the installed version code from the native app boundary. It compares that code with a published release. A download address must sit on an approved HTTPS host. The core reports a current, newer, offline or failed result. An automatic check runs once a day at most. The Later button holds one version back for a day. A manual check still gives an answer. The release feed and the notice come with issue #809.
+
 ### Fixed
 
 - **Sign-up date of birth now uses direct Year, Month and Day selects.** A birth year is one choice away. The three selects emit one complete `YYYY-MM-DD` date, and a partial pick emits nothing. The day list follows the chosen month, so a 31st or a 29 February cannot roll over. A change of year to the current year clamps a later month and day to today. No future date can be submitted. The 18+ check is unchanged.
