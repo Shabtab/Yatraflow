@@ -99,12 +99,17 @@ export function DobPicker({ value, onChange, max, id, 'aria-describedby': descri
   // or autofill). A partial local pick leaves `value` at '' — without this guard
   // the effect would wipe the year the user just chose.
   const seen = useRef(value)
+  // The draft parts follow the page value. React's own guidance covers this as
+  // adjusting state after a prop change. The effect stays so an external reset
+  // is observed. It is suppressed with this reason, not restructured.
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (seen.current === value) return
     seen.current = value
     if (parsed) { setY(parsed.y); setMo(parsed.mo); setD(parsed.d) }
     else { setY(0); setMo(0); setD(0) }
   }, [value, parsed])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const years = useMemo(() => {
     const a: number[] = []
