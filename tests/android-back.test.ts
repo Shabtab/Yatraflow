@@ -9,6 +9,7 @@
 // installed @capacitor/core 8.5.1 and @capacitor/app 8.1.1:
 //   * App.addListener takes the native path, so removal crosses the bridge,
 //   * a back event reaches EVERY still-registered callback.
+// The dispatch shape comes from that source. Bridge timing was not measured.
 // The old mock's remove did nothing and press() always used handlers[0], so a
 // re-registration, and any dropped cleanup, stayed invisible.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -117,13 +118,14 @@ describe('registerAndroidBack listener lifecycle', () => {
   })
 
   it('an unsettled removal fans one press out to both handlers', () => {
-    // This pins a real but unreachable window: the App.tsx effect re-registers
-    // on a tray or menu toggle, and native removal needs a bridge round-trip.
-    // A press inside that window reaches both handlers, so an armed old closure
-    // exits while the new one only arms. It is not human-reachable: the window
-    // opens on a tap, and a press cannot land inside it. Do not "fix" this with
-    // an arm that outlives its closure; a behavioural change needs a reachable
-    // reproduction first.
+    // Model-only characterisation. The mock's removal settles on a microtask,
+    // while on Android it is a bridge round-trip. This test pins the fan-out
+    // shape: while a removal is pending, one press reaches both handlers, so an
+    // armed old closure exits and the new one only arms.
+    // Reachability is UNMEASURED. The bridge duration was not measured, and the
+    // window was not reproduced on device. Whether a press can land inside it is
+    // unproven. Do not "fix" this with an arm that outlives its closure. A
+    // behavioural change needs a reproduced failure first.
     const off = registerAndroidBack({ closeOverlay: () => false })
     press()
     expect(h.exitApp).not.toHaveBeenCalled()
