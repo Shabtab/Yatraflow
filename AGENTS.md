@@ -192,18 +192,11 @@ that notices the drift.
    the implementation step. This prevents unauthorized code from reaching a
    shared branch and keeps the user in control of what ships.
 
-   **Every pull request to `hasnaina955/Yatraflow` targets `test`, a security fix
-   included (user-mandated 2026-10-19).** Open the PR against `test`, never
-   against `main`, and never treat a severity label as a reason to skip `test`.
-   Rule 17 cuts `main` from `test`, so a pull request aimed at `main` skips the
-   integration branch and lands without anything else having seen it. A
-   security fix needs this more than most work, not less: it waits in `test`
-   for the next promotion, and that wait is the review. Before you open one,
-   read the diff the target will show, `git diff <target>...HEAD`. A branch cut
-   from `main` carries main's release work, and the reviewer then reads a diff
-   full of changes they never asked for. If that diff holds anything outside
-   the issue, re-cut the branch from the exact `test` revision and cherry-pick
-   only the issue commits.
+   **Every pull request to `hasnaina955/Yatraflow` must target `test`
+   (user-mandated 2026-10-19).** This rule includes security fixes. Check
+   `git diff <target>...HEAD` before you open the PR. If the diff includes
+   unrelated work, create a branch from the exact `test` revision. Apply only
+   the issue commits. Preserve the original branch and its evidence.
 9. **Never bulk-rewrite `CHANGELOG.md` with a script, heredoc or shell
    interpolation — edit it with editor primitives only.** This failure mode has
    already hit twice — three, counting the scripting-language variant (2026-09-21):
