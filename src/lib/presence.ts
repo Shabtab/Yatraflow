@@ -69,23 +69,45 @@ function dedupeByUser(peers: PresencePeer[]): PresencePeer[] {
 
 /**
  * Build the presence state from a full sync snapshot (the authoritative shape
- * on every 'sync' event — replaces local state wholesale). Each entry is
- * keyed by the session key and carries that session's broadcast payload;
- * entries without a usable userId are skipped (never crash on a malformed
- * payload — realtime payloads come off the wire, so they are not ours to
- * trust, same rule as the store's postgres_changes dispatch).
+ * on every 'sync' event — replaces local state wholesale).
+ *
+ * supabase-js declares the snapshot as a map of session key to a LIST of
+ * records (`RealtimePresenceState<T>` = `{ [key]: Presence<T>[] }`), so one
+ * key can carry several records; the parser reads every record under every
+ * key, keeping the map key as the session identity (the key the caller mints
+ * and filters itself out by).
+ *
+ * The snapshot comes off the wire, so it is not ours to trust: a value that
+ * is not a list, an empty key, and a record without a usable userId are all
+ * skipped instead of crashing (same rule as the store's postgres_changes
+ * dispatch).
  */
-export function presenceFromSync(snap: Record<string, Record<string, unknown>>): PresenceState {
+export function presenceFromSync(snap: unknown): PresenceState {
+  if (!isRecord(snap)) return EMPTY_PRESENCE
   const peers: PresencePeer[] = []
-  for (const [sessionKey, meta] of Object.entries(snap ?? {})) {
-    if (!meta || typeof meta !== 'object') continue
-    const userId = typeof meta.userId === 'string' ? meta.userId : ''
-    if (!userId) continue
-    const name = typeof meta.name === 'string' && meta.name ? meta.name : userId
-    const joined = Number(meta.joinedAt)
-    peers.push({ sessionKey, userId, name, joinedAt: Number.isFinite(joined) ? joined : 0 })
+  for (const [sessionKey, records] of Object.entries(snap)) {
+    if (!sessionKey || !Array.isArray(records)) continue
+    for (const record of records) {
+      const peer = peerFromRecord(sessionKey, record)
+      if (peer) peers.push(peer)
+    }
   }
   return { peers: dedupeByUser(peers) }
+}
+
+/** A non-null, non-array object — the only shape a presence record may have. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/** One wire record as a peer, or null when it carries no usable userId. */
+function peerFromRecord(sessionKey: string, record: unknown): PresencePeer | null {
+  if (!isRecord(record)) return null
+  const userId = typeof record.userId === 'string' ? record.userId : ''
+  if (!userId) return null
+  const name = typeof record.name === 'string' && record.name ? record.name : userId
+  const joined = Number(record.joinedAt)
+  return { sessionKey, userId, name, joinedAt: Number.isFinite(joined) ? joined : 0 }
 }
 
 /** The peers the UI shows: everyone except the caller's own session. */
@@ -150,8 +172,15 @@ function randomToken(): string {
   return `${Date.now().toString(36)}${Math.trunc(clock * 1000).toString(36)}${lastResortSeq.toString(36)}`
 }
 
+/** The fields this client broadcasts about itself on join. */
+export interface PresencePayload {
+  userId: string
+  name: string
+  joinedAt: number
+}
+
 /** What this client broadcasts about itself on join. */
-export function presencePayload(userId: string, name: string): Record<string, unknown> {
+export function presencePayload(userId: string, name: string): PresencePayload {
   return { userId, name, joinedAt: Date.now() }
 }
 
@@ -189,10 +218,9 @@ export function joinTripPresence(
   const channel = client.channel(presenceChannelName(tripId), { config: { presence: { key: selfKey } } })
   channel
     .on('presence', { event: 'sync' }, () => {
-      // supabase-js types presenceState() as Presence[] — structurally a
-      // session-keyed record once keyed; cast through unknown (repo pattern:
-      // structural casts for mapcn-style third-party shapes).
-      state = presenceFromSync(channel.presenceState() as unknown as Record<string, Record<string, unknown>>)
+      // presenceState() is a session-keyed map of record lists. Hand it to
+      // the parser as the untrusted wire shape it reads.
+      state = presenceFromSync(channel.presenceState())
       emit()
     })
     .subscribe(status => {

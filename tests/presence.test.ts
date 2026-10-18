@@ -5,6 +5,9 @@
 // ordering, and hostile sync payloads.
 import { describe, it, expect, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
+// The serializer that builds the snapshot presenceState() returns. Imported
+// from the SDK this repo installs, so the contract test runs the real code.
+import PresenceAdapter from '@supabase/realtime-js/dist/module/phoenix/presenceAdapter.js'
 import {
   reducePresence, removePresence, presenceFromSync, visiblePeers,
   presenceChannelName, presenceKey, presencePayload, EMPTY_PRESENCE, presenceView,
@@ -70,29 +73,129 @@ describe('ordering', () => {
   })
 })
 
-describe('presenceFromSync', () => {
-  it('rebuilds state from a full snapshot', () => {
-    const s = presenceFromSync({
-      'u1:aaa': { userId: 'u1', name: 'A', joinedAt: 5 },
-      'u2:bbb': { userId: 'u2', name: 'B', joinedAt: 3 },
-    })
+// The wire shape the installed SDK produces: a map of session key to a LIST of
+// records. Each record carries the broadcast payload and the SDK's presence_ref.
+// Field values cross the wire, so they are not ours to trust.
+const sdkSnapshot = {
+  'u1:aaa': [{ userId: 'u1', name: 'Amelia', joinedAt: 5, presence_ref: 'F1' }],
+  'u2:bbb': [{ userId: 'u2', name: 'Ravi', joinedAt: 3, presence_ref: 'F2' }],
+}
+
+describe('presenceFromSync — the real SDK snapshot shape', () => {
+  it('keeps every peer when each key holds a list of records', () => {
+    const s = presenceFromSync(sdkSnapshot)
     expect(s.peers.map(p => p.userId)).toEqual(['u2', 'u1'])
+    expect(s.peers.map(p => p.sessionKey)).toEqual(['u2:bbb', 'u1:aaa'])
+    expect(s.peers[1]).toEqual({ sessionKey: 'u1:aaa', userId: 'u1', name: 'Amelia', joinedAt: 5 })
   })
 
-  it('skips malformed entries instead of crashing (wire payloads are not ours to trust)', () => {
+  it('treats an empty snapshot as an empty room', () => {
+    expect(presenceFromSync({})).toEqual(EMPTY_PRESENCE)
+    expect(presenceFromSync({ 'u1:aaa': [] })).toEqual(EMPTY_PRESENCE)
+  })
+
+  it('treats a snapshot that is not a map of lists as empty', () => {
+    expect(presenceFromSync(null)).toBe(EMPTY_PRESENCE)
+    expect(presenceFromSync(undefined)).toBe(EMPTY_PRESENCE)
+    expect(presenceFromSync('nope')).toBe(EMPTY_PRESENCE)
+    expect(presenceFromSync([{ userId: 'u1' }])).toBe(EMPTY_PRESENCE)
+  })
+
+  it('collapses records under one key to one avatar per user', () => {
     const s = presenceFromSync({
-      bad1: null as never,
-      bad2: { name: 'no id' },
-      bad3: { userId: 42 },
-      ok: { userId: 'u1', name: 'A', joinedAt: 'not-a-number' },
+      'u1:aaa': [
+        { userId: 'u1', name: 'Amelia', joinedAt: 100, presence_ref: 'F1' },
+        { userId: 'u1', name: 'Amelia', joinedAt: 200, presence_ref: 'F2' },
+      ],
     })
-    expect(s.peers).toHaveLength(1)
-    expect(s.peers[0].joinedAt).toBe(0)
+    expect(s.peers).toEqual([{ sessionKey: 'u1:aaa', userId: 'u1', name: 'Amelia', joinedAt: 100 }])
   })
 
-  it('falls back to the userId when the name is missing', () => {
-    const s = presenceFromSync({ 'u9:k': { userId: 'u9', joinedAt: 1 } })
+  it('keeps two different users that share one key', () => {
+    const s = presenceFromSync({
+      shared: [
+        { userId: 'u1', name: 'Amelia', joinedAt: 1 },
+        { userId: 'u2', name: 'Ravi', joinedAt: 2 },
+      ],
+    })
+    expect(s.peers.map(p => p.userId)).toEqual(['u1', 'u2'])
+  })
+
+  it('skips hostile records instead of crashing (wire payloads are not ours to trust)', () => {
+    const hostile: Record<string, unknown> = {
+      bad1: [null, 42, 'text', []],
+      bad2: [{ name: 'no id' }, { userId: 42 }, {}],
+      empty: [],
+      '': [{ userId: 'ghost', name: 'Ghost' }],
+      flat: { userId: 'u1', name: 'A' },
+      ok: [{ userId: 'u9', name: 'A', joinedAt: 'not-a-number' }],
+    }
+    const s = presenceFromSync(hostile)
+    expect(s.peers).toHaveLength(1)
+    expect(s.peers[0]).toEqual({ sessionKey: 'ok', userId: 'u9', name: 'A', joinedAt: 0 })
+  })
+
+  it('falls back to the userId when the name is missing or empty', () => {
+    const s = presenceFromSync({ 'u9:k': [{ userId: 'u9', joinedAt: 1, name: '' }] })
     expect(s.peers[0].name).toBe('u9')
+  })
+
+  it('replaces stale membership on a full resync', () => {
+    const before = presenceFromSync(sdkSnapshot)
+    const after = presenceFromSync({ 'u2:bbb': sdkSnapshot['u2:bbb'] })
+    expect(before.peers).toHaveLength(2)
+    expect(after.peers.map(p => p.userId)).toEqual(['u2'])
+  })
+
+  it('drops a peer that left between two syncs', () => {
+    const two = presenceFromSync({
+      'u1:a': [{ userId: 'u1', name: 'A', joinedAt: 1 }],
+      'u2:b': [{ userId: 'u2', name: 'B', joinedAt: 2 }],
+    })
+    const one = presenceFromSync({ 'u1:a': [{ userId: 'u1', name: 'A', joinedAt: 1 }] })
+    expect(two.peers).toHaveLength(2)
+    expect(one.peers.map(p => p.userId)).toEqual(['u1'])
+  })
+
+  it('filters the caller out of a real snapshot and keeps the others', () => {
+    const s = presenceFromSync(sdkSnapshot)
+    expect(visiblePeers(s, 'u1:aaa').map(p => p.userId)).toEqual(['u2'])
+    const solo = presenceFromSync({ 'u1:aaa': sdkSnapshot['u1:aaa'] })
+    expect(presenceView(visiblePeers(solo, 'u1:aaa'), true)).toEqual({ kind: 'solo' })
+  })
+})
+
+describe('presenceFromSync × the installed SDK serializer', () => {
+  // The serializer is the code that builds what presenceState() returns. Its
+  // real output is the input this parser must keep. A hand-built fixture
+  // cannot stand in for it.
+  const rawTwoUsers = {
+    'u1:aaa': { metas: [{ phx_ref: 'F1', userId: 'u1', name: 'Amelia', joinedAt: 5 }] },
+    'u2:bbb': { metas: [{ phx_ref: 'F2', userId: 'u2', name: 'Ravi', joinedAt: 3 }] },
+  }
+
+  it('keeps the peers the installed SDK serializer emits', () => {
+    const snapshot = PresenceAdapter.transformState(rawTwoUsers)
+    expect(Array.isArray(snapshot['u1:aaa'])).toBe(true)
+    expect(snapshot['u1:aaa'][0]).toMatchObject({ userId: 'u1', name: 'Amelia', joinedAt: 5 })
+    expect(presenceFromSync(snapshot).peers.map(p => p.userId)).toEqual(['u2', 'u1'])
+  })
+
+  it('keeps a second record the SDK holds under one key', () => {
+    const snapshot = PresenceAdapter.transformState({
+      'u1:aaa': { metas: [
+        { phx_ref: 'F1', userId: 'u1', name: 'Amelia', joinedAt: 100 },
+        { phx_ref: 'F2', userId: 'u1', name: 'Amelia', joinedAt: 200 },
+      ] },
+    })
+    const s = presenceFromSync(snapshot)
+    expect(s.peers).toHaveLength(1)
+    expect(s.peers[0].joinedAt).toBe(100)
+  })
+
+  it('drops a meta that carries no usable payload', () => {
+    const snapshot = PresenceAdapter.transformState({ 'u1:aaa': { metas: [{ phx_ref: 'F1' }] } })
+    expect(presenceFromSync(snapshot).peers).toEqual([])
   })
 })
 
@@ -143,7 +246,7 @@ describe('helpers', () => {
   })
 
   it('broadcasts a payload with userId, name and a fresh joinedAt', () => {
-    const p = presencePayload('u1', 'Amelia') as { userId: string; name: string; joinedAt: number }
+    const p = presencePayload('u1', 'Amelia')
     expect(p.userId).toBe('u1')
     expect(p.name).toBe('Amelia')
     expect(typeof p.joinedAt).toBe('number')
