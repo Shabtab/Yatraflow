@@ -209,6 +209,73 @@ describe('links made before the fix still render', () => {
   })
 })
 
+describe('startup and later reads apply one precedence rule', () => {
+  /** App.tsx's own route initializer. The boot bridge gets the first word and
+   *  the route reader answers every read after it. If the two disagree, the
+   *  page the reader lands on depends on whether they arrived or pressed Back. */
+  const startupRoute = (): string => settleLegacyHash() ?? currentRoute()
+
+  it('is the expression App starts the route from', () => {
+    const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')
+    expect(app).toContain('settleLegacyHash() ?? currentRoute()')
+  })
+
+  it('agrees on a real path that carries a snapshot fragment', async () => {
+    const trip = canaryTrip()
+    const payload = await encodeTripSnapshot(trip)
+    const address = stubAddress(`${ORIGIN}/trips#/share/${payload}`)
+    const { replaces } = stubHistory(address)
+    const atStartup = startupRoute()
+    // Back and Forward read the same address again.
+    const later = currentRoute()
+    expect(atStartup).toBe(later)
+    expect(later).toBe('/trips')
+    // A real path wins, and neither read moves the payload into it.
+    expect(replaces).toEqual([])
+    expect(address.pathname).toBe('/trips')
+  })
+
+  it('agrees on a publication path that carries a snapshot fragment', async () => {
+    const trip = canaryTrip()
+    const payload = await encodeTripSnapshot(trip)
+    const address = stubAddress(`${ORIGIN}/pub/kerala-trip_1#/share/${payload}`)
+    stubHistory(address)
+    expect(startupRoute()).toBe('/pub/kerala-trip_1')
+    expect(currentRoute()).toBe('/pub/kerala-trip_1')
+  })
+
+  it('agrees on the bare root, where the snapshot is the route', async () => {
+    const trip = canaryTrip()
+    const payload = await encodeTripSnapshot(trip)
+    const address = stubAddress(`${ORIGIN}/#/share/${payload}`)
+    const { replaces } = stubHistory(address)
+    expect(startupRoute()).toBe(`/share/${payload}`)
+    expect(currentRoute()).toBe(`/share/${payload}`)
+    expect(replaces).toEqual([])
+  })
+
+  it('agrees when the host serves the document as index.html', async () => {
+    const trip = canaryTrip()
+    const payload = await encodeTripSnapshot(trip)
+    const address = stubAddress(`${ORIGIN}/index.html#/share/${payload}`)
+    stubHistory(address)
+    expect(startupRoute()).toBe(`/share/${payload}`)
+    expect(currentRoute()).toBe(`/share/${payload}`)
+  })
+
+  it('never settles a snapshot into a path, whatever the address carries', async () => {
+    const trip = canaryTrip()
+    const payload = await encodeTripSnapshot(trip)
+    for (const prefix of [`${ORIGIN}/`, `${ORIGIN}/trips`, `${ORIGIN}/index.html`]) {
+      const address = stubAddress(`${prefix}#/share/${payload}`)
+      const { replaces } = stubHistory(address)
+      startupRoute()
+      expect(replaces, prefix).toEqual([])
+      expect(address.pathname + address.search, prefix).not.toContain(payload)
+    }
+  })
+})
+
 describe('public publication and invite routes are untouched', () => {
   it('keeps serving a publication at its own path', () => {
     stubAddress(`${ORIGIN}/pub/kerala-trip_1`)
