@@ -72,7 +72,7 @@ the live milestone tracks are #236, #237, #239 and #240. Re-derive the count bef
 | #238 | P2 | M7 · Premium — the payment rail | **Closed 2026-09-19.** The rail shipped in v0.61.0 (order/entitlement tables, webhook, server-side paywall, unlock flow) and the fee model + `admin_revenue` analytics followed on 2026-09-21; the open remainder, F6 (#234 · the CA's merchant-of-record call), is tracked on its own issue — a row no commit can close |
 | #239 | P2 | M8 · 1.0 enablers → the 1.0 cut | The track below |
 | #240 | P2 | M9 · Invites & onboarding | The track below; exec plan already written |
-| #809 | P2 | Mobile experience and APK update notices — Android layout and insets, Creator Hub navigation, Map tab gestures, and update detection for the sideloaded APK | Open. Started 2026-10-18: the isolated update decision core landed in `src/lib/apkUpdates.ts` with its behavior tests, and it stays unwired. The notice UI, the release feed and the manifest publication remain |
+| #809 | P2 | Mobile experience and APK update notices — Android layout and insets, Creator Hub navigation, Map tab gestures, and update detection for the sideloaded APK | Open. Started 2026-10-18: the update decision core landed with its behavior tests, and the notice, the Profile control and the startup and resume checks are wired to it locally. The release feed, the published manifest and the permanent download page remain, and the check stays inert until they exist |
 
 The queue was empty for exactly one day, and this section said so — the launch set above is what
 replaced it. **#213** was filed and closed inside that day: a read-only audit of how the trip

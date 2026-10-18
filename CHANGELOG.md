@@ -17,7 +17,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ### Added
 
-- **The app can tell whether a newer Android build exists.** A new decision core reads the installed version code from the native app boundary. It compares that code with a published release. A download address must sit on an approved HTTPS host. The core reports a current, newer, offline or failed result. An automatic check runs once a day at most. The Later button holds one version back for a day. A manual check still gives an answer. The release feed and the notice come with issue #809.
+- **The Android app now checks for a newer build and offers it.** The app reads its own native version code and compares it with a published release. A check runs once a day at startup and on each return to the foreground. Profile shows the installed build and has its own Check for updates button. A newer release shows a dismissible Update and Later notice that never blocks planning. Later holds that version back for a day. Update opens the download page in the browser, and the user installs from there. The app installs nothing by itself. The release feed is not configured yet, so the check stays inert until a real feed is approved. (#809)
 
 ### Fixed
 
