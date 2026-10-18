@@ -14,10 +14,11 @@
 // links still open — because a fix that broke old links would just move people
 // onto links that need fixing later.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { decodeTripSnapshot, encodeTripSnapshot, snapshotUrl } from '../src/lib/snapshot'
+import { decodeTripSnapshot, encodeTripSnapshot, redactSnapshotUrl, snapshotUrl } from '../src/lib/snapshot'
 import { currentRoute, forceNativeRouting, legacyHashRoute, settleLegacyHash } from '../src/lib/router'
 import { pageTitle, routeParts } from '../src/lib/pageTitle'
 import { seedData } from '../src/data/seed'
+import { readFileSync } from 'node:fs'
 
 const ORIGIN = 'https://app.example.test'
 /** A trip whose own text names the trip, so a leak is legible rather than
@@ -112,13 +113,19 @@ describe('the boot bridge does not promote a payload into a path', () => {
     expect(settled).toBe(`/share/${payload}`)
   })
 
-  it('never writes the payload into the address from any entry point', async () => {
+  it('never writes the payload into the path or query, whatever the URL already carried', async () => {
     const trip = canaryTrip()
     const payload = await encodeTripSnapshot(trip)
     const address = stubAddress(`${ORIGIN}/?ref=copy#/share/${payload}`)
     stubHistory(address)
     settleLegacyHash()
-    expect(address.pathname + address.search + address.hash).not.toMatch(new RegExp(`/share/${payload}`))
+    // The fragment is the only place the payload may sit. The path and query
+    // are the request target, so a query the URL already carried must survive
+    // without ever picking the trip up.
+    expect(address.pathname + address.search).not.toContain(payload)
+    expect(address.pathname).toBe('/')
+    expect(address.search).toBe('?ref=copy')
+    expect(address.hash).toBe(`#/share/${payload}`)
   })
 
   it('resolves the fragment share on every later read, so Back keeps working', async () => {
@@ -165,7 +172,7 @@ describe('the boot bridge does not promote a payload into a path', () => {
   })
 
   it('keeps the share segment in the routed list the integrity test pins', async () => {
-    // tests/route-integrity.test.ts requires `share` to be bridged. The router
+    // tests/route-integrity.test.ts needs `share` to be bridged. The router
     // still resolves /share/<payload> for old links, so the segment stays.
     expect(legacyHashRoute('#/share/yf1_abc')).toBe('/share/yf1_abc')
   })
@@ -229,5 +236,55 @@ describe('join secrets stay out of the payload', () => {
     expect(back).not.toHaveProperty('inviteCode')
     expect(back).not.toHaveProperty('members')
     expect(back.name).toBe(trip.name)
+  })
+})
+
+// The collector builds its data point in the page, from the page's own URL. A
+// browser keeps a fragment out of a request, but that is not the same thing as
+// keeping it out of a collector that reads `location` in the page. The guard
+// lives in our code so the claim does not depend on a script this repo does not
+// ship.
+describe('analytics never receives a snapshot payload', () => {
+  it('drops the payload from a data point and keeps the page view', async () => {
+    const trip = canaryTrip()
+    const payload = await encodeTripSnapshot(trip)
+    stubAddress(`${ORIGIN}/trips`)
+    const redacted = redactSnapshotUrl(snapshotUrl(trip, payload))
+    expect(redacted).not.toContain(payload)
+    expect(redacted).not.toContain(CANARY)
+    // The route survives, so the visit is still counted as a snapshot open.
+    expect(redacted).toBe(`${ORIGIN}/#/share`)
+  })
+
+  it('drops a legacy path payload too, since old links still get read', () => {
+    expect(redactSnapshotUrl(`${ORIGIN}/share/yf1_payload`)).toBe(`${ORIGIN}/share`)
+  })
+
+  it.each([
+    `${ORIGIN}/pub/kerala-trip_1`,
+    `${ORIGIN}/trips?ref=copy`,
+    `${ORIGIN}/join/GOA4X2`,
+    `${ORIGIN}/`,
+  ])('leaves an unrelated address alone: %s', url => {
+    expect(redactSnapshotUrl(url)).toBe(url)
+  })
+
+  it('is wired into the analytics component', () => {
+    // A guard nobody mounts is not a guard.
+    const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')
+    expect(app).toContain('<Analytics beforeSend={analyticsBeforeSend} />')
+    expect(app).toContain('redactSnapshotUrl(event.url)')
+  })
+})
+
+describe('the referrer policy keeps a same-origin request from quoting the path', () => {
+  it('keeps the strict policy in the deployed headers', () => {
+    // A legacy path link is exposed on its first request no matter what we do
+    // now, and the request target travels onward in a same-origin Referer
+    // unless the policy holds. This is the control that stops a second copy.
+    const config = JSON.parse(readFileSync(new URL('../vercel.json', import.meta.url), 'utf8'))
+    const headers = config.headers.flatMap((entry: { source: string; headers: { key: string; value: string }[] }) =>
+      entry.headers.filter(h => h.key === 'Referrer-Policy').map(h => h.value))
+    expect(headers).toContain('strict-origin-when-cross-origin')
   })
 })

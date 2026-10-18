@@ -21,6 +21,14 @@ type Listener = () => void
 
 const listeners = new Set<Listener>()
 
+/** The route a snapshot payload rides in. A path here is the whole trip, in
+ *  reversible base64, so the bridge and the route reader both treat it
+ *  differently from an ordinary segment (#805). A bare `/share` carries no
+ *  payload and stays an ordinary route. */
+function isSnapshotRoute(route: string): boolean {
+  return route.startsWith('/share/')
+}
+
 /** Test seam: the Capacitor check is environment reality, but the router's
  *  native mode is a behaviour both tests and the shell need to pin. Null
  *  restores the real check. */
@@ -43,6 +51,14 @@ export function currentRoute(): string {
   // The native WebView (and any static host that serves the file directly)
   // names the document `/index.html`; the route it carries is the bare root.
   const path = location.pathname === '/index.html' ? '/' : location.pathname
+  // #805: a snapshot link carries the trip in its fragment, so the path cannot
+  // name the page. Read the fragment here, which is what keeps Back working
+  // after the reader navigates away and returns. A real path outranks a
+  // leftover fragment, so this only answers the bare root.
+  if (path === '/') {
+    const fragmentRoute = legacyHashRoute(location.hash)
+    if (fragmentRoute && isSnapshotRoute(fragmentRoute)) return fragmentRoute
+  }
   return path + location.search
 }
 
@@ -128,11 +144,17 @@ export function legacyHashRoute(hash: string): string | null {
  *  name, not a navigation step, and Back must not double up on it. A query the
  *  URL already carries survives the promotion (the card hand-off's `?ref=…`
  *  is the attribution fact about how the reader arrived), and a query carried
- *  in the hash itself wins per key. */
+ *  in the hash itself wins per key.
+ *
+ *  A snapshot fragment is the one address the bridge does NOT promote (#805).
+ *  Promoting it writes the payload into the path, which is the transport this
+ *  link exists to avoid. The fragment already IS the modern address for that
+ *  route, so the bridge settles it by leaving it alone and naming the route. */
 export function settleLegacyHash(): string | null {
   if (nativeRouting() || !location.hash) return null
   const target = legacyHashRoute(location.hash)
   if (!target) return null
+  if (isSnapshotRoute(target)) return target
   const params = new URLSearchParams(location.search)
   const hashQuery = target.slice(target.indexOf('?'))
   if (hashQuery.startsWith('?')) {
