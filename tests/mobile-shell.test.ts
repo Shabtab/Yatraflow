@@ -6,6 +6,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { CREATE_PATH, CREATE_ROUTE } from '../src/lib/routes'
+import { navDestinations } from '../src/components/BottomNav'
 
 const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
 const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')
@@ -41,9 +42,14 @@ function rules(cssText: string, selector: string): string[] {
 describe('bottom navigation is a shell-only primary nav', () => {
   const nav = source('src/components/BottomNav.tsx')
 
-  it('ships exactly the four destinations, in order', () => {
-    const routes = [...nav.matchAll(/to:\s*'([^']+)'/g)].map(m => m[1])
-    expect(routes).toEqual(['/', '/trips', '/explore', '/profile'])
+  it('ships the four primary destinations for everyone, Profile last', () => {
+    expect(navDestinations(false).map(d => d.to)).toEqual(['/', '/trips', '/explore', '/profile'])
+  })
+
+  it('adds Creator hub as a creator-only fifth, and Profile still last', () => {
+    const creator = navDestinations(true).map(d => d.to)
+    expect(creator).toEqual(['/', '/trips', '/explore', '/creator-hub', '/profile'])
+    expect(creator[creator.length - 1]).toBe('/profile')
   })
 
   it('uses real buttons and marks the current page for assistive tech', () => {
@@ -61,7 +67,7 @@ describe('bottom navigation is a shell-only primary nav', () => {
 
   it('mounts only behind the native gate in App.tsx', () => {
     expect(app).toContain("import { BottomNav } from './components/BottomNav'")
-    expect(app).toContain('{isNative && me && <BottomNav route={route} onNavigate={navigate} />}')
+    expect(app).toContain('{isNative && me && <BottomNav route={route} onNavigate={navigate} isCreator={me.profile.isCreator} />}')
   })
 
   it('hides the website top bar for the signed-in shell', () => {

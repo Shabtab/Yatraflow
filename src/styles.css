@@ -10745,3 +10745,17 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 html.native-shell .app-shell:not(:has(> .topnav)) > main {
   padding-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
 }
+
+/* Creator hub tab: a creator's bar carries five destinations, everyone else's
+   carries four. The four-item template above stays as it was, so this block is
+   scoped by the data attribute BottomNav writes. Each selector is unique, which
+   keeps one declaration per top-level selector. */
+.bottom-nav[data-destinations="5"] { grid-template-columns: repeat(5, 1fr); }
+/* Grid items default to min-width:auto, which would refuse to shrink and push a
+   five-item bar past the screen. Let the columns shrink instead. */
+.bottom-nav[data-destinations="5"] .bottom-nav-item { min-width: 0; }
+/* Then end a narrow label with an ellipsis rather than overflowing it or
+   shrinking the type. */
+.bottom-nav[data-destinations="5"] .bottom-nav-label {
+  max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
