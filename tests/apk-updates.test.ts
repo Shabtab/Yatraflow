@@ -57,7 +57,7 @@ function deferred<T>() {
 interface Harness {
   checker: ReturnType<typeof createUpdateChecker>
   fetches: string[]
-  /** Every state a subscriber was told about, in order. */
+  /** Every state a subscriber received, in the order it arrived. */
   seen: UpdateState[]
   /** Only the states that carry a release to offer. */
   notices: UpdateState[]
@@ -189,10 +189,21 @@ describe('version comparison uses native integer codes', () => {
     expect(state.manifest?.versionCode).toBe(18)
   })
 
-  it('compares as integers, not as strings', async () => {
-    // "9" > "14" as text, but 9 is the older build.
+  it('compares two parsed numbers, so an older build is not an update', async () => {
+    // 9 against 14 as numbers: the older build is not an update.
     const h = harness({ feed: [body({ versionCode: 9 })] })
     expect((await h.checker.check()).phase).toBe('current')
+  })
+
+  it('parses the native code to a number at the boundary', () => {
+    // The installed code arrives as the string "9". Compared as text it would
+    // sort after "14", so the boundary parses it and the trap cannot be built.
+    const installed = installedFromAppInfo(
+      { id: 'app.yatraflow.mobile', build: '9', version: '0.9-native' },
+      'production',
+    )
+    expect(installed.versionCode).toBe(9)
+    expect(typeof installed.versionCode).toBe('number')
   })
 
   it('never compares the display version', async () => {
@@ -564,5 +575,90 @@ describe('localStorageStore degrades without storage', () => {
     const store = localStorageStore('yatraflow_apk_update_later')
     expect(store.read()).toBeNull()
     expect(() => store.write('{"versionCode":15,"until":1}')).not.toThrow()
+  })
+})
+
+// The two repairs from M809-UPDATE-REPAIR-CC2. Both tests below failed against
+// c46286fb and pass after the repair.
+describe('one broken subscriber cannot break the core', () => {
+  it('shares one request when a subscriber re-enters the check', async () => {
+    // The re-entry lands during the 'checking' notification, which is the
+    // moment the request must already be reserved.
+    let reentrant: Promise<UpdateState> | null = null
+    const h = harness({ feed: [body()] })
+    h.checker.subscribe((state) => {
+      if (state.phase === 'checking' && reentrant === null) reentrant = h.checker.check()
+    })
+
+    const outer = h.checker.check()
+    expect((await outer).phase).toBe('newer')
+    expect(h.fetches).toHaveLength(1)
+    expect(reentrant).toBe(outer)
+  })
+
+  it('keeps the check usable when a subscriber throws at the checking phase', async () => {
+    const h = harness({ feed: [body()] })
+    const seen: UpdateState[] = []
+    h.checker.subscribe((state) => {
+      if (state.phase === 'checking') throw new Error('subscriber boom')
+    })
+    h.checker.subscribe((state) => seen.push(state))
+
+    // A consumer bug must not reject the caller, and must not starve the
+    // listeners after it.
+    const state = await h.checker.check()
+    expect(state.phase).toBe('newer')
+    expect(seen.map((s) => s.phase)).toEqual(['checking', 'newer'])
+  })
+
+  it('keeps the check usable when a subscriber throws at the newer phase', async () => {
+    const h = harness({ feed: [body()] })
+    const seen: UpdateState[] = []
+    h.checker.subscribe((state) => {
+      if (state.phase === 'newer') throw new Error('subscriber boom')
+    })
+    h.checker.subscribe((state) => seen.push(state))
+
+    const state = await h.checker.check()
+    expect(state.phase).toBe('newer')
+    expect(seen.map((s) => s.phase)).toEqual(['checking', 'newer'])
+  })
+
+  it('keeps later() usable when a subscriber throws', async () => {
+    const h = harness({ feed: [body(), body()] })
+    const seen: UpdateState[] = []
+    h.checker.subscribe(() => {
+      throw new Error('subscriber boom')
+    })
+    h.checker.subscribe((state) => seen.push(state))
+
+    expect((await h.checker.check()).phase).toBe('newer')
+    expect(() => h.checker.later()).not.toThrow()
+    expect(h.checker.state().phase).toBe('suppressed')
+    expect(seen.map((s) => s.phase)).toEqual(['checking', 'newer', 'suppressed'])
+
+    // The core still works after the failures.
+    h.advance(UPDATE_DAY_MS)
+    expect((await h.checker.check()).phase).toBe('newer')
+  })
+
+  it('raises no unhandled rejection when a subscriber throws', async () => {
+    const unhandled: unknown[] = []
+    const onUnhandled = (reason: unknown) => {
+      unhandled.push(reason)
+    }
+    process.on('unhandledRejection', onUnhandled)
+    try {
+      const h = harness({ feed: [body(), body()] })
+      h.checker.subscribe(() => {
+        throw new Error('subscriber boom')
+      })
+      await h.checker.check()
+      h.checker.later()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(unhandled).toEqual([])
+    } finally {
+      process.off('unhandledRejection', onUnhandled)
+    }
   })
 })

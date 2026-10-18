@@ -77,7 +77,21 @@ export type UpdateFailure =
   | 'wrong-channel'
   | 'network'
 
-/** What the caller should show, and what a notice may offer. */
+/**
+ * What the caller shows, and what a notice may offer.
+ *
+ * The notice contract, so a consumer keys on the right field:
+ *
+ * - Offer an update when `phase === 'newer'`. That is the only phase that means
+ *   newer, allowed and not deferred.
+ * - Keep your own notice visible while `phase === 'checking'`. The core keeps
+ *   the previous release in that state. So a re-check does not blank a notice
+ *   the user is reading.
+ * - Never offer on `phase === 'suppressed'`. It carries a manifest too, so
+ *   `manifest` alone is not a signal to show anything.
+ * - A repeat check after the interval re-offers the same release. That is the
+ *   daily reminder, and an explicit manual check re-offers on purpose.
+ */
 export interface UpdateState {
   phase: UpdatePhase
   /** The eligible release, present for 'newer' and 'suppressed'. */
@@ -123,7 +137,10 @@ export interface UpdateCheckerOptions {
 export interface UpdateChecker {
   /** The current state. Safe to read at any time; never triggers work. */
   state(): UpdateState
-  /** Observe each change. Emits on real change only, so notices cannot duplicate. */
+  /**
+   * Observe each change. A failing listener cannot break the core, nor the
+   * listeners after it.
+   */
   subscribe(listener: (state: UpdateState) => void): () => void
   /**
    * Runs a check. `{ manual: true }` is the user's explicit request: it ignores
@@ -132,8 +149,8 @@ export interface UpdateChecker {
    */
   check(options?: { manual?: boolean }): Promise<UpdateState>
   /**
-   * Records Later for the release currently on offer. Returns false when
-   * nothing is on offer.
+   * Records Later for the release on offer now. Returns false when nothing is
+   * on offer.
    */
   later(): boolean
 }
@@ -324,9 +341,17 @@ export function createUpdateChecker(options: UpdateCheckerOptions): UpdateChecke
   }
 
   /**
-   * Notifies only on a real change, so a repeated check cannot raise a second
-   * notice for the same release. `checkedAt` and `manual` are excluded on
-   * purpose: they describe when and why, not what is on offer.
+   * Notifies on a real change of phase, failure or release. So one check cannot
+   * announce twice, and two concurrent checks cannot double-announce.
+   *
+   * A repeat check after the interval does re-announce the same release. The
+   * spec permits that daily reminder, and a manual check re-offers on purpose.
+   *
+   * `checkedAt` and `manual` stay out of the change test. They say when and why,
+   * not what is on offer.
+   *
+   * Each listener is isolated. One consumer's bug must not break the core, and
+   * it must not starve the listeners after it.
    */
   function emit(next: UpdateState): UpdateState {
     const previous = state
@@ -336,7 +361,13 @@ export function createUpdateChecker(options: UpdateCheckerOptions): UpdateChecke
       || previous.failure !== next.failure
       || !sameRelease(previous.manifest, next.manifest)
     if (changed) {
-      for (const listener of listeners) listener(next)
+      for (const listener of listeners) {
+        try {
+          listener(next)
+        } catch {
+          /* a subscriber failure is not the core's failure */
+        }
+      }
     }
     return next
   }
@@ -397,11 +428,26 @@ export function createUpdateChecker(options: UpdateCheckerOptions): UpdateChecke
     }
 
     const seqAtStart = ++seq
-    const promise = run(seqAtStart, manual)
-    inFlight = promise
-    void promise.then(() => {
-      if (inFlight === promise) inFlight = null
+
+    // Reserve the request BEFORE run() notifies. run() emits 'checking' without
+    // an await, and a subscriber can call check() from that emission. A late
+    // assignment lets the re-entry start a second request and drop this answer.
+    let settle!: (next: UpdateState) => void
+    const promise = new Promise<UpdateState>((resolve) => {
+      settle = resolve
     })
+    inFlight = promise
+    const release = () => {
+      if (inFlight === promise) inFlight = null
+    }
+    void promise.then(release, release)
+
+    void run(seqAtStart, manual).then(settle, () =>
+      // run() catches its own failures, so this is a safety net only. It keeps a
+      // caller from waiting forever if that ever changes.
+      settle({ phase: 'failed', failure: 'network', checkedAt: now(), manual }),
+    )
+
     return promise
   }
 

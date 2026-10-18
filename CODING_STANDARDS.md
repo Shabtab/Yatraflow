@@ -829,14 +829,16 @@ Settings previews must use validated draft fields. Reuse road measurements only 
    before you write a margin rule for that header.
 
 6aw. **The native version code is a string, and a published manifest must carry an
-   integer (learned 2026-10-18, #809).** `App.getInfo()` maps Android's `versionCode`
-   onto `build`, and the plugin types it as a `string`. A comparison between that string
-   and a number compares text, so build `9` reads as newer than `14`. The update core
-   parses the native string once, in `installedFromAppInfo`. That helper refuses anything
-   that is not all digits, so a bad build fails loudly. The core also insists that a
-   manifest's `versionCode` is a real integer. Nothing downstream then compares a number
-   with a string. Do not add a coercion at the comparison site. Keep the parse at the
-   boundary.
+   integer (learned 2026-10-18, #809; mechanism corrected 2026-10-18).** `App.getInfo()`
+   maps Android's `versionCode` onto `build`, and the plugin types it as a `string`. Two
+   version codes compared as strings sort lexicographically, so `9` sorts after `14`.
+   That is the real trap. A string against a number converts to a number instead. So the
+   mixed case is right by luck rather than by design. The update core parses the native
+   string once, in `installedFromAppInfo`. That helper refuses anything that is not all
+   digits, so a bad build fails loudly. The core also insists that a manifest's
+   `versionCode` is a real integer. Nothing downstream compares two strings, and nothing
+   leans on a coercion. Do not add a coercion at the comparison site. Keep the parse at
+   the boundary.
 
 ## 2. Conventions (`AGENTS.md` §4)
 
