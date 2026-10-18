@@ -106,7 +106,9 @@ function peerFromRecord(sessionKey: string, record: unknown): PresencePeer | nul
   const userId = typeof record.userId === 'string' ? record.userId : ''
   if (!userId) return null
   const name = typeof record.name === 'string' && record.name ? record.name : userId
-  const joined = Number(record.joinedAt)
+  const raw = record.joinedAt
+  // A number or a numeric string only: coercing a hostile JSON object can throw.
+  const joined = typeof raw === 'number' ? raw : typeof raw === 'string' ? Number(raw) : NaN
   return { sessionKey, userId, name, joinedAt: Number.isFinite(joined) ? joined : 0 }
 }
 

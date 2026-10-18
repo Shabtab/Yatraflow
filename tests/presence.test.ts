@@ -199,6 +199,61 @@ describe('presenceFromSync × the installed SDK serializer', () => {
   })
 })
 
+describe('presenceFromSync × the installed SDK serializer — malformed joinedAt', () => {
+  // JSON can carry an object whose toString and valueOf are both null.
+  // The SDK serializer keeps that value. A global coercion throws on it.
+  const hostileJoinedAt = { toString: null, valueOf: null }
+
+  it('keeps the good peer and does not abort when a bad joinedAt arrives', () => {
+    const snapshot = PresenceAdapter.transformState({
+      bad: { metas: [{ phx_ref: 'bad-ref', userId: 'bad', name: 'Bad', joinedAt: hostileJoinedAt }] },
+      good: { metas: [{ phx_ref: 'good-ref', userId: 'good', name: 'Good', joinedAt: 1 }] },
+    })
+    // The serializer passes the malformed field through as-is.
+    expect(Array.isArray(snapshot.bad)).toBe(true)
+    expect(snapshot.bad[0].joinedAt).toEqual({ toString: null, valueOf: null })
+    expect(presenceFromSync(snapshot).peers).toEqual([
+      { sessionKey: 'bad', userId: 'bad', name: 'Bad', joinedAt: 0 },
+      { sessionKey: 'good', userId: 'good', name: 'Good', joinedAt: 1 },
+    ])
+  })
+
+  it('survives a room where the only peer is malformed', () => {
+    const snapshot = PresenceAdapter.transformState({
+      bad: { metas: [{ phx_ref: 'r', userId: 'bad', name: 'Bad', joinedAt: hostileJoinedAt }] },
+    })
+    expect(presenceFromSync(snapshot).peers).toEqual([
+      { sessionKey: 'bad', userId: 'bad', name: 'Bad', joinedAt: 0 },
+    ])
+  })
+})
+
+describe('presenceFromSync — joinedAt boundary shapes', () => {
+  it('keeps numeric and numeric-string clocks', () => {
+    const s = presenceFromSync({
+      a: [{ userId: 'a', name: 'A', joinedAt: 12.5 }],
+      b: [{ userId: 'b', name: 'B', joinedAt: '1000' }],
+      c: [{ userId: 'c', name: 'C', joinedAt: ' 7 ' }],
+      d: [{ userId: 'd', name: 'D', joinedAt: '0x10' }],
+    })
+    expect(Object.fromEntries(s.peers.map(p => [p.userId, p.joinedAt])))
+      .toEqual({ a: 12.5, b: 1000, c: 7, d: 16 })
+  })
+
+  it('falls back to 0 for every unsupported clock shape and keeps the valid peers', () => {
+    const unsupported: unknown[] = [
+      { toString: null, valueOf: null },
+      {}, [], [1, 2], ['5'], true, false, null, undefined, Infinity, -Infinity, NaN, 'nope', Symbol('seq'),
+    ]
+    const snap: Record<string, unknown> = { valid: [{ userId: 'valid', name: 'V', joinedAt: '250' }] }
+    unsupported.forEach((value, i) => { snap['k' + i] = [{ userId: 'w' + i, name: 'W', joinedAt: value }] })
+    const peers = presenceFromSync(snap).peers
+    expect(peers).toHaveLength(unsupported.length + 1)
+    expect(peers.find(p => p.userId === 'valid')?.joinedAt).toBe(250)
+    expect(peers.filter(p => p.userId !== 'valid').every(p => p.joinedAt === 0)).toBe(true)
+  })
+})
+
 describe('visiblePeers', () => {
   it('filters the caller\'s own session out', () => {
     let s = reducePresence(EMPTY_PRESENCE, 'me:aaa', { userId: 'me', name: 'Me' }, 1)

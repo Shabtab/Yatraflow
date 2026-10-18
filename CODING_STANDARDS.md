@@ -846,6 +846,9 @@ Settings previews must use validated draft fields. Reuse road measurements only 
    Read the installed serializer in `node_modules` before you write a cast over its type.
    Type the boundary parameter `unknown`. Narrow it with a named guard.
    The cast then has nowhere to live.
+   A global coercion is also unsafe: `Number(value)` on an untrusted JSON object can throw.
+   Read a clock from a number or a numeric string only.
+   Fall back to 0 for anything else.
    Pin the shape with a contract test that runs the installed serializer.
    Feed its real output to the parser.
    A hand-built fixture cannot fail the way the wire does.
