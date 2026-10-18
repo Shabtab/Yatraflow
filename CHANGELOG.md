@@ -55,10 +55,11 @@ Two database migrations go with this release: `20261017_trip_write_version.sql` 
 
 ### Fixed
 
-- **A new snapshot link keeps the whole trip out of server requests.** The payload rides the part of the address after `#`. A browser then asks for the home page alone. The trip never enters a request target, a query, or a referrer. (#805)
-- **The boot bridge no longer moves a snapshot payload into the path.** It settles such a link by leaving the address alone, and it still renders the plan. An older link keeps opening. Its trip is already readable, so no redirect can undo that first request. (#805)
+- **A new snapshot link keeps the whole trip out of the request a reader makes.** The payload rides the part of the address after `#`. A browser then asks for the home page alone. The trip enters no request target, query, or referrer for that page load. (#805)
+- **The boot bridge no longer moves a snapshot payload into the path.** It settles such a link by leaving the address alone, and it still renders the plan. Startup and every later read now pick the same route, so Back returns to the page the reader arrived on. An older link keeps opening. (#805)
 - **Analytics data points drop a snapshot payload before they leave the page.** The page view is still counted, without the trip. (#805)
-- **Sharing copy now states what a snapshot link is.** Anyone who holds the link can read the trip, and no copied link can be revoked. The reader's page also records that an older link was already sent on its first request. (#805)
+- **Support feedback drafts no longer carry a snapshot payload.** The draft keeps the route and the app version, so a report is still reproducible. (#805)
+- **Sharing copy now states what a snapshot link is.** Anyone who holds the link can read the trip, and no copied link can be revoked. The reader's page also records that an older link was already sent on its first request. A browser can repeat that in same-origin referrers, and the app does not stop it. (#805)
 
 ## [0.77.1] - 2026-10-18
 

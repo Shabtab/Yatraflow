@@ -884,13 +884,17 @@ function SharedTripPage({ payload, onNavigate }: { payload: string; onNavigate: 
           <>
             {state.s === 'ready' && <p className="muted">{state.days}-day trip · {state.destinations}</p>}
             <p className="muted small">
-              This whole plan is embedded in the link itself - nothing was stored on a server. The part after the
-              <code>#</code> stays in your browser and is never sent in a request.
+              This whole plan is embedded in the link itself - nothing was stored on a server. The browser
+              sends the page address only. The part after the <code>#</code> stays in your browser.
             </p>
             <p className="muted small">
-              That also means anyone holding the link can read the plan, and the sender cannot take the link back.
-              Older links put the plan in the page address instead. Those were already exposed on their first request,
-              so opening one now sends it once more - a fresh link does not.
+              Anyone who holds the link can read the plan, and the sender cannot take the link back. The link is the
+              only key. Importing it, forwarding it, or reporting a problem with the address in it all put the plan
+              where you chose.
+            </p>
+            <p className="muted small">
+              An older link put the plan in the page address instead. That one was sent on its first request, and a
+              browser can repeat it in same-origin referrers while you stay here. Nothing in the app undoes that.
             </p>
             <p className="muted small">
               Import it to get your own editable copy{me || db.sessionUserId ? '' : ' (you will be asked to log in first)'}.

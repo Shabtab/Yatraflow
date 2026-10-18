@@ -21,12 +21,26 @@ type Listener = () => void
 
 const listeners = new Set<Listener>()
 
-/** The route a snapshot payload rides in. A path here is the whole trip, in
- *  reversible base64, so the bridge and the route reader both treat it
- *  differently from an ordinary segment (#805). A bare `/share` carries no
- *  payload and stays an ordinary route. */
+/** `/share/<token>` is the whole trip in reversible base64, so it is the one
+ *  route the bridge refuses to promote into a path (#805). A bare `/share`
+ *  carries no token and stays an ordinary route. */
 function isSnapshotRoute(route: string): boolean {
   return route.startsWith('/share/')
+}
+
+/** The path the document itself sits at. The native WebView, and any static
+ *  host that serves the file directly, name the document `/index.html`. */
+function documentPath(): string {
+  return location.pathname === '/index.html' ? '/' : location.pathname
+}
+
+/** The route a snapshot fragment names, or null when the fragment carries none
+ *  or a real path already names the route. Startup and every later read must
+ *  go through this, or the rendered page depends on whether the reader arrived
+ *  or pressed Back (#805). */
+function snapshotFragmentRoute(target: string | null): string | null {
+  if (documentPath() !== '/') return null
+  return target && isSnapshotRoute(target) ? target : null
 }
 
 /** Test seam: the Capacitor check is environment reality, but the router's
@@ -48,18 +62,9 @@ function nativeRouting(): boolean {
  *  the route string. */
 export function currentRoute(): string {
   if (nativeRouting()) return location.hash.replace(/^#/, '') || '/'
-  // The native WebView (and any static host that serves the file directly)
-  // names the document `/index.html`; the route it carries is the bare root.
-  const path = location.pathname === '/index.html' ? '/' : location.pathname
-  // #805: a snapshot link carries the trip in its fragment, so the path cannot
-  // name the page. Read the fragment here, which is what keeps Back working
-  // after the reader navigates away and returns. A real path outranks a
-  // leftover fragment, so this only answers the bare root.
-  if (path === '/') {
-    const fragmentRoute = legacyHashRoute(location.hash)
-    if (fragmentRoute && isSnapshotRoute(fragmentRoute)) return fragmentRoute
-  }
-  return path + location.search
+  // A snapshot fragment answers only at the bare root; a real path outranks it.
+  const snapshot = snapshotFragmentRoute(legacyHashRoute(location.hash))
+  return snapshot ?? documentPath() + location.search
 }
 
 /** The query parameters of the current address, wherever they live. */
@@ -154,7 +159,7 @@ export function settleLegacyHash(): string | null {
   if (nativeRouting() || !location.hash) return null
   const target = legacyHashRoute(location.hash)
   if (!target) return null
-  if (isSnapshotRoute(target)) return target
+  if (isSnapshotRoute(target)) return snapshotFragmentRoute(target)
   const params = new URLSearchParams(location.search)
   const hashQuery = target.slice(target.indexOf('?'))
   if (hashQuery.startsWith('?')) {
