@@ -8,14 +8,18 @@
 // and run the real decoder on it. A canary trip name that comes back decoded
 // means the trip travelled; a null answer means it did not.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { feedbackHref } from '../src/lib/feedback'
 import { decodeTripSnapshot, encodeTripSnapshot, snapshotUrl } from '../src/lib/snapshot'
 import { forceNativeRouting } from '../src/lib/router'
 import { seedData } from '../src/data/seed'
 
 const ORIGIN = 'https://app.example.test'
-const APP_VERSION = '0.77.1'
 const CANARY = 'FEEDBACK-805-CANARY'
+
+// The same source vite.config.ts reads for __APP_VERSION__, so the test follows
+// every release and this branch's own version instead of naming one.
+const APP_VERSION = (JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string }).version
 
 function canaryTrip() {
   return { ...structuredClone(seedData.trips[0]), name: CANARY }
