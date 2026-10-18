@@ -6,7 +6,7 @@
 // It keeps the 'YYYY-MM-DD' value that lib/ageGate reads. It blocks a future
 // date. It clamps a 31st or a Feb-29 to the month. It stays reachable by
 // keyboard and screen reader. Only the sign-up DOB field uses it.
-import { useEffect, useMemo, useRef, useState, type Ref } from 'react'
+import { useMemo, useState, type Ref } from 'react'
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 
@@ -92,24 +92,25 @@ export function DobPicker({ value, onChange, max, id, 'aria-describedby': descri
   const maxY = Number(max.slice(0, 4))
   const minY = maxY - YEAR_SPAN
   const parsed = useMemo(() => parseDob(value), [value])
+  // The draft the selects show. It holds a PARTIAL pick (year chosen, month not
+  // yet) that the 'YYYY-MM-DD' value cannot carry, so it is stored — and it is
+  // re-synced to the external value here, in the render pass, NOT in an effect.
+  const [synced, setSynced] = useState(value)
   const [y, setY] = useState(parsed?.y ?? 0)
   const [mo, setMo] = useState(parsed?.mo ?? 0)
   const [d, setD] = useState(parsed?.d ?? 0)
-  // Sync FROM the page value only when it actually changes externally (a reset
-  // or autofill). A partial local pick leaves `value` at '' — without this guard
-  // the effect would wipe the year the user just chose.
-  const seen = useRef(value)
-  // The draft parts follow the page value. React's own guidance covers this as
-  // adjusting state after a prop change. The effect stays so an external reset
-  // is observed. It is suppressed with this reason, not restructured.
-  /* eslint-disable react-hooks/set-state-in-effect */
-  useEffect(() => {
-    if (seen.current === value) return
-    seen.current = value
+  // Guarded prop-change adjustment (React's "adjust state when a prop changes"):
+  // only when the external value actually moves do we re-derive the draft, and
+  // setSynced makes the guard false on the immediate re-render, so it settles in
+  // one pass with no extra commit. A partial local pick leaves `value` at '', so
+  // the guard stays false and the draft the user is building is preserved — even
+  // across an unrelated parent re-render. (An effect here is what
+  // react-hooks/set-state-in-effect refuses.)
+  if (value !== synced) {
+    setSynced(value)
     if (parsed) { setY(parsed.y); setMo(parsed.mo); setD(parsed.d) }
     else { setY(0); setMo(0); setD(0) }
-  }, [value, parsed])
-  /* eslint-enable react-hooks/set-state-in-effect */
+  }
 
   const years = useMemo(() => {
     const a: number[] = []
