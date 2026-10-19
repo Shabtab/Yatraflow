@@ -17,7 +17,7 @@ import { describePreviewSplit } from '../lib/previewSplit'
 import { simulateDay, scheduleRowsById, originOf, minutesToHM, formatInr, getAssumptions, computeTotals, isRoundTrip } from '../lib/engine'
 import { cap, titleCase } from '../lib/labels'
 import { useTimeFormat, formatHM, formatHMRange } from '../lib/timefmt'
-import { stopKindOf, STOP_KIND_LABELS } from '../lib/stopKind'
+import { stopPresentation } from '../lib/stopKind'
 import { useSavedPubs } from '../lib/savedPubs'
 import { fetchMyEntitlements, fetchCreatorSales, fetchCreatorFunnel, purchaseUnlock, type FunnelDailyRow } from '../lib/unlock'
 import { UnlockReveal } from '../components/UnlockReveal'
@@ -327,7 +327,7 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
         day,
         stops,
         score: stops.length + (sim.totalDistanceKm > 1 ? 1 : 0),
-        kind: lead ? stopKindOf(lead) : 'drive' as const,
+        ...stopPresentation(lead ?? { category: 'travel', title: '' }, trip.transportMode),
         meta: `${stops.length} stop${stops.length === 1 ? '' : 's'} · ~${minutesToHM(sim.totalTravelMinutes)} travel${sim.totalDistanceKm > 1 ? ` · ${sim.totalDistanceKm.toFixed(0)} km` : ''}`,
       }
     })
@@ -754,8 +754,8 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
                 {highlightsN.map(h => (
                   <div key={h.day.id} className="day-highlight-card">
                     <div className="day-highlight-top">
-                      <span className="editorial-kicker">Day {String(h.day.index + 1).padStart(2, '0')} · {STOP_KIND_LABELS[h.kind]}</span>
-                      <span className={`stop-kind-tag kind-${h.kind}`}>{STOP_KIND_LABELS[h.kind]}</span>
+                      <span className="editorial-kicker">Day {String(h.day.index + 1).padStart(2, '0')} · {h.label}</span>
+                      <span className={`stop-kind-tag kind-${h.kind}`}>{h.label}</span>
                     </div>
                     <b className="day-highlight-title">{h.day.title ?? `Day ${h.day.index + 1}`}</b>
                     <span className="day-highlight-meta">{h.meta}</span>

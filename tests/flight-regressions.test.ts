@@ -163,6 +163,31 @@ describe('flight journey regressions', () => {
     expect(originOf(t, 1)).toEqual({ lat: BOM.lat, lng: BOM.lng })
   })
 
+  it('names empty stay days after the flight destination rather than the stored origin anchor', () => {
+    const t = trip([stop('Delhi', HOME, 0)])
+    t.days.push({ id: 'stay-1', index: 1, stops: [] }, { id: 'stay-2', index: 2, stops: [] })
+    for (const day of t.days.slice(1)) {
+      const journey = buildJourney(t, day)
+      expect(journey.startTitle).toBe('Mumbai')
+      expect(journey.points[0]).toMatchObject(STAY)
+      expect(journey.driveMinutes).toBe(0)
+    }
+  })
+
+  it('names an airport arrival when no destination is saved', () => {
+    const t = trip()
+    t.destinations = []
+    t.destinationCoords = []
+    t.days.push({ id: 'stay', index: 1, stops: [] })
+    expect(buildJourney(t, t.days[1]).startTitle).toContain('BOM')
+  })
+
+  it('keeps the local hotel name after a flight and ignores rejected stops', () => {
+    const t = trip([stop('Mumbai hotel', STAY, 0), { ...stop('Rejected Delhi', HOME, 1), status: 'rejected' }])
+    t.days.push({ id: 'stay', index: 1, stops: [] })
+    expect(buildJourney(t, t.days[1]).startTitle).toBe('Mumbai hotel')
+  })
+
   it('does not treat an airport transfer beside an air leg as backtracking', () => {
     const t = trip([stop('home', HOME, 0), stop('stay', STAY, 1)])
     expect(collectWarnings(t).some(w => w.code === 'backtrack')).toBe(false)
