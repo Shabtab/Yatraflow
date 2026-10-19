@@ -27,7 +27,7 @@ export function CoverPlate(p: {
     const src = plan.src
     return (
       <div className="sf-cover sf-cover-photo">
-        <img src={src} alt={p.alt} loading="lazy" onError={() => setBrokenSrc(src)} />
+        <img src={src} alt={p.alt} loading="lazy" onError={() => { setBrokenSrc(src) }} />
       </div>
     )
   }
