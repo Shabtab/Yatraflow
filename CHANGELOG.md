@@ -17,6 +17,8 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ### Added
 
+- **Creator pages show a public bio and itinerary links without JavaScript.** Search visitors can read `/c/<id>` directly. Recognised share tags still open the app. Structured data describes the public profile. Private profile fields stay out of the page. A failed itinerary read shows a message and prevents caching. The page also sets its own small stylesheet in the head. The column holds a 65ch measure, and it is centred with 16px padding. One unbroken handle or title wraps instead of scrolling the page sideways. Each link is a touch target of at least 44px in each direction. A long title still wraps inside its own link. One creator-page class scopes every rule, so no rule leaks to another surface. (#701)
+
 - **A published itinerary's share page prints the practical details a search visitor needs.** The page now shows the budget per person, the travel tips and the warnings. It shows the cover image as a real `<img>` with a width, a height and an alt. The structured data carries the same cover image. A field with no value prints nothing. (#700)
 
 ### Fixed

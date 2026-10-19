@@ -330,14 +330,13 @@ function creatorProfileResponse(name = 'Asha Menon', bio = 'Slow travel across t
 }
 
 function countResponse(total: number) {
-  return new Response(null, {
-    status: 200,
-    headers: { 'content-range': `0-0/${total}` },
-  })
+  return new Response(JSON.stringify(Array.from({ length: total }, (_, index) => ({
+    id: `trip-${index}`, title: `Trip ${index}`, tagline: 'A public plan',
+  }))), { status: 200 })
 }
 
 describe('creator card handler in node', () => {
-  it('serves the creator card with the profile read, then redirects to the hash route', async () => {
+  it('serves the creator profile and live itinerary links without a redirect', async () => {
     fetchMock.mockReset()
     fetchMock.mockResolvedValueOnce(creatorProfileResponse())
     fetchMock.mockResolvedValueOnce(countResponse(3))
@@ -347,14 +346,16 @@ describe('creator card handler in node', () => {
     expect(res.body).toContain('<title>Asha Menon on YatraFlow</title>')
     expect(res.body).toContain('Slow travel across the Western Ghats')
     expect(res.body).toContain('3 published itineraries')
-    // #426 slice 3: the hand-off targets the app page's real path.
-    expect(res.body).toContain(`location.replace("/creator/${CREATOR_ID}")`)
+    expect(res.body).toContain('<h1>Asha Menon</h1>')
+    expect(res.body).toContain('href="/i/trip-0"')
+    expect(res.body).not.toContain('location.replace(')
     expect(res.body).toContain(`<link rel="canonical" href="https://www.yatraflow.in/c/${CREATOR_ID}"`)
     expect(res.body).toContain('og:url" content="https://www.yatraflow.in/c/')
-    // The count is the exact-count HEAD, not the profile rows.
+    // One public catalogue read supplies the links and count.
     const second = fetchMock.mock.calls[1] as [string, { method?: string }]
     expect(String(second[0])).toContain('creator_id=eq.')
-    expect(second[1]?.method).toBe('HEAD')
+    expect(String(second[0])).toContain('unpublished_at=is.null')
+    expect(second[1]?.method).not.toBe('HEAD')
   })
 
   it('falls back to the publication count in the description when there is no bio', async () => {
@@ -363,18 +364,18 @@ describe('creator card handler in node', () => {
     fetchMock.mockResolvedValueOnce(countResponse(1))
     const res = await runCreator()
     expect(res.statusCode).toBe(200)
-    // The description is the count, and the body line names the creator with it.
     expect(res.body).toContain('1 published itinerary')
-    expect(res.body).toContain('Ravi — 1 published itinerary')
+    expect(res.body).toContain('<h1>Ravi</h1>')
   })
 
-  it('says "new" rather than guessing when the count header is absent', async () => {
+  it('reports an unreadable catalogue without claiming the creator is new', async () => {
     fetchMock.mockReset()
     fetchMock.mockResolvedValueOnce(creatorProfileResponse())
     fetchMock.mockResolvedValueOnce(new Response(null, { status: 200 }))
     const res = await runCreator()
     expect(res.statusCode).toBe(200)
-    expect(res.body).toContain('New to YatraFlow')
+    expect(res.body).toContain('Published itineraries could not be loaded')
+    expect(res.body).not.toContain('New to YatraFlow')
   })
 
   it('escapes profile-controlled text instead of emitting raw markup', async () => {
