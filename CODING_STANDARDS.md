@@ -828,6 +828,27 @@ Settings previews must use validated draft fields. Reuse road measurements only 
    does, and it is the precedent to copy. Check `TripWorkspace.tsx` for an inline value
    before you write a margin rule for that header.
 
+6av. **One suffix rule cannot cover the Android SDK tools, and a passing `verify`
+   does not identify the signer (learned 2026-10-19, #809 repair).** The manifest
+   script appended `.bat` to every tool name on Windows. That is wrong twice:
+   `aapt2` ships as `aapt2.exe`, while `apksigner` ships only as `apksigner.bat`.
+   The lookup therefore failed on a tool that was present, and the message blamed
+   the environment for a missing file that never had that name. Resolve each tool
+   to its own file name, and name the real file in the error. A batch file also
+   cannot be spawned without a shell on current Node, because of the hardening for
+   CVE-2024-27980. Run the jar through `java` instead, with an argument vector.
+   Keep a launch fault (exit 2) apart from a verification failure (exit 1). Merging
+   them reports a valid artifact as invalid.
+   The same script proved a second point. `apksigner verify` shows that an APK is
+   intact. It does not show which key signed it, because any valid key passes.
+   Android refuses to install over an app whose signer changed, so an unpinned
+   check would let a wrong-key release reach users who cannot install it. Compare
+   the certificate fingerprint with a value the release owner supplies. Never
+   derive that value from the artifact under test, which compares a value with
+   itself. A version-code guard has the same shape: reject a code that is not
+   above the highest published one, not merely one that is absent from the list.
+   A code below the published floor produces a manifest the client never offers.
+
 6aw. **The native version code is a string, and a published manifest must carry an
    integer (learned 2026-10-18, #809; mechanism corrected 2026-10-18).** `App.getInfo()`
    maps Android's `versionCode` onto `build`, and the plugin types it as a `string`. Two

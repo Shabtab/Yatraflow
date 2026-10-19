@@ -60,26 +60,82 @@ Steps, in this sequence:
 1. Build the release APK with a new version code (see below).
 2. Sign it with the release key, and check `apksigner verify` passes.
 3. Generate the manifest locally:
-   `node scripts/apk-release-manifest.mjs --apk <apk> --channel production --download-url <url> --notes "<text>" --hosts www.yatraflow.in --out manifest.json`
+   `node scripts/apk-release-manifest.mjs --apk <apk> --channel production --expect-signer-sha256 <cert-fingerprint> --download-url <url> --notes "<text>" --hosts www.yatraflow.in --out manifest.json`
 4. Publish the APK, then the manifest, to the origin above.
 5. Fetch the published manifest and check it answers with the expected fields.
 6. Only then set the two variables and ship the build that reads them.
 
 Step 3 refuses to emit a document unless the artifact passes every check. The
 artifact must be available. Its package must match the channel. Its version code
-must be new, its signature must verify, and its destination must be approved.
+must be higher than every published code, its signature must verify **and** its
+signer must match the expected certificate, and its destination must be
+approved.
+
+## What the signature check does and does not prove
+
+These are two different questions, and only the second one protects an install.
+
+| Check | What it proves | What it does not prove |
+|---|---|---|
+| `apksigner verify` | The APK is intact and self-consistent | **Which key signed it.** Any valid key passes |
+| Certificate fingerprint comparison | The signer is the key you expect | Nothing about the APK's contents |
+
+Android refuses to install an update over an app whose signing key changed. So a
+release signed with a different but perfectly valid key would still pass
+`apksigner verify`, be published, and be offered to users who then cannot
+install it. Integrity is not identity.
+
+That is why `--expect-signer-sha256` is required and has no default. The value is
+the **SHA-256 certificate digest** that `apksigner verify --print-certs` prints,
+for example:
+
+```
+Signer #1 certificate SHA-256 digest: 8e4c634df4bb72af022d5a9da9ae8ebfc4c5a8377ea61ad7ee59f0e9fecd25f8
+```
+
+The fingerprint is public information. It identifies a certificate and cannot be
+used to sign anything. The release owner supplies it, out of band. The script
+never reads a keystore, and it never derives the expected value from the APK it
+is checking, because that would compare a value with itself. A mismatch stops
+generation with exit 1. Pass the value as `--expect-signer-sha256`, or set
+`APK_UPDATE_EXPECT_SIGNER_SHA256`.
+
+Colons, spaces and letter case are ignored when the two values are compared, so
+the fingerprint can be pasted in the form `apksigner` prints it.
+
+Do not read a passing `apksigner verify` as "the same key as the installed app".
+It is not that claim. Only the fingerprint comparison is.
+
+## Tool invocation
+
+The script finds the Android tools under `ANDROID_HOME` (or
+`ANDROID_SDK_ROOT`), in the newest `build-tools` version that has them. It runs
+each tool directly, with an argument vector and no shell:
+
+- `aapt2` runs as a program, which on Windows is `aapt2.exe`.
+- `apksigner` ships only as a `.bat` wrapper, which cannot be spawned without a
+  shell on current Node. The script runs its `apksigner.jar` through `java`
+  instead, using `JAVA_HOME` when set.
+
+A tool that cannot be launched is reported as an environment problem with exit
+code 2. A genuine verification failure is exit code 1. The two are kept apart,
+because reporting a broken environment as a bad APK sends you looking in the
+wrong place.
 
 ## Version codes
 
 Android compares one integer, `versionCode` in `android/app/build.gradle`. The
 build in users' hands today is **14**.
 
-- A new published release takes the next higher integer. Never reuse a code.
+- A new published release takes a code **higher than the highest published
+  code**, not merely one that has never been used. Code 13 was never published,
+  and it is still refused, because a device on 14 would never be offered it.
 - A rebuild of an already published release keeps that release's own code.
 - Do not derive the code from a date or a timestamp. Two builds on one day would
   collide, and the value must stay inside Android's own range.
 - The list of published codes lives in `scripts/apk-release-manifest.mjs` as
-  `PUBLISHED_VERSION_CODES`. Add the code when a release ships.
+  `PUBLISHED_VERSION_CODES`. Add the code when a release ships. The check uses
+  the maximum of that list.
 
 ## What the client does with the page
 
