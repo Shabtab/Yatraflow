@@ -312,7 +312,9 @@ describe('#783 offline replay protocol', () => {
     expect((await capture(store)).ownerId).toBe('A')
     vi.stubGlobal('navigator', { onLine: true })
     expect(await store.replayQueuedWrites()).toBe(1)
-    expect(state.writes[0].payload?.owner_id).toBe('C')
+    // #799 — the replay UPDATE omits owner_id. The database refuses an
+    // ownership change with 42501, so the row keeps the owner it already has.
+    expect(state.writes[0].payload).not.toHaveProperty('owner_id')
     expect(state.rows.get('shared')?.owner_id).toBe('C')
   })
 

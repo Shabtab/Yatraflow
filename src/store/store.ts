@@ -2986,8 +2986,8 @@ async function sendQueuedTripWrite(entry: QueuedWrite, scope: IdentityScope, acc
     const trip = entry.trip as Trip
     // #799 — tripUpdateRow drops owner_id. A queued entry may have captured a
     // stale owner id, and the trips_owner_id_immutable trigger refuses an
-    // ownership change with 42501. Omitting the column keeps the revision
-    // check below intact and leaves ownership to the row already on the server.
+    // ownership change with 42501. The column is absent from this row, so the
+    // revision check below stays intact and the server keeps its own owner.
     const { data, error } = await supabase.from('trips')
       .update(tripUpdateRow(trip, current.owner_id, cols), { count: 'exact' })
       .eq('id', entry.tripId).eq('write_version', entry.baseVersion)

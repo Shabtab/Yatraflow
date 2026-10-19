@@ -7482,7 +7482,12 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 .offline-recovery-copy { min-width: 0; overflow-wrap: anywhere; }
 .offline-recovery-copy p { color: var(--text-2); margin-top: 4px; }
 .offline-recovery-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
-.offline-recovery-actions .btn { min-height: 40px; white-space: normal; }
+/* 44px at every width. These are the main actions on the recovery screen, and
+   a 40px floor here used to beat the app's own phone rule
+   `@media (max-width: 720px) { .btn { min-height: 44px } }` because this rule is
+   top-level and more specific. Without a height here the buttons fell to
+   `.btn-sm`'s 24px minimum on desktop, so the size is stated once, here. */
+.offline-recovery-actions .btn { min-height: 44px; white-space: normal; }
 @media (prefers-reduced-motion: reduce) {
   .offline-recovery-row { animation: none; }
 }
