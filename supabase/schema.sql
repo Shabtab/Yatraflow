@@ -594,26 +594,64 @@ create policy "trips update" on public.trips
 -- The money check is a SECURITY DEFINER helper because purchase_orders and
 -- entitlements are buyer-only under RLS: a policy expression runs as the caller,
 -- so an inline subquery would see no rows for the owner and fail OPEN.
+--
+-- This copy is plpgsql, and it guards the payments tables with to_regclass.
+-- Reason: a `language sql` body is validated at CREATE time, and this file
+-- creates neither purchase_orders nor entitlements (the payments rail lives in
+-- migrations/20260918_payments_rail.sql). A sql copy would fail the whole
+-- schema.sql build with "relation does not exist". plpgsql resolves relations
+-- when the statement is reached, so the guard keeps a schema-only build valid.
+--
+-- What it answers when the payments tables are ABSENT: still TRUE for a trip
+-- that has a publication row, because the publication check runs first and is
+-- independent of them. That is the fail-closed answer. With no publication row
+-- the answer is FALSE, and that is safe rather than optimistic: purchase_orders
+-- and entitlements both reference published_itineraries(id), so a trip with no
+-- publication row cannot own an order or an entitlement. The guard can only
+-- skip a check that the foreign keys already make impossible.
 create or replace function public.trip_has_publication_money(p_trip uuid)
 returns boolean
-language sql
+language plpgsql
 stable
 security definer
 set search_path = public
 as $$
-  select
-    p_trip is null
-    or exists (
-      select 1 from public.published_itineraries p where p.trip_id = p_trip
-    )
-    or exists (
+begin
+  -- Fail closed on an unknown shape: a null id cannot be deleted safely.
+  if p_trip is null then
+    return true;
+  end if;
+
+  -- A publication row alone blocks the delete, and it keeps buyers whole.
+  if exists (
+    select 1 from public.published_itineraries p where p.trip_id = p_trip
+  ) then
+    return true;
+  end if;
+
+  -- The payments tables exist only after the payments-rail migration. Each
+  -- statement below is planned when it is reached, so the guard is what keeps
+  -- a schema-only database valid.
+  if to_regclass('public.purchase_orders') is not null then
+    if exists (
       select 1 from public.purchase_orders o
       where o.pub_id in (select p.id from public.published_itineraries p where p.trip_id = p_trip)
-    )
-    or exists (
+    ) then
+      return true;
+    end if;
+  end if;
+
+  if to_regclass('public.entitlements') is not null then
+    if exists (
       select 1 from public.entitlements e
       where e.pub_id in (select p.id from public.published_itineraries p where p.trip_id = p_trip)
-    )
+    ) then
+      return true;
+    end if;
+  end if;
+
+  return false;
+end;
 $$;
 
 revoke all on function public.trip_has_publication_money(uuid) from public, anon, authenticated;

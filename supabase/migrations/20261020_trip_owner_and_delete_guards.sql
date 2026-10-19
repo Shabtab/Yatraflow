@@ -18,10 +18,11 @@
 -- data. Every policy is dropped before it is created, and every function and
 -- trigger is replaced.
 --
--- When to run: BEFORE the app that relies on it, but it is written so the
--- CURRENT app keeps working. See the deploy order in the PR body and in
--- CHANGELOG. The existing client sends owner_id on every trip write, unchanged,
--- so a WITH CHECK that compared old and new would break every editor save.
+-- Deploy order: ship the app with this file, or before it. The app writes a
+-- whole trip row with tripUpdateRow, which omits owner_id. A client that still
+-- sends owner_id is the risk. If the SQL lands first, an old client that sends
+-- owner_id from a cache with no owner member gets 42501, and the database drops
+-- that edit. Send the app first, or both together.
 -- ============================================================
 
 -- ============================================================

@@ -223,3 +223,74 @@ describe('the migration series', () => {
     }
   })
 })
+
+// ============ the schema.sql copy must build on its own ============
+// schema.sql is a SECOND build path: a fresh database can be built from it alone,
+// without the migrations. A `language sql` body is validated at CREATE time, so a
+// sql copy that reads a table this file never creates fails the whole build with
+// "relation does not exist". plpgsql defers relation resolution to call time, so
+// a deferred relation is legal only inside a plpgsql body, and only when it is
+// named here with a reason.
+describe('schema.sql builds without the payments rail', () => {
+  const DEFERRED: Record<string, string> = {
+    purchase_orders: 'created by migrations/20260918_payments_rail.sql; schema.sql has no payments rail',
+    entitlements: 'created by migrations/20260918_payments_rail.sql; schema.sql has no payments rail',
+  }
+
+  /** The helper's body as schema.sql defines it. */
+  function schemaHelperBody(src: string): string {
+    const code = codeOf(src)
+    const start = code.search(/create or replace function public\.trip_has_publication_money/i)
+    expect(start, 'schema.sql must define trip_has_publication_money').toBeGreaterThan(-1)
+    const end = code.indexOf('$$;', start)
+    return code.slice(start, end === -1 ? undefined : end + 3)
+  }
+
+  it('the schema.sql copy is plpgsql, so its body is not checked at create time', () => {
+    expect(schemaHelperBody(schema)).toMatch(/language\s+plpgsql/i)
+  })
+
+  it('it guards the payments tables with to_regclass, so a schema-only build is valid', () => {
+    const body = schemaHelperBody(schema)
+    expect(body).toMatch(/to_regclass\('public\.purchase_orders'\)/i)
+    expect(body).toMatch(/to_regclass\('public\.entitlements'\)/i)
+  })
+
+  it('it fails closed when the payments tables are absent', () => {
+    // A publication row alone must still report true, and it is checked BEFORE
+    // the guarded branches, so its answer never depends on the missing tables.
+    const body = schemaHelperBody(schema)
+    const pubCheck = body.search(/from public\.published_itineraries p where p\.trip_id = p_trip/i)
+    const orderGuard = body.search(/to_regclass\('public\.purchase_orders'\)/i)
+    expect(pubCheck).toBeGreaterThan(-1)
+    expect(pubCheck, 'the publication check must run before the guarded payments checks').toBeLessThan(orderGuard)
+    // A null trip id is still "has money".
+    expect(body).toMatch(/if p_trip is null then\s+return true/i)
+  })
+
+  it('schema.sql creates every relation the helper reads, or defers it with a reason', () => {
+    const body = schemaHelperBody(schema)
+    const created = new Set(
+      [...codeOf(schema).matchAll(/create table if not exists public\.([a-z_][a-z0-9_]*)/gi)].map((m) => m[1]),
+    )
+    const reads = [...new Set([...body.matchAll(/\b(?:from|join)\s+public\.([a-z_][a-z0-9_]*)/g)].map((m) => m[1]))]
+    const language = body.match(/language\s+(\w+)/i)?.[1]?.toLowerCase()
+    for (const rel of reads) {
+      if (created.has(rel)) continue
+      expect(DEFERRED[rel], `${rel} is read by the helper but schema.sql does not create it`).toBeDefined()
+      expect(language, `${rel} may only be deferred from a plpgsql body`).toBe('plpgsql')
+    }
+    // A stale entry would let a future gap hide behind an old reason.
+    expect(Object.keys(DEFERRED).filter((rel) => !reads.includes(rel)), 'stale DEFERRED entries').toEqual([])
+  })
+
+  it('the migration copy stays semantically identical to the schema copy', () => {
+    // Both must check the same three things and fail closed the same way. The
+    // migration may be `language sql` (the payments rail runs first there).
+    const migrationBody = codeOf(migration)
+    expect(migrationBody).toMatch(/from public\.published_itineraries/i)
+    expect(migrationBody).toMatch(/from public\.purchase_orders/i)
+    expect(migrationBody).toMatch(/from public\.entitlements/i)
+    expect(migrationBody).toMatch(/p_trip\s+is\s+null/i)
+  })
+})
