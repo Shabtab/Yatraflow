@@ -203,6 +203,12 @@ Settings previews must use validated draft fields. Reuse road measurements only 
    rewrite of the same function, and the rewrite is exactly where it would have
    been dropped) — pin that ordering with a test, because the failure is invisible
    until someone rebuilds the database from scratch.
+   **Trip reader projections must tolerate added columns.** Map approved fields by name with `jsonb_populate_record`.
+   Start from a NULL record. Unlisted columns must remain NULL.
+   Keep every access check and content filter unchanged.
+   Test the reader after another column is added.
+   `tests/transport-schema-contract.test.ts` checks the projection and preserves the existing guards.
+
  6l. **A grant is API surface, and `service_role` is the right default for a
    caller-independent delete (learned 2026-09-25, #356).** `prune_pub_events`
    deletes on `at < horizon` — no pub, no creator, no caller — and shipped
