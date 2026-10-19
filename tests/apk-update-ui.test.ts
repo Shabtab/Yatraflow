@@ -7,6 +7,7 @@ import type { UpdateManifest } from '../src/lib/apkUpdates'
 const seams = vi.hoisted(() => ({
   native: true,
   info: { id: 'app.yatraflow.mobile', build: '14', version: '0.14-native' },
+  infoGate: null as Promise<void> | null,
   getInfoCalls: 0,
   fetches: [] as string[],
   reply: { ok: true, body: '{}' },
@@ -22,6 +23,7 @@ vi.mock('@capacitor/app', () => ({
   App: {
     getInfo: async () => {
       seams.getInfoCalls += 1
+      if (seams.infoGate) await seams.infoGate
       return seams.info
     },
   },
@@ -53,6 +55,7 @@ async function fresh(options: { feed?: string; hosts?: string; info?: typeof sea
 beforeEach(() => {
   seams.native = true
   seams.info = { id: 'app.yatraflow.mobile', build: '14', version: '0.14-native' }
+  seams.infoGate = null
   seams.getInfoCalls = 0
   seams.fetches = []
   seams.reply = { ok: true, body: JSON.stringify(MANIFEST) }
@@ -68,6 +71,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.useRealTimers()
   vi.unstubAllEnvs()
   vi.unstubAllGlobals()
 })
@@ -227,6 +231,143 @@ describe('feed outcomes', () => {
     })
     expect(runtime.apkUpdateLater()).toBe(true)
     expect(runtime.apkUpdateStatus().state.phase).toBe('suppressed')
+  })
+})
+
+type StalledRead = 'headers' | 'body' | 'body-ignores-signal'
+
+/**
+ * A fetch that never answers on its own. The first two modes follow the real
+ * contract: they reject with an AbortError when the caller's signal aborts. The
+ * third deliberately ignores the signal, so a test can prove the deadline does
+ * not depend on the transport's good behaviour.
+ */
+function stallingFetch(mode: StalledRead) {
+  return (_url: string, init?: RequestInit) => {
+    const signal = init?.signal
+    const untilAbort = () =>
+      new Promise<never>((_, reject) => {
+        signal?.addEventListener(
+          'abort',
+          () => {
+            const error = new Error('aborted')
+            error.name = 'AbortError'
+            reject(error)
+          },
+          { once: true },
+        )
+      })
+    if (mode === 'headers') return untilAbort()
+    const body = mode === 'body' ? untilAbort() : new Promise<string>(() => {})
+    return Promise.resolve({ ok: true, status: 200, text: () => body })
+  }
+}
+
+describe('boot status is not a configuration verdict', () => {
+  it('reports booting, not unconfigured, until the platform answers', async () => {
+    let release: () => void = () => {}
+    seams.infoGate = new Promise<void>(resolve => {
+      release = resolve
+    })
+    const runtime = await fresh()
+    const booting = runtime.bootApkUpdates()
+
+    // The old start said `unconfigured` here, so Profile claimed a fault.
+    expect(runtime.apkUpdateStatus().booting).toBe(true)
+    expect(runtime.apkUpdateStatus().unavailable).toBeNull()
+
+    release()
+    await booting
+    expect(runtime.apkUpdateStatus().booting).toBe(false)
+    expect(runtime.apkUpdateStatus().unavailable).toBeNull()
+    expect(runtime.apkUpdateStatus().installed?.versionCode).toBe(14)
+  })
+
+  it('publishes unconfigured only after boot resolves', async () => {
+    const runtime = await fresh({ feed: '' })
+    expect(runtime.apkUpdateStatus().booting).toBe(true)
+    expect(runtime.apkUpdateStatus().unavailable).toBeNull()
+    await runtime.bootApkUpdates()
+    expect(runtime.apkUpdateStatus().booting).toBe(false)
+    expect(runtime.apkUpdateStatus().unavailable).toBe('unconfigured')
+  })
+
+  it('clears booting on the web answer as well', async () => {
+    seams.native = false
+    const runtime = await fresh()
+    await runtime.bootApkUpdates()
+    expect(runtime.apkUpdateStatus().booting).toBe(false)
+    expect(runtime.apkUpdateStatus().unavailable).toBe('web')
+  })
+})
+
+describe('a stalled feed read is bounded', () => {
+  it('settles the shared automatic check and frees it for a retry', async () => {
+    vi.useFakeTimers()
+    const runtime = await fresh()
+    await runtime.bootApkUpdates()
+    vi.stubGlobal('fetch', stallingFetch('headers'))
+
+    const first = runtime.apkUpdateCheck()
+    const joined = runtime.apkUpdateCheck()
+    await vi.advanceTimersByTimeAsync(runtime.APK_UPDATE_FETCH_TIMEOUT_MS)
+
+    const firstState = await first
+    expect(firstState.phase).toBe('failed')
+    expect(firstState.failure).toBe('network')
+    expect((await joined).phase).toBe('failed')
+
+    // Released: the retry is a new request, and a working feed succeeds.
+    seams.fetches = []
+    vi.stubGlobal('fetch', async (url: string) => {
+      seams.fetches.push(String(url))
+      return { ok: true, status: 200, text: async () => JSON.stringify(MANIFEST) }
+    })
+    const retry = await runtime.apkUpdateCheck({ manual: true })
+    expect(retry.phase).toBe('newer')
+    expect(runtime.apkUpdateStatus().state.phase).toBe('newer')
+    expect(seams.fetches).toEqual([FEED])
+  })
+
+  it('bounds the body read, not only the headers', async () => {
+    vi.useFakeTimers()
+    const runtime = await fresh()
+    await runtime.bootApkUpdates()
+    vi.stubGlobal('fetch', stallingFetch('body'))
+
+    const check = runtime.apkUpdateCheck({ manual: true })
+    await vi.advanceTimersByTimeAsync(runtime.APK_UPDATE_FETCH_TIMEOUT_MS)
+
+    const state = await check
+    expect(state.phase).toBe('failed')
+    expect(state.failure).toBe('network')
+  })
+
+  it('bounds a body that ignores the abort signal', async () => {
+    vi.useFakeTimers()
+    const runtime = await fresh()
+    await runtime.bootApkUpdates()
+    vi.stubGlobal('fetch', stallingFetch('body-ignores-signal'))
+
+    const check = runtime.apkUpdateCheck({ manual: true })
+    await vi.advanceTimersByTimeAsync(runtime.APK_UPDATE_FETCH_TIMEOUT_MS)
+
+    expect((await check).phase).toBe('failed')
+  })
+
+  it('keeps offline distinct from a timeout', async () => {
+    vi.useFakeTimers()
+    const runtime = await fresh()
+    await runtime.bootApkUpdates()
+    vi.stubGlobal('fetch', stallingFetch('headers'))
+
+    const check = runtime.apkUpdateCheck({ manual: true })
+    vi.stubGlobal('navigator', { onLine: false })
+    await vi.advanceTimersByTimeAsync(runtime.APK_UPDATE_FETCH_TIMEOUT_MS)
+
+    const state = await check
+    expect(state.phase).toBe('offline')
+    expect(state.failure).toBeUndefined()
   })
 })
 

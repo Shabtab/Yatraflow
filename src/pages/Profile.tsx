@@ -49,33 +49,37 @@ function formatTimeAgo(ms: number): string {
 /**
  * Android builds only: the installed native version, and the manual check.
  *
- * The states are the core's own, spoken plainly. A failed or offline check
- * never blocks anything. `unconfigured` disables the button, so a build with no
- * feed never offers a control that cannot work.
+ * The states are the core's own, spoken plainly. Until boot answers, the panel
+ * says it is reading the build — it never claims a configuration fault it has
+ * not confirmed. A failed or offline check never blocks anything.
+ * `unconfigured` disables the button, so a build with no feed never offers a
+ * control that cannot work.
  */
 function UpdatePanel() {
-  const { unavailable, installed, state } = useApkUpdateStatus()
+  const { booting, unavailable, installed, state } = useApkUpdateStatus()
   const [busy, setBusy] = useState(false)
 
   if (!isNative || unavailable === 'web' || unavailable === 'unsupported-app') return null
 
   const phase = state.phase
   const checking = busy || phase === 'checking'
-  const line = unavailable === 'unconfigured'
-    ? 'Update checks are not configured in this build.'
-    : checking
-      ? 'Checking for a newer build…'
-      : phase === 'newer' && state.manifest
-        ? `Version ${state.manifest.versionName} is available.`
-        : phase === 'suppressed' && state.manifest
-          ? `Version ${state.manifest.versionName} is available. Reminders are paused.`
-          : phase === 'offline'
-            ? 'No connection. You can check again later.'
-            : phase === 'failed'
-              ? 'The check failed. The app keeps working.'
-              : phase === 'current'
-                ? 'You are on the newest build.'
-                : 'Check for a newer Android build.'
+  const line = booting
+    ? 'Reading the installed build…'
+    : unavailable === 'unconfigured'
+      ? 'Update checks are not configured in this build.'
+      : checking
+        ? 'Checking for a newer build…'
+        : phase === 'newer' && state.manifest
+          ? `Version ${state.manifest.versionName} is available.`
+          : phase === 'suppressed' && state.manifest
+            ? `Version ${state.manifest.versionName} is available. Reminders are paused.`
+            : phase === 'offline'
+              ? 'No connection. You can check again later.'
+              : phase === 'failed'
+                ? 'The check failed. The app keeps working.'
+                : phase === 'current'
+                  ? 'You are on the newest build.'
+                  : 'Check for a newer Android build.'
 
   async function run() {
     setBusy(true)
@@ -96,7 +100,7 @@ function UpdatePanel() {
       <button
         type="button"
         className="btn btn-secondary btn-sm"
-        disabled={checking || unavailable === 'unconfigured'}
+        disabled={booting || checking || unavailable === 'unconfigured'}
         onClick={run}
       >
         Check for updates
