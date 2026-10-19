@@ -33,6 +33,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - **Local stops in flight trips use ground rates.** The stop editor calculates road travel time and fares with ground assumptions.
 ### Changed
 
+- **The trip Map tab pans with one finger.** Drag the map with one finger to move it. Pinch still zooms the route. Small embedded previews keep scroll protection, so the page scrolls around them.
 - **The trip header is compact on a phone.** At 390px the header band and the tab rail took about 420px of an 844px screen. The tab panel then started below the fold. A phone now takes the compact band the Board tab already used. The band is shorter, the title is 20px and the tab rail is tighter. (#677)
 - **The My Trips rules now use the documented motion tokens.** Five rules in the trip-card and timeline block used the legacy `--t-fast` and `--t-med` durations. They now use `--motion-fast` and `--motion-med`. Each rule keeps its reduced-motion opt-out. (#650)
 - **Trip copy names consequences, not engine jargon.** The Overview health card now says what the score means, such as "The plan does not fit these days. Drop a stop or add a day." The day matrix explains its own columns. It lists B breakfast, L lunch, F fuel, S stretch, D dinner and N night. A cell the app filled itself reads "a break the app added". The Map legend and its day labels say the same. The Timeline's Inspect mode is now labelled Review, with the explanation "Study the day without changing it". (#683)
