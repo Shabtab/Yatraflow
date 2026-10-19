@@ -2,8 +2,9 @@ import { readFileSync } from 'node:fs'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, it, expect } from 'vitest'
-import type { ItineraryDay, ItineraryStop } from '../src/data/types'
-import { chooseCover, countKinds, describeKinds, flightSignalFor, foldWeeks, kindOfCategory, lockedRunLine, paceOf, planLede, summariseDay, truncatePitch } from '../src/lib/publicStorefront'
+import type { ItineraryDay, ItineraryStop, Trip } from '../src/data/types'
+import { chooseCover, countKinds, describeKinds, flightSignalFor, foldWeeks, kindOfCategory, lockedRunLine, paceOf, planLede, roadMinutesOf, summariseDay, summariseDayFromLegs, truncatePitch } from '../src/lib/publicStorefront'
+import { originOf, simulateDay } from '../src/lib/engine'
 import { DayCard } from '../src/components/storefront/DayCard'
 import { WhatIsInside } from '../src/components/storefront/WhatIsInside'
 
@@ -297,9 +298,18 @@ describe('page lock safety (source scan)', () => {
   it('the page withholds the flight on a locked day', () => {
     // The flight signal goes through `flightSignalFor`, so a locked card cannot
     // read a hidden flight as an empty day.
-    const call = page.match(/summariseDay\([\s\S]*?\)\n/)?.[0] ?? ''
+    const call = page.match(/summariseDay\w*\([\s\S]*?\)\n/)?.[0] ?? ''
     expect(call).toContain('flightSignalFor(')
     expect(call).not.toContain('isLocked ? false')
+  })
+
+  it('the page builds the day summary from the engine legs, not from the engine total', () => {
+    // The card says "on the road". The engine's total also counts the air
+    // sector, so the page must read the ground legs instead.
+    const call = page.match(/summariseDayFromLegs\([\s\S]*?\)\n/)?.[0] ?? ''
+    expect(call).toContain('sim.legs')
+    expect(call).toContain('flightSignalFor(')
+    expect(call).not.toContain('sim.totalTravelMinutes')
   })
 
   it('the page skips the storefront section when the plan has no days', () => {
@@ -311,3 +321,132 @@ describe('page lock safety (source scan)', () => {
     expect(heroImg).toContain('onError=')
   })
 })
+
+/** A day with no stored stops. The flight lives on the trip, not in the day. */
+const flightDay: ItineraryDay = { id: 'day0', index: 0, title: 'Travel day', stops: [] }
+
+/** A flight-mode trip: Delhi to Mumbai, one stored flight on day 0. */
+const flightTrip = {
+  id: 'trip-1',
+  name: 'Delhi to Mumbai',
+  startLocation: 'Delhi',
+  startLocationCoords: { lat: 28.6139, lng: 77.209 },
+  destinations: ['Mumbai'],
+  destinationCoords: [{ lat: 19.0896, lng: 72.8656 }],
+  startDate: '2026-11-01',
+  endDate: '2026-11-01',
+  travellers: 2,
+  transportMode: 'flight',
+  budgetPerPersonInr: 20000,
+  travelStyle: 'balanced',
+  fixedCommitments: [],
+  days: [flightDay],
+  expenses: [],
+  coverEmoji: 'x',
+  visibility: 'private',
+  createdAt: 1,
+  updatedAt: 1,
+  flights: [{ id: 'f1', dayIndex: 0, fromAirport: 'DEL', toAirport: 'BOM', departAt: '06:00', arriveAt: '08:15' }],
+} as unknown as Trip
+
+describe('road minutes (F1)', () => {
+  const sim = simulateDay(flightDay, flightTrip, originOf(flightTrip, 0), 0)
+  const airMinutes = sim.legs.filter((l) => l.kind === 'air').reduce((sum, l) => sum + l.durationMinutes, 0)
+  const groundMinutes = sim.legs.filter((l) => l.kind !== 'air').reduce((sum, l) => sum + l.durationMinutes, 0)
+
+  it('the engine reports an air sector and a ground transfer for the same day', () => {
+    // The premise of the defect. If the engine stopped reporting an air leg,
+    // this whole block would be testing nothing.
+    expect(airMinutes).toBe(135)
+    expect(groundMinutes).toBeGreaterThan(0)
+    expect(sim.totalTravelMinutes).toBeCloseTo(airMinutes + groundMinutes, 6)
+  })
+
+  it('counts the ground legs only', () => {
+    expect(roadMinutesOf(sim.legs)).toBeCloseTo(groundMinutes, 6)
+    expect(roadMinutesOf(sim.legs)).toBeLessThan(sim.totalTravelMinutes)
+    // The air leg is excluded, and the total is not.
+    expect(roadMinutesOf(sim.legs)).not.toBeCloseTo(sim.totalTravelMinutes, 6)
+  })
+
+  it('treats a leg with no kind as ground', () => {
+    expect(roadMinutesOf([{ kind: 'road', durationMinutes: 30 }, { durationMinutes: 12 }])).toBe(42)
+  })
+
+  it('builds the day summary from the engine legs, not from the engine total', () => {
+    // The page's own dataflow: the engine's legs in, the summary out.
+    const summary = summariseDayFromLegs(flightDay, sim.legs, flightSignalFor(true, true))
+    expect(summary.travelMinutes).toBe(Math.round(groundMinutes))
+    expect(summary.travelMinutes).toBe(32)
+    // The flight is still withheld on a locked day, so no pace word appears.
+    expect(summary.hasFlight).toBe(false)
+    expect(summary.pace).toBeNull()
+  })
+
+  it('a locked card never presents the air minutes as road time', () => {
+    const summary = summariseDayFromLegs(flightDay, sim.legs, flightSignalFor(true, true))
+    const html = renderToStaticMarkup(createElement(DayCard, { state: 'locked', summary }))
+    const text = html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+    // The old defect: the engine total counted the 135-minute air sector and
+    // the card read it as "2 h 47 m on the road".
+    expect(text).not.toContain('2 h 47 m on the road')
+    expect(text).not.toContain('167 m on the road')
+    // The real ground transfer time is still there.
+    expect(text).toContain('32 m on the road')
+  })
+
+  it('a readable card keeps the flight pace and still shows the ground time', () => {
+    const summary = summariseDayFromLegs(flightDay, sim.legs, flightSignalFor(true, false))
+    const html = renderToStaticMarkup(createElement(DayCard, { state: 'free', summary, places: [] }))
+    const text = html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+    expect(summary.pace).toEqual({ key: 'flight', label: 'Flight day' })
+    expect(text).toContain('Flight day')
+    expect(text).not.toContain('2 h 47 m on the road')
+    expect(text).toContain('32 m on the road')
+  })
+
+  it('a day without a flight keeps every minute on the road', () => {
+    // A driving day has no air leg, so the ground minutes are the whole total.
+    const roadTrip = { ...flightTrip, transportMode: 'car', flights: [] } as unknown as Trip
+    const roadSim = simulateDay(flightDay, roadTrip, originOf(roadTrip, 0), 0)
+    const summary = summariseDayFromLegs(flightDay, roadSim.legs, flightSignalFor(false, false))
+    expect(summary.travelMinutes).toBe(Math.round(roadSim.totalTravelMinutes))
+  })
+})
+
+describe('unbroken text (F2)', () => {
+  const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
+
+  it('lets the day title break inside the card', () => {
+    expect(css).toMatch(/\.sf-day > \.sf-day-title \{[^}]*overflow-wrap: anywhere;/)
+  })
+
+  it('lets the readable place name break inside its column', () => {
+    expect(css).toMatch(/\.sf-day-place > span \{[^}]*overflow-wrap: anywhere;/)
+  })
+
+  it('keeps the ticket grid item inside the cover', () => {
+    // The cover's grid track must not grow to the ticket's longest line.
+    expect(css).toMatch(/\.sf-cover:has\(> \.sf-cover-ticket\) \{[^}]*grid-template-columns: minmax\(0, 1fr\);/)
+    expect(css).toMatch(/\.sf-cover > \.sf-cover-ticket \{[^}]*min-width: 0;/)
+  })
+
+  it('lets the ticket route break inside the ticket', () => {
+    expect(css).toMatch(/\.sf-cover > \.sf-cover-ticket > \.sf-cover-ticket-route \{[^}]*overflow-wrap: anywhere;/)
+  })
+
+  it('adds the new rules at the end of the stylesheet and leaves the base block alone', () => {
+    // END-only. The new section is the last thing in the file.
+    const marker = 'storefront: an unbroken run stays inside its card'
+    expect(css).toContain(marker)
+    const at = css.indexOf(marker)
+    expect(at).toBeGreaterThan(0)
+    // Nothing but whitespace and the new section follows it.
+    const tail = css.slice(at + marker.length)
+    expect(tail.trim().startsWith('----------')).toBe(true)
+    expect(tail).not.toMatch(/\n[^\n]*\{[^\n]*\n\s*\}\s*\n\s*@media/)
+    // The rules are additive. The base block keeps its own values.
+    expect(css).toMatch(/\.sf-day \{[^}]*overflow: hidden;/)
+  })
+})
+

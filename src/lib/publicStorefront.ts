@@ -113,6 +113,27 @@ export function paceOf(input: {
   return { key: 'easy', label: PACE.easy }
 }
 
+/** A schedule leg, as the engine reports it. Only the kind and the minutes
+ *  matter here, so the helper stays independent of the engine's own types. */
+export interface LegMinutes {
+  /** 'air' for a flight sector. 'road' or absent for a ground leg. */
+  kind?: string
+  durationMinutes: number
+}
+
+/** The minutes a traveller spends on the ground. A flight sector is not road
+ *  time, so its minutes never count here. The engine's own total includes
+ *  every leg, and a card that says "on the road" must not present a flight
+ *  as a drive. */
+export function roadMinutesOf(legs: ReadonlyArray<LegMinutes>): number {
+  let total = 0
+  for (const leg of legs) {
+    if (leg.kind === 'air') continue
+    total += leg.durationMinutes
+  }
+  return total
+}
+
 export interface DaySummary {
   index: number
   title: string
@@ -157,6 +178,23 @@ export function summariseDay(day: ItineraryDay, travelMinutes: number, flight: F
     travelMinutes,
     hasFlight,
   }
+}
+
+/** The day summary the page builds from one simulated day.
+ *
+ *  The card says "on the road", so the minutes come from the ground legs only.
+ *  The engine's own total also counts the air sector, and a flight is not a
+ *  drive. The legs are the engine's own output, so this is a read of the
+ *  schedule and not a second formula for it.
+ *
+ *  A withheld flight still reaches the summary as `'withheld'`, so a locked
+ *  card never discloses a flight and never reads one as an empty day. */
+export function summariseDayFromLegs(
+  day: ItineraryDay,
+  legs: ReadonlyArray<LegMinutes>,
+  flight: FlightSignal,
+): DaySummary {
+  return summariseDay(day, Math.round(roadMinutesOf(legs)), flight)
 }
 
 export interface WeekGroup {

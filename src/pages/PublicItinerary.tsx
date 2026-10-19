@@ -30,7 +30,7 @@ import { pageTitle } from '../lib/pageTitle'
 import { sizedCoverUrl } from '../lib/tripThumb'
 import { Avatar, Chip, EmptyState, toast, CopyButton, RouteSnapshot } from '../components/ui'
 import {
-  chooseCover, countKinds, flightSignalFor, foldWeeks, kindOfCategory, lockedRunLine, planLede, summariseDay, truncatePitch,
+  chooseCover, countKinds, flightSignalFor, foldWeeks, kindOfCategory, lockedRunLine, planLede, summariseDayFromLegs, truncatePitch,
   type KindCount,
 } from '../lib/publicStorefront'
 import { CoverPlate } from '../components/storefront/CoverPlate'
@@ -420,7 +420,10 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
       // A locked card never says "Flight day": `flightSignalFor` withholds the
       // flight, and a withheld flight drops the pace word rather than reading as
       // an empty day.
-      const summary = summariseDay({ ...day, stops: live }, Math.round(sim.totalTravelMinutes), flightSignalFor(flightDays.has(day.index), isLocked))
+      // The card says "on the road", so it gets the ground legs only. The
+      // engine's total also counts the air sector, and a flight is not a
+      // drive. The minutes come from the engine's own legs.
+      const summary = summariseDayFromLegs({ ...day, stops: live }, sim.legs, flightSignalFor(flightDays.has(day.index), isLocked))
       const cats = live.map(s => ({ category: s.category }))
       allCats.push(...cats)
       if (isLocked) {

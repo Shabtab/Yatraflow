@@ -11491,3 +11491,40 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
     border-radius: var(--radius);
   }
 }
+
+
+/* ---------- storefront: an unbroken run stays inside its card ---------- */
+/* A creator day title, a readable place name and a ticket route can each be
+   one long unbroken run. The card and the cover hide their overflow, so a run
+   that cannot break disappears at the edge instead of wrapping. These rules
+   give the text a break opportunity and let the boxes that hold it shrink. */
+
+/* The day title. The card hides its overflow, so the run must break. */
+.sf-day > .sf-day-title {
+  overflow-wrap: anywhere;
+}
+
+/* The readable place name. Its grid column may shrink, so the name must
+   break inside that column. */
+.sf-day-place > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* The cover holds a ticket. The grid track must not grow to the width of the
+   ticket's longest line, or the ticket leaves the cover. */
+.sf-cover:has(> .sf-cover-ticket) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* The ticket may shrink inside the cover. */
+.sf-cover > .sf-cover-ticket {
+  min-width: 0;
+}
+
+/* The ticket route. The ticket hides nothing, so the run must break inside
+   the ticket. */
+.sf-cover > .sf-cover-ticket > .sf-cover-ticket-route {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
