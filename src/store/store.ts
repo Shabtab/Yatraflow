@@ -1895,6 +1895,10 @@ function buildTripCopy(source: Trip, ownerId: ID, opts: { makePublic?: boolean; 
   copy.createdAt = Date.now(); copy.updatedAt = Date.now()
   copy.inviteCode = undefined
   copy.deletedAt = undefined
+  // #804 — the copy is a NEW trip, not the preview row. A marker cloned from the
+  // source would suppress writes to the five columns on a trip the user now
+  // owns outright, so the fork would never persist its own flights or tank size.
+  copy.partialPreview = undefined
   // #230 — the fork's own acquisition stamp, never the source trip's. A copy
   // of a copy starts a NEW attribution chain at whatever surface forked it.
   copy.ref = opts.ref ?? undefined
@@ -3307,8 +3311,9 @@ export async function joinViaInvite(tripId: ID, userId: ID, inviteCode: string):
   notifyOwnerOf(tripId, `${userName(userId)} joined “${t.name}” as ${role}.`)
   // #804 — the join just made this user a member, so the full row is readable
   // now. Replace the preview row with it, which also clears partialPreview.
-  // Best-effort: a failed refetch leaves the marker set, so the next write still
-  // omits the five columns it never read rather than inventing them.
+  // A failure leaves the marker set on purpose: the five columns stay unwritten
+  // rather than being invented, and refreshTripFromServer logs why. It is not
+  // retried here, because the next successful read of this trip clears it.
   void refreshTripFromServer(tripId)
   return true
 }
@@ -3316,22 +3321,61 @@ export async function joinViaInvite(tripId: ID, userId: ID, inviteCode: string):
 /**
  * #804 — replace a cached trip with the full server row, when the caller can now
  * read it. Used after a join, where the invite preview's 31 columns are no longer
- * the best available answer. A read failure is not surfaced: the cached row stays
- * as it was, and the marker (when set) keeps writes honest.
+ * the best available answer.
+ *
+ * Three outcomes, kept apart (R23 — a failed read is not an empty one):
+ *   'updated'  the full row replaced the cached one, and the marker is gone.
+ *   'empty'    the server answered with no row. The caller is a member, so this
+ *              is an RLS/policy surprise, not a normal empty state; it is logged
+ *              and the marker stays set.
+ *   'failed'   the read errored. Logged, and the marker stays set.
+ *
+ * A newer local edit does NOT return early with the marker still set. Dropping
+ * the whole swap would also drop the five server columns, and the marker would
+ * then suppress that user's next edit to any of the five — a silent data loss of
+ * a different kind. Instead the five server columns are merged into the local
+ * trip and the marker is cleared, so local edits to every other field win while
+ * the five become writable again.
  */
-async function refreshTripFromServer(tripId: ID): Promise<boolean> {
+async function refreshTripFromServer(tripId: ID): Promise<'updated' | 'empty' | 'failed'> {
   const { data, error } = await supabase.from('trips').select('*').eq('id', tripId).maybeSingle()
-  if (error || !data) return false
+  if (error) {
+    console.error('[yatraflow] trip refresh after join failed', error)
+    return 'failed'
+  }
+  if (!data) {
+    // A member can always read the row, so an empty answer here is a policy
+    // problem worth seeing, not a normal empty state.
+    console.error('[yatraflow] trip refresh after join returned no row for a trip the caller just joined', { tripId })
+    return 'empty'
+  }
   const idx = cache.trips.findIndex(t => t.id === tripId)
-  if (idx < 0) return false
+  if (idx < 0) return 'empty'
   const existing = cache.trips[idx]
+  const server = rowToTrip(data as TripRow, existing.members ?? [])
+
   // A local edit that landed while the read was in flight must not be clobbered.
-  if (existing.updatedAt > (data as TripRow).updated_at) return false
-  const full = rowToTrip(data as TripRow, existing.members ?? [])
-  cache.trips = [...cache.trips.slice(0, idx), full, ...cache.trips.slice(idx + 1)]
-  recordServerTripTimestamp(full.id, full.updatedAt)
+  // Keep the local trip, take ONLY the five columns the preview never read, and
+  // clear the marker so those five can be written again.
+  if (existing.updatedAt > server.updatedAt) {
+    const merged: Trip = {
+      ...existing,
+      tankL: server.tankL,
+      rentPerDayInr: server.rentPerDayInr,
+      localTrain: server.localTrain,
+      flights: server.flights,
+      ref: server.ref,
+      partialPreview: undefined,
+    }
+    cache.trips = [...cache.trips.slice(0, idx), merged, ...cache.trips.slice(idx + 1)]
+    commit()
+    return 'updated'
+  }
+
+  cache.trips = [...cache.trips.slice(0, idx), server, ...cache.trips.slice(idx + 1)]
+  recordServerTripTimestamp(server.id, server.updatedAt)
   commit()
-  return true
+  return 'updated'
 }
 
 /** True when this user already holds a membership row on the trip. It reads

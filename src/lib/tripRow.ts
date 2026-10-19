@@ -318,7 +318,8 @@ export function tripUpdateRow(
  * True when a Supabase/PostgREST error means "this column does not exist".
  * Anything else (network failure, auth/RLS, etc.) is transient and must NOT be
  * cached as a missing column — see issue #17.
- */export function isMissingColumnError(error: unknown): boolean {
+ */
+export function isMissingColumnError(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false
   const code = (error as { code?: string }).code
   if (code === 'PGRST204' || code === '42703') return true
