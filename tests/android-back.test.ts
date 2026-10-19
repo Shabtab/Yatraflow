@@ -4,10 +4,18 @@
 // captures the backButton handler and records exitApp, and src/lib/native is
 // partially mocked so isAndroid reads true in a node env. history is stubbed
 // because node has none.
+//
+// The mock models what Capacitor really does on Android, checked against the
+// installed @capacitor/core 8.5.1 and @capacitor/app 8.1.1:
+//   * App.addListener takes the native path, so removal crosses the bridge,
+//   * a back event reaches EVERY still-registered callback.
+// The dispatch shape comes from that source. Bridge timing was not measured.
+// The old mock's remove did nothing and press() always used handlers[0], so a
+// re-registration, and any dropped cleanup, stayed invisible.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
-  handlers: [] as Array<(e: { canGoBack: boolean }) => void>,
+  registered: [] as Array<{ cb: (e: { canGoBack: boolean }) => void; live: boolean }>,
   exitApp: vi.fn(),
   historyBack: vi.fn(),
 }))
@@ -15,8 +23,11 @@ const h = vi.hoisted(() => ({
 vi.mock('@capacitor/app', () => ({
   App: {
     addListener: vi.fn((_event: string, cb: (e: { canGoBack: boolean }) => void) => {
-      h.handlers.push(cb)
-      return Promise.resolve({ remove: async () => {} })
+      const rec = { cb, live: true }
+      h.registered.push(rec)
+      // Native removal crosses the bridge, so it settles a tick later.
+      const remove = async () => { await Promise.resolve(); rec.live = false }
+      return Promise.resolve({ remove })
     }),
     exitApp: h.exitApp,
   },
@@ -29,13 +40,17 @@ vi.mock('../src/lib/native', async importOriginal => ({
 
 import { registerAndroidBack } from '../src/lib/appShell'
 
-/** One back-button press through the handler the shell registered. */
-function press(canGoBack = false) {
-  h.handlers[0]({ canGoBack })
+/** One back press, delivered to every live handler (Capacitor uses forEach). */
+function press(canGoBack = false): number {
+  const live = h.registered.filter(r => r.live)
+  for (const r of live) r.cb({ canGoBack })
+  return live.length
 }
+const liveCount = () => h.registered.filter(r => r.live).length
+const settle = () => new Promise(resolve => setTimeout(resolve, 0))
 
 beforeEach(() => {
-  h.handlers.length = 0
+  h.registered.length = 0
   h.exitApp.mockClear()
   h.historyBack.mockClear()
   vi.stubGlobal('history', { back: h.historyBack })
@@ -43,6 +58,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  vi.useRealTimers()
 })
 
 describe('registerAndroidBack arm-then-exit', () => {
@@ -78,5 +94,65 @@ describe('registerAndroidBack arm-then-exit', () => {
     expect(h.historyBack).not.toHaveBeenCalled()
     press() // second press inside the window: exits
     expect(h.exitApp).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('registerAndroidBack listener lifecycle', () => {
+  it('cleanup unregisters the handler', async () => {
+    const off = registerAndroidBack({ closeOverlay: () => false })
+    off()
+    await settle()
+    expect(liveCount()).toBe(0)
+    expect(press()).toBe(0)
+    expect(h.exitApp).not.toHaveBeenCalled()
+  })
+
+  it('a re-registration settles to one live handler', async () => {
+    let off = registerAndroidBack({ closeOverlay: () => false })
+    off()
+    off = registerAndroidBack({ closeOverlay: () => false })
+    await settle()
+    expect(liveCount()).toBe(1)
+    expect(press()).toBe(1)
+    expect(h.exitApp).not.toHaveBeenCalled()
+  })
+
+  it('an unsettled removal fans one press out to both handlers', () => {
+    // Model-only characterisation. The mock's removal settles on a microtask,
+    // while on Android it is a bridge round-trip. This test pins the fan-out
+    // shape: while a removal is pending, one press reaches both handlers, so an
+    // armed old closure exits and the new one only arms.
+    // Reachability is UNMEASURED. The bridge duration was not measured, and the
+    // window was not reproduced on device. Whether a press can land inside it is
+    // unproven. Do not "fix" this with an arm that outlives its closure. A
+    // behavioural change needs a reproduced failure first.
+    const off = registerAndroidBack({ closeOverlay: () => false })
+    press()
+    expect(h.exitApp).not.toHaveBeenCalled()
+    off()
+    registerAndroidBack({ closeOverlay: () => false })
+    expect(liveCount()).toBe(2)
+    expect(press()).toBe(2)
+    expect(h.exitApp).toHaveBeenCalledTimes(1)
+  })
+
+  it('the two-second arm expires instead of exiting', () => {
+    vi.useFakeTimers()
+    registerAndroidBack({ closeOverlay: () => false })
+    press() // arms
+    vi.advanceTimersByTime(2001)
+    press() // the arm expired, so this only re-arms
+    expect(h.exitApp).not.toHaveBeenCalled()
+    press() // inside the fresh window: exits
+    expect(h.exitApp).toHaveBeenCalledTimes(1)
+  })
+
+  it('a leaked arm timer cannot exit after cleanup', () => {
+    vi.useFakeTimers()
+    const off = registerAndroidBack({ closeOverlay: () => false })
+    press()
+    off()
+    vi.advanceTimersByTime(5000)
+    expect(h.exitApp).not.toHaveBeenCalled()
   })
 })

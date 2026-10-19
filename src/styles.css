@@ -1750,6 +1750,9 @@ a.btn { text-decoration: none; }
   font-variant-numeric: tabular-nums;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.board-flight .stop-title, .board-flight .board-stop-meta {
+  white-space: normal; overflow: visible; text-overflow: clip;
+}
 .board-col-zone {
   border: 1.5px dashed color-mix(in srgb, var(--yf-teal-600) 40%, var(--yf-border));
   border-radius: 13px;
@@ -10727,3 +10730,9 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
   .tabbar { margin-bottom: 10px; }
 }
 
+/* Signup date-of-birth picker (components/DobPicker.tsx). Three native selects
+   reuse the .select surface. Only the row layout is new here. */
+.dob-picker { display: grid; grid-template-columns: 1.1fr 1.5fr 0.9fr; gap: 8px; align-items: stretch; }
+@media (max-width: 360px) {
+  .dob-picker { gap: 6px; grid-template-columns: 1fr 1.4fr 0.85fr; }
+}

@@ -19,6 +19,22 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 - **Creator pages show a public bio and itinerary links without JavaScript.** Search visitors can read `/c/<id>` directly. Recognised share tags still open the app. Structured data describes the public profile. Private profile fields stay out of the page. A failed itinerary read shows a message and prevents caching. (#701)
 
+- **A published itinerary's share page prints the practical details a search visitor needs.** The page now shows the budget per person, the travel tips and the warnings. It shows the cover image as a real `<img>` with a width, a height and an alt. The structured data carries the same cover image. A field with no value prints nothing. (#700)
+
+### Fixed
+
+- **A trip editor can no longer take ownership of a trip.** The database accepted any editor's write to the trip's owner column. The editor could then promote their own crew row and remove the real owner. The owner column now changes only when the current owner, an admin, or a maintenance session makes the change. Every other caller is refused. A normal edit, a move to the trash, and a restore keep working. The app no longer sends the owner column on an ordinary edit. A crew member whose owner row is missing from their local copy can still save. **Ship this app build with or before the database change.** (#799)
+- **A trip that backs a publication can no longer be deleted directly.** The editor delete path removed the trip, and the publication and the buyers' purchase records went with it. A direct delete now refuses any trip that carries a publication, an order, or an entitlement. The trash and its purge already refused the same trip. The owner can still delete a trip with no publication. (#807)
+- **Sign-up date of birth now uses direct Year, Month and Day selects.** A birth year is one choice away. The three selects emit one complete `YYYY-MM-DD` date, and a partial pick emits nothing. The day list follows the chosen month, so a 31st or a 29 February cannot roll over. A change of year to the current year clamps a later month and day to today. No future date can be submitted. The 18+ check is unchanged.
+- **Backups and snapshot links retain flights and transport preferences.** Imports check flight clocks, fares, and itinerary days. Flight-only plans also import.
+- **Flight days stay protected when dates change.** Move the flight before removing its day.
+- **Create trip estimates charge flights per traveller.** Ground transfers use road rates and stay separate from air fares.
+- **Printed cards include flights and airport transfers.** Calendar exports include timed flight events and overnight arrivals.
+- **Settings previews use the full draft and current road measurements.** Route changes show estimates until fresh measurements arrive.
+- **Stay days show the arrival location after a flight.** Timeline, printed cards, and stop insertion use the resolved journey origin. Empty days retain the destination name. Airport-only arrivals show the airport name.
+- **Board shows flight journeys with separate flight and ground travel times.** Flight cards appear even without a saved flight entry. Estimated flight times state their assumptions. Route points remain separate from flights.
+- **Travel stop labels follow the transport mode.** Board, Timeline, and public highlights show Flight, Train, or Bus where applicable. Board uses the matching icon. Airport and ground transfer labels remain distinct.
+- **Local stops in flight trips use ground rates.** The stop editor calculates road travel time and fares with ground assumptions.
 ### Changed
 
 - **The trip header is compact on a phone.** At 390px the header band and the tab rail took about 420px of an 844px screen. The tab panel then started below the fold. A phone now takes the compact band the Board tab already used. The band is shorter, the title is 20px and the tab rail is tighter. (#677)

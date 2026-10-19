@@ -456,7 +456,7 @@ export function TripWorkspace({ tripId, initialTab, onNavigate }: { tripId: stri
            seeded from the trip at mount and never re-syncs, so without the key
            a quick trip-switch keeps the previous trip's draft visible until a
            reload (#213). */}
-      {tab === 'settings' && <TripSettingsForm key={trip.id} trip={trip} editable={editable} onOpenDay={(dayIndex) => { setFocusedDay(dayIndex); setFocus(focusForDay(trip!.id, dayIndex)); setTimelineFocusDay(dayIndex); setTab('timeline') }} />}
+      {tab === 'settings' && <TripSettingsForm key={trip.id} trip={trip} editable={editable} legCorrections={legCorrections} onOpenDay={(dayIndex) => { setFocusedDay(dayIndex); setFocus(focusForDay(trip!.id, dayIndex)); setTimelineFocusDay(dayIndex); setTab('timeline') }} />}
       </div>
 
       {/* The impact sheet is position:fixed, so it paints in the same place either
