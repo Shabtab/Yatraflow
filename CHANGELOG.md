@@ -17,6 +17,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ### Fixed
 
+- **Sign-up date of birth now uses direct Year, Month and Day selects.** A birth year is one choice away. The three selects emit one complete `YYYY-MM-DD` date, and a partial pick emits nothing. The day list follows the chosen month, so a 31st or a 29 February cannot roll over. A change of year to the current year clamps a later month and day to today. No future date can be submitted. The 18+ check is unchanged.
 - **Backups and snapshot links retain flights and transport preferences.** Imports check flight clocks, fares, and itinerary days. Flight-only plans also import.
 - **Flight days stay protected when dates change.** Move the flight before removing its day.
 - **Create trip estimates charge flights per traveller.** Ground transfers use road rates and stay separate from air fares.
