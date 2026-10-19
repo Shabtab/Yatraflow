@@ -15,6 +15,10 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Added
+
+- **A published itinerary's share page prints the practical details a search visitor needs.** The page now shows the budget per person, the travel tips and the warnings. It shows the cover image as a real `<img>` with a width, a height and an alt. The structured data carries the same cover image. A field with no value prints nothing. (#700)
+
 ### Fixed
 
 - **Sign-up date of birth now uses direct Year, Month and Day selects.** A birth year is one choice away. The three selects emit one complete `YYYY-MM-DD` date, and a partial pick emits nothing. The day list follows the chosen month, so a 31st or a 29 February cannot roll over. A change of year to the current year clamps a later month and day to today. No future date can be submitted. The 18+ check is unchanged.

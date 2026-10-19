@@ -20,7 +20,17 @@ const trip = {
     { id: 'd3', stops: [stop(`${SECRET} no index`, `${SECRET} d3`)] },
   ],
 }
-const priced = { id: PUB_ID, title: 'Kerala in 4 days', tagline: 'Hills and water', duration_days: 4, premium_price_inr: 299, free_day_indexes: [0, 2] }
+const priced = {
+  id: PUB_ID, title: 'Kerala in 4 days', tagline: 'Hills and water', duration_days: 4,
+  premium_price_inr: 299, free_day_indexes: [0, 2],
+  estimated_budget_per_person_inr: 24500,
+  cover_image_url: 'https://cdn.example.test/kerala.jpg',
+  travel_tips: ['Book the ferry seats in advance', 'Carry cash for the hill roads'],
+  warnings_and_assumptions: ['Monsoon closes the ghat road'],
+  // Neither of these two has a public surface, so neither may reach the page.
+  best_season: `${SECRET} season`,
+  subscriber_cta: `${SECRET} cta`,
+}
 
 describe('free-day rules', () => {
   it('treats an unpriced publication as free and everything else as locked unless listed', () => {
@@ -68,6 +78,56 @@ describe('the body never prints locked content', () => {
   })
 })
 
+// #700 — the metadata the free view of the public page already shows. The row
+// also carries two fields with no public surface at all, and those must not
+// become a new one just because a crawler is reading.
+describe('the free metadata reaches the page', () => {
+  const html = renderBodyHTML(priced, trip, `/pub/${PUB_ID}`)
+
+  it('prints the budget per person as text', () => {
+    expect(html).toContain('Budget: about ₹24,500 per person.')
+  })
+
+  it('prints the travel tips and the warnings', () => {
+    expect(html).toContain('<h2>Travel tips</h2>')
+    expect(html).toContain('Book the ferry seats in advance')
+    expect(html).toContain('<h2>Warnings &amp; assumptions</h2>')
+    expect(html).toContain('Monsoon closes the ghat road')
+  })
+
+  it('prints the cover as an image with width, height and a descriptive alt', () => {
+    expect(html).toContain('<img src="https://cdn.example.test/kerala.jpg" alt="Trip cover photo for Kerala in 4 days" width="1600" height="900"')
+  })
+
+  it('prints nothing for a field with no value, a wrong type or a bad scheme', () => {
+    const bare = renderBodyHTML({
+      ...priced,
+      estimated_budget_per_person_inr: 0,
+      cover_image_url: 'javascript:alert(1)',
+      travel_tips: 'not a list',
+      warnings_and_assumptions: null,
+    }, trip, '/pub/x')
+    expect(bare).not.toContain('<img')
+    expect(bare).not.toContain('Budget:')
+    expect(bare).not.toContain('Travel tips')
+    expect(bare).not.toContain('Warnings')
+  })
+
+  it('keeps a field with no public surface off the page', () => {
+    expect(html).not.toContain(SECRET)
+    expect(html).not.toContain('best season')
+    expect(html).not.toContain('cta')
+  })
+
+  it('carries the cover in the structured data and nothing else from the row', () => {
+    const ld = touristTripJsonLd(priced, trip, `https://app.example.test/i/${PUB_ID}`)
+    expect(JSON.parse(ld).image).toBe('https://cdn.example.test/kerala.jpg')
+    expect(ld).not.toContain(SECRET)
+    const bare = touristTripJsonLd({ ...priced, cover_image_url: 'http://plain.example.test/x.jpg' }, trip, 'https://app.example.test/i/x')
+    expect(JSON.parse(bare).image).toBeUndefined()
+  })
+})
+
 // The handler, end to end, with the fetch mocked.
 function makeRes() {
   return {
@@ -108,6 +168,14 @@ describe('/i/<id> handler', () => {
     expect(res.body).toContain('application/ld+json')
     expect(res.body).not.toContain(SECRET)
     expect(res.headers['cache-control']).toContain('s-maxage=300')
+  })
+  it('serves the free metadata in the HTML, with no JavaScript needed', async () => {
+    const res = await run()
+    expect(res.body).toContain('Budget: about ₹24,500 per person.')
+    expect(res.body).toContain('Book the ferry seats in advance')
+    expect(res.body).toContain('Monsoon closes the ghat road')
+    expect(res.body).toContain('<img src="https://cdn.example.test/kerala.jpg"')
+    expect(res.body).not.toContain(SECRET)
   })
   it('still redirects a shared link that carries ref', async () => {
     const res = await run({ ref: 'wa' })
