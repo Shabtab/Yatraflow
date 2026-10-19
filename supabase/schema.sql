@@ -332,6 +332,51 @@ create trigger trips_touch_updated_at
   execute function public.touch_trip_updated_at();
 create index if not exists idx_published_creator on public.published_itineraries (creator_id);
 
+-- ------------------------------------------------- #799: owner_id is immutable
+-- A policy cannot express this: WITH CHECK sees only the NEW row, and Postgres
+-- never exposes OLD to a policy. A column-level grant was rejected because the
+-- client sends the whole row on every write (tripToRow always includes
+-- owner_id), so revoking UPDATE(owner_id) would fail every editor save rather
+-- than only an ownership change. So a BEFORE UPDATE OF owner_id trigger.
+--
+-- Fails closed. The comparison is `is distinct from`, so a null on either side
+-- counts as a change instead of slipping past a null = null test. Allowed: the
+-- current owner, a masteradmin, and a caller with no authenticated user
+-- (service role / SQL editor / migration). An editor matches none of them and
+-- is refused with 42501. Mirrored for existing installs by
+-- supabase/migrations/20261020_trip_owner_and_delete_guards.sql.
+create or replace function public.trips_owner_id_immutable()
+returns trigger
+language plpgsql
+security invoker
+set search_path = public
+as $$
+begin
+  if new.owner_id is not distinct from old.owner_id then
+    return new;
+  end if;
+  if auth.uid() is null then
+    return new;
+  end if;
+  if old.owner_id = auth.uid() then
+    return new;
+  end if;
+  if public.is_admin() then
+    return new;
+  end if;
+  raise exception
+    'trip ownership cannot be changed by this caller (trip %, caller %)',
+    old.id, auth.uid()
+    using errcode = '42501';
+end;
+$$;
+
+drop trigger if exists trips_owner_id_immutable on public.trips;
+create trigger trips_owner_id_immutable
+  before update of owner_id on public.trips
+  for each row
+  execute function public.trips_owner_id_immutable();
+
 -- ============================================================
 -- Helper: is the current user a member (any role) of a trip?
 -- SECURITY DEFINER runs as the table owner, bypassing RLS during its own
@@ -531,6 +576,38 @@ create policy "trips insert" on public.trips
 
 create policy "trips update" on public.trips
   for update using (public.is_editor(trips.id)) with check (public.is_editor(trips.id));
+
+-- #807: a direct DELETE must not erase a publication and the purchases behind
+-- it. RESTRICTIVE is load-bearing here for the same reason as the trashed-read
+-- policy above: a permissive policy would OR with the editor gate below and
+-- change nothing. A restrictive policy on a DELETE is evaluated against the row
+-- being deleted, so USING is the only clause available and the added-row
+-- concern that applies to UPDATE does not apply here.
+--
+-- The owner (or a masteradmin) may delete a trip with no publication, no order
+-- and no entitlement -- the same condition purge_trashed_trip applies, so the
+-- direct path and the RPC path now agree. A non-owner editor may not delete a
+-- trip at all: the product has no such flow, and crew removal goes through
+-- trip_members. Mirrored by
+-- supabase/migrations/20261020_trip_owner_and_delete_guards.sql.
+create policy "trips delete guard" on public.trips
+  as restrictive for delete to authenticated using (
+    (
+      auth.uid() = owner_id
+      or public.is_admin()
+    )
+    and not exists (
+      select 1 from public.published_itineraries p where p.trip_id = trips.id
+    )
+    and not exists (
+      select 1 from public.purchase_orders o
+      where o.pub_id in (select p.id from public.published_itineraries p where p.trip_id = trips.id)
+    )
+    and not exists (
+      select 1 from public.entitlements e
+      where e.pub_id in (select p.id from public.published_itineraries p where p.trip_id = trips.id)
+    )
+  );
 
 create policy "trips delete" on public.trips
   for delete using (public.is_editor(trips.id));
@@ -872,3 +949,8 @@ $$;
 
 revoke all on function public.join_trip(text) from public, anon, authenticated;
 grant execute on function public.join_trip(text) to authenticated;
+
+-- #799: the owner_id guard is invoked by the table, so no client role needs
+-- execute on it. Revoked from the API roles by name, because `revoke ... from
+-- public` does not revoke from anon or authenticated on Supabase.
+revoke all on function public.trips_owner_id_immutable() from public, anon, authenticated;
