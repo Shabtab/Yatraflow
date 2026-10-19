@@ -1,13 +1,20 @@
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
-const previous = readFileSync('supabase/migrations/20260926_paywall_invite_code_leak.sql', 'utf8')
+const previousMigrations = readdirSync('supabase/migrations')
+  .filter(name => name.endsWith('.sql') && name < '20261019_trip_drives_part.sql')
+  .sort()
+  .map(name => readFileSync(`supabase/migrations/${name}`, 'utf8'))
 const migration = readFileSync('supabase/migrations/20261019_trip_drives_part.sql', 'utf8')
 const schema = readFileSync('supabase/schema.sql', 'utf8')
 const readers = ['get_public_trip', 'get_trip_by_invite_code']
 
 function reader(sql: string, name: string): string {
   return sql.match(new RegExp(`create or replace function public\\.${name}\\([\\s\\S]*?\\$\\$;`, 'i'))?.[0] ?? ''
+}
+
+function priorReader(name: string): string {
+  return previousMigrations.map(sql => reader(sql, name)).filter(Boolean).at(-1) ?? ''
 }
 
 function withoutComments(sql: string): string {
@@ -29,7 +36,7 @@ describe('Mixed transport schema contract', () => {
 
   for (const name of readers) {
     it(`${name} keeps its access gates and content filtering`, () => {
-      const oldReader = reader(previous, name)
+      const oldReader = priorReader(name)
       const newReader = reader(migration, name)
       expect(oldReader).not.toBe('')
       expect(newReader).not.toBe('')
@@ -48,7 +55,7 @@ describe('Mixed transport schema contract', () => {
       const keys = [...body.matchAll(/'([a-z_]+)', (?:t\.[a-z_]+|null::text)/g)].map(match => match[1])
       expect(keys).toHaveLength(32)
       expect(new Set(keys).size).toBe(32)
-      const priorColumns = [...reader(previous, name).matchAll(/\bt\.([a-z_]+)/g)].map(match => match[1])
+      const priorColumns = [...priorReader(name).matchAll(/\bt\.([a-z_]+)/g)].map(match => match[1])
       for (const key of keys) {
         expect(key === 'drives_part' || key === 'invite_code' || priorColumns.includes(key)).toBe(true)
       }
