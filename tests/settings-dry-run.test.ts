@@ -383,3 +383,16 @@ describe('#413 — the dirty compare is over the saved field set, by value', () 
 })
 
 const x = { segments: [], plan: [], inputsHash: 'h', ts: 0 }
+
+
+describe('flight day protection', () => {
+  it('refuses to shorten past a recorded flight on an otherwise empty day', () => {
+    const t = trip4()
+    t.flights = [{ id: 'flight', dayIndex: 3, fromAirport: 'DEL', toAirport: 'BOM' }]
+    const f = { ...formFromTrip(t), endDate: '2026-10-02' }
+    const result = settingsDryRun(f, zipDests(t.destinations, t.destinationCoords), null, t)
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.blocked).toEqual([3])
+    expect(reconcileDays(t.days, f.startDate, f.endDate, new Set(t.flights.map(f => f.dayIndex))).error).toBeTruthy()
+  })
+})

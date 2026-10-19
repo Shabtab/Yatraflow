@@ -10,7 +10,9 @@ import {
 import type { Trip, TransportMode } from '../../data/types'
 import { TRANSPORT_MODES, TRAVEL_STYLES, STAY_STYLES } from '../../data/types'
 import { updateTrip, reconcileDays, tripWriteVerdict } from '../../store/store'
-import { FUEL_PRICE_INR_PER_L, DEFAULT_FUEL_ECONOMY_KML, MODE_SPEED, computeHealth, formatInr, isFuelEconomyMode, parseFuelEconomyKmL, isImplausibleFuelEconomy, parseFuelPricePerL } from '../../lib/engine'
+import { FUEL_PRICE_INR_PER_L, DEFAULT_FUEL_ECONOMY_KML, MODE_SPEED, formatInr, isFuelEconomyMode, parseFuelEconomyKmL, isImplausibleFuelEconomy, parseFuelPricePerL } from '../../lib/engine'
+import { settingsPreview } from '../../lib/settingsPreview'
+import type { LegEstimate } from '../../lib/engine'
 import { healthBandClass, healthBandTone } from '../../lib/healthBand'
 import { STAY_RATE_PER_NIGHT } from '../../lib/rates'
 import { cap } from '../../lib/labels'
@@ -151,7 +153,7 @@ export function settingsDryRun(
   // indexes so each one links straight to its timeline day.
   const datesChanged = f.startDate !== trip.startDate || f.endDate !== trip.endDate
   if (datesChanged) {
-    const protectedIdx = new Set(trip.fixedCommitments.map(c => c.dayIndex))
+    const protectedIdx = new Set([...trip.fixedCommitments, ...(trip.flights ?? [])].map(c => c.dayIndex))
     const rec = reconcileDays(trip.days, f.startDate, f.endDate, protectedIdx)
     if (rec.error) return { ok: false, reason: rec.error, blocked: rec.blocked }
   }
@@ -270,9 +272,10 @@ function sameSavedValue(a: unknown, b: unknown): boolean {
 /** #704: the line a refused settings save shows. The edit stays in the cache and the durable queue, and the queue retries it. */
 const TRIP_SETTINGS_NOT_SAVED = 'Settings not saved. They stay here, and the app will retry.'
 
-export function TripSettingsForm({ trip, editable, onOpenDay }: {
+export function TripSettingsForm({ trip, editable, onOpenDay, legCorrections }: {
   trip: Trip
   editable: boolean
+  legCorrections?: Record<string, LegEstimate>
   /** #408: jump to a timeline day — the workspace plumbs the same focus
    *  mechanism the Map tab's day links use. Optional: the form renders the
    *  blocking days as plain text when no workspace is wired up. */
@@ -400,22 +403,19 @@ export function TripSettingsForm({ trip, editable, onOpenDay }: {
   const priceIgnored = priceSet && !ecoSet
   // V2 derived values: the road string for the hero, the stopped-day count
   // for the day meter, and the engine's read over the trip AS DRAFTED (the
-  // draft party/mode/dates ride on a shallow trip copy; days follow only
-  // after save — the meter says what the grid will become).
+  // validated patch and reconciled days drive the preview).
   const road = [f.startLocation, ...dests.map(d => d.name)].filter(Boolean).join(' → ')
   const daysWithStops = trip.days.filter(d => d.stops.some(s => s.status !== 'rejected')).length
-  const engineRead = useMemo(() => {
-    const drafted: Trip = {
-      ...trip,
-      travellers,
-      budgetPerPersonInr: clampedBudget,
-      transportMode: f.transportMode,
-      travelStyle: f.travelStyle,
-      startDate: f.startDate, endDate: f.endDate,
-    }
-    return computeHealth(drafted)
-  }, [trip, travellers, clampedBudget, f.transportMode, f.travelStyle, f.startDate, f.endDate])
-  const topWarning = engineRead.warnings[0]
+  const preview = useMemo(() => {
+    const valid = settingsDryRun(f, dests, startPin, trip)
+    if (!valid.ok) return null
+    const protectedIdx = new Set([...trip.fixedCommitments, ...(trip.flights ?? [])].map(c => c.dayIndex))
+    const rec = reconcileDays(trip.days, f.startDate, f.endDate, protectedIdx)
+    if (rec.error) return null
+    return settingsPreview(trip, valid.patch, rec.days, legCorrections)
+  }, [trip, f, dests, startPin, legCorrections])
+  const engineRead = preview?.health
+  const topWarning = engineRead?.warnings[0]
 
   return (
     <div className="ts-form tsx-form">
@@ -727,7 +727,8 @@ export function TripSettingsForm({ trip, editable, onOpenDay }: {
           {/* the engine's read — the space under the bill, recomputed from
               this form as you type. Band word, number and bar derive from one
               call (lib/healthBand), so they cannot drift apart. */}
-          <div className="tsx-read" aria-label="The engine's read of these settings">
+          {engineRead ? <div className="tsx-read" aria-label="The engine's read of these settings">
+            {preview?.estimated && <p className="muted">Estimate: route changes need fresh road measurements after saving.</p>}
             <div className="tsx-read-head">
               <span className="tsx-read-kicker">The engine&apos;s read</span>
               <span className={`chip chip-${healthBandTone(engineRead.band)}`}>{engineRead.band}</span>
@@ -751,7 +752,7 @@ export function TripSettingsForm({ trip, editable, onOpenDay }: {
               </span>
             </div>
             <p className="tsx-read-note">Recomputed from this form as you type. The day grid itself follows the save.</p>
-          </div>
+          </div> : <p role="status">{!dry.ok ? dry.reason : 'Check the settings to preview this plan.'}</p>}
         </aside>
       </div>
 
