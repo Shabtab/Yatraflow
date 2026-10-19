@@ -313,6 +313,17 @@ export interface Trip {
   deletedAt?: number | null
   createdAt: number
   updatedAt: number
+  /**
+   * #804 — this trip was built from the INVITE PREVIEW RPC, which returns 31 of
+   * the 34 `trips` columns. The absent ones (flights, tank_l, rent_per_day_inr,
+   * local_train, ref) read as undefined, so a whole-row write would send [] and
+   * null over the owner's real values. While this is set, tripToRow omits those
+   * columns instead of inventing them.
+   *
+   * Not persisted: it is never sent to the database, and a full row replaces it
+   * with undefined. Only that one RPC produces a partial row.
+   */
+  partialPreview?: true
 }
 
 export interface StopSuggestion {

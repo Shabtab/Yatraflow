@@ -1388,7 +1388,11 @@ export async function fetchTripByInviteCode(code: string): Promise<Trip | null> 
   if (rpc.error) console.error('[yatraflow] invite-code lookup failed', rpc.error)
   const rows = rpc.data as TripRow[] | null
   if (!Array.isArray(rows) || rows.length === 0) return null
-  const trip = rowToTrip(rows[0], [])
+  // #804 — get_trip_by_invite_code names 31 of the 34 trips columns. The five it
+  // omits (flights, tank_l, rent_per_day_inr, local_train, ref) read as
+  // undefined here. Mark the trip so a later whole-row write omits them instead
+  // of writing [] and null over the owner's real values.
+  const trip: Trip = { ...rowToTrip(rows[0], []), partialPreview: true }
   recordServerTripTimestamp(trip.id, trip.updatedAt)
   if (!cache.trips.some(t => t.id === trip.id)) {
     cache.trips = [...cache.trips, trip]
@@ -3301,6 +3305,32 @@ export async function joinViaInvite(tripId: ID, userId: ID, inviteCode: string):
   mutateTrip(tripId, draft => { draft.members = [...(draft.members ?? []), { userId, role, joinedAt }] }, { touch: false })
   addActivity(tripId, userId, 'joined via invite link', 'Members')
   notifyOwnerOf(tripId, `${userName(userId)} joined “${t.name}” as ${role}.`)
+  // #804 — the join just made this user a member, so the full row is readable
+  // now. Replace the preview row with it, which also clears partialPreview.
+  // Best-effort: a failed refetch leaves the marker set, so the next write still
+  // omits the five columns it never read rather than inventing them.
+  void refreshTripFromServer(tripId)
+  return true
+}
+
+/**
+ * #804 — replace a cached trip with the full server row, when the caller can now
+ * read it. Used after a join, where the invite preview's 31 columns are no longer
+ * the best available answer. A read failure is not surfaced: the cached row stays
+ * as it was, and the marker (when set) keeps writes honest.
+ */
+async function refreshTripFromServer(tripId: ID): Promise<boolean> {
+  const { data, error } = await supabase.from('trips').select('*').eq('id', tripId).maybeSingle()
+  if (error || !data) return false
+  const idx = cache.trips.findIndex(t => t.id === tripId)
+  if (idx < 0) return false
+  const existing = cache.trips[idx]
+  // A local edit that landed while the read was in flight must not be clobbered.
+  if (existing.updatedAt > (data as TripRow).updated_at) return false
+  const full = rowToTrip(data as TripRow, existing.members ?? [])
+  cache.trips = [...cache.trips.slice(0, idx), full, ...cache.trips.slice(idx + 1)]
+  recordServerTripTimestamp(full.id, full.updatedAt)
+  commit()
   return true
 }
 
