@@ -30,7 +30,7 @@ import { pageTitle } from '../lib/pageTitle'
 import { sizedCoverUrl } from '../lib/tripThumb'
 import { Avatar, Chip, EmptyState, toast, CopyButton, RouteSnapshot } from '../components/ui'
 import {
-  chooseCover, countKinds, flightSignalFor, foldWeeks, kindOfCategory, lockedRunLine, planLede, summariseDayFromLegs, truncatePitch,
+  chooseCover, countKinds, flightSignalFor, foldWeeks, hasAirLeg, kindOfCategory, lockedRunLine, planLede, summariseDayFromLegs, truncatePitch,
   type KindCount,
 } from '../lib/publicStorefront'
 import { CoverPlate } from '../components/storefront/CoverPlate'
@@ -423,7 +423,13 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
       // The card says "on the road", so it gets the ground legs only. The
       // engine's total also counts the air sector, and a flight is not a
       // drive. The minutes come from the engine's own legs.
-      const summary = summariseDayFromLegs({ ...day, stops: live }, sim.legs, flightSignalFor(flightDays.has(day.index), isLocked))
+      // A readable card also has to know that the day flies. The traveller may
+      // not have entered the flight yet, and the engine plans an estimated air
+      // leg for a flight trip anyway. So the signal is the stored flight rows
+      // OR the air leg the engine actually planned for this day. It still goes
+      // through `flightSignalFor`, so a locked card discloses no flight.
+      const hasFlight = flightDays.has(day.index) || hasAirLeg(sim.legs)
+      const summary = summariseDayFromLegs({ ...day, stops: live }, sim.legs, flightSignalFor(hasFlight, isLocked))
       const cats = live.map(s => ({ category: s.category }))
       allCats.push(...cats)
       if (isLocked) {

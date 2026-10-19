@@ -134,6 +134,15 @@ export function roadMinutesOf(legs: ReadonlyArray<LegMinutes>): number {
   return total
 }
 
+/** True when the schedule carries an air sector. The engine plans an estimated
+ *  air leg for a flight trip before the traveller enters a flight, so the
+ *  stored flight rows are not the only source of the signal. A leg with no
+ *  kind is ground travel, and a stay day of a flight trip carries no air leg
+ *  at all. */
+export function hasAirLeg(legs: ReadonlyArray<LegMinutes>): boolean {
+  return legs.some((leg) => leg.kind === 'air')
+}
+
 export interface DaySummary {
   index: number
   title: string

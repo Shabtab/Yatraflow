@@ -2,8 +2,14 @@ import { readFileSync } from 'node:fs'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, it, expect } from 'vitest'
+import ts from 'typescript'
 import type { ItineraryDay, ItineraryStop, Trip } from '../src/data/types'
-import { chooseCover, countKinds, describeKinds, flightSignalFor, foldWeeks, kindOfCategory, lockedRunLine, paceOf, planLede, roadMinutesOf, summariseDay, summariseDayFromLegs, truncatePitch } from '../src/lib/publicStorefront'
+import { cap } from '../src/lib/labels'
+import {
+  chooseCover, countKinds, describeKinds, flightSignalFor, foldWeeks, hasAirLeg, kindOfCategory, lockedRunLine,
+  paceOf, planLede, roadMinutesOf, summariseDay, summariseDayFromLegs, truncatePitch,
+  type DaySummary,
+} from '../src/lib/publicStorefront'
 import { originOf, simulateDay } from '../src/lib/engine'
 import { DayCard } from '../src/components/storefront/DayCard'
 import { WhatIsInside } from '../src/components/storefront/WhatIsInside'
@@ -450,3 +456,205 @@ describe('unbroken text (F2)', () => {
   })
 })
 
+/**
+ * The page's own storefront memo, extracted from the page source with the
+ * TypeScript parser and executed unchanged.
+ *
+ * No page formula is written out here. The callback below IS the page's, so a
+ * change in the page changes what this test exercises, and a helper unit test
+ * cannot pass while the page still does the wrong thing. The scope holds the
+ * page's dependencies only: the real engine, the real storefront helpers and
+ * the page's own closure variables.
+ */
+function pageStorefrontCallback(source: string): string {
+  const ast = ts.createSourceFile('PublicItinerary.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
+  let found: string | undefined
+  const visit = (node: ts.Node): void => {
+    if (ts.isVariableDeclaration(node) && node.name.getText(ast) === 'storefront') {
+      const init = node.initializer
+      if (init && ts.isCallExpression(init) && ts.isIdentifier(init.expression) && init.expression.text === 'useMemo') {
+        found = init.arguments[0]?.getText(ast)
+      }
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(ast)
+  if (!found) throw new Error('the page storefront useMemo callback was not found')
+  return (
+    ts.transpileModule(`const extracted = ${found}`, {
+      compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.None },
+    }).outputText + '\nreturn extracted();'
+  )
+}
+
+interface StorefrontCard {
+  state: 'free' | 'locked' | 'yours'
+  summary: DaySummary
+  places?: unknown
+}
+
+interface StorefrontResult {
+  cards: StorefrontCard[]
+  lede: string | null
+  lockedLine: string
+}
+
+describe('page storefront dataflow (the actual page callback)', () => {
+  const pageSource = readFileSync(new URL('../src/pages/PublicItinerary.tsx', import.meta.url), 'utf8')
+  const callback = pageStorefrontCallback(pageSource)
+
+  /** Runs the page's own callback and renders the cards it returns. */
+  function runStorefront(trip: Trip, freeDayIndexes: number[], unlocked = false): StorefrontResult {
+    const pub = {
+      freeDayIndexes,
+      premiumPriceInr: 499,
+      routeSummary: ['Delhi', 'Mumbai'],
+      durationDays: trip.days.length,
+    }
+    const scope: Record<string, unknown> = {
+      // The page's dependencies. The real ones, not copies.
+      simulateDay, originOf,
+      summariseDayFromLegs, flightSignalFor, kindOfCategory, countKinds, planLede,
+      lockedRunLine, chooseCover, foldWeeks, truncatePitch, hasAirLeg,
+      cap,
+      // The page's closure variables.
+      trip, pub, orderedDays: trip.days, unlocked, mayShowPriceCta: true,
+    }
+    const names = Object.keys(scope)
+    const run = new Function(...names, callback) as (...args: unknown[]) => StorefrontResult
+    return run(...names.map((n) => scope[n]))
+  }
+
+  const textOf = (card: StorefrontCard): string =>
+    renderToStaticMarkup(createElement(DayCard, card as never))
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+
+  /** The same route with no flight entered: the engine plans the air leg. */
+  const synthTrip = { ...flightTrip, flights: [] } as unknown as Trip
+
+  it('the page callback is found and runs', () => {
+    // If the page stopped building the storefront, this whole block would be
+    // testing nothing. So the harness is checked first.
+    const result = runStorefront(synthTrip, [0])
+    expect(result.cards.length).toBe(1)
+    expect(result.cards[0].state).toBe('free')
+  })
+
+  it('a free estimated-flight day says "Flight day", not "Nothing planned"', () => {
+    // The defect: the page read the flight only from the stored flight rows,
+    // so a flight trip the traveller has not detailed yet called a planned
+    // journey an empty day.
+    const result = runStorefront(synthTrip, [0])
+    const card = result.cards[0]
+    expect(card.summary.pace).toEqual({ key: 'flight', label: 'Flight day' })
+    expect(textOf(card)).toBe('Day 1 Free Travel day Flight day 32 m on the road')
+    expect(textOf(card)).not.toContain('Nothing planned')
+  })
+
+  it('a yours estimated-flight day says "Flight day", not "Nothing planned"', () => {
+    // The same trip, unlocked rather than free. The page's own `unlocked`
+    // flag picks the state; the flight signal is the same.
+    const result = runStorefront(synthTrip, [], true)
+    const card = result.cards[0]
+    expect(card.state).toBe('yours')
+    expect(card.summary.pace).toEqual({ key: 'flight', label: 'Flight day' })
+    expect(textOf(card)).toBe('Day 1 Yours Travel day Flight day 32 m on the road')
+    expect(textOf(card)).not.toContain('Nothing planned')
+  })
+
+  it('a stored flight still says "Flight day" and keeps the same ground minutes', () => {
+    // The control that must not move.
+    const result = runStorefront(flightTrip as unknown as Trip, [0])
+    const card = result.cards[0]
+    expect(card.summary.pace).toEqual({ key: 'flight', label: 'Flight day' })
+    expect(card.summary.travelMinutes).toBe(32)
+  })
+
+  it('a locked flight day discloses no flight, whichever signal carries it', () => {
+    // Locked privacy. The stored flight, the estimated flight and a road trip
+    // with no flight at all must all produce the same locked card, because a
+    // locked card may not disclose a flight.
+    const locked = [synthTrip, flightTrip as unknown as Trip].map((t) => runStorefront(t, []).cards[0])
+    for (const card of locked) {
+      expect(card.state).toBe('locked')
+      expect(card.summary.pace).toBeNull()
+      expect(card.summary.hasFlight).toBe(false)
+      expect(card.summary.travelMinutes).toBe(32)
+      // No places key, no names, no coordinates, no flight word.
+      expect(Object.hasOwn(card, 'places')).toBe(false)
+      const text = textOf(card)
+      expect(text).toBe('Day 1 Locked Travel day 32 m on the road')
+      expect(text).not.toContain('Flight day')
+      expect(text).not.toContain('Nothing planned')
+    }
+    // The two locked cards are identical, so the underlying signal changed
+    // nothing the reader can see.
+    expect(textOf(locked[0])).toBe(textOf(locked[1]))
+  })
+
+  it('a locked road day with no flight discloses no flight either', () => {
+    // The control the Gate asked for: air against no air, on a locked card.
+    // The two journeys are not the same journey — a drive from Delhi to
+    // Mumbai is a real long drive, and those minutes are honest. What must
+    // not differ is what the card discloses: neither card may name a flight
+    // or claim a pace.
+    const roadTrip = { ...flightTrip, transportMode: 'car', flights: [] } as unknown as Trip
+    const road = runStorefront(roadTrip, []).cards[0]
+    const air = runStorefront(synthTrip, []).cards[0]
+    for (const card of [road, air]) {
+      expect(card.state).toBe('locked')
+      expect(card.summary.pace).toBeNull()
+      expect(card.summary.hasFlight).toBe(false)
+      expect(Object.hasOwn(card, 'places')).toBe(false)
+      expect(textOf(card)).not.toContain('Flight day')
+      expect(textOf(card)).not.toContain('Nothing planned')
+    }
+  })
+
+  it('an actual empty stay day still says "Nothing planned"', () => {
+    // A three-day trip: day 0 flies, days 1 and 2 are stay days with no stops.
+    // The engine puts no air leg on a stay day, so those days are honestly
+    // empty and must not borrow the travel day's flight.
+    const stayDay: ItineraryDay = { id: 'day1', index: 1, title: 'Stay day', stops: [] }
+    const stayDay2: ItineraryDay = { id: 'day2', index: 2, title: 'Stay day 2', stops: [] }
+    const stayTrip = {
+      ...synthTrip,
+      endDate: '2026-11-03',
+      days: [flightDay, stayDay, stayDay2],
+    } as unknown as Trip
+    const result = runStorefront(stayTrip, [0, 1, 2])
+    expect(result.cards.length).toBe(3)
+    // The travel day flies and keeps its real ground transfer time.
+    expect(result.cards[0].summary.pace).toEqual({ key: 'flight', label: 'Flight day' })
+    expect(result.cards[0].summary.travelMinutes).toBe(32)
+    // The stay days are empty and say so.
+    expect(result.cards[1].summary.pace).toEqual({ key: 'empty', label: 'Nothing planned' })
+    expect(result.cards[1].summary.travelMinutes).toBe(0)
+    expect(result.cards[2].summary.pace).toEqual({ key: 'empty', label: 'Nothing planned' })
+    expect(result.cards[2].summary.travelMinutes).toBe(0)
+  })
+
+  it('a plan with no days shows no lede', () => {
+    // The zero-day control. The page's own lede, from the page's own callback.
+    const emptyTrip = { ...synthTrip, days: [] } as unknown as Trip
+    const result = runStorefront(emptyTrip, [])
+    expect(result.lede).toBeNull()
+    expect(result.cards.length).toBe(0)
+  })
+
+  it('a readable day with places and no flight keeps its honest pace', () => {
+    // The fix must not make every day a flight day. A road trip with a real
+    // drive keeps the drive pace; the day is not a flight day.
+    const withPlaces: ItineraryDay = {
+      id: 'day0', index: 0, title: 'Mumbai', stops: [secretStop('sightseeing')],
+    }
+    const roadTrip = {
+      ...flightTrip, transportMode: 'car', flights: [], days: [withPlaces],
+    } as unknown as Trip
+    const result = runStorefront(roadTrip, [0])
+    expect(result.cards[0].summary.pace).toEqual({ key: 'drive', label: 'Long drive' })
+    expect(result.cards[0].summary.hasFlight).toBe(false)
+  })
+})
