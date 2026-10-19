@@ -17,7 +17,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ### Added
 
-- **The Android app now checks for a newer build and offers it.** The app reads its own native version code and compares it with a published release. A check runs once a day at startup and on each return to the foreground. Profile shows the installed build and has its own Check for updates button. A newer release shows a dismissible Update and Later notice that never blocks planning. Later holds that version back for a day. Update opens the download page in the browser, and the user installs from there. The app installs nothing by itself. The release feed is not configured yet, so the check stays inert until a real feed is approved. (#809)
+- **The Android app now checks for a newer build and offers it.** The app reads its own native version code and compares it with a published release. A check runs once a day at startup and on each return to the foreground. Profile shows the installed build and has its own Check for updates button. Profile first shows that it reads the installed build. A newer release shows a dismissible Update and Later notice that never blocks planning. Later holds that version back for a day. Update opens the download page in the browser, and the user installs from there. The app installs nothing by itself. Each feed read ends after ten seconds, so a slow network cannot block checks. The release tool runs on Windows and names the real SDK tool files. It needs the expected signer fingerprint and rejects other keys. It accepts only a version code above the last published code. The release feed is not configured yet, so the check stays inert until a real feed is approved. (#809)
 
 ### Fixed
 
