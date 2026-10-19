@@ -788,7 +788,7 @@ export function TripSettingsForm({ trip, editable, onOpenDay, legCorrections }: 
             <h3 className="tsx-q">Will you drive any part of this trip?</h3>
             <p className="tsx-a">This trip mixes ways of travelling. Your answer sets the driving options. Nothing changes until you pick one.</p>
           </header>
-          <div className="bench-pair" role="group" aria-label="Will you drive any part of this trip?" data-sel={f.drivesPart === false ? '1' : '0'}>
+          <div className="transport-answer-pair" role="group" aria-label="Will you drive any part of this trip?" data-sel={f.drivesPart === true ? '0' : f.drivesPart === false ? '1' : 'none'}>
             <button type="button" className={`crew-btn${f.drivesPart === true ? ' on' : ''}`}
               aria-pressed={f.drivesPart === true} disabled={!editable}
               onClick={() => setF(s => ({ ...s, drivesPart: true }))}>Yes, I drive</button>
