@@ -10736,3 +10736,795 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 @media (max-width: 360px) {
   .dob-picker { gap: 6px; grid-template-columns: 1fr 1.4fr 0.85fr; }
 }
+/* ---- P7 storefront (Look Inside) ----
+   The public page for one plan.
+   Each stop kind has one colour.
+   The colour paints the icon and tints the chip.
+   The pair holds 4.5:1 for the text on its own tint, in both themes.
+   The lowest light pair is evening at 5.01:1.
+   Saffron means paid. Only the Locked tag and the Unlock button use it.
+   Every duration and easing comes from the motion tokens.
+   The motion moves transform and opacity only. */
+
+/* One token pair per kind. A modifier sets --sf-c and --sf-c-bg on the element. */
+:root {
+  --sf-kind-sight: #1A54A8;
+  --sf-kind-sight-bg: #DFE7F3;
+  --sf-kind-nature: #166534;
+  --sf-kind-nature-bg: #DEE9E3;
+  --sf-kind-food: #B91C1C;
+  --sf-kind-food-bg: #F5DFDF;
+  --sf-kind-temple: #6D28D9;
+  --sf-kind-temple-bg: #EBE1FA;
+  --sf-kind-museum: #4338CA;
+  --sf-kind-museum-bg: #E5E3F8;
+  --sf-kind-beach: #155E75;
+  --sf-kind-beach-bg: #DEE8EC;
+  --sf-kind-market: #9D174D;
+  --sf-kind-market-bg: #F1DFE6;
+  --sf-kind-outdoors: #3F6212;
+  --sf-kind-outdoors-bg: #E4E9DE;
+  --sf-kind-evening: #A21CAF;
+  --sf-kind-evening-bg: #F2DFF4;
+  /* A stay and a travel leg share one slate pair. */
+  --sf-kind-stay: #475569;
+  --sf-kind-stay-bg: #E5E7EA;
+  --sf-kind-travel: #475569;
+  --sf-kind-travel-bg: #E5E7EA;
+}
+
+:root[data-theme='dark'] {
+  --sf-kind-sight: #8DB8F2;
+  --sf-kind-sight-bg: #273854;
+  --sf-kind-nature: #6BD08F;
+  --sf-kind-nature-bg: #223B46;
+  --sf-kind-food: #F59595;
+  --sf-kind-food-bg: #353347;
+  --sf-kind-temple: #B9A2F8;
+  --sf-kind-temple-bg: #2D3555;
+  --sf-kind-museum: #A5A8F8;
+  --sf-kind-museum-bg: #2A3655;
+  --sf-kind-beach: #5FD0E6;
+  --sf-kind-beach-bg: #203B52;
+  --sf-kind-market: #F48FB8;
+  --sf-kind-market-bg: #35324C;
+  --sf-kind-outdoors: #A9D46A;
+  --sf-kind-outdoors-bg: #2B3C41;
+  --sf-kind-evening: #EE9BF5;
+  --sf-kind-evening-bg: #343454;
+  --sf-kind-stay: #A3B1C2;
+  --sf-kind-stay-bg: #2A374D;
+  --sf-kind-travel: #A3B1C2;
+  --sf-kind-travel-bg: #2A374D;
+}
+/* ---------- kind modifiers: one local pair for every consumer ---------- */
+.sf-kind--sight { --sf-c: var(--sf-kind-sight); --sf-c-bg: var(--sf-kind-sight-bg); }
+.sf-kind--nature { --sf-c: var(--sf-kind-nature); --sf-c-bg: var(--sf-kind-nature-bg); }
+.sf-kind--food { --sf-c: var(--sf-kind-food); --sf-c-bg: var(--sf-kind-food-bg); }
+.sf-kind--temple { --sf-c: var(--sf-kind-temple); --sf-c-bg: var(--sf-kind-temple-bg); }
+.sf-kind--museum { --sf-c: var(--sf-kind-museum); --sf-c-bg: var(--sf-kind-museum-bg); }
+.sf-kind--beach { --sf-c: var(--sf-kind-beach); --sf-c-bg: var(--sf-kind-beach-bg); }
+.sf-kind--market { --sf-c: var(--sf-kind-market); --sf-c-bg: var(--sf-kind-market-bg); }
+.sf-kind--outdoors { --sf-c: var(--sf-kind-outdoors); --sf-c-bg: var(--sf-kind-outdoors-bg); }
+.sf-kind--evening { --sf-c: var(--sf-kind-evening); --sf-c-bg: var(--sf-kind-evening-bg); }
+.sf-kind--stay { --sf-c: var(--sf-kind-stay); --sf-c-bg: var(--sf-kind-stay-bg); }
+.sf-kind--travel { --sf-c: var(--sf-kind-travel); --sf-c-bg: var(--sf-kind-travel-bg); }
+
+/* ---------- the cover: a photo, or a ticket on a dot pattern ---------- */
+.sf-cover {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  place-items: center;
+  min-height: 320px;
+  padding: var(--space-10);
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  background: var(--yf-navy);
+}
+
+/* The photo plate: the image inside it fills the box. */
+.sf-cover-photo {
+  position: relative;
+  padding: 0;
+}
+
+/* The pattern is decoration. It draws no image. */
+.sf-cover-pattern {
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-under);
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
+  /* Only whole rows are drawn. Extra tiles fall into zero-height rows and
+     have no height, so no dot is ever cut in half. */
+  grid-template-rows: repeat(auto-fill, 56px);
+  grid-auto-rows: 0;
+  align-content: center;
+  padding: var(--space-4);
+  overflow: hidden;
+}
+
+.sf-cover-dot {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: min(48px, 100%);
+  margin: auto;
+  border-radius: 50%;
+  background: var(--sf-c-bg);
+  color: var(--sf-c);
+}
+
+.sf-cover-dot svg {
+  width: 24px;
+  height: 24px;
+}
+.sf-cover-ticket {
+  position: relative;
+  z-index: var(--z-content);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-5);
+  width: min(100%, 620px);
+  padding: var(--space-10);
+  border-radius: var(--radius);
+  background: var(--yf-cream);
+  color: var(--text);
+}
+
+.sf-cover-ticket-route {
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -.01em;
+  text-wrap: balance;
+}
+
+.sf-cover-ticket-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+/* ---------- chips: icon and word, never the colour alone ---------- */
+.sf-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 30px;
+  padding: 0 var(--space-5) 0 var(--space-4);
+  border-radius: 999px;
+  background: var(--sf-c-bg);
+  color: var(--sf-c);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.sf-chip-icon {
+  display: block;
+  flex: none;
+  width: 17px;
+  height: 17px;
+}
+
+.sf-chip-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.sf-chip-text {
+  font-size: 13px;
+}
+
+/* ---------- what is inside ---------- */
+.sf-inside {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+
+.sf-inside-lede {
+  max-width: 62ch;
+  font-size: 18px;
+  line-height: 1.45;
+  text-wrap: pretty;
+}
+
+.sf-inside-kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+
+/* The locked line is the only saffron block outside a day card. */
+.sf-inside-lock {
+  padding: var(--space-6);
+  border-radius: var(--radius-sm);
+  background: var(--saffron-soft);
+  color: var(--ink-amber);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+/* ---------- the day grid and the week groups ---------- */
+.sf-daygrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(272px, 1fr));
+  gap: var(--space-5);
+}
+
+.sf-week {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-height: 44px;
+}
+
+.sf-week-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 44px;
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.3;
+}
+
+/* ---------- one day card ---------- */
+.sf-day {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-7);
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--text);
+  transition: transform var(--motion-med) var(--ease-out);
+}
+
+.sf-day--free {
+  background: var(--card);
+  color: var(--text);
+}
+
+/* A locked card is neutral. Only its tag and the locked line carry saffron. */
+.sf-day--locked {
+  background: var(--bg-soft);
+  color: var(--text);
+}
+
+.sf-day--yours {
+  background: var(--teal-soft);
+  color: var(--text);
+}
+
+/* The strip bleeds to both card edges. It repeats the chips below it. */
+.sf-day-strip {
+  display: flex;
+  flex: none;
+  gap: 2px;
+  height: 6px;
+  margin: calc(var(--space-7) * -1) calc(var(--space-7) * -1) 0;
+  overflow: hidden;
+}
+
+.sf-day-strip-seg {
+  flex: 1 1 0;
+  min-width: 6px;
+  background: var(--sf-c);
+}
+
+.sf-day-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.sf-day-num {
+  font-size: 20px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.sf-day-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 26px;
+  padding: 0 var(--space-5);
+  border-radius: 999px;
+  background: var(--teal-soft);
+  color: var(--ink-teal);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* A locked card marks its tag with the paid colour. */
+.sf-day--locked .sf-day-tag {
+  background: var(--saffron-soft);
+  color: var(--ink-amber);
+}
+.sf-day-title {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.3;
+  text-wrap: balance;
+}
+
+.sf-day-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-5);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.sf-pace {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.sf-pace--empty {
+  color: var(--text-3);
+}
+
+.sf-pace--full,
+.sf-pace--drive,
+.sf-pace--flight {
+  color: var(--text);
+  font-weight: 700;
+}
+.sf-day-places {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sf-day-place {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-3);
+  font-size: 15px;
+}
+
+.sf-day-place svg {
+  width: 24px;
+  height: 24px;
+  padding: var(--space-2);
+  border-radius: 50%;
+  background: var(--sf-c-bg);
+  color: var(--sf-c);
+}
+
+.sf-day-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* ---------- the sticky price bar ---------- */
+.sf-sticky {
+  position: fixed;
+  left: 50%;
+  top: 0;
+  z-index: var(--z-strip);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-7);
+  width: min(100% - 24px, 1080px);
+  padding: var(--space-5);
+  border-radius: 0 0 var(--radius) var(--radius);
+  background: var(--card);
+  color: var(--text);
+  box-shadow: var(--shadow-soft);
+  transform: translate(-50%, -110%);
+  visibility: hidden;
+  transition: transform var(--motion-med) var(--ease-glide), visibility 0s linear var(--motion-med);
+}
+
+.sf-sticky.is-visible {
+  transform: translate(-50%, 0);
+  visibility: visible;
+  transition: transform var(--motion-med) var(--ease-glide), visibility 0s;
+}
+
+.sf-sticky-price {
+  font-size: 15px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+/* The paid action keeps the app's accent pair. */
+.sf-sticky-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  min-height: 44px;
+  padding: 0 var(--space-8);
+  border: 0;
+  border-radius: 999px;
+  background: var(--color-accent);
+  color: var(--color-accent-foreground);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+/* ---------- on a phone the bar owns the bottom edge ---------- */
+@media (max-width: 720px) {
+  .sf-cover {
+    min-height: 280px;
+    padding: var(--space-7);
+  }
+
+  .sf-cover-ticket {
+    padding: var(--space-7);
+  }
+
+  .sf-daygrid {
+    grid-template-columns: 1fr;
+  }
+
+  .sf-inside-lock {
+    padding: var(--space-5);
+  }
+
+  .sf-sticky {
+    top: auto;
+    bottom: 0;
+    border-radius: var(--radius) var(--radius) 0 0;
+    padding: var(--space-5) var(--space-7) calc(var(--space-5) + var(--bottom-ui-offset));
+    transform: translate(-50%, 110%);
+  }
+
+  .sf-sticky.is-visible {
+    transform: translate(-50%, 0);
+  }
+}
+/* ---------- motion: the tokens, and transform or opacity only ---------- */
+.sf-daygrid > .sf-day {
+  animation: sf-rise var(--motion-med) var(--ease-out) backwards;
+  animation-delay: calc(var(--i, 0) * var(--stagger-step));
+}
+
+.sf-cover-pattern .sf-cover-dot {
+  animation: sf-fade var(--motion-slow) var(--ease-out) backwards;
+  animation-delay: calc(var(--i, 0) * var(--stagger-step));
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .sf-day:hover {
+    transform: translateY(-2px);
+  }
+}
+
+@keyframes sf-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+@keyframes sf-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Reduced motion removes every added transition and animation.
+   The content stays visible, because no rule above starts it hidden. */
+@media (prefers-reduced-motion: reduce) {
+  .sf-daygrid > .sf-day,
+  .sf-cover-pattern .sf-cover-dot {
+    animation: none;
+  }
+
+  .sf-day,
+  .sf-sticky,
+  .sf-sticky.is-visible,
+  .sf-week-summary::after {
+    transition: none;
+  }
+}
+/* ---- P7 storefront: first screen and page wiring ----
+   The first screen holds the title, the facts, the cover and the buy box.
+   The cover photo and the ticket come from the storefront components.
+   Saffron stays on the paid button. A free plan shows none. */
+.sf-hero {
+  padding-bottom: calc(var(--surface-block-gap) + var(--space-7));
+}
+
+.sf-hero-grid {
+  position: relative;
+  z-index: var(--z-content);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 420px);
+  grid-template-areas:
+    "main side"
+    "facts side";
+  grid-template-rows: auto 1fr;
+  gap: var(--space-8) var(--surface-block-gap);
+  align-items: start;
+}
+
+.sf-hero-main {
+  grid-area: main;
+  min-width: 0;
+}
+
+.sf-hero .pub-hero-title {
+  max-width: 720px;
+}
+
+.sf-hero .pub-hero-story {
+  max-width: 640px;
+}
+
+.sf-hero .pub-hero-byline {
+  max-width: none;
+}
+
+/* The facts card sits in the flow here. It no longer floats over the hero. */
+.sf-hero .pub-hero-stats {
+  grid-area: facts;
+  position: static;
+  width: auto;
+  max-width: 520px;
+  margin: 0;
+}
+
+.sf-hero .pub-stats-row {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.sf-hero-side {
+  grid-area: side;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-7);
+  min-width: 0;
+}
+
+.sf-hero-side .sf-cover {
+  min-height: 232px;
+  padding: var(--space-7);
+}
+
+.sf-hero-side .sf-cover-photo {
+  height: 232px;
+  padding: 0;
+}
+
+.sf-cover-photo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.sf-hero--free .pub-hero-badge {
+  background: var(--teal-soft);
+  color: var(--ink-teal);
+}
+
+.sf-buybox {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--space-8);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--text);
+  box-shadow: var(--shadow-soft);
+}
+
+.sf-buybox .btn {
+  width: 100%;
+  min-height: 44px;
+  justify-content: center;
+}
+
+.sf-buybox-price {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-4);
+  margin: 0;
+}
+
+.sf-buybox-price b {
+  font-size: 24px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.sf-buybox-price span {
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.sf-buybox-pitch {
+  margin: 0;
+  padding-left: var(--space-5);
+  border-left: 3px solid var(--teal);
+  font-size: 15px;
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+
+.sf-inside-section {
+  margin: var(--surface-block-gap) 0;
+}
+
+.sf-inside-heading {
+  margin: 0 0 var(--space-7);
+  font-family: var(--font-body);
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.3;
+  color: var(--text);
+}
+
+/* A free plan or an owned plan offers Fork. It uses the primary pair. */
+.sf-sticky-cta:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.sf-sticky-cta:disabled {
+  opacity: .6;
+  cursor: default;
+}
+
+.sf-sticky-cta--fork {
+  background: var(--color-primary);
+  color: var(--color-primary-foreground);
+}
+
+/* A week folds like a drawer. The summary is the week title. */
+.sf-week-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  min-height: 44px;
+  list-style: none;
+  cursor: pointer;
+}
+
+.sf-week-summary::-webkit-details-marker {
+  display: none;
+}
+
+.sf-week-summary::after {
+  content: '';
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-right: var(--space-4);
+  border-right: 2px solid var(--text-2);
+  border-bottom: 2px solid var(--text-2);
+  transform: rotate(45deg);
+  transition: transform var(--motion-fast) var(--ease-out);
+}
+
+.sf-week[open] > .sf-week-summary::after {
+  transform: rotate(-135deg);
+}
+
+.sf-week-summary:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+  border-radius: var(--radius-sm);
+}
+
+@media (max-width: 960px) {
+  /* On a phone the buy box comes before the cover, so the button is on screen. */
+  .sf-buybox {
+    order: -1;
+  }
+
+  .sf-hero-grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "main"
+      "side"
+      "facts";
+    grid-template-rows: auto;
+  }
+
+  .sf-hero .pub-hero-stats {
+    max-width: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .sf-hero {
+    padding-bottom: var(--surface-block-gap);
+  }
+
+  .sf-hero-side .sf-cover {
+    min-height: 200px;
+  }
+
+  .sf-hero-side .sf-cover-photo {
+    height: 200px;
+  }
+
+  /* The fixed price bar owns the bottom edge. The page leaves room for it. */
+  .sf-page {
+    padding-bottom: calc(80px + var(--bottom-ui-offset));
+  }
+}
+
+
+/* On a wide screen the bar sits under the floating top nav, not behind it. */
+@media (min-width: 721px) {
+  .sf-sticky {
+    top: calc(12px + var(--nav-h) + var(--space-4));
+    width: min(100% - 24px, 560px);
+    border-radius: var(--radius);
+  }
+}
+
+
+/* ---------- storefront: an unbroken run stays inside its card ---------- */
+/* A creator day title, a readable place name and a ticket route can each be
+   one long unbroken run. The card and the cover hide their overflow, so a run
+   that cannot break disappears at the edge instead of wrapping. These rules
+   give the text a break opportunity and let the boxes that hold it shrink. */
+
+/* The day title. The card hides its overflow, so the run must break. */
+.sf-day > .sf-day-title {
+  overflow-wrap: anywhere;
+}
+
+/* The readable place name. Its grid column may shrink, so the name must
+   break inside that column. */
+.sf-day-place > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* The cover holds a ticket. The grid track must not grow to the width of the
+   ticket's longest line, or the ticket leaves the cover. */
+.sf-cover:has(> .sf-cover-ticket) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* The ticket may shrink inside the cover. */
+.sf-cover > .sf-cover-ticket {
+  min-width: 0;
+}
+
+/* The ticket route. The ticket hides nothing, so the run must break inside
+   the ticket. */
+.sf-cover > .sf-cover-ticket > .sf-cover-ticket-route {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
