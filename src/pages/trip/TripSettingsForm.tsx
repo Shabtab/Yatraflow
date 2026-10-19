@@ -784,7 +784,7 @@ export function TripSettingsForm({ trip, editable, onOpenDay, legCorrections }: 
           Only the VALIDATION uses `mustAnswerDriving`. */}
       {f.transportMode === 'mixed' && (
         <Surface as="section" className="tsx-card" aria-label="Will you drive any part of this trip?">
-          <header className="tsx-head">
+          <header className="tsx-head tsx-head--plain">
             <h3 className="tsx-q">Will you drive any part of this trip?</h3>
             <p className="tsx-a">This trip mixes ways of travelling. Your answer sets the driving options. Nothing changes until you pick one.</p>
           </header>
