@@ -21,14 +21,17 @@
 export const SNAPSHOT_VERSION = 1
 
 const DB_NAME = 'yatraflow-offline'
-// v2 adds the pending-write queue (lib/writeQueue.ts). An upgrade is exactly
-// how an existing install gets the new store: onupgradeneeded creates whichever
-// store this version names and leaves the other's data alone.
-const DB_VERSION = 2
+// Version 3 scopes pending edits by account and trip.
+const DB_VERSION = 3
 /** The account's last clean hydrate. */
 export const SNAPSHOT_STORE = 'snapshots'
 /** Trip edits that have not reached the server yet (PWA phase 3). */
 export const WRITE_STORE = 'writes'
+
+/** One pending edit per editor and trip. JSON keeps both identifiers distinct. */
+export function writeQueueKey(ownerId: string, tripId: string): string {
+  return JSON.stringify([ownerId, tripId])
+}
 
 let dbPromise: Promise<IDBDatabase | null> | null = null
 
@@ -37,26 +40,76 @@ let dbPromise: Promise<IDBDatabase | null> | null = null
  *  cache" rather than failing. */
 export function openOfflineDb(): Promise<IDBDatabase | null> {
   if (dbPromise) return dbPromise
-  dbPromise = new Promise<IDBDatabase | null>(resolve => {
-    try {
-      if (typeof indexedDB === 'undefined') {
-        resolve(null)
+  const opening = new Promise<IDBDatabase | null>(resolve => {
+    let settled = false
+    let timeout: ReturnType<typeof setTimeout> | undefined
+    const finish = (db: IDBDatabase | null) => {
+      if (settled) {
+        db?.close()
         return
       }
+      settled = true
+      clearTimeout(timeout)
+      resolve(db)
+    }
+    try {
+      if (typeof indexedDB === 'undefined') {
+        finish(null)
+        return
+      }
+      timeout = setTimeout(() => finish(null), 5_000)
       const request = indexedDB.open(DB_NAME, DB_VERSION)
-      request.onupgradeneeded = () => {
+      request.onupgradeneeded = event => {
+        if (settled) {
+          request.transaction?.abort()
+          return
+        }
         const db = request.result
         for (const store of [SNAPSHOT_STORE, WRITE_STORE]) {
           if (!db.objectStoreNames.contains(store)) db.createObjectStore(store)
         }
+        if (event.oldVersion < 3 && request.transaction) {
+          const writes = request.transaction.objectStore(WRITE_STORE)
+          const cursor = writes.openCursor()
+          cursor.onsuccess = () => {
+            const row = cursor.result
+            if (!row) return
+            const entry = row.value as { ownerId?: unknown; tripId?: unknown; capturedAt?: unknown }
+            if (typeof entry?.ownerId !== 'string' || typeof entry.tripId !== 'string') { row.continue(); return }
+            const key = writeQueueKey(entry.ownerId, entry.tripId)
+            if (row.primaryKey === key) { row.continue(); return }
+            const existing = writes.get(key)
+            existing.onsuccess = () => {
+              const saved = existing.result as { capturedAt?: unknown } | undefined
+              const incomingTime = Number(entry.capturedAt)
+              const savedTime = Number(saved?.capturedAt)
+              if (!saved || (Number.isFinite(incomingTime) && (!Number.isFinite(savedTime) || savedTime < incomingTime))) writes.put(entry, key)
+              row.delete()
+              row.continue()
+            }
+          }
+        }
       }
-      request.onsuccess = () => resolve(request.result)
-      request.onerror = () => resolve(null)
+      request.onsuccess = () => {
+        const db = request.result
+        db.onversionchange = () => {
+          db.close()
+          if (dbPromise === opening) dbPromise = null
+        }
+        db.onclose = () => { if (dbPromise === opening) dbPromise = null }
+        finish(db)
+      }
+      request.onblocked = () => finish(null)
+      request.onerror = () => finish(null)
     } catch {
-      resolve(null)
+      finish(null)
     }
   })
-  return dbPromise
+  dbPromise = opening
+  void opening.then(db => {
+    if (!db && dbPromise === opening) dbPromise = null
+  })
+  return opening
 }
 
 /** The slices worth keeping: the plans themselves plus what renders around
@@ -86,53 +139,71 @@ export interface SnapshotStore {
   remove(key: string): Promise<void>
 }
 
-/** IndexedDB-backed store. Every path resolves — "no cache" is a valid answer. */
+/** Report write success only after the transaction commits. */
 function idbStore(): SnapshotStore {
-  const run = async <T>(mode: IDBTransactionMode, fn: (store: IDBObjectStore) => IDBRequest, fallback: T): Promise<T> => {
+  const run = async <T>(mode: IDBTransactionMode, fn: (store: IDBObjectStore) => IDBRequest): Promise<T> => {
     const db = await openOfflineDb()
-    if (!db) return fallback
-    return new Promise<T>(resolve => {
+    if (!db) throw new Error('Offline storage is unavailable')
+    return new Promise<T>((resolve, reject) => {
       try {
         const transaction = db.transaction(SNAPSHOT_STORE, mode)
+        let result: T
+        transaction.oncomplete = () => resolve(result)
+        transaction.onerror = () => reject(transaction.error ?? new Error('Offline storage transaction failed'))
+        transaction.onabort = () => reject(transaction.error ?? new Error('Offline storage transaction aborted'))
         const request = fn(transaction.objectStore(SNAPSHOT_STORE))
-        request.onsuccess = () => resolve((request.result as T) ?? fallback)
-        request.onerror = () => resolve(fallback)
-      } catch {
-        resolve(fallback)
+        request.onsuccess = () => { result = request.result as T }
+        request.onerror = () => reject(request.error ?? new Error('Offline storage request failed'))
+      } catch (error) {
+        reject(error)
       }
     })
   }
 
   return {
-    read: key => run('readonly', store => store.get(key), undefined as unknown),
+    read: key => run('readonly', store => store.get(key)),
     write: async (key, value) => {
-      await run('readwrite', store => store.put(value, key), undefined as unknown)
+      await run('readwrite', store => store.put(value, key))
     },
     remove: async key => {
-      await run('readwrite', store => store.delete(key), undefined as unknown)
+      await run('readwrite', store => store.delete(key))
     },
   }
+}
+
+const defaultSnapshotStore = idbStore()
+const snapshotWrites = new WeakMap<SnapshotStore, Map<string, { generation: number; tail: Promise<void> }>>()
+
+function snapshotWriteState(userId: string, store: SnapshotStore) {
+  let users = snapshotWrites.get(store)
+  if (!users) { users = new Map(); snapshotWrites.set(store, users) }
+  let state = users.get(userId)
+  if (!state) { state = { generation: 0, tail: Promise.resolve() }; users.set(userId, state) }
+  return state
 }
 
 /** Persist the account's snapshot. Returns false when it could not be stored. */
 export async function saveSnapshot(
   userId: string,
   slices: SnapshotSlices,
-  store: SnapshotStore = idbStore(),
+  store: SnapshotStore = defaultSnapshotStore,
 ): Promise<boolean> {
-  try {
-    const snapshot: Snapshot = { version: SNAPSHOT_VERSION, savedAt: Date.now(), ...slices }
-    await store.write(userId, snapshot)
-    return true
-  } catch {
-    return false
-  }
+  const state = snapshotWriteState(userId, store)
+  const generation = state.generation
+  let snapshot: Snapshot
+  try { snapshot = { version: SNAPSHOT_VERSION, savedAt: Date.now(), ...structuredClone(slices) } } catch { return false }
+  const result = state.tail.then(async () => {
+    if (state.generation !== generation) return false
+    try { await store.write(userId, snapshot); return true } catch { return false }
+  })
+  state.tail = result.then(() => undefined, () => undefined)
+  return result
 }
 
 /** The stored snapshot for this account, or null when absent/unreadable/from an
  *  older shape. Validation is strict: a half-written or version-skewed record
  *  must read as "no cache", never as a partial account. */
-export async function loadSnapshot(userId: string, store: SnapshotStore = idbStore()): Promise<Snapshot | null> {
+export async function loadSnapshot(userId: string, store: SnapshotStore = defaultSnapshotStore): Promise<Snapshot | null> {
   try {
     const raw = await store.read(userId)
     if (raw === null || typeof raw !== 'object') return null
@@ -149,12 +220,14 @@ export async function loadSnapshot(userId: string, store: SnapshotStore = idbSto
 }
 
 /** Forget an account's snapshot (sign-out). Never throws. */
-export async function clearSnapshot(userId: string, store: SnapshotStore = idbStore()): Promise<void> {
-  try {
-    await store.remove(userId)
-  } catch {
-    /* nothing to undo */
-  }
+export async function clearSnapshot(userId: string, store: SnapshotStore = defaultSnapshotStore): Promise<void> {
+  const state = snapshotWriteState(userId, store)
+  state.generation += 1
+  const result = state.tail.then(async () => {
+    try { await store.remove(userId) } catch { /* A failed clear must settle. */ }
+  })
+  state.tail = result
+  await result
 }
 
 /** Wipe every account's snapshot rows — the recovery screen's clear owns

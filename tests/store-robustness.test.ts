@@ -24,6 +24,7 @@ async function publishedRow(
   store: typeof import('../src/store/store'),
   pub: Omit<PublishedItinerary, 'id' | 'publishedAt' | 'views' | 'copies'>,
 ): Promise<PublishedItinerary> {
+  store.getSnapshot().trips.push({ id: pub.tripId, visibility: 'public' } as import('../src/data/types').Trip)
   const outcome = await store.publishItinerary(pub)
   expect(outcome.ok, outcome.error).toBe(true)
   return getSnapshot().published.find(x => x.tripId === pub.tripId)!

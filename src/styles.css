@@ -7463,15 +7463,39 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
    A plain block in the flow, not a sticky/fixed strip: it appears above the
    routed page, scrolls away with it, and can never fight the nav's rung. */
 .offline-banner {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  display: grid; gap: 12px;
   padding: 8px 16px;
   background: var(--warn-soft); color: var(--text);
   border-bottom: 1px solid var(--line);
   font-size: 12.5px;
 }
 .offline-banner .btn { flex: none; }
+.offline-banner-summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.offline-banner-summary p, .offline-banner-message, .offline-recovery-copy p { margin: 0; }
+.offline-banner-summary p:focus-visible { outline: 2px solid var(--text); outline-offset: 3px; }
+.offline-recovery-list { list-style: none; display: grid; gap: 8px; padding: 0; margin: 0; }
+.offline-recovery-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-md, 12px);
+  background: var(--card); animation: cardIn var(--motion-slow) var(--ease-out) backwards;
+}
+.offline-recovery-copy { min-width: 0; overflow-wrap: anywhere; }
+.offline-recovery-copy p { color: var(--text-2); margin-top: 4px; }
+.offline-recovery-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+/* 44px at every width. These are the main actions on the recovery screen, and
+   a 40px floor here used to beat the app's own phone rule
+   `@media (max-width: 720px) { .btn { min-height: 44px } }` because this rule is
+   top-level and more specific. Without a height here the buttons fell to
+   `.btn-sm`'s 24px minimum on desktop, so the size is stated once, here. */
+.offline-recovery-actions .btn { min-height: 44px; white-space: normal; }
+@media (prefers-reduced-motion: reduce) {
+  .offline-recovery-row { animation: none; }
+}
 @media (max-width: 720px) {
-  .offline-banner { padding: 8px 14px; font-size: 12px; align-items: flex-start; }
+  .offline-banner { padding: 8px 14px; font-size: 12px; }
+  .offline-banner-summary { align-items: flex-start; }
+  .offline-recovery-row { flex-direction: column; align-items: stretch; }
+  .offline-recovery-actions { justify-content: flex-start; }
 }
 /* ============================================================
    Create Trip funnel - the mockup fidelity pass (the look)

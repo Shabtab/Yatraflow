@@ -16,7 +16,8 @@ const { calls } = vi.hoisted(() => ({
   calls: [] as Array<{ table: string; method: string; payload?: unknown }>,
 }))
 
-vi.mock('../src/lib/supabase', () => {
+vi.mock('../src/lib/supabase', async () => {
+  const { tripWriteClient } = await import('./helpers/tripWriteClient')
   // Faithful to postgrest-js, which is LAZY: the builder's constructor only copies
   // config and the request is issued from then(). This mock used to record the call
   // inside update()/insert()/delete() — i.e. it was more eager than the client it
@@ -46,7 +47,7 @@ vi.mock('../src/lib/supabase', () => {
   }
   return {
     isSupabaseConfigured: false,
-    supabase: { from: (t: string) => makeBuilder(t) },
+    supabase: tripWriteClient({ from: (t: string) => makeBuilder(t) }),
   }
 })
 

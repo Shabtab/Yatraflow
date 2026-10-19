@@ -17,6 +17,7 @@ type FakeError = { code?: string; message: string } | null
 
 const { state, toast, queue } = vi.hoisted(() => ({
   state: {
+    replayTrip: null as any,
     tripErrors: [] as FakeError[],
     memberErrors: [] as FakeError[],
     /** a table whose write REJECTS instead of answering with an error object */
@@ -42,7 +43,12 @@ vi.mock('../src/lib/writeQueue', async importOriginal => {
   }
   return {
     ...actual,
-    queueWrite: async (entry: any) => { queue.map.set(entry.tripId, structuredClone(entry)) },
+    queueWrite: async (entry: any) => { queue.map.set(entry.tripId, structuredClone(entry)); return true },
+    dropQueuedWrite: async (entry: any) => {
+      if (!sameGeneration(entry.tripId, entry.capturedAt)) return false
+      queue.map.delete(entry.tripId)
+      return true
+    },
     pendingWrites: async () => [...queue.map.values()],
     dropWriteIfCurrent: async (tripId: string, capturedAt: number) => {
       if (!sameGeneration(tripId, capturedAt)) return false
@@ -57,7 +63,8 @@ vi.mock('../src/lib/writeQueue', async importOriginal => {
   }
 })
 
-vi.mock('../src/lib/supabase', () => {
+vi.mock('../src/lib/supabase', async () => {
+  const { tripWriteClient } = await import('./helpers/tripWriteClient')
   function query() {
     const qb: any = {}
     qb.select = () => qb
@@ -102,7 +109,7 @@ vi.mock('../src/lib/supabase', () => {
   }
   return {
     isSupabaseConfigured: () => true,
-    supabase: {
+    supabase: tripWriteClient({
       from: (table: string) => {
         const qb = query()
         qb.insert = (p: any) => write(table, 'insert', p)
@@ -118,7 +125,8 @@ vi.mock('../src/lib/supabase', () => {
       channel: () => ({ on() { return this }, subscribe() { return this } }),
       removeChannel: () => {},
       rpc: async () => ({ data: null, error: null }),
-    },
+    }, () => ({ trips: state.replayTrip ? [state.replayTrip] : [], members: state.replayTrip
+      ? [{ trip_id: state.replayTrip.id, user_id: IMPORTER, role: 'owner' }] : [] })),
   }
 })
 
@@ -137,6 +145,7 @@ function tripsInsertIds() {
 }
 
 beforeEach(() => {
+  state.replayTrip = null
   state.tripErrors.length = 0
   state.memberErrors.length = 0
   state.throwOn = null
@@ -216,8 +225,14 @@ describe('#551 — the import retry re-uses the trip instead of minting a twin',
 })
 
 describe('#551 — the replay never confirms a write that touched no row', () => {
+  let sequence = 0
   function seedQueue(trip: Trip) {
-    return queueWrite({ tripId: trip.id, ownerId: IMPORTER, capturedAt: 1728000000000, attempts: 0, trip })
+    trip.id = `replay-${++sequence}`
+    trip.writeVersion = 0
+    trip.members = [{ userId: IMPORTER, role: 'owner', joinedAt: 1 }]
+    getSnapshot().trips = [...getSnapshot().trips.filter(t => t.id !== trip.id), trip]
+    state.replayTrip = { id: trip.id, owner_id: IMPORTER, write_version: 0 }
+    return queueWrite({ tripId: trip.id, ownerId: IMPORTER, capturedAt: 1728000000000, baseVersion: 0, attempts: 0, trip })
   }
 
   it('a { error: null, count: 0 } UPDATE stays queued, unsynced, and un-toasted', async () => {
@@ -230,22 +245,23 @@ describe('#551 — the replay never confirms a write that touched no row', () =>
     expect(synced).toBe(0)
     const left = await pendingWrites()
     expect(left.some(w => w.tripId === trip.id)).toBe(true)
-    expect(left[0].attempts).toBe(1) // the failure counter climbed; the cap still has room
+    expect(left[0].attempts).toBe(0)
+    expect(left[0].state).toBe('conflict')
     const toastTexts = toast.mock.calls.map(c => String(c[0]))
     expect(toastTexts.some(t => t.includes('synced'))).toBe(false)
   })
 
-  it('a real sync still lands: count 1 drops the entry and toasts the count', async () => {
+  it('a returned revision confirms sync and removes its queued edit', async () => {
     const trip = source()
     await seedQueue(trip)
     state.updateAnswer = { error: null, count: 1 }
 
     expect(await replayQueuedWrites()).toBe(1)
     expect((await pendingWrites()).some(w => w.tripId === trip.id)).toBe(false)
-    expect(toast).toHaveBeenCalledWith('1 offline change synced.')
+    expect(toast.mock.calls.some(c => String(c[0]).includes('could not sync'))).toBe(false)
   })
 
-  it('a null count (not answered) stays a success — only a DEFINITIVE 0 fails', async () => {
+  it('a returned revision confirms sync even when count is absent', async () => {
     const trip = source()
     await seedQueue(trip)
     state.updateAnswer = { error: null, count: null }
@@ -254,17 +270,17 @@ describe('#551 — the replay never confirms a write that touched no row', () =>
     expect((await pendingWrites()).some(w => w.tripId === trip.id)).toBe(false)
   })
 
-  it('the 0-row failure reaches the cap and is then dropped with the loud toast', async () => {
+  it('network failures pause at the cap and keep the local copy', async () => {
     const trip = source()
     await seedQueue(trip)
-    state.updateAnswer = { error: null, count: 0 }
+    state.updateAnswer = { error: { message: 'offline' }, count: null }
 
     await replayQueuedWrites()
     await replayQueuedWrites()
     await replayQueuedWrites() // MAX_WRITE_ATTEMPTS reached
 
-    expect((await pendingWrites()).some(w => w.tripId === trip.id)).toBe(false)
-    expect(toast).toHaveBeenCalledWith('An offline change could not be saved and was dropped.')
+    expect((await pendingWrites()).find(w => w.tripId === trip.id)).toMatchObject({ attempts: 3, state: 'failed' })
+    expect(toast).toHaveBeenCalledWith('Changes could not sync. Retry or download your copy from Saved edits.', 'err')
   })
 })
 

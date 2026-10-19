@@ -63,6 +63,7 @@ const validSuggestionInsert = {
 async function connected() {
   vi.resetModules()
   const store = await import('../src/store/store')
+  store.getSnapshot().sessionUserId = 'user-a'
   store.connectRealtime('user-a')
   return store
 }

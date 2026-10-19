@@ -655,7 +655,7 @@ describe('profile, suggestion, and notification hydration', () => {
     state.authHandler!('SIGNED_IN', { user: { id: 'userB' } })
     await flush()
 
-    expect(store.getSnapshot().sessionUserId).toBe('userA')
+    expect(store.getSnapshot().sessionUserId).toBe('userB')
     expect(store.currentUser(store.getSnapshot())).toBeNull()
     expect(store.getSnapshot().users).toEqual([])
     expect(store.getSnapshot().suggestions).toEqual([])

@@ -7,6 +7,7 @@ Start here. The codebase is documented across the files below — read the ones 
 | [`README.md`](../README.md) | Project overview, features, MVP scope, roadmap, quick start. The front door. |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | How the pieces fit: data model, store, engine math, AI, geocoding, routing, maps, theming, extension points, gotchas. Read before changing core logic. |
 | [`DEPLOYMENT.md`](DEPLOYMENT.md) | Supabase setup, Vercel + other static hosts, env vars, release checklist. |
+| [`OFFLINE-REPLAY-783.md`](OFFLINE-REPLAY-783.md) | Offline replay audit, conflict choices, account boundaries, tests, and migration rollout. |
 | [`DESIGN_TOKENS.md`](../DESIGN_TOKENS.md) | The 3-layer design-token system (primitive → semantic → component) and the button/input state matrix. |
 | [`ART-PIPELINE.md`](ART-PIPELINE.md) | How-to: the papercut illustration set. Where the files live, the size budget, how `npm run art:build` makes them from the master PNGs, and how to add or replace an image. |
 | [`MOTION-TOKENS.md`](MOTION-TOKENS.md) | Reference (the motion half of the token system): duration steps (`--motion-fast/med/slow`), easings, and the **pattern catalog** (dropdown entrance, toggle glider, day collapse, drag carry/warp/settle) that every interactive surface must pick from — plus the `prefers-reduced-motion` rule. A raw `ms` value in a new CSS rule is a review flag (AGENTS §2.10). |

@@ -494,13 +494,18 @@ describe('#799 — tripUpdateRow omits owner_id, tripToRow keeps it', () => {
     }
   })
 
-  it('the store uses tripUpdateRow on both whole-row UPDATE sites', () => {
-    // A source pin: the two call sites are the only places a whole trip row is
-    // written with UPDATE, and one missed site re-opens #799 on that path.
+  it('the store uses tripUpdateRow on every whole-row UPDATE site', () => {
+    // A source pin. Every place a whole trip row is written with UPDATE must use
+    // tripUpdateRow, and one missed site re-opens #799 on that path. The count is
+    // not fixed: #783 merged the two write paths into one sendQueuedTripWrite.
+    // The scan reads across line breaks, because #783 formats the chain as
+    // `from('trips')` on one line and `.update(` on the next — a one-line
+    // pattern matched nothing and left the guard blind.
     const src = readFileSync(new URL('../src/store/store.ts', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
-    const updates = [...src.matchAll(/\.from\('trips'\)\.update\(([^)]*)/g)].map((m) => m[1])
+    const flat = src.replace(/\s*\n\s*/g, ' ')
+    const updates = [...flat.matchAll(/\.from\('trips'\) \.update\(([^;]*?)\)\s*(?:\.|$)/g)].map((m) => m[1])
     const wholeRow = updates.filter((a) => a.includes('tripToRow') || a.includes('tripUpdateRow'))
-    expect(wholeRow.length).toBe(2)
+    expect(wholeRow.length, 'at least one whole-row UPDATE must exist').toBeGreaterThan(0)
     for (const arg of wholeRow) {
       expect(arg).toContain('tripUpdateRow')
       expect(arg).not.toContain('tripToRow(')
