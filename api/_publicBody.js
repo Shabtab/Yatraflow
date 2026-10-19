@@ -22,6 +22,30 @@ function text(value, max = 600) {
   return clean.length > max ? `${Array.from(clean).slice(0, max - 1).join('')}…` : clean
 }
 
+/** The cover URL when the column holds an https string, else ''.
+ *  The column's own check constraint allows nothing but https, and a row that
+ *  predates it must not put another scheme in an `src`. */
+export function coverSrc(publication) {
+  const src = publication?.cover_image_url
+  return typeof src === 'string' && /^https:\/\/\S+$/.test(src) ? src : ''
+}
+
+/** Rupees with Indian grouping. The card in api/i.js formats the same field
+ *  with the same `toLocaleString('en-IN')`, so the body and the meta
+ *  description cannot print two different figures for one row. */
+function inr(value) {
+  return `₹${Math.round(value).toLocaleString('en-IN')}`
+}
+
+/** A list column (`travel_tips`, `warnings_and_assumptions`) as plain strings.
+ *  A missing value, a wrong type, a non-string item and an empty item all read
+ *  as absent, and the list is capped so one row cannot print a wall of text. */
+function listField(value, max = 12) {
+  if (!Array.isArray(value)) return []
+  return value.map(item => text(item, 300)).filter(Boolean).slice(0, max)
+}
+
+
 /** The set of day indexes a stranger may read in full.
  *  An unpriced publication is free as a whole. A priced one, or one whose
  *  price field is missing, shows only the days its free list names. */
@@ -69,6 +93,20 @@ export function renderBodyHTML(publication, trip, appHref) {
   const route = publication?.route_summary
   const routeText = Array.isArray(route) ? route.map(item => text(item, 80)).filter(Boolean).join(' → ') : text(route, 300)
   if (routeText) facts.push(routeText)
+  // The free view of the public page shows these, so a crawler may read them
+  // too (#700). A field with no value prints nothing at all.
+  const budget = Number(publication?.estimated_budget_per_person_inr)
+  const budgetLine = Number.isFinite(budget) && budget > 0
+    ? `<p>Budget: about ${inr(budget)} per person.</p>` : ''
+  const cover = coverSrc(publication)
+  const coverFigure = cover
+    ? `<figure><img src="${escapeHtml(cover)}" alt="${escapeHtml(`Trip cover photo for ${text(publication?.title, 200) || 'this itinerary'}`)}" width="1600" height="900" loading="lazy" decoding="async" /></figure>`
+    : ''
+  const list = (name, items) => items.length
+    ? `<section><h2>${name}</h2><ul>${items.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul></section>`
+    : ''
+  const tips = list('Travel tips', listField(publication?.travel_tips))
+  const warnings = list('Warnings &amp; assumptions', listField(publication?.warnings_and_assumptions))
   const dayHtml = parts.map(part => {
     const name = part.title ? `Day ${part.number}: ${escapeHtml(part.title)}` : `Day ${part.number}`
     if (!part.open) {
@@ -85,7 +123,11 @@ export function renderBodyHTML(publication, trip, appHref) {
 <h1>${heading}</h1>
 ${lead ? `<p>${escapeHtml(lead)}</p>` : ''}
 ${facts.length ? `<p>${escapeHtml(facts.join(' · '))}</p>` : ''}
+${budgetLine}
+${coverFigure}
 ${dayHtml}
+${tips}
+${warnings}
 <p><a href="${escapeHtml(appHref)}">Open this itinerary in the YatraFlow app</a></p>
 </main>`
 }
@@ -104,6 +146,9 @@ export function touristTripJsonLd(publication, trip, canonical) {
   }
   const lead = text(publication?.tagline, 300)
   if (lead) data.description = lead
+  // The same cover the body shows, so image search and the page agree (#700).
+  const cover = coverSrc(publication)
+  if (cover) data.image = cover
   if (stops.length) {
     data.itinerary = {
       '@type': 'ItemList',

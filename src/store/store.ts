@@ -17,7 +17,7 @@ import { seedData, uid } from '../data/seed'
 import type { LatLngPoint } from '../data/types'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { toast } from '../components/ui'
-import { isMissingColumnError, rowToTrip, tripToRow, type OptionalColumnsProbe, type TripRow } from '../lib/tripRow'
+import { isMissingColumnError, rowToTrip, tripToRow, tripUpdateRow, type OptionalColumnsProbe, type TripRow } from '../lib/tripRow'
 import type { ShareSource } from '../lib/shareUrl'
 import { dayCountForRange } from '../lib/dayCount'
 import { amountRefusal, amountVerdict } from '../lib/expenseAmount'
@@ -1529,7 +1529,7 @@ export function reconcileDays(
       const blocked = next.slice(target).filter(loadBearing)
       return {
         days,
-        error: `Day ${(blocked[0]?.index ?? target) + 1} still has stops or a fixed commitment — move or delete them before shortening the trip.`,
+        error: `Day ${(blocked[0]?.index ?? target) + 1} still has stops or a fixed commitment or a flight — move or delete them before shortening the trip.`,
         blocked: blocked.map(d => d.index),
       }
     }
@@ -1935,6 +1935,7 @@ function buildTripCopy(source: Trip, ownerId: ID, opts: { makePublic?: boolean; 
     copy.expenses = copy.expenses.map(e => ({ ...e, id: uid('ex') }))
     copy.fixedCommitments = copy.fixedCommitments.map(remapCommitment)
   }
+  copy.flights = copy.flights?.filter(f => !free || free.has(f.dayIndex)).map(f => ({ ...f, id: uid('fl') }))
   copy.members = [{ userId: ownerId, role: 'owner' as const, joinedAt: Date.now() }]
   copy.coverImageUrl = source.coverImageUrl
   return copy
@@ -2704,7 +2705,7 @@ export function updateTrip(id: ID, patchFields: Partial<Trip>): boolean {
   const newEnd = patchFields.endDate ?? t.endDate
   const datesChanged = newStart !== t.startDate || newEnd !== t.endDate
   if (datesChanged) {
-    const protectedIdx = new Set(t.fixedCommitments.map(c => c.dayIndex))
+    const protectedIdx = new Set([...t.fixedCommitments, ...(t.flights ?? [])].map(c => c.dayIndex))
     const baseDays = patchFields.days ?? t.days
     const rec = reconcileDays(baseDays, newStart, newEnd, protectedIdx)
     if (rec.error) { toast(rec.error, 'err'); return false }
@@ -2983,8 +2984,12 @@ async function sendQueuedTripWrite(entry: QueuedWrite, scope: IdentityScope, acc
     const cols = await tripsHaveOptionalColumns()
     if (!live()) return false
     const trip = entry.trip as Trip
+    // #799 — tripUpdateRow drops owner_id. A queued entry may have captured a
+    // stale owner id, and the trips_owner_id_immutable trigger refuses an
+    // ownership change with 42501. Omitting the column keeps the revision
+    // check below intact and leaves ownership to the row already on the server.
     const { data, error } = await supabase.from('trips')
-      .update(tripToRow(trip, current.owner_id, cols), { count: 'exact' })
+      .update(tripUpdateRow(trip, current.owner_id, cols), { count: 'exact' })
       .eq('id', entry.tripId).eq('write_version', entry.baseVersion)
       .select('id, updated_at, write_version')
       .setHeader('Authorization', `Bearer ${token}`)

@@ -130,7 +130,7 @@ vi.mock('../src/lib/supabase', async () => {
   }
 })
 
-import { importTripPersisted, retryImportTrip, tripById, getSnapshot, replayQueuedWrites } from '../src/store/store'
+import { updateTrip, importTripPersisted, retryImportTrip, tripById, getSnapshot, replayQueuedWrites } from '../src/store/store'
 import { queueWrite, pendingWrites } from '../src/lib/writeQueue'
 
 const IMPORTER = 'importer-551'
@@ -319,5 +319,23 @@ describe('#551 — the two callers await the truth (page contracts)', () => {
 
   it('the retry button carries the same-object contract', () => {
     expect(button).toMatch(/await retryImportTrip\(pending\.trip, ownerId\)/)
+  })
+})
+
+
+describe('imported flight day protection', () => {
+  it('assigns flight IDs to the copy and refuses to orphan its flight', async () => {
+    const original = source()
+    original.startDate = '2026-11-01'
+    original.endDate = '2026-11-02'
+    original.days = [0, 1].map(index => ({ id: `d${index}`, index, stops: [] }))
+    original.fixedCommitments = []
+    original.flights = [{ id: 'foreign-flight', dayIndex: 1, fromAirport: 'DEL', toAirport: 'BOM' }]
+    const { trip, persisted } = await importTripPersisted(original, IMPORTER)
+    expect(persisted).toBe(true)
+    expect(trip.flights![0].id).not.toBe('foreign-flight')
+    expect(updateTrip(trip.id, { endDate: '2026-11-01' })).toBe(false)
+    expect(tripById(trip.id)?.days).toHaveLength(2)
+    expect(tripById(trip.id)?.flights).toHaveLength(1)
   })
 })

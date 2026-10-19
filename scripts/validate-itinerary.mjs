@@ -34,7 +34,7 @@ const RULE_IDS = [
 ]
 
 // ---- key allowlists, mirrored from src/lib/itinerarySpec.ts
-const TRIP_KEYS = new Set(['id', 'name', 'startLocation', 'startLocationCoords', 'destinations', 'destinationCoords', 'startDate', 'endDate', 'travellers', 'driverCount', 'hasVulnerable', 'driveAfterDinnerMin', 'transportMode', 'fuelEconomyKmL', 'fuelPricePerL', 'roundTrip', 'vehicleProfile', 'budgetPerPersonInr', 'travelStyle', 'stayStyle', 'fixedCommitments', 'days', 'expenses', 'coverEmoji', 'coverImageUrl', 'visibility', 'createdAt', 'updatedAt'])
+const TRIP_KEYS = new Set(['id', 'name', 'startLocation', 'startLocationCoords', 'destinations', 'destinationCoords', 'startDate', 'endDate', 'travellers', 'driverCount', 'hasVulnerable', 'driveAfterDinnerMin', 'transportMode', 'fuelEconomyKmL', 'fuelPricePerL', 'roundTrip', 'vehicleProfile', 'tankL', 'rentPerDayInr', 'localTrain', 'flights', 'budgetPerPersonInr', 'travelStyle', 'stayStyle', 'fixedCommitments', 'days', 'expenses', 'coverEmoji', 'coverImageUrl', 'visibility', 'createdAt', 'updatedAt'])
 const STOP_KEYS = new Set(['id', 'title', 'category', 'locationName', 'placeId', 'lat', 'lng', 'description', 'visitMinutes', 'openTime', 'closeTime', 'entryFeeInrPerPerson', 'transportCostInrTotal', 'priority', 'notes', 'sourceUrl', 'status', 'orderInDay', 'weatherSensitive', 'auto'])
 
 // ---- enums mirrored from src/data/types.ts (keep in sync — pinned by tests/golden-itineraries.test.ts)

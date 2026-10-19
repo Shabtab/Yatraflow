@@ -30,6 +30,10 @@ anywhere in this repo means the entry labelled `6b` below.
 
 ## 1. Pitfall entries (`AGENTS.md` §2 rules 6a–6z)
 
+Flight records can exist without stored stops. Protect their days during date reconciliation and preserve them through imports and snapshots.
+Use resolved journey points for exports and insertion origins. Stored stops can omit airports and arrival anchors.
+Settings previews must use validated draft fields. Reuse road measurements only while the route and day assignment still match.
+
  6a. **Async operations need input guards.** The AI drawer's `ask()` function had no protection against rapid re-submission during its 650ms processing delay — users could trigger duplicate questions. Fix: `disabled={thinking}` on input and button. When adding async paths (API calls, simulated latency, data processing), always disable user inputs to prevent race conditions, duplicate requests, or state inconsistency. The guard should match the visual feedback state (spinner, disabled button, etc.).
  6b. **A release cut is not done until every change in it has a CHANGELOG entry — check coverage, not just the heading.** The v0.60.0 refinement pass ran 20 commits and only 10 of them touched `CHANGELOG.md`, so the release was about to go out describing the first half of its own work — while the plan document recording that work also stopped mid-way and read as finished. Both artifacts agreed with each other and neither agreed with `git log`. Before cutting a release, diff the two lists — `git log --oneline <base>..HEAD -- CHANGELOG.md` against `git log --oneline <base>..HEAD` — and account for every commit: it has a bullet, or it is genuinely invisible to a user (a doc reconciliation, a de-duplication, a test-only change). The entries are also where a superseded claim gets *edited* rather than appended, so that diff is the audit.
  **Check what the cut REMOVED as well as what it added.** A cut edits the head of `CHANGELOG.md` — the place the preamble lives — and the v0.70.0 cut (`36b13b7`) deleted that whole block on its way past: `# Changelog`, the Keep-a-Changelog line, and the "Two version lines" note that stops anyone comparing the Android shell's `-native` numbering with web semver. Nothing failed, because no test reads prose; the loss surfaced days later while adding an unrelated bullet. So a cut's own diff deserves a look at the file's head (`git diff <base>..HEAD -- CHANGELOG.md | head -30`), and the preamble is not part of any release — it is never correct for a version heading to replace it. This block has now been repaired twice (`dfdd2d0`, then the restore after `36b13b7`), which is what makes it worth the glance rather than a rule about paranoia.
@@ -824,6 +828,13 @@ anywhere in this repo means the entry labelled `6b` below.
    does, and it is the precedent to copy. Check `TripWorkspace.tsx` for an inline value
    before you write a margin rule for that header.
 
+- **A CSS pin must stop at the end of its own block.** `footer-route-mark.test.ts`
+  read `styles.css` from its marker to the end of the file. The rule is "append
+  CSS at the end". So the next appended section made the pin fail on rules that
+  were not the footer's. Slice from the marker to the next section comment of
+  any style (`/* ----` or `/* ====`). Never slice to the end of the file. Check this when a guard fails after you
+  append a section.
+
 ## 2. Conventions (`AGENTS.md` §4)
 
 The store, maps and UI entries live in `docs/standards/` now (2026-10-05
@@ -1031,6 +1042,10 @@ process.
 - **You must parse CSS time units before you use motion tokens in JavaScript.** Production CSS can change `180ms` to `.18s`. Convert seconds to milliseconds before you start timers or browser animations.
 
 ## 3. Scripted edits
+
+- **Day-start names must match the resolved origin.** Stored route points can precede a flight. Match location names against the journey coordinates.
+
+- **Transport labels must use `stopPresentation` with the trip mode.** The `drive` style kind also covers flights and hubs. Generated flight-trip stops can be route points. Flight duration must come from the journey's air leg, not a route point's visit time.
 
 Read this section **before** writing any script that edits a source file.
 The editor primitives are the default; a script is the exception.
