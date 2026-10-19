@@ -89,7 +89,7 @@ export async function decodeTripSnapshot(payload: string): Promise<Trip> {
 const SNAPSHOT_IDENTITY_KEYS = [
   'id', 'createdAt', 'updatedAt', 'visibility',
   'deletedAt', 'ref', 'vehicleProfile', 'startLocationCoords',
-  'destinationCoords', 'driverCount', 'hasVulnerable', 'driveAfterDinnerMin',
+  'destinationCoords', 'driverCount', 'hasVulnerable', 'driveAfterDinnerMin', 'drivesPart',
 ] as const
 
 /** Put the payload's own identity back on the walled trip. A clean trip then

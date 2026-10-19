@@ -77,7 +77,7 @@ export type SpecRuleId = (typeof SPEC_RULE_IDS)[number]
 export const TRIP_KEYS = new Set([
   'id', 'name', 'startLocation', 'startLocationCoords', 'destinations', 'destinationCoords',
   'startDate', 'endDate', 'travellers', 'driverCount', 'hasVulnerable', 'driveAfterDinnerMin',
-  'transportMode', 'fuelEconomyKmL', 'fuelPricePerL', 'roundTrip', 'vehicleProfile', 'tankL', 'rentPerDayInr', 'localTrain', 'flights',
+  'transportMode', 'drivesPart', 'fuelEconomyKmL', 'fuelPricePerL', 'roundTrip', 'vehicleProfile', 'tankL', 'rentPerDayInr', 'localTrain', 'flights',
   'budgetPerPersonInr', 'travelStyle', 'stayStyle', 'fixedCommitments', 'days', 'expenses',
   'coverEmoji', 'coverImageUrl', 'visibility', 'createdAt', 'updatedAt',
 ])
@@ -847,6 +847,10 @@ export function normalizeTrip(source: Record<string, unknown>, report: Normalize
       ? num(source.driveAfterDinnerMin, 0)
       : undefined,
     transportMode: transportMode ?? 'car',
+    // Tri-state on purpose. Only a real boolean is an answer; anything else is
+    // "unanswered", which is what a file or payload from before this field
+    // existed means, and what the policy plans as Mixed's legacy behaviour.
+    drivesPart: typeof source.drivesPart === 'boolean' ? source.drivesPart : undefined,
     fuelEconomyKmL: num(source.fuelEconomyKmL, NaN) > 0 ? num(source.fuelEconomyKmL, 0) : undefined,
     fuelPricePerL: num(source.fuelPricePerL, NaN) > 0 ? num(source.fuelPricePerL, 0) : undefined,
     roundTrip: typeof source.roundTrip === 'boolean' ? source.roundTrip : undefined,
