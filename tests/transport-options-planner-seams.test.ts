@@ -1,7 +1,7 @@
 // ============ Transport-aware options: the real planner seams (2026-10-19) ============
 // `drivesPart` is an OPTIONAL field, which is exactly why it can be silently
 // dropped: a caller that forgets it keeps the legacy behaviour and nothing
-// goes red. Each test below therefore drives the REAL seam a trip's plan
+// goes red. Each test below drives the REAL seam a trip's plan
 // actually travels, and asserts the observable planning consequence. Drop
 // `drivesPart` from any of these call paths and the matching test fails.
 import { describe, expect, it } from 'vitest'

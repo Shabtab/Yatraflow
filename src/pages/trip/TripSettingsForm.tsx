@@ -163,11 +163,15 @@ export function settingsDryRun(
     const rec = reconcileDays(trip.days, f.startDate, f.endDate, protectedIdx)
     if (rec.error) return { ok: false, reason: rec.error, blocked: rec.blocked }
   }
-  // The SAVE path keeps or clears the driving values by the PLANNER's answer,
-  // not by what the form shows. An unanswered Mixed still plans as driving, so
-  // an unrelated save must not strip the preferences it has always used
-  // (2026-10-19). The dials are gated separately, by `showsDrivingControls`.
   const selfDriven = transportPolicy({ transportMode: f.transportMode, drivesPart: f.drivesPart }).driving
+  // Selecting Mixed is a change the traveller has just made, so it needs the
+  // answer now. A trip that was ALREADY Mixed and unanswered is a different
+  // case: it keeps its planning and its preferences, and an unrelated save
+  // must not be blocked by a question the traveller never saw (2026-10-19).
+  const newlySelectedMixed = f.transportMode === 'mixed' && trip.transportMode !== 'mixed'
+  if (newlySelectedMixed && typeof f.drivesPart !== 'boolean') {
+    return { ok: false, reason: 'Answer whether you will drive any part of this trip.' }
+  }
   const { destinations, destinationCoords } = splitDests(dests)
   // #410 backstop (now inside the shared predicate, so the preview shows it
   // too): never persist a pair whose text and pin disagree, whatever produced
@@ -774,10 +778,11 @@ export function TripSettingsForm({ trip, editable, onOpenDay, legCorrections }: 
       </div>
 
       {/* ---------- Q3 · the machine ---------- */}
-      {/* Mixed asks, in Settings as well as Create (2026-10-19). An existing
-          Mixed trip keeps planning as driving until it is answered, so the
-          question is the only new thing on the page until then. */}
-      {policy.mustAnswerDriving && (
+      {/* Mixed asks whenever the trip IS Mixed, not only while unanswered
+          (2026-10-19). Gating on the open question made Yes a one-way door: the
+          buttons vanished on click, and a reloaded answered trip showed none.
+          Only the VALIDATION uses `mustAnswerDriving`. */}
+      {f.transportMode === 'mixed' && (
         <Surface as="section" className="tsx-card" aria-label="Will you drive any part of this trip?">
           <header className="tsx-head">
             <h3 className="tsx-q">Will you drive any part of this trip?</h3>

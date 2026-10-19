@@ -61,6 +61,7 @@ export function useCorridorCache({
     routeHash: routeHash(routeGeometry),
     travelStyle: trip.travelStyle,
     transportMode: trip.transportMode,
+    drivesPart: trip.drivesPart,
     scopeKm,
     // #335: planInputsHash keys the suggestion cache on the same cadence crew
     // the nearby fetch above reads — `travellers`, never the member list.

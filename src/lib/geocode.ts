@@ -25,6 +25,8 @@ export { googleCitiesAlong } from './providers/google'
 export { searchCitiesAlong } from './providers/free'
 export { planRideSegments, assignSegmentHits, leftoverAsSight, reasonForSegmentHit, reasonForHit, kmFromStartForHit, planDriveDays, planTravelClock, isSelfDrivenMode, rainFactorFor, DEFER_START, type SegmentHit, type RideSegment, type DriveDaysPlan, type TravelClockVerdict } from './ridePlan'
 export { hasCoords } from './providers/hits'
+import { transportPolicy } from './transportPolicy'
+import type { TransportMode } from '../data/types'
 
 import { hasCoords, rankAndCap, filterPlannedNearby, kmFromStartForHit, type NearbyOpts, type PlaceHit } from './providers/hits'
 import { haversineKm } from './geo'
@@ -315,7 +317,13 @@ export async function planJourneyHalts(
   const segments = planRideSegments({
     totalKm,
     driveMinutes,
-    includeFuel: opts.includeFuel,
+    // Backstop (2026-10-19): the caller decides, but a stale caller that still
+    // asks for fuel on a passenger trip must not produce a fuel plan. Fuel
+    // halts belong to the traveller's own wheel.
+    includeFuel: opts.includeFuel && transportPolicy({
+      transportMode: opts.transportMode as TransportMode,
+      drivesPart: opts.drivesPart,
+    }).driving,
     includeCharge: opts.includeCharge,
     haltPins: opts.haltPins ?? undefined,
     multiDay: opts.multiDay,

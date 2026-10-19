@@ -94,7 +94,7 @@ const SNAPSHOT_IDENTITY_KEYS = [
   // RAW payload keys over the walled trip, so anything it copies bypasses the
   // parse `normalizeTrip` already did: a payload carrying drivesPart:'false',
   // 0 or null would overwrite the parsed answer with the raw lie. The wall
-  // keeps the real booleans, which is the only thing that should cross.
+  // keeps the real booleans, which is the only thing that must cross.
 ] as const
 
 /** Put the payload's own identity back on the walled trip. A clean trip then

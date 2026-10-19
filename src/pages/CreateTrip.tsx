@@ -456,12 +456,12 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
     if (bill.roadKm == null || bill.roadKm < 90) return null
     // #126: conducted modes — train/bus/flight/taxi — have no driving fatigue
     // to split; the verdict stays silent for them.
-    if (!isSelfDrivenMode(f.transportMode)) return null
+    if (!isSelfDrivenMode(f.transportMode, f.drivesPart)) return null
     const speed = MODE_SPEED[f.transportMode] ?? 42
     // #126 mode gate + #142 party inputs: timetable modes get no verdict;
     // drivers/vulnerable party move the honest cap.
-    return planDriveDays({ totalKm: bill.roadKm, driveMinutes: (bill.roadKm / speed) * 60, travelStyle: f.travelStyle, transportMode: f.transportMode, driverCount: f.driverCount, hasVulnerable: f.hasVulnerable })
-  }, [bill.roadKm, f.transportMode, f.travelStyle, f.driverCount, f.hasVulnerable])
+    return planDriveDays({ totalKm: bill.roadKm, driveMinutes: (bill.roadKm / speed) * 60, travelStyle: f.travelStyle, transportMode: f.transportMode, drivesPart: f.drivesPart, driverCount: f.driverCount, hasVulnerable: f.hasVulnerable })
+  }, [bill.roadKm, f.transportMode, f.drivesPart, f.travelStyle, f.driverCount, f.hasVulnerable])
 
   function patchFields(next: Partial<typeof f>) {
     setF(x => ({ ...x, ...next }))
@@ -1148,7 +1148,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
             <span className="ct-n">3</span>
             <div className="ct-q-body">
               <h2>Who's coming, and how are you travelling?</h2>
-              <p className="ct-hint">Party shape tunes the engine - meal windows, driver rotation, fatigue cadence.</p>
+              <p className="ct-hint">Party shape tunes the engine - meal windows and rest cadence.</p>
               <div className="ct-q-field">
                 <span className="ct-lbl">Transport</span>
                 <div className="ct-modes" role="group" aria-label="Transport mode">
@@ -1359,7 +1359,8 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                     fatigues. #213 Phase 5: gated on the ENGINE's own predicate
                     so this and Trip settings agree — it used to list `taxi`
                     (which the engine ignores) and omit `mixed` (which it honours). */}
-                {isSelfDrivenMode(f.transportMode) && (
+                {/* Control visibility, so this is the CONTROL flag, not the planner's (2026-10-19). */}
+                {drivingPolicy.showsDrivingControls && (
                   <div className="crew-custom" style={{ marginTop: 10 }}>
                     <Field label="Drivers sharing the wheel" hint="2 drivers rotate — honest days get longer.">
                       <div className="crew-row" role="group" aria-label="Drivers sharing the wheel">
@@ -1459,7 +1460,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                     onClick={() => { haptic(HAPTIC.select); patchFields({ stayStyle: st }) }}>{cap(st)}</button>
                 ))}
               </span>
-              <span className="ct-party-sub">prices the bed - the drive never changes with it</span>
+              <span className="ct-party-sub">prices the bed - the journey never changes with it</span>
             </div>
 
             <div>

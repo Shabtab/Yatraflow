@@ -16,6 +16,7 @@ import { collectWarnings } from '../lib/engine'
 import { anticipate, type AnticipationItem } from '../lib/anticipation'
 import { estimateLunchStop } from '../lib/routeIq'
 import { planJourneyHalts } from '../lib/geocode'
+import { transportPolicy } from '../lib/transportPolicy'
 import { MODE_SPEED, isRoadMeasuredMode } from '../lib/engine'
 import { fetchDailyWeather, forecastAvailable, isoAddDays } from '../lib/weather'
 import { useWeatherRefreshTick } from '../hooks/useWeatherRefresh'
@@ -186,7 +187,10 @@ export function TripCreatedPage({ tripId, onNavigate }: { tripId: string; onNavi
     let alive = true
     planJourneyHalts(
       points, totalKm, driveMinutes,
-      { includeFuel: true, travellers: trip.travellers, travelStyle: trip.travelStyle, transportMode: trip.transportMode, multiDay: days > 1 },
+      // Fuel halts are the traveller's own wheel (2026-10-19). A bus, a taxi or a
+  // Mixed trip the traveller does not drive has no tank to fill, so the shared
+  // capability gates it here; the facade gates it again as a backstop.
+  { includeFuel: transportPolicy({ transportMode: trip.transportMode, drivesPart: trip.drivesPart }).driving, drivesPart: trip.drivesPart, travellers: trip.travellers, travelStyle: trip.travelStyle, transportMode: trip.transportMode, multiDay: days > 1 },
     )
       .then(hits => {
         if (!alive) return
