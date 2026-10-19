@@ -58,11 +58,9 @@ const MODE_CAPABILITIES: Record<TransportMode, { driving: boolean }> = {
   mixed: { driving: true },
 }
 
-/** The mode a trip must NAME before the app will guess for it. A missing or
- *  unrecognised mode is NOT a car: the historical predicate returned false for
- *  anything it did not recognise, and several callers rely on that to mean
- *  "no wheel, ask the user", not "assume a car". Guessing here would also make
- *  every legacy caller that omits `transportMode` plan a driving trip. */
+/** The mode a trip must NAME before the app guesses. A missing or unrecognised
+ *  mode is not a car. The historical predicate returned false for anything it
+ *  did not recognise, and callers rely on that to mean "no wheel, ask the user". */
 function readMode(transportMode: TransportMode | undefined): TransportMode | null {
   const raw = String(transportMode ?? '')
   return isDeclaredMode(raw) ? raw : null
@@ -74,29 +72,18 @@ function isDeclaredMode(mode: string): mode is TransportMode {
 
 /**
  * The capability record for a trip. Pure, total, and safe for a row whose
- * `transport_mode` is missing or unrecognised.
+ * `transport_mode` is missing or unrecognised. An unreadable mode answers
+ * "nobody drives", which matches `isSelfDrivenMode(undefined) === false`.
  *
- * An unreadable mode answers "nobody drives", which is what every legacy
- * caller already got from `isSelfDrivenMode(undefined) === false`. It is the
- * honest answer: the app cannot plan a wheel for a mode it does not know.
- *
- * Mixed is the only mode that asks, and it separates two things that used to be
- * the same answer:
- *
- * - `driving` is what the PLANNER does. An unanswered Mixed keeps driving,
- *   because that is how a Mixed trip has always been planned and a silent
- *   switch would rewrite every Mixed trip already stored.
- * - `showsDrivingControls` is what the UI renders. An unanswered Mixed hides
- *   them, because the question is still open and a dial nobody has answered
- *   yet is not a real setting.
- *
- * Outside Mixed the two agree, and the answer is ignored, so a stale `false` on
- * a row that later became a car trip cannot demote it.
+ * Mixed is the only mode that asks. `driving` is what the PLANNER does and an
+ * unanswered Mixed keeps driving. `showsDrivingControls` is what the UI renders
+ * and an unanswered Mixed hides them, because the question is still open.
+ * Outside Mixed the two agree and the answer is ignored.
  */
 export function transportPolicy(choice: TransportChoice): TransportPolicy {
-const mode = readMode(choice.transportMode)
+  const mode = readMode(choice.transportMode)
   if (mode === null) {
-    // No readable mode: no wheel. Not a car, not a Mixed.
+    // No readable mode means no wheel. Not a car, not a Mixed.
     return { driving: false, showsDrivingControls: false, answered: false, mustAnswerDriving: false }
   }
   const base = MODE_CAPABILITIES[mode]
@@ -106,7 +93,7 @@ const mode = readMode(choice.transportMode)
     const driving = answered ? choice.drivesPart === true : base.driving
     return {
       driving,
-      // Controls follow the ANSWER, not the fallback: an open question shows
+      // Controls follow the ANSWER, not the fallback. An open question shows
       // the question, not the dials behind it.
       showsDrivingControls: answered && driving,
       answered,
