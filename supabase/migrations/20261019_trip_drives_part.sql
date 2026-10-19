@@ -13,14 +13,13 @@ set search_path = public
 stable
 as $$
 declare
-  v_trip_id uuid;
   v_pub public.published_itineraries;
-  v_free int[];
   v_trip public.trips;
-  v_day jsonb;
+  v_free int[];
   v_days jsonb;
-  v_stop jsonb;
+  v_day jsonb;
   v_stops jsonb;
+  v_stop jsonb;
   v_day_idx int;
   i int;
   j int;
@@ -87,16 +86,29 @@ begin
   ) as projected
   where t.id = v_pub.trip_id
     and t.visibility = 'public'
-    and t.deleted_at is null
   limit 1;
   if not found then
     return;
   end if;
 
-  v_free := coalesce(
-    (select array_agg(value::int) from jsonb_array_elements_text(v_pub.free_day_indexes) as value),
-    '{}'
-  );
+  if v_trip.deleted_at is not null and not (
+    auth.uid() is not null and (
+      v_pub.creator_id = auth.uid()
+      or exists (
+        select 1 from public.entitlements e
+        where e.pub_id = v_pub.id and e.user_id = auth.uid()
+      )
+    )
+  ) then
+    return;
+  end if;
+
+  v_free := '{}';
+  if jsonb_typeof(v_pub.free_day_indexes) = 'array' then
+    select coalesce(array_agg(value::int), '{}') into v_free
+      from jsonb_array_elements_text(v_pub.free_day_indexes) as value
+      where value ~ '^[0-9]+$';
+  end if;
 
   if auth.uid() is not null and (
     v_pub.creator_id = auth.uid()
@@ -113,6 +125,9 @@ begin
     return next v_trip;
     return;
   end if;
+
+  v_trip.expenses := '[]'::jsonb;
+  v_trip.fixed_commitments := '[]'::jsonb;
 
   v_days := to_jsonb(v_trip.days);
 
