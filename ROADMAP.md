@@ -799,7 +799,9 @@ get a row here again.
 
 ### Transport-aware options (2026-10-19)
 
-Status: specification confirmed by the user on 2026-10-19. Implementation is planned.
+Status: implemented by OpenCode on branch `feat/transport-aware-options` (2026-10-19).
+Codex owns integration and browser checks. MiniMax owns independent review.
+The schema migration and its contract tests are owned by Codex.
 
 Show only controls that apply to the selected transport and your role.
 Apply one shared transport policy to Create Trip, Trip Settings, summaries, and saved values.

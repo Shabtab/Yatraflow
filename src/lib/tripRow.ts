@@ -164,9 +164,9 @@ export function rowToTrip(row: TripRow, members: TripMember[]): Trip {
   const tankL = sanitizeTankL(row.tank_l)
   const rentPerDayInr = sanitizeRentPerDayInr(row.rent_per_day_inr)
   const localTrain = typeof row.local_train === 'boolean' ? row.local_train : undefined
-  // Mixed-only, and tri-state on purpose. Anything that is not a boolean stays
-  // undefined, which is the "nobody answered" state the policy plans as
-  // driving. A pre-migration row simply has no value here.
+  // Mixed-only, and tri-state on purpose. Only a real boolean is an answer.
+  // Anything else stays undefined, which is the "nobody answered" state the
+  // policy plans as driving. A pre-migration row simply has no value here.
   const drivesPart = typeof row.drives_part === 'boolean' ? row.drives_part : undefined
   const flights = sanitizeFlights(row.flights)
   // #559 — the jsonb columns are corruptible (direct SQL, a partial write, a

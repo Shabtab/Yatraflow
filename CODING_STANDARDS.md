@@ -1066,6 +1066,26 @@ process.
   A line-ending check with `grep -c $'\r'` in a shell loop printed 0 on CRLF
   files. Use `node -e "fs.readFileSync(f,'utf8').includes('\r')"` instead.
 
+- **A PowerShell rewrite of a `.tsx` file eats JSX and template literals, and
+  `tsc` finds it only after you have lost the anchor (learned 2026-10-19).**
+  `Get-Content -Raw` plus a `.Replace()` round-trip through `Set-Content`
+  interpolates `$name` first, because the replacement argument is a
+  double-quoted string. A JSX line like
+  `{bill.transportFormula || 'add a geocoded stop to price the drive'}` became
+  `{bill.transportFormula || dd a geocoded stop to price the }`: the quote
+  characters and the word went with the empty interpolation. Line-number edits
+  via `RemoveRange` then cut a *balanced* JSX block in half and left a stray
+  `)}`, which reads as a parse error three hundred lines from the real cause.
+  A scripted edit also cannot tell a unique anchor from a repeated one, so the
+  block landed in the wrong component and looked correct while it was there.
+  **Use the editor's replace tool for any `.tsx` file.** It fails loudly on a
+  missing anchor, it cannot interpolate, and it refuses an ambiguous match. If
+  a script is genuinely unavoidable, single-quote every replacement string,
+  re-read the exact lines afterwards, and run `tsc -b` before the next edit
+  rather than after the batch. `git checkout --` on the one damaged file is
+  cheaper than reconstructing the block, and safe here precisely because the
+  rest of the change was already committed.
+
 - **Route paths, not hash fragments, address pages (learned 2026-10-11).** The
   app routes by path (`/trips`). A signed-out visit to a signed-in route keeps
   its URL and shows the landing page in place. A check that compares URLs
