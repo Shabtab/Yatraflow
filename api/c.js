@@ -1,7 +1,7 @@
 // /c/<creatorId> serves a public profile and live itinerary links (#701).
 // Search visitors read the page. A recognised share tag opens the app.
 import { resolveOrigin } from './_origin.js'
-import { renderCreatorBody, creatorJsonLd } from './_creatorBody.js'
+import { CREATOR_PAGE_CLASS, CREATOR_PAGE_STYLE, renderCreatorBody, creatorJsonLd } from './_creatorBody.js'
 
 const DEFAULT_TITLE = 'YatraFlow — Plan real trips, together'
 const ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -13,6 +13,10 @@ const MAX_PAGES = 20
 // A found card is edge-cacheable for five minutes, then served stale for ten
 // while it revalidates. Everything else answers no-store.
 const CARD_CACHE_CONTROL = 'public, max-age=0, s-maxage=300, stale-while-revalidate=600'
+
+// The card's own stylesheet. It goes in the document head, never inside the body
+// fragment, so a crawler reads the text and the style block as separate things.
+const CREATOR_STYLE_TAG = `<style>${CREATOR_PAGE_STYLE}</style>`
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, character => ({
@@ -37,9 +41,10 @@ function renderCreator(profile, id, publications, ref) {
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <meta name="robots" content="noindex" />
 <title>${escapeHtml(DEFAULT_TITLE)}</title>
+${CREATOR_STYLE_TAG}
 <script>location.replace(${JSON.stringify('/explore')})</script>
 </head>
-<body><p>Opening <a href="/explore">Explore</a>…</p></body>
+<body><main class="${CREATOR_PAGE_CLASS}"><p>Opening <a href="/explore">Explore</a>…</p></main></body>
 </html>`
   }
   const bio = typeof profile.creator_bio === 'string' && profile.creator_bio.trim() ? profile.creator_bio.trim() : null
@@ -75,6 +80,7 @@ function renderCreator(profile, id, publications, ref) {
 <meta name="twitter:description" content="${escapeHtml(description)}" />
 <meta name="twitter:image" content="${escapeHtml(`${origin}/og-default.png`)}" />
 <link rel="canonical" href="${escapeHtml(canonical)}" />
+${CREATOR_STYLE_TAG}
 <script type="application/ld+json">${creatorJsonLd(profile, canonical)}</script>
 ${ref ? `<script>location.replace(${JSON.stringify(target)})</script>` : ''}
 </head>

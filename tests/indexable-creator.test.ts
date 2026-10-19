@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { creatorJsonLd, renderCreatorBody } from '../api/_creatorBody.js'
+import { CREATOR_PAGE_CLASS, CREATOR_PAGE_STYLE, creatorJsonLd, renderCreatorBody } from '../api/_creatorBody.js'
 import handler from '../api/c.js'
 import { SHARE_SOURCES } from '../src/lib/shareUrl'
 
@@ -186,5 +186,75 @@ describe('hostile public text', () => {
     ], '/creator/test')
     expect(body).not.toContain('<li>')
     expect(body).not.toMatch(/private@example|PRIVATE_|<script>/)
+  })
+})
+
+// #701 follow-up: the card is user-facing, so its links are 44px targets and its
+// text wraps. The card loads no app stylesheet, so it ships its own small block.
+describe('creator card stylesheet', () => {
+  const styleBlock = /<style>([^<]*)<\/style>/
+
+  it('ships one style block in the head and none in the body', async () => {
+    respond()
+    const { body } = await run()
+    const headEnd = body.indexOf('</head>')
+    expect(headEnd).toBeGreaterThan(-1)
+    expect(body.slice(0, headEnd)).toContain(`<style>${CREATOR_PAGE_STYLE}</style>`)
+    expect(body.slice(headEnd)).not.toContain('<style>')
+    expect((body.match(/<style>/g) ?? []).length).toBe(1)
+  })
+
+  it('scopes every rule to the class the body element wears', async () => {
+    respond()
+    const { body } = await run()
+    expect(body).toContain(`<main class="${CREATOR_PAGE_CLASS}">`)
+    const css = body.match(styleBlock)![1]
+    for (const rule of [`.${CREATOR_PAGE_CLASS}{`, `.${CREATOR_PAGE_CLASS} *{`, `.${CREATOR_PAGE_CLASS} a{`]) {
+      expect(css).toContain(rule)
+    }
+    // A bare element selector would leak the card's rules into any other card.
+    expect(css).not.toMatch(/(^|[}]) *(main|h1|h2|h3|p|a|ul|li)[{ ,]/)
+  })
+
+  it('declares the readable measure and the 44px target rules', async () => {
+    respond()
+    const { body } = await run()
+    const css = body.match(styleBlock)![1]
+    for (const declaration of [
+      'box-sizing:border-box', 'max-width:65ch', 'margin:0 auto', 'padding:16px',
+      'overflow-wrap:anywhere', 'display:inline-flex', 'align-items:center',
+      'min-height:44px', 'min-width:0', 'max-width:100%', 'white-space:normal',
+    ]) {
+      expect(css).toContain(declaration)
+    }
+  })
+
+  it('keeps the class on the fragment and the stylesheet out of it', () => {
+    const body = renderCreatorBody(profile, [publication], '/creator/test')
+    expect(body).toContain(`<main class="${CREATOR_PAGE_CLASS}">`)
+    expect(body).not.toContain('<style')
+    expect(body).not.toContain('</style>')
+  })
+
+  it('delivers the stylesheet to the noindex fallback, so its Explore link is a target', async () => {
+    fetchMock.mockResolvedValueOnce(response([{ ...profile, name: ' ' }]))
+    fetchMock.mockResolvedValueOnce(response([]))
+    const result = await run()
+    expect(result.body).toContain(`<style>${CREATOR_PAGE_STYLE}</style>`)
+    expect(result.body).toContain(`<main class="${CREATOR_PAGE_CLASS}">`)
+    expect(result.body).toContain('<a href="/explore">Explore</a>')
+    expect(result.body).not.toContain('rel="canonical"')
+  })
+
+  it('keeps user text out of the stylesheet and closes no tag with it', async () => {
+    const hostile = 'x{color:red}</style><style>p{display:none}'
+    fetchMock.mockResolvedValueOnce(response([{ ...profile, name: hostile }]))
+    fetchMock.mockResolvedValueOnce(response([]))
+    const result = await run()
+    expect(result.body.match(styleBlock)![1]).toBe(CREATOR_PAGE_STYLE)
+    expect((result.body.match(/<style>/g) ?? []).length).toBe(1)
+    expect(result.body).not.toContain('<style>p{display:none}')
+    // The hostile text is escaped, so it cannot close the real style element.
+    expect(result.body).toContain('<h1>x{color:red}&lt;/style&gt;&lt;style&gt;p{display:none}</h1>')
   })
 })

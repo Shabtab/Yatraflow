@@ -1,6 +1,23 @@
 // Pure public-profile rendering. Select fields explicitly, even from wider rows.
 const ID_RE = /^[A-Za-z0-9_-]{1,64}$/
 
+// The one class that scopes the creator card stylesheet. api/c.js writes the
+// <style> block into the document head. This module owns the class name and the
+// element that wears it, so the selector and the markup cannot drift apart.
+export const CREATOR_PAGE_CLASS = 'yf-creator-page'
+
+// The public card carries its own small stylesheet. The card is a raw document
+// for crawlers. It loads no app bundle and no app stylesheet, so it must not
+// depend on src/styles.css or on a design token.
+//   - a 65ch measure, centred, 16px padding, and border-box sizing
+//   - overflow-wrap: anywhere, so one unbroken handle cannot scroll the page
+//   - each anchor is a 44px target that still wraps its own long text
+export const CREATOR_PAGE_STYLE = [
+  `.${CREATOR_PAGE_CLASS}{box-sizing:border-box;max-width:65ch;margin:0 auto;padding:16px;overflow-wrap:anywhere}`,
+  `.${CREATOR_PAGE_CLASS} *{box-sizing:border-box;overflow-wrap:anywhere}`,
+  `.${CREATOR_PAGE_CLASS} a{display:inline-flex;align-items:center;min-height:44px;min-width:0;max-width:100%;white-space:normal}`,
+].join('')
+
 function escapeHtml(value) {
   return value.replace(/[&<>"']/g, character => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -25,7 +42,7 @@ export function renderCreatorBody(profile, publications, appHref) {
   const catalogue = publications === null
     ? '<p>Published itineraries could not be loaded. Open the app to try again.</p>'
     : items.length ? `<ul>${items.join('\n')}</ul>` : '<p>No itineraries published yet.</p>'
-  return `<main>
+  return `<main class="${CREATOR_PAGE_CLASS}">
 <h1>${name}</h1>
 ${bio ? `<p>${escapeHtml(bio)}</p>` : ''}
 <h2>Published itineraries</h2>
