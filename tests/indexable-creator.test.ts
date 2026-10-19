@@ -194,6 +194,33 @@ describe('hostile public text', () => {
 describe('creator card stylesheet', () => {
   const styleBlock = /<style>([^<]*)<\/style>/
 
+  // Bounded string parsing, not a RegExp built from a variable. The selector and
+  // the property name are fixed strings. A dynamic pattern buys nothing and reads
+  // as pattern injection to the SAST pass. `split` is the honest instrument for
+  // "which rule, which declaration", with the same reasoning as
+  // tests/publish-rules.test.ts. A selector compared as text is also stricter
+  // than a pattern. A drifted selector fails here instead of matching loosely.
+  const ruleFor = (css: string, selector: string): string | null => {
+    for (const chunk of css.split('}')) {
+      const brace = chunk.indexOf('{')
+      if (brace < 0) continue
+      if (chunk.slice(0, brace).trim() === selector) return chunk.slice(brace + 1)
+    }
+    return null
+  }
+
+  const pxValueOf = (declarations: string, property: string): number | null => {
+    for (const declaration of declarations.split(';')) {
+      const colon = declaration.indexOf(':')
+      if (colon < 0) continue
+      if (declaration.slice(0, colon).trim() !== property) continue
+      const value = declaration.slice(colon + 1).trim()
+      if (!/^\d+(\.\d+)?px$/.test(value)) return null
+      return Number(value.slice(0, -2))
+    }
+    return null
+  }
+
   it('ships one style block in the head and none in the body', async () => {
     respond()
     const { body } = await run()
@@ -236,20 +263,19 @@ describe('creator card stylesheet', () => {
     respond()
     const { body } = await run()
     const css = body.match(styleBlock)![1]
-    const anchorRule = css.match(new RegExp(`\\.${CREATOR_PAGE_CLASS} a\\{([^}]*)\\}`))
-    expect(anchorRule).not.toBeNull()
-    const declarations = anchorRule![1]
-    const pixels = (property: string) => {
-      const found = declarations.match(new RegExp(`(?:^|;)${property}:(-?[\\d.]+)px(?:;|$)`))
-      return found ? Number(found[1]) : null
-    }
-    expect(pixels('min-width')).toBeGreaterThanOrEqual(44)
-    expect(pixels('min-height')).toBeGreaterThanOrEqual(44)
+    const declarations = ruleFor(css, `.${CREATOR_PAGE_CLASS} a`)
+    expect(declarations, `no exact rule for .${CREATOR_PAGE_CLASS} a`).not.toBeNull()
+    const minWidth = pxValueOf(declarations!, 'min-width')
+    const minHeight = pxValueOf(declarations!, 'min-height')
+    expect(minWidth, 'the anchor rule declares no px min-width').not.toBeNull()
+    expect(minHeight, 'the anchor rule declares no px min-height').not.toBeNull()
+    expect(minWidth!).toBeGreaterThanOrEqual(44)
+    expect(minHeight!).toBeGreaterThanOrEqual(44)
     // A zero or missing width floor is the exact defect this test exists for.
-    expect(declarations).not.toMatch(/min-width:\s*0(?:px)?(?:;|$)/)
+    expect(declarations!).not.toMatch(/min-width:\s*0(?:px)?(?:;|$)/)
     // The maximum and the wrap rule must survive the wider floor.
-    expect(declarations).toContain('max-width:100%')
-    expect(declarations).toContain('white-space:normal')
+    expect(declarations!).toContain('max-width:100%')
+    expect(declarations!).toContain('white-space:normal')
   })
 
   it('keeps the class on the fragment and the stylesheet out of it', () => {
