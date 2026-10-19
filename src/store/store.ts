@@ -17,7 +17,7 @@ import { seedData, uid } from '../data/seed'
 import type { LatLngPoint } from '../data/types'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { toast } from '../components/ui'
-import { DRIVES_PART_MISSING_REASON, drivesPartWriteVerdict, isMissingColumnError, rowToTrip, tripToRow, type OptionalColumnsProbe, type TripRow } from '../lib/tripRow'
+import { DRIVES_PART_MISSING_REASON, drivesPartWriteVerdict, isMissingColumnError, rowToTrip, tripToRow, tripUpdateRow, type OptionalColumnsProbe, type TripRow } from '../lib/tripRow'
 import type { ShareSource } from '../lib/shareUrl'
 import { dayCountForRange } from '../lib/dayCount'
 import { amountRefusal, amountVerdict } from '../lib/expenseAmount'
@@ -2830,7 +2830,11 @@ async function persistTripFieldNow(id: ID, t: Trip | undefined, scheduledFor: st
   let saved = false
   await serializeTripWrite(id, async () => {
     const cols = await tripsHaveOptionalColumns()
-    const { error } = await supabase.from('trips').update(tripToRow(t, owner?.userId ?? id, cols)).eq('id', id)
+    // #799 — tripUpdateRow drops owner_id. A whole-row UPDATE must not carry an
+    // ownership column the caller cannot know: when the owner member is absent
+    // from the hydrated trip, `owner?.userId ?? id` falls back to the trip id or
+    // the editor's own id, and the database now refuses that with 42501.
+    const { error } = await supabase.from('trips').update(tripUpdateRow(t, owner?.userId ?? id, cols)).eq('id', id)
     if (error) {
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
         // Offline: the failure is expected and the edit is already queued - the
@@ -2897,7 +2901,11 @@ export async function replayQueuedWrites(): Promise<number> {
         toast(drivesPartVerdict.reason, 'err')
         return null
       }
-      const { error, count } = await supabase.from('trips').update(tripToRow(trip, owner?.userId ?? userId, cols), { count: 'exact' }).eq('id', write.tripId)
+      // #799 — the replay path uses tripUpdateRow for the same reason as the
+      // first write: a queued entry may have captured a stale owner id, and the
+      // database refuses an ownership change. Without this, the replay retries
+      // and then drops the edit.
+      const { error, count } = await supabase.from('trips').update(tripUpdateRow(trip, owner?.userId ?? userId, cols), { count: 'exact' }).eq('id', write.tripId)
       if (error || count === 0) {
         const attempts = write.attempts + 1
         if (shouldRetry({ attempts })) {

@@ -885,6 +885,7 @@ unbuilt). **Before picking up a row, and before quoting one in a plan, confirm i
 | I-84 | Pace and rest line on free days | public page | 1 d | Show the pace and the rest stop of each free day from engine data. Locked days stay stubbed. |
 | I-85 | Crew receipt for an expense | budget | 1 d | After a save, offer a WhatsApp text for the crew. The text says "noted". It never says "paid". |
 | I-86 | Per-segment pace control | Timeline | 2 d | Let a planner slow one climb and see the new arrival time. Extends the travel-style caps in `src/lib/ridePlan.ts`. |
+| I-87 | Admin delete must not erase a published trip | security | 2–3 h | `admin_delete_trip` still removes a trip that backs a publication, and the orders and entitlements go with it. #807 closed the direct table DELETE only. Apply the same guard the owner delete now uses. Keep the refusal sentence honest. Pin it beside the owner delete tests. Deferred from #799 and #807. |
 
 ### Tier 2 — blocked on a named dependency
 
