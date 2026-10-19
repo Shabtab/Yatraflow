@@ -17,9 +17,15 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ### Added
 
+- **Mixed trips now ask whether you drive any part of the trip.** The answer sets the driving options. A new Mixed trip cannot be created without one. An existing Mixed trip keeps planning the way it always did until you answer. (2026-10-19)
 - **A published itinerary's share page prints the practical details a search visitor needs.** The page now shows the budget per person, the travel tips and the warnings. It shows the cover image as a real `<img>` with a width, a height and an alt. The structured data carries the same cover image. A field with no value prints nothing. (#700)
 
 ### Fixed
+
+- **Only the options that apply to your transport are shown.** A car, a rental car and a motorcycle keep their driving options. A train, a bus, a flight and a taxi hide the driver counts and the fuel figures. They also hide the drive-back planning. Traveller, budget, stay and travel-style options stay for every mode. (2026-10-19)
+- **A passenger trip no longer shows a driver count it does not own.** The two forms drop the driving summary, the drawer and its shortcut, and the Wheel figure. The section heading loses its wheel wording. A ticket reads as a journey. (2026-10-19)
+- **The Train pill is no longer covered by its Local switch.** The reserved space went to a class the form does not use. The selected mode's name was hidden. (2026-10-19)
+- **A driving answer is never saved in silence.** If the answer cannot be stored, the save stops and says so. Your other trip details are untouched. (2026-10-19)
 
 - **Sign-up date of birth now uses direct Year, Month and Day selects.** A birth year is one choice away. The three selects emit one complete `YYYY-MM-DD` date, and a partial pick emits nothing. The day list follows the chosen month, so a 31st or a 29 February cannot roll over. A change of year to the current year clamps a later month and day to today. No future date can be submitted. The 18+ check is unchanged.
 - **Backups and snapshot links retain flights and transport preferences.** Imports check flight clocks, fares, and itinerary days. Flight-only plans also import.

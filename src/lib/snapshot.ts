@@ -84,7 +84,12 @@ export async function decodeTripSnapshot(payload: string): Promise<Trip> {
 const SNAPSHOT_IDENTITY_KEYS = [
   'id', 'createdAt', 'updatedAt', 'visibility',
   'deletedAt', 'ref', 'vehicleProfile', 'startLocationCoords',
-  'destinationCoords', 'driverCount', 'hasVulnerable', 'driveAfterDinnerMin', 'drivesPart',
+  'destinationCoords', 'driverCount', 'hasVulnerable', 'driveAfterDinnerMin',
+  // `drivesPart` is deliberately NOT here (2026-10-19). This block restores
+  // RAW payload keys over the walled trip, so anything it copies bypasses the
+  // parse `normalizeTrip` already did: a payload carrying drivesPart:'false',
+  // 0 or null would overwrite the parsed answer with the raw lie. The wall
+  // keeps the real booleans, which is the only thing that should cross.
 ] as const
 
 /** Put the payload's own identity back on the walled trip. A clean trip then

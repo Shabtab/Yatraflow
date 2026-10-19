@@ -17,7 +17,6 @@ import { healthBandClass, healthBandTone } from '../../lib/healthBand'
 import { STAY_RATE_PER_NIGHT } from '../../lib/rates'
 import { cap } from '../../lib/labels'
 import { InlineIcon, modeIcon } from '../../components/icons'
-import { isSelfDrivenMode } from '../../lib/ridePlan'
 import { transportPolicy } from '../../lib/transportPolicy'
 import { CREW_CHIPS, CREW_MAX, CREW_MIN, clampCrew } from '../../lib/crew'
 import { defaultVehicleProfile, parseCapacityL, parseVehicleEconomy } from '../../lib/vehicleProfile'
@@ -401,7 +400,6 @@ export function TripSettingsForm({ trip, editable, onOpenDay, legCorrections }: 
   // gates what renders; `driving` gates what the planner keeps, so an
   // unanswered Mixed keeps its stored preferences while hiding the dials.
   const policy = transportPolicy({ transportMode: f.transportMode, drivesPart: f.drivesPart })
-  const selfDriven = policy.driving
   const showsDriving = policy.showsDrivingControls
   const ecoNum = parseFuelEconomyKmL(f.fuelEconomy)
   const priceNum = parseFuelPricePerL(f.fuelPrice)

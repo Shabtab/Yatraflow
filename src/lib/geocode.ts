@@ -323,6 +323,7 @@ export async function planJourneyHalts(
     dayStartTimes: opts.dayStartTimes,
     dayRainPct: opts.dayRainPct,
     transportMode: opts.transportMode,
+    drivesPart: opts.drivesPart,
     roadGeometry: (opts.routeCoords ?? [])
       .filter(c => Number.isFinite(c[0]) && Number.isFinite(c[1]))
       .map(c => ({ lat: c[1], lng: c[0] })),

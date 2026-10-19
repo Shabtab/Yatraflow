@@ -1676,7 +1676,8 @@ let lastResolvedOptionalColumns: OptionalColumnsProbe | null = null
 
 function tripsHaveOptionalColumns(): Promise<OptionalColumnsProbe> {
   if (!isSupabaseConfigured) return Promise.resolve({ economy: false, price: false, roundTrip: false, cover: false, inviteCode: false, deleted: false, stayStyle: false, driverCount: false, hasVulnerable: false, driveAfterDinner: false, vehicleProfile: false, tankL: false, rentPerDayInr: false, localTrain: false, ref: false, flights: false, drivesPart: false })
-  if (!optionalColumnsProbe) optionalColumnsProbe = probeOptionalColumns()
+  // Route the resolved probe through the synchronous cache the write path reads.
+  if (!optionalColumnsProbe) optionalColumnsProbe = probeOptionalColumns().then(rememberOptionalColumns)
   return optionalColumnsProbe
 }
 

@@ -14,6 +14,8 @@ import { haversineKm } from './geo'
 import { classifyRoadWindow, CITY_SPEED_KMH, CITY_CRAWL_WARNING, type RoadKind } from './roadPersonality'
 import { dnaBoostForHit, type DnaVector } from './tripDna'
 import { hmToMinutes } from './engine'
+import { transportPolicy } from './transportPolicy'
+import type { TransportMode } from '../data/types'
 import { HOME_ZONE_KM, kmFromStartForHit, asymmetricDetourMinutes, dedupeCandidates, type HaltPurpose, type PlaceHit } from './providers/hits'
 import { DEFAULT_FIT, PURPOSE_FIT } from './haltFit'
 
@@ -133,12 +135,14 @@ export function wheelCapHoursFor(travelStyle?: string, transportMode?: string): 
  *  their long-distance legs carry no driving fatigue to plan around. `mixed`
  *  stays plannable (it can include real driving). */
 export function isSelfDrivenMode(transportMode?: string, drivesPart?: boolean): boolean {
-  const m = (transportMode ?? '').trim().toLowerCase()
-  // Mixed asks (2026-10-19). An unanswered Mixed keeps the planning behaviour it
-  // has always had, so omitting `drivesPart` leaves every existing Mixed trip
-  // exactly where it was. See lib/transportPolicy for the shared record.
-  if (m === 'mixed') return drivesPart !== false
-  return m === 'car' || m === 'rental' || m === 'motorcycle'
+  // Delegates to the ONE capability table (2026-10-19). This used to carry its
+  // own mode list, which is how four sites came to disagree about `mixed`. It
+  // keeps this name because it is the planner's historical vocabulary, not a
+  // second opinion: the planner asks the policy what the wheel is worth.
+  return transportPolicy({
+    transportMode: (transportMode ?? '').trim().toLowerCase() as TransportMode,
+    drivesPart,
+  }).driving
 }
 
 /** Party + mode inputs that move the wheel cap (#142). */
@@ -755,6 +759,10 @@ export interface RidePlanInput {
   /** motorcycle rides 1.5 h below the style cap (#126); the day-split for
    *  conducted modes is refused upstream (isSelfDrivenMode), never here */
   transportMode?: string
+  /** Mixed only (2026-10-19): does the traveller drive any part of the trip?
+   *  Threaded through because this is the seam the segment planner reads, so
+   *  omitting it here is what lets a Mixed-No trip plan as driving. */
+  drivesPart?: boolean
   /** simplified route geometry {lat,lng}[] — enables road-personality tagging */
   roadGeometry?: { lat: number; lng: number }[]
   /** accepted night-halt pins (#143): route-km keyed by day index. A pinned
@@ -971,7 +979,7 @@ export function planRideSegments(input: RidePlanInput): RideSegment[] {
   // time (planDriveDays verdict null).
   const dayEnds: number[] = []
   if (multiDay) {
-    const days = planDriveDays({ totalKm: total, driveMinutes: drive, transportMode: input.transportMode })
+    const days = planDriveDays({ totalKm: total, driveMinutes: drive, transportMode: input.transportMode, drivesPart: input.drivesPart })
     if (days && days.nightHalts.length > 0) dayEnds.push(...days.nightHalts)
     else for (let km = OVERNIGHT_INTERVAL_KM; km < cap; km += OVERNIGHT_INTERVAL_KM) dayEnds.push(km)
   }
