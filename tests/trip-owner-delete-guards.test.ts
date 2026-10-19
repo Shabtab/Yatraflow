@@ -32,17 +32,38 @@ const migrationCode = codeOf(migration)
 const schema = read('../supabase/schema.sql')
 
 /**
+ * Collapse every run of whitespace to one space and lower-case the text, so a
+ * statement can be found by plain string search whatever the SQL indentation.
+ *
+ * This exists instead of a RegExp built from a variable (the non-literal-regexp
+ * rule): these assertions only need to know WHERE a statement sits, not to match
+ * a pattern. A plain indexOf is also exact — there is no escaping to get wrong
+ * when a policy name contains a space.
+ */
+const flat = (text: string) => text.replace(/\s+/g, ' ').toLowerCase()
+
+/** The index of `needle` in `haystack`, both flattened, or -1. */
+const findFlat = (haystack: string, needle: string) => flat(haystack).indexOf(flat(needle))
+
+/**
  * The LAST definition of a policy in a source file. A later migration may
  * redefine a policy, so reading the first match would pin a superseded body.
+ * Returns the clause text after the table name (so it still starts with
+ * `as restrictive` when present), whitespace-collapsed, or null.
+ *
+ * The search and the slice both run on the SAME whitespace-collapsed string:
+ * collapsing changes every index after the first multi-space run, so slicing
+ * the original with an index found in the collapsed copy would return the wrong
+ * text.
  */
 function lastPolicy(source: string, name: string) {
-  const code = codeOf(source)
-  const re = new RegExp(
-    `create\\s+policy\\s+"${name}"\\s+on\\s+public\\.trips\\s+([\\s\\S]*?);`,
-    'gi',
-  )
-  const all = [...code.matchAll(re)]
-  return all.length ? all[all.length - 1][1].replace(/\s+/g, ' ').trim() : null
+  const flatCode = codeOf(source).replace(/\s+/g, ' ')
+  const at = flatCode.toLowerCase().lastIndexOf(`create policy "${name}" on public.trips`.toLowerCase())
+  if (at === -1) return null
+  const head = flatCode.indexOf('public.trips', at)
+  const from = head === -1 ? at : head + 'public.trips'.length
+  const end = flatCode.indexOf(';', from)
+  return flatCode.slice(from, end === -1 ? undefined : end).trim()
 }
 
 describe('#799 — owner_id is immutable except for the current owner', () => {
@@ -170,12 +191,11 @@ describe('#807 — a direct DELETE cannot erase a publication or its purchases',
 
   it('every policy is dropped before it is created (safe to re-run)', () => {
     for (const name of ['trips delete guard', 'trips delete', 'trips update']) {
-      const drop = migrationCode.search(
-        new RegExp(`drop\\s+policy\\s+if\\s+exists\\s+"${name}"\\s+on\\s+public\\.trips`, 'i'),
-      )
-      const create = migrationCode.search(
-        new RegExp(`create\\s+policy\\s+"${name}"\\s+on\\s+public\\.trips`, 'i'),
-      )
+      // Plain string search, not a built RegExp: the ordering is the assertion,
+      // and indexOf answers it exactly. Each statement is matched in full so a
+      // different table's policy of the same name cannot satisfy it.
+      const drop = findFlat(migrationCode, `drop policy if exists "${name}" on public.trips`)
+      const create = findFlat(migrationCode, `create policy "${name}" on public.trips`)
       expect(drop, `${name} must have a drop guard`).toBeGreaterThan(-1)
       expect(create, `${name} must be created`).toBeGreaterThan(drop)
     }
