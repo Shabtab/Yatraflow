@@ -270,7 +270,8 @@ describe('#783 offline replay protocol', () => {
     expect(await store.replayQueuedWrites()).toBe(0)
     expect(state.writes).toEqual([])
     expect(state.rows.get('shared')?.name).toBe('Collaborator plan')
-    expect(await pending()).toEqual([expect.objectContaining({ revision: edit.revision, state: 'conflict', attempts: 0 })])
+    const conflictRow = { revision: edit.revision, state: 'conflict', attempts: 0 }
+    expect(await pending()).toEqual([expect.objectContaining(conflictRow)])
     expect(store.getSnapshot().trips[0].name).toBe('My offline plan')
   })
 
@@ -399,7 +400,8 @@ describe('#783 offline replay protocol', () => {
     vi.stubGlobal('navigator', { onLine: true })
     for (let attempt = 1; attempt <= 3; attempt += 1) {
       expect(await store.replayQueuedWrites()).toBe(0)
-      expect((await pending())[0]).toMatchObject({ attempts: attempt, revision: edit.revision, trip: edit.trip })
+      const replayRow = { attempts: attempt, revision: edit.revision, trip: edit.trip }
+      expect((await pending())[0]).toMatchObject(replayRow)
     }
     expect((await pending())[0].state).toBe('failed')
     await store.replayQueuedWrites()

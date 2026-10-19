@@ -87,7 +87,7 @@ Keep the tab open and download the copy before closing it.
 A failed durable deletion cannot claim success. The live tab pauses any older disk copy it finds.
 Concurrent newer edits survive cleanup of an older revision.
 
-Clearing all browser data removes durable offline recovery.
+A full browser-data wipe removes durable offline recovery.
 A fresh boot must not recreate queue entries from an old account snapshot.
 Disconnected devices cannot learn remote membership revocation until they reconnect.
 An already transmitted request may finish under its captured account token.
@@ -109,7 +109,7 @@ It reads and writes no other application records.
 Sequence and trigger-function access remain revoked from application roles.
 Existing table grants, membership policies, and RLS remain unchanged.
 
-Rerunning the migration preserves row revisions and never moves the sequence backward.
+The migration preserves row revisions when you run it again, and never moves the sequence backward.
 The migration takes a table lock while aligning its sequence.
 Use a maintenance window suitable for that lock.
 After restoring a database backup, rerun this migration before accepting writes.
