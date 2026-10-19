@@ -13,6 +13,11 @@ export function WhatIsInside(p: {
   days: DayCardProps[]
   weeks?: WeekGroup[] | null
 }): JSX.Element {
+  // A week holds day indexes, not the days themselves, so one list stays the
+  // source of truth. Resolve them through a Map. A static analyser reads a
+  // variable-keyed object access as an injection sink. `get` also types as
+  // possibly missing, so the guard below stays honest.
+  const dayByIndex = new Map(p.days.map((d, i) => [i, d] as const))
   const body = (
     <div className="sf-daygrid">
       {p.days.map((d, n) => <DayCard key={d.summary.index} {...d} stagger={Math.min(n, STAGGER_CAP)} />)}
@@ -32,7 +37,7 @@ export function WhatIsInside(p: {
           </summary>
           <div className="sf-daygrid">
             {w.days.map((i, j) => {
-              const d = p.days[i]
+              const d = dayByIndex.get(i)
               return d ? <DayCard key={d.summary.index} {...d} stagger={Math.min(j, STAGGER_CAP)} headingLevel={4} /> : null
             })}
           </div>
