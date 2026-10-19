@@ -226,7 +226,7 @@ export function rowToTrip(row: TripRow, members: TripMember[]): Trip {
 /** What the traveller is told when the answer cannot be stored. One string, so
  *  the store's toast and the pure predicate cannot drift apart. */
 export const DRIVES_PART_MISSING_REASON =
-  'We could not save that answer just now. Nothing else changed. Please try again.'
+  'We could not save that answer. Nothing changed. Please try again.'
 
 /**
  * What a writer can actually persist for `drivesPart`.

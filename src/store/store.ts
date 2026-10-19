@@ -17,7 +17,7 @@ import { seedData, uid } from '../data/seed'
 import type { LatLngPoint } from '../data/types'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { toast } from '../components/ui'
-import { DRIVES_PART_MISSING_REASON, isMissingColumnError, rowToTrip, tripToRow, type OptionalColumnsProbe, type TripRow } from '../lib/tripRow'
+import { DRIVES_PART_MISSING_REASON, drivesPartWriteVerdict, isMissingColumnError, rowToTrip, tripToRow, type OptionalColumnsProbe, type TripRow } from '../lib/tripRow'
 import type { ShareSource } from '../lib/shareUrl'
 import { dayCountForRange } from '../lib/dayCount'
 import { amountRefusal, amountVerdict } from '../lib/expenseAmount'
@@ -1809,6 +1809,12 @@ async function persistTrip(trip: Trip, ownerId: ID, opts: { retry?: boolean } = 
   // Claim the echo window before the await — see persistTripFieldNow.
   markLocalWrite('trips', trip.id)
   const cols = await tripsHaveOptionalColumns()
+  // Guard AFTER the awaited probe, at the writer, not at the caller (2026-10-19).
+  // Every `tripToRow` below silently omits a column the probe says is missing,
+  // so an explicit Mixed answer would be dropped here and the save would still
+  // report success. This is the seam where that has to stop.
+  const drivesPartVerdict = drivesPartWriteVerdict(trip, cols)
+  if (!drivesPartVerdict.ok) { toast(drivesPartVerdict.reason, 'err'); return false }
   const { error } = await supabase.from('trips').insert(tripToRow(trip, ownerId, cols))
   // A RETRY can meet the row its own first attempt wrote (#374): the insert
   // then fails on the primary key while the trip exists and the create has in
@@ -2619,18 +2625,16 @@ export function restoreExpense(tripId: ID, expense: Expense, index: number): voi
 export function updateTrip(id: ID, patchFields: Partial<Trip>): boolean {
   const t = tripById(id)
   if (!t) return false
-  // The Mixed driving answer must never be dropped in silence. A pre-migration
-  // database has no column for it, and the row mapper would skip it while this
-  // save still reported success: the traveller says they do not drive, the save
-  // "succeeds", and the trip plans as driving again after a reload. Refuse
-  // before anything is written and name the fix. An unresolved probe is not a
-  // refusal: it means we do not know yet, and the write path still guards.
+  // The Mixed driving answer must never be dropped in silence, and a refused
+  // save must not have touched the cache yet: the refusal says "nothing else
+  // changed", so that has to be true here, not merely true in the row (2026-10-19).
+  // An UNKNOWN probe refuses too. Waiting for it would mean mutating first and
+  // un-mutating after an await, which is the lie in its other form; instead the
+  // probe is started so the retry is immediate, and nothing is written.
   if (typeof patchFields.drivesPart === 'boolean') {
     const cols = lastResolvedOptionalColumns
-    if (cols && !cols.drivesPart) {
-      toast(DRIVES_PART_MISSING_REASON, 'err')
-      return false
-    }
+    if (!cols) { void tripsHaveOptionalColumns() }
+    if (!cols || !cols.drivesPart) { toast(DRIVES_PART_MISSING_REASON, 'err'); return false }
   }
   // Date changes resize the day grid — reconcile BEFORE assigning so the
   // persisted row and the cache carry the same days. Shrinks that would drop
@@ -2886,6 +2890,13 @@ export async function replayQueuedWrites(): Promise<number> {
       // with the loud toast. Never confirmed, never counted, never toasted as
       // synced. Only a DEFINITIVE 0 fails; a null count (not answered) stays
       // a success, the probe's own definitive-only rule.
+      // Same writer guard as the insert path: the debounced UPDATE would
+      // otherwise drop an explicit Mixed answer and still report success.
+      const drivesPartVerdict = drivesPartWriteVerdict(trip, cols)
+      if (!drivesPartVerdict.ok) {
+        toast(drivesPartVerdict.reason, 'err')
+        return null
+      }
       const { error, count } = await supabase.from('trips').update(tripToRow(trip, owner?.userId ?? userId, cols), { count: 'exact' }).eq('id', write.tripId)
       if (error || count === 0) {
         const attempts = write.attempts + 1
