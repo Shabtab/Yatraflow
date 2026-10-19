@@ -42,10 +42,12 @@ export function DayCard(p: DayCardProps): JSX.Element {
         <span className="sf-day-tag">{TAG[p.state]}</span>
       </div>
       <Title className="sf-day-title">{s.title}</Title>
-      <div className="sf-day-meta">
-        <span className={'sf-pace sf-pace--' + s.pace.key}>{s.pace.label}</span>
-        {meta ? <span>{meta}</span> : null}
-      </div>
+      {(s.pace !== null || meta !== '') && (
+        <div className="sf-day-meta">
+          {s.pace !== null ? <span className={'sf-pace sf-pace--' + s.pace.key}>{s.pace.label}</span> : null}
+          {meta !== '' ? <span>{meta}</span> : null}
+        </div>
+      )}
       {p.state === 'locked' ? (
         <div className="sf-day-chips">
           {s.kinds.map((k) => <KindChip key={k.kind} kind={k.kind} count={k.count} />)}

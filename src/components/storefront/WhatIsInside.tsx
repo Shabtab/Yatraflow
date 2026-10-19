@@ -7,7 +7,9 @@ import { DayCard, DayCardProps } from './DayCard'
 const STAGGER_CAP = 8
 
 export function WhatIsInside(p: {
-  lede: string
+  /** The one-sentence plan summary. Absent when the plan has no days, so the
+   *  section shows no lede instead of "A 0-day plan". */
+  lede?: string | null
   kinds: KindCount[]
   lockedLine?: string
   days: DayCardProps[]
@@ -25,7 +27,7 @@ export function WhatIsInside(p: {
   )
   return (
     <div className="sf-inside">
-      <p className="sf-inside-lede">{p.lede}</p>
+      {p.lede ? <p className="sf-inside-lede">{p.lede}</p> : null}
       <div className="sf-inside-kinds">
         {p.kinds.map((k) => <KindChip key={k.kind} kind={k.kind} count={k.count} />)}
       </div>

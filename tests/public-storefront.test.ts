@@ -1,7 +1,11 @@
 import { readFileSync } from 'node:fs'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, it, expect } from 'vitest'
 import type { ItineraryDay, ItineraryStop } from '../src/data/types'
-import { chooseCover, countKinds, describeKinds, foldWeeks, kindOfCategory, lockedRunLine, paceOf, summariseDay, truncatePitch } from '../src/lib/publicStorefront'
+import { chooseCover, countKinds, describeKinds, flightSignalFor, foldWeeks, kindOfCategory, lockedRunLine, paceOf, planLede, summariseDay, truncatePitch } from '../src/lib/publicStorefront'
+import { DayCard } from '../src/components/storefront/DayCard'
+import { WhatIsInside } from '../src/components/storefront/WhatIsInside'
 
 /** A stand-in stop that carries secret data everywhere a name must never leak. */
 function secretStop(category: string, visitMinutes = 60): ItineraryStop {
@@ -81,6 +85,95 @@ describe('paceOf boundaries', () => {
   })
   it('a 10-hour span is a full day', () => {
     expect(paceOf({ placeCount: 3, travelMinutes: 0, hasFlight: false, visitMinutes: 600 }).key).toBe('full')
+  })
+})
+
+describe('flightSignalFor', () => {
+  it('withholds the flight on a locked day', () => {
+    expect(flightSignalFor(true, true)).toBe('withheld')
+    expect(flightSignalFor(false, true)).toBe('withheld')
+  })
+  it('passes the flight through on an open day', () => {
+    expect(flightSignalFor(true, false)).toBe(true)
+    expect(flightSignalFor(false, false)).toBe(false)
+  })
+})
+
+// A flight lives on the trip, not inside `day.stops`, so a flight-only day
+// carries no countable stop at all. That is the day the old code called empty.
+const flightOnlyDay: ItineraryDay = { id: 'day', index: 6, stops: [] }
+
+describe('a locked day never invents a pace', () => {
+  it('shows no pace word whichever way the hidden flight goes', () => {
+    // The card must read the same with a flight and without one, because the
+    // flight signal never reaches it.
+    for (const hasFlight of [true, false]) {
+      const summary = summariseDay(flightOnlyDay, 0, flightSignalFor(hasFlight, true))
+      expect(summary.pace).toBeNull()
+      expect(summary.hasFlight).toBe(false)
+    }
+  })
+
+  it('renders no pace word and no flight word on the locked card', () => {
+    const summary = summariseDay(flightOnlyDay, 0, flightSignalFor(true, true))
+    const html = renderToStaticMarkup(createElement(DayCard, { state: 'locked', summary }))
+    expect(html).not.toContain('Nothing planned')
+    expect(html).not.toContain('Flight day')
+    expect(html).not.toContain('sf-pace')
+    expect(html).not.toContain('sf-day-meta')
+  })
+
+  it('keeps an honest empty day and a flight day on an open card', () => {
+    expect(summariseDay(flightOnlyDay, 0, flightSignalFor(false, false)).pace).toEqual({ key: 'empty', label: 'Nothing planned' })
+    expect(summariseDay(flightOnlyDay, 0, flightSignalFor(true, false)).pace).toEqual({ key: 'flight', label: 'Flight day' })
+  })
+
+  it('keeps the pace word on a locked day that counts places', () => {
+    const day: ItineraryDay = { id: 'day', index: 2, stops: [secretStop('temple')] }
+    const summary = summariseDay(day, 200, flightSignalFor(true, true))
+    expect(summary.pace).toEqual({ key: 'drive', label: 'Long drive' })
+    expect(summary.hasFlight).toBe(false)
+  })
+
+  it('keeps the day title and the road minutes visible while locked', () => {
+    const day: ItineraryDay = { id: 'day', index: 2, title: 'Munnar hills', stops: [] }
+    const summary = summariseDay(day, 200, flightSignalFor(true, true))
+    const html = renderToStaticMarkup(createElement(DayCard, { state: 'locked', summary }))
+    expect(html).toContain('Munnar hills')
+    expect(html).toContain('3 h 20 m on the road')
+  })
+
+  it('renders no stop name, location or coordinate on a locked card', () => {
+    const day: ItineraryDay = { id: 'day', index: 3, stops: [secretStop('temple'), secretStop('food')] }
+    const summary = summariseDay(day, 0, flightSignalFor(true, true))
+    const html = renderToStaticMarkup(createElement(DayCard, { state: 'locked', summary }))
+    for (const secret of ['SECRET-TITLE', 'SECRET-LOCATION', '12.345678', '78.987654']) {
+      expect(html).not.toContain(secret)
+    }
+  })
+})
+
+describe('a plan with no days has no lede', () => {
+  it('composes no sentence for zero days', () => {
+    expect(planLede(0, KINDS)).toBeNull()
+    expect(planLede(0, [])).toBeNull()
+  })
+
+  it('keeps the sentence a real plan had', () => {
+    expect(planLede(5, KINDS)).toBe('A 5-day plan with 4 nature stops, 3 sights, 2 temples and 1 food stop.')
+    expect(planLede(5, KINDS.slice(0, 3))).toBe('A 5-day plan with 4 nature stops, 3 sights and 2 temples.')
+    expect(planLede(5, [])).toBe('A 5-day plan.')
+  })
+
+  it('renders no lede paragraph and no zero-day claim', () => {
+    const html = renderToStaticMarkup(createElement(WhatIsInside, { lede: planLede(0, []), kinds: [], days: [] }))
+    expect(html).not.toContain('sf-inside-lede')
+    expect(html).not.toContain('0-day')
+  })
+
+  it('renders the lede paragraph for a real plan', () => {
+    const html = renderToStaticMarkup(createElement(WhatIsInside, { lede: planLede(5, KINDS), kinds: KINDS, days: [] }))
+    expect(html).toContain('A 5-day plan with 4 nature stops, 3 sights, 2 temples and 1 food stop.')
   })
 })
 
@@ -201,8 +294,16 @@ describe('page lock safety (source scan)', () => {
     expect(lockedBranch).not.toMatch(/locationName/)
   })
 
-  it('a locked day is summarised without flight data', () => {
-    expect(page).toMatch(/summariseDay\([^\n]*isLocked \? false : flightDays\.has\(day\.index\)\)/)
+  it('the page withholds the flight on a locked day', () => {
+    // The flight signal goes through `flightSignalFor`, so a locked card cannot
+    // read a hidden flight as an empty day.
+    const call = page.match(/summariseDay\([\s\S]*?\)\n/)?.[0] ?? ''
+    expect(call).toContain('flightSignalFor(')
+    expect(call).not.toContain('isLocked ? false')
+  })
+
+  it('the page skips the storefront section when the plan has no days', () => {
+    expect(page).toContain('storefront.cards.length > 0')
   })
 
   it('the hero photo hides itself when its source fails', () => {

@@ -1,6 +1,7 @@
 // The Look Inside page sells a plan in counts and plain words. A locked day
-// must stay nameless here. No stop title, location or coordinate passes out.
-// Pace word and cover rules follow the prototype: p7-look-inside (NOTES.md).
+// keeps its own title and its derived road minutes, and it carries no stop
+// title, no location name and no coordinate. Pace word and cover rules follow
+// the prototype: p7-look-inside (NOTES.md).
 import type { ItineraryDay, PublishedItinerary } from '../data/types'
 
 export type StorefrontKind =
@@ -72,6 +73,15 @@ export function describeKinds(counts: KindCount[]): string {
   return words.slice(0, -1).join(', ') + ' and ' + words[words.length - 1]
 }
 
+/** The one-sentence plan summary, for example "A 5-day plan with 4 nature stops."
+ *  Returns null for a plan with no days: "A 0-day plan" describes nothing, so
+ *  the page shows no lede at all. */
+export function planLede(dayCount: number, kinds: KindCount[]): string | null {
+  if (dayCount <= 0) return null
+  const list = describeKinds(kinds)
+  return list ? `A ${dayCount}-day plan with ${list}.` : `A ${dayCount}-day plan.`
+}
+
 export type PaceKey = 'empty' | 'flight' | 'easy' | 'full' | 'drive'
 
 export interface Pace {
@@ -108,23 +118,42 @@ export interface DaySummary {
   title: string
   placeCount: number
   kinds: KindCount[]
-  pace: Pace
+  /** Null when the card shows no pace word. A locked day with no counted place
+   *  cannot claim a pace, because the flight signal is withheld from it. */
+  pace: Pace | null
   travelMinutes: number
+  /** True only when the card is allowed to disclose a flight. */
   hasFlight: boolean
 }
 
-/** Reads only each stop's category and visit minutes. Never a name or a coordinate. */
-export function summariseDay(day: ItineraryDay, travelMinutes: number, hasFlight: boolean): DaySummary {
+/** The flight signal a card may show. `'withheld'` is not `false`: a card that
+ *  hides a flight cannot read the day as empty in its place. */
+export type FlightSignal = boolean | 'withheld'
+
+/** The flight signal for one day. A locked card withholds it, so the card never
+ *  discloses a flight and never infers an empty day from the hidden flight. */
+export function flightSignalFor(hasFlight: boolean, locked: boolean): FlightSignal {
+  return locked ? 'withheld' : hasFlight
+}
+
+/** Reads only each stop's category and visit minutes. Never a name or a coordinate.
+ *  `flight` is a three-way signal: `'withheld'` drops the pace word instead of
+ *  turning a hidden flight into an "empty day" claim. */
+export function summariseDay(day: ItineraryDay, travelMinutes: number, flight: FlightSignal): DaySummary {
   const categories = (day.stops ?? []).map((s) => ({ category: s?.category }))
   const kinds = countKinds(categories)
   const placeCount = kinds.reduce((sum, k) => sum + k.count, 0)
   const visitMinutes = (day.stops ?? []).reduce((sum, s) => sum + (s?.visitMinutes ?? 0), 0)
+  const hasFlight = flight === true
+  const pace = paceOf({ placeCount, travelMinutes, hasFlight, visitMinutes })
   return {
     index: day.index,
     title: day.title && day.title.trim() ? day.title : `Day ${day.index + 1}`,
     placeCount,
     kinds,
-    pace: paceOf({ placeCount, travelMinutes, hasFlight, visitMinutes }),
+    // A withheld flight leaves no evidence either way, so a day with no counted
+    // place shows no pace word at all.
+    pace: flight === 'withheld' && placeCount === 0 ? null : pace,
     travelMinutes,
     hasFlight,
   }

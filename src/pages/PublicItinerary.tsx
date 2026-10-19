@@ -30,7 +30,7 @@ import { pageTitle } from '../lib/pageTitle'
 import { sizedCoverUrl } from '../lib/tripThumb'
 import { Avatar, Chip, EmptyState, toast, CopyButton, RouteSnapshot } from '../components/ui'
 import {
-  chooseCover, countKinds, describeKinds, foldWeeks, kindOfCategory, lockedRunLine, summariseDay, truncatePitch,
+  chooseCover, countKinds, flightSignalFor, foldWeeks, kindOfCategory, lockedRunLine, planLede, summariseDay, truncatePitch,
   type KindCount,
 } from '../lib/publicStorefront'
 import { CoverPlate } from '../components/storefront/CoverPlate'
@@ -400,10 +400,11 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
   // ---- "What is inside": the storefront view of the days. Presentation only.
   // The page's own `unlocked` flag and the publication's freeDayIndexes pick the
   // state of each card; nothing here asks a new entitlement question.
-  // LOCKED DAYS stay nameless. A locked card is built from `summariseDay`, which
-  // reads stop categories and visit minutes only, and it carries no places field.
-  // The locked run line is built from category counts alone. Never pass a stop
-  // title, a location name or a coordinate into a locked card or a locked line.
+  // A locked day keeps its own title and its road minutes, and it carries no
+  // places field: a locked card is built from `summariseDay`, which reads stop
+  // categories and visit minutes only. The locked run line is built from
+  // category counts alone. Never pass a stop title, a location name or a
+  // coordinate into a locked card or a locked line.
   const storefront = useMemo(() => {
     if (!pub || !trip) return null
     const free = new Set(pub.freeDayIndexes)
@@ -416,8 +417,10 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
       const live = day.stops.filter(s => s.status !== 'rejected' && s.auto !== true)
       const sim = simulateDay(day, trip, originOf(trip, day.index), day.index)
       const isLocked = !free.has(day.index) && !unlocked
-      // A locked card never says "Flight day": the flight data stays off it.
-      const summary = summariseDay({ ...day, stops: live }, Math.round(sim.totalTravelMinutes), isLocked ? false : flightDays.has(day.index))
+      // A locked card never says "Flight day": `flightSignalFor` withholds the
+      // flight, and a withheld flight drops the pace word rather than reading as
+      // an empty day.
+      const summary = summariseDay({ ...day, stops: live }, Math.round(sim.totalTravelMinutes), flightSignalFor(flightDays.has(day.index), isLocked))
       const cats = live.map(s => ({ category: s.category }))
       allCats.push(...cats)
       if (isLocked) {
@@ -433,8 +436,9 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
       return { state: free.has(day.index) ? 'free' : 'yours', summary, places }
     })
     const kinds: KindCount[] = countKinds(allCats)
-    const list = describeKinds(kinds)
-    const lede = list ? `A ${orderedDays.length}-day plan with ${list}.` : `A ${orderedDays.length}-day plan.`
+    // A plan with no days has no lede: "A 0-day plan" describes nothing. The
+    // section that would hold it is skipped for the same reason.
+    const lede = planLede(orderedDays.length, kinds)
     // The buy promise is made only where a purchase is on offer right now.
     const canBuy = !!pub.premiumPriceInr && mayShowPriceCta
     const closing = canBuy ? undefined : 'Their names stay hidden on this page.'
@@ -692,8 +696,9 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
 
       <div className="container pub-body">
         {/* ---- What is inside: counts for every day, names only where the page
-            already shows them. A locked day card carries no place list. ---- */}
-        {storefront && (
+            already shows them. A locked day card carries no place list. A plan
+            with no days has nothing to show, so the whole section is skipped. ---- */}
+        {storefront && storefront.cards.length > 0 && (
           <section className="sf-inside-section" aria-labelledby="sf-inside-title">
             <h2 className="sf-inside-heading" id="sf-inside-title">What is inside</h2>
             <WhatIsInside
