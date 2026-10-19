@@ -1190,7 +1190,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
               {f.transportMode === 'mixed' && (
                 <div className="ct-q-field">
                   <span className="ct-lbl" id="ct-mixed-driving-label">Will you drive any part of this trip?</span>
-                  <div className="bench-pair" role="group" aria-labelledby="ct-mixed-driving-label">
+                  <div className="bench-pair" role="group" aria-labelledby="ct-mixed-driving-label" data-sel={f.drivesPart === false ? '1' : '0'}>
                     <button type="button" className={`crew-btn${f.drivesPart === true ? ' on' : ''}`}
                       aria-pressed={f.drivesPart === true}
                       onClick={() => { haptic(HAPTIC.select); patchFields({ drivesPart: true }) }}>Yes, I drive</button>

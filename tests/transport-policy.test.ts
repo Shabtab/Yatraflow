@@ -6,6 +6,7 @@
 import { describe, expect, it } from 'vitest'
 import { TRANSPORT_MODES, type TransportMode } from '../src/data/types'
 import { transportPolicy } from '../src/lib/transportPolicy'
+import { isSelfDrivenMode } from '../src/lib/ridePlan'
 
 /** Modes the specification names as the traveller's own wheel. */
 const DRIVING: TransportMode[] = ['car', 'rental', 'motorcycle']
@@ -100,11 +101,36 @@ describe('the control flag and the planner flag agree outside Mixed', () => {
   })
 })
 
-describe('a missing or unreadable mode never invents a driving trip', () => {
-  it('falls back to the legacy default rather than failing', () => {
-    // A row whose transport_mode is absent must still render a policy. The
-    // legacy default for an absent mode is `car`, so it stays driving.
-    expect(transportPolicy({ transportMode: undefined as unknown as TransportMode }).driving).toBe(true)
-    expect(transportPolicy({ transportMode: 'teleport' as TransportMode }).driving).toBe(true)
+describe('the policy and the historical predicate agree', () => {
+  it.each([
+    ['car', true], ['rental', true], ['motorcycle', true],
+    ['train', false], ['bus', false], ['flight', false], ['taxi', false],
+    ['mixed', true], ['teleport', false],
+  ] as const)('%s', (mode, expected) => {
+    // ridePlan.isSelfDrivenMode delegates here, so this table is the contract
+    // that predicate has to keep for every existing caller.
+    expect(isSelfDrivenMode(mode), mode).toBe(expected)
+  })
+
+  it('answers false for an omitted mode, which several callers rely on', () => {
+    expect(isSelfDrivenMode()).toBe(false)
+    expect(isSelfDrivenMode('')).toBe(false)
+    expect(isSelfDrivenMode(undefined, true)).toBe(false)
+  })
+})
+
+describe('a missing or unreadable mode claims no wheel', () => {
+  it('falls back to false, which is what isSelfDrivenMode has always answered', () => {
+    // Several legacy callers omit transportMode entirely and keep planning.
+    // Guessing a car here would give every one of them a driving trip.
+    expect(transportPolicy({ transportMode: undefined }).driving).toBe(false)
+    expect(transportPolicy({ transportMode: 'teleport' as TransportMode }).driving).toBe(false)
+  })
+
+  it('shows no controls and asks no question, because there is no mode to ask about', () => {
+    const policy = transportPolicy({ transportMode: undefined })
+    expect(policy.showsDrivingControls).toBe(false)
+    expect(policy.mustAnswerDriving).toBe(false)
+    expect(policy.answered).toBe(false)
   })
 })

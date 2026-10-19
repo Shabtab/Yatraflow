@@ -58,9 +58,15 @@ const MODE_CAPABILITIES: Record<TransportMode, { driving: boolean }> = {
   mixed: { driving: true },
 }
 
-/** The mode the app already assumed for a row with no readable mode. Matching
- *  it keeps such a row behaving exactly as it did before this policy. */
-const LEGACY_DEFAULT: TransportMode = 'car'
+/** The mode a trip must NAME before the app will guess for it. A missing or
+ *  unrecognised mode is NOT a car: the historical predicate returned false for
+ *  anything it did not recognise, and several callers rely on that to mean
+ *  "no wheel, ask the user", not "assume a car". Guessing here would also make
+ *  every legacy caller that omits `transportMode` plan a driving trip. */
+function readMode(transportMode: TransportMode | undefined): TransportMode | null {
+  const raw = String(transportMode ?? '')
+  return isDeclaredMode(raw) ? raw : null
+}
 
 function isDeclaredMode(mode: string): mode is TransportMode {
   return (TRANSPORT_MODES as readonly string[]).includes(mode)
@@ -69,6 +75,10 @@ function isDeclaredMode(mode: string): mode is TransportMode {
 /**
  * The capability record for a trip. Pure, total, and safe for a row whose
  * `transport_mode` is missing or unrecognised.
+ *
+ * An unreadable mode answers "nobody drives", which is what every legacy
+ * caller already got from `isSelfDrivenMode(undefined) === false`. It is the
+ * honest answer: the app cannot plan a wheel for a mode it does not know.
  *
  * Mixed is the only mode that asks, and it separates two things that used to be
  * the same answer:
@@ -84,8 +94,11 @@ function isDeclaredMode(mode: string): mode is TransportMode {
  * a row that later became a car trip cannot demote it.
  */
 export function transportPolicy(choice: TransportChoice): TransportPolicy {
-  const raw = String(choice.transportMode ?? '')
-  const mode: TransportMode = isDeclaredMode(raw) ? raw : LEGACY_DEFAULT
+const mode = readMode(choice.transportMode)
+  if (mode === null) {
+    // No readable mode: no wheel. Not a car, not a Mixed.
+    return { driving: false, showsDrivingControls: false, answered: false, mustAnswerDriving: false }
+  }
   const base = MODE_CAPABILITIES[mode]
 
   if (mode === 'mixed') {
