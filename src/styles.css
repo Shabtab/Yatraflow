@@ -10736,3 +10736,11 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
 @media (max-width: 360px) {
   .dob-picker { gap: 6px; grid-template-columns: 1fr 1.4fr 0.85fr; }
 }
+
+/* Train pill room for its Local switch (Create Trip, 2026-10-19).
+   .mode-tile:has(.mode-local-switch) .mode-btn reserves the space, but Create
+   renders .ct-mode inside the tile, so the reservation never applied and the
+   absolutely positioned switch covered the Train label. Same value as the rule
+   above; the pill Create actually renders is what needs it. Appended rather
+   than edited so the line-keyed design-system baseline stays valid. */
+.mode-tile:has(.mode-local-switch) .ct-mode { padding-bottom: 34px; }

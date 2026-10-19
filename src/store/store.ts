@@ -17,7 +17,7 @@ import { seedData, uid } from '../data/seed'
 import type { LatLngPoint } from '../data/types'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { toast } from '../components/ui'
-import { isMissingColumnError, rowToTrip, tripToRow, type OptionalColumnsProbe, type TripRow } from '../lib/tripRow'
+import { DRIVES_PART_MISSING_REASON, isMissingColumnError, rowToTrip, tripToRow, type OptionalColumnsProbe, type TripRow } from '../lib/tripRow'
 import type { ShareSource } from '../lib/shareUrl'
 import { dayCountForRange } from '../lib/dayCount'
 import { amountRefusal, amountVerdict } from '../lib/expenseAmount'
@@ -1453,6 +1453,9 @@ export interface NewTripInput {
   /** minutes of driving allowed after the dinner halt (#122, default 0) */
   driveAfterDinnerMin?: number;
   transportMode: Trip['transportMode']; budgetPerPersonInr: number;
+  /** Mixed only (2026-10-19): the traveller's driving answer. Undefined = a new
+   *  Mixed trip, which the form refuses to create without one. */
+  drivesPart?: boolean;
   /** optional km/L for car/motorcycle trips — fuels an accurate transport estimate */
   fuelEconomyKmL?: number;
   /** optional local pump price (₹/L) — defaults to the indicative national average */
@@ -1664,15 +1667,21 @@ function autoAnchor(coords: LatLngPoint, name: string): ItineraryStop {
 // fuel economy / pump price / one-way settings silently stop persisting.
 let optionalColumnsProbe: Promise<OptionalColumnsProbe> | null = null
 let optionalColumnsWarned = false
+/** The last resolved probe, readable SYNCHRONOUSLY. The write path has to
+ *  decide in one turn whether it may store a Mixed answer, so it cannot await
+ *  a promise here. Null before the first probe resolves means "not known yet",
+ *  which is not a refusal: an unknown column is assumed present, the same
+ *  optimistic rule `probeOptionalColumn` already uses for a transient error. */
+let lastResolvedOptionalColumns: OptionalColumnsProbe | null = null
 
 function tripsHaveOptionalColumns(): Promise<OptionalColumnsProbe> {
-  if (!isSupabaseConfigured) return Promise.resolve({ economy: false, price: false, roundTrip: false, cover: false, inviteCode: false, deleted: false, stayStyle: false, driverCount: false, hasVulnerable: false, driveAfterDinner: false, vehicleProfile: false, tankL: false, rentPerDayInr: false, localTrain: false, ref: false, flights: false })
+  if (!isSupabaseConfigured) return Promise.resolve({ economy: false, price: false, roundTrip: false, cover: false, inviteCode: false, deleted: false, stayStyle: false, driverCount: false, hasVulnerable: false, driveAfterDinner: false, vehicleProfile: false, tankL: false, rentPerDayInr: false, localTrain: false, ref: false, flights: false, drivesPart: false })
   if (!optionalColumnsProbe) optionalColumnsProbe = probeOptionalColumns()
   return optionalColumnsProbe
 }
 
 async function probeOptionalColumns(): Promise<OptionalColumnsProbe> {
-  const [economy, price, roundTrip, cover, inviteCode, deleted, stayStyle, driverCount, hasVulnerable, driveAfterDinner, vehicleProfile, tankL, rentPerDayInr, localTrain, ref, flights] = await Promise.all([
+  const [economy, price, roundTrip, cover, inviteCode, deleted, stayStyle, driverCount, hasVulnerable, driveAfterDinner, vehicleProfile, tankL, rentPerDayInr, localTrain, ref, flights, drivesPart] = await Promise.all([
     probeOptionalColumn('fuel_economy_km_per_l'),
     probeOptionalColumn('fuel_price_per_l'),
     probeOptionalColumn('round_trip'),
@@ -1693,6 +1702,8 @@ async function probeOptionalColumns(): Promise<OptionalColumnsProbe> {
     probeOptionalColumn('ref'),
     // 20261012c_trip_flights.sql — the flights a flight-mode trip takes
     probeOptionalColumn('flights'),
+    // 20261019_trip_drives_part.sql — the Mixed driving answer
+    probeOptionalColumn('drives_part'),
   ])
   if (!economy || !price || !roundTrip) {
     if (!optionalColumnsWarned) {
@@ -1700,7 +1711,13 @@ async function probeOptionalColumns(): Promise<OptionalColumnsProbe> {
       optionalColumnsWarned = true
     }
   }
-  return { economy, price, roundTrip, cover, inviteCode, deleted, stayStyle, driverCount, hasVulnerable, driveAfterDinner, vehicleProfile, tankL, rentPerDayInr, localTrain, ref, flights }
+  return { economy, price, roundTrip, cover, inviteCode, deleted, stayStyle, driverCount, hasVulnerable, driveAfterDinner, vehicleProfile, tankL, rentPerDayInr, localTrain, ref, flights, drivesPart }
+}
+
+/** Cache the probe where the synchronous write path can read it. */
+function rememberOptionalColumns(cols: OptionalColumnsProbe): OptionalColumnsProbe {
+  lastResolvedOptionalColumns = cols
+  return cols
 }
 
 /** Probe one optional column. True = present (or transient error, treated optimistically). */
@@ -2601,6 +2618,19 @@ export function restoreExpense(tripId: ID, expense: Expense, index: number): voi
 export function updateTrip(id: ID, patchFields: Partial<Trip>): boolean {
   const t = tripById(id)
   if (!t) return false
+  // The Mixed driving answer must never be dropped in silence. A pre-migration
+  // database has no column for it, and the row mapper would skip it while this
+  // save still reported success: the traveller says they do not drive, the save
+  // "succeeds", and the trip plans as driving again after a reload. Refuse
+  // before anything is written and name the fix. An unresolved probe is not a
+  // refusal: it means we do not know yet, and the write path still guards.
+  if (typeof patchFields.drivesPart === 'boolean') {
+    const cols = lastResolvedOptionalColumns
+    if (cols && !cols.drivesPart) {
+      toast(DRIVES_PART_MISSING_REASON, 'err')
+      return false
+    }
+  }
   // Date changes resize the day grid — reconcile BEFORE assigning so the
   // persisted row and the cache carry the same days. Shrinks that would drop
   // a day holding stops are rejected with the reason surfaced as a toast.

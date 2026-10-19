@@ -132,9 +132,13 @@ export function wheelCapHoursFor(travelStyle?: string, transportMode?: string): 
  *  shift: a 3200 km "split verdict" for a flight leg was noise (#126), and
  *  their long-distance legs carry no driving fatigue to plan around. `mixed`
  *  stays plannable (it can include real driving). */
-export function isSelfDrivenMode(transportMode?: string): boolean {
+export function isSelfDrivenMode(transportMode?: string, drivesPart?: boolean): boolean {
   const m = (transportMode ?? '').trim().toLowerCase()
-  return m === 'car' || m === 'rental' || m === 'motorcycle' || m === 'mixed'
+  // Mixed asks (2026-10-19). An unanswered Mixed keeps the planning behaviour it
+  // has always had, so omitting `drivesPart` leaves every existing Mixed trip
+  // exactly where it was. See lib/transportPolicy for the shared record.
+  if (m === 'mixed') return drivesPart !== false
+  return m === 'car' || m === 'rental' || m === 'motorcycle'
 }
 
 /** Party + mode inputs that move the wheel cap (#142). */
@@ -145,6 +149,9 @@ export interface PartyOpts {
   driverCount?: number
   /** infants or seniors aboard — shorter days, earlier dinner */
   hasVulnerable?: boolean
+  /** Mixed only (2026-10-19): does the traveller drive any part of the trip?
+   *  Omitted means unanswered, which keeps Mixed's legacy driving plan. */
+  drivesPart?: boolean
 }
 
 /**
@@ -159,7 +166,7 @@ export function wheelCapHoursForParty(o: PartyOpts): number | null {
   // Gate only an EXPLICIT mode: legacy callers (and every geometry-free test)
   // omit transportMode and keep planning; an omitted mode means "no mode
   // verdict asked for", not "conducted".
-  if (o.transportMode != null && !isSelfDrivenMode(o.transportMode)) return null
+  if (o.transportMode != null && !isSelfDrivenMode(o.transportMode, o.drivesPart)) return null
   let cap = wheelCapHoursFor(o.travelStyle, o.transportMode)
   const drivers = Math.min(Math.max(1, Math.floor(o.driverCount ?? 1)), 4)
   if (drivers >= 2) cap += 2 + Math.min(1, drivers - 2)
@@ -239,8 +246,13 @@ export function planDriveDays(input: {
   travelStyle?: string
   /** 0.5–1 multiplier on the wheel cap (e.g. rainFactor = 1 − dayRainPct/200) */
   rainFactor?: number
-  /** transport mode; non-driven modes (train/bus/flight/mixed) → null verdict (#126) */
+  /** transport mode; a passenger verdict is null (#126). The wheel belongs to
+   *  the traveller, so this is `isSelfDrivenMode`, not "measured on roads":
+   *  train/bus/flight/taxi are null, and Mixed follows its saved answer
+   *  (2026-10-19). An unanswered Mixed still plans as driving. */
   transportMode?: string
+  /** Mixed only: does the traveller drive any part of the trip? */
+  drivesPart?: boolean
   /** licensed drivers rotating the wheel (#142) */
   driverCount?: number
   /** infants/seniors aboard — shorter honest days (#142) */
@@ -255,6 +267,7 @@ export function planDriveDays(input: {
   const capH = wheelCapHoursForParty({
     travelStyle: input.travelStyle, transportMode: input.transportMode,
     driverCount: input.driverCount, hasVulnerable: input.hasVulnerable,
+    drivesPart: input.drivesPart,
   })
   if (capH == null) return null // #126: a timetable trip has no wheel to fatigue
   const rain = clampRainFactor(input.rainFactor)
@@ -588,8 +601,13 @@ export function planTravelClock(input: {
   /** per-day rain % (index = the walked day); beats the scalar when present
    *  (#127) — day 3's cloudburst caps day 3, not the whole trip. */
   dayRainPct?: (number | null)[]
-  /** #126 mode gate + #142 party inputs feed the same wheel cap. */
+  /** #126 mode gate + #142 party inputs feed the same wheel cap. The wheel
+   *  belongs to the traveller, so this is `isSelfDrivenMode`, not "measured on
+   *  roads": train/bus/flight/taxi get no wheel, and Mixed follows its saved
+   *  answer (2026-10-19). An unanswered Mixed still plans as driving. */
   transportMode?: string
+  /** Mixed only: does the traveller drive any part of the trip? */
+  drivesPart?: boolean
   driverCount?: number
   hasVulnerable?: boolean
   /** #122 party/season anchor overrides. */
@@ -610,6 +628,7 @@ export function planTravelClock(input: {
   const capH = wheelCapHoursForParty({
     travelStyle: input.travelStyle, transportMode: input.transportMode,
     driverCount: input.driverCount, hasVulnerable: input.hasVulnerable,
+    drivesPart: input.drivesPart,
   })
   if (capH == null) return { verdict: 'ok', days: [], returnDays: null, split: null }
   if (!Number.isFinite(totalKm) || totalKm <= 0 || !Number.isFinite(driveMin) || driveMin <= 0) {
