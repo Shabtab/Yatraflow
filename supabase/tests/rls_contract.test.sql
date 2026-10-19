@@ -81,10 +81,12 @@ begin
   -- 1b-bis-2: the trigger body must compare null-safely. A bare `new.owner_id
   --     <> old.owner_id` is NULL when either side is null, which is not TRUE,
   --     so a null-owner row would slip through. `is distinct from` is the
-  --     fail-closed form.
+  --     fail-closed form. The schema filter is load-bearing: a same-named
+  --     function in another schema must not satisfy this.
   if not exists (
     select 1 from pg_proc
     where proname = 'trips_owner_id_immutable'
+      and pronamespace = 'public'::regnamespace
       and lower(coalesce(prosrc, '')) like '%is distinct from%'
   ) then
     raise exception '#799: the owner_id guard must compare with IS DISTINCT FROM (null-safe), not <> or =';
@@ -92,9 +94,10 @@ begin
 
   -- 1b-bis-3: #807 delete guard. It must be RESTRICTIVE (a permissive policy
   --     would OR with the editor gate and change nothing), owner-or-admin
-  --     scoped, and carry all three money conditions. Token presence alone is
-  --     not behaviour -- the accompanying vitest pin and the opt-in harness
-  --     run the actual DELETE.
+  --     scoped, and route the money check through the SECURITY DEFINER helper.
+  --     An inline subquery on a buyer-only table would see no rows for the
+  --     owner and fail OPEN. Token presence alone is not behaviour -- the
+  --     accompanying vitest pin and the opt-in harness run the actual DELETE.
   if not exists (
     select 1 from pg_policies
     where schemaname = 'public' and tablename = 'trips'
@@ -103,11 +106,29 @@ begin
       and permissive = 'RESTRICTIVE'
       and lower(coalesce(qual, '')) like '%owner_id%'
       and lower(coalesce(qual, '')) like '%is_admin%'
-      and lower(coalesce(qual, '')) like '%published_itineraries%'
-      and lower(coalesce(qual, '')) like '%purchase_orders%'
-      and lower(coalesce(qual, '')) like '%entitlements%'
+      and lower(coalesce(qual, '')) like '%trip_has_publication_money%'
   ) then
-    raise exception '#807: the trips delete guard drifted -- it must be RESTRICTIVE and refuse published, ordered or entitled trips';
+    raise exception '#807: the trips delete guard drifted -- it must be RESTRICTIVE and route the money check through trip_has_publication_money';
+  end if;
+
+  -- 1b-bis-3b: the helper must exist in public, be SECURITY DEFINER, and be
+  --     callable by authenticated (a policy expression runs as the caller).
+  if not exists (
+    select 1 from pg_proc
+    where proname = 'trip_has_publication_money'
+      and pronamespace = 'public'::regnamespace
+      and prosecdef
+      and lower(coalesce(prosrc, '')) like '%purchase_orders%'
+      and lower(coalesce(prosrc, '')) like '%entitlements%'
+      and lower(coalesce(prosrc, '')) like '%published_itineraries%'
+  ) then
+    raise exception '#807: trip_has_publication_money must exist in public, be SECURITY DEFINER, and check all three money tables';
+  end if;
+
+  -- 1b-bis-3c: anon must NOT reach the helper. Revoking from public alone does
+  --     not revoke from anon on Supabase, so the grant list is checked.
+  if has_function_privilege('anon', 'public.trip_has_publication_money(uuid)', 'execute') then
+    raise exception '#807: anon can execute trip_has_publication_money -- revoke it from anon by name';
   end if;
 
   -- 1b-bis-4: the delete guard must AND with the editor gate, not replace it.

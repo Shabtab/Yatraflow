@@ -590,23 +590,42 @@ create policy "trips update" on public.trips
 -- trip at all: the product has no such flow, and crew removal goes through
 -- trip_members. Mirrored by
 -- supabase/migrations/20261020_trip_owner_and_delete_guards.sql.
+--
+-- The money check is a SECURITY DEFINER helper because purchase_orders and
+-- entitlements are buyer-only under RLS: a policy expression runs as the caller,
+-- so an inline subquery would see no rows for the owner and fail OPEN.
+create or replace function public.trip_has_publication_money(p_trip uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select
+    p_trip is null
+    or exists (
+      select 1 from public.published_itineraries p where p.trip_id = p_trip
+    )
+    or exists (
+      select 1 from public.purchase_orders o
+      where o.pub_id in (select p.id from public.published_itineraries p where p.trip_id = p_trip)
+    )
+    or exists (
+      select 1 from public.entitlements e
+      where e.pub_id in (select p.id from public.published_itineraries p where p.trip_id = p_trip)
+    )
+$$;
+
+revoke all on function public.trip_has_publication_money(uuid) from public, anon, authenticated;
+grant execute on function public.trip_has_publication_money(uuid) to authenticated;
+
 create policy "trips delete guard" on public.trips
   as restrictive for delete to authenticated using (
     (
       auth.uid() = owner_id
       or public.is_admin()
     )
-    and not exists (
-      select 1 from public.published_itineraries p where p.trip_id = trips.id
-    )
-    and not exists (
-      select 1 from public.purchase_orders o
-      where o.pub_id in (select p.id from public.published_itineraries p where p.trip_id = trips.id)
-    )
-    and not exists (
-      select 1 from public.entitlements e
-      where e.pub_id in (select p.id from public.published_itineraries p where p.trip_id = trips.id)
-    )
+    and not public.trip_has_publication_money(trips.id)
   );
 
 create policy "trips delete" on public.trips

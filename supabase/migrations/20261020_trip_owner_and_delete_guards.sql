@@ -105,10 +105,10 @@ create trigger trips_owner_id_immutable
 --
 -- The policy is unchanged in substance: an editor may still update the trip.
 -- The ownership guard lives in the trigger above, because only the trigger can
--- see OLD. Adding a WITH CHECK here that compared owner_id with auth.uid()
+-- see OLD. A WITH CHECK here that compared owner_id with auth.uid()
 -- would break the owner's own writes when the client echoes an unchanged
--- owner_id under a stale cache, and it would still not catch an editor swapping
--- owner_id to a THIRD party's id.
+-- owner_id under a stale cache. It would also miss an editor who swaps owner_id
+-- to a THIRD party's id.
 --
 -- It is re-created only to keep the drop/create pair in one place, and so a
 -- later reader does not have to guess which file owns this policy.
@@ -130,17 +130,56 @@ create policy "trips update" on public.trips
 -- against the row being deleted, so USING is the only clause available and the
 -- "added row" concern that applies to UPDATE does not apply here.
 --
--- What it allows:
+-- WHAT THE OWNER MAY DELETE:
+--   * the owner, or a masteradmin, may delete a trip that carries NO
+--     publication, NO paid order and NO entitlement -- the same condition
+--     purge_trashed_trip applies, so the direct path and the RPC path agree;
 --   * a non-owner editor may NOT delete at all. The product has no
 --     "editor deletes the trip" flow: the store's deleteTrip and the trash both
 --     belong to the owner, and crew removal goes through trip_members.
---   * the owner, or a masteradmin, may delete a trip that has NO publication
---     row and NO paid order and NO entitlement. That is the same condition the
---     purge RPC applies, so the direct path and the RPC path now agree.
 --
--- Deleting a trip with any publication row stays refused for everyone, exactly
--- as purge_trashed_trip refuses it. The row is what keeps buyers whole.
+-- WHY THE MONEY CHECK IS A HELPER AND NOT AN INLINE SUBQUERY.
+--
+-- purchase_orders and entitlements are buyer-only under RLS: a buyer sees their
+-- own rows, and the owner sees none of them. A policy expression runs as the
+-- CALLER, so an inline `not exists (select 1 from public.purchase_orders ...)`
+-- would see zero rows for the owner and pass -- the guard would fail OPEN
+-- exactly where it matters most. A SECURITY DEFINER helper reads the tables
+-- without RLS, so the check is the same for every caller.
 -- ============================================================
+create or replace function public.trip_has_publication_money(p_trip uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  -- Fail closed on an unknown shape: a null trip id has no money attached, but
+  -- it also cannot be deleted safely, so it reports "has money" and the policy
+  -- refuses it. Only a real trip with no publication, order or entitlement
+  -- returns false.
+  select
+    p_trip is null
+    or exists (
+      select 1 from public.published_itineraries p where p.trip_id = p_trip
+    )
+    or exists (
+      select 1 from public.purchase_orders o
+      where o.pub_id in (select p.id from public.published_itineraries p where p.trip_id = p_trip)
+    )
+    or exists (
+      select 1 from public.entitlements e
+      where e.pub_id in (select p.id from public.published_itineraries p where p.trip_id = p_trip)
+    )
+$$;
+
+-- A policy expression runs as the caller, so the caller needs EXECUTE. The
+-- function itself leaks nothing: it returns one boolean for a trip id the
+-- caller can already reach. Revoked from the API roles by name, then granted to
+-- authenticated, because `revoke ... from public` does not revoke from anon.
+revoke all on function public.trip_has_publication_money(uuid) from public, anon, authenticated;
+grant execute on function public.trip_has_publication_money(uuid) to authenticated;
+
 drop policy if exists "trips delete guard" on public.trips;
 create policy "trips delete guard" on public.trips
   as restrictive for delete to authenticated using (
@@ -148,17 +187,7 @@ create policy "trips delete guard" on public.trips
       auth.uid() = owner_id
       or public.is_admin()
     )
-    and not exists (
-      select 1 from public.published_itineraries p where p.trip_id = trips.id
-    )
-    and not exists (
-      select 1 from public.purchase_orders o
-      where o.pub_id in (select p.id from public.published_itineraries p where p.trip_id = trips.id)
-    )
-    and not exists (
-      select 1 from public.entitlements e
-      where e.pub_id in (select p.id from public.published_itineraries p where p.trip_id = trips.id)
-    )
+    and not public.trip_has_publication_money(trips.id)
   );
 
 -- The permissive editor gate is kept so the RESTRICTIVE policy is the only

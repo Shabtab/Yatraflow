@@ -83,9 +83,15 @@ describe('#799 — owner_id is immutable except for the current owner', () => {
 
   it('the guard runs as the invoker, not the definer', () => {
     // A definer trigger would read rows the caller cannot see, and it needs
-    // privileges it does not require to compare two columns of the same row.
-    expect(migrationCode).toMatch(/security\s+invoker/i)
-    expect(migrationCode).not.toMatch(/security\s+definer/i)
+    // privileges it does not need to compare two columns of the same row.
+    // Scoped to the TRIGGER body: the money helper below is deliberately
+    // definer, and a file-wide "no definer" assertion would be wrong.
+    const triggerFn = migrationCode.slice(
+      migrationCode.indexOf('create or replace function public.trips_owner_id_immutable'),
+      migrationCode.indexOf('drop trigger if exists trips_owner_id_immutable'),
+    )
+    expect(triggerFn).toMatch(/security\s+invoker/i)
+    expect(triggerFn).not.toMatch(/security\s+definer/i)
   })
 
   it('schema.sql carries the same trigger (the second build path)', () => {
@@ -119,10 +125,41 @@ describe('#807 — a direct DELETE cannot erase a publication or its purchases',
   })
 
   it('it refuses a trip with any publication, order or entitlement', () => {
+    // The money check is a SECURITY DEFINER helper, not an inline subquery:
+    // purchase_orders and entitlements are buyer-only under RLS, so a policy
+    // expression (which runs as the caller) would see no rows for the owner and
+    // fail OPEN. The helper is where the three conditions must live.
     const body = lastPolicy(migration, 'trips delete guard')!
-    expect(body).toMatch(/not\s+exists\s*\(\s*select\s+1\s+from\s+public\.published_itineraries/i)
-    expect(body).toMatch(/not\s+exists\s*\(\s*select\s+1\s+from\s+public\.purchase_orders/i)
-    expect(body).toMatch(/not\s+exists\s*\(\s*select\s+1\s+from\s+public\.entitlements/i)
+    expect(body).toMatch(/public\.trip_has_publication_money\(trips\.id\)/i)
+    // The policy itself must NOT carry an inline subquery on a money table.
+    expect(body).not.toMatch(/from\s+public\.purchase_orders/i)
+    expect(body).not.toMatch(/from\s+public\.entitlements/i)
+
+    const helper = codeOf(migration)
+    expect(helper).toMatch(/create\s+or\s+replace\s+function\s+public\.trip_has_publication_money\(p_trip uuid\)/i)
+    expect(helper).toMatch(/security\s+definer/i)
+    expect(helper).toMatch(/set\s+search_path\s*=\s*public/i)
+    expect(helper).toMatch(/from\s+public\.published_itineraries/i)
+    expect(helper).toMatch(/from\s+public\.purchase_orders/i)
+    expect(helper).toMatch(/from\s+public\.entitlements/i)
+  })
+
+  it('the money helper fails closed on a null trip id', () => {
+    // A null id cannot be deleted safely, so it must report "has money".
+    const helper = codeOf(migration)
+    expect(helper).toMatch(/p_trip\s+is\s+null\s*\n?\s*or\s+exists/i)
+  })
+
+  it('the money helper names every role in its revoke and grants authenticated', () => {
+    const revoke = /revoke\s+all\s+on\s+function\s+public\.trip_has_publication_money\(uuid\)\s+from\s+([a-z_,\s]+);/i
+    const m = codeOf(migration).match(revoke)
+    expect(m).not.toBeNull()
+    const roles = m![1].split(',').map((r) => r.trim().toLowerCase())
+    expect(roles).toEqual(expect.arrayContaining(['public', 'anon', 'authenticated']))
+    // A policy expression runs as the caller, so authenticated needs EXECUTE.
+    expect(codeOf(migration)).toMatch(
+      /grant\s+execute\s+on\s+function\s+public\.trip_has_publication_money\(uuid\)\s+to\s+authenticated/i,
+    )
   })
 
   it('the permissive editor gate is kept, so the guard ANDs rather than replaces', () => {

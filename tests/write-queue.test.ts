@@ -222,7 +222,9 @@ describe('the store wiring (source pins)', () => {
     // names the capturedAt it sent, so a success can never delete the newer
     // edit queued behind the in-flight write.
     const queueAt = store.indexOf('await queueWrite(')
-    const updateAt = store.indexOf("await supabase.from('trips').update(tripToRow(t,")
+    // #799 — the whole-row UPDATE now uses tripUpdateRow, which omits owner_id.
+    // The ORDER this test protects is unchanged: queue first, send second.
+    const updateAt = store.indexOf("await supabase.from('trips').update(tripUpdateRow(t,")
     expect(queueAt, 'queueWrite must exist').toBeGreaterThan(-1)
     expect(updateAt, 'the update must exist').toBeGreaterThan(queueAt)
     expect(store).toMatch(/await dropWriteIfCurrent\(id, capturedAt\)/)
