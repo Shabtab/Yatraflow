@@ -794,6 +794,42 @@ get a row here again.
 ---
 ## Idea bank
 
+### Transport-aware options (2026-10-19)
+
+Status: specification confirmed by the user on 2026-10-19. Implementation is planned.
+
+Show only controls that apply to the selected transport and your role.
+Apply one shared transport policy to Create Trip, Trip Settings, summaries, and saved values.
+
+| Mode | Behaviour |
+| --- | --- |
+| Car, self-drive rental, motorcycle | Show driving controls and applicable vehicle costs. |
+| Train, bus, flight, taxi | Hide driver counts, driving allowances, and private vehicle controls. |
+| Mixed | Ask whether you drive any part of the trip. Show driving controls only after Yes. |
+
+Acceptance criteria:
+
+- Passenger modes must not show driver counts in controls, headings, summaries, or accessible labels.
+- Passenger modes must not show mileage, fuel price, tank size, rental rate, or driving-after-dinner controls.
+- Passenger modes must retain relevant traveller, budget, stay, and travel-style options.
+- Train must retain its local-train option. Flight must retain its flight-specific options.
+- Mixed must ask "Will you drive any part of this trip?" in creation and settings.
+- New Mixed trips must have an answer before creation.
+- Existing Mixed trips must keep their planning behaviour until you explicitly save an answer.
+- Mixed with No must follow passenger behaviour. Mixed with Yes must support driving options.
+- Hidden stale values must not affect passenger planning or reappear as driver summaries after save and reload.
+- The Mixed answer must survive save, reload, backups, and supported trip transfers.
+- Mode switches must update visible options and summaries immediately.
+- Self-drive behaviour must remain correct after passenger-to-driving switches.
+- Desktop, mobile, keyboard, and both themes must pass the changed-flow checks.
+- Regression tests, the full local gate, and independent review must pass before publication.
+
+Keep the existing design system and motion rules.
+Exclude bookings, timetable integrations, a detailed journey editor, and a visual redesign.
+OpenCode owns implementation. MiniMax owns independent review. Codex owns integration and browser checks.
+Start from the fixed integration branch revision. Preserve completed issue branches and their evidence.
+Pushes, merges, deployments, and live database changes need separate user approval.
+
 **Everything not yet built, in one place.** Consolidates the former Backlog pool, Idea pool,
 Suggestion-engine / Budget / Creator-hub idea tables (2026-09-11). If an idea is open, it is
 here and nowhere else; if it shipped, it is a one-line entry in the record at the foot — never
