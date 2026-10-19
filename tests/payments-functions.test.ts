@@ -684,12 +684,11 @@ describe('POST /api/payments-webhook', () => {
     payload: { payment: { entity: { order_id: 'order_ABC123', id: 'pay_XYZ789' } } },
   }
 
-  function stubGrantPath(order = { id: 'order-row-uuid', user_id: 'buyer-1', pub_id: 'kerala-trip_1', price_snapshot_inr: 500, status: 'paid' }) {
+  function stubGrantPath(outcome = 'granted') {
     fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input)
       if (url.includes('/rest/v1/purchase_orders') && url.includes('status=eq.pending')) return jsonResponse([{ id: 'order-row', status: 'paid' }], 200)
-      if (url.includes('/rest/v1/purchase_orders') && url.includes('select=')) return jsonResponse([order])
-      if (url.includes('/rest/v1/entitlements')) return jsonResponse(null, 201)
+      if (url.includes('/rest/v1/rpc/grant_paid_order')) return jsonResponse(outcome)
       throw new Error(`unexpected fetch ${url}`)
     })
   }
@@ -699,14 +698,11 @@ describe('POST /api/payments-webhook', () => {
     stubGrantPath()
     const res = await run(JSON.stringify(event), sig)
     expect(res.statusCode).toBe(200)
-    const grant = fetchMock.mock.calls.find(c => String(c[0]).includes('/rest/v1/entitlements'))
+    const grant = fetchMock.mock.calls.find(c => String(c[0]).includes('/rest/v1/rpc/grant_paid_order'))
     const grantHeaders = (grant![1] as RequestInit).headers as Record<string, string>
     expect(grantHeaders.authorization).toBe('Bearer service-key') // service_role, no caller JWT
-    // PostgREST upsert: the real idempotency mechanism is the Prefer
-    // resolution + on_conflict param, not a 409 handler.
-    expect(grantHeaders.prefer).toContain('resolution=ignore-duplicates')
-    expect(String(grant![0])).toContain('on_conflict=user_id,pub_id')
-    expect(JSON.parse(String((grant![1] as RequestInit).body))).toMatchObject({ user_id: 'buyer-1', pub_id: 'kerala-trip_1', amount_paid_inr: 500 })
+    expect(JSON.parse(String((grant![1] as RequestInit).body))).toEqual({ p_razorpay_order_id: 'order_ABC123' })
+    expect(fetchMock.mock.calls.some(c => String(c[0]).includes('/rest/v1/entitlements'))).toBe(false)
   })
 
   it.each([
@@ -734,37 +730,50 @@ describe('POST /api/payments-webhook', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('never re-grants after a refund: a replayed captured event finds no paid row (audit 2026-09-22)', async () => {
-    // Sequence: captured -> paid -> granted; refunded -> the revoke RPC flips
-    // the row paid -> failed and deletes the entitlement. A duplicate or
-    // manually re-fired captured delivery must NOT re-grant: the order read
-    // now carries status=eq.paid, so the refunded row is invisible to it and
-    // no entitlement call is made at all.
+  it('does not grant when a refund wins after mark-paid completes', async () => {
     const sig = await hmacHex(JSON.stringify(event), ENV.RAZORPAY_WEBHOOK_SECRET)
-    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
-      const url = String(input)
-      if (url.includes('/rest/v1/purchase_orders') && url.includes('status=eq.pending')) return jsonResponse([{ id: 'order-row', status: 'paid' }], 200)
-      if (url.includes('/rest/v1/purchase_orders') && url.includes('status=eq.paid')) return jsonResponse([])
-      throw new Error(`unexpected fetch ${url}`)
-    })
+    stubGrantPath('not-paid')
     const res = await run(JSON.stringify(event), sig)
     expect(res.statusCode).toBe(200)
-    const read = fetchMock.mock.calls.find(c => String(c[0]).includes('select='))
-    expect(String(read![0])).toContain('status=eq.paid')
+    expect(JSON.parse(res.body).note).toBeTruthy()
     expect(fetchMock.mock.calls.some(c => String(c[0]).includes('/rest/v1/entitlements'))).toBe(false)
   })
 
   it('returns 200 with a note for a captured event with no local order', async () => {
     const sig = await hmacHex(JSON.stringify(event), ENV.RAZORPAY_WEBHOOK_SECRET)
-    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
-      const url = String(input)
-      if (url.includes('/rest/v1/purchase_orders') && url.includes('status=eq.pending')) return jsonResponse([{ id: 'order-row', status: 'paid' }], 200)
-      if (url.includes('/rest/v1/purchase_orders') && url.includes('select=')) return jsonResponse([])
-      throw new Error('unexpected')
-    })
+    stubGrantPath('unknown-order')
     const res = await run(JSON.stringify(event), sig)
     expect(res.statusCode).toBe(200)
     expect(JSON.parse(res.body).note).toBeTruthy()
+  })
+
+  it.each(['already-granted', 'withdrawn', 'buyer-missing'])('handles the locked grant outcome %s', async outcome => {
+    const sig = await hmacHex(JSON.stringify(event), ENV.RAZORPAY_WEBHOOK_SECRET)
+    stubGrantPath(outcome)
+    const res = await run(JSON.stringify(event), sig)
+    expect(res.statusCode).toBe(200)
+    expect(fetchMock.mock.calls.some(c => String(c[0]).includes('/rest/v1/entitlements'))).toBe(false)
+    if (outcome !== 'already-granted') expect(JSON.parse(res.body).note).toBeTruthy()
+  })
+
+  it.each([404, 500])('retries when the atomic grant RPC answers %s', async status => {
+    const sig = await hmacHex(JSON.stringify(event), ENV.RAZORPAY_WEBHOOK_SECRET)
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      if (String(input).includes('status=eq.pending')) return jsonResponse([{ status: 'paid' }])
+      return jsonResponse({ error: 'unavailable' }, status)
+    })
+    const res = await run(JSON.stringify(event), sig)
+    expect(res.statusCode).toBe(500)
+    expect(fetchMock.mock.calls.some(c => String(c[0]).includes('/rest/v1/entitlements'))).toBe(false)
+  })
+
+  it.each([null, {}, 'unexpected'])('retries an unreadable atomic grant outcome %j', async outcome => {
+    const sig = await hmacHex(JSON.stringify(event), ENV.RAZORPAY_WEBHOOK_SECRET)
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      if (String(input).includes('status=eq.pending')) return jsonResponse([{ status: 'paid' }])
+      return jsonResponse(outcome)
+    })
+    expect((await run(JSON.stringify(event), sig)).statusCode).toBe(500)
   })
 
   it('returns 500 so Razorpay retries when the grant fails', async () => {

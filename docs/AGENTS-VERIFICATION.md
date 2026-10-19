@@ -36,6 +36,13 @@ Test analytics writes under anonymous and authenticated roles. An insert mock ca
 Run `node scripts/integration/growth-db.mjs` for the isolated growth SQL checks.
 This local fixture does not establish production migration status or the full Supabase role contract.
 
+Apply `20261019b_atomic_entitlement_grant.sql` before you deploy the payment webhook.
+The webhook refuses grants when this service-only function is absent.
+The migration checker cannot inspect function bodies through its read-only probes.
+Local payment proof: `.agent-evidence/site-logic/payment-repair-01-probe.mjs` and its JSON report.
+The probe checks both serial orders with actual SQL.
+It does not prove hosted two-connection concurrency.
+
 **Run browser sampling after the test suite finishes.** Parallel test workers can cause test timeouts and missed animation frames. You must keep these checks separate on a busy machine.
 
 The global reduced-motion rule sets transition durations to `.01ms`.

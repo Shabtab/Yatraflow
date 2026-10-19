@@ -38,6 +38,9 @@ A field allowlist must not evaluate unlisted property getters.
 
 Query changes can remount a form when its page key includes the full URL. Exclude only step navigation from that key. Preserve keys for new entries and seed changes. Prove that Next, Back and Review edits keep live answers.
 
+Payment grants and refunds must lock the same order row before they check state or change access.
+Webhook adapters must not grant access through a separate table insert.
+
 Flight records can exist without stored stops. Protect their days during date reconciliation and preserve them through imports and snapshots.
 Use resolved journey points for exports and insertion origins. Stored stops can omit airports and arrival anchors.
 Settings previews must use validated draft fields. Reuse road measurements only while the route and day assignment still match.

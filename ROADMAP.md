@@ -41,6 +41,16 @@ number collides with a shipped release, the ledger wins.
 
 ## Open issues
 
+### Full update: payment grant recovery
+
+Status: the user approved consolidation into a `main` pull request on 2026-10-30.
+The preserved payment repair is integrated locally with the profile privacy work.
+Independent review and final verification remain pending.
+Grants and refunds must lock the same order before they change buyer access.
+Duplicate deliveries must remain safe. Partial refunds must preserve access.
+Apply `20261019b_atomic_entitlement_grant.sql` before deploying the webhook.
+Hosted SQL and deployment remain outside this approval.
+
 ### Issue #800: protect private profiles
 
 Status: the user confirmed the specification and local implementation delegation on 2026-10-25.

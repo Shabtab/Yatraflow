@@ -1,5 +1,5 @@
 // ============ POST /api/payments-webhook — Razorpay crash recovery (M7) ======
-import { supabaseServiceHeaders, supabaseAnonHeaders } from './_supabase-headers.js'
+import { supabaseServiceHeaders } from './_supabase-headers.js'
 import { markOrderPaid } from './_order-mark.js'
 // Razorpay POSTs `payment.captured` here. This is the path that catches a
 // user who closes the tab between the gateway capturing the payment and the
@@ -49,49 +49,23 @@ function readRawBody(req) {
   })
 }
 
-async function fetchOrderRow(supabaseUrl, serviceKey, razorpayOrderId, signal) {
-  // status=eq.paid is the refund guard: a late or replayed `payment.captured`
-  // after a FULL refund must not re-grant — revoke_refunded_entitlement flips
-  // the row paid -> failed, and without this filter the read would return it.
-  // #554 — a PARTIAL refund keeps the row `paid`, so this filter does not
-  // answer it; the duplicate-grant guard does (the entitlement row survived,
-  // so the upsert's ignore-duplicates makes the re-grant a no-op).
-  const url = `${supabaseUrl.replace(/\/+$/, '')}/rest/v1/purchase_orders` +
-    `?razorpay_order_id=eq.${encodeURIComponent(razorpayOrderId)}&status=eq.paid&select=id,user_id,pub_id,price_snapshot_inr,status&limit=1`
-  const response = await fetch(url, {
-    headers: supabaseServiceHeaders(serviceKey),
-    signal,
-  })
-  if (!response.ok) throw new Error(`order read failed: ${response.status}`)
-  const rows = await response.json()
-  return Array.isArray(rows) ? rows[0] ?? null : null
-}
-
-async function grantEntitlement(supabaseUrl, serviceKey, order, signal) {
-  // service_role bypasses RLS; the unique (user_id, pub_id) index makes any
-  // repeat delivery a no-op. The webhook grant is deliberately unconditional
-  // beyond the paid-status check — no caller JWT exists here, and the
-  // signature on the request IS the authorization.
-  const response = await fetch(`${supabaseUrl.replace(/\/+$/, '')}/rest/v1/entitlements?on_conflict=user_id,pub_id`, {
+async function grantEntitlement(supabaseUrl, serviceKey, razorpayOrderId, signal) {
+  const response = await fetch(`${supabaseUrl.replace(/\/+$/, '')}/rest/v1/rpc/grant_paid_order`, {
     method: 'POST',
     headers: supabaseServiceHeaders(serviceKey, {
       'content-type': 'application/json',
-      // PostgREST upsert: a repeat delivery (the same webhook retried, or a
-      // race with the browser verify) becomes a no-op UPDATE instead of a
-      // unique violation — idempotency lives here, not in a 409 handler.
-      prefer: 'return=minimal,resolution=ignore-duplicates',
     }),
-    body: JSON.stringify({
-      user_id: order.user_id,
-      pub_id: order.pub_id,
-      order_id: order.id,
-      amount_paid_inr: order.price_snapshot_inr,
-    }),
+    body: JSON.stringify({ p_razorpay_order_id: razorpayOrderId }),
     signal,
   })
-  if (!response.ok && response.status !== 409) {
+  if (!response.ok) {
     throw new Error(`entitlement grant failed: ${response.status}`)
   }
+  const outcome = await response.json()
+  if (!['granted', 'already-granted', 'not-paid', 'unknown-order', 'withdrawn', 'buyer-missing'].includes(outcome)) {
+    throw new Error('entitlement grant returned an unknown outcome')
+  }
+  return outcome
 }
 
 /** Apply a refund through the service-only RPC and REPORT what it said (#355).
@@ -255,16 +229,13 @@ export default async function handler(req, res) {
 
   try {
     const mark = await markOrderPaid(serviceKey, orderId, paymentId, signal)
-    // The paid-status filter below is the real refund guard, so a refunded order
-    // already falls out at the next line. Reporting the mark's own verdict just
-    // keeps the note from blaming "foreign, refunded, or test event" when we in
-    // fact know which one it is (#355).
     if (mark.state === 'refunded') {
       return json(res, 200, { ok: true, note: 'order was refunded — nothing to grant' })
     }
-    const order = await fetchOrderRow(supabaseUrl, serviceKey, orderId, signal)
-    if (!order) return json(res, 200, { ok: true, note: 'no paid local order for this gateway order (foreign, refunded, or test event)' })
-    await grantEntitlement(supabaseUrl, serviceKey, order, signal)
+    const outcome = await grantEntitlement(supabaseUrl, serviceKey, orderId, signal)
+    if (outcome !== 'granted' && outcome !== 'already-granted') {
+      return json(res, 200, { ok: true, note: 'no eligible paid local order for this gateway order' })
+    }
     return json(res, 200, { ok: true })
   } catch {
     // 500 makes Razorpay retry with backoff — exactly what a transient

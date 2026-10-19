@@ -329,6 +329,9 @@ export const NO_PROBE_SURFACE = {
   '20261015b_create_event_guards.sql': {
     reason: 'adds an INSERT trigger and its function; REST column reads cannot prove their behavior. Run scripts/integration/growth-db.mjs locally and inspect production policies separately.',
   },
+  '20261019b_atomic_entitlement_grant.sql': {
+    reason: 'defines service-only `grant_paid_order`; a missing function refuses the webhook grant with PGRST202. No column or bucket changes. Tests: tests/atomic-entitlement-grant.test.ts and tests/payments-functions.test.ts. Local SQL evidence: .agent-evidence/site-logic/payment-repair-01-probe.mjs and payment-repair-01-probe.json.',
+  },
   '20261020_trip_owner_and_delete_guards.sql': {
     // A trigger, two policies and a revoke (#799 / #807). None of the three is
     // visible to a table/column/bucket probe: a trigger is not a column, and the
