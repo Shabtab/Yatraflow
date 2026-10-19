@@ -85,7 +85,7 @@ release signed with a different but perfectly valid key would still pass
 `apksigner verify`, be published, and be offered to users who then cannot
 install it. Integrity is not identity.
 
-That is why `--expect-signer-sha256` is required and has no default. The value is
+That is why you must pass `--expect-signer-sha256`, and why it has no default. The value is
 the **SHA-256 certificate digest** that `apksigner verify --print-certs` prints,
 for example:
 
@@ -102,6 +102,13 @@ generation with exit 1. Pass the value as `--expect-signer-sha256`, or set
 
 Colons, spaces and letter case are ignored when the two values are compared, so
 the fingerprint can be pasted in the form `apksigner` prints it.
+
+**The APK must carry exactly one signer.** This tool takes one expected
+fingerprint, so it refuses an APK that reports more than one signer rather than
+matching whichever one happens to come first. An APK signed by the expected key
+*plus* an unrelated key is not the same artifact as a single-signer build, and it
+cannot update an app installed from one. Signing lineage and rotation are out of
+scope here: a rotated key needs its own reviewed procedure, not a passing check.
 
 Do not read a passing `apksigner verify` as "the same key as the installed app".
 It is not that claim. Only the fingerprint comparison is.

@@ -32,7 +32,7 @@
 //                 fingerprint must equal the expected one the caller supplies;
 //   destination   the download URL must be HTTPS on the approved host list.
 //
-// Why the fingerprint is required. `apksigner verify` proves the APK is intact
+// Why the fingerprint must be pinned. `apksigner verify` proves the APK is intact
 // and self-consistent. It does NOT prove which key signed it: any valid key
 // passes. Android refuses to install over an app whose signer changed, so an
 // APK signed with a different but valid key would be offered to users who then
@@ -223,6 +223,13 @@ export function runApksigner(args, options = {}) {
  * A missing or malformed expected fingerprint is a usage error (exit 2) and is
  * rejected before the APK is touched: an unpinned check proves nothing, so
  * running the comparison anyway would only produce a misleading pass.
+ *
+ * EXACTLY ONE signer. This tool accepts one expected fingerprint, so an APK
+ * carrying several signers cannot be checked by it. If it took the first digest and
+ * matching it would pass an APK that is signer1 (expected) plus signer2
+ * (unrelated): that signer set cannot update an app installed from a
+ * single-signer build, so the release would be offered and then refused at
+ * install. Fail closed instead, and say how many signers were found.
  */
 export function checkSignature(apkPath, expectedFingerprint, options = {}) {
   const expected = requireFingerprint(expectedFingerprint)
@@ -238,30 +245,41 @@ export function checkSignature(apkPath, expectedFingerprint, options = {}) {
   }
 
   const out = String(result.stdout || '')
-  const sha256 = parseCertDigests(out).find((d) => d.algorithm === 'SHA-256')
+  const sha256 = parseCertDigests(out).filter((d) => d.algorithm === 'SHA-256')
   const dn = parseCertDn(out)
-  if (!sha256) {
+
+  if (sha256.length === 0) {
     return { problem: 'apksigner printed no SHA-256 certificate digest, so the signer cannot be pinned' }
   }
-  if (sha256.hex !== expected) {
+  if (sha256.length > 1) {
     return {
-      problem: 'the APK signer does not match the expected certificate.'
-        + ` expected sha256 ${expected}, got ${sha256.hex}${dn ? ` (${dn})` : ''}`,
-      actual: sha256.hex,
+      problem: `the APK carries ${sha256.length} signers, but exactly one expected signer is supported;`
+        + ' a multi-signer APK cannot be checked against a single fingerprint',
+      signers: sha256.map((d) => d.hex),
       dn,
     }
   }
-  return { signer: { sha256: sha256.hex, dn } }
+
+  const actual = sha256[0].hex
+  if (actual !== expected) {
+    return {
+      problem: 'the APK signer does not match the expected certificate.'
+        + ` expected sha256 ${expected}, got ${actual}${dn ? ` (${dn})` : ''}`,
+      actual,
+      dn,
+    }
+  }
+  return { signer: { sha256: actual, dn } }
 }
 
 /**
- * Validates the caller-supplied fingerprint. Required, with no default: the
+ * Validates the caller-supplied fingerprint. You must supply it, and it has no default: the
  * expected value must come from the release owner, never from the artifact.
  */
 export function requireFingerprint(value) {
   const expected = normaliseFingerprint(value)
   if (!expected) {
-    usage('--expect-signer-sha256 is required; pass the release certificate SHA-256 fingerprint')
+    usage('--expect-signer-sha256 is needed; pass the release certificate SHA-256 fingerprint')
   }
   if (!/^[0-9a-f]{64}$/.test(expected)) {
     usage(`the expected signer fingerprint "${value}" is not a SHA-256 certificate digest`)
@@ -387,7 +405,7 @@ function generate(identity, signerCheck, hosts) {
 
 function main() {
   const apkPath = arg('apk')
-  if (!apkPath) usage('--apk is required')
+  if (!apkPath) usage('--apk is needed')
   if (!existsSync(apkPath)) usage(`no APK at ${apkPath} (availability)`)
 
   const identity = readApkIdentity(apkPath)

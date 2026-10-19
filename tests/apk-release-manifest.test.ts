@@ -252,7 +252,7 @@ describe('R3 — the signer is pinned to an expected public fingerprint', () => 
     const spawn = fakeSpawn({ java: { status: 0, stdout: APKSIGNER_OUTPUT } })
     // Exit 2: an unpinned check is a usage error, not a failed verification.
     expect(() => checkSignature('/tmp/x.apk', '', { buildTools, env: {}, spawnSync: spawn, platform: WIN }))
-      .toThrow(/--expect-signer-sha256 is required/)
+      .toThrow(/--expect-signer-sha256 is needed/)
     // It must not even consult the APK: an unpinned check proves nothing.
     expect(spawn).not.toHaveBeenCalled()
   })
@@ -289,6 +289,45 @@ describe('R3 — the signer is pinned to an expected public fingerprint', () => 
     const spawn = fakeSpawn({ java: { status: 0, stdout: noDigest } })
     const r = checkSignature('/tmp/x.apk', AUDIT_CERT_SHA256, { buildTools, env: {}, spawnSync: spawn, platform: WIN })
     expect(r.problem).toMatch(/printed no SHA-256 certificate digest/)
+  })
+
+  it('REJECTS a multi-signer APK even when one signer matches the expected one', () => {
+    // The hole a plain `find()` left: take the first digest, match it, pass.
+    // An APK that is (expected signer) + (unrelated signer) cannot update an
+    // app installed from a single-signer build, so it must not be offered.
+    const second = 'b'.repeat(64)
+    const twoSigners = APKSIGNER_OUTPUT
+      + 'Signer #2 certificate DN: CN=Some Other Key, O=Elsewhere\n'
+      + `Signer #2 certificate SHA-256 digest: ${second}\n`
+      + `Signer #2 certificate SHA-1 digest: ${'1'.repeat(40)}\n`
+    const { buildTools } = fakeSdk({ '36.0.0': ['apksigner.bat', 'apksigner.jar'] })
+    const spawn = fakeSpawn({ java: { status: 0, stdout: twoSigners } })
+    const r = checkSignature('/tmp/x.apk', AUDIT_CERT_SHA256, { buildTools, env: {}, spawnSync: spawn, platform: WIN })
+    expect(r.problem).toMatch(/carries 2 signers/)
+    expect(r.problem).toMatch(/exactly one expected signer is supported/)
+    expect(r.signer).toBeUndefined()
+    // Both digests are reported, so the failure is diagnosable.
+    expect(r.signers).toEqual([AUDIT_CERT_SHA256, second])
+  })
+
+  it('rejects a multi-signer APK whose expected signer is NOT among the signers', () => {
+    const other = 'c'.repeat(64)
+    const third = 'd'.repeat(64)
+    const twoSigners = `Signer #1 certificate DN: CN=A\nSigner #1 certificate SHA-256 digest: ${other}\n`
+      + `Signer #2 certificate DN: CN=B\nSigner #2 certificate SHA-256 digest: ${third}\n`
+    const { buildTools } = fakeSdk({ '36.0.0': ['apksigner.bat', 'apksigner.jar'] })
+    const spawn = fakeSpawn({ java: { status: 0, stdout: twoSigners } })
+    const r = checkSignature('/tmp/x.apk', AUDIT_CERT_SHA256, { buildTools, env: {}, spawnSync: spawn, platform: WIN })
+    // Still refused, and for the count rather than a misleading mismatch.
+    expect(r.problem).toMatch(/carries 2 signers/)
+  })
+
+  it('accepts a single signer, so the guard is not over-broad', () => {
+    const { buildTools } = fakeSdk({ '36.0.0': ['apksigner.bat', 'apksigner.jar'] })
+    const spawn = fakeSpawn({ java: { status: 0, stdout: APKSIGNER_OUTPUT } })
+    const r = checkSignature('/tmp/x.apk', AUDIT_CERT_SHA256, { buildTools, env: {}, spawnSync: spawn, platform: WIN })
+    expect(r.problem).toBeUndefined()
+    expect(r.signer.sha256).toBe(AUDIT_CERT_SHA256)
   })
 })
 

@@ -828,11 +828,11 @@ Settings previews must use validated draft fields. Reuse road measurements only 
    does, and it is the precedent to copy. Check `TripWorkspace.tsx` for an inline value
    before you write a margin rule for that header.
 
-6av. **One suffix rule cannot cover the Android SDK tools, and a passing `verify`
+6ax. **One suffix rule cannot cover the Android SDK tools, and a passing `verify`
    does not identify the signer (learned 2026-10-19, #809 repair).** The manifest
    script appended `.bat` to every tool name on Windows. That is wrong twice:
    `aapt2` ships as `aapt2.exe`, while `apksigner` ships only as `apksigner.bat`.
-   The lookup therefore failed on a tool that was present, and the message blamed
+   So the lookup failed on a tool that was present, and the message blamed
    the environment for a missing file that never had that name. Resolve each tool
    to its own file name, and name the real file in the error. A batch file also
    cannot be spawned without a shell on current Node, because of the hardening for
