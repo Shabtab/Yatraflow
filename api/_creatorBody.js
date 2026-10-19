@@ -11,11 +11,12 @@ export const CREATOR_PAGE_CLASS = 'yf-creator-page'
 // depend on src/styles.css or on a design token.
 //   - a 65ch measure, centred, 16px padding, and border-box sizing
 //   - overflow-wrap: anywhere, so one unbroken handle cannot scroll the page
-//   - each anchor is a 44px target that still wraps its own long text
+//   - each anchor is a target of at least 44px in EACH direction. The width
+//     floor matters: a one-word title would otherwise shrink to its text.
 export const CREATOR_PAGE_STYLE = [
   `.${CREATOR_PAGE_CLASS}{box-sizing:border-box;max-width:65ch;margin:0 auto;padding:16px;overflow-wrap:anywhere}`,
   `.${CREATOR_PAGE_CLASS} *{box-sizing:border-box;overflow-wrap:anywhere}`,
-  `.${CREATOR_PAGE_CLASS} a{display:inline-flex;align-items:center;min-height:44px;min-width:0;max-width:100%;white-space:normal}`,
+  `.${CREATOR_PAGE_CLASS} a{display:inline-flex;align-items:center;min-width:44px;min-height:44px;max-width:100%;white-space:normal}`,
 ].join('')
 
 function escapeHtml(value) {

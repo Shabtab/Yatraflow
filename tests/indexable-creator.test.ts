@@ -223,10 +223,33 @@ describe('creator card stylesheet', () => {
     for (const declaration of [
       'box-sizing:border-box', 'max-width:65ch', 'margin:0 auto', 'padding:16px',
       'overflow-wrap:anywhere', 'display:inline-flex', 'align-items:center',
-      'min-height:44px', 'min-width:0', 'max-width:100%', 'white-space:normal',
+      'min-height:44px', 'min-width:44px', 'max-width:100%', 'white-space:normal',
     ]) {
       expect(css).toContain(declaration)
     }
+  })
+
+  // The Gate's P2. A height-only floor let a one-word title shrink to 33px wide.
+  // The anchor rule must floor BOTH axes at 44px, and nothing may cancel the
+  // width floor.
+  it('gives each anchor a floor of at least 44px in both directions', async () => {
+    respond()
+    const { body } = await run()
+    const css = body.match(styleBlock)![1]
+    const anchorRule = css.match(new RegExp(`\\.${CREATOR_PAGE_CLASS} a\\{([^}]*)\\}`))
+    expect(anchorRule).not.toBeNull()
+    const declarations = anchorRule![1]
+    const pixels = (property: string) => {
+      const found = declarations.match(new RegExp(`(?:^|;)${property}:(-?[\\d.]+)px(?:;|$)`))
+      return found ? Number(found[1]) : null
+    }
+    expect(pixels('min-width')).toBeGreaterThanOrEqual(44)
+    expect(pixels('min-height')).toBeGreaterThanOrEqual(44)
+    // A zero or missing width floor is the exact defect this test exists for.
+    expect(declarations).not.toMatch(/min-width:\s*0(?:px)?(?:;|$)/)
+    // The maximum and the wrap rule must survive the wider floor.
+    expect(declarations).toContain('max-width:100%')
+    expect(declarations).toContain('white-space:normal')
   })
 
   it('keeps the class on the fragment and the stylesheet out of it', () => {
