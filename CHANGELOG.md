@@ -17,7 +17,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [0.78.0] - 2026-10-21
 
-**This release brings a public itinerary page that shows what is inside before you pay, an Android update check, trip-ownership and delete guards, and safer offline edits.**
+**This release shows what is inside an itinerary before you pay. It adds an Android update check, trip owner and delete guards, and safer offline edits.**
 
 Two database migrations go with this release: `20261017_trip_write_version.sql` and `20261020_trip_owner_and_delete_guards.sql`. Run the additive migration first, deploy this app build, then run the tightening migration. See the release notes for the order.
 
