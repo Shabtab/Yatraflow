@@ -81,7 +81,9 @@ let scratchReady = false
 for (const signal of ['SIGINT', 'SIGTERM']) {
   process.on(signal, () => {
     cleanup()
-    process.exit(130)
+    // exitCode, not process.exit: a direct exit can drop the message that
+    // explains the interrupt on Windows (#656).
+    process.exitCode = 130
   })
 }
 process.on('exit', cleanup)
@@ -527,4 +529,6 @@ lines.push(`exit=${exit}`)
 lines.push(`HEAD ${HEAD}`)
 writeFileSync(OUT, lines.join('\n') + '\n', 'utf8')
 console.log(lines.join('\n'))
-process.exit(exit)
+// exitCode, not process.exit: the report is the product, and a direct exit
+// can drop the last line of it on Windows (#656).
+process.exitCode = exit
