@@ -123,8 +123,10 @@ export type JoinEvent =
   /** A full-row read answered. Ignored unless it quotes the live try. */
   | { type: 'reload-settled'; userId: string; gen: number; tryId: number; result: JoinResult }
 
-/** The result of a join or a reload, as the store reports it. */
-export type JoinResult = 'joined' | 'joined-unloaded' | 'failed' | 'abandoned'
+/** The result of a join or a reload, as the store reports it. The refusal kinds
+ *  stay distinct so the gate can say "you are not on this trip" instead of
+ *  claiming a membership the server denied. */
+export type JoinResult = 'joined' | 'joined-unloaded' | 'not-member' | 'missing' | 'deleted' | 'incomplete' | 'failed' | 'abandoned'
 
 /** True when the event belongs to the live try. */
 function isCurrent(state: JoinState, e: { userId: string; gen: number }): boolean {
@@ -204,11 +206,13 @@ export function joinMachine(state: JoinState, event: JoinEvent): JoinPlan {
 
     case 'reload-settled': {
       if (!isCurrentTry(state, event)) return none(state)
-      // A reload can never claim a join it did not make: 'abandoned' stays
-      // abandoned, and a 'failed' reload means the row could not be read, which
-      // for a caller who is already a member is 'joined-unloaded'.
+      // B8 — keep the store's distinct outcome. A membership loss, a missing row
+      // and a tombstone are failures, never "You joined". A read failure for a
+      // caller who IS a member stays 'joined-unloaded', because the membership
+      // exists and only the row could not be read.
       const phase: JoinPhase = event.result === 'joined' ? 'joined'
         : event.result === 'abandoned' ? 'abandoned'
+        : event.result === 'not-member' || event.result === 'missing' || event.result === 'deleted' ? 'failed'
         : 'joined-unloaded'
       return { state: { ...state, phase }, action: { type: 'none' } }
     }

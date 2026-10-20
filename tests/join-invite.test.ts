@@ -142,6 +142,13 @@ function row(overrides: Partial<TripRow> = {}): TripRow {
     created_at: 1_700_000_000_000,
     updated_at: 1_700_000_000_000,
     write_version: 1,
+    // The five protected columns a full row carries; admission refuses a row
+    // without them, because a whole-row write built from it would erase them.
+    flights: [],
+    tank_l: null,
+    rent_per_day_inr: null,
+    local_train: null,
+    ref: null,
     ...overrides,
   }
 }
@@ -309,11 +316,9 @@ describe('joinViaInvite (write order)', () => {
     expect(finish).toContain("if (loaded === 'abandoned')")
     const abandonedAt = finish.indexOf("if (loaded === 'abandoned')")
     const unloadedAt = finish.indexOf("return 'joined-unloaded'")
-    const failedAt = finish.indexOf("return 'failed'")
     expect(abandonedAt).toBeGreaterThan(-1)
-    expect(abandonedAt, 'abandoned is handled before any success or failure claim').toBeLessThan(unloadedAt)
-    expect(abandonedAt).toBeLessThan(failedAt)
-    // The abandoned branch returns 'abandoned', and it keeps the debt owed.
+    expect(abandonedAt, 'abandoned is handled before any success or read claim').toBeLessThan(unloadedAt)
+    // The abandoned branch returns 'abandoned' and reads nothing into a claim.
     expect(finish).toContain("return 'abandoned'")
   })
 })

@@ -997,7 +997,8 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
     if (!attemptOwnerLive(owner)) return
     const tryId = action.tryId
     if (action.type === 'reload') {
-      void reloadJoinedTrip(tripId).then(
+      const guard = () => attemptOwnerLive(owner)
+      void reloadJoinedTrip(tripId, guard).then(
         result => {
           if (!attemptOwnerLive(owner)) return
           dispatchJoin({ type: 'reload-settled', userId, gen, tryId, result })
@@ -1006,12 +1007,13 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
           // A rejected read is a read failure, not a membership claim.
           console.error('[yatraflow] reload after join rejected', error)
           if (!attemptOwnerLive(owner)) return
-          dispatchJoin({ type: 'reload-settled', userId, gen, tryId, result: 'joined-unloaded' })
+          dispatchJoin({ type: 'reload-settled', userId, gen, tryId, result: 'failed' })
         },
       )
       return
     }
-    void joinViaInvite(tripId, userId, inviteCode ?? '').then(
+    const guard = () => attemptOwnerLive(owner)
+    void joinViaInvite(tripId, userId, inviteCode ?? '', guard).then(
       result => {
         if (!attemptOwnerLive(owner)) return
         dispatchJoin({ type: 'join-settled', userId, gen, tryId, result })
@@ -1038,6 +1040,11 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
     // and was refused.
     const cached = tripById(trip.id)
     const member = !!(cached ?? trip).members?.some(m => m.userId === me.id)
+    // B2 — ask the machine FIRST. A profile-object refresh re-runs this effect
+    // with the same account, and the machine answers 'none'; retiring the pending
+    // owner for a no-op is what left the gate stuck on "Joining…".
+    const probe = joinMachine(joinStateRef.current, { type: 'begin', userId: me.id, gen: identityGen, member })
+    if (probe.action.type === 'none') return
     const owner = beginAttempt()
     const plan = dispatchJoin({ type: 'begin', userId: me.id, gen: identityGen, member, tryId: owner.id })
     if (plan.action.type === 'none') return
@@ -1053,6 +1060,9 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
     // added by someone else between the failure and the click.
     const cached = tripById(trip.id)
     const member = !!(cached ?? trip).members?.some(m => m.userId === me.id)
+    // B2 — the same probe-before-allocate rule as the begin effect.
+    const probe = joinMachine(joinStateRef.current, { type: 'retry', userId: me.id, gen: identityGen, member })
+    if (probe.action.type === 'none') return
     const owner = beginAttempt()
     const plan = dispatchJoin({ type: 'retry', userId: me.id, gen: identityGen, member, tryId: owner.id })
     runJoinAction(plan.action, trip.id, me.id, identityGen, owner, trip.inviteCode ?? linkTarget)
@@ -1063,6 +1073,9 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
   // clean instead of stalling on a stale phase.
   useEffect(() => {
     if (joinStateRef.current.gen === identityGen) return
+    // B3 — retire BEFORE the state is cleared, so any continuation still holding
+    // this try can never admit or settle after the reset.
+    if (lifetimeRef.current) retireAttemptOwner(lifetimeRef.current)
     joinStateRef.current = initialJoinState
     setJoinState(initialJoinState)
   }, [identityGen])
@@ -1076,6 +1089,8 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
     const live = joinStateRef.current
     if (live.phase === 'idle' || live.userId === null) return
     if (me && me.id === live.userId) return
+    // B3 — a profile gap retires the try BEFORE the visible state clears.
+    if (lifetimeRef.current) retireAttemptOwner(lifetimeRef.current)
     joinStateRef.current = initialJoinState
     setJoinState(initialJoinState)
   }, [me])
@@ -1087,13 +1102,16 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
     if (!me || !trip || !isTripIdLink) return
     let alive = true
     const gen = identityGen
+    // B4 — the UUID path is a lifetime too. Allocate an owner so its async
+    // membership answer is checked against something, instead of being dropped.
+    const owner = beginAttempt()
     void viewerIsMemberOf(trip.id, me.id).then(isMember => {
-      if (!alive || gen !== identityGen || !lifetimeRef.current || !attemptOwnerLive(lifetimeRef.current)) return
+      if (!alive || gen !== identityGen || !attemptOwnerLive(owner)) return
       if (isMember) navigateRef.current(`/trip/${trip.id}`)
       else setStatus('retired')
     })
     return () => { alive = false }
-  }, [me, trip, isTripIdLink, identityGen])
+  }, [me, trip, isTripIdLink, identityGen, beginAttempt])
 
   // The trip opens only from the machine's 'joined' phase, and only for the
   // account that owns it.
@@ -1116,7 +1134,7 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
         <StateBlock
           kind="empty"
           art={<Link2 size={38} aria-hidden />}
-          title="This link no longer adds people"
+          title="This invite link is retired"
           body="Ask the trip owner for a fresh invite link."
           actions={(
             <button className="btn btn-outline" onClick={() => onNavigate('/')}>Go home</button>

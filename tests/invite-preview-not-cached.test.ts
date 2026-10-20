@@ -283,7 +283,7 @@ describe('B-2 — a legacy trip-id link never joins', () => {
   it('the trip-id branch is handled by its own membership check', () => {
     // viewerIsMemberOf is the separate effect that opens or refuses a UUID link.
     expect(APP).toContain('viewerIsMemberOf(trip.id, me.id)')
-    expect(APP).toContain('This link no longer adds people')
+    expect(APP).toContain('This invite link is retired')
   })
 })
 
@@ -378,14 +378,12 @@ describe('loadFullTripIntoCache refuses what it cannot trust', () => {
     expect(queueAt).toBeLessThan(existingAt)
   })
 
-  it('S1 — a not-member outcome reaches the UI as a failure, not a success', () => {
-    // The loader distinguishes three refusals. Collapsing them all to
-    // 'joined-unloaded' told a user who is NOT on the trip that they are.
+  it('S1 — a not-member outcome reaches the UI as its own failure', () => {
+    // The loader distinguishes the refusals. Collapsing them to 'joined-unloaded'
+    // told a user who is NOT on the trip that they are.
     const finish = fnBody(STORE, 'async function finishJoin(')
     expect(finish).toMatch(/if \(loaded === 'not-member'\)/)
-    expect(finish).toContain("return 'failed'")
-    const notMemberAt = finish.indexOf("return 'failed'")
-    expect(notMemberAt).toBeGreaterThan(-1)
+    expect(finish).toContain("return 'not-member'")
   })
 
   it('S1 — a stale outcome reaches the UI as a joined trip, not a read failure', () => {
@@ -424,7 +422,8 @@ describe('loadFullTripIntoCache refuses what it cannot trust', () => {
   })
 
   it('refuses a caller with no membership', () => {
-    expect(body).toContain('mapped.some(m => m.userId === scope.userId) && !isAdminCached()')
+    // S1 — a validated owner_id is authority too, so the refusal names it.
+    expect(body).toContain('!mine && !isAdminCached() && row.owner_id !== scope.userId')
     expect(body).toMatch(/return 'not-member'/)
   })
 
@@ -452,7 +451,7 @@ describe('loadFullTripIntoCache refuses what it cannot trust', () => {
   it('S1 — a not-member outcome reaches the UI as a failure with no claim', () => {
     const finish = fnBody(STORE, 'async function finishJoin(')
     expect(finish).toContain("if (loaded === 'not-member')")
-    expect(finish).toContain("return 'failed'")
+    expect(finish).toContain("return 'not-member'")
     expect(finish).not.toContain('dropJoinNotice')
   })
 })
@@ -619,15 +618,12 @@ describe('B2 — a resolved link leaves the loading status', () => {
 })
 
 describe('S1 — a not-member outcome is a failure, not a read failure or a success', () => {
-  it('finishJoin maps not-member to failed with no claim', () => {
+  it('finishJoin keeps not-member distinct', () => {
+    // B8 — a membership loss is its own result, so the App can say the caller is
+    // not on the trip instead of claiming a join merely failed to load.
     const finish = fnBody(STORE, 'async function finishJoin(')
     expect(finish).toContain("if (loaded === 'not-member')")
-    const notMemberAt = finish.indexOf("if (loaded === 'not-member')")
-    const failedAt = finish.indexOf("return 'failed'")
-    const unloadedAt = finish.indexOf("return 'joined-unloaded'")
-    expect(notMemberAt).toBeGreaterThan(-1)
-    expect(failedAt, 'not-member is a failure').toBeGreaterThan(notMemberAt)
-    expect(failedAt).toBeLessThan(unloadedAt)
+    expect(finish).toContain("return 'not-member'")
     expect(finish).not.toContain('dropJoinNotice')
   })
 })

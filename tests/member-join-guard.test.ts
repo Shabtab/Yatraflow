@@ -243,7 +243,7 @@ describe('joinViaInvite client path', () => {
     // #804 — the signature is the invite code only. The preview name and the
     // owner notice are gone, and the role is still server-decided, never a parameter.
     const entry = functionBody(STORE, 'export async function joinViaInvite(')
-    expect(entry).toMatch(/^export async function joinViaInvite\(\s*tripId: ID,\s*userId: ID,\s*inviteCode: string,\s*\): Promise<JoinResult>/)
+    expect(entry).toMatch(/^export async function joinViaInvite\(\s*tripId: ID,\s*userId: ID,\s*inviteCode: string,\s*guard\?: AttemptGuard,\s*\): Promise<JoinResult>/)
     expect(STORE).not.toMatch(/joinViaInvite\([^)]*role:\s*TripMember\['role'\]/)
   })
 
@@ -289,7 +289,7 @@ describe('the invite screens never join by trip id', () => {
     // retired.
     expect(APP).toMatch(/if \(!me \|\| !trip \|\| !isTripIdLink\) return/)
     expect(APP).toMatch(/viewerIsMemberOf\(trip\.id, me\.id\)/)
-    expect(APP).toMatch(/This link no longer adds people/)
+    expect(APP).toMatch(/This invite link is retired/)
     // The join path still passes the code, never the trip id.
     expect(APP).toMatch(/joinViaInvite\(tripId, userId, inviteCode \?\? ''/)
   })

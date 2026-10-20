@@ -148,6 +148,12 @@ function tripRow(overrides: Record<string, unknown> = {}): Record<string, unknow
     created_at: 1_700_000_000_000,
     updated_at: 1_700_000_000_000,
     write_version: 1,
+    // The five protected columns; admission refuses a full row without them.
+    flights: [],
+    tank_l: null,
+    rent_per_day_inr: null,
+    local_train: null,
+    ref: null,
     ...overrides,
   }
 }
@@ -269,7 +275,8 @@ describe('R2 regression controls — these must keep holding', () => {
 
     const outcome = await joinViaInvite(TRIP, ALICE, CODE)
 
-    expect(outcome).toBe('failed')
+    // B8 — a membership loss is its own outcome, not a generic failure.
+    expect(outcome).toBe('not-member')
     expect(tripById(TRIP)).toBeUndefined()
     expect(insertsOf('notifications'), 'no owner notice for a refused join').toHaveLength(0)
   })

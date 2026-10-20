@@ -192,6 +192,9 @@ function row(id = 'shared', owner = 'A'): TripRow {
       { id: 'delete', title: 'Museum', category: 'sightseeing', locationName: 'Museum', lat: 10, lng: 76,
         visitMinutes: 30, entryFeeInrPerPerson: 0, transportCostInrTotal: 0, priority: 'must-do', status: 'confirmed', orderInDay: 1 },
     ] }], expenses: [], cover_emoji: '🧭', visibility: 'private', invite_code: null, created_at: 1, updated_at: 1, write_version: 0,
+    // The five protected columns a full row carries; admission refuses a row
+    // without them, because a whole-row write built from it would erase them.
+    flights: [], tank_l: null, rent_per_day_inr: null, local_train: null, ref: null,
   }
 }
 

@@ -44,6 +44,12 @@ const ROW = {
   created_at: 1_700_000_000_000,
   updated_at: 1_700_000_000_000,
   write_version: 1,
+  // The five protected columns a full row carries.
+  flights: [],
+  tank_l: null,
+  rent_per_day_inr: null,
+  local_train: null,
+  ref: null,
 }
 const MEMBERS = [{ trip_id: TRIP, user_id: ALICE, role: 'editor', joined_at: 1 }]
 
