@@ -156,8 +156,11 @@ const MUTATIONS = [
     // false, so the shared plan never reaches the screen.
     name: 'REVISE2-demotion-uses-the-new-generation',
     file: STORE,
-    from: `        if (shared && stillLive(scope, entry.tripId, nextEpoch)) {`,
-    to: `        if (shared && stillLive(scope, entry.tripId, accessEpoch)) {`,
+    from: `        if (!stillLive(scope, entry.tripId, nextEpoch)) return false
+        if (shared) {
+          cache.trips = cache.trips.map(t => t.id === entry.tripId ? shared.trip : t)`,
+    to: `        if (shared) {
+          cache.trips = cache.trips.map(t => t.id === entry.tripId ? shared.trip : t)`,
   },
   {
     // A discard that cannot read the shared plan must refuse while the
@@ -206,30 +209,22 @@ const MUTATIONS = [
     // account that may no longer edit it.
     name: 'REVISE4-failed-read-removes-the-proposal',
     file: STORE,
-    from: `  if (!shared) {
-    // The shared plan could not be read. The cache holds the LOCAL PROPOSAL
-    // for this trip, and the account may no longer edit it, so the proposal
-    // must not stay on screen. The trip leaves the list until a read
-    // succeeds. A later read restores it.
-    cache.trips = cache.trips.filter(t => t.id !== tripId)
-    commit()
-    return
-  }`,
-    to: `  if (!shared) return`,
+    from: `    const trip = tripById(tripId)
+    if (trip && canEdit(roleOf(trip, scope.userId))) return
+    cache.trips = cache.trips.filter(t => t.id !== tripId)`,
+    to: `    cache.trips = cache.trips.filter(t => t.id !== tripId)`,
   },
   {
     // A removal that was in flight when the generation moved must put the
     // copy back, because a tombstone asked for it to be kept.
     name: 'REVISE4-inflight-removal-restores-the-copy',
     file: STORE,
-    from: `        const reason = tripInvalidationReasons.get(tripId)
-        if (reason && durable) {
-          // The copy was deleted, so it is queued again rather than replaced.
-          // \`requeueIfCurrent\` only replaces an entry that is still there.
-          await queueWrite({ ...current, state: 'failed', reason })
-        }
-        return false`,
-    to: `        return false`,
+    from: `        const recorded = tripInvalidationReasons.get(tripId)
+        if (recorded && durable && recorded.userId === scope.userId
+          && recorded.generation === tripAccessEpochs.get(tripId)
+          && isCurrentIdentity(scope)) {`,
+    to: `        const recorded = tripInvalidationReasons.get(tripId)
+        if (false && recorded) {`,
   },
   {
     // The hydrate must keep the deletion reason it observed, because a
