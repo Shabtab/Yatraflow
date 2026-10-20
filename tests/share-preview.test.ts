@@ -206,7 +206,7 @@ describe('share preview handler in node', () => {
     expect(target.searchParams.get('limit')).toBe('1')
     expect(target.searchParams.get('select')?.split(',')).toEqual([
       'id', 'title', 'tagline', 'route_summary', 'cover_image_url', 'duration_days', 'estimated_budget_per_person_inr',
-      'premium_price_inr', 'free_day_indexes',
+      'travel_tips', 'warnings_and_assumptions', 'premium_price_inr', 'free_day_indexes',
     ])
     expect(init?.headers).toMatchObject({ apikey: 'test-anon-key', authorization: 'Bearer test-anon-key' })
     expect(init?.signal).toBeInstanceOf(AbortSignal)

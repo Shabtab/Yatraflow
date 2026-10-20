@@ -29,6 +29,7 @@ const { state } = vi.hoisted(() => ({
     tables: {} as Record<string, unknown[]>,
     errors: {} as Record<string, unknown>,
     sessionUser: null as string | null,
+    sessionLoaded: false,
     resolveSession: null as (() => void) | null,
   },
 }))
@@ -43,14 +44,18 @@ vi.mock('../src/components/ui', async importOriginal => ({
 vi.mock('../src/lib/supabase', () => {
   const makeBuilder = (table: string) => {
     const builder: Record<string, unknown> = {}
+    let updated = false
+    const filters: Record<string, unknown> = {}
     const self = () => builder
-    for (const method of ['select', 'eq', 'in', 'order', 'limit', 'maybeSingle', 'single', 'update', 'insert', 'upsert', 'delete']) {
+    for (const method of ['select', 'eq', 'in', 'order', 'limit', 'maybeSingle', 'single', 'update', 'insert', 'upsert', 'delete', 'setHeader']) {
       builder[method] = self
     }
+    builder.update = () => { updated = true; return builder }
+    builder.eq = (key: string, value: unknown) => { filters[key] = value; return builder }
     builder.then = (res: (v: { data: unknown; error: unknown }) => unknown) =>
       Promise.resolve(state.errors[table]
         ? { data: null, error: state.errors[table] }
-        : { data: state.tables[table] ?? [], error: null }).then(res)
+        : { data: updated && table === 'trips' ? [{ id: filters.id, write_version: Number(filters.write_version) + 1 }] : state.tables[table] ?? [], error: null }).then(res)
     return builder
   }
   const chain: Record<string, unknown> = { on: () => chain, subscribe: () => ({}) }
@@ -62,10 +67,14 @@ vi.mock('../src/lib/supabase', () => {
       channel: () => chain,
       removeChannel: () => Promise.resolve(),
       auth: {
-        getSession: () => new Promise(resolve => {
-          state.resolveSession = () =>
-            resolve({ data: { session: state.sessionUser ? { user: { id: state.sessionUser } } : null } })
-        }),
+        getSession: () => {
+          const response = () => ({ data: { session: state.sessionUser
+            ? { user: { id: state.sessionUser }, access_token: `fixture-${state.sessionUser}` } : null } })
+          if (state.sessionLoaded) return Promise.resolve(response())
+          return new Promise(resolve => {
+            state.resolveSession = () => { state.sessionLoaded = true; resolve(response()) }
+          })
+        },
         onAuthStateChange: () => ({ data: { subscription: {} } }),
         signOut: () => Promise.resolve({ error: null }),
       },
@@ -88,7 +97,7 @@ function tripRow(id: string) {
     start_date: '2026-10-01', end_date: '2026-10-03', travellers: 2, transport_mode: 'car',
     budget_per_person_inr: 5000, travel_style: 'balanced', fixed_commitments: [],
     days: [], expenses: [], cover_emoji: '🧭', visibility: 'private',
-    created_at: 1, updated_at: 1,
+    created_at: 1, updated_at: 1, write_version: 0,
   }
 }
 
@@ -143,6 +152,7 @@ beforeEach(() => {
   state.tables = {}
   state.errors = {}
   state.sessionUser = null
+  state.sessionLoaded = false
   state.resolveSession = null
 })
 

@@ -124,7 +124,7 @@ describe('the store wiring keeps the two silent-failure rules', () => {
   })
 
   it('forgets the snapshot when its owner signs out', () => {
-    expect(store).toContain('void clearSnapshot(departingUser)')
+    expect(store).toContain('void clearSnapshot(departing)')
   })
 
   it('marks cache-served rows with their snapshot time and clears it on a network hydrate', () => {

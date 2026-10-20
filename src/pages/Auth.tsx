@@ -10,6 +10,7 @@ import { looksLikeEmail } from '../lib/emailShape'
 import { currentQuery } from '../lib/router'
 import { MISSING_BACKEND_MESSAGE } from '../lib/authErrors'
 import { Field } from '../components/ui'
+import { DobPicker } from '../components/DobPicker'
 
 /** Post-login destination: the `next` param when the auth page was entered
  *  from a deep link (an invite), else My Trips. The param is
@@ -57,7 +58,7 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
   const [dobErr, setDobErr] = useState<string | null>(null)
   const nameRef = useRef<HTMLInputElement>(null)
   const passwordRef = useRef<HTMLInputElement>(null)
-  const dobRef = useRef<HTMLInputElement>(null)
+  const dobRef = useRef<HTMLSelectElement>(null)
   // Today as YYYY-MM-DD (local): the date input's max, so the picker cannot
   // offer a future day.
   const now = new Date()
@@ -192,8 +193,8 @@ export function AuthPage({ onNavigate }: { onNavigate: (r: string) => void }) {
           )}
           {mode === 'signup' && (
             <Field label="Date of birth" hint="Checked at signup. Never stored." error={dobErr ?? undefined}>
-              <input className="input" type="date" name="dob" autoComplete="bday" max={todayISO} ref={dobRef} value={dob}
-                onChange={e => { setDob(e.target.value); if (dobErr) setDobErr(null) }} />
+              <DobPicker focusRef={dobRef} value={dob} max={todayISO}
+                onChange={v => { setDob(v); if (dobErr) setDobErr(null) }} />
             </Field>
           )}
           <Field label="Email"><input className="input" type="email" name="email" autoComplete="email" spellCheck={false} value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" /></Field>

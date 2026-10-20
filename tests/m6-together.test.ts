@@ -13,7 +13,8 @@ const { calls } = vi.hoisted(() => ({
   calls: [] as Array<{ table: string; method: string; payload?: unknown }>,
 }))
 
-vi.mock('../src/lib/supabase', () => {
+vi.mock('../src/lib/supabase', async () => {
+  const { tripWriteClient } = await import('./helpers/tripWriteClient')
   const makeBuilder = (table: string) => {
     let method: string | undefined
     let payload: unknown
@@ -36,13 +37,13 @@ vi.mock('../src/lib/supabase', () => {
   }
   return {
     isSupabaseConfigured: false,
-    supabase: { from: (t: string) => makeBuilder(t) },
+    supabase: tripWriteClient({ from: (t: string) => makeBuilder(t) }),
   }
 })
 
 import {
   duplicateTrip, addExpense, markExpenseSettled, markExpenseUnsettled,
-  tripById, _setTripWriteDebounceMs, _flushTripWrites, presenceClient, getSnapshot,
+  tripById, tripWriteVerdict, _setTripWriteDebounceMs, _flushTripWrites, presenceClient, getSnapshot,
   updateStop, moveStopBetweenDays, _applyRealtimeEventForTest,
   _clearRecentLocalWrites, _clearServerTripTimestamps, setStopStatus,
 } from '../src/store/store'
@@ -55,11 +56,13 @@ const ownerId = 'owner-test'
 
 function singleTrip() {
   calls.length = 0
+  getSnapshot().sessionUserId = ownerId
   return duplicateTrip(keralaTrip, ownerId)
 }
 
-function flush(): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, 0))
+async function flush(): Promise<void> {
+  await new Promise(resolve => setTimeout(resolve, 0))
+  await Promise.all(getSnapshot().trips.map(trip => tripWriteVerdict(trip.id)))
 }
 
 function tripsUpdates() {
