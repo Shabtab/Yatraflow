@@ -17,6 +17,7 @@ import { useDb, currentUser, useUsers, useNotifications, useSessionUserId, useSl
 import { Avatar, BrandMark, ToastZone, useClickOutside, toast } from './components/ui'
 import { BottomNav } from './components/BottomNav'
 import { OfflineBanner } from './components/OfflineBanner'
+import { UpdateNotice } from './components/UpdateNotice'
 import { PillNav } from './components/PillNav'
 import { decodeTripSnapshot } from './lib/snapshot'
 import { scrollBehavior } from './lib/motion'
@@ -26,6 +27,7 @@ import { currentRoute, navigate as navigateRoute, onRouteChange, settleLegacyHas
 import { appLink } from './lib/appLink'
 import { App as CapApp } from '@capacitor/app'
 import { isNative } from './lib/native'
+import { apkUpdateCheck, bootApkUpdates } from './lib/apkUpdateRuntime'
 import { feedbackHref } from './lib/feedback'
 import { setTheme, useTheme } from './lib/theme'
 import { hideSplash, registerAndroidBack, setNativeTheme } from './lib/appShell'
@@ -295,6 +297,25 @@ export default function App() {
       if (isActive) { void resumeSync().catch(() => {}) }
     })
     return () => { handle.then(h => h.remove()).catch(() => {}) }
+  }, [])
+  // APK update checks: one automatic check at native startup, and one each time
+  // the app returns to the foreground. The core rate-limits automatic checks to
+  // one a day, so a resume inside that window costs no request, and a StrictMode
+  // double mount cannot start two: the runtime boots once, and a second check
+  // joins the request already in flight. Web mounts nothing.
+  useEffect(() => {
+    if (!isNative) return
+    let live = true
+    void bootApkUpdates()
+      .then(() => { if (live) void apkUpdateCheck() })
+      .catch(() => {})
+    const handle = CapApp.addListener('appStateChange', ({ isActive }) => {
+      if (isActive) void apkUpdateCheck()
+    })
+    return () => {
+      live = false
+      void handle.then(h => h.remove()).catch(() => {})
+    }
   }, [])
   useEffect(() => {
     const off = registerAndroidBack({
@@ -718,6 +739,10 @@ export default function App() {
           in any one page. It renders only while actually offline. */}
       <OfflineBanner />
 
+      {/* A newer Android build, when the reviewed core finds one. Nonmodal and
+          dismissible; it never takes focus and never blocks a tap. */}
+      <UpdateNotice />
+
       <main id="main" tabIndex={-1} style={{ flex: 1 }}>
         {/* Route-change announcement (review finding 3): polite, off-screen,
             fed by the title effect above. The loading block carries role=status
@@ -743,11 +768,11 @@ export default function App() {
       {/* The shell's primary navigation - same platform gate as the shell home
           above (isNative && me), so the website never renders it. It replaces
           the floating pill (hidden in the shell via CSS); the hamburger tray
-          is web-only — its shell-side destinations are these four tabs or the
-          relocated controls on Profile. A plain bar, not an overlay:
-          registerAndroidBack above still closes only the real overlays, so
-          back walks history while this is mounted. */}
-      {isNative && me && <BottomNav route={route} onNavigate={navigate} />}
+          is web-only — its shell-side destinations are the four tabs, plus a
+          Creator hub tab for a creator, or the relocated controls on Profile.
+          A plain bar, not an overlay: registerAndroidBack above still closes
+          only the real overlays, so back walks history while this is mounted. */}
+      {isNative && me && <BottomNav route={route} onNavigate={navigate} isCreator={me.profile.isCreator} />}
 
       <ToastZone />
       {/* Web Analytics is a web concern: the Capacitor shell has no Vercel
