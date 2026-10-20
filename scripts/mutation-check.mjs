@@ -127,6 +127,11 @@ const MUTATIONS = [
       // must compare against the NEW generation. The captured one is stale
       // from here on.
       const nextEpoch = invalidateTripWork(entry.tripId, scope.userId, reason)`,
+    also: [
+      [`      if (!stillLive(scope, entry.tripId, nextEpoch)) return false
+        if (shared) {`,
+      `      if (shared) {`],
+    ],
   },
   {
     name: 'P1c-missing-trip-scope-before-invalidation',
@@ -214,6 +219,17 @@ const MUTATIONS = [
     if (trip && canEdit(roleOf(trip, scope.userId))) return
     cache.trips = cache.trips.filter(t => t.id !== tripId)`,
     to: `    cache.trips = cache.trips.filter(t => t.id !== tripId)`,
+    // The edit-right check and the liveness check OVERLAP here: the realtime
+    // demotion bumps the generation, so the liveness check already stops the
+    // removal under a newer grant. The mutation therefore removes the whole
+    // set, which is what reproduces the defect.
+    also: [
+      [`  const shared = await readSharedTripForCurrentIdentity(tripId)
+  if (!stillLive(scope, tripId, accessEpoch)) return
+  if (!shared) {`,
+      `  const shared = await readSharedTripForCurrentIdentity(tripId)
+  if (!shared) {`],
+    ],
   },
   {
     // A removal that was in flight when the generation moved must put the
@@ -313,7 +329,7 @@ const MUTATIONS = [
           && recorded.generation === tripAccessEpochs.get(tripId)
           && isCurrentIdentity(scope)) {`,
     to: `        if (recorded && durable && recorded.userId === scope.userId
-          && isCurrentIdentity(scope)) {`,
+          && recorded.generation === tripAccessEpochs.get(tripId)) {`,
   },
   {
     // B2: the replay demotion's failed read must not remove the trip. Both

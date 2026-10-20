@@ -350,4 +350,26 @@ describe('liveness owner regressions', () => {
     // HARD: the trip must survive, because the account may edit it again.
     expect(store.getSnapshot().trips.some(t => t.id === 'shared')).toBe(true);
   });
+  it('the realtime demotion does not remove the trip under a newer grant', async () => {
+    const store = await fresh(true);
+    await capture(store, 'PRIVATE A');
+    const viewer = { trip_id: 'shared', user_id: 'A', role: 'viewer', joined_at: 1 };
+    state.members = state.members.map(m => m.user_id === 'A' ? viewer : m);
+    const hold = gate();
+    state.failFullRead = true; state.readGate = hold.promise;
+    vi.stubGlobal('navigator', { onLine: true });
+    // The realtime demotion fires and its shared read is held.
+    store._applyRealtimeEventForTest('trip_members', { eventType: 'UPDATE', new: viewer, old: {} });
+    await flush();
+    state.failFullRead = false; state.readGate = null;
+    // A grant lands while the read is held, so the account may edit again.
+    const editor = { ...viewer, role: 'editor' };
+    state.members = state.members.map(m => m.user_id === 'A' ? editor : m);
+    store._applyRealtimeEventForTest('trip_members', { eventType: 'UPDATE', new: editor, old: {} });
+    await flush();
+    hold.release();
+    await flush();
+    // HARD: the trip must survive, because the account may edit it again.
+    expect(store.getSnapshot().trips.some(t => t.id === 'shared')).toBe(true);
+  });
 });
