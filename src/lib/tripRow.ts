@@ -265,21 +265,16 @@ export function tripToRow(trip: Trip, ownerId: string, cols?: OptionalColumnsPro
   if (cols?.hasVulnerable) row.has_vulnerable = trip.hasVulnerable === true
   if (cols?.driveAfterDinner) row.drive_after_dinner_min = trip.driveAfterDinnerMin ?? null
   if (cols?.vehicleProfile) row.vehicle_profile = trip.vehicleProfile ?? null
-  // #804 — a trip built from the invite preview never read these five columns,
-  // so their `undefined` is "not known", not "empty". Writing them would send []
-  // and null over the owner's real flights, tank size, rental rate, local-train
-  // flag and share ref. Omit them while the marker is set; the column stays at
-  // whatever the owner last stored.
-  //
-  // This block is deliberately separate from the `cols` probes above: `cols`
-  // answers "does the database have this column", while the marker answers "did
-  // this client read it". A column can exist and still be unread.
-  const partial = trip.partialPreview === true
-  if (cols?.tankL && !partial) row.tank_l = sanitizeTankL(trip.tankL)
-  if (cols?.rentPerDayInr && !partial) row.rent_per_day_inr = sanitizeRentPerDayInr(trip.rentPerDayInr)
-  if (cols?.localTrain && !partial) row.local_train = typeof trip.localTrain === 'boolean' ? trip.localTrain : null
-  if (cols?.flights && !partial) row.flights = sanitizeFlights(trip.flights)
-  if (cols?.ref && !partial) row.ref = trip.ref ?? null
+  // #804 — every trip in the cache now came from a FULL read. The invite preview
+  // returns a partial row, but it is handed to the gate in local state and never
+  // enters the cache, the queue or a snapshot, so no write can be built from it.
+  // So these five are always known here, and the earlier "omit while
+  // marked" guard is gone with the marker.
+  if (cols?.tankL) row.tank_l = sanitizeTankL(trip.tankL)
+  if (cols?.rentPerDayInr) row.rent_per_day_inr = sanitizeRentPerDayInr(trip.rentPerDayInr)
+  if (cols?.localTrain) row.local_train = typeof trip.localTrain === 'boolean' ? trip.localTrain : null
+  if (cols?.flights) row.flights = sanitizeFlights(trip.flights)
+  if (cols?.ref) row.ref = trip.ref ?? null
   return row
 }
 

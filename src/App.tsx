@@ -972,15 +972,17 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
         return
       }
       setStatus('joining')
-      // Ensure the trip is in the cache before joining - a sign-in hydration
-      // can have replaced the cache after our first fetch, and joinViaInvite
-      // reads tripById.
-      await fetchSharedTrip(trip.id, true)
-      // The code is the one the viewer presented, as the trip row carries it.
-      const ok = await joinViaInvite(trip.id, me.id, trip.inviteCode ?? linkTarget)
+      // #804 — the trip no longer needs to be in the cache before joining. The
+      // preview row is never cached (it is a partial row), and joinViaInvite no
+      // longer reads tripById: it takes the name for its toast and awaits the
+      // full-row fetch itself. The old fetchSharedTrip priming call is gone with
+      // that requirement.
+      const ok = await joinViaInvite(trip.id, me.id, trip.inviteCode ?? linkTarget, trip.name)
       if (ok) toast(`You’re on “${trip.name}” - happy planning!`)
-      // joinViaInvite reports false for an RLS refusal or a dropped connection
-      // just as readily as for a stale code, so this cannot blame the link.
+      // joinViaInvite reports false for an RLS refusal, a dropped connection, or
+      // a join that succeeded but whose full row could not be read back. Those
+      // are different states, and the store logs and toasts the last one itself,
+      // so this line must not blame the link.
       else toast('Couldn’t join just now - open the link again, or ask for a fresh one.', 'err')
       navigateRef.current(`/trip/${trip.id}`)
     })()

@@ -233,7 +233,11 @@ describe('joinViaInvite client path', () => {
   })
 
   it('takes the invite code and no role argument', () => {
-    expect(STORE).toMatch(/export async function joinViaInvite\(tripId: ID, userId: ID, inviteCode: string\): Promise<boolean>/)
+    // #804 — an optional 4th argument carries the preview name for the owner
+    // notification. The preview is no longer cached, so the store cannot read
+    // the name itself. The role is still server-decided and never a parameter.
+    expect(STORE).toMatch(/export async function joinViaInvite\([\s\S]{0,80}inviteCode: string,[\s\S]{0,40}previewName\?: string/)
+    expect(STORE).not.toMatch(/joinViaInvite\([^)]*role:\s*TripMember\['role'\]/)
   })
 
   it('fails closed on a null answer or an answer naming another trip', () => {
@@ -254,7 +258,7 @@ describe('the invite screens never join by trip id', () => {
   it('InviteGate refuses a trip-id link for a non-member and joins by code', () => {
     expect(APP).toMatch(/if \(isTripIdLink\) \{/)
     expect(APP).toMatch(/This link no longer adds people/)
-    expect(APP).toMatch(/joinViaInvite\(trip\.id, me\.id, trip\.inviteCode \?\? linkTarget\)/)
+    expect(APP).toMatch(/joinViaInvite\(trip\.id, me\.id, trip\.inviteCode \?\? linkTarget, trip\.name\)/)
   })
 
   it('ShareTab never falls back to a trip-id link', () => {

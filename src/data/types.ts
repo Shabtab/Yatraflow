@@ -313,25 +313,6 @@ export interface Trip {
   deletedAt?: number | null
   createdAt: number
   updatedAt: number
-  /**
-   * #804 — this trip was built from the INVITE PREVIEW RPC, which returns 31 of
-   * the 34 `trips` columns. The absent ones (flights, tank_l, rent_per_day_inr,
-   * local_train, ref) read as undefined, so a whole-row write would send [] and
-   * null over the owner's real values. While this is set, tripToRow omits those
-   * columns instead of inventing them.
-   *
-   * The marker DOES reach disk: queueWrite clones the whole trip and the clean
-   * hydrate snapshot clones the whole slices, so a queued or restored entry
-   * carries it and keeps the omission. Only the database row serializer drops
-   * it, because it is never a column. A full server row replaces the trip and
-   * clears it.
-   *
-   * `partialEdited` records which of the five the user explicitly changed while
-   * the marker was set. A refresh must keep those local values instead of
-   * overwriting them with the server's older ones.
-   */
-  partialPreview?: true
-  partialEdited?: Partial<Record<'flights' | 'tankL' | 'rentPerDayInr' | 'localTrain' | 'ref', true>>
 }
 
 export interface StopSuggestion {

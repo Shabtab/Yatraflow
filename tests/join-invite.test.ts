@@ -40,7 +40,9 @@ vi.mock('../src/lib/supabase', () => {
     builder._err = null
     builder.then = (res: (v: { data: unknown; error: unknown }) => unknown) =>
       Promise.resolve({
-        data: table === 'trips' ? state.tripRow : null,
+        // #804 — joinViaInvite now reads the full row AND its members after the
+        // join, so this mock must answer both. Before, only `trips` mattered.
+        data: table === 'trips' ? state.tripRow : table === 'trip_members' ? (state.memberRows ?? []) : null,
         error: (builder as { _err?: unknown })._err ?? null,
       }).then(res)
     return builder
@@ -62,9 +64,12 @@ vi.mock('../src/lib/supabase', () => {
 })
 
 import { fetchTripByInviteCode, joinViaInvite, tripById } from '../src/store/store'
+import * as store from '../src/store/store'
 import type { TripRow } from '../src/lib/tripRow'
 
 const CODE = 'GOABEACHWE-K7QF'
+/** The account this harness signs in as; the join is written by them. */
+const ME = '33333333-3333-4333-8333-333333333333'
 
 function row(overrides: Partial<TripRow> = {}): TripRow {
   return {
@@ -94,12 +99,16 @@ function row(overrides: Partial<TripRow> = {}): TripRow {
 }
 
 describe('fetchTripByInviteCode', () => {
-  it('resolves a code via the RPC and merges the trip into the cache', async () => {
+  it('resolves a code via the RPC and returns the trip WITHOUT caching it', async () => {
+    // #804 — the preview row is partial (31 of 34 columns), so it is returned to
+    // the caller and deliberately never merged into cache.trips. The gate keeps
+    // it in local state; a partial row in the writable cache is what let a
+    // whole-row write erase the five columns it had not read.
     state.rpcRows = [row({ invite_code: 'GOA-K7QF' })]
     state.tripRow = null
     const t = await fetchTripByInviteCode('goa k7qf'.replace(' ', '-'))
     expect(t?.name).toBe('Goa Beach Week')
-    expect(tripById(row().id)?.name).toBe('Goa Beach Week')
+    expect(tripById(row().id)).toBeUndefined()
   })
 
   it('normalises casual input before the RPC call', async () => {
@@ -198,9 +207,22 @@ async function seedTripWithOwner(): Promise<void> {
   state.tripRow = row()
   state.joinResult = row().id
   state.joinError = null
+  // #804 — joinViaInvite now AWAITS a full-row read after the join, and that
+  // read is identity-guarded (the same #798 pattern the queue uses). The old
+  // path never needed a session because it read tripById; this harness must
+  // establish one, exactly as tests/fire-and-forget.test.ts does.
+  const db = store.getSnapshot() as { sessionUserId: string | null }
+  db.sessionUserId = ME
+  // The loader reads the trip AND its members; the joiner is a member after the
+  // join, and notifyOwnerOf needs an OWNER row in the cache to notify. Both are
+  // supplied here so the write-order assertion can still see the notification.
+  state.memberRows = [
+    { trip_id: row().id, user_id: row().owner_id, role: 'owner', joined_at: 1 },
+    { trip_id: row().id, user_id: ME, role: 'editor', joined_at: 2 },
+  ]
+  // The preview is no longer cached, so the seed does not look for it there.
+  // The row is supplied by the mock's `trips` read, which is what the
+  // full-row load reads after the join.
   await fetchTripByInviteCode(CODE)
-  const cached = tripById(row().id)
-  if (!cached) throw new Error('seed failed: trip not in cache')
-  cached.members = [{ userId: row().owner_id, role: 'owner', joinedAt: 1 }]
   writes.length = 0
 }
