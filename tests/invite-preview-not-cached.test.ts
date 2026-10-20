@@ -16,7 +16,7 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { tripToRow, rowToTrip } from '../src/lib/tripRow'
-import { inviteJoinOutcome } from '../src/lib/inviteGateStates'
+import { inviteJoinOutcome, inviteAttempt } from '../src/lib/inviteGateStates'
 import { isStaleServerRow } from '../src/lib/realtimeCore'
 import { seedData } from '../src/data/seed'
 import type { Trip } from '../src/data/types'
@@ -165,6 +165,80 @@ describe('S2 — an empty membership read is not proof of access', () => {
     const notMember = body.indexOf("return 'not-member'")
     const assignAt = body.indexOf('cache.trips =')
     expect(notMember).toBeLessThan(assignAt)
+  })
+})
+
+// ============ B1/B2b — the join reducer, executed ============
+// The Gate's S1: string checks passed while the retry was broken. These run the
+// real reducer that App.tsx calls, so a broken transition fails here.
+
+describe('B1/B2b — inviteAttempt binds every retry to one account', () => {
+  const A = 'user-a'
+  const B = 'user-b'
+
+  it('a failed join retries into a SECOND join for the same account', () => {
+    // This is the B1 defect: the old guard stayed set, so no second join issued.
+    let plan = inviteAttempt(null, { type: 'begin', userId: A })
+    expect(plan.action).toBe('join')
+    expect(plan.state.issued).toBe(1)
+    plan = inviteAttempt(plan.state, { type: 'settle', userId: A, result: 'failed' })
+    expect(plan.state.settled).toBe('failed')
+    // Retry: the settled result clears and the join is issued again.
+    plan = inviteAttempt(plan.state, { type: 'retry-failed', userId: A })
+    expect(plan.action).toBe('join')
+    expect(plan.state.settled).toBeNull()
+    expect(plan.state.issued).toBe(2)
+    // And the effect's own begin now runs it, because settled is null.
+    expect(inviteAttempt(plan.state, { type: 'begin', userId: A }).action).toBe('none')
+  })
+
+  it('an unloaded retry re-reads the row and never joins again', () => {
+    let plan = inviteAttempt(null, { type: 'begin', userId: A })
+    plan = inviteAttempt(plan.state, { type: 'settle', userId: A, result: 'joined-unloaded' })
+    const retry = inviteAttempt(plan.state, { type: 'retry-unloaded', userId: A })
+    expect(retry.action).toBe('reload')
+    expect(retry.state.issued, 'a reload must not count as a join').toBe(1)
+  })
+
+  it('StrictMode double fire issues exactly one join', () => {
+    const first = inviteAttempt(null, { type: 'begin', userId: A })
+    const second = inviteAttempt(first.state, { type: 'begin', userId: A })
+    expect(first.action).toBe('join')
+    expect(second.action, 'the second fire does nothing').toBe('none')
+    expect(second.state.issued).toBe(1)
+  })
+
+  it('an account switch resets the attempt instead of inheriting it', () => {
+    // B2b: B must not adopt A's try, its claim, or its outcome.
+    let plan = inviteAttempt(null, { type: 'begin', userId: A })
+    plan = inviteAttempt(plan.state, { type: 'settle', userId: A, result: 'failed' })
+    const switched = inviteAttempt(plan.state, { type: 'begin', userId: B })
+    expect(switched.state.userId).toBe(B)
+    expect(switched.state.settled).toBeNull()
+    expect(switched.action, 'B gets its own join').toBe('join')
+    expect(switched.state.issued).toBe(1)
+  })
+
+  it('a late continuation from the previous account settles nothing', () => {
+    let plan = inviteAttempt(null, { type: 'begin', userId: B })
+    const before = plan.state
+    // A's join answers after B took over.
+    const stale = inviteAttempt(before, { type: 'settle', userId: A, result: 'joined' })
+    expect(stale.state).toEqual(before)
+    expect(stale.action).toBe('none')
+  })
+
+  it('an abandoned result maps to no navigation and no retry', () => {
+    expect(inviteJoinOutcome('abandoned')).toEqual({ outcome: 'abandoned', retry: 'none' })
+  })
+
+  it('App dispatches the reducer for both retries and for the initial begin', () => {
+    // The branch the tests execute is the branch the app runs.
+    expect(APP).toContain("dispatchAttempt({ type: 'retry-failed', userId: me.id })")
+    expect(APP).toContain("dispatchAttempt({ type: 'retry-unloaded', userId: me.id })")
+    expect(APP).toContain("dispatchAttempt({ type: 'begin', userId: me.id })")
+    // The old bare guard must be gone.
+    expect(APP).not.toContain('joinedRef')
   })
 })
 

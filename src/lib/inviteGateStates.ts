@@ -43,15 +43,91 @@ export function inviteGateState(read: { loading: boolean; failed: boolean; trip:
  * `reload` is the retry action for 'unloaded' and `rejoin` for 'failed', so the
  * caller cannot accidentally offer the wrong remedy.
  */
-export type InviteJoinOutcome = 'navigate' | 'unloaded' | 'failed'
+export type InviteJoinOutcome = 'navigate' | 'unloaded' | 'failed' | 'abandoned'
 
-export function inviteJoinOutcome(result: 'joined' | 'joined-unloaded' | 'failed'): {
+export function inviteJoinOutcome(result: 'joined' | 'joined-unloaded' | 'failed' | 'abandoned'): {
   outcome: InviteJoinOutcome
   retry: 'reload' | 'rejoin' | 'none'
 } {
   if (result === 'joined') return { outcome: 'navigate', retry: 'none' }
   if (result === 'joined-unloaded') return { outcome: 'unloaded', retry: 'reload' }
+  // An abandoned continuation belongs to a previous account. The new account's
+  // own try starts fresh, so this one does nothing at all.
+  if (result === 'abandoned') return { outcome: 'abandoned', retry: 'none' }
   return { outcome: 'failed', retry: 'rejoin' }
+}
+
+/**
+ * #804 (B1/B2b) — the join try, bound to ONE account.
+ *
+ * `joinedRef` was a bare boolean, which caused two bugs: a retry after a failed
+ * join could never issue a second join (the guard was still set), and the guard
+ * survived an account switch, so a new user inherited the previous user's
+ * "already joined" claim.
+ *
+ * This state replaces it. Every field is per-account: `userId` names the owner,
+ * and an event carrying a different id resets the whole thing. `settled` is null
+ * while a join is in flight, which is what keeps StrictMode's double effect fire
+ * to a single join.
+ */
+export interface InviteAttempt {
+  userId: string
+  /** How many joins have been started for this account. */
+  issued: number
+  /** The last settled result, or null while in flight. */
+  settled: 'joined' | 'joined-unloaded' | 'failed' | 'abandoned' | null
+}
+
+export type InviteAttemptEvent =
+  | { type: 'begin'; userId: string }
+  | { type: 'settle'; userId: string; result: 'joined' | 'joined-unloaded' | 'failed' | 'abandoned' }
+  | { type: 'retry-failed'; userId: string }
+  | { type: 'retry-unloaded'; userId: string }
+
+export interface InviteAttemptPlan {
+  state: InviteAttempt
+  /** What the caller must do now: start a join, re-read the row, or nothing. */
+  action: 'join' | 'reload' | 'none'
+}
+
+/**
+ * The join reducer. Pure, so every transition is executable in a test.
+ *
+ *   begin           issue a join once per account; a second begin while one is
+ *                   in flight does nothing (StrictMode), and a settled try
+ *                   does nothing until a retry.
+ *   settle          records the result, but ONLY for the account that owns the
+ *                   try: a late answer from a previous account is dropped.
+ *   retry-failed    clears the settled result and issues another join.
+ *   retry-unloaded  clears the settled result and re-reads the row. It never
+ *                   joins again, so a retry cannot write a second membership
+ *                   row or notify the owner twice.
+ */
+export function inviteAttempt(
+  previous: InviteAttempt | null,
+  event: InviteAttemptEvent,
+): InviteAttemptPlan {
+  const owns = previous !== null && previous.userId === event.userId
+  switch (event.type) {
+    case 'begin': {
+      if (!owns) return { state: { userId: event.userId, issued: 1, settled: null }, action: 'join' }
+      // Already in flight, or already settled: nothing to do.
+      return { state: previous!, action: 'none' }
+    }
+    case 'settle': {
+      // A stale continuation from another account must not touch this one.
+      if (!owns) return { state: previous!, action: 'none' }
+      return { state: { ...previous!, settled: event.result }, action: 'none' }
+    }
+    case 'retry-failed': {
+      if (!owns) return { state: { userId: event.userId, issued: 1, settled: null }, action: 'join' }
+      return { state: { ...previous!, issued: previous!.issued + 1, settled: null }, action: 'join' }
+    }
+    case 'retry-unloaded': {
+      if (!owns) return { state: { userId: event.userId, issued: 1, settled: null }, action: 'reload' }
+      return { state: { ...previous!, settled: null }, action: 'reload' }
+    }
+  }
 }
 
 /** The state of the shared snapshot's decode.

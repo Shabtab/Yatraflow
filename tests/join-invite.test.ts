@@ -55,6 +55,12 @@ vi.mock('../src/lib/supabase', () => {
         writes.push({ table: `rpc:${name}`, kind: 'rpc', payload: args })
         // join_trip answers with the trip id, or null, and can plant an error.
         if (name === 'join_trip') {
+          // #804 (B2a) — an account switch can land INSIDE this await. The hook
+          // lets a test flip the signed-in user before the RPC resolves, which is
+          // the only way to exercise the post-await identity re-check. It is a
+          // callback because this mock is hoisted above the store import.
+          const hook = state.switchDuringJoin as (() => void) | undefined
+          if (hook) hook()
           return Promise.resolve({ data: state.joinResult ?? null, error: state.joinError ?? null })
         }
         return Promise.resolve({ data: state.rpcRows, error: null })
@@ -92,8 +98,13 @@ function row(overrides: Partial<TripRow> = {}): TripRow {
     cover_emoji: '🧭',
     invite_code: CODE,
     visibility: 'private',
-    created_at: 1,
-    updated_at: 1,
+    // #804 (B2) — the loader refuses a row with no usable revision, and compares
+    // timestamps as millisecond epochs. A fixture with `updated_at: 1` and no
+    // `write_version` would be refused for the right reason but the wrong cause,
+    // so it carries what a real row carries.
+    created_at: 1_700_000_000_000,
+    updated_at: 1_700_000_000_000,
+    write_version: 1,
     ...overrides,
   }
 }
@@ -196,6 +207,43 @@ describe('joinViaInvite (write order)', () => {
     const ok = await joinViaInvite(row().id, meId, CODE)
     expect(ok).toBe('joined')
     expect(writes.filter(w => w.table === 'rpc:join_trip')).toHaveLength(0)
+  })
+
+  it('B2a — abandons the continuation when the account switches during the RPC', async () => {
+    // Account A starts the join; account B signs in before join_trip resolves.
+    // A's continuation must do NOTHING: no full load, no cache write, no
+    // notification, and no toast about A on B's screen.
+    //
+    // This test uses its OWN trip id. An earlier test in this file caches the
+    // shared trip with this user already a member, and the membership
+    // short-circuit would then return 'joined' without ever reaching the RPC —
+    // so a shared id would make this test pass for the wrong reason.
+    const otherTrip = '99999999-9999-4999-8999-999999999999'
+    state.rpcRows = [row({ id: otherTrip })]
+    state.tripRow = row({ id: otherTrip })
+    state.joinResult = otherTrip
+    state.joinError = null
+    const db = store.getSnapshot() as { sessionUserId: string | null }
+    db.sessionUserId = ME
+    state.memberRows = [
+      { trip_id: otherTrip, user_id: row().owner_id, role: 'owner', joined_at: 1 },
+      { trip_id: otherTrip, user_id: ME, role: 'editor', joined_at: 2 },
+    ]
+    await fetchTripByInviteCode(CODE)
+
+    state.switchDuringJoin = () => {
+      const live = store.getSnapshot() as { sessionUserId: string | null }
+      live.sessionUserId = '44444444-4444-4444-8444-444444444444'
+    }
+    writes.length = 0
+    const result = await joinViaInvite(otherTrip, ME, CODE)
+    state.switchDuringJoin = undefined
+    expect(result).toBe('abandoned')
+    // No member read and no trip read happened for the abandoned continuation.
+    const afterJoin = writes.filter(w => w.table !== 'rpc:join_trip')
+    expect(afterJoin, 'an abandoned continuation must not touch the cache').toHaveLength(0)
+    // Restore the session for any later test in this file.
+    db.sessionUserId = ME
   })
 })
 

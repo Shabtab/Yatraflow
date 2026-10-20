@@ -3308,7 +3308,7 @@ export function setMemberRole(tripId: ID, userId: ID, role: TripMember['role']):
  *                      re-read the row, never join again.
  *   'failed'           no membership was created. A retry must join again.
  */
-export type JoinResult = 'joined' | 'joined-unloaded' | 'failed'
+export type JoinResult = 'joined' | 'joined-unloaded' | 'failed' | 'abandoned'
 
 /**
  * Join a trip through its invite code, then fetch the full row into the cache.
@@ -3328,12 +3328,29 @@ export async function joinViaInvite(
   previewName?: string,
 ): Promise<JoinResult> {
   const cached = tripById(tripId)
-  if (cached?.members?.some(m => m.userId === userId)) return 'joined'
+  if (cached?.members?.some(m => m.userId === userId)) {
+    // Already a member: the plan may still need loading, and the owner may still
+    // owe the one notification for this join. Both are handled by the reload.
+    return finishJoin(tripId, userId, previewName)
+  }
+  // B2a — capture WHO is joining, and this trip's access generation, BEFORE the
+  // RPC. The RPC is a network round trip: an account switch or a revocation can
+  // land inside it, and a continuation that adopts the new account would write
+  // the old account's membership row, notify the owner about the wrong person,
+  // and cache a trip the new account may not be allowed to read.
+  const scope = identityScope()
+  const accessEpoch = tripAccessEpochs.get(tripId) ?? 0
+  if (!scope || scope.userId !== userId) return 'failed'
   const joinedAt = Date.now()
   // join_trip() takes the invite code, never a trip id. It adds the signed-in
   // user as an editor. It returns the trip id, or null for a dead code.
   const role: TripMember['role'] = 'editor'
   const { data: joinedTripId, error } = await supabase.rpc('join_trip', { p_code: inviteCode })
+  // B2a — every await above can span an account switch. Check before ANY effect.
+  if (!isCurrentIdentity(scope) || (tripAccessEpochs.get(tripId) ?? 0) !== accessEpoch) {
+    console.error('[yatraflow] join continuation abandoned: the account or trip access changed', { tripId })
+    return 'abandoned'
+  }
   if (error) {
     console.error('[yatraflow] join write failed', error)
     return 'failed'
@@ -3345,17 +3362,45 @@ export async function joinViaInvite(
   // mutateTrip is a no-op; the full fetch below supplies the row.
   mutateTrip(tripId, draft => { draft.members = [...(draft.members ?? []), { userId, role, joinedAt }] }, { touch: false })
   addActivity(tripId, userId, 'joined via invite link', 'Members')
+  return finishJoin(tripId, userId, previewName)
+}
+
+/**
+ * #804 (N3) — the half of a join that runs after the membership exists: load the
+ * full row, then send the owner notification exactly once.
+ *
+ * The notification lives here, not in joinViaInvite, so BOTH paths reach it: the
+ * initial join, and a later successful reload after a load that failed. Without
+ * this, a join whose first load failed would never tell the owner at all — the
+ * membership would exist and the owner would never hear about it.
+ *
+ * Exactly once is enforced by the loaded trip's own member row: the notification
+ * fires only when this caller's membership is present in the row that was just
+ * loaded, and `notifiedJoins` records that it has been sent for this trip+user.
+ */
+async function finishJoin(tripId: ID, userId: ID, previewName?: string): Promise<JoinResult> {
   const loaded = await loadFullTripIntoCache(tripId)
   if (loaded !== 'loaded') {
     console.error('[yatraflow] joined, but the full trip row could not be read back', { tripId, outcome: loaded })
     return 'joined-unloaded'
   }
   // AFTER the load: notifyOwnerOf reads the trip's owner from the cache, and
-  // before the load there is no cached row to read it from. This runs after the
-  // fetch, so the notification still fires for the join that just succeeded.
-  notifyOwnerOf(tripId, `${userName(userId)} joined ${previewName ? `“${previewName}”` : 'your trip'} as ${role}.`)
+  // before the load there is no cached row to read it from.
+  const key = `${tripId}:${userId}`
+  if (!notifiedJoins.has(key)) {
+    notifiedJoins.add(key)
+    notifyOwnerOf(tripId, `${userName(userId)} joined ${previewName ? `“${previewName}”` : 'your trip'} as editor.`)
+  }
   return 'joined'
 }
+
+/**
+ * Trips+users whose owner notification has been sent, so a retry after a failed
+ * load sends it once and a second retry does not send it again. Module-level and
+ * in-memory on purpose: the notification is a courtesy, and losing the record on
+ * a reload costs at most one duplicate rather than none.
+ */
+const notifiedJoins = new Set<string>()
 
 /**
  * Re-read a trip the caller already joined, without joining again. The gate's
@@ -3363,8 +3408,11 @@ export async function joinViaInvite(
  * membership row or send a second owner notification.
  */
 export async function reloadJoinedTrip(tripId: ID): Promise<JoinResult> {
-  const loaded = await loadFullTripIntoCache(tripId)
-  return loaded === 'loaded' ? 'joined' : 'joined-unloaded'
+  const scope = identityScope()
+  if (!scope) return 'failed'
+  // The same continuation the initial join uses, so a reload that finally
+  // succeeds still sends the one owner notification the first try owed.
+  return finishJoin(tripId, scope.userId)
 }
 
 /** Why a full-row load did or did not replace the cached trip. */
@@ -3425,7 +3473,11 @@ async function loadFullTripIntoCache(tripId: ID): Promise<LoadOutcome> {
     if (queuedLocalTrips.has(tripId)) return 'stale'
     const incoming = row.write_version
     const cached = existing.writeVersion
-    // An unverifiable answer is not an authoritative one: refuse it.
+    // An unverifiable answer is not an authoritative one: refuse it. This guard
+    // applies when a row is ALREADY cached. A first load with no cached row has
+    // nothing to compare against, so it is accepted on its timestamp alone — the
+    // honest statement is "refuses an unverifiable row that would replace a
+    // known one", not "refuses every unverifiable row".
     if (!validWriteVersion(incoming)) return 'stale'
     if (validWriteVersion(cached) && incoming < cached) return 'stale'
     if (validWriteVersion(cached) && incoming === cached && existing.updatedAt > Number(row.updated_at)) return 'stale'
