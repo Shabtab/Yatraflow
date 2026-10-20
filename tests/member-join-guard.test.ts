@@ -240,10 +240,10 @@ describe('joinViaInvite client path', () => {
   })
 
   it('takes the invite code and no role argument', () => {
-    // #804 — an optional 4th argument carries the preview name for the owner
-    // notification. The preview is no longer cached, so the store cannot read
-    // the name itself. The role is still server-decided and never a parameter.
-    expect(STORE).toMatch(/export async function joinViaInvite\([\s\S]{0,80}inviteCode: string,[\s\S]{0,40}previewName\?: string/)
+    // #804 — the signature is the invite code only. The preview name and the
+    // owner notice are gone, and the role is still server-decided, never a parameter.
+    const entry = functionBody(STORE, 'export async function joinViaInvite(')
+    expect(entry).toMatch(/^export async function joinViaInvite\(\s*tripId: ID,\s*userId: ID,\s*inviteCode: string,\s*\): Promise<JoinResult>/)
     expect(STORE).not.toMatch(/joinViaInvite\([^)]*role:\s*TripMember\['role'\]/)
   })
 
