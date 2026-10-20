@@ -103,9 +103,47 @@ describe('saved-edit recovery presentation', () => {
     expect(html).toContain('Saved trip edit')
     expect(html).not.toContain('Authorized shared plan')
     expect(html).not.toContain('PRIVATE_QUEUED_TITLE')
-    expect(html).not.toContain('Download my copy')
+    expect(html).toContain('Download my copy')
     expect(html).toContain('Discard saved edit')
     expect(html).toContain('Retry')
+  })
+
+  it('offers the download to a demoted editor, because the copy is on this device', () => {
+    fixture.writes = [write({ state: 'failed', reason: 'access-revoked' })]
+    // The account can still READ the trip, but it can no longer edit it.
+    fixture.trips = [{ ...visibleTrip(), members: [{ userId: 'editor-one', role: 'viewer', joinedAt: 1 }] } as Trip]
+    const html = render()
+    expect(html).toContain('You can no longer edit this trip. Your saved copy stays on this device.')
+    expect(html).toContain('Download my copy')
+    expect(html).not.toContain('Retry')
+    expect(html).not.toContain('Replace shared plan')
+  })
+
+  it('states the reason and offers only the removal for a trip the server no longer has', () => {
+    fixture.writes = [write({ state: 'failed', reason: 'trip-unavailable' })]
+    fixture.trips = []
+    const html = render()
+    expect(html).toContain('This trip is no longer on the server. Your saved copy stays on this device.')
+    expect(html).toContain('Download my copy')
+    expect(html).toContain('Remove saved copy')
+    expect(html).not.toContain('Retry')
+  })
+
+  it('states the reason for a removed member', () => {
+    fixture.writes = [write({ state: 'failed', reason: 'access-removed' })]
+    fixture.trips = []
+    const html = render()
+    expect(html).toContain('You are no longer on this trip. Your saved copy stays on this device.')
+    expect(html).toContain('Download my copy')
+    expect(html).toContain('Remove saved copy')
+  })
+
+  it('never promises a download for a copy it cannot export', () => {
+    fixture.writes = [write({ state: 'failed', reason: 'access-revoked', trip: { id: 'shared-trip' } })]
+    fixture.trips = []
+    const html = render()
+    expect(html).toContain('This copy cannot be exported. It stays on this device.')
+    expect(html).not.toContain('Download my copy')
   })
 
   it('hides saved entries immediately after sign-out, even before effects run', () => {
@@ -164,13 +202,19 @@ describe('recovery access and async guard wiring', () => {
     expect(source).not.toContain('pendingWriteCount(')
   })
 
-  it('checks current account and membership again before downloading', () => {
+  it('checks the current account and the queued owner again before downloading', () => {
     const download = source.slice(source.indexOf('function download('), source.indexOf('if (online && writes.length'))
     expect(download).toContain('const current = getSnapshot()')
     expect(download).toContain('current.sessionUserId === userId')
-    expect(download).toContain('member.userId === userId')
     expect(download).toContain('write.ownerId !== userId')
-    expect(download.indexOf('!authorized')).toBeLessThan(download.indexOf('downloadTripJson(trip)'))
+    expect(download.indexOf('!owns')).toBeLessThan(download.indexOf('downloadTripJson(trip)'))
+    // The export does not need a live edit role. The copy is on this device.
+    expect(download).not.toContain("member.role === 'owner'")
+  })
+
+  it('gives the sync check a 44px target', () => {
+    const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
+    expect(css).toMatch(/\.offline-banner-summary \.btn\s*\{[^}]*min-height:\s*44px/)
   })
 
   it('uses token-based motion with a reduced-motion opt-out', () => {

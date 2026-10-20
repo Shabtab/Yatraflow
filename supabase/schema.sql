@@ -1008,7 +1008,9 @@ revoke all on function public.join_trip(text) from public, anon, authenticated;
 grant execute on function public.join_trip(text) to authenticated;
 
 -- Apply before the app update. Re-running preserves existing version values.
-begin;
+-- The migration wraps this block in a transaction. schema.sql does not: a fresh
+-- build runs the whole file as one script, and a nested transaction is not
+-- needed here.
 
 alter table public.trips add column if not exists write_version bigint not null default 0;
 
@@ -1045,8 +1047,6 @@ drop trigger if exists trips_advance_write_version on public.trips;
 create trigger trips_advance_write_version
   before insert or update on public.trips
   for each row execute function public.advance_trip_write_version();
-
-commit;
 
 -- #799: the owner_id guard is invoked by the table, so no client role needs
 -- execute on it. Revoked from the API roles by name, because `revoke ... from

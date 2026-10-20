@@ -424,30 +424,127 @@ describe('#783 offline replay protocol', () => {
     expect(state.writes).toEqual([])
   })
 
-  it('purges inaccessible edits when the current account loses its editable role', async () => {
+  it('keeps the queued copy with a reason when the account loses its editable role', async () => {
     const store = await fresh()
     await capture(store)
     state.members = state.members.map(member => member.user_id === 'A' ? { ...member, role: 'viewer' } : member)
     vi.stubGlobal('navigator', { onLine: true })
     expect(await store.replayQueuedWrites()).toBe(0)
     await flush()
-    expect(await pending()).toEqual([])
+    // The copy is not dropped. It stays for its owner with the reason attached.
+    const kept = await pending()
+    expect(kept).toHaveLength(1)
+    expect(kept[0]).toEqual(expect.objectContaining({
+      ownerId: 'A', tripId: 'shared', state: 'failed', reason: 'access-revoked',
+    }))
+    expect(state.writes).toEqual([])
+  })
+
+  it('keeps the queued copy with a reason when the account leaves the trip', async () => {
+    const store = await fresh()
+    await capture(store)
+    state.members = state.members.filter(member => member.user_id !== 'A')
+    vi.stubGlobal('navigator', { onLine: true })
+    expect(await store.replayQueuedWrites()).toBe(0)
+    await flush()
+    const kept = await pending()
+    expect(kept).toHaveLength(1)
+    expect(kept[0]).toEqual(expect.objectContaining({
+      ownerId: 'A', tripId: 'shared', state: 'failed', reason: 'access-removed',
+    }))
+    // The account cannot read the trip any more, so it leaves the list.
     expect(store.getSnapshot().trips).toEqual([])
     expect(state.writes).toEqual([])
   })
 
-  it.each(['DELETE', 'tombstone'] as const)('a realtime %s defeats held edits and the local echo guard', async removal => {
+  it('keeps a demoted reader in the trip list', async () => {
+    const store = await fresh()
+    await capture(store)
+    state.members = state.members.map(member => member.user_id === 'A' ? { ...member, role: 'viewer' } : member)
+    vi.stubGlobal('navigator', { onLine: true })
+    expect(await store.replayQueuedWrites()).toBe(0)
+    await flush()
+    // A demoted account can still READ the trip, so the trip stays in the list.
+    expect(store.getSnapshot().trips.map(t => t.id)).toEqual(['shared'])
+  })
+
+  it.each(['DELETE', 'tombstone'] as const)('a realtime %s keeps the copy with a reason and never resurrects the trip', async removal => {
     const store = await fresh(true)
     await capture(store)
     store._applyRealtimeEventForTest('trips', removal === 'DELETE'
       ? { eventType: 'DELETE', new: {}, old: { id: 'shared' } }
       : { eventType: 'UPDATE', new: { ...state.rows.get('shared'), deleted_at: '2026-10-17T00:00:00Z' }, old: {} })
     await flush()
+    // The trip is gone from the list. The owner's copy stays with the reason.
     expect(store.getSnapshot().trips).toEqual([])
-    expect(await pending()).toEqual([])
+    const kept = await pending()
+    expect(kept).toHaveLength(1)
+    expect(kept[0]).toEqual(expect.objectContaining({
+      ownerId: 'A', tripId: 'shared', state: 'failed', reason: 'trip-unavailable',
+    }))
     vi.stubGlobal('navigator', { onLine: true })
     expect(await store.replayQueuedWrites()).toBe(0)
     expect(state.writes).toEqual([])
+  })
+
+  it('never sends a copy that lost the right to write', async () => {
+    const store = await fresh()
+    await capture(store)
+    state.members = state.members.map(member => member.user_id === 'A' ? { ...member, role: 'viewer' } : member)
+    vi.stubGlobal('navigator', { onLine: true })
+    expect(await store.replayQueuedWrites()).toBe(0)
+    await flush()
+    // A later grant must not silently replay the revoked copy either.
+    state.members = state.members.map(member => member.user_id === 'A' ? { ...member, role: 'owner' } : member)
+    expect(await store.replayQueuedWrites()).toBe(0)
+    await flush()
+    expect(state.writes).toEqual([])
+  })
+
+  it('refuses a retry for a copy that lost the right to write', async () => {
+    const store = await fresh()
+    await capture(store)
+    state.members = state.members.map(member => member.user_id === 'A' ? { ...member, role: 'viewer' } : member)
+    vi.stubGlobal('navigator', { onLine: true })
+    expect(await store.replayQueuedWrites()).toBe(0)
+    await flush()
+    // The retry is refused, and the copy is still there to download.
+    expect(await store.resolveQueuedTripWrite('shared', 'retry')).toBe(false)
+    await flush()
+    expect(state.writes).toEqual([])
+    expect(await pending()).toHaveLength(1)
+  })
+
+  it('removes a revoked copy on an explicit discard', async () => {
+    const store = await fresh()
+    await capture(store)
+    state.members = state.members.map(member => member.user_id === 'A' ? { ...member, role: 'viewer' } : member)
+    vi.stubGlobal('navigator', { onLine: true })
+    expect(await store.replayQueuedWrites()).toBe(0)
+    await flush()
+    expect(await store.resolveQueuedTripWrite('shared', 'discard')).toBe(true)
+    await flush()
+    expect(await pending()).toEqual([])
+  })
+
+  it('keeps a revoked copy inside the account that made it', async () => {
+    const store = await fresh()
+    await capture(store, 'A private plan')
+    state.members = state.members.map(member => member.user_id === 'A' ? { ...member, role: 'viewer' } : member)
+    vi.stubGlobal('navigator', { onLine: true })
+    expect(await store.replayQueuedWrites()).toBe(0)
+    await flush()
+    const kept = await pending()
+    expect(kept).toHaveLength(1)
+    expect(kept[0].ownerId).toBe('A')
+    // Another account on this device must not see the copy or its title.
+    state.actor = 'B'
+    const next = await fresh(true)
+    expect(next.getSnapshot().sessionUserId).toBe('B')
+    expect(next.getSnapshot().trips.some(t => t.name === 'A private plan')).toBe(false)
+    expect(await next.replayQueuedWrites()).toBe(0)
+    expect(state.writes).toEqual([])
+    state.actor = 'A'
   })
 
   it('starts a fresh trip fetch after revoke and grant without reviving the stale response', async () => {
