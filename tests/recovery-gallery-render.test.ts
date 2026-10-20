@@ -102,6 +102,11 @@ describe('recovery state gallery', () => {
     fixture.trips = []
     capture('unavailable')
 
+    // 3b. The account is no longer on the trip.
+    fixture.writes = [write({ state: 'failed', reason: 'access-removed' })]
+    fixture.trips = []
+    capture('removed')
+
     // 4. A copy that cannot be exported. No download is promised.
     fixture.writes = [write({ state: 'failed', reason: 'access-revoked', trip: { id: 'shared-trip' } })]
     fixture.trips = []
@@ -121,7 +126,13 @@ describe('recovery state gallery', () => {
     fixture.online = false
     capture('offline')
 
-    expect(CASES).toHaveLength(7)
+    // 8. Offline, with a kept copy. The removal still works without a
+    // connection, because it only touches this device.
+    fixture.writes = [write({ state: 'failed', reason: 'access-revoked' })]
+    fixture.trips = [visibleTrip('viewer')]
+    capture('offline-kept-copy')
+
+    expect(CASES).toHaveLength(9)
     for (const item of CASES) expect(item.html.length).toBeGreaterThan(50)
   })
 
