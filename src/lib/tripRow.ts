@@ -271,8 +271,9 @@ export function tripToRow(trip: Trip, ownerId: string, cols?: OptionalColumnsPro
   //
   // This does NOT mean every cached row is complete. Two older paths still are
   // not: a legacy queue entry captured before this change can carry a partial
-  // snapshot (the overlay at store.ts:654), and the public itinerary RPC projects
-  // its own column set (store.ts:1335). Both predate this change.
+  // snapshot (the `queuedLocalTrips` overlay in store.ts), and fetchPublicTrip
+  // merges the public itinerary RPC, which projects its own column set. Both
+  // predate this change.
   if (cols?.tankL) row.tank_l = sanitizeTankL(trip.tankL)
   if (cols?.rentPerDayInr) row.rent_per_day_inr = sanitizeRentPerDayInr(trip.rentPerDayInr)
   if (cols?.localTrain) row.local_train = typeof trip.localTrain === 'boolean' ? trip.localTrain : null

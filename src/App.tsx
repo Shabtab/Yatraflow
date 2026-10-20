@@ -1,6 +1,6 @@
 // ============ YatraFlow app shell ============
 // Hash-based routing so the built app works from any static host or file://.
-import { Suspense, lazy, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import { InlineIcon } from './components/icons'
 import { createPortal } from 'react-dom'
 import {
@@ -13,7 +13,7 @@ import {
   shouldBrowserNotify,
 } from './lib/browserNotifications'
 import type { Notification, Trip } from './data/types'
-import { useDb, currentUser, useUsers, useNotifications, useSessionUserId, useSliceReads, logout, markAllNotificationsRead, tripById, joinViaInvite, reloadJoinedTrip, importTripPersisted, retryImportTrip, init, resumeSync, useStoreReady, fetchSharedTrip, fetchTripByInviteCode, viewerIsMemberOf, collectUnclaimedCovers } from './store/store'
+import { useDb, currentUser, useUsers, useNotifications, useSessionUserId, useIdentityGeneration, useSliceReads, logout, markAllNotificationsRead, tripById, joinViaInvite, reloadJoinedTrip, importTripPersisted, retryImportTrip, init, resumeSync, useStoreReady, fetchSharedTrip, fetchTripByInviteCode, viewerIsMemberOf, collectUnclaimedCovers } from './store/store'
 import { Avatar, BrandMark, ToastZone, useClickOutside, toast } from './components/ui'
 import { BottomNav } from './components/BottomNav'
 import { OfflineBanner } from './components/OfflineBanner'
@@ -36,9 +36,10 @@ import { StateBlock } from './components/page/StateBlock'
 import { LandingPage } from './pages/Landing'
 import { NativeHomePage } from './pages/NativeHome'
 import {
-  sharedSnapshotState, inviteGateState, inviteJoinOutcome, inviteAttempt,
+  sharedSnapshotState, inviteGateState,
   inviteLoginNext, inviteSignupNext, invitePreview,
-  type InviteAttempt, type InviteAttemptEvent, type InviteAttemptPlan,
+  joinMachine, initialJoinState, joinAllowsNavigation,
+  type JoinState, type JoinEvent, type JoinPlan, type JoinAction,
 } from './lib/inviteGateStates'
 // Route-level code splitting: only the landing page stays in the main chunk (it
 // is the app's front door and reads no store data); every other route -
@@ -916,7 +917,7 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
   // #804 (B1) — 'joined-unloaded' and 'join-failed' are distinct outcomes of a
   // join, kept apart from 'broken' (the link read failed) and 'retired' (a
   // trip-id link for a non-member). Each offers a different remedy.
-  const [status, setStatus] = useState<'loading' | 'broken' | 'joining' | 'retired' | 'joined-unloaded' | 'join-failed'>('loading')
+  const [status, setStatus] = useState<'loading' | 'broken' | 'retired'>('loading')
   // A dropped connection resolves to the same null as a dead code, so the
   // failure screen has to offer the one remedy that costs nothing: try again.
   const [retryTick, setRetryTick] = useState(0)
@@ -950,76 +951,109 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
     return () => { alive = false }
   }, [codeOrTripId, retryTick])
 
-  // #804 (B1/B2b) — the join try, bound to ONE account. A bare boolean here
-  // caused two bugs: a retry after a failed join never issued a second join
-  // (the guard stayed set), and the guard survived an account switch, so a new
-  // user inherited the previous user's "already joined" claim. inviteAttempt is
-  // the pure reducer for this; App.tsx and the tests run the same function.
-  const attemptRef = useRef<InviteAttempt | null>(null)
-  /** Run the join reducer, remember the result, and return what to do. */
-  const dispatchAttempt = (event: InviteAttemptEvent): InviteAttemptPlan => {
-    const plan = inviteAttempt(attemptRef.current, event)
-    attemptRef.current = plan.state
+  // #804 — the join flow owns its state in ONE place: the pure machine in
+  // inviteGateStates.ts. This component dispatches events and renders the phase.
+  // It holds no join flag of its own, which is what five Gate rounds kept
+  // finding: a bare ref, then a settled flag, then a reducer whose retry action
+  // was dropped. Every continuation quotes the try id and identity it
+  // started with, and the machine ignores it unless both still match.
+  const identityGen = useIdentityGeneration()
+  const [joinState, setJoinState] = useState<JoinState>(initialJoinState)
+  const joinStateRef = useRef<JoinState>(initialJoinState)
+  const dispatchJoin = useCallback((event: JoinEvent): JoinPlan => {
+    const plan = joinMachine(joinStateRef.current, event)
+    joinStateRef.current = plan.state
+    setJoinState(plan.state)
     return plan
-  }
+  }, [])
+  /** The join phase, or null before this account has tried anything. */
+  const phase = joinState.phase
+
+  /** Carry out one action from the machine. Every settlement quotes its try. */
+  const runJoinAction = useCallback((action: JoinAction, tripId: string, userId: string, gen: number, previewName?: string, inviteCode?: string) => {
+    if (action.type === 'none') return
+    const tryId = action.tryId
+    if (action.type === 'reload') {
+      void reloadJoinedTrip(tripId).then(
+        result => {
+          dispatchJoin({ type: 'reload-settled', userId, gen, tryId, result })
+        },
+        error => {
+          // A rejected read is a read failure, not a membership claim.
+          console.error('[yatraflow] reload after join rejected', error)
+          dispatchJoin({ type: 'reload-settled', userId, gen, tryId, result: 'joined-unloaded' })
+        },
+      )
+      return
+    }
+    void joinViaInvite(tripId, userId, inviteCode ?? '', previewName).then(
+      result => {
+        dispatchJoin({ type: 'join-settled', userId, gen, tryId, result })
+      },
+      error => {
+        console.error('[yatraflow] join rejected', error)
+        dispatchJoin({ type: 'join-settled', userId, gen, tryId, result: 'failed' })
+      },
+    )
+  }, [dispatchJoin])
 
   useEffect(() => {
     if (!me || !trip) return
-    // A member re-clicking the link just opens the trip - no re-join toast.
-    // The cached copy carries the viewer's membership; a fresh RPC fetch may
-    // not, so prefer the cache's memberful view for this check.
+    const plan = dispatchJoin({ type: 'begin', userId: me.id, gen: identityGen })
+    if (plan.action.type === 'none') return
+    // A member needs no join RPC: read the row instead.
     const cached = tripById(trip.id)
     const alreadyMember = (cached ?? trip).members?.some(m => m.userId === me.id)
-    const plan = dispatchAttempt({ type: 'begin', userId: me.id })
-    // StrictMode's second fire, and any re-render while a join is in flight or
-    // already settled, land here and do nothing.
-    if (plan.action !== 'join') return
     if (alreadyMember) {
-      // A member needs no join RPC: load the row, which also owes the owner at
-      // most one notification for this join.
-      void reloadJoinedTrip(trip.id).then(r => {
-        dispatchAttempt({ type: 'settle', userId: me.id, result: r })
-        if (r === 'joined') navigateRef.current(`/trip/${trip.id}`)
-        else if (r !== 'abandoned') setStatus('joined-unloaded')
-      })
+      const reloadPlan = dispatchJoin({ type: 'retry', userId: me.id, gen: identityGen })
+      if (reloadPlan.action.type === 'reload') runJoinAction(reloadPlan.action, trip.id, me.id, identityGen)
       return
     }
-    void (async () => {
-      // A trip-id link never joins. A member still opens the trip, and anyone
-      // else sees the explanation. The membership check reads only this
-      // viewer's own row, so no invite code is fetched for a non-member.
-      if (isTripIdLink) {
-        if (await viewerIsMemberOf(trip.id, me.id)) navigateRef.current(`/trip/${trip.id}`)
-        else setStatus('retired')
-        return
-      }
-      setStatus('joining')
-      // B1 — navigate ONLY when the trip was joined AND loaded. The decision and
-      // the retry it implies come from inviteJoinOutcome, so the branch the tests
-      // execute is the branch this code runs.
-      const result = await joinViaInvite(trip.id, me.id, trip.inviteCode ?? linkTarget, trip.name)
-      // B2b — settle only for the account that owns this try. A continuation
-      // from a previous account is dropped by the reducer, so a new user never
-      // inherits the old user's outcome.
-      const settled = dispatchAttempt({ type: 'settle', userId: me.id, result })
-      if (!settled.state || settled.state.userId !== me.id) return
-      const { outcome } = inviteJoinOutcome(result)
-      if (outcome === 'abandoned') return // another account owns this now
-      if (outcome === 'navigate') {
-        toast(`You’re on “${trip.name}” - happy planning!`)
-        navigateRef.current(`/trip/${trip.id}`)
-      } else if (outcome === 'unloaded') {
-        // The membership EXISTS. Retry re-reads the row only.
-        setStatus('joined-unloaded')
-      } else {
-        // No membership was created. Retry runs the join again.
-        setStatus('join-failed')
-      }
-    })()
-    // Depend on me/trip objects, not a mount-only []: the store hydrates them
-    // asynchronously after init(), so a one-shot effect ran before they
-    // existed and the invite never auto-joined.
-  }, [me, trip, isTripIdLink, linkTarget])
+    runJoinAction(plan.action, trip.id, me.id, identityGen, trip.name, trip.inviteCode ?? linkTarget)
+  }, [me, trip, identityGen, isTripIdLink, linkTarget, dispatchJoin, runJoinAction])
+
+  // B1 — a retry executes exactly one action HERE, from the action the machine
+  // returned. The old code dropped it and waited for the effect to notice, so the
+  // next 'begin' answered 'none' and no second join ever ran.
+  const retryJoin = () => {
+    if (!me || !trip) return
+    const plan = dispatchJoin({ type: 'retry', userId: me.id, gen: identityGen })
+    runJoinAction(plan.action, trip.id, me.id, identityGen, trip.name, trip.inviteCode ?? linkTarget)
+  }
+
+  // B3 — a new identity generation resets the machine, so a sign-out or a profile
+  // gap cannot leave a joined claim behind, and a same-account re-auth starts
+  // clean instead of stalling on a stale phase.
+  useEffect(() => {
+    if (joinStateRef.current.gen === identityGen) return
+    joinStateRef.current = initialJoinState
+    setJoinState(initialJoinState)
+  }, [identityGen])
+
+  // A trip-id link never joins. It opens the trip for a member and explains
+  // itself to anyone else. Guarded by identity so a late answer cannot navigate
+  // the new account (N1).
+  useEffect(() => {
+    if (!me || !trip || !isTripIdLink) return
+    let alive = true
+    const gen = identityGen
+    void viewerIsMemberOf(trip.id, me.id).then(isMember => {
+      if (!alive || gen !== identityGen) return
+      if (isMember) navigateRef.current(`/trip/${trip.id}`)
+      else setStatus('retired')
+    })
+    return () => { alive = false }
+  }, [me, trip, isTripIdLink, identityGen])
+
+  // The trip opens only from the machine's 'joined' phase, and only for the
+  // account that owns it.
+  useEffect(() => {
+    if (!trip || !me) return
+    if (!joinAllowsNavigation(joinState)) return
+    if (joinState.userId !== me.id || joinState.gen !== identityGen) return
+    toast(`You’re on “${trip.name}” - happy planning!`)
+    navigateRef.current(`/trip/${trip.id}`)
+  }, [joinState, me, trip, identityGen])
 
   /* The gate's own state. A read that failed and a link that is dead are
      different answers, and the code below never shows one as the other. */
@@ -1082,14 +1116,14 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
   if (gate === 'loading') {
     return (
       <div className="container yf-page page-enter">
-        <StateBlock kind="loading" title={status === 'joining' && trip ? `Joining “${trip.name}”…` : 'Opening invite…'} />
+        <StateBlock kind="loading" title={phase === 'joining' && trip ? `Joining “${trip.name}”…` : 'Opening invite…'} />
       </div>
     )
   }
 
   // #804 (B1) — joined, but the plan did not load. The user IS a member; only
   // the page read failed. Retry re-reads the row and never joins again.
-  if (status === 'joined-unloaded') {
+  if (phase === 'joined-unloaded') {
     return (
       <div className="container yf-page page-enter">
         <StateBlock
@@ -1099,19 +1133,7 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
           body="The plan did not load. You are on the crew, so this is a read problem, not a join problem. Try again, or open it from My trips."
           actions={(
             <div className="inv-actions">
-              <button className="btn btn-primary" onClick={() => {
-                if (!trip || !me) return
-                // B2b — the retry is bound to the account that is signed in NOW.
-                // A retry after a switch must not continue the old try.
-                const plan = dispatchAttempt({ type: 'retry-unloaded', userId: me.id })
-                if (plan.action !== 'reload') return
-                setStatus('joining')
-                void reloadJoinedTrip(trip.id).then(r => {
-                  dispatchAttempt({ type: 'settle', userId: me.id, result: r })
-                  if (r === 'joined') navigateRef.current(`/trip/${trip.id}`)
-                  else if (r !== 'abandoned') setStatus('joined-unloaded')
-                })
-              }}>Try again</button>
+              <button className="btn btn-primary" onClick={retryJoin}>Try again</button>
               <button className="btn btn-outline" onClick={() => onNavigate('/trips')}>Go to My trips</button>
             </div>
           )}
@@ -1122,7 +1144,7 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
 
   // #804 (B1) — the join itself failed, so no membership exists. Retry
   // runs the join again.
-  if (status === 'join-failed') {
+  if (phase === 'failed') {
     return (
       <div className="container yf-page page-enter">
         <StateBlock
@@ -1132,17 +1154,7 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
           body="The link may still be good — a dropped connection looks the same as a refused join. Try again, or ask the organiser for a fresh link."
           actions={(
             <div className="inv-actions">
-              <button className="btn btn-primary" onClick={() => {
-                if (!me) return
-                // B1 — this is the defect the Gate found: the old retry only
-                // reset the status and bumped retryTick, but the join guard
-                // stayed set, so the effect returned early and NO second join
-                // was ever issued. Clear the settled result so the effect runs
-                // the join again for THIS account.
-                dispatchAttempt({ type: 'retry-failed', userId: me.id })
-                setStatus('loading')
-                setRetryTick(t => t + 1)
-              }}>Try again</button>
+              <button className="btn btn-primary" onClick={retryJoin}>Try again</button>
               <button className="btn btn-outline" onClick={() => onNavigate('/')}>Go home</button>
             </div>
           )}
@@ -1217,7 +1229,7 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
 
   return (
     <div className="container yf-page page-enter">
-      <StateBlock kind="loading" title={status === 'joining' && trip ? `Joining “${trip.name}”…` : 'Opening invite…'} />
+      <StateBlock kind="loading" title={phase === 'joining' && trip ? `Joining “${trip.name}”…` : 'Opening invite…'} />
     </div>
   )
 }

@@ -30,104 +30,157 @@ export function inviteGateState(read: { loading: boolean; failed: boolean; trip:
 }
 
 /**
- * #804 (B1) — what the gate does after it tries to join.
+ * #804 — the join flow as ONE state machine.
  *
- * Three outcomes, three different screens, never shown as one another (R23):
- *   'navigate'  joined AND the full row is loaded. Open the trip.
- *   'unloaded'  the membership EXISTS but the row did not load. Stay on the gate
- *               and offer a retry that re-reads the row ONLY; joining again would
- *               write a second membership row and notify the owner twice.
- *   'failed'    no membership was created. Stay on the gate and offer a try
- *               that runs the join again.
+ * Five Gate rounds each found another place where the flow kept its own copy of
+ * "have we joined yet": a bare ref, then a settled flag, then a reducer whose
+ * retry action was dropped on the floor. The fix is to give the flow a single
+ * owner of its state, and to make every continuation carry the identity it
+ * started under so a late answer cannot land on someone else's screen.
  *
- * `reload` is the retry action for 'unloaded' and `rejoin` for 'failed', so the
- * caller cannot accidentally offer the wrong remedy.
+ *   idle             nothing has been tried for this account.
+ *   joining          the join RPC is in flight.
+ *   loading          the membership exists; the full row is being read.
+ *   joined           joined AND the row is cached. The only state that opens
+ *                    the trip.
+ *   joined-unloaded  the membership exists but the row did not load. A retry
+ *                    must re-read, never join again.
+ *   failed           no membership was created. A retry must join again.
+ *   abandoned        the try outlived its account. It does nothing.
+ *
+ * Every event carries `userId` and `gen` (the store's identity generation).
+ * A continuation also carries the try id it was started with. An event
+ * is applied only when all three still match, so:
+ *   - a sign-out, a sign-in, or a profile gap bumps `gen` and resets the machine;
+ *   - a late join answer from account A cannot settle account B's state;
+ *   - a retry issues exactly one new join, because it moves the phase itself
+ *     instead of asking a later effect to notice.
  */
-export type InviteJoinOutcome = 'navigate' | 'unloaded' | 'failed' | 'abandoned'
+export type JoinPhase = 'idle' | 'joining' | 'loading' | 'joined' | 'joined-unloaded' | 'failed' | 'abandoned'
 
-export function inviteJoinOutcome(result: 'joined' | 'joined-unloaded' | 'failed' | 'abandoned'): {
-  outcome: InviteJoinOutcome
-  retry: 'reload' | 'rejoin' | 'none'
-} {
-  if (result === 'joined') return { outcome: 'navigate', retry: 'none' }
-  if (result === 'joined-unloaded') return { outcome: 'unloaded', retry: 'reload' }
-  // An abandoned continuation belongs to a previous account. The new account's
-  // own try starts fresh, so this one does nothing at all.
-  if (result === 'abandoned') return { outcome: 'abandoned', retry: 'none' }
-  return { outcome: 'failed', retry: 'rejoin' }
+export interface JoinState {
+  phase: JoinPhase
+  /** The account this state belongs to; null before anyone is known. */
+  userId: string | null
+  /** The identity generation this state belongs to. */
+  gen: number
+  /** Monotonic id of the current try. Continuations must quote it back. */
+  tryId: number
+}
+
+/** What the caller must do in response to an event. */
+export type JoinAction =
+  | { type: 'none' }
+  | { type: 'join'; tryId: number }
+  | { type: 'reload'; tryId: number }
+
+export interface JoinPlan {
+  state: JoinState
+  action: JoinAction
+}
+
+export const initialJoinState: JoinState = { phase: 'idle', userId: null, gen: -1, tryId: 0 }
+
+export type JoinEvent =
+  /** The gate is ready for this account: start a join if nothing is in flight. */
+  | { type: 'begin'; userId: string; gen: number }
+  /** The user pressed Try again. Rejoins after 'failed', re-reads after 'joined-unloaded'. */
+  | { type: 'retry'; userId: string; gen: number }
+  /** A join RPC answered. Ignored unless it quotes the live try. */
+  | { type: 'join-settled'; userId: string; gen: number; tryId: number; result: JoinResult }
+  /** A full-row read answered. Ignored unless it quotes the live try. */
+  | { type: 'reload-settled'; userId: string; gen: number; tryId: number; result: JoinResult }
+
+/** The result of a join or a reload, as the store reports it. */
+export type JoinResult = 'joined' | 'joined-unloaded' | 'failed' | 'abandoned'
+
+/** True when the event belongs to the live try. */
+function isCurrent(state: JoinState, e: { userId: string; gen: number }): boolean {
+  return state.userId === e.userId && state.gen === e.gen
+}
+
+/** A continuation is live only when it also quotes the try id. */
+function isCurrentTry(state: JoinState, e: { userId: string; gen: number; tryId: number }): boolean {
+  return isCurrent(state, e) && state.tryId === e.tryId
 }
 
 /**
- * #804 (B1/B2b) — the join try, bound to ONE account.
- *
- * `joinedRef` was a bare boolean, which caused two bugs: a retry after a failed
- * join could never issue a second join (the guard was still set), and the guard
- * survived an account switch, so a new user inherited the previous user's
- * "already joined" claim.
- *
- * This state replaces it. Every field is per-account: `userId` names the owner,
- * and an event carrying a different id resets the whole thing. `settled` is null
- * while a join is in flight, which is what keeps StrictMode's double effect fire
- * to a single join.
+ * The reducer. Pure and total: every event yields a state and an action, so the
+ * tests execute the same transitions the app runs.
  */
-export interface InviteAttempt {
-  userId: string
-  /** How many joins have been started for this account. */
-  issued: number
-  /** The last settled result, or null while in flight. */
-  settled: 'joined' | 'joined-unloaded' | 'failed' | 'abandoned' | null
-}
+export function joinMachine(state: JoinState, event: JoinEvent): JoinPlan {
+  const none = (s: JoinState): JoinPlan => ({ state: s, action: { type: 'none' } })
 
-export type InviteAttemptEvent =
-  | { type: 'begin'; userId: string }
-  | { type: 'settle'; userId: string; result: 'joined' | 'joined-unloaded' | 'failed' | 'abandoned' }
-  | { type: 'retry-failed'; userId: string }
-  | { type: 'retry-unloaded'; userId: string }
-
-export interface InviteAttemptPlan {
-  state: InviteAttempt
-  /** What the caller must do now: start a join, re-read the row, or nothing. */
-  action: 'join' | 'reload' | 'none'
-}
-
-/**
- * The join reducer. Pure, so every transition is executable in a test.
- *
- *   begin           issue a join once per account; a second begin while one is
- *                   in flight does nothing (StrictMode), and a settled try
- *                   does nothing until a retry.
- *   settle          records the result, but ONLY for the account that owns the
- *                   try: a late answer from a previous account is dropped.
- *   retry-failed    clears the settled result and issues another join.
- *   retry-unloaded  clears the settled result and re-reads the row. It never
- *                   joins again, so a retry cannot write a second membership
- *                   row or notify the owner twice.
- */
-export function inviteAttempt(
-  previous: InviteAttempt | null,
-  event: InviteAttemptEvent,
-): InviteAttemptPlan {
-  const owns = previous !== null && previous.userId === event.userId
   switch (event.type) {
     case 'begin': {
-      if (!owns) return { state: { userId: event.userId, issued: 1, settled: null }, action: 'join' }
-      // Already in flight, or already settled: nothing to do.
-      return { state: previous!, action: 'none' }
+      // A different account or a new identity generation starts clean.
+      if (!isCurrent(state, event)) {
+        const fresh: JoinState = { phase: 'joining', userId: event.userId, gen: event.gen, tryId: state.tryId + 1 }
+        return { state: fresh, action: { type: 'join', tryId: fresh.tryId } }
+      }
+      // Same account: a join in flight, a load in flight, or an already-joined
+      // trip does nothing. This is what makes StrictMode's double fire one join.
+      if (state.phase === 'joining' || state.phase === 'loading' || state.phase === 'joined') return none(state)
+      // 'failed' and 'abandoned' are terminal until the user retries: the effect
+      // must not loop on a failed join. 'joined-unloaded' is likewise waiting.
+      if (state.phase === 'joined-unloaded') return none(state)
+      const fresh: JoinState = { ...state, phase: 'joining', tryId: state.tryId + 1 }
+      return { state: fresh, action: { type: 'join', tryId: fresh.tryId } }
     }
-    case 'settle': {
-      // A stale continuation from another account must not touch this one.
-      if (!owns) return { state: previous!, action: 'none' }
-      return { state: { ...previous!, settled: event.result }, action: 'none' }
+
+    case 'retry': {
+      // The retry is bound to the account that is signed in NOW.
+      if (!isCurrent(state, event)) {
+        const fresh: JoinState = { phase: 'joining', userId: event.userId, gen: event.gen, tryId: state.tryId + 1 }
+        return { state: fresh, action: { type: 'join', tryId: fresh.tryId } }
+      }
+      if (state.phase === 'joined-unloaded') {
+        // The membership EXISTS: re-read the row, never join again.
+        const next: JoinState = { ...state, phase: 'loading', tryId: state.tryId + 1 }
+        return { state: next, action: { type: 'reload', tryId: next.tryId } }
+      }
+      if (state.phase === 'joining' || state.phase === 'loading') return none(state)
+      // 'failed', 'abandoned', 'idle' and 'joined' all rejoin. 'joined' cannot
+      // normally be retried (it navigates), and rejoining it is harmless.
+      const next: JoinState = { ...state, phase: 'joining', tryId: state.tryId + 1 }
+      return { state: next, action: { type: 'join', tryId: next.tryId } }
     }
-    case 'retry-failed': {
-      if (!owns) return { state: { userId: event.userId, issued: 1, settled: null }, action: 'join' }
-      return { state: { ...previous!, issued: previous!.issued + 1, settled: null }, action: 'join' }
+
+    case 'join-settled': {
+      // A late answer from a previous account, or for a superseded tryId,
+      // must not touch this state.
+      if (!isCurrentTry(state, event)) return none(state)
+      return { state: { ...state, phase: phaseFor(event.result) }, action: { type: 'none' } }
     }
-    case 'retry-unloaded': {
-      if (!owns) return { state: { userId: event.userId, issued: 1, settled: null }, action: 'reload' }
-      return { state: { ...previous!, settled: null }, action: 'reload' }
+
+    case 'reload-settled': {
+      if (!isCurrentTry(state, event)) return none(state)
+      // A reload can never claim a join it did not make: 'abandoned' stays
+      // abandoned, and a 'failed' reload means the row could not be read, which
+      // for a caller who is already a member is 'joined-unloaded'.
+      const phase: JoinPhase = event.result === 'joined' ? 'joined'
+        : event.result === 'abandoned' ? 'abandoned'
+        : 'joined-unloaded'
+      return { state: { ...state, phase }, action: { type: 'none' } }
     }
   }
+}
+
+function phaseFor(result: JoinResult): JoinPhase {
+  if (result === 'joined') return 'joined'
+  if (result === 'joined-unloaded') return 'joined-unloaded'
+  if (result === 'abandoned') return 'abandoned'
+  return 'failed'
+}
+
+/** True when the machine says the trip may be opened. */
+export function joinAllowsNavigation(state: JoinState): boolean {
+  return state.phase === 'joined'
+}
+
+/** True when the screen must offer a Try again. */
+export function joinOffersRetry(state: JoinState): boolean {
+  return state.phase === 'joined-unloaded' || state.phase === 'failed'
 }
 
 /** The state of the shared snapshot's decode.

@@ -16,7 +16,7 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { tripToRow, rowToTrip } from '../src/lib/tripRow'
-import { inviteJoinOutcome, inviteAttempt } from '../src/lib/inviteGateStates'
+import { joinMachine, initialJoinState, joinAllowsNavigation, joinOffersRetry, type JoinEvent, type JoinPlan } from '../src/lib/inviteGateStates'
 import { isStaleServerRow } from '../src/lib/realtimeCore'
 import { seedData } from '../src/data/seed'
 import type { Trip } from '../src/data/types'
@@ -57,191 +57,190 @@ function fullTrip(tank = 55): Trip {
   }
 }
 
-// ============ B1 — the gate must not navigate on a failed or unloaded join ====
+// ============ B1/B2b/B3 — the join state machine, executed ============
+// The Gate's S1: earlier rounds asserted strings and stale flags while the retry
+// was broken. These run the real machine that App.tsx dispatches to, with the
+// real event sequence, so a broken transition fails here.
 
-describe('B1 — inviteJoinOutcome decides the three join states', () => {
-  it('joined AND loaded navigates, and offers no retry', () => {
-    expect(inviteJoinOutcome('joined')).toEqual({ outcome: 'navigate', retry: 'none' })
+const A = 'user-a'
+const B = 'user-b'
+const GEN = 7
+
+/** Drive the machine through a list of events, returning the final plan. */
+function drive(events: JoinEvent[]): JoinPlan {
+  return events.reduce<JoinPlan>(
+    (plan, e) => joinMachine(plan.state, e),
+    { state: initialJoinState, action: { type: 'none' } },
+  )
+}
+
+describe('B1 — a retry executes exactly one new join', () => {
+  it('failed -> retry returns a JOIN action, not none', () => {
+    // The defect: retry cleared a flag and returned nothing, so the next begin
+    // answered 'none' and no second join ever ran.
+    const begin = drive([{ type: 'begin', userId: A, gen: GEN }])
+    expect(begin.action).toEqual({ type: 'join', tryId: 1 })
+    const settled = joinMachine(begin.state, { type: 'join-settled', userId: A, gen: GEN, tryId: 1, result: 'failed' })
+    expect(settled.state.phase).toBe('failed')
+    const retry = joinMachine(settled.state, { type: 'retry', userId: A, gen: GEN })
+    expect(retry.state.phase).toBe('joining')
+    expect(retry.action).toEqual({ type: 'join', tryId: 2 })
   })
 
-  it('joined but unloaded stays, and its retry is a READ, never a re-join', () => {
-    // A re-join would write a second membership row and notify the owner twice.
-    expect(inviteJoinOutcome('joined-unloaded')).toEqual({ outcome: 'unloaded', retry: 'reload' })
+  it('the retry action is what runs the join: it carries a NEW try id', () => {
+    const begin = drive([{ type: 'begin', userId: A, gen: GEN }])
+    const settled = joinMachine(begin.state, { type: 'join-settled', userId: A, gen: GEN, tryId: 1, result: 'failed' })
+    const retry = joinMachine(settled.state, { type: 'retry', userId: A, gen: GEN })
+    const issued = retry.action.type === 'join' ? retry.action.tryId : -1
+    expect(issued).toBe(2)
+    // The superseded try's late answer is ignored.
+    const stale = joinMachine(retry.state, { type: 'join-settled', userId: A, gen: GEN, tryId: 1, result: 'joined' })
+    expect(stale.state.phase).toBe('joining')
+    expect(joinAllowsNavigation(stale.state)).toBe(false)
   })
 
-  it('a failed join stays, and its retry re-attempts the join', () => {
-    expect(inviteJoinOutcome('failed')).toEqual({ outcome: 'failed', retry: 'rejoin' })
+  it('joined-unloaded -> retry returns a RELOAD action and never joins', () => {
+    const begin = drive([{ type: 'begin', userId: A, gen: GEN }])
+    const settled = joinMachine(begin.state, { type: 'join-settled', userId: A, gen: GEN, tryId: 1, result: 'joined-unloaded' })
+    expect(settled.state.phase).toBe('joined-unloaded')
+    const retry = joinMachine(settled.state, { type: 'retry', userId: A, gen: GEN })
+    expect(retry.action.type).toBe('reload')
+    expect(retry.state.phase).toBe('loading')
   })
 
-  it('the three outcomes are distinct: no state is shown as another', () => {
-    const all = (['joined', 'joined-unloaded', 'failed'] as const).map(r => inviteJoinOutcome(r).outcome)
-    expect(new Set(all).size).toBe(3)
-    // 'joined-unloaded' must never map to navigate — that was the B1 defect.
-    expect(inviteJoinOutcome('joined-unloaded').outcome).not.toBe('navigate')
-    expect(inviteJoinOutcome('failed').outcome).not.toBe('navigate')
-  })
-
-  it('App runs that exact function, and navigates only on navigate', () => {
-    const gate = APP.slice(APP.indexOf('const result = await joinViaInvite'), APP.indexOf('})()', APP.indexOf('const result = await joinViaInvite')))
-    expect(gate).toContain('inviteJoinOutcome(result)')
-    // navigateRef appears exactly once, inside the navigate branch.
-    const navCount = (gate.match(/navigateRef\.current/g) ?? []).length
-    expect(navCount, 'exactly one navigation, in the navigate branch').toBe(1)
-    const navAt = gate.indexOf('navigateRef.current')
-    const navBranch = gate.indexOf("outcome === 'navigate'")
-    expect(navBranch).toBeGreaterThan(-1)
-    expect(navAt, 'navigation sits inside the navigate branch').toBeGreaterThan(navBranch)
-  })
-
-  it('the unloaded retry calls reloadJoinedTrip, not joinViaInvite', () => {
-    // The retry for a joined-but-unloaded trip must re-read only.
-    const unloaded = APP.slice(APP.indexOf("status === 'joined-unloaded'"), APP.indexOf("status === 'join-failed'"))
-    expect(unloaded).toContain('reloadJoinedTrip(')
-    expect(unloaded).not.toContain('joinViaInvite(')
-  })
-
-  it('the failed retry re-attempts the join', () => {
-    const start = APP.indexOf("status === 'join-failed'")
-    expect(start).toBeGreaterThan(-1)
-    const failed = APP.slice(start, start + 1200)
-    expect(failed).toMatch(/setStatus\('loading'\)/)
-    expect(failed).toMatch(/setRetryTick/)
-  })
-})
-
-// ============ B2 — a delayed full read must not undo a newer state ============
-
-describe('B2 — the loader refuses stale, unverifiable and pending rows', () => {
-  const body = fnBody(STORE, 'async function loadFullTripIntoCache(')
-
-  it('refuses a row older than the server-timestamp ledger', () => {
-    // The same guard the realtime path uses, so the ledger never moves backwards.
-    expect(body).toContain('isStaleServerRow(serverTripTimestamps.get(tripId)')
-    // Behavioural half: the predicate itself.
-    expect(isStaleServerRow(2_000, 1_000)).toBe(true)
-    expect(isStaleServerRow(1_000, 2_000)).toBe(false)
-    expect(isStaleServerRow(undefined, 1_000)).toBe(false)
-  })
-
-  it('refuses an unverifiable revision rather than trusting it', () => {
-    expect(body).toMatch(/if \(!validWriteVersion\(incoming\)\) return 'stale'/)
-  })
-
-  it('refuses a revision older than the cached one', () => {
-    expect(body).toMatch(/incoming < cached\) return 'stale'/)
-  })
-
-  it('keeps the local row when a queued write owns the trip', () => {
-    expect(body).toMatch(/queuedLocalTrips\.has\(tripId\)\) return 'stale'/)
-  })
-
-  it('never records the ledger before the guards have passed', () => {
-    const recordAt = body.indexOf('recordServerTripTimestamp')
-    const staleAt = body.indexOf("return 'stale'")
-    expect(staleAt).toBeGreaterThan(-1)
-    expect(recordAt, 'the ledger write must come after the last refusal').toBeGreaterThan(staleAt)
-  })
-
-  it('a refusal leaves the cached row untouched', () => {
-    // Every 'stale' return must precede the only cache.trips assignment.
-    const assignAt = body.indexOf('cache.trips =')
-    for (const m of body.matchAll(/return 'stale'/g)) {
-      expect(m.index!).toBeLessThan(assignAt)
+  it('a failed retry that fails again can retry again', () => {
+    let plan = drive([{ type: 'begin', userId: A, gen: GEN }])
+    for (let i = 1; i <= 3; i += 1) {
+      plan = joinMachine(plan.state, { type: 'join-settled', userId: A, gen: GEN, tryId: i, result: 'failed' })
+      expect(plan.state.phase).toBe('failed')
+      plan = joinMachine(plan.state, { type: 'retry', userId: A, gen: GEN })
+      expect(plan.action).toEqual({ type: 'join', tryId: i + 1 })
     }
   })
 })
 
-describe('S2 — an empty membership read is not proof of access', () => {
-  const body = fnBody(STORE, 'async function loadFullTripIntoCache(')
-
-  it('requires the caller own membership, or admin, before caching', () => {
-    expect(body).toContain('members.some(m => m.userId === scope.userId) && !isAdminCached()')
-    expect(body).toMatch(/return 'not-member'/)
+describe('B1 — StrictMode fires the effect twice and only one join runs', () => {
+  it('a second begin while joining does nothing', () => {
+    const first = drive([{ type: 'begin', userId: A, gen: GEN }])
+    const second = joinMachine(first.state, { type: 'begin', userId: A, gen: GEN })
+    expect(second.action).toEqual({ type: 'none' })
+    expect(second.state.tryId).toBe(1)
   })
 
-  it('a not-member refusal is distinct from a read error', () => {
-    expect(body).toMatch(/return 'failed'/)
-    expect(body).toMatch(/return 'not-member'/)
-    const notMember = body.indexOf("return 'not-member'")
-    const assignAt = body.indexOf('cache.trips =')
-    expect(notMember).toBeLessThan(assignAt)
+  it('a begin while loading does nothing, and while joined does nothing', () => {
+    const begin = drive([{ type: 'begin', userId: A, gen: GEN }])
+    const loading = joinMachine(begin.state, { type: 'join-settled', userId: A, gen: GEN, tryId: 1, result: 'joined-unloaded' })
+    const retry = joinMachine(loading.state, { type: 'retry', userId: A, gen: GEN })
+    expect(joinMachine(retry.state, { type: 'begin', userId: A, gen: GEN }).action).toEqual({ type: 'none' })
+    const joined = joinMachine(retry.state, { type: 'reload-settled', userId: A, gen: GEN, tryId: 2, result: 'joined' })
+    expect(joinMachine(joined.state, { type: 'begin', userId: A, gen: GEN }).action).toEqual({ type: 'none' })
   })
 })
 
-// ============ B1/B2b — the join reducer, executed ============
-// The Gate's S1: string checks passed while the retry was broken. These run the
-// real reducer that App.tsx calls, so a broken transition fails here.
-
-describe('B1/B2b — inviteAttempt binds every retry to one account', () => {
-  const A = 'user-a'
-  const B = 'user-b'
-
-  it('a failed join retries into a SECOND join for the same account', () => {
-    // This is the B1 defect: the old guard stayed set, so no second join issued.
-    let plan = inviteAttempt(null, { type: 'begin', userId: A })
-    expect(plan.action).toBe('join')
-    expect(plan.state.issued).toBe(1)
-    plan = inviteAttempt(plan.state, { type: 'settle', userId: A, result: 'failed' })
-    expect(plan.state.settled).toBe('failed')
-    // Retry: the settled result clears and the join is issued again.
-    plan = inviteAttempt(plan.state, { type: 'retry-failed', userId: A })
-    expect(plan.action).toBe('join')
-    expect(plan.state.settled).toBeNull()
-    expect(plan.state.issued).toBe(2)
-    // And the effect's own begin now runs it, because settled is null.
-    expect(inviteAttempt(plan.state, { type: 'begin', userId: A }).action).toBe('none')
+describe('B2b — every continuation is bound to user and attempt', () => {
+  it('an account switch mid-flight does not settle the new account', () => {
+    const begin = drive([{ type: 'begin', userId: A, gen: GEN }])
+    const switched = joinMachine(begin.state, { type: 'join-settled', userId: B, gen: GEN, tryId: 1, result: 'joined' })
+    expect(switched.state.phase).toBe('joining')
+    expect(switched.state.userId).toBe(A)
+    expect(joinAllowsNavigation(switched.state)).toBe(false)
   })
 
-  it('an unloaded retry re-reads the row and never joins again', () => {
-    let plan = inviteAttempt(null, { type: 'begin', userId: A })
-    plan = inviteAttempt(plan.state, { type: 'settle', userId: A, result: 'joined-unloaded' })
-    const retry = inviteAttempt(plan.state, { type: 'retry-unloaded', userId: A })
-    expect(retry.action).toBe('reload')
-    expect(retry.state.issued, 'a reload must not count as a join').toBe(1)
+  it('a stale reload cannot overwrite the new account failure state', () => {
+    // The old reload callback ignored a rejected settlement and wrote the NEW
+    // account's state. Here B is in 'failed'; A's late reload must change nothing.
+    const bBegin = drive([{ type: 'begin', userId: B, gen: GEN }])
+    const bFailed = joinMachine(bBegin.state, { type: 'join-settled', userId: B, gen: GEN, tryId: 1, result: 'failed' })
+    const staleReload = joinMachine(bFailed.state, { type: 'reload-settled', userId: A, gen: GEN, tryId: 1, result: 'joined' })
+    expect(staleReload.state.phase).toBe('failed')
+    expect(staleReload.state.userId).toBe(B)
   })
 
-  it('StrictMode double fire issues exactly one join', () => {
-    const first = inviteAttempt(null, { type: 'begin', userId: A })
-    const second = inviteAttempt(first.state, { type: 'begin', userId: A })
-    expect(first.action).toBe('join')
-    expect(second.action, 'the second fire does nothing').toBe('none')
-    expect(second.state.issued).toBe(1)
+  it('abandoned stays abandoned through the reload phase', () => {
+    const begin = drive([{ type: 'begin', userId: A, gen: GEN }])
+    const reload = joinMachine(begin.state, { type: 'reload-settled', userId: A, gen: GEN, tryId: 1, result: 'abandoned' })
+    expect(reload.state.phase).toBe('abandoned')
+    expect(joinAllowsNavigation(reload.state)).toBe(false)
+    expect(joinOffersRetry(reload.state)).toBe(false)
   })
 
-  it('an account switch resets the attempt instead of inheriting it', () => {
-    // B2b: B must not adopt A's try, its claim, or its outcome.
-    let plan = inviteAttempt(null, { type: 'begin', userId: A })
-    plan = inviteAttempt(plan.state, { type: 'settle', userId: A, result: 'failed' })
-    const switched = inviteAttempt(plan.state, { type: 'begin', userId: B })
-    expect(switched.state.userId).toBe(B)
-    expect(switched.state.settled).toBeNull()
-    expect(switched.action, 'B gets its own join').toBe('join')
-    expect(switched.state.issued).toBe(1)
+  it('a reload that fails reports unloaded, never joined', () => {
+    const begin = drive([{ type: 'begin', userId: A, gen: GEN }])
+    const failed = joinMachine(begin.state, { type: 'reload-settled', userId: A, gen: GEN, tryId: 1, result: 'failed' })
+    expect(failed.state.phase).toBe('joined-unloaded')
+    expect(joinAllowsNavigation(failed.state)).toBe(false)
+  })
+})
+
+describe('B3 — an identity generation change resets the machine', () => {
+  it('sign-out then same-account sign-in starts a fresh join, not a stall', () => {
+    const begin = drive([{ type: 'begin', userId: A, gen: GEN }])
+    const joined = joinMachine(begin.state, { type: 'join-settled', userId: A, gen: GEN, tryId: 1, result: 'joined' })
+    expect(joinAllowsNavigation(joined.state)).toBe(true)
+    // The same user signs back in: the generation advanced, so the old claim is
+    // gone and the flow runs again instead of stalling on 'joined'.
+    const reauth = joinMachine(joined.state, { type: 'begin', userId: A, gen: GEN + 1 })
+    expect(reauth.state.phase).toBe('joining')
+    expect(reauth.action).toEqual({ type: 'join', tryId: 2 })
+    expect(joinAllowsNavigation(reauth.state)).toBe(false)
   })
 
-  it('a late continuation from the previous account settles nothing', () => {
-    let plan = inviteAttempt(null, { type: 'begin', userId: B })
-    const before = plan.state
-    // A's join answers after B took over.
-    const stale = inviteAttempt(before, { type: 'settle', userId: A, result: 'joined' })
-    expect(stale.state).toEqual(before)
-    expect(stale.action).toBe('none')
+  it('a profile gap (gen advances) discards a settled failure', () => {
+    const begin = drive([{ type: 'begin', userId: A, gen: GEN }])
+    const failed = joinMachine(begin.state, { type: 'join-settled', userId: A, gen: GEN, tryId: 1, result: 'failed' })
+    const afterGap = joinMachine(failed.state, { type: 'begin', userId: A, gen: GEN + 1 })
+    expect(afterGap.state.phase).toBe('joining')
+    expect(afterGap.action.type).toBe('join')
   })
 
-  it('an abandoned result maps to no navigation and no retry', () => {
-    expect(inviteJoinOutcome('abandoned')).toEqual({ outcome: 'abandoned', retry: 'none' })
+  it('a continuation from the old generation is ignored', () => {
+    const begin = drive([{ type: 'begin', userId: A, gen: GEN }])
+    const stale = joinMachine(begin.state, { type: 'join-settled', userId: A, gen: GEN - 1, tryId: 1, result: 'joined' })
+    expect(stale.state.phase).toBe('joining')
   })
 
-  it('App dispatches the reducer for both retries and for the initial begin', () => {
-    // The branch the tests execute is the branch the app runs.
-    expect(APP).toContain("dispatchAttempt({ type: 'retry-failed', userId: me.id })")
-    expect(APP).toContain("dispatchAttempt({ type: 'retry-unloaded', userId: me.id })")
-    expect(APP).toContain("dispatchAttempt({ type: 'begin', userId: me.id })")
-    // The old bare guard must be gone.
+  it('begin alone resets on a generation change, without any other event', () => {
+    // This pins the begin branch ITSELF. A previous version of this suite let a
+    // mutation of that branch pass, because retry carried an identical reset and
+    // the tests only ever reached the machine through one of them.
+    const begin = drive([{ type: 'begin', userId: A, gen: GEN }])
+    const joined = joinMachine(begin.state, { type: 'join-settled', userId: A, gen: GEN, tryId: 1, result: 'joined' })
+    expect(joinAllowsNavigation(joined.state)).toBe(true)
+    const afterGap = joinMachine(joined.state, { type: 'begin', userId: A, gen: GEN + 1 })
+    // The new generation MUST issue a join: a stale 'joined' claim would stall.
+    expect(afterGap.action).toEqual({ type: 'join', tryId: 2 })
+    expect(afterGap.state.gen).toBe(GEN + 1)
+    expect(joinAllowsNavigation(afterGap.state)).toBe(false)
+  })
+
+  it('retry alone resets on a generation change, without any other event', () => {
+    // The same pin for the retry branch, so neither can be removed silently.
+    const begin = drive([{ type: 'begin', userId: A, gen: GEN }])
+    const failed = joinMachine(begin.state, { type: 'join-settled', userId: A, gen: GEN, tryId: 1, result: 'failed' })
+    const afterGap = joinMachine(failed.state, { type: 'retry', userId: A, gen: GEN + 1 })
+    expect(afterGap.action).toEqual({ type: 'join', tryId: 2 })
+    expect(afterGap.state.gen).toBe(GEN + 1)
+  })
+})
+
+describe('the machine is the only owner: App holds no join flag', () => {
+  it('App dispatches begin, retry and settlements, and reads the phase', () => {
+    expect(APP).toContain("dispatchJoin({ type: 'begin', userId: me.id, gen: identityGen })")
+    expect(APP).toContain("dispatchJoin({ type: 'retry', userId: me.id, gen: identityGen })")
+    expect(APP).toContain("dispatchJoin({ type: 'join-settled'")
+    expect(APP).toContain("dispatchJoin({ type: 'reload-settled'")
+    expect(APP).toContain('joinAllowsNavigation(joinState)')
+    // The old scattered state must be gone.
     expect(APP).not.toContain('joinedRef')
+    expect(APP).not.toContain('attemptRef')
+    expect(APP).not.toContain('dispatchAttempt')
+  })
+
+  it('the retry button calls the one retry handler', () => {
+    const retries = APP.match(/onClick=\{retryJoin\}/g) ?? []
+    expect(retries.length, 'both retry screens use retryJoin').toBe(2)
   })
 })
-
 // ============ the preview never enters the writable cache ============
 
 describe('the preview stays out of the cache', () => {

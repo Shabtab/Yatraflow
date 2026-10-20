@@ -156,6 +156,20 @@ export function useSessionUserId(): ID | null {
   return useSyncExternalStore(subscribe, () => cache.sessionUserId)
 }
 
+/**
+ * #804 (B3) — the identity generation, observable from React.
+ *
+ * `identityEpoch` advances on every auth change: a sign-in, a sign-out, or a
+ * profile gap. A component that holds state keyed to "who is signed in" must
+ * reset when this changes, because the same user id can sign out and back in and
+ * is then a NEW session with its own queues and its own access.
+ *
+ * The value itself is meaningless; only a change matters.
+ */
+export function useIdentityGeneration(): number {
+  return useSyncExternalStore(subscribe, () => identityEpoch)
+}
+
 /** Synchronous read of the session's admin flag (true only after the first
  *  successful hydrate fetched the JWT role). Gates the #/admin route. */
 export function useIsAdmin(): boolean {
@@ -3329,9 +3343,9 @@ export async function joinViaInvite(
 ): Promise<JoinResult> {
   const cached = tripById(tripId)
   if (cached?.members?.some(m => m.userId === userId)) {
-    // Already a member: the plan may still need loading, and the owner may still
-    // owe the one notification for this join. Both are handled by the reload.
-    return finishJoin(tripId, userId, previewName)
+    // Already a member: this call writes no membership, so the owner is owed no
+    // notification for it (S3). The plan may still need loading.
+    return finishJoin(tripId, userId, false, previewName)
   }
   // B2a — capture WHO is joining, and this trip's access generation, BEFORE the
   // RPC. The RPC is a network round trip: an account switch or a revocation can
@@ -3341,6 +3355,15 @@ export async function joinViaInvite(
   const scope = identityScope()
   const accessEpoch = tripAccessEpochs.get(tripId) ?? 0
   if (!scope || scope.userId !== userId) return 'failed'
+  // S3 — the cache cannot answer "is this caller already a member?" when the
+  // trip came from the uncached preview, and join_trip's `on conflict do
+  // nothing` cannot report whether it inserted. So ask the membership table.
+  // A member who re-opens a link must not trigger a "joined as editor" notice,
+  // and must not need a write at all.
+  if (await viewerIsMemberOf(tripId, userId)) {
+    if (!isCurrentIdentity(scope) || (tripAccessEpochs.get(tripId) ?? 0) !== accessEpoch) return 'abandoned'
+    return finishJoin(tripId, userId, false, previewName)
+  }
   const joinedAt = Date.now()
   // join_trip() takes the invite code, never a trip id. It adds the signed-in
   // user as an editor. It returns the trip id, or null for a dead code.
@@ -3362,7 +3385,8 @@ export async function joinViaInvite(
   // mutateTrip is a no-op; the full fetch below supplies the row.
   mutateTrip(tripId, draft => { draft.members = [...(draft.members ?? []), { userId, role, joinedAt }] }, { touch: false })
   addActivity(tripId, userId, 'joined via invite link', 'Members')
-  return finishJoin(tripId, userId, previewName)
+  // This call created the membership, so the owner is owed one notification.
+  return finishJoin(tripId, userId, true, previewName)
 }
 
 /**
@@ -3378,18 +3402,40 @@ export async function joinViaInvite(
  * fires only when this caller's membership is present in the row that was just
  * loaded, and `notifiedJoins` records that it has been sent for this trip+user.
  */
-async function finishJoin(tripId: ID, userId: ID, previewName?: string): Promise<JoinResult> {
+/**
+ * #804 — the half of a join that runs after the membership exists: load the full
+ * row, then send the owner notification exactly once.
+ *
+ * B2 — an ABANDONED load is carried through unchanged. It means the caller's
+ * account changed mid-flight, so this client does not know whether a membership
+ * exists; reporting 'joined-unloaded' would claim a membership the caller may not
+ * have. Only a genuine read failure is 'joined-unloaded'.
+ *
+ * S3 — `owed` is true only when THIS call wrote a membership. A reload for an
+ * existing member passes false, so re-clicking an invite never tells the owner
+ * that an existing member "joined as editor".
+ */
+async function finishJoin(tripId: ID, userId: ID, owed: boolean, previewName?: string): Promise<JoinResult> {
   const loaded = await loadFullTripIntoCache(tripId)
+  if (loaded === 'abandoned') return 'abandoned'
   if (loaded !== 'loaded') {
     console.error('[yatraflow] joined, but the full trip row could not be read back', { tripId, outcome: loaded })
     return 'joined-unloaded'
   }
   // AFTER the load: notifyOwnerOf reads the trip's owner from the cache, and
   // before the load there is no cached row to read it from.
-  const key = `${tripId}:${userId}`
-  if (!notifiedJoins.has(key)) {
-    notifiedJoins.add(key)
-    notifyOwnerOf(tripId, `${userName(userId)} joined ${previewName ? `“${previewName}”` : 'your trip'} as editor.`)
+  if (owed) {
+    const key = `${tripId}:${userId}`
+    if (!notifiedJoins.has(key)) {
+      notifiedJoins.add(key)
+      // N3 — this set is bounded and in-memory. It suppresses a duplicate notice
+      // for the SAME join after a failed load. It does not persist, so a reload
+      // of the app may send one duplicate, and a leave-and-rejoin later in the
+      // same session sends no second notice. The guarantee is "at most one per
+      // trip per user per session", not "exactly one ever".
+      if (notifiedJoins.size > 500) notifiedJoins.clear()
+      notifyOwnerOf(tripId, `${userName(userId)} joined ${previewName ? `“${previewName}”` : 'your trip'} as editor.`)
+    }
   }
   return 'joined'
 }
@@ -3398,21 +3444,24 @@ async function finishJoin(tripId: ID, userId: ID, previewName?: string): Promise
  * Trips+users whose owner notification has been sent, so a retry after a failed
  * load sends it once and a second retry does not send it again. Module-level and
  * in-memory on purpose: the notification is a courtesy, and losing the record on
- * a reload costs at most one duplicate rather than none.
+ * a reload costs at most one duplicate rather than none. Bounded at 500 entries
+ * and cleared rather than evicted, because a duplicate notice is cheaper than an
+ * unbounded set that grows for the life of the tab.
  */
 const notifiedJoins = new Set<string>()
 
 /**
  * Re-read a trip the caller already joined, without joining again. The gate's
  * retry for 'joined-unloaded' uses this, so a retry can never write a second
- * membership row or send a second owner notification.
+ * membership row or send a second owner notification. `owed` is false: this call
+ * did not create the membership.
  */
 export async function reloadJoinedTrip(tripId: ID): Promise<JoinResult> {
   const scope = identityScope()
   if (!scope) return 'failed'
   // The same continuation the initial join uses, so a reload that finally
   // succeeds still sends the one owner notification the first try owed.
-  return finishJoin(tripId, scope.userId)
+  return finishJoin(tripId, scope.userId, false)
 }
 
 /** Why a full-row load did or did not replace the cached trip. */

@@ -258,9 +258,15 @@ describe('viewerIsMemberOf reads only the viewer membership', () => {
 
 describe('the invite screens never join by trip id', () => {
   it('InviteGate refuses a trip-id link for a non-member and joins by code', () => {
-    expect(APP).toMatch(/if \(isTripIdLink\) \{/)
+    // #804 — the trip-id branch is now its own identity-guarded effect rather
+    // than an inline `if (isTripIdLink)` inside the join effect. It still never
+    // joins: it checks membership and either opens the trip or says the link is
+    // retired.
+    expect(APP).toMatch(/if \(!me \|\| !trip \|\| !isTripIdLink\) return/)
+    expect(APP).toMatch(/viewerIsMemberOf\(trip\.id, me\.id\)/)
     expect(APP).toMatch(/This link no longer adds people/)
-    expect(APP).toMatch(/joinViaInvite\(trip\.id, me\.id, trip\.inviteCode \?\? linkTarget, trip\.name\)/)
+    // The join path still passes the code, never the trip id.
+    expect(APP).toMatch(/joinViaInvite\(tripId, userId, inviteCode \?\? ''/)
   })
 
   it('ShareTab never falls back to a trip-id link', () => {
