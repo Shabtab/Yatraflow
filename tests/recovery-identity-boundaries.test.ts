@@ -465,6 +465,24 @@ describe('recovery identity regressions', () => {
     expect(source).toContain('else queuedLocalTrips.delete(tripId)')
   });
 
+  it('the liveness decision has one owner, and the recovery paths ask it', () => {
+    // A source-structure pin, as an ADDITION to the behavioural tests. It
+    // cannot replace them, because a helper can be called and still be called
+    // too late. It catches the case where a new post-await write is added
+    // with no liveness check at all.
+    const source = readFileSync(new URL('../src/store/store.ts', import.meta.url), 'utf8')
+    // ONE helper owns the decision.
+    expect(source).toContain('function stillLive(scope: IdentityScope, tripId: string, accessEpoch: number): boolean')
+    // No other function answers the same question, so the monotonic rule lives
+    // in one place instead of several.
+    expect(source).not.toMatch(/function sameScopeGeneration/)
+    // The discard path, the replay demotion branch and the realtime demotion
+    // refresh all ask it.
+    expect(source).toContain('if (!stillLive(scope, tripId, accessEpoch)) return false')
+    expect(source).toContain('if (!stillLive(scope, entry.tripId, nextEpoch)) return false')
+    expect(source).toContain('if (!stillLive(scope, tripId, nextEpoch)) return false')
+  });
+
   it('a removal names the removal, not a demotion', async () => {
     const store = await fresh(true);
     await capture(store);

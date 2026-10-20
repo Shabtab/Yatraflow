@@ -316,14 +316,21 @@ describe('round three additional real-store behavior', () => {
   });
   for(const phase of ['initial-list','inner-list','token','server-read','drop','final-list']) {
     for(const transition of ['switch','signout','same-user-new-generation']) {
-      // The same-user reauthentication case is a KNOWN PRE-EXISTING risk, not a
-      // defect this work introduced. The independent Gate's own base control
-      // reproduced it on the base store, and the Gate recorded it as such. The
-      // write comes from the plan persist that a realtime membership change
-      // triggers, not from the replay, so the narrow fix (a barrier the replay
-      // waits for) does not reach it. `it.fails` keeps the case in the suite
-      // and turns the suite green ONLY while the defect is still there, so the
-      // moment it is fixed the test fails and asks for the marker to go.
+      // The same-user reauthentication case is the BASE-PRE-EXISTING risk that
+      // the independent Gate's own base control reproduced on the base store:
+      // a same-user reauthentication during a delayed removal replays the copy
+      // that the sign-out asked to remove. The Gate recorded it as a
+      // pre-existing risk rather than a new blocker, and it is the ONLY case
+      // here that the base store already fails.
+      //
+      // The write comes from the REPLAY: the Gate instrumented it, and
+      // `replayQueuedWrites` calls `sendQueuedTripWrite` after the
+      // reauthentication. It does NOT come from the plan persist that a
+      // realtime membership change triggers.
+      //
+      // `it.fails` keeps the case in the suite and turns the suite green ONLY
+      // while the defect is still there, so the moment it is fixed the test
+      // fails and asks for the marker to go.
       const knownPreExisting = phase === 'drop' && transition === 'same-user-new-generation';
       const it_ = knownPreExisting ? it.fails : it;
       it_(`discard ${phase} rejects stale ${transition} without publishing old rows`, async () => {

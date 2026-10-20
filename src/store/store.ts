@@ -2773,8 +2773,14 @@ let TRIP_WRITE_DEBOUNCE_MS = 600
 type CapturedTripWrite = { trip: Trip; sessionId: string; epoch: number; accessEpoch: number; entry: QueuedWrite; durable: Promise<boolean> }
 const pendingTripWrites = new Map<ID, CapturedTripWrite & { timer: ReturnType<typeof setTimeout> }>()
 const tripAccessEpochs = new Map<string, number>()
-/** Why the trip was invalidated, so an in-flight removal can restore the copy. */
-const tripInvalidationReasons = new Map<string, QueuedWrite['reason']>()
+/** Why the trip was invalidated, and under which identity and generation, so
+ *  an in-flight removal can restore the copy and a later account cannot
+ *  inherit it. */
+const tripInvalidationReasons = new Map<string, {
+  reason: QueuedWrite['reason']
+  userId: string
+  generation: number
+}>()
 const editableTripGrants = new Set<string>()
 let lastWriteCapture = 0
 
@@ -2890,15 +2896,23 @@ function canSendTripWrite(scope: IdentityScope, tripId: string, accessEpoch: num
 }
 
 /**
- * The scope and the access generation are still the ones that started the
- * work.
+ * Is this work still allowed to touch the cache?
  *
- * `canSendTripWrite` also requires the edit right, so it is false in the very
- * branch that handles a lost edit right. This guard is the weaker check: the
- * same account, and the same access generation. It decides whether work that
- * started under one scope may still touch the cache.
+ * ONE owner for the access decision. Every path that awaits, and then writes
+ * to the cache or reports success, asks this question first. It is the weaker
+ * of the two checks on purpose: `canSendTripWrite` also requires the edit
+ * right, so it is false in the very branch that handles a lost edit right.
+ *
+ * The three things it reads:
+ * - the identity is still the one that started the work,
+ * - the scope epoch has not moved, so the account has not changed,
+ * - the trip's access generation has not moved, so the access has not changed.
+ *
+ * The identity epoch and the access generation only ever increase, so a scope
+ * that fails this check never passes it again. That is what makes one check
+ * enough, and it is why an old action can never publish after a new grant.
  */
-function sameScopeGeneration(scope: IdentityScope, tripId: string, accessEpoch: number): boolean {
+function stillLive(scope: IdentityScope, tripId: string, accessEpoch: number): boolean {
   return isCurrentIdentity(scope) && (tripAccessEpochs.get(tripId) ?? 0) === accessEpoch
 }
 
@@ -2945,9 +2959,10 @@ function invalidateTripWork(tripId: string, userId: string, reason?: QueuedWrite
   editableTripGrants.delete(tripId)
   const accessEpoch = (tripAccessEpochs.get(tripId) ?? 0) + 1
   tripAccessEpochs.set(tripId, accessEpoch)
-  // The reason is kept beside the generation, so a removal that was in flight
-  // when the generation moved can put the copy back with the same reason.
-  if (reason) tripInvalidationReasons.set(tripId, reason)
+  // The reason is kept beside the generation and the identity that recorded
+  // it, so a removal that was in flight when the generation moved can put the
+  // copy back, and a later account cannot inherit the reason.
+  if (reason) tripInvalidationReasons.set(tripId, { reason, userId, generation: accessEpoch })
   else tripInvalidationReasons.delete(tripId)
   const pending = pendingTripWrites.get(tripId)
   if (pending) clearTimeout(pending.timer)
@@ -3034,9 +3049,9 @@ async function readSharedTripForCurrentIdentity(
   if (!scope || !isCurrentIdentity(scope)) return null
   const accessEpoch = tripAccessEpochs.get(tripId) ?? 0
   const token = await tripWriteToken(scope)
-  if (!token || !sameScopeGeneration(scope, tripId, accessEpoch)) return null
+  if (!token || !stillLive(scope, tripId, accessEpoch)) return null
   const shared = await readSharedTripWithMembership(tripId, token)
-  if (!shared || !sameScopeGeneration(scope, tripId, accessEpoch)) return null
+  if (!shared || !stillLive(scope, tripId, accessEpoch)) return null
   return shared
 }
 
@@ -3053,12 +3068,18 @@ async function refreshSharedPlanAfterDemotion(tripId: string): Promise<void> {
   if (!scope || !isCurrentIdentity(scope)) return
   const accessEpoch = tripAccessEpochs.get(tripId) ?? 0
   const shared = await readSharedTripForCurrentIdentity(tripId)
-  if (!sameScopeGeneration(scope, tripId, accessEpoch)) return
+  if (!stillLive(scope, tripId, accessEpoch)) return
   if (!shared) {
     // The shared plan could not be read. The cache holds the LOCAL PROPOSAL
     // for this trip, and the account may no longer edit it, so the proposal
     // must not stay on screen. The trip leaves the list until a read
     // succeeds. A later read restores it.
+    //
+    // The trip only leaves the list while the account still cannot edit it.
+    // A grant that landed during the read gave the edit right back, and then
+    // the local proposal is the account's own work again.
+    const trip = tripById(tripId)
+    if (trip && canEdit(roleOf(trip, scope.userId))) return
     cache.trips = cache.trips.filter(t => t.id !== tripId)
     commit()
     return
@@ -3142,18 +3163,19 @@ async function sendQueuedTripWrite(entry: QueuedWrite, scope: IdentityScope, acc
       // The identity and the access generation are checked again here. The
       // awaited read above can outlive the account that started it, and a
       // delayed invalidation must never touch another account's trip.
-      if (!sameScopeGeneration(scope, entry.tripId, accessEpoch)) return false
+      if (!stillLive(scope, entry.tripId, accessEpoch)) return false
       const stillMember = !!member
       const reason = stillMember ? 'access-revoked' : 'access-removed'
       await retainRevokedCopy(entry, scope, reason)
       // The retention awaited storage, so the scope is checked once more. A
       // copy that changed hands in the meantime is not this scope's work.
-      if (!sameScopeGeneration(scope, entry.tripId, accessEpoch)) return false
+      if (!stillLive(scope, entry.tripId, accessEpoch)) return false
       // The invalidation bumps the access generation, so the refresh below
       // must compare against the NEW generation. The captured one is stale
       // from here on.
       const nextEpoch = invalidateTripWork(entry.tripId, scope.userId, reason)
       if (!stillMember) {
+        if (!stillLive(scope, entry.tripId, nextEpoch)) return false
         cache.trips = cache.trips.filter(t => t.id !== entry.tripId)
         commit()
       } else {
@@ -3165,13 +3187,23 @@ async function sendQueuedTripWrite(entry: QueuedWrite, scope: IdentityScope, acc
         // with those members would leave the edit controls on screen for an
         // account that may no longer edit.
         const shared = await readSharedTripWithMembership(entry.tripId, token)
-        if (shared && sameScopeGeneration(scope, entry.tripId, nextEpoch)) {
+        // BOTH outcomes of the read are guarded. The read awaited, so an
+        // account switch or a newer grant may have landed, and the trip must
+        // not be published or removed under a scope that no longer owns it.
+        if (!stillLive(scope, entry.tripId, nextEpoch)) return false
+        if (shared) {
           cache.trips = cache.trips.map(t => t.id === entry.tripId ? shared.trip : t)
           commit()
-        } else if (!shared) {
+        } else {
           // The shared plan could not be read. The local proposal must not
           // stay on screen, because the account may no longer edit it. The
           // trip leaves the list until a read succeeds.
+          //
+          // The trip only leaves the list while the account still cannot
+          // edit it. A grant that landed during the read gave the edit right
+          // back, and then the local proposal is the account's own work.
+          const trip = tripById(entry.tripId)
+          if (trip && canEdit(roleOf(trip, scope.userId))) return false
           cache.trips = cache.trips.filter(t => t.id !== entry.tripId)
           commit()
         }
@@ -3194,9 +3226,9 @@ async function sendQueuedTripWrite(entry: QueuedWrite, scope: IdentityScope, acc
       //
       // The scope is checked again before the invalidation, because the
       // retention awaited storage. Another account's trip must not be removed.
-      if (!sameScopeGeneration(scope, entry.tripId, accessEpoch)) return false
+      if (!stillLive(scope, entry.tripId, accessEpoch)) return false
       await retainRevokedCopy(entry, scope, 'trip-unavailable')
-      if (!sameScopeGeneration(scope, entry.tripId, accessEpoch)) return false
+      if (!stillLive(scope, entry.tripId, accessEpoch)) return false
       invalidateTripWork(entry.tripId, scope.userId, 'trip-unavailable')
       cache.trips = cache.trips.filter(t => t.id !== entry.tripId)
       commit()
@@ -3324,16 +3356,16 @@ export async function resolveQueuedTripWrite(tripId: ID, choice: 'retry' | 'repl
     // Every await below is followed by a scope check. An account switch or a
     // realtime deletion during the work must not let this path publish a trip
     // under a later identity, and it must not restore a deleted trip.
-    if (!sameScopeGeneration(scope, tripId, accessEpoch)) return false
+    if (!stillLive(scope, tripId, accessEpoch)) return false
     return serializeTripWrite(`${scope.epoch}:${scope.userId}:${tripId}`, async () => {
-      if (!sameScopeGeneration(scope, tripId, accessEpoch)) return false
+      if (!stillLive(scope, tripId, accessEpoch)) return false
       const current = (await pendingWrites()).find(w => sameQueuedWrite(w, write))
-      if (!current || !sameScopeGeneration(scope, tripId, accessEpoch)) return false
+      if (!current || !stillLive(scope, tripId, accessEpoch)) return false
       // The removal itself is local. The server read below only refreshes the
       // shared plan, so a failed read must not undo the removal and must not
       // touch the cached plan.
       const token = await tripWriteToken(scope)
-      if (!sameScopeGeneration(scope, tripId, accessEpoch)) return false
+      if (!stillLive(scope, tripId, accessEpoch)) return false
       let row: TripRow | null = null
       let readFailed = false
       if (token) {
@@ -3345,7 +3377,7 @@ export async function resolveQueuedTripWrite(tripId: ID, choice: 'retry' | 'repl
       } else {
         readFailed = true
       }
-      if (!sameScopeGeneration(scope, tripId, accessEpoch)) return false
+      if (!stillLive(scope, tripId, accessEpoch)) return false
       // The shared plan could not be read. The removal is REFUSED only when
       // the copy being discarded is a HELD overlay and the cache is showing
       // that overlay. A drop on its own would leave the discarded content on
@@ -3360,22 +3392,29 @@ export async function resolveQueuedTripWrite(tripId: ID, choice: 'retry' | 'repl
       const durable = await dropQueuedWrite(current)
       // A scope change means the removal did not complete under this scope.
       // It reports false, so the caller does not claim a clean removal.
-      if (!sameScopeGeneration(scope, tripId, accessEpoch)) {
+      if (!stillLive(scope, tripId, accessEpoch)) {
         // The generation moved while the removal was in flight, so something
         // else decided the copy's fate. A tombstone during the removal asked
         // for the copy to be KEPT, and the removal has just deleted it. The
         // copy is put back with the reason that was recorded, so the two
         // writers cannot disagree.
-        const reason = tripInvalidationReasons.get(tripId)
-        if (reason && durable) {
+        //
+        // The reason is bound to the identity and the generation that
+        // recorded it, so a later account cannot inherit it. And the
+        // captured identity must still be the live one, so a sign-out during
+        // the removal does not put the copy back.
+        const recorded = tripInvalidationReasons.get(tripId)
+        if (recorded && durable && recorded.userId === scope.userId
+          && recorded.generation === tripAccessEpochs.get(tripId)
+          && isCurrentIdentity(scope)) {
           // The copy was deleted, so it is queued again rather than replaced.
           // `requeueIfCurrent` only replaces an entry that is still there.
-          await queueWrite({ ...current, state: 'failed', reason })
+          await queueWrite({ ...current, state: 'failed', reason: recorded.reason })
         }
         return false
       }
       const latest = (await pendingWrites()).find(w => w.ownerId === scope.userId && w.tripId === tripId)
-      if (!sameScopeGeneration(scope, tripId, accessEpoch)) return false
+      if (!stillLive(scope, tripId, accessEpoch)) return false
       if (latest) {
         // Storage failure or a newer edit keeps its own recovery state and visible contents.
         // A reasoned copy is never held as the local copy, so a later edit
@@ -3395,7 +3434,6 @@ export async function resolveQueuedTripWrite(tripId: ID, choice: 'retry' | 'repl
         return durable
       }
       if (row && !row.deleted_at) {
-        const cached = tripById(tripId)
         // The read may be older than what the server has already sent. The
         // ledger holds the clock the server wrote, so a read that is behind
         // it must not replace the newer cached plan. The read is taken again
@@ -3405,15 +3443,30 @@ export async function resolveQueuedTripWrite(tripId: ID, choice: 'retry' | 'repl
         if (isStaleServerRow(serverTripTimestamps.get(tripId), row.updated_at)) {
           const again = await supabase.from('trips').select('*').eq('id', tripId).maybeSingle()
             .setHeader('Authorization', `Bearer ${token}`)
+          // The second read awaited, so the work may no longer be live. An
+          // account switch or a tombstone during the read must not publish.
+          if (!stillLive(scope, tripId, accessEpoch)) return false
           if (!again.error && again.data && !(again.data as TripRow).deleted_at) fresh = again.data as TripRow
         }
+        if (!stillLive(scope, tripId, accessEpoch)) return false
         if (!isStaleServerRow(serverTripTimestamps.get(tripId), fresh.updated_at)) {
-          const shared = rowToTrip(fresh as TripRow, cached?.members ?? [])
-          cache.trips = [...cache.trips.filter(t => t.id !== tripId), shared]
-          recordServerTripTimestamp(tripId, shared.updatedAt)
+          // The membership is read from the server. The cached members can
+          // still say owner or editor, and publishing those would leave the
+          // edit controls on screen for an account that may no longer edit.
+          const shared = await readSharedTripWithMembership(tripId, token)
+          if (!stillLive(scope, tripId, accessEpoch)) return false
+          if (shared) {
+            cache.trips = [...cache.trips.filter(t => t.id !== tripId), shared.trip]
+            recordServerTripTimestamp(tripId, shared.trip.updatedAt)
+          }
         }
       } else {
-        invalidateTripWork(tripId, scope.userId)
+        // The trip is gone from the server. The invalidation bumps the
+        // generation, so the check after it compares against the value it
+        // returns, not against the captured one.
+        if (!stillLive(scope, tripId, accessEpoch)) return false
+        const nextEpoch = invalidateTripWork(tripId, scope.userId)
+        if (!stillLive(scope, tripId, nextEpoch)) return false
         cache.trips = cache.trips.filter(t => t.id !== tripId)
       }
       commit()

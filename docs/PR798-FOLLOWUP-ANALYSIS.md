@@ -214,13 +214,21 @@ risk and not a new blocker.
 The shape: the account signs out, so its queue is cleared, and it signs
 back in as the same account straight away. The clear of the departing
 account's queue is not awaited, so the sign-in's hydrate can replay the copy
-before the clear lands. The write comes from a whole-plan persist that the
-realtime membership change triggers, not from the replay itself.
+before the clear lands.
 
-Fixing it means changing how a realtime membership change re-persists a plan,
-which reaches well past this packet's scope. A narrow try, a barrier
-that the replay waits for, does not help, because the write comes from the
-persist path instead.
+The write comes from the REPLAY. The Gate instrumented it, and
+`replayQueuedWrites` calls `sendQueuedTripWrite` after the reauthentication,
+so the queued copy is sent to the server under the new session. An earlier
+version of this note blamed the plan persist that a realtime membership
+change triggers, and that was wrong: the instrumented call path is the
+replay.
+
+The remediation boundary follows from that. The narrow fix is to make the
+replay wait for the departing account's queue clear, so the copy is gone
+before the replay reads the queue. That wait has to be in the replay, and it
+must not block the hydrate, because the clear can block on storage. A wait
+in the hydrate stalls every hydrate that follows a sign-out, which is a
+worse failure than the one it fixes.
 
 ## N4 — analysis only, no change
 
