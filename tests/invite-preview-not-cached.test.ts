@@ -396,7 +396,7 @@ describe('loadFullTripIntoCache refuses what it cannot trust', () => {
   })
 
   it('B4 — an uncached role change invalidates even without an editable new role', () => {
-    // The old invalidation required an EDITABLE new role, so an uncached
+    // The old invalidation needed an EDITABLE new role, so an uncached
     // DOWNGRADE (editor -> viewer) moved no epoch and a full load in flight
     // restored stale editor rights. The new check fires for any role change.
     const at = STORE.indexOf("case 'trip_members': {")
@@ -472,7 +472,7 @@ describe('B-4 — the owner notification is owed by an actual join and settled o
 
   it('an inconclusive membership read owes no notice', () => {
     // join_trip is `on conflict do nothing`, so it cannot say whether it inserted.
-    // A failed pre-query therefore must not announce: the loaded row proves its
+    // A failed pre-query must not announce: the loaded row proves its
     // role, not that this RPC created the membership.
     const join = fnBody(STORE, 'async function joinAfterScope(')
     expect(join).toContain('membership.certain')

@@ -1278,6 +1278,17 @@ export function tripById(id: ID): Trip | undefined {
  * A fetched trip is merged into the cache so `tripById` finds it on the next
  * render; it disappears again on the next hydration, which is fine — callers
  * re-fetch. Returns null when nothing readable exists (RLS or a bad id).
+ *
+ * #804 (N1) — THIS PATH IS NOT LIKE THE CODE PATH. `get_invite_trip` returns the
+ * FULL 34-column row and ITS OWN `get_invite_trip` nulls `invite_code` in SQL, so
+ * the preview it produces IS cached here, and the cache stays safe because the
+ * server strips the capability. That is the opposite of
+ * `fetchTripByInviteCode`, which never caches at all.
+ * The consequence is a DEPLOYMENT PREREQUISITE: this client relies on the
+ * server SQL to withhold `invite_code`, and it does not strip anything itself.
+ * An unpatched server (the separate Branch A migration) would let a UUID holder
+ * read the invite code off a cached preview. Nothing in this change makes that
+ * true or false — only the installed SQL decides it.
  */
 export async function fetchSharedTrip(tripId: ID, allowInvitePreview = false): Promise<Trip | null> {
   const epoch = identityEpoch
@@ -5150,7 +5161,7 @@ function applyRealtimeEvent(table: string, payload: RealtimePostgresChangesPaylo
       if (!trip) {
         // B4 — a role change for this viewer with no cached trip must still
         // invalidate. The only invalidation on this branch ran inside the
-        // `!trip ? ... : ...` test above, which requires an EDITABLE new role, so
+        // `!trip ? ... : ...` test above, which needs an EDITABLE new role, so
         // an uncached DOWNGRADE (editor -> viewer) left the epoch unmoved. A full
         // load already in flight then restored stale editor rights. The role
         // changed either way, so the epoch moves for any role change.

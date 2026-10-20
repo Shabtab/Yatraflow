@@ -1,0 +1,813 @@
+{
+  "head": "c9f4568f89917950e6dd17cfcf93419de8955a57",
+  "method": "Complete source-extracted InviteGate with synthetic hooks, effects, callbacks, and JSX trees; actual source-extracted awaited store and realtime functions; network and effects mocked. No browser acceptance.",
+  "sources": {
+    "store": "65d4a3ecc328ad7bf5710d91d64abdc478c43902bf2cd019434897dceafc9d7f",
+    "app": "fe8b38f2f2de11dbc0fb68f2641de408da8aa199f3765ed5034f6db3cf7d3267"
+  },
+  "evidence": [
+    {
+      "name": "App failed terminal shows its own screen with a retry",
+      "kind": "CONTROL",
+      "result": "CONFIRMED",
+      "detail": {
+        "machine": {
+          "phase": "failed",
+          "userId": "A",
+          "gen": 1,
+          "tryId": 1
+        },
+        "title": "Couldn’t join just now",
+        "events": [
+          [
+            "resolve"
+          ],
+          [
+            "join",
+            "11111111-1111-4111-8111-111111111111",
+            "A",
+            "CODE",
+            "Synthetic"
+          ]
+        ]
+      }
+    },
+    {
+      "name": "App joined-unloaded terminal shows its own screen with a retry",
+      "kind": "CONTROL",
+      "result": "CONFIRMED",
+      "detail": {
+        "machine": {
+          "phase": "joined-unloaded",
+          "userId": "A",
+          "gen": 1,
+          "tryId": 1
+        },
+        "title": "You joined “Synthetic”",
+        "events": [
+          [
+            "resolve"
+          ],
+          [
+            "join",
+            "11111111-1111-4111-8111-111111111111",
+            "A",
+            "CODE",
+            "Synthetic"
+          ]
+        ]
+      }
+    },
+    {
+      "name": "App abandoned terminal shows its own screen with a retry",
+      "kind": "CONTROL",
+      "result": "CONFIRMED",
+      "detail": {
+        "machine": {
+          "phase": "abandoned",
+          "userId": "A",
+          "gen": 1,
+          "tryId": 1
+        },
+        "title": "We couldn’t confirm the join",
+        "events": [
+          [
+            "resolve"
+          ],
+          [
+            "join",
+            "11111111-1111-4111-8111-111111111111",
+            "A",
+            "CODE",
+            "Synthetic"
+          ]
+        ]
+      }
+    },
+    {
+      "name": "Signed-out successful preview shows the invite copy",
+      "kind": "CONTROL",
+      "result": "CONFIRMED",
+      "detail": [
+        [
+          "resolve"
+        ]
+      ]
+    },
+    {
+      "name": "Existing member reload and guarded navigation",
+      "kind": "CONTROL",
+      "result": "CONFIRMED",
+      "detail": [
+        [
+          "resolve"
+        ],
+        [
+          "reload"
+        ],
+        [
+          "toast",
+          "You’re on “Synthetic” - happy planning!"
+        ],
+        [
+          "navigate",
+          "/trip/11111111-1111-4111-8111-111111111111"
+        ]
+      ]
+    },
+    {
+      "name": "StrictMode single join",
+      "kind": "CONTROL",
+      "result": "CONFIRMED",
+      "detail": [
+        [
+          "resolve"
+        ],
+        [
+          "resolve"
+        ],
+        [
+          "join",
+          "11111111-1111-4111-8111-111111111111",
+          "A",
+          "CODE",
+          "Synthetic"
+        ]
+      ]
+    },
+    {
+      "name": "Terminal rerenders do not autojoin",
+      "kind": "CONTROL",
+      "result": "CONFIRMED",
+      "detail": [
+        [
+          "resolve"
+        ],
+        [
+          "join",
+          "11111111-1111-4111-8111-111111111111",
+          "A",
+          "CODE",
+          "Synthetic"
+        ]
+      ]
+    },
+    {
+      "name": "Same-account reauth starts fresh try",
+      "kind": "CONTROL",
+      "result": "CONFIRMED",
+      "detail": [
+        [
+          "resolve"
+        ],
+        [
+          "join",
+          "11111111-1111-4111-8111-111111111111",
+          "A",
+          "CODE",
+          "Synthetic"
+        ],
+        [
+          "join",
+          "11111111-1111-4111-8111-111111111111",
+          "A",
+          "CODE",
+          "Synthetic"
+        ]
+      ]
+    },
+    {
+      "name": "Actual retry handler executes one fresh join after RPC failure",
+      "kind": "CONTROL",
+      "result": "CONFIRMED",
+      "detail": {
+        "events": [
+          [
+            "resolve"
+          ],
+          [
+            "join",
+            "11111111-1111-4111-8111-111111111111",
+            "A",
+            "CODE",
+            "Synthetic"
+          ],
+          [
+            "join",
+            "11111111-1111-4111-8111-111111111111",
+            "A",
+            "CODE",
+            "Synthetic"
+          ]
+        ],
+        "limit": "Handler captured from the real function; loading branch makes its button unreachable"
+      }
+    },
+    {
+      "name": "Actual unloaded retry handler reads only then navigates",
+      "kind": "CONTROL",
+      "result": "CONFIRMED",
+      "detail": [
+        [
+          "resolve"
+        ],
+        [
+          "join",
+          "11111111-1111-4111-8111-111111111111",
+          "A",
+          "CODE",
+          "Synthetic"
+        ],
+        [
+          "reload"
+        ],
+        [
+          "toast",
+          "You’re on “Synthetic” - happy planning!"
+        ],
+        [
+          "navigate",
+          "/trip/11111111-1111-4111-8111-111111111111"
+        ]
+      ]
+    },
+    {
+      "name": "Actual retry pending across account change cannot navigate",
+      "kind": "CONTROL",
+      "result": "CONFIRMED",
+      "detail": [
+        [
+          "resolve"
+        ],
+        [
+          "join",
+          "11111111-1111-4111-8111-111111111111",
+          "A",
+          "CODE",
+          "Synthetic"
+        ]
+      ]
+    },
+    {
+      "name": "Profile gap resets the attempt and a returning profile restarts it",
+      "kind": "CONTROL",
+      "result": "CONFIRMED",
+      "detail": {
+        "machine": {
+          "phase": "joined-unloaded",
+          "userId": "A",
+          "gen": 1,
+          "tryId": 1
+        },
+        "events": [
+          [
+            "resolve"
+          ],
+          [
+            "join",
+            "11111111-1111-4111-8111-111111111111",
+            "A",
+            "CODE",
+            "Synthetic"
+          ],
+          [
+            "join",
+            "11111111-1111-4111-8111-111111111111",
+            "A",
+            "CODE",
+            "Synthetic"
+          ]
+        ]
+      }
+    },
+    {
+      "name": "Old rejected reload does not change new account state",
+      "kind": "CONTROL",
+      "result": "CONFIRMED",
+      "detail": [
+        [
+          "resolve"
+        ],
+        [
+          "join",
+          "11111111-1111-4111-8111-111111111111",
+          "B",
+          "CODE",
+          "Synthetic"
+        ],
+        [
+          "error",
+          "[yatraflow] reload after join rejected",
+          {}
+        ]
+      ]
+    },
+    {
+      "name": "UUID never calls join and ignores old membership continuation",
+      "kind": "CONTROL",
+      "result": "CONFIRMED",
+      "detail": []
+    },
+    {
+      "name": "Target remount discards old resolve",
+      "kind": "CONTROL",
+      "result": "CONFIRMED",
+      "detail": []
+    },
+    {
+      "name": "code pending resolve cannot cache switched account",
+      "kind": "CONTROL",
+      "result": "CONFIRMED",
+      "detail": []
+    },
+    {
+      "name": "uuid pending resolve cannot cache switched account",
+      "kind": "CONTROL",
+      "result": "CONFIRMED",
+      "detail": []
+    },
+    {
+      "name": "Code preview cannot enter serializers through cache or queue",
+      "kind": "CONTROL",
+      "result": "CONFIRMED",
+      "detail": "No cache, queue, ledger, or commit effects"
+    },
+    {
+      "name": "Account switch during the membership read stops the join before it writes",
+      "kind": "CONTROL",
+      "result": "CONFIRMED",
+      "detail": [
+        [
+          "error",
+          "[yatraflow] join abandoned after the membership read: the account or trip access changed",
+          {
+            "tripId": "11111111-1111-4111-8111-111111111111"
+          }
+        ]
+      ]
+    },
+    {
+      "name": "Account switch during the membership read stops the join before it writes",
+      "kind": "CONTROL",
+      "result": "CONFIRMED",
+      "detail": [
+        [
+          "error",
+          "[yatraflow] join abandoned after the membership read: the account or trip access changed",
+          {
+            "tripId": "11111111-1111-4111-8111-111111111111"
+          }
+        ]
+      ]
+    },
+    {
+      "name": "True membership prequery switch abandons before effects",
+      "kind": "CONTROL",
+      "result": "CONFIRMED",
+      "detail": [
+        [
+          "error",
+          "[yatraflow] join abandoned after the membership read: the account or trip access changed",
+          {
+            "tripId": "11111111-1111-4111-8111-111111111111"
+          }
+        ]
+      ]
+    },
+    {
+      "name": "rpc switch abandons cache and continuation",
+      "kind": "CONTROL",
+      "result": "CONFIRMED",
+      "detail": [
+        [
+          "error",
+          "[yatraflow] join continuation abandoned: the account or trip access changed",
+          {
+            "tripId": "11111111-1111-4111-8111-111111111111"
+          }
+        ]
+      ]
+    },
+    {
+      "name": "load switch abandons cache and continuation",
+      "kind": "CONTROL",
+      "result": "CONFIRMED",
+      "detail": [
+        [
+          "mark",
+          "trip_members",
+          "11111111-1111-4111-8111-111111111111"
+        ],
+        [
+          "activity",
+          "11111111-1111-4111-8111-111111111111",
+          "A",
+          "joined via invite link",
+          "Members"
+        ]
+      ]
+    },
+    {
+      "name": "reload switch abandons cache and continuation",
+      "kind": "CONTROL",
+      "result": "CONFIRMED",
+      "detail": []
+    },
+    {
+      "name": "Full loader refusal queue",
+      "kind": "CONTROL",
+      "result": "CONFIRMED",
+      "detail": "stale"
+    },
+    {
+      "name": "Full loader refusal older-version",
+      "kind": "CONTROL",
+      "result": "CONFIRMED",
+      "detail": "stale"
+    },
+    {
+      "name": "Full loader refusal ledger",
+      "kind": "CONTROL",
+      "result": "CONFIRMED",
+      "detail": "stale"
+    },
+    {
+      "name": "Full loader refusal not-member",
+      "kind": "CONTROL",
+      "result": "CONFIRMED",
+      "detail": "not-member"
+    },
+    {
+      "name": "Full loader refusal deleted",
+      "kind": "CONTROL",
+      "result": "CONFIRMED",
+      "detail": "failed"
+    },
+    {
+      "name": "Full loader refusal invalid-replacement",
+      "kind": "CONTROL",
+      "result": "CONFIRMED",
+      "detail": "stale"
+    },
+    {
+      "name": "First load without a usable revision is refused, not claimed as a read failure",
+      "kind": "CONTROL",
+      "result": "CONFIRMED",
+      "detail": {
+        "outer": "stale",
+        "inner": "stale"
+      }
+    },
+    {
+      "name": "Loader pending queue without cached row is refused",
+      "kind": "CONTROL",
+      "result": "CONFIRMED",
+      "detail": []
+    },
+    {
+      "name": "Reload without caller membership is a failure, not a success",
+      "kind": "CONTROL",
+      "result": "CONFIRMED",
+      "detail": [
+        [
+          "error",
+          "[yatraflow] full trip read returned no membership for the caller",
+          {
+            "tripId": "11111111-1111-4111-8111-111111111111"
+          }
+        ],
+        [
+          "error",
+          "[yatraflow] the full trip read shows the caller is not a member",
+          {
+            "tripId": "11111111-1111-4111-8111-111111111111",
+            "userId": "A"
+          }
+        ]
+      ]
+    },
+    {
+      "name": "Admin existing full load is accepted",
+      "kind": "CONTROL",
+      "result": "CONFIRMED",
+      "detail": [
+        [
+          "commit"
+        ]
+      ]
+    },
+    {
+      "name": "Initial failed load then read-only retry settles notice once",
+      "kind": "CONTROL",
+      "result": "CONFIRMED",
+      "detail": {
+        "events": [
+          [
+            "mark",
+            "trip_members",
+            "11111111-1111-4111-8111-111111111111"
+          ],
+          [
+            "activity",
+            "11111111-1111-4111-8111-111111111111",
+            "A",
+            "joined via invite link",
+            "Members"
+          ],
+          [
+            "error",
+            "[yatraflow] full trip read after join failed",
+            {
+              "message": "synthetic"
+            }
+          ],
+          [
+            "error",
+            "[yatraflow] joined, but the full trip row could not be read back",
+            {
+              "tripId": "11111111-1111-4111-8111-111111111111",
+              "outcome": "failed"
+            }
+          ],
+          [
+            "commit"
+          ],
+          [
+            "notify",
+            "11111111-1111-4111-8111-111111111111",
+            "A joined your trip as editor."
+          ],
+          [
+            "commit"
+          ]
+        ],
+        "owed": 0
+      }
+    },
+    {
+      "name": "Existing member has no join notice",
+      "kind": "CONTROL",
+      "result": "CONFIRMED",
+      "detail": [
+        [
+          "commit"
+        ]
+      ]
+    },
+    {
+      "name": "A leave ends the generation, so a rejoin is announced again",
+      "kind": "CONTROL",
+      "result": "CONFIRMED",
+      "detail": [
+        [
+          "mark",
+          "trip_members",
+          "11111111-1111-4111-8111-111111111111"
+        ],
+        [
+          "activity",
+          "11111111-1111-4111-8111-111111111111",
+          "A",
+          "joined via invite link",
+          "Members"
+        ],
+        [
+          "commit"
+        ],
+        [
+          "notify",
+          "11111111-1111-4111-8111-111111111111",
+          "A joined your trip as editor."
+        ],
+        [
+          "commit"
+        ],
+        [
+          "mark",
+          "trip_members",
+          "11111111-1111-4111-8111-111111111111"
+        ],
+        [
+          "activity",
+          "11111111-1111-4111-8111-111111111111",
+          "A",
+          "joined via invite link",
+          "Members"
+        ],
+        [
+          "commit"
+        ],
+        [
+          "notify",
+          "11111111-1111-4111-8111-111111111111",
+          "A joined your trip as editor."
+        ]
+      ]
+    },
+    {
+      "name": "An inconclusive membership read joins but does not announce",
+      "kind": "CONTROL",
+      "result": "CONFIRMED",
+      "detail": [
+        [
+          "error",
+          "[yatraflow] membership check failed",
+          {
+            "message": "synthetic network failure"
+          }
+        ],
+        [
+          "mark",
+          "trip_members",
+          "11111111-1111-4111-8111-111111111111"
+        ],
+        [
+          "activity",
+          "11111111-1111-4111-8111-111111111111",
+          "A",
+          "joined via invite link",
+          "Members"
+        ],
+        [
+          "error",
+          "[yatraflow] joined, but the membership read was inconclusive: the owner is not notified",
+          {
+            "tripId": "11111111-1111-4111-8111-111111111111",
+            "userId": "A"
+          }
+        ],
+        [
+          "commit"
+        ]
+      ]
+    },
+    {
+      "name": "Two independent clients each announce their own one join",
+      "kind": "CONTROL",
+      "result": "CONFIRMED",
+      "detail": [
+        1,
+        1
+      ]
+    },
+    {
+      "name": "A full notification set evicts the oldest, never the paid-for key",
+      "kind": "CONTROL",
+      "result": "CONFIRMED",
+      "detail": {
+        "size": 600
+      }
+    },
+    {
+      "name": "Own INSERT echo after RPC keeps full load live",
+      "kind": "CONTROL",
+      "result": "CONFIRMED",
+      "detail": [
+        [
+          "mark",
+          "trip_members",
+          "11111111-1111-4111-8111-111111111111"
+        ],
+        [
+          "activity",
+          "11111111-1111-4111-8111-111111111111",
+          "A",
+          "joined via invite link",
+          "Members"
+        ],
+        [
+          "commit"
+        ],
+        [
+          "commit"
+        ],
+        [
+          "notify",
+          "11111111-1111-4111-8111-111111111111",
+          "A joined your trip as editor."
+        ]
+      ]
+    },
+    {
+      "name": "Own INSERT echo before RPC answer keeps the join live",
+      "kind": "CONTROL",
+      "result": "CONFIRMED",
+      "detail": [
+        [
+          "mark",
+          "trip_members",
+          "11111111-1111-4111-8111-111111111111"
+        ],
+        [
+          "activity",
+          "11111111-1111-4111-8111-111111111111",
+          "A",
+          "joined via invite link",
+          "Members"
+        ],
+        [
+          "commit"
+        ],
+        [
+          "commit"
+        ],
+        [
+          "notify",
+          "11111111-1111-4111-8111-111111111111",
+          "A joined your trip as editor."
+        ]
+      ]
+    },
+    {
+      "name": "Real DELETE during joining invalidates full load",
+      "kind": "CONTROL",
+      "result": "CONFIRMED",
+      "detail": [
+        [
+          "mark",
+          "trip_members",
+          "11111111-1111-4111-8111-111111111111"
+        ],
+        [
+          "activity",
+          "11111111-1111-4111-8111-111111111111",
+          "A",
+          "joined via invite link",
+          "Members"
+        ]
+      ]
+    },
+    {
+      "name": "Uncached viewer downgrade during joining invalidates the stale editor load",
+      "kind": "CONTROL",
+      "result": "CONFIRMED",
+      "detail": {
+        "epoch": 1,
+        "outcome": "abandoned",
+        "loaded": 1
+      }
+    },
+    {
+      "name": "Cached viewer downgrade during joining invalidates load",
+      "kind": "CONTROL",
+      "result": "CONFIRMED",
+      "detail": [
+        [
+          "mark",
+          "trip_members",
+          "11111111-1111-4111-8111-111111111111"
+        ],
+        [
+          "activity",
+          "11111111-1111-4111-8111-111111111111",
+          "A",
+          "joined via invite link",
+          "Members"
+        ],
+        [
+          "commit"
+        ]
+      ]
+    },
+    {
+      "name": "tripUpdateRow keeps all five fields and omits owner",
+      "kind": "CONTROL",
+      "result": "CONFIRMED",
+      "detail": [
+        "id",
+        "name",
+        "start_location",
+        "start_location_coords",
+        "destinations",
+        "destination_coords",
+        "start_date",
+        "end_date",
+        "travellers",
+        "transport_mode",
+        "budget_per_person_inr",
+        "travel_style",
+        "fixed_commitments",
+        "days",
+        "expenses",
+        "cover_emoji",
+        "visibility",
+        "fuel_economy_km_per_l",
+        "fuel_price_per_l",
+        "round_trip",
+        "cover_image_url",
+        "invite_code",
+        "deleted_at",
+        "stay_style",
+        "driver_count",
+        "has_vulnerable",
+        "drive_after_dinner_min",
+        "vehicle_profile",
+        "tank_l",
+        "rent_per_day_inr",
+        "local_train",
+        "flights",
+        "ref"
+      ]
+    }
+  ]
+}

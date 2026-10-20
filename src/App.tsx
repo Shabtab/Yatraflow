@@ -1047,7 +1047,7 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
 
   // S4 — the store advances identityEpoch only on an AUTH identity change, so a
   // profile gap (session row present, profile row missing) left the generation
-  // untouched and an old joined claim survived. The attempt is keyed to the
+  // untouched and an old joined claim survived. The try is keyed to the
   // signed-in user, so losing that user must reset it: either the profile arrives
   // later (the try restarts) or the invite needs a login first.
   useEffect(() => {
