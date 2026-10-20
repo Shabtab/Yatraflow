@@ -3299,27 +3299,36 @@ export function setMemberRole(tripId: ID, userId: ID, role: TripMember['role']):
  * Returns whether the user is a member of the trip afterwards.
  */
 /**
+ * The result of a join, as the gate must render it. Three states, never shown as
+ * one another (R23):
+ *   'joined'           the membership exists AND the full row is in the cache,
+ *                      so the caller may open the trip.
+ *   'joined-unloaded'  the membership exists but the row could not be read. The
+ *                      user IS on the trip; only the page failed. A retry must
+ *                      re-read the row, never join again.
+ *   'failed'           no membership was created. A retry must join again.
+ */
+export type JoinResult = 'joined' | 'joined-unloaded' | 'failed'
+
+/**
  * Join a trip through its invite code, then fetch the full row into the cache.
  *
  * #804 — the preview row is no longer cached, so this cannot read the trip from
- * tripById. The caller passes the name it already holds for the toast, and the
- * membership test moves to the caller's own state. `previewName` is optional so
- * existing callers keep working; the toast falls back to a neutral line.
+ * tripById. The caller passes the name it already holds for the toast.
  *
- * Returns true only when the join AND the full-row fetch both succeed. A join
- * that succeeded but whose row could not be read returns false and says so: the
- * membership exists, so reporting plain success would send the user to a trip
- * page with nothing in it, and reporting plain failure would suggest they are
- * not a member. R23 — the two states must not be shown as one.
+ * Returns 'joined' only when the join AND the full-row load both succeed. A join
+ * that succeeded but whose row could not be read returns 'joined-unloaded': the
+ * membership exists, so plain failure would suggest they are not a member, and
+ * plain success would send them to a page with nothing in it.
  */
 export async function joinViaInvite(
   tripId: ID,
   userId: ID,
   inviteCode: string,
   previewName?: string,
-): Promise<boolean> {
+): Promise<JoinResult> {
   const cached = tripById(tripId)
-  if (cached?.members?.some(m => m.userId === userId)) return true
+  if (cached?.members?.some(m => m.userId === userId)) return 'joined'
   const joinedAt = Date.now()
   // join_trip() takes the invite code, never a trip id. It adds the signed-in
   // user as an editor. It returns the trip id, or null for a dead code.
@@ -3327,65 +3336,109 @@ export async function joinViaInvite(
   const { data: joinedTripId, error } = await supabase.rpc('join_trip', { p_code: inviteCode })
   if (error) {
     console.error('[yatraflow] join write failed', error)
-    return false
+    return 'failed'
   }
   // Fail closed: a null answer, or an answer naming another trip, joins nothing.
-  if (!joinedTripId || String(joinedTripId).toLowerCase() !== tripId.toLowerCase()) return false
+  if (!joinedTripId || String(joinedTripId).toLowerCase() !== tripId.toLowerCase()) return 'failed'
   markLocalWrite('trip_members', tripId)
-  // The trip may not be in the cache at all now (the preview is never cached),
-  // so mutateTrip is a no-op there; the full fetch below supplies the row.
+  // The trip is usually NOT in the cache now (the preview is never cached), so
+  // mutateTrip is a no-op; the full fetch below supplies the row.
   mutateTrip(tripId, draft => { draft.members = [...(draft.members ?? []), { userId, role, joinedAt }] }, { touch: false })
   addActivity(tripId, userId, 'joined via invite link', 'Members')
-  // AWAIT the full row before returning, so /trip/:id opens on a complete trip
-  // instead of a cache miss. The caller navigates on a true answer.
   const loaded = await loadFullTripIntoCache(tripId)
-  if (!loaded) {
-    console.error('[yatraflow] joined, but the full trip row could not be read back', { tripId })
-    toast('You joined, but the trip did not load. Open it from My trips, or try again.', 'err')
-    return false
+  if (loaded !== 'loaded') {
+    console.error('[yatraflow] joined, but the full trip row could not be read back', { tripId, outcome: loaded })
+    return 'joined-unloaded'
   }
   // AFTER the load: notifyOwnerOf reads the trip's owner from the cache, and
   // before the load there is no cached row to read it from. This runs after the
   // fetch, so the notification still fires for the join that just succeeded.
   notifyOwnerOf(tripId, `${userName(userId)} joined ${previewName ? `“${previewName}”` : 'your trip'} as ${role}.`)
-  return true
+  return 'joined'
 }
 
 /**
- * #804 — read the full trip row and its members into the cache, and report
- * whether that worked. Distinct from fetchTripIntoCache (which returns void and
- * silently does nothing on a failed read): the join path needs to know, because
- * a silent failure there is a false success.
- *
- * A member can read the row, so a failure here is a real read problem, not an
- * empty state. Identity and access are re-checked after the await for the same
- * reason #798's queue keys are.
+ * Re-read a trip the caller already joined, without joining again. The gate's
+ * retry for 'joined-unloaded' uses this, so a retry can never write a second
+ * membership row or send a second owner notification.
  */
-async function loadFullTripIntoCache(tripId: ID): Promise<boolean> {
+export async function reloadJoinedTrip(tripId: ID): Promise<JoinResult> {
+  const loaded = await loadFullTripIntoCache(tripId)
+  return loaded === 'loaded' ? 'joined' : 'joined-unloaded'
+}
+
+/** Why a full-row load did or did not replace the cached trip. */
+export type LoadOutcome = 'loaded' | 'failed' | 'stale' | 'not-member' | 'abandoned'
+
+/**
+ * #804 — read the full trip row and its members into the cache.
+ *
+ * Replaces the earlier version, which overwrote whatever was cached. A delayed
+ * read could land after a newer revision, after a local edit, or after another
+ * account took over, and the overwrite would silently undo all three. The rules
+ * below are the ones hydrate and the realtime path already apply:
+ *
+ *   - identity and access are captured before the await and re-checked after it
+ *     (the #798 queue-key pattern);
+ *   - a row older than the server-timestamp ledger is refused, so the ledger
+ *     never moves backwards (isStaleServerRow, the B2 realtime guard);
+ *   - a row whose write_version is older than the cached one, or that carries no
+ *     usable version at all, is refused rather than trusted;
+ *   - a trip with a pending queued write keeps its local row: the queue owns
+ *     that trip's next state and the server row is already behind it;
+ *   - the caller must be a member (or an admin), so an empty or someone else's
+ *     membership read cannot cache a trip the caller cannot read.
+ *
+ * A refusal returns a distinct outcome and leaves the cached row untouched.
+ */
+async function loadFullTripIntoCache(tripId: ID): Promise<LoadOutcome> {
   const scope = identityScope()
-  if (!scope || !isCurrentIdentity(scope)) return false
+  if (!scope || !isCurrentIdentity(scope)) return 'abandoned'
   const accessEpoch = tripAccessEpochs.get(tripId) ?? 0
   const [tripRes, memRes] = await Promise.all([
     supabase.from('trips').select('*').eq('id', tripId).maybeSingle(),
     supabase.from('trip_members').select('*').eq('trip_id', tripId),
   ])
-  if (!isCurrentIdentity(scope) || (tripAccessEpochs.get(tripId) ?? 0) !== accessEpoch) return false
+  if (!isCurrentIdentity(scope) || (tripAccessEpochs.get(tripId) ?? 0) !== accessEpoch) return 'abandoned'
   if (tripRes.error || memRes.error || !tripRes.data || (tripRes.data as TripRow).deleted_at) {
     if (tripRes.error) console.error('[yatraflow] full trip read after join failed', tripRes.error)
     if (memRes.error) console.error('[yatraflow] member read after join failed', memRes.error)
-    return false
+    return 'failed'
   }
+  const row = tripRes.data as TripRow
   const members = ((memRes.data ?? []) as MemberRow[]).map(m => ({
     userId: m.user_id, role: m.role as TripMember['role'], joinedAt: m.joined_at,
   }))
-  const trip = rowToTrip(tripRes.data as TripRow, members)
+  // S2 — the caller must be on the trip. An empty membership read is not proof
+  // of access; caching on it would show a trip the caller cannot actually read.
+  if (!members.some(m => m.userId === scope.userId) && !isAdminCached()) {
+    console.error('[yatraflow] full trip read returned no membership for the caller', { tripId })
+    return 'not-member'
+  }
+  // B2 — never move the ledger backwards.
+  if (isStaleServerRow(serverTripTimestamps.get(tripId), row.updated_at)) return 'stale'
+
+  const existing = tripById(tripId)
+  if (existing) {
+    // B2 — the queue owns this trip's next state. The server row is behind it,
+    // so replacing the cache would show a state the user has already moved past.
+    if (queuedLocalTrips.has(tripId)) return 'stale'
+    const incoming = row.write_version
+    const cached = existing.writeVersion
+    // An unverifiable answer is not an authoritative one: refuse it.
+    if (!validWriteVersion(incoming)) return 'stale'
+    if (validWriteVersion(cached) && incoming < cached) return 'stale'
+    if (validWriteVersion(cached) && incoming === cached && existing.updatedAt > Number(row.updated_at)) return 'stale'
+  }
+
+  const trip = rowToTrip(row, members)
   recordServerTripTimestamp(trip.id, trip.updatedAt)
   const idx = cache.trips.findIndex(t => t.id === trip.id)
   cache.trips = idx < 0
     ? [...cache.trips, trip]
     : [...cache.trips.slice(0, idx), trip, ...cache.trips.slice(idx + 1)]
   commit()
-  return true
+  return 'loaded'
 }
 
 /** True when this user already holds a membership row on the trip. It reads

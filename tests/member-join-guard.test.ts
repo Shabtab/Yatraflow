@@ -241,7 +241,9 @@ describe('joinViaInvite client path', () => {
   })
 
   it('fails closed on a null answer or an answer naming another trip', () => {
-    expect(body).toMatch(/if \(!joinedTripId \|\| String\(joinedTripId\)\.toLowerCase\(\) !== tripId\.toLowerCase\(\)\) return false/)
+    // #804 — the function now returns 'joined' | 'joined-unloaded' | 'failed', so
+    // a refusal is the distinct 'failed' state rather than a bare false.
+    expect(body).toMatch(/if \(!joinedTripId \|\| String\(joinedTripId\)\.toLowerCase\(\) !== tripId\.toLowerCase\(\)\) return 'failed'/)
   })
 })
 

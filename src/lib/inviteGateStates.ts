@@ -29,6 +29,31 @@ export function inviteGateState(read: { loading: boolean; failed: boolean; trip:
   return 'ready'
 }
 
+/**
+ * #804 (B1) — what the gate does after it tries to join.
+ *
+ * Three outcomes, three different screens, never shown as one another (R23):
+ *   'navigate'  joined AND the full row is loaded. Open the trip.
+ *   'unloaded'  the membership EXISTS but the row did not load. Stay on the gate
+ *               and offer a retry that re-reads the row ONLY; joining again would
+ *               write a second membership row and notify the owner twice.
+ *   'failed'    no membership was created. Stay on the gate and offer a try
+ *               that runs the join again.
+ *
+ * `reload` is the retry action for 'unloaded' and `rejoin` for 'failed', so the
+ * caller cannot accidentally offer the wrong remedy.
+ */
+export type InviteJoinOutcome = 'navigate' | 'unloaded' | 'failed'
+
+export function inviteJoinOutcome(result: 'joined' | 'joined-unloaded' | 'failed'): {
+  outcome: InviteJoinOutcome
+  retry: 'reload' | 'rejoin' | 'none'
+} {
+  if (result === 'joined') return { outcome: 'navigate', retry: 'none' }
+  if (result === 'joined-unloaded') return { outcome: 'unloaded', retry: 'reload' }
+  return { outcome: 'failed', retry: 'rejoin' }
+}
+
 /** The state of the shared snapshot's decode.
  *  - `loading` while the payload is unpacked.
  *  - `failed` when the decode threw. A snapshot travels inside the link, so a

@@ -13,7 +13,7 @@ import {
   shouldBrowserNotify,
 } from './lib/browserNotifications'
 import type { Notification, Trip } from './data/types'
-import { useDb, currentUser, useUsers, useNotifications, useSessionUserId, useSliceReads, logout, markAllNotificationsRead, tripById, joinViaInvite, importTripPersisted, retryImportTrip, init, resumeSync, useStoreReady, fetchSharedTrip, fetchTripByInviteCode, viewerIsMemberOf, collectUnclaimedCovers } from './store/store'
+import { useDb, currentUser, useUsers, useNotifications, useSessionUserId, useSliceReads, logout, markAllNotificationsRead, tripById, joinViaInvite, reloadJoinedTrip, importTripPersisted, retryImportTrip, init, resumeSync, useStoreReady, fetchSharedTrip, fetchTripByInviteCode, viewerIsMemberOf, collectUnclaimedCovers } from './store/store'
 import { Avatar, BrandMark, ToastZone, useClickOutside, toast } from './components/ui'
 import { BottomNav } from './components/BottomNav'
 import { OfflineBanner } from './components/OfflineBanner'
@@ -36,7 +36,7 @@ import { StateBlock } from './components/page/StateBlock'
 import { LandingPage } from './pages/Landing'
 import { NativeHomePage } from './pages/NativeHome'
 import {
-  sharedSnapshotState, inviteGateState,
+  sharedSnapshotState, inviteGateState, inviteJoinOutcome,
   inviteLoginNext, inviteSignupNext, invitePreview,
 } from './lib/inviteGateStates'
 // Route-level code splitting: only the landing page stays in the main chunk (it
@@ -912,7 +912,10 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
   // RPC fallback covers private trips: holding the link (the trip's UUID)
   // is the capability to preview it.
   const [trip, setTrip] = useState<Trip | null>(null)
-  const [status, setStatus] = useState<'loading' | 'broken' | 'joining' | 'retired'>('loading')
+  // #804 (B1) — 'joined-unloaded' and 'join-failed' are distinct outcomes of a
+  // join, kept apart from 'broken' (the link read failed) and 'retired' (a
+  // trip-id link for a non-member). Each offers a different remedy.
+  const [status, setStatus] = useState<'loading' | 'broken' | 'joining' | 'retired' | 'joined-unloaded' | 'join-failed'>('loading')
   // A dropped connection resolves to the same null as a dead code, so the
   // failure screen has to offer the one remedy that costs nothing: try again.
   const [retryTick, setRetryTick] = useState(0)
@@ -977,14 +980,21 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
       // longer reads tripById: it takes the name for its toast and awaits the
       // full-row fetch itself. The old fetchSharedTrip priming call is gone with
       // that requirement.
-      const ok = await joinViaInvite(trip.id, me.id, trip.inviteCode ?? linkTarget, trip.name)
-      if (ok) toast(`You’re on “${trip.name}” - happy planning!`)
-      // joinViaInvite reports false for an RLS refusal, a dropped connection, or
-      // a join that succeeded but whose full row could not be read back. Those
-      // are different states, and the store logs and toasts the last one itself,
-      // so this line must not blame the link.
-      else toast('Couldn’t join just now - open the link again, or ask for a fresh one.', 'err')
-      navigateRef.current(`/trip/${trip.id}`)
+      // B1 — navigate ONLY when the trip was joined AND loaded. The decision and
+      // the retry it implies come from inviteJoinOutcome, so the branch the tests
+      // execute is the branch this code runs.
+      const result = await joinViaInvite(trip.id, me.id, trip.inviteCode ?? linkTarget, trip.name)
+      const { outcome } = inviteJoinOutcome(result)
+      if (outcome === 'navigate') {
+        toast(`You’re on “${trip.name}” - happy planning!`)
+        navigateRef.current(`/trip/${trip.id}`)
+      } else if (outcome === 'unloaded') {
+        // The membership EXISTS. Retry re-reads the row only.
+        setStatus('joined-unloaded')
+      } else {
+        // No membership was created. Retry runs the join again.
+        setStatus('join-failed')
+      }
     })()
     // Depend on me/trip objects, not a mount-only []: the store hydrates them
     // asynchronously after init(), so a one-shot effect ran before they
@@ -1053,6 +1063,55 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
     return (
       <div className="container yf-page page-enter">
         <StateBlock kind="loading" title={status === 'joining' && trip ? `Joining “${trip.name}”…` : 'Opening invite…'} />
+      </div>
+    )
+  }
+
+  // #804 (B1) — joined, but the plan did not load. The user IS a member; only
+  // the page read failed. Retry re-reads the row and never joins again.
+  if (status === 'joined-unloaded') {
+    return (
+      <div className="container yf-page page-enter">
+        <StateBlock
+          kind="failed"
+          art={<Link2 size={38} aria-hidden />}
+          title={`You joined “${trip?.name ?? 'this trip'}”`}
+          body="The plan did not load. You are on the crew, so this is a read problem, not a join problem. Try again, or open it from My trips."
+          actions={(
+            <div className="inv-actions">
+              <button className="btn btn-primary" onClick={() => {
+                if (!trip) return
+                setStatus('joining')
+                void reloadJoinedTrip(trip.id).then(r => {
+                  if (r === 'joined') navigateRef.current(`/trip/${trip.id}`)
+                  else setStatus('joined-unloaded')
+                })
+              }}>Try again</button>
+              <button className="btn btn-outline" onClick={() => onNavigate('/trips')}>Go to My trips</button>
+            </div>
+          )}
+        />
+      </div>
+    )
+  }
+
+  // #804 (B1) — the join itself failed, so no membership exists. Retry
+  // runs the join again.
+  if (status === 'join-failed') {
+    return (
+      <div className="container yf-page page-enter">
+        <StateBlock
+          kind="failed"
+          art={<Link2 size={38} aria-hidden />}
+          title="Couldn’t join just now"
+          body="The link may still be good — a dropped connection looks the same as a refused join. Try again, or ask the organiser for a fresh link."
+          actions={(
+            <div className="inv-actions">
+              <button className="btn btn-primary" onClick={() => { setStatus('loading'); setRetryTick(t => t + 1) }}>Try again</button>
+              <button className="btn btn-outline" onClick={() => onNavigate('/')}>Go home</button>
+            </div>
+          )}
+        />
       </div>
     )
   }

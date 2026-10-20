@@ -135,7 +135,7 @@ describe('joinViaInvite (write order)', () => {
 
     const meId = '33333333-3333-4333-8333-333333333333'
     const ok = await joinViaInvite(row().id, meId, CODE)
-    expect(ok).toBe(true)
+    expect(ok).toBe('joined')
 
     // Membership first, side effects after — and the joiner is on the trip.
     const order = writes.map(w => w.table)
@@ -155,7 +155,7 @@ describe('joinViaInvite (write order)', () => {
 
     const stranger = '44444444-4444-4444-8444-444444444444'
     const ok = await joinViaInvite(row().id, stranger, CODE)
-    expect(ok).toBe(false)
+    expect(ok).toBe('failed')
     // No side effects fired, and the joiner was NOT optimistically added.
     expect(writes.find(w => w.table === 'activity')).toBeUndefined()
     expect(writes.find(w => w.table === 'notifications')).toBeUndefined()
@@ -171,7 +171,7 @@ describe('joinViaInvite (write order)', () => {
 
     const stranger = '44444444-4444-4444-8444-444444444444'
     const ok = await joinViaInvite(row().id, stranger, CODE)
-    expect(ok).toBe(false)
+    expect(ok).toBe('failed')
     expect(writes.find(w => w.table === 'activity')).toBeUndefined()
     expect(tripById(row().id)?.members?.some(m => m.userId === stranger)).toBe(false)
   })
@@ -183,7 +183,7 @@ describe('joinViaInvite (write order)', () => {
 
     const stranger = '44444444-4444-4444-8444-444444444444'
     const ok = await joinViaInvite(row().id, stranger, CODE)
-    expect(ok).toBe(false)
+    expect(ok).toBe('failed')
     expect(writes.find(w => w.table === 'activity')).toBeUndefined()
     expect(tripById(row().id)?.members?.some(m => m.userId === stranger)).toBe(false)
   })
@@ -194,7 +194,7 @@ describe('joinViaInvite (write order)', () => {
     await joinViaInvite(row().id, meId, CODE)
     writes.length = 0
     const ok = await joinViaInvite(row().id, meId, CODE)
-    expect(ok).toBe(true)
+    expect(ok).toBe('joined')
     expect(writes.filter(w => w.table === 'rpc:join_trip')).toHaveLength(0)
   })
 })
