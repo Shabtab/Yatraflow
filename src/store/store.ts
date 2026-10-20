@@ -2900,7 +2900,7 @@ function canSendTripWrite(scope: IdentityScope, tripId: string, accessEpoch: num
  *
  * ONE owner for the access decision. Every path that awaits, and then writes
  * to the cache or reports success, asks this question first. It is the weaker
- * of the two checks on purpose: `canSendTripWrite` also requires the edit
+ * of the two checks on purpose: `canSendTripWrite` also needs the edit
  * right, so it is false in the very branch that handles a lost edit right.
  *
  * The three things it reads:

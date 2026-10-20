@@ -221,7 +221,7 @@ const MUTATIONS = [
     to: `    cache.trips = cache.trips.filter(t => t.id !== tripId)`,
     // The edit-right check and the liveness check OVERLAP here: the realtime
     // demotion bumps the generation, so the liveness check already stops the
-    // removal under a newer grant. The mutation therefore removes the whole
+    // removal under a newer grant. The mutation removes the whole
     // set, which is what reproduces the defect.
     also: [
       [`  const shared = await readSharedTripForCurrentIdentity(tripId)
@@ -270,9 +270,9 @@ const MUTATIONS = [
   {
     // B1: the second shared read must re-check liveness before it publishes.
     // The checks OVERLAP, so removing only this one leaves the scenario
-    // covered by the check that follows it. The mutation therefore removes the
-    // whole set of liveness checks in the publish path, which is what
-    // reproduces the defect.
+    // covered by the check that follows it. The mutation removes the whole
+    // set of liveness checks in the publish path, which is what reproduces
+    // the defect.
     name: 'REVISE5-second-read-checks-liveness',
     file: STORE,
     from: `          // The second read awaited, so the work may no longer be live. An
@@ -319,7 +319,7 @@ const MUTATIONS = [
   },
   {
     // B3: the reason is bound to the identity AND the generation that
-    // recorded it, and the restore requires the captured identity to still be
+    // recorded it, and the restore needs the captured identity to still be
     // current. The generation binding is the load-bearing part: a sign-out
     // clears the trip's generation, so a reason recorded before the sign-out
     // no longer matches and the copy is not put back.
@@ -333,7 +333,7 @@ const MUTATIONS = [
           && isCurrentIdentity(scope)) {`,
     // The identity check and the generation binding OVERLAP: a sign-out clears
     // the trip's access generation, so the binding already refuses a reason
-    // recorded before the sign-out. Removing only the identity check therefore
+    // recorded before the sign-out. Removing only the identity check does
     // does not reproduce the defect. This mutation removes the whole binding,
     // which does.
     also: [
