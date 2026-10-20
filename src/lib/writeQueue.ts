@@ -138,6 +138,9 @@ const changeVersions = new WeakMap<WriteQueueStore, Map<string, number>>()
 const storeVersions = new WeakMap<WriteQueueStore, number>()
 const uncertainDrops = new WeakMap<WriteQueueStore, Set<string>>()
 const tails = new WeakMap<WriteQueueStore, Map<string, Promise<void>>>()
+// Sign-out cleanups still running, and owners whose departed copy could not be listed.
+const departures = new WeakMap<WriteQueueStore, Set<Promise<void>>>()
+const staleOwners = new WeakMap<WriteQueueStore, Set<string>>()
 
 export function subscribePendingWrites(listener: () => void): () => void {
   listeners.add(listener)
@@ -221,6 +224,7 @@ export async function queueWrite(entry: QueuedWrite, store: WriteQueueStore = de
 
 /** Ignore malformed records. A late read must never delete a newer replacement. */
 export async function pendingWrites(store: WriteQueueStore = defaultStore): Promise<QueuedWrite[]> {
+  await settleDepartures(store)
   const readVersion = storeVersions.get(store) ?? 0
   let raw: unknown[] = []
   let readFailed = false
@@ -231,7 +235,9 @@ export async function pendingWrites(store: WriteQueueStore = defaultStore): Prom
   for (const candidate of Array.isArray(raw) ? raw : []) {
     if (isValidEntry(candidate)) {
       const key = writeQueueKey(candidate.ownerId, candidate.tripId)
-      valid.set(key, uncertainFor(store).has(key) ? { ...candidate, state: 'failed', storageFailed: true } : candidate)
+      // A departed copy that could not be cleared stays paused until a later cleanup clears it.
+      const paused = uncertainFor(store).has(key) || staleFor(store).has(candidate.ownerId)
+      valid.set(key, paused ? { ...candidate, state: 'failed', storageFailed: true } : candidate)
     }
   }
   for (const [key, entry] of memoryFor(store)) valid.set(key, entry)
@@ -343,28 +349,76 @@ export function shouldRetry(entry: Pick<QueuedWrite, 'attempts'>): boolean {
   return entry.attempts < MAX_WRITE_ATTEMPTS
 }
 
-/** Forget every queued write belonging to one account (sign-out). Their
- *  unsynced edits are theirs alone: the next person on this device must never
- *  be the one whose session "syncs" them. */
-export async function clearWritesFor(ownerId: string, store: WriteQueueStore = defaultStore): Promise<void> {
+/** Sign-out cleanups still running for one store. */
+function departuresFor(store: WriteQueueStore): Set<Promise<void>> {
+  let running = departures.get(store)
+  if (!running) { running = new Set(); departures.set(store, running) }
+  return running
+}
+
+/** Owners whose departed copy could not be listed. Their records stay paused. */
+function staleFor(store: WriteQueueStore): Set<string> {
+  let owners = staleOwners.get(store)
+  if (!owners) { owners = new Set(); staleOwners.set(store, owners) }
+  return owners
+}
+
+/** Every read waits for running sign-out cleanups, so a departed copy cannot be replayed. */
+async function settleDepartures(store: WriteQueueStore): Promise<void> {
+  const running = departuresFor(store)
+  while (running.size) await Promise.all([...running])
+}
+
+function startDeparture(ownerId: string, store: WriteQueueStore): Promise<void> {
+  // The barrier is registered before the caller returns, so a read that follows waits for it.
+  const cleanup = removeOwnerWrites(ownerId, store)
+  const running = departuresFor(store)
+  running.add(cleanup)
+  const done = () => { running.delete(cleanup) }
+  void cleanup.then(done, done)
+  return cleanup
+}
+
+async function removeOwnerWrites(ownerId: string, store: WriteQueueStore): Promise<void> {
   const memory = memoryFor(store)
   const initial = new Map(latestFor(store))
   const captured = [...memory.values()].filter(write => write.ownerId === ownerId)
   for (const write of captured) memory.delete(writeQueueKey(write.ownerId, write.tripId))
   for (const [key, write] of initial) if (write?.ownerId === ownerId) changed(store, key, null)
   if (captured.length) notifyPendingWrites()
+  let disk: unknown[]
   try {
-    const disk = await store.list()
-    const candidates = [...captured, ...(Array.isArray(disk) ? disk.filter(isValidEntry) : [])]
-    for (const write of candidates) {
-      if (write.ownerId !== ownerId) continue
-      const key = writeQueueKey(write.ownerId, write.tripId)
-      const latest = latestFor(store).get(key)
-      const observed = initial.get(key)
-      if (latest && (!observed || !sameGeneration(latest, observed))) continue
-      await dropQueuedWrite(write, store)
-    }
+    disk = await store.list()
   } catch {
-    /* nothing to undo */
+    // The departed copy cannot be read, so this owner's records stay paused for this session.
+    staleFor(store).add(ownerId)
+    notifyPendingWrites()
+    return
   }
+  const candidates = [...captured, ...(Array.isArray(disk) ? disk.filter(isValidEntry) : [])]
+  for (const write of candidates) {
+    if (write.ownerId !== ownerId) continue
+    const key = writeQueueKey(write.ownerId, write.tripId)
+    const latest = latestFor(store).get(key)
+    const observed = initial.get(key)
+    if (latest && (!observed || !sameGeneration(latest, observed))) continue
+    if (await dropQueuedWrite(write, store)) continue
+    // A newer edit now owns this key, so its state is not ours to change.
+    const newest = latestFor(store).get(key)
+    if (newest && !sameGeneration(newest, write)) continue
+    // The departed copy survived a failed removal. Pause it, so replay cannot send it.
+    const after = await store.list().catch(() => null)
+    if (!after || after.some(raw => isValidEntry(raw) && writeQueueKey(raw.ownerId, raw.tripId) === key && sameGeneration(raw, write))) {
+      uncertainFor(store).add(key)
+      notifyPendingWrites()
+    }
+  }
+  staleFor(store).delete(ownerId)
+}
+
+/** Forget every queued write belonging to one account (sign-out). Their
+ *  unsynced edits are theirs alone: the next person on this device must never
+ *  be the one whose session "syncs" them. Reads wait for this cleanup. */
+export function clearWritesFor(ownerId: string, store: WriteQueueStore = defaultStore): Promise<void> {
+  return startDeparture(ownerId, store)
 }
