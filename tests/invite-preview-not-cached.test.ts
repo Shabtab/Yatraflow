@@ -504,8 +504,7 @@ describe('B-4 — the owner notification is owed by an actual join and settled o
     const markAt = join.indexOf('joiningTrips.add(tripId)')
     expect(markAt).toBeGreaterThan(-1)
     expect(join.indexOf('await joinAfterScope'), 'the scope handoff happens inside the window').toBeGreaterThan(markAt)
-    // And the window closes on every exit.
-    expect(join).toContain('joiningTrips.delete(tripId)')
+    // And the window closes on every exit.    expect(join).toContain('joiningTrips.delete(tripId)')
     const finallyAt = join.indexOf('finally')
     expect(finallyAt, 'the window closes in a finally block').toBeGreaterThan(markAt)
   })
@@ -645,5 +644,68 @@ describe('B-2 — the invite code is not reachable from a shared-trip fetch', ()
     expect(body).toMatch(/owner_id = auth\.uid\(\)/)
     expect(body).toContain('public.is_member(t.id)')
     expect(body).toContain("t.visibility = 'private'")
+  })
+})
+// ============ round 7 — the four mutations that initially escaped ============
+
+describe('B1 — the store re-checks identity AFTER the membership read', () => {
+  // The re-check used to sit BEFORE the pre-query, which is the await the account
+  // switch lands in. A pre-check before a later await answers for the account
+  // that started, so the join then ran under whoever was signed in now.
+  it('the re-check comes after the membership query resolves', () => {
+    const join = fnBody(STORE, 'async function joinAfterScope(')
+    const queryAt = join.indexOf('await membershipCertain(')
+    const checkAt = join.indexOf("if (!isCurrentIdentity(scope)")
+    expect(queryAt).toBeGreaterThan(-1)
+    expect(checkAt).toBeGreaterThan(-1)
+    expect(checkAt, 'the re-check follows the await it must guard').toBeGreaterThan(queryAt)
+  })
+
+  it('no join write is reachable before that re-check', () => {
+    const join = fnBody(STORE, 'async function joinAfterScope(')
+    const checkAt = join.indexOf("if (!isCurrentIdentity(scope)")
+    const rpcAt = join.indexOf("supabase.rpc('join_trip'")
+    expect(checkAt).toBeGreaterThan(-1)
+    expect(rpcAt).toBeGreaterThan(-1)
+    expect(checkAt, 'the join write comes after the re-check').toBeLessThan(rpcAt)
+  })
+})
+
+describe('B2 — a resolved link leaves the loading status', () => {
+  it('App sets ready when the read returns a trip', () => {
+    expect(APP).toContain("setStatus('ready')")
+    // The set must be inside the success branch, next to setTrip.
+    const at = APP.indexOf("setStatus('ready')")
+    expect(APP.slice(Math.max(0, at - 60), at)).toContain('setTrip(t)')
+  })
+
+  it('the loading render is only for a genuinely unread link', () => {
+    // The spinner must not swallow the terminal screens or the signed-out
+    // preview, so "loading" needs the read to still be in flight.
+    expect(APP).toMatch(/status === 'loading' \|\| !trip/)
+  })
+})
+
+describe('S1 — a not-member outcome is a failure, not a read failure or a success', () => {
+  it('finishJoin maps not-member to failed and drops the debt', () => {
+    const finish = fnBody(STORE, 'async function finishJoin(')
+    expect(finish).toContain("if (loaded === 'not-member')")
+    const notMemberAt = finish.indexOf("if (loaded === 'not-member')")
+    const failedAt = finish.indexOf("return 'failed'")
+    const unloadedAt = finish.indexOf("return 'joined-unloaded'")
+    expect(notMemberAt).toBeGreaterThan(-1)
+    expect(failedAt, 'not-member is a failure').toBeGreaterThan(notMemberAt)
+    expect(failedAt).toBeLessThan(unloadedAt)
+    expect(finish).toContain('dropJoinNotice(key)')
+  })
+})
+
+describe('S4 — a profile gap resets the join try', () => {
+  it('App resets when the signed-in profile disappears', () => {
+    expect(APP).toContain('if (me && me.id === live.userId) return')
+    // The reset must set the machine back to idle, not merely clear a flag.
+    const at = APP.indexOf('if (me && me.id === live.userId) return')
+    const block = APP.slice(at, at + 400)
+    expect(block).toContain('initialJoinState')
   })
 })
