@@ -30,6 +30,9 @@ anywhere in this repo means the entry labelled `6b` below.
 
 ## 1. Pitfall entries (`AGENTS.md` §2 rules 6a–6z)
 
+Source-contract tests must handle both LF and CRLF line endings.
+Tests for helper use must check the call site. A function definition does not prove that callers use it.
+
 Flight records can exist without stored stops. Protect their days during date reconciliation and preserve them through imports and snapshots.
 Use resolved journey points for exports and insertion origins. Stored stops can omit airports and arrival anchors.
 Settings previews must use validated draft fields. Reuse road measurements only while the route and day assignment still match.

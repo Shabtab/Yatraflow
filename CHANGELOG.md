@@ -28,6 +28,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ### Fixed
 
+- Development checks handle both Windows and Linux line endings. SQL contract checks use fixed function headers.
 - **Only the options that apply to your transport are shown.** A car, a rental car and a motorcycle keep their driving options. A train, a bus, a flight and a taxi hide the driver counts and the fuel figures. They also hide the drive-back planning. Traveller, budget, stay and travel-style options stay for every mode. (2026-10-19)
 - **A passenger trip no longer shows a driver count it does not own.** The two forms drop the driving summary, the drawer and its shortcut, and the Wheel figure. The section heading loses its wheel wording. A ticket reads as a journey. (2026-10-19)
 - **The Train pill is no longer covered by its Local switch.** The reserved space went to a class the form does not use. The selected mode's name was hidden. (2026-10-19)
