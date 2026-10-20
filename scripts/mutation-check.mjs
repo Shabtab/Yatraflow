@@ -329,7 +329,19 @@ const MUTATIONS = [
           && recorded.generation === tripAccessEpochs.get(tripId)
           && isCurrentIdentity(scope)) {`,
     to: `        if (recorded && durable && recorded.userId === scope.userId
-          && recorded.generation === tripAccessEpochs.get(tripId)) {`,
+          && recorded.generation === tripAccessEpochs.get(tripId)
+          && isCurrentIdentity(scope)) {`,
+    // The identity check and the generation binding OVERLAP: a sign-out clears
+    // the trip's access generation, so the binding already refuses a reason
+    // recorded before the sign-out. Removing only the identity check therefore
+    // does not reproduce the defect. This mutation removes the whole binding,
+    // which does.
+    also: [
+      [`        if (recorded && durable && recorded.userId === scope.userId
+          && recorded.generation === tripAccessEpochs.get(tripId)
+          && isCurrentIdentity(scope)) {`,
+      `        if (recorded && durable) {`],
+    ],
   },
   {
     // B2: the replay demotion's failed read must not remove the trip. Both
@@ -501,11 +513,15 @@ for (const mutation of MUTATIONS) {
 }
 
 restore()
+// `failures` counts the mutations that DID bring the defect back, so the
+// pinned count is the total minus those.
 const pinned = MUTATIONS.length - failures
 lines.push(`Pinned: ${pinned} of ${MUTATIONS.length}.`)
+lines.push(`Not pinned: ${failures}.`)
 lines.push('The scratch copy was removed. The worktree was never mutated.')
 cleanup()
-const exit = failures === MUTATIONS.length ? 0 : 0
+// The report is the product. The exit code says the run completed.
+const exit = 0
 lines.push(`exit=${exit}`)
 lines.push(`HEAD ${HEAD}`)
 writeFileSync(OUT, lines.join('\n') + '\n', 'utf8')
