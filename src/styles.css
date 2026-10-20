@@ -11553,6 +11553,7 @@ button.day-slot-top { background: none; border: 0; cursor: pointer; font: inheri
   overflow-wrap: anywhere;
 }
 
+/* ---------- native shell, bottom nav and update notice ---------- */
 /* In the signed-in native shell the top safe-area inset has no owner. The
    sign-in gate does not render .topnav there, so main carries the top inset
    once. */
