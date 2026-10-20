@@ -3020,8 +3020,10 @@ async function tripWriteToken(scope: IdentityScope): Promise<string | null> {
  */
 async function readSharedTripWithMembership(
   tripId: string,
-  token: string,
+  token: string | null,
 ): Promise<{ trip: Trip; members: TripMember[] } | null> {
+  // No session token, so the shared plan cannot be read.
+  if (!token) return null
   const [tripRead, memberRead] = await Promise.all([
     supabase.from('trips').select('*').eq('id', tripId).maybeSingle()
       .setHeader('Authorization', `Bearer ${token}`),
