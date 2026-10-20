@@ -25,8 +25,8 @@ silent drop.
 ### The Download button was gated on the same thing
 
 `OfflineBanner.download()` required the trip to be in the cache with an
-owner/editor role. A demoted user therefore lost the download action for a
-copy that was still on their own device.
+owner/editor role. A demoted user lost the download action for a copy that
+was still on their own device.
 
 ## The fix
 
@@ -45,13 +45,33 @@ copy that was still on their own device.
   never be papered over. The automatic replay skips it too, so a later grant
   does not silently replay it.
 - The banner's Download binds to the **current identity** and the **queued
-  owner** only. A live edit role is no longer required: the copy is already on
+  owner** only. A live edit role is no longer needed: the copy is already on
   that device. The shared trip's name is used for the title only when the
   account can read that trip; the queued snapshot's own name is never shown.
 - A copy that is not exportable shows an accurate line and no Download button,
   so the banner never promises an action it cannot perform.
 - The banner counts a reasoned copy as "kept on this device", not as "waiting
   to sync", because it will not sync on its own.
+
+### The scope guards
+
+Every path that touches the cache after an `await` re-checks two things: the
+**scope** that started the work, and the **access generation** of the trip.
+The check is `sameScopeGeneration`, which is the weaker of the two, because a
+branch that handles a lost edit right cannot use the edit-right check.
+
+The same guard sits after every await in the discard path, the membership
+branch and the missing-trip branch. A single guard is enough to stop the
+defect, and they overlap: removing one alone leaves the scenario covered by a
+neighbour. The mutation report in the evidence folder shows this. The
+collective removal of the whole set fails the probes, so the set is what holds
+the line.
+
+The discard also separates three outcomes, because they used to be one. A read
+that succeeded with a row refreshes the cached plan. A read that succeeded
+without a row means the trip is gone, so the plan leaves the list. A read that
+**failed** leaves the cached plan alone, so a network error never drops a trip
+the account can still read. The local copy is removed in all three cases.
 
 ### Scope held
 
@@ -82,10 +102,15 @@ predicate is **omitted**.
 
 **Consequence.** The UPDATE becomes unconditional on the revision. It still
 carries the trip id, so it cannot write the wrong row, and RLS still decides
-whether the caller may write. But it can **overwrite a collaborator's newer
-plan**: the metadata payload is narrow (`invite_code`, `visibility`), so the
-lost update is a lost *revision bump*, not a lost plan. The `write_version`
-trigger advances the counter on every update, so the counter still moves.
+whether the caller may write. The payload is narrow (`invite_code`,
+`visibility`), so the write does **not** replace plan days, and it does not
+lose a revision bump either: the `write_version` trigger advances the counter
+on every update, so the counter still moves. The real cost is that the write
+is not **conditional**. It no longer refuses to run against a server row that
+moved on, so the app cannot tell a stale metadata write from a current one.
+The invalid-base path does not adopt the returned revision into the cache or
+into the queued baseline, because its advance expression needs an already
+valid base.
 
 **Callers.** Two: `mintInviteCode` (~1444, writes `invite_code` under a
 `null` guard on the column) and the publish path (~3985, writes
@@ -96,7 +121,7 @@ anything without a valid `baseVersion` and parks the copy as a conflict
 ("Old queue entries and an old backend need review instead of an unsafe
 overwrite"). A metadata write has no queued copy and no user-visible plan to
 protect, so parking it would strand a publish or an invite code with no way
-out. Making the metadata path refuse would break publish for every account on
+out. A metadata path that refuses would break publish for every account on
 a database that has not taken the migration yet, and the migration is
 documented as a prerequisite that must land first.
 
@@ -107,3 +132,11 @@ predicate, exactly as the `replace` recovery choice does
 changing the policy for an un-migrated database. It needs its own test and a
 decision on whether the read is a second round trip, so it does not belong in
 this packet.
+
+**One rule if that change is ever applied.** The server revision must NEVER
+become the baseline for an unknown pending whole-plan snapshot. A
+queued plan whose baseline is unknown stays paused, and it is never rebased
+from a metadata acknowledgement. The invite-code `null` predicate, the
+per-trip ordering, and the identity and access guards all stay. The change
+also needs a fail-closed decision for the case where the server revision
+stays unavailable.

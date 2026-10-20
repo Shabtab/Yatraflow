@@ -557,10 +557,27 @@ function isCurrentIdentity(scope: IdentityScope): boolean {
 /** Pending snapshots stay separate from server revisions and account identities. */
 const queuedLocalTrips = new Map<string, QueuedWrite>()
 
+/**
+ * A copy with a reason cannot sync. It must never show as the visible plan
+ * and it must never be held as the local copy, because a later edit would
+ * capture that stale proposal as a fresh whole-plan write.
+ */
+function isHeldCopy(write: QueuedWrite): boolean {
+  return !write.reason
+}
+
 function overlayQueuedTrips(trips: Trip[], writes: QueuedWrite[], userId: string): Trip[] {
   return trips.map(trip => {
     const write = writes.find(w => w.tripId === trip.id && w.ownerId === userId)
-    if (!write || !trip.members?.some(m => m.userId === userId && canEdit(m.role))) return trip
+    if (!write) return trip
+    if (!isHeldCopy(write)) {
+      // A reasoned copy is held for its owner, never as the visible plan. Any
+      // earlier held entry for the same trip goes with it, so a later edit
+      // cannot inherit the stale proposal's baseline.
+      queuedLocalTrips.delete(trip.id)
+      return trip
+    }
+    if (!trip.members?.some(m => m.userId === userId && canEdit(m.role))) return trip
     const local = write.trip as Partial<Trip>
     if (local.id !== trip.id || !Array.isArray(local.days)) return trip
     queuedLocalTrips.set(trip.id, write)
@@ -933,12 +950,17 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     const displayedTrips = currentTrips === undefined ? undefined : overlayQueuedTrips(currentTrips, pending, userId)
     if (!tripsReadFailed) {
       const visible = new Set((currentTrips ?? []).filter(t => t.members?.some(m => m.userId === userId && canEdit(m.role))).map(t => t.id))
+      // The reason comes from the authoritative reads, not from one label for
+      // every case. A trip the account may no longer read at all was removed
+      // or deleted. A trip the account may still read was demoted.
+      const readable = new Set((currentTrips ?? []).map(t => t.id))
       for (const write of pending) {
         if (write.ownerId !== userId || visible.has(write.tripId)) continue
         // The account can no longer edit the trip. The server read above still
         // lists it when the account can read it, so a demoted reader keeps the
         // trip. The queued copy stays with the reason attached.
-        invalidateTripWork(write.tripId, userId, 'access-revoked')
+        const reason = readable.has(write.tripId) ? 'access-revoked' : 'access-removed'
+        invalidateTripWork(write.tripId, userId, reason)
       }
     }
     const allowedTrips = new Set((displayedTrips ?? cache.trips).map(t => t.id))
@@ -2854,6 +2876,19 @@ function canSendTripWrite(scope: IdentityScope, tripId: string, accessEpoch: num
     && !!trip && !trip.deletedAt && (canEdit(roleOf(trip, scope.userId)) || isAdminCached())
 }
 
+/**
+ * The scope and the access generation are still the ones that started the
+ * work.
+ *
+ * `canSendTripWrite` also requires the edit right, so it is false in the very
+ * branch that handles a lost edit right. This guard is the weaker check: the
+ * same account, and the same access generation. It decides whether work that
+ * started under one scope may still touch the cache.
+ */
+function sameScopeGeneration(scope: IdentityScope, tripId: string, accessEpoch: number): boolean {
+  return isCurrentIdentity(scope) && (tripAccessEpochs.get(tripId) ?? 0) === accessEpoch
+}
+
 async function retainQueuedState(entry: QueuedWrite, scope: IdentityScope, changes: Partial<QueuedWrite>): Promise<void> {
   if (!isCurrentIdentity(scope)) return
   const accessEpoch = tripAccessEpochs.get(entry.tripId) ?? 0
@@ -2950,6 +2985,44 @@ async function readSharedTrip(tripId: string, token: string): Promise<Trip | nul
   return rowToTrip(data as TripRow, cached?.members ?? [])
 }
 
+/**
+ * Read the shared plan under the CURRENT identity and access generation.
+ *
+ * The realtime path has no captured scope, so it takes one now. The read and
+ * the cache write are both re-checked, so an account switch or a newer access
+ * grant during the read cannot put another account's plan in the cache.
+ */
+async function readSharedTripForCurrentIdentity(tripId: string): Promise<Trip | null> {
+  const scope = identityScope()
+  if (!scope || !isCurrentIdentity(scope)) return null
+  const accessEpoch = tripAccessEpochs.get(tripId) ?? 0
+  const token = await tripWriteToken(scope)
+  if (!token || !sameScopeGeneration(scope, tripId, accessEpoch)) return null
+  const shared = await readSharedTrip(tripId, token)
+  if (!shared || !sameScopeGeneration(scope, tripId, accessEpoch)) return null
+  return shared
+}
+
+/**
+ * Show a demoted reader the shared plan.
+ *
+ * The demotion already dropped the local overlay from the cache and from the
+ * held copy. This reads the shared plan under the current identity and the
+ * access generation that the demotion created, and writes it only if that
+ * scope is still the live one.
+ */
+async function refreshSharedPlanAfterDemotion(tripId: string): Promise<void> {
+  const scope = identityScope()
+  if (!scope || !isCurrentIdentity(scope)) return
+  const accessEpoch = tripAccessEpochs.get(tripId) ?? 0
+  const shared = await readSharedTripForCurrentIdentity(tripId)
+  if (!shared || !sameScopeGeneration(scope, tripId, accessEpoch)) return
+  // A trip that was deleted or removed while the read ran must not come back.
+  if (shared.deletedAt) return
+  cache.trips = cache.trips.map(t => t.id === tripId ? shared : t)
+  commit()
+}
+
 /** Keep narrow metadata writes ordered with plan writes and their acknowledged revisions. */
 async function persistTripMetadata(tripId: ID, payload: Record<string, unknown>, patchFields: Partial<Trip>, nullColumn?: string,
   onError?: (error: { code?: string; message?: string }) => void): Promise<boolean> {
@@ -3019,9 +3092,17 @@ async function sendQueuedTripWrite(entry: QueuedWrite, scope: IdentityScope, acc
       // The account may still READ the trip after a demotion, so the trip
       // leaves the list only when the account has no membership at all. The
       // queued copy stays for its owner with the reason attached.
+      //
+      // The identity and the access generation are checked again here. The
+      // awaited read above can outlive the account that started it, and a
+      // delayed invalidation must never touch another account's trip.
+      if (!sameScopeGeneration(scope, entry.tripId, accessEpoch)) return false
       const stillMember = !!member
       const reason = stillMember ? 'access-revoked' : 'access-removed'
       await retainRevokedCopy(entry, scope, reason)
+      // The retention awaited storage, so the scope is checked once more. A
+      // copy that changed hands in the meantime is not this scope's work.
+      if (!sameScopeGeneration(scope, entry.tripId, accessEpoch)) return false
       invalidateTripWork(entry.tripId, scope.userId, reason)
       if (!stillMember) {
         cache.trips = cache.trips.filter(t => t.id !== entry.tripId)
@@ -3030,7 +3111,7 @@ async function sendQueuedTripWrite(entry: QueuedWrite, scope: IdentityScope, acc
         // A demoted reader sees the shared plan, not the local copy. The local
         // copy is the account's own work and stays in the recovery list.
         const shared = await readSharedTrip(entry.tripId, token)
-        if (shared && isCurrentIdentity(scope)) {
+        if (shared && sameScopeGeneration(scope, entry.tripId, accessEpoch)) {
           cache.trips = cache.trips.map(t => t.id === entry.tripId ? shared : t)
           commit()
         }
@@ -3050,7 +3131,12 @@ async function sendQueuedTripWrite(entry: QueuedWrite, scope: IdentityScope, acc
     if (!current || current.deleted_at) {
       // The trip is gone from the server. The copy stays for its owner with the
       // reason attached, so it can still be downloaded.
+      //
+      // The scope is checked again before the invalidation, because the
+      // retention awaited storage. Another account's trip must not be removed.
+      if (!sameScopeGeneration(scope, entry.tripId, accessEpoch)) return false
       await retainRevokedCopy(entry, scope, 'trip-unavailable')
+      if (!sameScopeGeneration(scope, entry.tripId, accessEpoch)) return false
       invalidateTripWork(entry.tripId, scope.userId, 'trip-unavailable')
       cache.trips = cache.trips.filter(t => t.id !== entry.tripId)
       commit()
@@ -3166,23 +3252,39 @@ export async function resolveQueuedTripWrite(tripId: ID, choice: 'retry' | 'repl
   const live = () => canSendTripWrite(scope, tripId, accessEpoch)
   if (choice === 'discard') {
     // A discard removes the local copy. It writes nothing to the server, so it
-    // does not need the edit right. It still needs the current identity and the
-    // trip's access epoch, so a stale callback cannot act after a new grant.
-    if (!isCurrentIdentity(scope) || (tripAccessEpochs.get(tripId) ?? 0) !== accessEpoch) return false
+    // does not need the edit right, and it does not need a connection.
+    //
+    // Every await below is followed by a scope check. An account switch or a
+    // realtime deletion during the work must not let this path publish a trip
+    // under a later identity, and it must not restore a deleted trip.
+    if (!sameScopeGeneration(scope, tripId, accessEpoch)) return false
     return serializeTripWrite(`${scope.epoch}:${scope.userId}:${tripId}`, async () => {
-      if (!isCurrentIdentity(scope) || (tripAccessEpochs.get(tripId) ?? 0) !== accessEpoch) return false
+      if (!sameScopeGeneration(scope, tripId, accessEpoch)) return false
       const current = (await pendingWrites()).find(w => sameQueuedWrite(w, write))
-      if (!current) return false
+      if (!current || !sameScopeGeneration(scope, tripId, accessEpoch)) return false
+      // The removal itself is local. The server read below only refreshes the
+      // shared plan, so a failed read must not undo the removal and must not
+      // touch the cached plan.
       const token = await tripWriteToken(scope)
-      if (!token) return false
-      // Read inside the write tail. A completed earlier write must precede this read.
-      // The read is best-effort: a copy whose trip the account can no longer read
-      // must still be removable from the device.
-      const { data: row } = await supabase.from('trips').select('*').eq('id', tripId).maybeSingle()
-        .setHeader('Authorization', `Bearer ${token}`)
+      if (!sameScopeGeneration(scope, tripId, accessEpoch)) return false
+      let row: TripRow | null = null
+      let readFailed = false
+      if (token) {
+        // Read inside the write tail. A completed earlier write must precede this read.
+        const read = await supabase.from('trips').select('*').eq('id', tripId).maybeSingle()
+          .setHeader('Authorization', `Bearer ${token}`)
+        if (read.error) readFailed = true
+        else row = (read.data as TripRow | null) ?? null
+      } else {
+        readFailed = true
+      }
+      if (!sameScopeGeneration(scope, tripId, accessEpoch)) return false
       const durable = await dropQueuedWrite(current)
-      if (!isCurrentIdentity(scope)) return durable
+      // A scope change means the removal did not complete under this scope.
+      // It reports false, so the caller does not claim a clean removal.
+      if (!sameScopeGeneration(scope, tripId, accessEpoch)) return false
       const latest = (await pendingWrites()).find(w => w.ownerId === scope.userId && w.tripId === tripId)
+      if (!sameScopeGeneration(scope, tripId, accessEpoch)) return false
       if (latest) {
         // Storage failure or a newer edit keeps its own recovery state and visible contents.
         queuedLocalTrips.set(tripId, latest)
@@ -3191,6 +3293,13 @@ export async function resolveQueuedTripWrite(tripId: ID, choice: 'retry' | 'repl
       const held = queuedLocalTrips.get(tripId)
       if (held && !sameQueuedWrite(held, current)) return false
       queuedLocalTrips.delete(tripId)
+      if (readFailed) {
+        // The shared plan could not be read, so the cached plan stays as it
+        // is. The local copy is still gone.
+        commit()
+        void clearSnapshot(scope.userId)
+        return durable
+      }
       if (row && !row.deleted_at) {
         const cached = tripById(tripId)
         const shared = rowToTrip(row as TripRow, cached?.members ?? [])
@@ -4837,7 +4946,16 @@ function applyRealtimeEvent(table: string, payload: RealtimePostgresChangesPaylo
         cache.notifications = cache.notifications.filter(n => n.tripId !== tripId)
       } else {
         // A demotion keeps the trip readable, so only the edit right goes.
-        if (userId === cache.sessionUserId && !canEdit(row?.role)) invalidateTripWork(tripId, userId, 'access-revoked')
+        if (userId === cache.sessionUserId && !canEdit(row?.role)) {
+          invalidateTripWork(tripId, userId, 'access-revoked')
+          // The demoted reader must see the shared plan, not the local
+          // proposal. The local overlay is dropped from the held copy here,
+          // and the shared plan is read under the current identity and the
+          // new access generation. The read is a background step, so the
+          // dispatch never blocks on the network.
+          queuedLocalTrips.delete(tripId)
+          void refreshSharedPlanAfterDemotion(tripId)
+        }
         mutateTrip(tripId, draft => {
           draft.members = applyMemberChange(draft.members ?? [], {
             event,

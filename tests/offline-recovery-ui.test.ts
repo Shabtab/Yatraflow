@@ -189,6 +189,21 @@ describe('saved-edit recovery presentation', () => {
     expect(html).not.toContain('Your saved copy stays on this device.')
     expect(html).toContain('role="alert"')
   })
+
+  it('offers a removal that works without a connection', () => {
+    fixture.online = false
+    fixture.writes = [write({ state: 'failed', reason: 'access-revoked' })]
+    fixture.trips = [visibleTrip()]
+    const buttons = render().match(/<button\b[^>]*>[\s\S]*?<\/button>/g) ?? []
+    const removal = buttons.find(button => button.includes('Remove saved copy'))!
+    // The removal is a local action, so it is not disabled offline.
+    expect(removal).not.toContain('disabled')
+    // The network choices still are.
+    for (const button of buttons.filter(value => value !== removal)) {
+      if (button.includes('Download my copy')) continue
+      expect(button).toContain('disabled')
+    }
+  })
 })
 
 describe('recovery access and async guard wiring', () => {
@@ -221,5 +236,14 @@ describe('recovery access and async guard wiring', () => {
     const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
     expect(css).toMatch(/\.offline-recovery-row\s*\{[^}]*animation:\s*cardIn var\(--motion-slow\) var\(--ease-out\)/)
     expect(css).toMatch(/@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{\s*\.offline-recovery-row\s*\{\s*animation:\s*none/)
+  })
+
+  it('wires the removal to a local handler, not the network one', () => {
+    // The removal is a local action. It must not go through `recover`, which
+    // refuses every offline call, or the button would be a no-op offline.
+    expect(source).toContain('onClick={() => { void removeCopy(write) }}')
+    const removal = source.slice(source.indexOf('function removeCopy('), source.indexOf('async function recover('))
+    expect(removal).not.toContain('!online')
+    expect(removal).toContain("resolveQueuedTripWrite(write.tripId, 'discard')")
   })
 })

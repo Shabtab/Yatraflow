@@ -73,6 +73,38 @@ export function OfflineBanner() {
   const held = writes.filter(write => !!write.reason).length
   const waiting = writes.length - held
 
+  /**
+   * Remove a kept copy from this device.
+   *
+   * This is a LOCAL action. It removes the copy from this device and writes
+   * nothing to the server, so it works without a connection. The network
+   * choices above it are the ones that need a connection.
+   */
+  async function removeCopy(write: QueuedWrite) {
+    if (!userId || identityRef.current !== identity || getSnapshot().sessionUserId !== userId
+      || write.ownerId !== userId || actionRef.current?.identity === identity) return
+    const runId = { identity, tripId: write.tripId }
+    actionRef.current = runId
+    setAction(runId)
+    setNotice(null)
+    try {
+      const removed = await resolveQueuedTripWrite(write.tripId, 'discard')
+      if (identityRef.current !== identity) return
+      await refreshRef.current?.()
+      if (identityRef.current !== identity) return
+      setNotice(removed
+        ? { identity, text: 'The saved copy was removed from this device.', failed: false }
+        : { identity, text: 'The saved copy was not removed. Try again.', failed: true })
+    } catch {
+      if (identityRef.current !== identity) return
+      setNotice({ identity, text: 'Could not remove this copy. Try again.', failed: true })
+    } finally {
+      if (actionRef.current === runId) {
+        actionRef.current = null
+        setAction(null)
+      }
+    }
+  }
   async function recover(tripId: string | null, choice: RecoveryChoice = 'retry') {
     if (!userId || !online || identityRef.current !== identity || getSnapshot().sessionUserId !== userId
       || actionRef.current?.identity === identity) return
@@ -211,7 +243,7 @@ export function OfflineBanner() {
                     </button>
                   )}
                   {reason ? (
-                    <button className="btn btn-outline btn-sm" disabled={busy} onClick={() => { void recover(write.tripId, 'discard') }}>
+                    <button className="btn btn-outline btn-sm" disabled={busy} onClick={() => { void removeCopy(write) }}>
                       Remove saved copy
                     </button>
                   ) : conflict ? (
