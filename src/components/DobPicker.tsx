@@ -134,19 +134,19 @@ export function DobPicker({ value, onChange, max, id, 'aria-describedby': descri
     <div className="dob-picker" role="group" aria-label="Date of birth">
       <select ref={focusRef} id={id} className="select" aria-label="Birth year"
         aria-describedby={describedBy} aria-invalid={inv} autoComplete="bday-year"
-        value={y || ''} onChange={e => pick(Number(e.target.value) || 0, mo, d)}>
+        value={y || ''} onChange={e => { pick(Number(e.target.value) || 0, mo, d) }}>
         <option value="">Year</option>
         {years.map(yy => <option key={yy} value={yy}>{yy}</option>)}
       </select>
       <select className="select" aria-label="Birth month"
         aria-describedby={describedBy} aria-invalid={inv} autoComplete="bday-month"
-        value={mo || ''} onChange={e => pick(y, Number(e.target.value) || 0, d)}>
+        value={mo || ''} onChange={e => { pick(y, Number(e.target.value) || 0, d) }}>
         <option value="">Month</option>
         {MONTHS.map((mn, i) => { const v = i + 1; return v <= moCeiling ? <option key={v} value={v}>{mn}</option> : null })}
       </select>
       <select className="select" aria-label="Birth day"
         aria-describedby={describedBy} aria-invalid={inv} autoComplete="bday-day"
-        value={d && d <= dCeiling ? d : ''} onChange={e => pick(y, mo, Number(e.target.value) || 0)}>
+        value={d && d <= dCeiling ? d : ''} onChange={e => { pick(y, mo, Number(e.target.value) || 0) }}>
         <option value="">Day</option>
         {Array.from({ length: dCeiling }, (_, i) => i + 1).map(dd => <option key={dd} value={dd}>{dd}</option>)}
       </select>

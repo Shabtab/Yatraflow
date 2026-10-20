@@ -28,7 +28,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ### Fixed
 
-- Development checks handle both Windows and Linux line endings. SQL contract checks use fixed function headers.
+- Development checks handle both Windows and Linux line endings. SQL contract checks use fixed function headers. Date-of-birth selection handlers use explicit blocks for static analysis.
 - **Offline trip edits have explicit conflict recovery.** The latest edit stays scoped to its account and trip. Server revisions prevent silent replacement of newer shared changes. Failed sends pause after three tries. Saved edits offer retry, download, and an explicit choice between local and shared plans. Storage failures show a warning. Account changes, lost edit access, and deleted trips cancel stale work. The server revision migration must precede this app update. (#783)
 - **The Create trip phone dock no longer runs two phrases together.** The days line and the readiness line shared one inline row. "Pick your dates" and "3 things left" then printed as one phrase. The readiness line is a block now, so it sits under the days line. (#767)
 - **The trip tab rail shows that it scrolls sideways.** The rail hides its scrollbar. A tab past the right edge ("Group input") was cut with no sign that more exist. The rail now fades the edge that still holds hidden tabs. The fade clears once the end is reached. (#684)

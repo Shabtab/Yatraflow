@@ -32,6 +32,7 @@ anywhere in this repo means the entry labelled `6b` below.
 
 Source-contract tests must handle both LF and CRLF line endings.
 Tests for helper use must check the call site. A function definition does not prove that callers use it.
+Event handlers that call a void function must use a block body.
 
 Flight records can exist without stored stops. Protect their days during date reconciliation and preserve them through imports and snapshots.
 Use resolved journey points for exports and insertion origins. Stored stops can omit airports and arrival anchors.
