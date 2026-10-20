@@ -29,6 +29,9 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 ### Fixed
 
 - Development checks handle both Windows and Linux line endings. SQL contract checks use fixed function headers.
+- **Offline trip edits have explicit conflict recovery.** The latest edit stays scoped to its account and trip. Server revisions prevent silent replacement of newer shared changes. Failed sends pause after three tries. Saved edits offer retry, download, and an explicit choice between local and shared plans. Storage failures show a warning. Account changes, lost edit access, and deleted trips cancel stale work. The server revision migration must precede this app update. (#783)
+- **The Create trip phone dock no longer runs two phrases together.** The days line and the readiness line shared one inline row. "Pick your dates" and "3 things left" then printed as one phrase. The readiness line is a block now, so it sits under the days line. (#767)
+- **The trip tab rail shows that it scrolls sideways.** The rail hides its scrollbar. A tab past the right edge ("Group input") was cut with no sign that more exist. The rail now fades the edge that still holds hidden tabs. The fade clears once the end is reached. (#684)
 - **Only the options that apply to your transport are shown.** A car, a rental car and a motorcycle keep their driving options. A train, a bus, a flight and a taxi hide the driver counts and the fuel figures. They also hide the drive-back planning. Traveller, budget, stay and travel-style options stay for every mode. (2026-10-19)
 - **A passenger trip no longer shows a driver count it does not own.** The two forms drop the driving summary, the drawer and its shortcut, and the Wheel figure. The section heading loses its wheel wording. A ticket reads as a journey. (2026-10-19)
 - **The Train pill is no longer covered by its Local switch.** The reserved space went to a class the form does not use. The selected mode's name was hidden. (2026-10-19)
@@ -47,12 +50,6 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - **The trip header is compact on a phone.** At 390px the header band and the tab rail took about 420px of an 844px screen. The tab panel then started below the fold. A phone now takes the compact band the Board tab already used. The band is shorter, the title is 20px and the tab rail is tighter. (#677)
 - **The My Trips rules now use the documented motion tokens.** Five rules in the trip-card and timeline block used the legacy `--t-fast` and `--t-med` durations. They now use `--motion-fast` and `--motion-med`. Each rule keeps its reduced-motion opt-out. (#650)
 - **Trip copy names consequences, not engine jargon.** The Overview health card now says what the score means, such as "The plan does not fit these days. Drop a stop or add a day." The day matrix explains its own columns. It lists B breakfast, L lunch, F fuel, S stretch, D dinner and N night. A cell the app filled itself reads "a break the app added". The Map legend and its day labels say the same. The Timeline's Inspect mode is now labelled Review, with the explanation "Study the day without changing it". (#683)
-
-### Fixed
-
-- **Offline trip edits have explicit conflict recovery.** The latest edit stays scoped to its account and trip. Server revisions prevent silent replacement of newer shared changes. Failed sends pause after three tries. Saved edits offer retry, download, and an explicit choice between local and shared plans. Storage failures show a warning. Account changes, lost edit access, and deleted trips cancel stale work. The server revision migration must precede this app update. (#783)
-- **The Create trip phone dock no longer runs two phrases together.** The days line and the readiness line shared one inline row. "Pick your dates" and "3 things left" then printed as one phrase. The readiness line is a block now, so it sits under the days line. (#767)
-- **The trip tab rail shows that it scrolls sideways.** The rail hides its scrollbar. A tab past the right edge ("Group input") was cut with no sign that more exist. The rail now fades the edge that still holds hidden tabs. The fade clears once the end is reached. (#684)
 
 ## [0.77.1] - 2026-10-18
 
