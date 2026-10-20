@@ -7,13 +7,20 @@ const previousMigrations = readdirSync('supabase/migrations')
   .map(name => readFileSync(`supabase/migrations/${name}`, 'utf8'))
 const migration = readFileSync('supabase/migrations/20261019_trip_drives_part.sql', 'utf8')
 const schema = readFileSync('supabase/schema.sql', 'utf8')
-const readers = ['get_public_trip', 'get_trip_by_invite_code']
+const readers = ['get_public_trip', 'get_trip_by_invite_code'] as const
+type ReaderName = (typeof readers)[number]
 
-function reader(sql: string, name: string): string {
-  return sql.match(new RegExp(`create or replace function public\\.${name}\\([\\s\\S]*?\\$\\$;`, 'i'))?.[0] ?? ''
+function reader(sql: string, name: ReaderName): string {
+  const opener = name === 'get_public_trip'
+    ? 'create or replace function public.get_public_trip('
+    : 'create or replace function public.get_trip_by_invite_code('
+  const start = sql.toLowerCase().indexOf(opener)
+  if (start < 0) return ''
+  const close = sql.indexOf('$$;', start)
+  return close < 0 ? '' : sql.slice(start, close + 3)
 }
 
-function priorReader(name: string): string {
+function priorReader(name: ReaderName): string {
   return previousMigrations.map(sql => reader(sql, name)).filter(Boolean).at(-1) ?? ''
 }
 

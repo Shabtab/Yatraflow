@@ -97,8 +97,20 @@ describe('the guarded write path reaches the real writers', () => {
     expect(src.match(/drivesPartWriteVerdict\(/g)?.length ?? 0).toBeGreaterThanOrEqual(2)
   })
 
-  it('no longer keeps the helper unused', () => {
-    expect(src).not.toMatch(/function rememberOptionalColumns[\s\S]*?\n\}\n/)
-    expect(src).toContain('rememberOptionalColumns')
+  it('uses the helper at the call site, on LF and CRLF source alike', () => {
+    const called = /probeOptionalColumns\(\)\.then\(rememberOptionalColumns\)/
+    const writesCache = /function rememberOptionalColumns\(cols: OptionalColumnsProbe\): OptionalColumnsProbe \{\s*lastResolvedOptionalColumns = cols\s*return cols\s*\}/
+    const lf = src.replace(/\r\n/g, '\n')
+    const crlf = lf.replace(/\n/g, '\r\n')
+    for (const form of [lf, crlf]) {
+      expect(form).toMatch(called)
+      expect(form).toMatch(writesCache)
+    }
+    expect(lf.replace(/\.then\(rememberOptionalColumns\)/, '.then(cols => cols)')).not.toMatch(called)
+
+    const definition = 'function rememberOptionalColumns(cols) {\n  return cols\n}\n'
+    const oldPin = /function rememberOptionalColumns[\s\S]*?\n\}\n/
+    expect(definition).toMatch(oldPin)
+    expect(definition.replace(/\n/g, '\r\n')).not.toMatch(oldPin)
   })
 })
