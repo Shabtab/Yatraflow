@@ -3343,23 +3343,55 @@ export async function joinViaInvite(
 ): Promise<JoinResult> {
   const cached = tripById(tripId)
   if (cached?.members?.some(m => m.userId === userId)) {
-    // Already a member: this call writes no membership, so the owner is owed no
-    // notification for it (S3). The plan may still need loading.
+    // Already a member: the cached row already carries the membership, so this
+    // call writes no row and the owner is owed no notice. The plan may still need
+    // loading.
     return finishJoin(tripId, userId, previewName)
   }
   // B2a — capture WHO is joining, and this trip's access generation, BEFORE the
-  // RPC. The RPC is a network round trip: an account switch or a revocation can
-  // land inside it, and a continuation that adopts the new account would write
-  // the old account's membership row, notify the owner about the wrong person,
-  // and cache a trip the new account may not be allowed to read.
+  // first await. The RPC is a network round trip: an account switch or a
+  // revocation can land inside it, and a continuation that adopts the new account
+  // would write the old account's membership row, notify the owner about the
+  // wrong person, and cache a trip the new account may not be allowed to read.
   const scope = identityScope()
   const accessEpoch = tripAccessEpochs.get(tripId) ?? 0
   if (!scope || scope.userId !== userId) return 'failed'
-  // S3 — the cache cannot answer "is this caller already a member?" when the
-  // trip came from the uncached preview, and join_trip's `on conflict do
-  // nothing` cannot report whether it inserted. So ask the membership table.
-  // A member who re-opens a link must not trigger a "joined as editor" notice,
-  // and must not need a write at all.
+  // B1/B-3 — mark the grant we EXPECT before any await. The join writes a
+  // membership row either way: through join_trip when it runs, or already held
+  // when the pre-query says member. Marking it here covers both paths, so an own
+  // echo arriving while the pre-query is in flight cannot be misread as a
+  // permission change (B-3). The window clears on every exit.
+  joiningTrips.add(tripId)
+  try {
+    return await joinAfterScope(tripId, userId, inviteCode, previewName, scope, accessEpoch)
+  } finally {
+    joiningTrips.delete(tripId)
+  }
+}
+
+/**
+ * The rest of joinViaInvite, called with the scope and access epoch captured
+ * BEFORE the first await. The caller owns the joiningTrips window, so this only
+ * re-checks identity and reaches the join.
+ */
+async function joinAfterScope(
+  tripId: ID,
+  userId: ID,
+  inviteCode: string,
+  previewName: string | undefined,
+  scope: { userId: string; epoch: number },
+  accessEpoch: number,
+): Promise<JoinResult> {
+  // B1 — re-check identity and access after the pre-query. The NOT-member path
+  // had no re-check at all, so a switch during the query resumed under the new
+  // account and issued join_trip with its code.
+  if (!isCurrentIdentity(scope) || (tripAccessEpochs.get(tripId) ?? 0) !== accessEpoch) {
+    console.error('[yatraflow] join abandoned before the join write: the account or trip access changed', { tripId })
+    return 'abandoned'
+  }
+  // S3 — the cache cannot answer "is this caller already a member?" when the trip
+  // came from the uncached preview, and join_trip's `on conflict do nothing`
+  // cannot report whether it inserted. So ask the membership table.
   if (await viewerIsMemberOf(tripId, userId)) {
     if (!isCurrentIdentity(scope) || (tripAccessEpochs.get(tripId) ?? 0) !== accessEpoch) return 'abandoned'
     return finishJoin(tripId, userId, previewName)
@@ -3381,23 +3413,15 @@ export async function joinViaInvite(
   // Fail closed: a null answer, or an answer naming another trip, joins nothing.
   if (!joinedTripId || String(joinedTripId).toLowerCase() !== tripId.toLowerCase()) return 'failed'
   markLocalWrite('trip_members', tripId)
-  // B-3 — from here until the load finishes, our own membership echo must not be
-  // read as a permission change. The echo can arrive before this function
-  // returns, so the window is marked BEFORE any further await.
-  joiningTrips.add(tripId)
-  try {
-    // The trip is usually NOT in the cache now (the preview is never cached), so
-    // mutateTrip is a no-op; the full fetch below supplies the row.
-    mutateTrip(tripId, draft => { draft.members = [...(draft.members ?? []), { userId, role, joinedAt }] }, { touch: false })
-    addActivity(tripId, userId, 'joined via invite link', 'Members')
-    // B-4 — this call wrote the membership, so the owner is owed one notice.
-    // Record the debt BEFORE the load, so a failed load still owes it and a
-    // later retry settles it.
-    markJoinOwed(tripId, userId)
-    return await finishJoin(tripId, userId, previewName)
-  } finally {
-    joiningTrips.delete(tripId)
-  }
+  // The trip is usually NOT in the cache now (the preview is never cached), so
+  // mutateTrip is a no-op; the full fetch below supplies the row.
+  mutateTrip(tripId, draft => { draft.members = [...(draft.members ?? []), { userId, role, joinedAt }] }, { touch: false })
+  addActivity(tripId, userId, 'joined via invite link', 'Members')
+  // B-4 — this call wrote the membership, so the owner is owed one notice.
+  // Record the debt BEFORE the load, so a failed load still owes it and a later
+  // retry settles it.
+  markJoinOwed(tripId, userId)
+  return finishJoin(tripId, userId, previewName)
 }
 
 /**
@@ -3429,6 +3453,20 @@ export async function joinViaInvite(
 async function finishJoin(tripId: ID, userId: ID, previewName?: string): Promise<JoinResult> {
   const loaded = await loadFullTripIntoCache(tripId)
   if (loaded === 'abandoned') return 'abandoned'
+  if (loaded === 'not-member') {
+    // S1 — the caller is NOT on this trip. The join write was refused, or access
+    // was revoked mid-flight, or the trip was never joined. This is not a read
+    // problem and it is not a success: collapsing it to 'joined-unloaded' would
+    // tell a user who is not a member that they are.
+    console.error('[yatraflow] the full trip read shows the caller is not a member', { tripId, userId })
+    return 'failed'
+  }
+  if (loaded === 'stale') {
+    // S1 — the server row is behind what this client already holds, or it carries
+    // no usable revision, or a queued write owns this trip. The cached row is the
+    // truth, so the caller is on the trip and must not be told a read failed.
+    return 'joined'
+  }
   if (loaded !== 'loaded') {
     console.error('[yatraflow] joined, but the full trip row could not be read back', { tripId, outcome: loaded })
     return 'joined-unloaded'
@@ -3548,6 +3586,14 @@ async function loadFullTripIntoCache(tripId: ID): Promise<LoadOutcome> {
   // B2 — never move the ledger backwards.
   if (isStaleServerRow(serverTripTimestamps.get(tripId), row.updated_at)) return 'stale'
 
+  // B5 — these two refusals apply to EVERY load, not only to a replacement. A
+  // first load into an empty cache has no row to compare against, but a queued
+  // write for this trip is still pending (loading would silently drop it), and a
+  // row with no usable revision is still unverifiable (the caller cannot tell
+  // whether it is current). Both run before the existing-row branch.
+  if (queuedLocalTrips.has(tripId)) return 'stale'
+  if (!validWriteVersion(row.write_version)) return 'stale'
+
   const existing = tripById(tripId)
   if (existing) {
     // B2 — the queue owns this trip's next state. The server row is behind it,
@@ -3555,12 +3601,6 @@ async function loadFullTripIntoCache(tripId: ID): Promise<LoadOutcome> {
     if (queuedLocalTrips.has(tripId)) return 'stale'
     const incoming = row.write_version
     const cached = existing.writeVersion
-    // An unverifiable answer is not an authoritative one: refuse it. This guard
-    // applies when a row is ALREADY cached. A first load with no cached row has
-    // nothing to compare against, so it is accepted on its timestamp alone — the
-    // honest statement is "refuses an unverifiable row that would replace a
-    // known one", not "refuses every unverifiable row".
-    if (!validWriteVersion(incoming)) return 'stale'
     if (validWriteVersion(cached) && incoming < cached) return 'stale'
     if (validWriteVersion(cached) && incoming === cached && existing.updatedAt > Number(row.updated_at)) return 'stale'
   }
@@ -5027,6 +5067,16 @@ function applyRealtimeEvent(table: string, payload: RealtimePostgresChangesPaylo
       }
       if (!trip && userId === cache.sessionUserId && event === 'DELETE') invalidateTripWork(tripId, userId)
       if (!trip) {
+        // B4 — a role change for this viewer with no cached trip must still
+        // invalidate. The only invalidation on this branch ran inside the
+        // `!trip ? ... : ...` test above, which requires an EDITABLE new role, so
+        // an uncached DOWNGRADE (editor -> viewer) left the epoch unmoved. A full
+        // load already in flight then restored stale editor rights. The role
+        // changed either way, so the epoch moves for any role change.
+        if (userId === cache.sessionUserId && event !== 'DELETE' && !ownJoinEcho
+          && row?.role && oldRow?.role && String(row.role) !== String(oldRow.role)) {
+          tripAccessEpochs.set(tripId, (tripAccessEpochs.get(tripId) ?? 0) + 1)
+        }
         // A membership row for a trip we don't have yet (we were just added to
         // / joined a trip elsewhere): fetch the whole trip + members.
         if (event !== 'DELETE') void fetchTripIntoCache(tripId)

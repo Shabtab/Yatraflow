@@ -360,8 +360,57 @@ describe('loadFullTripIntoCache refuses what it cannot trust', () => {
     expect(isStaleServerRow(2_000, 1_000)).toBe(true)
   })
 
-  it('refuses an unverifiable revision that would replace a known one', () => {
-    expect(body).toMatch(/if \(!validWriteVersion\(incoming\)\) return 'stale'/)
+  it('refuses an unverifiable revision on EVERY load, first or replacement', () => {
+    // B5 — this used to sit inside the existing-row branch, so a first load into
+    // an empty cache accepted a row with no usable revision at all.
+    expect(body).toMatch(/if \(!validWriteVersion\(row.write_version\)\) return 'stale'/)
+    const firstLoadAt = body.indexOf("if (!validWriteVersion(row.write_version))")
+    const existingAt = body.indexOf('const existing = tripById(tripId)')
+    expect(firstLoadAt).toBeGreaterThan(-1)
+    expect(existingAt).toBeGreaterThan(-1)
+    expect(firstLoadAt, 'the refusal runs before the existing-row branch').toBeLessThan(existingAt)
+  })
+
+  it('refuses a queued write on EVERY load, first or replacement', () => {
+    expect(body).toMatch(/if \(queuedLocalTrips.has\(tripId\)\) return 'stale'/)
+    const queueAt = body.indexOf('if (queuedLocalTrips.has(tripId))')
+    const existingAt = body.indexOf('const existing = tripById(tripId)')
+    expect(queueAt).toBeLessThan(existingAt)
+  })
+
+  it('S1 — a not-member outcome reaches the UI as a failure, not a success', () => {
+    // The loader distinguishes three refusals. Collapsing them all to
+    // 'joined-unloaded' told a user who is NOT on the trip that they are.
+    const finish = fnBody(STORE, 'async function finishJoin(')
+    expect(finish).toMatch(/if \(loaded === 'not-member'\)/)
+    expect(finish).toContain("return 'failed'")
+    const notMemberAt = finish.indexOf("return 'failed'")
+    expect(notMemberAt).toBeGreaterThan(-1)
+  })
+
+  it('S1 — a stale outcome reaches the UI as a joined trip, not a read failure', () => {
+    // A stale row means the cached row is the truth, so the caller IS on the trip.
+    const finish = fnBody(STORE, 'async function finishJoin(')
+    expect(finish).toMatch(/if \(loaded === 'stale'\)/)
+    expect(finish).toContain("return 'joined'")
+  })
+
+  it('B4 — an uncached role change invalidates even without an editable new role', () => {
+    // The old invalidation required an EDITABLE new role, so an uncached
+    // DOWNGRADE (editor -> viewer) moved no epoch and a full load in flight
+    // restored stale editor rights. The new check fires for any role change.
+    const at = STORE.indexOf("case 'trip_members': {")
+    expect(at, 'the realtime membership branch must exist').toBeGreaterThan(-1)
+    const block = STORE.slice(at, at + 2600)
+    expect(block, 'the B4 note marks the fix').toContain('B4 —')
+    // The new check sits inside the `!trip` branch, before it returns.
+    const noTripAt = block.indexOf('if (!trip) {')
+    expect(noTripAt).toBeGreaterThan(-1)
+    const returnAt = block.indexOf('return', noTripAt)
+    const downgradeAt = block.indexOf('!ownJoinEcho', noTripAt)
+    expect(downgradeAt, 'the role-change check is inside the !trip branch').toBeGreaterThan(noTripAt)
+    expect(downgradeAt, 'and before it returns').toBeLessThan(returnAt)
+    expect(block).toMatch(/String\(row\.role\) !== String\(oldRow\.role\)/)
   })
 
   it('refuses an older revision', () => {
