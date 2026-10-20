@@ -235,8 +235,12 @@ export function adminAuditRowToEntry(r: {
 function mutateTrip(tripId: ID, fn: (draft: Trip) => void, opts: { touch?: boolean; log?: string; target?: string } = {}): Trip | null {
   const idx = cache.trips.findIndex(t => t.id === tripId)
   if (idx < 0) return null
-  const draft = structuredClone(cache.trips[idx])
+  const before = cache.trips[idx]
+  const draft = structuredClone(before)
   fn(draft)
+  // #804 (B3) — remember which unread field this edit touched, so a later
+  // refresh keeps the local value instead of reverting it.
+  recordPartialEdits(before, draft)
   if (opts.touch !== false) draft.updatedAt = Date.now()
   if (opts.log && cache.sessionUserId) addActivity(tripId, cache.sessionUserId, opts.log, opts.target)
   cache.trips = [...cache.trips.slice(0, idx), draft, ...cache.trips.slice(idx + 1)]
@@ -2706,6 +2710,29 @@ export function restoreExpense(tripId: ID, expense: Expense, index: number): voi
   void persistTripField(tripId, tripById(tripId)!)
 }
 
+/** The five columns the invite preview never reads (#804). */
+const PARTIAL_FIELDS = ['flights', 'tankL', 'rentPerDayInr', 'localTrain', 'ref'] as const
+type PartialField = typeof PARTIAL_FIELDS[number]
+
+/**
+ * #804 revise (B3) — record that the user explicitly changed one of the five
+ * unread fields while the preview marker is set. A later refresh must keep that
+ * value instead of overwriting it with the server's older one.
+ *
+ * Called from the two mutation funnels (mutateTrip and updateTrip) so every
+ * edit path records it, including the flight controls, which call updateTrip
+ * without knowing the marker exists.
+ */
+function recordPartialEdits(before: Trip, after: Trip): void {
+  if (after.partialPreview !== true) return
+  let edited: Partial<Record<PartialField, true>> | undefined
+  for (const field of PARTIAL_FIELDS) {
+    if (before[field] === after[field]) continue
+    edited = { ...(edited ?? after.partialEdited), [field]: true }
+  }
+  if (edited) after.partialEdited = edited
+}
+
 export function updateTrip(id: ID, patchFields: Partial<Trip>): boolean {
   const t = tripById(id)
   if (!t) return false
@@ -3155,10 +3182,34 @@ export async function resolveQueuedTripWrite(tripId: ID, choice: 'retry' | 'repl
     }
     let next = { ...current, attempts: 0, state: undefined }
     if (choice === 'replace') {
-      const { data: row, error } = await supabase.from('trips').select('id, write_version').eq('id', tripId).maybeSingle()
+      // #804 (B3) — a queued snapshot taken from the invite preview carries the
+      // marker, so its serialized row OMITS the five unread columns. Replacing
+      // the local baseline with the server's and sending that snapshot would
+      // so drop the user's own edit to any of the five (the probe showed
+      // a tank edit of 70 silently discarded). Read the five columns here and
+      // fold the server's values into the snapshot before it is re-sent, so the
+      // Replace carries real values instead of omissions. The marker is cleared
+      // because the snapshot is now complete for these five.
+      const { data: row, error } = await supabase.from('trips')
+        .select('id, write_version, tank_l, rent_per_day_inr, local_train, flights, ref').eq('id', tripId).maybeSingle()
         .setHeader('Authorization', `Bearer ${token}`)
       if (!live() || error || !row || !validWriteVersion(row.write_version)) return false
-      next = { ...next, baseVersion: row.write_version }
+      const queuedTrip = next.trip as Trip
+      const full = rowToTrip(row as TripRow, queuedTrip.members ?? [])
+      const edited = queuedTrip.partialEdited ?? {}
+      const repaired: Trip = {
+        ...queuedTrip,
+        // A field the user edited while marked keeps its local value; the rest
+        // take the server's, which is what the preview never knew.
+        tankL: edited.tankL ? queuedTrip.tankL : full.tankL,
+        rentPerDayInr: edited.rentPerDayInr ? queuedTrip.rentPerDayInr : full.rentPerDayInr,
+        localTrain: edited.localTrain ? queuedTrip.localTrain : full.localTrain,
+        flights: edited.flights ? queuedTrip.flights : full.flights,
+        ref: edited.ref ? queuedTrip.ref : full.ref,
+        partialPreview: undefined,
+        partialEdited: undefined,
+      }
+      next = { ...next, baseVersion: row.write_version, trip: repaired }
     } else if (current.state === 'conflict') {
       return false
     }
@@ -3182,6 +3233,15 @@ function persistTripField(id: ID, t: Trip): void {
   const entry: QueuedWrite = { tripId: id, ownerId: scope.userId, capturedAt: lastWriteCapture,
     revision: randomToken(16), baseVersion: previous?.baseVersion ?? t.writeVersion,
     attempts: 0, state: previous?.state === 'conflict' ? 'conflict' : undefined, trip: snapshot }
+  // S1 (#804 revise-2) — a snapshot still carrying the preview marker has an
+  // UNKNOWN baseline when `t.writeVersion` is undefined: the invite preview never
+  // returned one. Sending it would either be refused by the #798 conflict check
+  // or, worse, ride a guessed baseline. Keep it as a conflict so recovery must
+  // choose, and let Replace (which re-reads the row) supply the real baseline.
+  // This does NOT bypass the conflict handling — it routes into it.
+  if ((snapshot as Trip).partialPreview === true && !validWriteVersion(entry.baseVersion)) {
+    entry.state = 'conflict'
+  }
   queuedLocalTrips.set(id, entry)
   const captured: CapturedTripWrite = { trip: snapshot, sessionId: scope.userId, epoch: scope.epoch,
     accessEpoch: tripAccessEpochs.get(id) ?? 0, entry, durable: queueWrite(entry) }
@@ -3323,22 +3383,51 @@ export async function joinViaInvite(tripId: ID, userId: ID, inviteCode: string):
  * read it. Used after a join, where the invite preview's 31 columns are no longer
  * the best available answer.
  *
- * Three outcomes, kept apart (R23 — a failed read is not an empty one):
+ * Outcomes, all kept apart (R23 — a failed read is not an empty one):
  *   'updated'  the full row replaced the cached one, and the marker is gone.
+ *   'merged'   a newer local edit won, but the five server columns were folded in
+ *              and the marker cleared. Fields the user edited explicitly keep
+ *              their local value.
  *   'empty'    the server answered with no row. The caller is a member, so this
- *              is an RLS/policy surprise, not a normal empty state; it is logged
- *              and the marker stays set.
+ *              is an RLS/policy surprise, not a normal empty state; logged, and
+ *              the marker stays set.
  *   'failed'   the read errored. Logged, and the marker stays set.
+ *   'stale'    the answer is older than what the cache already holds. Nothing is
+ *              written and the marker stays set.
+ *   'abandoned' the account or the trip's access changed while the read was in
+ *              flight. The row belongs to someone else now, so it is dropped.
  *
- * A newer local edit does NOT return early with the marker still set. Dropping
- * the whole swap would also drop the five server columns, and the marker would
- * then suppress that user's next edit to any of the five — a silent data loss of
- * a different kind. Instead the five server columns are merged into the local
- * trip and the marker is cleared, so local edits to every other field win while
- * the five become writable again.
+ * Two guards run AFTER the await, before anything touches cache.trips, because
+ * both conditions can change while a read is in flight:
+ *
+ *   1. Identity and access (B2). The same #798 pattern sendQueuedTripWrite uses:
+ *      capture identityScope() and the trip's access epoch before the await, then
+ *      re-check both. Without it, account A's delayed private row lands in
+ *      account B's cache when both hold the same trip id.
+ *
+ *   2. Revision (B1). A delayed read for revision 12 must never be merged into a
+ *      cache that already holds revision 13. Merging field values from an older
+ *      revision and leaving the newer version number on the trip is the exact
+ *      corruption the #798 conditional write cannot detect — it compares the
+ *      version, not the provenance of the fields.
  */
-async function refreshTripFromServer(tripId: ID): Promise<'updated' | 'empty' | 'failed'> {
+async function refreshTripFromServer(
+  tripId: ID,
+): Promise<'updated' | 'merged' | 'empty' | 'failed' | 'stale' | 'abandoned'> {
+  // Captured BEFORE the await: the account that asked, and this trip's access
+  // generation. #798's queue keys use the same pair.
+  const scope = identityScope()
+  const accessEpoch = tripAccessEpochs.get(tripId) ?? 0
+
   const { data, error } = await supabase.from('trips').select('*').eq('id', tripId).maybeSingle()
+
+  // B2 — the account switched, signed out, or this trip's access was revoked
+  // while the read was in flight. The row is no longer ours to cache.
+  if (!scope || !isCurrentIdentity(scope) || (tripAccessEpochs.get(tripId) ?? 0) !== accessEpoch) {
+    console.error('[yatraflow] trip refresh after join discarded: the account or trip access changed during the read', { tripId })
+    return 'abandoned'
+  }
+
   if (error) {
     console.error('[yatraflow] trip refresh after join failed', error)
     return 'failed'
@@ -3349,27 +3438,45 @@ async function refreshTripFromServer(tripId: ID): Promise<'updated' | 'empty' | 
     console.error('[yatraflow] trip refresh after join returned no row for a trip the caller just joined', { tripId })
     return 'empty'
   }
+
   const idx = cache.trips.findIndex(t => t.id === tripId)
   if (idx < 0) return 'empty'
   const existing = cache.trips[idx]
   const server = rowToTrip(data as TripRow, existing.members ?? [])
 
+  // B1 — a stale answer must not contribute field values at all. Compare the
+  // SERVER revision with the cached one before merging anything. Unknown
+  // revisions on either side are treated as incomparable and also refused: an
+  // unverifiable answer is not an authoritative one.
+  const serverVersion = server.writeVersion
+  const cachedVersion = existing.writeVersion
+  if (validWriteVersion(serverVersion) && validWriteVersion(cachedVersion) && serverVersion < cachedVersion) {
+    console.error('[yatraflow] trip refresh after join rejected a stale revision', {
+      tripId, serverVersion, cachedVersion,
+    })
+    return 'stale'
+  }
+
   // A local edit that landed while the read was in flight must not be clobbered.
-  // Keep the local trip, take ONLY the five columns the preview never read, and
-  // clear the marker so those five can be written again.
+  // Keep the local trip and fold in ONLY the five columns the preview never read,
+  // then clear the marker so those five can be written again. B3 — a field the
+  // user edited explicitly keeps its LOCAL value; the server's older one never
+  // replaces it.
   if (existing.updatedAt > server.updatedAt) {
+    const edited = existing.partialEdited ?? {}
     const merged: Trip = {
       ...existing,
-      tankL: server.tankL,
-      rentPerDayInr: server.rentPerDayInr,
-      localTrain: server.localTrain,
-      flights: server.flights,
-      ref: server.ref,
+      tankL: edited.tankL ? existing.tankL : server.tankL,
+      rentPerDayInr: edited.rentPerDayInr ? existing.rentPerDayInr : server.rentPerDayInr,
+      localTrain: edited.localTrain ? existing.localTrain : server.localTrain,
+      flights: edited.flights ? existing.flights : server.flights,
+      ref: edited.ref ? existing.ref : server.ref,
       partialPreview: undefined,
+      partialEdited: undefined,
     }
     cache.trips = [...cache.trips.slice(0, idx), merged, ...cache.trips.slice(idx + 1)]
     commit()
-    return 'updated'
+    return 'merged'
   }
 
   cache.trips = [...cache.trips.slice(0, idx), server, ...cache.trips.slice(idx + 1)]

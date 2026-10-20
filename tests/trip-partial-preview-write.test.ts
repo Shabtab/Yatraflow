@@ -219,15 +219,23 @@ describe('#804 — the wiring that makes the marker necessary', () => {
     expect(body).toMatch(/refreshTripFromServer\(tripId\)/)
   })
 
-  it('a newer local edit merges ONLY the five server columns and clears the marker', () => {
+  it('a newer local edit merges the five server columns and clears the marker', () => {
     // Finding 1: returning early with the marker still set would drop the user's
     // next edit to any of the five. The branch must merge, not skip.
+    //
+    // B3 (revise-2) narrowed this: a field the user edited explicitly while the
+    // marker was set keeps its LOCAL value, and the server's older one is taken
+    // only for fields the user did not touch. The earlier pin asserted an
+    // unconditional `field: server.field`, which was exactly the defect the Gate
+    // reproduced (a tank edit of 70 reverted to 55).
     const refresh = code.slice(code.indexOf('async function refreshTripFromServer'))
     const branch = refresh.slice(refresh.indexOf('existing.updatedAt > server.updatedAt'))
     const block = branch.slice(0, branch.indexOf('return'))
     expect(block).toMatch(/\.\.\.existing/)
+    expect(block).toMatch(/const edited = existing\.partialEdited \?\? \{\}/)
     for (const field of ['tankL', 'rentPerDayInr', 'localTrain', 'flights', 'ref']) {
-      expect(block, `the merge must take server.${field}`).toContain(`${field}: server.${field}`)
+      expect(block, `${field} must keep the local value when edited`).toContain(`edited.${field} ? existing.${field}`)
+      expect(block, `${field} must take the server value otherwise`).toContain(`: server.${field}`)
     }
     expect(block).toMatch(/partialPreview:\s*undefined/)
   })
