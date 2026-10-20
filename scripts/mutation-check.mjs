@@ -25,6 +25,7 @@ const TESTS = [
   'tests/gate-additional-probes.test.ts',
   'tests/gate-banner-probes.test.ts',
   'tests/gate-round4-fresh.test.ts',
+  'tests/recovery-liveness-probes.test.ts',
 ]
 const OUT = process.argv[2]
 
@@ -275,10 +276,7 @@ const MUTATIONS = [
     ],
   },
   {
-    // B1: the published plan must carry the authoritative membership. The
-    // liveness checks are removed with it, because a stale publish is what
-    // exposes the old membership. The probe then sees the OLD account's
-    // members on the published plan.
+    // B1: the published plan must carry the authoritative membership.
     name: 'REVISE5-second-read-uses-authoritative-membership',
     file: STORE,
     from: `          const shared = await readSharedTripWithMembership(tripId, token)
@@ -286,20 +284,11 @@ const MUTATIONS = [
           if (shared) {
             cache.trips = [...cache.trips.filter(t => t.id !== tripId), shared.trip]`,
     to: `          const shared = await readSharedTripWithMembership(tripId, token)
+          if (!stillLive(scope, tripId, accessEpoch)) return false
           if (shared) {
             const cachedMembers = tripById(tripId)?.members
             cache.trips = [...cache.trips.filter(t => t.id !== tripId),
               { ...shared.trip, members: cachedMembers }]`,
-    also: [
-      [`          // The second read awaited, so the work may no longer be live. An
-          // account switch or a tombstone during the read must not publish.
-          if (!stillLive(scope, tripId, accessEpoch)) return false`,
-      `          // The second read awaited, so the work may no longer be live. An
-          // account switch or a tombstone during the read must not publish.`],
-      [`        if (!stillLive(scope, tripId, accessEpoch)) return false
-        if (!isStaleServerRow(serverTripTimestamps.get(tripId), fresh.updated_at)) {`,
-      `        if (!isStaleServerRow(serverTripTimestamps.get(tripId), fresh.updated_at)) {`],
-    ],
   },
   {
     // B2: the failed read of the replay demotion must not remove the trip
@@ -325,6 +314,21 @@ const MUTATIONS = [
           && isCurrentIdentity(scope)) {`,
     to: `        if (recorded && durable && recorded.userId === scope.userId
           && isCurrentIdentity(scope)) {`,
+  },
+  {
+    // B2: the replay demotion's failed read must not remove the trip. Both
+    // guards go, because the liveness check and the edit-right check overlap.
+    name: 'REVISE5-replay-demotion-does-not-remove-the-trip',
+    file: STORE,
+    from: `        if (!stillLive(scope, entry.tripId, nextEpoch)) return false
+        if (shared) {`,
+    to: `        if (shared) {`,
+    also: [
+      [`          const trip = tripById(entry.tripId)
+          if (trip && canEdit(roleOf(trip, scope.userId))) return false
+          cache.trips = cache.trips.filter(t => t.id !== entry.tripId)`,
+      `          cache.trips = cache.trips.filter(t => t.id !== entry.tripId)`],
+    ],
   },
   {
     // Every scope guard in the discard branch at once. The individual guards
