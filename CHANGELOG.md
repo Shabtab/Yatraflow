@@ -15,6 +15,8 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+## [0.78.0] - 2026-10-20
+
 ### Added
 
 - **Mixed trips now ask whether you drive any part of the trip.** The answer sets the driving options. A new Mixed trip cannot be created without one. An existing Mixed trip keeps planning the way it always did until you answer. (2026-10-19)
@@ -39,6 +41,18 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - **A trip editor can no longer take ownership of a trip.** The database accepted any editor's write to the trip's owner column. The editor could then promote their own crew row and remove the real owner. The owner column now changes only when the current owner, an admin, or a maintenance session makes the change. Every other caller is refused. A normal edit, a move to the trash, and a restore keep working. The app no longer sends the owner column on an ordinary edit. A crew member whose owner row is missing from their local copy can still save. **Ship this app build with or before the database change.** (#799)
 - **A trip that backs a publication can no longer be deleted directly.** The editor delete path removed the trip, and the publication and the buyers' purchase records went with it. A direct delete now refuses any trip that carries a publication, an order, or an entitlement. The trash and its purge already refused the same trip. The owner can still delete a trip with no publication. (#807)
 - **Sign-up date of birth now uses direct Year, Month and Day selects.** A birth year is one choice away. The three selects emit one complete `YYYY-MM-DD` date, and a partial pick emits nothing. The day list follows the chosen month, so a 31st or a 29 February cannot roll over. A change of year to the current year clamps a later month and day to today. No future date can be submitted. The 18+ check is unchanged.
+### Changed
+
+- **The trip header is compact on a phone.** At 390px the header band and the tab rail took about 420px of an 844px screen. The tab panel then started below the fold. A phone now takes the compact band the Board tab already used. The band is shorter, the title is 20px and the tab rail is tighter. (#677)
+- **The My Trips rules now use the documented motion tokens.** Five rules in the trip-card and timeline block used the legacy `--t-fast` and `--t-med` durations. They now use `--motion-fast` and `--motion-med`. Each rule keeps its reduced-motion opt-out. (#650)
+- **Trip copy names consequences, not engine jargon.** The Overview health card now says what the score means, such as "The plan does not fit these days. Drop a stop or add a day." The day matrix explains its own columns. It lists B breakfast, L lunch, F fuel, S stretch, D dinner and N night. A cell the app filled itself reads "a break the app added". The Map legend and its day labels say the same. The Timeline's Inspect mode is now labelled Review, with the explanation "Study the day without changing it". (#683)
+
+### Fixed
+
+- **Offline trip edits have explicit conflict recovery.** The latest edit stays scoped to its account and trip. Server revisions prevent silent replacement of newer shared changes. Failed sends pause after three tries. Saved edits offer retry, download, and an explicit choice between local and shared plans. Storage failures show a warning. Account changes, lost edit access, and deleted trips cancel stale work. The server revision migration must precede this app update. (#783)
+- **The Create trip phone dock no longer runs two phrases together.** The days line and the readiness line shared one inline row. "Pick your dates" and "3 things left" then printed as one phrase. The readiness line is a block now, so it sits under the days line. (#767)
+- **The trip tab rail shows that it scrolls sideways.** The rail hides its scrollbar. A tab past the right edge ("Group input") was cut with no sign that more exist. The rail now fades the edge that still holds hidden tabs. The fade clears once the end is reached. (#684)
+
 ## [0.77.1] - 2026-10-18
 
 ### Fixed
@@ -52,17 +66,6 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - **Board shows flight journeys with separate flight and ground travel times.** Flight cards appear even without a saved flight entry. Estimated flight times state their assumptions. Route points remain separate from flights.
 - **Travel stop labels follow the transport mode.** Board, Timeline, and public highlights show Flight, Train, or Bus where applicable. Board uses the matching icon. Airport and ground transfer labels remain distinct.
 - **Local stops in flight trips use ground rates.** The stop editor calculates road travel time and fares with ground assumptions.
-### Changed
-
-- **The trip header is compact on a phone.** At 390px the header band and the tab rail took about 420px of an 844px screen. The tab panel then started below the fold. A phone now takes the compact band the Board tab already used. The band is shorter, the title is 20px and the tab rail is tighter. (#677)
-- **The My Trips rules now use the documented motion tokens.** Five rules in the trip-card and timeline block used the legacy `--t-fast` and `--t-med` durations. They now use `--motion-fast` and `--motion-med`. Each rule keeps its reduced-motion opt-out. (#650)
-- **Trip copy names consequences, not engine jargon.** The Overview health card now says what the score means, such as "The plan does not fit these days. Drop a stop or add a day." The day matrix explains its own columns. It lists B breakfast, L lunch, F fuel, S stretch, D dinner and N night. A cell the app filled itself reads "a break the app added". The Map legend and its day labels say the same. The Timeline's Inspect mode is now labelled Review, with the explanation "Study the day without changing it". (#683)
-
-### Fixed
-
-- **Offline trip edits have explicit conflict recovery.** The latest edit stays scoped to its account and trip. Server revisions prevent silent replacement of newer shared changes. Failed sends pause after three tries. Saved edits offer retry, download, and an explicit choice between local and shared plans. Storage failures show a warning. Account changes, lost edit access, and deleted trips cancel stale work. The server revision migration must precede this app update. (#783)
-- **The Create trip phone dock no longer runs two phrases together.** The days line and the readiness line shared one inline row. "Pick your dates" and "3 things left" then printed as one phrase. The readiness line is a block now, so it sits under the days line. (#767)
-- **The trip tab rail shows that it scrolls sideways.** The rail hides its scrollbar. A tab past the right edge ("Group input") was cut with no sign that more exist. The rail now fades the edge that still holds hidden tabs. The fade clears once the end is reached. (#684)
 
 ## [0.77.0] - 2026-10-16
 

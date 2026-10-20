@@ -93,6 +93,15 @@ A collaborative travel-planning web app, built India-first. Real multi-day itine
 
 _Release highlights, newest first — the full record lives in [CHANGELOG.md](CHANGELOG.md)._
 
+## ✨ The v0.78 release candidate, in plain words
+
+- Passenger trips show the controls that apply to their transport. Mixed trips ask whether you drive any part.
+- Snapshot links keep trip payloads in the browser fragment. Analytics and feedback drafts remove those payloads.
+- Offline edits keep their account and server revision. Conflicts offer retry, download, or an explicit recovery choice.
+- Public itineraries show their contents before purchase. Locked stop names remain private.
+
+This candidate awaits owner deployment approval and database rollout checks.
+
 ## ✨ The v0.77 release, in plain words
 
 - **Flight trips plan the whole journey.** The travel day runs home → the origin airport → the sector → the destination airport → your stay. Ground legs use car timing and pricing. The sector uses the fare for your whole group.

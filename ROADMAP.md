@@ -15,8 +15,11 @@ user confirmation before any push. Feature work reaches `test` **via pull
 request** (never a direct push); `main` merges stay explicitly user-gated
 (AGENTS rule 1).
 
-**Snapshot (2026-10-18, verified against the repo):** v0.77.1 is a bugfix hotfix cut from `main` this day. It cherry-picks the four flight-journey fix commits of PR #797 from `test`. It changes no migration and no schema. The rest of this line describes v0.77.0, which it follows. **v0.77.0 reached `main` through PR #772.** It carried the flight travel day, the one-designer pass and the honesty fixes. Migration `20261012c_trip_flights.sql` shipped with it. `test` carries 12 commits that `main` does not by id. Four are PR #797's fix commits, now on `main` as this hotfix under new ids. The real gap is the PR #792 batch: the map-copy plain words (#683) and the phone-polish batch. You must read branch progress with `git rev-list --left-right --count origin/main...origin/test`. CHANGELOG.md holds the full release record.
-Current version: **0.77.1** — hotfix cut from `main` on 2026-10-18: the flight-journey fixes of PR #797 alone. Under it: **0.77.0**, promoted to `main` through PR #772. Under that: **0.76.0**, promoted to `main` on 2026-10-12. Older releases appear in CHANGELOG.md.
+**Snapshot (2026-10-20, verified against the repo):** v0.78.0 is a local promotion candidate.
+It combines current `test`, the v0.77.1 history, and PRs #810 and #813.
+The feature PRs remain open against `test`. The promotion must remain a draft until their integration completes.
+Vercel owner authorization and database rollout checks remain pending.
+Current version: **0.78.0**. Production remains on the separately deployed release until an approved promotion lands.
 
 **Live open work is tracked in two places, and this file must agree with both:**
 
