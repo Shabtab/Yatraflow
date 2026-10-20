@@ -26,6 +26,7 @@ const { state } = vi.hoisted(() => ({ state: {
   beforeUpdate: null as (() => void) | null,
   authHandler: null as ((event: string, session: unknown) => void) | null,
   putCalls: 0,
+  removeFails: false,
   missingBranch: 0,
   hiddenTrips: new Set<string>(),
 } }))
@@ -54,6 +55,7 @@ vi.mock('../src/lib/writeQueue', async importOriginal => {
     put: async entry => { state.disk.set(actual.writeQueueKey(entry.ownerId, entry.tripId), structuredClone(entry)) },
     remove: async key => { state.disk.delete(key) },
     removeIf: async (key, at, revision, owner) => {
+      if (state.removeFails) throw new Error('durable removal failed');
       const entry = state.disk.get(key)
       if (!matches(entry, at, revision) || (owner !== undefined && entry?.ownerId !== owner)) return false
       state.disk.delete(key)
@@ -243,6 +245,7 @@ beforeEach(() => {
   state.beforeUpdate = null
   state.authHandler = null
   state.putCalls = 0
+  state.removeFails = false
   state.missingBranch = 0
   state.hiddenTrips = new Set()
   vi.stubGlobal('navigator', { onLine: false })
@@ -362,6 +365,93 @@ describe('recovery identity regressions', () => {
     await flush();
     expect(store.getSnapshot().trips[0].name).toBe('Original plan');
     expect(state.writes).toEqual([]);
+  });
+
+  it('a replay demotion shows the shared plan, not the local proposal', async () => {
+    const store = await fresh(true);
+    await capture(store, 'LOCAL PROPOSAL');
+    // The server still holds the original plan.
+    Object.assign(state.rows.get('shared')!, { name: 'Shared plan' });
+    state.members = state.members.map(m => m.user_id === 'A' ? { ...m, role: 'viewer' } : m);
+    vi.stubGlobal('navigator', { onLine: true });
+    expect(await store.replayQueuedWrites()).toBe(0);
+    await flush();
+    // The copy is kept with its reason.
+    expect((await pending())[0]).toMatchObject({ reason: 'access-revoked' });
+    // The DISPLAYED plan is the shared one. The trip id alone does not prove
+    // this: the local overlay also carries the trip id.
+    expect(store.getSnapshot().trips[0].name).toBe('Shared plan');
+  });
+
+  it('a discard that cannot read the server refuses, and keeps the overlay', async () => {
+    const store = await fresh(true);
+    await capture(store, 'DISCARDED OVERLAY');
+    vi.stubGlobal('navigator', { onLine: true });
+    // The server read fails, so the shared plan cannot be fetched.
+    state.offlineReads = true;
+    // The removal is refused. The cached plan may be showing the local
+    // overlay, and dropping the copy alone would leave the discarded content
+    // on screen for the user to edit and queue again.
+    expect(await store.resolveQueuedTripWrite('shared', 'discard')).toBe(false);
+    await flush();
+    // The local copy stays, so the visible overlay and the queue agree.
+    expect(await pending()).toHaveLength(1);
+    expect(store.getSnapshot().trips[0]?.name).toBe('DISCARDED OVERLAY');
+    // With the server readable again, the removal replaces the overlay with
+    // the shared plan.
+    state.offlineReads = false;
+    Object.assign(state.rows.get('shared')!, { name: 'Shared plan' });
+    expect(await store.resolveQueuedTripWrite('shared', 'discard')).toBe(true);
+    await flush();
+    expect(await pending()).toEqual([]);
+    expect(store.getSnapshot().trips[0]?.name).toBe('Shared plan');
+  });
+
+  it('a reasoned copy is never held, even when its removal fails', async () => {
+    const store = await fresh(true);
+    // The server plan is at revision 5, so a baseline of 5 is the current one
+    // and any other value is an inherited stale baseline.
+    Object.assign(state.rows.get('shared')!, { write_version: 5 });
+    await capture(store, 'KEPT COPY');
+    state.members = state.members.map(m => m.user_id === 'A' ? { ...m, role: 'viewer' } : m);
+    vi.stubGlobal('navigator', { onLine: true });
+    await store.replayQueuedWrites();
+    await flush();
+    expect((await pending())[0]).toMatchObject({ reason: 'access-revoked' });
+    // The durable removal fails, so the reasoned copy stays queued.
+    state.removeFails = true;
+    expect(await store.resolveQueuedTripWrite('shared', 'discard')).toBe(false);
+    await flush();
+    // The copy is still queued, and it still carries its reason.
+    const kept = await pending();
+    expect(kept).toHaveLength(1);
+    expect(kept[0]).toMatchObject({ reason: 'access-revoked' });
+    // A reasoned copy must not be held as the local copy. A later edit must
+    // not inherit its baseline, or the new edit would be written against a
+    // revision the account no longer holds.
+    state.members = state.members.map(m => m.user_id === 'A' ? { ...m, role: 'owner' } : m);
+    await store.resumeSync();
+    await flush();
+    expect(store.getSnapshot().trips[0].name).toBe('Original plan');
+    // The server moves on to revision 6. A held reasoned copy would carry the
+    // revision 5 baseline, so the later edit would be written against a
+    // revision the server has already left.
+    Object.assign(state.rows.get('shared')!, { write_version: 6 });
+    await store.resumeSync();
+    await flush();
+    const accepted = store.updateTrip('shared', { name: 'A later edit' });
+    expect(accepted).toBe(true);
+    await store.tripWriteVerdict('shared');
+    await flush();
+    const entries = await pending();
+    const later = entries.find(w => (w.trip as { name?: string }).name === 'A later edit');
+    expect(later).toBeDefined();
+    // The later edit carries no reason and no inherited failure state.
+    expect(later!.reason).toBeUndefined();
+    expect(later!.state).toBeUndefined();
+    // The later edit is written against the current server revision, not the
+    // baseline the reasoned copy carried.
+    expect(later!.baseVersion).toBe(6);
   });
 
   it('a removal names the removal, not a demotion', async () => {

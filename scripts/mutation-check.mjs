@@ -42,11 +42,11 @@ const MUTATIONS = [
         readFailed = true
       }
       if (!sameScopeGeneration(scope, tripId, accessEpoch)) return false
-      const durable = await dropQueuedWrite(current)`,
+      // The shared plan could not be read.`,
     to: `      } else {
         readFailed = true
       }
-      const durable = await dropQueuedWrite(current)`,
+      // The shared plan could not be read.`,
   },
   {
     name: 'P1c-revocation-scope-before-invalidation',
@@ -55,9 +55,15 @@ const MUTATIONS = [
       // The retention awaited storage, so the scope is checked once more. A
       // copy that changed hands in the meantime is not this scope's work.
       if (!sameScopeGeneration(scope, entry.tripId, accessEpoch)) return false
-      invalidateTripWork(entry.tripId, scope.userId, reason)`,
+      // The invalidation bumps the access generation, so the refresh below
+      // must compare against the NEW generation. The captured one is stale
+      // from here on.
+      const nextEpoch = invalidateTripWork(entry.tripId, scope.userId, reason)`,
     to: `      await retainRevokedCopy(entry, scope, reason)
-      invalidateTripWork(entry.tripId, scope.userId, reason)`,
+      // The invalidation bumps the access generation, so the refresh below
+      // must compare against the NEW generation. The captured one is stale
+      // from here on.
+      const nextEpoch = invalidateTripWork(entry.tripId, scope.userId, reason)`,
   },
   {
     name: 'P1c-missing-trip-scope-before-invalidation',
@@ -81,6 +87,37 @@ const MUTATIONS = [
     if (!isHeldCopy(write)) {`,
     to: `    if (!write) return trip
     if (false) {`,
+  },
+  {
+    // The demotion refresh must compare against the generation the
+    // invalidation returned. Comparing against the captured one is always
+    // false, so the shared plan never reaches the screen.
+    name: 'REVISE2-demotion-uses-the-new-generation',
+    file: STORE,
+    from: `        if (shared && sameScopeGeneration(scope, entry.tripId, nextEpoch)) {`,
+    to: `        if (shared && sameScopeGeneration(scope, entry.tripId, accessEpoch)) {`,
+  },
+  {
+    // A discard that cannot read the shared plan must refuse while the
+    // overlay is on screen, or the discarded content stays editable.
+    name: 'REVISE2-discard-refuses-on-a-failed-read',
+    file: STORE,
+    from: `      if (readFailed) {
+        const showing = cache.trips.some(t => t.id === tripId)
+        if (showing) return false
+      }`,
+    to: `      if (readFailed) {
+        const showing = false
+        if (showing) return false
+      }`,
+  },
+  {
+    // A reasoned copy is never held as the local copy.
+    name: 'REVISE2-reasoned-copy-never-held',
+    file: STORE,
+    from: `        if (isHeldCopy(latest)) queuedLocalTrips.set(tripId, latest)
+        else queuedLocalTrips.delete(tripId)`,
+    to: `        queuedLocalTrips.set(tripId, latest)`,
   },
   {
     name: 'SHOULD-FIX-offline-removal-handler',

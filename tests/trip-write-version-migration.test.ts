@@ -5,27 +5,31 @@ const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf
 const migration = read('../supabase/migrations/20261017_trip_write_version.sql')
 const schema = read('../supabase/schema.sql')
 
-/** The definitions, without the transaction wrapper or the comments. */
-function definitions(source: string): string {
-  return source
-    .replace(/--[^\n]*/g, '')
-    .split('\n')
-    .map(line => line.trim())
-    .filter(line => line !== '' && line !== 'begin;' && line !== 'commit;')
-    .join('\n')
-}
-
 describe('server trip write versions', () => {
-  it('carries the same definitions in the fresh schema as in the migration', () => {
-    expect(definitions(schema)).toContain(definitions(migration))
+  it('uses the exact migration in the fresh schema', () => {
+    expect(schema).toContain(migration.trim())
   })
 
-  it('wraps the migration in a transaction and leaves the fresh schema unwrapped', () => {
-    expect(migration).toMatch(/^\s*begin;/m)
-    expect(migration).toMatch(/^\s*commit;\s*$/m)
-    // The fresh schema runs as one script, so a nested transaction is not needed.
-    const block = schema.slice(schema.indexOf('alter table public.trips add column if not exists write_version'))
-    expect(block.slice(0, block.indexOf('create trigger trips_advance_write_version'))).not.toMatch(/^\s*begin;/m)
+  it('keeps the write-version block inside a transaction in both files', () => {
+    // The lock below is transaction-scoped in PostgreSQL. Outside a
+    // transaction block it is taken and released at once, so the sequence
+    // would align without the write window the lock exists to close. The
+    // schema copy must carry the wrapper, not only the migration.
+    for (const [name, source] of [['the migration', migration], ['the fresh schema', schema]] as const) {
+      // The block runs from the transaction opener to the transaction closer.
+      // The trigger sits inside it, so the closer comes after the trigger.
+      const start = source.indexOf('begin;')
+      const trigger = source.indexOf('create trigger trips_advance_write_version')
+      const end = source.indexOf('commit;', trigger)
+      expect(start, `${name} must open a transaction`).toBeGreaterThan(-1)
+      expect(end, `${name} must close the transaction`).toBeGreaterThan(-1)
+      // The lock must sit BETWEEN the opener and the closer, or it is not
+      // held at all.
+      const lock = source.indexOf('lock table public.trips')
+      expect(lock, `${name} must take the lock`).toBeGreaterThan(-1)
+      expect(start).toBeLessThan(lock)
+      expect(lock).toBeLessThan(end)
+    }
   })
 
   it('keeps table authorization intact and restricts sequence access', () => {

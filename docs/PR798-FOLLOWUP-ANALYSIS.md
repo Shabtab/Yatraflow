@@ -67,11 +67,26 @@ neighbour. The mutation report in the evidence folder shows this. The
 collective removal of the whole set fails the probes, so the set is what holds
 the line.
 
-The discard also separates three outcomes, because they used to be one. A read
-that succeeded with a row refreshes the cached plan. A read that succeeded
-without a row means the trip is gone, so the plan leaves the list. A read that
-**failed** leaves the cached plan alone, so a network error never drops a trip
-the account can still read. The local copy is removed in all three cases.
+The access generation moves when the access changes, so a guard that compares
+against a generation captured BEFORE that change is always false.
+`invalidateTripWork` bumps the generation, so it now returns the new value.
+The demotion path compares the shared-plan refresh against that returned
+value. A refresh that compared against its own captured generation would
+never run, and the demoted reader would keep seeing the local proposal.
+
+### The discard and a failed read
+
+The discard separates three outcomes, because they used to be one. A read that
+succeeded with a row refreshes the cached plan. A read that succeeded without
+a row means the trip is gone, so the plan leaves the list. A read that
+**failed** means the shared plan is unknown.
+
+A failed read now **refuses the discard** when the cache is showing the local
+overlay. The refusal happens before the copy is dropped, so the queue and the
+visible plan still agree. Without the refusal the copy would be gone and the
+overlay would stay on screen, and the user could edit the discarded content
+and queue it again. A later attempt reads the shared plan and replaces the
+overlay, so the removal completes once the server answers.
 
 ### Scope held
 
@@ -83,6 +98,71 @@ the copy, because the account asked for that.
 Residual, not fixed here: `trashTrip` drops the copy before the trash write
 runs, so a **failed** trash write loses the queued copy. That is pre-existing
 and outside the four named paths.
+
+## Open observations
+
+These are recorded, not fixed. Each one needs a product call or a change
+outside this packet.
+
+### A trashed trip can come back as a kept copy
+
+The realtime `trips` handler treats a `DELETE` event and a tombstone the same
+way. A tombstone is a `UPDATE` that carries `deleted_at`, and the trip is
+taken out of the list with the reason `trip-unavailable`. The queued copy
+then stays with that reason.
+
+The `trips` echo window is the risk. A trash write is a local write, so its
+own echo arrives with the echo window open, and the echo branch records the
+server timestamp and stops. The tombstone never reaches the removal branch.
+The result is a trashed trip that stays in the list as a live plan, with the
+copy held beside it.
+
+The fix belongs in the trash path, not in the recovery path. A trip the
+account trashed must leave the list when the server confirms the tombstone.
+The recovery path cannot tell a trashed trip from a deleted one, because both
+arrive as `deleted_at`.
+
+### The demotion refresh skips the server timestamp ledger
+
+`refreshSharedPlanAfterDemotion` writes the shared plan into the cache but
+does not call `recordServerTripTimestamp`. The ledger records the clock the
+server wrote, and the next remote row is compared against it. A missing entry
+means the next remote row for that trip has nothing to compare with, so the
+stale-row guard cannot drop a row that is older than the shared plan the
+demotion just read.
+
+The same branch in the send path does record the timestamp. The demotion
+refresh should do the same.
+
+### A removed member can still download the copy
+
+A removed member keeps their queued copy, and the download action stays with
+it. The copy is the account's own work, and it is already on their device, so
+the export itself touches nothing the account no longer has.
+
+The product question is whether a member who has been removed from a trip
+should still be able to export that trip's plan. The copy can name stops,
+places and notes the account can no longer read. The current behaviour keeps
+the export, because the copy is already on the device and the alternative
+leaves the account with no way to recover their own work.
+
+This is a call for the product owner, not a defect on its own.
+
+### The identity check is monotonic, so one guard is a candidate for trimming
+
+`identityEpoch` only ever increments, and it is bumped on every account
+change. `isCurrentIdentity` compares the captured epoch with the current one
+and the captured user with the signed-in one, so once it returns false for a
+given scope it stays false for that scope.
+
+The P1-a guard after the queue read in the discard path is therefore a
+candidate for removal: the checks on either side of it already cover the
+same account switch. The mutation report shows the guard is not pinned on its
+own, which matches this. The collective removal of the whole set does fail,
+so the set is what holds the line.
+
+Trimming it would remove a defence-in-depth layer for a small gain in
+readability, so it is left in place and recorded here.
 
 ## N4 — analysis only, no change
 

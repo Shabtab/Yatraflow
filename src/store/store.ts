@@ -2922,8 +2922,13 @@ async function retainRevokedCopy(entry: QueuedWrite, scope: IdentityScope, reaso
  * asked to forget the work. The queued copy then stays for its owner with the
  * reason attached. Without a reason the copy is dropped, which is what an
  * explicit discard, a trash and a sign-out mean.
+ *
+ * It returns the NEW access generation. The generation is bumped here, so a
+ * caller that reads work after this call must compare against the returned
+ * value. A caller that compares against its own captured generation would
+ * always see a mismatch.
  */
-function invalidateTripWork(tripId: string, userId: string, reason?: QueuedWrite['reason']): void {
+function invalidateTripWork(tripId: string, userId: string, reason?: QueuedWrite['reason']): number {
   editableTripGrants.delete(tripId)
   const accessEpoch = (tripAccessEpochs.get(tripId) ?? 0) + 1
   tripAccessEpochs.set(tripId, accessEpoch)
@@ -2951,7 +2956,7 @@ function invalidateTripWork(tripId: string, userId: string, reason?: QueuedWrite
     // The snapshot still holds the trip's rows. A demoted reader can read
     // them, so the snapshot stays. A removed account must not keep them.
     if (reason === 'access-removed') void clearSnapshot(userId)
-    return
+    return accessEpoch
   }
   if (held?.ownerId === userId) void dropQueuedWrite(held)
   void pendingWrites().then(writes => {
@@ -2961,6 +2966,7 @@ function invalidateTripWork(tripId: string, userId: string, reason?: QueuedWrite
     }
   })
   void clearSnapshot(userId)
+  return accessEpoch
 }
 
 /** Bind requests to the captured account, even if SDK token acquisition awaits a switch. */
@@ -3103,7 +3109,10 @@ async function sendQueuedTripWrite(entry: QueuedWrite, scope: IdentityScope, acc
       // The retention awaited storage, so the scope is checked once more. A
       // copy that changed hands in the meantime is not this scope's work.
       if (!sameScopeGeneration(scope, entry.tripId, accessEpoch)) return false
-      invalidateTripWork(entry.tripId, scope.userId, reason)
+      // The invalidation bumps the access generation, so the refresh below
+      // must compare against the NEW generation. The captured one is stale
+      // from here on.
+      const nextEpoch = invalidateTripWork(entry.tripId, scope.userId, reason)
       if (!stillMember) {
         cache.trips = cache.trips.filter(t => t.id !== entry.tripId)
         commit()
@@ -3111,7 +3120,7 @@ async function sendQueuedTripWrite(entry: QueuedWrite, scope: IdentityScope, acc
         // A demoted reader sees the shared plan, not the local copy. The local
         // copy is the account's own work and stays in the recovery list.
         const shared = await readSharedTrip(entry.tripId, token)
-        if (shared && sameScopeGeneration(scope, entry.tripId, accessEpoch)) {
+        if (shared && sameScopeGeneration(scope, entry.tripId, nextEpoch)) {
           cache.trips = cache.trips.map(t => t.id === entry.tripId ? shared : t)
           commit()
         }
@@ -3279,6 +3288,16 @@ export async function resolveQueuedTripWrite(tripId: ID, choice: 'retry' | 'repl
         readFailed = true
       }
       if (!sameScopeGeneration(scope, tripId, accessEpoch)) return false
+      // The shared plan could not be read. If the cache is showing the local
+      // overlay, the removal is REFUSED before the copy is dropped: the copy
+      // stays, and the overlay stays with it. Dropping the copy alone would
+      // leave the discarded content on screen, and the user could edit it and
+      // queue it again. A later attempt reads the shared plan and replaces the
+      // overlay.
+      if (readFailed) {
+        const showing = cache.trips.some(t => t.id === tripId)
+        if (showing) return false
+      }
       const durable = await dropQueuedWrite(current)
       // A scope change means the removal did not complete under this scope.
       // It reports false, so the caller does not claim a clean removal.
@@ -3287,15 +3306,18 @@ export async function resolveQueuedTripWrite(tripId: ID, choice: 'retry' | 'repl
       if (!sameScopeGeneration(scope, tripId, accessEpoch)) return false
       if (latest) {
         // Storage failure or a newer edit keeps its own recovery state and visible contents.
-        queuedLocalTrips.set(tripId, latest)
+        // A reasoned copy is never held as the local copy, so a later edit
+        // cannot capture its stale baseline.
+        if (isHeldCopy(latest)) queuedLocalTrips.set(tripId, latest)
+        else queuedLocalTrips.delete(tripId)
         return false
       }
       const held = queuedLocalTrips.get(tripId)
       if (held && !sameQueuedWrite(held, current)) return false
       queuedLocalTrips.delete(tripId)
       if (readFailed) {
-        // The shared plan could not be read, so the cached plan stays as it
-        // is. The local copy is still gone.
+        // The shared plan could not be read and the cache showed no plan for
+        // the trip, so there is nothing left to correct.
         commit()
         void clearSnapshot(scope.userId)
         return durable
