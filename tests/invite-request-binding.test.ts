@@ -1,190 +1,161 @@
-// ============ DSH-804 UNIT 1 — request identity binding: FAILING CONTRACTS ON THE FROZEN SOURCE ============
+// ============ UNIT 1 — installed-SDK request binding (GREEN PROOF) ============
 //
-// Round 8's B1 is real and reproduced here against the installed @supabase/supabase-js
-// client and a real transport. Only the auth answers and the fetch are synthetic: no
-// server run, no network request, no SQL row, no token is ever printed or stored here.
+// This suite answers one question only: does the installed @supabase/supabase-js
+// let a caller bind a fresh request to a captured bearer, and does that binding
+// survive the SDK's own awaited token lookup?
 //
-// The installed SDK's own PostgREST builder supports per-request pinning through the
-// public `setHeader`, which copies the builder's headers before setting the value.
-// The store already proves this direction on three existing lines (store.ts:1441,
-// 2533, 2560). The join dispatch (store.ts:3394) and the full-row loader (store.ts:1300)
-// do not use it, so an account switch that lands inside the awaited SDK token lookup
-// silently re-authorises the request as the new account. That is exactly what a
-// client-side re-check cannot detect: there is nothing else to observe.
+// It is a mechanism proof, not product acceptance. The product contract lives in
+// `invite-request-contracts.test.ts`, which drives the real store entry point.
 //
-// The Gate's design review recorded four installed-SDK checks. This suite re-uses
-// them rather than rediscovering them; the boundary between what is proven and what
-// is asserted is recorded in DESIGN-NOTE-REVISED.md beside this suite.
+// Ordering: the SDK's token lookup is the await a switch can land in. So every
+// case here STARTS consumption, waits for an explicit "lookup entered" receipt,
+// and only then switches the account and releases the lookup. No timer is used
+// as ordering proof, and the assertion is the request's FINAL Authorization
+// header: the SDK fills that header only when the caller did not supply one
+// (fetch.ts:83-93), so reading `init.headers` alone would mis-report a pinned
+// request.
 //
-// Two switch timings, both required by contract C1:
-//   - BEFORE request initiation  -> abandoned, no request is issued
-//   - DURING the SDK token await -> A's request may finish, but its continuation
-//                                    must not publish or act for B
+// Auth answers are synthetic strings. No real credential is used, printed or
+// persisted, and no server or network is touched.
 
 import { describe, expect, it, vi } from 'vitest'
 import { createClient } from '@supabase/supabase-js'
-import { readFileSync } from 'node:fs'
+import { createDeferred, type Deferred } from './helpers/deferred'
 
-const STORE = readFileSync(new URL('../src/store/store.ts', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
+interface Captured {
+  url: string
+  authorization: string
+}
 
-/** A synthetic auth answer. These are fixture strings, not real credentials. */
+/** A synthetic session answer. These are fixture strings, not credentials. */
 function authAs(user: string, token: string) {
   return { data: { session: { access_token: token, user: { id: user } } }, error: null }
 }
 
-/**
- * An in-process transport that records each request's FINAL Authorization header.
- *
- * The installed SupabaseClient builds a `Headers` from the caller's `init.headers`
- * and fills `Authorization` only when it is ABSENT (fetch.ts:90-93), awaiting its
- * own token lookup first (fetch.ts:83). So the observable for "was this request
- * bound to the account that started it" is the header AFTER that fill. Reading
- * `init.headers` directly would miss the fill and report an empty header for a
- * correctly pinned request.
- */
-function capturingClient(requests: Array<{ url: string; authorization: string }>) {
+/** A client whose transport records each request's final Authorization header. */
+function syntheticClient(requests: Captured[], getSession: () => Promise<unknown>) {
   const transport = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
     const headers = new Headers(init?.headers)
     requests.push({ url: String(url), authorization: headers.get('Authorization') ?? '' })
-    return new Response(JSON.stringify([]), { status: 200, headers: { 'content-type': 'application/json' } })
+    return new Response(JSON.stringify([]), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    })
   })
-  return createClient('http://127.0.0.1:1', 'synthetic-anon-key', {
+  const client = createClient('http://127.0.0.1:1', 'synthetic-anon-key', {
     auth: { persistSession: false },
     global: { fetch: transport, headers: {} },
   })
+  client.auth.getSession = getSession as typeof client.auth.getSession
+  return client
 }
 
 /**
- * A client whose auth answers A during the capture phase and B afterwards, with the
- * switch gated so the test controls exactly when the awaited lookup resolves.
- *
- * Two lookups happen, exactly as the real flow has:
- *   1. the caller's own `getSession()` capture — answers A;
- *   2. the SDK's internal token lookup inside `fetch.ts:83` — awaits the gate and
- *      then answers B, which is the account switch landing mid-flight.
+ * Auth that answers A to the caller's capture, then parks the SDK's own lookup
+ * on a deferred. `entered` is the receipt that the lookup has started.
  */
-function accountClient(requests: Array<{ url: string; authorization: string }>) {
-  let switched = false
-  let release = (_v?: unknown) => {}
-  const gate = new Promise(r => { release = r })
-  const client = capturingClient(requests)
-  client.auth.getSession = async () => {
-    if (!switched) return authAs('A', 'synthetic-A')
-    await gate
+function parkedLookup(entered: Deferred<void>, release: Deferred<void>) {
+  let lookups = 0
+  return async () => {
+    lookups += 1
+    if (lookups === 1) return authAs('A', 'synthetic-A')
+    entered.resolve()
+    await release.promise
     return authAs('B', 'synthetic-B')
-  }
-  return {
-    client,
-    /** Step 1-2 of contract C1: capture identity and the bearer before awaiting. */
-    captureBearer: async () => (await client.auth.getSession()).data.session.access_token,
-    /** The switch, landing while the dispatch is awaiting the SDK token lookup. */
-    switchAccount: async () => {
-      switched = true
-      release()
-      await new Promise(r => setTimeout(r, 0))
-    },
   }
 }
 
-describe('the join dispatch is not bound to the account that started it (B1)', () => {
-  it('an unbound rpc adopts the account that arrives during the SDK token lookup', async () => {
-    // The defect reproduced on the installed SDK. The caller captures A, awaits the
-    // dispatch, and the SDK's own awaited token lookup answers B while it is out.
-    const requests: Array<{ url: string; authorization: string }> = []
-    const auth = accountClient(requests)
+describe('a fresh PostgREST builder can carry a captured bearer', () => {
+  it('an unbound rpc adopts the account the SDK lookup returns (the defect)', async () => {
+    const requests: Captured[] = []
+    const entered = createDeferred<void>()
+    const release = createDeferred<void>()
+    const client = syntheticClient(requests, parkedLookup(entered, release))
 
-    await auth.captureBearer()
-    const dispatched = auth.client.rpc('join_trip', { p_code: 'SYNTHETIC' })
-    await auth.switchAccount()
-    await dispatched
-    await new Promise(r => setTimeout(r, 0))
+    // Caller capture, before the request exists.
+    const capture = await client.auth.getSession()
+    expect(capture.data.session.access_token).toBe('synthetic-A')
 
-    expect(requests.length, 'the dispatch must be recorded').toBeGreaterThan(0)
-    // The request was authorised as whoever the token lookup finally returned.
+    // Start consumption. The SDK now awaits its own token lookup.
+    const consumed = Promise.resolve(client.rpc('join_trip', { p_code: 'SYNTHETIC' }))
+
+    // Receipt, then the switch. This ordering is the whole point.
+    await entered.promise
+    release.resolve()
+    await consumed
+
+    expect(requests).toHaveLength(1)
+    // Nothing bound the request, so its final authority is the lookup's answer.
     expect(requests[0].authorization).toBe('Bearer synthetic-B')
   })
 
-  it('a per-request pinned bearer keeps the capturing account through the switch', async () => {
-    // The contract C1 asks for. Pin on the fresh builder the store already uses on
-    // three other lines, and the header stays the original account's.
-    const requests: Array<{ url: string; authorization: string }> = []
-    const auth = accountClient(requests)
+  it('a per-request setHeader keeps the captured bearer through the switch', async () => {
+    const requests: Captured[] = []
+    const entered = createDeferred<void>()
+    const release = createDeferred<void>()
+    const client = syntheticClient(requests, parkedLookup(entered, release))
 
-    const pinned = await auth.captureBearer()
-    const dispatched = auth.client.rpc('join_trip', { p_code: 'SYNTHETIC' })
-      .setHeader('Authorization', `Bearer ${pinned}`)
-    await auth.switchAccount()
-    await dispatched
-    await new Promise(r => setTimeout(r, 0))
+    const capture = await client.auth.getSession()
+    const pinned = capture.data.session.access_token
 
-    expect(requests.length).toBeGreaterThan(0)
+    const consumed = Promise.resolve(
+      client.rpc('join_trip', { p_code: 'SYNTHETIC' }).setHeader('Authorization', `Bearer ${pinned}`),
+    )
+    await entered.promise
+    release.resolve()
+    await consumed
+
+    expect(requests).toHaveLength(1)
     expect(requests[0].authorization).toBe('Bearer synthetic-A')
   })
 
-  it('a pinned request does not rewrite the client default for later requests', async () => {
-    const requests: Array<{ url: string; authorization: string }> = []
-    const auth = accountClient(requests)
+  it('the pin does not move the client default for a later request', async () => {
+    const requests: Captured[] = []
+    const entered = createDeferred<void>()
+    const release = createDeferred<void>()
+    const client = syntheticClient(requests, parkedLookup(entered, release))
 
-    const pinned = await auth.captureBearer()
-    await auth.client.rpc('join_trip', { p_code: 'FIRST' })
-      .setHeader('Authorization', `Bearer ${pinned}`)
-    await new Promise(r => setTimeout(r, 0))
-    // The switch lands between the two requests. The first request's pin must not
-    // have moved the client default, so a request issued after the switch is
-    // dispatched as B, not as A.
-    await auth.switchAccount()
-    await auth.client.rpc('join_trip', { p_code: 'SECOND' })
-    await new Promise(r => setTimeout(r, 0))
+    const capture = await client.auth.getSession()
+    const pinned = capture.data.session.access_token
 
-    expect(requests[0].authorization).toBe('Bearer synthetic-A')
-    expect(requests[1].authorization).toBe('Bearer synthetic-B')
+    const first = Promise.resolve(
+      client.rpc('join_trip', { p_code: 'FIRST' }).setHeader('Authorization', `Bearer ${pinned}`),
+    )
+    await entered.promise
+    release.resolve()
+    await first
+
+    // The lookup now answers B. An unpinned request must therefore be B's.
+    await Promise.resolve(client.rpc('join_trip', { p_code: 'SECOND' }))
+
+    expect(requests.map(r => r.authorization)).toEqual([
+      'Bearer synthetic-A',
+      'Bearer synthetic-B',
+    ])
   })
 
-  it('concurrent builders keep their separate pinned bearers', async () => {
-    const requests: Array<{ url: string; authorization: string }> = []
-    const auth = accountClient(requests)
+  it('concurrent builders keep their own pinned bearers', async () => {
+    const requests: Captured[] = []
+    const client = syntheticClient(requests, async () => authAs('A', 'synthetic-A'))
 
     await Promise.all([
-      auth.client.rpc('join_trip', { p_code: 'A' }).setHeader('Authorization', 'Bearer synthetic-A'),
-      auth.client.rpc('join_trip', { p_code: 'C' }).setHeader('Authorization', 'Bearer synthetic-C'),
+      Promise.resolve(client.rpc('join_trip', { p_code: 'A' }).setHeader('Authorization', 'Bearer synthetic-A')),
+      Promise.resolve(client.rpc('join_trip', { p_code: 'C' }).setHeader('Authorization', 'Bearer synthetic-C')),
     ])
-    await new Promise(r => setTimeout(r, 0))
 
-    const found = requests.map(r => r.authorization).sort()
-    expect(found).toContain('Bearer synthetic-A')
-    expect(found).toContain('Bearer synthetic-C')
-  })
-
-  it('a switch before initiation means no request is issued at all', async () => {
-    // Contract C1's first timing. The switch lands before the builder exists, so
-    // the caller abandons and nothing is dispatched.
-    const requests: Array<{ url: string; authorization: string }> = []
-    const auth = accountClient(requests)
-
-    await auth.switchAccount()
-
-    // The store's shape would be: if (switched) return 'abandoned' — no rpc call.
-    const aborted = true
-    expect(aborted).toBe(true)
-    expect(requests.length, 'an abandoned switch issues no request').toBe(0)
+    expect(requests.map(r => r.authorization).sort()).toEqual([
+      'Bearer synthetic-A',
+      'Bearer synthetic-C',
+    ])
   })
 })
 
-describe('the store join and full-row reads use no request pinning (B1, as implemented today)', () => {
-  it('the join dispatch is unbound, so a switch redraws its authority', () => {
-    const join = STORE.slice(STORE.indexOf('export async function joinViaInvite('))
-    const dispatched = join.indexOf("rpc('join_trip'")
-    const pinned = join.indexOf("setHeader('Authorization'", dispatched)
-    // The gate finding: there is no pinned bearer between the capture and the
-    // dispatch, so the request's authority is the SDK default at dispatch time.
-    expect(pinned, 'the join dispatch pins no bearer').toBe(-1)
-  })
-
-  it('the full-row read is likewise unpinned', () => {
-    const at = STORE.indexOf('async function loadFullTripIntoCache(')
-    expect(at).toBeGreaterThan(-1)
-    const body = STORE.slice(at, at + 4000)
-    const read = body.indexOf("from('trips').select('*')")
-    expect(read, 'the loader reads the full row directly').toBeGreaterThan(-1)
+describe('what this suite does not prove', () => {
+  it('is a mechanism proof only; the product entry point is covered elsewhere', () => {
+    // Stated as a test so the boundary travels with the suite: these four cases
+    // show the SDK supports per-request binding. They do not show that the
+    // product uses it. `invite-request-contracts.test.ts` drives the real store
+    // entry point and is the acceptance evidence.
+    expect(true).toBe(true)
   })
 })
