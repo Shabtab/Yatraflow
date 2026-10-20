@@ -3345,7 +3345,7 @@ export async function joinViaInvite(
   if (cached?.members?.some(m => m.userId === userId)) {
     // Already a member: this call writes no membership, so the owner is owed no
     // notification for it (S3). The plan may still need loading.
-    return finishJoin(tripId, userId, false, previewName)
+    return finishJoin(tripId, userId, previewName)
   }
   // B2a — capture WHO is joining, and this trip's access generation, BEFORE the
   // RPC. The RPC is a network round trip: an account switch or a revocation can
@@ -3362,7 +3362,7 @@ export async function joinViaInvite(
   // and must not need a write at all.
   if (await viewerIsMemberOf(tripId, userId)) {
     if (!isCurrentIdentity(scope) || (tripAccessEpochs.get(tripId) ?? 0) !== accessEpoch) return 'abandoned'
-    return finishJoin(tripId, userId, false, previewName)
+    return finishJoin(tripId, userId, previewName)
   }
   const joinedAt = Date.now()
   // join_trip() takes the invite code, never a trip id. It adds the signed-in
@@ -3381,12 +3381,23 @@ export async function joinViaInvite(
   // Fail closed: a null answer, or an answer naming another trip, joins nothing.
   if (!joinedTripId || String(joinedTripId).toLowerCase() !== tripId.toLowerCase()) return 'failed'
   markLocalWrite('trip_members', tripId)
-  // The trip is usually NOT in the cache now (the preview is never cached), so
-  // mutateTrip is a no-op; the full fetch below supplies the row.
-  mutateTrip(tripId, draft => { draft.members = [...(draft.members ?? []), { userId, role, joinedAt }] }, { touch: false })
-  addActivity(tripId, userId, 'joined via invite link', 'Members')
-  // This call created the membership, so the owner is owed one notification.
-  return finishJoin(tripId, userId, true, previewName)
+  // B-3 — from here until the load finishes, our own membership echo must not be
+  // read as a permission change. The echo can arrive before this function
+  // returns, so the window is marked BEFORE any further await.
+  joiningTrips.add(tripId)
+  try {
+    // The trip is usually NOT in the cache now (the preview is never cached), so
+    // mutateTrip is a no-op; the full fetch below supplies the row.
+    mutateTrip(tripId, draft => { draft.members = [...(draft.members ?? []), { userId, role, joinedAt }] }, { touch: false })
+    addActivity(tripId, userId, 'joined via invite link', 'Members')
+    // B-4 — this call wrote the membership, so the owner is owed one notice.
+    // Record the debt BEFORE the load, so a failed load still owes it and a
+    // later retry settles it.
+    markJoinOwed(tripId, userId)
+    return await finishJoin(tripId, userId, previewName)
+  } finally {
+    joiningTrips.delete(tripId)
+  }
 }
 
 /**
@@ -3415,7 +3426,7 @@ export async function joinViaInvite(
  * existing member passes false, so re-clicking an invite never tells the owner
  * that an existing member "joined as editor".
  */
-async function finishJoin(tripId: ID, userId: ID, owed: boolean, previewName?: string): Promise<JoinResult> {
+async function finishJoin(tripId: ID, userId: ID, previewName?: string): Promise<JoinResult> {
   const loaded = await loadFullTripIntoCache(tripId)
   if (loaded === 'abandoned') return 'abandoned'
   if (loaded !== 'loaded') {
@@ -3424,20 +3435,31 @@ async function finishJoin(tripId: ID, userId: ID, owed: boolean, previewName?: s
   }
   // AFTER the load: notifyOwnerOf reads the trip's owner from the cache, and
   // before the load there is no cached row to read it from.
-  if (owed) {
-    const key = `${tripId}:${userId}`
-    if (!notifiedJoins.has(key)) {
-      notifiedJoins.add(key)
-      // N3 — this set is bounded and in-memory. It suppresses a duplicate notice
-      // for the SAME join after a failed load. It does not persist, so a reload
-      // of the app may send one duplicate, and a leave-and-rejoin later in the
-      // same session sends no second notice. The guarantee is "at most one per
-      // trip per user per session", not "exactly one ever".
-      if (notifiedJoins.size > 500) notifiedJoins.clear()
-      notifyOwnerOf(tripId, `${userName(userId)} joined ${previewName ? `“${previewName}”` : 'your trip'} as editor.`)
-    }
+  //
+  // B-4 — the debt is a recorded fact, not a parameter. `owed` used to be passed
+  // as false by reloadJoinedTrip, so a join whose first load failed, and was then
+  // recovered by a retry, never told the owner at all — while the comment claimed
+  // it did.
+  const key = `${tripId}:${userId}`
+  if (owedJoins.has(key) && !notifiedJoins.has(key)) {
+    notifiedJoins.add(key)
+    if (notifiedJoins.size > 500) notifiedJoins.clear()
+    notifyOwnerOf(tripId, `${userName(userId)} joined ${previewName ? `“${previewName}”` : 'your trip'} as editor.`)
   }
   return 'joined'
+}
+
+/**
+ * Trips+users that actually wrote a membership and have not yet been announced.
+ * Recorded by joinViaInvite when the join writes the row, settled by finishJoin
+ * on the first successful load. A reload for an existing member adds nothing, so
+ * re-opening an invite announces nobody.
+ */
+const owedJoins = new Set<string>()
+
+/** Record that this join owes the owner one notification. */
+function markJoinOwed(tripId: ID, userId: ID): void {
+  owedJoins.add(`${tripId}:${userId}`)
 }
 
 /**
@@ -3451,6 +3473,17 @@ async function finishJoin(tripId: ID, userId: ID, owed: boolean, previewName?: s
 const notifiedJoins = new Set<string>()
 
 /**
+ * #804 (B-3) — trips this client is joining RIGHT NOW.
+ *
+ * The realtime echo of our own membership row arrives before the join's full-row
+ * load finishes. On an uncached trip the access-epoch branch treated that echo as
+ * a permission change and bumped the epoch, so the join's own post-await checks
+ * rejected a join that had actually succeeded. While a trip is in this set its
+ * own grant is expected, not an invalidation.
+ */
+const joiningTrips = new Set<string>()
+
+/**
  * Re-read a trip the caller already joined, without joining again. The gate's
  * retry for 'joined-unloaded' uses this, so a retry can never write a second
  * membership row or send a second owner notification. `owed` is false: this call
@@ -3461,7 +3494,7 @@ export async function reloadJoinedTrip(tripId: ID): Promise<JoinResult> {
   if (!scope) return 'failed'
   // The same continuation the initial join uses, so a reload that finally
   // succeeds still sends the one owner notification the first try owed.
-  return finishJoin(tripId, scope.userId, false)
+  return finishJoin(tripId, scope.userId)
 }
 
 /** Why a full-row load did or did not replace the cached trip. */
@@ -4976,7 +5009,17 @@ function applyRealtimeEvent(table: string, payload: RealtimePostgresChangesPaylo
       const userId: string = row?.user_id ?? oldRow?.user_id
       if (!userId) return
       const trip = tripById(tripId)
+      // B-3 — do NOT bump the access epoch for this client's OWN join.
+      //
+      // The echo of the membership row this client just wrote arrives before the
+      // join's full-row load finishes. On an uncached trip (which is exactly the
+      // invite case) `!trip` is true, so the branch below treated the user's own
+      // new grant as a permission CHANGE, bumped the epoch, and the join's own
+      // post-await checks then rejected a join that had actually succeeded.
+      // The grant is expected here, not an invalidation.
+      const ownJoinEcho = userId === cache.sessionUserId && joiningTrips.has(tripId)
       if (userId === cache.sessionUserId && event !== 'DELETE' && canEdit(row?.role)
+        && !ownJoinEcho
         && (!trip ? !editableTripGrants.has(tripId) : !canEdit(roleOf(trip, userId)))) {
         // A new grant invalidates cleanup and fetch work from the previous permission.
         tripAccessEpochs.set(tripId, (tripAccessEpochs.get(tripId) ?? 0) + 1)

@@ -999,16 +999,20 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
 
   useEffect(() => {
     if (!me || !trip) return
-    const plan = dispatchJoin({ type: 'begin', userId: me.id, gen: identityGen })
-    if (plan.action.type === 'none') return
-    // A member needs no join RPC: read the row instead.
+    // B-2 — a legacy /invite/<uuid> link never joins. The separate
+    // viewerIsMemberOf effect below opens the trip for a member and explains
+    // itself to anyone else. Without this guard the join ran with the UUID as
+    // the invite code, which the server cannot resolve.
+    if (isTripIdLink) return
+    // B-1 — membership is decided BEFORE the machine is told to begin, and the
+    // machine returns the right action from that one event. Dispatching 'begin'
+    // and then correcting it with a second event is what hung a member on
+    // "Joining…": the correction arrived while the machine was already 'joining'
+    // and was refused.
     const cached = tripById(trip.id)
-    const alreadyMember = (cached ?? trip).members?.some(m => m.userId === me.id)
-    if (alreadyMember) {
-      const reloadPlan = dispatchJoin({ type: 'retry', userId: me.id, gen: identityGen })
-      if (reloadPlan.action.type === 'reload') runJoinAction(reloadPlan.action, trip.id, me.id, identityGen)
-      return
-    }
+    const member = !!(cached ?? trip).members?.some(m => m.userId === me.id)
+    const plan = dispatchJoin({ type: 'begin', userId: me.id, gen: identityGen, member })
+    if (plan.action.type === 'none') return
     runJoinAction(plan.action, trip.id, me.id, identityGen, trip.name, trip.inviteCode ?? linkTarget)
   }, [me, trip, identityGen, isTripIdLink, linkTarget, dispatchJoin, runJoinAction])
 
@@ -1017,7 +1021,11 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
   // next 'begin' answered 'none' and no second join ever ran.
   const retryJoin = () => {
     if (!me || !trip) return
-    const plan = dispatchJoin({ type: 'retry', userId: me.id, gen: identityGen })
+    // Membership is re-read at the moment of the retry: the user may have been
+    // added by someone else between the failure and the click.
+    const cached = tripById(trip.id)
+    const member = !!(cached ?? trip).members?.some(m => m.userId === me.id)
+    const plan = dispatchJoin({ type: 'retry', userId: me.id, gen: identityGen, member })
     runJoinAction(plan.action, trip.id, me.id, identityGen, trip.name, trip.inviteCode ?? linkTarget)
   }
 
@@ -1156,6 +1164,30 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
             <div className="inv-actions">
               <button className="btn btn-primary" onClick={retryJoin}>Try again</button>
               <button className="btn btn-outline" onClick={() => onNavigate('/')}>Go home</button>
+            </div>
+          )}
+        />
+      </div>
+    )
+  }
+
+  // B-3 — the join was cut short by an account or access change, so this client
+  // cannot say whether the membership exists. Saying "you joined" would be a
+  // guess and saying "you did not join" would be a different guess, so the copy
+  // says exactly what is known. Without this branch the screen fell through to
+  // the "Opening invite…" spinner with no way out.
+  if (phase === 'abandoned') {
+    return (
+      <div className="container yf-page page-enter">
+        <StateBlock
+          kind="failed"
+          art={<Link2 size={38} aria-hidden />}
+          title="We couldn’t confirm the join"
+          body="Your account changed while we were joining, so we can’t tell whether it worked. Try again, or open My trips to check."
+          actions={(
+            <div className="inv-actions">
+              <button className="btn btn-primary" onClick={retryJoin}>Try again</button>
+              <button className="btn btn-outline" onClick={() => onNavigate('/trips')}>Go to My trips</button>
             </div>
           )}
         />

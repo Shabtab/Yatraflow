@@ -83,9 +83,9 @@ export const initialJoinState: JoinState = { phase: 'idle', userId: null, gen: -
 
 export type JoinEvent =
   /** The gate is ready for this account: start a join if nothing is in flight. */
-  | { type: 'begin'; userId: string; gen: number }
+  | { type: 'begin'; userId: string; gen: number; member: boolean }
   /** The user pressed Try again. Rejoins after 'failed', re-reads after 'joined-unloaded'. */
-  | { type: 'retry'; userId: string; gen: number }
+  | { type: 'retry'; userId: string; gen: number; member: boolean }
   /** A join RPC answered. Ignored unless it quotes the live try. */
   | { type: 'join-settled'; userId: string; gen: number; tryId: number; result: JoinResult }
   /** A full-row read answered. Ignored unless it quotes the live try. */
@@ -113,29 +113,46 @@ export function joinMachine(state: JoinState, event: JoinEvent): JoinPlan {
 
   switch (event.type) {
     case 'begin': {
-      // A different account or a new identity generation starts clean.
+      // B-1 — `begin` decides the ACTION itself, because it is the only place
+      // that knows whether this caller is already a member. The earlier shape
+      // moved the machine to 'joining' and left App to dispatch a second event
+      // to correct it; that event answered 'none' and a member who re-clicked a
+      // link sat on "Joining…" forever. One event, one decision.
       if (!isCurrent(state, event)) {
-        const fresh: JoinState = { phase: 'joining', userId: event.userId, gen: event.gen, tryId: state.tryId + 1 }
-        return { state: fresh, action: { type: 'join', tryId: fresh.tryId } }
+        const phase: JoinPhase = event.member ? 'loading' : 'joining'
+        const fresh: JoinState = { phase, userId: event.userId, gen: event.gen, tryId: state.tryId + 1 }
+        return { state: fresh, action: event.member
+          ? { type: 'reload', tryId: fresh.tryId }
+          : { type: 'join', tryId: fresh.tryId } }
       }
       // Same account: a join in flight, a load in flight, or an already-joined
       // trip does nothing. This is what makes StrictMode's double fire one join.
       if (state.phase === 'joining' || state.phase === 'loading' || state.phase === 'joined') return none(state)
-      // 'failed' and 'abandoned' are terminal until the user retries: the effect
-      // must not loop on a failed join. 'joined-unloaded' is likewise waiting.
+      // Item 5 — 'failed' and 'abandoned' are TERMINAL until the user retries.
+      // A later effect re-run (me/trip identity changing on a hydrate) must not
+      // silently rejoin after a failure the user has already seen.
+      if (state.phase === 'failed' || state.phase === 'abandoned') return none(state)
+      // 'joined-unloaded' is also waiting for the user.
       if (state.phase === 'joined-unloaded') return none(state)
-      const fresh: JoinState = { ...state, phase: 'joining', tryId: state.tryId + 1 }
-      return { state: fresh, action: { type: 'join', tryId: fresh.tryId } }
+      const phase: JoinPhase = event.member ? 'loading' : 'joining'
+      const fresh: JoinState = { ...state, phase, tryId: state.tryId + 1 }
+      return { state: fresh, action: event.member
+        ? { type: 'reload', tryId: fresh.tryId }
+        : { type: 'join', tryId: fresh.tryId } }
     }
 
     case 'retry': {
       // The retry is bound to the account that is signed in NOW.
       if (!isCurrent(state, event)) {
-        const fresh: JoinState = { phase: 'joining', userId: event.userId, gen: event.gen, tryId: state.tryId + 1 }
-        return { state: fresh, action: { type: 'join', tryId: fresh.tryId } }
+        const phase: JoinPhase = event.member ? 'loading' : 'joining'
+        const fresh: JoinState = { phase, userId: event.userId, gen: event.gen, tryId: state.tryId + 1 }
+        return { state: fresh, action: event.member
+          ? { type: 'reload', tryId: fresh.tryId }
+          : { type: 'join', tryId: fresh.tryId } }
       }
-      if (state.phase === 'joined-unloaded') {
-        // The membership EXISTS: re-read the row, never join again.
+      // A member (or a trip whose membership is known) re-reads; it never joins
+      // again, so a retry cannot write a second membership row.
+      if (event.member || state.phase === 'joined-unloaded') {
         const next: JoinState = { ...state, phase: 'loading', tryId: state.tryId + 1 }
         return { state: next, action: { type: 'reload', tryId: next.tryId } }
       }
@@ -180,7 +197,7 @@ export function joinAllowsNavigation(state: JoinState): boolean {
 
 /** True when the screen must offer a Try again. */
 export function joinOffersRetry(state: JoinState): boolean {
-  return state.phase === 'joined-unloaded' || state.phase === 'failed'
+  return state.phase === 'joined-unloaded' || state.phase === 'failed' || state.phase === 'abandoned'
 }
 
 /** The state of the shared snapshot's decode.
