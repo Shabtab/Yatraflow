@@ -218,7 +218,7 @@ before the clear lands. The write comes from a whole-plan persist that the
 realtime membership change triggers, not from the replay itself.
 
 Fixing it means changing how a realtime membership change re-persists a plan,
-which reaches well past this packet's scope. The narrow attempt, a barrier
+which reaches well past this packet's scope. A narrow try, a barrier
 that the replay waits for, does not help, because the write comes from the
 persist path instead.
 

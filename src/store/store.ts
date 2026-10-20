@@ -2995,27 +2995,13 @@ async function tripWriteToken(scope: IdentityScope): Promise<string | null> {
 }
 
 /**
- * Read the shared plan of a trip the account can still read.
- *
- * A demoted editor must see the shared plan, not the local copy. The read is
- * best-effort: a failure leaves the cache as it is.
- */
-async function readSharedTrip(tripId: string, token: string): Promise<Trip | null> {
-  const { data, error } = await supabase.from('trips').select('*').eq('id', tripId).maybeSingle()
-    .setHeader('Authorization', `Bearer ${token}`)
-  if (error || !data || (data as TripRow).deleted_at) return null
-  const cached = tripById(tripId)
-  return rowToTrip(data as TripRow, cached?.members ?? [])
-}
-
-/**
  * Read the shared plan AND the authoritative membership.
  *
  * The trip row carries no members, so the members come from a second read.
  * The CACHED members cannot be reused here: a demotion is exactly the case
  * where the cache still says owner or editor while the server says viewer.
- * Publishing the shared plan with the cached membership leaves the edit
- * controls on screen for an account that may no longer edit.
+ * A shared plan published with the cached membership leaves the edit controls
+ * on screen for an account that may no longer edit.
  */
 async function readSharedTripWithMembership(
   tripId: string,
@@ -3322,9 +3308,9 @@ export async function resolveQueuedTripWrite(tripId: ID, choice: 'retry' | 'repl
   if (!scope || !isCurrentIdentity(scope)) return false
   // The access generation is captured BEFORE the first await. A tombstone
   // that lands during the queue read bumps the generation, and this action
-  // must then see the NEW generation as the current one. Reading the
-  // generation after the await would take the bumped value and treat the
-  // stale action as current.
+  // must then see the NEW generation as the current one. A generation read
+  // after the await would take the bumped value and treat the stale action as
+  // current.
   const accessEpoch = tripAccessEpochs.get(tripId) ?? 0
   const write = (await pendingWrites()).find(w => w.ownerId === scope.userId && w.tripId === tripId)
   if (!write || !isCurrentIdentity(scope)) return false
