@@ -917,7 +917,9 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
   // #804 (B1) — 'joined-unloaded' and 'join-failed' are distinct outcomes of a
   // join, kept apart from 'broken' (the link read failed) and 'retired' (a
   // trip-id link for a non-member). Each offers a different remedy.
-  const [status, setStatus] = useState<'loading' | 'broken' | 'retired'>('loading')
+  // The gate's own read states. 'ready' means the code or UUID resolved to a
+  // trip and the join machine owns everything from there (B2).
+  const [status, setStatus] = useState<'loading' | 'broken' | 'retired' | 'ready'>('loading')
   // A dropped connection resolves to the same null as a dead code, so the
   // failure screen has to offer the one remedy that costs nothing: try again.
   const [retryTick, setRetryTick] = useState(0)
@@ -945,7 +947,12 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
       : fetchTripByInviteCode(target)
     void resolve.then(t => {
       if (!alive) return
-      if (t) setTrip(t)
+      // B2 — a successful resolve MUST leave the loading status. It was only ever
+      // set on failure, so every later branch (the three join screens, the retry
+      // buttons, the signed-out preview) fell through to the 'loading' render and
+      // was unreachable. The read succeeded, so the gate says ready and the join
+      // machine drives from there.
+      if (t) { setTrip(t); setStatus('ready') }
       else setStatus('broken')
     })
     return () => { alive = false }

@@ -3382,20 +3382,20 @@ async function joinAfterScope(
   scope: { userId: string; epoch: number },
   accessEpoch: number,
 ): Promise<JoinResult> {
-  // B1 — re-check identity and access after the pre-query. The NOT-member path
-  // had no re-check at all, so a switch during the query resumed under the new
-  // account and issued join_trip with its code.
-  if (!isCurrentIdentity(scope) || (tripAccessEpochs.get(tripId) ?? 0) !== accessEpoch) {
-    console.error('[yatraflow] join abandoned before the join write: the account or trip access changed', { tripId })
-    return 'abandoned'
-  }
   // S3 — the cache cannot answer "is this caller already a member?" when the trip
   // came from the uncached preview, and join_trip's `on conflict do nothing`
   // cannot report whether it inserted. So ask the membership table.
-  if (await viewerIsMemberOf(tripId, userId)) {
-    if (!isCurrentIdentity(scope) || (tripAccessEpochs.get(tripId) ?? 0) !== accessEpoch) return 'abandoned'
-    return finishJoin(tripId, userId, previewName)
+  //
+  // B1 — the re-check goes AFTER this await, not before it. This query is the
+  // round trip the switch lands in: checking before it answers "the account that
+  // started", which is always true, and the join then runs under whoever is
+  // signed in now. A pre-check before a later await proves nothing.
+  const member = await viewerIsMemberOf(tripId, userId)
+  if (!isCurrentIdentity(scope) || (tripAccessEpochs.get(tripId) ?? 0) !== accessEpoch) {
+    console.error('[yatraflow] join abandoned after the membership read: the account or trip access changed', { tripId })
+    return 'abandoned'
   }
+  if (member) return finishJoin(tripId, userId, previewName)
   const joinedAt = Date.now()
   // join_trip() takes the invite code, never a trip id. It adds the signed-in
   // user as an editor. It returns the trip id, or null for a dead code.
