@@ -442,13 +442,15 @@ describe('unbroken text (F2)', () => {
   })
 
   it('adds the new rules at the end of the stylesheet and leaves the base block alone', () => {
-    // END-only. The new section is the last thing in the file.
+    // END-only for this section. Later sections may follow it.
     const marker = 'storefront: an unbroken run stays inside its card'
     expect(css).toContain(marker)
     const at = css.indexOf(marker)
     expect(at).toBeGreaterThan(0)
-    // Nothing but whitespace and the new section follows it.
-    const tail = css.slice(at + marker.length)
+    // Later sections follow this one, so the slice stops at this section's own last rule.
+    const ruleAt = css.indexOf('.sf-cover > .sf-cover-ticket > .sf-cover-ticket-route {', at)
+    expect(ruleAt).toBeGreaterThan(at)
+    const tail = css.slice(at + marker.length, css.indexOf('\n}', ruleAt) + 2)
     expect(tail.trim().startsWith('----------')).toBe(true)
     expect(tail).not.toMatch(/\n[^\n]*\{[^\n]*\n\s*\}\s*\n\s*@media/)
     // The rules are additive. The base block keeps its own values.
