@@ -3,6 +3,11 @@
 // is JSON-encoded, deflated and base64url'd into the hash
 // (#/share/<payload>) so no server storage is needed.
 //
+// The payload is the whole trip in reversible base64, and a browser never
+// sends a fragment in a request. That is what keeps it out of a server's
+// reach, so it is the one link in the app that must not be given a path or a
+// query. See the snapshot-fragment rule in CODING_STANDARDS (#805).
+//
 // Two different directions, two different treatments — both versioned:
 //
 //   A SNAPSHOT is our own trip, so decoding must be LOSSLESS for a clean
@@ -151,9 +156,21 @@ function stripVersion(raw: Record<string, unknown>): Record<string, unknown> {
   return rest
 }
 
+const SHARE_ROUTE = '/share'
+
+/** The link a reader opens. The path is the bare root and the payload is the
+ *  fragment, so the request this link makes carries no part of the trip. */
 export function snapshotUrl(trip: Trip, payload: string): string {
   void trip
-  return `${location.origin}/share/${payload}`
+  return `${location.origin}/#${SHARE_ROUTE}/${payload}`
+}
+
+/** An address with any snapshot payload removed, leaving the route itself.
+ *  A browser does not put a fragment in a request, but an analytics collector
+ *  reads the page's own URL in the page and can carry the token onward. This
+ *  keeps the page view and drops the trip. */
+export function redactSnapshotUrl(url: string): string {
+  return url.replace(/\/share\/[^/?#]+/g, SHARE_ROUTE)
 }
 
 // ---- decompression helper ----

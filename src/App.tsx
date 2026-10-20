@@ -7,7 +7,7 @@ import {
   Bell, Compass, Import, Inbox, Luggage, Link2, Mail, Menu, Moon, Plus,
   Settings, Sparkles, Sun, Tent, X,
 } from 'lucide-react'
-import { Analytics } from '@vercel/analytics/react'
+import { Analytics, type BeforeSendEvent } from '@vercel/analytics/react'
 import {
   browserNotifEnabled, browserNotifPermission, fireBrowserNotification,
   shouldBrowserNotify,
@@ -18,7 +18,7 @@ import { Avatar, BrandMark, ToastZone, useClickOutside, toast } from './componen
 import { BottomNav } from './components/BottomNav'
 import { OfflineBanner } from './components/OfflineBanner'
 import { PillNav } from './components/PillNav'
-import { decodeTripSnapshot } from './lib/snapshot'
+import { decodeTripSnapshot, redactSnapshotUrl } from './lib/snapshot'
 import { scrollBehavior } from './lib/motion'
 import { pageTitle, routeParts } from './lib/pageTitle'
 import { CREATE_SEGMENT, CREATE_PATH } from './lib/routes'
@@ -753,9 +753,18 @@ export default function App() {
       {/* Web Analytics is a web concern: the Capacitor shell has no Vercel
           insights endpoint to reach, so the script would load and fail
           silently on Android. Mount it for the web app only. */}
-      {!isNative && <Analytics />}
+      {!isNative && <Analytics beforeSend={analyticsBeforeSend} />}
     </div>
   )
+}
+
+/** A snapshot payload is the whole trip, so no analytics data point may carry
+ *  it (#805). A browser keeps the fragment out of a request, but the collector
+ *  reads the page's own URL inside the page and could read the token there, so
+ *  strip it here instead of assuming the network did. The page view stays; only
+ *  the trip goes. */
+function analyticsBeforeSend(event: BeforeSendEvent): BeforeSendEvent | null {
+  return { ...event, url: redactSnapshotUrl(event.url) }
 }
 
 /** Snapshot links (#/share/<payload>) land here: decode, preview, import as own copy. */
@@ -850,7 +859,19 @@ function SharedTripPage({ payload, onNavigate }: { payload: string; onNavigate: 
           <>
             {state.s === 'ready' && <p className="muted">{state.days}-day trip · {state.destinations}</p>}
             <p className="muted small">
-              This whole plan is embedded in the link itself - nothing was stored on a server.
+              This whole plan is embedded in the link itself - nothing was stored on a server. The browser
+              sends the page address only. The part after the <code>#</code> stays in your browser.
+            </p>
+            <p className="muted small">
+              Anyone who holds the link can read the plan, and the sender cannot take the link back. The link is the
+              only key. Importing it, forwarding it, or reporting a problem with the address in it all put the plan
+              where you chose.
+            </p>
+            <p className="muted small">
+              An older link put the plan in the page address instead. That one was sent on its first request, and a
+              browser can repeat it in same-origin referrers while you stay here. Nothing in the app undoes that.
+            </p>
+            <p className="muted small">
               Import it to get your own editable copy{me || db.sessionUserId ? '' : ' (you will be asked to log in first)'}.
             </p>
           </>
