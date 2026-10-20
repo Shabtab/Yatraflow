@@ -20,6 +20,7 @@ vi.mock('../src/lib/supabase', () => {
   const makeBuilder = (table: string) => {
     const builder: Record<string, unknown> = {}
     builder.select = () => builder
+    builder.setHeader = () => builder
     // #804 (S3) — the member read is filtered by trip_id and user_id, so the
     // mock must remember those filters to answer it honestly.
     builder._filters = [] as Array<[string, unknown]>
@@ -65,6 +66,12 @@ vi.mock('../src/lib/supabase', () => {
   return {
     isSupabaseConfigured: false,
     supabase: {
+      auth: {
+        getSession: async () => ({
+          data: { session: { access_token: 'synthetic-token', user: { id: ME } } },
+          error: null,
+        }),
+      },
       from: (t: string) => makeBuilder(t),
       rpc: (name: string, args: Record<string, unknown>) => {
         writes.push({ table: `rpc:${name}`, kind: 'rpc', payload: args })
@@ -86,7 +93,9 @@ vi.mock('../src/lib/supabase', () => {
               state.memberRows = rows
             }
           }
-          return Promise.resolve({ data: answer, error: state.joinError ?? null })
+          const result = { data: answer, error: state.joinError ?? null }
+          const then = (res: (v: { data: unknown; error: unknown }) => unknown) => Promise.resolve(result).then(res)
+          return { setHeader: () => ({ then }), then }
         }
         return Promise.resolve({ data: state.rpcRows, error: null })
       },
@@ -168,7 +177,7 @@ describe('fetchTripByInviteCode', () => {
 })
 
 describe('joinViaInvite (write order)', () => {
-  it('joins through join_trip before the activity log and owner notification', async () => {
+  it('joins through join_trip and claims no insertion', async () => {
     await seedTripWithOwner()
     writes.length = 0
 
@@ -176,11 +185,11 @@ describe('joinViaInvite (write order)', () => {
     const ok = await joinViaInvite(row().id, meId, CODE)
     expect(ok).toBe('joined')
 
-    // Membership first, side effects after — and the joiner is on the trip.
-    const order = writes.map(w => w.table)
-    expect(order.indexOf('rpc:join_trip')).toBeGreaterThanOrEqual(0)
-    expect(order.indexOf('rpc:join_trip')).toBeLessThan(order.indexOf('activity'))
-    expect(order.indexOf('rpc:join_trip')).toBeLessThan(order.indexOf('notifications'))
+    // R5 — the idempotent RPC cannot report an insertion, so this client writes
+    // no activity row and sends no owner notice.
+    expect(writes.filter(w => w.table === 'rpc:join_trip')).toHaveLength(1)
+    expect(writes.filter(w => w.table === 'activity')).toHaveLength(0)
+    expect(writes.filter(w => w.table === 'notifications')).toHaveLength(0)
     // The server adds the signed-in user, so the call names only the code.
     const joinCall = writes.find(w => w.table === 'rpc:join_trip')!
     expect(joinCall.payload).toEqual({ p_code: CODE })

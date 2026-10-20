@@ -23,6 +23,7 @@ const { state, events } = vi.hoisted(() => ({
   state: {
     gate: {} as Record<string, Deferred<unknown>>,
     entered: {} as Record<string, Deferred<void>>,
+    sessionUserId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     memberRowForCaller: null as unknown,
     members: [] as Array<Record<string, unknown>>,
     tripRow: null as unknown,
@@ -37,6 +38,7 @@ vi.mock('../src/lib/supabase', () => {
     const b: Record<string, unknown> = {}
     const filters: Array<[string, unknown]> = []
     b.select = () => b
+    b.setHeader = () => b
     b.eq = (col: string, val: unknown) => {
       filters.push([col, val])
       return b
@@ -76,6 +78,14 @@ vi.mock('../src/lib/supabase', () => {
   return {
     isSupabaseConfigured: false,
     supabase: {
+      // C1 — the store captures its bearer through the SDK session. This answers
+      // as the signed-in fixture account, so a pinned request carries it.
+      auth: {
+        getSession: async () => ({
+          data: { session: { access_token: 'synthetic-token', user: { id: state.sessionUserId } } },
+          error: null,
+        }),
+      },
       from: (table: string) => builder(table),
       rpc: (name: string, args: Record<string, unknown>) => {
         events.push(['rpc', name, args])
@@ -85,7 +95,8 @@ vi.mock('../src/lib/supabase', () => {
         const gate = state.gate[name]
         const then = (res: (v: { data: unknown; error: unknown }) => unknown) =>
           (gate && !gate.settled() ? gate.promise.then(answer) : Promise.resolve(answer())).then(res)
-        return { then }
+        const builderRpc = { setHeader: () => builderRpc, then }
+        return builderRpc
       },
     },
   }
@@ -108,6 +119,7 @@ function hold(name: string) {
 }
 
 function signIn(userId: string): void {
+  state.sessionUserId = userId
   ;(getSnapshot() as { sessionUserId: string | null }).sessionUserId = userId
 }
 
@@ -233,7 +245,7 @@ describe('R2/a — an unusable revision into an empty cache is not a join', () =
     expect(tripById(TRIP), 'nothing was admitted').toBeUndefined()
   })
 
-  it('an unversioned row is refused the same way as a stale one', async () => {
+  it('an invalid revision is refused the same way as a missing one', async () => {
     state.memberRowForCaller = { user_id: ALICE }
     state.members = [{ trip_id: TRIP, user_id: ALICE, role: 'editor', joined_at: 1 }]
     state.tripRow = tripRow({ write_version: 2.5 })
@@ -251,7 +263,7 @@ describe('R2 regression controls — these must keep holding', () => {
     state.joinTripId = TRIP
     state.tripRow = tripRow()
     // The owner is BOB, and the members read does not carry ALICE. Owner
-    // authority therefore cannot rescue this read, which is the fixture the
+    // authority so cannot rescue this read, which is the fixture the
     // previous draft got wrong by naming the caller as owner.
     state.members = [{ trip_id: TRIP, user_id: BOB, role: 'owner', joined_at: 1 }]
 

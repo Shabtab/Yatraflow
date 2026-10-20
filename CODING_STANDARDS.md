@@ -875,6 +875,8 @@ split); the index table says which file a change touches. What follows is
 the cross-cutting residue: data model, platform APIs, verification and
 process.
 
+- **An identity check is not a request binding (learned 2026-10-21, #804).** A guard that re-reads the session after an await cannot see who the request was dispatched as. Capture identity and the access generation before the first await. Pin the bearer on each fresh builder, then re-check both. Take a new try id from a module-level counter, never from state a remount resets.
+
 - **You must test both sides of a shared focus or schedule contract.** A prop-presence test cannot prove that a child reads the prop. Check a tab round trip through the browser. Compare arrivals and warnings for the same stop after road measurements resolve.
 
 - **lint:ste counts code tokens as prose on added lines.** A long string inside a call fails the 20-word limit — build user-facing strings in `const` lines (the checker skips them) and keep the call short. A new line naming a banned field (a stop's `priority`) fails the vocabulary check — spread the helper that already declares it. (Learned 2026-10-03, #607–#609.)

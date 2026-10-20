@@ -211,8 +211,12 @@ async function liveStore() {
 
 const portoRow = () => ({
   id: 'trip-new', title: 'Porto', destination: 'Porto, Portugal',
+  owner_id: 'amelia',
   start_date: '2026-10-01', end_date: '2026-10-02', days: [], expenses: [],
   cover_url: '', notes: '', template_id: null,
+  // The shared admission refuses a row with no usable revision, which is the
+  // point of R2: a real row always carries these.
+  created_at: 1_700_000_000_000, updated_at: 1_700_000_000_000, write_version: 1,
 })
 
 beforeEach(() => {

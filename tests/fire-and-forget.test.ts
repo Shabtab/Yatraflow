@@ -19,7 +19,7 @@ vi.mock('../src/lib/supabase', () => {
     const qb: any = { table, method }
     const chain = () => qb
     qb.select = chain; qb.eq = chain; qb.in = chain; qb.order = chain
-    qb.limit = chain; qb.lt = chain; qb.gt = chain
+    qb.limit = chain; qb.lt = chain; qb.gt = chain; qb.setHeader = chain
     qb.maybeSingle = () => qb; qb.single = () => qb; qb.throwOnError = chain
     qb.then = (f: any, r?: any) =>
       new Promise(resolve => { sent.push({ table, method }); resolve({ data: null, error: null }) }).then(f, r)
@@ -42,12 +42,13 @@ vi.mock('../src/lib/supabase', () => {
       const table = fn === 'bump_published_stats' ? 'published_itineraries' : fn
       const method = 'rpc'
       const qb: any = { table, method, fn }
+      qb.setHeader = () => qb
       qb.then = (f: any, r?: any) =>
         new Promise(resolve => { sent.push({ table, method }); resolve({ data: null, error: null }) }).then(f, r)
       return qb
     },
     auth: {
-      getSession: async () => ({ data: { session: null } }),
+      getSession: async () => ({ data: { session: { access_token: 'fixture-token', user: { id: 'amelia' } } } }),
       onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
     },
     channel: () => ({ on: () => ({}), subscribe: () => ({}) }),

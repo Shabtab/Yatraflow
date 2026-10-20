@@ -39,7 +39,8 @@ import {
   sharedSnapshotState, inviteGateState,
   inviteLoginNext, inviteSignupNext, invitePreview,
   joinMachine, initialJoinState, joinAllowsNavigation,
-  type JoinState, type JoinEvent, type JoinPlan, type JoinAction,
+  createAttemptOwner, retireAttemptOwner, attemptOwnerLive,
+  type JoinState, type JoinEvent, type JoinPlan, type JoinAction, type AttemptOwner,
 } from './lib/inviteGateStates'
 // Route-level code splitting: only the landing page stays in the main chunk (it
 // is the app's front door and reads no store data); every other route -
@@ -927,6 +928,19 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
   // on every parent re-render.
   const navigateRef = useRef(onNavigate)
   useEffect(() => { navigateRef.current = onNavigate })
+  // C2/R4 — the try lifetime lives outside React reset. A NEW try
+  // retires the previous one before it allocates, and unmount retires the
+  // current one. StrictMode's mount/cleanup/mount starts a fresh
+  // try instead of leaving the gate dead.
+  const lifetimeRef = useRef<AttemptOwner | null>(null)
+  const beginAttempt = useCallback((): AttemptOwner => {
+    if (lifetimeRef.current) retireAttemptOwner(lifetimeRef.current)
+    lifetimeRef.current = createAttemptOwner()
+    return lifetimeRef.current
+  }, [])
+  useEffect(() => () => {
+    if (lifetimeRef.current) retireAttemptOwner(lifetimeRef.current)
+  }, [])
   // The link's own value, decoded once. A trip-id link (/invite/<uuid>) never
   // joins anyone: it opens the trip only for a viewer who is already a member.
   const linkTarget = (() => { try { return decodeURIComponent(codeOrTripId) } catch { return codeOrTripId } })()
@@ -977,28 +991,34 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
   const phase = joinState.phase
 
   /** Carry out one action from the machine. Every settlement quotes its try. */
-  const runJoinAction = useCallback((action: JoinAction, tripId: string, userId: string, gen: number, previewName?: string, inviteCode?: string) => {
+  const runJoinAction = useCallback((action: JoinAction, tripId: string, userId: string, gen: number, owner: AttemptOwner, inviteCode?: string) => {
     if (action.type === 'none') return
+    // C2 — a retired try does nothing: no dispatch, no effects, no settle.
+    if (!attemptOwnerLive(owner)) return
     const tryId = action.tryId
     if (action.type === 'reload') {
       void reloadJoinedTrip(tripId).then(
         result => {
+          if (!attemptOwnerLive(owner)) return
           dispatchJoin({ type: 'reload-settled', userId, gen, tryId, result })
         },
         error => {
           // A rejected read is a read failure, not a membership claim.
           console.error('[yatraflow] reload after join rejected', error)
+          if (!attemptOwnerLive(owner)) return
           dispatchJoin({ type: 'reload-settled', userId, gen, tryId, result: 'joined-unloaded' })
         },
       )
       return
     }
-    void joinViaInvite(tripId, userId, inviteCode ?? '', previewName).then(
+    void joinViaInvite(tripId, userId, inviteCode ?? '').then(
       result => {
+        if (!attemptOwnerLive(owner)) return
         dispatchJoin({ type: 'join-settled', userId, gen, tryId, result })
       },
       error => {
         console.error('[yatraflow] join rejected', error)
+        if (!attemptOwnerLive(owner)) return
         dispatchJoin({ type: 'join-settled', userId, gen, tryId, result: 'failed' })
       },
     )
@@ -1018,10 +1038,11 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
     // and was refused.
     const cached = tripById(trip.id)
     const member = !!(cached ?? trip).members?.some(m => m.userId === me.id)
-    const plan = dispatchJoin({ type: 'begin', userId: me.id, gen: identityGen, member })
+    const owner = beginAttempt()
+    const plan = dispatchJoin({ type: 'begin', userId: me.id, gen: identityGen, member, tryId: owner.id })
     if (plan.action.type === 'none') return
-    runJoinAction(plan.action, trip.id, me.id, identityGen, trip.name, trip.inviteCode ?? linkTarget)
-  }, [me, trip, identityGen, isTripIdLink, linkTarget, dispatchJoin, runJoinAction])
+    runJoinAction(plan.action, trip.id, me.id, identityGen, owner, trip.inviteCode ?? linkTarget)
+  }, [me, trip, identityGen, isTripIdLink, linkTarget, dispatchJoin, runJoinAction, beginAttempt])
 
   // B1 — a retry executes exactly one action HERE, from the action the machine
   // returned. The old code dropped it and waited for the effect to notice, so the
@@ -1032,8 +1053,9 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
     // added by someone else between the failure and the click.
     const cached = tripById(trip.id)
     const member = !!(cached ?? trip).members?.some(m => m.userId === me.id)
-    const plan = dispatchJoin({ type: 'retry', userId: me.id, gen: identityGen, member })
-    runJoinAction(plan.action, trip.id, me.id, identityGen, trip.name, trip.inviteCode ?? linkTarget)
+    const owner = beginAttempt()
+    const plan = dispatchJoin({ type: 'retry', userId: me.id, gen: identityGen, member, tryId: owner.id })
+    runJoinAction(plan.action, trip.id, me.id, identityGen, owner, trip.inviteCode ?? linkTarget)
   }
 
   // B3 — a new identity generation resets the machine, so a sign-out or a profile
@@ -1066,7 +1088,7 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
     let alive = true
     const gen = identityGen
     void viewerIsMemberOf(trip.id, me.id).then(isMember => {
-      if (!alive || gen !== identityGen) return
+      if (!alive || gen !== identityGen || !lifetimeRef.current || !attemptOwnerLive(lifetimeRef.current)) return
       if (isMember) navigateRef.current(`/trip/${trip.id}`)
       else setStatus('retired')
     })
@@ -1077,6 +1099,7 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
   // account that owns it.
   useEffect(() => {
     if (!trip || !me) return
+    if (!lifetimeRef.current || !attemptOwnerLive(lifetimeRef.current)) return
     if (!joinAllowsNavigation(joinState)) return
     if (joinState.userId !== me.id || joinState.gen !== identityGen) return
     toast(`You’re on “${trip.name}” - happy planning!`)

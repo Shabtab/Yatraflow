@@ -1,16 +1,16 @@
-// ============ UNIT 1 — attempt lifetime and profile gaps (real reducer) ============
+// ============ UNIT 1 — try lifetime and profile gaps (real reducer) ============
 //
 // These run the product's own `joinMachine`, so every phase and try id below is
 // the app's decision, not a copy of it.
 //
-// Contract C2/R4: an attempt identity must be monotonic across a remount, a
-// profile gap, and a same-account reauth, and a new attempt must never reuse a
+// Contract C2/R4: a try identity must be monotonic across a remount, a
+// profile gap, and a same-account reauth, and a new try must never reuse a
 // retired completion's identity. A resettable React state cannot promise that,
 // which is exactly why these cases are written against two independent mounts.
 //
 // Expected red on the frozen source: the machine allocates `tryId` from the
 // state it is handed, and a remount hands it `initialJoinState` again. Two mounts
-// therefore allocate the same id, and a late completion from the first mount is
+// so allocate the same id, and a late completion from the first mount is
 // accepted by the second. The green controls below must keep holding.
 
 import { describe, expect, it } from 'vitest'
@@ -19,15 +19,16 @@ import {
   joinAllowsNavigation,
   joinMachine,
   joinOffersRetry,
+  nextAttemptId,
   type JoinState,
 } from '../src/lib/inviteGateStates'
 
 const ALICE = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 const BOB = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
 
-/** One gate mount: the machine starts from the product's initial state. */
+/** One gate mount: the caller allocates a fresh monotonic try id. */
 function mount(state: JoinState = initialJoinState) {
-  return joinMachine(state, { type: 'begin', userId: ALICE, gen: 7, member: false })
+  return joinMachine(state, { type: 'begin', userId: ALICE, gen: 7, member: false, tryId: nextAttemptId() })
 }
 
 describe('C2 — a remount must not reuse a retired attempt identity', () => {
@@ -66,7 +67,7 @@ describe('lifetime controls that must keep holding', () => {
     const started = mount()
     const aliceTry = started.state.tryId
 
-    const gap = joinMachine(started.state, { type: 'begin', userId: BOB, gen: 8, member: false })
+    const gap = joinMachine(started.state, { type: 'begin', userId: BOB, gen: 8, member: false, tryId: nextAttemptId() })
     expect(gap.state.tryId).not.toBe(aliceTry)
 
     const late = joinMachine(gap.state, {
@@ -92,7 +93,7 @@ describe('lifetime controls that must keep holding', () => {
     })
     expect(failed.state.phase).toBe('failed')
 
-    const retry = joinMachine(failed.state, { type: 'retry', userId: ALICE, gen: 7, member: false })
+    const retry = joinMachine(failed.state, { type: 'retry', userId: ALICE, gen: 7, member: false, tryId: nextAttemptId() })
     expect(retry.state.phase).toBe('joining')
     expect(retry.state.tryId).not.toBe(started.state.tryId)
 

@@ -150,12 +150,7 @@ describe('a fresh PostgREST builder can carry a captured bearer', () => {
   })
 })
 
-describe('what this suite does not prove', () => {
-  it('is a mechanism proof only; the product entry point is covered elsewhere', () => {
-    // Stated as a test so the boundary travels with the suite: these four cases
-    // show the SDK supports per-request binding. They do not show that the
-    // product uses it. `invite-request-contracts.test.ts` drives the real store
-    // entry point and is the acceptance evidence.
-    expect(true).toBe(true)
-  })
-})
+// Boundary note, deliberately a comment and not a test: these four cases show
+// the SDK supports per-request binding. They do not show that the product uses
+// it. `invite-request-contracts.test.ts` drives the real store entry point and
+// is the acceptance evidence.

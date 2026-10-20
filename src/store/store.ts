@@ -3350,23 +3350,20 @@ export async function joinViaInvite(
   tripId: ID,
   userId: ID,
   inviteCode: string,
-  previewName?: string,
 ): Promise<JoinResult> {
   const cached = tripById(tripId)
   if (cached?.members?.some(m => m.userId === userId)) {
     // Already a member: the cached row already carries the membership, so this
-    // call writes no row and the owner is owed no notice. The plan may still need
-    // loading.
-    return finishJoin(tripId, userId, previewName, false)
+    // call writes no row and claims nothing.
+    return finishJoin(tripId, userId)
   }
-  // B2a — capture WHO is joining, and this trip's access generation, BEFORE the
-  // first await. The RPC is a network round trip: an account switch or a
-  // revocation can land inside it, and a continuation that adopts the new account
-  // would write the old account's membership row, notify the owner about the
-  // wrong person, and cache a trip the new account may not be allowed to read.
+  // C1 — capture WHO is joining, this trip's access generation, and the bearer
+  // BEFORE the first await. Nothing is awaited between the capture and
+  // `tripWriteToken`, so a switch that already happened is abandoned rather
+  // than dispatched under the new account.
   const scope = identityScope()
   const accessEpoch = tripAccessEpochs.get(tripId) ?? 0
-  if (!scope || scope.userId !== userId) return 'failed'
+  if (!scope || scope.userId !== userId) return 'abandoned'
   // B1/B-3 — mark the grant we EXPECT before any await. The join writes a
   // membership row either way: through join_trip when it runs, or already held
   // when the pre-query says member. Marking it here covers both paths, so an own
@@ -3374,7 +3371,12 @@ export async function joinViaInvite(
   // permission change (B-3). The window clears on every exit.
   joiningTrips.add(tripId)
   try {
-    return await joinAfterScope(tripId, userId, inviteCode, previewName, scope, accessEpoch)
+    const token = await tripWriteToken(scope)
+    if (!token || !isCurrentIdentity(scope) || (tripAccessEpochs.get(tripId) ?? 0) !== accessEpoch) {
+      console.error('[yatraflow] join abandoned before dispatch: the account or trip access changed', { tripId })
+      return 'abandoned'
+    }
+    return await joinAfterScope(tripId, userId, inviteCode, scope, accessEpoch, token)
   } finally {
     joiningTrips.delete(tripId)
   }
@@ -3389,9 +3391,9 @@ async function joinAfterScope(
   tripId: ID,
   userId: ID,
   inviteCode: string,
-  previewName: string | undefined,
   scope: { userId: string; epoch: number },
   accessEpoch: number,
+  token: string,
 ): Promise<JoinResult> {
   // S3 — the cache cannot answer "is this caller already a member?" when the trip
   // came from the uncached preview, and join_trip's `on conflict do nothing`
@@ -3401,7 +3403,7 @@ async function joinAfterScope(
   // round trip the switch lands in: checking before it answers "the account that
   // started", which is always true, and the join then runs under whoever is
   // signed in now. A pre-check before a later await proves nothing.
-  const membership = await membershipCertain(tripId, userId)
+  const membership = await membershipCertain(tripId, userId, token)
   if (!isCurrentIdentity(scope) || (tripAccessEpochs.get(tripId) ?? 0) !== accessEpoch) {
     console.error('[yatraflow] join abandoned after the membership read: the account or trip access changed', { tripId })
     return 'abandoned'
@@ -3410,8 +3412,8 @@ async function joinAfterScope(
   // loudly as a table that answered "no such row". The join must still run when
   // the read failed, so the certainty is what decides, not the boolean.
   if (membership.certain && membership.member) {
-    // The caller is a known member: no write, so no notice is owed.
-    return finishJoin(tripId, userId, previewName, false)
+    // The caller is a known member: no write, and this client claims nothing.
+    return finishJoin(tripId, userId)
   }
   const joinedAt = Date.now()
   // join_trip() takes the invite code, never a trip id. It adds the signed-in
@@ -3419,6 +3421,7 @@ async function joinAfterScope(
   // `on conflict do nothing`, so it CANNOT say whether it inserted a row.
   const role: TripMember['role'] = 'editor'
   const { data: joinedTripId, error } = await supabase.rpc('join_trip', { p_code: inviteCode })
+    .setHeader('Authorization', `Bearer ${token}`)
   // B2a — every await above can span an account switch. Check before ANY effect.
   if (!isCurrentIdentity(scope) || (tripAccessEpochs.get(tripId) ?? 0) !== accessEpoch) {
     console.error('[yatraflow] join continuation abandoned: the account or trip access changed', { tripId })
@@ -3434,39 +3437,17 @@ async function joinAfterScope(
   // The trip is usually NOT in the cache now (the preview is never cached), so
   // mutateTrip is a no-op; the full fetch below supplies the row.
   mutateTrip(tripId, draft => { draft.members = [...(draft.members ?? []), { userId, role, joinedAt }] }, { touch: false })
-  addActivity(tripId, userId, 'joined via invite link', 'Members')
-  // B-4/S2 — the notice is decided by what THIS call knows, and there is exactly
-  // one honest source: whether the membership read was CERTAIN that the caller
-  // was not already a member.
-  //   - certain NO: the RPC inserted the row, so the owner is owed one notice.
-  //   - uncertain (the read failed, or never ran): this client cannot tell an
-  //     idempotent re-join from a new one, and neither can the loaded row — a
-  //     member row proves its role, not that this RPC created it, and a row read
-  //     before a downgrade can itself be stale. No notice is owed. This is the
-  //     case that produced a false notice for an existing member and two notices
-  //     from two tabs that each thought they had joined.
-  if (!membership.certain) {
-    console.error('[yatraflow] joined, but the membership read was inconclusive: the owner is not notified', { tripId, userId })
-  }
-  return finishJoin(tripId, userId, previewName, membership.certain)
+  // R5 — no activity claim either. The RPC is idempotent and cannot report an
+  // insertion, so this client does not pretend to know one happened.
+  // R5 — the owner is not notified, whatever the pre-query said. An idempotent
+  // RPC cannot report an insertion, so this client claims none.
+  return finishJoin(tripId, userId)
 }
 
 /**
- * #804 (N3) — the half of a join that runs after the membership exists: load the
- * full row, then send the owner notification exactly once.
- *
- * The notification lives here, not in joinViaInvite, so BOTH paths reach it: the
- * initial join, and a later successful reload after a load that failed. Without
- * this, a join whose first load failed would never tell the owner at all — the
- * membership would exist and the owner would never hear about it.
- *
- * Exactly once is enforced by the loaded trip's own member row: the notification
- * fires only when this caller's membership is present in the row that was just
- * loaded, and `notifiedJoins` records that it has been sent for this trip+user.
- */
-/**
  * #804 — the half of a join that runs after the membership exists: load the full
- * row, then send the owner notification exactly once.
+ * row, then report the outcome. It sends no owner notice and writes no activity
+ * claim (R5), because an idempotent RPC cannot say whether it inserted anything.
  *
  * B2 — an ABANDONED load is carried through unchanged. It means the caller's
  * account changed mid-flight, so this client does not know whether a membership
@@ -3478,12 +3459,7 @@ async function joinAfterScope(
  * an existing member "joined as editor", and a reload passes false for the same
  * reason. The notice follows what this call did, not what the loaded row shows.
  */
-async function finishJoin(tripId: ID, userId: ID, previewName: string | undefined, freshJoin: boolean): Promise<JoinResult> {
-  const key = `${tripId}:${userId}:${joinGeneration}`
-  // A join this call made owes the owner one notice, recorded under the
-  // generation the join ran in. A reload that recovers a failed load settles the
-  // same debt, because the key still matches.
-  if (freshJoin) markJoinOwed(tripId, userId)
+async function finishJoin(tripId: ID, userId: ID): Promise<JoinResult> {
   const loaded = await loadFullTripIntoCache(tripId)
   if (loaded === 'abandoned') {
     // S2 — the debt is still owed: this client cannot say whether the membership
@@ -3496,87 +3472,29 @@ async function finishJoin(tripId: ID, userId: ID, previewName: string | undefine
     // problem and it is not a success: collapsing it to 'joined-unloaded' would
     // tell a user who is not a member that they are.
     console.error('[yatraflow] the full trip read shows the caller is not a member', { tripId, userId })
-    // S2 — no membership exists, so nothing is owed. This is the one place that
-    // can tell, because the LOADED row is authoritative about membership now.
-    dropJoinNotice(key)
     return 'failed'
   }
   if (loaded === 'stale') {
     // S1 — the server row is behind what this client already holds, or it carries
     // no usable revision, or a queued write owns this trip. The cached row is the
-    // truth, so the caller is on the trip and must not be told a read failed.
-    settleJoinNotice(key, tripId, userId, previewName)
+    // truth ONLY when it is a usable row the caller can open. An empty cache is a
+    // refusal, not a join the gate may navigate to (B2).
+    const cached = tripById(tripId)
+    if (!cached || !cached.members?.some(m => m.userId === userId)) return 'joined-unloaded'
     return 'joined'
   }
+  if (loaded === 'incomplete') return 'joined-unloaded'
   if (loaded !== 'loaded') {
     console.error('[yatraflow] joined, but the full trip row could not be read back', { tripId, outcome: loaded })
     // S2 — the membership exists; the read failed. The notice stays owed for the
     // read-only retry, which settles it.
     return 'joined-unloaded'
   }
-  // AFTER the load: notifyOwnerOf reads the trip's owner from the cache, and
-  // before the load there is no cached row to read it from.
-  //
-  // B-4 — the debt is a recorded fact, not a parameter. `owed` used to be passed
-  // as false by reloadJoinedTrip, so a join whose first load failed, and was then
-  // recovered by a retry, never told the owner at all — while the comment claimed
-  // it did.
-  settleJoinNotice(key, tripId, userId, previewName)
+  // R5 — no owner notice and no activity claim for an idempotent RPC. Two
+  // certainly-absent pre-queries still cannot say which client inserted the row,
+  // so this client claims nothing about the insertion.
   return 'joined'
 }
-
-/**
- * Send the owner notice for this join if it is still owed, and record that it was
- * sent. Called from finishJoin on every path that reaches a settled membership,
- * so the debt always resolves.
- */
-function settleJoinNotice(key: string, tripId: ID, userId: ID, previewName?: string): void {
-  if (!owedJoins.has(key) || notifiedJoins.has(key)) return
-  notifiedJoins.add(key)
-  owedJoins.delete(key)
-  // Bound by GENERATION, not by a wholesale clear. A `clear()` at a threshold
-  // wipes the key of the join that had just been paid for, so the next retry
-  // announces it a second time. The oldest entry is dropped instead, which costs
-  // at most one duplicate for a very old join.
-  if (notifiedJoins.size > 500) {
-    const oldest = notifiedJoins.values().next().value
-    if (oldest !== undefined) notifiedJoins.delete(oldest)
-  }
-  notifyOwnerOf(tripId, `${userName(userId)} joined ${previewName ? `“${previewName}”` : 'your trip'} as editor.`)
-}
-
-/** Discard an owed notice that will never be sent, so it cannot leak. */
-function dropJoinNotice(key: string): void {
-  owedJoins.delete(key)
-}
-
-/**
- * Trips+users that actually wrote a membership and have not yet been announced.
- * Recorded by joinViaInvite when the join writes the row. A reload for an existing
- * member adds nothing, so re-opening an invite announces nobody.
- */
-const owedJoins = new Set<string>()
-
-/** Record that this join owes the owner one notification, under the current generation. */
-function markJoinOwed(tripId: ID, userId: ID): void {
-  owedJoins.add(`${tripId}:${userId}:${joinGeneration}`)
-}
-
-/**
- * The membership generation this client believes the signed-in user holds. It
- * advances when the user is no longer a member (a leave, or a role change seen on
- * an uncached trip), so a later re-join is a NEW membership and owes its own
- * notice rather than being suppressed by the earlier one.
- */
-let joinGeneration = 0
-/**
- * Trips+users whose owner notification has been sent, so a retry after a failed
- * load sends it once and a second retry does not send it again. Module-level and
- * in-memory. The guarantee is "at most one notice per membership generation", not
- * "exactly one ever": a reload of the app loses the record and may send one
- * duplicate, which is cheaper than an unbounded set.
- */
-const notifiedJoins = new Set<string>()
 
 /**
  * #804 (B-3) — trips this client is joining RIGHT NOW.
@@ -3598,13 +3516,13 @@ const joiningTrips = new Set<string>()
 export async function reloadJoinedTrip(tripId: ID): Promise<JoinResult> {
   const scope = identityScope()
   if (!scope) return 'failed'
-  // The same continuation the initial join uses, so a reload that finally
-  // succeeds still sends the one owner notification the first try owed.
-  return finishJoin(tripId, scope.userId, undefined, false)
+  // The same continuation the initial join uses, so a retry can never write a
+  // second membership row.
+  return finishJoin(tripId, scope.userId)
 }
 
 /** Why a full-row load did or did not replace the cached trip. */
-export type LoadOutcome = 'loaded' | 'failed' | 'stale' | 'not-member' | 'abandoned'
+export type LoadOutcome = 'loaded' | 'failed' | 'stale' | 'incomplete' | 'not-member' | 'abandoned'
 
 /**
  * #804 — read the full trip row and its members into the cache.
@@ -3631,49 +3549,73 @@ async function loadFullTripIntoCache(tripId: ID): Promise<LoadOutcome> {
   const scope = identityScope()
   if (!scope || !isCurrentIdentity(scope)) return 'abandoned'
   const accessEpoch = tripAccessEpochs.get(tripId) ?? 0
+  // C1 — capture the bearer before the reads and pin every request. The token
+  // is checked against the captured identity and access generation, never a
+  // global default header.
+  const token = await tripWriteToken(scope)
+  if (!token || !isCurrentIdentity(scope) || (tripAccessEpochs.get(tripId) ?? 0) !== accessEpoch) return 'abandoned'
   const [tripRes, memRes] = await Promise.all([
-    supabase.from('trips').select('*').eq('id', tripId).maybeSingle(),
-    supabase.from('trip_members').select('*').eq('trip_id', tripId),
+    supabase.from('trips').select('*').eq('id', tripId).setHeader('Authorization', `Bearer ${token}`).maybeSingle(),
+    supabase.from('trip_members').select('*').eq('trip_id', tripId).setHeader('Authorization', `Bearer ${token}`),
   ])
   if (!isCurrentIdentity(scope) || (tripAccessEpochs.get(tripId) ?? 0) !== accessEpoch) return 'abandoned'
-  if (tripRes.error || memRes.error || !tripRes.data || (tripRes.data as TripRow).deleted_at) {
+  if (tripRes.error || memRes.error || !tripRes.data) {
     if (tripRes.error) console.error('[yatraflow] full trip read after join failed', tripRes.error)
     if (memRes.error) console.error('[yatraflow] member read after join failed', memRes.error)
     return 'failed'
   }
-  const row = tripRes.data as TripRow
-  const members = ((memRes.data ?? []) as MemberRow[]).map(m => ({
-    userId: m.user_id, role: m.role as TripMember['role'], joinedAt: m.joined_at,
+  return admitFullRow({
+    row: tripRes.data as TripRow,
+    members: (memRes.data ?? []) as MemberRow[],
+    scope,
+    accessEpoch,
+  })
+}
+
+/**
+ * #804 R2 — the ONE admission step for a full-row load.
+ *
+ * Both loaders use it: the join/hydrate path (`loadFullTripIntoCache`) and the
+ * realtime own-echo path (`fetchTripIntoCache`). One implementation means the
+ * checks cannot drift apart, which is what left the echo path caching invalid
+ * revisions (round-8 B5).
+ *
+ * The decision is synchronous on purpose. Every guard is re-validated here, and
+ * the cache swap plus the accepted-read ledger entry happen in one step with no
+ * await and no notification between them. A refusal changes neither the cache
+ * nor the ledger.
+ *
+ * `incomplete` is distinct from `stale`: the row itself carries no usable
+ * revision, so nothing can be accepted even though the read succeeded.
+ */
+function admitFullRow(input: {
+  row: TripRow
+  members: MemberRow[]
+  scope: IdentityScope
+  accessEpoch: number
+}): LoadOutcome {
+  const { row, members, scope, accessEpoch } = input
+  const tripId = row.id
+  if (!isCurrentIdentity(scope) || (tripAccessEpochs.get(tripId) ?? 0) !== accessEpoch) return 'abandoned'
+  if (row.deleted_at) return 'failed'
+  const mapped = members.map(m => ({
+    userId: m.user_id,
+    role: m.role as TripMember['role'],
+    joinedAt: m.joined_at,
   }))
-  // S2 — the caller must be on the trip. An empty membership read is not proof
-  // of access; caching on it would show a trip the caller cannot actually read.
-  if (!members.some(m => m.userId === scope.userId) && !isAdminCached()) {
-    console.error('[yatraflow] full trip read returned no membership for the caller', { tripId })
-    return 'not-member'
-  }
-  // B2 — never move the ledger backwards.
+  // Access is decided by the server row, never by the cache or the caller.
+  if (!mapped.some(m => m.userId === scope.userId) && !isAdminCached()) return 'not-member'
   if (isStaleServerRow(serverTripTimestamps.get(tripId), row.updated_at)) return 'stale'
-
-  // B5 — these two refusals apply to EVERY load, not only to a replacement. A
-  // first load into an empty cache has no row to compare against, but a queued
-  // write for this trip is still pending (loading would silently drop it), and a
-  // row with no usable revision is still unverifiable (the caller cannot tell
-  // whether it is current). Both run before the existing-row branch.
   if (queuedLocalTrips.has(tripId)) return 'stale'
-  if (!validWriteVersion(row.write_version)) return 'stale'
-
+  if (!validWriteVersion(row.write_version)) return 'incomplete'
   const existing = tripById(tripId)
   if (existing) {
-    // B2 — the queue owns this trip's next state. The server row is behind it,
-    // so replacing the cache would show a state the user has already moved past.
-    if (queuedLocalTrips.has(tripId)) return 'stale'
     const incoming = row.write_version
     const cached = existing.writeVersion
     if (validWriteVersion(cached) && incoming < cached) return 'stale'
     if (validWriteVersion(cached) && incoming === cached && existing.updatedAt > Number(row.updated_at)) return 'stale'
   }
-
-  const trip = rowToTrip(row, members)
+  const trip = rowToTrip(row, mapped)
   recordServerTripTimestamp(trip.id, trip.updatedAt)
   const idx = cache.trips.findIndex(t => t.id === trip.id)
   cache.trips = idx < 0
@@ -3696,14 +3638,19 @@ async function loadFullTripIntoCache(tripId: ID): Promise<LoadOutcome> {
  * It reads only that user's own row, which the members read policy always
  * allows. It never reads the invite code.
  */
-export async function membershipCertain(tripId: ID, userId: ID): Promise<{ member: boolean; certain: boolean }> {
+export async function membershipCertain(tripId: ID, userId: ID, token?: string): Promise<{ member: boolean; certain: boolean }> {
   if (tripById(tripId)?.members?.some(m => m.userId === userId)) return { member: true, certain: true }
-  const { data, error } = await supabase
+  const query = supabase
     .from('trip_members')
     .select('user_id')
     .eq('trip_id', tripId)
     .eq('user_id', userId)
-    .maybeSingle()
+  // C1 — a caller that captured a bearer pins it here too, so the membership
+  // answer belongs to the account that asked rather than to whoever the SDK's
+  // token lookup happens to return.
+  const { data, error } = token
+    ? await query.setHeader('Authorization', `Bearer ${token}`).maybeSingle()
+    : await query.maybeSingle()
   if (error) {
     console.error('[yatraflow] membership check failed', error)
     return { member: false, certain: false }
@@ -4756,12 +4703,6 @@ export function pushNotification(userId: ID, tripId: ID | undefined, text: strin
   fire('notifications', supabase.from('notifications').insert({ id: n.id, user_id: userId, trip_id: tripId, text, read: false, at: n.at }))
 }
 
-function notifyOwnerOf(tripId: ID, text: string): void {
-  const t = tripById(tripId)
-  const owner = t?.members?.find(m => m.role === 'owner')
-  if (owner) pushNotification(owner.userId, tripId, text)
-}
-
 export function markAllNotificationsRead(userId: ID): void {
   cache.notifications = cache.notifications.map(n => n.userId === userId ? { ...n, read: true } : n)
   commit()
@@ -5147,9 +5088,11 @@ function applyRealtimeEvent(table: string, payload: RealtimePostgresChangesPaylo
       // for this user on a trip we are joining. An INSERT has no old role, so it
       // is exempt (that is our own row arriving). An UPDATE that REMOVES the
       // edit right is a downgrade, not our echo, and must still invalidate.
-      const ownJoinEcho = userId === cache.sessionUserId && joiningTrips.has(tripId)
-        && event !== 'DELETE' && canEdit(row?.role)
-        && (event === 'INSERT' || !canEdit(oldRow?.role))
+      // R3 — the exemption is the EXPECTED INSERT of our own live join. An
+      // UPDATE is never exempt, so a downgrade arriving as an UPDATE always
+      // invalidates, and a retired try cannot keep the window open.
+      const ownJoinEcho = event === 'INSERT' && userId === cache.sessionUserId
+        && joiningTrips.has(tripId) && canEdit(row?.role)
       if (userId === cache.sessionUserId && event !== 'DELETE' && canEdit(row?.role)
         && !ownJoinEcho
         && (!trip ? !editableTripGrants.has(tripId) : !canEdit(roleOf(trip, userId)))) {
@@ -5165,9 +5108,17 @@ function applyRealtimeEvent(table: string, payload: RealtimePostgresChangesPaylo
         // an uncached DOWNGRADE (editor -> viewer) left the epoch unmoved. A full
         // load already in flight then restored stale editor rights. The role
         // changed either way, so the epoch moves for any role change.
-        if (userId === cache.sessionUserId && event !== 'DELETE' && !ownJoinEcho
-          && row?.role && oldRow?.role && String(row.role) !== String(oldRow.role)) {
-          tripAccessEpochs.set(tripId, (tripAccessEpochs.get(tripId) ?? 0) + 1)
+        // R3 — invalidate from the NEW role. A downgrade or a deletion cannot
+        // depend on `old.role`: an uncached row, a missing old value, or an
+        // unknown UPDATE all take the conservative path, which is what round 8
+        // missed when it needed both roles to be present and equal-ish.
+        if (!trip && userId === cache.sessionUserId && event !== 'DELETE' && !ownJoinEcho) {
+          const downgraded = !!row?.role && !canEdit(row.role)
+          const unknownUpdate = event === 'UPDATE' && (!row?.role || !oldRow?.role)
+          const roleChanged = !!row?.role && !!oldRow?.role && String(row.role) !== String(oldRow.role)
+          if (downgraded || unknownUpdate || roleChanged) {
+            tripAccessEpochs.set(tripId, (tripAccessEpochs.get(tripId) ?? 0) + 1)
+          }
         }
         // A membership row for a trip we don't have yet (we were just added to
         // / joined a trip elsewhere): fetch the whole trip + members.
@@ -5176,10 +5127,6 @@ function applyRealtimeEvent(table: string, payload: RealtimePostgresChangesPaylo
       }
       // If we were removed, the trip disappears from our view.
       if (event === 'DELETE' && userId === cache.sessionUserId) {
-        // S2 — a leave ends the membership generation. A later re-join is a NEW
-        // membership and owes its own notice, instead of being suppressed forever
-        // by the key of the membership the user already left.
-        joinGeneration += 1
         invalidateTripWork(tripId, userId)
         cache.trips = cache.trips.filter(t => t.id !== tripId)
         // #567 — mirror the trips DELETE case: the sibling slices cascade too,
@@ -5256,18 +5203,23 @@ async function fetchTripIntoCache(tripId: string): Promise<void> {
   const inflight = tripFetches.get(key)
   if (inflight) return inflight
   const fetch = (async () => {
+    // C1 — the echo path captures its own bearer and pins both reads, exactly as
+    // the join loader does.
+    const token = await tripWriteToken(scope)
+    if (!token || !isCurrentIdentity(scope) || (tripAccessEpochs.get(tripId) ?? 0) !== accessEpoch) return
     const [tripRes, memRes] = await Promise.all([
-      supabase.from('trips').select('*').eq('id', tripId).maybeSingle(),
-      supabase.from('trip_members').select('*').eq('trip_id', tripId),
+      supabase.from('trips').select('*').eq('id', tripId).setHeader('Authorization', `Bearer ${token}`).maybeSingle(),
+      supabase.from('trip_members').select('*').eq('trip_id', tripId).setHeader('Authorization', `Bearer ${token}`),
     ])
-    if (!isCurrentIdentity(scope) || (tripAccessEpochs.get(tripId) ?? 0) !== accessEpoch
-      || tripRes.error || memRes.error || !tripRes.data || tripRes.data.deleted_at) return
-    const members = ((memRes.data ?? []) as MemberRow[]).map(m => ({ userId: m.user_id, role: m.role as TripMember['role'], joinedAt: m.joined_at }))
-    if (!members.some(m => m.userId === scope.userId) && !isAdminCached()) return
-    const trip = rowToTrip(tripRes.data as TripRow, members)
-    recordServerTripTimestamp(trip.id, trip.updatedAt)
-    if (!cache.trips.some(t => t.id === trip.id)) cache.trips = [...cache.trips, trip]
-    commit()
+    if (tripRes.error || memRes.error || !tripRes.data) return
+    // R2 — the echo path uses the SAME admission as the join loader, so a row
+    // with an unusable revision cannot be cached here either (B5).
+    admitFullRow({
+      row: tripRes.data as TripRow,
+      members: (memRes.data ?? []) as MemberRow[],
+      scope,
+      accessEpoch,
+    })
   })()
   tripFetches.set(key, fetch)
   try { await fetch } finally { if (tripFetches.get(key) === fetch) tripFetches.delete(key) }

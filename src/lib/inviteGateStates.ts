@@ -81,11 +81,43 @@ export interface JoinPlan {
 
 export const initialJoinState: JoinState = { phase: 'idle', userId: null, gen: -1, tryId: 0 }
 
+/**
+ * A monotonic try id. Module-level on purpose: React state and refs are reset
+ * by a remount, so two mounts could hand out the same id and a retired
+ * completion would settle the new mount (round-8 B3). This counter never resets.
+ */
+let attemptSequence = 0
+export function nextAttemptId(): number {
+  attemptSequence += 1
+  return attemptSequence
+}
+
+/**
+ * The gate's narrow lifetime owner. It lives outside React reset and is retired
+ * explicitly, BEFORE the component clears visible state, so a continuation that
+ * outlives its mount can do nothing at all rather than acting on a retired
+ * try. It does not read auth state and it does not touch `identityEpoch`.
+ */
+export interface AttemptOwner {
+  readonly id: number
+  retired: boolean
+}
+export function createAttemptOwner(): AttemptOwner {
+  return { id: nextAttemptId(), retired: false }
+}
+/** Retire first, clear state second. Never the other order. */
+export function retireAttemptOwner(owner: AttemptOwner): void {
+  owner.retired = true
+}
+export function attemptOwnerLive(owner: AttemptOwner): boolean {
+  return !owner.retired
+}
+
 export type JoinEvent =
   /** The gate is ready for this account: start a join if nothing is in flight. */
-  | { type: 'begin'; userId: string; gen: number; member: boolean }
+  | { type: 'begin'; userId: string; gen: number; member: boolean; tryId?: number }
   /** The user pressed Try again. Rejoins after 'failed', re-reads after 'joined-unloaded'. */
-  | { type: 'retry'; userId: string; gen: number; member: boolean }
+  | { type: 'retry'; userId: string; gen: number; member: boolean; tryId?: number }
   /** A join RPC answered. Ignored unless it quotes the live try. */
   | { type: 'join-settled'; userId: string; gen: number; tryId: number; result: JoinResult }
   /** A full-row read answered. Ignored unless it quotes the live try. */
@@ -120,7 +152,7 @@ export function joinMachine(state: JoinState, event: JoinEvent): JoinPlan {
       // link sat on "Joining…" forever. One event, one decision.
       if (!isCurrent(state, event)) {
         const phase: JoinPhase = event.member ? 'loading' : 'joining'
-        const fresh: JoinState = { phase, userId: event.userId, gen: event.gen, tryId: state.tryId + 1 }
+        const fresh: JoinState = { phase, userId: event.userId, gen: event.gen, tryId: (event.tryId ?? state.tryId + 1) }
         return { state: fresh, action: event.member
           ? { type: 'reload', tryId: fresh.tryId }
           : { type: 'join', tryId: fresh.tryId } }
@@ -135,7 +167,7 @@ export function joinMachine(state: JoinState, event: JoinEvent): JoinPlan {
       // 'joined-unloaded' is also waiting for the user.
       if (state.phase === 'joined-unloaded') return none(state)
       const phase: JoinPhase = event.member ? 'loading' : 'joining'
-      const fresh: JoinState = { ...state, phase, tryId: state.tryId + 1 }
+      const fresh: JoinState = { ...state, phase, tryId: (event.tryId ?? state.tryId + 1) }
       return { state: fresh, action: event.member
         ? { type: 'reload', tryId: fresh.tryId }
         : { type: 'join', tryId: fresh.tryId } }
@@ -145,7 +177,7 @@ export function joinMachine(state: JoinState, event: JoinEvent): JoinPlan {
       // The retry is bound to the account that is signed in NOW.
       if (!isCurrent(state, event)) {
         const phase: JoinPhase = event.member ? 'loading' : 'joining'
-        const fresh: JoinState = { phase, userId: event.userId, gen: event.gen, tryId: state.tryId + 1 }
+        const fresh: JoinState = { phase, userId: event.userId, gen: event.gen, tryId: (event.tryId ?? state.tryId + 1) }
         return { state: fresh, action: event.member
           ? { type: 'reload', tryId: fresh.tryId }
           : { type: 'join', tryId: fresh.tryId } }
@@ -153,13 +185,13 @@ export function joinMachine(state: JoinState, event: JoinEvent): JoinPlan {
       // A member (or a trip whose membership is known) re-reads; it never joins
       // again, so a retry cannot write a second membership row.
       if (event.member || state.phase === 'joined-unloaded') {
-        const next: JoinState = { ...state, phase: 'loading', tryId: state.tryId + 1 }
+        const next: JoinState = { ...state, phase: 'loading', tryId: (event.tryId ?? state.tryId + 1) }
         return { state: next, action: { type: 'reload', tryId: next.tryId } }
       }
       if (state.phase === 'joining' || state.phase === 'loading') return none(state)
       // 'failed', 'abandoned', 'idle' and 'joined' all rejoin. 'joined' cannot
       // normally be retried (it navigates), and rejoining it is harmless.
-      const next: JoinState = { ...state, phase: 'joining', tryId: state.tryId + 1 }
+      const next: JoinState = { ...state, phase: 'joining', tryId: (event.tryId ?? state.tryId + 1) }
       return { state: next, action: { type: 'join', tryId: next.tryId } }
     }
 
