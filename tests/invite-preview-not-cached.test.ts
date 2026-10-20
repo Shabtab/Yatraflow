@@ -29,8 +29,13 @@ const TYPES = readFileSync(new URL('../src/data/types.ts', import.meta.url), 'ut
 function fnBody(source: string, signature: string): string {
   const start = source.indexOf(signature)
   expect(start, `${signature} must exist`).toBeGreaterThan(-1)
+  // A signature can end with a parameter list and a return type, and the first
+  // "{" after it may belong to an inline object type (`scope: { userId: string }`).
+  // The body is the brace that opens after the closing ")" of the parameters.
+  const close = source.indexOf(')', start + signature.length)
+  const open = source.indexOf('{', close)
   let depth = 0
-  let i = source.indexOf('{', start)
+  let i = open
   const from = i
   for (; i < source.length; i += 1) {
     if (source[i] === '{') depth += 1
@@ -387,14 +392,29 @@ describe('loadFullTripIntoCache refuses what it cannot trust', () => {
 
 describe('B-4 — the owner notification is owed by an actual join and settled once', () => {
   it('records the debt where the membership is written', () => {
-    const join = fnBody(STORE, 'export async function joinViaInvite(')
+    // B1 moved the join body into joinAfterScope, so the pin names the function
+    // that now writes the membership row.
+    const join = fnBody(STORE, 'async function joinAfterScope(')
     expect(join).toContain('markJoinOwed(tripId, userId)')
-    // The debt is recorded BEFORE the load call, so a failed load still owes it.
+    // The debt is recorded BEFORE the load, so a failed load still owes it.
     const owedAt = join.indexOf('markJoinOwed(tripId, userId)')
-    const loadAt = join.lastIndexOf('return await finishJoin')
+    const loadAt = join.lastIndexOf('return finishJoin')
     expect(owedAt).toBeGreaterThan(-1)
     expect(loadAt).toBeGreaterThan(-1)
     expect(owedAt, 'the debt is recorded before the load runs').toBeLessThan(loadAt)
+  })
+
+  it('joinViaInvite marks the expected grant BEFORE its first await', () => {
+    // B1/B-3 — the joining window must open before the pre-query, so an own echo
+    // arriving mid-flight cannot be misread as a permission change.
+    const join = fnBody(STORE, 'export async function joinViaInvite(')
+    const markAt = join.indexOf('joiningTrips.add(tripId)')
+    expect(markAt).toBeGreaterThan(-1)
+    expect(join.indexOf('await joinAfterScope'), 'the scope handoff happens inside the window').toBeGreaterThan(markAt)
+    // And the window closes on every exit.
+    expect(join).toContain('joiningTrips.delete(tripId)')
+    const finallyAt = join.indexOf('finally')
+    expect(finallyAt, 'the window closes in a finally block').toBeGreaterThan(markAt)
   })
 
   it('a reload does NOT record a debt, so a member announces nobody', () => {
