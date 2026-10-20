@@ -3290,9 +3290,9 @@ export async function resolveQueuedTripWrite(tripId: ID, choice: 'retry' | 'repl
       if (!sameScopeGeneration(scope, tripId, accessEpoch)) return false
       // The shared plan could not be read. If the cache is showing the local
       // overlay, the removal is REFUSED before the copy is dropped: the copy
-      // stays, and the overlay stays with it. Dropping the copy alone would
-      // leave the discarded content on screen, and the user could edit it and
-      // queue it again. A later attempt reads the shared plan and replaces the
+      // stays, and the overlay stays with it. A drop on its own would leave
+      // the discarded content on screen, and the user could edit it and
+      // queue it again. A later try reads the shared plan and replaces the
       // overlay.
       if (readFailed) {
         const showing = cache.trips.some(t => t.id === tripId)

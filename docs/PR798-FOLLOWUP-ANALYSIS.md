@@ -85,7 +85,7 @@ A failed read now **refuses the discard** when the cache is showing the local
 overlay. The refusal happens before the copy is dropped, so the queue and the
 visible plan still agree. Without the refusal the copy would be gone and the
 overlay would stay on screen, and the user could edit the discarded content
-and queue it again. A later attempt reads the shared plan and replaces the
+and queue it again. A later try reads the shared plan and replaces the
 overlay, so the removal completes once the server answers.
 
 ### Scope held
@@ -132,7 +132,7 @@ stale-row guard cannot drop a row that is older than the shared plan the
 demotion just read.
 
 The same branch in the send path does record the timestamp. The demotion
-refresh should do the same.
+refresh must do the same.
 
 ### A removed member can still download the copy
 
@@ -141,7 +141,7 @@ it. The copy is the account's own work, and it is already on their device, so
 the export itself touches nothing the account no longer has.
 
 The product question is whether a member who has been removed from a trip
-should still be able to export that trip's plan. The copy can name stops,
+must still be able to export that trip's plan. The copy can name stops,
 places and notes the account can no longer read. The current behaviour keeps
 the export, because the copy is already on the device and the alternative
 leaves the account with no way to recover their own work.
@@ -155,7 +155,7 @@ change. `isCurrentIdentity` compares the captured epoch with the current one
 and the captured user with the signed-in one, so once it returns false for a
 given scope it stays false for that scope.
 
-The P1-a guard after the queue read in the discard path is therefore a
+The P1-a guard after the queue read in the discard path is so
 candidate for removal: the checks on either side of it already cover the
 same account switch. The mutation report shows the guard is not pinned on its
 own, which matches this. The collective removal of the whole set does fail,
