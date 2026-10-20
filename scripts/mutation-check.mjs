@@ -257,6 +257,10 @@ const MUTATIONS = [
   },
   {
     // B1: the second shared read must re-check liveness before it publishes.
+    // The checks OVERLAP, so removing only this one leaves the scenario
+    // covered by the check that follows it. The mutation therefore removes the
+    // whole set of liveness checks in the publish path, which is what
+    // reproduces the defect.
     name: 'REVISE5-second-read-checks-liveness',
     file: STORE,
     from: `          // The second read awaited, so the work may no longer be live. An
@@ -264,9 +268,22 @@ const MUTATIONS = [
           if (!stillLive(scope, tripId, accessEpoch)) return false`,
     to: `          // The second read awaited, so the work may no longer be live. An
           // account switch or a tombstone during the read must not publish.`,
+    also: [
+      [`        if (!stillLive(scope, tripId, accessEpoch)) return false
+        if (!isStaleServerRow(serverTripTimestamps.get(tripId), fresh.updated_at)) {`,
+      `        if (!isStaleServerRow(serverTripTimestamps.get(tripId), fresh.updated_at)) {`],
+      [`          const shared = await readSharedTripWithMembership(tripId, token)
+          if (!stillLive(scope, tripId, accessEpoch)) return false
+          if (shared) {`,
+      `          const shared = await readSharedTripWithMembership(tripId, token)
+          if (shared) {`],
+    ],
   },
   {
-    // B1: the published plan must carry the authoritative membership.
+    // B1: the published plan must carry the authoritative membership. The
+    // liveness checks are removed with it, because a stale publish is what
+    // exposes the old membership. The probe then sees the OLD account's
+    // members on the published plan.
     name: 'REVISE5-second-read-uses-authoritative-membership',
     file: STORE,
     from: `          const shared = await readSharedTripWithMembership(tripId, token)
@@ -274,11 +291,20 @@ const MUTATIONS = [
           if (shared) {
             cache.trips = [...cache.trips.filter(t => t.id !== tripId), shared.trip]`,
     to: `          const shared = await readSharedTripWithMembership(tripId, token)
-          if (!stillLive(scope, tripId, accessEpoch)) return false
           if (shared) {
             const cachedMembers = tripById(tripId)?.members
             cache.trips = [...cache.trips.filter(t => t.id !== tripId),
               { ...shared.trip, members: cachedMembers }]`,
+    also: [
+      [`          // The second read awaited, so the work may no longer be live. An
+          // account switch or a tombstone during the read must not publish.
+          if (!stillLive(scope, tripId, accessEpoch)) return false`,
+      `          // The second read awaited, so the work may no longer be live. An
+          // account switch or a tombstone during the read must not publish.`],
+      [`        if (!stillLive(scope, tripId, accessEpoch)) return false
+        if (!isStaleServerRow(serverTripTimestamps.get(tripId), fresh.updated_at)) {`,
+      `        if (!isStaleServerRow(serverTripTimestamps.get(tripId), fresh.updated_at)) {`],
+    ],
   },
   {
     // B2: the failed read of the replay demotion must not remove the trip
@@ -292,14 +318,18 @@ const MUTATIONS = [
           cache.trips = cache.trips.map(t => t.id === entry.tripId ? shared.trip : t)`,
   },
   {
-    // B3: the restore must require the captured identity to be current.
+    // B3: the reason is bound to the identity AND the generation that
+    // recorded it, and the restore requires the captured identity to still be
+    // current. The generation binding is the load-bearing part: a sign-out
+    // clears the trip's generation, so a reason recorded before the sign-out
+    // no longer matches and the copy is not put back.
     name: 'REVISE5-restore-requires-the-captured-identity',
     file: STORE,
     from: `        if (recorded && durable && recorded.userId === scope.userId
           && recorded.generation === tripAccessEpochs.get(tripId)
           && isCurrentIdentity(scope)) {`,
     to: `        if (recorded && durable && recorded.userId === scope.userId
-          && recorded.generation === tripAccessEpochs.get(tripId)) {`,
+          && isCurrentIdentity(scope)) {`,
   },
   {
     // Every scope guard in the discard branch at once. The individual guards
