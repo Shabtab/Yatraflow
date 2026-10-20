@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
 import type { QueuedWrite, WriteQueueStore } from '../src/lib/writeQueue'
 import type { TripRow } from '../src/lib/tripRow'
 
@@ -452,6 +453,16 @@ describe('recovery identity regressions', () => {
     // The later edit is written against the current server revision, not the
     // baseline the reasoned copy carried.
     expect(later!.baseVersion).toBe(6);
+  });
+
+  it('the discard path never holds a reasoned copy', () => {
+    // The overlay path already drops a reasoned copy from the held copy, so
+    // the behavioural outcome is the same with or without this guard. The
+    // guard is a second line of defence, and it is pinned on the source so a
+    // future edit cannot remove it unnoticed.
+    const source = readFileSync(new URL('../src/store/store.ts', import.meta.url), 'utf8')
+    expect(source).toContain('if (isHeldCopy(latest)) queuedLocalTrips.set(tripId, latest)')
+    expect(source).toContain('else queuedLocalTrips.delete(tripId)')
   });
 
   it('a removal names the removal, not a demotion', async () => {
