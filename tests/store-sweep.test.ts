@@ -48,7 +48,8 @@ vi.mock('../src/lib/supabase', () => {
     }
   }
   /** Read path: records the filters so a test can count round-trips per trip. */
-  function query(table: string) {
+  function query(table: string, columns = '*') {
+    let single = false
     const eqs: Record<string, unknown> = {}
     const infs: Record<string, unknown> = {}
     const qb: any = { table }
@@ -65,7 +66,7 @@ vi.mock('../src/lib/supabase', () => {
       if (table === 'trips') {
         // `.eq('id', …)` is fetchTripIntoCache's single-trip read; `.in('id', …)` is
         // the hydration read that decides whether the account looks brand-new.
-        if ('id' in eqs) return { data: tripRow, error: null }
+        if ('id' in eqs) return { data: tripRow ?? tripRowsForHydrate.find(r => r.id === eqs.id) ?? null, error: null }
         if ('id' in infs) return { data: tripRowsForHydrate, error: null }
         return { data: [], error: null }
       }
@@ -76,9 +77,10 @@ vi.mock('../src/lib/supabase', () => {
       }
       return { data: [], error: null }
     }
-    qb.maybeSingle = async () => result()
-    qb.single = async () => result()
-    qb.then = (onF: any, onR?: any) => Promise.resolve().then(result).then(onF, onR)
+    qb.setHeader = () => qb
+    qb.maybeSingle = qb.single = () => { single = true; return qb }
+    qb.then = (onF: any, onR?: any) => Promise.resolve().then(result).then(r => ({ ...r,
+      data: single && Array.isArray(r.data) ? r.data[0] ?? null : r.data })).then(onF, onR)
     return qb
   }
   /** Write path: chainable all the way down, like the PostgREST builder. */
@@ -88,7 +90,8 @@ vi.mock('../src/lib/supabase', () => {
     const done = () => {
       state.writes.push({ table, method, payload, eqs: { ...eqs } })
       bump()
-      return Promise.resolve({ error: null, data: null })
+      return Promise.resolve({ error: null, data: table === 'trips' && method === 'update'
+        ? [{ id: eqs.id, write_version: Number(eqs.write_version) + 1, updated_at: 2 }] : null })
     }
     const chainable = () => {
       qb.eq = (col: string, val: unknown) => { eqs[col] = val; return qb }
@@ -98,6 +101,7 @@ vi.mock('../src/lib/supabase', () => {
       qb.maybeSingle = done
       qb.single = done
       qb.select = () => qb
+      qb.setHeader = () => qb
       qb.then = (onF: any, onR?: any) => done().then(onF, onR)
       return qb
     }
@@ -112,7 +116,7 @@ vi.mock('../src/lib/supabase', () => {
   })
   const supabase: any = {
     from: (table: string) => ({
-      select: () => query(table),
+      select: (columns: string) => query(table, columns),
       insert: (p: any) => record(table, 'insert', p),
       update: (p: any) => record(table, 'update', p),
       upsert: (p: any) => record(table, 'upsert', p),
@@ -120,7 +124,7 @@ vi.mock('../src/lib/supabase', () => {
     }),
     auth: {
       _session: { user: { id: 'amelia' } } as { user: { id: string } } | null,
-      getSession: async () => ({ data: { session: supabase.auth._session } }),
+      getSession: async () => ({ data: { session: supabase.auth._session ? { ...supabase.auth._session, access_token: 'fixture-amelia' } : null } }),
       onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
       signOut: async () => {},
     },
@@ -171,7 +175,10 @@ async function freshStore() {
   // #578 — debounced writes are identity-gated; the sweep fixtures edit the
   // trip as its owner, so give the session one.
   db.sessionUserId = 'amelia'
-  db.trips.push(mkTrip())
+  const trip = { ...mkTrip(), writeVersion: 0 }
+  db.trips.push(trip)
+  tripRowsForHydrate = [{ id: trip.id, owner_id: 'amelia', write_version: 0 }]
+  memberRowsForUser = [{ trip_id: trip.id, user_id: 'amelia', role: 'owner', joined_at: 1 }]
   db.suggestions.push(mkSuggestion())
   return store
 }
@@ -257,7 +264,7 @@ describe('#36-15 — one fetch per trip, not one per event', () => {
   it('coalesces concurrent trip fetches into a single round-trip', async () => {
     const store = await liveStore()
     tripRow = portoRow()
-    memberRows = [{ trip_id: 'trip-new', user_id: 'priya', role: 'editor', joined_at: 1 }]
+    memberRows = [{ trip_id: 'trip-new', user_id: 'amelia', role: 'editor', joined_at: 1 }]
     expect(store.getSnapshot().trips.map((t: any) => t.id)).not.toContain('trip-new')
 
     // Two membership events for a trip we do not have yet — someone else joining
@@ -280,7 +287,7 @@ describe('#36-15 — one fetch per trip, not one per event', () => {
     // forgets the `finally` clear fails here: the trip would then never load.
     account()
     const store = await liveStore()
-    memberRows = [{ id: 'tm-9', trip_id: 'trip-new', user_id: 'priya', role: 'editor', joined_at: 1 }]
+    memberRows = [{ id: 'tm-9', trip_id: 'trip-new', user_id: 'amelia', role: 'editor', joined_at: 1 }]
 
     // First event: the trip row is not readable yet (RLS lag, or deleted in flight),
     // so the fetch resolves having cached nothing.

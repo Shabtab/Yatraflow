@@ -200,6 +200,8 @@ export interface ItineraryDay {
 
 export interface Trip {
   id: ID
+  /** Last observed server revision. Never sent as editable trip contents. */
+  writeVersion?: number
   name: string
   startLocation: string
   /** Geocoded point A — captured when the user picks a real place for the start. */

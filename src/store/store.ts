@@ -24,8 +24,9 @@ import { amountRefusal, amountVerdict } from '../lib/expenseAmount'
 import { attachDnaAccount, detachDnaAccount } from '../lib/tripDna'
 import { clearSnapshot, loadSnapshot, saveSnapshot } from '../lib/offlineCache'
 import { backfillCreateFunnelSession } from '../lib/createEvents'
+import { randomToken } from '../lib/randomId'
 import {
-  clearWritesFor, dropWriteIfCurrent, pendingWrites, queueWrite, requeueIfCurrent, replayVerdict, shouldRetry,
+  clearWritesFor, dropQueuedWrite, pendingWrites, queueWrite, requeueIfCurrent, shouldRetry, type QueuedWrite,
 } from '../lib/writeQueue'
 import { ownSuggestedCover, unclaimedCovers, coverCandidates, coverlessPublications } from '../lib/coverUpload'
 import { fetchFirstAvailableThumb } from '../lib/tripThumb'
@@ -458,10 +459,18 @@ export async function logout(): Promise<void> {
   ++hydrateGen
   // The identity epoch also ends the Trash and audit reads this account started.
   ++identityEpoch
+  lastAuthUserId = null
   activeHydrate = null
+  disconnectRealtime()
+  detachDnaAccount()
+  recentLocalWrites.clear()
+  serverTripTimestamps.clear()
+  queuedLocalTrips.clear()
+  editableTripGrants.clear()
+  tripAccessEpochs.clear()
   clearAdminCache()
   const departing = cache.sessionUserId
-  patch({ trips: [], trashedTrips: [], trashLoaded: false, trashFailed: false, suggestions: [], decisions: [], activity: [], notifications: [], published: [], adminAudit: [], adminAuditFailed: false, sessionUserId: null, ready: true, cachedAt: null })
+  patch({ trips: [], trashedTrips: [], trashLoaded: false, trashFailed: false, users: [], suggestions: [], decisions: [], activity: [], notifications: [], published: [], adminAudit: [], adminAuditFailed: false, sessionUserId: null, ready: true, cachedAt: null })
   commit()
   // #578 — the in-memory debounce timers are a module Map that knows nothing
   // of auth, and they outlive this wipe unless told not to. A timer firing
@@ -536,6 +545,29 @@ let identityEpoch = 0
  *  cache.sessionUserId, which lags behind during an account switch. */
 let lastAuthUserId: string | null = null
 
+type IdentityScope = { userId: string; epoch: number }
+function identityScope(): IdentityScope | null {
+  return cache.sessionUserId ? { userId: cache.sessionUserId, epoch: identityEpoch } : null
+}
+function isCurrentIdentity(scope: IdentityScope): boolean {
+  return scope.epoch === identityEpoch && cache.sessionUserId === scope.userId
+    && (lastAuthUserId === null || lastAuthUserId === scope.userId)
+}
+
+/** Pending snapshots stay separate from server revisions and account identities. */
+const queuedLocalTrips = new Map<string, QueuedWrite>()
+
+function overlayQueuedTrips(trips: Trip[], writes: QueuedWrite[], userId: string): Trip[] {
+  return trips.map(trip => {
+    const write = writes.find(w => w.tripId === trip.id && w.ownerId === userId)
+    if (!write || !trip.members?.some(m => m.userId === userId && canEdit(m.role))) return trip
+    const local = write.trip as Partial<Trip>
+    if (local.id !== trip.id || !Array.isArray(local.days)) return trip
+    queuedLocalTrips.set(trip.id, write)
+    return { ...trip, ...local, members: trip.members }
+  })
+}
+
 /** Call once on app mount. Subscribes to auth and hydrates the cache. */
 export function init(): void {
   if (initialized) return
@@ -557,155 +589,100 @@ export function init(): void {
   if (typeof addEventListener !== 'undefined') addEventListener('online', () => { void replayQueuedWrites() })
 
   const hydrate = async (userId: string | null) => {
-    // #578 — any identity TRANSITION drops the in-memory debounce timers along
-    // with the account. This is the only place the A→B switch in one tab is
-    // visible (it never passes through logout()), and it must fire before the
-    // same-user dedupe below so a switch onto an in-flight hydrate still
-    // cancels. A same-user rehydrate keeps the timers: the load-time
-    // double-fire must not eat the user's last edit.
-    if (cache.sessionUserId !== userId) _cancelTripWrites()
-    // Same-user dedupe FIRST, generation bump second. The old order bumped
-    // hydrateGen for EVERY call — so the load-time double-fire (getSession +
-    // onAuthStateChange INITIAL_SESSION, both with the SAME user) marked the
-    // first hydrate's patch stale (`gen !== hydrateGen`) while the second call
-    // merely awaited the first's promise and returned. Net effect: the data
-    // was fetched (all 200s) but NOBODY patched it into the cache — the app
-    // rendered logged-out on every refresh with a perfectly valid token.
-    // hydrateGen still guards real account switches (sign-out / switch):
-    // those change userId, so they never hit the dedupe branch.
-    if (userId && activeHydrate && activeHydrate.userId === userId) {
+    const changed = lastAuthUserId !== userId
+    if (changed) {
+      const departing = lastAuthUserId ?? cache.sessionUserId
+      ++identityEpoch
+      ++hydrateGen
+      lastAuthUserId = userId
+      activeHydrate = null
+      _cancelTripWrites()
+      disconnectRealtime()
+      detachDnaAccount()
+      recentLocalWrites.clear()
+      serverTripTimestamps.clear()
+      queuedLocalTrips.clear()
+      editableTripGrants.clear()
+      tripAccessEpochs.clear()
+      // Publish the new identity before any storage or network await.
+      patch({ trips: [], trashedTrips: [], trashLoaded: false, trashFailed: false,
+        users: [], suggestions: [], decisions: [], activity: [], notifications: [],
+        adminAudit: [], adminAuditFailed: false, sessionUserId: userId,
+        ready: false, cachedAt: null, sliceReads: {} })
+      commit()
+      if (departing) { void clearSnapshot(departing); void clearWritesFor(departing) }
+    }
+    if (activeHydrate && activeHydrate.userId === userId) {
       await activeHydrate.promise
       return
     }
     const gen = ++hydrateGen
-    // A different user, or a sign-out, starts a new identity epoch. A same-user
-    // event keeps the epoch, so its late Trash and audit reads still land.
-    // Compare with the last auth event: sessionUserId lags during a sign-in.
-    if (lastAuthUserId !== userId) identityEpoch++
-    lastAuthUserId = userId
-    if (cache.sessionUserId !== userId) {
-      patch({
-        trashedTrips: [], trashLoaded: false, trashFailed: false,
-        adminAudit: [], adminAuditFailed: false,
-      })
-      commit()
-    }
-
-    if (!userId) {
-      clearAdminCache()
-      // Anonymous user: fetch global catalogs (published itineraries + profiles) but skip user-specific data.
-      // Explore needs published itineraries to work for logged-out users.
-      // Serialized like the signed-in path: getSession + onAuthStateChange both
-      // fire hydrate(null) on a cold load, which used to double-fetch.
-      disconnectRealtime()
-      // I-16 — signed out: drop the account's Trip DNA log from memory, so the
-      // next person on this device never inherits the last one's profile.
-      detachDnaAccount()
-      if (activeHydrate && activeHydrate.userId === null) { await activeHydrate.promise; return }
-      // PWA phase 2: signing out forgets this device's snapshot for the account
-      // that just left. The in-memory version of this bug (#45) showed the
-      // previous user's trips; the on-disk one would survive a reload.
-      const departingUser = cache.sessionUserId
-      if (departingUser) {
-        void clearSnapshot(departingUser)
-        // Their unsynced edits are theirs alone - the next person on this
-        // device must never be the one whose session "syncs" them.
-        void clearWritesFor(departingUser)
+    const promise = (async () => {
+      if (!userId) {
+        clearAdminCache()
+        disconnectRealtime()
+        detachDnaAccount()
+        try {
+          const [profRes, pubRes] = await Promise.all([
+            supabase.from('profiles').select('*'),
+            supabase.from('published_itineraries').select('*'),
+          ])
+          if (gen !== hydrateGen || lastAuthUserId !== null) return
+          const failed: string[] = []
+          if (profRes.error) failed.push('profiles')
+          if (pubRes.error) failed.push('suggested itineraries')
+          patch({ users: mapOrSkip(profRes.data ?? [], rowToUser), trips: [], trashedTrips: [],
+            trashLoaded: false, trashFailed: false, suggestions: [], decisions: [], activity: [],
+            notifications: [], published: dedupePublished(mapOrSkip(pubRes.data ?? [], rowToPublished)),
+            adminAudit: [], adminAuditFailed: false, sessionUserId: null, ready: true, cachedAt: null,
+            sliceReads: sliceReadReport(failed, PUBLIC_READ_SLICES) })
+          commit()
+        } catch (error) {
+          if (gen !== hydrateGen || lastAuthUserId !== null) return
+          console.error('[yatraflow] anonymous hydration failed', error)
+          patch({ users: [], trips: [], trashedTrips: [], suggestions: [], decisions: [], activity: [],
+            notifications: [], published: [], sessionUserId: null, ready: true, cachedAt: null,
+            sliceReads: sliceReadReport(PUBLIC_READ_SLICES, PUBLIC_READ_SLICES) })
+          commit()
+        }
+        return
       }
-      const anonPromise = (async () => {
-      try {
-        const [profRes, pubRes] = await Promise.all([
-          supabase.from('profiles').select('*'),
-          supabase.from('published_itineraries').select('*'),
-        ])
-        const users = mapOrSkip((profRes.data ?? []), rowToUser)
-        const pubRows = mapOrSkip((pubRes.data ?? []), rowToPublished)
-        const anonFailed: string[] = []
-        if (profRes.error) { console.error('[yatraflow] hydrate profiles failed', profRes.error); anonFailed.push('profiles') }
-        if (pubRes.error) { console.error('[yatraflow] hydrate published failed', pubRes.error); anonFailed.push('suggested itineraries') }
-        // A cold logged-out visit reaches Explore and creator pages through this
-        // read alone, so it must publish the public verdict itself. Without it,
-        // `sliceState` reads "never reported" as 'reading' and the gallery spins
-        // forever over rows that already loaded. The report replaces the whole
-        // map: a `trips` verdict left by the account that signed out is stale.
-        patch({ users, trips: [], trashedTrips: [], trashLoaded: false, trashFailed: false, suggestions: [], decisions: [], activity: [], notifications: [], published: dedupePublished(pubRows), adminAudit: [], adminAuditFailed: false, sessionUserId: null, ready: true, cachedAt: null, sliceReads: sliceReadReport(anonFailed, PUBLIC_READ_SLICES) })
-        commit()
-      } catch (e) {
-        console.error('[yatraflow] anonymous hydration failed', e)
-        patch({ users: [], trips: [], trashedTrips: [], trashLoaded: false, trashFailed: false, suggestions: [], decisions: [], activity: [], notifications: [], published: [], adminAudit: [], adminAuditFailed: false, sessionUserId: null, ready: true, cachedAt: null, sliceReads: sliceReadReport(PUBLIC_READ_SLICES, PUBLIC_READ_SLICES) })
-        commit()
+      if (!cache.ready) {
+        const [snapshot, writes] = await Promise.all([loadSnapshot(userId), pendingWrites()])
+        if (gen !== hydrateGen || lastAuthUserId !== userId) return
+        if (snapshot) {
+          patch({ trips: overlayQueuedTrips(snapshot.trips as Trip[], writes, userId),
+            trashedTrips: snapshot.trashedTrips as Trip[], users: snapshot.users as User[],
+            published: snapshot.published as PublishedItinerary[], suggestions: snapshot.suggestions as StopSuggestion[],
+            decisions: snapshot.decisions as TripDecision[], activity: snapshot.activity as ActivityEntry[],
+            sessionUserId: userId, cachedAt: snapshot.savedAt, ready: true })
+          commit()
+        }
       }
-      })()
-      activeHydrate = { userId: null, promise: anonPromise }
-      try { await anonPromise } finally { if (activeHydrate?.promise === anonPromise) activeHydrate = null }
-      return
-    }
-    // Offline-first boot (PWA phase 2): on a cold cache, show this account's
-    // last clean snapshot immediately — the network hydrate below replaces it
-    // when it lands. Read-only by construction: every write still needs the
-    // network, and a cache boot can never seed demo trips (the failed reads
-    // that made the cache necessary keep `tripCountUnknown` true).
-    if (!cache.ready) {
-      const snapshot = await loadSnapshot(userId)
-      if (snapshot && gen === hydrateGen) {
-        patch({
-          trips: snapshot.trips as Trip[],
-          trashedTrips: snapshot.trashedTrips as Trip[],
-          users: snapshot.users as User[],
-          published: snapshot.published as PublishedItinerary[],
-          suggestions: snapshot.suggestions as StopSuggestion[],
-          decisions: snapshot.decisions as TripDecision[],
-          activity: snapshot.activity as ActivityEntry[],
-          sessionUserId: userId,
-          cachedAt: snapshot.savedAt,
-          ready: true,
-        })
-        commit()
-      }
-    }
-    // The same-user dedupe already ran at the top of hydrate(); reaching here
-    // means this user has no in-flight hydrate, so start one.
-    const promise = hydrateFromSupabase(userId, gen)
+      if (gen !== hydrateGen || lastAuthUserId !== userId) return
+      const hydrationSucceeded = await hydrateFromSupabase(userId, gen)
+      if (gen !== hydrateGen || cache.sessionUserId !== userId) return
+      if (hydrationSucceeded && gen === hydrateGen && cache.sessionUserId === userId) await enforceDisabledCheck()
+      if (gen !== hydrateGen || cache.sessionUserId !== userId) return
+      if (!cache.ready) { patch({ ready: true }); commit() }
+      if (hydrationSucceeded && gen === hydrateGen && cache.sessionUserId === userId) connectRealtime(userId)
+      if (hydrationSucceeded && gen === hydrateGen && cache.sessionUserId === userId) void attachDnaAccount(supabase, userId)
+      if (hydrationSucceeded && gen === hydrateGen && cache.sessionUserId === userId) void replayQueuedWrites()
+      if (hydrationSucceeded && gen === hydrateGen && cache.sessionUserId === userId) backfillCreateFunnelSession(userId)
+    })()
+    // Register the whole operation, including its first storage await.
     activeHydrate = { userId, promise }
-    let hydrationSucceeded = false
-    try { hydrationSucceeded = await promise } finally {
-      if (activeHydrate?.promise === promise) activeHydrate = null
-    }
-    // #393: the friendly disabled-account sign-out, finally wired to the
-    // lifecycle it was written for. The function had no callers at all, so a
-    // disabled account completed Auth, stared at the RLS-emptied catalogs and
-    // read that as "my data got deleted". It reads the IN-HAND cache, so it
-    // runs HERE — where the cache this hydrate patched belongs to this
-    // account — which also covers a login: every sign-in resolves through this
-    // same path. The generation guard keeps a superseded hydrate from signing
-    // out whoever is signed in now. Fail-open by design: the RESTRICTIVE
-    // policies are the real enforcement, this is only the message.
-    if (hydrationSucceeded && gen === hydrateGen && cache.sessionUserId === userId) await enforceDisabledCheck()
-    // First settle of this session flips the app-wide loading gate, whatever
-    // the outcome — pages stop showing "loading" and may show real empties.
-    if (!cache.ready) { patch({ ready: true }); commit() }
-    // Only go live for the account the cache still belongs to: a sign-out or an
-    // account switch during the hydration above bumped hydrateGen.
-    if (hydrationSucceeded && gen === hydrateGen && cache.sessionUserId === userId) connectRealtime(userId)
-    // I-16 — fold the account's Trip DNA into this device's log. Best-effort and
-    // probe-gated (no `user_dna` table → device-local, exactly as before), and
-    // fired after realtime so a slow DNA read never delays the workspace.
-    if (hydrationSucceeded && gen === hydrateGen && cache.sessionUserId === userId) void attachDnaAccount(supabase, userId)
-    // PWA phase 3: a boot that came online (or never left it) pushes any edits
-    // this device is still holding - e.g. a tab closed mid-debounce, or a
-    // replay that raced the last offline period.
-    if (hydrationSucceeded && gen === hydrateGen && cache.sessionUserId === userId) void replayQueuedWrites()
-    // #428: the funnel rows this browser session wrote pre-signup adopt the
-    // account — exactly one keyed UPDATE, fire-and-forget. Runs on every
-    // hydrate settle but the `is user_id null` filter makes it idempotent.
-    if (hydrationSucceeded && gen === hydrateGen && cache.sessionUserId === userId) backfillCreateFunnelSession(userId)
+    try { await promise } finally { if (activeHydrate?.promise === promise) activeHydrate = null }
   }
 
+  let authEvents = 0
   supabase.auth.getSession().then(({ data }) => {
+    if (authEvents > 0) return
     adminFromSession(data.session ?? null)
     void hydrate(data.session?.user?.id ?? null)
   })
   supabase.auth.onAuthStateChange((_event, session) => {
+    ++authEvents
     adminFromSession(session ?? null)
     void hydrate(session?.user?.id ?? null)
   })
@@ -718,11 +695,12 @@ export function init(): void {
  *  appShell calls this on Capacitor's appStateChange → active. A full
  *  hydrate refetches everything, which also re-subscribes realtime. */
 export async function resumeSync(): Promise<void> {
+  const epoch = identityEpoch
   const { data } = await supabase.auth.getSession()
   const userId = data.session?.user?.id ?? null
   // Only the signed-in-and-hydrated case: an anonymous session or a mid
   // auth-switch needs nothing (their next auth event re-hydrates).
-  if (!userId || userId !== cache.sessionUserId) return
+  if (!userId || !isCurrentIdentity({ userId, epoch })) return
   // Full refetch (notifications, trips, the lot). hydrate's same-user
   // dedupe would SKIP a plain hydrate() call — so go around it with a
   // fresh generation, exactly what a resume wants.
@@ -736,6 +714,7 @@ export async function resumeSync(): Promise<void> {
 }
 
 async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = true): Promise<boolean> {
+  const accessAtStart = new Map(tripAccessEpochs)
   // #704: the slices this run answers for, named as its verdict names them. Stage 1
   // fixes the first four. Stage 2 adds the trip-scoped ones once the scope is known.
   // A throw ends the run before its verdict. The catch fails every name here that has
@@ -756,6 +735,7 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
       supabase.from('published_itineraries').select('*'),
       supabase.from('trip_members').select('*').eq('user_id', userId),
     ])
+    if (gen !== hydrateGen) return false
     // The admin flag rode in on the session object (adminFromSession in
     // init(), before hydrate runs): admins hydrate the whole app (all trips,
     // all collab slices, the audit log); everyone else keeps the membership
@@ -917,7 +897,7 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     // the cache, so opening any of them said "Trip not found" until a lucky
     // reload. When this user already holds trips, keep the stale-but-good rows
     // and let the partial-load toast explain what happened instead.
-    const tripsRead = tripsReadFailed && cache.trips.some(t => t.members?.some?.(m => m.userId === userId))
+    const tripsRead = tripsReadFailed && cache.sessionUserId === userId && cache.trips.some(t => t.members?.some?.(m => m.userId === userId))
       ? undefined
       : tripList
     const sameSessionUser = cache.sessionUserId === userId
@@ -936,10 +916,39 @@ async function hydrateFromSupabase(userId: string, gen: number, seedIfEmpty = tr
     // serverTripTimestamps above for why the guard must read this and not
     // Trip.updatedAt).
     for (const t of tripList) recordServerTripTimestamp(t.id, t.updatedAt)
+    const pending = await pendingWrites()
+    if (gen !== hydrateGen) return false
+    // A completed local write or access change can supersede these fetched rows.
+    const currentTrips = tripsRead?.flatMap(trip => {
+      const cached = tripById(trip.id)
+      if ((accessAtStart.get(trip.id) ?? 0) !== (tripAccessEpochs.get(trip.id) ?? 0)) {
+        return cached ? [cached] : []
+      }
+      if (cached && validWriteVersion(cached.writeVersion)
+        && validWriteVersion(trip.writeVersion) && cached.writeVersion > trip.writeVersion) {
+        return [{ ...cached, members: trip.members }]
+      }
+      return [trip]
+    })
+    const displayedTrips = currentTrips === undefined ? undefined : overlayQueuedTrips(currentTrips, pending, userId)
+    if (!tripsReadFailed) {
+      const visible = new Set((currentTrips ?? []).filter(t => t.members?.some(m => m.userId === userId && canEdit(m.role))).map(t => t.id))
+      for (const write of pending) {
+        if (write.ownerId !== userId || visible.has(write.tripId)) continue
+        invalidateTripWork(write.tripId, userId)
+      }
+    }
+    const allowedTrips = new Set((displayedTrips ?? cache.trips).map(t => t.id))
+    if (!tripsReadFailed && !admin) {
+      suggestions = suggestions.filter(s => allowedTrips.has(s.tripId))
+      decisions = decisions.filter(d => allowedTrips.has(d.tripId))
+      activity = activity.filter(a => allowedTrips.has(a.tripId))
+      notifications = notifications.filter(n => !n.tripId || allowedTrips.has(n.tripId))
+    }
 
     patch({
       ...(usersRead !== undefined ? { users: usersRead } : {}),
-      ...(tripsRead !== undefined ? { trips: tripsRead } : {}),
+      ...(displayedTrips !== undefined ? { trips: displayedTrips } : {}),
       // #704: a failed slice keeps same-account rows; another account cannot keep them.
       ...(suggestionsRead !== undefined ? { suggestions: suggestionsRead } : {}),
       ...((scopeUnread || decisionsReadFailed) && sameSessionUser ? {} : { decisions }),
@@ -1257,14 +1266,19 @@ export function tripById(id: ID): Trip | undefined {
  * re-fetch. Returns null when nothing readable exists (RLS or a bad id).
  */
 export async function fetchSharedTrip(tripId: ID, allowInvitePreview = false): Promise<Trip | null> {
+  const epoch = identityEpoch
+  const userId = cache.sessionUserId
+  const live = () => epoch === identityEpoch && cache.sessionUserId === userId
   const local = tripById(tripId)
   if (local) return local
   let row: TripRow | null = null
   const { data, error } = await supabase.from('trips').select('*').eq('id', tripId).maybeSingle()
+  if (!live()) return null
   if (error) console.error('[yatraflow] shared trip fetch failed', error)
   if (data) row = data as TripRow
   if (!row && allowInvitePreview) {
     const rpc = await supabase.rpc('get_invite_trip', { p_trip_id: tripId })
+    if (!live()) return null
     if (rpc.error) console.error('[yatraflow] invite preview fetch failed', rpc.error)
     const rows = rpc.data as TripRow[] | null
     if (Array.isArray(rows) && rows.length > 0) row = rows[0]
@@ -1297,7 +1311,10 @@ export async function fetchSharedTrip(tripId: ID, allowInvitePreview = false): P
  * a deleted/unpublished trip.
  */
 export async function fetchPublicTrip(pubId: string): Promise<Trip | null> {
+  const epoch = identityEpoch
+  const userId = cache.sessionUserId
   const rpc = await supabase.rpc('get_public_trip', { p_pub_id: pubId })
+  if (epoch !== identityEpoch || cache.sessionUserId !== userId) return null
   if (rpc.error) {
     console.error('[yatraflow] public trip fetch failed', rpc.error)
     return null
@@ -1358,6 +1375,8 @@ export async function fetchPublicTrip(pubId: string): Promise<Trip | null> {
  * null for an unknown code.
  */
 export async function fetchTripByInviteCode(code: string): Promise<Trip | null> {
+  const epoch = identityEpoch
+  const userId = cache.sessionUserId
   const normalized = normalizeInviteCode(code)
   if (!normalized) return null
   // Already cached (e.g. the user is a member and re-clicks the link)?
@@ -1365,6 +1384,7 @@ export async function fetchTripByInviteCode(code: string): Promise<Trip | null> 
   const cached = cache.trips.find(t => t.inviteCode === normalized)
   if (cached) return cached
   const rpc = await supabase.rpc('get_trip_by_invite_code', { p_code: normalized })
+  if (epoch !== identityEpoch || cache.sessionUserId !== userId) return null
   if (rpc.error) console.error('[yatraflow] invite-code lookup failed', rpc.error)
   const rows = rpc.data as TripRow[] | null
   if (!Array.isArray(rows) || rows.length === 0) return null
@@ -1379,8 +1399,9 @@ export async function fetchTripByInviteCode(code: string): Promise<Trip | null> 
 
 /** The invite code the server holds for a trip. `undefined` means the read
  *  failed, so the caller must not guess. `null` means the server holds none. */
-async function readServerInviteCode(tripId: ID): Promise<string | null | undefined> {
+async function readServerInviteCode(tripId: ID, token: string): Promise<string | null | undefined> {
   const { data, error } = await supabase.from('trips').select('invite_code').eq('id', tripId).maybeSingle()
+    .setHeader('Authorization', `Bearer ${token}`)
   if (error) {
     console.error('[yatraflow] invite-code read failed', error)
     return undefined
@@ -1397,15 +1418,21 @@ async function readServerInviteCode(tripId: ID): Promise<string | null | undefin
  * the tail; the caller surfaces a final failure honestly.
  */
 export async function ensureInviteCode(tripId: ID): Promise<string | null> {
+  const scope = identityScope()
   const t = tripById(tripId)
-  if (!t) return null
+  if (!scope || !t) return null
+  const accessEpoch = tripAccessEpochs.get(tripId) ?? 0
+  const live = () => canSendTripWrite(scope, tripId, accessEpoch)
+  if (!live()) return null
   if (t.inviteCode) return t.inviteCode
   const cols = await tripsHaveOptionalColumns()
-  if (!cols.inviteCode) return null
+  if (!cols.inviteCode || !live()) return null
+  const token = await tripWriteToken(scope)
+  if (!token || !live()) return null
   // A cached trip without a code does not prove the server has none. Read the
   // server first, so a code that already exists is never replaced.
-  const held = await readServerInviteCode(tripId)
-  if (held === undefined) return null
+  const held = await readServerInviteCode(tripId, token)
+  if (held === undefined || !live()) return null
   if (held) {
     mutateTrip(tripId, draft => { draft.inviteCode = held }, { touch: false })
     return held
@@ -1413,30 +1440,20 @@ export async function ensureInviteCode(tripId: ID): Promise<string | null> {
   for (let attempt = 0; attempt < 5; attempt++) {
     const code = makeInviteCode(t)
     // The write lands only while the server still holds no code.
-    const { data, error } = await supabase
-      .from('trips')
-      .update({ invite_code: code })
-      .eq('id', tripId)
-      .is('invite_code', null)
-      .select('invite_code')
-    if (!error) {
-      if (Array.isArray(data) && data.length > 0) {
-        // RLS update policy only lets the owner/editor write; the caller is by
-        // construction the owner sharing the trip.
-        mutateTrip(tripId, draft => { draft.inviteCode = code }, { touch: false })
-        return code
-      }
-      // No row changed. Another writer set a code first, or this caller cannot
-      // write. Read once more. Never write again in this call.
-      const again = await readServerInviteCode(tripId)
-      if (again) mutateTrip(tripId, draft => { draft.inviteCode = again }, { touch: false })
-      return again ?? null
+    let uniqueClash = false
+    const saved = await persistTripMetadata(tripId, { invite_code: code }, { inviteCode: code }, 'invite_code', error => {
+      uniqueClash = error.code === '23505' || /duplicate key|unique/i.test(error.message ?? '')
+      if (!uniqueClash) console.error('[yatraflow] invite-code mint failed')
+    })
+    if (!live()) return null
+    if (saved) return code
+    const again = await readServerInviteCode(tripId, token)
+    if (!live() || again === undefined) return null
+    if (again) {
+      mutateTrip(tripId, draft => { draft.inviteCode = again }, { touch: false })
+      return again
     }
-    // Anything but a unique clash is a real failure — report it.
-    if (!/duplicate key|unique/i.test(String(error.message ?? ''))) {
-      console.error('[yatraflow] invite-code mint failed', error)
-      return null
-    }
+    if (!uniqueClash) return null
   }
   return null
 }
@@ -1805,17 +1822,38 @@ function decisionsHaveComments(): Promise<boolean> {
   return decisionCommentsProbe
 }
 
+const tripCreates = new Map<string, Promise<boolean>>()
+
 async function persistTrip(trip: Trip, ownerId: ID, opts: { retry?: boolean } = {}): Promise<boolean> {
+  const operation = persistTripRows(trip, ownerId, opts)
+  tripCreates.set(trip.id, operation)
+  try { return await operation } finally { if (tripCreates.get(trip.id) === operation) tripCreates.delete(trip.id) }
+}
+
+async function persistTripRows(trip: Trip, ownerId: ID, opts: { retry?: boolean }): Promise<boolean> {
+  const epoch = identityEpoch
+  const sessionId = cache.sessionUserId
   // Claim the echo window before the await — see persistTripFieldNow.
   markLocalWrite('trips', trip.id)
   const cols = await tripsHaveOptionalColumns()
-  // Guard AFTER the awaited probe, at the writer, not at the caller (2026-10-19).
-  // Every `tripToRow` below silently omits a column the probe says is missing,
-  // so an explicit Mixed answer would be dropped here and the save would still
-  // report success. This is the seam where that has to stop.
   const drivesPartVerdict = drivesPartWriteVerdict(trip, cols)
   if (!drivesPartVerdict.ok) { toast(drivesPartVerdict.reason, 'err'); return false }
-  const { error } = await supabase.from('trips').insert(tripToRow(trip, ownerId, cols))
+  const { data: inserted, error } = await supabase.from('trips').insert(tripToRow(trip, ownerId, cols))
+    .select('id, write_version')
+  const row = Array.isArray(inserted) && inserted.length === 1 ? inserted[0] : null
+  if (!error && row?.id === trip.id && validWriteVersion(row.write_version)
+    && epoch === identityEpoch && cache.sessionUserId === sessionId) {
+    trip.writeVersion = row.write_version
+    const cached = tripById(trip.id)
+    if (cached) cached.writeVersion = row.write_version
+    const held = queuedLocalTrips.get(trip.id)
+    if (held?.ownerId === ownerId && held.baseVersion === undefined) {
+      const rebased = { ...held, baseVersion: row.write_version,
+        trip: { ...held.trip as Trip, writeVersion: row.write_version } }
+      queuedLocalTrips.set(trip.id, rebased)
+      await requeueIfCurrent(rebased)
+    }
+  }
   // A RETRY can meet the row its own first attempt wrote (#374): the insert
   // then fails on the primary key while the trip exists and the create has in
   // fact landed. Tolerating that case is the whole point of retrying with the
@@ -1862,6 +1900,7 @@ function buildTripCopy(source: Trip, ownerId: ID, opts: { makePublic?: boolean; 
   const free = opts.freeDayIndexes ? new Set(opts.freeDayIndexes) : null
   const copy: Trip = structuredClone(source)
   copy.id = uuid()
+  copy.writeVersion = undefined
   // A copy is labelled as one. An *import* is not — the plan is the user's own
   // arrival, not a duplicate of something they already have, and a name that
   // reads "X (copy)" is how the public gallery grew a `(copy)` row.
@@ -2321,6 +2360,8 @@ function snapshotTrip(trip: Trip, index: number): TripSnapshot {
 }
 
 export function deleteTrip(id: ID): void {
+  const scope = identityScope()
+  if (!scope || !isCurrentIdentity(scope)) return
   const idx = cache.trips.findIndex(t => t.id === id)
   if (idx < 0) return
   // #566 — a direct hard DELETE cascades `published_itineraries` (trip_id) and
@@ -2335,11 +2376,13 @@ export function deleteTrip(id: ID): void {
     return
   }
   const removed = cache.trips[idx]
+  invalidateTripWork(id, scope.userId)
   lastDeletedTrip = snapshotTrip(removed, idx)
   cache.trips = cache.trips.filter(t => t.id !== id)
   commit()
   markLocalWrite('trips', id)
   void supabase.from('trips').delete().eq('id', id).then(({ error }) => {
+    if (!isCurrentIdentity(scope)) return
     if (error) {
       cache.trips = [...cache.trips.slice(0, idx), removed, ...cache.trips.slice(idx)]
       commit()
@@ -2351,6 +2394,7 @@ export function deleteTrip(id: ID): void {
 /** Re-insert a trip at its old position — powers Undo on trip deletion. */
 export function restoreTrip(trip: Trip, index: number): void {
   if (cache.trips.some(t => t.id === trip.id)) return
+  tripAccessEpochs.set(trip.id, (tripAccessEpochs.get(trip.id) ?? 0) + 1)
   const snap = lastDeletedTrip?.trip.id === trip.id ? lastDeletedTrip : null
   lastDeletedTrip = null
   const at = Math.min(index, cache.trips.length)
@@ -2426,6 +2470,8 @@ async function restoreTripData(trip: Trip, snap: TripSnapshot | null): Promise<v
 /** Move a trip to trash. Optimistic: removes from the live list, then stamps the
  *  tombstone; a failed write puts the trip back. */
 export function trashTrip(trip: Trip): void {
+  const scope = identityScope()
+  if (!scope || !isCurrentIdentity(scope)) return
   if (!cache.trips.some(t => t.id === trip.id)) return
   // #566 — trash is a WITHDRAW, never a revoke. A trip whose publication is
   // still on sale must stop selling WITH it: Explore, the sitemap, the share
@@ -2445,9 +2491,16 @@ export function trashTrip(trip: Trip): void {
       return
     }
   }
+  invalidateTripWork(trip.id, scope.userId)
+  const accessEpoch = tripAccessEpochs.get(trip.id)
+  const live = () => isCurrentIdentity(scope) && tripAccessEpochs.get(trip.id) === accessEpoch
   cache.trips = cache.trips.filter(t => t.id !== trip.id)
   commit()
-  void tripsHaveOptionalColumns().then(async cols => {
+  void serializeTripWrite(`${scope.epoch}:${scope.userId}:${trip.id}`, async () => {
+    const token = await tripWriteToken(scope)
+    if (!token || !live()) return
+    const cols = await tripsHaveOptionalColumns()
+    if (!live()) return
     if (!cols.deleted) {
       // Legacy hard delete (a database without the trash column):
       // `published_itineraries` cascades off the trip and the money rows
@@ -2459,7 +2512,9 @@ export function trashTrip(trip: Trip): void {
         toast('This database has no trash column — a published trip cannot be deleted here without destroying its buyers’ records.', 'err')
         return
       }
-      void supabase.from('trips').delete().eq('id', trip.id).then(({ error }) => {
+      await supabase.from('trips').delete().eq('id', trip.id)
+        .setHeader('Authorization', `Bearer ${token}`).then(({ error }) => {
+        if (!live()) return
         if (error) { cache.trips = [...cache.trips, trip]; commit() }
         // #387: the bin never refreshed in place — re-issue the RPC after every
         // resolution so a resident Trash view moves on its own. Failure surfaces
@@ -2476,13 +2531,17 @@ export function trashTrip(trip: Trip): void {
     // would need it cannot run there either.
     const prevPubs = cache.published
     let stamp: number | null = null
-    if (onSale.length && (await publishedHaveUnpublishedAt())) {
+    const canWithdraw = onSale.length && (await publishedHaveUnpublishedAt())
+    if (!live()) return
+    if (canWithdraw) {
       const s = Date.now()
       stamp = s
       cache.published = cache.published.map(p => (onSale.some(o => o.id === p.id) ? { ...p, unpublishedAt: s } : p))
       commit()
       const { error: stampError } = await supabase.from('published_itineraries')
         .update({ unpublished_at: s }).in('id', onSale.map(p => p.id))
+        .setHeader('Authorization', `Bearer ${token}`)
+      if (!live()) return
       if (stampError) {
         cache.published = prevPubs
         cache.trips = [...cache.trips, trip]
@@ -2493,7 +2552,9 @@ export function trashTrip(trip: Trip): void {
       for (const p of onSale) markLocalWrite('published_itineraries', p.id)
     }
     markLocalWrite('trips', trip.id)
-    void supabase.from('trips').update({ deleted_at: new Date().toISOString() }).eq('id', trip.id).then(({ error }) => {
+    await supabase.from('trips').update({ deleted_at: new Date().toISOString() }).eq('id', trip.id)
+      .setHeader('Authorization', `Bearer ${token}`).then(({ error }) => {
+      if (!live()) return
       if (error) {
         cache.trips = [...cache.trips, trip]
         if (stamp !== null) cache.published = prevPubs
@@ -2502,6 +2563,11 @@ export function trashTrip(trip: Trip): void {
       }
       void fetchTrashedTrips()
     })
+  }).catch(() => {
+    if (!live()) return
+    if (!tripById(trip.id)) cache.trips = [...cache.trips, trip]
+    commit()
+    toast('Could not move to trash.', 'err')
   })
 }
 
@@ -2509,20 +2575,39 @@ export function trashTrip(trip: Trip): void {
  *  clear the tombstone. The Trash view's restore after a reload goes through
  *  restoreTrashedTripById. */
 export function restoreTrashedTrip(trip: Trip): void {
+  const scope = identityScope()
+  if (!scope || !isCurrentIdentity(scope)) return
+  const accessEpoch = (tripAccessEpochs.get(trip.id) ?? 0) + 1
+  tripAccessEpochs.set(trip.id, accessEpoch)
+  const live = () => isCurrentIdentity(scope) && (tripAccessEpochs.get(trip.id) ?? 0) === accessEpoch
   if (!cache.trips.some(t => t.id === trip.id)) {
     cache.trips = [...cache.trips, { ...trip, deletedAt: undefined }]
     commit()
   }
-  void tripsHaveOptionalColumns().then(cols => {
-    if (!cols.deleted) return
+  void serializeTripWrite(`${scope.epoch}:${scope.userId}:${trip.id}`, async () => {
+    const token = await tripWriteToken(scope)
+    if (!token || !live()) return
+    const cols = await tripsHaveOptionalColumns()
+    if (!cols.deleted || !live()) return
     markLocalWrite('trips', trip.id)
-    void supabase.from('trips').update({ deleted_at: null }).eq('id', trip.id).then(({ error }) => {
+    const { data, error } = await supabase.from('trips').update({ deleted_at: null }).eq('id', trip.id)
+      .select('*').setHeader('Authorization', `Bearer ${token}`)
+    if (!live()) return
+    {
       if (error) toast('Could not restore that trip.')
+      else if (Array.isArray(data) && data.length === 1) {
+        const shared = rowToTrip(data[0] as TripRow, tripById(trip.id)?.members ?? trip.members ?? [])
+        const pending = await pendingWrites()
+        if (!live()) return
+        const displayed = overlayQueuedTrips([shared], pending, scope.userId)[0]
+        cache.trips = cache.trips.map(t => t.id === trip.id ? displayed : t)
+        commit()
+      }
       // #387: session-undo resolves while a Trash view may be resident — same
       // refetch contract as the RPC restore, success and failure both.
       void fetchTrashedTrips()
-    })
-  })
+    }
+  }).catch(() => { if (live()) toast('Could not restore that trip.', 'err') })
 }
 
 /** Fetch the current user's trashed trips (owner-scoped SECURITY DEFINER RPC).
@@ -2680,7 +2765,11 @@ let TRIP_WRITE_DEBOUNCE_MS = 600
 // #578 — each entry also carries the session the edit was CAPTURED under: the
 // fire-time identity check in persistTripFieldNow compares against this, never
 // against whatever account happens to be signed in when the timer runs.
-const pendingTripWrites = new Map<ID, { timer: ReturnType<typeof setTimeout>; trip: Trip; sessionId: string | null }>()
+type CapturedTripWrite = { trip: Trip; sessionId: string; epoch: number; accessEpoch: number; entry: QueuedWrite; durable: Promise<boolean> }
+const pendingTripWrites = new Map<ID, CapturedTripWrite & { timer: ReturnType<typeof setTimeout> }>()
+const tripAccessEpochs = new Map<string, number>()
+const editableTripGrants = new Set<string>()
+let lastWriteCapture = 0
 
 // #704 — the server's verdict on a trip write. updateTrip answers at once from
 // the cache. A caller that must show the server's answer reads tripWriteVerdict
@@ -2773,200 +2862,347 @@ export function _flushTripWrites(): void {
     // lost by persisting the remote row.
     const v = pendingTripVerdicts.get(id) ?? openTripVerdict()
     pendingTripVerdicts.delete(id)
-    sendUnderVerdict(id, v, persistTripFieldNow(id, pending.trip, pending.sessionId))
+    sendUnderVerdict(id, v, persistTripFieldNow(id, pending))
   }
 }
 
-/** The real row UPDATE — exactly the old persistTripField body.
- *
- *  #578 — `scheduledFor` is the session the edit was captured under. A write
- *  that fires under any OTHER identity (or under none) is DROPPED: the queue
- *  stamp would be a guess and the UPDATE would ride the wrong JWT. */
-async function persistTripFieldNow(id: ID, t: Trip | undefined, scheduledFor: string | null): Promise<boolean> {
-  if (!t) return false
-  // #578 — belt-and-braces on top of the cancel hooks: they can be missed (a
-  // pagehide flush racing a sign-out), so the fire itself checks identity.
-  // A null session is refused too — with nobody signed in the write belongs to
-  // a departed account (or to no one), and stamping it with the trip owner is
-  // #393's zombie entry from the other direction. Dropped, not guessed.
-  if (!scheduledFor || cache.sessionUserId !== scheduledFor) {
-    console.warn('[yatraflow] dropping debounced trip write — it was captured under a session that is no longer live')
+/** Match the exact local edit, including edits captured in the same millisecond. */
+function sameQueuedWrite(a: QueuedWrite, b: QueuedWrite): boolean {
+  return a.ownerId === b.ownerId && a.tripId === b.tripId
+    && (a.revision ?? a.capturedAt) === (b.revision ?? b.capturedAt)
+}
+
+function validWriteVersion(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+}
+
+function canSendTripWrite(scope: IdentityScope, tripId: string, accessEpoch: number): boolean {
+  const trip = tripById(tripId)
+  return isCurrentIdentity(scope) && (tripAccessEpochs.get(tripId) ?? 0) === accessEpoch
+    && !!trip && !trip.deletedAt && (canEdit(roleOf(trip, scope.userId)) || isAdminCached())
+}
+
+async function retainQueuedState(entry: QueuedWrite, scope: IdentityScope, changes: Partial<QueuedWrite>): Promise<void> {
+  if (!isCurrentIdentity(scope)) return
+  const accessEpoch = tripAccessEpochs.get(entry.tripId) ?? 0
+  const next = { ...entry, ...changes }
+  await requeueIfCurrent(next)
+  const current = (await pendingWrites()).find(w => sameQueuedWrite(w, entry))
+  if (!current || !canSendTripWrite(scope, entry.tripId, accessEpoch)) return
+  const held = queuedLocalTrips.get(entry.tripId)
+  if (!held || sameQueuedWrite(held, entry)) queuedLocalTrips.set(entry.tripId, current)
+}
+
+/** Revoke pending callbacks before clearing the local data they could otherwise restore. */
+function invalidateTripWork(tripId: string, userId: string): void {
+  editableTripGrants.delete(tripId)
+  const accessEpoch = (tripAccessEpochs.get(tripId) ?? 0) + 1
+  tripAccessEpochs.set(tripId, accessEpoch)
+  const pending = pendingTripWrites.get(tripId)
+  if (pending) clearTimeout(pending.timer)
+  pendingTripWrites.delete(tripId)
+  const verdict = pendingTripVerdicts.get(tripId)
+  pendingTripVerdicts.delete(tripId)
+  verdict?.settle(false)
+  if (newestTripVerdicts.get(tripId) === verdict) newestTripVerdicts.delete(tripId)
+  const held = queuedLocalTrips.get(tripId)
+  queuedLocalTrips.delete(tripId)
+  if (held?.ownerId === userId) void dropQueuedWrite(held)
+  const scope = identityScope()
+  void pendingWrites().then(writes => {
+    if (!scope || !isCurrentIdentity(scope) || tripAccessEpochs.get(tripId) !== accessEpoch) return
+    for (const write of writes) {
+      if (write.tripId === tripId && write.ownerId === userId) void dropQueuedWrite(write)
+    }
+  })
+  void clearSnapshot(userId)
+}
+
+/** Bind requests to the captured account, even if SDK token acquisition awaits a switch. */
+async function tripWriteToken(scope: IdentityScope): Promise<string | null> {
+  const { data, error } = await supabase.auth.getSession()
+  const session = data.session
+  if (error || !isCurrentIdentity(scope) || session?.user.id !== scope.userId || !session.access_token) return null
+  return session.access_token
+}
+
+/** Keep narrow metadata writes ordered with plan writes and their acknowledged revisions. */
+async function persistTripMetadata(tripId: ID, payload: Record<string, unknown>, patchFields: Partial<Trip>, nullColumn?: string,
+  onError?: (error: { code?: string; message?: string }) => void): Promise<boolean> {
+  const scope = identityScope()
+  if (!scope || !isCurrentIdentity(scope)) return false
+  const accessEpoch = tripAccessEpochs.get(tripId) ?? 0
+  const live = () => canSendTripWrite(scope, tripId, accessEpoch)
+  return serializeTripWrite(`${scope.epoch}:${scope.userId}:${tripId}`, async () => {
+    if (!live()) return false
+    const token = await tripWriteToken(scope)
+    if (!token || !live()) return false
+    const base = tripById(tripId)?.writeVersion
+    let query = supabase.from('trips').update(payload).eq('id', tripId)
+    if (validWriteVersion(base)) query = query.eq('write_version', base)
+    if (nullColumn) query = query.is(nullColumn, null)
+    const { data, error } = await query.select('id, updated_at, write_version')
+      .setHeader('Authorization', `Bearer ${token}`)
+    if (!live()) return false
+    if (error) { onError?.(error); return false }
+    if (!Array.isArray(data) || data.length !== 1 || data[0].id !== tripId) return false
+    const version = data[0].write_version
+    const advance = validWriteVersion(base) && validWriteVersion(version) && version > base
+    cache.trips = cache.trips.map(t => t.id === tripId
+      ? { ...t, ...patchFields, ...(advance && t.writeVersion === base ? { writeVersion: version } : {}) } : t)
+    const held = queuedLocalTrips.get(tripId)
+    if (held?.ownerId === scope.userId) {
+      const next = { ...held, ...(advance && held.baseVersion === base ? { baseVersion: version } : {}),
+        trip: { ...held.trip as Trip, ...patchFields,
+          ...(advance && held.baseVersion === base ? { writeVersion: version } : {}) } }
+      queuedLocalTrips.set(tripId, next)
+      await requeueIfCurrent(next)
+      if (!live()) return false
+    }
+    recordServerTripTimestamp(tripId, data[0].updated_at)
+    markLocalWrite('trips', tripId)
+    commit()
+    return true
+  })
+}
+
+/** One guarded write. RLS checks permission; the server revision prevents lost updates. */
+async function sendQueuedTripWrite(entry: QueuedWrite, scope: IdentityScope, accessEpoch: number): Promise<boolean> {
+  const live = () => canSendTripWrite(scope, entry.tripId, accessEpoch)
+  if (!live() || entry.ownerId !== scope.userId || entry.state) return false
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return false
+  const failed = async () => {
+    if (!live()) return false
+    const attempts = entry.attempts + 1
+    const retryState: Partial<QueuedWrite> = { attempts, state: shouldRetry({ attempts }) ? undefined : 'failed' }
+    await retainQueuedState(entry, scope, retryState)
+    if (live()) toast(shouldRetry({ attempts })
+      ? 'Changes are still on this device. Retry from Saved edits.'
+      : 'Changes could not sync. Retry or download your copy from Saved edits.', 'err')
     return false
   }
-  // Claim the echo window BEFORE awaiting: the guard must be in place from the
-  // moment the write is in flight, not from the moment it resolves. Recording
-  // it after the await left a hole the width of the whole round trip — an echo
-  // that arrived first was treated as a collaborator's edit and clobbered the
-  // optimistic reorder the user had just accepted. (Board/Timeline reorder bug.)
-  markLocalWrite('trips', id)
-  const owner = t.members?.find(m => m.role === 'owner')
-  // PWA phase 3 - durable BEFORE the attempt: an edit captured here survives a
-  // failed send, a crashed tab or a closed laptop, and is dropped the moment
-  // the server confirms. Keyed by trip id, so a burst of edits leaves ONE
-  // entry holding the newest snapshot - the same coalescing the in-memory map
-  // above performs. capturedAt is the send time (up to one debounce window
-  // after the edit itself); it only steers the conflict NOTICE, never the write.
-  // #393: the queue entry is stamped with the EDITOR, not the trip's owner.
-  // Replay only sends entries whose stamp matches the live session, and a
-  // sign-out only clears this account's entries — so an editor editing
-  // somebody else's trip used to queue under the OWNER's id: never replayed,
-  // never cleared by their own sign-out, silently doomed. The row write below
-  // still targets the trip's own owner. (The guard above makes the old
-  // `?? owner?.userId ?? id` fallback unreachable: a null session never gets
-  // this far, so the stamp below is always the editor — #393's promise kept
-  // from the other direction now too.)
-  // #549 — the queueWrite stays OUTSIDE the per-trip lock (durability before
-  // the send, and a newer edit must queue while an older write is in flight);
-  // the UPDATE and its cleanup hold the lock, and their drop is
-  // generation-aware: it removes only the entry THIS write sent, never the
-  // newer snapshot a later edit queued behind it.
-  const capturedAt = Date.now()
-  // (#549) the entry object is a const line: the STE gate reads code tokens
-  // as prose on added lines, and the queue's field name trips it otherwise.
-  const entry = { tripId: id, ownerId: cache.sessionUserId ?? owner?.userId ?? id, capturedAt, attempts: 0, trip: t }
-  await queueWrite(entry)
-  // #704: `saved` becomes true only after the server accepts the row.
-  // A failed send leaves the queued edit in place.
-  let saved = false
-  await serializeTripWrite(id, async () => {
-    const cols = await tripsHaveOptionalColumns()
-    // #799 — tripUpdateRow drops owner_id. A whole-row UPDATE must not carry an
-    // ownership column the caller cannot know: when the owner member is absent
-    // from the hydrated trip, `owner?.userId ?? id` falls back to the trip id or
-    // the editor's own id, and the database now refuses that with 42501.
-    const { error } = await supabase.from('trips').update(tripUpdateRow(t, owner?.userId ?? id, cols)).eq('id', id)
-    if (error) {
-      if (typeof navigator !== 'undefined' && !navigator.onLine) {
-        // Offline: the failure is expected and the edit is already queued - the
-        // banner carries the message; a toast per keystroke burst is noise.
-        return
-      }
-      // Online and still failing: the edit stays queued for the next replay
-      // (bounded), and the user is told now rather than at some future sync.
-      toast('Could not save changes - they will retry when you reconnect.')
-      return
+  try {
+    const token = await tripWriteToken(scope)
+    if (!token || !live()) return false
+    const { data: member, error: memberError } = await supabase.from('trip_members')
+      .select('user_id, role, joined_at').eq('trip_id', entry.tripId).eq('user_id', scope.userId).maybeSingle()
+      .setHeader('Authorization', `Bearer ${token}`)
+    if (!live()) return false
+    if (memberError) return failed()
+    if ((!member || !canEdit(member.role)) && !isAdminCached()) {
+      invalidateTripWork(entry.tripId, scope.userId)
+      cache.trips = cache.trips.filter(t => t.id !== entry.tripId)
+      commit()
+      return false
     }
-    await dropWriteIfCurrent(id, capturedAt)
-    saved = true
-  })
-  return saved
+    const { data: current, error: readError } = await supabase.from('trips')
+      .select('id, owner_id, write_version, deleted_at').eq('id', entry.tripId).maybeSingle()
+      .setHeader('Authorization', `Bearer ${token}`)
+    if (!live()) return false
+    if (readError) return failed()
+    if (!current || current.deleted_at) {
+      invalidateTripWork(entry.tripId, scope.userId)
+      cache.trips = cache.trips.filter(t => t.id !== entry.tripId)
+      commit()
+      return false
+    }
+    // Old queue entries and an old backend need review instead of an unsafe overwrite.
+    if (!validWriteVersion(entry.baseVersion) || !validWriteVersion(current.write_version)
+      || current.write_version !== entry.baseVersion) {
+      await retainQueuedState(entry, scope, { state: 'conflict' })
+      return false
+    }
+    const cols = await tripsHaveOptionalColumns()
+    if (!live()) return false
+    const trip = entry.trip as Trip
+    const drivesPartVerdict = drivesPartWriteVerdict(trip, cols)
+    if (!drivesPartVerdict.ok) {
+      toast(drivesPartVerdict.reason, 'err')
+      return false
+    }
+    // #799 — tripUpdateRow drops owner_id. A queued entry may have captured a
+    // stale owner id, and the trips_owner_id_immutable trigger refuses an
+    // ownership change with 42501. The column is absent from this row, so the
+    // revision check below stays intact and the server keeps its own owner.
+    const { data, error } = await supabase.from('trips')
+      .update(tripUpdateRow(trip, current.owner_id, cols), { count: 'exact' })
+      .eq('id', entry.tripId).eq('write_version', entry.baseVersion)
+      .select('id, updated_at, write_version')
+      .setHeader('Authorization', `Bearer ${token}`)
+    if (!live()) return false
+    if (error) return failed()
+    const row = Array.isArray(data) && data.length === 1 ? data[0] : null
+    if (!row || row.id !== entry.tripId || !validWriteVersion(row.write_version)
+      || row.write_version <= entry.baseVersion) {
+      await retainQueuedState(entry, scope, { state: 'conflict' })
+      return false
+    }
+    recordServerTripTimestamp(entry.tripId, row.updated_at)
+    const newer = queuedLocalTrips.get(entry.tripId)
+    if (newer && !sameQueuedWrite(newer, entry) && newer.baseVersion === entry.baseVersion) {
+      // A later local edit includes this acknowledged snapshot. Keep its new baseline.
+      const rebased = { ...newer, baseVersion: row.write_version,
+        trip: { ...newer.trip as Trip, writeVersion: row.write_version } }
+      queuedLocalTrips.set(entry.tripId, rebased)
+      await requeueIfCurrent(rebased)
+    }
+    if (!live()) return false
+    await dropQueuedWrite(entry)
+    if (!live()) return false
+    const held = queuedLocalTrips.get(entry.tripId)
+    if (held && sameQueuedWrite(held, entry)) queuedLocalTrips.delete(entry.tripId)
+    const cached = tripById(entry.tripId)
+    if (cached) cached.writeVersion = row.write_version
+    commit()
+    return true
+  } catch {
+    return failed()
+  }
 }
 
-/** PWA phase 3 - push every queued offline edit, oldest first. Bounded: a
- *  failing attempt counts, and after MAX_WRITE_ATTEMPTS the entry is dropped
- *  with a toast instead of retried forever. Deliberately NOT routed through
- *  persistTripFieldNow (that path always re-queues with attempts reset to 0,
- *  which would unbound the retries); this is its own send so the count sticks.
- *  No markLocalWrite here on purpose: the echo of our own replay refreshes the
- *  cache from the server's truth instead of being suppressed. */
+async function persistTripFieldNow(id: ID, captured: CapturedTripWrite): Promise<boolean> {
+  const scope = { userId: captured.sessionId, epoch: captured.epoch }
+  if (!canSendTripWrite(scope, id, captured.accessEpoch)) return false
+  const durable = await captured.durable
+  if (!canSendTripWrite(scope, id, captured.accessEpoch)) return false
+  const creation = tripCreates.get(id)
+  if (creation && !await creation) return false
+  if (!canSendTripWrite(scope, id, captured.accessEpoch)) return false
+  if (!durable) toast('Device storage is unavailable. Keep this tab open until your changes sync.', 'err')
+  return serializeTripWrite(`${scope.epoch}:${scope.userId}:${id}`, async () => {
+    if (!canSendTripWrite(scope, id, captured.accessEpoch)) return false
+    const held = queuedLocalTrips.get(id)
+    const entry = held && sameQueuedWrite(held, captured.entry) ? held : captured.entry
+    markLocalWrite('trips', id)
+    return sendQueuedTripWrite(entry, scope, captured.accessEpoch)
+  })
+}
+
+const activeReplays = new Map<string, Promise<number>>()
+
+/** Replay only the current account. Paused records need an explicit recovery choice. */
 export async function replayQueuedWrites(): Promise<number> {
-  const userId = cache.sessionUserId
-  // isSupabaseConfigured is a boolean VALUE here, not a function (lib/supabase.ts).
-  if (!userId || !isSupabaseConfigured) return 0
-  let synced = 0
-  for (const write of await pendingWrites()) {
-    // Only this account's entries: another owner's queue is not ours to send.
-    if (write.ownerId !== userId) continue
-    const trip = write.trip as Trip
-    // #549 — the send holds the SAME per-trip lock the debounced path uses, so
-    // a replay and a live edit can never interleave their UPDATEs for one trip.
-    // The drop and the retry re-queue are generation-aware: they act only if
-    // the key still holds the entry that was read, never over a newer edit
-    // that queued while this UPDATE was in flight. Returns the conflict
-    // verdict, or null when the write failed (the caller stops — the network
-    // is not back for this row's write, so it is not back for the rest either).
-    const verdict = await serializeTripWrite(write.tripId, async (): Promise<'apply' | 'overwrite' | null> => {
-      // Conflict notice: a server row newer than the edit's capture means a
-      // collaborator changed the trip while this device was away. The write
-      // still applies (the app's whole-trip model is last-writer-wins, and the
-      // peer's remote-edit banner covers their side) - but this user is told.
-      const { data: current } = await supabase.from('trips').select('id, updated_at').eq('id', write.tripId).limit(1)
-      const result = replayVerdict((current?.[0] as { updated_at?: unknown } | undefined)?.updated_at, write.capturedAt)
-      const owner = trip.members?.find(m => m.role === 'owner')
-      const cols = await tripsHaveOptionalColumns()
-      // count: 'exact' is the #551 half of this send — PostgREST answers a
-      // no-match UPDATE with { error: null, count: 0 }, which a bare error
-      // check reads as success. The contract for a write that touched no row
-      // (the trip was never persisted, or a collaborator deleted it
-      // mid-flight): it fails like any other write — the failure counter
-      // climbs, the entry stays queued for the bounded retry, and past the
-      // cap it is dropped
-      // with the loud toast. Never confirmed, never counted, never toasted as
-      // synced. Only a DEFINITIVE 0 fails; a null count (not answered) stays
-      // a success, the probe's own definitive-only rule.
-      // Same writer guard as the insert path: the debounced UPDATE would
-      // otherwise drop an explicit Mixed answer and still report success.
-      const drivesPartVerdict = drivesPartWriteVerdict(trip, cols)
-      if (!drivesPartVerdict.ok) {
-        toast(drivesPartVerdict.reason, 'err')
-        return null
-      }
-      // #799 — the replay path uses tripUpdateRow for the same reason as the
-      // first write: a queued entry may have captured a stale owner id, and the
-      // database refuses an ownership change. Without this, the replay retries
-      // and then drops the edit.
-      const { error, count } = await supabase.from('trips').update(tripUpdateRow(trip, owner?.userId ?? userId, cols), { count: 'exact' }).eq('id', write.tripId)
-      if (error || count === 0) {
-        const attempts = write.attempts + 1
-        if (shouldRetry({ attempts })) {
-          const retry = { ...write, attempts }
-          await requeueIfCurrent(retry)
-        } else {
-          await dropWriteIfCurrent(write.tripId, write.capturedAt)
-          toast('An offline change could not be saved and was dropped.')
-        }
-        return null
-      }
-      await dropWriteIfCurrent(write.tripId, write.capturedAt)
-      return result
-    })
-    if (verdict === null) return synced
-    synced += 1
-    if (verdict === 'overwrite') {
-      toast(`Your offline changes to ${trip.name || 'a trip'} replaced a newer edit by a teammate.`)
+  const scope = identityScope()
+  if (!scope || !isSupabaseConfigured || !isCurrentIdentity(scope)) return 0
+  const key = `${scope.epoch}:${scope.userId}`
+  const existing = activeReplays.get(key)
+  if (existing) return existing
+  const operation = (async () => {
+    let synced = 0
+    const writes = await pendingWrites()
+    if (!isCurrentIdentity(scope)) return 0
+    for (const write of writes) {
+      if (!isCurrentIdentity(scope)) break
+      if (write.ownerId !== scope.userId || write.state || !shouldRetry(write)) continue
+      const accessEpoch = tripAccessEpochs.get(write.tripId) ?? 0
+      const saved = await serializeTripWrite(`${key}:${write.tripId}`, async () => {
+        if (!isCurrentIdentity(scope)) return false
+        const current = (await pendingWrites()).find(w => sameQueuedWrite(w, write))
+        if (!current || !isCurrentIdentity(scope)) return false
+        return sendQueuedTripWrite(current, scope, accessEpoch)
+      })
+      if (!isCurrentIdentity(scope)) break
+      if (saved) synced += 1
     }
-  }
-  if (synced > 0) toast(`${synced} offline change${synced === 1 ? '' : 's'} synced.`)
-  return synced
+    return synced
+  })()
+  activeReplays.set(key, operation)
+  try { return await operation } finally { if (activeReplays.get(key) === operation) activeReplays.delete(key) }
+}
+
+/** Retry a saved edit, or explicitly choose which complete plan to keep. */
+export async function resolveQueuedTripWrite(tripId: ID, choice: 'retry' | 'replace' | 'discard'): Promise<boolean> {
+  const scope = identityScope()
+  if (!scope || !isCurrentIdentity(scope)) return false
+  const write = (await pendingWrites()).find(w => w.ownerId === scope.userId && w.tripId === tripId)
+  if (!write || !isCurrentIdentity(scope)) return false
+  const accessEpoch = tripAccessEpochs.get(tripId) ?? 0
+  const live = () => canSendTripWrite(scope, tripId, accessEpoch)
+  return serializeTripWrite(`${scope.epoch}:${scope.userId}:${tripId}`, async () => {
+    if (!live()) return false
+    let current = (await pendingWrites()).find(w => sameQueuedWrite(w, write))
+    if (!current || !live()) return false
+    const token = await tripWriteToken(scope)
+    if (!token || !live()) return false
+    if (choice === 'discard') {
+      // Read inside the write tail. A completed earlier write must precede this read.
+      const { data: row, error } = await supabase.from('trips').select('*').eq('id', tripId).maybeSingle()
+        .setHeader('Authorization', `Bearer ${token}`)
+      if (!live() || error) return false
+      const durable = await dropQueuedWrite(current)
+      if (!live()) return false
+      const latest = (await pendingWrites()).find(w => w.ownerId === scope.userId && w.tripId === tripId)
+      if (!live()) return false
+      if (latest) {
+        // Storage failure or a newer edit keeps its own recovery state and visible contents.
+        queuedLocalTrips.set(tripId, latest)
+        return false
+      }
+      const held = queuedLocalTrips.get(tripId)
+      if (held && !sameQueuedWrite(held, current)) return false
+      queuedLocalTrips.delete(tripId)
+      if (row && !row.deleted_at) {
+        const cached = tripById(tripId)
+        const shared = rowToTrip(row as TripRow, cached?.members ?? [])
+        cache.trips = [...cache.trips.filter(t => t.id !== tripId), shared]
+        recordServerTripTimestamp(tripId, shared.updatedAt)
+      } else {
+        invalidateTripWork(tripId, scope.userId)
+        cache.trips = cache.trips.filter(t => t.id !== tripId)
+      }
+      commit()
+      void clearSnapshot(scope.userId)
+      return durable
+    }
+    let next = { ...current, attempts: 0, state: undefined }
+    if (choice === 'replace') {
+      const { data: row, error } = await supabase.from('trips').select('id, write_version').eq('id', tripId).maybeSingle()
+        .setHeader('Authorization', `Bearer ${token}`)
+      if (!live() || error || !row || !validWriteVersion(row.write_version)) return false
+      next = { ...next, baseVersion: row.write_version }
+    } else if (current.state === 'conflict') {
+      return false
+    }
+    await requeueIfCurrent(next)
+    current = (await pendingWrites()).find(w => sameQueuedWrite(w, write))
+    if (!current || !live()) return false
+    const held = queuedLocalTrips.get(tripId)
+    if (held && !sameQueuedWrite(held, current)) return false
+    queuedLocalTrips.set(tripId, current)
+    return sendQueuedTripWrite(current, scope, accessEpoch)
+  })
 }
 
 function persistTripField(id: ID, t: Trip): void {
-  // Claim the echo window the moment the change is committed (synchronously,
-  // here), not only when the debounced row write fires ~600ms later. The guard
-  // then spans the whole commit→write→echo span; an echo that lands after the
-  // debounce but before the server round trip finishes is still suppressed.
-  // (Re-arm happens again inside persistTripFieldNow at fire time.)
+  const scope = identityScope()
+  if (!scope || !isCurrentIdentity(scope)) return
   markLocalWrite('trips', id)
-  // Capture the snapshot as a CLONE, not a reference: callers hand the live
-  // cached object, and the cache may swap or mutate it (remote row swap, a
-  // later edit) before the debounce fires. A shared reference let the pending
-  // write drift with the cache — the exact loss B0 exists to prevent.
   const snapshot = structuredClone(t)
-  // #578 — capture WHOSE edit this is, at call time, alongside the snapshot:
-  // the fire-time identity check compares against this, so a write captured
-  // under one account can never be persisted under another.
-  const scheduledFor = cache.sessionUserId
+  const previous = queuedLocalTrips.get(id)
+  lastWriteCapture = Math.max(Date.now(), lastWriteCapture + 1)
+  const entry: QueuedWrite = { tripId: id, ownerId: scope.userId, capturedAt: lastWriteCapture,
+    revision: randomToken(16), baseVersion: previous?.baseVersion ?? t.writeVersion,
+    attempts: 0, state: previous?.state === 'conflict' ? 'conflict' : undefined, trip: snapshot }
+  queuedLocalTrips.set(id, entry)
+  const captured: CapturedTripWrite = { trip: snapshot, sessionId: scope.userId, epoch: scope.epoch,
+    accessEpoch: tripAccessEpochs.get(id) ?? 0, entry, durable: queueWrite(entry) }
   if (TRIP_WRITE_DEBOUNCE_MS <= 0) {
     const v = openTripVerdict()
     newestTripVerdicts.set(id, v)
-    sendUnderVerdict(id, v, persistTripFieldNow(id, snapshot, scheduledFor))
+    sendUnderVerdict(id, v, persistTripFieldNow(id, captured))
     return
   }
   const prev = pendingTripWrites.get(id)
   if (prev) clearTimeout(prev.timer)
-  // An edit that joins a pending write shares that write's verdict.
   const v = pendingTripVerdicts.get(id) ?? openTripVerdict()
   pendingTripVerdicts.set(id, v)
   newestTripVerdicts.set(id, v)
   const timer = setTimeout(() => {
     pendingTripVerdicts.delete(id)
     pendingTripWrites.delete(id)
-    // Persist the CAPTURED snapshot, never a re-read of tripById(id): the
-    // timer's re-read let a REMOTE update landing inside the debounce window
-    // be persisted over the local edit that scheduled this write (B0).
-    sendUnderVerdict(id, v, persistTripFieldNow(id, snapshot, scheduledFor))
+    sendUnderVerdict(id, v, persistTripFieldNow(id, captured))
   }, TRIP_WRITE_DEBOUNCE_MS)
-  pendingTripWrites.set(id, { timer, trip: snapshot, sessionId: scheduledFor })
+  pendingTripWrites.set(id, { ...captured, timer })
 }
 
 // ---------------- Members & collaboration ----------------
@@ -3781,10 +4017,10 @@ export async function publishItinerary(pub: Omit<PublishedItinerary, 'id' | 'pub
     // a live Explore card pointing at a dead public page, with nothing said.
     // Awaiting is the fix; the rollback is what stops a refused flip from
     // becoming that split state, and the toast is what stops it being silent.
-    const { error: flipError } = await supabase
-      .from('trips').update({ visibility: 'public' }).eq('id', p.tripId)
-    if (flipError) {
-      console.error('[yatraflow] publish visibility flip failed', flipError)
+    const visible = tripById(p.tripId)?.visibility === 'public'
+      || await persistTripMetadata(p.tripId, { visibility: 'public' }, { visibility: 'public' })
+    if (!visible) {
+      console.error('[yatraflow] publish visibility flip failed')
       // Put the trip's own visibility back — the value captured BEFORE this
       // publish, not a hardcoded 'private': it may have been 'link', and a guess
       // would either narrow a shared trip or widen a private one. Captured at
@@ -4257,43 +4493,33 @@ export function _applyRealtimeEventForTest(table: string, payload: RealtimePostg
 }
 
 /** Start listening for row changes. Call after a successful hydration. */
-export function connectRealtime(_userId: string): void {
-  if (!isSupabaseConfigured || realtimeChannel) return
+let realtimeIdentity: IdentityScope | null = null
+
+export function connectRealtime(userId: string): void {
+  const scope = { userId, epoch: identityEpoch }
+  if (!isSupabaseConfigured || !isCurrentIdentity(scope)) return
+  if (realtimeChannel && realtimeIdentity?.userId === userId && realtimeIdentity.epoch === scope.epoch) return
+  disconnectRealtime()
   try {
     let everSubscribed = false
     const channel = supabase.channel('yatraflow-live')
-    // ONE list drives the subscriptions AND the reconnect resync (#568):
-    // adding a table to RESYNC_TABLES is the whole job, so the two can never
-    // drift apart again — the gap that left seven slices stale on every
-    // laptop sleep. Each table dispatches identically, so the loop is the
-    // unrolled chain it replaces, verbatim.
-    // admin_audit is subscribed too (#367): the audit log goes live for
-    // admins — the publication already carries it (20260909_masteradmin.sql),
-    // ending the poll-only staleness where a second admin's actions were
-    // invisible until a manual refresh. The RLS read policy is admin-gated,
-    // so a non-admin's subscription simply never receives rows — no flag
-    // needed.
+    const live = () => realtimeChannel === channel && isCurrentIdentity(scope)
     for (const t of RESYNC_TABLES) {
-      channel.on('postgres_changes', { event: '*', schema: 'public', table: t }, p => dispatchRealtimeEvent(t, p))
-    }
-    realtimeChannel = channel.subscribe(status => {
-        // Reconnect resync: postgres_changes is NOT replayed across a socket
-        // gap — after a laptop sleep / network switch the channel rejoins and
-        // every row changed while we were away is silently missing, so an open
-        // stop editor shows stale data with no remote-edit banner and the
-        // cache drifts until a reload. On every SUBSCRIBED that is a RE-join,
-        // refetch each cached trip row through the SAME dispatch path a live
-        // UPDATE takes (applyRealtimeEvent), so the echo window, the B2
-        // server-clock stale guard and the ledger all see it exactly as they
-        // would a real event — no bypass, no second code path. The FIRST
-        // SUBSCRIBED is skipped: hydration just fetched these rows.
-        if (status !== 'SUBSCRIBED') return
-        if (!everSubscribed) { everSubscribed = true; return }
-        void resyncTripsAfterReconnect()
+      channel.on('postgres_changes', { event: '*', schema: 'public', table: t }, p => {
+        if (live()) dispatchRealtimeEvent(t, p)
       })
-  } catch (e) {
-    console.error('[yatraflow] realtime subscribe failed', e)
+    }
+    realtimeChannel = channel
+    realtimeIdentity = scope
+    channel.subscribe(status => {
+      if (!live() || status !== 'SUBSCRIBED') return
+      if (!everSubscribed) { everSubscribed = true; return }
+      void resyncTripsAfterReconnect(scope)
+    })
+  } catch (error) {
+    console.error('[yatraflow] realtime subscribe failed', error)
     realtimeChannel = null
+    realtimeIdentity = null
   }
 }
 
@@ -4345,16 +4571,19 @@ function sweepPhantoms(
   }
 }
 
-async function resyncTripsAfterReconnect(): Promise<void> {
+async function resyncTripsAfterReconnect(scope: IdentityScope): Promise<void> {
+  const live = () => isCurrentIdentity(scope)
+  if (!live()) return
   const ids = cache.trips.map(t => t.id)
   if (!ids.length) return
   // Each slice reconciles independently: one flaky read must not strand the
   // slices after it — the next resync only happens at the NEXT reconnect.
   const step = async (label: string, fn: () => Promise<void>): Promise<void> => {
-    try { await fn() } catch (e) { console.error(`[yatraflow] reconnect resync (${label}) failed`, e) }
+    try { if (live()) await fn() } catch (e) { console.error(`[yatraflow] reconnect resync (${label}) failed`, e) }
   }
   await step('trips', async () => {
     const { data, error } = await supabase.from('trips').select('*').in('id', ids)
+    if (!live()) return
     if (error) throw error
     for (const row of (data ?? []) as Record<string, unknown>[]) feedSynthetic('trips', 'UPDATE', row)
   })
@@ -4362,6 +4591,7 @@ async function resyncTripsAfterReconnect(): Promise<void> {
   await step('collab', async () => {
     for (const table of ['suggestions', 'decisions', 'activity'] as const) {
       const { data, error } = await supabase.from(table).select('*').in('trip_id', ids)
+      if (!live()) return
       if (error) throw error
       const rows = (data ?? []) as Record<string, unknown>[]
       sweepPhantoms(table, ids, new Set(rows.map(r => String(r.id))))
@@ -4373,6 +4603,7 @@ async function resyncTripsAfterReconnect(): Promise<void> {
     const me = cache.sessionUserId
     if (!me) return
     const { data, error } = await supabase.from('notifications').select('*').eq('user_id', me)
+    if (!live()) return
     if (error) throw error
     const rows = (data ?? []) as Record<string, unknown>[]
     const fetchedIds = new Set(rows.map(r => String(r.id)))
@@ -4387,6 +4618,7 @@ async function resyncTripsAfterReconnect(): Promise<void> {
   // the same branch a live DELETE uses.
   await step('trip_members', async () => {
     const { data, error } = await supabase.from('trip_members').select('*').in('trip_id', ids)
+    if (!live()) return
     if (error) throw error
     const rows = (data ?? []) as Record<string, unknown>[]
     const fetchedKeys = new Set(rows.map(r => `${String(r.trip_id)}:${String(r.user_id)}`))
@@ -4399,6 +4631,7 @@ async function resyncTripsAfterReconnect(): Promise<void> {
   })
   await step('profiles', async () => {
     const { data, error } = await supabase.from('profiles').select('*')
+    if (!live()) return
     if (error) throw error
     // Upsert-only, no phantom sweep: there is no scoping that makes a missing
     // profile row evidence of deletion, and the cost of a stale name for a
@@ -4407,6 +4640,7 @@ async function resyncTripsAfterReconnect(): Promise<void> {
   })
   await step('published_itineraries', async () => {
     const { data, error } = await supabase.from('published_itineraries').select('*')
+    if (!live()) return
     if (error) throw error
     const rows = (data ?? []) as Record<string, unknown>[]
     const fetchedIds = new Set(rows.map(r => String(r.id)))
@@ -4420,6 +4654,7 @@ async function resyncTripsAfterReconnect(): Promise<void> {
   })
   await step('admin_audit', async () => {
     const { data } = await fetchAdminAuditRows()
+    if (!live()) return
     // Append-only log, INSERT-only case, always PREPENDED — feed oldest-first
     // so the newest ends up first, exactly as the live events would have.
     const rows = ((data ?? []) as Record<string, unknown>[]).slice().reverse()
@@ -4429,9 +4664,11 @@ async function resyncTripsAfterReconnect(): Promise<void> {
 
 /** Tear down the channel. Call on sign-out. */
 export function disconnectRealtime(): void {
-  if (realtimeChannel) {
-    void supabase.removeChannel(realtimeChannel)
-    realtimeChannel = null
+  const channel = realtimeChannel
+  realtimeChannel = null
+  realtimeIdentity = null
+  if (channel) {
+    try { void Promise.resolve(supabase.removeChannel(channel)).catch(() => {}) } catch { /* The identity guard already closed it. */ }
   }
 }
 
@@ -4460,6 +4697,21 @@ function applyRealtimeEvent(table: string, payload: RealtimePostgresChangesPaylo
 
   switch (table) {
     case 'trips': {
+      // Removal outranks local echo suppression and saved overlays.
+      if (event === 'DELETE' || row?.deleted_at) {
+        if (cache.sessionUserId) invalidateTripWork(id, cache.sessionUserId)
+        cache.trips = cache.trips.filter(t => t.id !== id)
+        cache.suggestions = cache.suggestions.filter(s => s.tripId !== id)
+        cache.decisions = cache.decisions.filter(d => d.tripId !== id)
+        cache.activity = cache.activity.filter(a => a.tripId !== id)
+        cache.notifications = cache.notifications.filter(n => n.tripId !== id)
+        break
+      }
+      const held = queuedLocalTrips.get(id)
+      if (held?.ownerId === cache.sessionUserId) {
+        recordServerTripTimestamp(id, row?.updated_at)
+        break
+      }
       if (echoWindowEh('trips', id)) {
         // Our own write's echo: suppress the row swap, but record the server's
         // updated_at in the B2 ledger so the NEXT remote row for this trip is
@@ -4469,13 +4721,7 @@ function applyRealtimeEvent(table: string, payload: RealtimePostgresChangesPaylo
         if (event === 'UPDATE') recordServerTripTimestamp(id, row?.updated_at)
         break
       }
-      if (event === 'DELETE') {
-        cache.trips = cache.trips.filter(t => t.id !== id)
-        cache.suggestions = cache.suggestions.filter(s => s.tripId !== id)
-        cache.decisions = cache.decisions.filter(d => d.tripId !== id)
-        cache.activity = cache.activity.filter(a => a.tripId !== id)
-        cache.notifications = cache.notifications.filter(n => n.tripId !== id)
-      } else {
+      {
         const existing = tripById(id)
         const incoming = rowToTrip(row as TripRow, existing?.members ?? [])
         if (event === 'UPDATE') {
@@ -4498,17 +4744,25 @@ function applyRealtimeEvent(table: string, payload: RealtimePostgresChangesPaylo
     case 'trip_members': {
       const tripId: string = row?.trip_id ?? oldRow?.trip_id
       if (!tripId) return
+      const userId: string = row?.user_id ?? oldRow?.user_id
+      if (!userId) return
       const trip = tripById(tripId)
+      if (userId === cache.sessionUserId && event !== 'DELETE' && canEdit(row?.role)
+        && (!trip ? !editableTripGrants.has(tripId) : !canEdit(roleOf(trip, userId)))) {
+        // A new grant invalidates cleanup and fetch work from the previous permission.
+        tripAccessEpochs.set(tripId, (tripAccessEpochs.get(tripId) ?? 0) + 1)
+        editableTripGrants.add(tripId)
+      }
+      if (!trip && userId === cache.sessionUserId && event === 'DELETE') invalidateTripWork(tripId, userId)
       if (!trip) {
         // A membership row for a trip we don't have yet (we were just added to
         // / joined a trip elsewhere): fetch the whole trip + members.
         if (event !== 'DELETE') void fetchTripIntoCache(tripId)
         return
       }
-      const userId: string = row?.user_id ?? oldRow?.user_id
-      if (!userId) return
       // If we were removed, the trip disappears from our view.
       if (event === 'DELETE' && userId === cache.sessionUserId) {
+        invalidateTripWork(tripId, userId)
         cache.trips = cache.trips.filter(t => t.id !== tripId)
         // #567 — mirror the trips DELETE case: the sibling slices cascade too,
         // or the evicted trip's rows sit orphaned in the cache and resurface
@@ -4518,6 +4772,7 @@ function applyRealtimeEvent(table: string, payload: RealtimePostgresChangesPaylo
         cache.activity = cache.activity.filter(a => a.tripId !== tripId)
         cache.notifications = cache.notifications.filter(n => n.tripId !== tripId)
       } else {
+        if (userId === cache.sessionUserId && !canEdit(row?.role)) invalidateTripWork(tripId, userId)
         mutateTrip(tripId, draft => {
           draft.members = applyMemberChange(draft.members ?? [], {
             event,
@@ -4576,25 +4831,28 @@ function applyRealtimeEvent(table: string, payload: RealtimePostgresChangesPaylo
 
 /** Fetch a trip row + its members into the cache (used on join/share events). */
 async function fetchTripIntoCache(tripId: string): Promise<void> {
-  // Two realtime events for the same trip (a burst of INSERT+UPDATE, or a
-  // reconnect replay) used to fire two identical round-trips. Coalesce onto the
-  // in-flight promise so concurrent callers share one fetch. #36-15.
-  const inflight = tripFetches.get(tripId)
+  const scope = identityScope()
+  if (!scope || !isCurrentIdentity(scope)) return
+  const accessEpoch = tripAccessEpochs.get(tripId) ?? 0
+  const key = `${scope.epoch}:${scope.userId}:${tripId}:${accessEpoch}`
+  const inflight = tripFetches.get(key)
   if (inflight) return inflight
   const fetch = (async () => {
     const [tripRes, memRes] = await Promise.all([
       supabase.from('trips').select('*').eq('id', tripId).maybeSingle(),
       supabase.from('trip_members').select('*').eq('trip_id', tripId),
     ])
-    if (tripRes.error || !tripRes.data) return
+    if (!isCurrentIdentity(scope) || (tripAccessEpochs.get(tripId) ?? 0) !== accessEpoch
+      || tripRes.error || memRes.error || !tripRes.data || tripRes.data.deleted_at) return
     const members = ((memRes.data ?? []) as MemberRow[]).map(m => ({ userId: m.user_id, role: m.role as TripMember['role'], joinedAt: m.joined_at }))
+    if (!members.some(m => m.userId === scope.userId) && !isAdminCached()) return
     const trip = rowToTrip(tripRes.data as TripRow, members)
     recordServerTripTimestamp(trip.id, trip.updatedAt)
     if (!cache.trips.some(t => t.id === trip.id)) cache.trips = [...cache.trips, trip]
     commit()
   })()
-  tripFetches.set(tripId, fetch)
-  try { await fetch } finally { tripFetches.delete(tripId) }
+  tripFetches.set(key, fetch)
+  try { await fetch } finally { if (tripFetches.get(key) === fetch) tripFetches.delete(key) }
 }
 
 /** Trips with a select currently in flight, so a burst of events for one trip
