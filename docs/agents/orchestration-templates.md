@@ -53,6 +53,26 @@ Rules:
 2. One coordinator owns the batch. Other lanes report to files or PR comments.
 3. Run one `npm run verify` per batch. Queue the Gates once per SHA.
 
+## Close threads when the task is complete
+
+The orchestrator settles a worker thread when all of these are true:
+
+1. The worker's report is in `INBOX.md` with verdict PASS, or the lane is closed as superseded.
+2. The orchestrator checked the claim against git or `gh`.
+3. The thread is not running and has no pending request.
+4. The deliverable is read, merged or recorded in `STATE.md`.
+
+The orchestrator must not settle a running thread, a SEND-BACK or BLOCKED thread,
+the covering coordinator, or a thread missing from `STATE.md`. Settle is reversible.
+Record each settled thread in `STATE.md`. Record each worker thread ID there when you
+start the worker.
+
+## Start an orchestrator with one word
+
+Type `/orch` in a new Claude thread. The skill reads `.orchestration/TAKEOVER.md`
+and follows it. For Codex, send: "Read `C:\Users\hasna\Yatraflow-T3\.orchestration\TAKEOVER.md`
+and follow it."
+
 ## Failover: when the orchestrator is unavailable
 
 A usage limit can stop the orchestrator while workers still run. A second

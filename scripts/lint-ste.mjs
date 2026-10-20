@@ -258,6 +258,7 @@ function indentWidth(line) {
 // Directory prefixes the diff runs skip. Each entry names its reason beside it.
 const EXCLUDED_PATH_PREFIXES = [
   'docs/consistency/', // planning notes written before the STE rules applied
+  'docs/agents/AGENTS-FULL.md', // verbatim copy of AGENTS.md written before the STE rules applied
 ]
 
 function isExcludedPath(file) {
