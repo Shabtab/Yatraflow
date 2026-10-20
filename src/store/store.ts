@@ -2893,6 +2893,8 @@ async function discardTripEdits(scope: IdentityScope, tripId: string): Promise<v
   for (const write of await pendingWrites()) {
     if (write.tripId === tripId && write.ownerId === scope.userId) await dropQueuedWrite(write)
   }
+  // The offline snapshot still lists the trip until the next hydrate, so clear it now.
+  void clearSnapshot(scope.userId)
 }
 
 /** Revoke pending callbacks before clearing the local data they could otherwise restore. */
