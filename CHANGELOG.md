@@ -15,6 +15,12 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+## [0.78.0] - 2026-10-21
+
+**This release brings a public itinerary page that shows what is inside before you pay, an Android update check, trip-ownership and delete guards, and safer offline edits.**
+
+Two database migrations go with this release: `20261017_trip_write_version.sql` and `20261020_trip_owner_and_delete_guards.sql`. Run the additive migration first, deploy this app build, then run the tightening migration. See the release notes for the order.
+
 ### Added
 
 - **A public itinerary now shows what is inside before you pay.** The first screen holds the cover, the title, the facts and a buy box with the price. The cover is the creator's photo. A trip with no photo gets a designed ticket on a pattern of its own stop kinds. The "What is inside" section says the trip in one sentence and counts the places by kind. A plan with no days shows no section. It shows one card per day, with a Free, Locked or Yours tag, a pace word and the road time. The road time is the time on the ground. A flight is not a drive, so the air sector is not road time. A day that only flies still shows its real ground transfer. A readable day that flies says so, even before the traveller enters the flight. A free day lists its places. A locked day keeps its own title and its road time, and it shows counts only. Its stop names and locations stay hidden. A locked day with zero places shows no pace word, because a hidden flight is not an empty day. A trip longer than 7 days folds into weeks. Each week is a drawer, and week 1 is open. On a phone the buy box comes before the cover, so the Unlock button is on the first screen. A price bar appears once the first screen scrolls away. It sits under the top nav, or at the bottom of a phone. Its button does what the main button does. A free plan shows no saffron and offers "Fork to my trips" as the main button. A plan with no price, or a page where you cannot buy, does not promise that names open on purchase. A long day title, a long place name and a long ticket route wrap inside the card and the ticket. None of them is cut off at the edge.
@@ -29,15 +35,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - **A trip editor can no longer take ownership of a trip.** The database accepted any editor's write to the trip's owner column. The editor could then promote their own crew row and remove the real owner. The owner column now changes only when the current owner, an admin, or a maintenance session makes the change. Every other caller is refused. A normal edit, a move to the trash, and a restore keep working. The app no longer sends the owner column on an ordinary edit. A crew member whose owner row is missing from their local copy can still save. **Ship this app build with or before the database change.** (#799)
 - **A trip that backs a publication can no longer be deleted directly.** The editor delete path removed the trip, and the publication and the buyers' purchase records went with it. A direct delete now refuses any trip that carries a publication, an order, or an entitlement. The trash and its purge already refused the same trip. The owner can still delete a trip with no publication. (#807)
 - **Sign-up date of birth now uses direct Year, Month and Day selects.** A birth year is one choice away. The three selects emit one complete `YYYY-MM-DD` date, and a partial pick emits nothing. The day list follows the chosen month, so a 31st or a 29 February cannot roll over. A change of year to the current year clamps a later month and day to today. No future date can be submitted. The 18+ check is unchanged.
-- **Backups and snapshot links retain flights and transport preferences.** Imports check flight clocks, fares, and itinerary days. Flight-only plans also import.
-- **Flight days stay protected when dates change.** Move the flight before removing its day.
-- **Create trip estimates charge flights per traveller.** Ground transfers use road rates and stay separate from air fares.
-- **Printed cards include flights and airport transfers.** Calendar exports include timed flight events and overnight arrivals.
-- **Settings previews use the full draft and current road measurements.** Route changes show estimates until fresh measurements arrive.
-- **Stay days show the arrival location after a flight.** Timeline, printed cards, and stop insertion use the resolved journey origin. Empty days retain the destination name. Airport-only arrivals show the airport name.
-- **Board shows flight journeys with separate flight and ground travel times.** Flight cards appear even without a saved flight entry. Estimated flight times state their assumptions. Route points remain separate from flights.
-- **Travel stop labels follow the transport mode.** Board, Timeline, and public highlights show Flight, Train, or Bus where applicable. Board uses the matching icon. Airport and ground transfer labels remain distinct.
-- **Local stops in flight trips use ground rates.** The stop editor calculates road travel time and fares with ground assumptions.
+
 ### Changed
 
 - **The trip Map tab routes one-finger drag and pinch to the map, not the page.** Small embedded previews let the page scroll around them.
@@ -51,6 +49,20 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - **The Create trip phone dock no longer runs two phrases together.** The days line and the readiness line shared one inline row. "Pick your dates" and "3 things left" then printed as one phrase. The readiness line is a block now, so it sits under the days line. (#767)
 - **The trip tab rail shows that it scrolls sideways.** The rail hides its scrollbar. A tab past the right edge ("Group input") was cut with no sign that more exist. The rail now fades the edge that still holds hidden tabs. The fade clears once the end is reached. (#684)
 - **Signed-in Android content now clears the status bar.** The native shell draws no top navigation bar for a signed-in user. The shell itself carries the top inset once. Home and Profile now start below the status bar, and the web and signed-out screens keep their current spacing. (#809)
+
+## [0.77.1] - 2026-10-18
+
+### Fixed
+
+- **Backups and snapshot links retain flights and transport preferences.** Imports check flight clocks, fares, and itinerary days. Flight-only plans also import.
+- **Flight days stay protected when dates change.** Move the flight before removing its day.
+- **Create trip estimates charge flights per traveller.** Ground transfers use road rates and stay separate from air fares.
+- **Printed cards include flights and airport transfers.** Calendar exports include timed flight events and overnight arrivals.
+- **Settings previews use the full draft and current road measurements.** Route changes show estimates until fresh measurements arrive.
+- **Stay days show the arrival location after a flight.** Timeline, printed cards, and stop insertion use the resolved journey origin. Empty days retain the destination name. Airport-only arrivals show the airport name.
+- **Board shows flight journeys with separate flight and ground travel times.** Flight cards appear even without a saved flight entry. Estimated flight times state their assumptions. Route points remain separate from flights.
+- **Travel stop labels follow the transport mode.** Board, Timeline, and public highlights show Flight, Train, or Bus where applicable. Board uses the matching icon. Airport and ground transfer labels remain distinct.
+- **Local stops in flight trips use ground rates.** The stop editor calculates road travel time and fares with ground assumptions.
 
 ## [0.77.0] - 2026-10-16
 

@@ -15,8 +15,8 @@ user confirmation before any push. Feature work reaches `test` **via pull
 request** (never a direct push); `main` merges stay explicitly user-gated
 (AGENTS rule 1).
 
-**Snapshot (2026-10-16, verified against the repo):** v0.77.0 is cut on `release/v0.77.0` for promotion to `main`. v0.76.0 reached `main` through PR #724 on 2026-10-12. `test` carries 160 commits that `main` does not. They hold the flight travel day, the one-designer consistency pass and the honesty fixes. One migration is new and unreleased: `supabase/migrations/20261012c_trip_flights.sql`. You must read branch progress with `git rev-list --left-right --count origin/main...origin/test`. CHANGELOG.md holds the full release record.
-Current version: **0.77.0**. Under it: **0.76.0**, promoted to `main` on 2026-10-12. Under that: **0.75.0**, promoted to `main` on 2026-10-12. Older releases appear in CHANGELOG.md.
+**Snapshot (2026-10-21, verified against the repo):** v0.78.0 is the release candidate that joins `test` and `main`. It keeps both histories. It carries the public itinerary page, the Android update check, the trip owner and delete guards, and the offline conflict recovery. The v0.77.1 flight fixes are already in `test` under other commit ids. Two migrations are new and unreleased: `20261017_trip_write_version.sql` and `20261020_trip_owner_and_delete_guards.sql`. Run the first one, deploy the app, then run the second. You must read branch progress with `git rev-list --left-right --count origin/main...origin/test`. CHANGELOG.md holds the full release record.
+Current version: **0.78.0** — the candidate for promotion to `main`. Under it: **0.77.1**, a hotfix cut from `main` on 2026-10-18. Under that: **0.77.0**, promoted to `main` through PR #772. Older releases appear in CHANGELOG.md.
 
 **Live open work is tracked in two places, and this file must agree with both:**
 
