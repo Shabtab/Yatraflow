@@ -289,25 +289,23 @@ describe('joinViaInvite (write order)', () => {
     expect(writes.filter(w => w.table === 'notifications'), 'a member re-opening a link notifies nobody').toHaveLength(0)
   })
 
-  it('B2 — finishJoin returns abandoned unchanged, never joined-unloaded', () => {
-    // The store's loader reports 'abandoned' when the account or access epoch
-    // changed mid-read. finishJoin must carry that through: turning it into
-    // 'joined-unloaded' would claim a membership this client cannot verify.
-    //
-    // This is pinned at the source level because the loader's abandonment needs
-    // a session change between two awaited reads, which this harness cannot
-    // schedule deterministically. The machine-level consequence is covered in
-    // invite-preview-not-cached.test.ts ('abandoned stays abandoned').
+  it('B2 — finishJoin carries an abandoned load through unchanged', () => {
+    // The loader reports 'abandoned' when the account or access epoch changed
+    // mid-read. finishJoin must carry that through: reporting 'joined-unloaded'
+    // would claim a membership this client cannot verify, and reporting 'failed'
+    // would claim there is none.
     const body = STORE.slice(STORE.indexOf('async function finishJoin('))
-    const head = body.slice(0, body.indexOf('\n}\n') + 3)
-    expect(head).toMatch(/if \(loaded === 'abandoned'\) return 'abandoned'/)
-    // The order matters: the abandoned check must come BEFORE the generic
-    // failure branch that returns 'joined-unloaded'.
-    const abandonedAt = head.indexOf("return 'abandoned'")
-    const unloadedAt = head.indexOf("return 'joined-unloaded'")
+    const end = body.indexOf('\n}\n')
+    const finish = end > 0 ? body.slice(0, end + 3) : body
+    expect(finish).toContain("if (loaded === 'abandoned')")
+    const abandonedAt = finish.indexOf("if (loaded === 'abandoned')")
+    const unloadedAt = finish.indexOf("return 'joined-unloaded'")
+    const failedAt = finish.indexOf("return 'failed'")
     expect(abandonedAt).toBeGreaterThan(-1)
-    expect(unloadedAt).toBeGreaterThan(-1)
-    expect(abandonedAt).toBeLessThan(unloadedAt)
+    expect(abandonedAt, 'abandoned is handled before any success or failure claim').toBeLessThan(unloadedAt)
+    expect(abandonedAt).toBeLessThan(failedAt)
+    // The abandoned branch returns 'abandoned', and it keeps the debt owed.
+    expect(finish).toContain("return 'abandoned'")
   })
 })
 

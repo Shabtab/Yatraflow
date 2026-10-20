@@ -401,16 +401,23 @@ describe('loadFullTripIntoCache refuses what it cannot trust', () => {
     // restored stale editor rights. The new check fires for any role change.
     const at = STORE.indexOf("case 'trip_members': {")
     expect(at, 'the realtime membership branch must exist').toBeGreaterThan(-1)
-    const block = STORE.slice(at, at + 2600)
+    const block = STORE.slice(at, at + 3000)
     expect(block, 'the B4 note marks the fix').toContain('B4 —')
-    // The new check sits inside the `!trip` branch, before it returns.
     const noTripAt = block.indexOf('if (!trip) {')
     expect(noTripAt).toBeGreaterThan(-1)
-    const returnAt = block.indexOf('return', noTripAt)
     const downgradeAt = block.indexOf('!ownJoinEcho', noTripAt)
     expect(downgradeAt, 'the role-change check is inside the !trip branch').toBeGreaterThan(noTripAt)
-    expect(downgradeAt, 'and before it returns').toBeLessThan(returnAt)
     expect(block).toMatch(/String\(row\.role\) !== String\(oldRow\.role\)/)
+  })
+
+  it('B4 — the join-echo exemption covers only the grant we expect', () => {
+    // An INSERT is our own row arriving, so it is exempt. An UPDATE that removes
+    // the edit right is a downgrade even inside the join window, and must
+    // invalidate.
+    const at = STORE.indexOf("case 'trip_members': {")
+    const block = STORE.slice(at, at + 3000)
+    expect(block).toContain("event === 'INSERT'")
+    expect(block).toContain('!canEdit(oldRow?.role)')
   })
 
   it('refuses an older revision', () => {
@@ -434,23 +441,60 @@ describe('loadFullTripIntoCache refuses what it cannot trust', () => {
 
   it('carries abandoned through finishJoin instead of claiming membership', () => {
     const finish = fnBody(STORE, 'async function finishJoin(')
-    expect(finish).toMatch(/if \(loaded === 'abandoned'\) return 'abandoned'/)
-    expect(finish.indexOf("return 'abandoned'")).toBeLessThan(finish.indexOf("return 'joined-unloaded'"))
+    // The block, not a single line: the abandoned branch keeps the debt and
+    // returns before any success claim.
+    expect(finish).toContain("if (loaded === 'abandoned')")
+    const abandonedAt = finish.indexOf("if (loaded === 'abandoned')")
+    const unloadedAt = finish.indexOf("return 'joined-unloaded'")
+    expect(abandonedAt).toBeGreaterThan(-1)
+    expect(abandonedAt, 'abandoned is handled before any success claim').toBeLessThan(unloadedAt)
+  })
+
+  it('S1 — a not-member outcome reaches the UI as a failure and the debt is dropped', () => {
+    const finish = fnBody(STORE, 'async function finishJoin(')
+    expect(finish).toContain("if (loaded === 'not-member')")
+    expect(finish).toContain("dropJoinNotice(key)")
+    expect(finish).toContain("return 'failed'")
   })
 })
 
 describe('B-4 — the owner notification is owed by an actual join and settled once', () => {
   it('records the debt where the membership is written', () => {
-    // B1 moved the join body into joinAfterScope, so the pin names the function
-    // that now writes the membership row.
     const join = fnBody(STORE, 'async function joinAfterScope(')
-    expect(join).toContain('markJoinOwed(tripId, userId)')
-    // The debt is recorded BEFORE the load, so a failed load still owes it.
-    const owedAt = join.indexOf('markJoinOwed(tripId, userId)')
-    const loadAt = join.lastIndexOf('return finishJoin')
-    expect(owedAt).toBeGreaterThan(-1)
-    expect(loadAt).toBeGreaterThan(-1)
-    expect(owedAt, 'the debt is recorded before the load runs').toBeLessThan(loadAt)
+    // The certainty of the membership read is what decides the notice, and it is
+    // passed into finishJoin at the end, after the RPC that may have inserted.
+    expect(join).toContain('finishJoin(tripId, userId, previewName, membership.certain)')
+    const certainAt = join.lastIndexOf('membership.certain')
+    const rpcAt = join.indexOf("supabase.rpc('join_trip'")
+    expect(rpcAt).toBeGreaterThan(-1)
+    expect(certainAt, 'the notice decision follows the join write').toBeGreaterThan(rpcAt)
+  })
+
+  it('an inconclusive membership read owes no notice', () => {
+    // join_trip is `on conflict do nothing`, so it cannot say whether it inserted.
+    // A failed pre-query therefore must not announce: the loaded row proves its
+    // role, not that this RPC created the membership.
+    const join = fnBody(STORE, 'async function joinAfterScope(')
+    expect(join).toContain('membership.certain')
+    expect(join).toContain('inconclusive')
+  })
+
+  it('finishJoin settles the debt only for a fresh join', () => {
+    const finish = fnBody(STORE, 'async function finishJoin(')
+    expect(finish).toContain('if (freshJoin) markJoinOwed(tripId, userId)')
+    expect(finish).toContain('settleJoinNotice(key, tripId, userId, previewName)')
+  })
+
+  it('a reload and an existing member record no debt', () => {
+    expect(STORE).toContain('return finishJoin(tripId, userId, previewName, false)')
+    expect(STORE).toContain('return finishJoin(tripId, scope.userId, undefined, false)')
+  })
+
+  it('the notice is keyed by membership generation, not by trip+user', () => {
+    const finish = fnBody(STORE, 'async function finishJoin(')
+    expect(finish).toContain('`${tripId}:${userId}:${joinGeneration}`')
+    const store = STORE
+    expect(store).toContain('joinGeneration += 1')
   })
 
   it('joinViaInvite marks the expected grant BEFORE its first await', () => {
@@ -471,17 +515,35 @@ describe('B-4 — the owner notification is owed by an actual join and settled o
     expect(reload).not.toContain('markJoinOwed')
   })
 
-  it('finishJoin settles the debt and sends at most once', () => {
+  it('finishJoin settles the debt on every exit', () => {
     const finish = fnBody(STORE, 'async function finishJoin(')
-    expect(finish).toContain('owedJoins.has(key)')
-    expect(finish).toContain('notifiedJoins.has(key)')
-    expect(finish).toContain('notifiedJoins.add(key)')
+    // The debt is settled on success and on the stale path, dropped when the
+    // caller is not a member, and left owed only when the account changed.
+    expect(finish).toContain('settleJoinNotice(key, tripId, userId, previewName)')
+    expect(finish).toContain('dropJoinNotice(key)')
+    const staleAt = finish.indexOf("if (loaded === 'stale')")
+    const successAt = finish.indexOf("return 'joined'")
+    expect(staleAt).toBeGreaterThan(-1)
+    expect(successAt).toBeGreaterThan(-1)
+    expect(finish).toContain('if (freshJoin) markJoinOwed(tripId, userId)')
   })
 
-  it('the dedupe set is bounded', () => {
-    const finish = fnBody(STORE, 'async function finishJoin(')
-    expect(finish).toMatch(/notifiedJoins\.size > 500/)
-    expect(finish).toContain('notifiedJoins.clear()')
+  it('the notice helper sends at most once and leaves no debt', () => {
+    const helper = fnBody(STORE, 'function settleJoinNotice(')
+    expect(helper).toContain('owedJoins.has(key)')
+    expect(helper).toContain('notifiedJoins.has(key)')
+    expect(helper).toContain('notifiedJoins.add(key)')
+    expect(helper).toContain('owedJoins.delete(key)')
+    expect(helper).toContain('notifyOwnerOf(')
+  })
+
+  it('the dedupe set is bounded by eviction, not by a wholesale clear', () => {
+    // A clear() at a threshold wipes the key of the join that had just been paid
+    // for, so the next retry announces it a second time.
+    expect(STORE).toMatch(/notifiedJoins\.size > 500/)
+    expect(STORE).not.toContain('notifiedJoins.clear()')
+    const helper = fnBody(STORE, 'function settleJoinNotice(')
+    expect(helper).toContain('notifiedJoins.delete(oldest)')
   })
 })
 

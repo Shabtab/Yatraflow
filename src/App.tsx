@@ -1045,6 +1045,19 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
     setJoinState(initialJoinState)
   }, [identityGen])
 
+  // S4 — the store advances identityEpoch only on an AUTH identity change, so a
+  // profile gap (session row present, profile row missing) left the generation
+  // untouched and an old joined claim survived. The attempt is keyed to the
+  // signed-in user, so losing that user must reset it: either the profile arrives
+  // later (the try restarts) or the invite needs a login first.
+  useEffect(() => {
+    const live = joinStateRef.current
+    if (live.phase === 'idle' || live.userId === null) return
+    if (me && me.id === live.userId) return
+    joinStateRef.current = initialJoinState
+    setJoinState(initialJoinState)
+  }, [me])
+
   // A trip-id link never joins. It opens the trip for a member and explains
   // itself to anyone else. Guarded by identity so a late answer cannot navigate
   // the new account (N1).
