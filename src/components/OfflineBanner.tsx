@@ -92,9 +92,22 @@ export function OfflineBanner() {
       if (identityRef.current !== identity) return
       await refreshRef.current?.()
       if (identityRef.current !== identity) return
-      setNotice(removed
-        ? { identity, text: 'The saved copy was removed from this device.', failed: false }
-        : { identity, text: 'The saved copy was not removed. Try again.', failed: true })
+      if (removed) {
+        setNotice({ identity, text: 'The saved copy was removed from this device.', failed: false })
+        return
+      }
+      // The removal was refused. A copy with no reason is the local overlay
+      // on screen, and the removal needs the shared plan to replace it. The
+      // server could not be read, so the retry only helps once the device is
+      // back online.
+      const overlayOnScreen = !write.reason
+      setNotice({
+        identity,
+        text: overlayOnScreen && !online
+          ? 'The saved copy was not removed. The shared plan could not be read. Try again when you are back online.'
+          : 'The saved copy was not removed. Try again.',
+        failed: true,
+      })
     } catch {
       if (identityRef.current !== identity) return
       setNotice({ identity, text: 'Could not remove this copy. Try again.', failed: true })

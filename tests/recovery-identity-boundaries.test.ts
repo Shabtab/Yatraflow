@@ -507,7 +507,7 @@ describe('recovery identity regressions', () => {
     expect(await pending()).toEqual([]);
   });
 
-  it('a removal works without a connection', async () => {
+  it('a reasoned copy is removed without a connection', async () => {
     const store = await fresh(true);
     await capture(store, 'OFFLINE COPY');
     state.members = state.members.map(m => m.user_id === 'A' ? { ...m, role: 'viewer' } : m);
@@ -515,13 +515,41 @@ describe('recovery identity regressions', () => {
     await store.replayQueuedWrites();
     await flush();
     expect((await pending())[0]).toMatchObject({ reason: 'access-revoked' });
-    // The device is offline. The removal is a local action, so it still runs.
+    // The device is offline and the server cannot be read. The reasoned copy
+    // is the account's own work and it is never an overlay, so the removal
+    // still completes.
+    state.offlineReads = true;
     vi.stubGlobal('navigator', { onLine: false });
     expect(await store.resolveQueuedTripWrite('shared', 'discard')).toBe(true);
     await flush();
     expect(await pending()).toEqual([]);
     // No server write happened either way.
     expect(state.writes).toEqual([]);
+  });
+
+  it('a held overlay is refused without a connection, and removed after it', async () => {
+    const store = await fresh(true);
+    // A normal edit, so the copy is a HELD overlay with no reason.
+    await capture(store, 'HELD OVERLAY');
+    expect((await pending())[0]?.reason).toBeUndefined();
+    // The device is offline and the server cannot be read. The overlay is on
+    // screen, so the removal is refused and the overlay stays with its copy.
+    state.offlineReads = true;
+    vi.stubGlobal('navigator', { onLine: false });
+    expect(await store.resolveQueuedTripWrite('shared', 'discard')).toBe(false);
+    await flush();
+    // The queue and the visible plan still agree.
+    expect(await pending()).toHaveLength(1);
+    expect(store.getSnapshot().trips[0]?.name).toBe('HELD OVERLAY');
+    // With the server readable again, the removal replaces the overlay with
+    // the shared plan.
+    state.offlineReads = false;
+    Object.assign(state.rows.get('shared')!, { name: 'Shared plan' });
+    vi.stubGlobal('navigator', { onLine: true });
+    expect(await store.resolveQueuedTripWrite('shared', 'discard')).toBe(true);
+    await flush();
+    expect(await pending()).toEqual([]);
+    expect(store.getSnapshot().trips[0]?.name).toBe('Shared plan');
   });
 
   it('a trip the server no longer has keeps the copy and names the reason', async () => {

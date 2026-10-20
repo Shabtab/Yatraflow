@@ -99,12 +99,21 @@ succeeded with a row refreshes the cached plan. A read that succeeded without
 a row means the trip is gone, so the plan leaves the list. A read that
 **failed** means the shared plan is unknown.
 
-A failed read now **refuses the discard** when the cache is showing the local
-overlay. The refusal happens before the copy is dropped, so the queue and the
-visible plan still agree. Without the refusal the copy would be gone and the
-overlay would stay on screen, and the user could edit the discarded content
-and queue it again. A later try reads the shared plan and replaces the
-overlay, so the removal completes once the server answers.
+A failed read **refuses the discard** only when the copy being discarded is a
+HELD overlay and the cache is showing that overlay. The refusal happens before
+the copy is dropped, so the queue and the visible plan still agree. Without
+the refusal the copy would be gone and the overlay would stay on screen, and
+the user could edit the discarded content and queue it again. A later try
+reads the shared plan and replaces the overlay, so the removal completes once
+the server answers.
+
+A REASONED copy is never an overlay, because the overlay path does not show
+one. The cache holds the shared plan in that case, so a refusal would leave
+the account with a copy it can neither sync nor remove, and the message would
+name no cause. A reasoned copy is the account's own work, so it is removed
+either way, with or without a connection. The notice names the cause when a
+removal is refused: the shared plan could not be read, and a retry only helps
+once the device is back online.
 
 ### Scope held
 

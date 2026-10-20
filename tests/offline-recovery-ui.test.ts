@@ -204,6 +204,17 @@ describe('saved-edit recovery presentation', () => {
       expect(button).toContain('disabled')
     }
   })
+
+  it('names the cause when a removal is refused offline', () => {
+    // The refusal only happens for a HELD overlay, and only when the server
+    // could not be read. The notice must say so, because a retry only helps
+    // once the device is back online.
+    const source = readFileSync(new URL('../src/components/OfflineBanner.tsx', import.meta.url), 'utf8')
+    expect(source).toContain('The shared plan could not be read. Try again when you are back online.')
+    // The reason decides which notice is shown, so a reasoned copy never gets
+    // the "shared plan" wording.
+    expect(source).toContain('const overlayOnScreen = !write.reason')
+  })
 })
 
 describe('recovery access and async guard wiring', () => {
@@ -243,7 +254,11 @@ describe('recovery access and async guard wiring', () => {
     // refuses every offline call, or the button would be a no-op offline.
     expect(source).toContain('onClick={() => { void removeCopy(write) }}')
     const removal = source.slice(source.indexOf('function removeCopy('), source.indexOf('async function recover('))
-    expect(removal).not.toContain('!online')
+    // The guard must not send the removal away when the device is offline.
+    // The guard is the first line, and it checks the account, not the network.
+    const guard = removal.slice(0, removal.indexOf('const runId'))
+    expect(guard).not.toContain('!online')
+    expect(guard).toContain('write.ownerId !== userId')
     expect(removal).toContain("resolveQueuedTripWrite(write.tripId, 'discard')")
   })
 })

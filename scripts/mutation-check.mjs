@@ -102,14 +102,17 @@ const MUTATIONS = [
     // overlay is on screen, or the discarded content stays editable.
     name: 'REVISE2-discard-refuses-on-a-failed-read',
     file: STORE,
-    from: `      if (readFailed) {
-        const showing = cache.trips.some(t => t.id === tripId)
-        if (showing) return false
-      }`,
-    to: `      if (readFailed) {
-        const showing = false
-        if (showing) return false
-      }`,
+    from: `      if (readFailed && isHeldCopy(current) && cache.trips.some(t => t.id === tripId)) return false`,
+    to: `      if (readFailed && false && isHeldCopy(current) && cache.trips.some(t => t.id === tripId)) return false`,
+  },
+  {
+    // A REASONED copy is never an overlay, so the refusal must not apply to
+    // it. Refusing it would leave the account with a copy it can neither
+    // sync nor remove.
+    name: 'REVISE3-reasoned-copy-is-not-refused',
+    file: STORE,
+    from: `      if (readFailed && isHeldCopy(current) && cache.trips.some(t => t.id === tripId)) return false`,
+    to: `      if (readFailed && cache.trips.some(t => t.id === tripId)) return false`,
   },
   {
     // A reasoned copy is never held as the local copy.

@@ -3288,16 +3288,17 @@ export async function resolveQueuedTripWrite(tripId: ID, choice: 'retry' | 'repl
         readFailed = true
       }
       if (!sameScopeGeneration(scope, tripId, accessEpoch)) return false
-      // The shared plan could not be read. If the cache is showing the local
-      // overlay, the removal is REFUSED before the copy is dropped: the copy
-      // stays, and the overlay stays with it. A drop on its own would leave
-      // the discarded content on screen, and the user could edit it and
-      // queue it again. A later try reads the shared plan and replaces the
-      // overlay.
-      if (readFailed) {
-        const showing = cache.trips.some(t => t.id === tripId)
-        if (showing) return false
-      }
+      // The shared plan could not be read. The removal is REFUSED only when
+      // the copy being discarded is a HELD overlay and the cache is showing
+      // that overlay. A drop on its own would leave the discarded content on
+      // screen, and the user could edit it and queue it again.
+      //
+      // A REASONED copy is not an overlay: the overlay path never shows one,
+      // so the cache holds the shared plan. Refusing it would leave the
+      // account with a copy it can neither sync nor remove, and the message
+      // would name no cause. A reasoned copy is the account's own work, so it
+      // is removed either way.
+      if (readFailed && isHeldCopy(current) && cache.trips.some(t => t.id === tripId)) return false
       const durable = await dropQueuedWrite(current)
       // A scope change means the removal did not complete under this scope.
       // It reports false, so the caller does not claim a clean removal.
