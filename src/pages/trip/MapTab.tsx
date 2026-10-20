@@ -1722,6 +1722,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
             />
             <TripMap
               trip={trip}
+              dedicated
               nearbyPois={mapPois}
               onAddNearby={editable ? (hit) => openAddModal(hit) : undefined}
               activeHitId={activeHitId}
