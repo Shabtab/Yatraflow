@@ -232,7 +232,7 @@ export default async function handler(req, res) {
         // missing-row fallback alone no longer reaches them).
         `${url.replace(/\/+$/, '')}/rest/v1/published_itineraries?id=eq.${encodeURIComponent(id)}` +
         '&unpublished_at=is.null' +
-        '&select=id,title,tagline,route_summary,cover_image_url,duration_days,estimated_budget_per_person_inr,premium_price_inr,free_day_indexes&limit=1',
+        '&select=id,title,tagline,route_summary,cover_image_url,duration_days,estimated_budget_per_person_inr,travel_tips,warnings_and_assumptions,premium_price_inr,free_day_indexes&limit=1',
         {
           headers: { apikey: key, authorization: `Bearer ${key}` },
           signal: AbortSignal.timeout(4000),

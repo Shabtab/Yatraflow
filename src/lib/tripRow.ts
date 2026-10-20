@@ -49,6 +49,7 @@ export interface TripRow {
   /** present only after the trip-trash migration (20260910_trip_trash.sql) */
   deleted_at?: string | null;
   created_at: number; updated_at: number;
+  write_version?: number;
 }
 
 /** Sanity bounds for party fields — a row with garbage numbers would silently
@@ -211,6 +212,7 @@ export function rowToTrip(row: TripRow, members: TripMember[]): Trip {
     ref: row.ref ?? undefined,
     visibility: row.visibility, deletedAt: row.deleted_at != null ? new Date(row.deleted_at).getTime() : undefined,
     createdAt: row.created_at, updatedAt: row.updated_at, members,
+    writeVersion: Number.isSafeInteger(row.write_version) && row.write_version! >= 0 ? row.write_version : undefined,
   }
 }
 
@@ -272,11 +274,41 @@ export function tripToRow(trip: Trip, ownerId: string, cols?: OptionalColumnsPro
 }
 
 /**
+ * The row for a whole-row UPDATE: `tripToRow` with `owner_id` removed.
+ *
+ * Why this exists (#799). Ownership is immutable at the database boundary now,
+ * and an UPDATE that carries an `owner_id` is compared against the stored one.
+ * The caller cannot know the stored one: the owner member can be absent from
+ * the hydrated trip (a partial hydrate, an invite preview, a removed member, or
+ * a replayed queue entry), and `owner?.userId ?? id` then falls back to the
+ * trip id or to the signed-in editor's own id. That used to hand ownership to
+ * the editor silently. It now raises 42501, which surfaces as a misleading
+ * "will retry when you reconnect" and drops the edit on replay.
+ *
+ * So an UPDATE never sends the column at all. PostgREST leaves an absent column
+ * untouched, which is what an ordinary content save means.
+ *
+ * INSERT keeps the column: `tripToRow` is unchanged, and both insert callers
+ * still pass it. This is a separate function rather than a flag, so the insert
+ * path cannot lose `owner_id` by accident.
+ */
+export function tripUpdateRow(
+  trip: Trip,
+  ownerId: string,
+  cols?: OptionalColumnsProbe,
+): Omit<TripRow, 'created_at' | 'updated_at' | 'owner_id'> {
+  // Build the row, then delete the column rather than destructuring it into an
+  // unused binding (the lint ratchet counts an unused destructured name).
+  const row: Omit<TripRow, 'created_at' | 'updated_at' | 'owner_id'> = tripToRow(trip, ownerId, cols)
+  delete (row as Partial<TripRow>).owner_id
+  return row
+}
+
+/**
  * True when a Supabase/PostgREST error means "this column does not exist".
  * Anything else (network failure, auth/RLS, etc.) is transient and must NOT be
  * cached as a missing column — see issue #17.
- */
-export function isMissingColumnError(error: unknown): boolean {
+ */export function isMissingColumnError(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false
   const code = (error as { code?: string }).code
   if (code === 'PGRST204' || code === '42703') return true

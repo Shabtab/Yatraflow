@@ -326,6 +326,17 @@ export const NO_PROBE_SURFACE = {
     // and the statements by tests/member-join-guard.test.ts.
     reason: 'replaces the `members insert` policy, redefines `get_invite_trip` and re-issues invite codes — none adds a column or bucket to probe; the policy is pinned by supabase/tests/rls_contract.test.sql, the statements by tests/member-join-guard.test.ts',
   },
+  '20261020_trip_owner_and_delete_guards.sql': {
+    // A trigger, two policies and a revoke (#799 / #807). None of the three is
+    // visible to a table/column/bucket probe: a trigger is not a column, and the
+    // policies change who may write, not what exists. Its absence is silent by
+    // nature — a database without this file simply keeps accepting the exploit —
+    // so the source is pinned instead. tests/trip-owner-delete-guards.test.ts
+    // asserts the trigger shape, the null-safe comparison, the RESTRICTIVE kind
+    // and the drop-before-create order; supabase/tests/rls_contract.test.sql
+    // asserts the same shape against the real catalog.
+    reason: 'trigger + policies + revoke only — none adds a column or bucket, so no presence probe can see it, and its absence is silent (the exploit simply stays open); pinned by tests/trip-owner-delete-guards.test.ts and by supabase/tests/rls_contract.test.sql',
+  },
 }
 
 /** The plan: one entry per migration file, with its probes and the reason none

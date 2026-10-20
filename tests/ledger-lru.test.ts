@@ -105,6 +105,7 @@ describe('#579 — the echo-window ledger evicts the least-recently-written', ()
     await flush()
     expect(store._recentLocalWriteEntry('trips', ids[0]!)).toBeGreaterThan(0)
 
+    store.getSnapshot().sessionUserId = 'owner-test'
     // Re-record id #0 three times: each claim must PROMOTE it (delete-then-set).
     // Pre-fix, `Map.set` left it at the front of the iteration order.
     const stop = store.tripById(ids[0]!)!.days[0]!.stops[0]!

@@ -33,3 +33,17 @@ export type HealthBandClass = 'ok' | 'teal' | 'saffron' | 'danger'
 export function healthBandTone(band: HealthBand): HealthBandClass {
   return band === 'Comfortable' ? 'ok' : band === 'Manageable' ? 'teal' : band === 'Tight' ? 'saffron' : 'danger'
 }
+
+/**
+ * One plain sentence for each band. The score then states its consequence.
+ *
+ * #683: the Overview printed the raw band word beside the score. "Unrealistic"
+ * names no consequence a traveller can act on, so the panel says what it means.
+ */
+export function healthBandSentence(band: HealthBand): string {
+  return band === 'Comfortable' ? 'The plan fits these days with room to spare.'
+    : band === 'Manageable' ? 'The plan fits, but the days run full.'
+      : band === 'Tight' ? 'The days run long. Expect late arrivals.'
+        : 'The plan does not fit these days. Drop a stop or add a day.'
+}
+

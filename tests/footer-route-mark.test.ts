@@ -11,7 +11,12 @@ const footerOpen = app.indexOf('<footer className="footer">')
 const footerClose = app.indexOf('</footer>', footerOpen)
 const footer = footerOpen < 0 || footerClose < 0 ? '' : app.slice(footerOpen, footerClose + '</footer>'.length)
 const MARK_BLOCK_START = '/* ---------- Footer route mark'
-const markBlock = css.slice(css.indexOf(MARK_BLOCK_START))
+// The block ends at the next section comment. Sections append after it, so a slice to the end of the file would read their rules too.
+const markStart = css.indexOf(MARK_BLOCK_START)
+// A section comment opens with dashes or with equals signs. Stop at either style.
+const markTail = css.slice(markStart + MARK_BLOCK_START.length)
+const markNext = markTail.search(/\n\/\* (?:-{3,}|={3,})/)
+const markBlock = css.slice(markStart, markNext < 0 ? undefined : markStart + MARK_BLOCK_START.length + markNext)
 
 describe('footer route mark (P1)', () => {
   it('renders one decorative svg inside the footer, hidden from assistive tech', () => {

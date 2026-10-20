@@ -15,8 +15,8 @@ user confirmation before any push. Feature work reaches `test` **via pull
 request** (never a direct push); `main` merges stay explicitly user-gated
 (AGENTS rule 1).
 
-**Snapshot (2026-10-18, verified against the repo):** v0.77.1 is a bugfix hotfix cut from `main` this day. It cherry-picks the four flight-journey fix commits of PR #797 from `test`. It changes no migration and no schema. The rest of this line describes v0.77.0, which it follows. **v0.77.0 reached `main` through PR #772.** It carried the flight travel day, the one-designer pass and the honesty fixes. Migration `20261012c_trip_flights.sql` shipped with it. `test` carries 12 commits that `main` does not by id. Four are PR #797's fix commits, now on `main` as this hotfix under new ids. The real gap is the PR #792 batch: the map-copy plain words (#683) and the phone-polish batch. You must read branch progress with `git rev-list --left-right --count origin/main...origin/test`. CHANGELOG.md holds the full release record.
-Current version: **0.77.1** — hotfix cut from `main` on 2026-10-18: the flight-journey fixes of PR #797 alone. Under it: **0.77.0**, promoted to `main` through PR #772. Under that: **0.76.0**, promoted to `main` on 2026-10-12. Older releases appear in CHANGELOG.md.
+**Snapshot (2026-10-21, verified against the repo):** v0.78.0 is the release candidate that joins `test` and `main`. It keeps both histories. It carries the public itinerary page and the Android update check. It also carries the trip owner and delete guards and the offline conflict recovery. The v0.77.1 flight fixes are already in `test` under other commit ids. Two migrations are new and unreleased: `20261017_trip_write_version.sql` and `20261020_trip_owner_and_delete_guards.sql`. Run the first one, deploy the app, then run the second. You must read branch progress with `git rev-list --left-right --count origin/main...origin/test`. CHANGELOG.md holds the full release record.
+Current version: **0.78.0** — the candidate for promotion to `main`. Under it: **0.77.1**, a hotfix cut from `main` on 2026-10-18. Under that: **0.77.0**, promoted to `main` through PR #772. Older releases appear in CHANGELOG.md.
 
 **Live open work is tracked in two places, and this file must agree with both:**
 
@@ -42,11 +42,13 @@ number collides with a shipped release, the ledger wins.
 ## Open issues
 
 You must read current counts from GitHub with `gh issue list --state open --limit 1000`.
-This table tracks two named sets, not the full queue. These sets are the
+This table tracks three named sets, not the full queue. These sets are the
 **launch-readiness criteria** (#227–#234), filed from
 [`docs/PLAN-LAUNCH-AND-DISTRIBUTION.md`](docs/PLAN-LAUNCH-AND-DISTRIBUTION.md) and its
 `STEP-0-DECISIONS.md` companion; the **milestone tracks** (#236–#240) are the M5 → M9 paragraphs
-below, now tracked as issues so the queue and this file cannot drift apart again. Corrected
+below, now tracked as issues so the queue and this file cannot drift apart again. The third set is
+the **mobile-experience workstream** (#809). Its acceptance contract is the issue itself: Android
+layout, Creator Hub navigation, map gestures and APK update notices. Corrected
 against `gh` on 2026-09-20, because it had drifted both ways: **#226 and #229 were closed** on
 2026-09-19 and still read as live here, while **#252 and #255** had been filed and never added.
 Corrected again on 2026-09-22: **#238 (M7) is closed** — the money rail shipped in v0.61.0 — so
@@ -70,6 +72,7 @@ the live milestone tracks are #236, #237, #239 and #240. Re-derive the count bef
 | #238 | P2 | M7 · Premium — the payment rail | **Closed 2026-09-19.** The rail shipped in v0.61.0 (order/entitlement tables, webhook, server-side paywall, unlock flow) and the fee model + `admin_revenue` analytics followed on 2026-09-21; the open remainder, F6 (#234 · the CA's merchant-of-record call), is tracked on its own issue — a row no commit can close |
 | #239 | P2 | M8 · 1.0 enablers → the 1.0 cut | The track below |
 | #240 | P2 | M9 · Invites & onboarding | The track below; exec plan already written |
+| #809 | P2 | Mobile experience and APK update notices — Android layout and insets, Creator Hub navigation, Map tab gestures, and update detection for the sideloaded APK | Open. Started 2026-10-18: the update decision core landed with its behavior tests, and the notice, the Profile control and the startup and resume checks are wired to it locally. The release feed, the published manifest and the permanent download page remain, and the check stays inert until they exist |
 
 The queue was empty for exactly one day, and this section said so — the launch set above is what
 replaced it. **#213** was filed and closed inside that day: a read-only audit of how the trip
@@ -847,6 +850,7 @@ unbuilt). **Before picking up a row, and before quoting one in a plan, confirm i
 | I-84 | Pace and rest line on free days | public page | 1 d | Show the pace and the rest stop of each free day from engine data. Locked days stay stubbed. |
 | I-85 | Crew receipt for an expense | budget | 1 d | After a save, offer a WhatsApp text for the crew. The text says "noted". It never says "paid". |
 | I-86 | Per-segment pace control | Timeline | 2 d | Let a planner slow one climb and see the new arrival time. Extends the travel-style caps in `src/lib/ridePlan.ts`. |
+| I-87 | Admin delete must not erase a published trip | security | 2–3 h | `admin_delete_trip` still removes a trip that backs a publication, and the orders and entitlements go with it. #807 closed the direct table DELETE only. Apply the same guard the owner delete now uses. Keep the refusal sentence honest. Pin it beside the owner delete tests. Deferred from #799 and #807. |
 
 ### Tier 2 — blocked on a named dependency
 

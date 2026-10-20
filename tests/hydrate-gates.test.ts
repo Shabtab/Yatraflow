@@ -132,8 +132,8 @@ describe('the post-hydrate gates (#759)', () => {
 
   it('takes the verdict from the awaited fetch, so a failure runs none of them', () => {
     const code = codeLines(hydrate).join('\n')
-    expect(code).toMatch(/let hydrationSucceeded = false/)
-    expect(code).toMatch(/hydrationSucceeded = await promise/)
+    expect(code).toContain('const hydrationSucceeded = await hydrateFromSupabase(userId, gen)')
+    expect(code).toContain('activeHydrate = { userId, promise }')
   })
 })
 
@@ -197,7 +197,11 @@ vi.mock('../src/lib/createEvents', async (importOriginal) => ({
 
 vi.mock('../src/lib/writeQueue', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../src/lib/writeQueue')>()),
-  pendingWrites: async () => { state.pending += 1; return [] },
+  pendingWrites: async () => {
+    // Snapshot and hydrate read the queue too. Only replay reads count as sends.
+    if (new Error().stack?.includes('replayQueuedWrites')) state.pending += 1
+    return []
+  },
 }))
 
 vi.mock('../src/lib/supabase', () => {

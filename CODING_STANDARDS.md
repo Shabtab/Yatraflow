@@ -819,6 +819,55 @@ Settings previews must use validated draft fields. Reuse road measurements only 
    Put `page-enter` on the root of any screen that appears after load, and that includes a Suspense fallback.
    Run `npm run check:motion` before you push a change that adds or moves a `StateBlock` outside a page root.
 
+6au. **An inline `style` beats a stylesheet rule, so the Board tab's compact header
+   margins have no effect (learned 2026-10-15).** `TripWorkspace.tsx` sets the trip
+   header's `h1`, `p` and `.member-stack` top margins inline. So
+   `.container--board .trip-head-card h1 { margin-top: 4px }` has been inert since it
+   landed: the inline `12px` wins. A phone rule that compacts those margins must carry
+   `!important`. The Board's `.member-stack { margin-top: 0 !important }` rule already
+   does, and it is the precedent to copy. Check `TripWorkspace.tsx` for an inline value
+   before you write a margin rule for that header.
+
+- **A CSS pin must stop at the end of its own block.** `footer-route-mark.test.ts`
+  read `styles.css` from its marker to the end of the file. The rule is "append
+  CSS at the end". So the next appended section made the pin fail on rules that
+  were not the footer's. Slice from the marker to the next section comment of
+  any style (`/* ----` or `/* ====`). Never slice to the end of the file. Check this when a guard fails after you
+  append a section.
+
+6ax. **One suffix rule cannot cover the Android SDK tools, and a passing `verify`
+   does not identify the signer (learned 2026-10-19, #809 repair).** The manifest
+   script appended `.bat` to every tool name on Windows. That is wrong twice:
+   `aapt2` ships as `aapt2.exe`, while `apksigner` ships only as `apksigner.bat`.
+   So the lookup failed on a tool that was present, and the message blamed
+   the environment for a missing file that never had that name. Resolve each tool
+   to its own file name, and name the real file in the error. A batch file also
+   cannot be spawned without a shell on current Node, because of the hardening for
+   CVE-2024-27980. Run the jar through `java` instead, with an argument vector.
+   Keep a launch fault (exit 2) apart from a verification failure (exit 1). Merging
+   them reports a valid artifact as invalid.
+   The same script proved a second point. `apksigner verify` shows that an APK is
+   intact. It does not show which key signed it, because any valid key passes.
+   Android refuses to install over an app whose signer changed, so an unpinned
+   check would let a wrong-key release reach users who cannot install it. Compare
+   the certificate fingerprint with a value the release owner supplies. Never
+   derive that value from the artifact under test, which compares a value with
+   itself. A version-code guard has the same shape: reject a code that is not
+   above the highest published one, not merely one that is absent from the list.
+   A code below the published floor produces a manifest the client never offers.
+
+6aw. **The native version code is a string, and a published manifest must carry an
+   integer (learned 2026-10-18, #809; mechanism corrected 2026-10-18).** `App.getInfo()`
+   maps Android's `versionCode` onto `build`, and the plugin types it as a `string`. Two
+   version codes compared as strings sort lexicographically, so `9` sorts after `14`.
+   That is the real trap. A string against a number converts to a number instead. So the
+   mixed case is right by luck rather than by design. The update core parses the native
+   string once, in `installedFromAppInfo`. That helper refuses anything that is not all
+   digits, so a bad build fails loudly. The core also insists that a manifest's
+   `versionCode` is a real integer. Nothing downstream compares two strings, and nothing
+   leans on a coercion. Do not add a coercion at the comparison site. Keep the parse at
+   the boundary.
+
 ## 2. Conventions (`AGENTS.md` §4)
 
 The store, maps and UI entries live in `docs/standards/` now (2026-10-05
@@ -829,6 +878,7 @@ process.
 - **You must test both sides of a shared focus or schedule contract.** A prop-presence test cannot prove that a child reads the prop. Check a tab round trip through the browser. Compare arrivals and warnings for the same stop after road measurements resolve.
 
 - **lint:ste counts code tokens as prose on added lines.** A long string inside a call fails the 20-word limit — build user-facing strings in `const` lines (the checker skips them) and keep the call short. A new line naming a banned field (a stop's `priority`) fails the vocabulary check — spread the helper that already declares it. (Learned 2026-10-03, #607–#609.)
+  A CSS comment line added to `styles.css` is prose too. Keep each sentence under 20 words.
 
 - **A verification probe can lie about the thing it probes — and a preview URL lies about its own content.** Two traps hit while closing #226. (1) `process.env.X = undefined` does **not** unset a variable: Node coerces it to the string `"undefined"`, which is truthy, so a probe that "cleared" `PUBLIC_ORIGIN` made the handler's `PUBLIC_ORIGIN || …` fallback resolve to a literal origin of `undefined` and `og:url` read `undefined/i/<id>`. It looked exactly like a product bug for a step; the unit test for the same branch was green the whole time, because `vi.stubEnv(k, undefined)` genuinely deletes. Use `delete` in a probe, and never diagnose a handler from a value the probe itself set. (2) A preview deployment answers **200 with a full Open Graph block** — Vercel's SSO login page carries its own tags (`og:title: "Protected Deployment – Vercel"`), so a "does it contain `og:title`" check passes on the wall itself. Match on the origin/description or check the byte size (~1.2 KB app shell vs ~340 KB login page), never the mere presence of a tag. Keep such probes in the scratch directory, not the repo. (3) **A source-scanning test can match its own subject's prose:** the tripwire asserting that `presence.ts` calls no weak generator failed on the doc comment *explaining* that it no longer does. Strip comment lines before asserting on source text, and match the call (`/Math\s*\.\s*random\s*\(/`) rather than the bare name — a test that forbids a string has to decide whether it forbids mentioning it.
 

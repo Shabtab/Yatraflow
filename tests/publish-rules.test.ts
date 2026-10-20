@@ -150,8 +150,7 @@ describe('#354 — a rejected visibility flip cannot leave a live card over a de
     // The split state this fixes: the CACHE said public while `get_public_trip`
     // (which requires `visibility = 'public'`) served nothing — an Explore card
     // pointing at a page that does not exist, with nothing said.
-    expect(fn).toContain("from('trips').update({ visibility: 'public' })")
-    expect(fn).toMatch(/const \{ error: flipError \} = await supabase/)
+    expect(fn).toContain("await persistTripMetadata(p.tripId, { visibility: 'public' }")
     // The old shape must be gone from this function.
     expect(fn).not.toMatch(/fire\('trips', supabase\.from\('trips'\)\.update\(\{ visibility/)
   })

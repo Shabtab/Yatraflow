@@ -10,12 +10,14 @@ import {
   clearWritesFor,
   dropWrite,
   dropWriteIfCurrent,
+  dropQueuedWrite,
   pendingWriteCount,
   pendingWrites,
   queueWrite,
   requeueIfCurrent,
-  replayVerdict,
   shouldRetry,
+  subscribePendingWrites,
+  writeQueueKey,
   type QueuedWrite,
   type WriteQueueStore,
 } from '../src/lib/writeQueue'
@@ -30,23 +32,25 @@ function memoryStore(): MemoryStore {
     map,
     list: async () => [...map.values()],
     put: async entry => {
-      map.set(entry.tripId, entry)
+      map.set(writeQueueKey(entry.ownerId, entry.tripId), entry)
     },
     remove: async tripId => {
       map.delete(tripId)
     },
     // #549 — the conditional ops are one atomic get+write in the real store;
     // this in-memory map is synchronous, so check-then-act IS atomic here.
-    removeIf: async (tripId, capturedAt) => {
-      const current = map.get(tripId) as QueuedWrite | undefined
-      if (!current || current.capturedAt !== capturedAt) return false
-      map.delete(tripId)
+    removeIf: async (key, capturedAt, revision, ownerId) => {
+      const current = map.get(key) as QueuedWrite | undefined
+      if (!current || (ownerId !== undefined && current.ownerId !== ownerId)) return false
+      if (current.revision !== revision || (revision === undefined && current.capturedAt !== capturedAt)) return false
+      map.delete(key)
       return true
     },
-    putIf: async (entryToPut, expectedCapturedAt) => {
-      const current = map.get(entryToPut.tripId) as QueuedWrite | undefined
-      if (!current || current.capturedAt !== expectedCapturedAt) return false
-      map.set(entryToPut.tripId, entryToPut)
+    putIf: async (entryToPut, expectedCapturedAt, expectedRevision) => {
+      const key = writeQueueKey(entryToPut.ownerId, entryToPut.tripId)
+      const current = map.get(key) as QueuedWrite | undefined
+      if (!current || current.revision !== expectedRevision || (expectedRevision === undefined && current.capturedAt !== expectedCapturedAt)) return false
+      map.set(key, entryToPut)
       return true
     },
   }
@@ -93,16 +97,16 @@ describe('the queue holds one snapshot per trip, newest wins', () => {
   })
 })
 
-describe('malformed entries are removed, not replayed or reported', () => {
-  it('excludes and deletes entries nothing could replay', async () => {
+describe('malformed records stay outside replay', () => {
+  it('ignores malformed records without an unsafe delayed delete', async () => {
     const store = memoryStore()
     store.map.set('bad-1', { tripId: 'bad-1' }) // missing everything else
     store.map.set('bad-2', { tripId: 'bad-2', ownerId: 'u1', capturedAt: 5, attempts: 0, trip: { fn: () => {} } }) // non-cloneable
     store.map.set('good', entry({ tripId: 'good' }))
     const writes = await pendingWrites(store)
     expect(writes.map(w => w.tripId)).toEqual(['good'])
-    expect(store.map.has('bad-1')).toBe(false)
-    expect(store.map.has('bad-2')).toBe(false)
+    expect(store.map.has('bad-1')).toBe(true)
+    expect(store.map.has('bad-2')).toBe(true)
   })
 
   it('a wholly failing store degrades to "no queue" without throwing', async () => {
@@ -125,6 +129,7 @@ describe('malformed entries are removed, not replayed or reported', () => {
     }
     expect(await pendingWrites(failing)).toEqual([])
     expect(await queueWrite(entry(), failing)).toBe(false)
+    expect(await pendingWrites(failing)).toEqual([expect.objectContaining({ state: 'failed', storageFailed: true })])
     await expect(dropWrite('t1', failing)).resolves.toBeUndefined()
     expect(await dropWriteIfCurrent('t1', 1_000, failing)).toBe(false)
     expect(await requeueIfCurrent(entry(), failing)).toBe(false)
@@ -132,17 +137,209 @@ describe('malformed entries are removed, not replayed or reported', () => {
   })
 })
 
-describe('retry bounds and the conflict verdict', () => {
+describe('account scope and recovery', () => {
+  it('keeps independent edits from two editors of the same trip', async () => {
+    const store = memoryStore()
+    const first = entry({ ownerId: 'u1', revision: 'first' })
+    const second = entry({ ownerId: 'u2', revision: 'second' })
+    await queueWrite(first, store)
+    await queueWrite(second, store)
+    expect(await pendingWrites(store)).toHaveLength(2)
+    expect(await dropWriteIfCurrent('t1', 1_000, store)).toBe(false)
+    expect(await dropQueuedWrite(first, store)).toBe(true)
+    expect(await pendingWrites(store)).toEqual([second])
+  })
+
+  it('uses unique revisions when the clock has not advanced', async () => {
+    const store = memoryStore()
+    const old = entry({ revision: 'old' })
+    const newest = entry({ revision: 'new' })
+    await queueWrite(old, store)
+    await queueWrite(newest, store)
+    expect(await dropQueuedWrite(old, store)).toBe(false)
+    const retry = { ...old, attempts: 1 }
+    expect(await requeueIfCurrent(retry, store)).toBe(false)
+    expect(await dropWriteIfCurrent('t1', newest.capturedAt, store)).toBe(false)
+    expect(await pendingWrites(store)).toEqual([newest])
+  })
+
+  it('keeps a new session edit when an earlier clear finishes late', async () => {
+    const store = memoryStore()
+    await queueWrite(entry({ revision: 'old' }), store)
+    let release!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    const list = store.list
+    store.list = async () => { const rows = await list(); await gate; return rows }
+    const clear = clearWritesFor('u1', store)
+    const newest = entry({ revision: 'new' })
+    await queueWrite(newest, store)
+    release()
+    await clear
+    expect(await pendingWrites(store)).toEqual([newest])
+  })
+
+  it('serializes delayed puts so an old completion cannot replace a new edit', async () => {
+    const store = memoryStore()
+    let release!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    const put = store.put
+    let calls = 0
+    store.put = async value => { calls += 1; if (calls === 1) await gate; await put(value) }
+    const first = queueWrite(entry({ revision: 'old' }), store)
+    const newest = entry({ revision: 'new' })
+    const second = queueWrite(newest, store)
+    await Promise.resolve()
+    expect(calls).toBe(1)
+    expect(await pendingWrites(store)).toEqual([newest])
+    release()
+    await Promise.all([first, second])
+    expect(await pendingWrites(store)).toEqual([newest])
+  })
+
+  it('retains the newest payload in memory when storage fails', async () => {
+    const store = memoryStore()
+    const put = store.put
+    store.put = async () => { throw new Error('quota') }
+    const newest = entry({ revision: 'new' })
+    expect(await queueWrite(newest, store)).toBe(false)
+    expect(await pendingWrites(store)).toEqual([{ ...newest, state: 'failed', storageFailed: true }])
+    store.put = put
+    expect(await queueWrite(newest, store)).toBe(true)
+    expect(await pendingWrites(store)).toEqual([newest])
+  })
+
+  it('clears volatile work immediately while storage remains unavailable', async () => {
+    const store = memoryStore()
+    store.put = async () => { throw new Error('quota') }
+    store.list = async () => { throw new Error('unavailable') }
+    await queueWrite(entry({ revision: 'old' }), store)
+    await clearWritesFor('u1', store)
+    expect(await pendingWrites(store)).toEqual([])
+  })
+
+  it('clears an exact volatile generation but reports unverified disk removal', async () => {
+    const store = memoryStore()
+    store.put = async () => { throw new Error('quota') }
+    store.list = async () => { throw new Error('unavailable') }
+    store.removeIf = async () => { throw new Error('unavailable') }
+    const first = entry({ revision: 'first' })
+    await queueWrite(first, store)
+    expect(await dropQueuedWrite(first, store)).toBe(false)
+    expect(await pendingWrites(store)).toEqual([])
+    const newest = entry({ revision: 'new' })
+    await queueWrite(newest, store)
+    expect(await dropQueuedWrite(first, store)).toBe(false)
+    expect(await pendingWrites(store)).toEqual([{ ...newest, state: 'failed', storageFailed: true }])
+  })
+
+  it('allows an explicit retry state in memory when storage stays unavailable', async () => {
+    const store = memoryStore()
+    store.put = async () => { throw new Error('quota') }
+    store.putIf = async () => { throw new Error('quota') }
+    const write = entry({ revision: 'retry' })
+    await queueWrite(write, store)
+    expect(await requeueIfCurrent({ ...write, state: undefined }, store)).toBe(false)
+    expect(await pendingWrites(store)).toEqual([{ ...write, state: undefined, storageFailed: true }])
+  })
+
+  it('pauses an older disk copy after a newer volatile edit is discarded', async () => {
+    const store = memoryStore()
+    const older = entry({ revision: 'disk', baseVersion: 1 })
+    await queueWrite(older, store)
+    store.put = async () => { throw new Error('quota') }
+    const volatile = entry({ revision: 'volatile', capturedAt: 2_000, baseVersion: 1 })
+    await queueWrite(volatile, store)
+    expect(await dropQueuedWrite(volatile, store)).toBe(false)
+    expect(await pendingWrites(store)).toEqual([{ ...older, state: 'failed', storageFailed: true }])
+    expect(await dropQueuedWrite(older, store)).toBe(true)
+    expect(await pendingWrites(store)).toEqual([])
+  })
+
+  it('pauses obsolete disk work when storage recovers after volatile discard', async () => {
+    const store = memoryStore()
+    const older = entry({ revision: 'disk', baseVersion: 1 })
+    await queueWrite(older, store)
+    store.put = async () => { throw new Error('quota') }
+    const volatile = entry({ revision: 'volatile', capturedAt: 2_000, baseVersion: 1 })
+    await queueWrite(volatile, store)
+    const removeIf = store.removeIf
+    store.removeIf = async () => { throw new Error('blocked') }
+    expect(await dropQueuedWrite(volatile, store)).toBe(false)
+    store.removeIf = removeIf
+    expect(await pendingWrites(store)).toEqual([{ ...older, state: 'failed', storageFailed: true }])
+  })
+
+  it('keeps a newer edit active while an older volatile discard finishes', async () => {
+    const store = memoryStore()
+    const put = store.put
+    await queueWrite(entry({ revision: 'disk' }), store)
+    store.put = async () => { throw new Error('quota') }
+    const volatile = entry({ revision: 'volatile', capturedAt: 2_000 })
+    await queueWrite(volatile, store)
+    let release!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    const removeIf = store.removeIf
+    store.removeIf = async (...args) => { await gate; return removeIf(...args) }
+    const discard = dropQueuedWrite(volatile, store)
+    await Promise.resolve()
+    store.put = put
+    const newest = entry({ revision: 'newest', capturedAt: 3_000 })
+    const saved = queueWrite(newest, store)
+    release()
+    expect(await discard).toBe(false)
+    expect(await saved).toBe(true)
+    expect(await pendingWrites(store)).toEqual([newest])
+  })
+
+  it('does not restore a record from a list that began before its removal', async () => {
+    const store = memoryStore()
+    const write = entry({ revision: 'first' })
+    await queueWrite(write, store)
+    let release!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    const list = store.list
+    let reads = 0
+    store.list = async () => { const rows = await list(); reads += 1; if (reads === 1) await gate; return rows }
+    const pending = pendingWrites(store)
+    await Promise.resolve()
+    await dropQueuedWrite(write, store)
+    release()
+    expect(await pending).toEqual([])
+  })
+
+  it('observes a newer record from another tab after a successful list', async () => {
+    const store = memoryStore()
+    await queueWrite(entry({ revision: 'first' }), store)
+    const otherTab = entry({ revision: 'other-tab', capturedAt: 2_000 })
+    store.map.set(writeQueueKey(otherTab.ownerId, otherTab.tripId), otherTab)
+    expect(await pendingWrites(store)).toEqual([otherTab])
+  })
+
+  it('reports changes and lets subscribers detach', async () => {
+    const store = memoryStore()
+    let changes = 0
+    const unsubscribe = subscribePendingWrites(() => { changes += 1 })
+    await queueWrite(entry(), store)
+    expect(changes).toBeGreaterThan(0)
+    unsubscribe()
+    const before = changes
+    await dropWrite('t1', store)
+    expect(changes).toBe(before)
+  })
+})
+
+describe('automatic retry bounds', () => {
   it('allows retries only below the cap', () => {
     expect(shouldRetry({ attempts: MAX_WRITE_ATTEMPTS - 1 })).toBe(true)
     expect(shouldRetry({ attempts: MAX_WRITE_ATTEMPTS })).toBe(false)
   })
 
-  it('a server row newer than the edit is an overwrite; equal or unknown applies', () => {
-    expect(replayVerdict(2_000, 1_000)).toBe('overwrite')
-    expect(replayVerdict(1_000, 1_000)).toBe('apply')
-    expect(replayVerdict(undefined, 1_000)).toBe('apply')
-    expect(replayVerdict('not-a-date', 1_000)).toBe('apply')
+  it('keeps a paused record after the automatic retry cap', async () => {
+    const store = memoryStore()
+    const paused = entry({ attempts: MAX_WRITE_ATTEMPTS, state: 'failed' })
+    await queueWrite(paused, store)
+    expect(shouldRetry(paused)).toBe(false)
+    expect(await pendingWrites(store)).toEqual([paused])
   })
 })
 
@@ -217,15 +414,14 @@ describe('the store wiring (source pins)', () => {
   const store = readFileSync(new URL('../src/store/store.ts', import.meta.url), 'utf8')
 
   it('queues durably BEFORE the send and drops generation-aware after the server confirms', () => {
-    // Order is the whole safety property: an edit is on disk before the send,
-    // and leaves the queue only on a confirmed write — and (#549) the drop
-    // names the capturedAt it sent, so a success can never delete the newer
-    // edit queued behind the in-flight write.
-    const queueAt = store.indexOf('await queueWrite(')
-    const updateAt = store.indexOf("await supabase.from('trips').update(tripToRow(t,")
-    expect(queueAt, 'queueWrite must exist').toBeGreaterThan(-1)
-    expect(updateAt, 'the update must exist').toBeGreaterThan(queueAt)
-    expect(store).toMatch(/await dropWriteIfCurrent\(id, capturedAt\)/)
+    const capture = store.slice(store.indexOf('function persistTripField(id:'), store.indexOf('// ---------------- Members'))
+    expect(capture).toContain('durable: queueWrite(entry)')
+    const send = store.slice(store.indexOf('async function persistTripFieldNow'), store.indexOf('const activeReplays'))
+    expect(send.indexOf('await captured.durable')).toBeGreaterThan(-1)
+    expect(send.indexOf('sendQueuedTripWrite(')).toBeGreaterThan(send.indexOf('await captured.durable'))
+    const guarded = store.slice(store.indexOf('async function sendQueuedTripWrite'), store.indexOf('async function persistTripFieldNow'))
+    expect(guarded).toContain(".eq('write_version', entry.baseVersion)")
+    expect(guarded.indexOf('await dropQueuedWrite(entry)')).toBeGreaterThan(guarded.indexOf('row.write_version <= entry.baseVersion'))
     expect(store).not.toContain('void dropWrite(id)')
   })
 
@@ -233,18 +429,15 @@ describe('the store wiring (source pins)', () => {
     // The debounced path and the replay must serialize through one tail per
     // trip, or two UPDATEs for one trip can be in flight together and land
     // out of order — the older snapshot winning on the server.
-    expect(store).toContain('await serializeTripWrite(id, async () => {')
-    expect(store).toContain('serializeTripWrite(write.tripId')
+    expect(store).toContain('serializeTripWrite(`${scope.epoch}:${scope.userId}:${id}`')
+    expect(store).toContain('serializeTripWrite(`${key}:${write.tripId}`')
   })
 
   it('#549: the retry re-queue is generation-aware too', () => {
-    // Needle consts: the STE gate reads the field name as prose on added lines.
-    const retryBuild = 'const retry = { ...write, attempts }'
-    const callPin = 'await requeueIfCurrent(retry)'
-    const oldPin = 'queueWrite({ ...write, attempts })'
-    expect(store).toContain(retryBuild)
-    expect(store).toContain(callPin)
-    expect(store).not.toContain(oldPin)
+    expect(store).toContain('requeueIfCurrent(next)')
+    const pausedState = "state: shouldRetry({ attempts }) ? undefined : 'failed'"
+    expect(store).toContain(pausedState)
+    expect(store).not.toContain('replayVerdict(')
   })
 
   it('replays on network return, on boot, and on native resume', () => {
@@ -254,6 +447,6 @@ describe('the store wiring (source pins)', () => {
   })
 
   it("sign-out clears the departing account's queue alongside their snapshot", () => {
-    expect(store).toContain('void clearWritesFor(departingUser)')
+    expect(store).toContain('void clearWritesFor(departing)')
   })
 })

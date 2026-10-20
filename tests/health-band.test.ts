@@ -11,7 +11,7 @@
 // where the numbers live. Both surfaces now read one FOUR-way class mapping,
 // so the word, the number and the bar cannot disagree.
 import { describe, expect, it } from 'vitest'
-import { healthBandClass, healthBandTone } from '../src/lib/healthBand'
+import { healthBandClass, healthBandSentence, healthBandTone } from '../src/lib/healthBand'
 import { scoreWarnings } from '../src/lib/engine'
 
 describe('band → class', () => {
@@ -180,3 +180,28 @@ describe('#400 — every band the mapper emits has a colour rule', () => {
     expect(removed.filter(s => !isOld(s))).toEqual([])
   })
 })
+
+describe('the band states its consequence in plain words (#683)', () => {
+  it('gives every band a sentence, and no two bands share one', () => {
+    const bands = ['Comfortable', 'Manageable', 'Tight', 'Unrealistic'] as const
+    const sentences = bands.map(healthBandSentence)
+    for (const [i, s] of sentences.entries()) {
+      expect(s.length, `band ${bands[i]} needs a sentence`).toBeGreaterThan(20)
+      expect(s.trim().endsWith('.'), `band ${bands[i]} must read as a sentence`).toBe(true)
+    }
+    expect(new Set(sentences).size).toBe(bands.length)
+  })
+
+  it('names the fix for the two bands a traveller must act on', () => {
+    expect(healthBandSentence('Tight')).toContain('Expect late arrivals')
+    expect(healthBandSentence('Unrealistic')).toContain('Drop a stop or add a day')
+  })
+
+  it('the Overview prints the sentence beside the score', () => {
+    const tab = readFileSync('src/pages/trip/OverviewTab.tsx', 'utf8')
+    expect(tab).toContain('{healthBandSentence(health.band)}')
+    // The raw band word stays in the chip. The sentence is the explanation.
+    expect(tab).toContain('{health.band}')
+  })
+})
+

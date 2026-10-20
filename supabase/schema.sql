@@ -332,6 +332,51 @@ create trigger trips_touch_updated_at
   execute function public.touch_trip_updated_at();
 create index if not exists idx_published_creator on public.published_itineraries (creator_id);
 
+-- ------------------------------------------------- #799: owner_id is immutable
+-- A policy cannot express this: WITH CHECK sees only the NEW row, and Postgres
+-- never exposes OLD to a policy. A column-level grant was rejected because the
+-- client sends the whole row on every write (tripToRow always includes
+-- owner_id), so revoking UPDATE(owner_id) would fail every editor save rather
+-- than only an ownership change. So a BEFORE UPDATE OF owner_id trigger.
+--
+-- Fails closed. The comparison is `is distinct from`, so a null on either side
+-- counts as a change instead of slipping past a null = null test. Allowed: the
+-- current owner, a masteradmin, and a caller with no authenticated user
+-- (service role / SQL editor / migration). An editor matches none of them and
+-- is refused with 42501. Mirrored for existing installs by
+-- supabase/migrations/20261020_trip_owner_and_delete_guards.sql.
+create or replace function public.trips_owner_id_immutable()
+returns trigger
+language plpgsql
+security invoker
+set search_path = public
+as $$
+begin
+  if new.owner_id is not distinct from old.owner_id then
+    return new;
+  end if;
+  if auth.uid() is null then
+    return new;
+  end if;
+  if old.owner_id = auth.uid() then
+    return new;
+  end if;
+  if public.is_admin() then
+    return new;
+  end if;
+  raise exception
+    'trip ownership cannot be changed by this caller (trip %, caller %)',
+    old.id, auth.uid()
+    using errcode = '42501';
+end;
+$$;
+
+drop trigger if exists trips_owner_id_immutable on public.trips;
+create trigger trips_owner_id_immutable
+  before update of owner_id on public.trips
+  for each row
+  execute function public.trips_owner_id_immutable();
+
 -- ============================================================
 -- Helper: is the current user a member (any role) of a trip?
 -- SECURITY DEFINER runs as the table owner, bypassing RLS during its own
@@ -531,6 +576,95 @@ create policy "trips insert" on public.trips
 
 create policy "trips update" on public.trips
   for update using (public.is_editor(trips.id)) with check (public.is_editor(trips.id));
+
+-- #807: a direct DELETE must not erase a publication and the purchases behind
+-- it. RESTRICTIVE is load-bearing here for the same reason as the trashed-read
+-- policy above: a permissive policy would OR with the editor gate below and
+-- change nothing. A restrictive policy on a DELETE is evaluated against the row
+-- being deleted, so USING is the only clause available and the added-row
+-- concern that applies to UPDATE does not apply here.
+--
+-- The owner (or a masteradmin) may delete a trip with no publication, no order
+-- and no entitlement -- the same condition purge_trashed_trip applies, so the
+-- direct path and the RPC path now agree. A non-owner editor may not delete a
+-- trip at all: the product has no such flow, and crew removal goes through
+-- trip_members. Mirrored by
+-- supabase/migrations/20261020_trip_owner_and_delete_guards.sql.
+--
+-- The money check is a SECURITY DEFINER helper because purchase_orders and
+-- entitlements are buyer-only under RLS: a policy expression runs as the caller,
+-- so an inline subquery would see no rows for the owner and fail OPEN.
+--
+-- This copy is plpgsql, and it guards the payments tables with to_regclass.
+-- Reason: a `language sql` body is validated at CREATE time, and this file
+-- creates neither purchase_orders nor entitlements (the payments rail lives in
+-- migrations/20260918_payments_rail.sql). A sql copy would fail the whole
+-- schema.sql build with "relation does not exist". plpgsql resolves relations
+-- when the statement is reached, so the guard keeps a schema-only build valid.
+--
+-- What it answers when the payments tables are ABSENT: still TRUE for a trip
+-- that has a publication row, because the publication check runs first and is
+-- independent of them. That is the fail-closed answer. With no publication row
+-- the answer is FALSE, and that is safe rather than optimistic: purchase_orders
+-- and entitlements both reference published_itineraries(id), so a trip with no
+-- publication row cannot own an order or an entitlement. The guard can only
+-- skip a check that the foreign keys already make impossible.
+create or replace function public.trip_has_publication_money(p_trip uuid)
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+begin
+  -- Fail closed on an unknown shape: a null id cannot be deleted safely.
+  if p_trip is null then
+    return true;
+  end if;
+
+  -- A publication row alone blocks the delete, and it keeps buyers whole.
+  if exists (
+    select 1 from public.published_itineraries p where p.trip_id = p_trip
+  ) then
+    return true;
+  end if;
+
+  -- The payments tables exist only after the payments-rail migration. Each
+  -- statement below is planned when it is reached, so the guard is what keeps
+  -- a schema-only database valid.
+  if to_regclass('public.purchase_orders') is not null then
+    if exists (
+      select 1 from public.purchase_orders o
+      where o.pub_id in (select p.id from public.published_itineraries p where p.trip_id = p_trip)
+    ) then
+      return true;
+    end if;
+  end if;
+
+  if to_regclass('public.entitlements') is not null then
+    if exists (
+      select 1 from public.entitlements e
+      where e.pub_id in (select p.id from public.published_itineraries p where p.trip_id = p_trip)
+    ) then
+      return true;
+    end if;
+  end if;
+
+  return false;
+end;
+$$;
+
+revoke all on function public.trip_has_publication_money(uuid) from public, anon, authenticated;
+grant execute on function public.trip_has_publication_money(uuid) to authenticated;
+
+create policy "trips delete guard" on public.trips
+  as restrictive for delete to authenticated using (
+    (
+      auth.uid() = owner_id
+      or public.is_admin()
+    )
+    and not public.trip_has_publication_money(trips.id)
+  );
 
 create policy "trips delete" on public.trips
   for delete using (public.is_editor(trips.id));
@@ -872,3 +1006,49 @@ $$;
 
 revoke all on function public.join_trip(text) from public, anon, authenticated;
 grant execute on function public.join_trip(text) to authenticated;
+
+-- Apply before the app update. Re-running preserves existing version values.
+begin;
+
+alter table public.trips add column if not exists write_version bigint not null default 0;
+
+create sequence if not exists public.trip_write_version_seq as bigint minvalue 1 start with 1;
+revoke all on sequence public.trip_write_version_seq from public, anon, authenticated, service_role;
+
+-- Block writes while the sequence catches up with restored or existing revisions.
+lock table public.trips in share row exclusive mode;
+select pg_catalog.setval(
+  'public.trip_write_version_seq'::regclass,
+  greatest(
+    (select last_value from public.trip_write_version_seq),
+    coalesce((select max(write_version) from public.trips), 0),
+    1
+  ),
+  true
+);
+
+create or replace function public.advance_trip_write_version()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  new.write_version := pg_catalog.nextval('public.trip_write_version_seq'::regclass);
+  return new;
+end;
+$$;
+
+revoke all on function public.advance_trip_write_version() from public, anon, authenticated, service_role;
+
+drop trigger if exists trips_advance_write_version on public.trips;
+create trigger trips_advance_write_version
+  before insert or update on public.trips
+  for each row execute function public.advance_trip_write_version();
+
+commit;
+
+-- #799: the owner_id guard is invoked by the table, so no client role needs
+-- execute on it. Revoked from the API roles by name, because `revoke ... from
+-- public` does not revoke from anon or authenticated on Supabase.
+revoke all on function public.trips_owner_id_immutable() from public, anon, authenticated;

@@ -91,6 +91,7 @@ function flush(): Promise<void> {
 async function freshStoreWith(seed = true, withPub = false) {
   vi.resetModules()
   const store = await import('../src/store/store')
+  store.getSnapshot().sessionUserId = 'amelia'
   if (seed) {
     const db = store.getSnapshot()
     db.trips.push(mkTrip())

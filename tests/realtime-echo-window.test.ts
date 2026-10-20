@@ -10,7 +10,7 @@
 //
 // Two layers here: the guard's own semantics, and the store-level ORDER of
 // "arm the guard" vs "await the write", which is the actual regression.
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { isRecentLocalWrite } from '../src/lib/realtimeCore'
@@ -46,7 +46,8 @@ const { calls, state } = vi.hoisted(() => ({
   },
 }))
 
-vi.mock('../src/lib/supabase', () => {
+vi.mock('../src/lib/supabase', async () => {
+  const { tripWriteClient } = await import('./helpers/tripWriteClient')
   const makeBuilder = (table: string) => {
     let method: string | undefined
     const builder: Record<string, unknown> = {}
@@ -85,7 +86,7 @@ vi.mock('../src/lib/supabase', () => {
   }
   return {
     isSupabaseConfigured: true,
-    supabase: {
+    supabase: tripWriteClient({
       from: (t: string) => makeBuilder(t),
       channel: () => chainObj,
       removeChannel: () => Promise.resolve(),
@@ -93,13 +94,15 @@ vi.mock('../src/lib/supabase', () => {
         getSession: () => Promise.resolve({ data: { session: null } }),
         onAuthStateChange: () => ({ data: { subscription: {} } }),
       },
-    },
+    }),
   }
 })
 
 import { duplicateTrip, updateStop, tripById, connectRealtime, _flushTripWrites, _clearRecentLocalWrites, _setTripWriteDebounceMs, getSnapshot } from '../src/store/store'
 
 const keralaTrip = seedData.trips[0]
+
+beforeEach(() => { getSnapshot().sessionUserId = 'owner-test' })
 
 afterEach(() => {
   calls.length = 0
@@ -154,7 +157,9 @@ describe('the echo guard is armed before the write is awaited', () => {
     _flushTripWrites()
     await new Promise(r => setTimeout(r, 0))
     await new Promise(r => setTimeout(r, 0))
-    expect(state.inFlight.length, 'the row UPDATE must be in flight').toBeGreaterThan(0)
+    await vi.waitFor(() => {
+      expect(state.inFlight.length, 'the row UPDATE must be in flight').toBeGreaterThan(0)
+    })
 
     // The echo arrives while the server still holds the OLD order.
     state.handlers['trips']({ eventType: 'UPDATE', new: staleEcho, old: { id: trip.id } })
@@ -177,7 +182,7 @@ describe('the echo guard is armed before the write is awaited', () => {
     expect(start, 'persistTripFieldNow must exist').toBeGreaterThan(-1)
     const body = src.slice(start, src.indexOf('\n}', start))
     const arm = body.indexOf("markLocalWrite('trips', id)")
-    const write = body.indexOf('.update(')
+    const write = body.indexOf('sendQueuedTripWrite(')
     expect(arm, 'persistTripFieldNow must call markLocalWrite').toBeGreaterThan(-1)
     expect(write, 'persistTripFieldNow must perform a row update').toBeGreaterThan(-1)
     expect(arm, 'the echo guard must be armed BEFORE the row update is issued').toBeLessThan(write)

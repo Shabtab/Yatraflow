@@ -15,6 +15,42 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+## [0.78.0] - 2026-10-21
+
+**This release shows what is inside an itinerary before you pay. It adds an Android update check, trip owner and delete guards, and safer offline edits.**
+
+Two database migrations go with this release: `20261017_trip_write_version.sql` and `20261020_trip_owner_and_delete_guards.sql`. Run the additive migration first, deploy this app build, then run the tightening migration. See the release notes for the order.
+
+### Added
+
+- **A public itinerary now shows what is inside before you pay.** The first screen holds the cover, the title, the facts and a buy box with the price. The cover is the creator's photo. A trip with no photo gets a designed ticket on a pattern of its own stop kinds. The "What is inside" section says the trip in one sentence and counts the places by kind. A plan with no days shows no section. It shows one card per day, with a Free, Locked or Yours tag, a pace word and the road time. The road time is the time on the ground. A flight is not a drive, so the air sector is not road time. A day that only flies still shows its real ground transfer. A readable day that flies says so, even before the traveller enters the flight. A free day lists its places. A locked day keeps its own title and its road time, and it shows counts only. Its stop names and locations stay hidden. A locked day with zero places shows no pace word, because a hidden flight is not an empty day. A trip longer than 7 days folds into weeks. Each week is a drawer, and week 1 is open. On a phone the buy box comes before the cover, so the Unlock button is on the first screen. A price bar appears once the first screen scrolls away. It sits under the top nav, or at the bottom of a phone. Its button does what the main button does. A free plan shows no saffron and offers "Fork to my trips" as the main button. A plan with no price, or a page where you cannot buy, does not promise that names open on purchase. A long day title, a long place name and a long ticket route wrap inside the card and the ticket. None of them is cut off at the edge.
+
+- **Creator pages show a public bio and itinerary links without JavaScript.** Search visitors can read `/c/<id>` directly. Recognised share tags still open the app. Structured data describes the public profile. Private profile fields stay out of the page. A failed itinerary read shows a message and prevents caching. The page also sets its own small stylesheet in the head. The column holds a 65ch measure, and it is centred with 16px padding. One unbroken handle or title wraps instead of scrolling the page sideways. Each link is a touch target of at least 44px in each direction. A long title still wraps inside its own link. One creator-page class scopes every rule, so no rule leaks to another surface. (#701)
+
+- **The Android app now checks for a newer build and offers it.** The app reads its own native version code and compares it with a published release. A check runs once a day at startup and on each return to the foreground. Profile shows the installed build and has its own Check for updates button. Profile first shows that it reads the installed build. A newer release shows a dismissible Update and Later notice that never blocks planning. Later holds that version back for a day. Update opens the download page in the browser, and the user installs from there. The app installs nothing by itself. Each feed read ends after ten seconds, so a slow network cannot block checks. The release tool runs on Windows and names the real SDK tool files. It needs the expected signer fingerprint and rejects other keys. It accepts only a version code above the last published code. The release feed is not configured yet, so the check stays inert until a real feed is approved. (#809)
+- **A published itinerary's share page prints the practical details a search visitor needs.** The page now shows the budget per person, the travel tips and the warnings. It shows the cover image as a real `<img>` with a width, a height and an alt. The structured data carries the same cover image. A field with no value prints nothing. (#700)
+
+### Fixed
+
+- **Offline edits survive a failed trash and a same-account sign-in.** A saved edit stays queued until the server confirms the trash or the sign-out cleanup finishes. A failed cleanup pauses the edit for recovery.
+- **A trip editor can no longer take ownership of a trip.** The database accepted any editor's write to the trip's owner column. The editor could then promote their own crew row and remove the real owner. The owner column now changes only when the current owner, an admin, or a maintenance session makes the change. Every other caller is refused. A normal edit, a move to the trash, and a restore keep working. The app no longer sends the owner column on an ordinary edit. A crew member whose owner row is missing from their local copy can still save. **Ship this app build with or before the database change.** (#799)
+- **A trip that backs a publication can no longer be deleted directly.** The editor delete path removed the trip, and the publication and the buyers' purchase records went with it. A direct delete now refuses any trip that carries a publication, an order, or an entitlement. The trash and its purge already refused the same trip. The owner can still delete a trip with no publication. (#807)
+- **Sign-up date of birth now uses direct Year, Month and Day selects.** A birth year is one choice away. The three selects emit one complete `YYYY-MM-DD` date, and a partial pick emits nothing. The day list follows the chosen month, so a 31st or a 29 February cannot roll over. A change of year to the current year clamps a later month and day to today. No future date can be submitted. The 18+ check is unchanged.
+
+### Changed
+
+- **The trip Map tab routes one-finger drag and pinch to the map, not the page.** Small embedded previews let the page scroll around them.
+- **The trip header is compact on a phone.** At 390px the header band and the tab rail took about 420px of an 844px screen. The tab panel then started below the fold. A phone now takes the compact band the Board tab already used. The band is shorter, the title is 20px and the tab rail is tighter. (#677)
+- **The My Trips rules now use the documented motion tokens.** Five rules in the trip-card and timeline block used the legacy `--t-fast` and `--t-med` durations. They now use `--motion-fast` and `--motion-med`. Each rule keeps its reduced-motion opt-out. (#650)
+- **Trip copy names consequences, not engine jargon.** The Overview health card now says what the score means, such as "The plan does not fit these days. Drop a stop or add a day." The day matrix explains its own columns. It lists B breakfast, L lunch, F fuel, S stretch, D dinner and N night. A cell the app filled itself reads "a break the app added". The Map legend and its day labels say the same. The Timeline's Inspect mode is now labelled Review, with the explanation "Study the day without changing it". (#683)
+
+### Fixed
+
+- **Offline trip edits have explicit conflict recovery.** The latest edit stays scoped to its account and trip. Server revisions prevent silent replacement of newer shared changes. Failed sends pause after three tries. Saved edits offer retry, download, and an explicit choice between local and shared plans. Storage failures show a warning. Account changes, lost edit access, and deleted trips cancel stale work. The server revision migration must precede this app update. (#783)
+- **The Create trip phone dock no longer runs two phrases together.** The days line and the readiness line shared one inline row. "Pick your dates" and "3 things left" then printed as one phrase. The readiness line is a block now, so it sits under the days line. (#767)
+- **The trip tab rail shows that it scrolls sideways.** The rail hides its scrollbar. A tab past the right edge ("Group input") was cut with no sign that more exist. The rail now fades the edge that still holds hidden tabs. The fade clears once the end is reached. (#684)
+- **Signed-in Android content now clears the status bar.** The native shell draws no top navigation bar for a signed-in user. The shell itself carries the top inset once. Home and Profile now start below the status bar, and the web and signed-out screens keep their current spacing. (#809)
+
 ## [0.77.1] - 2026-10-18
 
 ### Fixed

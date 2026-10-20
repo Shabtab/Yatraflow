@@ -93,6 +93,15 @@ A collaborative travel-planning web app, built India-first. Real multi-day itine
 
 _Release highlights, newest first — the full record lives in [CHANGELOG.md](CHANGELOG.md)._
 
+## ✨ The v0.78 release, in plain words
+
+- **A public itinerary shows what is inside before you pay.** The first screen holds the cover, the facts and the buy box. A "What is inside" section counts the places by kind and shows one card per day. A locked day keeps its title and road time, and it hides its stop names.
+- **Creator pages and share pages read without JavaScript.** Search visitors see the public bio, the budget per person, the travel tips and the warnings. Private profile fields stay out.
+- **Only the owner can change who owns a trip.** An editor can no longer take ownership. A trip that backs a publication can no longer be deleted directly.
+- **Offline trip edits have conflict recovery.** A saved edit stays with its account and trip. Newer shared changes are never replaced silently. You can retry, download the edit, or choose between the local and shared plan.
+- **The Android app checks for a newer build.** Profile shows the installed build and a Check for updates button. The app installs nothing by itself. The check stays inert until a release feed is approved.
+- **Phone polish.** The trip header is compact, the Map tab takes one-finger drag, and Android screens start below the status bar.
+
 ## ✨ The v0.77 release, in plain words
 
 - **Flight trips plan the whole journey.** The travel day runs home → the origin airport → the sector → the destination airport → your stay. Ground legs use car timing and pricing. The sector uses the fare for your whole group.

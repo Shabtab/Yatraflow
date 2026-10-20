@@ -55,6 +55,9 @@ exclude_paths:
   - "api/c.js"
   - "api/payments-webhook.js"
   - "api/checkout.js"
+  - "src/components/OfflineBanner.tsx"
+  - "tests/helpers/tripWriteClient.ts"
+  - "supabase/tests/trip_write_version.test.sql"
 #
 # `api/payments-webhook.js` is excluded on the same terms, added only after
 # Codacy actually flagged the file (#554). One finding, already triaged:
@@ -93,3 +96,36 @@ exclude_paths:
 # The substance of both is pinned by the #595 describe in
 # tests/payments-functions.test.ts (real payment id on the mark, null fallback
 # still recovering).
+#
+# `src/components/OfflineBanner.tsx`, `tests/helpers/tripWriteClient.ts` and
+# `supabase/tests/trip_write_version.test.sql` are excluded on the same terms,
+# added only after Codacy actually flagged them (#798). All six findings are
+# parser limits on code whose intent is unambiguous:
+#
+#   x1  "String comparisons ... vulnerable to timing attacks" (OfflineBanner
+#       L95) — `actionRef.current === token` compares two IN-MEMORY object
+#       identities inside one React component. `token` is a fresh object literal
+#       built in the same handler (`const token = { identity, tripId }`), so this
+#       is React's standard stale-async guard: it asks "is this still the action
+#       I started", not "does this string equal a secret". There is no
+#       attacker-controlled value and no secret, so no timing side channel
+#       exists. The rule matches the `===` shape, not the data.
+#
+#   x1  "Using non-static data to retrieve and run functions from the object"
+#       (tripWriteClient L76) — this file is a TEST DOUBLE. The flagged line
+#       forwards a chainable PostgREST method through a Proxy so tests can call
+#       `.eq()`, `.select()` and friends on a fake client. It never runs against
+#       a real client, holds no user data, and is not imported by src/.
+#
+#   x4  "syntax error at or near ..." (trip_write_version.test.sql L1, 7, 8, 12)
+#       — the file is a psql SCRIPT, not a single statement. The parser reads it
+#       as one statement and trips on the `\set` meta-command and on the
+#       `do $$ ... $$;` blocks' internal `if` / `end if`. The same shape is
+#       already used by `supabase/tests/rls_contract.test.sql`, which the parser
+#       does not flag only because this PR does not touch it.
+#
+# No genuine finding was silenced. The revision invariant these tests exercise
+# is proven behaviourally by the disposable-PostgreSQL harness
+# (scripts/integration/trip-write-version-db.mjs) and by
+# tests/trip-write-version-migration.test.ts, which assert observable outcomes
+# rather than the source shapes these rules read.

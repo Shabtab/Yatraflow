@@ -1,7 +1,7 @@
 // ============ trips row serialization + missing-column detection ============
 // Pure helpers from src/lib/tripRow.ts (node env, no DOM/supabase needed).
 import { describe, it, expect } from 'vitest'
-import { rowToTrip, tripToRow, isMissingColumnError, sanitizeTankL, sanitizeRentPerDayInr } from '../src/lib/tripRow'
+import { rowToTrip, tripToRow, tripUpdateRow, isMissingColumnError, sanitizeTankL, sanitizeRentPerDayInr } from '../src/lib/tripRow'
 import { seedData } from '../src/data/seed'
 import type { Trip, TripMember } from '../src/data/types'
 import { readFileSync, readdirSync } from 'node:fs'
@@ -447,6 +447,72 @@ describe('flights round-trip through the jsonb column', () => {
     expect(back[2].costInrPerPerson).toBeUndefined()
     // a non-array drops the whole list
     expect(rowToTrip({ ...junk, flights: { nope: true } }, []).flights).toBeUndefined()
+  })
+})
+
+// ============ #799 — an UPDATE row must not carry owner_id ============
+// Ownership is immutable at the database boundary, and an UPDATE that carries
+// `owner_id` is compared against the stored value. The caller cannot know that
+// value: when the owner member is missing from the hydrated trip, the callers
+// fall back to the trip id or to the signed-in editor's id. That used to hand
+// ownership to the editor silently; it now raises 42501. So an UPDATE omits the
+// column entirely and an INSERT keeps it.
+describe('#799 — tripUpdateRow omits owner_id, tripToRow keeps it', () => {
+  it('an UPDATE row has no owner_id key at all', () => {
+    const row = tripUpdateRow(baseTrip(), 'owner-1', ALL_COLUMNS)
+    expect('owner_id' in row).toBe(false)
+    expect(row.owner_id).toBeUndefined()
+  })
+
+  it('the INSERT row still carries owner_id, so both insert callers are safe', () => {
+    const row = tripToRow(baseTrip(), 'owner-1', ALL_COLUMNS)
+    expect(row.owner_id).toBe('owner-1')
+  })
+
+  it('everything else in the row survives the strip', () => {
+    // A strip that also dropped a sibling field would be a silent data-loss bug.
+    const t = tripWithExpenses()
+    const insert = tripToRow(t, 'owner-1', ALL_COLUMNS)
+    const update = tripUpdateRow(t, 'owner-1', ALL_COLUMNS)
+    const expected: Record<string, unknown> = { ...insert }
+    delete expected.owner_id
+    expect(update).toEqual(expected)
+    expect(update.expenses).toEqual(t.expenses)
+    expect(update.name).toBe(insert.name)
+    expect(update.days).toEqual(insert.days)
+  })
+
+  it('the fallback id the callers pass never reaches the UPDATE payload', () => {
+    // The two call sites pass `owner?.userId ?? id` and `owner?.userId ?? userId`.
+    // Either fallback is wrong when the owner member is absent — prove neither
+    // can be written, whatever value is handed in.
+    for (const fallback of ['trip-id-fallback', 'editor-user-id', '']) {
+      const row = tripUpdateRow(baseTrip(), fallback, ALL_COLUMNS)
+      expect('owner_id' in row).toBe(false)
+      expect(JSON.stringify(row)).not.toContain('trip-id-fallback')
+      expect(JSON.stringify(row)).not.toContain('editor-user-id')
+    }
+  })
+
+  it('the store uses tripUpdateRow on every whole-row UPDATE site', () => {
+    // A source pin. Every place a whole trip row is written with UPDATE must use
+    // tripUpdateRow, and one missed site re-opens #799 on that path. The count is
+    // not fixed: #783 merged the two write paths into one sendQueuedTripWrite.
+    // The scan reads across line breaks, because #783 formats the chain as
+    // `from('trips')` on one line and `.update(` on the next — a one-line
+    // pattern matched nothing and left the guard blind.
+    const src = readFileSync(new URL('../src/store/store.ts', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
+    const flat = src.replace(/\s*\n\s*/g, ' ')
+    const updates = [...flat.matchAll(/\.from\('trips'\) \.update\(([^;]*?)\)\s*(?:\.|$)/g)].map((m) => m[1])
+    const wholeRow = updates.filter((a) => a.includes('tripToRow') || a.includes('tripUpdateRow'))
+    expect(wholeRow.length, 'at least one whole-row UPDATE must exist').toBeGreaterThan(0)
+    for (const arg of wholeRow) {
+      expect(arg).toContain('tripUpdateRow')
+      expect(arg).not.toContain('tripToRow(')
+    }
+    // Both INSERT sites keep the mapper that carries owner_id.
+    const inserts = [...src.matchAll(/\.from\('trips'\)\.insert\(([^)]*)/g)].map((m) => m[1])
+    for (const arg of inserts) expect(arg).toContain('tripToRow(')
   })
 })
 
