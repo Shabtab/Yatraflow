@@ -3,23 +3,10 @@
 Base: `origin/test` @ `90d3f4b4` (PR #798 merge).
 Branch: `codex/t3-pr798-followup-mm-cline`.
 
-## The base refresh
-
-`origin/test` has moved on. PR #811 landed the Android update work, and it
-**removed** the update-notice files that the old base still carried. A merge
-with the current origin/test has two conflicts, and both are trivial append
-collisions:
-
-- `docs/README.md` — this branch adds one row and PR #811 adds another at the
-  same place. Keep both rows.
-- `src/styles.css` — this branch appends the sync-check height rule at the
-  END of the file, and PR #811 appends its native-shell block at the END of
-  the file. Keep both blocks. The order does not matter, because the two
-  rules touch different selectors.
-
-A merge resolved that way passes the full suite: 5514 tests, 1 skipped. The
-resolution is mechanical, but it must be done by hand, so the base refresh
-needs a coordinator step.
+The branch has since been merged with the moved `origin/test` (PR #811). The
+merge commit is `86fdd89d`, and the follow-up commits sit on top of it. The
+merge needed two hand-resolved append collisions, and both were resolved by
+keeping both sides.
 
 ## The S1 defect, traced
 
@@ -139,10 +126,16 @@ taken out of the list with the reason `trip-unavailable`. The queued copy
 then stays with that reason.
 
 The `trips` echo window is the risk. A trash write is a local write, so its
-own echo arrives with the echo window open, and the echo branch records the
-server timestamp and stops. The tombstone never reaches the removal branch.
-The result is a trashed trip that stays in the list as a live plan, with the
-copy held beside it.
+own echo arrives with the echo window open. The realtime handler checks the
+echo window **after** it has removed a tombstoned row, so a tombstone that
+reaches the handler is removed from the list first and the echo branch is
+never reached. The echo only suppresses a row swap, not the removal.
+
+The gap is on the sending side. The trash write updates the row with
+`deleted_at` set, and the echo arrives as an `UPDATE` that carries
+`deleted_at`. The handler removes the row and keeps the copy, which is the
+right outcome. The risk is the opposite order: an echo that arrives **before**
+the tombstone is observed can leave the trip in the list with a live plan.
 
 The fix belongs in the trash path, not in the recovery path. A trip the
 account trashed must leave the list when the server confirms the tombstone.
@@ -151,15 +144,17 @@ arrive as `deleted_at`.
 
 ### The demotion refresh skips the server timestamp ledger
 
-`refreshSharedPlanAfterDemotion` writes the shared plan into the cache but
-does not call `recordServerTripTimestamp`. The ledger records the clock the
-server wrote, and the next remote row is compared against it. A missing entry
-means the next remote row for that trip has nothing to compare with, so the
-stale-row guard cannot drop a row that is older than the shared plan the
-demotion just read.
+Neither demotion refresh records the server timestamp. The realtime one
+(`refreshSharedPlanAfterDemotion`) writes the shared plan into the cache and
+does not call `recordServerTripTimestamp`. The send-path one
+(`sendQueuedTripWrite`) publishes the shared plan through `rowToTrip` and
+records the timestamp only on the plan-write path, not on the demotion
+refresh it performs.
 
-The same branch in the send path does record the timestamp. The demotion
-refresh must do the same.
+The ledger records the clock the server wrote, and the next remote row is
+compared against it. A missing entry means the next remote row for that trip
+has nothing to compare with, so the stale-row guard cannot drop a row that is
+older than the shared plan the demotion just read.
 
 ### A removed member can still download the copy
 
@@ -190,6 +185,42 @@ so the set is what holds the line.
 
 Trimming it would remove a defence-in-depth layer for a small gain in
 readability, so it is left in place and recorded here.
+
+### One place still owns the same access decision
+
+The access generation is read and compared in several places, and the
+decision "may this work still touch the cache" is made in each of them
+separately. The checks are `sameScopeGeneration` for the scope, plus the
+identity epoch, plus the trip's own generation, and they are not collected
+into one owner.
+
+The smallest consolidation is one helper that takes the scope, the trip and
+the captured generation, and answers "is this work still live". Every
+comparison would call it. That does not change behaviour, and it would put
+the monotonic rule in one place instead of five, so the next reader has one
+decision to understand rather than five.
+
+It is not done here, because the call sites span the write path, the realtime
+path and the recovery path, and a change that wide is a different packet from
+this one.
+
+### A same-user sign-in can re-publish a copy the sign-out removed
+
+This one is NOT fixed here, and it is a pre-existing risk rather than a
+defect this work introduced. The independent Gate's own base control
+reproduced it on the base store, and the Gate recorded it as a pre-existing
+risk and not a new blocker.
+
+The shape: the account signs out, so its queue is cleared, and it signs
+back in as the same account straight away. The clear of the departing
+account's queue is not awaited, so the sign-in's hydrate can replay the copy
+before the clear lands. The write comes from a whole-plan persist that the
+realtime membership change triggers, not from the replay itself.
+
+Fixing it means changing how a realtime membership change re-persists a plan,
+which reaches well past this packet's scope. The narrow attempt, a barrier
+that the replay waits for, does not help, because the write comes from the
+persist path instead.
 
 ## N4 — analysis only, no change
 

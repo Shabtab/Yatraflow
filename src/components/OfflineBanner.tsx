@@ -74,6 +74,24 @@ export function OfflineBanner() {
   const waiting = writes.length - held
 
   /**
+   * The notice for a discard that did not complete.
+   *
+   * A copy with no reason is the local overlay on screen, and its removal
+   * needs the shared plan to replace it. When the removal of a held overlay
+   * is refused, the shared plan could not be read, so the cause is named. If
+   * the device is offline, the retry only helps once it is back online. A
+   * copy WITH a reason is never an overlay, so it is removed either way and
+   * never gets that wording.
+   */
+  function discardFailureNotice(write: QueuedWrite | null): string {
+    const overlayOnScreen = !!write && !write.reason
+    if (!overlayOnScreen) return 'The saved copy was not removed. Try again.'
+    return online
+      ? 'The saved copy was not removed. The shared plan could not be read. Try again.'
+      : 'The saved copy was not removed. The shared plan could not be read. Try again when you are back online.'
+  }
+
+  /**
    * Remove a kept copy from this device.
    *
    * This is a LOCAL action. It removes the copy from this device and writes
@@ -96,18 +114,7 @@ export function OfflineBanner() {
         setNotice({ identity, text: 'The saved copy was removed from this device.', failed: false })
         return
       }
-      // The removal was refused. A copy with no reason is the local overlay
-      // on screen, and the removal needs the shared plan to replace it. The
-      // server could not be read, so the retry only helps once the device is
-      // back online.
-      const overlayOnScreen = !write.reason
-      setNotice({
-        identity,
-        text: overlayOnScreen && !online
-          ? 'The saved copy was not removed. The shared plan could not be read. Try again when you are back online.'
-          : 'The saved copy was not removed. Try again.',
-        failed: true,
-      })
+      setNotice({ identity, text: discardFailureNotice(write), failed: true })
     } catch {
       if (identityRef.current !== identity) return
       setNotice({ identity, text: 'Could not remove this copy. Try again.', failed: true })
@@ -136,7 +143,18 @@ export function OfflineBanner() {
       await refreshRef.current?.()
       if (identityRef.current !== identity) return
       if (!succeeded) {
-        setNotice({ identity, text: 'This action did not save a change. Check your trip access and connection.', failed: true })
+        // A failed discard names its cause, so the advice matches it. The
+        // held-copy buttons reach this handler, so the message has to live
+        // here and not only in the removal handler.
+        const discarded = choice === 'discard'
+        const held = discarded ? writes.find(w => w.tripId === tripId) ?? null : null
+        setNotice({
+          identity,
+          text: discarded
+            ? discardFailureNotice(held)
+            : 'This action did not save a change. Check your trip access and connection.',
+          failed: true,
+        })
       } else if (tripId) {
         const text = choice === 'discard'
           ? 'The saved edit was removed from this device. The shared plan stays unchanged.'
@@ -246,7 +264,15 @@ export function OfflineBanner() {
                         : 'Device storage is unavailable. This copy stays in this tab only, and it cannot be exported.'}
                     </p>
                   )}
-                  {conflict && <p>Use shared plan discards your saved edit. Download your copy before you choose.</p>}
+                  {conflict && (
+                    // The download is only offered when the copy can be
+                    // exported, so the instruction must not promise one that
+                    // is not there.
+                    <p>
+                      Use shared plan discards your saved edit.
+                      {exportable ? ' Download your copy before you choose.' : ''}
+                    </p>
+                  )}
                   {reason && !exportable && <p role="alert">This copy cannot be exported. It stays on this device.</p>}
                 </div>
                 <div className="offline-recovery-actions">

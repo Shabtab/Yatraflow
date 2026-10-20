@@ -205,15 +205,20 @@ describe('saved-edit recovery presentation', () => {
     }
   })
 
-  it('names the cause when a removal is refused offline', () => {
-    // The refusal only happens for a HELD overlay, and only when the server
-    // could not be read. The notice must say so, because a retry only helps
-    // once the device is back online.
+  it('names the cause when a removal is refused', () => {
+    // The refusal only happens for a HELD overlay, and only when the shared
+    // plan could not be read. The notice must say so, and the advice must
+    // match the cause: offline it helps to wait for the connection, online
+    // it does not.
     const source = readFileSync(new URL('../src/components/OfflineBanner.tsx', import.meta.url), 'utf8')
-    expect(source).toContain('The shared plan could not be read. Try again when you are back online.')
+    expect(source).toContain('The shared plan could not be read.')
+    expect(source).toContain('Try again when you are back online.')
     // The reason decides which notice is shown, so a reasoned copy never gets
     // the "shared plan" wording.
-    expect(source).toContain('const overlayOnScreen = !write.reason')
+    expect(source).toContain('const overlayOnScreen = !!write && !write.reason')
+    // The held-copy buttons call `recover`, so the message must be reachable
+    // from there too.
+    expect(source).toContain('discardFailureNotice(held)')
   })
 })
 

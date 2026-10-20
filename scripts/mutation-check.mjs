@@ -13,6 +13,9 @@ const BANNER = `${ROOT}/src/components/OfflineBanner.tsx`
 const TESTS = [
   'tests/recovery-identity-boundaries.test.ts',
   'tests/offline-recovery-ui.test.ts',
+  'tests/gate-extra-probes.test.ts',
+  'tests/gate-additional-probes.test.ts',
+  'tests/gate-banner-probes.test.ts',
 ]
 const OUT = process.argv[2]
 
@@ -113,6 +116,71 @@ const MUTATIONS = [
     file: STORE,
     from: `      if (readFailed && isHeldCopy(current) && cache.trips.some(t => t.id === tripId)) return false`,
     to: `      if (readFailed && cache.trips.some(t => t.id === tripId)) return false`,
+  },
+  {
+    // The access generation must be captured BEFORE the first await. A
+    // tombstone that lands during the queue read bumps the generation, and an
+    // action that reads the generation after the await would take the bumped
+    // value and treat itself as current.
+    name: 'REVISE4-generation-captured-before-the-await',
+    file: STORE,
+    from: `  const accessEpoch = tripAccessEpochs.get(tripId) ?? 0
+  const write = (await pendingWrites()).find(w => w.ownerId === scope.userId && w.tripId === tripId)
+  if (!write || !isCurrentIdentity(scope)) return false
+  // The generation moved while the queue was read, so this action is stale.
+  if ((tripAccessEpochs.get(tripId) ?? 0) !== accessEpoch) return false`,
+    to: `  const write = (await pendingWrites()).find(w => w.ownerId === scope.userId && w.tripId === tripId)
+  if (!write || !isCurrentIdentity(scope)) return false
+  const accessEpoch = tripAccessEpochs.get(tripId) ?? 0`,
+  },
+  {
+    // The shared plan must be published with the AUTHORITATIVE membership.
+    // The cached members still say owner or editor after a demotion, so
+    // reusing them leaves the edit controls on screen.
+    name: 'REVISE4-authoritative-membership',
+    file: STORE,
+    from: `        const shared = await readSharedTripWithMembership(entry.tripId, token)`,
+    to: `        const shared = await readSharedTrip(entry.tripId, token).then(t => t ? { trip: t, members: t.members } : null)`,
+  },
+  {
+    // A failed shared read must not leave the local proposal on screen for an
+    // account that may no longer edit it.
+    name: 'REVISE4-failed-read-removes-the-proposal',
+    file: STORE,
+    from: `  if (!shared) {
+    // The shared plan could not be read. The cache holds the LOCAL PROPOSAL
+    // for this trip, and the account may no longer edit it, so the proposal
+    // must not stay on screen. The trip leaves the list until a read
+    // succeeds. A later read restores it.
+    cache.trips = cache.trips.filter(t => t.id !== tripId)
+    commit()
+    return
+  }`,
+    to: `  if (!shared) return`,
+  },
+  {
+    // A removal that was in flight when the generation moved must put the
+    // copy back, because a tombstone asked for it to be kept.
+    name: 'REVISE4-inflight-removal-restores-the-copy',
+    file: STORE,
+    from: `        const reason = tripInvalidationReasons.get(tripId)
+        if (reason && durable) {
+          // The copy was deleted, so it is queued again rather than replaced.
+          // \`requeueIfCurrent\` only replaces an entry that is still there.
+          await queueWrite({ ...current, state: 'failed', reason })
+        }
+        return false`,
+    to: `        return false`,
+  },
+  {
+    // The hydrate must keep the deletion reason it observed, because a
+    // tombstoned trip and a removed membership are different reasons.
+    name: 'REVISE4-hydrate-keeps-the-deletion-reason',
+    file: STORE,
+    from: `        const reason = tombstonedTripIds.has(write.tripId)
+          ? 'trip-unavailable'
+          : readable.has(write.tripId) ? 'access-revoked' : 'access-removed'`,
+    to: `        const reason = readable.has(write.tripId) ? 'access-revoked' : 'access-removed'`,
   },
   {
     // A reasoned copy is never held as the local copy.
@@ -256,5 +324,5 @@ for (const mutation of MUTATIONS) {
 
 restore()
 lines.push('All sources restored.')
-writeFileSync(OUT, lines.join('\n'), 'utf8')
+writeFileSync(OUT, lines.join('\n') + '\n', 'utf8')
 console.log(lines.join('\n'))
