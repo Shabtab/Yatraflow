@@ -8,7 +8,6 @@ Start here. The codebase is documented across the files below — read the ones 
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | How the pieces fit: data model, store, engine math, AI, geocoding, routing, maps, theming, extension points, gotchas. Read before changing core logic. |
 | [`DEPLOYMENT.md`](DEPLOYMENT.md) | Supabase setup, Vercel + other static hosts, env vars, release checklist. |
 | [`OFFLINE-REPLAY-783.md`](OFFLINE-REPLAY-783.md) | Offline replay audit, conflict choices, account boundaries, tests, and migration rollout. |
-
 | [`APK-UPDATE-FEED.md`](APK-UPDATE-FEED.md) | Reference: the Android update feed — the manifest contract, the proposed endpoint, the version-code rule, and the activation steps that still need approval. |
 | [`DESIGN_TOKENS.md`](../DESIGN_TOKENS.md) | The 3-layer design-token system (primitive → semantic → component) and the button/input state matrix. |
 | [`ART-PIPELINE.md`](ART-PIPELINE.md) | How-to: the papercut illustration set. Where the files live, the size budget, how `npm run art:build` makes them from the master PNGs, and how to add or replace an image. |
