@@ -438,6 +438,19 @@ lines.push('The COLLECTIVE mutation removes the whole set and does fail, so the'
 lines.push('set is what holds the line. That is defence in depth, not an unpinned')
 lines.push('fix.')
 lines.push('')
+lines.push('OVERLAPPING GUARDS, STATED PLAINLY. The liveness check and the')
+lines.push('edit-right check cover the same case in the realtime demotion, and')
+lines.push('the two discard checks cover the same case in the discard path. A')
+lines.push('mutation that removes ONE of them therefore leaves the scenario')
+lines.push('covered by its neighbour, so it does not reproduce the defect. The')
+lines.push('mutations marked COLLECTIVE remove the whole overlapping set, and')
+lines.push('those are the ones that prove the defect comes back.')
+lines.push('')
+lines.push('So a PINNED count is NOT proof that each guard is independently')
+lines.push('necessary. It is proof that removing the guards together brings the')
+lines.push('defect back. The behavioural probes, not the mutation count, are what')
+lines.push('pin the individual behaviours.')
+lines.push('')
 lines.push('The guard that keeps a reasoned copy out of the held copy is pinned on')
 lines.push('the SOURCE, because the overlay path already drops it. The behaviour')
 lines.push('is the same with or without it, so only a source assertion can tell.')
@@ -469,9 +482,14 @@ for (const mutation of MUTATIONS) {
   // Write with the same line endings the file already uses.
   const eol = readFileSync(target, 'utf8').includes('\r\n') ? '\r\n' : '\n'
   writeFileSync(target, final.replace(/\n/g, eol), 'utf8')
+  // The line the mutation lands on, read from the mutated file.
+  const line = final.split('\n').findIndex(l => l.includes(norm(mutation.to).split('\n')[0].trim()))
   const result = runTests()
   if (!result.passed) failures += 1
   lines.push(`${result.passed ? 'NOT PINNED' : 'PINNED'}  ${mutation.name}`)
+  lines.push(`  file: ${mutation.file}${line >= 0 ? ` line ${line + 1}` : ''}`)
+  lines.push(`  command: node ${path.relative(ROOT, path.join(SCRATCH, 'node_modules/vitest/vitest.mjs'))} run ${TESTS.join(' ')}`)
+  lines.push(`  exit: ${result.passed ? 0 : 1}`)
   lines.push(`  result: ${result.passed ? 'the suite stayed GREEN' : result.summary}`)
   if (!result.passed) {
     // The failing test names, read from the vitest summary block.
