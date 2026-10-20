@@ -212,6 +212,11 @@ lines.push('A single guard is enough to stop the defect, and the guards overlap.
 lines.push('One removed guard leaves the scenario covered by a neighbour, so the')
 lines.push('one-guard mutation does not reproduce it. The set is what holds the')
 lines.push('line.')
+lines.push('')
+lines.push('The guard that keeps a reasoned copy out of the held copy is pinned on')
+lines.push('the SOURCE, because the overlay path already drops it. The behaviour')
+lines.push('is the same with or without it, so only a source assertion can tell.')
+lines.push('')
 
 for (const mutation of MUTATIONS) {
   restore()
