@@ -3,6 +3,24 @@
 Base: `origin/test` @ `90d3f4b4` (PR #798 merge).
 Branch: `codex/t3-pr798-followup-mm-cline`.
 
+## The base refresh
+
+`origin/test` has moved on. PR #811 landed the Android update work, and it
+**removed** the update-notice files that the old base still carried. A merge
+with the current origin/test has two conflicts, and both are trivial append
+collisions:
+
+- `docs/README.md` — this branch adds one row and PR #811 adds another at the
+  same place. Keep both rows.
+- `src/styles.css` — this branch appends the sync-check height rule at the
+  END of the file, and PR #811 appends its native-shell block at the END of
+  the file. Keep both blocks. The order does not matter, because the two
+  rules touch different selectors.
+
+A merge resolved that way passes the full suite: 5514 tests, 1 skipped. The
+resolution is mechanical, but it must be done by hand, so the base refresh
+needs a coordinator step.
+
 ## The S1 defect, traced
 
 `sendQueuedTripWrite` has two terminal branches that discard work:
