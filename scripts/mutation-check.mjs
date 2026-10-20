@@ -513,11 +513,12 @@ for (const mutation of MUTATIONS) {
 }
 
 restore()
-// `failures` counts the mutations that DID bring the defect back, so the
-// pinned count is the total minus those.
-const pinned = MUTATIONS.length - failures
+// `failures` counts the mutations whose suite went RED, which is the count
+// that proves the defect came back. So it IS the pinned count.
+const pinned = failures
+const notPinned = MUTATIONS.length - pinned
 lines.push(`Pinned: ${pinned} of ${MUTATIONS.length}.`)
-lines.push(`Not pinned: ${failures}.`)
+lines.push(`Not pinned: ${notPinned}.`)
 lines.push('The scratch copy was removed. The worktree was never mutated.')
 cleanup()
 // The report is the product. The exit code says the run completed.
