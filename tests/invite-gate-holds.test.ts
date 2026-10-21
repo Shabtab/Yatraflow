@@ -149,7 +149,7 @@ describe('the store state the probe extracts is the state the functions read', (
 
   it('admission measures provenance against the REQUEST, not the response', () => {
     // A response whose rows agree with each other but name another trip must be
-    // refused. The check therefore compares the row with `requestedTripId` and
+    // refused. The check so compares the row with `requestedTripId` and
     // never with the row's own id, which would always match itself.
     const body = STORE.slice(STORE.indexOf('function admitFullRow('), STORE.indexOf('export async function membershipCertain'))
     expect(body).toContain('row.id.toLowerCase() !== requestedTripId.toLowerCase()')
