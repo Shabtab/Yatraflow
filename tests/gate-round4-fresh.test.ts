@@ -364,6 +364,20 @@ describe('discard refresh failures',()=>{
     expect((await pending()).map(w=>w.trip.name)).toEqual(['PRIVATE REREAD']);
     expect(store.getSnapshot().trips.find(t=>t.id==='shared')?.name).toBe('PRIVATE REREAD');
   });
+  it('a re-read still older than the server ledger keeps the held copy',async()=>{
+    const store=await fresh(true);await capture(store,'PRIVATE STALE');state.fullReads=0;
+    const first=gate(),second=gate();state.readGate=first.promise;state.fullGate=second.promise;
+    const request=store.resolveQueuedTripWrite('shared','discard');await flush();
+    const newer={...state.rows.get('shared'),name:'CURRENT SHARED',write_version:1,updated_at:20};
+    store._applyRealtimeEventForTest('trips',{eventType:'UPDATE',new:newer,old:{}});
+    state.readGate=null;first.release();await flush();expect(state.heldFullRead).toBe(2);
+    // The re-read started before the server row changed, so it still returns the older row.
+    state.rows.set('shared',newer);second.release();
+    const result=await request;await flush();
+    expect(result).toBe(false);
+    expect((await pending()).map(w=>w.trip.name)).toEqual(['PRIVATE STALE']);
+    expect(store.getSnapshot().trips.find(t=>t.id==='shared')?.name).toBe('PRIVATE STALE');
+  });
   it('a local edit made during the discard refresh keeps its contents and refuses success',async()=>{
     const store=await fresh(true);await capture(store,'PRIVATE EDIT');
     const hold=gate();state.memberGate=hold.promise;
