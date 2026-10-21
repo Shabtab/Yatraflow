@@ -186,12 +186,20 @@ function row(id = 'shared', owner = 'A'): TripRow {
     id, owner_id: owner, name: 'Original plan', start_location: 'Kochi', start_location_coords: null,
     destinations: ['Kochi'], destination_coords: null, start_date: '2026-10-01', end_date: '2026-10-01',
     travellers: 2, transport_mode: 'car', budget_per_person_inr: 5000, travel_style: 'balanced',
-    fixed_commitments: [], days: [{ index: 0, stops: [
+    fixed_commitments: [], days: [{ id: 'day-0', index: 0, stops: [
       { id: 'keep', title: 'Fort', category: 'sightseeing', locationName: 'Fort', lat: 10, lng: 76,
         visitMinutes: 30, entryFeeInrPerPerson: 0, transportCostInrTotal: 0, priority: 'must-do', status: 'confirmed', orderInDay: 0 },
       { id: 'delete', title: 'Museum', category: 'sightseeing', locationName: 'Museum', lat: 10, lng: 76,
         visitMinutes: 30, entryFeeInrPerPerson: 0, transportCostInrTotal: 0, priority: 'must-do', status: 'confirmed', orderInDay: 1 },
     ] }], expenses: [], cover_emoji: '🧭', visibility: 'private', invite_code: null, created_at: 1, updated_at: 1, write_version: 0,
+    // The five protected columns a full row carries; admission refuses a row
+    // without them, because a whole-row write built from it would erase them.
+    flights: [], tank_l: null, rent_per_day_inr: null, local_train: null, ref: null,
+    // Round 10 — admission reads the WHOLE row before any default applies, so a
+    // fixture must carry every column a real `select('*')` row carries.
+    fuel_economy_km_per_l: null, fuel_price_per_l: null, round_trip: null,
+    cover_image_url: null, stay_style: null, driver_count: null, has_vulnerable: null,
+    drive_after_dinner_min: null, vehicle_profile: null, deleted_at: null,
   }
 }
 

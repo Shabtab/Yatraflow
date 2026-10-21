@@ -19,7 +19,7 @@ vi.mock('../src/lib/supabase', () => {
     const qb: any = { table, method }
     const chain = () => qb
     qb.select = chain; qb.eq = chain; qb.in = chain; qb.order = chain
-    qb.limit = chain; qb.lt = chain; qb.gt = chain
+    qb.limit = chain; qb.lt = chain; qb.gt = chain; qb.setHeader = chain
     qb.maybeSingle = () => qb; qb.single = () => qb; qb.throwOnError = chain
     qb.then = (f: any, r?: any) =>
       new Promise(resolve => { sent.push({ table, method }); resolve({ data: null, error: null }) }).then(f, r)
@@ -42,12 +42,13 @@ vi.mock('../src/lib/supabase', () => {
       const table = fn === 'bump_published_stats' ? 'published_itineraries' : fn
       const method = 'rpc'
       const qb: any = { table, method, fn }
+      qb.setHeader = () => qb
       qb.then = (f: any, r?: any) =>
         new Promise(resolve => { sent.push({ table, method }); resolve({ data: null, error: null }) }).then(f, r)
       return qb
     },
     auth: {
-      getSession: async () => ({ data: { session: null } }),
+      getSession: async () => ({ data: { session: { access_token: 'fixture-token', user: { id: 'amelia' } } } }),
       onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
     },
     channel: () => ({ on: () => ({}), subscribe: () => ({}) }),
@@ -105,7 +106,12 @@ describe('#52 — every optimistic write must actually reach the client', () => 
   const cases: Array<{ name: string; table: string; method: 'insert' | 'update' | 'delete'; run: (s: any) => void }> = [
     { name: 'restoreMember', table: 'trip_members', method: 'insert', run: s => s.restoreMember('trip-1', { userId: 'diego', role: 'editor', joinedAt: 3 }) },
     { name: 'setMemberRole', table: 'trip_members', method: 'update', run: s => s.setMemberRole('trip-1', 'priya', 'viewer') },
-    { name: 'joinViaInvite', table: 'join_trip', method: 'rpc', run: s => s.joinViaInvite('trip-1', 'newcomer', 'GOA-K7QF') },
+    // #804 (B2a) — joinViaInvite now refuses a caller id that is not the
+    // signed-in account, and an EXISTING member short-circuits to the reload
+    // path without an RPC. This harness signs in as 'amelia' and seeds her as
+    // the owner of trip-1, so the case joins a second trip she is NOT on, which
+    // is the shape that actually issues the join_trip RPC.
+    { name: 'joinViaInvite', table: 'join_trip', method: 'rpc', run: s => s.joinViaInvite('trip-2', 'amelia', 'GOA-K7QF') },
     { name: 'removeMember', table: 'trip_members', method: 'delete', run: s => s.removeMember('trip-1', 'priya') },
     {
       name: 'addSuggestion',
