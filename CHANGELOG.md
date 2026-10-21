@@ -15,6 +15,10 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Added
+
+- **Mixed trips now ask whether you drive any part of the trip.** The answer sets the driving options. A new Mixed trip cannot be created without one. An existing Mixed trip keeps planning the way it always did until you answer. (2026-10-19)
+
 ### Fixed
 
 - **A new snapshot link keeps the whole trip out of the request a reader makes.** The payload rides the part of the address after `#`. A browser then asks for the home page alone. The trip enters no request target, query, or referrer for that page load. (#805)
@@ -23,6 +27,14 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - **Support feedback drafts no longer carry a snapshot payload.** The draft keeps the route and the app version, so a report is still reproducible. (#805)
 - **Snapshot redaction drops repeated-separator routes and unresolved encoded values before they leave the page.** Analytics data points and support drafts keep a safe route label and carry no readable trip. (#805)
 - **Sharing copy now states what a snapshot link is.** Anyone who holds the link can read the trip, and no copied link can be revoked. The reader's page also records that an older link was already sent on its first request. A browser can repeat that in same-origin referrers, and the app does not stop it. (#805)
+- Development checks handle both Windows and Linux line endings. SQL contract checks use fixed function headers.
+- **Only the options that apply to your transport are shown.** A car, a rental car and a motorcycle keep their driving options. A train, a bus, a flight and a taxi hide the driver counts and the fuel figures. They also hide the drive-back planning. Traveller, budget, stay and travel-style options stay for every mode. (2026-10-19)
+- **A passenger trip no longer shows a driver count it does not own.** The two forms drop the driving summary, the drawer and its shortcut, and the Wheel figure. The section heading loses its wheel wording. A ticket reads as a journey. (2026-10-19)
+- **The Train pill is no longer covered by its Local switch.** The reserved space went to a class the form does not use. The selected mode's name was hidden. (2026-10-19)
+- **A driving answer is never saved in silence.** If the answer cannot be stored, the save stops and says so. Your other trip details are untouched. (2026-10-19)
+- **A passenger trip gets no fuel or charge stop.** The stop planner reads one driving answer. A passenger mode gets no fuel stop and no charge stop. A Mixed trip that answers No gets none either. A stored electric vehicle no longer adds charge stops to a passenger trip. The plan of a passenger trip reads no vehicle at all. (2026-10-19)
+- **Your driving choices stay when you change the mode.** An answer of No keeps the driver count, the vulnerable seat setting and the after-dinner allowance. They apply again when you choose Yes. A passenger mode hides them, and it does not delete them. The values you set last are the values the trip keeps. (2026-10-19)
+- **The driving answer buttons have a full touch target.** The two answers are at least 44px high at every width. The selected answer shows a pale wash with dark teal text. On a phone, both answers keep one height. (2026-10-19)
 
 ## [0.78.0] - 2026-10-21
 

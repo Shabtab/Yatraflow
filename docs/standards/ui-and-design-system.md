@@ -4,6 +4,9 @@ CSS cascade, contrast, motion, a11y, chunking. Extracted from
 `CODING_STANDARDS.md` §2 on 2026-10-05; entries are verbatim. The root
 file's index says when to read here; pitfall rules `6a`–`6ag` stay there.
 
+- Give segmented answer controls a dedicated class.
+  Shared form layout classes must not generate selection decoration.
+
 - Browser-native `<input type="time">` follows the OS format **by design** and
   cannot be forced to 12h — don't replace it. The convention: keep the native
   input and echo the app preference as a live `.time-preview` ("= 6:30 PM")

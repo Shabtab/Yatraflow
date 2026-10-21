@@ -1571,4 +1571,27 @@ describe('a surface that appears carries motion (AGENTS §2.10)', () => {
         + 'Write `.page-enter > * { animation: none; }` inside that media query.',
     ).toBe(true)
   })
+
+  it('gives the Mixed answer buttons a 44px touch target', () => {
+    // .crew-btn is a 36px counter, and the 720px block raises it to 40px only.
+    // A word answer is a primary choice, so the pair must floor at 44px.
+    // Read every rule that targets the pair's own buttons and nothing else.
+    const rules = [...css.matchAll(/\.transport-answer-pair(?:\[[^\]]*\])? > \.crew-btn \{([^}]*)\}/g)]
+    expect(rules.length, 'No rule sizes the pair\'s buttons').toBeGreaterThan(0)
+    const floored = rules
+      .map(r => r[1].match(/min-height:\s*(\d+)px/))
+      .filter((m): m is RegExpMatchArray => m !== null)
+      .map(m => Number(m[1]))
+    expect(floored, 'the pair must set a min-height of at least 44px').toContain(44)
+    for (const r of rules) {
+      // A fixed height that overrides the floor would defeat it.
+      expect(r[1].match(/(?:^|;|\s)height:\s*(\d+)px/), 'a fixed height would override the min-height').toBeNull()
+    }
+    // The rule must sit AFTER the mobile .crew-btn 40px block, or the media
+    // query's height wins the cascade and the target drops to 40px on phones.
+    const sizingRule = rules.find(r => (r[1] ?? '').includes('min-height'))!
+    const mobileCrew = css.search(/\.crew-btn \{ min-width: 40px; height: 40px; \}/)
+    expect(mobileCrew, 'the mobile .crew-btn 40px rule moved or changed').toBeGreaterThan(-1)
+    expect(css.indexOf(sizingRule[0])).toBeGreaterThan(mobileCrew)
+  })
 })
