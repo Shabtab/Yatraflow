@@ -50,7 +50,6 @@ vi.mock('../src/lib/writeQueue', async importOriginal => {
   const memory: WriteQueueStore = {
     list: async () => {
       const rows = structuredClone([...state.disk.values()])
-      await state.queueGate
       return rows
     },
     put: async entry => { state.disk.set(actual.writeQueueKey(entry.ownerId, entry.tripId), structuredClone(entry)) },
@@ -76,7 +75,11 @@ vi.mock('../src/lib/writeQueue', async importOriginal => {
   return {
     ...actual,
     queueWrite: (entry: QueuedWrite) => actual.queueWrite(entry, memory),
-    pendingWrites: () => actual.pendingWrites(memory),
+    // The read is held at the queue read, not at the storage layer. A sign-out
+    // cleanup reads the same storage, and the queue read waits for that
+    // cleanup. A held storage read would make the cleanup and the read wait
+    // for each other, so the gate belongs on the read alone.
+    pendingWrites: async () => { await state.queueGate; return actual.pendingWrites(memory) },
     pendingWriteCount: (owner?: string) => actual.pendingWriteCount(owner, memory),
     clearWritesFor: (owner: string) => actual.clearWritesFor(owner, memory),
     dropQueuedWrite: (entry: QueuedWrite) => actual.dropQueuedWrite(entry, memory),
@@ -340,7 +343,11 @@ describe('independent exact-SHA recovery probes', () => {
     state.authHandler('SIGNED_IN', { user: { id: 'B' }, access_token: 'token-B' });
     await flush();
     expect(store.getSnapshot().sessionUserId).toBe('B');
-    expect(store.getSnapshot().trips.map(t => t.id)).toEqual(['shared']);
+    // The shared plan is published by a read that waits for the sign-out
+    // cleanup, and the cleanup waits for this storage. The removal is still
+    // in flight here, so the plan is not published yet. The removal itself
+    // must have reached durable storage, or the wait below proves nothing.
+    expect(state.putCalls).toBeGreaterThan(0);
     hold.release();
     await replay;
     await flush();

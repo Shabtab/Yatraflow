@@ -316,24 +316,23 @@ describe('round three additional real-store behavior', () => {
   });
   for(const phase of ['initial-list','inner-list','token','server-read','drop','final-list']) {
     for(const transition of ['switch','signout','same-user-new-generation']) {
-      // The same-user reauthentication case is the BASE-PRE-EXISTING risk that
+      // The same-user reauthentication case was the BASE-PRE-EXISTING risk that
       // the independent Gate's own base control reproduced on the base store:
-      // a same-user reauthentication during a delayed removal replays the copy
+      // a same-user reauthentication during a delayed removal replayed the copy
       // that the sign-out asked to remove. The Gate recorded it as a
-      // pre-existing risk rather than a new blocker, and it is the ONLY case
-      // here that the base store already fails.
+      // pre-existing risk rather than a new blocker, and it was the ONLY case
+      // here that the base store already failed.
       //
-      // The write comes from the REPLAY: the Gate instrumented it, and
+      // The write came from the REPLAY: the Gate instrumented it, and
       // `replayQueuedWrites` calls `sendQueuedTripWrite` after the
-      // reauthentication. It does NOT come from the plan persist that a
+      // reauthentication. It did NOT come from the plan persist that a
       // realtime membership change triggers.
       //
-      // `it.fails` keeps the case in the suite and turns the suite green ONLY
-      // while the defect is still there, so the moment it is fixed the test
-      // fails and asks for the marker to go.
-      const knownPreExisting = phase === 'drop' && transition === 'same-user-new-generation';
-      const it_ = knownPreExisting ? it.fails : it;
-      it_(`discard ${phase} rejects stale ${transition} without publishing old rows`, async () => {
+      // The v0.78.0 sign-out cleanup fixed that case. The cleanup owns the
+      // departing account's records, and a queue read waits for it, so the
+      // copy the sign-out asked to remove can no longer be replayed. The case
+      // now runs as a plain test that must pass.
+      it(`discard ${phase} rejects stale ${transition} without publishing old rows`, async () => {
         const store=await fresh(true); await capture(store,'A PRIVATE COPY');
         const hold=gate(); state.listCount=0; state.operations=[];
         if(phase==='initial-list'||phase==='inner-list'||phase==='final-list') {state.listHoldAt=phase==='initial-list'?1:phase==='inner-list'?2:3;state.listGate=hold.promise;}
