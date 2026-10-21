@@ -260,12 +260,17 @@ describe('B-1 — a member who re-clicks the link loads instead of hanging', () 
   })
 
   it('the App effect passes membership into begin, and does not dispatch twice', () => {
-    const effect = APP.slice(APP.indexOf("if (isTripIdLink) return"), APP.indexOf('}, [me, trip, identityGen'))
+    // Round 10 — the begin effect's dependency list changed with the owner and
+    // machine buffers, so the block is cut by its own end marker.
+    const start = APP.indexOf("if (isTripIdLink) return")
+    const effect = APP.slice(start, APP.indexOf('runJoinAction(plan.action', start))
     expect(effect).toContain("type: 'begin'")
     expect(effect).toContain('member')
-    // No second correction event: that is what hung the member.
-    const dispatches = (effect.match(/dispatchJoin\(/g) ?? []).length
-    expect(dispatches, 'one dispatch per effect run').toBe(1)
+    // One 'begin' DISPATCH (the probe above it asks the machine without
+    // dispatching), so a member is never corrected by a second event. Round 10
+    // names the dispatcher `dispatch`.
+    const began = (effect.match(/dispatch\(\{ type: 'begin'/g) ?? []).length
+    expect(began, 'one dispatch per effect run').toBe(1)
   })
 })
 
@@ -282,7 +287,8 @@ describe('B-2 — a legacy trip-id link never joins', () => {
 
   it('the trip-id branch is handled by its own membership check', () => {
     // viewerIsMemberOf is the separate effect that opens or refuses a UUID link.
-    expect(APP).toContain('viewerIsMemberOf(trip.id, me.id)')
+    // Round 10 renamed the local trip binding to the target it belongs to.
+    expect(APP).toContain('viewerIsMemberOf(shownTrip.id, me.id)')
     expect(APP).toContain('This invite link is retired')
   })
 })
@@ -337,9 +343,12 @@ describe('the machine is the only owner: App holds no join flag', () => {
   it('App dispatches begin, retry and settlements, and reads the phase', () => {
     expect(APP).toContain("type: 'begin'")
     expect(APP).toContain("type: 'retry'")
-    expect(APP).toContain("type: 'join-settled'")
-    expect(APP).toContain("type: 'reload-settled'")
-    expect(APP).toContain('joinAllowsNavigation(joinState)')
+    // Round 10 — the settlement kinds are named once, in the settle helper.
+    expect(APP).toContain("kind: 'join-settled' | 'reload-settled'")
+    expect(APP).toContain("settle('join-settled'")
+    expect(APP).toContain("settle('reload-settled'")
+    // Round 10 — the navigation effect reads the machine of the target it shows.
+    expect(APP).toContain('joinAllowsNavigation(machine)')
     expect(APP).not.toContain('joinedRef')
     expect(APP).not.toContain('attemptRef')
     expect(APP).not.toContain('dispatchAttempt')
@@ -362,13 +371,15 @@ describe('loadFullTripIntoCache refuses what it cannot trust', () => {
 
   it('refuses an unverifiable revision on EVERY load, first or replacement', () => {
     // B5 — this used to sit inside the existing-row branch, so a first load into
-    // an empty cache accepted a row with no usable revision at all.
-    expect(body).toMatch(/if \(!validWriteVersion\(row.write_version\)\) return 'incomplete'/)
-    const firstLoadAt = body.indexOf("if (!validWriteVersion(row.write_version))")
+    // an empty cache accepted a row with no usable revision at all. Round 10
+    // moved it into the one coherent-shape check both loaders share.
+    const shape = fnBody(STORE, 'function coherentFullRow(')
+    expect(shape).toMatch(/if \(!validWriteVersion\(r\.write_version\)\) return false/)
+    const refuseAt = body.indexOf('if (!coherentFullRow(row, knownOptionalColumns())) return \'incomplete\'')
     const existingAt = body.indexOf('const existing = tripById(tripId)')
-    expect(firstLoadAt).toBeGreaterThan(-1)
+    expect(refuseAt).toBeGreaterThan(-1)
     expect(existingAt).toBeGreaterThan(-1)
-    expect(firstLoadAt, 'the refusal runs before the existing-row branch').toBeLessThan(existingAt)
+    expect(refuseAt, 'the refusal runs before the existing-row branch').toBeLessThan(existingAt)
   })
 
   it('refuses a queued write on EVERY load, first or replacement', () => {
@@ -405,16 +416,23 @@ describe('loadFullTripIntoCache refuses what it cannot trust', () => {
     const downgradeAt = block.indexOf('!ownJoinEcho', noTripAt)
     expect(downgradeAt, 'the role-change check is inside the !trip branch').toBeGreaterThan(noTripAt)
     expect(block).toMatch(/String\(row\.role\) !== String\(oldRow\.role\)/)
+    // Round 10 — the observed role is applied on BOTH branches, not only the
+    // uncached one, and the floor is recorded by one helper.
+    const floorAt = block.indexOf('observeOwnMembershipRole(tripId')
+    expect(floorAt, 'the role floor runs before the branch split').toBeGreaterThan(-1)
+    expect(floorAt, 'the role floor is applied before `if (!trip)`').toBeLessThan(noTripAt)
   })
 
   it('B4 — the join-echo exemption covers only the grant we expect', () => {
     // An INSERT is our own row arriving, so it is exempt. An UPDATE that removes
     // the edit right is a downgrade even inside the join window, and must
-    // invalidate.
+    // invalidate. Round 10 binds the exemption to the trip, user, identity
+    // generation and the App's try, not to a bare trip-id set.
     const at = STORE.indexOf("case 'trip_members': {")
     const block = STORE.slice(at, at + 3000)
     expect(block).toContain("event === 'INSERT'")
-    expect(block).toContain("const ownJoinEcho = event === 'INSERT'")
+    expect(block).toContain("const expectation = event === 'INSERT'")
+    expect(block).toContain("const ownJoinEcho = !!expectation")
   })
 
   it('refuses an older revision', () => {
@@ -440,12 +458,14 @@ describe('loadFullTripIntoCache refuses what it cannot trust', () => {
   it('carries abandoned through finishJoin instead of claiming membership', () => {
     const finish = fnBody(STORE, 'async function finishJoin(')
     // The block, not a single line: the abandoned branch keeps the debt and
-    // returns before any success claim.
+    // returns before any success claim. Round 10 keeps a read refusal typed, so
+    // the first 'joined-unloaded' in the body is the stale fallback.
     expect(finish).toContain("if (loaded === 'abandoned')")
     const abandonedAt = finish.indexOf("if (loaded === 'abandoned')")
-    const unloadedAt = finish.indexOf("return 'joined-unloaded'")
+    const claimAt = finish.indexOf("return 'joined'")
     expect(abandonedAt).toBeGreaterThan(-1)
-    expect(abandonedAt, 'abandoned is handled before any success claim').toBeLessThan(unloadedAt)
+    expect(claimAt).toBeGreaterThan(-1)
+    expect(abandonedAt, 'abandoned is handled before any success claim').toBeLessThan(claimAt)
   })
 
   it('S1 — a not-member outcome reaches the UI as a failure with no claim', () => {
@@ -467,12 +487,13 @@ describe('R5 — no RPC-derived insertion claim survives', () => {
     expect(STORE).not.toContain("'joined via invite link'")
   })
 
-  it('joinViaInvite marks the expected grant BEFORE its first await and closes it in a finally', () => {
+  it('joinViaInvite records the expected grant BEFORE its first await and closes it in a finally', () => {
     const join = fnBody(STORE, 'export async function joinViaInvite(')
-    const markAt = join.indexOf('joiningTrips.add(tripId)')
+    const markAt = join.indexOf('expectedJoins.set(tripId, expectation)')
     expect(markAt).toBeGreaterThan(-1)
+    expect(join.indexOf('await tripWriteToken'), 'the token read happens inside the window').toBeGreaterThan(markAt)
     expect(join.indexOf('await joinAfterScope'), 'the scope handoff happens inside the window').toBeGreaterThan(markAt)
-    expect(join).toContain('joiningTrips.delete(tripId)')
+    expect(join).toContain('expectedJoins.delete(tripId)')
     expect(join.slice(markAt)).toContain('finally')
   })
 })
@@ -483,18 +504,25 @@ describe('B-3 — our own membership echo must not invalidate our own join', () 
     expect(at).toBeGreaterThan(-1)
     const block = STORE.slice(at, at + 2600)
     expect(block).toContain('ownJoinEcho')
-    expect(block).toContain('joiningTrips.has(tripId)')
+    expect(block).toContain('expectedJoin(tripId, true)')
     // The echo exemption must guard the epoch bump itself.
     const echoAt = block.indexOf('ownJoinEcho')
     const bumpAt = block.indexOf('tripAccessEpochs.set(tripId')
     expect(bumpAt).toBeGreaterThan(echoAt)
   })
 
-  it('joinViaInvite marks the window before any further await', () => {
+  it('the window is bound to the trip, the user, the identity generation and the live try', () => {
+    // Round 10 B2 — a trip-only set let a retired App, or another account, keep
+    // the exemption open. The contract is that ALL FOUR must still match.
+    const expected = fnBody(STORE, 'function expectedJoin(')
+    expect(expected).toContain('expectation.identityEpoch !== identityEpoch')
+    expect(expected).toContain('expectation.guard()')
     const join = fnBody(STORE, 'export async function joinViaInvite(')
-    const markAt = join.indexOf('joiningTrips.add(tripId)')
-    expect(markAt).toBeGreaterThan(-1)
-    expect(join).toContain('joiningTrips.delete(tripId)')
+    expect(join).toContain('expectedJoins.set(tripId, expectation)')
+    expect(join).toContain('const expectation: JoinExpectation = { tripId, userId, identityEpoch')
+    expect(join).toContain('guard: () => !guard || guard()')
+    const holder = fnBody(STORE, 'function admitFullRow(')
+    expect(holder).toContain('row.id.toLowerCase() !== requestedTripId.toLowerCase()')
   })
 })
 // ============ the preview never enters the writable cache ============
@@ -509,8 +537,12 @@ describe('the preview stays out of the cache', () => {
     }
   })
 
-  it('returns the row directly', () => {
-    expect(body).toMatch(/return rowToTrip\(rows\[0\], \[\]\)/)
+  it('returns the row directly, after one provenance check', () => {
+    // Round 10 — a preview with no trip id or no usable revision is not an
+    // answer this client acts on; a well-formed one is returned unchanged.
+    expect(body).toContain('const preview = rows[0]')
+    expect(body).toContain('if (typeof preview?.id !== \'string\' || preview.id.length === 0 || !validWriteVersion(preview.write_version)) return null')
+    expect(body).toMatch(/return rowToTrip\(preview, \[\]\)/)
   })
 
   it('the marker machinery is gone', () => {
@@ -605,15 +637,16 @@ describe('B1 — the store re-checks identity AFTER the membership read', () => 
 describe('B2 — a resolved link leaves the loading status', () => {
   it('App sets ready when the read returns a trip', () => {
     expect(APP).toContain("setStatus('ready')")
-    // The set must be inside the success branch, next to setTrip.
+    // The set must be inside the success branch, next to the trip it returns.
+    // Round 10 keeps the trip WITH its target, so the setter is `setResolved`.
     const at = APP.indexOf("setStatus('ready')")
-    expect(APP.slice(Math.max(0, at - 60), at)).toContain('setTrip(t)')
+    expect(APP.slice(Math.max(0, at - 120), at)).toContain('setResolved({ target: linkTarget, trip: t })')
   })
 
   it('the loading render is only for a genuinely unread link', () => {
     // The spinner must not swallow the terminal screens or the signed-out
     // preview, so "loading" needs the read to still be in flight.
-    expect(APP).toMatch(/status === 'loading' \|\| !trip/)
+    expect(APP).toMatch(/status === 'loading' \|\| !shownTrip/)
   })
 })
 
@@ -630,10 +663,11 @@ describe('S1 — a not-member outcome is a failure, not a read failure or a succ
 
 describe('S4 — a profile gap resets the join try', () => {
   it('App resets when the signed-in profile disappears', () => {
-    expect(APP).toContain('if (me && me.id === live.userId) return')
+    // Round 10 — the owner reads the machine FIELDS of the target it shows.
+    expect(APP).toContain('if (me && me.id === joinUserId) return')
     // The reset must set the machine back to idle, not merely clear a flag.
-    const at = APP.indexOf('if (me && me.id === live.userId) return')
+    const at = APP.indexOf('if (me && me.id === joinUserId) return')
     const block = APP.slice(at, at + 400)
-    expect(block).toContain('initialJoinState')
+    expect(block).toContain("dispatch({ type: 'reset' })")
   })
 })

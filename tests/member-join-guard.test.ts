@@ -287,8 +287,10 @@ describe('the invite screens never join by trip id', () => {
     // than an inline `if (isTripIdLink)` inside the join effect. It still never
     // joins: it checks membership and either opens the trip or says the link is
     // retired.
-    expect(APP).toMatch(/if \(!me \|\| !trip \|\| !isTripIdLink\) return/)
-    expect(APP).toMatch(/viewerIsMemberOf\(trip\.id, me\.id\)/)
+    // Round 10 renamed the local trip binding to `shownTrip`; the guard and the
+    // membership read are the same two statements.
+    expect(APP).toMatch(/if \(!me \|\| !shownTrip \|\| !isTripIdLink\) return/)
+    expect(APP).toMatch(/viewerIsMemberOf\(shownTrip\.id, me\.id\)/)
     expect(APP).toMatch(/This invite link is retired/)
     // The join path still passes the code, never the trip id.
     expect(APP).toMatch(/joinViaInvite\(tripId, userId, inviteCode \?\? ''/)

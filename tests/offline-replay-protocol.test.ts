@@ -195,6 +195,11 @@ function row(id = 'shared', owner = 'A'): TripRow {
     // The five protected columns a full row carries; admission refuses a row
     // without them, because a whole-row write built from it would erase them.
     flights: [], tank_l: null, rent_per_day_inr: null, local_train: null, ref: null,
+    // Round 10 — admission reads the WHOLE row before any default applies, so a
+    // fixture must carry every column a real `select('*')` row carries.
+    fuel_economy_km_per_l: null, fuel_price_per_l: null, round_trip: null,
+    cover_image_url: null, stay_style: null, driver_count: null, has_vulnerable: null,
+    drive_after_dinner_min: null, vehicle_profile: null, deleted_at: null,
   }
 }
 

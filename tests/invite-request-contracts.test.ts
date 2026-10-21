@@ -154,6 +154,18 @@ function tripRow(overrides: Record<string, unknown> = {}): Record<string, unknow
     rent_per_day_inr: null,
     local_train: null,
     ref: null,
+    // Round 10 — admission reads the WHOLE row: a missing optional column is a
+    // partial projection and is refused before any default can fill it.
+    fuel_economy_km_per_l: null,
+    fuel_price_per_l: null,
+    round_trip: null,
+    cover_image_url: null,
+    stay_style: null,
+    driver_count: null,
+    has_vulnerable: null,
+    drive_after_dinner_min: null,
+    vehicle_profile: null,
+    deleted_at: null,
     ...overrides,
   }
 }
@@ -238,16 +250,18 @@ describe('C1/c — a switch inside the join dispatch abandons the continuation',
 })
 
 describe('R2/a — an unusable revision into an empty cache is not a join', () => {
-  it('the refusal is reported as joined-unloaded and the cache stays empty', async () => {
+  it('the refusal is reported as incomplete and the cache stays empty', async () => {
     // The caller is a member, and the full row arrives with no usable revision,
-    // so the loader refuses it. The gate must not be told 'joined'.
+    // so the loader refuses it. The gate must not be told 'joined', and round 10
+    // keeps the refusal typed, so the screen can say the row was unusable
+    // rather than that a read failed.
     state.memberRowForCaller = { user_id: ALICE }
     state.members = [{ trip_id: TRIP, user_id: ALICE, role: 'editor', joined_at: 1 }]
     state.tripRow = tripRow({ write_version: undefined })
 
     const outcome = await joinViaInvite(TRIP, ALICE, CODE)
 
-    expect(outcome).toBe('joined-unloaded')
+    expect(outcome).toBe('incomplete')
     expect(tripById(TRIP), 'nothing was admitted').toBeUndefined()
   })
 
@@ -258,7 +272,7 @@ describe('R2/a — an unusable revision into an empty cache is not a join', () =
 
     const outcome = await joinViaInvite(TRIP, ALICE, CODE)
 
-    expect(outcome).toBe('joined-unloaded')
+    expect(outcome).toBe('incomplete')
     expect(tripById(TRIP)).toBeUndefined()
   })
 })

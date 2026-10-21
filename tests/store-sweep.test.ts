@@ -219,6 +219,15 @@ const portoRow = () => ({
   created_at: 1_700_000_000_000, updated_at: 1_700_000_000_000, write_version: 1,
   // The five protected columns a full row carries.
   flights: [], tank_l: null, rent_per_day_inr: null, local_train: null, ref: null,
+  // Round 10 — admission reads the WHOLE row before any default applies, so the
+  // fixture names every column a real `select('*')` row carries.
+  name: 'Porto', start_location: 'Lisbon', start_location_coords: null,
+  destinations: ['Porto'], destination_coords: null, travellers: 2,
+  transport_mode: 'car', budget_per_person_inr: 10000, travel_style: 'balanced',
+  fixed_commitments: [], cover_emoji: 'x', invite_code: null, visibility: 'private',
+  fuel_economy_km_per_l: null, fuel_price_per_l: null, round_trip: null,
+  cover_image_url: null, stay_style: null, driver_count: null, has_vulnerable: null,
+  drive_after_dinner_min: null, vehicle_profile: null, deleted_at: null,
 })
 
 beforeEach(() => {

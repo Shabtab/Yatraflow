@@ -58,6 +58,15 @@ export function inviteGateState(read: { loading: boolean; failed: boolean; trip:
  */
 export type JoinPhase = 'idle' | 'joining' | 'loading' | 'joined' | 'joined-unloaded' | 'failed' | 'abandoned'
 
+/** Why a join or a full-row read ended without a usable trip. The kinds stay
+ *  distinct so the screen can name the actual problem:
+ *  - `not-member`: the server says this account is not on the trip.
+ *  - `missing`: the trip row does not exist.
+ *  - `deleted`: the trip is in the trash.
+ *  - `incomplete`: the row arrived in a shape this client cannot trust.
+ *  - `failed`: the read itself failed. */
+export type JoinRefusal = 'not-member' | 'missing' | 'deleted' | 'incomplete' | 'failed'
+
 export interface JoinState {
   phase: JoinPhase
   /** The account this state belongs to; null before anyone is known. */
@@ -66,6 +75,8 @@ export interface JoinState {
   gen: number
   /** Monotonic id of the current try. Continuations must quote it back. */
   tryId: number
+  /** The typed refusal behind a failed or unloaded result; null otherwise. */
+  reason: JoinRefusal | null
 }
 
 /** What the caller must do in response to an event. */
@@ -79,7 +90,7 @@ export interface JoinPlan {
   action: JoinAction
 }
 
-export const initialJoinState: JoinState = { phase: 'idle', userId: null, gen: -1, tryId: 0 }
+export const initialJoinState: JoinState = { phase: 'idle', userId: null, gen: -1, tryId: 0, reason: null }
 
 /**
  * A monotonic try id. Module-level on purpose: React state and refs are reset
@@ -101,9 +112,12 @@ export function nextAttemptId(): number {
 export interface AttemptOwner {
   readonly id: number
   retired: boolean
+  /** The normalized link target this try belongs to. A try from one target
+   *  must not settle, load or navigate another. */
+  readonly target?: string
 }
-export function createAttemptOwner(): AttemptOwner {
-  return { id: nextAttemptId(), retired: false }
+export function createAttemptOwner(target?: string): AttemptOwner {
+  return { id: nextAttemptId(), retired: false, target }
 }
 /** Retire first, clear state second. Never the other order. */
 export function retireAttemptOwner(owner: AttemptOwner): void {
@@ -111,6 +125,102 @@ export function retireAttemptOwner(owner: AttemptOwner): void {
 }
 export function attemptOwnerLive(owner: AttemptOwner): boolean {
   return !owner.retired
+}
+/** True while this try is live AND still owns the target it started under. */
+export function ownedBy(owner: AttemptOwner | null, target: string): boolean {
+  return !!owner && attemptOwnerLive(owner) && owner.target === target
+}
+
+interface GateMachineStore {
+  machine: JoinState
+  owner: AttemptOwner | null
+  /** bumped on every change, so a subscriber can tell the states apart */
+  version: number
+}
+const gateMachineStores = new Map<string, GateMachineStore>()
+/** The newest store for one target, whichever mount it belongs to. */
+const latestGateStores = new Map<string, GateMachineStore>()
+const gateMachineListeners = new Set<() => void>()
+
+/** The gate's machine for a target, for a test reader. Undefined if no mount
+ *  has asked for that target yet. */
+export function gateMachineState(target: string): GateMachineStore | undefined {
+  return latestGateStores.get(target)
+}
+
+/** Subscribe to the gate's machine changes (the component's external store). */
+export function subscribeGateState(fn: () => void): () => void {
+  gateMachineListeners.add(fn)
+  return () => { gateMachineListeners.delete(fn) }
+}
+
+/**
+ * The version of this target's machine, read by `useSyncExternalStore`.
+ *
+ * It must NOT create the store: React can read the previous target's snapshot
+ * once more after a change, and creating a store retires the other target's
+ * try. A read is so a pure lookup of the version map.
+ */
+export function gateMachineVersion(target: string, mountId = 0): number {
+  return gateMachineVersions.get(mountId + "|" + target) ?? 0
+}
+const gateMachineVersions = new Map<string, number>()
+
+function notifyGateState(): void {
+  for (const fn of gateMachineListeners) fn()
+}
+
+/**
+ * #804 (round 10 B4) — the gate's join state for ONE link target.
+ *
+ * A target change must retire the old try and reset the machine BEFORE any event
+ * reaches the new target: the next 'begin' reads this state first, and an effect
+ * runs too late to clear it. So each target keeps its own machine in a module
+ * store, and a render asks for its own target. A new target retires every other
+ * target's live try in the same call.
+ *
+ * This function is pure state access, not a hook: the component keeps the
+ * returned values and re-renders with them. It is exported here so the reset
+ * lives next to the machine it resets.
+ */
+export function gateMachine(target: string, mountId = 0): GateMachineStore {
+  const key = mountId + "|" + target
+  const held = gateMachineStores.get(key)
+  if (held) return held
+  // The new link cancels whatever join the SAME mount had in flight. Another
+  // mount keeps its own try: a remount is not a target change.
+  for (const [other, store] of gateMachineStores) {
+    if (!other.startsWith(mountId + '|')) continue
+    if (store.owner) retireAttemptOwner(store.owner)
+    gateMachineStores.delete(other)
+    gateMachineVersions.delete(other)
+  }
+  const next: GateMachineStore = { machine: initialJoinState, owner: null, version: 0 }
+  gateMachineStores.set(key, next)
+  gateMachineVersions.set(key, 0)
+  latestGateStores.set(target, next)
+  return next
+}
+
+/** Record a machine event's outcome for this target. */
+export function dispatchGateEvent(target: string, event: JoinEvent, mountId = 0): JoinPlan {
+  const store = gateMachine(target, mountId)
+  const plan = joinMachine(store.machine, event)
+  store.machine = plan.state
+  store.version += 1
+  gateMachineVersions.set(mountId + "|" + target, store.version)
+  notifyGateState()
+  return plan
+}
+
+/** Record (or clear) the try that owns this target. */
+export function setGateOwner(target: string, owner: AttemptOwner | null, mountId = 0): void {
+  const store = gateMachine(target, mountId)
+  if (store.owner === owner) return
+  store.owner = owner
+  store.version += 1
+  gateMachineVersions.set(mountId + "|" + target, store.version)
+  notifyGateState()
 }
 
 export type JoinEvent =
@@ -122,6 +232,8 @@ export type JoinEvent =
   | { type: 'join-settled'; userId: string; gen: number; tryId: number; result: JoinResult }
   /** A full-row read answered. Ignored unless it quotes the live try. */
   | { type: 'reload-settled'; userId: string; gen: number; tryId: number; result: JoinResult }
+  /** The account, the link target or the mount changed. Every try is retired. */
+  | { type: 'reset' }
 
 /** The result of a join or a reload, as the store reports it. The refusal kinds
  *  stay distinct so the gate can say "you are not on this trip" instead of
@@ -146,6 +258,11 @@ export function joinMachine(state: JoinState, event: JoinEvent): JoinPlan {
   const none = (s: JoinState): JoinPlan => ({ state: s, action: { type: 'none' } })
 
   switch (event.type) {
+    case 'reset':
+      // The caller retires the try before it dispatches this, so a continuation
+      // that still holds the old try can never settle.
+      return none(initialJoinState)
+
     case 'begin': {
       // B-1 — `begin` decides the ACTION itself, because it is the only place
       // that knows whether this caller is already a member. The earlier shape
@@ -154,7 +271,7 @@ export function joinMachine(state: JoinState, event: JoinEvent): JoinPlan {
       // link sat on "Joining…" forever. One event, one decision.
       if (!isCurrent(state, event)) {
         const phase: JoinPhase = event.member ? 'loading' : 'joining'
-        const fresh: JoinState = { phase, userId: event.userId, gen: event.gen, tryId: (event.tryId ?? state.tryId + 1) }
+        const fresh: JoinState = { phase, userId: event.userId, gen: event.gen, tryId: (event.tryId ?? state.tryId + 1), reason: null }
         return { state: fresh, action: event.member
           ? { type: 'reload', tryId: fresh.tryId }
           : { type: 'join', tryId: fresh.tryId } }
@@ -169,7 +286,7 @@ export function joinMachine(state: JoinState, event: JoinEvent): JoinPlan {
       // 'joined-unloaded' is also waiting for the user.
       if (state.phase === 'joined-unloaded') return none(state)
       const phase: JoinPhase = event.member ? 'loading' : 'joining'
-      const fresh: JoinState = { ...state, phase, tryId: (event.tryId ?? state.tryId + 1) }
+      const fresh: JoinState = { ...state, phase, tryId: (event.tryId ?? state.tryId + 1), reason: null }
       return { state: fresh, action: event.member
         ? { type: 'reload', tryId: fresh.tryId }
         : { type: 'join', tryId: fresh.tryId } }
@@ -179,7 +296,7 @@ export function joinMachine(state: JoinState, event: JoinEvent): JoinPlan {
       // The retry is bound to the account that is signed in NOW.
       if (!isCurrent(state, event)) {
         const phase: JoinPhase = event.member ? 'loading' : 'joining'
-        const fresh: JoinState = { phase, userId: event.userId, gen: event.gen, tryId: (event.tryId ?? state.tryId + 1) }
+        const fresh: JoinState = { phase, userId: event.userId, gen: event.gen, tryId: (event.tryId ?? state.tryId + 1), reason: null }
         return { state: fresh, action: event.member
           ? { type: 'reload', tryId: fresh.tryId }
           : { type: 'join', tryId: fresh.tryId } }
@@ -187,13 +304,13 @@ export function joinMachine(state: JoinState, event: JoinEvent): JoinPlan {
       // A member (or a trip whose membership is known) re-reads; it never joins
       // again, so a retry cannot write a second membership row.
       if (event.member || state.phase === 'joined-unloaded') {
-        const next: JoinState = { ...state, phase: 'loading', tryId: (event.tryId ?? state.tryId + 1) }
+        const next: JoinState = { ...state, phase: 'loading', tryId: (event.tryId ?? state.tryId + 1), reason: null }
         return { state: next, action: { type: 'reload', tryId: next.tryId } }
       }
       if (state.phase === 'joining' || state.phase === 'loading') return none(state)
       // 'failed', 'abandoned', 'idle' and 'joined' all rejoin. 'joined' cannot
       // normally be retried (it navigates), and rejoining it is harmless.
-      const next: JoinState = { ...state, phase: 'joining', tryId: (event.tryId ?? state.tryId + 1) }
+      const next: JoinState = { ...state, phase: 'joining', tryId: (event.tryId ?? state.tryId + 1), reason: null }
       return { state: next, action: { type: 'join', tryId: next.tryId } }
     }
 
@@ -201,7 +318,7 @@ export function joinMachine(state: JoinState, event: JoinEvent): JoinPlan {
       // A late answer from a previous account, or for a superseded tryId,
       // must not touch this state.
       if (!isCurrentTry(state, event)) return none(state)
-      return { state: { ...state, phase: phaseFor(event.result) }, action: { type: 'none' } }
+      return { state: { ...state, phase: phaseFor(event.result), reason: refusalFor(event.result) }, action: { type: 'none' } }
     }
 
     case 'reload-settled': {
@@ -214,9 +331,18 @@ export function joinMachine(state: JoinState, event: JoinEvent): JoinPlan {
         : event.result === 'abandoned' ? 'abandoned'
         : event.result === 'not-member' || event.result === 'missing' || event.result === 'deleted' ? 'failed'
         : 'joined-unloaded'
-      return { state: { ...state, phase }, action: { type: 'none' } }
+      return { state: { ...state, phase, reason: refusalFor(event.result) }, action: { type: 'none' } }
     }
   }
+}
+
+/** The typed reason behind a result. `joined` and `joined-unloaded` carry none:
+ *  the membership exists, and the unloaded case is a read problem, not a
+ *  membership claim. Every other result names its own refusal. */
+function refusalFor(result: JoinResult): JoinRefusal | null {
+  if (result === 'not-member' || result === 'missing' || result === 'deleted'
+    || result === 'incomplete' || result === 'failed') return result
+  return null
 }
 
 function phaseFor(result: JoinResult): JoinPhase {

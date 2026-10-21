@@ -149,6 +149,19 @@ function row(overrides: Partial<TripRow> = {}): TripRow {
     rent_per_day_inr: null,
     local_train: null,
     ref: null,
+    // Round 10 — a full row also carries every other optional column, and the
+    // admission check now reads the WHOLE row: a missing key is a partial
+    // projection, refused before any default can fill it.
+    fuel_economy_km_per_l: null,
+    fuel_price_per_l: null,
+    round_trip: null,
+    cover_image_url: null,
+    stay_style: null,
+    driver_count: null,
+    has_vulnerable: null,
+    drive_after_dinner_min: null,
+    vehicle_profile: null,
+    deleted_at: null,
     ...overrides,
   }
 }
@@ -180,6 +193,20 @@ describe('fetchTripByInviteCode', () => {
     state.rpcRows = []
     const t = await fetchTripByInviteCode('NOPE-1234')
     expect(t).toBeNull()
+  })
+
+  it('returns null for a preview with no trip id or no usable revision', async () => {
+    // Round 10 B3 — a preview that names no trip, or carries no revision, is
+    // not an answer the gate can act on.
+    state.rpcRows = [{ ...row({ id: '99999999-9999-4999-8999-999999999999', invite_code: CODE }), id: '' }]
+    expect(await fetchTripByInviteCode('GOABEACHWE-K7QF')).toBeNull()
+    state.rpcRows = [{ ...row({ id: '99999999-9999-4999-8999-999999999999', invite_code: CODE }), write_version: undefined }]
+    expect(await fetchTripByInviteCode('GOABEACHWE-K7QF')).toBeNull()
+    // A well-formed preview still comes back, and stays out of the cache.
+    state.rpcRows = [row({ id: '99999999-9999-4999-8999-999999999999', invite_code: CODE })]
+    const t = await fetchTripByInviteCode('GOABEACHWE-K7QF')
+    expect(t?.id).toBe('99999999-9999-4999-8999-999999999999')
+    expect(tripById('99999999-9999-4999-8999-999999999999')).toBeUndefined()
   })
 })
 
@@ -299,6 +326,10 @@ describe('joinViaInvite (write order)', () => {
       { trip_id: t, user_id: ME, role: 'editor', joined_at: 2 },
     ]
     await fetchTripByInviteCode(CODE)
+    // The identity is established here too: the full-row read after the join is
+    // guarded exactly as in the test above.
+    const db = store.getSnapshot() as { sessionUserId: string | null }
+    db.sessionUserId = ME
     writes.length = 0
     const ok = await joinViaInvite(t, ME, CODE)
     expect(ok).toBe('joined')
@@ -315,9 +346,12 @@ describe('joinViaInvite (write order)', () => {
     const finish = end > 0 ? body.slice(0, end + 3) : body
     expect(finish).toContain("if (loaded === 'abandoned')")
     const abandonedAt = finish.indexOf("if (loaded === 'abandoned')")
-    const unloadedAt = finish.indexOf("return 'joined-unloaded'")
+    const claimAt = finish.indexOf("return 'joined'")
     expect(abandonedAt).toBeGreaterThan(-1)
-    expect(abandonedAt, 'abandoned is handled before any success or read claim').toBeLessThan(unloadedAt)
+    expect(claimAt).toBeGreaterThan(-1)
+    // Round 10 keeps each read refusal typed, so the first claim to compare
+    // against is the one success return.
+    expect(abandonedAt, 'abandoned is handled before any success or read claim').toBeLessThan(claimAt)
     // The abandoned branch returns 'abandoned' and reads nothing into a claim.
     expect(finish).toContain("return 'abandoned'")
   })
