@@ -638,6 +638,9 @@ describe('recovery identity regressions', () => {
     await flush();
     // The delayed invalidation must not have removed B's trip.
     expect(store.getSnapshot().sessionUserId).toBe('B');
+    expect(store.getSnapshot().trips.map(t => t.id)).toEqual(['shared']);
+    // And it must never have removed it, not even for one commit that a
+    // later read would put back.
     expect(removals).toEqual([]);
   });
 });
