@@ -181,7 +181,36 @@ function decodePercentOnce(value: string): string {
 
 /** Remove every snapshot token, whatever the case of the route label. */
 function stripSnapshotTokens(value: string): string {
-  return value.replace(/\/share\/[^/?#\s]+/gi, SHARE_ROUTE)
+  return value.replace(/\/share\/+\s*[^/?#\s]+/gi, SHARE_ROUTE)
+}
+
+/** Return the page label without carrying its query, fragment suffix, or an
+ *  encoded snapshot value into an outbound diagnostic. */
+function safePageLabel(url: string): string {
+  const absolute = /^[a-z][a-z\d+.-]*:\/\//i.test(url)
+  let address: URL
+  try {
+    address = new URL(url, 'https://snapshot-redaction.invalid')
+  } catch {
+    return ''
+  }
+
+  const prefix = absolute ? address.origin : ''
+  const path = address.pathname || '/'
+  const hashRoute = address.hash.startsWith('#/')
+    ? address.hash.slice(1).split(/[?#]/, 1)[0]
+    : ''
+  const isShareRoute = (route: string) => /^\/+share\/+\s*[^/?#\s]+/i.test(decodePercentOnce(route))
+
+  if (isShareRoute(path)) return `${prefix}/share`
+  if ((path === '/' || path === '/index.html') && isShareRoute(hashRoute)) {
+    return `${prefix}/#/share`
+  }
+  if ((path === '/' || path === '/index.html') && hashRoute && !/%/.test(hashRoute)) {
+    return `${prefix}/#${hashRoute}`
+  }
+  if (/%|yf1_/i.test(path)) return `${prefix}/`
+  return `${prefix}${path}`
 }
 
 /** An address with any snapshot payload removed, leaving the route itself.
@@ -195,13 +224,19 @@ function stripSnapshotTokens(value: string): string {
  *  address with no snapshot route comes back untouched. */
 export function redactSnapshotUrl(url: string): string {
   let decoded = url
+  let exhausted = true
   for (let pass = 0; pass < REDACTION_DECODE_PASSES; pass++) {
     const next = decodePercentOnce(decoded)
-    if (next === decoded) break
+    if (next === decoded) {
+      exhausted = false
+      break
+    }
     decoded = next
   }
+  const hasSnapshotToken = /yf1_[a-z0-9_-]+/i.test(decoded)
+  if (exhausted && decodePercentOnce(decoded) !== decoded) return safePageLabel(url)
   const redacted = stripSnapshotTokens(decoded)
-  return redacted === decoded ? url : redacted
+  return redacted === decoded && !hasSnapshotToken ? url : safePageLabel(url)
 }
 
 // ---- decompression helper ----

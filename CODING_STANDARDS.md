@@ -1088,6 +1088,9 @@ process.
   `redactSnapshotUrl` is the one redaction. `tests/snapshot-transport-privacy.test.ts`
   and `tests/snapshot-feedback-privacy.test.ts` pin all four. An old
   `/share/<payload>` link still renders and cannot be un-exposed.
+  A bounded percent decoder must fail closed when another layer remains. Its
+  recovery test must decode independently to a fixed point and report an
+  exhausted oracle budget; matching the production bound can certify a leak.
   `strict-origin-when-cross-origin` sends a full same-origin path, so an old
   link recurs in same-origin referrers. Say that in copy, and never write a
   test that certifies a control the app does not have.

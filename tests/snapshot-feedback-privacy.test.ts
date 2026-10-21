@@ -30,16 +30,19 @@ function canaryTrip() {
  *  travelled; an empty list means it did not. */
 async function recoverableTripNames(value: string): Promise<string[]> {
   let decoded = value
-  for (let pass = 0; pass < 8; pass++) {
+  for (let pass = 0; pass < 256; pass++) {
     const next = decoded.replace(/(?:%[0-9a-f]{2})+/gi, run => {
       try {
         return decodeURIComponent(run)
       } catch {
-        return run
+        return run.replace(/%([0-9a-f]{2})/gi, (_, hex: string) =>
+          String.fromCharCode(parseInt(hex, 16)))
       }
     })
     if (next === decoded) break
+    if (next.length >= decoded.length) throw new Error('recovery did not make progress')
     decoded = next
+    if (pass === 255) throw new Error('recovery oracle budget expired')
   }
   const names: string[] = []
   for (const match of decoded.matchAll(/yf1_[A-Za-z0-9_-]+/g)) {
@@ -147,6 +150,59 @@ describe('a support draft never carries a snapshot payload', () => {
     stubAddress(`${ORIGIN}/#/share/${payload}?next=${nested}`)
     const href = feedbackHref()
     expect(draftPage(href)).not.toContain(payload)
+    expect(await recoverableTripNames(draftPage(href))).toEqual([])
+  })
+
+  it.each([9, 17])('does not leak a payload nested through %i encoding layers', async depth => {
+    const trip = canaryTrip()
+    const payload = await encodeTripSnapshot(trip)
+    const nested = Array.from({ length: depth }).reduce<string>(
+      value => encodeURIComponent(value), `${ORIGIN}/#/share/${payload}`,
+    )
+    stubAddress(`${ORIGIN}/#/share/${payload}?next=${nested}`)
+    const href = feedbackHref()
+    expect(await recoverableTripNames(`${ORIGIN}/?next=${nested}`)).toEqual([CANARY])
+    expect(await recoverableTripNames(draftPage(href))).toEqual([])
+  })
+
+  it('does not leak a deeply encoded token without a visible route label', async () => {
+    const trip = canaryTrip()
+    const payload = await encodeTripSnapshot(trip)
+    const nested = Array.from({ length: 17 }).reduce<string>(value => encodeURIComponent(value), payload)
+    stubAddress(`${ORIGIN}/trips?ticket=${nested}`)
+    const href = feedbackHref()
+    expect(await recoverableTripNames(`${ORIGIN}/?ticket=${nested}`)).toEqual([CANARY])
+    expect(await recoverableTripNames(draftPage(href))).toEqual([])
+  })
+
+  it.each([
+    `${ORIGIN}/#/share//`,
+    `${ORIGIN}/share//`,
+  ])('does not leak a payload after repeated route separators: %s', async prefix => {
+    const trip = canaryTrip()
+    const payload = await encodeTripSnapshot(trip)
+    stubAddress(`${prefix}${payload}`)
+    const href = feedbackHref()
+    expect(draftPage(href)).not.toContain(payload)
+    expect(await tripNameRecoveredFrom(href)).toBeNull()
+  })
+
+  it('does not leak a nested payload after repeated route separators', async () => {
+    const trip = canaryTrip()
+    const payload = await encodeTripSnapshot(trip)
+    const nested = encodeURIComponent(`/share//${payload}`)
+    stubAddress(`${ORIGIN}/#/share/${payload}?next=${nested}`)
+    const href = feedbackHref()
+    expect(draftPage(href)).not.toContain(payload)
+    expect(await recoverableTripNames(draftPage(href))).toEqual([])
+  })
+
+  it.each(['%', '%GG', '%FF', '%E0%A4%A', '%FF%2F'])('does not leak through malformed encoding %s', async malformed => {
+    const trip = canaryTrip()
+    const payload = await encodeTripSnapshot(trip)
+    const nested = encodeURIComponent(`/Share/${payload}`)
+    stubAddress(`${ORIGIN}/#/share/${payload}?broken=${malformed}&next=${nested}`)
+    const href = feedbackHref()
     expect(await recoverableTripNames(draftPage(href))).toEqual([])
   })
 
