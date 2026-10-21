@@ -7,7 +7,7 @@ import {
   Bell, Compass, Import, Inbox, Luggage, Link2, Mail, Menu, Moon, Plus,
   Settings, Sparkles, Sun, Tent, X,
 } from 'lucide-react'
-import { Analytics, type BeforeSendEvent } from '@vercel/analytics/react'
+import { Analytics } from '@vercel/analytics/react'
 import {
   browserNotifEnabled, browserNotifPermission, fireBrowserNotification,
   shouldBrowserNotify,
@@ -19,7 +19,8 @@ import { BottomNav } from './components/BottomNav'
 import { OfflineBanner } from './components/OfflineBanner'
 import { UpdateNotice } from './components/UpdateNotice'
 import { PillNav } from './components/PillNav'
-import { decodeTripSnapshot, redactSnapshotUrl } from './lib/snapshot'
+import { decodeTripSnapshot } from './lib/snapshot'
+import { analyticsBeforeSend } from './lib/analyticsPrivacy'
 import { scrollBehavior } from './lib/motion'
 import { pageTitle, routeParts } from './lib/pageTitle'
 import { CREATE_SEGMENT, CREATE_PATH } from './lib/routes'
@@ -781,15 +782,6 @@ export default function App() {
       {!isNative && <Analytics beforeSend={analyticsBeforeSend} />}
     </div>
   )
-}
-
-/** A snapshot payload is the whole trip, so no analytics data point may carry
- *  it (#805). A browser keeps the fragment out of a request, but the collector
- *  reads the page's own URL inside the page and could read the token there, so
- *  strip it here instead of assuming the network did. The page view stays; only
- *  the trip goes. */
-function analyticsBeforeSend(event: BeforeSendEvent): BeforeSendEvent | null {
-  return { ...event, url: redactSnapshotUrl(event.url) }
 }
 
 /** Snapshot links (#/share/<payload>) land here: decode, preview, import as own copy. */

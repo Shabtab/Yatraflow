@@ -160,12 +160,48 @@ export function snapshotUrl(trip: Trip, payload: string): string {
   return `${location.origin}/#${SHARE_ROUTE}/${payload}`
 }
 
+/** How many percent-decoding passes redaction tries. A browser, chat app or
+ *  template adds one or two layers. The bound stops a crafted address from
+ *  making this loop expensive. */
+const REDACTION_DECODE_PASSES = 8
+
+/** Decode one percent layer. A malformed sequence must not stop the whole
+ *  address: `decodeURIComponent` refuses a string that holds one bad sequence,
+ *  which would keep an encoded payload alive beside it. */
+function decodePercentOnce(value: string): string {
+  return value.replace(/(?:%[0-9a-f]{2})+/gi, run => {
+    try {
+      return decodeURIComponent(run)
+    } catch {
+      return run.replace(/%([0-9a-f]{2})/gi, (_, hex: string) =>
+        String.fromCharCode(parseInt(hex, 16)))
+    }
+  })
+}
+
+/** Remove every snapshot token, whatever the case of the route label. */
+function stripSnapshotTokens(value: string): string {
+  return value.replace(/\/share\/[^/?#\s]+/gi, SHARE_ROUTE)
+}
+
 /** An address with any snapshot payload removed, leaving the route itself.
  *  A browser does not put a fragment in a request, but an analytics collector
  *  reads the page's own URL in the page and can carry the token onward. This
- *  keeps the page view and drops the trip. */
+ *  keeps the page view and drops the trip.
+ *
+ *  A percent-encoded address can hide a second copy of the route inside a
+ *  query value, so the outer `/share/` is not the only one. Redaction decodes
+ *  the address a bounded number of times and strips every copy it finds. An
+ *  address with no snapshot route comes back untouched. */
 export function redactSnapshotUrl(url: string): string {
-  return url.replace(/\/share\/[^/?#]+/g, SHARE_ROUTE)
+  let decoded = url
+  for (let pass = 0; pass < REDACTION_DECODE_PASSES; pass++) {
+    const next = decodePercentOnce(decoded)
+    if (next === decoded) break
+    decoded = next
+  }
+  const redacted = stripSnapshotTokens(decoded)
+  return redacted === decoded ? url : redacted
 }
 
 // ---- decompression helper ----

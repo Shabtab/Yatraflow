@@ -7,6 +7,7 @@
 // render, and they can never be un-exposed.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { decodeTripSnapshot, encodeTripSnapshot, redactSnapshotUrl, snapshotUrl } from '../src/lib/snapshot'
+import { analyticsBeforeSend } from '../src/lib/analyticsPrivacy'
 import { currentRoute, forceNativeRouting, legacyHashRoute, settleLegacyHash } from '../src/lib/router'
 import { pageTitle, routeParts } from '../src/lib/pageTitle'
 import { seedData } from '../src/data/seed'
@@ -17,6 +18,33 @@ const CANARY = 'CANARY-RAJASTHAN-HOLIDAY-PLAN'
 
 function canaryTrip() {
   return { ...structuredClone(seedData.trips[0]), name: CANARY }
+}
+
+/** Decode every percent layer an address can hide, then read each payload
+ *  token back with the shipped decoder. A canary name here means the trip
+ *  travelled; an empty list means it did not. */
+async function recoverableTripNames(value: string): Promise<string[]> {
+  let decoded = value
+  for (let pass = 0; pass < 8; pass++) {
+    const next = decoded.replace(/(?:%[0-9a-f]{2})+/gi, run => {
+      try {
+        return decodeURIComponent(run)
+      } catch {
+        return run
+      }
+    })
+    if (next === decoded) break
+    decoded = next
+  }
+  const names: string[] = []
+  for (const match of decoded.matchAll(/yf1_[A-Za-z0-9_-]+/g)) {
+    try {
+      names.push((await decodeTripSnapshot(match[0])).name)
+    } catch {
+      // Not a payload; leave it alone.
+    }
+  }
+  return names
 }
 
 function requestTarget(url: URL | string): string {
@@ -300,10 +328,66 @@ describe('analytics never receives a snapshot payload', () => {
     expect(redactSnapshotUrl(url)).toBe(url)
   })
 
-  it('is wired into the analytics component', () => {
-    const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')
-    expect(app).toContain('<Analytics beforeSend={analyticsBeforeSend} />')
-    expect(app).toContain('redactSnapshotUrl(event.url)')
+  it('drops a mixed-case route label', () => {
+    expect(redactSnapshotUrl(`${ORIGIN}/Share/yf1_payload`)).toBe(`${ORIGIN}/share`)
+    expect(redactSnapshotUrl(`${ORIGIN}/SHARE/yf1_payload`)).toBe(`${ORIGIN}/share`)
+  })
+
+  it('drops every canonical occurrence', () => {
+    expect(redactSnapshotUrl(`${ORIGIN}/#/share/yf1_one?again=/share/yf1_two`))
+      .toBe(`${ORIGIN}/#/share?again=/share`)
+  })
+
+  it('drops a route label that hides behind percent encoding', () => {
+    expect(redactSnapshotUrl(`${ORIGIN}/%73hare/yf1_payload`)).toBe(`${ORIGIN}/share`)
+  })
+})
+
+describe('the analytics callback drops a snapshot payload at every encoding', () => {
+  it('redacts the canonical fragment link and keeps the page view', async () => {
+    const trip = canaryTrip()
+    const payload = await encodeTripSnapshot(trip)
+    stubAddress(`${ORIGIN}/#/share/${payload}`)
+    const event = analyticsBeforeSend({ type: 'pageview', url: snapshotUrl(trip, payload) })
+    expect(event).not.toBeNull()
+    expect(event?.url).toBe(`${ORIGIN}/#/share`)
+    expect(await recoverableTripNames(event?.url ?? '')).toEqual([])
+  })
+
+  it('redacts a payload carried in an encoded nested URL', async () => {
+    const trip = canaryTrip()
+    const payload = await encodeTripSnapshot(trip)
+    const nested = encodeURIComponent(`${ORIGIN}/#/share/${payload}`)
+    const event = analyticsBeforeSend({ type: 'pageview', url: `${ORIGIN}/#/share/${payload}?next=${nested}` })
+    expect(event?.url).not.toContain(payload)
+    expect(await recoverableTripNames(event?.url ?? '')).toEqual([])
+  })
+
+  it('redacts a payload carried in a doubly encoded nested URL', async () => {
+    const trip = canaryTrip()
+    const payload = await encodeTripSnapshot(trip)
+    const nested = encodeURIComponent(encodeURIComponent(`${ORIGIN}/#/share/${payload}`))
+    const event = analyticsBeforeSend({ type: 'pageview', url: `${ORIGIN}/#/share/${payload}?next=${nested}` })
+    expect(event?.url).not.toContain(payload)
+    expect(await recoverableTripNames(event?.url ?? '')).toEqual([])
+  })
+
+  it('redacts mixed-case and percent-encoded route labels', async () => {
+    const trip = canaryTrip()
+    const payload = await encodeTripSnapshot(trip)
+    for (const path of [`/Share/${payload}`, `/SHARE/${payload}`, `/%73hare/${payload}`]) {
+      const event = analyticsBeforeSend({ type: 'pageview', url: `${ORIGIN}${path}` })
+      expect(event?.url, path).not.toContain(payload)
+      expect(await recoverableTripNames(event?.url ?? ''), path).toEqual([])
+    }
+  })
+
+  it('redacts every occurrence, not only the first', async () => {
+    const trip = canaryTrip()
+    const payload = await encodeTripSnapshot(trip)
+    const url = `${ORIGIN}/#/share/${payload}?a=${encodeURIComponent(`/share/${payload}`)}&b=/Share/${payload}`
+    const event = analyticsBeforeSend({ type: 'pageview', url })
+    expect(await recoverableTripNames(event?.url ?? '')).toEqual([])
   })
 })
 
