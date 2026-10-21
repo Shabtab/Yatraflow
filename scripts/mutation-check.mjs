@@ -1,19 +1,21 @@
-// Mutation check: revert each fix one at a time and record the test failure.
+// Mutation check: remove one guard at a time and record which test fails.
 //
-// Every mutation removes ONE guard. The matching regression test must fail.
-// A mutation that leaves the suite green is a fix that nothing pins, and it
-// is reported as such.
+// A mutation removes one guard, or one set of guards that overlap. The matching
+// regression test must then fail. A mutation whose suite stays green is a guard
+// that nothing pins, and the report names it.
 //
-// SAFETY. The mutations run in a DISPOSABLE SCRATCH COPY outside the
-// worktree, so the worktree's sources are never mutated and an interrupt
-// cannot leave them mutated. The scratch copy is made from the committed
-// HEAD, so the bytes under test are the committed bytes. The scratch copy is
-// removed in a finally, and SIGINT and SIGTERM remove it too.
-import { readFileSync, writeFileSync, rmSync, cpSync, mkdirSync, existsSync } from 'node:fs'
-import { execFileSync } from 'node:child_process'
-import { fileURLToPath } from 'node:url'
+// SAFETY. The mutations run in a scratch copy in the temp folder. The copy is
+// built from ONE commit, read with git, so the bytes under test are committed
+// bytes. The worktree is never written. The copy is removed in a finally block,
+// and SIGINT and SIGTERM stop the run at the next step.
+//
+// Usage: node scripts/mutation-check.mjs <report-path> [--anchors-only] [--only=<name-part>]
+import { execFileSync, spawn } from 'node:child_process'
+import { existsSync, lstatSync, mkdirSync, readFileSync, rmSync, rmdirSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { classifyRun, exitCodeFor, isContainedPath, tally } from './mutation-lib.mjs'
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url)).replace(/[\\/]$/, '')
 const STORE = 'src/store/store.ts'
@@ -27,91 +29,317 @@ const TESTS = [
   'tests/gate-round4-fresh.test.ts',
   'tests/recovery-liveness-probes.test.ts',
 ]
-const OUT = process.argv[2]
+// The copy holds the folders and files the tests read. Nothing else is copied.
+const COPY_DIRS = ['src/', 'tests/', 'scripts/', 'supabase/', 'docs/']
+const COPY_FILES = new Set(['package.json', 'package-lock.json', 'tsconfig.json', 'vite.config.ts',
+  'eslint.config.js', 'eslint-baseline.json'])
+const REPORT_FILE = 'vitest-report.json'
+const SHOWN = 5
 
-/** The committed HEAD, so the report names the bytes that were tested. */
-const HEAD = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim()
+const args = process.argv.slice(2)
+const ANCHORS_ONLY = args.includes('--anchors-only')
+const onlyArg = args.find(arg => arg.startsWith('--only='))
+const ONLY = onlyArg ? onlyArg.slice('--only='.length) : null
+const OUT = args.find(arg => !arg.startsWith('--'))
+const UNKNOWN = args.filter(arg => arg.startsWith('--') && arg !== '--anchors-only' && !arg.startsWith('--only='))
 
-/** The disposable copy. It lives outside the worktree on purpose. */
-const SCRATCH = path.join(tmpdir(), `yf-mutation-${process.pid}-${Date.now()}`)
+/** The scratch copy, the running vitest child, and the signal that stopped the run. */
+let scratch = null
+let running = null
+let cancelledWith = null
 
-const storeOriginal = readFileSync(`${ROOT}/${STORE}`, 'utf8')
-const bannerOriginal = readFileSync(`${ROOT}/${BANNER}`, 'utf8')
-void storeOriginal
-void bannerOriginal
-
-/** The sources use CRLF. The anchors are written with LF, so both sides are
- *  normalised before the comparison and before the swap. */
+/** Anchors use LF. A checkout may hold CRLF, so both sides are compared as LF. */
 const norm = text => text.replace(/\r\n/g, '\n')
 
-/** Copy the worktree into the scratch directory, minus the heavy folders. */
-function makeScratch() {
-  rmSync(SCRATCH, { recursive: true, force: true })
-  mkdirSync(SCRATCH, { recursive: true })
-  for (const entry of ['src', 'tests', 'scripts', 'supabase', 'docs', 'package.json',
-    'package-lock.json', 'tsconfig.json', 'vite.config.ts', 'eslint.config.js', 'eslint-baseline.json']) {
-    const from = path.join(ROOT, entry)
-    if (!existsSync(from)) continue
-    cpSync(from, path.join(SCRATCH, entry), { recursive: true })
+/** A signal stops the run at the next step. The running child is killed first. */
+function cancel(signal) {
+  if (cancelledWith) return
+  cancelledWith = signal
+  killRunning()
+}
+
+function killRunning() {
+  const child = running
+  if (!child || child.exitCode !== null || child.signalCode !== null) return
+  if (process.platform === 'win32') {
+    try {
+      execFileSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' })
+    } catch {
+      // taskkill fails once the child has exited. The loop then ends on its own.
+    }
+    return
   }
-  // The scratch copy needs the dependencies. A junction costs nothing and is
-  // removed with the scratch directory.
-  const link = path.join(SCRATCH, 'node_modules')
-  rmSync(link, { force: true })
   try {
-    execFileSync('cmd', ['/c', 'mklink', '/J', link, path.join(ROOT, 'node_modules')], { stdio: 'ignore' })
+    process.kill(-child.pid, 'SIGKILL')
   } catch {
-    // No junction: the scratch copy inherits the parent's node_modules by path
-    // only if it is inside the worktree, so fall back to running in the parent.
+    // The process group has already exited, so there is nothing to stop.
   }
 }
 
-/** Remove the scratch copy. Safe to call more than once. */
-function cleanup() {
+process.on('SIGINT', () => cancel('SIGINT'))
+process.on('SIGTERM', () => cancel('SIGTERM'))
+// A hard exit still removes the copy. An error here cannot be reported, so it is dropped.
+process.on('exit', () => {
   try {
-    rmSync(SCRATCH, { recursive: true, force: true })
+    removeScratch()
   } catch {
-    /* the scratch directory is in the temp folder; a leftover is harmless */
+    // The finally block in main has already reported this failure.
+  }
+})
+
+/** Every copied file at one commit. The worktree is not read. */
+function readCopyFiles(sha) {
+  const listing = execFileSync('git', ['ls-tree', '-r', '-z', '--name-only', sha], { cwd: ROOT, maxBuffer: 1024 ** 3 })
+  const paths = listing.toString('utf8').split('\0')
+    .filter(file => file && (COPY_FILES.has(file) || COPY_DIRS.some(dir => file.startsWith(dir))))
+  return readBlobs(sha, paths)
+}
+
+/** Read blobs from one commit in one git process. Returns each path with its bytes. */
+function readBlobs(sha, paths) {
+  const input = `${paths.map(file => `${sha}:${file}`).join('\n')}\n`
+  const out = execFileSync('git', ['cat-file', '--batch'], { cwd: ROOT, input, maxBuffer: 1024 ** 3 })
+  const blobs = new Map()
+  let at = 0
+  for (const file of paths) {
+    const end = out.indexOf(0x0a, at)
+    const [, type, size] = out.toString('utf8', at, end).split(' ')
+    if (type !== 'blob') throw new Error(`git cannot read ${file} at ${sha}`)
+    const start = end + 1
+    blobs.set(file, out.subarray(start, start + Number(size)))
+    at = start + Number(size) + 1
+  }
+  return blobs
+}
+
+/** Write the copy from the commit's bytes, then link the worktree's dependencies into it. */
+function buildScratch(files) {
+  mkdirSync(scratch)
+  for (const [file, data] of files) {
+    const target = path.join(scratch, file)
+    mkdirSync(path.dirname(target), { recursive: true })
+    writeFileSync(target, data)
+  }
+  const deps = path.join(ROOT, 'node_modules')
+  if (!existsSync(deps)) throw new Error('the worktree has no node_modules. Link it before the check.')
+  // A directory junction needs no admin rights on Windows. Removing it leaves the target alone.
+  symlinkSync(deps, path.join(scratch, 'node_modules'), 'junction')
+}
+
+function linkPresent(file) {
+  try {
+    lstatSync(file)
+    return true
+  } catch {
+    return false
   }
 }
 
-let scratchReady = false
-/** An interrupt must not leave a mutated worktree. The worktree is never
- *  mutated, so cleanup only removes the scratch copy. */
-for (const signal of ['SIGINT', 'SIGTERM']) {
-  process.on(signal, () => {
-    cleanup()
-    // exitCode, not process.exit: a direct exit can drop the message that
-    // explains the interrupt on Windows (#656).
-    process.exitCode = 130
+/** Remove the copy. Only a path inside the temp folder is removed, and the dependency link goes first. */
+function removeScratch() {
+  if (!scratch) return
+  if (!isContainedPath(scratch, tmpdir())) throw new Error(`refusing to remove ${scratch}: it is outside the temp folder`)
+  const link = path.join(scratch, 'node_modules')
+  if (linkPresent(link)) {
+    // The link points at the worktree's dependencies. It is unlinked without
+    // being followed, so the recursive removal below never reaches them.
+    if (!lstatSync(link).isSymbolicLink()) throw new Error(`refusing to remove ${scratch}: node_modules is not a link`)
+    rmdirSync(link)
+  }
+  rmSync(scratch, { recursive: true, force: true })
+  scratch = null
+}
+
+/** Run the test files once in the copy. Resolves with the exit code, the signal, the report and the output tail. */
+function runVitest() {
+  const reportPath = path.join(scratch, REPORT_FILE)
+  rmSync(reportPath, { force: true })
+  return new Promise(resolve => {
+    const child = spawn(process.execPath, [
+      path.join(scratch, 'node_modules', 'vitest', 'vitest.mjs'), 'run', ...TESTS,
+      '--reporter=json', `--outputFile=${reportPath}`,
+    ], { cwd: scratch, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, detached: process.platform !== 'win32' })
+    running = child
+    let output = ''
+    const keep = chunk => { output = (output + chunk.toString('utf8')).slice(-8000) }
+    child.stdout.on('data', keep)
+    child.stderr.on('data', keep)
+    child.on('error', error => {
+      running = null
+      resolve({ error: error.message, output })
+    })
+    child.on('close', (exitCode, signal) => {
+      running = null
+      const reportText = existsSync(reportPath) ? readFileSync(reportPath, 'utf8') : null
+      resolve({ exitCode, signal, reportText, output })
+    })
   })
 }
-process.on('exit', cleanup)
 
-/** Each mutation: a name, the file, and the exact text to swap. */
+/** Apply every anchor of one mutation. Each anchor must match exactly once, so no edit lands in the wrong place. */
+function applyMutation(source, mutation) {
+  let text = norm(source)
+  let line = null
+  for (const [from, to] of [[mutation.from, mutation.to], ...(mutation.also ?? [])]) {
+    const needle = norm(from)
+    const hits = text.split(needle).length - 1
+    if (hits !== 1) return { ok: false, hits, anchor: needle.split('\n')[0].trim() }
+    const at = text.indexOf(needle)
+    if (line === null) line = text.slice(0, at).split('\n').length
+    text = text.slice(0, at) + norm(to) + text.slice(at + needle.length)
+  }
+  return { ok: true, text, line }
+}
+
+/** Check one mutation's anchors against the commit. Nothing is run. */
+function checkAnchors(files, mutation) {
+  const applied = applyMutation(files.get(mutation.file).toString('utf8'), mutation)
+  if (!applied.ok) return { kind: 'skipped', hits: applied.hits, anchor: applied.anchor }
+  return { kind: 'anchors-ok', line: applied.line }
+}
+
+/** Apply one mutation to the copy, run the tests, and restore the copy from the commit's bytes. */
+async function runMutation(files, mutation) {
+  const original = files.get(mutation.file)
+  const applied = applyMutation(original.toString('utf8'), mutation)
+  if (!applied.ok) return { kind: 'skipped', hits: applied.hits, anchor: applied.anchor }
+  const eol = original.includes('\r\n') ? '\r\n' : '\n'
+  const target = path.join(scratch, mutation.file)
+  writeFileSync(target, applied.text.replace(/\n/g, eol))
+  let run
+  try {
+    run = await runVitest()
+  } finally {
+    writeFileSync(target, original)
+  }
+  if (cancelledWith) return null
+  const verdict = classifyRun({ exitCode: run.exitCode, signal: run.signal, error: run.error, reportText: run.reportText })
+  return { ...verdict, line: applied.line, output: run.output }
+}
+
+const lastLines = (text, count) => text.split('\n').map(line => line.trimEnd()).filter(Boolean).slice(-count)
+
+/** The report lines for one mutation. Each outcome keeps its own label. */
+function describeMutation(mutation, result) {
+  const where = `  file: ${mutation.file}${result.line ? ` (line ${result.line})` : ''}`
+  switch (result.kind) {
+    case 'anchors-ok':
+      return [`ANCHORS OK   ${mutation.name}`, where, '']
+    case 'pinned':
+      return [`PINNED      ${mutation.name}`, where, '  failing assertions:',
+        ...result.failedTests.slice(0, SHOWN).flatMap(test => [`    - ${test.name}`, `      ${test.message}`]), '']
+    case 'not-pinned':
+      return [`NOT PINNED  ${mutation.name}`, where, '  no assertion failed: the suite stayed green', '']
+    case 'suite-error':
+      return [`SUITE ERROR ${mutation.name}`, where,
+        ...result.fileErrors.map(error => `  ${error.file}: ${error.message}`),
+        ...result.testErrors.slice(0, SHOWN).map(error => `  ${error.name}: ${error.message}`), '']
+    case 'infra':
+      return [`INFRA       ${mutation.name}`, where, `  reason: ${result.reason}`,
+        ...lastLines(result.output, 6).map(line => `    | ${line}`), '']
+    case 'skipped':
+      return [`SKIP        ${mutation.name}`, `  file: ${mutation.file}`,
+        `  anchor "${result.anchor}" matches ${result.hits} times; it must match once.`, '']
+    default:
+      return []
+  }
+}
+
+function headerLines(sha, selected) {
+  const mode = ANCHORS_ONLY ? 'anchors only' : 'full run'
+  const scope = ONLY === null ? '' : ` matching "${ONLY}"`
+  return [
+    'Mutation check: each mutation removes one guard, or one set of overlapping guards.',
+    'A mutation whose suite stays green is a guard that nothing pins.',
+    `HEAD ${sha}`,
+    `Mode: ${mode}. Mutations: ${selected.length}${scope}.`,
+    'The mutations ran in a scratch copy built from HEAD. The worktree was never written.',
+    '',
+    'READING A NOT PINNED RESULT. Two guards that overlap cover the same case. Removing',
+    'one of them leaves the case covered by the other, so the defect does not come back.',
+    'A COLLECTIVE mutation removes the whole overlapping set. A NOT PINNED result is a',
+    'finding to read, not a pass.',
+    '',
+  ]
+}
+
+/** Run the selected mutations, or only check their anchors, and write one report. */
+async function main() {
+  const selected = MUTATIONS.filter(mutation => ONLY === null || mutation.name.includes(ONLY))
+  if (selected.length === 0) {
+    console.error(`no mutation name contains "${ONLY}"`)
+    return 2
+  }
+  const sha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim()
+  const files = readCopyFiles(sha)
+  const lines = headerLines(sha, selected)
+  const results = []
+  let fatal = null
+  let leftover = null
+
+  if (ANCHORS_ONLY) {
+    for (const mutation of selected) {
+      const result = checkAnchors(files, mutation)
+      results.push(result)
+      lines.push(...describeMutation(mutation, result))
+    }
+  } else {
+    scratch = path.join(tmpdir(), `yf-mutation-${process.pid}-${Date.now()}`)
+    try {
+      buildScratch(files)
+      for (const mutation of selected) {
+        if (cancelledWith) break
+        const result = await runMutation(files, mutation)
+        if (cancelledWith || result === null) break
+        results.push(result)
+        lines.push(...describeMutation(mutation, result))
+      }
+    } catch (error) {
+      fatal = error.message
+    } finally {
+      try {
+        removeScratch()
+      } catch (error) {
+        leftover = error.message
+      }
+    }
+    if (cancelledWith) lines.push(`CANCELLED by ${cancelledWith}. The mutation in progress was not counted.`, '')
+  }
+
+  const counts = tally(results)
+  const notRun = selected.length - results.length
+  const infra = counts.infra + (fatal || leftover ? 1 : 0)
+  const exit = exitCodeFor({ cancelledWith, infra, skipped: counts.skipped, suiteError: counts.suiteError })
+  if (ANCHORS_ONLY) {
+    lines.push(`Anchors matched once: ${results.filter(r => r.kind === 'anchors-ok').length} of ${selected.length}. Skipped: ${counts.skipped}.`)
+  } else {
+    lines.push(`Pinned ${counts.pinned}. Not pinned ${counts.notPinned}. Suite error ${counts.suiteError}. Infra ${counts.infra}. Skipped ${counts.skipped}. Not run ${notRun}. Total ${selected.length}.`)
+  }
+  if (fatal) lines.push(`Fatal error: ${fatal}`)
+  lines.push(leftover ? `The scratch copy was NOT removed: ${leftover}` : 'The scratch copy was removed. The worktree was never written.')
+  lines.push(`exit=${exit}`, `HEAD ${sha}`)
+  const text = `${lines.join('\n')}\n`
+  writeFileSync(OUT, text, 'utf8')
+  console.log(text)
+  return exit
+}
+
+/** Each mutation: a name, a file, and one or more anchors. Each anchor must match exactly once. */
 const MUTATIONS = [
   {
     name: 'P1a-discard-identity-after-queue-read',
     file: STORE,
     from: `      const current = (await pendingWrites()).find(w => sameQueuedWrite(w, write))
-      if (!current || !stillLive(scope, tripId, accessEpoch)) return false
-      // The removal itself is local.`,
+      if (!current || !stillLive(scope, tripId, accessEpoch)) return false`,
     to: `      const current = (await pendingWrites()).find(w => sameQueuedWrite(w, write))
-      if (!current) return false
-      // The removal itself is local.`,
+      if (!current) return false`,
   },
   {
     name: 'P1b-discard-generation-after-server-read',
     file: STORE,
-    from: `      } else {
-        readFailed = true
-      }
-      if (!stillLive(scope, tripId, accessEpoch)) return false
-      // The shared plan could not be read.`,
-    to: `      } else {
-        readFailed = true
-      }
-      // The shared plan could not be read.`,
+    from: `      const refresh = await readForDiscard(tripId, token)
+      if (!stillLive(scope, tripId, accessEpoch)) return false`,
+    to: `      const refresh = await readForDiscard(tripId, token)`,
   },
   {
     name: 'P1c-revocation-scope-before-invalidation',
@@ -143,7 +371,8 @@ const MUTATIONS = [
       invalidateTripWork(entry.tripId, scope.userId, 'trip-unavailable')`,
     to: `      await retainRevokedCopy(entry, scope, 'trip-unavailable')
       invalidateTripWork(entry.tripId, scope.userId, 'trip-unavailable')`,
-  },  {
+  },
+  {
     name: 'P2d-demotion-shared-plan',
     file: STORE,
     from: `          queuedLocalTrips.delete(tripId)
@@ -175,8 +404,8 @@ const MUTATIONS = [
     // overlay is on screen, or the discarded content stays editable.
     name: 'REVISE2-discard-refuses-on-a-failed-read',
     file: STORE,
-    from: `      if (readFailed && isHeldCopy(current) && cache.trips.some(t => t.id === tripId)) return false`,
-    to: `      if (readFailed && false && isHeldCopy(current) && cache.trips.some(t => t.id === tripId)) return false`,
+    from: `      if (!refresh && isHeldCopy(current) && cache.trips.some(t => t.id === tripId)) return false`,
+    to: `      if (false && !refresh && isHeldCopy(current) && cache.trips.some(t => t.id === tripId)) return false`,
   },
   {
     // A REASONED copy is never an overlay, so the refusal must not apply to
@@ -184,8 +413,8 @@ const MUTATIONS = [
     // sync nor remove.
     name: 'REVISE3-reasoned-copy-is-not-refused',
     file: STORE,
-    from: `      if (readFailed && isHeldCopy(current) && cache.trips.some(t => t.id === tripId)) return false`,
-    to: `      if (readFailed && cache.trips.some(t => t.id === tripId)) return false`,
+    from: `      if (!refresh && isHeldCopy(current) && cache.trips.some(t => t.id === tripId)) return false`,
+    to: `      if (!refresh && cache.trips.some(t => t.id === tripId)) return false`,
   },
   {
     // The access generation must be captured BEFORE the first await. A
@@ -204,13 +433,14 @@ const MUTATIONS = [
   const accessEpoch = tripAccessEpochs.get(tripId) ?? 0`,
   },
   {
-    // The shared plan must be published with the AUTHORITATIVE membership.
-    // The cached members still say owner or editor after a demotion, so
-    // reusing them leaves the edit controls on screen.
+    // The published plan must carry the AUTHORITATIVE membership. The cached
+    // members still say owner or editor after a demotion, so reusing them
+    // leaves the edit controls on screen.
     name: 'REVISE4-authoritative-membership',
     file: STORE,
     from: `        const shared = await readSharedTripWithMembership(entry.tripId, token)`,
-    to: `        const shared = await readSharedTrip(entry.tripId, token).then(t => t ? { trip: t, members: t.members } : null)`,
+    to: `        const shared = await readSharedTripWithMembership(entry.tripId, token)
+          .then(s => s ? { ...s, trip: { ...s.trip, members: tripById(entry.tripId)?.members ?? s.trip.members } } : null)`,
   },
   {
     // A failed shared read must not leave the local proposal on screen for an
@@ -270,43 +500,14 @@ const MUTATIONS = [
     to: `onClick={() => { void recover(write.tripId, 'discard') }}`,
   },
   {
-    // B1: the second shared read must re-check liveness before it publishes.
-    // The checks OVERLAP, so removing only this one leaves the scenario
-    // covered by the check that follows it. The mutation removes the whole
-    // set of liveness checks in the publish path, which is what reproduces
-    // the defect.
-    name: 'REVISE5-second-read-checks-liveness',
-    file: STORE,
-    from: `          // The second read awaited, so the work may no longer be live. An
-          // account switch or a tombstone during the read must not publish.
-          if (!stillLive(scope, tripId, accessEpoch)) return false`,
-    to: `          // The second read awaited, so the work may no longer be live. An
-          // account switch or a tombstone during the read must not publish.`,
-    also: [
-      [`        if (!stillLive(scope, tripId, accessEpoch)) return false
-        if (!isStaleServerRow(serverTripTimestamps.get(tripId), fresh.updated_at)) {`,
-      `        if (!isStaleServerRow(serverTripTimestamps.get(tripId), fresh.updated_at)) {`],
-      [`          const shared = await readSharedTripWithMembership(tripId, token)
-          if (!stillLive(scope, tripId, accessEpoch)) return false
-          if (shared) {`,
-      `          const shared = await readSharedTripWithMembership(tripId, token)
-          if (shared) {`],
-    ],
-  },
-  {
-    // B1: the published plan must carry the authoritative membership.
+    // The published plan must carry the server membership. The mutation reuses
+    // the cached roles, which can still show an old role after a change.
     name: 'REVISE5-second-read-uses-authoritative-membership',
     file: STORE,
-    from: `          const shared = await readSharedTripWithMembership(tripId, token)
-          if (!stillLive(scope, tripId, accessEpoch)) return false
-          if (shared) {
-            cache.trips = [...cache.trips.filter(t => t.id !== tripId), shared.trip]`,
-    to: `          const shared = await readSharedTripWithMembership(tripId, token)
-          if (!stillLive(scope, tripId, accessEpoch)) return false
-          if (shared) {
-            const cachedMembers = tripById(tripId)?.members
-            cache.trips = [...cache.trips.filter(t => t.id !== tripId),
-              { ...shared.trip, members: cachedMembers }]`,
+    from: `        cache.trips = [...cache.trips.filter(t => t.id !== tripId), refresh.trip]`,
+    to: `        const cachedMembers = tripById(tripId)?.members
+        cache.trips = [...cache.trips.filter(t => t.id !== tripId),
+          { ...refresh.trip, members: cachedMembers ?? refresh.trip.members }]`,
   },
   {
     // B2: the failed read of the replay demotion must not remove the trip
@@ -320,34 +521,20 @@ const MUTATIONS = [
           cache.trips = cache.trips.map(t => t.id === entry.tripId ? shared.trip : t)`,
   },
   {
-    // B3: the reason is bound to the identity AND the generation that
-    // recorded it, and the restore needs the captured identity to still be
-    // current. The generation binding is the load-bearing part: a sign-out
-    // clears the trip's generation, so a reason recorded before the sign-out
-    // no longer matches and the copy is not put back.
+    // The reason is bound to the identity AND the generation that recorded it.
+    // A sign-out clears the trip's generation, so a reason recorded before the
+    // sign-out no longer matches and the copy is not put back. The identity
+    // check and the generation binding OVERLAP, so this mutation removes both.
     name: 'REVISE5-restore-requires-the-captured-identity',
     file: STORE,
     from: `        if (recorded && durable && recorded.userId === scope.userId
           && recorded.generation === tripAccessEpochs.get(tripId)
           && isCurrentIdentity(scope)) {`,
-    to: `        if (recorded && durable && recorded.userId === scope.userId
-          && recorded.generation === tripAccessEpochs.get(tripId)
-          && isCurrentIdentity(scope)) {`,
-    // The identity check and the generation binding OVERLAP: a sign-out clears
-    // the trip's access generation, so the binding already refuses a reason
-    // recorded before the sign-out. Removing only the identity check does
-    // does not reproduce the defect. This mutation removes the whole binding,
-    // which does.
-    also: [
-      [`        if (recorded && durable && recorded.userId === scope.userId
-          && recorded.generation === tripAccessEpochs.get(tripId)
-          && isCurrentIdentity(scope)) {`,
-      `        if (recorded && durable) {`],
-    ],
+    to: `        if (recorded && durable) {`,
   },
   {
-    // B2: the replay demotion's failed read must not remove the trip. Both
-    // guards go, because the liveness check and the edit-right check overlap.
+    // The replay demotion's failed read must not remove the trip. Both guards
+    // go, because the liveness check and the edit-right check overlap.
     name: 'REVISE5-replay-demotion-does-not-remove-the-trip',
     file: STORE,
     from: `        if (!stillLive(scope, entry.tripId, nextEpoch)) return false
@@ -361,174 +548,87 @@ const MUTATIONS = [
     ],
   },
   {
-    // Every scope guard in the discard branch at once. The individual guards
-    // overlap, so removing one alone can leave the scenario covered by a
-    // neighbour. The set is collectively what holds the line, so the mutation
-    // that removes all of them shows the set is the thing that matters.
-    name: 'COLLECTIVE-all-discard-scope-guards',    file: STORE,    from: `      const current = (await pendingWrites()).find(w => sameQueuedWrite(w, write))
-      if (!current || !stillLive(scope, tripId, accessEpoch)) return false
-      // The removal itself is local.`,
-    to: `      const current = (await pendingWrites()).find(w => sameQueuedWrite(w, write))
-      if (!current) return false
-      // The removal itself is local.`,
+    // Every scope guard between the queue read and the publication, at once.
+    // The guards overlap, so removing one alone can leave the case covered by a
+    // neighbour. The set is what holds the line.
+    name: 'COLLECTIVE-all-discard-scope-guards',
+    file: STORE,
+    from: `      if (!current || !stillLive(scope, tripId, accessEpoch)) return false`,
+    to: `      if (!current) return false`,
     also: [
+      [`      if (!stillLive(scope, tripId, accessEpoch)) return false
+      const current = (await pendingWrites()).find(w => sameQueuedWrite(w, write))`,
+      `      const current = (await pendingWrites()).find(w => sameQueuedWrite(w, write))`],
       [`      const token = await tripWriteToken(scope)
       if (!stillLive(scope, tripId, accessEpoch)) return false
-      let row: TripRow | null = null`,
+      const refresh = await readForDiscard(tripId, token)`,
       `      const token = await tripWriteToken(scope)
-      let row: TripRow | null = null`],
-      [`        if (read.error) readFailed = true
-        else row = (read.data as TripRow | null) ?? null
-      } else {
-        readFailed = true
-      }
-      if (!stillLive(scope, tripId, accessEpoch)) return false
-      const durable = await dropQueuedWrite(current)`,
-      `        if (read.error) readFailed = true
-        else row = (read.data as TripRow | null) ?? null
-      } else {
-        readFailed = true
-      }
-      const durable = await dropQueuedWrite(current)`],
-      [`      const durable = await dropQueuedWrite(current)
-      // A scope change means the removal did not complete under this scope.
-      // It reports false, so the caller does not claim a clean removal.
-      if (!stillLive(scope, tripId, accessEpoch)) return false
-      const latest =`,
-      `      const durable = await dropQueuedWrite(current)
-      const latest =`],
-      [`      const latest = (await pendingWrites()).find(w => w.ownerId === scope.userId && w.tripId === tripId)
-      if (!stillLive(scope, tripId, accessEpoch)) return false
+      const refresh = await readForDiscard(tripId, token)`],
+      [`      const refresh = await readForDiscard(tripId, token)
+      if (!stillLive(scope, tripId, accessEpoch)) return false`,
+      `      const refresh = await readForDiscard(tripId, token)`],
+      [`      if (!stillLive(scope, tripId, accessEpoch)) {
+        // The generation moved while the removal was in flight`,
+      `      if (false) {
+        // The generation moved while the removal was in flight`],
+      [`      if (!stillLive(scope, tripId, accessEpoch)) return false
       if (latest) {`,
-      `      const latest = (await pendingWrites()).find(w => w.ownerId === scope.userId && w.tripId === tripId)
-      if (latest) {`],
+      `      if (latest) {`],
+      [`        if (!stillLive(scope, tripId, accessEpoch)) return false
+        const nextEpoch = invalidateTripWork(tripId, scope.userId)
+        if (!stillLive(scope, tripId, nextEpoch)) return false`,
+      `        const nextEpoch = invalidateTripWork(tripId, scope.userId)`],
     ],
+  },
+  {
+    // B2: a local edit made during the refresh is newer than the plan the
+    // refresh read. The queue recheck and the held-copy recheck overlap, so
+    // both go together. Without them the discard publishes the server plan over
+    // the newer edit.
+    name: 'B2-newer-edit-during-the-refresh-is-published-over',
+    file: STORE,
+    from: `      if (latest) {`,
+    to: `      if (false && latest) {`,
+    also: [
+      [`      if (held && !sameQueuedWrite(held, current)) return false
+      queuedLocalTrips.delete(tripId)
+      if (!refresh) {`,
+      `      if (false && held && !sameQueuedWrite(held, current)) return false
+      queuedLocalTrips.delete(tripId)
+      if (!refresh) {`],
+    ],
+  },
+  {
+    // B3: a failed membership read is a failed read. The mutation turns it back
+    // into an empty membership, which hides every role on screen.
+    name: 'B3-membership-error-becomes-an-empty-list',
+    file: STORE,
+    from: `  if (memberRead.error || !Array.isArray(memberRead.data)) return null`,
+    to: `  if (false) return null`,
+    also: [
+      [`  const members = (memberRead.data as MemberRow[]).map(m => ({`,
+      `  const members = ((memberRead.data as MemberRow[] | null) ?? []).map(m => ({`],
+    ],
+  },
+  {
+    // A re-read that is still older than the server ledger must refuse the
+    // discard. The mutation publishes the older plan instead.
+    name: 'STALE-reread-older-than-the-ledger-is-published',
+    file: STORE,
+    from: `    if (isStaleServerRow(serverTripTimestamps.get(tripId), row.updated_at)) return null`,
+    to: `    if (false) return null`,
   },
 ]
 
-function restore() {
-  // The scratch copy is restored from the committed HEAD, so the bytes under
-  // test are always the committed bytes and never a leftover mutation.
-  for (const file of [STORE, BANNER]) {
-    const committed = execFileSync('git', ['show', `HEAD:${file}`], { cwd: ROOT, encoding: 'utf8' })
-    const target = path.join(SCRATCH, file)
-    const eol = committed.includes('\r\n') ? '\r\n' : '\n'
-    writeFileSync(target, committed.replace(/\n/g, eol), 'utf8')
-  }
-}
-
-function runTests() {
-  // The .cmd shim does not pipe its output on Windows, so the ESM entry is
-  // called directly with node. That is the same runner the repo uses.
+const invalid = UNKNOWN.length > 0 || !OUT
+if (invalid) {
+  console.error(`usage: node scripts/mutation-check.mjs <report-path> [--anchors-only] [--only=<name-part>]${UNKNOWN.length ? `\nunknown option: ${UNKNOWN.join(' ')}` : ''}`)
+  process.exitCode = 2
+} else {
   try {
-    execFileSync(process.execPath, [`${ROOT}/node_modules/vitest/vitest.mjs`, 'run', ...TESTS], {
-      cwd: scratchReady ? SCRATCH : ROOT,
-      encoding: 'utf8',
-      stdio: 'pipe',
-    })
-    return { passed: true, output: '' }
+    process.exitCode = await main()
   } catch (error) {
-    const output = `${error.stdout ?? ''}${error.stderr ?? ''}`
-    const match = output.match(/Tests\s+.*?(\d+) failed/)
-    return {
-      passed: false,
-      output,
-      summary: match ? `${match[1]} test(s) failed` : 'the suite failed',
-    }
+    console.error(error.message)
+    process.exitCode = 2
   }
 }
-
-const lines = []
-lines.push('Mutation check: each mutation removes ONE guard.')
-lines.push('A mutation that leaves the suite green is a fix that nothing pins.')
-lines.push('')
-lines.push(`HEAD ${HEAD}`)
-lines.push('The mutations ran in a disposable copy outside the worktree, made')
-lines.push('from the committed HEAD. The worktree sources were never mutated.')
-lines.push('')
-lines.push('READING THE RESULT. A mutation that reports NOT PINNED removed a guard')
-lines.push('that another guard already covered, so the defect did not come back.')
-lines.push('The COLLECTIVE mutation removes the whole set and does fail, so the')
-lines.push('set is what holds the line. That is defence in depth, not an unpinned')
-lines.push('fix.')
-lines.push('')
-lines.push('OVERLAPPING GUARDS, STATED PLAINLY. The liveness check and the')
-lines.push('edit-right check cover the same case in the realtime demotion, and')
-lines.push('the two discard checks cover the same case in the discard path. A')
-lines.push('mutation that removes ONE of them therefore leaves the scenario')
-lines.push('covered by its neighbour, so it does not reproduce the defect. The')
-lines.push('mutations marked COLLECTIVE remove the whole overlapping set, and')
-lines.push('those are the ones that prove the defect comes back.')
-lines.push('')
-lines.push('So a PINNED count is NOT proof that each guard is independently')
-lines.push('necessary. It is proof that removing the guards together brings the')
-lines.push('defect back. The behavioural probes, not the mutation count, are what')
-lines.push('pin the individual behaviours.')
-lines.push('')
-lines.push('The guard that keeps a reasoned copy out of the held copy is pinned on')
-lines.push('the SOURCE, because the overlay path already drops it. The behaviour')
-lines.push('is the same with or without it, so only a source assertion can tell.')
-lines.push('')
-
-makeScratch()
-scratchReady = true
-
-let failures = 0
-for (const mutation of MUTATIONS) {
-  restore()
-  const target = path.join(SCRATCH, mutation.file)
-  const source = norm(readFileSync(target, 'utf8'))
-  if (!source.includes(norm(mutation.from))) {
-    lines.push(`SKIP  ${mutation.name} - the anchor text was not found (the source moved)`)
-    lines.push('')
-    continue
-  }
-  const mutated = source.replace(norm(mutation.from), norm(mutation.to))
-  // Some mutations remove more than one guard.
-  let final = mutated
-  for (const [from, to] of mutation.also ?? []) {
-    if (!final.includes(norm(from))) {
-      lines.push(`  note: an extra anchor was not found, so one guard stayed in place`)
-      continue
-    }
-    final = final.replace(norm(from), norm(to))
-  }
-  // Write with the same line endings the file already uses.
-  const eol = readFileSync(target, 'utf8').includes('\r\n') ? '\r\n' : '\n'
-  writeFileSync(target, final.replace(/\n/g, eol), 'utf8')
-  // The line the mutation lands on, read from the mutated file.
-  const line = final.split('\n').findIndex(l => l.includes(norm(mutation.to).split('\n')[0].trim()))
-  const result = runTests()
-  if (!result.passed) failures += 1
-  lines.push(`${result.passed ? 'NOT PINNED' : 'PINNED'}  ${mutation.name}`)
-  lines.push(`  file: ${mutation.file}${line >= 0 ? ` line ${line + 1}` : ''}`)
-  lines.push(`  command: node ${path.relative(ROOT, path.join(SCRATCH, 'node_modules/vitest/vitest.mjs'))} run ${TESTS.join(' ')}`)
-  lines.push(`  exit: ${result.passed ? 0 : 1}`)
-  lines.push(`  result: ${result.passed ? 'the suite stayed GREEN' : result.summary}`)
-  if (!result.passed) {
-    // The failing test names, read from the vitest summary block.
-    const block = result.output.split('\n').filter(l =>
-      l.includes('×') || l.includes('FAIL') || /Tests\s/.test(l) || l.includes('Test Files'))
-    for (const l of block.slice(0, 10)) lines.push(`  ${l.trim()}`)
-  }
-  lines.push('')
-}
-
-restore()
-// `failures` counts the mutations whose suite went RED, which is the count
-// that proves the defect came back. So it IS the pinned count.
-const pinned = failures
-const notPinned = MUTATIONS.length - pinned
-lines.push(`Pinned: ${pinned} of ${MUTATIONS.length}.`)
-lines.push(`Not pinned: ${notPinned}.`)
-lines.push('The scratch copy was removed. The worktree was never mutated.')
-cleanup()
-// The report is the product. The exit code says the run completed.
-const exit = 0
-lines.push(`exit=${exit}`)
-lines.push(`HEAD ${HEAD}`)
-writeFileSync(OUT, lines.join('\n') + '\n', 'utf8')
-console.log(lines.join('\n'))
-// exitCode, not process.exit: the report is the product, and a direct exit
-// can drop the last line of it on Windows (#656).
-process.exitCode = exit
