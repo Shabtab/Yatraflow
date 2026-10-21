@@ -451,7 +451,7 @@ Settings previews must use validated draft fields. Reuse road measurements only 
    gate also needs the failure to survive `pending`); latch in RENDER, not in
    an effect, so a same-tick flip never reads stale, and clear it on `ok` AND on
    a chain rebuild (a stale latched failure must not pin a dead banner after a
-   route edit — the new chain measures on its own).
+    route edit — the new chain measures on its own).
    (2) the in-flight must be SAID, not implied: "Measuring…" copy plus a
    disabled/hidden control (§6a's input-guard family — a retry button that
    stays clickable mid-flight double-fires the counter, which is harmless here
@@ -885,6 +885,10 @@ The store, maps and UI entries live in `docs/standards/` now (2026-10-05
 split); the index table says which file a change touches. What follows is
 the cross-cutting residue: data model, platform APIs, verification and
 process.
+
+- **An identity check is not a request binding (learned 2026-10-21, #804).** A guard that re-reads the session after an await cannot see who the request was dispatched as. Capture identity and the access generation before the first await. Pin the bearer on each fresh builder, then re-check both. Take a new try id from a module-level counter, never from state a remount resets.
+- **Shared async cleanup must compare the captured owner before deleting (learned 2026-10-21, #804).** An older try can finish after a newer one replaces the same keyed state. In `finally`, remove or release the entry only when the current value is still the one this try installed.
+- **A source-extracted probe must use the extracted lexical state (learned 2026-10-21, #804).** Do not shadow a module map with a synthetic context map. Expose extracted maps through test accessors. Include each helper the extracted code calls. Describe every synthetic async bridge.
 
 - **You must test both sides of a shared focus or schedule contract.** A prop-presence test cannot prove that a child reads the prop. Check a tab round trip through the browser. Compare arrivals and warnings for the same stop after road measurements resolve.
 

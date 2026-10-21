@@ -467,21 +467,19 @@ function FunnelLine({ f, funnelRead, unlockRead = 'ready', windowLabel }: { f: P
             the selected window in their head. */}
         <span className="hub-lead-window">in {windowLabel}</span>
         <span className="hub-lead-step hub-lead-visits"><b className="hub-lead-n">{f.views}</b> {unit(f.views, 'visit')}</span>
-        {/* #363 — the denominator is named: both stages are one-per-browser-
-            session (the store dedupes views and forks the same way), so "of
-            visits" alone left the unit to be guessed and made a fork rate over
-            two different kinds of count read as a conversion. */}
-        <span className="hub-lead-step hub-lead-forks"><b className="hub-lead-n">{f.forks}</b> {unit(f.forks, 'fork')} <span className="hub-lead-rate">{formatPct(f.forkRatePct)} of visit-sessions</span></span>
+        {/* Equal counting units do not prove linked visitor cohorts. */}
+        <span className="hub-lead-step hub-lead-forks"><b className="hub-lead-n">{f.forks}</b> {unit(f.forks, 'fork')} <span className="hub-lead-rate">{f.views ? `${formatPct(f.forkRatePct)} fork/view ratio` : 'no views to compare'}</span></span>
         {/* Unlocks come from the sales ledger, so an unread ledger leaves this
             stage UNKNOWN. Printing 0 here would say "nobody bought" — the same
             conflation the branches above avoid for the log as a whole. */}
         {unlockRead === 'ready'
-          ? <span className="hub-lead-step hub-lead-unlocks"><b className="hub-lead-n">{f.unlocks}</b> {unit(f.unlocks, 'unlock')} <span className="hub-lead-rate">{formatPct(f.unlockRatePct)} of forks</span></span>
+          ? <span className="hub-lead-step hub-lead-unlocks"><b className="hub-lead-n">{f.unlocks}</b> {unit(f.unlocks, 'unlock')} <span className="hub-lead-rate">{f.forks ? `${formatPct(f.unlockRatePct)} unlock/fork ratio` : 'no forks to compare'}</span></span>
           : <span className="hub-lead-step muted">{unlockRead === 'reading' ? 'unlocks still being read' : 'unlocks could not be read'}</span>}
         {f.forksExceedViews && (
           <span className="muted">· more forks than visits — Explore&apos;s card forks a plan without opening it</span>
         )}
       </span>
+      <span className="muted">Separate activity counts. These ratios do not measure visitor conversion.</span>
       {/* The drop-off, as two separated marks on an empty track: the track is
           the traffic you had, the marks are what survived each step, and the
           gap between them keeps them from reading as one stripe. (The earlier

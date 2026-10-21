@@ -28,6 +28,10 @@ It checks revision changes, stale writes, repeated sends, sequence permissions, 
 It does not prove production RLS or a signed-in device journey.
 See [the replay audit](OFFLINE-REPLAY-783.md) for the remaining device checks and rollout order.
 
+Test analytics writes under anonymous and authenticated roles. An insert mock cannot prove RLS access.
+Run `node scripts/integration/growth-db.mjs` for the isolated growth SQL checks.
+This local fixture does not establish production migration status or the full Supabase role contract.
+
 **Run browser sampling after the test suite finishes.** Parallel test workers can cause test timeouts and missed animation frames. You must keep these checks separate on a busy machine.
 
 The global reduced-motion rule sets transition durations to `.01ms`.

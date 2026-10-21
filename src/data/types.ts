@@ -313,6 +313,10 @@ export interface Trip {
    * the trips.ref column carries the same vocabulary.
    */
   ref?: string
+  /** Persisted origin. Older trips remain unknown. */
+  creationKind?: import('../lib/growthAttribution').TripCreationKind
+  sourcePubId?: string
+  campaignId?: import('../lib/growthAttribution').CampaignId
   /**
    * Soft-delete tombstone (ms epoch). Null/undefined = live. A trashed trip is
    * hidden from normal reads by the `trips read hide trashed` RLS policy and

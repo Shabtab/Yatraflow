@@ -675,6 +675,20 @@ const MUTATIONS = [
     ],
   },
   {
+    // B1: a failed read of the shared plan is a failed read, not a successful
+    // one. The first read and the re-read both refuse on a failure. Without
+    // the two refusals the discard reads the failure as the cached plan, so
+    // it removes the saved copy and reports success. The copy on screen and
+    // the copy in the queue must both stay.
+    name: 'B1-failed-read-becomes-a-successful-read',
+    file: STORE,
+    from: `  if (first.error) return null`,
+    to: `  if (first.error) { const cached = cache.trips.find(t => t.id === tripId); return cached ? { kind: 'shared', trip: cached } : null }`,
+    also: [
+      [`    if (again.error) return null`, `    if (again.error) { const cached = cache.trips.find(t => t.id === tripId); return cached ? { kind: 'shared', trip: cached } : null }`],
+    ],
+  },
+  {
     // B2: a local edit made during the refresh is newer than the plan the
     // refresh read. The queue recheck and the held-copy recheck overlap, so
     // both go together. Without them the discard publishes the server plan over

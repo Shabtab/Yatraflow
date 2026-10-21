@@ -275,12 +275,12 @@ describe('the migration shape', () => {
 
   it('schema.sql mirrors the body and the grant (the second build path)', () => {
     const dropAt = schemaSrc.indexOf('drop function if exists public.bump_published_stats(text, text);')
-    const createAt = schemaSrc.indexOf('create or replace function public.bump_published_stats(p_id text, p_kind text, p_source text default null)')
+    const createAt = schemaSrc.indexOf('create or replace function public.bump_published_stats(p_id text, p_kind text, p_source text default null, p_campaign text default null)')
     expect(dropAt).toBeGreaterThanOrEqual(0)
     expect(createAt).toBeGreaterThanOrEqual(0)
     expect(dropAt).toBeLessThan(createAt)
-    expect(schemaSrc).toMatch(/insert into public\.pub_events \(pub_id, kind, source\) values \(p_id, v_kind, p_source\);/)
-    expect(schemaSrc).toMatch(/grant execute on function public\.bump_published_stats\(text, text, text\) to anon, authenticated;/)
+    expect(schemaSrc).toMatch(/insert into public\.pub_events \(pub_id, kind, source, campaign_id\) values \(p_id, v_kind, p_source, v_campaign\);/)
+    expect(schemaSrc).toMatch(/grant execute on function public\.bump_published_stats\(text, text, text, text\) to anon, authenticated;/)
   })
 
   it('the admin reader keeps its door — is_admin gate, named roles, bounded window', () => {
@@ -340,16 +340,19 @@ describe('every surface stamps its own route in', () => {
   const purchases = read('../src/pages/Purchases.tsx')
 
   it('the public page attributes its views and forks to the link’s ref', () => {
-    expect(publicPage).toContain('registerPubView(pub.id, arrivalRef)')
-    expect(publicPage).toContain('unlocked, arrivalRef)')
+    expect(publicPage).toContain('registerPubView(viewedPubId, arrivalRef, arrival.campaign)')
+    expect(publicPage).toContain('unlocked, arrivalRef, arrival.campaign)')
   })
 
   it('the ref is consumed once, then taken out of the bar (#552)', () => {
     // Read at first render into state (one value for the page's view, re-share
     // and fork — one arrival), and the query cleared afterwards: a sticky ref
     // would hand every later view and fork in the tab to the first link.
-    expect(publicPage).toContain('const [arrivalRef] = useState(() => shareRefFromSearch(window.location.search))')
-    expect(publicPage).toContain('useEffect(() => { clearShareRefFromLocation() }, [])')
+    expect(publicPage).toContain('const [arrival] = useState(() => {')
+    expect(publicPage).toContain('const pending = takeForkAttribution(slug, false)')
+    expect(publicPage).not.toContain('me ? takeForkAttribution')
+    expect(publicPage).toContain('source: shareRefFromSearch(query)')
+    expect(publicPage).toContain('useEffect(() => { clearShareRefFromLocation(); clearCampaignFromLocation() }, [])')
   })
 
   it('the two Copy-link buttons mint a copy link (display and copy are one string)', () => {
@@ -372,9 +375,9 @@ describe('every surface stamps its own route in', () => {
     // public-persist path — a source dropped on any one of them makes the log
     // and the trip disagree about where the owner came from.
     expect(fork).toContain('source?: ShareSource | null')
-    expect(fork).toContain('registerPubCopy(pub.id, source)')
-    expect(fork).toContain('duplicateTripPersisted(safe, meId, undefined, source)')
-    expect(fork).toContain('duplicateTripPublicPersisted(safe, meId, pub.freeDayIndexes, source)')
+    expect(fork).toContain('registerPubCopy(pub.id, source, campaign)')
+    expect(fork).toContain('duplicateTripPersisted(safe, meId, undefined, source, origin)')
+    expect(fork).toContain('duplicateTripPublicPersisted(safe, meId, pub.freeDayIndexes, source, origin)')
   })
 })
 

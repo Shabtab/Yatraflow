@@ -101,3 +101,7 @@ PRODUCT.md
 # product — was tracked and pushed. Same class, same reason, now covered by shape
 # rather than by where it happened to be written.
 docs/consistency/handoff-*.md
+
+# The Gate probe writes its evidence beside itself; it is a log, not a source file.
+tests/probe-result.json
+

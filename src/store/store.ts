@@ -13,6 +13,7 @@ import type {
   PublishedItinerary, ID, ItineraryStop, ItineraryDay, TripMember, Expense, FixedCommitment,
   NewDecisionOption, VehicleProfile,
 } from '../data/types'
+import { STOP_CATEGORIES, STOP_STATUSES } from '../data/types'
 import { seedData, uid } from '../data/seed'
 import type { LatLngPoint } from '../data/types'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
@@ -23,8 +24,8 @@ import { dayCountForRange } from '../lib/dayCount'
 import { amountRefusal, amountVerdict } from '../lib/expenseAmount'
 import { attachDnaAccount, detachDnaAccount } from '../lib/tripDna'
 import { clearSnapshot, loadSnapshot, saveSnapshot } from '../lib/offlineCache'
-import { backfillCreateFunnelSession } from '../lib/createEvents'
 import { randomToken } from '../lib/randomId'
+import { campaignId, type CampaignId, type ForkOrigin } from '../lib/growthAttribution'
 import {
   clearWritesFor, dropQueuedWrite, pendingWrites, queueWrite, requeueIfCurrent, shouldRetry, type QueuedWrite,
 } from '../lib/writeQueue'
@@ -154,6 +155,20 @@ export function useNotifications(): Notification[] {
 
 export function useSessionUserId(): ID | null {
   return useSyncExternalStore(subscribe, () => cache.sessionUserId)
+}
+
+/**
+ * #804 (B3) — the identity generation, observable from React.
+ *
+ * `identityEpoch` advances on every auth change: a sign-in, a sign-out, or a
+ * profile gap. A component that holds state keyed to "who is signed in" must
+ * reset when this changes, because the same user id can sign out and back in and
+ * is then a NEW session with its own queues and its own access.
+ *
+ * The value itself is meaningless; only a change matters.
+ */
+export function useIdentityGeneration(): number {
+  return useSyncExternalStore(subscribe, () => identityEpoch)
 }
 
 /** Synchronous read of the session's admin flag (true only after the first
@@ -688,7 +703,6 @@ export function init(): void {
       if (hydrationSucceeded && gen === hydrateGen && cache.sessionUserId === userId) connectRealtime(userId)
       if (hydrationSucceeded && gen === hydrateGen && cache.sessionUserId === userId) void attachDnaAccount(supabase, userId)
       if (hydrationSucceeded && gen === hydrateGen && cache.sessionUserId === userId) void replayQueuedWrites()
-      if (hydrationSucceeded && gen === hydrateGen && cache.sessionUserId === userId) backfillCreateFunnelSession(userId)
     })()
     // Register the whole operation, including its first storage await.
     activeHydrate = { userId, promise }
@@ -1109,7 +1123,7 @@ async function seedDemoFor(userId: string, gen: number = hydrateGen): Promise<vo
     const owner: TripMember = { userId, role: 'owner', joinedAt: Date.now() }
     // Regenerate the trip id: seed data carries stable display ids that are
     // not valid UUIDs, but trips.id is a Postgres uuid column.
-    const trip: Trip = { ...structuredClone(t), id: uuid(), members: [owner] }
+    const trip: Trip = { ...structuredClone(t), id: uuid(), members: [owner], creationKind: 'demo', sourcePubId: undefined, campaignId: undefined }
     const cols = await tripsHaveOptionalColumns()
     const { error } = await supabase.from('trips').insert(tripToRow(trip, userId, cols))
     if (error) { console.error('seed trip failed', error); continue }
@@ -1300,6 +1314,17 @@ export function tripById(id: ID): Trip | undefined {
  * A fetched trip is merged into the cache so `tripById` finds it on the next
  * render; it disappears again on the next hydration, which is fine — callers
  * re-fetch. Returns null when nothing readable exists (RLS or a bad id).
+ *
+ * #804 (N1) — THIS PATH IS NOT LIKE THE CODE PATH. `get_invite_trip` returns the
+ * FULL 34-column row and ITS OWN `get_invite_trip` nulls `invite_code` in SQL, so
+ * the preview it produces IS cached here, and the cache stays safe because the
+ * server strips the capability. That is the opposite of
+ * `fetchTripByInviteCode`, which never caches at all.
+ * The consequence is a DEPLOYMENT PREREQUISITE: this client relies on the
+ * server SQL to withhold `invite_code`, and it does not strip anything itself.
+ * An unpatched server (the separate Branch A migration) would let a UUID holder
+ * read the invite code off a cached preview. Nothing in this change makes that
+ * true or false — only the installed SQL decides it.
  */
 export async function fetchSharedTrip(tripId: ID, allowInvitePreview = false): Promise<Trip | null> {
   const epoch = identityEpoch
@@ -1320,6 +1345,9 @@ export async function fetchSharedTrip(tripId: ID, allowInvitePreview = false): P
     if (Array.isArray(rows) && rows.length > 0) row = rows[0]
   }
   if (!row) return null
+  // B3 (round 10) — provenance. A preview for another trip is not this link's
+  // answer, so the gate says the link is dead instead of previewing a stranger.
+  if (typeof row.id !== 'string' || row.id.toLowerCase() !== tripId.toLowerCase()) return null
   const trip = rowToTrip(row, [])
   recordServerTripTimestamp(trip.id, trip.updatedAt)
   if (!cache.trips.some(t => t.id === trip.id)) {
@@ -1415,8 +1443,10 @@ export async function fetchTripByInviteCode(code: string): Promise<Trip | null> 
   const userId = cache.sessionUserId
   const normalized = normalizeInviteCode(code)
   if (!normalized) return null
-  // Already cached (e.g. the user is a member and re-clicks the link)?
-  // trip.inviteCode rides on member + fetched rows, so a hit skips the RPC.
+  // A member who re-clicks the link already has the FULL row cached, and that
+  // row is safe to reuse: it came from a full read, not from the preview RPC.
+  // The preview RPC's own answer is never cached, so this can only hit a
+  // complete row.
   const cached = cache.trips.find(t => t.inviteCode === normalized)
   if (cached) return cached
   const rpc = await supabase.rpc('get_trip_by_invite_code', { p_code: normalized })
@@ -1424,13 +1454,29 @@ export async function fetchTripByInviteCode(code: string): Promise<Trip | null> 
   if (rpc.error) console.error('[yatraflow] invite-code lookup failed', rpc.error)
   const rows = rpc.data as TripRow[] | null
   if (!Array.isArray(rows) || rows.length === 0) return null
-  const trip = rowToTrip(rows[0], [])
-  recordServerTripTimestamp(trip.id, trip.updatedAt)
-  if (!cache.trips.some(t => t.id === trip.id)) {
-    cache.trips = [...cache.trips, trip]
-    commit()
-  }
-  return trip
+  // #804 — get_trip_by_invite_code names 31 of the 34 trips columns, so this row
+  // is INCOMPLETE: flights, tank_l, rent_per_day_inr, local_train and ref are
+  // absent. It is returned to the caller, which keeps it in local state for the
+  // gate to render, and it is deliberately NOT put into cache.trips, the offline
+  // queues or any snapshot.
+  //
+  // That is the whole fix. A partial row that never enters the writable cache
+  // cannot be built into a whole-row UPDATE, so no write can erase the five
+  // columns it never read. An earlier design marked such a row and taught every
+  // writer to skip the five; two Gates showed that guard leaking through each
+  // consumer of the cache in turn (stale revisions, account switches, explicit
+  // edits, Replace). A row kept out of the cache removes the cause instead of
+  // guarding it.
+  //
+  // The caller cannot write this trip anyway: it is not a member yet, so RLS
+  // refuses. After joinViaInvite the full row is fetched into the cache.
+  const preview = rows[0]
+  // B3 (round 10) — provenance, in the same terms as every other admission: no
+  // shape, no trip. A preview that names no trip id, or carries no usable
+  // revision, is not an answer this client can act on. The gate treats a refusal
+  // as a dead link instead of previewing and joining an unrelated trip.
+  if (typeof preview?.id !== 'string' || preview.id.length === 0 || !validWriteVersion(preview.write_version)) return null
+  return rowToTrip(preview, [])
 }
 
 /** The invite code the server holds for a trip. `undefined` means the read
@@ -1642,6 +1688,7 @@ function buildNewTrip(ownerId: ID, input: NewTripInput, seedStops?: ItinerarySto
     days, expenses: [], coverEmoji: input.coverEmoji ?? '🧭',
     coverImageUrl: input.coverImageUrl ?? undefined,
     visibility: 'private', createdAt: Date.now(), updatedAt: Date.now(),
+    creationKind: 'created',
     members: [{ userId: ownerId, role: 'owner' as const, joinedAt: Date.now() }],
   } as Trip
   return trip
@@ -1734,8 +1781,21 @@ function tripsHaveOptionalColumns(): Promise<OptionalColumnsProbe> {
   return optionalColumnsProbe
 }
 
+/** #804 (round 10 B3) — the optional columns, SYNCHRONOUSLY, for the admission
+ *  check that cannot await. Before the probe settles, every known column is
+ *  assumed present: a full row read by `select('*')` carries them all, and the
+ *  check only asks which columns the writer would send. */
+function knownOptionalColumns(): OptionalColumnsProbe {
+  // A `select('*')` row carries every known column, or omits it entirely. The
+  // check above already refuses an omitted column, so a null here means the
+  // database stores null in a column the writer knows. Assuming "known" for
+  // every column is so the fail-closed answer, and it keeps a
+  // placeholder build and the tests from refusing every legitimate row.
+  return { economy: true, price: true, roundTrip: true, cover: true, inviteCode: true, deleted: true, stayStyle: true, driverCount: true, hasVulnerable: true, driveAfterDinner: true, vehicleProfile: true, tankL: true, rentPerDayInr: true, localTrain: true, drivesPart: true, ref: true, flights: true }
+}
+
 async function probeOptionalColumns(): Promise<OptionalColumnsProbe> {
-  const [economy, price, roundTrip, cover, inviteCode, deleted, stayStyle, driverCount, hasVulnerable, driveAfterDinner, vehicleProfile, tankL, rentPerDayInr, localTrain, ref, flights, drivesPart] = await Promise.all([
+  const [economy, price, roundTrip, cover, inviteCode, deleted, stayStyle, driverCount, hasVulnerable, driveAfterDinner, vehicleProfile, tankL, rentPerDayInr, localTrain, ref, flights, growth, drivesPart] = await Promise.all([
     probeOptionalColumn('fuel_economy_km_per_l'),
     probeOptionalColumn('fuel_price_per_l'),
     probeOptionalColumn('round_trip'),
@@ -1756,6 +1816,7 @@ async function probeOptionalColumns(): Promise<OptionalColumnsProbe> {
     probeOptionalColumn('ref'),
     // 20261012c_trip_flights.sql — the flights a flight-mode trip takes
     probeOptionalColumn('flights'),
+    probeOptionalColumn('creation_kind'),
     // 20261019_trip_drives_part.sql — the Mixed driving answer
     probeOptionalColumn('drives_part'),
   ])
@@ -1765,7 +1826,7 @@ async function probeOptionalColumns(): Promise<OptionalColumnsProbe> {
       optionalColumnsWarned = true
     }
   }
-  return { economy, price, roundTrip, cover, inviteCode, deleted, stayStyle, driverCount, hasVulnerable, driveAfterDinner, vehicleProfile, tankL, rentPerDayInr, localTrain, ref, flights, drivesPart }
+  return { economy, price, roundTrip, cover, inviteCode, deleted, stayStyle, driverCount, hasVulnerable, driveAfterDinner, vehicleProfile, tankL, rentPerDayInr, localTrain, ref, flights, growth, drivesPart }
 }
 
 /** Cache the probe where the synchronous write path can read it. */
@@ -1903,6 +1964,16 @@ async function persistTripRows(trip: Trip, ownerId: ID, opts: { retry?: boolean 
   // attempt may not have written yet, so it is refused.)
   const duplicateMyOwnRow = (e: unknown) => (e as { code?: string } | null)?.code === '23505'
   if (error && !(opts.retry && duplicateMyOwnRow(error))) { toast('Could not save trip.'); return false }
+  if (error) {
+    // A conflict proves only that some row exists. Verify this owner's row before accepting a retry.
+    const { data: saved, error: readError } = await supabase.from('trips').select('*')
+      .eq('id', trip.id).eq('owner_id', ownerId).maybeSingle()
+    if (readError || !saved) return false
+    if (trip.creationKind === 'forked' && saved.creation_kind != null
+      && (saved.creation_kind !== 'forked' || saved.source_pub_id !== trip.sourcePubId)) return false
+    Object.assign(trip, rowToTrip(saved as TripRow, trip.members ?? []))
+    commit()
+  }
   const { error: mErr } = await supabase.from('trip_members').insert(
     (trip.members ?? []).map(m => ({ trip_id: trip.id, user_id: m.userId, role: m.role, joined_at: m.joinedAt }))
   )
@@ -1914,6 +1985,13 @@ async function persistTripRows(trip: Trip, ownerId: ID, opts: { retry?: boolean 
     console.error('member insert failed', mErr)
     toast('Could not save trip.')
     return false
+  }
+  if (mErr) {
+    const { data: owner, error: readError } = await supabase.from('trip_members')
+      .select('user_id, role, joined_at').eq('trip_id', trip.id).eq('user_id', ownerId).maybeSingle()
+    if (readError || !owner || owner.role !== 'owner') return false
+    trip.members = [{ userId: owner.user_id, role: 'owner', joinedAt: owner.joined_at }]
+    commit()
   }
   return true
 }
@@ -1936,10 +2014,10 @@ const LOCKED_STOP_DESCRIPTION = 'Locked — the full plan is on the original iti
  *  entry/transport costs and open/close times are zeroed, and the stop is
  *  marked confirmed. Expenses tagged with a locked `dayIndex` and fixed
  *  commitments on locked days are dropped (trip-level expenses stay). */
-function buildTripCopy(source: Trip, ownerId: ID, opts: { makePublic?: boolean; freeDayIndexes?: number[]; keepName?: boolean; ref?: ShareSource | null }): Trip {
+function buildTripCopy(source: Trip, ownerId: ID, opts: { makePublic?: boolean; freeDayIndexes?: number[]; keepName?: boolean; ref?: ShareSource | null; origin?: ForkOrigin }): Trip {
   const free = opts.freeDayIndexes ? new Set(opts.freeDayIndexes) : null
   const copy: Trip = structuredClone(source)
-  copy.id = uuid()
+  copy.id = opts.origin?.requestId ?? uuid()
   copy.writeVersion = undefined
   // A copy is labelled as one. An *import* is not — the plan is the user's own
   // arrival, not a duplicate of something they already have, and a name that
@@ -1954,6 +2032,9 @@ function buildTripCopy(source: Trip, ownerId: ID, opts: { makePublic?: boolean; 
   // #230 — the fork's own acquisition stamp, never the source trip's. A copy
   // of a copy starts a NEW attribution chain at whatever surface forked it.
   copy.ref = opts.ref ?? undefined
+  copy.creationKind = opts.origin ? 'forked' : opts.keepName ? 'imported' : 'copied'
+  copy.sourcePubId = opts.origin?.publicationId
+  copy.campaignId = opts.origin ? campaignId(opts.origin.campaign) ?? undefined : undefined
   // Fresh stop ids would dangle every commitment link, so each copy carries
   // its stops' old-to-new map and rewrites the links through it (#609).
   const stopIdMap = new Map<string, ID>()
@@ -2001,24 +2082,57 @@ function buildTripCopy(source: Trip, ownerId: ID, opts: { makePublic?: boolean; 
   return copy
 }
 
-/** Add a built copy to the live cache (optimistic UI; the caller persists). */
-function admitTripCopy(copy: Trip): void {
-  cache.trips = [...cache.trips, copy]
+/** The cache entry a re-admission replaced, and the debounced write that was
+ *  already queued for its id. A failed retry puts the entry back and keeps the
+ *  write, so neither a saved trip nor the edit pending against it is lost. */
+type DisplacedTrip = {
+  trip: Trip
+  index: number
+  pending: { timer: ReturnType<typeof setTimeout> } | undefined
+}
+
+/** Add a built copy to the live cache (optimistic UI; the caller persists).
+ *
+ *  A re-admission replaces the entry with the same id: a fork retry keeps its
+ *  pending action id, so the retry can build the trip again. The replaced entry
+ *  is returned. It may be a trip that is already saved on the server, so only a
+ *  failed retry may remove this operation's own object (see retractTripCopy). */
+function admitTripCopy(copy: Trip): DisplacedTrip | undefined {
+  const index = cache.trips.findIndex(t => t.id === copy.id)
+  const displaced = index >= 0
+    ? { trip: cache.trips[index], index, pending: pendingTripWrites.get(copy.id) }
+    : undefined
+  cache.trips = [...cache.trips.filter(t => t.id !== copy.id), copy]
   commit()
+  return displaced
 }
 
 /** Roll a failed-persist copy back out of the cache so the user is never left
  *  with a zombie trip that vanishes on the next reload.
  *
- *  A pending debounced write for the same id is cancelled first (#374): a
- *  retracted trip whose row write is still in the coalescer would land on the
- *  server seconds later with no cache row in front of it, and the trip would
- *  reappear on the next hydrate — the "it vanished, then it was there" the
- *  create path used to produce. */
-function retractTripCopy(copy: Trip): void {
+ *  Only the object this operation admitted is removed. The cache entry with the
+ *  id can be a newer server row, and a retry can displace a trip that is already
+ *  saved; neither belongs to this failure. The displaced entry is restored in
+ *  its old place, so a failed fork retry leaves the saved trip in My Trips.
+ *
+ *  A pending debounced write for the same id is cancelled only when it belongs
+ *  to this optimistic object (#374): a retracted trip whose row write is still
+ *  in the coalescer would land on the server seconds later with no cache row in
+ *  front of it, and the trip would reappear on the next hydrate — the "it
+ *  vanished, then it was there" the create path used to produce. A write that
+ *  was already queued when the retry displaced a saved trip is that trip's own
+ *  edit, so it stays queued. */
+function retractTripCopy(copy: Trip, displaced?: DisplacedTrip): void {
+  // Compare identity, never the id: a newer entry with this id is not ours.
+  if (!cache.trips.includes(copy)) return
   const pending = pendingTripWrites.get(copy.id)
-  if (pending) { clearTimeout(pending.timer); pendingTripWrites.delete(copy.id) }
-  cache.trips = cache.trips.filter(t => t.id !== copy.id)
+  if (pending && pending !== displaced?.pending) {
+    clearTimeout(pending.timer)
+    pendingTripWrites.delete(copy.id)
+  }
+  const next = cache.trips.filter(t => t !== copy)
+  if (displaced) next.splice(Math.min(displaced.index, next.length), 0, displaced.trip)
+  cache.trips = next
   commit()
 }
 
@@ -2050,29 +2164,29 @@ export function importTrip(source: Trip, ownerId: ID): Trip {
  *  with an error object, but a dropped fetch rejects, and an uncaught rejection
  *  would leave the optimistic row in the cache as the zombie §6i is about
  *  (#551): the same treatment createTripPersisted gives the create path. */
-async function persistCopyOrRetract(copy: Trip, ownerId: ID): Promise<boolean> {
-  admitTripCopy(copy)
+async function persistCopyOrRetract(copy: Trip, ownerId: ID, retry = false): Promise<boolean> {
+  const displaced = admitTripCopy(copy)
   let persisted = false
-  try { persisted = await persistTrip(copy, ownerId) }
+  try { persisted = await persistTrip(copy, ownerId, { retry }) }
   catch (e) { console.error('[yatraflow] trip copy save failed', e) }
-  if (!persisted) retractTripCopy(copy)
+  if (!persisted) retractTripCopy(copy, displaced)
   return persisted
 }
 
 /** Duplicate that reports whether the rows actually landed, so the caller can
  *  toast the truth instead of a success the next reload will disprove. On
  *  failure the cache copy is retracted. */
-export async function duplicateTripPersisted(source: Trip, ownerId: ID, makePublic?: boolean, ref?: ShareSource | null): Promise<{ trip: Trip; persisted: boolean }> {
-  const copy = buildTripCopy(source, ownerId, { makePublic, ref })
-  const persisted = await persistCopyOrRetract(copy, ownerId)
+export async function duplicateTripPersisted(source: Trip, ownerId: ID, makePublic?: boolean, ref?: ShareSource | null, origin?: ForkOrigin): Promise<{ trip: Trip; persisted: boolean }> {
+  const copy = buildTripCopy(source, ownerId, { makePublic, ref, origin })
+  const persisted = await persistCopyOrRetract(copy, ownerId, Boolean(origin))
   return { trip: copy, persisted }
 }
 
 /** Fork a PUBLISHED itinerary while respecting its premium gate — the
  *  `freeDayIndexes` variant of `duplicateTripPersisted`. */
-export async function duplicateTripPublicPersisted(source: Trip, ownerId: ID, freeDayIndexes: number[], ref?: ShareSource | null): Promise<{ trip: Trip; persisted: boolean }> {
-  const copy = buildTripCopy(source, ownerId, { freeDayIndexes, ref })
-  const persisted = await persistCopyOrRetract(copy, ownerId)
+export async function duplicateTripPublicPersisted(source: Trip, ownerId: ID, freeDayIndexes: number[], ref?: ShareSource | null, origin?: ForkOrigin): Promise<{ trip: Trip; persisted: boolean }> {
+  const copy = buildTripCopy(source, ownerId, { freeDayIndexes, ref, origin })
+  const persisted = await persistCopyOrRetract(copy, ownerId, Boolean(origin))
   return { trip: copy, persisted }
 }
 
@@ -2827,6 +2941,100 @@ const tripInvalidationReasons = new Map<string, {
   userId: string
   generation: number
 }>()
+
+/**
+ * #804 B1 — the most recent NON-editable role observed for one membership is
+ * recorded as `role-floor:<trip>:<user>` in this same map. An access epoch stops
+ * work already in flight; it cannot stop a NEW replacement read that starts
+ * after a downgrade, because that read carries the new epoch and would restore a
+ * stale editor row. The floor blocks such a grant until a realtime GRANT clears it.
+ */
+function roleFloorKey(tripId: string, userId: string): string {
+  return `role-floor:${tripId}:${userId}`
+}
+
+/**
+ * #804 (round 10 B1) — apply one observed membership role for THIS user to the
+ * access map. It runs on BOTH realtime branches (a cached trip and an uncached
+ * one), because a cached trip is exactly where a stale editor row can be
+ * restored by the next full read.
+ *
+ *  - a downgrade to a non-editable role, or a removal, records the floor, so no
+ *    full read can grant edit rights until an authoritative GRANT clears it;
+ *  - an authoritative grant clears the floor, so a stale floor cannot outlive
+ *    the right it denies;
+ *  - an UPDATE that names no role is UNKNOWN, and unknown is treated as a
+ *    downgrade (fail closed): it records the floor but does not clear one.
+ *
+ * A row for another user changes nothing here.
+ */
+function observeOwnMembershipRole(tripId: string, userId: string, event: string, role: unknown): void {
+  if (userId !== cache.sessionUserId) return
+  const key = roleFloorKey(tripId, userId)
+  if (event === 'DELETE') {
+    tripAccessEpochs.set(key, 1)
+    return
+  }
+  if (role === undefined || role === null) {
+    if (event === 'UPDATE') tripAccessEpochs.set(key, 1)
+    return
+  }
+  if (canEdit(role as TripMember['role'])) tripAccessEpochs.delete(key)
+  else tripAccessEpochs.set(key, 1)
+}
+
+/**
+ * #804 (round 10 B2) — the guard that binds the own-echo path.
+ *
+ * An own INSERT echo may only be exempt from the permission invalidation while
+ * ONE live join expects it. The expectation records all four things that must
+ * still match when the echo arrives: the trip, the joining user, the identity
+ * generation the join started under, and the try owner the App handed in. A
+ * retired try, a different account, or a later access generation so
+ * cannot keep the window open, and the echo is treated as an ordinary event.
+ */
+export interface JoinExpectation {
+  tripId: string
+  userId: string
+  identityEpoch: number
+  accessEpoch: number
+  /** True only while the App's try is live and still owns this link target. */
+  guard: AttemptGuard
+}
+
+/** The App's live-try check, passed into the store so a retired try cannot admit. */
+export type AttemptGuard = () => boolean
+
+const expectedJoins = new Map<string, JoinExpectation>()
+
+/**
+ * The live expected-join window for this trip, or undefined.
+ *
+ * `probe` is for a caller that CHECKS the window (an echo arriving): a window it
+ * finds stale is closed at once, so nothing later in the frame reads it as open.
+ * A caller that only compares records (the echo's own guard) passes nothing and
+ * gets the record back unchanged.
+ */
+function expectedJoin(tripId: string, probe = false): JoinExpectation | undefined {
+  const expectation = expectedJoins.get(tripId)
+  if (!expectation) return undefined
+  const accessEpoch = tripAccessEpochs.get(tripId) ?? 0
+  if (probe && (expectation.identityEpoch !== identityEpoch || expectation.accessEpoch !== accessEpoch || !expectation.guard())) {
+    expectedJoins.delete(tripId)
+    return undefined
+  }
+  // The guard is the App's live-try check. It is read only when the caller can
+  // honour it (the guard the store chose for the recording try is the caller's
+  // own guard); an older recording cannot be judged by a newer closure.
+  if (expectation.identityEpoch !== identityEpoch || expectation.accessEpoch !== accessEpoch || !expectation.guard()) {
+    // A retirement or an account change closes the window at once, so nothing
+    // that runs later in this frame can still read it as open.
+    expectedJoins.delete(tripId)
+    return undefined
+  }
+  return expectation
+}
+
 const editableTripGrants = new Set<string>()
 let lastWriteCapture = 0
 
@@ -2935,9 +3143,184 @@ function validWriteVersion(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
 }
 
+/** A string that is present and not empty. */
+function nonEmptyString(value: unknown): boolean {
+  return typeof value === 'string' && value.length > 0
+}
+
+/** A finite number. */
+function finiteNumber(value: unknown): boolean {
+  return typeof value === 'number' && Number.isFinite(value)
+}
+
+/**
+ * #804 (round 10 B3) — is this a COHERENT full trip row?
+ *
+ * `admitFullRow` used to test five columns for presence alone. An explicit
+ * `undefined`, a wrong type, or a row that dropped `days`, `expenses`,
+ * `destinations` and the required scalars all passed, and `rowToTrip` then
+ * filled the gaps with empty arrays and empty strings. The gate then opened a
+ * trip whose whole-row save would write those defaults back over the owner's
+ * data.
+ *
+ * This check runs BEFORE any default applies. It names every field the
+ * serializer in `src/lib/tripRow.ts` writes back, and every field that keeps
+ * its own value through the read. A missing writable field is refused, not
+ * defaulted. A wrong type is refused. A nullable COLUMN may be null (the
+ * database stores null there); a missing column is refused, because the
+ * deployed row set is known and an absent one means a partial projection.
+ *
+ * `cols` says which optional columns this deploy's writes include, so a
+ * nullable column is accepted only when the writer knows it.
+ */
+function coherentFullRow(row: unknown, cols?: OptionalColumnsProbe): row is TripRow {
+  if (!row || typeof row !== 'object' || Array.isArray(row)) return false
+  const r = row as Record<string, unknown>
+  // The text fields.
+  for (const field of ['id', 'owner_id', 'name', 'start_location', 'start_date', 'end_date', 'transport_mode', 'travel_style', 'cover_emoji', 'visibility']) {
+    if (!nonEmptyString(r[field])) return false
+  }
+  if (r.visibility !== 'private' && r.visibility !== 'public') return false
+  // The number fields.
+  for (const field of ['travellers', 'budget_per_person_inr']) {
+    if (!finiteNumber(r[field])) return false
+  }
+  if (!validWriteVersion(r.write_version)) return false
+  if (!finiteNumber(r.updated_at) || !finiteNumber(r.created_at)) return false
+  if (r.deleted_at != null && !(typeof r.deleted_at === 'string' || finiteNumber(r.deleted_at))) return false
+  // Writable JSONB lists: check the shapes consumed by trip readers before
+  // rowToTrip can coerce malformed contents into empty collections.
+  if (!coherentDestinations(r.destinations) || !coherentDays(r.days)) return false
+  for (const field of ['expenses', 'fixed_commitments']) {
+    if (!(Array.isArray(r[field]) || r[field] === null)) return false
+  }
+  if (!(Array.isArray(r.destination_coords) || r.destination_coords === null)) return false
+  if (Array.isArray(r.destination_coords) && !r.destination_coords.every(point => point === null || (
+    !!point && typeof point === 'object' && !Array.isArray(point) && finiteNumber((point as Record<string, unknown>).lat)
+      && finiteNumber((point as Record<string, unknown>).lng)
+  ))) return false
+  // A coordinate pair is null or an object with two finite numbers.
+  if (r.start_location_coords !== null && r.start_location_coords !== undefined) {
+    const c = r.start_location_coords as Record<string, unknown>
+    if (typeof c !== 'object' || Array.isArray(c) || !finiteNumber(c.lat) || !finiteNumber(c.lng)) return false
+  } else if (r.start_location_coords === undefined) return false
+  // Optional columns: a column the writer does not know is refused, and a
+  // known column may be null.
+  const optional: Array<[keyof OptionalColumnsProbe, (v: unknown) => boolean]> = [
+    ['economy', finiteNumber], ['price', finiteNumber], ['roundTrip', v => typeof v === 'boolean'],
+    ['cover', v => typeof v === 'string'], ['inviteCode', v => typeof v === 'string'],
+    ['stayStyle', v => typeof v === 'string'], ['driverCount', finiteNumber],
+    ['hasVulnerable', v => typeof v === 'boolean'], ['driveAfterDinner', finiteNumber],
+    ['tankL', finiteNumber], ['rentPerDayInr', finiteNumber], ['localTrain', v => typeof v === 'boolean'],
+    ['flights', Array.isArray], ['ref', v => typeof v === 'string'],
+  ]
+  const columnOf: Record<string, string> = {
+    economy: 'fuel_economy_km_per_l', price: 'fuel_price_per_l', roundTrip: 'round_trip',
+    cover: 'cover_image_url', inviteCode: 'invite_code', stayStyle: 'stay_style',
+    driverCount: 'driver_count', hasVulnerable: 'has_vulnerable', driveAfterDinner: 'drive_after_dinner_min',
+    tankL: 'tank_l', rentPerDayInr: 'rent_per_day_inr', localTrain: 'local_train',
+    flights: 'flights', ref: 'ref',
+  }
+  for (const [probe, isValid] of optional) {
+    const column = columnOf[probe as string]
+    const value = r[column]
+    if (value === undefined) {
+      // `deleted_at` is read by the tombstone rule and stays allowed either way.
+      return false
+    }
+    if (value === null) {
+      if (!cols || !cols[probe]) return false
+      continue
+    }
+    if (!isValid(value)) return false
+  }
+  // A JSONB object column: check it when this writer includes the column.
+  if (r.vehicle_profile === undefined && cols?.vehicleProfile) return false
+  if (r.vehicle_profile !== undefined && r.vehicle_profile !== null
+    && (typeof r.vehicle_profile !== 'object' || Array.isArray(r.vehicle_profile))) return false
+  return true
+}
+
+function coherentStop(value: unknown): value is ItineraryStop {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const stop = value as Record<string, unknown>
+  if (!nonEmptyString(stop.id) || !nonEmptyString(stop.title) || !nonEmptyString(stop.locationName)) return false
+  if (!(STOP_CATEGORIES as readonly unknown[]).includes(stop.category)
+    || !(STOP_STATUSES as readonly unknown[]).includes(stop.status)
+    || !(['must-do', 'nice-to-have', 'optional'] as unknown[]).includes(stop.priority)) return false
+  for (const field of ['lat', 'lng', 'visitMinutes', 'entryFeeInrPerPerson', 'transportCostInrTotal', 'orderInDay']) {
+    if (!finiteNumber(stop[field])) return false
+  }
+  for (const field of ['placeId', 'description', 'openTime', 'closeTime', 'notes', 'slotKey', 'sourceUrl', 'departTime', 'arrivalTime']) {
+    if (stop[field] !== undefined && typeof stop[field] !== 'string') return false
+  }
+  for (const field of ['auto', 'weatherSensitive']) {
+    if (stop[field] !== undefined && typeof stop[field] !== 'boolean') return false
+  }
+  for (const field of ['legDistanceKm', 'legTravelMinutes']) {
+    if (stop[field] !== undefined && !finiteNumber(stop[field])) return false
+  }
+  return true
+}
+
+function coherentDay(value: unknown): value is ItineraryDay {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const day = value as Record<string, unknown>
+  if (!nonEmptyString(day.id) || !finiteNumber(day.index)) return false
+  if (day.title !== undefined && typeof day.title !== 'string') return false
+  if (day.startTime !== undefined && typeof day.startTime !== 'string') return false
+  return Array.isArray(day.stops) && day.stops.every(coherentStop)
+}
+
+function coherentDays(days: unknown): days is ItineraryDay[] | null {
+  return days === null || (Array.isArray(days) && days.every(coherentDay))
+}
+
+function coherentDestinations(destinations: unknown): destinations is string[] | null {
+  return destinations === null || (Array.isArray(destinations) && destinations.every(value => typeof value === 'string'))
+}
+
+/**
+ * A membership row is coherent when every field has the stored type. A row
+ * naming another trip is not coherent for this read.
+ */
+function coherentMemberRow(row: unknown): row is MemberRow {
+  if (!row || typeof row !== 'object' || Array.isArray(row)) return false
+  const m = row as Record<string, unknown>
+  return nonEmptyString(m.trip_id) && nonEmptyString(m.user_id)
+    && (m.role === 'owner' || m.role === 'editor' || m.role === 'commenter' || m.role === 'viewer')
+    && finiteNumber(m.joined_at)
+}
+
+/**
+ * #804 (round 10 B3) — the cached fallback row must be a USABLE trip, not just
+ * a revision and a membership. It answers the same checks the live row answers,
+ * in the Trip shape this client holds: an identity, a name, a day list, and a
+ * usable revision.
+ */
+function usableCachedTrip(trip: Trip | undefined, tripId: string): boolean {
+  if (!trip) return false
+  if (typeof trip.id !== 'string' || trip.id.toLowerCase() !== tripId.toLowerCase()) return false
+  if (typeof trip.name !== 'string' || trip.name.length === 0) return false
+  if (typeof trip.startLocation !== 'string' || typeof trip.transportMode !== 'string'
+    || typeof trip.travelStyle !== 'string' || typeof trip.coverEmoji !== 'string') return false
+  if (!Number.isFinite(trip.travellers) || !Number.isFinite(trip.budgetPerPersonInr)
+    || !Number.isFinite(trip.createdAt) || !Number.isFinite(trip.updatedAt)) return false
+  if (trip.visibility !== 'private' && trip.visibility !== 'public') return false
+  if (!Array.isArray(trip.days) || !trip.days.every(coherentDay) || !Array.isArray(trip.expenses)
+    || !Array.isArray(trip.destinations) || !trip.destinations.every(value => typeof value === 'string')
+    || !Array.isArray(trip.fixedCommitments)) return false
+  if (typeof trip.startDate !== 'string' || typeof trip.endDate !== 'string') return false
+  if (!validWriteVersion(trip.writeVersion)) return false
+  return Array.isArray(trip.members) && trip.members.every(member =>
+    !!member && typeof member === 'object' && typeof member.userId === 'string' && Number.isFinite(member.joinedAt)
+      && (member.role === 'owner' || member.role === 'editor' || member.role === 'commenter' || member.role === 'viewer'))
+}
+
 function canSendTripWrite(scope: IdentityScope, tripId: string, accessEpoch: number): boolean {
   const trip = tripById(tripId)
   return isCurrentIdentity(scope) && (tripAccessEpochs.get(tripId) ?? 0) === accessEpoch
+    && !tripAccessEpochs.has(roleFloorKey(tripId, scope.userId))
     && !!trip && !trip.deletedAt && (canEdit(roleOf(trip, scope.userId)) || isAdminCached())
 }
 
@@ -3064,10 +3447,20 @@ function invalidateTripWork(tripId: string, userId: string, reason?: QueuedWrite
   return accessEpoch
 }
 
-/** Bind requests to the captured account, even if SDK token acquisition awaits a switch. */
-async function tripWriteToken(scope: IdentityScope): Promise<string | null> {
+/**
+ * Bind requests to the captured account, even if SDK token acquisition awaits a
+ * switch.
+ *
+ * #804 (round 10 B2) — `live` is checked BEFORE the token is requested and after
+ * it returns. Retirement during the initial session read used to reach the next
+ * caller's await, so a retired join still issued one membership request. With
+ * the pre-check, a retired try dispatches nothing at all.
+ */
+async function tripWriteToken(scope: IdentityScope, live?: AttemptGuard): Promise<string | null> {
+  if (live && !live()) return null
   const { data, error } = await supabase.auth.getSession()
-  const session = data.session
+  if (live && !live()) return null
+  const session = data?.session
   if (error || !isCurrentIdentity(scope) || session?.user.id !== scope.userId || !session.access_token) return null
   return session.access_token
 }
@@ -3088,8 +3481,8 @@ async function readSharedTripWithMembership(
   // No session token, so the shared plan cannot be read.
   if (!token) return null
   const [tripRead, memberRead] = await Promise.all([
-    supabase.from('trips').select('*').eq('id', tripId).maybeSingle()
-      .setHeader('Authorization', `Bearer ${token}`),
+    supabase.from('trips').select('*').eq('id', tripId)
+      .setHeader('Authorization', `Bearer ${token}`).maybeSingle(),
     supabase.from('trip_members').select('*').eq('trip_id', tripId)
       .setHeader('Authorization', `Bearer ${token}`),
   ])
@@ -3116,15 +3509,15 @@ type DiscardRefresh = { kind: 'gone' } | { kind: 'shared'; trip: Trip }
  */
 async function readForDiscard(tripId: string, token: string | null): Promise<DiscardRefresh | null> {
   if (!token) return null
-  const first = await supabase.from('trips').select('*').eq('id', tripId).maybeSingle()
-    .setHeader('Authorization', `Bearer ${token}`)
+  const first = await supabase.from('trips').select('*').eq('id', tripId)
+    .setHeader('Authorization', `Bearer ${token}`).maybeSingle()
   if (first.error) return null
   let row = (first.data as TripRow | null) ?? null
   if (!row || row.deleted_at) return { kind: 'gone' }
   if (isStaleServerRow(serverTripTimestamps.get(tripId), row.updated_at)) {
     // The first read may be older than the server ledger. Read the trip again.
-    const again = await supabase.from('trips').select('*').eq('id', tripId).maybeSingle()
-      .setHeader('Authorization', `Bearer ${token}`)
+    const again = await supabase.from('trips').select('*').eq('id', tripId)
+      .setHeader('Authorization', `Bearer ${token}`).maybeSingle()
     if (again.error) return null
     row = (again.data as TripRow | null) ?? null
     if (!row || row.deleted_at) return { kind: 'gone' }
@@ -3250,8 +3643,8 @@ async function sendQueuedTripWrite(entry: QueuedWrite, scope: IdentityScope, acc
     const token = await tripWriteToken(scope)
     if (!token || !live()) return false
     const { data: member, error: memberError } = await supabase.from('trip_members')
-      .select('user_id, role, joined_at').eq('trip_id', entry.tripId).eq('user_id', scope.userId).maybeSingle()
-      .setHeader('Authorization', `Bearer ${token}`)
+      .select('user_id, role, joined_at').eq('trip_id', entry.tripId).eq('user_id', scope.userId)
+      .setHeader('Authorization', `Bearer ${token}`).maybeSingle()
     if (!live()) return false
     if (memberError) return failed()
     if ((!member || !canEdit(member.role)) && !isAdminCached()) {
@@ -3315,8 +3708,8 @@ async function sendQueuedTripWrite(entry: QueuedWrite, scope: IdentityScope, acc
       return false
     }
     const { data: current, error: readError } = await supabase.from('trips')
-      .select('id, owner_id, write_version, deleted_at').eq('id', entry.tripId).maybeSingle()
-      .setHeader('Authorization', `Bearer ${token}`)
+      .select('id, owner_id, write_version, deleted_at').eq('id', entry.tripId)
+      .setHeader('Authorization', `Bearer ${token}`).maybeSingle()
     if (!live()) return false
     if (readError) return failed()
     if (!current || current.deleted_at) {
@@ -3555,8 +3948,12 @@ export async function resolveQueuedTripWrite(tripId: ID, choice: 'retry' | 'repl
     if (!token || !live()) return false
     let next = { ...current, attempts: 0, state: undefined }
     if (choice === 'replace') {
-      const { data: row, error } = await supabase.from('trips').select('id, write_version').eq('id', tripId).maybeSingle()
-        .setHeader('Authorization', `Bearer ${token}`)
+      // #804 — no queued snapshot can carry a partial row any more (the invite
+      // preview never enters the cache or the queue), so a Replace only needs
+      // the authoritative baseline. The five columns are whatever the snapshot
+      // holds, which came from a full row.
+      const { data: row, error } = await supabase.from('trips').select('id, write_version').eq('id', tripId)
+        .setHeader('Authorization', `Bearer ${token}`).maybeSingle()
       if (!live() || error || !row || !validWriteVersion(row.write_version)) return false
       next = { ...next, baseVersion: row.write_version }
     } else if (current.state === 'conflict') {
@@ -3690,41 +4087,370 @@ export function setMemberRole(tripId: ID, userId: ID, role: TripMember['role']):
  * optimistically (joiners need the trip in My Trips immediately).
  * Returns whether the user is a member of the trip afterwards.
  */
-export async function joinViaInvite(tripId: ID, userId: ID, inviteCode: string): Promise<boolean> {
-  const t = tripById(tripId)
-  if (!t) return false
-  if (t.members?.some(m => m.userId === userId)) return true
-  const joinedAt = Date.now()
-  // join_trip() takes the invite code, never a trip id. It adds the signed-in
-  // user as an editor. It returns the trip id, or null for a dead code.
-  const role: TripMember['role'] = 'editor'
-  const { data: joinedTripId, error } = await supabase.rpc('join_trip', { p_code: inviteCode })
-  if (error) {
-    console.error('[yatraflow] join write failed', error)
-    return false
+/**
+ * The result of a join, as the gate must render it. Three states, never shown as
+ * one another (R23):
+ *   'joined'           the membership exists AND the full row is in the cache,
+ *                      so the caller may open the trip.
+ *   'joined-unloaded'  the membership exists but the row could not be read. The
+ *                      user IS on the trip; only the page failed. A retry must
+ *                      re-read the row, never join again.
+ *   'failed'           no membership was created. A retry must join again.
+ */
+export type JoinResult = 'joined' | 'joined-unloaded' | 'joined-unloaded-incomplete' | 'joined-unloaded-failed'
+  | 'not-member' | 'missing' | 'deleted' | 'incomplete' | 'failed' | 'abandoned'
+
+/**
+ * Join a trip through its invite code, then fetch the full row into the cache.
+ *
+ * #804 — the preview row is no longer cached, so this cannot read the trip from
+ * tripById. The caller passes the name it already holds for the toast.
+ *
+ * Returns 'joined' only when the join AND the full-row load both succeed. A join
+ * that succeeded but whose row could not be read returns 'joined-unloaded': the
+ * membership exists, so plain failure would suggest they are not a member, and
+ * plain success would send them to a page with nothing in it.
+ */
+export async function joinViaInvite(
+  tripId: ID,
+  userId: ID,
+  inviteCode: string,
+  guard?: AttemptGuard,
+): Promise<JoinResult> {
+  // C1/B7 — capture and CHECK the identity and access generation before the
+  // cached-member shortcut, and keep that same scope for every continuation. A
+  // shortcut that trusts the cache first would act for whoever is signed in now.
+  const scope = identityScope()
+  const accessEpoch = tripAccessEpochs.get(tripId) ?? 0
+  if (!scope || scope.userId !== userId || (guard ? !guard() : false)) return 'abandoned'
+  const cached = tripById(tripId)
+  if (cached?.members?.some(m => m.userId === userId)) {
+    // Already a member: the cached row already carries the membership, so this
+    // call writes no row and claims nothing.
+    return finishJoin(tripId, userId, scope, accessEpoch, guard)
   }
-  // Fail closed: a null answer, or an answer naming another trip, joins nothing.
-  if (!joinedTripId || String(joinedTripId).toLowerCase() !== tripId.toLowerCase()) return false
-  markLocalWrite('trip_members', tripId)
-  mutateTrip(tripId, draft => { draft.members = [...(draft.members ?? []), { userId, role, joinedAt }] }, { touch: false })
-  addActivity(tripId, userId, 'joined via invite link', 'Members')
-  notifyOwnerOf(tripId, `${userName(userId)} joined “${t.name}” as ${role}.`)
-  return true
+  // B1/B-3 (round 10 B2) — record the grant we EXPECT before any await. The join
+  // writes a membership row either way: through join_trip when it runs, or
+  // already held when the pre-query says member. The record is bound to the
+  // trip, the joining user, the identity generation, and the App's live try,
+  // so an own echo is exempt only while all four still match. The window clears
+  // on every exit.
+  const expectation: JoinExpectation = { tripId, userId, identityEpoch, accessEpoch, guard: () => !guard || guard() }
+  expectedJoins.set(tripId, expectation)
+  try {
+    const token = await tripWriteToken(scope, guard)
+    if (!token || !isCurrentIdentity(scope) || (tripAccessEpochs.get(tripId) ?? 0) !== accessEpoch || (guard ? !guard() : false)) {
+      console.error('[yatraflow] join abandoned before dispatch: the account, trip access or try changed', { tripId })
+      return 'abandoned'
+    }
+    return await joinAfterScope(tripId, userId, inviteCode, scope, accessEpoch, token, guard)
+  } finally {
+    // Only the try that RECORDED the window may close it. An older, retired try
+    // that unwinds after a newer try opened its own window must not close that
+    // newer one.
+    if (expectedJoins.get(tripId) === expectation) expectedJoins.delete(tripId)
+  }
 }
 
-/** True when this user already holds a membership row on the trip. It reads
- *  only that user's own row, which the members read policy always allows. It
- *  never reads the invite code. */
-export async function viewerIsMemberOf(tripId: ID, userId: ID): Promise<boolean> {
-  if (tripById(tripId)?.members?.some(m => m.userId === userId)) return true
-  const { data, error } = await supabase
+/**
+ * The rest of joinViaInvite, called with the scope and access epoch captured
+ * BEFORE the first await. The caller owns the expected-join window, so this only
+ * re-checks identity and reaches the join.
+ */
+async function joinAfterScope(
+  tripId: ID,
+  userId: ID,
+  inviteCode: string,
+  scope: { userId: string; epoch: number },
+  accessEpoch: number,
+  token: string,
+  guard?: AttemptGuard,
+): Promise<JoinResult> {
+  // S3 — the cache cannot answer "is this caller already a member?" when the trip
+  // came from the uncached preview, and join_trip's `on conflict do nothing`
+  // cannot report whether it inserted. So ask the membership table.
+  //
+  // B1 — the re-check goes AFTER this await, not before it. This query is the
+  // round trip the switch lands in: checking before it answers "the account that
+  // started", which is always true, and the join then runs under whoever is
+  // signed in now. A pre-check before a later await proves nothing.
+  const membership = await membershipCertain(tripId, userId, token)
+  if (!isCurrentIdentity(scope) || (tripAccessEpochs.get(tripId) ?? 0) !== accessEpoch || (guard ? !guard() : false)) {
+    console.error('[yatraflow] join abandoned after the membership read: the account, access or try changed', { tripId })
+    return 'abandoned'
+  }
+  // S3/pre-query error — a read that failed says "not a member" exactly as
+  // loudly as a table that answered "no such row". The join must still run when
+  // the read failed, so the certainty is what decides, not the boolean.
+  if (membership.certain && membership.member) {
+    // The caller is a known member: no write, and this client claims nothing.
+    return finishJoin(tripId, userId, scope, accessEpoch, guard)
+  }
+  // join_trip() takes the invite code, never a trip id. It adds the signed-in
+  // user as an editor. It returns the trip id, or null for a dead code. It is
+  // `on conflict do nothing`, so it CANNOT say whether it inserted a row.
+  const { data: joinedTripId, error } = await supabase.rpc('join_trip', { p_code: inviteCode })
+    .setHeader('Authorization', `Bearer ${token}`)
+  // B2a — every await above can span an account switch. Check before ANY effect.
+  if (!isCurrentIdentity(scope) || (tripAccessEpochs.get(tripId) ?? 0) !== accessEpoch || (guard ? !guard() : false)) {
+    console.error('[yatraflow] join continuation abandoned: the account, access or try changed', { tripId })
+    return 'abandoned'
+  }
+  if (error) {
+    console.error('[yatraflow] join write failed', error)
+    return 'failed'
+  }
+  // Fail closed: a null answer, or an answer naming another trip, joins nothing.
+  if (!joinedTripId || String(joinedTripId).toLowerCase() !== tripId.toLowerCase()) return 'failed'
+  markLocalWrite('trip_members', tripId)
+  // B6 — no optimistic membership is published here. The admitted full row owns
+  // the membership, so a refusal leaves the cache and its subscribers unchanged.
+  // R5 — no activity claim either. The RPC is idempotent and cannot report an
+  // insertion, so this client does not pretend to know one happened.
+  // R5 — the owner is not notified, whatever the pre-query said. An idempotent
+  // RPC cannot report an insertion, so this client claims none.
+  return finishJoin(tripId, userId, scope, accessEpoch, guard)
+}
+
+/**
+ * #804 — the half of a join that runs after the membership exists: load the full
+ * row, then report the outcome. It sends no owner notice and writes no activity
+ * claim (R5), because an idempotent RPC cannot say whether it inserted anything.
+ *
+ * B2 — an ABANDONED load is carried through unchanged. It means the caller's
+ * account changed mid-flight, so this client does not know whether a membership
+ * exists; reporting 'joined-unloaded' would claim a membership the caller may not
+ * have. Only a genuine read failure is 'joined-unloaded'.
+ *
+ * S3/pre-query — `freshJoin` is true only when THIS call ran the join RPC. A
+ * known member passes false, so re-clicking an invite never tells the owner that
+ * an existing member "joined as editor", and a reload passes false for the same
+ * reason. The notice follows what this call did, not what the loaded row shows.
+ */
+async function finishJoin(
+  tripId: ID,
+  userId: ID,
+  scope: { userId: string; epoch: number },
+  accessEpoch: number,
+  guard?: AttemptGuard,
+): Promise<JoinResult> {
+  const loaded = await loadFullTripIntoCache(tripId, guard)
+  // B7 — the load awaited. Re-check the ORIGINAL scope, access generation and try
+  // owner before any claim, so a switch during the load cannot become 'joined'.
+  if (!isCurrentIdentity(scope) || (tripAccessEpochs.get(tripId) ?? 0) !== accessEpoch || (guard ? !guard() : false)) {
+    return 'abandoned'
+  }
+  // B8 — the refusal kinds stay distinct. Collapsing them into 'joined-unloaded'
+  // told a non-member, a missing row and a tombstone that the plan merely failed.
+  if (loaded === 'abandoned') return 'abandoned'
+  if (loaded === 'not-member') {
+    console.error('[yatraflow] the full trip read shows the caller is not a member', { tripId, userId })
+    return 'not-member'
+  }
+  if (loaded === 'missing') return 'missing'
+  if (loaded === 'deleted') return 'deleted'
+  // The membership exists; only the row could not be accepted. That is the
+  // "joined but not loaded" case, not a failed join and not a membership loss.
+  if (loaded === 'incomplete') return 'joined-unloaded-incomplete'
+  // A READ failure after the membership exists is the same kind of answer: the
+  // caller is on the trip, and only the row failed to arrive.
+  if (loaded === 'failed') return 'joined-unloaded-failed'
+  if (loaded === 'stale') {
+    // B3 (round 10) — the cached row is the truth ONLY when it is a USABLE trip
+    // the caller can open, not merely a row with a revision and a membership.
+    const cached = tripById(tripId)
+    if (cached && usableCachedTrip(cached, tripId) && (cached.members ?? []).some(m => m.userId === userId)) return 'joined'
+    return 'joined-unloaded-incomplete'
+  }
+  // R5 — no owner notice and no activity claim for an idempotent RPC. Two
+  // certainly-absent pre-queries still cannot say which client inserted the row,
+  // so this client claims nothing about the insertion.
+  return 'joined'
+}
+
+/**
+ * Re-read a trip the caller already joined, without joining again. The gate's
+ * retry for 'joined-unloaded' uses this, so a retry can never write a second
+ * membership row or send a second owner notification. `owed` is false: this call
+ * did not create the membership.
+ */
+export async function reloadJoinedTrip(tripId: ID, guard?: AttemptGuard): Promise<JoinResult> {
+  const scope = identityScope()
+  const accessEpoch = tripAccessEpochs.get(tripId) ?? 0
+  if (!scope || (guard ? !guard() : false)) return 'abandoned'
+  // The same continuation the initial join uses, so a retry can never write a
+  // second membership row, and it carries the SAME captured scope.
+  return finishJoin(tripId, scope.userId, scope, accessEpoch, guard)
+}
+
+/** Why a full-row load did or did not replace the cached trip. */
+export type LoadOutcome = 'loaded' | 'failed' | 'stale' | 'incomplete' | 'missing' | 'deleted' | 'not-member' | 'abandoned'
+
+/**
+ * #804 — read the full trip row and its members into the cache.
+ *
+ * Replaces the earlier version, which overwrote whatever was cached. A delayed
+ * read could land after a newer revision, after a local edit, or after another
+ * account took over, and the overwrite would silently undo all three. The rules
+ * below are the ones hydrate and the realtime path already apply:
+ *
+ *   - identity and access are captured before the await and re-checked after it
+ *     (the #798 queue-key pattern);
+ *   - a row older than the server-timestamp ledger is refused, so the ledger
+ *     never moves backwards (isStaleServerRow, the B2 realtime guard);
+ *   - a row whose write_version is older than the cached one, or that carries no
+ *     usable version at all, is refused rather than trusted;
+ *   - a trip with a pending queued write keeps its local row: the queue owns
+ *     that trip's next state and the server row is already behind it;
+ *   - the caller must be a member (or an admin), so an empty or someone else's
+ *     membership read cannot cache a trip the caller cannot read.
+ *
+ * A refusal returns a distinct outcome and leaves the cached row untouched.
+ */
+async function loadFullTripIntoCache(tripId: ID, guard?: AttemptGuard): Promise<LoadOutcome> {
+  const scope = identityScope()
+  if (!scope || !isCurrentIdentity(scope) || (guard ? !guard() : false)) return 'abandoned'
+  const accessEpoch = tripAccessEpochs.get(tripId) ?? 0
+  // C1 — capture the bearer before the reads and pin every request. The token
+  // is checked against the captured identity and access generation, never a
+  // global default header.
+  const token = await tripWriteToken(scope, guard)
+  if (!token || !isCurrentIdentity(scope) || (tripAccessEpochs.get(tripId) ?? 0) !== accessEpoch || (guard ? !guard() : false)) {
+    return 'abandoned'
+  }
+  const [tripRes, memRes] = await Promise.all([
+    supabase.from('trips').select('*').eq('id', tripId).setHeader('Authorization', `Bearer ${token}`).maybeSingle(),
+    supabase.from('trip_members').select('*').eq('trip_id', tripId).setHeader('Authorization', `Bearer ${token}`),
+  ])
+  if (!isCurrentIdentity(scope) || (tripAccessEpochs.get(tripId) ?? 0) !== accessEpoch || (guard ? !guard() : false)) {
+    return 'abandoned'
+  }
+  if (tripRes.error || memRes.error) {
+    if (tripRes.error) console.error('[yatraflow] full trip read after join failed', tripRes.error)
+    if (memRes.error) console.error('[yatraflow] member read after join failed', memRes.error)
+    return 'failed'
+  }
+  if (!tripRes.data) return 'missing'
+  return admitFullRow({
+    requestedTripId: tripId,
+    row: tripRes.data as TripRow,
+    members: (memRes.data ?? []) as MemberRow[],
+    scope,
+    accessEpoch,
+    guard,
+  })
+}
+
+/**
+ * #804 R2 — the ONE admission step for a full-row load.
+ *
+ * Both loaders use it: the join/hydrate path (`loadFullTripIntoCache`) and the
+ * realtime own-echo path (`fetchTripIntoCache`). One implementation means the
+ * checks cannot drift apart, which is what left the echo path caching invalid
+ * revisions (round-8 B5).
+ *
+ * The decision is synchronous on purpose. Every guard is re-validated here, and
+ * the cache swap plus the accepted-read ledger entry happen in one step with no
+ * await and no notification between them. A refusal changes neither the cache
+ * nor the ledger.
+ *
+ * `incomplete` is distinct from `stale`: the row itself carries no usable
+ * revision, so nothing can be accepted even though the read succeeded.
+ */
+function admitFullRow(input: {
+  /** The trip this read ASKED for. A response for another trip is never admissible. */
+  requestedTripId: ID
+  row: TripRow
+  members: MemberRow[]
+  scope: IdentityScope
+  accessEpoch: number
+  guard?: AttemptGuard
+}): LoadOutcome {
+  const { requestedTripId, row, scope, accessEpoch, guard } = input
+  const members = input.members as unknown[]
+  // B3 — provenance first, and against the REQUEST. A response whose rows agree
+  // with each other but name another trip is not this read's answer.
+  if (!row || typeof row !== 'object' || typeof row.id !== 'string'
+    || row.id.toLowerCase() !== requestedTripId.toLowerCase()) return 'incomplete'
+  const tripId = requestedTripId
+  if (!isCurrentIdentity(scope) || (tripAccessEpochs.get(tripId) ?? 0) !== accessEpoch || (guard ? !guard() : false)) return 'abandoned'
+  if (row.deleted_at) return 'deleted'
+  // B3 — a coherent full row, checked BEFORE any default applies. Presence alone
+  // let an explicit undefined, a wrong type or a row missing its writable fields
+  // through, and the serializer then filled them with empty values.
+  if (!coherentFullRow(row, knownOptionalColumns())) return 'incomplete'
+  // B3 — a membership answer is coherent for THIS trip, or the read is refused.
+  if (!Array.isArray(members) || !members.every(m => coherentMemberRow(m) && String(m.trip_id) === String(tripId))) return 'incomplete'
+  const mapped = (members as MemberRow[]).map(m => ({
+    userId: m.user_id,
+    role: m.role as TripMember['role'],
+    joinedAt: m.joined_at,
+  }))
+  const mine = mapped.find(m => m.userId === scope.userId)
+  // S1 — a validated owner_id grants authority without a redundant member row.
+  if (!mine && !isAdminCached() && row.owner_id !== scope.userId) return 'not-member'
+  // An observed downgrade blocks every ordinary read. Only a coherent row
+  // inside this live join's expected window can confirm a replacement grant.
+  const expectedGrant = mine && canEdit(mine.role) ? expectedJoin(tripId) : undefined
+  if (mine && canEdit(mine.role) && tripAccessEpochs.has(roleFloorKey(tripId, scope.userId)) && !expectedGrant) return 'stale'
+  if (isStaleServerRow(serverTripTimestamps.get(tripId), row.updated_at)) return 'stale'
+  if (queuedLocalTrips.has(tripId)) return 'stale'
+  const existing = tripById(tripId)
+  if (existing) {
+    const incoming = Number(row.write_version)
+    const cached = existing.writeVersion
+    if (validWriteVersion(cached) && incoming < cached) return 'stale'
+    if (validWriteVersion(cached) && incoming === cached && existing.updatedAt > Number(row.updated_at)) return 'stale'
+  }
+  // The floor is cleared only after every row, membership, identity and
+  // revision check succeeds for the expected join grant.
+  if (expectedGrant) tripAccessEpochs.delete(roleFloorKey(tripId, scope.userId))
+  const trip = rowToTrip(row, mapped)
+  recordServerTripTimestamp(trip.id, trip.updatedAt)
+  const idx = cache.trips.findIndex(t => t.id === trip.id)
+  cache.trips = idx < 0
+    ? [...cache.trips, trip]
+    : [...cache.trips.slice(0, idx), trip, ...cache.trips.slice(idx + 1)]
+  commit()
+  return 'loaded'
+}
+
+/**
+ * Whether this user already holds a membership row on the trip, and whether the
+ * answer is CERTAIN.
+ *
+ * `false` with `certain: true` means the table answered "no such row". `false`
+ * with `certain: false` means the read itself failed, so nothing is known. The
+ * join path needs the difference: a failed read must not stop a user joining,
+ * and answering "not a member" for a failed read is what produced a notice for a
+ * member who was already on the trip.
+ *
+ * It reads only that user's own row, which the members read policy always
+ * allows. It never reads the invite code.
+ */
+export async function membershipCertain(tripId: ID, userId: ID, token?: string): Promise<{ member: boolean; certain: boolean }> {
+  if (tripById(tripId)?.members?.some(m => m.userId === userId)) return { member: true, certain: true }
+  const query = supabase
     .from('trip_members')
     .select('user_id')
     .eq('trip_id', tripId)
     .eq('user_id', userId)
-    .maybeSingle()
-  if (error) console.error('[yatraflow] membership check failed', error)
-  return !error && !!data
+  // C1 — a caller that captured a bearer pins it here too, so the membership
+  // answer belongs to the account that asked rather than to whoever the SDK's
+  // token lookup happens to return.
+  const { data, error } = token
+    ? await query.setHeader('Authorization', `Bearer ${token}`).maybeSingle()
+    : await query.maybeSingle()
+  if (error) {
+    console.error('[yatraflow] membership check failed', error)
+    return { member: false, certain: false }
+  }
+  return { member: !!data, certain: true }
+}
+
+/** True when this user already holds a membership row on the trip. */
+export async function viewerIsMemberOf(tripId: ID, userId: ID): Promise<boolean> {
+  return (await membershipCertain(tripId, userId)).member
 }
 
 /**
@@ -4686,7 +5412,7 @@ function releasePubCounter(key: string): void {
  *  skew, and it needs no reconciliation pass because the value it leaves behind
  *  is the server's own.
  */
-function bumpPubCounter(id: ID, kind: 'views' | 'copies', source?: ShareSource | null): void {
+function bumpPubCounter(id: ID, kind: 'views' | 'copies', source?: ShareSource | null, campaign?: CampaignId | null): void {
   const p = cache.published.find(x => x.id === id)
   if (!p) return
   // The creator's own visit/fork does not count: they are checking their own
@@ -4710,27 +5436,32 @@ function bumpPubCounter(id: ID, kind: 'views' | 'copies', source?: ShareSource |
     releasePubCounter(key)
   }
   // `p_source` is the link's ref (or the in-app surface) that produced this
-  // step — #230's attribution. `null` is the honest "direct" answer; the RPC
+  // step — #230's attribution. `null` means unattributed; the RPC
   // stores it on the event row, never on the counter.
-  void Promise.resolve(supabase.rpc('bump_published_stats', { p_id: id, p_kind: kind, p_source: source ?? null })).then(
-    res => {
-      if (!res?.error) return
-      console.error(`[yatraflow] ${kind} bump failed`, res.error)
-      undo()
-    },
-    err => {
-      console.error(`[yatraflow] ${kind} bump rejected`, err)
-      undo()
-    },
-  )
+  try {
+    void Promise.resolve(supabase.rpc('bump_published_stats', { p_id: id, p_kind: kind, p_source: source ?? null, p_campaign: campaignId(campaign) })).then(
+      res => {
+        if (!res?.error) return
+        console.error(`[yatraflow] ${kind} bump failed`, res.error)
+        undo()
+      },
+      err => {
+        console.error(`[yatraflow] ${kind} bump rejected`, err)
+        undo()
+      },
+    )
+  } catch {
+    undo()
+    console.warn('[yatraflow] publication analytics unavailable')
+  }
 }
 
 /** One view per itinerary per browser session, and the creator's own visits
  *  don't count — before this, every refresh and every self-check inflated the
  *  Explore counter. (sessionStorage survives route changes within the tab but
  *  resets on a genuinely new visit, which is the granularity views want.) */
-export function registerPubView(id: ID, source?: ShareSource | null): void {
-  bumpPubCounter(id, 'views', source)
+export function registerPubView(id: ID, source?: ShareSource | null, campaign?: CampaignId | null): void {
+  bumpPubCounter(id, 'views', source, campaign)
 }
 
 /** One FORK per itinerary per browser session, and the creator's own forks
@@ -4741,8 +5472,8 @@ export function registerPubView(id: ID, source?: ShareSource | null): void {
  *  presented as a conversion rate. Explore's card can fork a plan repeatedly in
  *  one visit, and each click was a fresh event. The guard makes the two stages
  *  count the same kind of thing. */
-export function registerPubCopy(id: ID, source?: ShareSource | null): void {
-  bumpPubCounter(id, 'copies', source)
+export function registerPubCopy(id: ID, source?: ShareSource | null, campaign?: CampaignId | null): void {
+  bumpPubCounter(id, 'copies', source, campaign)
 }
 
 // ---------------- Feed & notifications ----------------
@@ -4765,12 +5496,6 @@ export function pushNotification(userId: ID, tripId: ID | undefined, text: strin
   const n: Notification = { id: uuid(), userId, tripId, text, read: false, at: Date.now() }
   cache.notifications = [n, ...cache.notifications]
   fire('notifications', supabase.from('notifications').insert({ id: n.id, user_id: userId, trip_id: tripId, text, read: false, at: n.at }))
-}
-
-function notifyOwnerOf(tripId: ID, text: string): void {
-  const t = tripById(tripId)
-  const owner = t?.members?.find(m => m.role === 'owner')
-  if (owner) pushNotification(owner.userId, tripId, text)
 }
 
 export function markAllNotificationsRead(userId: ID): void {
@@ -4889,6 +5614,19 @@ function dispatchRealtimeEvent(table: string, payload: RealtimePostgresChangesPa
  *  catch included, matching the real path exactly. */
 export function _applyRealtimeEventForTest(table: string, payload: RealtimePostgresChangesPayload<Record<string, unknown>>): void {
   dispatchRealtimeEvent(table, payload)
+}
+
+/** Test hook — run the real full-row loader the join and gate paths use, so a
+ *  test can prove what a read does to the cache without a live session. */
+export function loadTripForTest(tripId: ID): Promise<LoadOutcome> {
+  return loadFullTripIntoCache(tripId)
+}
+
+/** Test hook for the same access-floor check used by live write paths. */
+export function canSendTripWriteForTest(tripId: ID): boolean {
+  const scope = identityScope()
+  if (!scope) return false
+  return canSendTripWrite(scope, tripId, tripAccessEpochs.get(tripId) ?? 0)
 }
 
 /** Start listening for row changes. Call after a successful hydration. */
@@ -5149,17 +5887,69 @@ function applyRealtimeEvent(table: string, payload: RealtimePostgresChangesPaylo
       const userId: string = row?.user_id ?? oldRow?.user_id
       if (!userId) return
       const trip = tripById(tripId)
+      // B-3 — do NOT bump the access epoch for this client's OWN join.
+      //
+      // The echo of the membership row this client just wrote arrives before the
+      // join's full-row load finishes. On an uncached trip (which is exactly the
+      // invite case) `!trip` is true, so the branch below treated the user's own
+      // new grant as a permission CHANGE and bumped the epoch, and the join's own
+      // post-await checks then rejected a join that had actually succeeded.
+      //
+      // B4 — the exemption is only for the GRANT WE EXPECT: a new editable row
+      // for this user on a trip we are joining. An INSERT has no old role, so it
+      // is exempt (that is our own row arriving). An UPDATE that REMOVES the
+      // edit right is a downgrade, not our echo, and must still invalidate.
+      // R3 — the exemption is the EXPECTED INSERT of our own live join. An
+      // UPDATE is never exempt, so a downgrade arriving as an UPDATE always
+      // invalidates, and a retired try cannot keep the window open.
+      // B2 (round 10) — the exemption is the EXPECTED INSERT of our own LIVE
+      // join, bound to the user, the identity generation and the App's try. A
+      // retired try, another account or a later generation cannot keep it open.
+      // A probe CLOSES the window first, so the check below can tell "no
+      // window" from "a window that just stopped counting".
+      const hadWindow = event === 'INSERT' && expectedJoins.has(tripId)
+      const expectation = event === 'INSERT' ? expectedJoin(tripId, true) : undefined
+      // Our own window existed a moment ago but the try is retired or the
+      // account changed. That INSERT can only be our own stale echo, so it does
+      // nothing at all: no cache row, no ledger entry, no fetch.
+      if (hadWindow && !expectation) return
+      const ownJoinEcho = !!expectation && userId === expectation.userId && canEdit(row?.role)
       if (userId === cache.sessionUserId && event !== 'DELETE' && canEdit(row?.role)
+        && !ownJoinEcho
         && (!trip ? !editableTripGrants.has(tripId) : !canEdit(roleOf(trip, userId)))) {
         // A new grant invalidates cleanup and fetch work from the previous permission.
         tripAccessEpochs.set(tripId, (tripAccessEpochs.get(tripId) ?? 0) + 1)
         editableTripGrants.add(tripId)
       }
       if (!trip && userId === cache.sessionUserId && event === 'DELETE') invalidateTripWork(tripId, userId, 'access-removed')
+      // B1 (round 10) — the observed role is applied on BOTH branches. A cached
+      // trip is exactly where the next full read could restore a stale editor
+      // row, and the cached branch used to skip the floor entirely.
+      observeOwnMembershipRole(tripId, userId, event, row?.role)
       if (!trip) {
+        // B4 — a role change for this viewer with no cached trip must still
+        // invalidate. The only invalidation on this branch ran inside the
+        // `!trip ? ... : ...` test above, which needs an EDITABLE new role, so
+        // an uncached DOWNGRADE (editor -> viewer) left the epoch unmoved. A full
+        // load already in flight then restored stale editor rights. The role
+        // changed either way, so the epoch moves for any role change.
+        // R3 — invalidate from the NEW role. A downgrade or a deletion cannot
+        // depend on `old.role`: an uncached row, a missing old value, or an
+        // unknown UPDATE all take the conservative path, which is what round 8
+        // missed when it needed both roles to be present and equal-ish.
+        if (userId === cache.sessionUserId && event !== 'DELETE' && !ownJoinEcho) {
+          const knownRoles = !!row?.role || !!oldRow?.role
+          const downgraded = !!row?.role && !canEdit(row.role)
+          const unknownUpdate = event === 'UPDATE' && !knownRoles
+          const roleChanged = !!row?.role && !!oldRow?.role && String(row.role) !== String(oldRow.role)
+          if (downgraded || unknownUpdate || roleChanged) {
+            tripAccessEpochs.set(tripId, (tripAccessEpochs.get(tripId) ?? 0) + 1)
+          }
+        }
         // A membership row for a trip we don't have yet (we were just added to
-        // / joined a trip elsewhere): fetch the whole trip + members.
-        if (event !== 'DELETE') void fetchTripIntoCache(tripId)
+        // / joined a trip elsewhere): fetch the whole trip + members. An own
+        // echo's load is bound to the try that expects it (see fetchEchoIntoCache).
+        if (event !== 'DELETE') void fetchEchoIntoCache(tripId, expectation)
         return
       }
       // If we were removed, the trip disappears from our view. The owner's
@@ -5187,10 +5977,12 @@ function applyRealtimeEvent(table: string, payload: RealtimePostgresChangesPaylo
           void refreshSharedPlanAfterDemotion(tripId)
         }
         mutateTrip(tripId, draft => {
+          const role: TripMember['role'] = row?.role === 'owner' || row?.role === 'editor'
+            || row?.role === 'commenter' || row?.role === 'viewer' ? row.role : 'viewer'
           draft.members = applyMemberChange(draft.members ?? [], {
             event,
             userId,
-            role: (row?.role as TripMember['role']) ?? 'editor',
+            role,
             joinedAt: Number(row?.joined_at ?? oldRow?.joined_at ?? Date.now()),
           })
         }, { touch: false })
@@ -5242,27 +6034,53 @@ function applyRealtimeEvent(table: string, payload: RealtimePostgresChangesPaylo
   commit()
 }
 
+/**
+ * #804 (round 10 B2) — the load an own membership echo starts.
+ *
+ * The echo of this client's own new membership row is loaded under the try that
+ * expected it. Two checks bind that load to the try:
+ *  - `expectedJoin` again at the ARRIVAL, so an echo that lands after the try
+ *    retired (or after the account changed) starts no read at all;
+ *  - the same check again at ADMISSION, so a retirement during the read
+ *    publishes nothing.
+ */
+function fetchEchoIntoCache(tripId: string, expectation: JoinExpectation | undefined): void {
+  if (!expectation) {
+    void fetchTripIntoCache(tripId)
+    return
+  }
+  if (expectedJoin(tripId) !== expectation) return
+  void fetchTripIntoCache(tripId, () => expectedJoin(tripId) === expectation)
+}
+
 /** Fetch a trip row + its members into the cache (used on join/share events). */
-async function fetchTripIntoCache(tripId: string): Promise<void> {
+async function fetchTripIntoCache(tripId: string, guard?: AttemptGuard): Promise<void> {
   const scope = identityScope()
-  if (!scope || !isCurrentIdentity(scope)) return
+  if (!scope || !isCurrentIdentity(scope) || (guard ? !guard() : false)) return
   const accessEpoch = tripAccessEpochs.get(tripId) ?? 0
   const key = `${scope.epoch}:${scope.userId}:${tripId}:${accessEpoch}`
   const inflight = tripFetches.get(key)
   if (inflight) return inflight
   const fetch = (async () => {
+    // C1 — the echo path captures its own bearer and pins both reads, exactly as
+    // the join loader does.
+    const token = await tripWriteToken(scope, guard)
+    if (!token || !isCurrentIdentity(scope) || (tripAccessEpochs.get(tripId) ?? 0) !== accessEpoch || (guard ? !guard() : false)) return
     const [tripRes, memRes] = await Promise.all([
-      supabase.from('trips').select('*').eq('id', tripId).maybeSingle(),
-      supabase.from('trip_members').select('*').eq('trip_id', tripId),
+      supabase.from('trips').select('*').eq('id', tripId).setHeader('Authorization', `Bearer ${token}`).maybeSingle(),
+      supabase.from('trip_members').select('*').eq('trip_id', tripId).setHeader('Authorization', `Bearer ${token}`),
     ])
-    if (!isCurrentIdentity(scope) || (tripAccessEpochs.get(tripId) ?? 0) !== accessEpoch
-      || tripRes.error || memRes.error || !tripRes.data || tripRes.data.deleted_at) return
-    const members = ((memRes.data ?? []) as MemberRow[]).map(m => ({ userId: m.user_id, role: m.role as TripMember['role'], joinedAt: m.joined_at }))
-    if (!members.some(m => m.userId === scope.userId) && !isAdminCached()) return
-    const trip = rowToTrip(tripRes.data as TripRow, members)
-    recordServerTripTimestamp(trip.id, trip.updatedAt)
-    if (!cache.trips.some(t => t.id === trip.id)) cache.trips = [...cache.trips, trip]
-    commit()
+    if (tripRes.error || memRes.error || !tripRes.data) return
+    // R2 — the echo path uses the SAME admission as the join loader, so a row
+    // with an unusable revision cannot be cached here either (B5).
+    admitFullRow({
+      requestedTripId: tripId,
+      row: tripRes.data as TripRow,
+      members: (memRes.data ?? []) as MemberRow[],
+      scope,
+      accessEpoch,
+      guard,
+    })
   })()
   tripFetches.set(key, fetch)
   try { await fetch } finally { if (tripFetches.get(key) === fetch) tripFetches.delete(key) }
