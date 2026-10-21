@@ -3031,10 +3031,44 @@ async function readSharedTripWithMembership(
       .setHeader('Authorization', `Bearer ${token}`),
   ])
   if (tripRead.error || !tripRead.data || (tripRead.data as TripRow).deleted_at) return null
-  const members = ((memberRead.data ?? []) as MemberRow[]).map(m => ({
+  // A failed membership read is not an empty membership. An empty list would
+  // hide every role on screen, so a failed member read fails the whole read.
+  if (memberRead.error || !Array.isArray(memberRead.data)) return null
+  const members = (memberRead.data as MemberRow[]).map(m => ({
     userId: m.user_id, role: m.role as TripMember['role'], joinedAt: m.joined_at,
   }))
   return { trip: rowToTrip(tripRead.data as TripRow, members), members }
+}
+
+/** What a discard needs from the server before it removes the local copy. */
+type DiscardRefresh = { kind: 'gone' } | { kind: 'shared'; trip: Trip }
+
+/**
+ * Read the shared plan for a discard, before the local copy is removed.
+ *
+ * `gone` means the server holds no live trip. `shared` means the trip and its
+ * membership were both read, and the trip is not older than the server ledger.
+ * `null` means the read cannot finish. The caller then decides what the copy
+ * does, and a failed read is never published as an empty plan.
+ */
+async function readForDiscard(tripId: string, token: string | null): Promise<DiscardRefresh | null> {
+  if (!token) return null
+  const first = await supabase.from('trips').select('*').eq('id', tripId).maybeSingle()
+    .setHeader('Authorization', `Bearer ${token}`)
+  if (first.error) return null
+  let row = (first.data as TripRow | null) ?? null
+  if (!row || row.deleted_at) return { kind: 'gone' }
+  if (isStaleServerRow(serverTripTimestamps.get(tripId), row.updated_at)) {
+    // The first read may be older than the server ledger. Read the trip again.
+    const again = await supabase.from('trips').select('*').eq('id', tripId).maybeSingle()
+      .setHeader('Authorization', `Bearer ${token}`)
+    if (again.error) return null
+    row = (again.data as TripRow | null) ?? null
+    if (!row || row.deleted_at) return { kind: 'gone' }
+    if (isStaleServerRow(serverTripTimestamps.get(tripId), row.updated_at)) return null
+  }
+  const shared = await readSharedTripWithMembership(tripId, token)
+  return shared ? { kind: 'shared', trip: shared.trip } : null
 }
 
 /**
@@ -3363,34 +3397,20 @@ export async function resolveQueuedTripWrite(tripId: ID, choice: 'retry' | 'repl
       if (!stillLive(scope, tripId, accessEpoch)) return false
       const current = (await pendingWrites()).find(w => sameQueuedWrite(w, write))
       if (!current || !stillLive(scope, tripId, accessEpoch)) return false
-      // The removal itself is local. The server read below only refreshes the
-      // shared plan, so a failed read must not undo the removal and must not
-      // touch the cached plan.
+      // The shared plan is read BEFORE the copy is removed. The read runs in the
+      // write tail, so an earlier write lands first.
       const token = await tripWriteToken(scope)
       if (!stillLive(scope, tripId, accessEpoch)) return false
-      let row: TripRow | null = null
-      let readFailed = false
-      if (token) {
-        // Read inside the write tail. A completed earlier write must precede this read.
-        const read = await supabase.from('trips').select('*').eq('id', tripId).maybeSingle()
-          .setHeader('Authorization', `Bearer ${token}`)
-        if (read.error) readFailed = true
-        else row = (read.data as TripRow | null) ?? null
-      } else {
-        readFailed = true
-      }
+      const refresh = await readForDiscard(tripId, token)
       if (!stillLive(scope, tripId, accessEpoch)) return false
-      // The shared plan could not be read. The removal is REFUSED only when
-      // the copy being discarded is a HELD overlay and the cache is showing
-      // that overlay. A drop on its own would leave the discarded content on
-      // screen, and the user could edit it and queue it again.
+      // An unfinished read refuses the removal when the copy is the HELD overlay
+      // and the cache shows it. A drop would leave that content on screen, and
+      // the user could edit it and queue it again.
       //
-      // A REASONED copy is not an overlay: the overlay path never shows one,
-      // so the cache holds the shared plan. Refusing it would leave the
-      // account with a copy it can neither sync nor remove, and the message
-      // would name no cause. A reasoned copy is the account's own work, so it
-      // is removed either way.
-      if (readFailed && isHeldCopy(current) && cache.trips.some(t => t.id === tripId)) return false
+      // A REASONED copy is never the overlay. The cache holds the shared plan
+      // instead. Refusing it would leave a copy the account can neither sync nor
+      // remove. So a reasoned copy is removed either way.
+      if (!refresh && isHeldCopy(current) && cache.trips.some(t => t.id === tripId)) return false
       const durable = await dropQueuedWrite(current)
       // A scope change means the removal did not complete under this scope.
       // It reports false, so the caller does not claim a clean removal.
@@ -3428,40 +3448,18 @@ export async function resolveQueuedTripWrite(tripId: ID, choice: 'retry' | 'repl
       const held = queuedLocalTrips.get(tripId)
       if (held && !sameQueuedWrite(held, current)) return false
       queuedLocalTrips.delete(tripId)
-      if (readFailed) {
-        // The shared plan could not be read and the cache showed no plan for
-        // the trip, so there is nothing left to correct.
+      if (!refresh) {
+        // The shared plan could not be read. The copy was not the overlay on
+        // screen, so nothing visible needs a correction.
         commit()
         void clearSnapshot(scope.userId)
         return durable
       }
-      if (row && !row.deleted_at) {
-        // The read may be older than what the server has already sent. The
-        // ledger holds the clock the server wrote, so a read that is behind
-        // it must not replace the newer cached plan. The read is taken again
-        // instead, because the discard has to install the shared plan and the
-        // shared plan has to be the current one.
-        let fresh = row
-        if (isStaleServerRow(serverTripTimestamps.get(tripId), row.updated_at)) {
-          const again = await supabase.from('trips').select('*').eq('id', tripId).maybeSingle()
-            .setHeader('Authorization', `Bearer ${token}`)
-          // The second read awaited, so the work may no longer be live. An
-          // account switch or a tombstone during the read must not publish.
-          if (!stillLive(scope, tripId, accessEpoch)) return false
-          if (!again.error && again.data && !(again.data as TripRow).deleted_at) fresh = again.data as TripRow
-        }
-        if (!stillLive(scope, tripId, accessEpoch)) return false
-        if (!isStaleServerRow(serverTripTimestamps.get(tripId), fresh.updated_at)) {
-          // The membership is read from the server. The cached members can
-          // still say owner or editor, and publishing those would leave the
-          // edit controls on screen for an account that may no longer edit.
-          const shared = await readSharedTripWithMembership(tripId, token)
-          if (!stillLive(scope, tripId, accessEpoch)) return false
-          if (shared) {
-            cache.trips = [...cache.trips.filter(t => t.id !== tripId), shared.trip]
-            recordServerTripTimestamp(tripId, shared.trip.updatedAt)
-          }
-        }
+      if (refresh.kind === 'shared') {
+        // The read finished before the removal. No await separates the newer-edit
+        // check above from this publication, so a newer edit keeps its contents.
+        cache.trips = [...cache.trips.filter(t => t.id !== tripId), refresh.trip]
+        recordServerTripTimestamp(tripId, refresh.trip.updatedAt)
       } else {
         // The trip is gone from the server. The invalidation bumps the
         // generation, so the check after it compares against the value it

@@ -8,8 +8,8 @@ type Operation = { table: string; method: string; actor: string | null; filters:
 const { state } = vi.hoisted(() => ({ state: {
   actor: 'A' as string | null,
   failFullRead: false,
-  fullReads:0, fullGate:null as Promise<void>|null,
-  fullReads:0, fullGate:null as Promise<void>|null, sessionGate: null as Promise<void>|null, removeGate: null as Promise<void>|null,
+  fullReads:0, fullGate:null as Promise<void>|null, heldFullRead:0, failFullReadAt:0,
+  sessionGate: null as Promise<void>|null, removeGate: null as Promise<void>|null, failMemberRead:false,
   rows: new Map<string, Row>(),
   members: [] as Row[],
   disk: new Map<string, QueuedWrite>(),
@@ -111,7 +111,6 @@ vi.mock('../src/lib/supabase', () => {
           const operation = { table, method, actor, filters: { ...filters }, payload }
           state.operations.push(operation)
           if (table === 'trips' && selection === '*' && one && state.failFullRead) { const wait = state.readGate; await wait; return {data:null,error:{message:'delayed full-read failure'}} }
-          if (table === 'trips' && selection === '*' && one && state.failFullRead) { const wait = state.readGate; await wait; return {data:null,error:{message:'delayed full-read failure'}} }
           if (method === 'select' && state.offlineReads) return { data: null, error: { message: 'Offline fixture' } }
           if (table === 'trips' && method === 'update') {
             state.writes.push(operation)
@@ -138,6 +137,7 @@ vi.mock('../src/lib/supabase', () => {
               error: null, count: 1 }
           }
           if (method !== 'select') return { data: null, error: null }
+          if (table === 'trip_members' && state.failMemberRead) return { data: null, error: { message: 'membership read failure' } }
           const optional = table === 'trips' && selection !== '*' && !('id' in filters)
           const allowedIds = state.members.filter(m => m.user_id === actor).map(m => m.trip_id)
           let rows: Row[] = table === 'trips' ? [...state.rows.values()].filter(r => allowedIds.includes(r.id))
@@ -145,8 +145,10 @@ vi.mock('../src/lib/supabase', () => {
           rows = rows.filter(row => Object.entries(filters).every(([key, value]) =>
             Array.isArray(value) ? value.includes(row[key]) : row[key] === value))
           const copy = structuredClone(rows)
-          if(table==='trips' && selection==='*' && one && ++state.fullReads===2) await state.fullGate
-          if(table==='trips' && selection==='*' && one && ++state.fullReads===2) await state.fullGate
+          // Count each full trip read once. The hold and the injected failure name that read.
+          const fullRead = table === 'trips' && selection === '*' && one ? ++state.fullReads : 0
+          if (fullRead === 2) { state.heldFullRead = fullRead; await state.fullGate }
+          if (fullRead && fullRead === state.failFullReadAt) return { data: null, error: { message: 'second full read failure' } }
           // Hold the response, not the query snapshot. Delayed reads can be stale.
           if (optional) await state.optionalGate
           else if (table === 'trips') await state.readGate
@@ -230,7 +232,8 @@ async function capture(store: Awaited<ReturnType<typeof fresh>>, name = 'My offl
 }
 
 beforeEach(() => {
-  state.fullReads=0;state.fullGate=null;state.failFullRead = false; state.actor = 'A'
+  state.fullReads=0;state.fullGate=null;state.heldFullRead=0;state.failFullReadAt=0;state.failMemberRead=false;
+  state.failFullRead = false; state.actor = 'A'
   state.putGate = null; state.listCount = 0; state.listHoldAt = 0; state.listGate = null; state.sessionCalls = 0; state.removeCalls = 0;
   state.rows = new Map([['shared', row() as unknown as Row]])
   state.members = [{ trip_id: 'shared', user_id: 'A', role: 'owner', joined_at: 1 },
@@ -326,7 +329,7 @@ describe('second shared read boundary',()=>{
   const request=store.resolveQueuedTripWrite('shared','discard');await flush();
   const newer={...state.rows.get('shared'),name:'CURRENT SHARED',write_version:1,updated_at:20};state.rows.set('shared',newer);
   store._applyRealtimeEventForTest('trips',{eventType:'UPDATE',new:newer,old:{}});
-  state.readGate=null;first.release();await flush();expect(state.fullReads).toBe(2);
+  state.readGate=null;first.release();await flush();expect(state.heldFullRead).toBe(2);
   if(transition==='switch') {state.members.push({trip_id:'shared',user_id:'B',role:'editor',joined_at:1});state.actor='B';state.authHandler('SIGNED_IN',{user:{id:'B'},access_token:'token-B'});await flush();}
   else {state.rows.delete('shared');store._applyRealtimeEventForTest('trips',{eventType:'DELETE',new:{},old:{id:'shared'}});await flush();}
   second.release();const result=await request;await flush();
@@ -334,4 +337,62 @@ describe('second shared read boundary',()=>{
   if(transition==='switch')expect(store.getSnapshot().trips[0]?.members.some(m=>m.userId==='B')).toBe(true);
   else expect(store.getSnapshot().trips).toEqual([]);
  });
+});
+
+describe('discard refresh failures',()=>{
+  it('a failed membership read keeps the held copy and publishes no empty membership',async()=>{
+    const store=await fresh(true);await capture(store,'PRIVATE MEMBERSHIP');
+    state.failMemberRead=true;
+    const result=await store.resolveQueuedTripWrite('shared','discard');
+    state.failMemberRead=false;await flush();
+    expect(result).toBe(false);
+    expect((await pending()).map(w=>w.trip.name)).toEqual(['PRIVATE MEMBERSHIP']);
+    const shown=store.getSnapshot().trips.find(t=>t.id==='shared');
+    expect(shown?.name).toBe('PRIVATE MEMBERSHIP');
+    expect(shown?.members.map(m=>m.userId).sort()).toEqual(['A','C']);
+  });
+  it('a failed re-read after a newer server row keeps the held copy',async()=>{
+    const store=await fresh(true);await capture(store,'PRIVATE REREAD');
+    const first=gate();state.readGate=first.promise;state.failFullReadAt=2;
+    const request=store.resolveQueuedTripWrite('shared','discard');await flush();
+    const newer={...state.rows.get('shared'),name:'CURRENT SHARED',write_version:1,updated_at:20};
+    state.rows.set('shared',newer);
+    store._applyRealtimeEventForTest('trips',{eventType:'UPDATE',new:newer,old:{}});
+    state.readGate=null;first.release();
+    const result=await request;await flush();
+    expect(result).toBe(false);
+    expect((await pending()).map(w=>w.trip.name)).toEqual(['PRIVATE REREAD']);
+    expect(store.getSnapshot().trips.find(t=>t.id==='shared')?.name).toBe('PRIVATE REREAD');
+  });
+  it('a local edit made during the discard refresh keeps its contents and refuses success',async()=>{
+    const store=await fresh(true);await capture(store,'PRIVATE EDIT');
+    const hold=gate();state.memberGate=hold.promise;
+    const request=store.resolveQueuedTripWrite('shared','discard');await flush();
+    store.updateTrip('shared',{name:'NEWER EDIT'});await flush();
+    state.memberGate=null;hold.release();
+    const result=await request;await flush();
+    expect(result).toBe(false);
+    expect(store.getSnapshot().trips.find(t=>t.id==='shared')?.name).toBe('NEWER EDIT');
+    expect((await pending()).map(w=>w.trip.name)).toEqual(['NEWER EDIT']);
+  });
+  it('a successful discard publishes the server membership and removes the copy',async()=>{
+    const store=await fresh(true);await capture(store,'PRIVATE HAPPY');
+    state.members=state.members.map(m=>m.user_id==='C'?{...m,role:'viewer'}:m);
+    const result=await store.resolveQueuedTripWrite('shared','discard');await flush();
+    expect(result).toBe(true);
+    expect(await pending()).toEqual([]);
+    const shown=store.getSnapshot().trips.find(t=>t.id==='shared');
+    expect(shown?.name).toBe('Original plan');
+    expect(shown?.members.find(m=>m.userId==='C')?.role).toBe('viewer');
+  });
+  it('a failed membership read during demotion never publishes an empty membership',async()=>{
+    const store=await fresh(true);await capture(store,'PRIVATE DEMOTED');
+    const viewer={trip_id:'shared',user_id:'A',role:'viewer',joined_at:1};
+    state.members=state.members.map(m=>m.user_id==='A'?viewer:m);
+    state.failMemberRead=true;
+    store._applyRealtimeEventForTest('trip_members',{eventType:'UPDATE',new:viewer,old:{}});await flush();
+    state.failMemberRead=false;
+    const shown=store.getSnapshot().trips.find(t=>t.id==='shared');
+    expect(shown===undefined||shown.members.length>0).toBe(true);
+  });
 });
