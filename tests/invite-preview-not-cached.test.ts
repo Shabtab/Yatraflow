@@ -16,7 +16,7 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
 import { tripToRow, rowToTrip } from '../src/lib/tripRow'
-import { joinMachine, initialJoinState, joinAllowsNavigation, joinOffersRetry, type JoinEvent, type JoinPlan } from '../src/lib/inviteGateStates'
+import { joinMachine, initialJoinState, joinAllowsNavigation, joinOffersRetry, createAttemptOwner, retireAttemptOwner, attemptOwnerLive, type AttemptOwner, type JoinEvent, type JoinPlan } from '../src/lib/inviteGateStates'
 import { isStaleServerRow } from '../src/lib/realtimeCore'
 import { seedData } from '../src/data/seed'
 import type { Trip } from '../src/data/types'
@@ -661,15 +661,78 @@ describe('S1 — a not-member outcome is a failure, not a read failure or a succ
   })
 })
 
+function runIdentityResetEffect(
+  profile: { id: string } | null,
+  capturedOwner: AttemptOwner | null,
+  registeredOwner: AttemptOwner | null = capturedOwner,
+  lifetimeOwner: AttemptOwner | null = capturedOwner,
+) {
+  const marker = '// Reset stale identity state before the begin effect can allocate a new owner.'
+  const start = APP.indexOf(marker)
+  const effectAt = APP.indexOf('useEffect(() => {', start)
+  const end = APP.indexOf('}, [identityGen, joinGen, joinUserId', effectAt)
+  expect(start, 'identity reset effect marker').toBeGreaterThanOrEqual(0)
+  expect(effectAt).toBeGreaterThan(start)
+  expect(end).toBeGreaterThan(effectAt)
+
+  const body = APP.slice(effectAt + 'useEffect(() => {'.length, end)
+  const execute = new Function(
+    'joinUserId', 'joinGen', 'identityGen', 'me', 'owner', 'joinStore',
+    'retireAttemptOwner', 'lifetimeRef', 'setOwner', 'dispatch', body,
+  ) as (...values: unknown[]) => void
+  const joinStore: { owner: AttemptOwner | null; machine: { phase: string } } = {
+    owner: registeredOwner,
+    machine: { phase: 'joining' },
+  }
+  const lifetimeRef = { current: lifetimeOwner }
+  const ownerChanges: (AttemptOwner | null)[] = []
+  const events: { type: string }[] = []
+
+  // Running this extracted body directly makes the state changes synchronous.
+  execute(
+    'user-a', 7, 7, profile, capturedOwner, joinStore, retireAttemptOwner,
+    lifetimeRef,
+    (next: AttemptOwner | null) => {
+      ownerChanges.push(next)
+      joinStore.owner = next
+    },
+    (event: { type: string }) => events.push(event),
+  )
+  return { joinStore, lifetimeRef, ownerChanges, events }
+}
+
 describe('S4 — a profile gap resets the join try', () => {
-  it('App resets when the signed-in profile disappears', () => {
-    // A missing profile makes this guard false, so the reset below must run.
-    const start = APP.indexOf('// Reset stale identity state before the begin effect can allocate a new owner.')
-    const end = APP.indexOf('}, [identityGen, joinGen, joinUserId', start)
-    const effect = APP.slice(start, end)
-    expect(effect).toContain('joinUserId === null')
-    expect(effect).toContain('joinGen === identityGen && me && me.id === joinUserId')
-    expect(effect).toContain('retireAttemptOwner(owner)')
-    expect(effect).toContain("dispatch({ type: 'reset' })")
+  it('retires an owned pending try before clearing its lifetime and resetting', () => {
+    const owner = createAttemptOwner('invite-a')
+    const result = runIdentityResetEffect(null, owner)
+
+    expect(attemptOwnerLive(owner)).toBe(false)
+    expect(result.lifetimeRef.current).toBeNull()
+    expect(result.joinStore.owner).toBeNull()
+    expect(result.ownerChanges).toEqual([null])
+    expect(result.events).toEqual([{ type: 'reset' }])
+  })
+
+  it('keeps a try when the profile still matches its identity', () => {
+    const owner = createAttemptOwner('invite-a')
+    const result = runIdentityResetEffect({ id: 'user-a' }, owner)
+
+    expect(attemptOwnerLive(owner)).toBe(true)
+    expect(result.lifetimeRef.current).toBe(owner)
+    expect(result.joinStore.owner).toBe(owner)
+    expect(result.ownerChanges).toEqual([])
+    expect(result.events).toEqual([])
+  })
+
+  it('resets an obsolete profile without retiring a replacement owner', () => {
+    const obsolete = createAttemptOwner('invite-a')
+    const replacement = createAttemptOwner('invite-a')
+    const result = runIdentityResetEffect({ id: 'user-b' }, obsolete, replacement, replacement)
+
+    expect(result.events).toEqual([{ type: 'reset' }])
+    expect(attemptOwnerLive(replacement)).toBe(true)
+    expect(result.lifetimeRef.current).toBe(replacement)
+    expect(result.joinStore.owner).toBe(replacement)
+    expect(result.ownerChanges).toEqual([])
   })
 })
