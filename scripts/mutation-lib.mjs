@@ -20,57 +20,98 @@ function isAssertionFailure(message) {
   return message.startsWith('AssertionError')
 }
 
+/** Only a passed or failed record ran. Skipped, todo and pending records did not run. */
+const EXECUTED = new Set(['passed', 'failed'])
+
+/** True when a report's file name is the requested file. The folder part differs, so the tail decides. */
+function namesFile(reportName, requested) {
+  const name = String(reportName ?? '').replace(/\\/g, '/')
+  return name === requested || name.endsWith(`/${requested}`)
+}
+
 /**
- * Read a vitest JSON report. Text that is not a report returns null.
- * A broken report must never look like a passing suite.
+ * Read a vitest JSON report and sort its records against the files that were
+ * requested. Text that is not a report returns null. A broken report must never
+ * look like a passing suite.
  */
-export function parseVitestJson(text) {
+export function parseVitestJson(text, expectedFiles) {
   if (typeof text !== 'string' || text.trim() === '') return null
   let data
   try { data = JSON.parse(text) } catch { return null }
   if (!data || !Array.isArray(data.testResults)) return null
-  let total = 0
   const failedTests = []
+  const testErrors = []
   const fileErrors = []
   for (const file of data.testResults) {
     const assertions = Array.isArray(file.assertionResults) ? file.assertionResults : []
-    total += assertions.length
-    for (const assertion of assertions) {
-      if (assertion.status !== 'failed') continue
-      failedTests.push({
+    const failed = assertions.filter(assertion => assertion.status === 'failed')
+    for (const assertion of failed) {
+      const entry = {
         name: assertion.fullName || assertion.title || '(unnamed test)',
         message: firstLine(assertion.failureMessages?.[0]),
-      })
+      }
+      // Only a failed expectation checks the guard. Any other failure is an error,
+      // so it is never counted as a pin.
+      if (isAssertionFailure(entry.message)) failedTests.push(entry)
+      else testErrors.push(entry)
     }
-    const hasFailedAssertion = assertions.some(assertion => assertion.status === 'failed')
-    if (file.status === 'failed' && !hasFailedAssertion) {
-      fileErrors.push({ file: file.name || '(unknown file)', message: firstLine(file.message) })
+    // A file that cannot load has a message and no records. A failed file with no
+    // failed record is also an error, because nothing names what broke.
+    const message = firstLine(file.message)
+    if (message || (file.status === 'failed' && failed.length === 0)) {
+      fileErrors.push({ file: file.name || '(unknown file)', message })
     }
   }
-  return { total, failedTests, fileErrors }
+  const missing = []
+  const idle = []
+  for (const expected of expectedFiles) {
+    const record = data.testResults.find(file => namesFile(file.name, expected))
+    if (!record) {
+      missing.push(expected)
+      continue
+    }
+    const assertions = Array.isArray(record.assertionResults) ? record.assertionResults : []
+    if (!assertions.some(assertion => EXECUTED.has(assertion.status))) idle.push(expected)
+  }
+  return { failedTests, testErrors, fileErrors, missing, idle }
+}
+
+function infra(reason) {
+  return { kind: 'infra', reason }
 }
 
 /**
- * Decide what one mutation run means. Only a failed assertion pins a mutation.
- * A runner failure, or a report that cannot be read, is an infrastructure
- * failure. It never counts as a pin.
+ * Decide what one mutation run means. A pin needs a failed expectation and
+ * nothing else wrong. The checks run first. A failed check returns before any
+ * pin is counted.
+ *
+ * - `reportError` is set when the report could not be read.
+ * - `unhandledErrors` lists the unhandled errors of the run. Null means no record was written.
+ * - `expectedFiles` lists the files the run requested. Each one must appear, and run at least one test.
  */
-export function classifyRun({ exitCode = null, signal = null, error = null, reportText = null }) {
-  if (error) return { kind: 'infra', reason: `the test runner could not start: ${error}` }
-  if (signal) return { kind: 'infra', reason: `the test runner ended on signal ${signal}` }
-  const report = parseVitestJson(reportText)
-  if (!report) return { kind: 'infra', reason: 'the test report is missing or unreadable' }
-  // Only a failed expectation checks the guard. Any other error means the
-  // mutation broke the code, so it is not a pin.
-  const assertions = report.failedTests.filter(test => isAssertionFailure(test.message))
-  if (assertions.length > 0) return { kind: 'pinned', failedTests: assertions }
-  // A file that cannot load has no assertions. A thrown error is not a check either.
-  if (report.fileErrors.length > 0 || report.failedTests.length > 0) {
-    return { kind: 'suite-error', fileErrors: report.fileErrors, testErrors: report.failedTests }
+export function classifyRun({
+  exitCode = null, signal = null, error = null, reportText = null, reportError = null,
+  unhandledErrors = null, expectedFiles = null,
+}) {
+  if (error) return infra(`the test runner could not start: ${error}`)
+  if (signal) return infra(`the test runner ended on signal ${signal}`)
+  if (reportError) return infra(`the test report could not be read: ${reportError}`)
+  if (!Array.isArray(expectedFiles) || expectedFiles.length === 0) {
+    return infra('no requested test files were given to check the report against')
   }
-  if (report.total === 0) return { kind: 'infra', reason: 'no test ran' }
+  const report = parseVitestJson(reportText, expectedFiles)
+  if (!report) return infra('the test report is missing or unreadable')
+  // Vitest's JSON report omits unhandled errors, so the runner records them in a
+  // separate file. A missing record is not the same as a run with no errors.
+  if (!Array.isArray(unhandledErrors)) return infra('the unhandled-error record is missing or unreadable')
+  if (unhandledErrors.length > 0 || report.testErrors.length > 0 || report.fileErrors.length > 0) {
+    return { kind: 'suite-error', fileErrors: report.fileErrors, testErrors: report.testErrors, unhandled: unhandledErrors }
+  }
+  if (report.missing.length > 0) return infra(`the report has no record for: ${report.missing.join(', ')}`)
+  if (report.idle.length > 0) return infra(`no test ran in: ${report.idle.join(', ')}`)
+  if (report.failedTests.length > 0) return { kind: 'pinned', failedTests: report.failedTests }
   if (exitCode === 0) return { kind: 'not-pinned' }
-  return { kind: 'infra', reason: `the runner exited with ${exitCode} and reported no failed test` }
+  return infra(`the runner exited with ${exitCode} and reported no failed test`)
 }
 
 /**

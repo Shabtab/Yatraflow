@@ -1074,6 +1074,10 @@ process.
 
 - **You must parse CSS time units before you use motion tokens in JavaScript.** Production CSS can change `180ms` to `.18s`. Convert seconds to milliseconds before you start timers or browser animations.
 
+- **Vitest's JSON report can miss an unhandled error (learned 2026-10-21).** Vitest 4.1.11 does not pass unhandled errors to its JSON reporter. A run with one can exit 1 and still show `success: true`. Read the errors from a second reporter, as `scripts/mutation-error-reporter.mjs` does. Vitest reports a skipped test as `skipped` and a todo test as `todo`. Count only `passed` and `failed` records as executed.
+
+- **A worktree's `node_modules` must be its own install (learned 2026-10-21).** A junction to another clone can point at an empty folder. Every run then fails with `Cannot find module` for `vitest.mjs`. Run `npm ci` in the worktree, with `NODE_ENV` cleared first (`AGENTS.md` §2.15).
+
 ## 3. Scripted edits
 
 - **Day-start names must match the resolved origin.** Stored route points can precede a flight. Match location names against the journey coordinates.

@@ -11,7 +11,7 @@
 //
 // Usage: node scripts/mutation-check.mjs <report-path> [--anchors-only] [--only=<name-part>]
 import { execFileSync, spawn } from 'node:child_process'
-import { existsSync, lstatSync, mkdirSync, readFileSync, rmSync, rmdirSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, readFileSync, rmSync, rmdirSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -34,6 +34,9 @@ const COPY_DIRS = ['src/', 'tests/', 'scripts/', 'supabase/', 'docs/']
 const COPY_FILES = new Set(['package.json', 'package-lock.json', 'tsconfig.json', 'vite.config.ts',
   'eslint.config.js', 'eslint-baseline.json'])
 const REPORT_FILE = 'vitest-report.json'
+// The unhandled errors of a run. The reporter writes this file next to the JSON report.
+const UNHANDLED_FILE = 'unhandled-errors.json'
+const UNHANDLED_REPORTER = `${ROOT.replace(/\\/g, '/')}/scripts/mutation-error-reporter.mjs`
 const SHOWN = 5
 
 const args = process.argv.slice(2)
@@ -44,7 +47,7 @@ const OUT = args.find(arg => !arg.startsWith('--'))
 const UNKNOWN = args.filter(arg => arg.startsWith('--') && arg !== '--anchors-only' && !arg.startsWith('--only='))
 
 /** The scratch copy, the running vitest child, and the signal that stopped the run. */
-let scratch = null
+let owned = null
 let running = null
 let cancelledWith = null
 
@@ -76,16 +79,20 @@ function killRunning() {
   }
 }
 
-process.on('SIGINT', () => cancel('SIGINT'))
-process.on('SIGTERM', () => cancel('SIGTERM'))
-// A hard exit still removes the copy. An error here cannot be reported, so it is dropped.
-process.on('exit', () => {
-  try {
-    removeScratch()
-  } catch {
-    // The finally block in main has already reported this failure.
-  }
-})
+/** True only when this file is the script being run. Importing it, as the tests do, starts nothing. */
+const IS_ENTRY = process.argv[1] !== undefined && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+if (IS_ENTRY) {
+  process.on('SIGINT', () => cancel('SIGINT'))
+  process.on('SIGTERM', () => cancel('SIGTERM'))
+  // A hard exit still removes the copy. An error here cannot be reported, so it is dropped.
+  process.on('exit', () => {
+    try {
+      releaseScratch(owned)
+    } catch {
+      // The finally block in main has already reported this failure.
+    }
+  })
+}
 
 /** Every copied file at one commit. The worktree is not read. */
 function readCopyFiles(sha) {
@@ -112,18 +119,17 @@ function readBlobs(sha, paths) {
   return blobs
 }
 
-/** Write the copy from the commit's bytes, then link the worktree's dependencies into it. */
-function buildScratch(files) {
-  mkdirSync(scratch)
+/** Write the copy from the commit's bytes, then link the worktree's dependencies into the claimed folder. */
+function buildScratch(dir, files) {
   for (const [file, data] of files) {
-    const target = path.join(scratch, file)
+    const target = path.join(dir, file)
     mkdirSync(path.dirname(target), { recursive: true })
     writeFileSync(target, data)
   }
   const deps = path.join(ROOT, 'node_modules')
   if (!existsSync(deps)) throw new Error('the worktree has no node_modules. Link it before the check.')
   // A directory junction needs no admin rights on Windows. Removing it leaves the target alone.
-  symlinkSync(deps, path.join(scratch, 'node_modules'), 'junction')
+  symlinkSync(deps, path.join(dir, 'node_modules'), 'junction')
 }
 
 function linkPresent(file) {
@@ -135,44 +141,127 @@ function linkPresent(file) {
   }
 }
 
-/** Remove the copy. Only a path inside the temp folder is removed, and the dependency link goes first. */
-function removeScratch() {
-  if (!scratch) return
-  if (!isContainedPath(scratch, tmpdir())) throw new Error(`refusing to remove ${scratch}: it is outside the temp folder`)
-  const link = path.join(scratch, 'node_modules')
+/** The default name for one claim. The pid and the clock keep two runs apart. */
+const scratchName = attempt => `yf-mutation-${process.pid}-${Date.now()}-${attempt}`
+
+/**
+ * Claim a new scratch folder under `root`. The claim is one mkdir without
+ * recursion, which fails when the path already exists, so a folder that was
+ * already there is never adopted. Ownership is returned only after the folder
+ * exists, so a failed claim owns nothing and cleanup removes nothing.
+ */
+export function allocateScratch({ root = tmpdir(), name = scratchName, attempts = 8 } = {}) {
+  let lastError = null
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const dir = path.join(root, name(attempt))
+    try {
+      mkdirSync(dir)
+    } catch (error) {
+      if (error.code === 'EEXIST') {
+        lastError = error
+        continue
+      }
+      throw error
+    }
+    const { dev, ino } = lstatSync(dir)
+    return { path: dir, root, dev, ino }
+  }
+  throw new Error(`no free scratch name under ${root}: ${lastError?.message ?? 'no attempt was made'}`)
+}
+
+/**
+ * Remove a folder that this run claimed. Only that folder is removed. A path
+ * that is a link, or that is no longer the folder that was claimed, is refused
+ * and left alone.
+ */
+export function releaseScratch(claimed) {
+  if (!claimed) return
+  if (!isContainedPath(claimed.path, claimed.root)) throw new Error(`refusing to remove ${claimed.path}: it is not inside ${claimed.root}`)
+  let now
+  try {
+    now = lstatSync(claimed.path)
+  } catch (error) {
+    if (error.code === 'ENOENT') return
+    throw error
+  }
+  if (now.isSymbolicLink() || !now.isDirectory() || now.dev !== claimed.dev || now.ino !== claimed.ino) {
+    throw new Error(`refusing to remove ${claimed.path}: it is not the folder this run created`)
+  }
+  const link = path.join(claimed.path, 'node_modules')
   if (linkPresent(link)) {
     // The link points at the worktree's dependencies. It is unlinked without
     // being followed, so the recursive removal below never reaches them.
-    if (!lstatSync(link).isSymbolicLink()) throw new Error(`refusing to remove ${scratch}: node_modules is not a link`)
-    rmdirSync(link)
+    if (!lstatSync(link).isSymbolicLink()) throw new Error(`refusing to remove ${claimed.path}: node_modules is not a link`)
+    unlinkLink(link)
   }
-  rmSync(scratch, { recursive: true, force: true })
-  scratch = null
+  rmSync(claimed.path, { recursive: true, force: true })
 }
 
-/** Run the test files once in the copy. Resolves with the exit code, the signal, the report and the output tail. */
-function runVitest() {
-  const reportPath = path.join(scratch, REPORT_FILE)
+/** Unlink a link without following it. A Windows junction needs rmdir. A symlink elsewhere needs unlink. */
+function unlinkLink(link) {
+  try {
+    rmdirSync(link)
+  } catch (error) {
+    if (error.code !== 'ENOTDIR') throw error
+    unlinkSync(link)
+  }
+}
+
+/**
+ * Run one command and settle exactly once. A report that cannot be read is
+ * named in `reportError`. It is never thrown into the event loop, so the
+ * promise always settles.
+ */
+export function runScratch({ command, args, cwd, reportPath, unhandledPath, env = process.env }) {
   rmSync(reportPath, { force: true })
+  rmSync(unhandledPath, { force: true })
   return new Promise(resolve => {
-    const child = spawn(process.execPath, [
-      path.join(scratch, 'node_modules', 'vitest', 'vitest.mjs'), 'run', ...TESTS,
-      '--reporter=json', `--outputFile=${reportPath}`,
-    ], { cwd: scratch, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, detached: process.platform !== 'win32' })
+    let settled = false
+    const settle = result => {
+      if (settled) return
+      settled = true
+      running = null
+      resolve(result)
+    }
+    const child = spawn(command, args, {
+      cwd,
+      env: { ...env, YF_UNHANDLED_FILE: unhandledPath },
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+      detached: process.platform !== 'win32',
+    })
     running = child
     let output = ''
     const keep = chunk => { output = (output + chunk.toString('utf8')).slice(-8000) }
     child.stdout.on('data', keep)
     child.stderr.on('data', keep)
-    child.on('error', error => {
-      running = null
-      resolve({ error: error.message, output })
-    })
+    child.on('error', error => settle({ error: error.message, output }))
     child.on('close', (exitCode, signal) => {
-      running = null
-      const reportText = existsSync(reportPath) ? readFileSync(reportPath, 'utf8') : null
-      resolve({ exitCode, signal, reportText, output })
+      let reportText
+      let unhandledErrors
+      try {
+        reportText = existsSync(reportPath) ? readFileSync(reportPath, 'utf8') : null
+        unhandledErrors = existsSync(unhandledPath) ? JSON.parse(readFileSync(unhandledPath, 'utf8')).messages ?? null : null
+      } catch (error) {
+        settle({ exitCode, signal, reportText: null, reportError: error.message, unhandledErrors: null, output })
+        return
+      }
+      settle({ exitCode, signal, reportText, reportError: null, unhandledErrors, output })
     })
+  })
+}
+
+/** Run the test files once in the claimed copy. Resolves with the outcome of that one run. */
+function runVitest(dir) {
+  return runScratch({
+    command: process.execPath,
+    args: [
+      path.join(dir, 'node_modules', 'vitest', 'vitest.mjs'), 'run', ...TESTS,
+      '--reporter=json', `--outputFile=${path.join(dir, REPORT_FILE)}`, `--reporter=${UNHANDLED_REPORTER}`,
+    ],
+    cwd: dir,
+    reportPath: path.join(dir, REPORT_FILE),
+    unhandledPath: path.join(dir, UNHANDLED_FILE),
   })
 }
 
@@ -199,21 +288,24 @@ function checkAnchors(files, mutation) {
 }
 
 /** Apply one mutation to the copy, run the tests, and restore the copy from the commit's bytes. */
-async function runMutation(files, mutation) {
+async function runMutation(dir, files, mutation) {
   const original = files.get(mutation.file)
   const applied = applyMutation(original.toString('utf8'), mutation)
   if (!applied.ok) return { kind: 'skipped', hits: applied.hits, anchor: applied.anchor }
   const eol = original.includes('\r\n') ? '\r\n' : '\n'
-  const target = path.join(scratch, mutation.file)
+  const target = path.join(dir, mutation.file)
   writeFileSync(target, applied.text.replace(/\n/g, eol))
   let run
   try {
-    run = await runVitest()
+    run = await runVitest(dir)
   } finally {
     writeFileSync(target, original)
   }
   if (cancelledWith) return null
-  const verdict = classifyRun({ exitCode: run.exitCode, signal: run.signal, error: run.error, reportText: run.reportText })
+  const verdict = classifyRun({
+    exitCode: run.exitCode, signal: run.signal, error: run.error, reportText: run.reportText,
+    reportError: run.reportError, unhandledErrors: run.unhandledErrors, expectedFiles: TESTS,
+  })
   return { ...verdict, line: applied.line, output: run.output }
 }
 
@@ -233,7 +325,8 @@ function describeMutation(mutation, result) {
     case 'suite-error':
       return [`SUITE ERROR ${mutation.name}`, where,
         ...result.fileErrors.map(error => `  ${error.file}: ${error.message}`),
-        ...result.testErrors.slice(0, SHOWN).map(error => `  ${error.name}: ${error.message}`), '']
+        ...result.testErrors.slice(0, SHOWN).map(error => `  ${error.name}: ${error.message}`),
+        ...result.unhandled.slice(0, SHOWN).map(message => `  unhandled error: ${message}`), '']
     case 'infra':
       return [`INFRA       ${mutation.name}`, where, `  reason: ${result.reason}`,
         ...lastLines(result.output, 6).map(line => `    | ${line}`), '']
@@ -284,12 +377,12 @@ async function main() {
       lines.push(...describeMutation(mutation, result))
     }
   } else {
-    scratch = path.join(tmpdir(), `yf-mutation-${process.pid}-${Date.now()}`)
     try {
-      buildScratch(files)
+      owned = allocateScratch()
+      buildScratch(owned.path, files)
       for (const mutation of selected) {
         if (cancelledWith) break
-        const result = await runMutation(files, mutation)
+        const result = await runMutation(owned.path, files, mutation)
         if (cancelledWith || result === null) break
         results.push(result)
         lines.push(...describeMutation(mutation, result))
@@ -298,7 +391,8 @@ async function main() {
       fatal = error.message
     } finally {
       try {
-        removeScratch()
+        releaseScratch(owned)
+        owned = null
       } catch (error) {
         leftover = error.message
       }
@@ -620,15 +714,17 @@ const MUTATIONS = [
   },
 ]
 
-const invalid = UNKNOWN.length > 0 || !OUT
-if (invalid) {
-  console.error(`usage: node scripts/mutation-check.mjs <report-path> [--anchors-only] [--only=<name-part>]${UNKNOWN.length ? `\nunknown option: ${UNKNOWN.join(' ')}` : ''}`)
-  process.exitCode = 2
-} else {
-  try {
-    process.exitCode = await main()
-  } catch (error) {
-    console.error(error.message)
+if (IS_ENTRY) {
+  const invalid = UNKNOWN.length > 0 || !OUT
+  if (invalid) {
+    console.error(`usage: node scripts/mutation-check.mjs <report-path> [--anchors-only] [--only=<name-part>]${UNKNOWN.length ? `\nunknown option: ${UNKNOWN.join(' ')}` : ''}`)
     process.exitCode = 2
+  } else {
+    try {
+      process.exitCode = await main()
+    } catch (error) {
+      console.error(error.message)
+      process.exitCode = 2
+    }
   }
 }
