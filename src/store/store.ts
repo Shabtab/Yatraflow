@@ -18,7 +18,7 @@ import { seedData, uid } from '../data/seed'
 import type { LatLngPoint } from '../data/types'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { toast } from '../components/ui'
-import { isMissingColumnError, rowToTrip, tripToRow, tripUpdateRow, type OptionalColumnsProbe, type TripRow } from '../lib/tripRow'
+import { DRIVES_PART_MISSING_REASON, drivesPartWriteVerdict, isMissingColumnError, rowToTrip, tripToRow, tripUpdateRow, type OptionalColumnsProbe, type TripRow } from '../lib/tripRow'
 import type { ShareSource } from '../lib/shareUrl'
 import { dayCountForRange } from '../lib/dayCount'
 import { amountRefusal, amountVerdict } from '../lib/expenseAmount'
@@ -1517,6 +1517,9 @@ export interface NewTripInput {
   /** minutes of driving allowed after the dinner halt (#122, default 0) */
   driveAfterDinnerMin?: number;
   transportMode: Trip['transportMode']; budgetPerPersonInr: number;
+  /** Mixed only (2026-10-19): the traveller's driving answer. Undefined = a new
+   *  Mixed trip, which the form refuses to create without one. */
+  drivesPart?: boolean;
   /** optional km/L for car/motorcycle trips — fuels an accurate transport estimate */
   fuelEconomyKmL?: number;
   /** optional local pump price (₹/L) — defaults to the indicative national average */
@@ -1728,10 +1731,17 @@ function autoAnchor(coords: LatLngPoint, name: string): ItineraryStop {
 // fuel economy / pump price / one-way settings silently stop persisting.
 let optionalColumnsProbe: Promise<OptionalColumnsProbe> | null = null
 let optionalColumnsWarned = false
+/** The last resolved probe, readable SYNCHRONOUSLY. The write path has to
+ *  decide in one turn whether it may store a Mixed answer, so it cannot await
+ *  a promise here. Null before the first probe resolves means "not known yet",
+ *  which is not a refusal: an unknown column is assumed present, the same
+ *  optimistic rule `probeOptionalColumn` already uses for a transient error. */
+let lastResolvedOptionalColumns: OptionalColumnsProbe | null = null
 
 function tripsHaveOptionalColumns(): Promise<OptionalColumnsProbe> {
-  if (!isSupabaseConfigured) return Promise.resolve({ economy: false, price: false, roundTrip: false, cover: false, inviteCode: false, deleted: false, stayStyle: false, driverCount: false, hasVulnerable: false, driveAfterDinner: false, vehicleProfile: false, tankL: false, rentPerDayInr: false, localTrain: false, ref: false, flights: false })
-  if (!optionalColumnsProbe) optionalColumnsProbe = probeOptionalColumns()
+  if (!isSupabaseConfigured) return Promise.resolve({ economy: false, price: false, roundTrip: false, cover: false, inviteCode: false, deleted: false, stayStyle: false, driverCount: false, hasVulnerable: false, driveAfterDinner: false, vehicleProfile: false, tankL: false, rentPerDayInr: false, localTrain: false, ref: false, flights: false, drivesPart: false })
+  // Route the resolved probe through the synchronous cache the write path reads.
+  if (!optionalColumnsProbe) optionalColumnsProbe = probeOptionalColumns().then(rememberOptionalColumns)
   return optionalColumnsProbe
 }
 
@@ -1745,11 +1755,11 @@ function knownOptionalColumns(): OptionalColumnsProbe {
   // database stores null in a column the writer knows. Assuming "known" for
   // every column is so the fail-closed answer, and it keeps a
   // placeholder build and the tests from refusing every legitimate row.
-  return { economy: true, price: true, roundTrip: true, cover: true, inviteCode: true, deleted: true, stayStyle: true, driverCount: true, hasVulnerable: true, driveAfterDinner: true, vehicleProfile: true, tankL: true, rentPerDayInr: true, localTrain: true, ref: true, flights: true }
+  return { economy: true, price: true, roundTrip: true, cover: true, inviteCode: true, deleted: true, stayStyle: true, driverCount: true, hasVulnerable: true, driveAfterDinner: true, vehicleProfile: true, tankL: true, rentPerDayInr: true, localTrain: true, drivesPart: true, ref: true, flights: true }
 }
 
 async function probeOptionalColumns(): Promise<OptionalColumnsProbe> {
-  const [economy, price, roundTrip, cover, inviteCode, deleted, stayStyle, driverCount, hasVulnerable, driveAfterDinner, vehicleProfile, tankL, rentPerDayInr, localTrain, ref, flights] = await Promise.all([
+  const [economy, price, roundTrip, cover, inviteCode, deleted, stayStyle, driverCount, hasVulnerable, driveAfterDinner, vehicleProfile, tankL, rentPerDayInr, localTrain, ref, flights, drivesPart] = await Promise.all([
     probeOptionalColumn('fuel_economy_km_per_l'),
     probeOptionalColumn('fuel_price_per_l'),
     probeOptionalColumn('round_trip'),
@@ -1770,6 +1780,8 @@ async function probeOptionalColumns(): Promise<OptionalColumnsProbe> {
     probeOptionalColumn('ref'),
     // 20261012c_trip_flights.sql — the flights a flight-mode trip takes
     probeOptionalColumn('flights'),
+    // 20261019_trip_drives_part.sql — the Mixed driving answer
+    probeOptionalColumn('drives_part'),
   ])
   if (!economy || !price || !roundTrip) {
     if (!optionalColumnsWarned) {
@@ -1777,7 +1789,13 @@ async function probeOptionalColumns(): Promise<OptionalColumnsProbe> {
       optionalColumnsWarned = true
     }
   }
-  return { economy, price, roundTrip, cover, inviteCode, deleted, stayStyle, driverCount, hasVulnerable, driveAfterDinner, vehicleProfile, tankL, rentPerDayInr, localTrain, ref, flights }
+  return { economy, price, roundTrip, cover, inviteCode, deleted, stayStyle, driverCount, hasVulnerable, driveAfterDinner, vehicleProfile, tankL, rentPerDayInr, localTrain, ref, flights, drivesPart }
+}
+
+/** Cache the probe where the synchronous write path can read it. */
+function rememberOptionalColumns(cols: OptionalColumnsProbe): OptionalColumnsProbe {
+  lastResolvedOptionalColumns = cols
+  return cols
 }
 
 /** Probe one optional column. True = present (or transient error, treated optimistically). */
@@ -1878,6 +1896,12 @@ async function persistTripRows(trip: Trip, ownerId: ID, opts: { retry?: boolean 
   // Claim the echo window before the await — see persistTripFieldNow.
   markLocalWrite('trips', trip.id)
   const cols = await tripsHaveOptionalColumns()
+  // Guard AFTER the awaited probe, at the writer, not at the caller (2026-10-19).
+  // Every `tripToRow` below silently omits a column the probe says is missing,
+  // so an explicit Mixed answer would be dropped here and the save would still
+  // report success. This is the seam where that has to stop.
+  const drivesPartVerdict = drivesPartWriteVerdict(trip, cols)
+  if (!drivesPartVerdict.ok) { toast(drivesPartVerdict.reason, 'err'); return false }
   const { data: inserted, error } = await supabase.from('trips').insert(tripToRow(trip, ownerId, cols))
     .select('id, write_version')
   const row = Array.isArray(inserted) && inserted.length === 1 ? inserted[0] : null
@@ -2761,6 +2785,17 @@ export function restoreExpense(tripId: ID, expense: Expense, index: number): voi
 export function updateTrip(id: ID, patchFields: Partial<Trip>): boolean {
   const t = tripById(id)
   if (!t) return false
+  // The Mixed driving answer must never be dropped in silence, and a refused
+  // save must not have touched the cache yet: the refusal says "nothing else
+  // changed", so that has to be true here, not merely true in the row (2026-10-19).
+  // An UNKNOWN probe refuses too. Waiting for it would mean mutating first and
+  // un-mutating after an await, which is the lie in its other form; instead the
+  // probe is started so the retry is immediate, and nothing is written.
+  if (typeof patchFields.drivesPart === 'boolean') {
+    const cols = lastResolvedOptionalColumns
+    if (!cols) { void tripsHaveOptionalColumns() }
+    if (!cols || !cols.drivesPart) { toast(DRIVES_PART_MISSING_REASON, 'err'); return false }
+  }
   // Date changes resize the day grid — reconcile BEFORE assigning so the
   // persisted row and the cache carry the same days. Shrinks that would drop
   // a day holding stops are rejected with the reason surfaced as a toast.
@@ -3350,6 +3385,13 @@ async function sendQueuedTripWrite(entry: QueuedWrite, scope: IdentityScope, acc
     const cols = await tripsHaveOptionalColumns()
     if (!live()) return false
     const trip = entry.trip as Trip
+    // Same writer guard as the insert path: the debounced UPDATE would
+    // otherwise drop an explicit Mixed answer and still report success.
+    const drivesPartVerdict = drivesPartWriteVerdict(trip, cols)
+    if (!drivesPartVerdict.ok) {
+      toast(drivesPartVerdict.reason, 'err')
+      return false
+    }
     // #799 — tripUpdateRow drops owner_id. A queued entry may have captured a
     // stale owner id, and the trips_owner_id_immutable trigger refuses an
     // ownership change with 42501. The column is absent from this row, so the

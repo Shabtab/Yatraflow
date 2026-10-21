@@ -191,6 +191,12 @@ that notices the drift.
    confirmation — never push to `main`, `test`, or any other branch as part of
    the implementation step. This prevents unauthorized code from reaching a
    shared branch and keeps the user in control of what ships.
+
+   **Every pull request to `hasnaina955/Yatraflow` must target `test`
+   (user-mandated 2026-10-19).** This rule includes security fixes. Check
+   `git diff <target>...HEAD` before you open the PR. If the diff includes
+   unrelated work, create a branch from the exact `test` revision. Apply only
+   the issue commits. Preserve the original branch and its evidence.
 9. **Never bulk-rewrite `CHANGELOG.md` with a script, heredoc or shell
    interpolation — edit it with editor primitives only.** This failure mode has
    already hit twice — three, counting the scripting-language variant (2026-09-21):

@@ -169,9 +169,9 @@ describe('#351 — the anon paywalled RPC cannot hand out a capability', () => {
     // inconvenience: the fix has to survive every subsequent redefinition, so
     // the assertions below run against the newest one, and the loop at the end
     // of this block applies the same rule to anything added after it.
-    const NEWEST = '20261002_trash_purge_publication_guard.sql'
+    const NEWEST = files.at(-1)
     expect(files.length).toBeGreaterThan(1)
-    expect(files[files.length - 1]).toBe(NEWEST)
+    expect(NEWEST).toBeDefined()
 
     const code = sqlCode(sqlFunction(src(`../supabase/migrations/${NEWEST}`), 'get_public_trip'))
     // Trade one hole for another? The soft-unpublish gate has to survive the
@@ -184,9 +184,10 @@ describe('#351 — the anon paywalled RPC cannot hand out a capability', () => {
 
   it('get_trip_by_invite_code carries the guard its uuid sibling has had all along', () => {
     const files = defining('get_trip_by_invite_code')
-    expect(files[files.length - 1]).toBe(MIGRATION)
+    const newest = files.at(-1)
+    expect(newest).toBeDefined()
 
-    const code = sqlCode(sqlFunction(src(`../supabase/migrations/${MIGRATION}`), 'get_trip_by_invite_code'))
+    const code = sqlCode(sqlFunction(src(`../supabase/migrations/${newest}`), 'get_trip_by_invite_code'))
     // The gate: a priced publication locks the code path for everyone without a
     // claim on it — the same clause shape as get_invite_trip.
     expect(code).toMatch(/coalesce\(p\.premium_price_inr, 0\) > 0/)

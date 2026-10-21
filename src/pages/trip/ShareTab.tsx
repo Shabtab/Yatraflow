@@ -55,7 +55,7 @@ function SnapshotCard({ trip, me, onNavigate, legCorrections, publication }: {
       const url = snapshotUrl(trip, payload)
       setLink(url)
       void nativeCopyText(url)
-      toast('Snapshot link copied — anyone can open it, no account needed')
+      toast('Snapshot link copied — anyone with the link can read the trip, and you cannot revoke it')
     } catch (e) {
       console.error('[yatraflow] snapshot encode failed', e)
       // The raw failure names CompressionStream or a URL-length error; neither
@@ -72,7 +72,9 @@ function SnapshotCard({ trip, me, onNavigate, legCorrections, publication }: {
       <span className="share-intent share-intent--info">3 · Keep a record</span>
       <h3 className="shr-card-title">Export & snapshot sharing</h3>
       <p className="hint-text shr-snapshot-description">
-        Take the whole plan anywhere — no server stores it. Snapshot links embed the trip in the URL itself.
+        Take the whole plan anywhere. The trip sits inside the link, so the reader&rsquo;s browser unpacks it and no
+        server holds a copy. Two things follow. Anyone who holds the link can read the trip, and you cannot take the
+        link back. It is not registered anywhere. Treat it like a key, and share it only with the people you mean to.
       </p>
       <div className="shr-snapshot-actions">
                   <ImportTripButton ownerId={me.id} onNavigate={onNavigate} className="btn btn-outline btn-sm" />

@@ -30,6 +30,9 @@ anywhere in this repo means the entry labelled `6b` below.
 
 ## 1. Pitfall entries (`AGENTS.md` §2 rules 6a–6z)
 
+Source-contract tests must handle both LF and CRLF line endings.
+Tests for helper use must check the call site. A function definition does not prove that callers use it.
+
 Flight records can exist without stored stops. Protect their days during date reconciliation and preserve them through imports and snapshots.
 Use resolved journey points for exports and insertion origins. Stored stops can omit airports and arrival anchors.
 Settings previews must use validated draft fields. Reuse road measurements only while the route and day assignment still match.
@@ -203,6 +206,14 @@ Settings previews must use validated draft fields. Reuse road measurements only 
    rewrite of the same function, and the rewrite is exactly where it would have
    been dropped) — pin that ordering with a test, because the failure is invisible
    until someone rebuilds the database from scratch.
+   **Trip reader projections must tolerate added columns.** Map approved fields by name with `jsonb_populate_record`.
+   Use each function's latest preceding migration as its baseline.
+   Preserve that function's access gates and content filters.
+   Start from a NULL record. Unlisted columns must remain NULL.
+   Keep every access check and content filter unchanged.
+   Test the reader after another column is added.
+   `tests/transport-schema-contract.test.ts` checks the projection and preserves the existing guards.
+
  6l. **A grant is API surface, and `service_role` is the right default for a
    caller-independent delete (learned 2026-09-25, #356).** `prune_pub_events`
    deletes on `at < horizon` — no pub, no creator, no caller — and shipped
@@ -1070,11 +1081,56 @@ process.
   A line-ending check with `grep -c $'\r'` in a shell loop printed 0 on CRLF
   files. Use `node -e "fs.readFileSync(f,'utf8').includes('\r')"` instead.
 
+- **A PowerShell rewrite of a `.tsx` file eats JSX and template literals, and
+  `tsc` finds it only after you have lost the anchor (learned 2026-10-19).**
+  `Get-Content -Raw` plus a `.Replace()` round-trip through `Set-Content`
+  interpolates `$name` first, because the replacement argument is a
+  double-quoted string. A JSX line like
+  `{bill.transportFormula || 'add a geocoded stop to price the drive'}` became
+  `{bill.transportFormula || dd a geocoded stop to price the }`: the quote
+  characters and the word went with the empty interpolation. Line-number edits
+  via `RemoveRange` then cut a *balanced* JSX block in half and left a stray
+  `)}`, which reads as a parse error three hundred lines from the real cause.
+  A scripted edit also cannot tell a unique anchor from a repeated one, so the
+  block landed in the wrong component and looked correct while it was there.
+  **Use the editor's replace tool for any `.tsx` file.** It fails loudly on a
+  missing anchor, it cannot interpolate, and it refuses an ambiguous match. If
+  a script is genuinely unavoidable, single-quote every replacement string,
+  re-read the exact lines afterwards, and run `tsc -b` before the next edit
+  rather than after the batch. `git checkout --` on the one damaged file is
+  cheaper than reconstructing the block, and safe here precisely because the
+  rest of the change was already committed.
+
 - **Route paths, not hash fragments, address pages (learned 2026-10-11).** The
   app routes by path (`/trips`). A signed-out visit to a signed-in route keeps
   its URL and shows the landing page in place. A check that compares URLs
   reports success on a wrong page. Compare the page content, such as the h1.
   `AGENTS.md` still says "hash routing". Treat that line as stale. Link to a page with `appLink('/path')`, never with a `#/` anchor. `tests/app-link.test.ts` fails when a source file does.
+
+- **A snapshot payload keeps its fragment, and every reader of it must agree (learned 2026-10-18, #805).**
+  `snapshotUrl` returns `<origin>/#/share/<payload>`. A browser sends `pathname
+  + search` and never the fragment, so that is what keeps the trip out of a
+  server's reach. Four readers each leaked the payload when left alone.
+  - `settleLegacyHash` must not promote the fragment into the path, and
+    `currentRoute` must read it. App starts the route from
+    `settleLegacyHash() ?? currentRoute()`, so both need one precedence rule.
+    A real path such as `/trips#/share/<p>` wins in the bridge exactly as it
+    wins in the reader. Test the startup expression, not only the reader.
+  - Analytics reads the page URL inside the page. The network's fragment rule
+    never reaches it. Strip the token in `beforeSend`, and keep the page view.
+  - A support draft leaves the device. `feedbackHref` must redact, and must
+    keep the route label and the app version a reporter needs.
+  `redactSnapshotUrl` is the one redaction. `tests/snapshot-transport-privacy.test.ts`
+  and `tests/snapshot-feedback-privacy.test.ts` pin all four. An old
+  `/share/<payload>` link still renders and cannot be un-exposed.
+  A bounded percent decoder must fail closed when another layer remains. Its
+  recovery test must decode independently to a fixed point and report an
+  exhausted oracle budget; matching the production bound can certify a leak.
+  An unrecognized hash route can hold a snapshot token outside the share
+  prefix. Outbound fallback must use a fixed root label, not copy that route.
+  `strict-origin-when-cross-origin` sends a full same-origin path, so an old
+  link recurs in same-origin referrers. Say that in copy, and never write a
+  test that certifies a control the app does not have.
 
 - **You must parse CSS time units before you use motion tokens in JavaScript.** Production CSS can change `180ms` to `.18s`. Convert seconds to milliseconds before you start timers or browser animations.
 

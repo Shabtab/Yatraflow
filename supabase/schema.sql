@@ -42,6 +42,7 @@ create table if not exists public.trips (
   end_date                  text not null default '',
   travellers                integer not null default 1,
   transport_mode            text not null default 'car',
+  drives_part               boolean,
   fuel_economy_km_per_l     numeric,
   fuel_price_per_l          numeric,
   round_trip                boolean,
@@ -87,6 +88,7 @@ alter table public.trips add column if not exists vehicle_profile jsonb;
 alter table public.trips add column if not exists tank_l numeric;
 alter table public.trips add column if not exists rent_per_day_inr numeric;
 alter table public.trips add column if not exists local_train boolean;
+alter table public.trips add column if not exists drives_part boolean;
 alter table public.trips add column if not exists ref text;
 
 -- Share attribution: one vocabulary across pub_events.source and trips.ref
