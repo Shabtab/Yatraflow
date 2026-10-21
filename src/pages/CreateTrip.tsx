@@ -21,6 +21,7 @@ import { planDriveDays, isSelfDrivenMode } from '../lib/ridePlan'
 import { CREW_CHIPS, CREW_MAX, CREW_MIN, clampCrew } from '../lib/crew'
 import { InlineIcon, modeIcon, MODE_ICONS } from '../components/icons'
 import { estimateTripStarter, buildOutlineSeedStops, vehicleProfileFor } from '../lib/tripStarter'
+import { transportPolicy } from '../lib/transportPolicy'
 import { sanitizeTankL, sanitizeRentPerDayInr } from '../lib/tripRow'
 import { TRIP_TEMPLATES, applyTemplate, templateFromRange, fmtBand } from '../lib/tripTemplates'
 import { regionFor, regionBand, nationalBand, experienceTier, anchorNote } from '../lib/budgetBenchmarks'
@@ -153,6 +154,9 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
     hasVulnerable: undefined as boolean | undefined,
     driveAfterDinnerMin: undefined as number | undefined,
     transportMode: 'car' as TransportMode,
+    // Mixed only (2026-10-19): undefined until the traveller answers the
+    // driving question, which a new Mixed trip cannot skip.
+    drivesPart: undefined as boolean | undefined,
     localTrain: false,
     fuelEconomy: '',
     fuelPrice: '',
@@ -195,6 +199,13 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
   const billRef = useRef<HTMLDivElement>(null)
 
   const fuelMode = isFuelEconomyMode(f.transportMode)
+  // One shared answer for every surface (2026-10-19). `showsDrivingControls`
+  // decides what renders; `driving` decides what the planner does, and the two
+  // differ only for a Mixed trip nobody has answered yet.
+  const drivingPolicy = transportPolicy({ transportMode: f.transportMode, drivesPart: f.drivesPart })
+  // A passenger mode prices a journey, not a drive. Same empty state, the noun
+  // the traveller actually uses.
+  const costNoun = drivingPolicy.driving ? 'drive' : 'journey'
   // The bill's figures roll like the bench odometer unless motion is reduced,
   // in which case they are plain text.
   const reduced = useMedia('(prefers-reduced-motion: reduce)')
@@ -446,12 +457,12 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
     if (bill.roadKm == null || bill.roadKm < 90) return null
     // #126: conducted modes — train/bus/flight/taxi — have no driving fatigue
     // to split; the verdict stays silent for them.
-    if (!isSelfDrivenMode(f.transportMode)) return null
+    if (!isSelfDrivenMode(f.transportMode, f.drivesPart)) return null
     const speed = MODE_SPEED[f.transportMode] ?? 42
     // #126 mode gate + #142 party inputs: timetable modes get no verdict;
     // drivers/vulnerable party move the honest cap.
-    return planDriveDays({ totalKm: bill.roadKm, driveMinutes: (bill.roadKm / speed) * 60, travelStyle: f.travelStyle, transportMode: f.transportMode, driverCount: f.driverCount, hasVulnerable: f.hasVulnerable })
-  }, [bill.roadKm, f.transportMode, f.travelStyle, f.driverCount, f.hasVulnerable])
+    return planDriveDays({ totalKm: bill.roadKm, driveMinutes: (bill.roadKm / speed) * 60, travelStyle: f.travelStyle, transportMode: f.transportMode, drivesPart: f.drivesPart, driverCount: f.driverCount, hasVulnerable: f.hasVulnerable })
+  }, [bill.roadKm, f.transportMode, f.drivesPart, f.travelStyle, f.driverCount, f.hasVulnerable])
 
   function patchFields(next: Partial<typeof f>) {
     setF(x => ({ ...x, ...next }))
@@ -684,6 +695,9 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
     // settings allows ₹0 (= "no per-person target", which the pacing tile
     // already renders honestly), so the two surfaces agree.
     if (f.budgetPerPersonInr < 0) next.budgetPerPersonInr = 'A budget cannot be negative.'
+    // A new Mixed trip cannot be created without the driving answer (2026-10-19).
+    // Every other mode has no question to ask, so this blocks only Mixed.
+    if (drivingPolicy.mustAnswerDriving) next.drivesPart = 'Answer the driving question above.'
     setErrs(next)
     if (Object.keys(next).length) {
       // F-15: move focus to the first invalid field so keyboard / screen-reader
@@ -731,8 +745,9 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
       // #142 party inputs ride along only when the user set them
       driverCount: f.driverCount,
       hasVulnerable: f.hasVulnerable,
-      driveAfterDinnerMin: f.driveAfterDinnerMin,
-      transportMode: f.transportMode,
+driveAfterDinnerMin: f.driveAfterDinnerMin,
+    drivesPart: f.drivesPart,
+    transportMode: f.transportMode,
       fuelEconomyKmL: fuelMode ? parseFuelEconomyKmL(f.fuelEconomy) : undefined,
       fuelPricePerL: fuelMode ? parseFuelPricePerL(f.fuelPrice) : undefined,
       // #377: the flag rides along for EVERY mode — non-fuel round trips used
@@ -1054,12 +1069,18 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
               </div>
 
               <div className="ct-rrow" style={{ marginTop: 12 }}>
+                {/* The reverse-route planner walks a wheel (#377). A passenger
+                    mode has no wheel, so it does not get this control, and no
+                    substitute is invented for it: a return leg by train is a
+                    ticket, not a reverse road route. */}
+                {drivingPolicy.driving && (
                 <label className="ts-switch">
                   <input type="checkbox" role="switch" checked={returnCount > 0}
                     onChange={e => setReturnOn(e.target.checked)} aria-label="Configure custom return journey stops" />
                   <span className="ts-switch-track" aria-hidden="true"></span>
                   <span className="ts-switch-label">Plot the drive back</span>
                 </label>
+                )}
               </div>
 
               {returnCount > 0 && (
@@ -1128,7 +1149,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
             <span className="ct-n">3</span>
             <div className="ct-q-body">
               <h2>Who's coming, and how are you travelling?</h2>
-              <p className="ct-hint">Party shape tunes the engine - meal windows, driver rotation, fatigue cadence.</p>
+              <p className="ct-hint">Party shape tunes the engine - meal windows and rest cadence.</p>
               <div className="ct-q-field">
                 <span className="ct-lbl">Transport</span>
                 <div className="ct-modes" role="group" aria-label="Transport mode">
@@ -1165,6 +1186,24 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
                   })}
                 </div>
               </div>
+              {/* Mixed is the one mode that asks (2026-10-19). The question sits
+                  directly under the mode row it qualifies. */}
+              {f.transportMode === 'mixed' && (
+                <div className="ct-q-field">
+                  <span className="ct-lbl" id="ct-mixed-driving-label">Will you drive any part of this trip?</span>
+                  <div className="transport-answer-pair" role="group" aria-labelledby="ct-mixed-driving-label" data-sel={f.drivesPart === true ? '0' : f.drivesPart === false ? '1' : 'none'}>
+                    <button type="button" className={`crew-btn${f.drivesPart === true ? ' on' : ''}`}
+                      aria-pressed={f.drivesPart === true}
+                      onClick={() => { haptic(HAPTIC.select); patchFields({ drivesPart: true }) }}>Yes, I drive</button>
+                    <button type="button" className={`crew-btn${f.drivesPart === false ? ' on' : ''}`}
+                      aria-pressed={f.drivesPart === false}
+                      onClick={() => { haptic(HAPTIC.select); patchFields({ drivesPart: false }) }}>No, passenger only</button>
+                  </div>
+                  {f.drivesPart === undefined && (
+                    <p className="adv-hint" role="status">Answer this to create the trip.</p>
+                  )}
+                </div>
+              )}
               <div className="ct-q-field">
                 <span className="ct-lbl">Party size</span>
                 <div className="ct-party">
@@ -1184,9 +1223,14 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
                       onClick={() => { haptic(HAPTIC.tick); patchFields({ travellers: clampCrew(f.travellers + 1) }) }}>+</button>
                   </span>
                   <span className="ct-party-sub">traveller{f.travellers !== 1 ? 's' : ''}</span>
-                  <button type="button" className="ct-mini" onClick={() => setDrawerOpen(true)}>
-                    {f.driverCount && f.driverCount > 1 ? `${f.driverCount} drivers` : 'Drivers & pace'}{f.hasVulnerable ? ' · kids aboard' : ''}
-                  </button>
+                  {/* The shortcut opens the driving drawer. With no driving
+                      fields to open, both the button and the drawer go, rather
+                      than an empty section wearing a new label. */}
+                  {drivingPolicy.showsDrivingControls && (
+                    <button type="button" className="ct-mini" onClick={() => setDrawerOpen(true)}>
+                      {f.driverCount && f.driverCount > 1 ? `${f.driverCount} drivers` : 'Drivers & pace'}{f.hasVulnerable ? ' · kids aboard' : ''}
+                    </button>
+                  )}
                   <span className="sr-only">{f.travellers} traveller{f.travellers !== 1 ? 's' : ''} on {cap(f.transportMode)}</span>
                 </div>
                 {/* #379: rendered once, visibly, and pointed at by both the group and
@@ -1240,6 +1284,10 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
                   </p>
                 </div>
               )}
+              {/* The drawer holds only fuel/vehicle and driving party dials. With neither
+                  applicable it would be an empty section, so a passenger mode
+                  drops it entirely rather than showing one under a new label. */}
+              {drivingPolicy.showsDrivingControls && (
               <details className="adv-drawer" open={drawerOpen}
                 onToggle={e => setDrawerOpen((e.target as HTMLDetailsElement).open)}>
                 <summary>
@@ -1312,7 +1360,8 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
                     fatigues. #213 Phase 5: gated on the ENGINE's own predicate
                     so this and Trip settings agree — it used to list `taxi`
                     (which the engine ignores) and omit `mixed` (which it honours). */}
-                {isSelfDrivenMode(f.transportMode) && (
+                {/* Control visibility, so this is the CONTROL flag, not the planner's (2026-10-19). */}
+                {drivingPolicy.showsDrivingControls && (
                   <div className="crew-custom" style={{ marginTop: 10 }}>
                     <Field label="Drivers sharing the wheel" hint="2 drivers rotate — honest days get longer.">
                       <div className="crew-row" role="group" aria-label="Drivers sharing the wheel">
@@ -1342,6 +1391,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
                 )}
                 </div>
               </details>
+              )}
             </div>
           </div>
 
@@ -1411,7 +1461,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
                     onClick={() => { haptic(HAPTIC.select); patchFields({ stayStyle: st }) }}>{cap(st)}</button>
                 ))}
               </span>
-              <span className="ct-party-sub">prices the bed - the drive never changes with it</span>
+              <span className="ct-party-sub">prices the bed - the journey never changes with it</span>
             </div>
 
             <div>
@@ -1566,7 +1616,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
                 as the paper moment below. */}
             <div className="tk-stub tk-bill">
               <div className="bill-row"><span>Transport</span><b className="mono">{bill.transportCost != null ? <Money v={bill.transportCost} animate={!reduced} /> : '\u2014'}</b></div>
-              <p className="bill-formula">{bill.transportFormula || 'add a geocoded stop to price the drive'}</p>
+              <p className="bill-formula">{bill.transportFormula || `add a geocoded stop to price the ${costNoun}`}</p>
               <div className="bill-row"><span>Stay</span><b className="mono"><Money v={bill.stayCost} animate={!reduced} /></b></div>
               <p className="bill-formula">{bill.stayFormula}</p>
               <div className="bill-row"><span>Food</span><b className="mono"><Money v={bill.mealCost} animate={!reduced} /></b></div>
@@ -1581,7 +1631,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
               <p className="tk-fine">
                 {bill.perHead
                   ? 'Rough take - refined once your route resolves in the workspace. Excludes tolls, parking and entry fees.'
-                  : 'Add a date range and at least one geocoded stop to price the drive.'}
+                  : `Add a date range and at least one geocoded stop to price the ${costNoun}.`}
               </p>
             </div>
           </div>
@@ -1623,7 +1673,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
                         <p className="bill-brand">YATRAFLOW &ndash; ROUGH BILL</p>
                         <div className="bill-row"><span>Road (est.)</span><b className="mono">{bill.roadKm != null ? `\u2248 ${bill.roadKm} km` : '-'}</b></div>
                         <div className="bill-row"><span>Transport</span><b className="mono"><Money v={bill.transportCost} animate={!reduced} /></b></div>
-                        <p className="bill-formula">{bill.transportFormula || 'add a geocoded stop to price the drive'}</p>
+<p className="bill-formula">{bill.transportFormula || `add a geocoded stop to price the ${costNoun}`}</p>
                         <div className="bill-row"><span>Stay</span><b className="mono"><Money v={bill.stayCost} animate={!reduced} /></b></div>
                         <p className="bill-formula">{bill.stayFormula}</p>
                         <div className="bill-row"><span>Food</span><b className="mono"><Money v={bill.mealCost} animate={!reduced} /></b></div>

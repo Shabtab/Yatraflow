@@ -17,7 +17,7 @@ import { healthBandClass, healthBandTone } from '../../lib/healthBand'
 import { STAY_RATE_PER_NIGHT } from '../../lib/rates'
 import { cap } from '../../lib/labels'
 import { InlineIcon, modeIcon } from '../../components/icons'
-import { isSelfDrivenMode } from '../../lib/ridePlan'
+import { transportPolicy } from '../../lib/transportPolicy'
 import { CREW_CHIPS, CREW_MAX, CREW_MIN, clampCrew } from '../../lib/crew'
 import { defaultVehicleProfile, parseCapacityL, parseVehicleEconomy } from '../../lib/vehicleProfile'
 import { zipDests, splitDests, renameDest, type DestPair } from '../../lib/destPairs'
@@ -69,6 +69,9 @@ export interface SettingsFormState {
   driverCount: number | undefined
   hasVulnerable: boolean | undefined
   driveAfterDinner: boolean
+  /** Mixed only: the traveller's answer to the driving question. Undefined is
+   *  the open state, and it is a real third value, not a false. */
+  drivesPart: boolean | undefined
 }
 
 /** Seed the scalar field set from a trip row. One factory, used by mount and
@@ -99,6 +102,9 @@ export function formFromTrip(trip: Trip): SettingsFormState {
     driverCount: trip.driverCount,
     hasVulnerable: trip.hasVulnerable,
     driveAfterDinner: (trip.driveAfterDinnerMin ?? 0) > 0,
+    // Tri-state on purpose. A trip saved before this field existed has no
+    // answer, and undefined is how that state survives a reopen.
+    drivesPart: trip.drivesPart,
   }
 }
 
@@ -157,7 +163,14 @@ export function settingsDryRun(
     const rec = reconcileDays(trip.days, f.startDate, f.endDate, protectedIdx)
     if (rec.error) return { ok: false, reason: rec.error, blocked: rec.blocked }
   }
-  const selfDriven = isSelfDrivenMode(f.transportMode)
+  // Selecting Mixed is a change the traveller has just made, so it needs the
+  // answer now. A trip that was ALREADY Mixed and unanswered is a different
+  // case: it keeps its planning and its preferences, and an unrelated save
+  // must not be blocked by a question the traveller never saw (2026-10-19).
+  const newlySelectedMixed = f.transportMode === 'mixed' && trip.transportMode !== 'mixed'
+  if (newlySelectedMixed && typeof f.drivesPart !== 'boolean') {
+    return { ok: false, reason: 'Answer whether you will drive any part of this trip.' }
+  }
   const { destinations, destinationCoords } = splitDests(dests)
   // #410 backstop (now inside the shared predicate, so the preview shows it
   // too): never persist a pair whose text and pin disagree, whatever produced
@@ -174,21 +187,31 @@ export function settingsDryRun(
       // here — the save mapping is the only writer of either.
       destinations, destinationCoords,
       travellers: clampCrew(f.travellers),
-      // The party dials only exist for self-drive modes (the block above is
-      // gated on the same predicate), so a conducted trip never carries
-      // them — and switching to one clears what a previous mode set.
-      driverCount: selfDriven ? f.driverCount : undefined,
-      hasVulnerable: selfDriven ? f.hasVulnerable : undefined,
+      // The party dials are shown only while the trip has a wheel, but the
+      // choice must OUTLIVE the mode (2026-10-19). This block used to clear the
+      // pair for any trip without a wheel, so saving a No answer on a Mixed
+      // trip, or switching to a passenger mode, erased three drivers and a
+      // custom dinner allowance, and turning the wheel back on found them gone.
+      //
+      // The DRAFT is the truth about what the traveller chose, so the save
+      // writes the draft. The answer and the mode only decide what the
+      // PLANNER uses, and the transport policy gates that use. A draft the
+      // traveller edited before the wheel went away keeps those edits.
+      driverCount: f.driverCount,
+      hasVulnerable: f.hasVulnerable,
       // #213 Phase 5: only write the 120-minute default when the toggle is
       // being turned ON. A trip stored with a custom allowance (say 60)
       // used to be silently rewritten to 120 by any unrelated save.
-      driveAfterDinnerMin: !selfDriven
+      // The draft toggle decides the allowance. Off clears it. On keeps a
+      // custom duration that the trip already has.
+      driveAfterDinnerMin: !f.driveAfterDinner
         ? undefined
-        : f.driveAfterDinner
-          ? (trip.driveAfterDinnerMin ?? DEFAULT_DRIVE_AFTER_DINNER_MIN)
-          : undefined,
+        : (trip.driveAfterDinnerMin ?? DEFAULT_DRIVE_AFTER_DINNER_MIN),
       budgetPerPersonInr: Math.max(0, f.budget),
       transportMode: f.transportMode, travelStyle: f.travelStyle,
+      // The Mixed answer is stored whatever the mode, so a later switch back to
+      // Mixed still knows what the traveller said.
+      drivesPart: typeof f.drivesPart === 'boolean' ? f.drivesPart : undefined,
       stayStyle: f.stayStyle,
       fuelEconomyKmL: fuel ? parseFuelEconomyKmL(f.fuelEconomy) : undefined,
       fuelPricePerL: fuel ? parseFuelPricePerL(f.fuelPrice) : undefined,
@@ -384,11 +407,11 @@ export function TripSettingsForm({ trip, editable, onOpenDay, legCorrections }: 
     : dayDelta > 0 ? `Adds ${dayDelta} empty day${dayDelta !== 1 ? 's' : ''} at the end`
     : `Drops ${-dayDelta} empty trailing day${dayDelta !== -1 ? 's' : ''} (days with stops are kept)`
   const fuelMode = isFuelEconomyMode(f.transportMode)
-  // Party controls are gated on the ENGINE's own predicate, so Settings and
-  // Create Trip agree (Create used to hard-code a slightly different set that
-  // included `taxi` and omitted `mixed` — dead controls in one place, hidden
-  // controls in the other).
-  const selfDriven = isSelfDrivenMode(f.transportMode)
+  // One shared answer for every surface (2026-10-19). `showsDrivingControls`
+  // gates what renders; `driving` gates what the planner keeps, so an
+  // unanswered Mixed keeps its stored preferences while hiding the dials.
+  const policy = transportPolicy({ transportMode: f.transportMode, drivesPart: f.drivesPart })
+  const showsDriving = policy.showsDrivingControls
   const ecoNum = parseFuelEconomyKmL(f.fuelEconomy)
   const priceNum = parseFuelPricePerL(f.fuelPrice)
   const ecoSet = typeof ecoNum === 'number' && Number.isFinite(ecoNum)
@@ -453,7 +476,11 @@ export function TripSettingsForm({ trip, editable, onOpenDay, legCorrections }: 
           <div className="tsx-stat"><span className="tsx-stat-k">Group budget</span><span className="tsx-stat-v">{formatInr(clampedBudget * travellers)}<small>{formatInr(clampedBudget)} / head</small></span></div>
           <div className="tsx-stat"><span className="tsx-stat-k">Days</span><span className="tsx-stat-v">{dayCount}<small>{daysWithStops} with stops</small></span></div>
           <div className="tsx-stat"><span className="tsx-stat-k">Machine</span><span className="tsx-stat-v">{cap(f.transportMode)}<small>{MODE_SPEED[f.transportMode] ?? 40} km/h avg</small></span></div>
-          <div className="tsx-stat"><span className="tsx-stat-k">Wheel</span><span className="tsx-stat-v">{(f.driverCount ?? 1) === 1 ? '1 driver' : `${f.driverCount} drivers`}<small>{f.hasVulnerable ? 'infants / seniors' : 'everyone adult'}</small></span></div>
+          {/* A passenger mode has no wheel, so the stat row shows its size instead of
+              a stale driver count the trip does not own (2026-10-19). */}
+          {showsDriving
+            ? <div className="tsx-stat"><span className="tsx-stat-k">Wheel</span><span className="tsx-stat-v">{(f.driverCount ?? 1) === 1 ? '1 driver' : `${f.driverCount} drivers`}<small>{f.hasVulnerable ? 'infants / seniors' : 'everyone adult'}</small></span></div>
+            : <div className="tsx-stat"><span className="tsx-stat-k">Travellers</span><span className="tsx-stat-v">{f.travellers}<small>travelling</small></span></div>}
         </div>
       </section>
 
@@ -758,11 +785,31 @@ export function TripSettingsForm({ trip, editable, onOpenDay, legCorrections }: 
       </div>
 
       {/* ---------- Q3 · the machine ---------- */}
-      <Surface as="section" className="tsx-card tsx-card--machine" aria-label="What moves you, and who is behind the wheel">
+      {/* Mixed asks whenever the trip IS Mixed, not only while unanswered
+          (2026-10-19). Gating on the open question made Yes a one-way door: the
+          buttons vanished on click, and a reloaded answered trip showed none.
+          Only the VALIDATION uses `mustAnswerDriving`. */}
+      {f.transportMode === 'mixed' && (
+        <Surface as="section" className="tsx-card" aria-label="Will you drive any part of this trip?">
+          <header className="tsx-head tsx-head--plain">
+            <h3 className="tsx-q">Will you drive any part of this trip?</h3>
+            <p className="tsx-a">This trip mixes ways of travelling. Your answer sets the driving options. Nothing changes until you pick one.</p>
+          </header>
+          <div className="transport-answer-pair" role="group" aria-label="Will you drive any part of this trip?" data-sel={f.drivesPart === true ? '0' : f.drivesPart === false ? '1' : 'none'}>
+            <button type="button" className={`crew-btn${f.drivesPart === true ? ' on' : ''}`}
+              aria-pressed={f.drivesPart === true} disabled={!editable}
+              onClick={() => setF(s => ({ ...s, drivesPart: true }))}>Yes, I drive</button>
+            <button type="button" className={`crew-btn${f.drivesPart === false ? ' on' : ''}`}
+              aria-pressed={f.drivesPart === false} disabled={!editable}
+              onClick={() => setF(s => ({ ...s, drivesPart: false }))}>No, passenger only</button>
+          </div>
+        </Surface>
+      )}
+      <Surface as="section" className="tsx-card tsx-card--machine" aria-label={showsDriving ? 'What moves you, and who is behind the wheel' : 'What moves you'}>
         <header className="tsx-head">
           <span className="tsx-no" aria-hidden="true">03</span>
-          <h3 className="tsx-q">What moves you, and who is behind the wheel?</h3>
-          <span className="tsx-ans">{cap(f.transportMode)} · {(f.driverCount ?? 1) === 1 ? '1 driver' : `${f.driverCount} drivers`} · {fuelMode ? 'fuel math' : 'fare math'}</span>
+          <h3 className="tsx-q">{showsDriving ? 'What moves you, and who is behind the wheel?' : 'What moves you?'}</h3>
+          <span className="tsx-ans">{cap(f.transportMode)}{showsDriving ? ` · ${(f.driverCount ?? 1) === 1 ? '1 driver' : `${f.driverCount} drivers`}` : ''} · {fuelMode ? 'fuel math' : 'fare math'}</span>
           <p className="tsx-a">The mode decides the cost math (fuel for car, rental and motorcycle; fares otherwise) and which dials exist below. Travel style tunes stop frequency and suggestions — it never touches pricing.</p>
         </header>
         {/* Transport mode — bench mode grid */}
@@ -800,14 +847,10 @@ export function TripSettingsForm({ trip, editable, onOpenDay, legCorrections }: 
           </div>
           <p className="bench-hint">Car and motorcycle switch cost math to fuel: distance ÷ economy × pump price.</p>
         </div>
-        {/* Who's driving — party + dinner pace (#142). Same three inputs the
-            Create-trip flow asks for; until now an existing trip could not
-            change them, so the split verdict and the clock walk were frozen
-            at whatever the trip was created with. #213 Phase 5: gated on the
-            ENGINE's own `isSelfDrivenMode` (car/rental/motorcycle/mixed) so the
-            two surfaces agree and no dial is shown for a mode that ignores it
-            (train/bus/flight/taxi have nobody at the wheel to fatigue). */}
-        {selfDriven && (
+        {/* Who's driving — party + dinner pace (#142). Gated on the CONTROL
+            answer, not the planner's: a Mixed trip nobody has answered shows
+            the question instead of dials for a setting nobody has set. */}
+        {showsDriving && (
           <div className="bench-block">
             <div className="bench-block-head">
               <span className="bench-eyebrow">Who&apos;s driving</span>

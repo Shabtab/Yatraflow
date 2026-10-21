@@ -11,12 +11,10 @@ const footerOpen = app.indexOf('<footer className="footer">')
 const footerClose = app.indexOf('</footer>', footerOpen)
 const footer = footerOpen < 0 || footerClose < 0 ? '' : app.slice(footerOpen, footerClose + '</footer>'.length)
 const MARK_BLOCK_START = '/* ---------- Footer route mark'
-// The block ends at the next section comment. Sections append after it, so a slice to the end of the file would read their rules too.
 const markStart = css.indexOf(MARK_BLOCK_START)
-// A section comment opens with dashes or with equals signs. Stop at either style.
-const markTail = css.slice(markStart + MARK_BLOCK_START.length)
-const markNext = markTail.search(/\n\/\* (?:-{3,}|={3,})/)
-const markBlock = css.slice(markStart, markNext < 0 ? undefined : markStart + MARK_BLOCK_START.length + markNext)
+// Bound the assertion to the footer-mark RULE, not to EOF. This file appends
+// unrelated motion after the block, and a to-EOF slice would reject that too.
+const markBlock = markStart < 0 ? '' : css.slice(markStart, css.indexOf('\n}', markStart) + 2)
 
 describe('footer route mark (P1)', () => {
   it('renders one decorative svg inside the footer, hidden from assistive tech', () => {
@@ -43,5 +41,20 @@ describe('footer route mark (P1)', () => {
     expect(css.indexOf(MARK_BLOCK_START)).toBeGreaterThan(-1)
     expect(markBlock).not.toMatch(/\d\s*ms\b/)
     expect(markBlock).not.toMatch(/transition|animation/i)
+  })
+
+  it('bounds the assertion to the footer-mark rule, not to the end of the file', () => {
+    // The glider and other appended motion live after this block. The slice
+    // stops at the rule's own closing brace, so they are not scanned.
+    expect(markBlock).toContain('.footer-route-mark {')
+    expect(markBlock).not.toContain('bench-pair')
+    expect(markBlock.trimEnd().endsWith('}')).toBe(true)
+  })
+
+  it('still rejects a transition or animation placed inside the footer-mark rule', () => {
+    const guard = (block: string) => !/\d\s*ms\b/.test(block) && !/transition|animation/i.test(block)
+    expect(guard(markBlock)).toBe(true)
+    expect(guard('.footer-route-mark {\n  transition: left 200ms;\n}')).toBe(false)
+    expect(guard('.footer-route-mark {\n  animation: spin 1s linear;\n}')).toBe(false)
   })
 })
