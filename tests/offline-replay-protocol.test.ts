@@ -186,7 +186,7 @@ function row(id = 'shared', owner = 'A'): TripRow {
     id, owner_id: owner, name: 'Original plan', start_location: 'Kochi', start_location_coords: null,
     destinations: ['Kochi'], destination_coords: null, start_date: '2026-10-01', end_date: '2026-10-01',
     travellers: 2, transport_mode: 'car', budget_per_person_inr: 5000, travel_style: 'balanced',
-    fixed_commitments: [], days: [{ index: 0, stops: [
+    fixed_commitments: [], days: [{ id: 'day-0', index: 0, stops: [
       { id: 'keep', title: 'Fort', category: 'sightseeing', locationName: 'Fort', lat: 10, lng: 76,
         visitMinutes: 30, entryFeeInrPerPerson: 0, transportCostInrTotal: 0, priority: 'must-do', status: 'confirmed', orderInDay: 0 },
       { id: 'delete', title: 'Museum', category: 'sightseeing', locationName: 'Museum', lat: 10, lng: 76,

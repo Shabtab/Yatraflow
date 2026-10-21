@@ -249,30 +249,29 @@ describe('C1/c — a switch inside the join dispatch abandons the continuation',
   })
 })
 
-describe('R2/a — an unusable revision into an empty cache is not a join', () => {
-  it('the refusal is reported as incomplete and the cache stays empty', async () => {
+describe('R2/a — a confirmed member with an unusable trip cannot open or cache it', () => {
+  it('keeps the incomplete read inside the joined-unloaded stage', async () => {
     // The caller is a member, and the full row arrives with no usable revision,
-    // so the loader refuses it. The gate must not be told 'joined', and round 10
-    // keeps the refusal typed, so the screen can say the row was unusable
-    // rather than that a read failed.
+    // so the loader refuses it. Membership is confirmed, but the cache stays
+    // empty and the gate offers a read-only retry instead of opening the trip.
     state.memberRowForCaller = { user_id: ALICE }
     state.members = [{ trip_id: TRIP, user_id: ALICE, role: 'editor', joined_at: 1 }]
     state.tripRow = tripRow({ write_version: undefined })
 
     const outcome = await joinViaInvite(TRIP, ALICE, CODE)
 
-    expect(outcome).toBe('incomplete')
+    expect(outcome).toBe('joined-unloaded-incomplete')
     expect(tripById(TRIP), 'nothing was admitted').toBeUndefined()
   })
 
-  it('an invalid revision is refused the same way as a missing one', async () => {
+  it('keeps an invalid revision in the same joined-unloaded result', async () => {
     state.memberRowForCaller = { user_id: ALICE }
     state.members = [{ trip_id: TRIP, user_id: ALICE, role: 'editor', joined_at: 1 }]
     state.tripRow = tripRow({ write_version: 2.5 })
 
     const outcome = await joinViaInvite(TRIP, ALICE, CODE)
 
-    expect(outcome).toBe('incomplete')
+    expect(outcome).toBe('joined-unloaded-incomplete')
     expect(tripById(TRIP)).toBeUndefined()
   })
 })
@@ -284,7 +283,7 @@ describe('B3 — admission checks the requested id and complete row shape', () =
     state.tripRow = tripRow({ id: otherTrip, write_version: 2 })
     state.members = [{ trip_id: otherTrip, user_id: ALICE, role: 'editor', joined_at: 1 }]
 
-    expect(await joinViaInvite(TRIP, ALICE, CODE)).toBe('incomplete')
+    expect(await joinViaInvite(TRIP, ALICE, CODE)).toBe('joined-unloaded-incomplete')
     expect(tripById(otherTrip)).toBeUndefined()
     expect(tripById(TRIP)).toBeUndefined()
   })
@@ -295,7 +294,7 @@ describe('B3 — admission checks the requested id and complete row shape', () =
       state.members = [{ trip_id: TRIP, user_id: ALICE, role: 'editor', joined_at: 1 }]
       state.tripRow = tripRow({ [field]: undefined })
 
-      expect(await joinViaInvite(TRIP, ALICE, CODE)).toBe('incomplete')
+      expect(await joinViaInvite(TRIP, ALICE, CODE)).toBe('joined-unloaded-incomplete')
       expect(tripById(TRIP)).toBeUndefined()
     },
   )
@@ -309,7 +308,7 @@ describe('B3 — admission checks the requested id and complete row shape', () =
     state.tripRow = tripRow({ write_version: 1 })
     state.members = [{ trip_id: TRIP, user_id: ALICE, role: 'editor', joined_at: 1 }]
 
-    expect(await reloadJoinedTrip(TRIP)).toBe('incomplete')
+    expect(await reloadJoinedTrip(TRIP)).toBe('joined-unloaded-incomplete')
   })
 })
 

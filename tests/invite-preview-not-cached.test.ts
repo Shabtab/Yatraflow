@@ -663,11 +663,13 @@ describe('S1 — a not-member outcome is a failure, not a read failure or a succ
 
 describe('S4 — a profile gap resets the join try', () => {
   it('App resets when the signed-in profile disappears', () => {
-    // Round 10 — the owner reads the machine FIELDS of the target it shows.
-    expect(APP).toContain('if (me && me.id === joinUserId) return')
-    // The reset must set the machine back to idle, not merely clear a flag.
-    const at = APP.indexOf('if (me && me.id === joinUserId) return')
-    const block = APP.slice(at, at + 400)
-    expect(block).toContain("dispatch({ type: 'reset' })")
+    // A missing profile makes this guard false, so the reset below must run.
+    const start = APP.indexOf('// Reset stale identity state before the begin effect can allocate a new owner.')
+    const end = APP.indexOf('}, [identityGen, joinGen, joinUserId', start)
+    const effect = APP.slice(start, end)
+    expect(effect).toContain('joinUserId === null')
+    expect(effect).toContain('joinGen === identityGen && me && me.id === joinUserId')
+    expect(effect).toContain('retireAttemptOwner(owner)')
+    expect(effect).toContain("dispatch({ type: 'reset' })")
   })
 })
