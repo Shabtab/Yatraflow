@@ -604,6 +604,16 @@ describe('recovery identity regressions', () => {
     const hold = gate();
     state.putGate = hold.promise;
     vi.stubGlobal('navigator', { onLine: true });
+    // The removal is one commit, and a later read can put the plan back. The
+    // whole stream is watched, so a removal cannot hide behind that restore.
+    const removals: string[][] = [];
+    let watching = false;
+    store.subscribe(() => {
+      if (!watching) return;
+      if (store.getSnapshot().sessionUserId !== 'B') return;
+      const ids = store.getSnapshot().trips.map(t => t.id);
+      if (!ids.includes('shared')) removals.push(ids);
+    });
     const replay = store.replayQueuedWrites();
     // Wait until the retention is genuinely in flight, so the account change
     // lands during the storage write and not before it.
@@ -614,11 +624,20 @@ describe('recovery identity regressions', () => {
     state.authHandler('SIGNED_IN', { user: { id: 'B' }, access_token: 'token-B' });
     await flush();
     expect(store.getSnapshot().sessionUserId).toBe('B');
+    // The sign-out cleanup waits for the storage write below, so B's read
+    // cannot publish the shared plan yet, and the delayed invalidation would
+    // find an empty list. A realtime row puts B's plan on screen now, so the
+    // invalidation has a plan to remove.
+    store._applyRealtimeEventForTest('trips', { eventType: 'UPDATE',
+      new: { ...state.rows.get('shared') }, old: {} });
+    await flush();
+    expect(store.getSnapshot().trips.map(t => t.id)).toEqual(['shared']);
+    watching = true;
     hold.release();
     await replay;
     await flush();
     // The delayed invalidation must not have removed B's trip.
     expect(store.getSnapshot().sessionUserId).toBe('B');
-    expect(store.getSnapshot().trips.map(t => t.id)).toEqual(['shared']);
+    expect(removals).toEqual([]);
   });
 });
