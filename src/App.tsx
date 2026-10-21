@@ -951,9 +951,9 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
     mountLeaseRef.current += 1
     return () => {
       const cleanupLease = ++mountLeaseRef.current
+      if (lifetimeRef.current) retireAttemptOwner(lifetimeRef.current)
       void Promise.resolve().then(() => {
         if (mountLeaseRef.current !== cleanupLease) return
-        if (lifetimeRef.current) retireAttemptOwner(lifetimeRef.current)
         disposeGateMount(mountId)
       })
     }
