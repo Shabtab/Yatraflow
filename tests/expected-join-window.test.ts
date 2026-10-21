@@ -217,7 +217,7 @@ describe('B2 — the own-echo exemption ends with the try that opened it', () =>
     // the identity generation and the live try, and both are read on each echo.
     const STORE = readFileSync(new URL('../src/store/store.ts', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
     expect(STORE).toContain('expectedJoins.set(tripId, expectation)')
-    expect(STORE).toMatch(/const expectation: JoinExpectation = \{ tripId, userId, identityEpoch, guard:/)
+    expect(STORE).toMatch(/const expectation: JoinExpectation = \{ tripId, userId, identityEpoch, accessEpoch, guard:/)
     expect(STORE).toContain("const expectation = event === 'INSERT' ? expectedJoin(tripId, true) : undefined")
     expect(STORE).toContain('const ownJoinEcho = !!expectation && userId === expectation.userId && canEdit(row?.role)')
     const join = STORE.slice(STORE.indexOf('export async function joinViaInvite('), STORE.indexOf('async function joinAfterScope('))

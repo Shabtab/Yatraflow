@@ -36,7 +36,7 @@ import { StateBlock } from './components/page/StateBlock'
 import { LandingPage } from './pages/Landing'
 import { NativeHomePage } from './pages/NativeHome'
 import {
-  sharedSnapshotState, inviteGateState, gateMachine, dispatchGateEvent, setGateOwner, ownedBy,
+  sharedSnapshotState, inviteGateState, gateMachine, dispatchGateEvent, setGateOwner, ownedBy, disposeGateMount,
   subscribeGateState, gateMachineVersion,
   type JoinResult,
   inviteLoginNext, inviteSignupNext, invitePreview,
@@ -932,6 +932,8 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
   // on every parent re-render.
   const navigateRef = useRef(onNavigate)
   useEffect(() => { navigateRef.current = onNavigate })
+  const [mountId] = useState(nextAttemptId)
+  const mountLeaseRef = useRef(0)
   // C2/R4 — the try lifetime lives outside React reset. A NEW try
   // retires the previous one before it allocates, and unmount retires the
   // current one. StrictMode's mount/cleanup/mount starts a fresh
@@ -945,9 +947,17 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
     lifetimeRef.current = createAttemptOwner(target)
     return lifetimeRef.current
   }, [])
-  useEffect(() => () => {
-    if (lifetimeRef.current) retireAttemptOwner(lifetimeRef.current)
-  }, [])
+  useEffect(() => {
+    mountLeaseRef.current += 1
+    return () => {
+      const cleanupLease = ++mountLeaseRef.current
+      void Promise.resolve().then(() => {
+        if (mountLeaseRef.current !== cleanupLease) return
+        if (lifetimeRef.current) retireAttemptOwner(lifetimeRef.current)
+        disposeGateMount(mountId)
+      })
+    }
+  }, [mountId])
   // The link's own value, decoded once. A trip-id link (/invite/<uuid>) never
   // joins anyone: it opens the trip only for a viewer who is already a member.
   const linkTarget = (() => { try { return decodeURIComponent(codeOrTripId) } catch { return codeOrTripId } })()
@@ -960,7 +970,6 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
   // for the old target, and React sees a plain external value.
   // Each MOUNT gets its own machine: the mount counter is module state, so two
   // mounts on the same link never share a try.
-  const [mountId] = useState(nextAttemptId)
   const subscribeJoin = useCallback((fn: () => void) => subscribeGateState(fn), [])
   const readJoinVersion = useCallback(() => gateMachineVersion(linkTarget, mountId), [linkTarget, mountId])
   // The store's version is the change signal. The state below is read from the
@@ -1019,6 +1028,18 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
   const identityGen = useIdentityGeneration()
   const phase = machine.phase
 
+  // Reset stale identity state before the begin effect can allocate a new owner.
+  // Cleanup is scoped to this machine's owner so an old render cannot retire its replacement.
+  useEffect(() => {
+    if (joinUserId === null || (joinGen === identityGen && me && me.id === joinUserId)) return
+    if (owner && joinStore.owner === owner) {
+      retireAttemptOwner(owner)
+      if (lifetimeRef.current === owner) lifetimeRef.current = null
+      setOwner(null)
+    }
+    dispatch({ type: 'reset' })
+  }, [identityGen, joinGen, joinUserId, me, owner, joinStore, dispatch, setOwner])
+
   /** Carry out one action from the machine. Every settlement quotes its try and
    *  its target, so a completion for an older target does nothing at all. */
   const runJoinAction = useCallback((action: JoinAction, tripId: string, userId: string, gen: number, attempt: AttemptOwner, inviteCode?: string) => {
@@ -1058,6 +1079,7 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
 
   useEffect(() => {
     if (!me || !shownTrip) return
+    if (joinUserId !== null && (joinGen !== identityGen || joinUserId !== me.id)) return
     // B-2 — a legacy /invite/<uuid> link never joins. The separate
     // viewerIsMemberOf effect below opens the trip for a member and explains
     // itself to anyone else. Without this guard the join ran with the UUID as
@@ -1098,30 +1120,6 @@ function InviteGate({ codeOrTripId, onNavigate }: { codeOrTripId: string; onNavi
     if (plan.action.type === 'none') return
     runJoinAction(plan.action, shownTrip.id, me.id, identityGen, attempt, shownTrip.inviteCode ?? linkTarget)
   }, [me, shownTrip, joinPhase, joinGen, joinUserId, joinTryId, joinReason, identityGen, linkTarget, beginAttempt, dispatch, runJoinAction])
-
-  // B3 — a new identity generation resets the machine, so a sign-out or a profile
-  // gap cannot leave a joined claim behind, and a same-account re-auth starts
-  // clean instead of stalling on a stale phase.
-  useEffect(() => {
-    if (joinGen === identityGen) return
-    // B3 — retire BEFORE the state is cleared, so any continuation still holding
-    // this try can never admit or settle after the reset.
-    if (lifetimeRef.current) retireAttemptOwner(lifetimeRef.current)
-    dispatch({ type: 'reset' })
-  }, [identityGen, joinGen, dispatch])
-
-  // S4 — the store advances identityEpoch only on an AUTH identity change, so a
-  // profile gap (session row present, profile row missing) left the generation
-  // untouched and an old joined claim survived. The try is keyed to the
-  // signed-in user, so losing that user must reset it: either the profile arrives
-  // later (the try restarts) or the invite needs a login first.
-  useEffect(() => {
-    if (joinPhase === 'idle' || joinUserId === null) return
-    if (me && me.id === joinUserId) return
-    // B3 — a profile gap retires the try BEFORE the visible state clears.
-    if (lifetimeRef.current) retireAttemptOwner(lifetimeRef.current)
-    dispatch({ type: 'reset' })
-  }, [me, joinPhase, joinUserId, dispatch])
 
   // A trip-id link never joins. It opens the trip for a member and explains
   // itself to anyone else. Guarded by identity so a late answer cannot navigate

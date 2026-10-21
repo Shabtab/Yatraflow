@@ -91,7 +91,8 @@ function mountGate(join: (tripId: string) => Promise<gate.JoinResult>, overrides
     reloadJoinedTrip: async () => 'joined-unloaded',
     toast: (...args: unknown[]) => events.push(['toast', ...args]),
     me: { id: 'A' },
-    useIdentityGeneration: () => 1,
+    identityGen: 1,
+    useIdentityGeneration: () => context.identityGen,
     console: { error: () => {} },
     useState(initial: unknown) {
       const i = index++
@@ -151,7 +152,7 @@ function mountGate(join: (tripId: string) => Promise<gate.JoinResult>, overrides
   }
   const stateBlock = () => walk(tree, n => n.type === 'StateBlock')[0] as { props: { title?: string; body?: string } } | undefined
   return {
-    props, events, rerender: () => { dirty = true }, settle, setUser: id => { context.me = id ? { id } : null; dirty = true },
+    props, events, rerender: () => { dirty = true }, settle, setUser: id => { context.me = id ? { id } : null; context.identityGen += 1; dirty = true },
     stateBlock,
   }
 }
@@ -242,6 +243,34 @@ describe('B4 — a target change retires the old join before it can finish the n
     await h.settle()
     const navigations = h.events.filter(e => e[0] === 'navigate')
     expect(navigations.filter(e => e[1] === `/trip/${TRIP_A}`), 'the old membership answer opens nothing').toHaveLength(0)
+  })
+
+  it('an account generation change retires the old try before the replacement settles', async () => {
+    const oldJoin = deferred<gate.JoinResult>()
+    let calls = 0
+    const h = mountGate(() => (++calls === 1 ? oldJoin.promise : Promise.resolve('joined')))
+    await h.settle()
+    h.setUser('B')
+    await h.settle()
+    oldJoin.resolve('joined')
+    await h.settle()
+    expect(calls).toBe(2)
+    expect(h.events.filter(e => e[0] === 'navigate')).toEqual([['navigate', `/trip/${TRIP_A}`]])
+  })
+})
+
+describe('S1 — an unmounted gate relinquishes its registry state', () => {
+  it('disposal retires its owner and blocks stale events for that mount', () => {
+    const mountId = gate.nextAttemptId()
+    const target = `DISPOSE-${mountId}`
+    const owner = gate.createAttemptOwner(target)
+    gate.gateMachine(target, mountId)
+    gate.setGateOwner(target, owner, mountId)
+    gate.dispatchGateEvent(target, { type: 'begin', userId: 'A', gen: 1, member: false, tryId: owner.id }, mountId)
+    gate.disposeGateMount(mountId)
+    expect(owner.retired).toBe(true)
+    expect(gate.gateMachineState(target)).toBeUndefined()
+    expect(gate.dispatchGateEvent(target, { type: 'join-settled', userId: 'A', gen: 1, tryId: owner.id, result: 'joined' }, mountId).action.type).toBe('none')
   })
 })
 

@@ -13,6 +13,7 @@ import type {
   PublishedItinerary, ID, ItineraryStop, ItineraryDay, TripMember, Expense, FixedCommitment,
   NewDecisionOption, VehicleProfile,
 } from '../data/types'
+import { STOP_CATEGORIES, STOP_STATUSES } from '../data/types'
 import { seedData, uid } from '../data/seed'
 import type { LatLngPoint } from '../data/types'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
@@ -2863,6 +2864,7 @@ export interface JoinExpectation {
   tripId: string
   userId: string
   identityEpoch: number
+  accessEpoch: number
   /** True only while the App's try is live and still owns this link target. */
   guard: AttemptGuard
 }
@@ -2883,14 +2885,15 @@ const expectedJoins = new Map<string, JoinExpectation>()
 function expectedJoin(tripId: string, probe = false): JoinExpectation | undefined {
   const expectation = expectedJoins.get(tripId)
   if (!expectation) return undefined
-  if (probe && (expectation.identityEpoch !== identityEpoch || !expectation.guard())) {
+  const accessEpoch = tripAccessEpochs.get(tripId) ?? 0
+  if (probe && (expectation.identityEpoch !== identityEpoch || expectation.accessEpoch !== accessEpoch || !expectation.guard())) {
     expectedJoins.delete(tripId)
     return undefined
   }
   // The guard is the App's live-try check. It is read only when the caller can
   // honour it (the guard the store chose for the recording try is the caller's
   // own guard); an older recording cannot be judged by a newer closure.
-  if (expectation.identityEpoch !== identityEpoch || !expectation.guard()) {
+  if (expectation.identityEpoch !== identityEpoch || expectation.accessEpoch !== accessEpoch || !expectation.guard()) {
     // A retirement or an account change closes the window at once, so nothing
     // that runs later in this frame can still read it as open.
     expectedJoins.delete(tripId)
@@ -3052,8 +3055,10 @@ function coherentFullRow(row: unknown, cols?: OptionalColumnsProbe): row is Trip
   if (!validWriteVersion(r.write_version)) return false
   if (!finiteNumber(r.updated_at) || !finiteNumber(r.created_at)) return false
   if (r.deleted_at != null && !(typeof r.deleted_at === 'string' || finiteNumber(r.deleted_at))) return false
-  // Writable JSONB lists: an array or null, never a wrong shape.
-  for (const field of ['destinations', 'days', 'expenses', 'fixed_commitments']) {
+  // Writable JSONB lists: check the shapes consumed by trip readers before
+  // rowToTrip can coerce malformed contents into empty collections.
+  if (!coherentDestinations(r.destinations) || !coherentDays(r.days)) return false
+  for (const field of ['expenses', 'fixed_commitments']) {
     if (!(Array.isArray(r[field]) || r[field] === null)) return false
   }
   if (!(Array.isArray(r.destination_coords) || r.destination_coords === null)) return false
@@ -3103,6 +3108,45 @@ function coherentFullRow(row: unknown, cols?: OptionalColumnsProbe): row is Trip
   return true
 }
 
+function coherentStop(value: unknown): value is ItineraryStop {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const stop = value as Record<string, unknown>
+  if (!nonEmptyString(stop.id) || !nonEmptyString(stop.title) || !nonEmptyString(stop.locationName)) return false
+  if (!(STOP_CATEGORIES as readonly unknown[]).includes(stop.category)
+    || !(STOP_STATUSES as readonly unknown[]).includes(stop.status)
+    || !(['must-do', 'nice-to-have', 'optional'] as unknown[]).includes(stop.priority)) return false
+  for (const field of ['lat', 'lng', 'visitMinutes', 'entryFeeInrPerPerson', 'transportCostInrTotal', 'orderInDay']) {
+    if (!finiteNumber(stop[field])) return false
+  }
+  for (const field of ['placeId', 'description', 'openTime', 'closeTime', 'notes', 'slotKey', 'sourceUrl', 'departTime', 'arrivalTime']) {
+    if (stop[field] !== undefined && typeof stop[field] !== 'string') return false
+  }
+  for (const field of ['auto', 'weatherSensitive']) {
+    if (stop[field] !== undefined && typeof stop[field] !== 'boolean') return false
+  }
+  for (const field of ['legDistanceKm', 'legTravelMinutes']) {
+    if (stop[field] !== undefined && !finiteNumber(stop[field])) return false
+  }
+  return true
+}
+
+function coherentDay(value: unknown): value is ItineraryDay {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const day = value as Record<string, unknown>
+  if (!nonEmptyString(day.id) || !finiteNumber(day.index)) return false
+  if (day.title !== undefined && typeof day.title !== 'string') return false
+  if (day.startTime !== undefined && typeof day.startTime !== 'string') return false
+  return Array.isArray(day.stops) && day.stops.every(coherentStop)
+}
+
+function coherentDays(days: unknown): days is ItineraryDay[] | null {
+  return days === null || (Array.isArray(days) && days.every(coherentDay))
+}
+
+function coherentDestinations(destinations: unknown): destinations is string[] | null {
+  return destinations === null || (Array.isArray(destinations) && destinations.every(value => typeof value === 'string'))
+}
+
 /**
  * A membership row is coherent when every field has the stored type. A row
  * naming another trip is not coherent for this read.
@@ -3130,7 +3174,8 @@ function usableCachedTrip(trip: Trip | undefined, tripId: string): boolean {
   if (!Number.isFinite(trip.travellers) || !Number.isFinite(trip.budgetPerPersonInr)
     || !Number.isFinite(trip.createdAt) || !Number.isFinite(trip.updatedAt)) return false
   if (trip.visibility !== 'private' && trip.visibility !== 'public') return false
-  if (!Array.isArray(trip.days) || !Array.isArray(trip.expenses) || !Array.isArray(trip.destinations)
+  if (!Array.isArray(trip.days) || !trip.days.every(coherentDay) || !Array.isArray(trip.expenses)
+    || !Array.isArray(trip.destinations) || !trip.destinations.every(value => typeof value === 'string')
     || !Array.isArray(trip.fixedCommitments)) return false
   if (typeof trip.startDate !== 'string' || typeof trip.endDate !== 'string') return false
   if (!validWriteVersion(trip.writeVersion)) return false
@@ -3142,6 +3187,7 @@ function usableCachedTrip(trip: Trip | undefined, tripId: string): boolean {
 function canSendTripWrite(scope: IdentityScope, tripId: string, accessEpoch: number): boolean {
   const trip = tripById(tripId)
   return isCurrentIdentity(scope) && (tripAccessEpochs.get(tripId) ?? 0) === accessEpoch
+    && !tripAccessEpochs.has(roleFloorKey(tripId, scope.userId))
     && !!trip && !trip.deletedAt && (canEdit(roleOf(trip, scope.userId)) || isAdminCached())
 }
 
@@ -3589,7 +3635,8 @@ export function setMemberRole(tripId: ID, userId: ID, role: TripMember['role']):
  *                      re-read the row, never join again.
  *   'failed'           no membership was created. A retry must join again.
  */
-export type JoinResult = 'joined' | 'joined-unloaded' | 'not-member' | 'missing' | 'deleted' | 'incomplete' | 'failed' | 'abandoned'
+export type JoinResult = 'joined' | 'joined-unloaded' | 'joined-unloaded-incomplete' | 'joined-unloaded-failed'
+  | 'not-member' | 'missing' | 'deleted' | 'incomplete' | 'failed' | 'abandoned'
 
 /**
  * Join a trip through its invite code, then fetch the full row into the cache.
@@ -3626,7 +3673,7 @@ export async function joinViaInvite(
   // trip, the joining user, the identity generation, and the App's live try,
   // so an own echo is exempt only while all four still match. The window clears
   // on every exit.
-  const expectation: JoinExpectation = { tripId, userId, identityEpoch, guard: () => !guard || guard() }
+  const expectation: JoinExpectation = { tripId, userId, identityEpoch, accessEpoch, guard: () => !guard || guard() }
   expectedJoins.set(tripId, expectation)
   try {
     const token = await tripWriteToken(scope, guard)
@@ -3742,16 +3789,16 @@ async function finishJoin(
   if (loaded === 'deleted') return 'deleted'
   // The membership exists; only the row could not be accepted. That is the
   // "joined but not loaded" case, not a failed join and not a membership loss.
-  if (loaded === 'incomplete') return 'incomplete'
+  if (loaded === 'incomplete') return 'joined-unloaded-incomplete'
   // A READ failure after the membership exists is the same kind of answer: the
   // caller is on the trip, and only the row failed to arrive.
-  if (loaded === 'failed') return 'failed'
+  if (loaded === 'failed') return 'joined-unloaded-failed'
   if (loaded === 'stale') {
     // B3 (round 10) — the cached row is the truth ONLY when it is a USABLE trip
     // the caller can open, not merely a row with a revision and a membership.
     const cached = tripById(tripId)
     if (cached && usableCachedTrip(cached, tripId) && (cached.members ?? []).some(m => m.userId === userId)) return 'joined'
-    return 'incomplete'
+    return 'joined-unloaded-incomplete'
   }
   // R5 — no owner notice and no activity claim for an idempotent RPC. Two
   // certainly-absent pre-queries still cannot say which client inserted the row,
@@ -3880,8 +3927,10 @@ function admitFullRow(input: {
   const mine = mapped.find(m => m.userId === scope.userId)
   // S1 — a validated owner_id grants authority without a redundant member row.
   if (!mine && !isAdminCached() && row.owner_id !== scope.userId) return 'not-member'
-  // B1 — an observed downgrade blocks an editable grant from ANY full read.
-  if (mine && canEdit(mine.role) && tripAccessEpochs.has(roleFloorKey(tripId, scope.userId))) return 'stale'
+  // An observed downgrade blocks every ordinary read. Only a coherent row
+  // inside this live join's expected window can confirm a replacement grant.
+  const expectedGrant = mine && canEdit(mine.role) ? expectedJoin(tripId) : undefined
+  if (mine && canEdit(mine.role) && tripAccessEpochs.has(roleFloorKey(tripId, scope.userId)) && !expectedGrant) return 'stale'
   if (isStaleServerRow(serverTripTimestamps.get(tripId), row.updated_at)) return 'stale'
   if (queuedLocalTrips.has(tripId)) return 'stale'
   const existing = tripById(tripId)
@@ -3891,6 +3940,9 @@ function admitFullRow(input: {
     if (validWriteVersion(cached) && incoming < cached) return 'stale'
     if (validWriteVersion(cached) && incoming === cached && existing.updatedAt > Number(row.updated_at)) return 'stale'
   }
+  // The floor is cleared only after every row, membership, identity and
+  // revision check succeeds for the expected join grant.
+  if (expectedGrant) tripAccessEpochs.delete(roleFloorKey(tripId, scope.userId))
   const trip = rowToTrip(row, mapped)
   recordServerTripTimestamp(trip.id, trip.updatedAt)
   const idx = cache.trips.findIndex(t => t.id === trip.id)
@@ -5103,6 +5155,13 @@ export function loadTripForTest(tripId: ID): Promise<LoadOutcome> {
   return loadFullTripIntoCache(tripId)
 }
 
+/** Test hook for the same access-floor check used by live write paths. */
+export function canSendTripWriteForTest(tripId: ID): boolean {
+  const scope = identityScope()
+  if (!scope) return false
+  return canSendTripWrite(scope, tripId, tripAccessEpochs.get(tripId) ?? 0)
+}
+
 /** Start listening for row changes. Call after a successful hydration. */
 let realtimeIdentity: IdentityScope | null = null
 
@@ -5437,10 +5496,12 @@ function applyRealtimeEvent(table: string, payload: RealtimePostgresChangesPaylo
       } else {
         if (userId === cache.sessionUserId && !canEdit(row?.role)) invalidateTripWork(tripId, userId)
         mutateTrip(tripId, draft => {
+          const role: TripMember['role'] = row?.role === 'owner' || row?.role === 'editor'
+            || row?.role === 'commenter' || row?.role === 'viewer' ? row.role : 'viewer'
           draft.members = applyMemberChange(draft.members ?? [], {
             event,
             userId,
-            role: (row?.role as TripMember['role']) ?? 'editor',
+            role,
             joinedAt: Number(row?.joined_at ?? oldRow?.joined_at ?? Date.now()),
           })
         }, { touch: false })

@@ -45,7 +45,7 @@ vi.mock('../src/lib/supabase', () => {
   }
 })
 
-import { _applyRealtimeEventForTest, getSnapshot, loadTripForTest, tripById } from '../src/store/store'
+import { _applyRealtimeEventForTest, canSendTripWriteForTest, getSnapshot, loadTripForTest, tripById } from '../src/store/store'
 
 const TRIP = '11111111-1111-4111-8111-111111111111'
 
@@ -130,6 +130,17 @@ describe('B1 — a downgrade that arrives for a CACHED trip blocks a stale edito
     expect(await loadTripForTest(TRIP)).toBe('loaded')
     realtime('UPDATE', { trip_id: TRIP, user_id: ME })
     expect(await loadTripForTest(TRIP)).toBe('stale')
+  })
+
+  it('an unknown cached role cannot pass the live write permission floor', async () => {
+    reset('editor')
+    expect(await loadTripForTest(TRIP)).toBe('loaded')
+    _applyRealtimeEventForTest('trip_members', {
+      eventType: 'UPDATE', new: { trip_id: TRIP, user_id: ME, role: 'mystery' },
+      old: { trip_id: TRIP, user_id: ME, role: 'editor', joined_at: 1 },
+    } as never)
+    expect(roleNow()).toBe('viewer')
+    expect(canSendTripWriteForTest(TRIP)).toBe(false)
   })
 
   it('a removal is a downgrade on the cached branch as well', async () => {

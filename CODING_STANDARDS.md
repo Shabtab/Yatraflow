@@ -877,6 +877,7 @@ process.
 
 - **An identity check is not a request binding (learned 2026-10-21, #804).** A guard that re-reads the session after an await cannot see who the request was dispatched as. Capture identity and the access generation before the first await. Pin the bearer on each fresh builder, then re-check both. Take a new try id from a module-level counter, never from state a remount resets.
 - **Shared async cleanup must compare the captured owner before deleting (learned 2026-10-21, #804).** An older try can finish after a newer one replaces the same keyed state. In `finally`, remove or release the entry only when the current value is still the one this try installed.
+- **A source-extracted probe must use the extracted lexical state (learned 2026-10-21, #804).** Do not shadow a module map with a synthetic context map. Expose extracted maps through test accessors. Include each helper the extracted code calls. Describe every synthetic async bridge.
 
 - **You must test both sides of a shared focus or schedule contract.** A prop-presence test cannot prove that a child reads the prop. Check a tab round trip through the browser. Compare arrivals and warnings for the same stop after road measurements resolve.
 

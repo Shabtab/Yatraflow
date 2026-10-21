@@ -134,12 +134,15 @@ export function ownedBy(owner: AttemptOwner | null, target: string): boolean {
 interface GateMachineStore {
   machine: JoinState
   owner: AttemptOwner | null
+  readonly mountId: number
+  readonly target: string
   /** bumped on every change, so a subscriber can tell the states apart */
   version: number
 }
 const gateMachineStores = new Map<string, GateMachineStore>()
 /** The newest store for one target, whichever mount it belongs to. */
 const latestGateStores = new Map<string, GateMachineStore>()
+const gateMountTargets = new Map<number, string>()
 const gateMachineListeners = new Set<() => void>()
 
 /** The gate's machine for a target, for a test reader. Undefined if no mount
@@ -194,16 +197,44 @@ export function gateMachine(target: string, mountId = 0): GateMachineStore {
     if (store.owner) retireAttemptOwner(store.owner)
     gateMachineStores.delete(other)
     gateMachineVersions.delete(other)
+    if (latestGateStores.get(store.target) === store) {
+      const replacement = [...gateMachineStores.values()].find(candidate => candidate.target === store.target)
+      if (replacement) latestGateStores.set(store.target, replacement)
+      else latestGateStores.delete(store.target)
+    }
   }
-  const next: GateMachineStore = { machine: initialJoinState, owner: null, version: 0 }
+  const next: GateMachineStore = { machine: initialJoinState, owner: null, mountId, target, version: 0 }
   gateMachineStores.set(key, next)
   gateMachineVersions.set(key, 0)
   latestGateStores.set(target, next)
+  gateMountTargets.set(mountId, target)
   return next
+}
+
+/** Retire and forget every gate state owned by one mounted InviteGate. */
+export function disposeGateMount(mountId: number): void {
+  for (const [key, store] of gateMachineStores) {
+    if (store.mountId !== mountId) continue
+    if (store.owner) retireAttemptOwner(store.owner)
+    gateMachineStores.delete(key)
+    gateMachineVersions.delete(key)
+    if (latestGateStores.get(store.target) === store) {
+      const replacement = [...gateMachineStores.values()].find(candidate => candidate.target === store.target)
+      if (replacement) latestGateStores.set(store.target, replacement)
+      else latestGateStores.delete(store.target)
+    }
+  }
+  gateMountTargets.delete(mountId)
+  notifyGateState()
 }
 
 /** Record a machine event's outcome for this target. */
 export function dispatchGateEvent(target: string, event: JoinEvent, mountId = 0): JoinPlan {
+  const activeTarget = gateMountTargets.get(mountId)
+  if (activeTarget !== undefined && activeTarget !== target) {
+    const current = gateMachineStores.get(mountId + "|" + activeTarget)
+    return { state: current?.machine ?? initialJoinState, action: { type: 'none' } }
+  }
   const store = gateMachine(target, mountId)
   const plan = joinMachine(store.machine, event)
   store.machine = plan.state
@@ -215,6 +246,11 @@ export function dispatchGateEvent(target: string, event: JoinEvent, mountId = 0)
 
 /** Record (or clear) the try that owns this target. */
 export function setGateOwner(target: string, owner: AttemptOwner | null, mountId = 0): void {
+  const activeTarget = gateMountTargets.get(mountId)
+  if (activeTarget !== undefined && activeTarget !== target) {
+    if (owner) retireAttemptOwner(owner)
+    return
+  }
   const store = gateMachine(target, mountId)
   if (store.owner === owner) return
   store.owner = owner
@@ -238,7 +274,7 @@ export type JoinEvent =
 /** The result of a join or a reload, as the store reports it. The refusal kinds
  *  stay distinct so the gate can say "you are not on this trip" instead of
  *  claiming a membership the server denied. */
-export type JoinResult = 'joined' | 'joined-unloaded' | 'not-member' | 'missing' | 'deleted' | 'incomplete' | 'failed' | 'abandoned'
+export type JoinResult = 'joined' | 'joined-unloaded' | 'joined-unloaded-incomplete' | 'joined-unloaded-failed' | 'not-member' | 'missing' | 'deleted' | 'incomplete' | 'failed' | 'abandoned'
 
 /** True when the event belongs to the live try. */
 function isCurrent(state: JoinState, e: { userId: string; gen: number }): boolean {
@@ -340,6 +376,8 @@ export function joinMachine(state: JoinState, event: JoinEvent): JoinPlan {
  *  the membership exists, and the unloaded case is a read problem, not a
  *  membership claim. Every other result names its own refusal. */
 function refusalFor(result: JoinResult): JoinRefusal | null {
+  if (result === 'joined-unloaded-incomplete') return 'incomplete'
+  if (result === 'joined-unloaded-failed') return 'failed'
   if (result === 'not-member' || result === 'missing' || result === 'deleted'
     || result === 'incomplete' || result === 'failed') return result
   return null
@@ -347,7 +385,7 @@ function refusalFor(result: JoinResult): JoinRefusal | null {
 
 function phaseFor(result: JoinResult): JoinPhase {
   if (result === 'joined') return 'joined'
-  if (result === 'joined-unloaded') return 'joined-unloaded'
+  if (result === 'joined-unloaded' || result === 'joined-unloaded-incomplete' || result === 'joined-unloaded-failed') return 'joined-unloaded'
   if (result === 'abandoned') return 'abandoned'
   return 'failed'
 }
