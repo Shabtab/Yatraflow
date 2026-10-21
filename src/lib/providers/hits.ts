@@ -407,6 +407,10 @@ export interface NearbyOpts {
   /** trip transport mode — motorcycle caps ride lower; conducted modes refuse
    *  the drive-day split entirely (#126). */
   transportMode?: string
+  /** Mixed only (2026-10-19): does the traveller drive any part of the trip?
+   *  Carried beside the mode because the segment planner gates the drive-day
+   *  split on the wheel, and a Mixed-No trip has none. */
+  drivesPart?: boolean
   /** trip preference vector — favoured categories win scoring ties. */
   dnaVector?: DnaVector
   /** Cancels an in-flight provider scan when a newer Map action supersedes it. */

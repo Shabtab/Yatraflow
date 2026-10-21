@@ -14,6 +14,8 @@ import { haversineKm } from './geo'
 import { classifyRoadWindow, CITY_SPEED_KMH, CITY_CRAWL_WARNING, type RoadKind } from './roadPersonality'
 import { dnaBoostForHit, type DnaVector } from './tripDna'
 import { hmToMinutes } from './engine'
+import { plannerDrives, transportPolicy } from './transportPolicy'
+import type { TransportMode } from '../data/types'
 import { HOME_ZONE_KM, kmFromStartForHit, asymmetricDetourMinutes, dedupeCandidates, type HaltPurpose, type PlaceHit } from './providers/hits'
 import { DEFAULT_FIT, PURPOSE_FIT } from './haltFit'
 
@@ -132,9 +134,15 @@ export function wheelCapHoursFor(travelStyle?: string, transportMode?: string): 
  *  shift: a 3200 km "split verdict" for a flight leg was noise (#126), and
  *  their long-distance legs carry no driving fatigue to plan around. `mixed`
  *  stays plannable (it can include real driving). */
-export function isSelfDrivenMode(transportMode?: string): boolean {
-  const m = (transportMode ?? '').trim().toLowerCase()
-  return m === 'car' || m === 'rental' || m === 'motorcycle' || m === 'mixed'
+export function isSelfDrivenMode(transportMode?: string, drivesPart?: boolean): boolean {
+  // Delegates to the ONE capability table (2026-10-19). This used to carry its
+  // own mode list, which is how four sites came to disagree about `mixed`. It
+  // keeps this name because it is the planner's historical vocabulary, not a
+  // second opinion: the planner asks the policy what the wheel is worth.
+  return transportPolicy({
+    transportMode: (transportMode ?? '').trim().toLowerCase() as TransportMode,
+    drivesPart,
+  }).driving
 }
 
 /** Party + mode inputs that move the wheel cap (#142). */
@@ -145,6 +153,9 @@ export interface PartyOpts {
   driverCount?: number
   /** infants or seniors aboard — shorter days, earlier dinner */
   hasVulnerable?: boolean
+  /** Mixed only (2026-10-19): does the traveller drive any part of the trip?
+   *  Omitted means unanswered, which keeps Mixed's legacy driving plan. */
+  drivesPart?: boolean
 }
 
 /**
@@ -159,7 +170,7 @@ export function wheelCapHoursForParty(o: PartyOpts): number | null {
   // Gate only an EXPLICIT mode: legacy callers (and every geometry-free test)
   // omit transportMode and keep planning; an omitted mode means "no mode
   // verdict asked for", not "conducted".
-  if (o.transportMode != null && !isSelfDrivenMode(o.transportMode)) return null
+  if (o.transportMode != null && !isSelfDrivenMode(o.transportMode, o.drivesPart)) return null
   let cap = wheelCapHoursFor(o.travelStyle, o.transportMode)
   const drivers = Math.min(Math.max(1, Math.floor(o.driverCount ?? 1)), 4)
   if (drivers >= 2) cap += 2 + Math.min(1, drivers - 2)
@@ -239,8 +250,13 @@ export function planDriveDays(input: {
   travelStyle?: string
   /** 0.5–1 multiplier on the wheel cap (e.g. rainFactor = 1 − dayRainPct/200) */
   rainFactor?: number
-  /** transport mode; non-driven modes (train/bus/flight/mixed) → null verdict (#126) */
+  /** transport mode; a passenger verdict is null (#126). The wheel belongs to
+   *  the traveller, so this is `isSelfDrivenMode`, not "measured on roads":
+   *  train/bus/flight/taxi are null, and Mixed follows its saved answer
+   *  (2026-10-19). An unanswered Mixed still plans as driving. */
   transportMode?: string
+  /** Mixed only: does the traveller drive any part of the trip? */
+  drivesPart?: boolean
   /** licensed drivers rotating the wheel (#142) */
   driverCount?: number
   /** infants/seniors aboard — shorter honest days (#142) */
@@ -255,6 +271,7 @@ export function planDriveDays(input: {
   const capH = wheelCapHoursForParty({
     travelStyle: input.travelStyle, transportMode: input.transportMode,
     driverCount: input.driverCount, hasVulnerable: input.hasVulnerable,
+    drivesPart: input.drivesPart,
   })
   if (capH == null) return null // #126: a timetable trip has no wheel to fatigue
   const rain = clampRainFactor(input.rainFactor)
@@ -588,8 +605,13 @@ export function planTravelClock(input: {
   /** per-day rain % (index = the walked day); beats the scalar when present
    *  (#127) — day 3's cloudburst caps day 3, not the whole trip. */
   dayRainPct?: (number | null)[]
-  /** #126 mode gate + #142 party inputs feed the same wheel cap. */
+  /** #126 mode gate + #142 party inputs feed the same wheel cap. The wheel
+   *  belongs to the traveller, so this is `isSelfDrivenMode`, not "measured on
+   *  roads": train/bus/flight/taxi get no wheel, and Mixed follows its saved
+   *  answer (2026-10-19). An unanswered Mixed still plans as driving. */
   transportMode?: string
+  /** Mixed only: does the traveller drive any part of the trip? */
+  drivesPart?: boolean
   driverCount?: number
   hasVulnerable?: boolean
   /** #122 party/season anchor overrides. */
@@ -610,6 +632,7 @@ export function planTravelClock(input: {
   const capH = wheelCapHoursForParty({
     travelStyle: input.travelStyle, transportMode: input.transportMode,
     driverCount: input.driverCount, hasVulnerable: input.hasVulnerable,
+    drivesPart: input.drivesPart,
   })
   if (capH == null) return { verdict: 'ok', days: [], returnDays: null, split: null }
   if (!Number.isFinite(totalKm) || totalKm <= 0 || !Number.isFinite(driveMin) || driveMin <= 0) {
@@ -736,6 +759,10 @@ export interface RidePlanInput {
   /** motorcycle rides 1.5 h below the style cap (#126); the day-split for
    *  conducted modes is refused upstream (isSelfDrivenMode), never here */
   transportMode?: string
+  /** Mixed only (2026-10-19): does the traveller drive any part of the trip?
+   *  Threaded through because this is the seam the segment planner reads, so
+   *  omitting it here is what lets a Mixed-No trip plan as driving. */
+  drivesPart?: boolean
   /** simplified route geometry {lat,lng}[] — enables road-personality tagging */
   roadGeometry?: { lat: number; lng: number }[]
   /** accepted night-halt pins (#143): route-km keyed by day index. A pinned
@@ -931,12 +958,16 @@ export function planRideSegments(input: RidePlanInput): RideSegment[] {
   // wheel and earns its stretch by the clock (PLAN-DAY-PLANNER §14 fixture —
   // this was the short-trip silence that opened the brainstorm).
   if (total < MIN_PLANNED_DRIVE_KM && drive < STRETCH_CLOCK_MIN) return []
-  const includeFuel = !!input.includeFuel && !input.includeCharge
+  // The wheel gate (2026-10-19). A declared passenger mode, or a Mixed trip
+  // that answered No, gets no fuel or charge halt whatever a stale caller asked
+  // for. A caller that names no mode keeps its own flags (see plannerDrives).
+  const wheels = plannerDrives({ transportMode: input.transportMode as TransportMode, drivesPart: input.drivesPart })
+  const includeFuel = !!input.includeFuel && !input.includeCharge && wheels
   // #144B: an EV charges on a tighter, 60-min-stop cadence — 0.8 × usable
   // range (buffer for hills/AC), never looser than the fuel stride. Purpose
   // stays 'fuel' (fit tables, priorities, hit matching all keep working);
   // only the label and dwell speak EV.
-  const includeCharge = !!input.includeCharge
+  const includeCharge = !!input.includeCharge && wheels
   const multiDay = !!input.multiDay
   const fuelEvery = Math.max(100, (input.vehicleRangeKm && input.vehicleRangeKm > 0 ? input.vehicleRangeKm : FUEL_INTERVAL_KM) * 0.85)
   const chargeEvery = Math.max(80, Math.min(fuelEvery, (input.vehicleRangeKm && input.vehicleRangeKm > 0 ? input.vehicleRangeKm : FUEL_INTERVAL_KM) * 0.8))
@@ -952,7 +983,7 @@ export function planRideSegments(input: RidePlanInput): RideSegment[] {
   // time (planDriveDays verdict null).
   const dayEnds: number[] = []
   if (multiDay) {
-    const days = planDriveDays({ totalKm: total, driveMinutes: drive, transportMode: input.transportMode })
+    const days = planDriveDays({ totalKm: total, driveMinutes: drive, transportMode: input.transportMode, drivesPart: input.drivesPart })
     if (days && days.nightHalts.length > 0) dayEnds.push(...days.nightHalts)
     else for (let km = OVERNIGHT_INTERVAL_KM; km < cap; km += OVERNIGHT_INTERVAL_KM) dayEnds.push(km)
   }

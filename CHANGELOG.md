@@ -15,6 +15,10 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Added
+
+- **Mixed trips now ask whether you drive any part of the trip.** The answer sets the driving options. A new Mixed trip cannot be created without one. An existing Mixed trip keeps planning the way it always did until you answer. (2026-10-19)
+
 ### Fixed
 
 - **A new snapshot link keeps the whole trip out of the request a reader makes.** The payload rides the part of the address after `#`. A browser then asks for the home page alone. The trip enters no request target, query, or referrer for that page load. (#805)
@@ -24,6 +28,14 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - **Snapshot redaction drops repeated-separator routes and unresolved encoded values before they leave the page.** Analytics data points and support drafts keep a safe route label and carry no readable trip. (#805)
 - **Sharing copy now states what a snapshot link is.** Anyone who holds the link can read the trip, and no copied link can be revoked. The reader's page also records that an older link was already sent on its first request. A browser can repeat that in same-origin referrers, and the app does not stop it. (#805)
 - **Offline trip edits have explicit conflict recovery.** The latest edit stays scoped to its account and trip. Server revisions prevent silent replacement of newer shared changes. Failed sends pause after three tries. Saved edits offer retry, download, and an explicit choice between local and shared plans. Storage failures show a warning. The "Check sync" button is a 44px target on every screen. A lost edit right or a trip the server no longer has keeps your saved copy on the device. The copy then says why it cannot sync, and you can still download it. A demoted reader keeps the trip in the list and sees the shared plan, because they can still open it. The plan carries the membership the server reports, so the edit controls go away with the right. A membership that cannot be read counts as a failed read, never as an empty list. A shared plan that cannot be read leaves the list, so a private proposal never stays on screen. The copy never syncs on its own, and it never reaches another account. A later grant does not put the copy back on screen, and a later edit cannot capture it. A kept copy is removed from the device without a connection. A delayed recovery action never touches another account's trip. A discard reads the shared plan before it removes the copy. A failed read refuses the discard while the local edit is on screen, and the copy stays. A local edit made during the read keeps its own contents. The discarded content never stays editable. The notice says the plan could not be read. A copy that cannot be exported never asks for a download. The server revision migration must precede this app update. (#783)
+- Development checks handle both Windows and Linux line endings. SQL contract checks use fixed function headers.
+- **Only the options that apply to your transport are shown.** A car, a rental car and a motorcycle keep their driving options. A train, a bus, a flight and a taxi hide the driver counts and the fuel figures. They also hide the drive-back planning. Traveller, budget, stay and travel-style options stay for every mode. (2026-10-19)
+- **A passenger trip no longer shows a driver count it does not own.** The two forms drop the driving summary, the drawer and its shortcut, and the Wheel figure. The section heading loses its wheel wording. A ticket reads as a journey. (2026-10-19)
+- **The Train pill is no longer covered by its Local switch.** The reserved space went to a class the form does not use. The selected mode's name was hidden. (2026-10-19)
+- **A driving answer is never saved in silence.** If the answer cannot be stored, the save stops and says so. Your other trip details are untouched. (2026-10-19)
+- **A passenger trip gets no fuel or charge stop.** The stop planner reads one driving answer. A passenger mode gets no fuel stop and no charge stop. A Mixed trip that answers No gets none either. A stored electric vehicle no longer adds charge stops to a passenger trip. The plan of a passenger trip reads no vehicle at all. (2026-10-19)
+- **Your driving choices stay when you change the mode.** An answer of No keeps the driver count, the vulnerable seat setting and the after-dinner allowance. They apply again when you choose Yes. A passenger mode hides them, and it does not delete them. The values you set last are the values the trip keeps. (2026-10-19)
+- **The driving answer buttons have a full touch target.** The two answers are at least 44px high at every width. The selected answer shows a pale wash with dark teal text. On a phone, both answers keep one height. (2026-10-19)
 
 ## [0.78.0] - 2026-10-21
 

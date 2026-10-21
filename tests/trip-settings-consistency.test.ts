@@ -19,7 +19,9 @@ const countTopLevel = (selector: string) => [...topLevel.matchAll(new RegExp(`^\
 
 describe('P12 — the panels sit on the shared card skin', () => {
   it('every panel renders through Surface, and none is a bare section', () => {
-    expect([...code.matchAll(/<Surface as="section" className="tsx-card/g)]).toHaveLength(4)
+    // Five, not four: the Mixed driving answer became its own panel in 2026-10-19,
+    // so it can sit next to the mode panel without a wheel it may never use.
+    expect([...code.matchAll(/<Surface as="section" className="tsx-card/g)]).toHaveLength(5)
     expect(code).not.toMatch(/<section className="tsx-card/)
     expect(code).toContain("import { Surface } from '../../components/page/Surface'")
   })
@@ -28,7 +30,16 @@ describe('P12 — the panels sit on the shared card skin', () => {
     expect(code).toContain('aria-label="Trip name and cover"')
     expect(code).toContain('aria-label="Where does it go, and for how many days"')
     expect(code).toContain('aria-label="Who is going, and how do they split the money"')
-    expect(code).toContain('aria-label="What moves you, and who is behind the wheel"')
+    // The Mixed question has no wheel behind it yet, so it says who drives and
+    // stops there. The older wording stays on the driving branch.
+    expect(code).toContain('aria-label="Will you drive any part of this trip?"')
+    expect(code).toContain("'What moves you, and who is behind the wheel' : 'What moves you'")
+  })
+
+  it('a passenger mode never announces a wheel it does not have', () => {
+    // The neutral label is chosen, not dropped: a screen reader must not be told
+    // about a driver on a bus trip.
+    expect(code).not.toContain('aria-label="What moves you"')
   })
 
   it('the skin is restated as a same-element compound, so it wins in any order (R5)', () => {
