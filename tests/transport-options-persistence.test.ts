@@ -9,6 +9,8 @@ import { transportPolicy } from '../src/lib/transportPolicy'
 import { isSelfDrivenMode, wheelCapHoursForParty } from '../src/lib/ridePlan'
 import { seedData } from '../src/data/seed'
 import type { Trip } from '../src/data/types'
+import { settingsAreDirty, settingsDryRun, formFromTrip } from '../src/pages/trip/TripSettingsForm'
+import { zipDests } from '../src/lib/destPairs'
 
 /** A probe that says the database has every column. */
 const ALL_COLS: OptionalColumnsProbe = {
@@ -34,6 +36,11 @@ function row(over: Record<string, unknown> = {}) {
     cover_emoji: 'dY-', visibility: 'private', created_at: 1, updated_at: 1,
     ...over,
   } as never
+}
+
+/** The same row through the real reader, which is what a reopened form sees. */
+function savedRow(t: Trip) {
+  return rowToTrip(tripToRow(t, 'u_1', ALL_COLS))
 }
 
 describe('the policy and the planner agree on the wheel', () => {
@@ -134,10 +141,91 @@ describe('a legacy Mixed trip keeps its preferences through an unrelated save', 
     expect(written.drives_part).toBeNull()
   })
 
-  it('removes them once the traveller explicitly says No', () => {
+  it('leaves a No trip with no wheel, and keeps the stored pair for a later Yes', () => {
     const answered = trip({ transportMode: 'mixed', drivesPart: false, driverCount: 3 })
     expect(transportPolicy({ transportMode: 'mixed', drivesPart: false }).driving).toBe(false)
     expect(wheelCapHoursForParty({ transportMode: 'mixed', drivesPart: false, driverCount: 3 })).toBeNull()
     expect(answered.driverCount).toBe(3) // still stored, and still usable after Yes
+  })
+})
+
+describe('the save keeps choices a mode does not currently use', () => {
+  // The gate's repro: save No with three drivers and a 60-minute dinner
+  // allowance, reopen and choose Yes, and both values were gone. It called the
+  // real save mapping, because the write is where the loss happened.
+  const stored = () => trip({ transportMode: 'mixed', driverCount: 3, hasVulnerable: true, driveAfterDinnerMin: 60 })
+
+  const dryRun = (form: ReturnType<typeof formFromTrip>, row: Trip) =>
+    settingsDryRun(form, zipDests(row.destinations, row.destinationCoords), null, row)
+
+  it('writes the stored pair back when the answer is No', () => {
+    const row = stored()
+    const run = dryRun({ ...formFromTrip(row), drivesPart: false }, row)
+    if (!run.ok) throw new Error(run.reason)
+    expect(run.patch.drivesPart).toBe(false)
+    expect(run.patch.driverCount).toBe(3)
+    expect(run.patch.hasVulnerable).toBe(true)
+    expect(run.patch.driveAfterDinnerMin).toBe(60)
+  })
+
+  it('reopens with both choices after the No save, and uses them again on Yes', () => {
+    const row = stored()
+    const no = dryRun({ ...formFromTrip(row), drivesPart: false }, row)
+    if (!no.ok) throw new Error(no.reason)
+    const saved = savedRow({ ...row, ...no.patch } as Trip)
+    // The row round trip is the reopen: both values are still on the trip.
+    expect(saved.drivesPart).toBe(false)
+    expect(saved.driverCount).toBe(3)
+    expect(saved.hasVulnerable).toBe(true)
+    expect(saved.driveAfterDinnerMin).toBe(60)
+    // Choosing Yes now writes the same stored pair again, not a cleared one.
+    const reopened = formFromTrip(saved)
+    expect(reopened.driverCount).toBe(3)
+    expect(reopened.driveAfterDinner).toBe(true)
+    const yes = dryRun({ ...reopened, drivesPart: true }, saved)
+    if (!yes.ok) throw new Error(yes.reason)
+    expect(yes.patch.driverCount).toBe(3)
+    expect(yes.patch.hasVulnerable).toBe(true)
+    expect(yes.patch.driveAfterDinnerMin).toBe(60)
+    // And the pair reaches the planner again once the wheel is back.
+    const reopenedYes = savedRow({ ...saved, ...yes.patch } as Trip)
+    expect(reopenedYes.driverCount).toBe(3)
+    expect(wheelCapHoursForParty({
+      transportMode: 'mixed', drivesPart: reopenedYes.drivesPart, driverCount: reopenedYes.driverCount,
+      hasVulnerable: reopenedYes.hasVulnerable, travelStyle: reopenedYes.travelStyle,
+    })).not.toBeNull()
+  })
+
+  it('keeps the pair when the mode becomes a passenger mode', () => {
+    const row = trip({ transportMode: 'car', driverCount: 2, hasVulnerable: true, driveAfterDinnerMin: 60 })
+    const run = dryRun({ ...formFromTrip(row), transportMode: 'bus' }, row)
+    if (!run.ok) throw new Error(run.reason)
+    expect(run.patch.transportMode).toBe('bus')
+    expect(run.patch.driverCount).toBe(2)
+    expect(run.patch.hasVulnerable).toBe(true)
+    expect(run.patch.driveAfterDinnerMin).toBe(60)
+    // The passenger plan still ignores them.
+    expect(transportPolicy({ transportMode: 'bus', driverCount: 2 }).driving).toBe(false)
+  })
+
+  it('still clears the allowance when the traveller turns it off in a driving mode', () => {
+    // Keeping an INACTIVE choice must not make the visible toggle un-clearable.
+    const row = trip({ transportMode: 'car', driveAfterDinnerMin: 60 })
+    const run = dryRun({ ...formFromTrip(row), driveAfterDinner: false }, row)
+    if (!run.ok) throw new Error(run.reason)
+    expect(run.patch.driveAfterDinnerMin).toBeUndefined()
+    expect(settingsAreDirty(run.patch, row)).toBe(true)
+  })
+
+  it('a passenger row that never had a wheel stays without one, and saves cleanly', () => {
+    // The old clearing behaviour is kept where it applies: a row with no wheel
+    // carries no wheel settings, so an untouched save writes the same nothing.
+    const row = trip({ transportMode: 'bus', driverCount: undefined, hasVulnerable: undefined, driveAfterDinnerMin: undefined })
+    const run = dryRun(formFromTrip(row), row)
+    if (!run.ok) throw new Error(run.reason)
+    expect(run.patch.driverCount).toBeUndefined()
+    expect(run.patch.hasVulnerable).toBeUndefined()
+    expect(run.patch.driveAfterDinnerMin).toBeUndefined()
+    expect(settingsAreDirty(run.patch, row)).toBe(false)
   })
 })

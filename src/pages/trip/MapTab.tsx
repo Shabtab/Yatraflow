@@ -22,6 +22,7 @@ import { useResolvePick } from '../../components/ResolvePickDialog'
 import { clockHM, deriveClockMilestones } from '../../lib/clockOverlay'
 import { SHEET_TABS, sheetHiddenClass, sheetTabMove } from '../../lib/mapSheet'
 import { mapScopeNote } from '../../lib/railA11y'
+import { plannerDrives } from '../../lib/transportPolicy'
 import { railKeyAction } from '../../lib/railKeys'
 import { candidatesAnnouncement, fillLabel, pickDayCaveat, scopeValueText, searchAnnouncement, voteStatusId } from '../../lib/railA11y'
 import { MapOmnibar } from './MapOmnibar'
@@ -432,14 +433,20 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
   // corridor toward crew-proposed kinds.
   const crewSeeds = useMemo(() => crewSeedsFromSuggestions(crewSuggestions ?? []), [crewSuggestions])
 
+  // The wheel decides whether a fuel or charge halt exists (2026-10-19). This
+  // is the planner boundary, so it is asked HERE, once, and not by the form:
+  // the stored vehicle profile stays on the row for a later driving trip.
+  const wheel = plannerDrives({ transportMode: trip.transportMode, drivesPart: trip.drivesPart })
+
   const nearbyOpts: NearbyOpts = useMemo(() => ({
     // The wheel answer rides every planner call (2026-10-19); without it a
     // Mixed-No trip keeps getting a driving plan from this seam.
     drivesPart: trip.drivesPart,
     // #144B: an electric profile charges instead of fuelling — the segment
-    // cadence and the hit queries both read this flag.
-    includeFuel: !isElectric(trip.vehicleProfile) && (trip.transportMode === 'car' || trip.transportMode === 'motorcycle'),
-    includeCharge: isElectric(trip.vehicleProfile),
+    // cadence and the hit queries both read this flag. A passenger trip asks
+    // for neither: a bus with a stored EV profile does not charge.
+    includeFuel: wheel && !isElectric(trip.vehicleProfile) && (trip.transportMode === 'car' || trip.transportMode === 'motorcycle'),
+    includeCharge: wheel && isElectric(trip.vehicleProfile),
     // #189 + 20260915_trip_party_prefs.sql: the persisted vehicle profile is
     // the one owner of fuel-stop cadence. Without it here, geocode.ts falls
     // through to FUEL_INTERVAL_KM (450) and a 60 L / 20 km-L bike is planned

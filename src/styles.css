@@ -11642,3 +11642,35 @@ html.native-shell .app-shell:not(:has(> .topnav)) > main {
    number column instead of squeezing the question into it (2026-10-19). */
 .tsx-head--plain { grid-template-columns: minmax(0, 1fr); }
 .tsx-head--plain .tsx-a { grid-column: 1 / -1; }
+/* ---- Mixed driving answer: Yes / No (Create Trip, Trip Settings) ----
+   The two answers to the one question Mixed asks. Every selector here is new,
+   so no top-level selector is declared twice, and the rules sit at the very
+   end of the file. Appending keeps the line-keyed design-system baseline valid
+   (AGENTS.md 4). The pair's layout, its moving wash and the padded Train pill
+   stay in the block the pair already carries, in its merged position. */
+
+/* .crew-btn is a 36px round counter in the crew rows, and the 720px block
+   raises it to 40px only. A word answer is a primary choice, so this rule
+   sets 44px. The rule is scoped to the pair's own state attribute, so it adds
+   no second declaration of a selector the pair already has; it also carries
+   more weight than the mobile rule, which wins any tie on height. Do not split
+   this rule in two. */
+.transport-answer-pair[data-sel] > .crew-btn {
+  min-height: 44px; height: auto; padding: 0 16px; font-size: 14px; line-height: 1.25; white-space: normal; overflow-wrap: anywhere;
+}
+/* Selected ink: a pale wash, the teal border and dark teal text. "Yes, I
+   drive" has no descendant element, so the themed rule that paints
+   `.crew-btn.on .hint` cannot reach it; this rule names a background AND a
+   colour, so no later shared rule can leave the answer in visible-on-visible
+   ink. The values are the quick-budget chip's selected pair (5.1:1). */
+.transport-answer-pair > .crew-btn.on { background: var(--yf-teal-100); border-color: var(--yf-teal-600); color: var(--yf-teal-700); }
+/* Dark theme: the wash darkens, and teal-700 is the BRIGHT shade there, so the
+   ink flips to teal-600 (5.6:1), the same pair the chip uses. */
+[data-theme='dark'] .transport-answer-pair > .crew-btn.on { background: var(--yf-teal-100); border-color: var(--yf-teal-600); color: var(--yf-teal-600); }
+/* A phone splits "No, passenger only" over three lines, so the two answers
+   differ in height and the moving wash covered only the shorter one. The pair
+   stretches each button to the row, and the height floor moves onto the button
+   itself, because a fixed `height` on the button opts it out of stretching. */
+@media (max-width: 720px) {
+  .transport-answer-pair[data-sel] > .crew-btn { height: 100%; }
+}

@@ -14,7 +14,7 @@ import { haversineKm } from './geo'
 import { classifyRoadWindow, CITY_SPEED_KMH, CITY_CRAWL_WARNING, type RoadKind } from './roadPersonality'
 import { dnaBoostForHit, type DnaVector } from './tripDna'
 import { hmToMinutes } from './engine'
-import { transportPolicy } from './transportPolicy'
+import { plannerDrives, transportPolicy } from './transportPolicy'
 import type { TransportMode } from '../data/types'
 import { HOME_ZONE_KM, kmFromStartForHit, asymmetricDetourMinutes, dedupeCandidates, type HaltPurpose, type PlaceHit } from './providers/hits'
 import { DEFAULT_FIT, PURPOSE_FIT } from './haltFit'
@@ -958,12 +958,16 @@ export function planRideSegments(input: RidePlanInput): RideSegment[] {
   // wheel and earns its stretch by the clock (PLAN-DAY-PLANNER §14 fixture —
   // this was the short-trip silence that opened the brainstorm).
   if (total < MIN_PLANNED_DRIVE_KM && drive < STRETCH_CLOCK_MIN) return []
-  const includeFuel = !!input.includeFuel && !input.includeCharge
+  // The wheel gate (2026-10-19). A declared passenger mode, or a Mixed trip
+  // that answered No, gets no fuel or charge halt whatever a stale caller asked
+  // for. A caller that names no mode keeps its own flags (see plannerDrives).
+  const wheels = plannerDrives({ transportMode: input.transportMode as TransportMode, drivesPart: input.drivesPart })
+  const includeFuel = !!input.includeFuel && !input.includeCharge && wheels
   // #144B: an EV charges on a tighter, 60-min-stop cadence — 0.8 × usable
   // range (buffer for hills/AC), never looser than the fuel stride. Purpose
   // stays 'fuel' (fit tables, priorities, hit matching all keep working);
   // only the label and dwell speak EV.
-  const includeCharge = !!input.includeCharge
+  const includeCharge = !!input.includeCharge && wheels
   const multiDay = !!input.multiDay
   const fuelEvery = Math.max(100, (input.vehicleRangeKm && input.vehicleRangeKm > 0 ? input.vehicleRangeKm : FUEL_INTERVAL_KM) * 0.85)
   const chargeEvery = Math.max(80, Math.min(fuelEvery, (input.vehicleRangeKm && input.vehicleRangeKm > 0 ? input.vehicleRangeKm : FUEL_INTERVAL_KM) * 0.8))

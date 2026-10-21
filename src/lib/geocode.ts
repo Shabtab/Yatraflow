@@ -25,7 +25,7 @@ export { googleCitiesAlong } from './providers/google'
 export { searchCitiesAlong } from './providers/free'
 export { planRideSegments, assignSegmentHits, leftoverAsSight, reasonForSegmentHit, reasonForHit, kmFromStartForHit, planDriveDays, planTravelClock, isSelfDrivenMode, rainFactorFor, DEFER_START, type SegmentHit, type RideSegment, type DriveDaysPlan, type TravelClockVerdict } from './ridePlan'
 export { hasCoords } from './providers/hits'
-import { transportPolicy } from './transportPolicy'
+import { plannerDrives } from './transportPolicy'
 import type { TransportMode } from '../data/types'
 
 import { hasCoords, rankAndCap, filterPlannedNearby, kmFromStartForHit, type NearbyOpts, type PlaceHit } from './providers/hits'
@@ -312,19 +312,22 @@ export async function planJourneyHalts(
   radiusM = 35000,
 ): Promise<SegmentHit[]> {
   // 1. Plan segments first so we know which purposes we need to search for
-  const vehicleRange = opts.vehicleRangeKm
-    ?? (opts.vehicleProfile ? resolveVehicleRange(opts.vehicleProfile).planCadenceKm : undefined)
+  // The wheel decides whether a fuel or charge halt exists at all (2026-10-19).
+  // A passenger trip keeps its electric profile on the row, but that profile
+  // describes a vehicle it is not driving: no range, no charge cadence.
+  const wheel = plannerDrives({ transportMode: opts.transportMode as TransportMode, drivesPart: opts.drivesPart })
+  const vehicleRange = !wheel
+    ? undefined
+    : opts.vehicleRangeKm
+      ?? (opts.vehicleProfile ? resolveVehicleRange(opts.vehicleProfile).planCadenceKm : undefined)
   const segments = planRideSegments({
     totalKm,
     driveMinutes,
-    // Backstop (2026-10-19): the caller decides, but a stale caller that still
-    // asks for fuel on a passenger trip must not produce a fuel plan. Fuel
-    // halts belong to the traveller's own wheel.
-    includeFuel: opts.includeFuel && transportPolicy({
-      transportMode: opts.transportMode as TransportMode,
-      drivesPart: opts.drivesPart,
-    }).driving,
-    includeCharge: opts.includeCharge,
+    // The caller decides, but a stale caller that asks for fuel or charge on a
+    // passenger trip must not produce a halt. Fuel and charge belong to the
+    // traveller's own wheel.
+    includeFuel: opts.includeFuel && wheel,
+    includeCharge: opts.includeCharge && wheel,
     haltPins: opts.haltPins ?? undefined,
     multiDay: opts.multiDay,
     vehicleRangeKm: vehicleRange,

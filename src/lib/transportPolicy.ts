@@ -119,3 +119,19 @@ export function isDrivingTrip(choice: TransportChoice): boolean {
 export function showsDrivingControls(choice: TransportChoice): boolean {
   return transportPolicy(choice).showsDrivingControls
 }
+
+/**
+ * The PLANNER boundary. It answers a different question from `isDrivingTrip`:
+ * "may this plan carry a fuel or charge halt?".
+ *
+ * A row with no readable mode keeps the caller's own choice. A missing mode
+ * means "no mode verdict asked for", not "conducted" — several legacy callers
+ * omit it, and their `includeFuel` flag is the only statement about the wheel.
+ * A DECLARED mode answers through the same table, so a stale flag cannot add a
+ * halt the trip does not own.
+ */
+export function plannerDrives(choice: TransportChoice): boolean {
+  const mode = String(choice.transportMode ?? '').trim().toLowerCase()
+  if (mode === '') return true
+  return transportPolicy({ transportMode: mode as TransportMode, drivesPart: choice.drivesPart }).driving
+}

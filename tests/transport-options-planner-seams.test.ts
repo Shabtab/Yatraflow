@@ -84,6 +84,44 @@ describe('a stale driver count cannot move a passenger plan', () => {
   })
 })
 
+describe('a passenger trip never gets a fuel or charge halt', () => {
+  // The EV profile is the leak the gate caught: an electric vehicle profile on
+  // a bus trip still produced charge segments, because the charge flag was
+  // never gated by the wheel. These call the REAL segment planner with the same
+  // inputs the Map tab passes, and assert the stops it returns.
+  const CHARGE_TRIP = {
+    totalKm: 1000, driveMinutes: 1200, dayStartTimes: ['08:30'],
+    multiDay: true, includeCharge: true, vehicleRangeKm: 300,
+  } as const
+
+  // A charge stop can fold into a meal or an overnight ("Meal + charge"), so
+  // the observable is the Charge wording the traveller sees, not the purpose.
+  const chargeStops = (plan: ReturnType<typeof planRideSegments>) => plan.filter(s => /charge/i.test(s.label))
+
+  it.each(['bus', 'train', 'flight', 'taxi'] as const)('%s gets no fuel or charge stops', (mode) => {
+    const plan = planRideSegments({ ...CHARGE_TRIP, transportMode: mode })
+    expect(chargeStops(plan)).toHaveLength(0)
+  })
+
+  it('a Mixed trip that answered No gets none either', () => {
+    const plan = planRideSegments({ ...CHARGE_TRIP, transportMode: 'mixed', drivesPart: false })
+    expect(chargeStops(plan)).toHaveLength(0)
+  })
+
+  it('the same inputs still plan charge stops for a driving trip (control)', () => {
+    // Control: without this, the assertions above would pass on a planner that
+    // simply never made a charge stop.
+    expect(chargeStops(planRideSegments({ ...CHARGE_TRIP, transportMode: 'car' })).length).toBeGreaterThan(0)
+    expect(chargeStops(planRideSegments({ ...CHARGE_TRIP, transportMode: 'mixed' })).length).toBeGreaterThan(0)
+  })
+
+  it('a legacy caller that names no mode keeps the flags it asked for', () => {
+    // A charge flag with no mode is the caller's own statement about the wheel.
+    // The gate must not read the missing mode as a passenger trip.
+    expect(chargeStops(planRideSegments({ ...CHARGE_TRIP })).length).toBeGreaterThan(0)
+  })
+})
+
 describe('the map cache key separates all three answers', () => {
   const base = {
     anchorsHash: 'a', routeHash: 'r', travelStyle: 'balanced',

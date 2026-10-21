@@ -164,6 +164,8 @@ export function settingsDryRun(
     if (rec.error) return { ok: false, reason: rec.error, blocked: rec.blocked }
   }
   const selfDriven = transportPolicy({ transportMode: f.transportMode, drivesPart: f.drivesPart }).driving
+  // The two inner settings below are the ones a mode switch can strand.
+  const baseSelfDriven = transportPolicy({ transportMode: trip.transportMode, drivesPart: trip.drivesPart }).driving
   // Selecting Mixed is a change the traveller has just made, so it needs the
   // answer now. A trip that was ALREADY Mixed and unanswered is a different
   // case: it keeps its planning and its preferences, and an unrelated save
@@ -188,19 +190,25 @@ export function settingsDryRun(
       // here — the save mapping is the only writer of either.
       destinations, destinationCoords,
       travellers: clampCrew(f.travellers),
-      // The party dials only exist for self-drive modes (the block above is
-      // gated on the same predicate), so a conducted trip never carries
-      // them — and switching to one clears what a previous mode set.
-      driverCount: selfDriven ? f.driverCount : undefined,
-      hasVulnerable: selfDriven ? f.hasVulnerable : undefined,
+      // The party dials are shown only while the trip has a wheel, but the
+      // choice must OUTLIVE the mode (2026-10-19). This block used to clear the
+      // pair for any trip without a wheel, so saving a No answer on a Mixed
+      // trip, or switching to a passenger mode, erased three drivers and a
+      // custom dinner allowance, and turning the wheel back on found them gone.
+      // So a value is written when it is LIVE, or when it is UNCHANGED and the
+      // trip already had no wheel. The second clause keeps the old clearing
+      // behaviour on a row that never had a wheel, and keeps the switch to a
+      // passenger mode from rewriting values it never used.
+      driverCount: selfDriven || !baseSelfDriven ? f.driverCount : trip.driverCount,
+      hasVulnerable: selfDriven || !baseSelfDriven ? f.hasVulnerable : trip.hasVulnerable,
       // #213 Phase 5: only write the 120-minute default when the toggle is
       // being turned ON. A trip stored with a custom allowance (say 60)
       // used to be silently rewritten to 120 by any unrelated save.
-      driveAfterDinnerMin: !selfDriven
-        ? undefined
-        : f.driveAfterDinner
-          ? (trip.driveAfterDinnerMin ?? DEFAULT_DRIVE_AFTER_DINNER_MIN)
-          : undefined,
+      driveAfterDinnerMin: !selfDriven && baseSelfDriven
+        ? trip.driveAfterDinnerMin
+        : !f.driveAfterDinner
+          ? undefined
+          : (trip.driveAfterDinnerMin ?? DEFAULT_DRIVE_AFTER_DINNER_MIN),
       budgetPerPersonInr: Math.max(0, f.budget),
       transportMode: f.transportMode, travelStyle: f.travelStyle,
       // The Mixed answer is stored whatever the mode, so a later switch back to
