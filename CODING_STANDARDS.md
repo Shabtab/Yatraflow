@@ -1091,6 +1091,8 @@ process.
   A bounded percent decoder must fail closed when another layer remains. Its
   recovery test must decode independently to a fixed point and report an
   exhausted oracle budget; matching the production bound can certify a leak.
+  An unrecognized hash route can hold a snapshot token outside the share
+  prefix. Outbound fallback must use a fixed root label, not copy that route.
   `strict-origin-when-cross-origin` sends a full same-origin path, so an old
   link recurs in same-origin referrers. Say that in copy, and never write a
   test that certifies a control the app does not have.

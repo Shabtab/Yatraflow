@@ -206,9 +206,7 @@ function safePageLabel(url: string): string {
   if ((path === '/' || path === '/index.html') && isShareRoute(hashRoute)) {
     return `${prefix}/#/share`
   }
-  if ((path === '/' || path === '/index.html') && hashRoute && !/%/.test(hashRoute)) {
-    return `${prefix}/#${hashRoute}`
-  }
+  if (path === '/' || path === '/index.html') return `${prefix}/`
   if (/%|yf1_/i.test(path)) return `${prefix}/`
   return `${prefix}${path}`
 }
@@ -220,8 +218,10 @@ function safePageLabel(url: string): string {
  *
  *  A percent-encoded address can hide a second copy of the route inside a
  *  query value, so the outer `/share/` is not the only one. Redaction decodes
- *  the address a bounded number of times and strips every copy it finds. An
- *  address with no snapshot route comes back untouched. */
+ *  the address a bounded number of times and strips every copy it finds. If a
+ *  snapshot token remains or another encoded layer may remain, it emits a safe
+ *  page label. A ninth layer is discarded even when it is harmless. Addresses
+ *  that finish decoding within the bound and contain no snapshot stay unchanged. */
 export function redactSnapshotUrl(url: string): string {
   let decoded = url
   let exhausted = true

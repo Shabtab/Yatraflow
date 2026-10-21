@@ -25,10 +25,17 @@ function canaryTrip() {
   return { ...structuredClone(seedData.trips[0]), name: CANARY }
 }
 
-/** Decode every percent layer the draft can hide, then read each payload
- *  token back with the shipped decoder. A canary name here means the trip
- *  travelled; an empty list means it did not. */
-async function recoverableTripNames(value: string): Promise<string[]> {
+function percentEncodeEveryCharacter(value: string): string {
+  return Array.from(value, character => `%${character.charCodeAt(0).toString(16).padStart(2, '0')}`).join('')
+}
+
+function wrapPercentEncoding(value: string, depth: number): string {
+  let encoded = value
+  for (let pass = 0; pass < depth; pass++) encoded = encodeURIComponent(encoded)
+  return encoded
+}
+
+function decodePercentLayers(value: string): string {
   let decoded = value
   for (let pass = 0; pass < 256; pass++) {
     const next = decoded.replace(/(?:%[0-9a-f]{2})+/gi, run => {
@@ -39,11 +46,18 @@ async function recoverableTripNames(value: string): Promise<string[]> {
           String.fromCharCode(parseInt(hex, 16)))
       }
     })
-    if (next === decoded) break
+    if (next === decoded) return decoded
     if (next.length >= decoded.length) throw new Error('recovery did not make progress')
     decoded = next
-    if (pass === 255) throw new Error('recovery oracle budget expired')
   }
+  throw new Error('recovery oracle budget expired')
+}
+
+/** Decode every percent layer the draft can hide, then read each payload
+ *  token back with the shipped decoder. A canary name here means the trip
+ *  travelled; an empty list means it did not. */
+async function recoverableTripNames(value: string): Promise<string[]> {
+  const decoded = decodePercentLayers(value)
   const names: string[] = []
   for (const match of decoded.matchAll(/yf1_[A-Za-z0-9_-]+/g)) {
     try {
@@ -156,19 +170,24 @@ describe('a support draft never carries a snapshot payload', () => {
   it.each([9, 17])('does not leak a payload nested through %i encoding layers', async depth => {
     const trip = canaryTrip()
     const payload = await encodeTripSnapshot(trip)
-    const nested = Array.from({ length: depth }).reduce<string>(
-      value => encodeURIComponent(value), `${ORIGIN}/#/share/${payload}`,
-    )
-    stubAddress(`${ORIGIN}/#/share/${payload}?next=${nested}`)
+    const nested = wrapPercentEncoding(percentEncodeEveryCharacter(payload), depth - 1)
+    const unsafeUrl = `${ORIGIN}/trips?next=${nested}`
+    expect(nested).not.toContain('yf1_')
+    expect(decodePercentLayers(nested)).toBe(payload)
+    expect(await recoverableTripNames(unsafeUrl)).toEqual([CANARY])
+    stubAddress(unsafeUrl)
     const href = feedbackHref()
-    expect(await recoverableTripNames(`${ORIGIN}/?next=${nested}`)).toEqual([CANARY])
+    expect(draftPage(href)).toBe('/trips')
+    expect(decodePercentLayers(draftPage(href))).not.toContain('yf1_')
     expect(await recoverableTripNames(draftPage(href))).toEqual([])
   })
 
   it('does not leak a deeply encoded token without a visible route label', async () => {
     const trip = canaryTrip()
     const payload = await encodeTripSnapshot(trip)
-    const nested = Array.from({ length: 17 }).reduce<string>(value => encodeURIComponent(value), payload)
+    const nested = wrapPercentEncoding(percentEncodeEveryCharacter(payload), 16)
+    expect(nested).not.toContain('yf1_')
+    expect(decodePercentLayers(nested)).toBe(payload)
     stubAddress(`${ORIGIN}/trips?ticket=${nested}`)
     const href = feedbackHref()
     expect(await recoverableTripNames(`${ORIGIN}/?ticket=${nested}`)).toEqual([CANARY])
