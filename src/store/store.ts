@@ -3056,12 +3056,16 @@ function coherentFullRow(row: unknown, cols?: OptionalColumnsProbe): row is Trip
   for (const field of ['destinations', 'days', 'expenses', 'fixed_commitments']) {
     if (!(Array.isArray(r[field]) || r[field] === null)) return false
   }
-  if (r.destination_coords !== undefined && r.destination_coords !== null && !Array.isArray(r.destination_coords)) return false
+  if (!(Array.isArray(r.destination_coords) || r.destination_coords === null)) return false
+  if (Array.isArray(r.destination_coords) && !r.destination_coords.every(point => point === null || (
+    !!point && typeof point === 'object' && !Array.isArray(point) && finiteNumber((point as Record<string, unknown>).lat)
+      && finiteNumber((point as Record<string, unknown>).lng)
+  ))) return false
   // A coordinate pair is null or an object with two finite numbers.
-  if (r.start_location_coords != null) {
+  if (r.start_location_coords !== null && r.start_location_coords !== undefined) {
     const c = r.start_location_coords as Record<string, unknown>
-    if (typeof c !== 'object' || !finiteNumber(c.lat) || !finiteNumber(c.lng)) return false
-  }
+    if (typeof c !== 'object' || Array.isArray(c) || !finiteNumber(c.lat) || !finiteNumber(c.lng)) return false
+  } else if (r.start_location_coords === undefined) return false
   // Optional columns: a column the writer does not know is refused, and a
   // known column may be null.
   const optional: Array<[keyof OptionalColumnsProbe, (v: unknown) => boolean]> = [
@@ -3092,8 +3096,10 @@ function coherentFullRow(row: unknown, cols?: OptionalColumnsProbe): row is Trip
     }
     if (!isValid(value)) return false
   }
-  // A JSONB object column: null or an object.
-  if (r.vehicle_profile != null && (typeof r.vehicle_profile !== 'object' || Array.isArray(r.vehicle_profile))) return false
+  // A JSONB object column: check it when this writer includes the column.
+  if (r.vehicle_profile === undefined && cols?.vehicleProfile) return false
+  if (r.vehicle_profile !== undefined && r.vehicle_profile !== null
+    && (typeof r.vehicle_profile !== 'object' || Array.isArray(r.vehicle_profile))) return false
   return true
 }
 
@@ -3119,10 +3125,18 @@ function usableCachedTrip(trip: Trip | undefined, tripId: string): boolean {
   if (!trip) return false
   if (typeof trip.id !== 'string' || trip.id.toLowerCase() !== tripId.toLowerCase()) return false
   if (typeof trip.name !== 'string' || trip.name.length === 0) return false
-  if (!Array.isArray(trip.days) || !Array.isArray(trip.expenses) || !Array.isArray(trip.destinations)) return false
+  if (typeof trip.startLocation !== 'string' || typeof trip.transportMode !== 'string'
+    || typeof trip.travelStyle !== 'string' || typeof trip.coverEmoji !== 'string') return false
+  if (!Number.isFinite(trip.travellers) || !Number.isFinite(trip.budgetPerPersonInr)
+    || !Number.isFinite(trip.createdAt) || !Number.isFinite(trip.updatedAt)) return false
+  if (trip.visibility !== 'private' && trip.visibility !== 'public') return false
+  if (!Array.isArray(trip.days) || !Array.isArray(trip.expenses) || !Array.isArray(trip.destinations)
+    || !Array.isArray(trip.fixedCommitments)) return false
   if (typeof trip.startDate !== 'string' || typeof trip.endDate !== 'string') return false
   if (!validWriteVersion(trip.writeVersion)) return false
-  return Array.isArray(trip.members)
+  return Array.isArray(trip.members) && trip.members.every(member =>
+    !!member && typeof member === 'object' && typeof member.userId === 'string' && Number.isFinite(member.joinedAt)
+      && (member.role === 'owner' || member.role === 'editor' || member.role === 'commenter' || member.role === 'viewer'))
 }
 
 function canSendTripWrite(scope: IdentityScope, tripId: string, accessEpoch: number): boolean {
@@ -3625,7 +3639,7 @@ export async function joinViaInvite(
     // Only the try that RECORDED the window may close it. An older, retired try
     // that unwinds after a newer try opened its own window must not close that
     // newer one.
-    expectedJoins.delete(tripId)
+    if (expectedJoins.get(tripId) === expectation) expectedJoins.delete(tripId)
   }
 }
 

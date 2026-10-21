@@ -102,7 +102,7 @@ vi.mock('../src/lib/supabase', () => {
   }
 })
 
-import { joinViaInvite, getSnapshot, tripById } from '../src/store/store'
+import { joinViaInvite, getSnapshot, reloadJoinedTrip, tripById } from '../src/store/store'
 
 const TRIP = '11111111-1111-4111-8111-111111111111'
 const ALICE = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
@@ -274,6 +274,42 @@ describe('R2/a — an unusable revision into an empty cache is not a join', () =
 
     expect(outcome).toBe('incomplete')
     expect(tripById(TRIP)).toBeUndefined()
+  })
+})
+
+describe('B3 — admission checks the requested id and complete row shape', () => {
+  it('a coherent response for a different requested trip is refused', async () => {
+    const otherTrip = '22222222-2222-4222-8222-222222222222'
+    state.memberRowForCaller = { user_id: ALICE }
+    state.tripRow = tripRow({ id: otherTrip, write_version: 2 })
+    state.members = [{ trip_id: otherTrip, user_id: ALICE, role: 'editor', joined_at: 1 }]
+
+    expect(await joinViaInvite(TRIP, ALICE, CODE)).toBe('incomplete')
+    expect(tripById(otherTrip)).toBeUndefined()
+    expect(tripById(TRIP)).toBeUndefined()
+  })
+
+  it.each(['start_location_coords', 'destination_coords', 'vehicle_profile'])(
+    'a full row without %s is refused before cache admission', async field => {
+      state.memberRowForCaller = { user_id: ALICE }
+      state.members = [{ trip_id: TRIP, user_id: ALICE, role: 'editor', joined_at: 1 }]
+      state.tripRow = tripRow({ [field]: undefined })
+
+      expect(await joinViaInvite(TRIP, ALICE, CODE)).toBe('incomplete')
+      expect(tripById(TRIP)).toBeUndefined()
+    },
+  )
+
+  it('a stale incomplete cached row cannot satisfy the joined fallback', async () => {
+    ;(getSnapshot() as unknown as { trips: unknown[] }).trips = [{
+      id: TRIP,
+      members: [{ userId: ALICE, role: 'editor', joinedAt: 1 }],
+      writeVersion: 10,
+    }]
+    state.tripRow = tripRow({ write_version: 1 })
+    state.members = [{ trip_id: TRIP, user_id: ALICE, role: 'editor', joined_at: 1 }]
+
+    expect(await reloadJoinedTrip(TRIP)).toBe('incomplete')
   })
 })
 

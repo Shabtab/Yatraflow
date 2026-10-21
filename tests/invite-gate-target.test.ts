@@ -49,10 +49,10 @@ interface Harness {
   rerender: () => void
   settle: () => Promise<void>
   setUser: (id: string | null) => void
-  stateBlock: () => { props: { title?: string } } | undefined
+  stateBlock: () => { props: { title?: string; body?: string } } | undefined
 }
 
-function mountGate(join: (tripId: string) => Promise<string>, overrides: Record<string, unknown> = {}): Harness {
+function mountGate(join: (tripId: string) => Promise<gate.JoinResult>, overrides: Record<string, unknown> = {}): Harness {
   const slots: unknown[] = []
   const deps: unknown[][] = []
   const listeners: Array<Array<() => void>> = []
@@ -149,7 +149,7 @@ function mountGate(join: (tripId: string) => Promise<string>, overrides: Record<
     const n = node as Record<string, unknown>
     return [...(pred(n) ? [n] : []), ...(((n.children as unknown[]) ?? []).flatMap(c => walk(c, pred))), ...walk(n.props && (n.props as Record<string, unknown>).actions, pred)]
   }
-  const stateBlock = () => walk(tree, n => n.type === 'StateBlock')[0] as { props: { title?: string } } | undefined
+  const stateBlock = () => walk(tree, n => n.type === 'StateBlock')[0] as { props: { title?: string; body?: string } } | undefined
   return {
     props, events, rerender: () => { dirty = true }, settle, setUser: id => { context.me = id ? { id } : null; dirty = true },
     stateBlock,
@@ -242,5 +242,18 @@ describe('B4 — a target change retires the old join before it can finish the n
     await h.settle()
     const navigations = h.events.filter(e => e[0] === 'navigate')
     expect(navigations.filter(e => e[1] === `/trip/${TRIP_A}`), 'the old membership answer opens nothing').toHaveLength(0)
+  })
+})
+
+describe('B5 — the real invite screen names each terminal refusal', () => {
+  it.each([
+    ['not-member', 'This account is not on the trip'],
+    ['missing', 'This trip is not available'],
+    ['deleted', 'This trip was deleted'],
+  ] as const)('%s renders its own status', async (result, title) => {
+    const h = mountGate(async () => result)
+    await h.settle()
+    expect(h.stateBlock()?.props.title).toBe(title)
+    expect(h.events.filter(e => e[0] === 'navigate')).toHaveLength(0)
   })
 })

@@ -27,6 +27,7 @@ const { state } = vi.hoisted(() => ({
     // An optional gate on the SDK's session read, so a test can retire the try
     // while that read is in flight.
     sessionGate: null as Promise<void> | null,
+    sessionCalls: 0,
   },
 }))
 
@@ -68,7 +69,8 @@ vi.mock('../src/lib/supabase', () => {
     supabase: {
       auth: {
         getSession: async () => {
-          if (state.sessionGate) await state.sessionGate
+          state.sessionCalls += 1
+          if (state.sessionGate && state.sessionCalls === 1) await state.sessionGate
           return { data: { session: { access_token: 'synthetic-token', user: { id: ME } } }, error: null }
         },
       },
@@ -131,6 +133,7 @@ function freshAccount() {
   db.trips = []
   state.pending = null
   state.memberReads = 0
+  state.sessionCalls = 0
   state.memberRows = [{ trip_id: TRIP, user_id: ME, role: 'editor', joined_at: 2 }, { trip_id: TRIP, user_id: OWNER, role: 'owner', joined_at: 1 }]
 }
 
@@ -217,6 +220,8 @@ describe('B2 — the own-echo exemption ends with the try that opened it', () =>
     expect(STORE).toMatch(/const expectation: JoinExpectation = \{ tripId, userId, identityEpoch, guard:/)
     expect(STORE).toContain("const expectation = event === 'INSERT' ? expectedJoin(tripId, true) : undefined")
     expect(STORE).toContain('const ownJoinEcho = !!expectation && userId === expectation.userId && canEdit(row?.role)')
+    const join = STORE.slice(STORE.indexOf('export async function joinViaInvite('), STORE.indexOf('async function joinAfterScope('))
+    expect(join).toContain('if (expectedJoins.get(tripId) === expectation) expectedJoins.delete(tripId)')
   })
 
   it('a retirement DURING the session read dispatches no membership request', async () => {
@@ -232,5 +237,33 @@ describe('B2 — the own-echo exemption ends with the try that opened it', () =>
     expect(await join).toBe('abandoned')
     expect(state.memberReads, 'no membership read is issued after the retirement').toBe(0)
     state.sessionGate = null
+  })
+
+  it('an older retired try cannot close a newer try window for the same trip', async () => {
+    freshAccount()
+    holdTheRead()
+    let openSession!: () => void
+    state.sessionGate = new Promise<void>(r => { openSession = r })
+    let olderLive = true
+    const older = joinViaInvite(TRIP, ME, 'CODE', () => olderLive)
+
+    // The second try passes session lookup and waits on its own full-row read.
+    let newerLive = true
+    const newer = joinViaInvite(TRIP, ME, 'CODE', () => newerLive)
+    await readStarted()
+
+    // Retiring the older attempt must not erase the newer attempt's expectation.
+    olderLive = false
+    openSession()
+    expect(await older).toBe('abandoned')
+    const readsBeforeEcho = state.pending?.reads
+    ownInsertEcho()
+    expect(state.pending?.reads, 'the newer live expectation owns the echo').toBe(readsBeforeEcho)
+    releaseTheRead()
+
+    expect(await newer).toBe('joined')
+    expect(tripById(TRIP)?.members.some(m => m.userId === ME)).toBe(true)
+    state.sessionGate = null
+    expect(newerLive).toBe(true)
   })
 })
