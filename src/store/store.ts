@@ -23,8 +23,8 @@ import { dayCountForRange } from '../lib/dayCount'
 import { amountRefusal, amountVerdict } from '../lib/expenseAmount'
 import { attachDnaAccount, detachDnaAccount } from '../lib/tripDna'
 import { clearSnapshot, loadSnapshot, saveSnapshot } from '../lib/offlineCache'
-import { backfillCreateFunnelSession } from '../lib/createEvents'
 import { randomToken } from '../lib/randomId'
+import { campaignId, type CampaignId, type ForkOrigin } from '../lib/growthAttribution'
 import {
   clearWritesFor, dropQueuedWrite, pendingWrites, queueWrite, requeueIfCurrent, shouldRetry, type QueuedWrite,
 } from '../lib/writeQueue'
@@ -668,7 +668,6 @@ export function init(): void {
       if (hydrationSucceeded && gen === hydrateGen && cache.sessionUserId === userId) connectRealtime(userId)
       if (hydrationSucceeded && gen === hydrateGen && cache.sessionUserId === userId) void attachDnaAccount(supabase, userId)
       if (hydrationSucceeded && gen === hydrateGen && cache.sessionUserId === userId) void replayQueuedWrites()
-      if (hydrationSucceeded && gen === hydrateGen && cache.sessionUserId === userId) backfillCreateFunnelSession(userId)
     })()
     // Register the whole operation, including its first storage await.
     activeHydrate = { userId, promise }
@@ -1073,7 +1072,7 @@ async function seedDemoFor(userId: string, gen: number = hydrateGen): Promise<vo
     const owner: TripMember = { userId, role: 'owner', joinedAt: Date.now() }
     // Regenerate the trip id: seed data carries stable display ids that are
     // not valid UUIDs, but trips.id is a Postgres uuid column.
-    const trip: Trip = { ...structuredClone(t), id: uuid(), members: [owner] }
+    const trip: Trip = { ...structuredClone(t), id: uuid(), members: [owner], creationKind: 'demo', sourcePubId: undefined, campaignId: undefined }
     const cols = await tripsHaveOptionalColumns()
     const { error } = await supabase.from('trips').insert(tripToRow(trip, userId, cols))
     if (error) { console.error('seed trip failed', error); continue }
@@ -1606,6 +1605,7 @@ function buildNewTrip(ownerId: ID, input: NewTripInput, seedStops?: ItinerarySto
     days, expenses: [], coverEmoji: input.coverEmoji ?? '🧭',
     coverImageUrl: input.coverImageUrl ?? undefined,
     visibility: 'private', createdAt: Date.now(), updatedAt: Date.now(),
+    creationKind: 'created',
     members: [{ userId: ownerId, role: 'owner' as const, joinedAt: Date.now() }],
   } as Trip
   return trip
@@ -1699,7 +1699,7 @@ function tripsHaveOptionalColumns(): Promise<OptionalColumnsProbe> {
 }
 
 async function probeOptionalColumns(): Promise<OptionalColumnsProbe> {
-  const [economy, price, roundTrip, cover, inviteCode, deleted, stayStyle, driverCount, hasVulnerable, driveAfterDinner, vehicleProfile, tankL, rentPerDayInr, localTrain, ref, flights, drivesPart] = await Promise.all([
+  const [economy, price, roundTrip, cover, inviteCode, deleted, stayStyle, driverCount, hasVulnerable, driveAfterDinner, vehicleProfile, tankL, rentPerDayInr, localTrain, ref, flights, growth, drivesPart] = await Promise.all([
     probeOptionalColumn('fuel_economy_km_per_l'),
     probeOptionalColumn('fuel_price_per_l'),
     probeOptionalColumn('round_trip'),
@@ -1720,6 +1720,7 @@ async function probeOptionalColumns(): Promise<OptionalColumnsProbe> {
     probeOptionalColumn('ref'),
     // 20261012c_trip_flights.sql — the flights a flight-mode trip takes
     probeOptionalColumn('flights'),
+    probeOptionalColumn('creation_kind'),
     // 20261019_trip_drives_part.sql — the Mixed driving answer
     probeOptionalColumn('drives_part'),
   ])
@@ -1729,7 +1730,7 @@ async function probeOptionalColumns(): Promise<OptionalColumnsProbe> {
       optionalColumnsWarned = true
     }
   }
-  return { economy, price, roundTrip, cover, inviteCode, deleted, stayStyle, driverCount, hasVulnerable, driveAfterDinner, vehicleProfile, tankL, rentPerDayInr, localTrain, ref, flights, drivesPart }
+  return { economy, price, roundTrip, cover, inviteCode, deleted, stayStyle, driverCount, hasVulnerable, driveAfterDinner, vehicleProfile, tankL, rentPerDayInr, localTrain, ref, flights, growth, drivesPart }
 }
 
 /** Cache the probe where the synchronous write path can read it. */
@@ -1867,6 +1868,16 @@ async function persistTripRows(trip: Trip, ownerId: ID, opts: { retry?: boolean 
   // attempt may not have written yet, so it is refused.)
   const duplicateMyOwnRow = (e: unknown) => (e as { code?: string } | null)?.code === '23505'
   if (error && !(opts.retry && duplicateMyOwnRow(error))) { toast('Could not save trip.'); return false }
+  if (error) {
+    // A conflict proves only that some row exists. Verify this owner's row before accepting a retry.
+    const { data: saved, error: readError } = await supabase.from('trips').select('*')
+      .eq('id', trip.id).eq('owner_id', ownerId).maybeSingle()
+    if (readError || !saved) return false
+    if (trip.creationKind === 'forked' && saved.creation_kind != null
+      && (saved.creation_kind !== 'forked' || saved.source_pub_id !== trip.sourcePubId)) return false
+    Object.assign(trip, rowToTrip(saved as TripRow, trip.members ?? []))
+    commit()
+  }
   const { error: mErr } = await supabase.from('trip_members').insert(
     (trip.members ?? []).map(m => ({ trip_id: trip.id, user_id: m.userId, role: m.role, joined_at: m.joinedAt }))
   )
@@ -1878,6 +1889,13 @@ async function persistTripRows(trip: Trip, ownerId: ID, opts: { retry?: boolean 
     console.error('member insert failed', mErr)
     toast('Could not save trip.')
     return false
+  }
+  if (mErr) {
+    const { data: owner, error: readError } = await supabase.from('trip_members')
+      .select('user_id, role, joined_at').eq('trip_id', trip.id).eq('user_id', ownerId).maybeSingle()
+    if (readError || !owner || owner.role !== 'owner') return false
+    trip.members = [{ userId: owner.user_id, role: 'owner', joinedAt: owner.joined_at }]
+    commit()
   }
   return true
 }
@@ -1900,10 +1918,10 @@ const LOCKED_STOP_DESCRIPTION = 'Locked — the full plan is on the original iti
  *  entry/transport costs and open/close times are zeroed, and the stop is
  *  marked confirmed. Expenses tagged with a locked `dayIndex` and fixed
  *  commitments on locked days are dropped (trip-level expenses stay). */
-function buildTripCopy(source: Trip, ownerId: ID, opts: { makePublic?: boolean; freeDayIndexes?: number[]; keepName?: boolean; ref?: ShareSource | null }): Trip {
+function buildTripCopy(source: Trip, ownerId: ID, opts: { makePublic?: boolean; freeDayIndexes?: number[]; keepName?: boolean; ref?: ShareSource | null; origin?: ForkOrigin }): Trip {
   const free = opts.freeDayIndexes ? new Set(opts.freeDayIndexes) : null
   const copy: Trip = structuredClone(source)
-  copy.id = uuid()
+  copy.id = opts.origin?.requestId ?? uuid()
   copy.writeVersion = undefined
   // A copy is labelled as one. An *import* is not — the plan is the user's own
   // arrival, not a duplicate of something they already have, and a name that
@@ -1918,6 +1936,9 @@ function buildTripCopy(source: Trip, ownerId: ID, opts: { makePublic?: boolean; 
   // #230 — the fork's own acquisition stamp, never the source trip's. A copy
   // of a copy starts a NEW attribution chain at whatever surface forked it.
   copy.ref = opts.ref ?? undefined
+  copy.creationKind = opts.origin ? 'forked' : opts.keepName ? 'imported' : 'copied'
+  copy.sourcePubId = opts.origin?.publicationId
+  copy.campaignId = opts.origin ? campaignId(opts.origin.campaign) ?? undefined : undefined
   // Fresh stop ids would dangle every commitment link, so each copy carries
   // its stops' old-to-new map and rewrites the links through it (#609).
   const stopIdMap = new Map<string, ID>()
@@ -1965,24 +1986,57 @@ function buildTripCopy(source: Trip, ownerId: ID, opts: { makePublic?: boolean; 
   return copy
 }
 
-/** Add a built copy to the live cache (optimistic UI; the caller persists). */
-function admitTripCopy(copy: Trip): void {
-  cache.trips = [...cache.trips, copy]
+/** The cache entry a re-admission replaced, and the debounced write that was
+ *  already queued for its id. A failed retry puts the entry back and keeps the
+ *  write, so neither a saved trip nor the edit pending against it is lost. */
+type DisplacedTrip = {
+  trip: Trip
+  index: number
+  pending: { timer: ReturnType<typeof setTimeout> } | undefined
+}
+
+/** Add a built copy to the live cache (optimistic UI; the caller persists).
+ *
+ *  A re-admission replaces the entry with the same id: a fork retry keeps its
+ *  pending action id, so the retry can build the trip again. The replaced entry
+ *  is returned. It may be a trip that is already saved on the server, so only a
+ *  failed retry may remove this operation's own object (see retractTripCopy). */
+function admitTripCopy(copy: Trip): DisplacedTrip | undefined {
+  const index = cache.trips.findIndex(t => t.id === copy.id)
+  const displaced = index >= 0
+    ? { trip: cache.trips[index], index, pending: pendingTripWrites.get(copy.id) }
+    : undefined
+  cache.trips = [...cache.trips.filter(t => t.id !== copy.id), copy]
   commit()
+  return displaced
 }
 
 /** Roll a failed-persist copy back out of the cache so the user is never left
  *  with a zombie trip that vanishes on the next reload.
  *
- *  A pending debounced write for the same id is cancelled first (#374): a
- *  retracted trip whose row write is still in the coalescer would land on the
- *  server seconds later with no cache row in front of it, and the trip would
- *  reappear on the next hydrate — the "it vanished, then it was there" the
- *  create path used to produce. */
-function retractTripCopy(copy: Trip): void {
+ *  Only the object this operation admitted is removed. The cache entry with the
+ *  id can be a newer server row, and a retry can displace a trip that is already
+ *  saved; neither belongs to this failure. The displaced entry is restored in
+ *  its old place, so a failed fork retry leaves the saved trip in My Trips.
+ *
+ *  A pending debounced write for the same id is cancelled only when it belongs
+ *  to this optimistic object (#374): a retracted trip whose row write is still
+ *  in the coalescer would land on the server seconds later with no cache row in
+ *  front of it, and the trip would reappear on the next hydrate — the "it
+ *  vanished, then it was there" the create path used to produce. A write that
+ *  was already queued when the retry displaced a saved trip is that trip's own
+ *  edit, so it stays queued. */
+function retractTripCopy(copy: Trip, displaced?: DisplacedTrip): void {
+  // Compare identity, never the id: a newer entry with this id is not ours.
+  if (!cache.trips.includes(copy)) return
   const pending = pendingTripWrites.get(copy.id)
-  if (pending) { clearTimeout(pending.timer); pendingTripWrites.delete(copy.id) }
-  cache.trips = cache.trips.filter(t => t.id !== copy.id)
+  if (pending && pending !== displaced?.pending) {
+    clearTimeout(pending.timer)
+    pendingTripWrites.delete(copy.id)
+  }
+  const next = cache.trips.filter(t => t !== copy)
+  if (displaced) next.splice(Math.min(displaced.index, next.length), 0, displaced.trip)
+  cache.trips = next
   commit()
 }
 
@@ -2014,29 +2068,29 @@ export function importTrip(source: Trip, ownerId: ID): Trip {
  *  with an error object, but a dropped fetch rejects, and an uncaught rejection
  *  would leave the optimistic row in the cache as the zombie §6i is about
  *  (#551): the same treatment createTripPersisted gives the create path. */
-async function persistCopyOrRetract(copy: Trip, ownerId: ID): Promise<boolean> {
-  admitTripCopy(copy)
+async function persistCopyOrRetract(copy: Trip, ownerId: ID, retry = false): Promise<boolean> {
+  const displaced = admitTripCopy(copy)
   let persisted = false
-  try { persisted = await persistTrip(copy, ownerId) }
+  try { persisted = await persistTrip(copy, ownerId, { retry }) }
   catch (e) { console.error('[yatraflow] trip copy save failed', e) }
-  if (!persisted) retractTripCopy(copy)
+  if (!persisted) retractTripCopy(copy, displaced)
   return persisted
 }
 
 /** Duplicate that reports whether the rows actually landed, so the caller can
  *  toast the truth instead of a success the next reload will disprove. On
  *  failure the cache copy is retracted. */
-export async function duplicateTripPersisted(source: Trip, ownerId: ID, makePublic?: boolean, ref?: ShareSource | null): Promise<{ trip: Trip; persisted: boolean }> {
-  const copy = buildTripCopy(source, ownerId, { makePublic, ref })
-  const persisted = await persistCopyOrRetract(copy, ownerId)
+export async function duplicateTripPersisted(source: Trip, ownerId: ID, makePublic?: boolean, ref?: ShareSource | null, origin?: ForkOrigin): Promise<{ trip: Trip; persisted: boolean }> {
+  const copy = buildTripCopy(source, ownerId, { makePublic, ref, origin })
+  const persisted = await persistCopyOrRetract(copy, ownerId, Boolean(origin))
   return { trip: copy, persisted }
 }
 
 /** Fork a PUBLISHED itinerary while respecting its premium gate — the
  *  `freeDayIndexes` variant of `duplicateTripPersisted`. */
-export async function duplicateTripPublicPersisted(source: Trip, ownerId: ID, freeDayIndexes: number[], ref?: ShareSource | null): Promise<{ trip: Trip; persisted: boolean }> {
-  const copy = buildTripCopy(source, ownerId, { freeDayIndexes, ref })
-  const persisted = await persistCopyOrRetract(copy, ownerId)
+export async function duplicateTripPublicPersisted(source: Trip, ownerId: ID, freeDayIndexes: number[], ref?: ShareSource | null, origin?: ForkOrigin): Promise<{ trip: Trip; persisted: boolean }> {
+  const copy = buildTripCopy(source, ownerId, { freeDayIndexes, ref, origin })
+  const persisted = await persistCopyOrRetract(copy, ownerId, Boolean(origin))
   return { trip: copy, persisted }
 }
 
@@ -4320,7 +4374,7 @@ function releasePubCounter(key: string): void {
  *  skew, and it needs no reconciliation pass because the value it leaves behind
  *  is the server's own.
  */
-function bumpPubCounter(id: ID, kind: 'views' | 'copies', source?: ShareSource | null): void {
+function bumpPubCounter(id: ID, kind: 'views' | 'copies', source?: ShareSource | null, campaign?: CampaignId | null): void {
   const p = cache.published.find(x => x.id === id)
   if (!p) return
   // The creator's own visit/fork does not count: they are checking their own
@@ -4344,27 +4398,32 @@ function bumpPubCounter(id: ID, kind: 'views' | 'copies', source?: ShareSource |
     releasePubCounter(key)
   }
   // `p_source` is the link's ref (or the in-app surface) that produced this
-  // step — #230's attribution. `null` is the honest "direct" answer; the RPC
+  // step — #230's attribution. `null` means unattributed; the RPC
   // stores it on the event row, never on the counter.
-  void Promise.resolve(supabase.rpc('bump_published_stats', { p_id: id, p_kind: kind, p_source: source ?? null })).then(
-    res => {
-      if (!res?.error) return
-      console.error(`[yatraflow] ${kind} bump failed`, res.error)
-      undo()
-    },
-    err => {
-      console.error(`[yatraflow] ${kind} bump rejected`, err)
-      undo()
-    },
-  )
+  try {
+    void Promise.resolve(supabase.rpc('bump_published_stats', { p_id: id, p_kind: kind, p_source: source ?? null, p_campaign: campaignId(campaign) })).then(
+      res => {
+        if (!res?.error) return
+        console.error(`[yatraflow] ${kind} bump failed`, res.error)
+        undo()
+      },
+      err => {
+        console.error(`[yatraflow] ${kind} bump rejected`, err)
+        undo()
+      },
+    )
+  } catch {
+    undo()
+    console.warn('[yatraflow] publication analytics unavailable')
+  }
 }
 
 /** One view per itinerary per browser session, and the creator's own visits
  *  don't count — before this, every refresh and every self-check inflated the
  *  Explore counter. (sessionStorage survives route changes within the tab but
  *  resets on a genuinely new visit, which is the granularity views want.) */
-export function registerPubView(id: ID, source?: ShareSource | null): void {
-  bumpPubCounter(id, 'views', source)
+export function registerPubView(id: ID, source?: ShareSource | null, campaign?: CampaignId | null): void {
+  bumpPubCounter(id, 'views', source, campaign)
 }
 
 /** One FORK per itinerary per browser session, and the creator's own forks
@@ -4375,8 +4434,8 @@ export function registerPubView(id: ID, source?: ShareSource | null): void {
  *  presented as a conversion rate. Explore's card can fork a plan repeatedly in
  *  one visit, and each click was a fresh event. The guard makes the two stages
  *  count the same kind of thing. */
-export function registerPubCopy(id: ID, source?: ShareSource | null): void {
-  bumpPubCounter(id, 'copies', source)
+export function registerPubCopy(id: ID, source?: ShareSource | null, campaign?: CampaignId | null): void {
+  bumpPubCounter(id, 'copies', source, campaign)
 }
 
 // ---------------- Feed & notifications ----------------

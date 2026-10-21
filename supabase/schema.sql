@@ -823,32 +823,7 @@ alter publication supabase_realtime add table public.admin_audit;  -- masteradmi
 -- call matches both and Postgres answers "function is not unique".
 drop function if exists public.bump_published_stats(text, text);
 
-create or replace function public.bump_published_stats(p_id text, p_kind text, p_source text default null)
-returns void as $$
-declare
-  v_kind text;
-begin
-  if p_kind = 'views' then
-    update public.published_itineraries set views = views + 1 where id = p_id;
-    v_kind := 'view';
-  elsif p_kind = 'copies' then
-    update public.published_itineraries set copies = copies + 1 where id = p_id;
-    v_kind := 'fork';
-  else
-    return;  -- unknown kind: no counter, no event
-  end if;
-
-  -- FOUND is the UPDATE's own result: publication row missing (unpublished or
-  -- never issued) means nothing to count and nothing to record.
-  if not found then
-    return;
-  end if;
-
-  insert into public.pub_events (pub_id, kind, source) values (p_id, v_kind, p_source);
-end;
-$$ language plpgsql security definer set search_path = public;
-
-grant execute on function public.bump_published_stats(text, text, text) to anon, authenticated;
+-- The current counter definition is in the growth-attribution section below.
 
 -- ============================================================
 -- Creator funnel read (see migrations/20260921_pub_funnel_events.sql)
@@ -1054,3 +1029,174 @@ commit;
 -- execute on it. Revoked from the API roles by name, because `revoke ... from
 -- public` does not revoke from anon or authenticated on Supabase.
 revoke all on function public.trips_owner_id_immutable() from public, anon, authenticated;
+
+-- Apply before the app update. Old two- and three-argument counter calls remain valid.
+-- Re-running is safe. No historical trip origin is inferred or rewritten.
+begin;
+
+alter table public.trips add column if not exists creation_kind text;
+alter table public.trips add column if not exists source_pub_id text;
+alter table public.trips add column if not exists campaign_id text;
+alter table public.pub_events add column if not exists campaign_id text;
+
+create or replace function public.is_pilot_campaign(p_id text)
+returns boolean language sql immutable set search_path = public as $$
+  select coalesce(p_id in (
+    'p_a7c1d9e4b206', 'p_f2b8a064cd19', 'p_9d340e7ab165',
+    'p_c6812fa930bd', 'p_4be09c713af8'
+  ), false);
+$$;
+
+alter table public.trips drop constraint if exists trips_creation_kind_check;
+alter table public.trips add constraint trips_creation_kind_check
+  check (creation_kind is null or creation_kind in ('created', 'forked', 'copied', 'imported', 'demo'));
+alter table public.trips drop constraint if exists trips_campaign_id_check;
+alter table public.trips add constraint trips_campaign_id_check
+  check (campaign_id is null or public.is_pilot_campaign(campaign_id));
+alter table public.pub_events drop constraint if exists pub_events_campaign_id_check;
+alter table public.pub_events add constraint pub_events_campaign_id_check
+  check (campaign_id is null or public.is_pilot_campaign(campaign_id));
+
+-- Only public publication identifiers and fixed campaign codes enter these fields.
+-- Invalid optional attribution is dropped. It must not prevent trip persistence.
+create or replace function public.guard_trip_origin()
+returns trigger language plpgsql set search_path = public as $$
+begin
+  if tg_op = 'UPDATE' then
+    new.creation_kind := old.creation_kind;
+    new.source_pub_id := old.source_pub_id;
+    new.campaign_id := old.campaign_id;
+    return new;
+  end if;
+  if new.creation_kind is null or new.creation_kind not in ('created', 'forked', 'copied', 'imported', 'demo') then
+    new.creation_kind := null;
+  end if;
+  if new.creation_kind is distinct from 'forked' then
+    new.source_pub_id := null;
+    new.campaign_id := null;
+  else
+    if new.source_pub_id is null or new.source_pub_id !~ '^[A-Za-z0-9_-]{1,64}$'
+       or not exists (select 1 from public.published_itineraries p where p.id = new.source_pub_id) then
+      new.source_pub_id := null;
+    end if;
+    if new.source_pub_id is null or not public.is_pilot_campaign(new.campaign_id) then
+      new.campaign_id := null;
+    end if;
+  end if;
+  return new;
+exception when others then
+  -- Optional provenance must not turn a valid product write into a failure.
+  new.creation_kind := case when tg_op = 'UPDATE' then old.creation_kind else null end;
+  new.source_pub_id := case when tg_op = 'UPDATE' then old.source_pub_id else null end;
+  new.campaign_id := case when tg_op = 'UPDATE' then old.campaign_id else null end;
+  return new;
+end;
+$$;
+
+drop trigger if exists trips_guard_origin on public.trips;
+create trigger trips_guard_origin before insert or update on public.trips
+  for each row execute function public.guard_trip_origin();
+
+create index if not exists pub_events_campaign_at_idx on public.pub_events (campaign_id, at);
+
+-- Remove the old defaulted overload before creating the new defaulted signature.
+drop function if exists public.bump_published_stats(text, text);
+drop function if exists public.bump_published_stats(text, text, text);
+
+create or replace function public.bump_published_stats(p_id text, p_kind text, p_source text default null, p_campaign text default null)
+returns void as $$
+declare
+  v_kind text;
+  v_campaign text := case when public.is_pilot_campaign(p_campaign) then p_campaign else null end;
+begin
+  if p_kind = 'views' then
+    update public.published_itineraries set views = views + 1 where id = p_id;
+    v_kind := 'view';
+  elsif p_kind = 'copies' then
+    update public.published_itineraries set copies = copies + 1 where id = p_id;
+    v_kind := 'fork';
+  else
+    return;
+  end if;
+  if not found then
+    return;
+  end if;
+  insert into public.pub_events (pub_id, kind, source, campaign_id) values (p_id, v_kind, p_source, v_campaign);
+end;
+$$ language plpgsql security definer set search_path = public;
+
+revoke all on function public.bump_published_stats(text, text, text, text) from public;
+grant execute on function public.bump_published_stats(text, text, text, text) to anon, authenticated;
+commit;
+
+-- Apply after the app update, before pilot traffic. Re-running is safe.
+-- Existing INSERT/SELECT policies stay intact. No UPDATE policy or identity backfill is added.
+begin;
+create or replace function public.guard_create_funnel_event()
+returns trigger language plpgsql set search_path = public as $$
+declare
+  m jsonb := case when jsonb_typeof(new.meta) = 'object' then new.meta else '{}'::jsonb end;
+  v_days integer;
+  v_travellers integer;
+  v_count integer;
+begin
+  new.user_id := auth.uid();
+  new.at := now();
+  new.phase := null;
+  if new.session_id is null or new.session_id !~ '^[0-9a-f]{32}$' then
+    new.session_id := replace(gen_random_uuid()::text, '-', '');
+  end if;
+
+  if new.trip_id is not null and not exists (
+    select 1 from public.trips t join public.trip_members tm on tm.trip_id = t.id
+    where t.id = new.trip_id and t.owner_id = auth.uid()
+      and tm.user_id = t.owner_id and tm.role = 'owner'
+  ) then
+    new.trip_id := null;
+  end if;
+  -- A submit acknowledgement cannot describe a failed or unusable trip.
+  if new.event = 'submitted' and new.trip_id is null then return null; end if;
+
+  new.meta := null;
+  case new.event
+    when 'template_picked' then
+      if m->>'source' in ('template', 'last', 'demo') then
+        new.meta := jsonb_build_object('source', m->>'source');
+        if m->>'templateId' in ('kerala-backwaters', 'rajasthan-forts', 'himalayan-loop', 'goa-weekend') then
+          new.meta := new.meta || jsonb_build_object('templateId', m->>'templateId');
+        end if;
+      end if;
+    when 'crew_added' then
+      if jsonb_typeof(m->'count') = 'number' then
+        if (m->>'count')::numeric between 0 and 100 then v_count := floor((m->>'count')::numeric)::integer; end if;
+      end if;
+      if v_count is not null then new.meta := jsonb_build_object('count', v_count); end if;
+    when 'submitted' then
+      if jsonb_typeof(m->'days') = 'number' then
+        if (m->>'days')::numeric between 1 and 366 then v_days := floor((m->>'days')::numeric)::integer; end if;
+      end if;
+      if jsonb_typeof(m->'travellers') = 'number' then
+        if (m->>'travellers')::numeric between 1 and 100 then v_travellers := floor((m->>'travellers')::numeric)::integer; end if;
+      end if;
+      if v_days is not null and v_travellers is not null
+         and m->>'mode' in ('car', 'rental', 'motorcycle', 'train', 'bus', 'flight', 'taxi', 'mixed') then
+        new.meta := jsonb_build_object('days', v_days, 'travellers', v_travellers, 'mode', m->>'mode');
+      end if;
+    when 'moment_invite_sent' then
+      if m->>'channel' in ('whatsapp', 'telegram', 'sms', 'insta', 'share') then
+        new.meta := jsonb_build_object('channel', m->>'channel');
+      end if;
+    when 'abandoned' then
+      if m->>'lastStage' in ('where', 'when', 'crew', 'name', 'route', 'dates', 'party', 'budget', 'cover', 'commitments') then
+        new.meta := jsonb_build_object('lastStage', m->>'lastStage');
+      end if;
+    else null;
+  end case;
+  return new;
+end;
+$$;
+
+drop trigger if exists create_funnel_guard on public.create_funnel_events;
+create trigger create_funnel_guard before insert on public.create_funnel_events
+  for each row execute function public.guard_create_funnel_event();
+commit;

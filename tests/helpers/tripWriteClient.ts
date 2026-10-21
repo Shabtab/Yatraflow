@@ -20,16 +20,22 @@ export function tripWriteClient(client: any, fixture?: () => { trips: any[]; mem
     let selection = '*'
     let payload: any
     const filters: Record<string, any> = {}
+    /** True once the wrapped test answered `maybeSingle` itself. Its single-row
+     *  answer must reach the caller untouched: the array normalisation below
+     *  would spread it character by character. */
+    let single = false
     const builder: any = new Proxy({}, {
       get(_target, property) {
         if (property === 'then') return (resolve: any, reject: any) => {
           const execute = async () => {
+            if (single) return await query
             const seed = fixture?.()
             for (const row of seed?.trips ?? []) {
               if (!rows.has(row.id)) rows.set(row.id, { ...row, write_version: row.write_version ?? 0 })
             }
             for (const member of seed?.members ?? []) members.set(`${member.trip_id}:${member.user_id}`, member)
-            if (method === 'select' && selection === 'user_id, role, joined_at' && table === 'trip_members') {
+            if (method === 'select' && selection === 'user_id, role, joined_at' && table === 'trip_members'
+              && query.maybeSingleHasRow !== true) {
               return { data: members.get(`${filters.trip_id}:${filters.user_id}`) ?? null, error: null }
             }
             if (method === 'select' && selection === 'id, owner_id, write_version, deleted_at' && table === 'trips') {
@@ -73,6 +79,16 @@ export function tripWriteClient(client: any, fixture?: () => { trips: any[]; mem
             payload = args[0]
           }
           if (property === 'eq') filters[args[0]] = args[1]
+          // A `maybeSingle` the wrapped test answers itself, and only while it
+          // has a row to answer with: its single-row reply must reach the caller
+          // untouched, because the array normalisation below spreads a non-array
+          // character by character. With nothing seeded the wrapper's own
+          // revision reads keep their answers.
+          if (property === 'maybeSingle' && typeof query.maybeSingle === 'function') {
+            query = query.maybeSingle()
+            if (query.maybeSingleHasRow === true) single = true
+            return builder
+          }
           if (property !== 'setHeader' && typeof query[property] === 'function') query = query[property](...args)
           return builder
         }

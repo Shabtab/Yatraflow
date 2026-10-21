@@ -326,6 +326,9 @@ export const NO_PROBE_SURFACE = {
     // and the statements by tests/member-join-guard.test.ts.
     reason: 'replaces the `members insert` policy, redefines `get_invite_trip` and re-issues invite codes — none adds a column or bucket to probe; the policy is pinned by supabase/tests/rls_contract.test.sql, the statements by tests/member-join-guard.test.ts',
   },
+  '20261015b_create_event_guards.sql': {
+    reason: 'adds an INSERT trigger and its function; REST column reads cannot prove their behavior. Run scripts/integration/growth-db.mjs locally and inspect production policies separately.',
+  },
   '20261020_trip_owner_and_delete_guards.sql': {
     // A trigger, two policies and a revoke (#799 / #807). None of the three is
     // visible to a table/column/bucket probe: a trigger is not a column, and the

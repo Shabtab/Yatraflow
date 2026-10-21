@@ -24,6 +24,8 @@ import { UnlockReveal } from '../components/UnlockReveal'
 import { hasUnlock } from '../lib/payments'
 import { buildPubFunnels, describePreLog, funnelGlance, type FunnelSale } from '../lib/pubFunnel'
 import { clearShareRefFromLocation, currentPublicShareUrl, shareRefFromSearch, withShareRef } from '../lib/shareUrl'
+import { campaignFromSearch, clearCampaignFromLocation, takeForkAttribution } from '../lib/growthAttribution'
+import { currentQuery } from '../lib/router'
 import { sharePublicationOnWhatsApp } from '../lib/whatsAppShare'
 import { appLink } from '../lib/appLink'
 import { pageTitle } from '../lib/pageTitle'
@@ -113,7 +115,16 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
   // value serves this page instance's three uses — the view registration, the
   // re-share's second hop and the fork stamp; they are one arrival. A later
   // page reads a clean query and records "direct", which is the honest answer.
-  const [arrivalRef] = useState(() => shareRefFromSearch(window.location.search))
+  const [arrival] = useState(() => {
+    const query = currentQuery().toString()
+    // Public context must survive while the account profile is still loading.
+    const pending = takeForkAttribution(slug, false)
+    return {
+      source: shareRefFromSearch(query) ?? pending?.source ?? null,
+      campaign: campaignFromSearch(query) ?? pending?.campaign ?? null,
+    }
+  })
+  const arrivalRef = arrival.source
   // Paid-unlock state (M7): entitlements are read on demand (RLS: own rows),
   // not carried in the hydrate cache. Re-read after a purchase resolves.
   const [entitlements, setEntitlements] = useState<Entitlement[]>([])
@@ -181,15 +192,16 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
   // back the honest way: the cover sweep writes an OWNED, resized suggestion
   // into the row, after which `coverImageUrl` is set and both sides serve
   // the same stored URL.
+  const viewedPubId = pub?.id
   useEffect(() => {
     // #230 — the view carries its route in: the `ref` the shared link brought
     // (consumed once at first render, #552), or null for a visitor who arrived
     // some other way — which is recorded as "direct".
-    if (pub) registerPubView(pub.id, arrivalRef)
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+    if (viewedPubId) registerPubView(viewedPubId, arrivalRef, arrival.campaign)
+  }, [viewedPubId, arrivalRef, arrival.campaign])
   // #552 — the query's work is done once the arrival is read. Only a ref the
   // vocabulary knows is removed; everything else in the query stays.
-  useEffect(() => { clearShareRefFromLocation() }, [])
+  useEffect(() => { clearShareRefFromLocation(); clearCampaignFromLocation() }, [])
   // This page owns the publication record, so it is the only place that can put
   // the itinerary's own name in the tab. App titles every other route; for
   // `/pub/…` it can only say "Itinerary" without subscribing to this table.
@@ -558,7 +570,7 @@ export function PublicItineraryPage({ slug, onNavigate }: { slug: string; onNavi
     // stubs — forkPublication re-stubs from whatever arrived, so the fork can
     // never contain more than the server showed. The `unlocked` flag here is
     // presentation-only now; the wire already decided.
-    void forkPublication(pub!, me?.id ?? null, onNavigate, unlocked, arrivalRef)
+    void forkPublication(pub!, me?.id ?? null, onNavigate, unlocked, arrivalRef, arrival.campaign)
   }
 
   function unlockThis() {

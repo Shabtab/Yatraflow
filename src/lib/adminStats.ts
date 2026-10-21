@@ -103,7 +103,7 @@ export function computeFunnel(
     if (owner) ownerIds.add(owner.userId)
   }
   const usersWithTrips = ownerIds.size
-  const tripsWithCollab = trips.filter(t => (t.members?.length ?? 0) > 1).length
+  const tripsWithCollab = trips.filter(t => new Set((t.members ?? []).map(m => m.userId)).size > 1).length
   const pubTripIds = new Set(published.map(p => p.tripId))
   const tripsPublished = trips.filter(t => pubTripIds.has(t.id)).length
   const views = published.reduce((s, p) => s + p.views, 0)

@@ -1,5 +1,5 @@
 // ============ The post-hydrate gates (issue #759) ============
-// hydrate() settles its fetch, then runs five follow-up steps. Each step must
+// hydrate() settles its fetch, then runs four follow-up steps. Each step must
 // stay behind ALL THREE conditions:
 //
 //   hydrationSucceeded                    a failed or absent fetch runs nothing
@@ -14,7 +14,7 @@
 // conditions stay pinned. The second drives the real store and watches what
 // each step DOES, so the gate is pinned by behaviour too.
 //
-// resumeSync repeats two of the five. The issue names both ranges, so both
+// resumeSync repeats two of the four. The issue names both ranges, so both
 // functions are scanned and both runs are driven below.
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
@@ -31,13 +31,12 @@ const LINES = SOURCE.split('\n')
 /** The three conditions every follow-up step must carry. */
 const GATES = ['hydrationSucceeded', 'gen === hydrateGen', 'cache.sessionUserId === userId']
 
-/** The five steps hydrate() runs after its fetch settles. */
+/** Four steps remain after removal of the unsupported anonymous event backfill. */
 const STEPS = [
   'enforceDisabledCheck',
   'connectRealtime',
   'attachDnaAccount',
   'replayQueuedWrites',
-  'backfillCreateFunnelSession',
 ]
 
 /** The two steps resumeSync repeats after its refetch. */
@@ -117,12 +116,12 @@ describe('the post-hydrate gates (#759)', () => {
 
   it('reads the hydrate body it means to scan', () => {
     // A wrong slice would make every later assertion vacuous. The body must
-    // hold the fetch verdict and the last of the five steps.
+    // hold the fetch verdict and the last of the four steps.
     expect(hydrate).toContain('hydrateFromSupabase(userId, gen)')
-    expect(hydrate).toContain('backfillCreateFunnelSession(userId)')
+    expect(hydrate).toContain('replayQueuedWrites()')
   })
 
-  it('guards each of the five steps with all three conditions', () => {
+  it('guards each remaining step with all three conditions', () => {
     for (const step of STEPS) expectGated(callsOf(hydrate, step), step, 'hydrate()')
   })
 
@@ -147,7 +146,6 @@ describe('the post-hydrate gates (#759)', () => {
 //   2 connectRealtime             -> supabase.channel()
 //   3 attachDnaAccount            -> the mocked module
 //   4 replayQueuedWrites          -> the mocked pendingWrites()
-//   5 backfillCreateFunnelSession -> the mocked module
 //
 // Instrument 1 needs the cache to hold a disabled account of this user, or it
 // is silent whatever the gate says. The mocked snapshot below does that: a
@@ -170,7 +168,6 @@ const { state } = vi.hoisted(() => {
       signOuts: 0,
       channels: [] as string[],
       attachDna: 0,
-      backfill: 0,
       pending: 0,
       readGate: Promise.resolve(),
       writeGate: Promise.resolve(),
@@ -188,11 +185,6 @@ vi.mock('../src/lib/offlineCache', () => ({
 vi.mock('../src/lib/tripDna', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../src/lib/tripDna')>()),
   attachDnaAccount: async () => { state.attachDna += 1 },
-}))
-
-vi.mock('../src/lib/createEvents', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../src/lib/createEvents')>()),
-  backfillCreateFunnelSession: () => { state.backfill += 1 },
 }))
 
 vi.mock('../src/lib/writeQueue', async (importOriginal) => ({
@@ -301,13 +293,12 @@ function instruments() {
     connectRealtime: state.channels.length,
     attachDnaAccount: state.attachDna,
     replayQueuedWrites: state.pending,
-    backfillCreateFunnelSession: state.backfill,
   }
 }
 
 const SILENT = {
   enforceDisabledCheck: 0, connectRealtime: 0, attachDnaAccount: 0,
-  replayQueuedWrites: 0, backfillCreateFunnelSession: 0,
+  replayQueuedWrites: 0,
 }
 
 const IGNORED_ERRORS = [/hydration failed/, /Could not load your data/, /Could not connect/]
@@ -349,7 +340,6 @@ beforeEach(() => {
   state.signOuts = 0
   state.channels = []
   state.attachDna = 0
-  state.backfill = 0
   state.pending = 0
   state.readGate = Promise.resolve()
   state.writeGate = Promise.resolve()
@@ -357,25 +347,25 @@ beforeEach(() => {
   noteErrors()
 })
 
-describe('the five steps act only when the gates say yes (#759)', () => {
-  it('control: a successful hydrate runs all five', async () => {
+describe('the four steps act only when the gates say yes (#759)', () => {
+  it('control: a successful hydrate runs all four', async () => {
     state.session = { user: { id: 'userA', app_metadata: {} } }
     state.snapshot = snapshotForDisabledA()
     state.tables = loadedAccount(true)
 
     const store = await freshStore()
     store.init()
-    await until('the run to finish', () => instruments().backfillCreateFunnelSession > 0)
+    await until('the run to finish', () => instruments().replayQueuedWrites > 0)
 
     // Every instrument is live. Without this control the two cases below
     // would pass on a mock that simply never calls anything.
     expect(instruments()).toEqual({
       enforceDisabledCheck: 1, connectRealtime: 1, attachDnaAccount: 1,
-      replayQueuedWrites: 1, backfillCreateFunnelSession: 1,
+      replayQueuedWrites: 1,
     })
   })
 
-  it('a failed fetch runs none of the five', async () => {
+  it('a failed fetch runs none of the four', async () => {
     state.session = { user: { id: 'userA', app_metadata: {} } }
     state.snapshot = snapshotForDisabledA()
     state.tables = loadedAccount()
@@ -395,7 +385,7 @@ describe('the five steps act only when the gates say yes (#759)', () => {
     expect(instruments()).toEqual(SILENT)
   })
 
-  it('a superseded run runs none of its own five', async () => {
+  it('a superseded run runs none of its own four', async () => {
     state.session = { user: { id: 'userA', app_metadata: {} } }
     state.snapshot = snapshotForDisabledA()
     // The profile is loaded and disabled, so a stale run that acted would sign
@@ -425,11 +415,11 @@ describe('the five steps act only when the gates say yes (#759)', () => {
     // nothing: its three exclusive steps never fired, and neither count moved.
     expect(instruments()).toEqual({
       enforceDisabledCheck: 0, connectRealtime: 1, attachDnaAccount: 0,
-      replayQueuedWrites: 1, backfillCreateFunnelSession: 0,
+      replayQueuedWrites: 1,
     })
   })
 
-  it('steps 1 to 5 are the five the issue lists', () => {
+  it('keeps the remaining step names aligned with their instruments', () => {
     // The instrument names are the source scan's step names. A rename in the
     // store fails half 1; a rename here would silently drop a step from this
     // file, so the two lists are held together.

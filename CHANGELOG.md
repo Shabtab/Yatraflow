@@ -17,6 +17,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ### Added
 
+- **A distribution pilot separates traffic, trip activation, membership, and meaningful collaboration.** Five opaque campaign slots retain source categories. A read-only scorecard uses persisted trips and product records. The six-week plan states its limits and proposed gates. A review of the supplied strategy PDFs separates distribution evidence from paid expert success. It preserves the portfolio and manual snapshot priorities.
 - **Mixed trips now ask whether you drive any part of the trip.** The answer sets the driving options. A new Mixed trip cannot be created without one. An existing Mixed trip keeps planning the way it always did until you answer. (2026-10-19)
 
 ### Fixed
@@ -27,6 +28,8 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - **Support feedback drafts no longer carry a snapshot payload.** The draft keeps the route and the app version, so a report is still reproducible. (#805)
 - **Snapshot redaction drops repeated-separator routes and unresolved encoded values before they leave the page.** Analytics data points and support drafts keep a safe route label and carry no readable trip. (#805)
 - **Sharing copy now states what a snapshot link is.** Anyone who holds the link can read the trip, and no copied link can be revoked. The reader's page also records that an older link was already sent on its first request. A browser can repeat that in same-origin referrers, and the app does not stop it. (#805)
+- **Create-flow events identify the signed-in caller and record successful save retries.** Database guards remove unapproved metadata. Anonymous history stays anonymous. Admin reads detect incomplete pages.
+- **Fork retries reuse one pending trip ID and return to the selected plan after sign-in.** A duplicate write needs a verified owned row. A failed retry removes only its own unsaved copy. The saved trip stays in My Trips with its revision and members. An edit that was already queued for that trip stays queued. Existing paid-plan guards remain in force. Reports label separate activity ratios accurately.
 - Development checks handle both Windows and Linux line endings. SQL contract checks use fixed function headers.
 - **Only the options that apply to your transport are shown.** A car, a rental car and a motorcycle keep their driving options. A train, a bus, a flight and a taxi hide the driver counts and the fuel figures. They also hide the drive-back planning. Traveller, budget, stay and travel-style options stay for every mode. (2026-10-19)
 - **A passenger trip no longer shows a driver count it does not own.** The two forms drop the driving summary, the drawer and its shortcut, and the Wheel figure. The section heading loses its wheel wording. A ticket reads as a journey. (2026-10-19)
