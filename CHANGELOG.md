@@ -15,6 +15,22 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Fixed
+
+- **A new snapshot link keeps the whole trip out of the request a reader makes.** The payload rides the part of the address after `#`. A browser then asks for the home page alone. The trip enters no request target, query, or referrer for that page load. (#805)
+- **The boot bridge no longer moves a snapshot payload into the path.** It settles such a link by leaving the address alone, and it still renders the plan. Startup and every later read now pick the same route, so Back returns to the page the reader arrived on. An older link keeps opening. (#805)
+- **Analytics data points drop a snapshot payload before they leave the page.** The page view is still counted, without the trip. (#805)
+- **Support feedback drafts no longer carry a snapshot payload.** The draft keeps the route and the app version, so a report is still reproducible. (#805)
+- **Snapshot redaction drops repeated-separator routes and unresolved encoded values before they leave the page.** Analytics data points and support drafts keep a safe route label and carry no readable trip. (#805)
+- **Sharing copy now states what a snapshot link is.** Anyone who holds the link can read the trip, and no copied link can be revoked. The reader's page also records that an older link was already sent on its first request. A browser can repeat that in same-origin referrers, and the app does not stop it. (#805)
+- **Offline trip edits have explicit conflict recovery.** The latest edit stays scoped to its account and trip. Server revisions prevent silent replacement of newer shared changes. Failed sends pause after three tries. Saved edits offer retry, download, and an explicit choice between local and shared plans. Storage failures show a warning. The "Check sync" button is a 44px target on every screen. A lost edit right or a trip the server no longer has keeps your saved copy on the device. The copy then says why it cannot sync, and you can still download it. A demoted reader keeps the trip in the list and sees the shared plan, because they can still open it. The plan carries the membership the server reports, so the edit controls go away with the right. A membership that cannot be read counts as a failed read, never as an empty list. A shared plan that cannot be read leaves the list, so a private proposal never stays on screen. The copy never syncs on its own, and it never reaches another account. A later grant does not put the copy back on screen, and a later edit cannot capture it. A kept copy is removed from the device without a connection. A delayed recovery action never touches another account's trip. A discard reads the shared plan before it removes the copy. A failed read refuses the discard while the local edit is on screen, and the copy stays. A local edit made during the read keeps its own contents. The discarded content never stays editable. The notice says the plan could not be read. A copy that cannot be exported never asks for a download. The server revision migration must precede this app update. (#783)
+
+## [0.78.0] - 2026-10-21
+
+**This release shows what is inside an itinerary before you pay. It adds an Android update check, trip owner and delete guards, and safer offline edits.**
+
+Two database migrations go with this release: `20261017_trip_write_version.sql` and `20261020_trip_owner_and_delete_guards.sql`. Run the additive migration first, deploy this app build, then run the tightening migration. See the release notes for the order.
+
 ### Added
 
 - **A public itinerary now shows what is inside before you pay.** The first screen holds the cover, the title, the facts and a buy box with the price. The cover is the creator's photo. A trip with no photo gets a designed ticket on a pattern of its own stop kinds. The "What is inside" section says the trip in one sentence and counts the places by kind. A plan with no days shows no section. It shows one card per day, with a Free, Locked or Yours tag, a pace word and the road time. The road time is the time on the ground. A flight is not a drive, so the air sector is not road time. A day that only flies still shows its real ground transfer. A readable day that flies says so, even before the traveller enters the flight. A free day lists its places. A locked day keeps its own title and its road time, and it shows counts only. Its stop names and locations stay hidden. A locked day with zero places shows no pace word, because a hidden flight is not an empty day. A trip longer than 7 days folds into weeks. Each week is a drawer, and week 1 is open. On a phone the buy box comes before the cover, so the Unlock button is on the first screen. A price bar appears once the first screen scrolls away. It sits under the top nav, or at the bottom of a phone. Its button does what the main button does. A free plan shows no saffron and offers "Fork to my trips" as the main button. A plan with no price, or a page where you cannot buy, does not promise that names open on purchase. A long day title, a long place name and a long ticket route wrap inside the card and the ticket. None of them is cut off at the edge.
@@ -26,18 +42,11 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ### Fixed
 
+- **Offline edits survive a failed trash and a same-account sign-in.** A saved edit stays queued until the server confirms the trash or the sign-out cleanup finishes. A failed cleanup pauses the edit for recovery.
 - **A trip editor can no longer take ownership of a trip.** The database accepted any editor's write to the trip's owner column. The editor could then promote their own crew row and remove the real owner. The owner column now changes only when the current owner, an admin, or a maintenance session makes the change. Every other caller is refused. A normal edit, a move to the trash, and a restore keep working. The app no longer sends the owner column on an ordinary edit. A crew member whose owner row is missing from their local copy can still save. **Ship this app build with or before the database change.** (#799)
 - **A trip that backs a publication can no longer be deleted directly.** The editor delete path removed the trip, and the publication and the buyers' purchase records went with it. A direct delete now refuses any trip that carries a publication, an order, or an entitlement. The trash and its purge already refused the same trip. The owner can still delete a trip with no publication. (#807)
 - **Sign-up date of birth now uses direct Year, Month and Day selects.** A birth year is one choice away. The three selects emit one complete `YYYY-MM-DD` date, and a partial pick emits nothing. The day list follows the chosen month, so a 31st or a 29 February cannot roll over. A change of year to the current year clamps a later month and day to today. No future date can be submitted. The 18+ check is unchanged.
-- **Backups and snapshot links retain flights and transport preferences.** Imports check flight clocks, fares, and itinerary days. Flight-only plans also import.
-- **Flight days stay protected when dates change.** Move the flight before removing its day.
-- **Create trip estimates charge flights per traveller.** Ground transfers use road rates and stay separate from air fares.
-- **Printed cards include flights and airport transfers.** Calendar exports include timed flight events and overnight arrivals.
-- **Settings previews use the full draft and current road measurements.** Route changes show estimates until fresh measurements arrive.
-- **Stay days show the arrival location after a flight.** Timeline, printed cards, and stop insertion use the resolved journey origin. Empty days retain the destination name. Airport-only arrivals show the airport name.
-- **Board shows flight journeys with separate flight and ground travel times.** Flight cards appear even without a saved flight entry. Estimated flight times state their assumptions. Route points remain separate from flights.
-- **Travel stop labels follow the transport mode.** Board, Timeline, and public highlights show Flight, Train, or Bus where applicable. Board uses the matching icon. Airport and ground transfer labels remain distinct.
-- **Local stops in flight trips use ground rates.** The stop editor calculates road travel time and fares with ground assumptions.
+
 ### Changed
 
 - **The trip Map tab routes one-finger drag and pinch to the map, not the page.** Small embedded previews let the page scroll around them.
@@ -47,10 +56,24 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ### Fixed
 
-- **Offline trip edits have explicit conflict recovery.** The latest edit stays scoped to its account and trip. Server revisions prevent silent replacement of newer shared changes. Failed sends pause after three tries. Saved edits offer retry, download, and an explicit choice between local and shared plans. Storage failures show a warning. The "Check sync" button is a 44px target on every screen. A lost edit right or a trip the server no longer has keeps your saved copy on the device. The copy then says why it cannot sync, and you can still download it. A demoted reader keeps the trip in the list and sees the shared plan, because they can still open it. The plan carries the membership the server reports, so the edit controls go away with the right. A membership that cannot be read counts as a failed read, never as an empty list. A shared plan that cannot be read leaves the list, so a private proposal never stays on screen. The copy never syncs on its own, and it never reaches another account. A later grant does not put the copy back on screen, and a later edit cannot capture it. A kept copy is removed from the device without a connection. A delayed recovery action never touches another account's trip. A discard reads the shared plan before it removes the copy. A failed read refuses the discard while the local edit is on screen, and the copy stays. A local edit made during the read keeps its own contents. The discarded content never stays editable. The notice says the plan could not be read. A copy that cannot be exported never asks for a download. The server revision migration must precede this app update. (#783)
+- **Offline trip edits have explicit conflict recovery.** The latest edit stays scoped to its account and trip. Server revisions prevent silent replacement of newer shared changes. Failed sends pause after three tries. Saved edits offer retry, download, and an explicit choice between local and shared plans. Storage failures show a warning. Account changes, lost edit access, and deleted trips cancel stale work. The server revision migration must precede this app update. (#783)
 - **The Create trip phone dock no longer runs two phrases together.** The days line and the readiness line shared one inline row. "Pick your dates" and "3 things left" then printed as one phrase. The readiness line is a block now, so it sits under the days line. (#767)
 - **The trip tab rail shows that it scrolls sideways.** The rail hides its scrollbar. A tab past the right edge ("Group input") was cut with no sign that more exist. The rail now fades the edge that still holds hidden tabs. The fade clears once the end is reached. (#684)
 - **Signed-in Android content now clears the status bar.** The native shell draws no top navigation bar for a signed-in user. The shell itself carries the top inset once. Home and Profile now start below the status bar, and the web and signed-out screens keep their current spacing. (#809)
+
+## [0.77.1] - 2026-10-18
+
+### Fixed
+
+- **Backups and snapshot links retain flights and transport preferences.** Imports check flight clocks, fares, and itinerary days. Flight-only plans also import.
+- **Flight days stay protected when dates change.** Move the flight before removing its day.
+- **Create trip estimates charge flights per traveller.** Ground transfers use road rates and stay separate from air fares.
+- **Printed cards include flights and airport transfers.** Calendar exports include timed flight events and overnight arrivals.
+- **Settings previews use the full draft and current road measurements.** Route changes show estimates until fresh measurements arrive.
+- **Stay days show the arrival location after a flight.** Timeline, printed cards, and stop insertion use the resolved journey origin. Empty days retain the destination name. Airport-only arrivals show the airport name.
+- **Board shows flight journeys with separate flight and ground travel times.** Flight cards appear even without a saved flight entry. Estimated flight times state their assumptions. Route points remain separate from flights.
+- **Travel stop labels follow the transport mode.** Board, Timeline, and public highlights show Flight, Train, or Bus where applicable. Board uses the matching icon. Airport and ground transfer labels remain distinct.
+- **Local stops in flight trips use ground rates.** The stop editor calculates road travel time and fares with ground assumptions.
 
 ## [0.77.0] - 2026-10-16
 

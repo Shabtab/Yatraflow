@@ -2507,14 +2507,21 @@ export function trashTrip(trip: Trip): void {
       return
     }
   }
-  invalidateTripWork(trip.id, scope.userId)
+  revokeTripWork(trip.id)
   const accessEpoch = tripAccessEpochs.get(trip.id)
   const live = () => isCurrentIdentity(scope) && tripAccessEpochs.get(trip.id) === accessEpoch
+  // A refusal before any server write puts the trip back. Its saved edit was never removed.
+  const refuseTrash = () => {
+    if (!live() || tripById(trip.id)) return
+    cache.trips = [...cache.trips, trip]
+    commit()
+    toast('Could not move to trash.', 'err')
+  }
   cache.trips = cache.trips.filter(t => t.id !== trip.id)
   commit()
   void serializeTripWrite(`${scope.epoch}:${scope.userId}:${trip.id}`, async () => {
     const token = await tripWriteToken(scope)
-    if (!token || !live()) return
+    if (!token || !live()) return refuseTrash()
     const cols = await tripsHaveOptionalColumns()
     if (!live()) return
     if (!cols.deleted) {
@@ -2529,9 +2536,10 @@ export function trashTrip(trip: Trip): void {
         return
       }
       await supabase.from('trips').delete().eq('id', trip.id)
-        .setHeader('Authorization', `Bearer ${token}`).then(({ error }) => {
+        .setHeader('Authorization', `Bearer ${token}`).then(async ({ error }) => {
         if (!live()) return
         if (error) { cache.trips = [...cache.trips, trip]; commit() }
+        else await discardTripEdits(scope, trip.id)
         // #387: the bin never refreshed in place — re-issue the RPC after every
         // resolution so a resident Trash view moves on its own. Failure surfaces
         // through the bin's own error branch, not stale data.
@@ -2569,13 +2577,16 @@ export function trashTrip(trip: Trip): void {
     }
     markLocalWrite('trips', trip.id)
     await supabase.from('trips').update({ deleted_at: new Date().toISOString() }).eq('id', trip.id)
-      .setHeader('Authorization', `Bearer ${token}`).then(({ error }) => {
+      .setHeader('Authorization', `Bearer ${token}`).then(async ({ error }) => {
       if (!live()) return
       if (error) {
         cache.trips = [...cache.trips, trip]
         if (stamp !== null) cache.published = prevPubs
         commit()
         toast('Could not move to trash.')
+      } else {
+        // The server confirmed the tombstone, so the saved edit can go.
+        await discardTripEdits(scope, trip.id)
       }
       void fetchTrashedTrips()
     })
@@ -2941,6 +2952,30 @@ async function retainRevokedCopy(entry: QueuedWrite, scope: IdentityScope, reaso
   await requeueIfCurrent({ ...entry, state: 'failed', reason })
 }
 
+/** Stop pending callbacks for one trip. The saved edit stays queued until the server confirms a deletion. */
+function revokeTripWork(tripId: string): void {
+  editableTripGrants.delete(tripId)
+  tripAccessEpochs.set(tripId, (tripAccessEpochs.get(tripId) ?? 0) + 1)
+  const pending = pendingTripWrites.get(tripId)
+  if (pending) clearTimeout(pending.timer)
+  pendingTripWrites.delete(tripId)
+  const verdict = pendingTripVerdicts.get(tripId)
+  pendingTripVerdicts.delete(tripId)
+  verdict?.settle(false)
+  if (newestTripVerdicts.get(tripId) === verdict) newestTripVerdicts.delete(tripId)
+}
+
+/** Drop the saved edit for one trip once the server has confirmed its deletion. */
+async function discardTripEdits(scope: IdentityScope, tripId: string): Promise<void> {
+  const held = queuedLocalTrips.get(tripId)
+  if (held?.ownerId === scope.userId) queuedLocalTrips.delete(tripId)
+  for (const write of await pendingWrites()) {
+    if (write.tripId === tripId && write.ownerId === scope.userId) await dropQueuedWrite(write)
+  }
+  // The offline snapshot still lists the trip until the next hydrate, so clear it now.
+  void clearSnapshot(scope.userId)
+}
+
 /**
  * Revoke pending callbacks before clearing the local data they could otherwise
  * restore.
@@ -2956,21 +2991,14 @@ async function retainRevokedCopy(entry: QueuedWrite, scope: IdentityScope, reaso
  * always see a mismatch.
  */
 function invalidateTripWork(tripId: string, userId: string, reason?: QueuedWrite['reason']): number {
-  editableTripGrants.delete(tripId)
-  const accessEpoch = (tripAccessEpochs.get(tripId) ?? 0) + 1
-  tripAccessEpochs.set(tripId, accessEpoch)
+  // The revoke step stops the pending callbacks and moves the generation.
   // The reason is kept beside the generation and the identity that recorded
   // it, so a removal that was in flight when the generation moved can put the
   // copy back, and a later account cannot inherit the reason.
+  revokeTripWork(tripId)
+  const accessEpoch = tripAccessEpochs.get(tripId) ?? 0
   if (reason) tripInvalidationReasons.set(tripId, { reason, userId, generation: accessEpoch })
   else tripInvalidationReasons.delete(tripId)
-  const pending = pendingTripWrites.get(tripId)
-  if (pending) clearTimeout(pending.timer)
-  pendingTripWrites.delete(tripId)
-  const verdict = pendingTripVerdicts.get(tripId)
-  pendingTripVerdicts.delete(tripId)
-  verdict?.settle(false)
-  if (newestTripVerdicts.get(tripId) === verdict) newestTripVerdicts.delete(tripId)
   const held = queuedLocalTrips.get(tripId)
   queuedLocalTrips.delete(tripId)
   const scope = identityScope()
