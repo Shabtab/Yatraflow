@@ -229,3 +229,77 @@ describe('the save keeps choices a mode does not currently use', () => {
     expect(settingsAreDirty(run.patch, row)).toBe(false)
   })
 })
+
+describe('the save keeps the LATEST draft, not the stored row', () => {
+  // The gate's second repro: the traveller edits the dials FIRST, answers No
+  // second, and the save then put the trip's OLD values back over the edits.
+  // The form's draft is the truth about what the traveller wants, so the save
+  // writes the draft — the answer only decides what the PLANNER uses.
+  const mixed = () => trip({ transportMode: 'mixed', drivesPart: true, driverCount: 3, hasVulnerable: true, driveAfterDinnerMin: 60 })
+
+  const dryRun = (form: ReturnType<typeof formFromTrip>, row: Trip) =>
+    settingsDryRun(form, zipDests(row.destinations, row.destinationCoords), null, row)
+
+  /** The dials after the traveller turns them down: two drivers, everyone
+   *  adult, and no allowance for driving after dinner. */
+  const edited = (row: Trip) => ({
+    ...formFromTrip(row),
+    driverCount: 2,
+    hasVulnerable: undefined,
+    driveAfterDinner: false,
+  })
+
+  it('writes the edited dials when the answer becomes No', () => {
+    const row = mixed()
+    const run = dryRun({ ...edited(row), drivesPart: false }, row)
+    if (!run.ok) throw new Error(run.reason)
+    expect(run.patch.drivesPart).toBe(false)
+    expect(run.patch.driverCount).toBe(2)
+    expect(run.patch.hasVulnerable).toBeUndefined()
+    expect(run.patch.driveAfterDinnerMin).toBeUndefined()
+  })
+
+  it('reopens with the edited dials after the No save', () => {
+    const row = mixed()
+    const no = dryRun({ ...edited(row), drivesPart: false }, row)
+    if (!no.ok) throw new Error(no.reason)
+    // The row round trip is the reopen: the edited values are on the trip.
+    const saved = savedRow({ ...row, ...no.patch } as Trip)
+    expect(saved.drivesPart).toBe(false)
+    expect(saved.driverCount).toBe(2)
+    expect(saved.hasVulnerable).toBeUndefined()
+    expect(saved.driveAfterDinnerMin).toBeUndefined()
+    // The form reopens on the edited values, not on the old ones.
+    const reopened = formFromTrip(saved)
+    expect(reopened.driverCount).toBe(2)
+    expect(reopened.hasVulnerable).toBeUndefined()
+    expect(reopened.driveAfterDinner).toBe(false)
+  })
+
+  it('keeps the edited dials when the wheel comes back with Yes', () => {
+    const row = mixed()
+    const no = dryRun({ ...edited(row), drivesPart: false }, row)
+    if (!no.ok) throw new Error(no.reason)
+    const saved = savedRow({ ...row, ...no.patch } as Trip)
+    const yes = dryRun({ ...formFromTrip(saved), drivesPart: true }, saved)
+    if (!yes.ok) throw new Error(yes.reason)
+    expect(yes.patch.driverCount).toBe(2)
+    expect(yes.patch.hasVulnerable).toBeUndefined()
+    expect(yes.patch.driveAfterDinnerMin).toBeUndefined()
+    // And the wheel is live again with the edited pair.
+    const savedYes = savedRow({ ...saved, ...yes.patch } as Trip)
+    expect(wheelCapHoursForParty({
+      transportMode: 'mixed', drivesPart: savedYes.drivesPart, driverCount: savedYes.driverCount,
+      hasVulnerable: savedYes.hasVulnerable, travelStyle: savedYes.travelStyle,
+    })).not.toBeNull()
+  })
+
+  it('keeps a custom allowance while the toggle stays on', () => {
+    // The toggle that stays ON keeps the stored duration. It is the 120-minute
+    // default only when the trip has no allowance of its own.
+    const row = mixed()
+    const run = dryRun({ ...formFromTrip(row), drivesPart: false }, row)
+    if (!run.ok) throw new Error(run.reason)
+    expect(run.patch.driveAfterDinnerMin).toBe(60)
+  })
+})
