@@ -15,6 +15,10 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Added
+
+- **A distribution pilot separates traffic, trip activation, membership, and meaningful collaboration.** Five opaque campaign slots retain source categories. A read-only scorecard uses persisted trips and product records. The six-week plan states its limits and proposed gates. A review of the supplied strategy PDFs separates distribution evidence from paid expert success. It preserves the portfolio and manual snapshot priorities.
+
 ### Fixed
 
 - **A new snapshot link keeps the whole trip out of the request a reader makes.** The payload rides the part of the address after `#`. A browser then asks for the home page alone. The trip enters no request target, query, or referrer for that page load. (#805)
@@ -23,12 +27,6 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - **Support feedback drafts no longer carry a snapshot payload.** The draft keeps the route and the app version, so a report is still reproducible. (#805)
 - **Snapshot redaction drops repeated-separator routes and unresolved encoded values before they leave the page.** Analytics data points and support drafts keep a safe route label and carry no readable trip. (#805)
 - **Sharing copy now states what a snapshot link is.** Anyone who holds the link can read the trip, and no copied link can be revoked. The reader's page also records that an older link was already sent on its first request. A browser can repeat that in same-origin referrers, and the app does not stop it. (#805)
-### Added
-
-- **A distribution pilot separates traffic, trip activation, membership, and meaningful collaboration.** Five opaque campaign slots retain source categories. A read-only scorecard uses persisted trips and product records. The six-week plan states its limits and proposed gates. A review of the supplied strategy PDFs separates distribution evidence from paid expert success. It preserves the portfolio and manual snapshot priorities.
-
-### Fixed
-
 - **Create-flow events identify the signed-in caller and record successful save retries.** Database guards remove unapproved metadata. Anonymous history stays anonymous. Admin reads detect incomplete pages.
 - **Fork retries reuse one pending trip ID and return to the selected plan after sign-in.** A duplicate write needs a verified owned row. A failed retry removes only its own unsaved copy. The saved trip stays in My Trips with its revision and members. An edit that was already queued for that trip stays queued. Existing paid-plan guards remain in force. Reports label separate activity ratios accurately.
 
