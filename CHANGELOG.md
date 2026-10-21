@@ -15,6 +15,10 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Added
+
+- **Mixed trips now ask whether you drive any part of the trip.** The answer sets the driving options. A new Mixed trip cannot be created without one. An existing Mixed trip keeps planning the way it always did until you answer. (2026-10-19)
+
 ### Fixed
 
 - **A new snapshot link keeps the whole trip out of the request a reader makes.** The payload rides the part of the address after `#`. A browser then asks for the home page alone. The trip enters no request target, query, or referrer for that page load. (#805)
@@ -23,6 +27,14 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 - **Support feedback drafts no longer carry a snapshot payload.** The draft keeps the route and the app version, so a report is still reproducible. (#805)
 - **Snapshot redaction drops repeated-separator routes and unresolved encoded values before they leave the page.** Analytics data points and support drafts keep a safe route label and carry no readable trip. (#805)
 - **Sharing copy now states what a snapshot link is.** Anyone who holds the link can read the trip, and no copied link can be revoked. The reader's page also records that an older link was already sent on its first request. A browser can repeat that in same-origin referrers, and the app does not stop it. (#805)
+- Development checks handle both Windows and Linux line endings. SQL contract checks use fixed function headers.
+- **Only the options that apply to your transport are shown.** A car, a rental car and a motorcycle keep their driving options. A train, a bus, a flight and a taxi hide the driver counts and the fuel figures. They also hide the drive-back planning. Traveller, budget, stay and travel-style options stay for every mode. (2026-10-19)
+- **A passenger trip no longer shows a driver count it does not own.** The two forms drop the driving summary, the drawer and its shortcut, and the Wheel figure. The section heading loses its wheel wording. A ticket reads as a journey. (2026-10-19)
+- **The Train pill is no longer covered by its Local switch.** The reserved space went to a class the form does not use. The selected mode's name was hidden. (2026-10-19)
+- **A driving answer is never saved in silence.** If the answer cannot be stored, the save stops and says so. Your other trip details are untouched. (2026-10-19)
+- **A passenger trip gets no fuel or charge stop.** The stop planner reads one driving answer. A passenger mode gets no fuel stop and no charge stop. A Mixed trip that answers No gets none either. A stored electric vehicle no longer adds charge stops to a passenger trip. The plan of a passenger trip reads no vehicle at all. (2026-10-19)
+- **Your driving choices stay when you change the mode.** An answer of No keeps the driver count, the vulnerable seat setting and the after-dinner allowance. They apply again when you choose Yes. A passenger mode hides them, and it does not delete them. The values you set last are the values the trip keeps. (2026-10-19)
+- **The driving answer buttons have a full touch target.** The two answers are at least 44px high at every width. The selected answer shows a pale wash with dark teal text. On a phone, both answers keep one height. (2026-10-19)
 
 ## [0.78.0] - 2026-10-21
 
@@ -37,7 +49,6 @@ Two database migrations go with this release: `20261017_trip_write_version.sql` 
 - **Creator pages show a public bio and itinerary links without JavaScript.** Search visitors can read `/c/<id>` directly. Recognised share tags still open the app. Structured data describes the public profile. Private profile fields stay out of the page. A failed itinerary read shows a message and prevents caching. The page also sets its own small stylesheet in the head. The column holds a 65ch measure, and it is centred with 16px padding. One unbroken handle or title wraps instead of scrolling the page sideways. Each link is a touch target of at least 44px in each direction. A long title still wraps inside its own link. One creator-page class scopes every rule, so no rule leaks to another surface. (#701)
 
 - **The Android app now checks for a newer build and offers it.** The app reads its own native version code and compares it with a published release. A check runs once a day at startup and on each return to the foreground. Profile shows the installed build and has its own Check for updates button. Profile first shows that it reads the installed build. A newer release shows a dismissible Update and Later notice that never blocks planning. Later holds that version back for a day. Update opens the download page in the browser, and the user installs from there. The app installs nothing by itself. Each feed read ends after ten seconds, so a slow network cannot block checks. The release tool runs on Windows and names the real SDK tool files. It needs the expected signer fingerprint and rejects other keys. It accepts only a version code above the last published code. The release feed is not configured yet, so the check stays inert until a real feed is approved. (#809)
-- **Mixed trips now ask whether you drive any part of the trip.** The answer sets the driving options. A new Mixed trip cannot be created without one. An existing Mixed trip keeps planning the way it always did until you answer. (2026-10-19)
 - **A published itinerary's share page prints the practical details a search visitor needs.** The page now shows the budget per person, the travel tips and the warnings. It shows the cover image as a real `<img>` with a width, a height and an alt. The structured data carries the same cover image. A field with no value prints nothing. (#700)
 
 ### Fixed
@@ -45,15 +56,6 @@ Two database migrations go with this release: `20261017_trip_write_version.sql` 
 - **Offline edits survive a failed trash and a same-account sign-in.** A saved edit stays queued until the server confirms the trash or the sign-out cleanup finishes. A failed cleanup pauses the edit for recovery.
 - **A trip editor can no longer take ownership of a trip.** The database accepted any editor's write to the trip's owner column. The editor could then promote their own crew row and remove the real owner. The owner column now changes only when the current owner, an admin, or a maintenance session makes the change. Every other caller is refused. A normal edit, a move to the trash, and a restore keep working. The app no longer sends the owner column on an ordinary edit. A crew member whose owner row is missing from their local copy can still save. **Ship this app build with or before the database change.** (#799)
 - **A trip that backs a publication can no longer be deleted directly.** The editor delete path removed the trip, and the publication and the buyers' purchase records went with it. A direct delete now refuses any trip that carries a publication, an order, or an entitlement. The trash and its purge already refused the same trip. The owner can still delete a trip with no publication. (#807)
-- Development checks handle both Windows and Linux line endings. SQL contract checks use fixed function headers.
-- **Only the options that apply to your transport are shown.** A car, a rental car and a motorcycle keep their driving options. A train, a bus, a flight and a taxi hide the driver counts and the fuel figures. They also hide the drive-back planning. Traveller, budget, stay and travel-style options stay for every mode. (2026-10-19)
-- **A passenger trip no longer shows a driver count it does not own.** The two forms drop the driving summary, the drawer and its shortcut, and the Wheel figure. The section heading loses its wheel wording. A ticket reads as a journey. (2026-10-19)
-- **The Train pill is no longer covered by its Local switch.** The reserved space went to a class the form does not use. The selected mode's name was hidden. (2026-10-19)
-- **A driving answer is never saved in silence.** If the answer cannot be stored, the save stops and says so. Your other trip details are untouched. (2026-10-19)
-- **A passenger trip gets no fuel or charge stop.** The stop planner reads one driving answer. A passenger mode gets no fuel stop and no charge stop. A Mixed trip that answers No gets none either. A stored electric vehicle no longer adds charge stops to a passenger trip. The plan of a passenger trip reads no vehicle at all. (2026-10-19)
-- **Your driving choices stay when you change the mode.** An answer of No keeps the driver count, the vulnerable seat setting and the after-dinner allowance. They apply again when you choose Yes. A passenger mode hides them, and it does not delete them. The values you set last are the values the trip keeps. (2026-10-19)
-- **The driving answer buttons have a full touch target.** The two answers are at least 44px high at every width. The selected answer shows a pale wash with dark teal text. On a phone, both answers keep one height. (2026-10-19)
-
 - **Sign-up date of birth now uses direct Year, Month and Day selects.** A birth year is one choice away. The three selects emit one complete `YYYY-MM-DD` date, and a partial pick emits nothing. The day list follows the chosen month, so a 31st or a 29 February cannot roll over. A change of year to the current year clamps a later month and day to today. No future date can be submitted. The 18+ check is unchanged.
 
 ### Changed
