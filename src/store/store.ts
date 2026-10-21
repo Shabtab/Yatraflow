@@ -1962,24 +1962,57 @@ function buildTripCopy(source: Trip, ownerId: ID, opts: { makePublic?: boolean; 
   return copy
 }
 
-/** Add a built copy to the live cache (optimistic UI; the caller persists). */
-function admitTripCopy(copy: Trip): void {
+/** The cache entry a re-admission replaced, and the debounced write that was
+ *  already queued for its id. A failed retry puts the entry back and keeps the
+ *  write, so neither a saved trip nor the edit pending against it is lost. */
+type DisplacedTrip = {
+  trip: Trip
+  index: number
+  pending: { timer: ReturnType<typeof setTimeout> } | undefined
+}
+
+/** Add a built copy to the live cache (optimistic UI; the caller persists).
+ *
+ *  A re-admission replaces the entry with the same id: a fork retry keeps its
+ *  pending action id, so the retry can build the trip again. The replaced entry
+ *  is returned. It may be a trip that is already saved on the server, so only a
+ *  failed retry may remove this operation's own object (see retractTripCopy). */
+function admitTripCopy(copy: Trip): DisplacedTrip | undefined {
+  const index = cache.trips.findIndex(t => t.id === copy.id)
+  const displaced = index >= 0
+    ? { trip: cache.trips[index], index, pending: pendingTripWrites.get(copy.id) }
+    : undefined
   cache.trips = [...cache.trips.filter(t => t.id !== copy.id), copy]
   commit()
+  return displaced
 }
 
 /** Roll a failed-persist copy back out of the cache so the user is never left
  *  with a zombie trip that vanishes on the next reload.
  *
- *  A pending debounced write for the same id is cancelled first (#374): a
- *  retracted trip whose row write is still in the coalescer would land on the
- *  server seconds later with no cache row in front of it, and the trip would
- *  reappear on the next hydrate — the "it vanished, then it was there" the
- *  create path used to produce. */
-function retractTripCopy(copy: Trip): void {
+ *  Only the object this operation admitted is removed. The cache entry with the
+ *  id can be a newer server row, and a retry can displace a trip that is already
+ *  saved; neither belongs to this failure. The displaced entry is restored in
+ *  its old place, so a failed fork retry leaves the saved trip in My Trips.
+ *
+ *  A pending debounced write for the same id is cancelled only when it belongs
+ *  to this optimistic object (#374): a retracted trip whose row write is still
+ *  in the coalescer would land on the server seconds later with no cache row in
+ *  front of it, and the trip would reappear on the next hydrate — the "it
+ *  vanished, then it was there" the create path used to produce. A write that
+ *  was already queued when the retry displaced a saved trip is that trip's own
+ *  edit, so it stays queued. */
+function retractTripCopy(copy: Trip, displaced?: DisplacedTrip): void {
+  // Compare identity, never the id: a newer entry with this id is not ours.
+  if (!cache.trips.includes(copy)) return
   const pending = pendingTripWrites.get(copy.id)
-  if (pending) { clearTimeout(pending.timer); pendingTripWrites.delete(copy.id) }
-  cache.trips = cache.trips.filter(t => t.id !== copy.id)
+  if (pending && pending !== displaced?.pending) {
+    clearTimeout(pending.timer)
+    pendingTripWrites.delete(copy.id)
+  }
+  const next = cache.trips.filter(t => t !== copy)
+  if (displaced) next.splice(Math.min(displaced.index, next.length), 0, displaced.trip)
+  cache.trips = next
   commit()
 }
 
@@ -2012,11 +2045,11 @@ export function importTrip(source: Trip, ownerId: ID): Trip {
  *  would leave the optimistic row in the cache as the zombie §6i is about
  *  (#551): the same treatment createTripPersisted gives the create path. */
 async function persistCopyOrRetract(copy: Trip, ownerId: ID, retry = false): Promise<boolean> {
-  admitTripCopy(copy)
+  const displaced = admitTripCopy(copy)
   let persisted = false
   try { persisted = await persistTrip(copy, ownerId, { retry }) }
   catch (e) { console.error('[yatraflow] trip copy save failed', e) }
-  if (!persisted) retractTripCopy(copy)
+  if (!persisted) retractTripCopy(copy, displaced)
   return persisted
 }
 

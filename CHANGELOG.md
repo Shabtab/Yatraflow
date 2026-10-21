@@ -30,7 +30,7 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 ### Fixed
 
 - **Create-flow events identify the signed-in caller and record successful save retries.** Database guards remove unapproved metadata. Anonymous history stays anonymous. Admin reads detect incomplete pages.
-- **Fork retries reuse one pending trip ID and return to the selected plan after sign-in.** A duplicate write needs a verified owned row. Existing paid-plan guards remain in force. Reports label separate activity ratios accurately.
+- **Fork retries reuse one pending trip ID and return to the selected plan after sign-in.** A duplicate write needs a verified owned row. A failed retry removes only its own unsaved copy. The saved trip stays in My Trips with its revision and members. An edit that was already queued for that trip stays queued. Existing paid-plan guards remain in force. Reports label separate activity ratios accurately.
 
 ## [0.78.0] - 2026-10-21
 
