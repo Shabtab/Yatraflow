@@ -64,8 +64,8 @@ after all six.
 | `admitFullRow`: the same line, the other side | make the check always fire | a join whose membership is intact reports joined and admits the row | red |
 | `init`: the auth callback that publishes the new account | hydrate nobody | the store really changed its session account on the switch | red |
 
-Each mutation failed exactly one test and left the other five green. The logs
-sit beside this file as `mutation-M1.log` through `mutation-M6.log`.
+Each mutation failed exactly one test and left the other five green. To repeat
+a check, apply the mutation to a scratch copy and run the test file.
 
 ## How to run it
 
