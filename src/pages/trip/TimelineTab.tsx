@@ -11,6 +11,8 @@ import React, { Fragment, useCallback, useEffect, useMemo, useRef, useState } fr
 import { ArrowRight } from 'lucide-react'
 import { dayStripItems } from '../../lib/dayStrip'
 import { loadSavedIds, saveSavedIds, flipSavedId } from '../../lib/uiPrefs'
+import { DAY_START_SETTLE_MS, createDayStartBurst, dayStartAnnouncement } from '../../lib/dayStartBurst'
+import { formatHM, getTimeFormat } from '../../lib/timefmt'
 
 /**
  * MR8: the hearts' saved set. It lives in lib/uiPrefs, so it survives a reload
@@ -195,6 +197,12 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
   // the IDENTITIES stable while each body still runs against the current pair.
   const latest = useRef({ applyChange, trip })
   latest.current = { applyChange, trip }
+
+  // #828: the Departure control's burst tracker and its flush timer. Refs, not
+  // state — they carry no render output, and a state update per spin would be
+  // the same waste the toast spam was.
+  const dayStartBurst = useRef(createDayStartBurst())
+  const dayStartFlush = useRef<number | null>(null)
 
   /** THE add commit (#422): ONE write path for a new stop, whether it came from
    *  the inspector editor or the leg's quick add. `position` is the slot the
@@ -581,8 +589,30 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
     if (refuseWhileStaged(previewOpen)) return
     const { trip } = latest.current
     updateTrip(trip.id, { days: trip.days.map(d => d.index === dayIndex ? { ...d, startTime: time || undefined } : d) })
-    toast(time ? `Day ${dayIndex + 1} now starts ${time}` : 'Ride start reset to the default')
+    // #828: the input fires `change` on every spin of its minute field, so a
+    // ten-minute adjustment arrives as ten calls with ten DIFFERENT times.
+    // Announcing each one stacked ten toasts and buzzed ten times for one
+    // intent, and deduplicating identical text could not help because the text
+    // changes every time. The write above stays immediate — the plan and the
+    // arrival clock stay live while the person spins — but the announcement is
+    // coalesced to the value they settle on.
+    dayStartBurst.current.push(dayIndex, time)
+    if (dayStartFlush.current !== null) window.clearTimeout(dayStartFlush.current)
+    dayStartFlush.current = window.setTimeout(() => {
+      dayStartFlush.current = null
+      const settled = dayStartBurst.current.take()
+      if (!settled) return
+      toast(dayStartAnnouncement(settled.dayIndex, settled.time, formatHM(settled.time, getTimeFormat())))
+    }, DAY_START_SETTLE_MS)
   }, [previewOpen])
+
+  // A pending announcement must not outlive the tab: an unmount mid-burst would
+  // otherwise speak for a surface the person has already left.
+  useEffect(() => () => {
+    if (dayStartFlush.current !== null) window.clearTimeout(dayStartFlush.current)
+    dayStartFlush.current = null
+    dayStartBurst.current.take()
+  }, [])
 
   /** Insert a batch of long-ride break halts, each at a user-chosen km point, ordered by
       distance along the route so the arrival clock and map reflect true stop order. Impact
