@@ -69,6 +69,26 @@ export function formatHM(hm: string, fmt: TimeFormat): string {
   return `${hour}:${String(m).padStart(2, '0')} ${suffix}`
 }
 
+/**
+ * Gate a stored clock string. Returns the value when it is a real wall-clock
+ * "HH:MM" (00:00–23:59, zero-padded), else undefined.
+ *
+ * This is stricter than `formatHM`, which tolerates 24h+ hours so an overnight
+ * span can render. A departure time is a time of day, not a span: a "25:99"
+ * written into `days[].startTime` would be clamped by `hmToMinutes` into a
+ * schedule nobody chose, so it never reaches the data.
+ */
+export function validHM(hm: string | undefined): string | undefined {
+  if (typeof hm !== 'string') return undefined
+  const trimmed = hm.trim()
+  const m = /^(\d{2}):(\d{2})$/.exec(trimmed)
+  if (!m) return undefined
+  const h = Number(m[1])
+  const min = Number(m[2])
+  if (h > 23 || min > 59) return undefined
+  return trimmed
+}
+
 /** Format an "open–close" pair (either side may be empty/undefined — skipped). */
 export function formatHMRange(a: string | undefined, b: string | undefined, fmt: TimeFormat): string {
   const aS = a ?? ''

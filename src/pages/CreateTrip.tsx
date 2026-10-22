@@ -43,7 +43,7 @@ import { DateRangeCalendar, fmtDay, isoDay } from '../components/DateRangeCalend
 import { isoAddDays } from '../lib/weather'
 import { PillNav } from '../components/PillNav'
 import { haptic, HAPTIC } from '../lib/haptics'
-import { useTimeFormat, formatHM } from '../lib/timefmt'
+import { useTimeFormat, formatHM, validHM } from '../lib/timefmt'
 import { cap } from '../lib/labels'
 import { readBenchPrefill } from '../lib/planBench'
 import { scrollBehavior } from '../lib/motion'
@@ -149,6 +149,8 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
   const [f, setF] = useState({
     name: '', startLocation: '',
     startDate: '', endDate: '', travellers: 2,
+    /** "" = the user has not answered, and every day keeps the engine default */
+    dayStartTime: '',
     // #142 party inputs — undefined until the user touches the controls
     driverCount: undefined as number | undefined,
     hasVulnerable: undefined as boolean | undefined,
@@ -768,6 +770,8 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
       fixedCommitments: commitments.filter(x => x.title.trim()),
       coverEmoji: f.coverEmoji,
       coverImageUrl: f.coverImageUrl.trim() || undefined,
+      // One departure answer for the whole trip; empty keeps the engine default.
+      dayStartTime: validHM(f.dayStartTime),
       }, seed)
       // Not saved: the store has already rolled the trip back out of the cache,
       // so there is nothing to route into. The form keeps every input and
@@ -1137,6 +1141,27 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                   registerRef={el => { fieldRefs.current.startDate = el; fieldRefs.current.endDate = el }}
                   onChange={({ startDate, endDate }) => patchFields({ startDate, endDate })}
                 />
+              </div>
+              <div className="ct-q-field">
+                <label className="ct-lbl" htmlFor="ct-day-start">Departure time</label>
+                <div className="ct-day-start">
+                  <input
+                    id="ct-day-start"
+                    type="time"
+                    className="input input--compact"
+                    value={f.dayStartTime}
+                    aria-describedby="ct-day-start-hint"
+                    onChange={e => patchFields({ dayStartTime: e.target.value })}
+                  />
+                  {f.dayStartTime && (
+                    <span className="time-preview">= {formatHM(f.dayStartTime, timeFormat)}</span>
+                  )}
+                </div>
+                <p className="hint-text" id="ct-day-start-hint">
+                  {f.dayStartTime
+                    ? 'Every day starts at this time. Change any single day later on the timeline.'
+                    : 'Leave blank to start each day at 08:30. You can change one day later on the timeline.'}
+                </p>
               </div>
               {createFunnelOn('iq') && seasonLine && (
                 <p className="hint-text season-note" role="status">{seasonLine}</p>
