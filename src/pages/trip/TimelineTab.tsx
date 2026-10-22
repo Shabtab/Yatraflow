@@ -48,6 +48,7 @@ import {
   collectWarnings, buildJourney, dayRoadPolyline, groupWarnings,
 } from '../../lib/engine'
 import type { LegEstimate, ScheduleWarning } from '../../lib/engine'
+import type { RoadStatus } from '../../lib/tripRoad'
 import type { ImpactResult } from '../../lib/impact'
 import { loadOpenDay, loadReviewAll, saveOpenDay, saveReviewAll } from '../../lib/uiPrefs'
 import { accordionNext } from '../../lib/daySummary'
@@ -95,7 +96,7 @@ function measureStickyStack(): number {
 }
 // ================= Timeline =================
 
-export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorrections, suggestionCache, onOpenBoard, focusDay, focusStopId, onFocusConsumed }: {
+export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorrections, roadStatus, suggestionCache, onOpenBoard, focusDay, focusStopId, onFocusConsumed }: {
   trip: Trip
   editable: boolean
   /** `onKept` runs only when the user keeps the staged change — the hook the
@@ -105,6 +106,9 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
    *  write the committed row directly, so they must not race a preview (#334). */
   previewOpen?: boolean
   legCorrections?: Record<string, LegEstimate>
+  /** The workspace's road-chain status (#671): the day headers say whether
+   *  their distance is a measured road number or a straight-line estimate. */
+  roadStatus?: RoadStatus
   suggestionCache: ReturnType<typeof useSuggestionCache>
   /** M5: the doc's §6.3 "Open in Board" bridge — Board now exists. */
   onOpenBoard?: () => void
@@ -760,7 +764,7 @@ export function TimelineTab({ trip, editable, applyChange, previewOpen, legCorre
       )}
 
       {days.map(day => (
-        <DaySection key={day.id} day={day} trip={openDayIndex === day.index || (reviewAll && visibleDays.has(day.index)) ? trip : undefined} facts={cards.byDay.get(day.index)!} editable={planEditable} open={reviewAll || openDayIndex === day.index} reviewMode={reviewAll} inView={!reviewAll || visibleDays.has(day.index)} onToggleOpen={toggleDay} onInsertHere={handleInsertHere} legCorrections={legCorrections} suggestionCache={suggestionCache} dayTotals={totalsByDay.get(day.index)}
+        <DaySection key={day.id} day={day} trip={openDayIndex === day.index || (reviewAll && visibleDays.has(day.index)) ? trip : undefined} facts={cards.byDay.get(day.index)!} editable={planEditable} open={reviewAll || openDayIndex === day.index} reviewMode={reviewAll} inView={!reviewAll || visibleDays.has(day.index)} onToggleOpen={toggleDay} onInsertHere={handleInsertHere} legCorrections={legCorrections} roadStatus={roadStatus} suggestionCache={suggestionCache} dayTotals={totalsByDay.get(day.index)}
           onAdd={handleAdd}
           onEdit={handleEdit}
           onDelete={handleDelete}

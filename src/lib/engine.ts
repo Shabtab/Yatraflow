@@ -240,6 +240,13 @@ export interface LegEstimate {
    *  The two kinds are priced and drawn differently, so a consumer that does not
    *  check this silently bills a flight at the car's ₹/km. */
   kind?: LegKind
+  /**
+   * True when this correction came from the haversine fallback, not from a
+   * routing provider. A chain can hold some measured legs and some fallbacks;
+   * `correctionsFromLegs` keeps both, so a leg count alone cannot tell whether
+   * a day's total is a road number. Absent reads as measured. (#671)
+   */
+  estimated?: boolean
 }
 
 /** How a leg is travelled — the split that makes a flight trip honest. */
