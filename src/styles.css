@@ -11685,11 +11685,19 @@ html.native-shell .app-shell:not(:has(> .topnav)) > main {
 /* ---------- Create trip: the one departure time ----------
    The "When?" step asks for a single clock answer for the whole trip. It sits
    in the same field stack as the date calendar, so it takes the same vertical
-   rhythm. The input keeps the app's 44px touch floor — a native time control
-   is easy to miss on a phone. */
+   rhythm.
+
+   The input is NOT the `.input--compact` inline-row size: that rule sets
+   `width: auto`, which let a native time control shrink to 107px — narrow
+   enough that the clock glyph crowded the digits. A time is the only thing
+   this row holds, so it gets a real width and the app's 44px touch floor. */
 .ct-day-start {
   display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
   margin-top: 6px;
 }
-.ct-day-start .input { min-height: 44px; }
+.ct-day-start .input {
+  min-height: 44px;
+  min-width: 148px;
+  flex: 0 1 200px;
+}
 
