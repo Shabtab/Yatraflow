@@ -6,7 +6,7 @@
 // ~83 km where the road is ~146 km. The `~` prefix marks the approximation,
 // but nothing said WHICH kind of number it was. This module is that wording:
 // one rule the header prints and a screen reader hears, pure and node-testable.
-import { measuredLegCount, type Journey, type LegEstimate } from './engine'
+import { legKey, measuredLegCount, type Journey, type LegEstimate } from './engine'
 import type { RoadStatus } from './tripRoad'
 
 /** The five truths a day header's distance can be showing. 'ok' = EVERY one of
@@ -47,19 +47,23 @@ export function roadStateOf(
 }
 
 /**
- * True when EVERY leg of this day carries a measured road figure, so the day's
- * total is a road number. `measuredLegCount` counts only the measured legs, and
- * one measured leg is enough to make the chain's status 'ok' — so a day whose
- * other legs are still chord math must not print its mixed total as a road km.
- * A day with fewer than two points has no leg to measure.
+ * True when EVERY leg of this day carries a MEASURED road figure, so the day's
+ * total is a road number. Two things can make a leg not measured: no correction
+ * at all (chord math), or a correction that is itself the router's haversine
+ * fallback — `correctionsFromLegs` keeps those legs keyed, so a key count alone
+ * would pass them. A day with fewer than two points has no leg to measure.
  */
 export function fullyMeasured(
   journey: Pick<DistanceJourney, 'points'>,
   corrections?: Record<string, LegEstimate>,
 ): boolean {
   const legs = journey.points.length - 1
-  if (legs < 1) return false
-  return measuredLegCount(journey.points, corrections) === legs
+  if (legs < 1 || !corrections) return false
+  for (let i = 0; i < legs; i++) {
+    const c = corrections[legKey(journey.points[i], journey.points[i + 1])]
+    if (!c || c.estimated) return false
+  }
+  return true
 }
 
 /**

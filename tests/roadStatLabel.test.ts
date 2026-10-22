@@ -78,6 +78,18 @@ describe('fullyMeasured', () => {
     expect(fullyMeasured({ points: [KOCHI] }, measuredCorrections)).toBe(false)
     expect(fullyMeasured({ points: [] }, measuredCorrections)).toBe(false)
   })
+
+  it('is false when a keyed leg is the router fallback, not a road number', () => {
+    // correctionsFromLegs keeps the legs the router could not measure, flagged
+    // `estimated`. They are keyed like a measured leg, so counting keys would
+    // pass them and the day would claim a road number it does not have.
+    const withFallback = {
+      [legKey(KOCHI, MUNNAR)]: leg(88, 112),
+      [legKey(MUNNAR, VALPARAI)]: { ...leg(40, 60), estimated: true },
+    }
+    expect(fullyMeasured(chordDay, withFallback)).toBe(false)
+    expect(roadStateOf('ok', chordDay, withFallback)).toBe('partial')
+  })
 })
 
 describe('distanceStatLabel', () => {
