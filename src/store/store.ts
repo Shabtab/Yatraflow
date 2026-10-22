@@ -21,6 +21,7 @@ import { toast } from '../components/ui'
 import { DRIVES_PART_MISSING_REASON, drivesPartWriteVerdict, isMissingColumnError, rowToTrip, tripToRow, tripUpdateRow, type OptionalColumnsProbe, type TripRow } from '../lib/tripRow'
 import type { ShareSource } from '../lib/shareUrl'
 import { dayCountForRange } from '../lib/dayCount'
+import { validHM } from '../lib/timefmt'
 import { amountRefusal, amountVerdict } from '../lib/expenseAmount'
 import { attachDnaAccount, detachDnaAccount } from '../lib/tripDna'
 import { clearSnapshot, loadSnapshot, saveSnapshot } from '../lib/offlineCache'
@@ -1575,6 +1576,11 @@ export interface NewTripInput {
   coverEmoji?: string;
   /** optional owner-chosen cover image URL; when set it is the trip's canonical cover */
   coverImageUrl?: string;
+  /** The create form's one departure answer, stamped onto EVERY day's
+   *  `startTime`. Absent means the user never answered, so the days stay unset
+   *  and the engine's 08:30 default governs — an untouched field must not
+   *  invent a clock the traveller never chose. Junk is dropped, not clamped. */
+  dayStartTime?: string;
 }
 
 // ---------------- Trip dates & day-count reconciliation ----------------
@@ -1645,8 +1651,15 @@ export function linkCommitmentStop(stops: ItineraryStop[], destName: string): ID
  *  writes nothing, so the two creators below cannot drift apart (#374). */
 function buildNewTrip(ownerId: ID, input: NewTripInput, seedStops?: ItineraryStop[][]): Trip {
   const dayCount = Math.max(1, diffDays(input.startDate, input.endDate))
+  // The create form asks for ONE departure time, not one per day. It lands on
+  // each day's own `startTime` — the field the timeline and the clock walk
+  // already read — so the workspace opens showing the time the user chose
+  // instead of the 08:30 default. Absent/invalid leaves every day unset.
+  const { dayStartTime, ...tripInput } = input
+  const dayStart = validHM(dayStartTime)
   const days: ItineraryDay[] = Array.from({ length: dayCount }, (_, i) => ({
     id: uid('day'), index: i, stops: [],
+    ...(dayStart ? { startTime: dayStart } : {}),
   }))
 
   // Anchor stops for point A (trip start) and point B (final destination), so
@@ -1676,7 +1689,7 @@ function buildNewTrip(ownerId: ID, input: NewTripInput, seedStops?: ItinerarySto
 
   const trip: Trip = {
     id: uuid(),
-    ...input,
+    ...tripInput,
     startLocationCoords: input.startLocationCoords,
     destinationCoords: input.destinationCoords,
     fixedCommitments: input.fixedCommitments.map(fc => {
