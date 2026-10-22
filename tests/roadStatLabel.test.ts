@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { distanceStatLabel, roadStateOf } from '../src/lib/roadStatLabel'
+import { distanceStatLabel, fullyMeasured, roadStateOf } from '../src/lib/roadStatLabel'
 import { legKey, type LegEstimate } from '../src/lib/engine'
 import type { RoadStatus } from '../src/lib/tripRoad'
 
@@ -53,6 +53,31 @@ describe('roadStateOf', () => {
     const still = { distanceKm: 0, points: [KOCHI] }
     expect(roadStateOf('ok', still, measuredCorrections)).toBe('not-measured')
   })
+
+  it('ok with only ONE of two legs measured reads partial, not ok', () => {
+    // The day's total mixes a measured road leg with a chord leg, so the total
+    // is not a road number. `measuredLegCount` is 1, which is enough for the
+    // chain status but not enough to call the whole day measured.
+    const half = { [legKey(KOCHI, MUNNAR)]: leg(88, 112) }
+    expect(roadStateOf('ok', chordDay, half)).toBe('partial')
+  })
+
+  it('ok with every leg measured reads ok', () => {
+    expect(roadStateOf('ok', chordDay, measuredCorrections)).toBe('ok')
+  })
+})
+
+describe('fullyMeasured', () => {
+  it('is true only when every leg of the day is measured', () => {
+    expect(fullyMeasured(chordDay, measuredCorrections)).toBe(true)
+    expect(fullyMeasured(chordDay, { [legKey(KOCHI, MUNNAR)]: leg(88, 112) })).toBe(false)
+    expect(fullyMeasured(chordDay, undefined)).toBe(false)
+  })
+
+  it('is false for a day with no leg to measure', () => {
+    expect(fullyMeasured({ points: [KOCHI] }, measuredCorrections)).toBe(false)
+    expect(fullyMeasured({ points: [] }, measuredCorrections)).toBe(false)
+  })
 })
 
 describe('distanceStatLabel', () => {
@@ -98,6 +123,13 @@ describe('distanceStatLabel', () => {
       expect(distanceStatLabel(chordDay, state)).toContain('straight-line estimate')
     }
     expect(distanceStatLabel(chordDay, 'not-measured')).toContain('straight-line estimate')
+  })
+
+  it('a partially measured day keeps the "~" and never says road measured', () => {
+    const label = distanceStatLabel(chordDay, 'partial')
+    expect(label).toContain('~83 km')
+    expect(label).toContain('estimate')
+    expect(label).not.toContain('road measured')
   })
 
   it('issue #671: the same stops flip their wording as the road resolves', () => {
