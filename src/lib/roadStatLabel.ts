@@ -6,7 +6,7 @@
 // ~83 km where the road is ~146 km. The `~` prefix marks the approximation,
 // but nothing said WHICH kind of number it was. This module is that wording:
 // one rule the header prints and a screen reader hears, pure and node-testable.
-import { legKey, measuredLegCount, type Journey, type LegEstimate } from './engine'
+import { legKey, type Journey, type LegEstimate } from './engine'
 import type { RoadStatus } from './tripRoad'
 
 /** The five truths a day header's distance can be showing. 'ok' = EVERY one of
@@ -24,6 +24,25 @@ export type DistanceJourney = Pick<Journey, 'distanceKm'> & {
 }
 
 /**
+ * How many of the day's legs carry a REAL road number: a correction that exists
+ * and is not the router's haversine fallback. `measuredLegCount` in engine.ts
+ * counts keys, and `correctionsFromLegs` keys fallback legs too, so a day whose
+ * whole chain fell back would otherwise look measured. (#671)
+ */
+export function measuredRoadLegs(
+  journey: Pick<DistanceJourney, 'points'>,
+  corrections?: Record<string, LegEstimate>,
+): number {
+  if (!corrections) return 0
+  let n = 0
+  for (let i = 0; i + 1 < journey.points.length; i++) {
+    const c = corrections[legKey(journey.points[i], journey.points[i + 1])]
+    if (c && !c.estimated) n++
+  }
+  return n
+}
+
+/**
  * Resolve the day's road state from the workspace's road status.
  *
  * `points` and `corrections` decide what an 'ok' status MEANS for this day:
@@ -33,6 +52,10 @@ export type DistanceJourney = Pick<Journey, 'distanceKm'> & {
  * estimate truth instead of implying a road number. The status alone is not
  * enough: tripRoad.ts calls the chain 'ok' when its legs resolve, but an
  * individual day can still be short of measurements.
+ *
+ * A day whose every key is a fallback reads 'not-measured', not 'partial': no
+ * part of that road was measured, so the "part of this day's road is measured"
+ * wording would be a lie of its own.
  */
 export function roadStateOf(
   status: RoadStatus | undefined,
@@ -41,8 +64,7 @@ export function roadStateOf(
 ): RoadState {
   if (status === 'pending') return 'pending'
   if (status === 'failed') return 'failed'
-  const measured = measuredLegCount(journey.points, corrections)
-  if (measured === 0) return 'not-measured'
+  if (measuredRoadLegs(journey, corrections) === 0) return 'not-measured'
   return fullyMeasured(journey, corrections) ? 'ok' : 'partial'
 }
 

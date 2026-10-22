@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { distanceStatLabel, fullyMeasured, roadStateOf } from '../src/lib/roadStatLabel'
+import { distanceStatLabel, fullyMeasured, measuredRoadLegs, roadStateOf } from '../src/lib/roadStatLabel'
 import { legKey, type LegEstimate } from '../src/lib/engine'
 import type { RoadStatus } from '../src/lib/tripRoad'
 
@@ -89,6 +89,23 @@ describe('fullyMeasured', () => {
     }
     expect(fullyMeasured(chordDay, withFallback)).toBe(false)
     expect(roadStateOf('ok', chordDay, withFallback)).toBe('partial')
+  })
+
+  it('a day whose every key is a fallback reads not-measured, not partial', () => {
+    // No part of this day's road was measured, so "part of this day's road is
+    // measured" would be a lie of its own.
+    const allFallback = {
+      [legKey(KOCHI, MUNNAR)]: { ...leg(88, 112), estimated: true },
+      [legKey(MUNNAR, VALPARAI)]: { ...leg(40, 60), estimated: true },
+    }
+    expect(measuredRoadLegs(chordDay, allFallback)).toBe(0)
+    expect(roadStateOf('ok', chordDay, allFallback)).toBe('not-measured')
+  })
+
+  it('counts only real road legs', () => {
+    expect(measuredRoadLegs(chordDay, measuredCorrections)).toBe(2)
+    expect(measuredRoadLegs(chordDay, { [legKey(KOCHI, MUNNAR)]: leg(88, 112) })).toBe(1)
+    expect(measuredRoadLegs(chordDay, undefined)).toBe(0)
   })
 })
 
