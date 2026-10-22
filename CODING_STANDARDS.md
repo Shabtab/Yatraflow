@@ -839,6 +839,21 @@ Settings previews must use validated draft fields. Reuse road measurements only 
    does, and it is the precedent to copy. Check `TripWorkspace.tsx` for an inline value
    before you write a margin rule for that header.
 
+ 6av. **A structural cast over a vendor's type hides the real shape (learned 2026-10-18, #806).**
+   The SDK types `presenceState()` as a map of session key to a LIST of records.
+   The parser cast that to one flat record per key.
+   Every real peer was dropped. `meta.userId` on an array is `undefined`.
+   Read the installed serializer in `node_modules` before you write a cast over its type.
+   Type the boundary parameter `unknown`. Narrow it with a named guard.
+   The cast then has nowhere to live.
+   A global coercion is also unsafe: `Number(value)` on an untrusted JSON object can throw.
+   Read a clock from a number or a numeric string only.
+   Fall back to 0 for anything else.
+   Pin the shape with a contract test that runs the installed serializer.
+   Feed its real output to the parser.
+   A hand-built fixture cannot fail the way the wire does.
+   Run the test against the pre-fix source. Read the failures.
+
 - **A CSS pin must stop at the end of its own block.** `footer-route-mark.test.ts`
   read `styles.css` from its marker to the end of the file. The rule is "append
   CSS at the end". So the next appended section made the pin fail on rules that
