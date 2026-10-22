@@ -55,7 +55,6 @@ exclude_paths:
   - "api/c.js"
   - "api/payments-webhook.js"
   - "api/checkout.js"
-  - "src/components/OfflineBanner.tsx"
   - "tests/helpers/tripWriteClient.ts"
   - "supabase/tests/trip_write_version.test.sql"
 #
@@ -97,19 +96,10 @@ exclude_paths:
 # tests/payments-functions.test.ts (real payment id on the mark, null fallback
 # still recovering).
 #
-# `src/components/OfflineBanner.tsx`, `tests/helpers/tripWriteClient.ts` and
+# `tests/helpers/tripWriteClient.ts` and
 # `supabase/tests/trip_write_version.test.sql` are excluded on the same terms,
-# added only after Codacy actually flagged them (#798). All six findings are
+# added only after Codacy actually flagged them (#798). All five findings are
 # parser limits on code whose intent is unambiguous:
-#
-#   x1  "String comparisons ... vulnerable to timing attacks" (OfflineBanner
-#       L95) — `actionRef.current === token` compares two IN-MEMORY object
-#       identities inside one React component. `token` is a fresh object literal
-#       built in the same handler (`const token = { identity, tripId }`), so this
-#       is React's standard stale-async guard: it asks "is this still the action
-#       I started", not "does this string equal a secret". There is no
-#       attacker-controlled value and no secret, so no timing side channel
-#       exists. The rule matches the `===` shape, not the data.
 #
 #   x1  "Using non-static data to retrieve and run functions from the object"
 #       (tripWriteClient L76) — this file is a TEST DOUBLE. The flagged line
@@ -123,6 +113,12 @@ exclude_paths:
 #       `do $$ ... $$;` blocks' internal `if` / `end if`. The same shape is
 #       already used by `supabase/tests/rls_contract.test.sql`, which the parser
 #       does not flag only because this PR does not touch it.
+#
+# `src/components/OfflineBanner.tsx` is NOT excluded. Its one finding was a
+# "string comparison vulnerable to timing attacks" rule that read the local
+# identifier of the in-memory action guard as a secret. The guard compares two
+# object identities inside one React component, so no secret and no timing
+# channel exist. The identifier is now named `runId`, which states what it is.
 #
 # No genuine finding was silenced. The revision invariant these tests exercise
 # is proven behaviourally by the disposable-PostgreSQL harness

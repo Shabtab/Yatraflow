@@ -103,9 +103,47 @@ describe('saved-edit recovery presentation', () => {
     expect(html).toContain('Saved trip edit')
     expect(html).not.toContain('Authorized shared plan')
     expect(html).not.toContain('PRIVATE_QUEUED_TITLE')
-    expect(html).not.toContain('Download my copy')
+    expect(html).toContain('Download my copy')
     expect(html).toContain('Discard saved edit')
     expect(html).toContain('Retry')
+  })
+
+  it('offers the download to a demoted editor, because the copy is on this device', () => {
+    fixture.writes = [write({ state: 'failed', reason: 'access-revoked' })]
+    // The account can still READ the trip, but it can no longer edit it.
+    fixture.trips = [{ ...visibleTrip(), members: [{ userId: 'editor-one', role: 'viewer', joinedAt: 1 }] } as Trip]
+    const html = render()
+    expect(html).toContain('You can no longer edit this trip. Your saved copy stays on this device.')
+    expect(html).toContain('Download my copy')
+    expect(html).not.toContain('Retry')
+    expect(html).not.toContain('Replace shared plan')
+  })
+
+  it('states the reason and offers only the removal for a trip the server no longer has', () => {
+    fixture.writes = [write({ state: 'failed', reason: 'trip-unavailable' })]
+    fixture.trips = []
+    const html = render()
+    expect(html).toContain('This trip is no longer on the server. Your saved copy stays on this device.')
+    expect(html).toContain('Download my copy')
+    expect(html).toContain('Remove saved copy')
+    expect(html).not.toContain('Retry')
+  })
+
+  it('states the reason for a removed member', () => {
+    fixture.writes = [write({ state: 'failed', reason: 'access-removed' })]
+    fixture.trips = []
+    const html = render()
+    expect(html).toContain('You are no longer on this trip. Your saved copy stays on this device.')
+    expect(html).toContain('Download my copy')
+    expect(html).toContain('Remove saved copy')
+  })
+
+  it('never promises a download for a copy it cannot export', () => {
+    fixture.writes = [write({ state: 'failed', reason: 'access-revoked', trip: { id: 'shared-trip' } })]
+    fixture.trips = []
+    const html = render()
+    expect(html).toContain('This copy cannot be exported. It stays on this device.')
+    expect(html).not.toContain('Download my copy')
   })
 
   it('hides saved entries immediately after sign-out, even before effects run', () => {
@@ -151,6 +189,37 @@ describe('saved-edit recovery presentation', () => {
     expect(html).not.toContain('Your saved copy stays on this device.')
     expect(html).toContain('role="alert"')
   })
+
+  it('offers a removal that works without a connection', () => {
+    fixture.online = false
+    fixture.writes = [write({ state: 'failed', reason: 'access-revoked' })]
+    fixture.trips = [visibleTrip()]
+    const buttons = render().match(/<button\b[^>]*>[\s\S]*?<\/button>/g) ?? []
+    const removal = buttons.find(button => button.includes('Remove saved copy'))!
+    // The removal is a local action, so it is not disabled offline.
+    expect(removal).not.toContain('disabled')
+    // The network choices still are.
+    for (const button of buttons.filter(value => value !== removal)) {
+      if (button.includes('Download my copy')) continue
+      expect(button).toContain('disabled')
+    }
+  })
+
+  it('names the cause when a removal is refused', () => {
+    // The refusal only happens for a HELD overlay, and only when the shared
+    // plan could not be read. The notice must say so, and the advice must
+    // match the cause: offline it helps to wait for the connection, online
+    // it does not.
+    const source = readFileSync(new URL('../src/components/OfflineBanner.tsx', import.meta.url), 'utf8')
+    expect(source).toContain('The shared plan could not be read.')
+    expect(source).toContain('Try again when you are back online.')
+    // The reason decides which notice is shown, so a reasoned copy never gets
+    // the "shared plan" wording.
+    expect(source).toContain('const overlayOnScreen = !!write && !write.reason')
+    // The held-copy buttons call `recover`, so the message must be reachable
+    // from there too.
+    expect(source).toContain('discardFailureNotice(held)')
+  })
 })
 
 describe('recovery access and async guard wiring', () => {
@@ -164,18 +233,37 @@ describe('recovery access and async guard wiring', () => {
     expect(source).not.toContain('pendingWriteCount(')
   })
 
-  it('checks current account and membership again before downloading', () => {
+  it('checks the current account and the queued owner again before downloading', () => {
     const download = source.slice(source.indexOf('function download('), source.indexOf('if (online && writes.length'))
     expect(download).toContain('const current = getSnapshot()')
     expect(download).toContain('current.sessionUserId === userId')
-    expect(download).toContain('member.userId === userId')
     expect(download).toContain('write.ownerId !== userId')
-    expect(download.indexOf('!authorized')).toBeLessThan(download.indexOf('downloadTripJson(trip)'))
+    expect(download.indexOf('!owns')).toBeLessThan(download.indexOf('downloadTripJson(trip)'))
+    // The export does not need a live edit role. The copy is on this device.
+    expect(download).not.toContain("member.role === 'owner'")
+  })
+
+  it('gives the sync check a 44px target', () => {
+    const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
+    expect(css).toMatch(/\.offline-banner-summary \.btn\s*\{[^}]*min-height:\s*44px/)
   })
 
   it('uses token-based motion with a reduced-motion opt-out', () => {
     const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
     expect(css).toMatch(/\.offline-recovery-row\s*\{[^}]*animation:\s*cardIn var\(--motion-slow\) var\(--ease-out\)/)
     expect(css).toMatch(/@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{\s*\.offline-recovery-row\s*\{\s*animation:\s*none/)
+  })
+
+  it('wires the removal to a local handler, not the network one', () => {
+    // The removal is a local action. It must not go through `recover`, which
+    // refuses every offline call, or the button would be a no-op offline.
+    expect(source).toContain('onClick={() => { void removeCopy(write) }}')
+    const removal = source.slice(source.indexOf('function removeCopy('), source.indexOf('async function recover('))
+    // The guard must not send the removal away when the device is offline.
+    // The guard is the first line, and it checks the account, not the network.
+    const guard = removal.slice(0, removal.indexOf('const runId'))
+    expect(guard).not.toContain('!online')
+    expect(guard).toContain('write.ownerId !== userId')
+    expect(removal).toContain("resolveQueuedTripWrite(write.tripId, 'discard')")
   })
 })

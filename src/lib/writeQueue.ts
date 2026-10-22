@@ -19,6 +19,14 @@ export interface QueuedWrite {
   /** The authoritative server revision used by the conditional write. */
   baseVersion?: number
   state?: 'conflict' | 'failed'
+  /**
+   * Why the copy cannot sync right now. The copy stays on the device so the
+   * owner can still download it. A copy with a reason never retries itself.
+   *
+   * `access-revoked` means the account is still a member but may no longer
+   * edit. `access-removed` means the membership is gone.
+   */
+  reason?: 'access-revoked' | 'access-removed' | 'trip-unavailable'
   storageFailed?: boolean
   /** The whole-trip snapshot that will be written (structured-cloneable). */
   trip: unknown
@@ -118,6 +126,8 @@ function isValidEntry(raw: unknown): raw is QueuedWrite {
   if (entry.revision !== undefined && (typeof entry.revision !== 'string' || !entry.revision || entry.revision.length > 128)) return false
   if (entry.baseVersion !== undefined && (!Number.isSafeInteger(entry.baseVersion) || entry.baseVersion < 0)) return false
   if (entry.state !== undefined && entry.state !== 'conflict' && entry.state !== 'failed') return false
+  if (entry.reason !== undefined && entry.reason !== 'access-revoked'
+    && entry.reason !== 'access-removed' && entry.reason !== 'trip-unavailable') return false
   if (entry.storageFailed !== undefined && typeof entry.storageFailed !== 'boolean') return false
   if (entry.trip === null || entry.trip === undefined) return false
   // The snapshot must survive a structured clone — a non-cloneable payload

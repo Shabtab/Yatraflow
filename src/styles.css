@@ -11674,3 +11674,10 @@ html.native-shell .app-shell:not(:has(> .topnav)) > main {
 @media (max-width: 720px) {
   .transport-answer-pair[data-sel] > .crew-btn { height: 100%; }
 }
+
+/* ---------- Offline recovery: the sync check control ----------
+   "Check sync" sits outside .offline-recovery-actions, so it never got that
+   rule's 44px height. It fell to .btn-sm's 24px minimum on desktop, which is
+   below the app's 44px target floor. The rule is narrow and states the size
+   for this one control. */
+.offline-banner-summary .btn { min-height: 44px; }

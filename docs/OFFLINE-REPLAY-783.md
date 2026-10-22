@@ -27,8 +27,8 @@ No production events, records, migrations, or deployments were created.
 | Retry exhaustion | Confirmed gap. The third failed replay deleted the saved edit. | Three failed sends pause it. Retry and download remain available. No failure path reports a successful sync. |
 | Account transitions | Confirmed gap. Several awaited callbacks could act after an identity change. | [Identity tests](../tests/offline-identity-boundaries.test.ts) cover stale hydration, cached boot, replay, resync, and trip fetches. |
 | Request identity | Confirmed gap. The SDK can await token acquisition after the last client guard. | Requests pin the captured account's Authorization header. [SDK test](../tests/offline-auth-header.test.ts) uses the installed client with a local fetch stub. |
-| Membership changes | Confirmed gap. Delayed fetches and cleanup could cross a revoke/grant boundary. | Permission generations cancel stale callbacks. Revoked work is removed; a fresh grant starts a separate generation. |
-| Deletion | Confirmed gap. Echo suppression and pending overlays could hide removal. | Deletes and tombstones cancel pending work before ordinary realtime guards. |
+| Membership changes | Confirmed gap. Delayed fetches and cleanup could cross a revoke/grant boundary. | Permission generations cancel stale callbacks. A revoked write keeps the owner's copy on the device with a stated reason, so it can still be downloaded. A fresh grant starts a separate generation. |
+| Deletion | Confirmed gap. Echo suppression and pending overlays could hide removal. | Deletes and tombstones cancel pending work before ordinary realtime guards. The owner's copy stays on the device with a stated reason, and the trip is never resurrected. |
 | Recovery UI | Missing. Online conflicts and exhausted retries had no persistent action surface. | [OfflineBanner](../src/components/OfflineBanner.tsx) shows recovery choices. [Render tests](../tests/offline-recovery-ui.test.ts) cover privacy, controls, and motion. |
 | Live database and device journey | Unverified. Credentials and a test account are unavailable. | Follow the staging procedure below before deployment. |
 
@@ -68,11 +68,25 @@ The server plan stays unchanged until an explicit replacement passes its revisio
 
 | Action | Effect |
 | --- | --- |
-| Download my copy | Downloads the local plan after a fresh account and membership check. Keep the file private. |
+| Download my copy | Downloads the local plan after a fresh account and owner check. Keep the file private. |
 | Use shared plan | Removes the selected local edit and reads the shared plan. A newer local edit is preserved. |
 | Replace shared plan | Reads a current baseline, then tries one conditional whole-plan replacement. Another concurrent edit still causes a conflict. |
 | Retry | Resets failed-send state and tries again. It cannot approve a conflict implicitly. |
+| Remove saved copy | Removes a kept copy from this device. It writes nothing to the server. |
 | Check sync | Refreshes membership and server state, then attempts eligible replay. Paused edits remain visible. |
+
+### A lost edit right
+
+An account that loses the right to write a trip keeps its queued copy.
+The copy stays on the device with the reason attached.
+The recovery list says which reason applies: the account may no longer edit,
+the account is no longer on the trip, or the trip is gone from the server.
+The download action stays, because the copy is already on that device.
+The copy never syncs on its own, and a retry is refused.
+A later grant does not replay it.
+
+A demoted reader keeps the trip in the list, because the account can still
+open it. A removed account does not.
 
 Recovery choices use the same trip tail as ordinary sends.
 Late hydration cannot replace a higher acknowledged server revision.
