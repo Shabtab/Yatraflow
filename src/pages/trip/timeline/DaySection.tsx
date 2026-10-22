@@ -20,6 +20,8 @@ import {
   computeCategoryBias, optimizeDayOrder, roadScaleRatio, measuredLegCount, optimiseKmLabel, scheduleRowsById,
 } from '../../../lib/engine'
 import type { ScheduledLeg } from '../../../lib/engine'
+import { distanceStatLabel, roadStateOf, type RoadState } from '../../../lib/roadStatLabel'
+import type { RoadStatus } from '../../../lib/tripRoad'
 import { sameDaySectionProps, type DayCardFacts, type DayTotals } from '../../../lib/dayCards'
 import type { LegEstimate, ScheduleWarning, OptimizeDayResult } from '../../../lib/engine'
 import { routeChain, stayDaySummary, dwellSegments, visibleStops } from '../../../lib/daySummary'
@@ -222,7 +224,7 @@ function SmoothCollapse({ open, children, fallbackFocus }: { open: boolean; chil
 // (whose travel panel searches against the whole itinerary). A closed card
 // therefore cannot read the trip at all: `trip` is optional, so a `trip.x` on
 // the collapsed path is a compile error rather than a stale render.
-export const DaySection = React.memo(function DaySection({ day, trip, facts, savedIds, onToggleSaved, editable, open, reviewMode, inView, onToggleOpen, onInsertHere, onAdd, onEdit, onDelete, onMoveWithinDay, onReorderDay, onMoveBetweenDays, onMoveStopIn, onRenameDay, onCopyDay, onAddQuickStop, onSetDayStart, onAddPlannedHalts, onLinkCommitment, warnings, onStatus, legCorrections, suggestionCache, dayTotals }: {
+export const DaySection = React.memo(function DaySection({ day, trip, facts, savedIds, onToggleSaved, editable, open, reviewMode, inView, onToggleOpen, onInsertHere, onAdd, onEdit, onDelete, onMoveWithinDay, onReorderDay, onMoveBetweenDays, onMoveStopIn, onRenameDay, onCopyDay, onAddQuickStop, onSetDayStart, onAddPlannedHalts, onLinkCommitment, warnings, onStatus, legCorrections, roadStatus, suggestionCache, dayTotals }: {
   day: Trip['days'][number]
   /** MR8: this trip's saved ids, and the one toggle every heart on the page uses. */
   savedIds: string[]
@@ -247,6 +249,10 @@ export const DaySection = React.memo(function DaySection({ day, trip, facts, sav
    *  over the slot it was opened on (resolved from the neighbouring row ids) */
   onInsertHere: (dayIndex: number, slot: number) => void
   legCorrections?: Record<string, LegEstimate>
+  /** The workspace's road-chain status: what the distance stat's wording must
+   *  say (#671). Undefined from a caller that does not plumb it reads as an
+   *  unmeasured day — the helper can only ever see a real correction with it. */
+  roadStatus?: RoadStatus
   suggestionCache: ReturnType<typeof useSuggestionCache>
   /** this day's slice of computeTotals().byDay — transport + expenses + entry fees */
   dayTotals?: DayTotals
@@ -336,6 +342,13 @@ export const DaySection = React.memo(function DaySection({ day, trip, facts, sav
   // the labels below say which number it is (#341).
   const roadRatio = useMemo(() => roadScaleRatio(journey.points, legCorrections), [journey, legCorrections])
   const roadLegs = useMemo(() => measuredLegCount(journey.points, legCorrections), [journey, legCorrections])
+  /** #671: which truth the distance stat shows — a measured road number or a
+   *  straight-line estimate. Pending, failed and never-measured all print the
+   *  estimate wording; only a day with a measured leg claims the road. */
+  const roadState: RoadState = useMemo(
+    () => roadStateOf(roadStatus, journey, legCorrections),
+    [roadStatus, journey, legCorrections],
+  )
   /** A distance label that never dresses chord math as a measured road km. */
   const kmLabel = (km: number) => optimiseKmLabel(km, roadRatio, roadLegs)
   // --- Liquid drag (bencho-style, BoardView parity): the DOM order NEVER
@@ -516,7 +529,11 @@ export const DaySection = React.memo(function DaySection({ day, trip, facts, sav
       ]
     : [
         `${journey.startTitle} → ${journey.endTitle}`,
-        `~${Math.round(journey.distanceKm)} km`,
+        // #671: the stat itself names whose number this is — the measured road
+        // km, or a straight-line estimate while the road is unmeasured. The
+        // wording is the text a screen reader hears, so the distinction is not
+        // a glyph or a colour.
+        distanceStatLabel(journey, roadState),
         `${hasAirLeg ? 'travel' : 'drive'} ~${minutesToHM(journey.driveMinutes)}`,
         ...(journey.halts.length > 0 ? [`${journey.halts.length} halt${journey.halts.length !== 1 ? 's' : ''}`] : []),
         ...(visitCount > 0 ? [`${visitCount} visit${visitCount !== 1 ? 's' : ''}`] : []),
