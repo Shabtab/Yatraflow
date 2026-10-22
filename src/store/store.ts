@@ -4683,22 +4683,32 @@ export function deleteExpense(tripId: ID, expenseId: ID): void {
   void persistTripField(tripId, tripById(tripId)!)
 }
 
+/** What `updateExpense` did, so a caller can speak the truth instead of
+ *  announcing a save it never made (#829).
+ *
+ *  It used to return `void`, and the Budget tab's editor announced "Expense
+ *  updated" and closed no matter what — including on the two paths below that
+ *  write nothing. The row then re-rendered from the store with the OLD figure,
+ *  which is what "the amount got permanent but the tab shows old data" was. */
+export type ExpenseWriteOutcome = 'applied' | 'refused' | 'no-such-line'
+
 /** Edit an expense line in place — the Budget tab's pencil affordance — instead
  *  of the old delete-and-retype dance. */
-export function updateExpense(tripId: ID, expenseId: ID, patch: Partial<Omit<Expense, 'id'>>): void {
+export function updateExpense(tripId: ID, expenseId: ID, patch: Partial<Omit<Expense, 'id'>>): ExpenseWriteOutcome {
   const t = tripById(tripId)
-  if (!t || !t.expenses.some(x => x.id === expenseId)) return
+  if (!t || !t.expenses.some(x => x.id === expenseId)) return 'no-such-line'
   // #382: an edit is a write too — the pencil affordance used to put any
   // number on the row it was handed. A patch that does not carry an amount
   // changes nothing about the line's money and passes through untouched.
   if (patch.amountInr !== undefined) {
     const v = amountVerdict(patch.amountInr)
-    if (!v.ok) { toast(amountRefusal(patch.amountInr)!, 'err'); return }
+    if (!v.ok) { toast(amountRefusal(patch.amountInr)!, 'err'); return 'refused' }
   }
   mutateTrip(tripId, draft => {
     draft.expenses = draft.expenses.map(x => x.id === expenseId ? { ...x, ...patch } : x)
   }, { touch: false })
   void persistTripField(tripId, tripById(tripId)!)
+  return 'applied'
 }
 
 /** M6 B4 — mark an expense line settled ("this one's sorted, stop counting
