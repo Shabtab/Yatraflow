@@ -11818,6 +11818,13 @@ html.native-shell .app-shell:not(:has(> .topnav)) > main {
 }
 
 
+/* ---- Keep `hidden` authoritative for every guided step ----
+   `hidden` is only `display: none` in the browser's own stylesheet, and an
+   author rule beats it regardless of specificity. Every block below sets
+   `display: flex`, so `hidden={guided && step !== '...'}` did nothing and all
+   six steps rendered at once. The same guard already exists for .share-panel
+   (see "Guard: keep [hidden] authoritative"). This one covers the step blocks. */
+.ct-panel > [hidden] { display: none !important; }
 /* ---- Review: the trip in six lines ---- */
 .ct-review { margin-bottom: 18px; }
 .ct-review h2 { margin: 0; font-size: 15px; letter-spacing: -0.01em; }

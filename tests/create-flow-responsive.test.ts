@@ -92,3 +92,32 @@ describe('the review list collapses on a phone', () => {
     expect(narrow).toContain('grid-template-columns: 1fr auto')
   })
 })
+
+describe('`hidden` actually hides a step', () => {
+  it('wins over the author display rules', () => {
+    // THE BUG THIS PINS: `hidden` is `display: none` only in the browser's own
+    // stylesheet, and an author rule beats it regardless of specificity. Every
+    // step block sets `display: flex`, so `hidden={guided && step !== '...'}`
+    // did nothing and all six steps rendered at once. Caught in a browser, not
+    // by any gate - which is why this assertion exists.
+    expect(css).toContain('.ct-panel > [hidden] { display: none !important; }')
+  })
+
+  it('guards every class the step blocks actually use', () => {
+    // The guard is by attribute, not by class, so it covers whatever block is
+    // added later. This pins the selector shape: a class-specific guard would
+    // have to be remembered on each new block.
+    const guard = css.match(/\.ct-panel > \[hidden\] \{[^}]*\}/)
+    expect(guard).not.toBeNull()
+    expect(guard![0]).toContain('display: none')
+  })
+
+  it('does not rely on the UA stylesheet anywhere the flow gates a block', () => {
+    // Every gated block sets display, so each one needs the guard above it.
+    const gated = ['ct-q', 'tpl-nameblock', 'ct-budget', 'ct-refine', 'ct-optional']
+    for (const cls of gated) {
+      expect(css, `${cls} should set display, which is why it needs the guard`)
+        .toMatch(new RegExp(`\\.${cls} \\{[^}]*display:`))
+    }
+  })
+})
