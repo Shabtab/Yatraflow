@@ -30,6 +30,8 @@ import { createReadiness, readinessFromDraft, readinessLine } from '../lib/creat
 import { saveDraft, loadDraft, clearDraft, draftIsWorthKeeping, draftAgeLabel, type StoredDraft } from '../lib/createDraft'
 import { unpickedStopErrors } from '../lib/createSubmit'
 import { validateCreate, type CreateStep } from '../lib/createSteps'
+import { stepFromQuery, stepHref } from '../lib/createStepUrl'
+import { currentQuery, navigate, onRouteChange } from '../lib/router'
 import { fuelFallbackNotice, revalidateCommitments, commitmentMoveMessage, composerRowError, ticketFuelSegments } from '../lib/createHonesty'
 import { addCrewEntry, type CrewEntry } from '../lib/crewInvite'
 import { recordCreateEvent } from '../lib/createEvents'
@@ -345,11 +347,21 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
   // pending draft can never be overwritten by the blank form it is offering.
   const [draft, setDraft] = useState<StoredDraft | null>(null)
   const [draftDecided, setDraftDecided] = useState(false)
-  // Which of the six steps is open. Held here even while the long form is still
-  // the only renderer: a draft records it, and step 3 moves it into the URL. The
-  // default is the first step, so a draft written before this existed resumes at
-  // the start rather than nowhere.
-  const [step, setStep] = useState<CreateStep>('where')
+  // Which of the six steps is open. The address is the source of truth (step 3
+  // of the guided flow): `?step=when` survives a reload, and moving between steps
+  // pushes a history entry so the browser's Back button steps backwards instead
+  // of leaving the page. `goToStep` is the only writer.
+  const [step, setStep] = useState<CreateStep>(() => stepFromQuery(currentQuery()))
+  /** Move to a step as a real navigation, so Back returns to the previous one. */
+  function goToStep(next: CreateStep) {
+    if (next === step) return
+    setStep(next)
+    navigate(stepHref(next))
+  }
+  // A real route change (Back, Forward, or a link into the flow) re-seeds the
+  // step from the address. `navigate` notifies, so goToStep's own push lands
+  // here too - setting the same value twice is a no-op for React.
+  useEffect(() => onRouteChange(() => setStep(stepFromQuery(currentQuery()))), [])
   // P5 - the crew collector. Local state only: nothing is written to the trip
   // and nothing is sent from here. The invite is composed (and marked ready)
   // once the trip exists, so this page never promises a message it cannot send.
@@ -442,8 +454,9 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
     // the restored budget is the user's own number - hand the field back to them
     setBudgetTouched(true)
     // Reopen on the step the draft was left on. An older draft has no step, and
-    // readStep() has already discarded one this build does not know.
-    if (draft.step) setStep(draft.step as CreateStep)
+    // readStep() has already discarded one this build does not know. This writes
+    // the address too, so the resumed step is shareable and Back still works.
+    if (draft.step) goToStep(draft.step as CreateStep)
     setDraft(null)
     setDraftDecided(true)
     toast('Picked up where you left off')
