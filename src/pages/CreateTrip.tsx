@@ -1476,7 +1476,9 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                carrying the honest anchor and the experience translation. ---- */}
           <div className="ct-budget" hidden={guided && step !== 'budget'}>
             <div className="tpl-warm-head">
-              <h2>Budget per head</h2>
+              {/* A question, like every other step heading. "Budget per head"
+                  named the field; this asks what the step wants to know. */}
+              <h2>What is your budget?</h2>
               <span className="why">anchored honestly - the tool earns trust here</span>
             </div>
             <div className="ct-bud-card">
