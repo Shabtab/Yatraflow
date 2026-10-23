@@ -11,7 +11,7 @@ import { useSyncExternalStore } from 'react'
 import type {
   User, Trip, StopSuggestion, TripDecision, ActivityEntry, Notification,
   PublishedItinerary, ID, ItineraryStop, ItineraryDay, TripMember, Expense, FixedCommitment,
-  NewDecisionOption, VehicleProfile,
+  NewDecisionOption, VehicleProfile, Comment,
 } from '../data/types'
 import { STOP_CATEGORIES, STOP_STATUSES } from '../data/types'
 import { seedData, uid } from '../data/seed'
@@ -38,6 +38,10 @@ import { suggestionToRow, decisionToRow, activityToRow, notificationToRow, publi
 import { reduceSlice, applyMemberChange, isRecentLocalWrite, isStaleServerRow } from '../lib/realtimeCore'
 import { MISSING_BACKEND_MESSAGE, describeAuthFailure } from '../lib/authErrors'
 import { hasStopNamed, nextOrderInDay, renumberDay } from '../lib/stopOrder'
+import {
+  submitCollabCommand, suggestionRowToEntry, decisionRowToEntry,
+  type CollabOutcome, type CollabCommand,
+} from './collabCommand'
 import { adminFromSession, clearAdminCache, isAdminCached } from '../lib/adminSession'
 import type { RealtimeChannel, RealtimePostgresChangesPayload, SupabaseClient } from '@supabase/supabase-js'
 
@@ -254,7 +258,7 @@ function mutateTrip(tripId: ID, fn: (draft: Trip) => void, opts: { touch?: boole
   const draft = structuredClone(cache.trips[idx])
   fn(draft)
   if (opts.touch !== false) draft.updatedAt = Date.now()
-  if (opts.log && cache.sessionUserId) addActivity(tripId, cache.sessionUserId, opts.log, opts.target)
+  if (opts.log) void addActivity(tripId, opts.log, opts.target)
   cache.trips = [...cache.trips.slice(0, idx), draft, ...cache.trips.slice(idx + 1)]
   commit()
   return draft
@@ -1187,25 +1191,11 @@ export function addDemoTrips(): void {
 
 // ---------------- Row mappers for collaboration tables ----------------
 
-function rowToSuggestion(row: unknown): StopSuggestion {
-  const r = row as any
-  return {
-    id: r.id, tripId: r.trip_id, dayIndex: r.day_index, proposedBy: r.proposed_by,
-    title: r.title, category: r.category, locationName: r.location_name, lat: r.lat, lng: r.lng,
-    description: r.description, visitMinutes: r.visit_minutes,
-    estimatedEntryFeeInr: r.estimated_entry_fee_inr, estimatedTransportInr: r.estimated_transport_inr,
-    votes: r.votes ?? [], comments: r.comments ?? [], status: r.status, createdAt: r.created_at,
-  }
-}
-function rowToDecision(row: unknown): TripDecision {
-  const r = row as any
-  return {
-    id: r.id, tripId: r.trip_id, question: r.question, context: r.context,
-    options: r.options ?? [], votesByUserId: r.votes_by_user_id ?? {}, status: r.status,
-    comments: r.comments ?? [],
-    resolvedOptionId: r.resolved_option_id, raisedBy: r.raised_by, createdAt: r.created_at, resolvedAt: r.resolved_at,
-  }
-}
+// The suggestion and decision row mappings live in ./collabCommand, shared with
+// the receipt-adoption path (the same server read shape). Local aliases keep
+// the hydrate and realtime call sites unchanged.
+const rowToSuggestion = suggestionRowToEntry
+const rowToDecision = decisionRowToEntry
 function rowToActivity(row: unknown): ActivityEntry {
   const r = row as any
   return { id: r.id, tripId: r.trip_id, actorId: r.actor_id, verb: r.verb, target: r.target, at: r.at }
@@ -4755,88 +4745,381 @@ export function markExpenseUnsettled(tripId: ID, expenseId: ID, by: ID | null): 
   void persistTripField(tripId, tripById(tripId)!)
 }
 
+// ---------------- Contribution command helpers (stage A of #832) ----------------
+//
+// Shared machinery for the writers that submit through the collab-command RPC
+// (docs/agents/collab-command-contract.md). Three contract rules live here so
+// no writer can forget them:
+//
+//   1. A receipt is applied only under the identity that submitted the
+//      command. Every continuation captures identityScope() before its first
+//      await and checks isCurrentIdentity before it touches the cache, so a
+//      late receipt after sign-out or A→B→A never enters the next identity's
+//      cache.
+//   2. Freshness is PER ROW. A writer captures the cached row object after
+//      its optimistic update; on the receipt it adopts the canonical row only
+//      if that object is still the current one. If realtime or another command
+//      replaced the row meanwhile, the receipt row is discarded and just that
+//      row is refetched — fetching the whole trip proves nothing.
+//   3. A refused command (forbidden / invalid / unavailable) leaves NOTHING
+//      behind: the optimistic row, activity and notification entries roll
+//      back, and the caller receives the outcome to show. A conflict keeps the
+//      local work (the planner's edit is never dropped) and refetches the row.
+
+type ContributionKind = 'suggestion' | 'decision'
+
+type CollabSliceSnapshot = {
+  suggestions?: StopSuggestion[]
+  decisions?: TripDecision[]
+  activity: ActivityEntry[]
+  notifications: Notification[]
+}
+
+function captureCollabSlices(withRows: boolean): CollabSliceSnapshot {
+  return {
+    ...(withRows ? { suggestions: cache.suggestions, decisions: cache.decisions } : {}),
+    activity: cache.activity,
+    notifications: cache.notifications,
+  }
+}
+
+function restoreCollabSlices(before: CollabSliceSnapshot): void {
+  const next: Partial<DB> = {}
+  if (before.suggestions) next.suggestions = before.suggestions
+  if (before.decisions) next.decisions = before.decisions
+  next.activity = before.activity
+  next.notifications = before.notifications
+  patch(next)
+  commit()
+}
+
+/** The client's own acknowledgment revision for a direct (non-RPC) write:
+ *  the cached trip's write_version, or 0 when unknown. Never invented — the
+ *  client does not advance its trip CAS revision for a contribution. */
+function tripRevisionOf(tripId: ID): number {
+  const t = tripById(tripId)
+  return t && validWriteVersion(t.writeVersion) ? t.writeVersion : 0
+}
+
+/** Acknowledge a receipt's tripRevision. It is NOT a trip snapshot and MUST
+ *  NOT advance the client's CAS revision while an older snapshot is held
+ *  (contract rule 1). It only schedules a background refetch when the server
+ *  observed a revision NEWER than the cached row; pending trip edits stay
+ *  queued and are rebased by the normal admission path. */
+function noteTripRevision(tripId: ID, revision: number): void {
+  const t = tripById(tripId)
+  if (!t || !validWriteVersion(revision)) return
+  // Reconcile only against a KNOWN cached revision: without one there is no
+  // honest comparison, and a background refetch per receipt would be noise.
+  // A known-but-older revision means the server has moved on — the refetch
+  // brings the authoritative trip home through the normal admission path.
+  if (!validWriteVersion(t.writeVersion) || t.writeVersion >= revision) return
+  fetchTripIntoCache(tripId).catch(e => console.error('[yatraflow] trip refetch after receipt failed', e))
+}
+
+/** Swap the optimistic activity/notification ids for the canonical ids the
+ *  receipt names, so the realtime echo upserts the SAME rows instead of
+ *  duplicating the entries. Notifications arrive as ids only, in the order the
+ *  server created them; when the counts disagree the optimistic copies are
+ *  dropped and the echo or the next hydrate brings the server's rows. */
+function reconcileArtifacts(
+  activityId: string | undefined,
+  notificationIds: string[] | undefined,
+  localActivityId: string,
+  localNotificationIds: string[],
+): void {
+  let activity = cache.activity
+  let notifications = cache.notifications
+  let changed = false
+  if (localActivityId) {
+    activity = activityId
+      ? activity.map(a => a.id === localActivityId ? { ...a, id: activityId } : a)
+      : activity.filter(a => a.id !== localActivityId)
+    changed = true
+  }
+  if (localNotificationIds.length) {
+    if (notificationIds && notificationIds.length === localNotificationIds.length) {
+      const rename = new Map(localNotificationIds.map((id, i) => [id, notificationIds[i]]))
+      notifications = notifications.map(n => rename.has(n.id) ? { ...n, id: rename.get(n.id)! } : n)
+    } else {
+      const drop = new Set(localNotificationIds)
+      notifications = notifications.filter(n => !drop.has(n.id))
+    }
+    changed = true
+  }
+  if (changed) { cache.activity = activity; cache.notifications = notifications; commit() }
+}
+
+/** Remove the optimistic activity/notification entries a refused command
+ *  created (the server created none). */
+function dropArtifacts(localActivityId: string, localNotificationIds: string[]): void {
+  if (!localActivityId && localNotificationIds.length === 0) return
+  const drop = new Set(localNotificationIds)
+  cache.activity = cache.activity.filter(a => a.id !== localActivityId)
+  cache.notifications = cache.notifications.filter(n => !drop.has(n.id))
+  commit()
+}
+
+/** Re-read ONE suggestion/decision row into the cache — the freshness
+ *  recovery when a receipt's row is stale or a conflict needs the crew's
+ *  truth. Bound to the identity that asked, like every other continuation. */
+async function refetchContributionRow(kind: ContributionKind, rowId: ID, scope: IdentityScope): Promise<void> {
+  try {
+    const table = kind === 'suggestion' ? 'suggestions' : 'decisions'
+    const { data, error } = await supabase.from(table).select('*').eq('id', rowId).maybeSingle()
+    if (error || !data || !isCurrentIdentity(scope)) return
+    if (kind === 'suggestion') {
+      const mapped = suggestionRowToEntry(data)
+      cache.suggestions = cache.suggestions.some(x => x.id === rowId)
+        ? cache.suggestions.map(x => x.id === rowId ? mapped : x)
+        : [...cache.suggestions, mapped]
+    } else {
+      const mapped = decisionRowToEntry(data)
+      cache.decisions = cache.decisions.some(x => x.id === rowId)
+        ? cache.decisions.map(x => x.id === rowId ? mapped : x)
+        : [...cache.decisions, mapped]
+    }
+    commit()
+  } catch (e) {
+    console.error(`[yatraflow] ${kind} row refetch failed`, e)
+  }
+}
+
+/** Submit one contribution command and settle its receipt against the cache.
+ *  Every RPC-backed writer funnels through this, so the identity, freshness
+ *  and rollback rules cannot drift apart between them. */
+async function runContributionCommand(args: {
+  scope: IdentityScope
+  tripId: ID
+  commandId: string
+  command: CollabCommand
+  rowKind: ContributionKind
+  rowId: ID
+  before: CollabSliceSnapshot
+  rowRef: unknown
+  localActivityId: string
+  localNotificationIds: string[]
+}): Promise<CollabOutcome> {
+  const receipt = await submitCollabCommand(args.commandId, args.tripId, args.command)
+  // Identity binding first: a receipt that lands after sign-out or an
+  // account switch writes — and rolls back — NOTHING. A restore here would
+  // put the previous identity's slices into the next identity's cache, the
+  // #45 leak all over again.
+  if (!isCurrentIdentity(args.scope)) return receipt
+  if (receipt.status === 'applied' || receipt.status === 'alreadyApplied') {
+    const stillCurrent = args.rowKind === 'suggestion'
+      ? cache.suggestions.find(x => x.id === args.rowId)
+      : cache.decisions.find(x => x.id === args.rowId)
+    if (stillCurrent !== args.rowRef) {
+      // Per-row freshness: the row moved on (realtime, a peer command, or one
+      // of our own later commands). Discard the receipt row and refetch that
+      // row; it already carries every contribution.
+      void refetchContributionRow(args.rowKind, args.rowId, args.scope)
+    } else if (args.rowKind === 'suggestion') {
+      if (receipt.suggestion) {
+        cache.suggestions = cache.suggestions.map(x => x.id === args.rowId ? receipt.suggestion! : x)
+        commit()
+      }
+    } else if (receipt.decision) {
+      cache.decisions = cache.decisions.map(x => x.id === args.rowId ? receipt.decision! : x)
+      commit()
+    }
+    if (receipt.status === 'applied') {
+      reconcileArtifacts(receipt.activityId, receipt.notificationIds, args.localActivityId, args.localNotificationIds)
+    } else {
+      // A retry's optimistic artifacts are the twin copies the server did
+      // NOT create (its own came from the first try, and the canonical
+      // row above already carries them): drop the local extras.
+      reconcileArtifacts(undefined, undefined, args.localActivityId, args.localNotificationIds)
+    }
+    noteTripRevision(args.tripId, receipt.tripRevision)
+    return receipt
+  }
+  if (receipt.status === 'conflict') {
+    // Keep the optimistic local work — the planner's comment or ballot stays
+    // on screen until the caller says otherwise; dropping it silently is the
+    // exact defect this stage repairs. The side artifacts go (the server
+    // created none for a command it refused). The next realtime event or
+    // hydrate brings the crew's row; the caller surfaces the conflict.
+    dropArtifacts(args.localActivityId, args.localNotificationIds)
+    return receipt
+  }
+  // forbidden / invalid / unavailable: nothing was created anywhere.
+  restoreCollabSlices(args.before)
+  return receipt
+}
+
 // ---------------- Suggestions / votes / comments ----------------
 
-export function addSuggestion(tripId: ID, s: Omit<StopSuggestion, 'id' | 'votes' | 'comments' | 'status' | 'createdAt' | 'tripId'>): void {
+export function addSuggestion(
+  tripId: ID,
+  s: Omit<StopSuggestion, 'id' | 'proposedBy' | 'votes' | 'comments' | 'status' | 'createdAt' | 'tripId'>,
+): Promise<CollabOutcome> {
+  const scope = identityScope()
+  // The server derives the actor from auth.uid(); a signed-out caller has no
+  // actor, so there is nothing to submit. The caller's proposedBy parameter
+  // is GONE — the actor never travels in the payload (#801).
+  if (!scope) return Promise.resolve({ status: 'forbidden' })
+  if (!s.title.trim()) return Promise.resolve({ status: 'invalid', reason: 'empty title' })
   // Client generates the UUID so the cache and the DB row agree on the id
   // (a server-generated default would diverge after the next hydration).
   const id = uuid()
-  const row = {
-    id, trip_id: tripId, day_index: s.dayIndex, proposed_by: s.proposedBy, title: s.title, category: s.category,
-    location_name: s.locationName, lat: s.lat, lng: s.lng, description: s.description, visit_minutes: s.visitMinutes,
-    estimated_entry_fee_inr: s.estimatedEntryFeeInr, estimated_transport_inr: s.estimatedTransportInr,
-    votes: [], comments: [], status: 'open',
-  }
-  cache.suggestions = [...cache.suggestions, { ...s, id, tripId, votes: [], comments: [], status: 'open', createdAt: Date.now() }]
+  const before = captureCollabSlices(true)
+  cache.suggestions = [...cache.suggestions, {
+    ...s, id, tripId, proposedBy: scope.userId, votes: [], comments: [], status: 'open' as const, createdAt: Date.now(),
+  }]
+  const localActivityId = uuid()
+  cache.activity = [...cache.activity, {
+    id: localActivityId, tripId, actorId: scope.userId,
+    verb: `suggested “${s.title}”`, target: `Day ${(s.dayIndex ?? 0) + 1}`, at: Date.now(),
+  }]
+  const localNotificationIds: string[] = []
   const trip = tripById(tripId)
-  if (trip && cache.sessionUserId) {
-    addActivity(tripId, cache.sessionUserId, `suggested “${s.title}”`, `Day ${(s.dayIndex ?? 0) + 1}`)
+  if (trip) {
     for (const m of trip.members ?? []) {
-      if (m.userId !== cache.sessionUserId) pushNotification(m.userId, tripId, `${userName(cache.sessionUserId)} suggested “${s.title}” for Day ${(s.dayIndex ?? 0) + 1}.`)
+      if (m.userId !== scope.userId) {
+        const nid = uuid()
+        localNotificationIds.push(nid)
+        cache.notifications = [{
+          id: nid, userId: m.userId, tripId, read: false, at: Date.now(),
+          text: `${userName(scope.userId)} suggested “${s.title}” for Day ${(s.dayIndex ?? 0) + 1}.`,
+        }, ...cache.notifications]
+      }
     }
   }
   commit()
-  fire('suggestions', supabase.from('suggestions').insert(row))
+  const rowRef = cache.suggestions.find(x => x.id === id)
+  return runContributionCommand({
+    scope, tripId, commandId: uuid(), rowKind: 'suggestion', rowId: id,
+    before, rowRef, localActivityId, localNotificationIds,
+    command: {
+      type: 'suggestion.create',
+      suggestionId: id,
+      suggestion: {
+        dayIndex: s.dayIndex, title: s.title, category: s.category, locationName: s.locationName,
+        lat: s.lat, lng: s.lng, description: s.description, visitMinutes: s.visitMinutes,
+        estimatedEntryFeeInr: s.estimatedEntryFeeInr, estimatedTransportInr: s.estimatedTransportInr,
+      },
+    },
+  })
 }
 
-export function voteSuggestion(tripId: ID, suggestionId: ID, userId: ID, value: 1 | -1): void {
+export function voteSuggestion(tripId: ID, suggestionId: ID, value: 1 | -1): Promise<CollabOutcome> {
+  const scope = identityScope()
+  if (!scope) return Promise.resolve({ status: 'forbidden' })
   const sgIdx = cache.suggestions.findIndex(x => x.id === suggestionId)
-  if (sgIdx < 0) return
+  if (sgIdx < 0) return Promise.resolve({ status: 'invalid', reason: 'unknown suggestion' })
+  if (cache.suggestions[sgIdx].status && cache.suggestions[sgIdx].status !== 'open') {
+    // F13: a closed suggestion takes no more ballots — the accept/decline
+    // record IS the decision, and the vote buttons go quiet with it.
+    return Promise.resolve({ status: 'invalid', reason: 'suggestion is not open' })
+  }
   const sg = structuredClone(cache.suggestions[sgIdx])
-  const existing = sg.votes.find(v => v.userId === userId)
-  // Toggling the same value again is a *removal*, and the activity feed has to say
-  // so — logging the value's verb made "I take back my upvote" read as "upvoted",
-  // which is the opposite of what happened. #36-11.
+  const existing = sg.votes.find(v => v.userId === scope.userId)
+  // Toggling the same value again is a *removal* — the CLIENT says so with
+  // `value: null`, and the activity feed has to say so too: logging the
+  // value's verb made "I take back my upvote" read as "upvoted", which is the
+  // opposite of what happened. #36-11. The ballot command itself never
+  // toggles (contract): a retried ballot with the same value is a no-op on
+  // the server, so a retry cannot flip the vote.
   let removed = false
+  let ballot: 1 | -1 | null = value
   if (existing) {
-    if (existing.value === value) { sg.votes = sg.votes.filter(v => v.userId !== userId); removed = true }
+    if (existing.value === value) { sg.votes = sg.votes.filter(v => v.userId !== scope.userId); removed = true; ballot = null }
     else existing.value = value
   } else {
-    sg.votes.push({ userId, value, createdAt: Date.now() })
+    sg.votes.push({ userId: scope.userId, value, createdAt: Date.now() })
   }
+  const before = captureCollabSlices(true)
   cache.suggestions = [...cache.suggestions.slice(0, sgIdx), sg, ...cache.suggestions.slice(sgIdx + 1)]
-  addActivity(
-    tripId,
-    userId,
-    removed ? 'removed their vote on a suggestion' : value > 0 ? 'upvoted a suggestion' : 'downvoted a suggestion',
-    sg.title,
-  )
+  const localActivityId = uuid()
+  cache.activity = [...cache.activity, {
+    id: localActivityId, tripId, actorId: scope.userId,
+    verb: removed ? 'removed their vote on a suggestion' : value > 0 ? 'upvoted a suggestion' : 'downvoted a suggestion',
+    target: sg.title, at: Date.now(),
+  }]
   commit()
-  fire('suggestions', supabase.from('suggestions').update({ votes: sg.votes }).eq('id', suggestionId))
+  const rowRef = cache.suggestions.find(x => x.id === suggestionId)
+  return runContributionCommand({
+    scope, tripId, commandId: uuid(), rowKind: 'suggestion', rowId: suggestionId,
+    before, rowRef, localActivityId, localNotificationIds: [],
+    command: { type: 'suggestion.ballot', suggestionId, value: ballot },
+  })
 }
 
-export function addCommentToSuggestion(tripId: ID, suggestionId: ID, authorId: ID, text: string): void {
+export function addCommentToSuggestion(tripId: ID, suggestionId: ID, text: string): Promise<CollabOutcome> {
+  const scope = identityScope()
+  if (!scope) return Promise.resolve({ status: 'forbidden' })
+  const trimmed = text.trim()
+  if (!trimmed) return Promise.resolve({ status: 'invalid', reason: 'empty comment' })
   const sgIdx = cache.suggestions.findIndex(x => x.id === suggestionId)
-  if (sgIdx < 0 || !text.trim()) return
+  if (sgIdx < 0) return Promise.resolve({ status: 'invalid', reason: 'unknown suggestion' })
   const sg = structuredClone(cache.suggestions[sgIdx])
-  sg.comments.push({ id: uid('cm'), authorId, text: text.trim(), createdAt: Date.now() })
+  // The comment id is a STABLE text key: the server keys the comment by it, so
+  // a retried command answers alreadyApplied instead of appending a twin.
+  const comment: Comment = { id: uid('cm'), authorId: scope.userId, text: trimmed, createdAt: Date.now() }
+  sg.comments.push(comment)
+  const before = captureCollabSlices(true)
   cache.suggestions = [...cache.suggestions.slice(0, sgIdx), sg, ...cache.suggestions.slice(sgIdx + 1)]
-  addActivity(tripId, authorId, 'commented on a suggestion', sg.title)
+  const localActivityId = uuid()
+  cache.activity = [...cache.activity, {
+    id: localActivityId, tripId, actorId: scope.userId, verb: 'commented on a suggestion', target: sg.title, at: Date.now(),
+  }]
+  const localNotificationIds: string[] = []
   for (const v of new Set([...sg.votes.map(v => v.userId), sg.proposedBy])) {
-    if (v !== authorId) pushNotification(v, tripId, `${userName(authorId)} commented on “${sg.title}”.`)
+    if (v !== scope.userId) {
+      const nid = uuid()
+      localNotificationIds.push(nid)
+      cache.notifications = [{
+        id: nid, userId: v, tripId, read: false, at: Date.now(),
+        text: `${userName(scope.userId)} commented on “${sg.title}”.`,
+      }, ...cache.notifications]
+    }
   }
   commit()
-  fire('suggestions', supabase.from('suggestions').update({ comments: sg.comments }).eq('id', suggestionId))
+  const rowRef = cache.suggestions.find(x => x.id === suggestionId)
+  return runContributionCommand({
+    scope, tripId, commandId: uuid(), rowKind: 'suggestion', rowId: suggestionId,
+    before, rowRef, localActivityId, localNotificationIds,
+    command: { type: 'suggestion.comment', suggestionId, commentId: comment.id, text: trimmed },
+  })
 }
 
-export function addCommentToDecision(tripId: ID, decisionId: ID, authorId: ID, text: string): void {
+export function addCommentToDecision(tripId: ID, decisionId: ID, text: string): Promise<CollabOutcome> {
+  const scope = identityScope()
+  if (!scope) return Promise.resolve({ status: 'forbidden' })
+  const trimmed = text.trim()
+  if (!trimmed) return Promise.resolve({ status: 'invalid', reason: 'empty comment' })
   const dIdx = cache.decisions.findIndex(x => x.id === decisionId)
-  if (dIdx < 0 || !text.trim()) return
+  if (dIdx < 0) return Promise.resolve({ status: 'invalid', reason: 'unknown decision' })
   const d = structuredClone(cache.decisions[dIdx])
-  d.comments.push({ id: uid('cm'), authorId, text: text.trim(), createdAt: Date.now() })
+  const comment: Comment = { id: uid('cm'), authorId: scope.userId, text: trimmed, createdAt: Date.now() }
+  d.comments.push(comment)
+  const before = captureCollabSlices(true)
   cache.decisions = [...cache.decisions.slice(0, dIdx), d, ...cache.decisions.slice(dIdx + 1)]
-  addActivity(tripId, authorId, 'commented on a decision', d.question)
+  const localActivityId = uuid()
+  cache.activity = [...cache.activity, {
+    id: localActivityId, tripId, actorId: scope.userId, verb: 'commented on a decision', target: d.question, at: Date.now(),
+  }]
   // Voters hear about it the same way suggestion voters do; the raiser is
   // included so a comment on their own question still pings the other side.
+  const localNotificationIds: string[] = []
   for (const v of new Set([...Object.keys(d.votesByUserId), d.raisedBy])) {
-    if (v !== authorId) pushNotification(v, tripId, `${userName(authorId)} commented on “${d.question}”.`)
+    if (v !== scope.userId) {
+      const nid = uuid()
+      localNotificationIds.push(nid)
+      cache.notifications = [{
+        id: nid, userId: v, tripId, read: false, at: Date.now(),
+        text: `${userName(scope.userId)} commented on “${d.question}”.`,
+      }, ...cache.notifications]
+    }
   }
   commit()
-  // The column ships in 20260920_decision_comments.sql: probe before writing so
-  // a pre-migration database keeps the comment session-only instead of firing a
-  // doomed UPDATE (the party-prefs degradation, same shape).
-  void decisionsHaveComments().then(ok => {
-    if (ok) fire('decisions', supabase.from('decisions').update({ comments: d.comments }).eq('id', decisionId))
+  const rowRef = cache.decisions.find(x => x.id === decisionId)
+  return runContributionCommand({
+    scope, tripId, commandId: uuid(), rowKind: 'decision', rowId: decisionId,
+    before, rowRef, localActivityId, localNotificationIds,
+    command: { type: 'decision.comment', decisionId, commentId: comment.id, text: trimmed },
   })
 }
 
@@ -4874,21 +5157,47 @@ export function acceptSuggestionIntoTimeline(tripId: ID, suggestionId: ID): void
     priority: 'nice-to-have', status: 'confirmed',
   })
   cache.suggestions = cache.suggestions.map(x => x.id === suggestionId ? { ...x, status: 'accepted' as const } : x)
-  const actor = cache.sessionUserId
-  if (actor) addActivity(tripId, actor, 'accepted suggestion into timeline', sg.title)
+  void addActivity(tripId, 'accepted suggestion into timeline', sg.title)
   commit()
   fire('suggestions', supabase.from('suggestions').update({ status: 'accepted' }).eq('id', suggestionId))
 }
 
-export function declineSuggestion(tripId: ID, suggestionId: ID): void {
+export function declineSuggestion(tripId: ID, suggestionId: ID): Promise<CollabOutcome> {
+  const scope = identityScope()
+  if (!scope) return Promise.resolve({ status: 'forbidden' })
   const sg = cache.suggestions.find(x => x.id === suggestionId)
-  if (sg) { cache.suggestions = cache.suggestions.map(x => x.id === suggestionId ? { ...x, status: 'declined' as const } : x); addActivity(tripId, cache.sessionUserId!, 'declined a suggestion', sg.title); commit(); fire('suggestions', supabase.from('suggestions').update({ status: 'declined' }).eq('id', suggestionId)) }
+  if (!sg) return Promise.resolve({ status: 'invalid', reason: 'unknown suggestion' })
+  // F13 — the decline lifecycle: a repeated decline is an idempotent no-op,
+  // and a terminal suggestion (accepted) cannot flip to declined.
+  if (sg.status === 'declined') return Promise.resolve({ status: 'alreadyApplied', tripRevision: tripRevisionOf(tripId) })
+  if (sg.status && sg.status !== 'open') return Promise.resolve({ status: 'invalid', reason: 'suggestion is not open' })
+  // A workflow update (status only) — it stays on the direct write path by
+  // contract; only create/ballot/comment/activity commands use the RPC. The
+  // outcome still reaches the caller, and a failed update rolls the status
+  // and its artifacts back instead of reading as success.
+  const before = captureCollabSlices(true)
+  cache.suggestions = cache.suggestions.map(x => x.id === suggestionId ? { ...x, status: 'declined' as const } : x)
+  commit()
+  void addActivity(tripId, 'declined a suggestion', sg.title)
+  const scopeAtAwait = scope
+  return Promise.resolve(supabase.from('suggestions').update({ status: 'declined' }).eq('id', suggestionId)).then(({ error }) => {
+    if (error) {
+      // A rollback is an identity-bound continuation too: restoring the
+      // previous identity's slices into the next identity's cache would be
+      // the #45 leak all over again.
+      if (isCurrentIdentity(scopeAtAwait)) restoreCollabSlices(before)
+      return { status: 'unavailable' }
+    }
+    return { status: 'applied', tripRevision: tripRevisionOf(tripId) }
+  })
 }
 
 // ---------------- Decisions ----------------
 
-export function addDecision(tripId: ID, d: Pick<TripDecision, 'question' | 'context'> & { options: NewDecisionOption[] }): void {
-  if (!cache.sessionUserId) return
+export function addDecision(tripId: ID, d: Pick<TripDecision, 'question' | 'context'> & { options: NewDecisionOption[] }): Promise<CollabOutcome> {
+  const scope = identityScope()
+  if (!scope) return Promise.resolve({ status: 'forbidden' })
+  if (!d.question.trim()) return Promise.resolve({ status: 'invalid', reason: 'empty question' })
   // Same cache/DB id agreement as addSuggestion.
   const id = uuid()
   // #335: the caller's option id IS the contract, so keep it. The Map rail
@@ -4905,57 +5214,109 @@ export function addDecision(tripId: ID, d: Pick<TripDecision, 'question' | 'cont
     seen.add(optionId)
     return { ...o, id: optionId }
   })
-  const row = {
-    id, trip_id: tripId, question: d.question, context: d.context, options,
-    votes_by_user_id: {}, status: 'open', raised_by: cache.sessionUserId,
-  }
-  cache.decisions = [...cache.decisions, { ...d, id, tripId, votesByUserId: {}, comments: [], status: 'open', raisedBy: cache.sessionUserId, createdAt: Date.now(), options }]
-  addActivity(tripId, cache.sessionUserId, `raised decision “${d.question}”`, 'Decisions')
+  const before = captureCollabSlices(true)
+  cache.decisions = [...cache.decisions, {
+    ...d, id, tripId, options, votesByUserId: {}, comments: [], status: 'open' as const,
+    raisedBy: scope.userId, createdAt: Date.now(),
+  }]
+  const localActivityId = uuid()
+  cache.activity = [...cache.activity, {
+    id: localActivityId, tripId, actorId: scope.userId, verb: `raised decision “${d.question}”`, target: 'Decisions', at: Date.now(),
+  }]
   // Notification parity with addSuggestion: the other members hear about new
   // group input too, not just suggestions.
+  const localNotificationIds: string[] = []
   const trip = tripById(tripId)
   if (trip) {
     for (const m of trip.members ?? []) {
-      if (m.userId !== cache.sessionUserId) pushNotification(m.userId, tripId, `${userName(cache.sessionUserId)} raised a decision: “${d.question}”.`)
+      if (m.userId !== scope.userId) {
+        const nid = uuid()
+        localNotificationIds.push(nid)
+        cache.notifications = [{
+          id: nid, userId: m.userId, tripId, read: false, at: Date.now(),
+          text: `${userName(scope.userId)} raised a decision: “${d.question}”.`,
+        }, ...cache.notifications]
+      }
     }
   }
   commit()
-  fire('decisions', supabase.from('decisions').insert(row))
+  const rowRef = cache.decisions.find(x => x.id === id)
+  return runContributionCommand({
+    scope, tripId, commandId: uuid(), rowKind: 'decision', rowId: id,
+    before, rowRef, localActivityId, localNotificationIds,
+    command: {
+      type: 'decision.create',
+      decisionId: id,
+      decision: { question: d.question, ...(d.context !== undefined ? { context: d.context } : {}), options: options.map(o => ({ ...o })) },
+    },
+  })
 }
 
-export function voteOnDecision(decisionId: ID, optionId: ID): void {
+export function voteOnDecision(decisionId: ID, optionId: ID): Promise<CollabOutcome> {
+  const scope = identityScope()
+  if (!scope) return Promise.resolve({ status: 'forbidden' })
   const dIdx = cache.decisions.findIndex(x => x.id === decisionId)
-  if (dIdx < 0 || !cache.sessionUserId || cache.decisions[dIdx].status !== 'open') return
+  if (dIdx < 0) return Promise.resolve({ status: 'invalid', reason: 'unknown decision' })
+  if (cache.decisions[dIdx].status !== 'open') return Promise.resolve({ status: 'invalid', reason: 'decision is not open' })
+  // The chosen option must exist — the contract validates it server-side too,
+  // and a ballot pointing nowhere would count a vote for nothing.
+  if (!cache.decisions[dIdx].options.some(o => o.id === optionId)) {
+    return Promise.resolve({ status: 'invalid', reason: 'unknown option' })
+  }
   const d = structuredClone(cache.decisions[dIdx])
-  d.votesByUserId[cache.sessionUserId] = optionId
+  // One ballot per actor, keyed by auth.uid() on the server. A ballot change
+  // is a SET to the new option; a retried ballot with the same option
+  // is a no-op, never a toggle.
+  d.votesByUserId[scope.userId] = optionId
+  const before = captureCollabSlices(true)
   cache.decisions = [...cache.decisions.slice(0, dIdx), d, ...cache.decisions.slice(dIdx + 1)]
-  addActivity(d.tripId, cache.sessionUserId, 'voted on a decision', d.question)
+  const localActivityId = uuid()
+  cache.activity = [...cache.activity, {
+    id: localActivityId, tripId: d.tripId, actorId: scope.userId, verb: 'voted on a decision', target: d.question, at: Date.now(),
+  }]
   // No per-vote member pings — on a 6-person trip every ballot pinged five
   // people and the bell became noise. The activity feed carries the vote;
   // members hear about the raise and the resolution only.
   commit()
-  fire('decisions', supabase.from('decisions').update({ votes_by_user_id: d.votesByUserId }).eq('id', decisionId))
+  const rowRef = cache.decisions.find(x => x.id === decisionId)
+  return runContributionCommand({
+    scope, tripId: d.tripId, commandId: uuid(), rowKind: 'decision', rowId: decisionId,
+    before, rowRef, localActivityId, localNotificationIds: [],
+    command: { type: 'decision.ballot', decisionId, optionId },
+  })
 }
 
-export function resolveDecision(decisionId: ID, optionId: ID): void {
+export function resolveDecision(decisionId: ID, optionId: ID): Promise<CollabOutcome> {
+  const scope = identityScope()
+  if (!scope) return Promise.resolve({ status: 'forbidden' })
   const dIdx = cache.decisions.findIndex(x => x.id === decisionId)
-  if (dIdx < 0) return
+  if (dIdx < 0) return Promise.resolve({ status: 'invalid', reason: 'unknown decision' })
   // Idempotence (#336): a decision resolves ONCE. A double-tap used to stamp
   // the status again AND run the landing branch twice, adding the winner twice
-  // (each addStop minted a new stop id). voteOnDecision already guards this —
-  // and like there, a row with no status is not yet resolved (older rows).
+  // (each addStop minted a fresh uid per call). The lifecycle now answers:
+  // the SAME winner again is an alreadyApplied no-op, a DIFFERENT one is a
+  // refused rewrite of a settled vote, and a chosen id that is not on the
+  // poll is invalid — the contract validates all three server-side too.
   const status = cache.decisions[dIdx].status
-  if (status && status !== 'open') return
+  if (status && status !== 'open') {
+    return Promise.resolve(cache.decisions[dIdx].resolvedOptionId === optionId
+      ? { status: 'alreadyApplied', tripRevision: tripRevisionOf(cache.decisions[dIdx].tripId) }
+      : { status: 'invalid', reason: 'decision is already resolved' })
+  }
+  if (!cache.decisions[dIdx].options.some(o => o.id === optionId)) {
+    return Promise.resolve({ status: 'invalid', reason: 'unknown option' })
+  }
   const d = structuredClone(cache.decisions[dIdx])
+  const before = captureCollabSlices(true)
   d.status = 'resolved'; d.resolvedOptionId = optionId; d.resolvedAt = Date.now()
   cache.decisions = [...cache.decisions.slice(0, dIdx), d, ...cache.decisions.slice(dIdx + 1)]
-  addActivity(d.tripId, cache.sessionUserId!, 'resolved a decision', d.question)
+  void addActivity(d.tripId, 'resolved a decision', d.question)
   const winning = d.options.find(o => o.id === optionId)
   const winningLabel = winning?.label ?? 'an option'
   const trip = tripById(d.tripId)
-  if (trip && cache.sessionUserId) {
+  if (trip) {
     for (const m of trip.members ?? []) {
-      if (m.userId !== cache.sessionUserId) pushNotification(m.userId, d.tripId, `${userName(cache.sessionUserId)} resolved “${d.question}” — ${winningLabel}.`)
+      if (m.userId !== scope.userId) pushNotification(m.userId, d.tripId, `${userName(scope.userId)} resolved “${d.question}” — ${winningLabel}.`)
     }
   }
   // The last mile of shortlist → vote → resolved (user ask): when the winning
@@ -5008,7 +5369,18 @@ export function resolveDecision(decisionId: ID, optionId: ID): void {
     }
   }
   commit()
-  fire('decisions', supabase.from('decisions').update({ status: 'resolved', resolved_option_id: optionId, resolved_at: d.resolvedAt }).eq('id', decisionId))
+  const scopeAtAwait = scope
+  // A workflow update (status + winner) — it stays on the direct write path by
+  // contract. A failed update rolls the decision, its artifacts and its
+  // notifications back; the landed stop is trip-write territory with its own
+  // write-through recovery (stage C owns the accept/resolve rollback union).
+  return Promise.resolve(supabase.from('decisions').update({ status: 'resolved', resolved_option_id: optionId, resolved_at: d.resolvedAt }).eq('id', decisionId)).then(({ error }) => {
+    if (error) {
+      if (isCurrentIdentity(scopeAtAwait)) restoreCollabSlices(before)
+      return { status: 'unavailable' }
+    }
+    return { status: 'applied', tripRevision: tripRevisionOf(d.tripId) }
+  })
 }
 
 // ---------------- Publishing ----------------
@@ -5505,10 +5877,36 @@ export function activityFor(tripId: ID): ActivityEntry[] {
   return cache.activity.filter(a => a.tripId === tripId).sort((a, b) => b.at - a.at)
 }
 
-export function addActivity(tripId: ID, actorId: ID, verb: string, target?: string): void {
-  const entry: ActivityEntry = { id: uuid(), tripId, actorId, verb, target, at: Date.now() }
+/** Append one activity entry through the collab-command RPC. The actor NEVER
+ *  travels in the payload — the server derives it from auth.uid() (#801). The
+ *  client mints the activityId (the contract's client-supplied UUID for
+ *  activity.append), so the local entry and the server row share one id and
+ *  the realtime echo upserts instead of duplicating. Returns the outcome;
+ *  a refused command rolls the optimistic entry back and the caller decides
+ *  what the user sees. */
+export function addActivity(tripId: ID, verb: string, target?: string): Promise<CollabOutcome> {
+  const scope = identityScope()
+  if (!scope) return Promise.resolve({ status: 'forbidden' })
+  if (!verb.trim()) return Promise.resolve({ status: 'invalid', reason: 'empty verb' })
+  const entry: ActivityEntry = { id: uuid(), tripId, actorId: scope.userId, verb, target, at: Date.now() }
+  const before = captureCollabSlices(false) // activity and notifications only — no row changes here
   cache.activity = [...cache.activity, entry]
-  fire('activity', supabase.from('activity').insert({ id: entry.id, trip_id: tripId, actor_id: actorId, verb, target, at: entry.at }))
+  commit()
+  return submitCollabCommand(uuid(), tripId, {
+    type: 'activity.append',
+    activityId: entry.id,
+    verb,
+    ...(target !== undefined ? { target } : {}),
+  }).then(receipt => {
+    if (!isCurrentIdentity(scope)) return receipt
+    if (receipt.status === 'applied' || receipt.status === 'alreadyApplied') {
+      noteTripRevision(tripId, receipt.tripRevision)
+      return receipt
+    }
+    if (receipt.status === 'conflict') return receipt
+    restoreCollabSlices(before)
+    return receipt
+  })
 }
 
 export function notificationsFor(userId: ID): Notification[] {

@@ -24,6 +24,7 @@ import type { Trip, ItineraryStop } from '../../../data/types'
 import type { ImpactResult } from '../../../lib/impact'
 import { toast, undoToast } from '../../../components/ui'
 import { addDecision } from '../../../store/store'
+import { reportCollabOutcome } from '../../../lib/collabFeedback'
 import { orderByRoad } from './roadOrder'
 
 export type ShortlistDeps = {
@@ -149,7 +150,7 @@ export function useShortlist({
       const resolved = await Promise.all(trayShortlist.map(async h => ({ h, pinned: await resolvePick(h) })))
       const usable = resolved.filter((x): x is { h: PlaceHit; pinned: PlaceHit } => !!x.pinned)
       if (usable.length === 0) { toast('Those places could not be pinned on the map - the vote was not created.'); return }
-      addDecision(tripId, {
+      const outcome = await addDecision(tripId, {
         question: usable.length === 1 ? `Should we add "${usable[0].h.name}"?` : 'Which of these should we add?',
         context: 'Shortlisted from the Map rail',
         options: usable.map(({ h, pinned }) => ({
@@ -166,8 +167,10 @@ export function useShortlist({
           },
         })),
       })
-      toast('Decision posted for the group - resolving it adds the winner to the plan')
-      setShortlist([])
+      reportCollabOutcome(outcome, 'Decision posted for the group - resolving it adds the winner to the plan')
+      // The tray empties on the RECEIPT: a refused poll must not throw away
+      // the shortlist the user collected one place at a time.
+      if (outcome.status === 'applied' || outcome.status === 'alreadyApplied') setShortlist([])
     } finally { setBusy(false) }
   }
 

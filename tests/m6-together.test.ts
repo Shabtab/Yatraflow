@@ -37,7 +37,17 @@ vi.mock('../src/lib/supabase', async () => {
   }
   return {
     isSupabaseConfigured: false,
-    supabase: tripWriteClient({ from: (t: string) => makeBuilder(t) }),
+    supabase: tripWriteClient({
+      from: (t: string) => makeBuilder(t),
+      // Stage A of #832: activity.append rides the collab-command RPC; the
+      // stub records the call so the activity-feed assertions can see it.
+      rpc: (fn: string, params?: unknown) => {
+        const qb: Record<string, unknown> = {}
+        qb.then = (res: (v: { data: unknown; error: unknown }) => unknown) =>
+          new Promise(resolve => { calls.push({ table: fn, method: 'rpc', payload: params }); resolve({ data: { status: 'applied', tripRevision: 1 }, error: null }) }).then(res)
+        return qb
+      },
+    }),
   }
 })
 
@@ -112,8 +122,12 @@ describe('B4 · markExpenseSettled', () => {
     calls.length = 0
     markExpenseSettled(trip.id, id, ownerId)
     await flush()
-    const activityRows = calls.filter(c => c.table === 'activity' && c.method === 'insert')
-    expect(activityRows.length).toBeGreaterThan(0)
+    // Stage A of #832: activity travels through the collab-command RPC as an
+    // activity.append command, not a direct activity-table insert.
+    const activityCommands = calls.filter(c => c.table === 'submit_collab_command' && c.method === 'rpc')
+      .map(c => (c.payload as { p_command?: { type?: string; verb?: string } })?.p_command)
+      .filter(cmd => cmd?.type === 'activity.append')
+    expect(activityCommands.length).toBeGreaterThan(0)
   })
 
   it('is idempotent — a settled line is not re-marked', async () => {
