@@ -5,6 +5,7 @@
 // published/refreshed, and lists creator pages (`/c/<id>`) alongside the
 // publications. The catalogue reads once; the order is computed here.
 import { resolveOrigin } from './_origin.js'
+import { escapeXml } from './_escape.js'
 
 const ID_RE = /^[A-Za-z0-9_-]{1,64}$/
 // Creator ids are profile UUIDs; listing anything else would put a URL in the
@@ -17,12 +18,6 @@ const PAGE = 1000
 // 50k-URL limit while bounding the handler's runtime; the old ceiling's
 // comment admitted the cap rather than removing it, which this replaces.
 const MAX_PAGES = 20
-
-function escapeXml(value) {
-  return String(value).replace(/[&<>"']/g, character => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;',
-  })[character])
-}
 
 /**
  * Epoch-milliseconds → W3C date (`YYYY-MM-DD`).

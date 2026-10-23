@@ -8,13 +8,9 @@
 // day as its title and nothing else. Anything it does not understand is
 // locked. It never prints notes, times, costs, links or place ids.
 
-export const LOCKED_MARKER = 'Locked —'
+import { escapeHtml } from './_escape.js'
 
-function escapeHtml(value) {
-  return String(value).replace(/[&<>"']/g, character => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-  })[character])
-}
+export const LOCKED_MARKER = 'Locked —'
 
 function text(value, max = 600) {
   if (typeof value !== 'string') return ''

@@ -15,6 +15,18 @@ All notable changes to YatraFlow. Format loosely follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Fixed
+
+- **A late place-search answer can no longer overwrite a newer one.** In the location field, an older answer could replace the hits of a newer search. It could also switch off the spinner while the newer search still ran. Only the newest search now updates the list. A pick, or a query under two characters, cancels any search in flight. `src/lib/latestRequest.ts` holds the guard.
+
+- **A cut-off route line no longer produces a false point.** The polyline decoder read past the end of a truncated string and returned a wrong coordinate. It now returns only the points that it fully decoded. The decoder and the encoder moved to `src/lib/providers/polyline.ts`, and `routes.ts` and `google.ts` share them.
+
+### Changed
+
+- **The share-page and sitemap escape code lives in one file.** Four copies of one entity table could drift apart. `api/_escape.js` now holds the table. The output is byte-identical to before, so the sitemap still writes `&apos;`.
+
+- **Agents must search for prior art before they build.** Rule 18 in `AGENTS.md` sets the steps. It limits code reuse to MIT, Apache-2.0, BSD and ISC projects. The full text is in `docs/agents/AGENTS-FULL.md` §2.18.
+
 ## [0.77.0] - 2026-10-16
 
 **This release brings flight journeys, one design language on every surface and reads that report failure.**

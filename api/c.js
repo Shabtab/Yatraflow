@@ -11,18 +11,13 @@
 // fail-closed card — an unknown or unreadable profile answers the same
 // honest 404-without-canonical card as a missing publication does.
 import { resolveOrigin } from './_origin.js'
+import { escapeHtml } from './_escape.js'
 
 const DEFAULT_TITLE = 'YatraFlow — Plan real trips, together'
 const ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 // A found card is edge-cacheable for five minutes, then served stale for ten
 // while it revalidates. Everything else answers no-store.
 const CARD_CACHE_CONTROL = 'public, max-age=0, s-maxage=300, stale-while-revalidate=600'
-
-function escapeHtml(value) {
-  return String(value).replace(/[&<>"']/g, character => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-  })[character])
-}
 
 /**
  * The card. A profile the database could not read renders the noindex form:
