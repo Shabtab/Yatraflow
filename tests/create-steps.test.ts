@@ -134,11 +134,13 @@ describe('stepOfError', () => {
   it('puts route errors on Where', () => {
     expect(stepOfError('startLocation')).toBe('where')
     expect(stepOfError('destinations')).toBe('where')
-    expect(stepOfError('returnStops')).toBe('where')
   })
 
-  it('puts the driving question on How, because that is where it is asked', () => {
+  it('puts the driving question and the return leg on How', () => {
     expect(stepOfError('drivesPart')).toBe('how')
+    // The return leg is planned beside the mode that decides whether a drive
+    // back is possible at all, so its error follows the control there.
+    expect(stepOfError('returnStops')).toBe('how')
   })
 
   it('puts dates and the departure time on When', () => {

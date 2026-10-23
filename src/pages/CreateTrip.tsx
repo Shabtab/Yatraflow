@@ -1012,7 +1012,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
             <span className="ct-n">1</span>
             <div className="ct-q-body">
               <h2>Where are you going?</h2>
-              <p className="ct-hint">Start typing - places geocode and order themselves along the road.</p>
+              <p className="ct-hint">Start from where you leave, then add each stop in order.</p>
               <div className="ct-q-field">
                 <Field label="Starting location" error={errs.startLocation}>
                   <LocationInput
@@ -1107,59 +1107,6 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                 </button>
               </div>
 
-              <div className="ct-rrow" style={{ marginTop: 12 }}>
-                {/* The reverse-route planner walks a wheel (#377). A passenger
-                    mode has no wheel, so it does not get this control, and no
-                    substitute is invented for it: a return leg by train is a
-                    ticket, not a reverse road route. */}
-                {drivingPolicy.driving && (
-                <label className="ts-switch">
-                  <input type="checkbox" role="switch" checked={returnCount > 0}
-                    onChange={e => setReturnOn(e.target.checked)} aria-label="Configure custom return journey stops" />
-                  <span className="ts-switch-track" aria-hidden="true"></span>
-                  <span className="ts-switch-label">Plot the drive back</span>
-                </label>
-                )}
-              </div>
-
-              {returnCount > 0 && (
-                <div className="return-section" aria-label="Return journey stops">
-                  <div className="return-head">
-                    <span className="eyebrow">Return</span>
-                    <span className="return-note">Auto-filled with the reverse route - edit freely</span>
-                  </div>
-                  <div className="ct-chips" role="list" aria-label="Return stops">
-                    {returnStops.map((d, i) => {
-                      const gi = outbound.length + i
-                      return (
-                        <span className="ct-dchip ret" role="listitem" key={`ret-${d.name}-${gi}`}>
-                          <span className="n" aria-hidden>{i + 1}</span>
-                          <span title={d.name}>{d.name}</span>
-                          <button type="button" className="x" aria-label={`Remove ${d.name}`}
-                            onClick={() => { haptic(HAPTIC.tick); removeDest(gi) }}>&#10005;</button>
-                        </span>
-                      )
-                    })}
-                  </div>
-                  <LocationInput
-                    id="ct-return-input"
-                    ariaLabel="Add a return stop to the trip"
-                    value={returnInput}
-                    onChange={setReturnInput}
-                    errorId={errs.returnStops ? 'ct-return-err' : undefined}
-                    error={errs.returnStops}
-                    onPick={p => addDest({ name: p.name + (p.admin1 ? `, ${p.admin1}` : ''), lat: p.latitude, lng: p.longitude }, true)}
-                    placeholder="Add a return stop.  e.g. Guruvayur"
-                  />
-                  {errs.returnStops && <p className="err-text" id="ct-return-err" role="status" aria-live="polite">{errs.returnStops}</p>}
-                  {returnInput.trim() !== '' && (
-                    <button type="button" className="btn btn-sm btn-ghost"
-                      onClick={() => { haptic(HAPTIC.tick); addDest({ name: returnInput.trim() }, true) }}>
-                      Add without a map pin
-                    </button>
-                  )}
-                </div>
-              )}
             </div>
           </div>
 
@@ -1263,6 +1210,62 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                   </div>
                   {f.drivesPart === undefined && (
                     <p className="adv-hint" role="status">Answer this to create the trip.</p>
+                  )}
+                </div>
+              )}
+
+              {/* The return leg lives here, not on Where: whether a drive back is
+                  even possible is a fact about the MODE, so the control belongs
+                  beside the mode that decides it. The reverse-route planner walks
+                  a wheel (#377); a passenger mode has no wheel, so it gets no
+                  control, and no substitute is invented for it — a return leg by
+                  train is a ticket, not a reverse road route. */}
+              {drivingPolicy.driving && (
+                <div className="ct-q-field">
+                  <label className="ts-switch">
+                    <input type="checkbox" role="switch" checked={returnCount > 0}
+                      onChange={e => setReturnOn(e.target.checked)} aria-label="Configure custom return journey stops" />
+                    <span className="ts-switch-track" aria-hidden="true"></span>
+                    <span className="ts-switch-label">Plot the drive back</span>
+                  </label>
+                </div>
+              )}
+
+              {returnCount > 0 && (
+                <div className="return-section" aria-label="Return journey stops">
+                  <div className="return-head">
+                    <span className="eyebrow">Return</span>
+                    <span className="return-note">Auto-filled with the reverse route - edit freely</span>
+                  </div>
+                  <div className="ct-chips" role="list" aria-label="Return stops">
+                    {returnStops.map((d, i) => {
+                      const gi = outbound.length + i
+                      return (
+                        <span className="ct-dchip ret" role="listitem" key={`ret-${d.name}-${gi}`}>
+                          <span className="n" aria-hidden>{i + 1}</span>
+                          <span title={d.name}>{d.name}</span>
+                          <button type="button" className="x" aria-label={`Remove ${d.name}`}
+                            onClick={() => { haptic(HAPTIC.tick); removeDest(gi) }}>&#10005;</button>
+                        </span>
+                      )
+                    })}
+                  </div>
+                  <LocationInput
+                    id="ct-return-input"
+                    ariaLabel="Add a return stop to the trip"
+                    value={returnInput}
+                    onChange={setReturnInput}
+                    errorId={errs.returnStops ? 'ct-return-err' : undefined}
+                    error={errs.returnStops}
+                    onPick={p => addDest({ name: p.name + (p.admin1 ? `, ${p.admin1}` : ''), lat: p.latitude, lng: p.longitude }, true)}
+                    placeholder="Add a return stop.  e.g. Guruvayur"
+                  />
+                  {errs.returnStops && <p className="err-text" id="ct-return-err" role="status" aria-live="polite">{errs.returnStops}</p>}
+                  {returnInput.trim() !== '' && (
+                    <button type="button" className="btn btn-sm btn-ghost"
+                      onClick={() => { haptic(HAPTIC.tick); addDest({ name: returnInput.trim() }, true) }}>
+                      Add without a map pin
+                    </button>
                   )}
                 </div>
               )}

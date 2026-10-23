@@ -52,7 +52,9 @@ export function stepNumber(step: CreateStep): number {
 const ERROR_STEP: Record<string, CreateStep> = {
   startLocation: 'where',
   destinations: 'where',
-  returnStops: 'where',
+  // The return leg is planned on How, beside the mode that decides whether a
+  // drive back is even possible. Its error has to follow the control.
+  returnStops: 'how',
   drivesPart: 'how',
   startDate: 'when',
   endDate: 'when',
