@@ -11803,11 +11803,13 @@ html.native-shell .app-shell:not(:has(> .topnav)) > main {
 }
 
 /* Landscape: height is the scarce axis, so the frame tightens rather than the
-   content shrinking. Height-only, per the spec's landscape rule. */
+   content shrinking. Height-only, per the spec's landscape rule - a phone held
+   sideways is 740px wide but still a phone, so it keeps the compact form. The
+   counter stays visible: hiding it would leave only the six segments, and the
+   reference frame (740 x 360) shows "Step 3 of 6" beside them. */
 @media (max-height: 499px) {
   .ct-progress { margin-bottom: 10px; }
   .ct-nav { margin-top: 12px; padding-top: 10px; }
-  .ct-progress-count { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
