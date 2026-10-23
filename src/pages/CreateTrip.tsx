@@ -31,6 +31,7 @@ import { saveDraft, loadDraft, clearDraft, draftIsWorthKeeping, draftAgeLabel, t
 import { unpickedStopErrors } from '../lib/createSubmit'
 import { validateCreate, type CreateStep } from '../lib/createSteps'
 import { stepFromQuery, stepHref } from '../lib/createStepUrl'
+import { StepProgress, StepNav, useStepFocus } from '../components/CreateFlowShell'
 import { currentQuery, navigate, onRouteChange } from '../lib/router'
 import { fuelFallbackNotice, revalidateCommitments, commitmentMoveMessage, composerRowError, ticketFuelSegments } from '../lib/createHonesty'
 import { addCrewEntry, type CrewEntry } from '../lib/crewInvite'
@@ -858,6 +859,15 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
   const whereDone = dests.length > 0 && !!f.startLocation.trim()
   const whenDone = !!f.startDate && !!f.endDate
   const whoDone = f.travellers >= CREW_MIN && f.travellers <= CREW_MAX
+  // How is answered when a mode is chosen and, for Mixed, the driving question
+  // too. Transport always has a value (car by default), so this is really "has
+  // the traveller looked at it" - the Mixed answer is the only hard gate, and it
+  // is the one submit() also enforces.
+  const howDone = !drivingPolicy.mustAnswerDriving
+  // The guided shell is opt-in, so the long form is byte-for-byte the old
+  // behaviour while the flag is off. `guided` gates every step-visibility rule.
+  const guided = createFunnelOn('guided')
+  useStepFocus(step, guided)
 
   const outbound = dests.slice(0, dests.length - returnCount)
   const returnStops = dests.slice(dests.length - returnCount)
@@ -966,12 +976,13 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
               on one quiet card (no shadow, per review) instead of the bare
               canvas - the mockup's .flow column sits on an .app background. */}
           <div className="ct-panel">
+          {guided && <StepProgress step={step} errors={errs} onGo={goToStep} />}
 
           {/* ---- Name first: the mockup's name box - a pill input with the pen
                inline, headed like every other section, suggestion chip beside.
                The error stays field-level (F-15): aria-invalid + describedby +
                the focus ref on the input itself. ---- */}
-          <div className="tpl-nameblock">
+          <div className="tpl-nameblock" hidden={guided && step !== 'review'}>
             <div className="tpl-warm-head">
               <h2 id="ct-name-h">Name your trip</h2>
               <span className="why">it becomes yours the moment it has a name</span>
@@ -997,7 +1008,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
           </div>
 
           {/* ---- 1 - Where ---- */}
-          <div className={`ct-q${whereDone ? ' done' : ''}`}>
+          <div className={`ct-q${whereDone ? ' done' : ''}`} hidden={guided && step !== 'where'}>
             <span className="ct-n">1</span>
             <div className="ct-q-body">
               <h2>Where are you going?</h2>
@@ -1152,9 +1163,9 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
             </div>
           </div>
 
-          {/* ---- 2 - When ---- */}
-          <div className={`ct-q${whenDone ? ' done' : ''}`}>
-            <span className="ct-n">2</span>
+          {/* ---- 3 - When ---- */}
+          <div className={`ct-q${whenDone ? ' done' : ''}`} hidden={guided && step !== 'when'}>
+            <span className="ct-n">3</span>
             <div className="ct-q-body">
               <h2>When?</h2>
               <p className="ct-hint">The clock walk and every window on the trip starts here.</p>
@@ -1193,12 +1204,14 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
             </div>
           </div>
 
-          {/* ---- 3 - Who & how ---- */}
-          <div className={`ct-q${whoDone ? ' done' : ''}`}>
-            <span className="ct-n">3</span>
+          {/* ---- 2 - How: transport, plus the Mixed driving question. The return
+               leg moves here in step 5 of the build; until then it stays where
+               it is, so this commit changes no behaviour. ---- */}
+          <div className={`ct-q${howDone ? ' done' : ''}`} hidden={guided && step !== 'how'}>
+            <span className="ct-n">2</span>
             <div className="ct-q-body">
-              <h2>Who's coming, and how are you travelling?</h2>
-              <p className="ct-hint">Party shape tunes the engine - meal windows and rest cadence.</p>
+              <h2>How are you travelling?</h2>
+              <p className="ct-hint">This sets the speeds, the costs and the driving limits.</p>
               <div className="ct-q-field">
                 <span className="ct-lbl">Transport</span>
                 <div className="ct-modes" role="group" aria-label="Transport mode">
@@ -1253,6 +1266,17 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                   )}
                 </div>
               )}
+            </div>
+          </div>
+
+          {/* ---- 4 - Who: party, crew and the drivers drawer. Split out of the
+               old combined "Who & how" block so the guided flow can ask the
+               transport question and the party question on their own screens. ---- */}
+          <div className={`ct-q${whoDone ? ' done' : ''}`} hidden={guided && step !== 'who'}>
+            <span className="ct-n">4</span>
+            <div className="ct-q-body">
+              <h2>Who's coming?</h2>
+              <p className="ct-hint">Party shape tunes the engine - meal windows and rest cadence.</p>
               <div className="ct-q-field">
                 <span className="ct-lbl">Party size</span>
                 <div className="ct-party">
@@ -1447,7 +1471,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
           {/* ---- Budget: the funnel mockup promotes it out of the refine layer -
                pricing is a decision, so it gets its own question-sized block
                carrying the honest anchor and the experience translation. ---- */}
-          <div className="ct-budget">
+          <div className="ct-budget" hidden={guided && step !== 'budget'}>
             <div className="tpl-warm-head">
               <h2>Budget per head</h2>
               <span className="why">anchored honestly - the tool earns trust here</span>
@@ -1497,8 +1521,9 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
             </div>
           </div>
 
-          {/* ---- Refine: the bed & style ---- */}
-          <div className="ct-refine">
+          {/* ---- Refine: the bed & style. Both change the PRICE, not the route,
+               so they belong on the Budget screen rather than Review. ---- */}
+          <div className="ct-refine" hidden={guided && step !== 'budget'}>
             <span className="ct-lbl">Refine the trip</span>
 
             <div className="ct-rrow">
@@ -1527,7 +1552,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
           </div>
 
           {/* ---- cover + pinned: the optional layer ---- */}
-          <div className="ct-optional">
+          <div className="ct-optional" hidden={guided && step !== 'review'}>
             <div className="ct-opt-head">
               <span className="ct-lbl">Trip cover</span>
               <span className="ct-party-sub">optional</span>
@@ -1627,6 +1652,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
               <button type="button" className="btn btn-outline" onClick={addCommitment} style={{ height: 42 }}>Add pinned plan</button>
             </div>
           </div>
+          {guided && <StepNav step={step} errors={errs} onGo={goToStep} />}
           </div>
         </form>
 

@@ -11701,3 +11701,117 @@ html.native-shell .app-shell:not(:has(> .topnav)) > main {
   flex: 0 1 200px;
 }
 
+
+/* ============ Guided create flow: progress and step nav ============
+   The frame the guided flow adds around the six steps. Layout only - the step
+   bodies keep their existing rules, because the flow shows one of them at a time
+   rather than restyling them.
+
+   Presentation is split at 700px: a phone gets the counter and six segments, a
+   tablet and up get the labelled list where a completed step is a link. The
+   spec's landscape rule is height-only (under 500px of height), so a phone on
+   its side keeps the compact form at any width. */
+
+.ct-progress {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 18px;
+}
+
+/* Phone: "Step 3 of 6" beside six segments. */
+.ct-progress-count {
+  font-size: .78rem; font-weight: 600; letter-spacing: .01em;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.ct-progress-segs {
+  display: flex; gap: 4px; flex: 1;
+}
+.ct-progress-segs > i {
+  height: 3px; flex: 1; border-radius: 999px;
+  background: var(--line);
+  transition: background var(--motion-fast) var(--ease-out);
+}
+.ct-progress-segs > i.done { background: var(--teal-deep); opacity: .45; }
+.ct-progress-segs > i.now { background: var(--teal-deep); }
+
+/* The labelled list is the wide presentation; the counter and segments are the
+   narrow one. Exactly one of the two is shown at any width. */
+.ct-progress-list { display: none; }
+
+@media (min-width: 700px) and (min-height: 500px) {
+  .ct-progress-count, .ct-progress-segs { display: none; }
+  .ct-progress-list {
+    display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
+    margin: 0; padding: 0; list-style: none;
+  }
+}
+
+.ct-progress-item { font-size: .8rem; }
+/* The step number reuses the palette the step markers already use (see `.ct-n`):
+   --teal-deep on --card, and --teal-soft with --teal-deep once done. Both pairs
+   are in the contrast contract, so neither theme has to invent an ink here. */
+.ct-progress-n {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 17px; height: 17px; margin-right: 5px;
+  border-radius: 50%;
+  font-size: .68rem; font-weight: 700;
+  background: var(--teal-soft);
+  color: var(--teal-deep);
+}
+.ct-progress-plain, .ct-progress-link {
+  display: inline-flex; align-items: center;
+  padding: 4px 7px; border-radius: 7px;
+  color: var(--text-3);
+  background: none; border: 0; font: inherit;
+}
+.ct-progress-item.now .ct-progress-plain {
+  color: var(--text);
+  font-weight: 600;
+  background: var(--bg-soft);
+}
+.ct-progress-item.now .ct-progress-n { background: var(--teal-deep); color: var(--card); }
+.ct-progress-item.done .ct-progress-n { background: var(--teal-soft); color: var(--teal-deep); }
+.ct-progress-item.done .ct-progress-plain { color: var(--text-2); }
+
+/* A completed step is a real button, so it needs a real focus ring. */
+.ct-progress-link { cursor: pointer; transition: background var(--motion-fast) var(--ease-out); }
+.ct-progress-link:hover { background: var(--bg-soft); }
+.ct-progress-link:focus-visible {
+  outline: 2px solid var(--teal-deep);
+  outline-offset: 1px;
+}
+
+/* ---- Back / Next ---- */
+.ct-nav {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-top: 20px; padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.ct-nav-left {
+  flex: 1; min-width: 0;
+  font-size: .78rem; color: var(--text-3);
+}
+.ct-next { margin-left: auto; }
+
+/* A phone has no room for three things in a row: the honest "what is left"
+   line gets its own row above the buttons, and Back and Next split the width. */
+@media (max-width: 699px) {
+  .ct-nav { gap: 8px; }
+  .ct-nav-left { order: -1; flex-basis: 100%; }
+  .ct-back, .ct-next { flex: 1; justify-content: center; }
+  .ct-next { margin-left: 0; }
+}
+
+/* Landscape: height is the scarce axis, so the frame tightens rather than the
+   content shrinking. Height-only, per the spec's landscape rule. */
+@media (max-height: 499px) {
+  .ct-progress { margin-bottom: 10px; }
+  .ct-nav { margin-top: 12px; padding-top: 10px; }
+  .ct-progress-count { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ct-progress-segs > i,
+  .ct-progress-link { transition: none; }
+}
+
