@@ -4,6 +4,8 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { googleEnabled, mapplsEnabled, searchPlaces } from '../lib/geocode'
 import type { PlaceHit } from '../lib/geocode'
+import { createLatestRequest } from '../lib/latestRequest'
+import type { LatestRequest } from '../lib/latestRequest'
 import { hasCoords } from '../lib/providers/hits'
 import { useResolvePick } from './ResolvePickDialog'
 
@@ -57,6 +59,8 @@ export function LocationInput({ value, onChange, onPick, placeholder, error, err
   const { resolvePick, dialog: resolvePickDialog } = useResolvePick()
   const wrapRef = useRef<HTMLDivElement>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // One guard per mount. Only the newest search may apply its answer or clear the spinner.
+  const [latest] = useState<LatestRequest>(createLatestRequest)
   const listId = useId()
 
   useEffect(() => {
@@ -67,19 +71,32 @@ export function LocationInput({ value, onChange, onPick, placeholder, error, err
     return () => document.removeEventListener('mousedown', onDocClick)
   }, [])
 
+  // On unmount, drop a pending debounce and ignore any answer still in flight.
+  useEffect(() => () => {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    latest.cancel()
+  }, [latest])
+
   function runSearch(q: string) {
     if (debounceRef.current) clearTimeout(debounceRef.current)
+    // A new keystroke makes every older answer stale, even one already in flight.
+    // A query under 2 characters cancels too. A late answer then cannot refill the list.
+    latest.cancel()
     if (q.trim().length < 2) { setHits([]); setLoading(false); setSearched(false); return }
     setLoading(true)
     debounceRef.current = setTimeout(async () => {
+      // Take the id when the search fires. Only the newest id may apply its answer.
+      const id = latest.begin()
       try {
         const results = await searchPlaces(q, { indiaOnly })
+        if (!latest.isCurrent(id)) return
         setHits(results)
         setSearched(true)
         setOpen(true)
         setHighlight(0)
       } finally {
-        setLoading(false)
+        // Clear the spinner only for the request that still owns it.
+        if (latest.isCurrent(id)) setLoading(false)
       }
     }, 280)
   }
@@ -90,6 +107,11 @@ export function LocationInput({ value, onChange, onPick, placeholder, error, err
   }
 
   async function choose(hit: PlaceHit) {
+    // A pick ends any search that is pending or in flight. A late answer cannot reopen the list.
+    // Cancel at the top: the await below must not cancel a search that the user starts later.
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    latest.cancel()
+    setLoading(false)
     // Any pick the map cannot pin — a provider placeholder, a mixed (0, lng)
     // zero, or a place with no id to resolve through — goes through the shared
     // resolve-or-prompt guard (#424) before it reaches the caller: retry,
