@@ -10,6 +10,8 @@
 //  - The store is injectable so the logic is node-testable without a DOM.
 //  - Only explicit user actions clear a draft. Unmounting never does.
 
+import { CREATE_STEPS, type CreateStep } from './createSteps'
+
 export const DRAFT_KEY = 'yf.createDraft.v1'
 export const DRAFT_VERSION = 1
 /** Below this, a draft is just the untouched default form - not worth a prompt. */
@@ -29,6 +31,13 @@ export interface DraftPayload {
   /** P5: crew collected for the invite, so a resumed draft does not lose the
    *  people the planner already typed. Optional - older drafts simply have none. */
   crew?: { name: string; phone: string | null }[]
+  /**
+   * The guided flow's step, so a resumed draft reopens where it was left.
+   * Optional on purpose: drafts written before the guided flow have no step, and
+   * the version gate below rejects anything whose `v` differs. A new mandatory
+   * field would have forced a version bump and thrown every existing draft away.
+   */
+  step?: string
 }
 
 export interface StoredDraft extends DraftPayload {
@@ -63,7 +72,13 @@ export function saveDraft(payload: DraftPayload, opts: Opts = {}): boolean {
       form: payload.form,
       dests: payload.dests,
       returnCount: payload.returnCount,
-      crew: payload.crew,
+      // A draft is a copy on the device, and it outlives the tab that wrote it.
+      // A full number sitting in localStorage is a copy of someone else's phone
+      // number that they never agreed to keep, so only the last three digits are
+      // written. So a resumed draft cannot re-invite by number. The planner
+      // retypes it, which is the honest cost of not storing it.
+      crew: payload.crew?.map(c => ({ name: c.name, phone: c.phone ? maskPhone(c.phone) : null })),
+      step: payload.step,
     }
     store.setItem(DRAFT_KEY, JSON.stringify(envelope))
     return true
@@ -71,6 +86,31 @@ export function saveDraft(payload: DraftPayload, opts: Opts = {}): boolean {
     // quota exceeded, private mode, storage disabled - all the same to us
     return false
   }
+}
+
+/**
+ * Keep the last three digits and nothing else: "9845021234" → "••• 234".
+ *
+ * Three digits identify a person to the planner who already knows them, and do
+ * not identify them to anyone else who reads the device. The bullet is the same
+ * one the approved mockup uses for the crew chip.
+ */
+export function maskPhone(phone: string): string {
+  const digits = (phone ?? '').replace(/\D+/g, '')
+  if (!digits) return ''
+  return `••• ${digits.slice(-3)}`
+}
+
+/**
+ * The stored step, or undefined when it is absent or unrecognised.
+ *
+ * A draft written by an older build has no step, and a draft written by a future
+ * build could name one this build does not have. Both resume at the start of the
+ * flow rather than opening a screen that does not exist.
+ */
+function readStep(raw: unknown): string | undefined {
+  if (typeof raw !== 'string') return undefined
+  return CREATE_STEPS.includes(raw as CreateStep) ? raw : undefined
 }
 
 /** Read the draft, or null when there is nothing usable (never throws). */
@@ -91,10 +131,13 @@ export function loadDraft(opts: Opts = {}): StoredDraft | null {
       ? parsed.crew.filter((c: unknown) => !!c && typeof c === 'object' && (typeof (c as { name?: unknown }).name === 'string' || typeof (c as { phone?: unknown }).phone === 'string'))
           .map((c: { name?: unknown; phone?: unknown }) => ({
             name: typeof c.name === 'string' ? c.name : '',
-            phone: typeof c.phone === 'string' ? c.phone : null,
+            // Mask on the way in as well as on the way out. A draft written
+            // before D7 still holds full numbers on the device, and this build
+            // must not hand them back just because they were already there.
+            phone: typeof c.phone === 'string' ? maskPhone(c.phone) : null,
           }))
       : []
-    return { v: DRAFT_VERSION, savedAt: parsed.savedAt, form: parsed.form as Record<string, unknown>, dests, returnCount, crew }
+    return { v: DRAFT_VERSION, savedAt: parsed.savedAt, form: parsed.form as Record<string, unknown>, dests, returnCount, crew, step: readStep(parsed.step) }
   } catch {
     return null
   }

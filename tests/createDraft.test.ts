@@ -1,9 +1,10 @@
 // @vitest-environment node
 import { describe, it, expect } from 'vitest'
 import {
-  saveDraft, loadDraft, clearDraft, draftIsWorthKeeping, draftAgeLabel,
+  saveDraft, loadDraft, clearDraft, draftIsWorthKeeping, draftAgeLabel, maskPhone,
   DRAFT_KEY, DRAFT_VERSION, type DraftStore,
 } from '../src/lib/createDraft'
+import { CREATE_STEPS } from '../src/lib/createSteps'
 
 /** A Map-backed Storage stand-in. */
 function fakeStore(opts: { failSet?: boolean; failGet?: boolean } = {}): DraftStore & { map: Map<string, string> } {
@@ -39,8 +40,10 @@ describe('create drafts - the unfinished trip that waits', () => {
     expect(got!.savedAt).toBe('2026-02-01T10:00:00.000Z')
     expect(got!.form.name).toBe('Kerala with the crew')
     expect(got!.dests).toHaveLength(1)
-    // the crew rides along - a resumed draft does not lose the people
-    expect(got!.crew).toEqual([{ name: 'Ammu', phone: '9845021234' }, { name: 'Rahul', phone: null }])
+    // the crew rides along - a resumed draft does not lose the people. The
+    // NUMBER does not: only the last three digits are stored (D7), so a number
+    // sitting in localStorage is not a copy of someone else's phone number.
+    expect(got!.crew).toEqual([{ name: 'Ammu', phone: '••• 234' }, { name: 'Rahul', phone: null }])
     expect(store.map.has(DRAFT_KEY)).toBe(true)
   })
 
@@ -89,7 +92,7 @@ describe('create drafts - the unfinished trip that waits', () => {
     const store = fakeStore()
     store.map.set(DRAFT_KEY, JSON.stringify({ v: DRAFT_VERSION, savedAt: 'x', form: { name: 'X' }, dests: [], returnCount: 0, crew: [{ phone: 42 }, null, { name: 'ok', phone: '9845021234' }] }))
     const got = loadDraft({ store })!
-    expect(got.crew).toEqual([{ name: 'ok', phone: '9845021234' }])
+    expect(got.crew).toEqual([{ name: 'ok', phone: '••• 234' }])
   })
 
   it('clear removes it for good', () => {
@@ -140,5 +143,87 @@ describe('create drafts - the unfinished trip that waits', () => {
     const got = loadDraft({ store })!
     expect(got.dests.map(d => d.name)).toEqual(['ok', 'fine'])
     expect(got.returnCount).toBe(0)
+  })
+})
+
+describe('create drafts - the step a draft was left on', () => {
+  it('round-trips the step, so a resumed draft reopens where it was', () => {
+    const store = fakeStore()
+    saveDraft({ ...payload, step: 'budget' }, { store })
+    expect(loadDraft({ store })!.step).toBe('budget')
+  })
+
+  it('a draft written before the guided flow loads with no step, not a crash', () => {
+    // The version gate rejects any other `v`, so `step` had to be optional
+    // rather than a version bump - a bump would have thrown every draft away.
+    const store = fakeStore()
+    saveDraft(payload, { store })
+    const got = loadDraft({ store })!
+    expect(got.step).toBeUndefined()
+    expect(got.form.name).toBe('Kerala with the crew')
+  })
+
+  it('discards a step this build does not know', () => {
+    // A future build could add a step, and its draft can outlive the build that
+    // wrote it. A screen that does not exist is worse than the start.
+    const store = fakeStore()
+    store.map.set(DRAFT_KEY, JSON.stringify({
+      v: DRAFT_VERSION, savedAt: 'x', form: { name: 'X' }, dests: [], returnCount: 0, step: 'packing',
+    }))
+    expect(loadDraft({ store })!.step).toBeUndefined()
+  })
+
+  it('discards a step that is not even a string', () => {
+    const store = fakeStore()
+    store.map.set(DRAFT_KEY, JSON.stringify({
+      v: DRAFT_VERSION, savedAt: 'x', form: { name: 'X' }, dests: [], returnCount: 0, step: 7,
+    }))
+    expect(loadDraft({ store })!.step).toBeUndefined()
+  })
+
+  it('accepts every one of the six steps', () => {
+    for (const step of CREATE_STEPS) {
+      const store = fakeStore()
+      saveDraft({ ...payload, step }, { store })
+      expect(loadDraft({ store })!.step).toBe(step)
+    }
+  })
+})
+
+describe('create drafts - crew numbers are masked (D7)', () => {
+  it('keeps the last three digits and nothing else', () => {
+    expect(maskPhone('9845021234')).toBe('••• 234')
+    expect(maskPhone('+91 98450 21234')).toBe('••• 234')
+    expect(maskPhone('098450-21234')).toBe('••• 234')
+  })
+
+  it('never writes a full number to the store', () => {
+    const store = fakeStore()
+    saveDraft(payload, { store })
+    // The whole point: the raw storage string must not contain the number.
+    expect(store.map.get(DRAFT_KEY)).not.toContain('9845021234')
+    expect(store.map.get(DRAFT_KEY)).toContain('••• 234')
+  })
+
+  it('masks a full number that an older draft already put on the device', () => {
+    // Written before D7, read after it. The number is on the device either way;
+    // this build must not hand it back.
+    const store = fakeStore()
+    store.map.set(DRAFT_KEY, JSON.stringify({
+      v: DRAFT_VERSION, savedAt: 'x', form: { name: 'X' }, dests: [], returnCount: 0,
+      crew: [{ name: 'Ammu', phone: '9845021234' }],
+    }))
+    expect(loadDraft({ store })!.crew).toEqual([{ name: 'Ammu', phone: '••• 234' }])
+  })
+
+  it('leaves a crew member with no number alone', () => {
+    const store = fakeStore()
+    saveDraft({ ...payload, crew: [{ name: 'Rahul', phone: null }] }, { store })
+    expect(loadDraft({ store })!.crew).toEqual([{ name: 'Rahul', phone: null }])
+  })
+
+  it('an empty number masks to an empty string rather than three bullets', () => {
+    expect(maskPhone('')).toBe('')
+    expect(maskPhone('no digits here')).toBe('')
   })
 })

@@ -29,7 +29,7 @@ import { createFunnelOn } from '../lib/featureFlags'
 import { createReadiness, readinessFromDraft, readinessLine } from '../lib/createReadiness'
 import { saveDraft, loadDraft, clearDraft, draftIsWorthKeeping, draftAgeLabel, type StoredDraft } from '../lib/createDraft'
 import { unpickedStopErrors } from '../lib/createSubmit'
-import { validateCreate } from '../lib/createSteps'
+import { validateCreate, type CreateStep } from '../lib/createSteps'
 import { fuelFallbackNotice, revalidateCommitments, commitmentMoveMessage, composerRowError, ticketFuelSegments } from '../lib/createHonesty'
 import { addCrewEntry, type CrewEntry } from '../lib/crewInvite'
 import { recordCreateEvent } from '../lib/createEvents'
@@ -345,6 +345,11 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
   // pending draft can never be overwritten by the blank form it is offering.
   const [draft, setDraft] = useState<StoredDraft | null>(null)
   const [draftDecided, setDraftDecided] = useState(false)
+  // Which of the six steps is open. Held here even while the long form is still
+  // the only renderer: a draft records it, and step 3 moves it into the URL. The
+  // default is the first step, so a draft written before this existed resumes at
+  // the start rather than nowhere.
+  const [step, setStep] = useState<CreateStep>('where')
   // P5 - the crew collector. Local state only: nothing is written to the trip
   // and nothing is sent from here. The invite is composed (and marked ready)
   // once the trip exists, so this page never promises a message it cannot send.
@@ -382,10 +387,10 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
   useEffect(() => {
     if (!createFunnelOn('drafts') || !draftDecided) return
     const t = setTimeout(() => {
-      saveDraft({ form: f as unknown as Record<string, unknown>, dests, returnCount, crew: crew.map(c => ({ name: c.name, phone: c.phone })) })
+      saveDraft({ form: f as unknown as Record<string, unknown>, dests, returnCount, crew: crew.map(c => ({ name: c.name, phone: c.phone })), step })
     }, 800)
     return () => clearTimeout(t)
-  }, [f, dests, returnCount, crew, draftDecided])
+  }, [f, dests, returnCount, crew, step, draftDecided])
 
   /** P5: who can be invited - the party minus the planner, capped at four so the
    *  create flow never turns into an address book (more live on the Share tab). */
@@ -422,9 +427,23 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
     setF(prev => ({ ...prev, ...(draft.form as Partial<typeof prev>) }))
     setDests(draft.dests)
     setReturnCount(draft.returnCount)
-    if (draft.crew?.length) setCrew(draft.crew.map(c => ({ raw: c.name || c.phone || '', name: c.name, phone: c.phone })))
+    // Crew numbers come back masked (only the last three digits were stored, see
+    // saveDraft). A masked string is a LABEL, not a number: keeping it as
+    // `phone` would build a wa.me link to "••• 234" and fail at the last step,
+    // which is worse than asking for the number again. So the person is kept and
+    // the number is dropped, and the chip says so.
+    if (draft.crew?.length) {
+      setCrew(draft.crew.map(c => ({
+        raw: c.name || c.phone || '',
+        name: c.name,
+        phone: c.phone && !c.phone.includes('•') ? c.phone : null,
+      })))
+    }
     // the restored budget is the user's own number - hand the field back to them
     setBudgetTouched(true)
+    // Reopen on the step the draft was left on. An older draft has no step, and
+    // readStep() has already discarded one this build does not know.
+    if (draft.step) setStep(draft.step as CreateStep)
     setDraft(null)
     setDraftDecided(true)
     toast('Picked up where you left off')
