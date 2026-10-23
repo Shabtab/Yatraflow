@@ -1,16 +1,18 @@
-// ============ Stage A repair gate (round 2) — maintained probes ============
+// ============ Stage A repair gate (rounds 2-3) — maintained probes ============
 //
-// Ports the parent gate's round-2 behavioral probes into the maintained suite
-// and broadens them to the decision path. The fake server implements the
-// contract semantics the probes rely on: a command ledger keyed by id (replay
-// answers alreadyApplied with the STORED receipt, artifact ids included),
-// canonical snake_case rows in receipts, camelCase tripRevision, server-side
-// activity/notification creation, and holdable RPC + SELECT transports so a
-// test can interleave real writer calls.
+// Ports the parent gate's behavioral probes into the maintained suite and
+// broadens them to the decision path. The fake server implements the contract
+// semantics the probes rely on: a command ledger keyed by id (replay answers
+// alreadyApplied with the STORED receipt, artifact ids included), canonical
+// snake_case rows in receipts, camelCase tripRevision, server-side
+// activity/notification creation, holdable RPC + SELECT transports, and a
+// A consistent query builder (setHeader, eq on any column, trips and membership
+// reads) so the trip-reconciliation fetch really executes through admission.
 //
 // Premises are the gate's own and are not weakened: every test drives the
-// real store writers and the real receipt parser; only the transport,
-// persistence and session are synthetic.
+// real store writers, the real receipt parser, the real admission path and
+// the real realtime dispatch; only the transport, persistence and session are
+// synthetic.
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 type CommentRow = { id: string; authorId: string; text: string; createdAt: number }
@@ -18,7 +20,8 @@ type SuggestionRow = {
   id: string; trip_id: string; day_index: number; proposed_by: string; title: string
   category: 'food'; location_name: string; lat: number; lng: number; description: null
   visit_minutes: number; estimated_entry_fee_inr: number; estimated_transport_inr: number
-  votes: []; comments: CommentRow[]; status: 'open'; created_at: number
+  votes: Array<{ userId: string; value: number; createdAt: number }>; comments: CommentRow[]
+  status: 'open'; created_at: number
 }
 type DecisionRow = {
   id: string; trip_id: string; question: string; context: null
@@ -27,10 +30,13 @@ type DecisionRow = {
 }
 type Command = { type: 'suggestion.comment'; suggestionId: string; commentId: string; text: string }
   | { type: 'decision.comment'; decisionId: string; commentId: string; text: string }
+  | { type: 'suggestion.ballot'; suggestionId: string; value: 1 | -1 | null }
+  | { type: 'decision.ballot'; decisionId: string; optionId: string | null }
+  | { type: 'decision.create'; decisionId: string; decision: { question: string; context?: string; options: Array<{ id: string; label: string }> } }
   | { type: 'activity.append'; activityId: string; verb: string; target?: string }
 type Params = { p_command_id: string; p_trip_id: string; p_command: Command }
 type Receipt = { status: string; tripRevision: number; suggestion?: SuggestionRow; decision?: DecisionRow; activityId?: string; notificationIds?: string[] }
-type Response = { data: Receipt | SuggestionRow | DecisionRow | null; error: { message: string } | null }
+type Response = { data: Receipt | SuggestionRow | DecisionRow | unknown[] | null; error: { message: string } | null }
 
 const { fake } = vi.hoisted(() => {
   const fake = {
@@ -42,7 +48,7 @@ const { fake } = vi.hoisted(() => {
     activity: [] as { id: string; tripId: string; text: string }[],
     notifications: [] as { id: string; userId: string }[],
     calls: [] as Params[],
-    reads: [] as { table: string; id?: string }[],
+    reads: [] as { table: string; id?: string; tripId?: string }[],
     held: [] as { params: Params; resolve: (r: Response) => void }[],
     selects: [] as { snapshot: SuggestionRow | DecisionRow | null; resolve: (r: Response) => void }[],
     hold: false,
@@ -50,20 +56,27 @@ const { fake } = vi.hoisted(() => {
     loseAfterCommit: false,
     conflict: false,
     readError: false,
+    /** A coherent authoritative trips row for the admission path, and the
+     *  membership row admission needs. Null = the read answers empty. */
+    tripsRow: null as Record<string, unknown> | null,
+    membersRow: null as Record<string, unknown> | null,
+    tripUpdateFails: false,
     reset() {
       fake.rows.clear(); fake.decisionRows.clear(); fake.ledger.clear()
       fake.activity = []; fake.notifications = []
       fake.calls = []; fake.reads = []; fake.held = []; fake.selects = []
       fake.hold = false; fake.holdSelect = false; fake.loseAfterCommit = false
       fake.conflict = false; fake.readError = false
+      fake.tripsRow = null; fake.membersRow = null; fake.tripUpdateFails = false
     },
     apply(params: Params): Response {
       const c = params.p_command
       const prior = fake.ledger.get(params.p_command_id)
       if (prior) {
         if (JSON.stringify(prior.params) !== JSON.stringify(params)) return { data: { status: 'conflict', tripRevision: 0 }, error: null }
-        const canonical = c.type === 'suggestion.comment' ? { suggestion: structuredClone(fake.rows.get(c.suggestionId)!) }
-          : c.type === 'decision.comment' ? { decision: structuredClone(fake.decisionRows.get(c.decisionId)!) }
+        const canonical = c.type.startsWith('suggestion.') ? { suggestion: structuredClone(fake.rows.get(c.suggestionId)!) }
+          : c.type.startsWith('decision.') && c.type !== 'decision.create' ? { decision: structuredClone(fake.decisionRows.get(c.decisionId)!) }
+          : c.type === 'decision.create' ? { decision: structuredClone(fake.decisionRows.get(c.decisionId)!) }
           : {}
         return { data: { ...structuredClone(prior.receipt), status: 'alreadyApplied', ...canonical }, error: null }
       }
@@ -81,6 +94,25 @@ const { fake } = vi.hoisted(() => {
         notificationIds.push(nid)
         fake.notifications.push({ id: nid, userId: suggestionRow.proposed_by })
       }
+      if (c.type === 'suggestion.ballot') {
+        suggestionRow = structuredClone(fake.rows.get(c.suggestionId)!)
+        const votes = suggestionRow.votes.filter(v => v.userId !== fake.actor)
+        if (c.value !== null) votes.push({ userId: fake.actor, value: c.value, createdAt: 1 })
+        suggestionRow.votes = votes
+        fake.rows.set(suggestionRow.id, suggestionRow)
+      }
+      if (c.type === 'decision.create') {
+        if (fake.decisionRows.has(c.decisionId)) return { data: { status: 'conflict', tripRevision: 0 }, error: null }
+        decisionRow = {
+          id: c.decisionId, trip_id: params.p_trip_id, question: c.decision.question, context: null,
+          options: structuredClone(c.decision.options), votes_by_user_id: {}, comments: [],
+          status: 'open', raised_by: fake.actor, created_at: 1,
+        }
+        fake.decisionRows.set(decisionRow.id, decisionRow)
+        const nid = crypto.randomUUID()
+        notificationIds.push(nid)
+        fake.notifications.push({ id: nid, userId: 'peer' })
+      }
       if (c.type === 'decision.comment') {
         decisionRow = structuredClone(fake.decisionRows.get(c.decisionId)!)
         if (decisionRow.comments.some(x => x.id === c.commentId)) return { data: { status: 'conflict', tripRevision: 0 }, error: null }
@@ -90,7 +122,7 @@ const { fake } = vi.hoisted(() => {
         notificationIds.push(nid)
         fake.notifications.push({ id: nid, userId: decisionRow.raised_by })
       }
-      fake.activity.push({ id: activityId, tripId: params.p_trip_id, text: c.type === 'activity.append' ? c.verb : c.text })
+      fake.activity.push({ id: activityId, tripId: params.p_trip_id, text: c.type === 'activity.append' ? c.verb : c.type })
       const receipt: Receipt = { status: 'applied', tripRevision: 0, activityId, notificationIds,
         ...(suggestionRow ? { suggestion: structuredClone(suggestionRow) } : {}),
         ...(decisionRow ? { decision: structuredClone(decisionRow) } : {}) }
@@ -107,15 +139,29 @@ const { fake } = vi.hoisted(() => {
       }
       return Promise.resolve(response)
     },
-    read(table: string, id?: string): Promise<Response> {
-      fake.reads.push({ table, id })
+    read(table: string, eqs: Record<string, unknown>, single = false): Promise<Response> {
+      fake.reads.push({ table, id: eqs.id as string | undefined, tripId: eqs.trip_id as string | undefined })
       if (fake.readError) return Promise.resolve({ data: null, error: { message: 'synthetic read failure' } })
-      const row = table === 'suggestions' ? fake.rows.get(id ?? '')
-        : table === 'decisions' ? fake.decisionRows.get(id ?? '')
-        : undefined
+      const row = table === 'suggestions' ? fake.rows.get(String(eqs.id ?? ''))
+        : table === 'decisions' ? fake.decisionRows.get(String(eqs.id ?? ''))
+        : table === 'trips' ? (fake.tripsRow && fake.tripsRow.id === eqs.id ? fake.tripsRow : null)
+        : null
       const snapshot = row ? structuredClone(row) : null
-      if (fake.holdSelect) return new Promise(resolve => fake.selects.push({ snapshot, resolve }))
+      if (fake.holdSelect) return new Promise(resolve => fake.selects.push({ snapshot: snapshot as SuggestionRow | DecisionRow | null, resolve }))
+      // A plain select (no maybeSingle) answers a LIST, as PostgREST does —
+      // the membership reads in the admission and write paths need their
+      // own shapes: the list read feeds admission, the maybeSingle read feeds
+      // the queued-write membership check.
+      if (table === 'trip_members') {
+        const match = fake.membersRow && fake.membersRow.trip_id === eqs.trip_id
+        return Promise.resolve({ data: single ? (match ? structuredClone(fake.membersRow) : null) : (match ? [structuredClone(fake.membersRow)] : []), error: null })
+      }
       return Promise.resolve({ data: snapshot, error: null })
+    },
+    /** The trips UPDATE, so a queued-edit test can fail it for real. */
+    updateTrips(eqs: Record<string, unknown>): Response {
+      if (fake.tripUpdateFails) return { data: null, error: { message: 'synthetic trips write failure' } }
+      return { data: [{ id: eqs.id, updated_at: 2, write_version: Number(eqs.write_version ?? 0) + 1 }], error: null }
     },
   }
   return { fake }
@@ -128,12 +174,18 @@ vi.mock('../src/lib/supabase', () => ({
     rpc: (name: string, params: Parameters<typeof fake.rpc>[0]) => name === 'submit_collab_command'
       ? fake.rpc(params) : Promise.resolve({ data: null, error: null }),
     from: (table: string) => {
-      let id: string | undefined
+      const eqs: Record<string, unknown> = {}
+      let method: 'select' | 'update' | 'insert' = 'select'
       const qb = {
         select: () => qb,
-        eq: (column: string, value: string) => { if (column === 'id') id = value; return qb },
-        maybeSingle: () => fake.read(table, id),
-        then: <T, U>(resolve: (r: Awaited<ReturnType<typeof fake.read>>) => T, reject?: (e: unknown) => U) => fake.read(table, id).then(resolve, reject),
+        update: () => { method = 'update'; return qb },
+        insert: () => { method = 'insert'; return qb },
+        eq: (column: string, value: unknown) => { eqs[column] = value; return qb },
+        is: () => qb,
+        setHeader: () => qb,
+        maybeSingle: () => fake.read(table, eqs, true),
+        then: <T, U>(resolve: (r: Response) => T, reject?: (e: unknown) => U) =>
+          (method === 'update' && table === 'trips' ? Promise.resolve(fake.updateTrips(eqs)) : fake.read(table, eqs)).then(resolve, reject),
       }
       return qb
     },
@@ -146,6 +198,24 @@ const S2 = '30000000-0000-4000-8000-000000000002'
 const D1 = '40000000-0000-4000-8000-000000000001'
 const tick = () => new Promise(resolve => setTimeout(resolve, 0))
 
+/** A coherent authoritative trips row (the shape admission needs), at the
+ *  revision the test wants the server to observe. */
+function authoritativeTripsRow(tripId: string, ownerId: string, writeVersion: number): Record<string, unknown> {
+  return {
+    id: tripId, owner_id: ownerId, name: 'Synthetic trip', start_location: 'Kochi',
+    start_location_coords: null, destinations: ['Kochi'], destination_coords: null,
+    start_date: '2026-10-23', end_date: '2026-10-25', travellers: 2,
+    transport_mode: 'car', budget_per_person_inr: 10000, travel_style: 'balanced',
+    fixed_commitments: [], days: [], expenses: [], cover_emoji: '🧭', invite_code: null,
+    visibility: 'private', created_at: 1_700_000_000_000, updated_at: 1_700_000_000_050,
+    write_version: writeVersion, deleted_at: null,
+    flights: [], tank_l: null, rent_per_day_inr: null, local_train: null, ref: null,
+    fuel_economy_km_per_l: null, fuel_price_per_l: null, round_trip: null,
+    cover_image_url: null, stay_style: null, driver_count: null, has_vulnerable: null,
+    drive_after_dinner_min: null, vehicle_profile: null,
+  }
+}
+
 async function freshStore() {
   vi.resetModules()
   fake.reset()
@@ -155,14 +225,14 @@ async function freshStore() {
   db.sessionUserId = fake.actor
   db.trips.push({ id: fake.trip, title: 'Synthetic trip', destination: 'Synthetic',
     startDate: '2026-10-23', endDate: '2026-10-23', attendees: 2, ownerId: fake.actor,
-    writeVersion: 0, members: [{ userId: fake.actor, role: 'owner', joinedAt: 1 }],
+    writeVersion: 0, budgetPerPersonInr: 10000, members: [{ userId: fake.actor, role: 'owner', joinedAt: 1 }],
     days: [{ index: 0, date: '2026-10-23', label: 'Day 1', stops: [] }], expenses: [], collaborators: [],
   } as Parameters<typeof db.trips.push>[0])
   for (const id of [S1, S2]) {
     const row = { id, trip_id: fake.trip, day_index: 0, proposed_by: '10000000-0000-4000-8000-000000000002',
       title: id === S1 ? 'First row' : 'Independent row', category: 'food' as const, location_name: 'Synthetic',
       lat: 12, lng: 77, description: null, visit_minutes: 30, estimated_entry_fee_inr: 0,
-      estimated_transport_inr: 0, votes: [] as [], comments: [] as CommentRow[], status: 'open' as const, created_at: 1 }
+      estimated_transport_inr: 0, votes: [] as SuggestionRow['votes'], comments: [] as CommentRow[], status: 'open' as const, created_at: 1 }
     fake.rows.set(id, row)
     db.suggestions.push(suggestionRowToEntry(structuredClone(row)))
   }
@@ -214,10 +284,10 @@ describe('gate round 2 — F1 surgical rollback', () => {
     expect(db.suggestions.find(x => x.id === S2)!.comments.map(c => c.text)).toEqual(['must survive'])
     expect(db.activity.some(a => a.id === successfulActivity)).toBe(true)
     expect(db.notifications.some(n => n.id === successfulNotification)).toBe(true)
-    // The failed attempt's own activity entry is gone (B's canonical entry,
+    // The failed try's own activity entry is gone (B's canonical entry,
     // same verb by design, stays — exactly one commented entry remains).
     expect(db.activity.filter(a => a.verb === 'commented on a suggestion')).toHaveLength(1)
-    // And the failed attempt's row residue is gone.
+    // And the failed try's row residue is gone.
     expect(db.suggestions.find(x => x.id === S1)!.comments.map(c => c.text)).toEqual([])
   })
 
@@ -316,6 +386,144 @@ describe('gate round 2 — F2 the writer retry keeps one identity', () => {
   })
 })
 
+describe('gate round 3 — R1 the poll retry keeps the retained action', () => {
+  it('a poll retry without caller option ids replays the first command and creates one poll', async () => {
+    const store = await freshStore()
+    const draft = { question: 'Which meal?', options: [{ label: 'A' }, { label: 'B' }] }
+    fake.hold = true
+    const first = store.addDecision(fake.trip, structuredClone(draft))
+    await tick()
+    expect(fake.held).toHaveLength(1)
+    // The command commits, but the response is lost on the wire.
+    const committed = fake.apply(fake.held[0].params)
+    fake.held[0].resolve({ data: null, error: { message: 'lost response after commit' } })
+    expect((await first).status).toBe('unavailable')
+    // One poll beyond the seeded D1 fixture: the lost response committed
+    // exactly one.
+    expect(fake.decisionRows.size).toBe(2)
+
+    fake.hold = false
+    const second = await store.addDecision(fake.trip, structuredClone(draft))
+    // The replay control: the retained command id answers alreadyApplied.
+    const { submitCollabCommand } = await import('../src/store/collabCommand')
+    const retained = fake.calls[0]
+    const control = await submitCollabCommand(retained.p_command_id, retained.p_trip_id, retained.p_command)
+    expect(control.status).toBe('alreadyApplied')
+    expect(control.decision!.id).toBe((committed.data as Receipt).decision!.id)
+    // The retry REPLAYED the retained envelope: same command id, same payload
+    // (including the option ids minted inside the first action), one poll.
+    expect(second.status).toBe('alreadyApplied')
+    expect(fake.calls[1].p_command_id).toBe(fake.calls[0].p_command_id)
+    expect(fake.calls[1].p_command).toEqual(fake.calls[0].p_command)
+    expect(fake.decisionRows.size).toBe(2)
+    expect(fake.activity).toHaveLength(1)
+    expect(fake.notifications).toHaveLength(1)
+  })
+
+  it('caller-supplied option ids are preserved and a settled repeat mints a new poll', async () => {
+    const store = await freshStore()
+    // The Map rail's slot ids are load-bearing: they must survive into the
+    // command exactly as supplied.
+    const outcome = await store.addDecision(fake.trip, {
+      question: 'Day 1 lunch - where?', context: 'Voting from the day plan',
+      options: [{ id: 'slot:lunch:h1', label: 'Grand Hotel' }, { id: 'slot:lunch:h2', label: 'Halais' }],
+    })
+    expect(outcome.status).toBe('applied')
+    const sent = (fake.calls[0].p_command as Extract<Command, { type: 'decision.create' }>)
+    expect(sent.decision.options.map(o => o.id)).toEqual(['slot:lunch:h1', 'slot:lunch:h2'])
+    // The envelope freed on applied: the SAME form again is a NEW poll.
+    const second = await store.addDecision(fake.trip, {
+      question: 'Day 1 lunch - where?', context: 'Voting from the day plan',
+      options: [{ id: 'slot:lunch:h1', label: 'Grand Hotel' }, { id: 'slot:lunch:h2', label: 'Halais' }],
+    })
+    expect(second.status).toBe('applied')
+    expect(fake.calls[1].p_command_id).not.toBe(fake.calls[0].p_command_id)
+    expect(fake.calls[1].p_command).not.toEqual(fake.calls[0].p_command)
+    expect(fake.decisionRows.size).toBe(3)
+  })
+})
+
+describe('gate round 3 — R2 ballot ownership', () => {
+  it('a ballot refused after a concurrent comment retracts the ghost vote and keeps the comment', async () => {
+    const store = await freshStore()
+    fake.hold = true
+    const vote = store.voteSuggestion(fake.trip, S1, 1)
+    await tick()
+    const comment = store.addCommentToSuggestion(fake.trip, S1, 'new local work')
+    await tick()
+    expect(fake.held).toHaveLength(2)
+    // The comment's optimistic clone inherited the upvote; the server never
+    // got the ballot.
+    fake.held[0].resolve({ data: { status: 'forbidden', tripRevision: 0 }, error: null })
+    expect((await vote).status).toBe('forbidden')
+    const cached = store.getSnapshot().suggestions.find(x => x.id === S1)!
+    expect(cached.votes).toEqual([])
+    expect(cached.comments.map(c => c.text)).toEqual(['new local work'])
+    fake.held[1].resolve(fake.apply(fake.held[1].params))
+    expect((await comment).status).toBe('applied')
+  })
+
+  it('a lost-response vote retry replays value 1 under the same command id and keeps the vote', async () => {
+    const store = await freshStore()
+    fake.hold = true
+    const vote = store.voteSuggestion(fake.trip, S1, 1)
+    await tick()
+    // The upvote commits; the response is lost. A concurrent comment's clone
+    // is holding the optimistic vote when the failure lands.
+    fake.apply(fake.held[0].params)
+    const comment = store.addCommentToSuggestion(fake.trip, S1, 'new local work')
+    await tick()
+    fake.held[0].resolve({ data: null, error: { message: 'lost after commit' } })
+    expect((await vote).status).toBe('unavailable')
+    // The ghost is retracted, so the retry derives a SET again — never a
+    // removal — and the retained envelope replays the original value.
+    fake.hold = false
+    const retry = await store.voteSuggestion(fake.trip, S1, 1)
+    expect(fake.calls[2].p_command_id).toBe(fake.calls[0].p_command_id)
+    expect((fake.calls[2].p_command as Extract<Command, { type: 'suggestion.ballot' }>).value).toBe(1)
+    expect(fake.calls[2].p_command).toEqual(fake.calls[0].p_command)
+    expect(retry.status).toBe('alreadyApplied')
+    expect(fake.rows.get(S1)!.votes).toEqual([{ userId: fake.actor, value: 1, createdAt: 1 }])
+    fake.held[1].resolve(fake.apply(fake.held[1].params))
+    await comment
+  })
+
+  it('a later intentional ballot supersedes the refused one', async () => {
+    const store = await freshStore()
+    fake.hold = true
+    const first = store.voteSuggestion(fake.trip, S1, 1)
+    await tick()
+    // The actor intentionally changes their mind while the first vote is
+    // uncertain: the second operation owns the entry now.
+    const second = store.voteSuggestion(fake.trip, S1, -1)
+    await tick()
+    expect(fake.held).toHaveLength(2)
+    fake.held[0].resolve({ data: null, error: { message: 'synthetic unavailable' } })
+    expect((await first).status).toBe('unavailable')
+    // The refused operation must NOT retract the newer intentional ballot.
+    expect(store.getSnapshot().suggestions.find(x => x.id === S1)!.votes)
+      .toEqual([{ userId: fake.actor, value: -1, createdAt: expect.any(Number) }])
+    fake.held[1].resolve(fake.apply(fake.held[1].params))
+    expect((await second).status).toBe('applied')
+  })
+
+  it('a refused decision ballot retracts its ghost too (broadened path)', async () => {
+    const store = await freshStore()
+    fake.hold = true
+    const vote = store.voteOnDecision(D1, 'opt-1')
+    await tick()
+    const comment = store.addCommentToDecision(fake.trip, D1, 'poll note')
+    await tick()
+    fake.held[0].resolve({ data: { status: 'forbidden', tripRevision: 0 }, error: null })
+    expect((await vote).status).toBe('forbidden')
+    const cached = store.getSnapshot().decisions.find(x => x.id === D1)!
+    expect(cached.votesByUserId).toEqual({})
+    expect(cached.comments.map(c => c.text)).toEqual(['poll note'])
+    fake.held[1].resolve(fake.apply(fake.held[1].params))
+    expect((await comment).status).toBe('applied')
+  })
+})
+
 describe('gate round 2 — F3 fenced recovery reads', () => {
   it('a delayed recovery SELECT cannot overwrite a newer canonical row', async () => {
     const store = await freshStore()
@@ -342,7 +550,7 @@ describe('gate round 2 — F3 fenced recovery reads', () => {
   })
 })
 
-describe('gate round 2 — F4 conflict reconciles and preserves the draft', () => {
+describe('gate round 2-3 — F4/C1 conflict reconciliation and the unresolved draft', () => {
   it('a conflict keeps the draft, drops uncreated artifacts and starts authoritative reads', async () => {
     const store = await freshStore()
     fake.conflict = true
@@ -352,8 +560,11 @@ describe('gate round 2 — F4 conflict reconciles and preserves the draft', () =
     expect(store.getSnapshot().suggestions.find(x => x.id === S1)!.comments.map(c => c.text)).toEqual(['keep draft'])
     expect(store.getSnapshot().activity).toHaveLength(0)
     expect(store.getSnapshot().notifications).toHaveLength(0)
-    // The feedback says the latest version is loading — reads must back it.
-    expect(fake.reads.length).toBeGreaterThan(0)
+    // The feedback says the latest version is loading — reads must back it,
+    // including the trip revision reconciliation.
+    const tables = fake.reads.map(r => r.table)
+    expect(tables).toContain('suggestions')
+    expect(tables).toContain('trips')
   })
 
   it('a successful reconciliation lands the canonical row and keeps the unresolved draft', async () => {
@@ -381,12 +592,65 @@ describe('gate round 2 — F4 conflict reconciles and preserves the draft', () =
     expect(store.getSnapshot().suggestions.find(x => x.id === S1)!.comments.map(c => c.text)).toEqual(['keep draft'])
   })
 
-  it('a conflict never advances the client trip CAS from the receipt revision', async () => {
+  it('the receipt never advances the trip CAS directly; the reconciliation admits the authoritative revision', async () => {
     const store = await freshStore()
     fake.conflict = true
-    await store.addCommentToSuggestion(fake.trip, S1, 'ack only')
+    // The server's authoritative trip, at the revision the receipt observed.
+    fake.tripsRow = authoritativeTripsRow(fake.trip, fake.actor, 7)
+    fake.membersRow = { id: 'tm-1', trip_id: fake.trip, user_id: fake.actor, role: 'owner', joined_at: 1 }
+
+    const outcome = await store.addCommentToSuggestion(fake.trip, S1, 'ack only')
+    expect(outcome.status).toBe('conflict')
+    // The receipt itself is an acknowledgment only: the cached CAS did not
+    // move at receipt time.
+    expect((store.getSnapshot().trips.find(t => t.id === fake.trip) as { writeVersion: number }).writeVersion).toBe(0)
     await tick()
-    const trip = store.getSnapshot().trips.find(t => t.id === fake.trip) as { writeVersion: number }
-    expect(trip.writeVersion).toBe(0)
+    // The background reconciliation read the authoritative trip through the
+    // REAL admission path, which legitimately lands revision 7.
+    expect((store.getSnapshot().trips.find(t => t.id === fake.trip) as { writeVersion: number }).writeVersion).toBe(7)
+  })
+
+  it('a queued trip edit blocks admission and survives the reconciliation', async () => {
+    const store = await freshStore()
+    store._setTripWriteDebounceMs(0)
+    fake.conflict = true
+    fake.tripsRow = authoritativeTripsRow(fake.trip, fake.actor, 7)
+    fake.membersRow = { id: 'tm-1', trip_id: fake.trip, user_id: fake.actor, role: 'owner', joined_at: 1 }
+    // A real local edit whose trip write fails, so the edit is queued.
+    fake.tripUpdateFails = true
+    store.addExpense(fake.trip, { label: 'Queued fuel', category: 'transport', amountInr: 500 })
+    await tick()
+    const before = store.getSnapshot().trips.find(t => t.id === fake.trip)!
+    expect(before.expenses.some(e => e.label === 'Queued fuel')).toBe(true)
+
+    const outcome = await store.addCommentToSuggestion(fake.trip, S1, 'keep draft')
+    expect(outcome.status).toBe('conflict')
+    await tick()
+    const after = store.getSnapshot().trips.find(t => t.id === fake.trip)!
+    // Admission was BLOCKED (a queued edit outranks the authoritative row):
+    // the local edit and revision 0 survive, and the pending copy stays.
+    expect(after.writeVersion).toBe(0)
+    expect(after.expenses.some(e => e.label === 'Queued fuel')).toBe(true)
+    expect(after.updatedAt).toBe(before.updatedAt)
+  })
+
+  it('a conflict draft survives an authoritative realtime replacement', async () => {
+    const store = await freshStore()
+    fake.conflict = true
+    const outcome = await store.addCommentToSuggestion(fake.trip, S1, 'unresolved input')
+    expect(outcome.status).toBe('conflict')
+    await tick()
+    expect(store.getSnapshot().suggestions.find(x => x.id === S1)!.comments.map(c => c.text)).toEqual(['unresolved input'])
+    // A canonical peer UPDATE lands through the real realtime dispatch.
+    const peer = structuredClone(fake.rows.get(S1)!)
+    peer.comments.push({ id: 'peer-comment', authorId: 'peer', text: 'peer event', createdAt: 2 })
+    fake.rows.set(S1, peer)
+    store._applyRealtimeEventForTest('suggestions', {
+      eventType: 'UPDATE', schema: 'public', table: 'suggestions',
+      commit_timestamp: new Date().toISOString(), old: { id: peer.id }, new: structuredClone(peer),
+    } as Parameters<typeof store._applyRealtimeEventForTest>[1])
+    const observed = store.getSnapshot().suggestions.find(x => x.id === S1)!.comments.map(c => c.text)
+    expect(observed).toContain('peer event')
+    expect(observed).toContain('unresolved input')
   })
 })

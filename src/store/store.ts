@@ -11,7 +11,7 @@ import { useSyncExternalStore } from 'react'
 import type {
   User, Trip, StopSuggestion, TripDecision, ActivityEntry, Notification,
   PublishedItinerary, ID, ItineraryStop, ItineraryDay, TripMember, Expense, FixedCommitment,
-  NewDecisionOption, VehicleProfile, Comment,
+  NewDecisionOption, VehicleProfile, Comment, Vote, DecisionOption,
 } from '../data/types'
 import { STOP_CATEGORIES, STOP_STATUSES } from '../data/types'
 import { seedData, uid } from '../data/seed'
@@ -644,6 +644,9 @@ export function init(): void {
       // Pending contribution envelopes are scoped to the identity that
       // created them; the next identity starts with no uncertain actions.
       pendingCollabActions.clear()
+      conflictDrafts.clear()
+      suggestionBallotOwners.clear()
+      decisionBallotOwners.clear()
       // Publish the new identity before any storage or network await.
       patch({ trips: [], trashedTrips: [], trashLoaded: false, trashFailed: false,
         users: [], suggestions: [], decisions: [], activity: [], notifications: [],
@@ -4817,43 +4820,29 @@ type PendingCollabAction = {
 
 const pendingCollabActions = new Map<string, PendingCollabAction>()
 
-/** What makes a retry the same logical action, WITHOUT the ids (those live in
- *  the envelope). Null for kinds with no user retry gesture — activity.append
- *  is fire-and-forget logging, so each call is its own action. */
-function collabActionFingerprint(command: CollabCommand): string | null {
-  switch (command.type) {
-    case 'suggestion.comment': return `t:${command.text}`
-    case 'decision.comment': return `t:${command.text}`
-    case 'suggestion.ballot': return `v:${command.value}`
-    case 'decision.ballot': return `o:${command.optionId}`
-    case 'suggestion.create': return `c:${JSON.stringify(command.suggestion)}`
-    case 'decision.create': return `c:${JSON.stringify(command.decision)}`
-    case 'activity.append': return null
-  }
-}
-
-function pendingCollabKey(scope: IdentityScope, tripId: ID, command: CollabCommand): string | null {
-  const fp = collabActionFingerprint(command)
-  if (fp === null) return null
-  let rowKey = ''
-  if (command.type === 'suggestion.comment' || command.type === 'suggestion.ballot') rowKey = command.suggestionId
-  else if (command.type === 'decision.comment' || command.type === 'decision.ballot') rowKey = command.decisionId
+function collabKey(
+  scope: IdentityScope,
+  tripId: ID,
+  type: CollabCommand['type'],
+  rowKey: string,
+  fingerprint: string | null,
+): string | null {
+  if (fingerprint === null) return null
   // creates keep '' — the entity id lives IN the envelope; the slot is the
   // trip. activity.append never reaches here (no fingerprint).
-  return `${scope.epoch}:${scope.userId}:${command.type}:${tripId}:${rowKey}:${fp}`
+  return `${scope.epoch}:${scope.userId}:${type}:${tripId}:${rowKey}:${fingerprint}`
 }
 
-/** Claim the envelope for this logical slot. `probe` carries the slot's
- *  fingerprint (its ids are ignored by the key); `mint` builds the real
- *  command when a fresh envelope is needed. On a retry the STORED command
- *  comes back untouched — ids and payload from the first try. */
+/** Claim the envelope for this logical slot. `key` names the slot (null = no
+ *  retry gesture); `mint` builds the real command when a fresh envelope is
+ *  needed. On a retry the STORED command comes back untouched — ids and
+ *  payload from the first try. */
 function claimEnvelope(
   scope: IdentityScope,
   tripId: ID,
-  probe: CollabCommand,
+  key: string | null,
   mint: () => CollabCommand,
 ): { command: CollabCommand; commandId: string; pendingKey: string | null; isRetry: boolean } {
-  const key = pendingCollabKey(scope, tripId, probe)
   if (key === null) {
     return { command: mint(), commandId: uuid(), pendingKey: null, isRetry: false }
   }
@@ -4867,6 +4856,138 @@ function claimEnvelope(
 
 function settlePendingCollab(pendingKey: string | null): void {
   if (pendingKey) pendingCollabActions.delete(pendingKey)
+}
+
+// ---- Unresolved conflict drafts (gate round 2 F4, round 3 C1) ----
+//
+// The input a conflict kept alive. The pending envelope and the form text own
+// the ACTION; this overlay owns the CACHE COPY: a canonical replacement
+// (recovery read, realtime UPDATE) re-attaches the draft, because the server
+// has not committed it yet. Cleared the moment the action settles and the
+// server row carries the comment (or the refusal is final).
+
+const conflictDrafts = new Map<string, Comment>() // `${kind}:${rowId}`
+
+function draftKey(kind: ContributionKind, rowId: ID): string {
+  return `${kind}:${rowId}`
+}
+
+/** Re-attach an unresolved draft after a canonical row replacement. When the
+ *  canonical row already carries the comment, the server has committed the
+ *  retry — the overlay retires. */
+function reattachConflictDraft(kind: ContributionKind, rowId: ID): void {
+  const key = draftKey(kind, rowId)
+  const draft = conflictDrafts.get(key)
+  if (!draft) return
+  if (kind === 'suggestion') {
+    const cur = cache.suggestions.find(x => x.id === rowId)
+    if (!cur) return
+    if (cur.comments.some(c => c.id === draft.id)) { conflictDrafts.delete(key); return }
+    cache.suggestions = cache.suggestions.map(x => x.id === rowId ? { ...x, comments: [...x.comments, draft] } : x)
+  } else {
+    const cur = cache.decisions.find(x => x.id === rowId)
+    if (!cur) return
+    if (cur.comments.some(c => c.id === draft.id)) { conflictDrafts.delete(key); return }
+    cache.decisions = cache.decisions.map(x => x.id === rowId ? { ...x, comments: [...x.comments, draft] } : x)
+  }
+}
+
+// ---- Actor-ballot operation ownership (gate round 3, R2) ----
+//
+// The LAST ballot operation an actor performs on a row owns that actor's
+// optimistic entry, independently of row object identity: a concurrent
+// comment's optimistic clone inherits the entry (so object identity cannot
+// see it), and a canonical replacement must never be clobbered. A refused
+// operation retracts the entry only while it still owns it, restoring the
+// actor's prior ballot; a later intentional ballot supersedes by claiming a
+// new token, and the earlier operation's rollback then leaves it alone.
+
+type SuggestionBallotOwnership = {
+  token: string
+  applied: { value: 1 | -1 | null; createdAt: number }
+  prior: Vote | undefined
+}
+
+type DecisionBallotOwnership = {
+  token: string
+  applied: { optionId: string | null }
+  prior: string | undefined
+}
+
+const suggestionBallotOwners = new Map<string, SuggestionBallotOwnership>()
+const decisionBallotOwners = new Map<string, DecisionBallotOwnership>()
+
+function claimSuggestionBallot(
+  suggestionId: ID,
+  userId: ID,
+  applied: { value: 1 | -1 | null; createdAt: number },
+  prior: Vote | undefined,
+): { key: string; token: string; userId: ID } {
+  const key = `${suggestionId}:${userId}`
+  const token = uuid()
+  suggestionBallotOwners.set(key, { token, applied, prior })
+  return { key, token, userId }
+}
+
+function claimDecisionBallot(
+  decisionId: ID,
+  userId: ID,
+  applied: { optionId: string | null },
+  prior: string | undefined,
+): { key: string; token: string; userId: ID } {
+  const key = `${decisionId}:${userId}`
+  const token = uuid()
+  decisionBallotOwners.set(key, { token, applied, prior })
+  return { key, token, userId }
+}
+
+/** Release the ownership record when the action settles (any receipt except
+ *  conflict — a conflict's unresolved ballot stays owned until a later
+ *  ballot supersedes it). */
+function releaseBallotOwnership(ownership: { key: string; token: string } | undefined): void {
+  if (!ownership) return
+  const rec = suggestionBallotOwners.get(ownership.key)
+  if (rec && rec.token === ownership.token) { suggestionBallotOwners.delete(ownership.key); return }
+  const dec = decisionBallotOwners.get(ownership.key)
+  if (dec && dec.token === ownership.token) decisionBallotOwners.delete(ownership.key)
+}
+
+/** Retract the owned ghost ballot from the CURRENT row. Answers the next row
+ *  state, or undefined when this operation does not own the entry any more or
+ *  the entry is not the optimistic ghost (a canonical or later value). */
+function retractSuggestionBallotFromRow(
+  ownership: { key: string; token: string; userId: ID },
+  row: StopSuggestion,
+): StopSuggestion | undefined {
+  const rec = suggestionBallotOwners.get(ownership.key)
+  if (!rec || rec.token !== ownership.token) return undefined
+  suggestionBallotOwners.delete(ownership.key)
+  const entry = row.votes.find(v => v.userId === ownership.userId)
+  const ghost = rec.applied.value === null
+    ? !entry // the removal itself was the optimistic change
+    : !!entry && entry.value === rec.applied.value && entry.createdAt === rec.applied.createdAt
+  if (!ghost) return undefined
+  return rec.prior
+    ? { ...row, votes: row.votes.map(v => v.userId === ownership.userId ? { ...v, value: rec.prior!.value, createdAt: rec.prior!.createdAt } : v) }
+    : { ...row, votes: row.votes.filter(v => v.userId !== ownership.userId) }
+}
+
+function retractDecisionBallotFromRow(
+  ownership: { key: string; token: string; userId: ID },
+  row: TripDecision,
+): TripDecision | undefined {
+  const rec = decisionBallotOwners.get(ownership.key)
+  if (!rec || rec.token !== ownership.token) return undefined
+  decisionBallotOwners.delete(ownership.key)
+  const entry = row.votesByUserId[ownership.userId]
+  const ghost = rec.applied.optionId === null
+    ? entry === undefined
+    : entry === rec.applied.optionId
+  if (!ghost) return undefined
+  const votes = { ...row.votesByUserId }
+  if (rec.prior === undefined) delete votes[ownership.userId]
+  else votes[ownership.userId] = rec.prior
+  return { ...row, votesByUserId: votes }
 }
 
 /** Swap the optimistic activity entry for the canonical one the receipt
@@ -4945,6 +5066,7 @@ function rollbackContribution(args: {
   rowBefore?: unknown
   rowRef?: unknown
   commentId?: string
+  ballotOwnership?: { key: string; token: string; userId: ID }
   localActivityId?: string
   localNotificationIds?: string[]
 }): void {
@@ -4958,10 +5080,23 @@ function rollbackContribution(args: {
           ? cache.suggestions.map(x => x.id === args.rowId ? args.rowBefore as StopSuggestion : x)
           : cache.suggestions.filter(x => x.id !== args.rowId)
         changed = true
-      } else if (cur && args.commentId && cur.comments.some(c => c.id === args.commentId)) {
-        const next = { ...cur, comments: cur.comments.filter(c => c.id !== args.commentId) }
-        cache.suggestions = cache.suggestions.map(x => x.id === args.rowId ? next : x)
-        changed = true
+        releaseBallotOwnership(args.ballotOwnership)
+      } else if (cur) {
+        // The row moved on (a peer command cloned it, a receipt adopted it,
+        // realtime landed): retract by id, preserving everything that is not
+        // ours — including later comments and later intentional ballots.
+        let next = cur
+        if (args.commentId && next.comments.some(c => c.id === args.commentId)) {
+          next = { ...next, comments: next.comments.filter(c => c.id !== args.commentId) }
+        }
+        if (args.ballotOwnership) {
+          const retracted = retractSuggestionBallotFromRow(args.ballotOwnership, next)
+          if (retracted) next = retracted
+        }
+        if (next !== cur) {
+          cache.suggestions = cache.suggestions.map(x => x.id === args.rowId ? next : x)
+          changed = true
+        }
       }
     } else {
       const cur = cache.decisions.find(x => x.id === args.rowId)
@@ -4970,12 +5105,24 @@ function rollbackContribution(args: {
           ? cache.decisions.map(x => x.id === args.rowId ? args.rowBefore as TripDecision : x)
           : cache.decisions.filter(x => x.id !== args.rowId)
         changed = true
-      } else if (cur && args.commentId && cur.comments.some(c => c.id === args.commentId)) {
-        const next = { ...cur, comments: cur.comments.filter(c => c.id !== args.commentId) }
-        cache.decisions = cache.decisions.map(x => x.id === args.rowId ? next : x)
-        changed = true
+        releaseBallotOwnership(args.ballotOwnership)
+      } else if (cur) {
+        let next = cur
+        if (args.commentId && next.comments.some(c => c.id === args.commentId)) {
+          next = { ...next, comments: next.comments.filter(c => c.id !== args.commentId) }
+        }
+        if (args.ballotOwnership) {
+          const retracted = retractDecisionBallotFromRow(args.ballotOwnership, next)
+          if (retracted) next = retracted
+        }
+        if (next !== cur) {
+          cache.decisions = cache.decisions.map(x => x.id === args.rowId ? next : x)
+          changed = true
+        }
       }
     }
+  } else {
+    releaseBallotOwnership(args.ballotOwnership)
   }
   const hadArtifacts = !!args.localActivityId || localNotificationIds.length > 0
   const activityCount = cache.activity.length
@@ -5053,6 +5200,7 @@ async function runContributionCommand(args: {
   rowRef?: unknown
   commentId?: string
   draftComment?: Comment
+  ballotOwnership?: { key: string; token: string; userId: ID }
   localActivityId: string
   localNotificationIds: string[]
 }): Promise<CollabOutcome> {
@@ -5086,8 +5234,10 @@ async function runContributionCommand(args: {
     reconcileArtifacts(receipt.activityId, receipt.notificationIds, args.localActivityId, args.localNotificationIds)
     noteTripRevision(args.tripId, receipt.tripRevision)
     // The action settled: the next call for this slot is a NEW intentional
-    // action with fresh ids.
+    // action with fresh ids, and the optimistic ballot is server-backed now.
     settlePendingCollab(args.pendingKey)
+    releaseBallotOwnership(args.ballotOwnership)
+    conflictDrafts.delete(draftKey(args.rowKind, args.rowId))
     return receipt
   }
   if (receipt.status === 'conflict') {
@@ -5097,6 +5247,9 @@ async function runContributionCommand(args: {
     // refused). The envelope STAYS pending: the action is unresolved, and the
     // caller's retry path reuses it.
     dropArtifacts(args.localActivityId, args.localNotificationIds)
+    // Own the cache copy of the unresolved input (gate round 3, C1): canonical
+    // replacements re-attach it until the action settles.
+    if (args.draftComment) conflictDrafts.set(draftKey(args.rowKind, args.rowId), args.draftComment)
     // Start the authoritative reconciliation the feedback promises: a fenced
     // read of the contribution row (keeping the draft attached) and the
     // acknowledged trip revision — which never advances the client CAS.
@@ -5110,21 +5263,29 @@ async function runContributionCommand(args: {
     // entries, and let the next call be a new action.
     rollbackContribution({
       rowKind: args.rowKind, rowId: args.rowId, rowBefore: args.rowBefore, rowRef: args.rowRef,
-      commentId: args.commentId, localActivityId: args.localActivityId,
-      localNotificationIds: args.localNotificationIds,
+      commentId: args.commentId, ballotOwnership: args.ballotOwnership,
+      localActivityId: args.localActivityId, localNotificationIds: args.localNotificationIds,
     })
     settlePendingCollab(args.pendingKey)
+    releaseBallotOwnership(args.ballotOwnership)
+    conflictDrafts.delete(draftKey(args.rowKind, args.rowId))
     return receipt
   }
   // unavailable: the command MAY have committed (a lost response). Retract
   // the optimistic entries — nothing was confirmed — and KEEP the envelope:
   // the writer's next call for this slot retries the same identity, which is
-  // what makes the retry idempotent.
+  // what makes the retry idempotent. The ballot retraction reclaims the
+  // actor's ghost entry, so a retried vote is derived as a SET again and
+  // cannot become a removal (gate round 3, R2). The draft overlay retires
+  // with the rollback: nothing visible owns a cache copy any more, and a
+  // retried conflict re-records it.
   rollbackContribution({
     rowKind: args.rowKind, rowId: args.rowId, rowBefore: args.rowBefore, rowRef: args.rowRef,
-    commentId: args.commentId, localActivityId: args.localActivityId,
-    localNotificationIds: args.localNotificationIds,
+    commentId: args.commentId, ballotOwnership: args.ballotOwnership,
+    localActivityId: args.localActivityId, localNotificationIds: args.localNotificationIds,
   })
+  releaseBallotOwnership(args.ballotOwnership)
+  conflictDrafts.delete(draftKey(args.rowKind, args.rowId))
   return receipt
 }
 
@@ -5141,14 +5302,16 @@ export function addSuggestion(
   if (!scope) return Promise.resolve({ status: 'forbidden' })
   if (!s.title.trim()) return Promise.resolve({ status: 'invalid', reason: 'empty title' })
   // The envelope (F2) owns the entity id: a retry of an uncertain create
-  // reuses the FIRST try's id, so the server row id is stable.
+  // reuses the FIRST try's id, so the server row id is stable. The
+  // fingerprint is the id-free payload — the suggestion carries no
+  // client-minted ids.
   const suggestion = {
     dayIndex: s.dayIndex, title: s.title, category: s.category, locationName: s.locationName,
     lat: s.lat, lng: s.lng, description: s.description, visitMinutes: s.visitMinutes,
     estimatedEntryFeeInr: s.estimatedEntryFeeInr, estimatedTransportInr: s.estimatedTransportInr,
   }
   const claimed = claimEnvelope(scope, tripId,
-    { type: 'suggestion.create', suggestionId: uuid(), suggestion },
+    collabKey(scope, tripId, 'suggestion.create', '', `c:${JSON.stringify(suggestion)}`),
     () => ({ type: 'suggestion.create', suggestionId: uuid(), suggestion }))
   const command = claimed.command
   if (command.type !== 'suggestion.create') return Promise.resolve({ status: 'unavailable' })
@@ -5206,17 +5369,24 @@ export function voteSuggestion(tripId: ID, suggestionId: ID, value: 1 | -1): Pro
   // the server, so a retry cannot flip the vote.
   let removed = false
   let ballot: 1 | -1 | null = value
+  let appliedCreatedAt = Date.now()
   if (existing) {
     if (existing.value === value) { sg.votes = sg.votes.filter(v => v.userId !== scope.userId); removed = true; ballot = null }
-    else existing.value = value
+    else { existing.value = value; appliedCreatedAt = existing.createdAt = Date.now() }
   } else {
-    sg.votes.push({ userId: scope.userId, value, createdAt: Date.now() })
+    sg.votes.push({ userId: scope.userId, value, createdAt: appliedCreatedAt })
   }
   const claimed = claimEnvelope(scope, tripId,
-    { type: 'suggestion.ballot', suggestionId, value: ballot },
+    collabKey(scope, tripId, 'suggestion.ballot', suggestionId, `v:${ballot}`),
     () => ({ type: 'suggestion.ballot', suggestionId, value: ballot }))
   const command = claimed.command
   if (command.type !== 'suggestion.ballot') return Promise.resolve({ status: 'unavailable' })
+  // Operation ownership (gate round 3, R2): THIS op owns the actor's
+  // optimistic entry until it settles, so a rollback can reclaim it even when
+  // a concurrent comment's clone moved the row object.
+  const ballotOwnership = claimSuggestionBallot(suggestionId, scope.userId,
+    { value: ballot, createdAt: appliedCreatedAt },
+    existing ? { ...existing } : undefined)
   cache.suggestions = [...cache.suggestions.slice(0, sgIdx), sg, ...cache.suggestions.slice(sgIdx + 1)]
   const localActivityId = uuid()
   cache.activity = [...cache.activity, {
@@ -5228,7 +5398,7 @@ export function voteSuggestion(tripId: ID, suggestionId: ID, value: 1 | -1): Pro
   const rowRef = cache.suggestions.find(x => x.id === suggestionId)
   return runContributionCommand({
     scope, tripId, commandId: claimed.commandId, command, pendingKey: claimed.pendingKey,
-    rowKind: 'suggestion', rowId: suggestionId, rowBefore, rowRef,
+    rowKind: 'suggestion', rowId: suggestionId, rowBefore, rowRef, ballotOwnership,
     localActivityId, localNotificationIds: [],
   })
 }
@@ -5247,7 +5417,7 @@ export function addCommentToSuggestion(tripId: ID, suggestionId: ID, text: strin
   // so a command that committed behind a lost response cannot duplicate
   // itself. A different text is a NEW intentional action with a new id.
   const claimed = claimEnvelope(scope, tripId,
-    { type: 'suggestion.comment', suggestionId, commentId: uid('cm'), text: trimmed },
+    collabKey(scope, tripId, 'suggestion.comment', suggestionId, `t:${trimmed}`),
     () => ({ type: 'suggestion.comment', suggestionId, commentId: uid('cm'), text: trimmed }))
   const command = claimed.command
   if (command.type !== 'suggestion.comment') return Promise.resolve({ status: 'unavailable' })
@@ -5289,7 +5459,7 @@ export function addCommentToDecision(tripId: ID, decisionId: ID, text: string): 
   // The envelope (F2) owns the stable comment id and the whole command, same
   // as the suggestion comment path.
   const claimed = claimEnvelope(scope, tripId,
-    { type: 'decision.comment', decisionId, commentId: uid('cm'), text: trimmed },
+    collabKey(scope, tripId, 'decision.comment', decisionId, `t:${trimmed}`),
     () => ({ type: 'decision.comment', decisionId, commentId: uid('cm'), text: trimmed }))
   const command = claimed.command
   if (command.type !== 'decision.comment') return Promise.resolve({ status: 'unavailable' })
@@ -5412,29 +5582,43 @@ export function addDecision(tripId: ID, d: Pick<TripDecision, 'question' | 'cont
   const scope = identityScope()
   if (!scope) return Promise.resolve({ status: 'forbidden' })
   if (!d.question.trim()) return Promise.resolve({ status: 'invalid', reason: 'empty question' })
-  // #335: the caller's option id IS the contract, so keep it. The Map rail
-  // mints `slot:<key>:<hit>` for the join that puts a poll on its part and
-  // stamps `slotKey` on the stop it resolves to; the shortlist mints the place
-  // id so a re-add collapses into the poll already open; and votes recorded in
-  // other rows point at these ids. The old `uid('o')` rewrite broke all three
-  // (and destroyed the slot contract in the cache copy AND the row). Mint only
-  // when there is nothing to keep, or when two options in THIS poll collide —
-  // a shared id would make one vote count for both.
-  const seen = new Set<string>()
-  const options = d.options.map(o => {
-    const optionId = o.id && !seen.has(o.id) ? o.id : uid('o')
-    seen.add(optionId)
-    return { ...o, id: optionId }
-  })
-  // The envelope (F2) owns the entity id and the whole command, same as the
-  // suggestion create path.
-  const decision = { question: d.question, ...(d.context !== undefined ? { context: d.context } : {}), options: options.map(o => ({ ...o })) }
+  // The envelope (gate round 3, R1): the LOGICAL FORM is fingerprinted BEFORE
+  // any id is minted, and the retained action owns the whole normalized
+  // payload — question, context, the decision id and every option id. A retry
+  // of an uncertain poll reuses that payload verbatim; a caller-supplied
+  // option id is preserved inside it; and a settled intentional repeat (the
+  // envelope freed) mints everything fresh.
+  const formFingerprint = `f:${JSON.stringify({
+    question: d.question,
+    context: d.context ?? null,
+    options: d.options.map(o => ({ ...o, id: o.id ?? null })),
+  })}`
   const claimed = claimEnvelope(scope, tripId,
-    { type: 'decision.create', decisionId: uuid(), decision },
-    () => ({ type: 'decision.create', decisionId: uuid(), decision }))
+    collabKey(scope, tripId, 'decision.create', '', formFingerprint),
+    () => {
+      // #335: the caller's option id IS the contract, so keep it. The Map rail
+      // mints `slot:<key>:<hit>` for the join that puts a poll on its part and
+      // stamps `slotKey` on the stop it resolves to; the shortlist mints the place
+      // id so a re-add collapses into the poll already open; and votes recorded in
+      // other rows point at these ids. Mint only when there is nothing to keep, or
+      // when two options in THIS poll collide — a shared id would make one vote
+      // count for both.
+      const seen = new Set<string>()
+      const options = d.options.map(o => {
+        const optionId = o.id && !seen.has(o.id) ? o.id : uid('o')
+        seen.add(optionId)
+        return { ...o, id: optionId }
+      })
+      return {
+        type: 'decision.create',
+        decisionId: uuid(),
+        decision: { question: d.question, ...(d.context !== undefined ? { context: d.context } : {}), options: options.map(o => ({ ...o })) },
+      }
+    })
   const command = claimed.command
   if (command.type !== 'decision.create') return Promise.resolve({ status: 'unavailable' })
   const id = command.decisionId
+  const options = command.decision.options as DecisionOption[]
   cache.decisions = [...cache.decisions, {
     ...d, id, tripId, options, votesByUserId: {}, comments: [], status: 'open' as const,
     raisedBy: scope.userId, createdAt: Date.now(),
@@ -5483,12 +5667,14 @@ export function voteOnDecision(decisionId: ID, optionId: ID): Promise<CollabOutc
   // One ballot per actor, keyed by auth.uid() on the server. A ballot change
   // is a SET to the new option; a retried ballot with the same option
   // is a no-op, never a toggle.
+  const priorOptionId = d.votesByUserId[scope.userId]
   d.votesByUserId[scope.userId] = optionId
   const claimed = claimEnvelope(scope, d.tripId,
-    { type: 'decision.ballot', decisionId, optionId },
+    collabKey(scope, d.tripId, 'decision.ballot', decisionId, `o:${optionId}`),
     () => ({ type: 'decision.ballot', decisionId, optionId }))
   const command = claimed.command
   if (command.type !== 'decision.ballot') return Promise.resolve({ status: 'unavailable' })
+  const ballotOwnership = claimDecisionBallot(decisionId, scope.userId, { optionId }, priorOptionId)
   cache.decisions = [...cache.decisions.slice(0, dIdx), d, ...cache.decisions.slice(dIdx + 1)]
   const localActivityId = uuid()
   cache.activity = [...cache.activity, {
@@ -5501,7 +5687,7 @@ export function voteOnDecision(decisionId: ID, optionId: ID): Promise<CollabOutc
   const rowRef = cache.decisions.find(x => x.id === decisionId)
   return runContributionCommand({
     scope, tripId: d.tripId, commandId: claimed.commandId, command, pendingKey: claimed.pendingKey,
-    rowKind: 'decision', rowId: decisionId, rowBefore, rowRef,
+    rowKind: 'decision', rowId: decisionId, rowBefore, rowRef, ballotOwnership,
     localActivityId, localNotificationIds: [],
   })
 }
@@ -6644,9 +6830,13 @@ function applyRealtimeEvent(table: string, payload: RealtimePostgresChangesPaylo
     }
     case 'suggestions':
       cache.suggestions = reduceSlice(cache.suggestions, event, row ? rowToSuggestion(row) : undefined, oldRow?.id)
+      // A canonical replacement must not hide an unresolved conflict draft
+      // (gate round 3, C1): the overlay re-attaches it until it settles.
+      if (id !== undefined) reattachConflictDraft('suggestion', id)
       break
     case 'decisions':
       cache.decisions = reduceSlice(cache.decisions, event, row ? rowToDecision(row) : undefined, oldRow?.id)
+      if (id !== undefined) reattachConflictDraft('decision', id)
       break
     case 'activity': {
       if (event === 'DELETE') {
