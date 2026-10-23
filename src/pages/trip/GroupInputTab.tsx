@@ -13,6 +13,7 @@ import type { FormEvent } from 'react'
 import { Car, ChevronDown, ChevronUp, ClipboardList, Clock, Lightbulb, MapPin, Plus, Scale, Sparkles, Ticket, X } from 'lucide-react'
 import { PillNav } from '../../components/PillNav'
 import type { StopCategory, StopSuggestion, Trip, TripDecision } from '../../data/types'
+import type { CollabOutcome } from '../../store/collabCommand'
 import { STOP_CATEGORIES } from '../../data/types'
 import {
   useDb, userById, currentUser, addSuggestion, voteSuggestion, addCommentToSuggestion,
@@ -385,19 +386,32 @@ function SuggestionCard({ sg, trip, me, editable, memberCount, needsMe, previewO
             ))}
           </div>
         )}
-        <CommentForm onSubmit={(text) => void addCommentToSuggestion(trip.id, sg.id, text).then(o => reportCollabOutcome(o))} />
+        <CommentForm onSubmit={text => addCommentToSuggestion(trip.id, sg.id, text).then(o => { reportCollabOutcome(o); return o })} />
       </div>
       </div>
     </Surface>
   )
 }
 
-function CommentForm({ onSubmit }: { onSubmit: (text: string) => void }) {
+function CommentForm({ onSubmit }: { onSubmit: (text: string) => Promise<CollabOutcome> }) {
   const [text, setText] = useState('')
+  const [pending, setPending] = useState(false)
   return (
-    <form className="gin-comment-form" onSubmit={e => { e.preventDefault(); if (text.trim()) { onSubmit(text.trim()); setText('') } }}>
+    <form className="gin-comment-form" onSubmit={e => {
+      e.preventDefault()
+      const trimmed = text.trim()
+      if (!trimmed || pending) return
+      setPending(true)
+      // The draft clears on the RECEIPT, not on the click (gate round 2):
+      // a refused send keeps what the planner typed, and a second submit
+      // waits for the first to settle.
+      void onSubmit(trimmed).then(o => {
+        if (o.status === 'applied' || o.status === 'alreadyApplied') setText('')
+        setPending(false)
+      })
+    }}>
       <input className="input" placeholder="Add a comment…" aria-label="Add a comment" value={text} onChange={e => setText(e.target.value)} />
-      <button className="btn btn-sm btn-outline">Post</button>
+      <button className="btn btn-sm btn-outline" disabled={pending} aria-busy={pending}>Post</button>
     </form>
   )
 }
@@ -513,7 +527,7 @@ function DecisionCard({ d, me, editable, needsMe, trip, previewOpen }: {
           ))}
         </div>
       )}
-      <CommentForm onSubmit={text => void addCommentToDecision(trip.id, d.id, text).then(o => reportCollabOutcome(o))} />
+      <CommentForm onSubmit={text => addCommentToDecision(trip.id, d.id, text).then(o => { reportCollabOutcome(o); return o })} />
     </Surface>
   )
 }
@@ -544,13 +558,16 @@ function SuggestionComposerForm({ trip }: {
     description: '', visitMinutes: 60, entryFee: 0, transportCost: 200,
   })
   const [coords, setCoords] = useState<{ lat?: number; lng?: number }>({})
+  const [pending, setPending] = useState(false)
 
   function submit(e: FormEvent) {
     e.preventDefault()
+    if (pending) return
     if (!form.title.trim()) { toast('Give your suggestion a name.', 'err'); return }
     const anchor = coords.lat !== undefined && coords.lng !== undefined
       ? { lat: coords.lat, lng: coords.lng }
       : tripAnchor(trip)
+    setPending(true)
     void addSuggestion(trip.id, {
       dayIndex: form.dayIndex, title: form.title.trim(),
       category: form.category, locationName: form.locationName || 'To be decided',
@@ -565,6 +582,7 @@ function SuggestionComposerForm({ trip }: {
         setForm(f => ({ ...f, title: '', description: '' }))
         setCoords({})
       }
+      setPending(false)
     })
   }
 
@@ -603,6 +621,7 @@ function DecisionComposerForm({ trip }: { trip: Trip }) {
   const [q, setQ] = useState('')
   const [context, setContext] = useState('')
   const [opts, setOpts] = useState([{ label: '', cost: '' }, { label: '', cost: '' }])
+  const [pending, setPending] = useState(false)
 
   function setOpt(i: number, key: 'label' | 'cost', v: string) {
     setOpts(list => list.map((o, j) => j === i ? { ...o, [key]: v } : o))
@@ -610,11 +629,13 @@ function DecisionComposerForm({ trip }: { trip: Trip }) {
 
   function create(e: FormEvent) {
     e.preventDefault()
+    if (pending) return
     if (!q.trim()) { toast('Write the question first.', 'err'); return }
     const built = opts
       .map(o => ({ label: o.label.trim(), cost: Number(o.cost) || 0 }))
       .filter(o => o.label)
     if (built.length < 2) { toast('Give at least two options.', 'err'); return }
+    setPending(true)
     void addDecision(trip.id, {
       question: q.trim(),
       context: context.trim() || undefined,
@@ -627,6 +648,7 @@ function DecisionComposerForm({ trip }: { trip: Trip }) {
       if (o.status === 'applied' || o.status === 'alreadyApplied') {
         setQ(''); setContext(''); setOpts([{ label: '', cost: '' }, { label: '', cost: '' }])
       }
+      setPending(false)
     })
   }
 

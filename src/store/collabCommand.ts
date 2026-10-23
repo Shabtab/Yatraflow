@@ -68,6 +68,8 @@ export type CollabOutcome =
       tripRevision: number
       suggestion?: StopSuggestion
       decision?: TripDecision
+      activityId?: string
+      notificationIds?: string[]
     }
   | { status: 'conflict'; tripRevision: number }
   | { status: 'invalid'; reason?: string }
@@ -156,11 +158,16 @@ function receiptToOutcome(data: unknown): CollabOutcome {
         ...(idListOf(r.notificationIds) ? { notificationIds: idListOf(r.notificationIds) } : {}),
       }
     case 'alreadyApplied':
+      // The stored server receipt keeps its artifact ids on replay (contract
+      // answer, gate round 2): the retry re-keys its optimistic artifacts to
+      // the FIRST try's canonical ids instead of dropping them blind.
       return {
         status: 'alreadyApplied',
         tripRevision: revisionOf(r),
         ...(r.suggestion != null ? { suggestion: suggestionRowToEntry(r.suggestion) } : {}),
         ...(r.decision != null ? { decision: decisionRowToEntry(r.decision) } : {}),
+        ...(typeof r.activityId === 'string' ? { activityId: r.activityId } : {}),
+        ...(idListOf(r.notificationIds) ? { notificationIds: idListOf(r.notificationIds) } : {}),
       }
     case 'conflict':
       return { status: 'conflict', tripRevision: revisionOf(r) }
