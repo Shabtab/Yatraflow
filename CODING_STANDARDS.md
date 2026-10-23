@@ -33,6 +33,8 @@ anywhere in this repo means the entry labelled `6b` below.
 Source-contract tests must handle both LF and CRLF line endings.
 Tests for helper use must check the call site. A function definition does not prove that callers use it.
 
+Query changes can remount a form when its page key includes the full URL. Exclude only step navigation from that key. Preserve keys for new entries and seed changes. Prove that Next, Back and Review edits keep live answers.
+
 Flight records can exist without stored stops. Protect their days during date reconciliation and preserve them through imports and snapshots.
 Use resolved journey points for exports and insertion origins. Stored stops can omit airports and arrival anchors.
 Settings previews must use validated draft fields. Reuse road measurements only while the route and day assignment still match.
