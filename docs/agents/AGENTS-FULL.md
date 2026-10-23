@@ -345,6 +345,20 @@ that notices the drift.
     two SQL steps. Run the additive step before the app deploys. Run the
     tightening step after the new app is live.
 
+18. **Search for prior art before you build (user-mandated 2026-10-24).**
+    Apply this rule when no code in `src/` can serve as your model. Apply it
+    also when the work adds a dependency. Do not start to build from scratch.
+    Search GitHub for similar open-source projects. Compare up to three
+    projects. Each project needs a commit in the last 12 months and a stated
+    licence. Compare their approach, their dependencies and their open
+    issues. Prefer a design that has been proven in use. You may adapt code
+    only from an MIT, Apache-2.0, BSD or ISC project, and you must keep its
+    attribution. For GPL, AGPL, no licence or an unknown source, take ideas
+    only and copy no code. This repo has no declared licence, so check the
+    licence of each source before you adapt anything. Put the projects, their
+    licences and your choice in the PR description. A read-only Scout can do
+    the search.
+
 ### What enforces each rule
 
 A rule nobody checks fails silently. This table pairs each rule above (and the
@@ -370,6 +384,7 @@ a breach, so treat those rows as the ones most easily skipped.
 | §2.15 clear `NODE_ENV` before installs | `npm run clean:env` |
 | §2.16 work only in your own clone | judgment — the global user-level `AGENTS.md` clone table |
 | §2.17 promote per batch; patch for fixes; two-step SQL | judgment — `git rev-list --count origin/main..origin/test` shows the backlog |
+| §2.18 search for prior art before you build | judgment — the PR description lists the projects, licences and choice |
 | §3 gate, CI, migrations | `npm run verify` locally; `ci.yml` on push and PR (`tests/ci-workflow.test.ts` pins the triggers); `npm run check:migrations` + a live PostgREST probe for schema |
 | §4 code conventions and pitfalls | the pin tests named in each rule — `verify` runs them all |
 
