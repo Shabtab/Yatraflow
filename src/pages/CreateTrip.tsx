@@ -29,6 +29,7 @@ import { createFunnelOn } from '../lib/featureFlags'
 import { createReadiness, readinessFromDraft, readinessLine } from '../lib/createReadiness'
 import { saveDraft, loadDraft, clearDraft, draftIsWorthKeeping, draftAgeLabel, type StoredDraft } from '../lib/createDraft'
 import { unpickedStopErrors } from '../lib/createSubmit'
+import { validateCreate } from '../lib/createSteps'
 import { fuelFallbackNotice, revalidateCommitments, commitmentMoveMessage, composerRowError, ticketFuelSegments } from '../lib/createHonesty'
 import { addCrewEntry, type CrewEntry } from '../lib/crewInvite'
 import { recordCreateEvent } from '../lib/createEvents'
@@ -671,35 +672,26 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     if (!me) return
-    const next: Record<string, string> = {}
-    if (!f.name.trim()) next.name = 'Name your trip.'
-    if (!f.startLocation.trim()) next.startLocation = 'Where does the journey start?'
-    // #375: text typed into an add-stop field but never picked used to vanish
-    // here — the stop count looked fine and the place the user typed was simply
-    // absent from the trip. Say so instead, on the field that holds the text.
-    // The unpicked message wins over the bare "add a destination" one: it names
-    // the text the user can see in the box, which is the more useful sentence.
-    const unpicked = unpickedStopErrors({ dest: destInput, ret: returnInput, returnOpen: returnCount > 0 })
-    if (unpicked.destinations) next.destinations = unpicked.destinations
-    else if (dests.length === 0) next.destinations = 'Add at least one destination.'
-    if (unpicked.returnStops) next.returnStops = unpicked.returnStops
-    // #378: a plan typed into the composer row but never "Add"ed used to be
-    // dropped at submit without a word — the same honesty hole as unpicked
-    // stop text (#375), same answer: block with the text named, never discard.
-    const composer = composerRowError(c.title)
-    if (composer) next.composerRow = composer
-    if (!f.startDate) next.startDate = 'Pick a start date.'
-    if (!f.endDate) next.endDate = 'Pick an end date.'
-    else if (f.startDate && new Date(f.endDate) < new Date(f.startDate)) next.endDate = 'End date must be after the start date.'
-    if (f.travellers < CREW_MIN) next.travellers = 'At least one traveller!'
-    else if (f.travellers > CREW_MAX) next.travellers = `Split groups over ${CREW_MAX} into multiple trips.`
-    // #213 Phase 5: the floor is the crew helper's, not a magic 500 — Trip
-    // settings allows ₹0 (= "no per-person target", which the pacing tile
-    // already renders honestly), so the two surfaces agree.
-    if (f.budgetPerPersonInr < 0) next.budgetPerPersonInr = 'A budget cannot be negative.'
-    // A new Mixed trip cannot be created without the driving answer (2026-10-19).
-    // Every other mode has no question to ask, so this blocks only Mixed.
-    if (drivingPolicy.mustAnswerDriving) next.drivesPart = 'Answer the driving question above.'
+    // Every rule lives in createSteps.ts now, so the guided shell and this form
+    // cannot disagree about what is wrong (see the CONTRACT in createReadiness).
+    // The unpicked-stop and composer-row helpers stay their own modules: they are
+    // about text left in a field, not about the shape of the trip.
+    const next = validateCreate({
+      name: f.name,
+      startLocation: f.startLocation,
+      destInput,
+      stopCount: dests.length,
+      returnInput,
+      returnOpen: returnCount > 0,
+      composerTitle: c.title,
+      startDate: f.startDate,
+      endDate: f.endDate,
+      travellers: f.travellers,
+      budgetPerPersonInr: f.budgetPerPersonInr,
+      mustAnswerDriving: drivingPolicy.mustAnswerDriving,
+      unpicked: unpickedStopErrors({ dest: destInput, ret: returnInput, returnOpen: returnCount > 0 }),
+      composerError: composerRowError(c.title),
+    })
     setErrs(next)
     if (Object.keys(next).length) {
       // F-15: move focus to the first invalid field so keyboard / screen-reader
