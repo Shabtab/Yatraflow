@@ -6,8 +6,8 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 
-const shell = readFileSync('src/components/CreateFlowShell.tsx', 'utf8')
-const page = readFileSync('src/pages/CreateTrip.tsx', 'utf8')
+const shell = readFileSync('src/components/CreateFlowShell.tsx', 'utf8').replace(/\r\n/g, '\n')
+const page = readFileSync('src/pages/CreateTrip.tsx', 'utf8').replace(/\r\n/g, '\n')
 
 describe('the progress landmark', () => {
   it('is a nav with an accessible name', () => {
@@ -43,7 +43,7 @@ describe('every action is a real control', () => {
   it('Review\'s action submits the form it belongs to', () => {
     // The form owns submit(); a plain button would need its own handler and
     // could bypass the double-submit guard.
-    expect(shell).toMatch(/<button type="submit" form="yf-create-form" className="btn btn-primary ct-create">/)
+    expect(shell).toMatch(/<button type="submit" form="yf-create-form" className="btn btn-primary ct-create"[^>]*>/)
   })
 
   it('the Review Change link names its row, not just "Change"', () => {

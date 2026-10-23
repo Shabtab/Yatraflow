@@ -27,12 +27,14 @@ import { TRIP_TEMPLATES, applyTemplate, templateFromRange, fmtBand } from '../li
 import { regionFor, regionBand, nationalBand, experienceTier, anchorNote } from '../lib/budgetBenchmarks'
 import { createFunnelOn } from '../lib/featureFlags'
 import { createReadiness, readinessFromDraft, readinessLine } from '../lib/createReadiness'
-import { saveDraft, loadDraft, clearDraft, draftIsWorthKeeping, draftAgeLabel, type StoredDraft } from '../lib/createDraft'
+import { saveDraft, loadDraft, clearDraft, draftIsWorthKeeping, draftAgeLabel, maskPhone, type StoredDraft } from '../lib/createDraft'
 import { unpickedStopErrors } from '../lib/createSubmit'
-import { validateCreate, type CreateStep, CREATE_ACTION_LABEL, CREATE_ACTION_BUSY_LABEL } from '../lib/createSteps'
+import { validateCreate, stepOfError, stepNumber, firstErrorStep, type CreateStep, CREATE_ACTION_LABEL, CREATE_ACTION_BUSY_LABEL } from '../lib/createSteps'
 import { stepFromQuery, stepHref } from '../lib/createStepUrl'
 import { reviewLines, reviewOptional } from '../lib/createReview'
 import { StepProgress, StepNav, useStepFocus } from '../components/CreateFlowShell'
+import { CreateFlowCalendar } from '../components/CreateFlowCalendar'
+import { CreateFlowTicket } from '../components/CreateFlowTicket'
 import { currentQuery, navigate, onRouteChange } from '../lib/router'
 import { fuelFallbackNotice, revalidateCommitments, commitmentMoveMessage, composerRowError, ticketFuelSegments } from '../lib/createHonesty'
 import { addCrewEntry, type CrewEntry } from '../lib/crewInvite'
@@ -42,7 +44,7 @@ import { routeIq, routeIqLine, type RoutePoint } from '../lib/routeIq'
 import { seasonNoteFor, monthOfIso } from '../lib/seasonality'
 import { radarLines } from '../lib/createRadar'
 import { fetchTripThumbUrl } from '../lib/tripThumb'
-import { Field, Chip, toast, Odometer, useMedia, FormErrorSummary } from '../components/ui'
+import { Field, Chip, toast, Odometer, useMedia, FormErrorSummary, Modal } from '../components/ui'
 import { Select } from '../components/Select'
 import { DateRangeCalendar, fmtDay, isoDay } from '../components/DateRangeCalendar'
 import { isoAddDays } from '../lib/weather'
@@ -354,11 +356,26 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
   // pushes a history entry so the browser's Back button steps backwards instead
   // of leaving the page. `goToStep` is the only writer.
   const [step, setStep] = useState<CreateStep>(() => stepFromQuery(currentQuery()))
+  const [ticketOpen, setTicketOpen] = useState(false)
+  const [flowStarted, setFlowStarted] = useState(false)
+  const [detailsOpen, setDetailsOpen] = useState(false)
+  const [returnToReview, setReturnToReview] = useState(false)
   /** Move to a step as a real navigation, so Back returns to the previous one. */
   function goToStep(next: CreateStep) {
     if (next === step) return
+    if (createFunnelOn('guided') && stepNumber(next) > stepNumber(step)) {
+      const errors = currentErrors()
+      const blockers = Object.fromEntries(Object.entries(errors).filter(([key]) => stepOfError(key) === step))
+      setErrs(blockers)
+      if (Object.keys(blockers).length) { focusError(Object.keys(blockers)[0]); return }
+    }
     setStep(next)
-    navigate(stepHref(next))
+    navigate(stepHref(next, '/new'))
+  }
+  function changeFromReview(next: CreateStep) {
+    setReturnToReview(true)
+    setTicketOpen(false)
+    goToStep(next)
   }
   // A real route change (Back, Forward, or a link into the flow) re-seeds the
   // step from the address. `navigate` notifies, so goToStep's own push lands
@@ -458,7 +475,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
     // Reopen on the step the draft was left on. An older draft has no step, and
     // readStep() has already discarded one this build does not know. This writes
     // the address too, so the resumed step is shareable and Back still works.
-    if (draft.step) goToStep(draft.step as CreateStep)
+    if (draft.step) { setStep(draft.step as CreateStep); navigate(stepHref(draft.step as CreateStep, '/new')) }
     setDraft(null)
     setDraftDecided(true)
     toast('Picked up where you left off')
@@ -551,6 +568,7 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
 
   /** Start blank: clears any picked card, leaves the form exactly as it is. */
   function clearTemplate() {
+    setFlowStarted(true)
     if (tplId == null) return
     setTplId(null)
     haptic(HAPTIC.tick)
@@ -703,14 +721,12 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
     composerRow: 'ct-composer-input',
   }
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!me) return
+  function currentErrors() {
     // Every rule lives in createSteps.ts now, so the guided shell and this form
     // cannot disagree about what is wrong (see the CONTRACT in createReadiness).
     // The unpicked-stop and composer-row helpers stay their own modules: they are
     // about text left in a field, not about the shape of the trip.
-    const next = validateCreate({
+    return validateCreate({
       name: f.name,
       startLocation: f.startLocation,
       destInput,
@@ -726,7 +742,29 @@ export function CreateTripPage({ onNavigate }: { onNavigate: (r: string) => void
       unpicked: unpickedStopErrors({ dest: destInput, ret: returnInput, returnOpen: returnCount > 0 }),
       composerError: composerRowError(c.title),
     })
+  }
+
+  function focusError(key: string) {
+    requestAnimationFrame(() => {
+      const control = fieldRefs.current[key] ?? document.getElementById(FIELD_DOM_IDS[key] ?? '')
+        ?? document.querySelector<HTMLElement>(key === 'drivesPart' ? '.transport-answer-pair button' : '.ct-q:not([hidden]) input')
+      control?.focus()
+    })
+  }
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!me) return
+    const next = currentErrors()
     setErrs(next)
+    if (createFunnelOn('guided') && Object.keys(next).length) {
+      const target = firstErrorStep(next)
+      if (target) { setStep(target); navigate(stepHref(target, '/new')) }
+      if (next.composerRow) setDetailsOpen(true)
+      const first = Object.keys(next).find(key => stepOfError(key) === target)
+      if (first) focusError(first)
+      return
+    }
     if (Object.keys(next).length) {
       // F-15: move focus to the first invalid field so keyboard / screen-reader
       // users don't have to hunt for what failed. LocationInput fields don't
@@ -894,10 +932,26 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
     ? `${fmtDay(f.startDate)} – ${fmtDay(f.endDate)} · ${bill.days} day${bill.days !== 1 ? 's' : ''} · ${bill.nights} night${bill.nights !== 1 ? 's' : ''}`
     : 'Pick your dates'
 
+  const guidedTicket = <CreateFlowTicket title={f.name.trim() || (outbound.length ? `${f.startLocation.split(',')[0]} to ${outbound[outbound.length - 1].name.split(',')[0]}` : ticketTitle)}
+    route={ticketRoute.split(' → ').join(', ')} dates={dateLabel}
+    departure={f.dayStartTime ? formatHM(f.dayStartTime, timeFormat) : ''}
+    mode={f.transportMode} travel={`${cap(f.transportMode)}${f.driverCount ? `, ${f.driverCount} drivers` : ''}`}
+    fuel={fuelMode ? ticketFuelSegments(f.fuelEconomy, f.fuelPrice, f.tankL).join(' · ') : ''}
+    party={`${f.travellers} traveller${f.travellers === 1 ? '' : 's'}`}
+    budget={`₹${f.budgetPerPersonInr.toLocaleString('en-IN')} per person`}
+    total={bill.perHead != null ? bill.perHead * f.travellers : null} perHead={bill.perHead}
+    failed={!!saveError} review={step === 'review'} onChange={changeFromReview} />
+
+  const startField = <LocationInput id={guided ? 'gcf-start-location' : undefined}
+    value={f.startLocation} onChange={v => patchFields({ startLocation: v })}
+    onPick={p => setStartCoords({ lat: p.latitude, lng: p.longitude })}
+    error={guided ? errs.startLocation : undefined} errorId={guided && errs.startLocation ? 'gcf-start-error' : undefined}
+    placeholder="Search a city, e.g. Kochi" />
+
   // ---- Shared fragments ----------------------------------------------------
 
   return (
-    <div className="container form-page trip-starter page-enter">
+    <div className={`container form-page trip-starter page-enter${guided ? ' gcf' : ''}`} data-create-step={guided ? step : undefined}>
       {createFunnelOn('drafts') && draft && (
         <Surface className="draft-banner" role="status">
           <div className="draft-banner-copy">
@@ -919,7 +973,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
       />
 
       {/* ---- Warm start (P1): the front door, full width above the grid ---- */}
-      {createFunnelOn('templates') && (
+      {createFunnelOn('templates') && (!guided || (!flowStarted && step === 'where' && !f.startLocation && dests.length === 0)) && (
       <section className="tpl-warm" aria-label="Start from a real trip">
         <TripArtSprite />
         <div className="tpl-warm-head">
@@ -947,7 +1001,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
               <button type="button" className="tpl-blank" key="blank" onClick={clearTemplate}>
                 <span>
                   Start blank
-                  <small>three questions and a live ticket</small>
+                  <small>{guided ? 'Six short steps. Most take one tap.' : 'three questions and a live ticket'}</small>
                 </span>
               </button>
             </div>
@@ -966,6 +1020,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
       )}
 
       <div className="ts-layout">
+        {guided && <StepProgress step={step} errors={currentErrors()} onGo={goToStep} />}
         <form id="yf-create-form" className="ct-flow" onSubmit={submit} aria-busy={submitting}>
           {/* The ONE assertive announcement when submit fails - the field-tied
               messages below stay polite, so a multi-field failure interrupts
@@ -977,7 +1032,6 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
               on one quiet card (no shadow, per review) instead of the bare
               canvas - the mockup's .flow column sits on an .app background. */}
           <div className="ct-panel">
-          {guided && <StepProgress step={step} errors={errs} onGo={goToStep} />}
 
           {/* ---- Name first: the mockup's name box - a pill input with the pen
                inline, headed like every other section, suggestion chip beside.
@@ -991,7 +1045,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
           {guided && step === 'review' && (
             <div className="ct-review">
               <h2>Check and create</h2>
-              <p className="ct-hint">These are the answers. Change any of them before the trip exists.</p>
+              <p className="ct-hint">One last look. Everything below can still change.</p>
               <ul className="ct-review-list">
                 {reviewLines({
                   name: f.name, startLocation: f.startLocation,
@@ -1004,7 +1058,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                   <li key={line.step} className={`ct-review-row${line.value === null ? ' missing' : ''}`}>
                     <span className="ct-review-lab">{line.label}</span>
                     <span className="ct-review-val">{line.value ?? <em>{line.empty}</em>}</span>
-                    <button type="button" className="ct-review-change" onClick={() => goToStep(line.step)}>
+                    <button type="button" className="ct-review-change" onClick={() => changeFromReview(line.step)}>
                       Change<span className="sr-only"> {line.label}</span>
                     </button>
                   </li>
@@ -1059,14 +1113,11 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
               <h2>Where are you going?</h2>
               <p className="ct-hint">Start from where you leave, then add each stop in order.</p>
               <div className="ct-q-field">
-                <Field label="Starting location" error={errs.startLocation}>
-                  <LocationInput
-                    value={f.startLocation}
-                    onChange={v => patchFields({ startLocation: v })}
-                    onPick={p => setStartCoords({ lat: p.latitude, lng: p.longitude })}
-                    placeholder="Search a city, e.g. Kochi"
-                  />
-                </Field>
+                {guided ? <div className="field">
+                  <label className="label" htmlFor="gcf-start-location">Starting location</label>
+                  {startField}
+                  {errs.startLocation && <p className="err-text" id="gcf-start-error" role="status">{errs.startLocation}</p>}
+                </div> : <Field label="Starting location" error={errs.startLocation}>{startField}</Field>}
               </div>
 
               <div className="ct-chips" role="list" aria-label="Stops in order">
@@ -1159,15 +1210,22 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
           <div className={`ct-q${whenDone ? ' done' : ''}`} hidden={guided && step !== 'when'}>
             <span className="ct-n">3</span>
             <div className="ct-q-body">
-              <h2>When?</h2>
-              <p className="ct-hint">The clock walk and every window on the trip starts here.</p>
+              <h2>{guided ? 'When do you leave?' : 'When?'}</h2>
+              <p className="ct-hint">{guided ? 'Pick the first and last day. The bill follows your dates.' : 'The clock walk and every window on the trip starts here.'}</p>
+              {guided && <div className="gcf-presets" role="group" aria-label="Trip shape presets">
+                <button type="button" className="btn btn-outline" onClick={() => applyDayOutShape(1)}>A day out</button>
+                <button type="button" className="btn btn-outline" onClick={() => applyDayOutShape(2)}>Weekend dash</button>
+                <button type="button" className="btn btn-outline" onClick={() => fieldRefs.current.startDate?.focus()}>The full route</button>
+              </div>}
               <div className="ct-q-field">
-                <DateRangeCalendar
+                {guided ? <CreateFlowCalendar key={f.startDate.slice(0, 7)} start={f.startDate} end={f.endDate} error={errs.startDate || errs.endDate}
+                  registerRef={el => { fieldRefs.current.startDate = el; fieldRefs.current.endDate = el }}
+                  onChange={({ startDate, endDate }) => patchFields({ startDate, endDate })} /> : <DateRangeCalendar
                   start={f.startDate} end={f.endDate}
                   error={errs.startDate || errs.endDate}
                   registerRef={el => { fieldRefs.current.startDate = el; fieldRefs.current.endDate = el }}
                   onChange={({ startDate, endDate }) => patchFields({ startDate, endDate })}
-                />
+                />}
               </div>
               <div className="ct-q-field">
                 <label className="ct-lbl" htmlFor="ct-day-start">Departure time</label>
@@ -1220,6 +1278,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                         }}>
                         <t.icon size={13} aria-hidden />
                         <span>{t.mode === 'rental' ? 'Car rental' : cap(t.mode)}</span>
+                        {guided && <small>{t.hint.replace(/ · ≈\d+ km\/h/, '')}</small>}
                       </button>
                     )
                     if (t.mode !== 'train') return pill
@@ -1245,7 +1304,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
               {f.transportMode === 'mixed' && (
                 <div className="ct-q-field">
                   <span className="ct-lbl" id="ct-mixed-driving-label">Will you drive any part of this trip?</span>
-                  <div className="transport-answer-pair" role="group" aria-labelledby="ct-mixed-driving-label" data-sel={f.drivesPart === true ? '0' : f.drivesPart === false ? '1' : 'none'}>
+                  <div className="transport-answer-pair" role="group" aria-labelledby="ct-mixed-driving-label" aria-describedby={errs.drivesPart ? 'gcf-driving-error' : undefined} data-sel={f.drivesPart === true ? '0' : f.drivesPart === false ? '1' : 'none'}>
                     <button type="button" className={`crew-btn${f.drivesPart === true ? ' on' : ''}`}
                       aria-pressed={f.drivesPart === true}
                       onClick={() => { haptic(HAPTIC.select); patchFields({ drivesPart: true }) }}>Yes, I drive</button>
@@ -1254,10 +1313,22 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                       onClick={() => { haptic(HAPTIC.select); patchFields({ drivesPart: false }) }}>No, passenger only</button>
                   </div>
                   {f.drivesPart === undefined && (
-                    <p className="adv-hint" role="status">Answer this to create the trip.</p>
+                    <p className="adv-hint" id="gcf-driving-error" role="status">{errs.drivesPart || 'Answer this to create the trip.'}</p>
                   )}
                 </div>
               )}
+
+              {guided && drivingPolicy.showsDrivingControls && <section className="gcf-vehicle" aria-label="Fuel and vehicle">
+                <h3>Fuel &amp; vehicle</h3>
+                <div className="gcf-fuel-grid">
+                  <label>Mileage<span className="unit-input"><input className="input" type="number" min={2} max={80} step={0.1} value={f.fuelEconomy} onChange={e => patchFields({ fuelEconomy: e.target.value })} placeholder={String(DEFAULT_FUEL_ECONOMY_KML)} aria-label="Mileage in kilometres per litre" /><span className="unit">km/L</span></span></label>
+                  <label>Fuel price<span className="unit-input"><input className="input" type="number" min={50} max={250} step={0.1} value={f.fuelPrice} onChange={e => patchFields({ fuelPrice: e.target.value })} placeholder={String(FUEL_PRICE_INR_PER_L)} aria-label="Fuel price in rupees per litre" /><span className="unit">₹/L</span></span></label>
+                  <label>Tank<span className="unit-input"><input className="input" type="number" min={5} max={300} value={f.tankL} onChange={e => patchFields({ tankL: e.target.value })} placeholder="45" aria-label="Tank capacity in litres" /><span className="unit">L</span></span></label>
+                  {f.transportMode === 'rental' && <label>Rent<span className="unit-input"><input className="input" type="number" min={200} step={50} value={f.rentPerDay} onChange={e => patchFields({ rentPerDay: e.target.value })} placeholder="1800" aria-label="Rental rate in rupees per day" /><span className="unit">₹/day</span></span></label>}
+                </div>
+                {fuelNotice && <p className="hint-text" role="status">{fuelNotice}</p>}
+                <label className="ts-switch gcf-round-trip"><span>Drive back to start</span><input type="checkbox" role="switch" checked={f.roundTrip} onChange={e => patchFields({ roundTrip: e.target.checked })} /><span className="ts-switch-track" aria-hidden /></label>
+              </section>}
 
               {/* The return leg lives here, not on Where: whether a drive back is
                   even possible is a fact about the MODE, so the control belongs
@@ -1324,7 +1395,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
             <span className="ct-n">4</span>
             <div className="ct-q-body">
               <h2>Who's coming?</h2>
-              <p className="ct-hint">Party shape tunes the engine - meal windows and rest cadence.</p>
+              <p className="ct-hint">{guided ? 'We plan meal stops and rest breaks for the group.' : 'Party shape tunes the engine - meal windows and rest cadence.'}</p>
               <div className="ct-q-field">
                 <span className="ct-lbl">Party size</span>
                 <div className="ct-party">
@@ -1390,8 +1461,8 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                     <div className="crew-chips">
                       {crew.map((m, i) => (
                         <span className="crew-chip" key={`${m.phone ?? m.name}-${i}`}>
-                          {m.name || `+91 ${m.phone}`}
-                          {m.name && m.phone ? <small>{m.phone}</small> : null}
+                          {m.name || (guided && m.phone ? maskPhone(m.phone) : `+91 ${m.phone}`)}
+                          {m.name && m.phone ? <small>{guided ? maskPhone(m.phone) : m.phone}</small> : null}
                           <button type="button" aria-label={`Remove ${m.name || m.phone}`}
                             onClick={() => setCrew(list => list.filter((_, n) => n !== i))}>&#10005;</button>
                         </span>
@@ -1409,14 +1480,14 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                   applicable it would be an empty section, so a passenger mode
                   drops it entirely rather than showing one under a new label. */}
               {drivingPolicy.showsDrivingControls && (
-              <details className="adv-drawer" open={drawerOpen}
+              <details className="adv-drawer" open={guided || drawerOpen}
                 onToggle={e => setDrawerOpen((e.target as HTMLDetailsElement).open)}>
                 <summary>
                   <span className="group-lab">Fuel, vehicle &amp; party details</span>
                   <span className="adv-hint">{f.fuelEconomy || f.fuelPrice || f.tankL || f.rentPerDay || f.driverCount || f.hasVulnerable || f.driveAfterDinnerMin ? 'set' : 'the engine has good defaults'}</span>
                 </summary>
                 <div className="adv-body">
-              {fuelMode && (
+              {fuelMode && !guided && (
                 <div>
                   <span className="group-lab">Fuel &amp; vehicle</span>
                   <div className="fuel-stack">
@@ -1493,13 +1564,14 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                         ))}
                       </div>
                     </Field>
-                    <Field label="Pace of the party">
+                    {guided && <label className="ts-switch gcf-vulnerable"><span>Travelling with children or older travellers</span><input type="checkbox" role="switch" checked={!!f.hasVulnerable} onChange={e => patchFields({ hasVulnerable: e.target.checked || undefined })} /><span className="ts-switch-track" aria-hidden /></label>}
+                    <Field label={guided ? 'After dinner' : 'Pace of the party'}>
                       <div className="crew-row" role="group" aria-label="Party pace">
-                        <button type="button" className={`crew-btn${!f.hasVulnerable ? ' on' : ''}`} aria-pressed={!f.hasVulnerable}
-                          onClick={() => { haptic(HAPTIC.select); patchFields({ hasVulnerable: undefined }) }}>Everyone adult</button>
-                        <button type="button" className={`crew-btn${f.hasVulnerable ? ' on' : ''}`} aria-pressed={f.hasVulnerable}
+                        {!guided && <button type="button" className={`crew-btn${!f.hasVulnerable ? ' on' : ''}`} aria-pressed={!f.hasVulnerable}
+                          onClick={() => { haptic(HAPTIC.select); patchFields({ hasVulnerable: undefined }) }}>Everyone adult</button>}
+                        {!guided && <button type="button" className={`crew-btn${f.hasVulnerable ? ' on' : ''}`} aria-pressed={f.hasVulnerable}
                           title="Infants or seniors aboard — shorter days, earlier dinner"
-                          onClick={() => { haptic(HAPTIC.select); patchFields({ hasVulnerable: true }) }}>Infants / seniors</button>
+                          onClick={() => { haptic(HAPTIC.select); patchFields({ hasVulnerable: true }) }}>Infants / seniors</button>}
                         {/* #122 dhaba case — opt-in post-dinner driving */}
                         <button type="button" className={`crew-btn${f.driveAfterDinnerMin ? ' on' : ''}`} aria-pressed={!!f.driveAfterDinnerMin}
                           title="Dhaba dinner, then keep going — dinner no longer ends the day"
@@ -1526,6 +1598,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
               <h2>What is your budget?</h2>
               <span className="why">anchored honestly - the tool earns trust here</span>
             </div>
+            {guided && <p className="ct-hint">Per person, for the whole trip. Change it at any time.</p>}
             <div className="ct-bud-card">
               <div className="ct-rrow">
                 <div className="ct-bud">
@@ -1588,7 +1661,8 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
               <span className="ct-party-sub">prices the bed - the journey never changes with it</span>
             </div>
 
-            <div>
+            <details className={guided ? 'gcf-budget-details' : undefined} open={guided ? undefined : true}>
+              <summary hidden={!guided}>Travel style</summary>
               <span className="ct-lbl">Travel style &middot; pick one</span>
               <div className="ct-styles" role="group" aria-label="Travel style" style={{ marginTop: 6 }}>
                 {TRAVEL_STYLES.map(st => (
@@ -1598,11 +1672,12 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                 ))}
               </div>
               <p className="hint-text style-copy" role="status"><b>{cap(f.travelStyle)}</b> - {STYLE_COPY[f.travelStyle]}</p>
-            </div>
+            </details>
           </div>
 
           {/* ---- cover + pinned: the optional layer ---- */}
-          <div className="ct-optional" hidden={guided && step !== 'review'}>
+          {guided && step === 'review' && <button type="button" className="btn btn-outline gcf-details-toggle" onClick={() => setDetailsOpen(value => !value)} aria-expanded={detailsOpen}>Add details <span className="muted">optional</span></button>}
+          <div className="ct-optional" hidden={guided && (step !== 'review' || !detailsOpen)}>
             <div className="ct-opt-head">
               <span className="ct-lbl">Trip cover</span>
               <span className="ct-party-sub">optional</span>
@@ -1702,12 +1777,31 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
               <button type="button" className="btn btn-outline" onClick={addCommitment} style={{ height: 42 }}>Add pinned plan</button>
             </div>
           </div>
-          {guided && <StepNav step={step} errors={errs} onGo={goToStep} />}
+          {guided && returnToReview && step !== 'review' && <button type="button" className="btn btn-outline gcf-return-review" onClick={() => { goToStep('review'); setReturnToReview(false) }}>Back to Review</button>}
+          {guided && <StepNav step={step} errors={errs} onGo={goToStep} submitting={submitting} failed={!!saveError}
+            peek={`${outbound.length} stop${outbound.length === 1 ? '' : 's'}${bill.roadKm != null ? ` · ${Math.round(bill.roadKm)} km` : ''}`}
+            onPeek={() => setTicketOpen(true)} />}
+          {guided && step === 'review' && <div className="gcf-review-actions">
+            <p className="hint-text">Creates the trip and opens your rough day plan.</p>
+            <button type="button" className="btn btn-outline" disabled={!bill.perHead} onClick={() => {
+              setBillPrinted(value => !value)
+              requestAnimationFrame(() => document.querySelector<HTMLElement>('.gcf-printed-bill')?.focus())
+            }}><Printer size={16} aria-hidden />{billPrinted ? 'Hide the rough bill' : 'Print the rough bill'}</button>
+            <button type="button" className="btn btn-ghost" onClick={() => onNavigate('/trips')}>Cancel</button>
+            {billPrinted && <div className="gcf-printed-bill" role="region" aria-label="Rough trip bill" tabIndex={-1}>
+              <h3>Rough trip bill</h3>
+              <div className="bill-row"><span>Transport</span><b><Money v={bill.transportCost} animate={!reduced} /></b></div>
+              <div className="bill-row"><span>Stay</span><b><Money v={bill.stayCost} animate={!reduced} /></b></div>
+              <div className="bill-row"><span>Food</span><b><Money v={bill.mealCost} animate={!reduced} /></b></div>
+              <p className="hint-text">Excludes tolls, parking and entry fees.</p>
+            </div>}
+          </div>}
           </div>
         </form>
 
         {/* ---- The Trip Ticket (right rail / hidden on mobile) ---- */}
-        <aside className="ts-rail" aria-label="Trip ticket preview">
+        {guided && <aside className="gcf-rail" aria-label="Trip ticket preview">{guidedTicket}</aside>}
+        <aside className="ts-rail" aria-label="Trip ticket preview" hidden={guided}>
           <div className="ticket">
             <div className="tk-head">
               <span className="tk-brand">YatraFlow</span>
@@ -1816,7 +1910,8 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
       </div>
 
       {/* ---- Mobile dock (≤900px): the CTA surface ---- */}
-      <div className="trip-dock" role="region" aria-label="Trip ticket dock">
+      {guided && <Modal open={ticketOpen} onClose={() => setTicketOpen(false)} title="Your trip ticket">{guidedTicket}</Modal>}
+      <div className="trip-dock" role="region" aria-label="Trip ticket dock" hidden={guided}>
         <div className="dock-thumb">{f.coverEmoji}</div>
         <div className="dock-meta">
           <b>{ticketTitle}</b>

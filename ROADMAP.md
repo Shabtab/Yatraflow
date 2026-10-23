@@ -745,6 +745,7 @@ The strategy freezes this track for six weeks, so pick it up after the creator g
 | P8 | Auth and DMCA |
 | P9 | Profile |
 | P10 | The creator hub |
+| P11 | Create trip, with the guided flag on. Local mock verification. The legacy form remains with the flag off. |
 | P12 | The workspace tabs |
 | P14 | The Android home |
 | P15 | Admin |
@@ -754,7 +755,6 @@ The strategy freezes this track for six weeks, so pick it up after the creator g
 | P2 | The workspace header and tab bar (a mockup is required) |
 | P4 | The creator page |
 | P7 | The public itinerary |
-| P11 | Create trip |
 | P13 | Landing (a mockup is required) |
 | P16 | The fold-in, which closes the track |
 

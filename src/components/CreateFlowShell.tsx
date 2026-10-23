@@ -10,9 +10,10 @@
 
 import { useEffect, useRef } from 'react'
 import type { CreateStep } from '../lib/createSteps'
-import { CREATE_STEPS, CREATE_STEP_QUESTION, CREATE_ACTION_LABEL, stepNumber } from '../lib/createSteps'
+import { CREATE_STEPS, CREATE_ACTION_LABEL, stepNumber } from '../lib/createSteps'
 import { reachableSteps, stepCounterLabel, stepIsLink, remainingStepsLabel } from '../lib/createProgress'
 import { previousStep, nextStep } from '../lib/createStepUrl'
+import { Check, ChevronLeft, ChevronRight } from 'lucide-react'
 
 /** The progress line: a counter and six segments on a phone, a labelled list of
  *  links from tablet width up. One list, two presentations, so they cannot
@@ -29,10 +30,10 @@ export function StepProgress({ step, errors, onGo }: {
       <ol className="ct-progress-list">
         {CREATE_STEPS.map(s => {
           const done = s !== step && stepNumber(s) < stepNumber(step) && reachable.includes(s)
-          const label = CREATE_STEP_QUESTION[s]
+          const label = s.charAt(0).toUpperCase() + s.slice(1)
           const inner = (
             <>
-              <span className="ct-progress-n" aria-hidden>{stepNumber(s)}</span>{label}
+              <span className="ct-progress-n" aria-hidden>{done ? <Check size={14} /> : stepNumber(s)}</span>{label}
             </>
           )
           return (
@@ -57,18 +58,23 @@ export function StepProgress({ step, errors, onGo }: {
 }
 
 /** Back, the honest "what is left" line, and Next. */
-export function StepNav({ step, errors, onGo }: {
+export function StepNav({ step, errors, onGo, submitting = false, failed = false, peek, onPeek }: {
   step: CreateStep
   errors: Record<string, string>
   onGo: (step: CreateStep) => void
+  submitting?: boolean
+  failed?: boolean
+  peek?: string
+  onPeek?: () => void
 }) {
   const back = previousStep(step)
   const next = nextStep(step)
   const isReview = next === null
   return (
     <div className="ct-nav">
+      {onPeek && <button type="button" className="gcf-peek" onClick={onPeek} aria-label="Open trip ticket">{peek}<ChevronRight size={16} aria-hidden /></button>}
       {back ? (
-        <button type="button" className="btn btn-outline ct-back" onClick={() => onGo(back)}>Back</button>
+        <button type="button" className="btn btn-outline ct-back" onClick={() => onGo(back)}><ChevronLeft size={16} aria-hidden />Back</button>
       ) : <span />}
       <span className="ct-nav-left" role="status">{remainingStepsLabel(step, errors)}</span>
       {next && (
@@ -76,14 +82,14 @@ export function StepNav({ step, errors, onGo }: {
         // moves focus to the field that needs one, which is more use than a dead
         // button that explains nothing.
         <button type="button" className="btn btn-primary ct-next" onClick={() => onGo(next)}>
-          Next: {CREATE_STEP_QUESTION[next].replace(/\?$/, '')}
+          Next: {next.charAt(0).toUpperCase() + next.slice(1)} <ChevronRight size={16} aria-hidden />
         </button>
       )}
       {isReview && (
         // Review's action is Create, and it is never disabled either (spec §4
         // rule 6): a press with a blocking row moves focus to that row.
-        <button type="submit" form="yf-create-form" className="btn btn-primary ct-create">
-          {CREATE_ACTION_LABEL}
+        <button type="submit" form="yf-create-form" className="btn btn-primary ct-create" aria-busy={submitting}>
+          {submitting ? 'Creating…' : failed ? 'Try again' : CREATE_ACTION_LABEL}
         </button>
       )}
     </div>

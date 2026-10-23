@@ -151,10 +151,14 @@ describe('validHM - the one gate for a stored clock string', () => {
 })
 
 describe('the create form - where the answer lives', () => {
-  const page = readFileSync(new URL('../src/pages/CreateTrip.tsx', import.meta.url), 'utf8')
+  const page = readFileSync(new URL('../src/pages/CreateTrip.tsx', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
 
   it('offers the control on the "When?" step, next to the dates', () => {
-    const when = page.slice(page.indexOf('<h2>When?</h2>'), page.indexOf("{/* ---- 3 - Who & how ---- */}"))
+    const whenStart = page.indexOf('{/* ---- 3 - When ---- */}')
+    const howStart = page.indexOf('{/* ---- 2 - How:')
+    expect(whenStart).toBeGreaterThan(-1)
+    expect(howStart).toBeGreaterThan(whenStart)
+    const when = page.slice(whenStart, howStart)
     expect(when).toContain('id="ct-day-start"')
     expect(when).toContain('type="time"')
   })
