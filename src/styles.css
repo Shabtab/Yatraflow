@@ -11815,3 +11815,62 @@ html.native-shell .app-shell:not(:has(> .topnav)) > main {
   .ct-progress-link { transition: none; }
 }
 
+
+/* ---- Review: the trip in six lines ---- */
+.ct-review { margin-bottom: 18px; }
+.ct-review h2 { margin: 0; font-size: 15px; letter-spacing: -0.01em; }
+.ct-review-list { margin: 10px 0 0; padding: 0; list-style: none; }
+
+.ct-review-row {
+  display: grid;
+  grid-template-columns: minmax(84px, 116px) 1fr auto;
+  align-items: baseline;
+  gap: 10px;
+  padding: 9px 0;
+  border-top: 1px solid var(--line);
+}
+.ct-review-row:first-child { border-top: 0; }
+.ct-review-lab { font-size: .78rem; color: var(--text-3); }
+.ct-review-val { font-size: .88rem; color: var(--text); min-width: 0; overflow-wrap: anywhere; }
+
+/* A missing answer is stated, not left blank: an empty row tells the traveller
+   nothing about what to do. The colour is the danger ink the form already uses
+   for a field error, so the row reads as the same kind of fact. */
+.ct-review-row.missing .ct-review-val { color: var(--danger); }
+.ct-review-val em { font-style: normal; }
+
+.ct-review-change {
+  justify-self: end;
+  padding: 4px 8px;
+  border: 0; border-radius: 7px;
+  background: none;
+  font: inherit; font-size: .78rem;
+  color: var(--teal-deep);
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-out);
+}
+.ct-review-change:hover { background: var(--bg-soft); }
+.ct-review-change:focus-visible { outline: 2px solid var(--teal-deep); outline-offset: 1px; }
+
+/* The optional rows never block, so they sit quieter and lose the link column. */
+.ct-review-optional { margin-top: 12px; }
+.ct-review-optional .ct-review-row { grid-template-columns: minmax(84px, 116px) 1fr; }
+.ct-review-optional .ct-review-lab,
+.ct-review-optional .ct-review-val { color: var(--text-3); }
+
+@media (max-width: 699px) {
+  /* On a phone the label and value stack: two columns of prose plus a link do
+     not fit, and wrapping the value under its label keeps every row readable. */
+  .ct-review-row, .ct-review-optional .ct-review-row {
+    grid-template-columns: 1fr auto;
+    gap: 2px 10px;
+  }
+  .ct-review-lab { grid-column: 1; }
+  .ct-review-val { grid-column: 1 / -1; grid-row: 2; }
+  .ct-review-change { grid-column: 2; grid-row: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ct-review-change { transition: none; }
+}
+

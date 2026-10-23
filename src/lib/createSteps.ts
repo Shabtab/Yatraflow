@@ -38,6 +38,22 @@ export function stepNumber(step: CreateStep): number {
 }
 
 /**
+ * The primary action's label, wherever it is rendered.
+ *
+ * One constant, because the page renders this button in three places (the ticket
+ * rail, the phone dock, and the Review step's own action). They said "Start
+ * planning" while the Review step's heading said "Check and create" - the same
+ * button under two names, which reads as two different actions.
+ *
+ * The heading wins: it describes what the press does. "Start planning" promises
+ * a plan; the press creates a trip and opens its workspace.
+ */
+export const CREATE_ACTION_LABEL = 'Check and create'
+
+/** What the button says while the request is in flight. */
+export const CREATE_ACTION_BUSY_LABEL = 'Creating…'
+
+/**
  * Every error key the create form can produce, and the step that owns it.
  *
  * The mapping follows where the CONTROL lives, not where the value is used. A

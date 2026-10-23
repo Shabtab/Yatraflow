@@ -10,7 +10,7 @@
 
 import { useEffect, useRef } from 'react'
 import type { CreateStep } from '../lib/createSteps'
-import { CREATE_STEPS, CREATE_STEP_QUESTION, stepNumber } from '../lib/createSteps'
+import { CREATE_STEPS, CREATE_STEP_QUESTION, CREATE_ACTION_LABEL, stepNumber } from '../lib/createSteps'
 import { reachableSteps, stepCounterLabel, stepIsLink, remainingStepsLabel } from '../lib/createProgress'
 import { previousStep, nextStep } from '../lib/createStepUrl'
 
@@ -64,6 +64,7 @@ export function StepNav({ step, errors, onGo }: {
 }) {
   const back = previousStep(step)
   const next = nextStep(step)
+  const isReview = next === null
   return (
     <div className="ct-nav">
       {back ? (
@@ -76,6 +77,13 @@ export function StepNav({ step, errors, onGo }: {
         // button that explains nothing.
         <button type="button" className="btn btn-primary ct-next" onClick={() => onGo(next)}>
           Next: {CREATE_STEP_QUESTION[next].replace(/\?$/, '')}
+        </button>
+      )}
+      {isReview && (
+        // Review's action is Create, and it is never disabled either (spec §4
+        // rule 6): a press with a blocking row moves focus to that row.
+        <button type="submit" form="yf-create-form" className="btn btn-primary ct-create">
+          {CREATE_ACTION_LABEL}
         </button>
       )}
     </div>

@@ -29,8 +29,9 @@ import { createFunnelOn } from '../lib/featureFlags'
 import { createReadiness, readinessFromDraft, readinessLine } from '../lib/createReadiness'
 import { saveDraft, loadDraft, clearDraft, draftIsWorthKeeping, draftAgeLabel, type StoredDraft } from '../lib/createDraft'
 import { unpickedStopErrors } from '../lib/createSubmit'
-import { validateCreate, type CreateStep } from '../lib/createSteps'
+import { validateCreate, type CreateStep, CREATE_ACTION_LABEL, CREATE_ACTION_BUSY_LABEL } from '../lib/createSteps'
 import { stepFromQuery, stepHref } from '../lib/createStepUrl'
+import { reviewLines, reviewOptional } from '../lib/createReview'
 import { StepProgress, StepNav, useStepFocus } from '../components/CreateFlowShell'
 import { currentQuery, navigate, onRouteChange } from '../lib/router'
 import { fuelFallbackNotice, revalidateCommitments, commitmentMoveMessage, composerRowError, ticketFuelSegments } from '../lib/createHonesty'
@@ -982,6 +983,50 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                inline, headed like every other section, suggestion chip beside.
                The error stays field-level (F-15): aria-invalid + describedby +
                the focus ref on the input itself. ---- */}
+          {/* ---- Review: the trip in six lines, each with a way back. Not a
+               second form - every row is a value and a Change link, so the
+               traveller checks the trip instead of re-reading five screens. A
+               row with no value names what is missing, and it is the row the
+               Create press moves focus to. ---- */}
+          {guided && step === 'review' && (
+            <div className="ct-review">
+              <h2>Check and create</h2>
+              <p className="ct-hint">These are the answers. Change any of them before the trip exists.</p>
+              <ul className="ct-review-list">
+                {reviewLines({
+                  name: f.name, startLocation: f.startLocation,
+                  stopNames: dests.map(d => d.name),
+                  startDate: f.startDate, endDate: f.endDate, days: bill.days,
+                  travellers: f.travellers, transportLabel: cap(f.transportMode),
+                  budgetPerPersonInr: f.budgetPerPersonInr,
+                  hasCover: !!f.coverImageUrl.trim(), commitmentCount: commitments.length,
+                }).map(line => (
+                  <li key={line.step} className={`ct-review-row${line.value === null ? ' missing' : ''}`}>
+                    <span className="ct-review-lab">{line.label}</span>
+                    <span className="ct-review-val">{line.value ?? <em>{line.empty}</em>}</span>
+                    <button type="button" className="ct-review-change" onClick={() => goToStep(line.step)}>
+                      Change<span className="sr-only"> {line.label}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <ul className="ct-review-list ct-review-optional">
+                {reviewOptional({
+                  name: f.name, startLocation: f.startLocation, stopNames: [],
+                  startDate: f.startDate, endDate: f.endDate, days: bill.days,
+                  travellers: f.travellers, transportLabel: cap(f.transportMode),
+                  budgetPerPersonInr: f.budgetPerPersonInr,
+                  hasCover: !!f.coverImageUrl.trim(), commitmentCount: commitments.length,
+                }).map(line => (
+                  <li key={line.label} className="ct-review-row">
+                    <span className="ct-review-lab">{line.label}</span>
+                    <span className="ct-review-val">{line.value ?? <em>{line.empty}</em>}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           <div className="tpl-nameblock" hidden={guided && step !== 'review'}>
             <div className="tpl-warm-head">
               <h2 id="ct-name-h">Name your trip</h2>
@@ -1736,7 +1781,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
                 visible way to finish. Printing is a secondary peek. */}
             {saveFailure}
             <button type="submit" form="yf-create-form" className="tk-cta" disabled={submitting}>
-              {submitting ? 'Creating…' : <>Start planning <ArrowRight size={16} aria-hidden /></>}
+              {submitting ? CREATE_ACTION_BUSY_LABEL : <>{CREATE_ACTION_LABEL} <ArrowRight size={16} aria-hidden /></>}
             </button>
             <div className="tk-subrow">
               <button type="button" className="tk-cancel" onClick={printBill} disabled={!bill.perHead}>
@@ -1784,7 +1829,7 @@ driveAfterDinnerMin: f.driveAfterDinnerMin,
         {/* Same fix as the rail: the primary is the primary, and printing is a
             peek at the numbers - not a gate in front of creating. */}
         <button type="submit" form="yf-create-form" className="dock-cta" disabled={submitting}>
-          {submitting ? 'Creating…' : <>Start planning <ArrowRight size={15} aria-hidden /></>}
+          {submitting ? CREATE_ACTION_BUSY_LABEL : <>{CREATE_ACTION_LABEL} <ArrowRight size={15} aria-hidden /></>}
         </button>
         <button type="button" className="dock-secondary" onClick={printBill} disabled={!bill.perHead} aria-label="Print the rough bill"><Printer size={15} aria-hidden /></button>
       </div>
