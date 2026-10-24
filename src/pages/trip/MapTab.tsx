@@ -277,7 +277,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
   const tripPresenceIds = useMemo(() => tripPresence(trip), [trip])
   const existingNames = tripPresenceIds.names
   const identity = useMemo<PlaceIdentity>(() => ({
-    names: tripPresenceIds.names, keys: tripPresenceIds.keys,
+    names: tripPresenceIds.names, keys: tripPresenceIds.keys, places: tripPresenceIds.places,
     added: addedIds, dismissed: dismissedIds,
   }), [tripPresenceIds, addedIds, dismissedIds])
 
@@ -892,6 +892,7 @@ export function MapTab({ trip, editable, applyChange, suggestionCache, onInputsH
     setAddedIds,
     newStopId,
     dayForKm,
+    dayIdForIndex: index => trip.days.find(d => d.index === index)?.id,
     poiVisitMinutes,
     routeKmOf,
     detourMinFor,

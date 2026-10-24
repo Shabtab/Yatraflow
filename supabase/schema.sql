@@ -116,6 +116,8 @@ create table if not exists public.suggestions (
   id          uuid primary key default gen_random_uuid(),
   trip_id     uuid not null references public.trips (id) on delete cascade,
   day_index   integer not null default 0,
+  day_id      text,
+  place       jsonb,
   proposed_by uuid not null references public.profiles (id) on delete cascade,
   title       text not null default '',
   category    text,
@@ -130,7 +132,22 @@ create table if not exists public.suggestions (
   comments    jsonb not null default '[]'::jsonb,
   status      text not null default 'open'
                 check (status in ('open', 'accepted', 'declined')),
-  created_at  bigint not null default extract(epoch from now()) * 1000
+  created_at  bigint not null default extract(epoch from now()) * 1000,
+  constraint suggestions_day_id_shape
+    check (day_id is null or length(btrim(day_id)) between 1 and 100),
+  constraint suggestions_place_identity_shape
+    check (
+      place is null or (
+        jsonb_typeof(place)='object'
+        and place ? 'exposure'
+        and jsonb_typeof(place->'exposure')='string'
+        and place->>'exposure'='unknown'
+        and (not (place ? 'source') or (jsonb_typeof(place->'source')='string' and place->>'source' in ('google','mappls','wikipedia','osm')))
+        and (not (place ? 'placeId') or (jsonb_typeof(place->'placeId')='string' and length(btrim(place->>'placeId')) between 1 and 300))
+        and (not (place ? 'eLoc') or (jsonb_typeof(place->'eLoc')='string' and length(btrim(place->>'eLoc')) between 1 and 300))
+        and case when jsonb_typeof(place) = 'object' then place - array['source','placeId','eLoc','exposure'] = '{}'::jsonb else false end
+      )
+    )
 );
 
 -- ---------- decisions ----------
@@ -1298,7 +1315,19 @@ begin
         or jsonb_typeof(v_payload->'visitMinutes') is distinct from 'number'
         or jsonb_typeof(v_payload->'estimatedEntryFeeInr') is distinct from 'number'
         or jsonb_typeof(v_payload->'estimatedTransportInr') is distinct from 'number'
-        or exists(select 1 from jsonb_object_keys(v_payload) as x(key) where key<>all(array['dayIndex','title','category','locationName','lat','lng','description','visitMinutes','estimatedEntryFeeInr','estimatedTransportInr'])) then
+        or (v_payload ? 'dayId' and (jsonb_typeof(v_payload->'dayId') is distinct from 'string' or length(btrim(v_payload->>'dayId')) not between 1 and 100))
+        or (v_payload ? 'place' and (
+          case when jsonb_typeof(v_payload->'place') = 'object' then (
+            not (v_payload->'place' ? 'exposure')
+            or jsonb_typeof(v_payload->'place'->'exposure') is distinct from 'string'
+            or v_payload->'place'->>'exposure' is distinct from 'unknown'
+            or (v_payload->'place' ? 'source' and (jsonb_typeof(v_payload->'place'->'source') is distinct from 'string' or v_payload->'place'->>'source' not in ('google','mappls','wikipedia','osm')))
+            or (v_payload->'place' ? 'placeId' and (jsonb_typeof(v_payload->'place'->'placeId') is distinct from 'string' or length(btrim(v_payload->'place'->>'placeId')) not between 1 and 300))
+            or (v_payload->'place' ? 'eLoc' and (jsonb_typeof(v_payload->'place'->'eLoc') is distinct from 'string' or length(btrim(v_payload->'place'->>'eLoc')) not between 1 and 300))
+            or exists(select 1 from jsonb_object_keys(v_payload->'place') as x(key) where key<>all(array['source','placeId','eLoc','exposure']))
+          ) else true end
+        ))
+        or exists(select 1 from jsonb_object_keys(v_payload) as x(key) where key<>all(array['dayIndex','dayId','place','title','category','locationName','lat','lng','description','visitMinutes','estimatedEntryFeeInr','estimatedTransportInr'])) then
         return jsonb_build_object('status','invalid','tripRevision',null);
       end if;
       if (v_payload->>'dayIndex')::numeric<0 or (v_payload->>'dayIndex')::numeric<>trunc((v_payload->>'dayIndex')::numeric)
@@ -1306,8 +1335,8 @@ begin
         or (v_payload->>'estimatedEntryFeeInr')::numeric<0 or (v_payload->>'estimatedTransportInr')::numeric<0 then
         return jsonb_build_object('status','invalid','tripRevision',null);
       end if;
-      insert into public.suggestions(id,trip_id,day_index,proposed_by,title,category,location_name,lat,lng,description,visit_minutes,estimated_entry_fee_inr,estimated_transport_inr,votes,comments,status)
-      values(v_id,v_trip_id,(v_payload->>'dayIndex')::integer,v_actor,btrim(v_payload->>'title'),v_payload->>'category',v_payload->>'locationName',nullif(v_payload->>'lat','')::double precision,nullif(v_payload->>'lng','')::double precision,v_payload->>'description',(v_payload->>'visitMinutes')::integer,(v_payload->>'estimatedEntryFeeInr')::integer,(v_payload->>'estimatedTransportInr')::integer,'[]','[]','open');
+      insert into public.suggestions(id,trip_id,day_index,day_id,place,proposed_by,title,category,location_name,lat,lng,description,visit_minutes,estimated_entry_fee_inr,estimated_transport_inr,votes,comments,status)
+      values(v_id,v_trip_id,(v_payload->>'dayIndex')::integer,nullif(btrim(v_payload->>'dayId'),''),v_payload->'place',v_actor,btrim(v_payload->>'title'),v_payload->>'category',v_payload->>'locationName',nullif(v_payload->>'lat','')::double precision,nullif(v_payload->>'lng','')::double precision,v_payload->>'description',(v_payload->>'visitMinutes')::integer,(v_payload->>'estimatedEntryFeeInr')::integer,(v_payload->>'estimatedTransportInr')::integer,'[]','[]','open');
       v_activity_id:=gen_random_uuid();
       insert into public.activity(id,trip_id,actor_id,verb,target) values(v_activity_id,v_trip_id,v_actor,'suggested '||btrim(v_payload->>'title'),'Day '||((v_payload->>'dayIndex')::integer+1));
       for v_recipient in select user_id from public.trip_members where trip_id=v_trip_id and user_id<>v_actor loop
@@ -1557,6 +1586,8 @@ begin
     (to_jsonb(new)->>'id') is distinct from (to_jsonb(old)->>'id')
     or (to_jsonb(new)->>'trip_id') is distinct from (to_jsonb(old)->>'trip_id')
     or (to_jsonb(new)->>'proposed_by') is distinct from (to_jsonb(old)->>'proposed_by')
+    or to_jsonb(new)->'day_id' is distinct from to_jsonb(old)->'day_id'
+    or to_jsonb(new)->'place' is distinct from to_jsonb(old)->'place'
     or to_jsonb(new)->'votes' is distinct from to_jsonb(old)->'votes'
     or to_jsonb(new)->'comments' is distinct from to_jsonb(old)->'comments'
   ) then raise exception 'use submit_collab_command for suggestion contributions' using errcode='42501'; end if;
@@ -1621,8 +1652,8 @@ begin
   if v_event.restored_at is not null then return jsonb_build_object('status','alreadyApplied','tripRevision',v_revision); end if;
 
   for v_row in select value from jsonb_array_elements(v_event.suggestions) loop
-    insert into public.suggestions(id,trip_id,day_index,proposed_by,title,category,location_name,lat,lng,description,visit_minutes,estimated_entry_fee_inr,estimated_transport_inr,votes,comments,status,created_at)
-    values((v_row->>'id')::uuid,v_trip,(v_row->>'day_index')::integer,(v_row->>'proposed_by')::uuid,v_row->>'title',v_row->>'category',v_row->>'location_name',nullif(v_row->>'lat','')::double precision,nullif(v_row->>'lng','')::double precision,v_row->>'description',(v_row->>'visit_minutes')::integer,(v_row->>'estimated_entry_fee_inr')::integer,(v_row->>'estimated_transport_inr')::integer,v_row->'votes',v_row->'comments',v_row->>'status',(v_row->>'created_at')::bigint)
+    insert into public.suggestions(id,trip_id,day_index,day_id,place,proposed_by,title,category,location_name,lat,lng,description,visit_minutes,estimated_entry_fee_inr,estimated_transport_inr,votes,comments,status,created_at)
+    values((v_row->>'id')::uuid,v_trip,(v_row->>'day_index')::integer,nullif(v_row->>'day_id',''),v_row->'place',(v_row->>'proposed_by')::uuid,v_row->>'title',v_row->>'category',v_row->>'location_name',nullif(v_row->>'lat','')::double precision,nullif(v_row->>'lng','')::double precision,v_row->>'description',(v_row->>'visit_minutes')::integer,(v_row->>'estimated_entry_fee_inr')::integer,(v_row->>'estimated_transport_inr')::integer,v_row->'votes',v_row->'comments',v_row->>'status',(v_row->>'created_at')::bigint)
     on conflict(id) do nothing;
     if found then v_count:=v_count+1; end if;
   end loop;

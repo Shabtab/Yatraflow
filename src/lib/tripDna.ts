@@ -326,7 +326,7 @@ export function crewSeedsFromSuggestions(
   suggestions: { status: string; title: string; category?: string; lat: number; lng: number }[],
 ): CrewSeed[] {
   return suggestions
-    .filter(s => s.status !== 'declined' && Number.isFinite(s.lat) && Number.isFinite(s.lng))
+    .filter(s => s.status === 'open' && Number.isFinite(s.lat) && Number.isFinite(s.lng) && s.lat !== 0 && s.lng !== 0)
     .map(s => ({ name: s.title, category: s.category, lat: s.lat, lng: s.lng }))
 }
 

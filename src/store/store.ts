@@ -37,7 +37,9 @@ import { makeInviteCode, normalizeInviteCode } from '../lib/inviteCode'
 import { suggestionToRow, decisionToRow, activityToRow, notificationToRow, publishedToRow } from '../lib/restoreRows'
 import { reduceSlice, applyMemberChange, isRecentLocalWrite, isStaleServerRow } from '../lib/realtimeCore'
 import { MISSING_BACKEND_MESSAGE, describeAuthFailure } from '../lib/authErrors'
-import { hasStopNamed, nextOrderInDay, renumberDay } from '../lib/stopOrder'
+import { nextOrderInDay, renumberDay } from '../lib/stopOrder'
+import { resolveDayRef } from '../lib/dayRef'
+import { sameVisitPlace } from '../lib/placeIdentity'
 import {
   submitCollabCommand, suggestionRowToEntry, decisionRowToEntry,
   type CollabOutcome, type CollabCommand,
@@ -5370,7 +5372,10 @@ export function addSuggestion(
   // fingerprint is the id-free payload — the suggestion carries no
   // client-minted ids.
   const suggestion = {
-    dayIndex: s.dayIndex, title: s.title, category: s.category, locationName: s.locationName,
+    dayIndex: s.dayIndex,
+    ...(s.dayId ? { dayId: s.dayId } : {}),
+    ...(s.place ? { place: s.place } : {}),
+    title: s.title, category: s.category, locationName: s.locationName,
     lat: s.lat, lng: s.lng, description: s.description, visitMinutes: s.visitMinutes,
     estimatedEntryFeeInr: s.estimatedEntryFeeInr, estimatedTransportInr: s.estimatedTransportInr,
   }
@@ -5575,35 +5580,54 @@ export function addCommentToDecision(tripId: ID, decisionId: ID, text: string): 
   })
 }
 
-/** Accept a suggestion: adds it to the timeline and closes the suggestion. */
-export function acceptSuggestionIntoTimeline(tripId: ID, suggestionId: ID): void {
+export type AcceptanceOutcome =
+  | { status: 'applied'; dayId: ID; dayIndex: number; stopId?: ID }
+  | { status: 'alreadyApplied'; dayId: ID; dayIndex: number; stopId?: ID }
+  | { status: 'retarget'; reason: 'missing-day' | 'legacy-ambiguous'; availableDays: Array<{ id: ID; index: number; title?: string }> }
+  | { status: 'visitConflict'; dayId: ID; dayIndex: number }
+  | { status: 'invalid' | 'forbidden' | 'unavailable'; reason?: string }
+
+/** Land one idea on a day. The day is a CHOICE, never a guess: a deleted target
+ *  asks the caller to pick again instead of falling back to its old index, and
+ *  a visit already on that day needs an explicit "add another" confirmation. */
+export function acceptSuggestionIntoTimeline(
+  tripId: ID,
+  suggestionId: ID,
+  opts: { dayId?: ID; dayIndex?: number; allowDuplicate?: boolean } = {},
+): AcceptanceOutcome {
   const sg = cache.suggestions.find(x => x.id === suggestionId)
   const trip = tripById(tripId)
-  if (!sg || !trip) return
-  // Idempotence (#336): an accepted/declined suggestion is DONE. A double-tap
-  // used to run this twice and mint a twin stop — addStop mints a fresh uid
-  // per call — so the guard lands before the write, mirroring voteOnDecision.
-  // A row with NO status is not spent (older hydrated rows predate the column
-  // being always present), so only a real terminal value refuses.
-  if (sg.status && sg.status !== 'open') return
-  // Dedupe by title, the same test the Map's picker applies: if the plan
-  // already holds this place, accept the suggestion (its row is spent) but do
-  // not double the stop.
-  if (hasStopNamed(trip, sg.title)) {
-    cache.suggestions = cache.suggestions.map(x => x.id === suggestionId ? { ...x, status: 'accepted' as const } : x)
-    commit()
-    fire('suggestions', supabase.from('suggestions').update({ status: 'accepted' }).eq('id', suggestionId))
-    toast(`“${sg.title}” is already on your timeline.`)
-    return
+  if (!sg || !trip || sg.tripId !== tripId) return { status: 'invalid', reason: 'unknown suggestion' }
+  if (sg.status === 'accepted') {
+    const day = trip.days.find(d => d.id === sg.dayId) ?? trip.days.find(d => d.index === sg.dayIndex)
+    return { status: 'alreadyApplied', dayId: day?.id ?? '', dayIndex: day?.index ?? sg.dayIndex }
   }
-  // The suggested day must exist: a stale dayIndex used to crash addStop's
-  // non-null day assertion mid-click. Say so instead of failing silently.
-  if (!trip.days.some(d => d.index === sg.dayIndex)) {
-    toast(`“${sg.title}” was suggested for Day ${sg.dayIndex + 1}, which is not on this trip — add it from the Map tab.`, 'err')
-    return
+  if (sg.status && sg.status !== 'open') return { status: 'invalid', reason: 'suggestion is not open' }
+
+  const resolution = resolveDayRef(trip.days, {
+    dayId: opts.dayId ?? sg.dayId,
+    dayIndex: opts.dayIndex ?? sg.dayIndex,
+  })
+  if (resolution.status === 'missing') {
+    return {
+      status: 'retarget',
+      reason: resolution.reason,
+      availableDays: trip.days.map(d => ({ id: d.id, index: d.index, ...(d.title ? { title: d.title } : {}) })),
+    }
   }
-  addStop(tripId, sg.dayIndex, {
+  const day = resolution.day
+  const conflict = day.stops.find(s => s.status !== 'rejected' && sameVisitPlace(sg, s))
+  if (conflict && !opts.allowDuplicate) {
+    return { status: 'visitConflict', dayId: day.id, dayIndex: day.index }
+  }
+
+  const place = sg.place
+  const stop = addStop(tripId, day.index, {
     title: sg.title, category: sg.category, locationName: sg.locationName, lat: sg.lat, lng: sg.lng,
+    ...(place?.placeId ? { placeId: place.placeId } : {}),
+    ...(place?.eLoc ? { eLoc: place.eLoc } : {}),
+    ...(place?.source ? { placeSource: place.source } : {}),
+    ...(place ? { exposure: place.exposure } : {}),
     description: sg.description, visitMinutes: sg.visitMinutes,
     entryFeeInrPerPerson: sg.estimatedEntryFeeInr, transportCostInrTotal: sg.estimatedTransportInr,
     priority: 'nice-to-have', status: 'confirmed',
@@ -5612,8 +5636,8 @@ export function acceptSuggestionIntoTimeline(tripId: ID, suggestionId: ID): void
   void addActivity(tripId, 'accepted suggestion into timeline', sg.title)
   commit()
   fire('suggestions', supabase.from('suggestions').update({ status: 'accepted' }).eq('id', suggestionId))
+  return { status: 'applied', dayId: day.id, dayIndex: day.index, stopId: stop.id }
 }
-
 export function declineSuggestion(tripId: ID, suggestionId: ID): Promise<CollabOutcome> {
   const scope = identityScope()
   if (!scope) return Promise.resolve({ status: 'forbidden' })
@@ -5821,22 +5845,21 @@ export function resolveDecision(decisionId: ID, optionId: ID): Promise<CollabOut
   // the suggestion rows it beats drop out via the same name check.
   if (winning?.place && trip) {
     const placeDay = winning.place.dayIndex
-    // The destination day is matched by INDEX and never clamped (#336). The old
-    // `min(max(0, dayIndex), days.length - 1)` quietly re-attributed a vote to
-    // the LAST day when the day it was raised for had been deleted (and to Day
-    // 1 whenever the position was unknown), which is a plan nobody voted on.
-    const target = typeof placeDay === 'number' && Number.isFinite(placeDay)
-      ? trip.days.find(dd => dd.index === placeDay)
-      : undefined
-    if (!target) {
+    // The destination is a stable day when the vote carried one. A legacy
+    // index resolves only while exactly one day matches it. Never clamp, and
+    // never invent Day 1 (#336).
+    const resolution = resolveDayRef(trip.days, { dayId: winning.place.dayId, dayIndex: placeDay })
+    if (resolution.status === 'missing') {
       toast(placeDay == null
         ? `“${winning.place.title}” won the vote, but its day was never set — add it from the Map tab.`
-        : `“${winning.place.title}” won the vote, but Day ${placeDay + 1} is no longer on this trip — add it from the Map tab.`, 'err')
-    } else if (hasStopNamed(trip, winning.place.title)) {
-      // The plan already holds this place (someone added it by hand, or another
-      // poll landed it): resolving must not double it.
-      toast(`“${winning.place.title}” won the vote — it is already on your timeline.`)
+        : `“${winning.place.title}” won the vote, but its day is no longer on this trip — add it from the Map tab.`, 'err')
+    } else if (resolution.day.stops.some(s => s.status !== 'rejected' && sameVisitPlace(winning.place!, s))) {
+      // The chosen day already holds this visit (someone added it by hand, or
+      // another poll landed it there): resolving must not double it.
+      toast(`“${winning.place.title}” won the vote — it is already on Day ${resolution.day.index + 1}.`)
     } else {
+      const target = resolution.day
+      const identity = winning.place.place
       // A slot poll's option id carries the part it was raised for
       // (slot:<key>:<placeId>), so the landed stop says which part it fills -
       // the day plan reads that part as filled the moment the vote resolves (P4).
@@ -5847,6 +5870,10 @@ export function resolveDecision(decisionId: ID, optionId: ID): Promise<CollabOut
         locationName: winning.place.locationName,
         lat: winning.place.lat,
         lng: winning.place.lng,
+        ...(identity?.placeId ? { placeId: identity.placeId } : {}),
+        ...(identity?.eLoc ? { eLoc: identity.eLoc } : {}),
+        ...(identity?.source ? { placeSource: identity.source } : {}),
+        ...(identity ? { exposure: identity.exposure } : {}),
         description: winning.place.description,
         visitMinutes: winning.place.visitMinutes,
         ...(winning.place.openTime ? { openTime: winning.place.openTime } : {}),

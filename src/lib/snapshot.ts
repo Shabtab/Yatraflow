@@ -62,6 +62,9 @@ export async function decodeTripSnapshot(payload: string): Promise<Trip> {
   const json = await inflate(fromBase64Url(payload.slice(PREFIX.length)))
   const raw = JSON.parse(json) as Record<string, unknown>
   if (!raw || typeof raw !== 'object') throw new Error('bad data')
+  const declaredVersion = raw.formatVersion
+  if (declaredVersion !== undefined && (typeof declaredVersion !== 'number' || !Number.isInteger(declaredVersion) || declaredVersion < 1)) throw new Error('bad data')
+  if (declaredVersion !== undefined && declaredVersion > ITINERARY_FORMAT_VERSION) throw new Error('That link was made by a newer YatraFlow. Update the app, then open it again.')
   const declared = typeof raw.formatVersion === 'number' ? raw.formatVersion : 1
   const migrated = migrateTrip(stripVersion(withoutJoinSecrets(raw)), declared) as unknown as Trip
   if (!migrated || typeof migrated.id !== 'string' || !Array.isArray(migrated.days)) throw new Error('bad data')

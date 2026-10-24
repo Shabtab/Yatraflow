@@ -23,6 +23,7 @@ import { saveHaltPin } from '../../../lib/uiPrefs'
 import { recordDnaEvent } from '../../../lib/tripDna'
 import { addDecision, deleteStop } from '../../../store/store'
 import { reportCollabOutcome } from '../../../lib/collabFeedback'
+import { persistedPlaceFromHit } from '../../../lib/placeDraft'
 import type { DaySlot } from '../../../lib/daySlots'
 import type { ItineraryStop, Trip } from '../../../data/types'
 
@@ -355,16 +356,22 @@ export function useMapWriters({
       const outcome = await addDecision(trip.id, {
         question: `Day ${activeDayIndex + 1} ${slot.label.toLowerCase()} - where?`,
         context: `Voting from the day plan (Day ${activeDayIndex + 1})`,
-        options: usable.map(({ c, pinned }) => ({
-          id: `slot:${slot.key}:${String(c.hit.id)}`, label: c.hit.name,
-          timeImpactMin: c.detourMin == null ? undefined : Math.round(c.detourMin) || undefined,
-          place: {
-            title: c.hit.name, category: (c.hit.category as ItineraryStop['category']) ?? 'sightseeing',
-            locationName: c.hit.description ?? c.hit.name, lat: pinned.latitude, lng: pinned.longitude,
-            description: c.hit.description, visitMinutes: poiVisitMinutes(c.hit.category),
-            openTime: c.hit.openTime, closeTime: c.hit.closeTime, dayIndex: activeDayIndex,
-          },
-        })),
+        options: usable.map(({ c, pinned }) => {
+          const identity = persistedPlaceFromHit(c.hit)
+          const day = trip.days.find(d => d.index === activeDayIndex)
+          return {
+            id: `slot:${slot.key}:${String(c.hit.id)}`, label: c.hit.name,
+            timeImpactMin: c.detourMin == null ? undefined : Math.round(c.detourMin) || undefined,
+            place: {
+              title: c.hit.name, category: (c.hit.category as ItineraryStop['category']) ?? 'sightseeing',
+              locationName: c.hit.description ?? c.hit.name, lat: pinned.latitude, lng: pinned.longitude,
+              description: c.hit.description, visitMinutes: poiVisitMinutes(c.hit.category),
+              openTime: c.hit.openTime, closeTime: c.hit.closeTime, dayIndex: activeDayIndex,
+              ...(day ? { dayId: day.id } : {}),
+              ...(identity ? { place: identity } : {}),
+            },
+          }
+        }),
       })
       reportCollabOutcome(outcome, `The crew is voting on Day ${activeDayIndex + 1} ${slot.label.toLowerCase()} - resolve it in Group input`)
       if (outcome.status === 'applied' || outcome.status === 'alreadyApplied') {
