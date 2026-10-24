@@ -90,7 +90,7 @@ Two database migrations go with this release: `20261023a_collab_commands.sql` an
 
 ### Changed
 
-- **The Android workflow uses current GitHub Actions versions.** `checkout`, `setup-node`, `setup-java` and `upload-artifact` move from `v4` to `v5`. The `v4` actions target a Node 20 runtime that the runners no longer provide. Every run carried a deprecation warning.
+- **The Android workflow uses current GitHub Actions versions.** `checkout`, `setup-node` and `setup-java` move from `v4` to `v5`. `upload-artifact` moves to `v6`, the first release that runs on Node 24 by default. The `v4` actions target a Node 20 runtime that the runners no longer provide. Every run carried a deprecation warning.
 
 - **The share-page and sitemap escape code lives in one file.** Four copies of one entity table could drift apart. `api/_escape.js` now holds the table. The output is byte-identical to before, so the sitemap still writes `&apos;`.
 
