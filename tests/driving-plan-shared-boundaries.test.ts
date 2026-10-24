@@ -103,6 +103,27 @@ describe('issue 832 F3 shared driving-plan boundaries', () => {
     expect(overnights.every(segment => Number.isFinite(segment.etaMinutes))).toBe(true)
   })
 
+  it('preserves saved later departures when rain extends the outward walk', () => {
+    const facts = {
+      totalKm: 1400,
+      driveMinutes: 1500,
+      transportMode: 'car',
+      travelStyle: 'relaxed',
+      driverCount: 1,
+      hasVulnerable: true,
+      dayStart: '08:30',
+      anchors: { dinnerStartMin: 19 * 60, dinnerEndMin: 20 * 60 },
+    }
+    const dayStartTimes = Array.from({ length: 20 }, (_, index) => index === 0 ? '08:30' : '14:00')
+    const plan = deriveDrivingPlan({
+      ...facts, dayStartTimes,
+      dayRainPct: [0, 90, 90, 90, 90, 90, 90, 90],
+    })
+    expect(plan.outbound.length).toBeGreaterThan(4)
+    expect(plan.clock.days.map(day => day.startMin)).toEqual(plan.outbound.map(day => day.startMin))
+    for (const day of plan.outbound.slice(1)) expect(day.startMin).toBeGreaterThanOrEqual(14 * 60)
+  })
+
   it('changes cache identity when one set of day boundaries carries different route timing', () => {
     const facts = {
       totalKm: 1400,
